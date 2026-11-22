@@ -1,51 +1,49 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_fornitori_guard_normalize`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_fornitori_guard_normalize`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-[anagrafiche.fornitori](/dbzero/anagrafiche/tabelle/fornitori)
->
-**Approfondimento funzioni:**
->
-[config.sistema_codici](/dbzero/config/manual/sistema_codici)
+> * [anagrafiche.fornitori](/dbzero/anagrafiche/tabelle/fornitori) — la tabella su cui è agganciata
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 12-03-2026)
-La trigger function **`anagrafiche.trgfn_fornitori_guard_normalize()`**
-normalizza i dati minimi del fornitore prima del salvataggio, con focus sul
-campo `canale_fe`.
 
-L'obiettivo e' uniformare il valore usato nei flussi di fatturazione elettronica
-senza introdurre generazione automatica del `codice`.
+`anagrafiche.trgfn_fornitori_guard_normalize` tiene coerente la ritenuta d'acconto del fornitore a ogni
+salvataggio: con la ritenuta serve un'aliquota, senza ritenuta l'aliquota non c'è.
 
 ---
 
-### Regole applicate
+### La ritenuta e la sua aliquota
 
-* Trigger **BEFORE INSERT OR UPDATE** su `anagrafiche.fornitori`.
-* Se `NEW.canale_fe` e' valorizzato:
-  * rimuove tutti gli spazi con `regexp_replace(..., '\\s+', '', 'g')`
-  * converte il risultato in maiuscolo con `upper(...)`
-* Il blocco di normalizzazione di `NEW.codice` e' presente ma commentato:
-  quindi oggi il trigger **non** modifica il codice del fornitore.
+* Con la ritenuta (`ritenuta_acconto` vero) l'aliquota dev'essere maggiore di zero: altrimenti il salvataggio è
+  rifiutato con `E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA`, sul campo `ritenuta_aliquota`.
+* Senza la ritenuta (falsa o non indicata) l'aliquota si svuota: un valore rimasto da prima non resta appeso.
 
----
-
-### Effetto operativo
-
-Dati in ingresso come `ab c 123` vengono salvati come `ABC123`, riducendo le
-variazioni formali sul canale FE e semplificando confronti, controlli e
-integrazioni a valle.
+Il tetto dell'aliquota (fino a 100) è un vincolo della tabella, non di questo trigger.
 
 ---
 
-### ⚠️ Nota funzionale
+### Scatta a ogni scrittura
 
-La funzione e' volutamente conservativa: applica solo la normalizzazione del
-`canale_fe`, mentre la gestione del `codice` resta separata e non viene forzata
-in questo trigger.
+Il trigger scatta prima di ogni inserimento e di ogni modifica, qualunque colonna cambi. Il codice del fornitore lo
+genera un altro trigger, `anagrafiche.trgfn_fornitori_gen_codice`.
+
+---
+
+### Codici errore
+
+* `E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA` — la ritenuta senza un'aliquota maggiore di zero.
+
+---
+
+### Note di migrazione
+
+* 2026-11-21 — smette di normalizzare il canale della fatturazione elettronica e la PEC del fornitore, usciti dalla
+  tabella: l'instradamento è del soggetto, in `anagrafiche.dati_societari`.
 
 ---
 

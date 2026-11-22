@@ -1,137 +1,110 @@
 ## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_indirizzi_resolved_base`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
-
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti viste:
+> Approfondimento tabelle:
 >
-[anagrafiche.vw_indirizzi_resolved_ruolo](/dbzero/anagrafiche/views/vw_indirizzi_resolved_ruolo)  
-> [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/views/vw_indirizzi_resolved_soggetto)  
-> [anagrafiche.vw_indirizzi_resolved_all](/dbzero/anagrafiche/views/vw_indirizzi_resolved_all)  
-> [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio)  
+> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi) — gli indirizzi dei ruoli, lo strato `RUOLO`
+> * [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti) — gli indirizzi dei soggetti, lo strato `SOGGETTO`
+> * [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi) — il tipo, col codice da mostrare e quello interno
 >
-Approfondimenti tabelle:
+> Approfondimento viste:
 >
-[anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)  
-> [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)  
-> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
-> [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)  
-> [config.comuni](/dbzero/config/tabelle/comuni)  
-> [config.codici_postali](/dbzero/config/tabelle/codici_postali)  
-> [config.province](/dbzero/config/tabelle/province)  
-> [config.regioni](/dbzero/config/tabelle/regioni)  
-> [config.stati](/dbzero/config/tabelle/stati)  
+> * [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio) — il civico risolto, per gli indirizzi col dettaglio
+> * [script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo) — la via risolta, da cui legge CAP e provincia degli indirizzi liberi
+> * [anagrafiche.vw_indirizzi_resolved_ruolo](/dbzero/anagrafiche/views/vw_indirizzi_resolved_ruolo) — la proiezione del solo strato `RUOLO`
+> * [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/views/vw_indirizzi_resolved_soggetto) — la proiezione del solo strato `SOGGETTO`
+> * [anagrafiche.vw_indirizzi_resolved_all](/dbzero/anagrafiche/views/vw_indirizzi_resolved_all) — la proiezione dei due strati insieme
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_get_indirizzi_by_ruolo](/dbzero/script/funzioni/fn_get_indirizzi_by_ruolo) — gli indirizzi di un ruolo, letti da qui
+> * [script.fn_get_indirizzo](/dbzero/script/funzioni/fn_get_indirizzo) — il risolutore che sceglie l'indirizzo da usare
+>
+> Guide:
+>
+> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi) — il quadro degli indirizzi, dei tipi e dei ripieghi
 
 ---
+
 ### 🎯 Scopo Principale
 
-(latest review 25-03-26)
-La vista **`anagrafiche.vw_indirizzi_resolved_base`** è il **layer comune** per la risoluzione degli indirizzi, e unifica in un solo output:
-
-* indirizzi **per ruolo** (`anagrafiche.indirizzi`),
-* indirizzi **per soggetto** (`anagrafiche.indirizzi_soggetti`).
-
-La vista:
-
-* centralizza la logica di **composizione dell’indirizzo human‑readable** (`indirizzo_display`),
-* espone **campi strutturati** territoriali e internazionali,
-* elimina duplicazioni tra le viste “resolved” specialistiche.
-
-È la **sorgente unica** usata dalle viste:
-
-* `vw_indirizzi_resolved_ruolo`
-* `vw_indirizzi_resolved_soggetto`
-* `vw_indirizzi_resolved_all`
+`anagrafiche.vw_indirizzi_resolved_base` è la lettura unica degli indirizzi scritti: una riga per ogni
+indirizzo di un ruolo o di un soggetto, nelle due forme, con il testo da mostrare, il luogo risolto (comune,
+provincia, regione, stato, CAP), il tipo e la posizione. Le tre viste `vw_indirizzi_resolved_*` ne sono
+proiezioni.
 
 ---
 
-### Struttura logica della vista
+### Due strati, distinti da `scope`
 
-La vista è costruita come:
+| `scope` | Da dove | Che cosa |
+| --- | --- | --- |
+| `RUOLO` | `anagrafiche.indirizzi` | l'indirizzo di un ruolo, generico o di un'istanza (`istanza_utility_id`) |
+| `SOGGETTO` | `anagrafiche.indirizzi_soggetti` | l'indirizzo del soggetto; ruolo e istanza sono vuoti |
 
-* **UNION ALL** tra indirizzi ruolo e indirizzi soggetto,
-* join su `config.tipi_indirizzi`,
-* join su `vw_indirizzi_dettaglio` e `script.vw_indirizzo_completo` per completare i dati normalizzati,
-* arricchimento con **geodata** (stato, regione, provincia, comune, CAP).
+`indirizzo_id` è l'id nella tabella d'origine: lo stesso numero può comparire nei due strati, e una riga si
+riconosce da `scope` più `indirizzo_id`. `source` ripete `scope`, per i lettori che la chiamano così.
 
----
-
-### Semantica di `scope`
-
-| scope      | Origine                          | Significato                              |
-| ---------- | -------------------------------- | ---------------------------------------- |
-| `RUOLO`    | `anagrafiche.indirizzi`          | Indirizzo associato a un soggetto/ruolo. |
-| `SOGGETTO` | `anagrafiche.indirizzi_soggetti` | Indirizzo anagrafico del soggetto.       |
+⭐ La vista mostra ciò che è scritto, non sceglie: non applica la discesa istanza → ruolo → soggetto né i tipi di
+ripiego. Quella è di `script.fn_get_indirizzo`, che legge da qui attraverso le funzioni di lista.
 
 ---
 
-### 📑 Campi esposti (principali)
+### Come risolve una riga
 
-| Colonna                      | Tipo                   | Descrizione                               |
-| ---------------------------- | ---------------------- | ----------------------------------------- |
-| `scope`                      | `text`                 | Ambito: `RUOLO` o `SOGGETTO`.             |
-| `indirizzo_id`               | `bigint`               | PK della tabella di origine.              |
-| `soggetto_id`                | `uuid`                 | Soggetto proprietario dell’indirizzo.     |
-| `soggetto_ruolo_id`          | `bigint`               | Valorizzato solo se scope=RUOLO.          |
-| `istanza_utility_id`         | `bigint`               | ID istanza utility (`anagrafiche.istanze_utilities.id`). Valorizzato solo se scope=RUOLO e indirizzo specifico per istanza. NULL per scope=SOGGETTO e per indirizzi generici. |
-| `tipo_indirizzo_id`          | `integer`              | Tipo indirizzo (ID tecnico).              |
-| `tipo_indirizzo_codice`      | `varchar(15)`          | Codice del tipo indirizzo (display, `ti.codice`), intero: fino al 2026-11-01 usciva troncato a 10 caratteri. Il codice interno è `tipo_indirizzo_codice_interno`. |
-| `tipo_indirizzo_descrizione` | `text`                 | Descrizione del tipo indirizzo.           |
-| `is_normalizzato`            | `boolean`              | TRUE se basato su `indirizzi_dettaglio`.  |
-| `indirizzo_dettaglio_id`     | `bigint`               | FK al dettaglio civico.                   |
-| `indirizzo_display`          | `text`                 | Indirizzo human‑readable pronto per UI.   |
-| `indirizzo_libero`           | `text`                 | Indirizzo libero (se non normalizzato).   |
-| `comune_id`                  | `integer`              | Comune risolto.                           |
-| `comune_descrizione`         | `text`                 | Nome comune.                              |
-| `provincia_id`               | `integer`              | Provincia risolta.                        |
-| `provincia_sigla`            | `text`                 | Sigla provincia.                          |
-| `provincia_descrizione`      | `text`                 | Descrizione provincia.                    |
-| `regione_id`                 | `integer`              | Regione risolta.                          |
-| `regione_descrizione`        | `text`                 | Nome regione.                             |
-| `stato_id`                   | `integer`              | Stato risolto.                            |
-| `stato_iso2`                 | `text`                 | Codice ISO2 stato.                        |
-| `stato_descrizione`          | `text`                 | Nome stato.                               |
-| `codice_postale_id`          | `integer`              | ID del codice postale (se presente).      |
-| `cap`                        | `text`                 | CAP/codice postale (se disponibile).      |
-| `cap_codice`                 | `text`                 | Codice postale da tabella CAP.            |
-| `geoloc`                     | `geometry(Point,4326)` | Geoloc risolta.                           |
-| `locality`                   | `text`                 | Località (uso internazionale).            |
-| `administrative_area`        | `text`                 | Area amministrativa (uso internazionale). |
-| `sublocality`                | `text`                 | Sublocalità (uso internazionale).         |
-| `postal_code`                | `text`                 | Codice postale libero della forma estera (facoltativo). Fino al 18-10-2026 si chiamava `postal_box`. |
-
-| `tipo_indirizzo_codice_interno` | `varchar(10)`       | Codice interno del tipo (`ti.codice_interno`, immutabile): la chiave per confronti e logica. Ultima colonna. |
-
-(Sono esposti anche campi di audit e dettagli civico/stradario per completezza.)
-
-⛔ Le tre viste derivate hanno le **stesse colonne della base**, nello stesso ordine e con lo stesso tipo: una colonna nuova qui si aggiunge anche a loro. Lo presidia `db/pgtap/anagrafiche/test-vw-indirizzi-resolved-derivate-codice-interno-v1.sql`.
+* **Col dettaglio**: testo, via, civico e dettaglio vengono dal civico (`anagrafiche.vw_indirizzi_dettaglio`),
+  comune, provincia e regione dalla sua via, lo stato dalla regione.
+* **Libera**: il testo è `indirizzo_libero`; comune e CAP sono quelli scritti sulla riga nella forma del
+  catalogo, provincia e regione vengono dal comune; lo stato è quello della riga. Località, area
+  amministrativa, frazione e codice postale escono come sono, per la forma estera.
+* **Il testo da mostrare** (`indirizzo_display`) è l'indirizzo normalizzato del civico, oppure il testo libero:
+  via e numero, non il luogo, che sta nelle sue colonne. Il terzo ripiego, che compone località e codice postale,
+  non si raggiunge, perché un indirizzo libero ha sempre il testo.
+* **La posizione** è il punto del civico, poi quello della via, poi quello scritto sulla riga: per un indirizzo
+  col dettaglio la vista legge il civico di oggi, non la copia sulla riga.
+* **Il tipo** esce col codice da mostrare (`tipo_indirizzo_codice`, che l'utente può rinominare), la descrizione
+  e il codice interno (`tipo_indirizzo_codice_interno`), che è la chiave da usare nei confronti e nella logica.
 
 ---
 
-### Modalità d’uso tipiche
+### ⛔ Le proiezioni hanno le stesse colonne
 
-```sql
--- Lista completa di indirizzi, con scope e formattazione standard
-SELECT *
-FROM anagrafiche.vw_indirizzi_resolved_base
-WHERE soggetto_id = :soggetto_id;
-```
-
-```sql
--- Solo indirizzi normalizzati
-SELECT *
-FROM anagrafiche.vw_indirizzi_resolved_base
-WHERE is_normalizzato = TRUE;
-```
+`vw_indirizzi_resolved_ruolo`, `vw_indirizzi_resolved_soggetto` e `vw_indirizzi_resolved_all` espongono le
+colonne della base, con gli stessi nomi, nello stesso ordine e con gli stessi tipi: una colonna nuova qui si
+aggiunge anche a loro, altrimenti chi passa da una vista all'altra trova un contratto diverso.
 
 ---
 
-### Best practice e raccomandazioni
+### ⚠️ Che cosa oggi non copre
 
-* Non utilizzare questa vista per DML: usare sempre le tabelle base.
-* Usarla come sorgente unica per funzioni di lettura/risoluzione.
-* Preferire le viste derivate quando serve filtrare per scope.
+* **Un indirizzo libero col comune esce più volte.** La via risolta (`script.vw_indirizzo_completo`) si unisce
+  sul solo comune, e ha una riga per ogni via: un indirizzo libero nella forma del catalogo esce una volta per
+  ogni via del suo comune, in questa vista e nelle tre proiezioni. Per la stessa ragione la colonna `cap` di un
+  indirizzo libero è il CAP di una via del comune, non quello scritto sulla riga, che è `cap_codice`; e in un
+  comune senza vie nello stradario `cap` e `provincia` restano vuoti.
+* **Un civico la cui via smette di risolversi** esce senza testo, comune e CAP, perché la vista del civico lo
+  perde.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-vw-indirizzi-resolved-derivate-codice-interno-v1.sql` — le tre proiezioni con le
+  colonne della base, il codice interno distinto da quello da mostrare, il codice da mostrare non troncato.
+* `db/pgtap/anagrafiche/test-indirizzi-fallback.sql` — le funzioni di lista allineate alla base, i due strati
+  che insieme fanno la vista di tutti.
+* `db/pgtap/anagrafiche/test-indirizzi-istanza-cascata.sql` — l'istanza esposta sullo strato del ruolo.
+
+---
+
+### Note di migrazione
+
+* 2026-10-18 — `postal_box` diventa `postal_code`.
+* 2026-11-01 — il codice del tipo esce intero (prima era troncato a 10 caratteri), e si aggiunge il codice
+  interno, in fondo, nella base e nelle tre proiezioni.
 
 ---
 

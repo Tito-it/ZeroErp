@@ -35,10 +35,10 @@ export const useTitoliIvaSfondatiStore = createListaStore(
     // ⛔ Un presidio vuoto perche' nessuno ha ancora cercato non presidia
     //    niente: parte piena.
     startsEmpty: false,
-    // ⛔ Default allineato al BE: la piu' GRAVE per prima. Su un presidio
-    //    l'ordine non e' una preferenza — e' cio' che mette in cima la cosa da
-    //    guardare per prima.
-    orderBy: 'eccedenza',
-    orderDir: 'desc',
+    // ⛔ La piu' GRAVE per prima: su un presidio l'ordine non e' una
+    //    preferenza, e' cio' che mette in cima la cosa da guardare. Lo dichiara
+    //    il preset della lista (`eccedenza desc`), il backend lo applica e lo
+    //    dice in `meta.ordinamento` (BE29 di brief-db-revisione-ui): nessuna
+    //    copia qui.
   },
 )

@@ -2,7 +2,7 @@
 -- ============================================================================
 -- ZeroErp — Provisioning dei RUOLI DI SISTEMA (modello unico)
 -- ----------------------------------------------------------------------------
--- Brief: docs/it/dev/work-done/brief-db-ruoli-di-sistema.md §3, §4
+-- Brief: docs/it/dev/work-done/2026/brief-db-ruoli-di-sistema.md §3, §4
 --
 -- I nomi dei ruoli sono di SISTEMA e non si configurano: il database li nomina
 -- (grant, policy, presidi). Chi installa e vuole un utente suo lo AGGIUNGE come
@@ -594,6 +594,36 @@ FROM (VALUES ('dbops.seed_righe'), ('dbops.porte_manutenzione_passaggi'),
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
+-- ⭐ IL CATALOGO DEI REGIMI FISCALI (dal 2026-11-22): brief
+--   brief-db-fornitore-doppioni-del-soggetto, D-8 (la Q10 applicata). Lo possiede
+--   il CSV, il codice RF e' del tracciato FatturaPA. Stesso elenco di
+--   `v_tabelle_sola_lettura_app` nel loop 20260205-41 e del forward
+--   90_end/20261121-16; `db/pgtap/config/test-regimi-fiscali-sola-lettura-v1.sql`
+--   lo dice se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('config.regimi_fiscali')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
+-- ⭐ LE ANAGRAFICHE DI MAGAZZINO (dal 2026-11-22): brief
+--   brief-db-magazzino-tutte-le-scritture-dal-verbo, Lotto 1. Magazzini,
+--   ubicazioni, lotti e seriali li scrivono i verbi fn_aggiungi_* / fn_modifica_*;
+--   eventi dei seriali e note non hanno scrittore applicativo. Le note sono
+--   partizionate: madre e nove partizioni, ognuna col suo privilegio. Stesso
+--   elenco di `v_tabelle_sola_lettura_app` nel loop 20260205-41 e del forward
+--   90_end/20261122-10; `db/pgtap/magazzino/test-anagrafiche-magazzino-sola-lettura-v1.sql`
+--   lo dice se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('magazzino.magazzini'), ('magazzino.ubicazioni'), ('magazzino.lotti'),
+             ('magazzino.assets'), ('magazzino.eventi_assets'), ('magazzino.note'),
+             ('magazzino.note_asset'), ('magazzino.note_evento_asset'),
+             ('magazzino.note_inventario'), ('magazzino.note_inventario_riga'),
+             ('magazzino.note_movimento'), ('magazzino.note_rettifica'),
+             ('magazzino.note_rettifica_riga'), ('magazzino.note_trasferimento'),
+             ('magazzino.note_trasferimento_riga')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
 -- ⭐ LA PORTA DEL PANNELLO DI CONFIGURAZIONE (dal 2026-09-25): brief
 --   brief-db-pannello-config-verbo-generico, sezione 3.5. `magazzino.causali` la
 --   scrive solo il verbo config.fn_pannello_scrivi; `config.tabelle_gestibili` e'
@@ -605,9 +635,15 @@ WHERE to_regclass(t.nome) IS NOT NULL
 --   Dal 2026-09-30 anche `ui.misure_pagina` (brief-db-misure-pagina-catalogo §2):
 --   le misure «righe per pagina», possedute dal CSV. Forward 90_end/20260930-13,
 --   pgTAP `db/pgtap/ui/test-misure-pagina-v1.sql`.
+--   Dal 2026-11-21 anche le cinque tabelle del catalogo delle dashboard
+--   (brief-db-revisione-ui, giro 5, U31): le possiede il CSV; la preferenza resta
+--   scrivibile. Forward 90_end/20261120-60, pgTAP
+--   `db/pgtap/ui/test-ui-catalogo-dashboard-v1.sql`.
 SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
 FROM (VALUES ('magazzino.causali'), ('config.tabelle_gestibili'),
-             ('config.aree_funzionali'), ('ui.misure_pagina')) AS t(nome)
+             ('config.aree_funzionali'), ('ui.misure_pagina'),
+             ('ui.dashboard_definizione'), ('ui.widget'), ('ui.dashboard_widget'),
+             ('ui.dashboard_preset'), ('ui.dashboard_preset_widget')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 

@@ -61,12 +61,13 @@ function creaStoreGiornaleEntita(storeIdBase, { fetchPage, filterDefaults = {}, 
         startsEmpty: false,
         filterDefaults,
         filtriNeutri,
-        // Allineato al preset `giornale_default` di `vendite.giornale` (`quando
-        // desc`): l'ultima cosa successa in cima. ⚠️ Fino al 2026-09-27 la
-        // Storia partiva dalla gravita': «c'e' un errore?» lo dice ora il
-        // banner della fattura, con una fonte sua nel dettaglio.
-        orderBy: 'quando',
-        orderDir: 'desc',
+        // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+        //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+        //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+        //    l'intestazione.
+        // ⚠️ Fino al 2026-09-27 la Storia partiva dalla gravita': «c'e' un
+        // errore?» lo dice ora il banner della fattura, con una fonte sua.
+        // Il ripiego del verso, quando `order_by` arriva senza verso.
         orderDirDefault: 'desc',
         onPayload: (payload) => {
           ritirateCount.value = payload.ritirate_count ?? 0

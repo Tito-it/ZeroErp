@@ -57,8 +57,6 @@ BEGIN
     v_chiavi := CASE v_famiglia
         WHEN 'lista' THEN jsonb_build_object(
             'colonne',           'composizione_impronta',
-            'ordinamento',       'ordinamento_default',
-            'filtri',            'filtri_default',
             'pagina_dimensione', 'pagina_dimensione')
         ELSE jsonb_build_object(
             'widget',            'composizione_impronta',
@@ -68,7 +66,7 @@ BEGIN
     IF TG_OP = 'INSERT' THEN
         IF NEW.contenuto_aggiornato_il IS NOT NULL OR NEW.composizione_impronta IS NOT NULL THEN
             PERFORM script.fn_log_and_raise_error(
-                'ui', TG_NAME::text, 'E_UI_PRESET_CONTENUTO_DERIVATO',
+                'database', TG_NAME::text, 'E_UI_PRESET_CONTENUTO_DERIVATO',
                 jsonb_build_object(
                     'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
                     'id',    NEW.id),
@@ -87,7 +85,7 @@ BEGIN
        OR (NEW.composizione_impronta IS DISTINCT FROM OLD.composizione_impronta
            AND NEW.composizione_impronta IS DISTINCT FROM ui.fn_preset_impronta(v_famiglia, NEW.id)) THEN
         PERFORM script.fn_log_and_raise_error(
-            'ui', TG_NAME::text, 'E_UI_PRESET_CONTENUTO_DERIVATO',
+            'database', TG_NAME::text, 'E_UI_PRESET_CONTENUTO_DERIVATO',
             jsonb_build_object(
                 'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
                 'id',    NEW.id),
@@ -109,7 +107,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.trgfn_preset_contenuto_aggiornato()
-IS 'Sui due preset (ui.lista_preset, ui.dashboard_preset) contenuto_aggiornato_il lo scrive solo il database: un oggetto {chiave: data}, la data dell''ultimo cambio del contenuto per chiave. Liste: colonne (composizione_impronta), ordinamento (ordinamento_default), filtri (filtri_default), pagina_dimensione. Dashboard: widget (composizione_impronta), dimensione_max. All''INSERT tutte le chiavi all''ora dell''INSERT e l''impronta della composizione (ui.fn_preset_impronta); all''UPDATE si sposta la chiave la cui colonna e'' cambiata, e una riscrittura uguale non sposta niente. L''ora e'' clock_timestamp(), non quella della transazione: un cambio successivo a uno snapshot nella stessa transazione risulta piu'' recente. Chi scrive la data, o un''impronta diversa da quella della composizione di oggi, riceve E_UI_PRESET_CONTENUTO_DERIVATO: l''impronta la scrive il trigger differito della composizione (ui.trgfn_preset_riga_tocca_preset). Non e'' l''audit: data_update si sposta anche per i campi che non sono contenuto. BEFORE INSERT OR UPDATE FOR EACH ROW, fase a20; montata altrove: E_TRIGGER_ARGOMENTI_INVALIDI.';
+IS 'Sui due preset (ui.lista_preset, ui.dashboard_preset) contenuto_aggiornato_il lo scrive solo il database: un oggetto {chiave: data}, la data dell''ultimo cambio del contenuto per chiave, con le chiavi che una preferenza può personalizzare. Liste: colonne (composizione_impronta), pagina_dimensione. Dashboard: widget (composizione_impronta), dimensione_max. L''ordinamento di partenza del preset (ordinamento_default) non è una chiave: la preferenza non lo personalizza, e il suo cambio non accende il banner. All''INSERT tutte le chiavi all''ora dell''INSERT e l''impronta della composizione (ui.fn_preset_impronta); all''UPDATE si sposta la chiave la cui colonna è cambiata, e una riscrittura uguale non sposta niente. L''ora è clock_timestamp(), non quella della transazione: un cambio successivo a uno snapshot nella stessa transazione risulta più recente. Chi scrive la data, o un''impronta diversa da quella della composizione di oggi, riceve E_UI_PRESET_CONTENUTO_DERIVATO: l''impronta la scrive il trigger differito della composizione (ui.trgfn_preset_riga_tocca_preset). Non è l''audit: data_update si sposta anche per i campi che non sono contenuto. BEFORE INSERT OR UPDATE FOR EACH ROW, fase a20; montata altrove: E_TRIGGER_ARGOMENTI_INVALIDI.';
 ```
 
 </div>

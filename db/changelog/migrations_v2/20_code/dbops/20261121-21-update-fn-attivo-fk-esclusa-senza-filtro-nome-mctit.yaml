@@ -1,0 +1,170 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_attivo_fk_esclusa: il suffisso _id non decide piu' se una FK si
+#   lega sull'attivo; decide, oltre all'eccezione, se la FK e' ereditata.
+#
+# ── PERCHE' (Tid, 2026-11-21) ─────────────────────────────────────────
+#   D-1 «a»: il filtro _id si toglie. Era un'esclusione implicita (niente
+#   elenco, niente motivo), nata come ripiego tecnico il 2026-01-15, quando
+#   il runner cercava il padre per la sua PK; il limite l'ha tolto il
+#   2026-04-08 (confkey). Le regole si fanno per esclusione: chi non si lega
+#   sta in dbops.automazione_attivo_eccezioni, col motivo. Il registro delle
+#   inclusioni (20261121-10) era la pezza sopra il filtro: si ritira in
+#   90_end (20261121-25), dopo l'ultimo changeSet che lo pretende.
+#   D-5 «a»: una FK ereditata da una radice partizionata si lega e si
+#   esclude sulla radice. Il require della radice PostgreSQL lo clona sulle
+#   partizioni, il block della radice conta le righe di tutte; una riga del
+#   registro delle eccezioni sulla radice vale per tutte le partizioni.
+#   Senza questa risposta ogni partizione avrebbe un secondo require e un
+#   block in piu', e un'eccezione sulla radice non la coprirebbe (prova sullo
+#   scratch del 2026-11-21, casi B e C).
+#   Brief: brief-db-attivo-fk-senza-suffisso-id §4 e §5.
+#
+# ── LA RISPOSTA ───────────────────────────────────────────────────────
+#   NULL = la FK si lega. Altrimenti il motivo:
+#     ECCEZIONE_DICHIARATA  la FK e' in dbops.automazione_attivo_eccezioni;
+#     FK_EREDITATA          sulla figlia la colonna ha solo FK monocolonna
+#                           ereditate (conparentid <> 0), nessuna propria:
+#                           e' una partizione, e la FK la decide la radice.
+#   FK_NO_ID_SUFFIX esce: resta solo nelle righe gia' scritte del diario del
+#   dry run. ⚠️ Una colonna con una FK propria E una ereditata (il caso di
+#   una figlia verso un PADRE partizionato, coi vincoli clonati verso le
+#   partizioni del padre) risponde NULL: si lega come oggi. Nessun padre con
+#   attivo e' partizionato.
+#   Il padre senza attivo e le FK multicolonna restano filtri del runner.
+#
+# I lettori non cambiano: il runner (20261121-22) e il ritiro (20261121-23),
+#   che non tocca piu' i cloni (tgparentid <> 0).
+# INVARIATI: firma, STABLE, BEGIN ATOMIC (linee-guida-sql §5c). Le
+#   dipendenze in pg_depend perdono il registro delle inclusioni e
+#   guadagnano pg_constraint, pg_class, pg_namespace, pg_attribute.
+# Corpo di partenza: 20261121-11-create-fn-attivo-fk-esclusa-mctit.yaml,
+#   uguale al vivo dello scratch e di dbdev (2026-11-22). Il ritorno
+#   indietro rimette quel corpo, che pretende il registro delle inclusioni:
+#   prima si torna indietro da 20261121-25.
+# Presidio: dbops/test-automazione-attivo-senza-filtro-nome-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261121-21-update-fn-attivo-fk-esclusa-senza-filtro-nome-mctit.yaml
+
+  - changeSet:
+      id: 20261121-21-update-fn-attivo-fk-esclusa-senza-filtro-nome
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_attivo_fk_esclusa: NULL se la FK si lega sull'attivo, altrimenti il motivo
+        (ECCEZIONE_DICHIARATA, FK_EREDITATA). Il suffisso _id non decide piu'.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: automazione_attivo_eccezioni
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE oid = to_regprocedure('dbops.fn_attivo_fk_esclusa(text,text,text)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_attivo_fk_esclusa(
+                  p_schema_figlia  dbops.automazione_attivo_eccezioni.schema_figlia%TYPE,
+                  p_tabella_figlia dbops.automazione_attivo_eccezioni.tabella_figlia%TYPE,
+                  p_colonna_fk     dbops.automazione_attivo_eccezioni.colonna_fk%TYPE
+              )
+               -- un motivo calcolato, uno di due token: nessuna colonna ne e' il riflesso
+               RETURNS text
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+                  SELECT CASE
+                           WHEN EXISTS (SELECT 1 FROM dbops.automazione_attivo_eccezioni e
+                                         WHERE e.schema_figlia  = p_schema_figlia
+                                           AND e.tabella_figlia = p_tabella_figlia
+                                           AND e.colonna_fk     = p_colonna_fk)
+                             THEN 'ECCEZIONE_DICHIARATA'
+                           WHEN EXISTS (SELECT 1
+                                          FROM pg_catalog.pg_constraint k
+                                          JOIN pg_catalog.pg_class r     ON r.oid = k.conrelid
+                                          JOIN pg_catalog.pg_namespace n ON n.oid = r.relnamespace
+                                          JOIN pg_catalog.pg_attribute a ON a.attrelid = k.conrelid
+                                                                        AND a.attnum   = k.conkey[1]
+                                         WHERE k.contype = 'f'
+                                           AND cardinality(k.conkey) = 1
+                                           AND k.conparentid <> 0
+                                           AND n.nspname = p_schema_figlia
+                                           AND r.relname = p_tabella_figlia
+                                           AND a.attname = p_colonna_fk)
+                            AND NOT EXISTS (SELECT 1
+                                          FROM pg_catalog.pg_constraint k
+                                          JOIN pg_catalog.pg_class r     ON r.oid = k.conrelid
+                                          JOIN pg_catalog.pg_namespace n ON n.oid = r.relnamespace
+                                          JOIN pg_catalog.pg_attribute a ON a.attrelid = k.conrelid
+                                                                        AND a.attnum   = k.conkey[1]
+                                         WHERE k.contype = 'f'
+                                           AND cardinality(k.conkey) = 1
+                                           AND k.conparentid = 0
+                                           AND n.nspname = p_schema_figlia
+                                           AND r.relname = p_tabella_figlia
+                                           AND a.attname = p_colonna_fk)
+                             THEN 'FK_EREDITATA'
+                         END;
+              END;
+        # Il BEGIN ATOMIC sta da solo nel suo sql: (pgjdbc), il COMMENT nel suo.
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_attivo_fk_esclusa(text, text, text) IS
+                'Se una FK resta fuori dall''automazione ATTIVO, e perche'': NULL se si lega, altrimenti il motivo. ECCEZIONE_DICHIARATA: la FK e'' in dbops.automazione_attivo_eccezioni. FK_EREDITATA: sulla figlia la colonna ha solo FK monocolonna ereditate da una radice partizionata (conparentid diverso da zero), e la FK si lega o si esclude sulla radice: il require della radice PostgreSQL lo clona sulle partizioni, e un''eccezione sulla radice vale per tutte. Il nome della colonna non decide niente: una FK con o senza il suffisso _id si lega allo stesso modo. La FK si nomina dalla FIGLIA: schema, tabella, colonna. Non guarda il padre: il padre senza la colonna attivo e le FK multicolonna li filtra dbops.fn_run_automations_attivo. La leggono il runner, che non genera le FK escluse, e dbops.fn_ritira_attivo_eccezioni, che ne toglie i trigger gia'' generati: una sede sola per la domanda «questa FK si lega?».';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_attivo_fk_esclusa(
+                  p_schema_figlia  dbops.automazione_attivo_eccezioni.schema_figlia%TYPE,
+                  p_tabella_figlia dbops.automazione_attivo_eccezioni.tabella_figlia%TYPE,
+                  p_colonna_fk     dbops.automazione_attivo_eccezioni.colonna_fk%TYPE
+              )
+               RETURNS text
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+                  SELECT CASE
+                           WHEN EXISTS (SELECT 1 FROM dbops.automazione_attivo_eccezioni e
+                                         WHERE e.schema_figlia  = p_schema_figlia
+                                           AND e.tabella_figlia = p_tabella_figlia
+                                           AND e.colonna_fk     = p_colonna_fk)
+                             THEN 'ECCEZIONE_DICHIARATA'
+                           WHEN lower(p_colonna_fk) LIKE '%_id'
+                             THEN NULL
+                           WHEN EXISTS (SELECT 1 FROM dbops.automazione_attivo_inclusioni i
+                                         WHERE i.schema_figlia  = p_schema_figlia
+                                           AND i.tabella_figlia = p_tabella_figlia
+                                           AND i.colonna_fk     = p_colonna_fk)
+                             THEN NULL
+                           ELSE 'FK_NO_ID_SUFFIX'
+                         END;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_attivo_fk_esclusa(text, text, text) IS
+                'Se una FK resta fuori dall''automazione ATTIVO, e perche'': NULL se si lega, altrimenti il motivo. ECCEZIONE_DICHIARATA: la FK e'' in dbops.automazione_attivo_eccezioni, e l''eccezione prevale anche su un''inclusione. FK_NO_ID_SUFFIX: la colonna non finisce in _id (LIKE ''%_id'', col ''_'' jolly) e non e'' in dbops.automazione_attivo_inclusioni. La FK si nomina dalla FIGLIA: schema, tabella, colonna. Non guarda il padre: il padre senza la colonna attivo e le FK multicolonna li filtra dbops.fn_run_automations_attivo. La leggono il runner, che non genera le FK escluse, e dbops.fn_ritira_attivo_eccezioni, che ne toglie i trigger gia'' generati: una sede sola per la domanda «questa FK si lega?».';

@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.fn_misura_lista: le righe per pagina di una lista per un utente, senza la risoluzione intera.
+#   Brief: brief-db-revisione-ui (giro 6a: BE10, con Q11-bis di Tid, 2026-11-18).
+#
+# Perche': con Q11-bis le liste configurabili prendono la misura dal DB. Una lista
+#   configurabile chiamata senza limit riceveva ancora DEFAULT_LIMIT (25) del BE: il
+#   FE manda sempre limit, ma la regola dell'API vale per ogni chiamante. Il BE
+#   chiede la sola misura, senza la risoluzione intera (colonne e permessi) a ogni
+#   pagina: e' la gemella di ui.fn_ordinamento_lista, chiamata dalla stessa sede del
+#   BE (DomainAPIView.initial()).
+# Che cosa risponde: la misura di ui.fn_misura_pagina_risolta (20261121-26), la
+#   stessa di ui.fn_resolve_lista_config: la preferenza dell'utente se e' nel
+#   catalogo, altrimenti quella del preset di base (ui.fn_preset_di_base, la stessa
+#   scelta del resolver) se e' nel catalogo, altrimenti il default dell'uso della
+#   lista. Mai NULL.
+# Firma come ui.fn_ordinamento_lista: codice della lista, utente, emittente (il
+#   preset dell'azienda). La veste dalla GUC, come il resolver.
+# plpgsql STABLE: legge la riga della lista dal BB (che solleva
+#   E_UI_LISTA_NON_TROVATA) e la preferenza; nessun cast che cada sulla preferenza
+#   (ui.fn_intero_da_jsonb).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261121-28-create-fn-misura-lista-mctit.yaml
+
+  - changeSet:
+      id: 20261121-28-create-fn-misura-lista
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_misura_lista: le righe per pagina di una lista per un utente, dalla cascata di ui.fn_misura_pagina_risolta, senza la risoluzione intera. Brief: brief-db-revisione-ui (giro 6a, BE10).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname IN ('fn_misura_lista', 'fn_misura_pagina_risolta')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION ui.fn_misura_lista(
+                  p_lista_codice ui.lista_definizione.codice%TYPE,
+                  -- integer: l'id di django.auth_user, tabella dell'applicazione: un changeSet non
+                  -- la cita con %TYPE (lo schema django e' del provisioning)
+                  p_auth_user_id integer,
+                  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE)
+               RETURNS ui.misure_pagina.misura%TYPE
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: le righe per pagina di una lista per un utente, con la cascata della
+              --   lista (preferenza, preset di base, default dell'uso), senza risolvere
+              --   colonne e permessi.
+              DECLARE
+                  v_lista   ui.lista_definizione%ROWTYPE;
+                  -- La veste corrente dalla GUC: senza veste il preset di ruolo non concorre.
+                  v_ruolo   config.ruolo_applicativo := ui.fn_veste_corrente();
+                  v_base_id ui.lista_preset.id%TYPE;
+                  v_pref    ui.misure_pagina.misura%TYPE;
+                  v_preset  ui.lista_preset.pagina_dimensione%TYPE;
+              BEGIN
+                  -- Lista assente o spenta: E_UI_LISTA_NON_TROVATA, dal BB.
+                  v_lista := ui.fn_lista_da_codice(p_lista_codice);
+
+                  -- La misura della preferenza; un valore che intero non e' vale «nessuna
+                  -- scelta», come nel resolver.
+                  SELECT ui.fn_intero_da_jsonb(pu.configurazione -> 'pagina_dimensione')
+                    INTO v_pref
+                    FROM ui.lista_preferenza_utente pu
+                   WHERE pu.auth_user_id = p_auth_user_id
+                     AND pu.lista_id     = v_lista.id;
+
+                  SELECT b.preset_id INTO v_base_id
+                    FROM ui.fn_preset_di_base('lista', v_lista.id, p_auth_user_id, v_ruolo,
+                                              p_emittente_fiscale_id) b;
+                  IF v_base_id IS NOT NULL THEN
+                      SELECT lp.pagina_dimensione INTO v_preset
+                        FROM ui.lista_preset lp
+                       WHERE lp.id = v_base_id;
+                  END IF;
+
+                  RETURN (SELECT r.misura
+                            FROM ui.fn_misura_pagina_risolta(v_pref, v_preset, v_lista.uso_misura) r);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.fn_misura_lista(ui.lista_definizione.codice%TYPE, integer, anagrafiche.emittenti_fiscali.id%TYPE) IS
+                  'Le righe per pagina di una lista per un utente: la misura che ui.fn_resolve_lista_config risponde in pagina_dimensione, senza risolvere colonne e permessi. La cascata è ui.fn_misura_pagina_risolta: la misura della preferenza se è nel catalogo ui.misure_pagina, altrimenti quella del preset di base (ui.fn_preset_di_base, la stessa scelta del resolver) se è nel catalogo, altrimenti il default dell''uso della lista (ui.lista_definizione.uso_misura). Mai NULL. Gemella di ui.fn_ordinamento_lista: la legge il backend per una lista configurabile chiamata senza limit. Lista assente o spenta: E_UI_LISTA_NON_TROVATA (ui.fn_lista_da_codice); catalogo senza il default dell''uso: E_UI_MISURA_PAGINA_DEFAULT_MANCANTE. La veste la legge ui.fn_veste_corrente. STABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS ui.fn_misura_lista(ui.lista_definizione.codice%TYPE, integer, anagrafiche.emittenti_fiscali.id%TYPE);

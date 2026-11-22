@@ -50,7 +50,7 @@ from apps.vendite.services.registri_service import (
     E_VENDITE_VALIDATION,
     RegistriService,
 )
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 
 _LISTA_CODICE = "vendite.registri_numerazione"
 
@@ -103,11 +103,7 @@ class ApiRegistriList(DomainAPIView):
                              required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY,
                              required=False),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY,
-                             required=False,
-                             description="Whitelist; fuori whitelist → ordine di default."),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY,
-                             required=False, description="asc (default) | desc"),
+            *parametri_ordinamento(verso="asc", nota="Una colonna fuori whitelist da' l'ordine di default, non un 400."),
         ],
         responses={200: inline_serializer(
             name="VenditeRegistriListResp", fields={"data": serializers.DictField()},

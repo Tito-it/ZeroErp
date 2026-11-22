@@ -48,11 +48,13 @@ describe('documentiSorgenteLista store', () => {
     expect(url).toBe('/vendite/preventivi/7/documenti/')
     expect(params).toMatchObject({
       emittente_fiscale_id: 3,
-      order_by: 'generato_at',
-      order_dir: 'desc',
       limit: 25,
       offset: 0,
     })
+    // L'ordinamento di partenza lo applica il backend dal preset (residuo di
+    // BE25 (2) di brief-db-revisione-ui): lo store non lo scrive.
+    expect(params.order_by ?? null).toBeNull()
+    expect(params.order_dir ?? null).toBeNull()
     expect(store.items).toEqual([{ id: 1 }])
     expect(store.totalRecords).toBe(1)
   })

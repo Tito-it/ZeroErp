@@ -13,7 +13,7 @@ CREATE FUNCTION fn_espandi_listino_versione(p_listino_versione_id bigint, p_tipo
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_espandi_listino_versione(p_listino_versione_id bigint, p_tipo_var character varying, p_valore_var numeric)
- RETURNS TABLE(articolo_id uuid, articolo_codice character varying, articolo_descrizione character varying, is_composito boolean, uom_id bigint, uom_codice character varying, prezzo_listino numeric, prezzo_da_listino numeric, componenti jsonb)
+ RETURNS TABLE(articolo_id uuid, articolo_codice character varying, articolo_descrizione character varying, is_composito boolean, uom_id bigint, uom_codice character varying, prezzo_listino numeric, prezzo_da_listino numeric, componenti jsonb, listino_riga_id bigint)
  LANGUAGE plpgsql
  STABLE
 AS $function$
@@ -22,6 +22,8 @@ AS $function$
 --   BUNDLE (is_composito=TRUE): prezzo_da_listino = SUM(componenti) (NO variazione,
 --     come fn_contratto_righe_preview); componenti aggregati in jsonb.
 --   prezzo_listino: prezzo unitario di riga listino (NULL per bundle).
+--   listino_riga_id: la riga di listino da cui il prezzo viene (NULL per bundle:
+--     il suo prezzo sta in listini_righe_componenti, non in listini_righe).
 -- Core condiviso: nessuna eccezione di dominio.
 BEGIN
     IF p_listino_versione_id IS NULL THEN
@@ -43,7 +45,8 @@ BEGIN
             WHEN p_tipo_var = 'VALORE_FISSO' THEN lr.prezzo + p_valore_var
             ELSE                                  lr.prezzo
         END,
-        NULL::jsonb
+        NULL::jsonb,
+        lr.id
       FROM vendite.listini_righe lr
       JOIN catalogo.articoli a
         ON a.id           = lr.articolo_id
@@ -64,7 +67,8 @@ BEGIN
         um.codice,
         NULL::numeric,
         bsum.somma,
-        bcomp.componenti
+        bcomp.componenti,
+        NULL::bigint
       FROM (
           SELECT DISTINCT lrc_p.articolo_padre_id
             FROM vendite.listini_righe_componenti lrc_p
@@ -116,7 +120,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_espandi_listino_versione(p_listino_versione_id bigint, p_tipo_var character varying, p_valore_var numeric)
-IS 'Core condiviso: espande una versione listino in righe piatte (standalone + bundle) con prezzo da-listino (variazione globale solo su standalone, come da contratti) e BoM in jsonb (incl. articolo_componente_id). Consumato da fn_contratto_righe_preview e fn_offerta_righe_espanse. Nessuna eccezione di dominio. rev 2026-10-01: nel jsonb componenti la chiave esposto_in_fattura diventa esposizione_in_fattura (NASCOSTO | DESCRITTIVO | VALORIZZATO) (brief-db-esposizione-componenti-kit-in-fattura).';
+IS 'Core condiviso: espande una versione di listino in righe piatte, una per articolo. Le semplici hanno il prezzo della riga di listino (prezzo_listino) con la variazione globale data (PERCENTUALE o VALORE_FISSO; altrimenti nessuna) in prezzo_da_listino, e in listino_riga_id la riga di listino da cui il prezzo viene. I kit (padri compositi con righe in listini_righe_componenti valide alla data operativa) hanno prezzo_da_listino = somma prezzo x coefficiente dei componenti, senza variazione, prezzo_listino e listino_riga_id NULL, e i componenti in jsonb (articolo_componente_id, componente, unita'', coeff_qta, prezzo, obbligatorio, esposizione_in_fattura). Versione NULL: nessuna riga. Nessuna eccezione di dominio. La leggono vendite.fn_offerta_righe_espanse, vendite.fn_documento_righe_preview e script.fn_articolo_riga_contesto (gli articoli del listino). STABLE, SECURITY INVOKER.';
 ```
 
 </div>

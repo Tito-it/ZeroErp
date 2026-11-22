@@ -14,7 +14,7 @@
 #   Il lotto 1 e' stato applicato il 2026-08-21 alle 19:38. Il changeSet
 #   `20260821-13` aveva portato questi guard da `E_GENERICO` a
 #   `E_PARAMETRO_INVALIDO`, seguendo la tabella «Regola operativa» di
-#   `work-done/correzione-e-generico.md` (aprile 2026). ⛔ Un changeSet applicato
+#   `work-done/2026/correzione-e-generico.md` (aprile 2026). ⛔ Un changeSet applicato
 #   non si modifica: si corregge in avanti, ed e' questo file.
 #
 # ── 🔴 IL DIFETTO: `E_PARAMETRO_INVALIDO` E' UN DEBITO, NON UNA SEDE ───
@@ -22,7 +22,7 @@
 #   vecchie funzioni che non sono riuscito a correggere»*), e i documenti lo
 #   confermano nero su bianco:
 #
-#   · **D11** di `work-done/brief-db-be-classe-codici-errore.md`:
+#   · **D11** di `work-done/2026/brief-db-be-classe-codici-errore.md`:
 #     *«`E_VALIDAZIONE` si spezza prima del seed; `E_PARAMETRO_INVALIDO` NO —
 #     denominatore sicuro + `note`, e CANTIERE SUO»*. E' uno **split rimandato**,
 #     con una classe di compromesso e la ragione scritta nel catalogo;

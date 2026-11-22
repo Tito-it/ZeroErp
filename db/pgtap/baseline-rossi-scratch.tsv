@@ -1,6 +1,5 @@
 # pgtap-runner: app
 db/pgtap/anagrafiche/create-soggetto-gestori.sql	ASSERZIONE
-db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-fn-sync-auth-user-is-active-or.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-identita-digitali-guard-coerenza.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-identita-digitali-unique-multi-veste.sql	ASSERZIONE
@@ -16,6 +15,5 @@ db/pgtap/vendite/test-contratti-utilities-guard-tipo-classe-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-fn-contratto-righe-preview-nuovi-campi-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-guard-congelamento-fusione-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-numero-prefisso-registro-v1.sql	ASSERZIONE
-db/pgtap/vendite/test-offerta-righe-espanse.sql	ASSERZIONE
 db/pgtap/vendite/test-refactor-qta-operativa-preventivi-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-snapshot-indirizzi-fattura-v1.sql	ASSERZIONE

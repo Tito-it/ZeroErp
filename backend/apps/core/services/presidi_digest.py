@@ -879,7 +879,7 @@ def _esito_conclusa(conclusa: dict[str, Any]) -> str:
 #      riga piu' recente; non quando questa e' una corsa SALTATA (lock
 #      occupato, dal 2026-10-10 chiusa e senza esito): la skip e' segno di vita
 #      e non lavoro, e la data che accompagna l'esito resta quella della corsa
-#      vera (`_cte_corse` di MaintenanceRepository).
+#      vera (`cte_corse` di `maintenance_repository`).
 def _pezzi_corsa(corsa: dict[str, Any]) -> list[tuple[str, bool]]:
     conclusa = corsa.get("ultima_conclusa")
     if corsa.get("in_corso"):

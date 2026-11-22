@@ -1,29 +1,31 @@
-# API Catalogo (Fasi 1..8)
+# API Catalogo
 
 ## Scopo
 
-Esporre via HTTP il backend `catalogo` per il perimetro delle Fasi 1..8:
+Esporre via HTTP il backend `catalogo`:
 
-- anagrafica articoli
-- lookup articoli, UoM, modi di arrotondamento
+- anagrafica articoli, con disattivazione/riattivazione come azioni dedicate
+  e defaults di pre-compilazione del form
+- lookup articoli (consultazioni e righe di documento) e lookup UoM operative
+  di un articolo
 - UoM operative articolo
-- componenti BoM con capability di chiusura riga
-- conversioni UoM
-- note articolo
+- distinta base: legami, lista configurabile, chiusura coi prezzi bundle
+- note di catalogo (articolo e legame di distinta)
+- anagrafica unità di misura, tipologie e conversioni UoM
 - metadata immutabilita' campi (`non_editable_fields`) sui detail
-- capability di riga (`puo_eliminarsi`/`puo_gestire_bom`) su lista UoM
-  operative e lista articoli
-- disattivazione/riattivazione articolo come azioni dedicate (Fase 7)
-- defaults pre-compilazione form articolo (Fase 8)
+- capability di riga (`puo_gestire_bom`, `puo_eliminarsi`, `puo_chiudersi`…)
+  su articoli, UoM operative, legami e conversioni
 
 ## Contesto
 
 Gli endpoint risiedono sotto `/api/v1/catalogo/` e sono implementati in:
 - `apps/catalogo/api/views.py`
+- `apps/catalogo/api/note_views.py` (note, dal BB `make_note_views`)
 - `apps/catalogo/services/catalogo_service.py`
 - `apps/catalogo/db/catalogo_repository.py`
 - `apps/catalogo/db/catalogo_uom_repository.py`
 - `apps/catalogo/db/catalogo_bom_repository.py`
+- `apps/catalogo/db/note_repositories.py`
 
 Il backend segue il modello DB-first del progetto:
 - PostgreSQL governa vincoli, guard e coerenza strutturale;
@@ -457,12 +459,31 @@ brief-db-revisione-catalogo, giro 2). La quantita' operativa rispetta
 | **Metodo** | `GET` |
 | **URL** | `/api/v1/catalogo/articoli/{articolo_id}/uom/` |
 
-#### Risposta envelope (Fase 5+6)
+Dal 2026-10-31 è la pagina della lista configurabile `catalogo.articolo_uom`
+(sorgente `catalogo.vw_articoli_uom_operativa_dettaglio`).
+
+#### Query param
+
+| Parametro | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `search` | string | No | Ricerca su `uom_codice` e `uom_descrizione` (colonne e soglia dal catalogo della lista; sotto soglia il termine non filtra) |
+| `limit` | int | No | Default `25`, max `200` |
+| `offset` | int | No | Default `0` |
+| `order_by` | string | No | `uom_codice`, `uom_descrizione`, `is_base`, `factor_to_base`, `is_logistic_uom`, `attivo`. Fuori elenco: `400` `E_VALIDATION_INPUT`. Assente: la base in cima, poi vendita e logistica, poi il codice (lo stesso ordine del dettaglio articolo) |
+| `order_dir` | string | No | `asc`/`desc` |
+
+⚠️ Nessun `lista_codice` sulla view: `catalogo.articolo_uom` è una lista
+globale, `emittente_fiscale_id` non serve.
+
+#### Risposta envelope
 
 ```json
 {
   "data": {
     "count": 2,
+    "page": 1,
+    "page_size": 25,
+    "total_pages": 1,
     "results": [
       {
         "id": 1,
@@ -484,9 +505,9 @@ brief-db-revisione-catalogo, giro 2). La quantita' operativa rispetta
 }
 ```
 
-`non_editable_fields` e' a livello envelope (non per riga): la regola
-e' la stessa per tutte le righe della stessa entita' e il FE legge la
-lista come prima chiamata API quando il sub-drawer apre.
+`non_editable_fields` e' a livello envelope (non per riga), accanto ai campi
+di pagina: la regola e' la stessa per tutte le righe della stessa entita' e il
+FE legge la lista come prima chiamata API quando il sub-drawer apre.
 
 ##### Capability di riga
 
@@ -519,8 +540,9 @@ La singola UoM operativa non ha un `GET` suo: `…/uom/{uom_op_id}/` serve solo
 | **URL** | `/api/v1/catalogo/articoli/{articolo_id}/uom/lookup/` |
 | **Permesso** | JWT; `skip_area_check` (nessun permesso sull'area `catalogo`) |
 
-Stessa risposta del §3.1 (envelope `count`/`results` + `non_editable_fields`),
-nessun parametro. La usano i drawer riga di vendite (preventivi, contratti,
+Nessun parametro, e **non paginata**: tutte le UoM operative dell'articolo,
+envelope `{count, results, non_editable_fields}`. Righe con la stessa
+proiezione e capability del §3.1, nello stesso ordine di partenza. La usano i drawer riga di vendite (preventivi, contratti,
 listini, promo) per la combo dell'UoM, senza chiedere LETTURA sul catalogo.
 Articolo inesistente: `404` `E_CATALOGO_ARTICOLO_NOT_FOUND`.
 
@@ -992,9 +1014,9 @@ permesso di **livello oggetto** sui rispettivi modelli.
   della lista accende, con la soglia del catalogo: sotto soglia il termine non
   filtra, senza `400`. Solo il lookup articoli (§2.1) risponde `400`
   `E_SEARCH_VALIDATION` sotto 3 caratteri (`require_min_search_length`).
-- Liste paginate (articoli, tipologie UoM, unità di misura, conversioni,
-  distinta §4.1-bis): `limit`/`offset`, default `25`, max `200`; colonne data
-  senza `order_dir` ordinano `desc`.
+- Liste paginate (articoli, UoM operative §3.1, tipologie UoM, unità di
+  misura, conversioni, distinta §4.1-bis, note §5): `limit`/`offset`, default
+  `25`, max `200`; colonne data senza `order_dir` ordinano `desc`.
 - `non_editable_fields: string[]` (Fase 5) sta su: dettaglio articolo,
   envelope lista/lookup UoM operative, riga di create/update UoM operativa,
   dettaglio conversione. **Non** c'è su dettaglio unità di misura, dettaglio
@@ -1025,8 +1047,10 @@ permesso di **livello oggetto** sui rispettivi modelli.
 
 ### Pattern view
 
-I `POST` usano `handle_post_json(...)`; nessuno richiede l'header
-`Idempotency-Key`. Le `PATCH` leggono il corpo con `corpo_oggetto(request)`.
+I `POST` usano `handle_post_json(...)`. L'header `Idempotency-Key` lo
+richiede solo il `POST` delle note (§5, dal BB delle note); gli altri `POST`
+del catalogo non lo chiedono. Le `PATCH` leggono il corpo con
+`corpo_oggetto(request)`.
 
 ## Dipendenze DB
 
@@ -1036,24 +1060,36 @@ I `POST` usano `handle_post_json(...)`; nessuno richiede l'header
   - `catalogo.articoli_componenti`
   - `catalogo.unita_misura`
   - `catalogo.unita_misura_conversioni`
-  - `config.note`
-  - `config.parameters` (Fasi 1+2: `CATALOGO_UOM_OP_DEFAULT_*`,
-    `CATALOGO_BOM_DEFAULT_*`)
-  - `dbops.automation_lock_columns` (Fase 5: registro lock_columns)
+  - `catalogo.uom_tipi`
+  - `catalogo.note`, con le partizioni `catalogo.note_articoli` e
+    `catalogo.note_articoli_componenti` (dal 2026-11-11, §5)
+  - `config.parameters` (`CATALOGO_UOM_OP_DEFAULT_*`,
+    `CATALOGO_BOM_DEFAULT_*`, `DEFAULT_IVA`, `NOTE_DEFAULT_*`)
+  - `dbops.automation_lock_columns` (registro da cui nascono i trigger di lock:
+    il backend non lo legge, legge la vista qui sotto)
 - Viste/funzioni:
   - `catalogo.vw_articoli_dettaglio`
-  - `catalogo.vw_articoli_componenti_dettaglio` (Fase 2: estesa con
-    `puo_chiudersi`/`data_min_chiusura`/`data_default_chiusura`/`motivo_non_chiudibile`)
-  - `catalogo.vw_articoli_note`
+  - `catalogo.vw_articoli_uom_operativa_dettaglio` (capability da
+    `catalogo.fn_uom_conversione_capability`, §3.1)
+  - `catalogo.vw_articoli_componenti_dettaglio` (capability di chiusura,
+    §4.1)
+  - `catalogo.vw_unita_misura_conversioni_dettaglio` (§6.1)
+  - `catalogo.fn_articoli_ammessi` (lookup per la riga di un documento, §2.1)
+  - `catalogo.fn_articolo_colonne_struttura`,
+    `catalogo.fn_articolo_correggi_struttura` (§1.6-bis)
+  - `catalogo.fn_riattiva_articolo` (§1.6)
+  - `catalogo.fn_chiudi_legame_distinta`,
+    `vendite.fn_prezzi_legame_oltre_la_fine` (§4.5)
   - `catalogo.fn_get_uom_base(...)`
   - `catalogo.fn_get_uom_factor(...)`
-  - `dbops.vw_non_editable_fields` (Fase 5: alias semantico filtrato)
+  - `dbops.vw_non_editable_fields` (il lock **vivo**: ogni colonna che un trigger
+    di lock montato blocca, con `trigger_name`; dal 2026-11-09 non elenca piu' le
+    righe del registro, che nessun trigger poteva non applicare)
 
 ## Note di migrazione
 
 - Il dettaglio articolo e' gia' pensato come payload aggregato per il frontend `catalogo`.
 - Le query lista usano viste DB per evitare join Python ripetitivi.
-- La documentazione copre il perimetro Fasi 1..5 del WIP refactor catalogo.
 - Fasi 4+5 (28-04-2026): fallback `valido_dal=today` lato service, metadata
   `non_editable_fields` (perimetro in §Regole trasversali). Vedi
-  [analisi-refactor.frontend-catalogo](/dev/work-done/analisi-refactor.frontend-catalogo).
+  [analisi-refactor.frontend-catalogo](/dev/work-done/2026/analisi-refactor.frontend-catalogo).

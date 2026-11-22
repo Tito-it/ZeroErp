@@ -1,103 +1,113 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.emittenti_fiscali_billing_account`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**    
+> Approfondimento tabelle:
 >
-• [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)    
-> • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)    
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — il cliente di cui la riga dice l'azienda
+> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali) — le aziende a cui punta la riga
 >
+> Approfondimento funzioni:
+>
+> * [script.fn_get_ba_emittente_sr_id](/dbzero/script/funzioni/fn_get_ba_emittente_sr_id) — l'azienda di un billing account, sui tre livelli
+> * [anagrafiche.trgfn_billing_account_link_ef](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef) — scrive il collegamento alla nascita del billing account
+> * [anagrafiche.trgfn_efba_guard_storia_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_storia_emittente) — il cancello della storia
+> * [anagrafiche.trgfn_efba_guard_albero_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_albero_emittente) — il cancello dell'albero
+> * [anagrafiche.trgfn_efba_guard_istanza_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_istanza_emittente) — il cancello dell'istanza
+> * [anagrafiche.trgfn_emittenti_fiscali_default_guard](/dbzero/anagrafiche/funzioni/trgfn_emittenti_fiscali_default_guard) — una e una sola predefinita
+>
+> Guide:
+>
+> * [Gestione delle istanze utility](/guide/gestione-delle-istanze-utility) — un'istanza, un'azienda
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 08-04-2026)
-La tabella `anagrafiche.emittenti_fiscali_billing_account` definisce l’associazione tra **billing account**
-e **emittente fiscale** (ruolo), garantendo che ogni documento abbia un emittente coerente e deterministico.
 
-Il modello prevede un **emittente di default globale** che, dopo il refactor del 2026-04-08, agisce come
-**rete di sicurezza** per i casi residui (seed/bootstrap, scenari "0 emittenti"), mentre il caso normale
-prevede che ogni BA venga **auto‑collegato** all'emittente dell'operatore che lo crea, tramite il trigger
-[`trgfn_billing_account_link_ef`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef) sulla tabella
-`billing_account`. Vedi [refactor operatore ↔ emittente](/dev/work-done/refactor-operatore-emittenti).
+`anagrafiche.emittenti_fiscali_billing_account` dice per quale azienda (emittente fiscale) fattura ciascun
+billing account, e tiene la riga dell'azienda predefinita, su cui ricade un billing account senza collegamento.
 
 ---
 
-### Regole principali
+### Una riga per billing account, e una predefinita
 
-* ⭐ **Un'istanza, un'azienda** (dal 2026-10-08): i billing account della stessa istanza devono risolvere alla stessa azienda emittente. Creare, cambiare o togliere un collegamento — e spostare l'azienda predefinita — e' controllato da [`trgfn_efba_guard_istanza_emittente`](/dbzero/anagrafiche/manual/trgfn_efba_guard_istanza_emittente) (`E_ISTANZA_EMITTENTI_DIVERSI`), gemello del controllo sull'albero padre/figlio.
+Una riga ha un billing account e non è predefinita, oppure è la predefinita e non ha billing account: il
+vincolo `chk_emittenti_fiscali_ba_default` non ammette altre combinazioni. `uq_emittenti_fiscali_ba` dà a un
+billing account al massimo un collegamento, `uq_emittenti_fiscali_ba_default` al massimo una predefinita, e il
+guard differito `trgfn_emittenti_fiscali_default_guard` pretende che a fine transazione ce ne sia esattamente
+una (`E_EMITTENTE_DEFAULT_SINGLETON`): la predefinita si può spostare, non togliere. La crea il bootstrap
+sulla prima azienda dell'installazione.
 
-* **Unicita` per billing account**: una sola riga per `billing_account_id`.
-* **Default globale**:
-  * `is_default = true` ammesso **una sola volta**.
-  * la riga di default ha `billing_account_id` **NULL**.
-* **Coerenza** (la regola vive in
-  [`script.fn_get_ba_emittente_sr_id`](/dbzero/script/manual/fn_get_ba_emittente_sr_id),
-  e da nessun'altra parte):
-  * se esiste una riga specifica per BA, essa prevale su tutto.
-  * in assenza di mapping, **in sessione**, il BA è dell'**operatore che sta
-    agendo** (dal 2026-09-13, D13): è l'istante fra l'`INSERT` del BA e il
-    trigger `z90` che scrive il legame, e la riserva dice in anticipo ciò che il
-    trigger sta per scrivere — senza, l'`INSERT … RETURNING` di un operatore di
-    un emittente non di default moriva sotto la RLS.
-  * in assenza di mapping e **senza sessione** (batch, manutenzione), si usa il
-    default.
+L'azienda si nomina col suo `soggetto_ruolo_id` (`emittente_soggetto_ruolo_id`, verso
+`anagrafiche.emittenti_fiscali`), e deve essere attiva quando la riga nasce o cambia azienda: lo verifica a fine
+transazione il trigger generico del genitore attivo.
 
 ---
 
-### ⛔ Quando questo legame si può ancora cambiare
+### ⭐ Il collegamento nasce da solo
 
-> Aggiunto il 2026-08-26 — cantiere «un billing account può cambiare emittente?».
+Quando nasce un billing account, `trgfn_billing_account_link_ef` scrive il suo collegamento con l'azienda di
+chi lo sta creando. Senza un utente in sessione (seed, bootstrap) non scrive niente, e il billing account
+resta sulla predefinita. Chi non ha un'azienda su cui scrivere, come un super admin che lavora su tutte, non
+crea billing account finché esistono aziende attive (`E_BA_ADMIN_GLOBALE_VIETATO`, dal guard su
+`billing_account`); con un'azienda di lavoro scelta in sessione li crea, e il collegamento va a quella.
 
-Questa riga sembra un'associazione qualunque, e per molto tempo è stata trattata
-così. **Non lo è.**
-
-Una fattura **congela** chi l'ha emessa e non lo cambia mai. Spostare il cliente
-su un altro emittente quindi non riscrive i documenti già emessi: **li lascia
-orfani**. Da quel momento chi li ha emessi continua a vedere i documenti e
-smette di vedere il cliente a cui si riferiscono — e non compare nessun errore,
-perché nessun dato è sbagliato: è il perimetro che si è spezzato.
-
-⇒ **La regola non è «non si può», è «fino a quando»:**
-
-| Il cliente ha… | Cambiare emittente |
-| --- | --- |
-| nessuna fattura e nessuna commessa | ✅ **si può** — è la finestra di correzione |
-| almeno una fattura o una commessa | ⛔ **respinto**, con il conteggio nel messaggio |
-
-⭐ La finestra esiste perché serve davvero: il legame **nasce da solo** con
-l'emittente dell'operatore che sta creando il cliente, quindi un cliente può
-*nascere sbagliato*. Se fosse immutabile, quell'errore non si correggerebbe più.
-
-⚠️ **E il movimento non è un `UPDATE`**: si fa cancellando l'aggancio e
-ricreandolo. Il primo passo, da solo, è già uno spostamento — il cliente ricade
-sull'emittente generale — ed è presidiato anche quello.
-
-**E se il cliente è passato davvero all'altro emittente?** Non si sposta: si apre
-presso il nuovo emittente una **fornitura nuova**. I documenti già emessi restano
-con chi li ha emessi.
-
-Presidio:
-[`anagrafiche.trgfn_efba_guard_storia_emittente`](/dbzero/anagrafiche/manual/trgfn_efba_guard_storia_emittente)
-· conteggio:
-[`fn_get_storia_emittente_ba`](/dbzero/anagrafiche/manual/fn_get_storia_emittente_ba)
-· raggio N:
-[`fn_guard_ba_gestore_globale_storia`](/dbzero/anagrafiche/manual/fn_guard_ba_gestore_globale_storia)
+Fra la nascita del billing account e la scrittura del collegamento c'è un istante in cui la riga non esiste
+ancora: in sessione il risolutore risponde già l'azienda di chi agisce, cioè ciò che il trigger sta per
+scrivere. È il secondo dei tre livelli descritti sotto.
 
 ---
 
-### Collocazione nel processo di fatturazione
+### La tabella non ha RLS, i suoi controlli sì
 
-1. Durante la generazione delle fatture, l’emittente fiscale viene risolto tramite questa tabella.
-2. Se non esiste un mapping specifico per il BA, vale la riserva: l'emittente di chi agisce se c'è una sessione, altrimenti il default globale.
-3. Questo garantisce coerenza e riduce la configurazione manuale quando l’emittente e` unico.
+La tabella non ha regole di visibilità; `billing_account`, fatture e commesse le hanno. Per questo i
+controlli che rileggono i billing account o i documenti girano coi privilegi del proprietario: con quelli di
+chi scrive, un cliente o un documento di un'altra azienda sarebbe invisibile, e il controllo direbbe «a posto»
+proprio nel caso da fermare.
 
 ---
 
-### Best practice operative
+### ⚠️ Che cosa oggi non copre
 
-* Inserire sempre un **emittente di default** appena si abilita il modulo fatturazione (rete di sicurezza per BA non auto‑collegati).
-* Dopo il refactor 2026-04-08, i mapping specifici per BA vengono **creati automaticamente** alla creazione del BA dal trigger di auto‑link, basandosi sull'emittente dell'operatore corrente. Non serve più popolarli manualmente.
-* ⚠️ **Verificare l'emittente su cui si sta lavorando PRIMA di creare un cliente**: il legame nasce da lì, e dopo il primo lavoro non si sposta più (vedi la sezione sopra).
-* L'admin globale **non può** creare BA quando esistono emittenti fiscali attivi (vincolo a livello DB tramite [`trgfn_billing_account_guard_admin_globale`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_admin_globale)). Per creare un BA, occorre operare come operatore o admin di emittente.
+* Il COMMENT di `emittente_soggetto_ruolo_id` indica la chiave verso `anagrafiche.soggetti_ruoli`: la FK
+  `fk_emittenti_fiscali_billing_account_emittente` punta a `anagrafiche.emittenti_fiscali.soggetto_ruolo_id`.
+
+---
+
+### Codici errore
+
+* `E_EMITTENTE_DEFAULT_SINGLETON` — a fine transazione le predefinite non sono esattamente una.
+* `E_BA_EMITTENTE_CON_STORIA`, `E_ALBERO_EMITTENTE_MISTO`, `E_ISTANZA_EMITTENTI_DIVERSI` — dai tre cancelli
+  sui movimenti del collegamento (vedi sotto).
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-billing-account-auto-link-ef.sql` — il collegamento scritto alla nascita del
+  billing account.
+* `db/pgtap/anagrafiche/test-ba-cambio-emittente-storia-v1.sql`,
+  `db/pgtap/anagrafiche/test-guard-albero-ba-omogeneo-v1.sql`,
+  `db/pgtap/anagrafiche/test-istanza-ba-gestore-globale-v1.sql` — i tre cancelli.
+* `db/pgtap/script/test-ba-emittente-risoluzione-v1.sql` — la risoluzione dell'azienda.
+
+---
+
+### Note di migrazione
+
+* 2026-04-08 — il collegamento nasce da solo con l'azienda di chi crea il billing account; prima la
+  predefinita era il caso normale.
+* 2026-08-26 — il collegamento di un cliente con storia non si sposta più.
+* 2026-08-31 — la storia diventa «documento numerato di qualunque famiglia»; prima erano fatture e commesse.
+* 2026-09-13 — entra il livello «azienda di chi agisce» nella risoluzione.
+* 2026-10-08 — un'istanza ha billing account di una sola azienda.
+* 2026-10-10 — i controlli sullo spostamento della predefinita chiedono l'azienda per l'installazione.
+
+---
+
+{% include-markdown "it/dbzero/anagrafiche/_emittente-del-billing-account.md" %}
 
 ---
 

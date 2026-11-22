@@ -42,7 +42,6 @@ const {
   // Il -1 storico era dormiente (lo store preimposta gia' order_by/order_dir,
   // quindi il ramo default non scatta), ma se mai scattasse -1 finirebbe in
   // `order_dir` cosi' com'e': BE in fallback ASC e freccia header spenta.
-  searchTableOptions: { defaultSortField: 'data_apertura', defaultSortOrder: 'desc' },
 })
 
 // ⭐ TUTTI i filtri di questa lista passano dai binder (dal 2026-09-23): ognuno

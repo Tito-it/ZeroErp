@@ -17,7 +17,7 @@
 --   6.  Colonna id_fiscale ha campo_sorgente = id_fiscale_univoco_cf_piva
 --   7.  Tutti i campo_sorgente del catalogo esistono nella vista o nella sintesi della lineage (anti-typo, gemello B2)
 --   8.  Preset ordini_default presente e acceso
---   9.  Preset: pagina_dimensione=25, ambito=sistema
+--   9.  Preset: pagina_dimensione NULL (lo standard), ambito=sistema
 --   10. Esattamente 10 colonne visibili nel preset ordini_default
 --   11. Colonna numero ha fissata=true nel preset (identificatore)
 --   12. priorita di dominio applicata (numero=100, ragione_sociale=95, stato=90)
@@ -129,19 +129,21 @@ SELECT is(
            AND lc.attivo = TRUE
            AND lc.tipo_colonna <> 'azione'
            AND COALESCE(lc.campo_sorgente, '') <> ''
-           AND NOT EXISTS (
-                 SELECT 1 FROM information_schema.columns ic
-                  WHERE ic.table_schema = 'vendite'
-                    AND ic.table_name   = 'vw_ordini_lista'
-                    AND ic.column_name  = lc.campo_sorgente
-               )
-           -- ⭐ D-B2 (giro B di brief-db-lineage-seminata-per-chiave, 2026-10-11):
-           --    oppure e' una colonna della SINTESI della lineage, che il backend
-           --    chiede per le chiavi della pagina (frontiera, transito…).
-           AND NOT EXISTS (
-                 SELECT 1 FROM vendite.vw_documento_lineage_sintesi_colonne sc
-                  WHERE sc.colonna = lc.campo_sorgente
-               )
+           -- ⭐ 2026-11-21 (brief-db-revisione-ui, giro 4, Q15): la colonna dice da
+           --    dove legge (origine_campo). Una VISTA sta nella vista della lista, una
+           --    LINEAGE nella sintesi della lineage, che il backend chiede per le
+           --    chiavi della pagina (frontiera, transito…). Prima la sintesi era un
+           --    ripiego per nome, buono per qualunque colonna.
+           AND CASE lc.origine_campo
+                 WHEN 'VISTA' THEN NOT EXISTS (
+                     SELECT 1 FROM information_schema.columns ic
+                      WHERE ic.table_schema = 'vendite'
+                        AND ic.table_name   = 'vw_ordini_lista'
+                        AND ic.column_name  = lc.campo_sorgente)
+                 ELSE NOT EXISTS (
+                     SELECT 1 FROM vendite.vw_documento_lineage_sintesi_colonne sc
+                      WHERE sc.colonna = lc.campo_sorgente)
+               END
     ),
     0,
     '7. Tutti i campo_sorgente del catalogo ordini esistono nella vista o nella sintesi della lineage'
@@ -160,7 +162,7 @@ SELECT ok(
     '8. Preset ordini_default presente e acceso'
 );
 
--- 9. Preset: pagina_dimensione=25, ambito=sistema
+-- 9. Preset: pagina_dimensione NULL (lo standard), ambito=sistema
 SELECT ok(
     EXISTS (
         SELECT 1
@@ -168,10 +170,12 @@ SELECT ok(
           JOIN ui.lista_definizione ld ON ld.id = lp.lista_id
          WHERE ld.codice = 'vendite.ordini'
            AND lp.codice = 'ordini_default'
-           AND lp.pagina_dimensione = 25
+           -- NULL: il preset segue lo standard della lista (brief-db-revisione-ui,
+           --   giro 3, Q9: il seed non scrive piu' 25, la misura e' del catalogo).
+           AND lp.pagina_dimensione IS NULL
            AND lp.ambito::TEXT = 'sistema'
     ),
-    '9. Preset ordini_default: pagina_dimensione=25, ambito=sistema'
+    '9. Preset ordini_default: pagina_dimensione NULL (lo standard), ambito=sistema'
 );
 
 -- 10. ⭐ Qui il conteggio esatto RESTA, e la differenza col 5 e' di merito.

@@ -31,7 +31,7 @@
 --    Tid: i seed girano da CSV; un misto di script e CSV sulla stessa tabella
 --    non si applica), i test 1-3 leggono il catalogo e il test 6 presidia che
 --    il seed non torni a scriverci.
---    Brief: docs/it/dev/work-done/brief-db-automazione-guard-utility-righe-sfuggite.md
+--    Brief: docs/it/dev/work-done/2026/brief-db-automazione-guard-utility-righe-sfuggite.md
 -- ------------------------------------------------------------
 
 -- ⚠️ Transazione, e non e' una formalita'. Il cleanup di questo file sta in

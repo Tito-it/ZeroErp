@@ -1,0 +1,122 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BUILDER DEI REGIMI FISCALI DI PROVA
+#   dbops.fn_crea_regime_fiscale_di_prova(codice_interno, codice, descrizione,
+#   attivo): crea un regime in config.regimi_fiscali col segno di prova in meta.
+#   Brief: brief-db-fornitore-doppioni-del-soggetto §7.4, D-9 «a» (Tid 2026-11-22).
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Dalla D-8 (90_end/20261121-16) l'app legge i regimi e basta. I test e2e del
+#   BE devono pero' costruire un regime acceso e uno spento per provare sul DB
+#   vero il rifiuto E_ATTIVO_PADRE_NON_ATTIVO e il suo campo. Questa e' la loro
+#   porta: stretta, e solo in SVILUPPO.
+#
+# -- I TRE LIMITI, NEL CORPO -----------------------------------------------
+#   1. Si apre solo in SVILUPPO: la stessa regola e lo stesso codice della porta
+#      dei dati di sviluppo (script.fn_ambiente_installazione,
+#      dbops.fn_dati_di_sviluppo_ammessi_su_valori, E_DATI_DI_SVILUPPO_IN_PRODUZIONE).
+#      La CI e' SVILUPPO.
+#   2. Scrive solo righe NUOVE, con meta = {"di_prova": true}. Un codice_interno
+#      o un codice che esiste gia' lo rifiutano uq_regimi_fiscali_codice_interno
+#      e uq_regimi_fiscali_codice (23505): una riga del catalogo non la tocca mai.
+#   3. Solo INSERT: niente UPDATE, niente spegnimento. Un regime spento nasce
+#      spento (p_attivo = false).
+#   ⚠️ codice_interno resta nella forma del tracciato (CHECK ^RF[0-9]{2}$): il
+#      segno di prova sta in meta, non nel codice.
+#   ⚠️ SECURITY DEFINER: scrive come proprietario della tabella. Nessuno dei
+#      builder dbops.fn_pgtap_* lo e' (scrivono coi privilegi di chi chiama):
+#      per questo il nome non ha quel prefisso.
+#   ⭐ Un regime di prova finito in un database PRODUZIONE lo vede il presidio
+#      dbops.vw_radici_di_prova_in_produzione (20_code/dbops/20261121-18).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261121-17-create-fn-crea-regime-fiscale-di-prova-mctit.yaml
+
+  - changeSet:
+      id: 20261121-17-create-fn-crea-regime-fiscale-di-prova
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea dbops.fn_crea_regime_fiscale_di_prova: la porta dei test e2e verso config.regimi_fiscali,
+        solo in SVILUPPO, solo righe nuove col segno di prova in meta.
+      preConditions:
+        - onFail: HALT
+        - tableExists: { schemaName: config, tableName: regimi_fiscali }
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_crea_regime_fiscale_di_prova';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_crea_regime_fiscale_di_prova(
+                  p_codice_interno config.regimi_fiscali.codice_interno%TYPE,
+                  p_codice         config.regimi_fiscali.codice%TYPE,
+                  p_descrizione    config.regimi_fiscali.descrizione%TYPE,
+                  p_attivo         config.regimi_fiscali.attivo%TYPE)
+               RETURNS config.regimi_fiscali.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_ambiente dbops.installazione.ambiente%TYPE;
+                  v_id       config.regimi_fiscali.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Crea un regime fiscale DI PROVA, per i test e2e che
+                  --   devono costruire un regime acceso o spento. Solo in
+                  --   SVILUPPO, solo righe nuove, col segno in meta.
+                  --
+                  -- Regole:
+                  --   - fuori da SVILUPPO -> E_DATI_DI_SVILUPPO_IN_PRODUZIONE
+                  --     (la porta dei dati di sviluppo, stessa regola);
+                  --   - un codice_interno o un codice gia' presenti -> 23505
+                  --     dai due UNIQUE: una riga del catalogo non si tocca;
+                  --   - solo INSERT: il regime spento nasce spento.
+                  -- =========================================================
+
+                  -- 1. LA PORTA.
+                  v_ambiente := script.fn_ambiente_installazione();
+                  IF NOT dbops.fn_dati_di_sviluppo_ammessi_su_valori(v_ambiente) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'dbops', 'dbops.fn_crea_regime_fiscale_di_prova',
+                          'E_DATI_DI_SVILUPPO_IN_PRODUZIONE',
+                          jsonb_build_object('ambiente', v_ambiente),
+                          NULL::uuid,
+                          v_ambiente);
+                  END IF;
+
+                  -- 2. LA RIGA NUOVA, col segno di prova.
+                  INSERT INTO config.regimi_fiscali (codice_interno, codice, descrizione, attivo, meta)
+                  VALUES (p_codice_interno, p_codice, p_descrizione, p_attivo,
+                          jsonb_build_object('di_prova', true))
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_crea_regime_fiscale_di_prova(
+                  character varying, character varying, character varying, boolean) IS
+                  'Crea un regime fiscale DI PROVA in config.regimi_fiscali e ne restituisce l''id: la porta dei test e2e, perche'' l''app i regimi li legge e basta. Si apre solo in SVILUPPO (altrimenti E_DATI_DI_SVILUPPO_IN_PRODUZIONE, la regola della porta dei dati di sviluppo). Scrive solo righe nuove, con meta = {"di_prova": true}: un codice_interno o un codice gia'' presenti li rifiutano i due UNIQUE. Non modifica e non spegne: un regime spento nasce spento. SECURITY DEFINER: scrive come proprietario. Un regime di prova in un database PRODUZIONE lo vede dbops.vw_radici_di_prova_in_produzione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_crea_regime_fiscale_di_prova(
+                  character varying, character varying, character varying, boolean);

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_check_tipo_indirizzo_soggetto.md" %}
 # ⚙️ Funzione `fn_check_tipo_indirizzo_soggetto`
 
 ```sql

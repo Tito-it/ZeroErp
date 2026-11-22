@@ -22,7 +22,7 @@ Indice test eseguiti:
  5) per_codice_non_legge_il_catalogo_se_lo_scope_e_singolo  — zero query
  6) per_codice_rifiuta_su_flag_falso          — codice e messaggio giusti
  7) per_codice_tace_su_flag_vero              — la lista certificata passa
- 8) per_codice_lista_sconosciuta_e_errore_tecnico — non e' un rifiuto di perimetro
+ 8) (ritirato: la lista sconosciuta la rifiuta il DB, apps/ui/tests/db/test_lista_da_codice_db)
  9) per_codice_tace_se_la_richiesta_fissa_un_emittente — il tab nel drawer
 10) per_codice_risolve_lo_scope_una_volta_sola — le due domande condividono la cache
 11-13) richiede_scelta_emittente nei suoi tre termini
@@ -125,21 +125,6 @@ class GuardListaPerCodiceTests(TestCase):
     @patch(_SCOPE, return_value=None)
     def test_per_codice_tace_su_flag_vero(self, _m_scope, _m_catalogo) -> None:
         pe.guard_lista_per_codice(user=_user(), lista_codice="vendite.x")
-
-    @patch(_CATALOGO, return_value=None)
-    @patch(_SCOPE, return_value=None)
-    def test_per_codice_lista_sconosciuta_e_errore_tecnico(
-        self, _m_scope, _m_catalogo
-    ) -> None:
-        """Una view che dichiara un `lista_codice` inesistente e' un difetto NOSTRO.
-
-        ⚠️ Non si traduce in «scegli un emittente»: manderebbe l'operatore a
-        risolvere un problema che non lo riguarda, e per giunta senza effetto.
-        Non si tace nemmeno, o il presidio resterebbe spento in silenzio.
-        """
-        with self.assertRaises(ServiceError) as ctx:
-            pe.guard_lista_per_codice(user=_user(), lista_codice="vendite.inesistente")
-        self.assertEqual(ctx.exception.code, "E_UI_LISTA_NON_TROVATA")
 
     @patch(_CATALOGO, return_value=_flag(multi=False))
     @patch(_SCOPE, return_value=None)

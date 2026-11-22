@@ -31,7 +31,7 @@ a produrre chiavi piatte in buona fede.
 **Questo difetto si è già ripetuto almeno tre volte**, sempre nella stessa forma
 (DB che emette la chiave senza il prefisso d'area, frontend che non trova nulla e
 resta muto): sulle **offerte**, corretto con
-`work-done/addendum-db-stati-doc-offerte-transizioni-label-key.md`; sugli
+`work-done/2026/addendum-db-stati-doc-offerte-transizioni-label-key.md`; sugli
 **ordini**, aperto; e in forma latente su ogni modulo elencato nel brief di
 migrazione. Le prime due volte è stato riparato il singolo caso senza toccare la
 convenzione documentata: è per questo che è tornato.
@@ -166,5 +166,5 @@ controllo minimo che rende l'errore rumoroso:
 
 - Standard frontend: [frontend-standards.md](frontend-standards.md)
 - Migrazione in corso verso questo standard:
-  [brief-i18n-radici-uniformi.md](../work-done/brief-i18n-radici-uniformi.md)
+  [brief-i18n-radici-uniformi.md](../work-done/2026/brief-i18n-radici-uniformi.md)
 - Locales: `frontend/src/locales/{it,en}.json`

@@ -18,7 +18,6 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
@@ -32,7 +31,7 @@ from apps.core.api.payload_validators import (
     qp_str,
     qp_str_upper,
 )
-from apps.core.api.openapi_params import parametri_finestra, descrizione_order_by
+from apps.core.api.openapi_params import parametri_finestra, parametri_ordinamento
 from apps.core.api.success_responses import success_response
 from apps.pagamenti.db.pagamenti_repository import (
     DISTINTA_RIGHE_SORT_COLUMNS,
@@ -172,17 +171,7 @@ class ApiDistinteList(DomainAPIView):
                 name="data_a", type=str, location=OpenApiParameter.QUERY,
                 required=False, description="Data contabile a (ISO).",
             ),
-            OpenApiParameter(
-                name="order_by", type=str, location=OpenApiParameter.QUERY,
-                required=False,
-                description=descrizione_order_by(
-                    DISTINTE_SORT_COLUMNS, "Senza: data_contabile.",
-                ),
-            ),
-            OpenApiParameter(
-                name="order_dir", type=str, location=OpenApiParameter.QUERY,
-                required=False, description="asc | desc (default desc).",
-            ),
+            *parametri_ordinamento(DISTINTE_SORT_COLUMNS, senza="data_contabile", verso="desc"),
             *parametri_finestra(),
         ],
         responses={200: _RISPOSTA_GENERICA},
@@ -309,20 +298,12 @@ class ApiDistintaStato(DomainAPIView):
 # lista e il suo export accettano lo stesso ordinamento, e due elenchi OpenAPI
 # scritti a mano sono il modo in cui i due si sfilano (stessa ragione di
 # `_PARAM_ESCLUDI_RIGA_ID`).
-_PARAMS_ORDINAMENTO_DISTINTA_RIGHE = [
-    OpenApiParameter(
-        name="order_by", type=str, location=OpenApiParameter.QUERY, required=False,
-        description=descrizione_order_by(
-            DISTINTA_RIGHE_SORT_COLUMNS,
-            "Senza: id DESC (l'ultima riga digitata in cima). "
-            "`fattura_numero_documento` ordina per la coppia (numero, serie).",
-        ),
-    ),
-    OpenApiParameter(
-        name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False,
-        description="asc | desc (le colonne data partono DESC).",
-    ),
-]
+_PARAMS_ORDINAMENTO_DISTINTA_RIGHE = parametri_ordinamento(
+    DISTINTA_RIGHE_SORT_COLUMNS,
+    senza="id DESC (l'ultima riga digitata in cima)",
+    verso="asc; desc sulle colonne data",
+    nota="`fattura_numero_documento` ordina per la coppia (numero, serie).",
+)
 
 
 class ApiDistintaRighe(DomainAPIView):
@@ -340,13 +321,7 @@ class ApiDistintaRighe(DomainAPIView):
             _PARAM_SEARCH,
             *_PARAMS_ORDINAMENTO_DISTINTA_RIGHE,
             _PARAM_SCARTATE,
-            OpenApiParameter(
-                name="limit", type=int, location=OpenApiParameter.QUERY, required=False,
-                description=f"Righe per pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-            ),
-            OpenApiParameter(
-                name="offset", type=int, location=OpenApiParameter.QUERY, required=False,
-            ),
+            *parametri_finestra(),
         ],
         responses={200: _RISPOSTA_GENERICA},
     )
@@ -816,17 +791,7 @@ class ApiRigheCoda(DomainAPIView):
                 name="data_a", type=str, location=OpenApiParameter.QUERY,
                 required=False, description="Data contabile della distinta, a (ISO).",
             ),
-            OpenApiParameter(
-                name="order_by", type=str, location=OpenApiParameter.QUERY,
-                required=False,
-                description=descrizione_order_by(
-                    RIGHE_SORT_COLUMNS, "Senza: data_pagamento.",
-                ),
-            ),
-            OpenApiParameter(
-                name="order_dir", type=str, location=OpenApiParameter.QUERY,
-                required=False, description="asc | desc (default desc).",
-            ),
+            *parametri_ordinamento(RIGHE_SORT_COLUMNS, senza="data_pagamento", verso="desc"),
             *parametri_finestra(),
         ],
         responses={200: _RISPOSTA_GENERICA},
@@ -923,26 +888,8 @@ class ApiRateList(DomainAPIView):
                 required=False,
                 description="Natura del documento (codice interno), per lo scadenzario.",
             ),
-            OpenApiParameter(
-                name="order_by", type=str, location=OpenApiParameter.QUERY,
-                required=False,
-                description=descrizione_order_by(
-                    RATE_SORT_COLUMNS,
-                    "Senza: data_scadenza ASC (e' una coda). I tre saldi non ordinano: "
-                    "arrivano dal nucleo DOPO la pagina.",
-                ),
-            ),
-            OpenApiParameter(
-                name="order_dir", type=str, location=OpenApiParameter.QUERY,
-                required=False, description="asc | desc.",
-            ),
-            OpenApiParameter(
-                name="limit", type=int, location=OpenApiParameter.QUERY, required=False,
-                description=f"Righe per pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-            ),
-            OpenApiParameter(
-                name="offset", type=int, location=OpenApiParameter.QUERY, required=False,
-            ),
+            *parametri_ordinamento(RATE_SORT_COLUMNS, senza="data_scadenza ASC (e' una coda)", nota="I tre saldi non ordinano: arrivano dal nucleo DOPO la pagina."),
+            *parametri_finestra(),
         ],
         responses={200: _RISPOSTA_GENERICA},
     )
@@ -1007,17 +954,7 @@ class ApiRateFuoriCapienza(DomainAPIView):
                 location=OpenApiParameter.QUERY, required=False,
                 description="Filtro cliente.",
             ),
-            OpenApiParameter(
-                name="order_by", type=str, location=OpenApiParameter.QUERY,
-                required=False,
-                description=descrizione_order_by(
-                    RATE_FUORI_CAPIENZA_SORT_COLUMNS, "Senza: data_scadenza.",
-                ),
-            ),
-            OpenApiParameter(
-                name="order_dir", type=str, location=OpenApiParameter.QUERY,
-                required=False, description="asc | desc (default desc).",
-            ),
+            *parametri_ordinamento(RATE_FUORI_CAPIENZA_SORT_COLUMNS, senza="data_scadenza", verso="desc"),
             *parametri_finestra(),
         ],
         responses={200: _RISPOSTA_GENERICA},
@@ -1146,19 +1083,7 @@ class ApiEccedenze(DomainAPIView):
                 location=OpenApiParameter.QUERY, required=False,
                 description="Filtro cliente.",
             ),
-            OpenApiParameter(
-                name="order_by", type=str, location=OpenApiParameter.QUERY,
-                required=False,
-                description=descrizione_order_by(
-                    ECCEDENZE_SORT_COLUMNS,
-                    "Senza: eccedenza_cliente. ⭐ Il default è per CLIENTE, non "
-                    "per documento: la decisione si prende guardando il cliente.",
-                ),
-            ),
-            OpenApiParameter(
-                name="order_dir", type=str, location=OpenApiParameter.QUERY,
-                required=False, description="asc | desc (default desc).",
-            ),
+            *parametri_ordinamento(ECCEDENZE_SORT_COLUMNS, senza="eccedenza_cliente", verso="desc", nota="⭐ Il ripiego e' per CLIENTE, non per documento: la decisione si prende guardando il cliente."),
             *parametri_finestra(),
         ],
         responses={200: _RISPOSTA_GENERICA},
@@ -1408,17 +1333,7 @@ class ApiEntiIncasso(DomainAPIView):
                 name="attivo", type=bool, location=OpenApiParameter.QUERY,
                 required=False, description="Filtro attivo/disattivo.",
             ),
-            OpenApiParameter(
-                name="order_by", type=str, location=OpenApiParameter.QUERY,
-                required=False,
-                description=descrizione_order_by(
-                    ENTI_INCASSO_SORT_COLUMNS, "Senza: codice.",
-                ),
-            ),
-            OpenApiParameter(
-                name="order_dir", type=str, location=OpenApiParameter.QUERY,
-                required=False, description="asc (default) | desc.",
-            ),
+            *parametri_ordinamento(ENTI_INCASSO_SORT_COLUMNS, senza="codice", verso="asc"),
             *parametri_finestra(),
         ],
         responses={200: _RISPOSTA_GENERICA},

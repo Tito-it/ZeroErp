@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Configurazioni predefinite per le liste: sistema (globale), emittente_fiscale, ruolo (via profilo_accesso).
+> Le configurazioni predefinite di una lista per ambito: di sistema, per un'azienda (emittente fiscale) o per un profilo di accesso (ruolo). Dice quali colonne mostrare (ui.lista_preset_colonna), l'ordinamento di partenza e le righe per pagina. Il posto del preset (lista, ambito, profilo, azienda) non cambia, e ha un solo preset acceso. La scelta del preset di base è ui.fn_preset_di_base.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -15,9 +15,8 @@
 | ambito | ui.ambito_preset | NO |  |
 | profilo_accesso_id | integer | YES |  |
 | emittente_fiscale_id | bigint | YES |  |
-| pagina_dimensione | integer | YES | 25 |
+| pagina_dimensione | integer | YES |  |
 | ordinamento_default | jsonb | YES |  |
-| filtri_default | jsonb | YES |  |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | character varying(80) | NO |  |
@@ -35,6 +34,7 @@
 | FOREIGN KEY | fk_lista_preset_misure_pagina | pagina_dimensione |
 | FOREIGN KEY | fk_lista_preset_profili_accesso | profilo_accesso_id |
 | PRIMARY KEY | lista_preset_pkey | id |
+| UNIQUE | uq_ui_lista_preset_id_lista | id, lista_id |
 | UNIQUE | uq_ui_lista_preset_lista_codice | lista_id, codice |
 
 ## 📑 Indici
@@ -43,23 +43,25 @@
 | ix_ui_lista_preset_emittente_fiscale_id | `CREATE INDEX ix_ui_lista_preset_emittente_fiscale_id ON ui.lista_preset USING btree (emittente_fiscale_id) WHERE (emittente_fiscale_id IS NOT NULL)` |
 | ix_ui_lista_preset_profilo_accesso_id | `CREATE INDEX ix_ui_lista_preset_profilo_accesso_id ON ui.lista_preset USING btree (profilo_accesso_id) WHERE (profilo_accesso_id IS NOT NULL)` |
 | lista_preset_pkey | `CREATE UNIQUE INDEX lista_preset_pkey ON ui.lista_preset USING btree (id)` |
+| uq_ui_lista_preset_id_lista | `CREATE UNIQUE INDEX uq_ui_lista_preset_id_lista ON ui.lista_preset USING btree (id, lista_id)` |
 | uq_ui_lista_preset_lista_codice | `CREATE UNIQUE INDEX uq_ui_lista_preset_lista_codice ON ui.lista_preset USING btree (lista_id, codice)` |
 | uq_ui_lista_preset_posto | `CREATE UNIQUE INDEX uq_ui_lista_preset_posto ON ui.lista_preset USING btree (lista_id, ambito, profilo_accesso_id, emittente_fiscale_id) NULLS NOT DISTINCT WHERE attivo` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_lista_preset_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,ambito,profilo_accesso_id,emittente_fiscale_id', 'descrizione,pagina_dimensione,ordinamento_default,filtri_default,attivo,contenuto_aggiornato_il,composizione_impronta')` |
-| trg_lista_preset_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,ambito,profilo_accesso_id,emittente_fiscale_id', 'descrizione,pagina_dimensione,ordinamento_default,filtri_default,attivo,contenuto_aggiornato_il,composizione_impronta')` |
-| trg_lista_preset_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,ambito,profilo_accesso_id,emittente_fiscale_id', 'descrizione,pagina_dimensione,ordinamento_default,filtri_default,attivo,contenuto_aggiornato_il,composizione_impronta')` |
-| trg_lista_preset_a10_lista_definizione_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('ui', 'lista_definizione', 'attivo', 'lista_id', 'id')` |
-| trg_lista_preset_a10_lista_definizione_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('ui', 'lista_definizione', 'attivo', 'lista_id', 'id')` |
+| trg_lista_preset_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,ambito,profilo_accesso_id,emittente_fiscale_id', 'descrizione,pagina_dimensione,ordinamento_default,attivo,contenuto_aggiornato_il,composizione_impronta')` |
+| trg_lista_preset_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,ambito,profilo_accesso_id,emittente_fiscale_id', 'descrizione,pagina_dimensione,ordinamento_default,attivo,contenuto_aggiornato_il,composizione_impronta')` |
+| trg_lista_preset_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,ambito,profilo_accesso_id,emittente_fiscale_id', 'descrizione,pagina_dimensione,ordinamento_default,attivo,contenuto_aggiornato_il,composizione_impronta')` |
+| trg_lista_preset_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('ambito', 'E_UI_PRESET_POSTO_IMMUTABILE', 'emittente_fiscale_id', 'E_UI_PRESET_POSTO_IMMUTABILE', 'lista_id', 'E_UI_PRESET_POSTO_IMMUTABILE', 'profilo_accesso_id', 'E_UI_PRESET_POSTO_IMMUTABILE')` |
 | trg_lista_preset_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_lista_preset_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_ui_lista_preset_a10_guard_pagina_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_ui_lista_preset_guard_pagina_dimensione()` |
+| trg_ui_lista_preset_a10_guard_ordinamento_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_ui_lista_preset_guard_ordinamento()` |
+| trg_ui_lista_preset_a10_guard_ordinamento_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_ui_lista_preset_guard_ordinamento()` |
 | trg_ui_lista_preset_a10_guard_pagina_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_ui_lista_preset_guard_pagina_dimensione()` |
-| trg_ui_lista_preset_a20_contenuto_aggiornato_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato()` |
+| trg_ui_lista_preset_a10_guard_pagina_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_ui_lista_preset_guard_pagina_dimensione()` |
 | trg_ui_lista_preset_a20_contenuto_aggiornato_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato()` |
+| trg_ui_lista_preset_a20_contenuto_aggiornato_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato()` |
 
 ---
 {% include-markdown "signature-core.md" %}

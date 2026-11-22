@@ -16,10 +16,10 @@ conteggio per periodo: quelli hanno prerequisiti loro.
 ## Contesto
 
 È il **Passo A** del filone osservabilità
-([analisi-osservabilita-log.md](../../../dev/work-done/analisi-osservabilita-log.md)),
+([analisi-osservabilita-log.md](../../../dev/work-done/2026/analisi-osservabilita-log.md)),
 e il **primo consumatore** di `script.vw_giornale_entita` — la vista che cuce i
 registri di evento del progetto in una forma normalizzata (lotto L3 del
-[brief event_log](../../../dev/work-done/brief-db-event-log-scope-e-riga-parlante.md)).
+[brief event_log](../../../dev/work-done/2026/brief-db-event-log-scope-e-riga-parlante.md)).
 
 ⭐ **Fino al 2026-08-24 quella vista non l'aveva interrogata nessuno**: il suo
 perimetro era verificato dal pgTAP e non dall'uso. Scriverne il primo lettore
@@ -43,7 +43,7 @@ service `get_fattura_giornale` (`apps.vendite.services.vendite_service`) →
 
 ⭐ **Dal 2026-09-27 è la lista a catalogo `vendite.giornale`** (lista 79, la
 stessa del giornale trasversale e della Storia del lotto —
-[brief-db-liste-datatable-grezze §3.1](../../../dev/work-done/brief-db-liste-datatable-grezze.md),
+[brief-db-liste-datatable-grezze §3.1](../../../dev/work-done/2026/brief-db-liste-datatable-grezze.md),
 decisione di Tid): contratto di lista standard, dichiarato una volta per le due
 Storie in `apps/vendite/api/_giornale_params.py`. ⛔ Il vecchio contratto
 (`page`/`page_size`/`sort_by`/`sort_dir`) non è più letto.

@@ -29,6 +29,10 @@
 --   «semplificasse» mettendo `t` al posto della colonna nuova, il 3 diventa
 --   rosso prima del 7, e dice perche'.
 --
+-- ⭐ I casi 1-3 e 6-8 sono CONTROLLI DEL SEED: leggono le liste che il CSV
+--   dichiara globali, e su un database senza seed sono rossi (lista non trovata),
+--   non verdi a vuoto. Il caso 4 costruisce la sua lista.
+--
 -- ⚠️ COSA QUESTO FILE NON PROVA: che il frontend entri davvero senza chiedere
 --   l'emittente. La chiave viaggia nella configurazione risolta; chi la legge
 --   e' fuori dal database (§11.16, richiesta BE-F9/FE-F7).
@@ -65,35 +69,41 @@ SELECT is(
 -- 4/5) ⛔ «Non ho emittenti, e so dirti quale sono» — DUE muri
 -- ============================================================
 -- 🔴 DAVANTI A `multi_emittente` CI SONO DUE PRESIDI, E NON DICONO LA STESSA
---   COSA. Il primo e' il guard trg_ui_lista_definizione_a10_guard_multi_emittente_ins_upd:
+--   COSA. Il primo e' il guard trg_ui_lista_definizione_a10_guard_dichiarazioni_ins_upd:
 --   quel flag non si scrive DALL'APPLICAZIONE, punto — si dichiara nel seed.
 --   Il secondo e' il CHECK di coerenza, che vale per tutti, migrate compreso.
 --
--- ⚠️ Questa distinzione si e' vista SOLO lanciando il test come applicazione:
---   girando da owner il guard esce subito (pg_has_role) e a rifiutare e' il
---   CHECK, quindi un test scritto in quella condizione chiede il 23514 e lo
---   ottiene. In esercizio arriva un P0001, e il test diventa rosso su un
---   database sano. ⛔ Un presidio che passa solo nella veste sbagliata non
---   presidia: prova la veste.
--- ⚠️ Su una lista dell'installazione, creata qui con perimetro_emittente =
---   false: su una lista del seed (era vendite.famiglie_documento) rifiuta
---   prima il seed di primo impianto, anche lui con un P0001
---   (E_SEED_COLONNA_DEL_SOFTWARE), e il test passerebbe per la ragione
---   sbagliata.
-INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, attivo, user_insert, perimetro_emittente)
-VALUES ('tst.perimetro.lista_globale', 'Lista globale creata dall''installazione', 'vendite', true, 'pgtap', false);
+-- ⚠️ Il caso 4 vale per l'APPLICAZIONE, il runner di questo file. Da
+--   proprietario il guard lascia passare (script.fn_is_proprietario_tabella), e
+--   la lista di prova nasce col perimetro: il CHECK non ha niente da rifiutare,
+--   e l'UPDATE riesce. Da proprietario il caso si salta, dichiarato: chiedere
+--   lo stesso errore nelle due vesti proverebbe la veste, non il guard.
+-- ⚠️ Su una lista dell'installazione, creata qui: su una lista del seed (era
+--   vendite.famiglie_documento) rifiuta prima il seed di primo impianto, anche
+--   lui con un P0001 (E_SEED_COLONNA_DEL_SOFTWARE), e il test passerebbe per la
+--   ragione sbagliata.
+-- ⚠️ Dal 2026-11-21 la lista nasce col perimetro di default (true): anche
+--   perimetro_emittente = false e' una dichiarazione che l'applicazione non scrive
+--   (ui.trgfn_lista_definizione_guard_dichiarazioni, brief-db-revisione-ui giro 4,
+--   U23), e l'INSERT di prima si fermava li'. Il caso 4 resta lo stesso: il guard
+--   rifiuta multi_emittente dall'applicazione.
+INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, attivo, user_insert)
+VALUES ('tst.perimetro.lista_globale', 'Lista globale creata dall''installazione', 'vendite', true, 'pgtap');
 
 PREPARE incoerente AS
 UPDATE ui.lista_definizione SET multi_emittente = TRUE
  WHERE codice = 'tst.perimetro.lista_globale';
 
-SELECT throws_ok(
-    'incoerente', 'P0001',
-    NULL,
-    '4) Dall''applicazione il flag non si scrive affatto: a rifiutare e'' il guard');
+SELECT CASE WHEN script.fn_is_proprietario_tabella('ui.lista_definizione'::regclass)
+            THEN skip('4) da proprietario il guard lascia passare: il caso vale per l''applicazione', 1)
+            ELSE throws_ok(
+                'incoerente', 'P0001',
+                NULL,
+                '4) Dall''applicazione il flag non si scrive affatto: a rifiutare e'' il guard') END;
 
--- La lista di prova esce subito: il test 6 conta le liste globali.
-DELETE FROM ui.lista_definizione WHERE codice = 'tst.perimetro.lista_globale';
+-- La lista di prova nasce col perimetro (il default): il caso 6, che conta le
+--   liste globali, non la vede, e la toglie il ROLLBACK. Niente DELETE: da
+--   proprietario la riga sarebbe del seed, che non la lascia cancellare.
 
 -- ⭐ Il secondo muro si prova sulla STRUTTURA e non sul comportamento: per
 --   vederlo agire servirebbe la veste dell'owner, che questo file non ha e non
@@ -166,12 +176,9 @@ SELECT is(
           --   dimensione emittente. Arrivata nel CSV da un cantiere BE senza
           --   passare di qui: e' il rosso che questo elenco esiste per dare.
           'dbops.error_log',
-          -- ⭐ Il lotto APPARTIENE ALL'ARTICOLO, che e' catalogo globale: la
-          --   tabella non ha ne' emittente ne' magazzino (D-L2, brief del Lotto
-          --   2; piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config,
-          --   2026-09-21). Arrivata nel CSV dal cantiere BE con il residuo
-          --   «il nome nell'elenco: team DB» — questo e' il nome.
-          'magazzino.lotti',
+          -- ⛔ magazzino.lotti NON e' piu' qui dal 2026-11-22: il lotto e'
+          --   dell'azienda (brief-db-magazzino-lotto-dell-azienda, D-L1), e la
+          --   sua lista ha il perimetro.
           'storico.audit_log',
           'ui.lista_colonna',
           'ui.lista_colonna_permesso',

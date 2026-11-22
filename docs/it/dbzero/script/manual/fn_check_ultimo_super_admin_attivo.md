@@ -82,7 +82,7 @@ SUPER_ADMIN è piccolo.
 * **Pure check**: non solleva mai eccezioni; l'enforcement resta nei
   trigger guard 384.
 * Nessun riferimento a `django.*` → `LANGUAGE sql` ammesso (vedi
-  [memoria pattern Liquibase ordering](/dev/work-done/refactor-operatore-emittenti#7bis6)).
+  [memoria pattern Liquibase ordering](/dev/work-done/2026/refactor-operatore-emittenti#7bis6)).
 * **Non GUC-aware**: la chiamata vale per qualsiasi sessione.
 
 ## Capability di drawer derivate
@@ -113,7 +113,7 @@ SUPER_ADMIN è piccolo.
 
 ## Riferimenti
 
-- WIP: [refactor operatore-emittenti — Fase 1 capability](/dev/work-done/refactor-operatore-emittenti)
+- WIP: [refactor operatore-emittenti — Fase 1 capability](/dev/work-done/2026/refactor-operatore-emittenti)
 - Codice errore `E_PROFILO_ULTIMO_SUPER_ADMIN` (id 384) in
   `config.messaggi_errore`.
 - Migration: `db/changelog/migrations_v2/20_code/script/20260429-01-create-fn-check-ultimo-super-admin-attivo-mctit.yaml`

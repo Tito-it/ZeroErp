@@ -1,83 +1,91 @@
-## Documentazione Concettuale -- Funzione `anagrafiche.fn_get_emittente_fiscale_id()`
+## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_get_emittente_fiscale_id`
 
-> **Vedi anche**
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
-> **Approfondimento tabelle:**
+> 👀 **Vedi anche**
 >
-> [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/manual/emittenti_fiscali_billing_account)
-> [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/manual/emittenti_fiscali)
+> Approfondimento tabelle:
 >
-> **Funzione correlata:**
+> * [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — il collegamento del billing account e la predefinita
+> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali) — le aziende
 >
-> [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk) -- restituisce la PK numerica reale di `emittenti_fiscali`
+> Approfondimento funzioni:
+>
+> * [script.fn_get_ba_emittente_sr_id](/dbzero/script/funzioni/fn_get_ba_emittente_sr_id) — la regola dei tre livelli, che questa funzione usa
+> * [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk) — la gemella che restituisce l'`id` dell'emittente
+> * [vendite.fn_build_fattura_key](/dbzero/vendite/funzioni/fn_build_fattura_key) — sceglie con questa funzione il registro su cui numerare
+> * [vendite.fn_get_or_create_lotto](/dbzero/vendite/funzioni/fn_get_or_create_lotto) — la chiama senza billing account
 
 ---
 
-> ### ATTENZIONE -- valore di ritorno fuorviante
->
-> **Nonostante il suffisso `_id`, questa funzione NON restituisce `anagrafiche.emittenti_fiscali.id`.**
->
-> Restituisce **`emittente_soggetto_ruolo_id`** (= `anagrafiche.soggetti_ruoli.id`),
-> cioe' il ruolo del soggetto nel modello anagrafico.
->
-> Se ti serve la **PK numerica reale** di `emittenti_fiscali` (per FK,
-> filtro permessi, JOIN diretti su `emittenti_fiscali.id`) usa
-> [`fn_get_emittente_fiscale_pk`](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk).
+### 🎯 Scopo Principale
+
+`anagrafiche.fn_get_emittente_fiscale_id` dice per quale azienda fattura un billing account, per chi deve
+scrivere: restituisce il ruolo dell'emittente e solleva `E_EMITTENTE_DEFAULT_MISSING` quando l'azienda non si
+risolve.
 
 ---
 
-### Scopo Principale
+### ⚠️ Restituisce il ruolo, non l'`id` dell'emittente
 
-(last review 07-04-2026)
-
-La funzione `anagrafiche.fn_get_emittente_fiscale_id()` risolve il **soggetto_ruolo_id**
-dell'emittente fiscale associato a un `billing_account`. Se non esiste un mapping
-specifico, ritorna l'emittente di default globale.
-
-E' usata da circa 33 funzioni del dominio `vendite` che ragionano nativamente
-in termini di `soggetto_ruolo_id` (es. JOIN con `emittenti_fiscali_utilities.emittente_soggetto_ruolo_id`).
-Il modello e' coerente per quel dominio: per questo la funzione **non viene rinominata**
-ne' modificata, ma affiancata dalla nuova `fn_get_emittente_fiscale_pk`.
+Nonostante il nome, il valore è `emittente_soggetto_ruolo_id`, cioè l'`id` di `anagrafiche.soggetti_ruoli`: la
+chiave con cui fatture, commesse, registri e listini nominano l'azienda. Chi ha bisogno di
+`anagrafiche.emittenti_fiscali.id` (le tabelle con `emittente_fiscale_id`, il perimetro dell'operatore) usa
+`anagrafiche.fn_get_emittente_fiscale_pk`. Le due funzioni sono involucri dello stesso lettore e rispondono la
+stessa azienda.
 
 ---
 
-### Firma
+### La regola non sta qui
 
-```sql
-anagrafiche.fn_get_emittente_fiscale_id(
-    p_billing_account_id  anagrafiche.billing_account.id%TYPE
-)
-RETURNS anagrafiche.soggetti_ruoli.id%TYPE
-```
+Quale azienda, sui tre livelli (collegamento, azienda di chi agisce in sessione, predefinita), lo decide
+`script.fn_get_ba_emittente_sr_id`, che è la sede unica: la regola è nel blocco qui sotto. Qui restano due cose
+sue:
 
-| Parametro              | Tipo     | Descrizione                                          |
-|------------------------|----------|------------------------------------------------------|
-| `p_billing_account_id` | `bigint` | ID del billing account per cui risolvere l'emittente |
+* **un'azienda non risolta è un errore di dominio.** Il lettore restituisce `NULL`; questa funzione lo
+  trasforma in `E_EMITTENTE_DEFAULT_MISSING`, perché chi la usa sceglie il registro su cui numerare, e un `NULL`
+  vorrebbe dire numerare dove capita. Succede solo quando l'installazione non ha una predefinita;
+* **senza billing account, la predefinita.** Il lettore risponde `NULL` a un billing account nullo, perché
+  «nessun billing account» non è «billing account non ancora collegato». Questa funzione invece ripiega sulla
+  predefinita, anche in sessione: un lotto di fatturazione non ha un billing account (raccoglie fatture di
+  clienti diversi), e `vendite.fn_get_or_create_lotto` la chiama così.
 
-**Ritorno**: `bigint` -- valore di `emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id`
-(equivalente a `anagrafiche.soggetti_ruoli.id`).
-
----
-
-### Regole applicate
-
-1. Cerca un mapping specifico per `billing_account_id` in `emittenti_fiscali_billing_account`
-2. Se assente, usa la riga con `is_default = true` (default globale)
-3. Se anche il default manca, raise via `script.fn_log_and_raise_error('E_EMITTENTE_DEFAULT_MISSING')`
-
-**Nota**: la funzione NON filtra per `emittenti_fiscali.attivo` -- ritorna anche
-soggetto_ruolo_id di emittenti disattivati (per coerenza con i consumatori storici).
+Non guarda se l'azienda è accesa: un collegamento o una predefinita non possono puntare a un'azienda spenta, e
+la gemella `_pk` tiene il filtro solo come difesa.
 
 ---
 
-### Differenze con `fn_get_emittente_fiscale_pk`
+### ⚠️ Che cosa oggi non copre
 
-| Aspetto                  | `fn_get_emittente_fiscale_id` | `fn_get_emittente_fiscale_pk`                        |
-|--------------------------|-------------------------------|------------------------------------------------------|
-| Valore restituito        | `soggetto_ruolo_id`           | `emittenti_fiscali.id` (PK reale)                    |
-| Filtra per `attivo=true` | NO                            | SI                                                   |
-| Guard input              | NO                            | SI (`NULL` o `<= 0` solleva `E_PARAMETRO_INVALIDO`)  |
-| Usato da                 | ~33 funzioni vendite          | viste/funzioni che alimentano la UI permessi         |
+* **Un billing account che non esiste** non è rifiutato: senza collegamento, la funzione risponde l'azienda di
+  chi agisce o la predefinita, come per un billing account vero non ancora collegato.
+
+---
+
+### Codici errore
+
+* `E_EMITTENTE_DEFAULT_MISSING` — nessun livello risponde: l'installazione non ha un'azienda predefinita.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-emittenti-fiscali.sql` — il billing account senza collegamento (test 9) e quello
+  col collegamento (test 13). I test saltano se il database non ha un billing account libero.
+* `db/pgtap/anagrafiche/test-fn-get-emittente-fiscale-pk.sql` — i tre livelli del lettore comune, sulla gemella.
+
+---
+
+### Note di migrazione
+
+* 2026-08-19 — la regola passa a `script.fn_get_ba_emittente_sr_id`. Il ripiego senza billing account resta qui:
+  la versione di prima ci arrivava per caso, e i lotti ne dipendevano.
+* 2026-09-13 — il lettore ha tre livelli: in sessione, un billing account non ancora collegato è dell'azienda di
+  chi agisce.
+
+---
+
+{% include-markdown "it/dbzero/anagrafiche/_emittente-del-billing-account.md" %}
 
 ---
 

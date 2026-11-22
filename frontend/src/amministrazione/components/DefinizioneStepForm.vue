@@ -63,6 +63,9 @@ watch(
     form.obbligatorio = s?.obbligatorio ?? false
     form.modalita_esito = s?.modalita_esito ?? 'MANUALE'
     form.esito_default = s?.esito_default ?? null
+    // Il form resta montato da uno step all'altro (edit→edit): i campi rossi
+    // del rifiuto di prima non sono di questo step.
+    campiErrati.value = []
   },
   { immediate: true },
 )
@@ -181,6 +184,7 @@ async function handleSave() {
         <Select
           v-model="form.esito_default"
           :options="esitoOptions"
+          :invalid="campiErrati.includes('esito_default')"
           option-label="label"
           option-value="value"
           :loading="esiti.loading.value"

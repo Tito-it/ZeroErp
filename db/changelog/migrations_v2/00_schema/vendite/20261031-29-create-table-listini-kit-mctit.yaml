@@ -14,7 +14,7 @@
 #   Sul listino il kit non ha una riga: e' l'insieme dei prezzi dei suoi
 #   componenti (vendite.listini_righe_componenti), e il prezzo del kit e' la
 #   loro somma. Decisione del modello unificato dei componenti
-#   (work-done/brief-db-componenti-modello-unificato, 2026-05): il padre e'
+#   (work-done/2026/brief-db-componenti-modello-unificato, 2026-05): il padre e'
 #   vietato in listini_righe, cosi' il suo prezzo non puo' diventare un
 #   secondo prezzo diverso dalla somma.
 #   La periodicita' (G-0-bis, 20261029-11) e' una condizione del listino e sta

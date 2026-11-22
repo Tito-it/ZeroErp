@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_titolo_iva_vigente_su_natura_esiste.md" %}
 # ⚙️ Funzione `fn_titolo_iva_vigente_su_natura_esiste`
 
 ```sql

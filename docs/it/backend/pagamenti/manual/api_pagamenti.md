@@ -18,8 +18,8 @@ documenti che non si sovrappongono e a cui questa pagina **non si sostituisce**:
 | Documento | Che cosa contiene |
 | --- | --- |
 | [brief-incassi-riconciliazione-rate-promemoria.md](../../../dev/work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) | le **decisioni di dominio** (D1…D15) col loro perché |
-| [brief-db-posting-e-abbinamento-rata.md](../../../dev/work-done/brief-db-posting-e-abbinamento-rata.md) | il lato **database**: sette lotti, 15 guard, 2 matrici di transizione, la RLS |
-| [brief-be-fe-posting-e-abbinamento-rata.md](../../../dev/work-done/brief-be-fe-posting-e-abbinamento-rata.md) | il piano **BE/FE**, le nove domande chiuse, lo stato di sviluppo |
+| [brief-db-posting-e-abbinamento-rata.md](../../../dev/work-done/2026/brief-db-posting-e-abbinamento-rata.md) | il lato **database**: sette lotti, 15 guard, 2 matrici di transizione, la RLS |
+| [brief-be-fe-posting-e-abbinamento-rata.md](../../../dev/work-done/2026/brief-be-fe-posting-e-abbinamento-rata.md) | il piano **BE/FE**, le nove domande chiuse, lo stato di sviluppo |
 
 Qui c'è **il contratto**: che cosa si chiama, che cosa si manda, che cosa
 torna, e quale codice esce quando non si può.
@@ -185,7 +185,7 @@ appartenere a più lotti; letta come valore singolo, la riga compariva **due
 volte** nell'elenco e il conteggio con lei — senza nessun errore.
 
 ⭐ **Il codice viene dal registro, e la distinta sa di chi è (dal 2026-09-17,
-[brief distinta-numerata-sul-registro](../../../dev/work-done/brief-db-distinta-numerata-sul-registro.md)).**
+[brief distinta-numerata-sul-registro](../../../dev/work-done/2026/brief-db-distinta-numerata-sul-registro.md)).**
 `codice` è `DIS-<SIGLA>-<ANNO>-<7 cifre>`: lo assegna il trigger sul registro
 `DISTINTA` dell'emittente alla **creazione**, con l'anno dalla `data_contabile`
 e il reset a Capodanno — la sesta famiglia di `vendite.famiglie_documento`, la
@@ -855,7 +855,7 @@ brief DB, chiuso quel giorno.
 > Il rilievo del secondo giro in-app (Tid, 15/09) in una frase: *chi digita un
 > incasso non riconosce il documento da un contatore, e la domanda vera non è
 > «quale fattura?» ma «quale rata?»*. Brief DB:
-> [brief-db-distinta-ricerca-rate.md](../../../dev/work-done/brief-db-distinta-ricerca-rate.md);
+> [brief-db-distinta-ricerca-rate.md](../../../dev/work-done/2026/brief-db-distinta-ricerca-rate.md);
 > piano BE/FE: [piano-be-fe-distinta-ricerca-rate.md](../../../dev/work-in-progress/piano-be-fe-distinta-ricerca-rate.md).
 
 ### `GET /api/v1/pagamenti/rate/`

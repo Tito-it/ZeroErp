@@ -1,144 +1,90 @@
-## Documentazione Concettuale -- Funzione `anagrafiche.fn_get_or_create_indirizzo_dettaglio()`
+## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_get_or_create_indirizzo_dettaglio`
 
-> **Vedi anche**
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
-**Approfondimento tabelle:**
+> 👀 **Vedi anche**
 >
-[anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
-> [config.stradario](/dbzero/config/tabelle/stradario)
+> Approfondimento tabelle:
 >
-**Approfondimento funzioni:**
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) — il civico che trova o crea
+> * [config.stradario](/dbzero/config/tabelle/stradario) — la via, obbligatoria
 >
-[anagrafiche.fn_search_indirizzi_dettaglio](/dbzero/anagrafiche/manual/fn_search_indirizzi_dettaglio)
-> [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/manual/fn_crea_indirizzo_soggetto) (futuro)
+> Approfondimento funzioni:
 >
-**Guide:**
+> * [anagrafiche.fn_build_indirizzo_normalizzato](/dbzero/anagrafiche/funzioni/fn_build_indirizzo_normalizzato) — la normalizzazione con cui cerca
+> * [anagrafiche.trgfn_indirizzi_dettaglio_guard_chiave](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_guard_chiave) — il giudizio sulla chiave del civico che crea
+> * [anagrafiche.fn_create_indirizzo](/dbzero/anagrafiche/funzioni/fn_create_indirizzo) — chi la chiama per creare via e civico insieme
+> * [anagrafiche.fn_search_indirizzi_dettaglio](/dbzero/anagrafiche/funzioni/fn_search_indirizzi_dettaglio) — la ricerca, che non crea
 >
-[Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
+> Guide:
+>
+> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi) — il quadro degli indirizzi e dello stradario
 
 ---
+
 ### 🎯 Scopo Principale
-(ultima revisione 25-10-2026 — brief-db-unicita-civico-indirizzi-dettaglio, D1, D4, D5)
 
-Building block del «trova o crea» di un civico in `anagrafiche.indirizzi_dettaglio`:
-restituisce l'id della riga che corrisponde all'indirizzo fisico, creandola se manca.
-**Mai `NULL`.**
-
-La chiave naturale (stradario_id + civico + estensione + palazzina + scala + piano +
-interno) si confronta sui valori **come li salva il trigger**: i parametri passano per
-`fn_build_indirizzo_normalizzato`, la stessa funzione del trigger. Un'estensione `a`, `A`
-o `/A` e un interno minuscolo trovano la stessa riga. La deduplicazione la garantisce
-l'indice `uq_indirizzi_dettaglio_norm_v2` (`NULLS NOT DISTINCT`).
+`anagrafiche.fn_get_or_create_indirizzo_dettaglio` restituisce l'id del civico che corrisponde a una via e a
+un dettaglio, creandolo se non c'è. Non restituisce mai un valore vuoto: o un id, o un errore.
 
 ---
 
-### Parametri
+### ⭐ Cerca coi valori come si salvano
 
-| Parametro             | Tipo                                     | Obbligatorio | Default | Note                                       |
-| --------------------- | ---------------------------------------- | :----------: | ------- | ------------------------------------------ |
-| `p_stradario_id`      | `config.stradario.id%TYPE`               |      Si      | —       | Guard: NULL o <= 0 bloccato.               |
-| `p_civico`            | `indirizzi_dettaglio.civico%TYPE`        |      No      | `NULL`  | Numero civico.                             |
-| `p_estensione_civico` | `indirizzi_dettaglio.estensione_civico%TYPE` |  No      | `NULL`  | Es. A, B, bis.                             |
-| `p_palazzina`         | `indirizzi_dettaglio.palazzina%TYPE`     |      No      | `NULL`  | Palazzina / corpo di fabbrica.             |
-| `p_scala`             | `indirizzi_dettaglio.scala%TYPE`         |      No      | `NULL`  | Scala.                                     |
-| `p_piano`             | `indirizzi_dettaglio.piano%TYPE`         |      No      | `NULL`  | Piano.                                     |
-| `p_interno`           | `indirizzi_dettaglio.interno%TYPE`       |      No      | `NULL`  | Interno / unita'.                          |
+I valori passati attraversano `anagrafiche.fn_build_indirizzo_normalizzato`, la stessa normalizzazione del
+trigger, e la ricerca confronta quelli: un'estensione `a`, `A` o `/A`, un interno minuscolo o con uno spazio in
+più trovano la stessa riga. Il confronto tratta due vuoti come uguali, come l'indice della chiave, così il civico
+senza numero si trova come gli altri.
 
 ---
 
-### Valore di ritorno
+### Che cosa fa
 
-`anagrafiche.indirizzi_dettaglio.id%TYPE` (BIGINT) -- ID del civico esistente o appena creato.
+* **La via è obbligatoria e deve esistere**: senza via, o con una via che non c'è, si ferma subito.
+* **La via deve risolversi**: se la normalizzazione non trova la via nella catena comune → provincia → CAP, si
+  ferma con `E_INDIRIZZO_VIA_NON_RISOLTA`, invece di cercare con una chiave vuota.
+* **Trovato**: ne restituisce l'id. Se il civico era spento lo riaccende: chi usa di nuovo un indirizzo fisico lo
+  rimette in uso, e un civico spento non si potrebbe collegare.
+* **Non trovato**: lo crea. I trigger della tabella scrivono le colonne derivate e giudicano la chiave, quindi un
+  civico zero o un dettaglio di soli segni si fermano col codice del guard.
+* **Due sessioni insieme**: se un'altra sessione crea lo stesso civico fra la ricerca e la creazione, l'indice
+  rifiuta il secondo e la funzione rilegge, restituendo l'id dell'altra. Se nemmeno la rilettura lo trova, è
+  un'incoerenza del database, e lo dice con `E_INDIRIZZO_DETTAGLIO_NON_RILETTO`.
 
----
-
-### Logica di funzionamento
-
-1. **Guard** `p_stradario_id`: obbligatorio e > 0. Errore `E_ADMIN_VALIDAZIONE`.
-2. **Guard esistenza stradario**: `config.stradario.id` deve esistere. Errore `E_CODICE`.
-3. **Normalizzazione**: i parametri passano per `fn_build_indirizzo_normalizzato`.
-   Se la via non si risolve in `script.vw_indirizzo_completo` (per esempio un comune
-   senza provincia), tutti i valori tornano `NULL` e la funzione si ferma con
-   `E_INDIRIZZO_VIA_NON_RISOLTA`, invece di cercare con una chiave vuota.
-4. **Ricerca per chiave naturale**: `IS NOT DISTINCT FROM` su tutte le colonne,
-   coi valori normalizzati, allineata all'indice.
-5. **Se non trovato**: `INSERT` coi valori normalizzati. I trigger calcolano
-   `via_norm`, `civico_norm`, `indirizzo_normalizzato` e giudicano la chiave
-   (`trgfn_indirizzi_dettaglio_guard_chiave`: civico > 0, dettaglio con lettere o cifre).
-6. **Corsa concorrente**: `EXCEPTION WHEN unique_violation` → nuova ricerca. Se non
-   trova niente è un'invariante rotta: `E_INDIRIZZO_DETTAGLIO_NON_RILETTO` (TECNICO).
-7. **Riga trovata ma disattivata**: si riattiva (`attivo = true`) e se ne restituisce
-   l'id. Chi usa di nuovo un indirizzo fisico lo rimette in uso; un indirizzo spento
-   non si potrebbe collegare (`trgfn_child_requires_active_parent`).
+Una via soppressa non riceve civici nuovi: la creazione si ferma sul guard del ritiro della via.
 
 ---
 
-### Trigger coinvolti (INSERT)
+### Chi la usa
 
-| Trigger                                   | Fase          | Effetto                                          |
-| ----------------------------------------- | ------------- | ------------------------------------------------ |
-| `trgfn_indirizzi_dettaglio_normalize`     | BEFORE INSERT | Calcola `via_norm`, `civico_norm`, `indirizzo_normalizzato` |
-| `trgfn_audit_data_user_generic`           | BEFORE INSERT | Imposta `data_insert`, `user_insert`             |
-| `trgfn_tx_id_managed`                     | BEFORE INSERT | Assegna `tx_id` di sessione                      |
-| `trgfn_indirizzi_dettaglio_guard_chiave`  | BEFORE INSERT | Giudica la chiave dopo la normalizzazione (z10)  |
+`anagrafiche.fn_create_indirizzo`, i builder delle fixture pgTAP e l'applicazione, dopo che l'operatore ha
+scelto via e civico.
 
 ---
 
-### Vincolo di deduplicazione
+### Codici errore
 
-`uq_indirizzi_dettaglio_norm_v2` sulle sette colonne nude, `NULLS NOT DISTINCT`
-(definizione esatta nella pagina della tabella): due civici `SNC` con lo stesso
-dettaglio collidono.
-
----
-
-### Riusabilita'
-
-| Chiamante                        | Uso                                              |
-| -------------------------------- | ------------------------------------------------ |
-| `fn_create_indirizzo`            | Crea via (se nuova) e civico in un'unica istruzione |
-| `fn_crea_operatore` (futuro)     | Indirizzo residenza tramite building block        |
-| Backend (Django)                 | Dopo selezione via + civico dall'autocomplete     |
+* `E_ADMIN_VALIDAZIONE` — la via non è passata, o non è un id valido.
+* `E_CODICE` — la via non esiste.
+* `E_INDIRIZZO_VIA_NON_RISOLTA` — la via non si risolve nella catena comune → provincia → CAP.
+* `E_INDIRIZZO_DETTAGLIO_NON_RILETTO` — la creazione è stata rifiutata come doppione, e il doppione non si trova.
+* Quelli del guard della chiave, quando crea: `E_INDIRIZZO_CIVICO_NON_POSITIVO`, `E_INDIRIZZO_DETTAGLIO_SENZA_LETTERE`.
 
 ---
 
-### Esempi di utilizzo
+### Test
 
-```sql
--- 1) Get o crea un civico semplice
-SELECT anagrafiche.fn_get_or_create_indirizzo_dettaglio(
-    p_stradario_id := 42,
-    p_civico := 10
-);
-
--- 2) Get o crea con dettagli completi
-SELECT anagrafiche.fn_get_or_create_indirizzo_dettaglio(
-    p_stradario_id := 42,
-    p_civico := 10,
-    p_estensione_civico := 'A',
-    p_palazzina := 'B',
-    p_scala := '1',
-    p_piano := '2',
-    p_interno := '3'
-);
-
--- 3) Errore: stradario_id NULL
-SELECT anagrafiche.fn_get_or_create_indirizzo_dettaglio(
-    p_stradario_id := NULL
-);
--- → E_ADMIN_VALIDAZIONE
-```
+* `db/pgtap/anagrafiche/test-fn-get-or-create-indirizzo-dettaglio.sql` — la creazione, la stessa chiave che
+  restituisce lo stesso id, i rifiuti sulla via.
+* `db/pgtap/anagrafiche/test-indirizzi-dettaglio-unicita-v1.sql` — i modi diversi di scrivere la stessa chiave,
+  il civico spento che si riaccende, la via che non si risolve.
 
 ---
 
-### Caratteristiche tecniche
+### Note di migrazione
 
-* **Volatilita'**: VOLATILE (esegue INSERT)
-* **Linguaggio**: PL/pgSQL
-* **Tipi colonne**: `%TYPE` per allineamento automatico
-* **Error handling**: `script.fn_log_and_raise_error` (log persistente + raise)
-* **Sicurezza**: `SECURITY INVOKER`
-* **Concorrenza**: sicura grazie a gestione `unique_violation` e alla ri-lettura
+* 2026-10-25 — la ricerca passa dai valori normalizzati (prima confrontava quelli grezzi, e un'estensione
+  minuscola creava un doppione), si ferma sulla via non risolta e riaccende il civico spento.
 
 ---
 

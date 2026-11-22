@@ -19,13 +19,15 @@
 --   ubicazioni, D-L2-m), TRE articoli con i flag scelti dal test (gestito;
 --   per lotti; per seriale), un lotto, un asset, e un inventario DRAFT con
 --   righe come sorgenti (INVENTARIO_RIGA:{riga}). Una SECONDA azienda per
---   l'asset di altro emittente (contesto cambiato per costruirlo, e rimesso).
+--   l'asset e il lotto di altro emittente (contesto cambiato per costruirli, e
+--   rimesso). Il lotto di B porta lo stesso codice di quello di A: dal 2026-11-22
+--   il codice e' unico per azienda (brief-db-magazzino-lotto-dell-azienda, D-L2).
 -- ⚠️ Fino al 2026-09-24 girava come l'applicazione; da P-4 gira come owner
 --   (marcatore in testa). Il guard di scope legge comunque le GUC dell'operatore;
 --   le letture del test NON sono piu' filtrate dalla RLS — provato il 24-09 che
 --   le 25 asserzioni non ne dipendono (fixture costruita, id propri).
 --
--- Elenco test (plan 25 — il 5 e il 16 sono in due asserzioni):
+-- Elenco test (plan 26 — il 5 e il 16 sono in due asserzioni):
 --    1) parametro: qta = 0 -> E_MAG_CHIAMATA_NON_VALIDA (la frase nomina la funzione)
 --    2) causale sconosciuta -> E_CONFIG_MANCANTE con il codice nella frase
 --    3) verso incoerente -> la frase della MADRE (E_MAG_MOVIMENTO_VERSO_INCOERENTE)
@@ -34,6 +36,7 @@
 --    6) lotto obbligatorio    7) lotto non ammesso    8) lotto di altro articolo
 --    9) seriale obbligatorio 10) seriale non ammesso 11) asset di altro articolo
 --   12) asset di altro emittente
+--   12-bis) lotto di altro emittente, con lo STESSO codice del lotto di A (D-L2)
 --   13) ubicazione obbligatoria (magazzino a ubicazioni)
 --   14) ubicazione non ammessa (magazzino senza)  15) ubicazione di altro magazzino
 --   16) usa_ubicazioni NON si cambia su un magazzino con un movimento (E_MAG_MAGAZZINO_CON_GIACENZA)
@@ -49,7 +52,7 @@ BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(25);
+SELECT plan(26);
 
 -- ============================================================
 -- Fixture
@@ -61,7 +64,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_
 CREATE TEMP TABLE _fix (
     mag bigint, mag_ubi bigint, mag_b bigint,
     art uuid, art_lotto uuid, art_serial uuid, art_no uuid,
-    lotto bigint, lotto_altro bigint, asset bigint, asset_altro_art bigint, asset_b bigint,
+    lotto bigint, lotto_altro bigint, lotto_b bigint, asset bigint, asset_altro_art bigint, asset_b bigint,
     ubi bigint, ubi_b bigint,
     inv bigint, r1 bigint, r2 bigint, r3 bigint, r4 bigint, r5 bigint, r6 bigint,
     src bigint
@@ -71,7 +74,7 @@ DO $fix$
 DECLARE
     v_mag bigint; v_mag_ubi bigint; v_mag_b bigint;
     v_art uuid; v_art_lotto uuid; v_art_serial uuid; v_art_no uuid;
-    v_lotto bigint; v_lotto_altro bigint; v_asset bigint; v_asset_altro bigint; v_asset_b bigint;
+    v_lotto bigint; v_lotto_altro bigint; v_lotto_b bigint; v_asset bigint; v_asset_altro bigint; v_asset_b bigint;
     v_ubi bigint; v_ubi_b bigint; v_inv bigint;
     v_r bigint[] := '{}';
     v_tmp bigint; i int;
@@ -105,6 +108,8 @@ BEGIN
             (SELECT s.id FROM config.stati_assets s WHERE s.attivo ORDER BY s.id LIMIT 1),
             (SELECT o.id FROM config.assets_ownership o WHERE o.attivo ORDER BY o.id LIMIT 1),
             (SELECT emittente_fiscale_id FROM _mondo_b)) RETURNING id INTO v_asset_b;
+    -- Lo stesso codice del lotto di A: l'emittente lo mette il default di sessione (B).
+    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_art_lotto, 'PGT-L2C-L1', script.fn_data_operativa()) RETURNING id INTO v_lotto_b;
     INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id)
     VALUES (v_mag_b, 'PGT-L2C-UB', (SELECT t.id FROM config.tipi_ubicazione t ORDER BY t.id LIMIT 1)) RETURNING id INTO v_ubi_b;
     PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo));
@@ -120,7 +125,7 @@ BEGIN
     END LOOP;
 
     INSERT INTO _fix VALUES (v_mag, v_mag_ubi, v_mag_b, v_art, v_art_lotto, v_art_serial, v_art_no,
-                             v_lotto, v_lotto_altro, v_asset, v_asset_altro, v_asset_b, v_ubi, v_ubi_b,
+                             v_lotto, v_lotto_altro, v_lotto_b, v_asset, v_asset_altro, v_asset_b, v_ubi, v_ubi_b,
                              v_inv, v_r[1], v_r[2], v_r[3], v_r[4], v_r[5], v_r[6],
                              (SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO'));
 END $fix$;
@@ -189,6 +194,10 @@ SELECT throws_like(
     $$ SELECT magazzino.fn_scrivi_movimento(mag, art_serial, 'INV_INIZIALE', 1, src, r1, NULL, NULL, NULL, asset_b, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
     '%non appartiene all''emittente del magazzino PGT-L2C-A.%',
     '12) asset di un altro emittente: E_MAG_ASSET_DI_ALTRO_EMITTENTE (la DEFINER lo vede, la regola lo ferma)');
+SELECT throws_like(
+    $$ SELECT magazzino.fn_scrivi_movimento(mag, art_lotto, 'INV_INIZIALE', 1, src, r1, NULL, NULL, lotto_b, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,
+    '%Il lotto PGT-L2C-L1 non appartiene all''emittente del magazzino PGT-L2C-A.%',
+    '12-bis) lotto di un altro emittente, con lo stesso codice di quello di A: E_MAG_LOTTO_DI_ALTRO_EMITTENTE (passo 6, gemello del 12)');
 
 SELECT throws_like(
     $$ SELECT magazzino.fn_scrivi_movimento(mag_ubi, art, 'INV_INIZIALE', 1, src, r1, p_sorgente_id => (SELECT ir.inventario_id FROM magazzino.inventari_righe ir WHERE ir.id = r1)) FROM _fix $$,

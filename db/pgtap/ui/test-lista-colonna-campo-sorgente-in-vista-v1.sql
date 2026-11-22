@@ -15,22 +15,29 @@
 --   - il CATALOGO INTERO (test 1 e 2) si guarda qui, perche' i trigger non
 --     vedono una riga che non si riscrive: una vista che cambia colonne, o una
 --     lista che cambia vista, lasciano le colonne vecchie senza che nessun
---     trigger scatti. ⛔ La ri-validazione non si e' messa nel trigger della
---     definizione: il CSV delle definizioni si carica prima di quello delle
---     colonne, e un cambio di vista fatto insieme alle colonne farebbe morire
---     il migrate a meta'.
+--     trigger scatti. ⛔ La ri-validazione nel trigger della definizione vale
+--     solo per l'applicazione (giro 4 di brief-db-revisione-ui, 2026-11-21): il
+--     CSV delle definizioni si carica prima di quello delle colonne, e un cambio
+--     di vista fatto nel seed insieme alle colonne farebbe morire il migrate a
+--     meta'. Per il seed giudicano questo file e il presidio
+--     dbops.vw_liste_colonne_campo_orfano, che vede anche le liste dell'app.
 --
--- ⚠️ Il test 5 ha bisogno della gemella storica `storico.comuni` (la crea
---   l'automazione di storicizzazione): se non c'e', skip() dichiarato — senza
---   omonima il caso non si puo' costruire, e un verde lo direbbe per sottrazione.
+-- ⭐ I casi 1-3 sono un PRESIDIO DEL CATALOGO SEMINATO: guardano le liste che ci
+--   sono, ed e' il loro scopo (i trigger non vedono una riga che non si riscrive).
+--   Il seed c'e' anche in CI; su un database senza liste non avrebbero niente da
+--   guardare. I casi 4-6 costruiscono i loro soggetti.
+-- ⭐ Il caso 5 costruisce l'omonima: una tabella temporanea `comuni`, senza la
+--   colonna `descrizione` che config.comuni ha. Una colonna che la nomina, su una
+--   lista che legge l'omonima, sta solo nell'altro schema: va rifiutata.
 --
 -- Elenco test (plan 6):
 --   1) ogni lista attiva con vista_sql ha la vista nel proprio schema_dati
---   2) ogni campo_sorgente (non azione, non vuoto) di quelle liste e' una colonna della vista
---      o della sintesi della lineage (D-B2, 2026-10-11)
+--   2) ogni campo_sorgente sta dove la colonna dice di leggerlo (origine_campo): la
+--      vista, o la sintesi della lineage su una lista che la dichiara (giro 4, 2026-11-21)
 --   3) le sei liste geografiche dichiarano tutte una vista (decisione §8 punto 6)
 --   4) vista_sql che esiste solo in un ALTRO schema: E_UI_VISTA_SQL_NON_TROVATA
---   5) campo_sorgente che esiste solo nell'omonima di un altro schema: E_UI_CAMPO_SORGENTE_NON_TROVATO
+--   5) campo_sorgente che esiste solo nell'omonima di un altro schema (config.comuni,
+--      e la lista legge la sua omonima temporanea): E_UI_CAMPO_SORGENTE_NON_TROVATO
 --   6) la vista giusta nello schema giusto passa
 -- ------------------------------------------------------------
 
@@ -45,16 +52,18 @@ SELECT plan(6);
 -- ============================================================
 -- 1-2) Il catalogo intero
 -- ============================================================
+-- ⭐ 2026-11-21 (brief-db-revisione-ui, giro 4, U27 e Q15): la domanda «la
+--   relazione ha il campo?» la fa il BB ui.fn_lista_relazione_ha_attributo, la
+--   stessa regola dei due guard e del presidio dbops.vw_liste_colonne_campo_orfano
+--   (le tabelle partizionate comprese). E la lineage non e' piu' un ripiego per
+--   nome: una colonna dice da dove legge (origine_campo). Una colonna VISTA sta
+--   nella relazione; una LINEAGE sta su una lista che la dichiara e ha un nome
+--   della sintesi.
 SELECT is(
     (SELECT COALESCE(array_agg(ld.codice::text ORDER BY ld.codice), '{}'::text[])
        FROM ui.lista_definizione ld
       WHERE ld.attivo AND ld.vista_sql IS NOT NULL
-        AND NOT EXISTS (
-            SELECT 1 FROM pg_catalog.pg_class c
-              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-             WHERE n.nspname = ld.schema_dati
-               AND c.relname = ld.vista_sql
-               AND c.relkind IN ('v', 'm', 'r'))),
+        AND NOT ui.fn_lista_relazione_ha_attributo(ld.schema_dati, ld.vista_sql, NULL)),
     '{}'::text[],
     '1) ogni lista attiva con vista_sql ha la vista nel proprio schema_dati');
 
@@ -63,26 +72,18 @@ SELECT is(
                      '{}'::text[])
        FROM ui.lista_colonna lc
        JOIN ui.lista_definizione ld ON ld.id = lc.lista_id
-      WHERE ld.attivo AND ld.vista_sql IS NOT NULL
-        AND lc.tipo_colonna <> 'azione'
-        AND COALESCE(lc.campo_sorgente, '') <> ''
-        AND NOT EXISTS (
-            SELECT 1 FROM pg_catalog.pg_class c
-              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-              JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
-             WHERE n.nspname = ld.schema_dati
-               AND c.relname = ld.vista_sql
-               AND a.attname = lc.campo_sorgente
-               AND a.attnum > 0 AND NOT a.attisdropped)
-        -- ⭐ D-B2 (giro B di brief-db-lineage-seminata-per-chiave, 2026-10-11):
-        --    oppure e' una colonna della sintesi della lineage, che il backend
-        --    chiede per le chiavi della pagina. Stessa regola del guard
-        --    trgfn_ui_lista_colonna_a10_valida_campo_sorgente (20261011-99).
-        AND NOT EXISTS (
-            SELECT 1 FROM vendite.vw_documento_lineage_sintesi_colonne sc
-             WHERE sc.colonna = lc.campo_sorgente)),
+      WHERE lc.campo_sorgente IS NOT NULL
+        AND CASE lc.origine_campo
+              WHEN 'VISTA' THEN
+                ld.attivo AND ld.vista_sql IS NOT NULL
+                AND NOT ui.fn_lista_relazione_ha_attributo(ld.schema_dati, ld.vista_sql, lc.campo_sorgente)
+              ELSE
+                NOT ld.legge_lineage
+                OR NOT EXISTS (SELECT 1 FROM vendite.vw_documento_lineage_sintesi_colonne sc
+                                WHERE sc.colonna = lc.campo_sorgente)
+            END),
     '{}'::text[],
-    '2) ogni campo_sorgente delle liste con vista e'' una colonna della vista o della sintesi della lineage (anche le colonne spente)');
+    '2) ogni campo_sorgente sta dove la colonna dice di leggerlo: la vista, o la sintesi della lineage su una lista che la dichiara (anche le colonne spente)');
 
 -- ============================================================
 -- 3) Le geografiche: tutte con la vista
@@ -116,21 +117,20 @@ INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, vista_sql, a
 VALUES ('_pgtap.vista_schema_giusto', 'Lista pgTAP: vista nel suo schema',
         'config', 'comuni', TRUE, 'pgtap');
 
-SELECT CASE
-    WHEN EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
-                  JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
-                  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-                 WHERE n.nspname = 'storico' AND c.relname = 'comuni'
-                   AND a.attname = 'valid_from' AND NOT a.attisdropped)
-    THEN throws_like(
-        $$ INSERT INTO ui.lista_colonna (lista_id, codice, etichetta, campo_sorgente, tipo_colonna,
-                                         tipo_dato, ordine_default, user_insert)
-           SELECT ld.id, 'valid_from', 'Valido dal', 'valid_from', 'informazione', 'date', 10, 'pgtap'
-             FROM ui.lista_definizione ld WHERE ld.codice = '_pgtap.vista_schema_giusto' $$,
-        '%valid_from%config.comuni%',
-        '5) campo_sorgente che esiste solo in storico.comuni: rifiutato su config.comuni')
-    ELSE skip('5) storico.comuni non c''e'' (storicizzazione non applicata): l''omonima non si puo'' costruire', 1)
-END;
+-- L'omonima: pg_temp.comuni, con un solo campo. config.comuni ha `descrizione`.
+CREATE TEMP TABLE comuni (codice_istat varchar);
+INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, vista_sql, attivo, user_insert)
+SELECT '_pgtap.vista_omonima', 'Lista pgTAP: l''omonima temporanea', n.nspname, 'comuni', TRUE, 'pgtap'
+  FROM pg_catalog.pg_namespace n WHERE n.oid = pg_my_temp_schema();
+
+SELECT is(
+    dbops.fn_pgtap_codice_errore($$
+        INSERT INTO ui.lista_colonna (lista_id, codice, etichetta, campo_sorgente, tipo_colonna,
+                                      tipo_dato, ordine_default, user_insert)
+        SELECT ld.id, 'descrizione', 'Comune', 'descrizione', 'informazione', 'string', 10, 'pgtap'
+          FROM ui.lista_definizione ld WHERE ld.codice = '_pgtap.vista_omonima' $$),
+    'E_UI_CAMPO_SORGENTE_NON_TROVATO',
+    '5) campo_sorgente che esiste solo nell''omonima di config: rifiutato sulla lista che legge la temporanea');
 
 SELECT lives_ok(
     $$ INSERT INTO ui.lista_colonna (lista_id, codice, etichetta, campo_sorgente, tipo_colonna,

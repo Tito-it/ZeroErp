@@ -589,12 +589,14 @@ def lookup_ubicazioni(magazzino_id: int) -> dict[str, Any]:
     return {"results": MagazzinoRepository().lookup_ubicazioni(magazzino_id)}
 
 
-# Scopo: I lotti attivi di un articolo, con ricerca sul codice.
-def lookup_lotti(*, articolo_id: str, search: str | None) -> dict[str, Any]:
+# Scopo: I lotti attivi di un articolo, dell'emittente del magazzino, con
+#        ricerca sul codice (il lotto e' dell'azienda, come il seriale).
+def lookup_lotti(*, articolo_id: str, magazzino_id: int, search: str | None) -> dict[str, Any]:
+    _PAYLOAD.guard_positive_int(magazzino_id, field="magazzino_id")
     articolo_id = articolo_uuid(
         articolo_id, obbligatorio=True, function_name=f"{_FN}.lookup_lotti",
     )
-    return {"results": MagazzinoRepository().lookup_lotti(articolo_id, search)}
+    return {"results": MagazzinoRepository().lookup_lotti(articolo_id, magazzino_id, search)}
 
 
 # Scopo: I seriali attivi di un articolo, dell'emittente del magazzino.

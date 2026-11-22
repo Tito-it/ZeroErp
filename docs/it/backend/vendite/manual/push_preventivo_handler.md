@@ -6,7 +6,7 @@ Handler flusso `vendita.push_preventivo` — orchestratore **CONFERMA_VENDITA**,
 primo handler reale del motore pratiche. Al passaggio del flusso `CONFERMA` in
 `IN_CORSO` **smista per natura** le righe del preventivo `ACCETTATO` verso le
 destinazioni operative (modello split, brief
-[brief-preventivi-ordini.md](../../../dev/work-done/brief-preventivi-ordini.md)):
+[brief-preventivi-ordini.md](../../../dev/work-done/2026/brief-preventivi-ordini.md)):
 
 - righe **MERCE** (natura `destinazione_tipo='ORDINE_VENDITA'`) → **ordine DRAFT** via
   `fn_push_preventivo_a_ordine` (idempotenza di riga, BoM, snapshot prezzi);
@@ -100,7 +100,7 @@ non scatta).
 - L'ordine generato resta **DRAFT**: ha un ciclo proprio (ordine→DDT→fattura),
   confermato separatamente. Solo la **commessa** va a `PRONTA_FATTURAZIONE`.
 - Commessa multi-sorgente (brief
-  [brief-db-commesse-multi-sorgente.md](../../../dev/work-done/brief-db-commesse-multi-sorgente.md)):
+  [brief-db-commesse-multi-sorgente.md](../../../dev/work-done/2026/brief-db-commesse-multi-sorgente.md)):
   una commessa già pronta, portata da un'altra sorgente, il ponte non la ritenta.
 
 ## Dipendenze DB

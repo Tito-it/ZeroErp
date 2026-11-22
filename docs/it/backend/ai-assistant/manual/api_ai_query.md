@@ -102,4 +102,4 @@ Un errore del provider AI non è un errore HTTP: la risposta è `200` con un tes
 - L'endpoint e' disponibile solo se `AI_ENABLED=True` in settings (l'app `ai_assistant` non viene caricata altrimenti).
 - Il provider AI e' configurabile via `AI_PROVIDER` (anthropic, mistral, mock).
 - Le **conferme pendenti** sono in **cache** (`django.core.cache` → Redis in prod, LocMemCache in CI/test): durano tra i worker gunicorn, TTL 5 minuti.
-- Le **conversazioni** sono ancora **in-memory per processo** (non condivise tra worker gunicorn): un follow-up che colpisce un altro worker non ne ricostruisce il contesto. Migrazione alla cache (stesso meccanismo delle conferme) consigliata come follow-up — vedi [analisi-sicurezza-aggiornata.md](../../../dev/work-done/analisi-sicurezza-aggiornata.md).
+- Le **conversazioni** sono ancora **in-memory per processo** (non condivise tra worker gunicorn): un follow-up che colpisce un altro worker non ne ricostruisce il contesto. Migrazione alla cache (stesso meccanismo delle conferme) consigliata come follow-up — vedi [analisi-sicurezza-aggiornata.md](../../../dev/work-done/2026/analisi-sicurezza-aggiornata.md).

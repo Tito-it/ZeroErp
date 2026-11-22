@@ -17,9 +17,9 @@
 --
 -- Elenco test (plan 10):
 --   1) ui e' nell'ambito: dbops.fn_table_in_scope la vede, tabella per tabella
---   2) ⭐ il guard ATTIVO resta sulle cinque FK fra entita' con attivo: nessuna
+--   2) ⭐ il guard ATTIVO resta sulle due FK fra entita' con attivo: nessuna
 --      e' nel registro delle eccezioni
---   3) ⭐ le sedici FK in eccezione (preferenze, righe di composizione, altri
+--   3) ⭐ le diciannove FK in eccezione (preferenze, righe di composizione, altri
 --      domini) sono nel registro, ciascuna col suo motivo
 --   4) le sei colonne codice di ui sono in eccezione per CODICE_MAIUSCOLO
 --   5) le sette tabelle che prendono l'audit hanno data_update e user_update
@@ -30,9 +30,10 @@
 --   8) i due trigger a20 dei preset sono sulla funzione nuova
 --   9) ⭐ con l'audit montato, un UPDATE che non tocca il contenuto sposta
 --      data_update e NON contenuto_aggiornato_il (caso COSTRUITO)
---  10) ⭐ ... e un UPDATE dell'ordinamento sposta data_update e la sola chiave
---      ordinamento della data del contenuto (per chiave, dal giro 1b di
---      brief-db-revisione-ui)
+--  10) ⭐ ... e un UPDATE della misura sposta data_update e la sola chiave
+--      pagina_dimensione della data del contenuto (per chiave, dal giro 1b di
+--      brief-db-revisione-ui; dal giro 2 le chiavi delle liste sono colonne e
+--      pagina_dimensione: l'ordinamento non e' piu' una chiave)
 --
 -- ⚠️ I montaggi veri della convergenza (ci_apply) non si provano qui: dipendono
 --   da quando la convergenza e' girata. Il caso 9-10 monta il trigger come lo
@@ -62,9 +63,13 @@ SELECT is_empty(
 -- 2-3) Il guard ATTIVO: dove resta, dove no
 -- ============================================================
 CREATE TEMP TABLE _fk_guard (tabella text, colonna text) ON COMMIT DROP;
+-- ⚠️ 2026-11-21 (brief-db-revisione-ui, giro 4, U22, Q13): lista_colonna.lista_id e
+--   lista_preset.lista_id passano fra le eccezioni. La lista spenta sospende colonne
+--   e preset senza toccarli, come la riga di composizione sotto il padre.
+-- ⚠️ 2026-11-21 (brief-db-revisione-ui, giro 5, Q49): anche
+--   dashboard_preset.dashboard_id passa fra le eccezioni, gemella delle liste.
 INSERT INTO _fk_guard VALUES
-    ('lista_colonna', 'lista_id'), ('lista_preset', 'lista_id'),
-    ('dashboard_preset', 'dashboard_id'), ('widget', 'area_id'), ('widget', 'azione_id');
+    ('widget', 'area_id'), ('widget', 'azione_id');
 
 CREATE TEMP TABLE _fk_eccezione (tabella text, colonna text) ON COMMIT DROP;
 INSERT INTO _fk_eccezione VALUES
@@ -76,14 +81,16 @@ INSERT INTO _fk_eccezione VALUES
     ('dashboard_preset_widget', 'preset_id'), ('dashboard_preset_widget', 'widget_id'),
     ('lista_preset', 'emittente_fiscale_id'), ('lista_preset', 'profilo_accesso_id'),
     ('dashboard_preset', 'emittente_fiscale_id'), ('dashboard_preset', 'profilo_accesso_id'),
-    ('lista_colonna_permesso', 'profilo_accesso_id');
+    ('lista_colonna_permesso', 'profilo_accesso_id'),
+    ('lista_colonna', 'lista_id'), ('lista_preset', 'lista_id'),
+    ('dashboard_preset', 'dashboard_id');
 
 SELECT is_empty(
     $q$SELECT g.tabella, g.colonna
          FROM _fk_guard g
          JOIN dbops.automazione_attivo_eccezioni e
            ON e.schema_figlia = 'ui' AND e.tabella_figlia = g.tabella AND e.colonna_fk = g.colonna$q$,
-    '2) le cinque FK fra entita'' con attivo tengono il guard ATTIVO (nessuna in eccezione)');
+    '2) le due FK fra entita'' con attivo tengono il guard ATTIVO (nessuna in eccezione)');
 
 SELECT is_empty(
     $q$SELECT x.tabella, x.colonna
@@ -91,7 +98,7 @@ SELECT is_empty(
         WHERE NOT EXISTS (SELECT 1 FROM dbops.automazione_attivo_eccezioni e
                            WHERE e.schema_figlia = 'ui' AND e.tabella_figlia = x.tabella
                              AND e.colonna_fk = x.colonna AND btrim(e.motivo) <> '')$q$,
-    '3) le sedici FK fuori dal guard ATTIVO sono nel registro delle eccezioni, col motivo');
+    '3) le diciannove FK fuori dal guard ATTIVO sono nel registro delle eccezioni, col motivo');
 
 -- ============================================================
 -- 4) I codici
@@ -196,8 +203,6 @@ UPDATE ui.lista_preset
    SET data_update = TIMESTAMPTZ '2026-01-01 10:00:00+00',
        contenuto_aggiornato_il = jsonb_build_object(
            'colonne',           '2026-01-01T10:00:00+00:00',
-           'ordinamento',       '2026-01-01T10:00:00+00:00',
-           'filtri',            '2026-01-01T10:00:00+00:00',
            'pagina_dimensione', '2026-01-01T10:00:00+00:00')
  WHERE id = (SELECT preset_id FROM _p);
 ALTER TABLE ui.lista_preset ENABLE TRIGGER trg_ui_lista_preset_a20_contenuto_aggiornato_ins_upd;
@@ -214,7 +219,7 @@ SELECT is(
     'true|true',
     '9) con l''audit montato, cambiare la descrizione sposta data_update e non la data del contenuto');
 
-UPDATE ui.lista_preset SET ordinamento_default = '[{"col": "x", "dir": "asc"}]'::jsonb
+UPDATE ui.lista_preset SET pagina_dimensione = (SELECT max(m.misura) FROM ui.misure_pagina m)
  WHERE id = (SELECT preset_id FROM _p);
 
 SELECT is(
@@ -223,8 +228,8 @@ SELECT is(
                       FROM jsonb_each_text(contenuto_aggiornato_il) AS e(k, v)
                      WHERE v::timestamptz > TIMESTAMPTZ '2026-01-01 10:00:00+00'))
        FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
-    'true|ordinamento',
-    '10) ... e cambiare l''ordinamento sposta data_update e la sola chiave ordinamento');
+    'true|pagina_dimensione',
+    '10) ... e cambiare la misura sposta data_update e la sola chiave pagina_dimensione');
 
 SELECT * FROM finish();
 ROLLBACK;

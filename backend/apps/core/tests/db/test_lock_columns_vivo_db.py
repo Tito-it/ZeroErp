@@ -43,6 +43,9 @@ _LOGGER_REPO = "apps.core.db.lock_columns_repository"
 _USCITE_DAI_GAP: tuple[tuple[str, str, str, str | None], ...] = (
     ("catalogo", "articoli", "codice", "00000000-0000-0000-0000-000000000000"),
     ("anagrafiche", "emittenti_fiscali", "codice", None),
+    # Dal 2026-11-21 anche il ruolo dell'emittente (E_EMITTENTE_SOGGETTO_IMMUTABILE):
+    # e' uscito il gap `soggetto_id`, e il form legge la sola vista.
+    ("anagrafiche", "emittenti_fiscali", "soggetto_ruolo_id", None),
     # Il soggetto non ha mai avuto il gap: la sua lista non lo diceva affatto
     # fino al 2026-11-09, quando e' passata dal BB (S-BE-3). Stesso presidio.
     # Dal 2026-11-09 il dettaglio legge PER RECORD (CF e P.IVA sono lock

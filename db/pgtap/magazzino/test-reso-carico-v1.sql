@@ -85,8 +85,8 @@ BEGIN
     v_s   := dbops.fn_pgtap_crea_articolo('PGT-L3B-SEMPLICE', true,  false, false);
     v_l   := dbops.fn_pgtap_crea_articolo('PGT-L3B-A-LOTTI',  true,  true,  false);
     v_n   := dbops.fn_pgtap_crea_articolo('PGT-L3B-NON-GEST', false, false, false);
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_l, 'PGT-L3B-A', script.fn_data_operativa() - 10) RETURNING id INTO v_la;
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_l, 'PGT-L3B-B', script.fn_data_operativa() - 5)  RETURNING id INTO v_lb;
+    v_la := dbops.fn_pgtap_crea_lotto_di_magazzino(v_l, 'PGT-L3B-A', script.fn_data_operativa() - 10);
+    v_lb := dbops.fn_pgtap_crea_lotto_di_magazzino(v_l, 'PGT-L3B-B', script.fn_data_operativa() - 5);
     INSERT INTO _fix
     SELECT v_mag, v_qua, v_s, v_l, v_n, v_la, v_lb,
            (SELECT so.id FROM config.sorgenti so WHERE so.codice_interno = 'DDT_VENDITA');

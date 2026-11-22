@@ -74,10 +74,9 @@ CREATE_KEYS: frozenset[str] = frozenset(
     }
 )
 
-# ⛔ `filtri_default` non e' piu' in nessuna delle due whitelist (Q38 di
-#    brief-db-revisione-ui, Tid 2026-11-20): i filtri di partenza di una
-#    lista restano dello store, la colonna la ritira il DB nel giro 2. Fino
-#    ad allora la si legge ancora (dettaglio admin), non la si scrive.
+# ⛔ `filtri_default` non esiste piu' (Q38 di brief-db-revisione-ui): i filtri
+#    di partenza di una lista sono dello store, e il DB ha ritirato la colonna
+#    col giro 2 (2026-11-21). Nel corpo e' una chiave fuori whitelist: 400.
 
 # Whitelist chiavi del payload update. Esclude gli immutabili. Per
 # cambiare ambito/refs si crea un nuovo preset.
@@ -126,6 +125,23 @@ _FK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "fk_lista_preset_emittenti_fiscali": (
         E_PRESET_VALIDATION,
         "emittente_fiscale_id non valido (FK su anagrafiche.emittenti_fiscali).",
+    ),
+}
+
+# Le FK della composizione (`ui.lista_preset_colonna`) che un replace puo'
+# incontrare. La composita (colonna, lista) e' del giro 2b di
+# brief-db-revisione-ui (U14): una colonna di un'altra lista non entra nel
+# preset. Il campo e' `colonne`, la chiave del corpo.
+_FK_COMPOSIZIONE: dict[str, tuple[str, ...]] = {
+    "fk_lista_preset_colonna_lista_colonna": (
+        E_PRESET_VALIDATION,
+        "Una colonna della composizione non esiste.",
+        "colonne",
+    ),
+    "fk_ui_lista_preset_colonna_colonna_della_lista": (
+        E_PRESET_VALIDATION,
+        "Una colonna della composizione non e' della lista del preset.",
+        "colonne",
     ),
 }
 
@@ -331,10 +347,15 @@ class ListaPresetAdminService:
                 preset_id, normalized
             )
         except IntegrityError as exc:
-            # FK su ui.lista_colonna o PK preset+colonna: messaggio generico
-            # (la duplicazione e' gia' bloccata da seen_colonne).
+            # Le FK verso ui.lista_colonna: la colonna non esiste, oppure
+            # (FK composita del giro 2b di brief-db-revisione-ui, U14) e' di
+            # un'altra lista. `lista_id` della riga lo scrive il DB dal preset
+            # (`ui.trgfn_preset_riga_contenitore`): il BE non lo passa. La PK
+            # preset+colonna resta al ripiego (la duplicazione e' gia' bloccata
+            # da seen_colonne).
             map_integrity_error(
                 exc,
+                fk_constraints=_FK_COMPOSIZIONE,
                 fallback_code=E_PRESET_VALIDATION,
                 fallback_message="Violazione vincolo DB su composizione preset.",
                 context={"preset_id": preset_id},

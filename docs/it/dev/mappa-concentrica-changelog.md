@@ -74,7 +74,7 @@ giro 6f-ter riporta il **listino** al modello di aprile — una versione si scri
 fuori bozza si **rettifica** col motivo, dal verbo `vendite.fn_rettifica_riga_listino` — che
 D-LIST aveva revocato senza dirlo. Aperto l'8, chiuso il 15-11; due residui FE (i prezzi del kit
 fuori bozza, lo spec di `VersioneDrawer`) nel registro dei residui. Vedi
-[brief-db-stati-documento-dal-vocabolario.md](work-done/brief-db-stati-documento-dal-vocabolario.md).
+[brief-db-stati-documento-dal-vocabolario.md](work-done/2026/brief-db-stati-documento-dal-vocabolario.md).
 
 **Trasversale — La sorgente polimorfa: una grammatica sola.** Il modello di Tid del 6-11: il tipo
 è quello del **documento**, la chiave è **una** (`sorgente_id` o `sorgente_uid`, secondo il
@@ -88,7 +88,7 @@ quello di struttura in CI. Escono i tipi `*_RIGA` e le foglie di magazzino, `ATT
 reso nasce solo dalla bolla. Revoche dichiarate: la D1 del 18-07 (`sorgente_riga` a doppio
 scopo), i modelli A e B, il §4a della guida, la G-2 del 18-10, e i pre-check BE di cancellazione.
 Aperto il 6, chiuso l'8-11; gli acquisti restano nella grammatica precedente, elenco dichiarato
-del presidio. Vedi [brief-db-sorgente-documento-e-riga.md](work-done/brief-db-sorgente-documento-e-riga.md).
+del presidio. Vedi [brief-db-sorgente-documento-e-riga.md](work-done/2026/brief-db-sorgente-documento-e-riga.md).
 
 **Anello 3 (`vendite`) — Gli oneri come righe di ordine e bolla.** Il trasporto, l'urgenza, le
 spese sono un articolo particolare e stanno sulle righe (forma ii, Tid 03-11): l'onere non si
@@ -98,7 +98,7 @@ terzi il trasporto non dovuto blocca l'emissione. Otto codici nuovi, i BB `scrip
 e `vendite.fn_ddt_trigger_ordine_testata`, la causale nella vista e il lookup delle causali
 assegnabili. **Revoca parziale** di D-1 e D-2 del 13-10: «solo MERCE» diventa «MERCE e oneri».
 Prova a video passata, archiviato il 13-11. Vedi
-[brief-db-addebito-trasporto-ordine.md](work-done/brief-db-addebito-trasporto-ordine.md).
+[brief-db-addebito-trasporto-ordine.md](work-done/2026/brief-db-addebito-trasporto-ordine.md).
 
 **Anello 3 (`vendite`) — Le chiusure del 1° novembre: canone, scadenza, liste.** Il **canone in
 commessa** chiude col passo 4 — la riga a canone senza periodicità non si salva, su contratto e
@@ -108,9 +108,9 @@ passano al registro. La **scadenza dei preventivi** chiude con E-4: un preventiv
 finita non si emette (`E_PREV_EMISSIONE_VALIDITA_SCADUTA`), BE/FE e prova a video lo stesso giorno.
 Il **secondo giro delle liste grezze** chiude il 3-11: la soglia della ricerca universale è quella
 del catalogo (D-6). Vedi
-[brief-db-contratto-righe-periodiche-in-commessa.md](work-done/brief-db-contratto-righe-periodiche-in-commessa.md),
-[brief-db-scadenza-preventivi.md](work-done/brief-db-scadenza-preventivi.md),
-[brief-db-liste-datatable-grezze-secondo-giro.md](work-done/brief-db-liste-datatable-grezze-secondo-giro.md).
+[brief-db-contratto-righe-periodiche-in-commessa.md](work-done/2026/brief-db-contratto-righe-periodiche-in-commessa.md),
+[brief-db-scadenza-preventivi.md](work-done/2026/brief-db-scadenza-preventivi.md),
+[brief-db-liste-datatable-grezze-secondo-giro.md](work-done/2026/brief-db-liste-datatable-grezze-secondo-giro.md).
 
 **Anello 1 (`catalogo`) — La revisione del catalogo, e l'articolo che si ritira.** La **distinta è
 una storia**: un legame non si chiude nel passato né si riapre, e «la distinta alla data» ha una
@@ -124,8 +124,8 @@ Il ritiro ha la sua colonna, `catalogo.articoli.obsoleto_dal` (data futura = rit
 scelta nuova è vietata, la derivazione ammessa, il magazzino mai bloccato, la copia del listino salta
 l'articolo ritirato; predicato in un BB (`script.fn_e_obsoleto`). Archiviati entrambi il 12-11.
 ⚠️ La regola delle unità non ha una guida. Vedi
-[brief-db-revisione-catalogo.md](work-done/brief-db-revisione-catalogo.md),
-[brief-db-articoli-obsoleto-dal.md](work-done/brief-db-articoli-obsoleto-dal.md).
+[brief-db-revisione-catalogo.md](work-done/2026/brief-db-revisione-catalogo.md),
+[brief-db-articoli-obsoleto-dal.md](work-done/2026/brief-db-articoli-obsoleto-dal.md).
 
 **Anello 1 (`anagrafiche`) — Il cambio di natura rifiuta coi motivi; l'indirizzo si copia.** D-5
 (14-11) **revoca** la pulizia confermata decisa l'11-10 e la mattina stessa: il cambio di natura
@@ -138,8 +138,8 @@ come…**»: un indirizzo si copia in altri tipi dello stesso soggetto o ruolo, 
 tutto o niente (`fn_copia_indirizzo_soggetto`, `fn_copia_indirizzo_ruolo`), coi picker dei tipi
 proponibili e l'azione spenta col motivo. Chiusi il 15-11. ⚠️ Il cambio di natura non ha una
 guida. Vedi
-[brief-db-cambio-natura-soggetto-conferma-e-pulizia.md](work-done/brief-db-cambio-natura-soggetto-conferma-e-pulizia.md),
-[brief-db-copia-indirizzo-soggetto.md](work-done/brief-db-copia-indirizzo-soggetto.md).
+[brief-db-cambio-natura-soggetto-conferma-e-pulizia.md](work-done/2026/brief-db-cambio-natura-soggetto-conferma-e-pulizia.md),
+[brief-db-copia-indirizzo-soggetto.md](work-done/2026/brief-db-copia-indirizzo-soggetto.md).
 
 **Anello 0 (`dbops`, `maintenance`) — La revisione del nucleo: i registri convergono.** Ogni
 registro delle automazioni **converge**: il trigger si riconosce dalla funzione, una riga spenta o
@@ -154,10 +154,10 @@ corsa, il calendario pgAgent fa sync prima dell'apply. E dal 4-11 **il codice no
 maiuscole**: ogni colonna `codice` si salva in `upper(btrim())` da un'automazione
 (`CODICE_MAIUSCOLO`, BB `script.fn_codice_normalizzato`), con le eccezioni a registro, e le copie
 BE/FE della regola ritirate. Vedi
-[brief-db-revisione-dbops.md](work-done/brief-db-revisione-dbops.md),
-[brief-db-revisione-maintenance.md](work-done/brief-db-revisione-maintenance.md),
-[framework-automazione-db-migliorie.md](work-done/framework-automazione-db-migliorie.md),
-[brief-be-codice-maiuscolo.md](work-done/brief-be-codice-maiuscolo.md).
+[brief-db-revisione-dbops.md](work-done/2026/brief-db-revisione-dbops.md),
+[brief-db-revisione-maintenance.md](work-done/2026/brief-db-revisione-maintenance.md),
+[framework-automazione-db-migliorie.md](work-done/2026/framework-automazione-db-migliorie.md),
+[brief-be-codice-maiuscolo.md](work-done/2026/brief-be-codice-maiuscolo.md).
 
 **Anello 0 — L'assenza è NULL, e le forme che muoiono all'apply hanno un cancello.** La premessa
 era falsa: Liquibase 5 **ignora** `nullValue:`. La regola si riscrive su questo fatto — il token è
@@ -168,10 +168,10 @@ colonne testo opzionali di `ui.lista_colonna`, i cinque mirror che scrivevano `'
 verbo del pannello porta a NULL la stringa vuota destinata a un testo nullable. Le **forme che
 passano in sviluppo e muoiono all'apply** hanno uno script solo in CI
 (`scripts/guardrail_forme_changeset.py`, sopra `scripts/_guardrail_comune.py`), in tre gruppi di
-regole. Vedi [brief-db-token-null-dei-seed.md](work-done/brief-db-token-null-dei-seed.md),
-[brief-db-nullvalue-vuoto-cinque-mirror.md](work-done/brief-db-nullvalue-vuoto-cinque-mirror.md),
-[brief-db-lista-colonna-campo-sorgente-null.md](work-done/brief-db-lista-colonna-campo-sorgente-null.md),
-[brief-db-guardrail-forme-residue.md](work-done/brief-db-guardrail-forme-residue.md).
+regole. Vedi [brief-db-token-null-dei-seed.md](work-done/2026/brief-db-token-null-dei-seed.md),
+[brief-db-nullvalue-vuoto-cinque-mirror.md](work-done/2026/brief-db-nullvalue-vuoto-cinque-mirror.md),
+[brief-db-lista-colonna-campo-sorgente-null.md](work-done/2026/brief-db-lista-colonna-campo-sorgente-null.md),
+[brief-db-guardrail-forme-residue.md](work-done/2026/brief-db-guardrail-forme-residue.md).
 
 **Anello 0 (`script`) e Anello 1 (permessi) — Il mese dal calendario; ogni azione ha un lettore.**
 Il mese di un giorno si calcola con l'aritmetica delle date, non passando da un istante: i BB
@@ -180,8 +180,8 @@ tre CHECK «primo del mese» appoggiati sul BB, e tre cancelli nuovi contro `dat
 intervalli di mese. Lato BE, tre presidi pretendono che ogni azione di processo dichiarata sia a
 catalogo e abbia un lettore: hanno trovato un **cancello decorativo** (la cancellazione del fondo
 fattura dichiarava il permesso su un metodo che la view non serve). Vedi
-[brief-db-mese-di-un-giorno.md](work-done/brief-db-mese-di-un-giorno.md),
-[brief-be-azioni-di-processo-chi-le-legge.md](work-done/brief-be-azioni-di-processo-chi-le-legge.md).
+[brief-db-mese-di-un-giorno.md](work-done/2026/brief-db-mese-di-un-giorno.md),
+[brief-be-azioni-di-processo-chi-le-legge.md](work-done/2026/brief-be-azioni-di-processo-chi-le-legge.md).
 
 **Cantieri aperti — La provenienza del prezzo, la revisione di `documenti`, PrimeVue.** La
 **provenienza del prezzo segue il prezzo** è ripartita il 13-11: un solo dominio delle origini
@@ -193,8 +193,8 @@ La **revisione dello schema `documenti`** ha il giro 0 (la documentazione, 36 pa
 decisioni del 14-11; i giri 1-5 aspettano il via. Su **PrimeVue** Tid decide il 14-11: si resta
 sulla 4.5.5 e si predispone l'uscita, con OpenVue (fork MIT) come strada preferita e Vuetify di
 riserva; nasce il presidio `guard:classi-interne`. Vedi
-[brief-db-provenienza-prezzo-segue-il-prezzo.md](work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md),
-[brief-db-revisione-documenti.md](work-done/brief-db-revisione-documenti.md),
+[brief-db-provenienza-prezzo-segue-il-prezzo.md](work-done/2026/brief-db-provenienza-prezzo-segue-il-prezzo.md),
+[brief-db-revisione-documenti.md](work-done/2026/brief-db-revisione-documenti.md),
 [piano-migrazione-primevue-5.md](work-in-progress/piano-migrazione-primevue-5.md).
 
 **Trasversale — La catena di verifica: il registro della CI da 358 a 22.** Il 1° novembre il
@@ -257,7 +257,7 @@ presidio di avvio di gunicorn gira in un processo figlio, e un `kill -HUP` torna
 il 31-10 con le prove a video di Tid tutte ok, D-G2 compreso; i residui (le azioni `emetti_*` e
 `attiva_listino` ai profili di dbdev, due rami del preventivo senza strada dall'interfaccia, il
 drawer che non si carica in silenzio) passano a PROJECT_CONTEXT. Vedi
-[brief-modello-documento-vendita.md](work-done/brief-modello-documento-vendita.md).
+[brief-modello-documento-vendita.md](work-done/2026/brief-modello-documento-vendita.md).
 
 **Anello 3 (`vendite`) — La scadenza dei preventivi esiste.** EMESSO → SCADUTO era nella matrice
 e nessuno lo scriveva. Decise il 31-10: lo stato resta **scritto da un processo** — la terza riga
@@ -267,7 +267,7 @@ al» è rifiutata anche **per data**, così la regola non dipende dall'ora del j
 si apre anche da SCADUTO (E-3); e un preventivo non si emette con la validità già finita (E-4,
 applicata il 1° novembre). Il passaggio BE/FE (i due codici, il campo «Valido al») e il collaudo a
 video si chiudono lo stesso giorno. Vedi
-[brief-db-scadenza-preventivi.md](work-done/brief-db-scadenza-preventivi.md).
+[brief-db-scadenza-preventivi.md](work-done/2026/brief-db-scadenza-preventivi.md).
 
 **Anello 3 (`vendite`) — Il contratto si addebita anche a canone (D31).** Decisioni G-0 … G-11 il
 28-10, lotti L1 … L9 dal 29 al 31-10: il vocabolario delle **periodicità** (la riga a canone la
@@ -283,7 +283,7 @@ che non perde la periodicità fuori dalla bozza. BE/FE del passo 3 fatto e commi
 `_campi_canone`. ⚠️ Aperti: il passo 4 (l'obbligo della periodicità sulla riga a canone), la
 documentazione del giro (L18), la colonna «Periodicità» nella lista delle righe di listino, il
 collaudo a video. Vedi
-[brief-db-contratto-righe-periodiche-in-commessa.md](work-done/brief-db-contratto-righe-periodiche-in-commessa.md).
+[brief-db-contratto-righe-periodiche-in-commessa.md](work-done/2026/brief-db-contratto-righe-periodiche-in-commessa.md).
 
 **Anello 1 (`ui`, `config`) — Le liste ancora su `DataTable` grezza, secondo giro.** Sette liste
 nascono a catalogo (107-113: definizioni di workflow, parametri, note di vendita e di catalogo,
@@ -298,7 +298,7 @@ dialog di selezione righe) e `MatriceCatalogo` (la base di ogni matrice limitata
 cui `MatriceOverride` è uno strato); il registro del presidio scende da **28 a 17** `DataTable`
 grezze, da **9 a 0** senza motivo, e il motivo deve stare attaccato all'import. Chiuso il
 2026-11-03: la view della ricerca legge la soglia dal catalogo (§7.9, `62dafb6c86`). Vedi
-[brief-db-liste-datatable-grezze-secondo-giro.md](work-done/brief-db-liste-datatable-grezze-secondo-giro.md).
+[brief-db-liste-datatable-grezze-secondo-giro.md](work-done/2026/brief-db-liste-datatable-grezze-secondo-giro.md).
 
 **Anello 1 (permessi) — Il profilo del reparto per area, e il tetto d'area detto dal DB.** Il
 profilo del reparto si gestisce **per area**, come l'operatore, sopra un BB nuovo,
@@ -309,7 +309,7 @@ FE lo calcola solo in anteprima («sola regola DB», Tid). La documentazione del
 tetto d'area per aperto: è chiuso dal 04-10, e ora lo dice. Nello stesso giro le Utilities
 dell'emittente salvano anche una configurazione nuova e hanno i decimali del CHECK DB. Vedi
 [permessi-e-autorizzazioni-v3.md](work-in-progress/permessi-e-autorizzazioni-v3.md),
-[brief-db-permessi-tetto-area.md](work-done/brief-db-permessi-tetto-area.md).
+[brief-db-permessi-tetto-area.md](work-done/2026/brief-db-permessi-tetto-area.md).
 
 **Trasversale — La catena di verifica: il documento vivo si separa dal suo archivio.** Il 27-10 la
 valutazione dello strato DB tiene **solo ciò che è vivo** (chi riparte, difetti aperti, scorecard)
@@ -319,7 +319,7 @@ lotti 3 e 4: il registro dello scratch scende da 104 a 23 righe, quello di svilu
 quello della CI da 360 a 358 (le misure del 28-10, qui sotto). Al 31-10 la suite pgTAP conta
 **935** file, i tre registri sono invariati. Vedi
 [migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md),
-[migliorie-generali-da-test-valutazione-storia.md](work-done/migliorie-generali-da-test-valutazione-storia.md).
+[migliorie-generali-da-test-valutazione-storia.md](work-done/2026/migliorie-generali-da-test-valutazione-storia.md).
 
 ## 28 ottobre 2026
 
@@ -333,12 +333,12 @@ portano solo ciò che resta, e il chiuso sta qui e nei brief:
 - **Osservabilità** esce dalla roadmap: sette passi su sette a codice,
   collaudo in-app chiuso, analisi e diagnostica di produzione archiviate; i
   residui sono sotto «Previsti» —
-  [piano-be-fe-osservabilita-pallino-e-superfici.md](work-done/piano-be-fe-osservabilita-pallino-e-superfici.md),
-  [collaudo-in-app-osservabilita-giornale-errori-pallino.md](work-done/collaudo-in-app-osservabilita-giornale-errori-pallino.md)
+  [piano-be-fe-osservabilita-pallino-e-superfici.md](work-done/2026/piano-be-fe-osservabilita-pallino-e-superfici.md),
+  [collaudo-in-app-osservabilita-giornale-errori-pallino.md](work-done/2026/collaudo-in-app-osservabilita-giornale-errori-pallino.md)
 - **Modello del documento di vendita**: la commessa (giro 10) è portata;
   fattura (giro 11) e versione di listino (giro 12) hanno il DB applicato e
   aspettano il BE; D-N1 è entrata nel giro 11, D-G1 decisa —
-  [brief-modello-documento-vendita.md](work-done/brief-modello-documento-vendita.md)
+  [brief-modello-documento-vendita.md](work-done/2026/brief-modello-documento-vendita.md)
 - **Accessi**: L-2, L-4, L-6 e il collaudo del consenso al riuso erano chiusi
   ma la mappa li dava aperti; resta L-5 (R-4) e il collaudo di D-5 —
   [piano-be-fe-accessi-credenziale-e-vesti.md](work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md)
@@ -399,9 +399,9 @@ se un altro dello stesso lotto è in errore»*. ⚠️ Aperti: i giri di fattura
 listino, D-N1 (i gate delle azioni per riga), D-G1 e D-G2 ereditati dalla
 grammatica, i profili su dbdev che non hanno `emetti_offerta`/`emetti_contratto`/
 `emetti_ordine`, la scadenza dei preventivi (brief nuovo, E-1…E-3 a Tid). Vedi
-[brief-modello-documento-vendita.md](work-done/brief-modello-documento-vendita.md),
-[brief-db-documento-nasce-nello-stato-iniziale.md](work-done/brief-db-documento-nasce-nello-stato-iniziale.md),
-[brief-db-scadenza-preventivi.md](work-done/brief-db-scadenza-preventivi.md).
+[brief-modello-documento-vendita.md](work-done/2026/brief-modello-documento-vendita.md),
+[brief-db-documento-nasce-nello-stato-iniziale.md](work-done/2026/brief-db-documento-nasce-nello-stato-iniziale.md),
+[brief-db-scadenza-preventivi.md](work-done/2026/brief-db-scadenza-preventivi.md).
 
 **Anello 3 (trasversale) — Un nome per ogni tipo di documento, e l'offerta che
 genera l'ordine.** La **grammatica unica** (18 → 25-10) dà al tipo di documento
@@ -416,8 +416,8 @@ la riga `DERIVATA_COMPONENTI` si ritira (i componenti seguono la quantità del
 padre), un kit si vende a quantità fissa, «Genera ordine» diventa il verbo
 `vendite.fn_genera_ordine_da_offerta` con il motivo spento prima del clic, e il
 BE ritira la sua copia. Vedi
-[brief-db-grammatica-unica-documenti.md](work-done/brief-db-grammatica-unica-documenti.md),
-[brief-db-offerta-emissione-ed-erogazione.md](work-done/brief-db-offerta-emissione-ed-erogazione.md).
+[brief-db-grammatica-unica-documenti.md](work-done/2026/brief-db-grammatica-unica-documenti.md),
+[brief-db-offerta-emissione-ed-erogazione.md](work-done/2026/brief-db-offerta-emissione-ed-erogazione.md).
 
 **Anello 2/3 (`documenti`, `catalogo`, `vendite`) — Il modello di stampa
 standard, gli articoli che una riga può usare, il listino della commessa.** Un
@@ -435,10 +435,10 @@ rapido del risolutore), e il guard non giudica più su un'assenza dovuta alla
 RLS. ⚠️ Aperti: la numerazione della versione nuova (B-8), le righe d'acquisto
 (nel cantiere `acquisti`), *quando* si scrive `listino_riga_id` (brief della
 provenienza del prezzo). Vedi
-[brief-db-modelli-documento-standard.md](work-done/brief-db-modelli-documento-standard.md),
-[brief-db-articoli-ammessi-per-documento.md](work-done/brief-db-articoli-ammessi-per-documento.md),
-[brief-db-coerenza-listino-della-riga-di-commessa.md](work-done/brief-db-coerenza-listino-della-riga-di-commessa.md),
-[brief-db-provenienza-prezzo-segue-il-prezzo.md](work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md).
+[brief-db-modelli-documento-standard.md](work-done/2026/brief-db-modelli-documento-standard.md),
+[brief-db-articoli-ammessi-per-documento.md](work-done/2026/brief-db-articoli-ammessi-per-documento.md),
+[brief-db-coerenza-listino-della-riga-di-commessa.md](work-done/2026/brief-db-coerenza-listino-della-riga-di-commessa.md),
+[brief-db-provenienza-prezzo-segue-il-prezzo.md](work-done/2026/brief-db-provenienza-prezzo-segue-il-prezzo.md).
 
 ### Anagrafiche, indirizzi e magazzino — 26 ottobre
 
@@ -458,11 +458,11 @@ spenta, una modifica che collide ha il suo codice. ⚠️ Aperti: D-4
 (`COOPERATIVA`) e i titoli IVA fuori regola (PROJECT_CONTEXT § «Aperto»), il
 cambio di natura, la catena delle istanze sul PDP (D18), il trasloco di uno
 solo (D6 del civico, senza brief). Vedi
-[brief-db-dati-fiscali-e-societari-del-soggetto.md](work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md),
-[brief-db-dati-societari-in-creazione.md](work-done/brief-db-dati-societari-in-creazione.md),
-[brief-db-cliente-manuale-uno-per-soggetto-e-utility.md](work-done/brief-db-cliente-manuale-uno-per-soggetto-e-utility.md),
-[brief-db-unicita-civico-indirizzi-dettaglio.md](work-done/brief-db-unicita-civico-indirizzi-dettaglio.md),
-[brief-db-cambio-natura-soggetto-conferma-e-pulizia.md](work-done/brief-db-cambio-natura-soggetto-conferma-e-pulizia.md),
+[brief-db-dati-fiscali-e-societari-del-soggetto.md](work-done/2026/brief-db-dati-fiscali-e-societari-del-soggetto.md),
+[brief-db-dati-societari-in-creazione.md](work-done/2026/brief-db-dati-societari-in-creazione.md),
+[brief-db-cliente-manuale-uno-per-soggetto-e-utility.md](work-done/2026/brief-db-cliente-manuale-uno-per-soggetto-e-utility.md),
+[brief-db-unicita-civico-indirizzi-dettaglio.md](work-done/2026/brief-db-unicita-civico-indirizzi-dettaglio.md),
+[brief-db-cambio-natura-soggetto-conferma-e-pulizia.md](work-done/2026/brief-db-cambio-natura-soggetto-conferma-e-pulizia.md),
 [brief-db-catena-istanze-pdp.md](work-in-progress/brief-db-catena-istanze-pdp.md).
 
 **Anello 3 (`vendite`, `magazzino`) — Il documento segue il suo cliente, la
@@ -481,12 +481,12 @@ collaudo a video è scritto. Il 24-10 passa a video il collaudo della
 della bolla e del reso (scritto, da eseguire) e dell'inventario, la CI da zero
 del magazzino, la merce in viaggio; il reset del rifiuto del prezzo, che sta
 solo nel BE del preventivo. Vedi
-[brief-db-indirizzi-documento-seguono-il-cliente.md](work-done/brief-db-indirizzi-documento-seguono-il-cliente.md),
-[brief-db-magazzino-lotto-3-scarico-da-ddt.md](work-done/brief-db-magazzino-lotto-3-scarico-da-ddt.md),
-[brief-db-magazzino-lotto-3-bis-carico-da-reso.md](work-done/brief-db-magazzino-lotto-3-bis-carico-da-reso.md),
-[brief-db-reso-motivi-conferma-con-valori.md](work-done/brief-db-reso-motivi-conferma-con-valori.md),
+[brief-db-indirizzi-documento-seguono-il-cliente.md](work-done/2026/brief-db-indirizzi-documento-seguono-il-cliente.md),
+[brief-db-magazzino-lotto-3-scarico-da-ddt.md](work-done/2026/brief-db-magazzino-lotto-3-scarico-da-ddt.md),
+[brief-db-magazzino-lotto-3-bis-carico-da-reso.md](work-done/2026/brief-db-magazzino-lotto-3-bis-carico-da-reso.md),
+[brief-db-reso-motivi-conferma-con-valori.md](work-done/2026/brief-db-reso-motivi-conferma-con-valori.md),
 [collaudo-in-app-magazzino-bolla-e-reso.md](work-in-progress/collaudo-in-app-magazzino-bolla-e-reso.md),
-[collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md](work-done/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md),
+[collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md](work-done/2026/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md),
 [piano-be-fe-magazzino-lotto-3.md](work-in-progress/piano-be-fe-magazzino-lotto-3.md).
 
 ### Nucleo, contratto delle API e verifica — 26 ottobre
@@ -513,13 +513,13 @@ amministratore), una corsa con elementi falliti chiude rossa, e dove ogni corsa
 rifà tutto il verde di oggi spegne il rosso rientrato (18-10). ⚠️ Aperti: i 2
 smoke non verdi su 51 (resi-vendita, nota-credito-resi, senza brief), il
 `%TYPE` del primo giro del presidio (PROJECT_CONTEXT § «Aperto»). Vedi
-[brief-db-ruoli-di-sistema.md](work-done/brief-db-ruoli-di-sistema.md),
-[brief-db-zeroerp-log-nella-fase-ruoli.md](work-done/brief-db-zeroerp-log-nella-fase-ruoli.md),
-[brief-db-processi-accensione-per-ambiente.md](work-done/brief-db-processi-accensione-per-ambiente.md),
-[brief-be-utenti-di-sviluppo.md](work-done/brief-be-utenti-di-sviluppo.md),
-[brief-db-statistiche-tabelle-job-notturno.md](work-done/brief-db-statistiche-tabelle-job-notturno.md),
-[brief-db-presidio-job-run-a-chi-tocca.md](work-done/brief-db-presidio-job-run-a-chi-tocca.md),
-[brief-db-intermittente-e-verdetto-completo.md](work-done/brief-db-intermittente-e-verdetto-completo.md).
+[brief-db-ruoli-di-sistema.md](work-done/2026/brief-db-ruoli-di-sistema.md),
+[brief-db-zeroerp-log-nella-fase-ruoli.md](work-done/2026/brief-db-zeroerp-log-nella-fase-ruoli.md),
+[brief-db-processi-accensione-per-ambiente.md](work-done/2026/brief-db-processi-accensione-per-ambiente.md),
+[brief-be-utenti-di-sviluppo.md](work-done/2026/brief-be-utenti-di-sviluppo.md),
+[brief-db-statistiche-tabelle-job-notturno.md](work-done/2026/brief-db-statistiche-tabelle-job-notturno.md),
+[brief-db-presidio-job-run-a-chi-tocca.md](work-done/2026/brief-db-presidio-job-run-a-chi-tocca.md),
+[brief-db-intermittente-e-verdetto-completo.md](work-done/2026/brief-db-intermittente-e-verdetto-completo.md).
 
 **Anello 0/1 — Chi guarda si calcola una volta, e un parametro uguale per tutti
 lo è davvero.** **D-3b chiude il 18-10** e con lei il brief delle forme dei
@@ -533,9 +533,9 @@ di esistere solo come frase di una descrizione: una colonna
 `ammette_override`, un guard nei due versi con il suo codice, la lista
 dell'amministratore che non mostra più come effettivo un override che nessuno
 usa; i dati societari di default restano per emittente. Vedi
-[brief-db-plancache-funzioni-con-query-incorporate.md](work-done/brief-db-plancache-funzioni-con-query-incorporate.md),
-[brief-db-perimetro-una-volta-famiglie-residue.md](work-done/brief-db-perimetro-una-volta-famiglie-residue.md),
-[brief-db-parametri-senza-override.md](work-done/brief-db-parametri-senza-override.md).
+[brief-db-plancache-funzioni-con-query-incorporate.md](work-done/2026/brief-db-plancache-funzioni-con-query-incorporate.md),
+[brief-db-perimetro-una-volta-famiglie-residue.md](work-done/2026/brief-db-perimetro-una-volta-famiglie-residue.md),
+[brief-db-parametri-senza-override.md](work-done/2026/brief-db-parametri-senza-override.md).
 
 **Backend — La documentazione delle API è uguale al codice.** La verifica
 (20→24-10) copre **721 rotte su 721** in 17 aree: `order_by` fuori whitelist,
@@ -547,8 +547,8 @@ nella pulizia; nasce la guida delle
 PATCH e PUT parlano un dialetto solo (25-10). L'analisi dei difetti di `core`
 chiude il 14-10 con tutte le voci. ⚠️ Non bloccanti: due lettori non migrati al
 BB. Vedi
-[brief-be-verifica-documentazione-api.md](work-done/brief-be-verifica-documentazione-api.md),
-[analisi-be-difetti-emersi-verifica-doc-api-core.md](work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+[brief-be-verifica-documentazione-api.md](work-done/2026/brief-be-verifica-documentazione-api.md),
+[analisi-be-difetti-emersi-verifica-doc-api-core.md](work-done/2026/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
 **Verifica e qualità — Le fixture passano per le strade vere, gli indicatori
 hanno una sede.** I pgTAP smettono di ricopiare la strada «bolla consegnata da
@@ -557,8 +557,8 @@ bolla senza ordine, reso, ri-consegna, fattura dell'attività — e un centinaio
 file portati senza regressioni (25-10); il criterio: *entra in un builder ciò
 che ha una trappola d'ordine, non ciò che serve spesso*. Per strada due «verdi
 per sottrazione» chiusi. Vedi
-[brief-db-pgtap-bolla-e-reso-costruiti.md](work-done/brief-db-pgtap-bolla-e-reso-costruiti.md),
-[brief-db-pgtap-reso-costruito.md](work-done/brief-db-pgtap-reso-costruito.md).
+[brief-db-pgtap-bolla-e-reso-costruiti.md](work-done/2026/brief-db-pgtap-bolla-e-reso-costruiti.md),
+[brief-db-pgtap-reso-costruito.md](work-done/2026/brief-db-pgtap-reso-costruito.md).
 
 **Qualità BE/FE (23-10) — la valutazione chiude, gli indicatori restano.** La
 valutazione dello strato applicativo, aperta il 09-09, chiude con la sola D12
@@ -566,7 +566,7 @@ valutazione dello strato applicativo, aperta il 09-09, chiude con la sola D12
 sede viva: [qualita-be-fe-indicatori.md](qualita-be-fe-indicatori.md), con le
 lezioni, gli indicatori stampati da `scripts/indicatori-qualita-be-fe.sh` e la
 scorecard pesata; il punto d'incontro con il lato DB è la mappa §4. Vedi
-[migliorie-generali-BE-FE-da-test-valutazione.md](work-done/migliorie-generali-BE-FE-da-test-valutazione.md).
+[migliorie-generali-BE-FE-da-test-valutazione.md](work-done/2026/migliorie-generali-BE-FE-da-test-valutazione.md).
 
 **Qualità del database (23-10) — gli indicatori hanno la loro sede.** Lo stesso giorno
 il lato DB prende il documento gemello:
@@ -639,12 +639,12 @@ stessa famiglia: la **data confermata di una riga già spedita non si cambia**
 consegna si scrivono **in blocco** sulle righe, mai in testata — *la riga
 decide, sempre*. ⚠️ Aperto: la commessa vuota lasciata dal push batch
 (PROJECT_CONTEXT § «Aperto»). Vedi
-[brief-db-testata-dopo-emissione.md](work-done/brief-db-testata-dopo-emissione.md),
-[brief-db-ordine-data-consegna-confermata-capability.md](work-done/brief-db-ordine-data-consegna-confermata-capability.md),
-[brief-db-ddt-righe-evase-dall-ordine.md](work-done/brief-db-ddt-righe-evase-dall-ordine.md),
-[brief-db-annullo-documento-con-legami.md](work-done/brief-db-annullo-documento-con-legami.md),
-[brief-db-annullo-a-valle-riapre-a-monte.md](work-done/brief-db-annullo-a-valle-riapre-a-monte.md),
-[brief-db-date-consegna-righe-in-blocco.md](work-done/brief-db-date-consegna-righe-in-blocco.md).
+[brief-db-testata-dopo-emissione.md](work-done/2026/brief-db-testata-dopo-emissione.md),
+[brief-db-ordine-data-consegna-confermata-capability.md](work-done/2026/brief-db-ordine-data-consegna-confermata-capability.md),
+[brief-db-ddt-righe-evase-dall-ordine.md](work-done/2026/brief-db-ddt-righe-evase-dall-ordine.md),
+[brief-db-annullo-documento-con-legami.md](work-done/2026/brief-db-annullo-documento-con-legami.md),
+[brief-db-annullo-a-valle-riapre-a-monte.md](work-done/2026/brief-db-annullo-a-valle-riapre-a-monte.md),
+[brief-db-date-consegna-righe-in-blocco.md](work-done/2026/brief-db-date-consegna-righe-in-blocco.md).
 
 **Anello 3 (`vendite`) — Le righe e i componenti: tutte le famiglie con le
 stesse regole.** Contratto e offerta avevano le regole delle righe; preventivo,
@@ -666,14 +666,14 @@ giusti oggi, e quando smettono di esserlo non danno errore*. ⚠️ Aperti: la
 coerenza listino/versione/emittente della riga di commessa, la provenienza del
 prezzo, le righe periodiche del contratto in commessa (D31), il documento che
 nasce fuori bozza (D32). Vedi
-[brief-db-righe-e-componenti-le-altre-famiglie.md](work-done/brief-db-righe-e-componenti-le-altre-famiglie.md),
-[brief-db-righe-e-componenti-debiti-residui.md](work-done/brief-db-righe-e-componenti-debiti-residui.md),
-[brief-db-righe-esclusione-solo-non-si-vende.md](work-done/brief-db-righe-esclusione-solo-non-si-vende.md),
-[brief-db-contratto-esclusione-non-modificabile.md](work-done/brief-db-contratto-esclusione-non-modificabile.md),
-[brief-db-erogazione-obbligatoria-righe-fatturate.md](work-done/brief-db-erogazione-obbligatoria-righe-fatturate.md),
-[brief-db-riga-listino-propagata-dalla-commessa.md](work-done/brief-db-riga-listino-propagata-dalla-commessa.md),
-[brief-db-ritiro-codice-riga-gia-propagata.md](work-done/brief-db-ritiro-codice-riga-gia-propagata.md),
-[brief-db-esclusioni-implicite.md](work-done/brief-db-esclusioni-implicite.md).
+[brief-db-righe-e-componenti-le-altre-famiglie.md](work-done/2026/brief-db-righe-e-componenti-le-altre-famiglie.md),
+[brief-db-righe-e-componenti-debiti-residui.md](work-done/2026/brief-db-righe-e-componenti-debiti-residui.md),
+[brief-db-righe-esclusione-solo-non-si-vende.md](work-done/2026/brief-db-righe-esclusione-solo-non-si-vende.md),
+[brief-db-contratto-esclusione-non-modificabile.md](work-done/2026/brief-db-contratto-esclusione-non-modificabile.md),
+[brief-db-erogazione-obbligatoria-righe-fatturate.md](work-done/2026/brief-db-erogazione-obbligatoria-righe-fatturate.md),
+[brief-db-riga-listino-propagata-dalla-commessa.md](work-done/2026/brief-db-riga-listino-propagata-dalla-commessa.md),
+[brief-db-ritiro-codice-riga-gia-propagata.md](work-done/2026/brief-db-ritiro-codice-riga-gia-propagata.md),
+[brief-db-esclusioni-implicite.md](work-done/2026/brief-db-esclusioni-implicite.md).
 
 **Anello 3 (`vendite`) — L'azienda che emette è quella del cliente.** Ordine,
 DDT e reso hanno ora il cliente come preventivo, offerta e contratto (D21,
@@ -690,10 +690,10 @@ contratto, non il fatto che oggi nessun preventivo sia senza BA*. ⚠️ Aperti:
 gli indirizzi del documento che non seguono il cambio di cliente (D27, lato DB
 fatto, collaudo e BE/FE), la catena delle istanze su un PDP (D18), un cliente
 manuale per soggetto e utility (D33). Vedi
-[brief-db-esecutivi-ba-coppia.md](work-done/brief-db-esecutivi-ba-coppia.md),
-[brief-db-guard-emittente-ba-unico.md](work-done/brief-db-guard-emittente-ba-unico.md),
-[brief-db-istanza-nasce-col-ba.md](work-done/brief-db-istanza-nasce-col-ba.md),
-[brief-db-istanza-nasce-col-ba-residui.md](work-done/brief-db-istanza-nasce-col-ba-residui.md).
+[brief-db-esecutivi-ba-coppia.md](work-done/2026/brief-db-esecutivi-ba-coppia.md),
+[brief-db-guard-emittente-ba-unico.md](work-done/2026/brief-db-guard-emittente-ba-unico.md),
+[brief-db-istanza-nasce-col-ba.md](work-done/2026/brief-db-istanza-nasce-col-ba.md),
+[brief-db-istanza-nasce-col-ba-residui.md](work-done/2026/brief-db-istanza-nasce-col-ba-residui.md).
 
 ### Fattura e anagrafiche — 13 ottobre
 
@@ -712,12 +712,12 @@ vocabolari con FK — *un CHECK non si legge da una tendina* — e il render PDF
 apre le risorse esterne solo da una **lista chiusa** di asset dell'emittente.
 ⚠️ Aperti: i riepiloghi IVA dei preventivi, la storicità del regime fiscale,
 le domande per il consulente (PROJECT_CONTEXT § «Aperto»). Vedi
-[brief-db-esposizione-componenti-kit-in-fattura.md](work-done/brief-db-esposizione-componenti-kit-in-fattura.md),
-[brief-db-esigibilita-iva-per-cassa-emittente.md](work-done/brief-db-esigibilita-iva-per-cassa-emittente.md),
-[brief-db-bom-flag-quantita-e-kit-in-fattura.md](work-done/brief-db-bom-flag-quantita-e-kit-in-fattura.md),
-[brief-db-vocabolari-versione-template.md](work-done/brief-db-vocabolari-versione-template.md),
-[brief-be-documenti-risorse-esterne-render-pdf.md](work-done/brief-be-documenti-risorse-esterne-render-pdf.md),
-[brief-db-documenti-versione-contesto-template.md](work-done/brief-db-documenti-versione-contesto-template.md).
+[brief-db-esposizione-componenti-kit-in-fattura.md](work-done/2026/brief-db-esposizione-componenti-kit-in-fattura.md),
+[brief-db-esigibilita-iva-per-cassa-emittente.md](work-done/2026/brief-db-esigibilita-iva-per-cassa-emittente.md),
+[brief-db-bom-flag-quantita-e-kit-in-fattura.md](work-done/2026/brief-db-bom-flag-quantita-e-kit-in-fattura.md),
+[brief-db-vocabolari-versione-template.md](work-done/2026/brief-db-vocabolari-versione-template.md),
+[brief-be-documenti-risorse-esterne-render-pdf.md](work-done/2026/brief-be-documenti-risorse-esterne-render-pdf.md),
+[brief-db-documenti-versione-contesto-template.md](work-done/2026/brief-db-documenti-versione-contesto-template.md).
 
 **Anello 1 (`anagrafiche`) — Il soggetto: ciò che non si inventa e ciò che
 dipende dalla natura.** *Il sesso di una persona fisica non si inventa* (10-10):
@@ -730,9 +730,9 @@ societari** (10/11-10): PA e split payment ammessi per natura, un verbo unico
 per i dati societari, la forma giuridica legata alla natura, i titoli IVA solo
 dove la natura li ammette; lato DB e BE/FE verdi e collaudati l'11-10, al 13-10
 ancora in `work-in-progress` con D-4 (`COOPERATIVA`) aperta, archiviato il 14-10. Vedi
-[brief-db-sesso-senza-default.md](work-done/brief-db-sesso-senza-default.md),
-[brief-db-character-n-spazi-di-riempimento.md](work-done/brief-db-character-n-spazi-di-riempimento.md),
-[brief-db-dati-fiscali-e-societari-del-soggetto.md](work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md).
+[brief-db-sesso-senza-default.md](work-done/2026/brief-db-sesso-senza-default.md),
+[brief-db-character-n-spazi-di-riempimento.md](work-done/2026/brief-db-character-n-spazi-di-riempimento.md),
+[brief-db-dati-fiscali-e-societari-del-soggetto.md](work-done/2026/brief-db-dati-fiscali-e-societari-del-soggetto.md).
 
 ### Permessi e accessi — 13 ottobre
 
@@ -750,12 +750,12 @@ dei permessi **avvisa il backend al commit** (NOTIFY per statement, la cache si
 svuota da qualunque scrittore). Il brief del permesso nel verbo è archiviato il
 03-10: il modello vive nella guida, il passo 3 resta senza data. Collaudi a
 video dei permessi ereditati e della UI verdi il 06-10. Vedi
-[brief-db-permessi-tetto-area.md](work-done/brief-db-permessi-tetto-area.md),
-[analisi-ui-permessi-operatore.md](work-done/analisi-ui-permessi-operatore.md),
-[piano-be-fe-ui-permessi-operatore.md](work-done/piano-be-fe-ui-permessi-operatore.md),
-[brief-db-riepilogo-permessi-lista-operatori.md](work-done/brief-db-riepilogo-permessi-lista-operatori.md),
-[brief-db-permessi-catalogo-notify-cache.md](work-done/brief-db-permessi-catalogo-notify-cache.md),
-[brief-db-permesso-nel-verbo-di-scrittura.md](work-done/brief-db-permesso-nel-verbo-di-scrittura.md).
+[brief-db-permessi-tetto-area.md](work-done/2026/brief-db-permessi-tetto-area.md),
+[analisi-ui-permessi-operatore.md](work-done/2026/analisi-ui-permessi-operatore.md),
+[piano-be-fe-ui-permessi-operatore.md](work-done/2026/piano-be-fe-ui-permessi-operatore.md),
+[brief-db-riepilogo-permessi-lista-operatori.md](work-done/2026/brief-db-riepilogo-permessi-lista-operatori.md),
+[brief-db-permessi-catalogo-notify-cache.md](work-done/2026/brief-db-permessi-catalogo-notify-cache.md),
+[brief-db-permesso-nel-verbo-di-scrittura.md](work-done/2026/brief-db-permesso-nel-verbo-di-scrittura.md).
 
 **Anello 0/1 — Accessi: il secondo fattore chiuso, una veste utilizzabile in
 una sede.** Il **TOTP** chiude il 02-10 con BE/FE e collaudo (cancello degli
@@ -772,18 +772,18 @@ BE — *un frammento Python sarebbe stato la quinta copia*. Portale e shop
 entrano con l'email (L-4). La metà OAuth dell'analisi 2FA esce in un piano suo.
 ⚠️ Aperti: L-5 (revoca della veste, manca il brief DB), il collaudo di D-5,
 i provider esterni. Vedi
-[autenticazione-due-fattori-e-provider.md](work-done/autenticazione-due-fattori-e-provider.md),
-[brief-be-fe-sicurezza-header-token-mfa.md](work-done/brief-be-fe-sicurezza-header-token-mfa.md),
-[brief-db-secondo-fattore-totp.md](work-done/brief-db-secondo-fattore-totp.md),
-[brief-db-secondo-fattore-riautenticazione-password.md](work-done/brief-db-secondo-fattore-riautenticazione-password.md),
-[brief-db-totp-ricifra-segreto.md](work-done/brief-db-totp-ricifra-segreto.md),
-[brief-db-codici-cancello-obblighi-e-sfida-totp.md](work-done/brief-db-codici-cancello-obblighi-e-sfida-totp.md),
-[brief-db-be-fe-area-accessi.md](work-done/brief-db-be-fe-area-accessi.md),
-[brief-db-credenziale-verbi-amministratore.md](work-done/brief-db-credenziale-verbi-amministratore.md),
-[brief-db-elimina-credenziale-senza-veste.md](work-done/brief-db-elimina-credenziale-senza-veste.md),
-[brief-db-veste-utilizzabile.md](work-done/brief-db-veste-utilizzabile.md),
-[brief-db-codici-non-trovato-email-e-permessi.md](work-done/brief-db-codici-non-trovato-email-e-permessi.md),
-[collaudo-in-app-consenso-riuso-credenziale.md](work-done/collaudo-in-app-consenso-riuso-credenziale.md),
+[autenticazione-due-fattori-e-provider.md](work-done/2026/autenticazione-due-fattori-e-provider.md),
+[brief-be-fe-sicurezza-header-token-mfa.md](work-done/2026/brief-be-fe-sicurezza-header-token-mfa.md),
+[brief-db-secondo-fattore-totp.md](work-done/2026/brief-db-secondo-fattore-totp.md),
+[brief-db-secondo-fattore-riautenticazione-password.md](work-done/2026/brief-db-secondo-fattore-riautenticazione-password.md),
+[brief-db-totp-ricifra-segreto.md](work-done/2026/brief-db-totp-ricifra-segreto.md),
+[brief-db-codici-cancello-obblighi-e-sfida-totp.md](work-done/2026/brief-db-codici-cancello-obblighi-e-sfida-totp.md),
+[brief-db-be-fe-area-accessi.md](work-done/2026/brief-db-be-fe-area-accessi.md),
+[brief-db-credenziale-verbi-amministratore.md](work-done/2026/brief-db-credenziale-verbi-amministratore.md),
+[brief-db-elimina-credenziale-senza-veste.md](work-done/2026/brief-db-elimina-credenziale-senza-veste.md),
+[brief-db-veste-utilizzabile.md](work-done/2026/brief-db-veste-utilizzabile.md),
+[brief-db-codici-non-trovato-email-e-permessi.md](work-done/2026/brief-db-codici-non-trovato-email-e-permessi.md),
+[collaudo-in-app-consenso-riuso-credenziale.md](work-done/2026/collaudo-in-app-consenso-riuso-credenziale.md),
 [piano-be-fe-accessi-credenziale-e-vesti.md](work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md),
 [piano-autenticazione-provider-esterni-oauth.md](work-in-progress/piano-autenticazione-provider-esterni-oauth.md).
 
@@ -807,20 +807,20 @@ documenti **costruiscono** il proprio documento (copertura in CI da zero a
 reale), sei codici sfilati entrano a catalogo, la ricerca universale non taglia
 più a 10.000 righe senza ordine, e il **type checker** del BE va a regime
 (registro mypy 620 → 0; in L0 un 500 vecchio di sei mesi). Vedi
-[brief-be-db-fe-un-solo-fuso-aziendale.md](work-done/brief-be-db-fe-un-solo-fuso-aziendale.md),
-[brief-db-valore-numerico-non-finito-nei-documenti.md](work-done/brief-db-valore-numerico-non-finito-nei-documenti.md),
-[brief-db-corsa-saltata-non-e-una-corsa.md](work-done/brief-db-corsa-saltata-non-e-una-corsa.md),
-[brief-db-presidi-cosa-significa-cosa-fare.md](work-done/brief-db-presidi-cosa-significa-cosa-fare.md),
-[brief-db-presidio-processi-testo-per-causa.md](work-done/brief-db-presidio-processi-testo-per-causa.md),
-[brief-db-liste-documento-lineage-lenta.md](work-done/brief-db-liste-documento-lineage-lenta.md),
-[brief-db-lineage-seminata-per-chiave.md](work-done/brief-db-lineage-seminata-per-chiave.md),
-[brief-db-segment-base-commesse-attivita.md](work-done/brief-db-segment-base-commesse-attivita.md),
-[brief-db-plancache-funzioni-con-query-incorporate.md](work-done/brief-db-plancache-funzioni-con-query-incorporate.md),
-[brief-db-fixture-rls-documenti-costruiti.md](work-done/brief-db-fixture-rls-documenti-costruiti.md),
-[brief-db-codici-sfilati-e-lista-parametri.md](work-done/brief-db-codici-sfilati-e-lista-parametri.md),
-[brief-db-ricerca-universale-tetto-10000.md](work-done/brief-db-ricerca-universale-tetto-10000.md),
-[brief-db-parametro-data-minima-ritardo-dashboard.md](work-done/brief-db-parametro-data-minima-ritardo-dashboard.md),
-[piano-be-type-checker.md](work-done/piano-be-type-checker.md).
+[brief-be-db-fe-un-solo-fuso-aziendale.md](work-done/2026/brief-be-db-fe-un-solo-fuso-aziendale.md),
+[brief-db-valore-numerico-non-finito-nei-documenti.md](work-done/2026/brief-db-valore-numerico-non-finito-nei-documenti.md),
+[brief-db-corsa-saltata-non-e-una-corsa.md](work-done/2026/brief-db-corsa-saltata-non-e-una-corsa.md),
+[brief-db-presidi-cosa-significa-cosa-fare.md](work-done/2026/brief-db-presidi-cosa-significa-cosa-fare.md),
+[brief-db-presidio-processi-testo-per-causa.md](work-done/2026/brief-db-presidio-processi-testo-per-causa.md),
+[brief-db-liste-documento-lineage-lenta.md](work-done/2026/brief-db-liste-documento-lineage-lenta.md),
+[brief-db-lineage-seminata-per-chiave.md](work-done/2026/brief-db-lineage-seminata-per-chiave.md),
+[brief-db-segment-base-commesse-attivita.md](work-done/2026/brief-db-segment-base-commesse-attivita.md),
+[brief-db-plancache-funzioni-con-query-incorporate.md](work-done/2026/brief-db-plancache-funzioni-con-query-incorporate.md),
+[brief-db-fixture-rls-documenti-costruiti.md](work-done/2026/brief-db-fixture-rls-documenti-costruiti.md),
+[brief-db-codici-sfilati-e-lista-parametri.md](work-done/2026/brief-db-codici-sfilati-e-lista-parametri.md),
+[brief-db-ricerca-universale-tetto-10000.md](work-done/2026/brief-db-ricerca-universale-tetto-10000.md),
+[brief-db-parametro-data-minima-ritardo-dashboard.md](work-done/2026/brief-db-parametro-data-minima-ritardo-dashboard.md),
+[piano-be-type-checker.md](work-done/2026/piano-be-type-checker.md).
 
 **Anello 1 / frontend e Anello 3 (`magazzino`) — Una sede per il drawer, la
 merce che esce a video.** Gli **80 drawer** laterali passano da una sede sola
@@ -835,12 +835,12 @@ la bolla e il reso muovono la merce dall'interfaccia, con prelievi, rientri e un
 BB della sezione merce del documento. ⚠️ Aperti: il collaudo a video dei
 blocchi A/B/C e dell'inventario, i motivi della conferma del reso senza valori
 (brief DB nuovo), la CI da zero. Vedi
-[analisi-fe-chrome-drawer.md](work-done/analisi-fe-chrome-drawer.md),
-[censimento-icone-per-significato.md](work-done/censimento-icone-per-significato.md),
-[collaudo-in-app-osservabilita-giornale-errori-pallino.md](work-done/collaudo-in-app-osservabilita-giornale-errori-pallino.md),
-[collaudo-in-app-casella-ricerca-liste.md](work-done/collaudo-in-app-casella-ricerca-liste.md),
+[analisi-fe-chrome-drawer.md](work-done/2026/analisi-fe-chrome-drawer.md),
+[censimento-icone-per-significato.md](work-done/2026/censimento-icone-per-significato.md),
+[collaudo-in-app-osservabilita-giornale-errori-pallino.md](work-done/2026/collaudo-in-app-osservabilita-giornale-errori-pallino.md),
+[collaudo-in-app-casella-ricerca-liste.md](work-done/2026/collaudo-in-app-casella-ricerca-liste.md),
 [piano-be-fe-magazzino-lotto-3.md](work-in-progress/piano-be-fe-magazzino-lotto-3.md),
-[brief-db-reso-motivi-conferma-con-valori.md](work-done/brief-db-reso-motivi-conferma-con-valori.md).
+[brief-db-reso-motivi-conferma-con-valori.md](work-done/2026/brief-db-reso-motivi-conferma-con-valori.md).
 
 **In breve, senza un tema proprio** — la valutazione DB prende una parte
 qualitativa sul **design** (§2-bis, 04-10), da cui nascono le voci da D17 a
@@ -865,7 +865,7 @@ chiusura la lettura delle righe sale in un building block di core (lo usa
 anche la distinta del catalogo), «leggi prima la testata» diventa un BB con un
 test per consumatore, e i default di pagina delle firme backend tornano alla
 fonte unica (liste di eventi comprese, con la loro costante) —
-[brief-db-liste-righe-documento](work-done/brief-db-liste-righe-documento.md).
+[brief-db-liste-righe-documento](work-done/2026/brief-db-liste-righe-documento.md).
 
 ## 1 ottobre 2026
 
@@ -878,7 +878,7 @@ del reso). Deciso: lo schema `magazzino` contiene il **registro** (anello 2, com
 `pratiche`: predisposto finché `acquisti` non diventa il secondo dominio consumatore) e i
 **documenti di magazzino** (anello 3); la regola «mai dipendenze laterali» resta intera. Il verso
 inverso è un debito: i posting tornano in `vendite`, e un presidio lo tiene a zero —
-[brief-db-magazzino-registro-anello-interno](work-done/brief-db-magazzino-registro-anello-interno.md).
+[brief-db-magazzino-registro-anello-interno](work-done/2026/brief-db-magazzino-registro-anello-interno.md).
 
 Lo stesso giorno il lavoro è **scritto** (`20261001-18 → -26`, da applicare): i posting in
 `vendite`, il cancello `dbops.vw_magazzino_dipendenze_inverse` in CI — e il cancello, al primo
@@ -916,7 +916,7 @@ nessun controllo aveva già due eccezioni silenziose.*
 **Anello 0 — I presidi hanno un catalogo, e un contatore che non mente.** Nasce `dbops.presidi`:
 un presidio che non ha mai girato non conta come copertura, e *un cancello non deve poter zittire
 un altro cancello*. Vedi
-[brief-db-un-destinatario-per-i-presidi.md](work-done/brief-db-un-destinatario-per-i-presidi.md).
+[brief-db-un-destinatario-per-i-presidi.md](work-done/2026/brief-db-un-destinatario-per-i-presidi.md).
 
 **Anello 0 — Presidi e fixture: il mondo si costruisce, i presidi del percorso storto esistono.**
 C1 (un valore ammesso dal CHECK e mai scritto) e C2 (la `ui_action` a catalogo e il canale che la
@@ -924,23 +924,23 @@ realizza) si chiudono; il giro 2 delle fixture porta il BB di composizione del m
 nessun file della suite fa più `COMMIT`. D7 chiude il perimetro con fixture che costruiscono i
 soggetti, e i rientrati li toglie uno script dal log della corsa. Le analisi dei presidi del
 percorso storto e della diagnostica di produzione si chiudono **senza aprire cantieri**. Vedi
-[brief-db-presidio-stati-mai-scritti.md](work-done/brief-db-presidio-stati-mai-scritti.md),
-[brief-be-presidio-ui-action-e-canale-campi.md](work-done/brief-be-presidio-ui-action-e-canale-campi.md),
-[brief-db-fixture-che-costruiscono-giro-2.md](work-done/brief-db-fixture-che-costruiscono-giro-2.md),
-[brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-done/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
-[analisi-presidi-percorso-storto.md](work-done/analisi-presidi-percorso-storto.md),
-[analisi-diagnostica-produzione-senza-accesso-db.md](work-done/analisi-diagnostica-produzione-senza-accesso-db.md).
+[brief-db-presidio-stati-mai-scritti.md](work-done/2026/brief-db-presidio-stati-mai-scritti.md),
+[brief-be-presidio-ui-action-e-canale-campi.md](work-done/2026/brief-be-presidio-ui-action-e-canale-campi.md),
+[brief-db-fixture-che-costruiscono-giro-2.md](work-done/2026/brief-db-fixture-che-costruiscono-giro-2.md),
+[brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-done/2026/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
+[analisi-presidi-percorso-storto.md](work-done/2026/analisi-presidi-percorso-storto.md),
+[analisi-diagnostica-produzione-senza-accesso-db.md](work-done/2026/analisi-diagnostica-produzione-senza-accesso-db.md).
 
 **Anello 0 — Ciò che la CI non vedeva: trigger generati e giro notturno.** Un dato che viaggia
 negli argomenti del trigger non si trova cercando nei corpi: il codice ritirato sollevato da 69
 trigger, i lock scritti a mano cancellati dal job, lo storico che cercava la colonna FK sbagliata.
 Il registro diventa l'unica sede di un lock, i **job notturni girano in CI** in ordine dichiarato,
 e la regola «`valido_al` non precede `valido_dal`» ha una sede sola. Vedi
-[brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](work-done/brief-db-codici-ritirati-negli-argomenti-dei-trigger.md),
-[brief-db-lock-di-colonna-fuori-registro.md](work-done/brief-db-lock-di-colonna-fuori-registro.md),
-[brief-db-storico-colonna-fk-dei-trigger.md](work-done/brief-db-storico-colonna-fk-dei-trigger.md),
-[brief-db-job-notturni-in-ci.md](work-done/brief-db-job-notturni-in-ci.md),
-[brief-db-guard-date-validita.md](work-done/brief-db-guard-date-validita.md).
+[brief-db-codici-ritirati-negli-argomenti-dei-trigger.md](work-done/2026/brief-db-codici-ritirati-negli-argomenti-dei-trigger.md),
+[brief-db-lock-di-colonna-fuori-registro.md](work-done/2026/brief-db-lock-di-colonna-fuori-registro.md),
+[brief-db-storico-colonna-fk-dei-trigger.md](work-done/2026/brief-db-storico-colonna-fk-dei-trigger.md),
+[brief-db-job-notturni-in-ci.md](work-done/2026/brief-db-job-notturni-in-ci.md),
+[brief-db-guard-date-validita.md](work-done/2026/brief-db-guard-date-validita.md).
 
 **Anello 0 — I processi automatici: un'identità, un contratto di vitalità, «Esegui ora».** Ogni
 processo del backend ha un artefatto di deploy e un'identità, quindi un perimetro. La tolleranza
@@ -948,24 +948,24 @@ diventa un dato di catalogo, il panorama dice `MUTO` e `MAI_PARTITO`, il listene
 dalla sessione, un guardiano accoda la notifica se il digest tace, e una mail stampata a video è
 `SIMULATA`, non inviata. «Esegui ora» entra in esercizio con tre celle di CSV; «Riavvia» resta
 dietro D1, perché senza un *host* nel modello riavvierebbe una macchina a caso. Vedi
-[brief-db-processi-automatici-identita-e-perimetro.md](work-done/brief-db-processi-automatici-identita-e-perimetro.md),
-[brief-db-sveglia-dei-processi.md](work-done/brief-db-sveglia-dei-processi.md),
-[brief-db-processi-automatici-residui-be.md](work-done/brief-db-processi-automatici-residui-be.md),
-[piano-be-fe-processi-automatici-identita-e-perimetro.md](work-done/piano-be-fe-processi-automatici-identita-e-perimetro.md),
-[brief-db-quattro-processi-senza-presidio.md](work-done/brief-db-quattro-processi-senza-presidio.md),
-[brief-db-stato-email-console-non-e-inviata.md](work-done/brief-db-stato-email-console-non-e-inviata.md),
-[brief-db-avvio-manuale-di-un-processo.md](work-done/brief-db-avvio-manuale-di-un-processo.md),
-[piano-be-fe-avvio-manuale-di-un-processo.md](work-done/piano-be-fe-avvio-manuale-di-un-processo.md),
-[analisi-riavvio-processi-da-interfaccia.md](work-done/analisi-riavvio-processi-da-interfaccia.md).
+[brief-db-processi-automatici-identita-e-perimetro.md](work-done/2026/brief-db-processi-automatici-identita-e-perimetro.md),
+[brief-db-sveglia-dei-processi.md](work-done/2026/brief-db-sveglia-dei-processi.md),
+[brief-db-processi-automatici-residui-be.md](work-done/2026/brief-db-processi-automatici-residui-be.md),
+[piano-be-fe-processi-automatici-identita-e-perimetro.md](work-done/2026/piano-be-fe-processi-automatici-identita-e-perimetro.md),
+[brief-db-quattro-processi-senza-presidio.md](work-done/2026/brief-db-quattro-processi-senza-presidio.md),
+[brief-db-stato-email-console-non-e-inviata.md](work-done/2026/brief-db-stato-email-console-non-e-inviata.md),
+[brief-db-avvio-manuale-di-un-processo.md](work-done/2026/brief-db-avvio-manuale-di-un-processo.md),
+[piano-be-fe-avvio-manuale-di-un-processo.md](work-done/2026/piano-be-fe-avvio-manuale-di-un-processo.md),
+[analisi-riavvio-processi-da-interfaccia.md](work-done/2026/analisi-riavvio-processi-da-interfaccia.md).
 
 **Anello 0 — Osservabilità: l'ultimo miglio, e il pallino in topbar.** Errori tecnici dietro
 permesso, Giornale eventi, retention e pallino dei presidi; il verdetto «lotto fermo» nasce a DB
 invece di vivere in Python. ⚠️ Restava aperto il `USAGE` di `zeroerp_log` su `dbops` in CI
 (PROJECT_CONTEXT). Vedi
-[analisi-osservabilita-log.md](work-done/analisi-osservabilita-log.md),
-[piano-be-fe-osservabilita-pallino-e-superfici.md](work-done/piano-be-fe-osservabilita-pallino-e-superfici.md),
-[brief-db-osservabilita-lotto-fermo-r6-indici.md](work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md),
-[brief-db-privilegio-app-job-run-log.md](work-done/brief-db-privilegio-app-job-run-log.md).
+[analisi-osservabilita-log.md](work-done/2026/analisi-osservabilita-log.md),
+[piano-be-fe-osservabilita-pallino-e-superfici.md](work-done/2026/piano-be-fe-osservabilita-pallino-e-superfici.md),
+[brief-db-osservabilita-lotto-fermo-r6-indici.md](work-done/2026/brief-db-osservabilita-lotto-fermo-r6-indici.md),
+[brief-db-privilegio-app-job-run-log.md](work-done/2026/brief-db-privilegio-app-job-run-log.md).
 
 ### Perimetro, permessi e sicurezza
 
@@ -974,10 +974,10 @@ L'elenco a mano diventa un **criterio transitivo** (ogni tabella con una FK vers
 nove famiglie armate, il debito da 33 a 8 righe. Lo storico porta il proprio perimetro: lo scope
 **si cattura, non si deriva**, 37 shadow armate, e `dbops.audit_log` ha un cancello alla scrittura.
 D13: un BA non ancora collegato appartiene a chi lo sta creando. Vedi
-[brief-db-perimetro-emittente-righe-documento.md](work-done/brief-db-perimetro-emittente-righe-documento.md),
-[brief-db-viste-security-invoker-criterio.md](work-done/brief-db-viste-security-invoker-criterio.md),
-[brief-db-rls-storico-scope-congelato.md](work-done/brief-db-rls-storico-scope-congelato.md),
-[brief-db-ba-riserva-emittente-operatore-d13.md](work-done/brief-db-ba-riserva-emittente-operatore-d13.md).
+[brief-db-perimetro-emittente-righe-documento.md](work-done/2026/brief-db-perimetro-emittente-righe-documento.md),
+[brief-db-viste-security-invoker-criterio.md](work-done/2026/brief-db-viste-security-invoker-criterio.md),
+[brief-db-rls-storico-scope-congelato.md](work-done/2026/brief-db-rls-storico-scope-congelato.md),
+[brief-db-ba-riserva-emittente-operatore-d13.md](work-done/2026/brief-db-ba-riserva-emittente-operatore-d13.md).
 
 **Anello 0 — Il DB applica i permessi, non solo li calcola.** Il modello *una scrittura = un
 verbo*: il verbo dichiara il permesso nella prima riga (`fn_guard_azione`, `fn_guard_livello`,
@@ -985,141 +985,141 @@ verbo*: il verbo dichiara il permesso nella prima riga (`fn_guard_azione`, `fn_g
 pannello config, dove è emerso chi si alzava i privilegi da Configurazione; ogni `GET` gira in sola
 lettura; la sync dell'owner si difende nel corpo. ⚠️ Restava aperto il passo 3, i domini
 esistenti. Vedi
-[brief-db-permesso-nel-verbo-di-scrittura.md](work-done/brief-db-permesso-nel-verbo-di-scrittura.md),
-[brief-db-magazzino-verbi-con-permesso.md](work-done/brief-db-magazzino-verbi-con-permesso.md),
-[brief-db-pannello-config-verbo-generico.md](work-done/brief-db-pannello-config-verbo-generico.md),
-[brief-be-letture-in-transazione-sola-lettura.md](work-done/brief-be-letture-in-transazione-sola-lettura.md),
-[brief-db-registro-owner-e-sync-riservati-al-migratore.md](work-done/brief-db-registro-owner-e-sync-riservati-al-migratore.md).
+[brief-db-permesso-nel-verbo-di-scrittura.md](work-done/2026/brief-db-permesso-nel-verbo-di-scrittura.md),
+[brief-db-magazzino-verbi-con-permesso.md](work-done/2026/brief-db-magazzino-verbi-con-permesso.md),
+[brief-db-pannello-config-verbo-generico.md](work-done/2026/brief-db-pannello-config-verbo-generico.md),
+[brief-be-letture-in-transazione-sola-lettura.md](work-done/2026/brief-be-letture-in-transazione-sola-lettura.md),
+[brief-db-registro-owner-e-sync-riservati-al-migratore.md](work-done/2026/brief-db-registro-owner-e-sync-riservati-al-migratore.md).
 
 **Anello 0/1 — Le porte dicono la stessa cosa.** Il catalogo degli oggetti personalizzabili
 coincide con le quattro porte (BE, FE, verbo DB, catalogo) e la regola sta in una FK; l'ereditato
 del pannello permessi si calcola a DB, dove lo spareggio era in cinque posti; la capability è
 annidata, non fusa nel dettaglio. Vedi
-[brief-db-be-fe-catalogo-oggetti-permessi.md](work-done/brief-db-be-fe-catalogo-oggetti-permessi.md),
-[brief-db-pgtap-permessi-ereditati.md](work-done/brief-db-pgtap-permessi-ereditati.md),
-[brief-be-fe-capability-annidata.md](work-done/brief-be-fe-capability-annidata.md),
-[brief-db-messaggio-ba-senza-emittente.md](work-done/brief-db-messaggio-ba-senza-emittente.md).
+[brief-db-be-fe-catalogo-oggetti-permessi.md](work-done/2026/brief-db-be-fe-catalogo-oggetti-permessi.md),
+[brief-db-pgtap-permessi-ereditati.md](work-done/2026/brief-db-pgtap-permessi-ereditati.md),
+[brief-be-fe-capability-annidata.md](work-done/2026/brief-be-fe-capability-annidata.md),
+[brief-db-messaggio-ba-senza-emittente.md](work-done/2026/brief-db-messaggio-ba-senza-emittente.md).
 
 **Trasversale — Sicurezza in profondità, dalla superficie al secondo fattore.** Superficie
 pubblica ridotta (gunicorn su loopback, admin Django tolto), segreti fuori da git con gitleaks in
 pre-commit e in CI, refresh token nel cookie `HttpOnly` e chiave di cifratura separata dalla
 `SECRET_KEY`; il **TOTP** lato DB, con l'obbligo sulla credenziale o sul profilo e l'anti-replay
 sul passo. Vedi
-[brief-be-fe-sicurezza-header-token-mfa.md](work-done/brief-be-fe-sicurezza-header-token-mfa.md),
-[brief-db-secondo-fattore-totp.md](work-done/brief-db-secondo-fattore-totp.md),
+[brief-be-fe-sicurezza-header-token-mfa.md](work-done/2026/brief-be-fe-sicurezza-header-token-mfa.md),
+[brief-db-secondo-fattore-totp.md](work-done/2026/brief-db-secondo-fattore-totp.md),
 [configurazione-django.md](backend/configurazione-django.md).
 
 **Anello 0 + 1 — Il software che serviva dati morti.** Otto voci ritirate — viste coi nomi vecchi,
 shadow legacy, tabelle di backup, alias deprecati —, e *«tenere per sicurezza» è la forma da cui
 ogni voce era nata*. Dietro, in CI, un GRANT su `django.auth_user` dato a mano su dev: *un
 privilegio che esiste su una macchina è un ricordo*. Vedi
-[analisi-software-per-dati-morti.md](work-done/analisi-software-per-dati-morti.md).
+[analisi-software-per-dati-morti.md](work-done/2026/analisi-software-per-dati-morti.md).
 
 **Anello 0 — Quando nasce un building block, le copie si ritirano nello stesso giro.**
 L'emittente di default è una funzione sola su undici tabelle, le quattro copie di `vendite`
 ritirate: *non c'è produzione, non c'è niente da aspettare*. Vedi
-[brief-db-emittente-di-default-un-bb-solo.md](work-done/brief-db-emittente-di-default-un-bb-solo.md).
+[brief-db-emittente-di-default-un-bb-solo.md](work-done/2026/brief-db-emittente-di-default-un-bb-solo.md).
 
 **Anello 0 — Il primo motivo di un controllo esce da un posto solo.**
 `script.fn_raise_primo_motivo_se_presente` al posto di tredici copie della stessa coda. Vedi
-[brief-db-coda-primo-motivo-in-un-posto-solo.md](work-done/brief-db-coda-primo-motivo-in-un-posto-solo.md),
-[brief-db-i-motivi-si-fermano-dentro-la-check.md](work-done/brief-db-i-motivi-si-fermano-dentro-la-check.md).
+[brief-db-coda-primo-motivo-in-un-posto-solo.md](work-done/2026/brief-db-coda-primo-motivo-in-un-posto-solo.md),
+[brief-db-i-motivi-si-fermano-dentro-la-check.md](work-done/2026/brief-db-i-motivi-si-fermano-dentro-la-check.md).
 
 ### Liste e interfaccia
 
 **Anello 1 (`ui`) — Il perimetro emittente arriva ai cataloghi globali.** Sei liste dichiarate
 `perimetro_emittente = false`; il valore sta nella colonna del CSV della lista, non in un seed
 laterale, che si ritira. Vedi
-[brief-db-perimetro-emittente-cataloghi-globali.md](work-done/brief-db-perimetro-emittente-cataloghi-globali.md).
+[brief-db-perimetro-emittente-cataloghi-globali.md](work-done/2026/brief-db-perimetro-emittente-cataloghi-globali.md).
 
 **Anello 1 (`ui`) — La lista dice da sé che cosa è.** La ricerca libera legge il catalogo, la
 soglia è una colonna, le misure di pagina hanno un catalogo, le azioni portano un significato e il
 FE ne ricava icona e colore. Vedi
-[brief-be-ricerca-full-liste-residue.md](work-done/brief-be-ricerca-full-liste-residue.md),
-[brief-db-ricerca-full-colonne-permessi.md](work-done/brief-db-ricerca-full-colonne-permessi.md),
-[brief-db-ricerca-full-colonne-da-accendere.md](work-done/brief-db-ricerca-full-colonne-da-accendere.md),
-[brief-db-be-fe-ricerca-soglia-per-lista.md](work-done/brief-db-be-fe-ricerca-soglia-per-lista.md),
-[brief-db-misure-pagina-catalogo.md](work-done/brief-db-misure-pagina-catalogo.md),
-[brief-db-icone-azioni-per-significato.md](work-done/brief-db-icone-azioni-per-significato.md),
-[brief-db-lista-articoli-colonne-data.md](work-done/brief-db-lista-articoli-colonne-data.md).
+[brief-be-ricerca-full-liste-residue.md](work-done/2026/brief-be-ricerca-full-liste-residue.md),
+[brief-db-ricerca-full-colonne-permessi.md](work-done/2026/brief-db-ricerca-full-colonne-permessi.md),
+[brief-db-ricerca-full-colonne-da-accendere.md](work-done/2026/brief-db-ricerca-full-colonne-da-accendere.md),
+[brief-db-be-fe-ricerca-soglia-per-lista.md](work-done/2026/brief-db-be-fe-ricerca-soglia-per-lista.md),
+[brief-db-misure-pagina-catalogo.md](work-done/2026/brief-db-misure-pagina-catalogo.md),
+[brief-db-icone-azioni-per-significato.md](work-done/2026/brief-db-icone-azioni-per-significato.md),
+[brief-db-lista-articoli-colonne-data.md](work-done/2026/brief-db-lista-articoli-colonne-data.md).
 
 **Anello 1 / frontend — Una sola macchina per ogni gesto.** Le `DataTable` grezze riclassificate
 (eccezioni vere contro liste a catalogo 83-96, tre troncavano in silenzio), le righe di documento
 come liste (97-103) col BB `useFormInline`, i filtri compatti in un drawer su tutte le view, il
 verso delle dipendenze fra domini, OpenAPI a zero rilievi. Vedi
-[brief-db-liste-datatable-grezze.md](work-done/brief-db-liste-datatable-grezze.md),
-[brief-db-liste-righe-documento.md](work-done/brief-db-liste-righe-documento.md),
-[brief-fe-filtri-lista-su-schermo-compatto.md](work-done/brief-fe-filtri-lista-su-schermo-compatto.md),
-[analisi-fe-regole-standard-violate-dal-codice.md](work-done/analisi-fe-regole-standard-violate-dal-codice.md).
+[brief-db-liste-datatable-grezze.md](work-done/2026/brief-db-liste-datatable-grezze.md),
+[brief-db-liste-righe-documento.md](work-done/2026/brief-db-liste-righe-documento.md),
+[brief-fe-filtri-lista-su-schermo-compatto.md](work-done/2026/brief-fe-filtri-lista-su-schermo-compatto.md),
+[analisi-fe-regole-standard-violate-dal-codice.md](work-done/2026/analisi-fe-regole-standard-violate-dal-codice.md).
 
 ### Documenti, vendite, pagamenti e magazzino
 
 **Anello 2 (`documenti`) — Il patto fra la versione di template e la forma dei dati.** Ogni
 versione di template dichiara la forma che legge e si stampa solo se coincide con quella del
 builder: *Jinja non si lamenta*. Vedi
-[brief-db-documenti-versione-contesto-template.md](work-done/brief-db-documenti-versione-contesto-template.md).
+[brief-db-documenti-versione-contesto-template.md](work-done/2026/brief-db-documenti-versione-contesto-template.md).
 
 **Anello 3 (`vendite`) — Un documento rotto non tiene più in ostaggio il giro, e l'esito ha casa
 propria.** Un documento non emettibile esce dal giro e il lotto prosegue; il trattenuto ha una
 sede sola; l'esito di un documento nel lotto è un dato, e la segnalazione dice di quale documento
 parla. Al rilancio la discovery rivede le commesse trattenute dal lotto stesso, e a valle di un
 task eseguito nessun task si salta. Vedi
-[brief-db-uscita-documento-dal-giro.md](work-done/brief-db-uscita-documento-dal-giro.md),
-[brief-db-documento-trattenuto-da-un-lotto-vivo.md](work-done/brief-db-documento-trattenuto-da-un-lotto-vivo.md),
-[brief-db-il-trattenuto-passa-lo-stesso.md](work-done/brief-db-il-trattenuto-passa-lo-stesso.md),
-[brief-db-il-marcatore-scrive-su-un-documento-uscito.md](work-done/brief-db-il-marcatore-scrive-su-un-documento-uscito.md),
-[brief-db-esito-gruppo-lotto.md](work-done/brief-db-esito-gruppo-lotto.md),
-[brief-be-db-gruppo-key-sulle-segnalazioni.md](work-done/brief-be-db-gruppo-key-sulle-segnalazioni.md),
-[brief-residuo-fatturabili-e-bandiere-esito-parziale.md](work-done/brief-residuo-fatturabili-e-bandiere-esito-parziale.md),
-[brief-db-rilancio-step-non-rivede-le-proprie-commesse.md](work-done/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md),
-[collaudo-in-app-esito-parziale-pull-commessa.md](work-done/collaudo-in-app-esito-parziale-pull-commessa.md),
-[brief-be-fan-out-isolato-e-esito-parziale.md](work-done/brief-be-fan-out-isolato-e-esito-parziale.md),
-[fatturazione-roadmap.md](work-done/fatturazione-roadmap.md).
+[brief-db-uscita-documento-dal-giro.md](work-done/2026/brief-db-uscita-documento-dal-giro.md),
+[brief-db-documento-trattenuto-da-un-lotto-vivo.md](work-done/2026/brief-db-documento-trattenuto-da-un-lotto-vivo.md),
+[brief-db-il-trattenuto-passa-lo-stesso.md](work-done/2026/brief-db-il-trattenuto-passa-lo-stesso.md),
+[brief-db-il-marcatore-scrive-su-un-documento-uscito.md](work-done/2026/brief-db-il-marcatore-scrive-su-un-documento-uscito.md),
+[brief-db-esito-gruppo-lotto.md](work-done/2026/brief-db-esito-gruppo-lotto.md),
+[brief-be-db-gruppo-key-sulle-segnalazioni.md](work-done/2026/brief-be-db-gruppo-key-sulle-segnalazioni.md),
+[brief-residuo-fatturabili-e-bandiere-esito-parziale.md](work-done/2026/brief-residuo-fatturabili-e-bandiere-esito-parziale.md),
+[brief-db-rilancio-step-non-rivede-le-proprie-commesse.md](work-done/2026/brief-db-rilancio-step-non-rivede-le-proprie-commesse.md),
+[collaudo-in-app-esito-parziale-pull-commessa.md](work-done/2026/collaudo-in-app-esito-parziale-pull-commessa.md),
+[brief-be-fan-out-isolato-e-esito-parziale.md](work-done/2026/brief-be-fan-out-isolato-e-esito-parziale.md),
+[fatturazione-roadmap.md](work-done/2026/fatturazione-roadmap.md).
 
 **Anello 1 + 3 — La numerazione finisce il trasloco, e l'IVA arriva ai consumatori.** La
 commessa passa sui registri, la chiave del contatore è esplicita, il CRUD dei registri c'è; il
 risolutore IVA arriva ai consumatori applicativi e il default IVA usa una chiave naturale. Vedi
-[brief-db-registri-di-numerazione-emittente-e-trasloco.md](work-done/brief-db-registri-di-numerazione-emittente-e-trasloco.md),
-[brief-db-registri-numerazione-chiave-del-contatore.md](work-done/brief-db-registri-numerazione-chiave-del-contatore.md),
-[brief-be-fe-crud-registri-di-numerazione.md](work-done/brief-be-fe-crud-registri-di-numerazione.md),
-[brief-be-fe-iva-fase-3-consumatori-risolutore.md](work-done/brief-be-fe-iva-fase-3-consumatori-risolutore.md),
-[brief-db-default-iva-chiave-naturale.md](work-done/brief-db-default-iva-chiave-naturale.md).
+[brief-db-registri-di-numerazione-emittente-e-trasloco.md](work-done/2026/brief-db-registri-di-numerazione-emittente-e-trasloco.md),
+[brief-db-registri-numerazione-chiave-del-contatore.md](work-done/2026/brief-db-registri-numerazione-chiave-del-contatore.md),
+[brief-be-fe-crud-registri-di-numerazione.md](work-done/2026/brief-be-fe-crud-registri-di-numerazione.md),
+[brief-be-fe-iva-fase-3-consumatori-risolutore.md](work-done/2026/brief-be-fe-iva-fase-3-consumatori-risolutore.md),
+[brief-db-default-iva-chiave-naturale.md](work-done/2026/brief-db-default-iva-chiave-naturale.md).
 
 **Anello 1 + 3 — L'articolo dice da dove arriva, la riga d'ordine sa quando, la commessa si
 legge.** Le date di consegna richiesta e confermata sulle righe d'ordine (vendite e acquisti), il
 modo di approvvigionamento dell'articolo, descrizione, apertura e responsabile della commessa.
 ⚠️ Dichiarato e non deciso: il verbo per la promessa di consegna. Vedi
-[brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md).
+[brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](work-done/2026/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md).
 
 **Anello 3 (`vendite`, `pagamenti`) — Le forme che reggono, e annullare vuol dire chiudere.** D14:
 la partita di merce si legge per documento, e hanno retto le forme, non i millisecondi; un prezzo
 non autorizzato non esce dalla bozza; un lotto si annulla solo se vuoto; le righe di una distinta
 `ANNULLATA` escono dalle code. Vedi
-[brief-db-partita-merce-per-documento.md](work-done/brief-db-partita-merce-per-documento.md),
-[brief-db-preventivi-congelamento-pricing.md](work-done/brief-db-preventivi-congelamento-pricing.md),
-[brief-db-annullamento-chiude-la-vita.md](work-done/brief-db-annullamento-chiude-la-vita.md),
-[brief-db-righe-distinta-annullata-fuori-dalle-code.md](work-done/brief-db-righe-distinta-annullata-fuori-dalle-code.md).
+[brief-db-partita-merce-per-documento.md](work-done/2026/brief-db-partita-merce-per-documento.md),
+[brief-db-preventivi-congelamento-pricing.md](work-done/2026/brief-db-preventivi-congelamento-pricing.md),
+[brief-db-annullamento-chiude-la-vita.md](work-done/2026/brief-db-annullamento-chiude-la-vita.md),
+[brief-db-righe-distinta-annullata-fuori-dalle-code.md](work-done/2026/brief-db-righe-distinta-annullata-fuori-dalle-code.md).
 
 **Anello 3 (`pagamenti`) — La distinta prende il numero dal registro, e impara a cercare le rate.**
 La distinta dice di quale emittente è e prende il numero dal motore dei registri; il lookup
 fattura diventa ricco, nasce la lista rate e la modalità multipla — *la domanda vera non è «quale
 fattura?» ma «quale rata?»*. Vedi
-[brief-db-distinta-numerata-sul-registro.md](work-done/brief-db-distinta-numerata-sul-registro.md),
-[brief-db-distinta-ricerca-rate.md](work-done/brief-db-distinta-ricerca-rate.md).
+[brief-db-distinta-numerata-sul-registro.md](work-done/2026/brief-db-distinta-numerata-sul-registro.md),
+[brief-db-distinta-ricerca-rate.md](work-done/2026/brief-db-distinta-ricerca-rate.md).
 
 **Anello 3 (`magazzino`) — Dal terreno vuoto alla merce che esce e rientra.** Lotto 1: sorgente
 obbligatoria, verso nella quantità, emittente come ancora. Lotto 2: la porta unica del registro,
 inventario e rettifica, e il BE/FE. Le anagrafiche di magazzino escono dal pannello config. Lotto
 3: la merce esce con la bolla; Lotto 3-bis: rientra col reso, al costo dell'uscita d'origine — *un'asimmetria
 fra due versi si chiude subito*. Vedi
-[brief-db-magazzino-lotto-1-terreno-vuoto.md](work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md),
-[brief-db-magazzino-lotto-2-motore.md](work-done/brief-db-magazzino-lotto-2-motore.md),
-[piano-be-fe-magazzino-lotto-2-motore.md](work-done/piano-be-fe-magazzino-lotto-2-motore.md),
-[brief-db-magazzino-lotto-2-bis-be-fe.md](work-done/brief-db-magazzino-lotto-2-bis-be-fe.md),
-[brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici.md](work-done/brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici.md),
-[piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md](work-done/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md),
-[brief-db-magazzino-lotto-3-scarico-da-ddt.md](work-done/brief-db-magazzino-lotto-3-scarico-da-ddt.md),
-[brief-db-magazzino-lotto-3-bis-carico-da-reso.md](work-done/brief-db-magazzino-lotto-3-bis-carico-da-reso.md).
+[brief-db-magazzino-lotto-1-terreno-vuoto.md](work-done/2026/brief-db-magazzino-lotto-1-terreno-vuoto.md),
+[brief-db-magazzino-lotto-2-motore.md](work-done/2026/brief-db-magazzino-lotto-2-motore.md),
+[piano-be-fe-magazzino-lotto-2-motore.md](work-done/2026/piano-be-fe-magazzino-lotto-2-motore.md),
+[brief-db-magazzino-lotto-2-bis-be-fe.md](work-done/2026/brief-db-magazzino-lotto-2-bis-be-fe.md),
+[brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici.md](work-done/2026/brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici.md),
+[piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md](work-done/2026/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md),
+[brief-db-magazzino-lotto-3-scarico-da-ddt.md](work-done/2026/brief-db-magazzino-lotto-3-scarico-da-ddt.md),
+[brief-db-magazzino-lotto-3-bis-carico-da-reso.md](work-done/2026/brief-db-magazzino-lotto-3-bis-carico-da-reso.md).
 
 ### Rimasti per intero — citano un documento ancora aperto
 
@@ -1158,9 +1158,9 @@ log della corsa, non una mano. Lato applicazione, D15: `skip_area_check` era
 scrivevano senza permesso — e le famiglie hanno deciso quale delle due parole
 vale; le due vulnerabilità npm e `weasyprint 70` sanate senza dipendenze nuove.
 Vedi
-[brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-done/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
+[brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-done/2026/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
 [migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md) §D4-D7 e §D13,
-[migliorie-generali-BE-FE-da-test-valutazione.md](work-done/migliorie-generali-BE-FE-da-test-valutazione.md) §D1, §D15.
+[migliorie-generali-BE-FE-da-test-valutazione.md](work-done/2026/migliorie-generali-BE-FE-da-test-valutazione.md) §D1, §D15.
 
 *(voce del 19 settembre)* **Anello 3 (`pagamenti`) — Il collaudo in-app scrive venti decisioni di
 dominio.** Tre giri in cinque giorni, e ogni giro ha lasciato il modello
@@ -1178,10 +1178,10 @@ modello* — «Registra» era acceso in BOZZA mentre il DB rispondeva
 lo prova il copione, che per questo vive in `work-in-progress/` e non in un
 brief chiuso. I due piani, DB e BE/FE, sono **chiusi e archiviati il 19-09**:
 non resta codice da scrivere. Vedi
-[brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md](work-done/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md),
-[brief-db-validata-e-registrazione-tardiva.md](work-done/brief-db-validata-e-registrazione-tardiva.md),
-[brief-db-posting-e-abbinamento-rata.md](work-done/brief-db-posting-e-abbinamento-rata.md),
-[brief-be-fe-posting-e-abbinamento-rata.md](work-done/brief-be-fe-posting-e-abbinamento-rata.md),
+[brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md](work-done/2026/brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga.md),
+[brief-db-validata-e-registrazione-tardiva.md](work-done/2026/brief-db-validata-e-registrazione-tardiva.md),
+[brief-db-posting-e-abbinamento-rata.md](work-done/2026/brief-db-posting-e-abbinamento-rata.md),
+[brief-be-fe-posting-e-abbinamento-rata.md](work-done/2026/brief-be-fe-posting-e-abbinamento-rata.md),
 [collaudo-in-app-incassi-distinte-e-sistemazioni.md](work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md).
 
 *(voce del 19 settembre)* **Anello 1 (`ui`) — Il frontend: le classi che non esistevano, e il chrome che
@@ -1223,11 +1223,11 @@ inviata non si cancella*; l'**assistente AI** si concede per area come ogni
 dominio — *assume i privilegi con cui l'operatore è attivo, e nessuno di
 più*. ⚠️ Aperto: i lotti L-2 (blocco dell'admin), L-4 (login per email), L-5,
 L-6 del piano BE/FE. Vedi
-[analisi-accessi-credenziale-e-vesti.md](work-done/analisi-accessi-credenziale-e-vesti.md),
-[brief-db-blocco-login-per-credenziale.md](work-done/brief-db-blocco-login-per-credenziale.md),
-[brief-db-credenziale-per-email.md](work-done/brief-db-credenziale-per-email.md),
-[brief-db-email-visibilita-per-ambito.md](work-done/brief-db-email-visibilita-per-ambito.md),
-[brief-db-area-funzionale-assistente-ai.md](work-done/brief-db-area-funzionale-assistente-ai.md),
+[analisi-accessi-credenziale-e-vesti.md](work-done/2026/analisi-accessi-credenziale-e-vesti.md),
+[brief-db-blocco-login-per-credenziale.md](work-done/2026/brief-db-blocco-login-per-credenziale.md),
+[brief-db-credenziale-per-email.md](work-done/2026/brief-db-credenziale-per-email.md),
+[brief-db-email-visibilita-per-ambito.md](work-done/2026/brief-db-email-visibilita-per-ambito.md),
+[brief-db-area-funzionale-assistente-ai.md](work-done/2026/brief-db-area-funzionale-assistente-ai.md),
 [piano-be-fe-accessi-credenziale-e-vesti.md](work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md).
 
 ### Rimasti per intero — «In breve», senza un brief
@@ -1262,10 +1262,10 @@ tabelle rialineate, con le regole in
 questa tornata — `brief-db-magazzino-lotto-2-bis-be-fe.md` (BE/FE del Lotto 2),
 `brief-db-presidio-stati-mai-scritti.md`,
 `brief-be-presidio-ui-action-e-canale-campi.md` e
-[brief-db-registri-giornale-catalogo.md](work-done/brief-db-registri-giornale-catalogo.md),
+[brief-db-registri-giornale-catalogo.md](work-done/2026/brief-db-registri-giornale-catalogo.md),
 il cui **lato DB è chiuso il 19-09** (`config.registri_giornale`, pgTAP
 13/13) — più il copione
-[collaudo-in-app-osservabilita-giornale-errori-pallino.md](work-done/collaudo-in-app-osservabilita-giornale-errori-pallino.md),
+[collaudo-in-app-osservabilita-giornale-errori-pallino.md](work-done/2026/collaudo-in-app-osservabilita-giornale-errori-pallino.md),
 scritto e **da eseguire**; `vendite.fatturazione_lotti_log` con **17.223 pagine
 per 1.225 righe** dopo la retention del 18-09 (fatto datato: un `VACUUM` lo
 dirà); lo `.pyc` di `gen_seed_lista` **tracciato in git** e una lista mai
@@ -1276,7 +1276,7 @@ drawer, icone, keepalive, DataTable) verdi a ogni giro.
 47 documenti di `core` apre un'analisi BE che chiude in quattro giorni una
 ventina di voci (fra cui 90 letture grezze di `request.data` passate al BB
 `corpo_oggetto`), con dodici ancora aperte
-([analisi-be-difetti-emersi-verifica-doc-api-core.md](work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md));
+([analisi-be-difetti-emersi-verifica-doc-api-core.md](work-done/2026/analisi-be-difetti-emersi-verifica-doc-api-core.md));
 nelle migliorie BE/FE i primi **test di componente** del frontend (23-09),
 `pip-audit` in CI e la schermata del log email (D7); i **copioni di collaudo
 in-app** scritti e da eseguire salgono a otto (capability annidata e prezzi,
@@ -1312,9 +1312,9 @@ l'ultimo arco del **lineage** — la nota di credito era collegata alla fattura
 che rettifica ma non alla merce che l'aveva causata — e con lui i tre residui
 del grafo (il `root` che dipendeva dagli id, la commessa senza origine, la nota
 di credito che in lista si chiamava «Fattura»). Vedi
-[brief-design-note-credito-resi.md](work-done/brief-design-note-credito-resi.md),
-[brief-db-lineage-arco-reso-nota-credito.md](work-done/brief-db-lineage-arco-reso-nota-credito.md),
-[brief-db-lineage-residui-root-e-sorgente-ddt.md](work-done/brief-db-lineage-residui-root-e-sorgente-ddt.md).
+[brief-design-note-credito-resi.md](work-done/2026/brief-design-note-credito-resi.md),
+[brief-db-lineage-arco-reso-nota-credito.md](work-done/2026/brief-db-lineage-arco-reso-nota-credito.md),
+[brief-db-lineage-residui-root-e-sorgente-ddt.md](work-done/2026/brief-db-lineage-residui-root-e-sorgente-ddt.md).
 
 **Anello 3 (vendite) — La data del documento smette di essere un effetto
 collaterale.** Una fattura di luglio prendeva il numero 11 perché la sequenza
@@ -1325,9 +1325,9 @@ registro e data prevista si vedono in lista *prima* di generare. ⭐ L'analisi s
 sui registri, e la periodicità dentro `config.sistema_codici` **non si fa più**
 perché senza la commessa quella colonna non ha più un cliente — e l'esecuzione è
 del giorno dopo (voce di settembre). Vedi
-[brief-db-numerazione-data-documento-e-sequenza.md](work-done/brief-db-numerazione-data-documento-e-sequenza.md),
-[brief-db-limite-emissione-e-data-verificata.md](work-done/brief-db-limite-emissione-e-data-verificata.md),
-[analisi-db-numerazione-documenti-e-due-motori.md](work-done/analisi-db-numerazione-documenti-e-due-motori.md).
+[brief-db-numerazione-data-documento-e-sequenza.md](work-done/2026/brief-db-numerazione-data-documento-e-sequenza.md),
+[brief-db-limite-emissione-e-data-verificata.md](work-done/2026/brief-db-limite-emissione-e-data-verificata.md),
+[analisi-db-numerazione-documenti-e-due-motori.md](work-done/2026/analisi-db-numerazione-documenti-e-due-motori.md).
 
 **Anello 1 + 3 — L'IVA ha un risolutore, e il regime del cliente smette di
 essere scritto e mai letto.** La domanda di partenza era stretta (*«su un
@@ -1340,7 +1340,7 @@ titolo registrato e documentato** (`anagrafiche.soggetti_titoli_iva` con ambiti 
 registro movimenti **append-only**, dove anche l'annullo di una forzatura è un
 movimento, più il vocabolario `config.tipi_titolo_iva`). Al 30 agosto il lato
 **DB è chiuso**; i consumatori applicativi arrivano la settimana dopo. Vedi
-[brief-db-be-iva-risolutore-e-regime-cliente.md](work-done/brief-db-be-iva-risolutore-e-regime-cliente.md).
+[brief-db-be-iva-risolutore-e-regime-cliente.md](work-done/2026/brief-db-be-iva-risolutore-e-regime-cliente.md).
 
 **Anello 3 (`pagamenti`) — Il posting esiste.** Il cantiere si apriva su una
 misura sgradevole: *nessuna funzione, in tutto il database, scriveva
@@ -1352,8 +1352,8 @@ smette di mostrare l'**IBAN** di ogni emittente a qualunque operatore.
 ⛔ **Ma di questo dominio è provato il percorso, mai l'esito**: lo schema ha
 ancora zero righe e il collaudo in-app è **aperto** — è il cantiere che occupa
 la voce di settembre. Vedi
-[brief-db-posting-e-abbinamento-rata.md](work-done/brief-db-posting-e-abbinamento-rata.md),
-[brief-be-fe-posting-e-abbinamento-rata.md](work-done/brief-be-fe-posting-e-abbinamento-rata.md),
+[brief-db-posting-e-abbinamento-rata.md](work-done/2026/brief-db-posting-e-abbinamento-rata.md),
+[brief-be-fe-posting-e-abbinamento-rata.md](work-done/2026/brief-be-fe-posting-e-abbinamento-rata.md),
 [collaudo-in-app-incassi-distinte-e-sistemazioni.md](work-in-progress/collaudo-in-app-incassi-distinte-e-sistemazioni.md).
 
 **Anello 3 (vendite) — Il lavoro che non torna indietro.** Le tre porte di reset
@@ -1364,9 +1364,9 @@ parte che si vede è un'altra: il lavoro rimasto indietro ha un **verbo**
 («Riporta da emettere», con la card che si spezza in due per non promettere una
 fattura che non c'è) e **«Rendi definitive» è tornata sulla lista Lotti**, dove
 sta l'elenco del suo oggetto invece di una card che ne mostrava un altro. Vedi
-[brief-db-lavoro-che-non-torna-indietro.md](work-done/brief-db-lavoro-che-non-torna-indietro.md),
-[brief-be-fe-rendi-definitive-sui-lotti.md](work-done/brief-be-fe-rendi-definitive-sui-lotti.md),
-[brief-db-guard-righe-fattura-rettificate.md](work-done/brief-db-guard-righe-fattura-rettificate.md).
+[brief-db-lavoro-che-non-torna-indietro.md](work-done/2026/brief-db-lavoro-che-non-torna-indietro.md),
+[brief-be-fe-rendi-definitive-sui-lotti.md](work-done/2026/brief-be-fe-rendi-definitive-sui-lotti.md),
+[brief-db-guard-righe-fattura-rettificate.md](work-done/2026/brief-db-guard-righe-fattura-rettificate.md).
 
 ### Errori, presidi e liste — agosto 2026
 
@@ -1380,8 +1380,8 @@ qualunque momento. Il **bersaglio** fa lo stesso sull'errore: dice **su quale
 entità**, in una forma che l'interfaccia trasforma in un gesto («vai lì») e chi
 diagnostica legge come coordinata. Quattro lati in due giorni, DB → roll-out →
 backend → toast con azioni. Vedi
-[brief-db-event-log-scope-e-riga-parlante.md](work-done/brief-db-event-log-scope-e-riga-parlante.md),
-[brief-db-bersaglio-errore.md](work-done/brief-db-bersaglio-errore.md).
+[brief-db-event-log-scope-e-riga-parlante.md](work-done/2026/brief-db-event-log-scope-e-riga-parlante.md),
+[brief-db-bersaglio-errore.md](work-done/2026/brief-db-bersaglio-errore.md).
 
 **Anello 0 — I presidi che non presidiavano.** Tre presidi del progetto
 cercavano i test con un glob a **un livello solo**: le sottocartelle di schema —
@@ -1393,9 +1393,9 @@ guardati*. Sanato il ramo cieco, il debito è stato attaccato: **da 86 rossi su
 promettere segnaposto che nessun chiamante riempiva (un `%s` che arrivava a
 video letterale) e gli **smoke test** prendono una baseline: undici script che
 nessuno lanciava, e per un giorno sei erano rossi senza che si notasse. Vedi
-[brief-db-pgtap-rami-ciechi.md](work-done/brief-db-pgtap-rami-ciechi.md),
-[brief-db-bonifica-baseline-pgtap-vendite.md](work-done/brief-db-bonifica-baseline-pgtap-vendite.md),
-[brief-db-segnaposti-messaggi-errore.md](work-done/brief-db-segnaposti-messaggi-errore.md).
+[brief-db-pgtap-rami-ciechi.md](work-done/2026/brief-db-pgtap-rami-ciechi.md),
+[brief-db-bonifica-baseline-pgtap-vendite.md](work-done/2026/brief-db-bonifica-baseline-pgtap-vendite.md),
+[brief-db-segnaposti-messaggi-errore.md](work-done/2026/brief-db-segnaposti-messaggi-errore.md).
 
 **Anello 1 — Il perimetro emittente, e due invarianti che nessuno presidiava.**
 Il perimetro dell'emittente fiscale aveva due buchi nello stesso presidio —
@@ -1406,9 +1406,9 @@ dominio rimaste implicite: **un billing account può cambiare emittente?** (sì,
 finché non ha storia — e il motivo per cui non si può arriva *sulla riga*, non
 premendo il pulsante) e **l'emittente della commessa può essere NULL?** (no: la
 commessa lo deriva dalla cascata delle sorgenti). Vedi
-[brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](work-done/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md),
-[brief-db-billing-account-cambio-emittente.md](work-done/brief-db-billing-account-cambio-emittente.md),
-[brief-db-emittente-commessa-invariante.md](work-done/brief-db-emittente-commessa-invariante.md).
+[brief-db-perimetro-emittente-liste-e-gerarchia-ba.md](work-done/2026/brief-db-perimetro-emittente-liste-e-gerarchia-ba.md),
+[brief-db-billing-account-cambio-emittente.md](work-done/2026/brief-db-billing-account-cambio-emittente.md),
+[brief-db-emittente-commessa-invariante.md](work-done/2026/brief-db-emittente-commessa-invariante.md).
 
 **Anello 1 (`ui`) — Una regola che non sta dove si legge non esiste.** Il piano
 delle liste aveva invertito il rapporto (40 file sul building block, registro
@@ -1461,11 +1461,11 @@ dei quattro che lo riscrivevano a modo loro; i due registri del debito sono **a
 zero** (141 → 0 in tre giorni, 150 decisioni; 57 → 0) e restano in piedi apposta
 — *un registro in pari non è un registro inutile*; e l'envelope d'errore porta
 `fields`, senza il quale `ui_action: highlight_form_fields` non è azionabile.
-Vedi [brief-db-be-classe-codici-errore.md](work-done/brief-db-be-classe-codici-errore.md),
-[piano-db-classe-codici-errore.md](work-done/piano-db-classe-codici-errore.md),
-[piano-be-classe-codici-errore.md](work-done/piano-be-classe-codici-errore.md),
-[brief-db-codice-errore-strutturato.md](work-done/brief-db-codice-errore-strutturato.md),
-[brief-db-be-terzo-lato-presidio-codici.md](work-done/brief-db-be-terzo-lato-presidio-codici.md).
+Vedi [brief-db-be-classe-codici-errore.md](work-done/2026/brief-db-be-classe-codici-errore.md),
+[piano-db-classe-codici-errore.md](work-done/2026/piano-db-classe-codici-errore.md),
+[piano-be-classe-codici-errore.md](work-done/2026/piano-be-classe-codici-errore.md),
+[brief-db-codice-errore-strutturato.md](work-done/2026/brief-db-codice-errore-strutturato.md),
+[brief-db-be-terzo-lato-presidio-codici.md](work-done/2026/brief-db-be-terzo-lato-presidio-codici.md).
 
 **Anello 0 — 🔴 Il pgTAP gira come l'applicazione, ed entra in CI.** Dal 7
 agosto il runner di default è l'utente applicativo e non più l'owner: **le
@@ -1475,14 +1475,14 @@ dell'owner sono marcati uno per uno **con la ragione scritta**; la suite entra
 in CI con una baseline sua, perché il DB della CI è ricostruito da zero e i
 rossi sono **popolazioni diverse**; tre righe di preambolo diventano
 obbligatorie e presidiate da un cancello — *senza, un file diventa verde per
-sottrazione*. Debito noto: **86 rossi** su **442 file**. Vedi [brief-db-pgtap-runner-rls-baseline.md](work-done/brief-db-pgtap-runner-rls-baseline.md)
+sottrazione*. Debito noto: **86 rossi** su **442 file**. Vedi [brief-db-pgtap-runner-rls-baseline.md](work-done/2026/brief-db-pgtap-runner-rls-baseline.md)
 e la guida [pgtap-come-si-scrive-un-test](../guide/pgtap-come-si-scrive-un-test.md).
 
 **Anello 0 — Presidio dei riferimenti morti (04 agosto).** 34 difetti sanati e
 cancello in CI: un riferimento a un oggetto DB che non esiste più non arriva più
 al merge. ⚠️ Il guardrail gira **dopo** `manage.py migrate` — non spostarlo (a
-settembre si prenderà due lezioni, voce di settembre). Vedi [brief-db-bonifica-riferimenti-morti.md](work-done/brief-db-bonifica-riferimenti-morti.md),
-[brief-be-bonifica-riferimenti-morti.md](work-done/brief-be-bonifica-riferimenti-morti.md).
+settembre si prenderà due lezioni, voce di settembre). Vedi [brief-db-bonifica-riferimenti-morti.md](work-done/2026/brief-db-bonifica-riferimenti-morti.md),
+[brief-be-bonifica-riferimenti-morti.md](work-done/2026/brief-be-bonifica-riferimenti-morti.md).
 
 **Anello 3 (vendite) — I satelliti della fattura: il documento si racconta per
 intero.** Cantiere chiuso su tutte le fasi (29 luglio – 3 agosto): **piano rate**
@@ -1495,18 +1495,18 @@ documento per costruzione*), le **note fattura** come sesto dominio del building
 block note (~15 righe di configurazione, zero migration), e il ritiro del
 generatore di righe SQL.
 
-Vedi [piano-db-satelliti-fattura.md](work-done/piano-db-satelliti-fattura.md),
-[piano-be-fe-satelliti-fattura.md](work-done/piano-be-fe-satelliti-fattura.md),
-[brief-db-generazione-scadenze-fattura.md](work-done/brief-db-generazione-scadenze-fattura.md),
-[brief-be-fe-drawer-fattura.md](work-done/brief-be-fe-drawer-fattura.md).
+Vedi [piano-db-satelliti-fattura.md](work-done/2026/piano-db-satelliti-fattura.md),
+[piano-be-fe-satelliti-fattura.md](work-done/2026/piano-be-fe-satelliti-fattura.md),
+[brief-db-generazione-scadenze-fattura.md](work-done/2026/brief-db-generazione-scadenze-fattura.md),
+[brief-be-fe-drawer-fattura.md](work-done/2026/brief-be-fe-drawer-fattura.md).
 
 **Anello 3 (vendite) — Emissione mirata e ritorno del lotto a DRAFT.** Il giro
 accetta un perimetro ristretto ai **gruppi fatturabili** scelti — stesso verbo,
 stessa idempotenza: assente = giro di massa invariato — e il lotto può **tornare
 a DRAFT** per rifare un giro andato storto. Vedi
-[brief-db-emissione-fattura-per-documento-sorgente.md](work-done/brief-db-emissione-fattura-per-documento-sorgente.md),
-[brief-be-fe-emissione-fattura-mirata.md](work-done/brief-be-fe-emissione-fattura-mirata.md),
-[piano-db-ritorno-lotto-a-draft.md](work-done/piano-db-ritorno-lotto-a-draft.md).
+[brief-db-emissione-fattura-per-documento-sorgente.md](work-done/2026/brief-db-emissione-fattura-per-documento-sorgente.md),
+[brief-be-fe-emissione-fattura-mirata.md](work-done/2026/brief-be-fe-emissione-fattura-mirata.md),
+[piano-db-ritorno-lotto-a-draft.md](work-done/2026/piano-db-ritorno-lotto-a-draft.md).
 
 **Anello 2 (documenti) — Ristampa fedele: il terzo percorso.** Ri-renderizzare
 un documento **com'era** — versione di template pinnata, anche OBSOLETA, e
@@ -1514,7 +1514,7 @@ un documento **com'era** — versione di template pinnata, anche OBSOLETA, e
 originale** (il file su storage) e dal **genera nuovo documento** (modello e dati
 di oggi, che fino ad allora si chiamava impropriamente «ristampa»). La fedeltà è
 dichiarata in header: byte diversi = fedele nel contenuto, non un errore. Vedi
-[brief-ristampa-fedele-documenti.md](work-done/brief-ristampa-fedele-documenti.md).
+[brief-ristampa-fedele-documenti.md](work-done/2026/brief-ristampa-fedele-documenti.md).
 
 **Anello 1 (`ui`) — Le liste: il rapporto si è invertito.** Il numero scomodo del
 piano — 14 liste sullo standard contro 71 con `DataTable` grezza — non c'è più:
@@ -1530,7 +1530,7 @@ decisione** (cassetti senza endpoint paginato), non per debito.
 > aperte» della mappa, dove nessun cantiere la può scavalcare.
 
 Vedi [piano-migrazione-primevue-5.md](work-in-progress/piano-migrazione-primevue-5.md)
-§1-bis e [consuntivo-personalizzazioni-liste-def.md](work-done/consuntivo-personalizzazioni-liste-def.md).
+§1-bis e [consuntivo-personalizzazioni-liste-def.md](work-done/2026/consuntivo-personalizzazioni-liste-def.md).
 
 **Anello 3 (`pagamenti`) — Si apre il cantiere delle contabili di pagamento
 (9-10 agosto).** Due scoperte cambiano la scala del lavoro: **nessuna funzione,
@@ -1545,7 +1545,7 @@ concetto** — è una contabile con importi negativi, e la sicurezza sta in un
 controllo simmetrico `0 ≤ Σ ≤ importo` — e il perimetro dei soldi non ancora
 attribuiti si deriva **dal conto di incasso**. Vedi [brief-incassi-riconciliazione-rate-promemoria.md](work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md)
 e, per il meccanismo dei fondi fattura da ripensare,
-[brief-db-fondo-fattura-ricalcolo-e-governo.md](work-done/brief-db-fondo-fattura-ricalcolo-e-governo.md).
+[brief-db-fondo-fattura-ricalcolo-e-governo.md](work-done/2026/brief-db-fondo-fattura-ricalcolo-e-governo.md).
 
 **Manutenzione.** Bonifica indici: corrette le viste `dbops`, aggiunte guardie
 sull'`apply`, rimossi **48 indici ridondanti** (27 luglio). Commesse: permesso di
@@ -1570,9 +1570,9 @@ invece di sottrarla — oppure standalone. Stati data-driven
 `DRAFT → EMESSO → SPEDITO → CONSEGNATO` (+ `RESO`/`ANNULLATO`), **numero
 assegnato all'emissione** e poi immutabile, push a commessa per la fatturazione.
 Guida: [gestione-ddt.md](../guide/gestione-ddt.md). Vedi
-[brief-db-ddt-vendita-evasione-e-stati.md](work-done/brief-db-ddt-vendita-evasione-e-stati.md),
-[brief-be-ddt-vendita.md](work-done/brief-be-ddt-vendita.md),
-[brief-fe-ddt-vendita.md](work-done/brief-fe-ddt-vendita.md).
+[brief-db-ddt-vendita-evasione-e-stati.md](work-done/2026/brief-db-ddt-vendita-evasione-e-stati.md),
+[brief-be-ddt-vendita.md](work-done/2026/brief-be-ddt-vendita.md),
+[brief-fe-ddt-vendita.md](work-done/2026/brief-fe-ddt-vendita.md).
 
 > ℹ️ **Tre cose di questo cantiere non hanno un brief e vivono solo qui.**
 >
@@ -1599,9 +1599,9 @@ annullo come storno, **ri-consegna** parziale e multipla, due code di lavoro
 configurabili, azioni data-driven. A chiusura, la **rinuncia alla ri-consegna** —
 senza la quale una ri-spedizione mai eseguita lascia l'ordine
 `PARZIALMENTE_EVASO` per sempre, senza via d'uscita in-app. Vedi
-[brief-db-resi-vendita.md](work-done/brief-db-resi-vendita.md),
-[brief-be-fe-resi-vendita.md](work-done/brief-be-fe-resi-vendita.md),
-[brief-db-chiusura-riconsegna-reso-definitivo.md](work-done/brief-db-chiusura-riconsegna-reso-definitivo.md).
+[brief-db-resi-vendita.md](work-done/2026/brief-db-resi-vendita.md),
+[brief-be-fe-resi-vendita.md](work-done/2026/brief-be-fe-resi-vendita.md),
+[brief-db-chiusura-riconsegna-reso-definitivo.md](work-done/2026/brief-db-chiusura-riconsegna-reso-definitivo.md).
 
 **Anello 3 (vendite) — La fatturazione di DDT e resi passa a contatore.**
 `config.tipi_reso.riapre_residuo` era un flag **logistico** che decideva anche
@@ -1609,8 +1609,8 @@ cosa succedeva ai **soldi**: due domande su una colonna sola. Sostituito da un
 **contatore di merce** per riga d'ordine (spedito − reso), che chiude due bug di
 doppia fatturazione invisibili alle dashboard — le mostravano come transito
 legittimo. Vedi
-[brief-db-fatturazione-ddt-resi.md](work-done/brief-db-fatturazione-ddt-resi.md),
-[brief-be-fe-ddt-resi-dashboard.md](work-done/brief-be-fe-ddt-resi-dashboard.md).
+[brief-db-fatturazione-ddt-resi.md](work-done/2026/brief-db-fatturazione-ddt-resi.md),
+[brief-be-fe-ddt-resi-dashboard.md](work-done/2026/brief-be-fe-ddt-resi-dashboard.md).
 
 **Anello 3 (vendite) — Quantità immutabili sulla commessa, e la porta oneri.**
 Le quantità già fatturate diventano immutabili. Sopra quella base si apre la
@@ -1618,9 +1618,9 @@ porta oneri, con il modello **articolo↔causale 1:1**: un articolo *è* un oner
 perché ha una causale collegata, e così **ogni onere porta la propria IVA**.
 Chiusa anche una race sul progressivo degli oneri manuali, dove due operatori
 concorrenti ricevevano entrambi 200 OK e un dato spariva in silenzio. Vedi
-[brief-db-immutabilita-quantita-e-porta-oneri.md](work-done/brief-db-immutabilita-quantita-e-porta-oneri.md),
-[brief-be-fe-immutabilita-quantita-e-porta-oneri.md](work-done/brief-be-fe-immutabilita-quantita-e-porta-oneri.md),
-[brief-db-race-segment-key-onere.md](work-done/brief-db-race-segment-key-onere.md).
+[brief-db-immutabilita-quantita-e-porta-oneri.md](work-done/2026/brief-db-immutabilita-quantita-e-porta-oneri.md),
+[brief-be-fe-immutabilita-quantita-e-porta-oneri.md](work-done/2026/brief-be-fe-immutabilita-quantita-e-porta-oneri.md),
+[brief-db-race-segment-key-onere.md](work-done/2026/brief-db-race-segment-key-onere.md).
 
 **Anello 3 (vendite) — Il cockpit: dalle lenti all'azione, e la stampa che non
 tiene il lock.** Le tre lenti smettono di essere una fotografia: dalla Dashboard
@@ -1632,10 +1632,10 @@ Completano il quadro il **guard di uscita commessa** (chiuderne una con righe
 ancora fatturabili era perdita irreversibile di fatturato, invisibile alla
 dashboard) e le capability con motivo. Guida:
 [cruscotti-fatturazione.md](../guide/cruscotti-fatturazione.md) §7. Vedi
-[brief-design-gestione-processi-fatturazione.md](work-done/brief-design-gestione-processi-fatturazione.md),
-[brief-db-processi-fatturazione-cockpit.md](work-done/brief-db-processi-fatturazione-cockpit.md),
-[brief-be-fe-processi-fatturazione.md](work-done/brief-be-fe-processi-fatturazione.md),
-[brief-db-guard-uscita-commessa-e-capabilities.md](work-done/brief-db-guard-uscita-commessa-e-capabilities.md).
+[brief-design-gestione-processi-fatturazione.md](work-done/2026/brief-design-gestione-processi-fatturazione.md),
+[brief-db-processi-fatturazione-cockpit.md](work-done/2026/brief-db-processi-fatturazione-cockpit.md),
+[brief-be-fe-processi-fatturazione.md](work-done/2026/brief-be-fe-processi-fatturazione.md),
+[brief-db-guard-uscita-commessa-e-capabilities.md](work-done/2026/brief-db-guard-uscita-commessa-e-capabilities.md).
 
 **Anello 0 (`dbops`) — La coda lavori generica: la regola del 2 applicata
 all'architettura.** `vendite.fatture_stampa_coda` stava per essere seguita da una
@@ -1643,16 +1643,16 @@ seconda tabella-coda per il giro on-demand. Invece di **una tabella per batch** 
 è estratta una **coda di job generica**, DB-native, transazionale e senza broker:
 è la fondazione asincrona dell'ERP. Guida:
 [gestione-code-di-lavoro.md](../guide/gestione-code-di-lavoro.md). Vedi
-[brief-design-coda-lavori-generica.md](work-done/brief-design-coda-lavori-generica.md),
-[brief-db-coda-lavori-generica.md](work-done/brief-db-coda-lavori-generica.md).
+[brief-design-coda-lavori-generica.md](work-done/2026/brief-design-coda-lavori-generica.md),
+[brief-db-coda-lavori-generica.md](work-done/2026/brief-db-coda-lavori-generica.md).
 
 **Anello 1 (`ui`) — La dashboard home, e il secondo consumatore dello schema.**
 Card KPI configurabili con lo **stesso impianto a cascata** delle liste (sistema
 → profilo → emittente → utente) e filtro sui permessi dell'operatore. È la
 conferma richiesta dal principio 7: il pattern non è stato inventato per la home,
 è stato **riusato** perché già decantato dalle liste. Vedi
-[brief-db-dashboard-home.md](work-done/brief-db-dashboard-home.md),
-[brief-be-fe-dashboard-home.md](work-done/brief-be-fe-dashboard-home.md).
+[brief-db-dashboard-home.md](work-done/2026/brief-db-dashboard-home.md),
+[brief-be-fe-dashboard-home.md](work-done/2026/brief-be-fe-dashboard-home.md).
 
 **Anello 3 (vendite) — La genealogia dei documenti, e gli indirizzi come building
 block.** Il **lineage** espone il grafo dei documenti come pannello «Passaggi» nei
@@ -1662,10 +1662,10 @@ diventano un BB cross-dominio sui 5 domini vendite — sezione inline + drawer d
 gestione, **snapshot congelato all'emissione**, auto-assegnazione del default — e
 il DDT prende il suo riepilogo IVA (righe senza prezzo escluse: un DDT di solo
 trasporto non ha riepilogo). Vedi
-[brief-db-lineage-documenti-vendite.md](work-done/brief-db-lineage-documenti-vendite.md),
-[brief-be-fe-lineage-documenti-vendite.md](work-done/brief-be-fe-lineage-documenti-vendite.md),
-[brief-design-indirizzi-documenti-vendita.md](work-done/brief-design-indirizzi-documenti-vendita.md),
-[brief-db-ddt-riepilogo-iva.md](work-done/brief-db-ddt-riepilogo-iva.md).
+[brief-db-lineage-documenti-vendite.md](work-done/2026/brief-db-lineage-documenti-vendite.md),
+[brief-be-fe-lineage-documenti-vendite.md](work-done/2026/brief-be-fe-lineage-documenti-vendite.md),
+[brief-design-indirizzi-documenti-vendita.md](work-done/2026/brief-design-indirizzi-documenti-vendita.md),
+[brief-db-ddt-riepilogo-iva.md](work-done/2026/brief-db-ddt-riepilogo-iva.md).
 
 **Qualità di modello — tre presidi che c'erano e non presidiavano.** (1) Il guard
 sulla **sorgente polimorfa** esisteva ma **non era agganciato a nulla**:
@@ -1675,10 +1675,10 @@ agganciato, dati bonificati, convenzione documentata
 registrato — il difetto bloccava ogni ambiente *senza* canale di log, CI
 compresa, e ora la CI esercita il caso peggiore invece di aggirarlo. (3) **RLS
 scope emittente** estesa a `commesse` e `commesse_attivita`. Vedi
-[brief-db-guard-sorgente-polimorfa.md](work-done/brief-db-guard-sorgente-polimorfa.md),
-[brief-db-bonifica-pgtap-sorgente-polimorfa.md](work-done/brief-db-bonifica-pgtap-sorgente-polimorfa.md),
-[brief-db-coerenza-tx-id-non-registrato.md](work-done/brief-db-coerenza-tx-id-non-registrato.md),
-[brief-db-rls-commesse.md](work-done/brief-db-rls-commesse.md).
+[brief-db-guard-sorgente-polimorfa.md](work-done/2026/brief-db-guard-sorgente-polimorfa.md),
+[brief-db-bonifica-pgtap-sorgente-polimorfa.md](work-done/2026/brief-db-bonifica-pgtap-sorgente-polimorfa.md),
+[brief-db-coerenza-tx-id-non-registrato.md](work-done/2026/brief-db-coerenza-tx-id-non-registrato.md),
+[brief-db-rls-commesse.md](work-done/2026/brief-db-rls-commesse.md).
 
 **Trasversale (frontend) — radici i18n uniformi e residui PrimeVue 3.** 21 radici
 i18n piatte riportate sotto le rispettive aree: ⚠️ un indirizzo i18n inesistente
@@ -1686,8 +1686,8 @@ non dà errore, **non mostra nulla** — difetto invisibile, e l'archivio aveva 
 stili di sistemazione conviventi scelti a caso. Chiusi anche i residui PrimeVue 3
 e corretto lo standard che ancora li prescriveva: era debito che **faceva
 scrivere codice nuovo sbagliato**. Vedi
-[brief-i18n-radici-uniformi.md](work-done/brief-i18n-radici-uniformi.md),
-[brief-fe-migrazione-primevue4-tabs.md](work-done/brief-fe-migrazione-primevue4-tabs.md).
+[brief-i18n-radici-uniformi.md](work-done/2026/brief-i18n-radici-uniformi.md),
+[brief-fe-migrazione-primevue4-tabs.md](work-done/2026/brief-fe-migrazione-primevue4-tabs.md).
 
 ---
 
@@ -1708,8 +1708,8 @@ bug che la «completezza tecnica» non aveva intercettato (handler_params persi,
 funzioni di push con NOT NULL violabili, generazione non idempotente, azioni di
 processo mai seedate): è la conferma sul campo della lezione «pratiche prima di
 vendite». Vedi
-[analisi-ordini-vendita.md](work-done/analisi-ordini-vendita.md),
-[analisi-pratiche-workflow-v2.md](work-done/analisi-pratiche-workflow-v2.md).
+[analisi-ordini-vendita.md](work-done/2026/analisi-ordini-vendita.md),
+[analisi-pratiche-workflow-v2.md](work-done/2026/analisi-pratiche-workflow-v2.md).
 
 **Anello 2 (`pratiche`) — Workflow v2: le estensioni che l'uso reale ha
 chiesto.** Il completamento del flusso diventa **event-driven** (rimosso
@@ -1720,9 +1720,9 @@ L'esito del flusso diventa configurabile (MANUALE / AUTOMATICO / CONTESTUALE), i
 giornale porta l'**utente reale** ed è append-only per trigger, e il flusso si
 **assegna** a operatore o reparto con policy reparto-first, alimentando una coda
 a quattro livelli e il pannello «Le mie attività». Vedi
-[brief-design-esito-configurabile-flussi.md](work-done/brief-design-esito-configurabile-flussi.md),
-[brief-db-assegnazione-flusso.md](work-done/brief-db-assegnazione-flusso.md),
-[brief-design-coda-lavoro-mie-attivita.md](work-done/brief-design-coda-lavoro-mie-attivita.md).
+[brief-design-esito-configurabile-flussi.md](work-done/2026/brief-design-esito-configurabile-flussi.md),
+[brief-db-assegnazione-flusso.md](work-done/2026/brief-db-assegnazione-flusso.md),
+[brief-design-coda-lavoro-mie-attivita.md](work-done/2026/brief-design-coda-lavoro-mie-attivita.md).
 
 **Anello 3 (vendite) — Il batch di fatturazione diventa automatico end-to-end.**
 La pipeline passa da «operativa (manuale)» a batch: driver CRON `run-until-done`,
@@ -1732,9 +1732,9 @@ numerazione in DEFINITIVA — e run headless registrate in `job_run_log`. Con
 l'hardening del push commesse→fatturazione arriva l'invariante che evita il
 «fatturato perso in silenzio»: `APPROVATA + NON_EMESSA ⇒ tipo_doc NOT NULL`,
 guard di riga più CHECK di backstop. Vedi
-[piano-fix-stato-fattura-pipeline-per-step.md](work-done/piano-fix-stato-fattura-pipeline-per-step.md),
-[brief-db-emittibili-lane-tipo-doc-fiscale.md](work-done/brief-db-emittibili-lane-tipo-doc-fiscale.md),
-[brief-db-guard-tipo-doc-attivita.md](work-done/brief-db-guard-tipo-doc-attivita.md).
+[piano-fix-stato-fattura-pipeline-per-step.md](work-done/2026/piano-fix-stato-fattura-pipeline-per-step.md),
+[brief-db-emittibili-lane-tipo-doc-fiscale.md](work-done/2026/brief-db-emittibili-lane-tipo-doc-fiscale.md),
+[brief-db-guard-tipo-doc-attivita.md](work-done/2026/brief-db-guard-tipo-doc-attivita.md).
 
 **Qualità di modello — `codice_interno` contro `codice`, su tutto il perimetro.**
 Le tabelle di lookup hanno due colonne con destini opposti — `codice_interno`
@@ -1745,17 +1745,17 @@ dove la logica doveva usare l'altra. Bonificati **21 BUG_DUAL + 7 candidati**,
 16 oggetti della pipeline commesse→push→fatturazione, ed è emerso un **bug reale**
 (`fn_lookup_utilities_per_ba` tornava zero righe perché `codice ≠ codice_interno`).
 Chiuso con un **guardrail CI catalog-based bloccante**. Vedi
-[brief-naming-stato-codice-interno.md](work-done/brief-naming-stato-codice-interno.md),
-[analisi-hardcoded-codice.md](work-done/analisi-hardcoded-codice.md).
+[brief-naming-stato-codice-interno.md](work-done/2026/brief-naming-stato-codice-interno.md),
+[analisi-hardcoded-codice.md](work-done/2026/analisi-hardcoded-codice.md).
 
 **Manutenzione.** Corretta l'asimmetria del gate EVASO sul ramo commessa
 (verificata runtime, non solo applicata) e avviato lo smoke E2E
 push commesse→fatturazione. Sospensioni pratica: anti-sovrapposizione e guard
 sulla data manuale. Revisione critica del documento di sicurezza AI/agenti
 tradotta in piano di allineamento. Vedi
-[brief-db-gate-evaso-commessa-asimmetria.md](work-done/brief-db-gate-evaso-commessa-asimmetria.md),
-[brief-db-sospensioni-anti-overlap-data-manuale.md](work-done/brief-db-sospensioni-anti-overlap-data-manuale.md),
-[analisi-sicurezza-aggiornata.md](work-done/analisi-sicurezza-aggiornata.md).
+[brief-db-gate-evaso-commessa-asimmetria.md](work-done/2026/brief-db-gate-evaso-commessa-asimmetria.md),
+[brief-db-sospensioni-anti-overlap-data-manuale.md](work-done/2026/brief-db-sospensioni-anti-overlap-data-manuale.md),
+[analisi-sicurezza-aggiornata.md](work-done/2026/analisi-sicurezza-aggiornata.md).
 
 ---
 

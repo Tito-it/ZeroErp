@@ -1,0 +1,141 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il fornitore perde i doppioni e il suo regime fiscale si lega al catalogo
+#   (brief-db-fornitore-doppioni-del-soggetto, giro B; D-1, D-2, D-4 di Tid,
+#   2026-11-21).
+#
+# -- LE SEI COLONNE CHE ESCONO ------------------------------------
+#   - giorni_pagamento, fine_mese: le condizioni stanno nel termine
+#     (config.termini_pagamento, via termine_pagamento_id), come sul cliente
+#     e come sulla fattura dal 20260731-10;
+#   - split_payment: doppione di anagrafiche.soggetti.split_payment, che ha
+#     le sue regole (natura PA, script.fn_esigibilita_iva);
+#   - canale_fe, pec_email: doppioni dei dati societari del soggetto
+#     (destinatario_fe, codice_sdi, pec_fatturazione); l'instradamento FE del
+#     fornitore non serve alle fatture passive;
+#   - bollo_esente: il bollo lo decide chi emette il documento (D-2).
+#   Dopo l'uscita la base commerciale del fornitore e' quella del cliente:
+#   modalita_pagamento_id e termine_pagamento_id.
+#
+# -- CHI LE NOMINA, E CHE COSA SUCCEDE (censimento 2026-11-21) ----
+#   - anagrafiche.vw_fornitori_dettaglio le proietta: DROP COLUMN non passa
+#     finche' esiste. Si droppa qui, la ricrea 20261121-05;
+#   - chk_fornitori_canale_fe_len: e' su una colonna sola, cade con lei;
+#   - anagrafiche.fn_crea_fornitore (c_ammesse) e
+#     trgfn_fornitori_guard_normalize (regole su canale_fe e pec_email): i
+#     corpi plpgsql non sono dipendenze. Li riscrivono 20261121-06 e -07; in
+#     mezzo, nella stessa migrate, nessuno scrive fornitori;
+#   - storico.fornitori: snapshot jsonb, le righe vecchie tengono le chiavi
+#     ed e' la loro storia;
+#   - ui.lista_colonna: le tre colonne di lista sono uscite col 20261121-01;
+#     la riga regime_fiscale passa a regime_fiscale_rf nel CSV dello stesso
+#     giro;
+#   - nessun trigger con UPDATE OF su queste colonne, nessun indice.
+#   I valori non si travasano: le sedi vere sono gia' scritte dal form del
+#   soggetto, e nessuno scriveva piu' queste.
+#
+# -- IL REGIME (D-4) ----------------------------------------------
+#   regime_fiscale era un varchar(8) libero. Prende il nome e la forma di
+#   anagrafiche.emittenti_fiscali.regime_fiscale_rf (D-9 del 2026-10-01,
+#   brief-db-esigibilita-iva-per-cassa-emittente): FK su
+#   config.regimi_fiscali(codice_interno), la chiave del tracciato FatturaPA
+#   (linee-guida-sql 6b), RESTRICT come l'emittente. Nullable: un fornitore
+#   privato non ha regime. Il regime non ha una sede sul soggetto: sta sul
+#   ruolo, come per l'emittente.
+#   ⚠️ La FK sta qui e non in 80_data: non ha DEFAULT ne' backfill che
+#   puntino a una riga di seed. Da zero la tabella e' vuota; su un database
+#   che ha gia' i fornitori, un valore fuori catalogo fa fallire l'ALTER al
+#   suo posto (fail-fast, non c'e' un cancello: una preCondition di
+#   00_schema non legge il contenuto di 80_data, linee-guida-sql 11.4).
+#   #   A ci_apply nasce la coppia ATTIVO (un fornitore non punta a un regime
+#   spento); l'indice della FK lo registra la policy (opt-in).
+#
+# -- LA NORMALIZZAZIONE -------------------------------------------
+#   Spazi e minuscolo li toglie 20261121-02, in una transazione sua.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261121-03-alter-fornitori-ritira-doppioni-regime-fk-mctit.yaml
+
+  - changeSet:
+      id: 20261121-03-alter-fornitori-ritira-doppioni-regime-fk
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fornitori: escono giorni_pagamento, fine_mese, split_payment,
+        bollo_esente, canale_fe e pec_email (doppioni del termine e del soggetto);
+        regime_fiscale diventa regime_fiscale_rf con FK
+        fk_fornitori_regimi_fiscali su config.regimi_fiscali(codice_interno).
+        vw_fornitori_dettaglio droppata, la ricrea 20261121-05. Brief:
+        brief-db-fornitore-doppioni-del-soggetto, giro B (D-1, D-2, D-4).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: anagrafiche
+            tableName: fornitori
+            columnName: giorni_pagamento
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La sola vista che le nomina: DROP COLUMN non passa finche' esiste.
+              DROP VIEW anagrafiche.vw_fornitori_dettaglio;
+
+              ALTER TABLE anagrafiche.fornitori
+                  DROP COLUMN giorni_pagamento,
+                  DROP COLUMN fine_mese,
+                  DROP COLUMN split_payment,
+                  DROP COLUMN bollo_esente,
+                  DROP COLUMN canale_fe,
+                  DROP COLUMN pec_email;
+
+              ALTER TABLE anagrafiche.fornitori
+                  RENAME COLUMN regime_fiscale TO regime_fiscale_rf;
+
+              ALTER TABLE anagrafiche.fornitori
+                  ADD CONSTRAINT fk_fornitori_regimi_fiscali
+                  FOREIGN KEY (regime_fiscale_rf)
+                  REFERENCES config.regimi_fiscali (codice_interno)
+                  ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+              COMMENT ON COLUMN anagrafiche.fornitori.regime_fiscale_rf IS
+                  'Il regime fiscale del fornitore: codice RegimeFiscale del tracciato FatturaPA, '
+                  'FK su config.regimi_fiscali(codice_interno), la stessa forma di '
+                  'anagrafiche.emittenti_fiscali.regime_fiscale_rf. NULL quando il fornitore non '
+                  'ne ha uno (un privato).';
+
+              COMMENT ON COLUMN anagrafiche.fornitori.termine_pagamento_id IS
+                  'Il termine di pagamento del fornitore, dal catalogo config.termini_pagamento: '
+                  'giorni, fine mese, rate e intervallo stanno nel termine. Con '
+                  'modalita_pagamento_id e'' la base commerciale comune al cliente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il rollback di -05 ha gia' droppato la vista nuova. Le colonne tornano
+              -- vuote: i valori di prima non si ricostruiscono (nessuno li scriveva).
+              DROP VIEW IF EXISTS anagrafiche.vw_fornitori_dettaglio;
+              ALTER TABLE anagrafiche.fornitori
+                  DROP CONSTRAINT IF EXISTS fk_fornitori_regimi_fiscali;
+              ALTER TABLE anagrafiche.fornitori
+                  RENAME COLUMN regime_fiscale_rf TO regime_fiscale;
+              ALTER TABLE anagrafiche.fornitori
+                  ADD COLUMN IF NOT EXISTS giorni_pagamento smallint,
+                  ADD COLUMN IF NOT EXISTS fine_mese boolean,
+                  ADD COLUMN IF NOT EXISTS split_payment boolean,
+                  ADD COLUMN IF NOT EXISTS bollo_esente boolean,
+                  ADD COLUMN IF NOT EXISTS canale_fe character varying(7),
+                  ADD COLUMN IF NOT EXISTS pec_email character varying(256);
+              ALTER TABLE anagrafiche.fornitori
+                  ADD CONSTRAINT chk_fornitori_canale_fe_len
+                  CHECK (canale_fe IS NULL OR char_length(canale_fe) = 7);

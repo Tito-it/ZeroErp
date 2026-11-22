@@ -56,7 +56,6 @@ const {
   newTooltipKey: 'magazzino.magazzini.nuovo',
   newLabelKey: 'magazzino.magazzini.nuovo',
   onNew: () => emit('new'),
-  searchTableOptions: { defaultSortField: 'codice', defaultSortOrder: 'asc' },
 })
 
 // «Mostra non attivi»: acceso = `attivo: null` (tutti), spento = `true`.

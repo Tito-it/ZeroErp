@@ -43,7 +43,6 @@ const {
   getExportParams: (fmt) => buildExportParams(fmt),
   newTooltipKey: 'anagrafiche.fornitori.nuovo_fornitore',
   onNew: () => emit('new'),
-  searchTableOptions: { defaultSortField: 'ragione_sociale_completa' },
 })
 
 // Filtri custom (toolbar caller).

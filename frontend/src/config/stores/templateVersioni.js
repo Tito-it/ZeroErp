@@ -58,10 +58,11 @@ export const useTemplateVersioniStore = storePerIstanza(STORE_NAME, (id) => defi
     emittenteParam: 'emittente_fiscale_id',
     // Parte piena: sono le versioni di QUESTO template.
     startsEmpty: false,
-    // La versione piu' recente in cima: e' il preset a catalogo
-    // (`versione desc`) e il default del backend.
-    orderBy: 'versione',
-    orderDir: 'desc',
+    // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+    //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+    //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+    //    l'intestazione.
+    // Il ripiego del verso, quando `order_by` arriva senza verso.
     orderDirDefault: 'desc',
   })
 

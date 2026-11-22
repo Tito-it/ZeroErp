@@ -81,7 +81,6 @@ const {
 } = useListaConfigurabilePage(store, {
   exportFn,
   getExportParams: (formato) => ({ formato, ...store.paramsFiltro() }),
-  searchTableOptions: { defaultSortField: 'articolo_codice' },
 })
 
 // --- Filtri (toolbar caller) — binding store via BB ---

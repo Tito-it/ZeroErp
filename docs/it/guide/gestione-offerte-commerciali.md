@@ -1,6 +1,6 @@
 # Guida — Gestione Offerte commerciali
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -279,7 +279,14 @@ stato e, per l'emissione, controlla nell'ordine:
 4. le **righe**: ogni riga è ancora ammessa (`E_DOC_RIGA_NON_AMMESSA`, che nomina
    l'articolo). Quali articoli, erogazioni e fonti della quantità una riga può avere
    dipende da dati che stanno fuori dalla riga (il listino in vigore, la tipologia o la
-   natura dell'articolo): una riga scritta quando era ammessa può non esserlo più.
+   natura dell'articolo): una riga scritta quando era ammessa può non esserlo più;
+5. i **kit col prezzo negoziato** (OVERRIDE o AGGIUNTA su un articolo composito) hanno
+   i loro componenti attivi (`E_OFFERTA_EMISSIONE_KIT_SENZA_COMPONENTI`, che nomina il
+   kit): il prezzo negoziato di un kit è la somma dei suoi componenti, e senza di loro
+   l'ordine o il contratto generati dall'offerta non lo ritroverebbero. Si controlla qui
+   e non quando si scrive la riga, perché i componenti arrivano dopo la riga; fuori dalla
+   bozza l'offerta non si modifica più. Un kit a consumo sarebbe esente, ma oggi il
+   modello non lo ammette: un composito si vende solo a quantità fissa.
 
 Il pulsante «Emetti» è spento con lo **stesso** motivo, letto dagli stessi controlli.
 
@@ -534,7 +541,11 @@ di default del cliente e le righe.
 
 L'ordine nasce in **DRAFT** ereditando le **righe espanse** dell'offerta (listino +
 variazione globale + eccezioni, con i componenti BoM), preservando i **prezzi
-negoziati/override**. Sull'ordine viene registrata l'origine
+negoziati/override**, ciascuna con la **provenienza del suo prezzo**: la riga presa dal
+listino dell'offerta cita la sua riga di listino (origine `CONTRATTO_LISTINO`, con la
+variazione globale nel contesto), quella con un'eccezione ne copia la provenienza, e i
+componenti di un kit portano ciascuno la loro. Un kit col prezzo forzato tiene i componenti
+negoziati nell'offerta, e l'ordine ne ritrova il prezzo. Sull'ordine viene registrata l'origine
 come provenienza (il tipo `OFFERTA_COMMERCIALE` e l'uid dell'offerta). L'offerta resta **ACCETTATA**.
 
 Da lì l'ordine segue il proprio ciclo di vita (conferma, push a commessa); vedi
@@ -657,6 +668,7 @@ Codici sollevati dal dominio offerte (registrati in `config.messaggi_errore`):
 | `E_ORD_OFFERTA_GIA_CONVERTITA`                    | Secondo tentativo di generare un ordine dalla stessa offerta (univocità 1:1 offerta→ordine)                                                         |
 | `E_ORD_ORIGINE_NON_CONVERTIBILE`                  | Genera ordine da un'offerta che non è ACCETTATA                                                                                                     |
 | `E_DOC_RIGA_NON_AMMESSA`                          | Emissione, genera ordine (o attivazione del contratto) con una riga che non è più ammessa: nomina l'articolo                                        |
+| `E_OFFERTA_EMISSIONE_KIT_SENZA_COMPONENTI`        | Emissione con un kit col prezzo negoziato (OVERRIDE, AGGIUNTA) senza componenti attivi: nomina il kit                                              |
 | `E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI`            | Annullo di un'offerta accettata da cui vive ancora un contratto o un ordine                                                                         |
 | `E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA`              | Rifiuto o annullo senza motivazione (o con una di soli spazi)                                                                                       |
 | `E_DOC_ANNULLO_CON_LEGAMI`                        | Annullo, senza conferma, di una revisione che fa tornare emessa la precedente                                                                       |
@@ -723,7 +735,7 @@ controlli equivalenti solo per dare messaggi parlanti prima del roundtrip.
 
 *Per il dettaglio tecnico delle API REST, formati payload e codici errore vedi la
 documentazione backend di dominio. Le decisioni di modello sono raccolte negli
-addendum di sviluppo (`dev/work-done/addendum-db-offerta-commerciale.md` e correlati).*
+addendum di sviluppo (`dev/work-done/2026/addendum-db-offerta-commerciale.md` e correlati).*
 
 ---
 {% include-markdown "signature-core.md" %}

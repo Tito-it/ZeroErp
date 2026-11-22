@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_attivo`
 
-> **Ultimo aggiornamento**: 13 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -14,7 +14,8 @@
 >
 > * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — il block che monta sul padre
 > * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — il require che monta sul figlio
-> * [dbops.fn_ritira_attivo_eccezioni](/dbzero/dbops/funzioni/fn_ritira_attivo_eccezioni) — toglie i trigger delle FK diventate eccezione
+> * [dbops.fn_attivo_fk_esclusa](/dbzero/dbops/funzioni/fn_attivo_fk_esclusa) — dice se una FK resta fuori, e perché
+> * [dbops.fn_ritira_attivo_eccezioni](/dbzero/dbops/funzioni/fn_ritira_attivo_eccezioni) — toglie i trigger delle FK che il motore non lega
 > * [dbops.fn_ritira_attivo_orfani](/dbzero/dbops/funzioni/fn_ritira_attivo_orfani) — toglie i trigger che nominano oggetti spariti
 > * [dbops.fn_trigger_exists_require_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_require_by_args) — il controllo di esistenza per argomenti del require
 > * [dbops.fn_trigger_exists_block_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_block_by_args) — il controllo di esistenza per argomenti del block
@@ -52,7 +53,15 @@ Il motore lavora per **relazione FK**, non per tabella. Una FK entra quando:
 * il **padre ha la colonna attivo** (col nome di `automation_overrides_cols`, se c'è): senza, la FK
   si salta. Il caso «solo il figlio ha `attivo`» non è gestito, di proposito;
 * non è dichiarata in `dbops.automazione_attivo_eccezioni`;
-* la colonna FK finisce in `_id`: le FK su codici testuali non si legano.
+* non è una FK che una partizione eredita dalla sua radice: quella si lega, o si esclude, sulla
+  radice. Il require della radice PostgreSQL lo copia su ogni partizione, e il block conta le
+  righe di tutte.
+
+Le ultime due condizioni le risponde
+[dbops.fn_attivo_fk_esclusa](/dbzero/dbops/funzioni/fn_attivo_fk_esclusa), la stessa sede che legge il
+ritiro. Il nome della colonna non conta: una FK verso l'`id` del padre e una verso un suo codice
+(`codice_interno`, `codice_iso`) si legano allo stesso modo. Chi non si lega sta fra le eccezioni,
+col motivo: un legame dimenticato non esiste.
 
 Il tipo di azione della FK (`RESTRICT`, `NO ACTION`, `CASCADE`…) non conta: il motore non lo
 guarda.
@@ -110,8 +119,8 @@ regola, vera se manca; è l'**unica** chiave dei parametri che il motore legge. 
 ### Chi genera ritira
 
 Fuori dal dry run, prima di guardare le FK, il motore chiama `dbops.fn_ritira_attivo_eccezioni` e
-`dbops.fn_ritira_attivo_orfani`. Il primo toglie i trigger delle FK diventate eccezione dopo
-essere state legate; il secondo quelli che nominano una tabella o una colonna che non esiste più,
+`dbops.fn_ritira_attivo_orfani`. Il primo toglie i trigger delle FK che il motore non lega più:
+una FK diventata eccezione, o il trigger proprio di una partizione per una FK che eredita dalla radice (le copie che PostgreSQL fa del trigger della radice non si toccano); il secondo quelli che nominano una tabella o una colonna che non esiste più,
 come il block rimasto su un padre dopo l'eliminazione della figlia. I due ritiri guardano tutto il
 database, non solo l'ambito del giro.
 
@@ -121,7 +130,7 @@ database, non solo l'ambito del giro.
 
 Con `p_dry_run` vero il motore non tocca niente: niente ritiri, niente DDL. Scrive in audit, una
 riga per caso, che cosa farebbe: i trigger che creerebbe, quelli già presenti, e i salti col loro
-motivo (padre senza colonna attivo, FK eccezione, colonna FK senza `_id`).
+motivo (padre senza colonna attivo, FK eccezione, FK ereditata da una radice partizionata).
 
 ---
 
@@ -141,6 +150,12 @@ presidio dei job lo attribuisca all'esercizio e non allo sviluppo.
   ramo fuori dal dry run.
 * `db/pgtap/dbops/test-automazione-attivo-eccezioni-v1.sql` — la FK dichiarata eccezione non ha
   trigger, e il motore continua a legare le altre FK della stessa figlia.
+* `db/pgtap/dbops/test-automazione-attivo-senza-filtro-nome-v1.sql` — ogni FK del perimetro verso
+  un padre con attivo è legata o è un'eccezione, qualunque sia il nome della colonna; su tabelle
+  costruite dal test, una FK verso un codice e una radice partizionata con due partizioni.
+* `db/pgtap/dbops/test-automazione-attivo-inclusioni-v1.sql` — le due FK `regime_fiscale_rf`
+  hanno require e block senza registro; il regime spento rifiutato, quello in uso che non si
+  spegne, il ruolo spento che lo tiene e non si riaccende.
 * `db/pgtap/dbops/test-attivo-due-fk-stessa-coppia-v1.sql` — due FK della stessa coppia hanno due
   require e due block con nomi diversi; un secondo giro non ricrea niente; il trigger col nome di
   prima si rigenera.
@@ -158,6 +173,8 @@ presidio dei job lo attribuisca all'esercizio e non allo sviluppo.
 * 2026-10-16 — un guasto dell'ambiente si rilancia col suo SQLSTATE invece di diventare `P0001`
   (`brief-db-presidio-job-run-a-chi-tocca`).
 * 2026-10-21 — il ritiro degli orfani in testa al giro (`brief-be-utenti-di-sviluppo` §9.5).
+* 2026-11-21 — il registro delle inclusioni e il building block `fn_attivo_fk_esclusa`: le FK
+  senza `_id` dichiarate si legano (regime fiscale di emittente e fornitore).
 * 2026-11-08 — il trigger si riconosce dagli argomenti: la strategia d'esistenza della regola esce;
   quando due FK darebbero lo stesso nome sulla stessa tabella l'hash della FK entra sempre, e il
   trigger vivo col nome di prima si rigenera; i template vengono solo dal registro (`20261109-72`,
@@ -167,6 +184,9 @@ presidio dei job lo attribuisca all'esercizio e non allo sviluppo.
   anche una `eventXlog`). `*all` ha una forma sola, garantita dal CHECK
   `chk_automation_rules_tbl_target_table_nome_esatto` (`90_end/20261112-66`). Testata ri-ancorata
   con `%TYPE`, firma invariata (`20261112-76`).
+* 2026-11-22 — il filtro sul suffisso `_id` esce: si lega ogni FK fuori dalle eccezioni, e le FK
+  ereditate dalle partizioni si decidono sulla radice. Il registro delle inclusioni si ritira
+  (`20261121-21` … `-25`, brief-db-attivo-fk-senza-suffisso-id).
 
 ---
 

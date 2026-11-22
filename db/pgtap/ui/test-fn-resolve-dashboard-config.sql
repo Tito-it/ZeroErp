@@ -7,10 +7,9 @@
 --   ⚠️ Da riguardare: le esclusioni `rls/` furono fatte IN BLOCCO, e almeno
 --   una non ne aveva diritto (brief pgtap-runner-rls-baseline §30.2).
 -- pgtap-runner: owner
--- pgtap-runner-motivo: la fixture semina su ui.dashboard_definizione, che a runtime NON scrive nessuno:
---   ne' una funzione DB ne' il backend. E' seed di migrazione, e il SELECT-only del
---   ruolo applicativo e' corretto. Verificato cercando gli scrittori, non dedotto
---   (brief §29.2).
+-- pgtap-runner-motivo: la fixture semina su ui.dashboard_definizione, che l'applicazione non scrive:
+--   lo scrive solo il migratore, dal CSV, e al ruolo applicativo resta il SELECT (la porta di
+--   90_end/20261120-60, brief-db-revisione-ui giro 5, U31).
 -- pgTAP test per Zero ERP
 --
 -- Test: ui.fn_resolve_dashboard_config
@@ -18,7 +17,7 @@
 --
 -- Semantica attesa (brief-db-dashboard-home §4):
 --   - Dashboard inesistente -> errore E_UI_DASHBOARD_NON_TROVATA (P0001)
---   - Nessuna preferenza/preset -> catalogo grezzo (mai vuota), gated esclusi
+--   - Nessuna preferenza/preset -> catalogo grezzo, gated esclusi
 --   - Widget gated (area) senza permesso -> non compare (§4.5)
 --   - Preset sistema -> applicato; preset ruolo prevale su sistema
 --   - Preferenza utente -> prevale su tutto (§4.2)
@@ -31,14 +30,16 @@
 -- la guard PF pura. Per questa veste (non-OPERATORE) le mappe permessi
 -- producono BLOCCATO: i widget gated risultano sempre nascosti -> copre il
 -- caso negativo §4.5. Il caso positivo di gating (widget visibile con permesso)
--- richiederebbe una identita OPERATORE con grant d'area ed e' fuori da questo
--- test (i widget non-gated coprono comunque la garanzia "mai vuota").
+-- chiede un'identita OPERATORE con grant d'area: lo prova
+-- test-ui-dashboard-casi-del-modello-v1 (casi 1-2). ⚠️ Un elenco vuoto dopo il filtro dei permessi e' un esito ammesso: la home
+-- non promette una card (Tid, 2026-07-22, confermato il 2026-11-21, Q50 di
+-- brief-db-revisione-ui), lo stato vuoto lo dice il frontend.
 -- BEGIN; + ROLLBACK implicito a fine file.
 --
 -- Indice test (1..12):
 --   1.  Setup (dashboard + widget + pool + utente + identita + profilo AD_HOC)
 --   2.  Dashboard inesistente -> eccezione P0001
---   3.  Catalogo grezzo: 2 widget (non-gated); gated escluso ("mai vuota")
+--   3.  Catalogo grezzo: 2 widget (non-gated); gated escluso
 --   4.  §4.5: widget gated (area) assente dal risultato
 --   5.  Preset sistema -> dimensione_max=6
 --   6.  Preset ruolo AD_HOC -> dimensione_max=5 (prevale su sistema)
@@ -230,7 +231,7 @@ SELECT is(
         )->'widget'
     )),
     2,
-    '3. Catalogo grezzo: 2 widget non-gated (mai vuota); gated escluso'
+    '3. Catalogo grezzo: 2 widget non-gated; gated escluso'
 );
 
 -- =========================================================
@@ -379,12 +380,25 @@ UPDATE ui.widget SET attivo = TRUE WHERE id = (SELECT widget_id FROM _t_w1);
 
 -- =========================================================
 -- 10. §4.3: due profili -> AD_HOC (prio=1) prevale deterministicamente
---     Usa un profilo prio>1 gia' applicabile all'utente (binding reale, es.
---     PORTALE su CLIENTE_PORTALE): non ne creiamo uno nuovo. Se non esiste,
---     l'INSERT produce 0 righe e il test verifica comunque AD_HOC (dim=5).
+--     Il secondo profilo e' il PORTALE della veste CLIENTE_PORTALE (priorita'
+--     3). uq_profili_accesso_bindings_ruolo ammette UN binding per veste: se il
+--     seed lo porta gia' si usa quello, altrimenti si costruisce qui. Il caso
+--     dice anche di averlo trovato: senza, il preset di ruolo non nascerebbe e
+--     il caso passerebbe senza provare niente.
 -- =========================================================
 DELETE FROM ui.dashboard_preferenza_utente
 WHERE auth_user_id = (SELECT auth_user_id FROM _t_au);
+
+WITH p AS (
+    INSERT INTO config.profili_accesso (tipo, codice, descrizione, attivo)
+    SELECT 'PORTALE', '_PGTAP_DASH_P_' || upper(substr(md5(clock_timestamp()::text), 1, 8)),
+           'Profilo PORTALE test fn_resolve_dashboard_config', TRUE
+     WHERE NOT EXISTS (SELECT 1 FROM config.profili_accesso_bindings b
+                        WHERE b.ruolo_applicativo = 'CLIENTE_PORTALE'::config.ruolo_applicativo)
+    RETURNING id
+)
+INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, ruolo_applicativo, attivo)
+SELECT p.id, 'CLIENTE_PORTALE'::config.ruolo_applicativo, TRUE FROM p;
 
 CREATE TEMP TABLE _t_profilo_prio2 AS
 SELECT profilo_accesso_id
@@ -408,13 +422,15 @@ WHERE lp.codice = 'preset_prio2_pgtap'
   AND lp.dashboard_id = (SELECT dashboard_id FROM _t_dash);
 
 SELECT is(
-    (SELECT (ui.fn_resolve_dashboard_config(
-        (SELECT dashboard_codice FROM _t_dash),
-        (SELECT auth_user_id FROM _t_au),
-        NULL
-    )->>'dimensione_max')::INTEGER),
-    5,
-    '10. §4.3: AD_HOC (prio=1, dim=5) prevale su profilo prio>1 (dim=77)'
+    (SELECT format('%s|%s',
+                   (SELECT count(*) FROM ui.dashboard_preset dp
+                     WHERE dp.codice = 'preset_prio2_pgtap'
+                       AND dp.dashboard_id = (SELECT dashboard_id FROM _t_dash)),
+                   ui.fn_resolve_dashboard_config((SELECT dashboard_codice FROM _t_dash),
+                                                  (SELECT auth_user_id FROM _t_au),
+                                                  NULL)->>'dimensione_max')),
+    '1|5',
+    '10. §4.3: il preset del profilo prio>1 c''e'', e AD_HOC (prio=1, dim=5) prevale (dim=77)'
 );
 
 -- =========================================================

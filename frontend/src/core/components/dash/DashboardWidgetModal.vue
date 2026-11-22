@@ -33,8 +33,10 @@ const props = defineProps({
   config: { type: Object, default: null },
   // Count "N nuove card disponibili" — badge informativo.
   widgetNuovi: { type: Number, default: 0 },
-  // Cap di card mostrabili in home (dal preset risolto).
-  dimensioneMax: { type: Number, default: 8 },
+  // Cap di card mostrabili in home (dal preset risolto). ⛔ Nessun numero
+  // di ripiego qui: la misura, standard compreso, la dice il DB (U21, giro 3
+  // di brief-db-revisione-ui, FE1). `null` = configurazione non ancora letta.
+  dimensioneMax: { type: Number, default: null },
   // Loading lato composable (save/reset in corso).
   loading: { type: Boolean, default: false },
 })
@@ -78,7 +80,8 @@ const nVisibili = computed(
 // preferenza resta valida e il cap potrebbe crescere), ma lo diciamo:
 // un troncamento silenzioso si legge come "card sparita".
 const oltreCap = computed(
-  () => props.dimensioneMax > 0 && nVisibili.value > props.dimensioneMax,
+  // ⛔ «≤0 = nessun tetto» non esiste (Q12): il DB tiene il tetto fra 1 e 100.
+  () => props.dimensioneMax != null && nVisibili.value > props.dimensioneMax,
 )
 
 // Scopo: etichetta i18n del widget, con fallback sull'etichetta di

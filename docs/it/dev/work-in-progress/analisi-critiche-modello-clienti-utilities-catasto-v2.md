@@ -3,7 +3,7 @@
 **Data**: 2026-03-18
 **Stato**: APERTO
 **Prerequisiti completati**: Analisi + DB (guard, disdetta, doc) tutti RISOLTI
-**Documento principale**: `docs/it/dev/work-done/analisi-critiche-modello-clienti-utilities-catasto.md`
+**Documento principale**: `docs/it/dev/work-done/2026/analisi-critiche-modello-clienti-utilities-catasto.md`
 
 ---
 

@@ -1,177 +1,140 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.soggetti_ruoli_conti_bancari`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Appronfondimento Tabelle correlate**   
-> • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
-> • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)    
-> • [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)    
-> • [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari)    
-> • [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati)    
+> Approfondimento tabelle:
 >
-**Artefatti di selezione**   
-> • [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/views/vw_conti_bancari_per_ruolo)    
-> • [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito)   
+> * [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari) — il registro degli IBAN, da cui il legame prende il conto
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il ruolo del legame
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — l'istanza di servizio, facoltativa, a cui il legame si restringe
+> * [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari) — il legame gemello, sul soggetto, su cui si ricade
+> * [pagamenti.enti_incasso](/dbzero/pagamenti/tabelle/enti_incasso) — i canali di incasso, che nominano un legame d'incasso
+> * [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati) — i mandati SEPA, che nominano il legame del conto addebitato
 >
-**Approfondimento Trigger/Funzioni generiche**   
-> • [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)    
-> • [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)    
-> • [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)   
- 
+> Approfondimento viste:
+>
+> * [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/views/vw_conti_bancari_per_ruolo) — le candidate di ogni ruolo
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ruoli_conti_bancari_guard) — il conto del legame è attivo
+> * [anagrafiche.trgfn_guard_istanza_del_ruolo](/dbzero/anagrafiche/funzioni/trgfn_guard_istanza_del_ruolo) — l'istanza è del soggetto del ruolo
+> * [script.trgfn_guard_date_validita](/dbzero/script/funzioni/trgfn_guard_date_validita) — la fine della validità non precede l'inizio
+> * [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito) — la scelta del conto, che parte da qui
+>
+> Guide:
+>
+> * [Gestione dei conti bancari](/guide/gestione-conti-bancari) — i due legami e la scelta del conto
+
 ---
+
 ### 🎯 Scopo Principale
-(latest review 25-03-26)
-`anagrafiche.soggetti_ruoli_conti_bancari` gestisce l’**associazione tra un Ruolo** di un soggetto (CLIENTE, FORNITORE, GESTORE, …) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 
-Supporta la **differenziazione per istanza di servizio** tramite `istanza_utility_id` (opzionale, `bigint`, FK → `anagrafiche.istanze_utilities`): due istanze GAS dello stesso soggetto possono avere conti INCASSO diversi.
-
-La cascata di selezione è a **3 livelli** (istanza → ruolo generico → soggetto), implementata dalla vista `vw_conti_bancari_per_ruolo` (flat) e dalla funzione `fn_get_conto_bancario_predefinito` (cascata 7 livelli con fallback uso GENERICO).
+`anagrafiche.soggetti_ruoli_conti_bancari` lega un conto del registro a un ruolo del soggetto, per un uso, e se serve
+a una sua istanza di servizio. Quando c'è, ha la precedenza sul legame del soggetto.
 
 ---
 
-### Relazioni
+### Il ruolo, e se serve l'istanza
 
-| Tipo       | Tabella ↔ Campo                                        | Descrizione                                          |
-| ---------- | ------------------------------------------------------ | ---------------------------------------------------- |
-| FK →       | `anagrafiche.soggetti_ruoli(id)` ← `soggetto_ruolo_id` | Ruolo del soggetto (es. Cliente, Fornitore)          |
-| FK →       | `anagrafiche.conti_bancari(id)` ← `conto_bancario_id`  | Conto bancario registrato nell’anagrafe unica        |
-| (usata da) | `anagrafiche.vw_conti_bancari_per_ruolo`               | Selezione con priorità RUOLO → fallback SOGGETTO     |
-| (usata da) | `pagamenti.sepa_mandati`                               | Collega il mandato al **conto di ruolo** selezionato |
+Il legame nomina il ruolo (il cliente, il fornitore, il gestore…) e l'uso del conto (`INCASSO`, `PAGAMENTO`,
+`RIMBORSO`, `GENERICO`, che è il default). `istanza_utility_id`, facoltativa, lo restringe a un'istanza di servizio:
+due forniture dello stesso cliente possono incassare su conti diversi. Senza istanza il legame vale per il ruolo in
+generale.
 
-> **Nota:** cancellazioni **NO ACTION** per evitare orfani; disattiva un legame impostando `valido_al` o `bloccato=true`.
+L'istanza deve essere del soggetto del ruolo (`E_ISTANZA_ALTRO_SOGGETTO`), quando il legame nasce o cambia ruolo o
+istanza.
 
----
-
-### Struttura logica (campi chiave)
-
-* `soggetto_ruolo_id` (**FK** obbligatoria)
-* `conto_bancario_id` (**FK** obbligatoria)
-* `istanza_utility_id` (**FK** opzionale, `bigint` → `anagrafiche.istanze_utilities`) — se valorizzato, il legame è specifico per quell’istanza di servizio; se NULL, è generico del ruolo
-* `uso VARCHAR(16)` → `INCASSO | PAGAMENTO | RIMBORSO | GENERICO` (default `GENERICO`)
-* `predefinito BOOLEAN` → predefinito per l’uso **in questo ruolo/istanza**
-* `valido_dal DATE`, `valido_al DATE` → finestra di validità del legame
-* `intestazione_dichiarata VARCHAR(140)` → opzionale (se diversa da intestatario del conto)
-* Flag operativi: `verificato BOOLEAN`, `bloccato BOOLEAN`
-* Estensioni: `meta JSONB`
-* Audit: `tx_id UUID`, `storicizza BOOLEAN`, `data_*`, `user_*`
+* **L'unicità** è sul ruolo, l'istanza, il conto e l'uso; due indici parziali la scrivono, uno per i legami con
+  l'istanza e uno per quelli senza.
+* **Il predefinito**: al più uno per ruolo, istanza e uso, e al più uno per ruolo e uso fra i legami senza istanza.
+  Il database non lo sposta da solo.
+* **La validità** (`valido_dal`, `valido_al`) è facoltativa, e la fine non precede l'inizio. Non entra
+  nell'unicità del predefinito.
+* **Il blocco** (`bloccato`) toglie il legame dalla scelta del conto senza cancellarlo.
 
 ---
 
-### 🚦 Vincoli & Regole
+### ⭐ Un conto d'incasso, un solo ruolo
 
-* **Unicità combinazione** (4 partial unique index per gestire NULL su `istanza_utility_id`):
-  - `uq_src_bancari_ruolo_istanza_conto_uso (soggetto_ruolo_id, istanza_utility_id, conto_bancario_id, uso) WHERE istanza_utility_id IS NOT NULL`
-  - `uq_src_bancari_ruolo_conto_uso_no_istanza (soggetto_ruolo_id, conto_bancario_id, uso) WHERE istanza_utility_id IS NULL`
-* **Predefinito per uso/ruolo/istanza** (2 partial unique index):
-  - `uq_src_bancari_predefinito_istanza (soggetto_ruolo_id, istanza_utility_id, uso) WHERE predefinito=true AND istanza_utility_id IS NOT NULL`
-  - `uq_src_bancari_predefinito_no_istanza (soggetto_ruolo_id, uso) WHERE predefinito=true AND istanza_utility_id IS NULL`
-* 🔴 **Un conto di INCASSO appartiene a UN SOLO soggetto** — vincolo di
-  esclusione `ex_src_bancari_conto_incasso_un_solo_soggetto`
-  `EXCLUDE USING gist (conto_bancario_id WITH =, soggetto_ruolo_id WITH <>) WHERE (uso = 'INCASSO')`
-  *(dal 2026-08-22)*. ⭐ **E' il pezzo che regge il perimetro degli incassi**: la
-  catena *azienda → conto* era già garantita, ma serviva **al contrario** — «questi
-  soldi su questo conto, di chi sono?» — e in quel verso non c'era niente. La
-  regola di dominio è vera nel mondo (due partite IVA, due conti correnti) ma il
-  database non la sapeva: finché quel legame serviva a stampare un IBAN in fattura
-  l'ambiguità era un fastidio, appoggiandoci la sicurezza diventa un **varco
-  silenzioso** — due aziende sullo stesso conto, ciascuna vede i soldi dell'altra,
-  e nessun errore da nessuna parte.
-  > ⚠️ **Esclusione e non indice unico** su `(conto_bancario_id) WHERE uso = 'INCASSO'`:
-  > quello vieterebbe anche lo stesso conto sullo **stesso** soggetto una volta a
-  > livello di ruolo e una per istanza utility — cioè proprio la configurazione che
-  > i due indici `uq_src_bancari_ruolo_*_conto_uso` dichiarano legittima. La regola
-  > nomina **due** colonne: stesso conto **e** soggetto diverso.
-  >
-  > ⛔ Il periodo di validità **non** entra nel vincolo di proposito: in Italia un
-  > IBAN non passa di mano, e ammettere la sovrapposizione nel tempo costringerebbe
-  > il perimetro a risolvere il conto **alla data** — cioè a rispondere in modo
-  > diverso ieri e oggi alla domanda «di chi sono questi soldi?».
-  >
-  > ⭐ **Regola generale, oltre questo caso:** una verità di dominio su cui si
-  > appoggia un perimetro di sicurezza deve diventare un **vincolo**, non restare
-  > un'assunzione. Il costo di scriverla è un indice; il costo di non scriverla non
-  > si vede finché non è successo.
-* **Chi ci si appoggia**: `pagamenti.enti_incasso.soggetto_ruolo_conto_bancario_id`
-  punta a una riga di questa tabella, e un guard pretende che il suo `uso` sia
-  `INCASSO` — è lì che l'unicità qui sopra diventa il perimetro degli incassi.
-* **Validità temporale**: `CHECK (valido_al IS NULL OR valido_dal IS NULL OR valido_al >= valido_dal)`.
-* **Valori ammessi `uso`**: `CHECK (uso IN ('INCASSO','PAGAMENTO','RIMBORSO','GENERICO'))`.
-* **Guard‑rail conto attivo**: trigger impedisce associazioni a `conti_bancari.attivo=false`.
+Lo stesso conto con uso `INCASSO` non sta su due ruoli diversi (`ex_src_bancari_conto_incasso_un_solo_soggetto`). È il
+pezzo su cui poggia il perimetro degli incassi: quando i soldi arrivano su un IBAN non hanno ancora una fattura, e di
+chi sono lo dice il conto. Un canale di incasso (`pagamenti.enti_incasso`) nomina un legame di questa tabella, e il
+suo guard pretende che l'uso sia `INCASSO`: è lì che l'unicità diventa il perimetro.
 
+* È un'**esclusione**, non un indice unico: lo stesso conto d'incasso sullo stesso ruolo, una volta in generale e
+  una per un'istanza, resta ammesso, come gli indici di unicità dichiarano.
+* Il vincolo nomina il **ruolo**, non il soggetto, ed è più stretto del suo nome: lo stesso IBAN come conto d'incasso
+  su due ruoli dello stesso soggetto è rifiutato, pur essendo la stessa azienda. Allentarlo è una decisione di
+  dominio.
+* La validità non entra nel vincolo: un IBAN non passa di mano.
+
+Il gemello sul legame del soggetto presidia la sua tabella; i due non si incrociano. È voluto: il perimetro legge
+solo questa tabella.
 
 ---
 
-### Query tipiche
+### Il conto è attivo
 
-**1) Predefinito d’incasso per un ruolo (oggi valido)**
+Il conto del legame è attivo, prima della scrittura (`E_CONTO_BANCARIO`, dal guard) e di nuovo al COMMIT. Finché un
+legame esiste, il conto non si spegne: il legame non ha un suo `attivo`, e conta che esista.
 
-```sql
-SELECT srcb.*
-FROM anagrafiche.soggetti_ruoli_conti_bancari srcb
-JOIN anagrafiche.conti_bancari cb ON cb.id = srcb.conto_bancario_id
-WHERE srcb.soggetto_ruolo_id = :soggetto_ruolo_id
-  AND srcb.uso = 'INCASSO'
-  AND srcb.predefinito = true
-  AND (srcb.valido_dal IS NULL OR srcb.valido_dal <= CURRENT_DATE)
-  AND (srcb.valido_al  IS NULL OR srcb.valido_al  >= CURRENT_DATE)
-  AND srcb.bloccato = false
-  AND cb.attivo = true
-LIMIT 1;
-```
-
-**2) Tutti i conti attivi del ruolo (per auditing)**
-
-```sql
-SELECT srcb.uso, srcb.predefinito, cb.iban, cb.verificato
-FROM anagrafiche.soggetti_ruoli_conti_bancari srcb
-JOIN anagrafiche.conti_bancari cb ON cb.id = srcb.conto_bancario_id
-WHERE srcb.soggetto_ruolo_id = :soggetto_ruolo_id
-  AND (srcb.valido_al IS NULL OR srcb.valido_al >= CURRENT_DATE)
-ORDER BY srcb.uso, srcb.predefinito DESC, srcb.data_update DESC;
-```
+Un legame che un canale di incasso o un mandato SEPA nomina non si cancella: lo impediscono le loro chiavi esterne.
 
 ---
 
-### Cascata di selezione (3 livelli + fallback uso)
+### Come lo legge la scelta del conto
 
-La funzione `fn_get_conto_bancario_predefinito(ruolo, uso, istanza_utility_id)` implementa una cascata a **7 livelli**:
-
-1. Ruolo + istanza specifica + uso richiesto
-2. Ruolo + istanza NULL (generico) + uso richiesto
-3. Soggetto + uso richiesto
-4. Ruolo + istanza specifica + uso GENERICO
-5. Ruolo + istanza NULL + uso GENERICO
-6. Soggetto + uso GENERICO
-7. NULL (nessun conto trovato)
-
-La vista `vw_conti_bancari_per_ruolo` e **flat** (espone tutte le candidate senza DISTINCT ON). La selezione singola e nella funzione.
+La vista `vw_conti_bancari_per_ruolo` lo espone come candidata di fonte `RUOLO`, se valido nel giorno operativo (la
+data di oggi nel fuso dell'azienda), non bloccato e su un conto attivo. La funzione di scelta guarda prima il legame
+con l'istanza chiesta, poi quello senza istanza, poi il legame del soggetto, e ripete la cascata sull'uso `GENERICO`.
 
 ---
 
-### Best practice
+### ⚠️ Che cosa oggi non copre
 
-* Definisci **un solo predefinito per uso** per ciascuna combinazione ruolo/istanza (vincolo unico parziale).
-* Usa `valido_dal/valido_al` per cambi programmati; **non cancellare**, storicizza.
-* Per **ruoli sensibili** (es. Gestore con CI SEPA), documenta nel `meta` eventuali vincoli di utilizzo.
-* Limita la visibilità degli IBAN via servizi/vista: qui lavora per **ID conto**.
-* Per conti generici del ruolo (validi per tutte le istanze), lascia `istanza_utility_id = NULL`.
+* **L'uso cambia sotto il canale di incasso.** Il guard del canale guarda l'uso quando il canale nasce o cambia
+  legame; l'uso del legame si può poi modificare, e il canale resta appeso a un legame che non è più d'incasso,
+  fuori dall'esclusione.
+* **Il soggetto del ruolo non deve essere attivo.** Il legame controlla il conto, non il soggetto: il gemello sul
+  soggetto pretende il soggetto attivo, questo no.
+* **Un predefinito bloccato.** Niente nel database impedisce di bloccare il legame predefinito: la scelta del conto
+  lo salta e ricade sugli altri.
+* **Il predefinito a scadenza.** Il predefinito è uno solo, valido o no: un cambio di conto programmato non può
+  marcare il nuovo legame finché il vecchio porta il segno.
 
 ---
 
-### Diagramma ER relazioni (focus ruolo)
+### Codici errore
 
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    soggetti_ruoli ||--o{ soggetti_ruoli_conti_bancari : possiede
-    conti_bancari ||--o{ soggetti_ruoli_conti_bancari : collega
-    istanze_utilities ||--o{ soggetti_ruoli_conti_bancari : scoped_by
-    soggetti_ruoli_conti_bancari ||--o{ sepa_mandati : usa
-    soggetti_ruoli ||..o{ vw_conti_bancari_per_ruolo : selezione
-```
+* `E_CONTO_BANCARIO` — il conto è spento o non esiste.
+* `E_ISTANZA_ALTRO_SOGGETTO` — l'istanza è di un altro soggetto.
+* `E_DATA_AL_MINORE_DAL` — la fine della validità precede l'inizio.
+* `E_ATTIVO_PADRE_NON_ATTIVO` — al COMMIT, il conto è spento.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-conto-incasso-un-solo-soggetto.sql` — lo stesso conto d'incasso sul ruolo di un secondo
+  soggetto rifiutato, sullo stesso ruolo per un'istanza ammesso, su un uso diverso ammesso.
+* `db/pgtap/anagrafiche/test-conti-bancari-istanza-cascata.sql` — i predefiniti con e senza istanza, la cascata della
+  scelta.
+* `db/pgtap/anagrafiche/test-istanza-dello-stesso-soggetto-v1.sql` — l'istanza di un altro soggetto rifiutata.
+* `db/pgtap/anagrafiche/create-gestore-conto-bancario.sql` — un legame d'incasso predefinito sul ruolo di un gestore.
+
+---
+
+### Note di migrazione
+
+* 2026-03-25 — `istanza_utility_id` prende il posto del riferimento alla utility: il legame si restringe a una
+  fornitura, non a un servizio.
+* 2026-08-22 — nasce l'esclusione `ex_src_bancari_conto_incasso_un_solo_soggetto`, insieme al perimetro degli
+  incassi che ci si appoggia.
+* 2026-09-23 — il controllo delle date esce dal guard del legame e passa a `script.trgfn_guard_date_validita`.
 
 ---
 
 {% include-markdown "signature-core.md" %}
-
----

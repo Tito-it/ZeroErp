@@ -30,7 +30,6 @@ const {
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'amministrazione.email_new_account',
   onNew: () => drawer.openCreate(),
-  searchTableOptions: { defaultSortField: 'codice' },
 })
 
 useTabFreshness(store, TAB_ENTITIES.EMAIL_ACCOUNTS)

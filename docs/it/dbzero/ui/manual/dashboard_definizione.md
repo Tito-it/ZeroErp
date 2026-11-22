@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_definizione`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,8 +13,8 @@
 >
 > Approfondimento funzioni:
 >
+> * [ui.fn_dashboard_da_codice](/dbzero/ui/funzioni/fn_dashboard_da_codice) — la dashboard accesa per codice
 > * [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config) — risolve la dashboard per un utente
-> * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — non si spegne con preset accesi
 
 ---
 
@@ -39,44 +39,38 @@ non usa questa struttura.
 
 ---
 
-### Una dashboard spenta non si risolve
+### Una dashboard spenta non si risolve, e sospende i suoi preset
 
-Con `attivo` falso la dashboard non esiste per chi la chiede:
-[fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config) risponde
-`E_UI_DASHBOARD_NON_TROVATA`, e il backend rifiuta col codice stesso il salvataggio, la cancellazione e
-l'«ignora» della preferenza.
+Con `attivo` falso la dashboard non esiste per chi la chiede: la lettura per codice,
+[fn_dashboard_da_codice](/dbzero/ui/funzioni/fn_dashboard_da_codice), risponde
+`E_UI_DASHBOARD_NON_TROVATA`, e con lei la risoluzione e il backend, che rifiuta col codice stesso il
+salvataggio, la cancellazione e l'«ignora» della preferenza.
 
-Una dashboard si spegne solo quando i suoi preset sono spenti
-([trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children)).
-Non la trattengono le righe del pool né le preferenze degli utenti: sono in eccezione alla regola
-ATTIVO, perché sono parti e stati dell'utente, non entità che vivono da sole.
+Una dashboard si spegne anche con i preset accesi, e li **sospende** senza toccarli: alla riaccensione
+tornano com'erano. È la forma delle liste. Non la trattengono i preset, le righe del pool né le
+preferenze degli utenti: le loro FK sono in eccezione alla regola ATTIVO.
 
 ---
 
 ### Chi la scrive
 
-La tabella si popola col seed delle migrazioni. Né una funzione del database né il backend la
-scrivono; l'audit lo tiene il trigger generico del framework.
+La tabella la possiede il CSV del seed. L'applicazione la legge e non la scrive: ha il solo `SELECT`,
+come sulle altre tabelle del catalogo delle dashboard (widget, pool, preset e loro composizione). Le
+preferenze degli utenti restano scrivibili. L'audit lo tiene il trigger generico del framework.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### Una home senza card è un esito
 
-* **L'applicazione ha i privilegi di scrittura.** Il ruolo applicativo ha INSERT, UPDATE e DELETE
-  sulla tabella, anche se nessun servizio la scrive: un errore del backend potrebbe aggiungere o
-  togliere una dashboard. Lo schema `ui` non è sul modello «una scrittura = un verbo».
-* **Il codice può essere vuoto.** Nessun vincolo rifiuta un codice o una descrizione di soli spazi.
-* **La lettura per codice ha due copie.** La funzione di risoluzione cerca la dashboard accesa per
-  codice, e il backend ripete la stessa ricerca prima di scrivere una preferenza. Le liste hanno un
-  building block per questa lettura, [fn_lista_da_codice](/dbzero/ui/funzioni/fn_lista_da_codice); le
-  dashboard no.
+La dashboard non promette una card a ogni utente: dopo il filtro dei permessi l'elenco dei widget può
+essere vuoto. La regola è che la home non resti muta, e lo stato vuoto lo dice il frontend («nessuna
+card attiva», «nessuna card disponibile per il tuo profilo»), non una card di riempimento.
 
 ---
 
 ### Codici errore
 
-* `E_UI_DASHBOARD_NON_TROVATA` — codice inesistente o dashboard spenta, alla risoluzione.
-* `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` — spegnimento con preset accesi.
+* `E_UI_DASHBOARD_NON_TROVATA` — codice inesistente o dashboard spenta, dalla lettura per codice.
 * Il codice duplicato arriva come violazione di `uq_ui_dashboard_definizione_codice`.
 
 ---
@@ -85,6 +79,8 @@ scrivono; l'audit lo tiene il trigger generico del framework.
 
 * `db/pgtap/ui/test-fn-resolve-dashboard-config.sql` — la dashboard inesistente rifiutata.
 * `db/pgtap/ui/test-ui-nell-ambito-v1.sql` — le regole ATTIVO e le eccezioni delle tabelle di `ui`.
+* `db/pgtap/ui/test-ui-catalogo-dashboard-v1.sql` — la dashboard spenta coi preset accesi, la lettura per
+  codice, la porta in sola lettura, i testi non vuoti.
 
 ---
 
@@ -93,6 +89,9 @@ scrivono; l'audit lo tiene il trigger generico del framework.
 * 2026-07-21 — nasce la tabella, con la home.
 * 2026-11-08 — lo schema `ui` entra nell'ambito delle automazioni: audit del framework e regola ATTIVO,
   con le eccezioni per pool e preferenze.
+* 2026-11-21 — codice, descrizione e note non sono mai la stringa vuota (un CHECK per colonna).
+* 2026-11-21 — la dashboard spenta sospende i preset invece di non spegnersi; la lettura per codice ha
+  il suo building block; l'applicazione perde la scrittura.
 
 ---
 

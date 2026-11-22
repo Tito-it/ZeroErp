@@ -1,110 +1,80 @@
 ## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_stiva_movimenti_dettaglio`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> [anagrafiche.soggetti_titoli_iva_movimenti](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva_movimenti) — il registro ·
-> [anagrafiche.soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva) — il titolo, da cui arriva il perimetro ·
-> [script.fn_check_annullo_movimento_titolo_iva](/dbzero/script/funzioni/fn_check_annullo_movimento_titolo_iva) — chi decide il motivo di blocco ·
-> [vendite.vw_resi_righe_dettaglio](/dbzero/vendite/views/vw_resi_righe_dettaglio) — la gemella, nata dallo stesso problema
+> Approfondimento tabelle:
+>
+> * [anagrafiche.soggetti_titoli_iva_movimenti](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva_movimenti) — il registro che proietta
+> * [anagrafiche.soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva) — il titolo, da cui arrivano soggetto ed emittente
+>
+> Approfondimento viste:
+>
+> * [vendite.vw_resi_righe_dettaglio](/dbzero/vendite/views/vw_resi_righe_dettaglio) — la gemella, con lo stesso modo di portare il motivo di blocco
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_check_annullo_movimento_titolo_iva](/dbzero/script/funzioni/fn_check_annullo_movimento_titolo_iva) — chi decide il motivo di blocco
+> * [anagrafiche.fn_annulla_movimento_titolo_iva](/dbzero/anagrafiche/funzioni/fn_annulla_movimento_titolo_iva) — il verbo che il pulsante chiama
 
 ---
 
 ### 🎯 Scopo Principale
 
-(rev 2026-08-31 — vista nata il 2026-08-31)
-
-Le **righe del registro** dei movimenti di plafond di un titolo IVA, per il drawer
-di dettaglio: anagrafica del movimento, il tipo di titolo, il **legame dell'annullo
-nei due versi**, e il **motivo di blocco** dell'annullo.
+`anagrafiche.vw_stiva_movimenti_dettaglio` mostra le righe del registro del plafond di un titolo IVA per il drawer
+di dettaglio: il movimento, il tipo di titolo, il legame dell'annullo nei due versi e il motivo per cui il pulsante
+«Annulla» è spento.
 
 ---
 
-### ⭐ Perché nasce una vista
+### ⭐ Il pulsante si trova già spento, col motivo
 
-La decisione di Tid del 2026-08-30 dice che l'operatore deve trovare il pulsante
-«Annulla» **già spento, col motivo**, invece di scoprirlo premendo. Perché quel
-motivo arrivi a video serve una superficie che lo porti — e per questo registro
-**non ne esisteva nessuna**.
+L'operatore deve vedere che una forzatura non si può annullare prima di premere, e perché. Il pulsante vive sul
+registro di un titolo, quindi il motivo va sulle righe di quel registro: questa vista è la superficie che lo porta.
 
-⚠️ È lo stesso punto di partenza dei resi: le righe del reso erano l'unico dettaglio
-documento servito da SQL scritto in Python, ed era esattamente il motivo per cui il
-motivo di blocco poteva arrivare solo dove non serviva. Da lì è nata
-`vw_resi_righe_dettaglio`; questa è la sua gemella.
-
-> ⛔ **La domanda che decide la sede è: da dove si preme quel pulsante?**
-> Non «quale lista parla di questa cosa». Il pulsante vive sul registro di **un**
-> titolo, quindi il motivo va sulle righe di quel registro.
+Il motivo lo dà `script.fn_check_annullo_movimento_titolo_iva`, la stessa funzione che la porta dell'annullo
+interroga per rifiutare: il pulsante spento e il rifiuto non possono divergere.
 
 ---
 
-### Le colonne che non sono una semplice proiezione
+### Le colonne che non sono una proiezione
 
-| Colonna | Cosa dice |
+| Colonna | Che cosa dice |
 | --- | --- |
-| `annulla_movimento_id` | **cosa annullo** — valorizzata sulle sole righe di annullo |
-| `annullato_da_movimento_id` | **chi mi annulla** — il verso inverso, quello che serve al frontend per barrare la riga e rimandare all'annullo |
-| `is_annullo` / `is_annullato` | i due flag già pronti, per non far ricomporre la logica a chi rende |
-| `annullo_blocco_codice` | il **motivo** per cui «Annulla» è spento. `NULL` = ammesso |
-| `annullo_blocco_reason_key` | la chiave i18n del tooltip |
+| `annulla_movimento_id` | che cosa annulla questa riga, sulle sole righe di annullo |
+| `annullato_da_movimento_id` | chi annulla questa riga: il verso inverso, per barrarla e rimandare all'annullo |
+| `is_annullo`, `is_annullato` | i due versi come flag |
+| `annullo_blocco_codice` | il motivo per cui «Annulla» è spento, come codice macchina della check (non il codice errore); vuoto = annullo ammesso |
+| `annullo_blocco_reason_key` | la chiave della frase del motivo |
 
-⛔ **Un verbo, una colonna.** Il nome dice **per quale azione** è il blocco: una
-colonna generica «bloccato» verrebbe riusata dal prossimo verbo e direbbe due cose
-insieme.
-
-⚠️ `annullo_blocco_codice` porta il **`reason`** (codice macchina), non il codice
-errore — è la stessa convenzione di `vw_resi_righe_dettaglio`, ed è il nome che il
-frontend già conosce.
+Il nome dice per quale azione è il blocco: una colonna generica «bloccato» la riuserebbe il prossimo verbo, e
+direbbe due cose insieme.
 
 ---
 
-### ⭐ Il motivo viene dalla stessa funzione che rifiuta
+### Perimetro e forma
 
-`script.fn_check_annullo_movimento_titolo_iva` è **la sede unica** della regola: la
-interrogano questa vista (per spegnere) e la madre (per rifiutare). Non «coincidono
-oggi»: **non possono divergere**.
+La vista gira coi permessi di chi la legge, e passa dal titolo: è da lì che arrivano soggetto ed emittente, e la
+RLS del titolo e del registro decide che cosa si vede. La vista è sicura da sola, senza contare sul servizio che la
+interroga.
 
----
-
-### ⛔ Perimetro: si passa da `soggetti_titoli_iva`
-
-Il registro ha la RLS, ma il join al titolo **non è ridondante**: è da lì che
-arrivano `soggetto_id` ed `emittente_fiscale_id`, e una vista che li leggesse
-altrove sarebbe interrogabile per qualunque `titolo_iva_id`.
-
-> ⚠️ *Un oggetto di database dev'essere sicuro **da solo**: il prossimo consumatore
-> non sa cosa faceva il primo.* Che il service autorizzi prima non basta.
-
-⛔ **`security_invoker=on` va ri-specificata** a ogni `CREATE OR REPLACE VIEW`:
-PostgreSQL la **azzera** se non la si ripete, e la vista scavalcherebbe la RLS
-senza dirlo.
-
----
-
-### ⚠️ La vista proietta, il chiamante filtra
-
-Nessun filtro incorporato e nessun ordinamento: una vista «dettaglio» che
-nascondesse righe di nascosto darebbe un conteggio diverso da quello della tabella
-**senza dirlo**.
-
----
-
-### ⚠️ Una chiamata per riga, ed è la forma prevista
-
-Il `LATERAL` invoca la check una volta per movimento. Per le **azioni di riga** è il
-pattern dichiarato dalle linee guida — non l'eccezione alla regola «le capability
-stanno solo sul dettaglio, mai per riga di lista»: qui si guarda il registro di
-**un** titolo, non una lista globale.
+Proietta e basta: nessun filtro e nessun ordinamento, che sono di chi chiama. La check gira una volta per riga, ed è
+la forma prevista per un'azione di riga: si guarda il registro di un titolo, non una lista di tutti.
 
 ---
 
 ### Test
 
-`db/pgtap/anagrafiche/test-stiva-movimenti-annullo-v1.sql`, asserzione **11**: sulla
-forzatura annullata il motivo c'è ed è `GIA_ANNULLATO`, su quella ancora viva è
-`NULL`. ⭐ Sono due metà, e servono entrambe: un motivo sempre valorizzato non
-proverebbe che la vista sa distinguere.
+* `db/pgtap/anagrafiche/test-stiva-movimenti-annullo-v1.sql` — la vista espone il motivo di blocco, e coincide con
+  ciò che la porta dell'annullo rifiuta.
 
-Cantiere: `brief-db-titoli-iva-movimenti-annullo.md`, fase `D`.
+---
+
+### Note di migrazione
+
+* 2026-08-30 — nasce con l'annullo delle forzature: prima per questo registro non c'era nessuna vista, e il motivo
+  di blocco non poteva arrivare a video.
 
 ---
 

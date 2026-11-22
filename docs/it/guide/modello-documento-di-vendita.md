@@ -377,11 +377,11 @@ applicata dal guard a ogni scrittura.
 ## 12. Da dove vengono le regole
 
 Le decisioni, con la data e le alternative scartate, stanno nel brief del cantiere:
-[brief-modello-documento-vendita](../dev/work-done/brief-modello-documento-vendita.md) — M-1 …
+[brief-modello-documento-vendita](../dev/work-done/2026/brief-modello-documento-vendita.md) — M-1 …
 M-6 (verbo, emissione, permesso, azioni, matrici, nascita), N-1 … N-3 e P-1 … P-3 (lo stato
 iniziale). Il permesso nel verbo viene da
-[brief-db-permesso-nel-verbo-di-scrittura](../dev/work-done/brief-db-permesso-nel-verbo-di-scrittura.md);
+[brief-db-permesso-nel-verbo-di-scrittura](../dev/work-done/2026/brief-db-permesso-nel-verbo-di-scrittura.md);
 l'annullo con legami da
-[brief-db-annullo-documento-con-legami](../dev/work-done/brief-db-annullo-documento-con-legami.md).
+[brief-db-annullo-documento-con-legami](../dev/work-done/2026/brief-db-annullo-documento-con-legami.md).
 
 {% include-markdown "signature-core.md" %}

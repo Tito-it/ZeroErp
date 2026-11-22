@@ -60,11 +60,18 @@ DECLARE
   -- interruttore e lista di colonne calcolati qui: nessuna colonna li porta
   v_reconcile      boolean;
   v_child_upd_cols text;
+  -- il motivo dell'esclusione da dbops.fn_attivo_fk_esclusa (NULL = si lega):
+  -- uno di due token, nessuna colonna ne e' il riflesso
+  v_esclusa        text;
 BEGIN
   /*
     Scopo
     -----
     Automazione ATTIVO (BLOCK + REQUIRE).
+    Una FK si lega se dbops.fn_attivo_fk_esclusa non la esclude: non e'
+    dichiarata in dbops.automazione_attivo_eccezioni e non e' ereditata da
+    una radice partizionata (la lega, o la esclude, la radice). Il nome
+    della colonna non conta.
     Per ogni FK eleggibile nello scope:
     - sul PADRE: trigger BEFORE UPDATE OF attivo che impedisce la
       disattivazione se esistono righe figlie attive;
@@ -193,51 +200,37 @@ BEGIN
       -- 2) fk_col gia' calcolata dal cursor (no chiamata a fn_get_child_fk_col)
       fk_col := rfk.child_fk_col;
 
-      -- 2.0) ⭐ Rev 20260925-48: FK dichiarata eccezione -> niente block,
-      --   niente require (dbops.automazione_attivo_eccezioni, col suo motivo).
-      IF EXISTS (SELECT 1 FROM dbops.automazione_attivo_eccezioni e
-                  WHERE e.schema_figlia  = rfk.child_schema
-                    AND e.tabella_figlia = rfk.child_table
-                    AND e.colonna_fk     = fk_col) THEN
+      -- 2.0) ⭐ Rev 2026-11-22: se la FK si lega lo dice dbops.fn_attivo_fk_esclusa,
+      --   la sede unica che legge anche dbops.fn_ritira_attivo_eccezioni. Un'eccezione
+      --   dichiarata (dbops.automazione_attivo_eccezioni) non si lega; una FK ereditata
+      --   da una radice partizionata non si lega sulla partizione: il require della
+      --   radice lo clona PostgreSQL, e il block della radice conta tutte le partizioni.
+      --   Il suffisso _id non decide piu' niente (Tid, 2026-11-21, D-1 «a»).
+      v_esclusa := dbops.fn_attivo_fk_esclusa(rfk.child_schema, rfk.child_table, fk_col);
+      IF v_esclusa IS NOT NULL THEN
         IF p_dry_run THEN
           PERFORM dbops.fn_audit_log_once(
             p_function_name => 'dbops.fn_run_automations_attivo',
             p_status        => 'DRYRUN',
-            p_rule_type     => 'ATTIVO_SKIP_ECCEZIONE',
+            p_rule_type     => CASE v_esclusa
+                                 WHEN 'ECCEZIONE_DICHIARATA' THEN 'ATTIVO_SKIP_ECCEZIONE'
+                                 ELSE 'ATTIVO_SKIP_FK_EREDITATA'
+                               END,
             p_exec_mode     => p_exec_mode,
             p_parts         => ARRAY['ATTIVO_BLOCK','ATTIVO_REQUIRE'],
             p_dry_run       => true,
             p_params        => jsonb_build_object(
                                 'action','SKIP',
-                                'reason','ECCEZIONE_DICHIARATA',
+                                'reason', v_esclusa,
                                 'parent', rfk.parent_schema||'.'||rfk.parent_table,
                                 'child',  rfk.child_schema||'.'||rfk.child_table,
                                 'fk',     fk_col
                               ),
-            p_message       => 'Skip: FK dichiarata in dbops.automazione_attivo_eccezioni'
-          );
-        END IF;
-        CONTINUE;
-      END IF;
-
-      -- 2.1) applica automations solo su FK con suffisso _id
-      IF lower(fk_col) NOT LIKE '%_id' THEN
-        IF p_dry_run THEN
-          PERFORM dbops.fn_audit_log_once(
-            p_function_name => 'dbops.fn_run_automations_attivo',
-            p_status        => 'DRYRUN',
-            p_rule_type     => 'ATTIVO_SKIP_FK_NO_ID',
-            p_exec_mode     => p_exec_mode,
-            p_parts         => ARRAY['ATTIVO_BLOCK','ATTIVO_REQUIRE'],
-            p_dry_run       => true,
-            p_params        => jsonb_build_object(
-                                'action','SKIP',
-                                'reason','FK_NO_ID_SUFFIX',
-                                'parent', rfk.parent_schema||'.'||rfk.parent_table,
-                                'child',  rfk.child_schema||'.'||rfk.child_table,
-                                'fk',     fk_col
-                              ),
-            p_message       => 'Skip: FK column has no _id suffix'
+            p_message       => CASE v_esclusa
+                                 WHEN 'ECCEZIONE_DICHIARATA'
+                                   THEN 'Skip: FK dichiarata in dbops.automazione_attivo_eccezioni'
+                                 ELSE 'Skip: FK ereditata da una radice partizionata: la lega o la esclude la radice'
+                               END
           );
         END IF;
         CONTINUE;
@@ -506,7 +499,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_attivo(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Automazione ATTIVO (BLOCK + REQUIRE): per ogni FK monocolonna dell''ambito verso un padre con la colonna attivo monta il BLOCK sul padre (dbops.trgfn_prevent_deactivate_if_children) e il REQUIRE sulla figlia (dbops.trgfn_child_requires_active_parent), con la colonna del padre realmente referenziata dalla FK (confkey[1]). Un trigger si riconosce dagli argomenti, cioe'' dalla FK che difende; il nome viene dai template block e require della regola; quando due FK darebbero lo stesso nome sulla stessa tabella (piu'' FK della figlia verso padri omonimi, o figlie omonime di due schemi verso lo stesso padre) l''hash della FK entra sempre nel nome. Un trigger vivo con un nome diverso da quello atteso si rigenera (params.reconcile_on_change). Salta le FK dichiarate in dbops.automazione_attivo_eccezioni e, fuori dal dry run, in testa a ogni giro chiama dbops.fn_ritira_attivo_eccezioni e dbops.fn_ritira_attivo_orfani (i trigger di una coppia diventata eccezione, o che nominano una tabella o una colonna che non c''e'' piu''): chi genera ritira. Un guasto dell''ambiente (script.fn_sqlstate_di_ambiente) si scrive nel registro errori e si rilancia col suo SQLSTATE; i difetti di struttura escono con E_ATTIVO_REQUIRE o E_ATTIVO_BLOCK.';
+IS 'Automazione ATTIVO (BLOCK + REQUIRE): per ogni FK monocolonna dell''ambito verso un padre con la colonna attivo monta il BLOCK sul padre (dbops.trgfn_prevent_deactivate_if_children) e il REQUIRE sulla figlia (dbops.trgfn_child_requires_active_parent), con la colonna del padre realmente referenziata dalla FK (confkey[1]). Un trigger si riconosce dagli argomenti, cioe'' dalla FK che difende; il nome viene dai template block e require della regola; quando due FK darebbero lo stesso nome sulla stessa tabella (piu'' FK della figlia verso padri omonimi, o figlie omonime di due schemi verso lo stesso padre) l''hash della FK entra sempre nel nome. Un trigger vivo con un nome diverso da quello atteso si rigenera (params.reconcile_on_change). Lega ogni FK che dbops.fn_attivo_fk_esclusa non esclude, qualunque sia il nome della colonna: una FK dichiarata in dbops.automazione_attivo_eccezioni non si lega mai, e una FK ereditata da una radice partizionata si lega (o si esclude) sulla radice, il cui require PostgreSQL clona sulle partizioni. Fuori dal dry run, in testa a ogni giro chiama dbops.fn_ritira_attivo_eccezioni e dbops.fn_ritira_attivo_orfani (i trigger di una coppia diventata eccezione, o che nominano una tabella o una colonna che non c''e'' piu''): chi genera ritira. Un guasto dell''ambiente (script.fn_sqlstate_di_ambiente) si scrive nel registro errori e si rilancia col suo SQLSTATE; i difetti di struttura escono con E_ATTIVO_REQUIRE o E_ATTIVO_BLOCK.';
 ```
 
 </div>

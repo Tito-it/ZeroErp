@@ -9,11 +9,16 @@
 //          - Layout: formato, larghezza_default, ordine_default,
 //            allineamento, gruppo, gruppo_ordine
 //
-//        UX vincoli (decisione 6):
-//          - tipo_colonna='azione' -> esportabile forzato a False e
-//            disabilitato (CHECK constraint DB)
-//          - lista_id immutabile (in edit non editabile, in create
-//            arriva dal Select header via prop)
+//        UX vincoli (i vincoli li tiene il DB, giro 4 di
+//        brief-db-revisione-ui; qui il form non propone cio' che il DB
+//        rifiuterebbe):
+//          - tipo_colonna='azione' -> campo sorgente vuoto e spento (U24)
+//          - senza campo sorgente -> esportabile False e spento (U25)
+//          - origine_campo='LINEAGE' -> filtrabile, ordinabile e
+//            ricercabile False e spenti (la genealogia si mostra soltanto)
+//          - lista_id e codice immutabili (in edit non editabili e fuori dal
+//            PATCH; codice dal giro 4, BE12; lista_id in create arriva dal
+//            Select header via prop)
 //          - etichetta_i18n_key + etichetta separati (decisione 3):
 //            il BE risolve la cascata `t(key) || etichetta` lato runtime.
 //          - su una colonna nata dal seed di primo impianto i campi del
@@ -38,6 +43,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useUiColonnaAdminStore } from '../stores/uiColonnaAdmin'
 import { campoDelSoftware } from '../../core/utils/campoDelSoftware'
+import { campoFermo } from '../../core/utils/campoFermo'
 import MotivoDelProgramma from '../../core/components/MotivoDelProgramma.vue'
 import { senzaCampiFermi } from '../../core/utils/senzaCampiFermi'
 
@@ -60,6 +66,10 @@ const isEdit = computed(() => props.mode === 'edit')
 // Scopo: il campo lo stabilisce il programma su questa colonna (riga di
 // seed)? L'elenco viaggia con la riga della lista (`campi_del_software`).
 const delProgramma = (campo) => isEdit.value && campoDelSoftware(props.recordData, campo)
+// Scopo: il campo e' fermo in modifica: del programma, oppure fermo per
+// modello (il codice, chiave di preferenze e preset: giro 4, BE12). Lo dice la
+// riga (`campi_del_software`, `non_editable_fields`), BB `campoFermo`.
+const fermo = (campo) => isEdit.value && campoFermo(props.recordData, campo)
 const activeTab = ref('generale')
 
 // Snapshot di listaId al momento dell'apertura del drawer in create:
@@ -87,6 +97,12 @@ const tipoDatoOptions = computed(() => [
   { label: t('ui.admin.tipo_dato_enum'), value: 'enum' },
 ])
 
+// Enum `ui.origine_campo_lista`: da dove la colonna prende il dato.
+const origineCampoOptions = computed(() => [
+  { label: t('ui.admin.origine_campo_vista'), value: 'VISTA' },
+  { label: t('ui.admin.origine_campo_lineage'), value: 'LINEAGE' },
+])
+
 const allineamentoOptions = computed(() => [
   { label: t('ui.admin.allineamento_left'), value: 'left' },
   { label: t('ui.admin.allineamento_right'), value: 'right' },
@@ -102,9 +118,12 @@ function defaultForm() {
     tipo_colonna: 'informazione',
     tipo_dato: 'string',
     campo_sorgente: '',
+    origine_campo: 'VISTA',
     filtrabile: true,
     ordinabile: true,
-    esportabile: true,
+    // Il campo sorgente nasce vuoto, quindi la colonna nasce non esportabile
+    // (U25); scrivendo il campo si accende (watch `senzaCampo`).
+    esportabile: false,
     ricercabile_full: false,
     sensibile: false,
     attivo: true,
@@ -139,6 +158,7 @@ watch(
         tipo_colonna: data.tipo_colonna ?? 'informazione',
         tipo_dato: data.tipo_dato ?? 'string',
         campo_sorgente: data.campo_sorgente ?? '',
+        origine_campo: data.origine_campo ?? 'VISTA',
         filtrabile: !!data.filtrabile,
         ordinabile: !!data.ordinabile,
         esportabile: !!data.esportabile,
@@ -160,14 +180,30 @@ watch(
   { immediate: true },
 )
 
-// UX vincolo (decisione 6 _def.md): se tipo_colonna='azione' forziamo
-// esportabile=false. Coerente col CHECK chk_ui_lista_colonna_azione_non_esportabile.
+// UX vincoli del giro 4 (CHECK del DB, che resta il giudice): il form non
+// propone una combinazione che il DB rifiuterebbe. Si spegne cio' che non
+// vale piu' quando cambia il campo che lo regge.
+// ⚠️ I watch scattano anche al caricamento di una riga (il form si
+//    rimpiazza): per questo spengono soltanto, e una riga letta dal DB e' gia'
+//    coerente coi CHECK, quindi non la toccano. L'unico che ACCENDE
+//    (esportabile quando il campo compare) vale solo in creazione, come il
+//    default del service: in modifica lo sceglie l'operatore.
 const isAzione = computed(() => form.value.tipo_colonna === 'azione')
+const senzaCampo = computed(() => !form.value.campo_sorgente?.trim())
+const isLineage = computed(() => form.value.origine_campo === 'LINEAGE')
 
 watch(isAzione, (azione) => {
-  if (azione && form.value.esportabile) {
-    form.value.esportabile = false
-  }
+  if (azione) form.value.campo_sorgente = ''
+})
+watch(senzaCampo, (senza) => {
+  if (senza) form.value.esportabile = false
+  else if (!isEdit.value) form.value.esportabile = true
+})
+watch(isLineage, (lineage) => {
+  if (!lineage) return
+  form.value.filtrabile = false
+  form.value.ordinabile = false
+  form.value.ricercabile_full = false
 })
 
 const canSave = computed(() => {
@@ -190,6 +226,7 @@ function buildPayload() {
     tipo_colonna: form.value.tipo_colonna,
     tipo_dato: form.value.tipo_dato,
     campo_sorgente: form.value.campo_sorgente?.trim() || null,
+    origine_campo: form.value.origine_campo,
     formato: form.value.formato?.trim() || null,
     larghezza_default: form.value.larghezza_default,
     ordine_default: form.value.ordine_default,
@@ -209,7 +246,7 @@ function buildPayload() {
 async function onSave() {
   if (!canSave.value) return
   // ⛔ Un campo del programma non entra nel PATCH: il guard del DB lo rifiuta.
-  const payload = isEdit.value ? senzaCampiFermi(buildPayload(), delProgramma) : buildPayload()
+  const payload = isEdit.value ? senzaCampiFermi(buildPayload(), fermo) : buildPayload()
   let result
   if (isEdit.value) {
     result = await execute(
@@ -260,7 +297,7 @@ async function onSave() {
               <div class="form-field">
                 <label>{{ t('ui.admin.colonna_codice') }}</label>
                 <InputText v-model="form.codice"
-                  :disabled="delProgramma('codice')" maxlength="80"
+                  :disabled="fermo('codice')" maxlength="80"
                   :invalid="campiErrati.includes('codice')"
                 />
                 <MotivoDelProgramma campo="codice" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
@@ -268,7 +305,7 @@ async function onSave() {
               <div class="form-field">
                 <label>{{ t('ui.admin.colonna_campo_sorgente') }}</label>
                 <InputText v-model="form.campo_sorgente"
-                  :disabled="delProgramma('campo_sorgente')" maxlength="80"
+                  :disabled="isAzione || delProgramma('campo_sorgente')" maxlength="80"
                   :invalid="campiErrati.includes('campo_sorgente')"
                 />
                 <MotivoDelProgramma campo="campo_sorgente" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
@@ -280,6 +317,18 @@ async function onSave() {
                 >
                   {{ t('ui.admin.colonna_campo_sorgente_hint') }}
                 </Message>
+              </div>
+            </div>
+
+            <div class="form-grid-2col">
+              <div class="form-field">
+                <label>{{ t('ui.admin.colonna_origine_campo') }}</label>
+                <Select v-model="form.origine_campo" :options="origineCampoOptions"
+                  option-label="label" option-value="value"
+                  :disabled="delProgramma('origine_campo')"
+                  :invalid="campiErrati.includes('origine_campo')"
+                />
+                <MotivoDelProgramma campo="origine_campo" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
             </div>
 
@@ -353,13 +402,13 @@ async function onSave() {
             <div class="form-grid-2col">
               <div class="form-field form-field-inline">
                 <Checkbox v-model="form.filtrabile"
-                  :disabled="delProgramma('filtrabile')" binary input-id="ui-col-filtrabile" />
+                  :disabled="isLineage || delProgramma('filtrabile')" binary input-id="ui-col-filtrabile" />
                 <label for="ui-col-filtrabile">{{ t('ui.admin.colonna_filtrabile') }}</label>
                 <MotivoDelProgramma campo="filtrabile" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
               <div class="form-field form-field-inline">
                 <Checkbox v-model="form.ordinabile"
-                  :disabled="delProgramma('ordinabile')" binary input-id="ui-col-ordinabile" />
+                  :disabled="isLineage || delProgramma('ordinabile')" binary input-id="ui-col-ordinabile" />
                 <label for="ui-col-ordinabile">{{ t('ui.admin.colonna_ordinabile') }}</label>
                 <MotivoDelProgramma campo="ordinabile" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
@@ -371,25 +420,34 @@ async function onSave() {
                   v-model="form.esportabile"
                   binary
                   input-id="ui-col-esportabile"
-                  :disabled="isAzione || delProgramma('esportabile')"
+                  :disabled="senzaCampo || delProgramma('esportabile')"
+                  :invalid="campiErrati.includes('esportabile')"
                 />
                 <label for="ui-col-esportabile">{{ t('ui.admin.colonna_esportabile') }}</label>
                 <MotivoDelProgramma campo="esportabile" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
               <div class="form-field form-field-inline">
                 <Checkbox v-model="form.ricercabile_full"
-                  :disabled="delProgramma('ricercabile_full')" binary input-id="ui-col-ricercabile" />
+                  :disabled="isLineage || delProgramma('ricercabile_full')" binary input-id="ui-col-ricercabile" />
                 <label for="ui-col-ricercabile">{{ t('ui.admin.colonna_ricercabile_full') }}</label>
                 <MotivoDelProgramma campo="ricercabile_full" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
             </div>
             <Message
-              v-if="isAzione"
+              v-if="senzaCampo"
               severity="info"
               :closable="false"
               size="small"
             >
-              {{ t('ui.admin.colonna_azione_non_esportabile_hint') }}
+              {{ t('ui.admin.colonna_senza_campo_non_esportabile_hint') }}
+            </Message>
+            <Message
+              v-if="isLineage"
+              severity="info"
+              :closable="false"
+              size="small"
+            >
+              {{ t('ui.admin.colonna_lineage_solo_mostrata_hint') }}
             </Message>
 
             <div class="form-grid-2col">

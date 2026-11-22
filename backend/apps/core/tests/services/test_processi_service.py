@@ -25,6 +25,8 @@
 #  11) un presidio NON LETTO si conta a parte: `non_letti`, non `con_righe`
 #  12) la testata del pallino e quella del pannello sono UNA funzione: stesso
 #      elenco → stessi numeri, e la lettura leggera passa `con_righe=False`
+#  13) le corse di un processo inesistente sono un 404, non una lista vuota, e
+#      il giornale non si legge nemmeno
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -148,6 +150,28 @@ class ProcessiServiceDettaglioTests(unittest.TestCase):
             [e["emittente_codice"] for e in dettaglio["emittenti_non_serviti"]],
             ["ACME"],
         )
+
+
+class ProcessiServiceCorseTests(unittest.TestCase):
+    # 13. ⛔ Fino al 2026-11-22 `list_run` non guardava il registro: un codice
+    #     sbagliato in URL rispondeva 200 con zero corse, cioe' «mai girato»
+    #     detto di un processo che non c'e'. Lo stesso 404 del dettaglio.
+    def test_corse_di_un_processo_inesistente_sono_un_404(self):
+        svc, repo = _service(get_processo=None)
+        with self.assertRaises(ServiceError) as ctx:
+            svc.list_run("non_esiste")
+        self.assertEqual(ctx.exception.code, "E_PROCESSO_NON_TROVATO")
+        repo.list_run_processo.assert_not_called()
+
+    def test_corse_di_un_processo_esistente(self):
+        svc, repo = _service(
+            get_processo={"codice": "x"},
+            list_run_processo=([{"id": 1, "meta": {"esito": {"_falliti": 2}}}], 1),
+        )
+        esito = svc.list_run("x", limit=10, offset=0)
+        self.assertEqual(esito["count"], 1)
+        self.assertEqual(esito["results"][0]["meta"], {"esito": {"_falliti": 2}})
+        repo.list_run_processo.assert_called_once_with("x", limit=10, offset=0)
 
 
 class ProcessiServicePresidiTests(unittest.TestCase):

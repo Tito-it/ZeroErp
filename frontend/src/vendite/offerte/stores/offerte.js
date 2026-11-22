@@ -90,8 +90,6 @@ export const useOfferteStore = defineStore('vendite-offerte', () => {
     // Default `validita_dal desc`: offerte con inizio validita' piu' recente
     // in cima (allineato al pattern preventivi/contratti); il ripiego del verso
     // segue.
-    orderBy: 'validita_dal',
-    orderDir: 'desc',
     orderDirDefault: 'desc',
   })
 

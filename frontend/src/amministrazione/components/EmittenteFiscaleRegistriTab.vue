@@ -67,7 +67,6 @@ const {
 } = useDrawerTabLista(store, {
   parentId: () => props.emittenteSoggettoRuoloId,
   parentField: 'emittenteSoggettoRuoloId',
-  searchTableOptions: { defaultSortField: 'codice' },
   newTooltipKey: 'amministrazione.registri_numerazione.nuovo_tooltip',
   onNew: () => apri(null),
 })

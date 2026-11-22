@@ -243,7 +243,7 @@ e l'errore un'altra.
 ## Note di migrazione
 
 - Fase 2 del cantiere IVA:
-  [brief-be-fe-titoli-iva-soggetto.md](../../../dev/work-done/brief-be-fe-titoli-iva-soggetto.md).
+  [brief-be-fe-titoli-iva-soggetto.md](../../../dev/work-done/2026/brief-be-fe-titoli-iva-soggetto.md).
   L'annullo (`T3-b`) è del 2026-08-31.
 - ⚠️ Al 2026-08-31 `anagrafiche.soggetti_titoli_iva` è **vuota**: nessun titolo
   è ancora stato registrato. Uno smoke che *cercasse* il caso passerebbe a

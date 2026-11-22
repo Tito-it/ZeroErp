@@ -1,5 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture fabbrica una dashboard col suo pool e i suoi preset, e il catalogo
+--   delle dashboard l'applicazione non lo scrive: lo scrive solo il migratore, dal CSV (U31, la porta
+--   di 90_end/20261120-60). Nessun caso del test dipende dall'identita' di chi scrive: i guard che
+--   prova (legami, lucchetti, snapshot, scelta del preset) non esentano il proprietario.
 -- pgTAP test per Zero ERP
 --
 -- Test: il preset di base e il banner (giro 1a del brief-db-revisione-ui).
@@ -9,8 +14,8 @@
 --   ChangeSet: 20261119-09 … -14; il banner per chiave e il lucchetto, giro
 --   1b (20261120-02 … -11).
 --
--- Gira come l'applicazione (runner di default). Tutti i soggetti si
---   costruiscono qui: due liste, una dashboard col suo pool, un'azienda, un
+-- Gira da owner (marcatore in testa): il catalogo delle dashboard lo scrive
+--   solo il migratore. Tutti i soggetti si costruiscono qui: due liste, una dashboard col suo pool, un'azienda, un
 --   operatore con un profilo AD_HOC, i preset e le preferenze.
 --
 -- Elenco test (plan 20):
@@ -24,7 +29,7 @@
 --    8) il preset di ruolo del profilo, con la veste: vince il ruolo
 --    9) Q28: con la veste NULL il ruolo si salta
 --   10) nessun preset con contenuto: nessuna base
---   11) U3 dashboard: un preset fatto di widget fuori dal pool non e' base
+--   11) U3 dashboard: un preset fatto di widget spenti del pool non e' base
 --   12) … con un widget del pool lo e'
 --   13) Q30: un secondo preset acceso nello stesso posto e' rifiutato
 --   14) … spento passa (la bozza)
@@ -32,8 +37,9 @@
 --   16) U2: il resolver espone preset_base, con l'id della base
 --   17) U5: base salvata diversa da quella di oggi: preset_base_cambiato
 --   18) … e preset_aggiornato tace
---   19) base di oggi, l'ordinamento del preset cambia dopo lo snapshot e la
---       preferenza imposta l'ordinamento: preset_aggiornato
+--   19) base di oggi, la misura del preset cambia dopo lo snapshot e la
+--       preferenza imposta la misura: preset_aggiornato (dal giro 2 di
+--       brief-db-revisione-ui la preferenza non porta piu' l'ordinamento)
 --   20) … e preset_base_cambiato falso
 --   21) Q38: riscrivere lo stesso preset_base_id chiude il banner
 --   22) … e il cambio successivo del preset lo riaccende
@@ -140,7 +146,7 @@ RETURNS text LANGUAGE sql AS $$
                                 (SELECT emittente_fiscale_id FROM _e)) b;
 $$;
 
--- La dashboard: pool col widget w_pool; w_fuori acceso ma fuori dal pool.
+-- La dashboard: pool coi widget w_pool (acceso) e w_spento (spento).
 CREATE TEMP TABLE _d AS
 WITH ins AS (
   INSERT INTO ui.dashboard_definizione (codice, descrizione, attivo, user_insert)
@@ -153,13 +159,16 @@ CREATE TEMP TABLE _w AS
 WITH ins AS (
   INSERT INTO ui.widget (codice, etichetta, tipo_widget, attivo, user_insert)
   VALUES ('_pgtap_w_pool_' || substr(md5(clock_timestamp()::text), 1, 6), 'Nel pool', 'kpi', TRUE, '_pgtap'),
-         ('_pgtap_w_fuori_' || substr(md5(clock_timestamp()::text), 1, 6), 'Fuori dal pool', 'kpi', TRUE, '_pgtap')
+         ('_pgtap_w_spento_' || substr(md5(clock_timestamp()::text), 1, 6), 'Spento nel pool', 'kpi', FALSE, '_pgtap')
   RETURNING id, etichetta
 )
 SELECT id AS widget_id, etichetta FROM ins;
 
 INSERT INTO ui.dashboard_widget (dashboard_id, widget_id, ordine_default)
-SELECT d.dashboard_id, w.widget_id, 10 FROM _d d, _w w WHERE w.etichetta = 'Nel pool';
+SELECT d.dashboard_id, w.widget_id, 10 FROM _d d, _w w;
+-- ⚠️ Dal giro 2b di brief-db-revisione-ui un preset non puo' proporre un widget
+--   fuori dal pool (fk_ui_dashboard_preset_widget_pool): il caso 11 lo costruisce
+--   con l'unico widget del pool spento, che la scelta della base non conta.
 
 CREATE TEMP TABLE _dp AS
 WITH ins AS (
@@ -170,7 +179,7 @@ WITH ins AS (
 SELECT id AS preset_id FROM ins;
 
 INSERT INTO ui.dashboard_preset_widget (preset_id, widget_id, ordine, visibile)
-SELECT p.preset_id, w.widget_id, 1, TRUE FROM _dp p, _w w WHERE w.etichetta = 'Fuori dal pool';
+SELECT p.preset_id, w.widget_id, 1, TRUE FROM _dp p, _w w WHERE w.etichetta = 'Spento nel pool';
 
 -- ============================================================
 -- 1-4 Il flag
@@ -182,8 +191,8 @@ SELECT is(ui.fn_preset_aggiornato(NULL, jsonb_build_object('colonne', now()), AR
 SELECT is(ui.fn_preset_aggiornato(jsonb_build_object('colonne', now() - interval '1 day'),
                                   jsonb_build_object('colonne', now()), ARRAY['colonne']),
           ARRAY['colonne'], '2) contenuto piu'' recente dello snapshot: la chiave');
-SELECT is(ui.fn_preset_aggiornato(jsonb_build_object('colonne', now() - interval '1 day', 'ordinamento', now() - interval '1 day'),
-                                  jsonb_build_object('colonne', now() - interval '1 day', 'ordinamento', now()),
+SELECT is(ui.fn_preset_aggiornato(jsonb_build_object('colonne', now() - interval '1 day', 'pagina_dimensione', now() - interval '1 day'),
+                                  jsonb_build_object('colonne', now() - interval '1 day', 'pagina_dimensione', now()),
                                   ARRAY['colonne']),
           ARRAY[]::text[], '3) U6: cambia una chiave che la preferenza non imposta: nessuna');
 SELECT is(ui.fn_preset_aggiornato(jsonb_build_object('colonne', now()), jsonb_build_object('colonne', now()),
@@ -221,7 +230,7 @@ SELECT is(
     (SELECT count(*)::int FROM ui.fn_preset_di_base('dashboard', (SELECT dashboard_id FROM _d),
                                                     (SELECT auth_user_id FROM _u), 'OPERATORE', NULL)),
     0,
-    '11) U3: un preset fatto di widget fuori dal pool non e'' base');
+    '11) U3: un preset fatto di widget spenti del pool non e'' base');
 
 INSERT INTO ui.dashboard_preset_widget (preset_id, widget_id, ordine, visibile)
 SELECT p.preset_id, w.widget_id, 2, TRUE FROM _dp p, _w w WHERE w.etichetta = 'Nel pool';
@@ -294,14 +303,14 @@ SELECT is((pg_temp.risolta() ->> 'preset_base_cambiato')::boolean, true,
           '17) U5: la base salvata non e'' quella di oggi: preset_base_cambiato');
 SELECT is((pg_temp.risolta() ->> 'preset_aggiornato')::boolean, false, '18) … e preset_aggiornato tace');
 
--- Di nuovo la base di oggi, con una preferenza sull'ordinamento; poi
--- l'ordinamento del preset cambia dopo lo snapshot.
+-- Di nuovo la base di oggi, con una preferenza sulla misura; poi la misura
+-- del preset cambia dopo lo snapshot.
 UPDATE ui.lista_preferenza_utente
    SET preset_base_id = (pg_temp.risolta() -> 'preset_base' ->> 'id')::integer,
-       configurazione = '{"ordinamento": [{"col": "c_pref", "dir": "asc"}]}'::jsonb
+       configurazione = jsonb_build_object('pagina_dimensione', (SELECT min(m.misura) FROM ui.misure_pagina m))
  WHERE auth_user_id = (SELECT auth_user_id FROM _u) AND lista_id = (SELECT lista_id FROM _l);
 CREATE TEMP TABLE _base AS SELECT (pg_temp.risolta() -> 'preset_base' ->> 'id')::integer AS preset_id;
-UPDATE ui.lista_preset SET ordinamento_default = '[{"col": "c_preset", "dir": "desc"}]'::jsonb
+UPDATE ui.lista_preset SET pagina_dimensione = (SELECT max(m.misura) FROM ui.misure_pagina m)
  WHERE id = (SELECT preset_id FROM _base);
 
 SELECT is((pg_temp.risolta() ->> 'preset_aggiornato')::boolean, true,
@@ -317,11 +326,11 @@ UPDATE ui.lista_preferenza_utente SET preset_base_id = preset_base_id
 SELECT is(format('%s|%s', pg_temp.risolta() ->> 'preset_aggiornato', pg_temp.risolta() -> 'preset_aggiornato_chiavi'),
           'false|[]', '21) Q38: riscrivere lo stesso preset_base_id riallinea lo snapshot: il banner si chiude');
 
-UPDATE ui.lista_preset SET ordinamento_default = '[{"col": "c_preset", "dir": "asc"}]'::jsonb
+UPDATE ui.lista_preset SET pagina_dimensione = (SELECT min(m.misura) FROM ui.misure_pagina m)
  WHERE id = (SELECT preset_id FROM _base);
 
 SELECT is(format('%s|%s', pg_temp.risolta() ->> 'preset_aggiornato', pg_temp.risolta() -> 'preset_aggiornato_chiavi'),
-          'true|["ordinamento"]', '22) … e il cambio successivo del preset lo riaccende');
+          'true|["pagina_dimensione"]', '22) … e il cambio successivo del preset lo riaccende');
 
 -- ============================================================
 -- 23-24 U8: la data del contenuto e l'impronta le scrive solo il DB

@@ -1,205 +1,94 @@
-## 📘Documentazione Vista – `anagrafiche.vw_conti_bancari_per_ruolo`
+## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_conti_bancari_per_ruolo`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento Tabelle:
+> Approfondimento tabelle:
 >
-[anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)
-> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari)
-> [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)
+> * [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari) — i legami del ruolo, candidate di fonte `RUOLO`
+> * [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari) — i legami del soggetto, candidate di fonte `SOGGETTO`
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — i ruoli su cui le candidate si proiettano
+> * [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari) — il registro, da cui la vista tiene solo i conti attivi
 >
-Approfondimento funzioni:
+> Approfondimento funzioni:
 >
-[script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito)
-
-La vista **`anagrafiche.vw_conti_bancari_per_ruolo`** espone **tutte le candidate** dei conti bancari per ogni **ruolo di soggetto**, organizzate per **uso** e **utility**, con indicazione della **fonte** (RUOLO o SOGGETTO).
-
-A differenza della versione precedente (che restituiva una sola riga per coppia ruolo/uso tramite `DISTINCT ON`), la vista ora e **flat**: espone tutte le righe candidate con ordinamento di priorita. La **selezione singola** con cascata utility e delegata alla funzione `script.fn_get_conto_bancario_predefinito`.
+> * [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito) — la scelta di un conto solo, che legge questa vista
+> * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — il giorno su cui si misura la validità
+>
+> Guide:
+>
+> * [Gestione dei conti bancari](/guide/gestione-conti-bancari) — i due legami e la scelta del conto
 
 ---
+
 ### 🎯 Scopo Principale
 
-(latest review 25-03-26)
-
-* **Vista flat di tutte le candidate per ruolo**
-  Espone tutte le righe candidate da entrambi i livelli di legame, con `istanza_utility_id`:
-
-  * legami a livello **ruolo** (`soggetti_ruoli_conti_bancari`) — con `istanza_utility_id` nullable
-  * legami a livello **soggetto** (`soggetti_conti_bancari`) — `istanza_utility_id` sempre NULL
-
-* **Ordinamento di priorita (non selezione)**
-  Le righe sono ordinate per priorita: ruolo+istanza > ruolo generico > soggetto, poi predefinito, poi recenza. La vista **non** applica `DISTINCT ON`: restituisce tutte le candidate.
-
-* **Filtro su validita e stato**
-  Espone soltanto conti:
-
-  * **attivi** (`conti_bancari.attivo = TRUE`),
-  * **non bloccati** a livello di legame (`bloccato = FALSE`),
-  * con **validita compatibile con la data odierna** (`valido_dal/valido_al`).
-
-* **Selezione singola delegata alla funzione**
-  La scelta del "miglior conto" con cascata istanza e uso e responsabilita di `fn_get_conto_bancario_predefinito`.
+`anagrafiche.vw_conti_bancari_per_ruolo` elenca, per ogni ruolo e uso, tutti i conti che oggi si possono usare: quelli
+legati al ruolo e quelli legati al suo soggetto. Non sceglie: la scelta di un conto solo la fa
+`script.fn_get_conto_bancario_predefinito`.
 
 ---
 
-### Struttura logica della vista
+### Una riga per ogni candidata
 
-La vista è costruita in più passi mediante CTE:
+La vista unisce i due legami e dice da dove viene ogni riga:
 
-1. **`role_cand` – Candidate di RUOLO**
+* **fonte `RUOLO`** — un legame del ruolo, con la sua istanza di servizio se ce l'ha; `soggetto_ruolo_conto_id` è il
+  legame;
+* **fonte `SOGGETTO`** — un legame del soggetto, ripetuto per **ogni** ruolo del soggetto; l'istanza è vuota, e
+  `soggetto_conto_id` è il legame.
 
-   Seleziona tutti i legami **a livello ruolo** (`anagrafiche.soggetti_ruoli_conti_bancari`) che rispettano:
-
-   * data odierna compresa tra `valido_dal` e `valido_al` (quando valorizzati),
-   * `blocccato = FALSE` (o NULL trattato come FALSE),
-   * conto associato `attivo = TRUE` su `anagrafiche.conti_bancari`.
-
-   Campi principali:
-
-   * `soggetto_ruolo_id`
-   * `uso`
-   * `conto_bancario_id`
-   * `soggetto_ruolo_conto_id` (ID del legame ruolo↔conto)
-   * `predefinito`
-   * `priority = 1` (per dare precedenza ai legami di ruolo)
-   * `fonte = 'RUOLO'`
-
-2. **`subj_cand` – Candidate di SOGGETTO**
-
-   Seleziona tutti i legami **a livello soggetto** (`anagrafiche.soggetti_conti_bancari`) compatibili con le stesse regole di validità/blocco/attivazione, “proiettandoli” sul `soggetto_ruolo_id` tramite `anagrafiche.soggetti_ruoli`.
-
-   Campi principali:
-
-   * `soggetto_ruolo_id` (derivato da `soggetti_ruoli`)
-   * `uso`
-   * `conto_bancario_id`
-   * `soggetto_conto_id` (ID del legame soggetto↔conto)
-   * `predefinito`
-   * `priority = 2` (perché il SOGGETTO è fallback rispetto al RUOLO)
-   * `fonte = 'SOGGETTO'`
-
-3. **`candidates` – Unione dei due insiemi**
-
-   Esegue `UNION ALL` tra `role_cand` e `subj_cand`, mantenendo per ogni riga:
-
-   * `soggetto_ruolo_id`, `uso`, `conto_bancario_id`
-   * identificativo del legame (`soggetto_ruolo_conto_id` / `soggetto_conto_id`)
-   * `predefinito`, `priority`, `valido_dal`, `valido_al`, `data_update`
-   * `fonte` (`'RUOLO'` o `'SOGGETTO'`)
-
-4. **Ordinamento finale** (senza `DISTINCT ON`):
-
-   ```sql
-   ORDER BY soggetto_ruolo_id, uso,
-     CASE
-       WHEN fonte = ‘RUOLO’ AND istanza_utility_id IS NOT NULL THEN 1
-       WHEN fonte = ‘RUOLO’ AND istanza_utility_id IS NULL     THEN 2
-       WHEN fonte = ‘SOGGETTO’                         THEN 3
-     END,
-     predefinito DESC,
-     data_update DESC
-   ```
-
-   Ordine di priorita:
-
-   1. **Ruolo + istanza specifica** (massima priorita)
-   2. **Ruolo generico** (istanza NULL)
-   3. **Soggetto** (fallback)
-   4. `predefinito DESC` → legame marcato predefinito
-   5. `data_update DESC` → piu recente
-
-   La vista restituisce **tutte le righe** ordinate. La selezione "1 riga" e delegata a `fn_get_conto_bancario_predefinito`.
+Un ruolo ha quindi tante righe quante sono le sue candidate, per ogni uso: la vista è piatta, non ne tiene una sola.
 
 ---
 
-### Colonne esposte
+### Che cosa è una candidata
 
-| Colonna                   | Tipo          | Descrizione                                                                                 |
-| ------------------------- | ------------- | ------------------------------------------------------------------------------------------- |
-| `soggetto_ruolo_id`       | `bigint`      | Identificativo del ruolo per cui viene selezionato il conto.                                |
-| `uso`                     | `varchar`     | Uso del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO` o `GENERICO`.                             |
-| `conto_bancario_id`       | `bigint`      | Riferimento a `anagrafiche.conti_bancari.id` del conto selezionato.                         |
-| `soggetto_ruolo_conto_id` | `bigint`      | ID del legame ruolo↔conto (`soggetti_ruoli_conti_bancari`), se la fonte è `RUOLO`.          |
-| `soggetto_conto_id`       | `bigint`      | ID del legame soggetto↔conto (`soggetti_conti_bancari`), se la fonte è `SOGGETTO`.          |
-| `istanza_utility_id`      | `bigint`      | ID della istanza utility (`anagrafiche.istanze_utilities.id`). NULL per legami generici o fonte SOGGETTO. |
-| `fonte`                   | `varchar`     | Origine della selezione: `'RUOLO'` oppure `'SOGGETTO'`.                                     |
-| `predefinito`             | `boolean`     | Indica se il legame usato è marcato come **predefinito** per quel `(soggetto/ruolo, uso)`.  |
-| `valido_dal`              | `date`        | Data di inizio validità del legame selezionato.                                             |
-| `valido_al`               | `date`        | Data di fine validità del legame selezionato (può essere `NULL` per validità “open-ended”). |
-| `data_update`             | `timestamptz` | Timestamp dell’ultimo aggiornamento del legame usato (utile per la prioritizzazione).       |
+Un legame entra se, nel giorno operativo (la data di oggi nel fuso dell'azienda, da `script.fn_data_operativa`), la
+sua validità lo copre (un estremo assente non limita), se non è bloccato, e se il suo conto è attivo. Il resto non
+filtra: un legame scaduto, futuro o bloccato resta nelle tabelle, fuori dalla vista.
 
 ---
 
-### Comportamento funzionale
+### L'ordine di priorità
 
-* **Filtro temporale**
-  Sono inclusi solo i legami per cui:
+Le righe escono ordinate per ruolo e uso, poi su tre gradini: il legame del ruolo con un'istanza, il legame del ruolo
+senza istanza, il legame del soggetto. A parità di gradino viene prima il predefinito, poi il legame modificato più di
+recente.
 
-  * `valido_dal IS NULL OR valido_dal <= CURRENT_DATE`
-  * `valido_al IS NULL OR valido_al >= CURRENT_DATE`
-
-* **Filtro di sicurezza e stato**
-  Vengono esclusi:
-
-  * legami con `bloccato = TRUE` (tipicamente per motivi di compliance/AML),
-  * conti con `attivo = FALSE` su `anagrafiche.conti_bancari`.
-
-* **Priorità RUOLO → SOGGETTO**
-  Se esiste un legame **di ruolo** per `(soggetto_ruolo_id, uso)` che rispetta i criteri sopra, questo sarà sempre preferito rispetto agli eventuali legami di SOGGETTO.
-
-* **Gestione di più candidati**
-  In presenza di più legami compatibili (es. più conti per lo stesso uso):
-
-  * viene scelto **prima** il legame con `predefinito = TRUE`;
-  * a parità di predefinito, vince il legame con `data_update` più recente.
+L'ordine serve a chi guarda il ventaglio delle candidate e vuole capire perché ha vinto un conto. La funzione di
+scelta non si appoggia a questo ordine: filtra per gradino e per uso e ordina da sé, e solo lei passa all'uso
+`GENERICO` quando l'uso chiesto non ha candidate.
 
 ---
 
-### 🔖 Esempi d’uso
+### ⚠️ Che cosa oggi non copre
 
-**1. Ottenere il conto d’incasso per un ruolo specifico**
-
-```sql
-SELECT *
-FROM anagrafiche.vw_conti_bancari_per_ruolo
-WHERE soggetto_ruolo_id = :p_soggetto_ruolo_id
-  AND uso = 'INCASSO';
-```
-
-**2. Ottenere tutti i conti correnti “correnti” per un ruolo (tutti gli usi)**
-
-```sql
-SELECT *
-FROM anagrafiche.vw_conti_bancari_per_ruolo
-WHERE soggetto_ruolo_id = :p_soggetto_ruolo_id;
-```
-
-**3. Join con `conti_bancari` per leggere IBAN e dettagli**
-
-```sql
-SELECT v.soggetto_ruolo_id,
-       v.uso,
-       cb.iban,
-       cb.bic_swift,
-       v.fonte,
-       v.predefinito
-FROM anagrafiche.vw_conti_bancari_per_ruolo v
-JOIN anagrafiche.conti_bancari cb
-  ON cb.id = v.conto_bancario_id
-WHERE v.soggetto_ruolo_id = :p_soggetto_ruolo_id;
-```
+* **L'ordine non è garantito a chi filtra.** Una query che legge la vista con un suo filtro o un suo join non riceve
+  per forza le righe nell'ordine della vista: chi vuole un ordine lo chiede.
+* **Il soggetto e il ruolo non sono guardati.** Le candidate non dipendono dallo stato del soggetto, e i legami del
+  soggetto si proiettano su ogni suo ruolo, anche su quelli che con un conto non hanno a che fare.
+* **I permessi di scrittura.** L'applicazione ha sulla vista anche i permessi di inserire, modificare e cancellare,
+  che una vista di unione non può eseguire.
 
 ---
 
-### Note di modellazione e best practice
+### Test
 
-* La vista assume che tutta la logica di **normalizzazione e validazione IBAN/BIC**, nonché di **gestione storicizzazione e flag `bloccato`**, sia già gestita a livello di tabelle e trigger (`*_guard`, `*_normalize`).
-* È possibile avere **più legami** per lo stesso `(soggetto/ruolo, uso)`; la vista ne espone comunque **uno solo**, seguendo le priorità definite.
-* Per l’uso applicativo è consigliato **incapsulare la vista** in funzioni di dominio (come `script.fn_get_conto_bancario_predefinito`) per ridurre la duplicazione di logica nelle query.
+* `db/pgtap/anagrafiche/test_vw_conti_bancari_per_ruolo_gestore.sql` — il legame d'incasso del soggetto di un gestore,
+  predefinito, che esce come prima candidata del ruolo, di fonte `SOGGETTO`.
+* `db/pgtap/anagrafiche/test-conti-bancari-istanza-cascata.sql` — la vista espone l'istanza dei legami del ruolo.
 
 ---
 
-> **In sintesi:**
-> `anagrafiche.vw_conti_bancari_per_ruolo` fornisce una vista già “risolta” del conto da utilizzare per ciascun ruolo e uso, applicando automaticamente le priorità RUOLO → SOGGETTO, la selezione del predefinito e i vincoli di validità, blocco e attivazione.
+### Note di migrazione
+
+* 2026-03-24 — la vista diventa piatta: prima teneva una riga sola per ruolo e uso, e la scelta di un conto solo
+  passa alla funzione.
+* 2026-03-25 — la vista espone l'istanza di servizio del legame del ruolo, al posto della utility.
+* 2026-10-09 — la validità si misura sul giorno operativo, non sulla data della sessione.
+
+---
+
+{% include-markdown "signature-core.md" %}

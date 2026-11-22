@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `ui.fn_preset_di_base`
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -46,7 +46,7 @@ Un preset spento non è mai base. Un preset acceso vale solo se ha qualcosa da m
 * per una **dashboard**, almeno un widget acceso che sta nel **pool** della dashboard.
 
 Il filtro sta dentro ogni livello, prima della scelta: un preset vuoto non ferma la cascata, che
-passa al livello successivo, e non presta nemmeno ordinamento, filtri o misura. Se nessun preset
+passa al livello successivo, e non presta nemmeno l'ordinamento di partenza o la misura. Se nessun preset
 ha contenuto, la funzione non risponde niente, e ogni chiave viene dal catalogo.
 
 ---
@@ -105,7 +105,7 @@ Nessuno: un contenitore senza preset che valgano dà nessuna riga, non un rifiut
 * `db/pgtap/ui/test-fn-preset-di-base-v1.sql` — un preset d'azienda senza colonne attive che non
   ferma la cascata, e con una colonna attiva che vince; l'azienda spenta che non si applica; il
   preset di ruolo con la veste, saltato con la veste nulla; nessuna base quando nessun preset ha
-  contenuto; per la dashboard, il preset di widget fuori dal pool che non è base e quello con un
+  contenuto; per la dashboard, il preset fatto dei soli widget spenti del pool, che non è base, e quello con un
   widget del pool che lo è.
 
 ---
@@ -119,6 +119,8 @@ Nessuno: un contenitore senza preset che valgano dà nessuna riga, non un rifiut
   scelta non legge più `is_default`, ritirato dai preset.
 * 2026-11-20 — si ricrea con la data del contenuto per chiave: la colonna `contenuto_aggiornato_il`
   del risultato è la mappa. Scelta e firma restano le stesse.
+* 2026-11-21 — si ricrea quando l'azienda dei preset di dashboard passa a `bigint`: le due famiglie si
+  leggono senza conversione. Scelta e firma restano le stesse.
 
 ---
 

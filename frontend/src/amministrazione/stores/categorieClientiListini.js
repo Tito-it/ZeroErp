@@ -17,11 +17,10 @@ export const useCategorieClientiListiniStore = createCrudStore('amministrazione-
     update: updateCategoriaClienteListino
   },
   tabEntity: TAB_ENTITIES.CATEGORIE_CLIENTI_LISTINI,
-  // `valido_al` DESC: regola di dominio sulle liste con date di validita',
-  // allineato al preset del seed. Questo default vince sempre: il
-  // `defaultSortField` del componente si applica solo a store senza order_by.
-  orderBy: 'valido_al',
-  orderDir: 'desc',
+  // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+  //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+  //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+  //    l'intestazione.
   startsEmpty: false,
   filterDefaults: {
     attivo: true,

@@ -28,5 +28,4 @@ export const useUomTipiStore = createCrudStore('catalogo-uom-tipi', {
   startsEmpty: false,
   ricercaCorta: 'svuota',
   filterDefaults: { attivo: true },
-  orderBy: 'descrizione',
 })

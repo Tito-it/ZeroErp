@@ -14,9 +14,6 @@ import { useStepFigliCollection } from '../composables/useStepFigliCollection'
 import CollectionEditorPanel from './CollectionEditorPanel.vue'
 
 const props = defineProps({
-  // Campi che il BACKEND indica come da correggere (envelope `error.fields`).
-  // Arrivano dal padre: questo componente non chiama le API da solo.
-  campiErrati: { type: Array, default: () => [] },
   definizioneId: { type: Number, required: true },
   stepId: { type: Number, required: true },
   rows: { type: Array, default: () => [] },
@@ -39,6 +36,11 @@ const coll = useStepFigliCollection({
     t('amministrazione.definizioni_workflow.ed_conferma_elimina_figlio', { nome: row.handler_key || row.evento }),
   onChanged: () => emit('changed'),
 })
+// I campi che il rifiuto dell'ultimo salvataggio di QUESTO tab nomina
+// (`error.fields`): vengono dall'`execute` della collezione, che e' quello
+// che chiama le API. ⛔ Non una prop della vista: la vista ha un altro
+// `useApiHandler`, e la prop restava vuota (useEditableCollection).
+const { campiErrati } = coll
 
 const eventoOptions = computed(() =>
   STEP_HANDLER_EVENTO.map((v) => ({ value: v, label: t(`amministrazione.definizioni_workflow.ed_evento_${v}`) })),
@@ -116,7 +118,7 @@ function onSave() {
       </div>
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_esito_richiesto') }}</label>
-        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :placeholder="t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')" />
+        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :invalid="campiErrati.includes('esito_richiesto')" :placeholder="t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')" />
       </div>
       <div class="form-field form-field--num">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_sequenza') }}</label>

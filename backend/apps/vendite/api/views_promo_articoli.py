@@ -20,7 +20,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     paginated_envelope,
@@ -65,10 +65,7 @@ class PromoArticoliView(DomainAPIView):
                              description="Data ISO YYYY-MM-DD: filtra righe la cui validita contiene la data."),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False,
-                             description="codice | descrizione | articolo_codice | articolo_descrizione | "
-                                         "uom_codice | valido_dal | valido_al | attivo | data_insert | data_update"),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento("codice | descrizione | articolo_codice | articolo_descrizione | uom_codice | valido_dal | valido_al | attivo | data_insert | data_update."),
         ],
         responses={200: inline_serializer(
             name="VenditePromoArticoliListResp",

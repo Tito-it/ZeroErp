@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `ui.fn_veste_corrente`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -44,12 +44,12 @@ una veste non riconosciuta negano. Questa funzione non si usa per decidere un ac
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### Chi la legge come permesso
 
-* **Il permesso di colonna la usa come se fosse presentazione.** La configurazione della lista e la
-  ricerca libera passano il suo `NULL` alla regola dei permessi di colonna, che allora mescola i
-  profili di tutte le identità dell'utente: una colonna `BLOCCATO` sotto una veste può tornare
-  visibile per un permesso più specifico di un'altra. Il ripiego qui fa da permesso.
+Il suo `NULL` arriva anche alla regola dei permessi di colonna, che con la veste `NULL` prende il
+livello più restrittivo fra le vesti dell'utente
+([fn_lista_colonne_livello](/dbzero/ui/funzioni/fn_lista_colonne_livello)): il ripiego di
+presentazione non allarga un permesso.
 
 ---
 

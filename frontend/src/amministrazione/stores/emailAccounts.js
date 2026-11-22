@@ -22,7 +22,10 @@ export const useEmailAccountsStore = createListaStore('amm-email-accounts', {
   fetchPage: listEmailAccounts,
   // Parte piena: e' una configurazione, non una ricerca.
   startsEmpty: false,
-  orderBy: 'codice',
+  // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+  //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+  //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+  //    l'intestazione.
   extend: () => {
     const { emitDataChanged } = useTabEvents()
     const currentAccount = ref(null)

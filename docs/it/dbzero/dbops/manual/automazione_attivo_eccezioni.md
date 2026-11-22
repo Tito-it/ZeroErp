@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_attivo_eccezioni`
 
-> **Ultimo aggiornamento**: 19 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -56,6 +56,7 @@ legittimo il legame avrebbe impedito.
 | `ui.lista_preferenza_utente.lista_id` e `.preset_base_id`, `ui.dashboard_preferenza_utente.dashboard_id` e `.preset_base_id` | La preferenza è uno **stato dell'utente**, non un'entità col suo ciclo di vita: non ha `attivo`, quindi per il block conta ogni riga, e una lista o un preset che un utente ha scelto non si spegnerebbero più. Se il preset di base è spento o sparito, `ui.fn_resolve_lista_config` e `ui.fn_resolve_dashboard_config` ripiegano già sul livello successivo |
 | `ui.lista_preset_colonna.preset_id` e `.colonna_id`, `ui.lista_colonna_permesso.colonna_id`, `ui.dashboard_widget.dashboard_id` e `.widget_id`, `ui.dashboard_preset_widget.preset_id` e `.widget_id` | Righe di **composizione** senza `attivo` (le colonne di un preset, i widget di una dashboard o di un preset, i permessi di una colonna): sono parti del padre, non entità che ne dipendono. Senza `attivo` per il block conta ogni riga, e il padre non si spegnerebbe mai. Spegnere il padre spegne le parti; quale parte mostrare lo decidono i risolutori |
 | `ui.lista_preset.emittente_fiscale_id` e `.profilo_accesso_id`, `ui.dashboard_preset.emittente_fiscale_id` e `.profilo_accesso_id`, `ui.lista_colonna_permesso.profilo_accesso_id` | Configurazione dell'interfaccia legata a un'entità di **un altro dominio**: spegnere un emittente o un profilo è un gesto del dominio, e non deve fermarsi su un preset o su un permesso di lista. Il preset di un emittente o di un profilo spento già non si applica: la cascata dei risolutori parte dalla veste corrente |
+| `ui.lista_colonna.lista_id`, `ui.lista_preset.lista_id`, `ui.dashboard_preset.dashboard_id` | Il contenitore spento **sospende** le sue parti, senza toccarle: una lista o una dashboard spenta non risponde (la lettura per codice la rifiuta), e alla riaccensione colonne e preset tornano com'erano. Col block il contenitore non si spegnerebbe finché non si spengono prima tutte le parti, e alla riaccensione non resterebbe traccia di quali erano accese |
 | `catalogo.articoli_uom_operativa.articolo_id` e `.uom_id` | La mappatura di un'unità operativa è **storia**, come una nota: si chiude con `valido_al`, e dal primo giorno in vigore non si spegne più (`catalogo.trgfn_uom_guard_storia`). Col block, un articolo o un'unità che hanno avuto una mappatura non si spegnerebbero mai; col require, una mappatura di un articolo spento non si scriverebbe. L'articolo si spegne e si riaccende con le sue mappature intatte; una riga di documento su un articolo spento la fermano già i require del documento verso l'articolo |
 | `catalogo.unita_misura_conversioni.uom_from_id` e `.uom_to_id` | La conversione generale è storia allo stesso modo: un'unità che ha avuto una conversione non si spegnerebbe mai. L'unità si spegne e si riaccende con le sue conversioni intatte |
 | `catalogo.note_articoli.target_id`, `catalogo.note_articoli_componenti.target_id` | La nota di un'anagrafica **annota** l'oggetto, non lo tiene in vita. La partizione non ha `attivo`: col block ogni nota conterebbe come figlia attiva e l'articolo non si spegnerebbe; col require una nota su un articolo spento non si scriverebbe. L'articolo si spegne e si riaccende con le sue note intatte. Il legame di distinta non si spegne (si chiude con `valido_al` e resta attivo), e un legame chiuso si annota ancora. Le note vanno via col padre solo se lo si cancella (`ON DELETE CASCADE`) |
@@ -63,6 +64,10 @@ legittimo il legame avrebbe impedito.
 | `config.email_log.email_account_id` e `.email_template_id` | La mail spedita è **storia**: la fotografia dell'account e del template con cui è partita, e resta. Col block, un account o un template che hanno spedito non si spegnerebbero più, e siccome non si cancellano non ci sarebbe nessun gesto per toglierli dall'uso. Con quale account e template si spedisce lo decidono i risolutori, che leggono solo le righe accese |
 | `config.email_outbox.email_account_id` e `.email_template_id` | La bozza cita l'account e il template con cui è stata composta: è la **provenienza** del testo, non un legame vivo. Col block conterebbe anche la bozza annullata o spedita. L'account di invio si risolve di nuovo alla conferma |
 | `documenti.template_documenti_versioni.derivata_da_versione_id` | L'origine di una copia è la sua **provenienza**, non un padre vivo: una versione dello standard da cui deriva una copia si ritira lo stesso. Che cosa fare di una copia il cui standard non stampa lo dice la vista dello scarto |
+| `vendite.{attivita_fatturabili,commesse_attivita,contratti}.categoria_cliente_id_snapshot` | Lo snapshot è la categoria del cliente **al momento** del documento: la **provenienza** di un dato già scritto, come `listino_riga_id` delle righe di contratto. Spegnere la categoria dopo non lo rende sbagliato |
+| `{acquisti,catalogo,magazzino,vendite}.note.id_lingua` e `.id_stile` | Lingua e stile sono attributi di **presentazione** di una nota, che non ha `attivo`: col block una lingua o uno stile usati una volta non si spegnerebbero più, col require una nota in una lingua poi spenta non si correggerebbe più. La riga sta sulla **radice** partizionata e vale per tutte le partizioni, anche future |
+| `config.messaggi_errore.lingua` | Un testo **tradotto** non è un figlio vivo della lingua: col require non si preparerebbe la traduzione prima di accendere la lingua, col block una lingua tradotta non si spegnerebbe. Quale testo si mostra lo decide `script.fn_get_messaggio`, che ripiega su `it` |
+| `config.tipi_entita.sorgente_codice_interno` | Il catalogo dei tipi d'entità è **senza `attivo` per scelta**: un lucchetto fermerebbe il giornale che lo cita, e la deprecazione si fa con `obsoleto_dal`. La FK lega il nome della sorgente, non la sua accensione |
 
 ---
 
@@ -111,6 +116,14 @@ Una riga nuova ha effetto al giro successivo del motore: è lì che i trigger es
 * 2026-11-19 — quattro righe, lo storico della posta: `email_log` ed `email_outbox` verso
   account e template. Account e template non si cancellano più: si spengono, anche dopo aver
   spedito (`brief-db-seed-primo-impianto-non-si-riscrive` §16.14, Q24).
+* 2026-11-21 — due righe di `ui`, le FK `lista_id` di `lista_colonna` e `lista_preset`: la lista
+  spenta sospende colonne e preset senza toccarli (`brief-db-revisione-ui`, giro 4).
+* 2026-11-21 — una riga di `ui`, la FK `dashboard_id` di `dashboard_preset`: la dashboard spenta sospende
+  i preset come la lista (`brief-db-revisione-ui`, giro 5, Q49).
+* 2026-11-22 — tredici righe, le FK senza `_id` che non si legano, ora che il motore lega ogni FK
+  qualunque sia il nome della colonna: gli snapshot della categoria cliente, lingua e stile delle
+  note (sulla radice), la lingua dei messaggi d'errore, la sorgente dei tipi d'entità. Il registro
+  gemello delle inclusioni esce (`brief-db-attivo-fk-senza-suffisso-id` §3.2).
 
 ---
 

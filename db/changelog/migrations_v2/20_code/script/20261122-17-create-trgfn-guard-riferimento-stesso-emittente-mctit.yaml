@@ -1,0 +1,277 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: IL RIFERIMENTO E' DELL'AZIENDA DELLA RIGA
+#   script.trgfn_guard_riferimento_stesso_emittente(modo_riga, colonna_riga,
+#                                                  modo_rif, colonna_rif)
+#   montato su lotto_id e asset_id dei sei figli: magazzino.movimenti,
+#   movimenti_attesi, inventari_righe, rettifiche_righe, trasferimenti_righe,
+#   vendite.ddt_righe_prelievi (dodici trigger).
+#   Brief: brief-db-magazzino-lotto-dell-azienda, D-L4 = a, D-L5 = a (Tid,
+#   2026-11-22), P-3.
+#
+# -- PERCHE' --------------------------------------------------------------
+#   La RLS filtra la lettura, non il riferimento: una FK verso il lotto o il
+#   seriale di un'altra azienda passa anche se chi scrive non lo vede. Fino a
+#   oggi «il seriale e' dell'emittente del magazzino» lo diceva solo
+#   script.fn_check_riga_magazzino, quando la riga DIVENTA un movimento: una
+#   riga di inventario in bozza, o un prelievo di bolla, poteva puntare il
+#   seriale di un'altra azienda. Il lotto, dal 20261122-14, ha lo stesso
+#   problema. La regola e' una («il riferimento e' dell'azienda della riga»)
+#   e sta sulla tabella, per ogni scrittore: un BB, dodici montaggi (D-L5:
+#   regola del 2, lotto e seriale nello stesso giro).
+#
+# -- LA FORMA -------------------------------------------------------------
+#   Gli argomenti sono due coppie (modo, colonna) del registro
+#   dbops.emittente_modi: l'emittente della riga e quello del riferimento si
+#   risolvono con script.fn_resolve_emittente_fiscale_id, che e' SECURITY
+#   DEFINER (linee-guida-trigger: un guard che decide su una riga correlata
+#   non la legge sotto la RLS di chi scrive). La funzione trigger non esegue
+#   SQL dinamico: legge NEW come jsonb.
+#     * riferimento nullo: passa (la colonna e' facoltativa);
+#     * UPDATE che non cambia ne' la riga ne' il riferimento: passa;
+#     * un emittente non risolto, o due emittenti diversi:
+#       E_RIFERIMENTO_DI_ALTRO_EMITTENTE, campo = la colonna del riferimento.
+#       Riferimento inesistente e riferimento altrui rispondono uguale
+#       (no-leak): la FK, che parlerebbe di inesistenza, scatta dopo.
+#   Argomenti di montaggio sbagliati (numero, colonne assenti dalla tabella):
+#   E_TRIGGER_ARGOMENTI_INVALIDI al primo INSERT; un modo sconosciuto lo
+#   rifiuta il risolutore.
+#
+# -- I MONTAGGI -----------------------------------------------------------
+#   trg_<t>_a10_guard_rif_lotto_emittente_ins_upd ('lotto_magazzino', lotto_id)
+#   trg_<t>_a10_guard_rif_asset_emittente_ins_upd ('asset', asset_id)
+#   con il modo della riga: movimenti e movimenti_attesi 'magazzino'
+#   (magazzino_id); inventari_righe 'inventario'; rettifiche_righe
+#   'rettifica'; trasferimenti_righe 'trasferimento' (il magazzino di
+#   partenza: l'arrivo e' dello stesso emittente,
+#   trgfn_trasferimenti_guard_stesso_emittente); ddt_righe_prelievi
+#   'ddt_riga'. Lunghezze da 51 a 61.
+#   L'ordine fra gli a10: guard_emittente_scope (il perimetro) e i generati
+#   *_require_attivo parlano prima di guard_rif_*.
+#   BEFORE INSERT OR UPDATE senza OF: il confronto OLD/NEW sta nel corpo
+#   (linee-guida-trigger, «UPDATE o UPDATE OF»).
+#
+# -- CHI PASSA ANCORA (linee-guida-trigger) -------------------------------
+#   * magazzino.fn_scrivi_movimento: fn_check_riga_magazzino lo ferma prima,
+#     col motivo suo (E_MAG_ASSET_DI_ALTRO_EMITTENTE, E_MAG_LOTTO_DI_ALTRO_
+#     EMITTENTE, 20261122-18); il guard e' la rete;
+#   * il backend sulle righe di inventario e rettifica e sui prelievi: oggi
+#     scrive diretto, e riceve il codice nuovo sul riferimento altrui;
+#   * nessun seed di 80_data scrive queste tabelle con un lotto o un seriale.
+#
+# -- NIENTE preCondition SUI TRIGGER GENERATI (§11.5) -------------------
+#
+# log-cinque-argomenti: ammesso — il ramo E_RIFERIMENTO_DI_ALTRO_EMITTENTE di
+#   questo corpo chiama fn_log_and_raise_error senza VARIADIC e rispondeva
+#   42883. Il changeSet e' applicato e non si riscrive (checksum): lo corregge
+#   in avanti 20261122-19, che gira subito dopo anche da zero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261122-17-create-trgfn-guard-riferimento-stesso-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20261122-17-create-trgfn-guard-riferimento-stesso-emittente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        BB script.trgfn_guard_riferimento_stesso_emittente: il lotto o il seriale di una riga
+        sono dell'emittente della riga, risolti dal registro dbops.emittente_modi. Montato su
+        lotto_id e asset_id dei sei figli. Brief: brief-db-magazzino-lotto-dell-azienda, D-L4,
+        D-L5 (P-3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE oid = to_regprocedure('script.fn_resolve_emittente_fiscale_id(text,bigint)');
+            - columnExists:
+                schemaName: magazzino
+                tableName: lotti
+                columnName: emittente_fiscale_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_guard_riferimento_stesso_emittente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- Gli argomenti di montaggio: due coppie (modo del registro
+                  -- dbops.emittente_modi, colonna della tabella).
+                  v_modo_riga dbops.emittente_modi.modo%TYPE := TG_ARGV[0];
+                  v_col_riga  text := TG_ARGV[1];   -- nome di colonna: nessuna colonna da ancorare
+                  v_modo_rif  dbops.emittente_modi.modo%TYPE := TG_ARGV[2];
+                  v_col_rif   text := TG_ARGV[3];   -- idem
+                  v_new       jsonb;
+                  v_old       jsonb;
+                  v_ef_riga   anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_rif    anagrafiche.emittenti_fiscali.id%TYPE;
+              BEGIN
+                  -- Scopo: il riferimento (lotto, seriale) e' dell'emittente
+                  --   della riga che lo nomina.
+                  -- Regole:
+                  --   0. montaggio: BEFORE ROW, INSERT o UPDATE, quattro
+                  --      argomenti, le due colonne nella tabella; altrimenti
+                  --      E_TRIGGER_ARGOMENTI_INVALIDI;
+                  --   1. riferimento nullo: passa;
+                  --   2. UPDATE che non cambia riga ne' riferimento: passa;
+                  --   3. emittente non risolto o diverso:
+                  --      E_RIFERIMENTO_DI_ALTRO_EMITTENTE (no-leak:
+                  --      inesistente e altrui rispondono uguale).
+                  v_new := to_jsonb(NEW);
+
+                  -- 0) Il montaggio.
+                  IF TG_WHEN <> 'BEFORE' OR TG_LEVEL <> 'ROW'
+                     OR TG_OP NOT IN ('INSERT', 'UPDATE')
+                     OR TG_NARGS <> 4
+                     OR NOT (v_new ? v_col_riga) OR NOT (v_new ? v_col_rif) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          TG_TABLE_SCHEMA::text,
+                          'script.trgfn_guard_riferimento_stesso_emittente',
+                          'E_TRIGGER_ARGOMENTI_INVALIDI',
+                          jsonb_build_object(
+                              'detail',    'atteso BEFORE ROW INSERT/UPDATE con (modo_riga, colonna_riga, modo_rif, colonna_rif), colonne della tabella',
+                              'tabella',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'trigger',   TG_NAME,
+                              'tg_op',     TG_OP,
+                              'argomenti', to_jsonb(TG_ARGV)),
+                          NULL::uuid,
+                          concat_ws(' ', TG_OP, coalesce(NULLIF(array_to_string(TG_ARGV, ', '), ''), '(nessun argomento)')));
+                  END IF;
+
+                  -- 1) Riferimento facoltativo, assente.
+                  IF v_new ->> v_col_rif IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 2) Niente di nuovo da giudicare.
+                  IF TG_OP = 'UPDATE' THEN
+                      v_old := to_jsonb(OLD);
+                      IF v_old -> v_col_rif  IS NOT DISTINCT FROM v_new -> v_col_rif
+                         AND v_old -> v_col_riga IS NOT DISTINCT FROM v_new -> v_col_riga THEN
+                          RETURN NEW;
+                      END IF;
+                  END IF;
+
+                  -- 3) I due emittenti, dal registro (risolutore DEFINER).
+                  v_ef_riga := script.fn_resolve_emittente_fiscale_id(v_modo_riga, (v_new ->> v_col_riga)::bigint);
+                  v_ef_rif  := script.fn_resolve_emittente_fiscale_id(v_modo_rif,  (v_new ->> v_col_rif)::bigint);
+
+                  IF v_ef_riga IS NULL OR v_ef_rif IS NULL OR v_ef_riga <> v_ef_rif THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          TG_TABLE_SCHEMA::text,
+                          'script.trgfn_guard_riferimento_stesso_emittente',
+                          'E_RIFERIMENTO_DI_ALTRO_EMITTENTE',
+                          jsonb_build_object(
+                              'detail',      'il riferimento non e'' dell''emittente della riga, o non esiste',
+                              'campo',       v_col_rif,
+                              'tabella',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              v_col_riga,    v_new -> v_col_riga,
+                              v_col_rif,     v_new -> v_col_rif),
+                          NULLIF(v_new ->> 'tx_id', '')::uuid);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_guard_riferimento_stesso_emittente() IS
+                  'BB trigger: il riferimento di una riga (un lotto, un seriale) e'' dell''emittente della riga. Argomenti (modo_riga, colonna_riga, modo_rif, colonna_rif): due coppie del registro dbops.emittente_modi, risolte con script.fn_resolve_emittente_fiscale_id (SECURITY DEFINER: la lettura non dipende dalla RLS di chi scrive). Riferimento nullo: passa; UPDATE che non cambia ne'' riga ne'' riferimento: passa. Emittente non risolto o diverso: E_RIFERIMENTO_DI_ALTRO_EMITTENTE, campo = colonna del riferimento; inesistente e altrui rispondono uguale (no-leak). Montaggio sbagliato: E_TRIGGER_ARGOMENTI_INVALIDI. BEFORE INSERT OR UPDATE, fase a10, nome trg_<t>_a10_guard_rif_<oggetto>_emittente_ins_upd.';
+
+              -- I dodici montaggi.
+              DROP TRIGGER IF EXISTS trg_movimenti_a10_guard_rif_lotto_emittente_ins_upd ON magazzino.movimenti;
+              CREATE TRIGGER trg_movimenti_a10_guard_rif_lotto_emittente_ins_upd
+                  BEFORE INSERT OR UPDATE ON magazzino.movimenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_riferimento_stesso_emittente('magazzino', 'magazzino_id', 'lotto_magazzino', 'lotto_id');
+              DROP TRIGGER IF EXISTS trg_movimenti_a10_guard_rif_asset_emittente_ins_upd ON magazzino.movimenti;
+              CREATE TRIGGER trg_movimenti_a10_guard_rif_asset_emittente_ins_upd
+                  BEFORE INSERT OR UPDATE ON magazzino.movimenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_riferimento_stesso_emittente('magazzino', 'magazzino_id', 'asset', 'asset_id');
+
+              DROP TRIGGER IF EXISTS trg_movimenti_attesi_a10_guard_rif_lotto_emittente_ins_upd ON magazzino.movimenti_attesi;
+              CREATE TRIGGER trg_movimenti_attesi_a10_guard_rif_lotto_emittente_ins_upd
+                  BEFORE INSERT OR UPDATE ON magazzino.movimenti_attesi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_riferimento_stesso_emittente('magazzino', 'magazzino_id', 'lotto_magazzino', 'lotto_id');
+              DROP TRIGGER IF EXISTS trg_movimenti_attesi_a10_guard_rif_asset_emittente_ins_upd ON magazzino.movimenti_attesi;
+              CREATE TRIGGER trg_movimenti_attesi_a10_guard_rif_asset_emittente_ins_upd
+                  BEFORE INSERT OR UPDATE ON magazzino.movimenti_attesi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_riferimento_stesso_emittente('magazzino', 'magazzino_id', 'asset', 'asset_id');
+
+              DROP TRIGGER IF EXISTS trg_inventari_righe_a10_guard_rif_lotto_emittente_ins_upd ON magazzino.inventari_righe;
+              CREATE TRIGGER trg_inventari_righe_a10_guard_rif_lotto_emittente_ins_upd
+                  BEFORE INSERT OR UPDATE ON magazzino.inventari_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_riferimento_stesso_emittente('inventario', 'inventario_id', 'lotto_magazzino', 'lotto_id');
+              DROP TRIGGER IF EXISTS trg_inventari_righe_a10_guard_rif_asset_emittente_ins_upd ON magazzino.inventari_righe;
+              CREATE TRIGGER trg_inventari_righe_a10_guard_rif_asset_emittente_ins_upd
+                  BEFORE INSERT OR UPDATE ON magazzino.inventari_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_riferimento_stesso_emittente('inventario', 'inventario_id', 'asset', 'asset_id');
+
+              DROP TRIGGER IF EXISTS trg_rettifiche_righe_a10_guard_rif_lotto_emittente_ins_upd ON magazzino.rettifiche_righe;
+              CREATE TRIGGER trg_rettifiche_righe_a10_guard_rif_lotto_emittente_ins_upd
+                  BEFORE INSERT OR UPDATE ON magazzino.rettifiche_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_riferimento_stesso_emittente('rettifica', 'rettifica_id', 'lotto_magazzino', 'lotto_id');
+              DROP TRIGGER IF EXISTS trg_rettifiche_righe_a10_guard_rif_asset_emittente_ins_upd ON magazzino.rettifiche_righe;
+              CREATE TRIGGER trg_rettifiche_righe_a10_guard_rif_asset_emittente_ins_upd
+                  BEFORE INSERT OR UPDATE ON magazzino.rettifiche_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_riferimento_stesso_emittente('rettifica', 'rettifica_id', 'asset', 'asset_id');
+
+              DROP TRIGGER IF EXISTS trg_trasferimenti_righe_a10_guard_rif_lotto_emittente_ins_upd ON magazzino.trasferimenti_righe;
+              CREATE TRIGGER trg_trasferimenti_righe_a10_guard_rif_lotto_emittente_ins_upd
+                  BEFORE INSERT OR UPDATE ON magazzino.trasferimenti_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_riferimento_stesso_emittente('trasferimento', 'trasferimento_id', 'lotto_magazzino', 'lotto_id');
+              DROP TRIGGER IF EXISTS trg_trasferimenti_righe_a10_guard_rif_asset_emittente_ins_upd ON magazzino.trasferimenti_righe;
+              CREATE TRIGGER trg_trasferimenti_righe_a10_guard_rif_asset_emittente_ins_upd
+                  BEFORE INSERT OR UPDATE ON magazzino.trasferimenti_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_riferimento_stesso_emittente('trasferimento', 'trasferimento_id', 'asset', 'asset_id');
+
+              DROP TRIGGER IF EXISTS trg_ddt_righe_prelievi_a10_guard_rif_lotto_emittente_ins_upd ON vendite.ddt_righe_prelievi;
+              CREATE TRIGGER trg_ddt_righe_prelievi_a10_guard_rif_lotto_emittente_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.ddt_righe_prelievi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_riferimento_stesso_emittente('ddt_riga', 'ddt_riga_id', 'lotto_magazzino', 'lotto_id');
+              DROP TRIGGER IF EXISTS trg_ddt_righe_prelievi_a10_guard_rif_asset_emittente_ins_upd ON vendite.ddt_righe_prelievi;
+              CREATE TRIGGER trg_ddt_righe_prelievi_a10_guard_rif_asset_emittente_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.ddt_righe_prelievi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_riferimento_stesso_emittente('ddt_riga', 'ddt_riga_id', 'asset', 'asset_id');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_movimenti_a10_guard_rif_lotto_emittente_ins_upd ON magazzino.movimenti;
+              DROP TRIGGER IF EXISTS trg_movimenti_a10_guard_rif_asset_emittente_ins_upd ON magazzino.movimenti;
+              DROP TRIGGER IF EXISTS trg_movimenti_attesi_a10_guard_rif_lotto_emittente_ins_upd ON magazzino.movimenti_attesi;
+              DROP TRIGGER IF EXISTS trg_movimenti_attesi_a10_guard_rif_asset_emittente_ins_upd ON magazzino.movimenti_attesi;
+              DROP TRIGGER IF EXISTS trg_inventari_righe_a10_guard_rif_lotto_emittente_ins_upd ON magazzino.inventari_righe;
+              DROP TRIGGER IF EXISTS trg_inventari_righe_a10_guard_rif_asset_emittente_ins_upd ON magazzino.inventari_righe;
+              DROP TRIGGER IF EXISTS trg_rettifiche_righe_a10_guard_rif_lotto_emittente_ins_upd ON magazzino.rettifiche_righe;
+              DROP TRIGGER IF EXISTS trg_rettifiche_righe_a10_guard_rif_asset_emittente_ins_upd ON magazzino.rettifiche_righe;
+              DROP TRIGGER IF EXISTS trg_trasferimenti_righe_a10_guard_rif_lotto_emittente_ins_upd ON magazzino.trasferimenti_righe;
+              DROP TRIGGER IF EXISTS trg_trasferimenti_righe_a10_guard_rif_asset_emittente_ins_upd ON magazzino.trasferimenti_righe;
+              DROP TRIGGER IF EXISTS trg_ddt_righe_prelievi_a10_guard_rif_lotto_emittente_ins_upd ON vendite.ddt_righe_prelievi;
+              DROP TRIGGER IF EXISTS trg_ddt_righe_prelievi_a10_guard_rif_asset_emittente_ins_upd ON vendite.ddt_righe_prelievi;
+              DROP FUNCTION IF EXISTS script.trgfn_guard_riferimento_stesso_emittente();

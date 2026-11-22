@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui: la dashboard spenta sospende i suoi preset. Brief: brief-db-revisione-ui
+#   (giro 5: Q49, decisa da Tid il 2026-11-21, gemella di Q13).
+#
+# ⚠️ PERCHE'. Il block sul padre (trgfn_prevent_deactivate_if_children)
+#   rifiutava lo spegnimento di una dashboard con preset accesi, mentre dal giro
+#   4 una lista con preset accesi si spegne (20261120-51). Liste e dashboard sono
+#   gemelle: la FK dashboard_id di ui.dashboard_preset entra fra le eccezioni
+#   ATTIVO (riga nuova di dbops/automazione_attivo_eccezioni.csv, col motivo).
+#   Una dashboard spenta non risponde gia' (ui.fn_dashboard_da_codice): i suoi
+#   preset restano com'erano e tornano con lei. Il pool (ui.dashboard_widget) e
+#   le preferenze sono gia' in eccezione.
+#
+# Qui il motore toglie i trigger gia' generati per la FK: il block su
+#   ui.dashboard_definizione e il require su ui.dashboard_preset. Sono trigger del
+#   framework: nessun DDL a mano (linee-guida-sql §11.5). Su un database da zero
+#   il motore delle automazioni, in ci_apply, legge il registro e non li genera.
+#
+# ⚠️ GARANZIA RITIRATA (AGENTS.md): «un preset acceso sta su una dashboard
+#   accesa». Censimento dei lettori DB nel brief, §3.5-bis: nessuno ne dipende
+#   (entrano dalla dashboard per codice, o leggono il preset per id).
+#   Richiesta al BE: BE28.
+# Presidio: ui/test-ui-nell-ambito-v1 (la FK passa fra le eccezioni) e
+#   ui/test-ui-catalogo-dashboard-v1 (la dashboard si spegne coi preset accesi).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261120-61-ritira-attivo-ui-dashboard-sospende-preset-mctit.yaml
+
+  - changeSet:
+      id: 20261120-61-ritira-attivo-ui-dashboard-sospende-preset
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui: il motore ATTIVO ritira block e require della FK dashboard_id di dashboard_preset,
+        entrata fra le eccezioni. Brief: brief-db-revisione-ui (giro 5, Q49).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM dbops.automazione_attivo_eccezioni
+               WHERE schema_figlia = 'ui'
+                 AND tabella_figlia = 'dashboard_preset'
+                 AND colonna_fk = 'dashboard_id'
+                 AND btrim(motivo) <> '';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_ritira_attivo_eccezioni();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- I trigger li governa il registro: per tornare indietro si toglie la
+              -- riga di automazione_attivo_eccezioni e si rigira il motore ATTIVO,
+              -- che li rigenera. Qui non si tocca niente.
+              SELECT 1;

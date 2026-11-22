@@ -1,115 +1,71 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_get_storia_emittente_ba`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti funzioni:
+> Approfondimento tabelle:
 >
-[anagrafiche.fn_ba_ha_storia_emittente](/dbzero/anagrafiche/manual/fn_ba_ha_storia_emittente)
-> • [anagrafiche.fn_guard_ba_cambio_emittente](/dbzero/anagrafiche/manual/fn_guard_ba_cambio_emittente)
-> • [script.fn_check_ba_cambio_emittente](/dbzero/script/manual/fn_check_ba_cambio_emittente)
+> * [vendite.famiglie_documento](/dbzero/vendite/tabelle/famiglie_documento) — le famiglie contate, e le parole della frase
 >
-Approfondimenti tabelle:
+> Approfondimento funzioni:
 >
-[anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
-> • [vendite.famiglie_documento](/dbzero/vendite/manual/famiglie_documento)
+> * [anagrafiche.fn_ba_ha_storia_emittente](/dbzero/anagrafiche/funzioni/fn_ba_ha_storia_emittente) — la gemella del sì o no
+> * [script.fn_check_ba_cambio_emittente](/dbzero/script/funzioni/fn_check_ba_cambio_emittente) — compone il motivo del rifiuto con queste righe
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 31-08-2026)
 
-Dice **quanta storia** ha un cliente sull'emittente a cui è agganciato, e **di che
-specie**: una riga per ogni tipo di documento che ha già almeno un numero addosso,
-col suo conteggio.
-
-Nessuna riga significa: nessuna storia.
+`anagrafiche.fn_get_storia_emittente_ba` dice quanta storia ha un billing account e di che specie: una riga per
+ogni famiglia di documento che ne ha almeno uno numerato, col conteggio. Nessuna riga vuol dire nessuna storia.
 
 ---
 
-### Che cosa conta come «storia», e perché non è un giudizio
+### Serve solo alla frase del rifiuto
 
-Non si conta quello che «sembra importante»: si conta **ciò che porta una copia
-dell'emittente che nessuno riscriverà più**.
+La chiama `script.fn_check_ba_cambio_emittente` quando ha già deciso di rifiutare, dopo che
+`fn_ba_ha_storia_emittente` ha risposto sì. Con più famiglie in gioco, il messaggio deve dire **quale**
+documento blocca: una frase che nominasse solo le fatture manderebbe a cercarle a un cliente fermato da un DDT.
+Le parole sono le descrizioni del catalogo (`famiglia_descrizione`), e il codice della famiglia
+(`famiglia_documento`) è quello della sua sorgente: una famiglia nuova cambia la frase da sé.
 
-Con quel criterio, dal 31 agosto 2026 la risposta è una sola e vale per tutti:
-**un documento che ha già preso un numero da un registro**. Il registro appartiene
-a un emittente, e quel numero è la sua copia scritta in cifre — non si rifà.
-
-⚠️ **Prima la regola era diversa, e va detto perché è cambiata.** Si contavano
-solo fatture e commesse, e ordini e documenti di trasporto restavano fuori con una
-motivazione precisa: *il loro emittente non è una copia che invecchia, perché un
-controllo lo riallinea al cliente a ogni scrittura*. Quella motivazione **è caduta
-il giorno in cui quei documenti hanno cominciato a prendere il numero dal
-registro**: il numero, quello sì, nessuno lo riallinea.
-
-⭐ E l'elenco dei tipi di documento **non è scritto dentro questa funzione**: si
-legge dal catalogo delle famiglie. È la differenza fra una regola che si aggiorna
-da sé e un elenco che qualcuno deve ricordarsi di allungare.
+Le famiglie a zero non escono, così chi compone la frase non filtra niente. Le righe vengono nell'ordine del
+catalogo, e la check le tiene in quell'ordine.
 
 ---
 
-### La bozza non conta più, ed è una scelta
+### La stessa definizione della gemella
 
-Un documento senza numero non ha congelato niente. Ne discende che **una fattura
-in bozza non blocca più** lo spostamento del cliente, mentre prima lo bloccava —
-perché il vecchio conteggio guardava le fatture, non i loro numeri.
-
-È il verso giusto: la possibilità di correggere un cliente nato sotto l'emittente
-sbagliato esiste **prima** che ci passi del lavoro vero, e una bozza è
-esattamente quel momento.
-
-⛔ Va detto per intero: una bozza porta già l'indicazione dell'emittente, e nessun
-controllo la riallinea al cliente. Spostare il cliente la lascerebbe sull'emittente
-di prima. Resta però una bozza — si cancella e si rifà — e presidiarla costerebbe
-la finestra di correzione per intero.
+Conta ciò che la gemella trova: i documenti numerati delle famiglie attive che dichiarano il billing account,
+nella tabella della loro sorgente. Le due funzioni leggono la stessa scelta delle famiglie, e una dice sì
+quando l'altra restituisce almeno una riga. Un billing account assente non restituisce righe. Gira coi
+privilegi del proprietario per la stessa ragione: la storia presso un'altra azienda non deve sparire sotto le
+regole di visibilità.
 
 ---
 
-### Perché una riga per tipo, e non due numeri
+### Test
 
-Perché il messaggio che l'operatore legge deve dire **quale** documento lo sta
-bloccando. Con cinque tipi di documento in gioco, una frase che ne nominasse solo
-due — *«ha già 3 fatture e 1 commesse»* — sarebbe **peggio** di una che non ne
-nomina nessuno: manderebbe a cercare fatture a un cliente bloccato da un documento
-di trasporto.
-
-I nomi che finiscono nella frase sono le descrizioni del catalogo, non etichette
-ricopiate: un tipo di documento in più domani cambia la frase da sé.
-
-⚠️ I tipi a zero **non escono**. «Nessuna riga» è la risposta «nessuna storia», e
-chi compone la frase non deve stare a filtrare gli zeri.
+* `db/pgtap/anagrafiche/test-ba-cambio-emittente-storia-v1.sql` — nessuna riga per un billing account appena
+  nato; una commessa conta sotto la sua famiglia, e la frase nomina la specie.
+* `db/pgtap/anagrafiche/test-ba-storia-solo-numerati-v1.sql` — il DDT in bozza non conta, emesso conta sotto la
+  sua famiglia.
 
 ---
 
-### Quando si chiama, e quando invece no
+### Note di migrazione
 
-Solo **dopo** aver deciso di rifiutare. Il sì/no lo dà la funzione gemella, che si
-ferma al primo documento trovato: contare cinque tipi per rispondere «sì» sarebbe
-lavoro buttato, e lo si butterebbe a ogni caricamento della lista degli agganci.
-
----
-
-### Perché è privilegiata
-
-Fatture e commesse sono protette da regole di visibilità per emittente. Se questa
-funzione girasse con i permessi di chi la chiama, **la storia di un altro emittente
-sarebbe invisibile**: risponderebbe «non c'è niente» proprio nel caso in cui la
-risposta deve fermare l'operazione.
+* 2026-08-31 — prende il posto della forma con due conteggi fissi, fatture e commesse; da allora le famiglie
+  vengono dal catalogo, e la fattura in bozza non conta più.
+* 2026-09-14 — le famiglie senza billing account restano fuori.
+* 2026-10-20 — la tabella di ogni famiglia è quella della sua sorgente, e il codice della famiglia è quello
+  della sorgente.
 
 ---
 
-### Impatto e Vantaggi
+{% include-markdown "it/dbzero/anagrafiche/_emittente-del-billing-account.md" %}
 
-* una definizione sola di «storia», che si aggiorna da sé quando nasce un tipo di
-  documento nuovo;
-* il messaggio di rifiuto dice dove guardare, invece di mandare a cercare a mano
-  in cinque posti.
+---
 
-### 🔄 rev 2026-09-14 — le famiglie senza billing account restano fuori dal giro
-
-Dal `20260914-09/-10` la funzione gira solo sulle famiglie che **dichiarano**
-una colonna del billing account (`vendite.famiglie_documento.colonna_billing_account`
-è facoltativa da quel giorno). Il salto sta nella query che sceglie le famiglie,
-**non** dentro la composizione dell'SQL: un nome vuoto lì dentro avrebbe
-prodotto un errore tecnico senza codice, o — peggio — un'interrogazione muta.
-Una famiglia senza cliente non può contribuire alla storia di nessun cliente.
-Brief: `brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 3-bis.
+{% include-markdown "signature-core.md" %}

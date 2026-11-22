@@ -97,7 +97,7 @@ porta argomenti, così `ruff check` a mano e il cancello dicono la stessa cosa.
 | `G`, `LOG` | uso corretto del logging (`logger.exception` dentro un `except`, e solo lì) |
 | **`S`** | **sicurezza** (le regole di Bandit, via flake8-bandit): SQL composto a stringhe, `except: pass`, template senza autoescape, `subprocess`, password cablate, hash deboli, `pickle`/`yaml.load`, ... |
 | `B` | bugbear: fra le altre `zip()` senza `strict=` (tronca **in silenzio** alla lista più corta: si scrive `strict=True`, e `strict=False` solo dove la troncatura è voluta, col perché), una funzione nel ciclo che legge la variabile del ciclo, `raise` dentro un `except` senza `from` |
-| `DTZ` | flake8-datetimez: `date.today()`, `datetime.now()` senza fuso, `datetime(...)`/`strptime` naive — il giorno e l'ora del **processo** (`TIME_ZONE = 'UTC'`), che non è il fuso dell'azienda. L'«oggi» è `fuso_aziendale.oggi_aziendale()`, l'ora mostrata `locale_formatters`; un naive voluto si marca col motivo ([brief un-solo-fuso-aziendale](work-done/brief-be-db-fe-un-solo-fuso-aziendale.md) B-9) |
+| `DTZ` | flake8-datetimez: `date.today()`, `datetime.now()` senza fuso, `datetime(...)`/`strptime` naive — il giorno e l'ora del **processo** (`TIME_ZONE = 'UTC'`), che non è il fuso dell'azienda. L'«oggi» è `fuso_aziendale.oggi_aziendale()`, l'ora mostrata `locale_formatters`; un naive voluto si marca col motivo ([brief un-solo-fuso-aziendale](work-done/2026/brief-be-db-fe-un-solo-fuso-aziendale.md) B-9) |
 | `RUF100` | `# noqa` morti: una direttiva che non sopprime più niente |
 
 ### Le eccezioni, e perché
@@ -142,7 +142,7 @@ aperto protegge solo ciò che avanza.
 **File**: `backend/mypy.ini` (perimetro e regole), `backend/mypy.baseline.json` (il registro),
 `scripts/check_mypy_baseline.py` (il cancello). **Dipendenze**: `backend/requirements-dev.in`
 → `requirements-dev.txt` (mypy, `django-stubs`, `djangorestframework-stubs`, `types-bleach`, `types-openpyxl`), nella venv del
-backend ma **non** nell'immagine Docker. Il [piano](work-done/piano-be-type-checker.md) che l'ha
+backend ma **non** nell'immagine Docker. Il [piano](work-done/2026/piano-be-type-checker.md) che l'ha
 acceso ne racconta la storia e lo smaltimento dell'arretrato.
 
 ### Perché
@@ -173,7 +173,7 @@ non percorrono; e nessuno dei due prova la **forma dei dati** che il mock restit
 
 A differenza di `ruff`, mypy **è nato con un registro aperto** (decisione di Tid): l'arretrato su
 codice scritto senza checker è stato smaltito dopo l'accensione, nei lotti del
-[piano](work-done/piano-be-type-checker.md), che ne tiene i numeri. Oggi il registro è **vuoto**,
+[piano](work-done/2026/piano-be-type-checker.md), che ne tiene i numeri. Oggi il registro è **vuoto**,
 e il cricchetto non lo lascia risalire: per mypy vale la stessa regola degli altri presidi, un
 rosso vuol dire «l'hai introdotto tu».
 
@@ -494,7 +494,7 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 Qui l'elenco di ciò che, in tema sicurezza, oggi **non** c'è. Il debito aperto del progetto, con
 lo stato di ciascuna voce, sta in `.codex/PROJECT_CONTEXT.md` § «Aperto — Media priorità»;
-la storia delle voci chiuse in [migliorie generali BE/FE](work-done/migliorie-generali-BE-FE-da-test-valutazione.md) §9.
+la storia delle voci chiuse in [migliorie generali BE/FE](work-done/2026/migliorie-generali-BE-FE-da-test-valutazione.md) §9.
 
 | Cosa | Stato |
 | --- | --- |

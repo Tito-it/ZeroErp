@@ -626,7 +626,11 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # mappato dal service via map_integrity_error.
     "E_UI_DEFINIZIONE_VALIDAZIONE": "highlight_form_fields",  # classe DATO_ERRATO
     "E_UI_PERMESSO_VALIDAZIONE": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_UI_PREFERENZA_VALIDAZIONE": "highlight_form_fields",  # classe DATO_ERRATO
+    # ⛔ `E_UI_PREFERENZA_VALIDAZIONE` non e' piu' qui (BE8 di
+    #    brief-db-revisione-ui, 2026-11-22): la forma della preferenza la
+    #    giudica il DB, e al BE resta la sola regola dell'API sul corpo (un
+    #    oggetto con almeno una chiave), senza un input da accendere: il codice
+    #    torna al banner della sua classe.
     # Blocco F (admin CRUD ui.*): codici dedicati per preset e permessi colonna.
     # Le validazioni di scoperto/duplicato vengono mappate via map_integrity_error
     # da nomi vincolo DB (uq_ui_lista_preset_lista_codice, chk_ui_lista_preset_ambito_refs).

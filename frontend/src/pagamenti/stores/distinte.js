@@ -69,10 +69,12 @@ export const useDistinteStore = defineStore(
       search: '',
       limit: misuraDefault(USO_MISURA.PAGINA),
       offset: 0,
-      // Il giorno piu' recente in cima: e' il default del backend, quindi la
-      // lista non si riordina sotto gli occhi al primo caricamento.
-      order_by: 'data_contabile',
-      order_dir: 'desc',
+      // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+      //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+      //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+      //    l'intestazione.
+      order_by: null,
+      order_dir: null,
     })
 
     // `lista`: lo stato del BB, esposto INTERO nel `return` (`...lista`).

@@ -1,0 +1,199 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_check_righe_offerta_in_ordine: LE RIGHE ESPANSE SI LEGGONO PER NOME
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo §8.16 (giro 5).
+#
+#   La funzione leggeva vendite.fn_offerta_righe_espanse WITH ORDINALITY con un
+#   elenco di alias POSIZIONALE. Il 20261120-16 aggiunge quattro colonne in coda:
+#   con l'elenco di prima riga_nr finirebbe sulla prima di loro (origine_prezzo),
+#   senza errore. E' la seconda volta (20261106-50 lo correggeva per eccezione_id):
+#   ora le colonne si leggono per nome e la posizione da r.ordinality, e una colonna
+#   in coda non la sposta piu'. Viene PRIMA del -16 e regge sia la forma vecchia sia
+#   la nuova. Nessun cambio di comportamento; il COMMENT resta (CREATE OR REPLACE).
+#   Corpo: il vivo di dbdev (2026-11-21); testata da 20261106-50. Rollback: il vivo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261120-15-update-fn-check-righe-offerta-in-ordine-colonne-per-nome-mctit.yaml
+
+  - changeSet:
+      id: 20261120-15-update-fn-check-righe-offerta-in-ordine-colonne-per-nome
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_righe_offerta_in_ordine: le righe espanse per nome, la posizione da ordinality. Brief: brief-db-provenienza-prezzo-segue-il-prezzo §8.16.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_righe_offerta_in_ordine';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_righe_offerta_in_ordine(
+                  p_offerta_id vendite.offerte_commerciali.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo:
+              --   Le righe di un'offerta che NON possono diventare righe d'ordine:
+              --   ogni riga espansa (vendite.fn_offerta_righe_espanse, quelle che
+              --   vendite.fn_genera_ordine_da_offerta copia) giudicata come riga di
+              --   ORDINE_VENDITA da script.fn_check_riga_documento_su_contesto (solo
+              --   merce, solo componente, kit senza componenti). Un motivo
+              --   E_DOC_RIGA_NON_AMMESSA per riga, nell'ordine delle righe espanse;
+              --   '[]' = l'ordine si puo' generare.
+              --
+              -- ⭐ Perche' (brief-db-offerta-emissione-ed-erogazione §I.2, I-D2 di Tid):
+              --   «Genera ordine» deve dire il motivo PRIMA del clic. E' la stessa
+              --   domanda che il guard delle righe d'ordine fara' all'INSERT
+              --   (script.trgfn_righe_guard_articolo_ammesso): la capability e il verbo
+              --   la leggono da qui, il guard resta la rete.
+              --
+              -- L'ordine non esiste ancora: il contesto e' quello di ORDINE_VENDITA
+              --   senza id (le regole dell'ordine non leggono la testata). La natura e'
+              --   quella dell'articolo, come la eredita la riga d'ordine.
+              -- Le righe espanse non hanno un id: nel dettaglio c'e' la posizione
+              --   (riga_nr, 1 = la prima), l'origine e il tipo d'eccezione.
+              -- =========================================================
+              DECLARE
+                  -- Nudi DICHIARATI: il contesto e i motivi sono jsonb composti;
+                  -- l'etichetta e' una frase per il messaggio.
+                  v_contesto  jsonb;
+                  v_motivi    jsonb;
+                  v_etichetta text;
+              BEGIN
+                  v_contesto := script.fn_articolo_riga_contesto('ORDINE_VENDITA', NULL);
+
+                  SELECT 'Ordine dall''offerta ' || COALESCE(o.codice, o.id::text)
+                    INTO v_etichetta
+                    FROM vendite.offerte_commerciali o
+                   WHERE o.id = p_offerta_id;
+
+                  SELECT COALESCE(jsonb_agg(
+                             jsonb_build_object(
+                                 'codice',     'E_DOC_RIGA_NON_AMMESSA',
+                                 'reason',     'RIGA_NON_AMMESSA',
+                                 'reason_key', 'common.azione_reason.riga_non_ammessa',
+                                 'valori',     jsonb_build_array(v_etichetta, g.articolo_codice),
+                                 'dettaglio',  jsonb_build_object(
+                                                   'campo',          'articolo_id',
+                                                   'documento',      'ORDINE_VENDITA',
+                                                   'offerta_id',     p_offerta_id,
+                                                   'riga_nr',        g.riga_nr,
+                                                   'origine',        g.origine,
+                                                   'tipo_eccezione', g.tipo_eccezione,
+                                                   'articolo_id',    g.articolo_id,
+                                                   'motivo_riga',    g.motivo))
+                             ORDER BY g.riga_nr), '[]'::jsonb)
+                    INTO v_motivi
+                    FROM (
+                        -- Le colonne per nome, la posizione da ordinality: una colonna nuova in coda
+                        -- alle righe espanse non sposta riga_nr (con l'elenco di alias si').
+                        SELECT r.ordinality AS riga_nr, r.articolo_id, r.articolo_codice, r.origine, r.tipo_eccezione,
+                               script.fn_check_riga_documento_su_contesto(
+                                   v_contesto, r.articolo_id, NULL, NULL, NULL) -> 0 AS motivo
+                          FROM vendite.fn_offerta_righe_espanse(p_offerta_id) WITH ORDINALITY AS r
+                    ) g
+                   WHERE g.motivo IS NOT NULL;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_righe_offerta_in_ordine(
+                  p_offerta_id vendite.offerte_commerciali.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo:
+              --   Le righe di un'offerta che NON possono diventare righe d'ordine:
+              --   ogni riga espansa (vendite.fn_offerta_righe_espanse, quelle che
+              --   vendite.fn_genera_ordine_da_offerta copia) giudicata come riga di
+              --   ORDINE_VENDITA da script.fn_check_riga_documento_su_contesto (solo
+              --   merce, solo componente, kit senza componenti). Un motivo
+              --   E_DOC_RIGA_NON_AMMESSA per riga, nell'ordine delle righe espanse;
+              --   '[]' = l'ordine si puo' generare.
+              --
+              -- ⭐ Perche' (brief-db-offerta-emissione-ed-erogazione §I.2, I-D2 di Tid):
+              --   «Genera ordine» deve dire il motivo PRIMA del clic. E' la stessa
+              --   domanda che il guard delle righe d'ordine fara' all'INSERT
+              --   (script.trgfn_righe_guard_articolo_ammesso): la capability e il verbo
+              --   la leggono da qui, il guard resta la rete.
+              --
+              -- L'ordine non esiste ancora: il contesto e' quello di ORDINE_VENDITA
+              --   senza id (le regole dell'ordine non leggono la testata). La natura e'
+              --   quella dell'articolo, come la eredita la riga d'ordine.
+              -- Le righe espanse non hanno un id: nel dettaglio c'e' la posizione
+              --   (riga_nr, 1 = la prima), l'origine e il tipo d'eccezione.
+              -- =========================================================
+              DECLARE
+                  -- Nudi DICHIARATI: il contesto e i motivi sono jsonb composti;
+                  -- l'etichetta e' una frase per il messaggio.
+                  v_contesto  jsonb;
+                  v_motivi    jsonb;
+                  v_etichetta text;
+              BEGIN
+                  v_contesto := script.fn_articolo_riga_contesto('ORDINE_VENDITA', NULL);
+
+                  SELECT 'Ordine dall''offerta ' || COALESCE(o.codice, o.id::text)
+                    INTO v_etichetta
+                    FROM vendite.offerte_commerciali o
+                   WHERE o.id = p_offerta_id;
+
+                  SELECT COALESCE(jsonb_agg(
+                             jsonb_build_object(
+                                 'codice',     'E_DOC_RIGA_NON_AMMESSA',
+                                 'reason',     'RIGA_NON_AMMESSA',
+                                 'reason_key', 'common.azione_reason.riga_non_ammessa',
+                                 'valori',     jsonb_build_array(v_etichetta, g.articolo_codice),
+                                 'dettaglio',  jsonb_build_object(
+                                                   'campo',          'articolo_id',
+                                                   'documento',      'ORDINE_VENDITA',
+                                                   'offerta_id',     p_offerta_id,
+                                                   'riga_nr',        g.riga_nr,
+                                                   'origine',        g.origine,
+                                                   'tipo_eccezione', g.tipo_eccezione,
+                                                   'articolo_id',    g.articolo_id,
+                                                   'motivo_riga',    g.motivo))
+                             ORDER BY g.riga_nr), '[]'::jsonb)
+                    INTO v_motivi
+                    FROM (
+                        SELECT r.riga_nr, r.articolo_id, r.articolo_codice, r.origine, r.tipo_eccezione,
+                               script.fn_check_riga_documento_su_contesto(
+                                   v_contesto, r.articolo_id, NULL, NULL, NULL) -> 0 AS motivo
+                          FROM vendite.fn_offerta_righe_espanse(p_offerta_id)
+                               WITH ORDINALITY AS r(articolo_id, articolo_codice, descrizione, is_composito,
+                                                    quantita, uom_operativa_id, qta_operativa, factor_to_base,
+                                                    prezzo_unitario, sconto_percentuale, iva_id,
+                                                    tipo_eccezione, origine, componenti, eccezione_id,
+                                                    riga_nr)
+                    ) g
+                   WHERE g.motivo IS NOT NULL;
+
+                  RETURN v_motivi;
+              END;
+              $function$;

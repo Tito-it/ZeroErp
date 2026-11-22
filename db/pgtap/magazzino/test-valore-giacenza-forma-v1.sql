@@ -100,8 +100,6 @@ CREATE TEMP TABLE _fix (mag bigint, art uuid, u1 bigint, u2 bigint);
 
 DO $fix$
 DECLARE
-    v_ef  magazzino.magazzini.emittente_fiscale_id%TYPE;
-    v_ind anagrafiche.indirizzi_dettaglio.id%TYPE;
     v_art catalogo.articoli.id%TYPE;
     v_mag magazzino.magazzini.id%TYPE;
     v_u1  magazzino.ubicazioni.id%TYPE;
@@ -112,10 +110,7 @@ DECLARE
     v_rr  magazzino.rettifiche_righe.id%TYPE;
     v_tipo_ubi config.tipi_ubicazione.id%TYPE;
 BEGIN
-    SELECT emittente_fiscale_id INTO v_ef FROM _mondo;
-    -- L'indirizzo si FABBRICA (dato di macchina: zero righe su un DB da zero);
-    -- articolo e tipo di ubicazione sono seed di catalogo, presenti per contratto.
-    v_ind := dbops.fn_pgtap_crea_indirizzo_dettaglio('valore');
+    -- Il tipo di ubicazione e' seed di catalogo, presente per contratto.
     -- L'articolo si COSTRUISCE gestito a magazzino (Lotto 2: la primitiva rifiuta un non gestito).
     v_art := dbops.fn_pgtap_crea_articolo('PGT-VG1-ART', true, false, false);
     SELECT t.id INTO v_tipo_ubi FROM config.tipi_ubicazione t WHERE t.attivo ORDER BY t.id LIMIT 1;
@@ -124,9 +119,9 @@ BEGIN
     END IF;
 
     -- usa_ubicazioni: i movimenti nominano U1 e U2 (D-L2-m).
-    v_mag := magazzino.fn_crea_magazzino('PGT-VG1', 'pgTAP valore', v_ind, jsonb_build_object('usa_ubicazioni', true), v_ef);
-    INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id) VALUES (v_mag, 'PGT-U1', v_tipo_ubi) RETURNING id INTO v_u1;
-    INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id) VALUES (v_mag, 'PGT-U2', v_tipo_ubi) RETURNING id INTO v_u2;
+    v_mag := dbops.fn_pgtap_crea_magazzino('PGT-VG1', true);
+    v_u1 := dbops.fn_pgtap_crea_ubicazione(v_mag, 'PGT-U1', p_tipo_id => v_tipo_ubi);
+    v_u2 := dbops.fn_pgtap_crea_ubicazione(v_mag, 'PGT-U2', p_tipo_id => v_tipo_ubi);
 
     -- +5 in U1 e +4 in U2 a costo 10 (un inventario, due righe), poi -2 da U1
     -- (una rettifica, alla media): ATTRAVERSO I VERBI, che passano dalla primitiva,

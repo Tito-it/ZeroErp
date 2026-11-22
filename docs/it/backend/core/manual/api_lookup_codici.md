@@ -98,7 +98,7 @@ Una pagina oltre l'ultima risponde `results: []` col **`count` vero**: la pagina
 passa dal BB `fetch_paged_with_total`, e quando è vuota il totale lo ricalcola il
 conteggio di ripiego sullo stesso frammento FROM+WHERE. Vale per il ramo generico e
 per gli specializzati. Fino al 2026-09-28 rispondeva `count: 0` e `total_pages: 0`
-(F-8 dell'[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+(F-8 dell'[analisi difetti](../../../dev/work-done/2026/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 ## Lookup specializzati (colonna extra)
 
@@ -180,8 +180,10 @@ letti da form di aree diverse. Lo scope resta quello del repository — vedi
 - `order_col` e `order_dir` sono validati a livello Python **prima** della chiamata DB;
   non vengono passati come parametri SQL (`%s`) ma inseriti nel testo della query solo dopo
   la validazione contro whitelist.
-- Paginazione gestita esternamente via SQL wrapper; il limit interno alla funzione DB è 10000
-  (limite pratico sufficiente per tutte le tabelle config).
+- Paginazione gestita esternamente via SQL wrapper. ⛔ Nessun tetto interno: il backend chiama
+  la funzione DB con `p_limit` NULL, perché la ricerca deve vedere tutta la tabella. Fino al
+  2026-11-07 passava un tetto di 10000 righe (`LOOKUP_MAX_SOURCE_ROWS`), ritirato con
+  brief-db-revisione-dbops BE4: oltre il tetto la ricerca non trovava, in silenzio.
 
 ## Relazioni consentite
 

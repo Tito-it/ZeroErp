@@ -2,28 +2,26 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Test unit ListaPreferenzaService — valida payload, snapshot
+# Scopo: Test unit ListaPreferenzaService — il corpo arriva intatto al DB, snapshot
 #        preset di base, UPSERT/DELETE preferenza utente. CI senza DB
 #        reale (SimpleTestCase + repository mockato).
 #
 # Indice test (0..N):
 #   0. upsert_happy_path
-#   1. upsert_lista_inesistente_raises
-#   2. upsert_payload_chiavi_extra_raises
-#   3. upsert_colonna_codice_mancante_raises
-#   4. upsert_colonna_chiavi_extra_raises
-#   5. upsert_pagina_dimensione_la_decide_il_db
-#   6. upsert_pagina_dimensione_non_int_raises
-#   7. upsert_visibile_non_bool_raises
-#   8. upsert_payload_non_dict_raises
-#   9. upsert_snapshot_preset_passato_a_repo
-#  10. delete_happy_path
-#  11. delete_lista_inesistente_raises
-#  12. delete_idempotente_se_pref_assente
-#  13. ignore_preset_update_happy_path (DEF-2)
-#  14. ignore_preset_update_lista_inesistente_raises (DEF-2)
-#  15. ignore_preset_update_senza_preferenza_raises (DEF-2)
-#  16. ignore_preset_update_pref_senza_preset_base_id (DEF-2 — edge)
+#   1. (ritirato: la lista inesistente la rifiuta il DB, test_lista_da_codice_db)
+#   2. upsert_pagina_dimensione_la_decide_il_db
+#   3. upsert_una_chiave_sola_arriva_da_sola
+#   4. upsert_senza_chiavi_raises
+#   5. upsert_la_forma_arriva_intatta_al_db (BE8, giro 2: la forma la giudica il DB)
+#   6. upsert_payload_non_dict_raises
+#   7. upsert_snapshot_preset_none_quando_nessun_preset
+#   8. delete_happy_path
+#   9. (ritirato, come l'1)
+#  10. delete_idempotente_se_pref_assente
+#  11. ignore_preset_update_happy_path (DEF-2)
+#  12. (ritirato, come l'1)
+#  13. ignore_preset_update_senza_preferenza_raises (DEF-2)
+#  14. ignore_preset_update_pref_senza_preset_base_id (DEF-2 — edge)
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -35,7 +33,6 @@ from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
 from apps.ui.services.lista_preferenza_service import (
-    E_UI_LISTA_NON_TROVATA,
     E_UI_PREFERENZA_NON_TROVATA,
     E_UI_PREFERENZA_VALIDAZIONE,
     ListaPreferenzaService,
@@ -60,8 +57,6 @@ _VALID_PAYLOAD: dict[str, Any] = {
         },
         {"codice": "partita_iva", "ordine": 2, "visibile": True},
     ],
-    "ordinamento": [{"col": "ragione_sociale", "dir": "asc"}],
-    "filtri": {"attivo": True},
     "pagina_dimensione": 50,
 }
 
@@ -105,71 +100,10 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
         repo.resolve_lista_config.assert_called_once_with(
             lista_codice="anagrafiche.clienti", auth_user_id=42, emittente_fiscale_id=11,
         )
-        # Configurazione normalizzata propagata.
+        # Configurazione propagata cosi' com'e'.
         cfg = kwargs["configurazione"]
         self.assertEqual(cfg["pagina_dimensione"], 50)
         self.assertEqual(len(cfg["colonne"]), 2)
-
-    @patch(
-        "apps.ui.services.lista_preferenza_service.PermissionResolver"
-        ".get_emittente_for_user",
-        return_value=11,
-    )
-    def test_upsert_lista_inesistente_raises(self, _mock_em) -> None:
-        repo = MagicMock()
-        repo.get_lista_id.return_value = None
-        svc = ListaPreferenzaService(repository=repo)
-
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(_make_user(), "non.esiste", dict(_VALID_PAYLOAD))
-        self.assertEqual(ctx.exception.code, E_UI_LISTA_NON_TROVATA)
-        repo.upsert_preferenza.assert_not_called()
-
-    @patch(
-        "apps.ui.services.lista_preferenza_service.PermissionResolver"
-        ".get_emittente_for_user",
-        return_value=11,
-    )
-    def test_upsert_payload_chiavi_extra_raises(self, _mock_em) -> None:
-        repo = MagicMock()
-        repo.get_lista_id.return_value = 1
-        svc = ListaPreferenzaService(repository=repo)
-
-        bad_payload = dict(_VALID_PAYLOAD)
-        bad_payload["malicious_key"] = "<script>"
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(_make_user(), "anagrafiche.clienti", bad_payload)
-        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
-
-    @patch(
-        "apps.ui.services.lista_preferenza_service.PermissionResolver"
-        ".get_emittente_for_user",
-        return_value=11,
-    )
-    def test_upsert_colonna_codice_mancante_raises(self, _mock_em) -> None:
-        repo = MagicMock()
-        repo.get_lista_id.return_value = 1
-        svc = ListaPreferenzaService(repository=repo)
-
-        bad = {"colonne": [{"ordine": 1, "visibile": True}]}
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(_make_user(), "anagrafiche.clienti", bad)
-        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
-
-    @patch(
-        "apps.ui.services.lista_preferenza_service.PermissionResolver"
-        ".get_emittente_for_user",
-        return_value=11,
-    )
-    def test_upsert_colonna_chiavi_extra_raises(self, _mock_em) -> None:
-        repo = MagicMock()
-        repo.get_lista_id.return_value = 1
-        svc = ListaPreferenzaService(repository=repo)
-
-        bad = {"colonne": [{"codice": "x", "extra_field": 1}]}
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(_make_user(), "anagrafiche.clienti", bad)
-        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
 
     @patch(
         "apps.ui.services.lista_preferenza_service.PermissionResolver"
@@ -224,41 +158,35 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
         repo.get_lista_id.return_value = 1
         svc = ListaPreferenzaService(repository=repo)
 
-        for payload in ({}, {"pagina_dimensione": None, "colonne": None}):
-            with self.subTest(payload=payload), self.assertRaises(ServiceError) as ctx:
-                svc.upsert(_make_user(), "anagrafiche.clienti", payload)
-            self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
+        with self.assertRaises(ServiceError) as ctx:
+            svc.upsert(_make_user(), "anagrafiche.clienti", {})
+        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
         repo.upsert_preferenza.assert_not_called()
 
+    # ⛔ La forma la giudica il guard del DB (BE8 di brief-db-revisione-ui,
+    #    giro 2): il service non toglie, non converte e non rifiuta niente. Un
+    #    corpo sbagliato in ogni modo arriva INTATTO al repository; il rifiuto
+    #    (`E_UI_CONFIGURAZIONE_FORMA`, 400) lo prova `tests/db/test_forma_preferenza_db`.
+    #    Un controllo rimasto nel service sarebbe una seconda regola.
     @patch(
         "apps.ui.services.lista_preferenza_service.PermissionResolver"
         ".get_emittente_for_user",
         return_value=11,
     )
-    def test_upsert_pagina_dimensione_non_int_raises(self, _mock_em) -> None:
+    def test_upsert_la_forma_arriva_intatta_al_db(self, _mock_em) -> None:
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
+        repo.resolve_lista_config.return_value = {"preset_base": None}
+        repo.upsert_preferenza.return_value = 7
         svc = ListaPreferenzaService(repository=repo)
 
-        bad = {"pagina_dimensione": "venti"}
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(_make_user(), "anagrafiche.clienti", bad)
-        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
-
-    @patch(
-        "apps.ui.services.lista_preferenza_service.PermissionResolver"
-        ".get_emittente_for_user",
-        return_value=11,
-    )
-    def test_upsert_visibile_non_bool_raises(self, _mock_em) -> None:
-        repo = MagicMock()
-        repo.get_lista_id.return_value = 1
-        svc = ListaPreferenzaService(repository=repo)
-
-        bad = {"colonne": [{"codice": "x", "visibile": "yes"}]}
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(_make_user(), "anagrafiche.clienti", bad)
-        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
+        payload = {
+            "colonne": [{"codice": "x", "larghezza": None, "ordine": "3", "extra": 1}],
+            "ordinamento": [{"col": "x", "dir": "asc"}],
+            "pagina_dimensione": "venti",
+        }
+        svc.upsert(_make_user(), "anagrafiche.clienti", payload)
+        self.assertEqual(repo.upsert_preferenza.call_args.kwargs["configurazione"], payload)
 
     @patch(
         "apps.ui.services.lista_preferenza_service.PermissionResolver"
@@ -309,16 +237,6 @@ class ListaPreferenzaDeleteTests(SimpleTestCase):
             auth_user_id=42, lista_id=1,
         )
 
-    def test_delete_lista_inesistente_raises(self) -> None:
-        repo = MagicMock()
-        repo.get_lista_id.return_value = None
-        svc = ListaPreferenzaService(repository=repo)
-
-        with self.assertRaises(ServiceError) as ctx:
-            svc.delete(_make_user(), "non.esiste")
-        self.assertEqual(ctx.exception.code, E_UI_LISTA_NON_TROVATA)
-        repo.delete_preferenza.assert_not_called()
-
     def test_delete_idempotente_se_pref_assente(self) -> None:
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
@@ -346,16 +264,6 @@ class ListaPreferenzaIgnorePresetUpdateTests(SimpleTestCase):
         repo.riallinea_snapshot_base.assert_called_once_with(
             auth_user_id=42, lista_id=1,
         )
-
-    def test_ignore_preset_update_lista_inesistente_raises(self) -> None:
-        repo = MagicMock()
-        repo.get_lista_id.return_value = None
-        svc = ListaPreferenzaService(repository=repo)
-
-        with self.assertRaises(ServiceError) as ctx:
-            svc.ignore_preset_update(_make_user(), "non.esiste")
-        self.assertEqual(ctx.exception.code, E_UI_LISTA_NON_TROVATA)
-        repo.riallinea_snapshot_base.assert_not_called()
 
     def test_ignore_preset_update_senza_preferenza_raises(self) -> None:
         repo = MagicMock()

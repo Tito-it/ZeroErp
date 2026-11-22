@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PROVISIONA SUBITO LA COPPIA ATTIVO VERSO config.regimi_fiscali
+#   anagrafiche.emittenti_fiscali.regime_fiscale_rf
+#   anagrafiche.fornitori.regime_fiscale_rf
+#   Tid, 2026-11-21: un regime fiscale spento non si assegna, e uno in uso non
+#   si spegne. Le righe sono in 80_data/sql/dbops/automazione_attivo_inclusioni.csv
+#   (mirror 20261121-14); il runner le legge da 20261121-12.
+#
+# -- PERCHE' SUBITO -----------------------------------------------------------------
+#   Su dbdev il ci_apply non rigira le automazioni: senza questo passo la
+#   regola resterebbe senza trigger fino al giro successivo, e il pgTAP del
+#   giro rosso. Da zero il ci_apply la monta comunque; il runner converge
+#   (crea, rigenera, ritira), e rigirarlo non fa danni.
+#
+# -- LA FORMA -------------------------------------------------------------------------
+#   Si chiama il RUNNER, non si scrive un CREATE TRIGGER a mano: un trigger
+#   scritto a mano sembrerebbe governato dal registro senza esserlo (stessa
+#   scelta di 20261019-86). I due schemi della coppia, figlia e padre: il
+#   runner lega solo le FK che hanno tutte e due le tabelle nell'elenco.
+#   ⚠️ Il giro converge TUTTE le coppie ATTIVO fra anagrafiche e config, non
+#   solo queste due: la prova in ROLLBACK del 2026-11-21 sullo scratch e su
+#   dbdev non ha creato ne' tolto altri trigger.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261121-15-provision-attivo-regimi-fiscali-mctit.yaml
+
+  - changeSet:
+      id: 20261121-15-provision-attivo-regimi-fiscali
+      author: mctit
+      runOnChange: false
+      comment: >
+        Provisiona subito la coppia ATTIVO (require sulla figlia, block sul padre) delle due FK
+        regime_fiscale_rf verso config.regimi_fiscali, chiamando il runner su anagrafiche e
+        config.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # Le due righe del registro devono esserci: senza, il runner
+            # salterebbe le due FK e il changeSet sarebbe un verde a vuoto.
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT count(*) FROM dbops.automazione_attivo_inclusioni
+                   WHERE (schema_figlia, tabella_figlia, colonna_fk) IN (
+                         ('anagrafiche', 'emittenti_fiscali', 'regime_fiscale_rf'),
+                         ('anagrafiche', 'fornitori',         'regime_fiscale_rf'));
+            # Il runner deve essere quello che legge il registro.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM pg_proc
+                   WHERE oid = to_regprocedure('dbops.fn_attivo_fk_esclusa(text,text,text)');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_run_automations_attivo('AUTO', ARRAY['anagrafiche', 'config'], false);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- I trigger li governa il registro: per toglierli si tolgono le
+              -- righe di automazione_attivo_inclusioni e si rigira il runner, che
+              -- li ritira (dbops.fn_ritira_attivo_eccezioni). Qui non si tocca niente.
+              SELECT 1;

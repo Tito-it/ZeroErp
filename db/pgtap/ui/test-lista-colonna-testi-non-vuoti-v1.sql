@@ -41,13 +41,19 @@ SET CONSTRAINTS ALL IMMEDIATE;
 SELECT plan(9);
 
 -- Una riga di prova: la colonna indicata prende il valore indicato, le altre NULL.
+-- ⚠️ 2026-11-21 (brief-db-revisione-ui, giro 4): la riga e' NON esportabile e sta
+--   su una lista SENZA vista. Senza campo sorgente una colonna non si esporta
+--   (chk_ui_lista_colonna_senza_campo_non_esportabile, U25): col default
+--   esportabile = true il caso 8 era una riga che il modello non ammette. E il
+--   guard del campo non salta piu' la stringa vuota (U37): su una lista con vista
+--   parlerebbe lui, prima del vincolo che il caso 2 vuole sentire.
 CREATE OR REPLACE FUNCTION pg_temp.riga(p_id integer, p_colonna text, p_valore text)
 RETURNS text LANGUAGE sql AS $f$
   SELECT format(
     'INSERT INTO ui.lista_colonna (id, lista_id, codice, etichetta, %1$s, tipo_colonna, '
-    '  tipo_dato, ordine_default, user_insert) '
-    'SELECT %2$s, min(ld.id), %3$L, %4$L, %5$L, ''informazione'', ''string'', 9990, ''pgtap'' '
-    '  FROM ui.lista_definizione ld',
+    '  tipo_dato, esportabile, ordine_default, user_insert) '
+    'SELECT %2$s, min(ld.id), %3$L, %4$L, %5$L, ''informazione'', ''string'', false, 9990, ''pgtap'' '
+    '  FROM ui.lista_definizione ld WHERE ld.vista_sql IS NULL',
     p_colonna, p_id, 'zz_vuoti_' || p_id, 'Prova testi vuoti', p_valore);
 $f$;
 

@@ -1,0 +1,178 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.trgfn_preferenza_guard_forma: l'area del log e' 'database' su ogni raise, come gli altri guard di ui.
+#   Brief: brief-db-revisione-ui (giro 6a: U38, i codici d'area allineati).
+#
+# Il trigger (sulle due preferenze utente) passava 'database' sul raise degli argomenti e 'ui' su
+#   quello del suo codice di dominio: due aree nella stessa funzione, scritte nel
+#   giornale degli errori da script.fn_log_and_raise_error. Gli altri guard e
+#   building block dello schema passano 'database'. Lo ha trovato il presidio del
+#   giro (ui/test-ui-misura-lista-e-contesto-ricerca-v1, caso 16). Cambia solo il
+#   primo argomento della chiamata; codice, contesto e segnaposto restano.
+# Firma, volatilita' e sicurezza invariate: CREATE OR REPLACE. Attributi vivi letti
+#   il 2026-11-22: COST 100, nessun SET, PARALLEL UNSAFE. Il COMMENT resta.
+# Corpo dal vivo (dbdev, 2026-11-22); la rollback riporta quel corpo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261121-33-update-trgfn-preferenza-guard-forma-area-mctit.yaml
+
+  - changeSet:
+      id: 20261121-33-update-trgfn-preferenza-guard-forma-area
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.trgfn_preferenza_guard_forma: l'area del log e' 'database' su ogni raise, come gli altri guard di ui. Brief: brief-db-revisione-ui (giro 6a, U38).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'trgfn_preferenza_guard_forma'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_preferenza_guard_forma()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: la configurazione di una preferenza (ui.lista_preferenza_utente,
+              --   ui.dashboard_preferenza_utente) ha la forma ammessa, e sulle liste
+              --   la misura e' del catalogo.
+              -- Montaggio: BEFORE INSERT OR UPDATE OF configurazione e del contenitore,
+              --   FOR EACH ROW; la famiglia si legge dalla tabella.
+              DECLARE
+                  -- text: 'lista' o 'dashboard', dalla tabella; non il riflesso di una colonna
+                  v_famiglia text;
+                  -- il contenitore della riga, nuovo e vecchio (lista_id o dashboard_id, integer tutti e due)
+                  v_new_id   ui.lista_definizione.id%TYPE;
+                  v_old_id   ui.lista_definizione.id%TYPE;
+                  -- jsonb: il primo motivo {chiave, motivo}, o NULL
+                  v_motivo   jsonb;
+              BEGIN
+                  v_famiglia := CASE TG_RELID
+                                    WHEN 'ui.lista_preferenza_utente'::regclass     THEN 'lista'
+                                    WHEN 'ui.dashboard_preferenza_utente'::regclass THEN 'dashboard'
+                                END;
+                  IF v_famiglia IS NULL OR TG_WHEN <> 'BEFORE' OR TG_LEVEL <> 'ROW'
+                     OR TG_OP NOT IN ('INSERT', 'UPDATE') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_TRIGGER_ARGOMENTI_INVALIDI',
+                          jsonb_build_object(
+                              'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'dettaglio', 'atteso BEFORE INSERT OR UPDATE FOR EACH ROW su ui.lista_preferenza_utente o ui.dashboard_preferenza_utente'),
+                          NULL::uuid,
+                          format('%s: atteso BEFORE INSERT OR UPDATE FOR EACH ROW su ui.lista_preferenza_utente o ui.dashboard_preferenza_utente',
+                                 TG_NAME));
+                  END IF;
+
+                  v_new_id := (to_jsonb(NEW) ->> (v_famiglia || '_id'))::integer;
+                  IF TG_OP = 'UPDATE' THEN
+                      v_old_id := (to_jsonb(OLD) ->> (v_famiglia || '_id'))::integer;
+                      IF NEW.configurazione IS NOT DISTINCT FROM OLD.configurazione
+                         AND v_new_id IS NOT DISTINCT FROM v_old_id THEN
+                          RETURN NEW;
+                      END IF;
+                  END IF;
+
+                  v_motivo := ui.fn_check_forma_configurazione(v_famiglia, v_new_id, NEW.configurazione);
+                  IF v_motivo IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_UI_CONFIGURAZIONE_FORMA',
+                          jsonb_build_object(
+                              'campo',  'configurazione',
+                              'table',  TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'id',     NEW.id,
+                              'chiave', v_motivo ->> 'chiave',
+                              'motivo', v_motivo ->> 'motivo'),
+                          NULL::uuid,
+                          VARIADIC ARRAY[v_motivo ->> 'chiave', v_motivo ->> 'motivo']);
+                  END IF;
+
+                  IF v_famiglia = 'lista' THEN
+                      PERFORM ui.fn_guard_misura_pagina(NEW.configurazione -> 'pagina_dimensione');
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_preferenza_guard_forma()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: la configurazione di una preferenza (ui.lista_preferenza_utente,
+              --   ui.dashboard_preferenza_utente) ha la forma ammessa, e sulle liste
+              --   la misura e' del catalogo.
+              -- Montaggio: BEFORE INSERT OR UPDATE OF configurazione e del contenitore,
+              --   FOR EACH ROW; la famiglia si legge dalla tabella.
+              DECLARE
+                  -- text: 'lista' o 'dashboard', dalla tabella; non il riflesso di una colonna
+                  v_famiglia text;
+                  -- il contenitore della riga, nuovo e vecchio (lista_id o dashboard_id, integer tutti e due)
+                  v_new_id   ui.lista_definizione.id%TYPE;
+                  v_old_id   ui.lista_definizione.id%TYPE;
+                  -- jsonb: il primo motivo {chiave, motivo}, o NULL
+                  v_motivo   jsonb;
+              BEGIN
+                  v_famiglia := CASE TG_RELID
+                                    WHEN 'ui.lista_preferenza_utente'::regclass     THEN 'lista'
+                                    WHEN 'ui.dashboard_preferenza_utente'::regclass THEN 'dashboard'
+                                END;
+                  IF v_famiglia IS NULL OR TG_WHEN <> 'BEFORE' OR TG_LEVEL <> 'ROW'
+                     OR TG_OP NOT IN ('INSERT', 'UPDATE') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_TRIGGER_ARGOMENTI_INVALIDI',
+                          jsonb_build_object(
+                              'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'dettaglio', 'atteso BEFORE INSERT OR UPDATE FOR EACH ROW su ui.lista_preferenza_utente o ui.dashboard_preferenza_utente'),
+                          NULL::uuid,
+                          format('%s: atteso BEFORE INSERT OR UPDATE FOR EACH ROW su ui.lista_preferenza_utente o ui.dashboard_preferenza_utente',
+                                 TG_NAME));
+                  END IF;
+
+                  v_new_id := (to_jsonb(NEW) ->> (v_famiglia || '_id'))::integer;
+                  IF TG_OP = 'UPDATE' THEN
+                      v_old_id := (to_jsonb(OLD) ->> (v_famiglia || '_id'))::integer;
+                      IF NEW.configurazione IS NOT DISTINCT FROM OLD.configurazione
+                         AND v_new_id IS NOT DISTINCT FROM v_old_id THEN
+                          RETURN NEW;
+                      END IF;
+                  END IF;
+
+                  v_motivo := ui.fn_check_forma_configurazione(v_famiglia, v_new_id, NEW.configurazione);
+                  IF v_motivo IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'ui', TG_NAME::text, 'E_UI_CONFIGURAZIONE_FORMA',
+                          jsonb_build_object(
+                              'campo',  'configurazione',
+                              'table',  TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'id',     NEW.id,
+                              'chiave', v_motivo ->> 'chiave',
+                              'motivo', v_motivo ->> 'motivo'),
+                          NULL::uuid,
+                          VARIADIC ARRAY[v_motivo ->> 'chiave', v_motivo ->> 'motivo']);
+                  END IF;
+
+                  IF v_famiglia = 'lista' THEN
+                      PERFORM ui.fn_guard_misura_pagina(NEW.configurazione -> 'pagina_dimensione');
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;

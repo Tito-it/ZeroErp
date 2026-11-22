@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.trgfn_ui_lista_preset_guard_ordinamento: la forma di
+#   ui.lista_preset.ordinamento_default, e il suo montaggio.
+#   Brief: brief-db-revisione-ui (giro 2: U13 con Q7, Q34, Q40 (b), Q42 (a)).
+#
+# Le regole: NULL passa (il preset non dice l'ordinamento); altrimenti un
+#   elenco di oggetti con le sole chiavi col e dir; col il codice di una colonna
+#   della lista in qualsiasi stato (Q7, Q42 (a)), mai ripetuto; dir asc o desc.
+#   Un col che e' un campo sorgente e non un codice e' rifiutato (Q34): con
+#   Q40 (b) nessuno traduce, chi scrive manda il codice. Il rifiuto e'
+#   E_UI_CONFIGURAZIONE_FORMA, lo stesso codice del guard delle preferenze.
+# E' l'unica sede della forma di un ordinamento (la preferenza non lo porta
+#   piu', Q39 §6): resta scritta sul posto (regola del 2).
+# Montaggio: BEFORE INSERT OR UPDATE OF ordinamento_default, lista_id, fase a10,
+#   accanto al guard della misura (90_end/20260930-12). Un UPDATE che non cambia
+#   ne' l'ordinamento ne' la lista passa (il mirror del seed riscrive uguale).
+#   In 20_code e non in 90_end come quello della misura: da zero lista_colonna.csv
+#   si carica (20260507-07) prima di lista_preset.csv (-08), quindi i codici che
+#   il seed nomina esistono gia'.
+# Scrittori della colonna (2026-11-21): il seed (lista_preset.csv, corretto in
+#   questo giro), il CRUD admin dei preset del BE (lista_preset_admin_service.py,
+#   che la accetta senza guardarne le voci; il drawer non la scrive), il
+#   backfill di -25. Nessuna funzione del DB.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-27-create-trgfn-ui-lista-preset-guard-ordinamento-mctit.yaml
+
+  - changeSet:
+      id: 20261120-27-create-trgfn-ui-lista-preset-guard-ordinamento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.trgfn_ui_lista_preset_guard_ordinamento e il montaggio a10 su ui.lista_preset: col e' il codice di una
+        colonna della lista. Brief: brief-db-revisione-ui (giro 2, U13, Q7, Q34).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'trgfn_ui_lista_preset_guard_ordinamento'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION ui.trgfn_ui_lista_preset_guard_ordinamento()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: ordinamento_default del preset e' un elenco di {col, dir}, col il
+              --   codice di una colonna della lista, dir asc o desc.
+              DECLARE
+                  v_ord    ui.lista_preset.ordinamento_default%TYPE := NEW.ordinamento_default;
+                  -- jsonb: una voce dell'elenco, nel ciclo
+                  v_e      jsonb;
+                  -- text: il motivo del rifiuto, o NULL
+                  v_motivo text;
+                  -- i col gia' visti
+                  v_col    ui.lista_colonna.codice%TYPE;
+                  v_cols   ui.lista_colonna.codice%TYPE[] := ARRAY[]::varchar[];
+              BEGIN
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.ordinamento_default IS NOT DISTINCT FROM OLD.ordinamento_default
+                     AND NEW.lista_id IS NOT DISTINCT FROM OLD.lista_id THEN
+                      RETURN NEW;
+                  END IF;
+                  IF v_ord IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF jsonb_typeof(v_ord) <> 'array' THEN
+                      v_motivo := 'non è un elenco';
+                  ELSE
+                      FOR v_e IN SELECT a.value FROM jsonb_array_elements(v_ord) AS a LOOP
+                          IF jsonb_typeof(v_e) <> 'object' THEN
+                              v_motivo := 'una voce non è un oggetto';
+                          ELSIF EXISTS (SELECT 1 FROM jsonb_object_keys(v_e) AS f(k)
+                                         WHERE f.k NOT IN ('col', 'dir')) THEN
+                              v_motivo := 'una voce ha chiavi diverse da col e dir';
+                          ELSIF jsonb_typeof(v_e -> 'col') IS DISTINCT FROM 'string' THEN
+                              v_motivo := 'una voce non ha col';
+                          ELSE
+                              v_col := v_e ->> 'col';
+                              IF v_col = ANY (v_cols) THEN
+                                  v_motivo := format('la colonna %s è ripetuta', v_col);
+                              ELSIF NOT EXISTS (SELECT 1 FROM ui.lista_colonna lc
+                                                 WHERE lc.lista_id = NEW.lista_id
+                                                   AND lc.codice   = v_col) THEN
+                                  v_motivo := format('%s non è il codice di una colonna della lista', v_col);
+                              ELSIF (v_e ->> 'dir') IS DISTINCT FROM 'asc'
+                                    AND (v_e ->> 'dir') IS DISTINCT FROM 'desc' THEN
+                                  v_motivo := format('la direzione di %s non è asc o desc', v_col);
+                              END IF;
+                              v_cols := array_append(v_cols, v_col);
+                          END IF;
+                          EXIT WHEN v_motivo IS NOT NULL;
+                      END LOOP;
+                  END IF;
+
+                  IF v_motivo IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'ui', TG_NAME::text, 'E_UI_CONFIGURAZIONE_FORMA',
+                          jsonb_build_object(
+                              'campo',  'ordinamento_default',
+                              'table',  TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'id',     NEW.id,
+                              'chiave', 'ordinamento_default',
+                              'motivo', v_motivo),
+                          NULL::uuid,
+                          VARIADIC ARRAY['ordinamento_default', v_motivo]);
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_ui_lista_preset_guard_ordinamento() IS
+                  'Il guard di ui.lista_preset.ordinamento_default: NULL passa; altrimenti un elenco di oggetti con le sole chiavi col e dir, col il codice di una colonna della lista (in qualsiasi stato) mai ripetuto, dir asc o desc. Un campo sorgente al posto del codice è rifiutato: nessuno lo traduce. Il rifiuto è E_UI_CONFIGURAZIONE_FORMA (DATO_ERRATO), campo = ordinamento_default, col motivo nella frase. Un UPDATE che non cambia né l''ordinamento né la lista passa senza giudizio. Montata BEFORE INSERT OR UPDATE OF ordinamento_default, lista_id, fase a10.';
+
+              CREATE TRIGGER trg_ui_lista_preset_a10_guard_ordinamento_ins_upd
+                  BEFORE INSERT OR UPDATE OF ordinamento_default, lista_id ON ui.lista_preset
+                  FOR EACH ROW
+                  EXECUTE FUNCTION ui.trgfn_ui_lista_preset_guard_ordinamento();
+
+              COMMENT ON TRIGGER trg_ui_lista_preset_a10_guard_ordinamento_ins_upd ON ui.lista_preset IS
+                  'L''ordinamento di partenza del preset nomina le colonne della lista per codice (ui.trgfn_ui_lista_preset_guard_ordinamento).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ui_lista_preset_a10_guard_ordinamento_ins_upd ON ui.lista_preset;
+              DROP FUNCTION IF EXISTS ui.trgfn_ui_lista_preset_guard_ordinamento();

@@ -8,7 +8,7 @@
 > * Vista `vw_preventivi_list.emittente_fiscale_id` ora legge la colonna persistita (era fn dinamica che esplodeva su BA NULL)
 > * Nuovi trigger di guardia: `default_emittente`, `guard_utility_istanza_coerenza`
 >
-> Brief completo: [risposta-db-brief-preventivi-rev2](/it/dev/work-done/risposta-db-brief-preventivi-rev2).
+> Brief completo: [risposta-db-brief-preventivi-rev2](/it/dev/work-done/2026/risposta-db-brief-preventivi-rev2).
 
 > ⚠️ **Modifiche 2026-10-08** (brief-db-istanza-nasce-col-ba, R-2):
 >

@@ -16,6 +16,11 @@ from psycopg.postgres import types as _tipi_postgres
 
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.request_context import (
+    OrdinamentoPropostoRifiutato,
+    conferma_ordinamento_proposto,
+    e_chiave_proposta,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -33,10 +38,10 @@ def iso_or_none(value: Any) -> str | None:
 
 # Scopo: L'ULTIMA CORSA CONCLUSA di un job come UN oggetto — data ed esito
 #        insieme, dalla stessa riga — o `None` se il job non ne ha mai conclusa
-#        una. E' la forma comune delle tre sedi che riassumono le corse
-#        (`MaintenanceRepository.job_liveness` / `.list_job_summary` sul
-#        giornale dei run, `CodaLavoriRepository.summary_per_job_type` sulla
-#        coda lavori), e sta qui perche' il pannello degli esiti le FONDE in una
+#        una. E' la forma comune delle quattro sedi che riassumono le corse
+#        (`MaintenanceRepository.job_liveness` / `.list_job_summary` e
+#        `ProcessiRepository.list_processi` sul giornale dei run,
+#        `CodaLavoriRepository.summary_per_job_type` sulla coda lavori), e sta qui perche' il pannello degli esiti le FONDE in una
 #        lista sola: una forma diversa per sorgente e' esattamente cio' che il
 #        template non puo' vedere.
 # ⛔ Nasce il 2026-09-14 al posto di un `last_ok` accanto a un `last_run_at`:
@@ -358,11 +363,40 @@ def soglia_ricerca(lista_codice: str) -> int:
 # ⭐ Regola del 2 (2026-09-24, brief-be-ricerca-full-liste-residue §12): la
 #    leggevano `pagamenti_repository.emittente_nel_perimetro` e la guardia di
 #    contesto di `ui_service.get_lista_config_per_video`.
-def utente_di_sessione() -> int | None:
+# ⭐ Un valore che non e' un id utente (non solo cifre, o oltre l'`integer` di
+#    `auth_user.id`) e' una chiamata fuori contesto, non un 22P02 del cast:
+#    `codice_errore` (TECNICO, frase chiusa) del dominio che chiede. E' il
+#    contratto di `ui.fn_lista_colonne_ricerca_full` sulla stessa GUC (U38 e
+#    BE31 di brief-db-revisione-ui, 2026-11-22): il cast si fa solo su un
+#    valore gia' riconosciuto, quindi il 22P02 non puo' nascere qui.
+# ⚠️ `codice_errore` e `function_name` sono obbligatori: il codice e' del
+#    dominio del chiamante (`E_UI_…`, `E_PAGAMENTI_…`), non di `core`.
+def utente_di_sessione(*, codice_errore: str, function_name: str) -> int | None:
     with connection.cursor() as cursor:
-        cursor.execute("SELECT NULLIF(current_setting('app.current_user_id', true), '')::int")
+        cursor.execute("SELECT NULLIF(current_setting('app.current_user_id', true), '')")
         row = cursor.fetchone()
-    return int(row[0]) if row and row[0] is not None else None
+    valore = row[0] if row else None
+    if valore is None:
+        return None
+    ErrorManager.require(
+        _ID_UTENTE_DI_SESSIONE.fullmatch(valore) is not None
+        and int(valore) <= _ID_UTENTE_MASSIMO,
+        code=codice_errore,
+        message=(
+            "Chiamata non valida: il contesto della richiesta non e' quello "
+            "di un utente."
+        ),
+        context={"app_current_user_id": valore},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return int(valore)
+
+
+# Le cifre di un id di `auth_user` (colonna `integer`): la stessa forma che
+# `ui.fn_lista_colonne_ricerca_full` riconosce prima del cast.
+_ID_UTENTE_DI_SESSIONE = re.compile(r"[0-9]{1,10}")
+_ID_UTENTE_MASSIMO = 2_147_483_647
 
 
 # Scopo: le colonne in cui si cerca ADESSO in una lista: quelle che la
@@ -800,8 +834,21 @@ def colonna_ordinamento(order_by: str | None, colonne: Mapping[str, str]) -> str
     chiave = (order_by or "").strip()
     if not chiave:
         return None
+    # ⭐ L'ORDINAMENTO DI PARTENZA (BE25 (2) di brief-db-revisione-ui): la base
+    #    view PROPONE la prima voce del preset a una richiesta che non ordinava
+    #    (`apps.core.services.ordinamento_di_partenza`). Qui, la sede unica
+    #    della risoluzione, la proposta diventa APPLICATA (e la risposta la dice
+    #    in `meta.ordinamento`) oppure si rifiuta con un errore suo, che la view
+    #    intercetta per rileggere la lista senza (`OrdinamentoPropostoRifiutato`).
+    #    Una lista che non risolve chiavi (ordina nel browser) non conferma
+    #    niente, e la risposta non dice un ordinamento che non ha.
+    proposta = e_chiave_proposta(chiave)
     if chiave not in colonne:
+        if proposta:
+            raise OrdinamentoPropostoRifiutato("order_by_invalid")
         raise ValueError("order_by_invalid")
+    if proposta:
+        conferma_ordinamento_proposto()
     return colonne[chiave]
 
 

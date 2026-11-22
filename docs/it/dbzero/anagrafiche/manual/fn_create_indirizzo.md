@@ -1,72 +1,94 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_create_indirizzo`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> Tabelle:
-> [config.stradario_generale](/dbzero/config/tabelle/stradario_generale)
-> [config.stradario](/dbzero/config/tabelle/stradario)
-> [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
+> Approfondimento tabelle:
 >
-> Funzioni:
-> [anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/funzioni/fn_get_or_create_indirizzo_dettaglio) (figlia)
+> * [config.stradario_generale](/dbzero/config/tabelle/stradario_generale) — la via, senza comune
+> * [config.stradario](/dbzero/config/tabelle/stradario) — la via nel suo comune, col CAP
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) — il civico, che la funzione restituisce
 >
-> WIP:
-> [Analisi e piano di fix — gestione transazioni backend](/dev/work-done/analisi-fix-transazioni) (Classe D, finding #13)
-
-### 🎯 Scopo Principale
-
-(latest review 08-07-2026)
-
-La funzione **`anagrafiche.fn_create_indirizzo`** è la **funzione madre atomica**
-per la creazione di un indirizzo di dettaglio. Nel ramo *"via nuova"* fonde in
-un'**unica statement**:
-
-1. **upsert** `config.stradario_generale` (tipo strada + descrizione);
-2. **upsert** `config.stradario` (strada + comune + CAP), sulla chiave delle vie **vive**: una via
-   soppressa non si riusa, e se nel comune c'è solo lei nasce la via viva. Un indirizzo su una via
-   soppressa passata per id lo rifiuta il guard del ritiro (`E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`);
-3. risoluzione del dettaglio civico via
-   [`fn_get_or_create_indirizzo_dettaglio`](/dbzero/anagrafiche/funzioni/fn_get_or_create_indirizzo_dettaglio).
-
-Il service Python le eseguiva senza transazione unica: se il dettaglio falliva,
-le righe stradario restavano committate (orfane nel registro). Impatto
-contenuto — riga di dedup riutilizzabile, non corruzione — ma il ramo non aveva
-alcun atomic. Qui o tutto o rollback.
+> Approfondimento funzioni:
+>
+> * [anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/funzioni/fn_get_or_create_indirizzo_dettaglio) — il civico sulla via, trovato o creato
+> * [anagrafiche.fn_indirizzo_elemento_dettaglio](/dbzero/anagrafiche/funzioni/fn_indirizzo_elemento_dettaglio) — chi la chiama per le madri degli indirizzi
+>
+> Guide:
+>
+> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi) — lo stradario e le tre forme di un indirizzo
 
 ---
 
-### Firma
+### 🎯 Scopo Principale
 
-```sql
-anagrafiche.fn_create_indirizzo(
-    p_stradario_id       config.stradario.id%TYPE DEFAULT NULL,
-    p_toponomastica_id   config.stradario_generale.toponomastica_id%TYPE DEFAULT NULL,
-    p_descrizione_via    config.stradario_generale.descrizione%TYPE DEFAULT NULL,
-    p_comune_id          config.stradario.comune_id%TYPE DEFAULT NULL,
-    p_codice_postale_id  config.stradario.codice_postale_id%TYPE DEFAULT NULL,
-    p_civico             integer DEFAULT NULL,
-    p_estensione_civico  character varying DEFAULT NULL,
-    p_palazzina          character varying DEFAULT NULL,
-    p_scala              character varying DEFAULT NULL,
-    p_piano              character varying DEFAULT NULL,
-    p_interno            character varying DEFAULT NULL
-) RETURNS bigint
-```
+`anagrafiche.fn_create_indirizzo` risolve un indirizzo normalizzato in un'istruzione sola: la via, se è nuova, e il
+civico su quella via. Restituisce il dettaglio dell'indirizzo, trovato o creato.
 
-### Parametri di Input
+La chiamano le madri degli indirizzi, attraverso `anagrafiche.fn_indirizzo_elemento_dettaglio`, e il provisioning dei
+dati di sviluppo.
 
-| Parametro | Descrizione |
-| --- | --- |
-| `p_stradario_id` | Se fornito, si usa questa strada e i parametri "via nuova" sono ignorati. |
-| `p_toponomastica_id`, `p_descrizione_via`, `p_comune_id`, `p_codice_postale_id` | Ramo "via nuova" (usati solo se `p_stradario_id IS NULL`). |
-| `p_civico` … `p_interno` | Dati del civico/dettaglio, passati alla figlia. |
+---
 
-Ritorna l'`id` dell'indirizzo di dettaglio (passthrough della figlia).
+### Una via già nota, o una via nuova
 
-### Note tecniche
+* **Una via del catalogo** si indica con la via del comune (`p_stradario_id`): i campi di una via nuova, se ci sono,
+  non si guardano.
+* **Una via nuova** si indica col tipo strada, il nome, il comune e il CAP. La via generale (tipo strada e nome) e la
+  via del comune (via generale, comune e CAP) si trovano se ci sono e si creano se mancano: due chiamate con la stessa
+  via danno la stessa riga. Il nome si ripulisce dagli spazi in testa e in coda.
 
-* **`SECURITY INVOKER`**: RLS/scope invariati. `zeroerp_app` ha `INSERT` su
-  `config.stradario_generale`/`stradario` ed `EXECUTE` (PUBLIC).
-* Upsert idempotenti (`ON CONFLICT`), come il repository Python.
-* Le validazioni del ramo via-nuova (toponomastica/via/comune/CAP obbligatori)
-  restano pre-check applicativi del service: non attengono all'atomicità.
+Il civico, con estensione, palazzina, scala, piano e interno, lo risolve
+`anagrafiche.fn_get_or_create_indirizzo_dettaglio`, che allo stesso modo non duplica un dettaglio che c'è già.
+
+---
+
+### ⭐ Una via soppressa non si riusa
+
+La via del comune si cerca solo fra le vie **vive**: una via soppressa (`config.stradario.obsoleto_dal`) non si
+ritrova, e se nel comune c'è solo lei nasce la via viva accanto. Una via soppressa indicata per id arriva invece al
+dettaglio, e lì la rifiuta il guard del ritiro (`E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`).
+
+---
+
+### ⭐ Tutto o niente
+
+La via e il civico nascono nella stessa istruzione: se il dettaglio si rifiuta, non resta scritta nemmeno la via
+appena creata.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **I campi di una via nuova** non si controllano: tipo strada, nome, comune o CAP mancanti arrivano ai vincoli
+  `NOT NULL` delle due tabelle dello stradario, che rifiutano con l'errore grezzo del database e non con un codice
+  del catalogo. Lo stesso succede a un elemento che non indica nessuna forma, perché senza via e senza dettaglio la
+  madre lo tratta come una via nuova.
+
+---
+
+### Codici errore
+
+La funzione non solleva codici suoi: i rifiuti arrivano dal dettaglio (`anagrafiche.fn_get_or_create_indirizzo_dettaglio`
+e i guard di `anagrafiche.indirizzi_dettaglio`, fra cui `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`).
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-fn-create-indirizzo-v1.sql` — la via nuova, la seconda chiamata che ritrova la stessa via,
+  il dettaglio rifiutato che non lascia la via scritta.
+* `db/pgtap/dbops/test-fusioni-comune-stradario-v1.sql` — una via nuova sulla terna (via, comune, CAP) che ha anche una via soppressa
+  nasce sulla via viva.
+
+---
+
+### Note di migrazione
+
+* 2026-07-08 — nasce, e prende il posto dei tre passi che l'applicazione faceva senza una transazione unica: un
+  dettaglio rifiutato lasciava scritte le righe dello stradario.
+
+---
+
+{% include-markdown "signature-core.md" %}

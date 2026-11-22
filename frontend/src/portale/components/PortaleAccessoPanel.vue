@@ -46,13 +46,12 @@ const { confirmAction } = useConfirmAction()
 const props = defineProps({
   entitaTipo: { type: String, required: true, validator: v => ['cliente', 'fornitore'].includes(v) },
   entitaId: { type: [Number, String], required: true },
-  emailIniziale: { type: String, default: '' },
   readonly: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['stato-cambiato'])
 
-const email = ref(props.emailIniziale)
+const email = ref('')
 const statoPortale = ref({ stato: STATO_VESTE.NESSUNO, invito_inviato_at: null, token_scade_at: null, username: null, email: null })
 const statoShop = ref({ stato: STATO_VESTE.NESSUNO, invito_inviato_at: null, token_scade_at: null, username: null, email: null })
 
@@ -61,10 +60,14 @@ const canInvia = computed(
   () => !props.readonly && isEmailValid(email.value) && !loading.value,
 )
 
-watch(
-  () => props.emailIniziale,
-  (val) => { if (val && !email.value) email.value = val },
-)
+// Scopo: l'email dell'invito parte da quella che propone il BE con lo stato
+//        (`email_suggerita`: l'identita' che esiste gia', poi il contatto
+//        PRINCIPALE del ruolo, poi quello di default). Non scavalca cio' che
+//        l'operatore ha gia' scritto. Dal 2026-11-21: prima la passava il
+//        drawer padre (`emailIniziale`), e non arrivava mai.
+function proponiEmail(suggerita) {
+  if (suggerita && !email.value.trim()) email.value = suggerita
+}
 
 // Il colore dello stato di una veste: BB `statoVesteSeverity` (sede unica,
 // la usa anche la lista «Altri accessi» dell'amministrazione).
@@ -84,6 +87,7 @@ async function loadStato() {
     const data = res?.data?.data || {}
     statoPortale.value = data.portale || { stato: STATO_VESTE.NESSUNO }
     statoShop.value = data.shop || { stato: STATO_VESTE.NESSUNO }
+    proponiEmail(data.email_suggerita)
   } catch (err) {
     // Load stato non blocca l'UI: se fallisce mostriamo stato ignoto,
     // i pulsanti azione restano comunque usabili.
@@ -94,7 +98,12 @@ async function loadStato() {
 // Load stato all'apertura + ricarica se il prop `entitaId` cambia
 // (panel riusato tra drawer diversi senza remount).
 onMounted(() => { if (props.entitaId) loadStato() })
-watch(() => props.entitaId, (newId) => { if (newId) loadStato() })
+// ⚠️ Un'altra entita' riparte da campo vuoto: l'email della precedente
+//    bloccherebbe la proposta della nuova (`proponiEmail` non scavalca).
+watch(() => props.entitaId, (newId) => {
+  email.value = ''
+  if (newId) loadStato()
+})
 
 // ── Helper unificato: esegue una API mutante, mostra toast, ricarica
 // stato e notifica il parent. `successKey`/`errorKey` sono chiavi i18n;

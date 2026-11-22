@@ -68,8 +68,6 @@ const {
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'amministrazione.nuovo_operatore',
   onNew: () => drawer.openCreate(),
-  // Allineato al preset del seed (`soggetto_cognome asc`).
-  searchTableOptions: { defaultSortField: 'soggetto_cognome' },
 })
 
 // ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`

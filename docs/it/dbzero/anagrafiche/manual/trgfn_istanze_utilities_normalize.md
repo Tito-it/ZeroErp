@@ -1,66 +1,38 @@
-## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_istanze_utilities_normalize`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_istanze_utilities_normalize`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — la tabella su cui è montata
 >
-Approfondimento funzioni:
+> Approfondimento funzioni:
 >
-[config.sistema_codici](/dbzero/config/manual/sistema_codici)
+> * [anagrafiche.trgfn_istanze_utilities_gen_codice](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_gen_codice) — chi assegna il codice
+> * [script.trgfn_codice_maiuscolo](/dbzero/script/funzioni/trgfn_codice_maiuscolo) — chi normalizza il codice
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 28-12-25)
-Il trigger `anagrafiche.trgfn_istanze_utilities_normalize` è invocato **prima di ogni INSERT o UPDATE** su `anagrafiche.istanze_utilities` e ha i seguenti obiettivi:
 
-1. **Pulizia** e predisposizione di ulteriori campi, se in futuro fosse necessario estendere la logica di default o normalizzazione.
-
----
-
-### Contesto di Esecuzione
-
-* **Evento**: `BEFORE INSERT OR UPDATE` sulla tabella `anagrafiche.istanze_utilities`.
-* **Record interessato**: oggetto `NEW`, che rappresenta la riga prima del commit.
-* **Dipendenze**: la generazione del codice e' demandata al trigger automatico basato su `config.sistema_codici`.
+`anagrafiche.trgfn_istanze_utilities_normalize` è montata prima di ogni scrittura di un'istanza e non fa
+niente: restituisce la riga com'è.
 
 ---
 
+### Che cosa fanno gli altri
 
-### Logica Operativa
-
-1. **Restituzione**
-
-   * Ritorna il record `NEW` senza alterare il codice; la generazione avviene nel trigger automatico della tabella target.
-
----
-
-### Trigger Collegato
-
-```sql
-DROP TRIGGER IF EXISTS trg_istanze_utilities_normalize_ins_upd
-  ON anagrafiche.istanze_utilities;
-
-CREATE TRIGGER trg_istanze_utilities_normalize_ins_upd
-  BEFORE INSERT OR UPDATE ON anagrafiche.istanze_utilities
-  FOR EACH ROW
-  EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_normalize();
-```
+La normalizzazione dell'istanza sta altrove: il codice lo assegna il generatore della tabella e lo porta in
+maiuscolo il trigger del codice normalizzato. Questa funzione non tocca nessuna colonna e non legge nessuna
+tabella.
 
 ---
 
-### Vantaggi Operativi
+### ⚠️ Che cosa oggi non copre
 
-* **Uniformita**: tutti i record di istanze hanno un `codice (istanza)` generato secondo lo stesso schema, eliminando errori manuali.
-* **Estendibilita**: la funzione può essere arricchita con ulteriori pulizie (e.g. normalizzazione di testo, assegnazione di default) senza modifiche all’applicazione.
-
----
-
-### Best Practice
-
-* Verificare che esista in `config.sistema_codici` la configurazione per `codice_interno = 'istanze_utilties'` e `usa_sequenza = TRUE`.
-* Evitare di inserire logica complessa o chiamate a tabelle esterne in questo trigger: mantenerlo rapido e focalizzato.
+* **Scatta a vuoto.** Il trigger gira a ogni nascita e a ogni modifica di un'istanza senza effetto.
 
 ---
 

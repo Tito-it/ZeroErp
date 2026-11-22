@@ -1,63 +1,50 @@
-## Funzione `anagrafiche.trgfn_indirizzi_sync_geoloc()`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_indirizzi_sync_geoloc`
 
-> 
-👀 **Vedi anche**
-> 
-Approfondimento Tabelle:   
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
-[anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)  
-> [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)     
-
-
-> Sincronizza il campo `geoloc` di `anagrafiche.indirizzi` e `anagrafiche.indirizzi_soggetti`
-> con la geolocalizzazione memorizzata in `anagrafiche.indirizzi_dettaglio`.
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi) — gli indirizzi dei ruoli, su cui è montata
+> * [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti) — gli indirizzi dei soggetti, su cui è montata
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) — il civico, da cui copia la posizione
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_indirizzi_base_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize) — gira prima, e svuota la posizione degli indirizzi col dettaglio
 
 ---
+
 ### 🎯 Scopo Principale
-Ogni volta che viene inserito o aggiornato un record in `anagrafiche.indirizzi` o
-`anagrafiche.indirizzi_soggetti`, se è impostato `indirizzo_dettaglio_id`, la funzione recupera
-dal dettaglio civico la coordinata geografica (`civic_geoloc`) e la copia in `NEW.geoloc`.
-In questo modo il dato di geolocalizzazione rimane sempre allineato con la fonte di verità civica.
+
+`anagrafiche.trgfn_indirizzi_sync_geoloc` copia nell'indirizzo di un ruolo o di un soggetto la posizione del
+civico che punta, a ogni nascita e a ogni modifica della riga.
 
 ---
 
+### La posizione di un indirizzo col dettaglio è quella del civico
 
-### Parametri del Trigger
+Con il dettaglio, la posizione (`geoloc`) è sempre il punto del civico (`civic_geoloc`): un valore passato da chi
+scrive è sostituito, e un civico senza punto lascia la riga senza posizione. Il trigger che mette in ordine la
+riga, prima di questo, la svuota; questo la riempie.
 
-* `NEW`: record di riga in inserimento o aggiornamento delle tabelle `anagrafiche.indirizzi`
-  o `anagrafiche.indirizzi_soggetti`.
-* `OLD`: non utilizzato in questa funzione.
+Nella forma libera il trigger non interviene, e la posizione resta quella scritta da chi salva.
 
-### Valore di Ritorno
-
-* **`NEW`** (record modificato), con `geoloc` aggiornato quando applicabile.
-
----
-
-### Trigger Associato
-
-```sql
-CREATE TRIGGER trg_indirizzi_sync_geoloc_ins_upd
-  BEFORE INSERT OR UPDATE
-  ON anagrafiche.indirizzi
-  FOR EACH ROW
-  EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_sync_geoloc();
-
-CREATE TRIGGER trg_indirizzi_soggetti_sync_geoloc_ins_upd
-  BEFORE INSERT OR UPDATE
-  ON anagrafiche.indirizzi_soggetti
-  FOR EACH ROW
-  EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_sync_geoloc();
-```
+Il trigger non solleva errori.
 
 ---
 
-### Note Operative
+### ⚠️ Che cosa oggi non copre
 
-* Garantisce coerenza tra i dati geografici civici (`indirizzi_dettaglio`) e la tabella principale degli indirizzi.
-* Evita geolocalizzazioni obsolete: ad ogni modifica o inserimento si riallinea il campo `geoloc`.
-* Se `indirizzo_dettaglio_id` è `NULL`, non interviene e lascia invariato il valore esistente di `geoloc`.
+* **La posizione è una copia presa quando si scrive la riga.** Se poi cambia il punto del civico, gli indirizzi
+  che lo puntano lo riprendono solo alla loro prossima scrittura: nessun trigger sul civico lo propaga. Le viste
+  risolte leggono il punto direttamente dal civico, e non hanno questo ritardo.
 
 ---
 
-> **“Allinea sempre la posizione geografica degli indirizzi con il dettaglio civico: precisione e consistenza garantite.”**
+{% include-markdown "it/dbzero/anagrafiche/_indirizzo-libero-o-dettaglio.md" %}
+
+---
+
+{% include-markdown "signature-core.md" %}

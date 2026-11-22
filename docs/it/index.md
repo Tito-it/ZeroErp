@@ -20,18 +20,18 @@ Questa non è una documentazione di riferimento e nient'altro: è il posto dove 
 
 Dipende da cosa sei venuto a fare:
 
-- **Voglio capire cos'è e perché esiste** → [Cos'è Zero ERP](./introduzione.md) ·
-  [Perché Zero ERP](./perche-zeroerp.md) ·
-  [Manifesto dello sviluppo concentrico](./sviluppo-concentrico.md)
-- **Voglio installarlo e farlo girare** → [Prerequisiti e installazione](./installazione.md) ·
-  [Liquibase: setup e workflow](./liquibase-setup-workflow.md)
+- **Voglio capire cos'è e perché esiste** → [Cos'è Zero ERP](introduzione.md) ·
+  [Perché Zero ERP](perche-zeroerp.md) ·
+  [Manifesto dello sviluppo concentrico](sviluppo-concentrico.md)
+- **Voglio installarlo e farlo girare** → [Prerequisiti e installazione](installazione.md) ·
+  [Liquibase: setup e workflow](liquibase-setup-workflow.md)
 - **Voglio capire come funziona un'area** (fatturazione, pratiche, listini…) →
   le [Guide](#guide-come-funziona-larea-e-perche)
-- **Devo metterci le mani** → [Linee guida API](./dev/api.md) ·
-  [Ricette: dove intervenire](./dev/ricette-dove-intervenire.md) ·
-  [Trappole: cosa non fare](./dev/trappole.md)
+- **Devo metterci le mani** → [Linee guida API](dev/api.md) ·
+  [Ricette: dove intervenire](dev/ricette-dove-intervenire.md) ·
+  [Trappole: cosa non fare](dev/trappole.md)
 - **Voglio sapere a che punto è il progetto** →
-  [Mappa Concentrica](./mappa-concentrica.md): stato per anello, roadmap e
+  [Mappa Concentrica](mappa-concentrica.md): stato per anello, roadmap e
   lezioni metodologiche
 
 ---
@@ -122,5 +122,5 @@ Il livello concettuale, diviso in due:
 
 ---
 
-[README del progetto](./readme.md) · [Licenza AGPL v3](./LICENSE-AGPL3.md) ·
-[Versioni supportate](./versioni-supportate.md)
+[README del progetto](readme.md) · [Licenza AGPL v3](LICENSE-AGPL3.md) ·
+[Versioni supportate](versioni-supportate.md)

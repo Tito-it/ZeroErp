@@ -73,8 +73,10 @@ Errori:
 1. **La versione è quella pinnata**, caricata anche se `OBSOLETA` — è il caso
    normale, non l'eccezione: il modello del 2025 oggi è obsoleto ed è
    esattamente quello che si vuole. Il servizio usa
-   `DocumentiRepository.get_versione_by_id`, che non filtra per stato; usare
-   `get_versione_pubblicata_attiva` qui sarebbe il difetto.
+   `DocumentiRepository.get_versione_by_id`, che non filtra per stato. Chiedere
+   qui la versione alla porta della stampa (`risolvi_template_applicabile`, cioè
+   «con che cosa si stampa **oggi**») sarebbe il difetto: darebbe la versione di
+   oggi, non quella di allora.
 2. **Il contesto si legge, non si ricostruisce.** Arriva da `context_json`;
    nessun `context_builder` viene invocato. Un contesto ricostruito è un
    documento nuovo travestito da vecchio — ed è la ragione per cui i test

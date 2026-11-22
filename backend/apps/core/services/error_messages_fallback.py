@@ -335,7 +335,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DATA_ERRATA": "Data errata o mancante.",
     "E_DATA_FINE_NON_MAGGIORE_DI_INIZIO": "La data finale deve essere successiva alla data iniziale.",
     "E_DATE_VALIDITA": "Automazione del guard sulle date di validita' fallita: il trigger non e' stato montato. Non dipende dai dati: segnalalo a chi mantiene il database.",
-    "E_DATI_DI_SVILUPPO_IN_PRODUZIONE": "I dati di sviluppo (utenti e soggetti di prova) non si creano in un'installazione di produzione.",
+    "E_DATI_DI_SVILUPPO_IN_PRODUZIONE": "I dati di sviluppo (utenti, soggetti e regimi fiscali di prova) non si creano in un'installazione di produzione.",
     "E_DATI_SOCIETARI_CODICE_SDI_MANCANTE": "Hai scelto di inviare la fattura elettronica con il codice SDI, ma il codice manca.",
     "E_DATI_SOCIETARI_CODICE_SDI_NON_VALIDO": "Il codice destinatario SDI non e' valido: 7 caratteri, lettere maiuscole e cifre (6 per una pubblica amministrazione).",
     "E_DATI_SOCIETARI_NON_ELIMINABILI": "Il tipo soggetto richiede i dati societari: non si possono eliminare.",
@@ -536,6 +536,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # E_CONTRATTO_EMITTENTE_NON_RISOLTO, che restano qui perche' ritirati, non
     # cancellati. Stessa frase dei ripieghi delle sorelle.
     "E_EMITTENTE_NON_RISOLTO": "Nessun emittente fiscale attivo: selezionalo in alto o indicalo nella richiesta.",
+    "E_EMITTENTE_SOGGETTO_IMMUTABILE": "Un emittente fiscale appartiene per sempre al suo soggetto: se e' sul soggetto sbagliato si ritira e si ricrea.",
     "E_EMITTENTE_REGIME_CONFERMA_DERIVATA": "La conferma del regime fiscale la scrive il database. Per confermare il regime si scrive il regime, anche con lo stesso valore.",
     "E_ENTE_INCASSO_CONTO_NON_DI_INCASSO": "Il conto indicato per questo canale di incasso non e' un conto di incasso.",
     "E_ENTE_INCASSO_NON_TROVATO": "Il canale di incasso indicato non esiste, oppure appartiene a un emittente fuori dal tuo perimetro.",
@@ -896,6 +897,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "piu' attivo: scegliere un lotto attivo dell'articolo, o correggere "
         "l'articolo."
     ),
+    "E_MAG_LOTTO_DI_ALTRO_EMITTENTE": (
+        "Il lotto indicato non appartiene all'emittente del magazzino: "
+        "scegliere un lotto dell'emittente del magazzino, oppure un "
+        "magazzino dello stesso emittente del lotto."
+    ),
     "E_MAG_LOTTO_NON_AMMESSO": (
         "L'articolo non si movimenta per lotti: il lotto sulla riga non va "
         "indicato. Toglierlo, oppure attivare «per lotti» nella scheda "
@@ -1048,6 +1054,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI": "L'offerta ha generato un contratto o un ordine non annullato: per annullarla, annullare prima quel documento.",
     "E_OFFERTA_CONTRATTO_GIA_GENERATO": "Questa offerta ha già generato un contratto.",
     "E_OFFERTA_ECCEZIONE_NON_TROVATA": "Eccezione offerta non trovata.",
+    "E_OFFERTA_EMISSIONE_KIT_SENZA_COMPONENTI": "Impossibile emettere l'offerta: un kit col prezzo negoziato non ha componenti attivi. Aggiungerli o riattivarli prima di emettere.",
     "E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO": "Impossibile emettere l'offerta: il listino di riferimento non ha una versione in vigore oggi.",
     "E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA": "Impossibile emettere: la versione di listino non è attiva.",
     "E_OFFERTA_EMITTENTE_BA_INCOERENTE": "Emittente fiscale non coerente col cliente selezionato.",
@@ -1287,6 +1294,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RESO_STATO_SOLO_DA_VERBO": "Il reso fa rientrare merce: il cambio di stato si fa solo dall'operazione del reso, che registra i movimenti di magazzino.",
     "E_RESO_STATO_TRANSIZIONE": "Operazione non ammessa nello stato corrente del reso.",
     "E_RESO_VALIDAZIONE": "Parametri reso non validi.",
+    "E_RIFERIMENTO_DI_ALTRO_EMITTENTE": "L'elemento indicato (lotto o seriale) non appartiene all'azienda del documento: sceglierne uno dell'azienda.",
     "E_RIGA_CANONE_SENZA_PERIODICITA": "Manca la periodicita': una riga a canone deve dire ogni quanto si addebita.",
     "E_RIGA_COMMESSA_GIA_ANNULLATA": "La riga era gia` stata annullata.",
     "E_RIGA_COMMESSA_GIA_EMESSA": "Riga gia` entrata nella catena di fatturazione: la correzione passa dalla nota di credito.",
@@ -1496,9 +1504,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_TX_ID": "Generazione del trigger tx_id fallita.",
     "E_UI_CAMPO_SORGENTE_NON_TROVATO": "Campo sorgente colonna non trovato nella vista SQL.",
     "E_UI_CHIAMATA_NON_VALIDA": "Chiamata non valida alla configurazione della lista: il contesto della richiesta non corrisponde all'utente.",
-    "E_UI_COLONNA_IN_USO": "La colonna e' in uso (preferenze utente, preset o permessi). Disattivala con attivo=false invece di eliminarla.",
+    "E_UI_COLONNA_CODICE_IMMUTABILE": "Il codice di una colonna di lista non si puo' cambiare: preferenze e preset cercano la colonna per codice.",
+    "E_UI_COLONNA_IN_USO": "La colonna e' in uso in preferenze utente o preset. Disattivala con attivo=false invece di eliminarla.",
     "E_UI_COLONNA_NON_TROVATA": "Colonna lista non trovata.",
     "E_UI_COLONNA_VALIDAZIONE": "Colonna lista non valida.",
+    "E_UI_CONFIGURAZIONE_FORMA": "La personalizzazione non si puo' salvare: non ha la forma ammessa.",
     "E_UI_DASHBOARD_NON_TROVATA": "Dashboard non trovata.",
     "E_UI_DEFINIZIONE_IN_USO": "La definizione lista e' in uso (preferenze utente, colonne o preset). Disattivala con attivo=false invece di eliminarla.",
     "E_UI_DEFINIZIONE_NON_TROVATA": "Definizione lista non trovata.",
@@ -1507,10 +1517,15 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UI_EXPORT_FORMAT_INVALID": "Formato export non supportato (ammessi: csv, xlsx).",
     "E_UI_EXPORT_LIMIT_EXCEEDED": "L'export supera il limite di righe consentito. Raffina i filtri e riprova.",
     "E_UI_GENERIC_FAILED": "Errore configurazione lista.",
+    "E_UI_LINEAGE_NON_DICHIARATA": "La colonna legge la genealogia dei documenti, ma la sua lista non la dichiara.",
+    "E_UI_LISTA_CODICE_IMMUTABILE": "Il codice di una lista non si puo' cambiare: e' la chiave con cui la schermata si cerca.",
+    "E_UI_LISTA_COLONNE_ORFANE": "La lista non puo' leggere questa vista: alcune sue colonne hanno un campo che li' non c'e'.",
+    "E_UI_LISTA_DICHIARAZIONE_NON_SCRIVIBILE": "Una dichiarazione della lista non si imposta dall'applicazione: la porta il catalogo delle liste.",
     "E_UI_LISTA_EMITTENTE_DA_SCEGLIERE": "Questa lista non dice da quale emittente arriva ogni riga: scegli un emittente per entrare.",
     "E_UI_LISTA_NON_TROVATA": "Lista non trovata.",
     "E_UI_MISURA_PAGINA_DEFAULT_MANCANTE": "Manca la misura di default delle righe per pagina: anomalia di catalogo.",
     "E_UI_MISURA_PAGINA_NON_AMMESSA": "La misura di righe per pagina non e' fra quelle ammesse.",
+    "E_UI_MISURA_PAGINA_IMMUTABILE": "Una misura di righe per pagina non si riscrive: una misura nuova e' una riga nuova.",
     "E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE": "Il flag multi_emittente di una lista non si imposta dall'applicazione: si dichiara dal seed, insieme al lavoro che lo rende vero.",
     "E_UI_PERMESSO_NON_TROVATO": "Permesso colonna non trovato.",
     "E_UI_PERMESSO_VALIDAZIONE": "Permesso colonna non valido.",
@@ -1518,8 +1533,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UI_PREFERENZA_VALIDAZIONE": "Preferenza lista non valida.",
     "E_UI_PRESET_CONTENUTO_DERIVATO": "La data del contenuto e l'impronta della composizione del preset le scrive il database.",
     "E_UI_PRESET_NON_TROVATO": "Preset lista non trovato.",
+    "E_UI_PRESET_POSTO_IMMUTABILE": "Il posto del preset (lista, ambito, profilo, azienda) non si puo' cambiare: spegnilo e creane uno nuovo nel posto giusto.",
     "E_UI_PRESET_VALIDAZIONE": "Preset lista non valido.",
     "E_UI_VISTA_SQL_NON_TROVATA": "Vista SQL della lista non trovata nel database.",
+    "E_UI_WIDGET_IN_USO": "La card non si puo' togliere dalla dashboard: la propone un preset. Toglila prima dai preset.",
     "E_UOM_CALENDARIO_NON_TEMPO": "Un'unita' si puo' contare dal calendario solo se e' un'unita' di tempo.",
     # Brief-db-revisione-catalogo, giro 2-bis (2026-11-11): la storia delle
     #    conversioni (mappature dell'articolo e conversioni generali). Il

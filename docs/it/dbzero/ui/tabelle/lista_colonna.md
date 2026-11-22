@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Catalogo colonne disponibili per ciascuna lista. Definisce tutto cio che la lista puo mostrare.
+> Il catalogo delle colonne che ogni lista configurabile può mostrare: per ciascuna l'etichetta, il campo da cui legge (nella relazione della lista o nella sintesi della lineage), il tipo e il formato, la posizione e la larghezza di partenza, e che cosa se ne può fare (filtrare, ordinare, esportare, cercarci). Il livello di ogni colonna per un utente è ui.fn_lista_colonne_livello.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -34,6 +34,7 @@
 | user_update | character varying(80) | NO | CURRENT_USER |
 | etichetta_i18n_key | character varying(120) | YES |  |
 | priorita | smallint | NO | 50 |
+| origine_campo | ui.origine_campo_lista | NO | 'VISTA'::ui.origine_campo_lista |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -43,30 +44,33 @@
 | CHECK | chk_lista_colonna_etichetta_i18n_key_non_vuota |  |
 | CHECK | chk_lista_colonna_formato_non_vuoto |  |
 | CHECK | chk_lista_colonna_gruppo_non_vuoto |  |
-| CHECK | chk_ui_lista_colonna_azione_non_esportabile |  |
+| CHECK | chk_ui_lista_colonna_azione_senza_campo |  |
+| CHECK | chk_ui_lista_colonna_lineage_solo_mostrata |  |
 | CHECK | chk_ui_lista_colonna_priorita_non_negativa |  |
+| CHECK | chk_ui_lista_colonna_senza_campo_non_esportabile |  |
 | FOREIGN KEY | fk_lista_colonna_lista_definizione | lista_id |
 | PRIMARY KEY | lista_colonna_pkey | id |
+| UNIQUE | uq_ui_lista_colonna_id_lista | id, lista_id |
 | UNIQUE | uq_ui_lista_colonna_lista_codice | lista_id, codice |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | lista_colonna_pkey | `CREATE UNIQUE INDEX lista_colonna_pkey ON ui.lista_colonna USING btree (id)` |
+| uq_ui_lista_colonna_id_lista | `CREATE UNIQUE INDEX uq_ui_lista_colonna_id_lista ON ui.lista_colonna USING btree (id, lista_id)` |
 | uq_ui_lista_colonna_lista_codice | `CREATE UNIQUE INDEX uq_ui_lista_colonna_lista_codice ON ui.lista_colonna USING btree (lista_id, codice)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_lista_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,campo_sorgente,tipo_colonna,tipo_dato,formato,filtrabile,ordinabile,ricercabile_full,sensibile,etichetta_i18n_key', 'etichetta,etichetta_estesa,larghezza_default,ordine_default,allineamento,gruppo,gruppo_ordine,esportabile,priorita,attivo')` |
-| trg_lista_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,campo_sorgente,tipo_colonna,tipo_dato,formato,filtrabile,ordinabile,ricercabile_full,sensibile,etichetta_i18n_key', 'etichetta,etichetta_estesa,larghezza_default,ordine_default,allineamento,gruppo,gruppo_ordine,esportabile,priorita,attivo')` |
-| trg_lista_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,campo_sorgente,tipo_colonna,tipo_dato,formato,filtrabile,ordinabile,ricercabile_full,sensibile,etichetta_i18n_key', 'etichetta,etichetta_estesa,larghezza_default,ordine_default,allineamento,gruppo,gruppo_ordine,esportabile,priorita,attivo')` |
-| trg_lista_colonna_a10_lista_definizione_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('ui', 'lista_definizione', 'attivo', 'lista_id', 'id')` |
-| trg_lista_colonna_a10_lista_definizione_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('ui', 'lista_definizione', 'attivo', 'lista_id', 'id')` |
-| trg_lista_colonna_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_lista_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,campo_sorgente,origine_campo,tipo_colonna,tipo_dato,formato,filtrabile,ordinabile,ricercabile_full,sensibile,etichetta_i18n_key', 'etichetta,etichetta_estesa,larghezza_default,ordine_default,allineamento,gruppo,gruppo_ordine,esportabile,priorita,attivo')` |
+| trg_lista_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,campo_sorgente,origine_campo,tipo_colonna,tipo_dato,formato,filtrabile,ordinabile,ricercabile_full,sensibile,etichetta_i18n_key', 'etichetta,etichetta_estesa,larghezza_default,ordine_default,allineamento,gruppo,gruppo_ordine,esportabile,priorita,attivo')` |
+| trg_lista_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,campo_sorgente,origine_campo,tipo_colonna,tipo_dato,formato,filtrabile,ordinabile,ricercabile_full,sensibile,etichetta_i18n_key', 'etichetta,etichetta_estesa,larghezza_default,ordine_default,allineamento,gruppo,gruppo_ordine,esportabile,priorita,attivo')` |
+| trg_lista_colonna_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'E_UI_COLONNA_CODICE_IMMUTABILE')` |
 | trg_lista_colonna_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()` |
+| trg_lista_colonna_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()` |
+| trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()` |
 
 ---
 {% include-markdown "signature-core.md" %}

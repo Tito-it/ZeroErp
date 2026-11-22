@@ -15,7 +15,7 @@
 #   la colonna a NULL il confronto e' falso e la riga non la vede nessuno
 #   tranne il super admin. E' fail-closed, ma e' una mail PERSA, e nessuno lo
 #   dice: la stessa trappola del default `SISTEMA`
-#   (work-done/brief-db-processi-automatici-residui-be).
+#   (work-done/2026/brief-db-processi-automatici-residui-be).
 #   ⇒ L'ambito promette un pubblico: la riga deve portare la colonna che lo
 #     nomina, o non entra.
 #

@@ -31,7 +31,7 @@
 --  5) nessun COMMENT del perimetro porta l'hash di un commit
 --  6) le due colonne generate su ogni shadow di storico non portano nessuna delle
 --     quattro marche (il testo sta in dbops.fn_storico_arma_scope)
---  7) i COMMENT dei trigger di dbops e documenti sono nel perimetro
+--  7) i COMMENT dei trigger di dbops, documenti e ui sono nel perimetro
 --  8) i COMMENT delle policy di documenti sono nel perimetro
 -- ------------------------------------------------------------
 
@@ -46,7 +46,7 @@ SELECT plan(8);
 
 -- Gli schemi la cui famiglia di COMMENT e' riscritta.
 CREATE TEMP TABLE _schemi ON COMMIT DROP AS
-SELECT unnest(ARRAY['dbops', 'maintenance', 'catalogo', 'documenti']) AS nome;
+SELECT unnest(ARRAY['dbops', 'maintenance', 'catalogo', 'documenti', 'ui']) AS nome;
 
 -- Gli oggetti fuori da quegli schemi riscritti con una famiglia: i cinque nati col
 -- ritiro degli articoli (obsoleto_dal), riscritti con catalogo.
@@ -127,14 +127,14 @@ SELECT is(
     ARRAY[]::text[],
     '6) le colonne di scope generate sulle shadow di storico non portano marche');
 
--- 7) I trigger sono nel perimetro: dbops e documenti scrivono COMMENT sui loro trigger
+-- 7) I trigger sono nel perimetro: dbops, documenti e ui scrivono COMMENT sui loro trigger
 --    a mano. Con lo schema letto da pg_identify_object (NULL per un trigger) qui non
 --    ce ne sarebbe nessuno, e 2-5 passerebbero senza guardarli.
 SELECT is(
     (SELECT COALESCE(array_agg(DISTINCT schema ORDER BY schema), ARRAY[]::text[])
-       FROM tmp_cmt WHERE type = 'trigger' AND schema IN ('dbops', 'documenti')),
-    ARRAY['dbops', 'documenti']::text[],
-    '7) i COMMENT dei trigger di dbops e documenti sono nel perimetro');
+       FROM tmp_cmt WHERE type = 'trigger' AND schema IN ('dbops', 'documenti', 'ui')),
+    ARRAY['dbops', 'documenti', 'ui']::text[],
+    '7) i COMMENT dei trigger di dbops, documenti e ui sono nel perimetro');
 
 -- 8) Le policy, come i trigger: pg_identify_object da' schema NULL anche a loro, e
 --    documenti scrive COMMENT sulle policy delle sue tabelle.

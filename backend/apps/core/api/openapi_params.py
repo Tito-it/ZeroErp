@@ -104,8 +104,9 @@ def parametri_finestra(
         OpenApiParameter(
             name="limit", type=int, location=OpenApiParameter.QUERY, required=False,
             description=(
-                f"Righe per pagina (default {default_limit or DEFAULT_LIMIT}, "
-                f"max {max_limit or MAX_LIMIT})."
+                f"Righe per pagina (default: per una lista configurabile, cioe' "
+                f"una view con `lista_codice`, la misura della sua configurazione; "
+                f"altrimenti {default_limit or DEFAULT_LIMIT}. Max {max_limit or MAX_LIMIT})."
             ),
         ),
         OpenApiParameter(
@@ -114,3 +115,70 @@ def parametri_finestra(
         ),
     ]
 
+
+
+# La frase che dice, di una lista configurabile, cosa succede senza `order_by`.
+# ⭐ E' anche il SEGNO che il presidio cerca (`test_openapi_params`): ogni view
+#    con `lista_codice` che dichiara `order_by` lo dichiara con questo BB.
+FRASE_ORDINAMENTO_DI_PARTENZA = (
+    "Assente: l'ordinamento di partenza della lista, quello del suo preset di "
+    "base (la risposta JSON lo dice in `meta.ordinamento`)."
+)
+
+
+# Scopo: ⭐ I parametri OpenAPI dell'ordinamento di una LISTA CONFIGURABILE
+#        (una view con `lista_codice`), `order_by` e `order_dir`, in un punto
+#        solo: da usare con `*parametri_ordinamento(...)` dentro
+#        `parameters=[...]`, come `parametri_finestra`. Regola del 2, ok Tid
+#        2026-11-22: le descrizioni scritte a mano (una ottantina di view)
+#        dicevano «default X» dove dal 2026-11-22 decide il preset della lista
+#        (BE25 (2) e BE29 di brief-db-revisione-ui; la sede del comportamento e'
+#        `apps.core.services.ordinamento_di_partenza`).
+# Params:
+#   - colonne: la whitelist del repository (la mappa `*_SORT_COLUMNS`, letta da
+#       `descrizione_order_by`), oppure un TESTO quando la lista non ha una
+#       mappa da leggere; `None` = il `campo_sorgente` del catalogo.
+#   - senza: l'ordine del repository quando il preset non ne dichiara uno (o la
+#       sua chiave e' rifiutata), es. `"data DESC, id DESC"`.
+#   - verso: il ripiego di `order_dir` quando c'e' `order_by` e manca il verso.
+#   - nota: cio' che la lista aggiunge (una colonna che non ordina, un 400).
+# ⚠️ Senza `order_by` la base view scrive anche `order_dir` (il verso del
+#    preset): un `order_dir` mandato da solo non conta quando il preset ha un
+#    ordinamento, e la frase lo dice.
+# ⛔ Una view fuori catalogo (senza `lista_codice`) NON lo usa: la frase
+#    direbbe un comportamento che non ha. Per lei resta `descrizione_order_by`.
+def parametri_ordinamento(
+    colonne: Iterable[str] | str | None = None,
+    *,
+    senza: str | None = None,
+    verso: str | None = None,
+    nota: str = "",
+) -> list[OpenApiParameter]:
+    if isinstance(colonne, str):
+        chiavi = colonne
+    elif colonne is None:
+        chiavi = "Il `campo_sorgente` di una colonna ordinabile della lista."
+    else:
+        chiavi = descrizione_order_by(colonne)
+    parti_by = [chiavi, FRASE_ORDINAMENTO_DI_PARTENZA]
+    if senza:
+        parti_by.append(f"Se la lista non ne dichiara uno: {senza.rstrip('.')}.")
+    if nota:
+        parti_by.append(nota)
+    parti_dir = ["asc | desc."]
+    if verso:
+        parti_dir.append(f"Assente con `order_by`: {verso}.")
+    parti_dir.append(
+        "Senza `order_by`, se la lista ha un ordinamento di partenza, vale il "
+        "verso di quello."
+    )
+    return [
+        OpenApiParameter(
+            name="order_by", type=str, location=OpenApiParameter.QUERY, required=False,
+            description=" ".join(parti_by),
+        ),
+        OpenApiParameter(
+            name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False,
+            description=" ".join(parti_dir),
+        ),
+    ]

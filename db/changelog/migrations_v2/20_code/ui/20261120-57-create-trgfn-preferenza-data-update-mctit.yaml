@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.trgfn_preferenza_data_update: data_update delle due preferenze la scrive il
+#   database. Brief: brief-db-revisione-ui (giro 5, U36 con Q22, decisa da Tid il
+#   2026-11-19).
+#
+# Perche': le preferenze non hanno audit, per scelta (Q22), e data_update la
+#   scriveva il backend nell'upsert: una regola in una sede che il database non
+#   vede, e ogni altro scrittore la poteva lasciare vecchia o vuota. Qui la
+#   scrive il database, a ogni INSERT e UPDATE, come lo snapshot del preset di
+#   base: il valore passato da chi scrive non conta.
+#
+# Perche' non script.trgfn_audit_data_user_generic: scrive anche user_update e
+#   user_insert, che le preferenze non hanno. Una funzione sola per le due
+#   tabelle, montata due volte; non porta il nome di una tabella, come
+#   ui.trgfn_preferenza_guard_forma.
+#
+# Fase a20 (derivazione, linee-guida-trigger «La fase»): dopo il guard di forma
+#   (a10), senza OF e senza WHEN, perche' ogni scrittura della riga e' una
+#   scrittura della preferenza. CURRENT_TIMESTAMP, come l'audit generico.
+# Presidio: ui/test-ui-catalogo-dashboard-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-57-create-trgfn-preferenza-data-update-mctit.yaml
+
+  - changeSet:
+      id: 20261120-57-create-trgfn-preferenza-data-update
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.trgfn_preferenza_data_update, montata BEFORE INSERT OR UPDATE sulle due preferenze:
+        data_update la scrive il database. Brief: brief-db-revisione-ui (giro 5, U36, Q22).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: lista_preferenza_utente
+        - tableExists:
+            schemaName: ui
+            tableName: dashboard_preferenza_utente
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_preferenza_data_update()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: data_update di una preferenza di lista o di dashboard e' l'ora
+              --   della scrittura; il valore che arriva da chi scrive non conta.
+              BEGIN
+                NEW.data_update := CURRENT_TIMESTAMP;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_preferenza_data_update() IS
+                'Scrive data_update di ui.lista_preferenza_utente e ui.dashboard_preferenza_utente a ogni INSERT e '
+                'UPDATE, con l''ora della transazione: il valore passato da chi scrive non conta. Le preferenze non '
+                'hanno audit, per scelta; questa e'' la sola sede della loro data di scrittura.';
+
+              DROP TRIGGER IF EXISTS trg_ui_lista_preferenza_utente_a20_set_data_update_ins_upd
+                ON ui.lista_preferenza_utente;
+              CREATE TRIGGER trg_ui_lista_preferenza_utente_a20_set_data_update_ins_upd
+                BEFORE INSERT OR UPDATE ON ui.lista_preferenza_utente
+                FOR EACH ROW EXECUTE FUNCTION ui.trgfn_preferenza_data_update();
+
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preferenza_utente_a20_set_data_update_ins_upd
+                ON ui.dashboard_preferenza_utente;
+              CREATE TRIGGER trg_ui_dashboard_preferenza_utente_a20_set_data_update_ins_upd
+                BEFORE INSERT OR UPDATE ON ui.dashboard_preferenza_utente
+                FOR EACH ROW EXECUTE FUNCTION ui.trgfn_preferenza_data_update();
+
+              COMMENT ON TRIGGER trg_ui_lista_preferenza_utente_a20_set_data_update_ins_upd
+                ON ui.lista_preferenza_utente IS
+                'data_update la scrive il database (ui.trgfn_preferenza_data_update).';
+              COMMENT ON TRIGGER trg_ui_dashboard_preferenza_utente_a20_set_data_update_ins_upd
+                ON ui.dashboard_preferenza_utente IS
+                'data_update la scrive il database (ui.trgfn_preferenza_data_update).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ui_lista_preferenza_utente_a20_set_data_update_ins_upd
+                ON ui.lista_preferenza_utente;
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preferenza_utente_a20_set_data_update_ins_upd
+                ON ui.dashboard_preferenza_utente;
+              DROP FUNCTION IF EXISTS ui.trgfn_preferenza_data_update();

@@ -43,8 +43,6 @@ export const useContrattiStore = defineStore('vendite-contratti', () => {
     // Il piu' recente in cima. ⚠️ Il ripiego del verso resta `asc` (default
     // del core), com'era nella copia a mano: e' un ramo dormiente, e
     // un'estrazione appiana la duplicazione, non le differenze.
-    orderBy: 'valido_dal',
-    orderDir: 'desc',
   })
 
   async function fetchDetail(id) {

@@ -1,0 +1,902 @@
+# Brief DB — Revisione dello schema `anagrafiche`: la documentazione, le segnalazioni di codice, i metadati
+
+## ⏭️ Chi riparte — aggiornato al 2026-11-22
+
+**Riparte: Tid**, con la rigenerazione della doc auto-generata dopo il giro 0d (§15.4) e il commit; poi la sessione
+DB col giro 0e (area E, §4.5), l'ultimo del giro 0. I giri 0a, 0b, 0c sono committati (§12-§14). Il giro 0d (area D,
+§15) è scritto il 2026-11-22: 45 pagine allo standard, una nuova, una ritirata (Q4), il blocco dei guard di ruolo, la
+guida dei conti; con il ritiro del pgTAP del catasto; non committato. Q1-Q8 sono decise da Tid il 2026-11-22 (§10): prima tutta la
+documentazione, i giri di codice per ultimi. Al team BE/FE le domande R-BE1 … R-BE5 (§9), che non fermano il giro 0.
+
+| # | Chi | Che cosa | Dove | Aspetta |
+| --- | --- | --- | --- | --- |
+| 1 | ✅ sessione DB | Censimento in sola lettura: la forma delle 195 pagine `manual/`, il contenuto falso e stantio per area, gli oggetti senza pagina, le guide, le segnalazioni di codice, i metadati | §3-§9 | — |
+| 2 | ✅ Tid | Le decisioni Q1-Q8 e il via al giro 0 (2026-11-22) | §10 | 1 |
+| 3 | sessione DB | Giro 0, un'area per sessione (0a-0e): le pagine `manual/` allo standard e al codice di oggi, le pagine nuove, le guide dell'area. ✅ 0a (area C, §12), ✅ 0b (area A, §13), ✅ 0c (area B, §14), ✅ 0d (area D, §15), 2026-11-22; ⏳ 0e (area E) | §2, §4-§6, §12-§15 | 2 |
+| 4 | Tid | Doc auto-generata rigenerata dopo ogni area (le schede prendono le pagine nuove, l'indice le descrizioni). ✅ dopo lo 0a, lo 0b e lo 0c (2026-11-22); ⏳ dopo lo 0d (§15.4) | §2, §12.4 | 3 |
+| 5 | Tid | Il vaglio delle segnalazioni di codice: quali sono difetti, quali sono volute | §7 | 1 |
+| 6 | ✅ team BE/FE | Le cinque domande di censimento R-BE1 … R-BE5: risposte il 2026-11-22. ⚠️ R-BE5 smentisce la premessa di Q7 | §9, §9.1 | 2 |
+| 7 | sessione DB | I giri di codice e di metadati, dopo tutto il giro 0 (Q1, Tid: «le funzionalità per ultime») | §7, §8 | 3, 5 |
+| 8 | sessione DB | Archiviazione in `work-done/` | §11 | 3, 7 |
+
+**Decisioni di Tid:** Q1-Q8 il 2026-11-22 (§10); Q7 riaperta e decisa di nuovo lo stesso giorno, strada (b), estesa a `config.stradario` (§10). Nessuna decisione aperta. **Da committare:** le pagine del giro 0 man mano
+che si scrivono, un commit per area.
+
+> **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-22. **A chi:** Tid e team DB.
+> **Origine:** revisione della documentazione dello schema `anagrafiche` chiesta da Tid: cercare le parti stantie e
+> quelle che non descrivono lo sviluppo di oggi. Metodo dei brief di revisione di `catalogo`, `dbops`, `documenti`,
+> `maintenance` e `ui` ([brief-db-revisione-ui](brief-db-revisione-ui.md)).
+> **Brief vicini verificati:**
+> [brief-db-catena-istanze-pdp](brief-db-catena-istanze-pdp.md) ha già i rami irraggiungibili di
+> `trgfn_clienti_set_parent_istanza` (suo §2.1) e cinque decisioni aperte: qui quel trigger si documenta com'è e la
+> segnalazione rimanda lì. [sviluppo-gestione-clienti-v2](sviluppo-gestione-clienti-v2.md) tiene subentro e disdetta
+> come sviluppo da fare: la segnalazione S1 (§7) tocca le stesse due funzioni e va letta insieme.
+> [analisi-critiche-modello-clienti-utilities-catasto-v2](analisi-critiche-modello-clienti-utilities-catasto-v2.md)
+> parla dell'orchestratore Django del cliente, che la guida `generazione-cliente` dà ancora per «previsto» (§6).
+> [piano-be-fe-accessi-credenziale-e-vesti](piano-be-fe-accessi-credenziale-e-vesti.md) e
+> [sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md) sono lavoro BE/FE sugli accessi: non
+> toccano le pagine `manual/`. Nel [registro dei residui](registro-residui-aperti.md) tre voci hanno per oggetto
+> tabelle di `anagrafiche` (i residui di `brief-db-dati-fiscali-e-societari-del-soggetto`, «La coerenza tra codice
+> fiscale e sesso», «Le FK verso `django.auth_user`»): nessuna riguarda la documentazione, e nessuna segnalazione di
+> §7 le ripete. Nessun brief aperto ha per tema la documentazione di `anagrafiche`.
+
+⚠️ Il DDL e il corpo di ogni oggetto si prendono dalla doc auto-generata (`docs/it/dbzero/anagrafiche/…`),
+rigenerata il 2026-11-22 (`469b4c80e5`). Lo stesso giorno il catalogo di dbdev e le schede coincidono per elenco di
+oggetti: 35 tabelle, 19 viste, 195 funzioni. Prima di scrivere una pagina si riverifica: un changeSet successivo
+sull'oggetto rende stantia la scheda.
+
+## 1. Il perimetro
+
+Lo schema `anagrafiche` ha 35 tabelle, 19 viste e 195 funzioni (di cui un centinaio di trigger function). La
+documentazione scritta a mano che lo descrive è:
+
+* **195 pagine** in `docs/it/dbzero/anagrafiche/manual/` (circa 21.000 righe);
+* **cinque guide** che hanno lo schema per oggetto: `soggetti-e-ruoli-anagrafici`, `gestione-dei-contatti`,
+  `gestione-conti-bancari`, `generazione-cliente`, `risorse-umane-e-accessi`; e tre che lo toccano in alcune sezioni:
+  `gestione-degli-indirizzi`, `gestione-delle-istanze-utility`, `architettura-multi-face-auth`.
+
+Il censimento è diviso in cinque aree, che sono anche le unità di lavoro del giro 0:
+
+| Area | Contenuto | Oggetti | Pagine | Senza pagina |
+| --- | --- | --- | --- | --- |
+| **A** | Soggetti, natura, dati societari, titoli IVA | 52 | 31 | 21 |
+| **B** | Indirizzi, contatti, catasto | 66 | 38 | 28 |
+| **C** | Clienti, billing account, istanze, PDP, categorie clienti, legame emittente-BA | 63 | 57 | 6 |
+| **D** | Ruoli d'impresa (emittenti, fornitori, gestori, vettori, reseller, PSP) e banche | 47 | 46 | 1 |
+| **E** | Accessi: identità digitali, risorse umane, sincronizzazione con `django.auth_user` | 23 | 23 | 0 |
+
+Ogni fatto si regge sul **modello**: che cosa ammettono colonne, vincoli, trigger e corpi, letti dalle schede e dal
+catalogo. Nessun conteggio di righe entra come motivo. I numeri di questo brief contano **pagine e oggetti**, non
+dati, e valgono al 2026-11-22.
+
+**Come è fatto il censimento.** Due passate. La prima è meccanica: su ogni pagina i sei controlli di
+`standard-guide.md` §«Verifica di una pagina `manual/`», più il confronto di ogni nome citato (oggetti, colonne,
+trigger, vincoli, indici, codici errore, file pgTAP, link) col catalogo di dbdev. La seconda è di contenuto: cinque
+agenti, uno per area, hanno letto ogni pagina per intero contro la scheda auto-generata e il catalogo. I fatti
+portati come gravi sono riverificati sul catalogo dalla sessione che coordina (marcati ✔︎ in §7).
+
+## 2. Il piano: i giri
+
+Proposta, da confermare con Q5 e Q6. Il giro 0 qui è sei volte quello di `ui` (195 pagine contro 32): si fa
+**un'area per sessione**. L'ordine è per distanza dal codice: prima le aree dove la pagina racconta un modello che
+non c'è più.
+
+| Giro | Contenuto | Perché in quest'ordine |
+| --- | --- | --- |
+| 0a | **Area C**, clienti e billing account: 57 pagine (11 da riscrivere), 6 oggetti senza pagina, guida `generazione-cliente`, le sezioni di `gestione-delle-istanze-utility` | Le quattro pagine di tabella raccontano «1 istanza ⇄ 1 cliente», che non è più il modello; sette pagine di trigger descrivono un corpo sostituito |
+| 0b | **Area A**, soggetti: 31 pagine (5 da riscrivere), 21 oggetti senza pagina, guida `soggetti-e-ruoli-anagrafici` | La famiglia «cambio di natura» non ha nessuna pagina; `soggetti` e `dati_societari` si contraddicono al loro interno |
+| 0c | **Area B**, indirizzi, contatti, catasto: 38 pagine (9 da riscrivere), 28 oggetti senza pagina, guida `gestione-dei-contatti`, le sezioni di `gestione-degli-indirizzi` | È l'area con più oggetti senza pagina; la parte indirizzi è la più recente e regge |
+| 0d | **Area D**, ruoli d'impresa e banche: 46 pagine (9 da riscrivere), 1 oggetto senza pagina, 1 pagina da ritirare, guida `gestione-conti-bancari` | Sette guard di ruolo con lo stesso corpo e sette pagine che dicono cose diverse |
+| 0e | **Area E**, accessi: 23 pagine (4 da riscrivere), guida `risorse-umane-e-accessi`, le sezioni di `architettura-multi-face-auth` | L'area più piccola; la guida è il pezzo grosso |
+| 1 … | I giri di codice, dopo il vaglio di §7 (Q1) | — |
+| ultimo | Metadati: i COMMENT (§8) | Si riscrivono una volta sola, dopo i giri di codice |
+
+Ogni giro 0 comprende: le pagine esistenti nella cornice, col contenuto al presente; le pagine nuove; i difetti
+trovati scritti nella pagina in una sezione «⚠️ Che cosa oggi non copre», che si toglie quando il giro che li
+corregge è applicato; la guida dell'area; le sei verifiche su ogni pagina; poi la rigenerazione della doc
+auto-generata (Tid). Il giro 0 **non scrive changeSet**: un COMMENT falso si annota in §8 e si corregge nel giro dei
+metadati.
+
+## 3. La forma: nessuna pagina è allo standard
+
+Censimento meccanico del 2026-11-22 sulle 195 pagine. Nessuna passa tutti e sei i controlli dello standard.
+
+| Controllo | Pagine che non lo passano |
+| --- | --- |
+| Titolo nella forma della cornice (`## 📘 Documentazione Concettuale – <Tipo> …`) | 129 |
+| Un titolo `#` in testa (formato vecchio) | 8 |
+| Più di un `##`, o nessuno | 16 |
+| `### 🎯 Scopo Principale` assente o ripetuto | 27 |
+| Primo paragrafo dello Scopo che comincia con un marcatore (`(latest review …)`, `(rev …)`) | 156 |
+| Etichette del «Vedi anche» fuori dalla citazione | 104 |
+| Firma `signature-core.md` assente | 61 |
+| Blocchi di codice (119 `sql`, 13 senza linguaggio, 1 `python`, in 71 pagine) | 71 |
+| Riga «Ultimo aggiornamento» assente | 172 |
+| Marcatori di revisione, nomi di brief, id di changeSet nel corpo | 178 |
+| Link alla pagina `manual/` invece che alla scheda (182 link) | 77 |
+| Link a un file che non esiste | 11 |
+
+Le 23 pagine con la data sono tutte di novembre 2026, e sono le più vicine al codice; nessuna è nell'area C né
+nell'area E. Per area:
+
+| Area | Pagine | Con la data | Con blocchi di codice | Senza firma |
+| --- | --- | --- | --- | --- |
+| A | 31 | 6 | 10 | 5 |
+| B | 38 | 14 | 19 | 13 |
+| C | 57 | 0 | 22 | 30 |
+| D | 46 | 3 | 16 | 8 |
+| E | 23 | 0 | 4 | 5 |
+
+**L'indice dello schema porta i marcatori come descrizioni.** `anagrafiche/index.md` è generato dal primo paragrafo
+dello Scopo: oggi `billing_account` è descritto come «(latest review 20-04-2026 — aggiunta colonna
+`canale_origine`)», `categorie_clienti` come «(latest review 14-04-26)», `fornitori` come «(rev 2026-11-21)». Si
+corregge da solo quando le pagine sono nella cornice e la doc è rigenerata.
+
+**Riferimenti a nomi che non esistono** (catalogo di dbdev, 2026-11-22). Sono la prova più secca che una pagina è
+ferma a un modello precedente:
+
+| Pagina | Cita | Oggi |
+| --- | --- | --- |
+| `fn_crea_soggetto_pg` | `fn_crea_cliente_pg`, `fn_crea_emittente`, `fn_crea_fornitore_pg` | Non esistono: `fn_crea_cliente`, `fn_crea_emittente_fiscale`, `fn_crea_fornitore` |
+| `fn_crea_auth_user`, `fn_get_or_create_indirizzo_dettaglio` | `fn_crea_admin`, `fn_crea_operatore` | Esiste solo `fn_crea_operatore_v2` |
+| `fn_crea_operatore_v2`, `fn_crea_risorsa_umana_v2`, `identita_digitali`, `risorse_umane` | `config.ruolo_sistema`, `anagrafiche.risorse_umane_auth_user`, `fn_crea_risorsa_umana` | Il tipo è `config.ruolo_applicativo`; la tabella ponte e la funzione non esistono |
+| `soggetti_titoli_iva`, `soggetti_titoli_iva_ambiti` | `anagrafiche.clienti.iva_id` | La colonna non esiste |
+| `fn_consuma_plafond_titolo_iva_righe` | `fn_consuma_plafond_titolo_iva` | Ritirata: resta la forma `_righe` |
+| `trgfn_soggetti_normalize` | `fn_get_default_by_param` | Non esiste |
+| `soggetti` | `trg_soggetti_valida_cf_piva_ins_upd` | `trg_soggetti_valida_cf_piva_dispatch_ins_upd` |
+| `fn_get_evento_stato_corrente_cliente` | `vw_clienti_con_stato_corrente` | Non esiste |
+| `trgfn_pdp_a10_guard` | `trgfn_pdp_protect_cols`, `trg_pdp_protect_cols_upd` | Nomi di prima |
+| `trgfn_billing_account_guard_soggetto_coerenza_istanza` | Trigger in fascia `a10` | La fascia è `a20` |
+| `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`, `vw_indirizzi_resolved_ruolo`, `vw_indirizzi_resolved_soggetto` | `fn_get_indirizzo_preferito`, `fn_get_indirizzo_resolved` | I resolver sono in `script`: `fn_get_indirizzo`, `fn_get_indirizzi_by_ruolo`, `fn_get_indirizzi_by_soggetto` |
+| `bank_branches` | `trgfn_bank_check_ruolo_bank_branches` e il suo trigger | `…guard…` |
+| `clienti`, `contatti`, `gestori`, `gestori_utilities`, `istanze_utilities`, `pdp`, `soggetti_conti_bancari`, `catasto_unita_immobiliari`, `categorie_clienti_listini` | Tredici nomi di vincolo e di indice | Vincoli ritirati o con un altro nome (`uq_clienti_istanza_utility` → `uq_clienti_billing_account`, `uq_gest_util` → `uq_gestore_utility`, gli indici col prefisso `ix_anagrafiche_`) |
+| Sette pagine dell'area C | Link `/it/guide/gestione-delle-istanze-utility` | Il prefisso `/it` è di troppo |
+| `gestori`, `gestori_utilities`, `identita_digitali`, `soggetti` | Sette link `/dbzero/…` senza `tabelle/` o a una scheda che non c'è | — |
+
+Falsi allarmi del controllo, verificati: `anagrafiche.accessi_sistema`, `accessi_altri` e `operatori` nelle pagine
+delle due viste degli accessi sono codici di `ui.lista_definizione`, non oggetti; `liquidazione_enum`,
+`socio_unico_enum`, `config.canale_origine` e `config.ruolo_applicativo` sono tipi, `vettori_codice_seq` è una
+sequenza, `uq_catunitaindir` esiste.
+
+**Una pagina senza oggetto, una senza posto.** `trgfn_emittenti_fiscali_guard_attivo` descrive una funzione che
+non esiste più: la regola la regge il trigger generato dall'automazione ATTIVO su `emittenti_fiscali` (Q4).
+`catasto-architettura` non corrisponde a nessun oggetto: è il racconto di un flusso fra tabelle e trigger di due
+schemi (Q3).
+
+## 4. Il contenuto: che cosa è falso o stantio, per area
+
+Forma compatta: una riga per pagina, col giudizio e ciò che non è vero. I giudizi: **riscrivere** (la pagina
+racconta un modello superato), **ritocco** (pochi punti), **regge** (contenuto vero, resta la forma). Dove non è
+detto altro, la fonte è la scheda auto-generata dello stesso oggetto. La cronaca («latest review», «da oggi»,
+«prima era…») c'è in quasi tutte le pagine e non è ripetuta riga per riga.
+
+### 4.1 Area C — clienti, billing account, istanze, PDP
+
+Il modello di prima, che più pagine ripetono: «un'istanza ha al massimo un cliente». Oggi un cliente è di un billing
+account (`uq_clienti_billing_account`), un'istanza ha un BA per utility, e l'unicità sul PDP la dà l'esclusione per
+periodo `ex_clienti_no_overlap_stesso_pdp`. Il secondo fatto ripetuto: la «storia» che blocca il cambio di emittente
+di un BA è descritta come «fatture o commesse», ed è «un documento numerato di qualunque famiglia».
+
+| Pagina | Giudizio | Che cosa non è vero o manca |
+| --- | --- | --- |
+| `clienti` | riscrivere | «PA, split payment» e `iva_id` (colonne che non esistono); l'ER senza `billing_account` e `pdp`. Tace il lock della fornitura, il guard stato/date, la chiave unica differita, l'esclusione sul PDP, le tre policy RLS, i verbi (`fn_crea_cliente`, `fn_update_cliente`, disdetta e subentro in `script`) |
+| `billing_account` | riscrivere | FK con `ON DELETE SET NULL` / `RESTRICT` (hanno solo `ON UPDATE CASCADE`); «il super admin non crea BA» (crea, con l'azienda di lavoro in sessione); il CF «del codice» (si confronta il CF del soggetto dell'istanza); 7 trigger su 17; la policy `ef_whitelist` taciuta; «Strategia di rollout» e passi sul backend |
+| `istanze_utilities` | riscrivere | §7.1 e §7.6 «al massimo un cliente» con un UNIQUE che non esiste, in contraddizione col §7.3; FK con azioni inventate; «parent non sé stessa» (niente lo vieta); 4 trigger su 14; tace `chk_iu_pdp_not_fittizia` e la colonna del catasto |
+| `trgfn_clienti_set_periodo` | riscrivere | Dice di sollevare `E_DATA_CHIUSURA` / `E_DATA_APERTURA`: il corpo non solleva nulla (i controlli sono in `trgfn_clienti_guard_stato_date`); «chiusura inclusiva» accanto a `[attivazione, chiusura)` (S1) |
+| `trgfn_clienti_sync_stato_pdp` | riscrivere | «AT→ATTIVO, CH→DISPONIBILE, non verifica altri clienti»: segue l'occupazione per periodo (`fn_check_pdp_occupato`) e ricalcola anche il PDP lasciato; colonne dell'`UPDATE OF` e valore di ritorno sbagliati |
+| `trgfn_clienti_sync_utility_from_ba` | riscrivere | Tre codici errore che non solleva più; oggi delega a `script.fn_cliente_dal_billing_account` e copia anche il ruolo |
+| `trgfn_clienti_set_parent_istanza` | riscrivere | «I clienti senza PDP non partecipano» (le istanze fittizie hanno la loro catena); «strettamente minore» (è `<=`); «schema suggerito» del trigger (esiste, con altri eventi e una `WHEN`) |
+| `trgfn_clienti_guard_ruolo_cliente` | riscrivere | Ruolo `'GE'` (il corpo passa `'CL'`); «verificata o creata» (verifica soltanto) |
+| `trgfn_billing_account_guard_normalize` | riscrivere | Il controllo delle date (tolto: è di `script.trgfn_guard_date_validita`); «normalizza il codice» (non lo tocca); nessuno dei sei codici che solleva |
+| `trgfn_billing_account_guard_soggetto_coerenza_istanza` | riscrivere | L'esempio 3 non è raggiungibile (parla prima il lock, `E_BA_ISTANZA_IMMUTABILE`); tace il controllo sul tipo di ruolo `CL`; metà pagina è cronaca di deploy |
+| `fn_guard_ba_cambio_emittente` | riscrivere | «Storia: fatture e commesse. Ordini e DDT no» |
+| `pdp` | ritocco | `extra_info` (è `meta`); lo stato «per eventi commerciali»; tace `attivo`, i due guard di immutabilità, `clienti.pdp_id`. «Cliente corrente: `cliente_id`» (S14) |
+| `vw_pdp` | ritocco | «Non è `security_invoker`, nessuna tabella ha RLS»: false tutte e due; «letta dentro il livello DB»: nessuna vista né funzione la nomina |
+| `emittenti_fiscali_billing_account`, `fn_guard_albero_ba_emittente`, `fn_guard_albero_ba_gestore_globale`, `trgfn_efba_guard_albero_emittente`, `trgfn_billing_account_link_ef` | ritocco | La definizione di storia di prima; «il super admin è bloccato»; in `efba_guard_albero` «sono TRE movimenti» (il trigger presidia anche la creazione) |
+| `categorie_clienti_listini` | ritocco | «Nessun trigger di tabella» (ne ha tre); tace la RLS |
+| `categorie_clienti` | ritocco | Tace `codice_interno`; «Seed iniziale» con le righe ricopiate |
+| `fn_crea_cliente`, `fn_crea_billing_account` | ritocco | Mancano il parametro dell'emittente e tre codici errore |
+| `fn_update_cliente` | ritocco | «PA» fra i campi modificabili (non è nella lista) |
+| `fn_get_evento_stato_corrente_cliente` | ritocco | «Il guard di consistenza va messo su `clienti`» (esiste); codice del backend in una pagina DB |
+| `trgfn_clienti_sync_pdp` | ritocco | «Caso 2, cambio istanza» (l'istanza è bloccata); «Caso 3» irraggiungibile |
+| `vw_clienti_codice_ba`, `vw_clienti_lista` | ritocco | «Due clienti possono condividere un BA»; «le tabelle non hanno RLS»; granularità «soggetto × utility» (è per BA) |
+| `istanze_dati_precontrattuali` | ritocco | FK a `tipi_utenze` (non c'è); «valuta una unique» e «immutabilità consigliata» (esistono tutte e due) |
+| `vw_istanze_dati_precontrattuali_dettaglio`, `vw_istanze_utilities_dettaglio` | ritocco | La utility esposta è quella **del PDP**, non della riga né dell'istanza (S16) |
+| `trgfn_pdp_a10_guard`, `trgfn_pdp_set_default_stato` | ritocco | «`NULL → valore` consentito» (le colonne sono NOT NULL); la seconda pagina è troncata a metà frase |
+| `trgfn_istanze_utilities_gen_codice`, `trgfn_billing_account_gen_codice` | ritocco | `CODICE_NON_MODIFICABILE` (è `E_CODICE_NON_MODIFICABILE`); il lock copre più colonne di quelle dette |
+| `trgfn_istanze_utilities_normalize` | ritocco | «Tutti i record hanno un codice generato»: la funzione non fa niente (S15) |
+| `fn_lookup_utilities_per_ba`, `fn_guard_istanza_ba_emittente`, `fn_check_ba_coppia_emittente_omogenea`, `fn_ba_ha_storia_emittente`, `fn_get_storia_emittente_ba`, `fn_guard_ba_gestore_globale_storia` | ritocco | L'azienda di un BA si risolve su tre livelli, non due; i parametri di sistema quando manca l'override; per l'ultima vedi S2 |
+
+Reggono: `fn_clienti_stessa_chiave`, `fn_guard_cliente_chiave_unica`, `trgfn_clienti_guard_stato_date`,
+`trgfn_categorie_clienti_listini_guard_listino`, `trgfn_guard_istanza_del_ruolo`, `fn_istanza_di_altro_soggetto`,
+`trgfn_istanze_utilities_require_utility_dichiarata`, `trgfn_istanze_dati_precontrattuali_protect_update`,
+`fn_guard_istanza_ba_gestore_globale`, `fn_guard_istanza_ha_ba`, `trgfn_billing_account_guard_admin_globale`,
+`trgfn_billing_account_guard_albero_emittente`, `trgfn_billing_account_guard_istanza_emittente`,
+`trgfn_billing_account_require_istanza_ha_ba`, `trgfn_efba_guard_istanza_emittente`,
+`trgfn_efba_guard_storia_emittente`.
+
+### 4.2 Area A — soggetti, natura, dati societari, titoli IVA
+
+| Pagina | Giudizio | Che cosa non è vero o manca |
+| --- | --- | --- |
+| `soggetti` | riscrivere | In coda il modello di prima: `tipo_soggetto` F/G/X (colonna rimossa, lo dice il punto 1 della stessa pagina), natura NOT NULL (è nullable, e più guard trattano il caso), «almeno uno fra CF e P.IVA» (decide la natura), `ON DELETE RESTRICT` su quattro FK. Tace il cambio di natura, il blocco del codice, i guard differiti. Restano buone le sezioni su regime PA, sesso, identificativo fiscale |
+| `dati_societari` | riscrivere | «Cambiare natura: una società che diventa ente» (rifiutato per primo da `E_CAMBIO_NATURA_ALTRA_MACRO_TIPOLOGIA`); forma giuridica «testo»; capitale e REA «obbligatori» (decide la forma); unicità di SDI e PEC (non sono unici, e la pagina lo dice più su); la sezione «Integrazione 2025-12-03» con nature che non esistono; la frase finale «Se vuoi, posso aggiornare anche la doc…». Tace i verbi di scrittura e di eliminazione e il guard del canale |
+| `soggetti_ruoli` | riscrivere | «I trigger di audit mantengono un log» (c'è solo l'ultimo autore: la tabella non ha storico); FK con azioni inventate. Tace il guard della natura ammessa e il blocco di `soggetto_id` |
+| `trgfn_soggetti_normalize` | riscrivere | «Pulisce e normalizza i campi»: il corpo imposta solo lo stato proposto |
+| `fn_crea_soggetto_pg` | ritocco, largo | Tabella dei parametri da rifare: SDI e PEC «unique», default `SU` / `LN` (sono NULL: decidono i parametri), natura `DI` ammessa (è rifiutata), `E_GENERICO` (è `E_CODICE`), `ragione_sociale_completa` «calcolata dal trigger» (è una colonna generata) |
+| `fn_crea_soggetto_pf` | ritocco | Come sopra per la colonna generata; mancano due esiti dello stato; il contatto lo scrive `fn_crea_contatto` |
+| `soggetti_titoli_iva_ambiti`, `soggetti_titoli_iva_movimenti` | ritocco | «Il titolo si spegne con `attivo`»: con righe di ambito o movimenti la disattivazione è rifiutata, si chiude `valido_al`. Tacciono la RLS |
+| `soggetti_titoli_iva` | ritocco | «Un consumatore solo» (i lettori sono cinque); la sezione «Stato (aggiornato 2026-09-02)»; due rifiuti del cambio di natura mancanti |
+| `trgfn_dati_societari_guard_tipo_soggetto` | ritocco | Nome del trigger; «gestisce REQUIRED» (è del guard differito su `soggetti`); un codice errore mancante |
+| `trgfn_soggetti_titoli_iva_guard_coerenza` | ritocco | «Il nome sceglie l'ordine» rispetto a guard che sono `AFTER` differiti: l'ordine alfabetico non li riguarda |
+| `trgfn_soggetti_valida_cf_piva_dispatch` | ritocco | Nome del trigger; «controlli locali e internazionali» (c'è solo il ramo `IT`) |
+| `trgfn_soggetti_gen_codice`, `trgfn_soggetti_guard_cf_piva_obbligatori`, `trgfn_soggetti_ruoli_guard_natura_ammessa`, `trgfn_soggetti_guard_dati_societari_required`, `vw_dati_societari`, `fn_scrivi_dati_societari_alla_nascita`, `fn_annulla_movimento_titolo_iva` | ritocco | Il codice del lock; fotografie del seed; `CURRENT_DATE` dove il corpo usa il giorno operativo; «per modificare, operare sulle tabelle base» (l'app ha solo SELECT: si scrive col verbo) |
+
+Reggono: `fn_id_fiscale_bloccato`, `trgfn_soggetti_guard_id_fiscale_immutabile`,
+`trgfn_dati_societari_guard_forma_giuridica`, `vw_soggetti_ruoli_dettaglio`, `fn_ruolo_di_altro_soggetto`,
+`fn_check_titolo_iva_ambito`, `fn_consuma_plafond_titolo_iva_righe`, i due guard degli ambiti,
+`trgfn_soggetti_titoli_iva_movimenti_accumulatore`, `trgfn_stiva_movimenti_guard_annullo`,
+`vw_stiva_movimenti_dettaglio`.
+
+### 4.3 Area B — indirizzi, contatti, catasto
+
+| Pagina | Giudizio | Che cosa non è vero o manca |
+| --- | --- | --- |
+| `catasto_unita_immobiliari` | riscrivere | Datata 3 novembre 2026, descrive colonne `indirizzo_dettaglio_id` e `istanza_utility_id`, le loro FK e un UNIQUE che non esistono; l'ER ha il verso rovesciato. Il legame vero è `istanze_utilities.catasto_unita_immobiliare_id` più la tabella ponte, e lo dice il COMMENT della tabella |
+| `contatti` | riscrivere | «Un default per soggetto» (è per soggetto e contesto); FK del ruolo «ON DELETE CASCADE»; tre indici con nomi di prima. Tace il guard del contesto, il verbo `fn_crea_contatto`, due colonne. Esempi con `INSERT` diretti |
+| `trgfn_contatti_set_default_contatto` | riscrivere | `NEW.utility_id` e contesto `'utility'` (sono `istanza_utility_id` e `'istanza'`); «`default_context` sempre valorizzato» (solo sul default) |
+| `trgfn_soggetti_guard_soggetto_contatti` | riscrivere | Il filtro sul contesto `'soggetto'` che il corpo non ha; il nome del trigger |
+| `trgfn_indirizzi_dettaglio_normalize` | riscrivere | Descrive un corpo con `INTO STRICT` su una vista: oggi delega a `fn_build_indirizzo_normalizzato`; il ramo «civico diverso da 0» è ritirato |
+| `fn_search_indirizzi_dettaglio` | riscrivere | «Con lo stradario il pattern è ignorato» (è applicato sempre); data «28-11-2026», nel futuro |
+| `vw_indirizzi_dettaglio` | riscrivere | `indirizzo_normalizzato` «generated column» (la scrive il trigger); «join diretto», «in futuro comune e provincia» (ci sono già) |
+| `vw_indirizzi_resolved_ruolo`, `vw_indirizzi_resolved_soggetto` | riscrivere | «La vista parte dalla tabella e applica join»: sono proiezioni di `vw_indirizzi_resolved_base`; resolver con nomi che non esistono; indici «consigliati» che esistono |
+| `indirizzi`, `indirizzi_dettaglio` | ritocco | «Ogni modifica va nello storico»: su queste due tabelle lo storico nasce spento (S9). In `indirizzi_dettaglio`, `proc_bump_indirizzi_dettaglio` «apre la manutenzione» (è un UPDATE neutro: il flag lo accende solo `dbops.fn_admin_merge_stradario`). Tacciono i lucchetti sul titolare e i guard differiti degli obbligatori |
+| `indirizzi_soggetti` | ritocco | «La data corrente» (è il giorno operativo); tace il lucchetto e le madri |
+| `catasto-architettura` | ritocco | Vera nell'essenziale; sbagliati gli eventi del trigger che aggancia il parent e due tipi nel diagramma; «il legame è 1:1» (S11) |
+| `catasto_unita_immobiliari_indirizzi` | ritocco | «Al subentro la nuova istanza è collegata alla stessa unità»: il catasto si **clona** |
+| `trgfn_iu_clone_catasto_from_parent` | ritocco | Promette `CATASTO_SOURCE_NOT_FOUND`: oggi senza sorgente non fa niente |
+| `trgfn_indirizzi_soggetti_guard_tipo_indirizzo` | ritocco | Il codice errore (`E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO`), il nome e le colonne del trigger |
+| `fn_crea_indirizzo_soggetto`, `fn_crea_indirizzo_ruolo` | ritocco | «Dettaglio e libero insieme: vale il dettaglio» (vale il libero); manca il terzo motivo di rifiuto |
+| `trgfn_indirizzi_dettaglio_protect_update`, `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`, `trgfn_soggetti_ruoli_guard_indirizzi_required`, `trgfn_indirizzi_base_normalize`, `trgfn_iu_sync_catasto_unita_indirizzo`, `fn_get_or_create_indirizzo_dettaglio`, `fn_create_indirizzo`, `fn_crea_indirizzi_ruolo`, `fn_crea_indirizzi_soggetto`, `fn_crea_contatto`, `fn_indirizzo_elemento_dettaglio`, `vw_indirizzi_resolved_all`, `vw_indirizzi_resolved_base` | ritocco | Nomi di trigger, funzioni «(futuro)» che esistono, cronaca del passaggio dal backend, rami non più raggiungibili |
+
+Reggono: `trgfn_contatti_guard_contesto_soggetto`, `trgfn_indirizzi_dettaglio_guard_chiave`,
+`trgfn_indirizzi_guard_forma_libera`, `trgfn_indirizzi_sync_geoloc`, `trgfn_soggetti_guard_indirizzi_required`,
+`fn_build_indirizzo_normalizzato`, `fn_indirizzo_elemento`.
+
+### 4.4 Area D — ruoli d'impresa e banche
+
+Due fatti di famiglia. I sette guard di ruolo (`trgfn_*_guard_ruolo_*`: banca, emittente, fornitore, gestore, PSP,
+reseller, vettore) hanno lo stesso corpo e cambia solo il codice del ruolo: `script.fn_guard_soggetto_ruolo`
+**verifica soltanto**, e più pagine dicono «verificata o creata». I tre `*_normalize` di emittenti, reseller e
+vettori non fanno niente, e due pagine dicono «la generazione del codice è demandata a `config.sistema_codici`»,
+dove ci sono righe solo per fornitori e vettori.
+
+| Pagina | Giudizio | Che cosa non è vero o manca |
+| --- | --- | --- |
+| `gestori` | riscrivere | `soggetto_id` e la sua FK (non esistono); azioni delle FK inventate; in coda dà per vivo `uq_gestori_singleton`, che più su dice ritirato; «in fase di definizione», «Sviluppi futuri» |
+| `gestori_utilities` | riscrivere | `extra` (è `meta`), `uq_gest_util`, «cancellazione a cascata», guard che la tabella non ha |
+| `trgfn_soggetti_conti_bancari_guard`, `trgfn_soggetti_ruoli_conti_bancari_guard` | riscrivere | Documentano il controllo delle date e un payload che il corpo non ha più: oggi fanno solo «conto attivo» |
+| `trgfn_bank_guard_ruolo_bank_branches`, `trgfn_gestori_guard_ruolo_gestore` | riscrivere | «Verificata o creata», «registra `user_insert`»; la prima nomina la tabella `anagrafiche.bank` |
+| `vw_conti_bancari_per_ruolo` | riscrivere | Colonne `priority` e una CTE che non esistono; «ne espone uno solo» (la vista è piatta, e lo dice in testa): metà pagina è del modello di prima |
+| `fn_get_emittente_fiscale_id` | riscrivere | Regola a due livelli (sono tre, delegata a `script.fn_get_ba_emittente_sr_id`); «circa 33 funzioni» |
+| `conti_bancari` | riscrivere | «Nessuna FK» (la filiale è obbligatoria); firma di `fn_get_conto_bancario_predefinito` a due parametri (sono tre) |
+| `bank_branches` | ritocco | Datata 14 novembre: nomi di trigger e funzione sbagliati, ruolo «ISTITUTO_CREDITO» (il codice è `BANK_B`), trigger «futuri» che esistono |
+| `soggetti_conti_bancari`, `soggetti_ruoli_conti_bancari` | ritocco | La prima tace l'esclusione «un conto d'incasso, un solo soggetto», che la gemella descrive; `CURRENT_DATE` |
+| `emittenti_fiscali` | ritocco | Il codice dell'emittente non è trattato (forma, immutabilità, uso nel codice commessa); dei trigger che vietano lo spegnimento ne nomina uno |
+| `emittenti_fiscali_utilities` | ritocco | «min <= max» (il vincolo è «tutte e due o nessuna»); tace `attivo` |
+| `trgfn_sepa_mandati_guard` | ritocco | `E_DATA_ATTIVAZIONE_MANDATO` (non esiste: solleva `E_DATA_ERRATA`); nome del trigger |
+| `fornitori`, `vw_fornitori_dettaglio`, `trgfn_fornitori_gen_codice` | ritocco | Colonne citate negli esempi che non esistono; rating «0–100 o 1–5»; «non di lista» due righe sotto «sorgente della lista»; «`acquisti` conta oggi 11 oggetti» |
+| `vettori`, `trgfn_vettori_gen_codice`, `trgfn_vettori_normalize` | ritocco | «Oggi è vuota — misurato il 2026-08-21» (una fotografia); il codice del lock; «da oggi», «fin da gennaio» |
+| `resellers`, `resellers_billing_account`, `trgfn_resellers_normalize`, `trgfn_resellers_guard_ruolo_reseller`, `psp`, `trgfn_gestori_guard`, `trgfn_conti_bancari_normalize`, `trgfn_emittenti_fiscali_default_guard`, `trgfn_emittenti_fiscali_guard_ruolo_emi_fis`, `trgfn_emittenti_fiscali_normalize`, `fn_get_emittente_fiscale_pk` | ritocco | I due fatti di famiglia; vincoli e trigger taciuti; un esempio di IBAN che non passa il CHECK |
+| `trgfn_emittenti_fiscali_guard_attivo` | ritirare | L'oggetto non esiste (Q4) |
+
+Reggono: `fn_crea_emittente_fiscale`, `fn_crea_fornitore`, `fn_parametri_importo_utility`,
+`trgfn_emittenti_fiscali_default_bootstrap`, i due `regime_conferma`, `fn_check_fornitore_attivo`,
+`fn_guard_fornitore_attivo`, `trgfn_fornitori_guard_normalize`, `trgfn_fornitori_guard_ruolo_fornitore`,
+`trgfn_psp_guard_ruolo_psp`, `trgfn_resellers_guard_attivo`, `trgfn_vettori_guard_ruolo_vettore` (la migliore della
+famiglia: è il modello per le sorelle).
+
+### 4.5 Area E — accessi
+
+Il modello di prima, che più pagine ripetono: una tabella ponte `risorse_umane_auth_user` fra la risorsa e la
+credenziale, e un accesso che si spegne quando si spegne **la** veste. Oggi il ponte non esiste, la credenziale è
+accesa quando **almeno una** veste è utilizzabile, e «utilizzabile» ha una sede sola (`script.fn_veste_utilizzabile`).
+
+| Pagina | Giudizio | Che cosa non è vero o manca |
+| --- | --- | --- |
+| `risorse_umane` | riscrivere | Il ponte verso Django «tramite `risorse_umane_auth_user`»; non nomina nessuno dei trigger di oggi (identità attiva, ultimo SUPER_ADMIN, sync, notifica, blocchi di disattivazione, la validità) |
+| `trgfn_identita_digitali_sync_auth_user_active` | riscrivere | «Simmetrica al trigger su `risorse_umane_auth_user`», «al cutover diventerà l'unico», «doppia verifica con il legacy» |
+| `fn_sync_auth_user_expired` | riscrivere | Tre strati di cronaca; in coda «UNION», «solo utenti ancora attivi», «numero di utenti disattivati»: oggi è una query sola e riallinea nei due versi |
+| `fn_crea_risorsa_umana_v2` | riscrivere | Scritta come differenza dalla v1, che non esiste più; tace il rifiuto `E_RISORSA_UMANA_GIA_PRESENTE`; «post-cutover è una vista» |
+| `identita_digitali` | ritocco, largo | «Se `attivo` è false la credenziale si spegne» (solo se non resta nessuna veste utilizzabile); default `CURRENT_DATE`; il profilo SUPER_ADMIN «seed id 9100» scritto da una funzione che non esiste; trigger taciuti |
+| `fn_sync_auth_user_is_active` | ritocco | Metà pagina è cronaca; i chiamanti descritti sono quelli di prima |
+| `fn_crea_operatore_v2`, `fn_crea_auth_user` | ritocco | La storia si ferma a settembre: mancano il sesso obbligatorio, gli indirizzi, le date che vanno su rapporto e veste; `fn_crea_admin` «(futuro)» |
+| `trgfn_identita_digitali_guard_ultimo_super_admin`, `trgfn_identita_digitali_guard_coerenza`, `trgfn_risorse_umane_guard_identita_attiva`, `trgfn_risorse_umane_sync_auth_user_active`, `vw_risorse_umane_dettaglio` | ritocco | Cronaca, un id di seed, il consiglio di disabilitare il trigger, un codice errore fuori dalla tabella |
+
+Reggono: `trgfn_identita_digitali_guard_natura_credenziale`, `trgfn_risorse_umane_guard_ruolo`,
+`trgfn_risorse_umane_guard_ultimo_super_admin`, `trgfn_risorse_umane_notify_cambio_reparto`,
+`fn_notify_cambio_reparto`, `fn_crea_veste_portale`, `fn_accendi_veste`, `fn_provisiona_dati_di_sviluppo`,
+`vw_accessi_altri`, `vw_accessi_sistema`.
+
+## 5. Gli oggetti senza pagina
+
+56 oggetti del catalogo non hanno una pagina `manual/` (uno è una vista, gli altri funzioni). Si raccolgono in
+famiglie: la forma della pagina la decide Q2.
+
+| Area | Famiglia | Oggetti |
+| --- | --- | --- |
+| A | **Il cambio di natura del soggetto** (nove motivi di rifiuto, il picker, i guard) | `fn_check_cambio_natura_soggetto`, `trgfn_soggetti_guard_cambio_natura`, `fn_nature_proponibili_soggetto`, `fn_soggetto_primo_documento`, `trgfn_soggetti_guard_obbligatori_ruoli`, `trgfn_soggetti_guard_forma_giuridica_natura` |
+| A | Le regole per natura sul soggetto | `trgfn_soggetti_guard_sesso_policy`, `trgfn_soggetti_guard_regime_pa`, `fn_regime_pa_campo_non_ammesso`, `fn_soggetto_id_fiscale_bloccato` |
+| A | **I dati societari: i verbi** | `fn_scrivi_dati_societari` (la porta di scrittura), `fn_elimina_dati_societari`, `fn_check_elimina_dati_societari`, `fn_forma_giuridica_ammessa`, `trgfn_dati_societari_guard_canale_fe` |
+| A | Il titolo IVA ammesso dalla natura | `trgfn_soggetti_titoli_iva_guard_tipo_soggetto`, `fn_titolo_iva_vigente`, `fn_titolo_iva_ammesso`, `fn_titoli_iva_non_ammessi`, `fn_titoli_iva_non_ammessi_conta`, `fn_titolo_iva_vigente_su_natura_esiste` |
+| B | Il tipo d'indirizzo ammesso (predicati e check) | `fn_tipo_indirizzo_ammesso_per_natura`, `fn_tipo_indirizzo_ammesso_per_ruolo`, `fn_check_tipo_indirizzo_soggetto`, `fn_check_tipo_indirizzo_soggetto_su_contesto`, `fn_check_tipo_indirizzo_ruolo`, `fn_check_tipo_indirizzo_ruolo_su_contesto` |
+| B | Il picker dei tipi d'indirizzo | `fn_tipi_indirizzo_proponibili_soggetto`, `_natura`, `_ruolo`, `_tipo_ruolo` |
+| B | Gli indirizzi obbligatori | `fn_indirizzi_obbligatori_ruolo`, `fn_tipo_indirizzo_obbligatorio_per_ruolo`, `fn_indirizzi_obbligatori_mancanti_ruolo`, `_soggetto`, `_soggetto_e_ruoli`, `fn_guard_indirizzi_obbligatori_ruolo`, `_soggetto`, `trgfn_indirizzi_guard_obbligatori_ruolo`, `trgfn_indirizzi_soggetti_guard_obbligatori_soggetto`, `fn_nomi_tipo_indirizzo_richiesto`, `fn_indirizzi_con_obbligatori` |
+| B | **La copia di un indirizzo** (i verbi del drawer) | `fn_copia_indirizzo_soggetto`, `fn_copia_indirizzo_ruolo`, `fn_copia_indirizzo_soggetto_su_ruolo`, `fn_crea_copie_indirizzo_ruolo`, `fn_indirizzo_elemento_da_riga`, `fn_check_copia_indirizzo_soggetto`, `vw_indirizzi_soggetti_azioni` |
+| C | La chiave unica del cliente manuale | `fn_guard_clienti_chiave_unica_di`, `fn_guard_clienti_chiave_unica_gestore_globale`, `trgfn_clienti_guard_chiave_unica`, `trgfn_efba_guard_clienti_chiave`, `trgfn_istanze_utilities_guard_clienti_chiave` |
+| C | L'occupazione del PDP | `fn_check_pdp_occupato` |
+| D | Il codice dell'emittente | `trgfn_emittenti_fiscali_guard_codice_forma` |
+
+Due famiglie già documentate chiedono lo stesso trattamento, perché oggi la stessa regola è ripetuta, e in parte
+contraddetta, in più pagine: nell'area E «la sincronizzazione dell'accesso» (tre trigger, la funzione, il batch) e
+«l'ultimo SUPER_ADMIN» (quattro guard e la check); nell'area D i sette guard di ruolo.
+
+## 6. Le guide
+
+| Guida | Data | Che cosa non è vero o manca |
+| --- | --- | --- |
+| `soggetti-e-ruoli-anagrafici` | 9 ottobre 2026 | Ferma a prima dei cantieri su dati fiscali e societari, titoli IVA per natura, identificativo fiscale bloccato, cambio di natura. «REFERENTE (RE)» (`RE` è il reseller, e non c'è un ruolo referente); §5a-bis «l'emittente compare in un solo posto» (anche in `soggetti_titoli_iva`, `emittenti_fiscali_utilities`, `categorie_clienti_listini`); §5b `soggetti_ruoli.valido_dal/valido_al` (colonne che non esistono); «Vincoli e trigger» con quattro guard di `soggetti` su dodici; «in qualsiasi ordine» grazie ai trigger differiti (i guard dei dati societari sono immediati); l'ER con tipi e colonne di prima; i conti bancari «legati al ruolo» |
+| `generazione-cliente` | 14 ottobre 2026 | La creazione attribuita a un `ClienteService` Django «previsto»: dal 18 ottobre la sede è `fn_crea_cliente` con `fn_crea_billing_account`, e la guida non li nomina. L'ordine dei trigger su `clienti` è sbagliato; lo stato del PDP è «AT→ATTIVO, CH→DISPONIBILE»; «l'istanza eredita indirizzo e utility dal PDP»; «il suo unico cliente» |
+| `risorse-umane-e-accessi` | 25 ottobre 2026 | `DISABILITATO` descritto come veste viva in cinque punti, contro altri due punti della stessa guida e contro il CHECK che lo rifiuta; l'assunzione in quattro passi di scrittura diretta (nessuno dei quattro verbi dell'area è nominato); il trigger di sync «su UPDATE di `attivo`» (cinque colonne); un nome di trigger; il batch «ogni giorno alle 06:00» (S7); mancano la regola «persona o macchina», lo stato della veste, le liste degli accessi |
+| `gestione-dei-contatti` | 19 settembre 2026 | «Un default diverso per il ruolo CLIENTE», «un solo default per contesto (soggetto, ruolo, istanza)»: la chiave è soggetto più contesto (S8). Mancano il guard del contesto e il verbo `fn_crea_contatto`, nati dopo; gli esempi sono `INSERT` diretti; l'ordine di `fn_get_contatti` |
+| `gestione-conti-bancari` | 19 settembre 2026 | I guard dei legami «verificano la coerenza delle date» (è del guard generico); manca l'esclusione «un conto d'incasso, un solo soggetto», su cui poggia il perimetro degli incassi; «non si disattiva se ha legami **attivi**» (i legami non hanno `attivo`: basta che esistano); «valido oggi» (giorno operativo); l'esempio «una sostituzione pianificata» viola l'indice unico del predefinito |
+| `gestione-degli-indirizzi` (a campione) | 20 novembre 2026 | §Storicizzazione «tutte le modifiche sono tracciate» (S9); `proc_bump_indirizzi_dettaglio` come riclassificazione; «27 colonne» (26); un esempio di indirizzo normalizzato in un formato che non è quello prodotto. Le regole R1-R7 reggono |
+| `gestione-delle-istanze-utility` (a campione) | 4 novembre 2026 | «Ogni modifica viene storicizzata» (`istanze_utilities` non ha storico); «le utility devono coincidere» e «il PDP deve essere DISPONIBILE» al collegamento (nessun oggetto lo controlla lì: la utility si confronta alla nascita del cliente); «l'istanza non cambia PDP» (il lock non copre `pdp_id`); due relazioni dell'ER; «il vincolo 1 istanza = 1 cliente» in chiusura |
+| `architettura-multi-face-auth` (sezioni su `anagrafiche`) | 25 ottobre 2026 | §3.1 «la veste nasce spenta» come regola generale (vale per l'operatore; il portale ammette la veste accesa); §9 manca il trigger su `risorse_umane` fra chi chiama la sync |
+
+## 7. Le segnalazioni di codice
+
+Leggendo le pagine contro i corpi sono emersi punti in cui il **codice** non fa ciò che è scritto o deciso, oppure
+il modello ammette un caso che nessuno gestisce. Non sono ancora difetti: sono letture del corpo, e ognuna va
+vagliata (Q1). ✔︎ = riletta sul catalogo dalla sessione che coordina; le altre sono lette dall'agente dell'area e
+vanno provate con un caso costruito prima di scriverne la correzione.
+
+| # | Dove | Che cosa |
+| --- | --- | --- |
+| S1 ✔︎ | `clienti.data_chiusura` | **Due significati.** `trgfn_clienti_set_periodo` calcola `[attivazione, chiusura)`: il giorno di chiusura è fuori. I COMMENT di `data_chiusura` («inclusiva») e di `periodo` («`data_chiusura+1`») dicono il contrario. `script.fn_subentro_cliente` chiude il cliente uscente a «attivazione nuova − 1 giorno», che sotto la regola del trigger lascia un giorno senza cliente sul PDP; `script.fn_disdetta_cliente` scrive la data di cessazione così com'è. Da leggere con `sviluppo-gestione-clienti-v2` |
+| S2 ✔︎ | `fn_guard_ba_gestore_globale_storia` | Sceglie i BA da controllare con «ha fatture o commesse» e `LIMIT 1`, poi delega a `fn_guard_ba_cambio_emittente`, che dal 31 agosto decide su «documento numerato di qualunque famiglia». Le due definizioni non coincidono: un BA con soli ordini o DDT numerati non viene scelto; un BA con una fattura in bozza viene scelto, la delegata non solleva, e gli altri non si guardano |
+| S3 ✔︎ | `vw_indirizzi_resolved_base` | Il join con `script.vw_indirizzo_completo` è sul solo `comune_id`, e quella vista ha una riga per **via**: un indirizzo libero col comune valorizzato esce una volta per ogni via del comune. Da provare con un caso |
+| S4 ✔︎ | `fn_crea_soggetto_pf`, `fn_crea_soggetto_pg` | Il pre-controllo «CF già presente» confronta `id_fiscale_univoco_cf_piva` col solo CF (o la sola P.IVA), ma la colonna generata vale «CF spazio P.IVA» quando ci sono tutti e due e sono diversi. Anche l'indice unico è sulla colonna generata: il modello ammette lo stesso CF su due soggetti con P.IVA diverse. Da decidere se è voluto |
+| S5 | La sincronizzazione di `is_active` | Tre casi che il trigger non copre e che riallinea solo il batch: il cambio di `auth_user_id` di una veste (la credenziale di prima resta com'era); il cambio di `soggetto_ruolo_id` della risorsa; lo spegnimento del soggetto (`fn_veste_utilizzabile` legge `soggetti.attivo`, nessun trigger su `soggetti` chiama la sync) |
+| S6 | `fn_crea_risorsa_umana_v2` | `p_attivo DEFAULT true` contro la regola «la veste nasce spenta» (la funzione gemella del portale non ha default apposta); `p_is_super_admin = true` senza credenziale è ignorato in silenzio |
+| S7 ✔︎ | Il job `sync_auth_user_expired_daily` | ~~Da dire quale dei due è il progetto~~. **Non è un difetto di codice: è voluto** (letto il 2026-11-22). Dal 2026-10-09 il job ha una sveglia oraria al minuto 10, perché la funzione è idempotente e una scadenza si riallinea entro l'ora invece che il mattino dopo; lo stesso changeSet ha portato `chiusura_scadenze_daily` alla sveglia oraria. Stantii sono guida, pagina e COMMENT, che dicono ancora «ogni giorno alle 06:00»: si correggono nel giro 0e. Il nome del job, che dice «daily», resta |
+| S8 | I contatti | Il default è unico per (soggetto, contesto) e non scende al ruolo né all'istanza: due ruoli dello stesso soggetto condividono un default. Togliere il flag all'unico default lascia il contesto senza; nessuna promozione alla cancellazione. Un contatto con l'istanza e senza il ruolo è ammesso e non ha unicità per tipo. `trgfn_soggetti_guard_soggetto_contatti` chiede in pratica «almeno un contatto», di qualunque contesto. `script.fn_get_contatti` scarta i contatti con un'unità organizzativa quando il parametro non è passato; `fn_get_contatto_default` fra tipi diversi ordina per id |
+| S9 ✔︎ | Lo storico degli indirizzi | `storicizza` ha default `false` su `indirizzi` e `indirizzi_dettaglio` (`true` sulle altre tabelle dello schema che l'hanno). ~~Voluto~~ → ⚠️ Q7 riaperta: R-BE5 (§9.1) smentisce la premessa, Tid sceglie lo storico **continuo**, strada (b) (§10). Come lavora oggi il DB (`script.trgfn_storico_generic`): una riga con `storicizza = true` lascia nello storico la versione precedente, poi il trigger rimette il flag a `false`, perché le due tabelle non sono in `config.storico_set_storicizza`; nessun oggetto del DB lo riaccende. Lo storico è quindi «a richiesta di chi scrive». Tid ricorda che le scritture dell'app passano `true`: se è così, ogni modifica fatta dall'app lascia la sua traccia. Le pagine scrivono la regola del DB e il ruolo di chi scrive, senza promettere una traccia continua; R-BE5 conferma il lato applicativo |
+| S10 | `fn_search_indirizzi_dettaglio` | L'estensione del civico si confronta col valore grezzo (`'A'` non trova `/A`); `RAISE EXCEPTION` diretto invece di `fn_log_and_raise_error`; `p_limit` senza tetto |
+| S11 | Il catasto | «Un'istanza, un catasto» vale solo per la strada della clonazione: nessun UNIQUE su `istanze_utilities.catasto_unita_immobiliare_id` |
+| S12 ✔︎ | I reseller | `resellers.codice` è NOT NULL e nessun trigger lo genera (è la lacuna che i vettori avevano fino ad agosto). `resellers_billing_account` non ha né UNIQUE né esclusione: due reseller sullo stesso BA nello stesso periodo sono ammessi, e la colonna generata `validita` non è usata da nessun vincolo. `trgfn_resellers_guard_attivo` è scritto a mano perché la FK punta a `soggetti_ruoli`, e manca il verso opposto (un legame verso un reseller spento) |
+| S13 | `psp` | Unica specializzazione senza blocco della cancellazione e senza lock del codice; nessuna FK punta alla tabella, quindi `psp.attivo` non ferma niente |
+| S14 | `pdp.cliente_id` | COMMENT e `vw_pdp` la presentano come «cliente corrente». Da verificare chi la scrive: l'unica funzione del DB che aggiorna `pdp` è `trgfn_clienti_sync_stato_pdp` (R-BE2 per il lato applicativo). Sullo stesso `pdp` due presìdi dell'immutabilità, di cui il secondo non parla mai. ⚠️ Precisato nel giro 0a (§12.2): `trgfn_clienti_sync_stato_pdp` scrive solo `stato_pdp_id`, quindi nessuna funzione del DB scrive `cliente_id`; e il presidio muto è il **lock delle colonne** (`trg_pdp_a10_lock_columns_upd`), che per nome viene dopo `trg_pdp_a10_guard_upd`, non il guard |
+| S15 | Quattro trigger che non fanno niente | `trgfn_istanze_utilities_normalize`, `trgfn_emittenti_fiscali_normalize`, `trgfn_resellers_normalize`, `trgfn_vettori_normalize` sono `RETURN NEW` e scattano a ogni scrittura |
+| S16 | Le viste di dettaglio delle istanze | `vw_istanze_dati_precontrattuali_dettaglio` mostra come utility della riga quella del PDP: su un'istanza con più utility tutte le righe mostrano la stessa. `vw_indirizzi_dettaglio` ha un join interno che fa sparire i civici di una via che non si risolve |
+| S17 | I clienti | Un cambio di `istanze_utilities.pdp_id` dopo la nascita del cliente non arriva al cliente fino alla sua prossima scrittura (la colonna dell'istanza non è bloccata). `fn_crea_cliente` rifiuta la chiave sconosciuta, `fn_update_cliente` la ignora in silenzio |
+| S18 | I conti bancari | «Il conto è attivo» sta in due sedi (il guard `BEFORE` e il trigger differito dell'automazione ATTIVO, che così non parla mai per primo). «Un conto predefinito non si blocca» la tiene solo il backend. `paese` non si ricalcola al cambio di IBAN. `emittenti_fiscali_utilities.utility_id` è `bigint`, `config.utilities.id` è `integer` |
+| S19 | Le FK geografiche | `ON DELETE SET NULL` su `indirizzi`, nessuna azione su `indirizzi_soggetti`: gemelle che divergono, e il SET NULL urterebbe il CHECK della forma libera |
+| S20 | `trgfn_soggetti_guard_cf_piva_obbligatori` | Guarda solo `IS NULL`: una stringa vuota passa la presenza |
+| S21 | Forma | Trigger senza fascia nel nome (`trg_soggetti_normalize_ins_upd`, `trg_soggetti_valida_cf_piva_dispatch_ins_upd`, `trg_dati_societari_guard_tipo_soggetto_ins_upd`, tre su `billing_account`); variabili senza `%TYPE` (`trgfn_gestori_guard`, `trgfn_risorse_umane_guard_ruolo`, `trgfn_soggetti_valida_cf_piva_dispatch`); `zeroerp_app` ha il DML sulla vista `vw_risorse_umane_dettaglio`; il codice `CODICE_NON_MODIFICABILE` senza prefisso è ancora in `config.messaggi_errore` |
+| S22 | I nomi `_v2` | `fn_crea_operatore_v2` e `fn_crea_risorsa_umana_v2` non hanno più una versione accanto: è un nome rimasto. Caso analogo `fn_sync_auth_user_expired`, che ora anche riaccende |
+| S23 | Lo strumento della doc | `scripts/gen_db_docs.py` non mostra i vincoli `EXCLUDE` fra i vincoli della scheda (`ex_clienti_no_overlap_stesso_pdp`, `ex_categ_cli_listini_no_overlap`): compaiono solo fra gli indici |
+
+I rami irraggiungibili di `trgfn_clienti_set_parent_istanza` non sono qui: sono il §2.1 di
+[brief-db-catena-istanze-pdp](brief-db-catena-istanze-pdp.md).
+
+## 8. I metadati
+
+Stato dei COMMENT dello schema al 2026-11-22 (catalogo di dbdev). Si riscrivono interi, secondo
+`linee-guida-sql.md` §5d, nel giro dei metadati.
+
+**Senza COMMENT.** 7 funzioni su 195 (le cinque `trgfn_*_gen_codice`, `trgfn_iu_clone_catasto_from_parent`,
+`trgfn_indirizzi_dettaglio_protect_update`); 9 viste su 19; la tabella `risorse_umane`; 166 colonne su 551, più
+fitte in `soggetti` (20 su 27), `indirizzi_dettaglio` (17 su 21), `risorse_umane` (12 su 16), `billing_account` (12
+su 19), `indirizzi` (11 su 20), `soggetti_titoli_iva` (10 su 23); 273 trigger su 328.
+
+**Con marcatori** (nomi di brief, date, id di changeSet, «§», «Tid»): 97 funzioni su 195, 9 tabelle, 4 viste, 23
+colonne.
+
+**Dicono il falso.**
+
+| # | Dove | Che cosa |
+| --- | --- | --- |
+| M1 | `clienti.data_chiusura`, `clienti.periodo` | «Inclusiva», «`data_chiusura+1`»: il corpo calcola la chiusura esclusa (S1) |
+| M2 | `clienti.pdp_id` | «→ `config.pdp.id`»: la tabella è `anagrafiche.pdp` |
+| M3 | Tabella `billing_account` | «Storico dei codici cliente definitivi per utility» |
+| M4 | Tabella `identita_digitali`, colonna `auth_user_id` | «Una sola attiva», «mapping 1:1»: gli indici unici sono per (credenziale, veste) |
+| M5 | Tabella `emittenti_fiscali` | «Preferenze di numerazione, IBAN predefinito»: nessuna colonna del genere |
+| M6 | Tabelle `vettori`, `resellers` | Ruolo «RES»: i codici sono `VT` e `RE`; quello dei vettori è copiato dai reseller |
+| M7 | Tabella `soggetti_titoli_iva_ambiti` | «A spegnere il titolo c'è `attivo`»: con righe di ambito la disattivazione è rifiutata |
+| M8 | Tabella `pdp` | «Storicizzazione obbligatoria»: `storicizza` è un booleano che si può spegnere; il NOT NULL di `meta` si chiama ancora `pdp_extra_info_not_null` |
+| M9 | `fn_guard_ba_gestore_globale_storia`, i quattro guard dell'albero | «Fatture o commesse» (S2); in `trgfn_efba_guard_albero_emittente` «TRE movimenti» contro «Movimento 4» nel corpo |
+| M10 | `fn_crea_cliente` | Attribuisce il rifiuto «la utility richiede il PDP» al trigger sbagliato |
+| M11 | `fn_crea_risorsa_umana_v2` | «Body identico a v1 salvo…» |
+| M12 | `trgfn_emittenti_fiscali_normalize`, `trgfn_resellers_normalize` | «Codice demandato a `config.sistema_codici`»: nessuna riga per i due |
+| M13 | `trgfn_billing_account_guard_normalize`, `trgfn_conti_bancari_normalize` | «Normalizza il codice», «aggiorna l'audit»: i corpi non lo fanno |
+| M14 | `trgfn_bank_guard_ruolo_bank_branches` e gli altri guard di ruolo | Tabella `anagrafiche.bank`; nei corpi «ID vero (nuovo o esistente)», «creazione/verifica» |
+| M15 | `trgfn_soggetti_titoli_iva_movimenti_accumulatore`, `trgfn_soggetti_titoli_iva_guard_tipo_soggetto` | Citano come vive `fn_consuma_plafond_titolo_iva` e `trgfn_soggetti_guard_titoli_iva_ammessi`, che non esistono |
+| M16 | `trgfn_soggetti_guard_sesso_policy`, `trgfn_soggetti_guard_forma_giuridica_natura`, `fn_scrivi_dati_societari` | Descrivono un cambio di natura fra macro-tipologie, oggi vietato |
+| M17 | `fn_lookup_utilities_per_ba`, `fn_parametri_importo_utility`, `fn_guard_istanza_ba_emittente`, `fn_indirizzo_elemento`, i due `fn_tipo_indirizzo_ammesso_*` | Elenchi di lettori e di chiamanti non più veri |
+| M18 | `script.fn_veste_utilizzabile` | «`CURRENT_DATE`»: il corpo usa il giorno operativo. Fuori schema, segnalato |
+
+## 9. Ricadute su BE e FE
+
+Il giro 0 non cambia nessun contratto: non ci sono ricadute da sviluppare. Ci sono quattro domande di censimento,
+che la sessione DB non può chiudere perché non legge `backend/`, e la cui risposta decide che cosa scrivono le
+pagine:
+
+| # | Domanda al team BE/FE | Serve a |
+| --- | --- | --- |
+| R-BE1 | Quali endpoint, service o liste leggono `anagrafiche.vw_risorse_umane_dettaglio`, `vw_pdp` e `vw_clienti_codice_ba`? Nel DB nessuna vista né funzione le nomina | Dire nella pagina chi le legge, o proporne il ritiro |
+| R-BE2 | Il backend scrive `anagrafiche.pdp.cliente_id`? | S14 |
+| R-BE3 | Chi chiama `fn_check_fornitore_attivo` e `fn_guard_fornitore_attivo`? Nel DB nessun corpo plpgsql le nomina | Dire nella pagina i lettori veri |
+| R-BE4 | La regola «un conto predefinito non si blocca» è solo nel service dei conti bancari? In quali punti | S18: se diventa una regola del DB, il brief dirà chi cambia per primo |
+| R-BE5 | Ogni scrittura dell'app su `anagrafiche.indirizzi` e `anagrafiche.indirizzi_dettaglio` (UPDATE e DELETE, compresi i verbi di copia e le madri) passa `storicizza = true`? Quali no. E prima di una DELETE l'app riscrive la riga con `true`? Il DB guarda il flag *salvato*, che dopo ogni modifica è `false` (§14.2) | S9, Q7: la guida degli indirizzi dirà quali modifiche lasciano traccia |
+
+
+### 9.1 Le risposte del team BE/FE — 2026-11-22
+
+Censimento in sola lettura su `backend/`, `frontend/src` e i CSV di `80_data` (sessione BE, `dev/backend-tid`).
+I test sono contati a parte: nessuno nomina direttamente gli oggetti delle domande.
+
+**R-BE1 — I lettori delle tre viste.**
+
+| Vista | Lettori | Esito per la pagina |
+| --- | --- | --- |
+| `vw_risorse_umane_dettaglio` | Due, di produzione. (1) Il lookup delle risorse umane: `anagrafiche_repository._risorse_umane_lookup`, `GET /api/v1/anagrafiche/risorse-umane/lookup/`, usato dal drawer della commessa. (2) La testata della commessa, per il nome del responsabile: `commesse_repository.get_commessa_testata`, `GET /api/v1/vendite/commesse/{id}/stato/` (anche in risposta alla PATCH della testata) | La pagina nomina i due lettori |
+| `vw_pdp` | Nessuno: né il backend, né il frontend, né il catalogo delle liste (`ui/*.csv`) | Candidata al ritiro |
+| `vw_clienti_codice_ba` | Nessuno per nome nel backend, ma **è viva**: è l'`entita_tabella` del ruolo CLIENTE in `config.tipi_ruoli`, letta in modo dinamico da `script.fn_get_entita_ruolo_detail`, a sua volta chiamata da `script.fn_get_search_detail`. Il percorso dell'app: `SearchRepository.get_search_detail` → `GET /api/v1/core/search/{id}/detail/` → il dettaglio della ricerca universale nel FE | La pagina nomina il lettore dinamico: **non** è da ritirare |
+
+**R-BE2 — Il backend scrive `anagrafiche.pdp.cliente_id`?** No. Il backend non scrive mai su
+`anagrafiche.pdp`, né direttamente né attraverso una funzione del DB. Fa solo letture (`LEFT JOIN
+anagrafiche.pdp` nei repository di istanze utility, billing account e pagamenti), e nessuna legge
+`pdp.cliente_id`. `fn_crea_cliente` non riceve il PDP nei suoi campi. La tabella non è in
+`config.tabelle_gestibili`, quindi il pannello generico non la scrive. Lato DB l'unico che la scrive
+è `trgfn_clienti_sync_stato_pdp`, e scrive solo `stato_pdp_id`.
+
+**R-BE3 — Chi chiama `fn_check_fornitore_attivo` e `fn_guard_fornitore_attivo`?** Nessuno: né il
+backend, né il frontend, né il DB, né i pgTAP. In `backend/` c'è solo un commento in
+`portale/services/invito_portale_service.py`, il cui codice fa un controllo suo (`E_FORNITORE_NON_TROVATO`)
+senza chiamarle. `E_FORNITORE_NON_ATTIVO` vive solo nei cataloghi errori. Candidate al ritiro.
+
+**R-BE4 — «Un conto predefinito non si blocca».** Nel BE sta **solo** in
+`ContiBancariService._guard_predefinito_bloccato`. Sullo stato risultante (in update, il payload sopra
+le bandiere correnti) rifiuta `predefinito AND bloccato` col codice **generico** `E_ANAG_VALIDAZIONE`
+(400), non con un codice suo. Lo chiamano quattro punti: crea e aggiorna del conto del soggetto, crea
+e aggiorna del conto del ruolo. Non ci sono altre strade di scrittura su
+`soggetti_conti_bancari`/`soggetti_ruoli_conti_bancari`, che non stanno in `tabelle_gestibili`. Nel FE
+`ContoBancarioForm.vue` rende le due spunte alternative (spuntarne una toglie l'altra). La chiave i18n
+`anagrafiche.conti_bancari.bloccato_predefinito_hint` esiste ma nessun componente la usa. A DB non c'è
+nessun vincolo. **Se la regola passa al DB (S18):** serve un codice errore suo, con la policy
+generata e il messaggio di ripiego; cambia per primo il DB, poi il BE ritira il guard e il codice
+generico.
+
+**R-BE5 — Le scritture sugli indirizzi passano `storicizza = true`?** **No, nessuna.** Il flag non
+compare in nessuna scrittura dell'app su queste due tabelle. Né le whitelist delle colonne
+(`INDIRIZZO_RUOLO_UPDATE_COLS`, le colonne ammesse di `update_indirizzo_dettaglio`) né le funzioni
+chiamate lo portano.
+
+| # | Scrittura | Percorso dell'app | `storicizza` |
+| --- | --- | --- | --- |
+| 1 | UPDATE `indirizzi` | `soggetti_repository.update_indirizzo_ruolo`, PATCH dell'indirizzo del ruolo | no |
+| 2 | DELETE `indirizzi` | `soggetti_repository.delete_indirizzo_ruolo`, chiamata **dalla view** senza service | no |
+| 3 | DELETE + INSERT `indirizzi` | `soggetti_service.replace_indirizzo_ruolo`, PUT dell'indirizzo del ruolo | no |
+| 4 | UPDATE `indirizzi_dettaglio` | `indirizzi_repository.update_indirizzo_dettaglio` (`geo_service.update_indirizzo`), PATCH dell'indirizzo | no |
+| 5 | INSERT `indirizzi` | le madri e i verbi di copia (`fn_crea_indirizzo_ruolo`, `fn_crea_indirizzi_ruolo`, `fn_copia_indirizzo_*`, `fn_crea_indirizzo_soggetto`, `fn_crea_cliente`/`fn_crea_fornitore`) | non serve all'INSERT; la riga nasce col default `false` |
+| 6 | UPDATE `indirizzi_dettaglio` **nascosto** | `fn_get_or_create_indirizzo_dettaglio` (la riattivazione `attivo = true`), raggiunta dalle madri e dalle copie attraverso `fn_indirizzo_elemento_dettaglio` e `fn_create_indirizzo` | no |
+
+Non verificate: le cancellazioni a cascata dovute alla cancellazione di un soggetto o di un ruolo.
+Fuori dall'app, `dbops.fn_admin_merge_stradario` e `maintenance.proc_bump_indirizzi_dettaglio`: il
+backend non le chiama.
+
+⚠️ **R-BE5 smentisce la premessa di Q7.** La decisione «voluto» (§10) si appoggiava al ricordo che le
+scritture dell'app passino `true` (S9). Non lo fanno: oggi **nessuna modifica a un indirizzo fatta
+dall'app lascia traccia nello storico**. Tid ha riaperto Q7 e l'ha decisa di nuovo: strada (b) (§10).
+
+Le ricadute dei giri di codice, se nascono, si scrivono qui giro per giro, come nei brief precedenti.
+
+## 10. Le decisioni di Tid
+
+| # | Domanda | Proposta |
+| --- | --- | --- |
+| Q1 | **Il perimetro.** Questo brief tiene solo la documentazione, oppure anche i giri di codice che nascono dal vaglio di §7 e il giro dei metadati di §8? | Come le revisioni precedenti: tutto qui, in giri successivi al giro 0, ciascuno col via. Le segnalazioni che toccano un brief aperto (S1 con la gestione clienti, il parent con la catena delle istanze) vanno là |
+| Q2 | **Gli oggetti senza pagina.** Una pagina per oggetto, oppure un testo solo per famiglia? | Un blocco comune per famiglia (`_<famiglia>.md`, come prevede lo standard) che racconta la regola una volta, e per ogni oggetto una pagina corta con cornice e Scopo che lo include: così ogni scheda ha la sua pagina e l'indice la sua descrizione, e la regola ha una sede sola. Lo stesso per le tre famiglie già documentate di §5 |
+| Q3 | **`catasto-architettura`.** Dove va il racconto del flusso del catasto? | Una guida (`guide/catasto-delle-istanze`): è un flusso fra più tabelle e due schemi. La pagina della tabella diventa corta e rimanda lì; il link di `generazione-cliente` si aggiorna |
+| Q4 | **`trgfn_emittenti_fiscali_guard_attivo`.** La pagina di un oggetto che non c'è più | Si ritira; «dove vive oggi la regola» scende nella pagina `emittenti_fiscali` |
+| Q5 | **Le guide.** Quali entrano nel giro 0 | Le cinque dello schema per intero, ciascuna con la sua area; le tre toccate solo nei punti di §6 |
+| Q6 | **L'ordine e il passo.** Un'area per sessione, nell'ordine C, A, B, D, E | Come in §2. La rigenerazione della doc dopo ogni area, non alla fine |
+| Q7 | **Lo storico degli indirizzi (S9).** `storicizza` spento su `indirizzi` e `indirizzi_dettaglio` è voluto? | Serve prima del giro 0c: se è voluto la pagina dice «a richiesta» e la guida si corregge; se non lo è, è un difetto e la pagina lo porta in «Che cosa oggi non copre» |
+| Q8 | **Il batch degli accessi (S7).** Giornaliero alle 06:00 o ogni ora? | Serve prima del giro 0e, per lo stesso motivo |
+
+**Decise da Tid il 2026-11-22.** Q1-Q6 come proposte, con una precisazione su Q1: prima si chiude tutto il giro 0
+(documentazione), e i giri che cambiano il comportamento vengono per ultimi. Q7: voluto (S9) — ⚠️ **riaperta e
+decisa di nuovo il 2026-11-22, vedi sotto**. Q8: Tid non ricordava
+se fosse una scelta dello sviluppo; letto nel changelog, è voluto dal 2026-10-09 (S7), quindi si corregge la
+documentazione e non il job.
+
+**Q7 riaperta — Tid, 2026-11-22: strada (b), le modifiche agli indirizzi lasciano traccia.** La prima
+risposta («voluto») si appoggiava al ricordo che le scritture dell'app passino `storicizza = true`:
+R-BE5 (§9.1) lo smentisce, nessuna lo fa. Oggi nessuna modifica a un indirizzo lascia traccia.
+Decisione: lo storico di `indirizzi` e `indirizzi_dettaglio` diventa **continuo**, come quello di
+`indirizzi_soggetti` e di `soggetti`, con la garanzia nel DB e non nei cinque punti del BE (che
+dimenticherebbero il prossimo percorso di scrittura, e non coprono la riattivazione dentro
+`fn_get_or_create_indirizzo_dettaglio`). **Richiesta al team DB**, come giro di codice (in coda, Q1):
+le due tabelle in `config.storico_set_storicizza`, e il default di `storicizza` allineato alle altre
+tabelle dello schema, più le righe esistenti; la forma la decide il team DB. **Ricadute BE:** nessuna
+attesa; il BE non passa il flag. Il giro 0c scrive le pagine e la guida col comportamento di oggi
+(«nessuna traccia») in «Che cosa oggi non copre», col rimando a questo giro. ✅ **Fatto (sessione DB,
+2026-11-22, dopo il merge della PR #204):** il giro 0c, committato prima della risposta, scriveva «È voluto»;
+corretti `manual/indirizzi.md`, `manual/indirizzi_dettaglio.md` («Che cosa oggi non copre») e la guida
+`gestione-degli-indirizzi` §Storicizzazione. ✅ **Tid, 2026-11-22: anche `config.stradario`**, che aveva la
+stessa regola «a richiesta»: lo storico continuo vale per tutte e tre le tabelle, e il giro di codice di Q7 porta
+anche lei in `config.storico_set_storicizza`, col default e le righe esistenti. Quali scritture dello stradario
+passano oggi il flag non è censito (R-BE5 copriva le due tabelle degli indirizzi): con la regola nel DB non serve.
+⚠️ La pagina `config/manual/stradario.md` dice ancora «il front-end dovrà sempre impostare a true»: è fuori da
+questa revisione (schema `config`), si corregge col giro di codice.
+
+## 11. Alla chiusura
+
+* Ogni pagina `manual/` passa i sei controlli di `standard-guide.md` con la data aggiornata; nessun link `/dbzero/…`
+  o `/guide/…` morto; nessun nome citato che il catalogo non conosce.
+* Ogni oggetto dello schema ha la sua pagina, e l'indice dello schema non porta più marcatori come descrizioni.
+* Le sezioni «⚠️ Che cosa oggi non copre» rimaste aperte hanno ciascuna un giro o un brief che le chiude.
+* Le segnalazioni di §7 sono tutte vagliate: difetto con il suo giro, oppure voluta e scritta come tale nella
+  pagina.
+* Il brief va in `work-done/` quando i giri sono applicati e le domande R-BE hanno risposta.
+
+## 12. Giro 0a — l'area C, 2026-11-22 (scritto, committato)
+
+L'ha scritto la sessione DB col via di Tid, con cinque agenti per gruppi di oggetti (clienti e categorie; la chiave
+unica del cliente manuale; il billing account; l'azienda del billing account; istanze, PDP e dati precontrattuali) e
+uno per le guide. Le pagine sono lette dai corpi del catalogo di dbdev (`pg_get_functiondef`, `pg_get_triggerdef`,
+`pg_get_constraintdef`, `pg_policy`), dalle schede auto-generate e dai pgTAP. Descrivono il comportamento di oggi:
+ogni difetto sta al presente nella sezione «⚠️ Che cosa oggi non copre» della pagina, senza numeri né nomi di brief.
+
+### 12.1 Che cosa è scritto
+
+* **Le 57 pagine esistenti dell'area C**, tutte nella cornice. Riscritte dal corpo quelle che §4.1 dava da
+  riscrivere, e altre che erano nel formato vecchio pur reggendo nel contenuto (`trgfn_billing_account_guard_admin_globale`,
+  `trgfn_billing_account_link_ef`, `trgfn_istanze_utilities_require_utility_dichiarata`, `categorie_clienti`).
+* **Sei pagine nuove:** `fn_check_pdp_occupato` e le cinque della chiave unica (`fn_guard_clienti_chiave_unica_di`,
+  `fn_guard_clienti_chiave_unica_gestore_globale`, `trgfn_clienti_guard_chiave_unica`, `trgfn_efba_guard_clienti_chiave`,
+  `trgfn_istanze_utilities_guard_clienti_chiave`). Ogni oggetto dell'area C ha ora la sua pagina.
+* **Due blocchi comuni** (Q2): `anagrafiche/_chiave-unica-cliente.md` (la regola, chi occupa la chiave, le quattro
+  strade che la toccano, il controllo al COMMIT; incluso in 7 pagine) e `anagrafiche/_emittente-del-billing-account.md`
+  (i tre livelli, i quattro movimenti del collegamento, la storia come documento numerato; incluso in 17 pagine).
+* **`guide/generazione-cliente.md`**, riscritta per intero: la creazione in una chiamata con `fn_crea_cliente`, l'ordine
+  vero dei trigger, lo stato del PDP per occupazione, un cliente per billing account, la storia dell'azienda, S1 al
+  presente nel subentro.
+* **`guide/gestione-delle-istanze-utility.md`**, nei soli punti di §6 più due link a `manual/` che puntavano alla pagina
+  invece che alla scheda.
+
+### 12.2 Che cosa ha corretto o aggiunto al censimento
+
+* **S14** è precisato in §7: nessuna funzione del DB scrive `pdp.cliente_id`, e il presidio muto è il lock, non il guard.
+* **Il ruolo del cliente non si copia mai dal billing account.** `trg_clienti_guard_ruolo_cliente_ins_upd` viene per nome
+  prima di `trg_clienti_sync_utility_from_ba_ins_upd` e rifiuta il ruolo NULL: il «scrive se manca» del COMMENT vale
+  solo per la utility.
+* **I rami «senza data» e «annullato» di `trgfn_clienti_set_parent_istanza` sono irraggiungibili anche in INSERT**: la
+  `WHEN` del trigger si valuta dopo `trgfn_clienti_set_periodo`, che all'annullato toglie le date. Ricavato dalla
+  semantica dei trigger, non provato con un caso. Smentisce il §2.1 di [brief-db-catena-istanze-pdp](brief-db-catena-istanze-pdp.md)
+  («li raggiunge solo un INSERT»), e il suo §5 è vecchio: `trgfn_clienti_sync_stato_pdp` segue l'occupazione, non AT/CH.
+  Da riportare in quel brief quando si riprende (non toccato da qui).
+* **Lo stato del PDP non si aggiorna col calendario**: si ricalcola solo quando si scrive un cliente, e nessun job lo
+  rifà. Una chiusura con data futura libera il PDP alla scrittura successiva.
+* **Nessuna funzione del DB crea un'istanza vera** (con PDP): `fn_crea_billing_account` crea solo la fittizia; le altre
+  scritture su `istanze_utilities` sono UPDATE (la catena, il clone del catasto).
+* `E_ISTANZA_UTILITY_SENZA_UTILITY` è in `config.messaggi_errore` e nessuna funzione lo solleva.
+* `categorie_clienti` non è mai stata «backfillata a STANDARD»: `billing_account.categoria_cliente_id` è NOT NULL e
+  senza default.
+* Le policy di `clienti` e `billing_account` misurano la stessa azienda e lo stesso ruolo: la differenza «LEFT JOIN /
+  JOIN interno» che le pagine di `vw_clienti_codice_ba` e `vw_clienti_lista` descrivevano non esiste.
+* **M9 è più largo**: dicono ancora «fatture o commesse» anche i COMMENT di `trgfn_billing_account_link_ef` e
+  `trgfn_efba_guard_storia_emittente`, e il commento nel corpo di `fn_get_emittente_fiscale_id` descrive la regola a due
+  livelli. Il COMMENT di `emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id` dice «→ `soggetti_ruoli.id`»,
+  la FK punta a `emittenti_fiscali.soggetto_ruolo_id`.
+
+### 12.3 Segnalazioni di codice nuove
+
+Lette sui corpi dagli agenti del giro, non provate con un caso. Si vagliano con le altre di §7, nei giri di codice.
+
+| # | Dove | Che cosa |
+| --- | --- | --- |
+| S24 | `fn_check_ba_coppia_emittente_omogenea` | Risolve l'azienda con `fn_get_emittente_fiscale_id`, che passa dal livello «azienda di chi agisce». Quando un operatore in sessione toglie un collegamento, il BA rimasto si confronta con l'azienda dell'operatore e non con la predefinita su cui ricade: il passo passa anche se l'albero o l'istanza diventano misti per l'installazione, ed è respinto anche se restano omogenei. `test-istanza-ba-gestore-globale-v1.sql` (test 1 e 5) tratta il primo caso come lecito |
+| S25 | `trgfn_efba_guard_albero_emittente`, `trgfn_efba_guard_storia_emittente` | Una modifica che trasforma la riga predefinita in un collegamento, o il contrario, non chiama il controllo sui BA senza collegamento (il gemello dell'istanza sì). Il caso è possibile perché il singleton è differito. Sostituire la predefinita cancellandola e reinserendola è respinto alla cancellazione quando un BA senza collegamento ha storia, anche se la riga nuova riporta la stessa azienda |
+| S26 | I due guard sullo spostamento della predefinita | Guardano lo stato dopo, non la differenza: una coppia mista che c'era già ferma ogni spostamento che non vada sull'azienda dell'altro BA |
+| S27 | `vendite.fatture` | Non ha `script.trgfn_doc_guard_emittente_ba`, che hanno ordini, DDT, commesse e resi: una fattura in bozza resta all'azienda di prima quando il BA cambia azienda |
+| S28 | L'albero dei billing account | Nessun limite di profondità e nessun controllo dei cicli: è rifiutato solo «parent = sé stesso». Spostare un BA da un parent a un altro con attività da fatturare non è controllato (solo togliere il parent) |
+| S29 | `billing_account.valuta_id` | Senza FK a `config.valute` (`fornitori` e `gestori` l'hanno) |
+| S30 | `soggetti_ruoli.tipo_ruolo_id` | Non è bloccato: un ruolo `CL` può cambiare tipo dopo che il suo BA esiste |
+| S31 | `trgfn_billing_account_guard_admin_globale`, `trgfn_billing_account_link_ef` | Un `app.current_user_id` che non è un numero è trattato come «nessun utente», e i due trigger lasciano passare la riga |
+| S32 | `fn_lookup_utilities_per_ba` | Non confronta il codice del ruolo con il ruolo del BA; un id che non corrisponde a nessun BA non è rifiutato |
+| S33 | `fn_crea_billing_account` | Senza sessione, i guard dell'azienda girano prima del collegamento che la funzione scrive. Con `usa_sequenza` spento il codice manca e il rifiuto è un NOT NULL, non un codice di dominio |
+| S34 | I clienti | `trgfn_clienti_guard_ruolo_cliente` ripete un controllo che il BA fa già. In `fn_update_cliente` un delta che non è un oggetto dà l'errore tecnico di PostgreSQL, e `categoria_aggiornata` vale vero anche se la categoria non cambia. `fn_get_evento_stato_corrente_cliente` è STABLE PARALLEL SAFE e sui rifiuti chiama `fn_log_and_raise_error`, che non lo è. Il modello non dice in quali stati un cliente può nascere. Un cliente chiuso il giorno stesso dell'attivazione ha un periodo vuoto |
+| S35 | `pdp` | `parent_istanza_id` di un'istanza può puntare alla riga stessa. Un PDP che ha avuto un cliente non si disattiva più (conta qualunque cliente). `DISM` non chiude niente. Nel contesto d'errore di `trgfn_pdp_a10_guard` la chiave è `column` invece di `campo`, quindi il form non evidenzia il campo; il contesto di `E_CODICE` in `trgfn_pdp_set_default_stato` è malformato, e uno stato passato all'INSERT non si giudica |
+| S36 | `istanze_dati_precontrattuali` | Il blocco dopo il contratto guarda `vendite.contratti_utilities` e non `vendite.offerte_commerciali_utilities`, che pure nomina la riga; la DELETE risponde `E_COLONNA_NON_MODIFICABILE` senza campo; non c'è una porta di manutenzione |
+| S37 | `vw_istanze_utilities_dettaglio`, `vw_pdp` | La prima non è `security_invoker` (oggi innocuo: le sue tabelle non hanno RLS). In `vw_pdp` il `LEFT JOIN clienti` non espone né filtra nulla, e la vista non espone `attivo` |
+
+pgTAP mancanti, trovati scrivendo la sezione «Test»: nessun test proprio per `trgfn_clienti_guard_ruolo_cliente`,
+`trgfn_clienti_set_periodo`, `fn_check_pdp_occupato`, `trgfn_billing_account_gen_codice`; il rifiuto per storia di
+`fn_guard_ba_gestore_globale_storia` e il rifiuto all'INSERT di `trgfn_billing_account_guard_istanza_emittente` non
+sono provati direttamente; di `trgfn_clienti_sync_stato_pdp` è provato solo il ritorno a DISP.
+
+### 12.4 Le verifiche
+
+* Il controllo meccanico rilanciato dalla sessione che coordina sulle 63 pagine dell'area: tutte nella cornice, data 22
+  novembre 2026, nessun blocco di codice, nessun marcatore fuori dalle Note di migrazione, nessun link a `manual/` né
+  morto. Gli unici nomi che il catalogo non conosce sono nomi di prima citati di proposito nelle Note di migrazione
+  (`uq_clienti_istanza_utility`, `trgfn_pdp_protect_cols`, `trg_pdp_protect_cols_upd`). I due blocchi non contengono il
+  tag include letterale.
+* Le due guide: link e nomi verificati sul catalogo. L'avviso di markdownlint su `#area-tecnica-esempi` è un falso
+  positivo (zensical toglie la lineetta e collassa i trattini).
+* **La doc auto-generata è rigenerata da Tid il 2026-11-22** (passo 4): le sei schede delle pagine nuove le
+  includono, e nell'indice dello schema nessun oggetto dell'area C porta più un marcatore come descrizione (i 92 che
+  restano sono delle aree A, B, D, E). La rigenerazione ha cambiato anche `docs/it/backend/core/index.md`, che non è
+  di questo lavoro e resta fuori dal commit: la descrizione di `api_tracciamento` diventa «Ultimo aggiornamento**: 22
+  novembre 2026», segno che la pagina BE ha la data prima dello scopo (al team BE/FE).
+* La build della doc non è lanciata.
+* `billing_account.md` è di 178 righe: la tabella ha quattro policy, tre chiavi composte e i lock da spiegare.
+* Residui fuori dai punti assegnati, da chiudere col giro della guida: in `gestione-delle-istanze-utility` restano due
+  frasi di cronaca («Fino al 2026-10-08…», «decisione di Tid del…»).
+
+## 13. Giro 0b — l'area A, 2026-11-22 (scritto, committato)
+
+Stesso metodo del giro 0a: quattro agenti per gruppi di oggetti (il soggetto; il cambio di natura e i ruoli; i dati
+societari; i titoli IVA) e uno per la guida, dai corpi del catalogo di dbdev, dalle schede e dai pgTAP.
+
+### 13.1 Che cosa è scritto
+
+* **Le 31 pagine esistenti dell'area A**, tutte nella cornice. Riscritte dal corpo `soggetti`, `soggetti_ruoli`,
+  `dati_societari`, `trgfn_soggetti_normalize`, `fn_crea_soggetto_pf`, `fn_crea_soggetto_pg`, `soggetti_titoli_iva`,
+  `soggetti_titoli_iva_ambiti`, `soggetti_titoli_iva_movimenti`; le altre allo standard, col contenuto riverificato.
+* **21 pagine nuove**, tutte quelle di §5 per l'area A: la famiglia del cambio di natura (6), le regole per natura sul
+  soggetto (4), i verbi dei dati societari (5), il titolo IVA ammesso dalla natura (6). Ogni oggetto dell'area A ha
+  ora la sua pagina.
+* **Quattro blocchi comuni**: `_identificativo-fiscale.md` (incluso in 4 pagine), `_cambio-di-natura.md` (6),
+  `_dati-societari.md` (6), `_titolo-iva-per-natura.md` (7).
+* **`guide/soggetti-e-ruoli-anagrafici.md`**, riscritta quasi per intero: i due verbi di nascita, la natura e le sue
+  regole, l'identificativo bloccato, il cambio di natura, i dati societari coi verbi, i titoli IVA per natura; i ruoli
+  con le specializzazioni vere (`RE` è il reseller, nessun referente); «Il soggetto non ha un emittente fiscale» al
+  posto di §5a-bis; «Subito o al COMMIT» al posto dell'elenco dei trigger; due ER piccoli, veri colonna per colonna.
+  Il titolo di §5b è rimasto identico perché due pagine di `script` lo linkano per anchor.
+
+### 13.2 Che cosa ha corretto o aggiunto al censimento
+
+* **S4, S20, S21, S30 reggono**, riverificate sui corpi. S4 si precisa: un doppione esatto (stesso CF, stessa P.IVA)
+  lo ferma l'indice unico con l'errore tecnico, non un `E_ADMIN_*`; in `fn_crea_soggetto_pf` c'è l'asimmetria
+  opposta (il pre-controllo ferma una ditta col CF di un privato, che l'indice ammetterebbe). S20 si precisa: la
+  stringa vuota per un soggetto italiano la ferma il validatore del formato; fuori dall'Italia, o come P.IVA di un
+  privato, passa e resta bloccata come valore scritto.
+* **S21 è più largo**: `zeroerp_app` ha `arwd` su tutte le 19 viste di `anagrafiche`, non solo su
+  `vw_risorse_umane_dettaglio`. E `trg_soggetti_a10_guard_obbligatori_ruoli_upd` è differito ma porta la fascia
+  `a10` (gli altri differiti hanno `def`).
+* **§6, «i guard dei dati societari sono immediati»**: vale per i guard delle regole (tipo soggetto, forma, canale:
+  `BEFORE ROW`, non differibili). Sono differiti, su `dati_societari`, i due trigger generici del padre attivo, e su
+  `soggetti` il guard «required» e quello della forma rispetto alla natura.
+* **I motivi del cambio di natura sono 10 codici**, non 9 (§5 univa cliente PA e split payment). I «due rifiuti
+  mancanti» di `soggetti_titoli_iva` (§4.2) sono `E_CAMBIO_NATURA_TITOLI_ALTRI_EMITTENTI` e
+  `E_DATO_FISCALE_SENZA_TIPO_SOGGETTO` sulla natura tolta.
+* Il codice del lock di `trgfn_soggetti_gen_codice` è `E_CODICE_NON_MODIFICABILE` (§4.2 e la pagina vecchia dicevano
+  `CODICE_NON_MODIFICABILE`, che resta in `config.messaggi_errore` come dice S21). Con la sequenza spenta funzione e
+  trigger si tolgono, non restituiscono NULL.
+* Il codice mancante di `trgfn_dati_societari_guard_tipo_soggetto` (§4.2) è `E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO`.
+* `anagrafiche.soggetti` è in `config.storico_set_storicizza`: il suo storico è continuo, a differenza di S9. La
+  tabella non ha RLS.
+* La RLS dei tre titoli IVA concede le righe solo al ruolo `OPERATORE` col perimetro d'emittente: portale, shop e
+  API non vedono nessun titolo.
+* La matrice natura ↔ ruolo è «aperta» solo per un ruolo senza nessuna riga: basta una riga, anche spenta, a
+  vincolarlo.
+* Su `soggetti_ruoli` l'unica FK `RESTRICT` verso il ruolo è quella da `risorse_umane`; `fk_tipi_ruoli_config` è
+  `NO ACTION`, `fk_soggetti_anagrafiche` è `CASCADE`.
+* **§8.** M16 non vale per `trgfn_soggetti_guard_forma_giuridica_natura`, che ha solo un marcatore «Brief: …» nel
+  COMMENT. M15 è più largo: dicono ancora il falso il COMMENT di `trgfn_soggetti_titoli_iva_guard_coerenza` («il nome
+  sceglie l'ORDINE») e quello di `fn_consuma_plafond_titolo_iva_righe` («l'imponibile si legge dalla riga»: il corpo
+  usa l'importo passato e pretende che coincida). Il commento nel corpo di
+  `trgfn_soggetti_titoli_iva_guard_tipo_soggetto` nomina come vivo `trgfn_soggetti_guard_titoli_iva_ammessi`,
+  ritirato il 2026-11-14 (il controllo è in `fn_check_cambio_natura_soggetto`).
+
+### 13.3 Segnalazioni di codice nuove
+
+Lette sui corpi dagli agenti del giro, non provate con un caso; ✔︎ = riletta sul catalogo dalla sessione che coordina.
+
+| # | Dove | Che cosa |
+| --- | --- | --- |
+| S38 ✔︎ | `fn_check_cambio_natura_soggetto` | **Il passaggio per la natura vuota aggira i due motivi definitivi.** Con la natura nuova NULL si guardano solo i titoli IVA; i controlli di macro-tipologia e documenti girano solo se la natura vecchia c'è. X → NULL → Y, anche nella stessa transazione, porta una società a privato, o una ditta con documenti a privato. Nessun guard di `soggetti` rifiuta la natura NULL. Anche la natura ammessa dei ruoli non si ricontrolla al cambio di natura |
+| S39 | Lo spegnimento del soggetto | **Un soggetto non si spegne.** Al COMMIT deve avere un contatto (`trgfn_soggetti_guard_soggetto_contatti`), e delle nove figlie che bloccano la disattivazione solo `risorse_umane` e `soggetti_titoli_iva` hanno `attivo`: le altre bloccano finché esistono. Una società di capitali non può togliere i dati societari; un ruolo nominato da un documento non si cancella. Da leggere come un tema solo |
+| S40 | I permessi | `fn_soggetto_primo_documento` e `fn_titoli_iva_non_ammessi_conta` sono `SECURITY DEFINER` con EXECUTE a `PUBLIC`. `vw_soggetti_ruoli_dettaglio` non è `security_invoker` (oggi innocuo). Il DML sulle viste è in 13.2 (S21) |
+| S41 | I dati societari | Una DELETE diretta non guarda la natura (la pretesa la tiene solo il verbo). Due prime scritture concorrenti in `fn_scrivi_dati_societari` urtano `uq_ds_soggetto` con l'errore grezzo. Una società di capitali creata senza forma riceve il `NOT NULL` (23502) senza codice. Il codice SDI di 6 o 7 caratteri vale per chiunque. Un cambio di `soggetti.stato_id` o delle policy della forma non rilegge le righe scritte. `trgfn_dati_societari_guard_tipo_soggetto` non ha fascia, parla dopo i guard di forma e canale e gira a ogni UPDATE (niente `OF`) |
+| S42 | La natura ammessa dei ruoli | I messaggi di `E_RUOLO_NATURA_NON_AMMESSA` e `E_RUOLO_NATURA_TIPO_DET_NULL` mostrano gli id; il contesto non ha `campo`; una riga di matrice spenta non tocca i ruoli che esistono |
+| S43 | Il soggetto | `trgfn_soggetti_normalize` scatta anche in modifica: un UPDATE che porta `stato_id` a NULL riceve lo stato proposto. Il dispatch del CF/P.IVA non ha `UPDATE OF`: un soggetto con un CF che il validatore non accetta non si modifica in nessun campo; con una natura inesistente va in errore tecnico (`INTO STRICT`) prima della FK; uno stato senza validatore passa. Il DB non normalizza CF e P.IVA (maiuscole); `stato_id`, metà della chiave fiscale, non è bloccato; la stringa vuota conta come «scritta». `ragione_sociale_completa` è NULL se manca nome o cognome; `codice` ammette NULL. Nei due verbi di nascita il tipo di contatto di ripiego è «il primo per id» |
+| S44 | I titoli IVA | Nessuno verifica che il titolo di un movimento di fattura sia del cliente e dell'emittente della fattura. Un titolo spento si ferma solo al COMMIT. Nessuna funzione scrive i movimenti `NOTA_CREDITO`, e niente impedisce di restituire più di quanto la fattura aveva consumato. Un titolo sfondato non lo segnala nessuno. `imponibile_utilizzato` si aggiorna direttamente e resta fino al movimento successivo. La regola «un titolo per tutto non ha ambiti» è in due sedi (`trgfn_soggetti_titoli_iva_guard_coerenza` e `fn_check_titolo_iva_ambito`). Il rifiuto di `trgfn_soggetti_titoli_iva_guard_ambito` indica sempre `valido_al` |
+
+pgTAP mancanti, trovati scrivendo la sezione «Test»: nessun test proprio per `trgfn_soggetti_gen_codice`,
+`trgfn_soggetti_normalize`, `fn_regime_pa_campo_non_ammesso`, `trgfn_soggetti_guard_forma_giuridica_natura` (provato
+solo per comportamento), `vw_soggetti_ruoli_dettaglio`.
+
+### 13.4 Le verifiche
+
+* Il controllo meccanico rilanciato dalla sessione che coordina sulle 52 pagine dell'area: tutte nella cornice, data
+  22 novembre 2026, nessun blocco di codice, nessun marcatore fuori dalle Note di migrazione, nessun link a `manual/`
+  né morto. I nomi che il catalogo non conosce stanno tutti nelle Note di migrazione (`fn_consuma_plafond_titolo_iva`,
+  `trgfn_soggetti_guard_titoli_iva_ammessi`, `clienti.iva_id`). I quattro blocchi non hanno `##` né il tag include.
+* La guida: link tutti vivi, nessun link a `manual/`, a brief o col prefisso `/it`, blocchi solo `mermaid`.
+* **La doc auto-generata è rigenerata da Tid il 2026-11-22** (passo 4): le 21 schede delle pagine nuove le
+  includono; nell'indice restano 57 marcatori, delle aree B, D, E.
+* Misura: `soggetti` (196 righe), `soggetti_titoli_iva` (199), `soggetti_titoli_iva_movimenti` (191) passano il
+  tetto di 150; una trentina di righe a testa sono del «Vedi anche».
+* La build della doc non è lanciata.
+
+## 14. Giro 0c — l'area B, 2026-11-22 (scritto, committato)
+
+Stesso metodo: sei agenti per gruppi di oggetti (i contatti, con la loro guida; il catasto; l'indirizzo, lo stradario
+e le viste risolte; il tipo d'indirizzo ammesso; gli indirizzi obbligatori; i verbi di creazione e di copia) e uno
+per la guida degli indirizzi.
+
+### 14.1 Che cosa è scritto
+
+* **Le 37 pagine d'oggetto dell'area B**, tutte nella cornice; riscritte dal corpo quelle che §4.3 dava da
+  riscrivere.
+* **28 pagine nuove**, tutte quelle di §5 per l'area B: il tipo d'indirizzo ammesso e il picker (10), gli indirizzi
+  obbligatori (11), la copia di un indirizzo (7). Ogni oggetto dell'area B ha ora la sua pagina.
+* **Q3 applicata**: `manual/catasto-architettura.md` è diventata la guida `guide/catasto-delle-istanze.md`,
+  registrata nella nav di `mkdocs.yml` e `mkdocs.zensical.yml` e in `docs/it/readme.md`; i link delle quattro pagine
+  del catasto e di `generazione-cliente` puntano lì. La pagina di `manual/` è tolta.
+* **Cinque blocchi comuni**: `_contatto-predefinito.md` (incluso in 3 pagine), `_indirizzo-libero-o-dettaglio.md` (5),
+  `_tipo-indirizzo-ammesso.md` (12), `_indirizzi-obbligatori.md` (11), `_copia-indirizzo.md` (5).
+* **Le guide**: `gestione-dei-contatti` riallineata per intero (la chiave del predefinito, il guard del contesto, il
+  verbo, l'ordine di `script.fn_get_contatti`, gli ER rifatti, gli esempi col verbo); `gestione-degli-indirizzi`
+  corretta nei punti di §6 (lo storico, `proc_bump_indirizzi_dettaglio`, le colonne, l'esempio di indirizzo
+  normalizzato, i due guard mancanti nella tabella), più in R9 il titolare che non si cambia e il titolare che resta
+  bloccato da un requisito nuovo.
+
+### 14.2 Che cosa ha corretto o aggiunto al censimento
+
+* **S3, S8, S10, S11, S16, S19 reggono**, riverificate sui corpi. S3 è più larga: la colonna `cap` di un libero è il
+  CAP di una via del comune (quello della riga è `cap_codice`), e in un comune senza vie `cap` e `provincia` restano
+  vuoti. S10 è più larga: palazzina, scala, piano e interno si confrontano grezzi come l'estensione; l'errore senza
+  criteri non ha codice; `p_limit` negativo dà l'errore tecnico; `%` e `_` fanno da jolly; la ricerca per testo non
+  usa l'indice trigram. S19: per comune e CAP il rifiuto arriva dal giudizio della forma, non dalla FK; per uno stato
+  tolto il normalize scrive lo stato proposto, e un indirizzo estero cambia stato senza che nessuno lo dica.
+* **S9 è più largo nel perimetro e nella cancellazione.** Lo storico a richiesta vale anche per `config.stradario`.
+  `indirizzi_soggetti` invece ha lo storico continuo (`storicizza` nasce `true`, la tabella è nel registro), come
+  `catasto_unita_immobiliari`. E una **DELETE** su una tabella a richiesta lascia traccia solo se il flag *salvato*
+  sulla riga è acceso: dopo ogni modifica il trigger lo rimette a `false`, quindi cancellare un indirizzo di ruolo,
+  un civico o una via lascia traccia solo se la riga è stata scritta con `true` e non più modificata. Da aggiungere a
+  R-BE5 e da vagliare: la decisione Q7 riguarda le modifiche, non è detto che copra le cancellazioni. Il COMMENT di
+  `indirizzi_dettaglio.storicizza` dice «Default=True» (è `false`). La guida sbagliava anche il tipo di operazione
+  dello storico (1/2/3, non A/U/D).
+* **`contatti`**: la FK del ruolo è `ON UPDATE CASCADE` senza azione in cancellazione (lo è solo quella del soggetto).
+  Il falso più grosso della pagina di `fn_crea_contatto` era «il primo contatto di un ruolo diventa default».
+* **Il catasto**: `CATASTO_SOURCE_NOT_FOUND` non è più nemmeno in `config.messaggi_errore`. Il trigger del cliente che
+  aggancia il parent è `BEFORE INSERT OR UPDATE OF pdp_id, data_attivazione`. Le tabelle del catasto non hanno né
+  azienda né RLS. **`db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql` prova la colonna `istanza_utility_id` e
+  la sua FK, che non esistono più**: era nelle baseline dei rossi come `ERRORE_FIXTURE`. **Ritirato** (Tid, 2026-11-22): file tolto, le sue tre righe
+  tolte dalle baseline, le sezioni «Test» delle pagine aggiornate; il catasto resta provato da `test-simula-subentro.sql`.
+* **Il cambio di titolare di un indirizzo** si raggiunge solo dalla porta di manutenzione: prima scattano i lock
+  (`E_INDIRIZZO_*_TITOLARE_IMMUTABILE`). I guard degli obbligatori su `indirizzi` e `indirizzi_soggetti` sono
+  differiti solo su UPDATE e DELETE; alla nascita li pretendono quelli su `soggetti` e `soggetti_ruoli`.
+* **La fascia dei trigger differiti** (13.2): «i differiti hanno `def`» vale per `soggetti`; su `indirizzi` e
+  `indirizzi_soggetti` tutti i differiti hanno `a10`. Non è un difetto di quelle due tabelle.
+* `proc_bump_indirizzi_dettaglio` ha un chiamante: `maintenance.proc_bump_toponomastica`. Nessun oggetto del DB
+  chiama `fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli` (lettura del BE), che a differenza delle gemelle non
+  prende `p_oggi`. Il terzo ripiego di `indirizzo_display` in `vw_indirizzi_resolved_base` non si raggiunge mai: il
+  display di un libero è via e numero, senza il luogo. Il registro `config.azioni_riga` tiene `COPIA_INDIRIZZO_RUOLO`
+  spenta, e punta a due oggetti ritirati: voluto.
+* Su `soggetti`, `soggetti_ruoli`, `indirizzi`, `indirizzi_soggetti`, `contatti` la RLS è spenta: i guard e le check
+  `SECURITY INVOKER` vedono tutto, e il COMMENT di `fn_check_tipo_indirizzo_soggetto` («i tipi che chi chiama vede»)
+  promette un filtro che non c'è.
+* **§8.** M17 confermato e più largo (i lettori veri dei due predicati del tipo ammesso). Il COMMENT di
+  `fn_indirizzi_con_obbligatori` porta marcatori di cantiere; quelli di `contatti.default_context` («soggetto|ruolo|
+  utility») e `contatti.is_default` («per il soggetto») sono stantii.
+* Fuori da `anagrafiche`: `config.tipi_ruolo_tipi_indirizzo` ha due FK uguali su `tipo_ruolo_id`
+  (`fk_tipi_ruoli_tipi_indirizzo_ruolo`, `fk_tipi_ruolo_tipi_indirizzo_tipo_ruolo`).
+
+### 14.3 Segnalazioni di codice nuove
+
+Lette sui corpi dagli agenti del giro, non provate con un caso salvo dove detto.
+
+| # | Dove | Che cosa |
+| --- | --- | --- |
+| S45 | Il contatto obbligatorio | Cancellare l'ultimo contatto passa (il guard scatta solo sulle scritture del soggetto), e dopo ogni modifica del soggetto è rifiutata qualunque cosa cambi. `soggetti.default_contatto_id` non si svuota mai; cancellare il contatto puntato è rifiutato al COMMIT dalla FK differita. Ogni scrittura del predefinito del contesto `soggetto` riscrive il soggetto e ne fa scattare tutti i trigger. Da leggere con S39 |
+| S46 | `fn_crea_contatto` | Il doppione per tipo dà l'errore grezzo `23505`; un `tipo_contatto_id` non numerico dà un errore di conversione invece di `E_CONTATTO_INCOMPLETO`; `default_context` è fra le chiavi ammesse ma il valore è sostituito |
+| S47 | Il catasto | Il clone si fa una volta: un cambio di catena dopo il clone, o un'unità comparsa dopo sulla precedente, non arrivano; un'istanza inserita con la precedente già scritta non riceve il clone (il trigger è solo su UPDATE). La ponte non si pulisce al cambio di civico o di unità, e col blocco ATTIVO quel civico non si spegne più. Un'unità lasciata da un'istanza resta orfana |
+| S48 | Gli indirizzi obbligatori | **Un requisito nuovo blocca chi esiste.** Una riga di matrice che diventa obbligatoria non rigiudica nessuno, ma i due trigger dei titolari scattano a ogni UPDATE (niente `OF` né `WHEN`): la prossima scrittura del soggetto o del ruolo, su qualunque colonna, è rifiutata. Il ripiego del livello soggetto non si confronta con la natura, e il rifiuto può proporre un ripiego che il guard del tipo non lascia scrivere. I due trigger sugli indirizzi chiamano il guard senza `tx_id`. `fn_indirizzi_con_obbligatori` ignora il ripiego: con il ripiego nell'elenco nasce comunque la copia del tipo. «Obbligatorio per la natura» è calcolato in quattro sedi (i due picker, `fn_indirizzi_obbligatori_mancanti_soggetto`, `fn_crea_indirizzi_soggetto`); sul ruolo in una sola |
+| S49 | Il tipo d'indirizzo | Il cambio del tipo di ruolo (S30) non rigiudica gli indirizzi che il ruolo ha. `fn_indirizzo_elemento` non verifica il tipo per id (provato con una chiamata in sola lettura: l'id 999999 torna senza errore; con id e codice vale l'id e il codice non si confronta): il rifiuto arriva dalla FK, non da `E_TIPO_INDIRIZZO_NON_TROVATO`. `fn_tipo_indirizzo_ammesso_per_ruolo` prende il tipo di ruolo `bigint`, `fn_check_tipo_indirizzo_ruolo_su_contesto` `integer` |
+| S50 | La normalizzazione | Con una via non risolta, un INSERT diretto o la modifica di un civico falliscono sul NOT NULL di `via_norm` senza codice (solo il «trova o crea» dà `E_INDIRIZZO_VIA_NON_RISOLTA`). Un elemento senza forma, anche un libero col testo vuoto, finisce sui NOT NULL dello stradario e non arriva al guard della forma libera. La porta `zeroerp.maintenance_indirizzi_dettaglio` è un parametro di sessione che chiunque scriva accende. `geoloc` è una copia presa alla scrittura e non segue `civic_geoloc` |
+| S51 | I permessi | Come S21 e 13.2: `zeroerp_app` ha il DML sulle cinque viste degli indirizzi, che non sono aggiornabili; non sono `security_invoker` (oggi innocuo: le tabelle sotto non hanno RLS) |
+
+pgTAP mancanti: nessun test proprio per `trgfn_soggetti_guard_soggetto_contatti`, né per il passaggio del segno fra
+due contatti dello stesso contesto; l'intestazione di `test-contatti-soggetto-cliente.sql` parla di un «tipo_contatto
+NULL» che il NOT NULL non ammette. Il pgTAP del catasto è in 14.2.
+
+### 14.4 Le verifiche
+
+* Il controllo meccanico rilanciato dalla sessione che coordina sulle 65 pagine d'oggetto dell'area: tutte nella
+  cornice, data 22 novembre 2026, nessun blocco di codice, nessun marcatore fuori dalle Note di migrazione, nessun
+  link a `manual/` né morto, nessun nome che il catalogo non conosce. I cinque blocchi non hanno `##` né il tag
+  include.
+* Le tre guide: link tutti vivi, nessun link a `manual/`, a brief o col prefisso `/it`.
+* **La doc auto-generata è rigenerata da Tid il 2026-11-22** (passo 4): le 28 schede nuove includono le pagine,
+  `index.ci.md` non nomina più `manual/catasto-architettura`, e nell'indice restano 36 marcatori, delle aree D ed E.
+* `indirizzi_dettaglio.md` è di 154 righe. La build della doc non è lanciata.
+
+## 15. Giro 0d — l'area D, 2026-11-22 (scritto)
+
+Stesso metodo: quattro agenti per gruppi (le banche e i conti, con la loro guida; l'emittente fiscale; fornitori e
+vettori, che hanno scritto il blocco dei guard di ruolo; gestori, reseller e PSP).
+
+### 15.1 Che cosa è scritto
+
+* **Le 45 pagine esistenti dell'area D**, tutte nella cornice; riscritte dal corpo quelle che §4.4 dava da riscrivere,
+  più `fornitori`, `vettori`, i due `gen_codice`, `vw_fornitori_dettaglio`, `emittenti_fiscali` ed
+  `emittenti_fiscali_utilities`.
+* **Una pagina nuova**, `trgfn_emittenti_fiscali_guard_codice_forma`: ogni oggetto dell'area D ha la sua pagina.
+* **Q4 applicata**: la pagina di `trgfn_emittenti_fiscali_guard_attivo` è tolta, e «dove vive oggi la regola» (i
+  trigger `prevent_deactivate` generati dalle FK) sta nella pagina `emittenti_fiscali`.
+* **Il blocco comune `_guard-di-ruolo.md`**, incluso negli **otto** guard di ruolo: i sette dell'area D e quello del
+  cliente (`trgfn_clienti_guard_ruolo_cliente`, area C, a cui la sessione che coordina ha aggiunto l'include).
+* **`guide/gestione-conti-bancari.md`**, riscritta sul modello di `gestione-dei-contatti`: i cinque punti di §6, più
+  le filiali, i canali d'incasso e «Che cosa il database non tiene».
+
+### 15.2 Che cosa ha corretto o aggiunto al censimento
+
+* **I guard di ruolo sono otto, non sette** (c'è anche il cliente, `CL`). I corpi sono identici salvo il codice del
+  ruolo; tre commenti nel corpo dicono ancora «nuovo o esistente». Il codice del lock su fornitori e vettori è
+  `E_CODICE_NON_MODIFICABILE`.
+* **S12, S15, S18 reggono.** **S13 si corregge**: `psp.attivo` qualcosa ferma, perché
+  `pagamenti.trgfn_enti_incasso_guard_psp` vuole un PSP attivo perché un ente d'incasso PSP nasca o si modifichi; il
+  difetto è solo il verso opposto (lo spegnimento o la cancellazione di un PSP con enti attivi).
+* **L'esclusione del legame del ruolo** (`ex_src_…`) vieta lo stesso conto d'incasso su due **ruoli**, anche dello
+  stesso soggetto, non su due soggetti come diceva §4.4. Le due esclusioni (soggetto e ruolo) non si incrociano, ed
+  è voluto (COMMENT di `ex_scb_…`).
+* La sigla dell'emittente entra anche nel codice delle distinte d'incasso (`DIS-<sigla>-…`), non solo delle commesse.
+  Il commento nel corpo di `trgfn_emittenti_fiscali_guard_codice_forma` e il test 9 del suo pgTAP dicono
+  `varchar(10)`: la colonna è `varchar(32)`, il limite di 10 lo tiene il CHECK.
+* `vendite.fn_build_fattura_key` prende il reseller del BA con `ORDER BY rb.id LIMIT 1`, senza guardare il periodo:
+  un legame chiuso vale come uno aperto (va con S12).
+* Le quattro tabelle dei conti, `resellers` e `psp` sono in `config.storico_set_storicizza`: storico continuo. Nessuna
+  tabella dell'area ha RLS. `config.utilities` non ha `attivo`.
+* `db/pgtap/anagrafiche/create-soggetto-gestori.sql`, l'unico che prova il secondo gestore, è nelle baseline dei
+  rossi: il suo test 4 si aspetta un P0001 generico senza codice.
+* **Ricaduta BE**: `docs/it/backend/anagrafiche/manual/api_emittenti_fiscali.md` (riga 90) nomina
+  `trgfn_emittenti_fiscali_guard_attivo`, che non esiste: da correggere dal team BE (testo, non link).
+* **§8.** COMMENT stantii: `vettori.soggetto_ruolo_id` («ruolo atteso: RES»), il COMMENT della tabella `resellers`
+  («RES»: il codice è `RE`), `fornitori.rating` («0-100 o 1-5», il CHECK è 0..100), `trgfn_resellers_normalize`
+  (promette un generatore), la tabella `emittenti_fiscali` (M5).
+
+### 15.3 Segnalazioni di codice nuove
+
+Lette sui corpi dagli agenti del giro, non provate con un caso.
+
+| # | Dove | Che cosa |
+| --- | --- | --- |
+| S52 | Gli otto guard di ruolo | Il cambio di `soggetti_ruoli.tipo_ruolo_id` (S30) non fa scattare i guard: un ruolo `FO` portato a `VT` lascia la riga di `fornitori` su un ruolo vettore. Vale per tutte le specializzazioni. Nessun pgTAP prova il rifiuto `E_SOGGETTI_RUOLI` |
+| S53 | Lo spegnimento dell'emittente | Fatture, commesse, registri, listini, lotti, distinte, sistemazioni e `dbops.coda_lavori` puntano a `soggetti_ruoli` e non fermano lo spegnimento: un emittente con fatture si spegne, uno con un ordine no. Un primo emittente nato spento è respinto al COMMIT con `E_ATTIVO_PADRE_NON_ATTIVO`. `emittenti_fiscali.valuta_id` è senza FK (con S29) |
+| S54 | Le letture dell'emittente | `fn_get_emittente_fiscale_id` e `_pk` danno un'azienda a un id di BA che non esiste; `fn_parametri_importo_utility` non rifiuta un ruolo che non è un emittente. Il maiuscolo della sigla si fa due volte (`a05` e `a15`) |
+| S55 | I conti | L'IBAN si modifica sotto i legami. `uso` del legame del ruolo non è bloccato: un canale d'incasso resta appeso a un legame che non è più `INCASSO`. Il soggetto del ruolo non deve essere attivo (il gemello sul soggetto lo pretende). Un predefinito a scadenza non è programmabile: l'indice del predefinito ignora la validità. Il normalize toglie solo gli spazi (un trattino resta e il CHECK rifiuta). Il BIC non si normalizza; filiale e IBAN non si confrontano; la stessa coppia ABI/CAB è ammessa su due banche. `iban_snapshot` del mandato SEPA non si confronta col conto |
+| S56 | Fornitori e vettori | `fornitori.soggetto_ruolo_id` non è bloccato (un fornitore si sposta su un altro soggetto). `vendite.ddt.vettore_soggetto_ruolo_id` ha la sola FK su `soggetti_ruoli`: nessuno chiede che sia `VT`, che abbia una riga in `vettori`, che sia attivo. «Fornitore attivo» sta in due corpi (`fn_check_fornitore_attivo`, `fn_guard_fornitore_attivo`), che nessun oggetto del DB chiama; `E_FORNITORE_BLOCCATO` riempie il segnaposto dell'id con una frase |
+| S57 | Gestori e reseller | Il gestore unico è una lettura, non un vincolo: due inserimenti concorrenti passano. La P.IVA del gestore si giudica solo quando si scrive il gestore. Nessun oggetto legge `gestori_utilities`. `resellers_billing_account` non ha guard di ruolo; il guard attivo dei reseller conta anche i legami chiusi, quindi un reseller che ha avuto clienti non si spegne senza cancellarne la storia |
+| S58 | I permessi | Come S21: `zeroerp_app` ha il DML su `vw_fornitori_dettaglio` e `vw_conti_bancari_per_ruolo`, viste non aggiornabili; la prima non è `security_invoker` |
+
+pgTAP mancanti: nessun test prova `E_CONTO_BANCARIO` su un conto spento, la normalizzazione dei conti, il guard SEPA,
+il rifiuto di un ruolo non `BANK_B` o non `EF`, `E_EMITTENTE_DEFAULT_SINGLETON` al COMMIT, né gli oggetti di gestori,
+reseller e PSP salvo il gestore unico (rosso).
+
+### 15.4 Le verifiche
+
+* Il controllo meccanico rilanciato dalla sessione che coordina sulle 46 pagine dell'area e su quella del cliente:
+  tutte nella cornice, data 22 novembre 2026, nessun blocco di codice, nessun marcatore fuori dalle Note di migrazione,
+  nessun link a `manual/` né morto. I nomi che il catalogo non conosce stanno nelle Note di migrazione
+  (`trgfn_emittenti_fiscali_guard_attivo`, `uq_gestori_singleton`) o sono una sequenza (`vettori_codice_seq`). Il
+  blocco non ha `##` né il tag include. La guida: link vivi, nessun link a `manual/` o a brief.
+* **La doc auto-generata è da rigenerare** (passo 4): la scheda della pagina nuova non la include, l'indice porta i
+  marcatori dell'area D, e `index.ci.md` ha ancora il link alla pagina ritirata.
+* `emittenti_fiscali.md` è di 176 righe (21 trigger di spegnimento da spiegare). La build della doc non è lanciata.
+* **Ritirato anche il pgTAP del catasto** (14.2), nello stesso albero: da committare con questo giro.

@@ -51,11 +51,8 @@ const {
   searchText, paginatorProps, onPage, onSort, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions,
 } = useListaConfigurabilePage(store, {
-  // Allineato al preset `sessioni_attive_default` (`data_ultimo_evento desc`).
   // Pannello della home, non lista di rotta: niente ricerca universale.
-  searchTableOptions: {
-    defaultSortField: 'data_ultimo_evento', defaultSortOrder: 'desc', incorporata: true,
-  },
+  searchTableOptions: { incorporata: true },
 })
 
 // ⚠️ La revoca non e' istantanea (blacklist di N token + diario): senza uno

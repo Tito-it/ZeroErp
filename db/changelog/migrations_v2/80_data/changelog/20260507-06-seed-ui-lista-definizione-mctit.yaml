@@ -74,3 +74,15 @@ databaseChangeLog:
               # la leggono il risolutore delle liste e il BB di ricerca del BE.
               # Brief: brief-db-be-fe-ricerca-soglia-per-lista, sezione 4.2.
               - column: { name: ricerca_min_caratteri, type: NUMERIC }
+              # Dove si mostra la lista (colonna da 20261120-36, brief-db-revisione-ui
+              # giro 3, Q11 e Q44): COMPATTA sulle liste di righe aperte in un drawer o
+              # in un dialog, PAGINA sulle altre (default della colonna). Il resolver
+              # ripiega sul default di questo uso. Colonna del software (Q46).
+              - column: { name: uso_misura, type: STRING }
+              # La lista dichiara che il backend unisce alle sue righe la sintesi della
+              # lineage (colonna da 20261120-43, brief-db-revisione-ui giro 4, Q47):
+              # `t` sulle sei liste documentali che mostrano il «transito», `f` sulle
+              # altre (default della colonna). Solo li' una colonna puo' essere LINEAGE.
+              # Colonna del software; la scrive solo il migrate
+              # (ui.trgfn_lista_definizione_guard_dichiarazioni).
+              - column: { name: legge_lineage, type: BOOLEAN }

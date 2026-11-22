@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_indirizzi_con_obbligatori.md" %}
 # ⚙️ Funzione `fn_indirizzi_con_obbligatori`
 
 ```sql

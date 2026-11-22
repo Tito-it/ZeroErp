@@ -1,108 +1,89 @@
-## Documentazione – Tabella `anagrafiche.categorie_clienti`
+## 📘 Documentazione Concettuale – Tabella `anagrafiche.categorie_clienti`
 
-> Vedi anche
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
-Guide generali:
+> 👀 **Vedi anche**
 >
-[Gestione listini](/guide/gestione-listini)
+> Approfondimento tabelle:
 >
-Approfondimento tabelle:
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — porta la categoria del cliente
+> * [anagrafiche.categorie_clienti_listini](/dbzero/anagrafiche/tabelle/categorie_clienti_listini) — la matrice categoria → listino
+> * [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides) — i parametri che una categoria può ridefinire
+> * [vendite.listini](/dbzero/vendite/tabelle/listini) — i listini a cui la matrice porta
 >
-[anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
-> [anagrafiche.categorie_clienti_listini](/dbzero/anagrafiche/tabelle/categorie_clienti_listini)
-> [vendite.listini](/dbzero/vendite/tabelle/listini)
-> [vendite.promo_articoli](/dbzero/vendite/tabelle/promo_articoli)
+> Approfondimento funzioni:
+>
+> * [vendite.fn_resolve_prezzo_listino_v2_esito](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2_esito) — il calcolo del prezzo che legge la categoria
+>
+> Guide:
+>
+> * [Gestione listini](/guide/gestione-listini) — come la categoria entra nel prezzo
 
 ---
 
 ### 🎯 Scopo Principale
-(latest review 14-04-26)
 
-Le **categorie clienti** rappresentano le fasce commerciali trasversali a cui un billing account puo appartenere (STANDARD, BASE, SILVER, GOLD, PLATINUM). Sono la dimensione principale su cui si appoggia il resolver prezzi v5 nello **STADIO 2 — CATEGORIA CLIENTE**: ogni BA senza contratto individuale risolve il prezzo via categoria.
-
-Caratteristiche principali:
-
-* Una sola categoria per BA in un dato momento (`billing_account.categoria_cliente_id`)
-* La categoria determina **a quale listino** e **con quale variazione** il BA viene mappato, via la matrice `anagrafiche.categorie_clienti_listini`
-* Il flag `partecipa_promo` abilita o disabilita l'applicazione della promo overlay (STADIO 0 resolver) per l'intera categoria
-* Nessuna logica di pricing risiede nella categoria stessa: la categoria e un puro contenitore commerciale; la politica di sconto vive nella matrice `categorie_clienti_listini` o nei contratti
+`anagrafiche.categorie_clienti` è il catalogo delle fasce commerciali dei clienti (per esempio standard,
+silver, gold). Un billing account ha sempre una categoria, e la categoria decide, attraverso la matrice
+`anagrafiche.categorie_clienti_listini`, quale listino e quale variazione valgono per lui.
 
 ---
 
-### Collegamenti con altre tabelle
+### ⭐ Un contenitore, non una politica di prezzo
 
-| Campo / Riferimento inverso                            | Tabella                                          | Azione                                                                |
-| ------------------------------------------------------ | ------------------------------------------------ | --------------------------------------------------------------------- |
-| `anagrafiche.billing_account.categoria_cliente_id`     | FK -> `anagrafiche.categorie_clienti(id)`        | ON UPDATE CASCADE, ON DELETE NO ACTION (BA categorizzati bloccano il delete) |
-| `anagrafiche.categorie_clienti_listini.categoria_cliente_id` | FK -> `anagrafiche.categorie_clienti(id)` | ON UPDATE CASCADE, ON DELETE NO ACTION                                |
+La categoria non porta prezzi né sconti: dice solo a quale fascia appartiene il cliente. Il listino e la
+variazione stanno nella matrice, per categoria, utility, azienda e classe d'utenza; un contratto individuale
+viene prima di tutto. L'unica scelta che la categoria fa da sola è `partecipa_promo`: se è falso, i billing
+account della categoria non ricevono le promozioni.
 
----
-
-### Campi principali
-
-| Colonna           | Tipo         | Nullable | Default       | Descrizione                                                        |
-| ----------------- | ------------ | -------- | ------------- | ------------------------------------------------------------------ |
-| `id`              | smallint     | NO       | sequence      | PK surrogata                                                       |
-| `codice`          | varchar(32)  | NO       |               | Codice univoco (es. `STANDARD`, `SILVER`). UNIQUE                  |
-| `descrizione`     | varchar(255) | NO       |               | Descrizione estesa UI                                              |
-| `partecipa_promo` | boolean      | NO       | `true`        | Abilita la promo overlay sui BA della categoria                    |
-| `ordinamento`     | smallint     | NO       | `100`         | Ordine di presentazione in UI; valori bassi appaiono prima         |
-| `meta`            | jsonb        | NO       | `'{}'::jsonb` | Metadati estensibili                                               |
-| `attivo`          | boolean      | NO       | `true`        | Flag di abilitazione                                               |
-| `tx_id`           | uuid         | YES      |               | Transaction ID per correlazione audit                              |
-| audit (`data_insert`, `user_insert`, `data_update`, `user_update`) | — | misto | `now()` / `CURRENT_USER` | Campi audit standard                      |
+Le stesse categorie servono a tutte le aziende dell'installazione: la tabella non ha RLS, e ciò che cambia da
+un'azienda all'altra è la matrice.
 
 ---
 
-### Seed iniziale
+### La categoria del billing account
 
-Il seed in `80_data/sql/anagrafiche/categorie_clienti.csv` popola 5 categorie standard:
+La colonna `anagrafiche.billing_account.categoria_cliente_id` è obbligatoria e **senza valore predefinito**:
+chi crea il billing account sceglie la categoria, e il database non ne mette una al suo posto. Il nome stabile
+con cui l'applicazione trova la sua categoria (quella da proporre, per esempio) è `codice_interno`, che dopo
+la nascita non si cambia; `codice` è quello che l'operatore vede e può correggere, salvato in maiuscolo e
+unico senza distinzione di maiuscole.
 
-| id | codice     | descrizione      | `partecipa_promo` | `ordinamento` |
-| -- | ---------- | ---------------- | ----------------- | ------------- |
-| 1  | `STANDARD` | Cliente standard | `false`           | 10            |
-| 2  | `BASE`     | Cliente base     | `true`            | 20            |
-| 3  | `SILVER`   | Cliente silver   | `true`            | 30            |
-| 4  | `GOLD`     | Cliente gold     | `true`            | 40            |
-| 5  | `PLATINUM` | Cliente platinum | `true`            | 50            |
-
-`STANDARD` e la categoria di fallback: ogni BA senza categoria assegnata esplicitamente viene backfillato a `STANDARD` e non partecipa alle promo. Questo garantisce che lo STADIO 2 del resolver abbia sempre una categoria su cui cadere.
+La categoria è fotografata anche su contratti, attività fatturabili e attività di commessa, che ricordano con
+quale categoria è stato calcolato il prezzo.
 
 ---
 
-### Regole di validazione
+### Una categoria in uso non si spegne
 
-* `codice` UNIQUE (vincolo `uq_categorie_clienti_codice`)
-* Nessun vincolo di esclusione temporale: la categoria non ha validita; la scadenza delle mappe categoria -> listino e gestita dalla tabella `categorie_clienti_listini` via `daterange`
-
----
-
-### Ruolo nel resolver prezzi v5
-
-| Stadio resolver | Uso della categoria                                                                 |
-| --------------- | ----------------------------------------------------------------------------------- |
-| STADIO 0 — PROMO| Filtro: la promo si applica solo ai BA la cui categoria ha `partecipa_promo = true` |
-| STADIO 1 — CONTRATTO | Non coinvolta: il contratto batte la categoria                                 |
-| STADIO 2 — CATEGORIA | Chiave primaria di lookup nella matrice `categorie_clienti_listini`            |
-
-Un BA senza contratto ricade in STADIO 2; se la matrice non ha una riga per la quadrupla `(categoria, utility, emittente, classe_utenza)` il resolver solleva `E_CATEGORIA_LISTINO_NON_MAPPATA`.
+Finché ci sono billing account, righe della matrice o parametri ridefiniti che la usano, la categoria non si
+disattiva: il rifiuto viene dal blocco comune della disattivazione, una volta per ciascuna delle tre tabelle.
+Un billing account, una riga della matrice o un parametro ridefinito non possono puntare a una categoria
+spenta.
 
 ---
 
-### Diagramma ER
+### Codici errore
 
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    categorie_clienti         ||--o{ billing_account              : categoria_di
-    categorie_clienti         ||--o{ categorie_clienti_listini    : mappata_su
-    categorie_clienti_listini }o--|| listini                      : punta_a
+* `E_CODICE_NON_MODIFICABILE` — si cambia `codice_interno`.
+* I rifiuti della disattivazione e del riferimento a una categoria spenta sono quelli dei blocchi comuni
+  dell'attivo.
 
-    categorie_clienti         { smallint id PK }
-    billing_account           { bigint   id PK }
-    categorie_clienti_listini { bigint   id PK }
-    listini                   { bigint   id PK }
-```
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-categorie-clienti-listini-v1.sql` — la matrice che la categoria alimenta.
+* `db/pgtap/config/test-parameter-overrides-categoria-cliente-v1.sql` e
+  `db/pgtap/config/test-fn-get-parameter-full-categoria-cliente-v1.sql` — i parametri ridefiniti per categoria.
+* `db/pgtap/anagrafiche/test-fn-update-cliente-v1.sql` — la categoria cambiata dal verbo del cliente.
+
+---
+
+### Note di migrazione
+
+* 2026-06-29 — nasce `codice_interno`, perché la logica dell'applicazione non dipenda dal codice che
+  l'operatore vede.
 
 ---
 

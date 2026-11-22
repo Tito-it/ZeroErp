@@ -26,6 +26,9 @@ AS $function$
 -- Il banner: preset_base_cambiato se la base salvata non e' quella di oggi,
 --   altrimenti le chiavi di origine 'preferenza' il cui contenuto nel preset
 --   e' cambiato dopo lo snapshot (ui.fn_preset_aggiornato).
+-- Righe scritte prima del guard di forma: nessun cast cade (ui.fn_intero_da_jsonb),
+--   una voce senza codice o fuori dal pool si salta, un codice ripetuto vale una
+--   volta (la prima), un campo che manca prende il default del pool.
 DECLARE
   v_dashboard_id     ui.dashboard_definizione.id%TYPE;
   v_config_widget    JSONB;    -- widget della configurazione candidata
@@ -34,6 +37,9 @@ DECLARE
   v_dimensione_catalogo CONSTANT ui.dashboard_preset.dimensione_max%TYPE := 8;
   v_dimensione_max   ui.dashboard_preset.dimensione_max%TYPE;
   v_widget_nuovi     INTEGER  := 0;
+  -- I codici mergiati dal pool al passo 3: il passo 4-bis li riconta DOPO il
+  -- filtro dei permessi, come le liste.
+  v_codici_mergiati  ui.widget.codice%TYPE[] := ARRAY[]::varchar[];
 
   -- Mappe permessi aggregate (lette una volta), GUC-aware fail-closed
   v_area_map         JSONB    := '{}'::JSONB;   -- { schema_db: 'LIVELLO' }
@@ -68,23 +74,10 @@ DECLARE
   v_preset_base_cambiato   BOOLEAN := FALSE;
 BEGIN
   -- -------------------------------------------------------
-  -- 0. Recupera dashboard_id dal codice
+  -- 0. La dashboard accesa per codice (ui.fn_dashboard_da_codice): assente
+  --    o spenta, E_UI_DASHBOARD_NON_TROVATA.
   -- -------------------------------------------------------
-  SELECT id INTO v_dashboard_id
-    FROM ui.dashboard_definizione
-   WHERE codice = p_dashboard_codice
-     AND attivo = TRUE;
-
-  IF v_dashboard_id IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database',
-      'ui.fn_resolve_dashboard_config',
-      'E_UI_DASHBOARD_NON_TROVATA',
-      jsonb_build_object('detail', format('codice dashboard: ''%s''', p_dashboard_codice)),
-      NULL,
-      p_dashboard_codice
-    );
-  END IF;
+  v_dashboard_id := (ui.fn_dashboard_da_codice(p_dashboard_codice)).id;
 
   -- -------------------------------------------------------
   -- 1. Mappe permessi (resolve once). Le mappe sono l'autorita' per il
@@ -103,13 +96,14 @@ BEGIN
   -- -------------------------------------------------------
 
   -- 2a. Preferenza personale utente: ogni chiave per conto suo.
-  --     dimensione_max vale se e' un intero positivo: nessun cast che
-  --     possa cadere. Legge anche preset_base_id e lo snapshot, per il
+  --     dimensione_max vale se e' un intero da 1 a 100 (i due BB): nessun
+  --     cast che possa cadere; widget vale se e' un elenco. Legge anche preset_base_id e lo snapshot, per il
   --     banner (passo 4-bis).
   SELECT
-      NULLIF(pu.configurazione -> 'widget', 'null'::JSONB),
-      CASE WHEN (pu.configurazione ->> 'dimensione_max') ~ '^[1-9][0-9]{0,8}$'
-           THEN (pu.configurazione ->> 'dimensione_max')::INTEGER END,
+      CASE WHEN jsonb_typeof(pu.configurazione -> 'widget') = 'array'
+           THEN pu.configurazione -> 'widget' END,
+      CASE WHEN ui.fn_dimensione_max_ammessa(ui.fn_intero_da_jsonb(pu.configurazione -> 'dimensione_max'))
+           THEN ui.fn_intero_da_jsonb(pu.configurazione -> 'dimensione_max') END,
       pu.preset_base_id,
       pu.preset_base_contenuto_aggiornato_il
     INTO v_pref_widget, v_pref_dimensione,
@@ -155,9 +149,10 @@ BEGIN
 
   v_config_widget := COALESCE(v_pref_widget, v_preset_widget);
 
-  -- 2e. Catalogo grezzo (fallback finale "mai vuota"), solo per i widget:
-  --     tutti i widget attivi del pool della dashboard, ordinati per
-  --     ordine_default, se ne' la preferenza ne' un preset li hanno.
+  -- 2e. Catalogo grezzo, solo per i widget: tutti i widget attivi del pool
+  --     della dashboard, ordinati per ordine_default, se ne' la preferenza ne'
+  --     un preset li hanno. Dopo il filtro dei permessi l'elenco puo' restare
+  --     vuoto: e' un esito, e lo stato vuoto lo dice il frontend.
   IF v_config_widget IS NULL THEN
     SELECT jsonb_agg(
       jsonb_build_object(
@@ -193,15 +188,19 @@ BEGIN
       ),
       '[]'::JSONB
     ),
-    COUNT(*)::INTEGER
-  INTO v_config_widget, v_widget_nuovi
+    COUNT(*)::INTEGER,
+    COALESCE(array_agg(w.codice), ARRAY[]::varchar[])
+  INTO v_config_widget, v_widget_nuovi, v_codici_mergiati
   FROM ui.dashboard_widget dw
   JOIN ui.widget w ON w.id = dw.widget_id
  WHERE dw.dashboard_id = v_dashboard_id
    AND w.attivo        = TRUE
-   AND w.codice NOT IN (
-     SELECT elem ->> 'codice'
+   -- NOT EXISTS e non NOT IN: una voce senza codice darebbe un NULL
+   -- nell'elenco, e il NOT IN non sarebbe mai vero.
+   AND NOT EXISTS (
+     SELECT 1
        FROM jsonb_array_elements(v_config_widget) AS elem
+      WHERE elem ->> 'codice' = w.codice
    );
 
   -- -------------------------------------------------------
@@ -211,25 +210,36 @@ BEGIN
   --    - Arricchisce dai campi freschi di ui.widget (deep_link,
   --      contatore_key, soglia, etichetta*, tipo_widget) — la
   --      preferenza porta solo il codice.
+  --    - Nessun cast che cada: ordine dal BB della misura, un campo che
+  --      manca (o di tipo sbagliato) prende il default del pool (ordine
+  --      del pool, visibile); un codice ripetuto vale una volta (la prima).
   -- -------------------------------------------------------
   SELECT jsonb_agg(
       jsonb_build_object(
-        'codice',             w.codice,
-        'ordine',             (elem ->> 'ordine')::INTEGER,
-        'visibile',           (elem ->> 'visibile')::BOOLEAN,
-        'tipo_widget',        w.tipo_widget::text,
-        'etichetta',          w.etichetta,
-        'etichetta_i18n_key', w.etichetta_i18n_key,
-        'deep_link',          w.deep_link,
-        'contatore_key',      w.contatore_key,
-        'soglia',             w.soglia
+        'codice',             s.codice,
+        'ordine',             s.ordine_norm,
+        'visibile',           s.visibile_norm,
+        'tipo_widget',        s.tipo_widget::text,
+        'etichetta',          s.etichetta,
+        'etichetta_i18n_key', s.etichetta_i18n_key,
+        'deep_link',          s.deep_link,
+        'contatore_key',      s.contatore_key,
+        'soglia',             s.soglia
       )
-      ORDER BY (elem ->> 'ordine')::INTEGER
+      ORDER BY s.ordine_norm, s.ord
     )
     INTO v_config_widget
-    FROM jsonb_array_elements(v_config_widget) AS elem
+    FROM (
+    SELECT DISTINCT ON (w.id)
+           e.ord, w.codice, w.tipo_widget, w.etichetta, w.etichetta_i18n_key,
+           w.deep_link, w.contatore_key, w.soglia,
+           COALESCE(ui.fn_intero_da_jsonb(e.elem -> 'ordine'), dw.ordine_default) AS ordine_norm,
+           CASE WHEN jsonb_typeof(e.elem -> 'visibile') = 'boolean'
+                THEN (e.elem -> 'visibile')::BOOLEAN
+                ELSE TRUE END                                                  AS visibile_norm
+    FROM jsonb_array_elements(v_config_widget) WITH ORDINALITY AS e(elem, ord)
     JOIN ui.widget w
-      ON w.codice = elem ->> 'codice'
+      ON w.codice = e.elem ->> 'codice'
      AND w.attivo = TRUE
     -- membership nel pool della dashboard (drop widget staccati/rimossi)
     JOIN ui.dashboard_widget dw
@@ -248,10 +258,24 @@ BEGIN
      AND (
        w.azione_id IS NULL
        OR COALESCE((v_azioni_map ->> ap.permission_codename)::BOOLEAN, FALSE)
-     );
+     )
+    ORDER BY w.id, e.ord
+    ) s;
 
   IF v_config_widget IS NULL THEN
     v_config_widget := '[]'::JSONB;
+  END IF;
+
+  -- -------------------------------------------------------
+  -- 4-ter. widget_nuovi DOPO il filtro di area e azione, come le liste al
+  --   passo 5-bis: il badge dice le card che l'utente puo' davvero trovare,
+  --   non quelle mergiate dal pool.
+  -- -------------------------------------------------------
+  IF v_widget_nuovi > 0 THEN
+    SELECT COUNT(*)::INTEGER
+      INTO v_widget_nuovi
+      FROM jsonb_array_elements(v_config_widget) AS elem
+     WHERE (elem ->> 'codice') = ANY (v_codici_mergiati);
   END IF;
 
   -- Per ogni chiave il livello da cui viene ('preferenza', un ambito di
@@ -312,7 +336,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_dashboard_config(p_dashboard_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'La configurazione effettiva di una dashboard per un utente, pronta per il frontend, gemella di ui.fn_resolve_lista_config. Cascata per chiave: widget e dimensione_max vengono ognuna dal primo livello che la contiene: la preferenza (una chiave assente vuol dire «come lo standard»), poi il preset di base scelto da ui.fn_preset_di_base (acceso e con almeno un widget acceso nel pool della dashboard: il preset di ruolo del profilo piu'' prioritario, solo con la veste valorizzata; poi quello dell''azienda, se accesa; poi quello di sistema), poi il catalogo (tutti i widget accesi del pool). Poi il merge dei widget nuovi del pool, il filtro dei permessi per area e azione (mappe aggregate script.fn_get_user_permissions_map e fn_get_user_actions_map, fail-closed fuori dalla veste OPERATORE) e i campi opachi freschi (deep_link, contatore_key, soglia, etichette, tipo_widget). Uscite: widget, dimensione_max e dimensione_max_standard (senza la preferenza), origine (per chiave: preferenza, ruolo, emittente_fiscale, sistema o catalogo), widget_nuovi, preset_base (id, ambito e contenuto_aggiornato_il, la data del contenuto per chiave, del preset di base di oggi, o null), preset_base_cambiato (la preferenza ha salvato una base che non e'' quella di oggi), preset_aggiornato_chiavi (solo sulla base di oggi: le chiavi di origine preferenza il cui contenuto nel preset e'' cambiato dopo lo snapshot salvato con la preferenza, ui.fn_preset_aggiornato; vuoto se nessuna; chiudere il banner e'' riscrivere preset_base_id) e preset_aggiornato (almeno una). Dashboard assente o spenta: E_UI_DASHBOARD_NON_TROVATA. La veste la legge ui.fn_veste_corrente. STABLE.';
+IS 'La configurazione effettiva di una dashboard per un utente, pronta per il frontend, gemella di ui.fn_resolve_lista_config. Cascata per chiave: widget e dimensione_max vengono ognuna dal primo livello che la contiene: la preferenza (una chiave assente vuol dire «come lo standard»; dimensione_max vale da 1 a 100, ui.fn_dimensione_max_ammessa), poi il preset di base scelto da ui.fn_preset_di_base (acceso e con almeno un widget acceso nel pool della dashboard: il preset di ruolo del profilo più prioritario, solo con la veste valorizzata; poi quello dell''azienda, se accesa; poi quello di sistema), poi il catalogo (tutti i widget accesi del pool). Poi il merge dei widget nuovi del pool, il filtro dei permessi per area e azione (mappe aggregate script.fn_get_user_permissions_map e fn_get_user_actions_map, fail-closed fuori dalla veste OPERATORE) e i campi opachi freschi (deep_link, contatore_key, soglia, etichette, tipo_widget). Una riga della preferenza fuori forma non fa cadere la funzione: ordine e dimensione passano da ui.fn_intero_da_jsonb, un campo che manca prende il default del pool, una voce senza codice o fuori dal pool si salta, un codice ripetuto vale una volta. Uscite: widget, dimensione_max e dimensione_max_standard (senza la preferenza), origine (per chiave: preferenza, ruolo, emittente_fiscale, sistema o catalogo), widget_nuovi (le card nuove del pool che l''utente può vedere: contate dopo il filtro dei permessi), preset_base (id, ambito e contenuto_aggiornato_il, la data del contenuto per chiave, del preset di base di oggi, o null), preset_base_cambiato (la preferenza ha salvato una base che non è quella di oggi), preset_aggiornato_chiavi (solo sulla base di oggi: le chiavi di origine preferenza il cui contenuto nel preset è cambiato dopo lo snapshot salvato con la preferenza, ui.fn_preset_aggiornato; vuoto se nessuna; chiudere il banner è riscrivere preset_base_id) e preset_aggiornato (almeno una). Dashboard assente o spenta: E_UI_DASHBOARD_NON_TROVATA. La veste la legge ui.fn_veste_corrente. STABLE.';
 ```
 
 </div>

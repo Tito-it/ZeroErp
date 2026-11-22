@@ -10,4 +10,4 @@ This guide covers:
 - Usage examples and best practices  
 
 
-[README](./readme.md)
+[README](readme.md)

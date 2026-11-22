@@ -291,6 +291,8 @@ class UbicazioneRow(TypedDict):
 class LottoRow(TypedDict):
     id: int
     articolo_id: str
+    # L'azienda del lotto (dal 2026-11-22): la mette il DB dalla sessione.
+    emittente_fiscale_id: int
     codice: str
     data_arrivo: date
     data_scadenza: date | None

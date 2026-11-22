@@ -3,8 +3,8 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Test unit ListaColonnaAdminService — Blocco F Fase 2 (DEF-5b)
-#        CRUD su ui.lista_colonna con UX vincoli (esportabile=False per
-#        tipo_colonna='azione') e soft-block DELETE per preferenze e preset.
+#        CRUD su ui.lista_colonna coi default derivati dal modello (i vincoli
+#        fra campi li giudica il DB) e soft-block DELETE per preferenze e preset.
 #        CI senza DB reale (SimpleTestCase + repository mockato).
 #
 # Indice test (0..N):
@@ -21,7 +21,9 @@
 #     8. create_colonna_tipo_dato_invalido_raises
 #     9. create_colonna_allineamento_invalido_raises
 #    10. create_colonna_unique_codice_violato
-#    11. create_colonna_azione_forza_esportabile_false
+#    11. create_colonna_default_derivati_dal_modello (giro 4)
+#    11-bis. create_colonna_valore_esplicito_arriva_intatto (giro 4)
+#    11-ter. create_colonna_origine_campo_invalida_raises (giro 4)
 #    12. create_colonna_campo_sorgente_null_ammesso
 #    13. create_colonna_etichetta_i18n_key_strip_to_null
 #   Update
@@ -29,8 +31,8 @@
 #    15. update_colonna_lista_id_immutabile_raises
 #    16. update_colonna_payload_vuoto_raises
 #    17. update_colonna_happy_path
-#    18. update_colonna_passa_a_azione_forza_esportabile_false
-#    19. update_colonna_azione_corrente_blocca_esportabile_true
+#    18. update_colonna_nessun_valore_derivato (giro 4)
+#    19. update_colonna_codice_immutabile_raises (giro 4, BE12)
 #    20. update_colonna_attivo_null_raises
 #   Delete
 #    21. delete_colonna_inesistente_raises
@@ -197,9 +199,10 @@ class ListaColonnaCreateTests(SimpleTestCase):
         repo.create_colonna.return_value = 100
         repo.get_colonna_admin.return_value = _row_colonna(id=100)
         svc = ListaColonnaAdminService(repo=repo)
-        svc.create_colonna(1, _payload_create_min())
+        svc.create_colonna(1, _payload_create_min(campo_sorgente="ragione_sociale"))
         data = repo.create_colonna.call_args.args[0]
         self.assertEqual(data["allineamento"], "left")
+        self.assertEqual(data["origine_campo"], "VISTA")
         self.assertTrue(data["filtrabile"])
         self.assertTrue(data["ordinabile"])
         self.assertTrue(data["esportabile"])
@@ -246,13 +249,42 @@ class ListaColonnaCreateTests(SimpleTestCase):
             svc.create_colonna(1, _payload_create_min())
         self.assertEqual(ctx.exception.code, E_COLONNA_VALIDATION)
 
-    def test_create_colonna_azione_forza_esportabile_false(self) -> None:
+    # ⭐ I default seguono il modello (giro 4 di brief-db-revisione-ui): senza
+    #    campo sorgente la colonna nasce non esportabile (U25), della
+    #    genealogia nasce non filtrabile e non ordinabile.
+    def test_create_colonna_default_derivati_dal_modello(self) -> None:
         repo = _repo_with_lista()
         repo.create_colonna.return_value = 100
         repo.get_colonna_admin.return_value = _row_colonna(id=100)
         svc = ListaColonnaAdminService(repo=repo)
-        # Anche se l'utente passa esportabile=True esplicitamente, la
-        # normalize lato BE forza False per coerenza con CHECK DB.
+        svc.create_colonna(1, {
+            "codice": "edit_btn",
+            "etichetta": "Modifica",
+            "tipo_colonna": "azione",
+            "tipo_dato": "string",
+            "ordine_default": 99,
+        })
+        data = repo.create_colonna.call_args.args[0]
+        self.assertFalse(data["esportabile"])
+        self.assertTrue(data["filtrabile"])
+
+        svc.create_colonna(1, _payload_create_min(
+            campo_sorgente="frontiera_codice", origine_campo="LINEAGE",
+        ))
+        data = repo.create_colonna.call_args.args[0]
+        self.assertEqual(data["origine_campo"], "LINEAGE")
+        self.assertTrue(data["esportabile"])
+        self.assertFalse(data["filtrabile"])
+        self.assertFalse(data["ordinabile"])
+
+    # ⛔ Un valore ESPLICITO non si corregge: arriva al DB, che lo rifiuta sul
+    #    campo (fino al giro 4 il service forzava `esportabile=False` sulle
+    #    azioni; ora la regola sta solo nei CHECK).
+    def test_create_colonna_valore_esplicito_arriva_intatto(self) -> None:
+        repo = _repo_with_lista()
+        repo.create_colonna.return_value = 100
+        repo.get_colonna_admin.return_value = _row_colonna(id=100)
+        svc = ListaColonnaAdminService(repo=repo)
         svc.create_colonna(1, {
             "codice": "edit_btn",
             "etichetta": "Modifica",
@@ -261,9 +293,13 @@ class ListaColonnaCreateTests(SimpleTestCase):
             "ordine_default": 99,
             "esportabile": True,
         })
-        data = repo.create_colonna.call_args.args[0]
-        self.assertEqual(data["tipo_colonna"], "azione")
-        self.assertFalse(data["esportabile"])
+        self.assertTrue(repo.create_colonna.call_args.args[0]["esportabile"])
+
+    def test_create_colonna_origine_campo_invalida_raises(self) -> None:
+        svc = ListaColonnaAdminService(repo=_repo_with_lista())
+        with self.assertRaises(ServiceError) as ctx:
+            svc.create_colonna(1, _payload_create_min(origine_campo="ALTROVE"))
+        self.assertEqual(ctx.exception.code, E_COLONNA_VALIDATION)
 
     def test_create_colonna_campo_sorgente_null_ammesso(self) -> None:
         repo = _repo_with_lista()
@@ -334,37 +370,28 @@ class ListaColonnaUpdateTests(SimpleTestCase):
         self.assertEqual(data["etichetta"], "Nuova etichetta")
         self.assertEqual(data["ordine_default"], 50)
 
-    def test_update_colonna_passa_a_azione_forza_esportabile_false(self) -> None:
+    # ⛔ Nessun valore derivato nel PATCH: il vincolo fra campi lo giudica il
+    #    DB sul valore finale della riga (giro 4 di brief-db-revisione-ui).
+    def test_update_colonna_nessun_valore_derivato(self) -> None:
         repo = MagicMock()
-        # Colonna corrente: tipo_colonna=informazione, esportabile=True.
         repo.get_colonna_admin.return_value = _row_colonna(
             tipo_colonna="informazione", esportabile=True
         )
         repo.update_colonna.return_value = True
         svc = ListaColonnaAdminService(repo=repo)
-        # Cambio a azione: esportabile diventa False anche senza essere
-        # passato nel payload.
-        svc.update_colonna(100, {
-            "tipo_colonna": "azione",
-        })
-        data = repo.update_colonna.call_args.args[1]
-        self.assertEqual(data["tipo_colonna"], "azione")
-        self.assertFalse(data["esportabile"])
+        svc.update_colonna(100, {"tipo_colonna": "azione"})
+        self.assertEqual(repo.update_colonna.call_args.args[1], {"tipo_colonna": "azione"})
 
-    def test_update_colonna_azione_corrente_blocca_esportabile_true(self) -> None:
-        # Edge case: colonna corrente gia' di tipo azione; l'utente
-        # tenta di passare esportabile=True senza toccare tipo_colonna.
-        # Il service deve normalizzare a False (avrebbe fallito il CHECK
-        # DB con messaggio meno parlante).
+    # ⛔ Il codice e' immutabile (BE12, giro 4): rifiuto parlante sul campo.
+    def test_update_colonna_codice_immutabile_raises(self) -> None:
         repo = MagicMock()
-        repo.get_colonna_admin.return_value = _row_colonna(
-            tipo_colonna="azione", esportabile=False
-        )
-        repo.update_colonna.return_value = True
+        repo.get_colonna_admin.return_value = _row_colonna()
         svc = ListaColonnaAdminService(repo=repo)
-        svc.update_colonna(100, {"esportabile": True})
-        data = repo.update_colonna.call_args.args[1]
-        self.assertFalse(data["esportabile"])
+        with self.assertRaises(ServiceError) as ctx:
+            svc.update_colonna(100, {"codice": "rinominata"})
+        self.assertEqual(ctx.exception.code, E_COLONNA_VALIDATION)
+        self.assertIn("codice", ctx.exception.fields or ())
+        repo.update_colonna.assert_not_called()
 
     def test_update_colonna_attivo_null_raises(self) -> None:
         repo = MagicMock()

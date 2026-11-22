@@ -13,6 +13,8 @@
 //   3. «Riallinea» senza chiavi scelte: DELETE, non un PUT vuoto
 //   4. giro 1b: `preset_aggiornato_chiavi` dal DB, passthrough (assente =
 //      elenco vuoto)
+//   5. BE8 (giro 2): una chiave a null della card non si manda
+//   6-7. FE1 (giro 3): il tetto delle card e' quello del DB, senza ripiego
 // ------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -91,5 +93,37 @@ describe('useDashboardConfig — base del preset cambiata (BE7, giro 1a)', () =>
     await dash.riallineaPresetBase()
     expect(api.putDashboardPreferenza).not.toHaveBeenCalled()
     expect(api.deleteDashboardPreferenza).toHaveBeenCalledWith('home')
+  })
+})
+
+describe('useDashboardConfig.save — voci senza chiavi a null (BE8, giro 2)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('5. una chiave a null della card non si manda', async () => {
+    const dash = await caricata({ widget: 'preferenza' })
+    dash.config.value.widget[0].visibile = null
+    await dash.save()
+    // Il guard di forma del DB rifiuta una voce con una chiave a null
+    // (`E_UI_CONFIGURAZIONE_FORMA`): il FE la toglie (Tid, 2026-11-22).
+    expect(api.putDashboardPreferenza).toHaveBeenCalledWith('home', {
+      widget: [{ codice: 'situazione', ordine: 1 }],
+    })
+  })
+})
+
+describe('useDashboardConfig — il tetto delle card dal DB (FE1, giro 3)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('6. il tetto e\' quello della configurazione: nessun 8 di ripiego', async () => {
+    const widget = [1, 2, 3].map((i) => ({ codice: `w${i}`, ordine: i, visibile: true }))
+    const dash = await caricata({}, { widget, dimensione_max: 2 })
+    expect(dash.dimensioneMax.value).toBe(2)
+    expect(dash.widgetVisibili.value.map((w) => w.codice)).toEqual(['w1', 'w2'])
+  })
+
+  it('7. prima della configurazione: nessun tetto inventato', () => {
+    const dash = useDashboardConfig('home')
+    expect(dash.dimensioneMax.value).toBeNull()
+    expect(dash.widgetVisibili.value).toEqual([])
   })
 })

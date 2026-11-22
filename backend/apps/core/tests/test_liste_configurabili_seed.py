@@ -49,14 +49,15 @@
    Senza un preset di sistema acceso la lista non ha una configurazione di
    partenza (`is_default` e' uscito dal modello il 2026-11-20, Q26).
 
-5-bis. test_l_ordinamento_dei_preset_nomina_il_campo_sorgente
-   Ogni `col` dell'`ordinamento_default` di un preset e' un `campo_sorgente`
-   delle colonne attive della sua lista, non un `codice`: dove i due divergono,
-   il preset aprirebbe la lista ordinata per una colonna che non esiste, e il DB
-   non lo rifiuta (K-4 di brief-db-lista-colonna-campo-sorgente-null).
+5-bis. test_l_ordinamento_dei_preset_nomina_il_codice
+   Ogni `col` dell'`ordinamento_default` di un preset e' il `codice` di una
+   colonna della sua lista, in qualsiasi stato (Q40 (b), Q42 di
+   brief-db-revisione-ui, 2026-11-21: revocano K-4 di
+   brief-db-lista-colonna-campo-sorgente-null). Il DB lo fa rispettare col
+   guard `E_UI_CONFIGURAZIONE_FORMA`.
 
-5-ter. test_l_ordinamento_col_codice_e_rifiutato
-   Il rosso del 5-bis, su un preset costruito col codice di una colonna
+5-ter. test_l_ordinamento_col_campo_sorgente_e_rifiutato
+   Il rosso del 5-bis, su un preset costruito col campo sorgente di una colonna
    divergente: la prova che il presidio vede il difetto che dichiara.
 
 6. test_registro_copre_tutte_le_liste_montate_dal_frontend
@@ -824,22 +825,24 @@ def _liste_locali() -> tuple[str, ...]:
     return tuple(c for c, w in _LISTE if w is ORDINAMENTO_LOCALE)
 
 
-# Scopo: le chiavi `col` degli `ordinamento_default` che NON sono un
-#        `campo_sorgente` delle colonne attive della lista del preset — e quante
-#        chiavi si sono esaminate, per chi vuole sapere che il presidio ha materia.
-# ⛔ Il `col` nomina il `campo_sorgente`, non il `codice`: `<ListaConfigurabile>`
-#    monta le Column con `:field="col.campo_sorgente"` e il sort parte da li'.
-#    Dove i due divergono, un preset scritto col codice apre la lista ordinata
-#    per una colonna che non esiste, senza errore a DB (K-4).
+# Scopo: le chiavi `col` degli `ordinamento_default` che NON sono il `codice` di
+#        una colonna della lista del preset — e quante chiavi si sono esaminate,
+#        per chi vuole sapere che il presidio ha materia.
+# ⭐ Il `col` nomina il CODICE della colonna, in qualsiasi stato (Q40 (b) e Q42
+#    di brief-db-revisione-ui, Tid 2026-11-21: revocano K-4 di
+#    brief-db-lista-colonna-campo-sorgente-null, che voleva il campo sorgente).
+#    Nessuno traduce: il campo per cui si ordina lo da' `ui.fn_ordinamento_lista`
+#    (`campo_sorgente` in uscita), che toglie lei le voci di colonne spente.
+#    Il DB lo fa rispettare col guard di `ordinamento_default`
+#    (`E_UI_CONFIGURAZIONE_FORMA`); questo e' il presidio senza DB sul seed.
 # ⭐ Funzione pura sulle righe, non sul file: il test che la vede rossa le passa
 #    un preset costruito, senza toccare il seed.
 def _ordinamenti_fuori_catalogo(
     preset: list[RigaSeed], colonne: list[RigaSeed],
 ) -> tuple[list[tuple[str | None, object]], int]:
-    sorgenti: dict[str | None, set[str | None]] = {}
+    codici: dict[str | None, set[str | None]] = {}
     for c in colonne:
-        if c["attivo"] == "t":
-            sorgenti.setdefault(c["lista_id"], set()).add(c["campo_sorgente"])
+        codici.setdefault(c["lista_id"], set()).add(c["codice"])
     fuori: list[tuple[str | None, object]] = []
     esaminate = 0
     for p in preset:
@@ -849,7 +852,7 @@ def _ordinamenti_fuori_catalogo(
         for chiave in json.loads(ordinamento):
             esaminate += 1
             col = chiave.get("col")
-            if col is None or col not in sorgenti.get(p["lista_id"], set()):
+            if col is None or col not in codici.get(p["lista_id"], set()):
                 fuori.append((p["codice"], col))
     return sorted(fuori, key=str), esaminate
 
@@ -992,6 +995,35 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
             divergenti_totali, 0,
             "nessuna colonna ordinabile con codice != campo_sorgente in tutto il "
             "registro: il test non discrimina piu' le due convenzioni, va rivisto.",
+        )
+
+    # ⭐ BE25 (2) di brief-db-revisione-ui: la base view applica l'ordinamento
+    #    di partenza (`apps.core.services.ordinamento_di_partenza`) a ogni view
+    #    che dichiara `lista_codice`, mettendo nella richiesta il CAMPO SORGENTE
+    #    di una colonna ordinabile. Che stia nella whitelist del repository lo
+    #    garantisce `test_whitelist_copre_le_colonne_ordinabili` — ma solo per
+    #    le liste di questo registro. Una view la cui lista non c'e' riceverebbe
+    #    un `order_by` che nessuno ha verificato. ⚠️ Dal 2026-11-22 un rifiuto
+    #    del repository non e' piu' un 400 (la base view rilegge la lista
+    #    senza la proposta, `OrdinamentoPropostoRifiutato`), ma la lista si
+    #    aprirebbe col default invece che col preset, e solo il log lo
+    #    direbbe: per il seed il presidio resta qui, prima del rilascio. Le
+    #    liste a ordinamento locale non risolvono chiavi, quindi non
+    #    confermano niente e la risposta non porta `meta.ordinamento`; sono a
+    #    registro anche loro.
+    # ⭐ Le view vengono dal PERCORSO REALE (`classi_view`), non da un elenco.
+    def test_ogni_lista_codice_ha_la_whitelist_a_registro(self) -> None:
+        from apps.core.api.rotte import classi_view
+
+        a_registro = {codice for codice, _w in _LISTE}
+        dichiarate = {
+            getattr(view, "lista_codice", None) for view in classi_view(anche_condizionali=True)
+        } - {None}
+        self.assertTrue(dichiarate, "nessuna view dichiara `lista_codice`: la lettura e' rotta")
+        self.assertEqual(
+            sorted(dichiarate - a_registro), [],
+            "view che dichiarano `lista_codice` per una lista senza whitelist a "
+            "registro: l'ordinamento di partenza vi arriverebbe senza presidio.",
         )
 
     def test_colonna_azione_mai_ordinabile(self) -> None:
@@ -1248,56 +1280,58 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
                     "rifiuterebbe l'UNIQUE del posto.",
                 )
 
-    # 5-bis. La chiave `col` dell'ordinamento di un preset e' il `campo_sorgente`
-    #        (K-4 di brief-db-lista-colonna-campo-sorgente-null).
-    def test_l_ordinamento_dei_preset_nomina_il_campo_sorgente(self) -> None:
+    # 5-bis. La chiave `col` dell'ordinamento di un preset e' il `codice` di una
+    #        colonna della sua lista (Q40 (b), Q42 di brief-db-revisione-ui).
+    def test_l_ordinamento_dei_preset_nomina_il_codice(self) -> None:
         fuori, esaminate = _ordinamenti_fuori_catalogo(
             seed_ui("lista_preset.csv"), seed_ui("lista_colonna.csv"),
         )
         self.assertEqual(
             fuori, [],
             "`ordinamento_default` di un preset nomina una colonna che la sua "
-            "lista non ha fra i `campo_sorgente` attivi: la lista si apre "
-            "ordinata per un campo che non esiste, e il DB non lo rifiuta.",
+            "lista non ha fra i codici: il guard del DB lo rifiuta "
+            "(E_UI_CONFIGURAZIONE_FORMA), e il seed non si carica.",
         )
         # Il verso che arma il presidio: a zero chiavi esaminate sarebbe verde
         # per sottrazione (fatto datato, 2026-11-12: 81 chiavi).
         self.assertGreater(esaminate, 0, "nessun `ordinamento_default` letto dal seed")
 
-    # 5-ter. Il rosso del 5-bis, su un preset costruito col CODICE di una colonna
-    #        dove codice e campo_sorgente divergono: e' il difetto che presidia, e
-    #        senza questa prova il test potrebbe essere verde per come e' scritto.
-    def test_l_ordinamento_col_codice_e_rifiutato(self) -> None:
+    # 5-ter. Il rosso del 5-bis, su un preset costruito col CAMPO SORGENTE di una
+    #        colonna dove codice e campo_sorgente divergono: e' la forma che Q40
+    #        (b) ha ritirato, e senza questa prova il test potrebbe essere verde
+    #        per come e' scritto.
+    def test_l_ordinamento_col_campo_sorgente_e_rifiutato(self) -> None:
         colonne = seed_ui("lista_colonna.csv")
-        # ⚠️ Il codice della divergente non deve essere il `campo_sorgente` di
-        #    un'ALTRA colonna attiva della stessa lista: li' il preset sarebbe
-        #    giusto, e il test diventerebbe rosso per come sono fatti i dati.
-        sorgenti: dict[str | None, set[str | None]] = {}
+        # ⚠️ Il campo della divergente non deve essere il `codice` di un'ALTRA
+        #    colonna della stessa lista: li' il preset sarebbe giusto, e il test
+        #    diventerebbe rosso per come sono fatti i dati.
+        codici: dict[str | None, set[str | None]] = {}
         for c in colonne:
-            if c["attivo"] == "t":
-                sorgenti.setdefault(c["lista_id"], set()).add(c["campo_sorgente"])
+            codici.setdefault(c["lista_id"], set()).add(c["codice"])
         divergente = next(
             (
                 c for c in colonne
-                if c["attivo"] == "t" and c["campo_sorgente"]
+                if c["campo_sorgente"]
                 and c["codice"] != c["campo_sorgente"]
-                and c["codice"] not in sorgenti[c["lista_id"]]
+                and c["campo_sorgente"] not in codici[c["lista_id"]]
             ),
             None,
         )
         if divergente is None:
             self.fail(
-                "nessuna colonna attiva con codice != campo_sorgente: il rosso "
-                "del 5-bis non si sa piu' costruire dal seed, va rivisto."
+                "nessuna colonna con codice != campo_sorgente: il rosso del "
+                "5-bis non si sa piu' costruire dal seed, va rivisto."
             )
-        preset_col_codice: RigaSeed = {
+        preset_col_campo: RigaSeed = {
             "codice": "preset_di_prova",
             "lista_id": divergente["lista_id"],
-            "ordinamento_default": json.dumps([{"col": divergente["codice"], "dir": "asc"}]),
+            "ordinamento_default": json.dumps(
+                [{"col": divergente["campo_sorgente"], "dir": "asc"}],
+            ),
         }
-        fuori, esaminate = _ordinamenti_fuori_catalogo([preset_col_codice], colonne)
+        fuori, esaminate = _ordinamenti_fuori_catalogo([preset_col_campo], colonne)
         self.assertEqual(esaminate, 1)
-        self.assertEqual(fuori, [("preset_di_prova", divergente["codice"])])
+        self.assertEqual(fuori, [("preset_di_prova", divergente["campo_sorgente"])])
 
     # 9. Un `formato` che il frontend non conosce non fa errore: la colonna esce
     #    come testo grezzo. Il precedente e' `yesno` (frontend-standards §Si'/No):

@@ -3,8 +3,8 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Service di scrittura per `ui.lista_preferenza_utente` —
-#        valida JSONB in ingresso (whitelist chiavi anti-injection),
-#        UPSERT preferenza col preset di base di oggi (`preset_base_id`,
+#        il corpo deve essere un oggetto con almeno una chiave (la forma la
+#        giudica il guard del DB), UPSERT preferenza col preset di base di oggi (`preset_base_id`,
 #        dalla risoluzione; lo snapshot del badge DEF-2 lo scrive il DB),
 #        delete idempotente.
 #        Nessuna logica di dominio: la cascata e il filtro permessi
@@ -16,7 +16,6 @@ from __future__ import annotations
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.ui.db.ui_repository import UiRepository
 from apps.ui.services._preferenza import (
@@ -36,14 +35,10 @@ __all__ = [
 
 E_UI_LISTA_NON_TROVATA = "E_UI_LISTA_NON_TROVATA"
 
-# Whitelist root del payload preferenza.
-_PAYLOAD_KEYS = frozenset(
-    {"colonne", "ordinamento", "filtri", "pagina_dimensione"}
-)
-# Whitelist di una singola colonna nella preferenza.
-_COLONNA_KEYS = frozenset(
-    {"codice", "ordine", "larghezza", "visibile", "fissata"}
-)
+# ⛔ Nessuna whitelist qui: chiavi e voci ammesse le giudica il guard del DB
+#    (`E_UI_CONFIGURAZIONE_FORMA`). `ordinamento` e `filtri` sono usciti dalla
+#    preferenza (Q38/Q39 §6 di brief-db-revisione-ui, giro 2 del 2026-11-21):
+#    nel corpo sono un 400 del DB, come ogni chiave non ammessa.
 
 
 class ListaPreferenzaService:
@@ -51,25 +46,12 @@ class ListaPreferenzaService:
 
     def __init__(self, repository: UiRepository | None = None) -> None:
         self._repo = repository or UiRepository()
-        self._validator = PayloadValidator(
-            validation_code=E_UI_PREFERENZA_VALIDAZIONE,
-        )
 
-    # Scopo: Risolve `lista_codice -> lista_id` con errore parlante 404
-    #        `E_UI_LISTA_NON_TROVATA` se la lista non esiste / non e' attiva.
-    #        Pattern centralizzato (helper privato) per non duplicare la
-    #        guardia in ogni metodo del service.
+    # Scopo: `lista_codice -> lista_id`. Lista assente o spenta: 404
+    #        `E_UI_LISTA_NON_TROVATA` dal BB del DB (`ui.fn_lista_da_codice`,
+    #        via il repository), non ricopiato qui (U39 di brief-db-revisione-ui).
     def _require_lista_id(self, lista_codice: str) -> int:
-        lista_id = self._repo.get_lista_id(lista_codice)
-        ErrorManager.require(
-            lista_id is not None,
-            code=E_UI_LISTA_NON_TROVATA,
-            message="Lista non trovata.",
-            detail=f"codice lista: '{lista_codice}'",
-            context={"lista_codice": lista_codice},
-        )
-        assert lista_id is not None
-        return lista_id
+        return self._repo.get_lista_id(lista_codice)
 
     # Scopo: UPSERT preferenza utente per (auth_user, lista_codice).
     #        Valida la struttura JSONB in ingresso, legge il preset di base
@@ -84,7 +66,7 @@ class ListaPreferenzaService:
         # 1. Lista deve esistere
         lista_id = self._require_lista_id(lista_codice)
 
-        # 2. Whitelist + tipi del payload
+        # 2. Un oggetto con almeno una chiave; la forma la giudica il DB
         configurazione = self._validate_payload(payload)
 
         # 3. Il preset di base di oggi, dalla risoluzione (stesso emittente
@@ -163,110 +145,10 @@ class ListaPreferenzaService:
 
         return {"ignored": True}
 
-    # Scopo: Valida il payload contro le whitelist e ritorna il dict
-    #        normalizzato pronto per il salvataggio JSONB. Difende da
-    #        chiavi extra (anti-injection) e tipi sbagliati.
-    def _validate_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
-        if not isinstance(payload, dict):
-            ErrorManager.raise_error(
-                code=E_UI_PREFERENZA_VALIDAZIONE,
-                message="Preferenza lista non valida.",
-                detail="Il payload deve essere un oggetto JSON.",
-            )
-
-        self._validator.validate_allowed_keys(
-            payload, allowed=_PAYLOAD_KEYS,
-            message="Preferenza lista non valida.",
-        )
-
-        config: dict[str, Any] = {}
-
-        # colonne: lista di oggetti normalizzati
-        colonne_raw = payload.get("colonne")
-        if colonne_raw is not None:
-            config["colonne"] = self._validator.voci(
-                colonne_raw, self._validate_colonna, campo="colonne",
-                message="Preferenza lista non valida.",
-            )
-
-        # ordinamento: lista di oggetti {col, dir}; trasparente al BE
-        ordinamento = payload.get("ordinamento")
-        if ordinamento is not None:
-            ErrorManager.require(
-                isinstance(ordinamento, list),
-                code=E_UI_PREFERENZA_VALIDAZIONE,
-                message="Preferenza lista non valida.",
-                detail="Il campo 'ordinamento' deve essere una lista.",
-            )
-            config["ordinamento"] = ordinamento
-
-        # filtri: dict trasparente (formato deciso col componente Vue, §10.1.2)
-        filtri = payload.get("filtri")
-        if filtri is not None:
-            ErrorManager.require(
-                isinstance(filtri, dict),
-                code=E_UI_PREFERENZA_VALIDAZIONE,
-                message="Preferenza lista non valida.",
-                detail="Il campo 'filtri' deve essere un oggetto.",
-            )
-            config["filtri"] = filtri
-
-        # pagina_dimensione: qui solo la FORMA (un intero). Quali misure sono
-        # ammesse lo dice il catalogo `ui.misure_pagina`, e lo fa rispettare il
-        # guard a DB sulla preferenza (`E_UI_MISURA_PAGINA_NON_AMMESSA`, 400
-        # dal middleware). ⛔ Il vecchio tetto `MAX_LIMIT` era una seconda
-        # regola, diversa dal catalogo: ammetteva 37, che il paginatore non
-        # offre.
-        pagina_dim = self._validator.optional_positive_int(
-            payload, key="pagina_dimensione",
-            message="Preferenza lista non valida.",
-        )
-        if pagina_dim is not None:
-            config["pagina_dimensione"] = pagina_dim
-
-        # Ogni chiave e' facoltativa, ma una preferenza senza chiavi si toglie
-        # col DELETE (BB `richiedi_preferenza_non_vuota`).
+    # Scopo: La configurazione da salvare: il corpo cosi' com'e', se e' un
+    #        oggetto con almeno una chiave (BB `richiedi_preferenza_non_vuota`).
+    #        La forma la giudica il DB (vedi il BB).
+    def _validate_payload(self, payload: Any) -> dict[str, Any]:
         return richiedi_preferenza_non_vuota(
-            config, message="Preferenza lista non valida.",
+            payload, message="Preferenza lista non valida.",
         )
-
-    # Scopo: Legge una colonna della preferenza (lettore di `PayloadValidator.voci`,
-    #        che ha gia' giudicato la forma: un oggetto). Whitelist chiavi,
-    #        codice obbligatorio, ordine/larghezza int, visibile/fissata bool.
-    def _validate_colonna(
-        self, raw: dict[str, Any], idx: int,
-    ) -> dict[str, Any]:
-        self._validator.validate_allowed_keys(
-            raw, allowed=_COLONNA_KEYS,
-            message=f"colonne[{idx}]: campi non supportati.",
-        )
-
-        codice = self._validator.require_string(
-            raw, key="codice",
-            message=f"colonne[{idx}]: 'codice' obbligatorio.",
-        )
-        out: dict[str, Any] = {"codice": codice}
-
-        ordine = self._validator.optional_positive_int(
-            raw, key="ordine",
-            message=f"colonne[{idx}]: 'ordine' deve essere intero positivo.",
-        )
-        if ordine is not None:
-            out["ordine"] = ordine
-
-        larghezza = self._validator.optional_positive_int(
-            raw, key="larghezza",
-            message=f"colonne[{idx}]: 'larghezza' deve essere intero positivo.",
-        )
-        if larghezza is not None:
-            out["larghezza"] = larghezza
-
-        visibile = self._validator.optional_bool(raw, key="visibile")
-        if visibile is not None:
-            out["visibile"] = visibile
-
-        fissata = self._validator.optional_bool(raw, key="fissata")
-        if fissata is not None:
-            out["fissata"] = fissata
-
-        return out

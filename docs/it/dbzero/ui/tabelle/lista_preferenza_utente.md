@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Preferenza personale utente per lista. JSONB per resilienza ad evoluzioni future.
+> La personalizzazione di una lista per un utente: una riga per utente e lista. La configurazione porta solo le chiavi che l'utente ha scelto (colonne, pagina_dimensione); le altre le dà il preset di base (ui.fn_preset_di_base), e ui.fn_resolve_lista_config compone le due. La forma la controlla ui.trgfn_preferenza_guard_forma. Senza audit, per scelta: e' un dato personale, scritto solo dal suo proprietario e spesso; data_update la scrive il database a ogni scrittura (ui.trgfn_preferenza_data_update), e non c'e' user_update.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -15,7 +15,7 @@
 | preset_base_contenuto_aggiornato_il | jsonb | YES |  |
 | configurazione | jsonb | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
-| data_update | timestamp with time zone | YES |  |
+| data_update | timestamp with time zone | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -23,6 +23,7 @@
 | FOREIGN KEY | fk_lista_preferenza_utente_auth_user | auth_user_id |
 | FOREIGN KEY | fk_lista_preferenza_utente_lista_definizione | lista_id |
 | FOREIGN KEY | fk_lista_preferenza_utente_lista_preset | preset_base_id |
+| FOREIGN KEY | fk_ui_lista_preferenza_utente_preset_della_lista | preset_base_id, lista_id |
 | PRIMARY KEY | lista_preferenza_utente_pkey | id |
 | UNIQUE | uq_ui_lista_preferenza_utente_user_lista | auth_user_id, lista_id |
 
@@ -37,8 +38,10 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione()` |
-| trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione()` |
+| trg_ui_lista_preferenza_utente_a10_guard_forma_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preferenza_guard_forma()` |
+| trg_ui_lista_preferenza_utente_a10_guard_forma_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preferenza_guard_forma()` |
+| trg_ui_lista_preferenza_utente_a20_set_data_update_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preferenza_data_update()` |
+| trg_ui_lista_preferenza_utente_a20_set_data_update_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preferenza_data_update()` |
 | trg_ui_lista_preferenza_utente_z90_snapshot_base_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.lista_preset')` |
 | trg_ui_lista_preferenza_utente_z90_snapshot_base_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.lista_preset')` |
 

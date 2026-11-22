@@ -18,14 +18,14 @@
 //     tabEntity: TAB_ENTITIES.CLIENTE,
 //     filterDefaults: { utility_id: null, stato_cliente_id: null },
 //     gateKeys: ['utility_id', 'stato_cliente_id'],
-//     orderBy: 'ragione_sociale_completa',
 //   })
+//   ⭐ Niente `orderBy` su una lista configurabile: l'ordinamento di partenza
+//      lo applica il backend dal preset e lo dice in `meta.ordinamento`.
 //
 // Uso (lista che parte PIENA, es. admin/config — startsEmpty:false):
 //   export const useCategorieClientiStore = createCrudStore('amm-categorie-clienti', {
 //     api: { list, detail, create, update },
 //     tabEntity: 'categorie_clienti',
-//     orderBy: 'ordinamento',
 //     startsEmpty: false,
 //     filterDefaults: { attivo: true, partecipa_promo: null },
 //   })

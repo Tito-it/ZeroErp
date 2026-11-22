@@ -10,7 +10,7 @@
 # la porta il CSV
 #   Accompagna: 20260818-57 (il mirror CSV che diventa la sorgente)
 #   Rosso di partenza: db/pgtap/dbops/test-automazione-guard-utility-tipo-ruolo.sql, test 2
-#   Brief: docs/it/dev/work-done/brief-db-automazione-guard-utility-righe-sfuggite.md
+#   Brief: docs/it/dev/work-done/2026/brief-db-automazione-guard-utility-righe-sfuggite.md
 #
 # ── LA REGOLA ──────────────────────────────────────────────────────────
 #   Decisione di Tid, 2026-08-18: **tutti i seed girano da CSV**. Un misto di

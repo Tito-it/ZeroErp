@@ -105,7 +105,6 @@ const {
     templateId: () => props.templateId,
     emittenteId: () => (props.standard === true ? PADRE_SENZA_EMITTENTE : props.emittenteFiscaleId),
   },
-  searchTableOptions: { defaultSortField: 'versione', defaultSortOrder: 'desc' },
   extraActions: () => [{
     key: 'new',
     kind: 'primary',

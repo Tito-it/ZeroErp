@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- LENTE (non cancello) — il quarto lato del codice errore:
 --   «il messaggio descrive la condizione che solleva davvero?»
---   Brief: docs/it/dev/work-done/brief-db-be-terzo-lato-presidio-codici.md §18
+--   Brief: docs/it/dev/work-done/2026/brief-db-be-terzo-lato-presidio-codici.md §18
 --
 -- ⚠️ PERCHE' `check_` E NON `guardrail_`, ed e' la cosa piu' importante di
 --   questo file. Gli altri tre lati del codice errore hanno una regola

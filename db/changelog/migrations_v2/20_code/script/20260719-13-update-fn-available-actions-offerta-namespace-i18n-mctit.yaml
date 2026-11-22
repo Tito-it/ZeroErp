@@ -22,7 +22,7 @@
 # can_push_contratto_reason_key sia can_genera_ordine_reason_key.
 #
 # ⚠️ SECONDA VOLTA sulle offerte: a maggio fu riparato lo stesso difetto
-# sulle label_key delle transizioni (work-done/addendum-db-stati-doc-
+# sulle label_key delle transizioni (work-done/2026/addendum-db-stati-doc-
 # offerte-transizioni-label-key.md), ma le push_reason non furono guardate.
 # Trovato ora dal guard scripts/check_i18n_keys.py.
 #

@@ -8,26 +8,28 @@
 --   2026-11-01). ChangeSet: 20_code/ui/20261101-20 → -23, -26.
 --
 -- ⭐ Il mondo si COSTRUISCE: una lista, tre colonne, un preset di sistema con
---   ordinamento, filtri e una misura diversa dal default, un utente. Nessun
+--   un ordinamento e una misura diversa dal default, un utente. Nessun
 --   dato esistente decide un'asserzione. Le misure si prendono dal catalogo
 --   ui.misure_pagina per RUOLO (default, la piu' piccola diversa, la piu'
 --   grande diversa), mai scritte a mano.
 --
--- Elenco test (plan 19):
+-- Elenco test (plan 22):
 --   La cascata
---    1) preferenza di sole colonne: ordinamento, filtri e misura dal preset
+--    1) preferenza di sole colonne: la misura dal preset, e l'uscita non porta
+--       ordinamento ne' filtri (giro 2 di brief-db-revisione-ui, Q38/Q39 §6)
 --    2) ... e origine lo dice (colonne preferenza, il resto sistema)
 --    3) ... e la misura standard e' quella del preset
 --    4) preferenza di sola misura: le colonne vengono dal preset
 --    5) ... la misura e' quella della preferenza, origine lo dice
 --    6) ... e la misura standard resta quella del preset
---    7) una chiave null nella preferenza vale come assente
+--    7) una chiave null nella preferenza la rifiuta il guard di forma (giro 2)
 --    8) senza preferenza: tutto dal preset, misura = standard
 --    9) preset senza misura: standard = default PAGINA, origine catalogo
---   10) lista senza preset: colonne, ordinamento, filtri e misura dal catalogo
+--   10) lista senza preset: colonne e misura dal catalogo
 --   La data del contenuto del preset, per chiave (giro 1b di brief-db-revisione-ui)
 --   11) riscrivere la riga del preset uguale: nessuna chiave si sposta
---   12) cambiare ordinamento_default: si sposta la sola chiave ordinamento
+--   12) cambiare ordinamento_default: nessuna chiave si sposta (dal giro 2 non e'
+--       una chiave: la preferenza non personalizza l'ordinamento)
 --   13) riscrivere una colonna del preset uguale: nessuna chiave si sposta
 --   14) cambiare una colonna del preset: si sposta la sola chiave colonne
 --   15) aggiungere una colonna al preset: si sposta la chiave colonne
@@ -68,6 +70,20 @@ SELECT ui.fn_misura_pagina_default('PAGINA') AS pag,
            AND misura <> (SELECT min(misura) FROM ui.misure_pagina
                            WHERE misura <> ui.fn_misura_pagina_default('PAGINA'))) AS pref;
 
+-- ⚠️ Il caso chiede TRE misure diverse, e il catalogo per contratto ne garantisce
+--   due (i default COMPATTA e PAGINA). L'applicazione non scrive il catalogo, quindi
+--   la terza non si costruisce: con due sole misure pref sarebbe NULL e i casi
+--   della preferenza passerebbero senza provare niente. Il file si ferma e dice
+--   perche': un rosso dichiarato, non un verde a vuoto.
+DO $tre$
+BEGIN
+    IF (SELECT pref FROM _m) IS NULL THEN
+        RAISE EXCEPTION 'Il test chiede tre misure diverse in ui.misure_pagina: il catalogo ne ha %',
+            (SELECT count(*) FROM ui.misure_pagina);
+    END IF;
+END
+$tre$;
+
 CREATE TEMP TABLE _l AS
 WITH ins AS (
   INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, vista_sql, attivo, user_insert)
@@ -98,15 +114,15 @@ WITH ins AS (
 )
 SELECT id AS colonna_id, lista_id, codice FROM ins;
 
--- Il preset di sistema: due colonne su tre, ordinamento, filtri, misura PRESET.
+-- Il preset di sistema: due colonne su tre, ordinamento, misura PRESET.
 CREATE TEMP TABLE _p AS
 WITH ins AS (
   INSERT INTO ui.lista_preset (lista_id, codice, descrizione, ambito,
-                               pagina_dimensione, ordinamento_default, filtri_default,
+                               pagina_dimensione, ordinamento_default,
                                attivo, user_insert)
   SELECT l.lista_id, 'SISTEMA_CASCATA', 'Preset sistema test cascata', 'sistema',
          (SELECT preset FROM _m),
-         '[{"col": "c_uno", "dir": "desc"}]'::jsonb, '{"c_due": "x"}'::jsonb,
+         '[{"col": "c_uno", "dir": "desc"}]'::jsonb,
          TRUE, '_pgtap'
     FROM _l l
   RETURNING id
@@ -155,14 +171,15 @@ SELECT '[{"codice": "c_uno", "ordine": 1, "larghezza": 100, "visibile": false, "
 SELECT pg_temp.preferenza(jsonb_build_object('colonne', (SELECT colonne FROM _pref_colonne)));
 
 SELECT is(
-    (SELECT format('%s|%s|%s', r -> 'ordinamento', r -> 'filtri', r ->> 'pagina_dimensione')
+    (SELECT format('%s|%s|%s', jsonb_exists(r, 'ordinamento')::text, jsonb_exists(r, 'filtri')::text,
+                   r ->> 'pagina_dimensione')
        FROM (SELECT pg_temp.risolta() AS r) x),
-    format('%s|%s|%s', '[{"col": "c_uno", "dir": "desc"}]', '{"c_due": "x"}', (SELECT preset FROM _m)),
-    '1) preferenza di sole colonne: ordinamento, filtri e misura vengono dal preset');
+    format('false|false|%s', (SELECT preset FROM _m)),
+    '1) preferenza di sole colonne: la misura viene dal preset, e ordinamento e filtri non escono');
 
 SELECT is(
     pg_temp.risolta() -> 'origine',
-    '{"colonne": "preferenza", "ordinamento": "sistema", "filtri": "sistema", "pagina_dimensione": "sistema"}'::jsonb,
+    '{"colonne": "preferenza", "pagina_dimensione": "sistema"}'::jsonb,
     '2) ... e origine lo dice: colonne dalla preferenza, il resto dal preset di sistema');
 
 SELECT is(
@@ -195,14 +212,15 @@ SELECT is(
 -- ============================================================
 -- 7 Chiave null = assente
 -- ============================================================
-SELECT pg_temp.preferenza(jsonb_build_object('colonne', (SELECT colonne FROM _pref_colonne),
-                                             'ordinamento', NULL::jsonb));
--- jsonb_build_object con NULL scrive un null JSON: e' il caso.
+-- jsonb_build_object con NULL scrive un null JSON: e' il caso. Dal giro 2 il
+-- guard di forma lo rifiuta (una riga scritta prima del guard la tollera il
+-- resolver: lo prova test-ui-forma-configurazione-v1).
 SELECT is(
-    (SELECT format('%s|%s', r -> 'origine' ->> 'ordinamento', r -> 'ordinamento')
-       FROM (SELECT pg_temp.risolta() AS r) x),
-    'sistema|[{"col": "c_uno", "dir": "desc"}]',
-    '7) una chiave null nella preferenza vale come assente: risponde il preset');
+    dbops.fn_pgtap_codice_errore($$
+        SELECT pg_temp.preferenza(jsonb_build_object('colonne', (SELECT colonne FROM _pref_colonne),
+                                                     'pagina_dimensione', NULL::jsonb))$$),
+    'E_UI_CONFIGURAZIONE_FORMA',
+    '7) una chiave null nella preferenza la rifiuta il guard di forma');
 
 -- ============================================================
 -- 8 Senza preferenza
@@ -215,7 +233,7 @@ SELECT is(
                    ((r ->> 'pagina_dimensione') = (r ->> 'pagina_dimensione_standard'))::text)
        FROM (SELECT pg_temp.risolta() AS r) x),
     format('%s|c_uno,c_due|true',
-           '{"colonne": "sistema", "ordinamento": "sistema", "filtri": "sistema", "pagina_dimensione": "sistema"}'::jsonb),
+           '{"colonne": "sistema", "pagina_dimensione": "sistema"}'::jsonb),
     '8) senza preferenza: tutto dal preset, e la misura e'' lo standard');
 
 -- ============================================================
@@ -236,12 +254,12 @@ UPDATE ui.lista_preset SET pagina_dimensione = (SELECT preset FROM _m) WHERE id 
 -- 10 Lista senza preset
 -- ============================================================
 SELECT is(
-    (SELECT format('%s|%s|%s|%s', r -> 'origine', pg_temp.visibili(r), r -> 'ordinamento', r ->> 'pagina_dimensione')
+    (SELECT format('%s|%s|%s', r -> 'origine', pg_temp.visibili(r), r ->> 'pagina_dimensione')
        FROM (SELECT pg_temp.risolta((SELECT lista_codice FROM _l2)) AS r) x),
-    format('%s|c_uno,c_due,c_tre|[]|%s',
-           '{"colonne": "catalogo", "ordinamento": "catalogo", "filtri": "catalogo", "pagina_dimensione": "catalogo"}'::jsonb,
+    format('%s|c_uno,c_due,c_tre|%s',
+           '{"colonne": "catalogo", "pagina_dimensione": "catalogo"}'::jsonb,
            (SELECT pag FROM _m)),
-    '10) lista senza preset: tutte e quattro le chiavi dal catalogo');
+    '10) lista senza preset: tutte e due le chiavi dal catalogo');
 
 -- ============================================================
 -- 11-16 La data del contenuto del preset, per chiave
@@ -266,7 +284,7 @@ $f$;
 
 SELECT pg_temp.salva();
 UPDATE ui.lista_preset
-   SET ordinamento_default = ordinamento_default, filtri_default = filtri_default,
+   SET ordinamento_default = ordinamento_default,
        pagina_dimensione = pagina_dimensione, descrizione = descrizione
  WHERE id = (SELECT preset_id FROM _p);
 
@@ -276,8 +294,8 @@ SELECT is(pg_temp.spostate(), '',
 UPDATE ui.lista_preset SET ordinamento_default = '[{"col": "c_due", "dir": "asc"}]'::jsonb
  WHERE id = (SELECT preset_id FROM _p);
 
-SELECT is(pg_temp.spostate(), 'ordinamento',
-    '12) cambiare ordinamento_default: si sposta la sola chiave ordinamento');
+SELECT is(pg_temp.spostate(), '',
+    '12) cambiare ordinamento_default: nessuna chiave si sposta (non e'' una chiave della preferenza)');
 
 SELECT pg_temp.salva();
 UPDATE ui.lista_preset_colonna SET ordine = ordine, visibile = visibile

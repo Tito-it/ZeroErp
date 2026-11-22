@@ -16,6 +16,7 @@
 //   5. BE7: «Riallinea» rimanda le chiavi della preferenza, senza toccarle
 //   6. BE7 (giro 1b): `preset_aggiornato_chiavi` dal DB, passthrough
 //      (assente = elenco vuoto)
+//   7. BE8 (giro 2): la larghezza svuotata non si manda, la chiave e' assente
 // ------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -106,6 +107,25 @@ describe('useListaConfig.save — per chiave', () => {
     expect(api.putListaPreferenza).toHaveBeenCalledWith('vendite.listini', {
       colonne: [{ codice: 'codice', ordine: 1, visibile: true }],
       pagina_dimensione: 50,
+    })
+  })
+})
+
+describe('useListaConfig.save — voci senza chiavi a null (BE8, giro 2)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('7. la larghezza svuotata non si manda: la chiave e\' assente, non null', async () => {
+    const lista = await caricata()
+    lista.applyChange((c) => {
+      c.colonne[0].larghezza = 120
+      c.colonne[0].larghezza = null
+      c.colonne[0].visibile = false
+    })
+    await lista.save()
+    // Il guard di forma del DB rifiuta una voce con una chiave a null
+    // (`E_UI_CONFIGURAZIONE_FORMA`): il FE la toglie (Tid, 2026-11-22).
+    expect(api.putListaPreferenza).toHaveBeenCalledWith('vendite.listini', {
+      colonne: [{ codice: 'codice', ordine: 1, visibile: false }],
     })
   })
 })

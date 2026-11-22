@@ -56,6 +56,18 @@ def _casi() -> list[tuple[str, str, str, Callable[[], Any], Callable[[MagicMock]
         repo.get_categoria_accesso.return_value = amm.CATEGORIA_ACCESSO_OPERATORE
         repo.get_operatore_detail.return_value = {"auth_user_id": 1, "veste_attiva": True}
 
+    # Le anagrafiche di magazzino leggono le chiavi ammesse dal DB
+    # (`colonne_ammesse`): il repository finto risponde quelle che il service
+    # sa leggere (l'uguaglianza col DB vero la prova
+    # `magazzino/tests/db/test_anagrafiche_magazzino_db`).
+    def contratto_magazzino(repo: MagicMock) -> None:
+        modifica = {
+            "magazzini": mag.UPDATE_KEYS_MAGAZZINO,
+            "ubicazioni": mag.UPDATE_KEYS_UBICAZIONE,
+            "lotti": mag.UPDATE_KEYS_LOTTO,
+        }
+        repo.colonne_ammesse.side_effect = lambda tabella, _gesto: modifica[tabella]
+
     pag = "apps.pagamenti.services.pagamenti_service.PagamentiRepository"
     return [
         ("distinta", pag, "update_distinta",
@@ -65,11 +77,11 @@ def _casi() -> list[tuple[str, str, str, Callable[[], Any], Callable[[MagicMock]
         ("ente d'incasso", "apps.pagamenti.services.enti_incasso_service.PagamentiRepository",
          "update_ente_incasso", lambda: enti_incasso_service.aggiorna_ente_incasso(1, {}), niente),
         ("magazzino", "apps.magazzino.services.anagrafiche_magazzino_service.AnagraficheMagazzinoRepository",
-         "update_magazzino", lambda: mag.aggiorna_magazzino(1, {}), niente),
+         "update_magazzino", lambda: mag.aggiorna_magazzino(1, {}), contratto_magazzino),
         ("ubicazione", "apps.magazzino.services.anagrafiche_magazzino_service.AnagraficheMagazzinoRepository",
-         "update_ubicazione", lambda: mag.aggiorna_ubicazione(1, 2, {}), niente),
+         "update_ubicazione", lambda: mag.aggiorna_ubicazione(1, 2, {}), contratto_magazzino),
         ("lotto di magazzino", "apps.magazzino.services.anagrafiche_magazzino_service.AnagraficheMagazzinoRepository",
-         "update_lotto", lambda: mag.aggiorna_lotto(1, {}), niente),
+         "update_lotto", lambda: mag.aggiorna_lotto(1, {}), contratto_magazzino),
         ("tipologia UoM", "apps.catalogo.services.catalogo_service.CatalogoRepository",
          "update_uom_tipo", lambda: catalogo_service.fn_update_uom_tipo(1, {}), niente),
         ("unita' di misura", "apps.catalogo.services.catalogo_service.CatalogoRepository",
@@ -121,15 +133,17 @@ class PatchVuotaTests(TestCase):
                 )
                 getattr(repo, scrittura).assert_not_called()
 
-    # ⚠️ Sulle colonne «azione» `esportabile = false` e' DERIVATO: non e' un
-    #    campo chiesto, e con `{}` faceva passare il controllo e scriveva.
+    # ⚠️ Sulle colonne «azione» `esportabile = false` era DERIVATO: non era un
+    #    campo chiesto, e con `{}` faceva passare il controllo e scriveva. Dal
+    #    giro 4 di brief-db-revisione-ui il service non deriva piu' niente nel
+    #    PATCH (i vincoli fra campi li giudica il DB): `{}` resta `{}`, e un
+    #    valore esplicito arriva com'e'.
     def test_la_colonna_azione_non_inventa_un_campo(self) -> None:
         from apps.ui.services.lista_colonna_admin_service import ListaColonnaAdminService
 
         svc = ListaColonnaAdminService()
-        corrente = {"tipo_colonna": "azione"}
-        self.assertEqual(svc._build_update_data({}, current=corrente), {})
+        self.assertEqual(svc._build_update_data({}), {})
         self.assertEqual(
-            svc._build_update_data({"esportabile": True}, current=corrente),
-            {"esportabile": False},
+            svc._build_update_data({"esportabile": True}),
+            {"esportabile": True},
         )

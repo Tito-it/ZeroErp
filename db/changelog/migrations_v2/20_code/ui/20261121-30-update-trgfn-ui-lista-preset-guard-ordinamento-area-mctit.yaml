@@ -1,0 +1,190 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.trgfn_ui_lista_preset_guard_ordinamento: l'area del log e' 'database', come gli altri guard di ui.
+#   Brief: brief-db-revisione-ui (giro 6a: U38, i codici d'area allineati).
+#
+# Il guard (ui.lista_preset.ordinamento_default) passava 'ui' come area a script.fn_log_and_raise_error, che la
+#   scrive nel giornale degli errori: gli altri guard e building block dello schema
+#   passano 'database'. Il guard multi-emittente, nominato da U38, non c'e' piu'
+#   (lo ha sostituito ui.trgfn_lista_definizione_guard_dichiarazioni, gia'
+#   allineato): restavano questo e il suo gemello del giro 2. Cambia solo il primo
+#   argomento della chiamata; codice, contesto e segnaposto restano.
+# Firma, volatilita' e sicurezza invariate: CREATE OR REPLACE. Attributi vivi letti
+#   il 2026-11-22: COST 100, nessun SET, PARALLEL UNSAFE. Il COMMENT resta.
+# Corpo dal vivo (dbdev, 2026-11-22); la rollback riporta quel corpo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261121-30-update-trgfn-ui-lista-preset-guard-ordinamento-area-mctit.yaml
+
+  - changeSet:
+      id: 20261121-30-update-trgfn-ui-lista-preset-guard-ordinamento-area
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.trgfn_ui_lista_preset_guard_ordinamento: l'area del log e' 'database', come gli altri guard di ui. Brief: brief-db-revisione-ui (giro 6a, U38).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'trgfn_ui_lista_preset_guard_ordinamento'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_ui_lista_preset_guard_ordinamento()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: ordinamento_default del preset e' un elenco di {col, dir}, col il
+              --   codice di una colonna della lista, dir asc o desc.
+              DECLARE
+                  v_ord    ui.lista_preset.ordinamento_default%TYPE := NEW.ordinamento_default;
+                  -- jsonb: una voce dell'elenco, nel ciclo
+                  v_e      jsonb;
+                  -- text: il motivo del rifiuto, o NULL
+                  v_motivo text;
+                  -- i col gia' visti
+                  v_col    ui.lista_colonna.codice%TYPE;
+                  v_cols   ui.lista_colonna.codice%TYPE[] := ARRAY[]::varchar[];
+              BEGIN
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.ordinamento_default IS NOT DISTINCT FROM OLD.ordinamento_default
+                     AND NEW.lista_id IS NOT DISTINCT FROM OLD.lista_id THEN
+                      RETURN NEW;
+                  END IF;
+                  IF v_ord IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF jsonb_typeof(v_ord) <> 'array' THEN
+                      v_motivo := 'non è un elenco';
+                  ELSE
+                      FOR v_e IN SELECT a.value FROM jsonb_array_elements(v_ord) AS a LOOP
+                          IF jsonb_typeof(v_e) <> 'object' THEN
+                              v_motivo := 'una voce non è un oggetto';
+                          ELSIF EXISTS (SELECT 1 FROM jsonb_object_keys(v_e) AS f(k)
+                                         WHERE f.k NOT IN ('col', 'dir')) THEN
+                              v_motivo := 'una voce ha chiavi diverse da col e dir';
+                          ELSIF jsonb_typeof(v_e -> 'col') IS DISTINCT FROM 'string' THEN
+                              v_motivo := 'una voce non ha col';
+                          ELSE
+                              v_col := v_e ->> 'col';
+                              IF v_col = ANY (v_cols) THEN
+                                  v_motivo := format('la colonna %s è ripetuta', v_col);
+                              ELSIF NOT EXISTS (SELECT 1 FROM ui.lista_colonna lc
+                                                 WHERE lc.lista_id = NEW.lista_id
+                                                   AND lc.codice   = v_col) THEN
+                                  v_motivo := format('%s non è il codice di una colonna della lista', v_col);
+                              ELSIF (v_e ->> 'dir') IS DISTINCT FROM 'asc'
+                                    AND (v_e ->> 'dir') IS DISTINCT FROM 'desc' THEN
+                                  v_motivo := format('la direzione di %s non è asc o desc', v_col);
+                              END IF;
+                              v_cols := array_append(v_cols, v_col);
+                          END IF;
+                          EXIT WHEN v_motivo IS NOT NULL;
+                      END LOOP;
+                  END IF;
+
+                  IF v_motivo IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_UI_CONFIGURAZIONE_FORMA',
+                          jsonb_build_object(
+                              'campo',  'ordinamento_default',
+                              'table',  TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'id',     NEW.id,
+                              'chiave', 'ordinamento_default',
+                              'motivo', v_motivo),
+                          NULL::uuid,
+                          VARIADIC ARRAY['ordinamento_default', v_motivo]);
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_ui_lista_preset_guard_ordinamento()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: ordinamento_default del preset e' un elenco di {col, dir}, col il
+              --   codice di una colonna della lista, dir asc o desc.
+              DECLARE
+                  v_ord    ui.lista_preset.ordinamento_default%TYPE := NEW.ordinamento_default;
+                  -- jsonb: una voce dell'elenco, nel ciclo
+                  v_e      jsonb;
+                  -- text: il motivo del rifiuto, o NULL
+                  v_motivo text;
+                  -- i col gia' visti
+                  v_col    ui.lista_colonna.codice%TYPE;
+                  v_cols   ui.lista_colonna.codice%TYPE[] := ARRAY[]::varchar[];
+              BEGIN
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.ordinamento_default IS NOT DISTINCT FROM OLD.ordinamento_default
+                     AND NEW.lista_id IS NOT DISTINCT FROM OLD.lista_id THEN
+                      RETURN NEW;
+                  END IF;
+                  IF v_ord IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF jsonb_typeof(v_ord) <> 'array' THEN
+                      v_motivo := 'non è un elenco';
+                  ELSE
+                      FOR v_e IN SELECT a.value FROM jsonb_array_elements(v_ord) AS a LOOP
+                          IF jsonb_typeof(v_e) <> 'object' THEN
+                              v_motivo := 'una voce non è un oggetto';
+                          ELSIF EXISTS (SELECT 1 FROM jsonb_object_keys(v_e) AS f(k)
+                                         WHERE f.k NOT IN ('col', 'dir')) THEN
+                              v_motivo := 'una voce ha chiavi diverse da col e dir';
+                          ELSIF jsonb_typeof(v_e -> 'col') IS DISTINCT FROM 'string' THEN
+                              v_motivo := 'una voce non ha col';
+                          ELSE
+                              v_col := v_e ->> 'col';
+                              IF v_col = ANY (v_cols) THEN
+                                  v_motivo := format('la colonna %s è ripetuta', v_col);
+                              ELSIF NOT EXISTS (SELECT 1 FROM ui.lista_colonna lc
+                                                 WHERE lc.lista_id = NEW.lista_id
+                                                   AND lc.codice   = v_col) THEN
+                                  v_motivo := format('%s non è il codice di una colonna della lista', v_col);
+                              ELSIF (v_e ->> 'dir') IS DISTINCT FROM 'asc'
+                                    AND (v_e ->> 'dir') IS DISTINCT FROM 'desc' THEN
+                                  v_motivo := format('la direzione di %s non è asc o desc', v_col);
+                              END IF;
+                              v_cols := array_append(v_cols, v_col);
+                          END IF;
+                          EXIT WHEN v_motivo IS NOT NULL;
+                      END LOOP;
+                  END IF;
+
+                  IF v_motivo IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'ui', TG_NAME::text, 'E_UI_CONFIGURAZIONE_FORMA',
+                          jsonb_build_object(
+                              'campo',  'ordinamento_default',
+                              'table',  TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'id',     NEW.id,
+                              'chiave', 'ordinamento_default',
+                              'motivo', v_motivo),
+                          NULL::uuid,
+                          VARIADIC ARRAY['ordinamento_default', v_motivo]);
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;

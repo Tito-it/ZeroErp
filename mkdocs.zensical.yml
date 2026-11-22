@@ -29,6 +29,25 @@ theme:
                 - navigation.sections
                 - navigation.expand
                 - navigation.indexes
+        # Tema chiaro/scuro: di default segue il sistema operativo; il pulsante
+        # nell'header gira fra sistema → chiaro → scuro. I diagrammi Mermaid li
+        # disegna il tema (blocchi pre.mermaid di superfences) con i colori delle
+        # variabili --md-mermaid-*, che seguono lo schema anche al cambio al volo.
+        palette:
+                - media: "(prefers-color-scheme)"
+                  toggle:
+                          icon: lucide/sun-moon
+                          name: Passa al tema chiaro
+                - media: "(prefers-color-scheme: light)"
+                  scheme: default
+                  toggle:
+                          icon: lucide/sun
+                          name: Passa al tema scuro
+                - media: "(prefers-color-scheme: dark)"
+                  scheme: slate
+                  toggle:
+                          icon: lucide/moon
+                          name: Segui il sistema
 plugins:
         - include-markdown:
                   opening_tag: "{%"
@@ -58,9 +77,10 @@ markdown_extensions:
                           - name: mermaid
                             class: mermaid
                             format: !!python/name:pymdownx.superfences.fence_code_format ""
+# Solo la libreria: il tema la trova già caricata e non la scarica da unpkg.
+# L'inizializzazione e il disegno li fa il tema, niente script di avvio nostro.
 extra_javascript:
         - assets/javascripts/mermaid.min.js
-        - assets/javascripts/mermaid-init.js
 
 nav:
         - Home: it/index.md
@@ -138,6 +158,7 @@ nav:
                             - Pratiche — Configurazione e opzioni: it/guide/gestione-pratiche-configurazione.md
                             - Gestione commesse: it/guide/gestione-commesse.md
                             - Gestione delle Istanze Utility: it/guide/gestione-delle-istanze-utility.md
+                            - Il catasto delle istanze: it/guide/catasto-delle-istanze.md
                             - Gestione listini: it/guide/gestione-listini.md
                             - Gestione preventivi: it/guide/gestione-preventivi.md
                             - Gestione offerte commerciali: it/guide/gestione-offerte-commerciali.md
@@ -153,6 +174,7 @@ nav:
                             - Integrazione Ai: it/guide/integrazione-ai.md
                             - Risorse Umane e Accessi al Software: it/guide/risorse-umane-e-accessi.md
                             - Configurazione e responsività delle liste: it/guide/configurazione-liste.md
+                            - Configurazione delle dashboard: it/guide/configurazione-dashboard.md
                             - Configurare il sistema senza perdere le modifiche agli aggiornamenti: it/guide/configurazione-iniziale-e-aggiornamenti.md
                             - Sistema numerazione generico per codici e documenti: it/guide/numerazione-documenti-e-codici.md
                             - Il risolutore IVA di riga: it/guide/iva-risolutore-di-riga.md

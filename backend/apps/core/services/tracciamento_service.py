@@ -180,7 +180,8 @@ def fn_list_task_implementations(
 # Job Run Log
 # ------------------------------------------------------------------
 
-# Scopo: Restituisce la lista paginata delle esecuzioni job pgAgent.
+# Scopo: Restituisce la lista paginata delle corse di `maintenance.job_run_log`,
+#        di entrambe le origini (job del database e comandi del backend).
 def fn_list_job_runs(
     *,
     jobname: str | None = None,

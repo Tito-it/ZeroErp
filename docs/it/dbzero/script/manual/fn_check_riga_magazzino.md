@@ -16,7 +16,7 @@ Guide: [Linee guida SQL — 12.5.2 la madre chiama la check](/linee-guida-sql) �
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-09-18 — Lotto 2 del magazzino)
+(rev 2026-11-22 — il lotto dell'azienda; nasce il 2026-09-18 col Lotto 2 del magazzino)
 
 **La riga si può scrivere a registro?** Dati magazzino, articolo e — se ci sono — lotto,
 seriale e ubicazione, risponde l'elenco ordinato dei motivi per cui **no**: vuoto se sì.
@@ -36,12 +36,18 @@ segna `NON_POSTABILE` con il motivo, e il posting rifiuta con la stessa frase.
 | Passo | Regola | Codice · `campo` |
 | --- | --- | --- |
 | 5 | l'articolo è attivo e **gestito a magazzino** (e qui ci si ferma: senza articolo il resto non ha senso) | `E_MAG_ARTICOLO_NON_GESTITO` · `articolo_id` |
-| 6 | **decide l'articolo**: se `requires_lotto` il lotto è obbligatorio, altrimenti è vietato; se c'è, è dell'articolo e attivo | `E_MAG_LOTTO_OBBLIGATORIO` · `E_MAG_LOTTO_NON_AMMESSO` · `E_MAG_LOTTO_DI_ALTRO_ARTICOLO` · `lotto_id` |
+| 6 | **decide l'articolo**: se `requires_lotto` il lotto è obbligatorio, altrimenti è vietato; se c'è, è dell'articolo e attivo; e la partita è dell'**emittente del magazzino** | `E_MAG_LOTTO_OBBLIGATORIO` · `E_MAG_LOTTO_NON_AMMESSO` · `E_MAG_LOTTO_DI_ALTRO_ARTICOLO` · `E_MAG_LOTTO_DI_ALTRO_EMITTENTE` · `lotto_id` |
 | 7 | **decide l'articolo**: idem per il seriale; e il pezzo è dell'**emittente del magazzino** | `E_MAG_SERIALE_OBBLIGATORIO` · `E_MAG_SERIALE_NON_AMMESSO` · `E_MAG_ASSET_DI_ALTRO_ARTICOLO` · `E_MAG_ASSET_DI_ALTRO_EMITTENTE` · `asset_id` |
 | 8 | **decide il magazzino**: se `usa_ubicazioni` l'ubicazione è obbligatoria, altrimenti è vietata; se c'è, è del magazzino e attiva | `E_MAG_UBICAZIONE_OBBLIGATORIA` · `E_MAG_UBICAZIONE_NON_AMMESSA` · `E_MAG_UBICAZIONE_DI_ALTRO_MAGAZZINO` · `ubicazione_id` |
 
 Ogni motivo porta `campo` nel dettaglio: il frontend accende il campo giusto. Le chiavi i18n
-sono `magazzino.riga.blocco.*` (undici).
+sono `magazzino.riga.blocco.*` (dodici).
+
+Il lotto o il seriale di un'altra azienda si vedono solo da chi legge da proprietario (i
+verbi che scrivono): sotto la row level security non si vedono, e la funzione risponde «di un
+altro articolo», senza dire che esistono. La stessa regola sta anche sulle tabelle che citano
+lotto e seriale ([trgfn_guard_riferimento_stesso_emittente](/dbzero/script/funzioni/trgfn_guard_riferimento_stesso_emittente)):
+qui c'è il motivo per chi giudica la riga prima di scriverla.
 
 Che cosa **non** guarda: il magazzino in sé (esiste, attivo: passo 4 della primitiva) e la
 disponibilità ([fn_check_disponibilita_uscita](/dbzero/script/funzioni/fn_check_disponibilita_uscita)).
@@ -54,6 +60,8 @@ Presidio: `db/pgtap/magazzino/test-fn-scrivi-movimento-controlli-v1.sql` (5-15) 
 ### Storia
 
 * 2026-09-18 — nasce con il Lotto 2 (`20260918-16`), decisione C8.
+* 2026-11-22 — il passo 6 guarda l'emittente del lotto (`20261122-18`): il lotto è
+  dell'azienda (`brief-db-magazzino-lotto-dell-azienda`, D-L6).
 
 ---
 

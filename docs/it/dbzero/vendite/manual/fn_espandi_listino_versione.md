@@ -1,5 +1,7 @@
 # fn_espandi_listino_versione
 
+> **Ultimo aggiornamento**: 21 novembre 2026
+
 ### Scopo
 
 Core **condiviso** di espansione listino: data una versione di listino e la variazione globale, ritorna le righe piatte (standalone + bundle compositi) con prezzo da-listino e composizione BoM in JSONB. Contiene **solo** la logica listino + variazione + BoM, **nessuna eccezione di dominio** (overlay OVERRIDE/ESCLUSIONE/AGGIUNTA resta nelle funzioni di dominio).
@@ -30,15 +32,16 @@ RETURNS TABLE (
     uom_codice           catalogo.unita_misura.codice%TYPE,
     prezzo_listino       vendite.listini_righe.prezzo%TYPE,
     prezzo_da_listino    vendite.listini_righe.prezzo%TYPE,
-    componenti           jsonb
+    componenti           jsonb,
+    listino_riga_id      vendite.listini_righe.id%TYPE
 )
 LANGUAGE plpgsql STABLE
 ```
 
 ## Logica
 
-- **Standalone** (`is_composito = FALSE`): da `listini_righe`; `prezzo_da_listino = prezzo ± variazione globale` (PERCENTUALE → `prezzo × (1 + valore/100)`; VALORE_FISSO → `prezzo + valore`; NULL → invariato). `prezzo_listino` = prezzo raw, `componenti` = NULL.
-- **Bundle** (`is_composito = TRUE`): padri compositi distinti da `listini_righe_componenti`; `prezzo_da_listino = SUM(prezzo_componente × coeff_qta)`. `prezzo_listino` = NULL. `componenti` = `jsonb_agg` dei figli.
+- **Standalone** (`is_composito = FALSE`): da `listini_righe`; `prezzo_da_listino = prezzo ± variazione globale` (PERCENTUALE → `prezzo × (1 + valore/100)`; VALORE_FISSO → `prezzo + valore`; NULL → invariato). `prezzo_listino` = prezzo raw, `componenti` = NULL, `listino_riga_id` = la riga di listino da cui il prezzo viene.
+- **Bundle** (`is_composito = TRUE`): padri compositi distinti da `listini_righe_componenti`; `prezzo_da_listino = SUM(prezzo_componente × coeff_qta)`. `prezzo_listino` = NULL, `listino_riga_id` = NULL (il prezzo del kit sta in `listini_righe_componenti`, non in una riga di listino). `componenti` = `jsonb_agg` dei figli.
 
 > ⚠️ **Fedeltà comportamentale**: la variazione globale si applica agli **standalone** ma **non ai bundle** (prezzo bundle = somma componenti), esattamente come nella `fn_contratto_righe_preview` storica. Questa asimmetria è intenzionale (no regressione del drawer contratti).
 

@@ -242,7 +242,7 @@ mappa con vincoli e indici unici veri, nei due versi.
 `E_ANAG_CONTO_NOT_FOUND` ed `E_ANAG_CONTO_SOGGETTO_NOT_FOUND` sono a catalogo
 come `NON_TROVATO` dal 2026-10-07: fino ad allora il traduttore li trattava come
 codici sconosciuti e rispondeva **400** «Errore di validazione.» (E-1 di
-[analisi-be-difetti-emersi-verifica-doc-api-core.md](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+[analisi-be-difetti-emersi-verifica-doc-api-core.md](../../../dev/work-done/2026/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 Conti del soggetto e lookup IBAN/filiali:
 [api_conti_bancari_soggetto.md](api_conti_bancari_soggetto.md).

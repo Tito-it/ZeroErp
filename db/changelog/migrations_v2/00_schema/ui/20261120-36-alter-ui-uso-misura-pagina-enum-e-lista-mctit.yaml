@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui: l'uso di una misura «righe per pagina» diventa un vocabolario (l'enum
+#   ui.uso_misura_pagina), e la lista dichiara il suo.
+#   Brief: brief-db-revisione-ui (giro 3: U20 con Q11 e Q44; i COMMENT M2, M3).
+#
+# Che cosa cambia:
+#   - CREATE TYPE ui.uso_misura_pagina AS ENUM ('COMPATTA', 'PAGINA') (Q44): la
+#     sede del vocabolario degli usi. Lo leggono le due colonne qui sotto e il
+#     constraint trigger del catalogo (20261120-39), con enum_range.
+#   - ui.misure_pagina.uso_default passa all'enum; il CHECK
+#     chk_misure_pagina_uso_default, che ricopiava il vocabolario, si toglie.
+#     L'indice uq_misure_pagina_uso_default lo ricostruisce l'ALTER TYPE.
+#   - ui.lista_definizione.uso_misura (Q11 (a)): dove la lista si mostra,
+#     COMPATTA (un drawer, un dialog) o PAGINA, e quindi su quale default ripiega
+#     la misura quando ne' la preferenza ne' il preset la dicono
+#     (ui.fn_resolve_lista_config, 20261120-41). NOT NULL, iniziale PAGINA; il CSV
+#     del seed segna COMPATTA le liste di righe. Colonna del software nel registro
+#     del seed (Q46).
+#   - I COMMENT della tabella e di misura (M2, M3): niente «sede unica per
+#     backend e frontend», niente date e brief; «non si riscrive» ora lo impone
+#     il lucchetto (20261120-42).
+# ⚠️ ui.fn_misura_pagina_default confronta uso_default con un varchar: dopo
+#   questo changeSet il confronto si riscrive (20261120-38, stesso migrate). Da
+#   zero nessuno la chiama prima: il seed del catalogo e' in 80_data.
+# Lettori della colonna a DB (dbdev, 2026-11-21, pg_proc): fn_misura_pagina_default
+#   (WHERE) e fn_get_misure_pagina (attraverso la prima); nessuna vista, nessun
+#   %TYPE sulla colonna.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20261120-36-alter-ui-uso-misura-pagina-enum-e-lista-mctit.yaml
+
+  - changeSet:
+      id: 20261120-36-alter-ui-uso-misura-pagina-enum-e-lista
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui: l'enum ui.uso_misura_pagina per misure_pagina.uso_default e la colonna nuova
+        lista_definizione.uso_misura. Brief: brief-db-revisione-ui (giro 3, U20, Q11, Q44).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_type t
+                JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+               WHERE n.nspname = 'ui' AND t.typname = 'uso_misura_pagina'
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = to_regclass('ui.misure_pagina')
+                 AND conname = 'chk_misure_pagina_uso_default'
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid = to_regclass('ui.lista_definizione')
+                 AND attname = 'uso_misura' AND attnum > 0 AND NOT attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TYPE ui.uso_misura_pagina AS ENUM ('COMPATTA', 'PAGINA');
+
+              COMMENT ON TYPE ui.uso_misura_pagina IS
+                  'Dove si mostra una lista, e quindi quale misura «righe per pagina» è il suo default: COMPATTA (un drawer, un dialog) o PAGINA (una pagina). Lo usano ui.misure_pagina.uso_default (la misura di default di ogni uso) e ui.lista_definizione.uso_misura (l''uso di una lista); il trigger differito del catalogo pretende un default per ogni valore.';
+
+              ALTER TABLE ui.misure_pagina DROP CONSTRAINT chk_misure_pagina_uso_default;
+
+              ALTER TABLE ui.misure_pagina
+                  ALTER COLUMN uso_default TYPE ui.uso_misura_pagina
+                  USING uso_default::text::ui.uso_misura_pagina;
+
+              ALTER TABLE ui.lista_definizione
+                  ADD COLUMN uso_misura ui.uso_misura_pagina NOT NULL DEFAULT 'PAGINA';
+
+              COMMENT ON TABLE ui.misure_pagina IS
+                  'Il catalogo delle misure «righe per pagina» ammesse e dei loro default, uno per uso (ui.uso_misura_pagina). Le citano ui.lista_preset.pagina_dimensione (FK e guard) e le preferenze di lista (guard di forma); il resolver delle liste non risponde mai una misura che non sta qui. L''applicazione lo legge con ui.fn_get_misure_pagina e non lo scrive: le righe le porta il CSV del seed.';
+
+              COMMENT ON COLUMN ui.misure_pagina.misura IS
+                  'Quante righe per pagina. Chiave naturale: chi la cita cita il numero. Non si riscrive (lucchetto di colonna, E_UI_MISURA_PAGINA_IMMUTABILE): si aggiunge una riga e si toglie la vecchia, e il ritiro toglie la misura dalle preferenze che la citano.';
+
+              COMMENT ON COLUMN ui.misure_pagina.uso_default IS
+                  'L''uso di cui questa misura è il default: COMPATTA o PAGINA (ui.uso_misura_pagina); NULL = misura solo offerta. Al più una riga per uso (uq_misure_pagina_uso_default), e a fine transazione almeno una (il trigger differito del catalogo). Si legge con ui.fn_misura_pagina_default.';
+
+              COMMENT ON COLUMN ui.lista_definizione.uso_misura IS
+                  'Dove si mostra la lista: COMPATTA (un drawer, un dialog) o PAGINA (ui.uso_misura_pagina). Quando né la preferenza né il preset di base dicono la misura, ui.fn_resolve_lista_config risponde il default di questo uso. La dichiara il CSV del seed (colonna del software).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE ui.lista_definizione DROP COLUMN uso_misura;
+              ALTER TABLE ui.misure_pagina
+                  ALTER COLUMN uso_default TYPE character varying(20)
+                  USING uso_default::text;
+              ALTER TABLE ui.misure_pagina
+                  ADD CONSTRAINT chk_misure_pagina_uso_default
+                  CHECK (uso_default::text = ANY (ARRAY['COMPATTA'::character varying::text, 'PAGINA'::character varying::text]));
+              DROP TYPE ui.uso_misura_pagina;

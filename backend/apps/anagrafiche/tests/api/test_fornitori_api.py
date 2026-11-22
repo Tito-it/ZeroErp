@@ -127,7 +127,7 @@ class TestFornitoriPatchApi(JwtMockedApiTest):
         mock_svc_cls.return_value.update_fornitore.return_value = {"updated": True}
         resp = self.client.patch(
             "/api/v1/anagrafiche/fornitori/1/",
-            data=json.dumps({"rating": 90, "pec_email": "new@pec.it"}),
+            data=json.dumps({"rating": 90, "note": "nuova nota"}),
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 200)

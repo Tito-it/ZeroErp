@@ -1,94 +1,90 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_indirizzi_guard_forma_libera()`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_indirizzi_guard_forma_libera`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-[anagrafiche.indirizzi](/dbzero/anagrafiche/manual/indirizzi)
-> [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/manual/indirizzi_soggetti)
-> [config.stati](/dbzero/config/manual/stati) — il flag `catalogo_comuni_completo`
+> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi) — gli indirizzi dei ruoli, su cui è montata
+> * [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti) — gli indirizzi dei soggetti, su cui è montata
+> * [config.stati](/dbzero/config/tabelle/stati) — il flag `catalogo_comuni_completo`, che decide la forma
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-[anagrafiche.trgfn_indirizzi_base_normalize](/dbzero/anagrafiche/manual/trgfn_indirizzi_base_normalize) — gira prima
-> [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/manual/fn_crea_indirizzo_soggetto) · [anagrafiche.fn_crea_indirizzi_ruolo](/dbzero/anagrafiche/manual/fn_crea_indirizzi_ruolo) — le madri che ci passano
+> * [anagrafiche.trgfn_indirizzi_base_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize) — gira prima, e mette in ordine la riga
+> * [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_soggetto) — il verbo del soggetto, che passa i campi senza giudicarli
+> * [anagrafiche.fn_crea_indirizzi_ruolo](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_ruolo) — il verbo del ruolo, che fa lo stesso
 >
-**Guide:**
+> Guide:
 >
-[Gestione degli indirizzi](/guide/gestione-degli-indirizzi) — R3
+> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi) — il quadro degli indirizzi e delle due forme
 
 ---
+
 ### 🎯 Scopo Principale
-(18-10-2026 — richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11, decisioni D-2 e D-3 di Tid)
 
-**Dire all'operatore che cosa manca, o che cosa non torna, in un indirizzo scritto a mano**
-(indirizzo libero), con un codice e il **nome del campo** da correggere. Prima di questo
-guard l'indirizzo incompleto arrivava come errore tecnico del database (`E_DATABASE`, il
-CHECK), senza dire quale campo mancava.
-
-Un corpo solo per le due tabelle degli indirizzi (ruolo e soggetto), che hanno le stesse
-colonne.
+`anagrafiche.trgfn_indirizzi_guard_forma_libera` dice che cosa manca, o che cosa non torna, in un indirizzo
+scritto a mano, con un codice e il nome del campo da correggere, invece dell'errore tecnico del `CHECK`. Un corpo
+solo per gli indirizzi dei ruoli e dei soggetti, che hanno le stesse colonne.
 
 ---
 
-### Le due forme
+### I rifiuti, nell'ordine
 
-Sempre: la via (`indirizzo_libero`) e lo stato (`stato_id`). Poi la forma la decide lo
-**stato**, con la sua proprietà `catalogo_comuni_completo`:
-
-| Forma | Quando | Obbligatori | Vuoti |
-| --- | --- | --- | --- |
-| **del catalogo** | stato col catalogo completo (l'Italia) | `comune_id`, `codice_postale_id`, coerenti fra loro e con lo stato | `locality`, `postal_code`, `administrative_area` (li dice già l'elenco). `sublocality` (frazione, quartiere) è ammessa |
-| **estera** | stato senza catalogo completo | `locality` | `comune_id`, `codice_postale_id`. Facoltativi `postal_code` (ci sono paesi senza codice postale), `administrative_area`, `sublocality` |
-
-Uno stato con il catalogo **non ancora completo** accetta anche la forma del catalogo, se
-chi scrive sceglie un comune o un CAP: allora vale tutta, coerenza compresa.
-
----
-
-### I rifiuti
-
-Tutti di classe `DATO_ERRATO`. Il nome della colonna viaggia nel contesto `campo` (canale
-`COLUMN`: il frontend accende quel campo); nella frase c'è il campo come lo legge una persona.
+Il guard prende il primo problema che trova, nell'ordine della tabella. Il nome della colonna viaggia nel
+contesto `campo`, così l'applicazione accende quel campo; la frase lo dice come lo legge una persona.
 
 | Codice | Quando |
 | --- | --- |
-| `E_INDIRIZZO_LIBERO_INCOMPLETO` | manca un campo: il primo, nell'ordine via, stato, poi quelli della forma |
-| `E_INDIRIZZO_CAMPO_ALTRA_FORMA` | nella forma del catalogo è compilato un campo della forma estera |
-| `E_INDIRIZZO_COMUNE_ALTRO_STATO` | il comune non è dello stato. Anche quando l'elenco non sa dirlo (provincia senza regione): non si può affermare che lo sia |
+| `E_INDIRIZZO_LIBERO_INCOMPLETO` | manca un campo: prima la via, poi lo stato, poi quelli della forma (comune e CAP nella forma del catalogo, la località in quella estera) |
+| `E_INDIRIZZO_CAMPO_ALTRA_FORMA` | nella forma del catalogo è compilato un campo della forma estera (località, codice postale, area amministrativa) |
+| `E_INDIRIZZO_COMUNE_ALTRO_STATO` | il comune non è dello stato. Anche quando il catalogo non sa dirlo (un comune senza provincia, una provincia senza regione): non si può affermare che lo sia |
 | `E_INDIRIZZO_CAP_ALTRO_COMUNE` | il CAP non è del comune |
-
-Il CHECK `chk_*_free_requirements` resta come **rete** per le scritture che non passano
-dai trigger, con la forma minima comune alle due varianti.
 
 ---
 
-### Quando scatta, e quando no
+### Quando giudica, e quando no
 
-* `BEFORE INSERT OR UPDATE`, nella fascia **z10**: **dopo** il normalize, che porta a NULL i
-  testi vuoti e scrive lo stato proposto. Un guard in fascia a10 vedrebbe la riga com'era
-  prima del normalize, e rifiuterebbe ciò che il CHECK accetta.
-* `UPDATE` senza `OF`: il normalize scrive `stato_id`, che è una colonna giudicata. Il corpo
-  esce subito se nessuna colonna dell'indirizzo cambia.
-* ⭐ Per questo le righe scritte **prima** della regola, o prima che il flag di uno stato si
-  accenda, restano valide finché nessuno tocca il loro indirizzo. Quando lo si tocca, vale la
-  forma di oggi.
-* Indirizzo normalizzato (`indirizzo_dettaglio_id`): niente da giudicare.
+* In fascia `z10`, dopo la messa in ordine della riga, che porta a nessun valore i testi vuoti e scrive lo stato
+  proposto: un guard prima di lei vedrebbe la riga com'era, e rifiuterebbe ciò che il `CHECK` accetta.
+* Un indirizzo col dettaglio non si giudica qui.
+* Una modifica che non tocca nessun campo dell'indirizzo non si giudica. ⭐ Per questo le righe scritte prima della
+  regola, o prima che il flag di uno stato si accenda, restano valide finché nessuno tocca il loro indirizzo;
+  quando lo si tocca, vale la forma di oggi.
 
 ---
 
 ### La regola sta in un posto solo
 
-Le madri (`fn_crea_indirizzo_soggetto`, `fn_crea_indirizzi_ruolo`) **non** ripetono la
-completezza: passano i campi, e il giudizio è qui. Il form legge lo stesso flag dello stato per
-scegliere quale variante mostrare.
+I verbi che creano gli indirizzi non ripetono la completezza: passano i campi, e il giudizio è qui. Il form
+legge lo stesso flag dello stato per scegliere quale forma mostrare. I `CHECK` `chk_indirizzi_free_requirements`
+e `chk_indirizzi_soggetti_free_requirements` restano come rete per le scritture che non passano dai trigger.
+
+---
+
+### Codici errore
+
+* `E_INDIRIZZO_LIBERO_INCOMPLETO`, `E_INDIRIZZO_CAMPO_ALTRA_FORMA`, `E_INDIRIZZO_COMUNE_ALTRO_STATO`,
+  `E_INDIRIZZO_CAP_ALTRO_COMUNE`: quando, nella tabella dei rifiuti.
 
 ---
 
 ### Test
 
-`db/pgtap/anagrafiche/test-indirizzo-libero-due-forme-v1.sql`: ordine dei trigger, le due
-forme, i quattro rifiuti, il canale `COLUMN`, il flag che si accende dopo.
+* `db/pgtap/anagrafiche/test-indirizzo-libero-due-forme-v1.sql` — l'ordine dei trigger, le due forme, i quattro
+  rifiuti, il campo nel contesto, le righe di prima che restano valide finché non si toccano.
+
+---
+
+### Note di migrazione
+
+* 2026-10-18 — nasce su richiesta dell'applicazione: prima l'indirizzo incompleto arrivava come errore tecnico
+  del `CHECK`, senza dire il campo. Con lui nascono le due forme decise dallo stato.
+
+---
+
+{% include-markdown "it/dbzero/anagrafiche/_indirizzo-libero-o-dettaglio.md" %}
 
 ---
 

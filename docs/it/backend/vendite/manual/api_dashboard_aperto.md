@@ -12,9 +12,9 @@ opzionale **"aperti da oltre N giorni"** sul solo drill-down.
 ## Contesto
 
 Fase 3 BE del brief
-[brief-design-fatturazione-due-lenti](../../../dev/work-done/brief-design-fatturazione-due-lenti.md)
+[brief-design-fatturazione-due-lenti](../../../dev/work-done/2026/brief-design-fatturazione-due-lenti.md)
 **§6-ter (DL-14..18)** (substrato DB v2 in
-[brief-db-situazione-aperta-v2](../../../dev/work-done/brief-db-situazione-aperta-v2.md),
+[brief-db-situazione-aperta-v2](../../../dev/work-done/2026/brief-db-situazione-aperta-v2.md),
 changeset `20260708-03/04`, PR #944): due endpoint GET **sottili** sopra le
 proiezioni read-only `vendite.vw_dash_aperto_riepilogo` (celle `area × fase`)
 e `vendite.vw_dash_aperto_documenti` (union dei resolver, 5 aree documento —
@@ -54,7 +54,7 @@ Nessun parametro.
 
 - `area` (opzionale, case-insensitive; assente = tutte): `PREVENTIVO |
   ORDINE_VENDITA | DDT_VENDITA | OFFERTA_COMMERCIALE | CONTRATTO`.
-> ⭐ **Dal 2026-10-20 l'`area` è il codice della sorgente** (`config.sorgenti.codice_interno`): `PREVENTIVO`, `ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE`, `CONTRATTO`, `COMMESSA`, `RESO_VENDITA`. Il plurale (`ORDINI`, `RESI`…) è ritirato col sotto-giro 2d di [brief-db-grammatica-unica-documenti](../../../dev/work-done/brief-db-grammatica-unica-documenti.md) (G-6).
+> ⭐ **Dal 2026-10-20 l'`area` è il codice della sorgente** (`config.sorgenti.codice_interno`): `PREVENTIVO`, `ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE`, `CONTRATTO`, `COMMESSA`, `RESO_VENDITA`. Il plurale (`ORDINI`, `RESI`…) è ritirato col sotto-giro 2d di [brief-db-grammatica-unica-documenti](../../../dev/work-done/2026/brief-db-grammatica-unica-documenti.md) (G-6).
  **Validata sul vocabolario del modello, non sulla whitelist del pivot**:
   un codice che non è una sorgente è **400 `E_VENDITE_VALIDATION`** sul campo
   `area` (dal 2026-10-20; prima era lista vuota, e un client rimasto al

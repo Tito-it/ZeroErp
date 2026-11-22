@@ -50,10 +50,11 @@ export const useGiornaleStore = defineStore(
         data_da: defaultFiltroDataDaString(),
         data_a: null,
       },
-      // Allineato al preset `giornale_default` (`quando desc`): l'ultima cosa
-      // successa in cima. Il ripiego del verso segue.
-      orderBy: 'quando',
-      orderDir: 'desc',
+      // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+      //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+      //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+      //    l'intestazione.
+      // Il ripiego del verso, quando `order_by` arriva senza verso.
       orderDirDefault: 'desc',
       onPayload: (payload) => { ritirateCount.value = payload.ritirate_count ?? 0 },
     })

@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.fn_misura_pagina_risolta: la cascata della misura «righe per pagina» di una lista, in una sede.
+#   Brief: brief-db-revisione-ui (giro 6a: BE10, con Q11-bis di Tid, 2026-11-18).
+#
+# Perche': il BE chiede la sola misura risolta di una lista (BE10), per dare a una
+#   lista configurabile chiamata senza limit la misura della configurazione e non
+#   25. La cascata della misura stava solo dentro ui.fn_resolve_lista_config (passo
+#   5-ter): una seconda funzione che la ricopiasse sarebbe la seconda copia della
+#   stessa regola (regola del 2). Si estrae qui; la leggono il resolver
+#   (20261121-27) e ui.fn_misura_lista (20261121-28).
+# La regola, com'era nel resolver: lo standard e' la misura del preset di base se
+#   e' nel catalogo, altrimenti il default dell'uso della lista; risponde la misura
+#   della preferenza se e' nel catalogo, altrimenti lo standard. origine dice da
+#   dove viene: 'preferenza', 'preset' o 'catalogo' (il resolver rende 'preset' con
+#   l'ambito del preset).
+# LANGUAGE sql BEGIN ATOMIC (linee-guida-sql §5c): le funzioni che chiama stanno
+#   in pg_depend. Il COMMENT in un secondo sql:, come vuole pgjdbc.
+# STABLE: legge il catalogo delle misure (attraverso ui.fn_misura_pagina_ammessa e
+#   ui.fn_misura_pagina_default, che solleva E_UI_MISURA_PAGINA_DEFAULT_MANCANTE se
+#   il catalogo non ha il default dell'uso).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261121-26-create-fn-misura-pagina-risolta-mctit.yaml
+
+  - changeSet:
+      id: 20261121-26-create-fn-misura-pagina-risolta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_misura_pagina_risolta: la cascata della misura di una lista (preferenza, preset di base, default dell'uso), letta dal resolver e da ui.fn_misura_lista. Brief: brief-db-revisione-ui (giro 6a, BE10).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_misura_pagina_risolta'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION ui.fn_misura_pagina_risolta(
+                  p_preferenza ui.misure_pagina.misura%TYPE,
+                  p_preset     ui.lista_preset.pagina_dimensione%TYPE,
+                  p_uso        ui.lista_definizione.uso_misura%TYPE)
+               RETURNS TABLE (
+                  misura   ui.misure_pagina.misura%TYPE,
+                  standard ui.misure_pagina.misura%TYPE,
+                  -- text: un'etichetta calcolata qui ('preferenza', 'preset', 'catalogo'),
+                  -- non il riflesso di una colonna
+                  origine  text)
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+                  SELECT CASE WHEN s.preferenza_ok THEN p_preferenza ELSE s.standard END,
+                         s.standard,
+                         CASE WHEN s.preferenza_ok THEN 'preferenza'
+                              WHEN s.preset_ok     THEN 'preset'
+                              ELSE 'catalogo' END
+                    FROM (SELECT a.preferenza_ok,
+                                 a.preset_ok,
+                                 -- Il default dell'uso si chiede solo se serve: solleva quando
+                                 -- il catalogo non lo ha.
+                                 CASE WHEN a.preset_ok THEN p_preset
+                                      ELSE ui.fn_misura_pagina_default(p_uso::text) END AS standard
+                            FROM (SELECT ui.fn_misura_pagina_ammessa(p_preferenza) AS preferenza_ok,
+                                         ui.fn_misura_pagina_ammessa(p_preset)     AS preset_ok) a) s;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION ui.fn_misura_pagina_risolta(ui.misure_pagina.misura%TYPE, ui.lista_preset.pagina_dimensione%TYPE, ui.lista_definizione.uso_misura%TYPE) IS
+                  'La misura «righe per pagina» di una lista, data la misura della preferenza (p_preferenza), quella del preset di base (p_preset) e l''uso della lista (p_uso, ui.lista_definizione.uso_misura). Una riga: misura, la misura che risponde; standard, quella che risponderebbe senza la preferenza; origine, da dove viene (''preferenza'', ''preset'' o ''catalogo''). Lo standard è la misura del preset se è nel catalogo ui.misure_pagina, altrimenti il default dell''uso (ui.fn_misura_pagina_default). Risponde la misura della preferenza se è nel catalogo, altrimenti lo standard: una misura uscita dal catalogo non è più una scelta. NULL vale «nessuna misura». Mai una misura NULL: senza il default dell''uso solleva E_UI_MISURA_PAGINA_DEFAULT_MANCANTE. La leggono ui.fn_resolve_lista_config e ui.fn_misura_lista. STABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS ui.fn_misura_pagina_risolta(ui.misure_pagina.misura%TYPE, ui.lista_preset.pagina_dimensione%TYPE, ui.lista_definizione.uso_misura%TYPE);

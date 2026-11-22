@@ -13,6 +13,7 @@
 //       correggerlo; un campo in piu' chiede una scelta che il DB rifiuta.
 // Indice test:
 //   1) articolo a lotti, magazzino senza scaffali: quantita' e lotto, nient'altro
+//   1-bis) articolo a lotti, bolla senza magazzino: i lotti non si chiedono
 //   2) seriale: niente quantita' (un pezzo), il seriale dal magazzino della bolla
 //   3) voce automatica: nessun form, il tag lo dice
 //   4) «Aggiungi» manda la voce del kit, il residuo e il lotto scelto
@@ -61,9 +62,20 @@ describe('DdtPrelievoVoce', () => {
     await flushPromises()
     expect(w.findComponent({ name: 'InputNumber' }).exists()).toBe(true)
     expect(placeholders(w)).toEqual(['vendite.ddt.prelievi.campo_lotto'])
-    expect(chiamate.lotti).toEqual([['a-1']])
+    expect(chiamate.lotti).toEqual([['a-1', 5]])
     expect(chiamate.assets).toEqual([])
     expect(chiamate.ubicazioni).toEqual([])
+  })
+
+  // Il lotto è dell'azienda (2026-11-22): il lookup vuole il magazzino, come il
+  // seriale. Una bolla senza magazzino non chiede i lotti (sarebbe un 400).
+  it('articolo a lotti, bolla senza magazzino: i lotti non si chiedono', async () => {
+    monta(DdtPrelievoVoce, {
+      ddtId: 9, voce: voce({ requires_lotto: true }),
+      testata: { ...TESTATA, magazzino_id: null }, modificabile: true,
+    })
+    await flushPromises()
+    expect(chiamate.lotti).toEqual([])
   })
 
   it('seriale: niente quantita\' (un pezzo), il seriale dal magazzino della bolla', async () => {

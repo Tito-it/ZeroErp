@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Widget di un preset dashboard: ordine e visibilita di default. Ricalca ui.lista_preset_colonna.
+> La composizione di un preset di dashboard: quali widget propone, in che ordine e quali mostra subito. Una riga per preset e widget. È una parte del preset, senza attivo né audit. Una composizione cambiata sposta la chiave widget della data del contenuto del preset, a fine transazione (ui.trgfn_preset_riga_tocca_preset). Gemella di ui.lista_preset_colonna.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -12,11 +12,14 @@
 | widget_id | integer | NO |  |
 | ordine | integer | NO |  |
 | visibile | boolean | NO | true |
+| dashboard_id | integer | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_ui_dashboard_preset_widget_dashboard_preset | preset_id |
+| FOREIGN KEY | fk_ui_dashboard_preset_widget_pool | dashboard_id, widget_id |
+| FOREIGN KEY | fk_ui_dashboard_preset_widget_preset_della_dashboard | preset_id, dashboard_id |
 | FOREIGN KEY | fk_ui_dashboard_preset_widget_widget | widget_id |
 | PRIMARY KEY | pk_ui_dashboard_preset_widget | preset_id, widget_id |
 
@@ -29,6 +32,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_ui_dashboard_preset_widget_a20_contenitore_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preset_riga_contenitore()` |
+| trg_ui_dashboard_preset_widget_a20_contenitore_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_riga_contenitore()` |
 | trg_ui_dashboard_preset_widget_z10_tocca_preset_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.dashboard_preset')` |
 | trg_ui_dashboard_preset_widget_z10_tocca_preset_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.dashboard_preset')` |
 | trg_ui_dashboard_preset_widget_z10_tocca_preset_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.dashboard_preset')` |

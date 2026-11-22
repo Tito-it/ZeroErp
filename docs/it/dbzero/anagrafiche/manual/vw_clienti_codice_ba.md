@@ -1,70 +1,57 @@
 ## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_clienti_codice_ba`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
-> • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
-> • [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)
+> Approfondimento tabelle:
 >
-Approfondimento viste:
-> • [anagrafiche.vw_clienti_lista](/dbzero/anagrafiche/views/vw_clienti_lista)
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — una riga per cliente
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — il codice del cliente
+> * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente) — lo stato, nel codice logico e in quello visibile
+> * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli) — il ruolo cliente nomina questa vista come la sua entità
+>
+> Approfondimento viste:
+>
+> * [anagrafiche.vw_clienti_lista](/dbzero/anagrafiche/views/vw_clienti_lista) — la lista dei clienti, con l'anagrafica
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
-
-Espone il cliente con **il codice del suo billing account** come codice di ricerca, insieme
-allo stato e alle date del ciclo di vita. È la superficie usata dalla **ricerca per codice
-universale**: quella che, dato un codice digitato dall'operatore, deve dire a quale entità
-appartiene senza sapere in anticipo di che tipo sia.
-
-Da qui la colonna `entita_id`, che è `cl.id` ripetuto sotto un nome generico: serve a chi
-consuma la ricerca in modo polimorfo e non vuole conoscere il nome della chiave di ciascun
-dominio.
+`anagrafiche.vw_clienti_codice_ba` espone ogni cliente col codice del suo billing account, il suo stato e le date
+del ciclo di vita. È l'entità del ruolo cliente: la ricerca per codice e la scheda del cliente partono da qui.
 
 ---
 
-### ⚠️ È deliberatamente più permissiva della gemella
+### Il codice del cliente è quello del billing account
 
-La vista è `WITH (security_invoker = on)` — eredita quindi la RLS di chi interroga, e
-`anagrafiche.billing_account` ce l'ha attiva. Ma il legame è un **`LEFT JOIN`**:
+Il cliente non ha un codice suo: lo riconosce il codice del suo billing account, che è unico per cliente perché
+un billing account ha un solo cliente. Una ricerca per codice trova quindi al più un cliente.
 
-```sql
-LEFT JOIN anagrafiche.billing_account ba ON ba.id = cl.billing_account_id
-```
-
-Conseguenza: se il billing account non è visibile, **il cliente resta in elenco** e `codice`
-arriva `NULL`. In `vw_clienti_lista`, che usa un `JOIN` interno sullo stesso legame, lo stesso
-cliente **sparirebbe del tutto**.
-
-Non è un'incoerenza: è la differenza fra una **lista** (mostra ciò che l'operatore può
-vedere per intero) e una **ricerca** (deve poter dire «esiste, ma non te lo posso
-qualificare»). Chi sceglie fra le due sta scegliendo anche questo comportamento.
-
-⚠️ Il rovescio pratico: un `codice` `NULL` in questa vista ha **due** cause indistinguibili —
-il cliente non ha billing account, oppure ce l'ha ma è fuori perimetro. Per separarle serve
-`billing_account_id`, che la vista espone apposta.
+`entita_id` ripete l'identificativo del cliente sotto un nome generico, per chi legge le entità dei ruoli tutte
+nello stesso modo senza sapere come si chiama la chiave di ciascuna. Lo stato esce due volte: `stato_codice_interno`
+per la logica, `stato_codice` per chi guarda.
 
 ---
 
-### Cosa **non** garantisce
+### Il perimetro è quello di chi legge
 
-* **Nessuna unicità del codice**: nulla impedisce che due clienti condividano lo stesso BA e
-  quindi lo stesso codice. Una ricerca per codice può restituire più righe.
-* **Nessun filtro di stato**: i clienti chiusi ci sono, con il loro `stato_codice_interno`.
-* **Nessun dato anagrafico**: niente ragione sociale né codice fiscale. Per quelli si passa da
-  `vw_clienti_lista`.
+La vista è `security_invoker`: le policy dei clienti e dei billing account valgono per chi interroga. Il billing
+account è unito con un join esterno, ma le policy delle due tabelle guardano la stessa cosa (l'azienda del billing
+account per l'operatore, il ruolo cliente per il portale e lo shop): un cliente visibile ha il suo billing account
+visibile, e il codice c'è.
+
+Nessun filtro di stato: i clienti chiusi e annullati ci sono, con il loro stato. Niente anagrafica: ragione
+sociale e codice fiscale stanno in `anagrafiche.vw_clienti_lista`.
 
 ---
 
-### Consumatori
+### Test
 
-Nessun consumo diretto dal backend: è letta da altre viste e funzioni del livello DB
-(la ricerca per codice universale). ⚠️ Va quindi trattata come **superficie interna al
-database**: cambiarne le colonne non rompe un endpoint, rompe le viste che la compongono, e
-quelle non falliscono — restituiscono meno righe.
+* `db/pgtap/config/test-tipi-ruoli-guard-entita-ref.sql` — la vista ha le colonne che l'entità del ruolo vuole.
+* `db/pgtap/script/test-search-regola-unica-visibile-v1.sql` — la vista come entità della ricerca.
+* `db/pgtap/rls/test-rls-viste-security-invoker.sql` — la vista eredita la RLS di chi legge.
 
 ---
 

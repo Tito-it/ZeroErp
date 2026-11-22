@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_check_pdp_occupato.md" %}
 # ⚙️ Funzione `fn_check_pdp_occupato`
 
 ```sql

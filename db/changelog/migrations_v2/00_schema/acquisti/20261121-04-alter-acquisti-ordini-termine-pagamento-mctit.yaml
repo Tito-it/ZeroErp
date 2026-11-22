@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ordine di acquisto porta il termine di pagamento, come quello di vendita
+#   (brief-db-fornitore-doppioni-del-soggetto, giro B, D-3 di Tid, 2026-11-21).
+#
+# -- IL DISALLINEAMENTO --------------------------------------------
+#   acquisti.ordini aveva ancora la coppia giorni_pagamento + fine_mese e non
+#   aveva termine_pagamento_id. Sulle vendite le condizioni stanno nel termine
+#   (config.termini_pagamento: fine mese, primo offset, rate, intervallo): la
+#   fattura ha perso la coppia con 20260731-10, e vendite.ordini porta solo
+#   termine_pagamento_id. Ogni decisione presa su vendite vale per acquisti.
+#
+# -- LA FORMA -----------------------------------------------------
+#   La FK di vendite.ordini (fk_ordini_termini_pagamento): ON UPDATE CASCADE,
+#   ON DELETE SET NULL. Il nome segue i vincoli della tabella
+#   (fk_ordini_ao_*). A ci_apply nascono il trigger che pretende un termine
+#   attivo (linee-guida-sql 11.5: non si scrive qui) e la registrazione
+#   dell'indice nella policy delle FK.
+#   La snapshot del termine non c'e', come sull'ordine di vendita: esiste solo
+#   sulla fattura.
+#
+# -- CHI LE NOMINA (censimento 2026-11-21) -------------------------
+#   Nessuna vista, funzione, trigger o pgTAP legge acquisti.ordini.giorni_pagamento
+#   o fine_mese; storico.ordini tiene la riga in snapshot jsonb. Il BE/FE
+#   degli acquisti non esiste ancora: niente da allineare.
+#   I valori non si travasano: giorni e fine mese non dicono quale termine
+#   del catalogo sia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/acquisti/20261121-04-alter-acquisti-ordini-termine-pagamento-mctit.yaml
+
+  - changeSet:
+      id: 20261121-04-alter-acquisti-ordini-termine-pagamento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        acquisti.ordini: nasce termine_pagamento_id con FK
+        fk_ordini_ao_termini_pagamento su config.termini_pagamento (ON UPDATE
+        CASCADE, ON DELETE SET NULL, come vendite.ordini) ed escono
+        giorni_pagamento e fine_mese. Brief:
+        brief-db-fornitore-doppioni-del-soggetto, giro B (D-3).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: acquisti
+                tableName: ordini
+                columnName: giorni_pagamento
+            - not:
+                - columnExists:
+                    schemaName: acquisti
+                    tableName: ordini
+                    columnName: termine_pagamento_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE acquisti.ordini
+                  ADD COLUMN termine_pagamento_id bigint;
+
+              ALTER TABLE acquisti.ordini
+                  ADD CONSTRAINT fk_ordini_ao_termini_pagamento
+                  FOREIGN KEY (termine_pagamento_id)
+                  REFERENCES config.termini_pagamento (id)
+                  ON UPDATE CASCADE ON DELETE SET NULL;
+
+              ALTER TABLE acquisti.ordini
+                  DROP COLUMN giorni_pagamento,
+                  DROP COLUMN fine_mese;
+
+              COMMENT ON COLUMN acquisti.ordini.termine_pagamento_id IS
+                  'Il termine di pagamento dell''ordine, dal catalogo config.termini_pagamento: '
+                  'fine mese, primo offset, rate e intervallo stanno nel termine. La stessa forma '
+                  'di vendite.ordini.termine_pagamento_id.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE acquisti.ordini
+                  ADD COLUMN IF NOT EXISTS giorni_pagamento smallint,
+                  ADD COLUMN IF NOT EXISTS fine_mese boolean;
+              ALTER TABLE acquisti.ordini
+                  DROP CONSTRAINT IF EXISTS fk_ordini_ao_termini_pagamento;
+              ALTER TABLE acquisti.ordini
+                  DROP COLUMN IF EXISTS termine_pagamento_id;

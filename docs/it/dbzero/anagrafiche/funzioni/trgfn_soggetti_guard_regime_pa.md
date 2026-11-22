@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_soggetti_guard_regime_pa.md" %}
 # ⚙️ Funzione `trgfn_soggetti_guard_regime_pa`
 
 ```sql

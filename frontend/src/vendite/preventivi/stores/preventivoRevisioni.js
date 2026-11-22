@@ -17,5 +17,5 @@ import { listRevisioni } from '../api/preventiviApi'
 // si scrivono addosso la catena.
 export const usePreventivoRevisioniStore = storePerIstanza(
   'vendite-preventivo-revisioni',
-  (id) => createRevisioniStore(id, { fetchRevisioni: listRevisioni, orderBy: 'rev' }),
+  (id) => createRevisioniStore(id, { fetchRevisioni: listRevisioni }),
 )

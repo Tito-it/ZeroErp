@@ -1,7 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- Guardrail CI — il contratto del codice errore strutturato
---   Brief: docs/it/dev/work-done/brief-db-codice-errore-strutturato.md §10
+--   Brief: docs/it/dev/work-done/2026/brief-db-codice-errore-strutturato.md §10
 --   Funzione presidiata: script.fn_log_and_raise_error (20260805-05)
 --   Registro letto: dbops.messaggi_errore_codici_legacy (20260805-06/07)
 --
@@ -28,7 +28,7 @@
 --   Ora sta su `config.codici_errore`, che ha UNA riga per codice — il ritiro
 --   appartiene al codice, non alla frase. I controlli (B), (C), (D) e il
 --   riepilogo leggono da li'.
---   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (D-6)
+--   Piano: docs/it/dev/work-done/2026/piano-db-classe-codici-errore.md (D-6)
 --
 -- ── `obsoleto_dal`, dal 2026-08-05 (changeSet 20260805-17) ───────────────
 --   Un codice legacy spesso NON si puo' cancellare: `dbops.error_log` ha una FK

@@ -224,6 +224,26 @@ BEGIN
                 'stato_a',    v_codice_a));
     END IF;
 
+    -- I kit col prezzo negoziato (OVERRIDE, AGGIUNTA) escono dalla bozza coi
+    -- loro componenti: senza, il prezzo negoziato non ha da dove ricomporsi.
+    -- Si giudica qui e non alla nascita dell'eccezione, perche' i componenti
+    -- arrivano dopo di lei, e fuori dalla bozza l'offerta non si modifica piu'.
+    -- Il kit a consumo e' esente. Il predicato e'
+    -- script.fn_check_offerta_kit_con_componenti, lo stesso che
+    -- fn_available_actions_offerta legge per spegnere «Emetti», per ultimo.
+    IF v_iniziale_da AND v_emissione_a THEN
+        PERFORM script.fn_raise_primo_motivo_se_presente(
+            'database', TG_NAME::text,
+            script.fn_check_offerta_kit_con_componenti(NEW.id),
+            'componenti',
+            NEW.tx_id,
+            jsonb_build_object(
+                'offerta_id', NEW.id,
+                'codice',     NEW.codice,
+                'stato_da',   v_codice_da,
+                'stato_a',    v_codice_a));
+    END IF;
+
     -- Annullo: dallo stato di accettazione si esce anche annullando, ma non
     -- sotto i piedi di un contratto o di un ordine ancora vivo nato
     -- dall'offerta: prima si annulla lui. Il predicato e'
@@ -262,7 +282,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_guard_transizione()
-IS 'Guard del cambio di stato dell''offerta commerciale (BEFORE UPDATE OF stato_doc_offerta_id). Ogni regola legge il significato dello stato dalle colonne del vocabolario config.stati_doc_offerte, mai il codice, che serve solo ai messaggi. (1) La transizione deve essere una riga attiva di config.stati_doc_offerte_transizioni, altrimenti E_OFFERTA_TRANSIZIONE_NON_AMMESSA. (2) Si esce da uno stato is_superato solo se non resta una revisione figlia non abortita, altrimenti E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA: la condizione vale per chiunque scriva, non solo per l''automatismo del rientro. (3) L''emissione, dallo stato iniziale allo stato di emissione, solleva il primo motivo di script.fn_check_listino_congelabile e congela la versione di listino (vendite.fn_listino_versione_operativa: la fissata, altrimenti quella in vigore oggi); poi il primo motivo di script.fn_check_indirizzi_documento_cliente e quello di script.fn_check_righe_documento. Il rientro da uno stato di superamento non e'' un''emissione. (4) Verso lo stato di emissione e quello di accettazione, fuori dal rientro, il primo motivo di script.fn_check_prezzi_autorizzati (E_DOC_PREZZO_PENDENTE, E_DOC_PREZZO_RIFIUTATO). (5) Verso lo stato di annullo (is_abortito), il primo motivo di script.fn_check_offerta_annullabile (E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI). (6) La data del passaggio: emissione -> data_emissione, solo se ancora NULL (un rientro non riscrive il giorno dell''invio); accettazione -> data_accettazione; rifiuto -> data_rifiuto; is_abortito -> data_annullamento. I predicati sono gli stessi che script.fn_available_actions_offerta legge per spegnere i pulsanti, nello stesso ordine.';
+IS 'Guard del cambio di stato dell''offerta commerciale (BEFORE UPDATE OF stato_doc_offerta_id). Ogni regola legge il significato dello stato dalle colonne del vocabolario config.stati_doc_offerte, mai il codice, che serve solo ai messaggi. (1) La transizione deve essere una riga attiva di config.stati_doc_offerte_transizioni, altrimenti E_OFFERTA_TRANSIZIONE_NON_AMMESSA. (2) Si esce da uno stato is_superato solo se non resta una revisione figlia non abortita, altrimenti E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA: la condizione vale per chiunque scriva, non solo per l''automatismo del rientro. (3) L''emissione, dallo stato iniziale allo stato di emissione, solleva il primo motivo di script.fn_check_listino_congelabile e congela la versione di listino (vendite.fn_listino_versione_operativa: la fissata, altrimenti quella in vigore oggi); poi il primo motivo di script.fn_check_indirizzi_documento_cliente, quello di script.fn_check_righe_documento e quello di script.fn_check_offerta_kit_con_componenti (E_OFFERTA_EMISSIONE_KIT_SENZA_COMPONENTI: un kit col prezzo negoziato senza componenti attivi, esente quello a consumo). Il rientro da uno stato di superamento non e'' un''emissione. (4) Verso lo stato di emissione e quello di accettazione, fuori dal rientro, il primo motivo di script.fn_check_prezzi_autorizzati (E_DOC_PREZZO_PENDENTE, E_DOC_PREZZO_RIFIUTATO). (5) Verso lo stato di annullo (is_abortito), il primo motivo di script.fn_check_offerta_annullabile (E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI). (6) La data del passaggio: emissione -> data_emissione, solo se ancora NULL (un rientro non riscrive il giorno dell''invio); accettazione -> data_accettazione; rifiuto -> data_rifiuto; is_abortito -> data_annullamento. I predicati sono gli stessi che script.fn_available_actions_offerta legge per spegnere i pulsanti, nello stesso ordine.';
 ```
 
 </div>

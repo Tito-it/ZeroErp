@@ -42,8 +42,8 @@
 --
 --  - ⚠️ Il caso si COSTRUISCE: al 2026-09-23 il seed non ha colonne
 --    ricercabili e sensibili, ne' grant di colonna. Due profili nuovi
---    (AD_HOC e PORTALE) per l'operatore di contesto, e otto colonne di prova
---    su una lista a catalogo. Tutto nasce e muore nella transazione.
+--    (AD_HOC e PORTALE) per l'operatore di contesto, e sette colonne di prova
+--    su una lista costruita qui. Tutto nasce e muore nella transazione.
 --
 --  - I test 16-20 cambiano il contesto di sessione: stanno in coda, e il 18
 --    lo ripristina prima del 19.
@@ -112,35 +112,23 @@ SELECT p.profilo_id, 'OPERATORE'::config.ruolo_applicativo, TRUE
  WHERE p.n = 2;
 
 -- ============================================================
--- Fixture 2: una lista a catalogo con un campo_sorgente vero.
--- ⚠️ `campo_sorgente` NON si inventa: il trigger a10 lo verifica contro la
---    vista della lista. Si riusa quello di una colonna gia' a catalogo (non
---    azione, non vuoto — la forma del guard). Il codice e' nuovo, ed e' il
---    codice a identificare la colonna.
--- ⭐ ORDER BY esplicito: un LIMIT 1 senza ordinamento scommette.
+-- Fixture 2: una lista costruita qui, senza vista dichiarata.
+-- ⭐ Su una lista senza vista_sql il guard del campo sorgente non verifica il
+--    campo (lo legge il backend): il nome si sceglie qui, e nessuna lista del
+--    seed fa da soggetto.
 -- ============================================================
 CREATE TEMP TABLE _t_ctx AS
-SELECT ld.codice                                                         AS lista_codice,
-       ld.id                                                             AS lista_id,
+WITH ins AS (
+    INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, vista_sql, attivo, user_insert)
+    VALUES ('_pgtap.ricerca_full_' || substr(md5(clock_timestamp()::text), 1, 6),
+            'Lista test pgTAP ricerca libera', 'pgtap', NULL, TRUE, 'pgtap')
+    RETURNING id, codice
+)
+SELECT ins.codice                                                        AS lista_codice,
+       ins.id                                                            AS lista_id,
        NULLIF(current_setting('app.current_user_id', true), '')::integer AS auth_user_id,
-       (SELECT lc.campo_sorgente
-          FROM ui.lista_colonna lc
-         WHERE lc.lista_id = ld.id
-           AND lc.attivo
-           AND lc.tipo_colonna <> 'azione'
-           AND COALESCE(btrim(lc.campo_sorgente), '') <> ''
-         ORDER BY lc.id
-         LIMIT 1)                                                        AS campo_reale
-  FROM ui.lista_definizione ld
- WHERE ld.attivo
-   AND EXISTS (SELECT 1
-                 FROM ui.lista_colonna lc
-                WHERE lc.lista_id = ld.id
-                  AND lc.attivo
-                  AND lc.tipo_colonna <> 'azione'
-                  AND COALESCE(btrim(lc.campo_sorgente), '') <> '')
- ORDER BY ld.id
- LIMIT 1;
+       'campo_reale'::varchar                                            AS campo_reale
+  FROM ins;
 
 -- Le otto colonne. (codice, campo_sorgente, ricercabile_full, sensibile, attivo)
 INSERT INTO ui.lista_colonna (
@@ -152,7 +140,10 @@ SELECT v.id, c.lista_id, v.codice, 'Prova ricerca libera',
                        ELSE NULL END,
        'informazione', 'string',
        9900 + (v.id - 900100), 'left', false, v.ricercabile, v.sensibile,
-       true, v.attivo, 80, 'pgtap'
+       -- Senza campo sorgente la colonna non si esporta (U25, brief-db-revisione-ui
+       -- giro 4, 2026-11-21): la 107 col campo NULL era una riga che il modello
+       -- non ammette.
+       v.sorgente = 'reale', v.attivo, 80, 'pgtap'
   FROM _t_ctx c
  CROSS JOIN (VALUES
    (900101, 'zz_rf_sensibile',       'reale', true,  true,  true),

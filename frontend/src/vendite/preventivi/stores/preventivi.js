@@ -62,8 +62,6 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     // e che `useStoreFilterBindings` lega al DatePicker.
     paramNames: { data_a: 'data_al' },
     // Il piu' recente in cima; il ripiego del verso segue.
-    orderBy: 'data',
-    orderDir: 'desc',
     orderDirDefault: 'desc',
   })
 

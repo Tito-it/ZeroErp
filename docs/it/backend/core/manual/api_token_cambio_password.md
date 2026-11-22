@@ -145,7 +145,7 @@ I tre campi **non** vengono ripuliti dagli spazi: si verifica e si salva la pass
 > ⚠️ Fino al 2026-09-24 la coppia si emetteva con `RefreshToken.for_user(user)`, senza i
 > claim della veste: il frontend la installava e la richiesta successiva usciva 401
 > `E_JWT_SENZA_IDENTITA` — proprio nel cambio obbligatorio al primo accesso — e l'audit
-> registrava il `jti` al posto del `sid` (M-2 della [analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+> registrava il `jti` al posto del `sid` (M-2 della [analisi difetti](../../../dev/work-done/2026/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 #### Output (successo)
 
@@ -222,7 +222,7 @@ con `E_DATABASE` (fail-closed), mai un «nessun obbligo».
 
 Lo stesso cancello ospita l'obbligo del secondo fattore (`E_TOTP_CONFIGURAZIONE_RICHIESTA`), che
 entra in vigore coi suoi endpoint di configurazione (lotto T-3 di
-[brief-be-fe-sicurezza-header-token-mfa](../../../dev/work-done/brief-be-fe-sicurezza-header-token-mfa.md)).
+[brief-be-fe-sicurezza-header-token-mfa](../../../dev/work-done/2026/brief-be-fe-sicurezza-header-token-mfa.md)).
 Fino al 2026-09-30 il blocco era `PasswordChangeRequiredMiddleware`, che guardava
 `request.user` in `process_view`, prima dell'autenticazione DRF: per un Bearer non scattava mai.
 

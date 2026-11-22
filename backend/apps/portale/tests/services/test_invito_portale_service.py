@@ -27,6 +27,10 @@ Indice test eseguiti:
 15) GetStatoAccessiTests.test_cliente_include_portale_e_shop
 16) GetStatoAccessiTests.test_fornitore_solo_portale
 17) GetStatoAccessiTests.test_cliente_not_found_solleva
+17b) GetStatoAccessiTests.test_email_suggerita_dall_identita_esistente — l'identita' vince sui contatti
+17c) GetStatoAccessiTests.test_email_suggerita_cliente_shop_se_portale_senza_email
+17d) GetStatoAccessiTests.test_email_suggerita_dai_contatti_del_ruolo — senza identita', i contatti del ruolo
+17e) GetStatoAccessiTests.test_email_suggerita_nessuna — niente identita' ne' contatto: None
 18) DisattivaVesteTests.test_disattiva_cliente_portale_attivo_invalida_token — anche sessioni della veste e cache
 19) DisattivaVesteTests.test_disattiva_cliente_nessuna_identita_noop
 20) DisattivaVesteTests.test_disattiva_fornitore_portale
@@ -167,7 +171,6 @@ class InvitoPortaleTests(TestCase):
             "cognome": None,
             "nome": None,
             "codice_fiscale": None,
-            "pec_email": "pec@fornitore.test",
         }
         MockAuth.return_value.find_auth_user_id_per_email.return_value = None
         repo.create_auth_user_portale.return_value = 201
@@ -803,7 +806,7 @@ class GetStatoAccessiTests(TestCase):
             "fornitore_id": 77, "soggetto_ruolo_id": 101,
             "soggetto_id": "u", "ragione_sociale": "F",
             "cognome": None, "nome": None,
-            "codice_fiscale": None, "pec_email": None,
+            "codice_fiscale": None,
         }
         repo.get_stato_identita.return_value = {
             "stato": "PENDING", "identita_id": 501, "auth_user_id": 20,
@@ -821,6 +824,78 @@ class GetStatoAccessiTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             InvitoPortaleService().get_stato_accessi_cliente(999)
         self.assertEqual(ctx.exception.code, "E_CLIENTE_NON_TROVATO")
+
+    # ── email_suggerita (2026-11-21) ─────────────────────────────────
+
+    _FORNITORE_INFO = {
+        "fornitore_id": 77, "soggetto_ruolo_id": 101,
+        "soggetto_id": "u-77", "ragione_sociale": "F",
+        "cognome": None, "nome": None, "codice_fiscale": None,
+    }
+    _CLIENTE_INFO = {
+        "billing_account_id": 1, "ba_codice": "X",
+        "soggetto_ruolo_id": 100, "soggetto_id": "u-1",
+        "ragione_sociale": "X", "cognome": None, "nome": None,
+        "codice_fiscale": None,
+    }
+    _NESSUNA_VESTE = {"stato": "NESSUNO", "identita_id": None, "auth_user_id": None,
+                      "username": None, "email": None,
+                      "invito_inviato_at": None, "token_scade_at": None}
+
+    @patch(_REPO, autospec=True)
+    def test_email_suggerita_dall_identita_esistente(self, MockRepo):
+        """L'identita' che esiste gia' vince: il reinvio riusa la sua email,
+        e i contatti non si leggono."""
+        repo = MockRepo.return_value
+        repo.get_fornitore_info.return_value = self._FORNITORE_INFO
+        repo.get_stato_identita.return_value = {
+            **self._NESSUNA_VESTE, "stato": "PENDING", "identita_id": 501,
+            "email": " gia@fornitore.test ",
+        }
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        result = InvitoPortaleService().get_stato_accessi_fornitore(77)
+        self.assertEqual(result["email_suggerita"], "gia@fornitore.test")
+        repo.get_email_contatto_suggerita.assert_not_called()
+
+    @patch(_REPO, autospec=True)
+    def test_email_suggerita_cliente_shop_se_portale_senza_email(self, MockRepo):
+        """Cliente: la veste portale senza email lascia il posto allo shop."""
+        repo = MockRepo.return_value
+        repo.get_cliente_info.return_value = self._CLIENTE_INFO
+        repo.get_stato_identita.side_effect = [
+            self._NESSUNA_VESTE,
+            {**self._NESSUNA_VESTE, "stato": "ATTIVO", "email": "shop@cliente.test"},
+        ]
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        result = InvitoPortaleService().get_stato_accessi_cliente(1)
+        self.assertEqual(result["email_suggerita"], "shop@cliente.test")
+        repo.get_email_contatto_suggerita.assert_not_called()
+
+    @patch(_REPO, autospec=True)
+    def test_email_suggerita_dai_contatti_del_ruolo(self, MockRepo):
+        """Nessuna identita': l'email viene dai contatti del ruolo, chiesti
+        col soggetto e col soggetto_ruolo dell'entita' (cliente e fornitore)."""
+        repo = MockRepo.return_value
+        repo.get_fornitore_info.return_value = self._FORNITORE_INFO
+        repo.get_cliente_info.return_value = self._CLIENTE_INFO
+        repo.get_stato_identita.return_value = self._NESSUNA_VESTE
+        repo.get_email_contatto_suggerita.return_value = "principale@x.test"
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        svc = InvitoPortaleService()
+        self.assertEqual(svc.get_stato_accessi_fornitore(77)["email_suggerita"], "principale@x.test")
+        repo.get_email_contatto_suggerita.assert_called_with("u-77", 101)
+        self.assertEqual(svc.get_stato_accessi_cliente(1)["email_suggerita"], "principale@x.test")
+        repo.get_email_contatto_suggerita.assert_called_with("u-1", 100)
+
+    @patch(_REPO, autospec=True)
+    def test_email_suggerita_nessuna(self, MockRepo):
+        repo = MockRepo.return_value
+        repo.get_fornitore_info.return_value = self._FORNITORE_INFO
+        repo.get_stato_identita.return_value = self._NESSUNA_VESTE
+        repo.get_email_contatto_suggerita.return_value = None
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        self.assertIsNone(
+            InvitoPortaleService().get_stato_accessi_fornitore(77)["email_suggerita"])
 
 
 class DisattivaVesteTests(TestCase):
@@ -903,7 +978,7 @@ class DisattivaVesteTests(TestCase):
             "fornitore_id": 77, "soggetto_ruolo_id": 101,
             "soggetto_id": "u", "ragione_sociale": "F",
             "cognome": None, "nome": None,
-            "codice_fiscale": None, "pec_email": None,
+            "codice_fiscale": None,
         }
         repo.find_identita_portale.return_value = {
             "identita_id": 600, "auth_user_id": 20, "attivo": True,

@@ -21,7 +21,7 @@ from apps.core.api.success_responses import success_response
 from apps.anagrafiche.services.fornitori_service import FornitoriService
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 
 
 # Codice della lista nel registry `ui.lista_definizione`. Stabile per
@@ -48,8 +48,7 @@ class FornitoriView(DomainAPIView):
             OpenApiParameter(name="attivo", type=bool, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(name="FornitoriListResp", fields={"data": serializers.DictField()})},
     )
@@ -75,15 +74,13 @@ class FornitoriView(DomainAPIView):
             "valuta_id": serializers.IntegerField(required=False),
             "modalita_pagamento_id": serializers.IntegerField(required=False),
             "termine_pagamento_id": serializers.IntegerField(required=False),
-            "giorni_pagamento": serializers.IntegerField(required=False),
-            "fine_mese": serializers.BooleanField(required=False),
-            "split_payment": serializers.BooleanField(required=False),
             "ritenuta_acconto": serializers.BooleanField(required=False),
             "ritenuta_aliquota": serializers.FloatField(required=False),
-            "regime_fiscale": serializers.CharField(required=False),
-            "bollo_esente": serializers.BooleanField(required=False),
-            "canale_fe": serializers.CharField(required=False),
-            "pec_email": serializers.CharField(required=False),
+            "regime_fiscale_rf": serializers.CharField(
+                required=False, allow_null=True,
+                help_text="Codice del catalogo config.regimi_fiscali (es. RF01). "
+                          "Fuori catalogo: 400 sul campo.",
+            ),
             "rating": serializers.IntegerField(required=False),
             "qualifica_scadenza": serializers.DateField(required=False),
             "note": serializers.CharField(required=False),
@@ -120,22 +117,20 @@ class FornitoriDetailView(DomainAPIView):
             "valuta_id": serializers.IntegerField(required=False),
             "modalita_pagamento_id": serializers.IntegerField(required=False),
             "termine_pagamento_id": serializers.IntegerField(required=False),
-            "giorni_pagamento": serializers.IntegerField(required=False),
-            "fine_mese": serializers.BooleanField(required=False),
-            "split_payment": serializers.BooleanField(required=False),
             "ritenuta_acconto": serializers.BooleanField(required=False),
             "ritenuta_aliquota": serializers.FloatField(required=False),
-            "regime_fiscale": serializers.CharField(required=False),
-            "bollo_esente": serializers.BooleanField(required=False),
-            "canale_fe": serializers.CharField(required=False),
-            "pec_email": serializers.CharField(required=False),
+            "regime_fiscale_rf": serializers.CharField(
+                required=False, allow_null=True,
+                help_text="Codice del catalogo config.regimi_fiscali (es. RF01). "
+                          "Fuori catalogo: 400 sul campo.",
+            ),
             "rating": serializers.IntegerField(required=False),
             "qualifica_scadenza": serializers.DateField(required=False),
             "note": serializers.CharField(required=False),
         }),
         responses={200: inline_serializer(name="FornitoreUpdateResp", fields={"data": serializers.DictField()})},
     )
-    # Scopo: Aggiorna campi editabili del fornitore (pagamento, fiscale, FE, rating, note).
+    # Scopo: Aggiorna campi editabili del fornitore (pagamento, fiscale, rating, note).
     def patch(self, request: Request, fornitore_id: int) -> JsonResponse:
         svc = FornitoriService()
         result = svc.update_fornitore(fornitore_id, corpo_oggetto(request))
@@ -171,8 +166,7 @@ class FornitoriExportView(DomainAPIView):
                              description="csv (default) | xlsx"),
             param_ricerca_full(),
             OpenApiParameter(name="stato_fornitore_id", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={
             (200, "text/csv"): bytes,

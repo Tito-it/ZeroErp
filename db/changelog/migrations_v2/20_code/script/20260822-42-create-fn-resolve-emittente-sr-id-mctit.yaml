@@ -15,7 +15,7 @@
 #   `script.fn_resolve_emittente_fiscale_id` (20260822-16) risponde la stessa
 #   domanda nell'altra convenzione, la PK. Il progetto tiene gia' le coppie
 #   `fn_scope_ef_whitelist` / `..._via_sr` e `fn_get_emittenti_scope_pk_ids` /
-#   `_sr_ids`, e la decisione `work-done/refactor-emittente-id-canonico.md`
+#   `_sr_ids`, e la decisione `work-done/2026/refactor-emittente-id-canonico.md`
 #   (2026-05-02) dice testualmente che **il doppio binario e' corretto e va
 #   supportato**. Questo e' il gemello mancante.
 #

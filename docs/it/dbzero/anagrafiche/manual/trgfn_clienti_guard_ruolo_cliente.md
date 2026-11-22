@@ -1,71 +1,76 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_clienti_guard_ruolo_cliente`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_clienti_guard_ruolo_cliente`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
-
-> Approfondimenti tabelle:  
 >
-[anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)   
->  [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) 
-
-> Approfondimenti funzioni:   
+> Approfondimento tabelle:
 >
-[script.fn_guard_soggetto_ruolo ](/dbzero/script/funzioni/fn_guard_soggetto_ruolo ) 
-
-La trigger function **`anagrafiche.trgfn_clienti_guard_ruolo_cliente()`** si attiva **BEFORE INSERT** e **BEFORE UPDATE** sulla tabella `anagrafiche.clienti`. Il suo scopo è garantire che, ogni volta che si crea o modifica il record del cliente, venga automaticamente gestita (verificata o creata) la corrispondente riga di relazione in `anagrafiche.soggetti_ruoli` con ruolo “cliente” (`codice_interno = 'GE'`).
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — la tabella su cui scatta
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il ruolo controllato
+> * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli) — il tipo di ruolo cliente
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo) — il controllo comune delle specializzazioni dei ruoli
+> * [anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_soggetto_coerenza_istanza) — lo stesso controllo sul billing account
+> * [anagrafiche.trgfn_clienti_sync_utility_from_ba](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_utility_from_ba) — la copia del ruolo dal billing account
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 05-12-25)
-- **Centralizzare l’assegnazione del ruolo “cliente”**  
-  Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 
-- **Mantenere coerenza referenziale**  
-  Associare sempre correttamente il soggetto al ruolo di cliente, aggiornando `NEW.soggetto_ruolo_id` con l’ID valido, che sia preesistente o appena creato.
-
-- **Semplificare i trigger client**  
-  Qualunque operazione di INSERT o UPDATE su `anagrafiche.clienti` non deve preoccuparsi di controllare manualmente `soggetto_ruolo_id`; la trigger function ne gestisce la delega.
+`anagrafiche.trgfn_clienti_guard_ruolo_cliente` rifiuta un cliente il cui ruolo non esiste o non è di tipo
+cliente (`CL`). Non crea ruoli e non cambia il valore: verifica soltanto.
 
 ---
 
-### Flusso Logico
+### Il ruolo del cliente lo crea chi fa nascere il cliente
 
-1. **Chiamata automatica**  
-   Attivata **BEFORE INSERT OR UPDATE** su `anagrafiche.clienti`.  
-
-     p_cd_int_ruolo = 'GE' identifica il ruolo “cliente” in config.tipi_ruoli.
-
-     La funzione verifica o crea il record in anagrafiche.soggetti_ruoli e restituisce l’ID.
-
-### Utilizzo in DDL
-
-Nel DDL di anagrafiche.clienti il trigger viene definito così:
-
-CREATE OR REPLACE TRIGGER trg_clienti_guard_ruolo_cliente_ins_upd
-  BEFORE INSERT OR UPDATE ON anagrafiche.clienti
-  FOR EACH ROW
-  EXECUTE FUNCTION anagrafiche.trgfn_clienti_guard_ruolo_cliente();
+Il ruolo, se manca, lo crea `anagrafiche.fn_crea_cliente`, non il trigger.
 
 ---
-### Vantaggi Operativi
 
-    Unica fonte di verità per l’assegnazione del ruolo
-    Ogni modifica al cliente delega a una sola funzione centralizzata il compito di controllare/eseguire 
-    l’inserimento del ruolo in linking table.
-
-    Riduzione del codice boilerplate
-    Non è necessario ripetere la logica di verifica/inserimento nei trigger o nelle procedure che 
-    gestiscono anagrafiche.clienti.
-
-    Coerenza e tracciabilità
-    Grazie all’uso di script.fn_guard_soggetto_ruolo , ogni assegnazione di ruolo registra automaticamente 
-    user_insert nel linking table e garantisce che soggetto_ruolo_id sia sempre valido.
-
-    Flessibilità per ruoli futuri
-    Il pattern può essere replicato in altre trigger function per tabelle analoghe 
-    (es. anagrafiche.clienti, anagrafiche.fornitori), semplicemente cambiando il parametro p_cd_int_ruolo.
+{% include-markdown "it/dbzero/anagrafiche/_guard-di-ruolo.md" %}
 
 ---
-### 🚧 Nota di sviluppo
-    Questa trigger function e la funzione generica fn_guard_soggetto_ruolo  costituiscono il 
-    nucleo metodologico per la gestione dei ruoli in Zero ERP: saranno estese e replicate per ogni nuovo 
-    tipo di ruolo oggetto di implementazione.
+
+### ⚠️ Il ruolo va passato
+
+Per nome il guard viene prima di `anagrafiche.trgfn_clienti_sync_utility_from_ba`, che copia ruolo e utility
+dal billing account quando chi scrive non li passa. Per la utility la copia funziona; per il ruolo no: un
+cliente senza ruolo è rifiutato qui, prima che la copia arrivi.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Ripete un controllo che il billing account fa già.** Il ruolo del cliente è quello del suo billing account
+  (chiave esterna composta, e dopo la nascita bloccato), e il billing account vuole già un ruolo di tipo
+  cliente. Il guard non rifiuta niente che non sarebbe rifiutato comunque; l'unico effetto proprio è il
+  rifiuto del ruolo mancante, che impedisce la copia descritta sopra.
+* **Gira a ogni modifica**, anche quando il ruolo non può cambiare.
+
+---
+
+### Codici errore
+
+* `E_SOGGETTI_RUOLI` — ruolo mancante, inesistente o di un altro tipo.
+* `E_COD_INT_RUOLO` — il tipo di ruolo cliente non è nel catalogo.
+
+---
+
+### Test
+
+Nessun pgTAP lo prova da solo: lo attraversano tutti i test che creano clienti.
+
+---
+
+### Note di migrazione
+
+* 2026-10-09 — il billing account controlla anche lui il tipo di ruolo cliente, e dal 2026-10-10 il cliente
+  copia il ruolo dal billing account: da allora questo guard ripete un controllo che sta già a monte.
+
+---
+
+{% include-markdown "signature-core.md" %}

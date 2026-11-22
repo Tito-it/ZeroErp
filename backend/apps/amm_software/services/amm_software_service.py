@@ -22,6 +22,7 @@ from apps.core.services.auth_constants import CATEGORIA_ACCESSO_OPERATORE
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.invito_veste import PORTA_OPERATORE, InvitoVeste
+from apps.core.services.non_editable_fields_helper import compute_non_editable_fields
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.payload_helpers import MISSING, PayloadValidator, translate_db_errors, vincolo_violato
 from apps.core.services.service_errors import ServiceError
@@ -88,12 +89,6 @@ _EMITTENTE_FORM_DEFAULTS_CODES: tuple[str, ...] = (
     "EMITTENTE_DEFAULT_BOLLO_SOGLIA",
     "EMITTENTE_DEFAULT_ROUNDING_POLICY",
 )
-
-# Campi non editabili in modifica emittente (oggi statici, in attesa che
-# `dbops.vw_non_editable_fields` di Fase 5 includa anche le tabelle anagrafiche).
-# Espono i metadata gia' nella response Fase 3 per non avere breaking change
-# quando la fonte diventera' DB-driven.
-_EMITTENTE_NON_EDITABLE_FIELDS: tuple[str, ...] = ("codice", "soggetto_id")
 
 # Scopo: Le voci di un PUT di override, validate PRIMA del repository: una
 #        lista di oggetti, e in ciascuno i campi che il repository legge con
@@ -787,8 +782,12 @@ class AmmSoftwareService:
     #                               (invalido -> None, no raise: il form mostra
     #                               comunque, l'utente seleziona manualmente)
     #        Il campo `attivo` NON passa per parameters (la colonna DB ha gia'
-    #        DEFAULT true). `non_editable_fields` ritornato statico oggi (vedi
-    #        nota su _EMITTENTE_NON_EDITABLE_FIELDS).
+    #        DEFAULT true). `non_editable_fields` e' il lock vivo della
+    #        tabella (BB `compute_non_editable_fields`, la stessa lettura del
+    #        dettaglio emittente), senza gap: `codice` e `soggetto_ruolo_id`
+    #        li blocca il DB. ⛔ Fino al 2026-11-21 qui c'era una lista fissa
+    #        `("codice", "soggetto_id")`, poi per un giorno una chiamata
+    #        laterale al service di anagrafiche che teneva il gap.
     def get_emittente_form_defaults(
         self,
         *,
@@ -818,7 +817,7 @@ class AmmSoftwareService:
                 "bollo_soglia": bollo_soglia,
                 "rounding_policy": rounding_policy,
             },
-            "non_editable_fields": list(_EMITTENTE_NON_EDITABLE_FIELDS),
+            "non_editable_fields": compute_non_editable_fields("anagrafiche", "emittenti_fiscali"),
         }
 
     # Scopo: Lista statica dei modi di arrotondamento ammessi per emittente

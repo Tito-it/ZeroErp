@@ -50,7 +50,6 @@ const {
   getExportParams: (fmt) => buildExportParams(fmt),
   newTooltipKey: 'vendite.contratti.nuovo_contratto',
   onNew: () => emit('new'),
-  searchTableOptions: { defaultSortField: 'valido_dal' },
 })
 
 // Filtri custom (toolbar caller) — binding store via BB (B14).

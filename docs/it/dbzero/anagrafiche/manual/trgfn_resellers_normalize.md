@@ -1,39 +1,36 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_resellers_normalize`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_resellers_normalize`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-[anagrafiche.resellers](/dbzero/anagrafiche/tabelle/resellers)
-> [config.sistema_codici](/dbzero/config/tabelle/sistema_codici)
+> * [anagrafiche.resellers](/dbzero/anagrafiche/tabelle/resellers) — la tabella su cui scatta
+> * [config.sistema_codici](/dbzero/config/tabelle/sistema_codici) — i generatori di codice, dove il reseller non c'è
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_vettori_gen_codice](/dbzero/anagrafiche/funzioni/trgfn_vettori_gen_codice) — come si genera il codice di una specializzazione che ce l'ha
+> * [anagrafiche.trgfn_emittenti_fiscali_normalize](/dbzero/anagrafiche/funzioni/trgfn_emittenti_fiscali_normalize) — la sorella degli emittenti, vuota anche lei
+> * [anagrafiche.trgfn_vettori_normalize](/dbzero/anagrafiche/funzioni/trgfn_vettori_normalize) — la sorella dei vettori, vuota anche lei
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 10-03-2026)
-La trigger function **`anagrafiche.trgfn_resellers_normalize()`** e' oggi una
-**no-op**: non modifica il record `NEW` e ritorna semplicemente il contenuto
-ricevuto dal trigger.
 
-La presenza del trigger mantiene esplicito il punto di estensione per eventuali
-normalizzazioni future, mentre la generazione del codice reseller resta
-demandata al sistema di codifica configurabile (`config.sistema_codici`).
+`anagrafiche.trgfn_resellers_normalize` è un trigger di normalizzazione dei reseller che non fa niente: restituisce
+la riga così come la riceve, a ogni nascita e modifica.
 
 ---
 
-### Regola applicata
+### ⚠️ Che cosa oggi non copre
 
-* Trigger **BEFORE INSERT OR UPDATE** su `anagrafiche.resellers`.
-* Nessuna trasformazione sui campi.
-* `RETURN NEW` immediato.
-
----
-
-### Ruolo nel processo
-
-La funzione conserva un hook architetturale dedicato ai reseller senza
-duplicare logica gia' gestita altrove. In particolare, non genera il campo
-`codice`: questa responsabilita' resta nel framework generale di
-`sistema_codici`.
+* **Il trigger scatta e non fa niente.** Non tocca nessuna colonna e non solleva errori.
+* **Il commento della funzione promette un generatore che non c'è.** Dice che la generazione del codice è demandata
+  a `config.sistema_codici`, dove non c'è una riga per i reseller, e nessun altro trigger lo genera: il codice, che
+  è obbligatorio, lo scrive chi crea il reseller. La forma maiuscola del codice la dà
+  `script.trgfn_codice_maiuscolo`, non questo trigger.
 
 ---
 

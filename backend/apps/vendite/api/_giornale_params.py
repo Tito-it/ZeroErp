@@ -25,7 +25,7 @@ from typing import Any
 
 from drf_spectacular.utils import OpenApiParameter
 
-from apps.core.api.openapi_params import descrizione_order_by
+from apps.core.api.openapi_params import parametri_finestra, parametri_ordinamento
 from apps.core.api.payload_validators import parse_list_params, qp_bool_optional
 from apps.vendite.db.vendite_repository import GIORNALE_ORDINE_DEFAULT, GIORNALE_SORT_COLUMNS
 
@@ -46,19 +46,16 @@ from apps.vendite.db.vendite_repository import GIORNALE_ORDINE_DEFAULT, GIORNALE
 EMITTENTE_PARAM_GIORNALE_ENTITA = "emittente_soggetto_ruolo_id"
 
 PARAMS_LISTA_GIORNALE_ENTITA = [
-    OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
-    OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
-    OpenApiParameter(
-        name="order_by", type=str, location=OpenApiParameter.QUERY, required=False,
-        description=descrizione_order_by(
-            GIORNALE_SORT_COLUMNS,
-            f"Default `{GIORNALE_ORDINE_DEFAULT} DESC` (il preset di "
-            "`vendite.giornale`); `gravita` ordina il rango e, dentro, il tempo "
-            "dal piu' recente. Fuori whitelist -> 400.",
+    *parametri_finestra(),
+    *parametri_ordinamento(
+        GIORNALE_SORT_COLUMNS,
+        senza=f"{GIORNALE_ORDINE_DEFAULT} DESC",
+        verso="desc",
+        nota=(
+            "`gravita` ordina il rango e, dentro, il tempo dal piu' recente. "
+            "Fuori whitelist -> 400."
         ),
     ),
-    OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False,
-                     description="asc | desc; assente = desc."),
     OpenApiParameter(
         name=EMITTENTE_PARAM_GIORNALE_ENTITA, type=int, location=OpenApiParameter.QUERY,
         required=False,

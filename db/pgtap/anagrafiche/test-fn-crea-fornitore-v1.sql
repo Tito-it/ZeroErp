@@ -14,7 +14,7 @@
 --   scritture girano quindi DEFERRED, come nella transazione del backend, e il
 --   test 8 chiude la finestra con SET CONSTRAINTS ALL IMMEDIATE: e' il commit.
 --
--- Elenco test (plan 16):
+-- Elenco test (plan 21):
 --   forma
 --    1) INVOKER
 --   il caso felice (ruolo nuovo, contatto, un indirizzo)
@@ -35,6 +35,13 @@
 --   14) soggetto NULL: E_SCRIPT_CHIAMATA_NON_VALIDA
 --   15) contatto incompleto: E_CONTATTO_INCOMPLETO (la regola del BB)
 --   16) un secondo fornitore sullo stesso soggetto: uq_fornitori_soggetto_ruolo_id
+--   i doppioni ritirati e il regime (20261121-03 … -06, brief-db-fornitore-
+--   doppioni-del-soggetto, giro B)
+--   17) le sei chiavi dei doppioni e il nome vecchio del regime: E_CAMPO_NON_AMMESSO
+--   18) regime_fiscale_rf ammesso e scritto
+--   19) ... e la vista lo espone con la descrizione del catalogo
+--   20) un regime fuori catalogo: fk_fornitori_regimi_fiscali
+--   21) tabella e vista non hanno piu' le colonne ritirate
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -43,7 +50,7 @@ SET CONSTRAINTS ALL DEFERRED;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(16);
+SELECT plan(21);
 
 
 CREATE OR REPLACE FUNCTION pg_temp.colonna_errore(p_sql text) RETURNS text
@@ -220,6 +227,71 @@ SELECT is(
     dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_fornitore((SELECT s_ruolo FROM t_s))$$),
     'uq_fornitori_soggetto_ruolo_id',
     '16. un secondo fornitore sullo stesso soggetto: uq_fornitori_soggetto_ruolo_id');
+
+-- ============================================================
+-- I doppioni ritirati e il regime (giro B)
+-- ============================================================
+SELECT is(
+    (SELECT COALESCE(array_agg(k ORDER BY k), '{}'::text[])
+       FROM unnest(ARRAY['giorni_pagamento', 'fine_mese', 'split_payment', 'bollo_esente',
+                         'canale_fe', 'pec_email', 'regime_fiscale']) AS k
+      WHERE dbops.fn_pgtap_codice_errore(format(
+                $f$SELECT * FROM anagrafiche.fn_crea_fornitore(
+                       (SELECT s_contatto FROM t_s), jsonb_build_object(%L, 'x'))$f$, k))
+            IS DISTINCT FROM 'E_CAMPO_NON_AMMESSO'),
+    '{}'::text[],
+    '17. le chiavi ritirate (sei doppioni e regime_fiscale): tutte E_CAMPO_NON_AMMESSO');
+
+-- Il regime: un soggetto col ruolo dal builder, il primo regime attivo del
+-- catalogo (ordine, poi id). Il builder rimette i vincoli IMMEDIATE.
+CREATE TEMP TABLE t_rf AS
+SELECT rf.codice_interno::text AS rf, rf.descrizione::text AS descrizione
+  FROM config.regimi_fiscali rf
+ WHERE rf.attivo
+ ORDER BY rf.ordine NULLS LAST, rf.id
+ LIMIT 1;
+
+CREATE TEMP TABLE t_sreg AS
+SELECT dbops.fn_pgtap_crea_soggetto_pg('Fornitore regime pgTAP') AS s;
+SELECT dbops.fn_pgtap_crea_soggetto_ruolo(s, 'FO') FROM t_sreg;
+SET CONSTRAINTS ALL DEFERRED;
+
+CREATE TEMP TABLE t_f3 AS
+SELECT f.*
+  FROM t_sreg r, t_rf c,
+       anagrafiche.fn_crea_fornitore(r.s, jsonb_build_object('regime_fiscale_rf', c.rf)) f;
+
+SELECT is(
+    (SELECT fo.regime_fiscale_rf::text
+       FROM t_f3 f JOIN anagrafiche.fornitori fo ON fo.id = f.fornitore_id),
+    -- L'atteso non e' mai NULL: con il catalogo vuoto t_rf e t_f3 non hanno
+    -- righe, i due lati sarebbero NULL e is() li darebbe uguali (verde a vuoto).
+    COALESCE((SELECT rf FROM t_rf), '<catalogo regimi vuoto>'),
+    '18. regime_fiscale_rf ammesso e scritto');
+
+SELECT is(
+    (SELECT format('%s|%s', v.regime_fiscale_rf, v.regime_fiscale_descrizione)
+       FROM t_f3 f JOIN anagrafiche.vw_fornitori_dettaglio v ON v.id = f.fornitore_id),
+    COALESCE((SELECT format('%s|%s', rf, descrizione) FROM t_rf), '<catalogo regimi vuoto>'),
+    '19. la vista espone il regime con la descrizione del catalogo');
+
+SELECT is(
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_fornitore(
+        (SELECT s_contatto FROM t_s), '{"regime_fiscale_rf": "RF00"}'::jsonb)$$),
+    'fk_fornitori_regimi_fiscali',
+    '20. un regime fuori catalogo: fk_fornitori_regimi_fiscali');
+
+SELECT is(
+    (SELECT COALESCE(array_agg(format('%s.%s', a.attrelid::regclass, a.attname)
+                               ORDER BY a.attrelid::regclass::text, a.attname), '{}'::text[])
+       FROM pg_catalog.pg_attribute a
+      WHERE a.attrelid IN ('anagrafiche.fornitori'::regclass,
+                           'anagrafiche.vw_fornitori_dettaglio'::regclass)
+        AND a.attnum > 0 AND NOT a.attisdropped
+        AND a.attname IN ('giorni_pagamento', 'fine_mese', 'split_payment', 'bollo_esente',
+                          'canale_fe', 'pec_email', 'regime_fiscale')),
+    '{}'::text[],
+    '21. tabella e vista: le colonne ritirate non ci sono piu''');
 
 SELECT * FROM finish();
 

@@ -107,6 +107,8 @@ class SeedPrimoImpiantoUiDbTests(unittest.TestCase):
             # Spenta: la definizione del test e' spenta, e una colonna accesa
             # sotto una lista spenta la rifiuta il DB (child_requires_active_parent).
             "attivo": False,
+            # Senza campo sorgente non si esporta (U25, giro 4 di brief-db-revisione-ui).
+            "esportabile": False,
         })
         preset_id = self.repo.create_preset({
             "lista_id": lista_id,
@@ -167,22 +169,27 @@ class SeedPrimoImpiantoUiDbTests(unittest.TestCase):
 
     def test_i_campi_del_software_non_si_cambiano(self) -> None:
         gesti = {
+            # ⚠️ Dal giro 4 di brief-db-revisione-ui (BE12) il `codice` di
+            #    definizione e colonna non e' piu' nel PATCH: il gesto del seed
+            #    si prova su un altro campo del software.
             "definizione": lambda: ListaDefinizioneAdminService().update_definizione(
-                self.def_seed["id"], {"codice": "ui.test_seed_rinomina"},
+                self.def_seed["id"], {"descrizione": "Rinominata dall'installazione"},
             ),
             "colonna": lambda: ListaColonnaAdminService().update_colonna(
-                self.col_seed["id"], {"codice": "test_seed_rinomina"},
+                self.col_seed["id"], {"formato": "test_seed_formato"},
             ),
             "preset": lambda: ListaPresetAdminService().update_preset(
                 self.preset_seed["id"], {"codice": "test_seed_rinomina"},
             ),
         }
+        campo_del_software = {"definizione": "descrizione", "colonna": "formato", "preset": "codice"}
+        campo_del_software = {"definizione": "descrizione", "colonna": "formato", "preset": "codice"}
         for cosa, gesto in gesti.items():
             with self.subTest(cosa=cosa):
                 errore = self._rifiuto(gesto)
                 self.assertEqual(errore.code, "E_SEED_COLONNA_DEL_SOFTWARE")
                 self.assertEqual(ErrorTranslator.get_http_status(errore), 409)
-                self.assertIn("codice", errore.fields)
+                self.assertIn(campo_del_software[cosa], errore.fields)
 
         # Un campo dell'installazione su una riga di seed si cambia.
         try:

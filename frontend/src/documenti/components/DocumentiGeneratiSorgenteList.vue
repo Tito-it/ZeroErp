@@ -76,7 +76,6 @@ const {
     sorgenteId: () => props.sorgenteId,
     emittenteId: () => props.emittenteFiscaleId,
   },
-  searchTableOptions: { defaultSortField: 'generato_at', defaultSortOrder: 'desc' },
 })
 
 // Stato dialog append allegati (modalita' non-advances-state).

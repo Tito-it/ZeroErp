@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Preset di dashboard per ambito: sistema (globale), emittente_fiscale, ruolo (via profilo_accesso). Ricalca ui.lista_preset.
+> I default di una dashboard per ambito: di sistema, per un'azienda (emittente fiscale) o per un profilo di accesso (ruolo). Dice quali widget mostrare (ui.dashboard_preset_widget) e quante card al massimo. Il posto del preset (dashboard, ambito, profilo, azienda) non cambia, e ha un solo preset acceso. La scelta del preset di base è ui.fn_preset_di_base. Gemella di ui.lista_preset. La scrive il seed; l'applicazione la legge.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -14,8 +14,8 @@
 | descrizione | character varying(200) | NO |  |
 | ambito | ui.ambito_preset | NO |  |
 | profilo_accesso_id | integer | YES |  |
-| emittente_fiscale_id | integer | YES |  |
-| dimensione_max | integer | YES | 8 |
+| emittente_fiscale_id | bigint | YES |  |
+| dimensione_max | integer | YES |  |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | character varying(80) | NO |  |
@@ -28,11 +28,13 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_ui_dashboard_preset_ambito_refs |  |
+| CHECK | chk_ui_dashboard_preset_dimensione_max |  |
 | FOREIGN KEY | fk_ui_dashboard_preset_dashboard_definizione | dashboard_id |
 | FOREIGN KEY | fk_ui_dashboard_preset_emittenti_fiscali | emittente_fiscale_id |
 | FOREIGN KEY | fk_ui_dashboard_preset_profili_accesso | profilo_accesso_id |
 | PRIMARY KEY | dashboard_preset_pkey | id |
 | UNIQUE | uq_ui_dashboard_preset_dashboard_codice | dashboard_id, codice |
+| UNIQUE | uq_ui_dashboard_preset_id_dashboard | id, dashboard_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -41,13 +43,13 @@
 | ix_ui_dashboard_preset_emittente_fiscale_id | `CREATE INDEX ix_ui_dashboard_preset_emittente_fiscale_id ON ui.dashboard_preset USING btree (emittente_fiscale_id) WHERE (emittente_fiscale_id IS NOT NULL)` |
 | ix_ui_dashboard_preset_profilo_accesso_id | `CREATE INDEX ix_ui_dashboard_preset_profilo_accesso_id ON ui.dashboard_preset USING btree (profilo_accesso_id) WHERE (profilo_accesso_id IS NOT NULL)` |
 | uq_ui_dashboard_preset_dashboard_codice | `CREATE UNIQUE INDEX uq_ui_dashboard_preset_dashboard_codice ON ui.dashboard_preset USING btree (dashboard_id, codice)` |
+| uq_ui_dashboard_preset_id_dashboard | `CREATE UNIQUE INDEX uq_ui_dashboard_preset_id_dashboard ON ui.dashboard_preset USING btree (id, dashboard_id)` |
 | uq_ui_dashboard_preset_posto | `CREATE UNIQUE INDEX uq_ui_dashboard_preset_posto ON ui.dashboard_preset USING btree (dashboard_id, ambito, profilo_accesso_id, emittente_fiscale_id) NULLS NOT DISTINCT WHERE attivo` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_dashboard_preset_a10_dashboard_definizione_require_a_2e061f | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('ui', 'dashboard_definizione', 'attivo', 'dashboard_id', 'id')` |
-| trg_dashboard_preset_a10_dashboard_definizione_require_a_2e061f | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('ui', 'dashboard_definizione', 'attivo', 'dashboard_id', 'id')` |
+| trg_dashboard_preset_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('ambito', 'E_UI_PRESET_POSTO_IMMUTABILE', 'dashboard_id', 'E_UI_PRESET_POSTO_IMMUTABILE', 'emittente_fiscale_id', 'E_UI_PRESET_POSTO_IMMUTABILE', 'profilo_accesso_id', 'E_UI_PRESET_POSTO_IMMUTABILE')` |
 | trg_dashboard_preset_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_dashboard_preset_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_ui_dashboard_preset_a20_contenuto_aggiornato_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato()` |

@@ -1,0 +1,185 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.fn_lista_colonne_ricerca_full: un id utente illeggibile e' un errore con il suo codice.
+#   Brief: brief-db-revisione-ui (giro 6a: U38, con Q35 di Tid, 2026-11-20).
+#
+# Tre correzioni, nessun cambio di contratto per un chiamante corretto:
+# * l'id utente viene da app.current_user_id. Un valore che non e' un intero dava
+#   un 22P02 grezzo dal cast. Ora la funzione lo riconosce prima del cast e solleva
+#   E_UI_CHIAMATA_NON_VALIDA (TECNICO): il contesto di sessione della richiesta non
+#   e' quello di un utente, che e' gia' il significato del codice (lo solleva il
+#   backend quando la GUC e' vuota o nomina un altro utente). Q35 chiedeva un
+#   codice dedicato al posto del 22P02: e' questo, senza un gemello. GUC assente o
+#   vuota: come prima, nessun utente e nessun grant (le colonne sensibili escono);
+# * la variabile dell'id utente era ancorata a ui.lista_preferenza_utente.auth_user_id,
+#   una colonna di un'altra tabella che non c'entra: ora e' integer, l'id di
+#   django.auth_user (lo schema django non si cita con %TYPE);
+# * il filtro COALESCE(btrim(campo_sorgente), '') <> '' ripeteva
+#   chk_lista_colonna_campo_sorgente_non_vuoto: ora e' campo_sorgente IS NOT NULL.
+# Il COMMENT si riscrive al presente (via la data, la richiesta e il brief).
+# Firma, volatilita' e sicurezza invariate: CREATE OR REPLACE. Attributi vivi letti
+#   il 2026-11-22: COST 100, ROWS 1000, nessun SET, PARALLEL UNSAFE, EXECUTE a
+#   zeroerp_app.
+# Corpo di partenza dal vivo (dbdev, 2026-11-22); la firma coi %TYPE dall'ultimo
+#   changeSet sulla funzione. La rollback riporta il corpo e il COMMENT di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261121-29-update-fn-lista-colonne-ricerca-full-utente-illeggibile-mctit.yaml
+
+  - changeSet:
+      id: 20261121-29-update-fn-lista-colonne-ricerca-full-utente-illeggibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_lista_colonne_ricerca_full: un app.current_user_id che non e' un intero solleva E_UI_CHIAMATA_NON_VALIDA invece del 22P02; id utente integer; via il filtro che ripeteva il CHECK. Brief: brief-db-revisione-ui (giro 6a, U38, Q35).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_lista_colonne_ricerca_full'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.fn_lista_colonne_ricerca_full(
+                p_lista_codice ui.lista_definizione.codice%TYPE
+              )
+               RETURNS TABLE(
+                codice         ui.lista_colonna.codice%TYPE,
+                campo_sorgente ui.lista_colonna.campo_sorgente%TYPE
+              )
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: le colonne di una lista in cui l'utente corrente puo' fare la
+              -- ricerca libera, con il campo della vista da interrogare.
+              --
+              -- Condizioni, tutte insieme:
+              --   - colonna attiva e `ricercabile_full`;
+              --   - campo_sorgente valorizzato (il CHECK della colonna vieta il vuoto);
+              --   - livello effettivo <> BLOCCATO (LETTURA entra: si vede, si cerca).
+              --
+              -- Contesto dalla sessione: utente da app.current_user_id, veste da
+              -- ui.fn_veste_corrente(). L'emittente non entra nel livello di colonna.
+              -- ⚠️ Senza utente: nessun grant, le colonne sensibili escono.
+              -- Un id utente che non e' un intero e' una chiamata fuori contesto:
+              -- E_UI_CHIAMATA_NON_VALIDA, non il 22P02 del cast.
+              DECLARE
+                v_lista_id     ui.lista_definizione.id%TYPE;
+                -- text: il valore della GUC com'e' scritto, prima di leggerlo come id
+                v_guc          text := NULLIF(current_setting('app.current_user_id', true), '');
+                -- integer: l'id di django.auth_user, tabella dell'applicazione: un changeSet non
+                -- la cita con %TYPE (lo schema django e' del provisioning)
+                v_auth_user_id integer;
+              BEGIN
+                -- Lista assente o spenta: E_UI_LISTA_NON_TROVATA, sollevato dal BB.
+                v_lista_id := (ui.fn_lista_da_codice(p_lista_codice)).id;
+
+                IF v_guc IS NOT NULL THEN
+                  -- Il CASE garantisce l'ordine: il confronto numerico solo su sole cifre.
+                  IF (CASE WHEN v_guc ~ '^[0-9]{1,10}$' THEN v_guc::bigint > 2147483647
+                           ELSE TRUE END) THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'ui.fn_lista_colonne_ricerca_full',
+                      'E_UI_CHIAMATA_NON_VALIDA',
+                      jsonb_build_object(
+                        'lista_codice',        p_lista_codice,
+                        'app_current_user_id', v_guc),
+                      NULL::uuid,
+                      VARIADIC ARRAY[]::text[]);
+                  END IF;
+                  v_auth_user_id := v_guc::integer;
+                END IF;
+
+                RETURN QUERY
+                SELECT lc.codice,
+                       lc.campo_sorgente
+                  FROM ui.lista_colonna lc
+                  JOIN ui.fn_lista_colonne_livello(v_lista_id, v_auth_user_id, ui.fn_veste_corrente()) lv
+                    ON lv.colonna_id = lc.id
+                 WHERE lc.lista_id         = v_lista_id
+                   AND lc.attivo           = TRUE
+                   AND lc.ricercabile_full = TRUE
+                   AND lc.campo_sorgente IS NOT NULL
+                   AND lv.livello_accesso <> 'BLOCCATO'
+                 ORDER BY lc.ordine_default, lc.codice;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION ui.fn_lista_colonne_ricerca_full(ui.lista_definizione.codice%TYPE) IS
+                  'Le colonne di una lista in cui l''utente corrente può fare la ricerca libera, con il campo_sorgente da interrogare: accese, ricercabile_full, con un campo sorgente, a un livello effettivo diverso da BLOCCATO (LETTURA entra). Il livello viene da ui.fn_lista_colonne_livello, lo stesso di ui.fn_resolve_lista_config: non si cerca in una colonna che la lista non mostra. Utente da app.current_user_id, veste da ui.fn_veste_corrente(); l''emittente non entra nel livello di colonna. Senza utente (GUC assente o vuota) nessun grant: le colonne sensibili escono. Un app.current_user_id che non è un intero è una chiamata fuori contesto: E_UI_CHIAMATA_NON_VALIDA. Lista assente o spenta: E_UI_LISTA_NON_TROVATA, dal building block ui.fn_lista_da_codice. STABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.fn_lista_colonne_ricerca_full(
+                p_lista_codice ui.lista_definizione.codice%TYPE
+              )
+               RETURNS TABLE(
+                codice         ui.lista_colonna.codice%TYPE,
+                campo_sorgente ui.lista_colonna.campo_sorgente%TYPE
+              )
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: le colonne di una lista in cui l'utente corrente puo' fare la
+              -- ricerca libera, con il campo della vista da interrogare.
+              --
+              -- Condizioni, tutte insieme:
+              --   - colonna attiva e `ricercabile_full`;
+              --   - campo_sorgente valorizzato (NULL e '' sono entrambi «vuoto»);
+              --   - livello effettivo <> BLOCCATO (LETTURA entra: si vede, si cerca).
+              --
+              -- Contesto dalla sessione: utente da app.current_user_id, veste da
+              -- ui.fn_veste_corrente(). L'emittente non entra nel livello di colonna.
+              -- ⚠️ Senza utente: nessun grant, le colonne sensibili escono.
+              -- 2026-09-25: la lista dal codice la legge ui.fn_lista_da_codice(), il BB
+              -- condiviso col risolutore delle liste (stesso E_UI_LISTA_NON_TROVATA).
+              DECLARE
+                v_lista_id     ui.lista_definizione.id%TYPE;
+                v_auth_user_id ui.lista_preferenza_utente.auth_user_id%TYPE := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+              BEGIN
+                -- Lista assente o spenta: E_UI_LISTA_NON_TROVATA, sollevato dal BB.
+                v_lista_id := (ui.fn_lista_da_codice(p_lista_codice)).id;
+
+                RETURN QUERY
+                SELECT lc.codice,
+                       lc.campo_sorgente
+                  FROM ui.lista_colonna lc
+                  JOIN ui.fn_lista_colonne_livello(v_lista_id, v_auth_user_id, ui.fn_veste_corrente()) lv
+                    ON lv.colonna_id = lc.id
+                 WHERE lc.lista_id         = v_lista_id
+                   AND lc.attivo           = TRUE
+                   AND lc.ricercabile_full = TRUE
+                   AND COALESCE(btrim(lc.campo_sorgente), '') <> ''
+                   AND lv.livello_accesso <> 'BLOCCATO'
+                 ORDER BY lc.ordine_default, lc.codice;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION ui.fn_lista_colonne_ricerca_full(ui.lista_definizione.codice%TYPE) IS
+                  'Colonne di una lista in cui l''utente corrente puo'' fare la ricerca libera, con il campo_sorgente da interrogare: attive, ricercabile_full, campo_sorgente valorizzato (NULL e stringa vuota sono vuoto), livello effettivo diverso da BLOCCATO (LETTURA entra). Il livello viene da ui.fn_lista_colonne_livello, lo stesso di fn_resolve_lista_config: non si cerca in una colonna che la lista non mostra. Utente da app.current_user_id, veste da ui.fn_veste_corrente(); l''emittente non entra nel livello di colonna. Senza utente nessun grant: le colonne sensibili escono. Lista assente o spenta: E_UI_LISTA_NON_TROVATA, dal building block ui.fn_lista_da_codice (2026-09-25), lo stesso del risolutore. Richiesta del team BE, 2026-09-23. Brief: brief-db-ricerca-full-colonne-permessi.';

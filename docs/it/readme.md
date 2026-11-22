@@ -16,9 +16,9 @@ L'obiettivo e` ridurre la complessita` superflua mantenendo rigore su dati, rego
 > *Ultima revisione: **15 novembre 2026**.*
 >
 > La fotografia dettagliata, lo stato per componente e la roadmap sono mantenuti in
-> un'unica fonte: la [Mappa Concentrica](./mappa-concentrica.md) (stato per anello +
+> un'unica fonte: la [Mappa Concentrica](mappa-concentrica.md) (stato per anello +
 > sezione Roadmap), con la storia datata nel suo
-> [changelog](./dev/mappa-concentrica-changelog.md). Qui sotto solo uno snapshot.
+> [changelog](dev/mappa-concentrica-changelog.md). Qui sotto solo uno snapshot.
 
 ---
 
@@ -71,9 +71,9 @@ Punti chiave:
 
 Approfondimento:
 
-- [Manifesto (IT)](./sviluppo-concentrico.md)
+- [Manifesto (IT)](sviluppo-concentrico.md)
 - [Manifesto (EN)](../en/sviluppo-concentrico.md)
-- [Vocabolario](./sviluppo-concentrico-vocabolario.md)
+- [Vocabolario](sviluppo-concentrico-vocabolario.md)
 
 ---
 
@@ -100,7 +100,7 @@ Scelte architetturali:
 | Componente         | Tecnologia                                                   | La versione si legge da                         |
 | ------------------ | ------------------------------------------------------------ | ----------------------------------------------- |
 | Database           | PostgreSQL, con PostGIS, pgTAP, pgAgent, plpgsql_check       | i workflow di CI (`.github/workflows/`)         |
-| Versioning DB      | Liquibase Community (Java 17)                                | [workflow Liquibase](./liquibase-setup-workflow.md) |
+| Versioning DB      | Liquibase Community (Java 17)                                | [workflow Liquibase](liquibase-setup-workflow.md) |
 | Backend            | Django + Django REST Framework, Redis come cache, WeasyPrint per i PDF | `backend/requirements.in`                 |
 | Linguaggio backend | Python                                                       | `.python-version`                               |
 | Frontend           | Vue 3, Vite, PrimeVue, Pinia                                 | `frontend/package.json` (Node in `engines.node`) |
@@ -146,8 +146,8 @@ Il modello e` pensato per supportare processi non lineari e gestione multi-repar
 ## Stato dello Sviluppo
 
 Uno snapshot per orientarsi. Per il dettaglio per componente, lo stato per anello, i
-numeri e la roadmap fa fede la [Mappa Concentrica](./mappa-concentrica.md); la storia
-datata è nel suo [changelog](./dev/mappa-concentrica-changelog.md).
+numeri e la roadmap fa fede la [Mappa Concentrica](mappa-concentrica.md); la storia
+datata è nel suo [changelog](dev/mappa-concentrica-changelog.md).
 
 **Fondamenta**
 
@@ -167,7 +167,7 @@ datata è nel suo [changelog](./dev/mappa-concentrica-changelog.md).
 **Processi**
 
 - **Ciclo attivo completo**: preventivi, offerte commerciali, contratti, ordini, DDT, **resi**, fatture e **note di credito** — DB + backend + frontend, con la numerazione governata dal registro e l'IVA di riga decisa da un risolutore
-- **Un modello per tutti i documenti di vendita**: ogni cambio di stato passa da un verbo del database, si emette da un solo punto, un documento nasce nel suo stato iniziale, il significato di uno stato si legge dal vocabolario — le regole stanno in [una guida](./guide/modello-documento-di-vendita.md), e tutti i documenti, fattura e listino compresi, la seguono
+- **Un modello per tutti i documenti di vendita**: ogni cambio di stato passa da un verbo del database, si emette da un solo punto, un documento nasce nel suo stato iniziale, il significato di uno stato si legge dal vocabolario — le regole stanno in [una guida](guide/modello-documento-di-vendita.md), e tutti i documenti, fattura e listino compresi, la seguono
 - **Contratti a canone**: una riga di contratto si addebita una tantum o a periodi (mensile, trimestrale…), con il recupero degli arretrati e lo storno quando la fine si sposta
 - **Fatturazione**: pipeline batch a corsie, lotti, **cockpit da cui si agisce** (fattura adesso, rendi definitive, stampa massiva), tre lenti di lettura
 - **Commesse**: multi-sorgente, quantità immutabili dopo la fatturazione, oneri manuali con la propria IVA; gli oneri (trasporto, spese) viaggiano anche come righe di ordine e bolla
@@ -187,7 +187,7 @@ datata è nel suo [changelog](./dev/mappa-concentrica-changelog.md).
   dei conti la detta il **sistema di destinazione**
 
 > A che punto è ciascuna, e che cosa è in corso o previsto: la
-> [Roadmap nella Mappa Concentrica](./mappa-concentrica.md#3-roadmap).
+> [Roadmap nella Mappa Concentrica](mappa-concentrica.md#3-roadmap).
 
 ---
 
@@ -196,8 +196,8 @@ datata è nel suo [changelog](./dev/mappa-concentrica-changelog.md).
 ZeroERP non ha ancora un rilascio stabile per produzione.
 Per setup ambiente di sviluppo, seguire:
 
-- [Installazione](./installazione.md)
-- [Liquibase Setup & Workflow](./liquibase-setup-workflow.md)
+- [Installazione](installazione.md)
+- [Liquibase Setup & Workflow](liquibase-setup-workflow.md)
 
 Nota: prima di applicare migrazioni DB in locale, verificare il workflow del team.
 
@@ -218,11 +218,11 @@ Struttura essenziale:
 ## Roadmap
 
 La roadmap è mantenuta in un'unica fonte nella
-[Mappa Concentrica §3](./mappa-concentrica.md#3-roadmap), organizzata in **lavori
+[Mappa Concentrica §3](mappa-concentrica.md#3-roadmap), organizzata in **lavori
 in corso** (ciascuno con il suo documento vivo), **previsti**, **decisioni
 aperte** — che non sono lavori — e **debito dichiarato**. Lì le voci sono solo
 quelle aperte; la storia di ciò che è stato completato vive nel
-[changelog della mappa](./dev/mappa-concentrica-changelog.md).
+[changelog della mappa](dev/mappa-concentrica-changelog.md).
 
 ---
 
@@ -240,17 +240,17 @@ ricostruirlo dal codice.
 Il livello concettuale: cosa fa un dominio, quali regole lo governano, quali
 sono le sue trappole. Le guide, raggruppate per area:
 
-- **Ciclo attivo** — [preventivi](./guide/gestione-preventivi.md) ·
-  [offerte commerciali](./guide/gestione-offerte-commerciali.md) ·
-  [contratti](./guide/gestione-contratti.md) · [ordini](./guide/gestione-ordini.md) ·
-  [DDT](./guide/gestione-ddt.md) · [fatturazione](./guide/fatturazione.md) ·
-  [cruscotti fatturazione](./guide/cruscotti-fatturazione.md) ·
-  [commesse](./guide/gestione-commesse.md) · [listini](./guide/gestione-listini.md)
+- **Ciclo attivo** — [preventivi](guide/gestione-preventivi.md) ·
+  [offerte commerciali](guide/gestione-offerte-commerciali.md) ·
+  [contratti](guide/gestione-contratti.md) · [ordini](guide/gestione-ordini.md) ·
+  [DDT](guide/gestione-ddt.md) · [fatturazione](guide/fatturazione.md) ·
+  [cruscotti fatturazione](guide/cruscotti-fatturazione.md) ·
+  [commesse](guide/gestione-commesse.md) · [listini](guide/gestione-listini.md)
 - **Regole trasversali ai documenti** — [numerazione: come nasce un numero o un
-  codice](./guide/numerazione-documenti-e-codici.md) ·
-  [il risolutore IVA di riga](./guide/iva-risolutore-di-riga.md) ·
+  codice](guide/numerazione-documenti-e-codici.md) ·
+  [il risolutore IVA di riga](guide/iva-risolutore-di-riga.md) ·
   [il modello del documento di vendita: nascita, stati, permesso, emissione,
-  annullo](./guide/modello-documento-di-vendita.md) — ⭐ **meccanismi
+  annullo](guide/modello-documento-di-vendita.md) — ⭐ **meccanismi
   unici** condivisi da tutta la famiglia vendite (e domani dagli acquisti): le
   guide dei singoli documenti ci **rimandano** invece di rispiegarli, così non
   nascono tre versioni della stessa regola
@@ -259,45 +259,46 @@ sono le sue trappole. Le guide, raggruppate per area:
   numerazione, indirizzi) sono state chiuse il 01-09-2026, ma il primo lotto del
   cantiere non è atterrato: finché non lo è, una guida racconterebbe
   un'intenzione. ⚠️ **Dove la documentazione acquisti c'è già, e dove no**: lo
-  schema è disegnato e documentato — [`dbzero/acquisti/`](./dbzero/acquisti/index.md)
+  schema è disegnato e documentato — [`dbzero/acquisti/`](dbzero/acquisti/index.md)
   ha ordini, DDT, note e le loro schede concettuali; l'area
-  [`backend/acquisti/`](./backend/acquisti/index.md) invece è **vuota di
+  [`backend/acquisti/`](backend/acquisti/index.md) invece è **vuota di
   proposito**, perché l'app Django è ancora uno scheletro senza endpoint.
   Materiale di lavoro in `dev/work-in-progress/`:
   `analisi-simmetria-ordini-acquisto.md`, `sviluppo-preventivi-acquisti.md`.
-- **Anagrafiche e dati di base** — [soggetti e ruoli](./guide/soggetti-e-ruoli-anagrafici.md) ·
-  [indirizzi](./guide/gestione-degli-indirizzi.md) · [contatti](./guide/gestione-dei-contatti.md) ·
-  [conti bancari](./guide/gestione-conti-bancari.md) ·
-  [istanze utility](./guide/gestione-delle-istanze-utility.md)
-- **Incassi e pagamenti** — [modello contabile dei pagamenti](./guide/gestione-dei-pagamenti.md)
+- **Anagrafiche e dati di base** — [soggetti e ruoli](guide/soggetti-e-ruoli-anagrafici.md) ·
+  [indirizzi](guide/gestione-degli-indirizzi.md) · [contatti](guide/gestione-dei-contatti.md) ·
+  [conti bancari](guide/gestione-conti-bancari.md) ·
+  [istanze utility](guide/gestione-delle-istanze-utility.md) ·
+  [catasto delle istanze](guide/catasto-delle-istanze.md)
+- **Incassi e pagamenti** — [modello contabile dei pagamenti](guide/gestione-dei-pagamenti.md)
   (centri di riscossione, contabili, movimenti, compensazioni, fondi fattura)
-- **Processi e orchestrazione** — [pratiche](./guide/gestione-pratiche.md) e la sua
-  [configurazione](./guide/gestione-pratiche-configurazione.md) ·
-  [code di lavoro](./guide/gestione-code-di-lavoro.md) ·
-  [tracciamento processi e job](./guide/analisi-tracciamento-processi-e-job.md) ·
-  [job pgAgent](./guide/processi-pgagent-funzionali.md) ·
-  [statistiche del planner](./guide/statistiche-del-planner.md) ·
-  [un database che resta veloce](./guide/database-che-resta-veloce.md)
-- **Documenti e comunicazioni** — [documenti e stampe](./guide/documenti-e-stampe.md) ·
-  [gestione mail](./guide/gestione-mail.md)
-- **Accessi e sicurezza** — [multi-face auth](./guide/architettura-multi-face-auth.md) ·
-  [permessi e autorizzazioni](./guide/architettura-permessi-e-autorizzazioni.md) ·
-  [risorse umane e accessi](./guide/risorse-umane-e-accessi.md) ·
-  [contratto GUC](./guide/contratto-guc-app.md)
-- **Dati, audit e storicizzazione** — [audit e tracciabilità](./guide/audit-e-tracciabilita.md) ·
-  [operazioni che non si ripetono](./guide/operazioni-che-non-si-ripetono.md) ·
-  [storicizzazione tabelle](./guide/storicizzazione-tabelle.md) ·
-  [`tx_id`](./guide/tx_id_implementation_guide.md) ·
-  [sorgente polimorfa](./guide/sorgente-polimorfa.md) ·
-  [uso di `obsoleto`](./guide/uso-di-obsoleto.md)
-- **Configurazione** — [parametri multi-scope](./guide/configurazione-e-gestione-parametri.md) ·
-  [liste configurabili](./guide/configurazione-liste.md) ·
-  [configurare senza perdere le modifiche agli aggiornamenti](./guide/configurazione-iniziale-e-aggiornamenti.md) ·
-  [automazioni DB](./guide/automazione-db.md)
-- **Qualità e presidi** — [messaggi di errore e log](./guide/Messaggi-di-Errore-e-Generazione-Log.md) ·
-  [presidi e registri del debito](./guide/presidi-e-registri-del-debito.md) ·
-  [come si scrive un test pgTAP](./guide/pgtap-come-si-scrive-un-test.md)
-- **AI** — [integrazione AI](./guide/integrazione-ai.md)
+- **Processi e orchestrazione** — [pratiche](guide/gestione-pratiche.md) e la sua
+  [configurazione](guide/gestione-pratiche-configurazione.md) ·
+  [code di lavoro](guide/gestione-code-di-lavoro.md) ·
+  [tracciamento processi e job](guide/analisi-tracciamento-processi-e-job.md) ·
+  [job pgAgent](guide/processi-pgagent-funzionali.md) ·
+  [statistiche del planner](guide/statistiche-del-planner.md) ·
+  [un database che resta veloce](guide/database-che-resta-veloce.md)
+- **Documenti e comunicazioni** — [documenti e stampe](guide/documenti-e-stampe.md) ·
+  [gestione mail](guide/gestione-mail.md)
+- **Accessi e sicurezza** — [multi-face auth](guide/architettura-multi-face-auth.md) ·
+  [permessi e autorizzazioni](guide/architettura-permessi-e-autorizzazioni.md) ·
+  [risorse umane e accessi](guide/risorse-umane-e-accessi.md) ·
+  [contratto GUC](guide/contratto-guc-app.md)
+- **Dati, audit e storicizzazione** — [audit e tracciabilità](guide/audit-e-tracciabilita.md) ·
+  [operazioni che non si ripetono](guide/operazioni-che-non-si-ripetono.md) ·
+  [storicizzazione tabelle](guide/storicizzazione-tabelle.md) ·
+  [`tx_id`](guide/tx_id_implementation_guide.md) ·
+  [sorgente polimorfa](guide/sorgente-polimorfa.md) ·
+  [uso di `obsoleto`](guide/uso-di-obsoleto.md)
+- **Configurazione** — [parametri multi-scope](guide/configurazione-e-gestione-parametri.md) ·
+  [liste configurabili](guide/configurazione-liste.md) ·
+  [configurare senza perdere le modifiche agli aggiornamenti](guide/configurazione-iniziale-e-aggiornamenti.md) ·
+  [automazioni DB](guide/automazione-db.md)
+- **Qualità e presidi** — [messaggi di errore e log](guide/Messaggi-di-Errore-e-Generazione-Log.md) ·
+  [presidi e registri del debito](guide/presidi-e-registri-del-debito.md) ·
+  [come si scrive un test pgTAP](guide/pgtap-come-si-scrive-un-test.md)
+- **AI** — [integrazione AI](guide/integrazione-ai.md)
 
 ### 🗄️ `dbzero/` — «com'è fatto davvero il database, adesso»
 
@@ -319,31 +320,31 @@ DB. Struttura standard, così due manuali si confrontano a colpo d'occhio.
 
 Le regole operative e il cantiere aperto:
 
-- [Linee guida API](./dev/api.md) e
+- [Linee guida API](dev/api.md) e
   [policy di ricerca e paginazione](./dev/Policy-ricerca-e-paginazione(API-DB).md)
-- [Linee guida SQL](./linee-guida-sql.md) e [trigger](./linee-guida-trigger.md)
-- [Workflow Liquibase](./liquibase-setup-workflow.md)
-- **Cataloghi dei building block** [backend](./dev/backend/catalogo-building-block-backend.md)
-  e [frontend](./dev/frontend/catalogo-building-block-frontend.md) — la prima
+- [Linee guida SQL](linee-guida-sql.md) e [trigger](linee-guida-trigger.md)
+- [Workflow Liquibase](liquibase-setup-workflow.md)
+- **Cataloghi dei building block** [backend](dev/backend/catalogo-building-block-backend.md)
+  e [frontend](dev/frontend/catalogo-building-block-frontend.md) — la prima
   difesa contro le duplicazioni: prima di scrivere qualcosa di nuovo, si guarda lì
-- [Ricette: dove intervenire](./dev/ricette-dove-intervenire.md) e
-  [trappole](./dev/trappole.md)
+- [Ricette: dove intervenire](dev/ricette-dove-intervenire.md) e
+  [trappole](dev/trappole.md)
 - `work-in-progress/` — i **brief dei cantieri aperti**, con le decisioni prese e
   il loro perché; `work-done/` — gli stessi, chiusi
 
 ### 🧭 Fondamenta — «perché il progetto è fatto così»
 
-- [Manifesto dello sviluppo concentrico](./sviluppo-concentrico.md) e il suo
-  [vocabolario](./sviluppo-concentrico-vocabolario.md)
-- [Mappa Concentrica](./mappa-concentrica.md) — stato per anello, roadmap e
+- [Manifesto dello sviluppo concentrico](sviluppo-concentrico.md) e il suo
+  [vocabolario](sviluppo-concentrico-vocabolario.md)
+- [Mappa Concentrica](mappa-concentrica.md) — stato per anello, roadmap e
   lezioni metodologiche
-- [Architettura](./architettura.md) · [schemi DB](./schemidb.md) · [API](./API.md)
-- [Perché ZeroERP](./perche-zeroerp.md) · [Introduzione](./introduzione.md)
-- [PostgreSQL](./postgresql/intro.md) — estensioni, GUC, pgAgent, dblink, upgrade
-- [Glossario](./glossario/glossario-utility.md) ·
-  [Versioni supportate](./versioni-supportate.md)
+- [Architettura](architettura.md) · [schemi DB](schemidb.md) · [API](API.md)
+- [Perché ZeroERP](perche-zeroerp.md) · [Introduzione](introduzione.md)
+- [PostgreSQL](postgresql/intro.md) — estensioni, GUC, pgAgent, dblink, upgrade
+- [Glossario](glossario/glossario-utility.md) ·
+  [Versioni supportate](versioni-supportate.md)
 
-> **Indice completo**: [indice documentazione IT](./index.md).
+> **Indice completo**: [indice documentazione IT](index.md).
 
 ---
 
@@ -353,7 +354,7 @@ ZeroERP ha una doppia licenza: **GNU AGPL v3 o successiva**, oppure una licenza 
 
 Riferimenti:
 
-- [LICENSE (IT)](./LICENSE.md)
+- [LICENSE (IT)](LICENSE.md)
 - [LICENSE (EN)](../en/LICENSE.md)
 
 ---

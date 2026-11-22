@@ -48,8 +48,13 @@ PARAM_SVC = "apps.amm_software.services.amm_software_service.ParameterService"
 class TestEmittentiFormDefaultsView(TestCase):
     """View GET /api/v1/amm-software/emittenti-fiscali/form-defaults/."""
 
+    @patch(
+        "apps.core.services.non_editable_fields_helper.LockColumnsRepository.list_non_editable",
+        return_value=["soggetto_ruolo_id", "codice"],
+        autospec=True,
+    )
     @patch(PARAM_SVC)
-    def test_form_defaults_admin_ok(self, mock_ps_cls: MagicMock) -> None:
+    def test_form_defaults_admin_ok(self, mock_ps_cls: MagicMock, _mock_locks: MagicMock) -> None:
         # Scopo: GET 200 con shape {defaults: {...}, non_editable_fields: [...]}.
         mock_ps_cls.return_value.get_defaults.return_value = {
             "EMITTENTE_DEFAULT_BOLLO_AUTO": "false",
@@ -70,7 +75,7 @@ class TestEmittentiFormDefaultsView(TestCase):
             "bollo_soglia": None,
             "rounding_policy": "HALF_UP",
         })
-        self.assertEqual(body["data"]["non_editable_fields"], ["codice", "soggetto_id"])
+        self.assertEqual(body["data"]["non_editable_fields"], ["codice", "soggetto_ruolo_id"])
 
 
 class TestEmittenteRoundingModesLookupView(TestCase):

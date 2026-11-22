@@ -66,7 +66,11 @@ const ubicazioniArrivo = useLetturaTreStati(lookupUbicazioni, { estrai: RISULTAT
 
 onMounted(() => {
   const servePosizione = props.modificabile && !props.voce.automatico
-  if (servePosizione && richiedeLotto.value) lotti.carica(props.voce.articolo_id)
+  // ⚠️ Il lotto è dell'azienda (2026-11-22): come il seriale, il lookup vuole
+  //    il magazzino, e senza (400 dal backend) non si chiede.
+  if (servePosizione && richiedeLotto.value && props.testata.magazzino_id) {
+    lotti.carica(props.voce.articolo_id, props.testata.magazzino_id)
+  }
   if (servePosizione && richiedeSeriale.value && props.testata.magazzino_id) {
     assets.carica(props.voce.articolo_id, props.testata.magazzino_id)
   }

@@ -26,6 +26,8 @@ from uuid import uuid4
 
 from django.test import Client, SimpleTestCase
 
+from apps.core.api.constants import DEFAULT_LIMIT
+
 
 class ClientApi(Client):
     """Il client di test che si comporta come il frontend: ogni POST porta
@@ -153,6 +155,31 @@ class JwtMockedApiTest(SimpleTestCase):
         #    Chi vuole verificare il cancello ATTIVO (scope multiplo) sovrascrive
         #    questo mock nel proprio test; il meccanismo ha comunque i suoi in
         #    `apps/core/tests/api/test_base_view_perimetro_emittente.py`.
+        # L'ordinamento di partenza della lista (BE25 (2) di
+        # brief-db-revisione-ui): dal 2026-11-22 `DomainAPIView.initial()` lo
+        # legge dal DB per le view che dichiarano `lista_codice`. ⭐ Si mocka la
+        # LETTURA (`ordinamento_risolto`), non il BB: il suo codice gira in ogni
+        # test API. «Nessun ordinamento a preset» e' lo scenario neutro: la
+        # richiesta resta com'e', e vale il default del repository, che i test
+        # di lista gia' provano. Il BB attivo ha i suoi test in
+        # `apps/core/tests/api/test_ordinamento_di_partenza.py`.
+        ordinamento_patcher = patch(
+            "apps.core.services.ordinamento_di_partenza.ordinamento_risolto",
+            return_value=[],
+        )
+        self.mock_ordinamento_risolto = ordinamento_patcher.start()
+        self.addCleanup(ordinamento_patcher.stop)
+        # La misura di partenza (BE10, stesso brief): stessa ragione, si mocka
+        # la LETTURA (`misura_risolta`). Lo scenario neutro e' la misura
+        # standard di una lista (`DEFAULT_LIMIT`, 25). Il BB attivo ha i suoi
+        # test in `apps/core/tests/api/test_misura_di_partenza.py`.
+        misura_patcher = patch(
+            "apps.core.services.ordinamento_di_partenza.misura_risolta",
+            return_value=DEFAULT_LIMIT,
+        )
+        self.mock_misura_risolta = misura_patcher.start()
+        self.addCleanup(misura_patcher.stop)
+
         scope_patcher = patch(
             "apps.core.services.perimetro_emittente.PermissionResolver"
             ".get_emittenti_pk_ids",

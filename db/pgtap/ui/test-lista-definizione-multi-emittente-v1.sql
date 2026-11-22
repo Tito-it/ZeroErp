@@ -47,18 +47,11 @@ SELECT plan(9);
 -- ============================================================
 -- Fixture
 -- ============================================================
--- ⚠️ `NOT multi_emittente` non e' pignoleria: il test 8 asserisce che
---   l'envelope risponda `false`, e dal 2026-08-18 il registro ha una lista
---   certificata. Pescare «la prima per id» funzionava finche' erano zero;
---   il giorno in cui la certificata fosse la prima, il test 8 diventerebbe
---   rosso raccontando un difetto che non c'e'. Si sceglie il soggetto per la
---   condizione che rende il caso significativo, non per la posizione.
-CREATE TEMP TABLE _t_lista ON COMMIT DROP AS
-SELECT ld.id, ld.codice
-  FROM ui.lista_definizione ld
- WHERE NOT ld.multi_emittente
- ORDER BY ld.id
- LIMIT 1;
+-- ⭐ I casi 7-8 leggono una lista costruita qui, che nasce non certificata (il
+--   default) e che nessun altro caso tocca: nessuna riga del seed, e nessun esito
+--   del caso 3, decide il loro.
+INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, attivo, user_insert)
+VALUES ('tst.p2b.lista_non_certificata', 'Lista non certificata', 'vendite', true, 'pgtap');
 
 -- ============================================================
 -- Asserzioni
@@ -226,7 +219,7 @@ SELECT is(
 SELECT ok(
     jsonb_exists(
         ui.fn_resolve_lista_config(
-            (SELECT codice FROM _t_lista),
+            'tst.p2b.lista_non_certificata',
             NULLIF(current_setting('app.current_user_id', true), '')::integer,
             NULL),
         'multi_emittente'),
@@ -236,7 +229,7 @@ SELECT ok(
 -- 8) * ...e dice la verita': la lista non e' certificata.
 SELECT is(
     ui.fn_resolve_lista_config(
-        (SELECT codice FROM _t_lista),
+        'tst.p2b.lista_non_certificata',
         NULLIF(current_setting('app.current_user_id', true), '')::integer,
         NULL
     ) -> 'multi_emittente',

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_istanze_utilities_guard_clienti_chiave.md" %}
 # ⚙️ Funzione `trgfn_istanze_utilities_guard_clienti_chiave`
 
 ```sql

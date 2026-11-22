@@ -17,7 +17,7 @@ Viste collegate:
 >
 [vw_partite_merce](vw_partite_merce.md)
 > [vw_situazione_merce_ordine](vw_situazione_merce_ordine.md)
-> Brief autorevole: `docs/it/dev/work-done/brief-design-partita-merce-generalizzata.md` §9, slice S1
+> Brief autorevole: `docs/it/dev/work-done/2026/brief-design-partita-merce-generalizzata.md` §9, slice S1
 
 ---
 ### 🎯 Scopo Principale

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_check_cambio_natura_soggetto.md" %}
 # ⚙️ Funzione `fn_check_cambio_natura_soggetto`
 
 ```sql

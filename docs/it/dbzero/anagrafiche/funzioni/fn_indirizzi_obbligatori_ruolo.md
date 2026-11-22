@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_indirizzi_obbligatori_ruolo.md" %}
 # ⚙️ Funzione `fn_indirizzi_obbligatori_ruolo`
 
 ```sql

@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LOTTO E' DELL'AZIENDA: magazzino.lotti PRENDE L'EMITTENTE
+#   magazzino.lotti.emittente_fiscale_id NOT NULL, FK verso
+#   anagrafiche.emittenti_fiscali; unicita' (emittente, articolo, codice);
+#   RLS accesa con rls_lotti_ef_whitelist.
+#   Brief: brief-db-magazzino-lotto-dell-azienda, D-L1 = a, D-L2 = a,
+#   D-L3 = b (Tid, 2026-11-22), P-1.
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Un lotto e' una partita di merce che UN'azienda riceve o produce: il
+#   codice sta sul cartone del suo fornitore, la scadenza e' un fatto suo.
+#   Senza emittente la riga era condivisa fra tutte le aziende: una poteva
+#   cambiare la scadenza del lotto di un'altra, e il secondo «L-123» dello
+#   stesso articolo non si poteva registrare.
+#   L'azienda e non il magazzino (D-L1): un lotto si sposta fra i magazzini
+#   della stessa azienda (trasferimenti_righe.lotto_id), e dove si trova lo
+#   dice il registro, non una colonna. Stampo: magazzino.assets
+#   (20260915-09), che per la stessa ragione porta l'emittente in proprio.
+#
+# -- L'UNICITA' (D-L2) ----------------------------------------------------
+#   (emittente_fiscale_id, articolo_id, codice). Il vincolo cambia nome
+#   (uq_mag_lotti_articolo_codice -> uq_mag_lotti_emittente_articolo_codice):
+#   il nome dice la regola. ⚠️ Il backend traduce il nome vecchio in
+#   «duplicato sul codice» (anagrafiche_magazzino_service.py): richiesta al BE
+#   nel brief, §6. L'indice del vincolo ha l'emittente in testa e copre
+#   la FK nuova per prefisso (linee-guida-sql §8.7): nessuna riga in
+#   fk_index_policy.
+#
+# -- IL PERIMETRO -------------------------------------------------------
+#   Policy rls_lotti_ef_whitelist: la stessa espressione di
+#   rls_assets_ef_whitelist (letta su dbdev il 2026-11-22, forma di
+#   20261018-26): veste OPERATORE e fn_scope_ef_perimetro sul perimetro
+#   calcolato una volta per istruzione. FOR ALL, USING e WITH CHECK espliciti
+#   (§10.2, §10.6). ENABLE senza FORCE (§10.5). Il ramo «emittente nullo»
+#   non serve (§10.6-bis): prima della WITH CHECK il default di sessione
+#   (20261122-15) mette l'emittente o solleva E_EMITTENTE_NON_RISOLTO.
+#   Il guard in scrittura e il default si montano in 20261122-15 (20_code).
+#
+# -- IL PREGRESSO (D-L3) ------------------------------------------------
+#   La colonna nasce NOT NULL senza default, come su assets: non esiste
+#   un'«azienda di default dell'installazione» da cui riempirla, e il
+#   gestionale non e' in produzione. sqlCheck «zero righe» con HALT: se un
+#   database ha lotti, il migrate si ferma dicendo perche', e il dato si
+#   sistema a mano (AGENTS.md, Workflow Safety). Su un database da zero la
+#   tabella e' vuota (nessun seed scrive lotti).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20261122-14-alter-lotti-emittente-e-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20261122-14-alter-lotti-emittente-e-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.lotti.emittente_fiscale_id NOT NULL con FK verso anagrafiche.emittenti_fiscali;
+        unicita' (emittente_fiscale_id, articolo_id, codice) al posto di (articolo_id, codice);
+        RLS accesa con rls_lotti_ef_whitelist, stampo assets. Brief:
+        brief-db-magazzino-lotto-dell-azienda, D-L1, D-L2, D-L3 (P-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: magazzino
+                tableName: lotti
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: emittenti_fiscali
+            - not:
+                - columnExists:
+                    schemaName: magazzino
+                    tableName: lotti
+                    columnName: emittente_fiscale_id
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE oid = to_regprocedure('script.fn_scope_ef_perimetro(bigint[],bigint)');
+            - sqlCheck:
+                expectedResult: "0"
+                sql: SELECT count(*) FROM magazzino.lotti;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. L'azienda.
+              ALTER TABLE magazzino.lotti
+                  ADD COLUMN emittente_fiscale_id BIGINT NOT NULL;
+              ALTER TABLE magazzino.lotti
+                  ADD CONSTRAINT fk_mag_lotti_emittente_fiscale
+                      FOREIGN KEY (emittente_fiscale_id) REFERENCES anagrafiche.emittenti_fiscali (id)
+                      ON UPDATE CASCADE;
+
+              -- 2. Il codice e' unico dentro l'azienda.
+              ALTER TABLE magazzino.lotti
+                  DROP CONSTRAINT uq_mag_lotti_articolo_codice;
+              ALTER TABLE magazzino.lotti
+                  ADD CONSTRAINT uq_mag_lotti_emittente_articolo_codice
+                      UNIQUE (emittente_fiscale_id, articolo_id, codice);
+
+              -- 3. Il perimetro in lettura.
+              DROP POLICY IF EXISTS rls_lotti_ef_whitelist ON magazzino.lotti;
+              CREATE POLICY rls_lotti_ef_whitelist ON magazzino.lotti
+                  AS PERMISSIVE
+                  FOR ALL
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), emittente_fiscale_id)));
+              ALTER TABLE magazzino.lotti ENABLE ROW LEVEL SECURITY;
+
+              -- 4. Le regole, scritte dove si leggono.
+              COMMENT ON POLICY rls_lotti_ef_whitelist ON magazzino.lotti IS
+                  'Perimetro emittente, veste OPERATORE, fail-closed: diretta, il lotto '
+                  'porta l''emittente in proprio come l''asset. Brief: '
+                  'brief-db-magazzino-lotto-dell-azienda (D-L1).';
+              COMMENT ON COLUMN magazzino.lotti.emittente_fiscale_id IS
+                  'L''emittente fiscale di cui il lotto e'': l''azienda che ha ricevuto o '
+                  'prodotto la partita. Il suo perimetro (rls_lotti_ef_whitelist, guard di '
+                  'scrittura trgfn_guard_emittente_scope). NOT NULL; se manca lo mette il '
+                  'default di sessione (trgfn_default_emittente_fiscale). Non il magazzino: '
+                  'il lotto si sposta fra i magazzini della stessa azienda, e dove si trova '
+                  'lo dice il registro.';
+              COMMENT ON COLUMN magazzino.lotti.codice IS
+                  'Il codice della partita come lo scrive chi la produce o la consegna. '
+                  'Unico per azienda e articolo (uq_mag_lotti_emittente_articolo_codice): '
+                  'due aziende possono avere lo stesso codice dello stesso articolo. Non e'' '
+                  'un codice_interno: nessuna logica confronta su di esso, i movimenti '
+                  'puntano l''id.';
+              COMMENT ON TABLE magazzino.lotti IS
+                  'Partita di merce di un articolo, di un emittente fiscale: i pezzi '
+                  'arrivati (o prodotti) insieme, con la data da cui si conta la rotazione '
+                  'e l''eventuale scadenza. E'' l''unita'' della tracciabilita'' (FIFO '
+                  'fisico, richiamo di un lotto) e la dimensione che movimenti.lotto_id e '
+                  'le righe di inventario/rettifica/trasferimento nominano, quando '
+                  'catalogo.articoli.requires_lotto lo pretende. Chiave naturale '
+                  '(emittente_fiscale_id, articolo_id, codice). Perimetro RLS diretto '
+                  'sull''emittente. Storicizzazione permanente: «chi ha cambiato la '
+                  'scadenza di questo lotto» e'' una domanda della tracciabilita''.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE magazzino.lotti DISABLE ROW LEVEL SECURITY;
+              DROP POLICY IF EXISTS rls_lotti_ef_whitelist ON magazzino.lotti;
+              ALTER TABLE magazzino.lotti DROP CONSTRAINT IF EXISTS uq_mag_lotti_emittente_articolo_codice;
+              ALTER TABLE magazzino.lotti
+                  ADD CONSTRAINT uq_mag_lotti_articolo_codice UNIQUE (articolo_id, codice);
+              ALTER TABLE magazzino.lotti DROP CONSTRAINT IF EXISTS fk_mag_lotti_emittente_fiscale;
+              ALTER TABLE magazzino.lotti DROP COLUMN IF EXISTS emittente_fiscale_id;

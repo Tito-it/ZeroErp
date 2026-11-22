@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_attivo_fk_esclusa: se una FK resta fuori dall'automazione ATTIVO, e
+#   perche'. Una sede sola per la domanda «questa FK si lega sull'attivo?».
+#
+# ── PERCHE' UN BUILDING BLOCK ─────────────────────────────────────────
+#   La domanda ha due lettori: il runner (dbops.fn_run_automations_attivo,
+#   20261121-12), che decide se generare, e il ritiro
+#   (dbops.fn_ritira_attivo_eccezioni, 20261121-13), che toglie cio' che non
+#   dovrebbe esserci. Con il registro delle inclusioni (20261121-10) la
+#   risposta ha tre ingredienti, e scritta in due posti prima o poi
+#   risponderebbe in due modi (regola del 2): un trigger generato e poi
+#   ritirato a ogni giro, o uno che nessuno ritira.
+#
+# ── LA RISPOSTA ───────────────────────────────────────────────────────
+#   NULL = la FK si lega. Altrimenti il motivo, coi due token che il runner
+#   scriveva gia' nel suo diario del dry run:
+#     ECCEZIONE_DICHIARATA  la FK e' in dbops.automazione_attivo_eccezioni
+#                           (prevale anche su un'inclusione);
+#     FK_NO_ID_SUFFIX       la colonna non finisce in _id e non e' in
+#                           dbops.automazione_attivo_inclusioni.
+#   ⚠️ Il predicato _id e' quello del runner, LIKE '%_id' con il '_' jolly:
+#   resta identico, per non cambiare l'insieme delle FK che oggi si legano.
+#   Il padre senza attivo e le FK multicolonna restano filtri del runner:
+#   dipendono dal catalogo del padre, non dal registro.
+#
+# SQL BEGIN ATOMIC (linee-guida-sql §5c): i due registri sono dipendenze
+# nel catalogo. STABLE: legge due tabelle.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261121-11-create-fn-attivo-fk-esclusa-mctit.yaml
+
+  - changeSet:
+      id: 20261121-11-create-fn-attivo-fk-esclusa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_attivo_fk_esclusa: NULL se la FK si lega sull'attivo, altrimenti il motivo
+        (ECCEZIONE_DICHIARATA, FK_NO_ID_SUFFIX). La leggono il runner ATTIVO e il ritiro.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: automazione_attivo_eccezioni
+            - tableExists:
+                schemaName: dbops
+                tableName: automazione_attivo_inclusioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_attivo_fk_esclusa(
+                  p_schema_figlia  dbops.automazione_attivo_eccezioni.schema_figlia%TYPE,
+                  p_tabella_figlia dbops.automazione_attivo_eccezioni.tabella_figlia%TYPE,
+                  p_colonna_fk     dbops.automazione_attivo_eccezioni.colonna_fk%TYPE
+              )
+               -- un motivo calcolato, uno di due token: nessuna colonna ne e' il riflesso
+               RETURNS text
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+                  SELECT CASE
+                           WHEN EXISTS (SELECT 1 FROM dbops.automazione_attivo_eccezioni e
+                                         WHERE e.schema_figlia  = p_schema_figlia
+                                           AND e.tabella_figlia = p_tabella_figlia
+                                           AND e.colonna_fk     = p_colonna_fk)
+                             THEN 'ECCEZIONE_DICHIARATA'
+                           WHEN lower(p_colonna_fk) LIKE '%_id'
+                             THEN NULL
+                           WHEN EXISTS (SELECT 1 FROM dbops.automazione_attivo_inclusioni i
+                                         WHERE i.schema_figlia  = p_schema_figlia
+                                           AND i.tabella_figlia = p_tabella_figlia
+                                           AND i.colonna_fk     = p_colonna_fk)
+                             THEN NULL
+                           ELSE 'FK_NO_ID_SUFFIX'
+                         END;
+              END;
+        # Il BEGIN ATOMIC sta da solo nel suo sql: (pgjdbc), il COMMENT nel suo.
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_attivo_fk_esclusa(text, text, text) IS
+                'Se una FK resta fuori dall''automazione ATTIVO, e perche'': NULL se si lega, altrimenti il motivo. ECCEZIONE_DICHIARATA: la FK e'' in dbops.automazione_attivo_eccezioni, e l''eccezione prevale anche su un''inclusione. FK_NO_ID_SUFFIX: la colonna non finisce in _id (LIKE ''%_id'', col ''_'' jolly) e non e'' in dbops.automazione_attivo_inclusioni. La FK si nomina dalla FIGLIA: schema, tabella, colonna. Non guarda il padre: il padre senza la colonna attivo e le FK multicolonna li filtra dbops.fn_run_automations_attivo. La leggono il runner, che non genera le FK escluse, e dbops.fn_ritira_attivo_eccezioni, che ne toglie i trigger gia'' generati: una sede sola per la domanda «questa FK si lega?».';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_attivo_fk_esclusa(text, text, text);

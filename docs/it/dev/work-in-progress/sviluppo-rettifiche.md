@@ -13,9 +13,9 @@
 > | Cosa è cambiato | Dove |
 > | --- | --- |
 > | `tipo_movimento` è una **colonna** su `commesse_attivita` e `attivita_fatturabili` con CHECK `NORMALE \| RETTIFICA \| ONERE` | `20260717-01..04` |
-> | Le quantità sono **immutabili** dopo l'emissione: le correzioni sono **righe nuove**, mai UPDATE | [brief immutabilità e porta oneri](../work-done/brief-db-immutabilita-quantita-e-porta-oneri.md) |
+> | Le quantità sono **immutabili** dopo l'emissione: le correzioni sono **righe nuove**, mai UPDATE | [brief immutabilità e porta oneri](../work-done/2026/brief-db-immutabilita-quantita-e-porta-oneri.md) |
 > | Le voci di puro valore hanno **una porta sola** (`fn_aggiungi_onere_commessa`, causali a catalogo) | stesso brief, §4c |
-> | La correzione di **merce** ha ora il suo modello completo: contatore, `tipo_movimento='RETTIFICA'`, `resi_righe_accrediti` | [brief nota di credito](../work-done/brief-design-note-credito-resi.md) |
+> | La correzione di **merce** ha ora il suo modello completo: contatore, `tipo_movimento='RETTIFICA'`, `resi_righe_accrediti` | [brief nota di credito](../work-done/2026/brief-design-note-credito-resi.md) |
 >
 > 🔴 **Il punto su cui questo documento va riscritto, non aggiornato**: il §6.2
 > e il §7.1 propongono `vendite.rettifiche` + `vendite.rettifiche_righe` come
@@ -39,7 +39,7 @@
 > ⚠️ E le due funzioni DB del §7.2 non sono mai state scritte: il riallineamento
 > prezzo è arrivato **in Python** (`fn_riallinea_prezzo` + endpoint). Il verbale
 > della richiesta di febbraio è in
-> [work-done/brief-db-rettifiche-e-componenti.md](../work-done/brief-db-rettifiche-e-componenti.md).
+> [work-done/2026/brief-db-rettifiche-e-componenti.md](../work-done/2026/brief-db-rettifiche-e-componenti.md).
 >
 > ---
 >
@@ -55,8 +55,8 @@
 >
 > Riferimenti:
 >
-> * [sviluppo-listini-v5.md](../work-done/sviluppo-listini-v5.md) — architettura pricing, resolver, integrazione commessa (documento padre; il vecchio `sviluppo-listini.md` non esiste più, la specifica è stata versionata in v1..v6 e la v5 è quella di riferimento — v6 ne raccoglie i debiti tecnici)
-> * [gestione-commesse-v2.md](../work-done/gestione-commesse-v2.md) — pipeline commesse e fatturazione
+> * [sviluppo-listini-v5.md](../work-done/2026/sviluppo-listini-v5.md) — architettura pricing, resolver, integrazione commessa (documento padre; il vecchio `sviluppo-listini.md` non esiste più, la specifica è stata versionata in v1..v6 e la v5 è quella di riferimento — v6 ne raccoglie i debiti tecnici)
+> * [gestione-commesse-v2.md](../work-done/2026/gestione-commesse-v2.md) — pipeline commesse e fatturazione
 > * [fatturazione-modello-utilities-gas-ee-idrico.md](fatturazione-modello-utilities-gas-ee-idrico.md) — modello pricing utilities
 
 ---

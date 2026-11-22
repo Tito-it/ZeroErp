@@ -29,9 +29,11 @@ from typing import Any, TypedDict
 from django.db import connection
 
 from apps.core.api.constants import DEFAULT_LIMIT
+from apps.core.db.maintenance_repository import cte_corse
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
+    corsa_conclusa,
     fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
@@ -94,7 +96,7 @@ PROCESSI_SORT_COLUMNS: dict[str, str] = {
     # giro di brief-db-revisione-dbops §32): si ordina sulla stessa espressione
     # che la lista proietta e il filtro usa.
     "vivo": _SQL_VIVO,
-    "ultimo_run": "ur.ultimo_run",
+    "ultimo_run": "r.started_at",
 }
 
 # Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`add_ricerca_full_condition`).
@@ -235,8 +237,23 @@ class ProcessiRepository:
     #    seconda copia del vocabolario.
     # ⚠️ Il totale arriva da `COUNT(*) OVER ()` nella stessa valutazione delle
     #    righe (`fetch_paged_with_total`): `len(results)` sarebbe un'eco.
-    # ⭐ `ultimo_run` e `ultimo_esito` guardano il giornale PER CODICE processo,
-    #    non per jobname: e' esattamente il legame che la FK ha reso solido.
+    # ⭐ Le corse guardano il giornale PER CODICE processo, non per jobname:
+    #    e' esattamente il legame che la FK ha reso solido.
+    # ⭐ LE CORSE NELLA FORMA UNICA (2026-11-22, ok Tid): `ultimo_run` e
+    #    `in_corso` dalla riga PIU' RECENTE (segno di vita, saltate comprese),
+    #    `ultima_conclusa = {started_at, ended_at, ok}` dall'ultima corsa VERA
+    #    chiusa — le CTE `cte_corse(..., chiave="processo_codice")`, le stesse di
+    #    `job_liveness` e `list_job_summary`.
+    #    ⛔ Fino a quel giorno una LATERAL locale dava `ultimo_run` (anche una
+    #    saltata) accanto a `ultimo_ok` (l'ultima vera): a video «ieri 07:30 ✓»
+    #    poteva essere la data di una corsa saltata con l'esito di quella prima.
+    # ⭐ `ultimo_ok` e' il campo della colonna «Esito» della lista
+    #    (`ui.lista_colonna` 722, `campo_sorgente` booleano): l'esito dell'ultima
+    #    corsa CONCLUSA, cioe' `ultima_conclusa.ok` dalla STESSA riga (CTE
+    #    `conclusa`), quindi non puo' divergere. La data non e' del campo: la
+    #    mostra lo slot FE leggendo `ultima_conclusa`, e l'export scrive l'esito
+    #    senza la data (decisione di Tid del 2026-11-22, D-1 e D-2 di
+    #    brief-db-lista-processi-esito-con-la-sua-data, in `work-done/2026/`).
     def list_processi(
         self,
         *,
@@ -278,9 +295,26 @@ class ProcessiRepository:
         #    nella SELECT, cioe' PRIMA delle condizioni del WHERE. L'ordine dei
         #    segnaposto e' posizionale, e sbagliarlo non da' errore di sintassi
         #    — da' un filtro applicato al valore sbagliato.
+        # ⭐ Le corse PER PROCESSO, una `LATERAL` per codice del catalogo
+        #    (`cte_corse` con le chiavi da `dbops.processi`): una discesa
+        #    nell'indice `ix_job_run_log_processo_codice_started_at` per
+        #    processo, non un `DISTINCT ON` su tutto il giornale (L7 di
+        #    brief-db-giornale-corse-indici §6.6, 2026-11-22).
+        # ⚠️ L'ordine dei `%s` nel testo: le CTE delle corse (oggi senza
+        #    condizioni, quindi nessun valore — ma si passano lo stesso, perche'
+        #    una condizione aggiunta domani non resti senza il suo valore), poi
+        #    la SELECT, poi il WHERE.
+        corse_sql, corse_params = cte_corse("chiavi", chiave="processo_codice")
         where_params = params
-        params = [*_params_vuole_identita(), *params]
+        params = [*corse_params, *_params_vuole_identita(), *params]
         data_sql = f"""
+            -- ⛔ Niente conteggio delle corse: `run_totali` (le corse di sempre)
+            --    e' ritirato il 2026-11-22 (Tid: «i conteggi non usati si
+            --    ritirano»). Non lo leggeva nessuno, e con la ritenzione del
+            --    giornale a 12 mesi non sarebbe piu' stato «di sempre»
+            --    (brief-db-giornale-corse-indici §7.4).
+            WITH chiavi AS (SELECT codice AS processo_codice FROM dbops.processi),
+            {corse_sql}
             SELECT p.id,
                    p.codice,
                    p.descrizione,
@@ -298,31 +332,20 @@ class ProcessiRepository:
                      WHERE pi.processo_id = p.id AND pi.attivo) AS identita_attive,
                    (SELECT count(*) FROM dbops.processi_bersagli b
                      WHERE b.processo_id = p.id) AS bersagli,
-                   ur.ultimo_run,
-                   ur.ultimo_ok,
-                   ur.run_totali,
+                   r.started_at AS ultimo_run,
+                   (r.started_at IS NOT NULL AND r.ended_at IS NULL) AS in_corso,
+                   c.started_at AS conclusa_started_at,
+                   c.ended_at   AS conclusa_ended_at,
+                   c.ok         AS ultimo_ok,
                    COUNT(*) OVER () AS total_count
               FROM dbops.processi p
-              LEFT JOIN LATERAL (
-                   SELECT max(j.started_at) AS ultimo_run,
-                          -- Le corse VERE, come `total_runs` di
-                          -- MaintenanceRepository.list_job_summary: una saltata
-                          -- non e' un'esecuzione.
-                          count(*) FILTER (WHERE NOT j.saltata) AS run_totali,
-                          -- L'esito e' dell'ultima corsa VERA: una saltata (lock
-                          -- occupato) e' segno di vita in `ultimo_run`, ma non ha
-                          -- fatto il lavoro. Stessa regola di `ultimo_esito` in
-                          -- dbops.vw_processi_programmazione (brief corsa-saltata D3).
-                          (array_agg(j.ok ORDER BY j.started_at DESC, j.id DESC)
-                               FILTER (WHERE NOT j.saltata))[1] AS ultimo_ok
-                     FROM maintenance.job_run_log j
-                    WHERE j.processo_codice = p.codice
-              ) ur ON TRUE
+              LEFT JOIN recente r ON r.processo_codice = p.codice
+              LEFT JOIN conclusa c ON c.processo_codice = p.codice
              WHERE {' AND '.join(conditions)}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
         """  # noqa: S608
-        return fetch_paged_with_total(
+        righe, totale = fetch_paged_with_total(
             data_sql, params + [limit, offset],
             # Stesso FROM/WHERE della pagina, senza il mirror della SELECT.
             fallback_count_sql=(
@@ -331,6 +354,11 @@ class ProcessiRepository:
             fallback_params=where_params,
             offset=offset,
         )
+        for riga in righe:
+            riga["ultima_conclusa"] = corsa_conclusa(
+                riga.pop("conclusa_started_at"), riga.pop("conclusa_ended_at"), riga["ultimo_ok"],
+            )
+        return righe, totale
 
     # Scopo: I contratti di liveness dei processi chiesti, per codice. Chi non e'
     #        a catalogo NON compare nel dict — e' contratto: «non lo conosco» e
@@ -533,14 +561,26 @@ class ProcessiRepository:
         return row[0]
 
     # Scopo: Le ultime corse di un processo — la sua storia recente, per il tab
-    #        «Ultimi run» del drawer.
+    #        «Ultime corse» del drawer.
+    # ⭐ Con `meta` ed `error_detail` (2026-11-22): sono il RESOCONTO della
+    #    corsa, cioe' cio' che spiega un rosso. Senza, una corsa «rossa con
+    #    scarti» si vedeva rossa e basta, e quali elementi e perche' si leggeva
+    #    solo da psql.
+    # ⚠️ `meta` intero, non `meta -> 'esito'`: le due porte del giornale lo
+    #    riempiono in due modi. `maintenance.fn_run_and_log` (job del DB) mette
+    #    il risultato del lavoro sotto `esito`; `registered_job` (comandi del
+    #    backend) ci scrive il riepilogo del comando com'e' (`set_meta`), e
+    #    l'elenco degli elementi persi va in `error_detail`
+    #    (`chiudi_se_elementi_non_completati`). Leggere solo `esito` avrebbe
+    #    lasciato senza resoconto tutte le corse dei comandi.
     def list_run_processo(
         self, codice: str, *, limit: int = DEFAULT_LIMIT, offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         data_sql = """
             SELECT j.id, j.jobname, j.stepname, j.origine,
                    j.started_at, j.ended_at, j.ok, j.message,
-                   j.rows_affected, j.error_code, j.auth_user_id, j.saltata,
+                   j.rows_affected, j.error_code, j.error_detail, j.meta,
+                   j.auth_user_id, j.saltata,
                    au.username AS auth_username,
                    COUNT(*) OVER () AS total_count
               FROM maintenance.job_run_log j

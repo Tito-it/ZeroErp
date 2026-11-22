@@ -19,22 +19,26 @@ CREATE OR REPLACE FUNCTION ui.fn_resolve_lista_config(p_lista_codice character v
 AS $function$
 -- Scopo: la configurazione effettiva di una lista per un utente, pronta
 --   per il frontend.
--- Cascata per chiave: colonne, ordinamento, filtri e pagina_dimensione
---   vengono ognuna dal primo livello che la contiene: la preferenza, poi il
+-- Cascata per chiave: colonne e pagina_dimensione vengono ognuna dal
+--   primo livello che la contiene: la preferenza, poi il
 --   preset di base (ui.fn_preset_di_base), poi il catalogo. Poi il merge
 --   delle colonne nuove, la normalizzazione, il filtro dei permessi di
---   colonna (ui.fn_lista_colonne_livello) e la misura di pagina dal catalogo.
+--   colonna (ui.fn_lista_colonne_livello) e la misura di pagina dal catalogo
+--   (il ripiego e' il default dell'uso della lista, lista_definizione.uso_misura).
+-- L'ordinamento di partenza non e' qui: lo risolve ui.fn_ordinamento_lista.
+--   I filtri di partenza sono dell'interfaccia.
+-- Righe scritte prima del guard di forma: nessun cast cade (ui.fn_intero_da_jsonb),
+--   una voce senza codice o di un'altra lista si salta, un codice ripetuto vale
+--   una volta (la prima), un campo che manca prende il default del catalogo.
 -- Il banner: preset_base_cambiato se la base salvata non e' quella di oggi,
 --   altrimenti le chiavi di origine 'preferenza' il cui contenuto nel preset
 --   e' cambiato dopo lo snapshot (ui.fn_preset_aggiornato).
 DECLARE
   -- La riga della lista, letta una volta dal BB: id, multi_emittente,
-  -- perimetro_emittente e ricerca_min_caratteri vengono tutti da qui.
+  -- perimetro_emittente, ricerca_min_caratteri e uso_misura vengono tutti da qui.
   v_lista            ui.lista_definizione%ROWTYPE;
   v_lista_id         ui.lista_definizione.id%TYPE;
   v_config_colonne   JSONB;
-  v_ordinamento      ui.lista_preset.ordinamento_default%TYPE;
-  v_filtri           ui.lista_preset.filtri_default%TYPE;
   -- La misura che risponde: la decide il passo 5-ter, dal catalogo.
   v_pagina_dim       ui.lista_preset.pagina_dimensione%TYPE;
   v_colonne_nuove    INTEGER := 0;
@@ -47,26 +51,19 @@ DECLARE
   --   sta nel building block): senza veste il preset di ruolo non concorre.
   v_ruolo_guc        config.ruolo_applicativo := ui.fn_veste_corrente();
 
-  -- Le quattro chiavi della preferenza, ognuna per conto suo.
+  -- Le due chiavi della preferenza, ognuna per conto suo.
   --   NULL = chiave assente (o null): «come lo standard».
   v_pref_colonne     ui.lista_preferenza_utente.configurazione%TYPE;
-  v_pref_ordinamento ui.lista_preferenza_utente.configurazione%TYPE;
-  v_pref_filtri      ui.lista_preferenza_utente.configurazione%TYPE;
   v_pref_pagina      ui.lista_preset.pagina_dimensione%TYPE;
   -- Il preset di base (passo 2b), letto anche quando c'e' una
   --   preferenza: e' lo standard delle chiavi che la preferenza non ha.
   v_preset_colonne     JSONB;
-  v_preset_ordinamento ui.lista_preset.ordinamento_default%TYPE;
-  v_preset_filtri      ui.lista_preset.filtri_default%TYPE;
   v_preset_pagina      ui.lista_preset.pagina_dimensione%TYPE;
   v_preset_livello     ui.lista_preset.ambito%TYPE;
   -- La misura senza la preferenza, e da dove viene.
   v_pagina_standard    ui.lista_preset.pagina_dimensione%TYPE;
-  -- Tipi espliciti: un esito e un'etichetta calcolati qui, nessuna colonna
-  -- di cui siano il riflesso (l'etichetta e' un ambito_preset reso a testo,
-  -- oppure 'preferenza' o 'catalogo').
-  v_pref_pagina_ok     BOOLEAN;
-  v_preset_pagina_ok   BOOLEAN;
+  -- Tipo esplicito: un'etichetta calcolata qui, nessuna colonna di cui sia il
+  -- riflesso (un ambito_preset reso a testo, oppure 'preferenza' o 'catalogo').
   v_origine_pagina     TEXT;
 
   -- Il preset di base salvato con la preferenza e il suo snapshot ({chiave: data}).
@@ -101,23 +98,23 @@ BEGIN
   -- 2. Cascata per chiave: si leggono la preferenza e il preset di base,
   --    poi ogni chiave prende il primo dei due che la contiene, e il
   --    catalogo se nessuno dei due. Una preferenza di sole colonne non
-  --    scavalca l'ordinamento, i filtri e la misura del preset.
+  --    scavalca la misura del preset.
   -- -------------------------------------------------------
 
   -- 2a. Preferenza personale utente: ogni chiave per conto suo.
   --     Chiave assente o null = «come lo standard» (NULLIF sul null JSON).
   --     Legge anche preset_base_id e lo snapshot, per il banner (passo 5-quater).
   SELECT
-      NULLIF(pu.configurazione -> 'colonne',     'null'::JSONB),
-      NULLIF(pu.configurazione -> 'ordinamento', 'null'::JSONB),
-      NULLIF(pu.configurazione -> 'filtri',      'null'::JSONB),
+      -- Un elenco che elenco non e' vale «nessuna scelta» (riga scritta prima
+      -- del guard di forma).
+      CASE WHEN jsonb_typeof(pu.configurazione -> 'colonne') = 'array'
+           THEN pu.configurazione -> 'colonne' END,
       -- Nessun cast che possa cadere: un valore che intero non e' vale «nessuna
       -- scelta» (lo rifiuta alla scrittura il guard della preferenza).
-      CASE WHEN (pu.configurazione ->> 'pagina_dimensione') ~ '^[0-9]{1,9}$'
-           THEN (pu.configurazione ->> 'pagina_dimensione')::INTEGER END,
+      ui.fn_intero_da_jsonb(pu.configurazione -> 'pagina_dimensione'),
       pu.preset_base_id,
       pu.preset_base_contenuto_aggiornato_il
-    INTO v_pref_colonne, v_pref_ordinamento, v_pref_filtri, v_pref_pagina,
+    INTO v_pref_colonne, v_pref_pagina,
          v_pref_preset_base_id, v_pref_preset_base_ts
     FROM ui.lista_preferenza_utente pu
    WHERE pu.auth_user_id = p_auth_user_id
@@ -151,17 +148,13 @@ BEGIN
          WHERE pc.preset_id = lp.id
            AND lc.attivo = TRUE
         ),
-        lp.ordinamento_default,
-        lp.filtri_default,
         lp.pagina_dimensione
-      INTO v_preset_colonne, v_preset_ordinamento, v_preset_filtri, v_preset_pagina
+      INTO v_preset_colonne, v_preset_pagina
       FROM ui.lista_preset lp
      WHERE lp.id = v_base_id;
   END IF;
 
-  -- Le tre chiavi semplici: la preferenza, poi il preset di base.
-  v_ordinamento := COALESCE(v_pref_ordinamento, v_preset_ordinamento);
-  v_filtri      := COALESCE(v_pref_filtri,      v_preset_filtri);
+  -- Le colonne: la preferenza, poi il preset di base.
   v_config_colonne := COALESCE(v_pref_colonne, v_preset_colonne);
 
   -- 2e. Catalogo grezzo (fallback finale), solo per le colonne: se ne' la
@@ -210,9 +203,12 @@ BEGIN
   FROM ui.lista_colonna lc
  WHERE lc.lista_id = v_lista_id
    AND lc.attivo   = TRUE
-   AND lc.codice NOT IN (
-     SELECT elem ->> 'codice'
+   -- NOT EXISTS e non NOT IN: una voce senza codice darebbe un NULL
+   -- nell'elenco, e il NOT IN non sarebbe mai vero.
+   AND NOT EXISTS (
+     SELECT 1
        FROM jsonb_array_elements(v_config_colonne) AS elem
+      WHERE elem ->> 'codice' = lc.codice
    );
 
   -- -------------------------------------------------------
@@ -233,11 +229,15 @@ BEGIN
   --    - aggiunge etichetta_i18n_key (NULL se non valorizzata)
   --    - aggiunge priorita (fresca da ui.lista_colonna, non dal candidato)
   -- -------------------------------------------------------
+  --    - nessun cast che cada: ordine e larghezza dal BB della misura, un
+  --      campo che manca (o di tipo sbagliato) prende il default del catalogo
+  --    - una voce senza codice, o di una colonna spenta o di un'altra lista,
+  --      si salta; un codice ripetuto vale una volta (la prima voce)
   SELECT jsonb_agg(
       jsonb_build_object(
         'codice',             elem ->> 'codice',
-        'ordine',             (elem ->> 'ordine')::INTEGER,
-        'larghezza',          (elem ->> 'larghezza')::INTEGER,
+        'ordine',             ordine_norm,
+        'larghezza',          larghezza_norm,
         'visibile',           visibile_norm,
         'fissata',            fissata_norm,
         'esportabile',        CASE WHEN livello_eff = 'LETTURA' THEN FALSE ELSE esportabile END,
@@ -245,28 +245,35 @@ BEGIN
         'etichetta_i18n_key', etichetta_i18n_key,
         'priorita',           priorita
       )
-      ORDER BY (elem ->> 'ordine')::INTEGER
+      ORDER BY ordine_norm, ord
     )
     INTO v_config_colonne
     FROM (
-      SELECT
+      SELECT DISTINCT ON (lc.id)
         elem,
+        ord,
         lc.tipo_colonna,
         lc.esportabile,
         lc.etichetta_i18n_key,
         lc.priorita,
         lv.livello_accesso::text        AS livello_eff,
+        COALESCE(ui.fn_intero_da_jsonb(elem -> 'ordine'), lc.ordine_default)       AS ordine_norm,
+        COALESCE(ui.fn_intero_da_jsonb(elem -> 'larghezza'), lc.larghezza_default) AS larghezza_norm,
         CASE
           WHEN lc.tipo_colonna IN ('identificatore', 'azione')
             THEN TRUE
-          ELSE (elem ->> 'visibile')::BOOLEAN
+          WHEN jsonb_typeof(elem -> 'visibile') = 'boolean'
+            THEN (elem -> 'visibile')::BOOLEAN
+          ELSE TRUE
         END                             AS visibile_norm,
         CASE
           WHEN lc.tipo_colonna = 'identificatore'
             THEN TRUE
-          ELSE (elem ->> 'fissata')::BOOLEAN
+          WHEN jsonb_typeof(elem -> 'fissata') = 'boolean'
+            THEN (elem -> 'fissata')::BOOLEAN
+          ELSE FALSE
         END                             AS fissata_norm
-      FROM jsonb_array_elements(v_config_colonne) AS elem
+      FROM jsonb_array_elements(v_config_colonne) WITH ORDINALITY AS e(elem, ord)
       LEFT JOIN ui.lista_colonna lc
         ON lc.lista_id = v_lista_id
        AND lc.codice   = elem ->> 'codice'
@@ -275,6 +282,7 @@ BEGIN
       JOIN ui.fn_lista_colonne_livello(v_lista_id, p_auth_user_id, v_ruolo_guc) lv
         ON lv.colonna_id = lc.id
       WHERE lc.id IS NOT NULL
+      ORDER BY lc.id, ord
     ) sub
     WHERE livello_eff <> 'BLOCCATO';
 
@@ -309,36 +317,32 @@ BEGIN
 
   -- -------------------------------------------------------
   -- 5-ter. La misura di pagina, per chiave.
-  --   Lo standard: la misura del preset di base se e' nel catalogo,
-  --   altrimenti il default PAGINA del catalogo. Risponde la misura della
-  --   preferenza se e' nel catalogo, altrimenti lo standard: una misura
+  --   La cascata la tiene ui.fn_misura_pagina_risolta, la stessa che legge
+  --   ui.fn_misura_lista: lo standard e' la misura del preset di base se e'
+  --   nel catalogo, altrimenti il default del catalogo per l'uso della lista
+  --   (COMPATTA o PAGINA, ui.lista_definizione.uso_misura); risponde la misura
+  --   della preferenza se e' nel catalogo, altrimenti lo standard. Una misura
   --   salvata e poi uscita dal catalogo non e' piu' una scelta che vale, e
-  --   origine non la dice 'preferenza' (il FE non la rimanda).
+  --   origine non la dice 'preferenza' (il FE non la rimanda). L'origine
+  --   'preset' del BB qui si dice con l'ambito del preset di base.
   -- -------------------------------------------------------
-  v_pref_pagina_ok   := COALESCE(ui.fn_misura_pagina_ammessa(v_pref_pagina), FALSE);
-  v_preset_pagina_ok := COALESCE(ui.fn_misura_pagina_ammessa(v_preset_pagina), FALSE);
+  SELECT r.misura,
+         r.standard,
+         CASE WHEN r.origine = 'preset' THEN v_preset_livello::text
+              ELSE r.origine END
+    INTO v_pagina_dim, v_pagina_standard, v_origine_pagina
+    FROM ui.fn_misura_pagina_risolta(v_pref_pagina, v_preset_pagina,
+                                     v_lista.uso_misura) r;
 
-  v_pagina_standard := CASE WHEN v_preset_pagina_ok THEN v_preset_pagina
-                            ELSE ui.fn_misura_pagina_default('PAGINA') END;
-  v_pagina_dim      := CASE WHEN v_pref_pagina_ok THEN v_pref_pagina
-                            ELSE v_pagina_standard END;
-  v_origine_pagina  := CASE WHEN v_pref_pagina_ok   THEN 'preferenza'
-                            WHEN v_preset_pagina_ok THEN v_preset_livello::text
-                            ELSE 'catalogo' END;
-
-  -- Per ognuna delle quattro chiavi, il livello da cui viene: 'preferenza',
+  -- Per ognuna delle due chiavi, il livello da cui viene: 'preferenza',
   --   un ambito di ui.ambito_preset ('ruolo', 'emittente_fiscale',
   --   'sistema') o 'catalogo'. Il FE rimanda al salvataggio solo le chiavi
   --   'preferenza', piu' quella toccata: senza, salvare una chiave congela
-  --   anche le altre tre. Il banner guarda solo le chiavi 'preferenza'.
+  --   anche l'altra. Il banner guarda solo le chiavi 'preferenza'.
   v_origine := jsonb_build_object(
     'colonne',     CASE WHEN v_pref_colonne   IS NOT NULL THEN 'preferenza'
                         WHEN v_preset_colonne IS NOT NULL THEN v_preset_livello::text
                         ELSE 'catalogo' END,
-    'ordinamento', CASE WHEN v_pref_ordinamento IS NOT NULL THEN 'preferenza'
-                        ELSE COALESCE(v_preset_livello::text, 'catalogo') END,
-    'filtri',      CASE WHEN v_pref_filtri IS NOT NULL THEN 'preferenza'
-                        ELSE COALESCE(v_preset_livello::text, 'catalogo') END,
     'pagina_dimensione', v_origine_pagina
   );
 
@@ -365,8 +369,6 @@ BEGIN
   -- -------------------------------------------------------
   RETURN jsonb_build_object(
     'colonne',           v_config_colonne,
-    'ordinamento',       COALESCE(v_ordinamento, '[]'::JSONB),
-    'filtri',            COALESCE(v_filtri, '{}'::JSONB),
     'pagina_dimensione', v_pagina_dim,
     -- La misura che la cascata darebbe senza la preferenza (il drawer:
     --   «Come lo standard (N)»). Chiave ADDITIVA.
@@ -422,7 +424,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_lista_config(p_lista_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'La configurazione effettiva di una lista per un utente, pronta per il frontend. Cascata per chiave: colonne, ordinamento, filtri e pagina_dimensione vengono ognuna dal primo livello che la contiene: la preferenza (una chiave assente vuol dire «come lo standard»), poi il preset di base scelto da ui.fn_preset_di_base (acceso e con almeno una colonna attiva: il preset di ruolo del profilo piu'' prioritario, solo con la veste valorizzata; poi quello dell''azienda, se accesa; poi quello di sistema), poi il catalogo. Poi il merge delle colonne nuove (colonne_nuove le conta dopo il filtro dei permessi), la normalizzazione (identificatori e azioni visibili, identificatori fissati), il filtro dei permessi di colonna (ui.fn_lista_colonne_livello: BLOCCATO esce, LETTURA non si esporta), etichetta_i18n_key e priorita fresche dal catalogo, e la misura di pagina dal catalogo ui.misure_pagina. Uscite: colonne, ordinamento, filtri, pagina_dimensione e pagina_dimensione_standard (la misura senza la preferenza), origine (per chiave: preferenza, ruolo, emittente_fiscale, sistema o catalogo; il FE rimanda al salvataggio solo le chiavi preferenza), ricerca_min_caratteri (la soglia della ricerca libera della lista), colonne_nuove, preset_base (id, ambito e contenuto_aggiornato_il, la data del contenuto per chiave, del preset di base di oggi, o null: il BE lo salva con la preferenza), preset_base_cambiato (la preferenza ha salvato una base che non e'' quella di oggi), preset_aggiornato_chiavi (solo sulla base di oggi: le chiavi di origine preferenza il cui contenuto nel preset e'' cambiato dopo lo snapshot salvato con la preferenza, ui.fn_preset_aggiornato; vuoto se nessuna; chiudere il banner e'' riscrivere preset_base_id) e preset_aggiornato (almeno una), multi_emittente (la lista sa dire l''emittente di ogni riga: non e'' un permesso) e perimetro_emittente (false: catalogo globale, la domanda dell''emittente non si applica). La riga della lista la legge ui.fn_lista_da_codice (E_UI_LISTA_NON_TROVATA), la veste ui.fn_veste_corrente. STABLE.';
+IS 'La configurazione effettiva di una lista per un utente, pronta per il frontend. Cascata per chiave: colonne e pagina_dimensione vengono ognuna dal primo livello che la contiene: la preferenza (una chiave assente vuol dire «come lo standard»), poi il preset di base scelto da ui.fn_preset_di_base (acceso e con almeno una colonna attiva: il preset di ruolo del profilo più prioritario, solo con la veste valorizzata; poi quello dell''azienda, se accesa; poi quello di sistema), poi il catalogo. Poi il merge delle colonne nuove (colonne_nuove le conta dopo il filtro dei permessi), la normalizzazione (identificatori e azioni visibili, identificatori fissati), il filtro dei permessi di colonna (ui.fn_lista_colonne_livello: BLOCCATO esce, LETTURA non si esporta), etichetta_i18n_key e priorita fresche dal catalogo, e la misura di pagina da ui.fn_misura_pagina_risolta, la stessa regola di ui.fn_misura_lista: una misura del catalogo ui.misure_pagina, e senza la preferenza e senza il preset il default dell''uso della lista (ui.lista_definizione.uso_misura, COMPATTA o PAGINA). Una riga della preferenza fuori forma non fa cadere la funzione: ordine, larghezza e misura passano da ui.fn_intero_da_jsonb, un campo che manca prende il default del catalogo, una voce senza codice o di un''altra colonna si salta, un codice ripetuto vale una volta. Uscite: colonne, pagina_dimensione e pagina_dimensione_standard (la misura senza la preferenza), origine (per chiave: preferenza, ruolo, emittente_fiscale, sistema o catalogo; il FE rimanda al salvataggio solo le chiavi preferenza), ricerca_min_caratteri (la soglia della ricerca libera della lista), colonne_nuove, preset_base (id, ambito e contenuto_aggiornato_il, la data del contenuto per chiave, del preset di base di oggi, o null), preset_base_cambiato (la preferenza ha salvato una base che non è quella di oggi), preset_aggiornato_chiavi (solo sulla base di oggi: le chiavi di origine preferenza il cui contenuto nel preset è cambiato dopo lo snapshot salvato con la preferenza, ui.fn_preset_aggiornato; vuoto se nessuna; chiudere il banner è riscrivere preset_base_id) e preset_aggiornato (almeno una), multi_emittente (la lista sa dire l''emittente di ogni riga: non è un permesso) e perimetro_emittente (false: catalogo globale, la domanda dell''emittente non si applica). L''ordinamento di partenza non è qui: lo dà ui.fn_ordinamento_lista; i filtri di partenza sono dell''interfaccia. La riga della lista la legge ui.fn_lista_da_codice (E_UI_LISTA_NON_TROVATA), la veste ui.fn_veste_corrente. STABLE.';
 ```
 
 </div>

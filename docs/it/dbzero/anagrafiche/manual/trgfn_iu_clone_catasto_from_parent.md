@@ -1,145 +1,92 @@
-## 📘 Documentazione Tecnica – Trigger Function `anagrafiche.trgfn_iu_clone_catasto_from_parent`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_iu_clone_catasto_from_parent`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-[anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)   
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — la tabella su cui è montata, e di cui il clone scrive `catasto_unita_immobiliare_id`
+> * [anagrafiche.catasto_unita_immobiliari](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari) — dove nasce la copia dell'unità
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-[script.fn_clone_catasto_from_parent_by_istanza](/dbzero/script/funzioni/fn_clone_catasto_from_parent_by_istanza)   
+> * [script.fn_clone_catasto_from_parent_by_istanza](/dbzero/script/funzioni/fn_clone_catasto_from_parent_by_istanza) — il clone vero e proprio
+> * [script.fn_get_catasto_source_by_istanza](/dbzero/script/funzioni/fn_get_catasto_source_by_istanza) — l'unità da copiare, quella dell'istanza precedente
+> * [anagrafiche.trgfn_clienti_set_parent_istanza](/dbzero/anagrafiche/funzioni/trgfn_clienti_set_parent_istanza) — chi scrive la catena che fa scattare il clone
+> * [anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo](/dbzero/anagrafiche/funzioni/trgfn_iu_sync_catasto_unita_indirizzo) — il legame della copia col civico
 >
-**Lookup sorgente:**
+> Guide:
 >
-[script.fn_get_catasto_source_by_istanza](/dbzero/script/funzioni/fn_get_catasto_source_by_istanza)   
->
-**Trigger che la invoca (subentro):**
->
-`anagrafiche.trg_iu_z50_clone_catasto_from_parent_aft_upd`   
+> * [Il catasto delle istanze](/guide/catasto-delle-istanze) — il flusso intero del catasto
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 15-12-25)
-La trigger function **`anagrafiche.trgfn_iu_clone_catasto_from_parent()`** è un wrapper minimale che, in risposta a un evento di modifica dell’istanza (tipicamente valorizzazione di `parent_istanza_id`), attiva la clonazione del catasto dalla parent verso l’istanza corrente.
 
-✅ La logica applicativa (idempotenza, locking, error handling, INSERT/UPDATE) è interamente demandata alla funzione:
-
-* `script.fn_clone_catasto_from_parent_by_istanza(NEW.id)`
-
-Questa trigger function ha quindi il solo compito di:
-
-* invocare la funzione core
-* restituire `NEW`
+`anagrafiche.trgfn_iu_clone_catasto_from_parent` dà all'istanza del subentro una copia dell'unità catastale
+dell'istanza che la precede. Scatta quando la catena delle istanze si scrive, e passa la mano a
+`script.fn_clone_catasto_from_parent_by_istanza`.
 
 ---
 
-### Firma
+### ⭐ Al subentro il catasto si copia, non si condivide
 
-```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_iu_clone_catasto_from_parent()
-RETURNS trigger
-LANGUAGE plpgsql;
-```
+L'istanza nuova riceve una riga nuova di `catasto_unita_immobiliari`, con gli stessi dati catastali della
+precedente: due istanze, due unità. Così una rettifica sul catasto di chi subentra non cambia quello di chi è
+uscito, che resta com'era sull'istanza chiusa.
 
 ---
 
-### Input (Record Trigger)
+### Quando scatta
 
-Utilizza esclusivamente:
+Il trigger `trg_iu_z50_clone_catasto_from_parent_aft_upd` scatta dopo una modifica di `parent_istanza_id`, e
+solo quando l'istanza ha una precedente, ha un civico e non ha ancora un'unità. La modifica della catena la fa
+`anagrafiche.trgfn_clienti_set_parent_istanza`, alla scrittura del cliente: per questo il clone arriva con la
+nascita del cliente sull'istanza nuova, non con la nascita dell'istanza. Un'istanza fittizia senza civico non
+riceve il clone.
 
-* `NEW.id` (istanza corrente)
-
-Il resto delle condizioni (es. presenza parent, catasto già presente, ecc.) viene gestito dalla funzione core.
-
----
-
-### Output
-
-* Ritorna sempre `NEW`.
-
-> Nota: essendo concepita per trigger `AFTER`, il valore ritornato non modifica la riga persistita, ma mantiene la forma standard delle trigger function.
+La funzione del trigger non decide niente: le condizioni stanno sul trigger, il lavoro nella funzione di `script`.
 
 ---
 
-### Logica Operativa
+### Che cosa fa il clone
 
-Pseudo-flusso:
+* **L'istanza ha già un'unità**: niente, resta quella.
+* **L'istanza precedente non ha un'unità**: niente, senza errore. Il subentro e la nascita del cliente proseguono.
+* **Altrimenti**: copia l'unità della precedente in una riga nuova, compreso il flag dello storico, e la scrive
+  sull'istanza. Quella scrittura fa scattare `anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo`, che lega la
+  copia al civico dell'istanza nuova.
 
-1. Invoca la funzione core:
-
-   * `PERFORM script.fn_clone_catasto_from_parent_by_istanza(NEW.id);`
-2. Ritorna `NEW`.
-
-Non esegue controlli aggiuntivi: evita duplicazioni di logica e garantisce coerenza centrale nella funzione `script.fn_clone_catasto_from_parent_by_istanza`.
-
----
-
-### Side Effects
-
-Direttamente: **nessuno** (non fa DML).
-
-Indirettamente: tramite la funzione core invocata può avvenire:
-
-* INSERT su `anagrafiche.catasto_unita_immobiliari`
-* UPDATE su `anagrafiche.istanze_utilities` (aggancio `catasto_unita_immobiliare_id`)
+La sorgente è solo la precedente diretta: non si risale la catena. Copia l'unità, non i suoi legami coi civici:
+la copia nasce legata al solo civico dell'istanza. La riga dell'istanza è bloccata per la durata del clone, così
+due scritture concorrenti non creano due copie.
 
 ---
 
-### Integrazione nel Trigger di Subentro
+### ⚠️ Che cosa oggi non copre
 
-Questa funzione è progettata per essere collegata a un trigger `AFTER UPDATE OF parent_istanza_id` su `anagrafiche.istanze_utilities`.
-
-Nel modello corrente (come da DDL fornito) il trigger tipico è:
-
-* `trg_iu_z50_clone_catasto_from_parent_aft_upd`
-
-con condizione (WHEN) che limita l’attivazione solo se:
-
-* `new.parent_istanza_id IS NOT NULL`
-* `new.catasto_unita_immobiliare_id IS NULL`
-* `new.indirizzo_dettaglio_id IS NOT NULL`
-
-In tal modo:
-
-* la trigger function rimane pulita
-* le condizioni di invocazione restano nel trigger (DDL)
-* la logica transazionale sta nella funzione core
+* **Il clone avviene una volta.** Una catena che cambia dopo il clone, o che si svuota perché il cliente è
+  annullato, lascia sull'istanza l'unità copiata dalla precedente di allora.
+* **Un'unità arrivata dopo sulla precedente** si clona solo alla prossima scrittura della catena, non quando
+  l'unità nasce.
+* **Un'istanza che nasce con la precedente già scritta** non riceve il clone: il trigger guarda solo le modifiche.
+  Nessuna funzione del DB crea un'istanza così, ma chi scrive l'istanza direttamente può farlo.
 
 ---
 
-### ⚠️ Error Handling
+### Test
 
-La trigger function non gestisce errori: eventuali eccezioni propagate provengono dalla funzione core, in particolare:
-
-* `ERRORE_PARAMETRI` se `NEW.id` fosse anomalo (caso teorico)
-* `CATASTO_SOURCE_NOT_FOUND` se manca la sorgente catastale sulla parent
-
-Questo garantisce logging e tracciabilità coerenti nel layer `script/dbops`.
+* `db/pgtap/anagrafiche/test-simula-subentro.sql` — il subentro sullo stesso PDP: la catena scritta dal cliente
+  nuovo, l'unità clonata con un id diverso e gli stessi dati, il legame della copia col civico.
 
 ---
 
-### Note per Test
+### Note di migrazione
 
-Test consigliati (a livello trigger):
-
-1. Aggiornamento `parent_istanza_id` che soddisfa la WHEN → deve valorizzare `catasto_unita_immobiliare_id` (via funzione core).
-2. Aggiornamento `parent_istanza_id` ma `catasto_unita_immobiliare_id` già valorizzato → nessun duplicato (idempotenza nella core).
-3. Aggiornamento `parent_istanza_id` con parent senza catasto → attesa eccezione `CATASTO_SOURCE_NOT_FOUND`.
+* 2026-02-15 — senza un'unità sulla precedente il clone non solleva più errore; il codice
+  `CATASTO_SOURCE_NOT_FOUND` esce dal catalogo dei messaggi il 2026-08-05.
 
 ---
 
-### Best Practice
-
-* Mantenere questa trigger function **minimal** (solo orchestrazione).
-* Centralizzare qualunque variazione di regole nella funzione core (`fn_clone_*`).
-* Gestire le condizioni di attivazione nel trigger (DDL) usando `WHEN` e `AFTER UPDATE OF ...`.
-
----
-
-### Metadati
-
-* **Schema:** `anagrafiche`
-* **Tipo:** trigger function wrapper
-* **Tabella target:** `anagrafiche.istanze_utilities`
-* **Responsabilità:** orchestrazione clonazione catasto da parent per subentro
+{% include-markdown "signature-core.md" %}

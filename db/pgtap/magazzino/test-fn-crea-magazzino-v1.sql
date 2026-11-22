@@ -4,19 +4,25 @@
 --
 -- Il BB del magazzino e il builder che lo usa:
 --   magazzino.fn_crea_magazzino       (20261018-40)
---   dbops.fn_pgtap_crea_magazzino     (20261018-41)
---   Brief: brief-db-processi-accensione-per-ambiente (§5-ter.2, 2b-1 lotto 7).
+--   dbops.fn_pgtap_crea_magazzino     (20261018-41, sul verbo dal 20261122-09)
+--   Brief: brief-db-processi-accensione-per-ambiente (§5-ter.2, 2b-1 lotto 7);
+--   brief-db-magazzino-tutte-le-scritture-dal-verbo (Lotto 1).
 --
--- ⭐ Il caso si COSTRUISCE: l'operatore pgTAP in sessione, un indirizzo dal
---   builder dei dettagli. L'emittente atteso e' quello dell'operatore
+-- ⭐ Il caso si COSTRUISCE: un operatore costruito in sessione, con TUTTO
+--   sull'area magazzino (scelta del test), un indirizzo dal builder dei
+--   dettagli. L'emittente atteso e' quello dell'operatore
 --   (script.fn_pgtap_emittente_operatore).
+-- ⚠️ Dal Lotto 1 i magazzini sono chiusi all'applicazione: il BB si prova dal
+--   verbo magazzino.fn_aggiungi_magazzino, che lo chiama. L'emittente indicato
+--   (p_emittente_fiscale_id) e' la strada del provisioning, non dell'app: il
+--   verbo non lo prende, e il 2 prova che dai campi non passa.
 --
 -- Elenco test (plan 9):
 --   forma
 --    1) INVOKER
 --   il caso felice
---    2) emittente indicato: e' quello
---    3) emittente NULL: lo mette il trigger dalla sessione
+--    2) l'emittente fra i campi del verbo: E_CAMPO_NON_AMMESSO
+--    3) l'emittente lo mette il trigger dalla sessione
 --    4) i campi facoltativi: usa_ubicazioni e predefinito scritti
 --    5) un magazzino nasce attivo
 --   i rifiuti
@@ -24,7 +30,7 @@
 --    7) campi che non sono un oggetto: E_SCRIPT_CHIAMATA_NON_VALIDA
 --   il builder
 --    8) dbops.fn_pgtap_crea_magazzino scrive ancora il magazzino dell'operatore
---    9) ... e chiama il BB, non scrive la tabella
+--    9) ... e chiama il verbo, non il BB e non la tabella
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -34,6 +40,13 @@ SET CONSTRAINTS ALL IMMEDIATE;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(9);
+
+CREATE TEMP TABLE t_op AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM t_op)); END $ctx$;
+INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)
+SELECT o.auth_user_id, af.id, 'TUTTO', 'pgTAP: il magazzino dal verbo'
+  FROM t_op o, config.aree_funzionali af
+ WHERE af.schema_db = 'magazzino';
 
 
 CREATE OR REPLACE FUNCTION pg_temp.corpo(p regprocedure) RETURNS text
@@ -46,9 +59,9 @@ SELECT script.fn_pgtap_emittente_operatore()                       AS ef,
        dbops.fn_pgtap_crea_indirizzo_dettaglio('PGT-FCM')         AS ind;
 
 CREATE TEMP TABLE t_g AS
-SELECT magazzino.fn_crea_magazzino('PGT-FCM-1', 'pgTAP crea magazzino 1', m.ind,
-                                   '{"usa_ubicazioni": true, "predefinito": false}'::jsonb, m.ef) AS mag1,
-       magazzino.fn_crea_magazzino('PGT-FCM-2', 'pgTAP crea magazzino 2', m.ind)                 AS mag2,
+SELECT magazzino.fn_aggiungi_magazzino('PGT-FCM-1', 'pgTAP crea magazzino 1', m.ind,
+                                   '{"usa_ubicazioni": true, "predefinito": false}'::jsonb)       AS mag1,
+       magazzino.fn_aggiungi_magazzino('PGT-FCM-2', 'pgTAP crea magazzino 2', m.ind)             AS mag2,
        dbops.fn_pgtap_crea_magazzino('PGT-FCM-3')                                                AS mag3
   FROM t_m m;
 
@@ -64,13 +77,15 @@ SELECT is(
 -- ============================================================
 -- Il caso felice
 -- ============================================================
-SELECT is((SELECT mg.emittente_fiscale_id FROM t_g g JOIN magazzino.magazzini mg ON mg.id = g.mag1),
-          (SELECT ef FROM t_m),
-          '2. emittente indicato: e'' quello');
+SELECT is(
+    dbops.fn_pgtap_codice_errore($$SELECT magazzino.fn_aggiungi_magazzino('PGT-FCM-E', 'e',
+        (SELECT ind FROM t_m), jsonb_build_object('emittente_fiscale_id', (SELECT ef FROM t_m)))$$),
+    'E_CAMPO_NON_AMMESSO',
+    '2. l''emittente fra i campi del verbo: E_CAMPO_NON_AMMESSO');
 
 SELECT is((SELECT mg.emittente_fiscale_id FROM t_g g JOIN magazzino.magazzini mg ON mg.id = g.mag2),
           (SELECT ef FROM t_m),
-          '3. emittente NULL: lo mette il trigger dalla sessione');
+          '3. l''emittente lo mette il trigger dalla sessione');
 
 SELECT is((SELECT format('%s|%s', mg.usa_ubicazioni, mg.predefinito)
              FROM t_g g JOIN magazzino.magazzini mg ON mg.id = g.mag1),
@@ -84,13 +99,13 @@ SELECT ok((SELECT mg.attivo FROM t_g g JOIN magazzino.magazzini mg ON mg.id = g.
 -- I rifiuti
 -- ============================================================
 SELECT is(
-    dbops.fn_pgtap_codice_errore($$SELECT magazzino.fn_crea_magazzino('PGT-FCM-X', 'x',
+    dbops.fn_pgtap_codice_errore($$SELECT magazzino.fn_aggiungi_magazzino('PGT-FCM-X', 'x',
         (SELECT ind FROM t_m), '{"attivo": false}'::jsonb)$$),
     'E_CAMPO_NON_AMMESSO',
     '6. attivo fra i campi: E_CAMPO_NON_AMMESSO');
 
 SELECT is(
-    dbops.fn_pgtap_codice_errore($$SELECT magazzino.fn_crea_magazzino('PGT-FCM-Y', 'y',
+    dbops.fn_pgtap_codice_errore($$SELECT magazzino.fn_aggiungi_magazzino('PGT-FCM-Y', 'y',
         (SELECT ind FROM t_m), '[]'::jsonb)$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '7. campi che non sono un oggetto: E_SCRIPT_CHIAMATA_NON_VALIDA');
@@ -103,9 +118,10 @@ SELECT is((SELECT mg.emittente_fiscale_id FROM t_g g JOIN magazzino.magazzini mg
           '8. dbops.fn_pgtap_crea_magazzino scrive ancora il magazzino dell''operatore');
 
 SELECT ok(
-    pg_temp.corpo('dbops.fn_pgtap_crea_magazzino(character varying, boolean)'::regprocedure) ~ 'magazzino\.fn_crea_magazzino\('
-    AND pg_temp.corpo('dbops.fn_pgtap_crea_magazzino(character varying, boolean)'::regprocedure) !~* 'INSERT\s+INTO',
-    '9. ... e chiama il BB, non scrive la tabella');
+    pg_temp.corpo('dbops.fn_pgtap_crea_magazzino(character varying, boolean, jsonb)'::regprocedure) ~ 'magazzino\.fn_aggiungi_magazzino\('
+    AND pg_temp.corpo('dbops.fn_pgtap_crea_magazzino(character varying, boolean, jsonb)'::regprocedure) !~ 'magazzino\.fn_crea_magazzino\('
+    AND pg_temp.corpo('dbops.fn_pgtap_crea_magazzino(character varying, boolean, jsonb)'::regprocedure) !~* 'INSERT\s+INTO',
+    '9. ... e chiama il verbo, non il BB e non la tabella');
 
 SELECT * FROM finish();
 

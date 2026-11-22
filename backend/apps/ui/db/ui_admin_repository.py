@@ -54,6 +54,26 @@ def _sql_superficie_seed(tabella: str, alias: str) -> str:
 _COLONNE_SUPERFICIE_SEED = "seed.nata_dal_seed, seed.campi_del_software,"
 
 
+# Scopo: I CAMPI FERMI PER MODELLO di una riga, `non_editable_fields`: le
+#        colonne che un trigger di lock vivo blocca (`codice` di lista e di
+#        colonna, il «posto» di un preset, giro 4 di brief-db-revisione-ui) e
+#        quelle dei lock condizionali valutati su QUESTA riga, dal building
+#        block del DB `dbops.fn_non_editable_fields`. Il FE spegne in modifica
+#        i campi che il DB rifiuterebbe e li toglie dal PATCH (`campoFermo`).
+# ⭐ Nessun nome di campo nel BE ne' nel FE: prima i due drawer scrivevano
+#    `campo === 'codice'`, una copia del lucchetto del DB. E' lo stesso BB che
+#    il dettaglio legge con `compute_non_editable_fields(record_id=…)`: qui sta
+#    nella SELECT perche' i drawer partono dalla riga della LISTA, e una
+#    lettura per riga dal service sarebbe un N+1.
+# ⛔ `tabella` e `alias` sono costanti di questo modulo, mai input esterno.
+def _sql_campi_bloccati(tabella: str, alias: str) -> str:
+    schema, nome = tabella.split(".")
+    return (
+        f"dbops.fn_non_editable_fields('{schema}', '{nome}', {alias}.id::text)"
+        " AS non_editable_fields,"
+    )
+
+
 # SELECT comune per ui.lista_preset con display fields (profilo accesso +
 # emittente fiscale via LEFT JOIN). Riusato da `list_preset_by_lista` e
 # `get_preset` per garantire stessa proiezione e ridurre il drift.
@@ -79,11 +99,11 @@ _PRESET_SELECT_SQL = """
            s_ef.ragione_sociale_completa  AS emittente_ragione_sociale,
            p.pagina_dimensione,
            p.ordinamento_default,
-           p.filtri_default,
            p.attivo,
            {extra_select}
            seed.nata_dal_seed,
            seed.campi_del_software,
+           {campi_bloccati}
            p.data_insert,
            p.user_insert,
            p.data_update,
@@ -145,7 +165,11 @@ class UiAdminRepository:
                d.vista_sql,
                d.note,
                d.attivo,
+               d.multi_emittente,
+               d.perimetro_emittente,
+               d.legge_lineage,
                {_COLONNE_SUPERFICIE_SEED}
+               {_sql_campi_bloccati("ui.lista_definizione", "d")}
                d.data_insert,
                d.user_insert,
                d.data_update,
@@ -233,12 +257,16 @@ class UiAdminRepository:
     #        l'esistenza della view in pg_catalog ma skippa se attivo=
     #        FALSE o vista_sql=NULL: il workflow draft "registra prima,
     #        attiva dopo aver creato la view" e' supportato nativamente.
-    # 🚫 `multi_emittente` non compare in questo INSERT ne' nella whitelist
-    #    `_DEFINIZIONE_UPDATE_COLS` di `update_definizione`, ed e' deliberato: il flag si accende SOLO dal
-    #    seed. Il presidio forte e' il trigger DB — la scrittura verrebbe
-    #    rifiutata comunque con `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE` — ma la
-    #    colonna non va nominata nemmeno qui, o l'applicazione chiederebbe al
-    #    database una cosa che il database le vieta.
+    # 🚫 Le tre DICHIARAZIONI della lista (`multi_emittente`,
+    #    `perimetro_emittente`, `legge_lineage`) non compaiono in questo INSERT
+    #    ne' nella whitelist `_DEFINIZIONE_UPDATE_COLS` di `update_definizione`,
+    #    ed e' deliberato: si dichiarano SOLO dal seed. Il presidio forte e' il
+    #    trigger DB `ui.trgfn_lista_definizione_guard_dichiarazioni` — la
+    #    scrittura verrebbe rifiutata comunque con
+    #    `E_UI_LISTA_DICHIARAZIONE_NON_SCRIVIBILE` (giro 4 di
+    #    brief-db-revisione-ui) — ma le colonne non vanno nominate nemmeno qui,
+    #    o l'applicazione chiederebbe al database una cosa che le vieta. Si
+    #    LEGGONO (`_DEFINIZIONE_SELECT_FULL`): la pagina tecnica le mostra.
     #    Perche' e come: `lista_definizione_admin_service.CREATE_KEYS`.
     def create_definizione(
         self,
@@ -273,10 +301,13 @@ class UiAdminRepository:
 
     # Colonne scrivibili da `update_definizione` (whitelist del BB
     # `execute_dynamic_update`), audit escluso (testata della classe).
-    # 🚫 `multi_emittente` resta fuori: vedi il
-    # commento su `create_definizione`.
+    # 🚫 Le tre dichiarazioni restano fuori: vedi il commento su
+    # `create_definizione`. ⛔ `codice` e' fuori dal giro 4 di
+    # brief-db-revisione-ui (BE12, U23): e' la chiave con cui backend,
+    # frontend e preferenze cercano la schermata, e il DB lo tiene fermo col
+    # lucchetto `E_UI_LISTA_CODICE_IMMUTABILE`.
     _DEFINIZIONE_UPDATE_COLS: frozenset[str] = frozenset({
-        "codice", "descrizione", "schema_dati", "vista_sql", "note", "attivo",
+        "descrizione", "schema_dati", "vista_sql", "note", "attivo",
     })
 
     # Scopo: UPDATE lista_definizione sui soli campi presenti in `data`.
@@ -324,6 +355,7 @@ class UiAdminRepository:
                etichetta_estesa,
                etichetta_i18n_key,
                campo_sorgente,
+               origine_campo::text      AS origine_campo,
                tipo_colonna::text       AS tipo_colonna,
                tipo_dato::text          AS tipo_dato,
                formato,
@@ -339,6 +371,7 @@ class UiAdminRepository:
                sensibile,
                attivo,
                {_COLONNE_SUPERFICIE_SEED}
+               {_sql_campi_bloccati("ui.lista_colonna", "c")}
                data_insert,
                user_insert,
                data_update,
@@ -429,11 +462,11 @@ class UiAdminRepository:
             return row_to_dict(cursor)
 
     # Scopo: INSERT lista_colonna. Il trigger valida_campo_sorgente
-    #        verifica esistenza dell'attributo nella vista_sql della
-    #        lista padre, ma skippa per tipo_colonna='azione' o
-    #        campo_sorgente NULL. Defaults applicativi su filtrabile/
-    #        ordinabile/esportabile vengono passati esplicitamente per
-    #        chiarezza (anche se la tabella ha default DDL).
+    #        verifica che una colonna `VISTA` stia nella relazione della
+    #        lista (salta sulle liste spente e senza vista, e sul campo
+    #        NULL) e che una `LINEAGE` stia su una lista che dichiara
+    #        `legge_lineage` (giro 4 di brief-db-revisione-ui). I flag
+    #        arrivano esplicitamente dal service, coi default derivati.
     def create_colonna(
         self,
         data: dict[str, Any],
@@ -448,6 +481,7 @@ class UiAdminRepository:
                     etichetta_estesa,
                     etichetta_i18n_key,
                     campo_sorgente,
+                    origine_campo,
                     tipo_colonna,
                     tipo_dato,
                     formato,
@@ -465,6 +499,7 @@ class UiAdminRepository:
                 )
                 VALUES (
                     %s, %s, %s, %s, %s, %s,
+                    %s::ui.origine_campo_lista,
                     %s::ui.tipo_colonna,
                     %s::ui.tipo_dato,
                     %s, %s, %s,
@@ -481,6 +516,7 @@ class UiAdminRepository:
                     data.get("etichetta_estesa"),
                     data.get("etichetta_i18n_key"),
                     data.get("campo_sorgente"),
+                    data.get("origine_campo", "VISTA"),
                     data["tipo_colonna"],
                     data["tipo_dato"],
                     data.get("formato"),
@@ -489,6 +525,10 @@ class UiAdminRepository:
                     data.get("allineamento", "left"),
                     data.get("gruppo"),
                     data.get("gruppo_ordine"),
+                    # ⭐ I default li deriva il service dal modello (una
+                    #    colonna senza dato non si esporta, una della
+                    #    genealogia non si filtra ne' ordina): qui arrivano
+                    #    sempre, il ripiego e' quello del DDL.
                     data.get("filtrabile", True),
                     data.get("ordinabile", True),
                     data.get("esportabile", True),
@@ -503,16 +543,20 @@ class UiAdminRepository:
 
     # Colonne scrivibili da `update_colonna` (whitelist RIGIDA del BB
     # `execute_dynamic_update`), audit escluso (testata della classe).
-    # `lista_id` resta fuori: e' immutabile.
+    # `lista_id` resta fuori: e' immutabile. ⛔ `codice` anche, dal giro 4 di
+    # brief-db-revisione-ui (BE12, U23): preferenze e preset cercano la
+    # colonna per codice, e il DB lo tiene fermo col lucchetto
+    # `E_UI_COLONNA_CODICE_IMMUTABILE`.
     _COLONNA_UPDATE_COLS: frozenset[str] = frozenset({
-        "codice", "etichetta", "etichetta_estesa", "etichetta_i18n_key",
-        "campo_sorgente", "tipo_colonna", "tipo_dato", "formato",
+        "etichetta", "etichetta_estesa", "etichetta_i18n_key",
+        "campo_sorgente", "origine_campo", "tipo_colonna", "tipo_dato", "formato",
         "larghezza_default", "ordine_default", "allineamento", "gruppo",
         "gruppo_ordine", "filtrabile", "ordinabile", "esportabile",
         "ricercabile_full", "sensibile", "attivo",
     })
-    # I tre enum della tabella: il valore arriva come testo e va castato.
+    # I quattro enum della tabella: il valore arriva come testo e va castato.
     _COLONNA_CASTS: dict[str, str] = {
+        "origine_campo": "ui.origine_campo_lista",
         "tipo_colonna": "ui.tipo_colonna",
         "tipo_dato": "ui.tipo_dato",
         "allineamento": "ui.allineamento_colonna",
@@ -621,6 +665,7 @@ class UiAdminRepository:
     ) -> list[dict[str, Any]]:
         sql = _PRESET_SELECT_SQL.format(
             superficie_seed=_sql_superficie_seed("ui.lista_preset", "p"),
+            campi_bloccati=_sql_campi_bloccati("ui.lista_preset", "p"),
             extra_select=_PRESET_LIST_EXTRA_SELECT,
             filter_clause="p.lista_id = %s",
         ) + " ORDER BY p.ambito, p.codice, p.id"
@@ -649,6 +694,7 @@ class UiAdminRepository:
     def get_preset(self, preset_id: int) -> dict[str, Any] | None:
         sql = _PRESET_SELECT_SQL.format(
             superficie_seed=_sql_superficie_seed("ui.lista_preset", "p"),
+            campi_bloccati=_sql_campi_bloccati("ui.lista_preset", "p"),
             extra_select="",
             filter_clause="p.id = %s",
         )
@@ -659,9 +705,9 @@ class UiAdminRepository:
     # Scopo: Crea preset (testata). I campi `lista_id`/`ambito`/refs sono
     #        obbligatori e validati dal service; FK + CHECK ambito_refs
     #        sono enforced lato DB (IntegrityError -> mapping service).
-    #        `user_insert` lo scrive il trigger di audit. `filtri_default`
-    #        non si scrive (Q38 di brief-db-revisione-ui): resta NULL finche'
-    #        il DB non ritira la colonna.
+    #        `user_insert` lo scrive il trigger di audit. La forma di
+    #        `ordinamento_default` la giudica il guard del DB
+    #        (`E_UI_CONFIGURAZIONE_FORMA`, brief-db-revisione-ui giro 2).
     def create_preset(
         self,
         data: dict[str, Any],
@@ -717,9 +763,9 @@ class UiAdminRepository:
     # Scopo: Aggiorna preset sui soli campi presenti in `data`. SET
     #        dinamico via BB `execute_dynamic_update`: il JSONB
     #        `ordinamento_default` (lista) va a `::jsonb` dal BB, None azzera.
-    #        `filtri_default` e' fuori whitelist (Q38). Gli immutabili (lista_id/
-    #        ambito/profilo/emittente) NON sono in whitelist update lato
-    #        service, quindi non arrivano qui.
+    #        Gli immutabili (lista_id/ambito/profilo/emittente) NON sono in
+    #        whitelist update lato service, quindi non arrivano qui (il DB li
+    #        tiene col lucchetto `E_UI_PRESET_POSTO_IMMUTABILE`).
     def update_preset(
         self,
         preset_id: int,

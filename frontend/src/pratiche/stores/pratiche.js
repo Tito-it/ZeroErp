@@ -85,8 +85,6 @@ export const usePraticheStore = defineStore('pratiche', () => {
       data_a: null,
     },
     // Coda di lavoro: la piu' recente in cima, e il ripiego del verso segue.
-    orderBy: 'data_apertura',
-    orderDir: 'desc',
     orderDirDefault: 'desc',
   })
   const { fetchList: fetchListBase, svuota } = lista

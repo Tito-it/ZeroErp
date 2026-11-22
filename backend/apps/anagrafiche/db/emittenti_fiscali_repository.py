@@ -221,6 +221,9 @@ class EmittentiFiscaliRepository:
                    ef.codice,
                    ef.attivo,
                    ef.regime_fiscale_rf,
+                   -- Il codice a video del regime: il catalogo lo tiene
+                   -- distinto da `codice_interno` (BB FE `voceRegimeFiscale`).
+                   rf.codice              AS regime_fiscale_codice,
                    rf.descrizione         AS regime_fiscale_descrizione,
                    ef.regime_fiscale_confermato_il,
                    ef.regime_fiscale_confermato_da,

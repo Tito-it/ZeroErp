@@ -81,16 +81,15 @@ _FIXTURE: tuple[str, ...] = (
            dbops.fn_pgtap_crea_articolo('BE-ART-NG', false)         AS art_ng,
            dbops.fn_pgtap_crea_articolo('BE-ART-L', true, true)     AS art_l
     """,
-    # Un'ubicazione nel magazzino a ubicazioni, per il lookup.
+    # Un'ubicazione nel magazzino a ubicazioni e un lotto dell'articolo per
+    # lotti, per i lookup. ⚠️ Dai builder, che passano dai verbi: dal
+    # 2026-11-22 l'app non scrive piu' ubicazioni e lotti (`42501`, brief-db-
+    # magazzino-tutte-le-scritture-dal-verbo §5.3). Il lotto prende l'azienda
+    # della sessione (brief-db-magazzino-lotto-dell-azienda).
+    "SELECT dbops.fn_pgtap_crea_ubicazione((SELECT mag_u FROM _mag), 'UX')",
     """
-    INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id)
-    SELECT mag_u, 'UX', (SELECT id FROM config.tipi_ubicazione WHERE codice_interno = 'TIPO_UBI_STORAGE')
-      FROM _mag
-    """,
-    # Un lotto dell'articolo per lotti, per il lookup.
-    """
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo)
-    SELECT art_l, 'L-2026-01', script.fn_data_operativa() FROM _art
+    SELECT dbops.fn_pgtap_crea_lotto_di_magazzino(art_l, 'L-2026-01', script.fn_data_operativa())
+      FROM _art
     """,
 )
 
@@ -348,14 +347,15 @@ class DocumentoInternoDbTests(unittest.TestCase):
         self._nel_mondo(_prova)
 
     # Scopo: i tre lookup di riga rispondono SOLO per il padre: le ubicazioni
-    #        del magazzino, i lotti dell'articolo, i seriali dell'emittente.
+    #        del magazzino, i lotti dell'articolo e i seriali, tutti e due
+    #        dell'emittente del magazzino.
     def test_i_lookup_di_riga_filtrano_per_padre(self):
         def _prova(cur, m):
             self.assertEqual([u["codice"] for u in magazzino_service.lookup_ubicazioni(m.mag_u)["results"]], ["UX"])
             self.assertEqual(magazzino_service.lookup_ubicazioni(m.mag_a)["results"], [])
-            self.assertEqual([x["codice"] for x in magazzino_service.lookup_lotti(articolo_id=m.art_l, search=None)["results"]], ["L-2026-01"])
-            self.assertEqual(magazzino_service.lookup_lotti(articolo_id=m.art_l, search="ZZZ")["results"], [])
-            self.assertEqual(magazzino_service.lookup_lotti(articolo_id=m.art, search=None)["results"], [])
+            self.assertEqual([x["codice"] for x in magazzino_service.lookup_lotti(articolo_id=m.art_l, magazzino_id=m.mag_a, search=None)["results"]], ["L-2026-01"])
+            self.assertEqual(magazzino_service.lookup_lotti(articolo_id=m.art_l, magazzino_id=m.mag_a, search="ZZZ")["results"], [])
+            self.assertEqual(magazzino_service.lookup_lotti(articolo_id=m.art, magazzino_id=m.mag_a, search=None)["results"], [])
             self.assertEqual(magazzino_service.lookup_assets(articolo_id=m.art, magazzino_id=m.mag_a)["results"], [])
         self._nel_mondo(_prova)
 

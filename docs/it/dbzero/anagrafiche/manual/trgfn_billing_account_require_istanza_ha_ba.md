@@ -1,39 +1,65 @@
-## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_billing_account_require_istanza_ha_ba`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_billing_account_require_istanza_ha_ba`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti funzioni:
+> Approfondimento tabelle:
 >
-[anagrafiche.fn_guard_istanza_ha_ba](/dbzero/anagrafiche/manual/fn_guard_istanza_ha_ba)
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — la tabella su cui è montata
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.fn_guard_istanza_ha_ba](/dbzero/anagrafiche/funzioni/fn_guard_istanza_ha_ba) — il controllo a cui delega
+> * [anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_require_utility_dichiarata) — lo stesso controllo, alla nascita dell'istanza
+>
+> Guide:
+>
+> * [Gestione delle istanze utility](/guide/gestione-delle-istanze-utility#ogni-istanza-nasce-col-suo-billing-account) — ogni istanza nasce col suo billing account
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 08-10-26)
 
-Impedisce di cancellare **l'ultimo** billing account di un'istanza che resta.
-
----
-
-### Contesto di Esecuzione
-
-* **Trigger**: `trg_billing_account_z90_require_istanza_ha_ba_dlt`, constraint
-  trigger `AFTER DELETE`, **differito alla conferma** dell'operazione
-* **Logica**: chiama [`fn_guard_istanza_ha_ba`](/dbzero/anagrafiche/manual/fn_guard_istanza_ha_ba)
-  sull'istanza del billing account cancellato
+`anagrafiche.trgfn_billing_account_require_istanza_ha_ba` impedisce di cancellare l'ultimo billing account di
+un'istanza che resta.
 
 ---
 
-### Perche' alla conferma, e non subito
+### Al commit, non subito
 
-Cancellare un'istanza **intera**, insieme ai suoi billing account, resta
-lecito. Un controllo immediato rifiuterebbe gia' la cancellazione del primo
-billing account, quando l'istanza c'e' ancora; alla conferma, invece, l'istanza
-non esiste piu' e non c'e' niente da controllare.
+È un constraint trigger dopo la cancellazione, differito al commit: a quel punto chiede a
+`fn_guard_istanza_ha_ba` se l'istanza del billing account cancellato ha ancora un billing account, e se non ce
+l'ha l'operazione è rifiutata con `E_ISTANZA_SENZA_BA`.
+
+Al commit, perché cancellare un'istanza intera insieme ai suoi billing account resta lecito: un controllo
+immediato rifiuterebbe già il primo billing account cancellato, quando l'istanza c'è ancora; al commit
+l'istanza non esiste più e non c'è niente da controllare.
+
+È la seconda metà della regola «istanza e billing account vivono insieme»: la prima, alla nascita dell'istanza,
+la tiene il trigger dell'istanza con lo stesso controllo; lo spostamento di un billing account su un'altra
+istanza lo chiude il blocco di colonna.
 
 ---
 
-### Perche' esiste
+### Codici errore
 
-Fino al 2026-10-08 l'unico controllo guardava la **nascita** dell'istanza. La
-regola dice «sempre»: senza questo trigger un billing account si poteva
-cancellare e lasciare l'istanza sola.
+* `E_ISTANZA_SENZA_BA` — da `fn_guard_istanza_ha_ba`, al commit.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-istanza-nasce-col-ba-v1.sql` — l'ultimo billing account di un'istanza che resta
+  non si cancella; istanza e billing account se ne vanno insieme.
+
+---
+
+### Note di migrazione
+
+* 2026-10-08 — nasce: fino ad allora la regola si guardava solo alla nascita dell'istanza, e un billing account
+  si poteva cancellare lasciando l'istanza sola.
+
+---
+
+{% include-markdown "signature-core.md" %}

@@ -22,7 +22,7 @@ from drf_spectacular.utils import (
 from rest_framework import serializers
 from rest_framework.request import Request
 
-from apps.core.api.openapi_params import parametri_finestra
+from apps.core.api.openapi_params import parametri_finestra, parametri_ordinamento
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.payload_validators import (
     pagina_da_query,
@@ -120,29 +120,7 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
                     "numerico -> 400; intero <= 0 -> 400 (E_VENDITE_VALIDATION)."
                 ),
             ),
-            OpenApiParameter(
-                name="order_by",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Colonna di ordinamento (whitelist): anzianita_giorni "
-                    "(default, \"aperto da\") | codice | cliente_display | "
-                    "valore_totale. Ordinamento server-side su tutte le pagine. "
-                    "Colonna non ammessa -> 400 (E_VENDITE_VALIDATION)."
-                ),
-            ),
-            OpenApiParameter(
-                name="order_dir",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Direzione ordinamento: asc | desc (default desc per "
-                    "anzianita_giorni: i piu' \"in essere da\" prima). Valore "
-                    "diverso -> 400 (E_VENDITE_VALIDATION)."
-                ),
-            ),
+            *parametri_ordinamento("anzianita_giorni | codice | cliente_display | valore_totale.", senza="anzianita_giorni DESC (i piu' «in essere da» prima)", nota="Ordinamento server-side su tutte le pagine. Colonna o verso non ammessi -> 400 (E_VENDITE_VALIDATION)."),
             *parametri_finestra(),
         ],
         responses={
@@ -221,8 +199,7 @@ class ApiDashboardApertoDocumentiExport(DomainAPIView):
             OpenApiParameter(name="area", type=str, required=False),
             OpenApiParameter(name="fase", type=str, required=False),
             OpenApiParameter(name="ritardo_giorni", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={(200, "text/csv"): OpenApiTypes.BINARY},
     )

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Composizione dashboard&lt;-&gt;widget: pool candidato per dashboard + ordine di default. Sorgente del catalogo grezzo e del merge widget nuovi nella risoluzione.
+> Il pool di una dashboard: i widget del catalogo globale (ui.widget) che può mostrare, e in che ordine quando nessuno ha scelto. Una riga per dashboard e widget. Un widget fuori dal pool non compare, anche se una preferenza o un preset lo nominano. È una parte della dashboard, senza attivo né audit. La scrive il seed; l'applicazione la legge.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -24,6 +24,11 @@
 |------|-------------|
 | ix_ui_dashboard_widget_widget_id | `CREATE INDEX ix_ui_dashboard_widget_widget_id ON ui.dashboard_widget USING btree (widget_id)` |
 | pk_ui_dashboard_widget | `CREATE UNIQUE INDEX pk_ui_dashboard_widget ON ui.dashboard_widget USING btree (dashboard_id, widget_id)` |
+
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_ui_dashboard_widget_a10_guard_in_uso_dlt | BEFORE | DELETE | `EXECUTE FUNCTION ui.trgfn_ui_dashboard_widget_guard_in_uso()` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -14,7 +14,7 @@
 > 1. **La coda lavoro NON sostituisce l'agenda — è complementare.** Ciò che è
 >    stato costruito (commit `acec053c2`, pannello "Le mie attività" +
 >    `fn_coda_lavoro_operatore`, vedi
->    [brief-design-coda-lavoro-mie-attivita.md](../work-done/brief-design-coda-lavoro-mie-attivita.md))
+>    [brief-design-coda-lavoro-mie-attivita.md](../work-done/2026/brief-design-coda-lavoro-mie-attivita.md))
 >    è una **coda *pull-based* per assegnazione** (livelli
 >    ASSEGNATO/REPARTO/LIBERO/COMPETENZA), **svincolata dalle date**: la
 >    scadenza è solo un attributo mostrato, non l'asse organizzativo.

@@ -76,6 +76,7 @@ search:
 - [fn_check_lotto_fatture_pre_fiscali](funzioni/fn_check_lotto_fatture_pre_fiscali.md) — (latest review 12-11-2026) Dice se le fatture di un lotto sono ancora **demolibili**, cioè se nessuna ha superato lo stato pre-fiscale. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando tutte le fatture del lotto sono pre-fiscali.
 - [fn_check_lotto_riportabile_a_draft](funzioni/fn_check_lotto_riportabile_a_draft.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono il ritorno in bozza** di un lotto di fatturazione. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando il ritorno è lecito.
 - [fn_check_offerta_annullabile](funzioni/fn_check_offerta_annullabile.md)
+- [fn_check_offerta_kit_con_componenti](funzioni/fn_check_offerta_kit_con_componenti.md)
 - [fn_check_operatore_invitabile](funzioni/fn_check_operatore_invitabile.md)
 - [fn_check_ordine_annullabile](funzioni/fn_check_ordine_annullabile.md) — Elenca i motivi che impediscono di **annullare** un ordine: merce già uscita con una bolla figlia viva, oppure righe di commessa già `EMESSA`. Un elenco vuoto vuol dire che l'annullamento è lecito.
 - [fn_check_ordine_confermabile](funzioni/fn_check_ordine_confermabile.md) — (rev 2026-11-03 — il motivo dei soli oneri · funzione nata il 2026-08-29)
@@ -96,7 +97,7 @@ search:
 - [fn_check_riga_contabile_eliminabile_su_distinta](funzioni/fn_check_riga_contabile_eliminabile_su_distinta.md) — (scritta il 21-10-2026)
 - [fn_check_riga_documento_su_contesto](funzioni/fn_check_riga_documento_su_contesto.md)
 - [fn_check_riga_erogazione](funzioni/fn_check_riga_erogazione.md)
-- [fn_check_riga_magazzino](funzioni/fn_check_riga_magazzino.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_check_riga_magazzino](funzioni/fn_check_riga_magazzino.md) — (rev 2026-11-22 — il lotto dell'azienda; nasce il 2026-09-18 col Lotto 2 del magazzino)
 - [fn_check_righe_documento](funzioni/fn_check_righe_documento.md)
 - [fn_check_righe_offerta_in_ordine](funzioni/fn_check_righe_offerta_in_ordine.md)
 - [fn_check_rinuncia_reversibile](funzioni/fn_check_rinuncia_reversibile.md) — (creata 2026-07-26 — brief-db-chiusura-riconsegna-reso-definitivo §5.1)
@@ -385,6 +386,7 @@ search:
 - [trgfn_doc_testata_guard_data_consegna_righe](funzioni/trgfn_doc_testata_guard_data_consegna_righe.md) — (nato il 2026-10-13, dal collaudo)
 - [trgfn_guard_date_validita](funzioni/trgfn_guard_date_validita.md)
 - [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md) — (rev 2026-09-04 — chiuso il ramo «nessun utente in sessione → passa»: il criterio è `row_security_active()`. Prima: rev 2026-08-22, la **risoluzione** esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open, e arrivano le modalità `ente_incasso` e `contabile`; rev 2026-06-01, modalità `fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
+- [trgfn_guard_riferimento_stesso_emittente](funzioni/trgfn_guard_riferimento_stesso_emittente.md)
 - [trgfn_guard_sorgente](funzioni/trgfn_guard_sorgente.md)
 - [trgfn_guard_utility_tipo_ruolo_by_cols](funzioni/trgfn_guard_utility_tipo_ruolo_by_cols.md) — La funzione **`script.trgfn_guard_utility_tipo_ruolo_by_cols()`** e` una trigger function generica che applica il controllo utility/ruolo su tabelle con colonne configurabili.
 - [trgfn_listini_righe_comp_guard_coerenza_bom](funzioni/trgfn_listini_righe_comp_guard_coerenza_bom.md)

@@ -1,0 +1,165 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.fn_lista_colonne_livello: con la veste NULL vale, per ogni colonna, il
+#   livello piu' restrittivo fra le vesti dell'utente.
+#   Brief: brief-db-revisione-ui (giro 4: U29 con Q17).
+#
+# ⚠️ PERCHE'. Con p_veste NULL i profili di TUTTE le identita' dell'utente
+#   concorrevano insieme, e vinceva il profilo piu' specifico: un AD_HOC TUTTO
+#   dell'identita' di portale scavalcava un REPARTO BLOCCATO dell'operatore. I due
+#   chiamanti (fn_resolve_lista_config, fn_lista_colonne_ricerca_full) passano
+#   NULL quando la veste di sessione manca o e' fuori dominio
+#   (ui.fn_veste_corrente): un ripiego di presentazione faceva da permesso di
+#   riservatezza. Q17 (b): il ripiego non allarga mai.
+#
+# Che cosa cambia (il corpo di prima e' quello letto da dbdev il 2026-11-21):
+#   - le vesti: p_veste se c'e'; altrimenti le vesti UTILIZZABILI dell'utente
+#     (le sue identita' per cui vale script.fn_veste_utilizzabile, la regola che
+#     usa anche script.fn_get_profili_accesso_applicabili);
+#   - per ogni veste il livello si calcola come prima (il profilo piu' specifico,
+#     a parita' il piu' restrittivo; senza grant il ripiego: sensibile ->
+#     BLOCCATO, altrimenti TUTTO); poi per ogni colonna vale il piu' restrittivo
+#     fra le vesti. Una veste senza profili conta anche lei: le sue colonne
+#     sensibili sono BLOCCATO, e saltarla allargherebbe;
+#   - nessuna veste (utente NULL, o senza identita' utilizzabili): i livelli di
+#     ripiego, come prima.
+#   Con p_veste valorizzata il risultato non cambia: una veste sola.
+# Firma e RETURNS TABLE invariati (CREATE OR REPLACE, %TYPE ri-ancorati).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-49-update-fn-lista-colonne-livello-veste-nulla-restrittiva-mctit.yaml
+
+  - changeSet:
+      id: 20261120-49-update-fn-lista-colonne-livello-veste-nulla-restrittiva
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_lista_colonne_livello: con la veste NULL il livello piu' restrittivo fra le vesti
+        utilizzabili dell'utente. Brief: brief-db-revisione-ui (giro 4, U29, Q17).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_lista_colonne_livello' AND p.pronargs = 3
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.fn_lista_colonne_livello(
+                  p_lista_id     ui.lista_definizione.id%TYPE,
+                  p_auth_user_id ui.lista_preferenza_utente.auth_user_id%TYPE,
+                  p_veste        anagrafiche.identita_digitali.ruolo_applicativo%TYPE)
+               RETURNS TABLE(colonna_id      ui.lista_colonna.id%TYPE,
+                             codice          ui.lista_colonna.codice%TYPE,
+                             livello_accesso ui.lista_colonna_permesso.livello_accesso%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: il livello effettivo (TUTTO, LETTURA, BLOCCATO) che un utente ha
+              -- su ogni colonna attiva di una lista, sotto una veste.
+              --
+              -- Regola, per ogni veste:
+              --   - grant dai profili applicabili all'utente sotto quella veste;
+              --   - fra piu' grant: il profilo piu' specifico (priorita asc), a parita'
+              --     il piu' restrittivo;
+              --   - senza grant: sensibile -> BLOCCATO, altrimenti TUTTO.
+              -- Le vesti: p_veste; con p_veste NULL, tutte le vesti utilizzabili
+              -- dell'utente, e per ogni colonna vale il livello piu' restrittivo fra
+              -- loro (il ripiego non allarga mai).
+              --
+              -- ⚠️ Una riga per OGNI colonna attiva, anche BLOCCATA: il filtro lo fa
+              --   chi legge. Utente NULL o senza vesti: nessun grant, restano i
+              --   livelli di ripiego (fail-closed sulle sensibili).
+              DECLARE
+                -- Dal piu' restrittivo al piu' largo: l'indice ordina i livelli.
+                v_ordine ui.lista_colonna_permesso.livello_accesso%TYPE[] :=
+                  ARRAY['BLOCCATO', 'LETTURA', 'TUTTO']::config.livello_accesso[];
+                v_vesti  anagrafiche.identita_digitali.ruolo_applicativo%TYPE[];
+              BEGIN
+                IF p_veste IS NOT NULL THEN
+                  v_vesti := ARRAY[p_veste];
+                ELSE
+                  v_vesti := ARRAY(
+                    SELECT DISTINCT idg.ruolo_applicativo
+                      FROM anagrafiche.identita_digitali idg
+                     WHERE idg.auth_user_id = p_auth_user_id
+                       AND script.fn_veste_utilizzabile(idg.id));
+                END IF;
+
+                RETURN QUERY
+                WITH pa AS MATERIALIZED (
+                  -- Una chiamata al risolutore dei profili per veste, qualunque sia
+                  -- il numero di colonne.
+                  SELECT v.veste, p.profilo_accesso_id, p.priorita
+                    FROM unnest(v_vesti) AS v(veste)
+                    CROSS JOIN LATERAL script.fn_get_profili_accesso_applicabili(p_auth_user_id, v.veste) p
+                ),
+                concesso AS (
+                  SELECT DISTINCT ON (pa.veste, lcp.colonna_id)
+                         pa.veste,
+                         lcp.colonna_id,
+                         lcp.livello_accesso
+                    FROM ui.lista_colonna_permesso lcp
+                    JOIN pa
+                      ON pa.profilo_accesso_id = lcp.profilo_accesso_id
+                    JOIN ui.lista_colonna lcg
+                      ON lcg.id       = lcp.colonna_id
+                     AND lcg.lista_id = p_lista_id
+                   ORDER BY pa.veste,
+                            lcp.colonna_id,
+                            pa.priorita ASC,
+                            array_position(v_ordine, lcp.livello_accesso) ASC
+                ),
+                colonna AS (
+                  SELECT lc.id,
+                         lc.codice,
+                         (CASE WHEN lc.sensibile THEN 'BLOCCATO' ELSE 'TUTTO' END)::config.livello_accesso AS ripiego
+                    FROM ui.lista_colonna lc
+                   WHERE lc.lista_id = p_lista_id
+                     AND lc.attivo   = TRUE
+                )
+                SELECT c.id,
+                       c.codice,
+                       COALESCE(
+                         (SELECT COALESCE(k.livello_accesso, c.ripiego)
+                            FROM unnest(v_vesti) AS v(veste)
+                            LEFT JOIN concesso k
+                              ON k.veste      = v.veste
+                             AND k.colonna_id = c.id
+                           ORDER BY array_position(v_ordine, COALESCE(k.livello_accesso, c.ripiego)) ASC
+                           LIMIT 1),
+                         c.ripiego)
+                  FROM colonna c;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION ui.fn_lista_colonne_livello(
+                  ui.lista_definizione.id%TYPE,
+                  ui.lista_preferenza_utente.auth_user_id%TYPE,
+                  anagrafiche.identita_digitali.ruolo_applicativo%TYPE) IS
+                  'Il livello effettivo (TUTTO, LETTURA, BLOCCATO) di un utente su ogni colonna attiva di una lista, una riga per colonna, anche BLOCCATA. Sotto una veste: il grant del profilo più specifico (a parità il più restrittivo), senza grant BLOCCATO per una colonna sensibile e TUTTO per le altre. Con p_veste NULL conta ogni veste utilizzabile dell''utente (script.fn_veste_utilizzabile), e per ogni colonna vale il livello più restrittivo fra loro: il ripiego non allarga mai. Utente NULL o senza vesti: i livelli senza grant. La leggono ui.fn_resolve_lista_config, ui.fn_ordinamento_lista e ui.fn_lista_colonne_ricerca_full.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente si ripristina con un changeSet nuovo, dalla doc
+              -- auto-generata.
+              SELECT 1;

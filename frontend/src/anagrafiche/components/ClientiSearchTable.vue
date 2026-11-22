@@ -58,7 +58,6 @@ const {
   getExportParams: (fmt) => buildExportParams(fmt),
   newTooltipKey: 'anagrafiche.clienti.nuovo_cliente',
   onNew: () => emit('new'),
-  searchTableOptions: { defaultSortField: 'ragione_sociale_completa' },
 })
 
 // Filtri custom (toolbar caller)

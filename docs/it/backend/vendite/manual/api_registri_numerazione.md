@@ -5,7 +5,7 @@
 I registri (`vendite.registri_fatturazione`) sono i sezionali che assegnano il
 numero ai documenti. Questa pagina documenta **quali campi si possono scrivere,
 con quale verbo e perché** — non l'intero CRUD, che sta in
-[brief-be-fe-crud-registri-di-numerazione](/dev/work-done/brief-be-fe-crud-registri-di-numerazione).
+[brief-be-fe-crud-registri-di-numerazione](/dev/work-done/2026/brief-be-fe-crud-registri-di-numerazione).
 
 > ⭐ **Perché proprio questa tabella, e perché una pagina sua.** L'elenco dei
 > campi scrivibili è l'unica cosa che separa un registro da un contatore rotto:
@@ -61,7 +61,7 @@ sotto `NESSUNA` la chiave del contatore porta `anno = 0`, cioè un secchio unico
 ⛔ **`MENSILE` non esiste e non torna**: nessun documento porta il mese in
 chiave, quindi un contatore che discriminasse per mese consegnerebbe numeri che
 il documento non è in grado di ospitare — è l'asimmetria del
-[brief chiave del contatore §1](/dev/work-done/brief-db-registri-numerazione-chiave-del-contatore).
+[brief chiave del contatore §1](/dev/work-done/2026/brief-db-registri-numerazione-chiave-del-contatore).
 
 **Nel corpo della POST è opzionale.** Ometterlo, o mandarlo vuoto, significa
 *«non l'ho scelto»* e decide il **default della colonna**: il backend toglie la
@@ -113,4 +113,4 @@ seguire quando si colmerà.
 - Service: `apps/vendite/services/registri_service.py` — normalizzazione + traduzione vincoli
 - View: `apps/vendite/api/views_registri.py`
 - Frontend: `frontend/src/amministrazione/components/RegistroNumerazioneDrawer.vue`
-- Modello e decisioni: [brief chiave del contatore](/dev/work-done/brief-db-registri-numerazione-chiave-del-contatore) · [brief CRUD registri](/dev/work-done/brief-be-fe-crud-registri-di-numerazione)
+- Modello e decisioni: [brief chiave del contatore](/dev/work-done/2026/brief-db-registri-numerazione-chiave-del-contatore) · [brief CRUD registri](/dev/work-done/2026/brief-be-fe-crud-registri-di-numerazione)

@@ -46,6 +46,8 @@ import Message from 'primevue/message'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import AppDrawer from '../../core/components/AppDrawer.vue'
+import JsonBlocco from '../../core/components/JsonBlocco.vue'
+import { ESITO_CORSA, esitoCorsa } from '../../core/utils/esitoCorsa'
 import MotivoDialog from '../../core/components/MotivoDialog.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
@@ -90,6 +92,8 @@ const { confirmAction } = useConfirmAction()
 
 const dettaglio = ref(null)
 const corse = ref([])
+// Le corse di cui si sta leggendo il resoconto (riga aperta sotto la corsa).
+const corseAperte = ref(new Set())
 const caricamento = ref(false)
 const tabAttiva = ref('bersagli')
 const emittenteScelto = ref(null)
@@ -243,11 +247,31 @@ async function carica() {
     //    `undefined`, e il drawer sarebbe vuoto SENZA nessun errore.
     dettaglio.value = det ?? null
     corse.value = run?.results ?? []
+    corseAperte.value = new Set()
     emittenteScelto.value = null
     daRiattivare.value = null
   } finally {
     caricamento.value = false
   }
+}
+
+// Scopo: la corsa ha un RESOCONTO da leggere? Il messaggio, il dettaglio
+//        dell'errore o il `meta` non vuoto.
+// ⭐ È ciò che spiega un rosso «con scarti»: quali elementi, e perché. Fino al
+//    2026-11-22 il backend non lo consegnava, e il tab diceva «rossa» e basta.
+// ⚠️ Il `meta` si mostra INTERO, com'è: le due porte del giornale lo riempiono
+//    in due forme (i job del database sotto `esito`, i comandi del backend col
+//    loro riepilogo), e scegliere qui una chiave nasconderebbe l'altra metà.
+function haResoconto(r) {
+  const meta = r.meta && typeof r.meta === 'object' ? r.meta : null
+  return Boolean(r.message || r.error_detail || (meta && Object.keys(meta).length))
+}
+
+function toggleResoconto(id) {
+  const aperte = new Set(corseAperte.value)
+  if (aperte.has(id)) aperte.delete(id)
+  else aperte.add(id)
+  corseAperte.value = aperte
 }
 
 // ⚠️ `immediate` non serve — il drawer nasce chiuso — ma il watch sì: il
@@ -598,47 +622,52 @@ async function eseguiOra(sveglia) {
                   <th>{{ t('amministrazione.processi.col_jobname') }}</th>
                   <th>{{ t('amministrazione.processi.col_origine') }}</th>
                   <th>{{ t('amministrazione.processi.col_esito') }}</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="r in corse" :key="r.id">
+                <template v-for="r in corse" :key="r.id">
+                <tr>
                   <td>{{ displayTimestamp(r.started_at) }}</td>
                   <td>{{ r.jobname }}</td>
                   <td>{{ r.origine }}</td>
                   <td>
-                    <!-- ⚠️ `ok` è a tre stati, e `null` ha tre letture: corsa
-                         SALTATA (lock occupato: chiusa e senza esito, la dice
-                         `saltata`), corsa ancora APERTA (`ended_at` vuoto), o
-                         chiusa senza che nessuno abbia scritto l'esito.
-                         Appiattirlo a rosso, o tutto a «in corso», direbbe il falso. -->
+                    <!-- La faccia dell'esito dal BB `esitoCorsa` (regola del 2):
+                         `ok` è a tre stati, e il BB distingue saltata, aperta e
+                         chiusa senza esito. Sul rosso il codice d'errore della
+                         corsa, quando c'è, dice di più della parola «Errore». -->
                     <Tag
-                      v-if="r.saltata"
-                      v-tooltip.top="t('amministrazione.processi.esito_saltata_tooltip')"
-                      :value="t('amministrazione.processi.esito_saltata')"
-                      severity="secondary"
+                      v-tooltip.top="esitoCorsa(r).tooltip ? t(esitoCorsa(r).tooltip) : null"
+                      :value="(esitoCorsa(r).esito === ESITO_CORSA.ERRORE && r.error_code) || t(esitoCorsa(r).chiave)"
+                      :severity="esitoCorsa(r).severity"
                     />
-                    <Tag
-                      v-else-if="r.ok === true"
-                      :value="t('amministrazione.processi.esito_ok')"
-                      severity="success"
-                    />
-                    <Tag
-                      v-else-if="r.ok === false"
-                      :value="r.error_code || t('amministrazione.processi.esito_ko')"
-                      severity="danger"
-                    />
-                    <Tag
-                      v-else-if="!r.ended_at"
-                      :value="t('amministrazione.processi.esito_in_corso')"
-                      severity="secondary"
-                    />
-                    <Tag
-                      v-else
-                      :value="t('amministrazione.processi.esito_non_scritto')"
-                      severity="warn"
+                  </td>
+                  <td>
+                    <Button
+                      v-if="haResoconto(r)"
+                      v-tooltip.top="t('amministrazione.processi.resoconto_tooltip')"
+                      :icon="corseAperte.has(r.id) ? MANAGE_ICONS.ROW_COLLAPSE : MANAGE_ICONS.ROW_EXPAND"
+                      :aria-label="t('amministrazione.processi.resoconto_tooltip')"
+                      :aria-expanded="corseAperte.has(r.id)"
+                      text
+                      rounded
+                      size="small"
+                      @click="toggleResoconto(r.id)"
                     />
                   </td>
                 </tr>
+                <tr v-if="corseAperte.has(r.id)">
+                  <td colspan="5" class="app-proc-resoconto">
+                    <p v-if="r.message" class="app-proc-help">{{ r.message }}</p>
+                    <p v-if="r.error_detail" class="app-proc-resoconto-errore">{{ r.error_detail }}</p>
+                    <JsonBlocco
+                      v-if="r.meta && Object.keys(r.meta).length"
+                      :value="r.meta"
+                      :errore="r.ok === false"
+                    />
+                  </td>
+                </tr>
+                </template>
               </tbody>
             </table>
             <p v-else class="app-proc-help">
@@ -753,6 +782,12 @@ async function eseguiOra(sveglia) {
  * restano `nowrap`: sono tag, date e codici corti. `anywhere` spezza dentro
  * un token solo se non c'è un punto di rottura naturale (spazio, trattino). */
 .app-proc-tabella td.app-proc-wrap { white-space: normal; overflow-wrap: anywhere; }
+.app-proc-tabella td.app-proc-resoconto { white-space: normal; padding-bottom: 0.75rem; }
+/* Il dettaglio dell'errore è testo del programma: va a capo dove può. */
+.app-proc-resoconto-errore {
+  margin: 0 0 0.5rem; font-size: 0.8rem; white-space: pre-wrap; overflow-wrap: anywhere;
+  color: var(--app-severity-danger);
+}
 .app-proc-crea { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.75rem; }
 /* Cadenza e comando si LEGGONO come sono scritti nel deploy: il `<code>` dà
  * già il monospace, qui solo la taglia — senza sfondo (è un dato, non un

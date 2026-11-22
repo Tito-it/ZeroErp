@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui: i testi dei cataloghi di liste e dashboard non sono mai la stringa vuota.
+#   Brief: brief-db-revisione-ui (giro 4, U28).
+#
+# ⚠️ PERCHE'. ui.lista_colonna ha gia' i CHECK «non vuoto» (20261112-30); la
+#   definizione della lista, la testata della dashboard e il widget no. Una
+#   vista_sql = '' su una lista spenta entrava, e da li' faceva rifiutare ogni
+#   colonna con un campo sorgente; un codice '' e' una chiave che nessuno cerca.
+#   Un CHECK per colonna testo: NOT NULL o nullable, la stringa di soli spazi
+#   vale come vuota. L'assenza di un testo opzionale e' NULL.
+#     ui.lista_definizione: codice, descrizione, schema_dati, vista_sql, note
+#     ui.dashboard_definizione: codice, descrizione, note
+#     ui.widget: codice, etichetta, etichetta_i18n_key, contatore_key
+#   (user_insert e user_update li scrive il trigger d'audit: fuori perimetro.)
+#
+# ℹ️ PERCHE' QUI, IN 00_schema (linee-guida-sql §11.14). Chi scrive le tre
+#   tabelle, censito il 2026-11-21: i mirror dei CSV di 80_data, che non hanno
+#   celle vuote in queste colonne (portano NULL); nessun altro changeSet di dati;
+#   nessuna funzione del database; il backend scrive solo lista_definizione, dalla
+#   pagina admin. Nessuna bonifica: nessuna riga vuota sul catalogo (fatto datato,
+#   dbdev 2026-11-21), quindi l'ALTER entra senza correzioni.
+# Presidio: ui/test-ui-catalogo-liste-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20261120-44-add-chk-ui-cataloghi-testi-non-vuoti-mctit.yaml
+
+  - changeSet:
+      id: 20261120-44-add-chk-ui-cataloghi-testi-non-vuoti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui: CHECK «non vuoto» sui testi di lista_definizione, dashboard_definizione e widget.
+        Brief: brief-db-revisione-ui (giro 4, U28).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid IN (to_regclass('ui.lista_definizione'),
+                                  to_regclass('ui.dashboard_definizione'),
+                                  to_regclass('ui.widget'))
+                 AND conname LIKE 'chk\_%\_non\_vuot%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE ui.lista_definizione
+                  ADD CONSTRAINT chk_lista_definizione_codice_non_vuoto
+                      CHECK (btrim(codice::text) <> ''),
+                  ADD CONSTRAINT chk_lista_definizione_descrizione_non_vuota
+                      CHECK (btrim(descrizione::text) <> ''),
+                  ADD CONSTRAINT chk_lista_definizione_schema_dati_non_vuoto
+                      CHECK (btrim(schema_dati::text) <> ''),
+                  ADD CONSTRAINT chk_lista_definizione_vista_sql_non_vuota
+                      CHECK (vista_sql IS NULL OR btrim(vista_sql::text) <> ''),
+                  ADD CONSTRAINT chk_lista_definizione_note_non_vuote
+                      CHECK (note IS NULL OR btrim(note) <> '');
+
+              ALTER TABLE ui.dashboard_definizione
+                  ADD CONSTRAINT chk_dashboard_definizione_codice_non_vuoto
+                      CHECK (btrim(codice::text) <> ''),
+                  ADD CONSTRAINT chk_dashboard_definizione_descrizione_non_vuota
+                      CHECK (btrim(descrizione::text) <> ''),
+                  ADD CONSTRAINT chk_dashboard_definizione_note_non_vuote
+                      CHECK (note IS NULL OR btrim(note) <> '');
+
+              ALTER TABLE ui.widget
+                  ADD CONSTRAINT chk_widget_codice_non_vuoto
+                      CHECK (btrim(codice::text) <> ''),
+                  ADD CONSTRAINT chk_widget_etichetta_non_vuota
+                      CHECK (btrim(etichetta::text) <> ''),
+                  ADD CONSTRAINT chk_widget_etichetta_i18n_key_non_vuota
+                      CHECK (etichetta_i18n_key IS NULL OR btrim(etichetta_i18n_key::text) <> ''),
+                  ADD CONSTRAINT chk_widget_contatore_key_non_vuota
+                      CHECK (contatore_key IS NULL OR btrim(contatore_key::text) <> '');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE ui.widget
+                  DROP CONSTRAINT chk_widget_contatore_key_non_vuota,
+                  DROP CONSTRAINT chk_widget_etichetta_i18n_key_non_vuota,
+                  DROP CONSTRAINT chk_widget_etichetta_non_vuota,
+                  DROP CONSTRAINT chk_widget_codice_non_vuoto;
+              ALTER TABLE ui.dashboard_definizione
+                  DROP CONSTRAINT chk_dashboard_definizione_note_non_vuote,
+                  DROP CONSTRAINT chk_dashboard_definizione_descrizione_non_vuota,
+                  DROP CONSTRAINT chk_dashboard_definizione_codice_non_vuoto;
+              ALTER TABLE ui.lista_definizione
+                  DROP CONSTRAINT chk_lista_definizione_note_non_vuote,
+                  DROP CONSTRAINT chk_lista_definizione_vista_sql_non_vuota,
+                  DROP CONSTRAINT chk_lista_definizione_schema_dati_non_vuoto,
+                  DROP CONSTRAINT chk_lista_definizione_descrizione_non_vuota,
+                  DROP CONSTRAINT chk_lista_definizione_codice_non_vuoto;

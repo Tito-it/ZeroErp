@@ -8,10 +8,15 @@
 #        dell'altro emittente; i rifiuti del DB tradotti col campo (duplicato,
 #        padre di altro magazzino, scadenza prima dell'arrivo); il lock del
 #        codice; ogni colonna di whitelist che produce SQL che parte
-#        (`feedback_contratto_dichiarato_provalo_intero`).
+#        (`feedback_contratto_dichiarato_provalo_intero`). Dal 2026-11-22 le
+#        scritture passano dai VERBI del DB (R-1 di
+#        brief-db-magazzino-tutte-le-scritture-dal-verbo): il contratto dei
+#        lettori del backend e' quello del DB, e senza livello il verbo
+#        rifiuta; il lotto e' dell'AZIENDA (brief-db-magazzino-lotto-dell-azienda).
 # Note: ⚠️ Il mondo si COSTRUISCE, non si cerca (guida pgtap §79): azienda e
-#       operatore da `fn_pgtap_crea_emittente_operatore`, poi il CONTESTO, poi
-#       due magazzini e un articolo per lotti dai BB `dbops.fn_pgtap_crea_*`.
+#       operatore col livello TUTTO su magazzino (`apri_operatore_con_aree`:
+#       i verbi chiedono il livello sull'oggetto), poi due magazzini e un
+#       articolo per lotti dai BB `dbops.fn_pgtap_crea_*`.
 #       Tutto in transazione ANNULLATA; ogni rifiuto atteso in un SAVEPOINT.
 #       ⚠️ Il lock su `ubicazioni.magazzino_id` (D1 del brief) lo genera il job
 #       delle automazioni: qui NON si prova (il PATCH non lo manda nemmeno).
@@ -25,17 +30,22 @@ Indice test eseguiti:
 5) AnagraficheMagazzinoDbTests.test_un_altro_emittente_non_vede_il_magazzino_ne_le_ubicazioni
 6) AnagraficheMagazzinoDbTests.test_ogni_ordinamento_della_whitelist_esegue
 7) AnagraficheMagazzinoDbTests.test_la_ricerca_trova_ogni_colonna_accesa
+8) AnagraficheMagazzinoDbTests.test_i_lettori_del_backend_sono_il_contratto_del_db
+9) AnagraficheMagazzinoDbTests.test_senza_livello_sull_oggetto_il_verbo_rifiuta
+10) AnagraficheMagazzinoDbTests.test_il_lotto_e_dell_azienda
 """
 from __future__ import annotations
 
 import unittest
 from datetime import timedelta
 
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
 
+from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import (
+    apri_operatore_con_aree,
     richiedi_db_provvisto,
     richiedi_ruolo_soggetto_a_rls,
     verifica_ricerca_colonna_per_colonna,
@@ -44,15 +54,13 @@ from apps.magazzino.db.anagrafiche_magazzino_repository import (
     LOTTI_SORT_COLUMNS,
     MAGAZZINI_SORT_COLUMNS,
     UBICAZIONI_SORT_COLUMNS,
+    AnagraficheMagazzinoRepository,
 )
 from apps.magazzino.services import anagrafiche_magazzino_service as svc
 
+_MOTIVO = "test_anagrafiche_magazzino_db: i verbi chiedono TUTTO su magazzino"
+
 _FIXTURE: tuple[str, ...] = (
-    """
-    CREATE TEMP TABLE _mondo AS
-    SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
-    """,
-    "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
     """
     CREATE TEMP TABLE _mag AS
     SELECT dbops.fn_pgtap_crea_magazzino('BE-ANA-A', false) AS mag_a,
@@ -69,14 +77,13 @@ class _Mondo:
     """Gli id del mondo costruito."""
 
     def __init__(self, cur) -> None:
+        self.uid = apri_operatore_con_aree(cur, aree=("magazzino",), motivo=_MOTIVO)
         for passo in _FIXTURE:
             cur.execute(passo)
         cur.execute("SELECT mag_a, mag_u FROM _mag")
         self.mag_a, self.mag_u = (int(x) for x in cur.fetchone())
         cur.execute("SELECT art_l FROM _art")
         self.art_l = str(cur.fetchone()[0])
-        cur.execute("SELECT auth_user_id FROM _mondo")
-        self.uid = int(cur.fetchone()[0])
         # L'indirizzo dell'azienda: quello che il BB ha dato al magazzino A.
         cur.execute("SELECT indirizzo_dettaglio_id FROM magazzino.magazzini WHERE id = %s", [self.mag_a])
         self.indirizzo_id = int(cur.fetchone()[0])
@@ -194,26 +201,30 @@ class AnagraficheMagazzinoDbTests(unittest.TestCase):
         self._nel_mondo(_prova)
 
     # 4. I lotti: per articolo (obbligatorio), la scadenza prima dell'arrivo
-    #    la rifiuta il CHECK col campo, il duplicato vale per articolo, il
-    #    delta con `data_scadenza: null` la toglie.
+    #    la rifiuta il CHECK col campo, il duplicato vale per articolo
+    #    nell'azienda (il vincolo `uq_mag_lotti_emittente_articolo_codice`), il
+    #    delta con `data_scadenza: null` la toglie; nasce con l'azienda della
+    #    sessione.
     def test_lotti_dell_articolo_e_la_scadenza(self):
         def _prova(cur, m):
             oggi = oggi_aziendale()
             lotto = svc.crea_lotto({"articolo_id": m.art_l, "codice": "L-01", "data_arrivo": oggi.isoformat(),
                                     "data_scadenza": (oggi + timedelta(days=30)).isoformat()})
             self.assertEqual((lotto["codice"], lotto["data_arrivo"], lotto["data_scadenza"]), ("L-01", oggi, oggi + timedelta(days=30)))
+            cur.execute("SELECT emittente_fiscale_id FROM magazzino.magazzini WHERE id = %s", [m.mag_a])
+            self.assertEqual(lotto["emittente_fiscale_id"], cur.fetchone()[0])
             e = self._rifiuto(lambda: svc.crea_lotto({"articolo_id": m.art_l, "codice": "L-02", "data_arrivo": oggi.isoformat(),
                                                       "data_scadenza": (oggi - timedelta(days=1)).isoformat()}))
             self.assertEqual((e.code, e.context.get("field")), ("E_MAGAZZINO_VALIDATION", "data_scadenza"))
             e = self._rifiuto(lambda: svc.crea_lotto({"articolo_id": m.art_l, "codice": "L-01", "data_arrivo": oggi.isoformat()}))
             self.assertEqual((e.code, e.context.get("field")), ("E_ANAG_DUPLICATO", "codice"))
             # La lista pretende l'articolo (uuid): senza e' un 400 col campo.
-            e = self._rifiuto(lambda: svc.list_lotti(articolo_id=None, limit=10))
+            e = self._rifiuto(lambda: svc.list_lotti(auth_user_id=m.uid, articolo_id=None, limit=10))
             self.assertEqual((e.code, e.context.get("field")), ("E_MAGAZZINO_VALIDATION", "articolo_id"))
-            e = self._rifiuto(lambda: svc.list_lotti(articolo_id="abc", limit=10))
+            e = self._rifiuto(lambda: svc.list_lotti(auth_user_id=m.uid, articolo_id="abc", limit=10))
             self.assertEqual(e.code, "E_MAGAZZINO_VALIDATION")
-            self.assertEqual(svc.list_lotti(articolo_id=m.art_l, limit=10)["count"], 1)
-            self.assertEqual(svc.list_lotti(articolo_id=m.art_l, search="ZZZ", limit=10)["count"], 0)
+            self.assertEqual(svc.list_lotti(auth_user_id=m.uid, articolo_id=m.art_l, limit=10)["count"], 1)
+            self.assertEqual(svc.list_lotti(auth_user_id=m.uid, articolo_id=m.art_l, search="ZZZ", limit=10)["count"], 0)
             senza = svc.aggiorna_lotto(lotto["id"], {"data_scadenza": None})
             self.assertIsNone(senza["data_scadenza"])
             e = self._rifiuto(lambda: svc.get_lotto(999_999_999))
@@ -254,7 +265,7 @@ class AnagraficheMagazzinoDbTests(unittest.TestCase):
             for col in LOTTI_SORT_COLUMNS:
                 for verso in ("asc", "desc"):
                     with self.subTest(lista="lotti", col=col, verso=verso):
-                        svc.list_lotti(articolo_id=m.art_l, order_by=col, order_dir=verso, limit=5)
+                        svc.list_lotti(auth_user_id=m.uid, articolo_id=m.art_l, order_by=col, order_dir=verso, limit=5)
         self._nel_mondo(_prova)
 
     # 7. La ricerca libera (BB `add_ricerca_full_condition`): per ogni colonna
@@ -281,6 +292,78 @@ class AnagraficheMagazzinoDbTests(unittest.TestCase):
             verifica_ricerca_colonna_per_colonna(
                 self, cur, "magazzino.lotti", lotto["id"],
                 {"codice": "riccodlot"},
-                lambda t: svc.list_lotti(articolo_id=m.art_l, search=t, limit=10)["results"],
+                lambda t: svc.list_lotti(auth_user_id=m.uid, articolo_id=m.art_l, search=t, limit=10)["results"],
             )
+        self._nel_mondo(_prova)
+
+    # 8. Le chiavi che il backend sa LEGGERE sono quelle che il DB AMMETTE
+    #    (`fn_<tabella>_colonne_ammesse`): una divergenza qui sarebbe un 500 su
+    #    ogni scrittura (`campi_per_presenza`). L'articolo del lotto e'
+    #    un'identita' del gesto, argomento del verbo e non colonna.
+    def test_i_lettori_del_backend_sono_il_contratto_del_db(self):
+        def _prova(cur, m):
+            repo = AnagraficheMagazzinoRepository()
+            attese = {
+                ("magazzini", "crea"): svc.CREATE_KEYS_MAGAZZINO,
+                ("magazzini", "modifica"): svc.UPDATE_KEYS_MAGAZZINO,
+                ("ubicazioni", "crea"): svc.CREATE_KEYS_UBICAZIONE,
+                ("ubicazioni", "modifica"): svc.UPDATE_KEYS_UBICAZIONE,
+                ("lotti", "crea"): svc.CREATE_KEYS_LOTTO - {"articolo_id"},
+                ("lotti", "modifica"): svc.UPDATE_KEYS_LOTTO,
+            }
+            for (tabella, gesto), chiavi in attese.items():
+                with self.subTest(tabella=tabella, gesto=gesto):
+                    self.assertEqual(repo.colonne_ammesse(tabella, gesto), chiavi)
+        self._nel_mondo(_prova)
+
+    # 9. Il permesso lo dice il VERBO (non solo l'endpoint): con LETTURA su
+    #    magazzino il service, chiamato senza view, riceve il rifiuto del DB.
+    def test_senza_livello_sull_oggetto_il_verbo_rifiuta(self):
+        def _prova(cur, m):
+            cur.execute(
+                "UPDATE config.user_override_aree o SET livello = 'LETTURA'"
+                "  FROM config.aree_funzionali af"
+                " WHERE af.id = o.area_id AND af.schema_db = 'magazzino' AND o.auth_user_id = %s",
+                [m.uid],
+            )
+            self.assertEqual(cur.rowcount, 1)
+            e = self._rifiuto(lambda: svc.crea_magazzino({
+                "codice": "BE-ANA-P", "descrizione": "x", "indirizzo_dettaglio_id": m.indirizzo_id,
+            }))
+            self.assertEqual(e.code, "E_PERMESSO_NEGATO")
+            e = self._rifiuto(lambda: svc.aggiorna_magazzino(m.mag_a, {"descrizione": "x"}))
+            self.assertEqual(e.code, "E_PERMESSO_NEGATO")
+            e = self._rifiuto(lambda: svc.crea_ubicazione(m.mag_u, {"codice": "P", "tipo_id": m.tipo_ubi}))
+            self.assertEqual(e.code, "E_PERMESSO_NEGATO")
+            oggi = oggi_aziendale().isoformat()
+            e = self._rifiuto(lambda: svc.crea_lotto({"articolo_id": m.art_l, "codice": "L-P", "data_arrivo": oggi}))
+            self.assertEqual(e.code, "E_PERMESSO_NEGATO")
+        self._nel_mondo(_prova)
+
+    # 10. Il lotto e' dell'AZIENDA: due aziende hanno ciascuna il proprio
+    #     «L-01» dello stesso articolo; ognuna vede e modifica solo il suo, e
+    #     quello dell'altra risponde «non trovato» (no-leak) in lettura e in
+    #     scrittura.
+    def test_il_lotto_e_dell_azienda(self):
+        def _prova(cur, m):
+            oggi = oggi_aziendale().isoformat()
+            lotto_a = svc.crea_lotto({"articolo_id": m.art_l, "codice": "L-01", "data_arrivo": oggi})
+            uid_b = apri_operatore_con_aree(cur, aree=("magazzino",), motivo=_MOTIVO)
+            lotto_b = svc.crea_lotto({"articolo_id": m.art_l, "codice": "L-01", "data_arrivo": oggi})
+            self.assertNotEqual(lotto_a["emittente_fiscale_id"], lotto_b["emittente_fiscale_id"])
+            lista_b = svc.list_lotti(auth_user_id=uid_b, articolo_id=m.art_l, limit=10)
+            self.assertEqual([x["id"] for x in lista_b["results"]], [lotto_b["id"]])
+            self.assertEqual(self._rifiuto(lambda: svc.get_lotto(lotto_a["id"])).code, "E_MAG_LOTTO_NON_TROVATO")
+            self.assertEqual(
+                self._rifiuto(lambda: svc.aggiorna_lotto(lotto_a["id"], {"data_scadenza": None})).code,
+                "E_MAG_LOTTO_NON_TROVATO",
+            )
+            # Il verbo da solo dice lo stesso (il 404 non e' solo la lettura del service).
+            with self.assertRaises(DatabaseError) as rifiuto, transaction.atomic():
+                AnagraficheMagazzinoRepository().update_lotto(lotto_a["id"], {"attivo": False})
+            self.assertEqual(structured_db_error_code(rifiuto.exception), "E_MAG_LOTTO_NON_TROVATO")
+            # Torna l'azienda A: vede il suo e non quello di B.
+            cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [m.uid])
+            lista_a = svc.list_lotti(auth_user_id=m.uid, articolo_id=m.art_l, limit=10)
+            self.assertEqual([x["id"] for x in lista_a["results"]], [lotto_a["id"]])
         self._nel_mondo(_prova)

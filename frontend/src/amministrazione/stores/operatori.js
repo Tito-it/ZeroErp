@@ -55,7 +55,10 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
       is_active: null,
       includi_di_prova: null,
     },
-    orderBy: 'soggetto_cognome',
+    // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+    //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+    //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+    //    l'intestazione.
   })
 
   // Override corrente

@@ -43,13 +43,14 @@ class TestGetEmittenteNonEditable(TestCase):
             "id": 7, "codice": "EF001", "soggetto_id": "uuid-x",
         }
 
-        # `codice` lo dichiara il DB (trigger di lock dell'emittente, letto
-        # vivo dal giro 10a: BE2); `soggetto_id` resta il solo gap Python.
+        # `codice` e `soggetto_ruolo_id` li dichiara il DB (trigger di lock
+        # dell'emittente, letto vivo: BE2; il secondo dal 2026-11-21). Nessun
+        # gap Python: la lista e' quella della vista, ordinata.
         # Che la vista lo dichiari davvero lo prova `test_lock_columns_vivo_db`.
         for db_locked, attesi in (
-            (("codice",), ["codice", "soggetto_id"]),
-            # ⛔ Senza il lock del DB `codice` non compare: il gap non lo ripete.
-            ((), ["soggetto_id"]),
+            (("soggetto_ruolo_id", "codice"), ["codice", "soggetto_ruolo_id"]),
+            # ⛔ Senza lock del DB la lista e' vuota: non c'e' piu' un gap.
+            ((), []),
         ):
             with self.subTest(db_locked=db_locked):
                 mock_list_locks.return_value = db_locked

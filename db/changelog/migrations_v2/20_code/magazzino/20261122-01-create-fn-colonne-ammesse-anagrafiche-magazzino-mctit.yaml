@@ -1,0 +1,186 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE COLONNE AMMESSE DELLE ANAGRAFICHE DI MAGAZZINO, PER GESTO
+#   magazzino.fn_magazzini_colonne_ammesse(p_gesto)
+#   magazzino.fn_ubicazioni_colonne_ammesse(p_gesto)
+#   magazzino.fn_lotti_colonne_ammesse(p_gesto)
+#   magazzino.fn_assets_colonne_ammesse(p_gesto)
+#   p_gesto: 'crea' | 'modifica'. Ritornano le colonne che una persona
+#   compila in quel gesto, nell'ordine della tabella.
+#   Brief: brief-db-magazzino-tutte-le-scritture-dal-verbo, D-M4 (Tid,
+#   2026-11-21: una funzione per tabella, col gesto come argomento).
+#
+# -- PERCHE' --------------------------------------------------------------
+#   La lista stava in tre posti per il solo magazzino: la costante c_ammesse
+#   di fn_crea_magazzino, _CAMPI_MADRE_MAGAZZINO e MAGAZZINI_COLONNE nel
+#   backend. Qui diventa una sede sola, letta dai BB di nascita, dai verbi di
+#   modifica e dal backend (form e validazione).
+#
+# -- LE SCELTE ----------------------------------------------------------
+#   * due liste per tabella, perche' nascita e modifica non ammettono le
+#     stesse colonne: `attivo` non si sceglie alla nascita (si nasce attivi),
+#     si cambia dopo. Le identita' scelte alla nascita e fissate dopo
+#     (magazzino_id dell'ubicazione, articolo_id di lotto e seriale) non sono
+#     in nessuna lista: sono argomenti del BB di nascita;
+#   * l'emittente non e' una colonna del form: lo mette il trigger dalla
+#     sessione, o lo passa l'argomento del BB;
+#   * il seriale ha la sola nascita (D-M7): la lista 'modifica' e' vuota
+#     finche' non nasce il suo verbo di modifica;
+#   * un gesto fuori elenco e' una chiamata sbagliata: E_SCRIPT_CHIAMATA_NON_VALIDA.
+#   * STABLE come config.fn_pannello_colonne_scrivibili: legge solo costanti,
+#     ma su una chiamata sbagliata registra e solleva.
+#
+# Presidio: db/pgtap/magazzino/test-colonne-ammesse-e-nascita-anagrafiche-v1.sql (ogni
+# colonna elencata esiste, nessuna e' di sistema, il gesto sbagliato solleva).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261122-01-create-fn-colonne-ammesse-anagrafiche-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20261122-01-create-fn-colonne-ammesse-anagrafiche-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea le quattro funzioni delle colonne ammesse delle anagrafiche di magazzino
+        (magazzini, ubicazioni, lotti, assets), con il gesto crea o modifica: sede unica della
+        lista, letta dai BB di nascita, dai verbi di modifica e dal backend.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_magazzini_colonne_ammesse(p_gesto text)
+               RETURNS text[]
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              BEGIN
+                  -- Scopo: le colonne di magazzino.magazzini che una persona
+                  --   compila nel gesto (crea | modifica), in ordine di tabella.
+                  CASE p_gesto
+                      WHEN 'crea' THEN
+                          RETURN ARRAY['codice', 'descrizione', 'indirizzo_dettaglio_id',
+                                       'predefinito', 'meta', 'usa_ubicazioni'];
+                      WHEN 'modifica' THEN
+                          RETURN ARRAY['codice', 'descrizione', 'indirizzo_dettaglio_id',
+                                       'attivo', 'predefinito', 'meta', 'usa_ubicazioni'];
+                      ELSE
+                          PERFORM script.fn_log_and_raise_error(
+                              'magazzino', 'magazzino.fn_magazzini_colonne_ammesse',
+                              'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                              jsonb_build_object('gesto', p_gesto),
+                              NULL::uuid,
+                              'magazzino.fn_magazzini_colonne_ammesse',
+                              'il gesto non e'' crea o modifica');
+                  END CASE;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION magazzino.fn_ubicazioni_colonne_ammesse(p_gesto text)
+               RETURNS text[]
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              BEGIN
+                  -- Scopo: le colonne di magazzino.ubicazioni che una persona
+                  --   compila nel gesto (crea | modifica), in ordine di tabella.
+                  --   magazzino_id e' l'identita' della nascita: non e' in lista.
+                  CASE p_gesto
+                      WHEN 'crea' THEN
+                          RETURN ARRAY['codice', 'descrizione', 'tipo_id', 'parent_id', 'area',
+                                       'corsia', 'scaffale', 'piano', 'posizione', 'meta'];
+                      WHEN 'modifica' THEN
+                          RETURN ARRAY['codice', 'descrizione', 'tipo_id', 'parent_id', 'area',
+                                       'corsia', 'scaffale', 'piano', 'posizione', 'attivo', 'meta'];
+                      ELSE
+                          PERFORM script.fn_log_and_raise_error(
+                              'magazzino', 'magazzino.fn_ubicazioni_colonne_ammesse',
+                              'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                              jsonb_build_object('gesto', p_gesto),
+                              NULL::uuid,
+                              'magazzino.fn_ubicazioni_colonne_ammesse',
+                              'il gesto non e'' crea o modifica');
+                  END CASE;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION magazzino.fn_lotti_colonne_ammesse(p_gesto text)
+               RETURNS text[]
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              BEGIN
+                  -- Scopo: le colonne di magazzino.lotti che una persona
+                  --   compila nel gesto (crea | modifica), in ordine di tabella.
+                  --   articolo_id e' l'identita' della nascita: non e' in lista.
+                  CASE p_gesto
+                      WHEN 'crea' THEN
+                          RETURN ARRAY['codice', 'data_arrivo', 'data_scadenza', 'meta'];
+                      WHEN 'modifica' THEN
+                          RETURN ARRAY['codice', 'data_arrivo', 'data_scadenza', 'attivo', 'meta'];
+                      ELSE
+                          PERFORM script.fn_log_and_raise_error(
+                              'magazzino', 'magazzino.fn_lotti_colonne_ammesse',
+                              'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                              jsonb_build_object('gesto', p_gesto),
+                              NULL::uuid,
+                              'magazzino.fn_lotti_colonne_ammesse',
+                              'il gesto non e'' crea o modifica');
+                  END CASE;
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION magazzino.fn_assets_colonne_ammesse(p_gesto text)
+               RETURNS text[]
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              BEGIN
+                  -- Scopo: le colonne di magazzino.assets (il seriale) che una
+                  --   persona compila nel gesto (crea | modifica), in ordine di
+                  --   tabella. articolo_id ed emittente sono argomenti della
+                  --   nascita. Modifica: nessuna colonna, non c'e' il verbo.
+                  CASE p_gesto
+                      WHEN 'crea' THEN
+                          RETURN ARRAY['seriale', 'billing_account_id', 'meta',
+                                       'stato_id', 'ownership_id'];
+                      WHEN 'modifica' THEN
+                          RETURN ARRAY[]::text[];
+                      ELSE
+                          PERFORM script.fn_log_and_raise_error(
+                              'magazzino', 'magazzino.fn_assets_colonne_ammesse',
+                              'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                              jsonb_build_object('gesto', p_gesto),
+                              NULL::uuid,
+                              'magazzino.fn_assets_colonne_ammesse',
+                              'il gesto non e'' crea o modifica');
+                  END CASE;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_magazzini_colonne_ammesse(text) IS
+                  'Le colonne di magazzino.magazzini che una persona compila nel gesto p_gesto (crea o modifica), nell''ordine della tabella. crea: codice, descrizione, indirizzo_dettaglio_id, predefinito, meta, usa_ubicazioni; modifica: le stesse piu'' attivo. L''emittente non e'' una colonna del form. Sede unica della lista: la leggono magazzino.fn_crea_magazzino, il verbo di modifica del magazzino e il backend. Un gesto diverso: E_SCRIPT_CHIAMATA_NON_VALIDA.';
+
+              COMMENT ON FUNCTION magazzino.fn_ubicazioni_colonne_ammesse(text) IS
+                  'Le colonne di magazzino.ubicazioni che una persona compila nel gesto p_gesto (crea o modifica), nell''ordine della tabella. crea: codice, descrizione, tipo_id, parent_id, area, corsia, scaffale, piano, posizione, meta; modifica: le stesse piu'' attivo. magazzino_id e'' l''identita'' della nascita, argomento del BB, e non e'' in lista. Sede unica della lista: la leggono il BB di nascita, il verbo di modifica e il backend. Un gesto diverso: E_SCRIPT_CHIAMATA_NON_VALIDA.';
+
+              COMMENT ON FUNCTION magazzino.fn_lotti_colonne_ammesse(text) IS
+                  'Le colonne di magazzino.lotti che una persona compila nel gesto p_gesto (crea o modifica), nell''ordine della tabella. crea: codice, data_arrivo, data_scadenza, meta; modifica: le stesse piu'' attivo. articolo_id e'' l''identita'' della nascita, argomento del BB, e non e'' in lista. Sede unica della lista: la leggono il BB di nascita, il verbo di modifica e il backend. Un gesto diverso: E_SCRIPT_CHIAMATA_NON_VALIDA.';
+
+              COMMENT ON FUNCTION magazzino.fn_assets_colonne_ammesse(text) IS
+                  'Le colonne di magazzino.assets (il seriale) che una persona compila nel gesto p_gesto, nell''ordine della tabella. crea: seriale, billing_account_id, meta, stato_id, ownership_id; articolo_id ed emittente sono argomenti del BB di nascita. modifica: nessuna colonna, perche'' il seriale non ha un verbo di modifica. Sede unica della lista: la leggono il BB di nascita e il backend. Un gesto diverso: E_SCRIPT_CHIAMATA_NON_VALIDA.';
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS magazzino.fn_magazzini_colonne_ammesse(text);
+              DROP FUNCTION IF EXISTS magazzino.fn_ubicazioni_colonne_ammesse(text);
+              DROP FUNCTION IF EXISTS magazzino.fn_lotti_colonne_ammesse(text);
+              DROP FUNCTION IF EXISTS magazzino.fn_assets_colonne_ammesse(text);

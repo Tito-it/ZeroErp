@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_widget`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,6 +12,7 @@
 >
 > Approfondimento funzioni:
 >
+> * [ui.trgfn_ui_dashboard_widget_guard_in_uso](/dbzero/ui/funzioni/trgfn_ui_dashboard_widget_guard_in_uso) — un widget proposto da un preset non esce dal pool
 > * [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config) — usa il pool come catalogo, per l'aggiunta dei nuovi e come filtro
 
 ---
@@ -41,27 +42,42 @@ come novità.
 
 ---
 
+### ⛔ Un widget proposto da un preset non esce dal pool
+
+Un preset di dashboard può proporre solo widget del pool della sua dashboard (un vincolo composto sulla
+composizione lo chiede). Togliere dal pool un widget che un preset propone è rifiutato con
+`E_UI_WIDGET_IN_USO`, e il messaggio nomina i preset
+([trgfn_ui_dashboard_widget_guard_in_uso](/dbzero/ui/funzioni/trgfn_ui_dashboard_widget_guard_in_uso)): si
+toglie prima il widget dai preset, o si cancellano i preset, poi dal pool. È la stessa regola delle
+colonne delle liste citate da un preset. Le preferenze non bloccano: una preferenza che nomina un widget
+uscito dal pool lo perde alla risoluzione.
+
+---
+
 ### Una parte, non un'entità
 
 La riga non ha `attivo`, e le due FK sono in eccezione alla regola ATTIVO: un widget nel pool si spegne
 lo stesso, e una dashboard non si ferma sul suo pool. Spegnere il widget lo toglie dalla dashboard alla
 risoluzione. Un widget nel pool non si cancella (FK senza azione), e nemmeno la dashboard.
 
+### Lo scrive solo il migratore
+
+La tabella la possiede il CSV del seed, come il resto del catalogo delle dashboard: l'applicazione la legge
+e non la scrive (ha il solo `SELECT`).
+
 ---
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Togliere un widget dal pool non tocca i preset che lo propongono.** Il preset continua a nominarlo, e la
-  sua data del contenuto non si sposta.
 * **L'ordine di default può essere uguale per due widget.** Nessun vincolo lo impedisce, e l'ordine fra i
   due non è determinato.
-* **L'applicazione ha i privilegi di scrittura** senza che nessun servizio scriva la tabella.
 
 ---
 
 ### Codici errore
 
-La tabella non solleva codici propri. La coppia ripetuta arriva come violazione della chiave primaria.
+* `E_UI_WIDGET_IN_USO` — si toglie dal pool un widget che un preset della dashboard propone.
+* La coppia ripetuta arriva come violazione della chiave primaria.
 
 ---
 
@@ -69,6 +85,8 @@ La tabella non solleva codici propri. La coppia ripetuta arriva come violazione 
 
 * `db/pgtap/ui/test-fn-resolve-dashboard-config.sql` — il catalogo del pool, il widget nuovo aggiunto
   invisibile e contato.
+* `db/pgtap/ui/test-ui-legami-preset-v1.sql` — togliere dal pool un widget proposto è rifiutato col nome
+  del preset; tolto dal preset, esce.
 
 ---
 
@@ -76,6 +94,9 @@ La tabella non solleva codici propri. La coppia ripetuta arriva come violazione 
 
 * 2026-07-21 — nasce la tabella.
 * 2026-11-08 — le due FK entrano in eccezione alla regola ATTIVO.
+* 2026-11-21 — un widget proposto da un preset non esce più dal pool: prima il preset continuava a
+  nominarlo.
+* 2026-11-21 — l'applicazione perde la scrittura: il pool lo scrive solo il migratore.
 
 ---
 

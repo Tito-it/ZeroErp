@@ -12,13 +12,13 @@ dal factory condiviso `build_passaggi_view`
 `vendite_service.get_documento_passaggi`.
 
 Design-of-record:
-[brief-design-genealogia-transiti-vendite.md](../../../dev/work-done/brief-design-genealogia-transiti-vendite.md)
+[brief-design-genealogia-transiti-vendite.md](../../../dev/work-done/2026/brief-design-genealogia-transiti-vendite.md)
 (decisioni G-1..G-11). Modello DB:
-[brief-db-lineage-documenti-vendite.md](../../../dev/work-done/brief-db-lineage-documenti-vendite.md)
+[brief-db-lineage-documenti-vendite.md](../../../dev/work-done/2026/brief-db-lineage-documenti-vendite.md)
 — viste `vendite.vw_documento_lineage{_nodi,_archi,}` +
 `vendite.fn_documento_lineage` (tutte `security_invoker`: RLS emittente del
 chiamante, il BE non passa `auth_user_id`). Piano operativo:
-[brief-be-fe-lineage-documenti-vendite.md](../../../dev/work-done/brief-be-fe-lineage-documenti-vendite.md).
+[brief-be-fe-lineage-documenti-vendite.md](../../../dev/work-done/2026/brief-be-fe-lineage-documenti-vendite.md).
 
 | Dominio | Endpoint | Tipo sorgente |
 |---|---|---|
@@ -212,7 +212,7 @@ ruolo=COLLEGATO`), `avanti` con le eventuali fatture (arco `G`).
 
 Nessuna: endpoint read-only additivo (Fase A del brief lineage). Le colonne
 lineage nelle liste (Fase B) hanno un prerequisito DB dedicato
-([brief-db-liste-lineage-colonne.md](../../../dev/work-done/brief-db-liste-lineage-colonne.md)).
+([brief-db-liste-lineage-colonne.md](../../../dev/work-done/2026/brief-db-liste-lineage-colonne.md)).
 
 ## Consumer FE
 

@@ -88,3 +88,7 @@ databaseChangeLog:
               # ui.fn_resolve_lista_config): piu' alto = resiste piu' a lungo
               # allo stringersi dello schermo. NOT NULL, mai cella vuota.
               - column: { name: priorita,             type: NUMERIC }
+              # Da dove la colonna legge il campo (colonna da 20261120-43,
+              # brief-db-revisione-ui giro 4, Q15): VISTA (default) o LINEAGE, sulle
+              # sei colonne «transito» delle liste documentali. Colonna del software.
+              - column: { name: origine_campo,        type: STRING }

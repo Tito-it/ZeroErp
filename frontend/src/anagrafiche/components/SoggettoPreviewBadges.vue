@@ -44,7 +44,6 @@ const props = defineProps({
     validator: v => v === null || ['cliente', 'fornitore'].includes(v),
   },
   entitaIdWeb: { type: [Number, String], default: null },
-  emailInizialeWeb: { type: String, default: '' },
 })
 
 // I contributi al punto si caricano ora, non quando il punto si monta.
@@ -139,7 +138,6 @@ watch(activeDrawer, (newVal, oldVal) => {
       :punto="PUNTI_ESTENSIONE.SOGGETTO_ANTEPRIMA_BADGE"
       :entita-tipo-web="entitaTipoWeb"
       :entita-id-web="entitaIdWeb"
-      :email-iniziale-web="emailInizialeWeb"
       :preview="preview"
     />
 

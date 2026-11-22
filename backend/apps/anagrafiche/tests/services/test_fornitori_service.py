@@ -22,6 +22,13 @@ Indice test eseguiti:
  8) test_update_fornitore_ok — aggiorna campi editabili
  9) test_update_fornitore_not_found — id inesistente → E_ANAG_NOT_FOUND
  9b) test_update_fornitore_vuoto_e_400 — PATCH vuoto su fornitore esistente → 400, non 404 (2026-10-14)
+ 9c) test_update_fornitore_campi_del_soggetto_sono_400 — i doppioni usciti il 2026-11-21 → 400, nessuna scrittura
+10) test_crea_fornitore_regime_alla_madre — `regime_fiscale_rf` arriva alla madre col suo nome
+10b) test_crea_fornitore_regime_fuori_catalogo_e_400 — FK `fk_fornitori_regimi_fiscali` → 400 sul campo
+10c) test_crea_fornitore_altra_fk_rilancia — un'altra FK non e' un errore di regime: rilanciata
+10d) test_update_fornitore_regime_fuori_catalogo_e_400 — la stessa FK nella PATCH → 400 sul campo
+11) test_crea_fornitore_chiavi_ignote_sono_400 — `regime_fiscale` e i doppioni → 400, la madre non parte
+11b) test_crea_fornitore_payload_del_drawer_ammesso — le chiavi che il drawer manda passano tutte
 """
 
 from unittest import TestCase
@@ -30,6 +37,7 @@ from unittest.mock import patch
 from django.db import IntegrityError
 
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests.db_error_fakes import make_integrity_error
 
 
 FORN_REPO = "apps.anagrafiche.services.fornitori_service.FornitoriRepository"
@@ -50,10 +58,9 @@ def _fornitore_detail():
         "valuta_id": 1, "valuta_iso": "EUR",
         "modalita_pagamento_id": None, "modalita_pagamento_descrizione": None,
         "termine_pagamento_id": None, "termine_pagamento_descrizione": None,
-        "giorni_pagamento": 30, "fine_mese": True,
-        "split_payment": False, "ritenuta_acconto": False,
-        "ritenuta_aliquota": None, "regime_fiscale": "RF01",
-        "bollo_esente": False, "canale_fe": "0000000", "pec_email": "acme@pec.it",
+        "ritenuta_acconto": False,
+        "ritenuta_aliquota": None,
+        "regime_fiscale_rf": "RF01", "regime_fiscale_descrizione": "Ordinario",
         "rating": 80, "qualifica_scadenza": None,
         "stato_codice_interno": "AT", "stato_codice": "AT", "stato_descrizione": "Attivo", "blocca_ordini": False,
         "note": None, "data_insert": "2026-01-01", "data_update": "2026-01-01",
@@ -124,7 +131,6 @@ class TestFornitoriCreazione(TestCase):
         payload = _base_payload(
             valuta_id=1, modalita_pagamento_id=3,
             ritenuta_acconto=True, ritenuta_aliquota=20.0,
-            canale_fe="0000000", pec_email="test@pec.it",
         )
         result = FornitoriService().crea_fornitore(payload)
         self.assertEqual(result["id"], 2)
@@ -197,6 +203,69 @@ class TestFornitoriCreazione(TestCase):
         with self.assertRaises(IntegrityError):
             FornitoriService().crea_fornitore(_base_payload())
 
+    @patch(FORN_REPO, autospec=True)
+    def test_crea_fornitore_regime_alla_madre(self, mock_repo):
+        """Il regime viaggia come `regime_fiscale_rf` (la chiave di `fn_crea_fornitore`
+        dal 2026-11-21): con il nome vecchio la madre risponderebbe E_CAMPO_NON_AMMESSO."""
+        mock_repo.return_value.crea_fornitore.return_value = (2, 50)
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+        FornitoriService().crea_fornitore(_base_payload(regime_fiscale_rf="RF19"))
+        campi = mock_repo.return_value.crea_fornitore.call_args.args[1]
+        self.assertEqual(campi["regime_fiscale_rf"], "RF19")
+        self.assertNotIn("regime_fiscale", campi)
+
+    @patch(FORN_REPO, autospec=True)
+    def test_crea_fornitore_regime_fuori_catalogo_e_400(self, mock_repo):
+        """⛔ Un codice fuori da config.regimi_fiscali: 400 sul campo, non 500 ne' «riferimento
+        non valido» senza campo."""
+        mock_repo.return_value.crea_fornitore.side_effect = make_integrity_error(
+            "23503", vincolo="fk_fornitori_regimi_fiscali",
+        )
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+        with self.assertRaises(ServiceError) as ctx:
+            FornitoriService().crea_fornitore(_base_payload(regime_fiscale_rf="RF99"))
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        self.assertEqual(ctx.exception.context.get("field"), "regime_fiscale_rf")
+
+    @patch(FORN_REPO, autospec=True)
+    def test_crea_fornitore_chiavi_ignote_sono_400(self, mock_repo):
+        """⛔ Fino al 2026-11-21 la creazione scartava in silenzio le chiavi ignote:
+        `regime_fiscale` (il nome vecchio) creava un fornitore senza regime, con 200."""
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+        for campo, valore in (
+            ("regime_fiscale", "RF01"), ("split_payment", True), ("canale_fe", "0000000"),
+            ("pec_email", "x@pec.it"), ("bollo_esente", True), ("giorni_pagamento", 30),
+            ("fine_mese", True), ("stato_fornitore_id", 2),
+        ):
+            with self.subTest(campo=campo):
+                with self.assertRaises(ServiceError) as ctx:
+                    FornitoriService().crea_fornitore(_base_payload(**{campo: valore}))
+                self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        mock_repo.return_value.crea_fornitore.assert_not_called()
+
+    @patch(FORN_REPO, autospec=True)
+    def test_crea_fornitore_payload_del_drawer_ammesso(self, mock_repo):
+        """Le chiavi che FornitoreDrawer.vue manda in creazione passano tutte."""
+        mock_repo.return_value.crea_fornitore.return_value = (2, 50)
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+        FornitoriService().crea_fornitore(_base_payload(
+            codice="FO-9", valuta_id=1, modalita_pagamento_id=3, termine_pagamento_id=1,
+            ritenuta_acconto=False, ritenuta_aliquota=None, regime_fiscale_rf="RF01",
+            rating=50, qualifica_scadenza="2026-12-31", note="n",
+            contatto=None, indirizzi=[],
+        ))
+        mock_repo.return_value.crea_fornitore.assert_called_once()
+
+    @patch(FORN_REPO, autospec=True)
+    def test_crea_fornitore_altra_fk_rilancia(self, mock_repo):
+        """La traduzione del regime riconosce la SUA FK: un'altra si rilancia com'e'."""
+        mock_repo.return_value.crea_fornitore.side_effect = make_integrity_error(
+            "23503", vincolo="fk_fornitori_valute",
+        )
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+        with self.assertRaises(IntegrityError):
+            FornitoriService().crea_fornitore(_base_payload(valuta_id=999))
+
 
 # =================================================================
 # Aggiornamento
@@ -232,6 +301,41 @@ class TestFornitoriUpdate(TestCase):
             FornitoriService().update_fornitore(1, {})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.update_fornitore.assert_not_called()
+
+    @patch(FORN_REPO, autospec=True)
+    def test_update_fornitore_campi_del_soggetto_sono_400(self, mock_repo):
+        """⛔ I doppioni del soggetto usciti dal fornitore il 2026-11-21
+        (split payment, canale FE, PEC, bollo; giorni e fine mese stanno nel
+        termine): un PATCH che li porta e' un 400, mai una scrittura sulla
+        colonna rimasta a DB."""
+        mock_repo.return_value.get_fornitore.return_value = _fornitore_detail()
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+        for campo, valore in (
+            ("giorni_pagamento", 30), ("fine_mese", True),
+            ("split_payment", True), ("bollo_esente", True),
+            ("canale_fe", "0000000"), ("pec_email", "x@pec.it"),
+            # Rinominato `regime_fiscale_rf` (FK sul catalogo) il 2026-11-21.
+            ("regime_fiscale", "RF01"),
+        ):
+            with self.subTest(campo=campo):
+                with self.assertRaises(ServiceError) as ctx:
+                    FornitoriService().update_fornitore(1, {campo: valore})
+                self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        mock_repo.return_value.update_fornitore.assert_not_called()
+
+
+    @patch(FORN_REPO, autospec=True)
+    def test_update_fornitore_regime_fuori_catalogo_e_400(self, mock_repo):
+        """La stessa FK nella PATCH: 400 sul campo `regime_fiscale_rf`."""
+        mock_repo.return_value.get_fornitore.return_value = _fornitore_detail()
+        mock_repo.return_value.update_fornitore.side_effect = make_integrity_error(
+            "23503", vincolo="fk_fornitori_regimi_fiscali",
+        )
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+        with self.assertRaises(ServiceError) as ctx:
+            FornitoriService().update_fornitore(1, {"regime_fiscale_rf": "RF99"})
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        self.assertEqual(ctx.exception.context.get("field"), "regime_fiscale_rf")
 
 
 class TestResolveFiltriExportLabel(TestCase):

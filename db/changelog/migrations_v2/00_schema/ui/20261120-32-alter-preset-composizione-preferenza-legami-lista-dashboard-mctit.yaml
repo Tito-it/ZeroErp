@@ -1,0 +1,178 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui: preset, composizioni, pool e preferenze legati per costruzione alla loro
+#   lista o dashboard.
+#   Brief: brief-db-revisione-ui (giro 2b: U14 con Q8 e Q41 (a), decise da Tid
+#   il 2026-11-18 e il 2026-11-21).
+#
+# I quattro legami che il modello chiedeva e nessun vincolo teneva (U14):
+#   1) la colonna di un preset e' una colonna della lista del preset;
+#   2) il widget di un preset di dashboard e' nel pool di quella dashboard;
+#   3) il preset di base di una preferenza e' un preset della sua lista (o
+#      dashboard);
+#   4) (la testata del preset che non cambia posto: lucchetto di colonna, in
+#      80_data/sql/dbops/automation_lock_columns.csv e 90_end/20261120-35).
+# La forma (Q41 (a)): una colonna lista_id su ui.lista_preset_colonna e
+#   dashboard_id su ui.dashboard_preset_widget, scritte dal DB dal preset (il
+#   trigger in 20261120-33), e le FK composite, che valgono da tutti e due i
+#   lati: anche un cambio di lista_id della colonna referenziata e' rifiutato.
+#   Gli UNIQUE (id, lista_id) e (id, dashboard_id) che le FK chiedono.
+# ⭐ Le FK di oggi RESTANO, coi loro nomi: il BE ne mappa una per nome
+#   (fk_lista_preset_colonna_lista_colonna, il rifiuto della cancellazione di
+#   una colonna in uso, BE4), le eccezioni ATTIVO e la policy degli indici FK
+#   sono scritte su di loro, e il framework ATTIVO legge solo le FK a una
+#   colonna. Le composite si aggiungono accanto: dicono il legame, quelle di
+#   oggi l'esistenza. ON DELETE come le gemelle: CASCADE dal preset alla
+#   composizione, SET NULL (preset_base_id) sulla preferenza, NO ACTION verso
+#   la colonna e il pool (il DELETE dal pool lo rifiuta prima il guard di
+#   20261120-34, Q8).
+# Gli indici: le composite non hanno un indice proprio; le colonne di ricerca
+#   sono gia' coperte (le PK per preset_id, gli indici delle FK singole per
+#   colonna_id, widget_id, preset_base_id). La policy le dichiara SENZA_INDICE
+#   col motivo (80_data/sql/dbops/fk_index_policy.csv).
+# Bonifica prima dei vincoli (il modello ammette le righe incrociate, anche se
+#   oggi non ce ne sono: fatto datato, dbdev, 2026-11-21, zero righe sui quattro
+#   legami): la composizione che nomina una colonna di un'altra lista, o un
+#   widget fuori dal pool, si toglie; la preferenza con la base di un'altra
+#   lista torna senza base (e senza snapshot). Coi trigger spenti per nome: non
+#   e' una scrittura di dominio, e la data del contenuto non deve spostarsi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20261120-32-alter-preset-composizione-preferenza-legami-lista-dashboard-mctit.yaml
+
+  - changeSet:
+      id: 20261120-32-alter-preset-composizione-preferenza-legami-lista-dashboard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui: lista_id e dashboard_id sulle composizioni dei preset, FK composite verso preset, colonna, pool e
+        preset di base. Brief: brief-db-revisione-ui (giro 2b, U14, Q8, Q41).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE ((attrelid = to_regclass('ui.lista_preset_colonna') AND attname = 'lista_id')
+                   OR (attrelid = to_regclass('ui.dashboard_preset_widget') AND attname = 'dashboard_id'))
+                 AND attnum > 0 AND NOT attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- DML e ALTER TABLE sulle stesse tabelle (linee-guida-sql §11.12).
+              SET CONSTRAINTS ALL IMMEDIATE;
+
+              ALTER TABLE ui.lista_preset_colonna    ADD COLUMN lista_id     integer;
+              ALTER TABLE ui.dashboard_preset_widget ADD COLUMN dashboard_id integer;
+
+              DO $do$
+              DECLARE
+                  -- i trigger accesi delle quattro tabelle, colonna per colonna di pg_trigger
+                  v_tabelle pg_catalog.pg_trigger.tgrelid%TYPE[];
+                  v_nomi    pg_catalog.pg_trigger.tgname%TYPE[];
+                  v_modi    pg_catalog.pg_trigger.tgenabled%TYPE[];
+                  -- integer: un indice di ciclo, non il riflesso di una colonna
+                  i         integer;
+              BEGIN
+                  SELECT array_agg(t.tgrelid   ORDER BY t.tgrelid, t.tgname),
+                         array_agg(t.tgname    ORDER BY t.tgrelid, t.tgname),
+                         array_agg(t.tgenabled ORDER BY t.tgrelid, t.tgname)
+                    INTO v_tabelle, v_nomi, v_modi
+                    FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid IN ('ui.lista_preset_colonna'::regclass,
+                                       'ui.dashboard_preset_widget'::regclass,
+                                       'ui.lista_preferenza_utente'::regclass,
+                                       'ui.dashboard_preferenza_utente'::regclass)
+                     AND NOT t.tgisinternal
+                     AND t.tgenabled <> 'D';
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE %s DISABLE TRIGGER %I', v_tabelle[i]::regclass, v_nomi[i]);
+                  END LOOP;
+
+                  -- Il contenitore dal preset.
+                  UPDATE ui.lista_preset_colonna pc
+                     SET lista_id = lp.lista_id
+                    FROM ui.lista_preset lp
+                   WHERE lp.id = pc.preset_id;
+                  UPDATE ui.dashboard_preset_widget pw
+                     SET dashboard_id = dp.dashboard_id
+                    FROM ui.dashboard_preset dp
+                   WHERE dp.id = pw.preset_id;
+
+                  -- Le righe incrociate escono.
+                  DELETE FROM ui.lista_preset_colonna pc
+                   WHERE NOT EXISTS (SELECT 1 FROM ui.lista_colonna lc
+                                      WHERE lc.id = pc.colonna_id AND lc.lista_id = pc.lista_id);
+                  DELETE FROM ui.dashboard_preset_widget pw
+                   WHERE NOT EXISTS (SELECT 1 FROM ui.dashboard_widget dw
+                                      WHERE dw.dashboard_id = pw.dashboard_id AND dw.widget_id = pw.widget_id);
+                  UPDATE ui.lista_preferenza_utente pu
+                     SET preset_base_id = NULL, preset_base_contenuto_aggiornato_il = NULL
+                   WHERE pu.preset_base_id IS NOT NULL
+                     AND NOT EXISTS (SELECT 1 FROM ui.lista_preset lp
+                                      WHERE lp.id = pu.preset_base_id AND lp.lista_id = pu.lista_id);
+                  UPDATE ui.dashboard_preferenza_utente pu
+                     SET preset_base_id = NULL, preset_base_contenuto_aggiornato_il = NULL
+                   WHERE pu.preset_base_id IS NOT NULL
+                     AND NOT EXISTS (SELECT 1 FROM ui.dashboard_preset dp
+                                      WHERE dp.id = pu.preset_base_id AND dp.dashboard_id = pu.dashboard_id);
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE %s ENABLE %s TRIGGER %I', v_tabelle[i]::regclass,
+                                     CASE v_modi[i] WHEN 'R' THEN 'REPLICA' WHEN 'A' THEN 'ALWAYS' ELSE '' END,
+                                     v_nomi[i]);
+                  END LOOP;
+              END
+              $do$;
+
+              ALTER TABLE ui.lista_preset_colonna    ALTER COLUMN lista_id     SET NOT NULL;
+              ALTER TABLE ui.dashboard_preset_widget ALTER COLUMN dashboard_id SET NOT NULL;
+
+              -- Le chiavi che le FK composite referenziano.
+              ALTER TABLE ui.lista_preset     ADD CONSTRAINT uq_ui_lista_preset_id_lista         UNIQUE (id, lista_id);
+              ALTER TABLE ui.lista_colonna    ADD CONSTRAINT uq_ui_lista_colonna_id_lista        UNIQUE (id, lista_id);
+              ALTER TABLE ui.dashboard_preset ADD CONSTRAINT uq_ui_dashboard_preset_id_dashboard UNIQUE (id, dashboard_id);
+
+              ALTER TABLE ui.lista_preset_colonna
+                  ADD CONSTRAINT fk_ui_lista_preset_colonna_preset_della_lista
+                      FOREIGN KEY (preset_id, lista_id) REFERENCES ui.lista_preset (id, lista_id) ON DELETE CASCADE,
+                  ADD CONSTRAINT fk_ui_lista_preset_colonna_colonna_della_lista
+                      FOREIGN KEY (colonna_id, lista_id) REFERENCES ui.lista_colonna (id, lista_id);
+              ALTER TABLE ui.dashboard_preset_widget
+                  ADD CONSTRAINT fk_ui_dashboard_preset_widget_preset_della_dashboard
+                      FOREIGN KEY (preset_id, dashboard_id) REFERENCES ui.dashboard_preset (id, dashboard_id) ON DELETE CASCADE,
+                  ADD CONSTRAINT fk_ui_dashboard_preset_widget_pool
+                      FOREIGN KEY (dashboard_id, widget_id) REFERENCES ui.dashboard_widget (dashboard_id, widget_id);
+              ALTER TABLE ui.lista_preferenza_utente
+                  ADD CONSTRAINT fk_ui_lista_preferenza_utente_preset_della_lista
+                      FOREIGN KEY (preset_base_id, lista_id) REFERENCES ui.lista_preset (id, lista_id)
+                      ON DELETE SET NULL (preset_base_id);
+              ALTER TABLE ui.dashboard_preferenza_utente
+                  ADD CONSTRAINT fk_ui_dashboard_preferenza_utente_preset_della_dashboard
+                      FOREIGN KEY (preset_base_id, dashboard_id) REFERENCES ui.dashboard_preset (id, dashboard_id)
+                      ON DELETE SET NULL (preset_base_id);
+
+              COMMENT ON COLUMN ui.lista_preset_colonna.lista_id IS
+                  'La lista del preset, scritta dal database (ui.trgfn_preset_riga_contenitore): chi scrive la riga non la passa, e un valore passato è sostituito. Serve ai due legami: la riga appartiene a un preset di quella lista (fk_ui_lista_preset_colonna_preset_della_lista) e nomina una colonna di quella lista (fk_ui_lista_preset_colonna_colonna_della_lista).';
+              COMMENT ON COLUMN ui.dashboard_preset_widget.dashboard_id IS
+                  'La dashboard del preset, scritta dal database (ui.trgfn_preset_riga_contenitore): chi scrive la riga non la passa, e un valore passato è sostituito. Serve ai due legami: la riga appartiene a un preset di quella dashboard (fk_ui_dashboard_preset_widget_preset_della_dashboard) e propone un widget del suo pool (fk_ui_dashboard_preset_widget_pool).';
+              COMMENT ON CONSTRAINT fk_ui_lista_preset_colonna_colonna_della_lista ON ui.lista_preset_colonna IS
+                  'La colonna di un preset è una colonna della lista del preset. Vale anche dall''altro lato: la lista di una colonna che un preset nomina non cambia.';
+              COMMENT ON CONSTRAINT fk_ui_dashboard_preset_widget_pool ON ui.dashboard_preset_widget IS
+                  'Il widget di un preset di dashboard è nel pool di quella dashboard (ui.dashboard_widget). Il DELETE dal pool di un widget proposto lo rifiuta prima il guard del pool, col nome dei preset.';
+              COMMENT ON CONSTRAINT fk_ui_lista_preferenza_utente_preset_della_lista ON ui.lista_preferenza_utente IS
+                  'Il preset di base di una preferenza è un preset della sua lista; cancellato il preset, la preferenza resta senza base.';
+              COMMENT ON CONSTRAINT fk_ui_dashboard_preferenza_utente_preset_della_dashboard ON ui.dashboard_preferenza_utente IS
+                  'Il preset di base di una preferenza è un preset della sua dashboard; cancellato il preset, la preferenza resta senza base.';

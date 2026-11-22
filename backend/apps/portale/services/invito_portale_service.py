@@ -135,30 +135,56 @@ class InvitoPortaleService:
     # (CLIENTE_PORTALE + SHOP_CUSTOMER). Un admin lo usa dal drawer per
     # decidere se "invita" (stato NESSUNO), "reinvia" (PENDING), "disattiva"
     # (ATTIVO) o "reinvia per riattivare" (DISATTIVO).
+    # `email_suggerita`: l'email con cui il pannello precompila l'invito
+    # (`_email_suggerita`).
     def get_stato_accessi_cliente(self, cliente_id: int) -> dict[str, Any]:
         info = self._cliente_info(cliente_id)
         soggetto_ruolo_id = int(info["soggetto_ruolo_id"])
+        portale = self._repo.get_stato_identita(
+            soggetto_ruolo_id,
+            RUOLO_APPLICATIVO_CLIENTE_PORTALE,
+        )
+        shop = self._repo.get_stato_identita(
+            soggetto_ruolo_id,
+            RUOLO_APPLICATIVO_SHOP_CUSTOMER,
+        )
         return {
-            "portale": self._repo.get_stato_identita(
-                soggetto_ruolo_id,
-                RUOLO_APPLICATIVO_CLIENTE_PORTALE,
-            ),
-            "shop": self._repo.get_stato_identita(
-                soggetto_ruolo_id,
-                RUOLO_APPLICATIVO_SHOP_CUSTOMER,
-            ),
+            "portale": portale,
+            "shop": shop,
+            "email_suggerita": self._email_suggerita(info, portale, shop),
         }
 
     # Scopo: Stato aggregato delle vesti non-operatore di un fornitore
     # (solo FORNITORE_PORTALE; i fornitori non accedono allo shop B2C).
     def get_stato_accessi_fornitore(self, fornitore_id: int) -> dict[str, Any]:
         info = self._fornitore_info(fornitore_id)
+        portale = self._repo.get_stato_identita(
+            int(info["soggetto_ruolo_id"]),
+            RUOLO_APPLICATIVO_FORNITORE_PORTALE,
+        )
         return {
-            "portale": self._repo.get_stato_identita(
-                int(info["soggetto_ruolo_id"]),
-                RUOLO_APPLICATIVO_FORNITORE_PORTALE,
-            ),
+            "portale": portale,
+            "email_suggerita": self._email_suggerita(info, portale),
         }
+
+    # Scopo: L'email da proporre nell'invito, una regola per cliente e
+    #        fornitore: (1) quella dell'identita' che esiste gia' (il reinvio
+    #        la riusa; per il cliente prima la veste portale, poi lo shop);
+    #        (2) quella dei contatti del ruolo, PRINCIPALE poi `is_default`
+    #        (`PortaleRepository.get_email_contatto_suggerita`); (3) None, e
+    #        l'operatore la scrive. Nata il 2026-11-21: fino ad allora il
+    #        drawer passava un'email iniziale che sul cliente non esisteva
+    #        (`soggetto_email`) e sul fornitore era la PEC ritirata.
+    def _email_suggerita(
+        self, info: dict[str, Any], *stati_vesti: dict[str, Any],
+    ) -> str | None:
+        for stato in stati_vesti:
+            email = (stato.get("email") or "").strip()
+            if email:
+                return email
+        return self._repo.get_email_contatto_suggerita(
+            str(info["soggetto_id"]), int(info["soggetto_ruolo_id"]),
+        )
 
     # Scopo: Disattiva (soft-revoke) una veste di un cliente/fornitore.
     # Invalida anche i token ancora pendenti per quella veste: se un invito

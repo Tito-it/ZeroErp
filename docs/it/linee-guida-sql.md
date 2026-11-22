@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -69,6 +69,7 @@ Uniformità e chiarezza nel codice DDL:
 | **Schema**        | minuscolo, plurale                 | `anagrafiche`, `config`, `dbops`      |
 | **Tabella**       | nome plurale, snake_case           | `soggetti`, `gestori_utilities_ruoli` |
 | **Colonna PK**    | `id`                               | `id UUID`, `id SERIAL`                |
+| **Colonna FK**    | `<cosa>_id` se porta un id (§2)    | `articolo_id`, `magazzino_da_id`      |
 | **Sequenza**      | `<table>_id_seq`                   | `storico.comuni_id_seq`               |
 | **Indice**        | `ix_<table>_<column>`              | `ix_contatti_soggetto`                |
 | **Vista**         | prefisso `vw_`                     | `vw_clienti_attivi`                   |
@@ -106,6 +107,37 @@ della rinomina li rinomina tutti (`RENAME CONSTRAINT`, `ALTER SEQUENCE … RENAM
 `plpgsql`.** Il trigger si ricrea senza la colonna in un changeSet con numero inferiore a quello
 del `DROP`, e i corpi che la nominano si riscrivono prima: un riferimento morto in un corpo non
 ferma il `DROP`, e fallisce alla prima chiamata.
+
+### ⛔ La colonna FK dice che cosa porta: `_id` se e solo se porta un id
+
+**Regola (decisione di Tid del 2026-11-21): il nome di una colonna FK finisce in `_id` se e solo se
+la colonna del padre a cui punta porta un id** (`id`, o una colonna che a sua volta finisce in
+`_id`). Vale nei due versi:
+
+* una FK verso un id si chiama `<cosa>_id`, col suffisso **in fondo**. Il nome dice che cosa è il padre,
+  al singolare o col suo ruolo: `articolo_id`, `magazzino_da_id`, `emittente_soggetto_ruolo_id`.
+  ❌ `id_lingua`, `magazzino_id_from`, `categoria_cliente_id_snapshot`: il suffisso va in fondo, e la
+  variante sta prima (`categoria_cliente_snapshot_id`);
+* una FK verso un codice (`codice_interno`, `codice`, una chiave naturale) **non** finisce in `_id`:
+  si chiama come la cosa che porta (`esito`, `causale_magazzino`, `regime_fiscale_rf`). ❌ `lingua_id`
+  verso `config.lingue.codice_iso`: il suffisso direbbe un id, e la colonna porta un codice.
+
+Il criterio è la colonna **referenziata**, non la PK del padre: `emittente_soggetto_ruolo_id` punta
+alla UNIQUE `anagrafiche.emittenti_fiscali.soggetto_ruolo_id`, che non è la PK ma porta un id, e il
+nome dice il vero.
+
+Il motivo sta nel modello: il nome di una colonna è il suo contratto per chi legge. Un `_id` che porta un
+codice, o un id nascosto in mezzo al nome, fa sbagliare il join e il tipo a chi legge, e fa sbagliare gli
+strumenti che leggono i nomi.
+
+**I nomi storici restano** (decisione di Tid del 2026-11-21): la regola vale per le FK nuove, e le FK di
+oggi fuori regola non si rinominano, perché il rinomino costa al backend e al frontend. Le FK storiche
+stanno in un elenco congelato, ciascuna col suo motivo; una FK nuova fuori regola non ci entra.
+Il presidio è `db/pgtap/dbops/test-fk-nome-dice-cosa-porta-v1.sql`: confronta ogni FK a una colonna
+con l'elenco congelato, nei due versi, e chiede che ogni voce dell'elenco esista e sia ancora fuori
+regola. Una FK nuova fuori regola lo fa diventare rosso; una FK storica rinominata esce dall'elenco
+nello stesso giro. Guarda le FK proprie: una FK che una partizione eredita dalla radice ha il nome
+della radice.
 
 ### L'emittente si nomina col suo ruolo: `emittente_soggetto_ruolo_id`
 
@@ -161,7 +193,8 @@ lo riceverà in questa forma (D8 del documento di valutazione).
 ## 4. Eccezioni e Alternative
 
 * **UUID vs SERIAL**: usare UUID quando serve unicità globale o sharding; SERIAL su tabelle di log e storicizzazione.
-* **Foreign Key con composti**: preferire surrogate key (`id`) e colonne FK (`<table>_id`) piuttosto che chiavi composte.
+* **Foreign Key con composti**: preferire surrogate key (`id`) a chiavi composte. Il nome della colonna FK non è
+  una preferenza: è la regola di §2, «La colonna FK dice che cosa porta».
 * **Campi tecnici**: evitare prefissi in `dbops`; usare solo `vw_...` e `fn_...` per uniformità
 
 ---
@@ -306,7 +339,7 @@ pulsante nel frontend?»**. Se si', il predicato va in una `fn_check_*` e il
 guard la CHIAMA (§12.5.2) — e allora ti ritrovi i motivi in mano. Se no,
 valuti li' e sollevi il codice diretto.
 
-Brief: `docs/it/dev/work-done/brief-db-coda-primo-motivo-in-un-posto-solo.md`.
+Brief: `docs/it/dev/work-done/2026/brief-db-coda-primo-motivo-in-un-posto-solo.md`.
 
 #### Il bersaglio — *«su quale cosa»*, e perché non va nella frase
 
@@ -352,7 +385,7 @@ perde, e lascia un `W_BERSAGLIO_MALFORMATO` nel log.
 in 16 punti, dove porta il **nome di una tabella**.
 
 Piano e decisioni:
-[brief-db-bersaglio-errore.md](dev/work-done/brief-db-bersaglio-errore.md).
+[brief-db-bersaglio-errore.md](dev/work-done/2026/brief-db-bersaglio-errore.md).
 
 ⚠️ Il terzo è quello che sfugge, perché **non lo vede nessun cancello**: il codice
 è registrato, la classe c'è, il campo viaggia — e il messaggio è illeggibile lo
@@ -470,10 +503,10 @@ delle scritture precedenti sopravviva).
 > l'elenco di cosa **esclude**, è nell'intestazione di `scripts/testpgtap.sh`.
 >
 > Guida operativa: [pgtap-come-si-scrive-un-test](/guide/pgtap-come-si-scrive-un-test) ·
-> storia e misure: `docs/it/dev/work-done/brief-db-pgtap-runner-rls-baseline.md`.
+> storia e misure: `docs/it/dev/work-done/2026/brief-db-pgtap-runner-rls-baseline.md`.
 
 > Caso di studio completo, catalogo dei finding e criterio esteso (madre DB *vs* `transaction.atomic()`
-> *vs* outbox): [analisi-fix-transazioni](/dev/work-done/analisi-fix-transazioni).
+> *vs* outbox): [analisi-fix-transazioni](/dev/work-done/2026/analisi-fix-transazioni).
 
 ---
 
@@ -484,7 +517,7 @@ quando legge tabelle che altri possono rinominare o mettere sotto RLS. Così le 
 stanno in `pg_depend`: una rinomina a monte viene **rifiutata** (il presidio dei riferimenti morti
 compila solo il plpgsql), e la catena vista → funzione → tabelle resta leggibile dal criterio di
 `rls/test-rls-viste-security-invoker`. Nasce col `20260921-21` (`fn_partite_merce`,
-[brief-db-partita-merce-per-documento](/dev/work-done/brief-db-partita-merce-per-documento) §2-bis.3);
+[brief-db-partita-merce-per-documento](/dev/work-done/2026/brief-db-partita-merce-per-documento) §2-bis.3);
 oggi la usano la partita e la situazione merce, la lineage, la diagnosi del push, i lettori delle
 vesti.
 
@@ -511,7 +544,7 @@ colonna, ogni chiamata fallisce con «troppe colonne» senza che nessuna migrazi
   `prosrc` **non vede queste funzioni** e risponde «zero occorrenze». Si cerca nel testo di
   `pg_get_functiondef(oid)`, che le copre tutte. Successo al censimento del lotto 2a della
   grammatica unica: quattro funzioni mai viste
-  ([brief-db-grammatica-unica-documenti](/dev/work-done/brief-db-grammatica-unica-documenti)
+  ([brief-db-grammatica-unica-documenti](/dev/work-done/2026/brief-db-grammatica-unica-documenti)
   §12.3).
 * **⛔ Un valore passato come argomento di trigger non sta in nessun corpo.** Quando la funzione
   trigger è generica (`script.trgfn_lock_columns`), codice d'errore e colonne stanno in
@@ -584,7 +617,7 @@ un marcatore di revisione (`rev`), l'id di un changeSet, l'hash di un commit.
   (dal `20261111-18`) non le porta, in nessuno schema. Ferma il debito **nuovo**; il pregresso non
   blocca. Un'eccezione vera si dichiara in testa al file: `# comment-al-presente: ammesso — <perché>`.
 * `db/pgtap/dbops/test-comment-al-presente-v1.sql`, sul database vivo: nessun COMMENT degli schemi
-  la cui famiglia è riscritta (`dbops`, `maintenance`, `catalogo`, `documenti`), degli oggetti fuori
+  la cui famiglia è riscritta (`dbops`, `maintenance`, `catalogo`, `documenti`, `ui`), degli oggetti fuori
   schema riscritti con loro, né di quelli che `dbops.fn_storico_arma_scope` scrive sulle shadow di
   `storico`, le porta. Uno schema entra nella lista del file quando la sua famiglia è riscritta: il
   presidio è uno, col perimetro in elenco, non un file per schema. ⚠️ Lo schema di un trigger e di una
@@ -795,7 +828,7 @@ grep -rEn "[^_]codice[[:space:]]+AS[[:space:]]+[a-z_]*codice_interno\b" db/ && e
 
 > **Bonifica completata (2026-06-28)**: i mislabel DB sono stati corretti (sweep
 > `20260628-02..11`) e la regola è applicata da un guardrail CI bloccante
-> (`scripts/sql/check_naming_stato_codice.sql`). Storia in [brief-naming-stato-codice-interno.md](dev/work-done/brief-naming-stato-codice-interno.md).
+> (`scripts/sql/check_naming_stato_codice.sql`). Storia in [brief-naming-stato-codice-interno.md](dev/work-done/2026/brief-naming-stato-codice-interno.md).
 
 ⚠️ **Il guardrail legge le definizioni vive del database**: un alias infedele scritto in una query
 del backend non lo vede. Quando una traduzione duplicata passa dal backend a una vista entra nella
@@ -823,7 +856,7 @@ WHERE s.codice_interno  = 'PREVENTIVO'   -- ✅ chiave immutabile
 0 righe, state-machine che non risolve, documento che non si genera, **in silenzio**. ⚠️ Il
 guardrail di §6c (sugli alias) **NON** intercetta questo pattern: serve un controllo a parte,
 necessariamente euristico (`codice_fiscale`/`codice_iva`/`codice_articolo`/`codice_ba`/… sono
-usi legittimi di `codice`). Caso di studio completo: [analisi-hardcoded-codice.md](dev/work-done/analisi-hardcoded-codice.md)
+usi legittimi di `codice`). Caso di studio completo: [analisi-hardcoded-codice.md](dev/work-done/2026/analisi-hardcoded-codice.md)
 (§3a 21 occorrenze BUG_DUAL bonificate).
 
 **Se la tabella NON espone `codice_interno`** (CANDIDATE_ADD_CI) — decisione, in quest'ordine:
@@ -995,7 +1028,7 @@ ALTER TABLE schema.tabella
 > ⚠️ **Trappola storica (mag 2026).** Lo Step 2b di `piano-miglioramenti-db-pg18`
 > ha ricreato 5 di questi vincoli come `CREATE INDEX` invece che `EXCLUDE`,
 > perdendo silenziosamente l'enforcement (nome `ex_*` identico). Vedi
-> `dev/work-done/refactor-overlap.md`. Un `CREATE INDEX ... USING gist`
+> `dev/work-done/2026/refactor-overlap.md`. Un `CREATE INDEX ... USING gist`
 > **non enforça mai**: per un anti-overlap serve sempre un `ADD CONSTRAINT ...
 > EXCLUDE`.
 >
@@ -1004,7 +1037,7 @@ ALTER TABLE schema.tabella
 > `where_predicate` (es. `attivo IS TRUE`) — vedi `guide/automazione-db.md §4.3`.
 > Lo scrivi a mano (come qui sotto) oppure lo deleghi al framework; in entrambi i
 > casi l'oggetto finale è un `EXCLUDE` vero. Migrazione dei vincoli esistenti al
-> framework: vedi `dev/work-done/refactor-overlap-v2.md` (Fase 2).
+> framework: vedi `dev/work-done/2026/refactor-overlap-v2.md` (Fase 2).
 
 **Entita' con stati annullabili (`UNIQUE WITHOUT OVERLAPS` + `is_abortito`):**
 
@@ -1074,11 +1107,11 @@ ALTER TABLE schema.figlio
 
 Per la gestione automatizzata degli EXCLUDE con WHERE: `dbops.automazione_overlap` e `dbops.fn_apply_automazione_overlap`.
 
-> Riferimento: `docs/it/dev/work-done/piano-miglioramenti-db-pg18.md` per verifica empirica (STORED generated, temporal UNIQUE/FK) e piano di migrazione.
+> Riferimento: `docs/it/dev/work-done/2026/piano-miglioramenti-db-pg18.md` per verifica empirica (STORED generated, temporal UNIQUE/FK) e piano di migrazione.
 >
 > ⚠️ **Non usare quel piano come modello per i vincoli anti-overlap.** Il suo
 > Step 2b ha ricreato gli `ex_*_no_overlap` parziali come `CREATE INDEX` (non
-> enforçanti) — bug tracciato in `dev/work-done/refactor-overlap.md`. Per
+> enforçanti) — bug tracciato in `dev/work-done/2026/refactor-overlap.md`. Per
 > un vincolo "niente sovrapposizioni" segui **questa** sezione (Pathway 1 senza
 > `WHERE`, EXCLUDE parziale esplicito con `WHERE`), non le migration `20260514-*`.
 
@@ -1155,7 +1188,7 @@ sotto la porta senza verbo di chiusura e' una configurazione non valida
 (`E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA`). La regola del modello sta nella
 [guida del modello del documento](/guide/modello-documento-di-vendita), §5.
 
-**Riferimento**: `docs/it/dev/work-done/automazione-chiusure-scadenze.md`.
+**Riferimento**: `docs/it/dev/work-done/2026/automazione-chiusure-scadenze.md`.
 
 ---
 
@@ -2115,7 +2148,7 @@ Prima di attivare RLS su una tabella esistente:
   ⚠️ Fino al 2026-09-11 queste due righe dicevano *«Benchmark `EXPLAIN`
   pre/post attivazione»* e *«indici funzionali se `EXPLAIN` lo richiede»*: un
   gate opzionale mai eseguito, appoggiato a una premessa falsa. Storia in
-  `dev/work-done/analisi-attivazione-rls-db.md` §12.
+  `dev/work-done/2026/analisi-attivazione-rls-db.md` §12.
 * Ruolo `zeroerp_migration` ha `BYPASSRLS`
 * La tabella è del migratore e **senza** `FORCE` (invariante di §10.5, presidiato da `dbops/test-postura-proprietario-rls-v1`)
 * Policy testata in staging con dati realistici prima del merge

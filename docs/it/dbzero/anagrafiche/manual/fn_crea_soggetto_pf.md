@@ -1,145 +1,130 @@
-## Documentazione Concettuale -- Funzione `anagrafiche.fn_crea_soggetto_pf()`
+## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_soggetto_pf`
 
-> **Vedi anche**
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
-**Approfondimento tabelle:**
+> 👀 **Vedi anche**
 >
-[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)
-> [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
+> Approfondimento tabelle:
 >
-**Approfondimento funzioni:**
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — la riga che la funzione fa nascere
+> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti) — il contatto di default
+> * [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari) — i dati societari della ditta individuale
+> * [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio) — la natura, che decide le regole
 >
-[anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2)
-> [anagrafiche.fn_crea_risorsa_umana_v2](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana_v2)
+> Approfondimento funzioni:
 >
-**Guide:**
+> * [anagrafiche.fn_crea_soggetto_pg](/dbzero/anagrafiche/funzioni/fn_crea_soggetto_pg) — la porta gemella, per società ed enti
+> * [anagrafiche.fn_crea_contatto](/dbzero/anagrafiche/funzioni/fn_crea_contatto) — il contatto di default
+> * [anagrafiche.fn_scrivi_dati_societari_alla_nascita](/dbzero/anagrafiche/funzioni/fn_scrivi_dati_societari_alla_nascita) — quando scrivere i dati societari
+> * [script.fn_stato_id_da_iso2](/dbzero/script/funzioni/fn_stato_id_da_iso2) — lo stato detto dal chiamante
+> * [script.fn_stato_proposto_id](/dbzero/script/funzioni/fn_stato_proposto_id) — lo stato proposto, se il chiamante non lo dice
+> * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — chi la usa per il soggetto dell'operatore
 >
-[Soggetti e ruoli anagrafici](/guide/soggetti-e-ruoli-anagrafici)
-> [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
+> Guide:
+>
+> * [Soggetti e ruoli anagrafici](/guide/soggetti-e-ruoli-anagrafici) — il modello del soggetto
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 20-10-2026)
-Building block atomico per la creazione di un soggetto **persona fisica** —
-privato (PR) o ditta individuale (DI) — con contatto default obbligatorio e,
-per la ditta individuale, i suoi **dati societari** nella stessa chiamata.
 
-⭐ **Rev 20261020-03** (brief-db-dati-societari-in-creazione, E-1 (a)): la DI
-ammette i dati societari (policy `OPTIONAL`) e il form li manda in creazione, ma
-fino a questa revisione la porta non li riceveva e la sezione si perdeva in
-silenzio. Ora i dieci campi stanno in coda, con gli stessi nomi di
-[fn_crea_soggetto_pg](/dbzero/anagrafiche/manual/fn_crea_soggetto_pg), e quando
-scriverli lo decide
-[fn_scrivi_dati_societari_alla_nascita](/dbzero/anagrafiche/manual/fn_scrivi_dati_societari_alla_nascita),
-lo stesso BB delle societa'. Soggetto e sezione nascono insieme o non nascono.
+`anagrafiche.fn_crea_soggetto_pf` fa nascere un soggetto persona fisica (un privato o una ditta individuale) col
+suo contatto di default e, per la ditta individuale, i suoi dati societari, in una chiamata sola. Restituisce
+l'id del soggetto.
 
-La natura di dettaglio la **sceglie il chiamante** (`p_tipo_soggetto_dettaglio_id`,
-obbligatorio): fino al 2026-10-09 era `PR` cablato, e una ditta individuale
-scelta nel form nasceva privato, senza partita IVA. Una natura che non e'
-persona fisica si rifiuta: societa' ed enti passano da
-[fn_crea_soggetto_pg](/dbzero/anagrafiche/manual/fn_crea_soggetto_pg).
-`stato_id` si risolve da `config.stati.codice_iso2`.
-
-**Il sesso non ha default.** Passa cosi' com'e': se la natura lo pretende e
-manca, lo rifiuta il guard `trgfn_soggetti_guard_sesso_policy`
-(`E_SESSO_OBBLIGATORIO`, campo `sesso`). Per il privato e' obbligatorio, per la
-ditta individuale facoltativo (`config.tipi_soggetto_dettaglio.sesso_policy`).
-
-**Non crea indirizzo:** il chiamante e' responsabile di creare l'indirizzo
-RES se richiesto dalla matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`
-(trigger DEFERRED verifica al COMMIT).
+La usano l'applicazione, dal form anagrafico, la creazione dell'operatore e le fixture dei test. Non crea
+indirizzi né ruoli.
 
 ---
 
-### Parametri
+### Che cosa pretende
 
-| Parametro          | Tipo                           | Obbligatorio | Default | Note                                             |
-| ------------------ | ------------------------------ | :----------: | ------- | ------------------------------------------------ |
-| `p_cognome`        | `soggetti.cognome%TYPE`        |      Si      | `NULL`  | Guard nel body.                                  |
-| `p_nome`           | `soggetti.nome%TYPE`           |      Si      | `NULL`  | Guard nel body.                                  |
-| `p_codice_fiscale` | `soggetti.codice_fiscale%TYPE` |      Si      | `NULL`  | Richiesto da guard PF. Normalizzato UPPER(TRIM). |
-| `p_email`          | `text`                         |      Si      | `NULL`  | Usata per il contatto default.                   |
-| `p_data_nascita`   | `soggetti.data_nascita%TYPE`   |      No      | `NULL`  |                                                  |
-| `p_sesso`          | `soggetti.sesso%TYPE`          | secondo la natura | `NULL` | `M`, `F` o `X` («non si puo' stabilire»). Nessun default: lo decide `sesso_policy` della natura, nel guard. |
-| `p_stato_iso2`     | `config.stati.codice_iso2%TYPE` |      No      | `NULL`  | ISO2 per nazionalita'; NULL = lo stato proposto (rev 2026-10-18). |
-| `p_comune_nascita_id` | `soggetti.comune_id%TYPE`  |      No      | `NULL`  | Comune di nascita (FK `fk_comuni_config`).       |
-| `p_tipo_contatto_id` | `config.tipi_contatti.id%TYPE` | No       | `NULL`  | Fallback: primo di `config.tipi_contatti`.       |
-| `p_tipo_soggetto_dettaglio_id` | `config.tipi_soggetto_dettaglio.id%TYPE` | Si | `NULL` | Natura di dettaglio PF: privato (PR) o ditta individuale (DI). Guard nel body. |
-| `p_partita_iva`    | `soggetti.partita_iva%TYPE`    | secondo la natura | `NULL` | Per la ditta individuale: la pretende `trgfn_soggetti_guard_cf_piva_obbligatori`. |
-| `p_forma_giuridica_id` … `p_data_costituzione` | `dati_societari.<colonna>%TYPE` | No | `NULL` | ⭐ Rev 20261020-03, in coda, nell'ordine di `fn_crea_soggetto_pg`: forma, provincia e numero REA, capitale, socio unico, liquidazione, canale FE, PEC, codice SDI, data di costituzione. Vedi [dati_societari](/dbzero/anagrafiche/manual/dati_societari). |
+* **Cognome, nome, codice fiscale e un'email**, non vuoti: l'email è quella del contatto di default.
+* **La natura**, che deve essere una persona fisica. Una società o un ente qui sono un chiamante che ha
+  sbagliato porta, e il rifiuto è tecnico: la porta giusta è `anagrafiche.fn_crea_soggetto_pg`.
+* **La partita IVA** non la pretende la funzione: per la ditta individuale la pretende il guard della presenza.
+* **Il sesso** passa così com'è, senza default: se la natura lo pretende e manca, lo rifiuta il guard del sesso.
 
 ---
 
-### Valore di ritorno
+### Lo stato
 
-`anagrafiche.soggetti.id%TYPE` (UUID) -- ID del soggetto creato.
-
----
-
-### Regole applicate
-
-* **Natura:** `p_tipo_soggetto_dettaglio_id` obbligatorio (`E_ADMIN_VALIDAZIONE`
-  se manca o non esiste); una natura base diversa da PF si rifiuta con
-  `E_SOGGETTO_CREAZIONE_NATURA_ERRATA` (classe TECNICO: e' il chiamante che ha
-  sbagliato funzione).
-* **Lookup stato:** risolve `stato_id` da `config.stati` con `codice_iso2`.
-  Errore se non trovato: `E_CODICE`.
-* **Guard CF univoco:** verifica su `(stato_id, id_fiscale_univoco_cf_piva)`.
-  Errore: `E_ADMIN_CF_DUPLICATO`.
-* **INSERT soggetto:** con la natura ricevuta, la partita IVA, il sesso cosi'
-  com'e', `comune_id = p_comune_nascita_id`, `attivo = true`.
-  La FK `fk_comuni_config` verifica automaticamente l'esistenza del comune.
-* **INSERT contatto default:** con `nominativo = cognome + nome`,
-  `email = p_email`, `is_default = true`.
-  Il trigger `trgfn_contatti_set_default_contatto` gestisce automaticamente
-  il flag default.
-* **Dati societari (rev 20261020-03):** li scrive il BB
-  `fn_scrivi_dati_societari_alla_nascita` col verbo `fn_scrivi_dati_societari`,
-  se la natura li pretende (`REQUIRED`) o se la sezione c'e' (almeno un campo con
-  un valore fra forma, REA, capitale, canale FE, PEC, codice SDI e data; socio
-  unico e liquidazione da soli non contano). Per la DI (`OPTIONAL`) senza sezione
-  non nasce nessuna riga. Un privato (`NONE`) con la sezione si rifiuta
-  (`E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO`): mai scartata in silenzio.
-  Forma ammessa, REA, capitale e canale FE li controllano i trigger della tabella.
+Lo stato detto dal chiamante, col codice ISO2, si cerca con `script.fn_stato_id_da_iso2`, che rifiuta un codice
+con più stati; un codice che non indica nessuno stato è rifiutato dalla funzione. Senza codice, il soggetto
+riceve lo stato proposto, che non ripiega mai su un valore scritto nel codice.
 
 ---
 
-### Trigger coinvolti
+### Che cosa scrive
 
-| Trigger                                    | Fase          | Effetto                                  |
-| ------------------------------------------ | ------------- | ---------------------------------------- |
-| `trgfn_soggetti_gen_codice`                | BEFORE INSERT | Genera codice univoco soggetto           |
-| `trgfn_soggetti_normalize`                 | BEFORE INSERT | Calcola `ragione_sociale_completa`       |
-| `trgfn_soggetti_guard_cf_piva_obbligatori` | BEFORE INSERT | Valida CF/PIVA in base a natura          |
-| `trgfn_soggetti_guard_sesso_policy`        | BEFORE INSERT | Sesso obbligatorio, facoltativo o vietato secondo `sesso_policy` |
-| `trgfn_soggetti_valida_cf_piva_dispatch`   | BEFORE INSERT | Valida formato CF (16 char)              |
-| `trgfn_soggetti_guard_soggetto_contatti`   | DEFERRED      | Verifica almeno 1 contatto al COMMIT     |
-| `trgfn_soggetti_guard_indirizzi_required`  | DEFERRED      | Verifica indirizzi obbligatori al COMMIT |
-| `trgfn_contatti_set_default_contatto`      | BEFORE INSERT | Auto-imposta `is_default`                |
-| `trgfn_dati_societari_guard_tipo_soggetto` | BEFORE INSERT | La natura ammette i dati societari (PR no) |
-| `trgfn_dati_societari_guard_forma_giuridica` | BEFORE INSERT | Forma ammessa dalla natura; REA e capitale dalla forma |
-| `trgfn_dati_societari_guard_canale_fe`     | BEFORE INSERT | Il canale FE ha il suo recapito          |
+* **Il soggetto**, col codice fiscale e la partita IVA in maiuscolo e senza spazi ai lati (una partita IVA vuota
+  diventa NULL), il comune di nascita e la riga attiva. Prima di scriverlo cerca il codice fiscale fra gli
+  identificativi dello stesso stato, e se lo trova si ferma.
+* **Il contatto di default**, con `anagrafiche.fn_crea_contatto`: il nominativo è cognome e nome, l'email quella
+  ricevuta, il tipo quello indicato o, se manca, il primo del catalogo dei tipi di contatto.
+* **I dati societari**, con `anagrafiche.fn_scrivi_dati_societari_alla_nascita`, lo stesso building block della
+  porta delle società: se la natura li pretende, o se almeno un campo della sezione ha un valore (socio unico e
+  liquidazione da soli non contano). Per una ditta individuale senza sezione non nasce nessuna riga; un privato
+  con la sezione è rifiutato dal guard della natura, mai scartato in silenzio. Socio unico e liquidazione non
+  passati li decidono i parametri del verbo.
 
----
-
-### Vincoli DEFERRED (responsabilita' del chiamante)
-
-Il trigger `trgfn_soggetti_guard_indirizzi_required` verifica al COMMIT
-che il soggetto abbia gli indirizzi obbligatori definiti dalla matrice
-`config.tipi_soggetto_dettaglio_tipi_indirizzo`.
-
-Se per la natura (PR o DI) e' configurato l'indirizzo RES come obbligatorio,
-il **chiamante deve creare l'indirizzo** prima del COMMIT della transazione.
+Le regole del soggetto (presenza, formato e blocco di CF e P.IVA, sesso, regime PA) restano nei suoi trigger.
 
 ---
 
-### Riusabilita'
+### ⭐ Il soggetto si completa nella stessa operazione
 
-| Orchestratore                   | Uso                                           |
-| ------------------------------- | --------------------------------------------- |
-| `fn_crea_operatore_v2`          | Crea il soggetto PF (privato, PR) dell'operatore, flusso A |
-| backend (`SoggettiService`)     | Crea privati e ditte individuali dal form anagrafico, con la sezione societaria della DI |
+La funzione restituisce un soggetto che può essere ancora incompleto: gli indirizzi che la natura pretende li
+crea il chiamante, e i guard differiti del soggetto li controllano alla conferma dell'operazione.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Il controllo del codice fiscale già presente guarda il CF da solo.** L'identificativo di un soggetto con CF
+  e P.IVA diversi è la coppia: il controllo non trova una ditta individuale che ha lo stesso codice fiscale.
+  Una ditta individuale nuova con lo stesso CF e la stessa P.IVA di una esistente non la ferma il controllo, ma
+  l'indice unico, con un errore tecnico al posto di `E_ADMIN_CF_DUPLICATO`; con lo stesso CF e una P.IVA
+  diversa, o un privato col CF di una ditta, il soggetto nasce. Al contrario, una ditta individuale col CF di un
+  privato esistente la ferma il controllo, anche se l'indice la ammetterebbe: la porta e l'indice non dicono la
+  stessa regola.
+* **Il tipo di contatto di ripiego è il primo per id** del catalogo: un dato che nessuno sceglie.
+
+---
+
+### Codici errore
+
+* `E_ADMIN_VALIDAZIONE` — cognome, nome, codice fiscale, email o natura mancanti, natura che non esiste, nessun
+  tipo di contatto. Il contesto nomina il parametro.
+* `E_SOGGETTO_CREAZIONE_NATURA_ERRATA` — la natura non è una persona fisica.
+* `E_STATO_ISO2_AMBIGUO` — il codice dello stato indica più stati.
+* `E_CODICE` — il codice dello stato non indica nessuno stato.
+* `E_CONFIG_MANCANTE`, `E_DEFAULT_ERRATO` — senza codice, lo stato proposto non è configurato o non esiste.
+* `E_ADMIN_CF_DUPLICATO` — il codice fiscale è già l'identificativo di un soggetto dello stesso stato.
+
+Dai trigger del soggetto e dei dati societari arrivano gli altri rifiuti, per esempio `E_PIVA_OBBLIGATORIA`,
+`E_CF_NON_VALIDO`, `E_SESSO_OBBLIGATORIO`, `E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO`.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-fn-crea-soggetto-pf.sql` — la nascita del privato col contatto di default e il
+  comune di nascita, il codice fiscale già presente, il cognome vuoto, l'email mancante.
+* `db/pgtap/anagrafiche/test-soggetti-sesso-policy-v1.sql` — il privato senza sesso rifiutato, la ditta
+  individuale che nasce con la P.IVA e senza sesso, la natura mancante, la società alla porta sbagliata.
+* `db/pgtap/anagrafiche/test-dati-societari-alla-nascita-v1.sql` — la sezione della ditta individuale, una
+  regola sola per le due porte.
+
+---
+
+### Note di migrazione
+
+* 2026-10-09 — la natura la sceglie il chiamante (prima era il privato, fisso: una ditta individuale nasceva
+  privato e senza partita IVA); il sesso perde il default `M`.
+* 2026-10-17 — il contatto lo scrive `anagrafiche.fn_crea_contatto`.
+* 2026-10-18 — lo stato non ripiega più sull'Italia: lo dice il chiamante, o lo stato proposto.
+* 2026-10-20 — riceve i dati societari della ditta individuale, che prima il form mandava e la funzione perdeva.
 
 ---
 

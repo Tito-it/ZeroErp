@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_soggetti_guard_sesso_policy.md" %}
 # ⚙️ Funzione `trgfn_soggetti_guard_sesso_policy`
 
 ```sql

@@ -66,7 +66,7 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.catalogo.db.catalogo_bom_repository import COMPONENTI_SORT_COLUMNS
 from apps.ui.api.lista_figlia_views import build_lista_figlia_views
 
@@ -89,6 +89,17 @@ def _articolo_write_fields(*, for_create: bool) -> dict[str, serializers.Field]:
         "is_solo_componente": serializers.BooleanField(required=False),
         "requires_serial": serializers.BooleanField(required=False),
         "requires_lotto": serializers.BooleanField(required=False),
+        "listino_tipologia_id": serializers.IntegerField(required=False, allow_null=True),
+        # NOT NULL a DB con default (MERCE / ACQUISTO): si omette, mai null esplicito.
+        "natura_vendita_id": serializers.IntegerField(required=False),
+        "modo_approvvigionamento_id": serializers.IntegerField(required=False),
+        "gestito_a_magazzino": serializers.BooleanField(required=False),
+        # Nullable per modello: NULL = «non si applica», `0` no.
+        "lead_time_giorni": serializers.IntegerField(required=False, allow_null=True, min_value=0),
+        # Il ritiro: NULL = si sceglie, una data futura = ritiro programmato.
+        "obsoleto_dal": serializers.DateField(required=False, allow_null=True),
+        # NULL = merce, un id fa dell'articolo un onere (legame 1:1 con la causale).
+        "causale_onere_id": serializers.IntegerField(required=False, allow_null=True),
         "meta": serializers.JSONField(required=False, allow_null=True),
     }
     if for_create:
@@ -129,6 +140,9 @@ def _componente_write_fields() -> dict[str, serializers.Field]:
         "componente_id": serializers.UUIDField(required=True),
         "coeff_qta": serializers.DecimalField(required=False, max_digits=18, decimal_places=6),
         "obbligatorio": serializers.BooleanField(required=False),
+        # Codice di `config.esposizioni_componente` (NASCOSTO / DESCRITTIVO /
+        # VALORIZZATO): lo giudica la FK. Mai null: si omette per il default.
+        "esposizione_in_fattura": serializers.CharField(required=False),
         "valido_dal": serializers.DateField(required=False),
         "valido_al": serializers.DateField(required=False, allow_null=True),
         "attivo": serializers.BooleanField(required=False),
@@ -191,8 +205,7 @@ class ApiArticoliList(DomainAPIView):
             OpenApiParameter(name="data_a", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(
             name="CatalogoArticoliListResponse",
@@ -338,8 +351,7 @@ _PARAMETRI_LISTA_FIGLIA = [
     param_ricerca_full(),
     OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
     OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
-    OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-    OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+    *parametri_ordinamento(),
 ]
 
 
@@ -352,8 +364,10 @@ class ApiArticoloUomList(DomainAPIView):
     area_funzionale = "catalogo"
     model_permission = ("catalogo", "articolo")
     is_search_endpoint = True
-    # ⚠️ Nessun `lista_codice`: `catalogo.articolo_uom` e' globale (come le
-    #    note dell'articolo, vedi sopra).
+    # La partenza della lista (ordinamento e misura del preset). ⚠️ La lista e'
+    # globale (`perimetro_emittente = false`, come le note dell'articolo): il
+    # cancello di perimetro qui non chiede niente.
+    lista_codice = "catalogo.articolo_uom"
 
     @extend_schema(
         parameters=_PARAMETRI_LISTA_FIGLIA,
@@ -739,8 +753,7 @@ class ApiUomTipiList(DomainAPIView):
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(
             name="CatalogoUomTipiListResponse",
@@ -829,8 +842,7 @@ class ApiUnitaMisuraList(DomainAPIView):
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(
             name="CatalogoUnitaMisuraListResponse",
@@ -940,8 +952,7 @@ class ApiConversioniList(DomainAPIView):
             OpenApiParameter(name="uom_id", type=int, required=False, description="Filtra conversioni per UoM (from o to)"),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(
             name="CatalogoConversioniListResponse",

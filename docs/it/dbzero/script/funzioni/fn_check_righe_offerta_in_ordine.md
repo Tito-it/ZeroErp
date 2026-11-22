@@ -70,15 +70,12 @@ BEGIN
                ORDER BY g.riga_nr), '[]'::jsonb)
       INTO v_motivi
       FROM (
-          SELECT r.riga_nr, r.articolo_id, r.articolo_codice, r.origine, r.tipo_eccezione,
+          -- Le colonne per nome, la posizione da ordinality: una colonna nuova in coda
+          -- alle righe espanse non sposta riga_nr (con l'elenco di alias si').
+          SELECT r.ordinality AS riga_nr, r.articolo_id, r.articolo_codice, r.origine, r.tipo_eccezione,
                  script.fn_check_riga_documento_su_contesto(
                      v_contesto, r.articolo_id, NULL, NULL, NULL) -> 0 AS motivo
-            FROM vendite.fn_offerta_righe_espanse(p_offerta_id)
-                 WITH ORDINALITY AS r(articolo_id, articolo_codice, descrizione, is_composito,
-                                      quantita, uom_operativa_id, qta_operativa, factor_to_base,
-                                      prezzo_unitario, sconto_percentuale, iva_id,
-                                      tipo_eccezione, origine, componenti, eccezione_id,
-                                      riga_nr)
+            FROM vendite.fn_offerta_righe_espanse(p_offerta_id) WITH ORDINALITY AS r
       ) g
      WHERE g.motivo IS NOT NULL;
 

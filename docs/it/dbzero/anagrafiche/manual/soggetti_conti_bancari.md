@@ -1,137 +1,129 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.soggetti_conti_bancari`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
-
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle**   
-> • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
-> • [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)  
-> • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
-> • [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)  
-> • [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati)  
+> Approfondimento tabelle:
 >
-**Artefatti di selezione**  
-> • [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/views/vw_conti_bancari_per_ruolo)   
-> • [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito)   
+> * [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari) — il registro degli IBAN, da cui il legame prende il conto
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — il soggetto del legame
+> * [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari) — il legame gemello, sul ruolo, che ha la precedenza
 >
-**Approfondimento Trigger/Funzioni generiche**   
-> • [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
-> • [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
-> • [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)   
+> Approfondimento viste:
+>
+> * [anagrafiche.vw_conti_bancari_per_ruolo](/dbzero/anagrafiche/views/vw_conti_bancari_per_ruolo) — dove il legame del soggetto diventa una candidata di ogni suo ruolo
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_soggetti_conti_bancari_guard](/dbzero/anagrafiche/funzioni/trgfn_soggetti_conti_bancari_guard) — il conto del legame è attivo
+> * [script.trgfn_guard_date_validita](/dbzero/script/funzioni/trgfn_guard_date_validita) — la fine della validità non precede l'inizio
+> * [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito) — la scelta del conto, che ricade qui quando il ruolo non ne ha
+>
+> Guide:
+>
+> * [Gestione dei conti bancari](/guide/gestione-conti-bancari) — i due legami e la scelta del conto
 
 ---
+
 ### 🎯 Scopo Principale
-`anagrafiche.soggetti_conti_bancari` gestisce l’**associazione tra un Soggetto** (persona/azienda) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 
-Questa tabella rappresenta il **fallback di default** per il soggetto: se per un dato **Ruolo** (es. Cliente/Fornitore/Gestore) non è definito un conto specifico, verrà usato il **predefinito** definito qui, grazie alla **VIEW** e alla **FUNCTION** di selezione.
-
----
-
-### Relazioni
-
-| Tipo       | Tabella ↔ Campo                                       | Descrizione                                   |
-| ---------- | ----------------------------------------------------- | --------------------------------------------- |
-| FK →       | `anagrafiche.soggetti(id)` ← `soggetto_id`            | Soggetto fiscale proprietario del legame      |
-| FK →       | `anagrafiche.conti_bancari(id)` ← `conto_bancario_id` | Conto bancario registrato nell’anagrafe unica |
-| (usata da) | `anagrafiche.vw_conti_bancari_per_ruolo`              | Selezione con fallback RUOLO → SOGGETTO       |
-
-> **Nota:** le cancellazioni sono **NO ACTION** per evitare orfani; disattivare un legame si fa con `valido_al` o `bloccato=true`.
+`anagrafiche.soggetti_conti_bancari` lega un conto del registro a un soggetto, per un uso: incassare, pagare,
+rimborsare, o in generale. È il livello di base: vale per tutti i ruoli del soggetto, quando il ruolo non ha un
+legame suo.
 
 ---
 
-### Struttura logica (campi chiave)
+### Un legame, un uso
 
-* `soggetto_id` (**FK** obbligatoria)
-* `conto_bancario_id` (**FK** obbligatoria)
-* `uso VARCHAR(16)` → `INCASSO | PAGAMENTO | RIMBORSO | GENERICO` (default `GENERICO`)
-* `predefinito BOOLEAN` → indica il conto di default per l’uso
-* `valido_dal DATE`, `valido_al DATE` → finestra di validità
-* `intestazione_dichiarata VARCHAR(140)` → opzionale, se diversa dall’intestatario del conto
-* Flag operativi: `verificato BOOLEAN`, `bloccato BOOLEAN`
-* Estensioni: `meta JSONB`
-* Audit: `tx_id UUID`, `storicizza BOOLEAN`, `data_*`, `user_*`
+La riga dice che il soggetto usa quel conto per quell'uso (`INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`, che è il
+default). Lo stesso conto può stare sullo stesso soggetto con usi diversi, una riga per uso: la terna soggetto,
+conto e uso è unica (`uq_soggetti_conti_bancari_soggetto_id_conto_id_uso`).
 
----
-
-### 🚦 Vincoli & Regole
-
-* **Unicità combinazione**: `UNIQUE (soggetto_id, conto_bancario_id, uso)` → evita duplicati dello stesso uso sullo stesso conto.
-* **Predefinito per uso**: **unique parziale** `UNIQUE (soggetto_id, uso) WHERE predefinito=true` → **un solo predefinito** per `(soggetto, uso)`.
-* **Validità temporale**: `CHECK (valido_al IS NULL OR valido_dal IS NULL OR valido_al >= valido_dal)`.
-* **Valori ammessi `uso`**: `CHECK (uso IN ('INCASSO','PAGAMENTO','RIMBORSO','GENERICO'))`.
-* **Guard‑rail conto attivo**: trigger di guardia impedisce associazioni a `conti_bancari.attivo=false`.
+* **Il predefinito.** Per ogni soggetto e uso c'è al più un legame predefinito
+  (`ix_soggetti_conti_bancari_predef_per_uso`). Il database non lo sposta da solo: per cambiarlo si toglie il segno
+  al vecchio e lo si mette al nuovo, in quest'ordine.
+* **La validità.** `valido_dal` e `valido_al` sono facoltativi, e la fine non precede l'inizio. La validità non
+  entra nell'unicità del predefinito: un predefinito già scaduto, o non ancora in vigore, occupa comunque il posto.
+* **Il blocco.** `bloccato` toglie il legame dalla scelta del conto senza cancellarlo (un blocco per compliance).
+* **`intestazione_dichiarata`** è l'intestazione che il soggetto dichiara, quando diversa da quella del conto;
+  **`verificato`** è l'esito di una verifica del legame, che il database non fa.
 
 ---
 
-### Indicizzazione
+### ⭐ Un conto d'incasso, un solo soggetto
 
-* `uq_soggetti_conti_bancari_soggetto_id_conto_id_uso`, per prefisso su `soggetto_id`: serve le ricerche per soggetto e il controllo della FK (l'indice dedicato `ix_soggetti_conti_bancari_soggetto_id`, ridondante, è tolto dal 2026-11-14, `20261114-21`)
-* `ix_soggetti_conti_bancari_conto_bancario_id (conto_bancario_id)`
-* `ix_soggetti_conti_bancari_predef_per_uso (soggetto_id, uso) WHERE predefinito` *(unique)*
+Lo stesso conto con uso `INCASSO` non sta su due soggetti diversi (`ex_scb_conto_incasso_un_solo_soggetto`). Quando
+i soldi arrivano su un IBAN non hanno ancora una fattura: di chi sono lo dice il conto, e il conto deve avere un
+padrone solo.
 
----
+* È un'**esclusione**, non un indice unico: lo stesso conto d'incasso sullo stesso soggetto resta ammesso (con
+  validità o intestazioni diverse); è vietato il soggetto **diverso**.
+* Vale solo per l'incasso: un conto di pagamento può stare su più soggetti.
+* La validità non entra nel vincolo: un IBAN non passa di mano, e la risposta a «di chi sono questi soldi» non
+  cambia con la data.
 
-
-### Query tipiche
-
-**1) Predefinito d’incasso per un soggetto (oggi valido)**
-
-```sql
-SELECT scb.*
-FROM anagrafiche.soggetti_conti_bancari scb
-JOIN anagrafiche.conti_bancari cb ON cb.id = scb.conto_bancario_id
-WHERE scb.soggetto_id = :soggetto_id
-  AND scb.uso = 'INCASSO'
-  AND scb.predefinito = true
-  AND (scb.valido_dal IS NULL OR scb.valido_dal <= CURRENT_DATE)
-  AND (scb.valido_al  IS NULL OR scb.valido_al  >= CURRENT_DATE)
-  AND scb.bloccato = false
-  AND cb.attivo = true
-LIMIT 1;
-```
-
-**2) Tutti i conti attivi del soggetto (per auditing)**
-
-```sql
-SELECT scb.uso, scb.predefinito, cb.iban, cb.verificato
-FROM anagrafiche.soggetti_conti_bancari scb
-JOIN anagrafiche.conti_bancari cb ON cb.id = scb.conto_bancario_id
-WHERE scb.soggetto_id = :soggetto_id
-  AND (scb.valido_al IS NULL OR scb.valido_al >= CURRENT_DATE)
-ORDER BY scb.uso, scb.predefinito DESC, scb.data_update DESC;
-```
+Il gemello sul legame del ruolo, `ex_src_bancari_conto_incasso_un_solo_soggetto`, presidia la sua tabella, ed è
+quello su cui poggia il perimetro degli incassi. Ognuno dei due guarda la propria: un conto d'incasso sul
+soggetto A e lo stesso conto d'incasso su un ruolo del soggetto B non si incontrano. È voluto: i canali di incasso
+leggono solo il legame del ruolo, e una riga a livello soggetto non può confonderli.
 
 ---
 
-### Ruolo nella strategia di **fallback**
+### Il soggetto e il conto sono attivi
 
-* In assenza di un conto specifico su `soggetti_ruoli_conti_bancari`, la **VIEW** `vw_conti_bancari_per_ruolo` seleziona il **predefinito del soggetto** (per l’uso richiesto).
-* La **FUNCTION** `fn_get_conto_bancario_predefinito` restituisce **al massimo una riga**, prioritizzando RUOLO e poi SOGGETTO, con fallback finale a `GENERICO`.
-
----
-
-### Best practice
-
-* Mantieni **un solo predefinito per uso** per soggetto (vincolo unico parziale).
-* Usa `valido_dal/valido_al` per cambi programmati; **non cancellare**, storicizza.
-* Blocco AML: setta `bloccato=true` sul legame (lasciando il conto in anagrafe), così la VIEW lo esclude.
-* Per privacy, evita di esporre IBAN fuori contesto: interroga questa tabella solo per **ID conto** e mostra l’IBAN dalle viste/servizi autorizzati.
+* Il conto del legame è attivo, prima della scrittura (`E_CONTO_BANCARIO`, dal guard) e di nuovo al COMMIT.
+* Il soggetto è attivo, al COMMIT, quando il legame nasce o cambia soggetto (`E_ATTIVO_PADRE_NON_ATTIVO`).
+* Dall'altro verso: finché un legame esiste, né il conto né il soggetto si spengono. Il legame non ha un suo
+  `attivo`, quindi conta che esista, non che sia valido oggi.
 
 ---
 
-### Diagramma ER relazioni (focus soggetto)
+### Come lo legge la scelta del conto
 
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    soggetti ||--o{ soggetti_conti_bancari : possiede
-    conti_bancari ||--o{ soggetti_conti_bancari : collega
-    soggetti_ruoli ||..o{ vw_conti_bancari_per_ruolo : usa
-```
+La vista `vw_conti_bancari_per_ruolo` proietta ogni legame del soggetto su **tutti** i suoi ruoli, come candidata di
+fonte `SOGGETTO`, se valido nel giorno operativo (la data di oggi nel fuso dell'azienda), non bloccato e su un conto
+attivo. La funzione di scelta la prende quando il ruolo non ha un legame suo per l'uso chiesto, prima di ricadere
+sull'uso `GENERICO`.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Un predefinito bloccato.** Niente nel database impedisce di bloccare il legame predefinito: la scelta del conto
+  lo salta, e ricade sugli altri legami o sull'uso generico.
+* **Il predefinito a scadenza.** Il predefinito è uno solo per uso, valido o no: un cambio di conto programmato a
+  una data futura non può marcare il nuovo legame come predefinito finché il vecchio porta il segno.
+
+---
+
+### Codici errore
+
+* `E_CONTO_BANCARIO` — il conto è spento o non esiste.
+* `E_DATA_AL_MINORE_DAL` — la fine della validità precede l'inizio.
+* `E_ATTIVO_PADRE_NON_ATTIVO` — al COMMIT, il soggetto o il conto è spento.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-conto-incasso-un-solo-soggetto.sql` — lo stesso conto d'incasso su un secondo soggetto
+  rifiutato, su un uso diverso ammesso, sullo stesso soggetto ammesso.
+* `db/pgtap/anagrafiche/create-gestore-conto-soggetto.sql` — un legame d'incasso sul soggetto di un gestore.
+* `db/pgtap/anagrafiche/test_vw_conti_bancari_per_ruolo_gestore.sql` — il legame del soggetto che esce, nella vista,
+  come candidata del ruolo.
+
+---
+
+### Note di migrazione
+
+* 2026-08-25 — nasce l'esclusione `ex_scb_conto_incasso_un_solo_soggetto`, gemella di quella sul ruolo (nata il
+  2026-08-22): fino ad allora lo stesso conto poteva essere d'incasso per due aziende, dichiarato sul soggetto.
+* 2026-09-23 — il controllo delle date esce dal guard del legame e passa a `script.trgfn_guard_date_validita`, la
+  sede comune per le tabelle con validità.
+* 2026-11-14 — l'indice dedicato a `soggetto_id` è tolto: lo serve il vincolo unico, che comincia con quella
+  colonna.
 
 ---
 
 {% include-markdown "signature-core.md" %}
-
----

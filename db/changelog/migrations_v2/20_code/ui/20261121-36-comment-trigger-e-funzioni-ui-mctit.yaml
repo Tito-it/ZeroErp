@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DEI TRIGGER SCRITTI A MANO E DELLE FUNZIONI DI ui CHE FACEVANO CRONACA
+#   Brief: brief-db-revisione-ui (giro 6b: i metadati, §4.2-§4.3).
+#
+# I trigger scritti a mano senza COMMENT prendono una riga, nella forma di quelli
+#   che l'avevano gia': la regola e la funzione. I trigger delle automazioni (audit,
+#   lucchetti, seed di primo impianto, regola ATTIVO) non hanno COMMENT in nessuno
+#   schema, e li genera ci_apply (linee-guida-sql §11.5): restano senza.
+# Quattro funzioni portavano nel COMMENT un brief, una data o l'elenco dei chiamanti
+#   di prima (ui.fn_get_misure_pagina, ui.fn_lista_da_codice,
+#   ui.fn_misura_pagina_ammessa, ui.fn_veste_corrente): si riscrivono al presente, coi
+#   chiamanti letti dal vivo. Il corpo non si riapre per un commento (§4.3).
+# Il trigger trg_ui_lista_preset_a10_guard_pagina_ins_upd nasce in 90_end
+#   (20260930-12): il suo COMMENT, e quello della sua funzione, vanno in 20261121-37.
+# Nessun comportamento cambia. Rollback: i COMMENT di prima (NULL dove non c'erano),
+#   letti dal catalogo di dbdev il 2026-11-22.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261121-36-comment-trigger-e-funzioni-ui-mctit.yaml
+
+  - changeSet:
+      id: 20261121-36-comment-trigger-e-funzioni-ui
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui: i COMMENT dei trigger scritti a mano e di quattro funzioni, al presente. Brief: brief-db-revisione-ui (giro 6b, §4.2-§4.3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'ui'
+                 AND t.tgname IN ('trg_ui_lista_definizione_a10_guard_dichiarazioni_ins_upd',
+                                  'trg_misure_pagina_z10_ritira_dalle_preferenze_dlt')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TRIGGER trg_misure_pagina_a10_guard_default_per_uso_ins_upd_dlt ON ui.misure_pagina IS
+                  'A fine transazione ogni uso ha la sua misura di default (ui.trgfn_misure_pagina_guard_default_per_uso).';
+              COMMENT ON TRIGGER trg_misure_pagina_z10_ritira_dalle_preferenze_dlt ON ui.misure_pagina IS
+                  'La misura ritirata esce dalle preferenze di lista che la citano (ui.trgfn_misure_pagina_ritira_dalle_preferenze).';
+              COMMENT ON TRIGGER trg_ui_dashboard_preferenza_utente_z90_snapshot_base_ins_upd ON ui.dashboard_preferenza_utente IS
+                  'Lo snapshot del preset di base lo scrive il database (ui.trgfn_preferenza_preset_base_snapshot).';
+              COMMENT ON TRIGGER trg_ui_lista_preferenza_utente_z90_snapshot_base_ins_upd ON ui.lista_preferenza_utente IS
+                  'Lo snapshot del preset di base lo scrive il database (ui.trgfn_preferenza_preset_base_snapshot).';
+              COMMENT ON TRIGGER trg_ui_dashboard_preset_a20_contenuto_aggiornato_ins_upd ON ui.dashboard_preset IS
+                  'La data del contenuto del preset, per chiave, e l''impronta della composizione le scrive solo il database (ui.trgfn_preset_contenuto_aggiornato).';
+              COMMENT ON TRIGGER trg_ui_lista_preset_a20_contenuto_aggiornato_ins_upd ON ui.lista_preset IS
+                  'La data del contenuto del preset, per chiave, e l''impronta della composizione le scrive solo il database (ui.trgfn_preset_contenuto_aggiornato).';
+              COMMENT ON TRIGGER trg_ui_dashboard_preset_widget_z10_tocca_preset_ins_upd_dlt ON ui.dashboard_preset_widget IS
+                  'A fine transazione, una composizione cambiata sposta la chiave widget della data del contenuto del preset; una riscritta uguale no (ui.trgfn_preset_riga_tocca_preset).';
+              COMMENT ON TRIGGER trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt ON ui.lista_preset_colonna IS
+                  'A fine transazione, una composizione cambiata sposta la chiave colonne della data del contenuto del preset; una riscritta uguale no (ui.trgfn_preset_riga_tocca_preset).';
+              COMMENT ON TRIGGER trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd ON ui.lista_colonna IS
+                  'Il campo sorgente esiste dove la colonna dice di leggerlo: nella relazione della lista, o su una lista che dichiara la lineage (ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente).';
+              COMMENT ON TRIGGER trg_ui_lista_definizione_a10_guard_dichiarazioni_ins_upd ON ui.lista_definizione IS
+                  'multi_emittente, perimetro_emittente e legge_lineage li scrive solo il proprietario della tabella (ui.trgfn_lista_definizione_guard_dichiarazioni).';
+              COMMENT ON TRIGGER trg_ui_lista_definizione_a10_valida_vista_sql_ins_upd ON ui.lista_definizione IS
+                  'Su una lista accesa la relazione esiste nel suo schema; per l''applicazione, un cambio di vista o una riaccensione non lasciano orfane le colonne (ui.trgfn_ui_lista_definizione_a10_valida_vista_sql).';
+              COMMENT ON FUNCTION ui.fn_get_misure_pagina() IS
+                  'Le misure «righe per pagina» per tutta l''applicazione, in una lettura: {"misure": [...] in ordine crescente, "default_compatta": drawer e dialog, "default_pagina": pagine}. Dal catalogo ui.misure_pagina; i default da ui.fn_misura_pagina_default, che solleva E_UI_MISURA_PAGINA_DEFAULT_MANCANTE se ne manca uno: mai NULL. La serve il backend a ogni paginatore. STABLE, INVOKER.';
+              COMMENT ON FUNCTION ui.fn_lista_da_codice(ui.lista_definizione.codice%TYPE) IS
+                  'La riga di ui.lista_definizione con questo codice, se esiste ed è accesa; altrimenti E_UI_LISTA_NON_TROVATA (il codice nella frase). Building block: la sede unica della lettura di una lista per codice. La usano ui.fn_resolve_lista_config, ui.fn_ordinamento_lista, ui.fn_misura_lista, ui.fn_lista_colonne_ricerca_full e il backend, che ne legge la soglia della ricerca: SELECT ricerca_min_caratteri FROM ui.fn_lista_da_codice(codice).';
+              COMMENT ON FUNCTION ui.fn_misura_pagina_ammessa(ui.misure_pagina.misura%TYPE) IS
+                  'La misura «righe per pagina» è nel catalogo ui.misure_pagina? NULL: falso. La chiedono ui.fn_guard_misura_pagina, per rifiutare una scrittura, e ui.fn_misura_pagina_risolta, per non rispondere una misura che il paginatore non offre. STABLE, INVOKER, inlineabile.';
+              COMMENT ON FUNCTION ui.fn_veste_corrente() IS
+                  'La veste corrente della sessione per la configurazione delle schermate: legge la GUC app.ruolo_applicativo e la converte in config.ruolo_applicativo. NULL vuol dire tutte le vesti dell''utente, sia con la GUC assente o vuota sia con un valore fuori dominio: mai un''eccezione. La leggono ui.fn_resolve_lista_config, ui.fn_resolve_dashboard_config, ui.fn_ordinamento_lista, ui.fn_misura_lista e ui.fn_lista_colonne_ricerca_full. ⚠️ Semantica di presentazione, non di permesso: le funzioni di script che decidono un accesso sono fail-closed sulla veste.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TRIGGER trg_misure_pagina_a10_guard_default_per_uso_ins_upd_dlt ON ui.misure_pagina IS
+                  NULL;
+              COMMENT ON TRIGGER trg_misure_pagina_z10_ritira_dalle_preferenze_dlt ON ui.misure_pagina IS
+                  NULL;
+              COMMENT ON TRIGGER trg_ui_dashboard_preferenza_utente_z90_snapshot_base_ins_upd ON ui.dashboard_preferenza_utente IS
+                  NULL;
+              COMMENT ON TRIGGER trg_ui_lista_preferenza_utente_z90_snapshot_base_ins_upd ON ui.lista_preferenza_utente IS
+                  NULL;
+              COMMENT ON TRIGGER trg_ui_dashboard_preset_a20_contenuto_aggiornato_ins_upd ON ui.dashboard_preset IS
+                  NULL;
+              COMMENT ON TRIGGER trg_ui_lista_preset_a20_contenuto_aggiornato_ins_upd ON ui.lista_preset IS
+                  NULL;
+              COMMENT ON TRIGGER trg_ui_dashboard_preset_widget_z10_tocca_preset_ins_upd_dlt ON ui.dashboard_preset_widget IS
+                  NULL;
+              COMMENT ON TRIGGER trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt ON ui.lista_preset_colonna IS
+                  NULL;
+              COMMENT ON TRIGGER trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd ON ui.lista_colonna IS
+                  NULL;
+              COMMENT ON TRIGGER trg_ui_lista_definizione_a10_guard_dichiarazioni_ins_upd ON ui.lista_definizione IS
+                  NULL;
+              COMMENT ON TRIGGER trg_ui_lista_definizione_a10_valida_vista_sql_ins_upd ON ui.lista_definizione IS
+                  NULL;
+              COMMENT ON FUNCTION ui.fn_get_misure_pagina() IS
+                  'Le misure «righe per pagina» per TUTTA l''applicazione, in una lettura: {"misure": [...] in ordine crescente, "default_compatta": drawer e dialog, "default_pagina": pagine}. Dal catalogo ui.misure_pagina; i default da ui.fn_misura_pagina_default (se ne manca uno solleva, mai NULL). La serve il backend a ogni paginatore: sostituisce le costanti PAGINATION del frontend (decisioni di Tid del 2026-09-29). STABLE, INVOKER. Brief: brief-db-misure-pagina-catalogo §2, §6.';
+              COMMENT ON FUNCTION ui.fn_lista_da_codice(ui.lista_definizione.codice%TYPE) IS
+                  'La riga di ui.lista_definizione con questo codice, se esiste ed e'' attiva; altrimenti E_UI_LISTA_NON_TROVATA (il codice nella frase). Building block: sede unica della lettura di una lista per codice. La usano ui.fn_resolve_lista_config (id, multi_emittente, perimetro_emittente, ricerca_min_caratteri, da una lettura sola), ui.fn_lista_colonne_ricerca_full (id) e il building block di ricerca del backend, che ne legge la soglia: SELECT ricerca_min_caratteri FROM ui.fn_lista_da_codice(codice). Brief: brief-db-be-fe-ricerca-soglia-per-lista.';
+              COMMENT ON FUNCTION ui.fn_misura_pagina_ammessa(ui.misure_pagina.misura%TYPE) IS
+                  'La misura «righe per pagina» e'' nel catalogo ui.misure_pagina? NULL -> false. La chiedono ui.fn_guard_misura_pagina (per rifiutare una scrittura) e ui.fn_resolve_lista_config (per non rispondere una misura che il paginatore non offre). STABLE, INVOKER, inlineabile. Brief: brief-db-misure-pagina-catalogo §2.';
+              COMMENT ON FUNCTION ui.fn_veste_corrente() IS
+                  'Veste corrente della sessione per la configurazione delle schermate: legge la GUC app.ruolo_applicativo e la converte in config.ruolo_applicativo. NULL = tutte le vesti dell''utente, sia per GUC assente o vuota sia per un valore fuori dominio: mai eccezione. Estratta il 2026-09-23 dalle due copie identiche in fn_resolve_lista_config e fn_resolve_dashboard_config (regola del 2), terzo consumatore fn_lista_colonne_ricerca_full. ⚠️ Semantica di presentazione, non di permesso: le funzioni di script che decidono un accesso sono fail-closed sulla veste. Brief: brief-db-ricerca-full-colonne-permessi.';

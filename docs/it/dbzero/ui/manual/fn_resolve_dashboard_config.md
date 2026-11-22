@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `ui.fn_resolve_dashboard_config`
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -15,10 +15,14 @@
 >
 > Approfondimento funzioni:
 >
+> * [ui.fn_dashboard_da_codice](/dbzero/ui/funzioni/fn_dashboard_da_codice) — la dashboard accesa per codice
 > * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — il gemello delle liste
 > * [ui.fn_veste_corrente](/dbzero/ui/funzioni/fn_veste_corrente) — la veste della sessione
 > * [ui.fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base) — la scelta del preset di base
 > * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — le chiavi del banner
+> * [ui.fn_intero_da_jsonb](/dbzero/ui/funzioni/fn_intero_da_jsonb) — l'ordine e la dimensione letti senza cast che cadono
+> * [ui.fn_dimensione_max_ammessa](/dbzero/ui/funzioni/fn_dimensione_max_ammessa) — il tetto da 1 a 100 delle card
+> * [ui.trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma) — la forma della preferenza, alla scrittura
 > * [script.fn_get_user_permissions_map](/dbzero/script/funzioni/fn_get_user_permissions_map) — il livello dell'utente per area
 > * [script.fn_get_user_actions_map](/dbzero/script/funzioni/fn_get_user_actions_map) — le azioni abilitate dell'utente
 
@@ -41,7 +45,8 @@ widget non ha livelli di accesso né colonne obbligatorie.
 Le due chiavi, i widget e la dimensione massima, si risolvono ognuna per conto suo, dal primo livello che
 la contiene:
 
-1. la **preferenza** dell'utente, se porta la chiave (la dimensione vale solo se è un intero positivo);
+1. la **preferenza** dell'utente, se porta la chiave (la dimensione vale solo se è un intero da 1 a
+   100, [fn_dimensione_max_ammessa](/dbzero/ui/funzioni/fn_dimensione_max_ammessa));
 2. il **preset di base**;
 3. il **catalogo**: per i widget, tutti quelli accesi del pool, visibili, nell'ordine del pool; per la
    dimensione, 8.
@@ -64,16 +69,19 @@ primo preset acceso con almeno un widget acceso **nel pool** della dashboard, in
 * **d'azienda**, per l'azienda passata dal chiamante, se c'è ed è accesa;
 * **di sistema**.
 
-Un preset i cui widget sono tutti spenti, o tutti fuori dal pool, non conta: la ricerca scende al livello
+Un preset i cui widget sono tutti spenti non conta: la ricerca scende al livello
 successivo.
 
 ---
 
 ### I widget nuovi del pool
 
-Un widget acceso del pool che la configurazione scelta non nomina si aggiunge in coda, invisibile, e si
-conta in `widget_nuovi`: un widget aggiunto al pool dopo il salvataggio compare nella personalizzazione
-senza riscrivere la preferenza. Il frontend ne fa il badge «ci sono card nuove».
+Un widget acceso del pool che la configurazione scelta non nomina si aggiunge in coda, invisibile: un
+widget aggiunto al pool dopo il salvataggio compare nella personalizzazione senza riscrivere la
+preferenza. Una voce della preferenza senza codice non spegne l'aggiunta.
+
+`widget_nuovi` conta questi widget **dopo** il filtro dei permessi, come il gemello delle liste: annuncia
+solo le card che l'utente può davvero trovare. Il frontend ne fa il badge «ci sono card nuove».
 
 ---
 
@@ -85,8 +93,26 @@ volta per chiamata, e fuori dalla veste di operatore negano tutto. Ogni widget p
 i18n, tipo, collegamento, chiave del contatore e soglia letti da `ui.widget`: la preferenza e il preset
 portano solo codice, ordine e visibilità.
 
-Il catalogo garantisce una dashboard non vuota prima del filtro dei permessi, non dopo: a un utente che
-non vede nessun widget resta una dashboard vuota, se il pool non ha un widget senza area né azione.
+Dopo il filtro dei permessi l'elenco dei widget può essere vuoto, ed è un esito: a un utente che non vede
+nessun widget del pool la funzione risponde un elenco vuoto, non una card di riempimento. La home non resta
+muta perché lo stato vuoto lo dice il frontend («nessuna card attiva», «nessuna card disponibile per il tuo
+profilo»).
+
+---
+
+### ⭐ Una preferenza scritta male non ferma la home
+
+La forma della preferenza la giudica alla scrittura il guard
+[trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma). La lettura non conta
+su di lui: una riga scritta prima del guard, o senza passare dal trigger, non fa cadere la funzione.
+
+* `widget` che non è un elenco vale «nessuna scelta»: i widget vengono dal preset o dal pool.
+* L'ordine e la dimensione passano da [fn_intero_da_jsonb](/dbzero/ui/funzioni/fn_intero_da_jsonb): un
+  valore che intero non è vale come assente; una dimensione fuori dal tetto vale come assente.
+* Un campo che manca, o di tipo sbagliato, prende il default del pool: l'ordine del widget nel pool,
+  visibile. Non esce mai vuoto.
+* Una voce senza codice, o fuori dal pool, si salta; un codice ripetuto vale una volta, con la prima
+  voce.
 
 ---
 
@@ -119,29 +145,16 @@ dall'azienda: il ripiego non allarga. Le mappe dei permessi restano chiuse fuori
 
 ### ⚠️ Che cosa oggi non copre
 
-* **`widget_nuovi` conta anche i widget che il filtro toglie.** Il conteggio si fa all'aggiunta, prima dei
-  permessi: un widget del pool che l'utente non può vedere resta contato come novità, e il badge annuncia
-  una card che la personalizzazione non mostra. Il gemello delle liste ricalcola il contatore dopo il
-  filtro; questa funzione no.
-* **Una voce della preferenza senza codice spegne l'aggiunta dei widget nuovi.** Il confronto «non già
-  nominato» su un elenco che contiene un codice nullo non è mai vero: `widget_nuovi` vale zero e nessun
-  widget nuovo compare.
-* **Una preferenza malformata ferma la funzione.** Se `widget` non è un elenco, o un ordine o una
-  visibilità non si convertono, la chiamata fallisce invece di trattare la chiave come assente, come fa per
-  la dimensione.
 * **Il preset di base può essere fatto di widget che l'utente non vede.** La scelta del preset guarda che
   abbia un widget acceso nel pool, non i permessi: un preset tutto protetto da permessi che l'utente non ha
   vince lo stesso, e la dashboard resta con le sole card aggiunte invisibili.
-* **La dimensione del preset non è controllata.** Zero o un negativo escono così come sono; la dimensione
-  della preferenza, invece, deve essere un intero positivo.
-* **La dashboard per codice ha una seconda copia nel backend**, che la cerca prima di scrivere una
-  preferenza; le liste hanno un building block per questa lettura.
 
 ---
 
 ### Codici errore
 
-* `E_UI_DASHBOARD_NON_TROVATA` — codice inesistente o dashboard spenta.
+* `E_UI_DASHBOARD_NON_TROVATA` — codice inesistente o dashboard spenta, dalla lettura per codice
+  ([fn_dashboard_da_codice](/dbzero/ui/funzioni/fn_dashboard_da_codice)).
 
 ---
 
@@ -153,12 +166,16 @@ dall'azienda: il ripiego non allarga. Le mappe dei permessi restano chiuse fuori
 * `db/pgtap/ui/test-fn-resolve-dashboard-config-cascata-per-chiave-v1.sql` — la cascata per chiave, la
   dimensione standard, l'origine, il banner acceso da un cambio dei widget sulla chiave `widget`, la
   dimensione che la preferenza segue dal preset che non entra nel banner.
-* `db/pgtap/ui/test-fn-preset-di-base-v1.sql` — il preset di widget fuori dal pool che non è base, e quello
+* `db/pgtap/ui/test-fn-preset-di-base-v1.sql` — il preset fatto dei soli widget spenti del pool, che non è base, e quello
   con un widget del pool che lo è.
+* `db/pgtap/ui/test-ui-forma-configurazione-v1.sql` — una riga malformata scritta senza il guard che non
+  ferma la funzione (codice ripetuto preso una volta, ordine e visibilità dal pool); una card nuova del
+  pool di un'area non concessa che non conta in `widget_nuovi`, e una senza area che conta.
+* `db/pgtap/ui/test-ui-catalogo-dashboard-v1.sql` — la dashboard spenta rifiutata, anche coi preset
+  accesi.
 * Nessun test costruisce il filtro per azione, il widget visibile con il permesso, il preset d'azienda della
-  dashboard, il preset senza widget accesi che fa scendere la cascata, «Ignora» (lo prova il gemello delle
-  liste, sulla stessa funzione dello snapshot), né il
-  conteggio dei widget nuovi tolti dal filtro.
+  dashboard, il preset senza widget accesi che fa scendere la cascata, né «Ignora» (lo prova il gemello
+  delle liste, sulla stessa funzione dello snapshot).
 
 ---
 
@@ -177,6 +194,11 @@ dall'azienda: il ripiego non allarga. Le mappe dei permessi restano chiuse fuori
 * 2026-11-20 — il banner diventa per chiave: guarda solo le chiavi di origine `preferenza`, e nell'uscita
   `preset_aggiornato_chiavi`; `preset_base.contenuto_aggiornato_il` è la mappa per chiave. L'«ignora» non
   c'è più: è la riscrittura di `preset_base_id`.
+* 2026-11-21 — `widget_nuovi` si conta dopo il filtro dei permessi: prima contava anche le card che
+  l'utente non può vedere. La lettura smette di cadere su una preferenza malformata, una voce senza codice
+  non spegne più l'aggiunta dei widget nuovi, e la dimensione della preferenza vale solo da 1 a 100.
+* 2026-11-21 — la dashboard per codice la legge `ui.fn_dashboard_da_codice`, condivisa col backend; il
+  rifiuto non cambia.
 
 ---
 

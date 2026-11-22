@@ -40,7 +40,7 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ordini_service
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
-from apps.core.api.openapi_params import descrizione_order_by
+from apps.core.api.openapi_params import parametri_ordinamento
 from apps.vendite.db.ordini_repository import _ORDER_COLS_ORDINI, TESTATA_ORDINI, OrdiniRepository
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.vendite.api._componenti_schema import (
@@ -189,9 +189,7 @@ class ApiOrdiniList(DomainAPIView):
             OpenApiParameter(name="offset", type=int, required=False),
             # La frase si LEGGE dalla whitelist (api.md): scritta a mano
             # elencava 8 colonne su 17 (§B10 del brief-be-verifica-documentazione-api).
-            OpenApiParameter(name="order_by", type=str, required=False,
-                             description=descrizione_order_by(_ORDER_COLS_ORDINI)),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(_ORDER_COLS_ORDINI),
         ],
         responses={200: inline_serializer(
             name="VenditeOrdiniListResp",
@@ -246,9 +244,7 @@ class ApiOrdiniExportView(DomainAPIView):
             OpenApiParameter(name="utility_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False,
-                             description=descrizione_order_by(_ORDER_COLS_ORDINI)),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(_ORDER_COLS_ORDINI),
         ],
         responses={
             (200, "text/csv"): bytes,

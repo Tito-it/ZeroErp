@@ -1,6 +1,6 @@
 # Guida Tecnica – API Commesse (DB layer)
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > Destinatari: sviluppatori backend e database di Zero ERP
 >
@@ -292,16 +292,14 @@ fatto rispondere una colonna a due domande.
 
 * **Figlio → padre**: una commessa non punta a una risorsa umana spenta. Lo
   impone a DB il require generato dal framework ATTIVO
-  (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`), che però risponde
-  con `E_ATTIVO_REQUIRE` — classe **TECNICO**, la stessa del trigger montato
-  male. Per l'operatore è un dato sbagliato, non un guasto: il backend verifica
-  «persona attiva» **prima** dell'`UPDATE` e risponde `400` col campo; il guard
-  DB resta l'autorità.
+  (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`), che risponde
+  `E_ATTIVO_PADRE_NON_ATTIVO` — classe **CONFLITTO_STATO** (409), con la colonna
+  nel campo. È l'unica sede della regola: il backend non la ricontrolla prima
+  dell'`UPDATE`, traduce il rifiuto del DB.
 * **Padre → figli**: una persona responsabile di una commessa — **anche
   chiusa**, perché `commesse` non ha `attivo` e il block conta tutti i figli —
-  **non si disattiva** (`trg_risorse_umane_a10_commesse_block_deact_upd`). È il
-  quarto block della sua specie su `risorse_umane`, accanto a `pratiche`,
-  `flussi` e `competenze_flussi`: per liberare una persona si cambia il
+  **non si disattiva** (`trg_risorse_umane_a10_commesse_block_deact_upd`,
+  `E_ATTIVO_BLOCK_CHILDREN_EXIST`): per liberare una persona si cambia il
   responsabile, non si spegne la persona.
 
 ⚠️ **Non esiste una lista configurata `vendite.commesse`**: in
@@ -596,9 +594,9 @@ for row in rows:
 ```
 
 > **Nota**: la firma di `fn_emit_attivita_fatturabili_da_commessa` è
-> `(p_commessa_id, p_only_approved, p_dry_run)`; la funzione propaga anche le 8
-> colonne snapshot audit pricing v5 da `commesse_attivita` ad
-> `attivita_fatturabili`.
+> `(p_commessa_id, p_only_approved, p_dry_run)`; la funzione propaga anche la
+> provenienza del prezzo (le colonne della sezione «La provenienza del prezzo» qui
+> sotto) da `commesse_attivita` ad `attivita_fatturabili`.
 
 **Catena pipeline** (ordine dato dal seed `fn_list_fatturazione_pipeline_steps`,
 orchestrata in Python da `LottoPipelineRunner`):
@@ -692,12 +690,13 @@ Questa sezione documenta il flusso completo del prezzo dall'origine (preventivo 
 2. Push in commessa
    Il push (handler PREVENTIVO/ORDINE/CONTRATTO/DDT/CONSUMI) crea
    commesse_attivita con:
-   - prezzo_snapshot = prezzo risolto o manuale
-   - listino_versione_id = versione usata dal resolver (NULL se manuale)
-   - listino_riga_id = riga usata dal resolver (NULL se manuale)
+   - prezzo_snapshot = il prezzo della riga del documento
+   - la provenienza del prezzo della riga, copiata com'e' (origine,
+     versione e riga di listino, contesto del resolver): la riga di
+     listino si cita solo se il prezzo e' venuto davvero da li'
    - prezzo_bloccato = TRUE se override manuale, FALSE se da resolver
    - pricing_mode = 'FIXED' (v1)
-   - 8 colonne snapshot audit pricing v5 (vedi sezione dedicata sotto)
+   (vedi «La provenienza del prezzo» sotto)
 
 3. Modifica preventivo post-push
    Se il preventivo viene modificato dopo il push:
@@ -735,17 +734,21 @@ Questa sezione documenta il flusso completo del prezzo dall'origine (preventivo 
    - NON rilegge mai il listino
 ```
 
-### Snapshot pricing v5 — 8 colonne audit
+### La provenienza del prezzo
 
-Ogni riga `commesse_attivita` registra l'audit completo del calcolo prezzo
-all'epoca del push. Queste colonne sono **immutabili dopo emissione fattura**
-e permettono ricostruzione storica del processo pricing senza dipendere da
-modifiche successive a listini/contratti/promo.
+Ogni riga `commesse_attivita` dice **da dove e' venuto** il suo prezzo, non da dove
+verrebbe oggi. La provenienza nasce sulla riga del documento (preventivo, offerta,
+contratto, ordine, DDT e i loro componenti) quando il prezzo lo da' il listino, viaggia
+col prezzo nelle copie fra documenti e nel push, ed e' **immutabile dopo l'emissione
+della fattura**. Un prezzo cambiato a mano fa decadere la provenienza a `MANUALE`
+(versione, riga e contesto a `NULL`): lo fa il DB, non chi scrive la riga.
 
 | Colonna                         | Valore                                                                         |
 | ------------------------------- | ------------------------------------------------------------------------------ |
+| `listino_versione_id`           | Versione di listino da cui il prezzo e' venuto                                 |
+| `listino_riga_id`               | Riga di listino da cui il prezzo e' venuto (NULL per il componente di un kit: il suo prezzo sta in `listini_righe_componenti`) |
 | `prezzo_base_snapshot`          | Prezzo riga listino prima di qualunque variazione                              |
-| `origine_prezzo`                | `PROMO` / `CONTRATTO_OVERRIDE` / `CONTRATTO_LISTINO` / `CATEGORIA` / `MANUALE` |
+| `origine_prezzo`                | `PROMO` / `CONTRATTO_OVERRIDE` / `CONTRATTO_LISTINO` / `CATEGORIA` / `LISTINO_BUNDLE` / `MANUALE` / `COMPONENTI` |
 | `tipo_variazione_applicata`     | `PERCENTUALE` / `VALORE_FISSO` / `PREZZO_FISSO` / `NESSUNA`                    |
 | `valore_variazione_applicata`   | Valore firmato (negativo=sconto, positivo=maggiorazione)                       |
 | `promo_id`                      | FK promo se origine=PROMO                                                      |
@@ -753,15 +756,23 @@ modifiche successive a listini/contratti/promo.
 | `categoria_cliente_id_snapshot` | FK categoria cliente al momento dello snapshot (anche se categoria poi cambia) |
 | `classe_utenza_id_snapshot`     | FK classe utenza derivata da contratto/istanza                                 |
 
-Popolazione: `fn_upsert_commessa_attivita` riceve gli 8 campi dal
-chiamante Python (`CommessaAttivitaInput`). Al **push** li valorizza
-`BaseSourceHandler._resolve_pricing_audit` via `PricingService.resolve_prezzo`
-(`fn_resolve_prezzo_listino_v2`), **senza sovrascrivere `prezzo_snapshot`** (negoziato,
-autoritativo): l'audit è diagnostico. Best-effort (errore resolver → audit NULL, push non
-si blocca), `origine_prezzo` filtrato contro il CHECK (valore fuori set → NULL). Per i
-componenti BoM l'`origine_prezzo` negoziato (in `meta`) prevale. La pull
-`fn_emit_attivita_fatturabili_da_commessa` propaga gli 8 campi anche su
-`attivita_fatturabili` (audit completo fino all'emissione).
+Le origini sono un elenco solo, dalle righe di documento alle attivita' fatturabili
+(`vendite.fn_origine_prezzo_ammessa`): `COMPONENTI` e' il prezzo di un kit che e' la somma
+dei suoi componenti, ciascuno con la sua provenienza; `LISTINO_BUNDLE` e' il prezzo di un
+componente dentro il kit del listino. La coerenza (con un prezzo un'origine; una riga di
+listino con la sua versione; `MANUALE` e `COMPONENTI` senza listino) la tiene
+`vendite.fn_provenienza_prezzo_coerente`, e la riga di listino citata deve essere
+dell'emittente del documento e mai di una bozza. Una riga di listino citata da un
+documento o da una commessa e' «propagata»: in una versione attiva non si rettifica e non
+si cancella (`E_RIGA_LISTINO_PROPAGATA`), per cambiarne il prezzo si fa una versione nuova.
+
+Popolazione: i lister del push (`fn_list_*_da_pushare`) restituiscono la provenienza della
+riga del documento, e il push la passa a `fn_upsert_commessa_attivita` cosi' com'e'
+(`CommessaAttivitaInput`): non chiede al resolver da dove verrebbe il prezzo. Un componente
+di kit porta la **sua** provenienza, non quella del padre. Riallineamento (N5) e sblocco
+riscrivono prezzo e provenienza dal resolver. La pull
+`fn_emit_attivita_fatturabili_da_commessa` propaga la provenienza anche su
+`attivita_fatturabili`, fino all'emissione.
 
 ### Espansione compositi BoM v5 (modello snapshot)
 
@@ -784,7 +795,8 @@ Logica orchestrata da `BoMComponentExpander` + `_componenti_repo_factory` in
 * `quantita` = `quantita_padre × coeff_qta` (no rounding sotto-componenti)
 * `prezzo_snapshot` = `prezzo_unitario` negoziato del componente (dallo snapshot)
 * `segment_key` = `{padre_segment_key}#CMP:{componente_id}` (idempotente per re-run)
-* `meta` arricchito con `componente_di`, l'esposizione del componente, `coeff_qta`, `origine_prezzo`.
+* `meta` arricchito con `componente_di`, l'esposizione del componente, `coeff_qta`; la provenienza del
+  prezzo del componente va nelle colonne (sezione «La provenienza del prezzo»), non nel `meta`.
   ⚠️ La chiave dell'esposizione diventa `esposizione` (il codice del modo); fino al
   2026-10-01 era `esposto_in_fattura` (booleano). Il passaggio lo fa il backend
   (`BoMComponentExpander` che la scrive, `FattureRigheService` che la legge): richiesta
@@ -845,7 +857,7 @@ Errori comuni:
 | riga AF già fatturata        | emit_da_commessa               | Tentativo update su riga fatturato=true                                                                                                          |
 | ROOT source mancante         | emit_da_commessa               | Nessun link ROOT in commesse_sorgenti                                                                                                            |
 | sorgente COMMESSA non attiva | emit_da_commessa               | config.sorgenti COMMESSA disabilitata                                                                                                            |
-| responsabile non attivo      | `PATCH /commesse/<id>/`        | il backend risponde `400` col campo (`E_COMMESSA_VALIDATION`) **prima** del require DB, che rifiuterebbe con `E_ATTIVO_REQUIRE` (classe TECNICO) |
+| responsabile non attivo      | `PATCH /commesse/<id>/`        | il require DB rifiuta con `E_ATTIVO_PADRE_NON_ATTIVO` (409, colonna nel campo); il backend lo traduce senza ricontrollare |
 
 ---
 

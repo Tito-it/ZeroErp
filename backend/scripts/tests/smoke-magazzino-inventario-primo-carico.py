@@ -29,7 +29,7 @@
 #   9  rettifica -5: RETT_NEG alla media (7), disponibilita' a 5
 #  10  POSTED non si elimina, non si modifica, non torna in bozza; POSTED non si CHIEDE
 #  11  l'operatore di un altro emittente: 404 e lista vuota
-#  12  lookup di riga: ubicazioni del magazzino, lotti dell'articolo
+#  12  lookup di riga: ubicazioni del magazzino, lotti dell'articolo nel magazzino
 # ------------------------------------------------------------
 
 from decimal import Decimal
@@ -71,9 +71,11 @@ _MONDO = (
     "CREATE TEMP TABLE _art AS SELECT dbops.fn_pgtap_crea_articolo('SMK-ART-1') AS art,"
     " dbops.fn_pgtap_crea_articolo('SMK-ART-NG', false) AS art_ng,"
     " dbops.fn_pgtap_crea_articolo('SMK-ART-L', true, true) AS art_l",
-    "INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id)"
-    " SELECT mag_u, 'UX', (SELECT id FROM config.tipi_ubicazione WHERE codice_interno = 'TIPO_UBI_STORAGE') FROM _mag",
-    "INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) SELECT art_l, 'L-SMK', current_date FROM _art",
+    # Ubicazione e lotto dai builder, che passano dai verbi: l'app non scrive
+    # piu' ubicazioni e lotti (`42501`, brief-db-magazzino-tutte-le-scritture-
+    # dal-verbo §5.3); il lotto prende l'azienda della sessione.
+    "SELECT dbops.fn_pgtap_crea_ubicazione((SELECT mag_u FROM _mag), 'UX')",
+    "SELECT dbops.fn_pgtap_crea_lotto_di_magazzino(art_l, 'L-SMK', script.fn_data_operativa()) FROM _art",
 )
 
 print("\n=== SMOKE magazzino — il primo carico dall'inventario (Lotto 2) ===\n")
@@ -168,7 +170,7 @@ with transaction.atomic():
         cur.execute("SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))")
     check("12) lookup: ubicazioni del magazzino U, lotti dell'articolo per lotti",
           [u["codice"] for u in ms.lookup_ubicazioni(mag_u)["results"]] == ["UX"]
-          and [x["codice"] for x in ms.lookup_lotti(articolo_id=art_l, search=None)["results"]] == ["L-SMK"])
+          and [x["codice"] for x in ms.lookup_lotti(articolo_id=art_l, magazzino_id=mag_a, search=None)["results"]] == ["L-SMK"])
 
     transaction.set_rollback(True)
 

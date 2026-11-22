@@ -1,6 +1,6 @@
 # Guida — Framework di Automazione DB
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali; chi amministra un'installazione (§9)
 >
@@ -313,7 +313,8 @@ Molte tabelle hanno una colonna `attivo` per il soft-delete (disattivare un reco
 * **Nessuna cascata automatica** sui figli
 * La regola si applica solo se il padre possiede la colonna `attivo`
 * Il tipo di azione della FK (`RESTRICT`, `NO ACTION`, `CASCADE`…) non conta: il motore non lo guarda
-* Solo FK a **una colonna**, con colonna che termina in `_id` (esclude le FK composte e i riferimenti a codici testuali)
+* Solo FK a **una colonna**: le FK composte restano fuori. Il nome della colonna non conta: una FK verso l'`id` del padre e una verso un suo codice (`codice_interno`, `codice_iso`, una chiave naturale) si legano allo stesso modo, con la colonna del padre che la FK referenzia davvero. Chi non si lega sta fra le **eccezioni** (sotto)
+* Su una tabella partizionata la FK si decide sulla **radice**: il require della radice PostgreSQL lo copia su ogni partizione, anche su quelle future, e il block conta le righe di tutte. Un'eccezione sulla radice vale per tutte le partizioni
 
 **Trigger generati:**
 
@@ -340,6 +341,12 @@ Il suffisso finale è un hash corto della FK, aggiunto di norma solo quando il n
 | `vendite.fatture_stampa_coda.tipo_documento_output_id` | la coda di stampa è un **outbox**: il worker aggiorna la riga a ogni passaggio, e il require scatterebbe su ogni aggiornamento; con un tipo di documento spento si fermerebbe il lotto intero, e il block impedirebbe di spegnere un tipo finché una riga storica lo nomina. Se un tipo può stampare lo decide la risoluzione del modello al drenaggio |
 | `catalogo.articoli_uom_operativa.articolo_id` e `.uom_id` | la mappatura di un'unità operativa è **storia**: si chiude con `valido_al` e dal primo giorno in vigore non si spegne più. Col block un articolo o un'unità che hanno avuto una mappatura non si spegnerebbero mai; l'articolo si spegne e si riaccende con le sue mappature intatte |
 | `catalogo.unita_misura_conversioni.uom_from_id` e `.uom_to_id` | la conversione generale è storia allo stesso modo: un'unità che ha avuto una conversione non si spegnerebbe mai |
+
+**Chi si lega lo dice una funzione sola.** [`dbops.fn_attivo_fk_esclusa`](/dbzero/dbops/funzioni/fn_attivo_fk_esclusa) risponde per il motore, che non genera le FK escluse, e per il ritiro, che ne toglie i trigger già generati: esclusa è una FK fra le eccezioni, o una FK che una partizione eredita dalla sua radice. Il ritiro non tocca le copie che PostgreSQL fa sulle partizioni del trigger della radice: le governa la radice. Ogni altra FK del perimetro si lega, qualunque sia il nome della colonna: un legame dimenticato non esiste, al più un'eccezione da scrivere. Lo presidia `db/pgtap/dbops/test-automazione-attivo-senza-filtro-nome-v1.sql`, che guarda tutte le FK del perimetro e prova la regola su tabelle costruite dal test.
+
+| Figlia · FK | Perché |
+| --- | --- |
+| `anagrafiche.emittenti_fiscali.regime_fiscale_rf`, `anagrafiche.fornitori.regime_fiscale_rf` | un **regime fiscale spento non si assegna**, e uno in uso non si spegne. Le due FK puntano a `config.regimi_fiscali(codice_interno)`. Contano i ruoli accesi: un emittente o un fornitore spento tiene il suo regime, ma non si riaccende finché non ne ha uno acceso |
 
 ⚠️ **Una figlia senza `attivo` che è una parte del padre va fra le eccezioni.** Senza `attivo` sulla figlia il block conta **ogni** sua riga. Se la figlia è composizione del padre (righe di composizione, pivot, preferenze) il padre non si spegnerebbe mai: quella FK si dichiara qui. Il guard resta fra due entità che hanno entrambe `attivo`.
 

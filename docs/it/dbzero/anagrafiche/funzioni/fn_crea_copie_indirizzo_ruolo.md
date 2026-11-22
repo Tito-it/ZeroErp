@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_crea_copie_indirizzo_ruolo.md" %}
 # ⚙️ Funzione `fn_crea_copie_indirizzo_ruolo`
 
 ```sql

@@ -16,43 +16,66 @@ CREATE OR REPLACE FUNCTION ui.trgfn_ui_lista_definizione_a10_valida_vista_sql()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
--- Scopo: verifica che NEW.vista_sql esista come relazione (view o table)
--- NELLO SCHEMA NEW.schema_dati prima di permettere INSERT/UPDATE su
--- lista_definizione.
--- Skip se vista_sql e' NULL o se attivo=FALSE (lista disattivata).
--- rev 2026-09-27: la relazione si cerca nel suo schema, non per solo
---   nome (due omonime in schemi diversi: `comuni` in config e storico).
+-- Scopo: la relazione di una lista accesa esiste nel suo schema e,
+-- quando l'applicazione cambia la vista o riaccende la lista, ha
+-- ancora i campi delle sue colonne VISTA.
+-- Lista spenta o senza vista: niente da verificare (la verifica
+-- arriva con la riaccensione).
 DECLARE
-  v_relazione_esiste BOOLEAN;
+  v_orfane text;
 BEGIN
-  -- Nessuna validazione se vista_sql non e' valorizzata o lista non attiva
-  IF NEW.vista_sql IS NULL OR NEW.attivo = FALSE THEN
+  IF NEW.vista_sql IS NULL OR NEW.attivo IS NOT TRUE THEN
     RETURN NEW;
   END IF;
 
-  -- Controlla esistenza della relazione nello schema della lista
-  SELECT EXISTS (
-    SELECT 1
-      FROM pg_catalog.pg_class c
-      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-     WHERE n.nspname = NEW.schema_dati
-       AND c.relname = NEW.vista_sql
-       AND c.relkind IN ('v', 'm', 'r')
-       -- v=view, m=materialized view, r=table (raro ma ammesso)
-  ) INTO v_relazione_esiste;
-
-  IF NOT v_relazione_esiste THEN
+  IF NOT ui.fn_lista_relazione_ha_attributo(NEW.schema_dati, NEW.vista_sql, NULL) THEN
     PERFORM script.fn_log_and_raise_error(
       'database',
       'ui.trgfn_ui_lista_definizione_a10_valida_vista_sql',
       'E_UI_VISTA_SQL_NON_TROVATA',
       jsonb_build_object(
-        'detail', format('vista_sql = ''%s.%s'' non trovata in pg_catalog',
-                         NEW.schema_dati, NEW.vista_sql),
+        'campo', 'vista_sql',
         'codice', NEW.codice
       ),
       NULL,
       NEW.schema_dati || '.' || NEW.vista_sql
+    );
+  END IF;
+
+  -- Le colonne si riverificano solo quando cambia cio' contro cui sono
+  -- state giudicate (la relazione) o quando la lista torna accesa, e
+  -- solo per l'applicazione: il seed lo giudicano pgTAP e presidio.
+  IF TG_OP <> 'UPDATE'
+     OR NOT (NEW.vista_sql   IS DISTINCT FROM OLD.vista_sql
+             OR NEW.schema_dati IS DISTINCT FROM OLD.schema_dati
+             OR OLD.attivo IS NOT TRUE)
+     OR script.fn_is_proprietario_tabella(TG_RELID) THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT string_agg(lc.codice, ', ' ORDER BY lc.codice)
+    INTO v_orfane
+    FROM ui.lista_colonna lc
+   WHERE lc.lista_id = NEW.id
+     AND lc.origine_campo = 'VISTA'
+     AND lc.campo_sorgente IS NOT NULL
+     AND NOT ui.fn_lista_relazione_ha_attributo(NEW.schema_dati, NEW.vista_sql,
+                                                lc.campo_sorgente);
+
+  IF v_orfane IS NOT NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'database',
+      'ui.trgfn_ui_lista_definizione_a10_valida_vista_sql',
+      'E_UI_LISTA_COLONNE_ORFANE',
+      jsonb_build_object(
+        'campo', 'vista_sql',
+        'lista_id', NEW.id,
+        'codice', NEW.codice
+      ),
+      NULL,
+      NEW.codice::text,
+      NEW.schema_dati || '.' || NEW.vista_sql,
+      v_orfane
     );
   END IF;
 
@@ -61,7 +84,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.trgfn_ui_lista_definizione_a10_valida_vista_sql()
-IS 'Guard INSERT/UPDATE: verifica esistenza di vista_sql in pg_catalog. Skip se NULL o attivo=FALSE.';
+IS 'Guard BEFORE INSERT OR UPDATE OF vista_sql, schema_dati, attivo su ui.lista_definizione. Su una lista accesa con una vista, la relazione esiste nel suo schema (ui.fn_lista_relazione_ha_attributo: vista, vista materializzata, tabella, tabella partizionata), altrimenti E_UI_VISTA_SQL_NON_TROVATA. Per chi non è il proprietario della tabella, un cambio di vista o di schema e la riaccensione della lista si rifiutano se una colonna VISTA, accesa o spenta, ha un campo che la relazione non ha: E_UI_LISTA_COLONNE_ORFANE, con le colonne nella frase. Il seed lo giudicano il pgTAP del catalogo e il presidio dbops.vw_liste_colonne_campo_orfano. Lista spenta o senza vista: niente da verificare.';
 ```
 
 </div>

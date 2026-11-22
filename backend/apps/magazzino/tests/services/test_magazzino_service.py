@@ -317,7 +317,7 @@ class ArticoloUuidTests(_ConRepo):
 
     def test_un_articolo_che_non_e_un_uuid_e_un_400_col_campo(self):
         chiamate = (
-            lambda: svc.lookup_lotti(articolo_id="abc", search=None),
+            lambda: svc.lookup_lotti(articolo_id="abc", magazzino_id=3, search=None),
             lambda: svc.lookup_assets(articolo_id="abc", magazzino_id=3),
             lambda: svc.motivi_riga(
                 magazzino_id=3, articolo_id="", lotto_id=None, asset_id=None, ubicazione_id=None,
@@ -348,5 +348,5 @@ class ArticoloUuidTests(_ConRepo):
         self.assertIsNone(self.repo.list_movimenti.call_args.kwargs["articolo_id"])
 
     def test_l_uuid_arriva_canonico_al_repository(self):
-        svc.lookup_lotti(articolo_id=_ART.upper(), search="L-")
-        self.repo.lookup_lotti.assert_called_once_with(_ART, "L-")
+        svc.lookup_lotti(articolo_id=_ART.upper(), magazzino_id=3, search="L-")
+        self.repo.lookup_lotti.assert_called_once_with(_ART, 3, "L-")

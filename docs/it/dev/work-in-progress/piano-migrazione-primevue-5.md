@@ -45,7 +45,7 @@ con la PR #118.
 > ⭐ **Dal 2026-08-22 il Gruppo A è 31/35**: `LottoDrawer.vue` è stato
 > riclassificato dal Gruppo B (i suoi tre tab sono tre liste, non tre
 > dettagli di un master) e **convertito**. Il lavoro DB che lo precedeva sta in
-> [brief-db-liste-drawer-lotto.md](../work-done/brief-db-liste-drawer-lotto.md).
+> [brief-db-liste-drawer-lotto.md](../work-done/2026/brief-db-liste-drawer-lotto.md).
 > Cronologia: `vendite.lotti` e
 > il 1° lotto il 31-07; dal 2° al 5° l'01-08; il 6° fra l'1 e il 2 agosto
 > (`storico.audit_log` compresa); il **7°** (2 code + approvazioni prezzo +
@@ -91,7 +91,7 @@ con la PR #118.
 >
 > ⭐ **2026-10-03 — il disaccoppiamento passa anche dai drawer.** Gli 80 drawer
 > laterali che montavano `<Drawer>` di PrimeVue a mano passano tutti dalla sede `AppDrawer`
-> (`work-done/analisi-fe-chrome-drawer.md`), e il lint ferma gli import
+> (`work-done/2026/analisi-fe-chrome-drawer.md`), e il lint ferma gli import
 > diretti di `dialog`, `confirmdialog`, `useconfirm`, `datatable` e `drawer`
 > fuori dalle loro sedi (frontend-standards §«Import PrimeVue riservati»).
 > Per questo piano vuol dire due cose: `drawer` passa da 73 import a **3**
@@ -990,9 +990,9 @@ mai**.
 
 > ⚠️ **Superato il 2026-11-14 come stato corrente**: vedi §9, «2026-11-14». Le spunte dei
 > Gruppi A e B qui sotto si fermano a inizio ottobre. La conversione è andata avanti in
-> [brief-db-liste-datatable-grezze](../work-done/brief-db-liste-datatable-grezze.md),
-> [brief-db-liste-righe-documento](../work-done/brief-db-liste-righe-documento.md) e
-> [brief-db-liste-datatable-grezze-secondo-giro](../work-done/brief-db-liste-datatable-grezze-secondo-giro.md).
+> [brief-db-liste-datatable-grezze](../work-done/2026/brief-db-liste-datatable-grezze.md),
+> [brief-db-liste-righe-documento](../work-done/2026/brief-db-liste-righe-documento.md) e
+> [brief-db-liste-datatable-grezze-secondo-giro](../work-done/2026/brief-db-liste-datatable-grezze-secondo-giro.md).
 > **Lo stato corrente si legge da `frontend/scripts/datatable.baseline.json`** (il
 > cricchetto di `check-datatable-baseline.mjs`), non da queste tabelle. Le tabelle restano
 > perché spiegano il criterio e la storia.
@@ -1111,7 +1111,7 @@ wrapper stessi (giusto che la usino) → **bersaglio reale: 71**.
 > segue resta come racconto, non come stato.
 >
 > ⏳ *Era: riaperta la sera stessa, di proposito — 63 seedati contro 59 nel registro*
-> (2026-09-02, lotto 2 — `work-done/brief-db-seed-liste-lotto-2.md`). Le quattro sono
+> (2026-09-02, lotto 2 — `work-done/2026/brief-db-seed-liste-lotto-2.md`). Le quattro sono
 > `pagamenti.canali_incasso`, `pagamenti.sistemazioni_fattura`,
 > `anagrafiche.soggetto_titoli_iva`, `anagrafiche.titoli_iva_sfondati`: **seed
 > arrivato prima del suo consumer**, esattamente la forma già descritta qui sotto
@@ -1124,7 +1124,7 @@ wrapper stessi (giusto che la usino) → **bersaglio reale: 71**.
 >
 > ⛔ **Ma il giorno in cui si converte una di quelle view, il registro la
 > pretende — e con lei arrivano DUE rossi già previsti**, che sono la ragione per
-> cui `work-done/brief-db-seed-liste-lotto-2.md` §7 esiste:
+> cui `work-done/2026/brief-db-seed-liste-lotto-2.md` §7 esiste:
 >
 > | Test che diventerà rosso | Su quale lista | Cosa chiede |
 > | --- | --- | --- |
@@ -1539,7 +1539,7 @@ una svista, era una dichiarazione in attesa di questo momento.
 #### 🕳️ Il difetto che quel presidio previene (era: consegna aperta)
 
 > Rilievo del **team DB**, 2026-09-02, alla chiusura di
-> [brief-db-seed-liste-ui-admin](../work-done/brief-db-seed-liste-ui-admin.md).
+> [brief-db-seed-liste-ui-admin](../work-done/2026/brief-db-seed-liste-ui-admin.md).
 > Non appartiene a quel lotto: vale per tutte le liste senza vista.
 
 Il guard DB sui `campo_sorgente`
@@ -1667,7 +1667,7 @@ semplice alla più complessa, così le prime servono da rodaggio.
 > (`EXPORT_MAX_ROWS`) lo presidia il BB, che confronta il `count` esatto.
 >
 > Piano DB, passata BE e ordine dei lotti:
-> [brief-db-liste-drawer-lotto.md](../work-done/brief-db-liste-drawer-lotto.md).
+> [brief-db-liste-drawer-lotto.md](../work-done/2026/brief-db-liste-drawer-lotto.md).
 
 ##### `vendite.lotti` — ✅ CONVERTITA il 2026-07-31, validata in-app da Tid
 
@@ -2583,7 +2583,7 @@ un wrapper sottile da estrarre alla seconda occorrenza
 > (documenti, tentativi dei task, segnalazioni) **passano al Gruppo A**.
 > Il seed e il lavoro DB che li precede — due dei tre tab oggi non hanno un
 > endpoint paginato, e uno non ha nemmeno una sorgente di righe — stanno in
-> [brief-db-liste-drawer-lotto.md](../work-done/brief-db-liste-drawer-lotto.md).
+> [brief-db-liste-drawer-lotto.md](../work-done/2026/brief-db-liste-drawer-lotto.md).
 > ⚠️ Se ne emergesse un secondo, la regola del 2 dice di **riscrivere il
 > criterio del gruppo**, non di spostare un'altra riga a mano.
 
@@ -2591,7 +2591,7 @@ un wrapper sottile da estrarre alla seconda occorrenza
 >
 > Il caso è `EmittenteFiscaleRegistriTab`, il tab dei registri di numerazione
 > del drawer emittente
-> ([brief-be-fe-crud-registri-di-numerazione](../work-done/brief-be-fe-crud-registri-di-numerazione.md)
+> ([brief-be-fe-crud-registri-di-numerazione](../work-done/2026/brief-be-fe-crud-registri-di-numerazione.md)
 > §10). ⇒ Come questa nota prescriveva, non si sposta una riga: si riscrive il
 > criterio, e il gruppo si legge da qui in avanti così.
 >
@@ -2661,7 +2661,7 @@ un wrapper sottile da estrarre alla seconda occorrenza
 | ☐ | `amministrazione/components/UtilityTipoRuoloDrawer.vue` | 3 |
 | ☐ | `amministrazione/views/RepartiProfiloView.vue` | 3 |
 | ☐ | `core/components/ScadenzeSintesi.vue` | 3 |
-| ➡️ | ~~`amministrazione/views/PermessiRiepilogoView.vue`~~ — **pagina ritirata** il 2026-10-06: il riepilogo è un interruttore *Mostra permessi* della lista `anagrafiche.operatori` (`OperatoriListView.vue`), file cancellato e uscito da `datatable.baseline.json` ([brief-db-riepilogo-permessi-lista-operatori](../work-done/brief-db-riepilogo-permessi-lista-operatori.md) §7) | 4 |
+| ➡️ | ~~`amministrazione/views/PermessiRiepilogoView.vue`~~ — **pagina ritirata** il 2026-10-06: il riepilogo è un interruttore *Mostra permessi* della lista `anagrafiche.operatori` (`OperatoriListView.vue`), file cancellato e uscito da `datatable.baseline.json` ([brief-db-riepilogo-permessi-lista-operatori](../work-done/2026/brief-db-riepilogo-permessi-lista-operatori.md) §7) | 4 |
 | ✅ 26-09 → **Gruppo A** | `catalogo/components/UomConversioniDrawer.vue` | 4 | criterio in tre domande: le conversioni hanno endpoint e lista loro (`catalogo.conversioni_uom`). Convertito con `useDrawerTabLista` + store `uomConversioni`, fattore modificabile nello slot `cell-fattore`; chiuso il troncamento a 200 righe |
 | ☐ | `core/components/SessioniAttivePanel.vue` | 4 |
 | ☐ | `vendite/components/AlertScadenzeWidget.vue` | 4 |
@@ -2876,11 +2876,11 @@ non aveva il blocco «Chi riparte». Nel frattempo sono cambiate tre cose.
 
 **2. Il binario delle liste (§8-bis) si è chiuso fuori da qui.** Da fine settembre la
 conversione è passata per brief suoi, oggi tutti in `work-done/`:
-[liste-datatable-grezze](../work-done/brief-db-liste-datatable-grezze.md) (decisione di Tid
+[liste-datatable-grezze](../work-done/2026/brief-db-liste-datatable-grezze.md) (decisione di Tid
 del 2026-09-26, criterio in tre domande di questo piano),
-[liste-righe-documento](../work-done/brief-db-liste-righe-documento.md) (chiuso il
+[liste-righe-documento](../work-done/2026/brief-db-liste-righe-documento.md) (chiuso il
 2026-10-04: le righe dei documenti e la distinta base sono liste configurabili) e il
-[secondo giro](../work-done/brief-db-liste-datatable-grezze-secondo-giro.md) (chiuso il
+[secondo giro](../work-done/2026/brief-db-liste-datatable-grezze-secondo-giro.md) (chiuso il
 2026-11-03). Al 2026-11-14:
 
 - il registro `datatable.baseline.json` conta **17 grezze, 0 senza motivo**;
@@ -2952,7 +2952,7 @@ pilota è `ui.lista_definizione` per una ragione operativa: è **la lista delle
 liste**, quindi si sa quante righe devono uscire (59, lo dice il CSV stesso) e un
 troncamento si vede a occhio invece che per deduzione. Seed consegnato al team DB
 come richiesta unica per quattro liste e applicato in giornata:
-[brief-db-seed-liste-ui-admin](../work-done/brief-db-seed-liste-ui-admin.md).
+[brief-db-seed-liste-ui-admin](../work-done/2026/brief-db-seed-liste-ui-admin.md).
 ⭐ **64 righe su 64 atterrate identiche alla specifica**, verificato
 meccanicamente contro `origin/Tito-dev` invece che dato per buono.
 
@@ -3406,7 +3406,7 @@ dominio lo sqlstate è sempre `P0001`. La colonna «codice» chiesta su due dell
 tre liste non ha una sorgente, e non è recuperabile sullo storico.
 
 Piano DB, le sei consegne BE/FE (di cui **tre bloccanti**) e l'ordine dei lotti:
-[brief-db-liste-drawer-lotto.md](../work-done/brief-db-liste-drawer-lotto.md).
+[brief-db-liste-drawer-lotto.md](../work-done/2026/brief-db-liste-drawer-lotto.md).
 Vale ancora il metodo delle volte precedenti: **la passata BE si chiede prima di
 comporre il lotto, non in consegna.**
 
@@ -3650,7 +3650,7 @@ riga di seed dal team DB (`ordinabile` `f` → `t`) e voce `stato_atto` in
 avrebbe prodotto una freccia che ordina per stato e ottiene `data`, senza
 nessun errore a dirlo. `--verifica-ordinamento`: **47 liste allineate in tutte
 e tre le direzioni**. Dettaglio in
-[brief-db-liste-drawer-lotto.md](../work-done/brief-db-liste-drawer-lotto.md)
+[brief-db-liste-drawer-lotto.md](../work-done/2026/brief-db-liste-drawer-lotto.md)
 §4-bis B.
 ✅ **E il 2026-08-22 i due numeri hanno smesso di divergere**: erano 47 codici
 seedati contro 46 nel presidio, e la differenza era una sola — la 44

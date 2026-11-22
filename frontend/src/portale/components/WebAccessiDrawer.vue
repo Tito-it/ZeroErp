@@ -26,7 +26,6 @@ const props = defineProps({
     validator: v => ['cliente', 'fornitore'].includes(v),
   },
   entitaId: { type: [Number, String], required: true },
-  emailIniziale: { type: String, default: '' },
   readonly: { type: Boolean, default: false },
 })
 
@@ -55,7 +54,6 @@ function isReadonly() {
     <PortaleAccessoPanel
       :entita-tipo="props.entitaTipo"
       :entita-id="props.entitaId"
-      :email-iniziale="props.emailIniziale"
       :readonly="isReadonly()"
       @stato-cambiato="$emit('stato-cambiato')"
     />

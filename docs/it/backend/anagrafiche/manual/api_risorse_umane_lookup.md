@@ -87,20 +87,21 @@ id:
   (`responsabile_display`), così la select non mostra un vuoto al posto del
   nome. ⚠️ «Assente dalle attive» si dice solo a lookup **caricato**: mentre
   carica, `items` è vuoto e ogni responsabile sembrerebbe disattivato.
-- **La stessa query per l'elenco e per il singolo id**:
-  `AnagraficheService.get_risorsa_umana_lookup(id)` (repository
-  `_risorse_umane_lookup`) è la forma con cui un service di dominio verifica
-  «la persona è attiva» **prima** dell'`UPDATE`. ⚠️ A DB lo rifiuterebbe comunque
-  il require sul figlio nato da `ci_apply`
-  (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`) — ma con
-  `E_ATTIVO_REQUIRE`, di classe `TECNICO` (500), che parla di trigger: per
-  l'operatore è un dato sbagliato, non un guasto. Il service risponde `400` col
-  campo; il guard DB resta l'autorità.
+- **«La persona è attiva» lo dice il DB, non il service**: il require sul figlio
+  nato da `ci_apply` (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`)
+  rifiuta un responsabile spento con `E_ATTIVO_PADRE_NON_ATTIVO`
+  (`CONFLITTO_STATO`, 409, la colonna nel campo); una persona inesistente è la FK.
+  ⚠️ Fino al 2026-11-07 il require rispondeva `E_ATTIVO_REQUIRE` (`TECNICO`, 500)
+  e il service della commessa lo anticipava con una lettura sua
+  (`AnagraficheService.get_risorsa_umana_lookup(id)`): ritirata con
+  brief-db-revisione-dbops BE3, la regola ha una sede sola. La query
+  `_risorse_umane_lookup` resta la sede del lookup, non di un controllo.
 - Il **rovescio** sta sul padre: una persona responsabile di una commessa —
   anche chiusa, perché `commesse` non ha `attivo` — **non si disattiva**
   (`trg_risorse_umane_a10_commesse_block_deact_upd`, generato dal framework
-  ATTIVO). È il quarto block della sua specie su `risorse_umane`, accanto a
-  `pratiche`, `flussi` e `competenze_flussi`.
+  ATTIVO), con `E_ATTIVO_BLOCK_CHILDREN_EXIST`: le commesse non hanno `attivo`,
+  e il rimedio è cambiare il responsabile. Gli altri block sulla persona li
+  elenca la doc auto-generata della tabella.
 
 ## Dipendenze DB
 
@@ -112,7 +113,7 @@ id:
 ## Riferimenti
 
 - Repository: `apps/anagrafiche/db/anagrafiche_repository.py` —
-  `list_risorse_umane_lookup`, `get_risorsa_umana_lookup`, `_risorse_umane_lookup`
+  `list_risorse_umane_lookup`, `_risorse_umane_lookup`
 - Service: `apps/anagrafiche/services/anagrafiche_service.py`
 - Test: `apps/anagrafiche/tests/api/test_risorse_umane_lookup_api.py` (rotta,
   envelope, area non pretesa, ricerca corta, passaggio al repository)

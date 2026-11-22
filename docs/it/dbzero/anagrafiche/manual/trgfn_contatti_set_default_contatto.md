@@ -1,102 +1,81 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_contatti_set_default_contatto`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_contatti_set_default_contatto`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:    
+> Approfondimento tabelle:
 >
-[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
-> [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)    
+> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti) — la tabella su cui è montata, di cui scrive `is_default` e `default_context`
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — il soggetto, di cui scrive `default_contatto_id`
 >
-Approfondimento funzioni :    
+> Approfondimento funzioni:
 >
-[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
-
-
-La trigger function **`anagrafiche.trgfn_contatti_set_default_contatto()`** gestisce automaticamente il contatto predefinito per un soggetto, tenendo conto di un **contesto** dinamico (`soggetto`, `ruolo` o `utility`). Assicura che esista al massimo un contatto default per soggetto e contesto, ed aggiorna il riferimento `default_contatto_id` in `anagrafiche.soggetti` quando richiesto.
+> * [anagrafiche.fn_crea_contatto](/dbzero/anagrafiche/funzioni/fn_crea_contatto) — il verbo che fa nascere i contatti
+> * [script.fn_get_contatto_default](/dbzero/script/funzioni/fn_get_contatto_default) — chi legge il predefinito
+>
+> Guide:
+>
+> * [Gestione dei Contatti](/guide/gestione-dei-contatti) — il contatto predefinito nel modello dei contatti
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 03-12-25)
-* **Impostare il contatto default**
-  Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
 
-* **Contesto dinamico**
-  Utilizzare il campo `default_context` (valori: `soggetto`, `ruolo`, `utility`) per isolare i default per diversi ambiti di utilizzo.
-
-* **Sincronizzazione con anagrafica soggetti**
-  Se il contesto è `soggetto`, aggiornare in automatico `anagrafiche.soggetti.default_contatto_id` per mantenere il collegamento principale.
+`anagrafiche.trgfn_contatti_set_default_contatto` tiene il contatto predefinito di ogni soggetto e contesto: a
+ogni nascita e a ogni modifica di un contatto ne calcola il contesto, fa predefinito il primo del contesto o
+quello marcato, toglie il segno all'altro, e aggiorna il puntatore del soggetto.
 
 ---
 
-### Parametri e Contesto
+### Che cosa fa a ogni scrittura
 
-* **Trigger associato**: `BEFORE INSERT OR UPDATE` su `anagrafiche.contatti`.
-* **Colonne coinvolte**:
+Prima della scrittura di ogni riga di `anagrafiche.contatti`, su qualunque colonna:
 
-  * `NEW.is_default BOOLEAN`
-  * `NEW.default_context TEXT`
-  * `NEW.utility_id` (opzionale)
-  * `NEW.soggetto_ruolo_id` (opzionale)
-  * `NEW.soggetto_id UUID`
+* calcola il contesto dalla riga (istanza, poi ruolo, poi soggetto) e svuota `default_context`;
+* se la riga è marcata predefinita, toglie il segno agli altri predefiniti dello stesso soggetto e contesto, e
+  scrive il contesto sulla riga;
+* se non è marcata e il contesto non ha un predefinito, la marca;
+* se la riga è, o diventa, il predefinito del contesto `soggetto`, scrive il suo id in
+  `anagrafiche.soggetti.default_contatto_id`.
 
----
-
-### Flusso Logico
-
-1. **Azzeramento contesto**
-
-   ```plpgsql
-   NEW.default_context := NULL;
-   ```
-
-2. **Determinazione contesto**
-
-   ```plpgsql
-   ctx := CASE
-     WHEN NEW.utility_id        IS NOT NULL THEN 'utility'
-     WHEN NEW.soggetto_ruolo_id IS NOT NULL THEN 'ruolo'
-     ELSE 'soggetto'
-   END;
-   ```
-
-3. **Gestione contatto marcato default**
-   Se `NEW.is_default = TRUE`:
-
-   * Disabilita (`is_default = FALSE`) tutti i contatti esistenti dello stesso `soggetto_id` e `default_context` = `ctx`, eccetto `NEW.id`.
-   * Imposta `NEW.default_context := ctx`.
-   * Se `ctx = 'soggetto'`, aggiorna `anagrafiche.soggetti.default_contatto_id = NEW.id`.
-   * Restituisce `NEW`.
-
-4. **Assegnazione primo default**
-   Se `NEW.is_default = FALSE` e non esistono contatti default per `soggetto_id` e `ctx`:
-
-   * Imposta `NEW.is_default := TRUE` e `NEW.default_context := ctx`.
-   * Se `ctx = 'soggetto'`, aggiorna `anagrafiche.soggetti.default_contatto_id = NEW.id`.
-
-5. **Chiusura**
-   Restituisce `NEW` con i valori aggiornati.
+Togliere il segno agli altri è una modifica di quelle righe, e il trigger scatta anche su di loro: lì il
+predefinito di prima c'è ancora, e la riga resta senza segno.
 
 ---
 
-### Vincoli e Assunzioni
+### ⚠️ Una modifica del predefinito riscrive il soggetto
 
-* **Contesto obbligatorio**: `default_context` viene sempre valorizzato a uno dei tre valori.
-* **Unico default per contesto**: la funzione garantisce un solo contatto `is_default = TRUE` per coppia (`soggetto_id`, `default_context`).
-* **Aggiornamento referenza soggetto**: solo per `default_context = 'soggetto'` si propaga l’ID contatto.
-
----
-
-### Vantaggi Operativi
-
-* **Gestione semplificata dei default**
-  Automatizza l’impostazione del contatto principale per soggetti e ruoli.
-* **Contesti indipendenti**
-  Consente di avere contatti di default distinti per scopi diversi (`soggetto`, `ruolo`, `utility`) senza mescolarli.
-* **Sincronizzazione diretta**
-  Tiene coerente il campo `default_contatto_id` in `anagrafiche.soggetti` senza ulteriori query esterne.
-* **Manutenibilità**
-  Centralizza la logica di default in un’unica function, riutilizzabile in più trigger.
+Ogni scrittura del predefinito del contesto `soggetto` (anche il cambio di un'email) aggiorna il soggetto, pure
+quando il puntatore non cambia. Fa scattare quindi i trigger di `anagrafiche.soggetti`, compresi i controlli
+differiti al COMMIT: il contatto obbligatorio, gli indirizzi obbligatori, i dati societari.
 
 ---
 
-> **“Una trigger function flessibile che assegna e mantiene automaticamente il contatto predefinito in base a contesti distinti, semplificando la gestione dei dati di contatto.”**
+{% include-markdown "it/dbzero/anagrafiche/_contatto-predefinito.md" %}
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Il predefinito per ruolo e per istanza.** La chiave è soggetto più contesto: marcare il contatto di un ruolo
+  toglie il segno a quello di un altro ruolo dello stesso soggetto.
+* **Il contesto senza predefinito.** Togliere il segno o cancellare il predefinito non promuove nessuno, e il
+  puntatore del soggetto resta sul contatto di prima, anche quando quello esce dal contesto `soggetto`.
+* **Il COMMENT di `default_context`** elenca `utility` fra i valori: il trigger scrive `istanza`.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-contatti-soggetto-cliente.sql` — un contatto di ruolo marcato predefinito prende il
+  contesto `ruolo` e non tocca il puntatore del soggetto.
+* `db/pgtap/anagrafiche/test-fn-crea-contatto-v1.sql` — il primo contatto di un soggetto costruito nasce
+  predefinito.
+
+Nessun test prova il passaggio del segno fra due contatti dello stesso contesto, né i due ruoli che condividono
+un predefinito.
+
+---
+
+{% include-markdown "signature-core.md" %}

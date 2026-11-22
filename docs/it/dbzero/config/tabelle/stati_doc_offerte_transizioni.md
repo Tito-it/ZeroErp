@@ -39,10 +39,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_stati_doc_offerte_transizioni_a10_azioni_processo_re_91aa53 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_processo_codename', 'permission_codename')` |
+| trg_stati_doc_offerte_transizioni_a10_azioni_processo_re_91aa53 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_processo_codename', 'permission_codename')` |
 | trg_stati_doc_offerte_transizioni_a10_stati_doc_offerte_54aa7f | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_offerte', 'attivo', 'stato_da_id', 'id')` |
 | trg_stati_doc_offerte_transizioni_a10_stati_doc_offerte_54aa7f | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_offerte', 'attivo', 'stato_da_id', 'id')` |
-| trg_stati_doc_offerte_transizioni_a10_stati_doc_offerte_9f88b6 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_offerte', 'attivo', 'stato_a_id', 'id')` |
 | trg_stati_doc_offerte_transizioni_a10_stati_doc_offerte_9f88b6 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_offerte', 'attivo', 'stato_a_id', 'id')` |
+| trg_stati_doc_offerte_transizioni_a10_stati_doc_offerte_9f88b6 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_offerte', 'attivo', 'stato_a_id', 'id')` |
 | trg_stati_doc_offerte_transizioni_a10_terminale_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.offerte_commerciali')` |
 | trg_stati_doc_offerte_transizioni_a10_terminale_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.offerte_commerciali')` |
 | trg_stati_doc_offerte_transizioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

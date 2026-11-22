@@ -14,7 +14,7 @@
 #   SQL §7c: le date comandano, lo stato separa l'operativo dalla
 #   preparazione). Una versione OBSOLETA e' «superata da una pubblicazione
 #   successiva», e stampa fino all'ultimo giorno della sua validita': la
-#   decisione 51 del 2026-04-29 (work-done/sviluppo-documenti.md) voleva che
+#   decisione 51 del 2026-04-29 (work-done/2026/sviluppo-documenti.md) voleva che
 #   la vecchia restasse in uso fino alla partenza della nuova, e
 #   fn_pubblica_template_documento_versione la rende OBSOLETA subito, anche
 #   quando la nuova parte domani. Il predicato di «puo' stampare» si allarga

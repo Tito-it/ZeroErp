@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_check_elimina_dati_societari.md" %}
 # ⚙️ Funzione `fn_check_elimina_dati_societari`
 
 ```sql

@@ -32,7 +32,7 @@ conversioni semantiche.
   prezzo del contratto. Al push lo stato approvazione viene **copiato 1:1** sul
   contratto (non più NULL) — un override già autorizzato in offerta non va
   riapprovato. Vedi [API approvazioni prezzo](api_approvazioni_prezzo.md) e
-  [refactor-prezzi](../../../dev/work-done/refactor-prezzi.md).
+  [refactor-prezzi](../../../dev/work-done/2026/refactor-prezzi.md).
 - **State machine asimmetrica** (decisione operativa): annullamento da noi
   prima dell'emissione, o dopo l'accettazione se l'offerta non si trasforma
   (dal 2026-10-21); rifiuto cliente solo dopo l'emissione.
@@ -904,9 +904,9 @@ vivi, e le righe dell'ordine non le giudicava nessuno prima di scriverle.
   col motivo (tooltip) se una riga non va in un ordine; sparisce a conversione
   avvenuta. Confirm prima della generazione (`requires_confirm`).
 - Prerequisiti DB: brief
-  [db-brief-offerta-righe-espanse.md](../../../dev/work-done/db-brief-offerta-righe-espanse.md)
+  [db-brief-offerta-righe-espanse.md](../../../dev/work-done/2026/db-brief-offerta-righe-espanse.md)
   (righe espanse),
-  [brief-db-univocita-offerta-ordine.md](../../../dev/work-done/brief-db-univocita-offerta-ordine.md)
+  [brief-db-univocita-offerta-ordine.md](../../../dev/work-done/2026/brief-db-univocita-offerta-ordine.md)
   (univocità 1:1) e brief-db-offerta-emissione-ed-erogazione §I (il verbo).
 
 ### Lista righe `GET /api/v1/vendite/offerte/<id>/righe/lista/` (+ `export/`)
@@ -1206,7 +1206,7 @@ Per il dettaglio vedi §Detail; le liste paginate (offerte, revisioni) hanno
    `script.fn_generate_codice('offerta_commerciale')`. Rifiutato in
    payload come `unknown_key`.
 2. **Stato iniziale BOZZA**; transizioni via endpoint dedicato.
-3. **Testata**: quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e' (in EMESSA e ACCETTATA le note). **Eccezioni e
+3. **Testata**: quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-done/2026/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e' (in EMESSA e ACCETTATA le note). **Eccezioni e
    utility** solo in BOZZA: per la utility lo dice il lock «solo in bozza» dei
    satelliti a DB (dal 2026-10-11, `E_DOC_DATI_COLLEGATI_NON_BOZZA`, 409, che passa
    com'e'), specchiato dalla capability `can_edit_utility`. Il listino sotto le
@@ -1396,15 +1396,15 @@ diverso da "transizione non ammessa generica").
   `E_CONTRATTO_OVERLAP_ESISTENTE` / `E_CONTRATTO_SUCCESSIONE_DATA_INVALIDA`.
   FE: `OffertaSuccessioneDialog` con conferma esplicita; il push si re-invoca
   con `chiudi_esistente=true`. Vedi
-  [brief](../../../dev/work-done/brief-db-offerta-push-successione-contratto-overlap.md).
+  [brief](../../../dev/work-done/2026/brief-db-offerta-push-successione-contratto-overlap.md).
 
 Dominio offerta commerciale: **completo lato BE + FE**. Niente cantieri
 aperti.
 
 ## Riferimenti
 
-- Modello: [analisi-offerta-commerciale](/dev/work-done/analisi-offerta-commerciale)
-- Brief DB: [analisi-offerta-commerciale-db](/dev/work-done/analisi-offerta-commerciale-db)
-- Piano BE+FE: [analisi-offerta-commerciale-be-fe](/dev/work-done/analisi-offerta-commerciale-be-fe)
+- Modello: [analisi-offerta-commerciale](/dev/work-done/2026/analisi-offerta-commerciale)
+- Brief DB: [analisi-offerta-commerciale-db](/dev/work-done/2026/analisi-offerta-commerciale-db)
+- Piano BE+FE: [analisi-offerta-commerciale-be-fe](/dev/work-done/2026/analisi-offerta-commerciale-be-fe)
 - Manuale service: [offerte_service](/backend/vendite/manual/offerte_service)
 - API contratto (specchio strutturale): [api_contratti](/backend/vendite/manual/api_contratti)

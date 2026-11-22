@@ -9,7 +9,7 @@
 > * [Linee guida SQL](linee-guida-sql.md) — le convenzioni di ogni oggetto, e al §11 i divieti dei changeSet che si rompono solo in CI
 > * [Provisioning ruoli DB](/dev/backend/provisioning-db-roles) e [Installazione](/installazione) — i ruoli di sistema e l'ordine dei passi su un database nuovo
 > * [Configurazione GitHub](/dev/github/configurazione) — come la CI ricostruisce il database da zero
-> * Versione iniziale, solo consultazione: [liquibase-setup-workflow_v1](./liquibase-setup-workflow_v1.md)
+> * Versione iniziale, solo consultazione: [liquibase-setup-workflow_v1](liquibase-setup-workflow_v1.md)
 
 ---
 

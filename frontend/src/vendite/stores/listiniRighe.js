@@ -38,7 +38,6 @@ export const useListiniRigheStore = defineStore('vendite-listini-righe', () => {
     ricercaCorta: 'ignora',
     misura: USO_MISURA.COMPATTA,
     filterDefaults: { billing_account_id: null },
-    orderBy: 'articolo_descrizione',
   })
   const { versioneId, filters, svuota } = lista
 

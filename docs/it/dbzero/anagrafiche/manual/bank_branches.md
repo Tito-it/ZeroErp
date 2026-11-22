@@ -1,189 +1,90 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.bank_branches`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
-
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:  
+> Approfondimento tabelle:
 >
-[anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
-> [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)   
-> [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)   
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il ruolo `BANK_B` della banca, a cui la filiale appartiene
+> * [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari) — i conti, che nominano tutti una filiale
+> * [pagamenti.enti_incasso](/dbzero/pagamenti/tabelle/enti_incasso) — i canali di incasso, che nominano la filiale
 >
-Approfondimento funzioni/trigger:   
+> Approfondimento funzioni:
 >
-[anagrafiche.trgfn_bank_check_ruolo_bank_branches](/dbzero/anagrafiche/funzioni/trgfn_bank_guard_ruolo_bank_branches)   
-> 
-Altre guide correlate:
+> * [anagrafiche.trgfn_bank_guard_ruolo_bank_branches](/dbzero/anagrafiche/funzioni/trgfn_bank_guard_ruolo_bank_branches) — il ruolo della filiale è una banca
+> * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — una filiale usata non si spegne
+> * [script.trgfn_delete_block_by_guc](/dbzero/script/funzioni/trgfn_delete_block_by_guc) — una filiale non si cancella
 >
-[Gestione conti bancari](/guide/gestione-conti-bancari)
+> Guide:
+>
+> * [Gestione dei conti bancari](/guide/gestione-conti-bancari) — il registro degli IBAN e i suoi legami
 
 ---
+
 ### 🎯 Scopo Principale
-La tabella **`anagrafiche.bank_branches`** rappresenta le **filiali di istituti di credito** (branch bancarie) collegate a un determinato **ruolo di soggetto** di tipo *ISTITUTO_CREDITO* (`anagrafiche.soggetti_ruoli`).
 
-Obiettivi principali:
-
-* Centralizzare l'anagrafica delle **filiali bancarie** collegate a uno specifico istituto.
-* Collegare in modo strutturato **IBAN/conti** (`anagrafiche.conti_bancari.bank_branch_id`) alla relativa filiale.
-* Garantire **univocità** di filiale per istituto tramite la combinazione (`soggetto_ruolo_id`, `bank_code`, `branch_code`).
-* Supportare use-case internazionali tramite `bic_swift` opzionale.
-
-In sintesi: è il **catalogo delle filiali** per ogni banca censita come ruolo in `anagrafiche.soggetti_ruoli`.
+`anagrafiche.bank_branches` è il catalogo delle filiali delle banche: ogni riga è uno sportello, col suo codice
+banca, il suo codice filiale e il suo BIC, sotto il ruolo «istituto di credito» del soggetto che è la banca.
 
 ---
 
-### Collegamenti con Altre Tabelle
+### La banca è un ruolo, la filiale è una sua riga
 
-| Campo               | Tabella di riferimento                      | Descrizione                                                                     |
-| ------------------- | ------------------------------------------- | ------------------------------------------------------------------------------- |
-| `soggetto_ruolo_id` | `anagrafiche.soggetti_ruoli(id)`            | Collegamento al ruolo di tipo ISTITUTO_CREDITO (banca proprietaria filiale)     |
-| *(indiretto)*       | `anagrafiche.conti_bancari(bank_branch_id)` | I conti bancari (IBAN) possono referenziare la filiale tramite `bank_branch_id` |
+Una banca è un soggetto come gli altri, con il ruolo `BANK_B` («istituti di credito»). Le sue filiali stanno qui,
+e ognuna nomina quel ruolo con `soggetto_ruolo_id`: il guard di ruolo rifiuta un ruolo di altro tipo. È l'unica
+specializzazione di ruolo in cui più righe stanno sotto lo stesso ruolo: una banca ha tutte le sue filiali.
 
-Note:
-
-* Il collegamento con il **soggetto** avviene in modo indiretto: `bank_branches.soggetto_ruolo_id → soggetti_ruoli.soggetto_id → soggetti`.
-* Questo modello consente di differenziare più ruoli dello stesso soggetto (es. banca che svolge più funzioni) e di associare le filiali solo al ruolo corretto (ISTITUTO_CREDITO).
-
----
-
-### 🚩 Regole di Validazione e Vincoli
-
-1. **PK e univocità filiale per istituto**
-
-   * `pk_bank_branches` su `id` → identifica univocamente ogni filiale.
-   * `uq_bank_branches_soggetto_ruolo_bank_branch_code` → garantisce che per lo stesso `soggetto_ruolo_id` non possano esistere due filiali con la stessa coppia (`bank_code`, `branch_code`).
-
-2. **Formato BIC/SWIFT**
-
-   * `check_bank_branches_bic_swift_fmt` → se valorizzato, `bic_swift` deve rispettare il formato **8 o 11 caratteri alfanumerici uppercase**.
-
-3. **Coerenza con ruolo**
-
-   * Il trigger `trg_bank_check_ruolo_bank_branches_ins_upd` demanda alla funzione `anagrafiche.trgfn_bank_check_ruolo_bank_branches()` i controlli di coerenza, tipicamente:
-
-     * verificare che `soggetto_ruolo_id` punti a un ruolo coerente (es. **ISTITUTO_CREDITO**);
-     * impedire associazioni a ruoli non bancari.
-
-4. **Attivazione/Disattivazione filiale**
-
-   * `attivo BOOLEAN NOT NULL DEFAULT TRUE` → controlla la possibilità di utilizzo operativo della filiale;
-   * la disabilitazione della filiale non elimina il record, ma lo rende **non selezionabile** nei flussi applicativi.
-
-5. **Storicizzazione (se abilitata)**
-
-   * `storicizza BOOLEAN NOT NULL DEFAULT TRUE` → abilita la futura eventuale integrazione con trigger di storico generico (non definiti qui, ma coerenti con il framework globale di Zero ERP).
+La filiale è identificata dal ruolo della banca più la coppia codice banca e codice filiale
+(`uq_bank_branches_soggetto_ruolo_bank_branch_code`). In Italia i due codici sono l'ABI e il CAB; il modello non
+li lega a un formato, e vale per qualunque paese. Il BIC è facoltativo, e quando c'è ha 8 o 11 caratteri
+maiuscoli (`check_bank_branches_bic_swift_fmt`). `name` è la descrizione completa, banca e filiale, per le
+schermate e le stampe.
 
 ---
 
-### Indicizzazione
+### Chi la usa
 
-* **`ix_bank_branches_attivo`**
-
-  * Indicizza il campo `attivo` per filtrare rapidamente solo le filiali utilizzabili.
-
-* **`uq_bank_branches_soggetto_ruolo_bank_branch_code`** (prefisso `soggetto_ruolo_id`)
-
-  * Oltre all'unicità, serve le ricerche per ruolo di banca e il controllo della FK: l'indice dedicato `ix_bank_branches_soggetto_ruolo_id`, ridondante, è tolto dal 2026-11-14 (`20261114-21`). Ottimizza ricerche per ruolo di banca (es. caricamento filiali di uno specifico istituto per UI o API).
-
-Queste index supportano bene:
-
-* caricamento filiali per banca (by `soggetto_ruolo_id`);
-* filtri su filiali attive vs non attive.
+* **I conti bancari.** Ogni conto nomina la sua filiale, obbligatoriamente: un IBAN non entra nel registro senza
+  la banca che lo tiene.
+* **I canali di incasso** (`pagamenti.enti_incasso`), che nominano la filiale su cui arrivano i soldi.
 
 ---
 
-### Ruolo nel Modello Conti Bancari
+### ⛔ Una filiale usata non si spegne, e nessuna si cancella
 
-La tabella `anagrafiche.bank_branches` è pensata per integrarsi con:
-
-* `anagrafiche.conti_bancari` → ogni IBAN può referenziare una filiale tramite `bank_branch_id`;
-* `anagrafiche.soggetti_ruoli_conti_bancari` / `anagrafiche.soggetti_conti_bancari` → legano i conti a soggetti/ruoli, mentre **questo oggetto** lega la filiale all'**istituto bancario**.
-
-Vantaggi:
-
-* Possibilità di riportare in stampa e in UI **nome filiale**, **ABI/CAB** o equivalenti.
-* Supporto a controlli di coerenza tra IBAN e banca/filiale (es. match tra `bank_code`/`branch_code` e parti dell'IBAN nazionale).
-* Modello adatto ad essere arricchito con ulteriori metadati in `meta` (es. indirizzo filiale, orari, codici interni banca, ecc.).
+* **Lo spegnimento.** `attivo` toglie la filiale dall'uso senza perderla. Non si spegne finché un conto **attivo**
+  o un canale di incasso **attivo** la nomina (`E_ATTIVO_BLOCK_CHILDREN_ACTIVE`): prima si spengono loro. Dal verso
+  opposto, un conto attivo non si scrive su una filiale spenta: lo controlla il conto, al COMMIT.
+* **La cancellazione.** È rifiutata sempre, salvo che la sessione abbia acceso l'interruttore di manutenzione dei
+  ruoli: la filiale è un dato che altri nominano, e il suo ritiro è lo spegnimento.
 
 ---
 
-### Trigger e Funzioni Coinvolte
+### ⚠️ Che cosa oggi non copre
 
-| Trigger                                      | Evento                  | Funzione chiamata                                    | Scopo principale                          |
-| -------------------------------------------- | ----------------------- | ---------------------------------------------------- | ----------------------------------------- |
-| `trg_bank_check_ruolo_bank_branches_ins_upd` | BEFORE INSERT OR UPDATE | `anagrafiche.trgfn_bank_check_ruolo_bank_branches()` | Verifica coerenza del ruolo banca/filiale |
-
-> Altri trigger di audit/tx-id potrebbero essere aggiunti in futuro per allineare la tabella al framework comune (`dbops.trgfn_tx_id_managed`, `script.trgfn_audit_data_user_generic`, `script.trgfn_storico_generic`, ecc.).
-
----
-
-### Vantaggi Operativi
-
-* **Chiarezza anagrafica**: separa il concetto di **istituto bancario** (ruolo del soggetto) dalla **singola filiale**.
-* **Riutilizzo**: la stessa filiale può essere referenziata da più conti (`conti_bancari`) evitando duplicazioni incoerenti di ABI/CAB/BIC.
-* **Estensibilità**: il campo `meta JSONB` consente di aggiungere dati specifici di integrazione (codici interni, tag, attributi per country-specific rules) senza modificare la struttura.
-* **Governance**: l'attributo `attivo` consente di "ritirare" filiali senza perdere lo storico delle relazioni.
+* **Il BIC non si normalizza.** Un BIC scritto in minuscolo, o con uno spazio, è rifiutato dal vincolo di formato:
+  la tabella non ha la normalizzazione che i conti hanno.
+* **La filiale e il conto non si confrontano.** Nessun controllo lega il codice banca e il codice filiale ai
+  caratteri dell'IBAN che li portano, né il BIC della filiale a quello del conto.
+* **Lo stesso codice banca su due banche.** L'unicità è per ruolo: la stessa coppia di codici sotto due soggetti
+  diversi è ammessa.
 
 ---
 
-### 🧾 Note sul Modello Dati
+### Test
 
-* L'esistenza di un record in `anagrafiche.bank_branches` implica che l'istituto di credito sia **censito come ruolo** in `anagrafiche.soggetti_ruoli`.
-* Il modello è adatto a scenari multi-paese: `bank_code` e `branch_code` non sono legati a un formato specifico (ABI/CAB è solo un esempio).
-* `bic_swift` è opzionale ma validato quando presente, e può costituire base per future integrazioni con servizi bancari esterni.
-
----
-
-### Diagramma ER relazioni (semplificato)
-
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    soggetti_ruoli ||--o{ bank_branches : "ha filiali"
-    bank_branches  ||--o{ conti_bancari : "può essere usata da"
-
-    soggetti_ruoli {
-        bigint id PK
-        uuid   soggetto_id FK
-        int    tipo_ruolo_id FK
-    }
-
-    bank_branches {
-        bigint id PK
-        bigint soggetto_ruolo_id FK
-        varchar bank_code
-        varchar branch_code
-        varchar bic_swift
-        varchar name
-        boolean attivo
-    }
-
-    conti_bancari {
-        bigint id PK
-        varchar iban
-        bigint bank_branch_id FK
-        boolean attivo
-    }
-```
+* `db/pgtap/anagrafiche/create-soggetto-bank-branches.sql` — un soggetto banca col ruolo `BANK_B` e una sua
+  filiale, attiva, coi codici attesi.
+* `dbops.fn_pgtap_crea_filiale_bancaria` è l'aiuto con cui le altre prove costruiscono la filiale su cui agganciare
+  i loro conti.
 
 ---
 
-### Riepilogo
+### Note di migrazione
 
-La tabella **`anagrafiche.bank_branches`** è il **punto di raccordo** tra:
-
-* l'anagrafica del **ruolo banca** (`soggetti_ruoli`),
-* e i **conti bancari** (`conti_bancari`) attraverso `bank_branch_id`.
-
-Consente di gestire in modo strutturato:
-
-* catalogo filiali per istituto;
-* coerenza tra IBAN, banca e filiale;
-* attivazione/disattivazione controllata di filiali;
-* arricchimento progressivo tramite `meta`.
-
-È quindi un tassello fondamentale per una gestione bancaria **pulita, normalizzata e pronta a integrazioni future** nel contesto Zero ERP.
+* 2026-11-14 — l'indice dedicato a `soggetto_ruolo_id` è tolto: lo serve il vincolo unico, che comincia con quella
+  colonna.
 
 ---
 

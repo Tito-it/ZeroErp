@@ -1,6 +1,6 @@
 # Guida — Gestione Listini e Pricing
 
-> **Ultimo aggiornamento**: 15 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA
 >
@@ -309,7 +309,7 @@ Il totale della fattura è lo stesso nei tre casi. Le regole complete sono nella
 Logica completa in [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2),
 che è **bundle-aware** tramite `p_articolo_padre_contesto`: il vecchio
 `fn_resolve_prezzo_composito` è stato ritirato e il resolver canonico è uno solo
-(cfr. `dev/work-done/brief-db-drop-fn-resolve-prezzo-composito.md`).
+(cfr. `dev/work-done/2026/brief-db-drop-fn-resolve-prezzo-composito.md`).
 
 Il kit che un contratto **non negozia** (una quota fissa del listino, un'adesione) non ha
 componenti sul documento: componenti e prezzi li prende dal listino del contratto, alla data del
@@ -411,13 +411,25 @@ Il vincolo `uq_articoli_componenti_no_overlap` (un `UNIQUE … WITHOUT OVERLAPS`
 
 Nel preventivo, il prezzo suggerito dal resolver può essere **sovrascritto manualmente** dall'operatore. L1 è attivo:
 
-* Se il payload riga ha `prezzo_unitario` uguale al suggerito → passa sempre
-* Se è diverso → il service verifica l'azione processo `prezzo_override_manuale`
-  * Autorizzato: salva con origine `MANUALE`, traccia in `meta` il resolver originale
+* Senza prezzo nel payload → il prezzo lo dà il resolver, con la sua provenienza
+  (origine, versione e riga di listino) nelle colonne della riga
+* Con il prezzo **e** la provenienza ricevuta dall'endpoint di pricing (il form la rimanda
+  finché l'operatore non tocca il prezzo) → il service rilancia il resolver: se prezzo e
+  provenienza coincidono con quello che il listino dà adesso, la riga è da listino; se no
+  `E_PRICING_PROVENIENZA_SUPERATA` (409) e non salva
+* Con un prezzo senza provenienza → è un prezzo a mano: il service verifica l'azione
+  processo `prezzo_override_manuale`
+  * Autorizzato: salva con origine `MANUALE`
   * Non autorizzato: `E_PREZZO_OVERRIDE_NON_AUTORIZZATO` (403)
 
+Un prezzo uguale a quello del listino ma scritto a mano resta `MANUALE`: la provenienza la
+dichiara chi precompila, non la deduce il confronto fra i prezzi. Vale per i cinque
+documenti (preventivo, offerta, contratto, ordine, DDT). Un prezzo cambiato dopo fa decadere
+la provenienza a `MANUALE` (lo fa il DB).
+
 Il badge UI mostra l'origine del prezzo (`PROMO` / `CONTRATTO_OVERRIDE` /
-`CONTRATTO_LISTINO` / `CATEGORIA` / `MANUALE`) e il delta eventuale.
+`CONTRATTO_LISTINO` / `CATEGORIA` / `LISTINO_BUNDLE` / `MANUALE` / `COMPONENTI`, elenco
+unico in `vendite.fn_origine_prezzo_ammessa`) e il delta eventuale.
 
 L2 (limite sconto/maggiorazione %) è attivo: vedi `VENDITE_MAX_SCONTO_PCT` / `VENDITE_MAX_MAGGIORAZIONE_PCT` in `config.parameters` e l'endpoint diagnostico `GET /vendite/pricing/limiti-utente/`.
 

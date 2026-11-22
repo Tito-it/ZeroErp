@@ -17,6 +17,7 @@
 3. test_l_ultima_conclusa_e_la_corsa_vera_non_la_saltata
 4. test_una_corsa_saltata_non_si_chiude
 5. test_corsa_chiusa_conta_anche_la_fallita_non_la_saltata
+6. test_la_lista_processi_non_cuce_la_saltata_con_l_esito_di_prima   ⭐ 22-11
 """
 
 from __future__ import annotations
@@ -136,7 +137,8 @@ class CorsaRiuscitaDalDbTests(TestCase):
         self.assertFalse(corsa["in_corso"], "la skip e' chiusa")
         self.assertIsNotNone(corsa["ultima_conclusa"])
         self.assertIs(corsa["ultima_conclusa"]["ok"], False, "l'esito e' della corsa fallita, non della skip")
-        riepilogo, _ = repo.list_job_summary(jobname_prefix=_JOB)
+        riepilogo, _ = repo.list_job_summary(processo_codice=PROCESSO_DIGEST_PRESIDI, limit=100)
+        riepilogo = [r for r in riepilogo if r["jobname"] == _JOB]
         self.assertEqual(len(riepilogo), 1)
         self.assertEqual(
             (riepilogo[0]["total_runs"], riepilogo[0]["fail_count"], riepilogo[0]["saltate_count"]),
@@ -168,3 +170,35 @@ class CorsaRiuscitaDalDbTests(TestCase):
         self.assertTrue(repo.corsa_chiusa_dal(_JOB, prima), "una fallita e' una corsa chiusa")
         self.assertFalse(repo.corsa_riuscita_dal(_JOB, prima), "ma non riuscita")
 
+    # 6. ⛔ La terza sede che riassume le corse, la lista dei processi. Fino al
+    #    2026-11-22 dava `ultimo_run` (la riga piu' recente, qui la SKIP) accanto
+    #    a `ultimo_ok` (l'esito dell'ultima corsa vera, qui la FALLITA): due
+    #    colonne affiancate che si leggono come una corsa sola. Ora l'esito
+    #    viaggia in `ultima_conclusa` con la SUA data, e `ultimo_ok` (il campo della
+    #    colonna «Esito» a catalogo) e' preso dalla stessa riga.
+    def test_la_lista_processi_non_cuce_la_saltata_con_l_esito_di_prima(self) -> None:
+        from apps.core.db.processi_repository import ProcessiRepository
+
+        self._corsa(ok=False)
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT started_at FROM maintenance.job_run_log"
+                " WHERE jobname = %s AND ok = false ORDER BY id DESC LIMIT 1",
+                [_JOB],
+            )
+            row = cur.fetchone()
+            assert row is not None
+            avvio_fallita = row[0]
+        self._corsa_saltata()
+        righe, _ = ProcessiRepository().list_processi(limit=200)
+        riga = next(r for r in righe if r["codice"] == PROCESSO_DIGEST_PRESIDI)
+        self.assertGreater(riga["ultimo_run"], avvio_fallita, "il segno di vita e' la skip")
+        self.assertFalse(riga["in_corso"], "la skip e' chiusa")
+        conclusa = riga["ultima_conclusa"]
+        self.assertIsNotNone(conclusa)
+        self.assertEqual(
+            conclusa["started_at"], avvio_fallita.isoformat(),
+            "l'esito viaggia con la data della corsa VERA, non della skip",
+        )
+        self.assertIs(conclusa["ok"], False)
+        self.assertIs(riga["ultimo_ok"], conclusa["ok"], "`ultimo_ok` e' della stessa riga")

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `ui.fn_lista_colonne_ricerca_full`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -49,7 +49,9 @@ costruzione. L'ordine è quello di partenza delle colonne, poi il codice.
 Non si passano: l'utente è quello del contesto di sessione, la veste quella di
 [fn_veste_corrente](/dbzero/ui/funzioni/fn_veste_corrente), come li imposta l'autenticazione. Senza
 utente in sessione (un comando, un job) nessun permesso si applica: le colonne sensibili escono, le
-altre restano.
+altre restano. Un utente di sessione che non è un numero intero è una chiamata fuori contesto, e la
+lettura si ferma con `E_UI_CHIAMATA_NON_VALIDA`: lo stesso codice con cui il backend rifiuta un
+contesto vuoto o di un altro utente.
 
 La configurazione della schermata invece riceve l'utente come argomento. Che i due coincidano lo
 verifica il backend, che rifiuta la chiamata se il contesto di sessione è vuoto o di un altro utente
@@ -59,20 +61,16 @@ verifica il backend, che rifiuta la chiamata se il contesto di sessione è vuoto
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Il campo sorgente non è sempre un campo della vista.** Su una lista senza vista non è verificato
-  da niente; su un'azione non è verificato; un nome della lineage dei documenti è ammesso senza stare
-  nella vista. La funzione lo restituisce comunque, e la ricerca interroga un campo che può non
-  esserci.
-* **Un utente di sessione che non è un numero** fa fallire la lettura con l'errore grezzo del cast,
-  mentre la veste sbagliata ripiega in silenzio.
-* **Il filtro sul campo sorgente accetta ancora anche la stringa vuota**, che il vincolo della
-  colonna rifiuta da prima: è innocuo, e ripete il vincolo.
+* **Su una lista senza vista il campo sorgente non è verificato da niente**: la funzione lo
+  restituisce comunque. Le azioni non hanno campo, e una colonna della lineage non è ricercabile per
+  vincolo, quindi non arrivano qui.
 
 ---
 
 ### Codici errore
 
 * `E_UI_LISTA_NON_TROVATA` — lista assente o spenta, da `fn_lista_da_codice`.
+* `E_UI_CHIAMATA_NON_VALIDA` — l'utente di sessione non è un numero intero.
 
 ---
 
@@ -83,6 +81,8 @@ verifica il backend, che rifiuta la chiamata se il contesto di sessione è vuoto
   sessione, l'utente assente, la lista inesistente.
 * `db/pgtap/ui/test-lista-ricerca-min-caratteri-v1.sql` — il rifiuto della lista inesistente arriva da
   `fn_lista_da_codice`.
+* `db/pgtap/ui/test-ui-misura-lista-e-contesto-ricerca-v1.sql` — l'utente di sessione non numerico e
+  quello fuori dall'intero rifiutati, l'utente valido e quello assente.
 
 ---
 
@@ -91,6 +91,8 @@ verifica il backend, che rifiuta la chiamata se il contesto di sessione è vuoto
 * 2026-09-23 — nasce, su richiesta del team backend, con i due building block del livello e della
   veste.
 * 2026-09-25 — la lista dal codice la legge `fn_lista_da_codice`.
+* 2026-11-22 — un utente di sessione che non è un intero dà `E_UI_CHIAMATA_NON_VALIDA`: prima
+  l'errore grezzo del cast.
 
 ---
 

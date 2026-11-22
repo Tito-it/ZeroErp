@@ -3,7 +3,7 @@
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
 >
-> Ultima revisione: 2026-11-18.
+> Ultima revisione: 2026-11-22.
 
 ## Identità del Progetto
 
@@ -189,13 +189,13 @@ Il modello del documento di vendita è scritto:
   guard, nei verbi di ciascuno): aspetta che il cantiere porti quei documenti al modello.
 
 Si correggono i difetti; i brief già in esecuzione arrivano in fondo. Il perché, con i fatti datati,
-sta nel §1 di `work-done/brief-modello-documento-vendita.md`. La regola generale «un tema, un
+sta nel §1 di `work-done/2026/brief-modello-documento-vendita.md`. La regola generale «un tema, un
 brief» è in `.codex/AGENTS.md`.
 
 ### 🔵 Il cantiere principale — `acquisti` e `magazzino` (decisione di Tid, 2026-09-11)
 
 Le due app sono il cantiere in corso (voce D11 di
-[migliorie-generali-BE-FE-da-test-valutazione.md](../docs/it/dev/work-done/migliorie-generali-BE-FE-da-test-valutazione.md)).
+[migliorie-generali-BE-FE-da-test-valutazione.md](../docs/it/dev/work-done/2026/migliorie-generali-BE-FE-da-test-valutazione.md)).
 `magazzino` ha il comportamento dei Lotti 1-2; `acquisti` ha il solo modello DB.
 
 ⭐ **Ogni decisione presa su `vendite` è presa anche per `acquisti`** — envelope,
@@ -206,27 +206,33 @@ capability di riga, scope emittente, ordinamento, export, drawer autonomi,
 ⚠️ `storico` **resta senza decisione** e `contabilita` resta **fuori perimetro**:
 non sono la stessa cosa e non vanno letti insieme ai due sopra.
 
-- **Magazzino, Lotti 1 e 2: chiusi** (`work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md`,
-  `work-done/brief-db-magazzino-lotto-2-motore.md`, `work-done/piano-be-fe-magazzino-lotto-2-motore.md`;
+- **Magazzino, Lotti 1 e 2: chiusi** (`work-done/2026/brief-db-magazzino-lotto-1-terreno-vuoto.md`,
+  `work-done/2026/brief-db-magazzino-lotto-2-motore.md`, `work-done/2026/piano-be-fe-magazzino-lotto-2-motore.md`;
   API in `docs/it/backend/magazzino/manual/api_magazzino.md`). ⏳ Collaudo a video di Tid:
   `work-in-progress/collaudo-in-app-magazzino-inventario-e-rettifica.md`.
 - ⏳ **Magazzino, Lotti 3 e 3-bis — la merce esce con la bolla e rientra col reso**: DB applicato
   (28/29-09), BE/FE fatto il 2026-10-13; i due brief DB **chiusi il 2026-10-14**
-  (`work-done/brief-db-magazzino-lotto-3-scarico-da-ddt.md`, `work-done/brief-db-magazzino-lotto-3-bis-carico-da-reso.md`).
+  (`work-done/2026/brief-db-magazzino-lotto-3-scarico-da-ddt.md`, `work-done/2026/brief-db-magazzino-lotto-3-bis-carico-da-reso.md`).
   Aperto in un solo documento, `work-in-progress/piano-be-fe-magazzino-lotto-3.md` (§5 i residui: CI da zero,
   vista della merce in viaggio, pgTAP kit/seriali col runner); ⏳ collaudo a video di Tid:
   `work-in-progress/collaudo-in-app-magazzino-bolla-e-reso.md`. Il difetto DB dei motivi della «Conferma» del reso
-  è chiuso il 2026-10-14 (`work-done/brief-db-reso-motivi-conferma-con-valori.md`), a video al §5.3/§5.7 del collaudo.
+  è chiuso il 2026-10-14 (`work-done/2026/brief-db-reso-motivi-conferma-con-valori.md`), a video al §5.3/§5.7 del collaudo.
 - 📝 **Magazzino: tutte le scritture dal verbo**
-  (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): bozza, cinque decisioni di Tid (§3).
+  (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): Lotto 1 lato DB applicato coi pgTAP verdi
+  il 2026-11-22 (`20261122-01` … `-13`: colonne ammesse, BB di nascita, verbi `fn_aggiungi_*` / `fn_modifica_*`, guard
+  di perimetro, sola lettura per l'app su magazzini, ubicazioni, lotti, seriali, eventi e note, builder pgTAP sui
+  verbi, due fughe d'informazione chiuse nei guard, il cliente del seriale controllato). ⚠️ Ora la R-1 del BE (§7):
+  finché il repository non chiama i verbi, il backend non scrive magazzini, ubicazioni e lotti. Poi il Lotto 2
+  (documenti interni). Il lotto di magazzino diventa dell'azienda in
+  `work-in-progress/brief-db-magazzino-lotto-dell-azienda.md`: quattro decisioni a Tid.
 - **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun
   repository di righe, nessuna chiave i18n). Alla ripartenza: quali articoli ammettono le righe
-  d'acquisto è rinviato a `work-done/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5). Il documento passivo
+  d'acquisto è rinviato a `work-done/2026/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5). Il documento passivo
   del **fornitore privato** (ricevuta o nota compenso, ritenuta d'acconto, F24, CU; l'indirizzo fiscale chiesto dal
-  documento, non dal ruolo) è da progettare: `work-done/brief-db-fornitore-privato-indirizzi.md` §7.
+  documento, non dal ruolo) è da progettare: `work-done/2026/brief-db-fornitore-privato-indirizzi.md` §7.
 
 ⭐ **I domini nuovi nascono con il permesso applicato dal DB**
-(`work-done/brief-db-permesso-nel-verbo-di-scrittura.md`, D-1 → D-5 di Tid). Il modello è
+(`work-done/2026/brief-db-permesso-nel-verbo-di-scrittura.md`, D-1 → D-5 di Tid). Il modello è
 «una scrittura = un verbo»: una funzione DB che nella prima riga chiama un guard —
 `script.fn_guard_azione` (azione di processo), `script.fn_guard_livello` (livello sull'oggetto)
 o `script.fn_guard_super_admin` (gestione accessi) — e l'app che perde la scrittura diretta sulle
@@ -241,13 +247,13 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 - **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
   resta R-4, che vuole un brief DB non ancora scritto. ✅ L-6 (date della veste) fatto il 2026-10-07,
-  DB e BE/FE (`work-done/brief-db-veste-utilizzabile.md`; giro 3 chiuso: «Valido al» del drawer operatore
+  DB e BE/FE (`work-done/2026/brief-db-veste-utilizzabile.md`; giro 3 chiuso: «Valido al» del drawer operatore
   modificabile, spento col motivo per l'ultimo SUPER_ADMIN senza data di fine, `null` toglie la data): la regola «veste
   utilizzabile» sta in un BB a DB (`script.fn_veste_utilizzabile`), letto da tutte le sedi DB e dai
   cinque punti del BE; per l'operatore contano anche le date del rapporto; l'ultimo SUPER_ADMIN non
   scade e il batch notturno accende oltre che spegnere. ✅ L-4 fatto il 2026-10-06: portale e shop entrano con
   l'email, il reset accetta nome utente o email. Chiuso il 2026-10-03
-  `work-done/brief-db-credenziale-verbi-amministratore.md` (motivo del blocco dal DB, verbi
+  `work-done/2026/brief-db-credenziale-verbi-amministratore.md` (motivo del blocco dal DB, verbi
   dell'amministratore che rifiutano le credenziali di sistema).
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
@@ -257,16 +263,25 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 - 📝 **Revisione dello schema `ui`** (`work-in-progress/brief-db-revisione-ui.md`): giro 0 fatto il 2026-11-18 (32
   pagine `manual/` allo standard, guida `configurazione-liste` riallineata); censimento di 39 difetti, tre di classe A;
-  decisioni Q1-Q39 prese da Tid dal 2026-11-18 al 2026-11-20; giri 1a e 1b applicati con i pgTAP verdi il 2026-11-20.
-  Ora il BE/FE con le ricadute dell'1b (BE7, BE25), poi il via al giro 2 di sei.
-- ⏳ **La provenienza del prezzo segue il prezzo** (`work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md`,
-  decisione B di Tid del 2026-10-09): la riga di listino si cita solo se il prezzo viene davvero da lì. Riverificato
-  il 2026-11-13 (§7): R-3/R-4 corretti; D-1 … D-3 decise lo stesso giorno (parte, su un pezzo comune). Progetto al
-  §8, quattro giri: giro 1 applicato e verde; giro 2 (il push, D-4: `20261113-13 … -22`) applicato e verde.
-  Giro 3 (le copie a valle, `20261113-23 … -37`) applicato e verde il 2026-11-14; giro 4 (R-7, R-8) il
-  2026-11-15. BE/FE consegnati il 2026-11-15 (§8.13: K-1 … K-7 nei cinque documenti, ordine e DDT dal gate con
-  L1/L2 per la strada A di Tid); `note` del codice 409 corretta dal DB (§8.14). Ora il BE: l'estrazione della regola
-  del 2 (approvata da Tid il 2026-11-15) e la policy rigenerata; poi la chiusura DB.
+  decisioni Q1-Q49 prese da Tid dal 2026-11-18 al 2026-11-21; giri 1a e 1b applicati con i pgTAP verdi il 2026-11-20,
+  giro 2 (2a e 2b: forma delle preferenze, ritiro di filtri e ordinamento, legami di preset e pool) e giro 3 (le misure,
+  `20261120-36` … `-42`) il 2026-11-21. Giro 4 (il catalogo delle liste, `20261120-43` … `-52`) applicato coi pgTAP
+  verdi e committato il 2026-11-21. Giro 5 (il catalogo delle dashboard, `20261120-53` … `-62`, Q49 e Q50 (a): il
+  «mai vuota» resta quello di luglio) applicato coi pgTAP verdi il 2026-11-22, con la guida
+  `configurazione-dashboard`: resta la doc auto-generata. Al DB il `/verifica-db` dei giri 1a, 2, 3, 4 e 5, poi il giro 6,
+  che ha in più U40 (l'ordinamento di partenza nel seed dei preset, chiesto dal team BE il 2026-11-22). Le ricadute
+  BE/FE dei giri 2-5 sono fatte e committate (PR #193 e #194, 2026-11-22). Il residuo di BE25 (2) è fatto il 2026-11-22 (la partenza della lista su ogni porta). Giro 6a (`20261121-26` … `-33`: U40 nel seed, BE10 con `ui.fn_misura_lista` e il BB `ui.fn_misura_pagina_risolta`, U38) applicato coi pgTAP verdi il 2026-11-22. Giro 6b (`20261121-34` … `-37`, i COMMENT di `ui` e le note dei registri) applicato coi pgTAP verdi lo stesso giorno. Le ricadute BE/FE del giro 6 (BE10, BE18, BE29, BE31) sono fatte e verdi il 2026-11-22. Giro 6c (i pgTAP deboli di §5, due test nuovi) verde come app il 2026-11-22; il giro 6 è committato. Resta il `/verifica-db` dei giri 1a-6c, poi la chiusura.
+- 📝 **Revisione dello schema `anagrafiche`** (`work-in-progress/brief-db-revisione-anagrafiche.md`): censimento in
+  sola lettura fatto il 2026-11-22 (195 pagine `manual/`, nessuna allo standard; 56 oggetti senza pagina; il contenuto
+  falso e stantio per area; segnalazioni di codice da vagliare per ultime). Q1-Q8 decise da Tid lo stesso giorno. Giro
+  0a (area C: clienti, billing account, istanze, PDP; 63 pagine, due blocchi comuni, due guide) scritto e committato
+  il 2026-11-22, doc auto-generata rigenerata. Giro 0b (area A: soggetti, natura, dati societari, titoli IVA; 52
+  pagine, quattro blocchi, la guida) scritto e committato il 2026-11-22, doc auto-generata rigenerata. Giro 0c (area B: indirizzi, contatti,
+  catasto; 65 pagine, cinque blocchi, la guida nuova del catasto, due guide) scritto e committato il 2026-11-22, doc
+  auto-generata rigenerata. Giro 0d (area D: ruoli d'impresa e
+  banche; 46 pagine, il blocco dei guard di ruolo, la guida dei conti) scritto il 2026-11-22, con il pgTAP del catasto
+  ritirato, committato il 2026-11-22, doc auto-generata rigenerata. Q7 riaperta dalla risposta R-BE5 del BE: lo
+  storico di `indirizzi`, `indirizzi_dettaglio` e `config.stradario` diventa continuo (giro di codice, in coda). Prossimo: il giro 0e (area E).
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**
@@ -281,15 +296,15 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 > aggiunge qui la sua riga; uno chiuso si toglie da tutti e due.
 
 - **Briciole lasciate aperte da brief chiusi**: D31 resta aperta per ORARIO e CONSUMO; collaudo a video dei form di DDT e ordine; il «perché» nel tooltip di `RIGA_NON_AMMESSA`; la sorgente sugli acquisti; i residui del cliente manuale
-- **Residui di `work-done/brief-db-contratto-righe-periodiche-in-commessa.md`**: il collaudo a video; la colonna «Periodicità» della lista 37; gli smoke non lanciati nel giro BE
-- **Residui di `work-done/brief-db-scadenza-preventivi.md`**: `validita_al` dice due cose; il verbo di chiusura del listino
-- **Residui di `work-done/brief-modello-documento-vendita.md`**: i permessi `emetti_offerta`, `emetti_contratto`, `emetti_ordine`, `attiva_listino` ai profili; due rami del preventivo senza strada dall'interfaccia; `DocumentoDrawerHost` tace sul drawer che non si carica
-- **Residui di `work-done/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`**: il reset del rifiuto sta solo nel BE del preventivo; la riga `test-preventivi-approvazione-prezzo.sql`
-- **Residui di `work-done/brief-db-modelli-documento-standard.md`**: il giro degli smoke su `dev.smoke`; B-8, la matrice utility dell'emittente; `vendite.fatture.utility_id NOT NULL`
-- **Residui di `work-done/brief-db-presidio-job-run-a-chi-tocca.md`**: errori lato client senza SQLSTATE; `SMOKE_GIRO_FALLITO`; `error_detail` con la riga `CONTEXT:`; il `%TYPE` mancato del giro 1
-- **Residui di `work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md`**: D-4, che cosa registra il titolo IVA `COOPERATIVA`; censimento dei titoli IVA fuori regola; `SGT-0000121` con `cliente_pa = 'S'`; `anagrafiche.fornitori.split_payment`
+- **Residui di `work-done/2026/brief-db-contratto-righe-periodiche-in-commessa.md`**: il collaudo a video; la colonna «Periodicità» della lista 37; gli smoke non lanciati nel giro BE
+- **Residui di `work-done/2026/brief-db-scadenza-preventivi.md`**: `validita_al` dice due cose; il verbo di chiusura del listino
+- **Residui di `work-done/2026/brief-modello-documento-vendita.md`**: i permessi `emetti_offerta`, `emetti_contratto`, `emetti_ordine`, `attiva_listino` ai profili; due rami del preventivo senza strada dall'interfaccia; `DocumentoDrawerHost` tace sul drawer che non si carica
+- **Residui di `work-done/2026/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`**: il reset del rifiuto sta solo nel BE del preventivo; la riga `test-preventivi-approvazione-prezzo.sql`
+- **Residui di `work-done/2026/brief-db-modelli-documento-standard.md`**: il giro degli smoke su `dev.smoke`; B-8, la matrice utility dell'emittente; `vendite.fatture.utility_id NOT NULL`
+- **Residui di `work-done/2026/brief-db-presidio-job-run-a-chi-tocca.md`**: errori lato client senza SQLSTATE; `SMOKE_GIRO_FALLITO`; `error_detail` con la riga `CONTEXT:`; il `%TYPE` mancato del giro 1
+- **Residui di `work-done/2026/brief-db-dati-fiscali-e-societari-del-soggetto.md`**: D-4, che cosa registra il titolo IVA `COOPERATIVA`; censimento dei titoli IVA fuori regola; `SGT-0000121` con `cliente_pa = 'S'`
 - **La commessa vuota lasciata dal push batch** [DB + BE]
-- **Residui di `work-done/brief-db-istanza-nasce-col-ba.md`**: collaudo a video delle pratiche
+- **Residui di `work-done/2026/brief-db-istanza-nasce-col-ba.md`**: collaudo a video delle pratiche
 - **La coerenza tra codice fiscale e sesso ha una sede sola, e parziale** [DB + BE]
 - **La corsa appesa non è «in corso» nella liveness del BE** [BE/FE]
 - **La lista dei processi non dice se un processo gira adesso**
@@ -297,7 +312,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **`HTML_MARKDOWN_BLOCKS` si sceglie ma non fa niente** [BE]
 - **Le versioni pubblicate stampano coi margini delle colonne (15 mm), non coi 18/16 mm del loro CSS**
 - 🟡 **L'editor dei workflow perde le righe in compilazione senza chiedere** [FE]
-- **Residui di `work-done/brief-db-stati-documento-dal-vocabolario.md`**: i prezzi del kit di una versione non in bozza non si vedono; `VersioneDrawer.vue` senza uno spec sui motivi del registro [FE]
+- **Residui di `work-done/2026/brief-db-stati-documento-dal-vocabolario.md`**: i prezzi del kit di una versione non in bozza non si vedono; `VersioneDrawer.vue` senza uno spec sui motivi del registro [FE]
 - **`E_ATTIVO_REQUIRE` è TECNICO anche quando il dato l'ha scelto una persona** [DB, `dbops`]
 - 🟡 **IVA per cassa: i residui del cantiere** [DB]
 - 🟡 **Le variabili di una versione di template non si validano alla pubblicazione** [DB + BE]
@@ -379,6 +394,6 @@ scripts/update-venv.sh
 - Convenzioni SQL: `docs/it/linee-guida-sql.md`
 - Convenzioni trigger: `docs/it/linee-guida-trigger.md`
 - Guida fatturazione: `docs/it/guide/fatturazione.md`
-- WIP pipeline: `docs/it/dev/work-done/fatturazione-attivita-progetto.md`
-- Domini engine (archiviato 2026-08-22, con la verifica dei concetti in testa): `docs/it/dev/work-done/pipeline-domini-engine.md`
+- WIP pipeline: `docs/it/dev/work-done/2026/fatturazione-attivita-progetto.md`
+- Domini engine (archiviato 2026-08-22, con la verifica dei concetti in testa): `docs/it/dev/work-done/2026/pipeline-domini-engine.md`
 - Template doc backend: `docs/it/backend/_templates/manual-standard.md`

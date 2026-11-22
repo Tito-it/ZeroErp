@@ -39,11 +39,6 @@ from apps.core.services.permissions_resolver import PermissionResolver
 # scegliendo un emittente dalla combo di topbar.
 E_LISTA_EMITTENTE_DA_SCEGLIERE = "E_UI_LISTA_EMITTENTE_DA_SCEGLIERE"
 
-# Lista dichiarata da una view ma inesistente a catalogo: e' un difetto di
-# configurazione NOSTRO, non un rifiuto di perimetro. Stesso codice che usa
-# `UiService` quando la lista non si risolve: una cosa sola, un codice solo.
-E_LISTA_NON_TROVATA = "E_UI_LISTA_NON_TROVATA"
-
 
 # Nome del parametro con cui l'endpoint di CONFIG di una lista riceve
 # l'emittente gia' fissato dal contesto che la apre.
@@ -215,25 +210,15 @@ def guard_lista_per_codice(
     cache = {} if cache is None else cache
     if not scope_multi_emittente(user, cache=cache):
         return
+    # Lista assente o spenta: 404 `E_UI_LISTA_NON_TROVATA` dal BB del DB, dentro
+    # la lettura (U39 di brief-db-revisione-ui).
     flag = fetch_flag_perimetro(lista_codice)
-    ErrorManager.require(
-        flag is not None,
-        code=E_LISTA_NON_TROVATA,
-        message="Lista non trovata.",
-        detail=(
-            f"lista_codice='{lista_codice}' dichiarato da una view non esiste "
-            "in ui.lista_definizione (o non e' attiva)."
-        ),
-        context={"lista_codice": lista_codice},
-        function_name="core.perimetro_emittente.guard_lista_per_codice",
-    )
     # ⭐ La decisione NON si riscrive qui: e' la stessa che risponde all'envelope
     #    della config, e due copie della stessa conclusione finiscono per dire
     #    cose diverse — l'API concede e il pannello sbarra, o viceversa.
     #    Quello che questa funzione aggiunge e' solo il pezzo che il chiamante
     #    non ha in mano: i DUE flag di perimetro della lista, che nell'envelope
     #    arrivano gia' e qui vanno letti dal catalogo.
-    assert flag is not None
     if not richiede_scelta_emittente(
         user=user,
         multi_emittente=flag.multi_emittente,

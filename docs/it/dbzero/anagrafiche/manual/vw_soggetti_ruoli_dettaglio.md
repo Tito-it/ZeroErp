@@ -1,67 +1,57 @@
 ## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_soggetti_ruoli_dettaglio`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti tabelle:
+> Approfondimento tabelle:
 >
-[anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
-> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
-> [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli)  
-> [config.titoli_cortesia](/dbzero/config/tabelle/titoli_cortesia)  
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il ruolo, una riga della vista ciascuno
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — l'identità del soggetto del ruolo
+> * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli) — il tipo di ruolo, decodificato
+> * [config.titoli_cortesia](/dbzero/config/tabelle/titoli_cortesia) — il titolo di cortesia, se c'è
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_get_soggetto_dati_by_ruolo](/dbzero/script/funzioni/fn_get_soggetto_dati_by_ruolo) — legge i dati del soggetto dal ruolo
+> * [vendite.fn_snapshot_intestazione_fattura](/dbzero/vendite/funzioni/fn_snapshot_intestazione_fattura) — la fotografia dell'intestazione di una fattura
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 20-02-26)
-La vista **`anagrafiche.vw_soggetti_ruoli_dettaglio`** fornisce una lettura
-generale dei ruoli soggetto, partendo da `soggetto_ruolo_id` e includendo:
 
-* dati anagrafici e fiscali del soggetto;
-* decodifica del tipo ruolo;
-* decodifica del titolo di cortesia (se presente).
-
-E` pensata come vista di supporto per UI, API e report che devono mostrare
-in modo rapido ragione sociale e riferimenti fiscali di un ruolo.
+`anagrafiche.vw_soggetti_ruoli_dettaglio` mette in una riga un ruolo e il soggetto che lo riveste: l'identità
+anagrafica e fiscale del soggetto, il tipo di ruolo decodificato e il titolo di cortesia. Si parte dal ruolo
+e si arriva a «chi è», senza ricomporre i join.
 
 ---
 
-### 📑 Campi chiave esposti
+### Una riga per ruolo
 
-* `soggetto_ruolo_id`
-* `soggetto_id`
-* `ragione_sociale_completa`
-* `id_fiscale_univoco_cf_piva`
-* `partita_iva`
-* `codice_fiscale`
-* `data_nascita`
-* `sesso`
-* `titolo_cortesia_descrizione`
-* `tipo_ruolo_codice_interno`
+Un soggetto con tre ruoli ha tre righe, ciascuna col suo tipo di ruolo e con l'identità del soggetto
+ripetuta. Ogni ruolo ha la sua riga: il soggetto e il tipo di ruolo ci sono sempre, il titolo di cortesia
+solo quando il soggetto ne ha uno.
+
+Le colonne del ruolo e quelle del soggetto hanno nomi distinti (le prime col prefisso del ruolo, le audit del
+soggetto col prefisso del soggetto): nella stessa riga stanno due autori e due date di modifica, quelli del
+ruolo e quelli del soggetto.
 
 ---
 
-### Esempi d’uso
+### Chi la legge
 
-```sql
-SELECT
-  soggetto_ruolo_id,
-  ragione_sociale_completa,
-  id_fiscale_univoco_cf_piva,
-  partita_iva,
-  codice_fiscale
-FROM anagrafiche.vw_soggetti_ruoli_dettaglio
-WHERE soggetto_ruolo_id = 123;
-```
+La leggono, nel database, la funzione che restituisce i dati del soggetto a partire da un ruolo e la
+fotografia dell'intestazione della fattura, che dalla vista prende l'identità dell'emittente e del cliente,
+ciascuno dal suo ruolo. La vista non aggiunge regole: espone le tabelle così come sono.
 
-```sql
-SELECT
-  soggetto_ruolo_id,
-  tipo_ruolo_codice_interno,
-  titolo_cortesia_descrizione,
-  cognome,
-  nome
-FROM anagrafiche.vw_soggetti_ruoli_dettaglio
-WHERE soggetto_id = '00000000-0000-0000-0000-000000000000'::uuid;
-```
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **I permessi di scrittura dell'applicazione.** L'applicazione ha INSERT, UPDATE e DELETE sulla vista, che
+  unisce più tabelle e non è aggiornabile: i permessi non servono, e una scrittura fallirebbe comunque.
+* **La vista non gira coi permessi di chi la interroga.** Oggi è innocuo, perché le sue tabelle non hanno
+  visibilità per riga; se la avessero, la vista la scavalcherebbe.
 
 ---
 

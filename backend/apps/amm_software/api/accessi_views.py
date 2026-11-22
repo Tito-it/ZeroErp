@@ -43,7 +43,7 @@ from apps.amm_software.services.accessi_service import AccessiService
 from apps.amm_software.services.amm_software_service import E_AMM_VALIDAZIONE
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json, utente_autenticato_id
-from apps.core.api.openapi_params import descrizione_order_by, param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_finestra, parametri_ordinamento
 from apps.core.api.payload_validators import (
     paginated_envelope,
     parse_list_params,
@@ -59,11 +59,7 @@ from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.request_context import richiesta_django
 from apps.core.services.secondo_fattore_service import SecondoFattoreService
 
-_PARAMS_PAGINA = [
-    OpenApiParameter(name="limit", type=int, required=False),
-    OpenApiParameter(name="offset", type=int, required=False),
-    OpenApiParameter(name="order_dir", type=str, required=False, description="asc | desc."),
-]
+_PARAMS_PAGINA = parametri_finestra()
 
 
 # ================================================================== #
@@ -73,6 +69,8 @@ _PARAMS_PAGINA = [
 
 class AccessiAltriListView(AdminAPIView):
     """GET /amm-software/accessi/altri/ — il tab «Altri accessi» (lista 104)."""
+
+    lista_codice = "anagrafiche.accessi_altri"
 
     is_search_endpoint = True
 
@@ -96,10 +94,7 @@ class AccessiAltriListView(AdminAPIView):
                              description=f"{', '.join(STATI_DEVICE)}."),
             OpenApiParameter(name="secondo_fattore_obbligatorio", type=bool, required=False),
             OpenApiParameter(name="bloccata", type=bool, required=False),
-            OpenApiParameter(
-                name="order_by", type=str, required=False,
-                description=descrizione_order_by(ACCESSI_ALTRI_ORDER_COLUMNS, "Default: nome_visualizzato."),
-            ),
+            *parametri_ordinamento(ACCESSI_ALTRI_ORDER_COLUMNS, senza="nome_visualizzato"),
             *_PARAMS_PAGINA,
         ],
         responses={200: inline_serializer(name="AccessiAltriListResp", fields={"data": serializers.DictField()})},
@@ -130,6 +125,8 @@ class AccessiAltriListView(AdminAPIView):
 class AccessiSistemaListView(AdminAPIView):
     """GET /amm-software/accessi/sistema/ — il tab «Di sistema» (lista 105), sola lettura."""
 
+    lista_codice = "anagrafiche.accessi_sistema"
+
     is_search_endpoint = True
 
     @extend_schema(
@@ -146,10 +143,7 @@ class AccessiSistemaListView(AdminAPIView):
             OpenApiParameter(name="emittente_fiscale_id", type=int, required=False),
             OpenApiParameter(name="identita_attiva", type=bool, required=False),
             OpenApiParameter(name="bloccata", type=bool, required=False),
-            OpenApiParameter(
-                name="order_by", type=str, required=False,
-                description=descrizione_order_by(ACCESSI_SISTEMA_ORDER_COLUMNS, "Default: username."),
-            ),
+            *parametri_ordinamento(ACCESSI_SISTEMA_ORDER_COLUMNS, senza="username"),
             *_PARAMS_PAGINA,
         ],
         responses={200: inline_serializer(name="AccessiSistemaListResp", fields={"data": serializers.DictField()})},

@@ -10,9 +10,9 @@ errori vivi di fatturazione (blocco 4).
 ## Contesto
 
 Fase 1 BE del brief
-[brief-design-fatturazione-due-lenti](../../../dev/work-done/brief-design-fatturazione-due-lenti.md)
+[brief-design-fatturazione-due-lenti](../../../dev/work-done/2026/brief-design-fatturazione-due-lenti.md)
 (substrato DB in
-[brief-db-fatturazione-due-lenti](../../../dev/work-done/brief-db-fatturazione-due-lenti.md),
+[brief-db-fatturazione-due-lenti](../../../dev/work-done/2026/brief-db-fatturazione-due-lenti.md),
 migrations `20260706-01..15`): tre endpoint GET **sottili** sopra le proiezioni
 read-only `vendite.vw_dash_competenza_mensile` (aggregata formato lungo),
 `vendite.vw_dash_competenza_attivita` (grana attività) e
@@ -475,7 +475,7 @@ data», **prima** che il documento esista.
 cui `fn_build_fattura_key` scrive la chiave del documento vero: lista e
 documento non coincidono perché due implementazioni si comportano uguale, ma
 perché è un'implementazione sola. Brief:
-`dev/work-done/brief-db-registro-e-data-prevista-in-competenza.md`.
+`dev/work-done/2026/brief-db-registro-e-data-prevista-in-competenza.md`.
 
 | Campo | Cosa dice |
 | --- | --- |
@@ -729,7 +729,7 @@ tecnica in `meta.context.dettaglio_tecnico` della riga di log.
   (`DashboardCompetenzaView.vue`, store `dashboardCompetenza.js`).
 - **Emissione mirata (2026-07-27)**: aggiunto `gruppi/` sopra le viste
   `20260727-18/19`. Additivo: i quattro endpoint preesistenti sono invariati.
-  Brief: `dev/work-done/brief-be-fe-emissione-fattura-mirata.md`.
+  Brief: `dev/work-done/2026/brief-be-fe-emissione-fattura-mirata.md`.
 - 2026-10-21: le cinque liste (`attivita/`, `commesse/`, `gruppi/`, `residui/`,
   `errori/`) leggono la finestra come `limit`/`offset` (`pagina_da_query`);
   `page`/`page_size` in query diventano un 400. Envelope invariato.

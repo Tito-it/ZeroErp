@@ -1,6 +1,6 @@
 # Guida — Configurazione, Personalizzazione e Responsività delle Liste
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > **Destinatari**: amministratori del sistema (SUPER_ADMIN), tenant admin
 > con azioni `ui_preset_manage` / `ui_permesso_manage`, operatori finali
@@ -22,10 +22,13 @@
 > * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — la configurazione effettiva di una lista per un utente
 > * [ui.fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base) — la scelta del preset di base, per liste e dashboard
 > * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — il banner «preset aggiornato»
+> * [ui.fn_ordinamento_lista](/dbzero/ui/funzioni/fn_ordinamento_lista) — l'ordinamento con cui una lista parte, per un utente
+> * [ui.fn_misura_lista](/dbzero/ui/funzioni/fn_misura_lista) — le righe per pagina di una lista, per un utente
+> * [ui.trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma) — che cosa una preferenza può contenere
 > * [ui.fn_lista_colonne_livello](/dbzero/ui/funzioni/fn_lista_colonne_livello) — il livello (`TUTTO`, `LETTURA`, `BLOCCATO`) di ogni colonna per un utente
 > * [ui.trgfn_ui_lista_definizione_a10_valida_vista_sql](/dbzero/ui/funzioni/trgfn_ui_lista_definizione_a10_valida_vista_sql) — la vista della lista esiste
 > * [ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente](/dbzero/ui/funzioni/trgfn_ui_lista_colonna_a10_valida_campo_sorgente) — il campo sorgente esiste nella vista
-> * [ui.trgfn_lista_definizione_guard_multi_emittente](/dbzero/ui/funzioni/trgfn_lista_definizione_guard_multi_emittente) — il bollino «multi-emittente» non si scrive dall'applicazione
+> * [ui.trgfn_lista_definizione_guard_dichiarazioni](/dbzero/ui/funzioni/trgfn_lista_definizione_guard_dichiarazioni) — il bollino «multi-emittente», il perimetro e la genealogia non si scrivono dall'applicazione
 >
 > **Vedi anche** — API e service backend:
 >
@@ -36,6 +39,7 @@
 > **Vedi anche** — guide correlate:
 >
 > * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) — profili d'accesso e azioni di processo
+> * [Configurazione delle dashboard](/guide/configurazione-dashboard) — la gemella delle liste: la home a card
 > * [Configurare il sistema senza perdere le modifiche agli aggiornamenti](/guide/configurazione-iniziale-e-aggiornamenti) — liste, colonne e preset proposti dal programma: che cosa si cambia, che cosa resta del programma, che cosa fa un aggiornamento
 
 ---
@@ -100,6 +104,9 @@ Contiene:
 * il **bollino «multi-emittente»** — dice se quella lista è stata collaudata per
   mostrare righe di **più emittenti insieme**. Nasce spento e non si accende
   dall'interfaccia: vedi §11.6
+* la **genealogia dei documenti** — dice se il sistema unisce alle righe la colonna
+  «Transito» (il documento più a valle nella catena). La dichiarano le liste dei
+  documenti che la mostrano, e non si cambia dall'interfaccia: vedi §11.6
 
 ### 2.2 Colonna (`lista_colonna`)
 
@@ -110,10 +117,12 @@ Per ogni lista, l'insieme delle **colonne disponibili**. Ogni colonna ha:
 * il **tipo di colonna**:
   * `identificatore` → sempre visibile e fissata a sinistra, non nascondibile (es. il numero di un contratto)
   * `informazione` → personalizzabile liberamente dall'operatore
-  * `azione` → pulsanti/icone (modifica, dettaglio); sempre visibile, non esportabile per definizione
+  * `azione` → pulsanti/icone (modifica, dettaglio); sempre visibile, senza campo sorgente e quindi non esportabile
 * il **tipo di dato** (testo, numero, data, data e ora, booleano, enumerato)
-* il campo sorgente nella vista SQL (vuoto per le colonne composte dal
-  frontend: vedi §5.2.2)
+* il campo sorgente e da dove si legge: nella vista SQL della lista (il caso
+  normale), oppure nella **genealogia dei documenti** (la colonna «Transito»), che il
+  sistema unisce alle righe solo sulle liste che lo dichiarano; vuoto per le colonne
+  composte dal frontend (vedi §5.2.2)
 * parametri di layout (ordine, larghezza, **priorità di ritiro**, allineamento,
   formato, gruppo) — la *priorità* governa la responsività: decide
   quale colonna scende per prima quando lo spazio si stringe (vedi §7)
@@ -137,9 +146,11 @@ Un preset porta:
 * la **composizione** delle colonne: quali includere, in che ordine, con quale
   larghezza, quali sono visibili di default e quali sono "fissate" (sticky a
   sinistra, non scrollano)
-* l'**ordinamento** e i **filtri** di partenza
+* l'**ordinamento** di partenza: da quali colonne la lista parte ordinata, e in che verso
 * le **righe per pagina**, scelte fra le misure del catalogo (§2.6); vuoto vuol dire
-  «la misura di default»
+  «la misura di default» per il tipo di lista
+
+I **filtri** di partenza non sono del preset: li decide la schermata di ogni lista.
 
 Ogni combinazione (lista, ambito, profilo, emittente) è un **posto**, e un posto ha
 **un solo preset acceso**: è lo **standard** della lista per chi rientra in
@@ -177,9 +188,15 @@ La **personalizzazione che l'operatore salva** dalla modale "Personalizza
 colonne". Conserva **solo ciò che l'operatore ha scelto**, chiave per chiave:
 
 * le colonne: ordine, visibilità, larghezza
-* l'ordinamento
-* i filtri
 * le righe per pagina
+
+L'ordinamento e i filtri **non si salvano**. Un clic sull'intestazione di una colonna riordina la
+lista per la sessione; riaprendola, la lista riparte dall'ordinamento del preset. I filtri ripartono
+da quelli che la schermata propone.
+
+Che cosa una preferenza può contenere lo controlla il database al salvataggio: solo colonne della
+lista, ciascuna una volta, e una misura del catalogo. Le regole sono nella scheda di
+[ui.trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma).
 
 Una chiave che l'operatore non ha toccato non si salva: continua a venire dal preset,
 così una modifica del preset arriva anche a chi ha personalizzato altro. La
@@ -195,18 +212,27 @@ torna allo standard.
 
 Le misure che il selettore sotto ogni lista offre («righe per pagina») stanno in un
 catalogo solo, insieme a due default: uno per le liste a pagina intera e uno per le
-liste compatte nei drawer e nei dialog. Preset e preferenze possono dichiarare solo
-una misura del catalogo, e la lista risponde **sempre** una misura del catalogo: una
-misura salvata e poi tolta dal catalogo smette di valere, e torna lo standard. Il
-dettaglio è in [ui.misure_pagina](/dbzero/ui/tabelle/misure_pagina).
+liste compatte nei drawer e nei dialog. Il catalogo ha sempre tutti e due i default.
+Ogni lista dichiara di quale dei due tipi è, e quando né il preset né la preferenza
+dicono la misura parte dal default del suo tipo: le righe di un documento, aperte in
+un drawer, partono dalla misura compatta.
+
+Preset e preferenze possono dichiarare solo una misura del catalogo, e la lista
+risponde **sempre** una misura del catalogo. Quando una misura si toglie dal catalogo,
+esce anche dalle preferenze che la usavano, e quegli operatori tornano allo standard.
+Una misura non si cambia di valore: se ne aggiunge una nuova. Il dettaglio è in
+[ui.misure_pagina](/dbzero/ui/tabelle/misure_pagina).
+
+La misura che l'operatore vede è anche quella con cui il programma serve la lista a chi
+non dice quante righe vuole: la regola è una sola
+([ui.fn_misura_pagina_risolta](/dbzero/ui/funzioni/fn_misura_pagina_risolta)).
 
 ---
 
 ## 3. La cascata di risoluzione
 
-Quando l'operatore apre una lista, il sistema risolve **ogni chiave per conto suo** —
-colonne, ordinamento, filtri, righe per pagina — prendendola dal primo livello che
-la contiene:
+Quando l'operatore apre una lista, il sistema risolve **ogni scelta per conto suo** —
+le colonne e le righe per pagina — prendendola dal primo livello che la contiene:
 
 1. **La preferenza personale**, se l'operatore ha scelto quella chiave
 2. Altrimenti, il **preset di base**: il primo preset acceso, in quest'ordine, che ha almeno
@@ -217,12 +243,16 @@ la contiene:
    3. il preset di **sistema**
 
    Un preset senza colonne attive non conta, a nessun livello: la cascata passa al
-   successivo, e da quel preset non prende nemmeno ordinamento, filtri o righe per pagina.
+   successivo, e da quel preset non prende nemmeno le righe per pagina o l'ordinamento.
 3. Altrimenti, il **catalogo grezzo**: tutte le colonne attive, visibili, nell'ordine
-   di catalogo; nessun ordinamento, nessun filtro, la misura di default
+   di catalogo, e la misura di default per il tipo di lista
 
-Così una preferenza che tocca solo le colonne non congela l'ordinamento, i filtri e
-le righe per pagina del preset.
+Così una preferenza che tocca solo le colonne non congela le righe per pagina del preset.
+
+L'**ordinamento di partenza** viene sempre dal preset di base, perché la preferenza non lo
+porta; senza un preset che lo dica, la lista non ha un ordinamento di partenza. Dall'ordinamento del
+preset si tolgono le colonne spente, quelle che non si possono ordinare e quelle che l'operatore
+non può vedere (§2.4): una lista non si ordina per un dato nascosto.
 
 Sopra qualunque livello valgono poi tre regole:
 
@@ -263,9 +293,9 @@ attivo.
   condizionali (profilo se ambito=ruolo, emittente se ambito=emittente
   fiscale), righe per pagina (una misura del catalogo, o il default), flag
   attivo. Un preset nuovo per un posto che ne ha già uno acceso nasce spento (§2.3).
-* **Modifica preset**: aggiorna i campi mutabili. L'ambito e i
-  riferimenti sono immutabili dopo la creazione (per cambiarli si
-  crea un nuovo preset).
+* **Modifica preset**: aggiorna i campi mutabili. La lista, l'ambito e i
+  riferimenti sono immutabili dopo la creazione, e lo garantisce il database:
+  per cambiarli si spegne il preset e se ne crea uno nuovo.
 * **Gestisci composizione**: drawer dedicato per definire quali colonne
   includere, in che ordine (frecce ▲▼), con quale larghezza, quali visibili e
   quali fissate. Il salvataggio sostituisce la composizione intera in un colpo solo.
@@ -312,16 +342,17 @@ disattivate).
 * **Nuova definizione**: form con codice (`<schema>.<entità>`),
   descrizione, schema dati, **vista SQL** (nome di una view PostgreSQL
   dello schema dati, che alimenta la lista), note, flag attivo.
-* **Modifica definizione**: tutti i campi sono mutabili **tranne uno** — il
-  bollino «multi-emittente», che il database rifiuta di far scrivere
-  dall'applicazione (§11.6). Cambiare la vista SQL su una lista già in uso può
-  rendere stale i campi sorgente delle colonne (la nuova vista deve esporre gli
-  stessi attributi): la scrittura della definizione non ricontrolla le colonne, lo
-  segnala il controllo automatico del catalogo.
-* **Disattiva (soft-disable)**: porta `attivo=false`. La lista
-  scompare dal catalogo runtime. ⚠️ Il database rifiuta di spegnere una lista che ha
-  ancora **colonne o preset attivi**: si spengono prima quelli, poi la lista. Le
-  preferenze utente non lo impediscono, e restano in DB.
+* **Modifica definizione**: sono mutabili descrizione, vista SQL, schema, note, soglia
+  della ricerca e stato. Non si cambiano il **codice**, che è la chiave con cui la
+  schermata si cerca (per un codice sbagliato si spegne la lista e se ne crea un'altra),
+  e le **dichiarazioni** della lista — il bollino «multi-emittente», il perimetro
+  emittente e la genealogia dei documenti — che il database rifiuta di far scrivere
+  dall'applicazione (§11.6). Cambiare la vista SQL di una lista accesa ricontrolla le
+  colonne: se la vista nuova non ha il campo di una colonna, il cambio è rifiutato e il
+  messaggio nomina le colonne da correggere o spegnere.
+* **Disattiva (soft-disable)**: porta `attivo=false`. La lista scompare dal catalogo
+  runtime, e con lei, sospese ma intatte, le sue colonne, i suoi preset e le
+  preferenze degli utenti: alla riattivazione tutto torna com'era.
 * **Elimina definizione**: bloccato dal sistema se ci sono
   colonne, preset o preferenze utente associate. In quel caso, l'unica
   via è il **soft-disable**.
@@ -333,11 +364,12 @@ creata in database:
 
 1. Si crea il record con il campo "vista SQL" vuoto, oppure con `attivo=false`:
    in questi due casi il sistema **non verifica** che la vista esista
-2. Le colonne si possono registrare subito se la vista è vuota (il campo sorgente si
-   verifica solo contro una vista indicata); su una lista spenta si registrano solo
-   colonne spente
+2. Le colonne si possono registrare subito: il campo sorgente si verifica solo su una
+   lista accesa con una vista indicata
 3. Quando la vista è rilasciata, la si indica e si attiva la lista (`attivo=true`):
-   da quel momento la verifica della vista scatta a ogni scrittura
+   all'accensione il sistema verifica la vista e le colonne già registrate, e rifiuta se
+   una colonna ha un campo che la vista non ha. Da quel momento la verifica scatta a
+   ogni scrittura
 
 Questo permette di registrare la struttura senza dover sincronizzare con il deploy DDL.
 
@@ -352,9 +384,10 @@ colonne registrate per quella lista, attive e disattivate.
   * **Generale**: codice, etichetta visibile, etichetta estesa (tooltip), chiave i18n (per traduzioni), tipo colonna, tipo dato, campo sorgente
   * **Comportamento**: filtrabile, ordinabile, esportabile, ricercabile full-text, sensibile, attivo
   * **Layout**: ordine default, larghezza default (px), allineamento (left/right/center), formato (tabella sotto), gruppo, ordine gruppo
-* **Modifica colonna**: tutti i campi del drawer sono mutabili. Il `lista_id` è
-  immutabile (per "spostare" una colonna da una lista all'altra,
-  cancellala e ricreala).
+* **Modifica colonna**: i campi del drawer sono mutabili, tranne il **codice**, che è
+  la chiave con cui preferenze e preset ricordano la colonna (per un codice sbagliato si
+  spegne la colonna e se ne crea un'altra). Anche il `lista_id` è immutabile (per
+  "spostare" una colonna da una lista all'altra, cancellala e ricreala).
 * **Disattiva (soft-disable)**: imposta `attivo=false`. Colonna
   invisibile in runtime; le preferenze utente che la citavano restano, e la colonna
   semplicemente non compare più.
@@ -385,12 +418,17 @@ la cella (`CellaConfigurabile`), a meno che la view non fornisca uno slot
 
 #### 5.2.2 Vincoli automatici e colonne composte
 
-* Le colonne di tipo `azione` non possono essere esportabili (vincolo
-  del database, §11.4). Se selezioni `azione`, il toggle "Esportabile"
-  viene forzato a OFF e disabilitato.
+* Le colonne di tipo `azione` non hanno campo sorgente, e una colonna senza campo
+  sorgente non è esportabile (vincoli del database, §11.4). Se selezioni `azione`, il
+  toggle "Esportabile" viene forzato a OFF e disabilitato.
 * Le colonne con `campo_sorgente` valorizzato vengono validate contro
   la vista SQL della lista padre, nel suo schema: il sistema rifiuta la scrittura se
   l'attributo non esiste. Le colonne senza campo sorgente non sono validate.
+* Una colonna che legge dalla **genealogia dei documenti** sta solo su una lista che lo
+  dichiara, e non è filtrabile, ordinabile né ricercabile: filtri, ordinamento e ricerca
+  interrogano la vista, che quel campo non lo porta. Se una colonna perde il suo campo
+  dopo (una vista cambiata da un aggiornamento), lo segnala il controllo automatico del
+  catalogo delle liste.
 * Una **colonna composta** — un valore che il frontend costruisce da più campi, come
   sospensione e riattivazione del cliente in una cella sola — è una colonna a catalogo
   con il campo sorgente vuoto, resa dallo slot `cell-{codice}` della view. Non ha un
@@ -438,6 +476,8 @@ L'operatore vede ogni lista personalizzabile con due affordance:
   Le colonne arrivate nel catalogo dopo l'ultimo salvataggio sono contate e
   segnalate come nuove. Quali colonne restano fissate a sinistra lo decidono il
   preset e il tipo di colonna, non la modale.
+* **Intestazione delle colonne** — un clic ordina la lista per quella colonna. L'ordinamento vale
+  per la sessione e non si salva: riaprendo la lista si riparte da quello del preset.
 * **Banner "preset aggiornato"** — appare quando l'admin modifica il
   preset da cui partiva la preferenza dell'utente. "Vedi novità" apre la modale
   con le novità; "Ignora" lo nasconde finché il preset non cambia di nuovo.
@@ -647,8 +687,8 @@ Mario (profilo "Amministrativo") apre `/anagrafiche/clienti`:
   spente, le colonne del catalogo che il preset non elenca: le può accendere dalla modale)
 
 Mario decide che gli serve anche `comune` e nasconde `codice_fiscale`.
-Salva. Ora ha una sua preferenza personale **sulle colonne**: ordinamento, filtri e
-righe per pagina continuano a venire dal preset.
+Salva. Ora ha una sua preferenza personale **sulle colonne**: le righe per pagina e
+l'ordinamento di partenza continuano a venire dal preset.
 
 Luca (profilo "Tecnico") apre la stessa lista:
 
@@ -725,21 +765,22 @@ Se la colonna deve restare nascosta a **tutti tranne** alcuni profili, la si mar
 
 ### 10.4 Disattivare temporaneamente una lista
 
-1. SUPER_ADMIN: pagina tecnica → spegni (`attivo=false`) le colonne attive della
-   lista nel tab "Catalogo colonne"; l'admin operativo spegne i preset attivi
-2. Tab "Definizioni" → modifica la lista → `attivo=false` → Salva
-3. La lista scompare dal runtime. Preset, colonne e preferenze
-   restano in DB: alla riattivazione si riaccende la lista, poi le colonne e i preset.
+1. SUPER_ADMIN: tab "Definizioni" → modifica la lista → `attivo=false` → Salva
+2. La lista scompare dal runtime. Preset, colonne e preferenze restano come sono, accesi
+   o spenti: alla riattivazione si riaccende la sola lista, e tutto torna com'era (se
+   una colonna non trova più il suo campo nella vista, la riaccensione è rifiutata e il
+   messaggio la nomina).
 
 ### 10.5 Riallineare una preferenza dopo modifica del preset
 
 Quando l'admin modifica un preset di base (aggiunge una colonna,
 cambia l'ordine), il banner "preset aggiornato" lo vedono gli utenti che hanno
 personalizzato proprio quella parte: chi ha scelto le sue colonne lo vede quando
-cambiano le colonne del preset, non quando cambia solo l'ordinamento, che gli
-arriva già. Le parti che l'utente non ha personalizzato seguono il preset senza
-bisogno di nulla. "Vedi novità" apre la modale con le novità, "Ignora" lo nasconde
-finché il preset non cambia di nuovo. Salvare un preset senza cambiarlo non accende
+cambiano le colonne del preset, non quando cambiano solo le righe per pagina, che gli
+arrivano già. Cambiare l'ordinamento di partenza non accende il banner a nessuno: la
+lista parte subito col nuovo ordinamento. Le parti che l'utente non ha personalizzato
+seguono il preset senza bisogno di nulla. "Vedi novità" apre la modale con le novità,
+"Ignora" lo nasconde finché il preset non cambia di nuovo. Salvare un preset senza cambiarlo non accende
 niente.
 
 Quando invece il preset da cui l'utente era partito non è più il suo standard (l'admin
@@ -807,20 +848,18 @@ In compenso, alcune cancellazioni sono **a cascata intenzionali**:
 
 ### 11.3 Liste disattivate e figli attivi
 
-Una lista spenta non regge figli accesi: il database rifiuta di spegnere una lista
-con colonne o preset attivi, e di accendere (o creare acceso) una colonna o un
-preset su una lista spenta. Le preferenze utente sono fuori da questa regola: sono
-uno stato dell'utente, restano quando la lista si spegne e tornano a valere quando
-si riaccende.
+Una lista spenta **sospende** le sue parti senza toccarle: colonne, preset e
+preferenze utente restano com'erano, accesi o spenti, e tornano a valere quando la
+lista si riaccende. Si possono anche preparare colonne e preset su una lista spenta,
+prima di accenderla.
 
-### 11.4 Vincolo automatico — colonne `azione` non esportabili
+### 11.4 Vincoli automatici — azioni e colonne senza campo
 
-Il database garantisce con un vincolo che le colonne di tipo
-`azione` (pulsanti UI) non possano essere marcate `esportabile=true`.
-Il drawer collabora: se selezioni `tipo_colonna='azione'` il toggle
-"Esportabile" viene forzato a OFF e disabilitato. Vale anche se cambi
-una colonna esistente da `informazione` a `azione`: il sistema riallinea
-automaticamente il flag senza sollevare errori.
+Il database garantisce con due vincoli che le colonne di tipo `azione` (pulsanti UI)
+non abbiano un campo sorgente, e che una colonna senza campo sorgente (un'azione, una
+colonna composta) non sia esportabile: non ha un valore da esportare. Il drawer
+collabora: se selezioni `tipo_colonna='azione'` il toggle "Esportabile" viene forzato
+a OFF e disabilitato.
 
 ### 11.5 Identificatori e azioni — sempre visibili
 
@@ -898,10 +937,11 @@ La ragione è che un invariante con l'interruttore non è un invariante. Il camp
 si dichiara nel **seed** delle liste, insieme al lavoro che lo giustifica, e
 arriva insieme a quello.
 
-> ⚠️ **Un limite dichiarato**: il presidio copre *questo* campo, non
-> genericamente «i campi di sistema» di una lista. È una difesa stretta che
-> tiene, scelta al posto di una larga che sulla carta copriva tutto e nella
-> pratica non teneva.
+Lo stesso presidio tiene le altre due dichiarazioni della lista, che dicono una
+cosa del software e non una preferenza: il **perimetro emittente** (spegnerlo
+aprirebbe la schermata senza chiedere l'azienda, lo stesso effetto del bollino) e la
+**genealogia dei documenti** (la lista riceve la colonna «Transito»). Una lista nuova
+creata dall'interfaccia nasce col perimetro, senza bollino e senza genealogia.
 
 #### Che cosa succede a video
 

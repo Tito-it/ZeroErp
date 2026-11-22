@@ -13,7 +13,7 @@ from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
-from apps.core.api.openapi_params import parametri_finestra
+from apps.core.api.openapi_params import parametri_finestra, parametri_ordinamento
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
@@ -346,8 +346,10 @@ class ApiJobRuns(DomainAPIView):
             },
         )},
     )
-    # Scopo: Restituisce via GET l'elenco paginato delle esecuzioni job pgAgent
-    # con filtri opzionali su jobname, esito, intervallo date e ricerca libera.
+    # Scopo: Restituisce via GET l'elenco paginato delle corse di
+    # `maintenance.job_run_log` — job del database (`PGAGENT`) e comandi del
+    # backend (`CRON`/`COMMAND`) — con filtri opzionali su jobname, esito,
+    # intervallo date e ricerca libera.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         # ⛔ Il vocabolario unico dei flag (§A6, 2026-10-20): prima `1/yes/y`
@@ -439,19 +441,19 @@ _DATA_A_PARAM = OpenApiParameter(
     name="data_a", type=str, location=OpenApiParameter.QUERY,
     required=False, description="Accodati fino a (YYYY-MM-DD, inclusiva).",
 )
-_SORT_BY_PARAM = OpenApiParameter(
-    name="order_by", type=str, location=OpenApiParameter.QUERY,
-    required=False, description=(
-        "Colonna di ordinamento. Coda lavori: id, job_type, stato, "
-        "proprietario, started_at, ended_at, archiviato_il (default "
-        "started_at). Coda stampa: id, fattura_numero, emittente_codice, "
-        "operatore, stato, lotto_id, data_update, archiviato_il (default "
-        "data_update). Fino al 2026-10-20 si chiamava `sort_by`."
-    ),
+# L'ordinamento delle due code: due liste a catalogo, due whitelist.
+_NOTA_ORDINAMENTO_CODE = (
+    "Il verso ammette le maiuscole. Fino al 2026-10-20 si chiamavano "
+    "`sort_by` e `sort_dir`."
 )
-_SORT_DIR_PARAM = OpenApiParameter(
-    name="order_dir", type=str, location=OpenApiParameter.QUERY,
-    required=False, description="Direzione: asc | desc, maiuscole ammesse (default desc). Fino al 2026-10-20 si chiamava `sort_dir`.",
+_PARAMS_ORDINAMENTO_CODA_LAVORI = parametri_ordinamento(
+    "id | job_type | stato | proprietario | started_at | ended_at | archiviato_il.",
+    senza="started_at", verso="desc", nota=_NOTA_ORDINAMENTO_CODE,
+)
+_PARAMS_ORDINAMENTO_CODA_STAMPA = parametri_ordinamento(
+    "id | fattura_numero | emittente_codice | operatore | stato | lotto_id | "
+    "data_update | archiviato_il.",
+    senza="data_update", verso="desc", nota=_NOTA_ORDINAMENTO_CODE,
 )
 _ARCHIVIATE_PARAM = OpenApiParameter(
     name="archiviate", type=bool, location=OpenApiParameter.QUERY,
@@ -561,7 +563,7 @@ class ApiCodaLavoriList(DomainAPIView):
                 required=False, description="Filtra per job_type (es. FATTURAZIONE_GIRO).",
             ),
             _DATA_DA_PARAM, _DATA_A_PARAM, _ARCHIVIATE_PARAM,
-            *parametri_finestra(), _SORT_BY_PARAM, _SORT_DIR_PARAM,
+            *parametri_finestra(), *_PARAMS_ORDINAMENTO_CODA_LAVORI,
         ],
         responses={200: _LISTA_CODE_RESPONSE},
     )
@@ -596,7 +598,7 @@ class ApiCodaStampaList(DomainAPIView):
                 required=False, description="Filtra per lotto di fatturazione.",
             ),
             _DATA_DA_PARAM, _DATA_A_PARAM, _ARCHIVIATE_PARAM,
-            *parametri_finestra(), _SORT_BY_PARAM, _SORT_DIR_PARAM,
+            *parametri_finestra(), *_PARAMS_ORDINAMENTO_CODA_STAMPA,
         ],
         responses={200: _LISTA_CODE_RESPONSE},
     )

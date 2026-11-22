@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Catalogo delle liste configurabili. Una riga per lista personalizzabile.
+> Il catalogo delle liste configurabili: una riga per ogni schermata a elenco che l'operatore può personalizzare. Dice il codice, la relazione da cui legge, se le righe appartengono a un'azienda e se la lista sa dire di quale, se riceve la genealogia dei documenti, l'uso della misura di pagina e la soglia della ricerca libera. La lettura per codice è ui.fn_lista_da_codice.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -22,10 +22,17 @@
 | multi_emittente | boolean | NO | false |
 | perimetro_emittente | boolean | NO | true |
 | ricerca_min_caratteri | smallint | NO | 3 |
+| uso_misura | ui.uso_misura_pagina | NO | 'PAGINA'::ui.uso_misura_pagina |
+| legge_lineage | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_lista_definizione_codice_non_vuoto |  |
+| CHECK | chk_lista_definizione_descrizione_non_vuota |  |
+| CHECK | chk_lista_definizione_note_non_vuote |  |
+| CHECK | chk_lista_definizione_schema_dati_non_vuoto |  |
+| CHECK | chk_lista_definizione_vista_sql_non_vuota |  |
 | CHECK | chk_ui_lista_definizione_perimetro_coerente |  |
 | CHECK | chk_ui_lista_definizione_ricerca_min_caratteri |  |
 | PRIMARY KEY | lista_definizione_pkey | id |
@@ -40,17 +47,16 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_lista_definizione_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'codice,descrizione,schema_dati,vista_sql,multi_emittente,perimetro_emittente', 'note,attivo,ricerca_min_caratteri')` |
-| trg_lista_definizione_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'codice,descrizione,schema_dati,vista_sql,multi_emittente,perimetro_emittente', 'note,attivo,ricerca_min_caratteri')` |
-| trg_lista_definizione_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'codice,descrizione,schema_dati,vista_sql,multi_emittente,perimetro_emittente', 'note,attivo,ricerca_min_caratteri')` |
-| trg_lista_definizione_a10_lista_colonna_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('ui', 'lista_colonna', 'lista_id', 'id', 'attivo')` |
-| trg_lista_definizione_a10_lista_preset_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('ui', 'lista_preset', 'lista_id', 'id', 'attivo')` |
+| trg_lista_definizione_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'codice,descrizione,schema_dati,vista_sql,multi_emittente,perimetro_emittente,uso_misura,legge_lineage', 'note,attivo,ricerca_min_caratteri')` |
+| trg_lista_definizione_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'codice,descrizione,schema_dati,vista_sql,multi_emittente,perimetro_emittente,uso_misura,legge_lineage', 'note,attivo,ricerca_min_caratteri')` |
+| trg_lista_definizione_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'codice,descrizione,schema_dati,vista_sql,multi_emittente,perimetro_emittente,uso_misura,legge_lineage', 'note,attivo,ricerca_min_caratteri')` |
+| trg_lista_definizione_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'E_UI_LISTA_CODICE_IMMUTABILE')` |
 | trg_lista_definizione_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_lista_definizione_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_ui_lista_definizione_a10_guard_multi_emittente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_lista_definizione_guard_multi_emittente()` |
-| trg_ui_lista_definizione_a10_guard_multi_emittente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_lista_definizione_guard_multi_emittente()` |
-| trg_ui_lista_definizione_a10_valida_vista_sql_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_ui_lista_definizione_a10_valida_vista_sql()` |
+| trg_ui_lista_definizione_a10_guard_dichiarazioni_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_lista_definizione_guard_dichiarazioni()` |
+| trg_ui_lista_definizione_a10_guard_dichiarazioni_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_lista_definizione_guard_dichiarazioni()` |
 | trg_ui_lista_definizione_a10_valida_vista_sql_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_ui_lista_definizione_a10_valida_vista_sql()` |
+| trg_ui_lista_definizione_a10_valida_vista_sql_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_ui_lista_definizione_a10_valida_vista_sql()` |
 
 ---
 {% include-markdown "signature-core.md" %}

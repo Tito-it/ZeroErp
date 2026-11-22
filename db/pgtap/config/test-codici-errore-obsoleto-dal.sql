@@ -4,14 +4,14 @@
 --
 -- Test: config.codici_errore.obsoleto_dal — il ritiro di un codice errore
 -- NON tocca il runtime. Riferimento: 20260805-17 (nascita), 20260807-13 (trasloco).
--- Brief: docs/it/dev/work-done/brief-db-codice-errore-strutturato.md §15
+-- Brief: docs/it/dev/work-done/2026/brief-db-codice-errore-strutturato.md §15
 --
 -- ⚠️ LA COLONNA HA CAMBIATO CASA il 2026-08-07, e questo test con lei.
 --   Nasceva su `config.messaggi_errore`, che pero' e' chiavata (codice, lingua):
 --   il ritiro era **per lingua**, cioe' si poteva ritirare un codice in italiano
 --   e lasciarlo vivo in inglese. Ora sta su `config.codici_errore` — una riga per
 --   codice — e il difetto non e' piu' esprimibile.
---   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (D-6/D-8)
+--   Piano: docs/it/dev/work-done/2026/piano-db-classe-codici-errore.md (D-6/D-8)
 --
 -- Contesto: un codice legacy spesso non si puo' cancellare, perche'
 -- dbops.error_log ha una FK NOT NULL verso config.messaggi_errore(id) e 46

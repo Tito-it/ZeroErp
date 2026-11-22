@@ -166,7 +166,7 @@ non la memoria di chi scrive.
   consumatore e 82 file montavano `<Drawer>` direttamente; prima è nata la sede
   vera (§«Drawer (nuovo e modifica)»), poi gli 80 drawer laterali ci sono passati sopra, e solo
   allora il drawer è entrato in tabella — a zero, senza registro. Storia e
-  decisioni in `work-done/analisi-fe-chrome-drawer.md`.
+  decisioni in `work-done/2026/analisi-fe-chrome-drawer.md`.
 
 ---
 
@@ -412,7 +412,7 @@ abbassata nello stesso giro. Prima ancora del guard, l'import lo ferma il lint
 > nessuna larghezza di filtro sta in un tag. I tre registri di
 > `npm run guard:filtri` sono a **zero** e da qui in avanti dicono una cosa
 > sola: *una lista nuova fuori standard li fa risalire*.
-> Decisioni e cronaca: [brief-fe-filtri-lista-su-schermo-compatto.md](../work-done/brief-fe-filtri-lista-su-schermo-compatto.md).
+> Decisioni e cronaca: [brief-fe-filtri-lista-su-schermo-compatto.md](../work-done/2026/brief-fe-filtri-lista-su-schermo-compatto.md).
 
 **La regola**: un filtro è **stato della lista**, non decorazione della view.
 Ne discende che *dove* i filtri si rendono — e il segno che sono attivi —
@@ -1177,7 +1177,7 @@ si chiede a **`termineCorto(termine)`**, entrambi in `core/utils/listParams.js`,
 con la **soglia della lista**. Prima lo stesso `trim` + `>= 3` stava copiato in più store.
 
 ⭐ **La soglia è un fatto della lista** (dal 2026-09-26,
-[brief-db-be-fe-ricerca-soglia-per-lista](../work-done/brief-db-be-fe-ricerca-soglia-per-lista.md)):
+[brief-db-be-fe-ricerca-soglia-per-lista](../work-done/2026/brief-db-be-fe-ricerca-soglia-per-lista.md)):
 arriva nella configurazione (`ricerca_min_caratteri`, la stessa colonna con cui
 il backend decide se filtrare), `onConfigLoaded` la scrive in
 `store.ricercaMinCaratteri` (dichiarata da `useListaEmptyStateFetch`), e il BB
@@ -1616,10 +1616,14 @@ Quando l'utente seleziona un risultato dalla ricerca universale (SearchDrawer), 
 la risoluzione del termine di ricerca iniziale. Le SearchTable si usano esattamente come prima:
 
 ```js
-const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'ragione_sociale_completa'
-})
+const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store)
 ```
+
+⛔ Niente `defaultSortField` su una lista configurabile la cui view dichiara
+`lista_codice`: l'ordinamento di partenza lo applica il backend dal preset e lo
+dice in `meta.ordinamento`, da cui `paginatorProps` accende l'intestazione
+(BE25 (2) di brief-db-revisione-ui, 2026-11-22). L'opzione resta per le
+superfici fuori catalogo.
 
 **Nella View** serve solo il watcher per auto-apertura drawer da contesto:
 
@@ -2022,7 +2026,7 @@ le Dialog: incapsula chrome uniforme + `FormFooter` integrato.
 dal lint (§«Import PrimeVue riservati»).
 
 ⭐ **Uscire con dati inseriti chiede** (dal 2026-10-03, D-14 di
-`work-done/analisi-fe-chrome-drawer.md`, decisione di Tid: nessuna
+`work-done/2026/analisi-fe-chrome-drawer.md`, decisione di Tid: nessuna
 eccezione). Ogni uscita — X, ESC, clic sulla maschera, Annulla, e il `chiudi`
 che lo slot `#footer` riceve — passa da `confermaUscita(chiudi)`. Un dialog
 con dei campi gli passa il `chiudiConConferma` della sua fotografia
@@ -2180,7 +2184,7 @@ Ogni sotto-area che potrebbe essere usata in piu' di un contesto deve essere un 
 
 ### Confini fra domini — chi puo' importare chi
 
-> Decisione di Tid, 2026-09-26 ([analisi](../work-done/analisi-fe-regole-standard-violate-dal-codice.md) R-1/R-2).
+> Decisione di Tid, 2026-09-26 ([analisi](../work-done/2026/analisi-fe-regole-standard-violate-dal-codice.md) R-1/R-2).
 > Sostituisce la regola «un dominio importa solo da `core/`» e l'eccezione dei
 > componenti geografici.
 
@@ -2473,7 +2477,7 @@ const drawerActions = computed(() => [
 > invece.
 
 E' la faccia a video della regola R3 del brief
-[vie d'uscita per l'operatore](../work-done/brief-db-vie-uscita-operatore.md):
+[vie d'uscita per l'operatore](../work-done/2026/brief-db-vie-uscita-operatore.md):
 per ogni stato, **o la via d'uscita c'e', o c'e' scritto perche' non c'e'**. Il
 testo non e' una scelta del componente: e' un **dato**, la chiave i18n seminata
 nel `meta` della riga di `config.stati_doc_*`, che le capability
@@ -2837,7 +2841,7 @@ Lato DB serve **defense-in-depth** per chiudere il cerchio (analogo a listini-ve
 
 1. **Trigger guard** BEFORE UPDATE OF `stato_doc_xxx_id`: ammette transizione a stato terminale (CESSATO/CHIUSA) **solo se** `valido_al IS NOT NULL AND valido_al < CURRENT_DATE`. Nome: `trgfn_<tabella>_a10_guard_transizione_stato`.
 2. **Job pgAgent notturno**: UPDATE → CESSATO/CHIUSA quando `valido_al < CURRENT_DATE`. L'UPDATE passa il guard per costruzione. Funzione incapsulante: `<schema>.fn_<tabella>_close_scadute()`.
-3. Brief al team DB (vedere [brief-db-contratti-cessazione-data-driven.md](../work-done/brief-db-contratti-cessazione-data-driven.md); il gemello `brief-db-listini-stato-chiusa-sync.md` non è più nel repo).
+3. Brief al team DB (vedere [brief-db-contratti-cessazione-data-driven.md](../work-done/2026/brief-db-contratti-cessazione-data-driven.md); il gemello `brief-db-listini-stato-chiusa-sync.md` non è più nel repo).
 
 ### Esempi nel codice
 
@@ -2890,7 +2894,7 @@ intercettare i dispositivi touch indipendentemente dalla larghezza del viewport
 (es. iPad Pro in landscape rende comunque il kebab perche' manca l'hover).
 
 > ✅ **Una sola definizione di «modalità compatta» — `ui.isCompatto`, dal
-> 2026-09-22** ([brief](../work-done/brief-fe-filtri-lista-su-schermo-compatto.md) §3.3):
+> 2026-09-22** ([brief](../work-done/2026/brief-fe-filtri-lista-su-schermo-compatto.md) §3.3):
 > larghezza sotto `BREAKPOINTS.TABLET` **oppure** `matchMedia('(hover: none)')`.
 > La legge chi cambia **forma** e non solo dimensione — oggi `FiltriLista`.
 > ⛔ **La larghezza da sola non basta**: un iPad Pro in orizzontale è largo
@@ -3541,7 +3545,7 @@ ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
 
 ### Autenticazione JWT
 
-⛔ **Nessun token in `localStorage`** (dal 2026-09-28, [brief sicurezza](../work-done/brief-be-fe-sicurezza-header-token-mfa.md) §2).
+⛔ **Nessun token in `localStorage`** (dal 2026-09-28, [brief sicurezza](../work-done/2026/brief-be-fe-sicurezza-header-token-mfa.md) §2).
 Il **refresh** sta in un cookie `HttpOnly` che il JavaScript non vede: lo
 scrivono e lo leggono il backend e il browser. L'**access** (10 minuti) vive solo
 in memoria, in `core/sessione.js`. Al ricaricamento della pagina l'access non
@@ -4306,7 +4310,7 @@ in `create`/`update`/`extraActions`. Basta passare `tabEntity`:
 export const useCategorieClientiStore = createCrudStore('amm-categorie-clienti', {
   api: { list, detail, create, update },
   tabEntity: TAB_ENTITIES.CATEGORIE_CLIENTI,  // la factory emette automaticamente
-  orderBy: 'ordinamento',
+  // niente `orderBy`: l'ordinamento di partenza lo applica il backend dal preset
   startsEmpty: false,
   // ...
 })

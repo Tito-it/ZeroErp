@@ -69,7 +69,6 @@ const {
   parentId: () => props.emittenteId,
   parentField: 'emittenteId',
   fetchExtra: caricaSummary,
-  searchTableOptions: { defaultSortField: 'billing_account_codice' },
 })
 
 // Pulsante "default" disabilitato se il default esiste a livello di emittente

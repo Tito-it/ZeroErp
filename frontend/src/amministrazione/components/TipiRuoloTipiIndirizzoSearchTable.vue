@@ -39,7 +39,6 @@ const {
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'amministrazione.matrice_indirizzi_ruoli.new_row',
   onNew: () => emit('new'),
-  searchTableOptions: { defaultSortField: 'tipo_ruolo_descrizione' },
 })
 
 useTabFreshness(store, TAB_ENTITIES.TIPI_RUOLO_TIPI_INDIRIZZO)

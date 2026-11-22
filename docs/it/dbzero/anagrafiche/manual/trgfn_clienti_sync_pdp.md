@@ -1,137 +1,62 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.trgfn_clienti_sync_pdp()`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_clienti_sync_pdp`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
-👀 **Vedi anche**
+> 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
-> • [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)  
-> • [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)  
-> 
-**Approfondimento funzioni:**
+> Approfondimento tabelle:
 >
-• [`anagrafiche.trgfn_clienti_sync_utility_from_ba()`](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_utility_from_ba)  
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — la tabella di cui scrive `pdp_id`
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — l'istanza da cui il PDP si copia
+> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp) — il punto di prelievo
 >
-• [Guida – Gestione delle Istanze Utility e Collegamento con PDP & Clienti](/guide/gestione-delle-istanze-utility)  
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_clienti_sync_utility_from_ba](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_utility_from_ba) — il PDP obbligatorio e della stessa utility
+> * [anagrafiche.trgfn_clienti_sync_stato_pdp](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_stato_pdp) — lo stato del PDP, che segue i clienti
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 09-12-25)
-La funzione `anagrafiche.trgfn_clienti_sync_pdp()` è una **trigger function di sincronizzazione** che ha il compito di mantenere allineato il campo `pdp_id` della tabella `anagrafiche.clienti` con il valore presente sull’istanza collegata (`anagrafiche.istanze_utilities`).
 
-In altre parole:
-
-* `clienti.pdp_id` **non è un campo "master"**, ma una **denormalizzazione controllata** del valore `istanze_utilities.pdp_id`.
-* La funzione assicura che, quando viene impostata o modificata `NEW.istanza_utility_id`, il relativo `pdp_id` sul cliente sia sempre coerente.
+`anagrafiche.trgfn_clienti_sync_pdp` scrive sul cliente il PDP della sua istanza, a ogni nascita e a ogni
+modifica. Il PDP del cliente è una copia: un valore passato da chi scrive è sostituito.
 
 ---
 
-### Contesto e tabelle coinvolte
+### ⭐ Una copia, perché i vincoli la leggano
 
-**Tabella: `anagrafiche.clienti`**
+Il PDP sta sull'istanza. Il cliente lo ripete perché le regole che lo riguardano sono regole **del cliente**:
+un PDP ha un solo cliente alla volta (`ex_clienti_no_overlap_stesso_pdp`, sul periodo del cliente), il PDP è
+obbligatorio per le utility che lo richiedono e dev'essere della stessa utility. Un vincolo di esclusione legge
+solo le colonne della sua riga: senza la copia non si potrebbe scrivere.
 
-Colonne rilevanti per la funzione:
+Il trigger non giudica niente. Un'istanza senza PDP lascia il cliente senza PDP, e se la utility lo richiede il
+rifiuto arriva da `anagrafiche.trgfn_clienti_sync_utility_from_ba`, che per nome viene dopo e quindi legge già la
+copia. Un'istanza che non esiste lascia il PDP vuoto, e risponde la chiave esterna verso l'istanza.
 
-* `istanza_utility_id` → FK verso `anagrafiche.istanze_utilities(id)`;
-* `pdp_id`             → FK denormalizzata verso `anagrafiche.pdp(id)`.
-
-**Tabella: `anagrafiche.istanze_utilities`**
-
-Colonne rilevanti:
-
-* `id`      → PK dell’istanza;
-* `pdp_id`  → FK (parte di FK composita con `indirizzo_dettaglio_id`) verso `anagrafiche.pdp`.
-
-L’istanza è l’**unica sorgente autorevole** del legame con il PDP; il cliente si limita a riflettere tale informazione.
+L'istanza del cliente non cambia dopo la nascita: la copia si rifà a ogni scrittura per seguire il PDP
+dell'istanza, non un'istanza diversa.
 
 ---
 
-### Logica di funzionamento
+### ⚠️ Che cosa oggi non copre
 
-Passi principali:
-
-1. **Verifica presenza istanza**
-   Se `NEW.istanza_utility_id` è valorizzato, la funzione tenta di recuperare la relativa istanza.
-
-2. **Sincronizzazione PDP**
-   Esegue:
-
-   ```sql
-   SELECT iu.pdp_id
-   INTO NEW.pdp_id
-   FROM anagrafiche.istanze_utilities iu
-   WHERE iu.id = NEW.istanza_utility_id;
-   ```
-
-   In questo modo `clienti.pdp_id` viene impostato esattamente al valore presente sull’istanza.
-
-3. **Gestione del caso "istanza inesistente" (NOT FOUND)**
-   Se la SELECT non trova nessuna riga:
-
-   * `NEW.pdp_id` viene impostato a `NULL`.
-   * Questo evita che rimanga valorizzato un `pdp_id` incoerente rispetto all’istanza.
-
-4. **Restituzione della riga**
-   La funzione termina con `RETURN NEW;`, come da convenzione per le trigger function `BEFORE`.
+* **Un cambio di PDP dell'istanza arriva al cliente solo alla sua prossima scrittura.** Fino ad allora il
+  cliente tiene il PDP di prima, e con lui il vincolo di esclusione e la catena delle istanze.
+* **Quando la copia cambia, lo stato dei due PDP può non ricalcolarsi.** Il riallineamento dello stato del PDP
+  (`anagrafiche.trgfn_clienti_sync_stato_pdp`) scatta solo sulle modifiche che nominano lo stato, il PDP o le
+  date fra le colonne scritte: una modifica che tocca, per esempio, il solo termine di pagamento porta sul
+  cliente il PDP nuovo e lascia i due PDP nello stato di prima.
 
 ---
 
-### Trigger associato (schema suggerito)
+### Test
 
-Tipicamente la funzione è collegata a un trigger del tipo:
-
-```sql
-CREATE OR REPLACE TRIGGER trg_clienti_sync_pdp_ins_upd
-    BEFORE INSERT OR UPDATE OF istanza_utility_id
-    ON anagrafiche.clienti
-    FOR EACH ROW
-    EXECUTE FUNCTION anagrafiche.trgfn_clienti_sync_pdp();
-```
-
-> ☝️ In questo modo, ogni volta che viene creato un cliente o cambiata
-> l’istanza collegata, il `pdp_id` viene riallineato automaticamente.
+* `db/pgtap/anagrafiche/test-clienti-sync-utility-pdp-policy.sql` — il cliente col PDP dell'istanza e il
+  cliente senza PDP.
+* `db/pgtap/anagrafiche/test-fn-crea-cliente-v1.sql` — il cliente creato su un'istanza senza PDP.
 
 ---
 
-### Regole di coerenza garantite
-
-* **Single source of truth**: il PDP associato a un cliente è sempre quello definito sull’istanza (`istanze_utilities.pdp_id`).
-* **Nessun valore "sporco"**: se per qualsiasi motivo l’istanza non esiste (errore di chiamata, incoerenza dati), il `pdp_id` del cliente viene forzato a `NULL`.
-* **Supporto ai vincoli di dominio**: i vincoli come `ex_clienti_no_overlap_stesso_pdp` si appoggiano su un `pdp_id` coerente, alimentato dall’istanza.
-
----
-
-### Esempi di comportamento
-
- Caso 1 – Creazione cliente con istanza valida
-
-* `NEW.istanza_utility_id = 100`
-* In `istanze_utilities(100)` → `pdp_id = 3`.
-
-➡️ Dopo il trigger: `NEW.pdp_id = 3`.
-
----
-
- Caso 2 – Cambio istanza sul cliente
-
-* Prima: `istanza_utility_id = 100` → `pdp_id = 3`.
-* Update: `NEW.istanza_utility_id = 200` dove `istanze_utilities(200).pdp_id = 5`.
-
-➡️ Dopo il trigger: `NEW.pdp_id = 5`.
-
----
-
- Caso 3 – Istanza non trovata (incoerenza)
-
-* `NEW.istanza_utility_id` punta a un `id` che non esiste in `istanze_utilities`.
-
-➡️ La SELECT non trova righe, `NOT FOUND` è true → `NEW.pdp_id := NULL`.
-
----
-
-### Benefici del disegno
-
-* Riduce il rischio di **disallineamento** tra cliente e istanza.
-* Centralizza la logica di sincronizzazione in una singola funzione lato DB.
-* Semplifica il codice applicativo: il frontend deve preoccuparsi solo di impostare correttamente `istanza_utility_id`, delegando al DB la propagazione del `pdp_id`.
-
-In sintesi, `anagrafiche.trgfn_clienti_sync_pdp()` è un tassello fondamentale per garantire che tutte le logiche basate sul PDP (catene di istanze, vincoli di sovrapposizione, subentri) operino su dati coerenti e derivati da un’unica fonte autorevole: l’istanza di utility.
+{% include-markdown "signature-core.md" %}

@@ -797,11 +797,19 @@ class MagazzinoRepository:
             cursor.execute(sql, [int(magazzino_id)])
             return rows_to_list(cursor)
 
-    # Scopo: I lotti ATTIVI di un articolo, con ricerca libera sul codice.
-    # ⚠️ `magazzino.lotti` non ha RLS ne' emittente: un lotto e' dell'articolo.
-    def lookup_lotti(self, articolo_id: str, search: str | None) -> list[dict[str, Any]]:
-        conditions = ["l.articolo_id = %s::uuid", "l.attivo IS TRUE"]
-        params: list[Any] = [str(articolo_id)]
+    # Scopo: I lotti ATTIVI di un articolo, dell'EMITTENTE del magazzino
+    #        indicato, con ricerca libera sul codice. Il lotto e' dell'azienda
+    #        (2026-11-22, brief-db-magazzino-lotto-dell-azienda): la RLS lascia
+    #        vedere i lotti di tutte le aziende del perimetro, ma la riga accetta
+    #        solo quelli dell'azienda del documento (il guard dei figli,
+    #        `E_RIFERIMENTO_DI_ALTRO_EMITTENTE`). Stessa forma di `lookup_assets`.
+    def lookup_lotti(self, articolo_id: str, magazzino_id: int, search: str | None) -> list[dict[str, Any]]:
+        conditions = [
+            "l.articolo_id = %s::uuid",
+            "l.attivo IS TRUE",
+            "l.emittente_fiscale_id = m.emittente_fiscale_id",
+        ]
+        params: list[Any] = [int(magazzino_id), str(articolo_id)]
         # La guardia legge il PATTERN, non il termine grezzo: «  » e' un
         # termine assente, e con `if search:` diventava `ILIKE NULL` (zero righe).
         pattern = pattern_contiene(search)
@@ -811,6 +819,7 @@ class MagazzinoRepository:
         sql = f"""
             SELECT l.id, l.codice, l.data_arrivo, l.data_scadenza
               FROM magazzino.lotti l
+              JOIN magazzino.magazzini m ON m.id = %s
              WHERE {' AND '.join(conditions)}
              ORDER BY l.data_arrivo DESC, l.codice, l.id
         """  # noqa: S608 — WHERE da condizioni letterali, valori come parametri

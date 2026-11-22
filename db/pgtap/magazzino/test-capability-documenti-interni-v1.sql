@@ -59,7 +59,7 @@ DECLARE v_mag bigint; v_ubi bigint; v_art uuid; v_nog uuid; v_tipo bigint;
 BEGIN
     v_mag := dbops.fn_pgtap_crea_magazzino('PGT-L2B-U', true);
     SELECT t.id INTO v_tipo FROM config.tipi_ubicazione t ORDER BY t.id LIMIT 1;
-    INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id) VALUES (v_mag, 'UX', v_tipo) RETURNING id INTO v_ubi;
+    v_ubi := dbops.fn_pgtap_crea_ubicazione(v_mag, 'UX', p_tipo_id => v_tipo);
     v_art := dbops.fn_pgtap_crea_articolo('PGT-L2B-ART', true, false, false);
     v_nog := dbops.fn_pgtap_crea_articolo('PGT-L2B-NO', false, false, false);
     INSERT INTO _fix VALUES (v_mag, v_ubi, v_art, v_nog);

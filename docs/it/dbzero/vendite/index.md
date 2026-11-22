@@ -281,6 +281,7 @@ search:
 - [fn_numera_fattura_opz_emessa](funzioni/fn_numera_fattura_opz_emessa.md) — (latest review 09-02-2026) La funzione **`vendite.fn_numera_fattura_opz_emessa()`** assegna il numero fattura in modo **idempotente** e, opzionalmente, imposta lo stato documento **EMESSA** usando `codice_interno`.
 - [fn_numero_documento_fattura](funzioni/fn_numero_documento_fattura.md) — **È la sede unica che dice come si scrive il numero di una fattura.**
 - [fn_offerta_documenti_vivi](funzioni/fn_offerta_documenti_vivi.md)
+- [fn_offerta_eccezione_componenti_espansi](funzioni/fn_offerta_eccezione_componenti_espansi.md)
 - [fn_offerta_eccezione_componenti_init](funzioni/fn_offerta_eccezione_componenti_init.md)
 - [fn_offerta_eccezione_componenti_preview](funzioni/fn_offerta_eccezione_componenti_preview.md)
 - [fn_offerta_proietta_stato_revisione](funzioni/fn_offerta_proietta_stato_revisione.md)

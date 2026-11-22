@@ -134,7 +134,7 @@ Prova empirica della chiusura (`pg_class.reltuples` non è filtrato dalla RLS,
 
 Nessuna modifica applicativa è stata necessaria: il percorso operatore legge gli
 **stessi** risultati di prima su tutte e 7 le fatture di test. Brief chiuso:
-[brief-db-rls-satelliti-fattura-portale](../../../dev/work-done/brief-db-rls-satelliti-fattura-portale.md).
+[brief-db-rls-satelliti-fattura-portale](../../../dev/work-done/2026/brief-db-rls-satelliti-fattura-portale.md).
 
 > ⚠️ **Vincolo da non violare** (team DB): le policy sui satelliti devono
 > continuare a decidere **dalla testata**: la chiave è `fattura_id`, risolta

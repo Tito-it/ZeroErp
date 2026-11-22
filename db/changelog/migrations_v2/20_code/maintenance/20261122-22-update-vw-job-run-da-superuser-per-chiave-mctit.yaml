@@ -1,0 +1,141 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vw_job_run_da_superuser cerca l'ultima corsa PER CHIAVE, non percorrendo
+#   tutto il giornale.
+#   Brief: brief-db-giornale-corse-indici §6.3 (decisione di Tid, 2026-11-22).
+#
+# ⚠️ IL DIFETTO. La CTE ultima era un DISTINCT ON (COALESCE(processo_codice,
+#   jobname)) su tutto il giornale: la chiave e' un'espressione che nessun
+#   indice serve, e il costo cresce con la storia.
+#
+# ⭐ LA FORMA. La chiave COALESCE(processo_codice, jobname) si scompone nei
+#   suoi due rami, ognuno col suo indice:
+#     · i processi distinti, con una discesa ricorsiva su
+#       ix_job_run_log_processo_codice_started_at;
+#     · i jobname delle righe SENZA processo, con una discesa ricorsiva sul
+#       parziale ix_job_run_log_jobname_senza_processo.
+#   Per ogni chiave K l'ultima corsa e' la piu' recente fra «l'ultima con
+#   processo_codice = K» e «l'ultima senza processo con jobname = K»: le stesse
+#   righe che il DISTINCT ON raccoglieva sotto K. Il filtro
+#   ruolo_sessione IS NOT NULL resta dentro ciascun ramo, come prima.
+#
+# ⚠️ Stesse colonne, stesso ordine: CREATE OR REPLACE VIEW. Corpo dal catalogo
+#   (pg_get_viewdef, 2026-11-22); cambia solo la CTE ultima. Il COMMENT
+#   descrive che cosa dice la vista, non come la legge: resta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261122-22-update-vw-job-run-da-superuser-per-chiave-mctit.yaml
+
+  - changeSet:
+      id: 20261122-22-update-vw-job-run-da-superuser-per-chiave
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.vw_job_run_da_superuser: l'ultima corsa per processo con due LATERAL
+        sugli indici (con processo, senza processo), le chiavi con due discese ricorsive;
+        risultato invariato. Brief: brief-db-giornale-corse-indici §6.3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'maintenance'
+                AND c.relname = 'vw_job_run_da_superuser'
+                AND c.relkind = 'v'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW maintenance.vw_job_run_da_superuser AS
+              WITH RECURSIVE processi_giornale AS (
+                       SELECT min(p0.processo_codice) AS chiave
+                         FROM maintenance.job_run_log p0
+                       UNION ALL
+                       SELECT ( SELECT min(p1.processo_codice) AS min
+                                  FROM maintenance.job_run_log p1
+                                 WHERE (p1.processo_codice > processi_giornale.chiave)) AS chiave
+                         FROM processi_giornale
+                        WHERE (processi_giornale.chiave IS NOT NULL)
+                      ), senza_processo AS (
+                       SELECT min(s0.jobname) AS chiave
+                         FROM maintenance.job_run_log s0
+                        WHERE (s0.processo_codice IS NULL)
+                       UNION ALL
+                       SELECT ( SELECT min(s1.jobname) AS min
+                                  FROM maintenance.job_run_log s1
+                                 WHERE ((s1.processo_codice IS NULL) AND (s1.jobname > senza_processo.chiave))) AS chiave
+                         FROM senza_processo
+                        WHERE (senza_processo.chiave IS NOT NULL)
+                      ), chiavi AS (
+                       SELECT processi_giornale.chiave
+                         FROM processi_giornale
+                        WHERE (processi_giornale.chiave IS NOT NULL)
+                       UNION
+                       SELECT senza_processo.chiave
+                         FROM senza_processo
+                        WHERE (senza_processo.chiave IS NOT NULL)
+                      ), ultima AS (
+                       SELECT k.chiave AS processo_codice,
+                          x.jobname,
+                          x.started_at,
+                          x.ok,
+                          x.origine,
+                          x.ruolo_sessione
+                         FROM (chiavi k
+                           CROSS JOIN LATERAL ( SELECT c.jobname,
+                                  c.started_at,
+                                  c.ok,
+                                  c.origine,
+                                  c.ruolo_sessione
+                                 FROM ( ( SELECT l.jobname,
+                                          l.started_at,
+                                          l.id,
+                                          l.ok,
+                                          l.origine,
+                                          l.ruolo_sessione
+                                         FROM maintenance.job_run_log l
+                                        WHERE ((l.processo_codice = k.chiave) AND (l.ruolo_sessione IS NOT NULL))
+                                        ORDER BY l.started_at DESC, l.id DESC
+                                       LIMIT 1)
+                                      UNION ALL
+                                      ( SELECT l.jobname,
+                                          l.started_at,
+                                          l.id,
+                                          l.ok,
+                                          l.origine,
+                                          l.ruolo_sessione
+                                         FROM maintenance.job_run_log l
+                                        WHERE ((l.processo_codice IS NULL) AND (l.jobname = k.chiave) AND (l.ruolo_sessione IS NOT NULL))
+                                        ORDER BY l.started_at DESC, l.id DESC
+                                       LIMIT 1)) c
+                                ORDER BY c.started_at DESC, c.id DESC
+                               LIMIT 1) x)
+                      )
+               SELECT u.processo_codice,
+                  u.jobname,
+                  u.started_at,
+                  u.ok,
+                  u.origine,
+                  u.ruolo_sessione
+                 FROM (ultima u
+                   JOIN pg_roles r ON ((r.rolname = u.ruolo_sessione)))
+                WHERE r.rolsuper;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo (corpo dal catalogo del 2026-11-22).
+              SELECT 1;

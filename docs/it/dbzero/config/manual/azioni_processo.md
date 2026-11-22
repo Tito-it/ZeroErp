@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.azioni_processo`
 
-> **Ultimo aggiornamento**: 27 ottobre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -49,6 +49,11 @@ Le azioni rappresentano **operazioni puntuali** che richiedono abilitazione espl
 |---------|-------|-------|
 | `config.profili_accesso_azioni` | `azione_id` | Abilitazione azione per profilo |
 | `config.user_override_azioni` | `azione_id` | Override individuale per azione |
+| `ui.widget` | `azione_id`, `area_id` | L'azione che fa vedere una card della dashboard; con l'area, è quella dell'azione |
+
+Un'azione non cambia area finché un widget la cita insieme all'area: lo tiene la FK composita
+`fk_ui_widget_azione_della_sua_area`, che punta all'unicità `uq_azioni_processo_id_area` (`id`,
+`area_id`). Come unicità ripete la chiave primaria; serve da bersaglio della FK.
 
 ---
 
