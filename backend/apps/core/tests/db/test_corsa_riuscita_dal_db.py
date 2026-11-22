@@ -137,7 +137,8 @@ class CorsaRiuscitaDalDbTests(TestCase):
         self.assertFalse(corsa["in_corso"], "la skip e' chiusa")
         self.assertIsNotNone(corsa["ultima_conclusa"])
         self.assertIs(corsa["ultima_conclusa"]["ok"], False, "l'esito e' della corsa fallita, non della skip")
-        riepilogo, _ = repo.list_job_summary(jobname_prefix=_JOB)
+        riepilogo, _ = repo.list_job_summary(processo_codice=PROCESSO_DIGEST_PRESIDI, limit=100)
+        riepilogo = [r for r in riepilogo if r["jobname"] == _JOB]
         self.assertEqual(len(riepilogo), 1)
         self.assertEqual(
             (riepilogo[0]["total_runs"], riepilogo[0]["fail_count"], riepilogo[0]["saltate_count"]),

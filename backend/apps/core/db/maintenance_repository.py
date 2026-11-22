@@ -39,16 +39,13 @@ from apps.core.types import JobRunLogRow
 
 # Scopo: le due CTE che leggono, per CHIAVE (il jobname, oppure il codice del
 #        processo), la riga PIU' RECENTE (`recente`) e l'ultima CONCLUSA
-#        (`conclusa`), ciascuna come UNA riga intera con `DISTINCT ON`. E' la forma che rende la cucitura impossibile: tre
+#        (`conclusa`), ciascuna come UNA riga intera. E' la forma che rende la cucitura impossibile: tre
 #        aggregati con lo stesso `ORDER BY` restano d'accordo finche' nessuno ne
 #        tocca uno; una riga intera non ha niente da tenere allineato.
-# ⚠️ `conditions` sono frammenti SQL costanti del chiamante (whitelist, mai
-#    input libero); i VALORI viaggiano nei parametri, e vanno passati UNA VOLTA
-#    PER CTE, nell'ordine in cui le CTE compaiono: `recente`, poi `conclusa`.
-# ⭐ Le due sedi di questo file (`job_liveness`, `list_job_summary`) le usano
-#    entrambe: e' la ragione per cui il frammento sta qui e non dentro una
-#    delle due — prima erano due copie di `MAX` + `ARRAY_AGG … FILTER`, e il
-#    difetto stava in tutte e due.
+# ⭐ Le tre sedi (`job_liveness`, `list_job_summary` qui,
+#    `ProcessiRepository.list_processi`) le usano tutte: e' la ragione per cui
+#    il frammento sta qui e non dentro una di loro — prima erano copie di
+#    `MAX` + `ARRAY_AGG … FILTER`, e il difetto stava in tutte.
 # ⭐ LA CHIAVE (2026-11-22, regola del 2, ok Tid): `jobname` per le corsie,
 #    `processo_codice` per la lista dei processi (`ProcessiRepository
 #    .list_processi`), che fino a quel giorno teneva una copia sua — e la copia
@@ -57,7 +54,8 @@ from apps.core.types import JobRunLogRow
 #    o `ON <alias>.<chiave> = …`.
 # ⛔ La chiave finisce nell'SQL come identificatore: whitelist chiusa, mai
 #    input. Per `processo_codice` le corse senza attore (le storiche, nate
-#    prima della colonna) restano fuori: non sono di nessun processo.
+#    prima della colonna) restano fuori: la chiave le cerca per uguaglianza,
+#    e non sono di nessun processo.
 # ⭐ LA CORSA SALTATA (dal 2026-10-10, brief-db-corsa-saltata-non-e-una-corsa
 #    §8): la riga che `fn_job_run_start` scrive sul lock occupato nasce CHIUSA,
 #    senza esito (`ok` NULL) e con `saltata = true`. Per `recente` e' un segno di
@@ -65,30 +63,67 @@ from apps.core.types import JobRunLogRow
 #    risulta «in corso». Per `conclusa` NO: non ha fatto il lavoro, e
 #    l'ultima conclusa e' l'ultima corsa VERA. Senza il filtro una skip diventava
 #    l'ultima conclusa con «esito non scritto», e copriva l'esito di quella vera.
+# ⭐ PER CHIAVE, NON SU TUTTO IL GIORNALE (2026-11-22, ok Tid, §6.6 di
+#    brief-db-giornale-corse-indici). Fino a quel giorno le due CTE erano un
+#    `DISTINCT ON (chiave)` sul giornale filtrato: un indice lo rende una
+#    scansione ordinata, ma il costo resta proporzionale a TUTTA la storia.
+#    Ora il chiamante dichiara DA DOVE vengono le chiavi (`chiavi`, una
+#    relazione dello stesso WITH con la colonna `<chiave>`), e per ciascuna la
+#    riga si cerca con una `LATERAL … ORDER BY started_at DESC, id DESC LIMIT 1`:
+#    una discesa nell'indice per chiave (`ix_job_run_log_jobname_started_at`,
+#    `ix_job_run_log_processo_codice_started_at`), a prescindere dalla storia.
+#    E' la stessa forma delle viste DB `vw_job_run_da_guardare` e
+#    `vw_job_run_da_superuser` (changeSet `20261122-21`/`-22`).
+# ⭐ La `CROSS JOIN LATERAL` scarta le chiavi senza corse: in `recente` compare
+#    solo chi ha almeno una riga, in `conclusa` solo chi ne ha una conclusa —
+#    come prima. Chi vuole anche le chiavi mai girate fa `LEFT JOIN recente`.
+# ⚠️ `conditions` sono frammenti SQL costanti del chiamante (whitelist, mai
+#    input libero), con le colonne SENZA alias: dentro la `LATERAL` il nome
+#    si risolve sulla riga del giornale. I loro VALORI (`params`) la funzione
+#    li restituisce gia' ripetuti per le due CTE, nell'ordine del testo:
+#    il chiamante li mette dopo i parametri delle `chiavi`.
 CHIAVI_CORSE = ("jobname", "processo_codice")
 
 
-def cte_corse(conditions: list[str], *, chiave: str = "jobname") -> str:
+def cte_corse(
+    chiavi: str,
+    *,
+    chiave: str = "jobname",
+    conditions: list[str] | None = None,
+    params: list[Any] | None = None,
+) -> tuple[str, list[Any]]:
     if chiave not in CHIAVI_CORSE:
         raise ValueError(f"cte_corse: chiave non ammessa {chiave!r}")
-    if chiave == "processo_codice":
-        conditions = [*conditions, "processo_codice IS NOT NULL"]
-    where_recente = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-    where_conclusa = "WHERE " + " AND ".join([*conditions, "ended_at IS NOT NULL", "NOT saltata"])
-    return f"""
+    conditions = list(conditions or [])
+    params = list(params or [])
+    filtro = "".join(f" AND {c}" for c in conditions)
+    sql = f"""
         recente AS (
-            SELECT DISTINCT ON ({chiave}) {chiave}, started_at, ended_at
-              FROM maintenance.job_run_log
-              {where_recente}
-             ORDER BY {chiave}, started_at DESC, id DESC
+            SELECT k.{chiave}, g.started_at, g.ended_at
+              FROM {chiavi} k
+             CROSS JOIN LATERAL (
+                    SELECT started_at, ended_at
+                      FROM maintenance.job_run_log
+                     WHERE {chiave} = k.{chiave}{filtro}
+                     ORDER BY started_at DESC, id DESC
+                     LIMIT 1
+                   ) g
         ),
         conclusa AS (
-            SELECT DISTINCT ON ({chiave}) {chiave}, started_at, ended_at, ok
-              FROM maintenance.job_run_log
-              {where_conclusa}
-             ORDER BY {chiave}, started_at DESC, id DESC
+            SELECT k.{chiave}, g.started_at, g.ended_at, g.ok
+              FROM {chiavi} k
+             CROSS JOIN LATERAL (
+                    SELECT started_at, ended_at, ok
+                      FROM maintenance.job_run_log
+                     WHERE {chiave} = k.{chiave}{filtro}
+                       AND ended_at IS NOT NULL
+                       AND NOT saltata
+                     ORDER BY started_at DESC, id DESC
+                     LIMIT 1
+                   ) g
         )
-    """  # noqa: S608 — chiave in whitelist; conditions: frammenti letterali dei chiamanti (chiave meta validata in list_job_summary), valori come parametri
+    """  # noqa: S608 — chiave in whitelist; chiavi e conditions: frammenti letterali dei chiamanti, valori come parametri
+    return sql, [*params, *params]
 
 
 class MaintenanceRepository:
@@ -268,15 +303,43 @@ class MaintenanceRepository:
             )
         if jobnames is not None and not jobnames:
             return {}
-        filtro, valore = (
-            ("jobname = ANY(%s)", list(jobnames))
-            if jobnames is not None
-            else ("processo_codice = %s", processo_codice)
-        )
+        # ⭐ LE CHIAVI. Per `jobnames` sono i nomi chiesti. Per `processo_codice`
+        #    sono le corsie del processo, che nessuna tabella elenca: si leggono
+        #    dal giornale con una discesa ricorsiva «salta al jobname
+        #    successivo» (la forma di `vw_job_run_da_guardare`), una ricerca
+        #    per corsia invece di un `DISTINCT` su tutte le corse del processo.
+        #    ⛔ Le corsie NON si compongono qui (`<codice>:<corsia>`): vedi sopra.
+        #    Nella `LATERAL` il filtro `processo_codice = %s` resta: una corsia
+        #    con righe storiche senza processo non le prende.
+        if jobnames is not None:
+            chiavi_sql = "chiavi AS (SELECT DISTINCT unnest(%s::text[]) AS jobname),"
+            chiavi_params: list[Any] = [list(jobnames)]
+            corse_sql, corse_params = cte_corse("chiavi")
+        else:
+            chiavi_sql = """
+                corsie AS (
+                    SELECT min(jobname) AS jobname
+                      FROM maintenance.job_run_log
+                     WHERE processo_codice = %s
+                    UNION ALL
+                    SELECT (SELECT min(j.jobname)
+                              FROM maintenance.job_run_log j
+                             WHERE j.processo_codice = %s
+                               AND j.jobname > c.jobname)
+                      FROM corsie c
+                     WHERE c.jobname IS NOT NULL
+                ),
+                chiavi AS (SELECT jobname FROM corsie WHERE jobname IS NOT NULL),
+            """
+            chiavi_params = [processo_codice, processo_codice]
+            corse_sql, corse_params = cte_corse(
+                "chiavi", conditions=["processo_codice = %s"], params=[processo_codice],
+            )
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
-                WITH {cte_corse([filtro])}
+                WITH RECURSIVE {chiavi_sql}
+                {corse_sql}
                 SELECT r.jobname,
                        r.started_at AS last_run_at,
                        r.started_at > now() - make_interval(mins => %s) AS attivo,
@@ -284,10 +347,10 @@ class MaintenanceRepository:
                        c.started_at, c.ended_at, c.ok
                   FROM recente r
                   LEFT JOIN conclusa c USING (jobname)
-                """,  # noqa: S608 — frammenti costanti, il valore è parametro
-                # ⚠️ Il valore del filtro va UNA volta per CTE (recente, conclusa),
-                #    poi la soglia del SELECT: e' l'ordine dei `%s` nel testo.
-                [valore, valore, int(soglia_minuti)],
+                """,  # noqa: S608 — frammenti costanti, i valori sono parametri
+                # ⚠️ L'ordine dei `%s` nel testo: le chiavi, le due CTE delle
+                #    corse, poi la soglia del SELECT.
+                [*chiavi_params, *corse_params, int(soglia_minuti)],
             )
             rows = cursor.fetchall()
         return {
@@ -315,10 +378,26 @@ class MaintenanceRepository:
     #    mancato. Le saltate hanno il loro conteggio, `saltate_count`.
     #
     # Filtri OPZIONALI (default: nessuno → comportamento storico invariato):
-    #  - `jobname_prefix`: tiene solo i job il cui nome inizia col prefisso
-    #    (es. 'run_fatturazione_batch' = le corsie di fatturazione, escludendo
-    #    i worker di drenaggio code). Filtro SQL e non post-filtro Python:
+    #  - `processo_codice`: tiene solo le corsie di quel processo (es.
+    #    `run_fatturazione_batch`, le corsie di fatturazione, escludendo i
+    #    worker di drenaggio code). Filtro SQL e non post-filtro Python:
     #    altrimenti il `LIMIT` taglierebbe PRIMA di scartare i job non voluti.
+    #    ⭐ Per CHIAVE, non per prefisso del nome (2026-11-22, L4 di
+    #    brief-db-giornale-corse-indici §6.6). Fino a quel giorno era
+    #    `jobname_prefix`, un `jobname LIKE '<prefisso>%'`: nessun indice lo
+    #    serve (collation `it_IT`), e `_` nel prefisso era un jolly. Neppure
+    #    l'intervallo `>= 'x' AND < successore` lo sostituisce: sotto `it_IT`
+    #    `_` e `:` non pesano al primo livello, e l'intervallo non e' il
+    #    prefisso. La chiave vera e' `processo_codice`, servito dal suo indice.
+    #    ⚠️ Le righe STORICHE senza processo (`chk_job_run_log_processo_dichiarato`
+    #    e' NOT VALID: nessuna riga nuova nasce cosi') si riconoscono dal nome,
+    #    `<codice>` o `<codice>:<corsia>`, con `split_part`: confronto esatto,
+    #    senza jolly. ⚠️ Nel `summary` quel ramo legge per intero l'indice
+    #    parziale `ix_job_run_log_jobname_senza_processo` (che e' per `jobname`
+    #    esatto, non per `split_part`): costo fermo, perche' per costruzione
+    #    l'indice non cresce. Nella `LATERAL` delle corse lo stesso indice si
+    #    scende per jobname. La soluzione sul modello e' del team DB (§6.8,
+    #    richiesta 1: attribuire il processo alle righe storiche).
     #  - `meta_month_equals`: `(chiave, 'YYYY-MM-01')` — tiene i run ATTRIBUITI
     #    a quel mese, applicato PRIMA del GROUP BY (i conteggi risultano quindi
     #    relativi ai soli run che matchano). L'attribuzione è:
@@ -337,14 +416,17 @@ class MaintenanceRepository:
         *,
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
-        jobname_prefix: str | None = None,
+        processo_codice: str | None = None,
         meta_month_equals: tuple[str, str] | None = None,
     ) -> tuple[list[dict], int]:
         conditions: list[str] = []
         params: list[Any] = []
-        if jobname_prefix is not None:
-            conditions.append("jobname LIKE %s")
-            params.append(f"{jobname_prefix}%")
+        if processo_codice is not None:
+            conditions.append(
+                "(processo_codice = %s"
+                " OR (processo_codice IS NULL AND split_part(jobname, ':', 1) = %s))"
+            )
+            params.extend([processo_codice, processo_codice])
         if meta_month_equals is not None:
             # La CHIAVE finisce nell'SQL come letterale quotato (è un nome di
             # campo, non un valore: non parametrizzabile) → validata qui. Il
@@ -365,6 +447,9 @@ class MaintenanceRepository:
             )
             params.append(str(mese))
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        # Le chiavi delle corse sono i jobname del riepilogo: la `LATERAL` cerca
+        # la riga di ciascuno con le stesse condizioni (il mese, il processo).
+        corse_sql, corse_params = cte_corse("summary", conditions=conditions, params=params)
 
         rows, total_count = fetch_paged_with_total(
             f"""
@@ -378,7 +463,7 @@ class MaintenanceRepository:
                   {where}
                  GROUP BY jobname
             ),
-            {cte_corse(conditions)}
+            {corse_sql}
             SELECT s.jobname, s.total_runs, s.ok_count, s.fail_count, s.saltate_count,
                    r.started_at::text AS last_run_at,
                    r.ended_at IS NULL AS in_corso,
@@ -390,9 +475,9 @@ class MaintenanceRepository:
              ORDER BY r.started_at DESC, s.jobname
              LIMIT %s OFFSET %s
             """,  # noqa: S608 — `where` da condizioni whitelisted, valori parametrizzati
-            # ⚠️ Le condizioni compaiono TRE volte nel testo (summary,
-            #    recente, conclusa): i loro valori, nello stesso ordine.
-            [*params, *params, *params, limit, offset],
+            # ⚠️ Le condizioni compaiono TRE volte nel testo (summary, poi le
+            #    due CTE delle corse, che restituiscono i loro gia' ripetuti).
+            [*params, *corse_params, limit, offset],
             offset=offset,
         )
         results = [
