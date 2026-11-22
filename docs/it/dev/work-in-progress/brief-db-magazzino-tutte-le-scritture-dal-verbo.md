@@ -513,7 +513,8 @@ o alla prossima riscrittura di quelle funzioni. Il P-4 (`-09` … `-11`) è anco
   modifica, `trgfn_prevent_deactivate_if_children` vede i figli di tutte le aziende, quindi un lotto usato da
   un'altra azienda non si disattiva. Dall'app, sotto RLS, si disattivava.
   ✅ **Tid: «lotto b»**, il lotto è dell'azienda. Si lavora in
-  [brief-db-magazzino-lotto-dell-azienda](brief-db-magazzino-lotto-dell-azienda.md);
+  [brief-db-magazzino-lotto-dell-azienda](../work-done/2026/brief-db-magazzino-lotto-dell-azienda.md)
+  (chiuso e archiviato il 2026-11-22);
 * **`assets.billing_account_id`** (fra i campi della nascita del seriale) non era controllato contro
   l'emittente del seriale. ✅ **Tid: «seriale a»**, il controllo subito. Applicati da Tid il 2026-11-22,
   pgTAP verdi col runner:
