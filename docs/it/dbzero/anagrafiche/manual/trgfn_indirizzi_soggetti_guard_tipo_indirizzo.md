@@ -1,71 +1,77 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento Tabelle:**
-> 
-• [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)  
-> • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
-> • [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)  
-> • [config.tipi_soggetto_dettaglio_tipi_indirizzo](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo)  
+> Approfondimento tabelle:
 >
-**Approfondimento Funzioni:**   
-> 
-• [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
-> • [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+> * [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti) — gli indirizzi del soggetto, su cui scatta
+> * [config.tipi_soggetto_dettaglio_tipi_indirizzo](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo) — la matrice della natura
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.fn_tipo_indirizzo_ammesso_per_natura](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_ammesso_per_natura) — il predicato che legge
+> * [anagrafiche.fn_check_tipo_indirizzo_soggetto](/dbzero/anagrafiche/funzioni/fn_check_tipo_indirizzo_soggetto) — la check con cui la madre lo anticipa
+> * [anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo) — il guard gemello sugli indirizzi del ruolo
+> * [anagrafiche.fn_check_cambio_natura_soggetto](/dbzero/anagrafiche/funzioni/fn_check_cambio_natura_soggetto) — chi giudica gli indirizzi già scritti quando cambia la natura
+>
+> Guide:
+>
+> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi) — i due strati degli indirizzi e le loro regole
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 28-12-25)
-Garantire che il **tipo indirizzo** associato a un soggetto sia coerente con la **matrice di abilitazione** definita per il suo tipo soggetto dettaglio.
 
-Se e' presente una matrice attiva in `config.tipi_soggetto_dettaglio_tipi_indirizzo`, la funzione consente solo i tipi indirizzo previsti, attivi e validi per data.
-
----
-
-### Come Funziona
-
-1. Ignora le `DELETE` (non applica controlli).
-2. Se mancano `soggetto_id` o `tipo_indirizzo_id`, non applica controlli.
-3. Recupera `tipo_soggetto_dettaglio_id` dal soggetto.
-4. Se non esiste un tipo soggetto dettaglio, la funzione e' permissiva (non blocca).
-5. Verifica se esiste almeno una riga di matrice per quel tipo:
-   * **Matrice assente** → indirizzi liberi (nessun vincolo).
-   * **Matrice presente** → accetta solo righe con `attivo = true` e validita' temporale coerente.
-6. In caso di violazione, genera errore applicativo con `script.fn_log_and_raise_error`.
+`anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo` rifiuta un indirizzo del soggetto di un tipo che la
+natura di dettaglio del soggetto non ammette. È il presidio della regola sullo strato del soggetto, qualunque
+strada scriva la tabella.
 
 ---
 
-### 🚨 Errori Gestiti
+### Che cosa giudica
 
-| Codice errore                     | Quando si verifica                                         |
-| --------------------------------- | ---------------------------------------------------------- |
-| **E_TIPO_INDIRIZZO_NON_PERMESSO** | Il tipo indirizzo non e' previsto/attivo/valido in matrice |
+Scatta prima della scrittura, alla nascita dell'indirizzo e quando ne cambia il tipo. Legge la natura del
+soggetto e chiede al predicato `anagrafiche.fn_tipo_indirizzo_ammesso_per_natura`, sul giorno operativo; non
+legge mai la matrice da sé. Un soggetto senza natura, o una natura senza righe di matrice, lascia gli indirizzi
+liberi. Senza soggetto o senza tipo non giudica niente: lo dicono i NOT NULL.
 
-Gli errori sono prodotti tramite:
-`script.fn_log_and_raise_error('<contesto>', '<funzione>', '<codice>', <meta>, NEW.tx_id, ...)`.
-
----
-
-### Relazioni con altri trigger
-
-Questa funzione e' usata come guard su `anagrafiche.indirizzi_soggetti`, tipicamente in un trigger `BEFORE INSERT OR UPDATE`, ad esempio:
-
-```sql
-CREATE TRIGGER trg_indirizzi_soggetti_guard_tipo_indirizzo
-  BEFORE INSERT OR UPDATE ON anagrafiche.indirizzi_soggetti
-  FOR EACH ROW EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo();
-```
+Il tipo già presente non è affar suo: lo rifiuta l'indice unico, e prima ancora la check della madre.
 
 ---
 
-### Note Implementative
+### Il rifiuto parla come la check
 
-* La matrice e' **opzionale**: se non definita per il tipo soggetto dettaglio, la funzione non blocca.
-* La validita' temporale usa `current_date` e rispetta `valido_dal`/`valido_al`.
-* I dettagli di errore includono `tipo_indirizzo_id`, `tipo_soggetto_dettaglio_id` e `soggetto_id`.
+Il codice, il campo da evidenziare (`tipo_indirizzo_id`) e i valori della frase (la natura e il tipo, per
+descrizione; gli id nel contesto) sono quelli del motivo `TIPO_NON_AMMESSO_DALLA_NATURA` della check: chi
+scrive dalla madre riceve lo stesso errore prima della scrittura, chi salta la madre lo riceve da qui. Lo stesso
+codice lo solleva il guard degli indirizzi del ruolo quando è la natura del soggetto a non ammettere il tipo.
 
 ---
 
-> **"La matrice tipi indirizzo decide cosa e' permesso: il trigger impedisce associazioni non configurate."**
+{% include-markdown "it/dbzero/anagrafiche/_tipo-indirizzo-ammesso.md" %}
 
+---
+
+### Codici errore
+
+* `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO` — la natura del soggetto non ammette il tipo.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-check-tipo-indirizzo-v1.sql` — la frase del guard da una strada che salta la madre,
+  coi valori natura e tipo.
+
+---
+
+### Note di migrazione
+
+* 2026-11-14 — il guard smette di leggere la matrice e chiede al predicato, estratto perché la stessa regola
+  la legga il cambio di natura.
+
+---
+
+{% include-markdown "signature-core.md" %}

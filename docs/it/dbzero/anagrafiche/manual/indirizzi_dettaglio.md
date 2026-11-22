@@ -1,114 +1,153 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.indirizzi_dettaglio`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
-> Guide:
->
-> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
-> * [Linee guida SQL §8.4-bis](/linee-guida-sql#84-bis-indici-unique-con-colonne-nullable) — indici `UNIQUE` con colonne nullable
->
 > Approfondimento tabelle:
 >
-> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)
-> * [config.stradario](/dbzero/config/tabelle/stradario)
-> * [config.comuni](/dbzero/config/tabelle/comuni)
-> * [config.province](/dbzero/config/tabelle/province)
-> * [storico.indirizzi_dettaglio](/dbzero/storico/tabelle/indirizzi_dettaglio)
+> * [config.stradario](/dbzero/config/tabelle/stradario) — la via del civico, e attraverso lei comune, CAP e provincia
+> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi) — gli indirizzi dei ruoli che puntano il civico
+> * [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti) — gli indirizzi dei soggetti che puntano il civico
+> * [storico.indirizzi_dettaglio](/dbzero/storico/tabelle/indirizzi_dettaglio) — le versioni conservate
+>
+> Approfondimento viste:
+>
+> * [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio) — il civico con comune, CAP e provincia
+> * [script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo) — la via risolta, da cui si normalizza
 >
 > Approfondimento funzioni:
 >
+> * [anagrafiche.fn_build_indirizzo_normalizzato](/dbzero/anagrafiche/funzioni/fn_build_indirizzo_normalizzato) — la normalizzazione del civico, in un posto solo
 > * [anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/funzioni/fn_get_or_create_indirizzo_dettaglio) — il «trova o crea» del civico
-> * [anagrafiche.fn_build_indirizzo_normalizzato](/dbzero/anagrafiche/funzioni/fn_build_indirizzo_normalizzato) — la normalizzazione, unica sorgente
-> * [anagrafiche.trgfn_indirizzi_dettaglio_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_normalize)
-> * [anagrafiche.trgfn_indirizzi_dettaglio_protect_update](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_protect_update)
-> * [anagrafiche.trgfn_indirizzi_dettaglio_guard_chiave](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_guard_chiave) — la chiave del civico, con codice e campo
-> * [maintenance.proc_bump_indirizzi_dettaglio](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio)
-> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)
-
-La tabella **`anagrafiche.indirizzi_dettaglio`** contiene il dettaglio degli indirizzi civici, collegati a una specifica via (tramite `stradario_id`) e, attraverso la via, al contesto geografico (comune, provincia, regione, stato). Vi sono memorizzati numero civico, estensione, palazzina, scala, piano, interno, i dati di geolocalizzazione e tre campi calcolati dalla normalizzazione.
-
----
-
-### 🎯 Scopo principale
-
-* **Dettagliare lo stradario**
-  Associare a ciascuna via (`config.stradario`) le singole unità civiche (numero civico, estensione, palazzina, scala, piano, interno), ottenendo l'indirizzo completo.
-* **Geolocalizzazione**
-  `civic_geoloc` memorizza il punto del singolo civico, `street_geoloc` la posizione media della via. Per le ricerche spaziali sul civico c'è un indice **GiST** su `civic_geoloc`.
-* **Indirizzo normalizzato**
-  Un trigger `BEFORE INSERT OR UPDATE` delega a `fn_build_indirizzo_normalizzato` e scrive:
-  * le colonne strutturali normalizzate (`UPPER` + `BTRIM`, un testo vuoto diventa `NULL`); l'estensione prende il prefisso `/` (`A` → `/A`);
-  * `via_norm`: tipo toponimo + nome della via, in maiuscolo;
-  * `civico_norm`: numero + estensione, oppure **`SNC`** (senza numero civico) quando il civico è `NULL`;
-  * `indirizzo_normalizzato`: la stringa completa (via, civico, palazzina, scala, piano, interno), usata per i confronti testuali e per la ricerca con l'indice GIN trigram.
+> * [anagrafiche.trgfn_indirizzi_dettaglio_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_normalize) — scrive la riga normalizzata
+> * [anagrafiche.trgfn_indirizzi_dettaglio_guard_chiave](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_guard_chiave) — giudica la chiave del civico
+> * [anagrafiche.trgfn_indirizzi_dettaglio_protect_update](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_protect_update) — un civico non cambia via
+> * [dbops.fn_admin_merge_stradario](/dbzero/dbops/funzioni/fn_admin_merge_stradario) — la fusione delle vie, l'unica che sposta i civici
+> * [maintenance.proc_bump_indirizzi_dettaglio](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio) — la rinormalizzazione dei civici di una via
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic) — lo storico
+>
+> Guide:
+>
+> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi) — il quadro degli indirizzi e dello stradario
+> * [Linee guida SQL §8.4-bis](/linee-guida-sql#84-bis-indici-unique-con-colonne-nullable) — indici `UNIQUE` con colonne nullable
 
 ---
 
-### Regola sul cambio di via
+### 🎯 Scopo Principale
 
-Il cambio di via (`stradario_id`) è bloccato dal guard `trgfn_indirizzi_dettaglio_protect_update` (`E_COLONNA_NON_MODIFICABILE`): un civico non si sposta su un'altra via. Lo sposta solo la fusione delle vie (`dbops.fn_admin_merge_stradario`), che apre la porta per il solo tempo del ripuntamento.
-
-⭐ Un indirizzo non nasce su una via **soppressa** (fusa in un'altra, `config.stradario.obsoleto_dal`), né vi si sposta: lo rifiuta il guard del ritiro `trg_indirizzi_dettaglio_a10_via_non_soppressa_ins_upd` (`E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`). Un indirizzo esistente si modifica sempre: conta solo il cambio di via.
-
-Quando cambia la via stessa (per esempio il toponimo), i civici si rinormalizzano con la procedura `maintenance.proc_bump_indirizzi_dettaglio(p_stradario_id)`: apre la manutenzione solo per la durata della procedura, riscrive le righe di quella via (il trigger ricalcola i campi normalizzati, lo storico registra la versione precedente) e richiude la manutenzione anche se l'aggiornamento fallisce.
+`anagrafiche.indirizzi_dettaglio` è il civico: una via dello stradario con numero, estensione, palazzina,
+scala, piano e interno. Ogni indirizzo fisico è una riga sola, e la puntano tutti quelli che lo usano: gli
+indirizzi dei ruoli e dei soggetti, i punti di fornitura, le istanze, i magazzini, le unità catastali.
 
 ---
 
-### Collegamenti con altre tabelle
+### ⭐ Un civico, una riga
 
-* **`config.stradario`**
-  * `stradario_id` (integer, obbligatorio) fa riferimento alla chiave primaria di `config.stradario` (`fk_stradario_config`):
-    * **ON UPDATE CASCADE**: se cambia l'id della via, si propaga;
-    * **ON DELETE NO ACTION**: una via con civici collegati non si cancella.
-  * Attraverso `config.stradario` si risale alla catena via → comune → provincia → regione → stato.
-* **Tabelle figlie** (indirizzi, indirizzi dei soggetti, PDP, istanze utilities, magazzini, unità catastali): un civico con figli attivi non si disattiva. Lo presidiano i trigger `a10_*_block_deact` generati dall'automazione.
-* **`storico.indirizzi_dettaglio`**: ogni `UPDATE` e `DELETE` lascia la versione precedente nello storico.
+La chiave del civico sono la via e i sei valori del dettaglio, e l'indice `uq_indirizzi_dettaglio_norm_v2` è
+`NULLS NOT DISTINCT`: due civici senza numero (`SNC`) con lo stesso dettaglio sono lo stesso civico. La chiave
+lavora sui valori **come si salvano**: il trigger di normalizzazione porta tutto in maiuscolo, fa del testo vuoto
+nessun valore e scrive l'estensione col `/`, così `a`, `A` e `/A` sono la stessa estensione. Le regole della
+normalizzazione stanno in `anagrafiche.fn_build_indirizzo_normalizzato`.
 
----
+Sulla chiave il guard `anagrafiche.trgfn_indirizzi_dettaglio_guard_chiave` dice che cosa non va, col codice e col
+campo: il civico, se c'è, è maggiore di zero (il civico senza numero è il civico vuoto); i valori del dettaglio
+hanno almeno una lettera o una cifra; una modifica non porta la riga sulla chiave di un'altra. I `CHECK`
+`chk_indirizzi_dettaglio_civico_positivo` e `chk_indirizzi_dettaglio_dettaglio_leggibile` e l'indice restano come
+rete.
 
-### Unicità del civico
-
-Ogni indirizzo fisico è **una riga sola**. L'indice `uq_indirizzi_dettaglio_norm_v2` (definizione esatta nella sezione Indici della pagina) è sulla **chiave naturale**, le sette colonne nude: `stradario_id`, `civico`, `estensione_civico`, `palazzina`, `scala`, `piano`, `interno`, ed è **`NULLS NOT DISTINCT`**: due civici `SNC` (civico `NULL`) con lo stesso dettaglio collidono. Lavora sui valori **già normalizzati** dal trigger, dove il vuoto ha una forma sola (`NULL`).
-
-La chiave la giudica il guard `trgfn_indirizzi_dettaglio_guard_chiave`, dopo la normalizzazione, con un codice e il campo:
-
-| Regola | Codice | Rete |
-| --- | --- | --- |
-| il civico, se c'è, è maggiore di zero: «senza numero» è il civico vuoto | `E_INDIRIZZO_CIVICO_NON_POSITIVO` | `chk_indirizzi_dettaglio_civico_positivo` |
-| estensione, palazzina, scala, piano e interno hanno almeno una lettera o una cifra | `E_INDIRIZZO_DETTAGLIO_SENZA_LETTERE` | `chk_indirizzi_dettaglio_dettaglio_leggibile` |
-| una modifica non porta la riga sulla chiave di un'altra (la frase nomina quella esistente) | `E_INDIRIZZO_DETTAGLIO_DUPLICATO` | l'indice |
-
-La modifica sul posto di una riga vuol dire «correggo l'indirizzo per tutti quelli che lo usano». Un `UPDATE` che non tocca la chiave non viene giudicato.
-
-Il «trova o crea» è `fn_get_or_create_indirizzo_dettaglio`: passa i parametri per `fn_build_indirizzo_normalizzato` (la stessa normalizzazione del trigger), cerca con `IS NOT DISTINCT FROM` su tutte le colonne, crea se non trova e, su `unique_violation`, rilegge. Restituisce sempre un id: riattiva una riga trovata disattivata, e si ferma con `E_INDIRIZZO_VIA_NON_RISOLTA` se la via non si risolve nella catena comune → provincia → CAP.
+Chi deve collegare un civico non lo inserisce: lo chiede a `anagrafiche.fn_get_or_create_indirizzo_dettaglio`,
+che lo trova o lo crea, e riattiva quello trovato spento.
 
 ---
 
-### Vantaggi operativi
+### Correggere un civico vale per tutti
 
-* **Ricostruzione gerarchica completa**: da `stradario_id` si risale a via → comune → provincia → regione → stato senza duplicare dati.
-* **Geolocalizzazione**: `civic_geoloc` e `street_geoloc` danno la posizione del civico e quella media della via.
-* **Ricerche testuali uniformi**: `indirizzo_normalizzato` permette confronti indipendenti dalla formattazione manuale.
-* **Varianti civiche**: `estensione_civico`, `palazzina`, `scala`, `piano` e `interno` coprono le varianti (lettere, palazzine, scale, piani, interni) senza alterare lo schema.
+Una modifica sul posto vuol dire «correggo questo indirizzo per tutti quelli che lo usano», e chi lo usa lo
+vede subito, perché nessuno ne tiene una copia del testo. Le tre colonne derivate (`via_norm`, `civico_norm`,
+`indirizzo_normalizzato`) le riscrive il trigger a ogni scrittura; chi le passa viene ignorato.
+
+---
+
+### ⛔ Un civico non cambia via
+
+Il cambio di `stradario_id` è rifiutato (`anagrafiche.trgfn_indirizzi_dettaglio_protect_update`,
+`E_COLONNA_NON_MODIFICABILE`): un civico su un'altra via è un altro civico, e si crea. Lo sposta solo la fusione
+delle vie, `dbops.fn_admin_merge_stradario`, che apre la porta per il solo tempo del ripuntamento e la richiude.
+
+Un civico non nasce su una via soppressa (fusa in un'altra, `config.stradario.obsoleto_dal`), né vi si sposta:
+lo rifiuta `trg_indirizzi_dettaglio_a10_via_non_soppressa_ins_upd` (`E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`). Un civico
+che c'è già si modifica sempre: conta solo il cambio di via.
 
 ---
 
-### Diagramma ER
+### Quando cambia la via, i civici si rinormalizzano
 
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    config_stradario     ||--o{ indirizzi_dettaglio : has
-    indirizzi_dettaglio  ||--o{ storico_indirizzi_dettaglio : history
-    config_stradario {
-        int id PK
-    }
-    storico_indirizzi_dettaglio {
-    bigint id PK }
-
-```
+La via normalizzata del civico è una fotografia del toponimo e del nome della via. Quando cambia ciò da cui
+dipende, `maintenance.proc_bump_indirizzi_dettaglio` riscrive i civici di quella via con lo stesso valore, e il
+trigger li rinormalizza; il cambio di un toponimo la chiama da sé per ogni via. Non è uno spostamento: non
+tocca la via del civico, e non apre la porta della fusione.
 
 ---
+
+### Spegnere un civico
+
+Un civico non si spegne finché qualcuno lo punta: lo impediscono i guard generati sulle sei tabelle figlie
+(indirizzi dei ruoli e dei soggetti, punti di fornitura, istanze, magazzini, unità catastali). Un civico spento
+non si collega a niente di nuovo, e torna in uso quando il «trova o crea» lo trova.
+
+---
+
+### Lo storico è a richiesta di chi scrive
+
+`storicizza` nasce `false`, e la tabella non è fra quelle che tengono il flag acceso
+(`config.storico_set_storicizza`). Una scrittura che passa `storicizza = true` lascia in
+`storico.indirizzi_dettaglio` la versione precedente e quella nuova; poi il trigger dello storico rimette il
+flag a `false`, e la scrittura successiva non lascia traccia se non lo chiede di nuovo. La rinormalizzazione
+di una via e la riattivazione del «trova o crea» non lo chiedono. Nessun oggetto del database riaccende il
+flag: la traccia di una modifica dipende da chi la scrive.
+
+---
+
+### La posizione
+
+`civic_geoloc` è il punto del civico, `street_geoloc` la posizione della via. Gli indirizzi dei ruoli e dei
+soggetti copiano `civic_geoloc` quando si scrivono; le viste risolte, se il civico non ha il suo punto, usano
+quello della via.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Un civico la cui via smette di risolversi** (per esempio il comune perde la provincia) esce dalle letture
+  che passano da `anagrafiche.vw_indirizzi_dettaglio`, e qualunque sua modifica fallisce con un errore tecnico
+  di colonna obbligatoria: la normalizzazione non trova la via e lascia `via_norm` vuota.
+* **La porta della fusione è un parametro di sessione** (`zeroerp.maintenance_indirizzi_dettaglio`): chiunque
+  scriva può accenderlo, e con la porta accesa il cambio di via passa senza giudizio.
+* **Il commento di `storicizza`** dice «Default=True»: il default è `false`.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-indirizzi-dettaglio-unicita-v1.sql` — l'indice sulle sette colonne, i tre rifiuti
+  del guard, la stessa chiave scritta in modi diversi che trova la stessa riga, la riattivazione.
+* `db/pgtap/anagrafiche/test-fn-get-or-create-indirizzo-dettaglio.sql` — il «trova o crea».
+* `db/pgtap/maintenance/test-bump-toponomastica-v1.sql` — la rinormalizzazione dopo il cambio di un toponimo,
+  senza la porta accesa.
+* `db/pgtap/dbops/test-fusioni-comune-stradario-v1.sql` — la fusione che sposta i civici sulla via viva, la via
+  soppressa che non riceve civici nuovi.
+
+---
+
+### Note di migrazione
+
+* 2026-10-25 — la chiave passa alle sette colonne nude con `NULLS NOT DISTINCT` (prima un civico `SNC` restava
+  fuori dall'indice e lo zero era un secondo modo di dirlo), e nasce il guard della chiave.
+* 2026-11-03 — la rinormalizzazione di una via smette di accendere la porta della fusione: le basta un
+  aggiornamento che non cambia la via.
+* 2026-11-07 — la fusione delle vie sposta i civici, e un civico non nasce più su una via soppressa.
+
+---
+
 {% include-markdown "signature-core.md" %}

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_tipo_indirizzo_ammesso_per_natura.md" %}
 # ⚙️ Funzione `fn_tipo_indirizzo_ammesso_per_natura`
 
 ```sql

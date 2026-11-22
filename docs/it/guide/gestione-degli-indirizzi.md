@@ -1,6 +1,6 @@
 # Guida — Gestione degli Indirizzi
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -15,19 +15,21 @@
 > * [config.stati](/dbzero/config/tabelle/stati), [config.regioni](/dbzero/config/tabelle/regioni), [config.province](/dbzero/config/tabelle/province), [config.comuni](/dbzero/config/tabelle/comuni) — gerarchia geografica
 > * [config.codici_postali](/dbzero/config/tabelle/codici_postali) — CAP per comune
 > * [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi) — classificazione degli indirizzi (RES, SEDELEG, FATT...)
-> * [storico.indirizzi](/dbzero/storico/tabelle/indirizzi), [storico.indirizzi_dettaglio](/dbzero/storico/tabelle/indirizzi_dettaglio), [storico.stradario](/dbzero/storico/tabelle/stradario) — snapshot storici
+> * [storico.indirizzi](/dbzero/storico/tabelle/indirizzi), [storico.indirizzi_soggetti](/dbzero/storico/tabelle/indirizzi_soggetti), [storico.indirizzi_dettaglio](/dbzero/storico/tabelle/indirizzi_dettaglio), [storico.stradario](/dbzero/storico/tabelle/stradario) — le versioni storiche
 >
 > **Vedi anche** — funzioni e trigger DB:
 >
 > * [script.fn_get_indirizzo](/dbzero/script/funzioni/fn_get_indirizzo) — la risoluzione master/fallback: ruolo → soggetto
 > * [anagrafiche.trgfn_indirizzi_dettaglio_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_normalize) — i campi normalizzati del civico
+> * [anagrafiche.fn_build_indirizzo_normalizzato](/dbzero/anagrafiche/funzioni/fn_build_indirizzo_normalizzato) — la regola di normalizzazione del civico, in un posto solo
 > * [anagrafiche.trgfn_indirizzi_base_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize) — normalizzazione e default sui due layer
 > * [anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo) — la matrice tipo/ruolo (R5)
 > * [anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo) — la matrice tipo/soggetto (R6)
 > * [anagrafiche.trgfn_indirizzi_guard_forma_libera](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_forma_libera) — le due forme dell'indirizzo libero (R3)
 > * [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_soggetto) e [anagrafiche.fn_crea_indirizzi_ruolo](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_ruolo) — le madri che scrivono gli indirizzi, sui due layer
 > * [script.fn_stato_proposto_id](/dbzero/script/funzioni/fn_stato_proposto_id) — lo stato proposto quando chi scrive non lo dice (R8)
-> * [maintenance.proc_bump_indirizzi_dettaglio](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio) — riclassificazione dei civici
+> * [maintenance.proc_bump_indirizzi_dettaglio](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio) — rinormalizza i civici di una via, senza spostarli
+> * [dbops.fn_admin_merge_stradario](/dbzero/dbops/funzioni/fn_admin_merge_stradario) — fonde due vie e sposta i civici sulla via che resta (R4)
 >
 > **Vedi anche** — guide correlate:
 >
@@ -68,7 +70,7 @@ Il sistema sa come mettere insieme i due livelli: quando un processo ha bisogno 
 
 E il livello più basso: il singolo numero civico su una via. La tabella `anagrafiche.indirizzi_dettaglio` contiene il riferimento allo stradario, il civico, l'eventuale estensione (A, B...), la palazzina, la scala, il piano, l'interno e la geolocalizzazione puntuale.
 
-Il campo `indirizzo_normalizzato` viene calcolato automaticamente dal trigger di normalizzazione e produce una stringa leggibile tipo "Via Roma 1, Palazzina A, Int. 3". Questo è il dato che appare nelle viste e nei documenti.
+Il campo `indirizzo_normalizzato` viene calcolato automaticamente dal trigger di normalizzazione e produce una stringa leggibile tipo `VIA ROMA, 1/B, Pal.A, Int.3`: la via in maiuscolo, il civico con la sua estensione (`SNC` se manca), poi palazzina, scala, piano e interno quando ci sono. La regola sta in [`fn_build_indirizzo_normalizzato`](/dbzero/anagrafiche/funzioni/fn_build_indirizzo_normalizzato). Questo è il dato che appare nelle viste e nei documenti.
 
 Ogni indirizzo fisico è **una riga sola**, condivisa da tutti i soggetti, i punti di fornitura e i magazzini che lo usano: non possono esistere due righe con la stessa combinazione (stradario, civico, estensione, palazzina, scala, piano, interno), nemmeno quando il civico manca ([R7](#r7-unicita-del-civico)).
 
@@ -158,7 +160,7 @@ Quando un processo ha bisogno di un indirizzo — per fatturare, per spedire, pe
 | 2        | NULL               | valorizzato       | Indirizzo generico ruolo    | Si            |
 | 3        | —                  | —                 | Indirizzo soggetto          | No (readonly) |
 
-La funzione [`script.fn_get_indirizzo(p_soggetto_ruolo_id, p_tipo_codice, p_istanza_utility_id DEFAULT NULL)`](/dbzero/script/funzioni/fn_get_indirizzo) implementa questa catena e restituisce un set ricco con 27 colonne (indirizzo completo, istanza_utility_id, geolocalizzazione, gerarchia geografica). Il parametro `p_istanza_utility_id` è opzionale — senza di esso la cascata parte dal livello 2.
+La funzione [`script.fn_get_indirizzo(p_soggetto_ruolo_id, p_tipo_codice, p_istanza_utility_id DEFAULT NULL)`](/dbzero/script/funzioni/fn_get_indirizzo) implementa questa catena e restituisce una riga ricca: indirizzo completo, `istanza_utility_id`, geolocalizzazione, gerarchia geografica (le colonne sono nella scheda). Il parametro `p_istanza_utility_id` è opzionale — senza di esso la cascata parte dal livello 2.
 
 Per letture dirette senza fallback:
 
@@ -317,7 +319,7 @@ Il rifiuto lo dà il guard [`trgfn_indirizzi_guard_forma_libera`](/dbzero/anagra
 
 ### R4 — Protezione stradario_id
 
-Il campo `stradario_id` su `indirizzi_dettaglio` non può essere modificato manualmente. Il guard `trgfn_indirizzi_dettaglio_protect_update` blocca l'operazione con errore `E_COLONNA_NON_MODIFICABILE`. La riclassificazione va eseguita tramite la procedura di manutenzione dedicata (vedi [Riclassificazione vie](/guide/riclassificazione-vie)).
+Il campo `stradario_id` su `indirizzi_dettaglio` non può essere modificato manualmente. Il guard `trgfn_indirizzi_dettaglio_protect_update` blocca l'operazione con errore `E_COLONNA_NON_MODIFICABILE`, salvo che la transazione abbia aperto la porta di manutenzione (`zeroerp.maintenance_indirizzi_dettaglio`). La apre solo [`dbops.fn_admin_merge_stradario`](/dbzero/dbops/funzioni/fn_admin_merge_stradario), lo strumento DBA che fonde due vie, e solo attorno allo spostamento dei civici (vedi [Riclassificazione vie](/guide/riclassificazione-vie)).
 
 ### R5 — Validazione tipo indirizzo per ruolo
 
@@ -390,8 +392,9 @@ e il controllo. Ciò che il form propone come obbligatorio è ciò che il salvat
 **Quando si controlla.** A fine transazione, ogni volta che il requisito può smettere di essere rispettato:
 
 * quando si scrive il ruolo o il soggetto;
-* quando si cancella un indirizzo, o se ne cambia il tipo o il titolare: si giudica il ruolo o il soggetto da cui
-  l'indirizzo è uscito;
+* quando si cancella un indirizzo, o se ne cambia il tipo: si giudica il ruolo o il soggetto da cui l'indirizzo è
+  uscito (il titolare non si cambia, [R10](#r10-un-indirizzo-resta-del-suo-titolare); lo stesso controllo vale per
+  la porta di manutenzione, l'unica che lo sposta);
 * quando cambia la natura del soggetto: si giudicano tutti i suoi ruoli, perché la natura nuova può chiedere un
   tipo che quella di prima non chiedeva.
 
@@ -417,7 +420,9 @@ ciò che il form chiede è ciò che il salvataggio pretende. Gli indirizzi che l
 tolgono prima del cambio (sono motivi di
 [`fn_check_cambio_natura_soggetto`](/dbzero/anagrafiche/funzioni/fn_check_cambio_natura_soggetto)).
 
-Un cambio della matrice non rigiudica i ruoli e i soggetti già scritti.
+Un cambio della matrice non rigiudica i ruoli e i soggetti già scritti. Il controllo però scatta a ogni scrittura
+del ruolo o del soggetto, su qualunque colonna: un titolare a cui la matrice nuova chiede un indirizzo che non ha
+non si modifica più, finché quell'indirizzo non si dà nello stesso salvataggio.
 
 ### R10 — Un indirizzo resta del suo titolare
 
@@ -441,7 +446,7 @@ La sequenza tipica per un nuovo indirizzo strutturato:
 
 1. Verificare (o creare) il civico in `anagrafiche.indirizzi_dettaglio` — il vincolo di unicità R7 impedisce duplicati: se il civico esiste già, si usa quello esistente
 2. Inserire in `anagrafiche.indirizzi` (layer ruolo) o `anagrafiche.indirizzi_soggetti` (layer soggetto) con `indirizzo_dettaglio_id` valorizzato
-3. I trigger si occupano di: validare il tipo (R5/R6), normalizzare i campi (R8), sincronizzare la geolocalizzazione, generare `tx_id` e audit
+3. I trigger si occupano di: validare il tipo (R5/R6), normalizzare i campi (R8), sincronizzare la geolocalizzazione, generare `tx_id` e i campi di audit
 
 ### Inserimento di un indirizzo libero (importazione)
 
@@ -463,7 +468,7 @@ Quando una persona cambia residenza:
 
 ### Disattivazione di un ruolo
 
-Quando un ruolo viene disattivato (es. un cliente cessa), gli indirizzi del layer ruolo **restano nel database** come record storici. Non vengono eliminati ne disattivati — la tracciabilità è garantita dallo storico.
+Quando un ruolo viene disattivato (es. un cliente cessa), gli indirizzi del layer ruolo **restano nel database**: non vengono eliminati né disattivati, e restano leggibili com'erano.
 
 Gli indirizzi del layer soggetto non sono toccati: la persona mantiene la sua residenza e i suoi indirizzi identitari indipendentemente dai ruoli.
 
@@ -471,14 +476,16 @@ Gli indirizzi del layer soggetto non sono toccati: la persona mantiene la sua re
 
 Per carichi massivi:
 
-1. Disabilitare temporaneamente la storicizzazione (`storicizza = false`) per evitare overhead
-2. Caricare i dati in modalità libera
-3. Normalizzare in batch: creare i civici in `indirizzi_dettaglio`, poi aggiornare `indirizzo_dettaglio_id` sugli indirizzi
-4. Riabilitare la storicizzazione
+1. Caricare i dati in modalità libera: l'inserimento non scrive storico
+2. Normalizzare in batch: creare i civici in `indirizzi_dettaglio`, poi aggiornare `indirizzo_dettaglio_id` sugli indirizzi
+3. Decidere se la normalizzazione va ricordata ([Storicizzazione](#storicizzazione)): su `indirizzi` lascia traccia solo se le UPDATE passano `storicizza = true`; su `indirizzi_soggetti`, dove il flag è acceso, non la lascia se le UPDATE passano `storicizza = false`, e il flag va poi riacceso
 
 ### Riclassificazione vie
 
-Quando la toponomastica ufficiale cambia (rinomina, fusione, variazione comune), il campo `stradario_id` su `indirizzi_dettaglio` è protetto (R4) e non può essere modificato direttamente. La riclassificazione avviene tramite procedure di manutenzione dedicate.
+Quando la toponomastica ufficiale cambia, i civici seguono la via in due modi diversi:
+
+* **La via cambia nome, toponimo o comune**: i civici restano sulla stessa via e vanno solo rinormalizzati. Lo fa [`maintenance.proc_bump_indirizzi_dettaglio`](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio), con un aggiornamento neutro (riscrive lo stesso `stradario_id`) che fa ricalcolare al trigger di normalizzazione `via_norm`, `civico_norm` e `indirizzo_normalizzato`. Non apre la porta di manutenzione, perché `stradario_id` non cambia.
+* **Due vie si fondono**: i civici passano sull'altra via. `stradario_id` è protetto (R4), e lo cambia solo [`dbops.fn_admin_merge_stradario`](/dbzero/dbops/funzioni/fn_admin_merge_stradario).
 
 Per la procedura completa: vedi [Riclassificazione vie e toponomastica](/guide/riclassificazione-vie).
 
@@ -486,14 +493,25 @@ Per la procedura completa: vedi [Riclassificazione vie e toponomastica](/guide/r
 
 ## Storicizzazione
 
-Tutte le modifiche a indirizzi e civici vengono tracciate in tabelle `storico.*` con snapshot JSONB, tipi operazione (A/U/D) e `tx_id` transazionale.
+Una modifica o una cancellazione di un indirizzo, di un civico o di una via **può** lasciare una versione nella sua tabella `storico.*`: lo snapshot JSONB della riga, il tipo di operazione (`1` la versione di partenza, `2` modifica, `3` cancellazione) e il periodo di validità. L'inserimento non scrive storico: la prima modifica registrata salva anche la versione di partenza.
 
-La storicizzazione è gestita dal trigger generico [`script.trgfn_storico_generic()`](/dbzero/script/funzioni/trgfn_storico_generic), attivo su:
+La scrive il trigger generico [`script.trgfn_storico_generic()`](/dbzero/script/funzioni/trgfn_storico_generic), prima di ogni UPDATE e DELETE, su:
 
 * `anagrafiche.indirizzi` → `storico.indirizzi`
 * `anagrafiche.indirizzi_dettaglio` → `storico.indirizzi_dettaglio`
 * `anagrafiche.indirizzi_soggetti` → `storico.indirizzi_soggetti`
 * `config.stradario` → `storico.stradario`
+
+Se una scrittura lascia traccia lo decide la colonna `storicizza` della riga, e le quattro tabelle non seguono la stessa regola:
+
+| Tabella | `storicizza` di default | Che cosa resta nello storico |
+| --- | --- | --- |
+| `anagrafiche.indirizzi_soggetti` | `true` | **Memoria continua**: la tabella è in `config.storico_set_storicizza`, e il flag resta acceso dopo ogni modifica. Una scrittura che passa `storicizza = false` non lascia traccia |
+| `anagrafiche.indirizzi`, `anagrafiche.indirizzi_dettaglio`, `config.stradario` | `false` | **A richiesta di chi scrive**: una modifica lascia traccia solo se passa `storicizza = true`; registrata la versione, il trigger rimette il flag a `false` |
+
+Sulle tre tabelle a richiesta nessun oggetto del database riaccende il flag: la storia di un indirizzo di ruolo, di un civico o di una via è completa solo se **ogni** scrittura che va ricordata lo chiede. È voluto: chi scrive decide quali modifiche lasciano traccia.
+
+⚠️ La cancellazione guarda il flag **salvato** sulla riga, non quello della scrittura. Sulle tre tabelle a richiesta il flag salvato è spento dopo ogni modifica, compresa quella che lo ha chiesto: una DELETE lascia traccia solo su una riga scritta con `storicizza = true` e non più modificata.
 
 Le helper di lettura storica:
 
@@ -527,7 +545,9 @@ Le helper di lettura storica:
 | [`trgfn_indirizzi_guard_forma_libera`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_forma_libera)                           | `indirizzi`, `indirizzi_soggetti` | La forma dell'indirizzo libero, decisa dallo stato (R3). Gira dopo la normalizzazione |
 | [`trgfn_indirizzi_dettaglio_protect_update`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_protect_update)               | `indirizzi_dettaglio`             | Blocca modifica manuale di `stradario_id` (R4)               |
 | [`trgfn_indirizzi_dettaglio_guard_chiave`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_guard_chiave)                   | `indirizzi_dettaglio`             | La chiave del civico: civico > 0, dettaglio con lettere o cifre, nessun doppione in modifica (R7). Gira dopo la normalizzazione |
+| [`trgfn_guard_istanza_del_ruolo`](/dbzero/anagrafiche/funzioni/trgfn_guard_istanza_del_ruolo)                                     | `indirizzi`                       | L'istanza dell'indirizzo è del soggetto del suo ruolo (`E_ISTANZA_ALTRO_SOGGETTO`) |
 | `trgfn_child_requires_active_parent`                                                                                              | `indirizzi`, `indirizzi_soggetti` | Verifica che `indirizzi_dettaglio` e `soggetti` siano attivi |
+| [`trgfn_child_requires_non_obsolete_parent`](/dbzero/dbops/funzioni/trgfn_child_requires_non_obsolete_parent)                     | `indirizzi_dettaglio`             | Un civico nuovo, o che cambia via, non si collega a una via soppressa |
 | `trgfn_prevent_deactivate_if_children`                                                                                            | `indirizzi_dettaglio`             | Blocca disattivazione se ci sono figli attivi                |
 
 ### Lettura e risoluzione
@@ -551,8 +571,9 @@ Le helper di lettura storica:
 
 | Procedura                                                                                     | Cosa fa                                                   |
 | --------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| [`proc_bump_indirizzi_dettaglio`](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio) | Riclassificazione civici dopo cambio stradario            |
-| [`proc_bump_toponomastica`](/dbzero/maintenance/funzioni/proc_bump_toponomastica)             | Correzione toponimo con riallineamento stradario_generale |
+| [`proc_bump_indirizzi_dettaglio`](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio) | Rinormalizza i civici di una via dopo un cambio di nome, toponimo o comune: aggiornamento neutro, `stradario_id` non cambia |
+| [`proc_bump_toponomastica`](/dbzero/maintenance/funzioni/proc_bump_toponomastica)             | Corregge un toponimo in uso, riallinea `stradario_generale` e rinormalizza i civici delle vie che lo usano |
+| [`dbops.fn_admin_merge_stradario`](/dbzero/dbops/funzioni/fn_admin_merge_stradario)           | Fonde due vie: sposta i civici sulla via che resta, unica porta su `stradario_id` (R4) |
 
 ---
 
@@ -689,7 +710,7 @@ erDiagram
 
 ### Tabelle storico
 
-Le tabelle storico tracciano ogni modifica con snapshot JSONB.
+Le tabelle storico conservano le versioni con snapshot JSONB, secondo la regola di [Storicizzazione](#storicizzazione).
 
 ```mermaid
 erDiagram
@@ -743,8 +764,8 @@ erDiagram
 * Per la lettura di indirizzi nei processi (fatturazione, spedizione), usa `fn_get_indirizzo` — gestisce automaticamente la catena master/fallback senza che il chiamante debba conoscere i due layer.
 * Per letture dirette (es. visualizzazione profilo), usa le viste resolved (`vw_indirizzi_resolved_ruolo`, `vw_indirizzi_resolved_soggetto`).
 * Non creare civici duplicati: `indirizzi_dettaglio` ha il vincolo di unicità R7. Usa un pattern upsert o verifica l'esistenza prima dell'INSERT.
-* Non modificare `stradario_id` manualmente: usa le procedure di manutenzione per la riclassificazione.
-* In import massivi, disabilita temporaneamente la storicizzazione (`storicizza = false`) e normalizza in batch dopo il caricamento.
+* Non modificare `stradario_id` manualmente: una via rinominata si rinormalizza con `proc_bump_indirizzi_dettaglio`, due vie si fondono con `fn_admin_merge_stradario`.
+* In import massivi, carica in modalità libera e normalizza in batch dopo il caricamento, decidendo con `storicizza` se la normalizzazione va ricordata.
 * I layer ruolo e soggetto sono **indipendenti**: un cambio di residenza (soggetto) non propaga automaticamente al layer ruolo. Se serve aggiornare entrambi, farlo esplicitamente.
 
 ---

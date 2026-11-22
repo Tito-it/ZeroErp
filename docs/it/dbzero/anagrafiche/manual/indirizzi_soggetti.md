@@ -1,187 +1,112 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.indirizzi_soggetti`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Guide:**
+> Approfondimento tabelle:
 >
-[Gestione degli indirizzi](/guide/gestione-degli-indirizzi)
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — il soggetto a cui l'indirizzo appartiene
+> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi) — gli indirizzi dei ruoli, che ripiegano su questi
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) — il civico, nella forma col dettaglio
+> * [config.tipi_soggetto_dettaglio_tipi_indirizzo](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo) — i tipi ammessi e obbligatori per natura
+> * [config.storico_set_storicizza](/dbzero/config/tabelle/storico_set_storicizza) — le tabelle con lo storico continuo, fra cui questa
+> * [storico.indirizzi_soggetti](/dbzero/storico/tabelle/indirizzi_soggetti) — le versioni conservate
 >
-**Approfondimento Tabelle:**
+> Approfondimento viste:
 >
-[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
-> [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)
-> [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
-> [config.tipi_soggetto_dettaglio_tipi_indirizzo](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo)
-> [config.comuni](/dbzero/config/tabelle/comuni)
-> [config.codici_postali](/dbzero/config/tabelle/codici_postali)
-> [config.stati](/dbzero/config/tabelle/stati)
+> * [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/views/vw_indirizzi_resolved_soggetto) — la lettura risolta di questi indirizzi
 >
-**Approfondimento funzioni e trigger:**
+> Approfondimento funzioni:
 >
-[`anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo)  
-> [`anagrafiche.trgfn_indirizzi_base_normalize`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize)  
+> * [anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo) — il tipo ammesso per la natura
+> * [anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_obbligatori_soggetto) — gli indirizzi obbligatori del soggetto
+> * [anagrafiche.trgfn_indirizzi_base_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize) — mette in ordine la riga secondo la forma
+> * [anagrafiche.trgfn_indirizzi_guard_forma_libera](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_forma_libera) — giudica l'indirizzo libero
+> * [anagrafiche.trgfn_indirizzi_sync_geoloc](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_sync_geoloc) — la posizione copiata dal civico
+> * [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_soggetto) — il verbo che crea un indirizzo del soggetto
+>
+> Guide:
+>
+> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi) — il quadro degli indirizzi, dei tipi e dei ripieghi
 
 ---
 
-La tabella **`anagrafiche.indirizzi_soggetti`** gestisce gli **indirizzi associati direttamente ai soggetti**, indipendentemente dai ruoli che questi possono assumere.
-
-È concettualmente affine a `anagrafiche.indirizzi`, ma:
-
-* opera **a livello soggetto** (non soggetto/ruolo),
-* applica regole di validazione basate sulla **natura del soggetto** (`tipo_soggetto_dettaglio`),
-* è pensata per indirizzi **strutturali e identitari** del soggetto (es. residenza, domicilio fiscale, sede legale primaria).
-
----
 ### 🎯 Scopo Principale
-(latest review 16-12-25)
-* **Associazione soggetto → indirizzo**
-  Ogni soggetto può avere uno o più indirizzi, distinti per **tipo indirizzo** (RES, DOMFISC, SEDELEG, …), indipendentemente dai ruoli operativi che assumerà nel sistema.
 
-* **Supporto a doppia modalità**
+`anagrafiche.indirizzi_soggetti` tiene gli indirizzi che appartengono al soggetto in sé, qualunque ruolo
+abbia: la residenza, il domicilio fiscale, la sede legale. Uno per tipo (`uq_indirizzi_soggetti_soggetto_tipo`).
 
-  * **Normalizzata**: tramite `indirizzo_dettaglio_id`, collegata a `anagrafiche.indirizzi_dettaglio`.
-  * **Libera**: tramite `indirizzo_libero` e campi geografici ausiliari, per indirizzi esteri o non normalizzati.
-
-> ⚠️ **Nota Bene**  
-> La modalità **normalizzata** è sempre preferibile.  
-> L’inserimento di indirizzi **liberi** deve essere considerato **solo come opzione estrema** (es. migrazioni da altri database o casi non normalizzabili).
-
-* **Coerenza guidata da configurazione**
-  Il tipo di indirizzo ammesso non è hardcoded, ma validato tramite la matrice:
-
-  * **`config.tipi_soggetto_dettaglio_tipi_indirizzo`**
-
-  che stabilisce quali tipi indirizzo sono consentiti (e obbligatori) per la specifica natura del soggetto.
-
-* **Audit e storicizzazione**
-  Con `storicizza = TRUE`, le modifiche vengono tracciate tramite snapshot storici e `tx_id`.
-  La generazione dei trigger (TX_ID, AUDIT_UPDATE, STORICO) e' affidata al framework di automazione DB
-  (`dbops.fn_run_automations_*`, vedi [Guida Automazioni DB](/guide/automazione-db)).
-  Se le automazioni non sono state eseguite, i campi restano presenti ma non vengono gestiti automaticamente.
+L'indirizzo ha una delle due forme descritte in fondo alla pagina, col dettaglio o libera; questa pagina dice
+ciò che è proprio degli indirizzi del soggetto.
 
 ---
 
-### Ruolo della matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`
+### ⭐ L'indirizzo di tutti i ruoli
 
-Questa tabella è **direttamente governata** dalla matrice:
-
-**`config.tipi_soggetto_dettaglio_tipi_indirizzo`**, che definisce:
-
-* quali `tipo_indirizzo_id` sono **ammessi** per un certo `tipo_soggetto_dettaglio`,
-* quali sono **obbligatori**,
-* quali possono utilizzare un **fallback** su un altro tipo indirizzo.
-
- **📐 Logica applicata**
-
-Il trigger:
-
-* `trg_indirizzi_soggetti_a10_guard_tipo_indirizzo_ins_upd`
-
-applica la seguente logica:
-
-* Se **non esiste alcuna riga** in `config.tipi_soggetto_dettaglio_tipi_indirizzo` per quel tipo soggetto dettaglio
-  ➜ **nessuna restrizione**: tutti i tipi indirizzo sono ammessi.
-
-* Se **esiste almeno una riga**
-  ➜ sono ammessi **solo** i tipi indirizzo presenti nella matrice, purché:
-
-  * `attivo = TRUE`
-  * la data corrente rientri in `valido_dal / valido_al` (se valorizzati)
-
-Questa impostazione consente:
-
-* adozione progressiva delle regole,
-* compatibilità con dati legacy,
-* separazione netta tra **regole (config)** e **dati (anagrafiche)**.
+Un indirizzo del soggetto vale per ogni suo ruolo che non ne ha uno proprio dello stesso tipo: è l'ultimo
+livello del ripiego che parte dall'istanza e passa dal ruolo (vedi `anagrafiche.indirizzi`). Chi ha bisogno di
+un indirizzo diverso per un ruolo lo scrive sul ruolo, eventualmente copiandolo da qui; questa riga non cambia.
 
 ---
 
-### Collegamenti con Altre Tabelle
+### Le regole della riga
 
-* **`anagrafiche.soggetti`**
+Le regole che seguono hanno ciascuna la sua scheda; qui se ne dice il significato.
 
-  * Ogni indirizzo è riferito a un soggetto univoco (`soggetto_id`).
+* **Il tipo è ammesso per la natura del soggetto** (`anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo`,
+  `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO`): la matrice per natura, letta nel giorno operativo, dice quali
+  tipi una persona fisica o una società possono avere. Si giudica alla nascita e al cambio di tipo.
+* **Il titolare non cambia**: `soggetto_id` è bloccato dopo la nascita (`E_INDIRIZZO_SOGGETTO_TITOLARE_IMMUTABILE`).
+* **Le madri sono attive**: alla conferma dell'operazione, il soggetto e, nella forma col dettaglio, il civico
+  devono essere attivi. Un soggetto spento non riceve indirizzi nuovi.
+* **Gli obbligatori restano**: alla conferma dell'operazione, togliere un indirizzo o cambiargli tipo non può
+  lasciare il soggetto senza un tipo che la sua natura rende obbligatorio
+  (`anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto`).
 
-* **`config.tipi_indirizzi`**
-
-  * Definisce la semantica del tipo indirizzo (RES, FATT, SEDELEG, …).
-
-* **`anagrafiche.indirizzi_dettaglio`**
-
-  * Se presente, l’indirizzo è normalizzato e geolocalizzabile.
-
-* **`config.comuni`, `config.codici_postali`, `config.stati`**
-
-  * Supportano la modalità libera e l’internazionalizzazione.
-
----
-
-### Vincoli e Trigger principali
-
-* **XOR normalizzato / libero**
-  Il vincolo `chk_indirizzi_soggetti_xor_norm_libero` garantisce che:
-
-  * o l’indirizzo sia normalizzato,
-  * o sia libero,
-
-  ma **mai entrambi**.
-
-* **Completezza indirizzo libero**
-  Se `indirizzo_dettaglio_id` è `NULL`:
-
-  * `indirizzo_libero` e `stato_id` sono obbligatori (lo stato non detto lo propone il sistema);
-  * la forma la decide lo stato (`config.stati.catalogo_comuni_completo`): **catalogo** = `comune_id` + `codice_postale_id` coerenti fra loro e con lo stato, senza `locality`, `postal_code` e `administrative_area`; **estera** = `locality`, con `postal_code`, `administrative_area` e `sublocality` facoltativi;
-  * il rifiuto, col codice e il campo, lo dà il guard [`trgfn_indirizzi_guard_forma_libera`](/dbzero/anagrafiche/manual/trgfn_indirizzi_guard_forma_libera); il CHECK `chk_indirizzi_soggetti_free_requirements` resta come rete (rev 18-10-2026).
-
-* **Unicità soggetto + tipo indirizzo**
-  `UNIQUE (soggetto_id, tipo_indirizzo_id)`
-  ➜ un solo indirizzo per tipo, per soggetto.
-
-* **Trigger di guard**
-  Valida il tipo indirizzo contro la matrice di configurazione.
-
-* **Trigger di normalizzazione**
-  Uniforma i campi e applica default geografici.
-
-* **Trigger di sync geoloc**
-  Allinea `geoloc` al dettaglio civico quando `indirizzo_dettaglio_id` e' valorizzato.
+Le righe le scrive `anagrafiche.fn_crea_indirizzo_soggetto` (e, per più tipi insieme,
+`anagrafiche.fn_crea_indirizzi_soggetto`).
 
 ---
 
-### 📍 Nota su `geoloc`
+### Lo storico è continuo
 
-* Il campo `geoloc` e' disponibile anche su `indirizzi_soggetti` e viene sincronizzato dal trigger
-  `trg_indirizzi_soggetti_sync_geoloc_ins_upd`, che usa `anagrafiche.trgfn_indirizzi_sync_geoloc`.
-* La geolocalizzazione viene comunque esposta nelle viste resolved
-  (`vw_indirizzi_resolved_*`) tramite `indirizzi_dettaglio` o, in fallback, dal valore presente in tabella.
-* Se `indirizzo_dettaglio_id` e' NULL, il trigger non interviene e lascia invariato `geoloc`.
-
----
-
-### Vantaggi Operativi
-
-* **Indirizzi identitari chiari** per il soggetto
-* **Regole esplicite e configurabili** basate sulla natura del soggetto
-* **Supporto completo a indirizzi internazionali**
-* **Audit e storicizzazione nativi**
-* **Separazione netta** tra indirizzi del soggetto e indirizzi dei documenti
-
-> **“`anagrafiche.indirizzi_soggetti` è il punto di verità degli indirizzi identitari del soggetto: flessibile nella forma, rigoroso nelle regole, guidato dalla configurazione e non dal codice.”**
+A differenza degli indirizzi del ruolo, qui `storicizza` nasce `true` e la tabella è in
+`config.storico_set_storicizza`: il trigger dello storico non rimette il flag a `false`. Ogni modifica e ogni
+cancellazione lasciano la loro versione in `storico.indirizzi_soggetti`, salvo una scrittura che passi
+esplicitamente `storicizza = false`.
 
 ---
 
-### Diagramma ER (semplificato)
+### ⚠️ Che cosa oggi non copre
 
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    soggetti ||--o{ indirizzi_soggetti : has
-    tipi_indirizzi ||--o{ indirizzi_soggetti : typed_as
-    indirizzi_dettaglio ||--o{ indirizzi_soggetti : normalized_by
-    tipi_soggetto_dettaglio ||--o{ tipi_soggetto_dettaglio_tipi_indirizzo : defines
-    tipi_soggetto_dettaglio_tipi_indirizzo ||--o{ indirizzi_soggetti : validates
-```
+* **La posizione è una copia**: `geoloc` prende la posizione del civico quando la riga si scrive. Se poi cambia
+  la posizione del civico, la riga la riprende solo alla sua prossima scrittura.
+* **Le FK verso comune, CAP e stato non hanno azione alla cancellazione**, mentre le gemelle di
+  `anagrafiche.indirizzi` sono `ON DELETE SET NULL`: le due tabelle, che hanno le stesse colonne e le stesse
+  regole, rispondono in modo diverso alla stessa cancellazione nel catalogo.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-soggetti-indirizzi-required.sql` — gli obbligatori per natura (residenza e
+  domicilio fiscale per la persona fisica, sede legale per la società), al COMMIT.
+* `db/pgtap/anagrafiche/test-fn-crea-indirizzo-soggetto.sql` — la creazione dal verbo, il secondo indirizzo
+  dello stesso tipo rifiutato.
+* `db/pgtap/anagrafiche/test-indirizzo-libero-due-forme-v1.sql` — le due forme dell'indirizzo libero, sulle due
+  tabelle.
+
+---
+
+### Note di migrazione
+
+* 2026-10-18 — `postal_box` diventa `postal_code`, e l'indirizzo libero prende le due forme decise dallo stato,
+  con il giudizio in un guard che dice il campo.
+
+---
+
+{% include-markdown "it/dbzero/anagrafiche/_indirizzo-libero-o-dettaglio.md" %}
 
 ---
 

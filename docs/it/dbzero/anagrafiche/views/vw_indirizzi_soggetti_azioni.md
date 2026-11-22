@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/vw_indirizzi_soggetti_azioni.md" %}
 # 🔍 View `vw_indirizzi_soggetti_azioni`
 
 > 📝 **Descrizione**

@@ -282,7 +282,7 @@ Tre regole fondamentali del catasto:
 * **Sorgente unica**: la clonazione cerca il catasto solo nella parent istanza diretta (`parent_istanza_id`). Se il parent non ha catasto, il flusso prosegue senza errore
 * **Tabella ponte**: il legame catasto ↔ indirizzo e N:M e viene creato automaticamente. La stessa unita catastale puo essere associata a piu indirizzi e viceversa
 
-Per il flusso completo dei trigger di clonazione e tutti i dettagli: [Architettura catasto](/dbzero/anagrafiche/manual/catasto-architettura).
+Per il flusso completo dei trigger di clonazione e tutti i dettagli: [Il catasto delle istanze](/guide/catasto-delle-istanze).
 
 ---
 

@@ -1,96 +1,81 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_soggetti_guard_indirizzi_required()`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_soggetti_guard_indirizzi_required`
 
-> 👀 **Vedi anche**   
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
-**Approfondimento tabelle:**    
+> 👀 **Vedi anche**
 >
-[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
-> [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti)   
-> [config.tipi_soggetto_dettaglio_tipi_indirizzo](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo)   
+> Approfondimento tabelle:
 >
-**Approfondimento Funzioni:**   
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — la tabella su cui è montato
+> * [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti) — gli indirizzi che il soggetto deve avere
+> * [config.tipi_soggetto_dettaglio_tipi_indirizzo](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo) — la matrice della natura, coi tipi obbligatori
 >
-[anagrafiche.fn_guard_indirizzi_obbligatori_soggetto](/dbzero/anagrafiche/funzioni/fn_guard_indirizzi_obbligatori_soggetto)   
-> [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
+> Approfondimento funzioni:
+>
+> * [anagrafiche.fn_guard_indirizzi_obbligatori_soggetto](/dbzero/anagrafiche/funzioni/fn_guard_indirizzi_obbligatori_soggetto) — il controllo, a cui delega
+> * [anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_obbligatori_soggetto) — lo stesso controllo quando un indirizzo se ne va
+> * [anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ruoli_guard_indirizzi_required) — il gemello del livello ruolo
+>
+> Guide:
+>
+> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi) — la regola R9, gli indirizzi obbligatori
 
 ---
+
 ### 🎯 Scopo Principale
 
-> **Ultimo aggiornamento**: 17 novembre 2026
-
-Verificare che un soggetto possieda tutti i **tipi di indirizzo obbligatori** definiti nella matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`.
-
-Se per il tipo soggetto dettaglio sono presenti righe di matrice con `obbligatorio = true`, si controlla l'esistenza di almeno un indirizzo (anche tramite fallback) per ciascun tipo obbligatorio.
-
-Il controllo non sta qui: sta in
-[fn_guard_indirizzi_obbligatori_soggetto](/dbzero/anagrafiche/funzioni/fn_guard_indirizzi_obbligatori_soggetto),
-che chiama anche il trigger della cancellazione di un indirizzo del soggetto (vedi sotto). Il trigger passa il
-soggetto scritto e il suo `tx_id`.
+`anagrafiche.trgfn_soggetti_guard_indirizzi_required` controlla, alla conferma della transazione, che il
+soggetto scritto abbia gli indirizzi che la sua natura dichiara obbligatori, o il loro ripiego.
 
 ---
 
-### Come Funziona
+### Quando scatta
 
-1. Ignora le `DELETE`.
-2. Chiama il guard col soggetto scritto. Il guard:
-   * con `tipo_soggetto_dettaglio_id` NULL, o su una natura senza righe obbligatorie, non applica vincoli;
-   * legge le righe obbligatorie della natura attive e valide (la finestra la dice
-     [fn_tipo_indirizzo_ammesso_per_natura](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_ammesso_per_natura));
-   * cerca il primo, per tipo, che non ha né un indirizzo del suo tipo né del suo `fallback_tipo_indirizzo_id`,
-     e solleva l'errore.
-3. Il controllo e' eseguito da **constraint trigger deferrable**:
-   * default: a fine transazione (`COMMIT`);
-   * anticipabile con `SET CONSTRAINTS ... IMMEDIATE`.
+È un constraint trigger differito su `anagrafiche.soggetti`, all'INSERT e a **ogni** UPDATE, qualunque colonna
+cambi. Copre così la nascita del soggetto, che riceve i suoi indirizzi nella stessa transazione, e il cambio di
+natura, che può chiedere tipi che la natura di prima non chiedeva: si giudica lo stato finale.
+
+Il trigger non decide niente: passa il soggetto e il suo `tx_id` a
+`anagrafiche.fn_guard_indirizzi_obbligatori_soggetto`, la sede unica del controllo del livello soggetto, che
+chiama anche il trigger della cancellazione di un indirizzo. Un soggetto senza natura non deve avere niente.
 
 ---
 
-### 🚨 Errori Gestiti
-
-| Codice errore                                       | Quando si verifica                                |
-| --------------------------------------------------- | ------------------------------------------------- |
-| **E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO** | Manca un indirizzo richiesto per il tipo soggetto |
-
-La frase nomina la natura e il tipo richiesto, col suo ripiego se la riga ne ha uno, per descrizione:
-«Il tipo soggetto Persona Fisica - Privato richiede l'indirizzo «Fatturazione» / «Domicilio Fiscale».». I nomi dei tipi li
-compone [anagrafiche.fn_nomi_tipo_indirizzo_richiesto](/dbzero/anagrafiche/funzioni/fn_nomi_tipo_indirizzo_richiesto);
-gli id (soggetto, natura, tipo richiesto, ripiego) stanno nel contesto dell'errore.
-
-⛔ Il codice è **del layer soggetto**. Il gemello del ruolo,
-[trgfn_soggetti_ruoli_guard_indirizzi_required](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ruoli_guard_indirizzi_required),
-legge un'altra matrice e solleva `E_INDIRIZZO_OBBLIGATORIO_MANCANTE`: chi rimedia corregge una
-configurazione diversa, come per il tipo non ammesso (`E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO` contro
-`E_TIPO_INDIRIZZO_NON_PERMESSO`).
+{% include-markdown "it/dbzero/anagrafiche/_indirizzi-obbligatori.md" %}
 
 ---
 
-## Trigger Associato
+### ⚠️ Che cosa oggi non copre
 
-Questa funzione e' usata come **constraint trigger DEFERRABLE INITIALLY DEFERRED** su `anagrafiche.soggetti`:
-
-```sql
-CREATE CONSTRAINT TRIGGER trg_soggetti_def_guard_indirizzi_required_aft_ins_upd
-  AFTER INSERT OR UPDATE
-  ON anagrafiche.soggetti
-  DEFERRABLE INITIALLY DEFERRED
-  FOR EACH ROW
-  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required();
-```
-
-Lo stesso guard lo chiama, a fine transazione,
-[trgfn_indirizzi_soggetti_guard_obbligatori_soggetto](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_obbligatori_soggetto),
-quando si cancella un indirizzo del soggetto o se ne cambia il tipo o il soggetto: si giudica il soggetto da cui
-l'indirizzo è uscito.
+* **Un soggetto rimasto incompleto non si modifica più.** Il requisito può cambiare senza che si scriva il
+  soggetto: una riga della matrice che diventa obbligatoria, che entra nella sua validità, che si aggiunge.
+  Nessuno rigiudica i soggetti che esistono; ma alla prima scrittura del soggetto, in qualunque colonna, il
+  trigger lo giudica e lo rifiuta, finché nella stessa transazione non riceve l'indirizzo che manca.
 
 ---
 
-### Note Operative
+### Codici errore
 
-* La matrice e' opzionale: se non esiste per il tipo soggetto dettaglio, il controllo non scatta.
-* Il fallback consente di soddisfare l'obbligo con un tipo indirizzo alternativo configurato.
-* La validita' temporale e' valutata sul giorno aziendale, `script.fn_data_operativa()`.
-* Sostituire un indirizzo obbligatorio (cancellarlo e riscriverlo) passa, se le due scritture stanno nella stessa
-  transazione; il soggetto cancellato coi suoi indirizzi non si giudica.
+* `E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO` — manca un indirizzo che la natura chiede; lo solleva
+  `anagrafiche.fn_guard_indirizzi_obbligatori_soggetto`, sul primo tipo mancante.
 
 ---
 
-> **"Gli indirizzi obbligatori dipendono dal tipo soggetto: il trigger assicura la conformita'."**
+### Test
+
+* `db/pgtap/anagrafiche/test-indirizzo-obbligatorio-mancante-frase-v1.sql` — il codice del livello soggetto e la
+  frase intera, col tipo richiesto senza ripiego e col ripiego, su una riga obbligatoria costruita dal test.
+* `db/pgtap/anagrafiche/test-indirizzi-obbligatori-ripiego-e-cancellazione-v1.sql` — il trigger che chiama il
+  guard senza copie della regola, e la società che perde la sede legale.
+
+---
+
+### Note di migrazione
+
+* 2026-11-17 — il controllo passa in `anagrafiche.fn_guard_indirizzi_obbligatori_soggetto`, condiviso col
+  trigger della cancellazione di un indirizzo; il codice diventa proprio del livello soggetto, distinto da
+  quello del ruolo, e la frase nomina natura e tipi per descrizione.
+
+---
+
+{% include-markdown "signature-core.md" %}

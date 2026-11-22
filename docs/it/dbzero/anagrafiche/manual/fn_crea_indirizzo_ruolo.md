@@ -1,74 +1,109 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_indirizzo_ruolo()`
+## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_indirizzo_ruolo`
 
-> **Ultimo aggiornamento**: 15 novembre 2026
-
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> [anagrafiche.fn_crea_indirizzi_ruolo](/dbzero/anagrafiche/manual/fn_crea_indirizzi_ruolo) — la plurale, che usa questa
-> [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/manual/fn_crea_indirizzo_soggetto) — la gemella del soggetto
-> [anagrafiche.fn_indirizzo_elemento](/dbzero/anagrafiche/manual/fn_indirizzo_elemento) — la grammatica dell'indirizzo
+> Approfondimento tabelle:
+>
+> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi) — la riga che la funzione scrive
+> * [config.tipi_ruolo_tipi_indirizzo](/dbzero/config/tabelle/tipi_ruolo_tipi_indirizzo) — i tipi che il tipo di ruolo ammette
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.fn_indirizzo_elemento](/dbzero/anagrafiche/funzioni/fn_indirizzo_elemento) — la grammatica dell'indirizzo
+> * [anagrafiche.fn_indirizzo_elemento_dettaglio](/dbzero/anagrafiche/funzioni/fn_indirizzo_elemento_dettaglio) — il dettaglio, se l'indirizzo non è libero
+> * [anagrafiche.fn_check_tipo_indirizzo_ruolo](/dbzero/anagrafiche/funzioni/fn_check_tipo_indirizzo_ruolo) — il giudizio sul tipo
+> * [anagrafiche.trgfn_guard_istanza_del_ruolo](/dbzero/anagrafiche/funzioni/trgfn_guard_istanza_del_ruolo) — l'istanza dello stesso soggetto
+> * [anagrafiche.fn_crea_indirizzi_ruolo](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_ruolo) — la plurale, che scrive da questa
+> * [anagrafiche.fn_crea_copie_indirizzo_ruolo](/dbzero/anagrafiche/funzioni/fn_crea_copie_indirizzo_ruolo) — la copia verso il ruolo, che scrive da questa
+> * [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_soggetto) — la gemella del soggetto
+>
+> Guide:
+>
+> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi) — le tre forme e i tipi
 
 ---
 
 ### 🎯 Scopo Principale
 
-(19-10-2026 — R-BE-6 del backend, decisione D-16a di Tid,
-`brief-db-processi-accensione-per-ambiente` §6.16)
-
-**Scrive un indirizzo di un ruolo, anche di una singola istanza, e ne restituisce l'id.**
-
-Ogni livello (soggetto e ruolo) ha due madri:
-
-| | Singolare: un indirizzo, l'id | Plurale: più indirizzi, la copia degli obbligatori |
-| --- | --- | --- |
-| soggetto | `fn_crea_indirizzo_soggetto` | `fn_crea_indirizzi_soggetto` |
-| ruolo | **questa** | `fn_crea_indirizzi_ruolo` |
-
-La plurale scrive ogni riga chiamando la singolare: l'inserimento ha una sede sola.
+`anagrafiche.fn_crea_indirizzo_ruolo` scrive un indirizzo di un ruolo, o di una sua istanza, e restituisce l'id della
+riga. È la sede unica dell'inserimento in `anagrafiche.indirizzi`: ci passano la plurale e la copia di un indirizzo.
 
 ---
 
-### Come si usa
+### L'indirizzo e la sua chiave
 
-L'indirizzo è un oggetto con la grammatica di
-[`fn_indirizzo_elemento`](/dbzero/anagrafiche/manual/fn_indirizzo_elemento): il tipo (per id o
-per codice) e l'indirizzo in una delle tre forme (libero, dettaglio già risolto, via da
-risolvere). In più, facoltativa, l'**istanza** (`istanza_utility_id`).
+L'indirizzo è un oggetto con la grammatica di `anagrafiche.fn_indirizzo_elemento`, la stessa della gemella del
+soggetto: il tipo, per id o per codice interno, e l'indirizzo libero, un dettaglio già risolto o una via da risolvere.
+Se l'elemento porta insieme un testo libero e un dettaglio, **vale il libero**, e la riga nasce libera.
 
-⭐ L'istanza la legge questa funzione, non la grammatica comune: un indirizzo di soggetto non ha
-istanze, e la grammatica è la stessa per i due livelli.
+In più, facoltativa, l'**istanza** (`istanza_utility_id`): senza, l'indirizzo è del ruolo; con, è di quel servizio
+del ruolo. Ruolo e istanza sono la chiave della riga, e un tipo è unico dentro la sua chiave: lo stesso tipo può stare
+sul ruolo e su ognuna delle sue istanze.
+
+⭐ L'istanza la legge questa funzione, non la grammatica comune: un indirizzo del soggetto non ha istanze. Per la
+stessa ragione la plurale, che passa dalla grammatica, non accetta istanze.
 
 ---
 
-### Che cosa rifiuta
+### ⭐ Il tipo lo giudica la check, prima di scrivere
 
-| Caso | Esito |
-| --- | --- |
-| il ruolo non esiste | `E_SOGGETTO_RUOLO_NON_TROVATO` |
-| una chiave che la grammatica non conosce | `E_CAMPO_NON_AMMESSO` |
-| un tipo che il ruolo ha già (o che quell'istanza ha già) | `E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE`, dalla check |
-| un tipo che il tipo di ruolo non ammette | `E_TIPO_INDIRIZZO_NON_PERMESSO`, dalla check |
-| un indirizzo libero incompleto | i controlli della tabella |
-| un'istanza di un altro soggetto | `E_ISTANZA_ALTRO_SOGGETTO`, dal controllo della tabella |
+Prima dell'inserimento la madre chiede a `anagrafiche.fn_check_tipo_indirizzo_ruolo` i motivi per cui quel tipo non
+si può scrivere su quella chiave, e solleva il primo, col campo `tipo_indirizzo_codice_interno`. I motivi sono tre,
+in quest'ordine:
 
-⭐ Il tipo lo giudica [`fn_check_tipo_indirizzo_ruolo`](/dbzero/anagrafiche/funzioni/fn_check_tipo_indirizzo_ruolo)
-sulla chiave (ruolo, istanza), e la madre ne solleva il primo motivo prima di scrivere (campo
-`tipo_indirizzo_codice_interno`). Il predicato del tipo di ruolo sta in
-[`fn_tipo_indirizzo_ammesso_per_ruolo`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_ammesso_per_ruolo),
-lo stesso del guard della tabella. Gli indici `uq_indirizzi_ruolo_tipo_no_istanza` e
-`uq_indirizzi_ruolo_istanza_tipo` restano, contro due scritture concorrenti.
+1. la chiave (il ruolo, o quell'istanza) ha già un indirizzo di quel tipo;
+2. il tipo di ruolo non lo ammette;
+3. la natura del soggetto del ruolo non lo ammette.
 
-L'istanza deve essere dello stesso soggetto del ruolo (`E_ISTANZA_ALTRO_SOGGETTO`, campo
-`istanza_utility_id`). Non lo controlla questa funzione: è una regola della tabella, che vale
-anche per le modifiche, e la tiene
-[`trgfn_guard_istanza_del_ruolo`](/dbzero/anagrafiche/manual/trgfn_guard_istanza_del_ruolo)
-(dal 19-10-2026, R-BE-15).
+Il giorno è quello operativo, lo stesso dei guard. La metà della check che dà i motivi,
+`anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto`, è la stessa che leggono il picker della chiave
+(`anagrafiche.fn_tipi_indirizzo_proponibili_ruolo`) e il guard della tabella: ciò che il picker propone, la madre
+accetta e il guard lascia passare sono la stessa regola. Restano sulla tabella, per ogni altra strada e contro due
+scritture concorrenti, il guard `anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo` e gli indici
+`uq_indirizzi_ruolo_tipo_no_istanza` e `uq_indirizzi_ruolo_istanza_tipo`.
+
+---
+
+### Che cosa lascia alla tabella
+
+* **L'istanza dello stesso soggetto**: un'istanza di un altro soggetto la rifiuta `anagrafiche.trgfn_guard_istanza_del_ruolo`
+  (`E_ISTANZA_ALTRO_SOGGETTO`, campo `istanza_utility_id`). È una regola della riga, che vale anche per le modifiche,
+  e la madre non la ripete.
+* **La forma dell'indirizzo libero** la dice `anagrafiche.trgfn_indirizzi_guard_forma_libera`.
+* **Gli indirizzi obbligatori** del ruolo li pretendono i guard differiti, al COMMIT.
+* **Il permesso** lo decide l'applicazione.
+
+---
+
+### Codici errore
+
+* `E_SOGGETTO_RUOLO_NON_TROVATO` — il ruolo non esiste.
+* `E_SCRIPT_CHIAMATA_NON_VALIDA` — l'indirizzo non è un oggetto.
+* `E_CAMPO_NON_AMMESSO` — una chiave che un indirizzo non ha, col suo nome.
+* `E_TIPO_INDIRIZZO_NON_TROVATO` — il codice del tipo manca o non esiste.
+* `E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE` — la chiave ha già quel tipo.
+* `E_TIPO_INDIRIZZO_NON_PERMESSO` — il tipo di ruolo non ammette quel tipo.
+* `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO` — la natura del soggetto non ammette quel tipo.
+* `E_ISTANZA_ALTRO_SOGGETTO` — dal guard della tabella.
 
 ---
 
 ### Test
 
-`db/pgtap/anagrafiche/test-indirizzi-singolare-e-plurale-v1.sql` (test 3-7).
+* `db/pgtap/anagrafiche/test-indirizzi-singolare-e-plurale-v1.sql` — l'indirizzo del ruolo e quello di un'istanza, il
+  tipo già presente, la chiave estranea, il ruolo che non c'è.
+* `db/pgtap/anagrafiche/test-check-tipo-indirizzo-v1.sql` — la check chiamata dalla madre, il tipo già presente sul
+  ruolo e libero sull'istanza, la riga scaduta.
+* `db/pgtap/anagrafiche/test-istanza-dello-stesso-soggetto-v1.sql` — l'istanza di un altro soggetto.
+
+---
+
+### Note di migrazione
+
+* 2026-10-19 — nasce, e la plurale scrive le sue righe da lei: l'inserimento ha una sede sola, e l'istanza entra solo
+  da qui.
 
 ---
 

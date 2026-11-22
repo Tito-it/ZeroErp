@@ -1,145 +1,132 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.indirizzi`
 
-> 👀 **Vedi anche**    
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
-Guide:   
+> 👀 **Vedi anche**
 >
-[Gestione degli indirizzi](/guide/gestione-degli-indirizzi)       
+> Approfondimento tabelle:
 >
-Approfondimento Tabelle:   
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il ruolo a cui l'indirizzo appartiene
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — l'istanza di servizio, per l'indirizzo che vale solo lì
+> * [anagrafiche.indirizzi_soggetti](/dbzero/anagrafiche/tabelle/indirizzi_soggetti) — gli indirizzi del soggetto, l'ultimo livello del ripiego
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) — il civico, nella forma col dettaglio
+> * [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi) — il tipo dell'indirizzo
+> * [config.stati](/dbzero/config/tabelle/stati) — lo stato, che decide la forma dell'indirizzo libero
+> * [storico.indirizzi](/dbzero/storico/tabelle/indirizzi) — le versioni conservate
 >
-[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)       
-> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
-> [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)  
-> [storico.indirizzi](/dbzero/storico/tabelle/indirizzi)     
-> [config.comuni](/dbzero/config/tabelle/comuni)    
-> [config.codici_postali](/dbzero/config/tabelle/codici_postali)    
-> [config.stati](/dbzero/config/tabelle/stati)   
-> [config.tipi_indirizzi](/dbzero/config/tabelle/tipi_indirizzi)   
+> Approfondimento viste:
 >
-Approfondimento funzioni e trigger:  
+> * [anagrafiche.vw_indirizzi_resolved_base](/dbzero/anagrafiche/views/vw_indirizzi_resolved_base) — la lettura risolta degli indirizzi
 >
-[anagrafiche.trgfn_indirizzi_base_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize)  
-> [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)  
-> [anagrafiche.trgfn_indirizzi_guard_forma_libera](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_forma_libera)   
-> [script.fn_stato_proposto_id](/dbzero/script/funzioni/fn_stato_proposto_id)   
-> [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_indirizzi_base_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize) — mette in ordine la riga secondo la forma
+> * [anagrafiche.trgfn_indirizzi_guard_forma_libera](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_forma_libera) — giudica l'indirizzo libero
+> * [anagrafiche.trgfn_indirizzi_sync_geoloc](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_sync_geoloc) — la posizione copiata dal civico
+> * [anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo) — il tipo ammesso per il ruolo
+> * [anagrafiche.trgfn_guard_istanza_del_ruolo](/dbzero/anagrafiche/funzioni/trgfn_guard_istanza_del_ruolo) — l'istanza è dello stesso soggetto
+> * [anagrafiche.trgfn_indirizzi_guard_obbligatori_ruolo](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_obbligatori_ruolo) — gli indirizzi obbligatori del ruolo
+> * [anagrafiche.fn_crea_indirizzo_ruolo](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_ruolo) — il verbo che crea un indirizzo del ruolo
+> * [script.fn_get_indirizzo](/dbzero/script/funzioni/fn_get_indirizzo) — il risolutore che scende per i livelli
+> * [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic) — lo storico
+>
+> Guide:
+>
+> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi) — il quadro degli indirizzi, dei tipi e dei ripieghi
 
 ---
 
-La tabella **`anagrafiche.indirizzi`** gestisce l’associazione tra un soggetto/ruolo e un indirizzo, integrando sia **indirizzi normalizzati** (collegati a `indirizzi_dettaglio`), sia **indirizzi liberi**, utili per contesti internazionali o non strutturati.
-
-Supporta:
-
-- Identificazione del tipo di indirizzo (es. legale, sede operativa, corrispondenza)
-- **Differenziazione per istanza di servizio** tramite `istanza_utility_id` (opzionale)
-- Riferimenti geografici completi
-- Storicizzazione delle modifiche
-- Geolocalizzazione
-- Vincoli di integrità per garantire coerenza tra i dati
-
----
 ### 🎯 Scopo Principale
-(latest review 25-03-26)
-* **Associazione soggetto/ruolo/istanza → indirizzo**
-  Ogni soggetto può avere più indirizzi distinti in base al ruolo (es. cliente, fornitore), al tipo di indirizzo (es. sede legale, spedizione, residenza) e all'istanza di servizio (es. GAS Corridonia vs GAS Civitanova).
 
-* **Cascata a 3 livelli**
-  - **Livello 1 — Istanza**: `istanza_utility_id` valorizzato → indirizzo specifico per il servizio
-  - **Livello 2 — Ruolo generico**: `istanza_utility_id` NULL → indirizzo generico del ruolo
-  - **Livello 3 — Soggetto**: indirizzo da `indirizzi_soggetti` (fallback readonly)
+`anagrafiche.indirizzi` tiene gli indirizzi di un ruolo di un soggetto (il cliente, il fornitore, il
+gestore…): uno per tipo, più, quando serve, uno per tipo specifico di un'istanza di servizio.
 
-* **Supporto per due modalità**  
-  - **Normalizzata**: tramite `indirizzo_dettaglio_id`, si collega a una via e civico specifici (con geolocalizzazione puntuale e struttura gerarchica).
-  - **Libera**: tramite `indirizzo_libero`, con lo stato e, secondo lo stato, comune e CAP del catalogo oppure località e codice postale (`postal_code`), utile per indirizzi esteri o non ancora normalizzabili.
-
-> ⚠️ **Nota Bene**  
-> La modalità **normalizzata** è sempre preferibile.  
-> L’inserimento di indirizzi **liberi** deve essere considerato **solo come opzione estrema** (es. migrazioni da altri database o casi non normalizzabili).
-
-* **Controllo di coerenza**  
-  Tramite vincoli `CHECK` è garantita l’alternatività tra le due modalità (o normalizzata o libera); la completezza dell'indirizzo libero ha due forme:
-  - se `indirizzo_dettaglio_id` è `NULL` → servono `indirizzo_libero` e `stato_id` (se lo stato non è detto, lo propone il sistema);
-  - poi la forma la decide lo stato (`config.stati.catalogo_comuni_completo`): **catalogo** = `comune_id` + `codice_postale_id` coerenti fra loro e con lo stato, senza `locality`, `postal_code` e `administrative_area`; **estera** = `locality`, con `postal_code`, `administrative_area` e `sublocality` facoltativi.
-  - il rifiuto, col codice e il campo, lo dà il guard [`trgfn_indirizzi_guard_forma_libera`](/dbzero/anagrafiche/manual/trgfn_indirizzi_guard_forma_libera); il CHECK `chk_*_free_requirements` resta come rete (rev 18-10-2026).
-
-* **Tracciabilità e storicizzazione**  
-  Con il campo `storicizza` e i trigger associati, le modifiche vengono salvate come snapshot nella tabella `storico.indirizzi`.
-  La generazione dei trigger (TX_ID, AUDIT_UPDATE, STORICO) e' affidata al framework di automazione DB
-  (`dbops.fn_run_automations_*`, vedi [Guida Automazioni DB](/guide/automazione-db)).
-  Se le automazioni non sono state eseguite, i campi restano presenti ma non vengono gestiti automaticamente.
+L'indirizzo ha una delle due forme descritte in fondo alla pagina, col dettaglio o libera; questa pagina dice
+ciò che è proprio degli indirizzi del ruolo.
 
 ---
 
-### Collegamenti con Altre Tabelle
+### ⭐ Tre livelli, dal più specifico al più generale
 
-* **`anagrafiche.soggetti_ruoli`**
-  - Ogni indirizzo è riferito a una specifica combinazione soggetto/ruolo.
-  - Vincolo `RESTRICT` in caso di eliminazione (non si può eliminare un ruolo associato a indirizzi).
+* **Dell'istanza** (`istanza_utility_id` valorizzato): l'indirizzo vale solo per quella fornitura, per esempio
+  la fatturazione di un contratto del gas diversa da quella degli altri. Uno per tipo per istanza
+  (`uq_indirizzi_ruolo_istanza_tipo`).
+* **Del ruolo** (`istanza_utility_id` vuoto): vale per tutte le istanze del ruolo che non ne hanno uno loro.
+  Uno per tipo per ruolo (`uq_indirizzi_ruolo_tipo_no_istanza`).
+* **Del soggetto**, in `anagrafiche.indirizzi_soggetti`: vale per tutti i ruoli.
 
-* **`anagrafiche.istanze_utilities`** (opzionale)
-  - Se `istanza_utility_id` è valorizzato, l’indirizzo è specifico per quell’istanza di servizio.
-  - Se NULL, l’indirizzo è generico del ruolo (fallback per tutte le istanze).
-
-* **`config.tipi_indirizzi`**
-  - Definisce la tipologia dell’indirizzo (es. domicilio fiscale, sede legale, corrispondenza).
-  - Obbligatoria per ogni record.
-
-* **`anagrafiche.indirizzi_dettaglio`**
-  - Se presente, indica che l’indirizzo è in modalità normalizzata.
-  - In caso contrario, devono essere valorizzati i campi dell’indirizzo libero.
-
-* **`config.comuni`, `config.codici_postali`, `config.stati`**
-  - Utilizzati solo per la modalità libera per fornire contesto geografico anche a indirizzi non normalizzati.
-
-### Vincoli UNIQUE
-
-Due partial unique index per gestire la cascata istanza/ruolo generico:
-
-- `uq_indirizzi_ruolo_tipo_no_istanza (soggetto_ruolo_id, tipo_indirizzo_id) WHERE istanza_utility_id IS NULL` — un solo indirizzo generico per tipo per ruolo
-- `uq_indirizzi_ruolo_istanza_tipo (soggetto_ruolo_id, istanza_utility_id, tipo_indirizzo_id) WHERE istanza_utility_id IS NOT NULL` — un solo indirizzo per tipo per istanza
+Chi cerca l'indirizzo da usare scende i livelli in quest'ordine, e sui due livelli del ruolo prova anche il
+tipo di ripiego che la matrice dei ruoli prevede (per esempio la sede operativa che, se manca, è la sede legale). La
+discesa la fa `script.fn_get_indirizzo`, non la tabella: qui ogni riga è un indirizzo scritto davvero.
 
 ---
 
-### Vantaggi Operativi
+### Chi può stare sulla riga
 
-* **Gestione flessibile degli indirizzi**  
-  Si adatta a tutti i contesti: locali (normalizzati) o esteri/non strutturati (liberi), senza perdere integrità dei dati.
+Le regole che seguono hanno ciascuna la sua scheda; qui se ne dice il significato.
 
-* **Storicizzazione automatica**  
-  Le modifiche vengono archiviate tramite trigger in `storico.indirizzi`, mantenendo tracciabilità completa nel tempo.
+* **Il titolare non cambia**: `soggetto_ruolo_id` è bloccato dopo la nascita (`E_INDIRIZZO_RUOLO_TITOLARE_IMMUTABILE`).
+  Un indirizzo di un altro ruolo si crea, o si copia, non si sposta.
+* **Il tipo è ammesso per il tipo di ruolo** (`anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`):
+  la matrice dei ruoli dice quali tipi d'indirizzo un ruolo può avere.
+* **L'istanza è dello stesso soggetto** (`anagrafiche.trgfn_guard_istanza_del_ruolo`, `E_ISTANZA_ALTRO_SOGGETTO`):
+  un indirizzo di istanza non può puntare la fornitura di un altro.
+* **Il civico è attivo**: alla conferma dell'operazione, un indirizzo col dettaglio deve puntare un civico
+  attivo.
+* **Gli obbligatori restano**: alla conferma dell'operazione, togliere un indirizzo o cambiargli tipo non può
+  lasciare il ruolo senza un indirizzo che la matrice dice obbligatorio
+  (`anagrafiche.trgfn_indirizzi_guard_obbligatori_ruolo`). La nascita non si giudica qui: la giudica il ruolo.
 
-* **Geolocalizzazione precisa**  
-  In modalità normalizzata, è disponibile una posizione puntuale (`geoloc`) utile per sistemi GIS, ottimizzazione logistica o analisi territoriali.
-
-* **Ricerca e normalizzazione**  
-  Gli indirizzi normalizzati consentono query full-text, deduplicazione e aggregazioni più efficienti.
-
-* **Controlli automatici e consistenza**  
-  I vincoli `CHECK` garantiscono che non si verifichino ambiguità nei dati (es. indirizzo sia normalizzato che libero insieme).
-
----
-
-> **“Una tabella ponte tra struttura e flessibilità: `anagrafiche.indirizzi` consente di mappare ogni possibile indirizzo di un soggetto, conservando coerenza, precisione geografica e tracciabilità delle modifiche.”**
-
+Le righe le scrivono i verbi del dominio, `anagrafiche.fn_crea_indirizzo_ruolo` e `anagrafiche.fn_crea_indirizzi_ruolo`
+per la creazione, e i verbi della copia per portare qui un indirizzo del soggetto.
 
 ---
 
-###  Diagramma ER relazioni
+### Lo storico è a richiesta di chi scrive
 
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    soggetti_ruoli      ||--o{ indirizzi : has
-    istanze_utilities   ||--o{ indirizzi : scoped_by
-    tipi_indirizzi      ||--o{ indirizzi : typed_as
-    indirizzi_dettaglio ||--o{ indirizzi : normalized_by
-    comuni              ||--o{ indirizzi : uses
-    codici_postali      ||--o{ indirizzi : uses
-    stati               ||--o{ indirizzi : uses
-    indirizzi           ||--o{ storico_indirizzi : history
-
-```
+`storicizza` nasce `false`, e la tabella non è fra quelle che tengono il flag acceso
+(`config.storico_set_storicizza`). Una scrittura che passa `storicizza = true` lascia in `storico.indirizzi` la
+versione precedente e quella nuova; poi il trigger dello storico rimette il flag a `false`, e la scrittura
+successiva non lascia traccia se non lo chiede di nuovo. Una cancellazione lascia la sua versione solo se la
+riga ha il flag acceso in quel momento. Nessun oggetto del database riaccende il flag: la traccia di una
+modifica dipende da chi la scrive.
 
 ---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Le FK verso comune, CAP e stato sono `ON DELETE SET NULL`**, mentre le gemelle di
+  `anagrafiche.indirizzi_soggetti` non hanno azione. Il `SET NULL` passa dai trigger della riga: per un comune o
+  un CAP tolto, la cancellazione si ferma sul giudizio della forma (o sul `CHECK`) invece che sulla FK; per uno
+  stato tolto, il trigger che mette in ordine la riga scrive al suo posto lo stato proposto, e un indirizzo
+  estero, se lo stato proposto non ha il catalogo completo, passa a quello stato senza che nessuno lo dica.
+* **La posizione è una copia**: `geoloc` prende la posizione del civico quando la riga si scrive. Se poi cambia
+  la posizione del civico, la riga la riprende solo alla sua prossima scrittura.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test_indirizzi_unique_res.sql` — un solo indirizzo dello stesso tipo per il ruolo,
+  fuori da un'istanza.
+* `db/pgtap/anagrafiche/test-indirizzi-istanza-cascata.sql` — i due indici unici, la discesa istanza → ruolo →
+  soggetto, le viste risolte che espongono l'istanza.
+* `db/pgtap/anagrafiche/test-indirizzi-fallback.sql` — il tipo rifiutato per il ruolo, il ripiego del tipo.
+* `db/pgtap/anagrafiche/test-indirizzo-libero-due-forme-v1.sql` — le due forme dell'indirizzo libero.
+* `db/pgtap/anagrafiche/test-soggetti-ruoli-indirizzi-required.sql` — gli indirizzi obbligatori del ruolo, al
+  COMMIT.
+
+---
+
+### Note di migrazione
+
+* 2026-10-18 — `postal_box` diventa `postal_code`, e l'indirizzo libero prende le due forme decise dallo stato,
+  con il giudizio in un guard che dice il campo.
+
+---
+
+{% include-markdown "it/dbzero/anagrafiche/_indirizzo-libero-o-dettaglio.md" %}
+
+---
+
 {% include-markdown "signature-core.md" %}

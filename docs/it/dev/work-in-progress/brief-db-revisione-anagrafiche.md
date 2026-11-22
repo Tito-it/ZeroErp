@@ -2,16 +2,16 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: la sessione DB**, col giro 0c (area B, §4.3). I giri 0a (area C, §12) e 0b (area A, §13) sono scritti e
-committati il 2026-11-22, con la doc auto-generata rigenerata da Tid dopo ciascuno. Q1-Q8 sono decise da Tid il 2026-11-22 (§10): prima tutta la
+**Riparte: la sessione DB**, col giro 0d (area D, §4.4). I giri 0a (area C, §12), 0b (area A, §13) e 0c (area B,
+§14) sono scritti e committati il 2026-11-22, con la doc auto-generata rigenerata da Tid dopo ciascuno. Q1-Q8 sono decise da Tid il 2026-11-22 (§10): prima tutta la
 documentazione, i giri di codice per ultimi. Al team BE/FE le domande R-BE1 … R-BE5 (§9), che non fermano il giro 0.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ sessione DB | Censimento in sola lettura: la forma delle 195 pagine `manual/`, il contenuto falso e stantio per area, gli oggetti senza pagina, le guide, le segnalazioni di codice, i metadati | §3-§9 | — |
 | 2 | ✅ Tid | Le decisioni Q1-Q8 e il via al giro 0 (2026-11-22) | §10 | 1 |
-| 3 | sessione DB | Giro 0, un'area per sessione (0a-0e): le pagine `manual/` allo standard e al codice di oggi, le pagine nuove, le guide dell'area. ✅ 0a (area C, §12), ✅ 0b (area A, §13), 2026-11-22; ⏳ 0c (area B) | §2, §4-§6, §12, §13 | 2 |
-| 4 | Tid | Doc auto-generata rigenerata dopo ogni area (le schede prendono le pagine nuove, l'indice le descrizioni). ✅ dopo lo 0a e lo 0b (2026-11-22); ⏳ dopo lo 0c | §2, §12.4 | 3 |
+| 3 | sessione DB | Giro 0, un'area per sessione (0a-0e): le pagine `manual/` allo standard e al codice di oggi, le pagine nuove, le guide dell'area. ✅ 0a (area C, §12), ✅ 0b (area A, §13), ✅ 0c (area B, §14), 2026-11-22; ⏳ 0d (area D) | §2, §4-§6, §12-§14 | 2 |
+| 4 | Tid | Doc auto-generata rigenerata dopo ogni area (le schede prendono le pagine nuove, l'indice le descrizioni). ✅ dopo lo 0a, lo 0b e lo 0c (2026-11-22); ⏳ dopo lo 0d | §2, §12.4 | 3 |
 | 5 | Tid | Il vaglio delle segnalazioni di codice: quali sono difetti, quali sono volute | §7 | 1 |
 | 6 | team BE/FE | Le cinque domande di censimento R-BE1 … R-BE5 | §9 | 2 |
 | 7 | sessione DB | I giri di codice e di metadati, dopo tutto il giro 0 (Q1, Tid: «le funzionalità per ultime») | §7, §8 | 3, 5 |
@@ -436,7 +436,7 @@ pagine:
 | R-BE2 | Il backend scrive `anagrafiche.pdp.cliente_id`? | S14 |
 | R-BE3 | Chi chiama `fn_check_fornitore_attivo` e `fn_guard_fornitore_attivo`? Nel DB nessun corpo plpgsql le nomina | Dire nella pagina i lettori veri |
 | R-BE4 | La regola «un conto predefinito non si blocca» è solo nel service dei conti bancari? In quali punti | S18: se diventa una regola del DB, il brief dirà chi cambia per primo |
-| R-BE5 | Ogni scrittura dell'app su `anagrafiche.indirizzi` e `anagrafiche.indirizzi_dettaglio` (UPDATE e DELETE, compresi i verbi di copia e le madri) passa `storicizza = true`? Quali no | S9, Q7: la guida degli indirizzi dirà quali modifiche lasciano traccia |
+| R-BE5 | Ogni scrittura dell'app su `anagrafiche.indirizzi` e `anagrafiche.indirizzi_dettaglio` (UPDATE e DELETE, compresi i verbi di copia e le madri) passa `storicizza = true`? Quali no. E prima di una DELETE l'app riscrive la riga con `true`? Il DB guarda il flag *salvato*, che dopo ogni modifica è `false` (§14.2) | S9, Q7: la guida degli indirizzi dirà quali modifiche lasciano traccia |
 
 Le ricadute dei giri di codice, se nascono, si scrivono qui giro per giro, come nei brief precedenti.
 
@@ -649,3 +649,96 @@ solo per comportamento), `vw_soggetti_ruoli_dettaglio`.
 * Misura: `soggetti` (196 righe), `soggetti_titoli_iva` (199), `soggetti_titoli_iva_movimenti` (191) passano il
   tetto di 150; una trentina di righe a testa sono del «Vedi anche».
 * La build della doc non è lanciata.
+
+## 14. Giro 0c — l'area B, 2026-11-22 (scritto, committato)
+
+Stesso metodo: sei agenti per gruppi di oggetti (i contatti, con la loro guida; il catasto; l'indirizzo, lo stradario
+e le viste risolte; il tipo d'indirizzo ammesso; gli indirizzi obbligatori; i verbi di creazione e di copia) e uno
+per la guida degli indirizzi.
+
+### 14.1 Che cosa è scritto
+
+* **Le 37 pagine d'oggetto dell'area B**, tutte nella cornice; riscritte dal corpo quelle che §4.3 dava da
+  riscrivere.
+* **28 pagine nuove**, tutte quelle di §5 per l'area B: il tipo d'indirizzo ammesso e il picker (10), gli indirizzi
+  obbligatori (11), la copia di un indirizzo (7). Ogni oggetto dell'area B ha ora la sua pagina.
+* **Q3 applicata**: `manual/catasto-architettura.md` è diventata la guida `guide/catasto-delle-istanze.md`,
+  registrata nella nav di `mkdocs.yml` e `mkdocs.zensical.yml` e in `docs/it/readme.md`; i link delle quattro pagine
+  del catasto e di `generazione-cliente` puntano lì. La pagina di `manual/` è tolta.
+* **Cinque blocchi comuni**: `_contatto-predefinito.md` (incluso in 3 pagine), `_indirizzo-libero-o-dettaglio.md` (5),
+  `_tipo-indirizzo-ammesso.md` (12), `_indirizzi-obbligatori.md` (11), `_copia-indirizzo.md` (5).
+* **Le guide**: `gestione-dei-contatti` riallineata per intero (la chiave del predefinito, il guard del contesto, il
+  verbo, l'ordine di `script.fn_get_contatti`, gli ER rifatti, gli esempi col verbo); `gestione-degli-indirizzi`
+  corretta nei punti di §6 (lo storico, `proc_bump_indirizzi_dettaglio`, le colonne, l'esempio di indirizzo
+  normalizzato, i due guard mancanti nella tabella), più in R9 il titolare che non si cambia e il titolare che resta
+  bloccato da un requisito nuovo.
+
+### 14.2 Che cosa ha corretto o aggiunto al censimento
+
+* **S3, S8, S10, S11, S16, S19 reggono**, riverificate sui corpi. S3 è più larga: la colonna `cap` di un libero è il
+  CAP di una via del comune (quello della riga è `cap_codice`), e in un comune senza vie `cap` e `provincia` restano
+  vuoti. S10 è più larga: palazzina, scala, piano e interno si confrontano grezzi come l'estensione; l'errore senza
+  criteri non ha codice; `p_limit` negativo dà l'errore tecnico; `%` e `_` fanno da jolly; la ricerca per testo non
+  usa l'indice trigram. S19: per comune e CAP il rifiuto arriva dal giudizio della forma, non dalla FK; per uno stato
+  tolto il normalize scrive lo stato proposto, e un indirizzo estero cambia stato senza che nessuno lo dica.
+* **S9 è più largo nel perimetro e nella cancellazione.** Lo storico a richiesta vale anche per `config.stradario`.
+  `indirizzi_soggetti` invece ha lo storico continuo (`storicizza` nasce `true`, la tabella è nel registro), come
+  `catasto_unita_immobiliari`. E una **DELETE** su una tabella a richiesta lascia traccia solo se il flag *salvato*
+  sulla riga è acceso: dopo ogni modifica il trigger lo rimette a `false`, quindi cancellare un indirizzo di ruolo,
+  un civico o una via lascia traccia solo se la riga è stata scritta con `true` e non più modificata. Da aggiungere a
+  R-BE5 e da vagliare: la decisione Q7 riguarda le modifiche, non è detto che copra le cancellazioni. Il COMMENT di
+  `indirizzi_dettaglio.storicizza` dice «Default=True» (è `false`). La guida sbagliava anche il tipo di operazione
+  dello storico (1/2/3, non A/U/D).
+* **`contatti`**: la FK del ruolo è `ON UPDATE CASCADE` senza azione in cancellazione (lo è solo quella del soggetto).
+  Il falso più grosso della pagina di `fn_crea_contatto` era «il primo contatto di un ruolo diventa default».
+* **Il catasto**: `CATASTO_SOURCE_NOT_FOUND` non è più nemmeno in `config.messaggi_errore`. Il trigger del cliente che
+  aggancia il parent è `BEFORE INSERT OR UPDATE OF pdp_id, data_attivazione`. Le tabelle del catasto non hanno né
+  azienda né RLS. **`db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql` prova la colonna `istanza_utility_id` e
+  la sua FK, che non esistono più**: è nelle baseline dei rossi come `ERRORE_FIXTURE`, va riscritto o ritirato.
+* **Il cambio di titolare di un indirizzo** si raggiunge solo dalla porta di manutenzione: prima scattano i lock
+  (`E_INDIRIZZO_*_TITOLARE_IMMUTABILE`). I guard degli obbligatori su `indirizzi` e `indirizzi_soggetti` sono
+  differiti solo su UPDATE e DELETE; alla nascita li pretendono quelli su `soggetti` e `soggetti_ruoli`.
+* **La fascia dei trigger differiti** (13.2): «i differiti hanno `def`» vale per `soggetti`; su `indirizzi` e
+  `indirizzi_soggetti` tutti i differiti hanno `a10`. Non è un difetto di quelle due tabelle.
+* `proc_bump_indirizzi_dettaglio` ha un chiamante: `maintenance.proc_bump_toponomastica`. Nessun oggetto del DB
+  chiama `fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli` (lettura del BE), che a differenza delle gemelle non
+  prende `p_oggi`. Il terzo ripiego di `indirizzo_display` in `vw_indirizzi_resolved_base` non si raggiunge mai: il
+  display di un libero è via e numero, senza il luogo. Il registro `config.azioni_riga` tiene `COPIA_INDIRIZZO_RUOLO`
+  spenta, e punta a due oggetti ritirati: voluto.
+* Su `soggetti`, `soggetti_ruoli`, `indirizzi`, `indirizzi_soggetti`, `contatti` la RLS è spenta: i guard e le check
+  `SECURITY INVOKER` vedono tutto, e il COMMENT di `fn_check_tipo_indirizzo_soggetto` («i tipi che chi chiama vede»)
+  promette un filtro che non c'è.
+* **§8.** M17 confermato e più largo (i lettori veri dei due predicati del tipo ammesso). Il COMMENT di
+  `fn_indirizzi_con_obbligatori` porta marcatori di cantiere; quelli di `contatti.default_context` («soggetto|ruolo|
+  utility») e `contatti.is_default` («per il soggetto») sono stantii.
+* Fuori da `anagrafiche`: `config.tipi_ruolo_tipi_indirizzo` ha due FK uguali su `tipo_ruolo_id`
+  (`fk_tipi_ruoli_tipi_indirizzo_ruolo`, `fk_tipi_ruolo_tipi_indirizzo_tipo_ruolo`).
+
+### 14.3 Segnalazioni di codice nuove
+
+Lette sui corpi dagli agenti del giro, non provate con un caso salvo dove detto.
+
+| # | Dove | Che cosa |
+| --- | --- | --- |
+| S45 | Il contatto obbligatorio | Cancellare l'ultimo contatto passa (il guard scatta solo sulle scritture del soggetto), e dopo ogni modifica del soggetto è rifiutata qualunque cosa cambi. `soggetti.default_contatto_id` non si svuota mai; cancellare il contatto puntato è rifiutato al COMMIT dalla FK differita. Ogni scrittura del predefinito del contesto `soggetto` riscrive il soggetto e ne fa scattare tutti i trigger. Da leggere con S39 |
+| S46 | `fn_crea_contatto` | Il doppione per tipo dà l'errore grezzo `23505`; un `tipo_contatto_id` non numerico dà un errore di conversione invece di `E_CONTATTO_INCOMPLETO`; `default_context` è fra le chiavi ammesse ma il valore è sostituito |
+| S47 | Il catasto | Il clone si fa una volta: un cambio di catena dopo il clone, o un'unità comparsa dopo sulla precedente, non arrivano; un'istanza inserita con la precedente già scritta non riceve il clone (il trigger è solo su UPDATE). La ponte non si pulisce al cambio di civico o di unità, e col blocco ATTIVO quel civico non si spegne più. Un'unità lasciata da un'istanza resta orfana |
+| S48 | Gli indirizzi obbligatori | **Un requisito nuovo blocca chi esiste.** Una riga di matrice che diventa obbligatoria non rigiudica nessuno, ma i due trigger dei titolari scattano a ogni UPDATE (niente `OF` né `WHEN`): la prossima scrittura del soggetto o del ruolo, su qualunque colonna, è rifiutata. Il ripiego del livello soggetto non si confronta con la natura, e il rifiuto può proporre un ripiego che il guard del tipo non lascia scrivere. I due trigger sugli indirizzi chiamano il guard senza `tx_id`. `fn_indirizzi_con_obbligatori` ignora il ripiego: con il ripiego nell'elenco nasce comunque la copia del tipo. «Obbligatorio per la natura» è calcolato in quattro sedi (i due picker, `fn_indirizzi_obbligatori_mancanti_soggetto`, `fn_crea_indirizzi_soggetto`); sul ruolo in una sola |
+| S49 | Il tipo d'indirizzo | Il cambio del tipo di ruolo (S30) non rigiudica gli indirizzi che il ruolo ha. `fn_indirizzo_elemento` non verifica il tipo per id (provato con una chiamata in sola lettura: l'id 999999 torna senza errore; con id e codice vale l'id e il codice non si confronta): il rifiuto arriva dalla FK, non da `E_TIPO_INDIRIZZO_NON_TROVATO`. `fn_tipo_indirizzo_ammesso_per_ruolo` prende il tipo di ruolo `bigint`, `fn_check_tipo_indirizzo_ruolo_su_contesto` `integer` |
+| S50 | La normalizzazione | Con una via non risolta, un INSERT diretto o la modifica di un civico falliscono sul NOT NULL di `via_norm` senza codice (solo il «trova o crea» dà `E_INDIRIZZO_VIA_NON_RISOLTA`). Un elemento senza forma, anche un libero col testo vuoto, finisce sui NOT NULL dello stradario e non arriva al guard della forma libera. La porta `zeroerp.maintenance_indirizzi_dettaglio` è un parametro di sessione che chiunque scriva accende. `geoloc` è una copia presa alla scrittura e non segue `civic_geoloc` |
+| S51 | I permessi | Come S21 e 13.2: `zeroerp_app` ha il DML sulle cinque viste degli indirizzi, che non sono aggiornabili; non sono `security_invoker` (oggi innocuo: le tabelle sotto non hanno RLS) |
+
+pgTAP mancanti: nessun test proprio per `trgfn_soggetti_guard_soggetto_contatti`, né per il passaggio del segno fra
+due contatti dello stesso contesto; l'intestazione di `test-contatti-soggetto-cliente.sql` parla di un «tipo_contatto
+NULL» che il NOT NULL non ammette. Il pgTAP del catasto è in 14.2.
+
+### 14.4 Le verifiche
+
+* Il controllo meccanico rilanciato dalla sessione che coordina sulle 65 pagine d'oggetto dell'area: tutte nella
+  cornice, data 22 novembre 2026, nessun blocco di codice, nessun marcatore fuori dalle Note di migrazione, nessun
+  link a `manual/` né morto, nessun nome che il catalogo non conosce. I cinque blocchi non hanno `##` né il tag
+  include.
+* Le tre guide: link tutti vivi, nessun link a `manual/`, a brief o col prefisso `/it`.
+* **La doc auto-generata è rigenerata da Tid il 2026-11-22** (passo 4): le 28 schede nuove includono le pagine,
+  `index.ci.md` non nomina più `manual/catasto-architettura`, e nell'indice restano 36 marcatori, delle aree D ed E.
+* `indirizzi_dettaglio.md` è di 154 righe. La build della doc non è lanciata.

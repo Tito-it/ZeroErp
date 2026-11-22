@@ -1,90 +1,115 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_indirizzi_ruolo()`
+## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_indirizzi_ruolo`
 
-> **Ultimo aggiornamento**: 17 novembre 2026
-
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> [anagrafiche.indirizzi](/dbzero/anagrafiche/manual/indirizzi) ·
-> [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/manual/fn_crea_indirizzo_soggetto) ·
-> [anagrafiche.fn_indirizzo_elemento](/dbzero/anagrafiche/manual/fn_indirizzo_elemento) ·
-> [anagrafiche.trgfn_indirizzi_guard_forma_libera](/dbzero/anagrafiche/manual/trgfn_indirizzi_guard_forma_libera)
+> Approfondimento tabelle:
+>
+> * [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi) — le righe che la funzione scrive
+> * [config.tipi_ruolo_tipi_indirizzo](/dbzero/config/tabelle/tipi_ruolo_tipi_indirizzo) — i tipi obbligatori del ruolo, coi loro ripieghi
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.fn_crea_indirizzo_ruolo](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_ruolo) — la singolare, che scrive ogni riga
+> * [anagrafiche.fn_indirizzi_con_obbligatori](/dbzero/anagrafiche/funzioni/fn_indirizzi_con_obbligatori) — la copia del primo negli obbligatori
+> * [anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_obbligatorio_per_ruolo) — quali tipi sono obbligatori oggi
+> * [anagrafiche.fn_crea_indirizzi_soggetto](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_soggetto) — la gemella del soggetto
+>
+> Guide:
+>
+> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi) — gli obbligatori e i ripieghi
 
-### 🎯 Scopo
-(17-10-2026 — brief `brief-db-processi-accensione-per-ambiente`, 2b-1 lotto 2)
+---
 
-**Scrivere gli indirizzi di un ruolo** (cliente, fornitore, ...) in
-un'operazione sola. È il gemello, sul livello del ruolo, di
-`fn_crea_indirizzo_soggetto`, e la sede unica della regola: la usano la
-creazione di fornitori e clienti, i builder pgTAP e il provisioning dei dati di
-sviluppo.
+### 🎯 Scopo Principale
 
-### La regola dell'auto-clone
+`anagrafiche.fn_crea_indirizzi_ruolo` scrive gli indirizzi di un ruolo (cliente, fornitore, …) in un'istruzione sola,
+e copia il primo negli indirizzi obbligatori che mancano. Restituisce quanti indirizzi ha scritto.
 
-Ogni ruolo ha i suoi indirizzi **obbligatori**: per il cliente e per il fornitore
-la fatturazione (la matrice è `config.tipi_ruolo_tipi_indirizzo`). Se chi crea il
-ruolo ne indica uno solo, gli altri obbligatori si **copiano dal primo**: stesso
-indirizzo, tipo diverso.
+La usano la creazione del cliente e del fornitore (`anagrafiche.fn_crea_cliente`, `anagrafiche.fn_crea_fornitore`) e
+il builder dei ruoli dei test.
 
-* Un tipo che la **natura del soggetto** non ammette non si copia: nessuna
-  scrittura lo accetterebbe (il guard del ruolo guarda anche la natura). Se la
-  natura ammette il suo **ripiego**, si copia il ripiego: è lui che il ruolo deve
-  avere.
+---
 
-* Un tipo che il ruolo ha già si salta: niente doppioni.
-* Un elenco vuoto non scrive niente, nemmeno i cloni.
+### ⭐ La copia del primo negli obbligatori
 
-### Le tre forme di un indirizzo
+Ogni ruolo ha i suoi indirizzi **obbligatori**: per il cliente e per il fornitore, la fatturazione. Se chi crea il ruolo
+ne indica uno solo, gli obbligatori che mancano nell'elenco ricevono una **copia del primo**: lo stesso indirizzo, col
+tipo cambiato, una per tipo.
 
-| Forma | Che cosa si indica |
-| --- | --- |
-| libero | `indirizzo_libero` con lo stato e, secondo lo stato, comune e CAP del catalogo oppure la località (`locality`, con `postal_code` facoltativo) |
-| dettaglio già risolto | `indirizzo_dettaglio_id` |
-| via da risolvere | `stradario_id`, oppure una via nuova (tipo strada, nome, comune, CAP), più il civico: la risolve `fn_create_indirizzo` |
+Sono obbligatori i tipi per cui `anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo` risponde vero, sul tipo di
+ruolo e sulla natura del soggetto, il giorno operativo. È lo stesso giudizio dei guard degli obbligatori e dei picker:
 
-Il tipo si indica per id o per codice interno. Un campo che non appartiene a un
-indirizzo è rifiutato col suo nome (`E_CAMPO_NON_AMMESSO`), un tipo
-inesistente con `E_TIPO_INDIRIZZO_NON_TROVATO`.
+* una riga obbligatoria attiva e valida conta col suo tipo, se la natura lo ammette;
+* se la natura non lo ammette, conta il suo **ripiego**, quando il ruolo e la natura ammettono quello;
+* una riga scaduta, o una di cui la natura vieta tipo e ripiego, non fa nascere una copia, che i guard poi
+  rifiuterebbero.
 
-⭐ Dal 18-10-2026 la lettura dell'elemento (le chiavi ammesse, il tipo) e la
-risoluzione della via stanno nei building block
-[`fn_indirizzo_elemento`](/dbzero/anagrafiche/manual/fn_indirizzo_elemento) e
-`fn_indirizzo_elemento_dettaglio`, che usa anche la madre del soggetto: una
-grammatica sola per i due livelli.
+La copia la fa `anagrafiche.fn_indirizzi_con_obbligatori`, la stessa della plurale del soggetto: cambia solo la matrice
+da cui si leggono gli obbligatori.
 
-⚠️ Due indirizzi diversi restano diversi: ognuno si risolve da sé. Fino al
-16-10-2026 il backend riusava il primo dettaglio per tutti quelli che venivano
-dopo.
+---
 
-### Che cosa non controlla
+### Le righe
 
-* I campi di una via nuova (tipo strada, nome, comune, CAP): li controlla il
-  backend prima di chiamare, come per `fn_create_indirizzo`.
-* Il permesso: nel dominio anagrafiche lo decide il backend.
-* Il tipo ammesso per il ruolo e la forma dell'indirizzo libero: li dicono la
-  singolare (con la check del tipo) e i guard della tabella
-  (`trgfn_indirizzi_guard_forma_libera` per la forma, con codice e campo).
-* I tipi obbligatori li dice
-  [`fn_tipo_indirizzo_obbligatorio_per_ruolo`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_obbligatorio_per_ruolo),
-  sul tipo di ruolo e sulla natura del soggetto, **oggi**, leggendo il requisito del ruolo
-  ([`fn_indirizzi_obbligatori_ruolo`](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_ruolo)):
-  per ogni riga obbligatoria attiva e valida, il tipo se la natura lo ammette, altrimenti
-  il suo ripiego se la natura e il ruolo lo ammettono. Una riga scaduta, o una riga di cui
-  la natura vieta tipo e ripiego, non fa nascere una copia. Gli stessi obbligatori li
-  mostrano i picker del ruolo, e li pretende il guard del ruolo.
+* **Ogni indirizzo passa dalla grammatica** di `anagrafiche.fn_indirizzo_elemento` (le tre forme, il tipo per id o per
+  codice interno) e lo scrive la singolare, `anagrafiche.fn_crea_indirizzo_ruolo`, coi suoi controlli sul tipo.
+* **Un tipo che il ruolo ha già si salta**: niente doppioni, nemmeno da una seconda chiamata. Conta solo l'indirizzo del
+  ruolo, senza istanza: lo stesso tipo su un servizio del ruolo non fa saltare quello del ruolo.
+* **L'istanza non si accetta**: la plurale scrive gli indirizzi del ruolo, e un elemento con `istanza_utility_id` si
+  rifiuta come chiave estranea. L'indirizzo di un'istanza si scrive con la singolare.
+* **Due indirizzi diversi restano diversi**: ognuno risolve la sua via e il suo civico.
+* **Un elenco vuoto** non scrive niente, nemmeno le copie.
 
-### 🔄 rev 19-10-2026 — la riga la scrive la singolare
+---
 
-(R-BE-6, decisione D-16a di Tid, `brief-db-processi-accensione-per-ambiente` §6.16)
+### Che cosa lascia agli altri
 
-* ogni riga la scrive la singolare [`fn_crea_indirizzo_ruolo`](/dbzero/anagrafiche/manual/fn_crea_indirizzo_ruolo), che ammette anche l'istanza; la plurale non conosce le istanze (un elemento con `istanza_utility_id` è rifiutato);
-* la copia degli obbligatori è il BB `fn_indirizzi_con_obbligatori`, comune alla plurale del soggetto;
-* il salto dei tipi che il ruolo ha già guarda solo gli indirizzi **senza istanza**: prima un indirizzo di un'istanza dello stesso tipo faceva saltare quello del ruolo, che poi non nasceva.
+* **I campi di una via nuova** (tipo strada, nome, comune, CAP) non li controlla: arrivano ai vincoli dello stradario.
+* **La forma dell'indirizzo libero** la dice il guard della tabella, con codice e campo.
+* **Il permesso** lo decide l'applicazione.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Il ripiego già nell'elenco.** Il guard degli obbligatori è soddisfatto dal tipo obbligatorio o dal suo ripiego, ma la
+  copia guarda solo il tipo: se l'elenco porta il ripiego e non il tipo, nasce lo stesso la copia del tipo, cioè un
+  indirizzo in più di quanti il ruolo ne debba avere.
+
+---
+
+### Codici errore
+
+* `E_SCRIPT_CHIAMATA_NON_VALIDA` — gli indirizzi non sono un elenco, o un elemento non è un oggetto.
+* `E_SOGGETTO_RUOLO_NON_TROVATO` — il ruolo non esiste.
+* `E_CAMPO_NON_AMMESSO` — una chiave che un indirizzo non ha, compresa l'istanza.
+* `E_TIPO_INDIRIZZO_NON_TROVATO` — il codice del tipo manca o non esiste.
+* Dalla singolare e dai guard: i rifiuti sul tipo e sulla forma.
 
 ---
 
 ### Test
 
-`db/pgtap/anagrafiche/test-fn-crea-indirizzi-ruolo-v1.sql`.
+* `db/pgtap/anagrafiche/test-fn-crea-indirizzi-ruolo-v1.sql` — la copia negli obbligatori letti dalla matrice, la
+  seconda chiamata senza doppioni, l'elenco vuoto, le tre forme, due civici sulla stessa via, i rifiuti, il builder dei
+  test che passa da qui.
+* `db/pgtap/anagrafiche/test-indirizzi-singolare-e-plurale-v1.sql` — il tipo che il ruolo ha solo su un'istanza, e
+  l'istanza rifiutata nella plurale.
+* `db/pgtap/anagrafiche/test-check-tipo-indirizzo-v1.sql` — l'obbligatorio scaduto, che non fa nascere la copia.
+* `db/pgtap/anagrafiche/test-fornitore-privato-indirizzi-v1.sql` — l'obbligatorio che la natura vieta non si copia sul
+  privato, e si copia sulla società.
+
+---
+
+### Note di migrazione
+
+* 2026-10-17 — nasce, e prende il posto della creazione degli indirizzi fatta dall'applicazione, che riusava il
+  dettaglio del primo indirizzo per tutti quelli dopo.
+* 2026-10-18 — la grammatica dell'elemento passa nei building block comuni alla madre del soggetto.
+* 2026-10-19 — le righe le scrive la singolare; il salto dei tipi presenti guarda solo gli indirizzi senza istanza
+  (prima un indirizzo di un'istanza faceva saltare quello del ruolo, che poi non nasceva).
 
 ---
 

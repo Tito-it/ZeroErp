@@ -1,103 +1,76 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_soggetti_guard_soggetto_contatti`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_soggetti_guard_soggetto_contatti`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:    
+> Approfondimento tabelle:
 >
-[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)    
-> [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)    
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — la tabella su cui è montata
+> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti) — i contatti che conta
 >
-Approfondimento funzioni :    
+> Approfondimento funzioni:
 >
-[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)     
-
-
-La trigger function **`anagrafiche.trgfn_soggetti_guard_soggetto_contatti()`** verifica, al termine dell’inserimento o aggiornamento di un record in `anagrafiche.soggetti`, che il soggetto associato abbia almeno un contatto valido. Se non trova contatti con `is_default = TRUE` o almeno un canale valorizzato (email, telefono, cellulare, PEC), registra l’evento e solleva un’eccezione centralizzata.
+> * [anagrafiche.fn_crea_soggetto_pf](/dbzero/anagrafiche/funzioni/fn_crea_soggetto_pf) — la nascita di una persona fisica, col suo primo contatto
+> * [anagrafiche.fn_crea_soggetto_pg](/dbzero/anagrafiche/funzioni/fn_crea_soggetto_pg) — la nascita di una società o di un ente, col suo primo contatto
+> * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — il blocco che i contatti mettono alla disattivazione del soggetto
+>
+> Guide:
+>
+> * [Gestione dei Contatti](/guide/gestione-dei-contatti) — il contatto obbligatorio nel modello dei contatti
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 28-12-25)
-* **Validazione di integrità**
-  Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
 
-* **Log e gestione errori centralizzata**
-  Utilizzare `script.fn_log_and_raise_error` per tracciare l’anomalia e segnalare l’errore con un codice specifico (`E_SOGGETTO_NO_CONTATTI`).
-
-* **Deferrable per transazioni**
-  Essendo un **constraint trigger** `DEFERRABLE INITIALLY DEFERRED`, l’esecuzione avviene al momento del `COMMIT`, consentendo di completare tutte le operazioni di contatto correlate prima della verifica finale.
+`anagrafiche.trgfn_soggetti_guard_soggetto_contatti` pretende che un soggetto abbia almeno un contatto: al COMMIT
+di ogni nascita e di ogni modifica del soggetto cerca un suo contatto che sia predefinito o che abbia un recapito
+(email, telefono, cellulare o PEC), e se non ne trova rifiuta.
 
 ---
 
-### Parametri e Contesto del Trigger
+### Al COMMIT, perché il contatto arriva dopo
 
-* **Trigger associato**: `AFTER INSERT OR UPDATE` su `anagrafiche.soggetti`, definito come:
-
-  ```sql
-  CREATE CONSTRAINT TRIGGER trg_soggetti_guard_soggetto_contatti_ins_upd
-    AFTER INSERT OR UPDATE ON anagrafiche.soggetti
-    DEFERRABLE INITIALLY DEFERRED
-    FOR EACH ROW
-    EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_soggetto_contatti();
-  ```
-* **Deferrable**: permette di posticipare la verifica fino alla fine della transazione per includere eventuali operazioni correlate su `anagrafiche.contatti`.
+È montata su `anagrafiche.soggetti` come constraint trigger differito, dopo la nascita e dopo ogni modifica, su
+qualunque colonna. Il soggetto si scrive per primo, perché il contatto lo riferisce; il contatto arriva dopo,
+nella stessa transazione, e il controllo aspetta la fine. I verbi di nascita del soggetto creano il suo primo
+contatto nella stessa chiamata, e il controllo li trova sempre in regola.
 
 ---
 
-### Flusso Logico
+### Che cosa conta
 
-1. **Conteggio contatti validi**
-
-   ```plpgsql
-   SELECT COUNT(*) INTO v_count
-     FROM anagrafiche.contatti c
-    WHERE c.soggetto_id = NEW.id
-      AND c.default_context = 'soggetto'
-      AND (
-        c.is_default
-        OR c.email      IS NOT NULL
-        OR c.telefono   IS NOT NULL
-        OR c.cellulare  IS NOT NULL
-        OR c.pec        IS NOT NULL
-      );
-   ```
-2. **Verifica risultato**
-
-   ```plpgsql
-   IF v_count = 0 THEN
-     PERFORM script.fn_log_and_raise_error(
-       'database',
-       TG_NAME,
-       'E_SOGGETTO_NO_CONTATTI',
-       jsonb_build_object('soggetto_id', NEW.id)
-     );
-   END IF;
-   ```
-
-   * Chiama `fn_log_and_raise_error`, che registra su log la violazione e solleva l’eccezione appropriata.
-3. **Restituzione**
-   Restituisce `NEW` se la condizione è soddisfatta; altrimenti l’eccezione interrompe la commit.
+Contano i contatti del soggetto **di ogni contesto**: del soggetto, di un ruolo o di un'istanza. Il primo
+contatto di ogni contesto nasce predefinito, quindi in pratica la domanda è «il soggetto ha almeno un contatto».
+Resta escluso solo un soggetto i cui contatti hanno tutti perso il segno e non hanno recapiti.
 
 ---
 
-### Error Handling e Logging
+### ⚠️ Che cosa oggi non copre
 
-* **Codice errore**: `E_SOGGETTO_NO_CONTATTI` (messaggio configurato in `config.messaggi_errore`).
-* **Context payload**: JSON `{ "soggetto_id": <NEW.id> }` passato a `fn_log_and_raise_error` per dettagliare l’evento di errore.
-* **Log ed eccezione**: `fn_log_and_raise_error` effettua il logging e lancia un’eccezione per bloccare la transazione.
-
----
-
-### Vantaggi Operativi
-
-* **Integrità garantita**
-  Nessun soggetto privo di contatti validi può essere creato o aggiornato, prevenendo dati anomali.
-* **Deferral di verifica**
-  Utilizzo di trigger constraint deferrable per includere le modifiche ai contatti nella stessa transazione.
-* **Centralizzazione del logging**
-  Tutta la gestione di log ed eccezioni avviene tramite una funzione dedicata, facilitando l’audit.
-* **Manutenzione e coerenza**
-  Separazione fra logica di business (controllo contatti) e gestione degli errori (logging), in due moduli riutilizzabili.
+* **L'ultimo contatto cancellato.** Il controllo scatta sulle scritture del soggetto, non su quelle dei contatti:
+  cancellare l'ultimo contatto passa, e il soggetto resta senza fino alla sua prossima modifica, che allora è
+  rifiutata qualunque cosa cambi.
+* **Il soggetto che si spegne.** La disattivazione è una modifica del soggetto, e la controlla anche questo
+  trigger. I contatti, che non hanno un loro `attivo`, bloccano la disattivazione finché esistono; tolti tutti,
+  la disattivazione non passa questo controllo. Un soggetto con contatti oggi non si disattiva.
 
 ---
 
-> **“Usare un constraint trigger deferrable per verificare i contatti di un soggetto assicura integrità e coerenza dei dati, sfruttando logging e gestione errori centralizzata.”**
+### Codici errore
+
+* `E_SOGGETTO_NO_CONTATTI` — al COMMIT, il soggetto scritto non ha un contatto predefinito né un contatto con un
+  recapito.
+
+---
+
+### Test
+
+Nessun test proprio. `db/pgtap/anagrafiche/soggetti-con-contatti.sql` prova che un soggetto costruito ha un
+contatto con un recapito; `db/pgtap/anagrafiche/test-identita-tecnica.sql` e
+`db/pgtap/script/test-fn-crea-utente-tecnico.sql` dichiarano differiti i vincoli, perché con i vincoli immediati
+il soggetto che costruiscono è rifiutato prima che il suo contatto sia scritto.
+
+---
+
+{% include-markdown "signature-core.md" %}
