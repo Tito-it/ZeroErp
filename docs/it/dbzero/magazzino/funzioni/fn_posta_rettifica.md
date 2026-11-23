@@ -45,7 +45,7 @@ DECLARE
     v_riga         magazzino.rettifiche_righe%ROWTYPE;
 BEGIN
     -- 0. Il permesso, prima di ogni altra cosa: lo stesso del backend.
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('magazzino.fn_posta_rettifica');
     PERFORM script.fn_guard_azione(v_utente, 'registra_magazzino');
 
     IF p_rettifica_id IS NULL OR p_rettifica_id <= 0 THEN

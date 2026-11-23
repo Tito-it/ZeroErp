@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche: le policy RLS leggono l'utente di sessione dal BB.
+#   Brief: brief-db-revisione-ui (§3.6-sexies, giro 8b; Q60 (a)).
+#
+# Il perche': ogni policy convertiva app.current_user_id da se',
+#   NULLIF(current_setting('app.current_user_id', true), '')::integer, come
+#   facevano funzioni e viste prima del giro 8. Ora la legge
+#   script.fn_utente_di_sessione('<schema>.<tabella>.<policy>') (20261123-16):
+#   assente o vuota resta NULL, e la policy nasconde come prima; un valore che
+#   non e' l'id di un utente da' E_SCRIPT_CHIAMATA_NON_VALIDA, che nomina la
+#   policy, invece del 22P02 grezzo su ogni lettura della tabella.
+#   La lettura resta nella sottoquery non correlata della funzione di
+#   perimetro: valutata una volta per istruzione, non per riga.
+# Policy: billing_account.rls_billing_account_ef_whitelist,
+#   categorie_clienti_listini.rls_categorie_clienti_listini_ef_whitelist,
+#   clienti.rls_clienti_ef_whitelist, istanze_dati_precontrattuali.rls_istan
+#   ze_dati_precontrattuali_ef_whitelist,
+#   soggetti_titoli_iva.rls_soggetti_titoli_iva_ef_whitelist,
+#   soggetti_titoli_iva_ambiti.rls_soggetti_titoli_iva_ambiti_ef_whitelist,
+#   soggetti_titoli_iva_movimenti.rls_soggetti_titoli_iva_movimenti_ef_white
+#   list.
+# ALTER POLICY ... USING / WITH CHECK: nome, comando, ruoli e PERMISSIVE
+#   invariati. Espressioni dal vivo (dbdev, 2026-11-23), lette con search_path
+#   vuoto: ogni nome qualificato. Le espressioni di prima tornano col blocco
+#   di ritorno del changeSet.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261123-28-update-policy-anagrafiche-utente-di-sessione-mctit.yaml
+
+  - changeSet:
+      id: 20261123-28-update-policy-anagrafiche-utente-di-sessione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche: le policy RLS leggono app.current_user_id da script.fn_utente_di_sessione invece di
+        convertirlo da se'. Brief: brief-db-revisione-ui (§3.6-sexies, giro 8b).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "8"
+            sql: >
+              SELECT (SELECT count(*) FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'script' AND p.proname = 'fn_utente_di_sessione')
+                   + (SELECT count(*) FROM pg_catalog.pg_policies
+                       WHERE (schemaname, tablename, policyname) IN (('anagrafiche', 'billing_account', 'rls_billing_account_ef_whitelist'), ('anagrafiche', 'categorie_clienti_listini', 'rls_categorie_clienti_listini_ef_whitelist'), ('anagrafiche', 'clienti', 'rls_clienti_ef_whitelist'), ('anagrafiche', 'istanze_dati_precontrattuali', 'rls_istanze_dati_precontrattuali_ef_whitelist'), ('anagrafiche', 'soggetti_titoli_iva', 'rls_soggetti_titoli_iva_ef_whitelist'), ('anagrafiche', 'soggetti_titoli_iva_ambiti', 'rls_soggetti_titoli_iva_ambiti_ef_whitelist'), ('anagrafiche', 'soggetti_titoli_iva_movimenti', 'rls_soggetti_titoli_iva_movimenti_ef_whitelist')))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER POLICY rls_billing_account_ef_whitelist ON anagrafiche.billing_account
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_sr_ids(script.fn_utente_di_sessione('anagrafiche.billing_account.rls_billing_account_ef_whitelist')) AS fn_get_emittenti_scope_sr_ids), script.fn_get_ba_emittente_sr_id(id))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_sr_ids(script.fn_utente_di_sessione('anagrafiche.billing_account.rls_billing_account_ef_whitelist')) AS fn_get_emittenti_scope_sr_ids), script.fn_get_ba_emittente_sr_id(id))));
+              ALTER POLICY rls_categorie_clienti_listini_ef_whitelist ON anagrafiche.categorie_clienti_listini
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_pk_ids(script.fn_utente_di_sessione('anagrafiche.categorie_clienti_listini.rls_categorie_clienti_listini_ef_whitelist')) AS fn_get_emittenti_scope_pk_ids), script.fn_resolve_emittente_fiscale_id('listino'::text, listino_id))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_pk_ids(script.fn_utente_di_sessione('anagrafiche.categorie_clienti_listini.rls_categorie_clienti_listini_ef_whitelist')) AS fn_get_emittenti_scope_pk_ids), script.fn_resolve_emittente_fiscale_id('listino'::text, listino_id))));
+              ALTER POLICY rls_clienti_ef_whitelist ON anagrafiche.clienti
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_sr_ids(script.fn_utente_di_sessione('anagrafiche.clienti.rls_clienti_ef_whitelist')) AS fn_get_emittenti_scope_sr_ids), script.fn_get_ba_emittente_sr_id(billing_account_id))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_sr_ids(script.fn_utente_di_sessione('anagrafiche.clienti.rls_clienti_ef_whitelist')) AS fn_get_emittenti_scope_sr_ids), script.fn_get_ba_emittente_sr_id(billing_account_id))));
+              ALTER POLICY rls_istanze_dati_precontrattuali_ef_whitelist ON anagrafiche.istanze_dati_precontrattuali
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_sr_ids(script.fn_utente_di_sessione('anagrafiche.istanze_dati_precontrattuali.rls_istanze_dati_precontrattuali_ef_whitelist')) AS fn_get_emittenti_scope_sr_ids), script.fn_get_ba_emittente_sr_id(script.fn_get_ba_id_da_coppia(istanza_utility_id, utility_id)))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_sr_ids(script.fn_utente_di_sessione('anagrafiche.istanze_dati_precontrattuali.rls_istanze_dati_precontrattuali_ef_whitelist')) AS fn_get_emittenti_scope_sr_ids), script.fn_get_ba_emittente_sr_id(script.fn_get_ba_id_da_coppia(istanza_utility_id, utility_id)))));
+              ALTER POLICY rls_soggetti_titoli_iva_ef_whitelist ON anagrafiche.soggetti_titoli_iva
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_pk_ids(script.fn_utente_di_sessione('anagrafiche.soggetti_titoli_iva.rls_soggetti_titoli_iva_ef_whitelist')) AS fn_get_emittenti_scope_pk_ids), emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_pk_ids(script.fn_utente_di_sessione('anagrafiche.soggetti_titoli_iva.rls_soggetti_titoli_iva_ef_whitelist')) AS fn_get_emittenti_scope_pk_ids), emittente_fiscale_id)));
+              ALTER POLICY rls_soggetti_titoli_iva_ambiti_ef_whitelist ON anagrafiche.soggetti_titoli_iva_ambiti
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND (EXISTS ( SELECT 1
+                 FROM anagrafiche.soggetti_titoli_iva t
+                WHERE ((t.id = soggetti_titoli_iva_ambiti.titolo_iva_id) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_pk_ids(script.fn_utente_di_sessione('anagrafiche.soggetti_titoli_iva_ambiti.rls_soggetti_titoli_iva_ambiti_ef_whitelist')) AS fn_get_emittenti_scope_pk_ids), t.emittente_fiscale_id))))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND (EXISTS ( SELECT 1
+                 FROM anagrafiche.soggetti_titoli_iva t
+                WHERE ((t.id = soggetti_titoli_iva_ambiti.titolo_iva_id) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_pk_ids(script.fn_utente_di_sessione('anagrafiche.soggetti_titoli_iva_ambiti.rls_soggetti_titoli_iva_ambiti_ef_whitelist')) AS fn_get_emittenti_scope_pk_ids), t.emittente_fiscale_id))))));
+              ALTER POLICY rls_soggetti_titoli_iva_movimenti_ef_whitelist ON anagrafiche.soggetti_titoli_iva_movimenti
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND (EXISTS ( SELECT 1
+                 FROM anagrafiche.soggetti_titoli_iva t
+                WHERE ((t.id = soggetti_titoli_iva_movimenti.titolo_iva_id) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_pk_ids(script.fn_utente_di_sessione('anagrafiche.soggetti_titoli_iva_movimenti.rls_soggetti_titoli_iva_movimenti_ef_whitelist')) AS fn_get_emittenti_scope_pk_ids), t.emittente_fiscale_id))))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND (EXISTS ( SELECT 1
+                 FROM anagrafiche.soggetti_titoli_iva t
+                WHERE ((t.id = soggetti_titoli_iva_movimenti.titolo_iva_id) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_pk_ids(script.fn_utente_di_sessione('anagrafiche.soggetti_titoli_iva_movimenti.rls_soggetti_titoli_iva_movimenti_ef_whitelist')) AS fn_get_emittenti_scope_pk_ids), t.emittente_fiscale_id))))));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER POLICY rls_billing_account_ef_whitelist ON anagrafiche.billing_account
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_sr_ids), script.fn_get_ba_emittente_sr_id(id))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_sr_ids), script.fn_get_ba_emittente_sr_id(id))));
+              ALTER POLICY rls_categorie_clienti_listini_ef_whitelist ON anagrafiche.categorie_clienti_listini
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_pk_ids), script.fn_resolve_emittente_fiscale_id('listino'::text, listino_id))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_pk_ids), script.fn_resolve_emittente_fiscale_id('listino'::text, listino_id))));
+              ALTER POLICY rls_clienti_ef_whitelist ON anagrafiche.clienti
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_sr_ids), script.fn_get_ba_emittente_sr_id(billing_account_id))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_sr_ids), script.fn_get_ba_emittente_sr_id(billing_account_id))));
+              ALTER POLICY rls_istanze_dati_precontrattuali_ef_whitelist ON anagrafiche.istanze_dati_precontrattuali
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_sr_ids), script.fn_get_ba_emittente_sr_id(script.fn_get_ba_id_da_coppia(istanza_utility_id, utility_id)))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_sr_ids), script.fn_get_ba_emittente_sr_id(script.fn_get_ba_id_da_coppia(istanza_utility_id, utility_id)))));
+              ALTER POLICY rls_soggetti_titoli_iva_ef_whitelist ON anagrafiche.soggetti_titoli_iva
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_pk_ids), emittente_fiscale_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_pk_ids), emittente_fiscale_id)));
+              ALTER POLICY rls_soggetti_titoli_iva_ambiti_ef_whitelist ON anagrafiche.soggetti_titoli_iva_ambiti
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND (EXISTS ( SELECT 1
+                 FROM anagrafiche.soggetti_titoli_iva t
+                WHERE ((t.id = soggetti_titoli_iva_ambiti.titolo_iva_id) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_pk_ids), t.emittente_fiscale_id))))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND (EXISTS ( SELECT 1
+                 FROM anagrafiche.soggetti_titoli_iva t
+                WHERE ((t.id = soggetti_titoli_iva_ambiti.titolo_iva_id) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_pk_ids), t.emittente_fiscale_id))))));
+              ALTER POLICY rls_soggetti_titoli_iva_movimenti_ef_whitelist ON anagrafiche.soggetti_titoli_iva_movimenti
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND (EXISTS ( SELECT 1
+                 FROM anagrafiche.soggetti_titoli_iva t
+                WHERE ((t.id = soggetti_titoli_iva_movimenti.titolo_iva_id) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_pk_ids), t.emittente_fiscale_id))))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND (EXISTS ( SELECT 1
+                 FROM anagrafiche.soggetti_titoli_iva t
+                WHERE ((t.id = soggetti_titoli_iva_movimenti.titolo_iva_id) AND script.fn_scope_ef_perimetro(( SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_pk_ids), t.emittente_fiscale_id))))));

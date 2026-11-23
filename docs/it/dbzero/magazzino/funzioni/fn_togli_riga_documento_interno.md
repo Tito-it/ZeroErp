@@ -24,7 +24,7 @@ DECLARE
     v_c      integer;   -- un conteggio: niente da ancorare
 BEGIN
     -- Scopo: il gesto «togli la riga» di un documento interno.
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('magazzino.fn_togli_riga_documento_interno');
     PERFORM script.fn_guard_livello(
         v_utente, 'magazzino',
         (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),

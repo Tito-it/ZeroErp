@@ -23,7 +23,7 @@ DECLARE
     v_utente config.user_override_azioni.auth_user_id%TYPE;
     v_stato  magazzino.movimenti_attesi.stato%TYPE;
 BEGIN
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('magazzino.fn_libera_blocco');
     PERFORM script.fn_guard_azione(v_utente, 'blocca_merce');
 
     IF p_blocco_id IS NULL OR p_blocco_id <= 0 THEN

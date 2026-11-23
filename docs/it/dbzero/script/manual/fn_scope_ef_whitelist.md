@@ -1,5 +1,7 @@
 ## Documentazione Concettuale – Funzione `script.fn_scope_ef_whitelist`
 
+> **Ultimo aggiornamento**: 23 novembre 2026
+>
 > **Vedi anche**
 >
 Architettura di riferimento:
@@ -118,7 +120,7 @@ CREATE POLICY rls_preventivi_ef_whitelist ON vendite.preventivi
     USING (
         current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
         AND script.fn_scope_ef_whitelist(
-            NULLIF(current_setting('app.current_user_id', true), '')::integer,
+            (SELECT script.fn_utente_di_sessione('vendite.preventivi.rls_preventivi_ef_whitelist')),
             emittente_fiscale_id
         )
     );

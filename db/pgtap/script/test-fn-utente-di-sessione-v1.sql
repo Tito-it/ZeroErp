@@ -14,7 +14,7 @@
 --   piu' la GUC (o non esiste) e' rossa anche lei, cosi' l'elenco non resta
 --   largo dopo che il debito e' chiuso.
 --
--- Elenco test (plan 16):
+-- Elenco test (plan 17):
 --   La forma
 --    1) script.fn_utente_di_sessione(text) esiste e risponde integer
 --    2) STABLE, INVOKER
@@ -36,13 +36,14 @@
 --       chiuso delle esenzioni
 --   15) ⭐ nessuna vista legge app.current_user_id da se'
 --   16) ogni esenzione esiste e legge ancora la GUC
+--   17) ⭐ nessuna policy RLS legge app.current_user_id da se' (giro 8b)
 -- ------------------------------------------------------------
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(16);
+SELECT plan(17);
 
 -- ============================================================
 -- Fixture
@@ -60,8 +61,8 @@ END
 $f$;
 
 -- Le esenzioni: chi legge app.current_user_id senza leggerlo come id
---   dell'utente, o chi va con le policy RLS. Elenco chiuso. (magazzino era
---   esente fino a 20261123-26, che lo porta al BB.)
+--   dell'utente. Elenco chiuso. (magazzino era esente fino a 20261123-26,
+--   dbops.fn_storico_arma_scope fino a 20261123-27: tutti e due leggono dal BB.)
 CREATE TEMP TABLE _esenti (oggetto text PRIMARY KEY, motivo text NOT NULL);
 INSERT INTO _esenti VALUES
   ('script.fn_utente_di_sessione',
@@ -69,9 +70,7 @@ INSERT INTO _esenti VALUES
   ('anagrafiche.fn_provisiona_dati_di_sviluppo',
    'salva e ripristina il testo della GUC, non lo legge come id'),
   ('dbops.fn_pgtap_articolo_correggi_struttura',
-   'salva e ripristina il testo della GUC, non lo legge come id'),
-  ('dbops.fn_storico_arma_scope',
-   'scrive le policy dello storico: va con le policy RLS, fuori dal giro 8 (Q60, 1a)');
+   'salva e ripristina il testo della GUC, non lo legge come id');
 
 -- I lettori della GUC sul catalogo: funzioni e procedure, dal testo intero
 --   (pg_get_functiondef: anche i corpi BEGIN ATOMIC, che prosrc non ha) senza
@@ -170,6 +169,18 @@ SELECT is((SELECT string_agg(e.oggetto, ', ' ORDER BY e.oggetto)
             WHERE NOT EXISTS (SELECT 1 FROM _lettori l WHERE l.oggetto = e.oggetto)),
     NULL,
     '16) ogni esenzione esiste e legge ancora la GUC: l''elenco non resta largo');
+
+-- Le policy dal catalogo (pg_policy), con le espressioni deparsate: nessuna
+--   esenzione. Una policy nuova passa l'utente a script.fn_utente_di_sessione.
+SELECT is((SELECT string_agg(n.nspname || '.' || c.relname || '.' || p.polname, ', ' ORDER BY 1)
+             FROM pg_catalog.pg_policy p
+             JOIN pg_catalog.pg_class c ON c.oid = p.polrelid
+             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE coalesce(pg_catalog.pg_get_expr(p.polqual, p.polrelid), '') || ' '
+                  || coalesce(pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid), '')
+                  ~ 'current_setting\(\s*''app\.current_user_id'''),
+    NULL,
+    '17) ⭐ nessuna policy RLS legge app.current_user_id da se'': passa da script.fn_utente_di_sessione');
 
 SELECT * FROM finish();
 ROLLBACK;

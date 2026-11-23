@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config: le policy RLS leggono l'utente di sessione dal BB.
+#   Brief: brief-db-revisione-ui (§3.6-sexies, giro 8b; Q60 (a)).
+#
+# Il perche': ogni policy convertiva app.current_user_id da se',
+#   NULLIF(current_setting('app.current_user_id', true), '')::integer, come
+#   facevano funzioni e viste prima del giro 8. Ora la legge
+#   script.fn_utente_di_sessione('<schema>.<tabella>.<policy>') (20261123-16):
+#   assente o vuota resta NULL, e la policy nasconde come prima; un valore che
+#   non e' l'id di un utente da' E_SCRIPT_CHIAMATA_NON_VALIDA, che nomina la
+#   policy, invece del 22P02 grezzo su ogni lettura della tabella.
+#   La lettura resta nella sottoquery non correlata della funzione di
+#   perimetro: valutata una volta per istruzione, non per riga.
+# ⚠️ In email_log e email_outbox l'utente era anche un argomento della
+#   funzione di perimetro, valutato per riga: li' il BB sta in una
+#   sottoquery sua, ( SELECT script.fn_utente_di_sessione(...) ), valutata
+#   una volta per istruzione come le altre letture.
+# Policy: email_log.rls_email_log_ambito, email_outbox.rls_email_outbox_ambito.
+# ALTER POLICY ... USING / WITH CHECK: nome, comando, ruoli e PERMISSIVE
+#   invariati. Espressioni dal vivo (dbdev, 2026-11-23), lette con search_path
+#   vuoto: ogni nome qualificato. Le espressioni di prima tornano col blocco
+#   di ritorno del changeSet.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261123-29-update-policy-config-utente-di-sessione-mctit.yaml
+
+  - changeSet:
+      id: 20261123-29-update-policy-config-utente-di-sessione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config: le policy RLS leggono app.current_user_id da script.fn_utente_di_sessione invece di
+        convertirlo da se'. Brief: brief-db-revisione-ui (§3.6-sexies, giro 8b).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "3"
+            sql: >
+              SELECT (SELECT count(*) FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'script' AND p.proname = 'fn_utente_di_sessione')
+                   + (SELECT count(*) FROM pg_catalog.pg_policies
+                       WHERE (schemaname, tablename, policyname) IN (('config', 'email_log', 'rls_email_log_ambito'), ('config', 'email_outbox', 'rls_email_outbox_ambito')))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER POLICY rls_email_log_ambito ON config.email_log
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_email_ambito_perimetro(( SELECT script.fn_is_super_admin(script.fn_utente_di_sessione('config.email_log.rls_email_log_ambito')) AS fn_is_super_admin), ( SELECT script.fn_get_uo_id_for_user(script.fn_utente_di_sessione('config.email_log.rls_email_log_ambito')) AS fn_get_uo_id_for_user), ( SELECT script.fn_scope_identita_processo(script.fn_utente_di_sessione('config.email_log.rls_email_log_ambito'), 'send_pending_emails'::text) AS fn_scope_identita_processo), ( SELECT script.fn_get_emittenti_scope_pk_ids(script.fn_utente_di_sessione('config.email_log.rls_email_log_ambito')) AS fn_get_emittenti_scope_pk_ids), ( SELECT script.fn_utente_di_sessione('config.email_log.rls_email_log_ambito')), ambito, emittente_fiscale_id, unita_organizzativa_id, creato_da_user_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_email_ambito_perimetro(( SELECT script.fn_is_super_admin(script.fn_utente_di_sessione('config.email_log.rls_email_log_ambito')) AS fn_is_super_admin), ( SELECT script.fn_get_uo_id_for_user(script.fn_utente_di_sessione('config.email_log.rls_email_log_ambito')) AS fn_get_uo_id_for_user), ( SELECT script.fn_scope_identita_processo(script.fn_utente_di_sessione('config.email_log.rls_email_log_ambito'), 'send_pending_emails'::text) AS fn_scope_identita_processo), ( SELECT script.fn_get_emittenti_scope_pk_ids(script.fn_utente_di_sessione('config.email_log.rls_email_log_ambito')) AS fn_get_emittenti_scope_pk_ids), ( SELECT script.fn_utente_di_sessione('config.email_log.rls_email_log_ambito')), ambito, emittente_fiscale_id, unita_organizzativa_id, creato_da_user_id)));
+              ALTER POLICY rls_email_outbox_ambito ON config.email_outbox
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_email_ambito_perimetro(( SELECT script.fn_is_super_admin(script.fn_utente_di_sessione('config.email_outbox.rls_email_outbox_ambito')) AS fn_is_super_admin), ( SELECT script.fn_get_uo_id_for_user(script.fn_utente_di_sessione('config.email_outbox.rls_email_outbox_ambito')) AS fn_get_uo_id_for_user), false, ( SELECT script.fn_get_emittenti_scope_pk_ids(script.fn_utente_di_sessione('config.email_outbox.rls_email_outbox_ambito')) AS fn_get_emittenti_scope_pk_ids), ( SELECT script.fn_utente_di_sessione('config.email_outbox.rls_email_outbox_ambito')), ambito, emittente_fiscale_id, unita_organizzativa_id, creato_da_user_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_email_ambito_perimetro(( SELECT script.fn_is_super_admin(script.fn_utente_di_sessione('config.email_outbox.rls_email_outbox_ambito')) AS fn_is_super_admin), ( SELECT script.fn_get_uo_id_for_user(script.fn_utente_di_sessione('config.email_outbox.rls_email_outbox_ambito')) AS fn_get_uo_id_for_user), false, ( SELECT script.fn_get_emittenti_scope_pk_ids(script.fn_utente_di_sessione('config.email_outbox.rls_email_outbox_ambito')) AS fn_get_emittenti_scope_pk_ids), ( SELECT script.fn_utente_di_sessione('config.email_outbox.rls_email_outbox_ambito')), ambito, emittente_fiscale_id, unita_organizzativa_id, creato_da_user_id)));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER POLICY rls_email_log_ambito ON config.email_log
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_email_ambito_perimetro(( SELECT script.fn_is_super_admin((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_is_super_admin), ( SELECT script.fn_get_uo_id_for_user((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_uo_id_for_user), ( SELECT script.fn_scope_identita_processo((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, 'send_pending_emails'::text) AS fn_scope_identita_processo), ( SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_pk_ids), (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, ambito, emittente_fiscale_id, unita_organizzativa_id, creato_da_user_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_email_ambito_perimetro(( SELECT script.fn_is_super_admin((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_is_super_admin), ( SELECT script.fn_get_uo_id_for_user((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_uo_id_for_user), ( SELECT script.fn_scope_identita_processo((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, 'send_pending_emails'::text) AS fn_scope_identita_processo), ( SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_pk_ids), (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, ambito, emittente_fiscale_id, unita_organizzativa_id, creato_da_user_id)));
+              ALTER POLICY rls_email_outbox_ambito ON config.email_outbox
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_email_ambito_perimetro(( SELECT script.fn_is_super_admin((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_is_super_admin), ( SELECT script.fn_get_uo_id_for_user((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_uo_id_for_user), false, ( SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_pk_ids), (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, ambito, emittente_fiscale_id, unita_organizzativa_id, creato_da_user_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_email_ambito_perimetro(( SELECT script.fn_is_super_admin((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_is_super_admin), ( SELECT script.fn_get_uo_id_for_user((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_uo_id_for_user), false, ( SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS fn_get_emittenti_scope_pk_ids), (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, ambito, emittente_fiscale_id, unita_organizzativa_id, creato_da_user_id)));

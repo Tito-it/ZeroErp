@@ -1,6 +1,6 @@
 # Guida — Risorse Umane e Accessi al Software
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -781,7 +781,7 @@ Ogni operazione nel sistema porta con se l'**identita** di chi l'ha eseguita: il
 In pratica:
 
 * L'autenticazione JWT propaga l'utente e la sua veste come parametri di sessione PostgreSQL: `app.current_user_id` e `app.jwt_user`, piu la tripla multi-veste `app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id` (vedi [Propagazione identita utente al database](#propagazione-identita-utente-al-database-guc-app))
-* I trigger defense-in-depth (es. ambito emittente fiscale) usano `current_setting('app.current_user_id')` per verificare le autorizzazioni a livello DB
+* I trigger defense-in-depth (es. ambito emittente fiscale), i verbi e le policy RLS leggono l'utente con `script.fn_utente_di_sessione`, la sede unica della lettura di `app.current_user_id`, per verificare le autorizzazioni a livello DB
 * L'`auth_user_id` che esegue le pipeline di fatturazione, i push commesse e i lotti e lo stesso che arriva dalla catena risorsa → veste → utente
 
 > Per i dettagli su audit e defense-in-depth: vedi [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni).

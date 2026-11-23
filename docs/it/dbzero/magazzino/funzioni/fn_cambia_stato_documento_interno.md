@@ -26,7 +26,7 @@ BEGIN
     -- Scopo: il gesto conferma, riapri o annulla di un documento
     --   interno: lo stato p_stato sulla testata. La matrice la fa
     --   rispettare il trigger. Ritorna lo stato scritto.
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('magazzino.fn_cambia_stato_documento_interno');
     PERFORM script.fn_guard_livello(
         v_utente, 'magazzino',
         (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),

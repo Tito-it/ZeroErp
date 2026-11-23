@@ -169,9 +169,10 @@ BEGIN
                            -- fn_scope_ef_perimetro(perimetro, scope).
                            AND script.fn_scope_ef_perimetro(
                                    (SELECT script.fn_get_emittenti_scope_pk_ids(
-                                       NULLIF(current_setting('app.current_user_id', true), '')::integer)),
+                                       script.fn_utente_di_sessione(%L))),
                                    scope_emittente_fiscale_id))$p$,
-                    v_pol_sel, v_full_sto);
+                    -- p_chi del BB: tabella e policy, come nelle policy delle madri.
+                    v_pol_sel, v_full_sto, v_full_sto || '.' || v_pol_sel);
                 EXECUTE v_sql;
             END IF;
         END IF;

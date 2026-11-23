@@ -146,12 +146,13 @@ Lo schema è sempre lo stesso, e ha due pezzi:
 
 1. **il gate sulla veste** — `app.ruolo_applicativo` confrontato con i valori ammessi
    (`IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')`, e simili);
-2. **la chiamata allo scope**, che riceve `NULLIF(current_setting(...), '')::bigint` — la
-   conversione da stringa vuota a `NULL` **prima** del cast, perché è il `NULL` a far
-   scattare il fail-closed dentro la funzione di scope.
+2. **la chiamata allo scope**, che riceve l'utente da
+   [`script.fn_utente_di_sessione('<schema>.<tabella>.<policy>')`](/dbzero/script/funzioni/fn_utente_di_sessione)
+   (§4.4): `NULL` se la GUC manca o è vuota, ed è il `NULL` a far scattare il fail-closed dentro la
+   funzione di scope. La lettura sta in una sottoquery non correlata, `(SELECT …)`, che il database
+   valuta una volta per istruzione e non per riga.
 
-Un esempio completo di policy e la riga di conversione sono in
-[Area tecnica](#area-tecnica-esempi).
+Un esempio completo di policy è in [Area tecnica](#area-tecnica-esempi).
 
 ### 4.2 Helper `fn_current_identita_context`
 
@@ -169,15 +170,14 @@ dalle policy RLS.
 
 ### 4.4 Funzioni e viste: l'utente da una sede sola
 
-Una funzione o una vista che ha bisogno dell'utente della richiesta non converte
+Una funzione, una vista o una policy che ha bisogno dell'utente della richiesta non converte
 `app.current_user_id` da sé: chiama
 [`script.fn_utente_di_sessione('<chi legge>')`](/dbzero/script/funzioni/fn_utente_di_sessione).
 Se la GUC manca o è vuota risponde `NULL`, e che cosa voglia dire «nessun utente» lo decide chi
 legge. Se contiene qualcosa che non è l'id di un utente si ferma con
-`E_SCRIPT_CHIAMATA_NON_VALIDA`, e il messaggio nomina la funzione che leggeva. Un pgTAP del
-catalogo tiene la lettura in quella sede.
-
-Le policy RLS fanno ancora la conversione da sé (§4.1).
+`E_SCRIPT_CHIAMATA_NON_VALIDA`, e il messaggio nomina chi leggeva (la funzione, o la policy con
+la sua tabella). Un pgTAP del catalogo tiene la lettura in quella sede, per funzioni, viste e
+policy.
 
 ---
 
@@ -278,8 +278,9 @@ righe**, in silenzio.
 
 ### 7.3 Policy RLS
 
-Ogni policy legge i GUC con `NULLIF(current_setting(..., true), '')::tipo` e li passa alle
-funzioni di sopra ([esempio](#area-tecnica-esempi)). **Quante siano e dove stiano è stato, non
+Ogni policy legge l'utente con `script.fn_utente_di_sessione` (le altre GUC con
+`NULLIF(current_setting(..., true), '')::tipo`) e lo passa alle funzioni di sopra
+([esempio](#area-tecnica-esempi)). **Quante siano e dove stiano è stato, non
 contratto**: si interroga `pg_policies`, non si tiene a mano qui. Il disegno d'insieme è in
 [Multi-Face Auth §6.4](/guide/architettura-multi-face-auth#64-il-canale-di-origine-sui-dati-transazionali).
 
@@ -291,7 +292,7 @@ contratto**: si interroga `pg_policies`, non si tiene a mano qui. Il disegno d'i
 ### 7.5 Funzioni e viste
 
 Leggono l'utente con [`script.fn_utente_di_sessione`](/dbzero/script/funzioni/fn_utente_di_sessione),
-mai con la conversione delle policy (§4.4).
+come le policy (§4.4).
 
 ---
 
@@ -377,8 +378,9 @@ JWT_GUC_RESET_SQL = "SELECT " + ", ".join(
 )
 ```
 
-**Una policy RLS completa** — il gate sulla veste e la chiamata allo scope, con la conversione
-sicura da stringa vuota a `NULL`:
+**Una policy RLS completa** — il gate sulla veste e la chiamata allo scope; il perimetro
+dell'operatore in una sottoquery non correlata, valutata una volta per istruzione, e per riga solo
+il confronto con l'emittente della riga:
 
 ```sql
 CREATE POLICY rls_preventivi_ef_whitelist ON vendite.preventivi
@@ -386,8 +388,9 @@ CREATE POLICY rls_preventivi_ef_whitelist ON vendite.preventivi
     FOR SELECT
     USING (
         current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
-        AND script.fn_scope_ef_whitelist(
-            NULLIF(current_setting('app.current_user_id', true), '')::integer,
+        AND script.fn_scope_ef_perimetro(
+            (SELECT script.fn_get_emittenti_scope_pk_ids(
+                script.fn_utente_di_sessione('vendite.preventivi.rls_preventivi_ef_whitelist'))),
             emittente_fiscale_id
         )
     );

@@ -1,5 +1,7 @@
 ## Documentazione Concettuale – Funzione `script.fn_scope_ef_whitelist_via_fattura`
 
+> **Ultimo aggiornamento**: 23 novembre 2026
+>
 > **Vedi anche**
 >
 [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls)
@@ -75,7 +77,7 @@ CREATE POLICY rls_fatture_scadenze_ef_whitelist ON vendite.fatture_scadenze
     USING (
         current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
         AND script.fn_scope_ef_whitelist_via_fattura(
-            NULLIF(current_setting('app.current_user_id', true), '')::integer,
+            (SELECT script.fn_utente_di_sessione('vendite.fatture_scadenze.rls_fatture_scadenze_ef_whitelist')),
             fattura_id
         )
     );

@@ -22,7 +22,7 @@ BEGIN
     -- Scopo: il gesto «nuovo magazzino» dell'operatore: livello
     --   TUTTO sull'oggetto, poi il BB. Ritorna l'id.
     PERFORM script.fn_guard_livello(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer,
+        script.fn_utente_di_sessione('magazzino.fn_aggiungi_magazzino'),
         'magazzino', 'magazzini', 'TUTTO');
 
     RETURN magazzino.fn_crea_magazzino(
