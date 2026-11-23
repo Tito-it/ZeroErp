@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO STRADARIO HA MEMORIA CONTINUA: STORICIZZA ACCESO DI DEFAULT
+#   config.stradario.storicizza: DEFAULT true, COMMENT della colonna riscritto.
+#   Brief: brief-db-revisione-anagrafiche §18 (Q7 estesa allo stradario, Tid
+#   2026-11-22), giro 1.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   Come per indirizzi e civici (20261123-38): lo storico di una via lasciava
+#   traccia solo se chi scriveva passava storicizza = true, e il trigger lo
+#   rispegneva dopo ogni modifica.
+#
+# ── PERCHE' QUI SOLO IL DEFAULT ─────────────────────────────────
+#   Le vie del seed le scrive il mirror 80_data/changelog/20250814-03
+#   (loadUpdateData su config/stradario.csv, runOnChange). Fino a oggi il CSV
+#   portava storicizza = f riga per riga; da questo giro la colonna esce dal
+#   CSV e dal mirror (linee-guida-sql §11.2: «se il valore giusto e' il
+#   default della tabella, la colonna si toglie»), e le vie del seed nascono
+#   col default di questo changeSet.
+#   Le righe che esistono gia' si accendono in 80_data/changelog/20261123-40,
+#   DOPO il mirror: su un database vivo il mirror, cambiato, ripassa prima di
+#   quel changeSet, e ripassa su righe ancora spente, quindi senza scrivere una
+#   versione per ogni via. Se le righe si accendessero qui, il ripasso del
+#   mirror (un UPDATE su ogni via) scriverebbe nello storico una modifica che
+#   non c'e' stata.
+#   La colonna e' gia' NOT NULL.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261123-39-alter-stradario-storicizza-default-mctit.yaml
+
+  - changeSet:
+      id: 20261123-39-alter-stradario-storicizza-default
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.stradario.storicizza DEFAULT true: le vie nuove nascono con lo storico acceso. Le
+        righe esistenti le accende 20261123-40, dopo il mirror del CSV.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stradario ALTER COLUMN storicizza SET DEFAULT true;
+
+              COMMENT ON COLUMN config.stradario.storicizza IS
+                'Se true, ogni modifica e cancellazione della via lascia una versione in storico.stradario (script.trgfn_storico_generic). Nasce true e resta acceso: la tabella è in config.storico_set_storicizza, e il trigger non lo spegne dopo la modifica. Una scrittura che lo porta a false non lascia traccia, e la riga resta senza storico finché qualcuno non lo riaccende.';
+
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE config.stradario ALTER COLUMN storicizza SET DEFAULT false;
+              COMMENT ON COLUMN config.stradario.storicizza IS
+                'Se true esegue trigger per storicizzare su storico.stradario';

@@ -1,6 +1,6 @@
 # Guida Operativa – Riclassificazione Vie e Toponomastica
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > **Destinatari**: amministratori database, operatori manutenzione dati
 >
@@ -44,7 +44,7 @@ Per tutte le casistiche si adotta la stessa logica in quattro passi:
    * I trigger di normalizzazione aggiornano `via_norm` e `indirizzo_normalizzato`
 
 4. **Storico garantito**
-   * Le modifiche sono tracciate in `storico.stradario` e in `storico.indirizzi_dettaglio`
+   * Le modifiche sono tracciate in `storico.stradario` e in `storico.indirizzi_dettaglio`: le due tabelle hanno lo storico continuo (`storicizza` nasce acceso e resta acceso), e ogni riga riscritta lascia la sua versione senza che la procedura lo chieda
 
 ---
 
@@ -66,7 +66,7 @@ La procedura [`maintenance.proc_bump_indirizzi_dettaglio`](/dbzero/maintenance/f
 
 * riscrive senza cambiarle le righe di `indirizzi_dettaglio` di un dato `stradario_id`, così i trigger di normalizzazione ricalcolano `via_norm` e `indirizzo_normalizzato`;
 * non accende il flag `zeroerp.maintenance_indirizzi_dettaglio`: lo `stradario_id` non cambia, e il guard non scatta. Il flag resta la porta del verbo che sposterà gli indirizzi su un'altra via, quando nascerà;
-* lascia la storicizzazione ai trigger standard, che storicizzano solo le righe con `storicizza` attivo.
+* lascia la storicizzazione ai trigger standard: il flag `storicizza` è acceso di default, quindi ogni civico riscritto lascia una versione, anche quando il testo normalizzato non cambia.
 
 ### Correzione della descrizione di un toponimo
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stradario`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 
 >  👀 **Vedi anche** 
 >
@@ -25,7 +25,7 @@ La tabella **`config.stradario`** definisce la mappa delle vie e strade di ciasc
 * **Informazioni estese**
   Il campo `meta` (JSONB) permette di memorizzare dati aggiuntivi, come eventuali frazioni, indicazioni o note specifiche.
 * **Storicizzazione**
-  Il campo `storicizza` se true attiva il trigger per la storicizzazione delle informazioni sulla tabella `storico.stradario`. Il front-end dovrà sempre impostare a true il valore, solo per funzioni administrator si potrà non gestire a true.
+  Lo storico è continuo: `storicizza` nasce `true` e la tabella è in `config.storico_set_storicizza`, quindi ogni modifica e cancellazione di una via lascia una versione in `storico.stradario` senza che chi scrive debba chiederlo. Una scrittura che porta il flag a `false` non lascia traccia, e la via resta senza storico finché qualcuno non lo riaccende. Le vie del seed nascono col default: il CSV non porta la colonna.
   
 ---
 

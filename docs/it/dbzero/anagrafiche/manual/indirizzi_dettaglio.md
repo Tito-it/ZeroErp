@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.indirizzi_dettaglio`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -98,14 +98,15 @@ non si collega a niente di nuovo, e torna in uso quando il «trova o crea» lo t
 
 ---
 
-### Lo storico è a richiesta di chi scrive
+### Lo storico è continuo
 
-`storicizza` nasce `false`, e la tabella non è fra quelle che tengono il flag acceso
-(`config.storico_set_storicizza`). Una scrittura che passa `storicizza = true` lascia in
-`storico.indirizzi_dettaglio` la versione precedente e quella nuova; poi il trigger dello storico rimette il
-flag a `false`, e la scrittura successiva non lascia traccia se non lo chiede di nuovo. La rinormalizzazione
-di una via e la riattivazione del «trova o crea» non lo chiedono. Nessun oggetto del database riaccende il
-flag: la traccia di una modifica dipende da chi la scrive.
+`storicizza` nasce `true`, e la tabella è fra quelle che tengono il flag acceso
+(`config.storico_set_storicizza`): ogni modifica lascia in `storico.indirizzi_dettaglio` la versione nuova (la
+prima anche quella di partenza), e ogni cancellazione la sua. Vale per ogni strada: la modifica dal pannello, la
+riattivazione del «trova o crea», la fusione di due vie, la rinormalizzazione di una via. La rinormalizzazione
+riscrive ogni civico della via, e ognuno lascia una versione anche quando il testo normalizzato non cambia. Una
+scrittura che porta il flag a `false` non lascia traccia, e la riga resta senza storico finché qualcuno non lo
+riaccende.
 
 ---
 
@@ -124,11 +125,6 @@ quello della via.
   di colonna obbligatoria: la normalizzazione non trova la via e lascia `via_norm` vuota.
 * **La porta della fusione è un parametro di sessione** (`zeroerp.maintenance_indirizzi_dettaglio`): chiunque
   scriva può accenderlo, e con la porta accesa il cambio di via passa senza giudizio.
-* **Nessuna modifica fatta dall'applicazione lascia traccia nello storico**: nessuna scrittura dell'app passa
-  `storicizza = true`, e nemmeno la riattivazione del «trova o crea»; `storico.indirizzi_dettaglio` resta vuoto
-  per i civici scritti dall'app. È deciso lo storico continuo, come su `anagrafiche.indirizzi_soggetti`, con la
-  regola tenuta dal database; non è ancora fatto.
-* **Il commento di `storicizza`** dice «Default=True»: il default è `false`.
 
 ---
 
@@ -141,6 +137,8 @@ quello della via.
   senza la porta accesa.
 * `db/pgtap/dbops/test-fusioni-comune-stradario-v1.sql` — la fusione che sposta i civici sulla via viva, la via
   soppressa che non riceve civici nuovi.
+* `db/pgtap/anagrafiche/test-storico-indirizzi-continuo-v1.sql` — lo storico continuo: il civico nasce col flag
+  acceso, due modifiche e la cancellazione lasciano ciascuna la sua versione.
 
 ---
 

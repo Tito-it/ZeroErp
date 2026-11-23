@@ -3,7 +3,7 @@
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
 >
-> Ultima revisione: 2026-11-22.
+> Ultima revisione: 2026-11-23.
 
 ## Identità del Progetto
 
@@ -283,7 +283,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   ritirato, committato il 2026-11-22, doc auto-generata rigenerata. Q7 riaperta dalla risposta R-BE5 del BE: lo
   storico di `indirizzi`, `indirizzi_dettaglio` e `config.stradario` diventa continuo (giro di codice, in coda). Giro 0e (area E: gli accessi; 23 pagine, i blocchi della
   sincronizzazione e dell'ultimo SUPER_ADMIN, le due guide) scritto e committato il 2026-11-22, doc auto-generata rigenerata: il giro 0 è finito. Prossimo:
-  il vaglio delle segnalazioni S1-S68 (Tid), poi i giri di codice.
+  il vaglio delle segnalazioni S1-S68 (Tid), poi i giri di codice. Il 2026-11-23: il brief ha in testa il piano a spunta (§0)
+  e il vaglio per temi (§17, una decina di decisioni invece di 68); giro 1 (Q7, lo storico continuo di indirizzi, civici
+  e vie, `20261123-38` … `-42`) applicato coi pgTAP verdi, da committare: la prova ha trovato `storico.indirizzi` che non
+  accettava nessuna versione.
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**

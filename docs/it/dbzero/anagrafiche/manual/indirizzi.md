@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.indirizzi`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -82,14 +82,14 @@ per la creazione, e i verbi della copia per portare qui un indirizzo del soggett
 
 ---
 
-### Lo storico è a richiesta di chi scrive
+### Lo storico è continuo
 
-`storicizza` nasce `false`, e la tabella non è fra quelle che tengono il flag acceso
-(`config.storico_set_storicizza`). Una scrittura che passa `storicizza = true` lascia in `storico.indirizzi` la
-versione precedente e quella nuova; poi il trigger dello storico rimette il flag a `false`, e la scrittura
-successiva non lascia traccia se non lo chiede di nuovo. Una cancellazione lascia la sua versione solo se la
-riga ha il flag acceso in quel momento. Nessun oggetto del database riaccende il flag: la traccia di una
-modifica dipende da chi la scrive.
+`storicizza` nasce `true`, e la tabella è fra quelle che tengono il flag acceso
+(`config.storico_set_storicizza`): ogni modifica lascia in `storico.indirizzi` la versione nuova (la prima
+anche quella di partenza), e ogni cancellazione la sua. Lo garantisce il database, qualunque sia la strada
+della scrittura: il pannello, le madri, i verbi di copia. Come su `anagrafiche.indirizzi_soggetti`, una
+scrittura che porta il flag a `false` non lascia traccia, e la riga resta senza storico finché qualcuno non lo
+riaccende: il flag è il modo di chi scrive di dire «questa no».
 
 ---
 
@@ -102,9 +102,6 @@ modifica dipende da chi la scrive.
   estero, se lo stato proposto non ha il catalogo completo, passa a quello stato senza che nessuno lo dica.
 * **La posizione è una copia**: `geoloc` prende la posizione del civico quando la riga si scrive. Se poi cambia
   la posizione del civico, la riga la riprende solo alla sua prossima scrittura.
-* **Nessuna modifica fatta dall'applicazione lascia traccia nello storico**: nessuna scrittura dell'app passa
-  `storicizza = true`, quindi `storico.indirizzi` resta vuoto per gli indirizzi scritti dall'app. È deciso lo
-  storico continuo, come su `anagrafiche.indirizzi_soggetti`, con la regola tenuta dal database; non è ancora fatto.
 
 ---
 
@@ -118,6 +115,8 @@ modifica dipende da chi la scrive.
 * `db/pgtap/anagrafiche/test-indirizzo-libero-due-forme-v1.sql` — le due forme dell'indirizzo libero.
 * `db/pgtap/anagrafiche/test-soggetti-ruoli-indirizzi-required.sql` — gli indirizzi obbligatori del ruolo, al
   COMMIT.
+* `db/pgtap/anagrafiche/test-storico-indirizzi-continuo-v1.sql` — lo storico continuo: la riga nasce col flag
+  acceso, due modifiche lasciano due versioni, il flag resta acceso, una scrittura che lo spegne non lascia traccia.
 
 ---
 
