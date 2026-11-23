@@ -816,7 +816,11 @@ scrivono le loro tabelle:
 | `zeroerp.ddt_riga_ritira_legame` (solo `DELETE`) | `ordini_righe_fulfillment`, `resi_righe_riconsegne` | `fn_ddt_riga_ritira_legami` | `fn_ddt_riga_correggi_qta_evasa` | sicura: quel verbo fa solo `UPDATE` |
 | `zeroerp.articolo_correggi_struttura` | `catalogo.articoli` | `fn_articolo_correggi_struttura` | nessuno | sicura |
 | `zeroerp.legame_distinta_chiudi` | `vendite.listini_righe_componenti` | `catalogo.fn_chiudi_legame_distinta` | nessuno | sicura |
-| `zeroerp.allow_template_versione_pubblicazione_override` | `documenti.template_documenti_versioni` | `fn_pubblica_template_documento_versione` (INVOKER) | nessuno | sicura |
+| `zeroerp.allow_template_versione_pubblicazione_override` | `documenti.template_documenti_versioni` | `fn_pubblica_template_documento_versione` (INVOKER) | nessuno | ~~sicura~~ ⚠️ **non è una porta «GUC + proprietario»** (corretto il 2026-11-23): il trigger chiede la GUC **o** il proprietario, e il proprietario è l'eccezione del seed; per l'app la GUC apre da sola. Va nell'altra classe: porta 16 di [brief-db-porte-aperte-dalla-sola-guc](../../work-in-progress/brief-db-porte-aperte-dalla-sola-guc.md) |
+
+⚠️ **Correzione del 2026-11-23.** La tabella qui sopra elencava i trigger il cui corpo nomina
+`fn_is_proprietario_tabella`, senza guardare se le due condizioni stessero in AND su ogni ramo. Riletta così, la sola
+riga del template cambia classe; le altre sono in AND.
 
 Ogni verbo che accende una porta lo fa sulla **propria** riga prima di scrivere, sovrascrivendo il valore che
 l'app avesse messo, e la spegne prima di uscire. I verbi generici DEFINER che scrivono colonne da un `jsonb` sono il

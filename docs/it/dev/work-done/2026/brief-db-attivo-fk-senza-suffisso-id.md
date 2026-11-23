@@ -7,7 +7,7 @@
 > **Brief vicini verificati** (rifatto il 2026-11-21 sugli **oggetti**, non solo sul filtro): nessuno
 > in `work-in-progress/` tocca il filtro `_id` del motore ATTIVO; due toccano FK dell'elenco del §2.
 >
-> * [brief-db-revisione-ui](../../work-in-progress/brief-db-revisione-ui.md): scrive anche lui in `automazione_attivo_eccezioni.csv`,
+> * [brief-db-revisione-ui](brief-db-revisione-ui.md): scrive anche lui in `automazione_attivo_eccezioni.csv`,
 >   coi giri 5-6 ancora da fare. Le righe del CSV si aggiungono per sostituzione del testo attuale.
 >   ⚠️ *Correzione del 2026-11-21 (§3.2): qui si leggeva che toccava «le FK di `ui` (`ambito`, `vista`)».
 >   Non è così: `ambito` è di `config.tipi_indirizzi_allowed`, `vista` di `dbops.presidi_*`, e nessuna FK
