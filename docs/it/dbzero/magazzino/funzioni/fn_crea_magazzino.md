@@ -18,10 +18,9 @@ CREATE OR REPLACE FUNCTION magazzino.fn_crea_magazzino(p_codice character varyin
 AS $function$
 DECLARE
     v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
-    v_estranea text;
     -- Le colonne che il BB riceve come argomenti: non stanno in p_campi.
     c_argomenti CONSTANT text[] := ARRAY['codice', 'descrizione', 'indirizzo_dettaglio_id'];
-    v_ammesse  text[];
+    v_ammesse  text[];  -- nomi di colonna: nessuna colonna di cui siano il riflesso
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -36,27 +35,14 @@ BEGIN
     --     argomenti; una chiave fuori elenco: E_CAMPO_NON_AMMESSO;
     --   - scope, unicita', indirizzo attivo: i guard della tabella.
     -- =========================================================
-    IF jsonb_typeof(v_campi) <> 'object' THEN
-        PERFORM script.fn_log_and_raise_error(
-            'magazzino', 'magazzino.fn_crea_magazzino', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
-            jsonb_build_object('tipo_campi', jsonb_typeof(v_campi)),
-            NULL::uuid,
-            'magazzino.fn_crea_magazzino',
-            'i campi non sono un oggetto');
-    END IF;
-
     v_ammesse := ARRAY(SELECT c
                          FROM unnest(magazzino.fn_magazzini_colonne_ammesse('crea')) AS c
                         WHERE c <> ALL (c_argomenti));
 
-    v_estranea := script.fn_prima_chiave_estranea(v_campi, v_ammesse);
-    IF v_estranea IS NOT NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'magazzino', 'magazzino.fn_crea_magazzino', 'E_CAMPO_NON_AMMESSO',
-            jsonb_build_object('campo', v_estranea, 'codice', p_codice),
-            NULL::uuid,
-            v_estranea);
-    END IF;
+    PERFORM script.fn_guard_campi_ammessi(
+        v_campi, v_ammesse,
+        'magazzino', 'magazzino.fn_crea_magazzino',
+        jsonb_build_object('codice', p_codice));
 
     -- jsonb_strip_nulls: anche l'emittente NULL resta fuori, e lo
     -- mette il trigger dalla sessione.

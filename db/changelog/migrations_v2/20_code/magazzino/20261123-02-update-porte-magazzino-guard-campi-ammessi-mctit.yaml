@@ -1,0 +1,845 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE PORTE DI MAGAZZINO PASSANO A script.fn_guard_campi_ammessi
+#   I quattro BB di nascita (fn_crea_magazzino, _ubicazione, _lotto,
+#   _asset) e i tre verbi di modifica (fn_modifica_magazzino, _ubicazione,
+#   _lotto). Brief: brief-db-magazzino-tutte-le-scritture-dal-verbo, P-5a.
+#
+# -- CHE COSA CAMBIA ----------------------------------------------------
+#   Il controllo «i campi sono un oggetto» e il sollevamento di
+#   E_CAMPO_NON_AMMESSO escono dal corpo: li fa il guard (20261123-01),
+#   con lo stesso codice, la stessa frase e context.campo. Il contesto
+#   della porta (codice, seriale, id, magazzino) resta quello di prima.
+#   Due differenze, tutte e due sul codice TECNICO
+#   E_SCRIPT_CHIAMATA_NON_VALIDA, che nessuna interfaccia produce:
+#     * nei verbi di modifica la frase dice «i campi» e non «i dati», e
+#       la chiave del contesto e' tipo_campi e non tipo_dati;
+#     * nei verbi di modifica la lista delle colonne si legge prima del
+#       controllo di forma: e' una funzione pura, non cambia l'esito.
+#
+# -- IL DEBITO %TYPE DEL P-3 ------------------------------------------
+#   Tid, 2026-11-22: «si riprende alla prossima riscrittura di quelle
+#   funzioni». E' questa: i RETURNS dei quattro BB si ancorano all'id della
+#   tabella, e v_ammesse (text[]: nomi di colonna) dice perche' e' nudo.
+#   La firma non cambia (%TYPE si scioglie allo stesso tipo): e' un
+#   CREATE OR REPLACE, non un DROP + CREATE.
+#
+#   Il corpo viene dal catalogo vivo (pg_get_functiondef su dbdev,
+#   2026-11-23, dopo 20261122-16), la testata ancorata dall'ultimo
+#   changeSet di ciascuna. Attributi invariati: INVOKER i BB, DEFINER
+#   con search_path bloccato i verbi; il COMMENT resta quello vivo, che
+#   resta vero. Il rollback rimette i corpi di oggi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261123-02-update-porte-magazzino-guard-campi-ammessi-mctit.yaml
+
+  - changeSet:
+      id: 20261123-02-update-porte-magazzino-guard-campi-ammessi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le porte di magazzino che ricevono i campi in jsonb sollevano E_CAMPO_NON_AMMESSO
+        attraverso script.fn_guard_campi_ammessi, invece di ripetere il sollevamento nel corpo.
+        Codice, frase e contesto invariati.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_guard_campi_ammessi';
+        - sqlCheck:
+            expectedResult: "7"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'magazzino' AND p.proname IN ('fn_crea_magazzino', 'fn_crea_ubicazione', 'fn_crea_lotto', 'fn_crea_asset', 'fn_modifica_magazzino', 'fn_modifica_ubicazione', 'fn_modifica_lotto');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_crea_magazzino(
+                  p_codice                 magazzino.magazzini.codice%TYPE,
+                  p_descrizione            magazzino.magazzini.descrizione%TYPE,
+                  p_indirizzo_dettaglio_id magazzino.magazzini.indirizzo_dettaglio_id%TYPE,
+                  p_campi                  jsonb DEFAULT '{}'::jsonb,
+                  p_emittente_fiscale_id   magazzino.magazzini.emittente_fiscale_id%TYPE DEFAULT NULL)
+               RETURNS magazzino.magazzini.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  -- Le colonne che il BB riceve come argomenti: non stanno in p_campi.
+                  c_argomenti CONSTANT text[] := ARRAY['codice', 'descrizione', 'indirizzo_dettaglio_id'];
+                  v_ammesse  text[];  -- nomi di colonna: nessuna colonna di cui siano il riflesso
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare un magazzino: codice, descrizione, indirizzo, i
+                  --   campi facoltativi di p_campi (le assenti e le null al
+                  --   DEFAULT) e l'emittente (NULL = quello della sessione,
+                  --   dal trigger). Ritorna l'id.
+                  --
+                  -- Regole:
+                  --   - le chiavi ammesse in p_campi: la lista 'crea' di
+                  --     magazzino.fn_magazzini_colonne_ammesse, tolti gli
+                  --     argomenti; una chiave fuori elenco: E_CAMPO_NON_AMMESSO;
+                  --   - scope, unicita', indirizzo attivo: i guard della tabella.
+                  -- =========================================================
+                  v_ammesse := ARRAY(SELECT c
+                                       FROM unnest(magazzino.fn_magazzini_colonne_ammesse('crea')) AS c
+                                      WHERE c <> ALL (c_argomenti));
+
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, v_ammesse,
+                      'magazzino', 'magazzino.fn_crea_magazzino',
+                      jsonb_build_object('codice', p_codice));
+
+                  -- jsonb_strip_nulls: anche l'emittente NULL resta fuori, e lo
+                  -- mette il trigger dalla sessione.
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.magazzini'::regclass,
+                              jsonb_strip_nulls(
+                                  v_campi
+                                  || jsonb_build_object('codice',                 p_codice,
+                                                        'descrizione',            p_descrizione,
+                                                        'indirizzo_dettaglio_id', p_indirizzo_dettaglio_id,
+                                                        'emittente_fiscale_id',   p_emittente_fiscale_id)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION magazzino.fn_crea_ubicazione(
+                  p_magazzino_id magazzino.ubicazioni.magazzino_id%TYPE,
+                  p_codice       magazzino.ubicazioni.codice%TYPE,
+                  p_tipo_id      magazzino.ubicazioni.tipo_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.ubicazioni.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi     jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  -- Le colonne che il BB riceve come argomenti: non stanno in p_campi.
+                  c_argomenti CONSTANT text[] := ARRAY['codice', 'tipo_id'];
+                  v_ammesse   text[];  -- nomi di colonna: nessuna colonna di cui siano il riflesso
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare un'ubicazione del magazzino p_magazzino_id: codice,
+                  --   tipo e i campi facoltativi di p_campi (le assenti e le
+                  --   null al DEFAULT). Ritorna l'id.
+                  --
+                  -- Regole:
+                  --   - le chiavi ammesse in p_campi: la lista 'crea' di
+                  --     magazzino.fn_ubicazioni_colonne_ammesse, tolti gli
+                  --     argomenti; una chiave fuori elenco: E_CAMPO_NON_AMMESSO;
+                  --   - perimetro, padre, tipo, unicita': i guard della tabella.
+                  -- =========================================================
+                  v_ammesse := ARRAY(SELECT c
+                                       FROM unnest(magazzino.fn_ubicazioni_colonne_ammesse('crea')) AS c
+                                      WHERE c <> ALL (c_argomenti));
+
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, v_ammesse,
+                      'magazzino', 'magazzino.fn_crea_ubicazione',
+                      jsonb_build_object('codice', p_codice));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.ubicazioni'::regclass,
+                              jsonb_strip_nulls(
+                                  v_campi
+                                  || jsonb_build_object('magazzino_id', p_magazzino_id,
+                                                        'codice',       p_codice,
+                                                        'tipo_id',      p_tipo_id)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION magazzino.fn_crea_lotto(
+                  p_articolo_id magazzino.lotti.articolo_id%TYPE,
+                  p_codice      magazzino.lotti.codice%TYPE,
+                  p_data_arrivo magazzino.lotti.data_arrivo%TYPE,
+                  p_campi       jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.lotti.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi     jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  -- Le colonne che il BB riceve come argomenti: non stanno in p_campi.
+                  c_argomenti CONSTANT text[] := ARRAY['codice', 'data_arrivo'];
+                  v_ammesse   text[];  -- nomi di colonna: nessuna colonna di cui siano il riflesso
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare un lotto dell'articolo p_articolo_id: codice, data
+                  --   di arrivo e i campi facoltativi di p_campi (le assenti e
+                  --   le null al DEFAULT). Ritorna l'id.
+                  --
+                  -- Regole:
+                  --   - le chiavi ammesse in p_campi: la lista 'crea' di
+                  --     magazzino.fn_lotti_colonne_ammesse, tolti gli argomenti;
+                  --     una chiave fuori elenco: E_CAMPO_NON_AMMESSO;
+                  --   - articolo attivo, date, unicita': guard e vincoli.
+                  -- =========================================================
+                  v_ammesse := ARRAY(SELECT c
+                                       FROM unnest(magazzino.fn_lotti_colonne_ammesse('crea')) AS c
+                                      WHERE c <> ALL (c_argomenti));
+
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, v_ammesse,
+                      'magazzino', 'magazzino.fn_crea_lotto',
+                      jsonb_build_object('codice', p_codice));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.lotti'::regclass,
+                              jsonb_strip_nulls(
+                                  v_campi
+                                  || jsonb_build_object('articolo_id', p_articolo_id,
+                                                        'codice',      p_codice,
+                                                        'data_arrivo', p_data_arrivo)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION magazzino.fn_crea_asset(
+                  p_articolo_id          magazzino.assets.articolo_id%TYPE,
+                  p_seriale              magazzino.assets.seriale%TYPE,
+                  p_stato_id             magazzino.assets.stato_id%TYPE,
+                  p_ownership_id         magazzino.assets.ownership_id%TYPE,
+                  p_campi                jsonb DEFAULT '{}'::jsonb,
+                  p_emittente_fiscale_id magazzino.assets.emittente_fiscale_id%TYPE DEFAULT NULL)
+               RETURNS magazzino.assets.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi     jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  -- Le colonne che il BB riceve come argomenti: non stanno in p_campi.
+                  c_argomenti CONSTANT text[] := ARRAY['seriale', 'stato_id', 'ownership_id'];
+                  v_ammesse   text[];  -- nomi di colonna: nessuna colonna di cui siano il riflesso
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare il seriale p_seriale dell'articolo p_articolo_id:
+                  --   stato, proprieta', i campi facoltativi di p_campi (le
+                  --   assenti e le null al DEFAULT) e l'emittente (NULL =
+                  --   quello della sessione, dal trigger). Ritorna l'id.
+                  --
+                  -- Regole:
+                  --   - le chiavi ammesse in p_campi: la lista 'crea' di
+                  --     magazzino.fn_assets_colonne_ammesse, tolti gli
+                  --     argomenti; una chiave fuori elenco: E_CAMPO_NON_AMMESSO;
+                  --   - perimetro, padri attivi, unicita': i guard della tabella.
+                  -- =========================================================
+                  v_ammesse := ARRAY(SELECT c
+                                       FROM unnest(magazzino.fn_assets_colonne_ammesse('crea')) AS c
+                                      WHERE c <> ALL (c_argomenti));
+
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, v_ammesse,
+                      'magazzino', 'magazzino.fn_crea_asset',
+                      jsonb_build_object('seriale', p_seriale));
+
+                  -- jsonb_strip_nulls: anche l'emittente NULL resta fuori, e lo
+                  -- mette il trigger dalla sessione.
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.assets'::regclass,
+                              jsonb_strip_nulls(
+                                  v_campi
+                                  || jsonb_build_object('articolo_id',          p_articolo_id,
+                                                        'seriale',              p_seriale,
+                                                        'stato_id',             p_stato_id,
+                                                        'ownership_id',         p_ownership_id,
+                                                        'emittente_fiscale_id', p_emittente_fiscale_id)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_magazzino(
+                  p_id   magazzino.magazzini.id%TYPE,
+                  p_dati jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente   config.user_override_oggetti.auth_user_id%TYPE;
+                  v_ammesse  text[];  -- nomi di colonna: nessuna colonna di cui siano il riflesso
+                  v_riga     jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica il magazzino» dell'operatore: il
+                  --   delta p_dati sulle colonne modificabili. Ritorna la riga.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'magazzini', 'TUTTO');
+
+                  v_ammesse  := magazzino.fn_magazzini_colonne_ammesse('modifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      p_dati, v_ammesse,
+                      'magazzino', 'magazzino.fn_modifica_magazzino',
+                      jsonb_build_object('id', p_id));
+
+                  -- No-leak: fuori perimetro e inesistente rispondono uguale.
+                  PERFORM 1
+                     FROM magazzino.magazzini mg
+                    WHERE mg.id = p_id
+                      AND script.fn_check_user_emittente_scope(v_utente, mg.emittente_fiscale_id)
+                      FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_magazzino', 'E_MAG_MAGAZZINO_NON_TROVATO',
+                          jsonb_build_object('magazzino_id', p_id),
+                          NULL::uuid,
+                          COALESCE(p_id::text, '(nessuno)'));
+                  END IF;
+
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                'magazzino.magazzini'::regclass, p_dati, jsonb_build_object('id', p_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_ubicazione(
+                  p_magazzino_id magazzino.ubicazioni.magazzino_id%TYPE,
+                  p_id           magazzino.ubicazioni.id%TYPE,
+                  p_dati         jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente   config.user_override_oggetti.auth_user_id%TYPE;
+                  v_ammesse  text[];  -- nomi di colonna: nessuna colonna di cui siano il riflesso
+                  v_riga     jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica l'ubicazione» dell'operatore,
+                  --   dentro il suo magazzino: il delta p_dati sulle colonne
+                  --   modificabili. Ritorna la riga.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'ubicazioni', 'TUTTO');
+
+                  v_ammesse  := magazzino.fn_ubicazioni_colonne_ammesse('modifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      p_dati, v_ammesse,
+                      'magazzino', 'magazzino.fn_modifica_ubicazione',
+                      jsonb_build_object('magazzino_id', p_magazzino_id, 'id', p_id));
+
+                  -- No-leak: fuori perimetro, di un altro magazzino o
+                  -- inesistente rispondono uguale.
+                  PERFORM 1
+                     FROM magazzino.ubicazioni u
+                    WHERE u.id = p_id
+                      AND u.magazzino_id = p_magazzino_id
+                      AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, u.magazzino_id)
+                      FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_ubicazione', 'E_MAG_UBICAZIONE_NON_TROVATA',
+                          jsonb_build_object('magazzino_id', p_magazzino_id, 'ubicazione_id', p_id),
+                          NULL::uuid,
+                          COALESCE(p_id::text, '(nessuna)'));
+                  END IF;
+
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                'magazzino.ubicazioni'::regclass, p_dati, jsonb_build_object('id', p_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_lotto(
+                  p_id   magazzino.lotti.id%TYPE,
+                  p_dati jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente   config.user_override_oggetti.auth_user_id%TYPE;
+                  v_ammesse  text[];  -- nomi di colonna: nessuna colonna di cui siano il riflesso
+                  v_riga     jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica il lotto» dell'operatore, dentro
+                  --   il perimetro della sua azienda: il delta p_dati sulle
+                  --   colonne modificabili. Ritorna la riga.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'lotti', 'TUTTO');
+
+                  v_ammesse  := magazzino.fn_lotti_colonne_ammesse('modifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      p_dati, v_ammesse,
+                      'magazzino', 'magazzino.fn_modifica_lotto',
+                      jsonb_build_object('id', p_id));
+
+                  -- No-leak: fuori perimetro e inesistente rispondono uguale.
+                  PERFORM 1
+                     FROM magazzino.lotti l
+                    WHERE l.id = p_id
+                      AND script.fn_check_user_emittente_scope(v_utente, l.emittente_fiscale_id)
+                      FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_lotto', 'E_MAG_LOTTO_NON_TROVATO',
+                          jsonb_build_object('lotto_id', p_id),
+                          NULL::uuid,
+                          COALESCE(p_id::text, '(nessuno)'));
+                  END IF;
+
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                'magazzino.lotti'::regclass, p_dati, jsonb_build_object('id', p_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_crea_magazzino(
+                  p_codice                 magazzino.magazzini.codice%TYPE,
+                  p_descrizione            magazzino.magazzini.descrizione%TYPE,
+                  p_indirizzo_dettaglio_id magazzino.magazzini.indirizzo_dettaglio_id%TYPE,
+                  p_campi                  jsonb DEFAULT '{}'::jsonb,
+                  p_emittente_fiscale_id   magazzino.magazzini.emittente_fiscale_id%TYPE DEFAULT NULL)
+               RETURNS magazzino.magazzini.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_estranea text;
+                  -- Le colonne che il BB riceve come argomenti: non stanno in p_campi.
+                  c_argomenti CONSTANT text[] := ARRAY['codice', 'descrizione', 'indirizzo_dettaglio_id'];
+                  v_ammesse  text[];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare un magazzino: codice, descrizione, indirizzo, i
+                  --   campi facoltativi di p_campi (le assenti e le null al
+                  --   DEFAULT) e l'emittente (NULL = quello della sessione,
+                  --   dal trigger). Ritorna l'id.
+                  --
+                  -- Regole:
+                  --   - le chiavi ammesse in p_campi: la lista 'crea' di
+                  --     magazzino.fn_magazzini_colonne_ammesse, tolti gli
+                  --     argomenti; una chiave fuori elenco: E_CAMPO_NON_AMMESSO;
+                  --   - scope, unicita', indirizzo attivo: i guard della tabella.
+                  -- =========================================================
+                  IF jsonb_typeof(v_campi) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_crea_magazzino', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('tipo_campi', jsonb_typeof(v_campi)),
+                          NULL::uuid,
+                          'magazzino.fn_crea_magazzino',
+                          'i campi non sono un oggetto');
+                  END IF;
+
+                  v_ammesse := ARRAY(SELECT c
+                                       FROM unnest(magazzino.fn_magazzini_colonne_ammesse('crea')) AS c
+                                      WHERE c <> ALL (c_argomenti));
+
+                  v_estranea := script.fn_prima_chiave_estranea(v_campi, v_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_crea_magazzino', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'codice', p_codice),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  -- jsonb_strip_nulls: anche l'emittente NULL resta fuori, e lo
+                  -- mette il trigger dalla sessione.
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.magazzini'::regclass,
+                              jsonb_strip_nulls(
+                                  v_campi
+                                  || jsonb_build_object('codice',                 p_codice,
+                                                        'descrizione',            p_descrizione,
+                                                        'indirizzo_dettaglio_id', p_indirizzo_dettaglio_id,
+                                                        'emittente_fiscale_id',   p_emittente_fiscale_id)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION magazzino.fn_crea_ubicazione(
+                  p_magazzino_id magazzino.ubicazioni.magazzino_id%TYPE,
+                  p_codice       magazzino.ubicazioni.codice%TYPE,
+                  p_tipo_id      magazzino.ubicazioni.tipo_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.ubicazioni.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi     jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_estranea  text;
+                  -- Le colonne che il BB riceve come argomenti: non stanno in p_campi.
+                  c_argomenti CONSTANT text[] := ARRAY['codice', 'tipo_id'];
+                  v_ammesse   text[];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare un'ubicazione del magazzino p_magazzino_id: codice,
+                  --   tipo e i campi facoltativi di p_campi (le assenti e le
+                  --   null al DEFAULT). Ritorna l'id.
+                  --
+                  -- Regole:
+                  --   - le chiavi ammesse in p_campi: la lista 'crea' di
+                  --     magazzino.fn_ubicazioni_colonne_ammesse, tolti gli
+                  --     argomenti; una chiave fuori elenco: E_CAMPO_NON_AMMESSO;
+                  --   - perimetro, padre, tipo, unicita': i guard della tabella.
+                  -- =========================================================
+                  IF jsonb_typeof(v_campi) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_crea_ubicazione', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('tipo_campi', jsonb_typeof(v_campi)),
+                          NULL::uuid,
+                          'magazzino.fn_crea_ubicazione',
+                          'i campi non sono un oggetto');
+                  END IF;
+
+                  v_ammesse := ARRAY(SELECT c
+                                       FROM unnest(magazzino.fn_ubicazioni_colonne_ammesse('crea')) AS c
+                                      WHERE c <> ALL (c_argomenti));
+
+                  v_estranea := script.fn_prima_chiave_estranea(v_campi, v_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_crea_ubicazione', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'codice', p_codice),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.ubicazioni'::regclass,
+                              jsonb_strip_nulls(
+                                  v_campi
+                                  || jsonb_build_object('magazzino_id', p_magazzino_id,
+                                                        'codice',       p_codice,
+                                                        'tipo_id',      p_tipo_id)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION magazzino.fn_crea_lotto(
+                  p_articolo_id magazzino.lotti.articolo_id%TYPE,
+                  p_codice      magazzino.lotti.codice%TYPE,
+                  p_data_arrivo magazzino.lotti.data_arrivo%TYPE,
+                  p_campi       jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.lotti.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi     jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_estranea  text;
+                  -- Le colonne che il BB riceve come argomenti: non stanno in p_campi.
+                  c_argomenti CONSTANT text[] := ARRAY['codice', 'data_arrivo'];
+                  v_ammesse   text[];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare un lotto dell'articolo p_articolo_id: codice, data
+                  --   di arrivo e i campi facoltativi di p_campi (le assenti e
+                  --   le null al DEFAULT). Ritorna l'id.
+                  --
+                  -- Regole:
+                  --   - le chiavi ammesse in p_campi: la lista 'crea' di
+                  --     magazzino.fn_lotti_colonne_ammesse, tolti gli argomenti;
+                  --     una chiave fuori elenco: E_CAMPO_NON_AMMESSO;
+                  --   - articolo attivo, date, unicita': guard e vincoli.
+                  -- =========================================================
+                  IF jsonb_typeof(v_campi) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_crea_lotto', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('tipo_campi', jsonb_typeof(v_campi)),
+                          NULL::uuid,
+                          'magazzino.fn_crea_lotto',
+                          'i campi non sono un oggetto');
+                  END IF;
+
+                  v_ammesse := ARRAY(SELECT c
+                                       FROM unnest(magazzino.fn_lotti_colonne_ammesse('crea')) AS c
+                                      WHERE c <> ALL (c_argomenti));
+
+                  v_estranea := script.fn_prima_chiave_estranea(v_campi, v_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_crea_lotto', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'codice', p_codice),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.lotti'::regclass,
+                              jsonb_strip_nulls(
+                                  v_campi
+                                  || jsonb_build_object('articolo_id', p_articolo_id,
+                                                        'codice',      p_codice,
+                                                        'data_arrivo', p_data_arrivo)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION magazzino.fn_crea_asset(
+                  p_articolo_id          magazzino.assets.articolo_id%TYPE,
+                  p_seriale              magazzino.assets.seriale%TYPE,
+                  p_stato_id             magazzino.assets.stato_id%TYPE,
+                  p_ownership_id         magazzino.assets.ownership_id%TYPE,
+                  p_campi                jsonb DEFAULT '{}'::jsonb,
+                  p_emittente_fiscale_id magazzino.assets.emittente_fiscale_id%TYPE DEFAULT NULL)
+               RETURNS magazzino.assets.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi     jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_estranea  text;
+                  -- Le colonne che il BB riceve come argomenti: non stanno in p_campi.
+                  c_argomenti CONSTANT text[] := ARRAY['seriale', 'stato_id', 'ownership_id'];
+                  v_ammesse   text[];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare il seriale p_seriale dell'articolo p_articolo_id:
+                  --   stato, proprieta', i campi facoltativi di p_campi (le
+                  --   assenti e le null al DEFAULT) e l'emittente (NULL =
+                  --   quello della sessione, dal trigger). Ritorna l'id.
+                  --
+                  -- Regole:
+                  --   - le chiavi ammesse in p_campi: la lista 'crea' di
+                  --     magazzino.fn_assets_colonne_ammesse, tolti gli
+                  --     argomenti; una chiave fuori elenco: E_CAMPO_NON_AMMESSO;
+                  --   - perimetro, padri attivi, unicita': i guard della tabella.
+                  -- =========================================================
+                  IF jsonb_typeof(v_campi) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_crea_asset', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('tipo_campi', jsonb_typeof(v_campi)),
+                          NULL::uuid,
+                          'magazzino.fn_crea_asset',
+                          'i campi non sono un oggetto');
+                  END IF;
+
+                  v_ammesse := ARRAY(SELECT c
+                                       FROM unnest(magazzino.fn_assets_colonne_ammesse('crea')) AS c
+                                      WHERE c <> ALL (c_argomenti));
+
+                  v_estranea := script.fn_prima_chiave_estranea(v_campi, v_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_crea_asset', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'seriale', p_seriale),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  -- jsonb_strip_nulls: anche l'emittente NULL resta fuori, e lo
+                  -- mette il trigger dalla sessione.
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.assets'::regclass,
+                              jsonb_strip_nulls(
+                                  v_campi
+                                  || jsonb_build_object('articolo_id',          p_articolo_id,
+                                                        'seriale',              p_seriale,
+                                                        'stato_id',             p_stato_id,
+                                                        'ownership_id',         p_ownership_id,
+                                                        'emittente_fiscale_id', p_emittente_fiscale_id)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_magazzino(
+                  p_id   magazzino.magazzini.id%TYPE,
+                  p_dati jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente   config.user_override_oggetti.auth_user_id%TYPE;
+                  v_ammesse  text[];
+                  v_estranea text;
+                  v_riga     jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica il magazzino» dell'operatore: il
+                  --   delta p_dati sulle colonne modificabili. Ritorna la riga.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'magazzini', 'TUTTO');
+
+                  IF p_dati IS NULL OR jsonb_typeof(p_dati) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_magazzino', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('id', p_id, 'tipo_dati', jsonb_typeof(p_dati)),
+                          NULL::uuid,
+                          'magazzino.fn_modifica_magazzino',
+                          'i dati non sono un oggetto');
+                  END IF;
+
+                  v_ammesse  := magazzino.fn_magazzini_colonne_ammesse('modifica');
+                  v_estranea := script.fn_prima_chiave_estranea(p_dati, v_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_magazzino', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'id', p_id),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  -- No-leak: fuori perimetro e inesistente rispondono uguale.
+                  PERFORM 1
+                     FROM magazzino.magazzini mg
+                    WHERE mg.id = p_id
+                      AND script.fn_check_user_emittente_scope(v_utente, mg.emittente_fiscale_id)
+                      FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_magazzino', 'E_MAG_MAGAZZINO_NON_TROVATO',
+                          jsonb_build_object('magazzino_id', p_id),
+                          NULL::uuid,
+                          COALESCE(p_id::text, '(nessuno)'));
+                  END IF;
+
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                'magazzino.magazzini'::regclass, p_dati, jsonb_build_object('id', p_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_ubicazione(
+                  p_magazzino_id magazzino.ubicazioni.magazzino_id%TYPE,
+                  p_id           magazzino.ubicazioni.id%TYPE,
+                  p_dati         jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente   config.user_override_oggetti.auth_user_id%TYPE;
+                  v_ammesse  text[];
+                  v_estranea text;
+                  v_riga     jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica l'ubicazione» dell'operatore,
+                  --   dentro il suo magazzino: il delta p_dati sulle colonne
+                  --   modificabili. Ritorna la riga.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'ubicazioni', 'TUTTO');
+
+                  IF p_dati IS NULL OR jsonb_typeof(p_dati) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_ubicazione', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('magazzino_id', p_magazzino_id, 'id', p_id,
+                                             'tipo_dati', jsonb_typeof(p_dati)),
+                          NULL::uuid,
+                          'magazzino.fn_modifica_ubicazione',
+                          'i dati non sono un oggetto');
+                  END IF;
+
+                  v_ammesse  := magazzino.fn_ubicazioni_colonne_ammesse('modifica');
+                  v_estranea := script.fn_prima_chiave_estranea(p_dati, v_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_ubicazione', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'magazzino_id', p_magazzino_id,
+                                             'id', p_id),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  -- No-leak: fuori perimetro, di un altro magazzino o
+                  -- inesistente rispondono uguale.
+                  PERFORM 1
+                     FROM magazzino.ubicazioni u
+                    WHERE u.id = p_id
+                      AND u.magazzino_id = p_magazzino_id
+                      AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, u.magazzino_id)
+                      FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_ubicazione', 'E_MAG_UBICAZIONE_NON_TROVATA',
+                          jsonb_build_object('magazzino_id', p_magazzino_id, 'ubicazione_id', p_id),
+                          NULL::uuid,
+                          COALESCE(p_id::text, '(nessuna)'));
+                  END IF;
+
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                'magazzino.ubicazioni'::regclass, p_dati, jsonb_build_object('id', p_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_lotto(
+                  p_id   magazzino.lotti.id%TYPE,
+                  p_dati jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente   config.user_override_oggetti.auth_user_id%TYPE;
+                  v_ammesse  text[];
+                  v_estranea text;
+                  v_riga     jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica il lotto» dell'operatore, dentro
+                  --   il perimetro della sua azienda: il delta p_dati sulle
+                  --   colonne modificabili. Ritorna la riga.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'lotti', 'TUTTO');
+
+                  IF p_dati IS NULL OR jsonb_typeof(p_dati) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_lotto', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('id', p_id, 'tipo_dati', jsonb_typeof(p_dati)),
+                          NULL::uuid,
+                          'magazzino.fn_modifica_lotto',
+                          'i dati non sono un oggetto');
+                  END IF;
+
+                  v_ammesse  := magazzino.fn_lotti_colonne_ammesse('modifica');
+                  v_estranea := script.fn_prima_chiave_estranea(p_dati, v_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_lotto', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'id', p_id),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  -- No-leak: fuori perimetro e inesistente rispondono uguale.
+                  PERFORM 1
+                     FROM magazzino.lotti l
+                    WHERE l.id = p_id
+                      AND script.fn_check_user_emittente_scope(v_utente, l.emittente_fiscale_id)
+                      FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_lotto', 'E_MAG_LOTTO_NON_TROVATO',
+                          jsonb_build_object('lotto_id', p_id),
+                          NULL::uuid,
+                          COALESCE(p_id::text, '(nessuno)'));
+                  END IF;
+
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                'magazzino.lotti'::regclass, p_dati, jsonb_build_object('id', p_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;

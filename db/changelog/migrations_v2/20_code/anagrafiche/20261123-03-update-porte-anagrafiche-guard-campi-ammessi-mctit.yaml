@@ -1,0 +1,1128 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE PORTE DI ANAGRAFICHE PASSANO A script.fn_guard_campi_ammessi
+#   fn_crea_emittente_fiscale, fn_crea_fornitore, fn_crea_cliente,
+#   fn_crea_billing_account, fn_crea_contatto, fn_indirizzo_elemento.
+#   Brief: brief-db-magazzino-tutte-le-scritture-dal-verbo, P-5a.
+#
+# -- CHE COSA CAMBIA ----------------------------------------------------
+#   Il sollevamento di E_CAMPO_NON_AMMESSO esce dal corpo: lo fa il guard
+#   (20261123-01), con lo stesso codice, la stessa frase, context.campo e
+#   il contesto della porta (soggetto, ruolo, il contesto dell'elemento
+#   d'indirizzo). Il backend non vede differenze.
+#   * fn_crea_emittente_fiscale perde anche il controllo «i campi sono un
+#     oggetto», che era solo suo: lo fa il guard, stessa frase;
+#   * le porte che controllano la forma di piu' argomenti in un IF solo
+#     (fornitore, cliente, contatto, billing account, elemento
+#     d'indirizzo) lo tengono: dice che la chiamata e' malformata, con
+#     tutti gli argomenti. Il guard ricontrolla i campi dopo, con lo
+#     stesso codice;
+#   * fn_crea_billing_account controllava due oggetti con un COALESCE
+#     (prima i campi del BA, poi quelli dell'istanza): ora due chiamate al
+#     guard nello stesso ordine, la prima chiave estranea vince come prima.
+#
+#   Il corpo viene dal catalogo vivo (pg_get_functiondef su dbdev,
+#   2026-11-23), la testata ancorata dall'ultimo changeSet di ciascuna.
+#   Firme, attributi (INVOKER; STABLE l'elemento d'indirizzo; ROWS delle
+#   RETURNS TABLE) e COMMENT invariati. Il rollback rimette i corpi di oggi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261123-03-update-porte-anagrafiche-guard-campi-ammessi-mctit.yaml
+
+  - changeSet:
+      id: 20261123-03-update-porte-anagrafiche-guard-campi-ammessi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le porte di anagrafiche che ricevono i campi in jsonb sollevano E_CAMPO_NON_AMMESSO
+        attraverso script.fn_guard_campi_ammessi, invece di ripetere il sollevamento nel corpo.
+        Codice, frase e contesto invariati.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_guard_campi_ammessi';
+        - sqlCheck:
+            expectedResult: "6"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname IN ('fn_crea_emittente_fiscale', 'fn_crea_fornitore', 'fn_crea_cliente', 'fn_crea_billing_account', 'fn_crea_contatto', 'fn_indirizzo_elemento');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_emittente_fiscale(
+                  p_soggetto_id anagrafiche.soggetti.id%TYPE,
+                  p_codice      anagrafiche.emittenti_fiscali.codice%TYPE,
+                  p_campi       jsonb DEFAULT '{}'::jsonb)
+               RETURNS TABLE(emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE,
+                             soggetto_ruolo_id    anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_sr_id    anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_ef_id    anagrafiche.emittenti_fiscali.id%TYPE;
+                  -- Le chiavi opzionali: le stesse del backend (_CREATE_COLS).
+                  c_ammesse  CONSTANT text[] := ARRAY[
+                      'attivo', 'regime_fiscale_rf', 'bollo_auto', 'bollo_soglia',
+                      'rounding_policy', 'valuta_id'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare l'emittente fiscale di un soggetto: il ruolo EF
+                  --   (get_or_create) e la riga di emittenti_fiscali con le
+                  --   chiavi opzionali di p_campi (le assenti al DEFAULT).
+                  --   Un regime dichiarato e' confermato. Ritorna
+                  --   (emittente_fiscale_id, soggetto_ruolo_id).
+                  --
+                  -- Regole:
+                  --   - una chiave fuori elenco si rifiuta: E_CAMPO_NON_AMMESSO;
+                  --   - duplicati e regime fuori catalogo escono dai vincoli;
+                  --   - i registri e il mapping di default li fanno i trigger.
+                  -- =========================================================
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, c_ammesse,
+                      'anagrafiche', 'anagrafiche.fn_crea_emittente_fiscale',
+                      jsonb_build_object('soggetto_id', p_soggetto_id));
+
+                  v_sr_id := script.fn_get_or_create_soggetto_ruolo(
+                                 p_soggetto_id  := p_soggetto_id,
+                                 p_cd_int_ruolo := 'EF');
+
+                  v_ef_id := (script.fn_scrivi_riga_da_jsonb(
+                                  'anagrafiche.emittenti_fiscali'::regclass,
+                                  v_campi || jsonb_build_object('soggetto_ruolo_id', v_sr_id,
+                                                                'codice',            p_codice))
+                              ->> 'id')::bigint;
+
+                  -- Il regime dichiarato si conferma: UPDATE OF regime_fiscale_rf
+                  -- (trg_emittenti_fiscali_a20_regime_conferma_upd). Lo stesso
+                  -- valore va bene: conta la colonna nominata.
+                  IF jsonb_exists(v_campi, 'regime_fiscale_rf') THEN
+                      UPDATE anagrafiche.emittenti_fiscali ef
+                         SET regime_fiscale_rf = ef.regime_fiscale_rf
+                       WHERE ef.id = v_ef_id;
+                  END IF;
+
+                  RETURN QUERY SELECT v_ef_id, v_sr_id;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_fornitore(
+                  p_soggetto_id anagrafiche.soggetti.id%TYPE,
+                  p_campi       jsonb DEFAULT '{}'::jsonb,
+                  p_contatto    jsonb DEFAULT NULL::jsonb,
+                  p_indirizzi   jsonb DEFAULT '[]'::jsonb)
+               RETURNS TABLE(fornitore_id      anagrafiche.fornitori.id%TYPE,
+                             soggetto_ruolo_id anagrafiche.fornitori.soggetto_ruolo_id%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_sr_id    anagrafiche.fornitori.soggetto_ruolo_id%TYPE;
+                  v_fo_id    anagrafiche.fornitori.id%TYPE;
+                  -- Le chiavi opzionali: quelle del backend (_CREATE_ALLOWED),
+                  -- meno il ruolo e lo stato, che decide la madre.
+                  c_ammesse  CONSTANT text[] := ARRAY[
+                      'codice', 'valuta_id', 'modalita_pagamento_id', 'termine_pagamento_id',
+                      'ritenuta_acconto', 'ritenuta_aliquota', 'regime_fiscale_rf',
+                      'rating', 'qualifica_scadenza', 'note'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Fare di un soggetto un fornitore: il ruolo FO
+                  --   (get_or_create), la riga di fornitori nello stato
+                  --   iniziale VE con le chiavi di p_campi (le assenti, e le
+                  --   null, al DEFAULT), il contatto del ruolo (se c'e') e gli
+                  --   indirizzi del ruolo. Ritorna (fornitore_id,
+                  --   soggetto_ruolo_id).
+                  --
+                  -- Regole:
+                  --   - una chiave fuori elenco si rifiuta: E_CAMPO_NON_AMMESSO. Fuori
+                  --     elenco anche split payment e instradamento FE, che sono del
+                  --     soggetto, e le condizioni di pagamento, che sono del termine;
+                  --   - contatto e indirizzi: le regole sono dei loro BB;
+                  --   - duplicati e FK escono dai vincoli.
+                  -- =========================================================
+                  IF p_soggetto_id IS NULL OR jsonb_typeof(v_campi) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_fornitore', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('soggetto_id', p_soggetto_id,
+                                             'tipo_campi',  jsonb_typeof(v_campi)),
+                          NULL::uuid,
+                          'anagrafiche.fn_crea_fornitore',
+                          'soggetto mancante o campi che non sono un oggetto');
+                  END IF;
+
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, c_ammesse,
+                      'anagrafiche', 'anagrafiche.fn_crea_fornitore',
+                      jsonb_build_object('soggetto_id', p_soggetto_id));
+
+                  v_sr_id := script.fn_get_or_create_soggetto_ruolo(
+                                 p_soggetto_id  := p_soggetto_id,
+                                 p_cd_int_ruolo := 'FO');
+
+                  -- Lo stato iniziale: VE, «in verifica» (la regola del backend).
+                  v_fo_id := (script.fn_scrivi_riga_da_jsonb(
+                                  'anagrafiche.fornitori'::regclass,
+                                  jsonb_strip_nulls(v_campi)
+                                  || jsonb_build_object(
+                                         'soggetto_ruolo_id',  v_sr_id,
+                                         'stato_fornitore_id', (SELECT sf.id
+                                                                  FROM config.stati_fornitore sf
+                                                                 WHERE sf.codice_interno = 'VE')))
+                              ->> 'id')::bigint;
+
+                  IF p_contatto IS NOT NULL THEN
+                      PERFORM anagrafiche.fn_crea_contatto(p_soggetto_id, v_sr_id, p_contatto);
+                  END IF;
+
+                  PERFORM anagrafiche.fn_crea_indirizzi_ruolo(v_sr_id, p_indirizzi);
+
+                  RETURN QUERY SELECT v_fo_id, v_sr_id;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_cliente(
+                  p_soggetto_id                 anagrafiche.soggetti.id%TYPE,
+                  p_utility_id                  anagrafiche.billing_account.utility_id%TYPE DEFAULT NULL,
+                  p_campi                       jsonb DEFAULT '{}'::jsonb,
+                  p_billing_account             jsonb DEFAULT '{}'::jsonb,
+                  p_contatto                    jsonb DEFAULT NULL::jsonb,
+                  p_indirizzi                   jsonb DEFAULT '[]'::jsonb,
+                  p_billing_account_id          anagrafiche.clienti.billing_account_id%TYPE DEFAULT NULL,
+                  p_istanza_utility_id          anagrafiche.clienti.istanza_utility_id%TYPE DEFAULT NULL,
+                  p_istanza                     jsonb DEFAULT '{}'::jsonb,
+                  p_emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL)
+               RETURNS TABLE(cliente_id         anagrafiche.clienti.id%TYPE,
+                             billing_account_id anagrafiche.clienti.billing_account_id%TYPE,
+                             istanza_utility_id anagrafiche.clienti.istanza_utility_id%TYPE,
+                             soggetto_ruolo_id  anagrafiche.clienti.soggetto_ruolo_id%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi      jsonb := jsonb_strip_nulls(COALESCE(p_campi, '{}'::jsonb));
+                  v_ba         jsonb := COALESCE(p_billing_account, '{}'::jsonb);
+                  v_istanza    jsonb := COALESCE(p_istanza, '{}'::jsonb);
+                  v_nascita    jsonb := '{}'::jsonb;
+                  v_sr_id      anagrafiche.clienti.soggetto_ruolo_id%TYPE;
+                  v_ba_id      anagrafiche.clienti.billing_account_id%TYPE := p_billing_account_id;
+                  v_ist_id     anagrafiche.clienti.istanza_utility_id%TYPE := p_istanza_utility_id;
+                  v_cliente_id anagrafiche.clienti.id%TYPE;
+                  -- Le chiavi del backend (_CLIENTE_CREATE_ALLOWED), meno la
+                  -- fornitura che decide la madre; piu' le date degli stati.
+                  c_ammesse    CONSTANT text[] := ARRAY[
+                      'termine_pagamento_id', 'modalita_pagamento_id', 'servizio_da_fatturare',
+                      'garanzia_tipo', 'garanzia_importo',
+                      'stato_cliente_id', 'data_attivazione', 'data_sospensione', 'data_chiusura'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Fare di un soggetto un cliente: il ruolo CL
+                  --   (get_or_create), il billing account (nuovo per
+                  --   p_utility_id dal BB, oppure p_billing_account_id), la
+                  --   riga di clienti coi campi di p_campi, il contatto (se
+                  --   c'e') e gli indirizzi del ruolo. Ritorna (cliente_id,
+                  --   billing_account_id, istanza_utility_id,
+                  --   soggetto_ruolo_id).
+                  --
+                  -- Regole:
+                  --   - senza stato: AT, attivazione alla data operativa;
+                  --     con uno stato, le date sono di chi chiama (guard);
+                  --   - chiave estranea: E_CAMPO_NON_AMMESSO; null = assente;
+                  --   - BA esistente insieme ai dati di uno nuovo, o nessuno
+                  --     dei due: E_SCRIPT_CHIAMATA_NON_VALIDA.
+                  -- =========================================================
+                  IF p_soggetto_id IS NULL
+                     OR jsonb_typeof(v_campi) <> 'object' OR jsonb_typeof(v_ba) <> 'object'
+                     OR jsonb_typeof(v_istanza) <> 'object'
+                     OR (p_billing_account_id IS NULL AND p_utility_id IS NULL)
+                     OR (p_billing_account_id IS NOT NULL
+                         AND (v_ba <> '{}'::jsonb OR v_istanza <> '{}'::jsonb
+                              OR p_emittente_soggetto_ruolo_id IS NOT NULL)) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_cliente', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('soggetto_id',        p_soggetto_id,
+                                             'utility_id',         p_utility_id,
+                                             'billing_account_id', p_billing_account_id,
+                                             'tipo_campi',         jsonb_typeof(v_campi)),
+                          NULL::uuid,
+                          'anagrafiche.fn_crea_cliente',
+                          'soggetto mancante, campi non oggetti, o billing account esistente e nuovo insieme (o nessuno dei due)');
+                  END IF;
+
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, c_ammesse,
+                      'anagrafiche', 'anagrafiche.fn_crea_cliente',
+                      jsonb_build_object('soggetto_id', p_soggetto_id));
+
+                  v_sr_id := script.fn_get_or_create_soggetto_ruolo(
+                                 p_soggetto_id  := p_soggetto_id,
+                                 p_cd_int_ruolo := 'CL');
+
+                  -- 1. La fornitura: un BA nuovo dal BB, o quello indicato.
+                  IF v_ba_id IS NULL THEN
+                      SELECT b.billing_account_id, b.istanza_utility_id
+                        INTO v_ba_id, v_ist_id
+                        FROM anagrafiche.fn_crea_billing_account(
+                                 v_sr_id, p_utility_id, v_ba, p_istanza_utility_id, v_istanza,
+                                 p_emittente_soggetto_ruolo_id) b;
+                  ELSIF v_ist_id IS NULL THEN
+                      SELECT ba.istanza_utility_id
+                        INTO v_ist_id
+                        FROM anagrafiche.billing_account ba
+                       WHERE ba.id = v_ba_id;
+                  END IF;
+
+                  -- 2. Lo stato di nascita: senza stato, AT dalla data operativa
+                  --    (le chiavi di chi chiama vincono, la data compresa).
+                  IF NOT jsonb_exists(v_campi, 'stato_cliente_id') THEN
+                      v_nascita := jsonb_build_object(
+                          'stato_cliente_id', (SELECT sc.id FROM config.stati_cliente sc
+                                                WHERE sc.codice_interno = 'AT'),
+                          'data_attivazione', script.fn_data_operativa());
+                  END IF;
+
+                  -- 3. Il cliente, riletto a istruzione finita
+                  --    (uq_clienti_billing_account): sotto la RLS, come il BA.
+                  v_cliente_id := (script.fn_scrivi_riga_da_jsonb(
+                                       'anagrafiche.clienti'::regclass,
+                                       v_nascita || v_campi
+                                       || jsonb_build_object('billing_account_id', v_ba_id,
+                                                             'istanza_utility_id', v_ist_id,
+                                                             'soggetto_ruolo_id',  v_sr_id),
+                                       NULL,
+                                       ARRAY['billing_account_id'])
+                                   ->> 'id')::bigint;
+
+                  -- 4. Contatto e indirizzi del ruolo, dai loro BB.
+                  IF p_contatto IS NOT NULL THEN
+                      PERFORM anagrafiche.fn_crea_contatto(p_soggetto_id, v_sr_id, p_contatto);
+                  END IF;
+
+                  PERFORM anagrafiche.fn_crea_indirizzi_ruolo(v_sr_id, p_indirizzi);
+
+                  RETURN QUERY SELECT v_cliente_id, v_ba_id, v_ist_id, v_sr_id;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_billing_account(
+                  p_soggetto_ruolo_id           anagrafiche.billing_account.soggetto_ruolo_id%TYPE,
+                  p_utility_id                  anagrafiche.billing_account.utility_id%TYPE,
+                  p_campi                       jsonb DEFAULT '{}'::jsonb,
+                  p_istanza_utility_id          anagrafiche.billing_account.istanza_utility_id%TYPE DEFAULT NULL,
+                  p_istanza                     jsonb DEFAULT '{}'::jsonb,
+                  p_emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL)
+               RETURNS TABLE(billing_account_id anagrafiche.billing_account.id%TYPE,
+                             istanza_utility_id anagrafiche.billing_account.istanza_utility_id%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi       jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_istanza     jsonb := COALESCE(p_istanza, '{}'::jsonb);
+                  v_soggetto_id anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+                  v_ist_id      anagrafiche.billing_account.istanza_utility_id%TYPE := p_istanza_utility_id;
+                  v_ba_id       anagrafiche.billing_account.id%TYPE;
+                  v_link_sr     anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+                  c_ammesse_ba  CONSTANT text[] := ARRAY[
+                      'categoria_cliente_id', 'codice', 'fatturazione_ordini',
+                      'parent_account_id', 'valuta_id'];
+                  c_ammesse_ist CONSTANT text[] := ARRAY['codice', 'indirizzo_dettaglio_id'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare il billing account di un ruolo per una utility:
+                  --   l'istanza fittizia (se p_istanza_utility_id e' NULL, coi
+                  --   campi di p_istanza), il BA coi campi di p_campi (riletto
+                  --   a istruzione finita), il legame all'emittente se
+                  --   p_emittente_soggetto_ruolo_id e' indicato. Ritorna
+                  --   (billing_account_id, istanza_utility_id).
+                  --
+                  -- Regole:
+                  --   - chiave estranea: E_CAMPO_NON_AMMESSO; null = assente;
+                  --   - istanza esistente e campi di un'istanza nuova insieme,
+                  --     o un legame discorde: E_SCRIPT_CHIAMATA_NON_VALIDA;
+                  --   - il resto lo dicono i guard e i vincoli delle tabelle.
+                  -- =========================================================
+                  IF p_soggetto_ruolo_id IS NULL OR p_utility_id IS NULL
+                     OR jsonb_typeof(v_campi) <> 'object' OR jsonb_typeof(v_istanza) <> 'object'
+                     OR (p_istanza_utility_id IS NOT NULL AND v_istanza <> '{}'::jsonb) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_billing_account', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('soggetto_ruolo_id',  p_soggetto_ruolo_id,
+                                             'utility_id',         p_utility_id,
+                                             'istanza_utility_id', p_istanza_utility_id,
+                                             'tipo_campi',         jsonb_typeof(v_campi),
+                                             'tipo_istanza',       jsonb_typeof(v_istanza)),
+                          NULL::uuid,
+                          'anagrafiche.fn_crea_billing_account',
+                          'ruolo o utility mancanti, campi non oggetti, o istanza esistente con i campi di una nuova');
+                  END IF;
+
+                  -- Prima i campi del BA, poi quelli dell'istanza: la prima chiave
+                  -- estranea che si trova e' quella che si rifiuta.
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, c_ammesse_ba,
+                      'anagrafiche', 'anagrafiche.fn_crea_billing_account',
+                      jsonb_build_object('soggetto_ruolo_id', p_soggetto_ruolo_id));
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_istanza, c_ammesse_ist,
+                      'anagrafiche', 'anagrafiche.fn_crea_billing_account',
+                      jsonb_build_object('soggetto_ruolo_id', p_soggetto_ruolo_id));
+
+                  SELECT sr.soggetto_id
+                    INTO v_soggetto_id
+                    FROM anagrafiche.soggetti_ruoli sr
+                   WHERE sr.id = p_soggetto_ruolo_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_billing_account', 'E_SOGGETTO_RUOLO_NON_TROVATO',
+                          jsonb_build_object('soggetto_ruolo_id', p_soggetto_ruolo_id),
+                          NULL::uuid,
+                          p_soggetto_ruolo_id::text);
+                  END IF;
+
+                  -- 1. L'istanza fittizia, se non se ne indica una.
+                  IF v_ist_id IS NULL THEN
+                      v_ist_id := (script.fn_scrivi_riga_da_jsonb(
+                                       'anagrafiche.istanze_utilities'::regclass,
+                                       jsonb_strip_nulls(v_istanza)
+                                       || jsonb_build_object('soggetto_id', v_soggetto_id,
+                                                             'fittizia',    true))
+                                   ->> 'id')::bigint;
+                  END IF;
+
+                  -- 2. Il BA, riletto a istruzione finita per la coppia
+                  --    (uq_billing_instance_utility): sotto la RLS la riga si
+                  --    vede solo dopo il legame scritto dal trigger AFTER.
+                  v_ba_id := (script.fn_scrivi_riga_da_jsonb(
+                                  'anagrafiche.billing_account'::regclass,
+                                  jsonb_strip_nulls(v_campi)
+                                  || jsonb_build_object('istanza_utility_id', v_ist_id,
+                                                        'soggetto_ruolo_id',  p_soggetto_ruolo_id,
+                                                        'utility_id',         p_utility_id),
+                                  NULL,
+                                  ARRAY['istanza_utility_id', 'utility_id'])
+                              ->> 'id')::bigint;
+
+                  -- 3. Il legame all'emittente, se chiesto. is_default = false:
+                  --    e' il legame di QUESTO BA, non il default dell'installazione.
+                  IF p_emittente_soggetto_ruolo_id IS NOT NULL THEN
+                      SELECT efba.emittente_soggetto_ruolo_id
+                        INTO v_link_sr
+                        FROM anagrafiche.emittenti_fiscali_billing_account efba
+                       WHERE efba.billing_account_id = v_ba_id;
+
+                      IF v_link_sr IS NULL THEN
+                          INSERT INTO anagrafiche.emittenti_fiscali_billing_account
+                              (emittente_soggetto_ruolo_id, billing_account_id, is_default)
+                          VALUES (p_emittente_soggetto_ruolo_id, v_ba_id, false);
+                      ELSIF v_link_sr <> p_emittente_soggetto_ruolo_id THEN
+                          -- Con un operatore in sessione il trigger z90 l'ha gia'
+                          -- legato all'emittente di chi agisce.
+                          PERFORM script.fn_log_and_raise_error(
+                              'anagrafiche', 'anagrafiche.fn_crea_billing_account', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                              jsonb_build_object('billing_account_id',       v_ba_id,
+                                                 'emittente_legato',         v_link_sr,
+                                                 'emittente_chiesto',        p_emittente_soggetto_ruolo_id),
+                              NULL::uuid,
+                              'anagrafiche.fn_crea_billing_account',
+                              'il BA e'' gia'' legato all''emittente di chi agisce, non a quello chiesto');
+                      END IF;
+                  END IF;
+
+                  RETURN QUERY SELECT v_ba_id, v_ist_id;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_contatto(
+                  p_soggetto_id       anagrafiche.contatti.soggetto_id%TYPE,
+                  p_soggetto_ruolo_id anagrafiche.contatti.soggetto_ruolo_id%TYPE,
+                  p_campi             jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_manca    text;   -- il nome della chiave obbligatoria che manca, non una colonna
+                  c_ammesse  CONSTANT text[] := ARRAY[
+                      'tipo_contatto_id', 'nominativo', 'email', 'telefono', 'cellulare',
+                      'pec', 'note', 'is_default', 'default_context', 'titolo_cortesia_id',
+                      'unita_organizzativa_id', 'istanza_utility_id'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare un contatto del soggetto (p_soggetto_ruolo_id
+                  --   NULL) o di un suo ruolo, con le chiavi di p_campi (le
+                  --   assenti al DEFAULT). Ritorna la riga creata.
+                  --
+                  -- Regole:
+                  --   - nominativo e tipo di contatto obbligatori, non vuoti:
+                  --     E_CONTATTO_INCOMPLETO col primo campo che manca;
+                  --   - una chiave estranea si rifiuta: E_CAMPO_NON_AMMESSO.
+                  -- =========================================================
+                  IF p_soggetto_id IS NULL OR jsonb_typeof(v_campi) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_contatto', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('soggetto_id', p_soggetto_id,
+                                             'tipo_campi',  jsonb_typeof(v_campi)),
+                          NULL::uuid,
+                          'anagrafiche.fn_crea_contatto',
+                          'soggetto mancante o campi che non sono un oggetto');
+                  END IF;
+
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, c_ammesse,
+                      'anagrafiche', 'anagrafiche.fn_crea_contatto',
+                      jsonb_build_object('soggetto_id', p_soggetto_id));
+
+                  v_manca := CASE
+                                 WHEN NULLIF(btrim(v_campi ->> 'nominativo'), '') IS NULL THEN 'nominativo'
+                                 WHEN COALESCE((v_campi ->> 'tipo_contatto_id')::integer, 0) <= 0 THEN 'tipo_contatto_id'
+                             END;
+                  IF v_manca IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_contatto', 'E_CONTATTO_INCOMPLETO',
+                          jsonb_build_object('campo', v_manca, 'soggetto_id', p_soggetto_id),
+                          NULL::uuid,
+                          v_manca);
+                  END IF;
+
+                  RETURN script.fn_scrivi_riga_da_jsonb(
+                             'anagrafiche.contatti'::regclass,
+                             v_campi || jsonb_build_object('soggetto_id',       p_soggetto_id,
+                                                           'soggetto_ruolo_id', p_soggetto_ruolo_id));
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_indirizzo_elemento(
+                  p_el       jsonb,
+                  p_chi      text,
+                  p_contesto jsonb DEFAULT '{}'::jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               STABLE
+              AS $function$
+              DECLARE
+                  v_ctx      jsonb := COALESCE(p_contesto, '{}'::jsonb);
+                  v_tipo_id  config.tipi_indirizzi.id%TYPE;
+                  -- Le chiavi di un indirizzo: le colonne della riga, piu'
+                  -- quelle di una via da risolvere (fn_create_indirizzo).
+                  c_ammesse CONSTANT text[] := ARRAY[
+                      'tipo_indirizzo_id', 'tipo_indirizzo_codice_interno',
+                      'indirizzo_dettaglio_id', 'indirizzo_libero',
+                      'stato_id', 'comune_id', 'codice_postale_id',
+                      'administrative_area', 'locality', 'sublocality', 'postal_code',
+                      'stradario_id', 'toponomastica_id', 'descrizione_via',
+                      'civico', 'estensione_civico', 'palazzina', 'scala', 'piano', 'interno'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Leggere un indirizzo in jsonb: un oggetto, solo chiavi
+                  --   ammesse, il tipo risolto (tipo_indirizzo_id, oppure
+                  --   tipo_indirizzo_codice_interno = codice interno). Ritorna
+                  --   l'elemento con tipo_indirizzo_id e senza il codice.
+                  --   p_chi: la madre che chiama (per il log); p_contesto:
+                  --   le chiavi che la madre aggiunge al contesto dei rifiuti.
+                  --
+                  -- Regole:
+                  --   - non giudica la completezza ne' la forma: e' il guard
+                  --     della tabella (trgfn_indirizzi_guard_forma_libera).
+                  -- =========================================================
+                  IF jsonb_typeof(p_el) IS DISTINCT FROM 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', p_chi, 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          v_ctx || jsonb_build_object('tipo_elemento', jsonb_typeof(p_el)),
+                          NULL::uuid,
+                          p_chi,
+                          'un indirizzo non e'' un oggetto');
+                  END IF;
+
+                  PERFORM script.fn_guard_campi_ammessi(p_el, c_ammesse, 'anagrafiche', p_chi, v_ctx);
+
+                  v_tipo_id := (p_el ->> 'tipo_indirizzo_id')::integer;
+                  IF v_tipo_id IS NULL AND NULLIF(btrim(p_el ->> 'tipo_indirizzo_codice_interno'), '') IS NOT NULL THEN
+                      SELECT ti.id
+                        INTO v_tipo_id
+                        FROM config.tipi_indirizzi ti
+                       WHERE ti.codice_interno = upper(btrim(p_el ->> 'tipo_indirizzo_codice_interno'));
+                  END IF;
+
+                  IF v_tipo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', p_chi, 'E_TIPO_INDIRIZZO_NON_TROVATO',
+                          v_ctx || jsonb_build_object(
+                              'campo', 'tipo_indirizzo_codice_interno',
+                              'tipo_indirizzo_codice_interno', p_el ->> 'tipo_indirizzo_codice_interno'),
+                          NULL::uuid,
+                          COALESCE(NULLIF(btrim(p_el ->> 'tipo_indirizzo_codice_interno'), ''), '-'));
+                  END IF;
+
+                  RETURN (p_el - 'tipo_indirizzo_codice_interno')
+                         || jsonb_build_object('tipo_indirizzo_id', v_tipo_id);
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_emittente_fiscale(
+                  p_soggetto_id anagrafiche.soggetti.id%TYPE,
+                  p_codice      anagrafiche.emittenti_fiscali.codice%TYPE,
+                  p_campi       jsonb DEFAULT '{}'::jsonb)
+               RETURNS TABLE(emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE,
+                             soggetto_ruolo_id    anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_estranea text;
+                  v_sr_id    anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_ef_id    anagrafiche.emittenti_fiscali.id%TYPE;
+                  -- Le chiavi opzionali: le stesse del backend (_CREATE_COLS).
+                  c_ammesse  CONSTANT text[] := ARRAY[
+                      'attivo', 'regime_fiscale_rf', 'bollo_auto', 'bollo_soglia',
+                      'rounding_policy', 'valuta_id'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare l'emittente fiscale di un soggetto: il ruolo EF
+                  --   (get_or_create) e la riga di emittenti_fiscali con le
+                  --   chiavi opzionali di p_campi (le assenti al DEFAULT).
+                  --   Un regime dichiarato e' confermato. Ritorna
+                  --   (emittente_fiscale_id, soggetto_ruolo_id).
+                  --
+                  -- Regole:
+                  --   - una chiave fuori elenco si rifiuta: E_CAMPO_NON_AMMESSO;
+                  --   - duplicati e regime fuori catalogo escono dai vincoli;
+                  --   - i registri e il mapping di default li fanno i trigger.
+                  -- =========================================================
+                  IF jsonb_typeof(v_campi) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_emittente_fiscale', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('tipo_campi', jsonb_typeof(v_campi)),
+                          NULL::uuid,
+                          'anagrafiche.fn_crea_emittente_fiscale',
+                          'i campi non sono un oggetto');
+                  END IF;
+
+                  v_estranea := script.fn_prima_chiave_estranea(v_campi, c_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_emittente_fiscale', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'soggetto_id', p_soggetto_id),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  v_sr_id := script.fn_get_or_create_soggetto_ruolo(
+                                 p_soggetto_id  := p_soggetto_id,
+                                 p_cd_int_ruolo := 'EF');
+
+                  v_ef_id := (script.fn_scrivi_riga_da_jsonb(
+                                  'anagrafiche.emittenti_fiscali'::regclass,
+                                  v_campi || jsonb_build_object('soggetto_ruolo_id', v_sr_id,
+                                                                'codice',            p_codice))
+                              ->> 'id')::bigint;
+
+                  -- Il regime dichiarato si conferma: UPDATE OF regime_fiscale_rf
+                  -- (trg_emittenti_fiscali_a20_regime_conferma_upd). Lo stesso
+                  -- valore va bene: conta la colonna nominata.
+                  IF jsonb_exists(v_campi, 'regime_fiscale_rf') THEN
+                      UPDATE anagrafiche.emittenti_fiscali ef
+                         SET regime_fiscale_rf = ef.regime_fiscale_rf
+                       WHERE ef.id = v_ef_id;
+                  END IF;
+
+                  RETURN QUERY SELECT v_ef_id, v_sr_id;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_fornitore(
+                  p_soggetto_id anagrafiche.soggetti.id%TYPE,
+                  p_campi       jsonb DEFAULT '{}'::jsonb,
+                  p_contatto    jsonb DEFAULT NULL::jsonb,
+                  p_indirizzi   jsonb DEFAULT '[]'::jsonb)
+               RETURNS TABLE(fornitore_id      anagrafiche.fornitori.id%TYPE,
+                             soggetto_ruolo_id anagrafiche.fornitori.soggetto_ruolo_id%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_estranea text;
+                  v_sr_id    anagrafiche.fornitori.soggetto_ruolo_id%TYPE;
+                  v_fo_id    anagrafiche.fornitori.id%TYPE;
+                  -- Le chiavi opzionali: quelle del backend (_CREATE_ALLOWED),
+                  -- meno il ruolo e lo stato, che decide la madre.
+                  c_ammesse  CONSTANT text[] := ARRAY[
+                      'codice', 'valuta_id', 'modalita_pagamento_id', 'termine_pagamento_id',
+                      'ritenuta_acconto', 'ritenuta_aliquota', 'regime_fiscale_rf',
+                      'rating', 'qualifica_scadenza', 'note'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Fare di un soggetto un fornitore: il ruolo FO
+                  --   (get_or_create), la riga di fornitori nello stato
+                  --   iniziale VE con le chiavi di p_campi (le assenti, e le
+                  --   null, al DEFAULT), il contatto del ruolo (se c'e') e gli
+                  --   indirizzi del ruolo. Ritorna (fornitore_id,
+                  --   soggetto_ruolo_id).
+                  --
+                  -- Regole:
+                  --   - una chiave fuori elenco si rifiuta: E_CAMPO_NON_AMMESSO. Fuori
+                  --     elenco anche split payment e instradamento FE, che sono del
+                  --     soggetto, e le condizioni di pagamento, che sono del termine;
+                  --   - contatto e indirizzi: le regole sono dei loro BB;
+                  --   - duplicati e FK escono dai vincoli.
+                  -- =========================================================
+                  IF p_soggetto_id IS NULL OR jsonb_typeof(v_campi) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_fornitore', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('soggetto_id', p_soggetto_id,
+                                             'tipo_campi',  jsonb_typeof(v_campi)),
+                          NULL::uuid,
+                          'anagrafiche.fn_crea_fornitore',
+                          'soggetto mancante o campi che non sono un oggetto');
+                  END IF;
+
+                  v_estranea := script.fn_prima_chiave_estranea(v_campi, c_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_fornitore', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'soggetto_id', p_soggetto_id),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  v_sr_id := script.fn_get_or_create_soggetto_ruolo(
+                                 p_soggetto_id  := p_soggetto_id,
+                                 p_cd_int_ruolo := 'FO');
+
+                  -- Lo stato iniziale: VE, «in verifica» (la regola del backend).
+                  v_fo_id := (script.fn_scrivi_riga_da_jsonb(
+                                  'anagrafiche.fornitori'::regclass,
+                                  jsonb_strip_nulls(v_campi)
+                                  || jsonb_build_object(
+                                         'soggetto_ruolo_id',  v_sr_id,
+                                         'stato_fornitore_id', (SELECT sf.id
+                                                                  FROM config.stati_fornitore sf
+                                                                 WHERE sf.codice_interno = 'VE')))
+                              ->> 'id')::bigint;
+
+                  IF p_contatto IS NOT NULL THEN
+                      PERFORM anagrafiche.fn_crea_contatto(p_soggetto_id, v_sr_id, p_contatto);
+                  END IF;
+
+                  PERFORM anagrafiche.fn_crea_indirizzi_ruolo(v_sr_id, p_indirizzi);
+
+                  RETURN QUERY SELECT v_fo_id, v_sr_id;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_cliente(
+                  p_soggetto_id                 anagrafiche.soggetti.id%TYPE,
+                  p_utility_id                  anagrafiche.billing_account.utility_id%TYPE DEFAULT NULL,
+                  p_campi                       jsonb DEFAULT '{}'::jsonb,
+                  p_billing_account             jsonb DEFAULT '{}'::jsonb,
+                  p_contatto                    jsonb DEFAULT NULL::jsonb,
+                  p_indirizzi                   jsonb DEFAULT '[]'::jsonb,
+                  p_billing_account_id          anagrafiche.clienti.billing_account_id%TYPE DEFAULT NULL,
+                  p_istanza_utility_id          anagrafiche.clienti.istanza_utility_id%TYPE DEFAULT NULL,
+                  p_istanza                     jsonb DEFAULT '{}'::jsonb,
+                  p_emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL)
+               RETURNS TABLE(cliente_id         anagrafiche.clienti.id%TYPE,
+                             billing_account_id anagrafiche.clienti.billing_account_id%TYPE,
+                             istanza_utility_id anagrafiche.clienti.istanza_utility_id%TYPE,
+                             soggetto_ruolo_id  anagrafiche.clienti.soggetto_ruolo_id%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi      jsonb := jsonb_strip_nulls(COALESCE(p_campi, '{}'::jsonb));
+                  v_ba         jsonb := COALESCE(p_billing_account, '{}'::jsonb);
+                  v_istanza    jsonb := COALESCE(p_istanza, '{}'::jsonb);
+                  v_nascita    jsonb := '{}'::jsonb;
+                  v_estranea   text;
+                  v_sr_id      anagrafiche.clienti.soggetto_ruolo_id%TYPE;
+                  v_ba_id      anagrafiche.clienti.billing_account_id%TYPE := p_billing_account_id;
+                  v_ist_id     anagrafiche.clienti.istanza_utility_id%TYPE := p_istanza_utility_id;
+                  v_cliente_id anagrafiche.clienti.id%TYPE;
+                  -- Le chiavi del backend (_CLIENTE_CREATE_ALLOWED), meno la
+                  -- fornitura che decide la madre; piu' le date degli stati.
+                  c_ammesse    CONSTANT text[] := ARRAY[
+                      'termine_pagamento_id', 'modalita_pagamento_id', 'servizio_da_fatturare',
+                      'garanzia_tipo', 'garanzia_importo',
+                      'stato_cliente_id', 'data_attivazione', 'data_sospensione', 'data_chiusura'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Fare di un soggetto un cliente: il ruolo CL
+                  --   (get_or_create), il billing account (nuovo per
+                  --   p_utility_id dal BB, oppure p_billing_account_id), la
+                  --   riga di clienti coi campi di p_campi, il contatto (se
+                  --   c'e') e gli indirizzi del ruolo. Ritorna (cliente_id,
+                  --   billing_account_id, istanza_utility_id,
+                  --   soggetto_ruolo_id).
+                  --
+                  -- Regole:
+                  --   - senza stato: AT, attivazione alla data operativa;
+                  --     con uno stato, le date sono di chi chiama (guard);
+                  --   - chiave estranea: E_CAMPO_NON_AMMESSO; null = assente;
+                  --   - BA esistente insieme ai dati di uno nuovo, o nessuno
+                  --     dei due: E_SCRIPT_CHIAMATA_NON_VALIDA.
+                  -- =========================================================
+                  IF p_soggetto_id IS NULL
+                     OR jsonb_typeof(v_campi) <> 'object' OR jsonb_typeof(v_ba) <> 'object'
+                     OR jsonb_typeof(v_istanza) <> 'object'
+                     OR (p_billing_account_id IS NULL AND p_utility_id IS NULL)
+                     OR (p_billing_account_id IS NOT NULL
+                         AND (v_ba <> '{}'::jsonb OR v_istanza <> '{}'::jsonb
+                              OR p_emittente_soggetto_ruolo_id IS NOT NULL)) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_cliente', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('soggetto_id',        p_soggetto_id,
+                                             'utility_id',         p_utility_id,
+                                             'billing_account_id', p_billing_account_id,
+                                             'tipo_campi',         jsonb_typeof(v_campi)),
+                          NULL::uuid,
+                          'anagrafiche.fn_crea_cliente',
+                          'soggetto mancante, campi non oggetti, o billing account esistente e nuovo insieme (o nessuno dei due)');
+                  END IF;
+
+                  v_estranea := script.fn_prima_chiave_estranea(v_campi, c_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_cliente', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'soggetto_id', p_soggetto_id),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  v_sr_id := script.fn_get_or_create_soggetto_ruolo(
+                                 p_soggetto_id  := p_soggetto_id,
+                                 p_cd_int_ruolo := 'CL');
+
+                  -- 1. La fornitura: un BA nuovo dal BB, o quello indicato.
+                  IF v_ba_id IS NULL THEN
+                      SELECT b.billing_account_id, b.istanza_utility_id
+                        INTO v_ba_id, v_ist_id
+                        FROM anagrafiche.fn_crea_billing_account(
+                                 v_sr_id, p_utility_id, v_ba, p_istanza_utility_id, v_istanza,
+                                 p_emittente_soggetto_ruolo_id) b;
+                  ELSIF v_ist_id IS NULL THEN
+                      SELECT ba.istanza_utility_id
+                        INTO v_ist_id
+                        FROM anagrafiche.billing_account ba
+                       WHERE ba.id = v_ba_id;
+                  END IF;
+
+                  -- 2. Lo stato di nascita: senza stato, AT dalla data operativa
+                  --    (le chiavi di chi chiama vincono, la data compresa).
+                  IF NOT jsonb_exists(v_campi, 'stato_cliente_id') THEN
+                      v_nascita := jsonb_build_object(
+                          'stato_cliente_id', (SELECT sc.id FROM config.stati_cliente sc
+                                                WHERE sc.codice_interno = 'AT'),
+                          'data_attivazione', script.fn_data_operativa());
+                  END IF;
+
+                  -- 3. Il cliente, riletto a istruzione finita
+                  --    (uq_clienti_billing_account): sotto la RLS, come il BA.
+                  v_cliente_id := (script.fn_scrivi_riga_da_jsonb(
+                                       'anagrafiche.clienti'::regclass,
+                                       v_nascita || v_campi
+                                       || jsonb_build_object('billing_account_id', v_ba_id,
+                                                             'istanza_utility_id', v_ist_id,
+                                                             'soggetto_ruolo_id',  v_sr_id),
+                                       NULL,
+                                       ARRAY['billing_account_id'])
+                                   ->> 'id')::bigint;
+
+                  -- 4. Contatto e indirizzi del ruolo, dai loro BB.
+                  IF p_contatto IS NOT NULL THEN
+                      PERFORM anagrafiche.fn_crea_contatto(p_soggetto_id, v_sr_id, p_contatto);
+                  END IF;
+
+                  PERFORM anagrafiche.fn_crea_indirizzi_ruolo(v_sr_id, p_indirizzi);
+
+                  RETURN QUERY SELECT v_cliente_id, v_ba_id, v_ist_id, v_sr_id;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_billing_account(
+                  p_soggetto_ruolo_id           anagrafiche.billing_account.soggetto_ruolo_id%TYPE,
+                  p_utility_id                  anagrafiche.billing_account.utility_id%TYPE,
+                  p_campi                       jsonb DEFAULT '{}'::jsonb,
+                  p_istanza_utility_id          anagrafiche.billing_account.istanza_utility_id%TYPE DEFAULT NULL,
+                  p_istanza                     jsonb DEFAULT '{}'::jsonb,
+                  p_emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL)
+               RETURNS TABLE(billing_account_id anagrafiche.billing_account.id%TYPE,
+                             istanza_utility_id anagrafiche.billing_account.istanza_utility_id%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi       jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_istanza     jsonb := COALESCE(p_istanza, '{}'::jsonb);
+                  v_estranea    text;
+                  v_soggetto_id anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+                  v_ist_id      anagrafiche.billing_account.istanza_utility_id%TYPE := p_istanza_utility_id;
+                  v_ba_id       anagrafiche.billing_account.id%TYPE;
+                  v_link_sr     anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+                  c_ammesse_ba  CONSTANT text[] := ARRAY[
+                      'categoria_cliente_id', 'codice', 'fatturazione_ordini',
+                      'parent_account_id', 'valuta_id'];
+                  c_ammesse_ist CONSTANT text[] := ARRAY['codice', 'indirizzo_dettaglio_id'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare il billing account di un ruolo per una utility:
+                  --   l'istanza fittizia (se p_istanza_utility_id e' NULL, coi
+                  --   campi di p_istanza), il BA coi campi di p_campi (riletto
+                  --   a istruzione finita), il legame all'emittente se
+                  --   p_emittente_soggetto_ruolo_id e' indicato. Ritorna
+                  --   (billing_account_id, istanza_utility_id).
+                  --
+                  -- Regole:
+                  --   - chiave estranea: E_CAMPO_NON_AMMESSO; null = assente;
+                  --   - istanza esistente e campi di un'istanza nuova insieme,
+                  --     o un legame discorde: E_SCRIPT_CHIAMATA_NON_VALIDA;
+                  --   - il resto lo dicono i guard e i vincoli delle tabelle.
+                  -- =========================================================
+                  IF p_soggetto_ruolo_id IS NULL OR p_utility_id IS NULL
+                     OR jsonb_typeof(v_campi) <> 'object' OR jsonb_typeof(v_istanza) <> 'object'
+                     OR (p_istanza_utility_id IS NOT NULL AND v_istanza <> '{}'::jsonb) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_billing_account', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('soggetto_ruolo_id',  p_soggetto_ruolo_id,
+                                             'utility_id',         p_utility_id,
+                                             'istanza_utility_id', p_istanza_utility_id,
+                                             'tipo_campi',         jsonb_typeof(v_campi),
+                                             'tipo_istanza',       jsonb_typeof(v_istanza)),
+                          NULL::uuid,
+                          'anagrafiche.fn_crea_billing_account',
+                          'ruolo o utility mancanti, campi non oggetti, o istanza esistente con i campi di una nuova');
+                  END IF;
+
+                  v_estranea := COALESCE(script.fn_prima_chiave_estranea(v_campi, c_ammesse_ba),
+                                         script.fn_prima_chiave_estranea(v_istanza, c_ammesse_ist));
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_billing_account', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'soggetto_ruolo_id', p_soggetto_ruolo_id),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  SELECT sr.soggetto_id
+                    INTO v_soggetto_id
+                    FROM anagrafiche.soggetti_ruoli sr
+                   WHERE sr.id = p_soggetto_ruolo_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_billing_account', 'E_SOGGETTO_RUOLO_NON_TROVATO',
+                          jsonb_build_object('soggetto_ruolo_id', p_soggetto_ruolo_id),
+                          NULL::uuid,
+                          p_soggetto_ruolo_id::text);
+                  END IF;
+
+                  -- 1. L'istanza fittizia, se non se ne indica una.
+                  IF v_ist_id IS NULL THEN
+                      v_ist_id := (script.fn_scrivi_riga_da_jsonb(
+                                       'anagrafiche.istanze_utilities'::regclass,
+                                       jsonb_strip_nulls(v_istanza)
+                                       || jsonb_build_object('soggetto_id', v_soggetto_id,
+                                                             'fittizia',    true))
+                                   ->> 'id')::bigint;
+                  END IF;
+
+                  -- 2. Il BA, riletto a istruzione finita per la coppia
+                  --    (uq_billing_instance_utility): sotto la RLS la riga si
+                  --    vede solo dopo il legame scritto dal trigger AFTER.
+                  v_ba_id := (script.fn_scrivi_riga_da_jsonb(
+                                  'anagrafiche.billing_account'::regclass,
+                                  jsonb_strip_nulls(v_campi)
+                                  || jsonb_build_object('istanza_utility_id', v_ist_id,
+                                                        'soggetto_ruolo_id',  p_soggetto_ruolo_id,
+                                                        'utility_id',         p_utility_id),
+                                  NULL,
+                                  ARRAY['istanza_utility_id', 'utility_id'])
+                              ->> 'id')::bigint;
+
+                  -- 3. Il legame all'emittente, se chiesto. is_default = false:
+                  --    e' il legame di QUESTO BA, non il default dell'installazione.
+                  IF p_emittente_soggetto_ruolo_id IS NOT NULL THEN
+                      SELECT efba.emittente_soggetto_ruolo_id
+                        INTO v_link_sr
+                        FROM anagrafiche.emittenti_fiscali_billing_account efba
+                       WHERE efba.billing_account_id = v_ba_id;
+
+                      IF v_link_sr IS NULL THEN
+                          INSERT INTO anagrafiche.emittenti_fiscali_billing_account
+                              (emittente_soggetto_ruolo_id, billing_account_id, is_default)
+                          VALUES (p_emittente_soggetto_ruolo_id, v_ba_id, false);
+                      ELSIF v_link_sr <> p_emittente_soggetto_ruolo_id THEN
+                          -- Con un operatore in sessione il trigger z90 l'ha gia'
+                          -- legato all'emittente di chi agisce.
+                          PERFORM script.fn_log_and_raise_error(
+                              'anagrafiche', 'anagrafiche.fn_crea_billing_account', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                              jsonb_build_object('billing_account_id',       v_ba_id,
+                                                 'emittente_legato',         v_link_sr,
+                                                 'emittente_chiesto',        p_emittente_soggetto_ruolo_id),
+                              NULL::uuid,
+                              'anagrafiche.fn_crea_billing_account',
+                              'il BA e'' gia'' legato all''emittente di chi agisce, non a quello chiesto');
+                      END IF;
+                  END IF;
+
+                  RETURN QUERY SELECT v_ba_id, v_ist_id;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_contatto(
+                  p_soggetto_id       anagrafiche.contatti.soggetto_id%TYPE,
+                  p_soggetto_ruolo_id anagrafiche.contatti.soggetto_ruolo_id%TYPE,
+                  p_campi             jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_estranea text;
+                  v_manca    text;
+                  c_ammesse  CONSTANT text[] := ARRAY[
+                      'tipo_contatto_id', 'nominativo', 'email', 'telefono', 'cellulare',
+                      'pec', 'note', 'is_default', 'default_context', 'titolo_cortesia_id',
+                      'unita_organizzativa_id', 'istanza_utility_id'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare un contatto del soggetto (p_soggetto_ruolo_id
+                  --   NULL) o di un suo ruolo, con le chiavi di p_campi (le
+                  --   assenti al DEFAULT). Ritorna la riga creata.
+                  --
+                  -- Regole:
+                  --   - nominativo e tipo di contatto obbligatori, non vuoti:
+                  --     E_CONTATTO_INCOMPLETO col primo campo che manca;
+                  --   - una chiave estranea si rifiuta: E_CAMPO_NON_AMMESSO.
+                  -- =========================================================
+                  IF p_soggetto_id IS NULL OR jsonb_typeof(v_campi) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_contatto', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('soggetto_id', p_soggetto_id,
+                                             'tipo_campi',  jsonb_typeof(v_campi)),
+                          NULL::uuid,
+                          'anagrafiche.fn_crea_contatto',
+                          'soggetto mancante o campi che non sono un oggetto');
+                  END IF;
+
+                  v_estranea := script.fn_prima_chiave_estranea(v_campi, c_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_contatto', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'soggetto_id', p_soggetto_id),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  v_manca := CASE
+                                 WHEN NULLIF(btrim(v_campi ->> 'nominativo'), '') IS NULL THEN 'nominativo'
+                                 WHEN COALESCE((v_campi ->> 'tipo_contatto_id')::integer, 0) <= 0 THEN 'tipo_contatto_id'
+                             END;
+                  IF v_manca IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_contatto', 'E_CONTATTO_INCOMPLETO',
+                          jsonb_build_object('campo', v_manca, 'soggetto_id', p_soggetto_id),
+                          NULL::uuid,
+                          v_manca);
+                  END IF;
+
+                  RETURN script.fn_scrivi_riga_da_jsonb(
+                             'anagrafiche.contatti'::regclass,
+                             v_campi || jsonb_build_object('soggetto_id',       p_soggetto_id,
+                                                           'soggetto_ruolo_id', p_soggetto_ruolo_id));
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_indirizzo_elemento(
+                  p_el       jsonb,
+                  p_chi      text,
+                  p_contesto jsonb DEFAULT '{}'::jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               STABLE
+              AS $function$
+              DECLARE
+                  v_ctx      jsonb := COALESCE(p_contesto, '{}'::jsonb);
+                  v_estranea text;
+                  v_tipo_id  config.tipi_indirizzi.id%TYPE;
+                  -- Le chiavi di un indirizzo: le colonne della riga, piu'
+                  -- quelle di una via da risolvere (fn_create_indirizzo).
+                  c_ammesse CONSTANT text[] := ARRAY[
+                      'tipo_indirizzo_id', 'tipo_indirizzo_codice_interno',
+                      'indirizzo_dettaglio_id', 'indirizzo_libero',
+                      'stato_id', 'comune_id', 'codice_postale_id',
+                      'administrative_area', 'locality', 'sublocality', 'postal_code',
+                      'stradario_id', 'toponomastica_id', 'descrizione_via',
+                      'civico', 'estensione_civico', 'palazzina', 'scala', 'piano', 'interno'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Leggere un indirizzo in jsonb: un oggetto, solo chiavi
+                  --   ammesse, il tipo risolto (tipo_indirizzo_id, oppure
+                  --   tipo_indirizzo_codice_interno = codice interno). Ritorna
+                  --   l'elemento con tipo_indirizzo_id e senza il codice.
+                  --   p_chi: la madre che chiama (per il log); p_contesto:
+                  --   le chiavi che la madre aggiunge al contesto dei rifiuti.
+                  --
+                  -- Regole:
+                  --   - non giudica la completezza ne' la forma: e' il guard
+                  --     della tabella (trgfn_indirizzi_guard_forma_libera).
+                  -- =========================================================
+                  IF jsonb_typeof(p_el) IS DISTINCT FROM 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', p_chi, 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          v_ctx || jsonb_build_object('tipo_elemento', jsonb_typeof(p_el)),
+                          NULL::uuid,
+                          p_chi,
+                          'un indirizzo non e'' un oggetto');
+                  END IF;
+
+                  v_estranea := script.fn_prima_chiave_estranea(p_el, c_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', p_chi, 'E_CAMPO_NON_AMMESSO',
+                          v_ctx || jsonb_build_object('campo', v_estranea),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  v_tipo_id := (p_el ->> 'tipo_indirizzo_id')::integer;
+                  IF v_tipo_id IS NULL AND NULLIF(btrim(p_el ->> 'tipo_indirizzo_codice_interno'), '') IS NOT NULL THEN
+                      SELECT ti.id
+                        INTO v_tipo_id
+                        FROM config.tipi_indirizzi ti
+                       WHERE ti.codice_interno = upper(btrim(p_el ->> 'tipo_indirizzo_codice_interno'));
+                  END IF;
+
+                  IF v_tipo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', p_chi, 'E_TIPO_INDIRIZZO_NON_TROVATO',
+                          v_ctx || jsonb_build_object(
+                              'campo', 'tipo_indirizzo_codice_interno',
+                              'tipo_indirizzo_codice_interno', p_el ->> 'tipo_indirizzo_codice_interno'),
+                          NULL::uuid,
+                          COALESCE(NULLIF(btrim(p_el ->> 'tipo_indirizzo_codice_interno'), ''), '-'));
+                  END IF;
+
+                  RETURN (p_el - 'tipo_indirizzo_codice_interno')
+                         || jsonb_build_object('tipo_indirizzo_id', v_tipo_id);
+              END;
+              $function$;

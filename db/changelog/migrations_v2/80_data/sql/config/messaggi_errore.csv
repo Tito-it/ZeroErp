@@ -538,7 +538,7 @@ E_TASK_NOT_IMPLEMENTED,it,Task pipeline non implementato.,740,NULL,NULL
 E_TASK_RESET_REQUIRED,it,Reset necessario prima di rieseguire.,741,NULL,NULL
 E_TIPO_FONDO_NOT_FOUND,it,Tipo fondo non trovato.,742,NULL,NULL
 E_TOKEN,it,"Token non valido, scaduto o gia' utilizzato.",743,NULL,NULL
-E_UI_COLONNA_IN_USO,it,La colonna è in uso in preferenze utente o preset. Disattivala con attivo=false invece di eliminarla.,744,NULL,NULL
+E_UI_COLONNA_IN_USO,it,"La colonna è in uso in un preset: toglila prima dal preset, oppure disattivala con attivo=false invece di eliminarla.",744,NULL,NULL
 E_UI_COLONNA_NON_TROVATA,it,Colonna lista non trovata.,745,NULL,NULL
 E_UI_COLONNA_VALIDAZIONE,it,Colonna lista non valida.,746,NULL,NULL
 E_UI_DEFINIZIONE_IN_USO,it,"La definizione lista e' in uso (preferenze utente, colonne o preset). Disattivala con attivo=false invece di eliminarla.",747,NULL,NULL
@@ -1264,3 +1264,4 @@ E_UI_LISTA_DICHIARAZIONE_NON_SCRIVIBILE,it,La dichiarazione %s della lista %s no
 E_UI_LISTA_CODICE_IMMUTABILE,it,La colonna %s della lista non si può cambiare: il codice è la chiave con cui la schermata si cerca.,1527,Preferenze e configurazioni cercano la lista per codice: cambiarlo le lascerebbe senza schermata.,Spegnere la lista e crearne una nuova col codice giusto.
 E_UI_COLONNA_CODICE_IMMUTABILE,it,Il campo %s di una colonna di lista non si può cambiare: preferenze e preset cercano la colonna per codice.,1528,Cambiare il codice lascerebbe preferenze e preset senza la loro colonna.,"Spegnere la colonna e crearne una nuova, nella lista giusta e col codice giusto."
 E_UI_WIDGET_IMMUTABILE,it,Il campo %s della card non si può cambiare: preferenze e preset cercano la card per codice nella sua dashboard.,1531,Cambiarlo lascerebbe preferenze e preset senza la loro card.,"Spegnere la card e crearne una nuova col codice giusto, o toglierla dal pool e aggiungerla a quello dell'altra dashboard."
+E_MAG_DOCUMENTO_TESTATA_CONGELATA,it,Il documento è in stato %s: i dati della testata non si modificano più.,1532,"La data e la descrizione di un inventario, di una rettifica o di un trasferimento si cambiano finché il documento è in bozza.","Per correggere un documento confermato, riportarlo in bozza (se ammesso) o annullarlo e rifarlo; un documento registrato si corregge con una rettifica."

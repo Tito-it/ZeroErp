@@ -78,9 +78,9 @@ BEGIN
     v_art := dbops.fn_pgtap_crea_articolo('PGT-EPL-GEST', true, false, false);
 
     -- Il carico: 10 pezzi nel predefinito.
-    INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_p) RETURNING id INTO v_inv;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, costo_unitario) VALUES (v_inv, v_art, 10, 5);
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_inv;
+    v_inv := dbops.fn_pgtap_crea_inventario(v_p);
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_inv, v_art, 10, jsonb_build_object('costo_unitario', 5));
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_inv, 'CONFIRM');
     PERFORM magazzino.fn_posta_inventario(v_inv);
 
     INSERT INTO _fix VALUES (

@@ -119,7 +119,7 @@ SELECT ca.competenza_mese,
                     WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
                     ELSE 'FATTURATA'::text
                 END)::character varying AS stadio) st)
-     CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+     CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids(script.fn_utente_di_sessione('vendite.vw_dash_competenza_attivita'::text)) AS sr_ids) escope)
      LEFT JOIN vendite.vw_commesse_attivita_emittibilita cae ON ((cae.commessa_attivita_id = ca.id)))
   WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
 ```

@@ -21,7 +21,6 @@ DECLARE
     v_ba         jsonb := COALESCE(p_billing_account, '{}'::jsonb);
     v_istanza    jsonb := COALESCE(p_istanza, '{}'::jsonb);
     v_nascita    jsonb := '{}'::jsonb;
-    v_estranea   text;
     v_sr_id      anagrafiche.clienti.soggetto_ruolo_id%TYPE;
     v_ba_id      anagrafiche.clienti.billing_account_id%TYPE := p_billing_account_id;
     v_ist_id     anagrafiche.clienti.istanza_utility_id%TYPE := p_istanza_utility_id;
@@ -68,14 +67,10 @@ BEGIN
             'soggetto mancante, campi non oggetti, o billing account esistente e nuovo insieme (o nessuno dei due)');
     END IF;
 
-    v_estranea := script.fn_prima_chiave_estranea(v_campi, c_ammesse);
-    IF v_estranea IS NOT NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'anagrafiche', 'anagrafiche.fn_crea_cliente', 'E_CAMPO_NON_AMMESSO',
-            jsonb_build_object('campo', v_estranea, 'soggetto_id', p_soggetto_id),
-            NULL::uuid,
-            v_estranea);
-    END IF;
+    PERFORM script.fn_guard_campi_ammessi(
+        v_campi, c_ammesse,
+        'anagrafiche', 'anagrafiche.fn_crea_cliente',
+        jsonb_build_object('soggetto_id', p_soggetto_id));
 
     v_sr_id := script.fn_get_or_create_soggetto_ruolo(
                    p_soggetto_id  := p_soggetto_id,

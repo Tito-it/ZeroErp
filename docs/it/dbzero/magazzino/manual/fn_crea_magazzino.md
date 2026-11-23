@@ -1,12 +1,18 @@
 ## 📘 Documentazione Concettuale – Funzione `magazzino.fn_crea_magazzino`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
 > * [magazzino.magazzini](/dbzero/magazzino/tabelle/magazzini) — la tabella in cui scrive la riga
+>
+> Approfondimento funzioni:
+>
+> * [magazzino.fn_aggiungi_magazzino](/dbzero/magazzino/funzioni/fn_aggiungi_magazzino) — il verbo dell'operatore, che la chiama dopo il permesso
+> * [magazzino.fn_magazzini_colonne_ammesse](/dbzero/magazzino/funzioni/fn_magazzini_colonne_ammesse) — le colonne facoltative che accetta
+> * [script.fn_guard_campi_ammessi](/dbzero/script/funzioni/fn_guard_campi_ammessi) — il controllo dei campi
 
 ---
 
@@ -15,8 +21,9 @@
 **Aprire un magazzino** di un'azienda: codice, descrizione, indirizzo e, se
 servono, l'uso delle ubicazioni e il «predefinito».
 
-È la sede unica della creazione: la usano il backend (l'anagrafica dei
-magazzini), le fixture dei test e il provisioning dei dati di sviluppo.
+È la sede unica della creazione: la usano il verbo dell'operatore
+(`magazzino.fn_aggiungi_magazzino`) e, senza un operatore, il provisioning
+dei dati di sviluppo.
 
 ---
 
@@ -34,8 +41,8 @@ magazzini), le fixture dei test e il provisioning dei dati di sviluppo.
 
 ### Che cosa non controlla
 
-Il permesso e il perimetro dell'operatore: li dicono il backend e il
-controllo di perimetro della tabella. Anche l'unicità del codice e l'indirizzo
+Il permesso: lo controlla chi la chiama, cioè il verbo di nascita. Il
+perimetro dell'operatore lo dice il controllo di perimetro della tabella. Anche l'unicità del codice e l'indirizzo
 attivo li fanno rispettare i vincoli e i controlli della tabella.
 
 ⚠️ Senza un operatore collegato quel controllo ferma la scrittura: chi crea
@@ -66,6 +73,9 @@ per conto di un operatore dell'azienda.
   (`AnagraficheMagazzinoRepository.create_magazzino`), dell'inserimento fatto a
   mano in `dbops.fn_pgtap_crea_magazzino` e delle fixture dei pgTAP del
   magazzino.
+* 2026-11-22 — la chiama il verbo `magazzino.fn_aggiungi_magazzino`, e non più il backend; la lista
+  dei campi la legge da `magazzino.fn_magazzini_colonne_ammesse`
+  (`brief-db-magazzino-tutte-le-scritture-dal-verbo`).
 
 ---
 

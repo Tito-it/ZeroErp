@@ -39,7 +39,7 @@ DECLARE
     v_consegna_tr  boolean;
     v_sorgente_id  config.sorgenti.id%TYPE;
 BEGIN
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('vendite.fn_cambia_stato_ddt');
 
     -- Guard di parametro: forme che nessuna interfaccia produce.
     IF p_ddt_id IS NULL OR p_ddt_id <= 0 OR p_stato IS NULL OR btrim(p_stato) = '' THEN

@@ -79,7 +79,7 @@ BEGIN
   END IF;
 
   -- 3) Chi scrive. GUC vuota = nessuno da cui dedurre.
-  v_auth_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+  v_auth_user_id := script.fn_utente_di_sessione('script.trgfn_default_emittente_fiscale');
   IF v_auth_user_id IS NULL THEN
     IF v_modo = 'LASCIA_NULL' THEN
       RETURN NEW;

@@ -31,7 +31,7 @@ DECLARE
     -- CONTEGGIO dei legami confermati.
     v_legami  integer;
 BEGIN
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('vendite.fn_annulla_ordine');
 
     -- 1. Parametri.
     IF p_ordine_id IS NULL OR p_ordine_id <= 0 THEN

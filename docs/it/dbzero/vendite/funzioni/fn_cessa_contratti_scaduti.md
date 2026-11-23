@@ -33,7 +33,7 @@ BEGIN
     --   stato di cessazione dal vocabolario, non 'CESSATO'.
     -- Ritorna: quanti contratti sono stati cessati.
     -- ==========================================================
-    v_utente     := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente     := script.fn_utente_di_sessione('vendite.fn_cessa_contratti_scaduti');
     v_attivo_id  := script.fn_stato_emissione_id('vendite.contratti'::regclass);
     v_cessato_id := script.fn_stato_cessazione_id('vendite.contratti'::regclass);
 

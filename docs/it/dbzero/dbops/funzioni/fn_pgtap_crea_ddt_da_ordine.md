@@ -131,7 +131,7 @@ BEGIN
                 'fn_pgtap_crea_ddt_da_ordine: ordine id = % non esiste o non e'' visibile',
                 p_ordine_id;
         END IF;
-        v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+        v_user_id := script.fn_utente_di_sessione('dbops.fn_pgtap_crea_ddt_da_ordine');
     END IF;
 
     -- La quantita' da evadere vale per LA riga di merce: con piu' righe

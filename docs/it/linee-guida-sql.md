@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -1951,7 +1951,14 @@ La policy chiama la funzione passando i GUC, **mai** leggendoli dentro la funzio
 mantiene la funzione pura e testabile con input espliciti.
 
 `current_setting('app.xxx', true)` ritorna stringa vuota se il GUC non e' settato.
-Gestire il fallback con `NULLIF(..., '')::bigint` o un guard esplicito nel caller.
+Nella policy il fallback si scrive con `NULLIF(..., '')::integer`.
+
+**`app.current_user_id` in una funzione o in una vista: dal BB.** Si legge con
+[`script.fn_utente_di_sessione('<schema.funzione>')`](/dbzero/script/funzioni/fn_utente_di_sessione),
+mai con `NULLIF(current_setting(...), '')::integer`: GUC assente o vuota da' `NULL`, un valore
+che non e' l'id di un utente da' `E_SCRIPT_CHIAMATA_NON_VALIDA` col nome di chi legge (la
+conversione a mano dava il 22P02 grezzo). Il presidio e' `script/test-fn-utente-di-sessione-v1`:
+una funzione nuova che converte la GUC da se' lo fa diventare rosso.
 
 **Helper `script.fn_current_identita_context()`** — per leggere i tre GUC multi-face-auth
 (`app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id`) in un unico

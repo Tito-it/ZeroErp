@@ -15,7 +15,7 @@
 CREATE OR REPLACE VIEW vendite.vw_dash_competenza_errori
 WITH (security_invoker=on) AS
 WITH escope AS (
-         SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids
+         SELECT script.fn_get_emittenti_scope_sr_ids(script.fn_utente_di_sessione('vendite.vw_dash_competenza_errori'::text)) AS sr_ids
         ), task_err AS (
          SELECT tr.lotto_id,
             tr.task_code,

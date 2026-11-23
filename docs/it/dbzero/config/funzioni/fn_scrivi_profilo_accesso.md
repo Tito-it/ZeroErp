@@ -18,7 +18,6 @@ CREATE OR REPLACE FUNCTION config.fn_scrivi_profilo_accesso(p_tipo config.tipo_p
 AS $function$
 DECLARE
     v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
-    v_estranea text;
     v_id       config.profili_accesso.id%TYPE;
     v_tipo     config.profili_accesso.tipo%TYPE;
     c_ammesse  CONSTANT text[] := ARRAY['attivo', 'richiede_secondo_fattore'];
@@ -52,14 +51,10 @@ BEGIN
             'tipo, codice o descrizione mancanti, o campi, aree, azioni malformati');
     END IF;
 
-    v_estranea := script.fn_prima_chiave_estranea(v_campi, c_ammesse);
-    IF v_estranea IS NOT NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'config', 'config.fn_scrivi_profilo_accesso', 'E_CAMPO_NON_AMMESSO',
-            jsonb_build_object('campo', v_estranea, 'codice', p_codice),
-            NULL::uuid,
-            v_estranea);
-    END IF;
+    PERFORM script.fn_guard_campi_ammessi(
+        v_campi, c_ammesse,
+        'config', 'config.fn_scrivi_profilo_accesso',
+        jsonb_build_object('codice', p_codice));
 
     -- 1. Il profilo, per codice: un codice ha un tipo solo.
     --    ⛔ Si CERCA col codice normalizzato, si SCRIVE quello

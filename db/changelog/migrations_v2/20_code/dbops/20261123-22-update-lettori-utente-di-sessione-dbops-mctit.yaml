@@ -1,0 +1,2776 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops: i lettori di app.current_user_id passano a script.fn_utente_di_sessione.
+#   Brief: brief-db-revisione-ui (§3.6-sexies, giro 8; Q60 (a)).
+#
+# Il perche': ognuna convertiva la GUC da se',
+#   NULLIF(current_setting('app.current_user_id', true), '')::integer, e un
+#   valore che non e' un intero dava il 22P02 grezzo. Ora la legge il BB
+#   (20261123-16): assente o vuota resta NULL, come prima; un valore che non
+#   e' l'id di un utente da' E_SCRIPT_CHIAMATA_NON_VALIDA, col nome della
+#   funzione che legge.
+# Funzioni: fn_accoda_lavoro e i builder pgTAP fn_pgtap_apri_area_per_nascita,
+#   fn_pgtap_azienda_di_chi_agisce, fn_pgtap_crea_ddt_da_ordine,
+#   fn_pgtap_crea_mondo_cliente, fn_pgtap_crea_ordine_con_righe,
+#   fn_pgtap_crea_preventivo_con_righe, fn_pgtap_porta_a_stato,
+#   fn_pgtap_scope_operatore.
+# Testata ri-ancorata dove era nuda (linee-guida §5g): p_id di
+#   fn_pgtap_porta_a_stato porta la ragione sulla sua riga.
+# Cambia solo la lettura. Corpo dal vivo (dbdev, 2026-11-23); firma, RETURNS e
+#   attributi dall'ultimo changeSet che ha ancora i %TYPE. Firma, volatilita',
+#   sicurezza, proprietario e GRANT invariati: CREATE OR REPLACE. La rollback
+#   riporta i corpi di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261123-22-update-lettori-utente-di-sessione-dbops-mctit.yaml
+
+  - changeSet:
+      id: 20261123-22-update-lettori-utente-di-sessione-dbops
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops: le funzioni che leggono app.current_user_id passano a script.fn_utente_di_sessione invece di
+        convertire la GUC da se'. Brief: brief-db-revisione-ui (§3.6-sexies, Q60).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "10"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('script', 'fn_utente_di_sessione'), ('dbops', 'fn_accoda_lavoro'), ('dbops', 'fn_pgtap_apri_area_per_nascita'), ('dbops', 'fn_pgtap_azienda_di_chi_agisce'), ('dbops', 'fn_pgtap_crea_ddt_da_ordine'), ('dbops', 'fn_pgtap_crea_mondo_cliente'), ('dbops', 'fn_pgtap_crea_ordine_con_righe'), ('dbops', 'fn_pgtap_crea_preventivo_con_righe'), ('dbops', 'fn_pgtap_porta_a_stato'), ('dbops', 'fn_pgtap_scope_operatore'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_accoda_lavoro(
+                  p_job_type        dbops.coda_lavori.job_type%TYPE,
+                  p_payload         dbops.coda_lavori.payload%TYPE         DEFAULT '{}'::jsonb,
+                  p_run_as          dbops.coda_lavori.run_as%TYPE          DEFAULT NULL,
+                  p_scope           dbops.coda_lavori.scope%TYPE           DEFAULT NULL,
+                  p_idempotency_key dbops.coda_lavori.idempotency_key%TYPE DEFAULT NULL,
+                  p_priorita        dbops.coda_lavori.priorita%TYPE        DEFAULT 100,
+                  p_run_after       dbops.coda_lavori.run_after%TYPE       DEFAULT NULL,
+                  p_max_tentativi   dbops.coda_lavori.max_tentativi%TYPE   DEFAULT NULL,
+                  p_origine         dbops.coda_lavori.origine%TYPE         DEFAULT 'API')
+               RETURNS dbops.coda_lavori.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_tipo         dbops.coda_lavori_tipi%ROWTYPE;
+                  v_classe       dbops.processi.classe%TYPE;
+                  v_run_as       dbops.coda_lavori.run_as%TYPE;
+                  v_max_tent     dbops.coda_lavori.max_tentativi%TYPE;
+                  v_emittente    dbops.coda_lavori.emittente_fiscale_id%TYPE;
+                  v_id           dbops.coda_lavori.id%TYPE;
+                  v_vivo_run_as  dbops.coda_lavori.run_as%TYPE;
+                  v_vivo_emitt   dbops.coda_lavori.emittente_fiscale_id%TYPE;
+                  v_da_app       boolean;
+                  -- ⚠️ `integer` esplicito: django.auth_user.id, a cui il DB non si lega.
+                  v_chiamante    integer;
+                  -- ⚠️ `bigint[]` esplicito: elementi = anagrafiche.emittenti_fiscali.id.
+                  v_perimetro    bigint[];
+              BEGIN
+                  -- Scopo: la porta della coda. Valida il tipo, risolve i
+                  --   default, controlla classe e scope, scrive l'azienda del
+                  --   lavoro, accoda idempotente sui lavori vivi. SECURITY
+                  --   DEFINER: vede tutte le righe, quindi controlla da se' chi
+                  --   puo' accodare che cosa (vedi testata del changeSet).
+
+                  -- Guard parametro: job_type obbligatorio e non vuoto.
+                  IF p_job_type IS NULL OR btrim(p_job_type) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'dbops.fn_accoda_lavoro', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_job_type'),
+                          NULL::uuid, 'p_job_type obbligatorio');
+                  END IF;
+
+                  -- Guard: tipo registrato in coda_lavori_tipi.
+                  SELECT * INTO v_tipo
+                    FROM dbops.coda_lavori_tipi
+                   WHERE codice = p_job_type;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'dbops.fn_accoda_lavoro', 'E_JOB_TYPE_NON_TROVATO',
+                          jsonb_build_object('job_type', p_job_type),
+                          NULL::uuid, p_job_type);
+                  END IF;
+
+                  -- Guard: tipo attivo (l'handler dev'essere registrato lato BE).
+                  IF NOT v_tipo.attivo THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'dbops.fn_accoda_lavoro', 'E_JOB_TYPE_NON_ATTIVO',
+                          jsonb_build_object('job_type', p_job_type),
+                          NULL::uuid, p_job_type);
+                  END IF;
+
+                  -- Default per tipo, se non passati.
+                  v_run_as   := COALESCE(p_run_as, v_tipo.run_as_default);
+                  v_max_tent := COALESCE(p_max_tentativi, v_tipo.max_tentativi_default);
+
+                  -- Guard di classe: il default del tipo e' un suggerimento che
+                  --   p_run_as sovrascrive; un lavoro di DOMINIO resta OPERATORE.
+                  --   La classe si legge dal registro dei processi, non da una
+                  --   copia. ⚠️ Sotto-select scalare: un tipo senza processo da' NULL
+                  --   e il ramo non scatta (processo_codice e' NOT NULL, ma qui non
+                  --   si assume).
+                  v_classe := (SELECT pr.classe
+                                 FROM dbops.processi pr
+                                WHERE pr.codice = v_tipo.processo_codice);
+
+                  IF v_classe = 'DOMINIO' AND v_run_as <> 'OPERATORE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'dbops.fn_accoda_lavoro',
+                          'E_JOB_DOMINIO_SENZA_OPERATORE',
+                          jsonb_build_object('job_type', p_job_type,
+                                             'run_as', v_run_as,
+                                             'processo_codice', v_tipo.processo_codice),
+                          NULL::uuid, p_job_type, v_run_as);
+                  END IF;
+
+                  -- Guard run_as <-> scope (messaggio parlante prima del CHECK):
+                  --   un OPERATORE senza scope girerebbe senza identita'. Il caso
+                  --   simmetrico (SISTEMA con scope) lo copre il CHECK.
+                  IF v_run_as = 'OPERATORE' AND p_scope IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'dbops.fn_accoda_lavoro', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_scope', 'run_as', v_run_as),
+                          NULL::uuid, 'p_scope obbligatorio per run_as=OPERATORE');
+                  END IF;
+
+                  -- Un lavoro OPERATORE appartiene a un'azienda: l'emittente
+                  --   attivo di chi l'ha accodato, catturato nello scope.
+                  IF v_run_as = 'OPERATORE' THEN
+                      v_emittente := (p_scope ->> 'emittente_attivo_id')::bigint;
+                      IF v_emittente IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'dbops.fn_accoda_lavoro',
+                              'E_CODA_LAVORO_SENZA_EMITTENTE',
+                              jsonb_build_object('job_type', p_job_type,
+                                                 'parametro', 'p_scope'),
+                              NULL::uuid, p_job_type);
+                      END IF;
+                  END IF;
+
+                  -- Chi chiama. ⭐ Da una sessione dell'applicazione la porta
+                  --   controlla cio' che la policy controllerebbe; fuori la
+                  --   raggiunge solo il proprietario (l'esecuzione e' tolta a
+                  --   PUBLIC), cioe' le procedure di pgAgent e la migrazione.
+                  --   ⚠️ session_user e non current_user: qui dentro current_user
+                  --   e' il proprietario, sempre.
+                  v_da_app := CASE
+                                  WHEN EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                                WHERE rolname = 'zeroerp_app')
+                                  THEN pg_catalog.pg_has_role(session_user, 'zeroerp_app', 'MEMBER')
+                                  ELSE false
+                              END;
+
+                  IF v_da_app THEN
+                      v_chiamante := script.fn_utente_di_sessione('dbops.fn_accoda_lavoro');
+                      v_perimetro := script.fn_get_emittenti_scope_pk_ids(v_chiamante);
+
+                      IF v_run_as = 'OPERATORE'
+                         AND (v_chiamante IS NULL
+                              OR current_setting('app.ruolo_applicativo', true) IS DISTINCT FROM 'OPERATORE'
+                              OR (p_scope ->> 'auth_user_id')::integer IS DISTINCT FROM v_chiamante
+                              OR NOT script.fn_scope_ef_perimetro(v_perimetro, v_emittente)) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'dbops.fn_accoda_lavoro', 'E_CODA_SCOPE_ALTRUI',
+                              jsonb_build_object('job_type', p_job_type,
+                                                 'emittente_fiscale_id', v_emittente,
+                                                 'scope_auth_user_id', p_scope ->> 'auth_user_id',
+                                                 'chiamante', v_chiamante),
+                              NULL::uuid, p_job_type);
+                      END IF;
+                  END IF;
+
+                  -- ⛔ D9: il ciclo dell'upsert. L'unique parziale
+                  --   uq_coda_lavori_vivo_idem assorbe il doppione vivo (stessa
+                  --   job_type + idempotency_key in PENDING/IN_CORSO); se il vivo
+                  --   si chiude fra l'INSERT e la rilettura, si riprova l'INSERT.
+                  LOOP
+                      INSERT INTO dbops.coda_lavori (
+                          job_type, payload, run_as, scope, emittente_fiscale_id,
+                          origine, priorita, stato, max_tentativi, run_after,
+                          idempotency_key
+                      ) VALUES (
+                          p_job_type,
+                          COALESCE(p_payload, '{}'::jsonb),
+                          v_run_as,
+                          p_scope,
+                          v_emittente,
+                          p_origine,
+                          COALESCE(p_priorita, 100::smallint),
+                          'PENDING',
+                          v_max_tent,
+                          p_run_after,
+                          p_idempotency_key
+                      )
+                      ON CONFLICT (job_type, idempotency_key)
+                          WHERE idempotency_key IS NOT NULL
+                            AND stato IN ('PENDING', 'IN_CORSO')
+                          DO NOTHING
+                      RETURNING id INTO v_id;
+
+                      EXIT WHEN v_id IS NOT NULL;
+
+                      -- Conflitto: il lavoro vivo con la stessa chiave.
+                      SELECT c.id, c.run_as, c.emittente_fiscale_id
+                        INTO v_id, v_vivo_run_as, v_vivo_emitt
+                        FROM dbops.coda_lavori c
+                       WHERE c.job_type = p_job_type
+                         AND c.idempotency_key = p_idempotency_key
+                         AND c.stato IN ('PENDING', 'IN_CORSO')
+                       ORDER BY c.id
+                       LIMIT 1;
+
+                      IF v_id IS NOT NULL THEN
+                          -- ⛔ La porta vede oltre la policy: restituisce solo cio'
+                          --   che chi chiama potrebbe vedere. Un lavoro SISTEMA non
+                          --   ha azienda, e lo si accoda anche da operatore.
+                          IF v_da_app
+                             AND v_vivo_run_as = 'OPERATORE'
+                             AND NOT script.fn_scope_ef_perimetro(v_perimetro, v_vivo_emitt) THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database', 'dbops.fn_accoda_lavoro', 'E_CODA_CHIAVE_ALTRUI',
+                                  jsonb_build_object('job_type', p_job_type,
+                                                     'idempotency_key', p_idempotency_key),
+                                  NULL::uuid, p_job_type, p_idempotency_key);
+                          END IF;
+                          EXIT;
+                      END IF;
+                      -- Il vivo si e' chiuso nel frattempo: si riprova l'INSERT.
+                  END LOOP;
+
+                  RETURN v_id;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_apri_area_per_nascita(
+                  p_app_label  config.user_override_oggetti.app_label%TYPE,
+                  p_model_name config.user_override_oggetti.model_name%TYPE)
+               RETURNS jsonb  -- il ricordo dell'override di prima: nessuna colonna di cui sia il riflesso
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare all'operatore in sessione TUTTO sull'oggetto per il tempo
+              --   di una nascita fatta da un builder. Ritorna il ricordo di cio' che
+              --   c'era, da passare a dbops.fn_pgtap_richiudi_area; NULL se il livello
+              --   c'era gia'.
+              -- Uso: v_ricordo := dbops.fn_pgtap_apri_area_per_nascita('magazzino', 'magazzini');
+              --      ... il verbo ...
+              --      PERFORM dbops.fn_pgtap_richiudi_area(v_ricordo);
+              DECLARE
+                  v_utente  config.user_override_aree.auth_user_id%TYPE;
+                  v_area    config.aree_funzionali.schema_db%TYPE;
+                  v_area_id config.aree_funzionali.id%TYPE;
+                  v_prima   config.user_override_aree%ROWTYPE;
+                  v_ov      config.user_override_aree.id%TYPE;
+              BEGIN
+                  v_utente := script.fn_utente_di_sessione('dbops.fn_pgtap_apri_area_per_nascita');
+                  IF v_utente IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_apri_area_per_nascita: nessun operatore in sessione — chiamare prima fn_pgtap_set_contesto_operatore';
+                  END IF;
+
+                  v_area := script.fn_area_di_oggetto(p_app_label, p_model_name);
+                  IF script.fn_resolve_livello_oggetto(v_utente, p_app_label, p_model_name, v_area)
+                         IS NOT DISTINCT FROM 'TUTTO'::config.livello_accesso THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT af.id INTO v_area_id
+                    FROM config.aree_funzionali af
+                   WHERE af.schema_db = v_area;
+                  IF v_area_id IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_apri_area_per_nascita: nessuna area funzionale per %.%', p_app_label, p_model_name;
+                  END IF;
+
+                  -- Un override d'area che c'e' (del test, o del database) si alza per
+                  -- il tempo della nascita e si rimette com'era: se ne tiene il ricordo.
+                  SELECT * INTO v_prima
+                    FROM config.user_override_aree uoa
+                   WHERE uoa.auth_user_id = v_utente
+                     AND uoa.area_id      = v_area_id;
+
+                  IF v_prima.id IS NULL THEN
+                      INSERT INTO config.user_override_aree
+                             (auth_user_id, area_id, livello, motivo, valido_dal, valido_al)
+                      VALUES (v_utente, v_area_id, 'TUTTO',
+                              'Fixture pgTAP: nascita di ' || p_app_label || '.' || p_model_name,
+                              (SELECT script.fn_data_operativa()), NULL)
+                      RETURNING id INTO v_ov;
+                  ELSE
+                      UPDATE config.user_override_aree uoa
+                         SET livello    = 'TUTTO',
+                             valido_dal = (SELECT script.fn_data_operativa()),
+                             valido_al  = NULL
+                       WHERE uoa.id = v_prima.id;
+                      v_ov := v_prima.id;
+                  END IF;
+
+                  -- Un override sull'OGGETTO resta sotto il tetto: lo si dice.
+                  IF script.fn_resolve_livello_oggetto(v_utente, p_app_label, p_model_name, v_area)
+                         IS DISTINCT FROM 'TUTTO'::config.livello_accesso THEN
+                      RAISE EXCEPTION 'fn_pgtap_apri_area_per_nascita: %.% non arriva a TUTTO anche con l''area aperta (override d''oggetto)',
+                                      p_app_label, p_model_name;
+                  END IF;
+
+                  RETURN jsonb_build_object(
+                      'override_id', v_ov,
+                      'nuovo',       v_prima.id IS NULL,
+                      'livello',     v_prima.livello,
+                      'valido_dal',  v_prima.valido_dal,
+                      'valido_al',   v_prima.valido_al);
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_azienda_di_chi_agisce(
+                   -- il nome del builder che chiede, per i messaggi: tipo nudo.
+                   p_chiamante text DEFAULT 'dbops.fn_pgtap_azienda_di_chi_agisce'::text)
+               RETURNS TABLE(
+                   emittente_fiscale_id        anagrafiche.emittenti_fiscali.id%TYPE,
+                   emittente_codice            anagrafiche.emittenti_fiscali.codice%TYPE,
+                   emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                   auth_user_id                anagrafiche.identita_digitali.auth_user_id%TYPE,
+                   identita_id                 anagrafiche.identita_digitali.id%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: l'azienda su cui una fixture scrive quando un contesto
+              --   e' gia' aperto: quella di CHI AGISCE, con la regola di
+              --   produzione. Estratta dal «ramo B» di
+              --   dbops.fn_pgtap_crea_mondo_cliente (rev 20261024-37).
+              DECLARE
+                  v_user_id   anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_identita  anagrafiche.identita_digitali.id%TYPE;
+                  v_ef_id     anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_codice anagrafiche.emittenti_fiscali.codice%TYPE;
+                  v_ef_sr_id  anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+              BEGIN
+                  -- La domanda e' «c'e' un contesto?», alla GUC che le policy
+                  -- leggono davvero.
+                  v_user_id := script.fn_utente_di_sessione('dbops.fn_pgtap_azienda_di_chi_agisce');
+                  IF v_user_id IS NULL THEN
+                      RAISE EXCEPTION
+                          '%: nessun contesto aperto (app.current_user_id): l''azienda di chi agisce non c''e''. Si costruisce prima il mondo (dbops.fn_pgtap_crea_mondo_cliente) o si apre il contesto (script.fn_pgtap_set_contesto_operatore)',
+                          p_chiamante;
+                  END IF;
+
+                  -- ⭐ L'azienda di chi agisce con la regola di produzione: l'emittente
+                  --   scelto in alto (app.current_emittente_id) se l'utente lo puo'
+                  --   usare, altrimenti la sua riga in config.user_emittenti_fiscali.
+                  --   E' la stessa domanda che fa il trigger z90 quando lega il BA.
+                  SELECT ef.id, ef.codice, ef.soggetto_ruolo_id
+                    INTO v_ef_id, v_ef_codice, v_ef_sr_id
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.id = script.fn_resolve_emittente_for_user(v_user_id);
+                  -- ⚠️ Guard sul RISULTATO: un operatore senza riga in
+                  --   user_emittenti_fiscali e' fail-closed dal 2026-08-18 (P-2a);
+                  --   un super admin non ha azienda finche' non ne sceglie una.
+                  IF v_ef_id IS NULL THEN
+                      RAISE EXCEPTION
+                          '%: l''utente di contesto (auth_user_id = %) non ha un''azienda su cui scrivere: ne'' una riga in config.user_emittenti_fiscali ne'' un emittente scelto (app.current_emittente_id, per il super admin). Aprire il contesto senza argomento (script.fn_pgtap_set_contesto_operatore()), scegliere l''emittente, o costruire il mondo PRIMA del contesto',
+                          p_chiamante, v_user_id;
+                  END IF;
+
+                  -- Una sola riga per costruzione: uq_identita_digitali_auth_user_ruolo_attivo
+                  -- e' UNIQUE su (auth_user_id, ruolo_applicativo) WHERE attivo.
+                  SELECT idg.id
+                    INTO v_identita
+                    FROM anagrafiche.identita_digitali idg
+                   WHERE idg.auth_user_id = v_user_id
+                     AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                     AND idg.attivo;
+                  IF v_identita IS NULL THEN
+                      RAISE EXCEPTION
+                          '%: nessuna identita'' OPERATORE attiva per auth_user_id = %: il contesto e'' aperto su un utente che l''applicazione non farebbe entrare',
+                          p_chiamante, v_user_id;
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT v_ef_id, v_ef_codice, v_ef_sr_id, v_user_id, v_identita;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_ddt_da_ordine(
+                  -- l'etichetta e' un frammento di testo della fixture: tipo nudo.
+                  p_etichetta            text DEFAULT 'pgTAP'::text,
+                  p_stato_codice_interno config.stati_doc_ddt.codice_interno%TYPE DEFAULT 'CONSEGNATO',
+                  p_billing_account_id   anagrafiche.billing_account.id%TYPE DEFAULT NULL,
+                  p_quantita             vendite.ordini_righe.qta_operativa%TYPE DEFAULT NULL,
+                  p_prezzo               vendite.ordini_righe.prezzo_unitario%TYPE DEFAULT NULL,
+                  p_articolo_id          catalogo.articoli.id%TYPE DEFAULT NULL,
+                  p_fatturazione_trigger vendite.ordini.fatturazione_trigger%TYPE DEFAULT NULL,
+                  p_ordine_id            vendite.ordini.id%TYPE DEFAULT NULL,
+                  p_qta_da_evadere       vendite.ddt_righe.qta_operativa%TYPE DEFAULT NULL,
+                  -- la grammatica di vendite.fn_genera_ddt_da_ordine, non una colonna.
+                  p_righe                jsonb DEFAULT NULL,
+                  p_data                 vendite.ddt.data%TYPE DEFAULT NULL,
+                  p_causale_codice       config.causali_trasporto.codice%TYPE DEFAULT 'VENDITA',
+                  p_data_ordine          vendite.ordini.data%TYPE DEFAULT NULL,
+                  -- le righe dell'ordine costruito, nella grammatica di
+                  -- dbops.fn_pgtap_crea_ordine_con_righe: non una colonna.
+                  p_righe_ordine         jsonb DEFAULT NULL)
+              RETURNS TABLE(
+                  ddt_id                    vendite.ddt.id%TYPE,
+                  ddt_uid                   vendite.ddt.uid%TYPE,
+                  ddt_riga_id               vendite.ddt_righe.id%TYPE,
+                  quantita                  vendite.ddt_righe.quantita%TYPE,
+                  ordine_id                 vendite.ordini.id%TYPE,
+                  ordine_uid                vendite.ordini.uid%TYPE,
+                  ordine_riga_id            vendite.ordini_righe.id%TYPE,
+                  articolo_id               catalogo.articoli.id%TYPE,
+                  billing_account_id        anagrafiche.billing_account.id%TYPE,
+                  cliente_soggetto_ruolo_id vendite.ordini.soggetto_ruolo_id%TYPE,
+                  emittente_fiscale_id      vendite.ordini.emittente_fiscale_id%TYPE,
+                  auth_user_id              anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  stato_doc_ddt_id          vendite.ddt.stato_doc_ddt_id%TYPE)
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP una BOLLA nata da un ordine
+              --   confermato, nello stato chiesto (default CONSEGNATO), per la
+              --   strada vera del dominio.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_b AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('resi');
+              --   -- due spedizioni dalla stessa riga, 4 e 6:
+              --   CREATE TEMP TABLE tmp_a AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('sped', p_quantita => 10,
+              --                                                    p_qta_da_evadere => 4);
+              --   SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('sped',
+              --              p_ordine_id => (SELECT ordine_id FROM tmp_a), p_qta_da_evadere => 6);
+              --   -- la bolla in bozza, per scriverle cio' che il test prova:
+              --   SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('bozza', 'DRAFT');
+              -- rev 2026-10-25 (20261025-02): uno stato abortito si rifiuta prima
+              --   di costruire — la bolla da ordine ha i legami, e il suo annullo
+              --   passa dal verbo vendite.fn_annulla_ddt (caso del test).
+              -- rev 2026-10-25 (20261025-32, brief-db-pgtap-reso-costruito E-1): l'ordine
+              --   costruito viene da dbops.fn_pgtap_crea_ordine_con_righe (la copia della
+              --   strada che stava qui si ritira); p_righe_ordine inoltra piu' righe,
+              --   sconto e date di consegna.
+              -- rev 2026-10-25 (20261025-04, D-1): p_data_ordine, la data dell'ordine
+              --   costruito (dbops.fn_pgtap_crea_ordine la scrive alla nascita). Chi da'
+              --   alla bolla una data passata da' anche quella dell'ordine: una bolla piu'
+              --   vecchia del suo ordine e' una fixture incoerente col modello.
+              -- ⛔ Restituisce la PRIMA riga DI MERCE della bolla: con piu' righe il
+              --   test le legge da se'. Un onere (natura non merce, che la madre porta
+              --   nella prima bolla) non e' mai la riga restituita, ne' quella a cui
+              --   vale p_qta_da_evadere.
+              -- ⚠️ Senza contesto aperto, il mondo lo apre sull'operatore che
+              --   costruisce. Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_stato_id   config.stati_doc_ddt.id%TYPE;
+                  v_abortito   config.stati_doc_ddt.is_abortito%TYPE;
+                  v_causale_id config.causali_trasporto.id%TYPE;
+                  v_ordine     vendite.ordini.id%TYPE;
+                  v_ordine_uid vendite.ordini.uid%TYPE;
+                  v_riga_ord   vendite.ordini_righe.id%TYPE;
+                  v_ba_id      anagrafiche.billing_account.id%TYPE;
+                  v_cli_sr_id  vendite.ordini.soggetto_ruolo_id%TYPE;
+                  v_ef_id      vendite.ordini.emittente_fiscale_id%TYPE;
+                  v_user_id    anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_righe      jsonb;      -- la grammatica della madre
+                  v_ddt        vendite.ddt.id%TYPE;
+                  v_n          integer;    -- righe d'ordine attive di merce: un conteggio
+              BEGIN
+                  -- 0. I parametri si giudicano PRIMA di costruire: un errore
+                  --    del chiamante non deve lasciare un mondo a meta'.
+                  -- Lo stato dalla sede della traduzione codice -> id
+                  -- (script.fn_doc_stato_id: solo uno stato attivo).
+                  v_stato_id := script.fn_doc_stato_id('vendite.ddt'::regclass, p_stato_codice_interno);
+                  SELECT s.is_abortito INTO v_abortito
+                    FROM config.stati_doc_ddt s
+                   WHERE s.id = v_stato_id;
+                  IF v_stato_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ddt_da_ordine: nessuno stato attivo della bolla con codice_interno = %',
+                          coalesce(p_stato_codice_interno::text, 'NULL');
+                  END IF;
+
+                  -- Uno stato abortito non e' una strada della fixture: la bolla
+                  -- nata da un ordine ha i legami, e il loro annullo lo dichiara
+                  -- il verbo (E_DOC_ANNULLO_CON_LEGAMI sull'UPDATE della matrice).
+                  IF v_abortito THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ddt_da_ordine: % e'' uno stato abortito — la bolla nata da un ordine ha i legami e si annulla col verbo vendite.fn_annulla_ddt: chiedere EMESSO e annullare dal test',
+                          p_stato_codice_interno;
+                  END IF;
+
+                  SELECT c.id INTO v_causale_id
+                    FROM config.causali_trasporto c
+                   WHERE c.codice = script.fn_codice_normalizzato(p_causale_codice)
+                     AND c.attivo IS TRUE;
+                  IF v_causale_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ddt_da_ordine: nessuna causale di trasporto attiva con codice = %',
+                          coalesce(p_causale_codice::text, 'NULL');
+                  END IF;
+
+                  IF p_righe IS NOT NULL AND p_qta_da_evadere IS NOT NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ddt_da_ordine: p_righe e p_qta_da_evadere insieme — la quantita'' da evadere sta gia'' in p_righe';
+                  END IF;
+
+                  -- Cliente, riga e trigger sono dell'ordine: con un ordine
+                  -- gia' costruito non si scelgono qui.
+                  IF p_ordine_id IS NOT NULL
+                     AND (p_billing_account_id IS NOT NULL OR p_quantita IS NOT NULL
+                          OR p_prezzo IS NOT NULL OR p_articolo_id IS NOT NULL
+                          OR p_fatturazione_trigger IS NOT NULL OR p_data_ordine IS NOT NULL
+                          OR p_righe_ordine IS NOT NULL) THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ddt_da_ordine: con p_ordine_id cliente, righe, data e trigger di fatturazione sono quelli dell''ordine — non si passano';
+                  END IF;
+
+                  -- 1. L'ordine confermato: quello del test, o uno del builder dell'ordine
+                  --    con le righe (la strada sta li', una volta).
+                  IF p_ordine_id IS NULL THEN
+                      SELECT o.ordine_id, o.ordine_uid, o.billing_account_id,
+                             o.cliente_soggetto_ruolo_id, o.emittente_fiscale_id, o.auth_user_id
+                        INTO v_ordine, v_ordine_uid, v_ba_id, v_cli_sr_id, v_ef_id, v_user_id
+                        FROM dbops.fn_pgtap_crea_ordine_con_righe(
+                                 p_etichetta, 'CONFERMATO', p_billing_account_id,
+                                 p_quantita, p_prezzo, p_articolo_id, p_fatturazione_trigger,
+                                 p_data_ordine, p_righe_ordine) o;
+                  ELSE
+                      SELECT o.id, o.uid, o.billing_account_id, o.soggetto_ruolo_id, o.emittente_fiscale_id
+                        INTO v_ordine, v_ordine_uid, v_ba_id, v_cli_sr_id, v_ef_id
+                        FROM vendite.ordini o
+                       WHERE o.id = p_ordine_id;
+                      IF NOT FOUND THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_ddt_da_ordine: ordine id = % non esiste o non e'' visibile',
+                              p_ordine_id;
+                      END IF;
+                      v_user_id := script.fn_utente_di_sessione('dbops.fn_pgtap_crea_ddt_da_ordine');
+                  END IF;
+
+                  -- La quantita' da evadere vale per LA riga di merce: con piu' righe
+                  -- di merce il test dice quale con p_righe. Gli oneri non contano: non
+                  -- si evadono a quantita', li porta la madre (script.fn_natura_e_merce,
+                  -- sede unica del predicato).
+                  IF p_qta_da_evadere IS NOT NULL THEN
+                      SELECT count(*), min(r.id) INTO v_n, v_riga_ord
+                        FROM vendite.ordini_righe r
+                       WHERE r.ordine_id = v_ordine
+                         AND r.attivo IS TRUE
+                         AND script.fn_natura_e_merce(r.natura_vendita_id) IS TRUE;
+                      IF v_n <> 1 THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_ddt_da_ordine: p_qta_da_evadere vuole un ordine con una sola riga attiva di merce (l''ordine % ne ha %) — usare p_righe',
+                              v_ordine, v_n;
+                      END IF;
+                  END IF;
+
+                  -- 2. La bolla dalla madre: tutto il residuo, o cio' che il test chiede.
+                  v_righe := COALESCE(p_righe,
+                      CASE WHEN p_qta_da_evadere IS NOT NULL THEN
+                          jsonb_build_array(jsonb_build_object(
+                              'ordine_riga_id', v_riga_ord, 'qta_da_evadere', p_qta_da_evadere))
+                      END);
+                  v_ddt := vendite.fn_genera_ddt_da_ordine(v_ordine, v_righe, p_data);
+
+                  -- 3. Cio' che l'emissione pretende: la causale e gli indirizzi
+                  --    obbligatori che la cascata dall'ordine non ha portato.
+                  UPDATE vendite.ddt d
+                     SET causale_trasporto_id = v_causale_id
+                   WHERE d.id = v_ddt;
+
+                  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+                  SELECT v_ddt, ti.id, jsonb_build_object('display', 'pgTAP ' || ti.codice_interno)
+                    FROM config.tipi_indirizzi ti
+                   WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti(
+                             'DDT_VENDITA',
+                             (SELECT array_agg(di.tipo_indirizzo_id)::integer[]
+                                FROM vendite.ddt_indirizzi di
+                               WHERE di.ddt_id = v_ddt)))
+                  ON CONFLICT DO NOTHING;
+
+                  -- 4. Lo stato chiesto, per la matrice: la bolla e' nata nello
+                  --    stato iniziale (trigger della nascita).
+                  IF v_stato_id IS DISTINCT FROM script.fn_doc_stato_iniziale_id('vendite.ddt'::regclass) THEN
+                      PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ddt'::regclass, v_ddt, p_stato_codice_interno);
+                  END IF;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT d.id, d.uid, dr.id, dr.quantita,
+                         v_ordine, v_ordine_uid, f.ordine_riga_id, dr.articolo_id,
+                         v_ba_id, v_cli_sr_id, v_ef_id, v_user_id, d.stato_doc_ddt_id
+                    FROM vendite.ddt d
+                    LEFT JOIN LATERAL (
+                        SELECT r.id, r.quantita, r.articolo_id
+                          FROM vendite.ddt_righe r
+                         WHERE r.ddt_id = d.id
+                           AND script.fn_natura_e_merce(r.natura_vendita_id) IS TRUE
+                         ORDER BY r.riga_nr, r.id
+                         LIMIT 1) dr ON true
+                    LEFT JOIN LATERAL (
+                        SELECT ff.ordine_riga_id
+                          FROM vendite.ordini_righe_fulfillment ff
+                         WHERE ff.ddt_riga_id = dr.id
+                         ORDER BY ff.id
+                         LIMIT 1) f ON true
+                   WHERE d.id = v_ddt;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_mondo_cliente(
+                   -- etichetta e sigla sono frammenti di testo dei codici che i
+                   -- builder compongono, non il riflesso di una colonna: tipi nudi.
+                   p_etichetta text DEFAULT 'pgTAP'::text,
+                   p_sigla     character varying DEFAULT NULL::character varying)
+               RETURNS TABLE(
+                   emittente_fiscale_id        anagrafiche.emittenti_fiscali.id%TYPE,
+                   emittente_codice            anagrafiche.emittenti_fiscali.codice%TYPE,
+                   emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                   auth_user_id                anagrafiche.identita_digitali.auth_user_id%TYPE,
+                   identita_id                 anagrafiche.identita_digitali.id%TYPE,
+                   billing_account_id          anagrafiche.billing_account.id%TYPE,
+                   istanza_utility_id          anagrafiche.billing_account.istanza_utility_id%TYPE,
+                   cliente_soggetto_ruolo_id   anagrafiche.billing_account.soggetto_ruolo_id%TYPE,
+                   cliente_soggetto_id         anagrafiche.soggetti.id%TYPE,
+                   utility_id                  anagrafiche.billing_account.utility_id%TYPE)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP il mondo minimo di un test di
+              --   dominio in una chiamata — l'azienda con il suo operatore, il
+              --   contesto aperto su di lui e un cliente fatturabile legato a
+              --   QUELLA azienda — con la regola d'ordine dentro l'oggetto.
+              -- Uso, al posto del blocco «refs» e della riga di contesto:
+              --   CREATE TEMP TABLE tmp_mondo AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('DASH');
+              -- ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper: chi vuole la
+              --   finestra differita la riapre subito dopo con
+              --   SET CONSTRAINTS ALL DEFERRED, e lo dichiara in testa al file.
+              -- Rev 2026-10-21 (20261021-68): con un contesto gia' aperto l'azienda
+              --   di chi agisce la dice script.fn_resolve_emittente_for_user, come
+              --   per il legame del BA: anche il super admin che ha scelto
+              --   l'emittente in alto (app.current_emittente_id) ha un mondo.
+              -- Rev 2026-10-24 (20261024-39, §4-octies): il ramo B legge l'azienda
+              --   dal building block dbops.fn_pgtap_azienda_di_chi_agisce.
+              DECLARE
+                  v_user_id   anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_identita  anagrafiche.identita_digitali.id%TYPE;
+                  v_ef_id     anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_codice anagrafiche.emittenti_fiscali.codice%TYPE;
+                  v_ef_sr_id  anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_ba_id     anagrafiche.billing_account.id%TYPE;
+                  v_ist_id    anagrafiche.billing_account.istanza_utility_id%TYPE;
+                  v_cli_sr_id anagrafiche.billing_account.soggetto_ruolo_id%TYPE;
+                  v_cli_sog   anagrafiche.soggetti.id%TYPE;
+                  v_utility   anagrafiche.billing_account.utility_id%TYPE;
+              BEGIN
+                  -- La domanda e' «c'e' un contesto?», e si fa alla GUC che le
+                  -- policy leggono davvero: non a script.fn_pgtap_emittente_operatore(),
+                  -- che ha un ripiego suo e risponderebbe un emittente anche
+                  -- senza contesto — qui servirebbe come discriminante, e non lo e'.
+                  v_user_id := script.fn_utente_di_sessione('dbops.fn_pgtap_crea_mondo_cliente');
+
+                  IF v_user_id IS NULL THEN
+                      -- ── RAMO A: nessun contesto (CI, installazione nuova, o
+                      --    un file che chiama questa funzione per prima).
+                      --    Il mondo si COSTRUISCE, e il contesto si apre DOPO:
+                      --    e' l'ordine che il cliente pretende (vedi sotto).
+                      SELECT ceo.emittente_fiscale_id, ceo.emittente_codice,
+                             ceo.soggetto_ruolo_id, ceo.auth_user_id, ceo.identita_id
+                        INTO v_ef_id, v_ef_codice, v_ef_sr_id, v_user_id, v_identita
+                        FROM dbops.fn_pgtap_crea_emittente_operatore(p_sigla) ceo;
+
+                      PERFORM script.fn_pgtap_set_contesto_operatore(v_user_id);
+                  ELSE
+                      -- ── RAMO B: un contesto c'e' gia' (dbdev, o la riga di
+                      --    contesto del template chiamata prima). L'azienda NON
+                      --    si ricostruisce: il trigger z90 lega il BA a quella
+                      --    di CHI AGISCE, quindi costruirne una nuova lascerebbe
+                      --    il cliente legato all'altra e sotto RLS invisibile.
+                      IF p_sigla IS NOT NULL THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_mondo_cliente: p_sigla = % chiesta con un contesto gia'' aperto (auth_user_id = %): qui l''azienda non si sceglie, e'' quella di chi agisce. Per una SECONDA azienda si chiamano i builder atomici (dbops.fn_pgtap_crea_emittente_operatore + dbops.fn_pgtap_crea_cliente_ba col terzo parametro), prima del contesto',
+                              p_sigla, v_user_id;
+                      END IF;
+
+                      -- ⭐ L'azienda di chi agisce, dal building block estratto da
+                      --   qui (rev 20261024-39): la stessa regola di produzione del
+                      --   trigger z90 (script.fn_resolve_emittente_for_user), coi
+                      --   suoi controlli (azienda, identita' OPERATORE attiva).
+                      SELECT a.emittente_fiscale_id, a.emittente_codice,
+                             a.emittente_soggetto_ruolo_id, a.identita_id
+                        INTO v_ef_id, v_ef_codice, v_ef_sr_id, v_identita
+                        FROM dbops.fn_pgtap_azienda_di_chi_agisce('fn_pgtap_crea_mondo_cliente') a;
+                  END IF;
+
+                  -- Il cliente, in entrambi i rami DOPO il contesto e SENZA
+                  -- terzo parametro: il legame lo scrive il trigger z90 verso
+                  -- l'emittente di chi agisce, che qui e' quello giusto per
+                  -- costruzione. Chiederlo anche col parametro farebbe sbattere
+                  -- i due su uq_emittenti_fiscali_ba (rev 20260912-38).
+                  SELECT c.billing_account_id, c.istanza_utility_id,
+                         c.soggetto_ruolo_id, c.soggetto_id, c.utility_id
+                    INTO v_ba_id, v_ist_id, v_cli_sr_id, v_cli_sog, v_utility
+                    FROM dbops.fn_pgtap_crea_cliente_ba(p_etichetta) c;
+
+                  -- ⚠️ Il legame si VERIFICA, non si spera. Se il trigger ha
+                  --   legato il BA a un'altra azienda — succede quando il
+                  --   contesto e' aperto su un operatore di un altro emittente —
+                  --   il mondo che si sta tornando non e' coerente, e il file
+                  --   morirebbe venti righe piu' in la' su una policy. La verifica
+                  --   e' quella dei builder di documento, in un posto solo: il
+                  --   building block solleva nominando questa fixture.
+                  PERFORM 1
+                    FROM dbops.fn_pgtap_cliente_ba_del_mondo(
+                             v_ba_id, v_ef_sr_id, 'fn_pgtap_crea_mondo_cliente');
+
+                  -- Contratto dichiarato, non fiducia nel chiamato: si esce con
+                  -- i vincoli IMMEDIATE come ogni helper. Oggi e' un no-op —
+                  -- fn_pgtap_crea_cliente_ba li richiude gia' — e domani e' la
+                  -- riga che tiene il contratto se quel corpo cambia.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT v_ef_id, v_ef_codice, v_ef_sr_id, v_user_id, v_identita,
+                         v_ba_id, v_ist_id, v_cli_sr_id, v_cli_sog, v_utility;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_ordine_con_righe(
+                  -- l'etichetta e' un frammento di testo della fixture: tipo nudo.
+                  p_etichetta            text DEFAULT 'pgTAP'::text,
+                  p_stato_codice_interno config.stati_doc_ordini.codice_interno%TYPE DEFAULT 'CONFERMATO',
+                  p_billing_account_id   vendite.ordini.billing_account_id%TYPE DEFAULT NULL,
+                  p_quantita             vendite.ordini_righe.qta_operativa%TYPE DEFAULT NULL,
+                  p_prezzo               vendite.ordini_righe.prezzo_unitario%TYPE DEFAULT NULL,
+                  p_articolo_id          catalogo.articoli.id%TYPE DEFAULT NULL,
+                  p_fatturazione_trigger vendite.ordini.fatturazione_trigger%TYPE DEFAULT NULL,
+                  p_data_ordine          vendite.ordini.data%TYPE DEFAULT NULL,
+                  -- l'elenco delle righe della fixture, non una colonna.
+                  p_righe                jsonb DEFAULT NULL,
+                  p_ordine_id            vendite.ordini.id%TYPE DEFAULT NULL)
+              RETURNS TABLE(
+                  ordine_id                 vendite.ordini.id%TYPE,
+                  ordine_uid                vendite.ordini.uid%TYPE,
+                  ordine_riga_id            vendite.ordini_righe.id%TYPE,
+                  articolo_id               catalogo.articoli.id%TYPE,
+                  billing_account_id        vendite.ordini.billing_account_id%TYPE,
+                  cliente_soggetto_ruolo_id vendite.ordini.soggetto_ruolo_id%TYPE,
+                  emittente_fiscale_id      vendite.ordini.emittente_fiscale_id%TYPE,
+                  auth_user_id              anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  stato_doc_ordine_id       vendite.ordini.stato_doc_ordine_id%TYPE)
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un ORDINE con le sue righe,
+              --   nello stato chiesto (default CONFERMATO), per la strada vera.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_o AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('consegne',
+              --              p_quantita => 10, p_prezzo => 20, p_fatturazione_trigger => 'CONSEGNATO');
+              --   -- due righe, la seconda con la data di consegna confermata:
+              --   SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('date', p_righe => jsonb_build_array(
+              --              jsonb_build_object('quantita', 10, 'prezzo', 20),
+              --              jsonb_build_object('quantita', 5, 'prezzo', 20,
+              --                                 'data_consegna_confermata', '2026-11-20')));
+              -- ⛔ Restituisce la PRIMA riga (ORDER BY riga_nr): con piu' righe il
+              --   test le legge da se'.
+              -- ⚠️ Senza contesto aperto, il mondo lo apre sull'operatore che
+              --   costruisce. Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_stato_id   config.stati_doc_ordini.id%TYPE;
+                  v_ordine     vendite.ordini.id%TYPE;
+                  v_uid        vendite.ordini.uid%TYPE;
+                  v_ba_id      vendite.ordini.billing_account_id%TYPE;
+                  v_cli_sr_id  vendite.ordini.soggetto_ruolo_id%TYPE;
+                  v_ef_id      vendite.ordini.emittente_fiscale_id%TYPE;
+                  v_user_id    anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_iva_id     config.iva.id%TYPE;
+                  v_righe      jsonb;      -- l'elenco normalizzato delle righe
+                  v_riga       jsonb;      -- una riga dell'elenco
+                  v_chiavi     text[];     -- chiavi sconosciute di una riga
+                  v_articolo   catalogo.articoli.id%TYPE;
+                  v_qta        vendite.ordini_righe.qta_operativa%TYPE;
+                  v_riga_nr    vendite.ordini_righe.riga_nr%TYPE;
+                  v_riga_id    vendite.ordini_righe.id%TYPE;
+              BEGIN
+                  -- 0. I parametri si giudicano PRIMA di costruire.
+                  -- Lo stato dalla sede della traduzione codice -> id
+                  -- (script.fn_doc_stato_id): solo uno stato ATTIVO e' una destinazione.
+                  v_stato_id := script.fn_doc_stato_id('vendite.ordini'::regclass, p_stato_codice_interno);
+                  IF v_stato_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ordine_con_righe: nessuno stato attivo dell''ordine con codice_interno = %',
+                          coalesce(p_stato_codice_interno::text, 'NULL');
+                  END IF;
+
+                  IF p_righe IS NOT NULL THEN
+                      IF p_quantita IS NOT NULL OR p_prezzo IS NOT NULL OR p_articolo_id IS NOT NULL THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_ordine_con_righe: p_righe insieme a p_quantita/p_prezzo/p_articolo_id — le righe stanno tutte in p_righe';
+                      END IF;
+                      IF jsonb_typeof(p_righe) IS DISTINCT FROM 'array' OR jsonb_array_length(p_righe) = 0 THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_ordine_con_righe: p_righe dev''essere un array non vuoto di righe';
+                      END IF;
+                      v_righe := p_righe;
+                  ELSE
+                      v_righe := jsonb_build_array(jsonb_strip_nulls(jsonb_build_object(
+                          'quantita', COALESCE(p_quantita, 10),
+                          'prezzo', COALESCE(p_prezzo, 25),
+                          'articolo_id', p_articolo_id)));
+                  END IF;
+
+                  -- Una chiave che il builder non conosce e' un errore di battitura
+                  -- che altrimenti passerebbe in silenzio.
+                  FOR v_riga IN SELECT e FROM jsonb_array_elements(v_righe) e LOOP
+                      SELECT array_agg(k) INTO v_chiavi
+                        FROM jsonb_object_keys(v_riga) k
+                       WHERE k <> ALL (ARRAY['articolo_id', 'quantita', 'prezzo', 'sconto_percentuale',
+                                             'iva_id', 'descrizione', 'data_consegna_richiesta_cliente',
+                                             'data_consegna_confermata']);
+                      IF v_chiavi IS NOT NULL THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_ordine_con_righe: chiavi di riga sconosciute: %', v_chiavi;
+                      END IF;
+                  END LOOP;
+
+                  IF p_ordine_id IS NOT NULL
+                     AND (p_billing_account_id IS NOT NULL OR p_fatturazione_trigger IS NOT NULL
+                          OR p_data_ordine IS NOT NULL) THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ordine_con_righe: con p_ordine_id cliente, data e trigger di fatturazione sono quelli della testata — non si passano';
+                  END IF;
+
+                  -- 1. La testata: quella del test, in bozza, o una nuova.
+                  IF p_ordine_id IS NOT NULL THEN
+                      SELECT o.id, o.uid, o.billing_account_id, o.soggetto_ruolo_id, o.emittente_fiscale_id
+                        INTO v_ordine, v_uid, v_ba_id, v_cli_sr_id, v_ef_id
+                        FROM vendite.ordini o
+                       WHERE o.id = p_ordine_id
+                         AND o.stato_doc_ordine_id = script.fn_doc_stato_iniziale_id('vendite.ordini'::regclass);
+                      IF NOT FOUND THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_ordine_con_righe: ordine id = % inesistente, invisibile o fuori bozza — le righe si scrivono in bozza',
+                              p_ordine_id;
+                      END IF;
+                      v_user_id := script.fn_utente_di_sessione('dbops.fn_pgtap_crea_ordine_con_righe');
+                  ELSE
+                      SELECT o.ordine_id, o.ordine_uid, o.billing_account_id,
+                             o.cliente_soggetto_ruolo_id, o.emittente_fiscale_id, o.auth_user_id
+                        INTO v_ordine, v_uid, v_ba_id, v_cli_sr_id, v_ef_id, v_user_id
+                        FROM dbops.fn_pgtap_crea_ordine(p_etichetta, 'DRAFT', p_billing_account_id, p_data_ordine) o;
+
+                      -- Il trigger di fatturazione e' una condizione della bozza.
+                      IF p_fatturazione_trigger IS NOT NULL THEN
+                          UPDATE vendite.ordini o
+                             SET fatturazione_trigger = p_fatturazione_trigger
+                           WHERE o.id = v_ordine;
+                      END IF;
+                  END IF;
+
+                  -- 2. Le righe, in bozza. Il catalogo di sistema si SCEGLIE, col suo ORDER BY.
+                  SELECT i.id INTO v_iva_id
+                    FROM config.iva i
+                   WHERE i.attivo IS TRUE
+                   ORDER BY i.id
+                   LIMIT 1;
+
+                  FOR v_riga IN SELECT e FROM jsonb_array_elements(v_righe) WITH ORDINALITY AS x(e, n) ORDER BY x.n LOOP
+                      v_qta := COALESCE((v_riga->>'quantita')::numeric, 10);
+                      -- L'articolo si costruisce: il catalogo, da zero, e' vuoto.
+                      v_articolo := COALESCE((v_riga->>'articolo_id')::uuid, dbops.fn_pgtap_crea_articolo(
+                          ('PGT-ORD-' || substr(md5(clock_timestamp()::text || v_ordine::text), 1, 12))::varchar,
+                          false));
+
+                      SELECT COALESCE(max(r.riga_nr), 0) + 1 INTO v_riga_nr
+                        FROM vendite.ordini_righe r
+                       WHERE r.ordine_id = v_ordine;
+
+                      INSERT INTO vendite.ordini_righe (
+                          ordine_id, riga_nr, articolo_id, descrizione,
+                          qta_operativa, quantita, prezzo_unitario, iva_id,
+                          data_consegna_richiesta_cliente, data_consegna_confermata, meta)
+                      VALUES (
+                          v_ordine, v_riga_nr, v_articolo,
+                          left(COALESCE(v_riga->>'descrizione', 'Fixture pgTAP: ' || p_etichetta), 150),
+                          v_qta, v_qta, COALESCE((v_riga->>'prezzo')::numeric, 25),
+                          COALESCE((v_riga->>'iva_id')::integer, v_iva_id),
+                          (v_riga->>'data_consegna_richiesta_cliente')::date,
+                          (v_riga->>'data_consegna_confermata')::date,
+                          jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
+                      RETURNING id INTO v_riga_id;
+
+                      -- Lo sconto ha un DEFAULT di tabella: si scrive solo se il test
+                      -- lo chiede (la sede del default resta il DDL).
+                      IF v_riga ? 'sconto_percentuale' THEN
+                          UPDATE vendite.ordini_righe r
+                             SET sconto_percentuale = (v_riga->>'sconto_percentuale')::numeric
+                           WHERE r.id = v_riga_id;
+                      END IF;
+                  END LOOP;
+
+                  -- 3. Lo stato chiesto, per la matrice.
+                  IF v_stato_id IS DISTINCT FROM script.fn_doc_stato_iniziale_id('vendite.ordini'::regclass) THEN
+                      PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini'::regclass, v_ordine, p_stato_codice_interno);
+                  END IF;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT o.id, o.uid, r.id, r.articolo_id, v_ba_id, v_cli_sr_id, v_ef_id, v_user_id,
+                         o.stato_doc_ordine_id
+                    FROM vendite.ordini o
+                    JOIN LATERAL (
+                        SELECT rr.id, rr.articolo_id
+                          FROM vendite.ordini_righe rr
+                         WHERE rr.ordine_id = o.id
+                         ORDER BY rr.riga_nr, rr.id
+                         LIMIT 1) r ON true
+                   WHERE o.id = v_ordine;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_preventivo_con_righe(
+                  p_etichetta            text DEFAULT 'pgTAP',
+                  p_stato_codice_interno config.stati_doc_preventivi.codice_interno%TYPE DEFAULT 'EMESSO',
+                  p_preventivo_id        vendite.preventivi.id%TYPE DEFAULT NULL,
+                  p_prezzo               vendite.preventivi_righe.prezzo_unitario%TYPE DEFAULT NULL,
+                  p_articolo_id          catalogo.articoli.id%TYPE DEFAULT NULL)
+               RETURNS TABLE(preventivo_id             vendite.preventivi.id%TYPE,
+                             preventivo_uid            vendite.preventivi.uid%TYPE,
+                             preventivo_riga_id        vendite.preventivi_righe.id%TYPE,
+                             articolo_id               catalogo.articoli.id%TYPE,
+                             billing_account_id        vendite.preventivi.billing_account_id%TYPE,
+                             emittente_fiscale_id      vendite.preventivi.emittente_fiscale_id%TYPE,
+                             auth_user_id              anagrafiche.identita_digitali.auth_user_id%TYPE,
+                             stato_doc_preventivo_id   vendite.preventivi.stato_doc_preventivo_id%TYPE)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un PREVENTIVO con una riga
+              --   valida per l'emissione, nello stato chiesto (default
+              --   EMESSO), per la strada vera.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_p AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_preventivo_con_righe('dash');
+              --   -- la testata del test, gia' in bozza, portata ad ACCETTATO:
+              --   SELECT * FROM dbops.fn_pgtap_crea_preventivo_con_righe('rif',
+              --              'ACCETTATO', p_preventivo_id => (SELECT id FROM tmp_t));
+              -- ⚠️ Senza contesto aperto, il mondo lo apre sull'operatore che
+              --   costruisce. Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_stato_id   config.stati_doc_preventivi.id%TYPE;
+                  v_preventivo vendite.preventivi.id%TYPE;
+                  v_ba_id      vendite.preventivi.billing_account_id%TYPE;
+                  v_ef_id      vendite.preventivi.emittente_fiscale_id%TYPE;
+                  v_user_id    anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_iva_id     config.iva.id%TYPE;
+                  v_natura_id  config.nature_vendita.id%TYPE;
+                  v_articolo   catalogo.articoli.id%TYPE;
+                  v_riga_id    vendite.preventivi_righe.id%TYPE;
+              BEGIN
+                  -- 0. I parametri si giudicano PRIMA di costruire.
+                  v_stato_id := script.fn_doc_stato_id('vendite.preventivi'::regclass, p_stato_codice_interno);
+                  IF v_stato_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_preventivo_con_righe: nessuno stato attivo del preventivo con codice_interno = %',
+                          coalesce(p_stato_codice_interno::text, 'NULL');
+                  END IF;
+
+                  -- 1. La testata: quella del test, in bozza, o una nuova.
+                  IF p_preventivo_id IS NOT NULL THEN
+                      SELECT p.id, p.billing_account_id, p.emittente_fiscale_id
+                        INTO v_preventivo, v_ba_id, v_ef_id
+                        FROM vendite.preventivi p
+                       WHERE p.id = p_preventivo_id
+                         AND p.stato_doc_preventivo_id
+                             = script.fn_doc_stato_iniziale_id('vendite.preventivi'::regclass);
+                      IF NOT FOUND THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_preventivo_con_righe: preventivo id = % inesistente, invisibile o fuori bozza — le righe si scrivono in bozza',
+                              p_preventivo_id;
+                      END IF;
+                      v_user_id := script.fn_utente_di_sessione('dbops.fn_pgtap_crea_preventivo_con_righe');
+                  ELSE
+                      SELECT p.preventivo_id, p.billing_account_id, p.emittente_fiscale_id, p.auth_user_id
+                        INTO v_preventivo, v_ba_id, v_ef_id, v_user_id
+                        FROM dbops.fn_pgtap_crea_preventivo(p_etichetta, 'DRAFT') p;
+                  END IF;
+
+                  -- 2. La riga, in bozza. Il catalogo di sistema si SCEGLIE,
+                  --    col suo ORDER BY; l'articolo si costruisce (da zero il
+                  --    catalogo e' vuoto), di merce.
+                  SELECT i.id INTO v_iva_id
+                    FROM config.iva i
+                   WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
+                   ORDER BY i.id
+                   LIMIT 1;
+
+                  IF p_articolo_id IS NULL THEN
+                      SELECT nv.id INTO v_natura_id
+                        FROM config.nature_vendita nv
+                       WHERE script.fn_natura_e_merce(nv.id) AND nv.attivo IS TRUE
+                       ORDER BY nv.id
+                       LIMIT 1;
+                  END IF;
+
+                  v_articolo := COALESCE(p_articolo_id, dbops.fn_pgtap_crea_articolo(
+                      ('PGT-PRV-' || substr(md5(clock_timestamp()::text || v_preventivo::text), 1, 12))::varchar,
+                      false, p_natura_vendita_id => v_natura_id));
+
+                  INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, iva_id,
+                                                        prezzo_unitario, qta_operativa)
+                  VALUES (v_preventivo, v_articolo, v_iva_id, COALESCE(p_prezzo, 10), 1)
+                  RETURNING id INTO v_riga_id;
+
+                  -- 3. Lo stato chiesto, per la matrice.
+                  IF v_stato_id IS DISTINCT FROM script.fn_doc_stato_iniziale_id('vendite.preventivi'::regclass) THEN
+                      PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi'::regclass, v_preventivo,
+                                                           p_stato_codice_interno);
+                  END IF;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT p.id, p.uid, v_riga_id, v_articolo, v_ba_id, v_ef_id, v_user_id,
+                         p.stato_doc_preventivo_id
+                    FROM vendite.preventivi p
+                   WHERE p.id = v_preventivo;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_porta_a_stato(
+                  -- ⚠️ Tipi espliciti, e nessuno e' una svista: la fixture serve tutte
+                  --   le testate della mappa script.fn_doc_stato_modello. La testata e'
+                  --   un regclass; l'id e' quello di una testata qualunque (bigint in
+                  --   tutte, nessuna colonna comune a cui ancorarlo); lo stato e' il
+                  --   codice_interno di uno qualunque dei vocabolari.
+                  p_testata regclass,
+                  -- l'id di una testata qualunque: la ragione e' qui sopra
+                  p_id      bigint,
+                  p_stato   text)
+              -- il codice_interno dello stato raggiunto: stessa ragione dei parametri.
+              RETURNS text
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: portare una testata di fixture nello stato voluto per
+              --   le transizioni della sua matrice, dopo che il test le ha
+              --   scritto in bozza cio' che i passaggi pretendono (righe,
+              --   indirizzi, prezzi…).
+              -- Uso:
+              --   SELECT dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO')
+              --     FROM tmp_ordine o;
+              -- rev 2026-10-24 (20261024-22, brief-modello-documento-vendita
+              --   N-1): tutte le testate con una matrice, non piu' solo ordine
+              --   e preventivo. Un documento nasce in bozza (trigger della
+              --   nascita) e si porta avanti da qui.
+              -- rev 2026-10-24 (20261024-30, R-4): anche il lotto di
+              --   fatturazione, VUOTO (con fatture si muove col verbo
+              --   vendite.fn_sync_lotto_fatture_stato).
+              -- rev 2026-10-25 (20261025-19, §7): la mappa da
+              --   script.fn_doc_stato_modello; dove c'e' la porta ogni passo e'
+              --   il verbo del documento, sui soli passaggi manuali, con l'azione
+              --   del passaggio concessa all'utente del contesto.
+              -- rev 2026-10-25 (20261025-48, §8): il preventivo ha la porta
+              --   (verbo vendite.fn_cambia_stato_preventivo); lo stato voluto
+              --   da script.fn_doc_stato_id.
+              -- rev 2026-10-25 (20261025-82, §9): l'ordine ha la porta (verbo
+              --   vendite.fn_cambia_stato_ordine). L'evasione (EVASO,
+              --   PARZIALMENTE_EVASO) e' di processo: non e' nel percorso, si
+              --   costruisce evadendo (dbops.fn_pgtap_crea_ddt_da_ordine).
+              -- rev 2026-10-26 (20261026-12, §11): il contratto ha la porta
+              --   (verbo vendite.fn_cambia_stato_contratto). CESSATO vuole
+              --   valido_al arrivata: la scrive il test prima di chiederlo.
+              -- rev 2026-10-26 (20261026-28, §13): l'offerta ha la porta (verbo
+              --   vendite.fn_cambia_stato_offerta). Dove la riga del passaggio
+              --   chiede la motivazione (rifiuto, annulli) la fixture ne passa una
+              --   sua. SUPERATA e' di processo: si costruisce creando una revisione
+              --   (vendite.fn_crea_revisione_offerta). L'annullo con legami (la
+              --   revisione precedente che torna emessa) passa da
+              --   vendite.fn_annulla_offerta, non da qui.
+              -- rev 2026-10-26 (20261026-36, §14): la commessa ha la porta (verbo
+              --   vendite.fn_cambia_stato_commessa, firma senza p_user). Lo stato
+              --   emittibile della push si costruisce anche da qui, dal passaggio
+              --   manuale «rendi pronta» (il test scrive prima le righe approvate).
+              -- rev 2026-10-28 (20261028-24, §16): la versione di listino ha la
+              --   porta. ATTIVA dal verbo vendite.fn_attiva_versione_listino (chiude
+              --   anche le precedenti); CHIUSA, di processo, da
+              --   vendite.fn_chiudi_versioni_listino_scadute: il test scrive prima
+              --   valido_al passata (la versione ATTIVA la accetta).
+              -- rev 2026-10-27 (20261027-20, §15): fattura e lotto hanno la porta. Per
+              --   loro il percorso comprende anche i passaggi di PROCESSO (la pipeline li
+              --   scrive tutti): il lotto passa dal suo verbo sui passaggi manuali
+              --   (vendite.fn_cambia_stato_lotto) e dal verbo di processo sugli altri
+              --   (vendite.fn_lotto_proietta_stato_step); la fattura dal suo verbo
+              --   (vendite.fn_fattura_proietta_stato).
+              DECLARE
+                  v_col       text;       -- colonna di stato della testata
+                  v_stati     regclass;   -- catalogo degli stati
+                  v_matrice   regclass;   -- matrice delle transizioni
+                  v_col_da    text;       -- colonna «da» della matrice
+                  v_col_a     text;       -- colonna «a» della matrice
+                  v_col_vivo  text;       -- colonna «passaggio ammesso» della matrice
+                  v_filtro    text;       -- condizione in piu' sui passaggi, letterale della mappa
+                  v_porta     boolean;    -- la testata ha la porta: i passi sono verbi
+                  -- Id e codici di stato di uno qualunque dei
+                  -- vocabolari della mappa: bigint e testo in tutti, nessuna
+                  -- colonna comune a cui ancorarli (%TYPE[] non e' sintassi valida).
+                  v_target    bigint;
+                  v_corrente  bigint;
+                  v_percorso  bigint[];
+                  v_passo     bigint;
+                  v_da        bigint;
+                  v_codice    text;
+                  v_utente    config.user_override_azioni.auth_user_id%TYPE;
+                  v_azione    config.azioni_processo.permission_codename%TYPE;
+                  v_n         integer;    -- righe toccate (ROW_COUNT): un conteggio
+                  v_manuale   boolean;    -- il passaggio e' manuale (script.fn_doc_passaggio)
+              BEGIN
+                  -- ── Il documento: errore del CHIAMANTE, non un dato ────────
+                  -- ⚠️ La fattura: la matrice ha anche i passaggi del LOTTO
+                  --   (solo_lotto = true), che il guard della fattura singola
+                  --   (vendite.trgfn_fatture_guard_stato) non ammette. Il
+                  --   filtro della mappa li toglie.
+                  SELECT m.colonna_stato, m.vocabolario, m.matrice, m.colonna_da, m.colonna_a,
+                         m.colonna_vivo, m.filtro
+                    INTO v_col, v_stati, v_matrice, v_col_da, v_col_a, v_col_vivo, v_filtro
+                    FROM script.fn_doc_stato_modello(p_testata) m;
+
+                  IF NOT FOUND THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_porta_a_stato: documento non gestito: % (noti: le testate della mappa script.fn_doc_stato_modello)',
+                          p_testata;
+                  END IF;
+
+                  IF p_id IS NULL OR p_id <= 0 THEN
+                      RAISE EXCEPTION 'fn_pgtap_porta_a_stato: id testata non valido: %', p_id;
+                  END IF;
+
+                  -- La porta: dal catalogo, non da un elenco.
+                  v_porta := EXISTS (
+                      SELECT 1 FROM pg_catalog.pg_trigger t
+                       WHERE t.tgrelid = p_testata
+                         AND t.tgfoid  = 'script.trgfn_doc_stato_solo_dal_verbo()'::regprocedure
+                         AND NOT t.tgisinternal);
+                  IF v_porta THEN
+                      -- Il percorso, sotto la porta: i soli passaggi manuali. Fattura,
+                      -- lotto (rev 2026-10-27) e versione di listino (rev 2026-10-28)
+                      -- anche quelli di processo: ogni passo ha il suo verbo.
+                      IF p_testata NOT IN ('vendite.fatture'::regclass, 'vendite.fatturazione_lotti'::regclass,
+                                           'vendite.listini_versioni'::regclass) THEN
+                          v_filtro := v_filtro || ' AND COALESCE((t.meta ->> ''manuale'')::boolean, true)';
+                      END IF;
+                      IF p_testata NOT IN ('vendite.ddt'::regclass, 'vendite.resi'::regclass,
+                                           'vendite.preventivi'::regclass, 'vendite.ordini'::regclass,
+                                           'vendite.contratti'::regclass, 'vendite.offerte_commerciali'::regclass,
+                                           'vendite.commesse'::regclass, 'vendite.fatture'::regclass,
+                                           'vendite.fatturazione_lotti'::regclass,
+                                           'vendite.listini_versioni'::regclass) THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_porta_a_stato: % ha la porta ma la fixture non conosce il suo verbo',
+                              p_testata;
+                      END IF;
+                  END IF;
+
+                  -- ── Lo stato voluto, per codice_interno ──────────────────
+                  v_target := script.fn_doc_stato_id(p_testata, p_stato);
+                  IF v_target IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_porta_a_stato: nessuno stato attivo con codice_interno = % in %',
+                          p_stato, v_stati;
+                  END IF;
+
+                  -- ── Lo stato corrente: la testata deve esserci e vedersi ──
+                  EXECUTE format('SELECT t.%I FROM %s t WHERE t.id = $1', v_col, p_testata)
+                     INTO v_corrente USING p_id;
+                  IF v_corrente IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_porta_a_stato: % id = % non esiste o non e'' visibile',
+                          p_testata, p_id;
+                  END IF;
+
+                  -- ── Il percorso piu' corto nella matrice attiva ──────────
+                  -- ⚠️ Niente cicli: uno stato gia' visitato non si rivisita.
+                  --   A parita' di lunghezza, gli id minori: un ordine scelto.
+                  EXECUTE format($q$
+                      WITH RECURSIVE p(stato, percorso) AS (
+                          SELECT $1::bigint, ARRAY[$1::bigint]
+                          UNION ALL
+                          SELECT t.%2$I::bigint, p.percorso || t.%2$I::bigint
+                            FROM p
+                            JOIN %3$s t ON t.%1$I = p.stato AND t.%4$I IS TRUE %6$s
+                            JOIN %5$s s ON s.id = t.%2$I AND s.attivo IS TRUE
+                           WHERE NOT (t.%2$I = ANY (p.percorso))
+                      )
+                      SELECT p.percorso FROM p
+                       WHERE p.stato = $2
+                       ORDER BY cardinality(p.percorso), p.percorso
+                       LIMIT 1$q$, v_col_da, v_col_a, v_matrice, v_col_vivo, v_stati, v_filtro)
+                     INTO v_percorso USING v_corrente, v_target;
+
+                  IF v_percorso IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_porta_a_stato: nessun percorso nella matrice % da stato id % a %',
+                          v_matrice, v_corrente, p_stato;
+                  END IF;
+
+                  v_utente := script.fn_utente_di_sessione('dbops.fn_pgtap_porta_a_stato');
+
+                  -- ── Il cammino: un passo alla volta, dai guard veri ──────
+                  v_da := v_corrente;
+                  FOREACH v_passo IN ARRAY v_percorso[2:] LOOP
+                      IF v_porta THEN
+                          -- L'azione del passaggio (M-3) all'utente del contesto:
+                          -- la fixture porta lo stato, non prova il permesso.
+                          SELECT p.azione_processo_codename, p.manuale INTO v_azione, v_manuale
+                            FROM script.fn_doc_passaggio(p_testata, v_da, v_passo) p;
+                          IF v_azione IS NOT NULL AND v_utente IS NOT NULL THEN
+                              PERFORM dbops.fn_pgtap_concedi_azione(v_utente, v_azione);
+                          END IF;
+
+                          EXECUTE format('SELECT s.codice_interno FROM %s s WHERE s.id = $1', v_stati)
+                             INTO v_codice USING v_passo;
+
+                          IF p_testata = 'vendite.ddt'::regclass THEN
+                              PERFORM 1 FROM vendite.fn_cambia_stato_ddt(p_id, v_codice);
+                          ELSIF p_testata = 'vendite.preventivi'::regclass THEN
+                              PERFORM 1 FROM vendite.fn_cambia_stato_preventivo(p_id, v_codice);
+                          ELSIF p_testata = 'vendite.ordini'::regclass THEN
+                              PERFORM 1 FROM vendite.fn_cambia_stato_ordine(p_id, v_codice);
+                          ELSIF p_testata = 'vendite.contratti'::regclass THEN
+                              PERFORM 1 FROM vendite.fn_cambia_stato_contratto(p_id, v_codice);
+                          ELSIF p_testata = 'vendite.commesse'::regclass THEN
+                              PERFORM 1 FROM vendite.fn_cambia_stato_commessa(p_id, v_codice);
+                          ELSIF p_testata = 'vendite.fatturazione_lotti'::regclass THEN
+                              -- Manuale: il verbo del lotto; di processo: il giro.
+                              IF v_manuale IS TRUE THEN
+                                  PERFORM 1 FROM vendite.fn_cambia_stato_lotto(p_id, v_codice);
+                              ELSE
+                                  PERFORM vendite.fn_lotto_proietta_stato_step(p_id, v_passo);
+                              END IF;
+                          ELSIF p_testata = 'vendite.fatture'::regclass THEN
+                              PERFORM vendite.fn_fattura_proietta_stato(p_id, v_passo);
+                          ELSIF p_testata = 'vendite.listini_versioni'::regclass THEN
+                              -- Manuale: l'attivazione (con la chiusura delle precedenti);
+                              -- di processo: la chiusura a scadenza, che vuole valido_al
+                              -- passata (rev 2026-10-28).
+                              IF v_codice = 'ATTIVA' THEN
+                                  PERFORM 1 FROM vendite.fn_attiva_versione_listino(p_id);
+                              ELSIF v_codice = 'CHIUSA' THEN
+                                  PERFORM vendite.fn_chiudi_versioni_listino_scadute();
+                              ELSE
+                                  RAISE EXCEPTION
+                                      'fn_pgtap_porta_a_stato: nessun verbo della versione di listino porta a %', v_codice;
+                              END IF;
+                          ELSIF p_testata = 'vendite.offerte_commerciali'::regclass THEN
+                              -- La motivazione dove la riga del passaggio la chiede.
+                              PERFORM 1 FROM vendite.fn_cambia_stato_offerta(
+                                  p_id, v_codice,
+                                  (SELECT CASE WHEN COALESCE((t.meta ->> 'requires_motivazione')::boolean, false)
+                                               THEN 'Fixture pgTAP' END
+                                     FROM config.stati_doc_offerte_transizioni t
+                                    WHERE t.stato_da_id = v_da AND t.stato_a_id = v_passo AND t.attivo IS TRUE));
+                          ELSIF v_codice = 'CONFERMATO' THEN
+                              PERFORM vendite.fn_conferma_reso(p_id);
+                          ELSIF v_codice = 'ANNULLATO' THEN
+                              PERFORM vendite.fn_annulla_reso(p_id);
+                          ELSE
+                              RAISE EXCEPTION
+                                  'fn_pgtap_porta_a_stato: nessun verbo del reso porta a %', v_codice;
+                          END IF;
+                      ELSE
+                          EXECUTE format('UPDATE %s SET %I = $1 WHERE id = $2', p_testata, v_col)
+                            USING v_passo, p_id;
+                          GET DIAGNOSTICS v_n = ROW_COUNT;
+                          IF v_n <> 1 THEN
+                              RAISE EXCEPTION
+                                  'fn_pgtap_porta_a_stato: UPDATE di % id = % verso stato id % ha toccato % righe',
+                                  p_testata, p_id, v_passo, v_n;
+                          END IF;
+                      END IF;
+                      v_da := v_passo;
+                  END LOOP;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  -- Lo stato raggiunto si confronta con quello chiesto, per ogni
+                  -- testata: un verbo che non porta dove deve (la chiusura delle
+                  -- versioni scadute non tocca una versione che non e' scaduta, e
+                  -- non dice niente) e' un errore del test, non uno stato da
+                  -- restituire come se fosse quello voluto.
+                  EXECUTE format('SELECT s.codice_interno FROM %s t JOIN %s s ON s.id = t.%I WHERE t.id = $1',
+                                 p_testata, v_stati, v_col)
+                     INTO v_codice USING p_id;
+                  IF v_codice IS DISTINCT FROM p_stato THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_porta_a_stato: % id = % chiesta in %, e'' rimasta in % — il passaggio non e'' avvenuto (per CHIUSA della versione di listino il test scrive prima valido_al passata)',
+                          p_testata, p_id, p_stato, coalesce(v_codice, 'NULL');
+                  END IF;
+                  RETURN v_codice;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_scope_operatore(
+                  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE DEFAULT NULL)
+               RETURNS dbops.coda_lavori.scope%TYPE
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  -- ⚠️ `integer` esplicito: django.auth_user.id, a cui il DB non si lega.
+                  v_utente    integer;
+                  -- ⚠️ `bigint[]` esplicito: elementi = anagrafiche.emittenti_fiscali.id.
+                  v_perimetro bigint[];
+                  v_emittente anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_identita  anagrafiche.identita_digitali.id%TYPE;
+              BEGIN
+                  -- Scopo: lo scope di un lavoro OPERATORE accodato da chi e' in
+                  --   sessione: la sua identita' e un'azienda del suo perimetro
+                  --   (quella chiesta, oppure la prima). Super admin (perimetro
+                  --   NULL): la prima azienda attiva.
+                  v_utente := script.fn_utente_di_sessione('dbops.fn_pgtap_scope_operatore');
+                  IF v_utente IS NULL THEN
+                      RAISE EXCEPTION 'dbops.fn_pgtap_scope_operatore: nessun utente in sessione (app.current_user_id); prima script.fn_pgtap_set_contesto_operatore()';
+                  END IF;
+
+                  v_perimetro := script.fn_get_emittenti_scope_pk_ids(v_utente);
+
+                  v_emittente := COALESCE(
+                      p_emittente_fiscale_id,
+                      (SELECT min(e) FROM unnest(v_perimetro) AS e),
+                      CASE WHEN v_perimetro IS NULL
+                           THEN (SELECT min(ef.id) FROM anagrafiche.emittenti_fiscali ef)
+                      END);
+                  IF v_emittente IS NULL THEN
+                      RAISE EXCEPTION 'dbops.fn_pgtap_scope_operatore: l''utente % non ha nessuna azienda nel perimetro', v_utente;
+                  END IF;
+
+                  SELECT idg.id INTO v_identita
+                    FROM anagrafiche.identita_digitali idg
+                   WHERE idg.auth_user_id = v_utente
+                     AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                   ORDER BY idg.id
+                   LIMIT 1;
+
+                  RETURN jsonb_build_object(
+                      'auth_user_id',        v_utente,
+                      'username',            'pgtap',
+                      'identita_id',         v_identita,
+                      'emittente_attivo_id', v_emittente,
+                      'emittente_ids',       jsonb_build_array(v_emittente),
+                      'scope_key',           v_emittente::text);
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_accoda_lavoro(
+                  p_job_type        dbops.coda_lavori.job_type%TYPE,
+                  p_payload         dbops.coda_lavori.payload%TYPE         DEFAULT '{}'::jsonb,
+                  p_run_as          dbops.coda_lavori.run_as%TYPE          DEFAULT NULL,
+                  p_scope           dbops.coda_lavori.scope%TYPE           DEFAULT NULL,
+                  p_idempotency_key dbops.coda_lavori.idempotency_key%TYPE DEFAULT NULL,
+                  p_priorita        dbops.coda_lavori.priorita%TYPE        DEFAULT 100,
+                  p_run_after       dbops.coda_lavori.run_after%TYPE       DEFAULT NULL,
+                  p_max_tentativi   dbops.coda_lavori.max_tentativi%TYPE   DEFAULT NULL,
+                  p_origine         dbops.coda_lavori.origine%TYPE         DEFAULT 'API')
+               RETURNS dbops.coda_lavori.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_tipo         dbops.coda_lavori_tipi%ROWTYPE;
+                  v_classe       dbops.processi.classe%TYPE;
+                  v_run_as       dbops.coda_lavori.run_as%TYPE;
+                  v_max_tent     dbops.coda_lavori.max_tentativi%TYPE;
+                  v_emittente    dbops.coda_lavori.emittente_fiscale_id%TYPE;
+                  v_id           dbops.coda_lavori.id%TYPE;
+                  v_vivo_run_as  dbops.coda_lavori.run_as%TYPE;
+                  v_vivo_emitt   dbops.coda_lavori.emittente_fiscale_id%TYPE;
+                  v_da_app       boolean;
+                  -- ⚠️ `integer` esplicito: django.auth_user.id, a cui il DB non si lega.
+                  v_chiamante    integer;
+                  -- ⚠️ `bigint[]` esplicito: elementi = anagrafiche.emittenti_fiscali.id.
+                  v_perimetro    bigint[];
+              BEGIN
+                  -- Scopo: la porta della coda. Valida il tipo, risolve i
+                  --   default, controlla classe e scope, scrive l'azienda del
+                  --   lavoro, accoda idempotente sui lavori vivi. SECURITY
+                  --   DEFINER: vede tutte le righe, quindi controlla da se' chi
+                  --   puo' accodare che cosa (vedi testata del changeSet).
+
+                  -- Guard parametro: job_type obbligatorio e non vuoto.
+                  IF p_job_type IS NULL OR btrim(p_job_type) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'dbops.fn_accoda_lavoro', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_job_type'),
+                          NULL::uuid, 'p_job_type obbligatorio');
+                  END IF;
+
+                  -- Guard: tipo registrato in coda_lavori_tipi.
+                  SELECT * INTO v_tipo
+                    FROM dbops.coda_lavori_tipi
+                   WHERE codice = p_job_type;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'dbops.fn_accoda_lavoro', 'E_JOB_TYPE_NON_TROVATO',
+                          jsonb_build_object('job_type', p_job_type),
+                          NULL::uuid, p_job_type);
+                  END IF;
+
+                  -- Guard: tipo attivo (l'handler dev'essere registrato lato BE).
+                  IF NOT v_tipo.attivo THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'dbops.fn_accoda_lavoro', 'E_JOB_TYPE_NON_ATTIVO',
+                          jsonb_build_object('job_type', p_job_type),
+                          NULL::uuid, p_job_type);
+                  END IF;
+
+                  -- Default per tipo, se non passati.
+                  v_run_as   := COALESCE(p_run_as, v_tipo.run_as_default);
+                  v_max_tent := COALESCE(p_max_tentativi, v_tipo.max_tentativi_default);
+
+                  -- Guard di classe: il default del tipo e' un suggerimento che
+                  --   p_run_as sovrascrive; un lavoro di DOMINIO resta OPERATORE.
+                  --   La classe si legge dal registro dei processi, non da una
+                  --   copia. ⚠️ Sotto-select scalare: un tipo senza processo da' NULL
+                  --   e il ramo non scatta (processo_codice e' NOT NULL, ma qui non
+                  --   si assume).
+                  v_classe := (SELECT pr.classe
+                                 FROM dbops.processi pr
+                                WHERE pr.codice = v_tipo.processo_codice);
+
+                  IF v_classe = 'DOMINIO' AND v_run_as <> 'OPERATORE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'dbops.fn_accoda_lavoro',
+                          'E_JOB_DOMINIO_SENZA_OPERATORE',
+                          jsonb_build_object('job_type', p_job_type,
+                                             'run_as', v_run_as,
+                                             'processo_codice', v_tipo.processo_codice),
+                          NULL::uuid, p_job_type, v_run_as);
+                  END IF;
+
+                  -- Guard run_as <-> scope (messaggio parlante prima del CHECK):
+                  --   un OPERATORE senza scope girerebbe senza identita'. Il caso
+                  --   simmetrico (SISTEMA con scope) lo copre il CHECK.
+                  IF v_run_as = 'OPERATORE' AND p_scope IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'dbops.fn_accoda_lavoro', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_scope', 'run_as', v_run_as),
+                          NULL::uuid, 'p_scope obbligatorio per run_as=OPERATORE');
+                  END IF;
+
+                  -- Un lavoro OPERATORE appartiene a un'azienda: l'emittente
+                  --   attivo di chi l'ha accodato, catturato nello scope.
+                  IF v_run_as = 'OPERATORE' THEN
+                      v_emittente := (p_scope ->> 'emittente_attivo_id')::bigint;
+                      IF v_emittente IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'dbops.fn_accoda_lavoro',
+                              'E_CODA_LAVORO_SENZA_EMITTENTE',
+                              jsonb_build_object('job_type', p_job_type,
+                                                 'parametro', 'p_scope'),
+                              NULL::uuid, p_job_type);
+                      END IF;
+                  END IF;
+
+                  -- Chi chiama. ⭐ Da una sessione dell'applicazione la porta
+                  --   controlla cio' che la policy controllerebbe; fuori la
+                  --   raggiunge solo il proprietario (l'esecuzione e' tolta a
+                  --   PUBLIC), cioe' le procedure di pgAgent e la migrazione.
+                  --   ⚠️ session_user e non current_user: qui dentro current_user
+                  --   e' il proprietario, sempre.
+                  v_da_app := CASE
+                                  WHEN EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                                WHERE rolname = 'zeroerp_app')
+                                  THEN pg_catalog.pg_has_role(session_user, 'zeroerp_app', 'MEMBER')
+                                  ELSE false
+                              END;
+
+                  IF v_da_app THEN
+                      v_chiamante := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                      v_perimetro := script.fn_get_emittenti_scope_pk_ids(v_chiamante);
+
+                      IF v_run_as = 'OPERATORE'
+                         AND (v_chiamante IS NULL
+                              OR current_setting('app.ruolo_applicativo', true) IS DISTINCT FROM 'OPERATORE'
+                              OR (p_scope ->> 'auth_user_id')::integer IS DISTINCT FROM v_chiamante
+                              OR NOT script.fn_scope_ef_perimetro(v_perimetro, v_emittente)) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'dbops.fn_accoda_lavoro', 'E_CODA_SCOPE_ALTRUI',
+                              jsonb_build_object('job_type', p_job_type,
+                                                 'emittente_fiscale_id', v_emittente,
+                                                 'scope_auth_user_id', p_scope ->> 'auth_user_id',
+                                                 'chiamante', v_chiamante),
+                              NULL::uuid, p_job_type);
+                      END IF;
+                  END IF;
+
+                  -- ⛔ D9: il ciclo dell'upsert. L'unique parziale
+                  --   uq_coda_lavori_vivo_idem assorbe il doppione vivo (stessa
+                  --   job_type + idempotency_key in PENDING/IN_CORSO); se il vivo
+                  --   si chiude fra l'INSERT e la rilettura, si riprova l'INSERT.
+                  LOOP
+                      INSERT INTO dbops.coda_lavori (
+                          job_type, payload, run_as, scope, emittente_fiscale_id,
+                          origine, priorita, stato, max_tentativi, run_after,
+                          idempotency_key
+                      ) VALUES (
+                          p_job_type,
+                          COALESCE(p_payload, '{}'::jsonb),
+                          v_run_as,
+                          p_scope,
+                          v_emittente,
+                          p_origine,
+                          COALESCE(p_priorita, 100::smallint),
+                          'PENDING',
+                          v_max_tent,
+                          p_run_after,
+                          p_idempotency_key
+                      )
+                      ON CONFLICT (job_type, idempotency_key)
+                          WHERE idempotency_key IS NOT NULL
+                            AND stato IN ('PENDING', 'IN_CORSO')
+                          DO NOTHING
+                      RETURNING id INTO v_id;
+
+                      EXIT WHEN v_id IS NOT NULL;
+
+                      -- Conflitto: il lavoro vivo con la stessa chiave.
+                      SELECT c.id, c.run_as, c.emittente_fiscale_id
+                        INTO v_id, v_vivo_run_as, v_vivo_emitt
+                        FROM dbops.coda_lavori c
+                       WHERE c.job_type = p_job_type
+                         AND c.idempotency_key = p_idempotency_key
+                         AND c.stato IN ('PENDING', 'IN_CORSO')
+                       ORDER BY c.id
+                       LIMIT 1;
+
+                      IF v_id IS NOT NULL THEN
+                          -- ⛔ La porta vede oltre la policy: restituisce solo cio'
+                          --   che chi chiama potrebbe vedere. Un lavoro SISTEMA non
+                          --   ha azienda, e lo si accoda anche da operatore.
+                          IF v_da_app
+                             AND v_vivo_run_as = 'OPERATORE'
+                             AND NOT script.fn_scope_ef_perimetro(v_perimetro, v_vivo_emitt) THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database', 'dbops.fn_accoda_lavoro', 'E_CODA_CHIAVE_ALTRUI',
+                                  jsonb_build_object('job_type', p_job_type,
+                                                     'idempotency_key', p_idempotency_key),
+                                  NULL::uuid, p_job_type, p_idempotency_key);
+                          END IF;
+                          EXIT;
+                      END IF;
+                      -- Il vivo si e' chiuso nel frattempo: si riprova l'INSERT.
+                  END LOOP;
+
+                  RETURN v_id;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_apri_area_per_nascita(
+                  p_app_label  config.user_override_oggetti.app_label%TYPE,
+                  p_model_name config.user_override_oggetti.model_name%TYPE)
+               RETURNS jsonb  -- il ricordo dell'override di prima: nessuna colonna di cui sia il riflesso
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare all'operatore in sessione TUTTO sull'oggetto per il tempo
+              --   di una nascita fatta da un builder. Ritorna il ricordo di cio' che
+              --   c'era, da passare a dbops.fn_pgtap_richiudi_area; NULL se il livello
+              --   c'era gia'.
+              -- Uso: v_ricordo := dbops.fn_pgtap_apri_area_per_nascita('magazzino', 'magazzini');
+              --      ... il verbo ...
+              --      PERFORM dbops.fn_pgtap_richiudi_area(v_ricordo);
+              DECLARE
+                  v_utente  config.user_override_aree.auth_user_id%TYPE;
+                  v_area    config.aree_funzionali.schema_db%TYPE;
+                  v_area_id config.aree_funzionali.id%TYPE;
+                  v_prima   config.user_override_aree%ROWTYPE;
+                  v_ov      config.user_override_aree.id%TYPE;
+              BEGIN
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  IF v_utente IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_apri_area_per_nascita: nessun operatore in sessione — chiamare prima fn_pgtap_set_contesto_operatore';
+                  END IF;
+
+                  v_area := script.fn_area_di_oggetto(p_app_label, p_model_name);
+                  IF script.fn_resolve_livello_oggetto(v_utente, p_app_label, p_model_name, v_area)
+                         IS NOT DISTINCT FROM 'TUTTO'::config.livello_accesso THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT af.id INTO v_area_id
+                    FROM config.aree_funzionali af
+                   WHERE af.schema_db = v_area;
+                  IF v_area_id IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_apri_area_per_nascita: nessuna area funzionale per %.%', p_app_label, p_model_name;
+                  END IF;
+
+                  -- Un override d'area che c'e' (del test, o del database) si alza per
+                  -- il tempo della nascita e si rimette com'era: se ne tiene il ricordo.
+                  SELECT * INTO v_prima
+                    FROM config.user_override_aree uoa
+                   WHERE uoa.auth_user_id = v_utente
+                     AND uoa.area_id      = v_area_id;
+
+                  IF v_prima.id IS NULL THEN
+                      INSERT INTO config.user_override_aree
+                             (auth_user_id, area_id, livello, motivo, valido_dal, valido_al)
+                      VALUES (v_utente, v_area_id, 'TUTTO',
+                              'Fixture pgTAP: nascita di ' || p_app_label || '.' || p_model_name,
+                              (SELECT script.fn_data_operativa()), NULL)
+                      RETURNING id INTO v_ov;
+                  ELSE
+                      UPDATE config.user_override_aree uoa
+                         SET livello    = 'TUTTO',
+                             valido_dal = (SELECT script.fn_data_operativa()),
+                             valido_al  = NULL
+                       WHERE uoa.id = v_prima.id;
+                      v_ov := v_prima.id;
+                  END IF;
+
+                  -- Un override sull'OGGETTO resta sotto il tetto: lo si dice.
+                  IF script.fn_resolve_livello_oggetto(v_utente, p_app_label, p_model_name, v_area)
+                         IS DISTINCT FROM 'TUTTO'::config.livello_accesso THEN
+                      RAISE EXCEPTION 'fn_pgtap_apri_area_per_nascita: %.% non arriva a TUTTO anche con l''area aperta (override d''oggetto)',
+                                      p_app_label, p_model_name;
+                  END IF;
+
+                  RETURN jsonb_build_object(
+                      'override_id', v_ov,
+                      'nuovo',       v_prima.id IS NULL,
+                      'livello',     v_prima.livello,
+                      'valido_dal',  v_prima.valido_dal,
+                      'valido_al',   v_prima.valido_al);
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_azienda_di_chi_agisce(
+                   -- il nome del builder che chiede, per i messaggi: tipo nudo.
+                   p_chiamante text DEFAULT 'dbops.fn_pgtap_azienda_di_chi_agisce'::text)
+               RETURNS TABLE(
+                   emittente_fiscale_id        anagrafiche.emittenti_fiscali.id%TYPE,
+                   emittente_codice            anagrafiche.emittenti_fiscali.codice%TYPE,
+                   emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                   auth_user_id                anagrafiche.identita_digitali.auth_user_id%TYPE,
+                   identita_id                 anagrafiche.identita_digitali.id%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: l'azienda su cui una fixture scrive quando un contesto
+              --   e' gia' aperto: quella di CHI AGISCE, con la regola di
+              --   produzione. Estratta dal «ramo B» di
+              --   dbops.fn_pgtap_crea_mondo_cliente (rev 20261024-37).
+              DECLARE
+                  v_user_id   anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_identita  anagrafiche.identita_digitali.id%TYPE;
+                  v_ef_id     anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_codice anagrafiche.emittenti_fiscali.codice%TYPE;
+                  v_ef_sr_id  anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+              BEGIN
+                  -- La domanda e' «c'e' un contesto?», alla GUC che le policy
+                  -- leggono davvero.
+                  v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  IF v_user_id IS NULL THEN
+                      RAISE EXCEPTION
+                          '%: nessun contesto aperto (app.current_user_id): l''azienda di chi agisce non c''e''. Si costruisce prima il mondo (dbops.fn_pgtap_crea_mondo_cliente) o si apre il contesto (script.fn_pgtap_set_contesto_operatore)',
+                          p_chiamante;
+                  END IF;
+
+                  -- ⭐ L'azienda di chi agisce con la regola di produzione: l'emittente
+                  --   scelto in alto (app.current_emittente_id) se l'utente lo puo'
+                  --   usare, altrimenti la sua riga in config.user_emittenti_fiscali.
+                  --   E' la stessa domanda che fa il trigger z90 quando lega il BA.
+                  SELECT ef.id, ef.codice, ef.soggetto_ruolo_id
+                    INTO v_ef_id, v_ef_codice, v_ef_sr_id
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.id = script.fn_resolve_emittente_for_user(v_user_id);
+                  -- ⚠️ Guard sul RISULTATO: un operatore senza riga in
+                  --   user_emittenti_fiscali e' fail-closed dal 2026-08-18 (P-2a);
+                  --   un super admin non ha azienda finche' non ne sceglie una.
+                  IF v_ef_id IS NULL THEN
+                      RAISE EXCEPTION
+                          '%: l''utente di contesto (auth_user_id = %) non ha un''azienda su cui scrivere: ne'' una riga in config.user_emittenti_fiscali ne'' un emittente scelto (app.current_emittente_id, per il super admin). Aprire il contesto senza argomento (script.fn_pgtap_set_contesto_operatore()), scegliere l''emittente, o costruire il mondo PRIMA del contesto',
+                          p_chiamante, v_user_id;
+                  END IF;
+
+                  -- Una sola riga per costruzione: uq_identita_digitali_auth_user_ruolo_attivo
+                  -- e' UNIQUE su (auth_user_id, ruolo_applicativo) WHERE attivo.
+                  SELECT idg.id
+                    INTO v_identita
+                    FROM anagrafiche.identita_digitali idg
+                   WHERE idg.auth_user_id = v_user_id
+                     AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                     AND idg.attivo;
+                  IF v_identita IS NULL THEN
+                      RAISE EXCEPTION
+                          '%: nessuna identita'' OPERATORE attiva per auth_user_id = %: il contesto e'' aperto su un utente che l''applicazione non farebbe entrare',
+                          p_chiamante, v_user_id;
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT v_ef_id, v_ef_codice, v_ef_sr_id, v_user_id, v_identita;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_ddt_da_ordine(
+                  -- l'etichetta e' un frammento di testo della fixture: tipo nudo.
+                  p_etichetta            text DEFAULT 'pgTAP'::text,
+                  p_stato_codice_interno config.stati_doc_ddt.codice_interno%TYPE DEFAULT 'CONSEGNATO',
+                  p_billing_account_id   anagrafiche.billing_account.id%TYPE DEFAULT NULL,
+                  p_quantita             vendite.ordini_righe.qta_operativa%TYPE DEFAULT NULL,
+                  p_prezzo               vendite.ordini_righe.prezzo_unitario%TYPE DEFAULT NULL,
+                  p_articolo_id          catalogo.articoli.id%TYPE DEFAULT NULL,
+                  p_fatturazione_trigger vendite.ordini.fatturazione_trigger%TYPE DEFAULT NULL,
+                  p_ordine_id            vendite.ordini.id%TYPE DEFAULT NULL,
+                  p_qta_da_evadere       vendite.ddt_righe.qta_operativa%TYPE DEFAULT NULL,
+                  -- la grammatica di vendite.fn_genera_ddt_da_ordine, non una colonna.
+                  p_righe                jsonb DEFAULT NULL,
+                  p_data                 vendite.ddt.data%TYPE DEFAULT NULL,
+                  p_causale_codice       config.causali_trasporto.codice%TYPE DEFAULT 'VENDITA',
+                  p_data_ordine          vendite.ordini.data%TYPE DEFAULT NULL,
+                  -- le righe dell'ordine costruito, nella grammatica di
+                  -- dbops.fn_pgtap_crea_ordine_con_righe: non una colonna.
+                  p_righe_ordine         jsonb DEFAULT NULL)
+              RETURNS TABLE(
+                  ddt_id                    vendite.ddt.id%TYPE,
+                  ddt_uid                   vendite.ddt.uid%TYPE,
+                  ddt_riga_id               vendite.ddt_righe.id%TYPE,
+                  quantita                  vendite.ddt_righe.quantita%TYPE,
+                  ordine_id                 vendite.ordini.id%TYPE,
+                  ordine_uid                vendite.ordini.uid%TYPE,
+                  ordine_riga_id            vendite.ordini_righe.id%TYPE,
+                  articolo_id               catalogo.articoli.id%TYPE,
+                  billing_account_id        anagrafiche.billing_account.id%TYPE,
+                  cliente_soggetto_ruolo_id vendite.ordini.soggetto_ruolo_id%TYPE,
+                  emittente_fiscale_id      vendite.ordini.emittente_fiscale_id%TYPE,
+                  auth_user_id              anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  stato_doc_ddt_id          vendite.ddt.stato_doc_ddt_id%TYPE)
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP una BOLLA nata da un ordine
+              --   confermato, nello stato chiesto (default CONSEGNATO), per la
+              --   strada vera del dominio.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_b AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('resi');
+              --   -- due spedizioni dalla stessa riga, 4 e 6:
+              --   CREATE TEMP TABLE tmp_a AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('sped', p_quantita => 10,
+              --                                                    p_qta_da_evadere => 4);
+              --   SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('sped',
+              --              p_ordine_id => (SELECT ordine_id FROM tmp_a), p_qta_da_evadere => 6);
+              --   -- la bolla in bozza, per scriverle cio' che il test prova:
+              --   SELECT * FROM dbops.fn_pgtap_crea_ddt_da_ordine('bozza', 'DRAFT');
+              -- rev 2026-10-25 (20261025-02): uno stato abortito si rifiuta prima
+              --   di costruire — la bolla da ordine ha i legami, e il suo annullo
+              --   passa dal verbo vendite.fn_annulla_ddt (caso del test).
+              -- rev 2026-10-25 (20261025-32, brief-db-pgtap-reso-costruito E-1): l'ordine
+              --   costruito viene da dbops.fn_pgtap_crea_ordine_con_righe (la copia della
+              --   strada che stava qui si ritira); p_righe_ordine inoltra piu' righe,
+              --   sconto e date di consegna.
+              -- rev 2026-10-25 (20261025-04, D-1): p_data_ordine, la data dell'ordine
+              --   costruito (dbops.fn_pgtap_crea_ordine la scrive alla nascita). Chi da'
+              --   alla bolla una data passata da' anche quella dell'ordine: una bolla piu'
+              --   vecchia del suo ordine e' una fixture incoerente col modello.
+              -- ⛔ Restituisce la PRIMA riga DI MERCE della bolla: con piu' righe il
+              --   test le legge da se'. Un onere (natura non merce, che la madre porta
+              --   nella prima bolla) non e' mai la riga restituita, ne' quella a cui
+              --   vale p_qta_da_evadere.
+              -- ⚠️ Senza contesto aperto, il mondo lo apre sull'operatore che
+              --   costruisce. Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_stato_id   config.stati_doc_ddt.id%TYPE;
+                  v_abortito   config.stati_doc_ddt.is_abortito%TYPE;
+                  v_causale_id config.causali_trasporto.id%TYPE;
+                  v_ordine     vendite.ordini.id%TYPE;
+                  v_ordine_uid vendite.ordini.uid%TYPE;
+                  v_riga_ord   vendite.ordini_righe.id%TYPE;
+                  v_ba_id      anagrafiche.billing_account.id%TYPE;
+                  v_cli_sr_id  vendite.ordini.soggetto_ruolo_id%TYPE;
+                  v_ef_id      vendite.ordini.emittente_fiscale_id%TYPE;
+                  v_user_id    anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_righe      jsonb;      -- la grammatica della madre
+                  v_ddt        vendite.ddt.id%TYPE;
+                  v_n          integer;    -- righe d'ordine attive di merce: un conteggio
+              BEGIN
+                  -- 0. I parametri si giudicano PRIMA di costruire: un errore
+                  --    del chiamante non deve lasciare un mondo a meta'.
+                  -- Lo stato dalla sede della traduzione codice -> id
+                  -- (script.fn_doc_stato_id: solo uno stato attivo).
+                  v_stato_id := script.fn_doc_stato_id('vendite.ddt'::regclass, p_stato_codice_interno);
+                  SELECT s.is_abortito INTO v_abortito
+                    FROM config.stati_doc_ddt s
+                   WHERE s.id = v_stato_id;
+                  IF v_stato_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ddt_da_ordine: nessuno stato attivo della bolla con codice_interno = %',
+                          coalesce(p_stato_codice_interno::text, 'NULL');
+                  END IF;
+
+                  -- Uno stato abortito non e' una strada della fixture: la bolla
+                  -- nata da un ordine ha i legami, e il loro annullo lo dichiara
+                  -- il verbo (E_DOC_ANNULLO_CON_LEGAMI sull'UPDATE della matrice).
+                  IF v_abortito THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ddt_da_ordine: % e'' uno stato abortito — la bolla nata da un ordine ha i legami e si annulla col verbo vendite.fn_annulla_ddt: chiedere EMESSO e annullare dal test',
+                          p_stato_codice_interno;
+                  END IF;
+
+                  SELECT c.id INTO v_causale_id
+                    FROM config.causali_trasporto c
+                   WHERE c.codice = script.fn_codice_normalizzato(p_causale_codice)
+                     AND c.attivo IS TRUE;
+                  IF v_causale_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ddt_da_ordine: nessuna causale di trasporto attiva con codice = %',
+                          coalesce(p_causale_codice::text, 'NULL');
+                  END IF;
+
+                  IF p_righe IS NOT NULL AND p_qta_da_evadere IS NOT NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ddt_da_ordine: p_righe e p_qta_da_evadere insieme — la quantita'' da evadere sta gia'' in p_righe';
+                  END IF;
+
+                  -- Cliente, riga e trigger sono dell'ordine: con un ordine
+                  -- gia' costruito non si scelgono qui.
+                  IF p_ordine_id IS NOT NULL
+                     AND (p_billing_account_id IS NOT NULL OR p_quantita IS NOT NULL
+                          OR p_prezzo IS NOT NULL OR p_articolo_id IS NOT NULL
+                          OR p_fatturazione_trigger IS NOT NULL OR p_data_ordine IS NOT NULL
+                          OR p_righe_ordine IS NOT NULL) THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ddt_da_ordine: con p_ordine_id cliente, righe, data e trigger di fatturazione sono quelli dell''ordine — non si passano';
+                  END IF;
+
+                  -- 1. L'ordine confermato: quello del test, o uno del builder dell'ordine
+                  --    con le righe (la strada sta li', una volta).
+                  IF p_ordine_id IS NULL THEN
+                      SELECT o.ordine_id, o.ordine_uid, o.billing_account_id,
+                             o.cliente_soggetto_ruolo_id, o.emittente_fiscale_id, o.auth_user_id
+                        INTO v_ordine, v_ordine_uid, v_ba_id, v_cli_sr_id, v_ef_id, v_user_id
+                        FROM dbops.fn_pgtap_crea_ordine_con_righe(
+                                 p_etichetta, 'CONFERMATO', p_billing_account_id,
+                                 p_quantita, p_prezzo, p_articolo_id, p_fatturazione_trigger,
+                                 p_data_ordine, p_righe_ordine) o;
+                  ELSE
+                      SELECT o.id, o.uid, o.billing_account_id, o.soggetto_ruolo_id, o.emittente_fiscale_id
+                        INTO v_ordine, v_ordine_uid, v_ba_id, v_cli_sr_id, v_ef_id
+                        FROM vendite.ordini o
+                       WHERE o.id = p_ordine_id;
+                      IF NOT FOUND THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_ddt_da_ordine: ordine id = % non esiste o non e'' visibile',
+                              p_ordine_id;
+                      END IF;
+                      v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  END IF;
+
+                  -- La quantita' da evadere vale per LA riga di merce: con piu' righe
+                  -- di merce il test dice quale con p_righe. Gli oneri non contano: non
+                  -- si evadono a quantita', li porta la madre (script.fn_natura_e_merce,
+                  -- sede unica del predicato).
+                  IF p_qta_da_evadere IS NOT NULL THEN
+                      SELECT count(*), min(r.id) INTO v_n, v_riga_ord
+                        FROM vendite.ordini_righe r
+                       WHERE r.ordine_id = v_ordine
+                         AND r.attivo IS TRUE
+                         AND script.fn_natura_e_merce(r.natura_vendita_id) IS TRUE;
+                      IF v_n <> 1 THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_ddt_da_ordine: p_qta_da_evadere vuole un ordine con una sola riga attiva di merce (l''ordine % ne ha %) — usare p_righe',
+                              v_ordine, v_n;
+                      END IF;
+                  END IF;
+
+                  -- 2. La bolla dalla madre: tutto il residuo, o cio' che il test chiede.
+                  v_righe := COALESCE(p_righe,
+                      CASE WHEN p_qta_da_evadere IS NOT NULL THEN
+                          jsonb_build_array(jsonb_build_object(
+                              'ordine_riga_id', v_riga_ord, 'qta_da_evadere', p_qta_da_evadere))
+                      END);
+                  v_ddt := vendite.fn_genera_ddt_da_ordine(v_ordine, v_righe, p_data);
+
+                  -- 3. Cio' che l'emissione pretende: la causale e gli indirizzi
+                  --    obbligatori che la cascata dall'ordine non ha portato.
+                  UPDATE vendite.ddt d
+                     SET causale_trasporto_id = v_causale_id
+                   WHERE d.id = v_ddt;
+
+                  INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+                  SELECT v_ddt, ti.id, jsonb_build_object('display', 'pgTAP ' || ti.codice_interno)
+                    FROM config.tipi_indirizzi ti
+                   WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti(
+                             'DDT_VENDITA',
+                             (SELECT array_agg(di.tipo_indirizzo_id)::integer[]
+                                FROM vendite.ddt_indirizzi di
+                               WHERE di.ddt_id = v_ddt)))
+                  ON CONFLICT DO NOTHING;
+
+                  -- 4. Lo stato chiesto, per la matrice: la bolla e' nata nello
+                  --    stato iniziale (trigger della nascita).
+                  IF v_stato_id IS DISTINCT FROM script.fn_doc_stato_iniziale_id('vendite.ddt'::regclass) THEN
+                      PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ddt'::regclass, v_ddt, p_stato_codice_interno);
+                  END IF;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT d.id, d.uid, dr.id, dr.quantita,
+                         v_ordine, v_ordine_uid, f.ordine_riga_id, dr.articolo_id,
+                         v_ba_id, v_cli_sr_id, v_ef_id, v_user_id, d.stato_doc_ddt_id
+                    FROM vendite.ddt d
+                    LEFT JOIN LATERAL (
+                        SELECT r.id, r.quantita, r.articolo_id
+                          FROM vendite.ddt_righe r
+                         WHERE r.ddt_id = d.id
+                           AND script.fn_natura_e_merce(r.natura_vendita_id) IS TRUE
+                         ORDER BY r.riga_nr, r.id
+                         LIMIT 1) dr ON true
+                    LEFT JOIN LATERAL (
+                        SELECT ff.ordine_riga_id
+                          FROM vendite.ordini_righe_fulfillment ff
+                         WHERE ff.ddt_riga_id = dr.id
+                         ORDER BY ff.id
+                         LIMIT 1) f ON true
+                   WHERE d.id = v_ddt;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_mondo_cliente(
+                   -- etichetta e sigla sono frammenti di testo dei codici che i
+                   -- builder compongono, non il riflesso di una colonna: tipi nudi.
+                   p_etichetta text DEFAULT 'pgTAP'::text,
+                   p_sigla     character varying DEFAULT NULL::character varying)
+               RETURNS TABLE(
+                   emittente_fiscale_id        anagrafiche.emittenti_fiscali.id%TYPE,
+                   emittente_codice            anagrafiche.emittenti_fiscali.codice%TYPE,
+                   emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                   auth_user_id                anagrafiche.identita_digitali.auth_user_id%TYPE,
+                   identita_id                 anagrafiche.identita_digitali.id%TYPE,
+                   billing_account_id          anagrafiche.billing_account.id%TYPE,
+                   istanza_utility_id          anagrafiche.billing_account.istanza_utility_id%TYPE,
+                   cliente_soggetto_ruolo_id   anagrafiche.billing_account.soggetto_ruolo_id%TYPE,
+                   cliente_soggetto_id         anagrafiche.soggetti.id%TYPE,
+                   utility_id                  anagrafiche.billing_account.utility_id%TYPE)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP il mondo minimo di un test di
+              --   dominio in una chiamata — l'azienda con il suo operatore, il
+              --   contesto aperto su di lui e un cliente fatturabile legato a
+              --   QUELLA azienda — con la regola d'ordine dentro l'oggetto.
+              -- Uso, al posto del blocco «refs» e della riga di contesto:
+              --   CREATE TEMP TABLE tmp_mondo AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('DASH');
+              -- ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper: chi vuole la
+              --   finestra differita la riapre subito dopo con
+              --   SET CONSTRAINTS ALL DEFERRED, e lo dichiara in testa al file.
+              -- Rev 2026-10-21 (20261021-68): con un contesto gia' aperto l'azienda
+              --   di chi agisce la dice script.fn_resolve_emittente_for_user, come
+              --   per il legame del BA: anche il super admin che ha scelto
+              --   l'emittente in alto (app.current_emittente_id) ha un mondo.
+              -- Rev 2026-10-24 (20261024-39, §4-octies): il ramo B legge l'azienda
+              --   dal building block dbops.fn_pgtap_azienda_di_chi_agisce.
+              DECLARE
+                  v_user_id   anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_identita  anagrafiche.identita_digitali.id%TYPE;
+                  v_ef_id     anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_codice anagrafiche.emittenti_fiscali.codice%TYPE;
+                  v_ef_sr_id  anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_ba_id     anagrafiche.billing_account.id%TYPE;
+                  v_ist_id    anagrafiche.billing_account.istanza_utility_id%TYPE;
+                  v_cli_sr_id anagrafiche.billing_account.soggetto_ruolo_id%TYPE;
+                  v_cli_sog   anagrafiche.soggetti.id%TYPE;
+                  v_utility   anagrafiche.billing_account.utility_id%TYPE;
+              BEGIN
+                  -- La domanda e' «c'e' un contesto?», e si fa alla GUC che le
+                  -- policy leggono davvero: non a script.fn_pgtap_emittente_operatore(),
+                  -- che ha un ripiego suo e risponderebbe un emittente anche
+                  -- senza contesto — qui servirebbe come discriminante, e non lo e'.
+                  v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  IF v_user_id IS NULL THEN
+                      -- ── RAMO A: nessun contesto (CI, installazione nuova, o
+                      --    un file che chiama questa funzione per prima).
+                      --    Il mondo si COSTRUISCE, e il contesto si apre DOPO:
+                      --    e' l'ordine che il cliente pretende (vedi sotto).
+                      SELECT ceo.emittente_fiscale_id, ceo.emittente_codice,
+                             ceo.soggetto_ruolo_id, ceo.auth_user_id, ceo.identita_id
+                        INTO v_ef_id, v_ef_codice, v_ef_sr_id, v_user_id, v_identita
+                        FROM dbops.fn_pgtap_crea_emittente_operatore(p_sigla) ceo;
+
+                      PERFORM script.fn_pgtap_set_contesto_operatore(v_user_id);
+                  ELSE
+                      -- ── RAMO B: un contesto c'e' gia' (dbdev, o la riga di
+                      --    contesto del template chiamata prima). L'azienda NON
+                      --    si ricostruisce: il trigger z90 lega il BA a quella
+                      --    di CHI AGISCE, quindi costruirne una nuova lascerebbe
+                      --    il cliente legato all'altra e sotto RLS invisibile.
+                      IF p_sigla IS NOT NULL THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_mondo_cliente: p_sigla = % chiesta con un contesto gia'' aperto (auth_user_id = %): qui l''azienda non si sceglie, e'' quella di chi agisce. Per una SECONDA azienda si chiamano i builder atomici (dbops.fn_pgtap_crea_emittente_operatore + dbops.fn_pgtap_crea_cliente_ba col terzo parametro), prima del contesto',
+                              p_sigla, v_user_id;
+                      END IF;
+
+                      -- ⭐ L'azienda di chi agisce, dal building block estratto da
+                      --   qui (rev 20261024-39): la stessa regola di produzione del
+                      --   trigger z90 (script.fn_resolve_emittente_for_user), coi
+                      --   suoi controlli (azienda, identita' OPERATORE attiva).
+                      SELECT a.emittente_fiscale_id, a.emittente_codice,
+                             a.emittente_soggetto_ruolo_id, a.identita_id
+                        INTO v_ef_id, v_ef_codice, v_ef_sr_id, v_identita
+                        FROM dbops.fn_pgtap_azienda_di_chi_agisce('fn_pgtap_crea_mondo_cliente') a;
+                  END IF;
+
+                  -- Il cliente, in entrambi i rami DOPO il contesto e SENZA
+                  -- terzo parametro: il legame lo scrive il trigger z90 verso
+                  -- l'emittente di chi agisce, che qui e' quello giusto per
+                  -- costruzione. Chiederlo anche col parametro farebbe sbattere
+                  -- i due su uq_emittenti_fiscali_ba (rev 20260912-38).
+                  SELECT c.billing_account_id, c.istanza_utility_id,
+                         c.soggetto_ruolo_id, c.soggetto_id, c.utility_id
+                    INTO v_ba_id, v_ist_id, v_cli_sr_id, v_cli_sog, v_utility
+                    FROM dbops.fn_pgtap_crea_cliente_ba(p_etichetta) c;
+
+                  -- ⚠️ Il legame si VERIFICA, non si spera. Se il trigger ha
+                  --   legato il BA a un'altra azienda — succede quando il
+                  --   contesto e' aperto su un operatore di un altro emittente —
+                  --   il mondo che si sta tornando non e' coerente, e il file
+                  --   morirebbe venti righe piu' in la' su una policy. La verifica
+                  --   e' quella dei builder di documento, in un posto solo: il
+                  --   building block solleva nominando questa fixture.
+                  PERFORM 1
+                    FROM dbops.fn_pgtap_cliente_ba_del_mondo(
+                             v_ba_id, v_ef_sr_id, 'fn_pgtap_crea_mondo_cliente');
+
+                  -- Contratto dichiarato, non fiducia nel chiamato: si esce con
+                  -- i vincoli IMMEDIATE come ogni helper. Oggi e' un no-op —
+                  -- fn_pgtap_crea_cliente_ba li richiude gia' — e domani e' la
+                  -- riga che tiene il contratto se quel corpo cambia.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT v_ef_id, v_ef_codice, v_ef_sr_id, v_user_id, v_identita,
+                         v_ba_id, v_ist_id, v_cli_sr_id, v_cli_sog, v_utility;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_ordine_con_righe(
+                  -- l'etichetta e' un frammento di testo della fixture: tipo nudo.
+                  p_etichetta            text DEFAULT 'pgTAP'::text,
+                  p_stato_codice_interno config.stati_doc_ordini.codice_interno%TYPE DEFAULT 'CONFERMATO',
+                  p_billing_account_id   vendite.ordini.billing_account_id%TYPE DEFAULT NULL,
+                  p_quantita             vendite.ordini_righe.qta_operativa%TYPE DEFAULT NULL,
+                  p_prezzo               vendite.ordini_righe.prezzo_unitario%TYPE DEFAULT NULL,
+                  p_articolo_id          catalogo.articoli.id%TYPE DEFAULT NULL,
+                  p_fatturazione_trigger vendite.ordini.fatturazione_trigger%TYPE DEFAULT NULL,
+                  p_data_ordine          vendite.ordini.data%TYPE DEFAULT NULL,
+                  -- l'elenco delle righe della fixture, non una colonna.
+                  p_righe                jsonb DEFAULT NULL,
+                  p_ordine_id            vendite.ordini.id%TYPE DEFAULT NULL)
+              RETURNS TABLE(
+                  ordine_id                 vendite.ordini.id%TYPE,
+                  ordine_uid                vendite.ordini.uid%TYPE,
+                  ordine_riga_id            vendite.ordini_righe.id%TYPE,
+                  articolo_id               catalogo.articoli.id%TYPE,
+                  billing_account_id        vendite.ordini.billing_account_id%TYPE,
+                  cliente_soggetto_ruolo_id vendite.ordini.soggetto_ruolo_id%TYPE,
+                  emittente_fiscale_id      vendite.ordini.emittente_fiscale_id%TYPE,
+                  auth_user_id              anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  stato_doc_ordine_id       vendite.ordini.stato_doc_ordine_id%TYPE)
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un ORDINE con le sue righe,
+              --   nello stato chiesto (default CONFERMATO), per la strada vera.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_o AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('consegne',
+              --              p_quantita => 10, p_prezzo => 20, p_fatturazione_trigger => 'CONSEGNATO');
+              --   -- due righe, la seconda con la data di consegna confermata:
+              --   SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe('date', p_righe => jsonb_build_array(
+              --              jsonb_build_object('quantita', 10, 'prezzo', 20),
+              --              jsonb_build_object('quantita', 5, 'prezzo', 20,
+              --                                 'data_consegna_confermata', '2026-11-20')));
+              -- ⛔ Restituisce la PRIMA riga (ORDER BY riga_nr): con piu' righe il
+              --   test le legge da se'.
+              -- ⚠️ Senza contesto aperto, il mondo lo apre sull'operatore che
+              --   costruisce. Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_stato_id   config.stati_doc_ordini.id%TYPE;
+                  v_ordine     vendite.ordini.id%TYPE;
+                  v_uid        vendite.ordini.uid%TYPE;
+                  v_ba_id      vendite.ordini.billing_account_id%TYPE;
+                  v_cli_sr_id  vendite.ordini.soggetto_ruolo_id%TYPE;
+                  v_ef_id      vendite.ordini.emittente_fiscale_id%TYPE;
+                  v_user_id    anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_iva_id     config.iva.id%TYPE;
+                  v_righe      jsonb;      -- l'elenco normalizzato delle righe
+                  v_riga       jsonb;      -- una riga dell'elenco
+                  v_chiavi     text[];     -- chiavi sconosciute di una riga
+                  v_articolo   catalogo.articoli.id%TYPE;
+                  v_qta        vendite.ordini_righe.qta_operativa%TYPE;
+                  v_riga_nr    vendite.ordini_righe.riga_nr%TYPE;
+                  v_riga_id    vendite.ordini_righe.id%TYPE;
+              BEGIN
+                  -- 0. I parametri si giudicano PRIMA di costruire.
+                  -- Lo stato dalla sede della traduzione codice -> id
+                  -- (script.fn_doc_stato_id): solo uno stato ATTIVO e' una destinazione.
+                  v_stato_id := script.fn_doc_stato_id('vendite.ordini'::regclass, p_stato_codice_interno);
+                  IF v_stato_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ordine_con_righe: nessuno stato attivo dell''ordine con codice_interno = %',
+                          coalesce(p_stato_codice_interno::text, 'NULL');
+                  END IF;
+
+                  IF p_righe IS NOT NULL THEN
+                      IF p_quantita IS NOT NULL OR p_prezzo IS NOT NULL OR p_articolo_id IS NOT NULL THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_ordine_con_righe: p_righe insieme a p_quantita/p_prezzo/p_articolo_id — le righe stanno tutte in p_righe';
+                      END IF;
+                      IF jsonb_typeof(p_righe) IS DISTINCT FROM 'array' OR jsonb_array_length(p_righe) = 0 THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_ordine_con_righe: p_righe dev''essere un array non vuoto di righe';
+                      END IF;
+                      v_righe := p_righe;
+                  ELSE
+                      v_righe := jsonb_build_array(jsonb_strip_nulls(jsonb_build_object(
+                          'quantita', COALESCE(p_quantita, 10),
+                          'prezzo', COALESCE(p_prezzo, 25),
+                          'articolo_id', p_articolo_id)));
+                  END IF;
+
+                  -- Una chiave che il builder non conosce e' un errore di battitura
+                  -- che altrimenti passerebbe in silenzio.
+                  FOR v_riga IN SELECT e FROM jsonb_array_elements(v_righe) e LOOP
+                      SELECT array_agg(k) INTO v_chiavi
+                        FROM jsonb_object_keys(v_riga) k
+                       WHERE k <> ALL (ARRAY['articolo_id', 'quantita', 'prezzo', 'sconto_percentuale',
+                                             'iva_id', 'descrizione', 'data_consegna_richiesta_cliente',
+                                             'data_consegna_confermata']);
+                      IF v_chiavi IS NOT NULL THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_ordine_con_righe: chiavi di riga sconosciute: %', v_chiavi;
+                      END IF;
+                  END LOOP;
+
+                  IF p_ordine_id IS NOT NULL
+                     AND (p_billing_account_id IS NOT NULL OR p_fatturazione_trigger IS NOT NULL
+                          OR p_data_ordine IS NOT NULL) THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ordine_con_righe: con p_ordine_id cliente, data e trigger di fatturazione sono quelli della testata — non si passano';
+                  END IF;
+
+                  -- 1. La testata: quella del test, in bozza, o una nuova.
+                  IF p_ordine_id IS NOT NULL THEN
+                      SELECT o.id, o.uid, o.billing_account_id, o.soggetto_ruolo_id, o.emittente_fiscale_id
+                        INTO v_ordine, v_uid, v_ba_id, v_cli_sr_id, v_ef_id
+                        FROM vendite.ordini o
+                       WHERE o.id = p_ordine_id
+                         AND o.stato_doc_ordine_id = script.fn_doc_stato_iniziale_id('vendite.ordini'::regclass);
+                      IF NOT FOUND THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_ordine_con_righe: ordine id = % inesistente, invisibile o fuori bozza — le righe si scrivono in bozza',
+                              p_ordine_id;
+                      END IF;
+                      v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  ELSE
+                      SELECT o.ordine_id, o.ordine_uid, o.billing_account_id,
+                             o.cliente_soggetto_ruolo_id, o.emittente_fiscale_id, o.auth_user_id
+                        INTO v_ordine, v_uid, v_ba_id, v_cli_sr_id, v_ef_id, v_user_id
+                        FROM dbops.fn_pgtap_crea_ordine(p_etichetta, 'DRAFT', p_billing_account_id, p_data_ordine) o;
+
+                      -- Il trigger di fatturazione e' una condizione della bozza.
+                      IF p_fatturazione_trigger IS NOT NULL THEN
+                          UPDATE vendite.ordini o
+                             SET fatturazione_trigger = p_fatturazione_trigger
+                           WHERE o.id = v_ordine;
+                      END IF;
+                  END IF;
+
+                  -- 2. Le righe, in bozza. Il catalogo di sistema si SCEGLIE, col suo ORDER BY.
+                  SELECT i.id INTO v_iva_id
+                    FROM config.iva i
+                   WHERE i.attivo IS TRUE
+                   ORDER BY i.id
+                   LIMIT 1;
+
+                  FOR v_riga IN SELECT e FROM jsonb_array_elements(v_righe) WITH ORDINALITY AS x(e, n) ORDER BY x.n LOOP
+                      v_qta := COALESCE((v_riga->>'quantita')::numeric, 10);
+                      -- L'articolo si costruisce: il catalogo, da zero, e' vuoto.
+                      v_articolo := COALESCE((v_riga->>'articolo_id')::uuid, dbops.fn_pgtap_crea_articolo(
+                          ('PGT-ORD-' || substr(md5(clock_timestamp()::text || v_ordine::text), 1, 12))::varchar,
+                          false));
+
+                      SELECT COALESCE(max(r.riga_nr), 0) + 1 INTO v_riga_nr
+                        FROM vendite.ordini_righe r
+                       WHERE r.ordine_id = v_ordine;
+
+                      INSERT INTO vendite.ordini_righe (
+                          ordine_id, riga_nr, articolo_id, descrizione,
+                          qta_operativa, quantita, prezzo_unitario, iva_id,
+                          data_consegna_richiesta_cliente, data_consegna_confermata, meta)
+                      VALUES (
+                          v_ordine, v_riga_nr, v_articolo,
+                          left(COALESCE(v_riga->>'descrizione', 'Fixture pgTAP: ' || p_etichetta), 150),
+                          v_qta, v_qta, COALESCE((v_riga->>'prezzo')::numeric, 25),
+                          COALESCE((v_riga->>'iva_id')::integer, v_iva_id),
+                          (v_riga->>'data_consegna_richiesta_cliente')::date,
+                          (v_riga->>'data_consegna_confermata')::date,
+                          jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
+                      RETURNING id INTO v_riga_id;
+
+                      -- Lo sconto ha un DEFAULT di tabella: si scrive solo se il test
+                      -- lo chiede (la sede del default resta il DDL).
+                      IF v_riga ? 'sconto_percentuale' THEN
+                          UPDATE vendite.ordini_righe r
+                             SET sconto_percentuale = (v_riga->>'sconto_percentuale')::numeric
+                           WHERE r.id = v_riga_id;
+                      END IF;
+                  END LOOP;
+
+                  -- 3. Lo stato chiesto, per la matrice.
+                  IF v_stato_id IS DISTINCT FROM script.fn_doc_stato_iniziale_id('vendite.ordini'::regclass) THEN
+                      PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini'::regclass, v_ordine, p_stato_codice_interno);
+                  END IF;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT o.id, o.uid, r.id, r.articolo_id, v_ba_id, v_cli_sr_id, v_ef_id, v_user_id,
+                         o.stato_doc_ordine_id
+                    FROM vendite.ordini o
+                    JOIN LATERAL (
+                        SELECT rr.id, rr.articolo_id
+                          FROM vendite.ordini_righe rr
+                         WHERE rr.ordine_id = o.id
+                         ORDER BY rr.riga_nr, rr.id
+                         LIMIT 1) r ON true
+                   WHERE o.id = v_ordine;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_preventivo_con_righe(
+                  p_etichetta            text DEFAULT 'pgTAP',
+                  p_stato_codice_interno config.stati_doc_preventivi.codice_interno%TYPE DEFAULT 'EMESSO',
+                  p_preventivo_id        vendite.preventivi.id%TYPE DEFAULT NULL,
+                  p_prezzo               vendite.preventivi_righe.prezzo_unitario%TYPE DEFAULT NULL,
+                  p_articolo_id          catalogo.articoli.id%TYPE DEFAULT NULL)
+               RETURNS TABLE(preventivo_id             vendite.preventivi.id%TYPE,
+                             preventivo_uid            vendite.preventivi.uid%TYPE,
+                             preventivo_riga_id        vendite.preventivi_righe.id%TYPE,
+                             articolo_id               catalogo.articoli.id%TYPE,
+                             billing_account_id        vendite.preventivi.billing_account_id%TYPE,
+                             emittente_fiscale_id      vendite.preventivi.emittente_fiscale_id%TYPE,
+                             auth_user_id              anagrafiche.identita_digitali.auth_user_id%TYPE,
+                             stato_doc_preventivo_id   vendite.preventivi.stato_doc_preventivo_id%TYPE)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un PREVENTIVO con una riga
+              --   valida per l'emissione, nello stato chiesto (default
+              --   EMESSO), per la strada vera.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_p AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_preventivo_con_righe('dash');
+              --   -- la testata del test, gia' in bozza, portata ad ACCETTATO:
+              --   SELECT * FROM dbops.fn_pgtap_crea_preventivo_con_righe('rif',
+              --              'ACCETTATO', p_preventivo_id => (SELECT id FROM tmp_t));
+              -- ⚠️ Senza contesto aperto, il mondo lo apre sull'operatore che
+              --   costruisce. Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_stato_id   config.stati_doc_preventivi.id%TYPE;
+                  v_preventivo vendite.preventivi.id%TYPE;
+                  v_ba_id      vendite.preventivi.billing_account_id%TYPE;
+                  v_ef_id      vendite.preventivi.emittente_fiscale_id%TYPE;
+                  v_user_id    anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_iva_id     config.iva.id%TYPE;
+                  v_natura_id  config.nature_vendita.id%TYPE;
+                  v_articolo   catalogo.articoli.id%TYPE;
+                  v_riga_id    vendite.preventivi_righe.id%TYPE;
+              BEGIN
+                  -- 0. I parametri si giudicano PRIMA di costruire.
+                  v_stato_id := script.fn_doc_stato_id('vendite.preventivi'::regclass, p_stato_codice_interno);
+                  IF v_stato_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_preventivo_con_righe: nessuno stato attivo del preventivo con codice_interno = %',
+                          coalesce(p_stato_codice_interno::text, 'NULL');
+                  END IF;
+
+                  -- 1. La testata: quella del test, in bozza, o una nuova.
+                  IF p_preventivo_id IS NOT NULL THEN
+                      SELECT p.id, p.billing_account_id, p.emittente_fiscale_id
+                        INTO v_preventivo, v_ba_id, v_ef_id
+                        FROM vendite.preventivi p
+                       WHERE p.id = p_preventivo_id
+                         AND p.stato_doc_preventivo_id
+                             = script.fn_doc_stato_iniziale_id('vendite.preventivi'::regclass);
+                      IF NOT FOUND THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_preventivo_con_righe: preventivo id = % inesistente, invisibile o fuori bozza — le righe si scrivono in bozza',
+                              p_preventivo_id;
+                      END IF;
+                      v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  ELSE
+                      SELECT p.preventivo_id, p.billing_account_id, p.emittente_fiscale_id, p.auth_user_id
+                        INTO v_preventivo, v_ba_id, v_ef_id, v_user_id
+                        FROM dbops.fn_pgtap_crea_preventivo(p_etichetta, 'DRAFT') p;
+                  END IF;
+
+                  -- 2. La riga, in bozza. Il catalogo di sistema si SCEGLIE,
+                  --    col suo ORDER BY; l'articolo si costruisce (da zero il
+                  --    catalogo e' vuoto), di merce.
+                  SELECT i.id INTO v_iva_id
+                    FROM config.iva i
+                   WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
+                   ORDER BY i.id
+                   LIMIT 1;
+
+                  IF p_articolo_id IS NULL THEN
+                      SELECT nv.id INTO v_natura_id
+                        FROM config.nature_vendita nv
+                       WHERE script.fn_natura_e_merce(nv.id) AND nv.attivo IS TRUE
+                       ORDER BY nv.id
+                       LIMIT 1;
+                  END IF;
+
+                  v_articolo := COALESCE(p_articolo_id, dbops.fn_pgtap_crea_articolo(
+                      ('PGT-PRV-' || substr(md5(clock_timestamp()::text || v_preventivo::text), 1, 12))::varchar,
+                      false, p_natura_vendita_id => v_natura_id));
+
+                  INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, iva_id,
+                                                        prezzo_unitario, qta_operativa)
+                  VALUES (v_preventivo, v_articolo, v_iva_id, COALESCE(p_prezzo, 10), 1)
+                  RETURNING id INTO v_riga_id;
+
+                  -- 3. Lo stato chiesto, per la matrice.
+                  IF v_stato_id IS DISTINCT FROM script.fn_doc_stato_iniziale_id('vendite.preventivi'::regclass) THEN
+                      PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi'::regclass, v_preventivo,
+                                                           p_stato_codice_interno);
+                  END IF;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT p.id, p.uid, v_riga_id, v_articolo, v_ba_id, v_ef_id, v_user_id,
+                         p.stato_doc_preventivo_id
+                    FROM vendite.preventivi p
+                   WHERE p.id = v_preventivo;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_porta_a_stato(
+                  -- ⚠️ Tipi espliciti, e nessuno e' una svista: la fixture serve tutte
+                  --   le testate della mappa script.fn_doc_stato_modello. La testata e'
+                  --   un regclass; l'id e' quello di una testata qualunque (bigint in
+                  --   tutte, nessuna colonna comune a cui ancorarlo); lo stato e' il
+                  --   codice_interno di uno qualunque dei vocabolari.
+                  p_testata regclass,
+                  -- l'id di una testata qualunque: la ragione e' qui sopra
+                  p_id      bigint,
+                  p_stato   text)
+              -- il codice_interno dello stato raggiunto: stessa ragione dei parametri.
+              RETURNS text
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: portare una testata di fixture nello stato voluto per
+              --   le transizioni della sua matrice, dopo che il test le ha
+              --   scritto in bozza cio' che i passaggi pretendono (righe,
+              --   indirizzi, prezzi…).
+              -- Uso:
+              --   SELECT dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO')
+              --     FROM tmp_ordine o;
+              -- rev 2026-10-24 (20261024-22, brief-modello-documento-vendita
+              --   N-1): tutte le testate con una matrice, non piu' solo ordine
+              --   e preventivo. Un documento nasce in bozza (trigger della
+              --   nascita) e si porta avanti da qui.
+              -- rev 2026-10-24 (20261024-30, R-4): anche il lotto di
+              --   fatturazione, VUOTO (con fatture si muove col verbo
+              --   vendite.fn_sync_lotto_fatture_stato).
+              -- rev 2026-10-25 (20261025-19, §7): la mappa da
+              --   script.fn_doc_stato_modello; dove c'e' la porta ogni passo e'
+              --   il verbo del documento, sui soli passaggi manuali, con l'azione
+              --   del passaggio concessa all'utente del contesto.
+              -- rev 2026-10-25 (20261025-48, §8): il preventivo ha la porta
+              --   (verbo vendite.fn_cambia_stato_preventivo); lo stato voluto
+              --   da script.fn_doc_stato_id.
+              -- rev 2026-10-25 (20261025-82, §9): l'ordine ha la porta (verbo
+              --   vendite.fn_cambia_stato_ordine). L'evasione (EVASO,
+              --   PARZIALMENTE_EVASO) e' di processo: non e' nel percorso, si
+              --   costruisce evadendo (dbops.fn_pgtap_crea_ddt_da_ordine).
+              -- rev 2026-10-26 (20261026-12, §11): il contratto ha la porta
+              --   (verbo vendite.fn_cambia_stato_contratto). CESSATO vuole
+              --   valido_al arrivata: la scrive il test prima di chiederlo.
+              -- rev 2026-10-26 (20261026-28, §13): l'offerta ha la porta (verbo
+              --   vendite.fn_cambia_stato_offerta). Dove la riga del passaggio
+              --   chiede la motivazione (rifiuto, annulli) la fixture ne passa una
+              --   sua. SUPERATA e' di processo: si costruisce creando una revisione
+              --   (vendite.fn_crea_revisione_offerta). L'annullo con legami (la
+              --   revisione precedente che torna emessa) passa da
+              --   vendite.fn_annulla_offerta, non da qui.
+              -- rev 2026-10-26 (20261026-36, §14): la commessa ha la porta (verbo
+              --   vendite.fn_cambia_stato_commessa, firma senza p_user). Lo stato
+              --   emittibile della push si costruisce anche da qui, dal passaggio
+              --   manuale «rendi pronta» (il test scrive prima le righe approvate).
+              -- rev 2026-10-28 (20261028-24, §16): la versione di listino ha la
+              --   porta. ATTIVA dal verbo vendite.fn_attiva_versione_listino (chiude
+              --   anche le precedenti); CHIUSA, di processo, da
+              --   vendite.fn_chiudi_versioni_listino_scadute: il test scrive prima
+              --   valido_al passata (la versione ATTIVA la accetta).
+              -- rev 2026-10-27 (20261027-20, §15): fattura e lotto hanno la porta. Per
+              --   loro il percorso comprende anche i passaggi di PROCESSO (la pipeline li
+              --   scrive tutti): il lotto passa dal suo verbo sui passaggi manuali
+              --   (vendite.fn_cambia_stato_lotto) e dal verbo di processo sugli altri
+              --   (vendite.fn_lotto_proietta_stato_step); la fattura dal suo verbo
+              --   (vendite.fn_fattura_proietta_stato).
+              DECLARE
+                  v_col       text;       -- colonna di stato della testata
+                  v_stati     regclass;   -- catalogo degli stati
+                  v_matrice   regclass;   -- matrice delle transizioni
+                  v_col_da    text;       -- colonna «da» della matrice
+                  v_col_a     text;       -- colonna «a» della matrice
+                  v_col_vivo  text;       -- colonna «passaggio ammesso» della matrice
+                  v_filtro    text;       -- condizione in piu' sui passaggi, letterale della mappa
+                  v_porta     boolean;    -- la testata ha la porta: i passi sono verbi
+                  -- Id e codici di stato di uno qualunque dei
+                  -- vocabolari della mappa: bigint e testo in tutti, nessuna
+                  -- colonna comune a cui ancorarli (%TYPE[] non e' sintassi valida).
+                  v_target    bigint;
+                  v_corrente  bigint;
+                  v_percorso  bigint[];
+                  v_passo     bigint;
+                  v_da        bigint;
+                  v_codice    text;
+                  v_utente    config.user_override_azioni.auth_user_id%TYPE;
+                  v_azione    config.azioni_processo.permission_codename%TYPE;
+                  v_n         integer;    -- righe toccate (ROW_COUNT): un conteggio
+                  v_manuale   boolean;    -- il passaggio e' manuale (script.fn_doc_passaggio)
+              BEGIN
+                  -- ── Il documento: errore del CHIAMANTE, non un dato ────────
+                  -- ⚠️ La fattura: la matrice ha anche i passaggi del LOTTO
+                  --   (solo_lotto = true), che il guard della fattura singola
+                  --   (vendite.trgfn_fatture_guard_stato) non ammette. Il
+                  --   filtro della mappa li toglie.
+                  SELECT m.colonna_stato, m.vocabolario, m.matrice, m.colonna_da, m.colonna_a,
+                         m.colonna_vivo, m.filtro
+                    INTO v_col, v_stati, v_matrice, v_col_da, v_col_a, v_col_vivo, v_filtro
+                    FROM script.fn_doc_stato_modello(p_testata) m;
+
+                  IF NOT FOUND THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_porta_a_stato: documento non gestito: % (noti: le testate della mappa script.fn_doc_stato_modello)',
+                          p_testata;
+                  END IF;
+
+                  IF p_id IS NULL OR p_id <= 0 THEN
+                      RAISE EXCEPTION 'fn_pgtap_porta_a_stato: id testata non valido: %', p_id;
+                  END IF;
+
+                  -- La porta: dal catalogo, non da un elenco.
+                  v_porta := EXISTS (
+                      SELECT 1 FROM pg_catalog.pg_trigger t
+                       WHERE t.tgrelid = p_testata
+                         AND t.tgfoid  = 'script.trgfn_doc_stato_solo_dal_verbo()'::regprocedure
+                         AND NOT t.tgisinternal);
+                  IF v_porta THEN
+                      -- Il percorso, sotto la porta: i soli passaggi manuali. Fattura,
+                      -- lotto (rev 2026-10-27) e versione di listino (rev 2026-10-28)
+                      -- anche quelli di processo: ogni passo ha il suo verbo.
+                      IF p_testata NOT IN ('vendite.fatture'::regclass, 'vendite.fatturazione_lotti'::regclass,
+                                           'vendite.listini_versioni'::regclass) THEN
+                          v_filtro := v_filtro || ' AND COALESCE((t.meta ->> ''manuale'')::boolean, true)';
+                      END IF;
+                      IF p_testata NOT IN ('vendite.ddt'::regclass, 'vendite.resi'::regclass,
+                                           'vendite.preventivi'::regclass, 'vendite.ordini'::regclass,
+                                           'vendite.contratti'::regclass, 'vendite.offerte_commerciali'::regclass,
+                                           'vendite.commesse'::regclass, 'vendite.fatture'::regclass,
+                                           'vendite.fatturazione_lotti'::regclass,
+                                           'vendite.listini_versioni'::regclass) THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_porta_a_stato: % ha la porta ma la fixture non conosce il suo verbo',
+                              p_testata;
+                      END IF;
+                  END IF;
+
+                  -- ── Lo stato voluto, per codice_interno ──────────────────
+                  v_target := script.fn_doc_stato_id(p_testata, p_stato);
+                  IF v_target IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_porta_a_stato: nessuno stato attivo con codice_interno = % in %',
+                          p_stato, v_stati;
+                  END IF;
+
+                  -- ── Lo stato corrente: la testata deve esserci e vedersi ──
+                  EXECUTE format('SELECT t.%I FROM %s t WHERE t.id = $1', v_col, p_testata)
+                     INTO v_corrente USING p_id;
+                  IF v_corrente IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_porta_a_stato: % id = % non esiste o non e'' visibile',
+                          p_testata, p_id;
+                  END IF;
+
+                  -- ── Il percorso piu' corto nella matrice attiva ──────────
+                  -- ⚠️ Niente cicli: uno stato gia' visitato non si rivisita.
+                  --   A parita' di lunghezza, gli id minori: un ordine scelto.
+                  EXECUTE format($q$
+                      WITH RECURSIVE p(stato, percorso) AS (
+                          SELECT $1::bigint, ARRAY[$1::bigint]
+                          UNION ALL
+                          SELECT t.%2$I::bigint, p.percorso || t.%2$I::bigint
+                            FROM p
+                            JOIN %3$s t ON t.%1$I = p.stato AND t.%4$I IS TRUE %6$s
+                            JOIN %5$s s ON s.id = t.%2$I AND s.attivo IS TRUE
+                           WHERE NOT (t.%2$I = ANY (p.percorso))
+                      )
+                      SELECT p.percorso FROM p
+                       WHERE p.stato = $2
+                       ORDER BY cardinality(p.percorso), p.percorso
+                       LIMIT 1$q$, v_col_da, v_col_a, v_matrice, v_col_vivo, v_stati, v_filtro)
+                     INTO v_percorso USING v_corrente, v_target;
+
+                  IF v_percorso IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_porta_a_stato: nessun percorso nella matrice % da stato id % a %',
+                          v_matrice, v_corrente, p_stato;
+                  END IF;
+
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- ── Il cammino: un passo alla volta, dai guard veri ──────
+                  v_da := v_corrente;
+                  FOREACH v_passo IN ARRAY v_percorso[2:] LOOP
+                      IF v_porta THEN
+                          -- L'azione del passaggio (M-3) all'utente del contesto:
+                          -- la fixture porta lo stato, non prova il permesso.
+                          SELECT p.azione_processo_codename, p.manuale INTO v_azione, v_manuale
+                            FROM script.fn_doc_passaggio(p_testata, v_da, v_passo) p;
+                          IF v_azione IS NOT NULL AND v_utente IS NOT NULL THEN
+                              PERFORM dbops.fn_pgtap_concedi_azione(v_utente, v_azione);
+                          END IF;
+
+                          EXECUTE format('SELECT s.codice_interno FROM %s s WHERE s.id = $1', v_stati)
+                             INTO v_codice USING v_passo;
+
+                          IF p_testata = 'vendite.ddt'::regclass THEN
+                              PERFORM 1 FROM vendite.fn_cambia_stato_ddt(p_id, v_codice);
+                          ELSIF p_testata = 'vendite.preventivi'::regclass THEN
+                              PERFORM 1 FROM vendite.fn_cambia_stato_preventivo(p_id, v_codice);
+                          ELSIF p_testata = 'vendite.ordini'::regclass THEN
+                              PERFORM 1 FROM vendite.fn_cambia_stato_ordine(p_id, v_codice);
+                          ELSIF p_testata = 'vendite.contratti'::regclass THEN
+                              PERFORM 1 FROM vendite.fn_cambia_stato_contratto(p_id, v_codice);
+                          ELSIF p_testata = 'vendite.commesse'::regclass THEN
+                              PERFORM 1 FROM vendite.fn_cambia_stato_commessa(p_id, v_codice);
+                          ELSIF p_testata = 'vendite.fatturazione_lotti'::regclass THEN
+                              -- Manuale: il verbo del lotto; di processo: il giro.
+                              IF v_manuale IS TRUE THEN
+                                  PERFORM 1 FROM vendite.fn_cambia_stato_lotto(p_id, v_codice);
+                              ELSE
+                                  PERFORM vendite.fn_lotto_proietta_stato_step(p_id, v_passo);
+                              END IF;
+                          ELSIF p_testata = 'vendite.fatture'::regclass THEN
+                              PERFORM vendite.fn_fattura_proietta_stato(p_id, v_passo);
+                          ELSIF p_testata = 'vendite.listini_versioni'::regclass THEN
+                              -- Manuale: l'attivazione (con la chiusura delle precedenti);
+                              -- di processo: la chiusura a scadenza, che vuole valido_al
+                              -- passata (rev 2026-10-28).
+                              IF v_codice = 'ATTIVA' THEN
+                                  PERFORM 1 FROM vendite.fn_attiva_versione_listino(p_id);
+                              ELSIF v_codice = 'CHIUSA' THEN
+                                  PERFORM vendite.fn_chiudi_versioni_listino_scadute();
+                              ELSE
+                                  RAISE EXCEPTION
+                                      'fn_pgtap_porta_a_stato: nessun verbo della versione di listino porta a %', v_codice;
+                              END IF;
+                          ELSIF p_testata = 'vendite.offerte_commerciali'::regclass THEN
+                              -- La motivazione dove la riga del passaggio la chiede.
+                              PERFORM 1 FROM vendite.fn_cambia_stato_offerta(
+                                  p_id, v_codice,
+                                  (SELECT CASE WHEN COALESCE((t.meta ->> 'requires_motivazione')::boolean, false)
+                                               THEN 'Fixture pgTAP' END
+                                     FROM config.stati_doc_offerte_transizioni t
+                                    WHERE t.stato_da_id = v_da AND t.stato_a_id = v_passo AND t.attivo IS TRUE));
+                          ELSIF v_codice = 'CONFERMATO' THEN
+                              PERFORM vendite.fn_conferma_reso(p_id);
+                          ELSIF v_codice = 'ANNULLATO' THEN
+                              PERFORM vendite.fn_annulla_reso(p_id);
+                          ELSE
+                              RAISE EXCEPTION
+                                  'fn_pgtap_porta_a_stato: nessun verbo del reso porta a %', v_codice;
+                          END IF;
+                      ELSE
+                          EXECUTE format('UPDATE %s SET %I = $1 WHERE id = $2', p_testata, v_col)
+                            USING v_passo, p_id;
+                          GET DIAGNOSTICS v_n = ROW_COUNT;
+                          IF v_n <> 1 THEN
+                              RAISE EXCEPTION
+                                  'fn_pgtap_porta_a_stato: UPDATE di % id = % verso stato id % ha toccato % righe',
+                                  p_testata, p_id, v_passo, v_n;
+                          END IF;
+                      END IF;
+                      v_da := v_passo;
+                  END LOOP;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  -- Lo stato raggiunto si confronta con quello chiesto, per ogni
+                  -- testata: un verbo che non porta dove deve (la chiusura delle
+                  -- versioni scadute non tocca una versione che non e' scaduta, e
+                  -- non dice niente) e' un errore del test, non uno stato da
+                  -- restituire come se fosse quello voluto.
+                  EXECUTE format('SELECT s.codice_interno FROM %s t JOIN %s s ON s.id = t.%I WHERE t.id = $1',
+                                 p_testata, v_stati, v_col)
+                     INTO v_codice USING p_id;
+                  IF v_codice IS DISTINCT FROM p_stato THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_porta_a_stato: % id = % chiesta in %, e'' rimasta in % — il passaggio non e'' avvenuto (per CHIUSA della versione di listino il test scrive prima valido_al passata)',
+                          p_testata, p_id, p_stato, coalesce(v_codice, 'NULL');
+                  END IF;
+                  RETURN v_codice;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_scope_operatore(
+                  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE DEFAULT NULL)
+               RETURNS dbops.coda_lavori.scope%TYPE
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  -- ⚠️ `integer` esplicito: django.auth_user.id, a cui il DB non si lega.
+                  v_utente    integer;
+                  -- ⚠️ `bigint[]` esplicito: elementi = anagrafiche.emittenti_fiscali.id.
+                  v_perimetro bigint[];
+                  v_emittente anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_identita  anagrafiche.identita_digitali.id%TYPE;
+              BEGIN
+                  -- Scopo: lo scope di un lavoro OPERATORE accodato da chi e' in
+                  --   sessione: la sua identita' e un'azienda del suo perimetro
+                  --   (quella chiesta, oppure la prima). Super admin (perimetro
+                  --   NULL): la prima azienda attiva.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  IF v_utente IS NULL THEN
+                      RAISE EXCEPTION 'dbops.fn_pgtap_scope_operatore: nessun utente in sessione (app.current_user_id); prima script.fn_pgtap_set_contesto_operatore()';
+                  END IF;
+
+                  v_perimetro := script.fn_get_emittenti_scope_pk_ids(v_utente);
+
+                  v_emittente := COALESCE(
+                      p_emittente_fiscale_id,
+                      (SELECT min(e) FROM unnest(v_perimetro) AS e),
+                      CASE WHEN v_perimetro IS NULL
+                           THEN (SELECT min(ef.id) FROM anagrafiche.emittenti_fiscali ef)
+                      END);
+                  IF v_emittente IS NULL THEN
+                      RAISE EXCEPTION 'dbops.fn_pgtap_scope_operatore: l''utente % non ha nessuna azienda nel perimetro', v_utente;
+                  END IF;
+
+                  SELECT idg.id INTO v_identita
+                    FROM anagrafiche.identita_digitali idg
+                   WHERE idg.auth_user_id = v_utente
+                     AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                   ORDER BY idg.id
+                   LIMIT 1;
+
+                  RETURN jsonb_build_object(
+                      'auth_user_id',        v_utente,
+                      'username',            'pgtap',
+                      'identita_id',         v_identita,
+                      'emittente_attivo_id', v_emittente,
+                      'emittente_ids',       jsonb_build_array(v_emittente),
+                      'scope_key',           v_emittente::text);
+              END;
+              $function$;

@@ -29,7 +29,7 @@ DECLARE
 BEGIN
     -- Prima riga: chi agisce. Se non e' la credenziale stessa deve
     -- essere la sessione del migratore o un SUPER_ADMIN, con un motivo.
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('script.fn_totp_disabilita_device');
 
     IF v_utente IS DISTINCT FROM p_auth_user_id THEN
         v_dal_server := dbops.fn_sessione_del_migratore();

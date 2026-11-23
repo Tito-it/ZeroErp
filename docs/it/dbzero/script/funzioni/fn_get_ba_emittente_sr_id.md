@@ -52,7 +52,7 @@ AS $function$
                                               WHEN s.auth_user_id > 0
                                               THEN script.fn_resolve_emittente_for_user(s.auth_user_id)
                                             END
-                                       FROM (SELECT NULLIF(current_setting('app.current_user_id', true), '')::integer
+                                       FROM (SELECT script.fn_utente_di_sessione('script.fn_get_ba_emittente_sr_id')
                                                     AS auth_user_id) s)),
                     -- 3) Riserva SENZA sessione: l'emittente di
                     --    default dell'installazione (batch,

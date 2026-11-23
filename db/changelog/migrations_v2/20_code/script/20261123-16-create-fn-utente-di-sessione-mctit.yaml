@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'UTENTE DI SESSIONE: script.fn_utente_di_sessione
+#   Brief: brief-db-revisione-ui (§3.6-sexies, giro 8; Q60 (a)).
+#
+# -- IL DIFETTO -------------------------------------------------------------
+#   app.current_user_id e' l'auth_user.id dell'utente della richiesta, che il
+#   backend scrive nella sessione. Le funzioni che lo leggono lo convertono
+#   ciascuna per conto suo, NULLIF(current_setting(...), '')::integer: un
+#   valore che non e' un intero da' il 22P02 grezzo, senza codice. Una sola
+#   (ui.fn_lista_colonne_ricerca_full) ha un controllo suo, con un codice suo.
+#   Stessa lettura in decine di sedi, due risposte allo stesso guasto.
+#
+# -- LA FORMA ---------------------------------------------------------------
+#   fn_utente_di_sessione(p_chi) -> integer.
+#   * GUC assente o vuota: NULL. Che cosa voglia dire «nessun utente» lo
+#     decide chi legge, come prima.
+#   * Un valore che non e' l'id di un utente (non solo cifre, zeri in testa,
+#     zero, oltre il massimo di integer): E_SCRIPT_CHIAMATA_NON_VALIDA, TECNICO,
+#     col valore nel contesto del log. ⚠️ '0' e '007', che la conversione di
+#     prima accettava, ora si rifiutano: nessun utente ha id 0, e il backend
+#     scrive l'id senza zeri.
+#   * p_chi: la funzione che legge, per il log e per la frase; senza, il BB.
+#     Ancorato a dbops.error_log.function_name, dove finisce; il risultato e'
+#     django.auth_user.id, che non si ancora (linee-guida §5g).
+#   STABLE come la lettura che sostituisce in ui (la leggono anche funzioni e
+#   viste STABLE); INVOKER, non legge tabelle.
+#   I lettori passano al BB in 20261123-17 ... -26, un changeSet per schema.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261123-16-create-fn-utente-di-sessione-mctit.yaml
+
+  - changeSet:
+      id: 20261123-16-create-fn-utente-di-sessione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea script.fn_utente_di_sessione: app.current_user_id letto come id di un utente, da una sede sola.
+        Assente o vuota: NULL; un valore che non e' un id: E_SCRIPT_CHIAMATA_NON_VALIDA. Brief:
+        brief-db-revisione-ui (§3.6-sexies, Q60).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname IN ('fn_log_and_raise_error', 'fn_utente_di_sessione')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_utente_di_sessione(
+                  -- la funzione che legge: finisce nel log come function_name
+                  p_chi dbops.error_log.function_name%TYPE DEFAULT NULL)
+               -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+               RETURNS integer
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  -- text: il valore della GUC com'e' scritto, prima di leggerlo come id
+                  v_guc text := NULLIF(current_setting('app.current_user_id', true), '');
+              BEGIN
+                  -- Scopo: l'utente della richiesta, cioe' l'auth_user.id che il
+                  --   backend scrive in app.current_user_id.
+                  --   Assente o vuota: NULL, e decide chi legge.
+                  --   Un valore che non e' l'id di un utente: chiamante rotto,
+                  --   E_SCRIPT_CHIAMATA_NON_VALIDA.
+                  IF v_guc IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Il CASE garantisce l'ordine: il confronto numerico solo su un
+                  -- intero positivo senza zeri in testa, di al piu' dieci cifre.
+                  IF (CASE WHEN v_guc ~ '^[1-9][0-9]{0,9}$' THEN v_guc::bigint > 2147483647
+                           ELSE TRUE END) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          COALESCE(p_chi, 'script.fn_utente_di_sessione'),
+                          'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('app_current_user_id', v_guc),
+                          NULL::uuid,
+                          COALESCE(p_chi, 'script.fn_utente_di_sessione'),
+                          'app.current_user_id non e'' l''id di un utente');
+                  END IF;
+
+                  RETURN v_guc::integer;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_utente_di_sessione(text) IS
+                  'BB: l''utente della richiesta, cioè l''auth_user.id che il backend scrive in app.current_user_id, letto da una sede sola. GUC assente o vuota: NULL, e che cosa voglia dire «nessun utente» lo decide chi legge. Un valore che non è l''id di un utente (non solo cifre, zeri in testa, zero, oltre il massimo di integer): E_SCRIPT_CHIAMATA_NON_VALIDA, col valore in context.app_current_user_id. p_chi: la funzione che legge, nel log e nella frase; senza, il BB stesso. Ogni funzione e vista che legge l''utente di sessione passa da qui, invece di convertire la GUC da sé. STABLE, INVOKER, non legge tabelle.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_utente_di_sessione(text);

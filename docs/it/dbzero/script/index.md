@@ -210,6 +210,7 @@ search:
 - [fn_gruppi_di_commessa_nel_lotto](funzioni/fn_gruppi_di_commessa_nel_lotto.md) — (latest review 2026-09-08)
 - [fn_gruppi_trascinati_da_uscita](funzioni/fn_gruppi_trascinati_da_uscita.md) — (latest review 2026-09-08)
 - [fn_guard_azione](funzioni/fn_guard_azione.md) — (scritta il 24-09-2026)
+- [fn_guard_campi_ammessi](funzioni/fn_guard_campi_ammessi.md) — Il controllo dei **campi facoltativi** che una porta di scrittura riceve tutti insieme: devono essere un oggetto, e ogni campo deve stare nella lista che la porta ammette.
 - [fn_guard_livello](funzioni/fn_guard_livello.md) — (scritta il 25-09-2026)
 - [fn_guard_passaggio](funzioni/fn_guard_passaggio.md)
 - [fn_guard_soggetto_pf_pura](funzioni/fn_guard_soggetto_pf_pura.md) — (latest review 18-04-2026)
@@ -355,6 +356,7 @@ search:
 - [fn_totp_registra_uso](funzioni/fn_totp_registra_uso.md) — (scritta il 29-09-2026)
 - [fn_totp_ricifra_segreto](funzioni/fn_totp_ricifra_segreto.md) — (scritta il 01-10-2026)
 - [fn_totp_rigenera_recovery](funzioni/fn_totp_rigenera_recovery.md) — (scritta il 29-09-2026)
+- [fn_utente_di_sessione](funzioni/fn_utente_di_sessione.md) — Dà l'utente della richiesta: l'id che il backend scrive nella sessione (`app.current_user_id`) a ogni chiamata autenticata. Ogni funzione e ogni vista del database che ha bisogno di sapere chi sta agendo lo legge da qui, invece di convertire il valore da sé.
 - [fn_valida_codice_fiscale](funzioni/fn_valida_codice_fiscale.md) — * **Validazione formale** del Codice Fiscale (CF) calcolando e confrontando il carattere di controllo. * **Supporto omocodici**, garantendo validità anche per CF derivati con omolettere. * **Delegare al backend** i controlli di congruenza con data di nascita, sesso e luogo di nascita per mantenere flessibilità applicativa.
 - [fn_valida_partita_iva](funzioni/fn_valida_partita_iva.md) — Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre) calcolando il **check digit** con l’algoritmo di Luhn modificato, restituendo:
 - [fn_validate_cf_piva_it](funzioni/fn_validate_cf_piva_it.md) — * **Centralizzazione Validazioni**: Unico punto per verificare CF e P.IVA in accordo ai formati configurati. * **Dinamicità**: I formati (alfanumerico, numerico, lunghezza) sono letti da `config.tipi_soggetto_dettaglio` e possono variare per Stato. * **Estendibilità**: Aggiunta futura di funzioni con suffissi di Stato, es. `_FR`, `_DE`, `_UK`.

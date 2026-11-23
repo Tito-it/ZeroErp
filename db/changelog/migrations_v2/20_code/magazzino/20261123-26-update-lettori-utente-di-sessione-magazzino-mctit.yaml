@@ -1,0 +1,2894 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# magazzino: i lettori di app.current_user_id passano a script.fn_utente_di_sessione.
+#   Brief: brief-db-revisione-ui (§3.6-sexies, giro 8; Q60 (a), 2b: per ultimo,
+#   dopo il commit di brief-db-magazzino-tutte-le-scritture-dal-verbo).
+#
+# Il perche': ognuna convertiva la GUC da se',
+#   NULLIF(current_setting('app.current_user_id', true), '')::integer, e un
+#   valore che non e' un intero dava il 22P02 grezzo. Ora la legge il BB
+#   (20261123-16): assente o vuota resta NULL, come prima; un valore che non
+#   e' l'id di un utente da' E_SCRIPT_CHIAMATA_NON_VALIDA, col nome della
+#   funzione che legge.
+# Funzioni: fn_aggiungi_asset, fn_aggiungi_inventario, fn_aggiungi_lotto,
+#   fn_aggiungi_magazzino, fn_aggiungi_rettifica, fn_aggiungi_riga_inventario,
+#   fn_aggiungi_riga_rettifica, fn_aggiungi_riga_trasferimento,
+#   fn_aggiungi_trasferimento, fn_aggiungi_ubicazione, fn_apri_blocco,
+#   fn_cambia_stato_documento_interno, fn_elimina_documento_interno,
+#   fn_libera_blocco, fn_modifica_documento_interno, fn_modifica_lotto,
+#   fn_modifica_magazzino, fn_modifica_riga_documento_interno,
+#   fn_modifica_ubicazione, fn_posta_inventario, fn_posta_rettifica,
+#   fn_posta_trasferimento, fn_togli_riga_documento_interno,
+#   trgfn_ubicazioni_guard_parent.
+# Testata ri-ancorata (linee-guida §5g): il RETURNS bigint di fn_aggiungi_asset
+#   e fn_aggiungi_magazzino diventa magazzino.assets.id%TYPE e
+#   magazzino.magazzini.id%TYPE, l'id della riga che nasce (come fn_aggiungi_lotto).
+# Cambia solo la lettura. Corpo dal vivo (dbdev, 2026-11-23, dopo 20261123-11);
+#   firma, RETURNS e attributi dall'ultimo changeSet che ha ancora i %TYPE.
+#   Firma, volatilita', sicurezza, proprietario e GRANT invariati: CREATE OR
+#   REPLACE. La rollback riporta i corpi di prima. Con questo changeSet
+#   magazzino esce dalle esenzioni di script/test-fn-utente-di-sessione-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261123-26-update-lettori-utente-di-sessione-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20261123-26-update-lettori-utente-di-sessione-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino: le funzioni che leggono app.current_user_id passano a script.fn_utente_di_sessione invece
+        di convertire la GUC da se'. Brief: brief-db-revisione-ui (§3.6-sexies, Q60).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "25"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('script', 'fn_utente_di_sessione'), ('magazzino', 'fn_aggiungi_asset'), ('magazzino', 'fn_aggiungi_inventario'), ('magazzino', 'fn_aggiungi_lotto'), ('magazzino', 'fn_aggiungi_magazzino'), ('magazzino', 'fn_aggiungi_rettifica'), ('magazzino', 'fn_aggiungi_riga_inventario'), ('magazzino', 'fn_aggiungi_riga_rettifica'), ('magazzino', 'fn_aggiungi_riga_trasferimento'), ('magazzino', 'fn_aggiungi_trasferimento'), ('magazzino', 'fn_aggiungi_ubicazione'), ('magazzino', 'fn_apri_blocco'), ('magazzino', 'fn_cambia_stato_documento_interno'), ('magazzino', 'fn_elimina_documento_interno'), ('magazzino', 'fn_libera_blocco'), ('magazzino', 'fn_modifica_documento_interno'), ('magazzino', 'fn_modifica_lotto'), ('magazzino', 'fn_modifica_magazzino'), ('magazzino', 'fn_modifica_riga_documento_interno'), ('magazzino', 'fn_modifica_ubicazione'), ('magazzino', 'fn_posta_inventario'), ('magazzino', 'fn_posta_rettifica'), ('magazzino', 'fn_posta_trasferimento'), ('magazzino', 'fn_togli_riga_documento_interno'), ('magazzino', 'trgfn_ubicazioni_guard_parent'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_asset(
+                  p_articolo_id  magazzino.assets.articolo_id%TYPE,
+                  p_seriale      magazzino.assets.seriale%TYPE,
+                  p_stato_id     magazzino.assets.stato_id%TYPE,
+                  p_ownership_id magazzino.assets.ownership_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.assets.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              BEGIN
+                  -- Scopo: il gesto «nuovo seriale» dell'operatore: livello
+                  --   TUTTO sull'oggetto, poi il BB. L'emittente e' quello della
+                  --   sessione; il perimetro lo dice il guard della tabella.
+                  --   Ritorna l'id.
+                  PERFORM script.fn_guard_livello(
+                      script.fn_utente_di_sessione('magazzino.fn_aggiungi_asset'),
+                      'magazzino', 'assets', 'TUTTO');
+
+                  RETURN magazzino.fn_crea_asset(p_articolo_id, p_seriale, p_stato_id,
+                                                 p_ownership_id, p_campi);
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_inventario(
+                  p_magazzino_id magazzino.inventari.magazzino_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.inventari.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+                  v_campi  jsonb := COALESCE(p_campi, '{}'::jsonb);
+              BEGIN
+                  -- Scopo: il gesto «nuovo inventario» dell'operatore nel
+                  --   magazzino p_magazzino_id. Ritorna l'id.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_aggiungi_inventario');
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'inventari', 'TUTTO');
+                  PERFORM magazzino.fn_guard_magazzino_nel_perimetro(
+                      p_magazzino_id, v_utente, 'magazzino.fn_aggiungi_inventario');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, magazzino.fn_documento_interno_colonne_ammesse('INVENTARIO', 'testata', 'crea'),
+                      'magazzino', 'magazzino.fn_aggiungi_inventario',
+                      jsonb_build_object('magazzino_id', p_magazzino_id));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.inventari'::regclass,
+                              jsonb_strip_nulls(v_campi || jsonb_build_object('magazzino_id', p_magazzino_id)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_lotto(
+                  p_articolo_id magazzino.lotti.articolo_id%TYPE,
+                  p_codice      magazzino.lotti.codice%TYPE,
+                  p_data_arrivo magazzino.lotti.data_arrivo%TYPE,
+                  p_campi       jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.lotti.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              BEGIN
+                  -- Scopo: il gesto «nuovo lotto» dell'operatore: livello TUTTO
+                  --   sull'oggetto, poi il BB. L'azienda del lotto la mette il
+                  --   default di sessione e la controlla il guard di perimetro
+                  --   della tabella. Ritorna l'id.
+                  PERFORM script.fn_guard_livello(
+                      script.fn_utente_di_sessione('magazzino.fn_aggiungi_lotto'),
+                      'magazzino', 'lotti', 'TUTTO');
+
+                  RETURN magazzino.fn_crea_lotto(p_articolo_id, p_codice, p_data_arrivo, p_campi);
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_magazzino(
+                  p_codice                 magazzino.magazzini.codice%TYPE,
+                  p_descrizione            magazzino.magazzini.descrizione%TYPE,
+                  p_indirizzo_dettaglio_id magazzino.magazzini.indirizzo_dettaglio_id%TYPE,
+                  p_campi                  jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.magazzini.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              BEGIN
+                  -- Scopo: il gesto «nuovo magazzino» dell'operatore: livello
+                  --   TUTTO sull'oggetto, poi il BB. Ritorna l'id.
+                  PERFORM script.fn_guard_livello(
+                      script.fn_utente_di_sessione('magazzino.fn_aggiungi_magazzino'),
+                      'magazzino', 'magazzini', 'TUTTO');
+
+                  RETURN magazzino.fn_crea_magazzino(
+                             p_codice, p_descrizione, p_indirizzo_dettaglio_id, p_campi);
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_rettifica(
+                  p_magazzino_id magazzino.rettifiche.magazzino_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.rettifiche.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+                  v_campi  jsonb := COALESCE(p_campi, '{}'::jsonb);
+              BEGIN
+                  -- Scopo: il gesto «nuova rettifica» dell'operatore nel
+                  --   magazzino p_magazzino_id. Ritorna l'id.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_aggiungi_rettifica');
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'rettifiche', 'TUTTO');
+                  PERFORM magazzino.fn_guard_magazzino_nel_perimetro(
+                      p_magazzino_id, v_utente, 'magazzino.fn_aggiungi_rettifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, magazzino.fn_documento_interno_colonne_ammesse('RETTIFICA', 'testata', 'crea'),
+                      'magazzino', 'magazzino.fn_aggiungi_rettifica',
+                      jsonb_build_object('magazzino_id', p_magazzino_id));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.rettifiche'::regclass,
+                              jsonb_strip_nulls(v_campi || jsonb_build_object('magazzino_id', p_magazzino_id)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_riga_inventario(
+                  p_inventario_id magazzino.inventari_righe.inventario_id%TYPE,
+                  p_articolo_id   magazzino.inventari_righe.articolo_id%TYPE,
+                  p_qta_contata   magazzino.inventari_righe.qta_contata%TYPE,
+                  p_campi         jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.inventari_righe.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente    config.user_override_oggetti.auth_user_id%TYPE;
+                  v_campi     jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  c_argomenti CONSTANT text[] := ARRAY['articolo_id', 'qta_contata'];
+              BEGIN
+                  -- Scopo: il gesto «aggiungi una riga contata» all'inventario
+                  --   p_inventario_id. Ritorna l'id della riga.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_aggiungi_riga_inventario');
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'inventari', 'TUTTO');
+                  PERFORM magazzino.fn_documento_interno_blocca(
+                      'INVENTARIO', p_inventario_id, v_utente, 'magazzino.fn_aggiungi_riga_inventario');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi,
+                      ARRAY(SELECT c
+                              FROM unnest(magazzino.fn_documento_interno_colonne_ammesse(
+                                              'INVENTARIO', 'riga', 'crea')) AS c
+                             WHERE c <> ALL (c_argomenti)),
+                      'magazzino', 'magazzino.fn_aggiungi_riga_inventario',
+                      jsonb_build_object('inventario_id', p_inventario_id));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.inventari_righe'::regclass,
+                              jsonb_strip_nulls(v_campi || jsonb_build_object(
+                                                   'inventario_id', p_inventario_id,
+                                                   'articolo_id',   p_articolo_id,
+                                                   'qta_contata',   p_qta_contata)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_riga_rettifica(
+                  p_rettifica_id magazzino.rettifiche_righe.rettifica_id%TYPE,
+                  p_articolo_id  magazzino.rettifiche_righe.articolo_id%TYPE,
+                  p_qta_delta    magazzino.rettifiche_righe.qta_delta%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.rettifiche_righe.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente    config.user_override_oggetti.auth_user_id%TYPE;
+                  v_campi     jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  c_argomenti CONSTANT text[] := ARRAY['articolo_id', 'qta_delta'];
+              BEGIN
+                  -- Scopo: il gesto «aggiungi una riga» alla rettifica
+                  --   p_rettifica_id. Ritorna l'id della riga.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_aggiungi_riga_rettifica');
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'rettifiche', 'TUTTO');
+                  PERFORM magazzino.fn_documento_interno_blocca(
+                      'RETTIFICA', p_rettifica_id, v_utente, 'magazzino.fn_aggiungi_riga_rettifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi,
+                      ARRAY(SELECT c
+                              FROM unnest(magazzino.fn_documento_interno_colonne_ammesse(
+                                              'RETTIFICA', 'riga', 'crea')) AS c
+                             WHERE c <> ALL (c_argomenti)),
+                      'magazzino', 'magazzino.fn_aggiungi_riga_rettifica',
+                      jsonb_build_object('rettifica_id', p_rettifica_id));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.rettifiche_righe'::regclass,
+                              jsonb_strip_nulls(v_campi || jsonb_build_object(
+                                                   'rettifica_id', p_rettifica_id,
+                                                   'articolo_id',  p_articolo_id,
+                                                   'qta_delta',    p_qta_delta)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_riga_trasferimento(
+                  p_trasferimento_id magazzino.trasferimenti_righe.trasferimento_id%TYPE,
+                  p_articolo_id      magazzino.trasferimenti_righe.articolo_id%TYPE,
+                  p_qta              magazzino.trasferimenti_righe.qta%TYPE,
+                  p_campi            jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.trasferimenti_righe.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente    config.user_override_oggetti.auth_user_id%TYPE;
+                  v_campi     jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  c_argomenti CONSTANT text[] := ARRAY['articolo_id', 'qta'];
+              BEGIN
+                  -- Scopo: il gesto «aggiungi una riga» al trasferimento
+                  --   p_trasferimento_id. Ritorna l'id della riga.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_aggiungi_riga_trasferimento');
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'trasferimenti', 'TUTTO');
+                  PERFORM magazzino.fn_documento_interno_blocca(
+                      'TRASFERIMENTO', p_trasferimento_id, v_utente, 'magazzino.fn_aggiungi_riga_trasferimento');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi,
+                      ARRAY(SELECT c
+                              FROM unnest(magazzino.fn_documento_interno_colonne_ammesse(
+                                              'TRASFERIMENTO', 'riga', 'crea')) AS c
+                             WHERE c <> ALL (c_argomenti)),
+                      'magazzino', 'magazzino.fn_aggiungi_riga_trasferimento',
+                      jsonb_build_object('trasferimento_id', p_trasferimento_id));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.trasferimenti_righe'::regclass,
+                              jsonb_strip_nulls(v_campi || jsonb_build_object(
+                                                   'trasferimento_id', p_trasferimento_id,
+                                                   'articolo_id',      p_articolo_id,
+                                                   'qta',              p_qta)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_trasferimento(
+                  p_magazzino_id_from magazzino.trasferimenti.magazzino_id_from%TYPE,
+                  p_magazzino_id_to   magazzino.trasferimenti.magazzino_id_to%TYPE,
+                  p_campi             jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.trasferimenti.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente    config.user_override_oggetti.auth_user_id%TYPE;
+                  v_campi     jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  -- Le colonne che il verbo riceve come argomenti: non stanno in p_campi.
+                  c_argomenti CONSTANT text[] := ARRAY['magazzino_id_to'];
+              BEGIN
+                  -- Scopo: il gesto «nuovo trasferimento» dell'operatore dal
+                  --   magazzino p_magazzino_id_from a p_magazzino_id_to. Ritorna l'id.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_aggiungi_trasferimento');
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'trasferimenti', 'TUTTO');
+                  -- Tutti e due nel perimetro: un arrivo fuori perimetro e' «non
+                  -- trovato» come la partenza, non un emittente diverso.
+                  PERFORM magazzino.fn_guard_magazzino_nel_perimetro(
+                      p_magazzino_id_from, v_utente, 'magazzino.fn_aggiungi_trasferimento');
+                  PERFORM magazzino.fn_guard_magazzino_nel_perimetro(
+                      p_magazzino_id_to, v_utente, 'magazzino.fn_aggiungi_trasferimento');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi,
+                      ARRAY(SELECT c
+                              FROM unnest(magazzino.fn_documento_interno_colonne_ammesse(
+                                              'TRASFERIMENTO', 'testata', 'crea')) AS c
+                             WHERE c <> ALL (c_argomenti)),
+                      'magazzino', 'magazzino.fn_aggiungi_trasferimento',
+                      jsonb_build_object('magazzino_id_from', p_magazzino_id_from,
+                                         'magazzino_id_to',   p_magazzino_id_to));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.trasferimenti'::regclass,
+                              jsonb_strip_nulls(v_campi || jsonb_build_object(
+                                                   'magazzino_id_from', p_magazzino_id_from,
+                                                   'magazzino_id_to',   p_magazzino_id_to)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_ubicazione(
+                  p_magazzino_id magazzino.ubicazioni.magazzino_id%TYPE,
+                  p_codice       magazzino.ubicazioni.codice%TYPE,
+                  p_tipo_id      magazzino.ubicazioni.tipo_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.ubicazioni.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+              BEGIN
+                  -- Scopo: il gesto «nuova ubicazione» dell'operatore nel
+                  --   magazzino p_magazzino_id: livello TUTTO sull'oggetto, il
+                  --   magazzino nel perimetro (no-leak), poi il BB. Ritorna l'id.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_aggiungi_ubicazione');
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'ubicazioni', 'TUTTO');
+                  PERFORM magazzino.fn_guard_magazzino_nel_perimetro(
+                      p_magazzino_id, v_utente, 'magazzino.fn_aggiungi_ubicazione');
+
+                  RETURN magazzino.fn_crea_ubicazione(p_magazzino_id, p_codice, p_tipo_id, p_campi);
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_apri_blocco(
+                  p_magazzino_id      magazzino.movimenti_attesi.magazzino_id%TYPE,
+                  p_articolo_id       magazzino.movimenti_attesi.articolo_id%TYPE,
+                  p_qta               magazzino.movimenti_attesi.qta%TYPE,
+                  p_soggetto_ruolo_id magazzino.movimenti_attesi.soggetto_ruolo_id%TYPE,
+                  p_nota              magazzino.movimenti_attesi.nota%TYPE,
+                  p_lotto_id          magazzino.movimenti_attesi.lotto_id%TYPE DEFAULT NULL,
+                  p_asset_id          magazzino.movimenti_attesi.asset_id%TYPE DEFAULT NULL,
+                  p_ubicazione_id     magazzino.movimenti_attesi.ubicazione_id%TYPE DEFAULT NULL)
+               RETURNS magazzino.movimenti_attesi.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo: aprire un blocco manuale — riservare p_qta pezzi (POSITIVA:
+              --   il verso lo mette il verbo) per qualcuno o per un motivo (D-L3-j).
+              -- Ritorna: l'id dell'atteso aperto.
+              DECLARE
+                  v_utente    config.user_override_azioni.auth_user_id%TYPE;
+                  v_causale   magazzino.causali.id%TYPE;
+                  v_motivi    jsonb;
+                  v_id        magazzino.movimenti_attesi.id%TYPE;
+              BEGIN
+                  -- 0. Il permesso, prima di ogni altra cosa.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_apri_blocco');
+                  PERFORM script.fn_guard_azione(v_utente, 'blocca_merce');
+
+                  IF p_magazzino_id IS NULL OR p_magazzino_id <= 0
+                     OR p_articolo_id IS NULL
+                     OR p_qta IS NULL OR p_qta <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_apri_blocco',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'magazzino e articolo obbligatori, quantita'' positiva',
+                                             'p_magazzino_id', p_magazzino_id, 'p_qta', p_qta),
+                          NULL::uuid, 'magazzino.fn_apri_blocco',
+                          'p_magazzino_id (maggiore di zero), p_articolo_id (obbligatorio), p_qta (maggiore di zero: il verso lo mette il verbo)');
+                  END IF;
+
+                  -- Il magazzino, nel perimetro di chi agisce (DEFINER: il predicato della policy).
+                  IF NOT EXISTS (SELECT 1 FROM magazzino.magazzini m
+                                  WHERE m.id = p_magazzino_id AND m.attivo
+                                    AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, m.id)) THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_apri_blocco',
+                          'E_MAG_MAGAZZINO_NON_VALIDO',
+                          jsonb_build_object('detail', 'magazzino inesistente, spento o fuori perimetro',
+                                             'magazzino_id', p_magazzino_id),
+                          NULL::uuid, p_magazzino_id::text);
+                  END IF;
+
+                  -- La posizione, come la giudicherebbe la primitiva.
+                  v_motivi := script.fn_check_riga_magazzino(p_magazzino_id, p_articolo_id,
+                                                             p_lotto_id, p_asset_id, p_ubicazione_id);
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'magazzino', 'magazzino.fn_apri_blocco', v_motivi, NULL, NULL::uuid,
+                      jsonb_build_object('magazzino_id', p_magazzino_id, 'articolo_id', p_articolo_id));
+
+                  SELECT c.id INTO v_causale
+                    FROM magazzino.causali c
+                   WHERE c.codice_interno = 'SCARICO_VEN' AND c.attivo;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_apri_blocco',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'magazzino.causali.SCARICO_VEN'),
+                          NULL::uuid, VARIADIC ARRAY['causale di magazzino SCARICO_VEN (magazzino.causali, attiva)']);
+                  END IF;
+
+                  INSERT INTO magazzino.movimenti_attesi
+                         (articolo_id, magazzino_id, qta, causale_id, stato,
+                          soggetto_ruolo_id, nota, lotto_id, asset_id, ubicazione_id, meta)
+                  VALUES (p_articolo_id, p_magazzino_id, -p_qta, v_causale, 'APERTA',
+                          p_soggetto_ruolo_id, NULLIF(btrim(p_nota), ''), p_lotto_id, p_asset_id, p_ubicazione_id,
+                          jsonb_build_object('aperto_da', v_utente))
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_cambia_stato_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_stato        text)   -- lo stato della famiglia: tre colonne, nessuna sola da ancorare
+               RETURNS text
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+                  v_fam    record;
+                  v_riga   jsonb;
+              BEGIN
+                  -- Scopo: il gesto conferma, riapri o annulla di un documento
+                  --   interno: lo stato p_stato sulla testata. La matrice la fa
+                  --   rispettare il trigger. Ritorna lo stato scritto.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_cambia_stato_documento_interno');
+                  PERFORM script.fn_guard_livello(
+                      v_utente, 'magazzino',
+                      (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),
+                      'TUTTO');
+
+                  SELECT b.* INTO v_fam
+                    FROM magazzino.fn_documento_interno_blocca(
+                             p_famiglia, p_documento_id, v_utente,
+                             'magazzino.fn_cambia_stato_documento_interno') AS b;
+
+                  -- La matrice (magazzino.fn_documento_interno_transizioni) e la
+                  -- porta POSTED le dice trgfn_documento_interno_guard_transizione;
+                  -- un valore fuori dal vocabolario lo ferma il CHECK della tabella.
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                format('magazzino.%I', v_fam.tabella)::regclass,
+                                jsonb_build_object(v_fam.colonna_stato, p_stato),
+                                jsonb_build_object('id', p_documento_id));
+
+                  RETURN v_riga ->> v_fam.colonna_stato;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_elimina_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint)  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+                  v_fam    record;
+              BEGIN
+                  -- Scopo: il gesto «elimina il documento» (la bozza). Le
+                  --   righe vanno con la testata (ON DELETE CASCADE).
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_elimina_documento_interno');
+                  PERFORM script.fn_guard_livello(
+                      v_utente, 'magazzino',
+                      (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),
+                      'TUTTO');
+
+                  SELECT b.* INTO v_fam
+                    FROM magazzino.fn_documento_interno_blocca(
+                             p_famiglia, p_documento_id, v_utente,
+                             'magazzino.fn_elimina_documento_interno') AS b;
+
+                  -- Solo in DRAFT: lo dice trgfn_documento_interno_guard_transizione
+                  -- (E_MAG_DOCUMENTO_NON_ELIMINABILE), per ogni scrittore.
+                  EXECUTE format('DELETE FROM magazzino.%I WHERE id = $1', v_fam.tabella)
+                    USING p_documento_id;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_libera_blocco(
+                  p_blocco_id magazzino.movimenti_attesi.id%TYPE,
+                  p_nota      magazzino.movimenti_attesi.nota%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo: liberare un blocco manuale con un atto — chi, quando, perche'
+              --   (M-3: «si libera esplicitamente, non si consuma da se'»).
+              DECLARE
+                  v_utente config.user_override_azioni.auth_user_id%TYPE;
+                  v_stato  magazzino.movimenti_attesi.stato%TYPE;
+              BEGIN
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_libera_blocco');
+                  PERFORM script.fn_guard_azione(v_utente, 'blocca_merce');
+
+                  IF p_blocco_id IS NULL OR p_blocco_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_libera_blocco',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'blocco obbligatorio e maggiore di zero',
+                                             'p_blocco_id', p_blocco_id),
+                          NULL::uuid, 'magazzino.fn_libera_blocco', 'p_blocco_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- Il blocco, FOR UPDATE, nel perimetro; solo i blocchi manuali (senza sorgente).
+                  SELECT a.stato INTO v_stato
+                    FROM magazzino.movimenti_attesi a
+                   WHERE a.id = p_blocco_id
+                     AND a.sorgente_tipo_id IS NULL
+                     AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, a.magazzino_id)
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_libera_blocco',
+                          'E_MAG_BLOCCO_NON_TROVATO',
+                          jsonb_build_object('blocco_id', p_blocco_id),
+                          NULL::uuid, p_blocco_id::text);
+                  END IF;
+                  IF v_stato <> 'APERTA' THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_libera_blocco',
+                          'E_MAG_BLOCCO_GIA_CHIUSO',
+                          jsonb_build_object('blocco_id', p_blocco_id, 'stato', v_stato),
+                          NULL::uuid, p_blocco_id::text);
+                  END IF;
+
+                  UPDATE magazzino.movimenti_attesi a
+                     SET stato          = 'CHIUSA',
+                         data_chiusura  = now(),
+                         meta           = a.meta || jsonb_build_object(
+                                              'liberato_da',      v_utente,
+                                              'liberato_il',      now(),
+                                              'nota_liberazione', NULLIF(btrim(p_nota), ''))
+                   WHERE a.id = p_blocco_id;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_dati         jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente  config.user_override_oggetti.auth_user_id%TYPE;
+                  v_fam     record;
+                  v_ammesse text[];   -- nomi di colonna: nessuna colonna di cui siano il riflesso
+                  v_riga    jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica la testata» di un documento
+                  --   interno: il delta p_dati sulle colonne modificabili, con
+                  --   il documento in DRAFT. Ritorna la testata.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_modifica_documento_interno');
+                  PERFORM script.fn_guard_livello(
+                      v_utente, 'magazzino',
+                      (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),
+                      'TUTTO');
+
+                  SELECT b.* INTO v_fam
+                    FROM magazzino.fn_documento_interno_blocca(
+                             p_famiglia, p_documento_id, v_utente,
+                             'magazzino.fn_modifica_documento_interno') AS b;
+
+                  v_ammesse := magazzino.fn_documento_interno_colonne_ammesse(v_fam.famiglia, 'testata', 'modifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      p_dati, v_ammesse,
+                      'magazzino', 'magazzino.fn_modifica_documento_interno',
+                      jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id));
+
+                  -- La testata si modifica in bozza, come le righe: lo dice la
+                  -- capability (can_edit_testata), e nessun trigger lo fa sulla
+                  -- testata. Un delta vuoto non scrive niente: passa anche fuori
+                  -- bozza, e ritorna la testata.
+                  IF v_fam.stato <> 'DRAFT' AND p_dati <> '{}'::jsonb THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_documento_interno',
+                          'E_MAG_DOCUMENTO_TESTATA_CONGELATA',
+                          jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id,
+                                             'stato', v_fam.stato),
+                          NULL::uuid,
+                          v_fam.stato);
+                  END IF;
+
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                format('magazzino.%I', v_fam.tabella)::regclass,
+                                p_dati, jsonb_build_object('id', p_documento_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_lotto(
+                  p_id   magazzino.lotti.id%TYPE,
+                  p_dati jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente   config.user_override_oggetti.auth_user_id%TYPE;
+                  v_ammesse  text[];  -- nomi di colonna: nessuna colonna di cui siano il riflesso
+                  v_riga     jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica il lotto» dell'operatore, dentro
+                  --   il perimetro della sua azienda: il delta p_dati sulle
+                  --   colonne modificabili. Ritorna la riga.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_modifica_lotto');
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'lotti', 'TUTTO');
+
+                  v_ammesse  := magazzino.fn_lotti_colonne_ammesse('modifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      p_dati, v_ammesse,
+                      'magazzino', 'magazzino.fn_modifica_lotto',
+                      jsonb_build_object('id', p_id));
+
+                  -- No-leak: fuori perimetro e inesistente rispondono uguale.
+                  PERFORM 1
+                     FROM magazzino.lotti l
+                    WHERE l.id = p_id
+                      AND script.fn_check_user_emittente_scope(v_utente, l.emittente_fiscale_id)
+                      FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_lotto', 'E_MAG_LOTTO_NON_TROVATO',
+                          jsonb_build_object('lotto_id', p_id),
+                          NULL::uuid,
+                          COALESCE(p_id::text, '(nessuno)'));
+                  END IF;
+
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                'magazzino.lotti'::regclass, p_dati, jsonb_build_object('id', p_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_magazzino(
+                  p_id   magazzino.magazzini.id%TYPE,
+                  p_dati jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente   config.user_override_oggetti.auth_user_id%TYPE;
+                  v_ammesse  text[];  -- nomi di colonna: nessuna colonna di cui siano il riflesso
+                  v_riga     jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica il magazzino» dell'operatore: il
+                  --   delta p_dati sulle colonne modificabili. Ritorna la riga.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_modifica_magazzino');
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'magazzini', 'TUTTO');
+
+                  v_ammesse  := magazzino.fn_magazzini_colonne_ammesse('modifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      p_dati, v_ammesse,
+                      'magazzino', 'magazzino.fn_modifica_magazzino',
+                      jsonb_build_object('id', p_id));
+
+                  -- No-leak: fuori perimetro e inesistente rispondono uguale.
+                  PERFORM 1
+                     FROM magazzino.magazzini mg
+                    WHERE mg.id = p_id
+                      AND script.fn_check_user_emittente_scope(v_utente, mg.emittente_fiscale_id)
+                      FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_magazzino', 'E_MAG_MAGAZZINO_NON_TROVATO',
+                          jsonb_build_object('magazzino_id', p_id),
+                          NULL::uuid,
+                          COALESCE(p_id::text, '(nessuno)'));
+                  END IF;
+
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                'magazzino.magazzini'::regclass, p_dati, jsonb_build_object('id', p_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_riga_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_riga_id      bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_dati         jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente  config.user_override_oggetti.auth_user_id%TYPE;
+                  v_fam     record;
+                  v_ammesse text[];   -- nomi di colonna: nessuna colonna di cui siano il riflesso
+                  v_c       integer;  -- un conteggio: niente da ancorare
+                  v_riga    jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica la riga» di un documento interno:
+                  --   il delta p_dati sulle colonne modificabili. Ritorna la riga.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_modifica_riga_documento_interno');
+                  PERFORM script.fn_guard_livello(
+                      v_utente, 'magazzino',
+                      (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),
+                      'TUTTO');
+
+                  SELECT b.* INTO v_fam
+                    FROM magazzino.fn_documento_interno_blocca(
+                             p_famiglia, p_documento_id, v_utente,
+                             'magazzino.fn_modifica_riga_documento_interno') AS b;
+
+                  -- La riga e' di quel documento (la testata e' gia' nel perimetro).
+                  EXECUTE format('SELECT count(*) FROM magazzino.%I r WHERE r.id = $1 AND r.%I = $2',
+                                 v_fam.tabella_righe, v_fam.colonna_fk)
+                     INTO v_c
+                    USING p_riga_id, p_documento_id;
+                  IF v_c = 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_riga_documento_interno',
+                          'E_MAG_DOCUMENTO_RIGA_NON_TROVATA',
+                          jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id,
+                                             'riga_id', p_riga_id),
+                          NULL::uuid,
+                          COALESCE(p_riga_id::text, '(nessuna)'));
+                  END IF;
+
+                  v_ammesse := magazzino.fn_documento_interno_colonne_ammesse(v_fam.famiglia, 'riga', 'modifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      p_dati, v_ammesse,
+                      'magazzino', 'magazzino.fn_modifica_riga_documento_interno',
+                      jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id,
+                                         'riga_id', p_riga_id));
+
+                  -- La testata in DRAFT la chiede il guard delle righe
+                  -- (E_MAG_DOCUMENTO_RIGHE_CONGELATE), per ogni scrittore.
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                format('magazzino.%I', v_fam.tabella_righe)::regclass,
+                                p_dati, jsonb_build_object('id', p_riga_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_ubicazione(
+                  p_magazzino_id magazzino.ubicazioni.magazzino_id%TYPE,
+                  p_id           magazzino.ubicazioni.id%TYPE,
+                  p_dati         jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente   config.user_override_oggetti.auth_user_id%TYPE;
+                  v_ammesse  text[];  -- nomi di colonna: nessuna colonna di cui siano il riflesso
+                  v_riga     jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica l'ubicazione» dell'operatore,
+                  --   dentro il suo magazzino: il delta p_dati sulle colonne
+                  --   modificabili. Ritorna la riga.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_modifica_ubicazione');
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'ubicazioni', 'TUTTO');
+
+                  v_ammesse  := magazzino.fn_ubicazioni_colonne_ammesse('modifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      p_dati, v_ammesse,
+                      'magazzino', 'magazzino.fn_modifica_ubicazione',
+                      jsonb_build_object('magazzino_id', p_magazzino_id, 'id', p_id));
+
+                  -- No-leak: fuori perimetro, di un altro magazzino o
+                  -- inesistente rispondono uguale.
+                  PERFORM 1
+                     FROM magazzino.ubicazioni u
+                    WHERE u.id = p_id
+                      AND u.magazzino_id = p_magazzino_id
+                      AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, u.magazzino_id)
+                      FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_ubicazione', 'E_MAG_UBICAZIONE_NON_TROVATA',
+                          jsonb_build_object('magazzino_id', p_magazzino_id, 'ubicazione_id', p_id),
+                          NULL::uuid,
+                          COALESCE(p_id::text, '(nessuna)'));
+                  END IF;
+
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                'magazzino.ubicazioni'::regclass, p_dati, jsonb_build_object('id', p_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_posta_inventario(p_inventario_id magazzino.inventari.id%TYPE)
+               RETURNS TABLE(movimento_id magazzino.movimenti.id%TYPE, riga_id magazzino.inventari_righe.id%TYPE, qta magazzino.movimenti.qta%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo: registrare un inventario CONFIRM — per ogni riga del piano
+              --   (fn_inventario_piano) scrive qta_sistema e posta il delta con la
+              --   causale del piano attraverso la primitiva; poi porta la testata a
+              --   POSTED. Una transazione: se una riga fallisce non resta niente e il
+              --   documento resta CONFIRM. Ritorna, riga per riga, il movimento scritto.
+              -- Rev 2026-09-22 (Lotto 2-bis, R-1): le condizioni di registrabilita' non
+              --   sono piu' scritte qui — le dice
+              --   script.fn_check_documento_interno_registrabile, la stessa funzione da
+              --   cui la capability del drawer accende o spegne «Registra». Codici e
+              --   valori invariati: le frasi sono quelle di prima.
+              -- Rev 2026-09-24 (brief-db-magazzino-verbi-con-permesso, D-4): e' un VERBO.
+              --   Prima riga: script.fn_guard_azione('registra_magazzino'), lo stesso
+              --   permesso che il backend chiede all'endpoint. SECURITY DEFINER del
+              --   proprietario: l'app non chiama piu' la primitiva, la chiama il verbo.
+              --   La RLS dei documenti qui non vale: il perimetro lo rimette il predicato
+              --   della policy (fn_scope_ef_whitelist_via_magazzino) nella WHERE del
+              --   FOR UPDATE — fuori perimetro resta NON TROVATO, e senza lock.
+              DECLARE
+                  v_utente       config.user_override_azioni.auth_user_id%TYPE;
+                  v_magazzino_id magazzino.inventari.magazzino_id%TYPE;
+                  v_data         magazzino.inventari.data%TYPE;
+                  v_stato        magazzino.inventari.stato_mag_inventario%TYPE;
+                  v_sorgente_id  config.sorgenti.id%TYPE;
+                  v_prov_id      magazzino.movimenti.sorgente_id%TYPE;
+                  v_prov_uid     magazzino.movimenti.sorgente_uid%TYPE;
+                  v_costo        magazzino.inventari_righe.costo_unitario%TYPE;
+                  v_motivi       jsonb;
+                  v_piano        record;
+              BEGIN
+                  -- 0. Il permesso, prima di ogni altra cosa: lo stesso del backend.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_posta_inventario');
+                  PERFORM script.fn_guard_azione(v_utente, 'registra_magazzino');
+
+                  -- 1. Parametro
+                  IF p_inventario_id IS NULL OR p_inventario_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_inventario',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'inventario obbligatorio e maggiore di zero', 'p_inventario_id', p_inventario_id),
+                          NULL::uuid, 'magazzino.fn_posta_inventario', 'p_inventario_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- 2. La testata, FOR UPDATE, nel perimetro: fuori perimetro NON C'E'.
+                  --    Il predicato e' quello della policy (qui la RLS non vale: DEFINER).
+                  --    Il lock viene PRIMA di ogni domanda: e' cio' che serializza due
+                  --    posting dello stesso documento (la check e' STABLE e non lo prende).
+                  SELECT i.magazzino_id, i.data, i.stato_mag_inventario
+                    INTO v_magazzino_id, v_data, v_stato
+                    FROM magazzino.inventari i
+                   WHERE i.id = p_inventario_id
+                     AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, i.magazzino_id)
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_inventario',
+                          'E_MAG_DOCUMENTO_NON_TROVATO',
+                          jsonb_build_object('inventario_id', p_inventario_id),
+                          NULL::uuid, p_inventario_id::text);
+                  END IF;
+
+                  -- 3. Si puo' registrare? Lo dice la check CONDIVISA con la capability:
+                  --    stato non CONFIRM, nessuna riga, una riga non postabile — in
+                  --    quest'ordine. Il codice lo LEGGO dall'array, quindi l'helper.
+                  v_motivi := script.fn_check_documento_interno_registrabile('INVENTARIO', p_inventario_id);
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'magazzino', 'magazzino.fn_posta_inventario', v_motivi, NULL, NULL::uuid,
+                      jsonb_build_object('inventario_id', p_inventario_id));
+
+                  -- La provenienza e' il DOCUMENTO (S-3), dal BB che la scrive: il tipo
+                  -- INVENTARIO e la chiave secondo il suo key_selector. Un tipo assente o
+                  -- spento e' E_SORG_CONF dal BB (prima E_CONFIG_MANCANTE scritto qui).
+                  SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+                    INTO v_sorgente_id, v_prov_id, v_prov_uid
+                    FROM script.fn_sorgente_provenienza('INVENTARIO', p_inventario_id::text) p;
+
+                  -- 4. La GUC transazionale: apre la porta POSTED e le righe in CONFIRM.
+                  PERFORM set_config('zeroerp.magazzino_posting_inventario', p_inventario_id::text, true);
+
+                  -- 5. Per riga, in ordine di id, DAL PIANO.
+                  FOR v_piano IN
+                      SELECT pi.riga_id, pi.articolo_id, pi.ubicazione_id, pi.lotto_id, pi.asset_id,
+                             pi.qta_sistema, pi.delta, pi.causale_codice_interno, pi.esito
+                        FROM magazzino.fn_inventario_piano(p_inventario_id) pi
+                       WHERE pi.riga_id IS NOT NULL
+                       ORDER BY pi.riga_id
+                  LOOP
+                      -- La fotografia contro cui il conteggio e' stato posto: resta sulla riga.
+                      UPDATE magazzino.inventari_righe r
+                         SET qta_sistema = v_piano.qta_sistema
+                       WHERE r.id = v_piano.riga_id;
+
+                      IF v_piano.esito = 'NON_POSTABILE' THEN
+                          -- La RETE: la check del passo 3 l'ha gia' detto, ma se un giorno
+                          -- i due percorsi divergessero il ledger non deve pagarlo.
+                          v_motivi := script.fn_check_riga_magazzino(v_magazzino_id, v_piano.articolo_id,
+                                                                     v_piano.lotto_id, v_piano.asset_id, v_piano.ubicazione_id);
+                          PERFORM script.fn_raise_primo_motivo_se_presente(
+                              'magazzino', 'magazzino.fn_posta_inventario', v_motivi, NULL, NULL::uuid,
+                              jsonb_build_object('inventario_id', p_inventario_id, 'riga_id', v_piano.riga_id));
+                      END IF;
+
+                      CONTINUE WHEN v_piano.delta = 0;     -- INVARIATA: niente da dire
+
+                      -- Il costo della riga vale solo su un'entrata (D-L2-c): un'uscita va alla media.
+                      SELECT CASE WHEN v_piano.delta > 0 THEN r.costo_unitario END INTO v_costo
+                        FROM magazzino.inventari_righe r WHERE r.id = v_piano.riga_id;
+
+                      movimento_id := magazzino.fn_scrivi_movimento(
+                          p_magazzino_id     => v_magazzino_id,
+                          p_articolo_id      => v_piano.articolo_id,
+                          p_causale          => v_piano.causale_codice_interno,
+                          p_qta              => v_piano.delta,
+                          p_sorgente_tipo_id => v_sorgente_id,
+                          p_sorgente_id      => v_prov_id,
+                          p_sorgente_uid     => v_prov_uid,
+                          p_sorgente_riga    => v_piano.riga_id,
+                          p_costo_unitario   => v_costo,
+                          p_lotto_id         => v_piano.lotto_id,
+                          p_asset_id         => v_piano.asset_id,
+                          p_ubicazione_id    => v_piano.ubicazione_id,
+                          p_data_mov         => script.fn_inizio_giorno_operativo(v_data));
+                      riga_id := v_piano.riga_id;
+                      qta     := v_piano.delta;
+                      RETURN NEXT;
+                  END LOOP;
+
+                  -- 6. La testata a POSTED: passa il guard perche' la GUC dice «sono io».
+                  UPDATE magazzino.inventari i
+                     SET stato_mag_inventario = 'POSTED'
+                   WHERE i.id = p_inventario_id;
+
+                  -- 7. La GUC azzerata (e' comunque transazionale).
+                  PERFORM set_config('zeroerp.magazzino_posting_inventario', '', true);
+                  RETURN;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_posta_rettifica(p_rettifica_id magazzino.rettifiche.id%TYPE)
+               RETURNS TABLE(movimento_id magazzino.movimenti.id%TYPE, riga_id magazzino.rettifiche_righe.id%TYPE, qta magazzino.movimenti.qta%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo: registrare una rettifica CONFIRM — per ogni riga posta qta_delta
+              --   (dato) con RETT_POS/RETT_NEG dal segno attraverso la primitiva; poi la
+              --   testata a POSTED. Una transazione. Ritorna il movimento per riga.
+              -- Rev 2026-09-22 (Lotto 2-bis, R-1): le condizioni di registrabilita' le
+              --   dice script.fn_check_documento_interno_registrabile, la stessa della
+              --   capability. ⭐ Per la rettifica questo ANTICIPA il rifiuto di una riga
+              --   non postabile (prima lo dava la primitiva a meta' ciclo, stesso codice):
+              --   e' la simmetria con l'inventario, non una regola nuova.
+              -- Rev 2026-09-24 (brief-db-magazzino-verbi-con-permesso, D-4): e' un VERBO.
+              --   Prima riga: script.fn_guard_azione('registra_magazzino'), lo stesso
+              --   permesso che il backend chiede all'endpoint. SECURITY DEFINER del
+              --   proprietario: l'app non chiama piu' la primitiva, la chiama il verbo.
+              --   La RLS dei documenti qui non vale: il perimetro lo rimette il predicato
+              --   della policy (fn_scope_ef_whitelist_via_magazzino) nella WHERE del
+              --   FOR UPDATE — fuori perimetro resta NON TROVATO, e senza lock.
+              DECLARE
+                  v_utente       config.user_override_azioni.auth_user_id%TYPE;
+                  v_magazzino_id magazzino.rettifiche.magazzino_id%TYPE;
+                  v_data         magazzino.rettifiche.data%TYPE;
+                  v_stato        magazzino.rettifiche.stato_mag_rettifiche%TYPE;
+                  v_sorgente_id  config.sorgenti.id%TYPE;
+                  v_prov_id      magazzino.movimenti.sorgente_id%TYPE;
+                  v_prov_uid     magazzino.movimenti.sorgente_uid%TYPE;
+                  v_motivi       jsonb;
+                  v_riga         magazzino.rettifiche_righe%ROWTYPE;
+              BEGIN
+                  -- 0. Il permesso, prima di ogni altra cosa: lo stesso del backend.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_posta_rettifica');
+                  PERFORM script.fn_guard_azione(v_utente, 'registra_magazzino');
+
+                  IF p_rettifica_id IS NULL OR p_rettifica_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_rettifica',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'rettifica obbligatoria e maggiore di zero', 'p_rettifica_id', p_rettifica_id),
+                          NULL::uuid, 'magazzino.fn_posta_rettifica', 'p_rettifica_id (obbligatoria, maggiore di zero)');
+                  END IF;
+
+                  -- La testata, FOR UPDATE, nel perimetro (predicato della policy: DEFINER).
+                  SELECT t.magazzino_id, t.data, t.stato_mag_rettifiche
+                    INTO v_magazzino_id, v_data, v_stato
+                    FROM magazzino.rettifiche t
+                   WHERE t.id = p_rettifica_id
+                     AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, t.magazzino_id)
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_rettifica',
+                          'E_MAG_DOCUMENTO_NON_TROVATO',
+                          jsonb_build_object('rettifica_id', p_rettifica_id),
+                          NULL::uuid, p_rettifica_id::text);
+                  END IF;
+
+                  -- Si puo' registrare? La check condivisa con la capability.
+                  v_motivi := script.fn_check_documento_interno_registrabile('RETTIFICA', p_rettifica_id);
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'magazzino', 'magazzino.fn_posta_rettifica', v_motivi, NULL, NULL::uuid,
+                      jsonb_build_object('rettifica_id', p_rettifica_id));
+
+                  -- La provenienza e' il DOCUMENTO (S-3), dal BB che la scrive: il tipo
+                  -- RETTIFICA e la chiave secondo il suo key_selector. Un tipo assente o
+                  -- spento e' E_SORG_CONF dal BB (prima E_CONFIG_MANCANTE scritto qui).
+                  SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+                    INTO v_sorgente_id, v_prov_id, v_prov_uid
+                    FROM script.fn_sorgente_provenienza('RETTIFICA', p_rettifica_id::text) p;
+
+                  PERFORM set_config('zeroerp.magazzino_posting_rettifica', p_rettifica_id::text, true);
+
+                  FOR v_riga IN
+                      SELECT r.* FROM magazzino.rettifiche_righe r
+                       WHERE r.rettifica_id = p_rettifica_id
+                       ORDER BY r.id
+                  LOOP
+                      movimento_id := magazzino.fn_scrivi_movimento(
+                          p_magazzino_id     => v_magazzino_id,
+                          p_articolo_id      => v_riga.articolo_id,
+                          p_causale          => CASE WHEN v_riga.qta_delta > 0 THEN 'RETT_POS' ELSE 'RETT_NEG' END,
+                          p_qta              => v_riga.qta_delta,
+                          p_sorgente_tipo_id => v_sorgente_id,
+                          p_sorgente_id      => v_prov_id,
+                          p_sorgente_uid     => v_prov_uid,
+                          p_sorgente_riga    => v_riga.id,
+                          p_costo_unitario   => CASE WHEN v_riga.qta_delta > 0 THEN v_riga.costo_unitario END,
+                          p_lotto_id         => v_riga.lotto_id,
+                          p_asset_id         => v_riga.asset_id,
+                          p_ubicazione_id    => v_riga.ubicazione_id,
+                          p_data_mov         => script.fn_inizio_giorno_operativo(v_data));
+                      riga_id := v_riga.id;
+                      qta     := v_riga.qta_delta;
+                      RETURN NEXT;
+                  END LOOP;
+
+                  UPDATE magazzino.rettifiche t
+                     SET stato_mag_rettifiche = 'POSTED'
+                   WHERE t.id = p_rettifica_id;
+
+                  PERFORM set_config('zeroerp.magazzino_posting_rettifica', '', true);
+                  RETURN;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_posta_trasferimento(p_trasferimento_id magazzino.trasferimenti.id%TYPE)
+               RETURNS TABLE(movimento_id magazzino.movimenti.id%TYPE, riga_id magazzino.trasferimenti_righe.id%TYPE, qta magazzino.movimenti.qta%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              #variable_conflict use_column
+              -- Scopo: registrare un trasferimento interno CONFIRM — per ogni riga la
+              --   coppia TRASF_OUT / TRASF_IN attraverso la primitiva, poi POSTED.
+              --   Una transazione. Ritorna i due movimenti di ogni riga.
+              DECLARE
+                  v_utente      config.user_override_azioni.auth_user_id%TYPE;
+                  v_t           magazzino.trasferimenti%ROWTYPE;
+                  v_sorgente_id config.sorgenti.id%TYPE;
+                  v_prov_id      magazzino.movimenti.sorgente_id%TYPE;
+                  v_prov_uid     magazzino.movimenti.sorgente_uid%TYPE;
+                  v_motivi      jsonb;
+                  v_riga        magazzino.trasferimenti_righe%ROWTYPE;
+              BEGIN
+                  -- 0. Il permesso, prima di ogni altra cosa: lo stesso del backend.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_posta_trasferimento');
+                  PERFORM script.fn_guard_azione(v_utente, 'registra_magazzino');
+
+                  IF p_trasferimento_id IS NULL OR p_trasferimento_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_trasferimento',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'trasferimento obbligatorio e maggiore di zero',
+                                             'p_trasferimento_id', p_trasferimento_id),
+                          NULL::uuid, 'magazzino.fn_posta_trasferimento',
+                          'p_trasferimento_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- La testata, FOR UPDATE, nel perimetro del magazzino di partenza.
+                  SELECT t.* INTO v_t
+                    FROM magazzino.trasferimenti t
+                   WHERE t.id = p_trasferimento_id
+                     AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, t.magazzino_id_from)
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_trasferimento',
+                          'E_MAG_DOCUMENTO_NON_TROVATO',
+                          jsonb_build_object('trasferimento_id', p_trasferimento_id),
+                          NULL::uuid, p_trasferimento_id::text);
+                  END IF;
+
+                  -- Si puo' registrare? La check condivisa con la capability.
+                  v_motivi := script.fn_check_documento_interno_registrabile('TRASFERIMENTO', p_trasferimento_id);
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'magazzino', 'magazzino.fn_posta_trasferimento', v_motivi, NULL, NULL::uuid,
+                      jsonb_build_object('trasferimento_id', p_trasferimento_id));
+
+                  -- La provenienza e' il DOCUMENTO (S-3), dal BB che la scrive: il tipo
+                  -- TRASFERIMENTO e la chiave secondo il suo key_selector. Un tipo assente o
+                  -- spento e' E_SORG_CONF dal BB (prima E_CONFIG_MANCANTE scritto qui).
+                  SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+                    INTO v_sorgente_id, v_prov_id, v_prov_uid
+                    FROM script.fn_sorgente_provenienza('TRASFERIMENTO', p_trasferimento_id::text) p;
+
+                  PERFORM set_config('zeroerp.magazzino_posting_trasferimento', p_trasferimento_id::text, true);
+
+                  FOR v_riga IN
+                      SELECT r.* FROM magazzino.trasferimenti_righe r
+                       WHERE r.trasferimento_id = p_trasferimento_id
+                       ORDER BY r.id
+                  LOOP
+                      -- L'uscita dall'origine: alla media corrente (la primitiva).
+                      movimento_id := magazzino.fn_scrivi_movimento(
+                          p_magazzino_id     => v_t.magazzino_id_from,
+                          p_articolo_id      => v_riga.articolo_id,
+                          p_causale          => 'TRASF_OUT',
+                          p_qta              => -v_riga.qta,
+                          p_sorgente_tipo_id => v_sorgente_id,
+                          p_sorgente_id      => v_prov_id,
+                          p_sorgente_uid     => v_prov_uid,
+                          p_sorgente_riga    => v_riga.id,
+                          p_lotto_id         => v_riga.lotto_id,
+                          p_asset_id         => v_riga.asset_id,
+                          p_ubicazione_id    => v_riga.ubicazione_id_da,
+                          p_data_mov         => script.fn_inizio_giorno_operativo(v_t.data),
+                          p_transfer_uid     => v_t.uid);
+                      riga_id := v_riga.id;
+                      qta     := -v_riga.qta;
+                      RETURN NEXT;
+
+                      -- L'entrata nella destinazione: al costo dell'uscita (la gemella).
+                      movimento_id := magazzino.fn_scrivi_movimento(
+                          p_magazzino_id     => v_t.magazzino_id_to,
+                          p_articolo_id      => v_riga.articolo_id,
+                          p_causale          => 'TRASF_IN',
+                          p_qta              => v_riga.qta,
+                          p_sorgente_tipo_id => v_sorgente_id,
+                          p_sorgente_id      => v_prov_id,
+                          p_sorgente_uid     => v_prov_uid,
+                          p_sorgente_riga    => v_riga.id,
+                          p_lotto_id         => v_riga.lotto_id,
+                          p_asset_id         => v_riga.asset_id,
+                          p_ubicazione_id    => v_riga.ubicazione_id_a,
+                          p_data_mov         => script.fn_inizio_giorno_operativo(v_t.data),
+                          p_transfer_uid     => v_t.uid);
+                      riga_id := v_riga.id;
+                      qta     := v_riga.qta;
+                      RETURN NEXT;
+                  END LOOP;
+
+                  UPDATE magazzino.trasferimenti t
+                     SET stato_trasferimento = 'POSTED'
+                   WHERE t.id = p_trasferimento_id;
+
+                  PERFORM set_config('zeroerp.magazzino_posting_trasferimento', '', true);
+                  RETURN;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_togli_riga_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_riga_id      bigint)  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+                  v_fam    record;
+                  v_c      integer;   -- un conteggio: niente da ancorare
+              BEGIN
+                  -- Scopo: il gesto «togli la riga» di un documento interno.
+                  v_utente := script.fn_utente_di_sessione('magazzino.fn_togli_riga_documento_interno');
+                  PERFORM script.fn_guard_livello(
+                      v_utente, 'magazzino',
+                      (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),
+                      'TUTTO');
+
+                  SELECT b.* INTO v_fam
+                    FROM magazzino.fn_documento_interno_blocca(
+                             p_famiglia, p_documento_id, v_utente,
+                             'magazzino.fn_togli_riga_documento_interno') AS b;
+
+                  -- La testata in DRAFT la chiede il guard delle righe
+                  -- (E_MAG_DOCUMENTO_RIGHE_CONGELATE), per ogni scrittore.
+                  EXECUTE format('DELETE FROM magazzino.%I r WHERE r.id = $1 AND r.%I = $2',
+                                 v_fam.tabella_righe, v_fam.colonna_fk)
+                    USING p_riga_id, p_documento_id;
+                  GET DIAGNOSTICS v_c = ROW_COUNT;
+                  IF v_c = 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_togli_riga_documento_interno',
+                          'E_MAG_DOCUMENTO_RIGA_NON_TROVATA',
+                          jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id,
+                                             'riga_id', p_riga_id),
+                          NULL::uuid,
+                          COALESCE(p_riga_id::text, '(nessuna)'));
+                  END IF;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.trgfn_ubicazioni_guard_parent()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_padre_magazzino_id  magazzino.ubicazioni.magazzino_id%TYPE;
+                v_padre_codice        magazzino.ubicazioni.codice%TYPE;
+                v_mag_codice          magazzino.magazzini.codice%TYPE;
+                v_mag_padre_codice    magazzino.magazzini.codice%TYPE;
+                v_ciclo               boolean := false;  -- l'esito di un EXISTS: nessuna colonna
+                v_utente              config.user_override_aree.auth_user_id%TYPE;
+              BEGIN
+                -- Scopo: il padre di un'ubicazione (parent_id) sta nello stesso magazzino
+                --   della figlia, e la catena dei padri non torna mai su se stessa.
+                --   Un padre fuori dal perimetro dell'operatore in sessione non risolve, e
+                --   si rifiuta lo stesso (fail-closed). Il perimetro si chiede col predicato
+                --   esplicito (fn_scope_ef_whitelist_via_magazzino), non alla RLS: dentro un
+                --   verbo SECURITY DEFINER la RLS non filtra, e la frase direbbe il magazzino
+                --   di un'altra azienda. Senza operatore in sessione decide la RLS di chi
+                --   scrive (il migratore vede tutto, l'app nulla).
+                -- Regole:
+                --   - parent_id = id, o NEW.id fra gli antenati del padre nuovo (solo in
+                --     UPDATE: in INSERT la riga non e' ancora in nessuna catena):
+                --     E_MAG_UBICAZIONE_PADRE_CICLICO (DATO_ERRATO, campo parent_id);
+                --   - padre di un altro magazzino, o non visibile:
+                --     E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO (DATO_ERRATO, campo parent_id).
+                --   Il cambio di magazzino_id NON passa di qui: e' una colonna immutabile
+                --   (automation_lock_columns, E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE).
+                IF NEW.parent_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 1) Ciclo di lunghezza uno: un'ubicazione dentro se stessa.
+                IF NEW.parent_id = NEW.id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'magazzino.trgfn_ubicazioni_guard_parent',
+                    'E_MAG_UBICAZIONE_PADRE_CICLICO',
+                    jsonb_build_object(
+                      'detail',        'parent_id = id',
+                      'campo',         'parent_id',
+                      'ubicazione_id', NEW.id,
+                      'parent_id',     NEW.parent_id
+                    ),
+                    NULL::uuid,
+                    NEW.codice,
+                    NEW.codice
+                  );
+                END IF;
+
+                -- 2) Il padre, nel perimetro di chi agisce: magazzino e codici per la frase.
+                v_utente := script.fn_utente_di_sessione('magazzino.trgfn_ubicazioni_guard_parent');
+                SELECT u.magazzino_id, u.codice, m.codice
+                  INTO v_padre_magazzino_id, v_padre_codice, v_mag_padre_codice
+                  FROM magazzino.ubicazioni u
+                  LEFT JOIN magazzino.magazzini m ON m.id = u.magazzino_id
+                 WHERE u.id = NEW.parent_id
+                   AND (v_utente IS NULL
+                        OR script.fn_scope_ef_whitelist_via_magazzino(v_utente, u.magazzino_id));
+
+                IF v_padre_magazzino_id IS NULL OR v_padre_magazzino_id <> NEW.magazzino_id THEN
+                  SELECT m.codice INTO v_mag_codice
+                    FROM magazzino.magazzini m
+                   WHERE m.id = NEW.magazzino_id;
+
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'magazzino.trgfn_ubicazioni_guard_parent',
+                    'E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO',
+                    jsonb_build_object(
+                      'detail',             'il padre non e'' del magazzino della figlia (o non e'' visibile)',
+                      'campo',              'parent_id',
+                      'ubicazione_id',      NEW.id,
+                      'parent_id',          NEW.parent_id,
+                      'magazzino_id',       NEW.magazzino_id,
+                      'magazzino_id_padre', v_padre_magazzino_id
+                    ),
+                    NULL::uuid,
+                    coalesce(v_padre_codice, NEW.parent_id::text),
+                    coalesce(v_mag_codice, NEW.magazzino_id::text),
+                    coalesce('appartiene al magazzino ' || v_mag_padre_codice,
+                             'non è visibile con i permessi di chi sta operando')
+                  );
+                END IF;
+
+                -- 3) Cicli piu' lunghi: NEW.id fra gli antenati del padre nuovo. Solo in
+                --    UPDATE. L'array dei visitati ferma la risalita anche su una catena
+                --    gia' ciclica nel pregresso.
+                IF TG_OP = 'UPDATE' THEN
+                  SELECT EXISTS (
+                    WITH RECURSIVE antenati AS (
+                      SELECT u.id, u.parent_id, ARRAY[u.id] AS percorso
+                        FROM magazzino.ubicazioni u
+                       WHERE u.id = NEW.parent_id
+                      UNION ALL
+                      SELECT u.id, u.parent_id, a.percorso || u.id
+                        FROM antenati a
+                        JOIN magazzino.ubicazioni u ON u.id = a.parent_id
+                       WHERE NOT (u.id = ANY (a.percorso))
+                    )
+                    SELECT 1 FROM antenati a WHERE a.id = NEW.id
+                  ) INTO v_ciclo;
+
+                  IF v_ciclo THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'magazzino.trgfn_ubicazioni_guard_parent',
+                      'E_MAG_UBICAZIONE_PADRE_CICLICO',
+                      jsonb_build_object(
+                        'detail',        'NEW.id e'' fra gli antenati di parent_id',
+                        'campo',         'parent_id',
+                        'ubicazione_id', NEW.id,
+                        'parent_id',     NEW.parent_id
+                      ),
+                      NULL::uuid,
+                      NEW.codice,
+                      v_padre_codice
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_asset(
+                  p_articolo_id  magazzino.assets.articolo_id%TYPE,
+                  p_seriale      magazzino.assets.seriale%TYPE,
+                  p_stato_id     magazzino.assets.stato_id%TYPE,
+                  p_ownership_id magazzino.assets.ownership_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.assets.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              BEGIN
+                  -- Scopo: il gesto «nuovo seriale» dell'operatore: livello
+                  --   TUTTO sull'oggetto, poi il BB. L'emittente e' quello della
+                  --   sessione; il perimetro lo dice il guard della tabella.
+                  --   Ritorna l'id.
+                  PERFORM script.fn_guard_livello(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                      'magazzino', 'assets', 'TUTTO');
+
+                  RETURN magazzino.fn_crea_asset(p_articolo_id, p_seriale, p_stato_id,
+                                                 p_ownership_id, p_campi);
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_inventario(
+                  p_magazzino_id magazzino.inventari.magazzino_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.inventari.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+                  v_campi  jsonb := COALESCE(p_campi, '{}'::jsonb);
+              BEGIN
+                  -- Scopo: il gesto «nuovo inventario» dell'operatore nel
+                  --   magazzino p_magazzino_id. Ritorna l'id.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'inventari', 'TUTTO');
+                  PERFORM magazzino.fn_guard_magazzino_nel_perimetro(
+                      p_magazzino_id, v_utente, 'magazzino.fn_aggiungi_inventario');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, magazzino.fn_documento_interno_colonne_ammesse('INVENTARIO', 'testata', 'crea'),
+                      'magazzino', 'magazzino.fn_aggiungi_inventario',
+                      jsonb_build_object('magazzino_id', p_magazzino_id));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.inventari'::regclass,
+                              jsonb_strip_nulls(v_campi || jsonb_build_object('magazzino_id', p_magazzino_id)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_lotto(
+                  p_articolo_id magazzino.lotti.articolo_id%TYPE,
+                  p_codice      magazzino.lotti.codice%TYPE,
+                  p_data_arrivo magazzino.lotti.data_arrivo%TYPE,
+                  p_campi       jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.lotti.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              BEGIN
+                  -- Scopo: il gesto «nuovo lotto» dell'operatore: livello TUTTO
+                  --   sull'oggetto, poi il BB. L'azienda del lotto la mette il
+                  --   default di sessione e la controlla il guard di perimetro
+                  --   della tabella. Ritorna l'id.
+                  PERFORM script.fn_guard_livello(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                      'magazzino', 'lotti', 'TUTTO');
+
+                  RETURN magazzino.fn_crea_lotto(p_articolo_id, p_codice, p_data_arrivo, p_campi);
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_magazzino(
+                  p_codice                 magazzino.magazzini.codice%TYPE,
+                  p_descrizione            magazzino.magazzini.descrizione%TYPE,
+                  p_indirizzo_dettaglio_id magazzino.magazzini.indirizzo_dettaglio_id%TYPE,
+                  p_campi                  jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.magazzini.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              BEGIN
+                  -- Scopo: il gesto «nuovo magazzino» dell'operatore: livello
+                  --   TUTTO sull'oggetto, poi il BB. Ritorna l'id.
+                  PERFORM script.fn_guard_livello(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                      'magazzino', 'magazzini', 'TUTTO');
+
+                  RETURN magazzino.fn_crea_magazzino(
+                             p_codice, p_descrizione, p_indirizzo_dettaglio_id, p_campi);
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_rettifica(
+                  p_magazzino_id magazzino.rettifiche.magazzino_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.rettifiche.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+                  v_campi  jsonb := COALESCE(p_campi, '{}'::jsonb);
+              BEGIN
+                  -- Scopo: il gesto «nuova rettifica» dell'operatore nel
+                  --   magazzino p_magazzino_id. Ritorna l'id.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'rettifiche', 'TUTTO');
+                  PERFORM magazzino.fn_guard_magazzino_nel_perimetro(
+                      p_magazzino_id, v_utente, 'magazzino.fn_aggiungi_rettifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, magazzino.fn_documento_interno_colonne_ammesse('RETTIFICA', 'testata', 'crea'),
+                      'magazzino', 'magazzino.fn_aggiungi_rettifica',
+                      jsonb_build_object('magazzino_id', p_magazzino_id));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.rettifiche'::regclass,
+                              jsonb_strip_nulls(v_campi || jsonb_build_object('magazzino_id', p_magazzino_id)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_riga_inventario(
+                  p_inventario_id magazzino.inventari_righe.inventario_id%TYPE,
+                  p_articolo_id   magazzino.inventari_righe.articolo_id%TYPE,
+                  p_qta_contata   magazzino.inventari_righe.qta_contata%TYPE,
+                  p_campi         jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.inventari_righe.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente    config.user_override_oggetti.auth_user_id%TYPE;
+                  v_campi     jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  c_argomenti CONSTANT text[] := ARRAY['articolo_id', 'qta_contata'];
+              BEGIN
+                  -- Scopo: il gesto «aggiungi una riga contata» all'inventario
+                  --   p_inventario_id. Ritorna l'id della riga.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'inventari', 'TUTTO');
+                  PERFORM magazzino.fn_documento_interno_blocca(
+                      'INVENTARIO', p_inventario_id, v_utente, 'magazzino.fn_aggiungi_riga_inventario');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi,
+                      ARRAY(SELECT c
+                              FROM unnest(magazzino.fn_documento_interno_colonne_ammesse(
+                                              'INVENTARIO', 'riga', 'crea')) AS c
+                             WHERE c <> ALL (c_argomenti)),
+                      'magazzino', 'magazzino.fn_aggiungi_riga_inventario',
+                      jsonb_build_object('inventario_id', p_inventario_id));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.inventari_righe'::regclass,
+                              jsonb_strip_nulls(v_campi || jsonb_build_object(
+                                                   'inventario_id', p_inventario_id,
+                                                   'articolo_id',   p_articolo_id,
+                                                   'qta_contata',   p_qta_contata)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_riga_rettifica(
+                  p_rettifica_id magazzino.rettifiche_righe.rettifica_id%TYPE,
+                  p_articolo_id  magazzino.rettifiche_righe.articolo_id%TYPE,
+                  p_qta_delta    magazzino.rettifiche_righe.qta_delta%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.rettifiche_righe.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente    config.user_override_oggetti.auth_user_id%TYPE;
+                  v_campi     jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  c_argomenti CONSTANT text[] := ARRAY['articolo_id', 'qta_delta'];
+              BEGIN
+                  -- Scopo: il gesto «aggiungi una riga» alla rettifica
+                  --   p_rettifica_id. Ritorna l'id della riga.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'rettifiche', 'TUTTO');
+                  PERFORM magazzino.fn_documento_interno_blocca(
+                      'RETTIFICA', p_rettifica_id, v_utente, 'magazzino.fn_aggiungi_riga_rettifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi,
+                      ARRAY(SELECT c
+                              FROM unnest(magazzino.fn_documento_interno_colonne_ammesse(
+                                              'RETTIFICA', 'riga', 'crea')) AS c
+                             WHERE c <> ALL (c_argomenti)),
+                      'magazzino', 'magazzino.fn_aggiungi_riga_rettifica',
+                      jsonb_build_object('rettifica_id', p_rettifica_id));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.rettifiche_righe'::regclass,
+                              jsonb_strip_nulls(v_campi || jsonb_build_object(
+                                                   'rettifica_id', p_rettifica_id,
+                                                   'articolo_id',  p_articolo_id,
+                                                   'qta_delta',    p_qta_delta)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_riga_trasferimento(
+                  p_trasferimento_id magazzino.trasferimenti_righe.trasferimento_id%TYPE,
+                  p_articolo_id      magazzino.trasferimenti_righe.articolo_id%TYPE,
+                  p_qta              magazzino.trasferimenti_righe.qta%TYPE,
+                  p_campi            jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.trasferimenti_righe.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente    config.user_override_oggetti.auth_user_id%TYPE;
+                  v_campi     jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  c_argomenti CONSTANT text[] := ARRAY['articolo_id', 'qta'];
+              BEGIN
+                  -- Scopo: il gesto «aggiungi una riga» al trasferimento
+                  --   p_trasferimento_id. Ritorna l'id della riga.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'trasferimenti', 'TUTTO');
+                  PERFORM magazzino.fn_documento_interno_blocca(
+                      'TRASFERIMENTO', p_trasferimento_id, v_utente, 'magazzino.fn_aggiungi_riga_trasferimento');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi,
+                      ARRAY(SELECT c
+                              FROM unnest(magazzino.fn_documento_interno_colonne_ammesse(
+                                              'TRASFERIMENTO', 'riga', 'crea')) AS c
+                             WHERE c <> ALL (c_argomenti)),
+                      'magazzino', 'magazzino.fn_aggiungi_riga_trasferimento',
+                      jsonb_build_object('trasferimento_id', p_trasferimento_id));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.trasferimenti_righe'::regclass,
+                              jsonb_strip_nulls(v_campi || jsonb_build_object(
+                                                   'trasferimento_id', p_trasferimento_id,
+                                                   'articolo_id',      p_articolo_id,
+                                                   'qta',              p_qta)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_trasferimento(
+                  p_magazzino_id_from magazzino.trasferimenti.magazzino_id_from%TYPE,
+                  p_magazzino_id_to   magazzino.trasferimenti.magazzino_id_to%TYPE,
+                  p_campi             jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.trasferimenti.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente    config.user_override_oggetti.auth_user_id%TYPE;
+                  v_campi     jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  -- Le colonne che il verbo riceve come argomenti: non stanno in p_campi.
+                  c_argomenti CONSTANT text[] := ARRAY['magazzino_id_to'];
+              BEGIN
+                  -- Scopo: il gesto «nuovo trasferimento» dell'operatore dal
+                  --   magazzino p_magazzino_id_from a p_magazzino_id_to. Ritorna l'id.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'trasferimenti', 'TUTTO');
+                  -- Tutti e due nel perimetro: un arrivo fuori perimetro e' «non
+                  -- trovato» come la partenza, non un emittente diverso.
+                  PERFORM magazzino.fn_guard_magazzino_nel_perimetro(
+                      p_magazzino_id_from, v_utente, 'magazzino.fn_aggiungi_trasferimento');
+                  PERFORM magazzino.fn_guard_magazzino_nel_perimetro(
+                      p_magazzino_id_to, v_utente, 'magazzino.fn_aggiungi_trasferimento');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi,
+                      ARRAY(SELECT c
+                              FROM unnest(magazzino.fn_documento_interno_colonne_ammesse(
+                                              'TRASFERIMENTO', 'testata', 'crea')) AS c
+                             WHERE c <> ALL (c_argomenti)),
+                      'magazzino', 'magazzino.fn_aggiungi_trasferimento',
+                      jsonb_build_object('magazzino_id_from', p_magazzino_id_from,
+                                         'magazzino_id_to',   p_magazzino_id_to));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.trasferimenti'::regclass,
+                              jsonb_strip_nulls(v_campi || jsonb_build_object(
+                                                   'magazzino_id_from', p_magazzino_id_from,
+                                                   'magazzino_id_to',   p_magazzino_id_to)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_ubicazione(
+                  p_magazzino_id magazzino.ubicazioni.magazzino_id%TYPE,
+                  p_codice       magazzino.ubicazioni.codice%TYPE,
+                  p_tipo_id      magazzino.ubicazioni.tipo_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.ubicazioni.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+              BEGIN
+                  -- Scopo: il gesto «nuova ubicazione» dell'operatore nel
+                  --   magazzino p_magazzino_id: livello TUTTO sull'oggetto, il
+                  --   magazzino nel perimetro (no-leak), poi il BB. Ritorna l'id.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'ubicazioni', 'TUTTO');
+                  PERFORM magazzino.fn_guard_magazzino_nel_perimetro(
+                      p_magazzino_id, v_utente, 'magazzino.fn_aggiungi_ubicazione');
+
+                  RETURN magazzino.fn_crea_ubicazione(p_magazzino_id, p_codice, p_tipo_id, p_campi);
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_apri_blocco(
+                  p_magazzino_id      magazzino.movimenti_attesi.magazzino_id%TYPE,
+                  p_articolo_id       magazzino.movimenti_attesi.articolo_id%TYPE,
+                  p_qta               magazzino.movimenti_attesi.qta%TYPE,
+                  p_soggetto_ruolo_id magazzino.movimenti_attesi.soggetto_ruolo_id%TYPE,
+                  p_nota              magazzino.movimenti_attesi.nota%TYPE,
+                  p_lotto_id          magazzino.movimenti_attesi.lotto_id%TYPE DEFAULT NULL,
+                  p_asset_id          magazzino.movimenti_attesi.asset_id%TYPE DEFAULT NULL,
+                  p_ubicazione_id     magazzino.movimenti_attesi.ubicazione_id%TYPE DEFAULT NULL)
+               RETURNS magazzino.movimenti_attesi.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo: aprire un blocco manuale — riservare p_qta pezzi (POSITIVA:
+              --   il verso lo mette il verbo) per qualcuno o per un motivo (D-L3-j).
+              -- Ritorna: l'id dell'atteso aperto.
+              DECLARE
+                  v_utente    config.user_override_azioni.auth_user_id%TYPE;
+                  v_causale   magazzino.causali.id%TYPE;
+                  v_motivi    jsonb;
+                  v_id        magazzino.movimenti_attesi.id%TYPE;
+              BEGIN
+                  -- 0. Il permesso, prima di ogni altra cosa.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_azione(v_utente, 'blocca_merce');
+
+                  IF p_magazzino_id IS NULL OR p_magazzino_id <= 0
+                     OR p_articolo_id IS NULL
+                     OR p_qta IS NULL OR p_qta <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_apri_blocco',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'magazzino e articolo obbligatori, quantita'' positiva',
+                                             'p_magazzino_id', p_magazzino_id, 'p_qta', p_qta),
+                          NULL::uuid, 'magazzino.fn_apri_blocco',
+                          'p_magazzino_id (maggiore di zero), p_articolo_id (obbligatorio), p_qta (maggiore di zero: il verso lo mette il verbo)');
+                  END IF;
+
+                  -- Il magazzino, nel perimetro di chi agisce (DEFINER: il predicato della policy).
+                  IF NOT EXISTS (SELECT 1 FROM magazzino.magazzini m
+                                  WHERE m.id = p_magazzino_id AND m.attivo
+                                    AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, m.id)) THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_apri_blocco',
+                          'E_MAG_MAGAZZINO_NON_VALIDO',
+                          jsonb_build_object('detail', 'magazzino inesistente, spento o fuori perimetro',
+                                             'magazzino_id', p_magazzino_id),
+                          NULL::uuid, p_magazzino_id::text);
+                  END IF;
+
+                  -- La posizione, come la giudicherebbe la primitiva.
+                  v_motivi := script.fn_check_riga_magazzino(p_magazzino_id, p_articolo_id,
+                                                             p_lotto_id, p_asset_id, p_ubicazione_id);
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'magazzino', 'magazzino.fn_apri_blocco', v_motivi, NULL, NULL::uuid,
+                      jsonb_build_object('magazzino_id', p_magazzino_id, 'articolo_id', p_articolo_id));
+
+                  SELECT c.id INTO v_causale
+                    FROM magazzino.causali c
+                   WHERE c.codice_interno = 'SCARICO_VEN' AND c.attivo;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_apri_blocco',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'magazzino.causali.SCARICO_VEN'),
+                          NULL::uuid, VARIADIC ARRAY['causale di magazzino SCARICO_VEN (magazzino.causali, attiva)']);
+                  END IF;
+
+                  INSERT INTO magazzino.movimenti_attesi
+                         (articolo_id, magazzino_id, qta, causale_id, stato,
+                          soggetto_ruolo_id, nota, lotto_id, asset_id, ubicazione_id, meta)
+                  VALUES (p_articolo_id, p_magazzino_id, -p_qta, v_causale, 'APERTA',
+                          p_soggetto_ruolo_id, NULLIF(btrim(p_nota), ''), p_lotto_id, p_asset_id, p_ubicazione_id,
+                          jsonb_build_object('aperto_da', v_utente))
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_cambia_stato_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_stato        text)   -- lo stato della famiglia: tre colonne, nessuna sola da ancorare
+               RETURNS text
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+                  v_fam    record;
+                  v_riga   jsonb;
+              BEGIN
+                  -- Scopo: il gesto conferma, riapri o annulla di un documento
+                  --   interno: lo stato p_stato sulla testata. La matrice la fa
+                  --   rispettare il trigger. Ritorna lo stato scritto.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(
+                      v_utente, 'magazzino',
+                      (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),
+                      'TUTTO');
+
+                  SELECT b.* INTO v_fam
+                    FROM magazzino.fn_documento_interno_blocca(
+                             p_famiglia, p_documento_id, v_utente,
+                             'magazzino.fn_cambia_stato_documento_interno') AS b;
+
+                  -- La matrice (magazzino.fn_documento_interno_transizioni) e la
+                  -- porta POSTED le dice trgfn_documento_interno_guard_transizione;
+                  -- un valore fuori dal vocabolario lo ferma il CHECK della tabella.
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                format('magazzino.%I', v_fam.tabella)::regclass,
+                                jsonb_build_object(v_fam.colonna_stato, p_stato),
+                                jsonb_build_object('id', p_documento_id));
+
+                  RETURN v_riga ->> v_fam.colonna_stato;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_elimina_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint)  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+                  v_fam    record;
+              BEGIN
+                  -- Scopo: il gesto «elimina il documento» (la bozza). Le
+                  --   righe vanno con la testata (ON DELETE CASCADE).
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(
+                      v_utente, 'magazzino',
+                      (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),
+                      'TUTTO');
+
+                  SELECT b.* INTO v_fam
+                    FROM magazzino.fn_documento_interno_blocca(
+                             p_famiglia, p_documento_id, v_utente,
+                             'magazzino.fn_elimina_documento_interno') AS b;
+
+                  -- Solo in DRAFT: lo dice trgfn_documento_interno_guard_transizione
+                  -- (E_MAG_DOCUMENTO_NON_ELIMINABILE), per ogni scrittore.
+                  EXECUTE format('DELETE FROM magazzino.%I WHERE id = $1', v_fam.tabella)
+                    USING p_documento_id;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_libera_blocco(
+                  p_blocco_id magazzino.movimenti_attesi.id%TYPE,
+                  p_nota      magazzino.movimenti_attesi.nota%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo: liberare un blocco manuale con un atto — chi, quando, perche'
+              --   (M-3: «si libera esplicitamente, non si consuma da se'»).
+              DECLARE
+                  v_utente config.user_override_azioni.auth_user_id%TYPE;
+                  v_stato  magazzino.movimenti_attesi.stato%TYPE;
+              BEGIN
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_azione(v_utente, 'blocca_merce');
+
+                  IF p_blocco_id IS NULL OR p_blocco_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_libera_blocco',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'blocco obbligatorio e maggiore di zero',
+                                             'p_blocco_id', p_blocco_id),
+                          NULL::uuid, 'magazzino.fn_libera_blocco', 'p_blocco_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- Il blocco, FOR UPDATE, nel perimetro; solo i blocchi manuali (senza sorgente).
+                  SELECT a.stato INTO v_stato
+                    FROM magazzino.movimenti_attesi a
+                   WHERE a.id = p_blocco_id
+                     AND a.sorgente_tipo_id IS NULL
+                     AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, a.magazzino_id)
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_libera_blocco',
+                          'E_MAG_BLOCCO_NON_TROVATO',
+                          jsonb_build_object('blocco_id', p_blocco_id),
+                          NULL::uuid, p_blocco_id::text);
+                  END IF;
+                  IF v_stato <> 'APERTA' THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_libera_blocco',
+                          'E_MAG_BLOCCO_GIA_CHIUSO',
+                          jsonb_build_object('blocco_id', p_blocco_id, 'stato', v_stato),
+                          NULL::uuid, p_blocco_id::text);
+                  END IF;
+
+                  UPDATE magazzino.movimenti_attesi a
+                     SET stato          = 'CHIUSA',
+                         data_chiusura  = now(),
+                         meta           = a.meta || jsonb_build_object(
+                                              'liberato_da',      v_utente,
+                                              'liberato_il',      now(),
+                                              'nota_liberazione', NULLIF(btrim(p_nota), ''))
+                   WHERE a.id = p_blocco_id;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_dati         jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente  config.user_override_oggetti.auth_user_id%TYPE;
+                  v_fam     record;
+                  v_ammesse text[];   -- nomi di colonna: nessuna colonna di cui siano il riflesso
+                  v_riga    jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica la testata» di un documento
+                  --   interno: il delta p_dati sulle colonne modificabili, con
+                  --   il documento in DRAFT. Ritorna la testata.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(
+                      v_utente, 'magazzino',
+                      (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),
+                      'TUTTO');
+
+                  SELECT b.* INTO v_fam
+                    FROM magazzino.fn_documento_interno_blocca(
+                             p_famiglia, p_documento_id, v_utente,
+                             'magazzino.fn_modifica_documento_interno') AS b;
+
+                  v_ammesse := magazzino.fn_documento_interno_colonne_ammesse(v_fam.famiglia, 'testata', 'modifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      p_dati, v_ammesse,
+                      'magazzino', 'magazzino.fn_modifica_documento_interno',
+                      jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id));
+
+                  -- La testata si modifica in bozza, come le righe: lo dice la
+                  -- capability (can_edit_testata), e nessun trigger lo fa sulla
+                  -- testata. Un delta vuoto non scrive niente: passa anche fuori
+                  -- bozza, e ritorna la testata.
+                  IF v_fam.stato <> 'DRAFT' AND p_dati <> '{}'::jsonb THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_documento_interno',
+                          'E_MAG_DOCUMENTO_TESTATA_CONGELATA',
+                          jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id,
+                                             'stato', v_fam.stato),
+                          NULL::uuid,
+                          v_fam.stato);
+                  END IF;
+
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                format('magazzino.%I', v_fam.tabella)::regclass,
+                                p_dati, jsonb_build_object('id', p_documento_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_lotto(
+                  p_id   magazzino.lotti.id%TYPE,
+                  p_dati jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente   config.user_override_oggetti.auth_user_id%TYPE;
+                  v_ammesse  text[];  -- nomi di colonna: nessuna colonna di cui siano il riflesso
+                  v_riga     jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica il lotto» dell'operatore, dentro
+                  --   il perimetro della sua azienda: il delta p_dati sulle
+                  --   colonne modificabili. Ritorna la riga.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'lotti', 'TUTTO');
+
+                  v_ammesse  := magazzino.fn_lotti_colonne_ammesse('modifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      p_dati, v_ammesse,
+                      'magazzino', 'magazzino.fn_modifica_lotto',
+                      jsonb_build_object('id', p_id));
+
+                  -- No-leak: fuori perimetro e inesistente rispondono uguale.
+                  PERFORM 1
+                     FROM magazzino.lotti l
+                    WHERE l.id = p_id
+                      AND script.fn_check_user_emittente_scope(v_utente, l.emittente_fiscale_id)
+                      FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_lotto', 'E_MAG_LOTTO_NON_TROVATO',
+                          jsonb_build_object('lotto_id', p_id),
+                          NULL::uuid,
+                          COALESCE(p_id::text, '(nessuno)'));
+                  END IF;
+
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                'magazzino.lotti'::regclass, p_dati, jsonb_build_object('id', p_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_magazzino(
+                  p_id   magazzino.magazzini.id%TYPE,
+                  p_dati jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente   config.user_override_oggetti.auth_user_id%TYPE;
+                  v_ammesse  text[];  -- nomi di colonna: nessuna colonna di cui siano il riflesso
+                  v_riga     jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica il magazzino» dell'operatore: il
+                  --   delta p_dati sulle colonne modificabili. Ritorna la riga.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'magazzini', 'TUTTO');
+
+                  v_ammesse  := magazzino.fn_magazzini_colonne_ammesse('modifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      p_dati, v_ammesse,
+                      'magazzino', 'magazzino.fn_modifica_magazzino',
+                      jsonb_build_object('id', p_id));
+
+                  -- No-leak: fuori perimetro e inesistente rispondono uguale.
+                  PERFORM 1
+                     FROM magazzino.magazzini mg
+                    WHERE mg.id = p_id
+                      AND script.fn_check_user_emittente_scope(v_utente, mg.emittente_fiscale_id)
+                      FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_magazzino', 'E_MAG_MAGAZZINO_NON_TROVATO',
+                          jsonb_build_object('magazzino_id', p_id),
+                          NULL::uuid,
+                          COALESCE(p_id::text, '(nessuno)'));
+                  END IF;
+
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                'magazzino.magazzini'::regclass, p_dati, jsonb_build_object('id', p_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_riga_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_riga_id      bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_dati         jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente  config.user_override_oggetti.auth_user_id%TYPE;
+                  v_fam     record;
+                  v_ammesse text[];   -- nomi di colonna: nessuna colonna di cui siano il riflesso
+                  v_c       integer;  -- un conteggio: niente da ancorare
+                  v_riga    jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica la riga» di un documento interno:
+                  --   il delta p_dati sulle colonne modificabili. Ritorna la riga.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(
+                      v_utente, 'magazzino',
+                      (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),
+                      'TUTTO');
+
+                  SELECT b.* INTO v_fam
+                    FROM magazzino.fn_documento_interno_blocca(
+                             p_famiglia, p_documento_id, v_utente,
+                             'magazzino.fn_modifica_riga_documento_interno') AS b;
+
+                  -- La riga e' di quel documento (la testata e' gia' nel perimetro).
+                  EXECUTE format('SELECT count(*) FROM magazzino.%I r WHERE r.id = $1 AND r.%I = $2',
+                                 v_fam.tabella_righe, v_fam.colonna_fk)
+                     INTO v_c
+                    USING p_riga_id, p_documento_id;
+                  IF v_c = 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_riga_documento_interno',
+                          'E_MAG_DOCUMENTO_RIGA_NON_TROVATA',
+                          jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id,
+                                             'riga_id', p_riga_id),
+                          NULL::uuid,
+                          COALESCE(p_riga_id::text, '(nessuna)'));
+                  END IF;
+
+                  v_ammesse := magazzino.fn_documento_interno_colonne_ammesse(v_fam.famiglia, 'riga', 'modifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      p_dati, v_ammesse,
+                      'magazzino', 'magazzino.fn_modifica_riga_documento_interno',
+                      jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id,
+                                         'riga_id', p_riga_id));
+
+                  -- La testata in DRAFT la chiede il guard delle righe
+                  -- (E_MAG_DOCUMENTO_RIGHE_CONGELATE), per ogni scrittore.
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                format('magazzino.%I', v_fam.tabella_righe)::regclass,
+                                p_dati, jsonb_build_object('id', p_riga_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_ubicazione(
+                  p_magazzino_id magazzino.ubicazioni.magazzino_id%TYPE,
+                  p_id           magazzino.ubicazioni.id%TYPE,
+                  p_dati         jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente   config.user_override_oggetti.auth_user_id%TYPE;
+                  v_ammesse  text[];  -- nomi di colonna: nessuna colonna di cui siano il riflesso
+                  v_riga     jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica l'ubicazione» dell'operatore,
+                  --   dentro il suo magazzino: il delta p_dati sulle colonne
+                  --   modificabili. Ritorna la riga.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'ubicazioni', 'TUTTO');
+
+                  v_ammesse  := magazzino.fn_ubicazioni_colonne_ammesse('modifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      p_dati, v_ammesse,
+                      'magazzino', 'magazzino.fn_modifica_ubicazione',
+                      jsonb_build_object('magazzino_id', p_magazzino_id, 'id', p_id));
+
+                  -- No-leak: fuori perimetro, di un altro magazzino o
+                  -- inesistente rispondono uguale.
+                  PERFORM 1
+                     FROM magazzino.ubicazioni u
+                    WHERE u.id = p_id
+                      AND u.magazzino_id = p_magazzino_id
+                      AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, u.magazzino_id)
+                      FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_ubicazione', 'E_MAG_UBICAZIONE_NON_TROVATA',
+                          jsonb_build_object('magazzino_id', p_magazzino_id, 'ubicazione_id', p_id),
+                          NULL::uuid,
+                          COALESCE(p_id::text, '(nessuna)'));
+                  END IF;
+
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                'magazzino.ubicazioni'::regclass, p_dati, jsonb_build_object('id', p_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_posta_inventario(p_inventario_id magazzino.inventari.id%TYPE)
+               RETURNS TABLE(movimento_id magazzino.movimenti.id%TYPE, riga_id magazzino.inventari_righe.id%TYPE, qta magazzino.movimenti.qta%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo: registrare un inventario CONFIRM — per ogni riga del piano
+              --   (fn_inventario_piano) scrive qta_sistema e posta il delta con la
+              --   causale del piano attraverso la primitiva; poi porta la testata a
+              --   POSTED. Una transazione: se una riga fallisce non resta niente e il
+              --   documento resta CONFIRM. Ritorna, riga per riga, il movimento scritto.
+              -- Rev 2026-09-22 (Lotto 2-bis, R-1): le condizioni di registrabilita' non
+              --   sono piu' scritte qui — le dice
+              --   script.fn_check_documento_interno_registrabile, la stessa funzione da
+              --   cui la capability del drawer accende o spegne «Registra». Codici e
+              --   valori invariati: le frasi sono quelle di prima.
+              -- Rev 2026-09-24 (brief-db-magazzino-verbi-con-permesso, D-4): e' un VERBO.
+              --   Prima riga: script.fn_guard_azione('registra_magazzino'), lo stesso
+              --   permesso che il backend chiede all'endpoint. SECURITY DEFINER del
+              --   proprietario: l'app non chiama piu' la primitiva, la chiama il verbo.
+              --   La RLS dei documenti qui non vale: il perimetro lo rimette il predicato
+              --   della policy (fn_scope_ef_whitelist_via_magazzino) nella WHERE del
+              --   FOR UPDATE — fuori perimetro resta NON TROVATO, e senza lock.
+              DECLARE
+                  v_utente       config.user_override_azioni.auth_user_id%TYPE;
+                  v_magazzino_id magazzino.inventari.magazzino_id%TYPE;
+                  v_data         magazzino.inventari.data%TYPE;
+                  v_stato        magazzino.inventari.stato_mag_inventario%TYPE;
+                  v_sorgente_id  config.sorgenti.id%TYPE;
+                  v_prov_id      magazzino.movimenti.sorgente_id%TYPE;
+                  v_prov_uid     magazzino.movimenti.sorgente_uid%TYPE;
+                  v_costo        magazzino.inventari_righe.costo_unitario%TYPE;
+                  v_motivi       jsonb;
+                  v_piano        record;
+              BEGIN
+                  -- 0. Il permesso, prima di ogni altra cosa: lo stesso del backend.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_azione(v_utente, 'registra_magazzino');
+
+                  -- 1. Parametro
+                  IF p_inventario_id IS NULL OR p_inventario_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_inventario',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'inventario obbligatorio e maggiore di zero', 'p_inventario_id', p_inventario_id),
+                          NULL::uuid, 'magazzino.fn_posta_inventario', 'p_inventario_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- 2. La testata, FOR UPDATE, nel perimetro: fuori perimetro NON C'E'.
+                  --    Il predicato e' quello della policy (qui la RLS non vale: DEFINER).
+                  --    Il lock viene PRIMA di ogni domanda: e' cio' che serializza due
+                  --    posting dello stesso documento (la check e' STABLE e non lo prende).
+                  SELECT i.magazzino_id, i.data, i.stato_mag_inventario
+                    INTO v_magazzino_id, v_data, v_stato
+                    FROM magazzino.inventari i
+                   WHERE i.id = p_inventario_id
+                     AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, i.magazzino_id)
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_inventario',
+                          'E_MAG_DOCUMENTO_NON_TROVATO',
+                          jsonb_build_object('inventario_id', p_inventario_id),
+                          NULL::uuid, p_inventario_id::text);
+                  END IF;
+
+                  -- 3. Si puo' registrare? Lo dice la check CONDIVISA con la capability:
+                  --    stato non CONFIRM, nessuna riga, una riga non postabile — in
+                  --    quest'ordine. Il codice lo LEGGO dall'array, quindi l'helper.
+                  v_motivi := script.fn_check_documento_interno_registrabile('INVENTARIO', p_inventario_id);
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'magazzino', 'magazzino.fn_posta_inventario', v_motivi, NULL, NULL::uuid,
+                      jsonb_build_object('inventario_id', p_inventario_id));
+
+                  -- La provenienza e' il DOCUMENTO (S-3), dal BB che la scrive: il tipo
+                  -- INVENTARIO e la chiave secondo il suo key_selector. Un tipo assente o
+                  -- spento e' E_SORG_CONF dal BB (prima E_CONFIG_MANCANTE scritto qui).
+                  SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+                    INTO v_sorgente_id, v_prov_id, v_prov_uid
+                    FROM script.fn_sorgente_provenienza('INVENTARIO', p_inventario_id::text) p;
+
+                  -- 4. La GUC transazionale: apre la porta POSTED e le righe in CONFIRM.
+                  PERFORM set_config('zeroerp.magazzino_posting_inventario', p_inventario_id::text, true);
+
+                  -- 5. Per riga, in ordine di id, DAL PIANO.
+                  FOR v_piano IN
+                      SELECT pi.riga_id, pi.articolo_id, pi.ubicazione_id, pi.lotto_id, pi.asset_id,
+                             pi.qta_sistema, pi.delta, pi.causale_codice_interno, pi.esito
+                        FROM magazzino.fn_inventario_piano(p_inventario_id) pi
+                       WHERE pi.riga_id IS NOT NULL
+                       ORDER BY pi.riga_id
+                  LOOP
+                      -- La fotografia contro cui il conteggio e' stato posto: resta sulla riga.
+                      UPDATE magazzino.inventari_righe r
+                         SET qta_sistema = v_piano.qta_sistema
+                       WHERE r.id = v_piano.riga_id;
+
+                      IF v_piano.esito = 'NON_POSTABILE' THEN
+                          -- La RETE: la check del passo 3 l'ha gia' detto, ma se un giorno
+                          -- i due percorsi divergessero il ledger non deve pagarlo.
+                          v_motivi := script.fn_check_riga_magazzino(v_magazzino_id, v_piano.articolo_id,
+                                                                     v_piano.lotto_id, v_piano.asset_id, v_piano.ubicazione_id);
+                          PERFORM script.fn_raise_primo_motivo_se_presente(
+                              'magazzino', 'magazzino.fn_posta_inventario', v_motivi, NULL, NULL::uuid,
+                              jsonb_build_object('inventario_id', p_inventario_id, 'riga_id', v_piano.riga_id));
+                      END IF;
+
+                      CONTINUE WHEN v_piano.delta = 0;     -- INVARIATA: niente da dire
+
+                      -- Il costo della riga vale solo su un'entrata (D-L2-c): un'uscita va alla media.
+                      SELECT CASE WHEN v_piano.delta > 0 THEN r.costo_unitario END INTO v_costo
+                        FROM magazzino.inventari_righe r WHERE r.id = v_piano.riga_id;
+
+                      movimento_id := magazzino.fn_scrivi_movimento(
+                          p_magazzino_id     => v_magazzino_id,
+                          p_articolo_id      => v_piano.articolo_id,
+                          p_causale          => v_piano.causale_codice_interno,
+                          p_qta              => v_piano.delta,
+                          p_sorgente_tipo_id => v_sorgente_id,
+                          p_sorgente_id      => v_prov_id,
+                          p_sorgente_uid     => v_prov_uid,
+                          p_sorgente_riga    => v_piano.riga_id,
+                          p_costo_unitario   => v_costo,
+                          p_lotto_id         => v_piano.lotto_id,
+                          p_asset_id         => v_piano.asset_id,
+                          p_ubicazione_id    => v_piano.ubicazione_id,
+                          p_data_mov         => script.fn_inizio_giorno_operativo(v_data));
+                      riga_id := v_piano.riga_id;
+                      qta     := v_piano.delta;
+                      RETURN NEXT;
+                  END LOOP;
+
+                  -- 6. La testata a POSTED: passa il guard perche' la GUC dice «sono io».
+                  UPDATE magazzino.inventari i
+                     SET stato_mag_inventario = 'POSTED'
+                   WHERE i.id = p_inventario_id;
+
+                  -- 7. La GUC azzerata (e' comunque transazionale).
+                  PERFORM set_config('zeroerp.magazzino_posting_inventario', '', true);
+                  RETURN;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_posta_rettifica(p_rettifica_id magazzino.rettifiche.id%TYPE)
+               RETURNS TABLE(movimento_id magazzino.movimenti.id%TYPE, riga_id magazzino.rettifiche_righe.id%TYPE, qta magazzino.movimenti.qta%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo: registrare una rettifica CONFIRM — per ogni riga posta qta_delta
+              --   (dato) con RETT_POS/RETT_NEG dal segno attraverso la primitiva; poi la
+              --   testata a POSTED. Una transazione. Ritorna il movimento per riga.
+              -- Rev 2026-09-22 (Lotto 2-bis, R-1): le condizioni di registrabilita' le
+              --   dice script.fn_check_documento_interno_registrabile, la stessa della
+              --   capability. ⭐ Per la rettifica questo ANTICIPA il rifiuto di una riga
+              --   non postabile (prima lo dava la primitiva a meta' ciclo, stesso codice):
+              --   e' la simmetria con l'inventario, non una regola nuova.
+              -- Rev 2026-09-24 (brief-db-magazzino-verbi-con-permesso, D-4): e' un VERBO.
+              --   Prima riga: script.fn_guard_azione('registra_magazzino'), lo stesso
+              --   permesso che il backend chiede all'endpoint. SECURITY DEFINER del
+              --   proprietario: l'app non chiama piu' la primitiva, la chiama il verbo.
+              --   La RLS dei documenti qui non vale: il perimetro lo rimette il predicato
+              --   della policy (fn_scope_ef_whitelist_via_magazzino) nella WHERE del
+              --   FOR UPDATE — fuori perimetro resta NON TROVATO, e senza lock.
+              DECLARE
+                  v_utente       config.user_override_azioni.auth_user_id%TYPE;
+                  v_magazzino_id magazzino.rettifiche.magazzino_id%TYPE;
+                  v_data         magazzino.rettifiche.data%TYPE;
+                  v_stato        magazzino.rettifiche.stato_mag_rettifiche%TYPE;
+                  v_sorgente_id  config.sorgenti.id%TYPE;
+                  v_prov_id      magazzino.movimenti.sorgente_id%TYPE;
+                  v_prov_uid     magazzino.movimenti.sorgente_uid%TYPE;
+                  v_motivi       jsonb;
+                  v_riga         magazzino.rettifiche_righe%ROWTYPE;
+              BEGIN
+                  -- 0. Il permesso, prima di ogni altra cosa: lo stesso del backend.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_azione(v_utente, 'registra_magazzino');
+
+                  IF p_rettifica_id IS NULL OR p_rettifica_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_rettifica',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'rettifica obbligatoria e maggiore di zero', 'p_rettifica_id', p_rettifica_id),
+                          NULL::uuid, 'magazzino.fn_posta_rettifica', 'p_rettifica_id (obbligatoria, maggiore di zero)');
+                  END IF;
+
+                  -- La testata, FOR UPDATE, nel perimetro (predicato della policy: DEFINER).
+                  SELECT t.magazzino_id, t.data, t.stato_mag_rettifiche
+                    INTO v_magazzino_id, v_data, v_stato
+                    FROM magazzino.rettifiche t
+                   WHERE t.id = p_rettifica_id
+                     AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, t.magazzino_id)
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_rettifica',
+                          'E_MAG_DOCUMENTO_NON_TROVATO',
+                          jsonb_build_object('rettifica_id', p_rettifica_id),
+                          NULL::uuid, p_rettifica_id::text);
+                  END IF;
+
+                  -- Si puo' registrare? La check condivisa con la capability.
+                  v_motivi := script.fn_check_documento_interno_registrabile('RETTIFICA', p_rettifica_id);
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'magazzino', 'magazzino.fn_posta_rettifica', v_motivi, NULL, NULL::uuid,
+                      jsonb_build_object('rettifica_id', p_rettifica_id));
+
+                  -- La provenienza e' il DOCUMENTO (S-3), dal BB che la scrive: il tipo
+                  -- RETTIFICA e la chiave secondo il suo key_selector. Un tipo assente o
+                  -- spento e' E_SORG_CONF dal BB (prima E_CONFIG_MANCANTE scritto qui).
+                  SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+                    INTO v_sorgente_id, v_prov_id, v_prov_uid
+                    FROM script.fn_sorgente_provenienza('RETTIFICA', p_rettifica_id::text) p;
+
+                  PERFORM set_config('zeroerp.magazzino_posting_rettifica', p_rettifica_id::text, true);
+
+                  FOR v_riga IN
+                      SELECT r.* FROM magazzino.rettifiche_righe r
+                       WHERE r.rettifica_id = p_rettifica_id
+                       ORDER BY r.id
+                  LOOP
+                      movimento_id := magazzino.fn_scrivi_movimento(
+                          p_magazzino_id     => v_magazzino_id,
+                          p_articolo_id      => v_riga.articolo_id,
+                          p_causale          => CASE WHEN v_riga.qta_delta > 0 THEN 'RETT_POS' ELSE 'RETT_NEG' END,
+                          p_qta              => v_riga.qta_delta,
+                          p_sorgente_tipo_id => v_sorgente_id,
+                          p_sorgente_id      => v_prov_id,
+                          p_sorgente_uid     => v_prov_uid,
+                          p_sorgente_riga    => v_riga.id,
+                          p_costo_unitario   => CASE WHEN v_riga.qta_delta > 0 THEN v_riga.costo_unitario END,
+                          p_lotto_id         => v_riga.lotto_id,
+                          p_asset_id         => v_riga.asset_id,
+                          p_ubicazione_id    => v_riga.ubicazione_id,
+                          p_data_mov         => script.fn_inizio_giorno_operativo(v_data));
+                      riga_id := v_riga.id;
+                      qta     := v_riga.qta_delta;
+                      RETURN NEXT;
+                  END LOOP;
+
+                  UPDATE magazzino.rettifiche t
+                     SET stato_mag_rettifiche = 'POSTED'
+                   WHERE t.id = p_rettifica_id;
+
+                  PERFORM set_config('zeroerp.magazzino_posting_rettifica', '', true);
+                  RETURN;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_posta_trasferimento(p_trasferimento_id magazzino.trasferimenti.id%TYPE)
+               RETURNS TABLE(movimento_id magazzino.movimenti.id%TYPE, riga_id magazzino.trasferimenti_righe.id%TYPE, qta magazzino.movimenti.qta%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              #variable_conflict use_column
+              -- Scopo: registrare un trasferimento interno CONFIRM — per ogni riga la
+              --   coppia TRASF_OUT / TRASF_IN attraverso la primitiva, poi POSTED.
+              --   Una transazione. Ritorna i due movimenti di ogni riga.
+              DECLARE
+                  v_utente      config.user_override_azioni.auth_user_id%TYPE;
+                  v_t           magazzino.trasferimenti%ROWTYPE;
+                  v_sorgente_id config.sorgenti.id%TYPE;
+                  v_prov_id      magazzino.movimenti.sorgente_id%TYPE;
+                  v_prov_uid     magazzino.movimenti.sorgente_uid%TYPE;
+                  v_motivi      jsonb;
+                  v_riga        magazzino.trasferimenti_righe%ROWTYPE;
+              BEGIN
+                  -- 0. Il permesso, prima di ogni altra cosa: lo stesso del backend.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_azione(v_utente, 'registra_magazzino');
+
+                  IF p_trasferimento_id IS NULL OR p_trasferimento_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_trasferimento',
+                          'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'trasferimento obbligatorio e maggiore di zero',
+                                             'p_trasferimento_id', p_trasferimento_id),
+                          NULL::uuid, 'magazzino.fn_posta_trasferimento',
+                          'p_trasferimento_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- La testata, FOR UPDATE, nel perimetro del magazzino di partenza.
+                  SELECT t.* INTO v_t
+                    FROM magazzino.trasferimenti t
+                   WHERE t.id = p_trasferimento_id
+                     AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, t.magazzino_id_from)
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('magazzino', 'magazzino.fn_posta_trasferimento',
+                          'E_MAG_DOCUMENTO_NON_TROVATO',
+                          jsonb_build_object('trasferimento_id', p_trasferimento_id),
+                          NULL::uuid, p_trasferimento_id::text);
+                  END IF;
+
+                  -- Si puo' registrare? La check condivisa con la capability.
+                  v_motivi := script.fn_check_documento_interno_registrabile('TRASFERIMENTO', p_trasferimento_id);
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'magazzino', 'magazzino.fn_posta_trasferimento', v_motivi, NULL, NULL::uuid,
+                      jsonb_build_object('trasferimento_id', p_trasferimento_id));
+
+                  -- La provenienza e' il DOCUMENTO (S-3), dal BB che la scrive: il tipo
+                  -- TRASFERIMENTO e la chiave secondo il suo key_selector. Un tipo assente o
+                  -- spento e' E_SORG_CONF dal BB (prima E_CONFIG_MANCANTE scritto qui).
+                  SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+                    INTO v_sorgente_id, v_prov_id, v_prov_uid
+                    FROM script.fn_sorgente_provenienza('TRASFERIMENTO', p_trasferimento_id::text) p;
+
+                  PERFORM set_config('zeroerp.magazzino_posting_trasferimento', p_trasferimento_id::text, true);
+
+                  FOR v_riga IN
+                      SELECT r.* FROM magazzino.trasferimenti_righe r
+                       WHERE r.trasferimento_id = p_trasferimento_id
+                       ORDER BY r.id
+                  LOOP
+                      -- L'uscita dall'origine: alla media corrente (la primitiva).
+                      movimento_id := magazzino.fn_scrivi_movimento(
+                          p_magazzino_id     => v_t.magazzino_id_from,
+                          p_articolo_id      => v_riga.articolo_id,
+                          p_causale          => 'TRASF_OUT',
+                          p_qta              => -v_riga.qta,
+                          p_sorgente_tipo_id => v_sorgente_id,
+                          p_sorgente_id      => v_prov_id,
+                          p_sorgente_uid     => v_prov_uid,
+                          p_sorgente_riga    => v_riga.id,
+                          p_lotto_id         => v_riga.lotto_id,
+                          p_asset_id         => v_riga.asset_id,
+                          p_ubicazione_id    => v_riga.ubicazione_id_da,
+                          p_data_mov         => script.fn_inizio_giorno_operativo(v_t.data),
+                          p_transfer_uid     => v_t.uid);
+                      riga_id := v_riga.id;
+                      qta     := -v_riga.qta;
+                      RETURN NEXT;
+
+                      -- L'entrata nella destinazione: al costo dell'uscita (la gemella).
+                      movimento_id := magazzino.fn_scrivi_movimento(
+                          p_magazzino_id     => v_t.magazzino_id_to,
+                          p_articolo_id      => v_riga.articolo_id,
+                          p_causale          => 'TRASF_IN',
+                          p_qta              => v_riga.qta,
+                          p_sorgente_tipo_id => v_sorgente_id,
+                          p_sorgente_id      => v_prov_id,
+                          p_sorgente_uid     => v_prov_uid,
+                          p_sorgente_riga    => v_riga.id,
+                          p_lotto_id         => v_riga.lotto_id,
+                          p_asset_id         => v_riga.asset_id,
+                          p_ubicazione_id    => v_riga.ubicazione_id_a,
+                          p_data_mov         => script.fn_inizio_giorno_operativo(v_t.data),
+                          p_transfer_uid     => v_t.uid);
+                      riga_id := v_riga.id;
+                      qta     := v_riga.qta;
+                      RETURN NEXT;
+                  END LOOP;
+
+                  UPDATE magazzino.trasferimenti t
+                     SET stato_trasferimento = 'POSTED'
+                   WHERE t.id = p_trasferimento_id;
+
+                  PERFORM set_config('zeroerp.magazzino_posting_trasferimento', '', true);
+                  RETURN;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_togli_riga_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_riga_id      bigint)  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+                  v_fam    record;
+                  v_c      integer;   -- un conteggio: niente da ancorare
+              BEGIN
+                  -- Scopo: il gesto «togli la riga» di un documento interno.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(
+                      v_utente, 'magazzino',
+                      (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),
+                      'TUTTO');
+
+                  SELECT b.* INTO v_fam
+                    FROM magazzino.fn_documento_interno_blocca(
+                             p_famiglia, p_documento_id, v_utente,
+                             'magazzino.fn_togli_riga_documento_interno') AS b;
+
+                  -- La testata in DRAFT la chiede il guard delle righe
+                  -- (E_MAG_DOCUMENTO_RIGHE_CONGELATE), per ogni scrittore.
+                  EXECUTE format('DELETE FROM magazzino.%I r WHERE r.id = $1 AND r.%I = $2',
+                                 v_fam.tabella_righe, v_fam.colonna_fk)
+                    USING p_riga_id, p_documento_id;
+                  GET DIAGNOSTICS v_c = ROW_COUNT;
+                  IF v_c = 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_togli_riga_documento_interno',
+                          'E_MAG_DOCUMENTO_RIGA_NON_TROVATA',
+                          jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id,
+                                             'riga_id', p_riga_id),
+                          NULL::uuid,
+                          COALESCE(p_riga_id::text, '(nessuna)'));
+                  END IF;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.trgfn_ubicazioni_guard_parent()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_padre_magazzino_id  magazzino.ubicazioni.magazzino_id%TYPE;
+                v_padre_codice        magazzino.ubicazioni.codice%TYPE;
+                v_mag_codice          magazzino.magazzini.codice%TYPE;
+                v_mag_padre_codice    magazzino.magazzini.codice%TYPE;
+                v_ciclo               boolean := false;  -- l'esito di un EXISTS: nessuna colonna
+                v_utente              config.user_override_aree.auth_user_id%TYPE;
+              BEGIN
+                -- Scopo: il padre di un'ubicazione (parent_id) sta nello stesso magazzino
+                --   della figlia, e la catena dei padri non torna mai su se stessa.
+                --   Un padre fuori dal perimetro dell'operatore in sessione non risolve, e
+                --   si rifiuta lo stesso (fail-closed). Il perimetro si chiede col predicato
+                --   esplicito (fn_scope_ef_whitelist_via_magazzino), non alla RLS: dentro un
+                --   verbo SECURITY DEFINER la RLS non filtra, e la frase direbbe il magazzino
+                --   di un'altra azienda. Senza operatore in sessione decide la RLS di chi
+                --   scrive (il migratore vede tutto, l'app nulla).
+                -- Regole:
+                --   - parent_id = id, o NEW.id fra gli antenati del padre nuovo (solo in
+                --     UPDATE: in INSERT la riga non e' ancora in nessuna catena):
+                --     E_MAG_UBICAZIONE_PADRE_CICLICO (DATO_ERRATO, campo parent_id);
+                --   - padre di un altro magazzino, o non visibile:
+                --     E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO (DATO_ERRATO, campo parent_id).
+                --   Il cambio di magazzino_id NON passa di qui: e' una colonna immutabile
+                --   (automation_lock_columns, E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE).
+                IF NEW.parent_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 1) Ciclo di lunghezza uno: un'ubicazione dentro se stessa.
+                IF NEW.parent_id = NEW.id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'magazzino.trgfn_ubicazioni_guard_parent',
+                    'E_MAG_UBICAZIONE_PADRE_CICLICO',
+                    jsonb_build_object(
+                      'detail',        'parent_id = id',
+                      'campo',         'parent_id',
+                      'ubicazione_id', NEW.id,
+                      'parent_id',     NEW.parent_id
+                    ),
+                    NULL::uuid,
+                    NEW.codice,
+                    NEW.codice
+                  );
+                END IF;
+
+                -- 2) Il padre, nel perimetro di chi agisce: magazzino e codici per la frase.
+                v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                SELECT u.magazzino_id, u.codice, m.codice
+                  INTO v_padre_magazzino_id, v_padre_codice, v_mag_padre_codice
+                  FROM magazzino.ubicazioni u
+                  LEFT JOIN magazzino.magazzini m ON m.id = u.magazzino_id
+                 WHERE u.id = NEW.parent_id
+                   AND (v_utente IS NULL
+                        OR script.fn_scope_ef_whitelist_via_magazzino(v_utente, u.magazzino_id));
+
+                IF v_padre_magazzino_id IS NULL OR v_padre_magazzino_id <> NEW.magazzino_id THEN
+                  SELECT m.codice INTO v_mag_codice
+                    FROM magazzino.magazzini m
+                   WHERE m.id = NEW.magazzino_id;
+
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'magazzino.trgfn_ubicazioni_guard_parent',
+                    'E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO',
+                    jsonb_build_object(
+                      'detail',             'il padre non e'' del magazzino della figlia (o non e'' visibile)',
+                      'campo',              'parent_id',
+                      'ubicazione_id',      NEW.id,
+                      'parent_id',          NEW.parent_id,
+                      'magazzino_id',       NEW.magazzino_id,
+                      'magazzino_id_padre', v_padre_magazzino_id
+                    ),
+                    NULL::uuid,
+                    coalesce(v_padre_codice, NEW.parent_id::text),
+                    coalesce(v_mag_codice, NEW.magazzino_id::text),
+                    coalesce('appartiene al magazzino ' || v_mag_padre_codice,
+                             'non è visibile con i permessi di chi sta operando')
+                  );
+                END IF;
+
+                -- 3) Cicli piu' lunghi: NEW.id fra gli antenati del padre nuovo. Solo in
+                --    UPDATE. L'array dei visitati ferma la risalita anche su una catena
+                --    gia' ciclica nel pregresso.
+                IF TG_OP = 'UPDATE' THEN
+                  SELECT EXISTS (
+                    WITH RECURSIVE antenati AS (
+                      SELECT u.id, u.parent_id, ARRAY[u.id] AS percorso
+                        FROM magazzino.ubicazioni u
+                       WHERE u.id = NEW.parent_id
+                      UNION ALL
+                      SELECT u.id, u.parent_id, a.percorso || u.id
+                        FROM antenati a
+                        JOIN magazzino.ubicazioni u ON u.id = a.parent_id
+                       WHERE NOT (u.id = ANY (a.percorso))
+                    )
+                    SELECT 1 FROM antenati a WHERE a.id = NEW.id
+                  ) INTO v_ciclo;
+
+                  IF v_ciclo THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'magazzino.trgfn_ubicazioni_guard_parent',
+                      'E_MAG_UBICAZIONE_PADRE_CICLICO',
+                      jsonb_build_object(
+                        'detail',        'NEW.id e'' fra gli antenati di parent_id',
+                        'campo',         'parent_id',
+                        'ubicazione_id', NEW.id,
+                        'parent_id',     NEW.parent_id
+                      ),
+                      NULL::uuid,
+                      NEW.codice,
+                      v_padre_codice
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;

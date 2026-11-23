@@ -69,9 +69,7 @@ BEGIN
   -- =========================================================
 
   -- 1. Leggi user_id dalla sessione PG
-  v_auth_user_id := NULLIF(
-    current_setting('app.current_user_id', true), ''
-  )::integer;
+  v_auth_user_id := script.fn_utente_di_sessione('script.trgfn_guard_emittente_scope');
 
   IF v_auth_user_id IS NULL THEN
     -- ⭐ UN CRITERIO SOLO, E NON E' NOSTRO.

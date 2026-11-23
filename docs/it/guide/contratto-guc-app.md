@@ -1,12 +1,13 @@
 # Guida — Contratto GUC `app.*`
 
-> **Ultimo aggiornamento**: 26 ottobre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > **Destinatari**: backend Django (authentication class, middleware), autori di funzioni DB e policy RLS
 >
 > **Vedi anche** — funzioni e trigger DB:
 >
 > * [script.fn_current_identita_context](/dbzero/script/funzioni/fn_current_identita_context) — la tripla letta dal DB in un colpo solo, o `NULL` se incompleta
+> * [script.fn_utente_di_sessione](/dbzero/script/funzioni/fn_utente_di_sessione) — `app.current_user_id` letto come id dell'utente, da funzioni e viste
 > * [script.fn_scope_ba_ownership](/dbzero/script/funzioni/fn_scope_ba_ownership) · [script.fn_scope_ef_whitelist](/dbzero/script/funzioni/fn_scope_ef_whitelist) · [script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope) — gli scope che le policy interrogano
 > * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic) — il trigger audit che firma le righe con questi GUC
 >
@@ -163,8 +164,20 @@ castabile. Chi la consuma non deve quindi ricontrollare i singoli campi: se `ide
 ### 4.3 Trigger audit
 
 I trigger generici [`script.trgfn_audit_data_user_generic()`](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
-leggono `app.jwt_user` e `app.current_user_id`: è la firma delle righe, non un controllo di
-accesso. Restano fuori dalle policy RLS.
+leggono `app.jwt_user`: è la firma delle righe, non un controllo di accesso. Restano fuori
+dalle policy RLS.
+
+### 4.4 Funzioni e viste: l'utente da una sede sola
+
+Una funzione o una vista che ha bisogno dell'utente della richiesta non converte
+`app.current_user_id` da sé: chiama
+[`script.fn_utente_di_sessione('<chi legge>')`](/dbzero/script/funzioni/fn_utente_di_sessione).
+Se la GUC manca o è vuota risponde `NULL`, e che cosa voglia dire «nessun utente» lo decide chi
+legge. Se contiene qualcosa che non è l'id di un utente si ferma con
+`E_SCRIPT_CHIAMATA_NON_VALIDA`, e il messaggio nomina la funzione che leggeva. Un pgTAP del
+catalogo tiene la lettura in quella sede.
+
+Le policy RLS fanno ancora la conversione da sé (§4.1).
 
 ---
 
@@ -273,7 +286,12 @@ contratto**: si interroga `pg_policies`, non si tiene a mano qui. Il disegno d'i
 ### 7.4 Trigger audit
 
 [`script.trgfn_audit_data_user_generic()`](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
-— legge `app.jwt_user` e `app.current_user_id`, e con quelli firma `user_insert` / `user_update`.
+— legge `app.jwt_user`, e con quello firma `user_insert` / `user_update`.
+
+### 7.5 Funzioni e viste
+
+Leggono l'utente con [`script.fn_utente_di_sessione`](/dbzero/script/funzioni/fn_utente_di_sessione),
+mai con la conversione delle policy (§4.4).
 
 ---
 

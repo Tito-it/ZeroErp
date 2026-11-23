@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/fn_modifica_lotto.md" %}
 # ⚙️ Funzione `fn_modifica_lotto`
 
 ```sql
@@ -19,8 +20,7 @@ CREATE OR REPLACE FUNCTION magazzino.fn_modifica_lotto(p_id bigint, p_dati jsonb
 AS $function$
 DECLARE
     v_utente   config.user_override_oggetti.auth_user_id%TYPE;
-    v_ammesse  text[];
-    v_estranea text;
+    v_ammesse  text[];  -- nomi di colonna: nessuna colonna di cui siano il riflesso
     v_riga     jsonb;
 BEGIN
     -- Scopo: il gesto «modifica il lotto» dell'operatore, dentro
@@ -29,24 +29,11 @@ BEGIN
     v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
     PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'lotti', 'TUTTO');
 
-    IF p_dati IS NULL OR jsonb_typeof(p_dati) <> 'object' THEN
-        PERFORM script.fn_log_and_raise_error(
-            'magazzino', 'magazzino.fn_modifica_lotto', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
-            jsonb_build_object('id', p_id, 'tipo_dati', jsonb_typeof(p_dati)),
-            NULL::uuid,
-            'magazzino.fn_modifica_lotto',
-            'i dati non sono un oggetto');
-    END IF;
-
     v_ammesse  := magazzino.fn_lotti_colonne_ammesse('modifica');
-    v_estranea := script.fn_prima_chiave_estranea(p_dati, v_ammesse);
-    IF v_estranea IS NOT NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'magazzino', 'magazzino.fn_modifica_lotto', 'E_CAMPO_NON_AMMESSO',
-            jsonb_build_object('campo', v_estranea, 'id', p_id),
-            NULL::uuid,
-            v_estranea);
-    END IF;
+    PERFORM script.fn_guard_campi_ammessi(
+        p_dati, v_ammesse,
+        'magazzino', 'magazzino.fn_modifica_lotto',
+        jsonb_build_object('id', p_id));
 
     -- No-leak: fuori perimetro e inesistente rispondono uguale.
     PERFORM 1

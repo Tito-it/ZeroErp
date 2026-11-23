@@ -18,8 +18,7 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_contatto(p_soggetto_id uuid, p_so
 AS $function$
 DECLARE
     v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
-    v_estranea text;
-    v_manca    text;
+    v_manca    text;   -- il nome della chiave obbligatoria che manca, non una colonna
     c_ammesse  CONSTANT text[] := ARRAY[
         'tipo_contatto_id', 'nominativo', 'email', 'telefono', 'cellulare',
         'pec', 'note', 'is_default', 'default_context', 'titolo_cortesia_id',
@@ -46,14 +45,10 @@ BEGIN
             'soggetto mancante o campi che non sono un oggetto');
     END IF;
 
-    v_estranea := script.fn_prima_chiave_estranea(v_campi, c_ammesse);
-    IF v_estranea IS NOT NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'anagrafiche', 'anagrafiche.fn_crea_contatto', 'E_CAMPO_NON_AMMESSO',
-            jsonb_build_object('campo', v_estranea, 'soggetto_id', p_soggetto_id),
-            NULL::uuid,
-            v_estranea);
-    END IF;
+    PERFORM script.fn_guard_campi_ammessi(
+        v_campi, c_ammesse,
+        'anagrafiche', 'anagrafiche.fn_crea_contatto',
+        jsonb_build_object('soggetto_id', p_soggetto_id));
 
     v_manca := CASE
                    WHEN NULLIF(btrim(v_campi ->> 'nominativo'), '') IS NULL THEN 'nominativo'

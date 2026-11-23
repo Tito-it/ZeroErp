@@ -24,7 +24,7 @@ BEGIN
     -- Il secondo parametro 'true' di current_setting evita errore se
     -- il GUC non e' definito (ritorna NULL).
     BEGIN
-        v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+        v_user_id := script.fn_utente_di_sessione('anagrafiche.trgfn_billing_account_guard_admin_globale');
     EXCEPTION WHEN OTHERS THEN
         v_user_id := NULL;
     END;

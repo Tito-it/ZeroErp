@@ -20,7 +20,7 @@ AS $function$
   SELECT p_valore IS NOT NULL
      AND NOT COALESCE(
            script.fn_is_super_admin(
-             NULLIF(current_setting('app.current_user_id', true), '')::integer),
+             script.fn_utente_di_sessione('anagrafiche.fn_id_fiscale_bloccato')),
            false);
 $function$
 

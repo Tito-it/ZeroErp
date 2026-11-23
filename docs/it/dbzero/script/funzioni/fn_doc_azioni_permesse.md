@@ -57,7 +57,7 @@ BEGIN
         RETURN;
     END IF;
 
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('script.fn_doc_azioni_permesse');
 
     RETURN QUERY EXECUTE format(
         'SELECT t.%2$I::bigint, s.codice_interno::text, t.meta ->> ''action_key'','

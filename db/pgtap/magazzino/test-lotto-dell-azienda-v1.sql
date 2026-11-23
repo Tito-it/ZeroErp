@@ -39,8 +39,8 @@
 --   11) riga col lotto di B: E_RIFERIMENTO_DI_ALTRO_EMITTENTE, campo lotto_id
 --   12) riga col seriale di B: E_RIFERIMENTO_DI_ALTRO_EMITTENTE
 --   13) riga con un lotto che non esiste: lo stesso codice (no-leak)
---   14) UPDATE in un'istruzione sola verso il lotto di B: E_RIFERIMENTO_DI_ALTRO_EMITTENTE
---   15) UPDATE che non tocca il riferimento: passa
+--   14) modifica della riga (verbo) verso il lotto di B, con la quantita': E_RIFERIMENTO_DI_ALTRO_EMITTENTE
+--   15) modifica della riga (verbo) che non tocca il riferimento: passa
 --   la forma
 --   16) i dodici montaggi: lotto_id e asset_id dei sei figli, coi modi giusti
 --   17) fra gli a10 di movimenti il perimetro parla prima del riferimento
@@ -82,9 +82,7 @@ SELECT dbops.fn_pgtap_crea_magazzino('PGT-LDA-A', false)                        
   FROM _art a;
 
 -- Un inventario in bozza di A, per le righe.
-INSERT INTO magazzino.inventari (magazzino_id) SELECT mag FROM _fa;
-CREATE TEMP TABLE _inv AS
-SELECT i.id AS inv FROM magazzino.inventari i WHERE i.magazzino_id = (SELECT mag FROM _fa);
+CREATE TEMP TABLE _inv AS SELECT dbops.fn_pgtap_crea_inventario(mag) AS inv FROM _fa;
 
 -- Il livello d'area dell'operatore A.
 CREATE OR REPLACE FUNCTION pg_temp.livello_area(p_area text, p_livello text) RETURNS void
@@ -184,41 +182,45 @@ SELECT is(
 -- 10-15 Il guard dei figli, sulle righe di inventario
 -- ============================================================
 SELECT is(
-    dbops.fn_pgtap_codice_errore($$INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, lotto_id, qta_contata)
-        SELECT i.inv, a.lotti, f.lotto, 1 FROM _inv i, _art a, _fa f$$),
+    dbops.fn_pgtap_codice_errore($$SELECT dbops.fn_pgtap_crea_riga_inventario(i.inv, a.lotti, 1, jsonb_build_object('lotto_id', f.lotto))
+        FROM _inv i, _art a, _fa f$$),
     NULL,
     '10. riga di inventario col lotto proprio: passa');
 
 SELECT is(
-    dbops.fn_pgtap_codice_errore($$INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, lotto_id, qta_contata)
-        SELECT i.inv, a.lotti, b.lotto, 2 FROM _inv i, _art a, _fb b$$),
+    dbops.fn_pgtap_codice_errore($$SELECT dbops.fn_pgtap_crea_riga_inventario(i.inv, a.lotti, 2, jsonb_build_object('lotto_id', b.lotto))
+        FROM _inv i, _art a, _fb b$$),
     'E_RIFERIMENTO_DI_ALTRO_EMITTENTE',
     '11. riga di inventario col lotto di B: E_RIFERIMENTO_DI_ALTRO_EMITTENTE');
 
 SELECT is(
-    dbops.fn_pgtap_codice_errore($$INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, asset_id, qta_contata)
-        SELECT i.inv, a.ser, b.asset, 1 FROM _inv i, _art a, _fb b$$),
+    dbops.fn_pgtap_codice_errore($$SELECT dbops.fn_pgtap_crea_riga_inventario(i.inv, a.ser, 1, jsonb_build_object('asset_id', b.asset))
+        FROM _inv i, _art a, _fb b$$),
     'E_RIFERIMENTO_DI_ALTRO_EMITTENTE',
     '12. riga di inventario col seriale di B: E_RIFERIMENTO_DI_ALTRO_EMITTENTE');
 
 SELECT is(
-    dbops.fn_pgtap_codice_errore($$INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, lotto_id, qta_contata)
-        SELECT i.inv, a.lotti, (SELECT max(l.id) + 1000000 FROM magazzino.lotti l), 3 FROM _inv i, _art a$$),
+    dbops.fn_pgtap_codice_errore($$SELECT dbops.fn_pgtap_crea_riga_inventario(i.inv, a.lotti, 3,
+            jsonb_build_object('lotto_id', (SELECT max(l.id) + 1000000 FROM magazzino.lotti l)))
+        FROM _inv i, _art a$$),
     'E_RIFERIMENTO_DI_ALTRO_EMITTENTE',
     '13. riga con un lotto che non esiste: lo stesso codice del lotto altrui (no-leak)');
 
 SELECT is(
-    dbops.fn_pgtap_codice_errore($$UPDATE magazzino.inventari_righe r
-          SET lotto_id = (SELECT lotto FROM _fb), qta_contata = 5
-        WHERE r.inventario_id = (SELECT inv FROM _inv) AND r.lotto_id = (SELECT lotto FROM _fa)$$),
+    dbops.fn_pgtap_codice_errore($$SELECT magazzino.fn_modifica_riga_documento_interno('INVENTARIO', i.inv, r.id,
+            jsonb_build_object('lotto_id', (SELECT lotto FROM _fb), 'qta_contata', 5))
+        FROM _inv i JOIN magazzino.inventari_righe r ON r.inventario_id = i.inv
+       WHERE r.lotto_id = (SELECT lotto FROM _fa)$$),
     'E_RIFERIMENTO_DI_ALTRO_EMITTENTE',
-    '14. UPDATE in un''istruzione sola verso il lotto di B: E_RIFERIMENTO_DI_ALTRO_EMITTENTE');
+    '14. modifica della riga verso il lotto di B, con la quantita'': E_RIFERIMENTO_DI_ALTRO_EMITTENTE');
 
 SELECT is(
-    dbops.fn_pgtap_codice_errore($$UPDATE magazzino.inventari_righe r SET qta_contata = 7
-        WHERE r.inventario_id = (SELECT inv FROM _inv) AND r.lotto_id = (SELECT lotto FROM _fa)$$),
+    dbops.fn_pgtap_codice_errore($$SELECT magazzino.fn_modifica_riga_documento_interno('INVENTARIO', i.inv, r.id,
+            jsonb_build_object('qta_contata', 7))
+        FROM _inv i JOIN magazzino.inventari_righe r ON r.inventario_id = i.inv
+       WHERE r.lotto_id = (SELECT lotto FROM _fa)$$),
     NULL,
-    '15. UPDATE che non tocca il riferimento: passa');
+    '15. modifica della riga che non tocca il riferimento: passa');
 
 -- ============================================================
 -- 16-17 La forma

@@ -134,9 +134,7 @@ BEGIN
     --    trigger di audit leggendo app.jwt_user; qui si tiene
     --    l'id, che regge a un rename. NULL sul canale batch, dove
     --    non c'e' un utente: li' «chi» resta user_insert.
-    v_auth_user_id := NULLIF(
-        current_setting('app.current_user_id', true), ''
-    )::bigint;
+    v_auth_user_id := script.fn_utente_di_sessione('vendite.trgfn_event_log_deriva_scope');
     NEW.auth_user_id := v_auth_user_id;
 
     RETURN NEW;

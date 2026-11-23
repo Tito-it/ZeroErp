@@ -1,0 +1,346 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche: i lettori di app.current_user_id passano a script.fn_utente_di_sessione.
+#   Brief: brief-db-revisione-ui (§3.6-sexies, giro 8; Q60 (a)).
+#
+# Il perche': ognuna convertiva la GUC da se',
+#   NULLIF(current_setting('app.current_user_id', true), '')::integer, e un
+#   valore che non e' un intero dava il 22P02 grezzo. Ora la legge il BB
+#   (20261123-16): assente o vuota resta NULL, come prima; un valore che non
+#   e' l'id di un utente da' E_SCRIPT_CHIAMATA_NON_VALIDA, col nome della
+#   funzione che legge.
+# Funzioni: fn_id_fiscale_bloccato, trgfn_billing_account_guard_admin_globale, trgfn_billing_account_link_ef.
+# Cambia solo la lettura. Corpo dal vivo (dbdev, 2026-11-23); firma, RETURNS e
+#   attributi dall'ultimo changeSet che ha ancora i %TYPE. Firma, volatilita',
+#   sicurezza, proprietario e GRANT invariati: CREATE OR REPLACE. La rollback
+#   riporta i corpi di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261123-19-update-lettori-utente-di-sessione-anagrafiche-mctit.yaml
+
+  - changeSet:
+      id: 20261123-19-update-lettori-utente-di-sessione-anagrafiche
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche: le funzioni che leggono app.current_user_id passano a script.fn_utente_di_sessione
+        invece di convertire la GUC da se'. Brief: brief-db-revisione-ui (§3.6-sexies, Q60).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "4"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('script', 'fn_utente_di_sessione'), ('anagrafiche', 'fn_id_fiscale_bloccato'), ('anagrafiche', 'trgfn_billing_account_guard_admin_globale'), ('anagrafiche', 'trgfn_billing_account_link_ef'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_id_fiscale_bloccato(
+                  p_valore anagrafiche.soggetti.codice_fiscale%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                SELECT p_valore IS NOT NULL
+                   AND NOT COALESCE(
+                         script.fn_is_super_admin(
+                           script.fn_utente_di_sessione('anagrafiche.fn_id_fiscale_bloccato')),
+                         false);
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_user_id integer;
+                  v_can_create boolean;
+              BEGIN
+                  -- Lettura GUC app.current_user_id (settato dal middleware Django).
+                  -- Il secondo parametro 'true' di current_setting evita errore se
+                  -- il GUC non e' definito (ritorna NULL).
+                  BEGIN
+                      v_user_id := script.fn_utente_di_sessione('anagrafiche.trgfn_billing_account_guard_admin_globale');
+                  EXCEPTION WHEN OTHERS THEN
+                      v_user_id := NULL;
+                  END;
+
+                  -- Bootstrap / seed / job senza utente: non bloccare.
+                  -- Le INSERT applicative passano sempre da middleware quindi
+                  -- il GUC c'e'. L'unico scenario senza GUC sono i seed di
+                  -- migrazione e le manutenzioni manuali.
+                  IF v_user_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- La regola sta in fn_check_user_can_create_ba (rev 2026-08-04):
+                  -- serve un emittente su cui scrivere, cioe' una riga in
+                  -- user_emittenti_fiscali oppure app.current_emittente_id valido
+                  -- per l'utente; senza, passa solo un'istanza a zero emittenti attivi.
+                  v_can_create := script.fn_check_user_can_create_ba(v_user_id);
+
+                  IF v_can_create IS NOT TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_BA_ADMIN_GLOBALE_VIETATO',
+                          jsonb_build_object(
+                              'detail', 'Nessun emittente fiscale su cui scrivere (ne'' riga in user_emittenti_fiscali ne'' app.current_emittente_id valido) ed esistono emittenti attivi: billing account non creabile',
+                              'auth_user_id', v_user_id,
+                              'codice_ba', NEW.codice
+                          ),
+                          NULL::uuid,
+                          coalesce(NEW.codice, '')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_link_ef()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_user_id integer;
+                  v_emittente_id           anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_emittente_sr_id        anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_existing               bigint;
+              BEGIN
+                  -- 1) Lettura GUC utente corrente (settato dal middleware Django)
+                  BEGIN
+                      v_user_id := script.fn_utente_di_sessione('anagrafiche.trgfn_billing_account_link_ef');
+                  EXCEPTION WHEN OTHERS THEN
+                      v_user_id := NULL;
+                  END;
+
+                  -- Seed/bootstrap senza utente => no auto-link
+                  IF v_user_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 2) Resolve emittente per l'operatore (PK reale)
+                  v_emittente_id := script.fn_resolve_emittente_for_user(v_user_id);
+
+                  -- 3) Admin globale o istanza "0 emittenti": niente da linkare.
+                  --    Il guard BEFORE INSERT (a10) ha gia' bloccato il caso
+                  --    "admin globale + emittenti presenti", quindi qui un NULL
+                  --    significa solo "non c'e' nulla da linkare".
+                  IF v_emittente_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 4) La tabella di mapping usa emittente_soggetto_ruolo_id,
+                  --    non la PK reale: lookup.
+                  SELECT ef.soggetto_ruolo_id
+                    INTO v_emittente_sr_id
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.id = v_emittente_id;
+
+                  -- Difensivo: race con disattivazione emittente fra resolver e qui
+                  IF v_emittente_sr_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 5) Idempotenza: se esiste gia' un mapping (es. doppia
+                  --    esecuzione del trigger o INSERT applicativa parallela)
+                  --    non duplichiamo. uq_emittenti_fiscali_ba garantisce
+                  --    unicita' su billing_account_id non NULL, ma il check
+                  --    esplicito da' un errore piu' chiaro.
+                  SELECT efba.id
+                    INTO v_existing
+                    FROM anagrafiche.emittenti_fiscali_billing_account efba
+                   WHERE efba.billing_account_id = NEW.id
+                   LIMIT 1;
+
+                  IF v_existing IS NOT NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 6) INSERT mapping specifico (is_default = false)
+                  INSERT INTO anagrafiche.emittenti_fiscali_billing_account (
+                      billing_account_id,
+                      emittente_soggetto_ruolo_id,
+                      is_default
+                  ) VALUES (
+                      NEW.id,
+                      v_emittente_sr_id,
+                      false
+                  );
+
+                  RETURN NEW;
+              END
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_id_fiscale_bloccato(
+                  p_valore anagrafiche.soggetti.codice_fiscale%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                SELECT p_valore IS NOT NULL
+                   AND NOT COALESCE(
+                         script.fn_is_super_admin(
+                           NULLIF(current_setting('app.current_user_id', true), '')::integer),
+                         false);
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_user_id integer;
+                  v_can_create boolean;
+              BEGIN
+                  -- Lettura GUC app.current_user_id (settato dal middleware Django).
+                  -- Il secondo parametro 'true' di current_setting evita errore se
+                  -- il GUC non e' definito (ritorna NULL).
+                  BEGIN
+                      v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  EXCEPTION WHEN OTHERS THEN
+                      v_user_id := NULL;
+                  END;
+
+                  -- Bootstrap / seed / job senza utente: non bloccare.
+                  -- Le INSERT applicative passano sempre da middleware quindi
+                  -- il GUC c'e'. L'unico scenario senza GUC sono i seed di
+                  -- migrazione e le manutenzioni manuali.
+                  IF v_user_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- La regola sta in fn_check_user_can_create_ba (rev 2026-08-04):
+                  -- serve un emittente su cui scrivere, cioe' una riga in
+                  -- user_emittenti_fiscali oppure app.current_emittente_id valido
+                  -- per l'utente; senza, passa solo un'istanza a zero emittenti attivi.
+                  v_can_create := script.fn_check_user_can_create_ba(v_user_id);
+
+                  IF v_can_create IS NOT TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_BA_ADMIN_GLOBALE_VIETATO',
+                          jsonb_build_object(
+                              'detail', 'Nessun emittente fiscale su cui scrivere (ne'' riga in user_emittenti_fiscali ne'' app.current_emittente_id valido) ed esistono emittenti attivi: billing account non creabile',
+                              'auth_user_id', v_user_id,
+                              'codice_ba', NEW.codice
+                          ),
+                          NULL::uuid,
+                          coalesce(NEW.codice, '')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_link_ef()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_user_id integer;
+                  v_emittente_id           anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_emittente_sr_id        anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_existing               bigint;
+              BEGIN
+                  -- 1) Lettura GUC utente corrente (settato dal middleware Django)
+                  BEGIN
+                      v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  EXCEPTION WHEN OTHERS THEN
+                      v_user_id := NULL;
+                  END;
+
+                  -- Seed/bootstrap senza utente => no auto-link
+                  IF v_user_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 2) Resolve emittente per l'operatore (PK reale)
+                  v_emittente_id := script.fn_resolve_emittente_for_user(v_user_id);
+
+                  -- 3) Admin globale o istanza "0 emittenti": niente da linkare.
+                  --    Il guard BEFORE INSERT (a10) ha gia' bloccato il caso
+                  --    "admin globale + emittenti presenti", quindi qui un NULL
+                  --    significa solo "non c'e' nulla da linkare".
+                  IF v_emittente_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 4) La tabella di mapping usa emittente_soggetto_ruolo_id,
+                  --    non la PK reale: lookup.
+                  SELECT ef.soggetto_ruolo_id
+                    INTO v_emittente_sr_id
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.id = v_emittente_id;
+
+                  -- Difensivo: race con disattivazione emittente fra resolver e qui
+                  IF v_emittente_sr_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 5) Idempotenza: se esiste gia' un mapping (es. doppia
+                  --    esecuzione del trigger o INSERT applicativa parallela)
+                  --    non duplichiamo. uq_emittenti_fiscali_ba garantisce
+                  --    unicita' su billing_account_id non NULL, ma il check
+                  --    esplicito da' un errore piu' chiaro.
+                  SELECT efba.id
+                    INTO v_existing
+                    FROM anagrafiche.emittenti_fiscali_billing_account efba
+                   WHERE efba.billing_account_id = NEW.id
+                   LIMIT 1;
+
+                  IF v_existing IS NOT NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 6) INSERT mapping specifico (is_default = false)
+                  INSERT INTO anagrafiche.emittenti_fiscali_billing_account (
+                      billing_account_id,
+                      emittente_soggetto_ruolo_id,
+                      is_default
+                  ) VALUES (
+                      NEW.id,
+                      v_emittente_sr_id,
+                      false
+                  );
+
+                  RETURN NEW;
+              END
+              $function$;

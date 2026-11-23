@@ -39,7 +39,7 @@ BEGIN
     -- Ritorna: il legame, la fine di prima e di adesso, i prezzi
     --   chiusi e quelli tolti.
     -- =========================================================
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('catalogo.fn_chiudi_legame_distinta');
 
     -- 1. Parametri e permesso sul catalogo.
     IF p_legame_id IS NULL THEN

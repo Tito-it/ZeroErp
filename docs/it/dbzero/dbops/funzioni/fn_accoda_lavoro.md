@@ -128,7 +128,7 @@ BEGIN
                 END;
 
     IF v_da_app THEN
-        v_chiamante := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+        v_chiamante := script.fn_utente_di_sessione('dbops.fn_accoda_lavoro');
         v_perimetro := script.fn_get_emittenti_scope_pk_ids(v_chiamante);
 
         IF v_run_as = 'OPERATORE'

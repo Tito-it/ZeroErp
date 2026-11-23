@@ -1,0 +1,130 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DEI CAMPI AMMESSI: script.fn_guard_campi_ammessi
+#   Brief: brief-db-magazzino-tutte-le-scritture-dal-verbo, P-5a (D-M8 = a).
+#
+# -- LA REGOLA, CHE OGGI STA IN QUINDICI POSTI ----------------------------
+#   Una porta di scrittura che riceve i campi in jsonb (i BB fn_crea_*, i
+#   verbi di modifica di magazzino, il profilo d'accesso, gli override
+#   d'oggetto, l'elemento d'indirizzo) dice due cose, sempre le stesse:
+#     1. i campi sono un oggetto, altrimenti E_SCRIPT_CHIAMATA_NON_VALIDA;
+#     2. nessuna chiave fuori dalla lista ammessa, altrimenti
+#        E_CAMPO_NON_AMMESSO, col nome del campo nella frase e in
+#        context.campo (il backend lo legge per accendere il campo).
+#   La chiave la trova gia' un BB (script.fn_prima_chiave_estranea): a
+#   ripetersi e' il sollevamento, cioe' il codice e la forma del contesto,
+#   che sono proprio cio' che il backend legge. Quindici copie di quel
+#   sollevamento possono divergere (un altro codice, il campo fuori dal
+#   contesto) senza che un test se ne accorga.
+#
+# -- LA FORMA --------------------------------------------------------------
+#   fn_guard_campi_ammessi(campi, ammesse, dominio, porta, contesto):
+#   dominio e porta sono i primi due argomenti di fn_log_and_raise_error
+#   (il log resta della funzione che rifiuta, come prima); contesto e' cio'
+#   che la porta aggiunge (l'id, il codice, il soggetto), e il BB ci mette
+#   tipo_campi o campo. void, VOLATILE perche' scrive il log quando solleva.
+#   INVOKER: non legge tabelle.
+#
+#   ⚠️ Un elenco NULL non ammette niente (come fn_prima_chiave_estranea): un
+#   campo qualunque si rifiuta. Campi NULL non sono un oggetto: si rifiutano
+#   (chi accetta «nessun campo» passa '{}', e i BB lo fanno gia' con un
+#   COALESCE).
+#
+# -- CHE COSA RESTA FUORI ------------------------------------------------
+#   * config.fn_pannello_scrivi: solleva E_PANNELLO_CAMPO_NON_AMMESSO, un
+#     codice suo per decisione (il frontend ne ha la chiave). Resta su
+#     fn_prima_chiave_estranea;
+#   * vendite.fn_create_contratto: una chiave estranea la scarta, non la
+#     rifiuta (dichiarato nel COMMENT di fn_prima_chiave_estranea);
+#   * le porte che controllano la forma di piu' argomenti in un IF solo
+#     (fornitore, cliente, contatto, billing account, profilo, override,
+#     elemento d'indirizzo) tengono quel controllo: dice «la chiamata e'
+#     malformata» con tutti gli argomenti insieme. Il guard ricontrolla i
+#     campi dopo, con lo stesso codice: non risponde mai in un altro modo.
+#   I chiamanti passano al guard in 20261123-02 (magazzino), -03
+#   (anagrafiche), -04 (config).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261123-01-create-fn-guard-campi-ammessi-mctit.yaml
+
+  - changeSet:
+      id: 20261123-01-create-fn-guard-campi-ammessi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea script.fn_guard_campi_ammessi: i campi jsonb di una porta di scrittura sono un oggetto
+        (E_SCRIPT_CHIAMATA_NON_VALIDA) e non hanno chiavi fuori lista (E_CAMPO_NON_AMMESSO col nome
+        del campo nella frase e in context.campo). Una sede per il sollevamento che quindici porte
+        ripetono.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_prima_chiave_estranea', 'fn_log_and_raise_error');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_guard_campi_ammessi(
+                  p_campi    jsonb,
+                  p_ammesse  text[],      -- nomi di colonna: nessuna colonna di cui siano il riflesso
+                  p_dominio  text,        -- il primo argomento di fn_log_and_raise_error
+                  p_porta    text,        -- la funzione che rifiuta: il secondo
+                  p_contesto jsonb DEFAULT '{}'::jsonb)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_estranea text;        -- un nome di chiave jsonb, non una colonna
+              BEGIN
+                  -- Scopo: la regola delle porte che ricevono i campi in jsonb.
+                  --   1. i campi sono un oggetto: E_SCRIPT_CHIAMATA_NON_VALIDA
+                  --      (NULL compreso: chi non ha campi passa '{}');
+                  --   2. la prima chiave fuori da p_ammesse (in ordine
+                  --      alfabetico, da script.fn_prima_chiave_estranea):
+                  --      E_CAMPO_NON_AMMESSO, col nome nella frase e in
+                  --      context.campo. Il log e' della porta (p_dominio,
+                  --      p_porta), il contesto e' il suo piu' la chiave.
+                  IF jsonb_typeof(p_campi) IS DISTINCT FROM 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          p_dominio, p_porta, 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          COALESCE(p_contesto, '{}'::jsonb)
+                              || jsonb_build_object('tipo_campi', jsonb_typeof(p_campi)),
+                          NULL::uuid,
+                          p_porta,
+                          'i campi non sono un oggetto');
+                  END IF;
+
+                  v_estranea := script.fn_prima_chiave_estranea(p_campi, p_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          p_dominio, p_porta, 'E_CAMPO_NON_AMMESSO',
+                          COALESCE(p_contesto, '{}'::jsonb)
+                              || jsonb_build_object('campo', v_estranea),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_guard_campi_ammessi(jsonb, text[], text, text, jsonb) IS
+                  'BB, guard: la regola delle porte di scrittura che ricevono i campi in jsonb. p_campi deve essere un oggetto (NULL compreso: chi non ha campi passa ''{}''), altrimenti E_SCRIPT_CHIAMATA_NON_VALIDA con context.tipo_campi; nessuna chiave fuori da p_ammesse, altrimenti E_CAMPO_NON_AMMESSO con il nome della prima chiave estranea (in ordine alfabetico, da script.fn_prima_chiave_estranea) nella frase e in context.campo, che il backend legge per accendere il campo. p_ammesse NULL non ammette niente. p_dominio e p_porta sono i primi due argomenti di script.fn_log_and_raise_error: il log resta della funzione che rifiuta. p_contesto e'' il contesto della porta (id, codice, soggetto), a cui il guard aggiunge la sua chiave. La usano i BB di nascita fn_crea_* (magazzino, anagrafiche), i verbi di modifica di magazzino, config.fn_scrivi_profilo_accesso, config.fn_imposta_override_oggetti, anagrafiche.fn_indirizzo_elemento. Non la usa config.fn_pannello_scrivi, che rifiuta con il codice suo E_PANNELLO_CAMPO_NON_AMMESSO. INVOKER, non legge tabelle.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_guard_campi_ammessi(jsonb, text[], text, text, jsonb);

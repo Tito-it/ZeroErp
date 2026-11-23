@@ -37,7 +37,7 @@ BEGIN
     --   dice la versione, non le righe che il gesto prende. Vedi
     --   l'intestazione del changeSet 20261115-79.
     -- ==========================================================
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('vendite.fn_varia_prezzi_versione_listino');
 
     -- 1. Parametri.
     IF p_listino_versione_id IS NULL OR p_listino_versione_id <= 0 THEN

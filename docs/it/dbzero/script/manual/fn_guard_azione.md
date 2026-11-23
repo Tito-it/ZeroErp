@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_guard_azione()`
 
+> **Ultimo aggiornamento**: 23 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > **La regola che applica:** [script.fn_check_azione_processo](/dbzero/script/funzioni/fn_check_azione_processo) — la stessa funzione che usa il backend
@@ -65,7 +67,7 @@ stessa espressione delle policy RLS (linee-guida-sql §10.4):
 
 ```sql
 PERFORM script.fn_guard_azione(
-    NULLIF(current_setting('app.current_user_id', true), '')::integer,
+    script.fn_utente_di_sessione('schema.fn_verbo'),
     'registra_magazzino');
 ```
 

@@ -1,0 +1,371 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# pagamenti: i lettori di app.current_user_id passano a script.fn_utente_di_sessione.
+#   Brief: brief-db-revisione-ui (§3.6-sexies, giro 8; Q60 (a)).
+#
+# Il perche': ognuna convertiva la GUC da se',
+#   NULLIF(current_setting('app.current_user_id', true), '')::integer, e un
+#   valore che non e' un intero dava il 22P02 grezzo. Ora la legge il BB
+#   (20261123-16): assente o vuota resta NULL, come prima; un valore che non
+#   e' l'id di un utente da' E_SCRIPT_CHIAMATA_NON_VALIDA, col nome della
+#   funzione che legge.
+# Funzioni: fn_get_emittente_distinta.
+# Testata ri-ancorata (linee-guida §5g): il RETURNS bigint diventa
+#   pagamenti.vendite_contabili.emittente_soggetto_ruolo_id%TYPE, la colonna
+#   di v_sr che la funzione restituisce.
+# Cambia solo la lettura. Corpo dal vivo (dbdev, 2026-11-23); firma, RETURNS e
+#   attributi dall'ultimo changeSet che ha ancora i %TYPE. Firma, volatilita',
+#   sicurezza, proprietario e GRANT invariati: CREATE OR REPLACE. La rollback
+#   riporta i corpi di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20261123-23-update-lettori-utente-di-sessione-pagamenti-mctit.yaml
+
+  - changeSet:
+      id: 20261123-23-update-lettori-utente-di-sessione-pagamenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pagamenti: le funzioni che leggono app.current_user_id passano a script.fn_utente_di_sessione invece
+        di convertire la GUC da se'. Brief: brief-db-revisione-ui (§3.6-sexies, Q60).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('script', 'fn_utente_di_sessione'), ('pagamenti', 'fn_get_emittente_distinta'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_get_emittente_distinta(
+                  p_emittente_soggetto_ruolo_id pagamenti.vendite_contabili.emittente_soggetto_ruolo_id%TYPE,
+                  p_ente_incasso_id             pagamenti.vendite_contabili.ente_incasso_id%TYPE)
+              RETURNS pagamenti.vendite_contabili.emittente_soggetto_ruolo_id%TYPE
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_ef_dato      anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_canale    anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_sessione  anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_sr           pagamenti.vendite_contabili.emittente_soggetto_ruolo_id%TYPE;
+                  v_user_id      anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_sigla_dato   anagrafiche.emittenti_fiscali.codice%TYPE;
+                  v_sigla_canale anagrafiche.emittenti_fiscali.codice%TYPE;
+                  -- NUDA di proposito: e' la frase per l'operatore, composta da
+                  -- un COALESCE fra il codice del canale (se visibile) e il suo id.
+                  v_nome_canale  text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire DI CHI E' una distinta contabile, in una sede sola,
+                  --   e tornare il soggetto_ruolo dell'emittente. Solleva
+                  --   quando non puo' rispondere senza inventare.
+                  --
+                  --   Livelli, in ordine (D4 del brief):
+                  --     0) dato ma non e' un emittente      -> TECNICO
+                  --     1) dato, coerente col canale        -> il dato
+                  --     2) solo il canale                   -> il suo emittente
+                  --     3) l'operatore in sessione          -> il suo emittente
+                  --     4) niente                           -> rifiuto parlante
+                  --   ⛔ Nessun «default dell'installazione».
+                  --
+                  -- ⭐ E' una funzione e non solo un trigger perche' la
+                  --   chiave di riuso di fn_get_or_create_vendite_contabile
+                  --   vuole l'emittente PRIMA dell'INSERT (vedi intestazione
+                  --   del changeSet 20260915-22).
+                  -- ⚠️ SECURITY INVOKER: la lettura del canale passa dal
+                  --   risolutore, che e' DEFINER — enti_incasso ha la RLS e
+                  --   da qui «non lo vedo» diventerebbe «non esiste».
+                  -- =========================================================
+
+                  -- ── Il canale, se c'e': SOLO attraverso il risolutore ───
+                  IF p_ente_incasso_id IS NOT NULL THEN
+                      v_ef_canale := script.fn_resolve_emittente_fiscale_id(
+                                         'ente_incasso', p_ente_incasso_id);
+
+                      -- ⚠️ Un canale che non porta a un emittente (inesistente,
+                      --   o con il conto intestato a un soggetto-ruolo che non e'
+                      --   un emittente) e' una configurazione rotta: NON si cade
+                      --   sulla sessione. Attribuire il denaro di un canale a chi
+                      --   agisce e' esattamente l'attribuzione che D4 vieta.
+                      IF v_ef_canale IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'pagamenti.fn_get_emittente_distinta',
+                              'E_CONFIG_MANCANTE',
+                              jsonb_build_object(
+                                  'detail', 'il canale di incasso non porta a nessun emittente fiscale',
+                                  'ente_incasso_id', p_ente_incasso_id),
+                              NULL::uuid,
+                              concat('il canale di incasso ', p_ente_incasso_id::text,
+                                     ' non porta a nessun emittente fiscale ',
+                                     '(canale inesistente, o conto di incasso non intestato a un emittente)'));
+                      END IF;
+                  END IF;
+
+                  -- ── Livelli 0 e 1: l'emittente DATO ──────────────────────
+                  IF p_emittente_soggetto_ruolo_id IS NOT NULL THEN
+                      v_ef_dato := script.fn_resolve_emittente_fiscale_id(
+                                       'soggetto_ruolo', p_emittente_soggetto_ruolo_id);
+
+                      -- 0) La FK verso soggetti_ruoli non garantisce che sia un
+                      --    emittente: un SR qualsiasi lo produce solo un chiamante
+                      --    rotto. TECNICO, e il messaggio nomina il parametro di
+                      --    proposito: il suo lettore e' chi ha scritto la chiamata.
+                      IF v_ef_dato IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'pagamenti.fn_get_emittente_distinta',
+                              'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                              jsonb_build_object(
+                                  'detail', 'emittente_soggetto_ruolo_id non e'' un emittente fiscale',
+                                  'emittente_soggetto_ruolo_id', p_emittente_soggetto_ruolo_id),
+                              NULL::uuid,
+                              'pagamenti.fn_get_emittente_distinta',
+                              'emittente_soggetto_ruolo_id (non e'' il soggetto-ruolo di un emittente fiscale)');
+                      END IF;
+
+                      -- 1) Se c'e' anche il canale, deve essere il suo. Il campo da
+                      --    accendere e' il canale: si corregge quello, o si cambia
+                      --    emittente — lo dice la soluzione a catalogo.
+                      IF v_ef_canale IS NOT NULL AND v_ef_canale <> v_ef_dato THEN
+                          SELECT ef.codice INTO v_sigla_dato
+                            FROM anagrafiche.emittenti_fiscali ef WHERE ef.id = v_ef_dato;
+                          SELECT ef.codice INTO v_sigla_canale
+                            FROM anagrafiche.emittenti_fiscali ef WHERE ef.id = v_ef_canale;
+                          -- ⚠️ enti_incasso ha la RLS: da qui il codice puo' non
+                          --   vedersi. La frase non deve dipendere dalla visibilita'.
+                          SELECT COALESCE(
+                                     (SELECT e.codice FROM pagamenti.enti_incasso e
+                                       WHERE e.id = p_ente_incasso_id),
+                                     p_ente_incasso_id::text)
+                            INTO v_nome_canale;
+
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'pagamenti.fn_get_emittente_distinta',
+                              'E_CONTABILE_CANALE_DI_ALTRO_EMITTENTE',
+                              jsonb_build_object(
+                                  'detail', 'il canale di incasso appartiene a un altro emittente',
+                                  'campo', 'ente_incasso_id',
+                                  'ente_incasso_id', p_ente_incasso_id,
+                                  'emittente_fiscale_id_canale', v_ef_canale,
+                                  'emittente_fiscale_id_indicato', v_ef_dato),
+                              NULL::uuid,
+                              v_nome_canale, v_sigla_canale::text, v_sigla_dato::text);
+                      END IF;
+
+                      RETURN p_emittente_soggetto_ruolo_id;
+                  END IF;
+
+                  -- ── Livello 2: il canale dice di chi e' il denaro ────────
+                  IF v_ef_canale IS NOT NULL THEN
+                      SELECT ef.soggetto_ruolo_id INTO v_sr
+                        FROM anagrafiche.emittenti_fiscali ef WHERE ef.id = v_ef_canale;
+                      RETURN v_sr;
+                  END IF;
+
+                  -- ── Livello 3: la riserva e' di chi agisce (D13) ─────────
+                  -- ⚠️ fn_resolve_emittente_for_user SOLLEVA su utente NULL:
+                  --   si chiama solo con un utente in sessione.
+                  v_user_id := script.fn_utente_di_sessione('pagamenti.fn_get_emittente_distinta');
+                  IF v_user_id IS NOT NULL THEN
+                      v_ef_sessione := script.fn_resolve_emittente_for_user(v_user_id);
+                      IF v_ef_sessione IS NOT NULL THEN
+                          SELECT ef.soggetto_ruolo_id INTO v_sr
+                            FROM anagrafiche.emittenti_fiscali ef WHERE ef.id = v_ef_sessione;
+                          RETURN v_sr;
+                      END IF;
+                  END IF;
+
+                  -- ── Livello 4: nessuno puo' rispondere — si CHIEDE ───────
+                  -- E' il super admin / admin globale «tutti gli emittenti» che
+                  -- apre una manuale senza canale: il form deve fargli scegliere.
+                  -- Messaggio senza segnaposti: variadico vuoto ESPLICITO.
+                  PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.fn_get_emittente_distinta',
+                      'E_CONTABILE_EMITTENTE_OBBLIGATORIO',
+                      jsonb_build_object(
+                          'detail', 'nessun emittente: ne'' dato, ne'' dal canale, ne'' dalla sessione',
+                          'campo', 'emittente_fiscale_id',
+                          'auth_user_id', v_user_id),
+                      NULL::uuid,
+                      VARIADIC ARRAY[]::text[]);
+
+                  RETURN NULL;  -- irraggiungibile: il raise sopra non torna
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_get_emittente_distinta(
+                  p_emittente_soggetto_ruolo_id pagamenti.vendite_contabili.emittente_soggetto_ruolo_id%TYPE,
+                  p_ente_incasso_id             pagamenti.vendite_contabili.ente_incasso_id%TYPE)
+              RETURNS pagamenti.vendite_contabili.emittente_soggetto_ruolo_id%TYPE
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_ef_dato      anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_canale    anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_sessione  anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_sr           pagamenti.vendite_contabili.emittente_soggetto_ruolo_id%TYPE;
+                  v_user_id      anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_sigla_dato   anagrafiche.emittenti_fiscali.codice%TYPE;
+                  v_sigla_canale anagrafiche.emittenti_fiscali.codice%TYPE;
+                  -- NUDA di proposito: e' la frase per l'operatore, composta da
+                  -- un COALESCE fra il codice del canale (se visibile) e il suo id.
+                  v_nome_canale  text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire DI CHI E' una distinta contabile, in una sede sola,
+                  --   e tornare il soggetto_ruolo dell'emittente. Solleva
+                  --   quando non puo' rispondere senza inventare.
+                  --
+                  --   Livelli, in ordine (D4 del brief):
+                  --     0) dato ma non e' un emittente      -> TECNICO
+                  --     1) dato, coerente col canale        -> il dato
+                  --     2) solo il canale                   -> il suo emittente
+                  --     3) l'operatore in sessione          -> il suo emittente
+                  --     4) niente                           -> rifiuto parlante
+                  --   ⛔ Nessun «default dell'installazione».
+                  --
+                  -- ⭐ E' una funzione e non solo un trigger perche' la
+                  --   chiave di riuso di fn_get_or_create_vendite_contabile
+                  --   vuole l'emittente PRIMA dell'INSERT (vedi intestazione
+                  --   del changeSet 20260915-22).
+                  -- ⚠️ SECURITY INVOKER: la lettura del canale passa dal
+                  --   risolutore, che e' DEFINER — enti_incasso ha la RLS e
+                  --   da qui «non lo vedo» diventerebbe «non esiste».
+                  -- =========================================================
+
+                  -- ── Il canale, se c'e': SOLO attraverso il risolutore ───
+                  IF p_ente_incasso_id IS NOT NULL THEN
+                      v_ef_canale := script.fn_resolve_emittente_fiscale_id(
+                                         'ente_incasso', p_ente_incasso_id);
+
+                      -- ⚠️ Un canale che non porta a un emittente (inesistente,
+                      --   o con il conto intestato a un soggetto-ruolo che non e'
+                      --   un emittente) e' una configurazione rotta: NON si cade
+                      --   sulla sessione. Attribuire il denaro di un canale a chi
+                      --   agisce e' esattamente l'attribuzione che D4 vieta.
+                      IF v_ef_canale IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'pagamenti.fn_get_emittente_distinta',
+                              'E_CONFIG_MANCANTE',
+                              jsonb_build_object(
+                                  'detail', 'il canale di incasso non porta a nessun emittente fiscale',
+                                  'ente_incasso_id', p_ente_incasso_id),
+                              NULL::uuid,
+                              concat('il canale di incasso ', p_ente_incasso_id::text,
+                                     ' non porta a nessun emittente fiscale ',
+                                     '(canale inesistente, o conto di incasso non intestato a un emittente)'));
+                      END IF;
+                  END IF;
+
+                  -- ── Livelli 0 e 1: l'emittente DATO ──────────────────────
+                  IF p_emittente_soggetto_ruolo_id IS NOT NULL THEN
+                      v_ef_dato := script.fn_resolve_emittente_fiscale_id(
+                                       'soggetto_ruolo', p_emittente_soggetto_ruolo_id);
+
+                      -- 0) La FK verso soggetti_ruoli non garantisce che sia un
+                      --    emittente: un SR qualsiasi lo produce solo un chiamante
+                      --    rotto. TECNICO, e il messaggio nomina il parametro di
+                      --    proposito: il suo lettore e' chi ha scritto la chiamata.
+                      IF v_ef_dato IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'pagamenti.fn_get_emittente_distinta',
+                              'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                              jsonb_build_object(
+                                  'detail', 'emittente_soggetto_ruolo_id non e'' un emittente fiscale',
+                                  'emittente_soggetto_ruolo_id', p_emittente_soggetto_ruolo_id),
+                              NULL::uuid,
+                              'pagamenti.fn_get_emittente_distinta',
+                              'emittente_soggetto_ruolo_id (non e'' il soggetto-ruolo di un emittente fiscale)');
+                      END IF;
+
+                      -- 1) Se c'e' anche il canale, deve essere il suo. Il campo da
+                      --    accendere e' il canale: si corregge quello, o si cambia
+                      --    emittente — lo dice la soluzione a catalogo.
+                      IF v_ef_canale IS NOT NULL AND v_ef_canale <> v_ef_dato THEN
+                          SELECT ef.codice INTO v_sigla_dato
+                            FROM anagrafiche.emittenti_fiscali ef WHERE ef.id = v_ef_dato;
+                          SELECT ef.codice INTO v_sigla_canale
+                            FROM anagrafiche.emittenti_fiscali ef WHERE ef.id = v_ef_canale;
+                          -- ⚠️ enti_incasso ha la RLS: da qui il codice puo' non
+                          --   vedersi. La frase non deve dipendere dalla visibilita'.
+                          SELECT COALESCE(
+                                     (SELECT e.codice FROM pagamenti.enti_incasso e
+                                       WHERE e.id = p_ente_incasso_id),
+                                     p_ente_incasso_id::text)
+                            INTO v_nome_canale;
+
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'pagamenti.fn_get_emittente_distinta',
+                              'E_CONTABILE_CANALE_DI_ALTRO_EMITTENTE',
+                              jsonb_build_object(
+                                  'detail', 'il canale di incasso appartiene a un altro emittente',
+                                  'campo', 'ente_incasso_id',
+                                  'ente_incasso_id', p_ente_incasso_id,
+                                  'emittente_fiscale_id_canale', v_ef_canale,
+                                  'emittente_fiscale_id_indicato', v_ef_dato),
+                              NULL::uuid,
+                              v_nome_canale, v_sigla_canale::text, v_sigla_dato::text);
+                      END IF;
+
+                      RETURN p_emittente_soggetto_ruolo_id;
+                  END IF;
+
+                  -- ── Livello 2: il canale dice di chi e' il denaro ────────
+                  IF v_ef_canale IS NOT NULL THEN
+                      SELECT ef.soggetto_ruolo_id INTO v_sr
+                        FROM anagrafiche.emittenti_fiscali ef WHERE ef.id = v_ef_canale;
+                      RETURN v_sr;
+                  END IF;
+
+                  -- ── Livello 3: la riserva e' di chi agisce (D13) ─────────
+                  -- ⚠️ fn_resolve_emittente_for_user SOLLEVA su utente NULL:
+                  --   si chiama solo con un utente in sessione.
+                  v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  IF v_user_id IS NOT NULL THEN
+                      v_ef_sessione := script.fn_resolve_emittente_for_user(v_user_id);
+                      IF v_ef_sessione IS NOT NULL THEN
+                          SELECT ef.soggetto_ruolo_id INTO v_sr
+                            FROM anagrafiche.emittenti_fiscali ef WHERE ef.id = v_ef_sessione;
+                          RETURN v_sr;
+                      END IF;
+                  END IF;
+
+                  -- ── Livello 4: nessuno puo' rispondere — si CHIEDE ───────
+                  -- E' il super admin / admin globale «tutti gli emittenti» che
+                  -- apre una manuale senza canale: il form deve fargli scegliere.
+                  -- Messaggio senza segnaposti: variadico vuoto ESPLICITO.
+                  PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.fn_get_emittente_distinta',
+                      'E_CONTABILE_EMITTENTE_OBBLIGATORIO',
+                      jsonb_build_object(
+                          'detail', 'nessun emittente: ne'' dato, ne'' dal canale, ne'' dalla sessione',
+                          'campo', 'emittente_fiscale_id',
+                          'auth_user_id', v_user_id),
+                      NULL::uuid,
+                      VARIADIC ARRAY[]::text[]);
+
+                  RETURN NULL;  -- irraggiungibile: il raise sopra non torna
+              END;
+              $function$;

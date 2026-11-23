@@ -31,7 +31,7 @@ DECLARE
     v_utente  config.user_override_azioni.auth_user_id%TYPE;
     v_trovato boolean;
 BEGIN
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('vendite.fn_annulla_ddt');
 
     -- 1. Parametri.
     IF p_ddt_id IS NULL OR p_ddt_id <= 0 THEN

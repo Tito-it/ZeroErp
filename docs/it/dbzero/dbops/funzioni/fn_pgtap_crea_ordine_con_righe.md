@@ -108,7 +108,7 @@ BEGIN
                 'fn_pgtap_crea_ordine_con_righe: ordine id = % inesistente, invisibile o fuori bozza — le righe si scrivono in bozza',
                 p_ordine_id;
         END IF;
-        v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+        v_user_id := script.fn_utente_di_sessione('dbops.fn_pgtap_crea_ordine_con_righe');
     ELSE
         SELECT o.ordine_id, o.ordine_uid, o.billing_account_id,
                o.cliente_soggetto_ruolo_id, o.emittente_fiscale_id, o.auth_user_id

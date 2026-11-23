@@ -1,0 +1,366 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I VERBI COMUNI DEI DOCUMENTI INTERNI (la famiglia come primo argomento)
+#   magazzino.fn_modifica_documento_interno(famiglia, id, dati)
+#   magazzino.fn_elimina_documento_interno(famiglia, id)
+#   magazzino.fn_cambia_stato_documento_interno(famiglia, id, stato)
+#   magazzino.fn_modifica_riga_documento_interno(famiglia, documento, riga, dati)
+#   magazzino.fn_togli_riga_documento_interno(famiglia, documento, riga)
+#   Brief: brief-db-magazzino-tutte-le-scritture-dal-verbo, P-5b
+#   (D-M5 = b, D-M10 = b: generici dove le famiglie condividono la matrice).
+#
+# -- IL MODELLO DI OGNI VERBO -----------------------------------------
+#   1. script.fn_guard_livello(utente, 'magazzino', <tabella della
+#      testata>, 'TUTTO'): l'oggetto e' il documento (il registro dice
+#      quale tabella). Una famiglia che il registro non conosce non ha
+#      oggetto: il guard la rifiuta (E_PERMESSO_NEGATO, fail-closed);
+#   2. la testata nel perimetro, presa FOR UPDATE
+#      (magazzino.fn_documento_interno_blocca): altrimenti
+#      E_MAG_DOCUMENTO_NON_TROVATO;
+#   3. per le righe, la riga e' di quel documento: altrimenti
+#      E_MAG_DOCUMENTO_RIGA_NON_TROVATA (il codice che il backend solleva
+#      gia');
+#   4. i campi (script.fn_guard_campi_ammessi, la lista 'modifica' di
+#      magazzino.fn_documento_interno_colonne_ammesse);
+#   5. la scrittura, coi trigger delle tabelle.
+#   SECURITY DEFINER del proprietario, search_path bloccato. I nomi di
+#   tabella e di colonna vengono dal registro e si quotano (%I, ::regclass):
+#   mai da un input.
+#
+# -- CHI FA RISPETTARE CHE COSA ---------------------------------------
+#   * lo STATO e la matrice: trgfn_documento_interno_guard_transizione
+#     (DRAFT -> CONFIRM | CANCEL, CONFIRM -> DRAFT | CANCEL; POSTED solo
+#     dalla registrazione, con la sua GUC: chiesto qui e' rifiutato,
+#     E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE); la cancellazione solo in
+#     DRAFT (E_MAG_DOCUMENTO_NON_ELIMINABILE). Le righe vanno con la
+#     testata (FK ON DELETE CASCADE);
+#   * le RIGHE in DRAFT: trgfn_documento_interno_righe_guard_testata
+#     (E_MAG_DOCUMENTO_RIGHE_CONGELATE);
+#   * la TESTATA in DRAFT: il verbo di modifica. ⚠️ Nessun trigger lo fa
+#     sulla testata: il guard di transizione guarda solo lo stato. La
+#     regola c'e' (la capability dice can_edit_testata = DRAFT) e la
+#     faceva rispettare il backend; dopo la chiusura delle tabelle questo
+#     verbo e' l'unico scrittore. Codice nuovo,
+#     E_MAG_DOCUMENTO_TESTATA_CONGELATA (stampo di RIGHE_CONGELATE).
+#
+# -- IL CAMBIO DI STATO -------------------------------------------------
+#   Il valore lo sceglie chi chiama (il gesto conferma, riapri, annulla
+#   del drawer): il verbo non tiene un elenco suo, lo fa la matrice nel
+#   trigger. Ritorna lo stato scritto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261123-09-create-verbi-comuni-documenti-interni-mctit.yaml
+
+  - changeSet:
+      id: 20261123-09-create-verbi-comuni-documenti-interni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea i verbi comuni dei documenti interni di magazzino, con la famiglia come primo
+        argomento: modifica ed elimina della testata, cambio di stato, modifica e tolta di una
+        riga. Livello TUTTO sul documento, testata presa nel perimetro, campi ammessi; stato e
+        righe li fanno rispettare i trigger, la testata in DRAFT il verbo di modifica.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "3"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('magazzino', 'fn_documento_interno_blocca'),
+                                                ('magazzino', 'fn_documento_interno_famiglia'),
+                                                ('magazzino', 'fn_documento_interno_colonne_ammesse'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- p_famiglia text (il vocabolario del registro), gli id bigint e
+              -- non %TYPE: ogni verbo e' parametrico su tre tabelle.
+
+              -- ============================================================
+              -- La testata: modifica
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_dati         jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente  config.user_override_oggetti.auth_user_id%TYPE;
+                  v_fam     record;
+                  v_ammesse text[];   -- nomi di colonna: nessuna colonna di cui siano il riflesso
+                  v_riga    jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica la testata» di un documento
+                  --   interno: il delta p_dati sulle colonne modificabili, con
+                  --   il documento in DRAFT. Ritorna la testata.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(
+                      v_utente, 'magazzino',
+                      (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),
+                      'TUTTO');
+
+                  SELECT b.* INTO v_fam
+                    FROM magazzino.fn_documento_interno_blocca(
+                             p_famiglia, p_documento_id, v_utente,
+                             'magazzino.fn_modifica_documento_interno') AS b;
+
+                  v_ammesse := magazzino.fn_documento_interno_colonne_ammesse(v_fam.famiglia, 'testata', 'modifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      p_dati, v_ammesse,
+                      'magazzino', 'magazzino.fn_modifica_documento_interno',
+                      jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id));
+
+                  -- La testata si modifica in bozza, come le righe: lo dice la
+                  -- capability (can_edit_testata), e nessun trigger lo fa sulla
+                  -- testata. Un delta vuoto non scrive niente: passa anche fuori
+                  -- bozza, e ritorna la testata.
+                  IF v_fam.stato <> 'DRAFT' AND p_dati <> '{}'::jsonb THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_documento_interno',
+                          'E_MAG_DOCUMENTO_TESTATA_CONGELATA',
+                          jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id,
+                                             'stato', v_fam.stato),
+                          NULL::uuid,
+                          v_fam.stato);
+                  END IF;
+
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                format('magazzino.%I', v_fam.tabella)::regclass,
+                                p_dati, jsonb_build_object('id', p_documento_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_modifica_documento_interno(text, bigint, jsonb) IS
+                  'VERBO: il gesto «modifica la testata» di un documento interno di magazzino (p_famiglia INVENTARIO, RETTIFICA, TRASFERIMENTO). p_dati e'' il delta: si scrivono solo le chiavi mandate, una chiave a null scrive NULL, un delta vuoto non scrive niente. Passi: script.fn_guard_livello(utente, magazzino, <tabella della testata>, TUTTO) (E_PERMESSO_NEGATO, anche per una famiglia che non esiste); la testata nel perimetro, presa FOR UPDATE (magazzino.fn_documento_interno_blocca: E_MAG_DOCUMENTO_NON_TROVATO); p_dati oggetto con le sole chiavi della lista modifica di magazzino.fn_documento_interno_colonne_ammesse (E_CAMPO_NON_AMMESSO col nome del campo): la data, e per l''inventario la descrizione; il documento in DRAFT, altrimenti E_MAG_DOCUMENTO_TESTATA_CONGELATA; la scrittura con script.fn_scrivi_riga_da_jsonb, coi trigger della tabella. Lo stato non e'' un campo: ha il suo verbo. SECURITY DEFINER del proprietario, search_path bloccato. Ritorna la testata: id e colonne modificabili.';
+
+              -- ============================================================
+              -- La testata: elimina
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION magazzino.fn_elimina_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint)  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+                  v_fam    record;
+              BEGIN
+                  -- Scopo: il gesto «elimina il documento» (la bozza). Le
+                  --   righe vanno con la testata (ON DELETE CASCADE).
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(
+                      v_utente, 'magazzino',
+                      (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),
+                      'TUTTO');
+
+                  SELECT b.* INTO v_fam
+                    FROM magazzino.fn_documento_interno_blocca(
+                             p_famiglia, p_documento_id, v_utente,
+                             'magazzino.fn_elimina_documento_interno') AS b;
+
+                  -- Solo in DRAFT: lo dice trgfn_documento_interno_guard_transizione
+                  -- (E_MAG_DOCUMENTO_NON_ELIMINABILE), per ogni scrittore.
+                  EXECUTE format('DELETE FROM magazzino.%I WHERE id = $1', v_fam.tabella)
+                    USING p_documento_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_elimina_documento_interno(text, bigint) IS
+                  'VERBO: il gesto «elimina il documento» di un documento interno di magazzino (p_famiglia INVENTARIO, RETTIFICA, TRASFERIMENTO). Passi: script.fn_guard_livello(utente, magazzino, <tabella della testata>, TUTTO) (E_PERMESSO_NEGATO); la testata nel perimetro, presa FOR UPDATE (magazzino.fn_documento_interno_blocca: E_MAG_DOCUMENTO_NON_TROVATO); il DELETE, che il guard della tabella ammette solo in DRAFT (E_MAG_DOCUMENTO_NON_ELIMINABILE). Le righe vanno con la testata (ON DELETE CASCADE); la provenienza di chi nasce da questo documento la difende il suo guard. SECURITY DEFINER del proprietario, search_path bloccato.';
+
+              -- ============================================================
+              -- La testata: cambio di stato
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION magazzino.fn_cambia_stato_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_stato        text)   -- lo stato della famiglia: tre colonne, nessuna sola da ancorare
+               RETURNS text
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+                  v_fam    record;
+                  v_riga   jsonb;
+              BEGIN
+                  -- Scopo: il gesto conferma, riapri o annulla di un documento
+                  --   interno: lo stato p_stato sulla testata. La matrice la fa
+                  --   rispettare il trigger. Ritorna lo stato scritto.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(
+                      v_utente, 'magazzino',
+                      (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),
+                      'TUTTO');
+
+                  SELECT b.* INTO v_fam
+                    FROM magazzino.fn_documento_interno_blocca(
+                             p_famiglia, p_documento_id, v_utente,
+                             'magazzino.fn_cambia_stato_documento_interno') AS b;
+
+                  -- La matrice (magazzino.fn_documento_interno_transizioni) e la
+                  -- porta POSTED le dice trgfn_documento_interno_guard_transizione;
+                  -- un valore fuori dal vocabolario lo ferma il CHECK della tabella.
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                format('magazzino.%I', v_fam.tabella)::regclass,
+                                jsonb_build_object(v_fam.colonna_stato, p_stato),
+                                jsonb_build_object('id', p_documento_id));
+
+                  RETURN v_riga ->> v_fam.colonna_stato;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_cambia_stato_documento_interno(text, bigint, text) IS
+                  'VERBO: i gesti conferma, riapri e annulla di un documento interno di magazzino (p_famiglia INVENTARIO, RETTIFICA, TRASFERIMENTO): scrive p_stato sulla testata. Passi: script.fn_guard_livello(utente, magazzino, <tabella della testata>, TUTTO) (E_PERMESSO_NEGATO); la testata nel perimetro, presa FOR UPDATE (magazzino.fn_documento_interno_blocca: E_MAG_DOCUMENTO_NON_TROVATO); la scrittura dello stato. La matrice degli stati la fa rispettare trgfn_documento_interno_guard_transizione, che legge magazzino.fn_documento_interno_transizioni (fuori matrice: E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA); POSTED non si chiede, lo scrive solo la registrazione (E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE); un valore fuori vocabolario lo ferma il CHECK della tabella. Lo stato uguale a quello di oggi non scrive niente. SECURITY DEFINER del proprietario, search_path bloccato. Ritorna lo stato scritto.';
+
+              -- ============================================================
+              -- Le righe: modifica
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_riga_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_riga_id      bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_dati         jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente  config.user_override_oggetti.auth_user_id%TYPE;
+                  v_fam     record;
+                  v_ammesse text[];   -- nomi di colonna: nessuna colonna di cui siano il riflesso
+                  v_c       integer;  -- un conteggio: niente da ancorare
+                  v_riga    jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica la riga» di un documento interno:
+                  --   il delta p_dati sulle colonne modificabili. Ritorna la riga.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(
+                      v_utente, 'magazzino',
+                      (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),
+                      'TUTTO');
+
+                  SELECT b.* INTO v_fam
+                    FROM magazzino.fn_documento_interno_blocca(
+                             p_famiglia, p_documento_id, v_utente,
+                             'magazzino.fn_modifica_riga_documento_interno') AS b;
+
+                  -- La riga e' di quel documento (la testata e' gia' nel perimetro).
+                  EXECUTE format('SELECT count(*) FROM magazzino.%I r WHERE r.id = $1 AND r.%I = $2',
+                                 v_fam.tabella_righe, v_fam.colonna_fk)
+                     INTO v_c
+                    USING p_riga_id, p_documento_id;
+                  IF v_c = 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_riga_documento_interno',
+                          'E_MAG_DOCUMENTO_RIGA_NON_TROVATA',
+                          jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id,
+                                             'riga_id', p_riga_id),
+                          NULL::uuid,
+                          COALESCE(p_riga_id::text, '(nessuna)'));
+                  END IF;
+
+                  v_ammesse := magazzino.fn_documento_interno_colonne_ammesse(v_fam.famiglia, 'riga', 'modifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      p_dati, v_ammesse,
+                      'magazzino', 'magazzino.fn_modifica_riga_documento_interno',
+                      jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id,
+                                         'riga_id', p_riga_id));
+
+                  -- La testata in DRAFT la chiede il guard delle righe
+                  -- (E_MAG_DOCUMENTO_RIGHE_CONGELATE), per ogni scrittore.
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                format('magazzino.%I', v_fam.tabella_righe)::regclass,
+                                p_dati, jsonb_build_object('id', p_riga_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_modifica_riga_documento_interno(text, bigint, bigint, jsonb) IS
+                  'VERBO: il gesto «modifica la riga» di un documento interno di magazzino (p_famiglia INVENTARIO, RETTIFICA, TRASFERIMENTO), individuata dentro il suo documento (p_documento_id, p_riga_id). p_dati e'' il delta: si scrivono solo le chiavi mandate, una chiave a null scrive NULL, un delta vuoto non scrive niente. Passi: script.fn_guard_livello(utente, magazzino, <tabella della testata>, TUTTO) (E_PERMESSO_NEGATO); la testata nel perimetro, presa FOR UPDATE (magazzino.fn_documento_interno_blocca: E_MAG_DOCUMENTO_NON_TROVATO); la riga e'' di quel documento, altrimenti E_MAG_DOCUMENTO_RIGA_NON_TROVATA; p_dati oggetto con le sole chiavi della lista modifica di magazzino.fn_documento_interno_colonne_ammesse (E_CAMPO_NON_AMMESSO col nome del campo); la scrittura con script.fn_scrivi_riga_da_jsonb, coi trigger della riga (testata in DRAFT: E_MAG_DOCUMENTO_RIGHE_CONGELATE; posizione, quantita'', azienda). SECURITY DEFINER del proprietario, search_path bloccato. Ritorna la riga: id e colonne modificabili.';
+
+              -- ============================================================
+              -- Le righe: togli
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION magazzino.fn_togli_riga_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_riga_id      bigint)  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+                  v_fam    record;
+                  v_c      integer;   -- un conteggio: niente da ancorare
+              BEGIN
+                  -- Scopo: il gesto «togli la riga» di un documento interno.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(
+                      v_utente, 'magazzino',
+                      (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),
+                      'TUTTO');
+
+                  SELECT b.* INTO v_fam
+                    FROM magazzino.fn_documento_interno_blocca(
+                             p_famiglia, p_documento_id, v_utente,
+                             'magazzino.fn_togli_riga_documento_interno') AS b;
+
+                  -- La testata in DRAFT la chiede il guard delle righe
+                  -- (E_MAG_DOCUMENTO_RIGHE_CONGELATE), per ogni scrittore.
+                  EXECUTE format('DELETE FROM magazzino.%I r WHERE r.id = $1 AND r.%I = $2',
+                                 v_fam.tabella_righe, v_fam.colonna_fk)
+                    USING p_riga_id, p_documento_id;
+                  GET DIAGNOSTICS v_c = ROW_COUNT;
+                  IF v_c = 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_togli_riga_documento_interno',
+                          'E_MAG_DOCUMENTO_RIGA_NON_TROVATA',
+                          jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id,
+                                             'riga_id', p_riga_id),
+                          NULL::uuid,
+                          COALESCE(p_riga_id::text, '(nessuna)'));
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_togli_riga_documento_interno(text, bigint, bigint) IS
+                  'VERBO: il gesto «togli la riga» di un documento interno di magazzino (p_famiglia INVENTARIO, RETTIFICA, TRASFERIMENTO), individuata dentro il suo documento (p_documento_id, p_riga_id). Passi: script.fn_guard_livello(utente, magazzino, <tabella della testata>, TUTTO) (E_PERMESSO_NEGATO); la testata nel perimetro, presa FOR UPDATE (magazzino.fn_documento_interno_blocca: E_MAG_DOCUMENTO_NON_TROVATO); il DELETE della riga di quel documento (nessuna riga: E_MAG_DOCUMENTO_RIGA_NON_TROVATA), che il guard delle righe ammette solo con la testata in DRAFT (E_MAG_DOCUMENTO_RIGHE_CONGELATE). SECURITY DEFINER del proprietario, search_path bloccato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS magazzino.fn_togli_riga_documento_interno(text, bigint, bigint);
+              DROP FUNCTION IF EXISTS magazzino.fn_modifica_riga_documento_interno(text, bigint, bigint, jsonb);
+              DROP FUNCTION IF EXISTS magazzino.fn_cambia_stato_documento_interno(text, bigint, text);
+              DROP FUNCTION IF EXISTS magazzino.fn_elimina_documento_interno(text, bigint);
+              DROP FUNCTION IF EXISTS magazzino.fn_modifica_documento_interno(text, bigint, jsonb);

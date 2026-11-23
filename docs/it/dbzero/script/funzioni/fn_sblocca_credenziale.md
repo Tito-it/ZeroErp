@@ -24,7 +24,7 @@ DECLARE
     v_utente integer;
 BEGIN
     -- Prima riga: chi agisce dev'essere SUPER_ADMIN (D-B1).
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('script.fn_sblocca_credenziale');
     PERFORM script.fn_guard_super_admin(v_utente);
 
     IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
