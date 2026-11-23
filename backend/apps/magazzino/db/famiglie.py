@@ -20,6 +20,15 @@
 #       e un service non puo' importare da `api/` ne' un repository da
 #       `services/` senza invertire gli anelli.
 #
+#       ⭐ 2026-11-23 (R-2 di brief-db-magazzino-tutte-le-scritture-dal-verbo):
+#       le SCRITTURE passano dai verbi del DB, che leggono tabelle e colonne
+#       dal registro `magazzino.fn_documento_interno_famiglia`. Qui resta cio'
+#       che il DB non sa (segmento di URL, chiavi dei messaggi, codici di
+#       lista), cio' che serve alle LETTURE (tabelle e colonne delle SELECT),
+#       e il ponte verso il DB: `famiglia_db` e i due verbi di nascita, che
+#       sono per famiglia (D-M10). ⛔ Le liste delle colonne scrivibili non
+#       stanno qui: le dice `fn_documento_interno_colonne_ammesse`.
+#
 #       ⚠️ Gli identificatori finiscono INTERPOLATI nell'SQL del repository:
 #       passano tutti dalla regex di `__post_init__` (stampo
 #       `PartitionedNoteRepository`), cosi' un refuso da refactor si ferma
@@ -34,6 +43,10 @@ from dataclasses import dataclass
 from apps.config.sorgenti import SORGENTE_INVENTARIO, SORGENTE_RETTIFICA
 
 _IDENT = re.compile(r"^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?$")
+# Il codice della famiglia nel registro del DB: viaggia come VALORE (non e'
+# interpolato), ma un refuso darebbe `E_PERMESSO_NEGATO` a ogni scrittura —
+# il registro e' fail-closed — e si ferma qui, all'import.
+_FAMIGLIA_DB = re.compile(r"^[A-Z][A-Z_]*$")
 
 
 # Scopo: la configurazione di UNA famiglia di documento interno.
@@ -46,6 +59,11 @@ class FamigliaDocumentoInterno:
     fk_riga: str                   # "inventario_id" — la colonna di riga verso la testata
     col_stato: str                 # "stato_mag_inventario"
     fn_posta: str                  # "magazzino.fn_posta_inventario"
+    # Il nome della famiglia nel registro del DB (`INVENTARIO`): il primo
+    # argomento dei verbi comuni e della lista delle colonne ammesse.
+    famiglia_db: str
+    fn_aggiungi: str               # "magazzino.fn_aggiungi_inventario" — la nascita della testata
+    fn_aggiungi_riga: str          # "magazzino.fn_aggiungi_riga_inventario" — la nascita della riga
     # La capability del dettaglio (R-1 del brief 2-bis): l'INVOLUCRO della
     # famiglia, non il corpo parametrico — `script.fn_available_actions_
     # documento_interno(p_famiglia, id)` vuole il nome della famiglia come
@@ -69,11 +87,13 @@ class FamigliaDocumentoInterno:
     def __post_init__(self) -> None:
         for nome in (
             "tabella", "tabella_righe", "fk_riga", "col_stato", "fn_posta", "col_qta",
-            "fn_capability",
+            "fn_capability", "fn_aggiungi", "fn_aggiungi_riga",
         ):
             valore = getattr(self, nome)
             if not _IDENT.match(valore):
                 raise ValueError(f"FamigliaDocumentoInterno.{nome}: identificatore non valido {valore!r}")
+        if not _FAMIGLIA_DB.match(self.famiglia_db):
+            raise ValueError(f"FamigliaDocumentoInterno.famiglia_db: codice non valido {self.famiglia_db!r}")
 
 
 INVENTARI = FamigliaDocumentoInterno(
@@ -84,6 +104,9 @@ INVENTARI = FamigliaDocumentoInterno(
     fk_riga="inventario_id",
     col_stato="stato_mag_inventario",
     fn_posta="magazzino.fn_posta_inventario",
+    famiglia_db="INVENTARIO",
+    fn_aggiungi="magazzino.fn_aggiungi_inventario",
+    fn_aggiungi_riga="magazzino.fn_aggiungi_riga_inventario",
     fn_capability="script.fn_available_actions_inventario",
     sorgente_codice_interno=SORGENTE_INVENTARIO,
     lista_codice="magazzino.inventari",
@@ -103,6 +126,9 @@ RETTIFICHE = FamigliaDocumentoInterno(
     fk_riga="rettifica_id",
     col_stato="stato_mag_rettifiche",
     fn_posta="magazzino.fn_posta_rettifica",
+    famiglia_db="RETTIFICA",
+    fn_aggiungi="magazzino.fn_aggiungi_rettifica",
+    fn_aggiungi_riga="magazzino.fn_aggiungi_riga_rettifica",
     fn_capability="script.fn_available_actions_rettifica",
     sorgente_codice_interno=SORGENTE_RETTIFICA,
     lista_codice="magazzino.rettifiche",

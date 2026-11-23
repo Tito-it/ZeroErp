@@ -26,7 +26,7 @@ Indice test eseguiti:
 2) DocumentoInternoDbTests.test_la_riga_non_postabile_ferma_tutto_il_posting
 3) DocumentoInternoDbTests.test_la_riga_incoerente_passa_e_il_form_la_vede
 4) DocumentoInternoDbTests.test_la_rettifica_negativa_va_alla_media
-5) DocumentoInternoDbTests.test_posted_non_si_elimina_ne_si_modifica_e_confirm_riapre
+5) DocumentoInternoDbTests.test_posted_non_si_elimina_ne_si_modifica_e_confirm_riapre — testata compresa dal 2026-11-23
 6) DocumentoInternoDbTests.test_un_altro_emittente_non_vede_il_documento
 7) DocumentoInternoDbTests.test_i_lookup_di_riga_filtrano_per_padre
 8) DocumentoInternoDbTests.test_ogni_ordinamento_della_whitelist_esegue
@@ -35,37 +35,43 @@ Indice test eseguiti:
 11) DocumentoInternoDbTests.test_registra_spento_col_motivo_nei_tre_casi — R-1, 2026-09-23
 12) DocumentoInternoDbTests.test_il_duplicato_di_posizione_ha_il_suo_codice — R-2, 2026-09-23
 13) DocumentoInternoDbTests.test_la_ricerca_trova_ogni_colonna_accesa — 2026-09-23
-14) DocumentoInternoDbTests.test_la_testata_proietta_la_provenienza_del_modello — BE-M.2-a, 2026-11-08
+14) DocumentoInternoDbTests.test_la_testata_proietta_la_provenienza_del_modello — BE-M.2-a, 2026-11-08; dalla nascita dal 2026-11-23
+15) DocumentoInternoDbTests.test_i_lettori_del_backend_sono_il_contratto_del_db — R-2, 2026-11-23
+16) DocumentoInternoDbTests.test_la_testata_fuori_da_draft_non_si_modifica — R-2/R-3, 2026-11-23
+17) DocumentoInternoDbTests.test_senza_livello_sull_oggetto_il_verbo_rifiuta — R-2, 2026-11-23
+18) DocumentoInternoDbTests.test_le_lunghezze_dei_testi_sono_quelle_delle_colonne — 2026-11-23
 """
 from __future__ import annotations
 
 import unittest
 from decimal import Decimal
 
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
 
+from apps.core.services.db_error_fields import db_error_code
+from apps.core.services.error_translator import ErrorTranslator
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import (
+    apri_operatore_con_aree,
     richiedi_db_provvisto,
     richiedi_ruolo_soggetto_a_rls,
     verifica_ricerca_colonna_per_colonna,
 )
+from apps.magazzino.db.famiglie import FAMIGLIE, INVENTARI
 from apps.magazzino.db.magazzino_repository import (
     DOCUMENTI_SORT_COLUMNS,
     MOVIMENTI_SORT_COLUMNS,
     INVENTARIO_RIGHE_SORT_COLUMNS,
     PIANO_SORT_COLUMNS,
+    MagazzinoRepository,
 )
 from apps.magazzino.services import consultazione_service, magazzino_service
 
-# Il mondo: azienda con operatore (PRIMA del contesto), il contesto, due
+_MOTIVO = "test_documento_interno_db"
+
+# Il mondo, dopo l'operatore (`_Mondo`): l'azione di registrazione, due
 # magazzini (senza e con ubicazioni) e tre articoli.
 _FIXTURE: tuple[str, ...] = (
-    """
-    CREATE TEMP TABLE _mondo AS
-    SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
-    """,
-    "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
     # I verbi di registrazione chiedono l'azione nella prima riga
     # (`script.fn_guard_azione`): l'operatore del mondo non ce l'ha, gliela
     # si concede (brief-db-magazzino-verbi-con-permesso §6).
@@ -98,14 +104,18 @@ class _Mondo:
     """Gli id del mondo costruito."""
 
     def __init__(self, cur) -> None:
+        # L'operatore con l'area `magazzino` a TUTTO: dal 2026-11-23 testate,
+        # righe e stati passano dai VERBI, che chiedono il livello sull'oggetto
+        # della famiglia (R-2 di brief-db-magazzino-tutte-le-scritture-dal-
+        # verbo). L'operatore costruito e' BLOCCATO ovunque.
+        self.uid = apri_operatore_con_aree(cur, aree=("magazzino",), motivo=_MOTIVO)
+        cur.execute("CREATE TEMP TABLE _mondo AS SELECT %s::int AS auth_user_id", [self.uid])
         for passo in _FIXTURE:
             cur.execute(passo)
         cur.execute("SELECT mag_a, mag_u FROM _mag")
         self.mag_a, self.mag_u = (int(x) for x in cur.fetchone())
         cur.execute("SELECT art, art_ng, art_l FROM _art")
         self.art, self.art_ng, self.art_l = (str(x) for x in cur.fetchone())
-        cur.execute("SELECT auth_user_id FROM _mondo")
-        self.uid = int(cur.fetchone()[0])
 
 
 class DocumentoInternoDbTests(unittest.TestCase):
@@ -142,9 +152,9 @@ class DocumentoInternoDbTests(unittest.TestCase):
 
     # Scopo: una bozza con una riga di 10 pezzi a 7 €, confermata.
     @staticmethod
-    def _inventario_confermato(m: _Mondo) -> dict:
+    def _inventario_confermato(m: _Mondo, descrizione: str = "primo carico") -> dict:
         d = magazzino_service.crea_documento(
-            "inventari", {"magazzino_id": m.mag_a, "descrizione": "primo carico"},
+            "inventari", {"magazzino_id": m.mag_a, "descrizione": descrizione},
         )
         magazzino_service.crea_riga(
             "inventari", d["id"], {"articolo_id": m.art, "qta_contata": "10", "costo_unitario": 7},
@@ -309,17 +319,15 @@ class DocumentoInternoDbTests(unittest.TestCase):
                 (lambda: magazzino_service.elimina_documento("inventari", d["id"]), "E_MAG_DOCUMENTO_NON_ELIMINABILE"),
                 (lambda: magazzino_service.aggiorna_riga("inventari", d["id"], riga["id"], {"qta_contata": 3}), "E_MAG_DOCUMENTO_RIGHE_CONGELATE"),
                 (lambda: magazzino_service.elimina_riga("inventari", d["id"], riga["id"]), "E_MAG_DOCUMENTO_RIGHE_CONGELATE"),
+                # ⚠️ Q-2 superata dal P-5b (2026-11-23): la testata si modifica
+                #    solo in bozza, e lo dice il verbo.
+                (lambda: magazzino_service.aggiorna_documento("inventari", d["id"], {"descrizione": "x"}), "E_MAG_DOCUMENTO_TESTATA_CONGELATA"),
                 (lambda: magazzino_service.cambia_stato_documento("inventari", d["id"], {"stato": "DRAFT"}), "E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA"),
                 # ⛔ `POSTED` non e' richiedibile: il vocabolario lo ferma PRIMA
                 #    del guard, che risponderebbe un TECNICO.
                 (lambda: magazzino_service.cambia_stato_documento("inventari", d["id"], {"stato": "POSTED"}), "E_MAGAZZINO_VALIDATION"),
             ):
                 self.assertEqual(self._rifiuto(fn).code, atteso)
-            # Q-2: la testata resta libera anche su POSTED — nessun guard nel BE.
-            self.assertEqual(
-                magazzino_service.aggiorna_documento("inventari", d["id"], {"descrizione": "conteggio di settembre"})["descrizione"],
-                "conteggio di settembre",
-            )
             # E una bozza si elimina, righe comprese.
             d2 = magazzino_service.crea_documento("inventari", {"magazzino_id": m.mag_a})
             magazzino_service.crea_riga("inventari", d2["id"], {"articolo_id": m.art, "qta_contata": 1})
@@ -552,9 +560,10 @@ class DocumentoInternoDbTests(unittest.TestCase):
     #     (`test_ricerca_full_db` lo nomina).
     def test_la_ricerca_trova_ogni_colonna_accesa(self):
         def _prova(cur, m):
-            inv = self._inventario_confermato(m)
+            # La descrizione nasce col documento: registrato, la testata non
+            # si modifica piu' (`E_MAG_DOCUMENTO_TESTATA_CONGELATA`).
+            inv = self._inventario_confermato(m, descrizione="Conta ricdescinv")
             magazzino_service.registra_documento("inventari", inv["id"])
-            cur.execute("UPDATE magazzino.inventari SET descrizione = 'Conta ricdescinv' WHERE id = %s", [inv["id"]])
             rett = magazzino_service.crea_documento("rettifiche", {"magazzino_id": m.mag_u})
             cur.execute("SELECT id, codice, descrizione FROM magazzino.magazzini WHERE id IN (%s, %s)", [m.mag_a, m.mag_u])
             mag = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
@@ -624,9 +633,11 @@ class DocumentoInternoDbTests(unittest.TestCase):
     #     `sorgente_id` e la RIGA di quel documento in `sorgente_riga`. Il
     #     documento d'origine si COSTRUISCE: un altro inventario, un tipo
     #     delle sorgenti come la bolla del pgTAP (`magazzino/test-sorgente-
-    #     testate-v1`), senza il mondo della vendita. La provenienza la scrive
-    #     l'SQL perche' nessun verbo del BE la scrive; il guard unico la
-    #     accetta solo se documento e riga stanno insieme.
+    #     testate-v1`), senza il mondo della vendita. ⭐ Dal 2026-11-23 la
+    #     provenienza NASCE col documento (D-M11 di brief-db-magazzino-tutte-
+    #     le-scritture-dal-verbo): la porta il repository al verbo di nascita,
+    #     la strada di chi fara' nascere un documento da un altro. Il form
+    #     dell'operatore non la porta, e dopo la nascita non cambia.
     def test_la_testata_proietta_la_provenienza_del_modello(self):
         def _prova(cur, m):
             origine = self._inventario_confermato(m)
@@ -637,23 +648,108 @@ class DocumentoInternoDbTests(unittest.TestCase):
             riga_origine = int(cur.fetchone()[0])
             cur.execute("SELECT id FROM config.sorgenti WHERE codice_interno = 'INVENTARIO'")
             tipo_inventario = int(cur.fetchone()[0])
-            derivato = magazzino_service.crea_documento("inventari", {"magazzino_id": m.mag_a})
-            cur.execute(
-                "UPDATE magazzino.inventari "
-                "SET sorgente_tipo_id = %s, sorgente_id = %s, sorgente_riga = %s WHERE id = %s",
-                [tipo_inventario, origine["id"], riga_origine, derivato["id"]],
-            )
-            letto = magazzino_service.get_documento("inventari", derivato["id"])
+            repository = MagazzinoRepository()
+            derivato_id = repository.create_documento(INVENTARI, magazzino_id=m.mag_a, campi={
+                "sorgente_tipo_id": tipo_inventario, "sorgente_id": origine["id"],
+                "sorgente_riga": riga_origine,
+            })
+            letto = magazzino_service.get_documento("inventari", derivato_id)
             self.assertEqual(
                 (letto["sorgente_tipo_id"], letto["sorgente_id"], letto["sorgente_riga"],
                  letto["sorgente_uid"]),
                 (tipo_inventario, origine["id"], riga_origine, None),
             )
             # Il documento intero: `sorgente_riga` NULL, la chiave resta.
-            cur.execute(
-                "UPDATE magazzino.inventari SET sorgente_riga = NULL WHERE id = %s",
-                [derivato["id"]],
-            )
-            letto = magazzino_service.get_documento("inventari", derivato["id"])
+            intero_id = repository.create_documento(INVENTARI, magazzino_id=m.mag_a, campi={
+                "sorgente_tipo_id": tipo_inventario, "sorgente_id": origine["id"],
+            })
+            letto = magazzino_service.get_documento("inventari", intero_id)
             self.assertEqual((letto["sorgente_id"], letto["sorgente_riga"]), (origine["id"], None))
+            # In modifica la provenienza non e' una colonna del verbo.
+            with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
+                repository.update_documento(INVENTARI, intero_id, {"sorgente_riga": riga_origine})
+            self.assertEqual(db_error_code(ctx.exception), "E_CAMPO_NON_AMMESSO")
         self._nel_mondo(_prova)
+
+    # 15. Le chiavi che il backend sa leggere SONO le colonne dei verbi
+    #     (`fn_documento_interno_colonne_ammesse`), famiglia per famiglia:
+    #     una divergenza sarebbe un 500 al primo uso (`campi_del_gesto`), qui
+    #     e' un rosso in CI. La nascita della testata senza la provenienza,
+    #     che il gesto dell'operatore non porta (D-M11).
+    def test_i_lettori_del_backend_sono_il_contratto_del_db(self):
+        def _prova(cur, m):
+            repository = MagazzinoRepository()
+            for f in FAMIGLIE.values():
+                for parte in ("testata", "riga"):
+                    for gesto in ("crea", "modifica"):
+                        with self.subTest(famiglia=f.codice, parte=parte, gesto=gesto):
+                            db = repository.colonne_ammesse(f, parte, gesto)
+                            if (parte, gesto) == ("testata", "crea"):
+                                db = db - magazzino_service._PROVENIENZA
+                            self.assertEqual(magazzino_service.chiavi_lette(f, parte, gesto), db)
+        self._nel_mondo(_prova)
+
+    # 16. La testata si modifica solo in DRAFT, e lo dice il VERBO (P-5b): il
+    #     codice nuovo arriva al client come 409 (R-3). Riaperta, si modifica.
+    def test_la_testata_fuori_da_draft_non_si_modifica(self):
+        def _prova(cur, m):
+            d = self._inventario_confermato(m)
+            e = self._rifiuto(lambda: magazzino_service.aggiorna_documento(
+                "inventari", d["id"], {"descrizione": "dopo la conferma"},
+            ))
+            self.assertEqual(e.code, "E_MAG_DOCUMENTO_TESTATA_CONGELATA")
+            self.assertEqual(ErrorTranslator.get_http_status(ErrorTranslator.to_api_error(e)), 409)
+            magazzino_service.cambia_stato_documento("inventari", d["id"], {"stato": "DRAFT"})
+            letto = magazzino_service.aggiorna_documento("inventari", d["id"], {"descrizione": "riaperto"})
+            self.assertEqual(letto["descrizione"], "riaperto")
+        self._nel_mondo(_prova)
+
+    # 17. Il permesso lo dice il VERBO (non solo l'endpoint): con LETTURA su
+    #     magazzino il service, chiamato senza view, riceve il rifiuto del DB
+    #     su ogni gesto — nascita, modifica, stato, righe, eliminazione.
+    def test_senza_livello_sull_oggetto_il_verbo_rifiuta(self):
+        def _prova(cur, m):
+            d = magazzino_service.crea_documento("inventari", {"magazzino_id": m.mag_a})
+            r = magazzino_service.crea_riga("inventari", d["id"], {"articolo_id": m.art, "qta_contata": 1})
+            cur.execute(
+                "UPDATE config.user_override_aree o SET livello = 'LETTURA'"
+                "  FROM config.aree_funzionali af"
+                " WHERE af.id = o.area_id AND af.schema_db = 'magazzino' AND o.auth_user_id = %s",
+                [m.uid],
+            )
+            self.assertEqual(cur.rowcount, 1)
+            gesti = {
+                "crea": lambda: magazzino_service.crea_documento("rettifiche", {"magazzino_id": m.mag_a}),
+                "modifica": lambda: magazzino_service.aggiorna_documento("inventari", d["id"], {"descrizione": "x"}),
+                "stato": lambda: magazzino_service.cambia_stato_documento("inventari", d["id"], {"stato": "CONFIRM"}),
+                "riga": lambda: magazzino_service.crea_riga("inventari", d["id"], {"articolo_id": m.art, "qta_contata": 2}),
+                "modifica_riga": lambda: magazzino_service.aggiorna_riga("inventari", d["id"], r["id"], {"qta_contata": 3}),
+                "togli_riga": lambda: magazzino_service.elimina_riga("inventari", d["id"], r["id"]),
+                "elimina": lambda: magazzino_service.elimina_documento("inventari", d["id"]),
+            }
+            for gesto, fn in gesti.items():
+                with self.subTest(gesto=gesto):
+                    self.assertEqual(self._rifiuto(fn).code, "E_PERMESSO_NEGATO")
+        self._nel_mondo(_prova)
+
+    # 18. Ogni testo che il backend legge (descrizione di testata, motivo di
+    #     riga) ha la lunghezza della SUA colonna, famiglia per famiglia: si
+    #     confronta col catalogo, non con una copia dei numeri.
+    def test_le_lunghezze_dei_testi_sono_quelle_delle_colonne(self):
+        with connection.cursor() as cur:
+            for f in FAMIGLIE.values():
+                for tabella, lettura in (
+                    (f.tabella, magazzino_service._lettura_testata(f)),
+                    (f.tabella_righe, magazzino_service._lettura_riga(f)),
+                ):
+                    schema, nome = tabella.split(".")
+                    for colonna, (_nullable, max_len) in lettura.get("testi", {}).items():
+                        cur.execute(
+                            "SELECT character_maximum_length FROM information_schema.columns"
+                            " WHERE table_schema = %s AND table_name = %s AND column_name = %s",
+                            [schema, nome, colonna],
+                        )
+                        riga = cur.fetchone()
+                        with self.subTest(tabella=tabella, colonna=colonna):
+                            self.assertIsNotNone(riga, "colonna assente")
+                            self.assertEqual(max_len, riga[0])

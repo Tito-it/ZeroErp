@@ -40,6 +40,16 @@ non ha `INSERT`/`UPDATE` su queste tabelle. Le chiavi **ammesse** le dice il DB
 scrittura; il backend valida il trasporto (tipo, obbligo, lunghezza) e una
 chiave che il DB non ammette e' **400** col suo nome.
 
+Le **lunghezze** dei testi sono quelle delle colonne: un testo piu' lungo e'
+**400** col campo, mai il `22001` del DB. Codice del magazzino 32, codice
+dell'ubicazione e del lotto 64, descrizione (magazzino e ubicazione) 120,
+area, corsia, scaffale, piano e posizione dell'ubicazione 32. Il presidio
+`tests/db/test_anagrafiche_magazzino_db.py` (11) le confronta col catalogo.
+⚠️ Fino al 2026-11-23 il backend aveva un tetto unico (codice 50, descrizione
+500, posizione 50), sbagliato nei due versi: oltre la colonna dava un 500, e
+rifiutava i codici di ubicazione e lotto fra 51 e 64 caratteri, che il modello
+ammette.
+
 🔴 Le tre tabelle hanno la **row security** accesa: il perimetro e'
 l'emittente del magazzino (per le ubicazioni, via il magazzino) e del lotto, e
 lo scope applicativo si somma (`add_emittente_scope_condition`). Un dettaglio

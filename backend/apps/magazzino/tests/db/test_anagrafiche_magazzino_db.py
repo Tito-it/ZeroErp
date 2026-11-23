@@ -33,6 +33,7 @@ Indice test eseguiti:
 8) AnagraficheMagazzinoDbTests.test_i_lettori_del_backend_sono_il_contratto_del_db
 9) AnagraficheMagazzinoDbTests.test_senza_livello_sull_oggetto_il_verbo_rifiuta
 10) AnagraficheMagazzinoDbTests.test_il_lotto_e_dell_azienda
+11) AnagraficheMagazzinoDbTests.test_le_lunghezze_dei_testi_sono_quelle_delle_colonne
 """
 from __future__ import annotations
 
@@ -367,3 +368,28 @@ class AnagraficheMagazzinoDbTests(unittest.TestCase):
             lista_a = svc.list_lotti(auth_user_id=m.uid, articolo_id=m.art_l, limit=10)
             self.assertEqual([x["id"] for x in lista_a["results"]], [lotto_a["id"]])
         self._nel_mondo(_prova)
+
+    # 11. Ogni testo che il backend legge ha la lunghezza della SUA colonna:
+    #     piu' lunga, il DB risponde 22001 (un 500); piu' corta, il backend
+    #     rifiuta un valore che il modello ammette. Fino al 2026-11-23 c'era un
+    #     tetto unico (codice 50, descrizione 500), sbagliato in tutti e due i
+    #     versi. Si confronta col catalogo, non con una copia dei numeri.
+    def test_le_lunghezze_dei_testi_sono_quelle_delle_colonne(self):
+        letture = {
+            "magazzini": (svc._NASCITA_MAGAZZINO, svc._MODIFICA_MAGAZZINO),
+            "ubicazioni": (svc._NASCITA_UBICAZIONE, svc._MODIFICA_UBICAZIONE),
+            "lotti": (svc._NASCITA_LOTTO, svc._MODIFICA_LOTTO),
+        }
+        with connection.cursor() as cur:
+            for tabella, gesti in letture.items():
+                for lettura in gesti:
+                    for colonna, (_nullable, max_len) in lettura.get("testi", {}).items():
+                        cur.execute(
+                            "SELECT character_maximum_length FROM information_schema.columns"
+                            " WHERE table_schema = 'magazzino' AND table_name = %s AND column_name = %s",
+                            [tabella, colonna],
+                        )
+                        riga = cur.fetchone()
+                        with self.subTest(tabella=tabella, colonna=colonna):
+                            self.assertIsNotNone(riga, "colonna assente")
+                            self.assertEqual(max_len, riga[0])

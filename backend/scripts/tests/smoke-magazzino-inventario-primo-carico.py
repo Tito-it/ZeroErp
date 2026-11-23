@@ -27,7 +27,7 @@
 #   7  registra rifiuta TUTTO (E_MAG_ARTICOLO_NON_GESTITO): stato ancora CONFIRM
 #   8  CONFIRM -> DRAFT riapre; riga senza lotto su requires_lotto: passa, i motivi la dicono
 #   9  rettifica -5: RETT_NEG alla media (7), disponibilita' a 5
-#  10  POSTED non si elimina, non si modifica, non torna in bozza; POSTED non si CHIEDE
+#  10  POSTED non si elimina, non si modifica (righe e testata), non torna in bozza; POSTED non si CHIEDE
 #  11  l'operatore di un altro emittente: 404 e lista vuota
 #  12  lookup di riga: ubicazioni del magazzino, lotti dell'articolo nel magazzino
 # ------------------------------------------------------------
@@ -37,6 +37,7 @@ from decimal import Decimal
 from django.db import connection, transaction
 
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests.db_e2e import apri_operatore_con_aree
 from apps.magazzino.services import consultazione_service as cs
 from apps.magazzino.services import magazzino_service as ms
 
@@ -60,9 +61,11 @@ def rifiuto(fn) -> str | None:
     return None
 
 
+# Il mondo, dopo l'operatore: l'operatore nasce con l'area `magazzino` a TUTTO
+# (BB `apri_operatore_con_aree`), perche' dal 2026-11-23 testate, righe e
+# stati passano dai VERBI, che chiedono il livello sull'oggetto della famiglia
+# (R-2 di brief-db-magazzino-tutte-le-scritture-dal-verbo).
 _MONDO = (
-    "CREATE TEMP TABLE _mondo AS SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m",
-    "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
     # I verbi di registrazione chiedono l'azione (`script.fn_guard_azione`):
     # la si concede all'operatore del mondo (brief-db-magazzino-verbi-con-permesso §6).
     "SELECT dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM _mondo), 'registra_magazzino')",
@@ -82,14 +85,14 @@ print("\n=== SMOKE magazzino — il primo carico dall'inventario (Lotto 2) ===\n
 
 with transaction.atomic():
     with connection.cursor() as cur:
+        uid = apri_operatore_con_aree(cur, aree=("magazzino",), motivo="smoke-magazzino-inventario-primo-carico")
+        cur.execute("CREATE TEMP TABLE _mondo AS SELECT %s::int AS auth_user_id", [uid])
         for passo in _MONDO:
             cur.execute(passo)
         cur.execute("SELECT mag_a, mag_u FROM _mag")
         mag_a, mag_u = (int(x) for x in cur.fetchone())
         cur.execute("SELECT art, art_ng, art_l FROM _art")
         art, art_ng, art_l = (str(x) for x in cur.fetchone())
-        cur.execute("SELECT auth_user_id FROM _mondo")
-        uid = int(cur.fetchone()[0])
     print(f"mondo: magazzini {mag_a} (senza ubicazioni), {mag_u} (a ubicazioni); operatore {uid}\n")
 
     # 1
@@ -154,6 +157,7 @@ with transaction.atomic():
     check("10) POSTED: non si elimina, non si modifica, non torna in bozza, non si chiede",
           rifiuto(lambda: ms.elimina_documento("inventari", d["id"])) == "E_MAG_DOCUMENTO_NON_ELIMINABILE"
           and rifiuto(lambda: ms.aggiorna_riga("inventari", d["id"], riga["id"], {"qta_contata": 1})) == "E_MAG_DOCUMENTO_RIGHE_CONGELATE"
+          and rifiuto(lambda: ms.aggiorna_documento("inventari", d["id"], {"descrizione": "x"})) == "E_MAG_DOCUMENTO_TESTATA_CONGELATA"
           and rifiuto(lambda: ms.cambia_stato_documento("inventari", d["id"], {"stato": "DRAFT"})) == "E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA"
           and rifiuto(lambda: ms.cambia_stato_documento("inventari", d["id"], {"stato": "POSTED"})) == "E_MAGAZZINO_VALIDATION")
     # 11

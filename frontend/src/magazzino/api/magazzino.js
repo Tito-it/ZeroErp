@@ -53,7 +53,8 @@ export function exportDocumenti(famiglia, params = {}) {
 // ⭐ Crea la BOZZA. Il magazzino si sceglie QUI e basta: e' l'ancora del
 //    documento (RLS, ubicazioni delle righe, `qta_sistema` del piano) e il
 //    PATCH non lo accetta. Payload: `magazzino_id` (obbligatorio), `data`
-//    (default oggi, a DB), `descrizione` (solo inventario), `meta`.
+//    (default oggi, a DB), `descrizione` (solo inventario). Le chiavi le dice
+//    il DB (le colonne del verbo di nascita, dal 2026-11-23): `meta` non c'e'.
 export function creaDocumento(famiglia, payload) {
   return api.post(`${base(famiglia)}/`, payload)
 }
@@ -70,7 +71,8 @@ export function getDocumento(famiglia, docId) {
   return api.get(`${base(famiglia)}/${docId}/`)
 }
 
-// PATCH della testata: `data`, `descrizione` (solo inventario), `meta`.
+// PATCH della testata: `data`, `descrizione` (solo inventario). Solo in
+// `DRAFT`: fuori, `E_MAG_DOCUMENTO_TESTATA_CONGELATA` (409, dal verbo).
 // ⛔ Non lo stato (`stato/`), non il magazzino (si sceglie alla nascita).
 export function aggiornaDocumento(famiglia, docId, payload) {
   return api.patch(`${base(famiglia)}/${docId}/`, payload)
@@ -118,7 +120,7 @@ export function exportRighe(famiglia, docId, params = {}) {
 // La riga: `articolo_id` (uuid), la quantita' col nome FISICO della famiglia
 // (`qta_contata` ≥ 0 | `qta_delta` ≠ 0) + `motivo` (rettifica),
 // `costo_unitario` (≥ 0, nullable: vuoto = alla media corrente),
-// `ubicazione_id` / `lotto_id` / `asset_id` (nullable), `meta`.
+// `ubicazione_id` / `lotto_id` / `asset_id` (nullable).
 // ⛔ Il backend NON ricalcola la coerenza della riga (Q-3): il DB la accetta in
 //    `DRAFT`, il piano la dichiara `NON_POSTABILE`, il form la MOSTRA con
 //    `motiviRiga`. Solo in `DRAFT`: fuori, `E_MAG_DOCUMENTO_RIGHE_CONGELATE`.

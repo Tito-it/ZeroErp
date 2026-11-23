@@ -17,6 +17,10 @@
 #       parametro che il contratto dichiara ammesso
 #       (`feedback_contratto_dichiarato_provalo_intero`). Si legge QUI, una
 #       volta, con il validator del dominio.
+#
+#       ⭐ 2026-11-23: `Lettura`, `chiavi_lettura`, `campi_del_gesto` sono
+#       stati qui per un giro; alla seconda occorrenza sono passati al core,
+#       BB di `apps/core/services/payload_helpers.py` (ok Tid 2026-11-23).
 # ------------------------------------------------------------
 
 from __future__ import annotations
