@@ -24,7 +24,7 @@ DECLARE
 BEGIN
     -- Scopo: il gesto «elimina il documento» (la bozza). Le
     --   righe vanno con la testata (ON DELETE CASCADE).
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('magazzino.fn_elimina_documento_interno');
     PERFORM script.fn_guard_livello(
         v_utente, 'magazzino',
         (SELECT f.tabella FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f),

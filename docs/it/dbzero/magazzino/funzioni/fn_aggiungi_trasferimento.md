@@ -26,7 +26,7 @@ DECLARE
 BEGIN
     -- Scopo: il gesto «nuovo trasferimento» dell'operatore dal
     --   magazzino p_magazzino_id_from a p_magazzino_id_to. Ritorna l'id.
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('magazzino.fn_aggiungi_trasferimento');
     PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'trasferimenti', 'TUTTO');
     -- Tutti e due nel perimetro: un arrivo fuori perimetro e' «non
     -- trovato» come la partenza, non un emittente diverso.

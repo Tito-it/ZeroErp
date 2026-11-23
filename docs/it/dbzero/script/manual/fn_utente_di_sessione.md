@@ -18,8 +18,8 @@
 ### 🎯 Scopo Principale
 
 Dà l'utente della richiesta: l'id che il backend scrive nella sessione (`app.current_user_id`) a ogni
-chiamata autenticata. Ogni funzione e ogni vista del database che ha bisogno di sapere chi sta agendo
-lo legge da qui, invece di convertire il valore da sé.
+chiamata autenticata. Ogni funzione, vista e policy RLS del database che ha bisogno di sapere chi sta
+agendo lo legge da qui, invece di convertire il valore da sé.
 
 ---
 
@@ -37,8 +37,9 @@ lo legge da qui, invece di convertire il valore da sé.
 
 ### Il rifiuto nomina chi leggeva
 
-Chi la chiama passa il proprio nome. Il messaggio e il log dicono quale funzione ha trovato il valore
-sbagliato, e il contesto del log riporta il valore com'era scritto.
+Chi la chiama passa il proprio nome: la funzione, oppure la policy con la sua tabella
+(`schema.tabella.policy`). Il messaggio e il log dicono chi ha trovato il valore sbagliato, e il
+contesto del log riporta il valore com'era scritto.
 
 ---
 
@@ -46,10 +47,16 @@ sbagliato, e il contesto del log riporta il valore com'era scritto.
 
 Prima ogni funzione convertiva il valore per conto suo: un valore sbagliato dava un errore grezzo di
 PostgreSQL senza codice, e una sola funzione di `ui` aveva un controllo suo, con un codice diverso. Ora
-la regola sta qui, e un test del catalogo diventa rosso se una funzione o una vista torna a leggere il
-valore da sé.
+la regola sta qui, e un test del catalogo diventa rosso se una funzione, una vista o una policy torna
+a leggere il valore da sé.
 
-Le policy RLS leggono ancora il valore da sé, con la conversione descritta nel
+---
+
+### Nelle policy, una volta per istruzione
+
+Una policy la chiama dentro una sottoquery non correlata, `(SELECT …)`: il database la valuta una
+volta per istruzione, non per ogni riga della tabella. Costa poco (circa un millesimo di
+millisecondo, misurato), ma chiamata riga per riga su una tabella grande peserebbe. La forma è nel
 [contratto delle GUC](/guide/contratto-guc-app).
 
 ---
@@ -64,8 +71,8 @@ Le policy RLS leggono ancora il valore da sé, con la conversione descritta nel
 
 `db/pgtap/script/test-fn-utente-di-sessione-v1.sql`: la forma, le risposte (sessione senza utente,
 un id, il massimo), i valori rifiutati, il nome di chi legge nel messaggio, e il presidio del catalogo:
-nessuna funzione e nessuna vista legge il valore da sé, salvo un elenco chiuso di eccezioni, ciascuna
-col suo motivo.
+nessuna funzione, vista o policy legge il valore da sé, salvo un elenco chiuso di eccezioni (due
+funzioni che salvano e ripristinano il testo della GUC), ciascuna col suo motivo.
 
 ---
 
@@ -74,6 +81,8 @@ col suo motivo.
 * 2026-11-23 — nasce dalle copie della stessa conversione in una sessantina di funzioni e quattro viste
   di `script`, `ui`, `anagrafiche`, `catalogo`, `config`, `dbops`, `pagamenti` e `vendite`, che passano
   qui nello stesso giro; `magazzino` subito dopo (`brief-db-revisione-ui`, giro 8).
+* 2026-11-23 — anche le 177 policy RLS, e il generatore delle policy dello storico, leggono l'utente
+  da qui (giro 8b).
 
 ---
 

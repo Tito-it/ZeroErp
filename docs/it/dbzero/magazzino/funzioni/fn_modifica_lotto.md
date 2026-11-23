@@ -26,7 +26,7 @@ BEGIN
     -- Scopo: il gesto «modifica il lotto» dell'operatore, dentro
     --   il perimetro della sua azienda: il delta p_dati sulle
     --   colonne modificabili. Ritorna la riga.
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('magazzino.fn_modifica_lotto');
     PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'lotti', 'TUTTO');
 
     v_ammesse  := magazzino.fn_lotti_colonne_ammesse('modifica');

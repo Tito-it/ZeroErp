@@ -24,7 +24,7 @@ DECLARE
 BEGIN
     -- Scopo: il gesto «nuovo inventario» dell'operatore nel
     --   magazzino p_magazzino_id. Ritorna l'id.
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('magazzino.fn_aggiungi_inventario');
     PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'inventari', 'TUTTO');
     PERFORM magazzino.fn_guard_magazzino_nel_perimetro(
         p_magazzino_id, v_utente, 'magazzino.fn_aggiungi_inventario');

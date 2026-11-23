@@ -25,7 +25,7 @@ DECLARE
 BEGIN
     -- Scopo: il gesto «modifica il magazzino» dell'operatore: il
     --   delta p_dati sulle colonne modificabili. Ritorna la riga.
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('magazzino.fn_modifica_magazzino');
     PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'magazzini', 'TUTTO');
 
     v_ammesse  := magazzino.fn_magazzini_colonne_ammesse('modifica');

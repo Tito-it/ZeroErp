@@ -1,6 +1,6 @@
 # Guida — Architettura Permessi e Autorizzazioni
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -848,7 +848,8 @@ guard, senza controlli scritti a mano:
 | `script.fn_guard_utente_stesso` | le cose **proprie** di una persona (il dispositivo del secondo fattore): chi agisce dev'essere lei | il confronto con la credenziale su cui si agisce |
 
 I quattro guard si comportano allo stesso modo: l'utente arriva come parametro
-(il verbo lo legge da `app.current_user_id`), la regola la decide la funzione
+(il verbo lo legge con `script.fn_utente_di_sessione`, la sede unica della
+lettura di `app.current_user_id`), la regola la decide la funzione
 di risoluzione che usa anche il backend, e il rifiuto e' `E_PERMESSO_NEGATO`,
 lo stesso codice del backend — anche quando l'utente manca (fail-closed).
 

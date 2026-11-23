@@ -26,7 +26,7 @@ BEGIN
     -- Scopo: il gesto «modifica l'ubicazione» dell'operatore,
     --   dentro il suo magazzino: il delta p_dati sulle colonne
     --   modificabili. Ritorna la riga.
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('magazzino.fn_modifica_ubicazione');
     PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'ubicazioni', 'TUTTO');
 
     v_ammesse  := magazzino.fn_ubicazioni_colonne_ammesse('modifica');

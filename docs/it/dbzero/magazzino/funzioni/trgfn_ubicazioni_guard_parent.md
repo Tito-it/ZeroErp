@@ -63,7 +63,7 @@ BEGIN
   END IF;
 
   -- 2) Il padre, nel perimetro di chi agisce: magazzino e codici per la frase.
-  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+  v_utente := script.fn_utente_di_sessione('magazzino.trgfn_ubicazioni_guard_parent');
   SELECT u.magazzino_id, u.codice, m.codice
     INTO v_padre_magazzino_id, v_padre_codice, v_mag_padre_codice
     FROM magazzino.ubicazioni u

@@ -26,7 +26,13 @@
 #   del 20261122-30. processo_codice e jobname sono NOT NULL, quindi il
 #   confronto fra righe non incontra NULL e la discesa non si ferma prima.
 #
-# ⚠️ Nessun GRANT: la leggono una vista e una funzione del proprietario.
+# ⚠️ Nessun GRANT qui, ma all'app serve: la legge anche
+#   maintenance.fn_pota_giornale_corse, che e' SECURITY INVOKER (legge con i
+#   privilegi di chi la chiama), e il presidio dei riferimenti morti la misura
+#   come zeroerp_app. Il SELECT all'app e' nel 90_end/20261123-37 e in
+#   scripts/sql/provision_zeroerp.sql. (Fino al 2026-11-23 questa riga diceva
+#   «la leggono solo oggetti del proprietario»: vero per la vista, non per la
+#   funzione.)
 # ------------------------------------------------------------
 
 databaseChangeLog:

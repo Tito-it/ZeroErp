@@ -1856,7 +1856,7 @@ sottoquery scalare **non correlata**: PostgreSQL la valuta una volta
 USING ((current_setting('app.ruolo_applicativo', true) = 'OPERATORE')
        AND script.fn_scope_ef_perimetro(
                (SELECT script.fn_get_emittenti_scope_pk_ids(
-                   NULLIF(current_setting('app.current_user_id', true), '')::integer)),
+                   script.fn_utente_di_sessione('<schema>.<tabella>.<policy>'))),
                emittente_fiscale_id))
 ```
 
@@ -1950,15 +1950,19 @@ GUC di riferimento:
 La policy chiama la funzione passando i GUC, **mai** leggendoli dentro la funzione — questo
 mantiene la funzione pura e testabile con input espliciti.
 
-`current_setting('app.xxx', true)` ritorna stringa vuota se il GUC non e' settato.
-Nella policy il fallback si scrive con `NULLIF(..., '')::integer`.
+`current_setting('app.xxx', true)` ritorna stringa vuota se il GUC non e' settato: per le
+altre GUC il fallback si scrive con `NULLIF(..., '')::tipo`.
 
-**`app.current_user_id` in una funzione o in una vista: dal BB.** Si legge con
-[`script.fn_utente_di_sessione('<schema.funzione>')`](/dbzero/script/funzioni/fn_utente_di_sessione),
+**`app.current_user_id` in una funzione, una vista o una policy: dal BB.** Si legge con
+[`script.fn_utente_di_sessione('<chi legge>')`](/dbzero/script/funzioni/fn_utente_di_sessione),
 mai con `NULLIF(current_setting(...), '')::integer`: GUC assente o vuota da' `NULL`, un valore
 che non e' l'id di un utente da' `E_SCRIPT_CHIAMATA_NON_VALIDA` col nome di chi legge (la
-conversione a mano dava il 22P02 grezzo). Il presidio e' `script/test-fn-utente-di-sessione-v1`:
-una funzione nuova che converte la GUC da se' lo fa diventare rosso.
+conversione a mano dava il 22P02 grezzo). Chi legge e' `<schema.funzione>` in una funzione,
+`<schema>.<tabella>.<policy>` in una policy. Nella policy il BB sta in una sottoquery non
+correlata, `(SELECT ...)`, anche quando e' un argomento diretto della funzione di perimetro:
+cosi' e' valutato una volta per istruzione, non per riga (§10.3). Il presidio e'
+`script/test-fn-utente-di-sessione-v1`: una funzione, una vista o una policy nuova che converte
+la GUC da se' lo fa diventare rosso.
 
 **Helper `script.fn_current_identita_context()`** — per leggere i tre GUC multi-face-auth
 (`app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id`) in un unico

@@ -25,7 +25,7 @@ DECLARE
 BEGIN
     -- Scopo: il gesto «aggiungi una riga» al trasferimento
     --   p_trasferimento_id. Ritorna l'id della riga.
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('magazzino.fn_aggiungi_riga_trasferimento');
     PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'trasferimenti', 'TUTTO');
     PERFORM magazzino.fn_documento_interno_blocca(
         'TRASFERIMENTO', p_trasferimento_id, v_utente, 'magazzino.fn_aggiungi_riga_trasferimento');

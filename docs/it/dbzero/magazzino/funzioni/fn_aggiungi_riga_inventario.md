@@ -25,7 +25,7 @@ DECLARE
 BEGIN
     -- Scopo: il gesto «aggiungi una riga contata» all'inventario
     --   p_inventario_id. Ritorna l'id della riga.
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('magazzino.fn_aggiungi_riga_inventario');
     PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'inventari', 'TUTTO');
     PERFORM magazzino.fn_documento_interno_blocca(
         'INVENTARIO', p_inventario_id, v_utente, 'magazzino.fn_aggiungi_riga_inventario');
