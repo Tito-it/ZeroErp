@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `ui.trgfn_ui_lista_preset_guard_pagina_dimensione`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -34,16 +34,13 @@ e quando cambia la sua misura, e passa il valore a
 arriva come `E_UI_MISURA_PAGINA_NON_AMMESSA`, con l'elenco delle misure ammesse, invece che come
 violazione grezza della FK. La FK resta come rete.
 
-Nessuna misura passa: la lista prende allora il default `PAGINA` del catalogo.
+Il preset che non nomina la misura nasce senza: la colonna non ha un default, e la lista prende
+allora il default `PAGINA` del catalogo.
 
 ---
 
 ### ⚠️ Che cosa oggi non copre
 
-* **La colonna ha un default scritto.** `pagina_dimensione` non nasce vuota quando l'INSERT non la
-  nomina: prende un numero fisso. Il guard lo giudica come una scelta, e il preset da quel momento non
-  segue più il default del catalogo; se quel numero esce dal catalogo, l'INSERT che non nomina la
-  colonna è rifiutato.
 * Il guard non vede che cosa succede al catalogo dopo: una misura citata da un preset non si toglie,
   ma per la FK, col suo errore grezzo.
 

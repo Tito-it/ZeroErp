@@ -699,7 +699,7 @@ l'enforcement al livello piu' basso dello stack.
 
 | GUC                       | Popolato da                                      | Usato da                                      |
 | ------------------------- | ------------------------------------------------ | --------------------------------------------- |
-| `app.current_user_id`     | `auth_user.id` del JWT                           | Trigger audit, retrocompatibilita'            |
+| `app.current_user_id`     | `auth_user.id` del JWT                           | Verbi, trigger di scope, viste e policy RLS, attraverso `script.fn_utente_di_sessione` |
 | `app.current_identita_id` | Claim JWT `identita_id`                          | Policy RLS, scope policy                      |
 | `app.ruolo_applicativo`   | `identita_digitali.ruolo_applicativo` della riga | Gate policy RLS, discriminazione portale/shop |
 | `app.soggetto_ruolo_id`   | `identita_digitali.soggetto_ruolo_id` della riga | Helper scope (quando serve il SR dell'utente) |
