@@ -45,6 +45,12 @@ un bersaglio che si muove, e non si toccano i file dell'altra sessione.
    senza BB è un caso di regola del 2.
 4. **Hardcoded**: ID numerici, codici, testi per l'utente fuori da i18n, valori
    che hanno già una sede (config, costanti, lookup per codice).
+5. **Guide del dominio disallineate** (regola in `.codex/AGENTS.md`): lancia
+   `scripts/guide_coinvolte.py` sul perimetro (`--oggetti schema.nome…` per i
+   file che tengono le rotte in una costante). Per ogni guida trovata apri le
+   sezioni sugli oggetti e sugli endpoint in comune, compreso «Per il backend»,
+   e dai l'esito: coerente, guida indietro, oppure codice che la contraddice.
+   Confronta l'elenco con la riga «Guide verificate» del brief.
 
 Valgono le regole di `.codex/AGENTS.md`, a partire dalla regola zero: un
 difetto si giudica sul modello, non su quante righe oggi lo attraversano.
@@ -56,13 +62,16 @@ difetto si giudica sul modello, non su quante righe oggi lo attraversano.
 - sostituzione di una copia con un building block che esiste già;
 - valori hardcoded che hanno già una sede;
 - documentazione, catalogo BB (e indice rigenerato) e brief rimasti indietro
-  rispetto al codice del perimetro.
+  rispetto al codice del perimetro, comprese le guide del dominio rimaste
+  indietro (con la data in testa).
 
 **Dichiara a Tid e aspetta l'ok**:
 - estrazione di un building block nuovo (regola del 2);
 - cambio di una firma pubblica o di un contratto con chiamanti fuori dal
   perimetro;
-- cancellazioni e dipendenze nuove.
+- cancellazioni e dipendenze nuove;
+- codice che contraddice una guida del dominio: è un cambio di modello, non si
+  allinea la guida al codice senza ok.
 
 **Non fare, scrivi nel brief**: tutto ciò che richiede una modifica al DB. Va
 come richiesta al team DB; nessun ripiego lato BE/FE nell'attesa.

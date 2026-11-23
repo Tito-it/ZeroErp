@@ -13,7 +13,11 @@
 #   1. i nomi qualificati `schema.oggetto` degli schemi del database
 #      (anche nella forma Django `schema"."oggetto` e nei link della doc
 #      `/dbzero/<schema>/<tabelle|funzioni|views>/<oggetto>`);
-#   2. i percorsi `/api/v1/<area>/<risorsa>/` scritti nel codice BE/FE.
+#   2. i percorsi `/api/v1/<area>/<risorsa>/` scritti nel codice BE/FE, e
+#      nel FE anche la forma senza prefisso (`get('/vendite/ddt/')`) quando
+#      `<area>` ha la sua doc in `docs/it/backend/`. Un prefisso tenuto in una
+#      costante (`BASE = '/magazzino'`) non si ricompone: per quei file si
+#      passano gli oggetti con `--oggetti`.
 #   Gli schemi sono le cartelle di `docs/it/dbzero/`: uno schema nuovo
 #   entra da solo appena ha la sua doc.
 #
@@ -78,6 +82,14 @@ def regex_oggetti(nomi_schema: list[str]) -> re.Pattern[str]:
 RE_API = re.compile(r"/api/v1/([a-z0-9-]+)/([a-z0-9-]+)/")
 
 
+def regex_api_relative() -> re.Pattern[str]:
+    """Il client FE scrive le rotte senza `/api/v1` (`get('/vendite/ddt/')`):
+    vale solo se la prima parte e' un'area con la sua doc `docs/it/backend/<area>/`."""
+    aree = sorted(p.name for p in BACKEND_DOC.iterdir() if p.is_dir() and not p.name.startswith(("_", ".")))
+    alt = "|".join(map(re.escape, aree))
+    return re.compile(rf"['`\"]/({alt})/([a-z0-9-]+)")
+
+
 def file_del_perimetro(base: str | None) -> list[Path]:
     def git(*args: str) -> list[str]:
         out = subprocess.run(["git", *args], cwd=RADICE, capture_output=True, text=True, check=True)
@@ -88,9 +100,9 @@ def file_del_perimetro(base: str | None) -> list[Path]:
     return [RADICE / n for n in sorted(nomi)]
 
 
-def estrai(testo: str, re_ogg: re.Pattern[str]) -> tuple[set[str], set[str]]:
+def estrai(testo: str, re_ogg: re.Pattern[str], re_rel: re.Pattern[str]) -> tuple[set[str], set[str]]:
     oggetti = {f"{s}.{o}" for s, o in re_ogg.findall(testo)}
-    api = {f"/api/v1/{a}/{b}/" for a, b in RE_API.findall(testo)}
+    api = {f"/api/v1/{a}/{b}/" for a, b in RE_API.findall(testo) + re_rel.findall(testo)}
     return oggetti, api
 
 
@@ -117,6 +129,7 @@ def main() -> int:
     a = ap.parse_args()
 
     re_ogg = regex_oggetti(schemi())
+    re_rel = regex_api_relative()
 
     oggetti: set[str] = set(a.oggetti)
     api: set[str] = set()
@@ -128,7 +141,7 @@ def main() -> int:
 
     for p in ingressi:
         if p.suffix in ESTENSIONI_LETTE and p.is_file():
-            o, e = estrai(leggi(p), re_ogg)
+            o, e = estrai(leggi(p), re_ogg, re_rel if p.suffix in {".js", ".ts", ".vue"} else re.compile(r"(?!)"))
             oggetti |= o
             api |= e
 
