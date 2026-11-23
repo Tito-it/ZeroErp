@@ -25,7 +25,7 @@ from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import Any, NoReturn, TypeVar
+from typing import Any, NoReturn, TypedDict, TypeVar
 from uuid import UUID
 
 from django.db import DatabaseError, IntegrityError
@@ -71,6 +71,34 @@ MISSING = MissingType()
 
 # Il tipo della voce letta da `PayloadValidator.voci`.
 _T = TypeVar("_T")
+
+
+# ══════════════════════════════════════════════════════════════════
+#  Il payload di un gesto letto sul contratto del DB
+# ══════════════════════════════════════════════════════════════════
+# ⭐ Regola del 2 (ok Tid 2026-11-23): nati privati nel service delle
+#    anagrafiche di magazzino (R-1 di brief-db-magazzino-tutte-le-scritture-
+#    dal-verbo), ricopiati dal documento interno (R-2). Le chiavi ammesse le
+#    dice il DB (`fn_*_colonne_ammesse`), il trasporto di ogni chiave il
+#    service: `Lettura` lo dichiara, `PayloadValidator.campi_del_gesto` lo legge.
+
+Lettore = Callable[[dict[str, Any], str], Any]
+
+
+# I lettori del trasporto di un gesto, nei gruppi di `campi_per_presenza`.
+class Lettura(TypedDict, total=False):
+    testi: Mapping[str, tuple[bool, int | None]]
+    interi: Mapping[str, bool]
+    flag: Collection[str]
+    altri: Mapping[str, Lettore]
+
+
+# Scopo: Le chiavi che una lettura sa leggere: lo schema OpenAPI del corpo.
+def chiavi_lettura(lettura: Lettura) -> frozenset[str]:
+    return frozenset({
+        *lettura.get("testi", {}), *lettura.get("interi", {}),
+        *lettura.get("flag", ()), *lettura.get("altri", {}),
+    })
 
 
 class PayloadValidator:
@@ -1338,6 +1366,37 @@ class PayloadValidator:
             campi, message=message_vuoto, detail=detail_vuoto, context=context_vuoto, **em,
         )
         return campi
+
+    # Scopo: Il payload di un gesto, letto sul contratto del DB. `ammesse` sono
+    #        le chiavi che il verbo accetta (la lista `fn_*_colonne_ammesse` del
+    #        gesto, piu' le identita' che il payload porta e il verbo riceve
+    #        come argomento). Gli `obbligatori` della nascita devono esserci
+    #        (codice di validazione dell'istanza, `context.field`); il resto lo
+    #        legge `campi_per_presenza`, che rifiuta (400) la chiave fuori
+    #        contratto e alza un `RuntimeError` se il DB e i lettori divergono
+    #        — mai uno scarto silenzioso.
+    def campi_del_gesto(
+        self,
+        payload: dict[str, Any],
+        *,
+        ammesse: frozenset[str],
+        lettura: Lettura,
+        obbligatori: tuple[str, ...] = (),
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> dict[str, Any]:
+        em = self._em_kwargs(log_to_db=log_to_db, function_name=function_name)
+        for chiave in obbligatori:
+            ErrorManager.require(
+                chiave in payload,
+                code=self._code,
+                message=f"Campo '{chiave}' obbligatorio.",
+                context={"field": chiave},
+                **em,
+            )
+        return self.campi_per_presenza(
+            payload, ammesse=ammesse, log_to_db=log_to_db, function_name=function_name, **lettura,
+        )
 
     # =================================================================
     # Liste di voci

@@ -23,6 +23,7 @@ Indice test eseguiti:
 8) LottiServiceTests.test_scadenza_nulla_la_toglie
 9) LottiServiceTests.test_la_nascita_passa_articolo_e_obbligatori_come_argomenti
 10) ContrattoServiceTests.test_db_e_lettori_divergenti_sono_un_allarme
+11) ContrattoServiceTests.test_ogni_testo_si_ferma_alla_lunghezza_della_sua_colonna
 """
 from __future__ import annotations
 
@@ -211,3 +212,28 @@ class ContrattoServiceTests(SimpleTestCase):
                 svc.crea_magazzino({"codice": "A", "descrizione": "d", "indirizzo_dettaglio_id": 4})
             repo.return_value.update_magazzino.assert_not_called()
             repo.return_value.create_magazzino.assert_not_called()
+
+    # 11. Il limite di ogni testo e' quello della SUA colonna: al limite passa,
+    #     oltre e' un 400 col campo (non un 22001 del DB), e un codice di
+    #     ubicazione o di lotto fino a 64 non e' rifiutato. Il confronto col
+    #     catalogo vero e' in `tests/db/test_anagrafiche_magazzino_db.py` (11).
+    def test_ogni_testo_si_ferma_alla_lunghezza_della_sua_colonna(self):
+        casi = (
+            ("magazzino", "codice", 32, lambda p: svc.aggiorna_magazzino(3, p)),
+            ("magazzino", "descrizione", 120, lambda p: svc.aggiorna_magazzino(3, p)),
+            ("ubicazione", "codice", 64, lambda p: svc.aggiorna_ubicazione(3, 9, p)),
+            ("ubicazione", "descrizione", 120, lambda p: svc.aggiorna_ubicazione(3, 9, p)),
+            ("ubicazione", "corsia", 32, lambda p: svc.aggiorna_ubicazione(3, 9, p)),
+            ("lotto", "codice", 64, lambda p: svc.aggiorna_lotto(5, p)),
+        )
+        with patch(_REPO, autospec=True) as repo:
+            _contratto(repo)
+            repo.return_value.get_magazzino.return_value = _MAG
+            repo.return_value.get_ubicazione.return_value = _UBI
+            repo.return_value.get_lotto.return_value = _LOTTO
+            for entita, campo, limite, chiama in casi:
+                with self.subTest(entita=entita, campo=campo):
+                    chiama({campo: "X" * limite})
+                    troppo = {campo: "X" * (limite + 1)}
+                    e = _rifiuto(lambda chiama=chiama, troppo=troppo: chiama(troppo))
+                    self.assertEqual((e.code, e.context.get("field")), (svc.E_VALIDAZIONE, campo))

@@ -323,7 +323,7 @@ defineExpose({ modificato, chiudiConConferma })
 
     <div v-if="f.conMotivo" class="form-field">
       <label>{{ t('magazzino.documenti_interni.riga.campo_motivo') }}</label>
-      <InputText v-model="form.motivo" maxlength="200" :invalid="acceso('motivo')" />
+      <InputText v-model="form.motivo" maxlength="64" :invalid="acceso('motivo')" />
     </div>
 
     <!-- ══ La posizione: solo i campi che magazzino e articolo pretendono ══ -->

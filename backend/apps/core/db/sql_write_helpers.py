@@ -15,7 +15,7 @@ from uuid import UUID
 
 from django.db import connection
 
-from apps.core.db._helpers import row_to_dict
+from apps.core.db._helpers import fetchone_scalar, row_to_dict
 
 # Un nome di colonna che finisce interpolato nel testo SQL: minuscole, cifre e
 # underscore, come ogni colonna del modello. E' il controllo che resta anche
@@ -285,3 +285,41 @@ def execute_dynamic_update(
     with connection.cursor() as cursor:
         cursor.execute(sql, params)
         return cursor.rowcount > 0
+
+
+# ══════════════════════════════════════════════════════════════════
+#  Il trasporto verso i VERBI del DB
+# ══════════════════════════════════════════════════════════════════
+# ⭐ Regola del 2 (ok Tid 2026-11-23): nati privati nel repository delle
+#    anagrafiche di magazzino (R-1 di brief-db-magazzino-tutte-le-scritture-
+#    dal-verbo), ricopiati dal documento interno (R-2): stanno qui, la sede
+#    delle scritture, e le copie del dominio sono ritirate nello stesso giro.
+#    Un verbo riceve i campi come `jsonb` e li riporta al tipo della colonna
+#    (`jsonb_populate_record`): la composizione SQL non e' piu' del backend.
+
+
+# Scopo: Una colonna `meta` e' `jsonb NOT NULL DEFAULT '{}'`: un `None`
+#        diventerebbe NULL e un 23502, quindi `None` vale «meta vuoto» — `{}`.
+#        Un `meta` ASSENTE non si tocca: alla nascita resta il DEFAULT del DB,
+#        in una modifica la colonna non viaggia. Restituisce una COPIA se cambia.
+def meta_mai_null(valori: dict[str, Any]) -> dict[str, Any]:
+    if "meta" in valori and valori["meta"] is None:
+        return {**valori, "meta": {}}
+    return valori
+
+
+# Scopo: I campi di una scrittura come li riceve un verbo (`jsonb`): `meta`
+#        a `None` diventa `{}` (`meta_mai_null`), date, decimali e uuid come
+#        testo (`default=str`: ISO, il valore esatto, la forma canonica).
+def campi_jsonb(campi: dict[str, Any]) -> str:
+    return json.dumps(meta_mai_null(campi), default=str)
+
+
+# Scopo: Esegue un verbo e ne restituisce il valore scalare (la riga c'e'
+#        sempre: un verbo risponde o solleva — BB `fetchone_scalar`).
+# ⚠️ `sql` e' un letterale del repository (il nome del verbo e i cast), mai
+#    input: i valori viaggiano nei `params`.
+def esegui_verbo(sql: str, params: list[Any]) -> Any:
+    with connection.cursor() as cursor:
+        cursor.execute(sql, params)
+        return fetchone_scalar(cursor)

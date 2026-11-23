@@ -2,10 +2,10 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-23**
 >
-> **Riparte: la sessione BE**, con la R-2 (i documenti interni sui verbi) e la R-3 (un codice nuovo); per
-> ultimo il team DB con ciò che resta del P-5c, la sola chiusura delle sei tabelle, **dopo** la R-2, perché
-> il backend non resti senza strada. `20261123-10` e `-11` sono applicati, pgTAP verdi col runner (§5.6). La R-1 è fatta dalla sessione BE il
-> 2026-11-22 e committata. La R-4 aspetta che gli oggetti di magazzino entrino a catalogo (Tid, 2026-11-22).
+> **Riparte: il team DB**, col resto del P-5c (la sola chiusura delle sei tabelle) e poi il P-6. La R-2 e la
+> R-3 le ha fatte la sessione BE il 2026-11-23 (§7): nessuno scrittore BE resta sulle sei tabelle, e il BE
+> non chiede niente al DB. Il lavoro BE è committato (`659182055`, 2026-11-23). La R-1 è fatta e committata (2026-11-22). La R-4
+> aspetta che gli oggetti di magazzino entrino a catalogo (Tid, 2026-11-22).
 >
 > | # | Chi | Che cosa | Dove | Aspetta |
 > | --- | --- | --- | --- | --- |
@@ -21,19 +21,19 @@
 > | 5-quinquies | team DB | ✅ P-5a: `script.fn_guard_campi_ammessi`, quindici porte ritirate (`20261123-01` … `-04`, 2026-11-23) | §5.5 | — |
 > | 6 | team DB | ✅ P-5b: registro, check sul registro, undici verbi, codice nuovo (`20261123-05` … `-09`, 2026-11-23) | §5.5 | — |
 > | 6-bis | Tid | ✅ apply di `20261123-01` … `-09`, pgTAP verdi col runner (2026-11-23) | §5.5 | — |
-> | 6-ter | sessione BE | R-2 (documenti interni sui verbi, colonne ammesse dal DB) e R-3 (`E_MAG_DOCUMENTO_TESTATA_CONGELATA`) | §7 | 6-bis |
+> | 6-ter | sessione BE | ✅ R-2 (documenti interni sui verbi, colonne ammesse dal DB) e R-3 (`E_MAG_DOCUMENTO_TESTATA_CONGELATA`), 2026-11-23; committato in `659182055` | §7 | — |
 > | 6-quater | team DB | ✅ anticipato dal P-5c e dal P-6 (2026-11-23): la variabile della registrazione spenta nei verbi (`20261123-10`, un difetto del P-5b), i builder dei documenti (`-11`), 17 pgTAP portati, le note di cinque codici, 42 pagine `manual/`, «La porta» allo stato di oggi | §5.6 | — |
 > | 6-quinquies | Tid | ✅ apply di `20261123-10` e `-11`, pgTAP verdi col runner (2026-11-23) | §5.6 | — |
-> | 6-sexies | team DB | resto del P-5c: le sei tabelle in sola lettura per l'app, nelle tre sedi | §5.5 | 6-ter |
+> | 6-sexies | team DB | resto del P-5c: le sei tabelle in sola lettura per l'app, nelle tre sedi | §5.5 | il commit della R-2 |
 > | 7 | team DB | resto del P-6: «La porta» della guida a una riga, archiviazione | §5 | 6-sexies |
 >
 > Decisioni di Tid del 2026-11-22: il controllo di `p_campi` comune ai `fn_crea_*` si estrae **in un
 > giro a parte**, dopo la R-1 (§5.2); il debito `%TYPE` del P-3 **resta per ora** (§5.3); il lotto
 > diventa dell'azienda, in un brief suo (`brief-db-magazzino-lotto-dell-azienda`); il cliente del
 > seriale si controlla subito: `20261122-12` e `-13` applicati, pgTAP verdi (§5.3). Il Lotto 1 è
-> committato (`4c5517181a`, `d609fef87d`, 2026-11-22). Da committare: `20261123-01` … `-11`, i due pgTAP
-> nuovi, il test 21 di `script/test-fn-scrivi-riga-da-jsonb-v1`, i 17 pgTAP portati, tre CSV di `80_data`
-> (§5.5, §5.6), le pagine `manual/` e i due blocchi comuni di magazzino (§5.6) e questo file.
+> committato (`4c5517181a`, `d609fef87d`, 2026-11-22); il Lotto 2 lato DB (`20261123-01` … `-11`, pgTAP,
+> CSV, pagine `manual/`) è committato in `9d0237027` e fuso in `dev/backend-tid`. La R-2 e la R-3 della sessione BE (§7)
+> sono committate in `659182055` (2026-11-23); da committare: solo questa nota.
 > Decisioni aperte di Tid: una, fuori da questo brief (§5.6, «Emerso»): se cercare lo stesso difetto della
 > variabile negli altri domini.
 >
@@ -805,9 +805,36 @@ Uno per verbo, sullo stampo di `test-fn-pannello-scrivi-v1` e
   solo `magazzino_repository.py`: anche i test e gli smoke che le scrivono), dice se scrive colonne fuori dalle
   liste (`meta`?) e se fa qualcosa alla conferma oltre al cambio di stato. Ciò che chiede al DB torna tutto
   insieme, prima del P-5c.
+  ✅ **Fatta dalla sessione BE il 2026-11-23.** Le risposte:
+  * **Scrittori BE** delle sei tabelle, tutti portati: `magazzino_repository.py` (sette metodi, ora sui verbi:
+    la nascita dal verbo della famiglia, il resto dai verbi comuni con la famiglia del DB davanti);
+    `tests/db/test_documento_interno_db.py` (due `UPDATE` diretti: la descrizione nasce col documento, la
+    provenienza nasce dalla nascita del repository); `vendite/tests/db/test_ddt_cambia_stato_db.py` (il carico
+    di giacenza, sui builder `20261123-11`); `tests/db/test_magazzino_spento_con_trasferimenti_db.py` (il
+    trasferimento, sul builder); lo smoke del primo carico (passa dal service). Nessun altro scrittore.
+    **Lettori**: le `SELECT` del repository, la consultazione dei movimenti, i lookup; leggono, e la chiusura
+    non li tocca.
+  * **Colonne fuori lista**: solo `meta`, che il contratto BE accettava su testata e riga ma il FE non ha mai
+    mandato. Esce dal contratto (400 se arriva). Nessun'altra.
+  * **Alla conferma** il BE non fa niente oltre al cambio di stato: la registrazione è un gesto suo
+    (`fn_posta_*`).
+  * **La provenienza** (`sorgente_*`, D-M11): il gesto dell'operatore non la porta; il repository la passa
+    alla nascita a chi farà nascere un documento da un altro (provato nel test 14). Una scelta di trasporto,
+    non una regola: il DB resta la sede di ciò che è ammesso.
+  * Le chiavi del payload le dice il DB (`fn_documento_interno_colonne_ammesse`), il trasporto il BE; una
+    divergenza è un `RuntimeError`, e un test sul DB vero le confronta famiglia per famiglia. La Q-2 del BE
+    («testata libera in ogni stato») è superata dal P-5b. La descrizione si ferma a 255 caratteri, la colonna
+    (il BE ne ammetteva 500: un `22001` del DB fra 256 e 500).
+  * I test sul DB vero passano dai verbi con l'operatore del mondo a `TUTTO` sull'area: 42 eseguiti, verdi;
+    smoke verde; suite intera verde.
+  * **Al DB non si chiede niente**: il P-5c può chiudere le sei tabelle dopo il commit.
 * **R-3** `E_MAG_DOCUMENTO_TESTATA_CONGELATA` (CONFLITTO_STATO, «Il documento è in stato %s: i dati della
   testata non si modificano più.») nelle chiavi i18n e nella tassonomia degli errori. Se il backend oggi
   solleva un suo codice per lo stesso caso, si ritira a favore di questo.
+  ✅ **Fatta dalla sessione BE il 2026-11-23**: `error_policies_generated.py` rigenerato dal catalogo
+  (CONFLITTO_STATO, 409; nessuna classe cambiata, il resto del diff sono note) e il ripiego senza segnaposto
+  in `error_messages_fallback.py`. Il FE non ha chiavi i18n per codice: la frase arriva dal backend. Il BE
+  non aveva un codice suo per lo stesso caso (Q-2: nessun guard).
 * **R-4** (§3-bis.5) le view delle anagrafiche e dei documenti di magazzino dichiarano
   l'**oggetto** che il verbo passa a `fn_guard_livello` (per le anagrafiche
   `(magazzino, magazzini)`, `(magazzino, ubicazioni)`, `(magazzino, lotti)`), così il 403
@@ -875,3 +902,5 @@ Uno per verbo, sullo stampo di `test-fn-pannello-scrivi-v1` e
 | 2026-11-23 | Tid | Il via ad anticipare dal P-5c e dal P-6 ciò che non chiude le tabelle; range `20261123-10` … `-15` a questa sessione |
 | 2026-11-23 | DB | **§5.6**: un difetto del P-5b, provato come app (variabile della registrazione + verbo DEFINER = POSTED senza movimenti), corretto in `20261123-10`; i builder dei documenti (`-11`); 17 pgTAP portati; note di cinque codici; 42 pagine `manual/` e due blocchi comuni; «La porta» allo stato di oggi. Emerso: lo stesso schema in altri domini, una ricognizione da decidere |
 | 2026-11-23 | Tid | `20261123-10` e `-11` applicati, pgTAP verdi col runner. Riparte la sessione BE con la R-2 e la R-3 |
+| 2026-11-23 | BE | **R-2 e R-3 fatte** (§7): documenti interni sui verbi, chiavi dal DB, `meta` fuori dal contratto, provenienza solo dal repository, Q-2 superata; regola del 2: il trasporto verso i verbi (`campi_jsonb`/`esegui_verbo`/`meta_mai_null`, in `core/db/sql_write_helpers`) e la lettura del gesto (`PayloadValidator.campi_del_gesto`/`Lettura`/`chiavi_lettura`, in `core/services/payload_helpers`) estratti come BB core, copie del magazzino ritirate; policy rigenerata e ripiego del codice nuovo; test DB, smoke e suite verdi. Nessuna richiesta al DB. Riparte il team DB col resto del P-5c. **Confermate da Tid il 2026-11-23**: le due estrazioni, nella sede comune `apps/core` (non nel dominio, come era al primo giro), e la provenienza fuori dall'endpoint dell'operatore |
+| 2026-11-23 | BE | Revisione (`/verifica`): le lunghezze dei testi lette dal BE sono quelle delle colonne. Documento interno: descrizione 255 e motivo 64 anche nei `maxlength` FE e nello schema OpenAPI. Anagrafiche: via il tetto unico (codice 50, descrizione 500, posizione 50, creduto «colonne senza limite»), ora magazzino 32/120, ubicazione 64/120/32, lotto 64, e i `maxlength` dei tre drawer. Presidio sul DB vero che confronta i limiti con `information_schema` (anagrafiche test 11, documento interno test 18). Nessuna richiesta al DB |

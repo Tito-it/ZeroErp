@@ -39,6 +39,21 @@ registrazione (`magazzino.fn_posta_inventario` / `fn_posta_rettifica`). Il
 service valida la forma del payload, chiama, traduce. ⛔ Nessun «rifiuta con
 `E_…`» qui sotto è scritto in Python, salvo dove è detto.
 
+⭐ **Ogni scrittura è un verbo del DB** (dal 2026-11-23,
+[brief-db-magazzino-tutte-le-scritture-dal-verbo](../../../dev/work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md),
+R-2): la nascita per famiglia (`magazzino.fn_aggiungi_inventario` /
+`_rettifica`, `fn_aggiungi_riga_inventario` / `_rettifica`) e i verbi comuni
+con la famiglia come primo argomento (`fn_modifica_documento_interno`,
+`fn_elimina_documento_interno`, `fn_cambia_stato_documento_interno`,
+`fn_modifica_riga_documento_interno`, `fn_togli_riga_documento_interno`).
+Ogni verbo controlla per prima cosa il livello `TUTTO` dell'operatore
+sull'oggetto della famiglia (`E_PERMESSO_NEGATO`) e il perimetro. Le **chiavi
+ammesse** in un payload le dice il DB
+(`magazzino.fn_documento_interno_colonne_ammesse(famiglia, parte, gesto)`):
+una chiave fuori lista è `E_MAGAZZINO_VALIDATION` (400) dal backend, prima del
+verbo. ⛔ `meta` non è fra le colonne dei verbi: non si scrive più (si legge
+ancora, nelle risposte).
+
 ⭐ **Inventario e rettifica sono una famiglia, non due copie** (Q-1): le rotte,
 il service e il repository nascono **una volta** dalla configurazione
 `FamigliaDocumentoInterno` (`db/famiglie.py`), e le differenze sono tutte lì —
@@ -94,8 +109,11 @@ audit.
 
 ### 2. `POST /api/v1/magazzino/{famiglia}/`
 
-Crea la **bozza**. Payload: `magazzino_id` (obbligatorio), `data` (default oggi,
-a DB), `descrizione` (solo inventario), `meta`. Un magazzino inesistente, spento
+Crea la **bozza**. Payload: `magazzino_id` (obbligatorio), `data` (assente =
+oggi, DEFAULT del DB; `null` è un 400), `descrizione` (solo inventario, al più
+255 caratteri). ⛔ La provenienza (`sorgente_*`) il DB la ammette alla nascita,
+ma non è un dato dell'operatore: dall'API è un 400; la passa al repository chi
+fa nascere un documento da un altro. Un magazzino inesistente, spento
 o fuori perimetro è 400 col campo `magazzino_id`: è la traduzione di un dato di
 form, prima che il DB risponda con una FK senza contesto. ⚠️ **Il magazzino si
 sceglie qui e basta**: decide il perimetro e se le righe chiedono l'ubicazione,
@@ -126,20 +144,24 @@ sotto `capabilities`. 404 `E_MAG_DOCUMENTO_NON_TROVATO`.
 
 ### 4. `PATCH /api/v1/magazzino/{famiglia}/{id}/`
 
-La testata, per delta: `data`, `descrizione` (solo inventario; `null` la
-toglie), `meta`. ⛔ Non lo stato (rotta 6), non il magazzino. ⚠️ **Nessun
-vincolo di stato** (Q-2): il database non ne ha uno sulla testata, e il backend
-non lo conia. A video il form è in sola lettura fuori da `DRAFT`. `data` decide
-la data dei movimenti **alla registrazione**.
+La testata, per delta: `data` (`null` è un 400), `descrizione` (solo
+inventario, al più 255 caratteri; `null` la toglie). Un payload senza campi è
+un 400. ⛔ Non lo stato (rotta 6), non il magazzino. ⭐ **Solo in `DRAFT`**:
+fuori, il verbo risponde `E_MAG_DOCUMENTO_TESTATA_CONGELATA` (409). ⚠️ La Q-2
+(«testata libera in ogni stato», 2026-09-18) è superata dal P-5b del brief dei
+verbi: il vincolo è del DB, il backend traduce. `data` decide la data dei
+movimenti **alla registrazione**. Risposta: il dettaglio.
 
 ### 5. `DELETE /api/v1/magazzino/{famiglia}/{id}/`
 
-Elimina una bozza. Fuori da `DRAFT` il DB risponde
-`E_MAG_DOCUMENTO_NON_ELIMINABILE` (409). Risposta `{id, eliminato}`.
+Elimina una bozza (verbo `fn_elimina_documento_interno`; le righe vanno con
+lei). Fuori da `DRAFT` il DB risponde `E_MAG_DOCUMENTO_NON_ELIMINABILE` (409).
+Risposta `{id, eliminato: true}`: il verbo risponde o solleva.
 
 ### 6. `POST /api/v1/magazzino/{famiglia}/{id}/stato/`
 
-Payload `{"stato": "CONFIRM" | "CANCEL" | "DRAFT"}`. La matrice la applica il
+Payload `{"stato": "CONFIRM" | "CANCEL" | "DRAFT"}`, scritto dal verbo
+`fn_cambia_stato_documento_interno`. La matrice la applica il
 guard: una transizione non ammessa è `E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA`
 (409). ⛔ **`POSTED` non si chiede qui**: è fuori vocabolario (400) prima di
 arrivare al DB, dove prenderebbe `E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE`,
@@ -209,9 +231,11 @@ Export: `…/righe/export/`.
 ### 10. `POST /api/v1/magazzino/{famiglia}/{id}/righe/`
 
 Payload: `articolo_id`, la quantità della famiglia (obbligatori, decimali
-esatti), `motivo` (rettifica), `costo_unitario` (vuoto = alla media corrente del
-registro), `ubicazione_id`, `lotto_id`, `asset_id`, `meta`. Fuori da `DRAFT` il
-guard di riga risponde `E_MAG_DOCUMENTO_RIGHE_CONGELATE` (409).
+esatti: sono gli argomenti del verbo di nascita), `motivo` (rettifica, al più
+64 caratteri), `costo_unitario` (vuoto = alla media corrente del registro),
+`ubicazione_id`, `lotto_id`, `asset_id`. Fuori da `DRAFT` il
+guard di riga risponde `E_MAG_DOCUMENTO_RIGHE_CONGELATE` (409). Risposta: la
+riga, come la legge la rotta 9.
 
 ⚠️ **La riga incoerente passa** (Q-3): senza lotto su un articolo che lo
 chiede, o su un articolo non gestito a magazzino, la riga si salva in bozza — è
@@ -228,11 +252,12 @@ due fatti.
 
 ### 11. `PATCH` · `DELETE /api/v1/magazzino/{famiglia}/{id}/righe/{riga_id}/`
 
-Parziale (`null` esplicito azzera un campo facoltativo: togliere il lotto). Il
+Parziale, stesse chiavi della rotta 10 (`null` esplicito azzera un campo
+facoltativo: togliere il lotto; un payload senza campi è un 400). Il
 guard risponde fuori da `DRAFT`. La coppia (documento, riga) è la risorsa: una
 riga di un altro documento è 404 `E_MAG_DOCUMENTO_RIGA_NON_TROVATA` (R-7). Il
 `PATCH` risponde con la riga; il `DELETE` (con `Idempotency-Key`) con
-`{riga_id, eliminata}`.
+`{riga_id, eliminata: true}`.
 
 ### 12. `GET /api/v1/magazzino/righe/motivi/`
 
@@ -333,12 +358,13 @@ Export: `…/movimenti/export/`.
 | `E_MAG_DOCUMENTO_NON_TROVATO` | NON_TROVATO | la testata non c'è o è fuori perimetro (404 no-leak) |
 | `E_MAG_DOCUMENTO_RIGA_NON_TROVATA` | NON_TROVATO | la riga non c'è, o è di un altro documento (R-7) |
 | `E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA` | CONFLITTO_STATO | la matrice non ammette il passaggio; anche «registra» fuori da `CONFIRM` |
+| `E_MAG_DOCUMENTO_TESTATA_CONGELATA` | CONFLITTO_STATO | modificare la testata fuori da `DRAFT` (il verbo, dal 2026-11-23) |
 | `E_MAG_DOCUMENTO_RIGHE_CONGELATE` | CONFLITTO_STATO | scrivere una riga fuori da `DRAFT` |
 | `E_MAG_DOCUMENTO_NON_ELIMINABILE` | CONFLITTO_STATO | eliminare fuori da `DRAFT` |
 | `E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE` | CONFLITTO_STATO | cambiare il magazzino dopo la nascita (R-4; il BE non lo manda mai) |
 | `E_MAG_DOCUMENTO_SENZA_RIGHE` | NON_ESEGUIBILE | registrare un documento vuoto |
 | `E_MAG_INVENTARIO_RIGA_POSIZIONE_DUPLICATA` | DATO_ERRATO | stessa posizione due volte nell'inventario, campo `articolo_id` (R-2) |
-| `E_PERMESSO_NEGATO` | NON_PERMESSO | registrare senza l'azione `registra_magazzino`; aprire o liberare un blocco senza `blocca_merce` |
+| `E_PERMESSO_NEGATO` | NON_PERMESSO | registrare senza l'azione `registra_magazzino`; aprire o liberare un blocco senza `blocca_merce`; scrivere un documento interno (testata, righe, stato) senza il livello `TUTTO` sull'oggetto della famiglia (il verbo) |
 | i codici della riga | DATO_ERRATO | alla registrazione, il primo motivo di `fn_check_riga_magazzino` (`E_MAG_LOTTO_OBBLIGATORIO`, `E_MAG_UBICAZIONE_OBBLIGATORIA`, `E_MAG_ARTICOLO_NON_GESTITO`, `E_MAG_LOTTO_DI_ALTRO_EMITTENTE`, …): passano **com'è**, con la frase e il campo del catalogo |
 | `E_RIFERIMENTO_DI_ALTRO_EMITTENTE` | DATO_ERRATO | salvare una riga col lotto o il seriale di un'altra azienda, o inesistente (no-leak): lo dice il guard della tabella delle righe, campo `lotto_id` o `asset_id`. Il BE lo traduce sul campo e non ricontrolla; i lookup propongono solo lotti e seriali dell'azienda del magazzino |
 | `E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE` | TECNICO | la porta `POSTED` aperta fuori dal verbo: dall'API non si raggiunge (rotta 6) |
@@ -350,7 +376,10 @@ repository), `tests/api/test_magazzino_api.py` (rotte, parametri, gate di
 `registra/`, coppie lista/export), `tests/db/test_documento_interno_db.py` (DB
 provvisto: la catena del primo carico, la capability che segue la matrice del
 guard, i tre motivi di «Registra» spento, il duplicato di posizione, il pinning
-dei **nomi** del blob), `tests/db/test_stati_documento_interno.py` (il
+dei **nomi** del blob, le chiavi lette dal BE uguali alle colonne ammesse dal
+DB, la testata congelata, il rifiuto del verbo senza livello),
+`tests/services/test_scritture_repository.py` (i verbi chiamati dal
+repository), `tests/db/test_stati_documento_interno.py` (il
 vocabolario degli stati pinnato sul `CHECK`). Smoke:
 `backend/scripts/tests/smoke-magazzino-inventario-primo-carico.py` (12 passi,
 rollback; prova anche il verbo dal percorso reale come `zeroerp_app`).

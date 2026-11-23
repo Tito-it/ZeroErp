@@ -44,7 +44,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import date
 from typing import Any, cast
 
@@ -53,12 +52,15 @@ from django.db import connection
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
-    fetchone_scalar,
     rows_to_list,
     sql_order_clause,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
-from apps.magazzino.db._helpers import guard_canale_sistema, lista_paginata, meta_mai_null
+from apps.core.db.sql_write_helpers import campi_jsonb as _jsonb, esegui_verbo as _verbo
+from apps.magazzino.db._helpers import (
+    guard_canale_sistema,
+    lista_paginata,
+)
 from apps.magazzino.types import LottoRow, MagazzinoRow, UbicazioneRow
 
 _FN = "magazzino.anagrafiche_magazzino_repository"
@@ -134,20 +136,6 @@ _FN_COLONNE_AMMESSE: dict[str, str] = {
     "lotti": "magazzino.fn_lotti_colonne_ammesse",
 }
 GESTI: frozenset[str] = frozenset({"crea", "modifica"})
-
-
-# Scopo: I campi di una scrittura come li riceve un verbo (`jsonb`): `meta`
-#        a `None` diventa `{}` (colonna NOT NULL), le date come ISO.
-def _jsonb(campi: dict[str, Any]) -> str:
-    return json.dumps(meta_mai_null(campi), default=str)
-
-
-# Scopo: Esegue un verbo e ne restituisce il valore scalare (la riga c'e'
-#        sempre: un verbo risponde o solleva — BB `fetchone_scalar`).
-def _verbo(sql: str, params: list[Any]) -> Any:
-    with connection.cursor() as cursor:
-        cursor.execute(sql, params)
-        return fetchone_scalar(cursor)
 
 
 # ══════════════════════════════════════════════════════════════════

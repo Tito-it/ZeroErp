@@ -508,7 +508,7 @@ watch(
             <label>{{ t('magazzino.documenti_interni.campo_descrizione') }}</label>
             <InputText
               v-model="form.descrizione"
-              maxlength="500"
+              maxlength="255"
               :invalid="campiErrati.includes('descrizione')"
             />
           </div>

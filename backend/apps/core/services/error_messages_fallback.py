@@ -868,6 +868,12 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "righe (riportandolo in bozza, se serve) e ripetere, oppure "
         "annullarlo."
     ),
+    "E_MAG_DOCUMENTO_TESTATA_CONGELATA": (
+        "I dati della testata non si modificano piu': si cambiano solo in "
+        "bozza. Per correggere un documento confermato riportarlo in bozza o "
+        "annullarlo e rifarlo; uno registrato si corregge con una rettifica. "
+        "Rileggere lo stato."
+    ),
     "E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA": (
         "Il passaggio di stato richiesto non e' ammesso dallo stato in cui il "
         "documento si trova: la registrazione parte da un documento "

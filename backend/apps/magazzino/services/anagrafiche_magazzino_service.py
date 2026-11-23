@@ -39,12 +39,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Mapping
-from typing import Any, TypedDict
+from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import (
+    Lettura,
     PayloadValidator,
+    chiavi_lettura,
     make_db_errors_translator,
 )
 from apps.magazzino.db.anagrafiche_magazzino_repository import (
@@ -75,11 +76,18 @@ E_DUPLICATO = "E_ANAG_DUPLICATO"
 
 _PAYLOAD = PayloadValidator(validation_code=E_VALIDAZIONE, function_name=_FN)
 
-# Lunghezze massime dei testi (le colonne sono `varchar` senza limite
-# dichiarato: il tetto e' un cancello di buon senso, non una regola del DB).
-_MAX_CODICE = 50
-_MAX_DESCRIZIONE = 500
-_MAX_POSIZIONE = 50
+# Lunghezze massime dei testi: quelle delle colonne, tabella per tabella
+# (docs/it/dbzero/magazzino/tabelle). Un testo piu' lungo e' un 400 col campo,
+# non un `22001` del DB; un tetto piu' basso della colonna rifiuterebbe un
+# valore che il modello ammette. ⚠️ Fino al 2026-11-23 qui c'era un tetto unico
+# (codice 50, descrizione 500, posizione 50), scritto credendo le colonne senza
+# limite: il codice del magazzino fra 33 e 50 e ogni descrizione oltre 120
+# erano un 500, il codice di ubicazione e lotto fra 51 e 64 un 400 sbagliato.
+_MAX_CODICE_MAGAZZINO = 32      # magazzini.codice varchar(32)
+_MAX_CODICE_UBICAZIONE = 64     # ubicazioni.codice varchar(64)
+_MAX_CODICE_LOTTO = 64          # lotti.codice varchar(64)
+_MAX_DESCRIZIONE = 120          # magazzini.descrizione, ubicazioni.descrizione varchar(120)
+_MAX_POSIZIONE = 32             # ubicazioni.area … posizione varchar(32)
 
 # Traduzione degli errori del database: i VINCOLI con nome parlano qui
 # (UNIQUE col campo, FK col campo, CHECK col campo); i guard e i lock del DB
@@ -173,51 +181,24 @@ def _lotto_o_404(repository: AnagraficheMagazzinoRepository, lotto_id: int) -> L
 #  Il contratto delle scritture: le chiavi dal DB, il trasporto da qui
 # ══════════════════════════════════════════════════════════════════
 
-_Lettore = Callable[[dict[str, Any], str], Any]
-
-
-# I lettori del trasporto di un gesto, nei gruppi di `campi_per_presenza`.
-class _Lettura(TypedDict, total=False):
-    testi: Mapping[str, tuple[bool, int | None]]
-    interi: Mapping[str, bool]
-    flag: Collection[str]
-    altri: Mapping[str, _Lettore]
-
-
-# Scopo: Le chiavi che una lettura sa leggere: lo schema OpenAPI del corpo.
-def _chiavi(lettura: _Lettura) -> frozenset[str]:
-    return frozenset({
-        *lettura.get("testi", {}), *lettura.get("interi", {}),
-        *lettura.get("flag", ()), *lettura.get("altri", {}),
-    })
-
-
-# Scopo: Il payload di un gesto, letto sul contratto del DB: le chiavi ammesse
-#        sono `fn_<tabella>_colonne_ammesse(gesto)` (piu' le `identita` che il
+# Scopo: Il payload di un gesto di anagrafica: le chiavi ammesse sono
+#        `fn_<tabella>_colonne_ammesse(gesto)` (piu' le `identita` che il
 #        payload porta e il verbo riceve come argomento, l'articolo del
-#        lotto). Gli `obbligatori` della nascita devono esserci; il resto lo
-#        legge `campi_per_presenza`, che rifiuta (400) la chiave fuori
-#        contratto e alza un `RuntimeError` se il DB e i lettori divergono.
+#        lotto). Il resto lo fa il BB core `PayloadValidator.campi_del_gesto`.
 def _campi_del_gesto(
     repository: AnagraficheMagazzinoRepository,
     payload: dict[str, Any],
     *,
     tabella: str,
     gesto: str,
-    lettura: _Lettura,
+    lettura: Lettura,
     obbligatori: tuple[str, ...] = (),
     identita: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
-    for chiave in obbligatori:
-        ErrorManager.require(
-            chiave in payload,
-            code=E_VALIDAZIONE,
-            message=f"Campo '{chiave}' obbligatorio.",
-            context={"field": chiave},
-            function_name=_FN,
-        )
     ammesse = repository.colonne_ammesse(tabella, gesto) | identita
-    return _PAYLOAD.campi_per_presenza(payload, ammesse=ammesse, function_name=_FN, **lettura)
+    return _PAYLOAD.campi_del_gesto(
+        payload, ammesse=ammesse, lettura=lettura, function_name=_FN, obbligatori=obbligatori,
+    )
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -226,8 +207,8 @@ def _campi_del_gesto(
 
 # Il trasporto delle chiavi, per gesto. ⛔ `attivo` non si sceglie alla
 # nascita (un magazzino nasce attivo): non e' nella lista `'crea'` del DB.
-_NASCITA_MAGAZZINO: _Lettura = {
-    "testi": {"codice": (False, _MAX_CODICE), "descrizione": (False, _MAX_DESCRIZIONE)},
+_NASCITA_MAGAZZINO: Lettura = {
+    "testi": {"codice": (False, _MAX_CODICE_MAGAZZINO), "descrizione": (False, _MAX_DESCRIZIONE)},
     "interi": {"indirizzo_dettaglio_id": False},
     "altri": {
         "usa_ubicazioni": _PAYLOAD.optional_bool,
@@ -235,8 +216,8 @@ _NASCITA_MAGAZZINO: _Lettura = {
         "meta": _PAYLOAD.optional_meta,
     },
 }
-_MODIFICA_MAGAZZINO: _Lettura = {
-    "testi": {"codice": (False, _MAX_CODICE), "descrizione": (False, _MAX_DESCRIZIONE)},
+_MODIFICA_MAGAZZINO: Lettura = {
+    "testi": {"codice": (False, _MAX_CODICE_MAGAZZINO), "descrizione": (False, _MAX_DESCRIZIONE)},
     "interi": {"indirizzo_dettaglio_id": False},
     "flag": frozenset({"usa_ubicazioni", "predefinito", "attivo"}),
     "altri": {"meta": _PAYLOAD.optional_meta},
@@ -244,8 +225,8 @@ _MODIFICA_MAGAZZINO: _Lettura = {
 # I contratti di scrittura, con un nome: li legge lo schema OpenAPI
 # (`magazzino/api/views_anagrafiche.py`). Sono le chiavi che il backend sa
 # LEGGERE; quelle AMMESSE le dice il DB, e un test sul DB vero le confronta.
-CREATE_KEYS_MAGAZZINO: frozenset[str] = _chiavi(_NASCITA_MAGAZZINO)
-UPDATE_KEYS_MAGAZZINO: frozenset[str] = _chiavi(_MODIFICA_MAGAZZINO)
+CREATE_KEYS_MAGAZZINO: frozenset[str] = chiavi_lettura(_NASCITA_MAGAZZINO)
+UPDATE_KEYS_MAGAZZINO: frozenset[str] = chiavi_lettura(_MODIFICA_MAGAZZINO)
 
 
 # Scopo: L'elenco paginato dei magazzini del perimetro.
@@ -316,22 +297,22 @@ _POSIZIONE = {"area": _MAX_POSIZIONE, "corsia": _MAX_POSIZIONE, "scaffale": _MAX
 # ⛔ `magazzino_id` non e' fra le chiavi: un'ubicazione nasce dentro il
 # magazzino del path (argomento del verbo) e non ne esce (lock a DB).
 _TESTI_UBICAZIONE: dict[str, tuple[bool, int | None]] = {
-    "codice": (False, _MAX_CODICE), "descrizione": (True, _MAX_DESCRIZIONE),
+    "codice": (False, _MAX_CODICE_UBICAZIONE), "descrizione": (True, _MAX_DESCRIZIONE),
     **{key: (True, max_len) for key, max_len in _POSIZIONE.items()},
 }
-_NASCITA_UBICAZIONE: _Lettura = {
+_NASCITA_UBICAZIONE: Lettura = {
     "testi": _TESTI_UBICAZIONE,
     "interi": {"tipo_id": False, "parent_id": True},
     "altri": {"meta": _PAYLOAD.optional_meta},
 }
-_MODIFICA_UBICAZIONE: _Lettura = {
+_MODIFICA_UBICAZIONE: Lettura = {
     "testi": _TESTI_UBICAZIONE,
     "interi": {"tipo_id": False, "parent_id": True},
     "flag": frozenset({"attivo"}),
     "altri": {"meta": _PAYLOAD.optional_meta},
 }
-CREATE_KEYS_UBICAZIONE: frozenset[str] = _chiavi(_NASCITA_UBICAZIONE)
-UPDATE_KEYS_UBICAZIONE: frozenset[str] = _chiavi(_MODIFICA_UBICAZIONE)
+CREATE_KEYS_UBICAZIONE: frozenset[str] = chiavi_lettura(_NASCITA_UBICAZIONE)
+UPDATE_KEYS_UBICAZIONE: frozenset[str] = chiavi_lettura(_MODIFICA_UBICAZIONE)
 
 
 # Scopo: Le ubicazioni di UN magazzino, paginate. Il perimetro e' la testata:
@@ -405,8 +386,8 @@ def aggiorna_ubicazione(magazzino_id: int, ubicazione_id: int, payload: dict[str
 # del gesto. In modifica l'articolo non cambia: un lotto e' di quell'articolo.
 # ⛔ L'azienda del lotto non si sceglie: la mette il DB dalla sessione.
 _IDENTITA_LOTTO: frozenset[str] = frozenset({"articolo_id"})
-_NASCITA_LOTTO: _Lettura = {
-    "testi": {"codice": (False, _MAX_CODICE)},
+_NASCITA_LOTTO: Lettura = {
+    "testi": {"codice": (False, _MAX_CODICE_LOTTO)},
     "altri": {
         "articolo_id": _PAYLOAD.require_uuid,
         "data_arrivo": _PAYLOAD.require_date,
@@ -414,8 +395,8 @@ _NASCITA_LOTTO: _Lettura = {
         "meta": _PAYLOAD.optional_meta,
     },
 }
-_MODIFICA_LOTTO: _Lettura = {
-    "testi": {"codice": (False, _MAX_CODICE)},
+_MODIFICA_LOTTO: Lettura = {
+    "testi": {"codice": (False, _MAX_CODICE_LOTTO)},
     "flag": frozenset({"attivo"}),
     "altri": {
         "data_arrivo": _PAYLOAD.require_date,
@@ -423,8 +404,8 @@ _MODIFICA_LOTTO: _Lettura = {
         "meta": _PAYLOAD.optional_meta,
     },
 }
-CREATE_KEYS_LOTTO: frozenset[str] = _chiavi(_NASCITA_LOTTO)
-UPDATE_KEYS_LOTTO: frozenset[str] = _chiavi(_MODIFICA_LOTTO)
+CREATE_KEYS_LOTTO: frozenset[str] = chiavi_lettura(_NASCITA_LOTTO)
+UPDATE_KEYS_LOTTO: frozenset[str] = chiavi_lettura(_MODIFICA_LOTTO)
 
 
 # Scopo: I lotti di UN articolo nel perimetro, paginati. `articolo_id`
