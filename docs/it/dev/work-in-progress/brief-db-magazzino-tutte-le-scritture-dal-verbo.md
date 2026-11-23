@@ -4,7 +4,7 @@
 >
 > **Riparte: il team DB**, col resto del P-5c (la sola chiusura delle sei tabelle) e poi il P-6. La R-2 e la
 > R-3 le ha fatte la sessione BE il 2026-11-23 (§7): nessuno scrittore BE resta sulle sei tabelle, e il BE
-> non chiede niente al DB. Da committare il lavoro BE. La R-1 è fatta e committata (2026-11-22). La R-4
+> non chiede niente al DB. Il lavoro BE è committato (`659182055`, 2026-11-23). La R-1 è fatta e committata (2026-11-22). La R-4
 > aspetta che gli oggetti di magazzino entrino a catalogo (Tid, 2026-11-22).
 >
 > | # | Chi | Che cosa | Dove | Aspetta |
@@ -21,7 +21,7 @@
 > | 5-quinquies | team DB | ✅ P-5a: `script.fn_guard_campi_ammessi`, quindici porte ritirate (`20261123-01` … `-04`, 2026-11-23) | §5.5 | — |
 > | 6 | team DB | ✅ P-5b: registro, check sul registro, undici verbi, codice nuovo (`20261123-05` … `-09`, 2026-11-23) | §5.5 | — |
 > | 6-bis | Tid | ✅ apply di `20261123-01` … `-09`, pgTAP verdi col runner (2026-11-23) | §5.5 | — |
-> | 6-ter | sessione BE | ✅ R-2 (documenti interni sui verbi, colonne ammesse dal DB) e R-3 (`E_MAG_DOCUMENTO_TESTATA_CONGELATA`), 2026-11-23; da committare | §7 | — |
+> | 6-ter | sessione BE | ✅ R-2 (documenti interni sui verbi, colonne ammesse dal DB) e R-3 (`E_MAG_DOCUMENTO_TESTATA_CONGELATA`), 2026-11-23; committato in `659182055` | §7 | — |
 > | 6-quater | team DB | ✅ anticipato dal P-5c e dal P-6 (2026-11-23): la variabile della registrazione spenta nei verbi (`20261123-10`, un difetto del P-5b), i builder dei documenti (`-11`), 17 pgTAP portati, le note di cinque codici, 42 pagine `manual/`, «La porta» allo stato di oggi | §5.6 | — |
 > | 6-quinquies | Tid | ✅ apply di `20261123-10` e `-11`, pgTAP verdi col runner (2026-11-23) | §5.6 | — |
 > | 6-sexies | team DB | resto del P-5c: le sei tabelle in sola lettura per l'app, nelle tre sedi | §5.5 | il commit della R-2 |
@@ -32,8 +32,8 @@
 > diventa dell'azienda, in un brief suo (`brief-db-magazzino-lotto-dell-azienda`); il cliente del
 > seriale si controlla subito: `20261122-12` e `-13` applicati, pgTAP verdi (§5.3). Il Lotto 1 è
 > committato (`4c5517181a`, `d609fef87d`, 2026-11-22); il Lotto 2 lato DB (`20261123-01` … `-11`, pgTAP,
-> CSV, pagine `manual/`) è committato in `9d0237027` e fuso in `dev/backend-tid`. Da committare: la R-2 e la
-> R-3 della sessione BE (§7) e questo file.
+> CSV, pagine `manual/`) è committato in `9d0237027` e fuso in `dev/backend-tid`. La R-2 e la R-3 della sessione BE (§7)
+> sono committate in `659182055` (2026-11-23); da committare: solo questa nota.
 > Decisioni aperte di Tid: una, fuori da questo brief (§5.6, «Emerso»): se cercare lo stesso difetto della
 > variabile negli altri domini.
 >
