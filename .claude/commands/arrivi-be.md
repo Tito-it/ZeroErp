@@ -44,6 +44,11 @@ Indicazioni di Tid per questo giro (possono essere vuote): $ARGUMENTS
     revoca una, con la data;
   - leggi lo stato attuale degli oggetti nominati sulla doc auto-generata
     (`docs/it/dbzero/`), mai dagli YAML;
+  - lancia `scripts/guide_coinvolte.py --oggetti <oggetti nominati>` e leggi le
+    sezioni delle guide e note di dominio trovate: la richiesta è coerente con
+    la guida, colma una cosa che la guida non dice, oppure la contraddice
+    (cambio di modello). Una «mancanza» che la guida descrive come scelta è una
+    decisione da rivedere, non un buco;
   - giudicala sul modello (regola zero): «oggi non capita» non la chiude e
     «capita spesso» non la apre.
 - Cerca ciò che l'arrivo **chiude**: una richiesta DB consumata dal BE, un
@@ -55,7 +60,8 @@ Indicazioni di Tid per questo giro (possono essere vuote): $ARGUMENTS
 Riporta a Tid, senza cominciare lo sviluppo:
 
 1. **Richieste nuove al team DB**, con la sigla del brief, cosa chiedono, gli
-   oggetti coinvolti e i brief vicini trovati;
+   oggetti coinvolti, i brief vicini trovati e le guide coinvolte con il loro
+   esito;
 2. **Chiuse dall'arrivo**, e quali brief possono essere archiviati;
 3. **Domande aperte** per Tid o per il team BE/FE;
 4. l'ordine che proponi.

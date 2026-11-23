@@ -156,7 +156,10 @@ giorni di distanza, e ognuno lascia all'altro un pezzo da rifare.
 * Se uno copre il tema, o un lavoro **complementare** sugli stessi oggetti, il lavoro nuovo va
   **lì**, come sezione o giro in più, e non in un brief nuovo. Se i due vanno fusi, lo decide Tid.
 * Un brief nuovo dichiara in testata **«Brief vicini verificati»**: quelli trovati e perché non
-  bastano, oppure «nessuno».
+  bastano, oppure «nessuno». Accanto mette **«Guide verificate»**: le guide e le note di
+  dominio di `scripts/guide_coinvolte.py`, ciascuna con il suo esito (sezione «Lo sviluppo si
+  confronta con le guide del dominio»), oppure «nessuna» con il motivo. Un brief già aperto
+  aggiunge la riga al primo giro che lo riprende.
 * Un tema che tocca **tutti i documenti di una famiglia** (tutti i documenti di vendita, tutti
   quelli di magazzino…) non si apre senza l'ok esplicito di Tid.
 * **Il debito che resta archiviando un brief va in un brief nuovo** in `work-in-progress/`,
@@ -170,6 +173,42 @@ giorni di distanza, e ognuno lascia all'altro un pezzo da rifare.
 * Prima di proporre un cambio di **modello**, si cerca la decisione esistente (brief in
   `work-done/`, guide, `git log -S`): la proposta dice se è nuova, se completa una decisione
   presa o se ne **revoca** una, citandola con la data.
+
+## ⛔ Lo sviluppo si confronta con le guide del dominio, prima e dopo
+
+Vale per DB, backend e frontend (Tid, 2026-11-23). Le guide (`docs/it/guide/`) e le note di
+dominio (`docs/it/dbzero/<schema>/_*.md`) descrivono il **modello** del dominio: magazzino,
+indirizzi, soggetti, clienti, documenti. Uno sviluppo che non le apre ne smentisce una senza
+saperlo, oppure costruisce come «mancanza» una cosa già decisa, e la guida resta indietro
+rispetto al funzionamento reale. Che lo sviluppo cambi qualcosa è normale. Non è normale che lo
+cambi **senza dirlo**.
+
+* **Prima di analizzare**, cioè prima di proporre, aprire un brief o scrivere codice, si
+  lancia `scripts/guide_coinvolte.py` sui file o sugli oggetti che il lavoro tocca
+  (`--oggetti schema.nome…` quando i file non esistono ancora) e si leggono le guide e le note
+  che restituisce, a partire da quelle con più oggetti in comune. È lo stesso gesto della
+  regola zero: la guida è il primo controesempio contro cui si prova l'analisi.
+* Per ogni guida letta, l'analisi scrive uno dei **tre esiti**:
+  * **coerente**: lo sviluppo fa ciò che la guida descrive;
+  * **guida indietro**: la guida descrive un comportamento che il codice ha già superato, o
+    non nomina ciò che lo sviluppo aggiunge. Si aggiorna **nello stesso giro**, non dopo;
+  * **lo sviluppo la contraddice**: è un **cambio di modello**. Lo si dichiara come tale, con
+    la decisione esistente e la sua data (sezione sopra), e decide Tid prima di costruire.
+* La «mancanza» che motiva uno sviluppo si cerca prima nella guida: se la guida la descrive
+  già come scelta, non è una mancanza ma una decisione da rivedere, e si rientra nel terzo
+  esito.
+* **Un nome che nessuna guida cita** (la sezione «orfani» dello script) è un segnale: se è un
+  concetto del dominio e non un dettaglio interno, manca una guida oppure l'header «Vedi anche»
+  di una guida è incompleto. Lo si dice in chat e decide Tid se e dove scriverla.
+* Lo script trova solo le guide che **nominano** l'oggetto. L'elenco è il punto di partenza
+  della lettura, non il suo confine. Per questo l'header «Vedi anche» di ogni guida elenca
+  tutti gli oggetti che descrive ([standard-guide.md](../docs/it/dev/standard-guide.md)).
+* Una sessione DB non apre la doc `backend/`: una guida che descrive il comportamento
+  applicativo e ne esce indietro va nel brief come richiesta al team BE/FE, con la sezione
+  da aggiornare.
+* Il brief lo registra in testata, nella riga **«Guide verificate»**, e le verifiche
+  (`/verifica-db`, `/verifica`) rilanciano lo script sul diff: una guida trovata senza un
+  esito è un censimento saltato.
 
 ## ⛔ Una garanzia ritirata si censisce in tutti i lettori, nello stesso giro
 

@@ -23,6 +23,14 @@ documenti del perimetro della sessione. Non chiedere conferma.
 1. [.codex/AGENTS.md](.codex/AGENTS.md) — regole trasversali, e la mappa «dove sta cosa»
 2. [.codex/PROJECT_CONTEXT.md](.codex/PROJECT_CONTEXT.md) — architettura, stato progetto, priorità aperte
 
+⛔ **Prima di analizzare uno sviluppo** (qualunque perimetro: magazzino, indirizzi,
+soggetti, clienti, documenti…) si lancia `scripts/guide_coinvolte.py` sui file o sugli
+oggetti toccati e si leggono le guide e le note di dominio che restituisce. Ognuna riceve
+un esito: coerente, guida indietro (si aggiorna nello stesso giro) oppure contraddetta (è un
+cambio di modello, e decide Tid). La regola sta in [.codex/AGENTS.md](.codex/AGENTS.md),
+§«Lo sviluppo si confronta con le guide del dominio». Non si fa all'avvio: una sessione che
+solo legge o allinea il branch non la lancia.
+
 ### Poi, secondo il perimetro
 
 | Sessione | Si riconosce da | Si legge |
@@ -68,5 +76,6 @@ si cercano negli schemi `script`/`dbops` e nella doc auto-generata.
 | --- | --- |
 | Il numero di un changeSet nuovo | `scripts/prossimo_changeset.py [quanti]`, rilanciato subito prima di salvare ogni file |
 | Provare un changeSet non applicato, da solo o in testa a un pgTAP | `scripts/prova_changeset.py <yaml>… [--pgtap <test>]`: SQL estratto dallo YAML, transazione in `ROLLBACK`, sullo scratch. ⛔ La transazione di prova non si compone a mano nella shell |
+| Sapere quali guide e note di dominio descrivono ciò che si tocca, prima di analizzare e prima del commit | `scripts/guide_coinvolte.py [file…] [--oggetti schema.nome…] [--base <ref>]` |
 | Sapere cosa chiede il BE/FE dopo un suo push | `/arrivi-be` |
 | Rivedere il lavoro DB prima del commit | `/verifica-db`, in una sessione nuova |

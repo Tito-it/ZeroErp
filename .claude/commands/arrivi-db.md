@@ -36,6 +36,12 @@ Indicazioni di Tid per questo giro (possono essere vuote): $ARGUMENTS
   sulla doc auto-generata in `docs/it/dbzero/` (mai dagli YAML di migration).
   Un'attività col prerequisito non pronto si elenca come **in attesa**, non si
   comincia.
+- **Guide del dominio**: lancia `scripts/guide_coinvolte.py --base <HEAD di
+  prima dell'allineamento>` (oppure sui changeSet arrivati) e, per le guide che
+  trova, leggi le parti «Per il backend» e quelle che descrivono il
+  comportamento applicativo. Se l'arrivo le rende indietro, o se un'attività
+  sbloccata le contraddice, va nell'esito; il brief DB dovrebbe già averlo
+  scritto nella riga «Guide verificate».
 - Cerca i percorsi che l'arrivo ha **rotto**: funzioni rinominate, parametri o
   chiavi cambiati, colonne tolte, codici errore nuovi. Si verificano sul codice
   che li chiama, con una chiamata reale o un `EXPLAIN` sul DB vero: i test con
@@ -64,7 +70,7 @@ Riporta a Tid, senza cominciare lo sviluppo:
 1. **Rotto adesso** su dbdev, da fare per primo;
 2. **Attività sbloccate**, con la sigla del brief (BE…, FE…), cosa chiedono e i
    file coinvolti; per ogni garanzia ritirata, i lettori censiti e il loro
-   esito;
+   esito; le guide coinvolte e il loro esito;
 3. **In attesa** di un prerequisito DB, e quale;
 4. **Domande aperte** per Tid o per il team DB;
 5. l'ordine che proponi.

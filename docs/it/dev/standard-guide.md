@@ -1,6 +1,6 @@
 # Standard delle guide — checklist di revisione
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > **Destinatari**: chiunque scriva o riveda una guida in `docs/it/guide/` o una pagina
 > `docs/it/dbzero/<schema>/manual/` (persone o agenti).
@@ -48,6 +48,11 @@ che parla di quella cosa, oppure diventa una sezione nuova. Non si racconta, si 
 Note:
 
 * L'header **contiene la lista delle tabelle**: non esiste più una sezione `## Tabelle coinvolte`.
+* Il «Vedi anche» elenca **tutti** gli oggetti DB e le API che la guida descrive, non solo i
+  principali. È ciò che legge `scripts/guide_coinvolte.py` per dire a uno sviluppo quali guide
+  deve confrontare (`.codex/AGENTS.md`, «Lo sviluppo si confronta con le guide del dominio»):
+  un oggetto descritto nel corpo ma non nominato da nessuna parte non porta lo sviluppo alla
+  guida, e la guida resta indietro senza che nessuno lo veda.
 * Il `---` separa l'header dal primo `##`.
 * I blocchi vuoti si omettono: si tengono solo quelli che hanno contenuto.
 * Il footer (l'include di `signature-core.md`) lo appende `scripts/apply_signatures.py`:
