@@ -93,12 +93,11 @@ class UiRepository:
 
     # Scopo: l'utente del contesto di sessione (GUC `app.current_user_id`), cioe'
     #        quello per cui `ha_ricerca_full` e la ricerca vera rispondono. Lo
-    #        legge la guardia di `UiService.get_lista_config_per_video`.
+    #        legge la guardia di `UiService.get_lista_config_per_video`. Una GUC
+    #        che non e' l'id di un utente: `E_SCRIPT_CHIAMATA_NON_VALIDA` dal BB
+    #        DB (BE34 di brief-db-revisione-ui).
     def utente_di_sessione(self) -> int | None:
-        return utente_di_sessione(
-            codice_errore="E_UI_CHIAMATA_NON_VALIDA",
-            function_name="ui_repository.utente_di_sessione",
-        )
+        return utente_di_sessione(function_name="ui_repository.utente_di_sessione")
 
     # Scopo: la `lista_definizione.id` di una lista accesa, dal suo codice,
     #        letta dal BB del DB `ui.fn_lista_da_codice` (U39 di

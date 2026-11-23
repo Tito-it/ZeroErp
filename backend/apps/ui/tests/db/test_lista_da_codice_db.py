@@ -2,16 +2,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: U39 e BE31 di brief-db-revisione-ui sul DATABASE PROVVISTO.
+# Scopo: U39, BE31 e BE34 di brief-db-revisione-ui sul DATABASE PROVVISTO.
 #        U39: le due letture «lista accesa per codice» del backend
 #        (`UiRepository.get_lista_id`, `fetch_flag_perimetro`) passano dal BB
 #        del DB `ui.fn_lista_da_codice`: la lista accesa risponde, quella spenta
 #        e quella inesistente sono 404 `E_UI_LISTA_NON_TROVATA` dal DB.
-#        BE31: una GUC `app.current_user_id` che non e' un id utente e' una
-#        chiamata fuori contesto, col codice del dominio che chiede
-#        (`E_UI_CHIAMATA_NON_VALIDA`, `E_PAGAMENTI_CHIAMATA_NON_VALIDA`), mai il
-#        22P02 del cast — ne' nel backend (`utente_di_sessione`) ne' nel DB
-#        (`ui.fn_lista_colonne_ricerca_full`, via `ha_ricerca_full`).
+#        BE34: l'utente di sessione (GUC `app.current_user_id`) ha una regola
+#        sola, il BB DB `script.fn_utente_di_sessione`, che legge anche il BB
+#        backend `utente_di_sessione`. Un valore che non e' l'id di un utente e'
+#        `E_SCRIPT_CHIAMATA_NON_VALIDA` (500), mai il 22P02 del cast: dal BB
+#        backend, da `ui.fn_lista_colonne_ricerca_full` (via `ha_ricerca_full`)
+#        e da una lettura sotto RLS (giro 8b, le policy).
 # Note: ⭐ La giuntura, non la regola: la regola di `fn_lista_da_codice` la
 #       provano i pgTAP. Qui la lista si COSTRUISCE (accesa e spenta), e la GUC
 #       si scrive con `set_config(…, true)`: tutto in transazione ANNULLATA.
@@ -25,8 +26,9 @@ Indice test eseguiti:
 4) ListaDaCodiceDbTests.test_flag_perimetro_spenta_o_inesistente_404
 5) UtenteDiSessioneDbTests.test_guc_vuota_e_nessun_utente
 6) UtenteDiSessioneDbTests.test_guc_intera_e_l_utente
-7) UtenteDiSessioneDbTests.test_guc_non_intera_codice_del_dominio
-8) UtenteDiSessioneDbTests.test_ricerca_full_con_guc_non_intera_codice_ui
+7) UtenteDiSessioneDbTests.test_guc_non_valida_codice_del_bb_db
+8) UtenteDiSessioneDbTests.test_ricerca_full_con_guc_non_valida
+9) UtenteDiSessioneDbTests.test_lettura_rls_con_guc_non_valida
 """
 from __future__ import annotations
 
@@ -36,7 +38,6 @@ from django.db import connection, transaction
 
 from apps.core.db._helpers import utente_di_sessione
 from apps.core.db.lista_catalogo_repository import fetch_flag_perimetro
-from apps.core.services.error_manager import ServiceError
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
 from apps.ui.db.ui_admin_repository import UiAdminRepository
@@ -47,8 +48,12 @@ _SPENTA = "ui.test_u39_spenta"
 _INESISTENTE = "ui.test_u39_inesistente"
 
 # Valori che non sono un id di `auth_user` (colonna integer): lettere, segno,
-# spazi, oltre il tetto dell'integer.
-_GUC_NON_INTERE = ("abc", "-5", " 42", "4.2", "2147483648", "99999999999")
+# spazi, zero, zeri in testa, oltre il tetto dell'integer. `0` e `007` sono i
+# due che la copia Python di prima accettava e il DB rifiuta (BE34).
+_GUC_NON_VALIDE = (
+    "abc", "-5", " 42", "4.2", "0", "007", "2147483648", "99999999999",
+)
+_E_GUC = ("E_SCRIPT_CHIAMATA_NON_VALIDA", 500)
 
 
 # Scopo: il codice e lo status che il client vede per un'eccezione — quella
@@ -131,8 +136,17 @@ class UtenteDiSessioneDbTests(unittest.TestCase):
     def setUp(self) -> None:
         apri_transazione_annullata(self)
 
-    def _leggi(self, codice_errore: str = "E_PAGAMENTI_CHIAMATA_NON_VALIDA") -> int | None:
-        return utente_di_sessione(codice_errore=codice_errore, function_name="test")
+    def _leggi(self) -> int | None:
+        return utente_di_sessione(function_name="test")
+
+    # Scopo: `leggi` fallisce col codice del BB DB, in un savepoint: l'errore
+    #        del DB interrompe la transazione.
+    def _assert_guc_rifiutata(self, valore: str, leggi) -> None:
+        _scrivi_guc(valore)
+        with self.assertRaises(Exception) as ctx:
+            with transaction.atomic():
+                leggi()
+        self.assertEqual(_codice_e_status(ctx.exception), _E_GUC)
 
     def test_guc_vuota_e_nessun_utente(self) -> None:
         _scrivi_guc("")
@@ -142,22 +156,15 @@ class UtenteDiSessioneDbTests(unittest.TestCase):
         _scrivi_guc("2147483647")
         self.assertEqual(self._leggi(), 2_147_483_647)
 
-    # Il codice e' quello che il chiamante dichiara: e' del suo dominio.
-    def test_guc_non_intera_codice_del_dominio(self) -> None:
-        for codice in ("E_PAGAMENTI_CHIAMATA_NON_VALIDA", "E_UI_CHIAMATA_NON_VALIDA"):
-            for valore in _GUC_NON_INTERE:
-                with self.subTest(codice=codice, valore=valore):
-                    _scrivi_guc(valore)
-                    with self.assertRaises(ServiceError) as ctx:
-                        self._leggi(codice)
-                    self.assertEqual(_codice_e_status(ctx.exception), (codice, 500))
-                    self.assertEqual(
-                        ctx.exception.context["app_current_user_id"], valore,
-                    )
+    # Il BB backend non ha piu' una regola sua: il rifiuto e' quello del DB.
+    def test_guc_non_valida_codice_del_bb_db(self) -> None:
+        for valore in _GUC_NON_VALIDE:
+            with self.subTest(valore=valore):
+                self._assert_guc_rifiutata(valore, self._leggi)
 
-    # U38: lo stesso caso lo rifiuta anche il DB, col codice di `ui`, e il
-    # backend lo riceve com'e' (non un DataError del driver).
-    def test_ricerca_full_con_guc_non_intera_codice_ui(self) -> None:
+    # U38: lo stesso caso dalla ricerca della lista, e il backend lo riceve
+    # com'e' (non un DataError del driver).
+    def test_ricerca_full_con_guc_non_valida(self) -> None:
         UiAdminRepository().create_definizione({
             "codice": _ACCESA,
             "descrizione": "U38 lista accesa",
@@ -165,10 +172,21 @@ class UtenteDiSessioneDbTests(unittest.TestCase):
             "vista_sql": None,
             "attivo": True,
         })
-        _scrivi_guc("abc")
-        with self.assertRaises(Exception) as ctx:
-            with transaction.atomic():
-                UiRepository().ha_ricerca_full(_ACCESA)
-        self.assertEqual(
-            _codice_e_status(ctx.exception), ("E_UI_CHIAMATA_NON_VALIDA", 500),
+        self._assert_guc_rifiutata(
+            "abc", lambda: UiRepository().ha_ricerca_full(_ACCESA),
         )
+
+    # Giro 8b: le policy RLS leggono l'utente dal BB. Una SELECT su una tabella
+    # protetta, da operatore con la GUC sporca, da' il codice invece del 22P02.
+    # ⚠️ `app.ruolo_applicativo` = OPERATORE: e' il ramo della policy che legge
+    #    l'utente. Solo SELECT, in transazione annullata.
+    def test_lettura_rls_con_guc_non_valida(self) -> None:
+        with connection.cursor() as cur:
+            cur.execute("SELECT set_config('app.ruolo_applicativo', 'OPERATORE', true)")
+
+        def leggi() -> None:
+            with connection.cursor() as cur:
+                cur.execute("SELECT count(*) FROM anagrafiche.clienti")
+                cur.fetchone()
+
+        self._assert_guc_rifiutata("abc", leggi)

@@ -233,6 +233,12 @@ Errori:
   coincidono per costruzione (`JwtAuditAuthentication`), quindi a video non
   compare mai: segnala un chiamante rotto. Contesto a diario: `lista_codice`,
   `auth_user_id`, `utente_di_sessione`. Brief-be-ricerca-full-liste-residue §12
+- `500` `E_SCRIPT_CHIAMATA_NON_VALIDA` (classe `TECNICO`) — la GUC
+  `app.current_user_id` porta qualcosa che non è l'id di un utente (lettere,
+  zero, zeri in testa, oltre il massimo di `integer`). Lo dà il BB DB
+  `script.fn_utente_di_sessione`, che legge l'utente per il backend, per le
+  funzioni e per le policy RLS: una regola sola, mai il 22P02 del cast. Come
+  sopra, a video non compare mai. Brief-db-revisione-ui, BE34
 
 #### Note
 

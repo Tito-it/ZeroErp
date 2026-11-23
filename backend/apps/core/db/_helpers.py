@@ -363,40 +363,21 @@ def soglia_ricerca(lista_codice: str) -> int:
 # ⭐ Regola del 2 (2026-09-24, brief-be-ricerca-full-liste-residue §12): la
 #    leggevano `pagamenti_repository.emittente_nel_perimetro` e la guardia di
 #    contesto di `ui_service.get_lista_config_per_video`.
-# ⭐ Un valore che non e' un id utente (non solo cifre, o oltre l'`integer` di
-#    `auth_user.id`) e' una chiamata fuori contesto, non un 22P02 del cast:
-#    `codice_errore` (TECNICO, frase chiusa) del dominio che chiede. E' il
-#    contratto di `ui.fn_lista_colonne_ricerca_full` sulla stessa GUC (U38 e
-#    BE31 di brief-db-revisione-ui, 2026-11-22): il cast si fa solo su un
-#    valore gia' riconosciuto, quindi il 22P02 non puo' nascere qui.
-# ⚠️ `codice_errore` e `function_name` sono obbligatori: il codice e' del
-#    dominio del chiamante (`E_UI_…`, `E_PAGAMENTI_…`), non di `core`.
-def utente_di_sessione(*, codice_errore: str, function_name: str) -> int | None:
+# ⭐ Una regola sola: la lettura la fa il BB DB `script.fn_utente_di_sessione`,
+#    lo stesso di funzioni, viste e policy RLS (giri 8 e 8b di
+#    brief-db-revisione-ui, BE34). Un valore che non e' l'id di un utente
+#    (non solo cifre, zero, zeri in testa, oltre il massimo di `integer`) e'
+#    `E_SCRIPT_CHIAMATA_NON_VALIDA` (TECNICO, 500) dal DB, col valore in
+#    `context.app_current_user_id`: mai il 22P02 del cast.
+# ⛔ Niente controllo di forma qui: la copia Python che c'era (regex di cifre e
+#    tetto) accettava `0` e `007`, che il DB rifiuta — due copie, gia' divergenti.
+# ⚠️ `function_name` e' obbligatorio: e' il `p_chi` del BB, cioe' chi leggeva,
+#    nella frase e nel log del rifiuto.
+def utente_di_sessione(*, function_name: str) -> int | None:
     with connection.cursor() as cursor:
-        cursor.execute("SELECT NULLIF(current_setting('app.current_user_id', true), '')")
+        cursor.execute("SELECT script.fn_utente_di_sessione(%s)", [function_name])
         row = cursor.fetchone()
-    valore = row[0] if row else None
-    if valore is None:
-        return None
-    ErrorManager.require(
-        _ID_UTENTE_DI_SESSIONE.fullmatch(valore) is not None
-        and int(valore) <= _ID_UTENTE_MASSIMO,
-        code=codice_errore,
-        message=(
-            "Chiamata non valida: il contesto della richiesta non e' quello "
-            "di un utente."
-        ),
-        context={"app_current_user_id": valore},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    return int(valore)
-
-
-# Le cifre di un id di `auth_user` (colonna `integer`): la stessa forma che
-# `ui.fn_lista_colonne_ricerca_full` riconosce prima del cast.
-_ID_UTENTE_DI_SESSIONE = re.compile(r"[0-9]{1,10}")
-_ID_UTENTE_MASSIMO = 2_147_483_647
+    return row[0] if row else None
 
 
 # Scopo: le colonne in cui si cerca ADESSO in una lista: quelle che la

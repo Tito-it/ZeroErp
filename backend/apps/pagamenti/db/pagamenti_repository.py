@@ -2016,10 +2016,9 @@ class PagamentiRepository:
         # L'utente per cui la connessione agisce, dalla GUC delle policy RLS
         # (BB `utente_di_sessione`: il nome della GUC e il suo tranello stanno
         # li'). Senza utente non c'e' perimetro: si rifiuta. Un valore che non
-        # e' un id utente e' una chiamata rotta: `E_PAGAMENTI_CHIAMATA_NON_VALIDA`
-        # (BE31 di brief-db-revisione-ui), non il 22P02 del cast.
+        # e' un id utente e' una chiamata rotta: `E_SCRIPT_CHIAMATA_NON_VALIDA`
+        # dal BB DB (BE34 di brief-db-revisione-ui), non il 22P02 del cast.
         auth_user_id = utente_di_sessione(
-            codice_errore=_E_CHIAMATA,
             function_name="pagamenti_repository.emittente_nel_perimetro",
         )
         if auth_user_id is None:
