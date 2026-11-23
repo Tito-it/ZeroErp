@@ -92,11 +92,11 @@ BEGIN
            (SELECT so.id FROM config.sorgenti so WHERE so.codice_interno = 'DDT_VENDITA');
 
     -- Il carico: SEMPLICE 10 a 5, A_LOTTI 6+6 a 3.
-    INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_mag) RETURNING id INTO v_inv;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, costo_unitario) VALUES (v_inv, v_s, 10, 5);
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, lotto_id, qta_contata, costo_unitario) VALUES (v_inv, v_l, v_la, 6, 3);
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, lotto_id, qta_contata, costo_unitario) VALUES (v_inv, v_l, v_lb, 6, 3);
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_inv;
+    v_inv := dbops.fn_pgtap_crea_inventario(v_mag);
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_inv, v_s, 10, jsonb_build_object('costo_unitario', 5));
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_inv, v_l, 6, jsonb_build_object('lotto_id', v_la, 'costo_unitario', 3));
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_inv, v_l, 6, jsonb_build_object('lotto_id', v_lb, 'costo_unitario', 3));
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_inv, 'CONFIRM');
     PERFORM magazzino.fn_posta_inventario(v_inv);
 END $fix$;
 

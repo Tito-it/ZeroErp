@@ -19,7 +19,6 @@ AS $function$
 DECLARE
     v_campi       jsonb := COALESCE(p_campi, '{}'::jsonb);
     v_istanza     jsonb := COALESCE(p_istanza, '{}'::jsonb);
-    v_estranea    text;
     v_soggetto_id anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
     v_ist_id      anagrafiche.billing_account.istanza_utility_id%TYPE := p_istanza_utility_id;
     v_ba_id       anagrafiche.billing_account.id%TYPE;
@@ -59,15 +58,16 @@ BEGIN
             'ruolo o utility mancanti, campi non oggetti, o istanza esistente con i campi di una nuova');
     END IF;
 
-    v_estranea := COALESCE(script.fn_prima_chiave_estranea(v_campi, c_ammesse_ba),
-                           script.fn_prima_chiave_estranea(v_istanza, c_ammesse_ist));
-    IF v_estranea IS NOT NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'anagrafiche', 'anagrafiche.fn_crea_billing_account', 'E_CAMPO_NON_AMMESSO',
-            jsonb_build_object('campo', v_estranea, 'soggetto_ruolo_id', p_soggetto_ruolo_id),
-            NULL::uuid,
-            v_estranea);
-    END IF;
+    -- Prima i campi del BA, poi quelli dell'istanza: la prima chiave
+    -- estranea che si trova e' quella che si rifiuta.
+    PERFORM script.fn_guard_campi_ammessi(
+        v_campi, c_ammesse_ba,
+        'anagrafiche', 'anagrafiche.fn_crea_billing_account',
+        jsonb_build_object('soggetto_ruolo_id', p_soggetto_ruolo_id));
+    PERFORM script.fn_guard_campi_ammessi(
+        v_istanza, c_ammesse_ist,
+        'anagrafiche', 'anagrafiche.fn_crea_billing_account',
+        jsonb_build_object('soggetto_ruolo_id', p_soggetto_ruolo_id));
 
     SELECT sr.soggetto_id
       INTO v_soggetto_id

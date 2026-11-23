@@ -18,7 +18,6 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_emittente_fiscale(p_soggetto_id u
 AS $function$
 DECLARE
     v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
-    v_estranea text;
     v_sr_id    anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
     v_ef_id    anagrafiche.emittenti_fiscali.id%TYPE;
     -- Le chiavi opzionali: le stesse del backend (_CREATE_COLS).
@@ -39,23 +38,10 @@ BEGIN
     --   - duplicati e regime fuori catalogo escono dai vincoli;
     --   - i registri e il mapping di default li fanno i trigger.
     -- =========================================================
-    IF jsonb_typeof(v_campi) <> 'object' THEN
-        PERFORM script.fn_log_and_raise_error(
-            'anagrafiche', 'anagrafiche.fn_crea_emittente_fiscale', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
-            jsonb_build_object('tipo_campi', jsonb_typeof(v_campi)),
-            NULL::uuid,
-            'anagrafiche.fn_crea_emittente_fiscale',
-            'i campi non sono un oggetto');
-    END IF;
-
-    v_estranea := script.fn_prima_chiave_estranea(v_campi, c_ammesse);
-    IF v_estranea IS NOT NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'anagrafiche', 'anagrafiche.fn_crea_emittente_fiscale', 'E_CAMPO_NON_AMMESSO',
-            jsonb_build_object('campo', v_estranea, 'soggetto_id', p_soggetto_id),
-            NULL::uuid,
-            v_estranea);
-    END IF;
+    PERFORM script.fn_guard_campi_ammessi(
+        v_campi, c_ammesse,
+        'anagrafiche', 'anagrafiche.fn_crea_emittente_fiscale',
+        jsonb_build_object('soggetto_id', p_soggetto_id));
 
     v_sr_id := script.fn_get_or_create_soggetto_ruolo(
                    p_soggetto_id  := p_soggetto_id,

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/fn_aggiungi_magazzino.md" %}
 # ⚙️ Funzione `fn_aggiungi_magazzino`
 
 ```sql

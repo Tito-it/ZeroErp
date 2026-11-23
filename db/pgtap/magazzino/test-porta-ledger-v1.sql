@@ -71,17 +71,17 @@ BEGIN
     v_mag := dbops.fn_pgtap_crea_magazzino('PGT-L2P-A', false);
     v_art := dbops.fn_pgtap_crea_articolo('PGT-L2P-ART', true, false, false);
     FOR i IN 1..4 LOOP
-        INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_mag) RETURNING id INTO v_inv;
-        INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata) VALUES (v_inv, v_art, i) RETURNING id INTO v_tmp;
+        v_inv := dbops.fn_pgtap_crea_inventario(v_mag);
+        v_tmp := dbops.fn_pgtap_crea_riga_inventario(v_inv, v_art, i);
         v_r := v_r || v_tmp;
         v_i := v_i || v_inv;
     END LOOP;
     -- Il magazzino B, e un suo inventario CONFIRM, nascono nel contesto di B.
     PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo_b));
     v_mag_b := dbops.fn_pgtap_crea_magazzino('PGT-L2P-B', false);
-    INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_mag_b) RETURNING id INTO v_inv_b;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata) VALUES (v_inv_b, v_art, 5);
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_inv_b;
+    v_inv_b := dbops.fn_pgtap_crea_inventario(v_mag_b);
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_inv_b, v_art, 5);
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_inv_b, 'CONFIRM');
     PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo));
     INSERT INTO _fix VALUES (v_mag, v_mag_b, v_art,
                              -- rev 2026-11-09 (giro M.3): il tipo e' il documento, INVENTARIO_RIGA non e' piu' una sorgente.
@@ -183,7 +183,7 @@ SELECT throws_like(
     '%Non hai i permessi per questa operazione%',
     '13) il verbo SENZA identita'': E_PERMESSO_NEGATO (la porta non e'' aperta a chi non dice chi e'')');
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo)); END $ctx$;
-UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = (SELECT inv1 FROM _fix);
+SELECT dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', (SELECT inv1 FROM _fix), 'CONFIRM');
 SELECT lives_ok(
     $$ SELECT * FROM magazzino.fn_posta_inventario((SELECT inv1 FROM _fix)) $$,
     '14) il verbo nel perimetro, con registra_magazzino: passa — la porta e'' una porta');

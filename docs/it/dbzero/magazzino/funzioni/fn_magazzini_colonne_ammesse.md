@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/fn_magazzini_colonne_ammesse.md" %}
 # ⚙️ Funzione `fn_magazzini_colonne_ammesse`
 
 ```sql

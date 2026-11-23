@@ -413,14 +413,11 @@ CREATE TEMP TABLE t_inv (caso text PRIMARY KEY,   -- l'etichetta del test
 CREATE TEMP TABLE t_mag AS
 SELECT dbops.fn_pgtap_crea_magazzino(('PGT-6GB-' || substr(md5(clock_timestamp()::text), 1, 8))::varchar) AS id;
 
-WITH ins AS (INSERT INTO magazzino.inventari (magazzino_id)
-             SELECT m.id FROM t_mag m CROSS JOIN generate_series(1, 2)
-             RETURNING id)
 INSERT INTO t_inv
-SELECT CASE WHEN row_number() OVER (ORDER BY id) = 1 THEN 'bozza' ELSE 'vuoto' END, id FROM ins;
+SELECT v.caso, dbops.fn_pgtap_crea_inventario(m.id)
+  FROM t_mag m CROSS JOIN (VALUES ('bozza'), ('vuoto')) AS v(caso);
 
-UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM'
- WHERE id = (SELECT id FROM t_inv WHERE caso = 'vuoto');
+SELECT dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', (SELECT id FROM t_inv WHERE caso = 'vuoto'), 'CONFIRM');
 
 SELECT is(
     (SELECT string_agg(format('%s %s %s', t.caso, b -> 'can_registra', b -> 'can_registra_reason_valori'), ', '

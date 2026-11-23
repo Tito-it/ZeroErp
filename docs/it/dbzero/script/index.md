@@ -210,6 +210,7 @@ search:
 - [fn_gruppi_di_commessa_nel_lotto](funzioni/fn_gruppi_di_commessa_nel_lotto.md) — (latest review 2026-09-08)
 - [fn_gruppi_trascinati_da_uscita](funzioni/fn_gruppi_trascinati_da_uscita.md) — (latest review 2026-09-08)
 - [fn_guard_azione](funzioni/fn_guard_azione.md) — (scritta il 24-09-2026)
+- [fn_guard_campi_ammessi](funzioni/fn_guard_campi_ammessi.md) — Il controllo dei **campi facoltativi** che una porta di scrittura riceve tutti insieme: devono essere un oggetto, e ogni campo deve stare nella lista che la porta ammette.
 - [fn_guard_livello](funzioni/fn_guard_livello.md) — (scritta il 25-09-2026)
 - [fn_guard_passaggio](funzioni/fn_guard_passaggio.md)
 - [fn_guard_soggetto_pf_pura](funzioni/fn_guard_soggetto_pf_pura.md) — (latest review 18-04-2026)

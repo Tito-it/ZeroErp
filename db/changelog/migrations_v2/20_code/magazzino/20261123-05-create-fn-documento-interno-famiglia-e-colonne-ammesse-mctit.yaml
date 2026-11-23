@@ -1,0 +1,174 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL REGISTRO DELLE FAMIGLIE DEI DOCUMENTI INTERNI E LE LORO COLONNE AMMESSE
+#   magazzino.fn_documento_interno_famiglia(famiglia)
+#   magazzino.fn_documento_interno_colonne_ammesse(famiglia, parte, gesto)
+#   Brief: brief-db-magazzino-tutte-le-scritture-dal-verbo, P-5b
+#   (D-M5 = b, D-M9 = b, D-M11 = a; D-M4 per le colonne).
+#
+# -- IL REGISTRO (D-M9) ---------------------------------------------------
+#   Le tre famiglie (INVENTARIO, RETTIFICA, TRASFERIMENTO) hanno la stessa
+#   matrice e la stessa forma: una testata con lo stato, le righe con la
+#   loro FK, il magazzino che fa da perimetro, la GUC dell'operazione di
+#   registrazione. Chi le tratta insieme (i verbi comuni, la check di
+#   registrabilita') deve sapere, per famiglia: quale tabella, quale
+#   tabella di righe, quale colonna. Oggi lo sa in tre catene IF dentro
+#   script.fn_check_documento_interno_registrabile; i verbi del Lotto 2
+#   sarebbero la quarta copia. Il registro ne e' la sede.
+#   ⭐ Una FUNZIONE e non una tabella: una famiglia nuova vuole tabelle,
+#   trigger e CHECK, cioe' DDL. Non e' un dato che si configuri, e una
+#   tabella prometterebbe una configurabilita' che non c'e'. IMMUTABLE,
+#   come magazzino.fn_documento_interno_transizioni (la matrice).
+#   Una famiglia che non esiste: nessuna riga. Chi chiama decide il codice.
+#   L'oggetto del permesso (model_name di script.fn_guard_livello) e' la
+#   tabella della testata: anche le righe sono «il documento».
+#   I TG_ARGV dei trigger restano: sono DDL, e un trigger non legge una
+#   funzione per sapere su che colonna lavora.
+#
+# -- LE COLONNE AMMESSE (D-M4, D-M11) ------------------------------------
+#   Una lista per famiglia, parte (testata, riga) e gesto (crea,
+#   modifica). La leggono i verbi e il backend (stampo
+#   magazzino.fn_magazzini_colonne_ammesse). Fuori lista sempre: id, uid,
+#   audit, tx_id, storicizza, meta, lo stato (lo cambia solo il suo
+#   verbo), le identita' della nascita (il magazzino della testata, la
+#   testata della riga) e cio' che scrive l'operazione (qta_sistema).
+#   * testata, crea: la data, la descrizione (inventario), il magazzino
+#     di arrivo (trasferimento) e la provenienza, sorgente_tipo_id /
+#     sorgente_id / sorgente_uid / sorgente_riga (D-M11 = a: dice da dove
+#     nasce il documento, e la controlla trgfn_guard_sorgente);
+#   * testata, modifica: la data e la descrizione. La provenienza non
+#     cambia dopo la nascita (riscriverebbe la storia), e nemmeno il
+#     magazzino di arrivo: le ubicazioni d'arrivo delle righe sono del suo
+#     magazzino, e' la stessa ragione per cui inventario e rettifica
+#     bloccano magazzino_id (trgfn_lock_columns);
+#   * riga, crea e modifica: le colonne della riga, articolo compreso. La
+#     coerenza (articolo, lotto, seriale, ubicazione) la dicono i guard e
+#     i vincoli della tabella, per ogni scrittore.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261123-05-create-fn-documento-interno-famiglia-e-colonne-ammesse-mctit.yaml
+
+  - changeSet:
+      id: 20261123-05-create-fn-documento-interno-famiglia-e-colonne-ammesse
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea il registro delle famiglie dei documenti interni di magazzino
+        (magazzino.fn_documento_interno_famiglia: tabelle, colonne, GUC per INVENTARIO, RETTIFICA,
+        TRASFERIMENTO) e le loro colonne ammesse per parte e gesto
+        (magazzino.fn_documento_interno_colonne_ammesse), lette dai verbi comuni e dal backend.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "6"
+            sql: >
+              SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'magazzino' AND c.relkind IN ('r', 'p')
+                 AND c.relname IN ('inventari', 'inventari_righe', 'rettifiche', 'rettifiche_righe',
+                                   'trasferimenti', 'trasferimenti_righe');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Nomi di tabella e di colonna come text, non come %TYPE: sono
+              -- nomi, non il riflesso di una colonna; la famiglia e' il
+              -- vocabolario di script.fn_available_actions_documento_interno.
+              CREATE OR REPLACE FUNCTION magazzino.fn_documento_interno_famiglia(p_famiglia text)
+               RETURNS TABLE(famiglia          text,
+                             tabella           text,
+                             tabella_righe     text,
+                             colonna_fk        text,
+                             colonna_stato     text,
+                             colonna_magazzino text,
+                             guc_posting       text)
+               LANGUAGE sql
+               IMMUTABLE
+               ROWS 1
+              AS $function$
+                  -- Scopo: il registro delle famiglie dei documenti interni.
+                  --   Una riga per la famiglia chiesta, nessuna se non esiste.
+                  SELECT f.*
+                    FROM (VALUES
+                      ('INVENTARIO',    'inventari',     'inventari_righe',     'inventario_id',
+                       'stato_mag_inventario', 'magazzino_id',      'zeroerp.magazzino_posting_inventario'),
+                      ('RETTIFICA',     'rettifiche',    'rettifiche_righe',    'rettifica_id',
+                       'stato_mag_rettifiche', 'magazzino_id',      'zeroerp.magazzino_posting_rettifica'),
+                      ('TRASFERIMENTO', 'trasferimenti', 'trasferimenti_righe', 'trasferimento_id',
+                       'stato_trasferimento',  'magazzino_id_from', 'zeroerp.magazzino_posting_trasferimento')
+                    ) AS f(famiglia, tabella, tabella_righe, colonna_fk, colonna_stato,
+                           colonna_magazzino, guc_posting)
+                   WHERE f.famiglia = p_famiglia;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_documento_interno_famiglia(text) IS
+                  'Il registro delle famiglie dei documenti interni di magazzino (INVENTARIO, RETTIFICA, TRASFERIMENTO): per la famiglia chiesta, la tabella della testata, quella delle righe, la colonna che lega la riga alla testata, la colonna di stato, il magazzino che fa da perimetro (per il trasferimento quello di partenza) e la GUC con cui l''operazione di registrazione apre la porta POSTED. Nessuna riga per una famiglia che non esiste: il codice lo sceglie chi chiama. La tabella della testata e'' anche l''oggetto del permesso dei verbi (model_name di script.fn_guard_livello), per la testata e per le righe. Una funzione e non una tabella: una famiglia nuova vuole tabelle, trigger e vincoli, non si configura. IMMUTABLE. La leggono i verbi comuni dei documenti interni e script.fn_check_documento_interno_registrabile.';
+
+              -- Liste di nomi di colonna: text[], nessuna colonna di cui siano
+              -- il riflesso; parte e gesto sono il vocabolario della funzione.
+              CREATE OR REPLACE FUNCTION magazzino.fn_documento_interno_colonne_ammesse(
+                  p_famiglia text,
+                  p_parte    text,
+                  p_gesto    text)
+               RETURNS text[]
+               LANGUAGE sql
+               IMMUTABLE
+              AS $function$
+                  -- Scopo: le colonne che un verbo dei documenti interni
+                  --   accetta, per famiglia, parte (testata | riga) e gesto
+                  --   (crea | modifica). NULL su una combinazione che non
+                  --   esiste: non ammette niente.
+                  SELECT CASE p_parte || '/' || p_gesto
+                             WHEN 'testata/crea' THEN
+                                 CASE p_famiglia
+                                     WHEN 'INVENTARIO'    THEN ARRAY['data', 'descrizione']
+                                     WHEN 'RETTIFICA'     THEN ARRAY['data']
+                                     WHEN 'TRASFERIMENTO' THEN ARRAY['data', 'magazzino_id_to']
+                                 END
+                                 || ARRAY['sorgente_tipo_id', 'sorgente_id', 'sorgente_uid', 'sorgente_riga']
+                             WHEN 'testata/modifica' THEN
+                                 CASE p_famiglia
+                                     WHEN 'INVENTARIO'    THEN ARRAY['data', 'descrizione']
+                                     WHEN 'RETTIFICA'     THEN ARRAY['data']
+                                     WHEN 'TRASFERIMENTO' THEN ARRAY['data']
+                                 END
+                             WHEN 'riga/crea' THEN
+                                 CASE p_famiglia
+                                     WHEN 'INVENTARIO'    THEN ARRAY['articolo_id', 'qta_contata', 'ubicazione_id',
+                                                                     'lotto_id', 'asset_id', 'costo_unitario']
+                                     WHEN 'RETTIFICA'     THEN ARRAY['articolo_id', 'qta_delta', 'motivo', 'ubicazione_id',
+                                                                     'lotto_id', 'asset_id', 'costo_unitario']
+                                     WHEN 'TRASFERIMENTO' THEN ARRAY['articolo_id', 'qta', 'lotto_id', 'asset_id',
+                                                                     'ubicazione_id_da', 'ubicazione_id_a']
+                                 END
+                             WHEN 'riga/modifica' THEN
+                                 CASE p_famiglia
+                                     WHEN 'INVENTARIO'    THEN ARRAY['articolo_id', 'qta_contata', 'ubicazione_id',
+                                                                     'lotto_id', 'asset_id', 'costo_unitario']
+                                     WHEN 'RETTIFICA'     THEN ARRAY['articolo_id', 'qta_delta', 'motivo', 'ubicazione_id',
+                                                                     'lotto_id', 'asset_id', 'costo_unitario']
+                                     WHEN 'TRASFERIMENTO' THEN ARRAY['articolo_id', 'qta', 'lotto_id', 'asset_id',
+                                                                     'ubicazione_id_da', 'ubicazione_id_a']
+                                 END
+                         END
+                   WHERE p_famiglia IN ('INVENTARIO', 'RETTIFICA', 'TRASFERIMENTO');
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_documento_interno_colonne_ammesse(text, text, text) IS
+                  'Le colonne che i verbi dei documenti interni di magazzino accettano, per famiglia (INVENTARIO, RETTIFICA, TRASFERIMENTO), parte (testata, riga) e gesto (crea, modifica). La leggono i verbi e il backend: una sede sola. Testata, crea: la data, la descrizione (inventario), il magazzino di arrivo (trasferimento) e la provenienza (sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga, controllata da trgfn_guard_sorgente). Testata, modifica: la data e la descrizione; la provenienza e il magazzino di arrivo non cambiano dopo la nascita. Riga, crea e modifica: le colonne della riga, articolo compreso; la coerenza di articolo, lotto, seriale e ubicazione la dicono i guard della tabella. Mai: id, uid, audit, tx_id, storicizza, meta, lo stato (ha il suo verbo), il magazzino della testata e la testata della riga (identita'' della nascita), qta_sistema (la scrive la registrazione). NULL su una combinazione che non esiste: nessuna colonna ammessa. IMMUTABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS magazzino.fn_documento_interno_colonne_ammesse(text, text, text);
+              DROP FUNCTION IF EXISTS magazzino.fn_documento_interno_famiglia(text);

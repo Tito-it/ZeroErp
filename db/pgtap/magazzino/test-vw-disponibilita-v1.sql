@@ -45,13 +45,13 @@ BEGIN
     v_art2 := dbops.fn_pgtap_crea_articolo('PGT-L2W-ART2', true, false, false);
     INSERT INTO _fix VALUES (v_a, v_b, v_art, v_art2);
     -- giacenza 10 in A e 5 in B, via inventario
-    INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_a) RETURNING id INTO v_inv;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata) VALUES (v_inv, v_art, 10);
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_inv;
+    v_inv := dbops.fn_pgtap_crea_inventario(v_a);
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_inv, v_art, 10);
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_inv, 'CONFIRM');
     PERFORM magazzino.fn_posta_inventario(v_inv);
-    INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_b) RETURNING id INTO v_inv;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata) VALUES (v_inv, v_art, 5);
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_inv;
+    v_inv := dbops.fn_pgtap_crea_inventario(v_b);
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_inv, v_art, 5);
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_inv, 'CONFIRM');
     PERFORM magazzino.fn_posta_inventario(v_inv);
     -- i blocchi, dai verbi: 4 aperto e 50 liberato (A, art); 3 aperto su art2 in B (senza movimenti)
     PERFORM magazzino.fn_apri_blocco(v_a, v_art, 4, NULL, 'b');

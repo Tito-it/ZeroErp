@@ -30,7 +30,7 @@
 --    8) un trasferimento con la riga di un'altra bolla -> E_SORG_RIGA_NON_DEL_DOCUMENTO
 --    9) un inventario con l'uid per un tipo a chiave id -> E_SORG_CHIAVE_NON_CONFORME
 --   10) la forma: una riga senza tipo -> CHECK (23514)
---   11) un UPDATE della sola sorgente_id verso una bolla che non c'e' -> il guard scatta
+--   11) il guard scatta anche su un UPDATE della sola sorgente_id (elenco OF del trigger)
 --   12) due rettifiche dalla stessa bolla: nessuna unicita' per sorgente
 --   13) la bolla vuota citata da un inventario non si cancella -> E_SORG_ORIGINE_REFERENZIATA
 --   14) la riga di bolla citata da una rettifica non si cancella -> E_SORG_ORIGINE_REFERENZIATA
@@ -124,10 +124,11 @@ CREATE TEMP TABLE _doc (inv bigint, ret bigint);
 DO $d$
 DECLARE v_inv bigint; v_ret bigint;
 BEGIN
-    INSERT INTO magazzino.inventari (magazzino_id, sorgente_tipo_id, sorgente_id)
-    SELECT mag_a, t_ddt, ddt1 FROM _fix RETURNING id INTO v_inv;
-    INSERT INTO magazzino.rettifiche (magazzino_id, sorgente_tipo_id, sorgente_id, sorgente_riga)
-    SELECT mag_a, t_ddt, ddt1, r1 FROM _fix RETURNING id INTO v_ret;
+    SELECT dbops.fn_pgtap_crea_inventario(mag_a, jsonb_build_object('sorgente_tipo_id', t_ddt, 'sorgente_id', ddt1))
+      INTO v_inv FROM _fix;
+    SELECT dbops.fn_pgtap_crea_rettifica(mag_a, jsonb_build_object('sorgente_tipo_id', t_ddt, 'sorgente_id', ddt1,
+                                                                   'sorgente_riga', r1))
+      INTO v_ret FROM _fix;
     INSERT INTO _doc VALUES (v_inv, v_ret);
 END $d$;
 
@@ -145,42 +146,56 @@ SELECT is(
 
 -- ===== le provenienze sbagliate =====
 SELECT throws_like(
-    format($q$INSERT INTO magazzino.trasferimenti (magazzino_id_from, magazzino_id_to, sorgente_tipo_id, sorgente_id, sorgente_riga)
-              VALUES (%s, %s, %s, %s, %s)$q$,
+    format($q$SELECT dbops.fn_pgtap_crea_trasferimento(%s, %s,
+                  jsonb_build_object('sorgente_tipo_id', %s, 'sorgente_id', %s, 'sorgente_riga', %s))$q$,
            (SELECT mag_a FROM _fix), (SELECT mag_b FROM _fix), (SELECT t_ddt FROM _fix),
            (SELECT ddt1 FROM _fix), (SELECT r2 FROM _fix)),
     '%non è una riga del documento di origine%',
     '8) un trasferimento con la riga di un''altra bolla: E_SORG_RIGA_NON_DEL_DOCUMENTO');
 
 SELECT throws_like(
-    format($q$INSERT INTO magazzino.inventari (magazzino_id, sorgente_tipo_id, sorgente_uid)
-              VALUES (%s, %s, '00000000-0000-4000-8000-0000000000aa')$q$,
+    format($q$SELECT dbops.fn_pgtap_crea_inventario(%s,
+                  jsonb_build_object('sorgente_tipo_id', %s, 'sorgente_uid', '00000000-0000-4000-8000-0000000000aa'))$q$,
            (SELECT mag_a FROM _fix), (SELECT t_ddt FROM _fix)),
     '%si scrive con la sola chiave%',
     '9) un inventario con l''uid per un tipo a chiave id: E_SORG_CHIAVE_NON_CONFORME');
 
 SELECT throws_ok(
-    format($q$INSERT INTO magazzino.rettifiche (magazzino_id, sorgente_riga) VALUES (%s, %s)$q$,
+    format($q$SELECT dbops.fn_pgtap_crea_rettifica(%s, jsonb_build_object('sorgente_riga', %s))$q$,
            (SELECT mag_a FROM _fix), (SELECT r1 FROM _fix)),
     '23514', NULL,
     '10) la forma: una riga senza tipo e senza documento viola chk_mag_rettifiche_sorgente_forma');
 
 -- ⚠️ Un UPDATE che tocca la sola chiave: il trigger la deve avere nel suo elenco OF.
-SELECT throws_like(
-    format('UPDATE magazzino.inventari SET sorgente_id = -1 WHERE id = %s', (SELECT inv FROM _doc)),
-    '%Riferimento sorgente non trovato%',
-    '11) un UPDATE della sola sorgente_id verso una bolla che non c''e'': il guard scatta');
+--   La provenienza nasce col documento e non si modifica (il verbo di modifica non la
+--   ammette): un UPDATE di sorgente_id lo scrive solo il proprietario. Si asserisce la
+--   forma del trigger, che lo protegge anche li'.
+SELECT ok(
+    EXISTS (SELECT 1
+              FROM pg_trigger t
+              JOIN pg_proc p ON p.oid = t.tgfoid
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+             WHERE t.tgrelid = 'magazzino.inventari'::regclass
+               AND NOT t.tgisinternal
+               AND n.nspname = 'script' AND p.proname = 'trgfn_guard_sorgente'
+               AND (SELECT a.attnum FROM pg_attribute a
+                     WHERE a.attrelid = 'magazzino.inventari'::regclass AND a.attname = 'sorgente_id')
+                   = ANY (t.tgattr::int2[])),
+    '11) il guard della provenienza scatta anche su un UPDATE della sola sorgente_id (la colonna e'' nel suo elenco OF)');
 
 SELECT lives_ok(
-    format($q$INSERT INTO magazzino.rettifiche (magazzino_id, sorgente_tipo_id, sorgente_id) VALUES (%s, %s, %s)$q$,
+    format($q$SELECT dbops.fn_pgtap_crea_rettifica(%s, jsonb_build_object('sorgente_tipo_id', %s, 'sorgente_id', %s))$q$,
            (SELECT mag_a FROM _fix), (SELECT t_ddt FROM _fix), (SELECT ddt1 FROM _fix)),
     '12) una seconda rettifica dalla stessa bolla: nessuna unicita'' per sorgente');
 
 -- ===== S-9: l'origine citata non si cancella (bozze: la regola di stato le lascerebbe) =====
-INSERT INTO magazzino.inventari (magazzino_id, sorgente_tipo_id, sorgente_id)
-SELECT mag_a, t_ddt, ddt3 FROM _fix;
-INSERT INTO magazzino.rettifiche (magazzino_id, sorgente_tipo_id, sorgente_id, sorgente_riga)
-SELECT mag_a, t_ddt, ddt2, r2 FROM _fix;
+DO $s9$ BEGIN
+    PERFORM dbops.fn_pgtap_crea_inventario(mag_a, jsonb_build_object('sorgente_tipo_id', t_ddt, 'sorgente_id', ddt3))
+       FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_rettifica(mag_a, jsonb_build_object('sorgente_tipo_id', t_ddt, 'sorgente_id', ddt2,
+                                                                    'sorgente_riga', r2))
+       FROM _fix;
+END $s9$;
 
 SELECT throws_like(
     format('DELETE FROM vendite.ddt WHERE id = %s', (SELECT ddt3 FROM _fix)),

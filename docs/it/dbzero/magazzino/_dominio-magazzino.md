@@ -1,4 +1,4 @@
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 
 ### 🏗️ Lo stato del dominio `magazzino`
 
@@ -136,18 +136,16 @@ scrivere le tabelle da sola
 | `movimenti`, `valore_giacenza` | la porta del registro, attraverso i verbi che registrano (inventario, rettifica, trasferimento, bolla, reso, storno) |
 | `movimenti_attesi` | i verbi del blocco manuale (`fn_apri_blocco`, `fn_libera_blocco`) |
 | `causali` | il verbo del pannello di configurazione (`config.fn_pannello_scrivi`) |
+| `magazzini`, `ubicazioni`, `lotti`, `assets` | i verbi di nascita (`fn_aggiungi_*`) e di modifica (`fn_modifica_*`); il seriale non ha un verbo di modifica |
+| `eventi_assets` e le tabelle delle note | nessuno, per ora: non hanno ancora un verbo (le operazioni degli eventi mancano, sezione seguente) |
 
-**Ancora scrivibili dall'applicazione** (il permesso lo controlla solo il backend):
+**Con i verbi, ma ancora scrivibili dall'applicazione**:
 
-| Tabella | Oggi la scrive |
+| Tabella | Oggi |
 | --- | --- |
-| `magazzini`, `ubicazioni`, `lotti` | il backend, dalle anagrafiche di magazzino (il magazzino nasce con `fn_crea_magazzino`, che non controlla un permesso) |
-| `inventari`, `rettifiche` e le loro righe | il backend: la testata, le righe in bozza e i cambi di stato prima della registrazione. Già chiusi: il passaggio a «registrato» e le righe di un documento confermato, che tocca solo il verbo |
-| `trasferimenti` e le sue righe | nessuno dall'applicazione; il passaggio a «registrato» è già chiuso |
-| `assets`, `eventi_assets` e le tabelle delle note | nessuno dall'applicazione |
+| `inventari`, `rettifiche`, `trasferimenti` e le loro righe | i verbi ci sono (nascita per famiglia, modifica, eliminazione, stato, righe), e il backend ci sta passando. Le tabelle si chiudono quando il backend scrive solo dai verbi. Già chiusi: il passaggio a «registrato» e le righe di un documento confermato, che tocca solo la registrazione |
 
-Il lavoro che chiude il resto è aperto. Quando sarà fatto, questa sezione si riduce a una
-riga.
+Quando anche i documenti interni saranno chiusi, questa sezione si riduce a una riga.
 
 ---
 
@@ -157,4 +155,4 @@ riga.
   (il carico del ciclo acquisti);
 * le colonne «impegnata» e «in arrivo» della disponibilità: arrivano con i satelliti che le
   sanno riempire (acquisti);
-* il verbo per le scritture che l'applicazione fa ancora da sola (sezione precedente).
+* la chiusura dei documenti interni all'applicazione (sezione precedente).

@@ -126,14 +126,14 @@ BEGIN
     -- +5 in U1 e +4 in U2 a costo 10 (un inventario, due righe), poi -2 da U1
     -- (una rettifica, alla media): ATTRAVERSO I VERBI, che passano dalla primitiva,
     -- che scrive anche la copia: 50 + 40 - 2 * 10 (media) = 70.
-    INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_mag) RETURNING id INTO v_inv;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id, costo_unitario) VALUES (v_inv, v_art, 5, v_u1, 10) RETURNING id INTO v_ir;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id, costo_unitario) VALUES (v_inv, v_art, 4, v_u2, 10);
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_inv;
+    v_inv := dbops.fn_pgtap_crea_inventario(v_mag);
+    v_ir := dbops.fn_pgtap_crea_riga_inventario(v_inv, v_art, 5, jsonb_build_object('ubicazione_id', v_u1, 'costo_unitario', 10));
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_inv, v_art, 4, jsonb_build_object('ubicazione_id', v_u2, 'costo_unitario', 10));
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_inv, 'CONFIRM');
     PERFORM magazzino.fn_posta_inventario(v_inv);
-    INSERT INTO magazzino.rettifiche (magazzino_id) VALUES (v_mag) RETURNING id INTO v_ret;
-    INSERT INTO magazzino.rettifiche_righe (rettifica_id, articolo_id, qta_delta, ubicazione_id) VALUES (v_ret, v_art, -2, v_u1) RETURNING id INTO v_rr;
-    UPDATE magazzino.rettifiche SET stato_mag_rettifiche = 'CONFIRM' WHERE id = v_ret;
+    v_ret := dbops.fn_pgtap_crea_rettifica(v_mag);
+    v_rr := dbops.fn_pgtap_crea_riga_rettifica(v_ret, v_art, -2, jsonb_build_object('ubicazione_id', v_u1));
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('RETTIFICA', v_ret, 'CONFIRM');
     PERFORM magazzino.fn_posta_rettifica(v_ret);
 
     INSERT INTO _fix VALUES (v_mag, v_art, v_u1, v_u2);
@@ -186,13 +186,13 @@ DECLARE v_art2 uuid; v_inv bigint; v_ir bigint; v_ret bigint; v_rr bigint; v_mag
 BEGIN
     SELECT mag, u1 INTO v_mag, v_u1 FROM _fix;
     v_art2 := dbops.fn_pgtap_crea_articolo('PGT-VG1-ZERO', true, false, false);
-    INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_mag) RETURNING id INTO v_inv;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id, costo_unitario) VALUES (v_inv, v_art2, 3, v_u1, 10) RETURNING id INTO v_ir;
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_inv;
+    v_inv := dbops.fn_pgtap_crea_inventario(v_mag);
+    v_ir := dbops.fn_pgtap_crea_riga_inventario(v_inv, v_art2, 3, jsonb_build_object('ubicazione_id', v_u1, 'costo_unitario', 10));
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_inv, 'CONFIRM');
     PERFORM magazzino.fn_posta_inventario(v_inv);
-    INSERT INTO magazzino.rettifiche (magazzino_id) VALUES (v_mag) RETURNING id INTO v_ret;
-    INSERT INTO magazzino.rettifiche_righe (rettifica_id, articolo_id, qta_delta, ubicazione_id) VALUES (v_ret, v_art2, -3, v_u1) RETURNING id INTO v_rr;
-    UPDATE magazzino.rettifiche SET stato_mag_rettifiche = 'CONFIRM' WHERE id = v_ret;
+    v_ret := dbops.fn_pgtap_crea_rettifica(v_mag);
+    v_rr := dbops.fn_pgtap_crea_riga_rettifica(v_ret, v_art2, -3, jsonb_build_object('ubicazione_id', v_u1));
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('RETTIFICA', v_ret, 'CONFIRM');
     PERFORM magazzino.fn_posta_rettifica(v_ret);
 END $z$;
 SELECT is(

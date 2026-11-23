@@ -100,15 +100,14 @@ BEGIN
             -- raggiungono passando per la matrice (POSTED solo attraverso
             -- l'operazione: qui basta CANCEL come terminale, e POSTED lo
             -- si ottiene col posting di una riga buona).
-            INSERT INTO magazzino.inventari (magazzino_id) SELECT mag FROM _fix RETURNING id INTO v_id;
+            SELECT dbops.fn_pgtap_crea_inventario(mag) INTO v_id FROM _fix;
             IF v_da = 'CONFIRM' THEN
-                UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_id;
+                PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_id, 'CONFIRM');
             ELSIF v_da = 'CANCEL' THEN
-                UPDATE magazzino.inventari SET stato_mag_inventario = 'CANCEL' WHERE id = v_id;
+                PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_id, 'CANCEL');
             ELSIF v_da = 'POSTED' THEN
-                INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id, costo_unitario)
-                SELECT v_id, art, 1, ubi, 1 FROM _fix;
-                UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_id;
+                PERFORM dbops.fn_pgtap_crea_riga_inventario(v_id, art, 1, jsonb_build_object('ubicazione_id', ubi, 'costo_unitario', 1)) FROM _fix;
+                PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_id, 'CONFIRM');
                 PERFORM * FROM magazzino.fn_posta_inventario(v_id);
             END IF;
 
@@ -121,7 +120,7 @@ BEGIN
             --    test-documenti-interni-guard-v1. (Fino al 2026-09-25 qui si
             --    accendeva la GUC dall'app: dopo D-V1 non apre piu'.)
             BEGIN
-                UPDATE magazzino.inventari SET stato_mag_inventario = v_a WHERE id = v_id;
+                PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_id, v_a);
                 v_ok := true;
             EXCEPTION WHEN OTHERS THEN
                 GET STACKED DIAGNOSTICS v_cod = CONSTRAINT_NAME;
@@ -149,39 +148,36 @@ DO $d$
 DECLARE v_id bigint;
 BEGIN
     -- DRAFT, vuoto
-    INSERT INTO magazzino.inventari (magazzino_id) SELECT mag FROM _fix RETURNING id INTO v_id;
+    SELECT dbops.fn_pgtap_crea_inventario(mag) INTO v_id FROM _fix;
     INSERT INTO _doc VALUES ('draft', v_id);
 
     -- CONFIRM senza righe
-    INSERT INTO magazzino.inventari (magazzino_id) SELECT mag FROM _fix RETURNING id INTO v_id;
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_id;
+    SELECT dbops.fn_pgtap_crea_inventario(mag) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_id, 'CONFIRM');
     INSERT INTO _doc VALUES ('confirm_vuoto', v_id);
 
     -- CONFIRM con una riga buona
-    INSERT INTO magazzino.inventari (magazzino_id) SELECT mag FROM _fix RETURNING id INTO v_id;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id, costo_unitario)
-    SELECT v_id, art, 5, ubi, 2 FROM _fix;
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_id;
+    SELECT dbops.fn_pgtap_crea_inventario(mag) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_id, art, 5, jsonb_build_object('ubicazione_id', ubi, 'costo_unitario', 2)) FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_id, 'CONFIRM');
     INSERT INTO _doc VALUES ('confirm_buono', v_id);
 
     -- CONFIRM con una riga che la primitiva rifiuterebbe (articolo NON gestito)
-    INSERT INTO magazzino.inventari (magazzino_id) SELECT mag FROM _fix RETURNING id INTO v_id;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id)
-    SELECT v_id, art_no, 5, ubi FROM _fix;
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_id;
+    SELECT dbops.fn_pgtap_crea_inventario(mag) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_id, art_no, 5, jsonb_build_object('ubicazione_id', ubi)) FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_id, 'CONFIRM');
     INSERT INTO _doc VALUES ('confirm_rotto', v_id);
 
     -- POSTED: si arriva registrando
-    INSERT INTO magazzino.inventari (magazzino_id) SELECT mag FROM _fix RETURNING id INTO v_id;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id, costo_unitario)
-    SELECT v_id, art, 3, ubi, 2 FROM _fix;
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_id;
+    SELECT dbops.fn_pgtap_crea_inventario(mag) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_id, art, 3, jsonb_build_object('ubicazione_id', ubi, 'costo_unitario', 2)) FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_id, 'CONFIRM');
     PERFORM * FROM magazzino.fn_posta_inventario(v_id);
     INSERT INTO _doc VALUES ('posted', v_id);
 
     -- CANCEL
-    INSERT INTO magazzino.inventari (magazzino_id) SELECT mag FROM _fix RETURNING id INTO v_id;
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CANCEL' WHERE id = v_id;
+    SELECT dbops.fn_pgtap_crea_inventario(mag) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_id, 'CANCEL');
     INSERT INTO _doc VALUES ('cancel', v_id);
 END $d$;
 
@@ -275,10 +271,9 @@ CREATE TEMP TABLE _ret AS SELECT NULL::bigint AS id;
 DO $r$
 DECLARE v_id bigint;
 BEGIN
-    INSERT INTO magazzino.rettifiche (magazzino_id) SELECT mag FROM _fix RETURNING id INTO v_id;
-    INSERT INTO magazzino.rettifiche_righe (rettifica_id, articolo_id, qta_delta, ubicazione_id, costo_unitario, motivo)
-    SELECT v_id, art, 2, ubi, 1, 'pgtap' FROM _fix;
-    UPDATE magazzino.rettifiche SET stato_mag_rettifiche = 'CONFIRM' WHERE id = v_id;
+    SELECT dbops.fn_pgtap_crea_rettifica(mag) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_rettifica(v_id, art, 2, jsonb_build_object('ubicazione_id', ubi, 'costo_unitario', 1, 'motivo', 'pgtap')) FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('RETTIFICA', v_id, 'CONFIRM');
     UPDATE _ret SET id = v_id;
 END $r$;
 

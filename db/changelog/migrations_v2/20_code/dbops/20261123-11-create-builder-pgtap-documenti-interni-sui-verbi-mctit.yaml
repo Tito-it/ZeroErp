@@ -1,0 +1,309 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I BUILDER pgTAP DEI DOCUMENTI INTERNI DI MAGAZZINO, SUI VERBI
+#   dbops.fn_pgtap_crea_inventario(magazzino, campi)
+#   dbops.fn_pgtap_crea_rettifica(magazzino, campi)
+#   dbops.fn_pgtap_crea_trasferimento(da, a, campi)
+#   dbops.fn_pgtap_crea_riga_inventario(inventario, articolo, qta_contata, campi)
+#   dbops.fn_pgtap_crea_riga_rettifica(rettifica, articolo, qta_delta, campi)
+#   dbops.fn_pgtap_crea_riga_trasferimento(trasferimento, articolo, qta, campi)
+#   dbops.fn_pgtap_cambia_stato_documento_interno(famiglia, documento, stato)
+#   Brief: brief-db-magazzino-tutte-le-scritture-dal-verbo, P-5c (§5.5).
+#   Stampo: 20_code/dbops/20261122-09 (i builder delle anagrafiche).
+#
+# -- PERCHE' --------------------------------------------------------------
+#   I pgTAP che girano come app scrivono testate e righe dei documenti
+#   interni con INSERT e UPDATE diretti. Quando le sei tabelle passano in
+#   sola lettura per l'app, quelle scritture ricevono 42501. Il builder
+#   chiama il VERBO, cioe' la strada dell'operatore, e i test passano dai
+#   builder gia' adesso, con le tabelle ancora aperte: la chiusura, dopo,
+#   non li tocca.
+#
+# -- L'AREA APERTA PER IL TEMPO DELLA CHIAMATA ---------------------------
+#   Come nello stampo: dbops.fn_pgtap_apri_area_per_nascita porta l'area a
+#   TUTTO sull'oggetto (la tabella della testata: i verbi delle righe e
+#   quello dello stato guardano il documento), il verbo scrive, e
+#   dbops.fn_pgtap_richiudi_area rimette l'override com'era. Se il test ha
+#   gia' il livello (fn_pgtap_concedi_azione('registra_magazzino') apre
+#   l'area a TUTTO), l'apertura non scrive niente.
+#
+# -- LO STATO ----------------------------------------------------------------
+#   Un builder solo per le tre famiglie, come il verbo: la famiglia e' il
+#   primo argomento, la matrice la fa rispettare il trigger. Un rifiuto
+#   della matrice risale al test col suo codice.
+#
+# -- PERCHE' NON MODIFICA, TOGLI, ELIMINA ------------------------------------
+#   Una fixture costruisce: nasce, aggiunge righe, conferma. Modificare,
+#   togliere ed eliminare sono gesti che un test PROVA, e un test che li
+#   prova chiama il verbo, col livello che ha scelto lui.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261123-11-create-builder-pgtap-documenti-interni-sui-verbi-mctit.yaml
+
+  - changeSet:
+      id: 20261123-11-create-builder-pgtap-documenti-interni-sui-verbi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I builder pgTAP dei documenti interni di magazzino (testate, righe, stato) chiamano i
+        verbi, con l'area aperta a TUTTO per il tempo della chiamata e poi richiusa.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "7"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'magazzino'
+                     AND p.proname IN ('fn_aggiungi_inventario', 'fn_aggiungi_rettifica',
+                                       'fn_aggiungi_trasferimento', 'fn_aggiungi_riga_inventario',
+                                       'fn_aggiungi_riga_rettifica', 'fn_aggiungi_riga_trasferimento',
+                                       'fn_cambia_stato_documento_interno');
+            - sqlCheck:
+                expectedResult: "2"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops'
+                     AND p.proname IN ('fn_pgtap_apri_area_per_nascita', 'fn_pgtap_richiudi_area');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- Le testate
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_inventario(
+                  p_magazzino_id magazzino.inventari.magazzino_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)  -- i facoltativi del verbo: nessuna colonna
+               RETURNS magazzino.inventari.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un inventario in DRAFT nel
+              --   magazzino p_magazzino_id, dal verbo magazzino.fn_aggiungi_inventario.
+              --   p_campi: i facoltativi del verbo (data, descrizione, sorgente_*).
+              --   Da chiamare DOPO fn_pgtap_set_contesto_operatore.
+              -- Uso: v_inv := dbops.fn_pgtap_crea_inventario(v_mag);
+              DECLARE
+                  v_ov jsonb;  -- il ricordo di fn_pgtap_apri_area_per_nascita
+                  v_id magazzino.inventari.id%TYPE;
+              BEGIN
+                  v_ov := dbops.fn_pgtap_apri_area_per_nascita('magazzino', 'inventari');
+                  v_id := magazzino.fn_aggiungi_inventario(p_magazzino_id, COALESCE(p_campi, '{}'::jsonb));
+                  PERFORM dbops.fn_pgtap_richiudi_area(v_ov);
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_inventario(magazzino.inventari.magazzino_id%TYPE, jsonb) IS
+                  'Fixture pgTAP: un inventario in DRAFT nel magazzino dato, dal verbo magazzino.fn_aggiungi_inventario, con l''area aperta per il tempo della chiamata (dbops.fn_pgtap_apri_area_per_nascita). p_campi porta i facoltativi del verbo (data, descrizione, sorgente_*). Da chiamare dopo fn_pgtap_set_contesto_operatore.';
+
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_rettifica(
+                  p_magazzino_id magazzino.rettifiche.magazzino_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)  -- i facoltativi del verbo: nessuna colonna
+               RETURNS magazzino.rettifiche.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP una rettifica in DRAFT nel
+              --   magazzino p_magazzino_id, dal verbo magazzino.fn_aggiungi_rettifica.
+              --   p_campi: i facoltativi del verbo (data, sorgente_*).
+              -- Uso: v_ret := dbops.fn_pgtap_crea_rettifica(v_mag);
+              DECLARE
+                  v_ov jsonb;  -- il ricordo di fn_pgtap_apri_area_per_nascita
+                  v_id magazzino.rettifiche.id%TYPE;
+              BEGIN
+                  v_ov := dbops.fn_pgtap_apri_area_per_nascita('magazzino', 'rettifiche');
+                  v_id := magazzino.fn_aggiungi_rettifica(p_magazzino_id, COALESCE(p_campi, '{}'::jsonb));
+                  PERFORM dbops.fn_pgtap_richiudi_area(v_ov);
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_rettifica(magazzino.rettifiche.magazzino_id%TYPE, jsonb) IS
+                  'Fixture pgTAP: una rettifica in DRAFT nel magazzino dato, dal verbo magazzino.fn_aggiungi_rettifica, con l''area aperta per il tempo della chiamata. p_campi porta i facoltativi del verbo (data, sorgente_*).';
+
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_trasferimento(
+                  p_magazzino_id_from magazzino.trasferimenti.magazzino_id_from%TYPE,
+                  p_magazzino_id_to   magazzino.trasferimenti.magazzino_id_to%TYPE,
+                  p_campi             jsonb DEFAULT '{}'::jsonb)  -- i facoltativi del verbo: nessuna colonna
+               RETURNS magazzino.trasferimenti.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un trasferimento in DRAFT dal
+              --   magazzino p_magazzino_id_from a p_magazzino_id_to (anche lo
+              --   stesso: un trasferimento fra ubicazioni), dal verbo
+              --   magazzino.fn_aggiungi_trasferimento. p_campi: i facoltativi
+              --   del verbo (data, sorgente_*).
+              -- Uso: v_tr := dbops.fn_pgtap_crea_trasferimento(v_a, v_b);
+              DECLARE
+                  v_ov jsonb;  -- il ricordo di fn_pgtap_apri_area_per_nascita
+                  v_id magazzino.trasferimenti.id%TYPE;
+              BEGIN
+                  v_ov := dbops.fn_pgtap_apri_area_per_nascita('magazzino', 'trasferimenti');
+                  v_id := magazzino.fn_aggiungi_trasferimento(
+                              p_magazzino_id_from, p_magazzino_id_to, COALESCE(p_campi, '{}'::jsonb));
+                  PERFORM dbops.fn_pgtap_richiudi_area(v_ov);
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_trasferimento(
+                  magazzino.trasferimenti.magazzino_id_from%TYPE, magazzino.trasferimenti.magazzino_id_to%TYPE, jsonb) IS
+                  'Fixture pgTAP: un trasferimento in DRAFT fra i due magazzini dati (anche lo stesso, fra ubicazioni), dal verbo magazzino.fn_aggiungi_trasferimento, con l''area aperta per il tempo della chiamata. p_campi porta i facoltativi del verbo (data, sorgente_*).';
+
+              -- ============================================================
+              -- Le righe: l'area e' quella del documento, come nel verbo
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_riga_inventario(
+                  p_inventario_id magazzino.inventari_righe.inventario_id%TYPE,
+                  p_articolo_id   magazzino.inventari_righe.articolo_id%TYPE,
+                  p_qta_contata   magazzino.inventari_righe.qta_contata%TYPE,
+                  p_campi         jsonb DEFAULT '{}'::jsonb)  -- i facoltativi del verbo: nessuna colonna
+               RETURNS magazzino.inventari_righe.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP una riga dell'inventario
+              --   p_inventario_id (in DRAFT), dal verbo
+              --   magazzino.fn_aggiungi_riga_inventario. p_campi: ubicazione_id,
+              --   lotto_id, asset_id, costo_unitario.
+              -- Uso: PERFORM dbops.fn_pgtap_crea_riga_inventario(v_inv, v_art, 10, '{"costo_unitario": 5}');
+              DECLARE
+                  v_ov jsonb;  -- il ricordo di fn_pgtap_apri_area_per_nascita
+                  v_id magazzino.inventari_righe.id%TYPE;
+              BEGIN
+                  v_ov := dbops.fn_pgtap_apri_area_per_nascita('magazzino', 'inventari');
+                  v_id := magazzino.fn_aggiungi_riga_inventario(
+                              p_inventario_id, p_articolo_id, p_qta_contata, COALESCE(p_campi, '{}'::jsonb));
+                  PERFORM dbops.fn_pgtap_richiudi_area(v_ov);
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_riga_inventario(
+                  magazzino.inventari_righe.inventario_id%TYPE, magazzino.inventari_righe.articolo_id%TYPE,
+                  magazzino.inventari_righe.qta_contata%TYPE, jsonb) IS
+                  'Fixture pgTAP: una riga dell''inventario dato, dal verbo magazzino.fn_aggiungi_riga_inventario, con l''area del documento aperta per il tempo della chiamata. p_campi porta i facoltativi (ubicazione_id, lotto_id, asset_id, costo_unitario). Fuori da DRAFT il rifiuto del trigger risale al test.';
+
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_riga_rettifica(
+                  p_rettifica_id magazzino.rettifiche_righe.rettifica_id%TYPE,
+                  p_articolo_id  magazzino.rettifiche_righe.articolo_id%TYPE,
+                  p_qta_delta    magazzino.rettifiche_righe.qta_delta%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)  -- i facoltativi del verbo: nessuna colonna
+               RETURNS magazzino.rettifiche_righe.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP una riga della rettifica
+              --   p_rettifica_id (in DRAFT), dal verbo
+              --   magazzino.fn_aggiungi_riga_rettifica. p_campi: motivo,
+              --   ubicazione_id, lotto_id, asset_id, costo_unitario.
+              -- Uso: PERFORM dbops.fn_pgtap_crea_riga_rettifica(v_ret, v_art, -2);
+              DECLARE
+                  v_ov jsonb;  -- il ricordo di fn_pgtap_apri_area_per_nascita
+                  v_id magazzino.rettifiche_righe.id%TYPE;
+              BEGIN
+                  v_ov := dbops.fn_pgtap_apri_area_per_nascita('magazzino', 'rettifiche');
+                  v_id := magazzino.fn_aggiungi_riga_rettifica(
+                              p_rettifica_id, p_articolo_id, p_qta_delta, COALESCE(p_campi, '{}'::jsonb));
+                  PERFORM dbops.fn_pgtap_richiudi_area(v_ov);
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_riga_rettifica(
+                  magazzino.rettifiche_righe.rettifica_id%TYPE, magazzino.rettifiche_righe.articolo_id%TYPE,
+                  magazzino.rettifiche_righe.qta_delta%TYPE, jsonb) IS
+                  'Fixture pgTAP: una riga della rettifica data, dal verbo magazzino.fn_aggiungi_riga_rettifica, con l''area del documento aperta per il tempo della chiamata. p_campi porta i facoltativi (motivo, ubicazione_id, lotto_id, asset_id, costo_unitario).';
+
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_riga_trasferimento(
+                  p_trasferimento_id magazzino.trasferimenti_righe.trasferimento_id%TYPE,
+                  p_articolo_id      magazzino.trasferimenti_righe.articolo_id%TYPE,
+                  p_qta              magazzino.trasferimenti_righe.qta%TYPE,
+                  p_campi            jsonb DEFAULT '{}'::jsonb)  -- i facoltativi del verbo: nessuna colonna
+               RETURNS magazzino.trasferimenti_righe.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP una riga del trasferimento
+              --   p_trasferimento_id (in DRAFT), dal verbo
+              --   magazzino.fn_aggiungi_riga_trasferimento. p_campi: lotto_id,
+              --   asset_id, ubicazione_id_da, ubicazione_id_a.
+              -- Uso: PERFORM dbops.fn_pgtap_crea_riga_trasferimento(v_tr, v_art, 4, jsonb_build_object('ubicazione_id_da', v_u1));
+              DECLARE
+                  v_ov jsonb;  -- il ricordo di fn_pgtap_apri_area_per_nascita
+                  v_id magazzino.trasferimenti_righe.id%TYPE;
+              BEGIN
+                  v_ov := dbops.fn_pgtap_apri_area_per_nascita('magazzino', 'trasferimenti');
+                  v_id := magazzino.fn_aggiungi_riga_trasferimento(
+                              p_trasferimento_id, p_articolo_id, p_qta, COALESCE(p_campi, '{}'::jsonb));
+                  PERFORM dbops.fn_pgtap_richiudi_area(v_ov);
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_riga_trasferimento(
+                  magazzino.trasferimenti_righe.trasferimento_id%TYPE, magazzino.trasferimenti_righe.articolo_id%TYPE,
+                  magazzino.trasferimenti_righe.qta%TYPE, jsonb) IS
+                  'Fixture pgTAP: una riga del trasferimento dato, dal verbo magazzino.fn_aggiungi_riga_trasferimento, con l''area del documento aperta per il tempo della chiamata. p_campi porta i facoltativi (lotto_id, asset_id, ubicazione_id_da, ubicazione_id_a).';
+
+              -- ============================================================
+              -- Lo stato
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_cambia_stato_documento_interno(
+                  p_famiglia     text,
+                  p_documento_id bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_stato        text)   -- lo stato della famiglia: tre colonne, nessuna sola da ancorare
+               RETURNS text
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: portare in una fixture pgTAP il documento interno
+              --   p_documento_id della famiglia p_famiglia allo stato p_stato
+              --   (conferma, riapri, annulla), dal verbo
+              --   magazzino.fn_cambia_stato_documento_interno. Ritorna lo stato.
+              -- Uso: PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_inv, 'CONFIRM');
+              DECLARE
+                  v_tabella text;  -- il nome dal registro: nessuna colonna
+                  v_ov      jsonb; -- il ricordo di fn_pgtap_apri_area_per_nascita
+                  v_stato   text;  -- lo stato della famiglia: tre colonne, nessuna sola da ancorare
+              BEGIN
+                  SELECT f.tabella INTO v_tabella
+                    FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f;
+                  IF v_tabella IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_cambia_stato_documento_interno: famiglia % sconosciuta (INVENTARIO | RETTIFICA | TRASFERIMENTO)', p_famiglia;
+                  END IF;
+
+                  v_ov    := dbops.fn_pgtap_apri_area_per_nascita('magazzino', v_tabella);
+                  v_stato := magazzino.fn_cambia_stato_documento_interno(p_famiglia, p_documento_id, p_stato);
+                  PERFORM dbops.fn_pgtap_richiudi_area(v_ov);
+                  RETURN v_stato;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_cambia_stato_documento_interno(text, bigint, text) IS
+                  'Fixture pgTAP: porta il documento interno dato (famiglia INVENTARIO, RETTIFICA, TRASFERIMENTO) allo stato chiesto, dal verbo magazzino.fn_cambia_stato_documento_interno, con l''area del documento aperta per il tempo della chiamata. La matrice la fa rispettare il trigger: un rifiuto risale al test col suo codice. Ritorna lo stato scritto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_cambia_stato_documento_interno(text, bigint, text);
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_riga_trasferimento(
+                  magazzino.trasferimenti_righe.trasferimento_id%TYPE, magazzino.trasferimenti_righe.articolo_id%TYPE,
+                  magazzino.trasferimenti_righe.qta%TYPE, jsonb);
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_riga_rettifica(
+                  magazzino.rettifiche_righe.rettifica_id%TYPE, magazzino.rettifiche_righe.articolo_id%TYPE,
+                  magazzino.rettifiche_righe.qta_delta%TYPE, jsonb);
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_riga_inventario(
+                  magazzino.inventari_righe.inventario_id%TYPE, magazzino.inventari_righe.articolo_id%TYPE,
+                  magazzino.inventari_righe.qta_contata%TYPE, jsonb);
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_trasferimento(
+                  magazzino.trasferimenti.magazzino_id_from%TYPE, magazzino.trasferimenti.magazzino_id_to%TYPE, jsonb);
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_rettifica(magazzino.rettifiche.magazzino_id%TYPE, jsonb);
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_inventario(magazzino.inventari.magazzino_id%TYPE, jsonb);

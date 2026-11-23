@@ -23,7 +23,7 @@
 --    6) stesso magazzino, riga senza ubicazioni -> E_MAG_TRASFERIMENTO_STESSA_POSIZIONE
 --    7) A/U2 -> B, 2 pezzi: uscita da A/U2, entrata in B senza ubicazione
 --    8) giacenze: A 8, B 2
---    9) POSTED con UPDATE diretto -> E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE
+--    9) POSTED chiesto al verbo dello stato -> E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE
 --   10) una riga su un trasferimento POSTED -> E_MAG_DOCUMENTO_RIGHE_CONGELATE
 -- ------------------------------------------------------------
 BEGIN;
@@ -50,10 +50,9 @@ BEGIN
     v_u2 := dbops.fn_pgtap_crea_ubicazione(v_a, 'PGT-L3I-U2', p_tipo_id => v_tipo);
     v_art := dbops.fn_pgtap_crea_articolo('PGT-L3I-ART', true, false, false);
     INSERT INTO _fix VALUES (v_a, v_b, v_u1, v_u2, v_art);
-    INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_a) RETURNING id INTO v_inv;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, ubicazione_id, qta_contata, costo_unitario)
-    VALUES (v_inv, v_art, v_u1, 10, 5);
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_inv;
+    v_inv := dbops.fn_pgtap_crea_inventario(v_a);
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_inv, v_art, 10, jsonb_build_object('ubicazione_id', v_u1, 'costo_unitario', 5));
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_inv, 'CONFIRM');
     PERFORM magazzino.fn_posta_inventario(v_inv);
 END $fix$;
 
@@ -62,11 +61,10 @@ CREATE TEMP TABLE _t1 (id bigint, uid uuid);
 DO $t$
 DECLARE v_id bigint; v_uid uuid;
 BEGIN
-    INSERT INTO magazzino.trasferimenti (magazzino_id_from, magazzino_id_to)
-    SELECT mag_a, mag_a FROM _fix RETURNING id, uid INTO v_id, v_uid;
-    INSERT INTO magazzino.trasferimenti_righe (trasferimento_id, articolo_id, qta, ubicazione_id_da, ubicazione_id_a)
-    SELECT v_id, art, 4, u1, u2 FROM _fix;
-    UPDATE magazzino.trasferimenti SET stato_trasferimento = 'CONFIRM' WHERE id = v_id;
+    SELECT dbops.fn_pgtap_crea_trasferimento(mag_a, mag_a) INTO v_id FROM _fix;
+    SELECT t.uid INTO v_uid FROM magazzino.trasferimenti t WHERE t.id = v_id;
+    PERFORM dbops.fn_pgtap_crea_riga_trasferimento(v_id, art, 4, jsonb_build_object('ubicazione_id_da', u1, 'ubicazione_id_a', u2)) FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('TRASFERIMENTO', v_id, 'CONFIRM');
     INSERT INTO _t1 VALUES (v_id, v_uid);
 END $t$;
 CREATE TEMP TABLE _p1 AS SELECT * FROM magazzino.fn_posta_trasferimento((SELECT id FROM _t1));
@@ -98,19 +96,18 @@ CREATE TEMP TABLE _t2 (id bigint);
 DO $t$
 DECLARE v_id bigint;
 BEGIN
-    INSERT INTO magazzino.trasferimenti (magazzino_id_from, magazzino_id_to)
-    SELECT mag_a, mag_a FROM _fix RETURNING id INTO v_id;
+    SELECT dbops.fn_pgtap_crea_trasferimento(mag_a, mag_a) INTO v_id FROM _fix;
     INSERT INTO _t2 VALUES (v_id);
 END $t$;
 SELECT throws_ok(
-    format('INSERT INTO magazzino.trasferimenti_righe (trasferimento_id, articolo_id, qta, ubicazione_id_da, ubicazione_id_a) VALUES (%s, %L, 1, %s, %s)',
+    format($q$SELECT dbops.fn_pgtap_crea_riga_trasferimento(%s, %L, 1,
+                  jsonb_build_object('ubicazione_id_da', %s, 'ubicazione_id_a', %s))$q$,
            (SELECT id FROM _t2), (SELECT art FROM _fix), (SELECT u1 FROM _fix), (SELECT u1 FROM _fix)),
     '23514', NULL,
     '5) una riga da U1 a U1: il CHECK la rifiuta');
 DO $t$ BEGIN
-    INSERT INTO magazzino.trasferimenti_righe (trasferimento_id, articolo_id, qta)
-    SELECT (SELECT id FROM _t2), art, 1 FROM _fix;
-    UPDATE magazzino.trasferimenti SET stato_trasferimento = 'CONFIRM' WHERE id = (SELECT id FROM _t2);
+    PERFORM dbops.fn_pgtap_crea_riga_trasferimento((SELECT id FROM _t2), art, 1) FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('TRASFERIMENTO', (SELECT id FROM _t2), 'CONFIRM');
 END $t$;
 SELECT throws_like(
     format('SELECT * FROM magazzino.fn_posta_trasferimento(%s)', (SELECT id FROM _t2)),
@@ -122,11 +119,9 @@ CREATE TEMP TABLE _t3 (id bigint);
 DO $t$
 DECLARE v_id bigint;
 BEGIN
-    INSERT INTO magazzino.trasferimenti (magazzino_id_from, magazzino_id_to)
-    SELECT mag_a, mag_b FROM _fix RETURNING id INTO v_id;
-    INSERT INTO magazzino.trasferimenti_righe (trasferimento_id, articolo_id, qta, ubicazione_id_da)
-    SELECT v_id, art, 2, u2 FROM _fix;
-    UPDATE magazzino.trasferimenti SET stato_trasferimento = 'CONFIRM' WHERE id = v_id;
+    SELECT dbops.fn_pgtap_crea_trasferimento(mag_a, mag_b) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_trasferimento(v_id, art, 2, jsonb_build_object('ubicazione_id_da', u2)) FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('TRASFERIMENTO', v_id, 'CONFIRM');
     INSERT INTO _t3 VALUES (v_id);
 END $t$;
 CREATE TEMP TABLE _p3 AS SELECT * FROM magazzino.fn_posta_trasferimento((SELECT id FROM _t3));
@@ -149,19 +144,17 @@ CREATE TEMP TABLE _t4 (id bigint);
 DO $t$
 DECLARE v_id bigint;
 BEGIN
-    INSERT INTO magazzino.trasferimenti (magazzino_id_from, magazzino_id_to)
-    SELECT mag_a, mag_b FROM _fix RETURNING id INTO v_id;
-    INSERT INTO magazzino.trasferimenti_righe (trasferimento_id, articolo_id, qta, ubicazione_id_da)
-    SELECT v_id, art, 1, u2 FROM _fix;
-    UPDATE magazzino.trasferimenti SET stato_trasferimento = 'CONFIRM' WHERE id = v_id;
+    SELECT dbops.fn_pgtap_crea_trasferimento(mag_a, mag_b) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_trasferimento(v_id, art, 1, jsonb_build_object('ubicazione_id_da', u2)) FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('TRASFERIMENTO', v_id, 'CONFIRM');
     INSERT INTO _t4 VALUES (v_id);
 END $t$;
 SELECT throws_like(
-    format('UPDATE magazzino.trasferimenti SET stato_trasferimento = %L WHERE id = %s', 'POSTED', (SELECT id FROM _t4)),
+    format('SELECT dbops.fn_pgtap_cambia_stato_documento_interno(%L, %s, %L)', 'TRASFERIMENTO', (SELECT id FROM _t4), 'POSTED'),
     '%passa dall''operazione di registrazione%',
-    '9) POSTED con UPDATE diretto: E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE');
+    '9) POSTED chiesto al verbo dello stato: E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE');
 SELECT throws_like(
-    format('INSERT INTO magazzino.trasferimenti_righe (trasferimento_id, articolo_id, qta, ubicazione_id_da) VALUES (%s, %L, 1, %s)',
+    format($q$SELECT dbops.fn_pgtap_crea_riga_trasferimento(%s, %L, 1, jsonb_build_object('ubicazione_id_da', %s))$q$,
            (SELECT id FROM _t3), (SELECT art FROM _fix), (SELECT u2 FROM _fix)),
     '%POSTED%',
     '10) una riga su un trasferimento POSTED: E_MAG_DOCUMENTO_RIGHE_CONGELATE');

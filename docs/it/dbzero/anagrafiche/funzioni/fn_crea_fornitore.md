@@ -18,7 +18,6 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_fornitore(p_soggetto_id uuid, p_c
 AS $function$
 DECLARE
     v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
-    v_estranea text;
     v_sr_id    anagrafiche.fornitori.soggetto_ruolo_id%TYPE;
     v_fo_id    anagrafiche.fornitori.id%TYPE;
     -- Le chiavi opzionali: quelle del backend (_CREATE_ALLOWED),
@@ -54,14 +53,10 @@ BEGIN
             'soggetto mancante o campi che non sono un oggetto');
     END IF;
 
-    v_estranea := script.fn_prima_chiave_estranea(v_campi, c_ammesse);
-    IF v_estranea IS NOT NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'anagrafiche', 'anagrafiche.fn_crea_fornitore', 'E_CAMPO_NON_AMMESSO',
-            jsonb_build_object('campo', v_estranea, 'soggetto_id', p_soggetto_id),
-            NULL::uuid,
-            v_estranea);
-    END IF;
+    PERFORM script.fn_guard_campi_ammessi(
+        v_campi, c_ammesse,
+        'anagrafiche', 'anagrafiche.fn_crea_fornitore',
+        jsonb_build_object('soggetto_id', p_soggetto_id));
 
     v_sr_id := script.fn_get_or_create_soggetto_ruolo(
                    p_soggetto_id  := p_soggetto_id,

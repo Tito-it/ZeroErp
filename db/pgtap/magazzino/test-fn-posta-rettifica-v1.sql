@@ -40,19 +40,19 @@ BEGIN
     v_art := dbops.fn_pgtap_crea_articolo('PGT-L2R-ART', true, false, false);
     INSERT INTO _fix VALUES (v_mag, v_art);
     -- giacenza 10 a 7 EUR, via inventario
-    INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_mag) RETURNING id INTO v_inv;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, costo_unitario) VALUES (v_inv, v_art, 10, 7);
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_inv;
+    v_inv := dbops.fn_pgtap_crea_inventario(v_mag);
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_inv, v_art, 10, jsonb_build_object('costo_unitario', 7));
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_inv, 'CONFIRM');
     PERFORM magazzino.fn_posta_inventario(v_inv);
 END $fix$;
 
 -- 1-2) +3 a 9, -2
 CREATE TEMP TABLE _ret1 AS SELECT NULL::bigint AS id;
 DO $r$ DECLARE v_id bigint; BEGIN
-    INSERT INTO magazzino.rettifiche (magazzino_id) SELECT mag FROM _fix RETURNING id INTO v_id;
-    INSERT INTO magazzino.rettifiche_righe (rettifica_id, articolo_id, qta_delta, costo_unitario) SELECT v_id, art, 3, 9 FROM _fix;
-    INSERT INTO magazzino.rettifiche_righe (rettifica_id, articolo_id, qta_delta) SELECT v_id, art, -2 FROM _fix;
-    UPDATE magazzino.rettifiche SET stato_mag_rettifiche = 'CONFIRM' WHERE id = v_id;
+    SELECT dbops.fn_pgtap_crea_rettifica(mag) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_rettifica(v_id, art, 3, jsonb_build_object('costo_unitario', 9)) FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_rettifica(v_id, art, -2) FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('RETTIFICA', v_id, 'CONFIRM');
     UPDATE _ret1 SET id = v_id;
 END $r$;
 CREATE TEMP TABLE _post1 AS SELECT * FROM magazzino.fn_posta_rettifica((SELECT id FROM _ret1));
@@ -72,9 +72,9 @@ SELECT is(
 DO $b$ BEGIN PERFORM magazzino.fn_apri_blocco((SELECT mag FROM _fix), (SELECT art FROM _fix), 20, NULL, 'blocco'); END $b$;
 CREATE TEMP TABLE _ret2 AS SELECT NULL::bigint AS id;
 DO $r$ DECLARE v_id bigint; BEGIN
-    INSERT INTO magazzino.rettifiche (magazzino_id) SELECT mag FROM _fix RETURNING id INTO v_id;
-    INSERT INTO magazzino.rettifiche_righe (rettifica_id, articolo_id, qta_delta) SELECT v_id, art, -5 FROM _fix;
-    UPDATE magazzino.rettifiche SET stato_mag_rettifiche = 'CONFIRM' WHERE id = v_id;
+    SELECT dbops.fn_pgtap_crea_rettifica(mag) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_rettifica(v_id, art, -5) FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('RETTIFICA', v_id, 'CONFIRM');
     UPDATE _ret2 SET id = v_id;
 END $r$;
 SELECT lives_ok(
@@ -84,9 +84,9 @@ SELECT lives_ok(
 -- 4-5) oltre la giacenza (6 dopo il 3)
 CREATE TEMP TABLE _ret3 AS SELECT NULL::bigint AS id;
 DO $r$ DECLARE v_id bigint; BEGIN
-    INSERT INTO magazzino.rettifiche (magazzino_id) SELECT mag FROM _fix RETURNING id INTO v_id;
-    INSERT INTO magazzino.rettifiche_righe (rettifica_id, articolo_id, qta_delta) SELECT v_id, art, -30 FROM _fix;
-    UPDATE magazzino.rettifiche SET stato_mag_rettifiche = 'CONFIRM' WHERE id = v_id;
+    SELECT dbops.fn_pgtap_crea_rettifica(mag) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_rettifica(v_id, art, -30) FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('RETTIFICA', v_id, 'CONFIRM');
     UPDATE _ret3 SET id = v_id;
 END $r$;
 SELECT throws_like(
@@ -102,7 +102,7 @@ SELECT is(
 -- 6) una DRAFT
 CREATE TEMP TABLE _ret4 AS SELECT NULL::bigint AS id;
 DO $r$ DECLARE v_id bigint; BEGIN
-    INSERT INTO magazzino.rettifiche (magazzino_id) SELECT mag FROM _fix RETURNING id INTO v_id;
+    SELECT dbops.fn_pgtap_crea_rettifica(mag) INTO v_id FROM _fix;
     UPDATE _ret4 SET id = v_id;
 END $r$;
 SELECT throws_like(

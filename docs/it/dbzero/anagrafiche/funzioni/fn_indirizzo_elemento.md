@@ -19,7 +19,6 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_indirizzo_elemento(p_el jsonb, p_chi t
 AS $function$
 DECLARE
     v_ctx      jsonb := COALESCE(p_contesto, '{}'::jsonb);
-    v_estranea text;
     v_tipo_id  config.tipi_indirizzi.id%TYPE;
     -- Le chiavi di un indirizzo: le colonne della riga, piu'
     -- quelle di una via da risolvere (fn_create_indirizzo).
@@ -53,14 +52,7 @@ BEGIN
             'un indirizzo non e'' un oggetto');
     END IF;
 
-    v_estranea := script.fn_prima_chiave_estranea(p_el, c_ammesse);
-    IF v_estranea IS NOT NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'anagrafiche', p_chi, 'E_CAMPO_NON_AMMESSO',
-            v_ctx || jsonb_build_object('campo', v_estranea),
-            NULL::uuid,
-            v_estranea);
-    END IF;
+    PERFORM script.fn_guard_campi_ammessi(p_el, c_ammesse, 'anagrafiche', p_chi, v_ctx);
 
     v_tipo_id := (p_el ->> 'tipo_indirizzo_id')::integer;
     IF v_tipo_id IS NULL AND NULLIF(btrim(p_el ->> 'tipo_indirizzo_codice_interno'), '') IS NOT NULL THEN

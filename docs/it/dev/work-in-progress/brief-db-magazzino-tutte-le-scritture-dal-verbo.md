@@ -2,9 +2,9 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-23**
 >
-> **Riparte: Tid**, col via al giro di `p_campi` (brief suo, da scrivere: D-M8 = a), che viene prima
-> del P-5. Le decisioni del Lotto 2 sono prese (D-M8 … D-M11 come proposte, 2026-11-23, §5.4); nessun
-> changeSet. La R-1 è fatta dalla sessione BE il
+> **Riparte: la sessione BE**, con la R-2 (i documenti interni sui verbi) e la R-3 (un codice nuovo); per
+> ultimo il team DB con ciò che resta del P-5c, la sola chiusura delle sei tabelle, **dopo** la R-2, perché
+> il backend non resti senza strada. `20261123-10` e `-11` sono applicati, pgTAP verdi col runner (§5.6). La R-1 è fatta dalla sessione BE il
 > 2026-11-22 e committata. La R-4 aspetta che gli oggetti di magazzino entrino a catalogo (Tid, 2026-11-22).
 >
 > | # | Chi | Che cosa | Dove | Aspetta |
@@ -18,16 +18,24 @@
 > | 5-bis | Tid | ✅ R-4 «al giorno del catalogo» (2026-11-22): la fa la sessione BE/FE quando le righe `(magazzino, …)` entrano in `area_model_overrides` | §7 | catalogo |
 > | 5-ter | team DB | ✅ ricognizione del P-5 (2026-11-23) | §5.4 | — |
 > | 5-quater | Tid | ✅ D-M8 … D-M11 decise (2026-11-23); il via al giro di `p_campi` | §5.4 | — |
-> | 5-quinquies | team DB | il giro `script.fn_guard_campi_ammessi` (brief suo, copie ritirate nello stesso giro) | brief da aprire | via di Tid |
-> | 6 | team DB | P-5 (Lotto 2), poi R-2 al BE | §5, §7 | 5-quinquies, via di Tid |
-> | 7 | team DB | P-6, archiviazione | §5 | 6 |
+> | 5-quinquies | team DB | ✅ P-5a: `script.fn_guard_campi_ammessi`, quindici porte ritirate (`20261123-01` … `-04`, 2026-11-23) | §5.5 | — |
+> | 6 | team DB | ✅ P-5b: registro, check sul registro, undici verbi, codice nuovo (`20261123-05` … `-09`, 2026-11-23) | §5.5 | — |
+> | 6-bis | Tid | ✅ apply di `20261123-01` … `-09`, pgTAP verdi col runner (2026-11-23) | §5.5 | — |
+> | 6-ter | sessione BE | R-2 (documenti interni sui verbi, colonne ammesse dal DB) e R-3 (`E_MAG_DOCUMENTO_TESTATA_CONGELATA`) | §7 | 6-bis |
+> | 6-quater | team DB | ✅ anticipato dal P-5c e dal P-6 (2026-11-23): la variabile della registrazione spenta nei verbi (`20261123-10`, un difetto del P-5b), i builder dei documenti (`-11`), 17 pgTAP portati, le note di cinque codici, 42 pagine `manual/`, «La porta» allo stato di oggi | §5.6 | — |
+> | 6-quinquies | Tid | ✅ apply di `20261123-10` e `-11`, pgTAP verdi col runner (2026-11-23) | §5.6 | — |
+> | 6-sexies | team DB | resto del P-5c: le sei tabelle in sola lettura per l'app, nelle tre sedi | §5.5 | 6-ter |
+> | 7 | team DB | resto del P-6: «La porta» della guida a una riga, archiviazione | §5 | 6-sexies |
 >
 > Decisioni di Tid del 2026-11-22: il controllo di `p_campi` comune ai `fn_crea_*` si estrae **in un
 > giro a parte**, dopo la R-1 (§5.2); il debito `%TYPE` del P-3 **resta per ora** (§5.3); il lotto
 > diventa dell'azienda, in un brief suo (`brief-db-magazzino-lotto-dell-azienda`); il cliente del
 > seriale si controlla subito: `20261122-12` e `-13` applicati, pgTAP verdi (§5.3). Il Lotto 1 è
-> committato (`4c5517181a`, `d609fef87d`, 2026-11-22). Da committare: la §5.4 di questo file.
-> Decisioni aperte di Tid: nessuna.
+> committato (`4c5517181a`, `d609fef87d`, 2026-11-22). Da committare: `20261123-01` … `-11`, i due pgTAP
+> nuovi, il test 21 di `script/test-fn-scrivi-riga-da-jsonb-v1`, i 17 pgTAP portati, tre CSV di `80_data`
+> (§5.5, §5.6), le pagine `manual/` e i due blocchi comuni di magazzino (§5.6) e questo file.
+> Decisioni aperte di Tid: una, fuori da questo brief (§5.6, «Emerso»): se cercare lo stesso difetto della
+> variabile negli altri domini.
 >
 > **Brief vicini verificati (2026-11-21):** `work-done/2026/brief-db-processi-accensione-per-ambiente`
 > ha costruito, senza citare questo brief, due pezzi del Lotto 1 (§3-bis, punti 1-2);
@@ -295,7 +303,7 @@ stesso brief.
 | P-2 | BB della scrittura dinamica, il pannello lo adotta | ✅ **fatto da un altro cantiere** (`script.fn_scrivi_riga_da_jsonb`, `20261017-05`; §3-bis.1) |
 | P-3 | Colonne ammesse, BB di nascita, verbi delle anagrafiche; guard di perimetro sulle quattro tabelle (D-M6) | ✅ **applicato il 2026-11-22** (§5.2), test verdi. I builder `dbops.fn_pgtap_crea_*` passano al P-4: li rompe la chiusura, si cambiano con lei |
 | P-4 | Postura del Lotto 1 nelle tre sedi; builder sui verbi; i pgTAP come app | ✅ **applicato il 2026-11-22** (§5.3), pgTAP verdi col runner |
-| P-5 | Lotto 2: verbi dei documenti interni e postura | dopo P-4 |
+| P-5 | Lotto 2: P-5a il guard dei campi, P-5b i verbi dei documenti interni, P-5c la postura | ✅ P-5a e P-5b scritti e applicati il 2026-11-23 (§5.5); del P-5c builder e pgTAP scritti (§5.6), la chiusura dopo la R-2 |
 | P-6 | Guida: la sezione «La porta» si riduce a una riga; registro dei BB | alla chiusura |
 
 **P-0, il censimento.** Letto il 2026-10-03, da rifare sui file al momento di
@@ -423,7 +431,7 @@ riletti nella corsa come app, perché un rosso preesistente può nascondere un'a
 * le pagine `manual/` delle funzioni nuove e la doc auto-generata: con l'apply (P-6);
 * le note di `codici_errore.csv` dei tre codici «non trovato» dicono ancora «lo solleva il backend».
   Il CSV ha modifiche aperte di un'altra sessione: le note si allineano al commit del Lotto 1;
-* ✅ **DECISA da Tid il 2026-11-22: sì, in un giro a parte** (dopo la R-1, brief suo): i `fn_crea_*` ripetono tutti lo stesso controllo di `p_campi`
+* ✅ **DECISA da Tid il 2026-11-22: sì, in un giro a parte** (dopo la R-1; ⚠️ è il P-5a, §5.4, in questo brief): i `fn_crea_*` ripetono tutti lo stesso controllo di `p_campi`
   (è un oggetto; nessuna chiave fuori lista, col nome), in più domini: magazzino, anagrafiche,
   vendite. Con questo giro le copie in magazzino sono quattro. Estrarlo in un BB `script` tocca più
   domini, e la regola del 2 vuole l'ok di Tid. Proposta: un BB `script.fn_guard_campi_ammessi(campi,
@@ -582,10 +590,137 @@ D-M9 = b, D-M10 = b, D-M11 = a)
 
 | # | Domanda | Opzioni | Proposta |
 | --- | --- | --- | --- |
-| **D-M8** ✅ a | L'ordine rispetto al giro di `p_campi` (deciso il 2026-11-22: «in un giro a parte, dopo la R-1»; la R-1 è fatta) | **a** prima il giro `script.fn_guard_campi_ammessi` (brief suo), poi il Lotto 2 · **b** prima il Lotto 2, poi il giro | ⭐ **a.** Il Lotto 2 aggiunge almeno due copie del controllo (testata e riga), sei con la D-M10 = b. Nate sul BB, non c'è niente da ritirare dopo |
+| **D-M8** ✅ a | L'ordine rispetto al giro di `p_campi` (deciso il 2026-11-22: «in un giro a parte, dopo la R-1»; la R-1 è fatta) | **a** prima il giro `script.fn_guard_campi_ammessi` (P-5a, in questo brief: niente brief nuovo, Tid 2026-11-23), poi il Lotto 2 · **b** prima il Lotto 2, poi il giro | ⭐ **a.** Il Lotto 2 aggiunge almeno due copie del controllo (testata e riga), sei con la D-M10 = b. Nate sul BB, non c'è niente da ritirare dopo |
 | **D-M9** ✅ b | Dove sta il registro delle famiglie (D-M5) | **a** una tabella di seed in `magazzino` · **b** una funzione IMMUTABLE `magazzino.fn_documento_interno_famiglia(p_famiglia)` (tabella, tabella righe, colonna FK, colonna di stato, GUC, oggetto del permesso), stampo `fn_documento_interno_transizioni` | ⭐ **b.** Una famiglia nuova vuole tabelle, trigger e CHECK: è una costante del modello, non un dato configurabile. Una tabella prometterebbe una configurabilità che non c'è. Nello stesso giro le tre catene `IF` di `fn_check_documento_interno_registrabile` la leggono |
 | **D-M10** ✅ b | La forma della **nascita** (testata e riga), che le tre famiglie non condividono: il trasferimento ha partenza e arrivo; la riga ha `qta_contata`, `qta_delta` + `motivo`, `qta` + ubicazioni da/a | **a** generica anche la nascita: `(famiglia, dati jsonb)`, gli obbligatori nella lista della famiglia, la chiave mancante col suo nome · **b** nascita per famiglia, tipizzata (stampo D-M2 del Lotto 1: obbligatori come argomenti, facoltativi in `p_campi`); generici modifica, cancellazione, togli riga e cambio di stato | ⭐ **b.** Le famiglie differiscono proprio dove nasce il documento; dove condividono la matrice (modifica per delta, stato, cancellazione) il verbo resta uno. È la forma che il Lotto 1 e la famiglia `fn_crea_*` hanno già. ⚠️ **Rivede la D-M5** (2026-11-21), che chiedeva generico anche il «crea» |
 | **D-M11** ✅ a | Le colonne `sorgente_*` (§3-bis.9) nei verbi | **a** ammesse alla nascita, fuori dalla modifica · **b** fuori da tutti e due finché non c'è uno scrittore con una sorgente · **c** ammesse anche in modifica | ⭐ **a.** La provenienza dice da dove nasce il documento: la controlla già `trgfn_guard_sorgente`, e cambiarla dopo riscrive la storia. Il primo scrittore con una sorgente (il ricevimento degli acquisti) non deve aspettare un giro |
+### 5.5 Il P-5a e il P-5b — scritti il 2026-11-23
+
+Applicati da Tid il 2026-11-23, pgTAP verdi col runner. Provati prima in estratto (`scripts/prova_changeset.py`, da owner sullo scratch, in ROLLBACK).
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/script/20261123-01` | **P-5a.** `script.fn_guard_campi_ammessi(campi, ammesse, dominio, porta, contesto)`: i campi sono un oggetto (`E_SCRIPT_CHIAMATA_NON_VALIDA`), nessuna chiave fuori lista (`E_CAMPO_NON_AMMESSO`, col nome nella frase e in `context.campo`). Il log resta della porta |
+| `20_code/magazzino/20261123-02` | le sette porte di magazzino (quattro `fn_crea_*`, tre `fn_modifica_*`) sul guard; il debito `%TYPE` del P-3 chiuso su queste (i `RETURNS` dei `fn_crea_*`, i `text[]` dei nomi commentati) |
+| `20_code/anagrafiche/20261123-03` | le sei porte di anagrafiche (emittente, fornitore, cliente, BA, contatto, elemento d'indirizzo) |
+| `20_code/config/20261123-04` | profilo d'accesso e override d'oggetto. ⛔ Il pannello resta sul suo codice (`E_PANNELLO_CAMPO_NON_AMMESSO`) |
+| `20_code/magazzino/20261123-05` | **P-5b.** Il registro `magazzino.fn_documento_interno_famiglia(famiglia)` (D-M9) e `magazzino.fn_documento_interno_colonne_ammesse(famiglia, parte, gesto)` (D-M4, D-M11) |
+| `20_code/script/20261123-06` | `script.fn_check_documento_interno_registrabile` legge famiglia, testata e conteggio delle righe dal registro; il motivo 3 resta per famiglia (sono tre regole, non una mappa) |
+| `20_code/magazzino/20261123-07` | i guard comuni `magazzino.fn_guard_magazzino_nel_perimetro` e `magazzino.fn_documento_interno_blocca` (la testata `FOR UPDATE` nel perimetro, con lo stato); la nascita delle testate `fn_aggiungi_inventario`, `_rettifica`, `_trasferimento` (D-M10); `fn_aggiungi_ubicazione` sul guard del perimetro, col `RETURNS` ancorato |
+| `20_code/magazzino/20261123-08` | la nascita delle righe: `fn_aggiungi_riga_inventario`, `_rettifica`, `_trasferimento` |
+| `20_code/magazzino/20261123-09` | i verbi comuni: `fn_modifica_documento_interno`, `fn_elimina_documento_interno`, `fn_cambia_stato_documento_interno`, `fn_modifica_riga_documento_interno`, `fn_togli_riga_documento_interno` |
+| `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` | il codice nuovo `E_MAG_DOCUMENTO_TESTATA_CONGELATA` (CONFLITTO_STATO, id 1532) |
+| `80_data/sql/dbops/stati_check_dichiarazioni.csv` | le ragioni di CONFIRM e CANCEL dei tre documenti: il valore arriva al verbo come parametro. Canali invariati (APPLICAZIONE per inventario e rettifica, ESENTE per il trasferimento, che il backend non scrive ancora) |
+
+**Le scelte di forma prese scrivendo** (nessuna cambia una regola di dominio):
+
+* **niente BB `fn_crea_*` sotto i verbi di nascita dei documenti.** Nel Lotto 1 il BB INVOKER serve a chi fa
+  nascere senza permesso d'operatore (provisioning, builder); un documento interno non ne ha, e un BB con un
+  consumatore solo non centralizza niente (regola del 2);
+* **due guard estratti nello stesso giro** (regola del 2): il magazzino nel perimetro (la copia di
+  `fn_aggiungi_ubicazione` è ritirata) e la testata presa nel perimetro (otto verbi);
+* **l'arrivo del trasferimento non si modifica**, come `magazzino_id` di inventario e rettifica (che
+  `trgfn_lock_columns` blocca): le ubicazioni d'arrivo delle righe sono del suo magazzino;
+* **la testata si modifica solo in DRAFT, nel verbo.** La regola c'era (la capability: `can_edit_testata`), ma
+  nessun trigger la faceva sulla testata: la faceva il backend. Dopo la chiusura il verbo è l'unico scrittore.
+  Codice nuovo `E_MAG_DOCUMENTO_TESTATA_CONGELATA`, stampo di `E_MAG_DOCUMENTO_RIGHE_CONGELATE` (⇒ R-3);
+* **una famiglia sconosciuta** risponde `E_PERMESSO_NEGATO`: `fn_guard_livello` è fail-closed su un oggetto
+  NULL, e viene prima di tutto;
+* **fuori dalle liste**: `meta`, `storicizza`, lo stato (ha il suo verbo), `qta_sistema` (la scrive la
+  registrazione). Se il backend oggi scrive `meta` dei documenti, lo dice nella R-2.
+
+**Le prove**
+
+* pgTAP nuovi: `script/test-fn-guard-campi-ammessi-v1` (13; il 10 legge il log, `skip` dichiarato dove il canale
+  `dblink` è spento, come sullo scratch) e `magazzino/test-verbi-documenti-interni-v1` (31, come app). Verdi in
+  estratto;
+* firme e attributi delle quindici porte identici al vivo (confronto in estratto);
+* regressione: i 33 pgTAP che chiamano le porte o asseriscono i due codici, e i 32 dei documenti interni, delle
+  capability, dei `fn_posta_*`, delle ubicazioni e del presidio degli stati: esito uguale o migliore. I rossi
+  rimasti sono quelli già presenti, identici con e senza estratto (le asserzioni di privilegio, rosse da owner
+  per costruzione: `test-anagrafiche-magazzino-sola-lettura-v1`, `test-documenti-interni-guard-v1`,
+  `test-porta-ledger-v1`, `test-blocco-manuale-e-porta-lotto3-v1`, `test-fn-is-proprietario-tabella-v1`,
+  `test-lotto-dell-azienda-v1`). Vanno riletti col runner;
+* adattato: il test 21 di `script/test-fn-scrivi-riga-da-jsonb-v1` (l'emittente chiama il guard, non più
+  `fn_prima_chiave_estranea` direttamente).
+
+⚠️ **Il limite della prova.** Da owner la RLS non filtra: il perimetro dei verbi lo provano i loro predicati
+espliciti (casi 4, 7, 27), non la policy. Il resto si legge col runner come app.
+
+**Il P-5c, dopo la R-2** (builder e pgTAP anticipati il 2026-11-23, §5.6: resta la postura). Le sei tabelle (`inventari`, `rettifiche`, `trasferimenti` e le righe) in
+`v_tabelle_sola_lettura_app` nelle tre sedi (§11.8); i builder `dbops.fn_pgtap_crea_<documento>` e delle righe
+sui verbi, con l'area aperta per il tempo della nascita (stampo `20261122-09`); i 17 pgTAP come app che scrivono
+le tabelle (circa 180 punti, censimento del 2026-11-23: `test-fn-posta-inventario-v1`,
+`test-documenti-interni-guard-v1`, `test-capability-documenti-interni-v1`, `test-fn-posta-trasferimento-v1`,
+`test-fn-posta-rettifica-v1`, `test-valore-giacenza-forma-v1`, `test-verbi-permesso-v1`,
+`test-sorgente-testate-v1`, `test-lotto-dell-azienda-v1`, `test-vw-disponibilita-v1`,
+`test-reso-carico-kit-seriali-v1`, `test-porta-ledger-v1`, `test-reso-carico-v1`, `test-ddt-scarico-v1`,
+`test-ddt-trasferimento-v1`, `vendite/test-ddt-da-ordine-emittente-prima-dei-lettori-v1`,
+`vendite/test-capability-valori-marche-smistamento-v1`). `test-documenti-interni-guard-v1` prova i guard sulle
+scritture dirette: lì si decide caso per caso fra il verbo e il marcatore owner (forma 3 di `testpgtap.sh`).
+Perché dopo la R-2: nel Lotto 1 la chiusura è venuta prima del backend sui verbi, e per un giro il backend ha
+ricevuto `42501`. Qui l'ordine lo evita.
+
+### 5.6 Il P-5c anticipato, e un difetto del P-5b — 2026-11-23
+
+Anticipato senza aspettare la R-2 tutto ciò che non chiude le tabelle. Applicato da Tid il 2026-11-23, pgTAP
+verdi col runner. Provato prima in estratto
+(`scripts/prova_changeset.py`, da owner sullo scratch, in ROLLBACK); il controesempio anche come app.
+
+**Il difetto del P-5b, provato come app sullo scratch.** I due trigger dei documenti interni aprono il
+passaggio a POSTED e le righe fuori da DRAFT quando la variabile della registrazione porta l'id del
+documento **e** scrive il proprietario (D-V1). I verbi del P-5b sono SECURITY DEFINER: dentro, scrive il
+proprietario. Connessi come `zeroerp_app`: accesa la variabile da sé e chiamato
+`fn_cambia_stato_documento_interno(…, 'POSTED')`, l'inventario è passato a POSTED **con zero
+movimenti**; `fn_aggiungi_riga_inventario` ha scritto una riga su un inventario in CONFIRM. Prima del P-5b
+nessun verbo DEFINER scriveva queste tabelle con dati dell'app: il difetto è nato col P-5b.
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/magazzino/20261123-10` | `magazzino.fn_documento_interno_blocca` spegne la variabile della famiglia (dal registro) prima di ritornare. Ogni verbo su un documento che esiste passa di lì: il verbo vede ciò che vedeva la scrittura diretta dell'app, con gli stessi codici. La registrazione non passa di lì e accende la sua da sé |
+| `20_code/dbops/20261123-11` | Sette builder sui verbi, con l'area aperta per il tempo della chiamata (stampo `20261122-09`): `fn_pgtap_crea_inventario`, `_rettifica`, `_trasferimento`, `fn_pgtap_crea_riga_inventario`, `_rettifica`, `_trasferimento`, `fn_pgtap_cambia_stato_documento_interno`. Niente builder per modifica, togli ed elimina: sono gesti che un test prova, e un test che li prova chiama il verbo |
+
+**Prove.** `test-verbi-documenti-interni-v1` ha due casi nuovi (23b, 23c: la variabile accesa dall'app davanti
+al verbo): senza `-10` si interrompe, con `-10` 33/33. `test-documenti-interni-guard-v1` (riscritto sui verbi,
+sotto) senza `-10` ha 3 rossi (7, 7b, 10), con `-10` 18/18. I 17 pgTAP portati danno con `-10` e `-11` lo
+stesso esito della versione committata: verdi, salvo i rossi da owner per costruzione già presenti
+(`test-porta-ledger-v1` 4, privilegi; `test-lotto-dell-azienda-v1` 2, RLS), da rileggere col runner.
+
+**I 17 pgTAP portati** (nessuna scrittura diretta sulle sei tabelle resta nei file che girano come app):
+
+* le fixture (nascita, righe, conferma) passano dai builder in tutti e diciassette;
+* `test-documenti-interni-guard-v1`: i guard della tabella si provano attraverso i verbi, coi codici di
+  prima; 7 e 10 diventano il controesempio della variabile accesa dall'app davanti al verbo; il **17** (il
+  lock su `magazzino_id`) diventa «il verbo di modifica non ammette il magazzino» (`E_CAMPO_NON_AMMESSO`):
+  il lock resta, e lo prova il 16 (la dichiarazione), per chi scrive da proprietario;
+* `test-sorgente-testate-v1`: l'**11** (un UPDATE della sola `sorgente_id`) diventa un'asserzione di forma,
+  `sorgente_id` nell'elenco OF del trigger della provenienza: con la D-M11 la provenienza non si modifica dal
+  verbo, e l'UPDATE lo scrive solo il proprietario;
+* `test-lotto-dell-azienda-v1`: 14 e 15 passano da `fn_modifica_riga_documento_interno`;
+* `test-fn-posta-inventario-v1`: l'inventario «nato in CONFIRM» nasce in DRAFT e si conferma (lo stato non
+  nasce dai campi); la riga tolta passa da `fn_togli_riga_documento_interno`;
+* `test-fn-posta-trasferimento-v1`: il 9 chiede POSTED al verbo dello stato.
+
+**Il resto del P-5c** è la sola postura: le sei tabelle in `v_tabelle_sola_lettura_app` nelle tre sedi, dopo
+la R-2. I test non vanno più toccati.
+
+**Documentazione (parte del P-6).**
+
+* `codici_errore.csv`: le note di `E_MAG_DOCUMENTO_NON_TROVATO`, `E_MAG_DOCUMENTO_RIGA_NON_TROVATA`,
+  `E_MAG_MAGAZZINO_NON_TROVATO`, `E_MAG_UBICAZIONE_NON_TROVATA`, `E_MAG_LOTTO_NON_TROVATO` dicono chi li
+  solleva a DB. Quella del lotto diceva «nessuna RLS su lotti»: superata dal lotto dell'azienda;
+* 42 pagine `manual/`: i verbi, i building block e le liste dei due lotti (29 in magazzino), i builder pgTAP
+  (12 in dbops), `script.fn_guard_campi_ammessi`. Due blocchi comuni di magazzino, inclusi dalle pagine:
+  `_verbi-di-scrittura.md` (il modello) e `_documenti-interni.md` (la famiglia, la matrice, la variabile);
+* aggiornate `fn_crea_magazzino` e `dbops/fn_pgtap_crea_magazzino`, che descrivevano la strada di prima;
+* `_dominio-magazzino.md`, «La porta»: le anagrafiche chiuse, i documenti interni coi verbi e ancora aperti.
+  La riduzione a una riga resta alla chiusura.
+
+**Emerso, fuori da questo brief.** Lo stesso schema («la porta si apre con variabile + proprietario») sta in
+altri trigger, censiti per sorgente sullo scratch: `script.trgfn_doc_stato_solo_dal_verbo`, in `vendite`
+(listini, righe di bolla) e in `documenti`. Dove un verbo SECURITY DEFINER scrive con dati dell'app la tabella
+che quel trigger protegge, una variabile accesa dall'app davanti al verbo può aprire la porta. Non l'ho
+verificato caso per caso: è una ricognizione, e la decide Tid.
 
 ## 6. I pgTAP — i casi si fabbricano
 
@@ -642,11 +777,37 @@ Uno per verbo, sullo stampo di `test-fn-pannello-scrivi-v1` e
   `test_anagrafiche_magazzino_db`, caso 8). Il rifiuto del verbo senza livello è provato (caso 9). Portati sui
   builder: `test_documento_interno_db`, `test_ddt_cambia_stato_db`, `test_magazzino_spento_con_trasferimenti_db`
   e lo smoke del primo carico.
-* **R-2** (Lotto 2) `magazzino_repository.py`: testate, righe e cambio di stato
-  dai verbi; il registro `FAMIGLIE` si riduce a ciò che il DB non sa (il brief del
-  Lotto 2 lo dirà).
-* **R-3** i codici nuovi (se ne nascono) nelle chiavi i18n e nella tassonomia
-  degli errori.
+* **R-2** (Lotto 2, dopo l'apply di `20261123-05` … `-09`) `magazzino_repository.py`: testate, righe e cambio
+  di stato dai verbi; il registro `FAMIGLIE` si riduce a ciò che il DB non sa (segmento di URL, chiavi dei
+  messaggi, la famiglia del DB). Le tabelle restano aperte fino al P-5c: il cambio non rompe niente nel
+  frattempo. L'elenco, al 2026-11-23:
+
+  | Gesto | Verbo | Ritorna |
+  | --- | --- | --- |
+  | nuovo inventario | `magazzino.fn_aggiungi_inventario(magazzino_id, campi jsonb)` | `bigint` |
+  | nuova rettifica | `magazzino.fn_aggiungi_rettifica(magazzino_id, campi jsonb)` | `bigint` |
+  | nuovo trasferimento | `magazzino.fn_aggiungi_trasferimento(magazzino_id_from, magazzino_id_to, campi jsonb)` | `bigint` |
+  | aggiungi riga | `magazzino.fn_aggiungi_riga_inventario(inventario_id, articolo_id, qta_contata, campi)`, `_rettifica(rettifica_id, articolo_id, qta_delta, campi)`, `_trasferimento(trasferimento_id, articolo_id, qta, campi)` | `bigint` |
+  | modifica testata | `magazzino.fn_modifica_documento_interno(famiglia, id, dati jsonb)` | `jsonb`: id e colonne modificabili |
+  | elimina (bozza) | `magazzino.fn_elimina_documento_interno(famiglia, id)` | — |
+  | conferma, riapri, annulla | `magazzino.fn_cambia_stato_documento_interno(famiglia, id, stato)` | lo stato scritto |
+  | modifica riga | `magazzino.fn_modifica_riga_documento_interno(famiglia, documento_id, riga_id, dati jsonb)` | `jsonb`: id e colonne modificabili |
+  | togli riga | `magazzino.fn_togli_riga_documento_interno(famiglia, documento_id, riga_id)` | — |
+  | colonne del form e della validazione | `magazzino.fn_documento_interno_colonne_ammesse(famiglia, 'testata' \| 'riga', 'crea' \| 'modifica')` | `text[]` |
+
+  `famiglia` è `INVENTARIO`, `RETTIFICA` o `TRASFERIMENTO`, il vocabolario della capability. Nella modifica una
+  chiave assente resta, una a `null` svuota; il verbo non normalizza `''`. Codici: `E_PERMESSO_NEGATO` (sotto
+  `TUTTO` sull'oggetto della famiglia: `(magazzino, inventari|rettifiche|trasferimenti)`, anche per le righe),
+  `E_MAG_MAGAZZINO_NON_TROVATO`, `E_MAG_DOCUMENTO_NON_TROVATO`, `E_MAG_DOCUMENTO_RIGA_NON_TROVATA`,
+  `E_CAMPO_NON_AMMESSO` (col campo), `E_MAG_DOCUMENTO_TESTATA_CONGELATA` (nuovo, R-3), e quelli dei trigger che il
+  backend vede già (`E_MAG_DOCUMENTO_RIGHE_CONGELATE`, `_TRANSIZIONE_NON_AMMESSA`, `_NON_ELIMINABILE`,
+  `_POSTED_SOLO_DA_OPERAZIONE`). Il backend **censisce** i propri scrittori e lettori di queste sei tabelle (non
+  solo `magazzino_repository.py`: anche i test e gli smoke che le scrivono), dice se scrive colonne fuori dalle
+  liste (`meta`?) e se fa qualcosa alla conferma oltre al cambio di stato. Ciò che chiede al DB torna tutto
+  insieme, prima del P-5c.
+* **R-3** `E_MAG_DOCUMENTO_TESTATA_CONGELATA` (CONFLITTO_STATO, «Il documento è in stato %s: i dati della
+  testata non si modificano più.») nelle chiavi i18n e nella tassonomia degli errori. Se il backend oggi
+  solleva un suo codice per lo stesso caso, si ritira a favore di questo.
 * **R-4** (§3-bis.5) le view delle anagrafiche e dei documenti di magazzino dichiarano
   l'**oggetto** che il verbo passa a `fn_guard_livello` (per le anagrafiche
   `(magazzino, magazzini)`, `(magazzino, ubicazioni)`, `(magazzino, lotti)`), così il 403
@@ -707,4 +868,10 @@ Uno per verbo, sullo stampo di `test-fn-pannello-scrivi-v1` e
 | 2026-11-22 | BE | R-1 fatta: repository delle anagrafiche sui verbi, colonne ammesse dal DB, test sui builder; R-4 non fatta (vuole il catalogo) |
 | 2026-11-22 | Tid | R-4 al giorno del catalogo |
 | 2026-11-23 | DB | Ricognizione del P-5 (§5.4): che cosa resta, che cosa manca, la mappa famiglia → tabelle già in tre posti, censimento pgTAP datato. Quattro decisioni a Tid (D-M8 … D-M11); la D-M10 = b rivedrebbe in parte la D-M5. Testata aggiornata: il Lotto 1 è committato |
-| 2026-11-23 | Tid | **D-M8 = a** (prima il giro `script.fn_guard_campi_ammessi`, brief suo), **D-M9 = b** (registro delle famiglie in una funzione IMMUTABLE), **D-M10 = b** (nascita di testata e riga per famiglia, tipizzata; rivede in parte la D-M5), **D-M11 = a** (`sorgente_*` alla nascita, non in modifica) |
+| 2026-11-23 | Tid | **D-M8 = a** (prima il giro `script.fn_guard_campi_ammessi`, come P-5a di questo brief: un brief a parte non porterebbe niente), **D-M9 = b** (registro delle famiglie in una funzione IMMUTABLE), **D-M10 = b** (nascita di testata e riga per famiglia, tipizzata; rivede in parte la D-M5), **D-M11 = a** (`sorgente_*` alla nascita, non in modifica) |
+| 2026-11-23 | Tid | Il via allo sviluppo del P-5, dal progressivo `20261123-01` |
+| 2026-11-23 | DB | **P-5a e P-5b scritti** (§5.5): `20261123-01` … `-09`. Il guard dei campi e quindici porte ritirate; il registro delle famiglie, la check sul registro, undici verbi e due guard comuni; il codice `E_MAG_DOCUMENTO_TESTATA_CONGELATA`; le ragioni dei sei stati dichiarati. Due pgTAP nuovi, 65 in regressione con esito uguale o migliore. R-2 completata con l'elenco, R-3 nuova. P-5c dopo la R-2 |
+| 2026-11-23 | Tid | `20261123-01` … `-09` applicati, pgTAP verdi col runner. Riparte la sessione BE con la R-2 e la R-3 |
+| 2026-11-23 | Tid | Il via ad anticipare dal P-5c e dal P-6 ciò che non chiude le tabelle; range `20261123-10` … `-15` a questa sessione |
+| 2026-11-23 | DB | **§5.6**: un difetto del P-5b, provato come app (variabile della registrazione + verbo DEFINER = POSTED senza movimenti), corretto in `20261123-10`; i builder dei documenti (`-11`); 17 pgTAP portati; note di cinque codici; 42 pagine `manual/` e due blocchi comuni; «La porta» allo stato di oggi. Emerso: lo stesso schema in altri domini, una ricognizione da decidere |
+| 2026-11-23 | Tid | `20261123-10` e `-11` applicati, pgTAP verdi col runner. Riparte la sessione BE con la R-2 e la R-3 |

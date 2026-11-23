@@ -1,0 +1,211 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE GUC DELLA REGISTRAZIONE SI SPENGONO DENTRO I VERBI DEI DOCUMENTI INTERNI
+#   magazzino.fn_documento_interno_blocca(famiglia, documento, utente, porta)
+#   Brief: brief-db-magazzino-tutte-le-scritture-dal-verbo, P-5b (§5.5).
+#   Corpo di partenza: 20_code/magazzino/20261123-07 (uguale al vivo).
+#
+# -- IL DIFETTO (provato come app sullo scratch, 2026-11-23) -------------
+#   I due trigger dei documenti interni aprono due porte solo alla
+#   registrazione: lo stato POSTED e le righe fuori da DRAFT. La condizione
+#   e' «la GUC della registrazione porta l'id del documento E chi scrive e'
+#   il proprietario della tabella» (D-V1): l'app puo' accendere la GUC da
+#   se', ma scrivendo da se' non e' il proprietario.
+#   I verbi del P-5b sono SECURITY DEFINER: dentro, chi scrive E' il
+#   proprietario. L'app che accende la GUC e poi chiama il verbo soddisfa
+#   tutte e due le condizioni:
+#     set_config('zeroerp.magazzino_posting_inventario', '<id>', true);
+#     magazzino.fn_cambia_stato_documento_interno('INVENTARIO', <id>, 'POSTED')
+#   -> inventario POSTED con zero movimenti; e fn_aggiungi_riga_inventario
+#   scrive una riga su un inventario in CONFIRM.
+#
+# -- LA CORREZIONE --------------------------------------------------------
+#   Ogni verbo su un documento che esiste passa da
+#   fn_documento_interno_blocca (verbi delle righe e verbi comuni): li', in
+#   una sede, la GUC della famiglia (dal registro) si spegne, con
+#   set_config locale alla transazione. Il verbo vede allora cio' che vedeva
+#   la scrittura diretta dell'app: E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE
+#   e E_MAG_DOCUMENTO_RIGHE_CONGELATE, gli stessi codici.
+#   Basta quella della famiglia: un verbo scrive solo il suo documento, e il
+#   verbo di un'altra famiglia passa di qui per la sua.
+#   La registrazione (fn_posta_*) non passa di qui e accende la sua GUC da
+#   se': non cambia.
+#   ⚠️ La nascita delle testate non passa da qui e non ne ha bisogno: nasce
+#   in DRAFT, dove nessuna porta dipende dalla GUC.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261123-10-update-fn-documento-interno-blocca-spegne-guc-registrazione-mctit.yaml
+
+  - changeSet:
+      id: 20261123-10-update-fn-documento-interno-blocca-spegne-guc-registrazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.fn_documento_interno_blocca spegne la GUC della registrazione del documento
+        interno: una GUC accesa dall'applicazione prima di un verbo SECURITY DEFINER apriva la
+        porta POSTED e le righe fuori da DRAFT.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'magazzino' AND p.proname = 'fn_documento_interno_blocca';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- I nomi in uscita sono quelli del registro (text: nomi, non il
+              -- riflesso di una colonna); p_documento_id bigint e non %TYPE:
+              -- la funzione e' parametrica su tre tabelle.
+              CREATE OR REPLACE FUNCTION magazzino.fn_documento_interno_blocca(
+                  p_famiglia     text,
+                  p_documento_id bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_auth_user_id config.user_override_oggetti.auth_user_id%TYPE,
+                  p_porta        text)
+               RETURNS TABLE(famiglia          text,
+                             tabella           text,
+                             tabella_righe     text,
+                             colonna_fk        text,
+                             colonna_stato     text,
+                             colonna_magazzino text,
+                             guc_posting       text,
+                             stato             text)
+               LANGUAGE plpgsql
+               ROWS 1
+              AS $function$
+              DECLARE
+                  v_fam   record;
+                  v_stato text;   -- lo stato della famiglia: tre colonne, nessuna sola da ancorare
+              BEGIN
+                  -- Scopo: la testata del documento p_documento_id della famiglia
+                  --   p_famiglia, presa FOR UPDATE col predicato della policy sul
+                  --   suo magazzino. Ritorna la riga del registro e lo stato letto.
+                  SELECT f.* INTO v_fam FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f;
+                  IF v_fam.famiglia IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', p_porta, 'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_famiglia', p_famiglia),
+                          NULL::uuid,
+                          p_porta,
+                          'p_famiglia (INVENTARIO | RETTIFICA | TRASFERIMENTO)');
+                  END IF;
+
+                  -- Le GUC della registrazione si spengono: chi arriva qui e' un
+                  -- verbo DEFINER, cioe' il proprietario, e la GUC accesa dall'app
+                  -- prima della chiamata aprirebbe le due porte dei trigger (POSTED
+                  -- e le righe fuori da DRAFT) a un gesto che non registra niente.
+                  -- Basta quella della famiglia: ogni verbo passa di qui per il
+                  -- suo documento. La registrazione (fn_posta_*) la accende da
+                  -- se', dopo.
+                  PERFORM set_config(v_fam.guc_posting, '', true);
+
+                  -- No-leak: inesistente e fuori perimetro rispondono uguale. Lo
+                  -- stato e' NOT NULL: NULL vuol dire che la riga non c'e'. Nomi
+                  -- dal registro, quotati: mai da un input.
+                  IF p_documento_id IS NOT NULL THEN
+                      EXECUTE format('SELECT t.%I FROM magazzino.%I t
+                                       WHERE t.id = $1
+                                         AND script.fn_scope_ef_whitelist_via_magazzino($2, t.%I)
+                                         FOR UPDATE',
+                                     v_fam.colonna_stato, v_fam.tabella, v_fam.colonna_magazzino)
+                         INTO v_stato
+                        USING p_documento_id, p_auth_user_id;
+                  END IF;
+                  IF v_stato IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', p_porta, 'E_MAG_DOCUMENTO_NON_TROVATO',
+                          jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id),
+                          NULL::uuid,
+                          COALESCE(p_documento_id::text, '(nessuno)'));
+                  END IF;
+
+                  RETURN QUERY SELECT v_fam.famiglia, v_fam.tabella, v_fam.tabella_righe,
+                                      v_fam.colonna_fk, v_fam.colonna_stato,
+                                      v_fam.colonna_magazzino, v_fam.guc_posting, v_stato;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_documento_interno_blocca(
+                  text, bigint, config.user_override_oggetti.auth_user_id%TYPE, text) IS
+                  'Guard: la testata del documento interno p_documento_id della famiglia p_famiglia (INVENTARIO, RETTIFICA, TRASFERIMENTO), presa FOR UPDATE col predicato della policy sul suo magazzino (script.fn_scope_ef_whitelist_via_magazzino; per il trasferimento quello di partenza). Inesistente o fuori perimetro: E_MAG_DOCUMENTO_NON_TROVATO, senza dire quale dei due. Una famiglia che il registro non conosce: E_MAG_CHIAMATA_NON_VALIDA. Ritorna la riga del registro magazzino.fn_documento_interno_famiglia e lo stato della testata, letto sotto il lock. p_porta e'' la funzione che rifiuta: il log e'' suo. La usano i verbi delle righe e i verbi comuni dei documenti interni, dentro i quali la RLS non filtra. Spegne la GUC della registrazione della famiglia (dal registro): dentro un verbo SECURITY DEFINER chi scrive e'' il proprietario, e una GUC accesa dall''applicazione aprirebbe ai trigger la porta POSTED e le righe fuori da DRAFT; la registrazione la accende da se''. Non controlla il permesso e non guarda lo stato: lo stato lo fanno rispettare i guard della tabella. INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- I nomi in uscita sono quelli del registro (text: nomi, non il
+              -- riflesso di una colonna); p_documento_id bigint e non %TYPE:
+              -- la funzione e' parametrica su tre tabelle.
+              CREATE OR REPLACE FUNCTION magazzino.fn_documento_interno_blocca(
+                  p_famiglia     text,
+                  p_documento_id bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_auth_user_id config.user_override_oggetti.auth_user_id%TYPE,
+                  p_porta        text)
+               RETURNS TABLE(famiglia          text,
+                             tabella           text,
+                             tabella_righe     text,
+                             colonna_fk        text,
+                             colonna_stato     text,
+                             colonna_magazzino text,
+                             guc_posting       text,
+                             stato             text)
+               LANGUAGE plpgsql
+               ROWS 1
+              AS $function$
+              DECLARE
+                  v_fam   record;
+                  v_stato text;   -- lo stato della famiglia: tre colonne, nessuna sola da ancorare
+              BEGIN
+                  -- Scopo: la testata del documento p_documento_id della famiglia
+                  --   p_famiglia, presa FOR UPDATE col predicato della policy sul
+                  --   suo magazzino. Ritorna la riga del registro e lo stato letto.
+                  SELECT f.* INTO v_fam FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f;
+                  IF v_fam.famiglia IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', p_porta, 'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_famiglia', p_famiglia),
+                          NULL::uuid,
+                          p_porta,
+                          'p_famiglia (INVENTARIO | RETTIFICA | TRASFERIMENTO)');
+                  END IF;
+
+                  -- No-leak: inesistente e fuori perimetro rispondono uguale. Lo
+                  -- stato e' NOT NULL: NULL vuol dire che la riga non c'e'. Nomi
+                  -- dal registro, quotati: mai da un input.
+                  IF p_documento_id IS NOT NULL THEN
+                      EXECUTE format('SELECT t.%I FROM magazzino.%I t
+                                       WHERE t.id = $1
+                                         AND script.fn_scope_ef_whitelist_via_magazzino($2, t.%I)
+                                         FOR UPDATE',
+                                     v_fam.colonna_stato, v_fam.tabella, v_fam.colonna_magazzino)
+                         INTO v_stato
+                        USING p_documento_id, p_auth_user_id;
+                  END IF;
+                  IF v_stato IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', p_porta, 'E_MAG_DOCUMENTO_NON_TROVATO',
+                          jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id),
+                          NULL::uuid,
+                          COALESCE(p_documento_id::text, '(nessuno)'));
+                  END IF;
+
+                  RETURN QUERY SELECT v_fam.famiglia, v_fam.tabella, v_fam.tabella_righe,
+                                      v_fam.colonna_fk, v_fam.colonna_stato,
+                                      v_fam.colonna_magazzino, v_fam.guc_posting, v_stato;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_documento_interno_blocca(
+                  text, bigint, config.user_override_oggetti.auth_user_id%TYPE, text) IS
+                  'Guard: la testata del documento interno p_documento_id della famiglia p_famiglia (INVENTARIO, RETTIFICA, TRASFERIMENTO), presa FOR UPDATE col predicato della policy sul suo magazzino (script.fn_scope_ef_whitelist_via_magazzino; per il trasferimento quello di partenza). Inesistente o fuori perimetro: E_MAG_DOCUMENTO_NON_TROVATO, senza dire quale dei due. Una famiglia che il registro non conosce: E_MAG_CHIAMATA_NON_VALIDA. Ritorna la riga del registro magazzino.fn_documento_interno_famiglia e lo stato della testata, letto sotto il lock. p_porta e'' la funzione che rifiuta: il log e'' suo. La usano i verbi delle righe e i verbi comuni dei documenti interni, dentro i quali la RLS non filtra. Non controlla il permesso e non guarda lo stato: lo stato lo fanno rispettare i guard della tabella. INVOKER.';

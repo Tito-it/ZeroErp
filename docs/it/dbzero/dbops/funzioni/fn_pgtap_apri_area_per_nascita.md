@@ -94,3 +94,4 @@ IS 'Fixture pgTAP: apre a TUTTO l''area dell''oggetto per l''operatore in sessio
 
 ---
 {% include-markdown "signature-core.md" %}
+{% include-markdown "it/dbzero/dbops/manual/fn_pgtap_apri_area_per_nascita.md" %}

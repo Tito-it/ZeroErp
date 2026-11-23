@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/fn_crea_lotto.md" %}
 # ⚙️ Funzione `fn_crea_lotto`
 
 ```sql
@@ -17,10 +18,9 @@ CREATE OR REPLACE FUNCTION magazzino.fn_crea_lotto(p_articolo_id uuid, p_codice 
 AS $function$
 DECLARE
     v_campi     jsonb := COALESCE(p_campi, '{}'::jsonb);
-    v_estranea  text;
     -- Le colonne che il BB riceve come argomenti: non stanno in p_campi.
     c_argomenti CONSTANT text[] := ARRAY['codice', 'data_arrivo'];
-    v_ammesse   text[];
+    v_ammesse   text[];  -- nomi di colonna: nessuna colonna di cui siano il riflesso
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -34,27 +34,14 @@ BEGIN
     --     una chiave fuori elenco: E_CAMPO_NON_AMMESSO;
     --   - articolo attivo, date, unicita': guard e vincoli.
     -- =========================================================
-    IF jsonb_typeof(v_campi) <> 'object' THEN
-        PERFORM script.fn_log_and_raise_error(
-            'magazzino', 'magazzino.fn_crea_lotto', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
-            jsonb_build_object('tipo_campi', jsonb_typeof(v_campi)),
-            NULL::uuid,
-            'magazzino.fn_crea_lotto',
-            'i campi non sono un oggetto');
-    END IF;
-
     v_ammesse := ARRAY(SELECT c
                          FROM unnest(magazzino.fn_lotti_colonne_ammesse('crea')) AS c
                         WHERE c <> ALL (c_argomenti));
 
-    v_estranea := script.fn_prima_chiave_estranea(v_campi, v_ammesse);
-    IF v_estranea IS NOT NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'magazzino', 'magazzino.fn_crea_lotto', 'E_CAMPO_NON_AMMESSO',
-            jsonb_build_object('campo', v_estranea, 'codice', p_codice),
-            NULL::uuid,
-            v_estranea);
-    END IF;
+    PERFORM script.fn_guard_campi_ammessi(
+        v_campi, v_ammesse,
+        'magazzino', 'magazzino.fn_crea_lotto',
+        jsonb_build_object('codice', p_codice));
 
     RETURN (script.fn_scrivi_riga_da_jsonb(
                 'magazzino.lotti'::regclass,
