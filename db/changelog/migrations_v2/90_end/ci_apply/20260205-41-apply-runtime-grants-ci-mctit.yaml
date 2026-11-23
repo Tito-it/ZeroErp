@@ -382,7 +382,18 @@ databaseChangeLog:
                   'magazzino.note_rettifica',
                   'magazzino.note_rettifica_riga',
                   'magazzino.note_trasferimento',
-                  'magazzino.note_trasferimento_riga'
+                  'magazzino.note_trasferimento_riga',
+                  -- ⭐ Dal 2026-11-23 i DOCUMENTI INTERNI DI MAGAZZINO: inventari,
+                  --   rettifiche, trasferimenti e le righe li scrivono i verbi DEFINER
+                  --   (nascita per famiglia, verbi comuni, registrazione fn_posta_*)
+                  --   (brief-db-magazzino-tutte-le-scritture-dal-verbo, Lotto 2, P-5c).
+                  --   Forward 90_end/20261123-12.
+                  'magazzino.inventari',
+                  'magazzino.inventari_righe',
+                  'magazzino.rettifiche',
+                  'magazzino.rettifiche_righe',
+                  'magazzino.trasferimenti',
+                  'magazzino.trasferimenti_righe'
                 ];
                 -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
                 --   di v_schemi_senza_delete): un blocco di magazzino si chiude

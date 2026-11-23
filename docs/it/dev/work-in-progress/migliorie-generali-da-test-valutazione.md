@@ -381,7 +381,7 @@ tabella qui sotto è la fotografia dell'8-09 e per `acquisti` resta vera.
 
 ✅ **Al 2026-10-23** `magazzino` ha anche il lotto 3 (scarico da DDT) e il 3-bis (carico da reso),
 chiusi il 14-10 (`work-done/2026/brief-db-magazzino-lotto-3-*.md`), e **25** file pgTAP; restano aperti
-`brief-db-magazzino-tutte-le-scritture-dal-verbo.md` e i collaudi a video. ⛔ `acquisti` non si è
+`work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md` e i collaudi a video. ⛔ `acquisti` non si è
 mosso: zero test, nessun changeSet di comportamento (gli ultimi del 09-10 sono adeguamenti di
 regole generali), e `analisi-simmetria-ordini-acquisto.md` è ferma al 14-09. Intanto `vendite`
 ha preso altre decisioni — grammatica unica dei documenti, modelli di documento standard,

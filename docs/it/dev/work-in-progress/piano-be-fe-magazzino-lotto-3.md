@@ -202,7 +202,7 @@ Non sono residui, e restano dove sono: la merce presso terzi (D-L3-g), gli event
 ricezione acquisti e il reso a fornitore (Lotto 4), le colonne impegnata / in arrivo (satellite D-17),
 i prelievi proposti alla ri-consegna e l'RMA (3-bis §7). Le scritture delle anagrafiche e dei
 documenti interni di magazzino dal verbo sono un brief a se':
-[brief-db-magazzino-tutte-le-scritture-dal-verbo](brief-db-magazzino-tutte-le-scritture-dal-verbo.md).
+[brief-db-magazzino-tutte-le-scritture-dal-verbo](../work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md).
 
 ## 6. Registro
 

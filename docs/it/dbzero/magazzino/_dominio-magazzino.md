@@ -121,31 +121,12 @@ Il meccanismo è quello comune del progetto:
 
 ---
 
-### ⚠️ La porta: un dominio a metà
+### La porta
 
-Il modello dei permessi vuole che ogni scrittura passi da un **verbo**, cioè una funzione
-del database che prima controlla il permesso di chi agisce, e che l'applicazione non possa
-scrivere le tabelle da sola
+Tutte le tabelle di `magazzino` sono in sola lettura per l'applicazione: ogni scrittura passa da
+un **verbo**, come vuole il modello dei permessi
 ([guida dei permessi §7.4](/guide/architettura-permessi-e-autorizzazioni#74-il-permesso-nel-verbo-di-scrittura)).
-`magazzino` ci è arrivato **solo in parte**, e la regola chiede di dirlo qui, con l'elenco.
-
-**Chiuse all'applicazione** (le scrive solo un verbo):
-
-| Tabella | Chi la scrive |
-| --- | --- |
-| `movimenti`, `valore_giacenza` | la porta del registro, attraverso i verbi che registrano (inventario, rettifica, trasferimento, bolla, reso, storno) |
-| `movimenti_attesi` | i verbi del blocco manuale (`fn_apri_blocco`, `fn_libera_blocco`) |
-| `causali` | il verbo del pannello di configurazione (`config.fn_pannello_scrivi`) |
-| `magazzini`, `ubicazioni`, `lotti`, `assets` | i verbi di nascita (`fn_aggiungi_*`) e di modifica (`fn_modifica_*`); il seriale non ha un verbo di modifica |
-| `eventi_assets` e le tabelle delle note | nessuno, per ora: non hanno ancora un verbo (le operazioni degli eventi mancano, sezione seguente) |
-
-**Con i verbi, ma ancora scrivibili dall'applicazione**:
-
-| Tabella | Oggi |
-| --- | --- |
-| `inventari`, `rettifiche`, `trasferimenti` e le loro righe | i verbi ci sono (nascita per famiglia, modifica, eliminazione, stato, righe), e il backend ci sta passando. Le tabelle si chiudono quando il backend scrive solo dai verbi. Già chiusi: il passaggio a «registrato» e le righe di un documento confermato, che tocca solo la registrazione |
-
-Quando anche i documenti interni saranno chiusi, questa sezione si riduce a una riga.
+I seriali, i loro eventi e le note non hanno ancora un verbo per ogni gesto (sezione seguente).
 
 ---
 
@@ -155,4 +136,4 @@ Quando anche i documenti interni saranno chiusi, questa sezione si riduce a una 
   (il carico del ciclo acquisti);
 * le colonne «impegnata» e «in arrivo» della disponibilità: arrivano con i satelliti che le
   sanno riempire (acquisti);
-* la chiusura dei documenti interni all'applicazione (sezione precedente).
+* il verbo di modifica del seriale, e un verbo per gli eventi dei seriali e per le note.

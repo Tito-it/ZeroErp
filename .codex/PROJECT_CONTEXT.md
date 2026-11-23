@@ -217,14 +217,6 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
   vista della merce in viaggio, pgTAP kit/seriali col runner); ⏳ collaudo a video di Tid:
   `work-in-progress/collaudo-in-app-magazzino-bolla-e-reso.md`. Il difetto DB dei motivi della «Conferma» del reso
   è chiuso il 2026-10-14 (`work-done/2026/brief-db-reso-motivi-conferma-con-valori.md`), a video al §5.3/§5.7 del collaudo.
-- 📝 **Magazzino: tutte le scritture dal verbo**
-  (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): Lotto 1 lato DB applicato coi pgTAP verdi
-  il 2026-11-22 (`20261122-01` … `-13`: colonne ammesse, BB di nascita, verbi `fn_aggiungi_*` / `fn_modifica_*`, guard
-  di perimetro, sola lettura per l'app su magazzini, ubicazioni, lotti, seriali, eventi e note, builder pgTAP sui
-  verbi, due fughe d'informazione chiuse nei guard, il cliente del seriale controllato). ⚠️ Ora la R-1 del BE (§7):
-  finché il repository non chiama i verbi, il backend non scrive magazzini, ubicazioni e lotti. Poi il Lotto 2
-  (documenti interni). Il lotto di magazzino è dell'azienda dal 2026-11-22
-  (`work-done/2026/brief-db-magazzino-lotto-dell-azienda.md`, chiuso: DB, BE e FE fatti).
 - **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun
   repository di righe, nessuna chiave i18n). Alla ripartenza: quali articoli ammettono le righe
   d'acquisto è rinviato a `work-done/2026/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5). Il documento passivo
@@ -245,6 +237,12 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
+- 📝 **Le porte che si aprono con la sola GUC** (`work-in-progress/brief-db-porte-aperte-dalla-sola-guc.md`):
+  quindici porte di trigger, in vendite, pagamenti, config e anagrafiche, si aprono con una GUC che l'app può
+  accendere da sé, senza chiedere il proprietario (la D-V1 del 2026-09-25). Aperto, non iniziato: tre decisioni
+  di Tid. Nasce dalla chiusura di `work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`
+  (2026-11-23: tutte le tabelle di `magazzino` in sola lettura per l'app; la R-4 del BE resta parte dello
+  sviluppo del catalogo).
 - **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
   resta R-4, che vuole un brief DB non ancora scritto. ✅ L-6 (date della veste) fatto il 2026-10-07,
   DB e BE/FE (`work-done/2026/brief-db-veste-utilizzabile.md`; giro 3 chiuso: «Valido al» del drawer operatore

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.assets`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -81,6 +81,12 @@ in modalità «tutti gli emittenti») lo dichiara, o legge `E_EMITTENTE_NON_RISO
 
 ---
 
+### Chi scrive
+
+L'applicazione legge questa tabella e non la scrive: ogni scrittura passa da un **verbo**, che controlla il livello dell'operatore e il perimetro prima di scrivere. Nasce con [fn_aggiungi_asset](/dbzero/magazzino/funzioni/fn_aggiungi_asset); un verbo di modifica non c'è ancora. Non si elimina.
+
+---
+
 ### Note di migrazione
 
 * 2026-09-15 — `brief-db-magazzino-lotto-1-terreno-vuoto` (§4.7; analisi carico e scarico,
@@ -91,6 +97,7 @@ in modalità «tutti gli emittenti») lo dichiara, o legge `E_EMITTENTE_NON_RISO
   chiave.
 * 2026-10-01 — esce il collegamento al contratto di vendita sotto cui il bene si trova: non
   lo leggeva e non lo scriveva nessuno.
+* 2026-11-22 — in sola lettura per l'applicazione: la scrivono i verbi (`brief-db-magazzino-tutte-le-scritture-dal-verbo`, Lotto 1).
 
 ---
 

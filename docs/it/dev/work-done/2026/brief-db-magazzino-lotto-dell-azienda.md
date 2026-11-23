@@ -20,7 +20,7 @@ entrati in `Tito-dev` con la PR #209. Nessun debito residuo. Archiviato in `work
 Decisioni aperte di Tid: nessuna.
 
 > **Brief vicini verificati (2026-11-22):**
-> * [brief-db-magazzino-tutte-le-scritture-dal-verbo](../../work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md) ha i verbi del lotto
+> * [brief-db-magazzino-tutte-le-scritture-dal-verbo](brief-db-magazzino-tutte-le-scritture-dal-verbo.md) ha i verbi del lotto
 >   (`fn_aggiungi_lotto`, `fn_modifica_lotto`) e la R-1 al BE che li adotta. Da lì nasce questo
 >   brief (§5.3);
 > * `work-in-progress/analisi-db-magazzino-carico-e-scarico` cita i lotti fra le tabelle «uguali

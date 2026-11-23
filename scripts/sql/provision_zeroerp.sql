@@ -624,6 +624,20 @@ FROM (VALUES ('magazzino.magazzini'), ('magazzino.ubicazioni'), ('magazzino.lott
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
+-- ⭐ I DOCUMENTI INTERNI DI MAGAZZINO (dal 2026-11-23): brief
+--   brief-db-magazzino-tutte-le-scritture-dal-verbo, Lotto 2 (P-5c). Inventari,
+--   rettifiche, trasferimenti e le loro righe li scrivono i verbi DEFINER: la
+--   nascita per famiglia, i verbi comuni dei documenti interni, la registrazione
+--   fn_posta_*. Stesso elenco di `v_tabelle_sola_lettura_app` nel loop
+--   20260205-41 e del forward 90_end/20261123-12;
+--   `db/pgtap/magazzino/test-documenti-interni-sola-lettura-v1.sql` lo dice se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('magazzino.inventari'), ('magazzino.inventari_righe'),
+             ('magazzino.rettifiche'), ('magazzino.rettifiche_righe'),
+             ('magazzino.trasferimenti'), ('magazzino.trasferimenti_righe')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
 -- ⭐ LA PORTA DEL PANNELLO DI CONFIGURAZIONE (dal 2026-09-25): brief
 --   brief-db-pannello-config-verbo-generico, sezione 3.5. `magazzino.causali` la
 --   scrive solo il verbo config.fn_pannello_scrivi; `config.tabelle_gestibili` e'

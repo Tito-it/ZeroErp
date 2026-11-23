@@ -2,8 +2,12 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-23**
 >
-> **Riparte: il team DB**, col resto del P-5c (la sola chiusura delle sei tabelle) e poi il P-6. La R-2 e la
-> R-3 le ha fatte la sessione BE il 2026-11-23 (§7): nessuno scrittore BE resta sulle sei tabelle, e il BE
+> **✅ Archiviato il 2026-11-23.** Nessuno riparte da qui. La R-4 del BE resta, parte dello sviluppo del catalogo
+> degli oggetti di magazzino (§7). La classe vicina emersa dalla ricognizione (§5.8) ha il suo brief:
+> [brief-db-porte-aperte-dalla-sola-guc](../../work-in-progress/brief-db-porte-aperte-dalla-sola-guc.md). Il P-5c è
+> applicato coi pgTAP verdi col runner (Tid, 2026-11-23); il P-6 è fatto (§5.7): «La porta» a una riga e la sezione
+> «Chi scrive» nelle pagine `manual/` delle dieci tabelle chiuse.
+> La R-2 e la R-3 le ha fatte la sessione BE il 2026-11-23 (§7): nessuno scrittore BE resta sulle sei tabelle, e il BE
 > non chiede niente al DB. Il lavoro BE è committato (`659182055`, 2026-11-23). La R-1 è fatta e committata (2026-11-22). La R-4
 > aspetta che gli oggetti di magazzino entrino a catalogo (Tid, 2026-11-22).
 >
@@ -24,8 +28,12 @@
 > | 6-ter | sessione BE | ✅ R-2 (documenti interni sui verbi, colonne ammesse dal DB) e R-3 (`E_MAG_DOCUMENTO_TESTATA_CONGELATA`), 2026-11-23; committato in `659182055` | §7 | — |
 > | 6-quater | team DB | ✅ anticipato dal P-5c e dal P-6 (2026-11-23): la variabile della registrazione spenta nei verbi (`20261123-10`, un difetto del P-5b), i builder dei documenti (`-11`), 17 pgTAP portati, le note di cinque codici, 42 pagine `manual/`, «La porta» allo stato di oggi | §5.6 | — |
 > | 6-quinquies | Tid | ✅ apply di `20261123-10` e `-11`, pgTAP verdi col runner (2026-11-23) | §5.6 | — |
-> | 6-sexies | team DB | resto del P-5c: le sei tabelle in sola lettura per l'app, nelle tre sedi | §5.5 | il commit della R-2 |
-> | 7 | team DB | resto del P-6: «La porta» della guida a una riga, archiviazione | §5 | 6-sexies |
+> | 6-sexies | team DB | ✅ resto del P-5c: le sei tabelle in sola lettura per l'app, nelle tre sedi (`20261123-12`, il loop, il provisioning, pgTAP nuovo); «La porta» di `_dominio-magazzino.md` a una riga (2026-11-23) | §5.7 | — |
+> | 6-septies | Tid | ✅ `20261123-12` applicato su dbdev, pgTAP verdi col runner (2026-11-23): `magazzino/test-documenti-interni-sola-lettura-v1` (plan 9), `test-anagrafiche-magazzino-sola-lettura-v1`, `test-verbi-documenti-interni-v1`, `test-documenti-interni-guard-v1` e i 17 portati di §5.6 | §5.7 | — |
+> | 7 | team DB | ✅ P-6: «La porta» a una riga; «Chi scrive» nelle pagine `manual/` di magazzini, ubicazioni, lotti, assets e dei sei documenti (2026-11-23). Il registro dei BB è del BE, ed è fatto (R-2) | §5.7 | — |
+> | 8 | Tid | ✅ i due punti aperti decisi (2026-11-23): la ricognizione «Emerso» si fa subito, la R-4 resta qui | §5.8, §7 | — |
+> | 9 | team DB | ✅ ricognizione «Emerso» (2026-11-23): nessun altro caso del difetto | §5.8 | — |
+> | 10 | team DB | ✅ spostato in `work-done/2026/` e link aggiornati, anche nella doc `backend/` (su richiesta di Tid, 2026-11-23) | — | — |
 >
 > Decisioni di Tid del 2026-11-22: il controllo di `p_campi` comune ai `fn_crea_*` si estrae **in un
 > giro a parte**, dopo la R-1 (§5.2); il debito `%TYPE` del P-3 **resta per ora** (§5.3); il lotto
@@ -33,9 +41,11 @@
 > seriale si controlla subito: `20261122-12` e `-13` applicati, pgTAP verdi (§5.3). Il Lotto 1 è
 > committato (`4c5517181a`, `d609fef87d`, 2026-11-22); il Lotto 2 lato DB (`20261123-01` … `-11`, pgTAP,
 > CSV, pagine `manual/`) è committato in `9d0237027` e fuso in `dev/backend-tid`. La R-2 e la R-3 della sessione BE (§7)
-> sono committate in `659182055` (2026-11-23); da committare: solo questa nota.
-> Decisioni aperte di Tid: una, fuori da questo brief (§5.6, «Emerso»): se cercare lo stesso difetto della
-> variabile negli altri domini.
+> sono committate in `659182055` (2026-11-23). Da committare: il P-5c (`20261123-12`, il loop `20260205-41`,
+> `scripts/sql/provision_zeroerp.sql`, il pgTAP nuovo, `_dominio-magazzino.md`), le dieci pagine `manual/` del P-6
+> e questo file.
+> Decisioni aperte di Tid: nessuna su questo brief. Decise il 2026-11-23: la ricognizione «Emerso» fatta subito
+> (§5.8); la R-4 del BE resta qui, **parte dello sviluppo del catalogo** degli oggetti di magazzino (§7).
 >
 > **Brief vicini verificati (2026-11-21):** `work-done/2026/brief-db-processi-accensione-per-ambiente`
 > ha costruito, senza citare questo brief, due pezzi del Lotto 1 (§3-bis, punti 1-2);
@@ -49,12 +59,12 @@
 > §3), poi team DB; 🔵 richieste a BE in §7, da fare nello stesso giro di PR.
 >
 > **Origine.** La **D-P4** del
-> [brief del pannello](../work-done/2026/brief-db-pannello-config-verbo-generico.md)
+> [brief del pannello](brief-db-pannello-config-verbo-generico.md)
 > (Tid, 2026-09-25): *«`magazzini` e `ubicazioni`: un brief a sé del cantiere
 > magazzino, con i loro verbi»*. Quel brief non era mai stato scritto; è emerso
-> chiudendo il [brief del modello](../work-done/2026/brief-db-permesso-nel-verbo-di-scrittura.md)
+> chiudendo il [brief del modello](brief-db-permesso-nel-verbo-di-scrittura.md)
 > il 2026-10-03. Il modello sta nella
-> [guida dei permessi §7.4](../../guide/architettura-permessi-e-autorizzazioni.md#74-il-permesso-nel-verbo-di-scrittura).
+> [guida dei permessi §7.4](../../../guide/architettura-permessi-e-autorizzazioni.md#74-il-permesso-nel-verbo-di-scrittura).
 >
 > **Stato al 2026-10-03** (⚠️ superato: lo stato vivo è il blocco «Chi riparte» in cima):
 > 📝 **bozza, cinque decisioni a Tid** (§3). Già fatto in
@@ -68,6 +78,33 @@
 > cambia **dove** si controlla.
 
 ---
+
+
+## Il piano da percorrere
+
+**Lotto 1 — le anagrafiche di magazzino**
+
+- [x] P-0, il censimento (2026-11-22, §5.1)
+- [x] P-1, la dichiarazione «dominio a metà» nella guida (2026-10-03)
+- [x] P-2, il BB della scrittura dinamica (`script.fn_scrivi_riga_da_jsonb`, da un altro cantiere, §3-bis.1)
+- [x] P-3, colonne ammesse, BB di nascita, verbi, guard di perimetro (applicato il 2026-11-22, §5.2)
+- [x] P-4, la postura nelle tre sedi, i builder sui verbi, i pgTAP come app (applicato il 2026-11-22, §5.3)
+- [x] R-1 del BE, le anagrafiche dai verbi (2026-11-22, §7)
+
+**Lotto 2 — i documenti interni**
+
+- [x] P-5a, il guard dei campi (applicato il 2026-11-23, §5.5)
+- [x] P-5b, il registro delle famiglie e i verbi (applicato il 2026-11-23, §5.5)
+- [x] P-5c anticipato: la GUC spenta nei verbi, i builder, 17 pgTAP portati (applicato il 2026-11-23, §5.6)
+- [x] R-2 e R-3 del BE, i documenti interni dai verbi (2026-11-23, §7)
+- [x] P-5c, la chiusura delle sei tabelle (applicato, pgTAP verdi col runner, 2026-11-23, §5.7)
+
+**Chiusura**
+
+- [x] P-6, «La porta» a una riga e «Chi scrive» nelle dieci pagine delle tabelle (2026-11-23, §5.7)
+- [x] La ricognizione «Emerso» negli altri domini (2026-11-23, §5.8)
+- [x] Lo spostamento in `work-done/2026/` e i link che lo nominano (2026-11-23)
+- R-4 del BE: non è un passo di questo brief, è parte dello sviluppo del catalogo (§7)
 
 ## 0. In due parole, senza tecnicismi
 
@@ -303,8 +340,8 @@ stesso brief.
 | P-2 | BB della scrittura dinamica, il pannello lo adotta | ✅ **fatto da un altro cantiere** (`script.fn_scrivi_riga_da_jsonb`, `20261017-05`; §3-bis.1) |
 | P-3 | Colonne ammesse, BB di nascita, verbi delle anagrafiche; guard di perimetro sulle quattro tabelle (D-M6) | ✅ **applicato il 2026-11-22** (§5.2), test verdi. I builder `dbops.fn_pgtap_crea_*` passano al P-4: li rompe la chiusura, si cambiano con lei |
 | P-4 | Postura del Lotto 1 nelle tre sedi; builder sui verbi; i pgTAP come app | ✅ **applicato il 2026-11-22** (§5.3), pgTAP verdi col runner |
-| P-5 | Lotto 2: P-5a il guard dei campi, P-5b i verbi dei documenti interni, P-5c la postura | ✅ P-5a e P-5b scritti e applicati il 2026-11-23 (§5.5); del P-5c builder e pgTAP scritti (§5.6), la chiusura dopo la R-2 |
-| P-6 | Guida: la sezione «La porta» si riduce a una riga; registro dei BB | alla chiusura |
+| P-5 | Lotto 2: P-5a il guard dei campi, P-5b i verbi dei documenti interni, P-5c la postura | ✅ P-5a e P-5b scritti e applicati il 2026-11-23 (§5.5); del P-5c builder e pgTAP scritti (§5.6), la chiusura scritta e applicata il 2026-11-23 (§5.7) |
+| P-6 | Guida: la sezione «La porta» si riduce a una riga | ✅ col P-5c (§5.7), e la sezione «Chi scrive» nelle dieci pagine `manual/` delle tabelle chiuse. ⚠️ Il «registro dei BB» del primo piano (2026-10-03) era un errore: il registro è del BE, fatto con la R-2 |
 
 **P-0, il censimento.** Letto il 2026-10-03, da rifare sui file al momento di
 scrivere. ⚠️ Al 2026-11-21 i numeri sono già cambiati (file pgTAP che scrivono direttamente:
@@ -526,7 +563,7 @@ o alla prossima riscrittura di quelle funzioni. Il P-4 (`-09` … `-11`) è anco
   modifica, `trgfn_prevent_deactivate_if_children` vede i figli di tutte le aziende, quindi un lotto usato da
   un'altra azienda non si disattiva. Dall'app, sotto RLS, si disattivava.
   ✅ **Tid: «lotto b»**, il lotto è dell'azienda. Si lavora in
-  [brief-db-magazzino-lotto-dell-azienda](../work-done/2026/brief-db-magazzino-lotto-dell-azienda.md)
+  [brief-db-magazzino-lotto-dell-azienda](brief-db-magazzino-lotto-dell-azienda.md)
   (chiuso e archiviato il 2026-11-22);
 * **`assets.billing_account_id`** (fra i campi della nascita del seriale) non era controllato contro
   l'emittente del seriale. ✅ **Tid: «seriale a»**, il controllo subito. Applicati da Tid il 2026-11-22,
@@ -702,7 +739,7 @@ stesso esito della versione committata: verdi, salvo i rossi da owner per costru
 * `test-fn-posta-trasferimento-v1`: il 9 chiede POSTED al verbo dello stato.
 
 **Il resto del P-5c** è la sola postura: le sei tabelle in `v_tabelle_sola_lettura_app` nelle tre sedi, dopo
-la R-2. I test non vanno più toccati.
+la R-2. I test non vanno più toccati. ✅ Fatto il 2026-11-23: §5.7.
 
 **Documentazione (parte del P-6).**
 
@@ -720,7 +757,83 @@ la R-2. I test non vanno più toccati.
 altri trigger, censiti per sorgente sullo scratch: `script.trgfn_doc_stato_solo_dal_verbo`, in `vendite`
 (listini, righe di bolla) e in `documenti`. Dove un verbo SECURITY DEFINER scrive con dati dell'app la tabella
 che quel trigger protegge, una variabile accesa dall'app davanti al verbo può aprire la porta. Non l'ho
-verificato caso per caso: è una ricognizione, e la decide Tid.
+verificato caso per caso: è una ricognizione, e la decide Tid. ✅ Fatta il 2026-11-23 (decisione di Tid): §5.8.
+
+### 5.7 Il P-5c: la chiusura delle sei tabelle — 2026-11-23
+
+Dopo la R-2 della sessione BE (`659182055`), che non lascia scrittori BE sulle sei tabelle.
+
+| Sede | Che cosa |
+| --- | --- |
+| `90_end/20261123-12` | a `zeroerp_app` solo `SELECT` su `inventari`, `rettifiche`, `trasferimenti` e le loro righe (stampo `20261122-10`) |
+| `90_end/ci_apply/20260205-41` | le sei tabelle in `v_tabelle_sola_lettura_app`, dopo quelle del Lotto 1 |
+| `scripts/sql/provision_zeroerp.sql` | un blocco nella «POSTURA DICHIARATA», dopo quello del Lotto 1 |
+| `db/pgtap/magazzino/test-documenti-interni-sola-lettura-v1` | nuovo, plan 9: le tre sedi (1) e il `42501` dell'app su `UPDATE` delle sei tabelle, `INSERT` e `DELETE` (2-9). La strada che resta aperta la provano i test dei verbi e i 17 portati, che girano come app: non si ricopia |
+
+**Chi scrive le sei tabelle** (catalogo di dbdev, 2026-11-23, prima della chiusura): solo funzioni `SECURITY
+DEFINER`. I verbi di nascita per famiglia, i verbi comuni (`fn_modifica_*`, `fn_togli_riga_*`,
+`fn_cambia_stato_*`, `fn_elimina_documento_interno`) e la registrazione (`fn_posta_*`). Nessuna INVOKER
+eseguibile dall'app scrive le tabelle. ⚠️ `magazzino.fn_documento_interno_blocca` è INVOKER e fa
+`SELECT … FOR UPDATE`, che chiede il privilegio `UPDATE`: chiamata direttamente dall'app ora risponde `42501`.
+È un BB interno dei verbi, che la chiamano da proprietario: nessuna strada si chiude.
+
+**Prova** (`scripts/prova_changeset.py`, da owner sullo scratch, in ROLLBACK): estratto intero, catalogo
+identico dopo; il pgTAP nuovo da 0/9 a 1/9, cioè il caso 1. I casi 2-9 sono rossi da owner per costruzione (il
+proprietario scrive) e si leggono col runner come app. Dopo l'apply, su dbdev nessuna tabella di `magazzino`
+resta scrivibile dall'app (`has_table_privilege`, 2026-11-23).
+
+**Guide verificate** (`scripts/guide_coinvolte.py --oggetti` sulle sei tabelle): lo script non trova niente,
+perché le note di magazzino nominano le tabelle a parole. Lette a mano:
+
+* `_verbi-di-scrittura.md`: coerente. Diceva già che i verbi sono la sola strada dell'app, e la chiusura lo rende vero;
+* `_documenti-interni.md`: coerente;
+* `_dominio-magazzino.md`, «La porta»: era indietro rispetto al codice («i documenti interni coi verbi, ma ancora
+  scrivibili dall'applicazione»). Ridotta a una riga in questo giro (P-6); «Che cosa manca ancora» non elenca
+  più la chiusura, e nomina i verbi che mancano (modifica del seriale, eventi, note).
+
+**P-6, le pagine delle tabelle** (2026-11-23). Le pagine `manual/` delle dieci tabelle chiuse dai due lotti
+(`magazzini`, `ubicazioni`, `lotti`, `assets`, e inventari, rettifiche, trasferimenti con le righe) non dicevano che
+l'app non le scrive: quelle del Lotto 1 erano indietro dal 2026-11-22. Ognuna ha una sezione «Chi scrive» coi
+suoi verbi e una nota di migrazione. Le note (madre e partizioni) e `eventi_assets` non hanno un verbo: lo dice
+«Che cosa manca ancora» di `_dominio-magazzino.md`.
+
+### 5.8 La ricognizione «Emerso»: la porta «GUC + proprietario» negli altri domini — 2026-11-23
+
+Il difetto di §5.6 ha una forma precisa: un trigger apre una porta quando una GUC transazionale porta l'id della
+riga **e** scrive il proprietario; un verbo `SECURITY DEFINER` scrive la tabella senza toccare quella GUC; l'app
+accende la GUC da sé e chiama il verbo, che apre la porta per lei. Letta sul catalogo di dbdev (corpo dei trigger
+e dei verbi, privilegi), non sui dati.
+
+**I trigger con la porta «GUC + proprietario»**, fuori da magazzino, e i verbi DEFINER eseguibili dall'app che
+scrivono le loro tabelle:
+
+| Porta (GUC) | Tabelle | Chi la accende | Altri verbi DEFINER che scrivono la tabella | Esito |
+| --- | --- | --- | --- | --- |
+| `zeroerp.doc_cambio_stato` (`script.trgfn_doc_stato_solo_dal_verbo`) | dieci testate di vendita | `script.fn_doc_scrivi_stato` (INVOKER: apre solo dentro un verbo), per la propria riga | `fn_cessa_contratto`, `fn_cambia_stato_offerta`, `fn_attiva_versione_listino`, `fn_programma_chiusura_versione_listino`, `fn_varia_prezzi_versione_listino` | sicura: il loro `UPDATE` non tocca la colonna di stato, e lo stato lo scrivono solo da `fn_doc_scrivi_stato`, che accende la GUC sulla riga che scrive |
+| `zeroerp.listino_riga_rettifica` | `vendite.listini_righe` | `fn_rettifica_riga_listino` | `fn_varia_prezzi_versione_listino` | sicura: varia solo una versione in bozza, dove la porta non serve; la porta ammette solo prezzo e meta, e rifà i controlli della rettifica |
+| `zeroerp.listino_versione_fine` | `vendite.listini_versioni` | `fn_attiva_versione_listino`, `fn_programma_chiusura_versione_listino` | `fn_varia_prezzi_versione_listino` | sicura: in bozza, e scrive solo `meta` |
+| `zeroerp.ddt_riga_correggi_qta` | `vendite.ddt_righe`, `ordini_righe_fulfillment`, `resi_righe_riconsegne` | `fn_ddt_riga_correggi_qta_evasa` | nessuno | sicura |
+| `zeroerp.ddt_riga_ritira_legame` (solo `DELETE`) | `ordini_righe_fulfillment`, `resi_righe_riconsegne` | `fn_ddt_riga_ritira_legami` | `fn_ddt_riga_correggi_qta_evasa` | sicura: quel verbo fa solo `UPDATE` |
+| `zeroerp.articolo_correggi_struttura` | `catalogo.articoli` | `fn_articolo_correggi_struttura` | nessuno | sicura |
+| `zeroerp.legame_distinta_chiudi` | `vendite.listini_righe_componenti` | `catalogo.fn_chiudi_legame_distinta` | nessuno | sicura |
+| `zeroerp.allow_template_versione_pubblicazione_override` | `documenti.template_documenti_versioni` | `fn_pubblica_template_documento_versione` (INVOKER) | nessuno | sicura |
+
+Ogni verbo che accende una porta lo fa sulla **propria** riga prima di scrivere, sovrascrivendo il valore che
+l'app avesse messo, e la spegne prima di uscire. I verbi generici DEFINER che scrivono colonne da un `jsonb` sono il
+pannello (`config.fn_pannello_scrivi`, nessuna tabella protetta in `config.tabelle_gestibili`) e quelli di
+magazzino, già corretti in `20261123-10`.
+
+**Esito: nessun altro caso del difetto, al 2026-11-23.** La sicurezza è per costruzione di ogni verbo, non un
+presidio: un verbo DEFINER nuovo su una di queste tabelle può riaprire il caso. La regola sta nella memoria della
+sessione DB (spegnere la GUC nel guard comune del verbo, col pgTAP del controesempio).
+
+⚠️ **Un'altra classe, fuori da questo brief** (detta a Tid in chat): quindici porte si aprono con la **sola** GUC,
+senza chiedere il proprietario, su tabelle che l'app scrive direttamente (`zeroerp.maintenance_reset_lotto_draft`
+su cinque tabelle di fatturazione, `allow_contabile_riga_delete_override` e `app.registrazione_tardiva_riga_id`
+sulle righe del contabile, `allow_user_emittente_delete_override`, `ddt_riconsegna`, `ddt_riga_ritira_legame`
+sul `DELETE` dei legami, `maintenance_indirizzi_dettaglio`, `maintenance_toponomastica`). È il modello di prima
+della D-V1: il backend può aprirle da sé, e per alcune lo fa per scelta. ⏭️ Brief nuovo, su richiesta di Tid:
+[brief-db-porte-aperte-dalla-sola-guc](../../work-in-progress/brief-db-porte-aperte-dalla-sola-guc.md).
 
 ## 6. I pgTAP — i casi si fabbricano
 
@@ -863,10 +976,10 @@ Uno per verbo, sullo stampo di `test-fn-pannello-scrivi-v1` e
 
 ## 9. Riferimenti
 
-* [Guida dei permessi §7.4-7.5](../../guide/architettura-permessi-e-autorizzazioni.md#74-il-permesso-nel-verbo-di-scrittura) — il modello.
-* [Brief del pannello](../work-done/2026/brief-db-pannello-config-verbo-generico.md), D-P2 (niente RLS nel verbo generico) e D-P4.
-* [Verbi con permesso di magazzino](../work-done/2026/brief-db-magazzino-verbi-con-permesso.md) — la forma dei verbi, il perimetro rimesso dal verbo, D-V1.
-* [Linee guida SQL](../../linee-guida-sql.md) §10.4 (l'utente dalla GUC), §11.8 (le tre sedi della postura).
+* [Guida dei permessi §7.4-7.5](../../../guide/architettura-permessi-e-autorizzazioni.md#74-il-permesso-nel-verbo-di-scrittura) — il modello.
+* [Brief del pannello](brief-db-pannello-config-verbo-generico.md), D-P2 (niente RLS nel verbo generico) e D-P4.
+* [Verbi con permesso di magazzino](brief-db-magazzino-verbi-con-permesso.md) — la forma dei verbi, il perimetro rimesso dal verbo, D-V1.
+* [Linee guida SQL](../../../linee-guida-sql.md) §10.4 (l'utente dalla GUC), §11.8 (le tre sedi della postura).
 * Guida del dominio: `dbzero/magazzino/_dominio-magazzino.md`, §«La porta».
 
 ---
@@ -904,3 +1017,9 @@ Uno per verbo, sullo stampo di `test-fn-pannello-scrivi-v1` e
 | 2026-11-23 | Tid | `20261123-10` e `-11` applicati, pgTAP verdi col runner. Riparte la sessione BE con la R-2 e la R-3 |
 | 2026-11-23 | BE | **R-2 e R-3 fatte** (§7): documenti interni sui verbi, chiavi dal DB, `meta` fuori dal contratto, provenienza solo dal repository, Q-2 superata; regola del 2: il trasporto verso i verbi (`campi_jsonb`/`esegui_verbo`/`meta_mai_null`, in `core/db/sql_write_helpers`) e la lettura del gesto (`PayloadValidator.campi_del_gesto`/`Lettura`/`chiavi_lettura`, in `core/services/payload_helpers`) estratti come BB core, copie del magazzino ritirate; policy rigenerata e ripiego del codice nuovo; test DB, smoke e suite verdi. Nessuna richiesta al DB. Riparte il team DB col resto del P-5c. **Confermate da Tid il 2026-11-23**: le due estrazioni, nella sede comune `apps/core` (non nel dominio, come era al primo giro), e la provenienza fuori dall'endpoint dell'operatore |
 | 2026-11-23 | BE | Revisione (`/verifica`): le lunghezze dei testi lette dal BE sono quelle delle colonne. Documento interno: descrizione 255 e motivo 64 anche nei `maxlength` FE e nello schema OpenAPI. Anagrafiche: via il tetto unico (codice 50, descrizione 500, posizione 50, creduto «colonne senza limite»), ora magazzino 32/120, ubicazione 64/120/32, lotto 64, e i `maxlength` dei tre drawer. Presidio sul DB vero che confronta i limiti con `information_schema` (anagrafiche test 11, documento interno test 18). Nessuna richiesta al DB |
+| 2026-11-23 | DB | **P-5c, la chiusura** (§5.7): `20261123-12`, il loop, il provisioning, `test-documenti-interni-sola-lettura-v1`; «La porta» di `_dominio-magazzino.md` a una riga. Applicato da Tid lo stesso giorno; restano i pgTAP come app |
+| 2026-11-23 | Tid | `20261123-12` applicato, pgTAP del P-5c verdi col runner. Il «registro dei BB» del P-6 era un errore: è del BE |
+| 2026-11-23 | DB | **P-6** (§5.7): «Chi scrive» nelle dieci pagine `manual/` delle tabelle chiuse. Per archiviare restano due decisioni di Tid (testata) |
+| 2026-11-23 | Tid | Decisi i due punti aperti: la ricognizione «Emerso» subito, la R-4 resta qui come parte dello sviluppo del catalogo |
+| 2026-11-23 | DB | **§5.8**: ricognizione delle porte «GUC + proprietario» fuori da magazzino, nessun altro caso del difetto; trovata una classe diversa (porte con la sola GUC), detta a Tid. il piano a spunta. Il brief è archiviabile |
+| 2026-11-23 | DB | Archiviato su richiesta di Tid; link aggiornati; la classe delle porte con la sola GUC passa a `brief-db-porte-aperte-dalla-sola-guc` |

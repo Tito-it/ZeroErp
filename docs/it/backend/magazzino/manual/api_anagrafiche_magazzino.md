@@ -26,7 +26,7 @@ Area funzionale `magazzino` (`DomainAPIView`, livello `TUTTO` per scrivere).
 non piu' dall'area `config`.
 
 ⭐ **Le scritture passano dai verbi del DB** (dal 2026-11-22,
-[brief](../../../dev/work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md) §7 R-1):
+[brief](../../../dev/work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md) §7 R-1):
 `magazzino.fn_aggiungi_{magazzino,ubicazione,lotto}` per la nascita (gli
 obbligatori come argomenti, i facoltativi in `jsonb`) e
 `magazzino.fn_modifica_{magazzino,ubicazione,lotto}` per il delta (una chiave a

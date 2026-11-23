@@ -740,7 +740,7 @@ sono provati direttamente; di `trgfn_clienti_sync_stato_pdp` è provato solo il 
 Le pagine del giro 0 sono scritte dal catalogo del 22. Il giorno dopo due cantieri vicini hanno riscritto otto
 funzioni dello schema, senza toccarne le pagine. Riallineate dal passo A (2026-11-23), lette dal corpo vivo di dbdev:
 
-* `20261123-03` ([brief-db-magazzino-tutte-le-scritture-dal-verbo](brief-db-magazzino-tutte-le-scritture-dal-verbo.md),
+* `20261123-03` ([brief-db-magazzino-tutte-le-scritture-dal-verbo](../work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md),
   P-5a) porta `fn_crea_emittente_fiscale`, `fn_crea_fornitore`, `fn_crea_cliente`, `fn_crea_billing_account`,
   `fn_crea_contatto` e `fn_indirizzo_elemento` a `script.fn_guard_campi_ammessi`. Il comportamento non cambia (stesso
   codice, stessa frase, `context.campo`): le sei pagine prendono il BB nel «Vedi anche».
