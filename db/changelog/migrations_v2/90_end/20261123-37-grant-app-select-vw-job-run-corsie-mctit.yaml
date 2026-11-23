@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GRANT SELECT a zeroerp_app su maintenance.vw_job_run_corsie.
+#   Origine: brief-db-giornale-corse-indici, giro della corsia ai lettori DB
+#   (20261122-44, -45, -46).
+#
+# ⛔ IL DIFETTO: il 20261122-44 ha creato la vista senza GRANT, convinto che
+#   la leggessero solo oggetti del proprietario. Per vw_job_run_da_guardare e'
+#   vero (una vista legge con i privilegi del suo proprietario); per
+#   maintenance.fn_pota_giornale_corse NO: e' SECURITY INVOKER e legge con i
+#   privilegi di chi la chiama. A runtime passa lo stesso, perche' la chiama
+#   maintenance.proc_pota_giornale_corse_job (DEFINER). Ma il presidio dei
+#   riferimenti morti (dbops.fn_check_funzioni_riferimenti_morti) misura come
+#   ruolo APPLICATIVO: plpgsql_check si fermava su «permesso negato per la
+#   vista vw_job_run_corsie» e la classificava REALE, mentre fn_conta_presidio
+#   (DEFINER, proprietario) non vedeva niente. Due risposte sulla stessa
+#   funzione: test-riferimenti-morti-v1, test 3 e 7, rossi il 2026-11-23.
+#   Prima del -46 la funzione leggeva maintenance.job_run_log, su cui l'app ha
+#   SELECT dal 20260919-08: per questo il rosso e' nato col -46.
+#
+# ⭐ PERCHE' IL GRANT e non fn_pota_giornale_corse in DEFINER: la vista mostra
+#   solo le coppie distinte (processo_codice, jobname) di una tabella che l'app
+#   legge gia' per intero. Il grant non apre niente di nuovo; la funzione in
+#   DEFINER sarebbe una seconda porta accanto a quella della procedura.
+#
+# ⚠️ DUE SEDI, e dicono la stessa cosa (come il 20260919-08): la lista dei
+#   SELECT di maintenance in scripts/sql/provision_zeroerp.sql (fase post) e
+#   questo changeSet per i database gia' provisionati. Additivo, idempotente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261123-37-grant-app-select-vw-job-run-corsie-mctit.yaml
+
+  - changeSet:
+      id: 20261123-37-grant-app-select-vw-job-run-corsie
+      author: mctit
+      # ⚠️ Nessun `dbms:` sui change: linee-guida-sql §11.1 (runOnChange +
+      #    validCheckSums ANY), come il 20260919-08.
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        GRANT SELECT a zeroerp_app su maintenance.vw_job_run_corsie: la legge
+        maintenance.fn_pota_giornale_corse, SECURITY INVOKER, e il presidio dei
+        riferimenti morti la misura come ruolo applicativo. Idempotente e
+        difensivo (skip se il ruolo manca).
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: maintenance
+            viewName: vw_job_run_corsie
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $grant$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                  WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                      RETURN;
+                  END IF;
+                  -- ⭐ Solo lettura: la vista non si scrive.
+                  GRANT SELECT ON TABLE maintenance.vw_job_run_corsie TO zeroerp_app;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- ⚠️ Riporta rossi i test 3 e 7 di test-riferimenti-morti-v1.
+              DO $revoke$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                                  WHERE rolname = 'zeroerp_app') THEN
+                      RETURN;
+                  END IF;
+                  IF to_regclass('maintenance.vw_job_run_corsie') IS NOT NULL THEN
+                      REVOKE SELECT ON TABLE maintenance.vw_job_run_corsie FROM zeroerp_app;
+                  END IF;
+              END
+              $revoke$;

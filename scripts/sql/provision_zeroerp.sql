@@ -762,7 +762,11 @@ WHERE EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'maintenance')
 -- lo script deve poter girare anche prima che la vista esista.
 SELECT format('GRANT SELECT ON TABLE %s TO %I', t.nome, :'app_role')
 FROM (VALUES ('maintenance.job_run_log'),
-             ('maintenance.vw_job_run_da_guardare')) AS t(nome)
+             ('maintenance.vw_job_run_da_guardare'),
+             -- La legge maintenance.fn_pota_giornale_corse (INVOKER): senza,
+             -- il presidio dei riferimenti morti, che misura come app, la dà
+             -- REALE. Gemello: 90_end/20261123-37.
+             ('maintenance.vw_job_run_corsie')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
