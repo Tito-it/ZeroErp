@@ -2,21 +2,22 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-23
 
-**Riparte: Tid**, con la decisione sulla postura delle viste (§19.3): il giro 2 ha trovato che dentro `anagrafiche`
-non c'è niente da cambiare, e che il DML dell'app sulle viste è di tutto il database. Poi la sessione DB col giro di
-T5. Il vaglio per temi è deciso (Tid, 2026-11-23, §17.1). Il piano da percorrere, con le fasi spuntate, è il §0.
+**Riparte: la sessione DB col giro di T5**, al via di Tid. Il giro 2 ha trovato che dentro `anagrafiche` non c'è
+niente da cambiare; la postura delle viste in tutto il database è decisa (Tid, 2026-11-23, §19.3) e aspetta il
+censimento del team BE/FE. Il vaglio per temi è deciso (Tid, 2026-11-23, §17.1). Il piano da percorrere, con le fasi spuntate, è il §0.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ Tid | Apply e pgTAP del giro 1 (Q7): applicato, test verdi (2026-11-23) | §18 | — |
 | 2 | ✅ Tid | Il vaglio per temi, con S4 e S53 (2026-11-23) | §17.1 | — |
 | 3 | team BE/FE | R-BE6 e due correzioni di documentazione del backend | §0, fase 7 | — |
+| 3b | team BE/FE | Il censimento delle scritture dell'app che passano da una vista (R-BE7) | §19.3 | — |
 | 4 | sessione DB | I giri di codice dei temi che restano qui, uno per tema, nell'ordine di §17.1 | §0, fase 8; §17.1 | via di Tid per ogni giro |
 | 5 | sessione DB | I brief nuovi di T6 (spegnimento del soggetto) e T9 (accessi, con R-4, S64, S67); S1 portata in `sviluppo-gestione-clienti-v2` | §17.1 | — |
 | 6 | sessione DB | Il giro dei metadati, per ciò che i giri di codice non hanno già riscritto | §8 | 4 |
 | 7 | sessione DB | Archiviazione in `work-done/`, col debito dei temi spostati scritto nei loro brief | §11 | 5, 6 |
 
-**Decisioni aperte di Tid:** la postura delle viste in tutto il database (§19.3). **Da committare:** le decisioni del vaglio
+**Decisioni aperte di Tid:** nessuna. **Da committare:** la §19 (giro 2, 2026-11-23), le decisioni del vaglio
 (§17.1, 2026-11-23), e le righe di questo brief che registrano il commit `a35a6636dc`, rimaste fuori da quel commit.
 
 ## 0. Il piano da percorrere
@@ -63,7 +64,10 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
 * **Fase 8 — I giri di codice dei temi che restano qui** (uno per tema, nell'ordine deciso in fase 6)
   * [x] Giro 2: T2, i permessi delle viste: analisi sul catalogo (2026-11-23, §19). Dentro `anagrafiche` niente da
     cambiare; S40 e `security_invoker` voluti
-  * [ ] Giro 2: la postura delle viste in tutto il database, ⏳ decisione di Tid (§19.3)
+  * [x] Giro 2: la postura delle viste in tutto il database, decisa da Tid: l'app solo `SELECT` sulle viste
+    (2026-11-23, §19.3)
+  * [ ] La richiesta R-BE7 al team BE/FE: il censimento delle scritture che passano da una vista (§19.3)
+  * [ ] A risposta arrivata, il brief proprio della postura delle viste (tocca tutti gli schemi, §19.3)
   * [ ] Poi, un giro per tema nell'ordine di §17.1: T5, T7, T4, T8, T12, T3, T10, T11
 * **Fase 9 — Il giro dei metadati** (§8)
   * [ ] I COMMENT, i commenti nei corpi e le note di seed che i giri di codice non hanno già riscritto
@@ -73,7 +77,7 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-22. **A chi:** Tid e team DB.
 > **Origine:** revisione della documentazione dello schema `anagrafiche` chiesta da Tid: cercare le parti stantie e
 > quelle che non descrivono lo sviluppo di oggi. Metodo dei brief di revisione di `catalogo`, `dbops`, `documenti`,
-> `maintenance` e `ui` ([brief-db-revisione-ui](brief-db-revisione-ui.md)).
+> `maintenance` e `ui` ([brief-db-revisione-ui](../work-done/2026/brief-db-revisione-ui.md)).
 > **Brief vicini verificati:**
 > [brief-db-catena-istanze-pdp](brief-db-catena-istanze-pdp.md) ha già i rami irraggiungibili di
 > `trgfn_clienti_set_parent_istanza` (suo §2.1) e cinque decisioni aperte: qui quel trigger si documenta com'è e la
@@ -707,7 +711,7 @@ Lette sui corpi dagli agenti del giro, non provate con un caso. Si vagliano con 
 | S28 | L'albero dei billing account | Nessun limite di profondità e nessun controllo dei cicli: è rifiutato solo «parent = sé stesso». Spostare un BA da un parent a un altro con attività da fatturare non è controllato (solo togliere il parent) |
 | S29 | `billing_account.valuta_id` | Senza FK a `config.valute` (`fornitori` e `gestori` l'hanno) |
 | S30 | `soggetti_ruoli.tipo_ruolo_id` | Non è bloccato: un ruolo `CL` può cambiare tipo dopo che il suo BA esiste |
-| S31 ✔︎ | `trgfn_billing_account_guard_admin_globale`, `trgfn_billing_account_link_ef` | Un `app.current_user_id` che non è un numero è trattato come «nessun utente», e i due trigger lasciano passare la riga. ⚠️ **Riletta il 2026-11-23 sul corpo vivo**, dopo `20261123-19` (giro 8b di [brief-db-revisione-ui](brief-db-revisione-ui.md)): i due trigger leggono l'utente da `script.fn_utente_di_sessione`, che un valore illeggibile lo rifiuta, ma la chiamata è dentro `EXCEPTION WHEN OTHERS THEN v_user_id := NULL`: il BB solleva, i trigger ingoiano. **Resta aperta**; la correzione è togliere il blocco, come in `fn_id_fiscale_bloccato`, che dallo stesso changeSet lascia salire il rifiuto |
+| S31 ✔︎ | `trgfn_billing_account_guard_admin_globale`, `trgfn_billing_account_link_ef` | Un `app.current_user_id` che non è un numero è trattato come «nessun utente», e i due trigger lasciano passare la riga. ⚠️ **Riletta il 2026-11-23 sul corpo vivo**, dopo `20261123-19` (giro 8b di [brief-db-revisione-ui](../work-done/2026/brief-db-revisione-ui.md)): i due trigger leggono l'utente da `script.fn_utente_di_sessione`, che un valore illeggibile lo rifiuta, ma la chiamata è dentro `EXCEPTION WHEN OTHERS THEN v_user_id := NULL`: il BB solleva, i trigger ingoiano. **Resta aperta**; la correzione è togliere il blocco, come in `fn_id_fiscale_bloccato`, che dallo stesso changeSet lascia salire il rifiuto |
 | S32 | `fn_lookup_utilities_per_ba` | Non confronta il codice del ruolo con il ruolo del BA; un id che non corrisponde a nessun BA non è rifiutato |
 | S33 | `fn_crea_billing_account` | Senza sessione, i guard dell'azienda girano prima del collegamento che la funzione scrive. Con `usa_sequenza` spento il codice manca e il rifiuto è un NOT NULL, non un codice di dominio |
 | S34 | I clienti | `trgfn_clienti_guard_ruolo_cliente` ripete un controllo che il BA fa già. In `fn_update_cliente` un delta che non è un oggetto dà l'errore tecnico di PostgreSQL, e `categoria_aggiornata` vale vero anche se la categoria non cambia. `fn_get_evento_stato_corrente_cliente` è STABLE PARALLEL SAFE e sui rifiuti chiama `fn_log_and_raise_error`, che non lo è. Il modello non dice in quali stati un cliente può nascere. Un cliente chiuso il giorno stesso dell'attivazione ha un periodo vuoto |
@@ -748,7 +752,7 @@ funzioni dello schema, senza toccarne le pagine. Riallineate dal passo A (2026-1
   P-5a) porta `fn_crea_emittente_fiscale`, `fn_crea_fornitore`, `fn_crea_cliente`, `fn_crea_billing_account`,
   `fn_crea_contatto` e `fn_indirizzo_elemento` a `script.fn_guard_campi_ammessi`. Il comportamento non cambia (stesso
   codice, stessa frase, `context.campo`): le sei pagine prendono il BB nel «Vedi anche».
-* `20261123-19` ([brief-db-revisione-ui](brief-db-revisione-ui.md), giro 8b) porta `fn_id_fiscale_bloccato` e i due
+* `20261123-19` ([brief-db-revisione-ui](../work-done/2026/brief-db-revisione-ui.md), giro 8b) porta `fn_id_fiscale_bloccato` e i due
   trigger del BA a `script.fn_utente_di_sessione`. La pagina di `fn_id_fiscale_bloccato` regge (dice «l'utente della
   richiesta», senza dire come si legge). Le due pagine dei trigger prendono il BB nel «Vedi anche» e, in «Che cosa
   oggi non copre», il blocco che ingoia l'errore (S31, §12.3).
@@ -1307,7 +1311,7 @@ le liste, non concetti del dominio: nessuna guida da scrivere.
 * ⚠️ **Il buco che il DML lascia aperto è un altro, e non è di questo schema.** Una vista **aggiornabile** e **senza**
   `security_invoker` controlla i permessi sulla tabella sotto come il suo proprietario. Con il DML sulla vista, l'app
   scrive la tabella sotto anche quando la tabella è in sola lettura per lei: la vista aggira la postura «una scrittura =
-  un verbo». Oggi le viste così sono otto, in `catalogo`, `dbops` e `script` (fra cui
+  un verbo». Oggi le viste così sono sei, su otto tabelle, in `catalogo`, `dbops` e `script` (fra cui
   `dbops.vw_emittenti_regime_non_confermato` su `anagrafiche.emittenti_fiscali`), e su tutte le tabelle sotto l'app ha
   già il DML: oggi non c'è niente che si apre in più. Il modello però lo ammette, e nessun presidio lo guarda:
   basta una vista semplice su una tabella di `magazzino`, che dal 2026-11-23 è tutta in sola lettura per l'app.
@@ -1322,6 +1326,11 @@ le liste, non concetti del dominio: nessuna guida da scrivere.
 
 ### 19.3 La decisione per Tid
 
+> ✅ **Decisa da Tid il 2026-11-23: la proposta.** L'app riceve solo `SELECT` sulle viste, in tutto il database. La
+> richiesta **R-BE7** è partita lo stesso giorno (testo sotto). Il lavoro DB si fa dopo la risposta, in un brief proprio,
+> perché tocca tutti gli schemi: le tre sedi di §11.8, il pgTAP di postura, e prima il verbo di ogni scrittura che il
+> censimento trova. L'alternativa più stretta è scartata.
+
 Il giro 2 non ha niente da cambiare dentro `anagrafiche`. Resta la postura delle viste, che è un tema di **tutti gli
 schemi**, e per questo vuole l'ok esplicito di Tid (regola «un tema, un brief»). La proposta:
 
@@ -1335,3 +1344,38 @@ schemi**, e per questo vuole l'ok esplicito di Tid (regola «un tema, un brief»
 
 L'alternativa più stretta: lasciare il DML e togliere solo il buco, con un presidio che rifiuta una vista aggiornabile
 senza `security_invoker`. Costa meno, ma lascia all'app un privilegio che nessun oggetto del DB usa. Se lo usa il BE, lo dice il censimento.
+
+#### R-BE7 — Il testo inviato al team BE/FE (2026-11-23)
+
+**Le scritture dell'app che passano da una vista.** Oggi `zeroerp_app` ha `INSERT`, `UPDATE` e `DELETE` su tutte le
+viste di ogni schema (tranne `maintenance`), perché il loop dei grant le conta fra le tabelle. Il DB toglierà quel
+permesso: sulle viste l'app avrà solo `SELECT`. Il motivo: una vista aggiornabile senza `security_invoker` scrive la
+tabella sotto coi permessi del suo proprietario, e aggira la sola lettura dell'app («una scrittura = un verbo»).
+
+Una scrittura su una vista non aggiornabile fallisce già oggi. Quelle che riescono possono passare solo da queste
+quindici viste, le uniche aggiornabili (catalogo di dbdev, 2026-11-23):
+
+| Schema | Viste |
+| --- | --- |
+| `catalogo` | `vw_causali_onere_assegnabili` |
+| `config` | `vw_codici_errore_identita`, `vw_email_in_coda` |
+| `dbops` | `vw_af_senza_giro`, `vw_coda_lavori_da_guardare`, `vw_email_da_guardare`, `vw_emittenti_regime_non_confermato`, `vw_fatture_stampa_coda_da_guardare`, `vw_liste_multi_emittente_non_certificate`, `vw_magazzino_movimenti_senza_costo`, `vw_processi_dominio_su_pgagent` |
+| `documenti` | `vw_template_asset_utilizzabili` |
+| `script` | `vw_audit_sources`, `vw_stati_estesi` |
+| `vendite` | `vw_preventivi_righe_smistabili_ordine` |
+
+Chiediamo un **elenco chiuso** di ogni punto di `backend/` e `frontend/` dove l'app scrive (`INSERT`, `UPDATE`,
+`DELETE`, `MERGE`, `COPY … FROM`) su una vista. I punti da guardare:
+
+1. l'SQL scritto a mano (`cursor.execute`, `raw`), anche col nome della vista costruito a runtime;
+2. i modelli Django `managed = False` con `db_table` su una vista, e le loro `save`, `create`, `update`, `delete`,
+   `bulk_*`, anche dall'admin;
+3. il pannello generico e le liste in modifica, quando la sorgente o la destinazione è una vista;
+4. i test e le fixture del BE che scrivono su una vista con la connessione dell'app.
+
+Per ogni punto: `file:riga`, la vista, l'operazione, il dato di dominio che vuole cambiare. Se il punto ha già un
+verbo DB che fa la stessa cosa, il nome del verbo. «Nessuno» è una risposta valida, se dice come si è cercato.
+
+**Chi cambia per primo.** Nessuna urgenza: il DB non cambia finché non arriva la risposta. Se l'elenco è vuoto, il DB
+revoca. Se ci sono scritture, il DB scrive prima i verbi che mancano, poi il BE passa ai verbi, e solo dopo il DB
+revoca. Il BE non deve cambiare niente finché non riceve i verbi.

@@ -319,7 +319,7 @@ Il rifiuto lo dà il guard [`trgfn_indirizzi_guard_forma_libera`](/dbzero/anagra
 
 ### R4 — Protezione stradario_id
 
-Il campo `stradario_id` su `indirizzi_dettaglio` non può essere modificato manualmente. Il guard `trgfn_indirizzi_dettaglio_protect_update` blocca l'operazione con errore `E_COLONNA_NON_MODIFICABILE`, salvo che la transazione abbia aperto la porta di manutenzione (`zeroerp.maintenance_indirizzi_dettaglio`). La apre solo [`dbops.fn_admin_merge_stradario`](/dbzero/dbops/funzioni/fn_admin_merge_stradario), lo strumento DBA che fonde due vie, e solo attorno allo spostamento dei civici (vedi [Riclassificazione vie](/guide/riclassificazione-vie)).
+Il campo `stradario_id` su `indirizzi_dettaglio` non può essere modificato manualmente. Il guard `trgfn_indirizzi_dettaglio_protect_update` blocca l'operazione con errore `E_COLONNA_NON_MODIFICABILE`, salvo che la scrittura passi dalla porta di manutenzione: il flag `zeroerp.maintenance_indirizzi_dettaglio` acceso **e** chi scrive proprietario della tabella. Il flag da solo non apre, perché l'applicazione lo potrebbe accendere. La porta la apre solo [`dbops.fn_admin_merge_stradario`](/dbzero/dbops/funzioni/fn_admin_merge_stradario), lo strumento DBA che fonde due vie, lanciato come `zeroerp_owner` e solo attorno allo spostamento dei civici. L'applicazione non lo può eseguire (vedi [Riclassificazione vie](/guide/riclassificazione-vie)).
 
 ### R5 — Validazione tipo indirizzo per ruolo
 

@@ -17,12 +17,20 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_protect_update(
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-  -- Consenti aggiornamenti in manutenzione esplicita
-  IF current_setting('zeroerp.maintenance_indirizzi_dettaglio', true) = 'on' THEN
+  -- Scopo: lo stradario_id di un indirizzo non si cambia a mano.
+  --
+  -- La porta di manutenzione: GUC accesa E chi scrive e' il
+  --   proprietario della tabella (la fusione delle vie,
+  --   dbops.fn_admin_merge_stradario, lanciata da zeroerp_owner).
+  -- ⛔ La sola GUC non basta: l'applicazione la puo' accendere da
+  --   se'. Il BB vede chi scrive perche' questa funzione e'
+  --   INVOKER: non va resa SECURITY DEFINER.
+  IF current_setting('zeroerp.maintenance_indirizzi_dettaglio', true) = 'on'
+     AND script.fn_is_proprietario_tabella(TG_RELID) THEN
     RETURN NEW;
   END IF;
 
-  -- Blocca cambio stradario_id se non in manutenzione
+  -- Fuori dalla porta: il cambio di stradario_id si rifiuta.
   IF NEW.stradario_id IS DISTINCT FROM OLD.stradario_id THEN
     PERFORM script.fn_log_and_raise_error(
       'database',
@@ -37,6 +45,9 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_protect_update()
+IS 'Guard BEFORE UPDATE di anagrafiche.indirizzi_dettaglio: lo stradario_id non si cambia a mano (E_COLONNA_NON_MODIFICABILE). Porta di manutenzione: la GUC zeroerp.maintenance_indirizzi_dettaglio accesa e chi scrive proprietario della tabella (la fusione delle vie, dbops.fn_admin_merge_stradario, da zeroerp_owner). La sola GUC non apre.';
 ```
 
 </div>

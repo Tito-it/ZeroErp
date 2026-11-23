@@ -1,0 +1,151 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA DELLA TOPONOMASTICA IN USO SI APRE SOLO DAL PROPRIETARIO
+#   config.trgfn_toponomastica_protect_update: «GUC + proprietario».
+#   Brief: brief-db-porte-aperte-dalla-sola-guc, porta 15, giro 1 (D-C b).
+#
+# -- PERCHE' -------------------------------------------------------------
+#   La porta si apriva con la sola GUC zeroerp.maintenance_toponomastica.
+#   L'app la puo' accendere da se' e poi riscrivere la descrizione di un
+#   toponimo in uso con un UPDATE diretto, senza la cascata agli indirizzi
+#   che la correzione vera porta con se'. Chi la apre di diritto e' la
+#   procedura di manutenzione maintenance.proc_bump_toponomastica (INVOKER),
+#   lanciata da zeroerp_owner. Nessuna funzione la chiama, e il backend
+#   nemmeno (brief §4.2).
+#
+# -- CHE COSA CAMBIA -----------------------------------------------------
+#   La porta chiede GUC accesa E script.fn_is_proprietario_tabella(TG_RELID).
+#   Con la sola GUC l'app finisce sul controllo di sempre: toponimo in uso
+#   e descrizione cambiata -> E_COLONNA_NON_MODIFICABILE, come oggi.
+#   Montaggio invariato (BEFORE UPDATE OF descrizione). La funzione resta
+#   INVOKER. Corpo dal catalogo vivo (dbdev, 2026-11-23); COMMENT riscritto.
+#
+# -- LA POSTURA ACCANTO --------------------------------------------------
+#   L'EXECUTE dell'app (via PUBLIC) sulla procedura si toglie in
+#   90_end/20261123-45. Presidio: dbops/test-porte-manutenzione-solo-proprietario-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261123-44-update-trgfn-toponomastica-porta-proprietario-mctit.yaml
+
+  - changeSet:
+      id: 20261123-44-update-trgfn-toponomastica-porta-proprietario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La porta di manutenzione della toponomastica in uso si apre con la GUC
+        zeroerp.maintenance_toponomastica E il proprietario della tabella: la sola GUC,
+        che l'app puo' accendere, non basta piu'.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'config' AND p.proname = 'trgfn_toponomastica_protect_update';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_is_proprietario_tabella';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_toponomastica_protect_update()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Scopo: la descrizione di un toponimo in uso nello stradario
+                --   generale non si cambia a mano.
+                --
+                -- La porta di manutenzione: GUC accesa E chi scrive e' il
+                --   proprietario della tabella (maintenance.proc_bump_toponomastica,
+                --   lanciata da zeroerp_owner, che porta la correzione fino agli
+                --   indirizzi). ⛔ La sola GUC non basta: l'applicazione la puo'
+                --   accendere da se'. Funzione INVOKER: non va resa SECURITY DEFINER.
+                IF current_setting('zeroerp.maintenance_toponomastica', true) = 'on'
+                   AND script.fn_is_proprietario_tabella(TG_RELID) THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Se il record non e' usato in config.stradario_generale, lascio passare
+                IF NOT EXISTS (
+                  SELECT 1
+                    FROM config.stradario_generale
+                   WHERE toponomastica_id = OLD.id
+                ) THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Se siamo qui, il record e' in uso: controllo ciascuna colonna
+                IF OLD.descrizione IS DISTINCT FROM NEW.descrizione THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_COLONNA_NON_MODIFICABILE',
+                    jsonb_build_object('column','descrizione','id',OLD.id),
+                    NULL::uuid,
+                    'descrizione'
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_toponomastica_protect_update() IS
+              'Guard BEFORE UPDATE OF descrizione di config.toponomastica: la descrizione di un toponimo in uso nello stradario generale non si cambia a mano (E_COLONNA_NON_MODIFICABILE). Porta di manutenzione: la GUC zeroerp.maintenance_toponomastica accesa e chi scrive proprietario della tabella (maintenance.proc_bump_toponomastica, da zeroerp_owner). La sola GUC non apre.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il corpo e il COMMENT di prima: la porta con la sola GUC.
+              CREATE OR REPLACE FUNCTION config.trgfn_toponomastica_protect_update()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Consenti aggiornamenti in manutenzione esplicita
+                IF current_setting('zeroerp.maintenance_toponomastica', true) = 'on' THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Se il record non e' usato in config.stradario_generale, lascio passare
+                IF NOT EXISTS (
+                  SELECT 1
+                    FROM config.stradario_generale
+                   WHERE toponomastica_id = OLD.id
+                ) THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Se siamo qui, il record e' in uso: controllo ciascuna colonna
+                IF OLD.descrizione IS DISTINCT FROM NEW.descrizione THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_COLONNA_NON_MODIFICABILE',
+                    jsonb_build_object('column','descrizione','id',OLD.id),
+                    NULL::uuid,
+                    'descrizione'
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_toponomastica_protect_update() IS
+              'Trigger function per proteggere aggiornamenti non autorizzati su config.toponomastica.
+                Operazioni di manutenzione possono essere abilitate tramite la GUC ''zeroerp.maintenance_toponomastica''.';

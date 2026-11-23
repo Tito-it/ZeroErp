@@ -1,6 +1,6 @@
 # Guida — Architettura Permessi e Autorizzazioni
 
-> **Ultimo aggiornamento**: 23 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -863,12 +863,24 @@ l'amministratore ragiona come sempre, per area, azione e oggetto.
   protegge. La postura si dichiara nel loop dei grant, non con un `REVOKE`
   sparso: l'elenco delle tabelle in sola lettura per l'app e' la lista
   `v_tabelle_sola_lettura_app` del loop;
+* sulle **viste** l'applicazione ha solo `SELECT`, in tutto il database: una
+  vista aggiornabile che gira coi permessi del suo proprietario scriverebbe la
+  tabella sotto, e aggirerebbe la sola lettura. Una vista non e' una strada per
+  scrivere: la scrittura passa da un verbo;
 * il verbo gira come **proprietario** (`SECURITY DEFINER`), e il perimetro che
   la RLS non applica piu' lo rimette il verbo o il guard di ambito;
 * l'applicazione esegue **solo i verbi**, non le primitive che i verbi usano:
   altrimenti il controllo si aggira chiamando la primitiva. Un guard che deve
   sapere se e' attraversato da un verbo lo chiede a
-  `script.fn_is_proprietario_tabella`.
+  `script.fn_is_proprietario_tabella`;
+* un guard che lascia passare una scrittura quando una GUC e' accesa (una
+  **porta**) chiede due cose insieme: la GUC, e che a scrivere sia il
+  proprietario. La sola GUC non chiude niente, perche' l'applicazione la puo'
+  accendere da se'. Vale anche per le porte di **manutenzione**, che si aprono
+  dagli strumenti DBA lanciati come `zeroerp_owner`: l'applicazione non esegue
+  quegli strumenti. ⚠️ Non tutte le porte ci sono gia' arrivate: quelle del
+  reset dei lotti, del contabile, dei DDT di riconsegna, dello scope emittenti e
+  della pubblicazione dei template si aprono ancora con la sola GUC.
 
 **Il backend chiede, non decide due volte.** L'endpoint tiene il suo controllo:
 risponde 403 subito, con un messaggio utile, prima di aprire la transazione.

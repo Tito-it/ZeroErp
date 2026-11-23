@@ -17,8 +17,16 @@ CREATE OR REPLACE FUNCTION config.trgfn_toponomastica_protect_update()
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-  -- Consenti aggiornamenti in manutenzione esplicita
-  IF current_setting('zeroerp.maintenance_toponomastica', true) = 'on' THEN
+  -- Scopo: la descrizione di un toponimo in uso nello stradario
+  --   generale non si cambia a mano.
+  --
+  -- La porta di manutenzione: GUC accesa E chi scrive e' il
+  --   proprietario della tabella (maintenance.proc_bump_toponomastica,
+  --   lanciata da zeroerp_owner, che porta la correzione fino agli
+  --   indirizzi). ⛔ La sola GUC non basta: l'applicazione la puo'
+  --   accendere da se'. Funzione INVOKER: non va resa SECURITY DEFINER.
+  IF current_setting('zeroerp.maintenance_toponomastica', true) = 'on'
+     AND script.fn_is_proprietario_tabella(TG_RELID) THEN
     RETURN NEW;
   END IF;
 
@@ -47,8 +55,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION config.trgfn_toponomastica_protect_update()
-IS 'Trigger function per proteggere aggiornamenti non autorizzati su config.toponomastica.
-  Operazioni di manutenzione possono essere abilitate tramite la GUC ''zeroerp.maintenance_toponomastica''.';
+IS 'Guard BEFORE UPDATE OF descrizione di config.toponomastica: la descrizione di un toponimo in uso nello stradario generale non si cambia a mano (E_COLONNA_NON_MODIFICABILE). Porta di manutenzione: la GUC zeroerp.maintenance_toponomastica accesa e chi scrive proprietario della tabella (maintenance.proc_bump_toponomastica, da zeroerp_owner). La sola GUC non apre.';
 ```
 
 </div>

@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FUSIONE DEI COMUNI E' UNO STRUMENTO DEL PROPRIETARIO
+#   REVOKE EXECUTE su dbops.fn_admin_merge_comune FROM PUBLIC, zeroerp_app.
+#   Brief: brief-db-porte-aperte-dalla-sola-guc, giro 1-bis (D-G a).
+#
+# -- PERCHE' -------------------------------------------------------------
+#   Le fusioni sono strumenti DBA, lanciati da zeroerp_owner: quella delle vie
+#   e' riservata dal 20261123-45. La fusione dei comuni e' la gemella (ripunta
+#   sulla destinazione ogni figlia letta dal catalogo) e restava eseguibile
+#   dall'app, senza un guard del permesso. Non apre porte: e' INVOKER e scrive
+#   con i privilegi di chi la chiama, quindi chiuderla non toglie all'app un
+#   privilegio che non abbia gia' sulle tabelle. Toglie uno strumento che non e'
+#   suo. Ne' il backend ne' una funzione DB la chiamano (ramo
+#   origin/dev/backend-tid e catalogo di dbdev, 2026-11-24); il suo pgTAP gira
+#   come owner.
+#
+# -- LE TRE SEDI (linee-guida-sql §11.8) ---------------------------------
+#   1. questo forward, per dbdev;
+#   2. il loop 90_end/ci_apply/20260205-41, voce in v_fn_riservate;
+#   3. scripts/sql/provision_zeroerp.sql, blocco «LA PORTA SULLE FUNZIONI».
+#   Presidio: dbops/test-porte-manutenzione-solo-proprietario-v1 (gira come app).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261123-46-postura-fn-admin-merge-comune-riservata-mctit.yaml
+
+  - changeSet:
+      id: 20261123-46-postura-fn-admin-merge-comune-riservata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_admin_merge_comune riservata al proprietario: EXECUTE revocato a PUBLIC e
+        all'app, come la fusione delle vie. brief-db-porte-aperte-dalla-sola-guc, giro 1-bis.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_admin_merge_comune';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- A PUBLIC sempre (=X per default), all'app se il ruolo esiste.
+              REVOKE EXECUTE ON FUNCTION dbops.fn_admin_merge_comune(integer, integer, character, date, text) FROM PUBLIC;
+              DO $porta$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: revoca all''app saltata.';
+                      RETURN;
+                  END IF;
+                  REVOKE EXECUTE ON FUNCTION dbops.fn_admin_merge_comune(integer, integer, character, date, text) FROM zeroerp_app;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Riapre la fusione dei comuni all'app e a PUBLIC. Senza togliere la voce dal
+              -- loop 20260205-41 e dal provisioning, la passata ci_apply successiva la richiude.
+              GRANT EXECUTE ON FUNCTION dbops.fn_admin_merge_comune(integer, integer, character, date, text) TO PUBLIC;
+              GRANT EXECUTE ON FUNCTION dbops.fn_admin_merge_comune(integer, integer, character, date, text) TO zeroerp_app;

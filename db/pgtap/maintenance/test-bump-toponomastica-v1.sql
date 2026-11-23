@@ -2,6 +2,15 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: dal 2026-11-23 maintenance.proc_bump_toponomastica e'
+--   riservata al proprietario (90_end/20261123-45) e la porta della toponomastica
+--   si apre solo da lui (20_code/config/20261123-44): la correzione di un toponimo
+--   in uso non sta sul percorso applicativo. Che l'app ne resti fuori lo provano
+--   dbops/test-porte-manutenzione-solo-proprietario-v1 e
+--   config/test-toponomastica-stradario-generale (4).
+--   Brief: brief-db-porte-aperte-dalla-sola-guc, giro 1.
+--
 -- Test: le due procedure di rinormalizzazione degli indirizzi
 --   maintenance.proc_bump_toponomastica · maintenance.proc_bump_indirizzi_dettaglio
 --   config.trgfn_toponomastica_protect_update

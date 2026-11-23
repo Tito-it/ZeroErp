@@ -5,7 +5,7 @@
 **Riparte: nessuno. Archiviato il 2026-11-20**: lato DB e lato BE/FE chiusi e committati (l'ultimo giro BE/FE, R-UI1 …
 R-UI-sup del §16.15, in `8d5601d70f`, PR #171). I residui stanno nel [registro dei residui](../../work-in-progress/registro-residui-aperti.md)
 (`famiglie_documento`, Q7); la colonna di catalogo `is_default` della lista admin dei preset (§16.15, esito del BE) è
-passata al [brief-db-revisione-ui](../../work-in-progress/brief-db-revisione-ui.md) (BE22), residuo del suo giro 1a.
+passata al [brief-db-revisione-ui](brief-db-revisione-ui.md) (BE22), residuo del suo giro 1a.
 
 ⚠️ Lo stato prima dell'archiviazione: **ripartiva il team BE/FE**, con le ricadute del giro 3 sulle tabelle di `ui` (R-UI1 … R-UI-sup, §16.15, passo
 7-quater) e con la chiusura del passo 7 (§16.14). Il lato DB di questo brief è finito: il giro 3 (`20261119-01` …
@@ -226,7 +226,7 @@ Il censimento completo (ogni mirror `runOnChange` su una tabella che l'app può 
 leggendo la **struttura**: GRANT di `zeroerp_app`, `config.tabelle_gestibili.pannello`, endpoint che
 scrivono. Ogni tabella trovata riceve una specie dichiarata.
 
-**Le tabelle di `ui` (richiesta del [brief-db-revisione-ui](../../work-in-progress/brief-db-revisione-ui.md), Q27, Tid 2026-11-20).** Il
+**Le tabelle di `ui` (richiesta del [brief-db-revisione-ui](brief-db-revisione-ui.md), Q27, Tid 2026-11-20).** Il
 censimento di questo meccanismo è la sede della decisione, e i giri del brief `ui` che toccano i CSV di `ui` partono
 dopo. Sono mirror `runOnChange` (`loadUpdateData`) che l'app scrive dalle pagine admin:
 
@@ -1418,7 +1418,7 @@ Nessuna chiave i18n nuova: «elimina» non c'è, e il motivo dei campi spenti lo
 
 ### 16.15 Il censimento delle tabelle di `ui` (richiesta del brief `ui`, Q27, 2026-11-20)
 
-Chiesto dal [brief-db-revisione-ui](../../work-in-progress/brief-db-revisione-ui.md) (Q27, Tid 2026-11-20): le tabelle di catalogo di `ui`
+Chiesto dal [brief-db-revisione-ui](brief-db-revisione-ui.md) (Q27, Tid 2026-11-20): le tabelle di catalogo di `ui`
 sono mirror `runOnChange` (`loadUpdateData`) che l'app scrive dalle pagine admin, e i giri di quel brief che toccano i
 CSV di `ui` partono dopo la loro iscrizione (linee-guida-sql §11.7: una tabella entra in un rilascio precedente al primo
 ritocco del suo CSV). Letti la struttura (doc auto-generata del 2026-11-14) e il codice che le scrive
