@@ -422,6 +422,29 @@ FROM _app_schemas s
 \gexec
 
 -- ------------------------------------------------------------------
+-- ⛔ POSTURA DICHIARATA: le viste (dal 2026-11-24)
+--   Brief: brief-db-porte-aperte-dalla-sola-guc §5 (D-V), giro 3
+--
+-- Il `GRANT … ON ALL TABLES` qui sopra conta anche le viste. Sulle viste e sulle
+-- viste materializzate l'applicazione ha solo SELECT: una vista aggiornabile
+-- senza security_invoker scrive la tabella sotto coi permessi del suo
+-- proprietario, e aggirerebbe la sola lettura della tabella. Stesso ramo, per
+-- tipo, nel loop 90_end/ci_apply/20260205-41; forward su dev 90_end/20261123-47.
+-- ⭐ Questa e' l'unica sede che arriva alle viste di `public` delle estensioni
+--   (pgTAP, PostGIS): sono di postgres, e il changeSet, che gira come
+--   proprietario, non le puo' toccare. Il loop non tocca `public`.
+-- ⚠️ `django` resta fuori: i suoi oggetti sono dell'applicazione (§11.9).
+-- Presidio: db/pgtap/dbops/test-viste-app-solo-select-v1.sql.
+-- ------------------------------------------------------------------
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', c.oid::regclass, :'app_role')
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+JOIN _app_schemas s ON s.nspname = n.nspname
+WHERE c.relkind IN ('v', 'm')
+  AND n.nspname <> 'django'
+\gexec
+
+-- ------------------------------------------------------------------
 -- ⛔ POSTURA DICHIARATA: i registri APPEND-ONLY (dal 2026-09-11)
 --   Brief: brief-db-rls-storico-scope-congelato.md §8.4
 --
@@ -700,7 +723,13 @@ WHERE (n.nspname, p.proname) IN (
         -- ⭐ Dal 2026-11-08 la copia di un'edizione di workflow: ci si arriva solo da
         --   fn_fork_definizione e fn_nuova_versione_definizione (DEFINER). Forward
         --   90_end/20261110-14; presidio pratiche/test-copia-definizione-riservata-v1.
-        ('pratiche', 'fn_copia_definizione'))
+        ('pratiche', 'fn_copia_definizione'),
+        -- ⭐ Dal 2026-11-23 la fusione delle vie: la porta degli indirizzi si apre solo
+        --   dal proprietario. Forward 90_end/20261123-45; presidio
+        --   dbops/test-porte-manutenzione-solo-proprietario-v1.
+        ('dbops', 'fn_admin_merge_stradario'),
+        -- ⭐ Dal 2026-11-24 la gemella, la fusione dei comuni. Forward 90_end/20261123-46.
+        ('dbops', 'fn_admin_merge_comune'))
   AND p.prokind = 'f'
 \gexec
 
@@ -722,7 +751,17 @@ WHERE (n.nspname, p.proname) IN (
 --     presidi. Cinque lettori, nessuno scrittore: la scrittura passa da
 --     `script.fn_job_run_start/end` (SECURITY DEFINER) per l'app e dal ruolo
 --     `zeroerp_log` (INSERT, changeSet `20260905-38`) per il canale fuori
---     transazione. Nessuna sequenza, nessuna funzione di `maintenance`.
+--     transazione. Nessuna sequenza, e nessun GRANT su funzioni di `maintenance`.
+--
+-- ⚠️ Le FUNZIONI di `maintenance` non sono chiuse all'app (rev 2026-11-24): chi non
+--   ha un REVOKE nel suo changeSet tiene l'`=X` di default di PUBLIC, e il
+--   privilegio di default per schema non lo toglie. Per le INVOKER non è una
+--   strada: girano coi permessi dell'app. Lo sarebbe una SECURITY DEFINER, e le
+--   DEFINER eseguibili dall'app sono un elenco dichiarato (oggi
+--   `fn_sveglia_accesa`, che leggono il BE e pgAgent, e `fn_job_run_log_failure`,
+--   che scrive cio' che l'app scrive gia' con `script.fn_job_run_*`). Lo pinna
+--   db/pgtap/maintenance/test-app-definer-dichiarate-v1.sql, a criterio.
+--   Brief: brief-db-porte-aperte-dalla-sola-guc §6.5 (D-H a).
 --
 -- ⛔ PERCHÉ IL `SELECT` STA QUI, ed è la QUARTA volta che la stessa regola si
 --   scrive (linee-guida-sql §11.6 e §11.9, il `USAGE` qui sotto): fino al 2026-09-19 il

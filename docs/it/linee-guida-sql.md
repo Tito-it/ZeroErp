@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 23 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -748,6 +748,14 @@ composto da loro; il nome del flag dice tutte e due le domande.
 precisione** (`col::numeric(18,6)`). `RETURNS TABLE` non conserva precisione e scala del tipo, e
 `CREATE OR REPLACE VIEW` accetta di perderle ma poi rifiuta di riprenderle. Una colonna nuova nel
 `RETURNS TABLE` vuole il `DROP` della funzione e di tutte le viste che la leggono (§5f).
+
+**Sulle viste l'applicazione ha solo `SELECT`.** Una vista aggiornabile senza `security_invoker`
+controlla i permessi sulla tabella sotto come il suo proprietario: con `INSERT`, `UPDATE` o `DELETE`
+sulla vista, l'app scriverebbe anche una tabella che ha in sola lettura. Il loop dei grant tratta le
+viste e le materializzate **per tipo** (`relkind` `'v'`, `'m'`), non per nome, nelle tre sedi di
+§11.8; il provisioning chiude anche le viste di `public` delle estensioni. Una vista che deve
+accettare scritture non si apre all'app: la scrittura passa da un verbo. Presidio, a criterio:
+`db/pgtap/dbops/test-viste-app-solo-select-v1.sql`.
 
 ---
 
@@ -2916,7 +2924,10 @@ proprietario — una DEFINER, un seed, il migratore), `v_tabelle_senza_delete` e
 `v_schemi_senza_delete` (tutto tranne `DELETE`), e `v_fn_riservate` (funzioni a
 cui l'`EXECUTE` è revocato **a PUBLIC e all'app**). Il presidio sta nell'unico
 posto che avrebbe potuto annullarlo, e si dichiara come dato — non come un
-secondo file che rincorre il primo.
+secondo file che rincorre il primo. Prima degli elenchi c'è un ramo **per tipo**:
+le viste e le materializzate ricevono solo `SELECT`, ovunque (§6). ⚠️ I
+privilegi di default (`ON TABLES`) non distinguono una vista da una tabella: un
+oggetto nuovo nasce col DML all'app fino alla passata `ci_apply` successiva.
 
 ⚠️ **Servono comunque TRE sedi, non due** — fino al 2026-09-18 questa riga
 diceva «due file», e la terza era scritta solo nell'intestazione del loop

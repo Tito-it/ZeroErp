@@ -237,10 +237,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
-- 📝 **Le porte che si aprono con la sola GUC** (`work-in-progress/brief-db-porte-aperte-dalla-sola-guc.md`):
+- 📝 **Le strade per cui l'app scrive senza il verbo: le porte della sola GUC e le viste aggiornabili** (`work-in-progress/brief-db-porte-aperte-dalla-sola-guc.md`; le viste dal 2026-11-23, D-V decisa: l'app solo `SELECT` sulle viste; una richiesta unica al BE per le due famiglie, §4.1: sulle viste il BE risponde «nessuno» il 2026-11-23, il giro delle viste non aspetta più il BE; sulle GUC il DB ha letto il ramo BE, §4.2: il BE non accende nessuna porta da sé; D-A, D-C e D-D decise; dalla verifica critica del 2026-11-23, §3-ter, anche D-E e D-F: tutte le decisioni prese; giro 1, le porte di manutenzione 14 e 15, con `20261123-43` … `-45`, applicato e verde il 2026-11-24; giro 1-bis il 2026-11-24, la fusione dei comuni riservata con `20261123-46`, applicato e verde; D-H a, in `maintenance` un presidio a criterio sulle DEFINER aperte all'app, §6.5; giro 3, le viste in sola lettura per l'app, `20261123-47` e la fase post del provisioning, applicato e verde il 2026-11-24, §7; la richiesta al BE del passo 3d scritta il 2026-11-24, §4.4, da girare; poi le porte del flusso):
   diciassette porte di trigger (analisi critica del 2026-11-23), in vendite, pagamenti, config, documenti, anagrafiche e dbops, si aprono con una GUC che l'app può
-  accendere da sé, senza chiedere il proprietario (la D-V1 del 2026-09-25). Aperto, non iniziato: quattro decisioni
-  di Tid. Nasce dalla chiusura di `work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`
+  accendere da sé, senza chiedere il proprietario (la D-V1 del 2026-09-25). In corso: decise D-A … D-H (le porte del flusso al verbo DEFINER, quelle di manutenzione al
+  proprietario); fatti i giri 1, 1-bis e 3. Nasce dalla chiusura di `work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`
   (2026-11-23: tutte le tabelle di `magazzino` in sola lettura per l'app; la R-4 del BE resta parte dello
   sviluppo del catalogo).
 - **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
@@ -278,7 +278,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   e il vaglio per temi (§17, una decina di decisioni invece di 68); giro 1 (Q7, lo storico continuo di indirizzi, civici
   e vie, `20261123-38` … `-42`) applicato coi pgTAP verdi e committato: la prova ha trovato `storico.indirizzi` che non
   accettava nessuna versione. Il vaglio per temi è deciso da Tid il 2026-11-23 (§17.1: T6 e T9 in brief nuovi, S53
-  tema proprio T12, S4 la coppia CF e P.IVA). Giro 2 (T2) fatto il 2026-11-23: dentro `anagrafiche` niente da cambiare; deciso che l'app avrà solo `SELECT` sulle viste in tutto il database, dopo il censimento BE R-BE7 (§19.3). Prossimo: il giro T5, al via di Tid.
+  tema proprio T12, S4 la coppia CF e P.IVA). Giro 2 (T2) fatto il 2026-11-23: dentro `anagrafiche` niente da cambiare; deciso che l'app avrà solo `SELECT` sulle viste in tutto il database, lavoro e richiesta BE passati a `brief-db-porte-aperte-dalla-sola-guc` §5 e §4.1. Prossimo: il giro T5, al via di Tid.
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**

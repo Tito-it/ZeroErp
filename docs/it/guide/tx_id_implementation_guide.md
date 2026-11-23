@@ -1,6 +1,6 @@
 # Guida — Gestione del Transaction ID (`tx_id`)
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend
 >
@@ -235,6 +235,16 @@ Legge il parametro `tx_id_bypass_enabled` da `config.parameters`.
 ### Fase 2 — Override bypass di sessione
 
 Se il bypass non e gia attivo, prova a leggere la GUC `myapp.bypass_tx_id_check`. Se impostata a `true`, abilita il bypass per questa invocazione. Errori di lettura sono ignorati.
+
+> ⭐ **Il bypass e un interruttore di timbratura, non una porta.** Il trigger
+> non rifiuta mai una scrittura: decide solo quale `tx_id` scrivere sulla riga.
+> Il bypass, dalla GUC o dal parametro, fa scrivere il `tx_id` di sessione o
+> `uuid_nil()` invece di crearne uno, e non apre niente che resti chiuso senza
+> di lui: un `tx_id` scritto da chi inserisce la riga passa dalla Fase 0 comunque,
+> anche se non e registrato. Per questo GUC e parametro non chiedono chi scrive,
+> come invece fanno le porte che proteggono una regola. Che una riga con un
+> `tx_id` non registrato si rifiuti sarebbe un'altra regola, che oggi il modello
+> non ha.
 
 ### Fase 3 — Lettura tx_id di sessione
 

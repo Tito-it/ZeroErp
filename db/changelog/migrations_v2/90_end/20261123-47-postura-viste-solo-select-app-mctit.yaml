@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SULLE VISTE L'APPLICAZIONE HA SOLO SELECT
+#   REVOKE INSERT, UPDATE, DELETE FROM zeroerp_app su ogni vista e vista
+#   materializzata del proprietario. Brief: brief-db-porte-aperte-dalla-sola-guc,
+#   §5 (D-V), giro 3.
+#
+# -- PERCHE' -------------------------------------------------------------
+#   Il loop dei grant dava all'app SELECT, INSERT, UPDATE, DELETE su ogni
+#   relazione degli schemi applicativi, viste comprese. Una vista aggiornabile
+#   senza security_invoker controlla i permessi sulla tabella sotto come il suo
+#   proprietario: col DML sulla vista l'app scriverebbe anche una tabella in
+#   v_tabelle_sola_lettura_app. Oggi le sei viste cosi' stanno su tabelle che
+#   l'app scrive gia', ma il modello lo ammette e nessun presidio lo guardava.
+#   Nessuno scrive su una vista: ne' il backend (risposta del BE, brief §5.1),
+#   ne' una funzione DB, ne' un pgTAP (catalogo di dbdev, 2026-11-24).
+#   Le viste materializzate entrano nella stessa regola: il DML su di loro non
+#   esiste, e il privilegio non serve a nessuno.
+#
+# -- LE TRE SEDI (linee-guida-sql §11.8) ---------------------------------
+#   1. questo forward, per dbdev: le viste del proprietario, ovunque siano;
+#   2. il loop 90_end/ci_apply/20260205-41: il ramo per relkind 'v' e 'm', in
+#      testa, prima degli elenchi per nome;
+#   3. scripts/sql/provision_zeroerp.sql, fase post, blocco «POSTURA DICHIARATA:
+#      le viste»: e' l'unica sede che arriva anche alle viste di public delle
+#      estensioni (pgTAP, PostGIS), che sono di postgres e che lo stesso script
+#      apre con il GRANT … ON ALL TABLES. Su dbdev quelle quattro si chiudono
+#      rilanciando la fase post: questo changeSet, che gira come proprietario,
+#      non puo' revocare un privilegio dato da postgres su un oggetto di postgres.
+#   Presidio: dbops/test-viste-app-solo-select-v1 (gira come app, a criterio).
+#
+# ⚠️ I privilegi di default (ALTER DEFAULT PRIVILEGES … ON TABLES) non
+#   distinguono le viste dalle tabelle: una vista nuova nasce col DML all'app,
+#   come ogni tabella, fino alla passata ci_apply successiva. In CI la passata
+#   viene prima dei pgTAP, quindi il presidio la vede.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261123-47-postura-viste-solo-select-app-mctit.yaml
+
+  - changeSet:
+      id: 20261123-47-postura-viste-solo-select-app
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Sulle viste e sulle viste materializzate del proprietario l'app ha solo SELECT:
+        INSERT, UPDATE, DELETE revocati. Resa stabile dal loop 20260205-41 e dal provisioning.
+        brief-db-porte-aperte-dalla-sola-guc, §5 (D-V), giro 3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $viste$
+              DECLARE
+                  v_rel record;
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: revoca sulle viste saltata.';
+                      RETURN;
+                  END IF;
+                  FOR v_rel IN
+                      SELECT c.oid::regclass AS obj_sig
+                        FROM pg_catalog.pg_class c
+                       WHERE c.relkind IN ('v', 'm')
+                         AND c.relowner = (SELECT r.oid FROM pg_catalog.pg_roles r WHERE r.rolname = current_user)
+                  LOOP
+                      EXECUTE format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM zeroerp_app', v_rel.obj_sig);
+                  END LOOP;
+              END
+              $viste$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ridà il DML sulle viste del proprietario negli schemi del loop. Senza
+              -- togliere il ramo dal loop 20260205-41 e il blocco dal provisioning, la
+              -- passata ci_apply successiva lo richiude.
+              DO $viste$
+              DECLARE
+                  v_rel record;
+              BEGIN
+                  FOR v_rel IN
+                      SELECT c.oid::regclass AS obj_sig
+                        FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                       WHERE c.relkind IN ('v', 'm')
+                         AND n.nspname <> 'maintenance'
+                         AND c.relowner = (SELECT r.oid FROM pg_catalog.pg_roles r WHERE r.rolname = current_user)
+                  LOOP
+                      EXECUTE format('GRANT INSERT, UPDATE, DELETE ON TABLE %s TO zeroerp_app', v_rel.obj_sig);
+                  END LOOP;
+              END
+              $viste$;

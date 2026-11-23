@@ -132,6 +132,25 @@
 #   anche le due del registro); terza sede il blocco del provisioning; pgTAP
 #   `test-blocco-manuale-e-porta-lotto3-v1` e `test-reso-carico-v1`.
 #
+# ── ⭐ LA FUSIONE DELLE VIE E' DEL PROPRIETARIO (dal 2026-11-23) ────────────
+#   Brief: brief-db-porte-aperte-dalla-sola-guc, porta 14, giro 1 (D-C b)
+#   In `v_fn_riservate` lo strumento DBA `dbops.fn_admin_merge_stradario`: la
+#   porta degli indirizzi che apre si apre solo dal proprietario (20_code/
+#   anagrafiche/20261123-43), quindi l'app lo riceverebbe solo per fallire a
+#   meta'. Forward su dev `90_end/20261123-45`; terza sede il blocco del
+#   provisioning; pgTAP `db/pgtap/dbops/test-porte-manutenzione-solo-proprietario-v1.sql`.
+#   ⭐ Dal 2026-11-24 anche la gemella `dbops.fn_admin_merge_comune` (giro 1-bis,
+#   D-G a): non apre porte, ma le fusioni sono strumenti DBA. Forward
+#   `90_end/20261123-46`, stesse altre due sedi, stesso pgTAP.
+#
+# ── ⭐ LE VISTE IN SOLA LETTURA (dal 2026-11-24) ─────────────────────────────
+#   Brief: brief-db-porte-aperte-dalla-sola-guc, §5 (D-V), giro 3
+#   Ogni vista e vista materializzata riceve solo SELECT: il ramo per tipo
+#   (`relkind` 'v', 'm') sta in testa, prima degli elenchi per nome. Forward su
+#   dev `90_end/20261123-47`; terza sede il blocco «POSTURA DICHIARATA: le viste»
+#   del provisioning, che arriva anche alle viste di public delle estensioni;
+#   pgTAP `db/pgtap/dbops/test-viste-app-solo-select-v1.sql`.
+#
 # ── ⭐ IL DEVICE DEL SECONDO FATTORE (dal 2026-09-29) ───────────────────────
 #   Brief: brief-db-secondo-fattore-totp, sezione 3
 #   `config.auth_totp_device` entra in `v_tabelle_sola_lettura_app`: anti-replay
@@ -262,7 +281,14 @@ databaseChangeLog:
                   --   DEFINER e riservate all'app; da sola scriverebbe un'edizione
                   --   intera senza i loro controlli. Era eseguibile da PUBLIC.
                   --   Brief: brief-db-sorgente-documento-e-riga §7.3 (giro finale).
-                  'pratiche.fn_copia_definizione'
+                  'pratiche.fn_copia_definizione',
+                  -- ⭐ Dal 2026-11-23 la fusione delle vie: strumento DBA, apre la porta
+                  --   degli indirizzi che si apre solo dal proprietario (20261123-43).
+                  --   Brief: brief-db-porte-aperte-dalla-sola-guc, giro 1.
+                  'dbops.fn_admin_merge_stradario',
+                  -- ⭐ Dal 2026-11-24 la gemella, la fusione dei comuni: strumento DBA,
+                  --   non apre porte ma non e' dell'app (20261123-46, giro 1-bis).
+                  'dbops.fn_admin_merge_comune'
                 ];
                 -- ⭐ Schemi SENZA DELETE per l'applicazione: le shadow di storico le
                 --   scrive il trigger (INSERT della versione, UPDATE che chiude la
@@ -439,7 +465,8 @@ databaseChangeLog:
                   -- Tabelle: concedi solo sugli oggetti posseduti da current_user.
                   FOR v_rel IN
                     SELECT c.oid::regclass AS obj_sig,
-                           n.nspname || '.' || c.relname AS nome_qualificato
+                           n.nspname || '.' || c.relname AS nome_qualificato,
+                           c.relkind AS tipo
                     FROM pg_class c
                     JOIN pg_namespace n ON n.oid = c.relnamespace
                     WHERE n.nspname = v_schema
@@ -447,7 +474,16 @@ databaseChangeLog:
                       AND pg_get_userbyid(c.relowner) = current_user
                   LOOP
                     BEGIN
-                      IF v_rel.nome_qualificato = ANY (v_registri_append_only) THEN
+                      IF v_rel.tipo IN ('v', 'm') THEN
+                        -- ⭐ Dal 2026-11-24 le VISTE (e le materializzate): solo SELECT.
+                        --   Una vista aggiornabile senza security_invoker scrive la
+                        --   tabella sotto coi permessi del proprietario: col DML sulla
+                        --   vista l'app aggirerebbe la sola lettura della tabella.
+                        --   Per tipo, non per nome: vale anche per la vista di domani.
+                        --   Brief: brief-db-porte-aperte-dalla-sola-guc §5 (D-V), giro 3.
+                        EXECUTE format('GRANT SELECT ON TABLE %s TO %I', v_rel.obj_sig, v_app_role);
+                        EXECUTE format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', v_rel.obj_sig, v_app_role);
+                      ELSIF v_rel.nome_qualificato = ANY (v_registri_append_only) THEN
                         -- Registro append-only: la REVOKE è la postura, non un
                         -- rimedio. Senza questo ramo il GRANT sotto la annullerebbe.
                         EXECUTE format('GRANT SELECT, INSERT ON TABLE %s TO %I', v_rel.obj_sig, v_app_role);
