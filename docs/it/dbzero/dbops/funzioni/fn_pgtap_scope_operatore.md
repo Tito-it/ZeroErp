@@ -29,7 +29,7 @@ BEGIN
     --   sessione: la sua identita' e un'azienda del suo perimetro
     --   (quella chiesta, oppure la prima). Super admin (perimetro
     --   NULL): la prima azienda attiva.
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('dbops.fn_pgtap_scope_operatore');
     IF v_utente IS NULL THEN
         RAISE EXCEPTION 'dbops.fn_pgtap_scope_operatore: nessun utente in sessione (app.current_user_id); prima script.fn_pgtap_set_contesto_operatore()';
     END IF;

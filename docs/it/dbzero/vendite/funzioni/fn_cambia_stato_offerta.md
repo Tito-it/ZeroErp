@@ -38,7 +38,7 @@ BEGIN
     -- Ritorna: offerta_id, stato_precedente, stato_nuovo
     --   (codice_interno).
     -- ==========================================================
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('vendite.fn_cambia_stato_offerta');
 
     -- 1. Parametri. La motivazione vuota o di soli spazi manca.
     IF p_offerta_id IS NULL OR p_offerta_id <= 0 THEN

@@ -30,7 +30,7 @@ BEGIN ATOMIC
              lrc.prezzo,
              (lrc.prezzo * ac.coeff_qta) AS importo_per_kit,
              lrc.attivo,
-             script.fn_scope_ef_whitelist_via_listino_versione((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, lrc.listino_versione_id) AS visibile,
+             script.fn_scope_ef_whitelist_via_listino_versione(script.fn_utente_di_sessione('vendite.fn_prezzi_legame_oltre_la_fine'::text), lrc.listino_versione_id) AS visibile,
                  CASE
                      WHEN (lrc.valido_dal <= fn_prezzi_legame_oltre_la_fine.p_valido_al) THEN 'CHIUDE'::text
                      WHEN s.iniziale THEN 'TOGLIE'::text

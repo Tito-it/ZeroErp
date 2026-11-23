@@ -1,0 +1,679 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite: le viste delle dashboard leggono l'utente di sessione dal BB.
+#   Brief: brief-db-revisione-ui (§3.6-sexies, giro 8; Q60 (a)).
+#
+# Il perche': vw_dash_fatturazione_commesse, vw_dash_commesse_respinte,
+#   vw_dash_competenza_attivita e vw_dash_competenza_errori convertivano
+#   app.current_user_id da se' per il perimetro degli emittenti
+#   (script.fn_get_emittenti_scope_sr_ids). Ora la lettura e' di
+#   script.fn_utente_di_sessione (20261123-16): assente o vuota resta NULL,
+#   un valore che non e' l'id di un utente da' E_SCRIPT_CHIAMATA_NON_VALIDA
+#   invece del 22P02.
+# Definizione dal vivo (dbdev, 2026-11-23); stesse colonne, stessa
+#   security_invoker: CREATE OR REPLACE VIEW, che tiene COMMENT, GRANT e le
+#   viste che le leggono (vw_dash_fatturazione_documenti,
+#   vw_dash_competenza_gruppi, vw_dash_competenza_mensile). La rollback
+#   riporta le definizioni di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261123-25-update-viste-dashboard-utente-di-sessione-mctit.yaml
+
+  - changeSet:
+      id: 20261123-25-update-viste-dashboard-utente-di-sessione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite: le quattro viste delle dashboard leggono app.current_user_id da
+        script.fn_utente_di_sessione. Brief: brief-db-revisione-ui (§3.6-sexies, Q60).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "5"
+            sql: >
+              SELECT (SELECT count(*) FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('script', 'fn_utente_di_sessione')))
+                   + (SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                       WHERE c.relkind = 'v' AND (n.nspname, c.relname) IN (('vendite', 'vw_dash_fatturazione_commesse'), ('vendite', 'vw_dash_commesse_respinte'), ('vendite', 'vw_dash_competenza_attivita'), ('vendite', 'vw_dash_competenza_errori')))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_commesse
+                WITH (security_invoker = on) AS
+               SELECT 'COMMESSA'::character varying AS area,
+                  ca.competenza_mese,
+                  co.id AS documento_id,
+                  (co.id)::text AS documento_uid,
+                  (co.codice)::text AS codice,
+                  NULL::bigint AS emittente_fiscale_id,
+                  co.emittente_soggetto_ruolo_id,
+                  sum((COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita)) AS valore_totale,
+                  COALESCE(sum((COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita)) FILTER (WHERE ((ca.stato_emissione)::text = 'EMESSA'::text)), (0)::numeric) AS valore_transitato,
+                  (count(*))::integer AS unita_totali,
+                  (count(*) FILTER (WHERE ((ca.stato_emissione)::text = 'EMESSA'::text)))::integer AS unita_transitate,
+                  (count(*) = count(*) FILTER (WHERE ((ca.stato_emissione)::text = 'EMESSA'::text))) AS is_transitato,
+                  ((sc.codice_interno)::text = 'ANNULLATA'::text) AS is_abortito,
+                  (
+                      CASE
+                          WHEN ((sc.codice_interno)::text = 'ANNULLATA'::text) THEN NULL::text
+                          WHEN (count(*) = count(*) FILTER (WHERE ((ca.stato_emissione)::text = 'EMESSA'::text))) THEN NULL::text
+                          WHEN (count(*) FILTER (WHERE (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text))) > 0) THEN 'ATTIVITA_NON_APPROVATA'::text
+                          ELSE 'ATTIVITA_NON_EMESSA'::text
+                      END)::character varying AS motivo_fermo,
+                  sc.codice_interno AS stato_codice_interno,
+                  sc.codice AS stato_codice,
+                  NULL::character varying AS fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.competenza_mese AS data_riferimento
+                 FROM ((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids(script.fn_utente_di_sessione('vendite.vw_dash_fatturazione_commesse')) AS sr_ids) escope)
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)))
+                GROUP BY co.id, co.codice, co.emittente_soggetto_ruolo_id, ca.competenza_mese, sc.codice_interno, sc.codice, s.ragione_sociale_completa;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_commesse_respinte
+                WITH (security_invoker = on) AS
+               WITH escope AS (
+                       SELECT script.fn_get_emittenti_scope_sr_ids(script.fn_utente_di_sessione('vendite.vw_dash_commesse_respinte')) AS sr_ids
+                      )
+               SELECT fl.competenza_mese,
+                  fl.id AS lotto_id,
+                  fl.codice AS lotto_codice,
+                  fl.stato_lotto,
+                  (((ll.meta -> 'context'::text) ->> 'commessa_id'::text))::bigint AS commessa_id,
+                  c.codice AS commessa_codice,
+                  ((ll.meta -> 'context'::text) ->> 'task'::text) AS task_code,
+                  (ll.meta ->> 'error_code'::text) AS error_code,
+                  ll.messaggio,
+                  (ll.meta ->> 'detail'::text) AS dettaglio,
+                  ll.data_ora AS respinta_il,
+                  fl.emittente_soggetto_ruolo_id,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                 FROM (((((vendite.fatturazione_lotti_log ll
+                   JOIN vendite.fatturazione_lotti fl ON ((fl.id = ll.lotto_id)))
+                   LEFT JOIN vendite.commesse c ON (((c.id)::text = ((ll.meta -> 'context'::text) ->> 'commessa_id'::text))))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = fl.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   CROSS JOIN escope)
+                WHERE ((ll.disabilitato IS FALSE) AND (ll.status = 'C'::bpchar) AND (((ll.meta -> 'context'::text) ->> 'commessa_id'::text) ~ '^[0-9]+$'::text) AND ((escope.sr_ids IS NULL) OR (fl.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))));
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita
+                WITH (security_invoker = on) AS
+               SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  (co.codice)::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  st.stadio,
+                  (COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita) AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN (af.id IS NULL) THEN NULL::boolean
+                          ELSE (script.fn_mese_di(script.fn_giorno_operativo(af.data_insert)) > ca.competenza_mese)
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                  (
+                      CASE
+                          WHEN (fr.id IS NULL) THEN NULL::numeric
+                          WHEN (COALESCE(fr.qta, (0)::numeric) = (0)::numeric) THEN (0)::numeric
+                          ELSE ((fr.imponibile_riga * af.quantita) / fr.qta)
+                      END)::numeric(18,6) AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) AS sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AS gruppo_key,
+                  sc.emittibile AS commessa_emittibile,
+                  sc.codice_interno AS commessa_stato_codice_interno,
+                  COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
+                  co.billing_account_id,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  reg.registro_id,
+                  rf.codice AS registro_codice,
+                  reg.politica_data_documento,
+                      CASE
+                          WHEN (reg.registro_id IS NOT NULL) THEN vendite.fn_calcola_data_documento(p_registro_id => reg.registro_id, p_competenza_mese => ca.competenza_mese, p_serie => reg.serie, p_data_dichiarata => NULL::date)
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  af.id AS attivita_fatturabile_id,
+                  COALESCE(af.lock_in_fatturazione, false) AS lock_in_fatturazione,
+                  af.stato_esecuzione,
+                  (
+                      CASE
+                          WHEN ((st.stadio)::text <> 'EMESSA_NON_FATTURATA'::text) THEN NULL::text
+                          WHEN (af.id IS NULL) THEN 'SENZA_ATTIVITA_FATTURABILE'::text
+                          WHEN (NOT COALESCE(af.lock_in_fatturazione, false)) THEN
+                          CASE
+                              WHEN (EXISTS ( SELECT 1
+                                 FROM vendite.vw_lotti_fase lfase
+                                WHERE ((lfase.lotto_id = fl.id) AND lfase.pre_fiscale))) THEN 'GIRO_IN_CORSO'::text
+                              ELSE 'RESIDUO'::text
+                          END
+                          WHEN ((af.stato_esecuzione)::text IS DISTINCT FROM ('COMPLETED'::character varying)::text) THEN 'GIRO_IN_CORSO'::text
+                          ELSE 'RESIDUO'::text
+                      END)::character varying AS motivo_non_fatturata,
+                  fl.id AS lotto_provenienza_id,
+                  fl.codice AS lotto_provenienza_codice,
+                  art.codice AS articolo_codice,
+                  art.descrizione AS articolo_descrizione,
+                  COALESCE(((cae.classe_emittibilita)::text = 'TRATTENUTA'::text), false) AS emissione_trattenuta,
+                      CASE
+                          WHEN ((cae.classe_emittibilita)::text = 'TRATTENUTA'::text) THEN cae.trattenuta_da_lotti
+                          ELSE NULL::bigint[]
+                      END AS emissione_trattenuta_da_lotti
+                 FROM (((((((((((((((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
+                   LEFT JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                   LEFT JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = co.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE (flf.fattura_id = f.id)
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON (true))
+                   LEFT JOIN LATERAL vendite.fn_resolve_registro_documento(p_billing_account_id_riga => co.billing_account_id, p_tipo_doc_fiscale_id => ca.tipo_doc_fiscale_id, p_natura_doc_id => ca.natura_doc_id) reg(ba_fatturazione_id, utility_id, emittente_soggetto_ruolo_id, registro_id, serie, politica_data_documento) ON ((af.fattura_riga_id IS NULL)))
+                   LEFT JOIN vendite.registri_fatturazione rf ON ((rf.id = reg.registro_id)))
+                   LEFT JOIN vendite.fatturazione_lotti fl ON ((fl.lock_batch_id = COALESCE(af.lock_batch_id, af.emit_batch_id))))
+                   LEFT JOIN catalogo.articoli art ON ((art.id = ca.articolo_id)))
+                   CROSS JOIN LATERAL ( SELECT (
+                              CASE
+                                  WHEN (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text)) THEN 'DA_APPROVARE'::text
+                                  WHEN ((ca.stato_emissione)::text <> 'EMESSA'::text) THEN 'DA_EMETTERE'::text
+                                  WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
+                                  ELSE 'FATTURATA'::text
+                              END)::character varying AS stadio) st)
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids(script.fn_utente_di_sessione('vendite.vw_dash_competenza_attivita')) AS sr_ids) escope)
+                   LEFT JOIN vendite.vw_commesse_attivita_emittibilita cae ON ((cae.commessa_attivita_id = ca.id)))
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_errori
+                WITH (security_invoker = on) AS
+               WITH escope AS (
+                       SELECT script.fn_get_emittenti_scope_sr_ids(script.fn_utente_di_sessione('vendite.vw_dash_competenza_errori')) AS sr_ids
+                      ), task_err AS (
+                       SELECT tr.lotto_id,
+                          tr.task_code,
+                          tr.tentativo,
+                          tr.error_code,
+                          tr.error_message,
+                          tr.started_at
+                         FROM vendite.fatturazione_lotti_task_runs tr
+                        WHERE (((tr.task_stato)::text = 'ERRORE'::text) AND (tr.attivo IS TRUE) AND (NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatturazione_lotti_task_runs tr2
+                                WHERE ((tr2.lotto_id = tr.lotto_id) AND (NOT (tr2.stato_doc_fiscale_id IS DISTINCT FROM tr.stato_doc_fiscale_id)) AND ((tr2.task_code)::text = (tr.task_code)::text) AND (tr2.tentativo > tr.tentativo) AND ((tr2.task_stato)::text = 'COMPLETATO'::text) AND (tr2.attivo IS TRUE))))))
+                      ), fatture_critiche AS (
+                       SELECT f.id,
+                          f.anno,
+                          f.serie,
+                          f.numero,
+                          f.data,
+                          f.emittente_soggetto_ruolo_id,
+                          ll.messaggio,
+                          ll.data_ora
+                         FROM (vendite.fatture f
+                           LEFT JOIN LATERAL ( SELECT fl.messaggio,
+                                  fl.data_ora
+                                 FROM vendite.fatture_log fl
+                                WHERE ((fl.fattura_id = f.id) AND (fl.disabilitato IS FALSE))
+                                ORDER BY fl.data_ora DESC
+                               LIMIT 1) ll ON (true))
+                        WHERE (f.critical IS TRUE)
+                      ), fatture_competenze AS (
+                       SELECT fc.id AS fattura_id,
+                          l.competenza_mese,
+                          lf.lotto_id
+                         FROM ((fatture_critiche fc
+                           JOIN vendite.fatturazione_lotti_fatture lf ON ((lf.fattura_id = fc.id)))
+                           JOIN vendite.fatturazione_lotti l ON ((l.id = lf.lotto_id)))
+                      UNION
+                       SELECT fc.id,
+                          af.competenza_mese,
+                          NULL::bigint AS lotto_id
+                         FROM ((fatture_critiche fc
+                           JOIN vendite.fatture_righe fr ON ((fr.fattura_id = fc.id)))
+                           JOIN vendite.attivita_fatturabili af ON ((af.fattura_riga_id = fr.id)))
+                        WHERE (NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatturazione_lotti_fatture lf2
+                                WHERE (lf2.fattura_id = fc.id))))
+                      UNION
+                       SELECT fc.id,
+                          script.fn_mese_di(fc.data) AS competenza_mese,
+                          NULL::bigint AS lotto_id
+                         FROM fatture_critiche fc
+                        WHERE ((NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatturazione_lotti_fatture lf3
+                                WHERE (lf3.fattura_id = fc.id)))) AND (NOT (EXISTS ( SELECT 1
+                                 FROM (vendite.fatture_righe fr2
+                                   JOIN vendite.attivita_fatturabili af2 ON ((af2.fattura_riga_id = fr2.id)))
+                                WHERE (fr2.fattura_id = fc.id)))))
+                      ), eventi AS (
+                       SELECT 'TASK_ERRORE'::character varying AS tipo_evento,
+                          l.competenza_mese,
+                          l.id AS lotto_id,
+                          l.codice AS lotto_codice,
+                          l.stato_lotto,
+                          NULL::bigint AS fattura_id,
+                          NULL::smallint AS fattura_anno,
+                          NULL::character varying AS fattura_serie,
+                          NULL::bigint AS fattura_numero,
+                          te.task_code,
+                          te.error_code,
+                          te.error_message AS messaggio,
+                          te.started_at AS data_evento,
+                          l.emittente_soggetto_ruolo_id
+                         FROM ((task_err te
+                           JOIN vendite.fatturazione_lotti l ON ((l.id = te.lotto_id)))
+                           CROSS JOIN escope)
+                        WHERE ((escope.sr_ids IS NULL) OR (l.emittente_soggetto_ruolo_id = ANY (escope.sr_ids)))
+                      UNION ALL
+                       SELECT 'FATTURA_CRITICA'::character varying AS tipo_evento,
+                          fk.competenza_mese,
+                          fk.lotto_id,
+                          l2.codice AS lotto_codice,
+                          l2.stato_lotto,
+                          fc.id AS fattura_id,
+                          fc.anno AS fattura_anno,
+                          fc.serie AS fattura_serie,
+                          fc.numero AS fattura_numero,
+                          NULL::character varying AS task_code,
+                          NULL::character varying AS error_code,
+                          fc.messaggio,
+                          fc.data_ora AS data_evento,
+                          fc.emittente_soggetto_ruolo_id
+                         FROM (((fatture_critiche fc
+                           JOIN fatture_competenze fk ON ((fk.fattura_id = fc.id)))
+                           LEFT JOIN vendite.fatturazione_lotti l2 ON ((l2.id = fk.lotto_id)))
+                           CROSS JOIN escope)
+                        WHERE ((escope.sr_ids IS NULL) OR (fc.emittente_soggetto_ruolo_id = ANY (escope.sr_ids)))
+                      )
+               SELECT e.tipo_evento,
+                  e.competenza_mese,
+                  e.lotto_id,
+                  e.lotto_codice,
+                  e.stato_lotto,
+                  e.fattura_id,
+                  e.fattura_anno,
+                  e.fattura_serie,
+                  e.fattura_numero,
+                  e.task_code,
+                  e.error_code,
+                  e.messaggio,
+                  e.data_evento,
+                  e.emittente_soggetto_ruolo_id,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  COALESCE(cf.commesse, '[]'::jsonb) AS commesse_fallite,
+                  COALESCE(cf.n, 0) AS n_commesse_fallite
+                 FROM (((eventi e
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = e.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT jsonb_agg(jsonb_build_object('commessa_id', (((ll.meta -> 'context'::text) ->> 'commessa_id'::text))::bigint, 'commessa_codice', c.codice, 'error_code', (ll.meta ->> 'error_code'::text), 'messaggio', ll.messaggio, 'dettaglio', (ll.meta ->> 'detail'::text)) ORDER BY (((ll.meta -> 'context'::text) ->> 'commessa_id'::text))::bigint) AS commesse,
+                          (count(*))::integer AS n
+                         FROM (vendite.fatturazione_lotti_log ll
+                           LEFT JOIN vendite.commesse c ON ((c.id = (((ll.meta -> 'context'::text) ->> 'commessa_id'::text))::bigint)))
+                        WHERE (((e.tipo_evento)::text = 'TASK_ERRORE'::text) AND (ll.lotto_id = e.lotto_id) AND (ll.disabilitato IS FALSE) AND (ll.status = 'C'::bpchar) AND (((ll.meta -> 'context'::text) ->> 'commessa_id'::text) ~ '^[0-9]+$'::text) AND (((ll.meta -> 'context'::text) ->> 'task'::text) = (e.task_code)::text) AND (ll.data_ora >= e.data_evento))) cf ON (true));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_commesse
+                WITH (security_invoker = on) AS
+               SELECT 'COMMESSA'::character varying AS area,
+                  ca.competenza_mese,
+                  co.id AS documento_id,
+                  (co.id)::text AS documento_uid,
+                  (co.codice)::text AS codice,
+                  NULL::bigint AS emittente_fiscale_id,
+                  co.emittente_soggetto_ruolo_id,
+                  sum((COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita)) AS valore_totale,
+                  COALESCE(sum((COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita)) FILTER (WHERE ((ca.stato_emissione)::text = 'EMESSA'::text)), (0)::numeric) AS valore_transitato,
+                  (count(*))::integer AS unita_totali,
+                  (count(*) FILTER (WHERE ((ca.stato_emissione)::text = 'EMESSA'::text)))::integer AS unita_transitate,
+                  (count(*) = count(*) FILTER (WHERE ((ca.stato_emissione)::text = 'EMESSA'::text))) AS is_transitato,
+                  ((sc.codice_interno)::text = 'ANNULLATA'::text) AS is_abortito,
+                  (
+                      CASE
+                          WHEN ((sc.codice_interno)::text = 'ANNULLATA'::text) THEN NULL::text
+                          WHEN (count(*) = count(*) FILTER (WHERE ((ca.stato_emissione)::text = 'EMESSA'::text))) THEN NULL::text
+                          WHEN (count(*) FILTER (WHERE (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text))) > 0) THEN 'ATTIVITA_NON_APPROVATA'::text
+                          ELSE 'ATTIVITA_NON_EMESSA'::text
+                      END)::character varying AS motivo_fermo,
+                  sc.codice_interno AS stato_codice_interno,
+                  sc.codice AS stato_codice,
+                  NULL::character varying AS fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.competenza_mese AS data_riferimento
+                 FROM ((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)))
+                GROUP BY co.id, co.codice, co.emittente_soggetto_ruolo_id, ca.competenza_mese, sc.codice_interno, sc.codice, s.ragione_sociale_completa;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_commesse_respinte
+                WITH (security_invoker = on) AS
+               WITH escope AS (
+                       SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids
+                      )
+               SELECT fl.competenza_mese,
+                  fl.id AS lotto_id,
+                  fl.codice AS lotto_codice,
+                  fl.stato_lotto,
+                  (((ll.meta -> 'context'::text) ->> 'commessa_id'::text))::bigint AS commessa_id,
+                  c.codice AS commessa_codice,
+                  ((ll.meta -> 'context'::text) ->> 'task'::text) AS task_code,
+                  (ll.meta ->> 'error_code'::text) AS error_code,
+                  ll.messaggio,
+                  (ll.meta ->> 'detail'::text) AS dettaglio,
+                  ll.data_ora AS respinta_il,
+                  fl.emittente_soggetto_ruolo_id,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                 FROM (((((vendite.fatturazione_lotti_log ll
+                   JOIN vendite.fatturazione_lotti fl ON ((fl.id = ll.lotto_id)))
+                   LEFT JOIN vendite.commesse c ON (((c.id)::text = ((ll.meta -> 'context'::text) ->> 'commessa_id'::text))))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = fl.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   CROSS JOIN escope)
+                WHERE ((ll.disabilitato IS FALSE) AND (ll.status = 'C'::bpchar) AND (((ll.meta -> 'context'::text) ->> 'commessa_id'::text) ~ '^[0-9]+$'::text) AND ((escope.sr_ids IS NULL) OR (fl.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))));
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita
+                WITH (security_invoker = on) AS
+               SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  (co.codice)::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  st.stadio,
+                  (COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita) AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN (af.id IS NULL) THEN NULL::boolean
+                          ELSE (script.fn_mese_di(script.fn_giorno_operativo(af.data_insert)) > ca.competenza_mese)
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                  (
+                      CASE
+                          WHEN (fr.id IS NULL) THEN NULL::numeric
+                          WHEN (COALESCE(fr.qta, (0)::numeric) = (0)::numeric) THEN (0)::numeric
+                          ELSE ((fr.imponibile_riga * af.quantita) / fr.qta)
+                      END)::numeric(18,6) AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  vendite.fn_documento_uid_di_attivita(ca.sorgente_tipo_id, ca.segment_key) AS sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_gruppo_fatturabile_key_di_attivita(ca.sorgente_tipo_id, ca.segment_key, ca.commessa_id) AS gruppo_key,
+                  sc.emittibile AS commessa_emittibile,
+                  sc.codice_interno AS commessa_stato_codice_interno,
+                  COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
+                  co.billing_account_id,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  reg.registro_id,
+                  rf.codice AS registro_codice,
+                  reg.politica_data_documento,
+                      CASE
+                          WHEN (reg.registro_id IS NOT NULL) THEN vendite.fn_calcola_data_documento(p_registro_id => reg.registro_id, p_competenza_mese => ca.competenza_mese, p_serie => reg.serie, p_data_dichiarata => NULL::date)
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  af.id AS attivita_fatturabile_id,
+                  COALESCE(af.lock_in_fatturazione, false) AS lock_in_fatturazione,
+                  af.stato_esecuzione,
+                  (
+                      CASE
+                          WHEN ((st.stadio)::text <> 'EMESSA_NON_FATTURATA'::text) THEN NULL::text
+                          WHEN (af.id IS NULL) THEN 'SENZA_ATTIVITA_FATTURABILE'::text
+                          WHEN (NOT COALESCE(af.lock_in_fatturazione, false)) THEN
+                          CASE
+                              WHEN (EXISTS ( SELECT 1
+                                 FROM vendite.vw_lotti_fase lfase
+                                WHERE ((lfase.lotto_id = fl.id) AND lfase.pre_fiscale))) THEN 'GIRO_IN_CORSO'::text
+                              ELSE 'RESIDUO'::text
+                          END
+                          WHEN ((af.stato_esecuzione)::text IS DISTINCT FROM ('COMPLETED'::character varying)::text) THEN 'GIRO_IN_CORSO'::text
+                          ELSE 'RESIDUO'::text
+                      END)::character varying AS motivo_non_fatturata,
+                  fl.id AS lotto_provenienza_id,
+                  fl.codice AS lotto_provenienza_codice,
+                  art.codice AS articolo_codice,
+                  art.descrizione AS articolo_descrizione,
+                  COALESCE(((cae.classe_emittibilita)::text = 'TRATTENUTA'::text), false) AS emissione_trattenuta,
+                      CASE
+                          WHEN ((cae.classe_emittibilita)::text = 'TRATTENUTA'::text) THEN cae.trattenuta_da_lotti
+                          ELSE NULL::bigint[]
+                      END AS emissione_trattenuta_da_lotti
+                 FROM (((((((((((((((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
+                   LEFT JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                   LEFT JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = co.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE (flf.fattura_id = f.id)
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON (true))
+                   LEFT JOIN LATERAL vendite.fn_resolve_registro_documento(p_billing_account_id_riga => co.billing_account_id, p_tipo_doc_fiscale_id => ca.tipo_doc_fiscale_id, p_natura_doc_id => ca.natura_doc_id) reg(ba_fatturazione_id, utility_id, emittente_soggetto_ruolo_id, registro_id, serie, politica_data_documento) ON ((af.fattura_riga_id IS NULL)))
+                   LEFT JOIN vendite.registri_fatturazione rf ON ((rf.id = reg.registro_id)))
+                   LEFT JOIN vendite.fatturazione_lotti fl ON ((fl.lock_batch_id = COALESCE(af.lock_batch_id, af.emit_batch_id))))
+                   LEFT JOIN catalogo.articoli art ON ((art.id = ca.articolo_id)))
+                   CROSS JOIN LATERAL ( SELECT (
+                              CASE
+                                  WHEN (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text)) THEN 'DA_APPROVARE'::text
+                                  WHEN ((ca.stato_emissione)::text <> 'EMESSA'::text) THEN 'DA_EMETTERE'::text
+                                  WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
+                                  ELSE 'FATTURATA'::text
+                              END)::character varying AS stadio) st)
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                   LEFT JOIN vendite.vw_commesse_attivita_emittibilita cae ON ((cae.commessa_attivita_id = ca.id)))
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_errori
+                WITH (security_invoker = on) AS
+               WITH escope AS (
+                       SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids
+                      ), task_err AS (
+                       SELECT tr.lotto_id,
+                          tr.task_code,
+                          tr.tentativo,
+                          tr.error_code,
+                          tr.error_message,
+                          tr.started_at
+                         FROM vendite.fatturazione_lotti_task_runs tr
+                        WHERE (((tr.task_stato)::text = 'ERRORE'::text) AND (tr.attivo IS TRUE) AND (NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatturazione_lotti_task_runs tr2
+                                WHERE ((tr2.lotto_id = tr.lotto_id) AND (NOT (tr2.stato_doc_fiscale_id IS DISTINCT FROM tr.stato_doc_fiscale_id)) AND ((tr2.task_code)::text = (tr.task_code)::text) AND (tr2.tentativo > tr.tentativo) AND ((tr2.task_stato)::text = 'COMPLETATO'::text) AND (tr2.attivo IS TRUE))))))
+                      ), fatture_critiche AS (
+                       SELECT f.id,
+                          f.anno,
+                          f.serie,
+                          f.numero,
+                          f.data,
+                          f.emittente_soggetto_ruolo_id,
+                          ll.messaggio,
+                          ll.data_ora
+                         FROM (vendite.fatture f
+                           LEFT JOIN LATERAL ( SELECT fl.messaggio,
+                                  fl.data_ora
+                                 FROM vendite.fatture_log fl
+                                WHERE ((fl.fattura_id = f.id) AND (fl.disabilitato IS FALSE))
+                                ORDER BY fl.data_ora DESC
+                               LIMIT 1) ll ON (true))
+                        WHERE (f.critical IS TRUE)
+                      ), fatture_competenze AS (
+                       SELECT fc.id AS fattura_id,
+                          l.competenza_mese,
+                          lf.lotto_id
+                         FROM ((fatture_critiche fc
+                           JOIN vendite.fatturazione_lotti_fatture lf ON ((lf.fattura_id = fc.id)))
+                           JOIN vendite.fatturazione_lotti l ON ((l.id = lf.lotto_id)))
+                      UNION
+                       SELECT fc.id,
+                          af.competenza_mese,
+                          NULL::bigint AS lotto_id
+                         FROM ((fatture_critiche fc
+                           JOIN vendite.fatture_righe fr ON ((fr.fattura_id = fc.id)))
+                           JOIN vendite.attivita_fatturabili af ON ((af.fattura_riga_id = fr.id)))
+                        WHERE (NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatturazione_lotti_fatture lf2
+                                WHERE (lf2.fattura_id = fc.id))))
+                      UNION
+                       SELECT fc.id,
+                          script.fn_mese_di(fc.data) AS competenza_mese,
+                          NULL::bigint AS lotto_id
+                         FROM fatture_critiche fc
+                        WHERE ((NOT (EXISTS ( SELECT 1
+                                 FROM vendite.fatturazione_lotti_fatture lf3
+                                WHERE (lf3.fattura_id = fc.id)))) AND (NOT (EXISTS ( SELECT 1
+                                 FROM (vendite.fatture_righe fr2
+                                   JOIN vendite.attivita_fatturabili af2 ON ((af2.fattura_riga_id = fr2.id)))
+                                WHERE (fr2.fattura_id = fc.id)))))
+                      ), eventi AS (
+                       SELECT 'TASK_ERRORE'::character varying AS tipo_evento,
+                          l.competenza_mese,
+                          l.id AS lotto_id,
+                          l.codice AS lotto_codice,
+                          l.stato_lotto,
+                          NULL::bigint AS fattura_id,
+                          NULL::smallint AS fattura_anno,
+                          NULL::character varying AS fattura_serie,
+                          NULL::bigint AS fattura_numero,
+                          te.task_code,
+                          te.error_code,
+                          te.error_message AS messaggio,
+                          te.started_at AS data_evento,
+                          l.emittente_soggetto_ruolo_id
+                         FROM ((task_err te
+                           JOIN vendite.fatturazione_lotti l ON ((l.id = te.lotto_id)))
+                           CROSS JOIN escope)
+                        WHERE ((escope.sr_ids IS NULL) OR (l.emittente_soggetto_ruolo_id = ANY (escope.sr_ids)))
+                      UNION ALL
+                       SELECT 'FATTURA_CRITICA'::character varying AS tipo_evento,
+                          fk.competenza_mese,
+                          fk.lotto_id,
+                          l2.codice AS lotto_codice,
+                          l2.stato_lotto,
+                          fc.id AS fattura_id,
+                          fc.anno AS fattura_anno,
+                          fc.serie AS fattura_serie,
+                          fc.numero AS fattura_numero,
+                          NULL::character varying AS task_code,
+                          NULL::character varying AS error_code,
+                          fc.messaggio,
+                          fc.data_ora AS data_evento,
+                          fc.emittente_soggetto_ruolo_id
+                         FROM (((fatture_critiche fc
+                           JOIN fatture_competenze fk ON ((fk.fattura_id = fc.id)))
+                           LEFT JOIN vendite.fatturazione_lotti l2 ON ((l2.id = fk.lotto_id)))
+                           CROSS JOIN escope)
+                        WHERE ((escope.sr_ids IS NULL) OR (fc.emittente_soggetto_ruolo_id = ANY (escope.sr_ids)))
+                      )
+               SELECT e.tipo_evento,
+                  e.competenza_mese,
+                  e.lotto_id,
+                  e.lotto_codice,
+                  e.stato_lotto,
+                  e.fattura_id,
+                  e.fattura_anno,
+                  e.fattura_serie,
+                  e.fattura_numero,
+                  e.task_code,
+                  e.error_code,
+                  e.messaggio,
+                  e.data_evento,
+                  e.emittente_soggetto_ruolo_id,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  COALESCE(cf.commesse, '[]'::jsonb) AS commesse_fallite,
+                  COALESCE(cf.n, 0) AS n_commesse_fallite
+                 FROM (((eventi e
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = e.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT jsonb_agg(jsonb_build_object('commessa_id', (((ll.meta -> 'context'::text) ->> 'commessa_id'::text))::bigint, 'commessa_codice', c.codice, 'error_code', (ll.meta ->> 'error_code'::text), 'messaggio', ll.messaggio, 'dettaglio', (ll.meta ->> 'detail'::text)) ORDER BY (((ll.meta -> 'context'::text) ->> 'commessa_id'::text))::bigint) AS commesse,
+                          (count(*))::integer AS n
+                         FROM (vendite.fatturazione_lotti_log ll
+                           LEFT JOIN vendite.commesse c ON ((c.id = (((ll.meta -> 'context'::text) ->> 'commessa_id'::text))::bigint)))
+                        WHERE (((e.tipo_evento)::text = 'TASK_ERRORE'::text) AND (ll.lotto_id = e.lotto_id) AND (ll.disabilitato IS FALSE) AND (ll.status = 'C'::bpchar) AND (((ll.meta -> 'context'::text) ->> 'commessa_id'::text) ~ '^[0-9]+$'::text) AND (((ll.meta -> 'context'::text) ->> 'task'::text) = (e.task_code)::text) AND (ll.data_ora >= e.data_evento))) cf ON (true));

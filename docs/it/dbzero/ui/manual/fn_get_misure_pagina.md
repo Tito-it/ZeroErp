@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `ui.fn_get_misure_pagina`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -36,9 +36,7 @@ opzioni del selettore e la misura con cui partono.
 * **misure** — le misure del catalogo, in ordine crescente;
 * **default_per_uso** — un oggetto con una chiave per ogni uso (`COMPATTA`, `PAGINA`) e il suo default.
   Gli usi vengono dall'elenco degli usi del database, non sono scritti nella funzione: un uso nuovo
-  compare qui senza toccarla;
-* **default_compatta** e **default_pagina** — gli stessi due default, con i nomi di prima. Restano finché
-  il backend non legge `default_per_uso`, poi escono.
+  compare qui senza toccarla.
 
 ---
 
@@ -61,9 +59,9 @@ l'errore dice un catalogo rotto, non un caso da gestire.
 
 ### Test
 
-* `db/pgtap/ui/test-misure-pagina-v1.sql` — le misure in ordine, le stesse del catalogo, e i due default
-  di prima uguali a quelli del building block; `default_per_uso` con una chiave per ogni uso, il default
-  del building block, e il corpo che legge l'elenco degli usi.
+* `db/pgtap/ui/test-misure-pagina-v1.sql` — le misure in ordine, le stesse del catalogo, e i default
+  uguali a quelli del building block; `default_per_uso` con una chiave per ogni uso, una risposta senza
+  altre chiavi, e il corpo che legge l'elenco degli usi.
 
 ---
 
@@ -73,6 +71,7 @@ l'errore dice un catalogo rotto, non un caso da gestire.
   frontend.
 * 2026-11-22 — i default per uso dall'elenco degli usi (`default_per_uso`); le due chiavi di prima
   restano finché il backend non passa.
+* 2026-11-23 — escono `default_compatta` e `default_pagina`: il frontend legge `default_per_uso`.
 
 ---
 

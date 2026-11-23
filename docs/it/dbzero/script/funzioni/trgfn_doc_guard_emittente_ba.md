@@ -113,7 +113,7 @@ BEGIN
                       THEN (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
                              WHERE ef.id = v_atteso)
                       ELSE v_atteso END;
-  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+  v_utente := script.fn_utente_di_sessione('script.trgfn_doc_guard_emittente_ba');
   SELECT ba.codice INTO v_ba_codice
     FROM anagrafiche.billing_account ba
    WHERE ba.id = v_ba

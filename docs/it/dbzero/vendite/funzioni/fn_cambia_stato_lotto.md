@@ -33,7 +33,7 @@ BEGIN
     -- rev 2026-10-27 (20261027-08, brief-modello-documento-
     --   vendita §15): nasce.
     -- ==========================================================
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('vendite.fn_cambia_stato_lotto');
 
     -- 1. Parametri.
     IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN

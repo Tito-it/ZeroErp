@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_guard_super_admin()`
 
+> **Ultimo aggiornamento**: 23 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > **La regola che applica:** [script.fn_is_super_admin](/dbzero/script/funzioni/fn_is_super_admin) — la stessa del backend
@@ -37,7 +39,7 @@ L'utente arriva come parametro; il verbo lo legge dalla sessione:
 
 ```sql
 PERFORM script.fn_guard_super_admin(
-    NULLIF(current_setting('app.current_user_id', true), '')::integer);
+    script.fn_utente_di_sessione('schema.fn_verbo'));
 ```
 
 ---

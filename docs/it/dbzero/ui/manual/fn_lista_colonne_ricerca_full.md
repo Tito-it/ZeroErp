@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `ui.fn_lista_colonne_ricerca_full`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,6 +13,7 @@
 > * [ui.fn_lista_da_codice](/dbzero/ui/funzioni/fn_lista_da_codice) — la lista dal codice, e il rifiuto se manca
 > * [ui.fn_lista_colonne_livello](/dbzero/ui/funzioni/fn_lista_colonne_livello) — il livello di ogni colonna per l'utente
 > * [ui.fn_veste_corrente](/dbzero/ui/funzioni/fn_veste_corrente) — la veste della sessione
+> * [script.fn_utente_di_sessione](/dbzero/script/funzioni/fn_utente_di_sessione) — l'utente della sessione
 >
 > Guide:
 >
@@ -46,12 +47,13 @@ costruzione. L'ordine è quello di partenza delle colonne, poi il codice.
 
 ### Utente e veste vengono dalla sessione
 
-Non si passano: l'utente è quello del contesto di sessione, la veste quella di
+Non si passano: l'utente è quello di
+[fn_utente_di_sessione](/dbzero/script/funzioni/fn_utente_di_sessione), la veste quella di
 [fn_veste_corrente](/dbzero/ui/funzioni/fn_veste_corrente), come li imposta l'autenticazione. Senza
 utente in sessione (un comando, un job) nessun permesso si applica: le colonne sensibili escono, le
-altre restano. Un utente di sessione che non è un numero intero è una chiamata fuori contesto, e la
-lettura si ferma con `E_UI_CHIAMATA_NON_VALIDA`: lo stesso codice con cui il backend rifiuta un
-contesto vuoto o di un altro utente.
+altre restano. Un utente di sessione che non è l'id di un utente è una chiamata fuori contesto, e la
+lettura si ferma con `E_SCRIPT_CHIAMATA_NON_VALIDA`, come in ogni funzione del database che legge
+l'utente.
 
 La configurazione della schermata invece riceve l'utente come argomento. Che i due coincidano lo
 verifica il backend, che rifiuta la chiamata se il contesto di sessione è vuoto o di un altro utente
@@ -70,7 +72,8 @@ verifica il backend, che rifiuta la chiamata se il contesto di sessione è vuoto
 ### Codici errore
 
 * `E_UI_LISTA_NON_TROVATA` — lista assente o spenta, da `fn_lista_da_codice`.
-* `E_UI_CHIAMATA_NON_VALIDA` — l'utente di sessione non è un numero intero.
+* `E_SCRIPT_CHIAMATA_NON_VALIDA` — l'utente di sessione non è l'id di un utente (da
+  `fn_utente_di_sessione`).
 
 ---
 
@@ -93,6 +96,8 @@ verifica il backend, che rifiuta la chiamata se il contesto di sessione è vuoto
 * 2026-09-25 — la lista dal codice la legge `fn_lista_da_codice`.
 * 2026-11-22 — un utente di sessione che non è un intero dà `E_UI_CHIAMATA_NON_VALIDA`: prima
   l'errore grezzo del cast.
+* 2026-11-23 — l'utente lo legge `script.fn_utente_di_sessione`, la sede di tutto il database: il
+  rifiuto diventa `E_SCRIPT_CHIAMATA_NON_VALIDA`.
 
 ---
 

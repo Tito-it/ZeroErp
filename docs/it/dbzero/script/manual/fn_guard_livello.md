@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_guard_livello()`
 
+> **Ultimo aggiornamento**: 23 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > **La regola che applica:** [script.fn_resolve_livello_oggetto](/dbzero/script/funzioni/fn_resolve_livello_oggetto) — la stessa del backend
@@ -46,7 +48,7 @@ chi è bloccato.
 
 ```sql
 PERFORM script.fn_guard_livello(
-    NULLIF(current_setting('app.current_user_id', true), '')::integer,
+    script.fn_utente_di_sessione('schema.fn_verbo'),
     'magazzino', 'causali', 'TUTTO');
 ```
 

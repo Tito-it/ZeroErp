@@ -41,7 +41,7 @@ BEGIN
     --   Le colonne ammesse: catalogo.fn_articolo_colonne_struttura().
     -- =========================================================
     PERFORM script.fn_guard_super_admin(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer);
+        script.fn_utente_di_sessione('catalogo.fn_articolo_correggi_struttura'));
 
     IF p_campi IS NULL OR jsonb_typeof(p_campi) <> 'object' OR p_campi = '{}'::jsonb THEN
         PERFORM script.fn_log_and_raise_error(

@@ -1,0 +1,2403 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script: i lettori di app.current_user_id passano a script.fn_utente_di_sessione.
+#   Brief: brief-db-revisione-ui (§3.6-sexies, giro 8; Q60 (a)).
+#
+# Il perche': ognuna convertiva la GUC da se',
+#   NULLIF(current_setting('app.current_user_id', true), '')::integer, e un
+#   valore che non e' un intero dava il 22P02 grezzo. Ora la legge il BB
+#   (20261123-16): assente o vuota resta NULL, come prima; un valore che non
+#   e' l'id di un utente da' E_SCRIPT_CHIAMATA_NON_VALIDA, col nome della
+#   funzione che legge.
+# Funzioni: fn_blocca_credenziale, fn_sblocca_credenziale,
+#   fn_elimina_credenziale, fn_imposta_totp_obbligatorio,
+#   fn_totp_conferma_device, fn_totp_disabilita_device, fn_totp_registra_device,
+#   fn_totp_rigenera_recovery, fn_get_parameter_di_sessione,
+#   fn_doc_azioni_permesse, fn_get_ba_emittente_sr_id,
+#   trgfn_default_emittente_fiscale, trgfn_doc_guard_emittente_ba,
+#   trgfn_guard_emittente_scope.
+# Testata ri-ancorata dove era nuda (linee-guida §5g): i sei p_auth_user_id
+#   senza ragione la prendono (django.auth_user.id, che non si ancora);
+#   p_testata e p_stato_da_id di fn_doc_azioni_permesse, polimorfi, la loro.
+# Cambia solo la lettura. Corpo dal vivo (dbdev, 2026-11-23); firma, RETURNS e
+#   attributi dall'ultimo changeSet che ha ancora i %TYPE. Firma, volatilita',
+#   sicurezza, proprietario e GRANT invariati: CREATE OR REPLACE. La rollback
+#   riporta i corpi di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261123-18-update-lettori-utente-di-sessione-script-mctit.yaml
+
+  - changeSet:
+      id: 20261123-18-update-lettori-utente-di-sessione-script
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script: le funzioni che leggono app.current_user_id passano a script.fn_utente_di_sessione invece di
+        convertire la GUC da se'. Brief: brief-db-revisione-ui (§3.6-sexies, Q60).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "15"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('script', 'fn_utente_di_sessione'), ('script', 'fn_blocca_credenziale'), ('script', 'fn_sblocca_credenziale'), ('script', 'fn_elimina_credenziale'), ('script', 'fn_imposta_totp_obbligatorio'), ('script', 'fn_totp_conferma_device'), ('script', 'fn_totp_disabilita_device'), ('script', 'fn_totp_registra_device'), ('script', 'fn_totp_rigenera_recovery'), ('script', 'fn_get_parameter_di_sessione'), ('script', 'fn_doc_azioni_permesse'), ('script', 'fn_get_ba_emittente_sr_id'), ('script', 'trgfn_default_emittente_fiscale'), ('script', 'trgfn_doc_guard_emittente_ba'), ('script', 'trgfn_guard_emittente_scope'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_blocca_credenziale(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer,
+                  -- Firma invariata (text, come 20260925-14): un tipo diverso qui
+                  -- creerebbe un secondo overload invece di sostituire il verbo.
+                  p_motivo       text
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: bloccare una credenziale su tutte le porte, per decisione di un
+              --   SUPER_ADMIN. Non scade; lo toglie solo script.fn_sblocca_credenziale.
+              DECLARE
+                  v_utente integer;
+                  -- Nudo: l'array dei motivi di fn_check_credenziale_bloccabile.
+                  v_motivi jsonb;
+              BEGIN
+                  -- Prima riga: chi agisce dev'essere SUPER_ADMIN (D-B1). Anche dal
+                  -- server: il blocco ha sempre un autore (chk_credenziali_blocco).
+                  v_utente := script.fn_utente_di_sessione('script.fn_blocca_credenziale');
+                  PERFORM script.fn_guard_super_admin(v_utente);
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_blocca_credenziale', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_auth_user_id', 'valore', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_blocca_credenziale',
+                                         'credenziale assente o non valida']);
+                  END IF;
+
+                  IF p_motivo IS NULL OR btrim(p_motivo) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_blocca_credenziale', 'E_CREDENZIALE_MOTIVO_OBBLIGATORIO',
+                          jsonb_build_object('campo', 'motivo', 'auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM django.auth_user au WHERE au.id = p_auth_user_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_blocca_credenziale', 'E_CREDENZIALE_NON_TROVATA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- La regola sta nella check: qui la si chiama, non la si riscrive
+                  -- (linee-guida-sql §12.5.2).
+                  v_motivi := script.fn_check_credenziale_bloccabile(p_auth_user_id);
+
+                  -- D-1: dal server una credenziale di sistema si blocca, ed e'
+                  -- l'uscita d'emergenza (una chiave rubata). Si toglie SOLO quel
+                  -- motivo, conservando l'ordine degli altri.
+                  IF dbops.fn_sessione_del_migratore() THEN
+                      SELECT COALESCE(jsonb_agg(m.motivo ORDER BY m.pos), '[]'::jsonb)
+                        INTO v_motivi
+                        FROM jsonb_array_elements(v_motivi) WITH ORDINALITY AS m(motivo, pos)
+                       WHERE m.motivo ->> 'reason' <> 'CREDENZIALE_DI_SISTEMA';
+                  END IF;
+
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'database', 'script.fn_blocca_credenziale', v_motivi,
+                      p_context_extra => jsonb_build_object('auth_user_id', p_auth_user_id,
+                                                            'chi_agisce',   v_utente));
+
+                  INSERT INTO config.credenziali AS c
+                         (auth_user_id, bloccata_at, bloccata_da, motivo_blocco)
+                  VALUES (p_auth_user_id, now(), v_utente, btrim(p_motivo))
+                  ON CONFLICT (auth_user_id) DO UPDATE
+                     SET bloccata_at   = EXCLUDED.bloccata_at,
+                         bloccata_da   = EXCLUDED.bloccata_da,
+                         motivo_blocco = EXCLUDED.motivo_blocco;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_sblocca_credenziale(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: togliere il blocco dell'admin da una credenziale, per decisione
+              --   di un SUPER_ADMIN. Non tocca i tentativi.
+              DECLARE
+                  v_utente integer;
+              BEGIN
+                  -- Prima riga: chi agisce dev'essere SUPER_ADMIN (D-B1).
+                  v_utente := script.fn_utente_di_sessione('script.fn_sblocca_credenziale');
+                  PERFORM script.fn_guard_super_admin(v_utente);
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_sblocca_credenziale', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_auth_user_id', 'valore', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_sblocca_credenziale',
+                                         'credenziale assente o non valida']);
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM django.auth_user au WHERE au.id = p_auth_user_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_sblocca_credenziale', 'E_CREDENZIALE_NON_TROVATA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  UPDATE config.credenziali c
+                     SET bloccata_at   = NULL,
+                         bloccata_da   = NULL,
+                         motivo_blocco = NULL
+                   WHERE c.auth_user_id = p_auth_user_id
+                     AND c.bloccata_at IS NOT NULL;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_elimina_credenziale(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo: eliminare una credenziale che non ha mai avuto una veste
+              --   ne' lasciato storia, per decisione di un SUPER_ADMIN, e
+              --   lasciarne traccia.
+              DECLARE
+                  v_utente   config.credenziali_eliminate.eliminata_da%TYPE;
+                  -- Nudi: colonne di django.auth_user, niente %TYPE su django.*.
+                  v_username text;
+                  v_email    text;
+                  -- Nudo: l'array dei motivi di fn_check_credenziale_eliminabile.
+                  v_motivi   jsonb;
+              BEGIN
+                  -- Prima riga: chi agisce dev'essere SUPER_ADMIN (D-3).
+                  v_utente := script.fn_utente_di_sessione('script.fn_elimina_credenziale');
+                  PERFORM script.fn_guard_super_admin(v_utente);
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_elimina_credenziale', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_auth_user_id', 'valore', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_elimina_credenziale',
+                                         'credenziale assente o non valida']);
+                  END IF;
+
+                  -- Il lock PRIMA della check: una veste che nasce adesso o e'
+                  -- gia' scritta, o aspetta questa transazione (vedi testata).
+                  SELECT au.username, au.email
+                    INTO v_username, v_email
+                    FROM django.auth_user au
+                   WHERE au.id = p_auth_user_id
+                     FOR UPDATE;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_elimina_credenziale', 'E_CREDENZIALE_NON_TROVATA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- La regola sta nella check: qui la si chiama, non la si riscrive
+                  -- (linee-guida-sql §12.5.2).
+                  v_motivi := script.fn_check_credenziale_eliminabile(p_auth_user_id);
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'database', 'script.fn_elimina_credenziale', v_motivi,
+                      p_context_extra => jsonb_build_object('auth_user_id', p_auth_user_id,
+                                                            'chi_agisce',   v_utente));
+
+                  -- La traccia: la riga di django.auth_user sta per sparire.
+                  INSERT INTO config.credenziali_eliminate
+                         (auth_user_id, username, email, eliminata_da)
+                  VALUES (p_auth_user_id, v_username, v_email, v_utente);
+
+                  BEGIN
+                      DELETE FROM django.auth_user au WHERE au.id = p_auth_user_id;
+                  EXCEPTION WHEN foreign_key_violation THEN
+                      -- La rete: la regola si rilegge, non si indovina.
+                      v_motivi := script.fn_check_credenziale_eliminabile(p_auth_user_id);
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'database', 'script.fn_elimina_credenziale', v_motivi,
+                          p_context_extra => jsonb_build_object('auth_user_id', p_auth_user_id,
+                                                                'chi_agisce',   v_utente,
+                                                                'rete',         true));
+                      -- Nessun motivo lo spiega: e' un difetto della check, e
+                      -- l'errore originale e' la diagnosi giusta.
+                      RAISE;
+                  END;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_imposta_totp_obbligatorio(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer,
+                  p_valore       config.credenziali.totp_obbligatorio%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: imporre (o togliere) il secondo fattore a una credenziale,
+              --   per decisione di un SUPER_ADMIN. Upsert: la riga nasce qui.
+              BEGIN
+                  -- Prima riga: chi agisce dev'essere SUPER_ADMIN.
+                  PERFORM script.fn_guard_super_admin(
+                      script.fn_utente_di_sessione('script.fn_imposta_totp_obbligatorio'));
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 OR p_valore IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_imposta_totp_obbligatorio', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id, 'p_valore', p_valore),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_imposta_totp_obbligatorio',
+                                         'credenziale e valore obbligatori']);
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM django.auth_user au WHERE au.id = p_auth_user_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_imposta_totp_obbligatorio', 'E_CREDENZIALE_NON_TROVATA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- R-DB-A6: su una macchina l'obbligo la ferma. Si rifiuta solo
+                  -- l'ACCENSIONE: spegnere e' l'uscita (D-2).
+                  IF p_valore
+                     AND script.fn_categoria_accesso(p_auth_user_id) = 'SISTEMA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_imposta_totp_obbligatorio', 'E_CREDENZIALE_DI_SISTEMA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id, 'valore', p_valore),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  INSERT INTO config.credenziali AS c (auth_user_id, totp_obbligatorio)
+                  VALUES (p_auth_user_id, p_valore)
+                  ON CONFLICT (auth_user_id) DO UPDATE
+                     SET totp_obbligatorio = EXCLUDED.totp_obbligatorio
+                   WHERE c.totp_obbligatorio IS DISTINCT FROM EXCLUDED.totp_obbligatorio;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_totp_conferma_device(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer,
+                  p_passo        config.auth_totp_device.ultimo_passo_usato%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: confermare il device dopo il primo codice verificato dal
+              --   backend, registrandone il passo.
+              DECLARE
+                  v_device_id config.auth_totp_device.id%TYPE;
+              BEGIN
+                  -- Prima riga: chi agisce e' la credenziale stessa.
+                  PERFORM script.fn_guard_utente_stesso(
+                      script.fn_utente_di_sessione('script.fn_totp_conferma_device'),
+                      p_auth_user_id);
+
+                  IF p_auth_user_id <= 0 OR p_passo IS NULL OR p_passo < 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_conferma_device', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id, 'p_passo', p_passo),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_totp_conferma_device',
+                                         'credenziale e passo (>= 0) obbligatori']);
+                  END IF;
+
+                  UPDATE config.auth_totp_device d
+                     SET confermato         = true,
+                         ultimo_passo_usato = p_passo,
+                         ultimo_uso_at      = now()
+                   WHERE d.auth_user_id = p_auth_user_id
+                     AND NOT d.confermato
+                  RETURNING d.id INTO v_device_id;
+
+                  IF v_device_id IS NULL THEN
+                      IF EXISTS (SELECT 1 FROM config.auth_totp_device d
+                                  WHERE d.auth_user_id = p_auth_user_id) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'script.fn_totp_conferma_device', 'E_TOTP_DEVICE_GIA_ATTIVO',
+                              jsonb_build_object('auth_user_id', p_auth_user_id),
+                              NULL::uuid,
+                              VARIADIC ARRAY[]::text[]);
+                      END IF;
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_conferma_device', 'E_TOTP_DEVICE_ASSENTE',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_totp_disabilita_device(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer,
+                  -- Esplicito: il motivo non si scrive in una colonna del device (D-T3);
+                  -- dal server finisce nel dettaglio dell'evento (D-T5).
+                  p_motivo       text
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: cancellare il device del secondo fattore di una credenziale:
+              --   l'utente stesso, oppure un altro (migratore o SUPER_ADMIN) con
+              --   un motivo. Dal server lascia la traccia nell'audit degli accessi.
+              DECLARE
+                  v_utente     integer;
+                  v_device_id  config.auth_totp_device.id%TYPE;
+                  -- Esplicito: un flag calcolato, non una colonna.
+                  v_dal_server boolean := false;
+              BEGIN
+                  -- Prima riga: chi agisce. Se non e' la credenziale stessa deve
+                  -- essere la sessione del migratore o un SUPER_ADMIN, con un motivo.
+                  v_utente := script.fn_utente_di_sessione('script.fn_totp_disabilita_device');
+
+                  IF v_utente IS DISTINCT FROM p_auth_user_id THEN
+                      v_dal_server := dbops.fn_sessione_del_migratore();
+                      IF NOT v_dal_server THEN
+                          PERFORM script.fn_guard_super_admin(v_utente);
+                      END IF;
+
+                      IF p_motivo IS NULL OR btrim(p_motivo) = '' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'script.fn_totp_disabilita_device', 'E_TOTP_MOTIVO_OBBLIGATORIO',
+                              jsonb_build_object('campo', 'motivo', 'auth_user_id', p_auth_user_id),
+                              NULL::uuid,
+                              VARIADIC ARRAY[]::text[]);
+                      END IF;
+                  END IF;
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_disabilita_device', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_auth_user_id', 'valore', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_totp_disabilita_device',
+                                         'credenziale assente o non valida']);
+                  END IF;
+
+                  DELETE FROM config.auth_totp_device d
+                   WHERE d.auth_user_id = p_auth_user_id
+                  RETURNING d.id INTO v_device_id;
+
+                  IF v_device_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_disabilita_device', 'E_TOTP_DEVICE_ASSENTE',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                             'chi_agisce',   v_utente,
+                                             'motivo',       btrim(p_motivo)),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- D-T5: dal server il backend non c'e', la traccia la scrive il
+                  -- verbo. session_user e non user_insert: dentro una DEFINER
+                  -- CURRENT_USER e' il proprietario.
+                  IF v_dal_server THEN
+                      INSERT INTO dbops.sessioni_utente (auth_user_id, evento, dettaglio)
+                      VALUES (p_auth_user_id, 'TOTP_DISABILITATO',
+                              jsonb_build_object('via',       'SERVER',
+                                                 'sessione',  session_user,
+                                                 'chi_agisce', v_utente,
+                                                 'motivo',    btrim(p_motivo)));
+                  END IF;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_totp_registra_device(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id        integer,
+                  p_secret_encrypted    config.auth_totp_device.secret_encrypted%TYPE,
+                  p_recovery_codes_hash config.auth_totp_device.recovery_codes_hash%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: registrare il device del secondo fattore, non confermato;
+              --   sostituisce un setup a meta', non un device in uso.
+              DECLARE
+                  v_device_id config.auth_totp_device.id%TYPE;
+              BEGIN
+                  -- Prima riga: chi agisce e' la credenziale stessa.
+                  PERFORM script.fn_guard_utente_stesso(
+                      script.fn_utente_di_sessione('script.fn_totp_registra_device'),
+                      p_auth_user_id);
+
+                  IF p_auth_user_id <= 0
+                     OR p_secret_encrypted IS NULL OR btrim(p_secret_encrypted) = ''
+                     OR NOT script.fn_check_totp_recovery_hash(p_recovery_codes_hash) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_registra_device', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id,
+                                             'segreto_vuoto', p_secret_encrypted IS NULL
+                                                              OR btrim(p_secret_encrypted) = '',
+                                             'recovery_tipo', jsonb_typeof(p_recovery_codes_hash)),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_totp_registra_device',
+                                         'segreto e codici di recupero (array non vuoto di hash distinti) obbligatori']);
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM django.auth_user au WHERE au.id = p_auth_user_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_registra_device', 'E_CREDENZIALE_NON_TROVATA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- Una istruzione: nasce, o sostituisce un setup a meta'. Un
+                  -- device confermato non si tocca (WHERE) e RETURNING resta vuoto.
+                  INSERT INTO config.auth_totp_device AS d
+                         (auth_user_id, secret_encrypted, recovery_codes_hash, confermato)
+                  VALUES (p_auth_user_id, p_secret_encrypted, p_recovery_codes_hash, false)
+                  ON CONFLICT (auth_user_id) DO UPDATE
+                     SET secret_encrypted    = EXCLUDED.secret_encrypted,
+                         recovery_codes_hash = EXCLUDED.recovery_codes_hash,
+                         ultimo_passo_usato  = NULL,
+                         ultimo_uso_at       = NULL
+                   WHERE NOT d.confermato
+                  RETURNING d.id INTO v_device_id;
+
+                  IF v_device_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_registra_device', 'E_TOTP_DEVICE_GIA_ATTIVO',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_totp_rigenera_recovery(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id        integer,
+                  p_recovery_codes_hash config.auth_totp_device.recovery_codes_hash%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: sostituire il mazzo dei codici di recupero di un device in uso.
+              DECLARE
+                  v_device_id config.auth_totp_device.id%TYPE;
+              BEGIN
+                  -- Prima riga: chi agisce e' la credenziale stessa.
+                  PERFORM script.fn_guard_utente_stesso(
+                      script.fn_utente_di_sessione('script.fn_totp_rigenera_recovery'),
+                      p_auth_user_id);
+
+                  IF p_auth_user_id <= 0
+                     OR NOT script.fn_check_totp_recovery_hash(p_recovery_codes_hash) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_rigenera_recovery', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id,
+                                             'recovery_tipo', jsonb_typeof(p_recovery_codes_hash)),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_totp_rigenera_recovery',
+                                         'codici di recupero (array non vuoto di hash distinti) obbligatori']);
+                  END IF;
+
+                  UPDATE config.auth_totp_device d
+                     SET recovery_codes_hash = p_recovery_codes_hash
+                   WHERE d.auth_user_id = p_auth_user_id
+                     AND d.confermato
+                  RETURNING d.id INTO v_device_id;
+
+                  IF v_device_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_rigenera_recovery', 'E_TOTP_DEVICE_ASSENTE',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_parameter_di_sessione(
+                  p_code config.parameters.code%TYPE,
+                  p_chi  config.parameter_overrides.function_name%TYPE DEFAULT NULL)
+               RETURNS config.parameters.default_value%TYPE
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               STABLE
+              AS $function$
+              DECLARE
+                  v_user_id    config.parameter_overrides.django_user_id%TYPE :=
+                      script.fn_utente_di_sessione('script.fn_get_parameter_di_sessione');
+                  v_emittente  config.parameter_overrides.emittente_fiscale_id%TYPE :=
+                      NULLIF(current_setting('app.current_emittente_id', true), '')::bigint;
+                  -- %TYPE[] non esiste: tipo esplicito, come in fn_get_parameter_full
+                  -- (django_group_id e' integer).
+                  v_group_ids  integer[];
+                  -- un interruttore calcolato qui: niente colonna da ancorare
+                  v_gruppi_leggibili boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il valore di p_code con la cascata degli override
+                  --   (utente, gruppo, emittente, funzione, default), col
+                  --   contesto preso dalla sessione. p_chi: chi lo chiede,
+                  --   per il livello «function» e per il log.
+                  --
+                  -- Regole:
+                  --   - GUC vuota o assente = NULL: il livello salta;
+                  --   - i gruppi si leggono solo se la tabella di Django
+                  --     c'e' e il ruolo la puo' leggere: altrimenti il
+                  --     livello resta spento, senza errore (e' una proposta);
+                  --   - nessuna validazione del valore: e' del lettore.
+                  -- =========================================================
+                  IF v_user_id IS NOT NULL THEN
+                      -- Per OID: un nome in uno schema senza USAGE solleva
+                      -- 42501 anche dentro to_regclass.
+                      SELECT has_schema_privilege(n.oid, 'USAGE')
+                             AND has_table_privilege(c.oid, 'SELECT')
+                        INTO v_gruppi_leggibili
+                        FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                       WHERE n.nspname = 'django'
+                         AND c.relname = 'auth_user_groups';
+
+                      -- Zero righe (tabella assente) lascia NULL: IS TRUE.
+                      IF v_gruppi_leggibili IS TRUE THEN
+                          SELECT array_agg(ug.group_id ORDER BY ug.group_id)
+                            INTO v_group_ids
+                            FROM django.auth_user_groups ug
+                           WHERE ug.user_id = v_user_id;
+                      END IF;
+                  END IF;
+
+                  RETURN script.fn_get_parameter_full(
+                      p_code                 => p_code,
+                      p_emittente_fiscale_id => v_emittente,
+                      p_django_user_id       => v_user_id,
+                      p_group_ids            => v_group_ids,
+                      p_function_name        => p_chi);
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_doc_azioni_permesse(
+                  -- la testata: polimorfa, una delle tabelle della mappa script.fn_doc_stato_modello
+                  p_testata     regclass,
+                  -- lo stato di partenza: di uno qualunque dei vocabolari della mappa, bigint in
+                  -- tutti, nessuna colonna comune a cui ancorarlo
+                  p_stato_da_id bigint)
+               RETURNS TABLE(
+                   -- Stati di uno qualunque dei vocabolari della mappa: bigint e
+                   -- testo in tutti, nessuna colonna comune a cui ancorarli.
+                   stato_a_id               bigint,
+                   stato_a_codice           text,
+                   -- Chiave letta da meta: un valore calcolato, non una colonna.
+                   action_key               text,
+                   azione_processo_codename config.azioni_processo.permission_codename%TYPE,
+                   meta                     jsonb)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- I nomi vengono dalla mappa: tipi nudi.
+                  v_vocabolario regclass;
+                  v_matrice     regclass;
+                  v_col_da      text;
+                  v_col_a       text;
+                  v_vivo        text;
+                  v_filtro      text;
+                  -- L'utente della sessione, per l'azione del passaggio.
+                  v_utente      config.user_override_azioni.auth_user_id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: i passaggi manuali dallo stato p_stato_da_id che
+                  --   l'utente della sessione puo' fare.
+                  -- Regole:
+                  --   - testata fuori mappa: il chiamante e' rotto,
+                  --     E_SCRIPT_CHIAMATA_NON_VALIDA;
+                  --   - stato NULL: nessuna riga;
+                  --   - manuale e azione dalla riga del passaggio
+                  --     (script.fn_doc_passaggio), come il verbo;
+                  --   - permesso => nascondi: azione NULL resta (decide il
+                  --     livello sul documento), altrimenti la concessione.
+                  -- =========================================================
+                  SELECT m.vocabolario, m.matrice, m.colonna_da, m.colonna_a, m.colonna_vivo, m.filtro
+                    INTO v_vocabolario, v_matrice, v_col_da, v_col_a, v_vivo, v_filtro
+                    FROM script.fn_doc_stato_modello(p_testata) m;
+
+                  IF v_matrice IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_doc_azioni_permesse', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('testata', p_testata::text),
+                          NULL::uuid,
+                          'script.fn_doc_azioni_permesse',
+                          'p_testata: una testata della mappa del modello (script.fn_doc_stato_modello)');
+                  END IF;
+
+                  IF p_stato_da_id IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  v_utente := script.fn_utente_di_sessione('script.fn_doc_azioni_permesse');
+
+                  RETURN QUERY EXECUTE format(
+                      'SELECT t.%2$I::bigint, s.codice_interno::text, t.meta ->> ''action_key'','
+                      '       pz.azione_processo_codename, t.meta'
+                      '  FROM %3$s t'
+                      '  JOIN %4$s s ON s.id = t.%2$I'
+                      ' CROSS JOIN LATERAL script.fn_doc_passaggio($1, t.%1$I, t.%2$I) pz'
+                      ' WHERE t.%1$I = $2 AND t.%5$I IS TRUE %6$s'
+                      '   AND pz.manuale IS TRUE'
+                      '   AND (pz.azione_processo_codename IS NULL'
+                      '        OR script.fn_check_azione_processo($3, pz.azione_processo_codename))',
+                      v_col_da, v_col_a, v_matrice, v_vocabolario, v_vivo, v_filtro)
+                    USING p_testata, p_stato_da_id, v_utente;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_ba_emittente_sr_id(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE
+              )
+               RETURNS anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE
+               LANGUAGE sql
+               STABLE
+               COST 5000
+              AS $function$
+                  -- Scopo: «quale emittente fattura questo billing account?» —
+                  --   il soggetto_ruolo dell'emittente, o NULL se non risolvibile.
+                  --   Regola a TRE livelli dal 20260913-01 (D13): mapping
+                  --   specifico; altrimenti, IN SESSIONE, l'emittente di chi
+                  --   sta agendo; altrimenti il default dell'installazione.
+                  -- ⚠️ Il CASE esterno non e' ridondante. Senza, un BA NULL
+                  --   cadrebbe nei rami 2 e 3 e si vedrebbe rispondere un
+                  --   emittente — cioe' «nessun billing account» verrebbe
+                  --   letto come «billing account non ancora collegato», che e'
+                  --   una cosa diversa e apre invece di chiudere.
+                  SELECT CASE
+                           WHEN p_billing_account_id IS NULL THEN NULL
+                           ELSE COALESCE(
+                                  -- 1) Mapping specifico del BA. Al massimo una
+                                  --    riga: uq_emittenti_fiscali_ba. Vince sempre:
+                                  --    il COALESCE non valuta i rami dopo.
+                                  (SELECT efba.emittente_soggetto_ruolo_id
+                                     FROM anagrafiche.emittenti_fiscali_billing_account efba
+                                    WHERE efba.billing_account_id = p_billing_account_id),
+                                  -- 2) Riserva IN SESSIONE: un BA non ancora
+                                  --    collegato appartiene a chi lo sta creando.
+                                  --    E' l'istante fra l'INSERT e il trigger AFTER
+                                  --    z90_link_ef, cioe' il RETURNING: la riserva
+                                  --    dice cio' che il trigger sta per scrivere,
+                                  --    con la STESSA funzione che usa lui.
+                                  -- ⛔ Il CASE e' il guard: fn_resolve_emittente_for_user
+                                  --    SOLLEVA (e logga) su NULL o <= 0, e senza
+                                  --    sessione non va chiamata. Un WHERE sulla
+                                  --    stessa riga non garantirebbe l'ordine.
+                                  (SELECT ef.soggetto_ruolo_id
+                                     FROM anagrafiche.emittenti_fiscali ef
+                                    WHERE ef.id = (SELECT CASE
+                                                            WHEN s.auth_user_id > 0
+                                                            THEN script.fn_resolve_emittente_for_user(s.auth_user_id)
+                                                          END
+                                                     FROM (SELECT script.fn_utente_di_sessione('script.fn_get_ba_emittente_sr_id')
+                                                                  AS auth_user_id) s)),
+                                  -- 3) Riserva SENZA sessione: l'emittente di
+                                  --    default dell'installazione (batch,
+                                  --    manutenzione, admin globale senza
+                                  --    emittente attivo). Al massimo uno:
+                                  --    uq_emittenti_fiscali_ba_default.
+                                  (SELECT efba_d.emittente_soggetto_ruolo_id
+                                     FROM anagrafiche.emittenti_fiscali_billing_account efba_d
+                                    WHERE efba_d.is_default)
+                                )
+                         END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_default_emittente_fiscale()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                v_modo          text := TG_ARGV[0];   -- NULL se non passato (indice fuori da TG_NARGS)
+                v_opzione       text := TG_ARGV[1];
+                v_row           jsonb;
+                v_tx_id         uuid;
+                v_auth_user_id  anagrafiche.identita_digitali.auth_user_id%TYPE;
+                v_ef_id         anagrafiche.emittenti_fiscali.id%TYPE;
+              BEGIN
+                -- Scopo: riempire emittente_fiscale_id quando la riga arriva senza,
+                --   con l'emittente di lavoro di chi scrive (attivo di sessione se in
+                --   scope, altrimenti quello assegnato). Building block unico: sostituisce
+                --   le copie per documento di vendite. Brief: brief-db-emittente-di-default-un-bb-solo.
+                -- Regole:
+                --   0. argomenti di montaggio non ammessi -> E_TRIGGER_ARGOMENTI_INVALIDI
+                --      (difetto di chi installa: muore al primo INSERT, non tace);
+                --   1. valore esplicito -> non si sovrascrive mai una scelta dichiarata;
+                --   2. SALTA_CON_SORGENTE e riga con sorgente_tipo_id + una chiave
+                --      (sorgente_id o sorgente_uid, rev 2026-11-06 giro 0.3) ->
+                --      l'emittente e' del documento padre, lo mette il normalize a valle;
+                --   3. GUC app.current_user_id vuota -> LASCIA_NULL: RETURN NEW;
+                --      SOLLEVA: E_EMITTENTE_NON_RISOLTO;
+                --   4. resolver NULL (admin globale senza assegnazione) -> idem;
+                --   5. altrimenti NEW.emittente_fiscale_id := emittente di lavoro.
+
+                -- 0) Argomenti di montaggio.
+                IF TG_OP <> 'INSERT'
+                   OR TG_NARGS < 1 OR TG_NARGS > 2
+                   OR v_modo NOT IN ('SOLLEVA', 'LASCIA_NULL')
+                   OR (TG_NARGS = 2 AND v_opzione IS DISTINCT FROM 'SALTA_CON_SORGENTE') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'script.trgfn_default_emittente_fiscale',
+                    'E_TRIGGER_ARGOMENTI_INVALIDI',
+                    jsonb_build_object(
+                      'detail',    'atteso BEFORE INSERT con TG_ARGV[0] in (SOLLEVA, LASCIA_NULL) e TG_ARGV[1] facoltativo = SALTA_CON_SORGENTE',
+                      'tabella',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'trigger',   TG_NAME,
+                      'tg_op',     TG_OP,
+                      'argomenti', to_jsonb(TG_ARGV)
+                    ),
+                    NULL::uuid,
+                    concat_ws(' ', TG_OP, coalesce(NULLIF(array_to_string(TG_ARGV, ', '), ''), '(nessun argomento)'))
+                  );
+                END IF;
+
+                -- 1) Valore esplicito: non si tocca.
+                IF NEW.emittente_fiscale_id IS NOT NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Le colonne facoltative (sorgente_*, tx_id) si leggono in sola lettura da
+                -- to_jsonb(NEW): esistono su alcune tabelle montate, non su tutte.
+                v_row   := to_jsonb(NEW);
+                v_tx_id := NULLIF(v_row ->> 'tx_id', '')::uuid;
+
+                -- 2) Riga nata da un documento sorgente: l'emittente e' quello del padre.
+                IF v_opzione = 'SALTA_CON_SORGENTE'
+                   AND (v_row ->> 'sorgente_tipo_id') IS NOT NULL
+                   AND ((v_row ->> 'sorgente_id') IS NOT NULL OR (v_row ->> 'sorgente_uid') IS NOT NULL) THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 3) Chi scrive. GUC vuota = nessuno da cui dedurre.
+                v_auth_user_id := script.fn_utente_di_sessione('script.trgfn_default_emittente_fiscale');
+                IF v_auth_user_id IS NULL THEN
+                  IF v_modo = 'LASCIA_NULL' THEN
+                    RETURN NEW;
+                  END IF;
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'script.trgfn_default_emittente_fiscale',
+                    'E_EMITTENTE_NON_RISOLTO',
+                    jsonb_build_object(
+                      'detail',  'GUC app.current_user_id vuota e riga senza emittente_fiscale_id: fuori da una sessione utente non c'' e'' nulla da cui dedurlo',
+                      'campo',   'emittente_fiscale_id',
+                      'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                    ),
+                    v_tx_id,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                -- 4) Emittente di lavoro: attivo di sessione se in scope, altrimenti quello
+                --    assegnato in config.user_emittenti_fiscali; NULL per un admin globale
+                --    senza assegnazione (modalita' «tutti gli emittenti», di sola lettura).
+                v_ef_id := script.fn_resolve_emittente_for_user(v_auth_user_id);
+                IF v_ef_id IS NULL THEN
+                  IF v_modo = 'LASCIA_NULL' THEN
+                    RETURN NEW;
+                  END IF;
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'script.trgfn_default_emittente_fiscale',
+                    'E_EMITTENTE_NON_RISOLTO',
+                    jsonb_build_object(
+                      'detail',       'operatore senza emittente assegnato (admin globale in modalita'' tutti gli emittenti): la riga deve dichiararlo',
+                      'campo',        'emittente_fiscale_id',
+                      'tabella',      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'auth_user_id', v_auth_user_id
+                    ),
+                    v_tx_id,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                -- 5) Il default.
+                NEW.emittente_fiscale_id := v_ef_id;
+                RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_doc_guard_emittente_ba()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- TG_ARGV: [0] etichetta del documento, [1] colonna che lo
+                -- identifica, [2] colonna dell'emittente, [3] codice d'errore.
+                v_tipo        text;
+                v_col_ident   text;
+                v_col_emit    text;
+                v_codice      config.codici_errore.codice%TYPE;
+                v_new         jsonb;
+                v_ba          anagrafiche.billing_account.id%TYPE;
+                v_emittente   bigint;  -- id della colonna [2]: emittente_fiscale_id o emittente_soggetto_ruolo_id
+                v_atteso      bigint;  -- lo stesso, risolto dal BA
+                v_documento   text;  -- etichetta + identificativo, composti per la frase
+                v_nome        text;  -- ragione sociale o '#id': un pezzo di frase, non una colonna
+                v_nome_atteso text;  -- idem
+                v_ba_codice   anagrafiche.billing_account.codice%TYPE;
+                v_contesto    jsonb;
+                v_utente      config.user_override_aree.auth_user_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Un documento di vendita e' emesso dall'azienda del suo
+                --   cliente: l'emittente e' quello che il billing account
+                --   risolve. Building block, montato BEFORE INSERT OR UPDATE OF
+                --   (billing_account_id, <colonna dell'emittente>).
+                -- ⚠️ BA NULL: esce, su ogni tabella. Dove il BA e' NOT NULL
+                --   parla il vincolo, che si controlla dopo i BEFORE ROW; dove e'
+                --   NULL ammesso (DDT, reso) non c'e' niente da confrontare.
+                -- ⚠️ I risolutori possono propagare E_EMITTENTE_DEFAULT_MISSING:
+                --   e' un difetto di configurazione, non si maschera.
+                -- ⛔ No-leak: il codice del BA entra nella frase solo se il BA e' nel
+                --   perimetro di chi agisce (fn_scope_ef_whitelist_via_efba, la domanda
+                --   della policy). Dentro un verbo SECURITY DEFINER la RLS non filtra,
+                --   e la frase direbbe il codice di un cliente di un'altra azienda.
+                --   Senza operatore in sessione decide la RLS di chi scrive.
+                -- =========================================================
+                v_new := to_jsonb(NEW);
+
+                -- ── Argomenti: errore di MONTAGGIO, non di dato ───────────
+                IF COALESCE(array_length(TG_ARGV, 1), 0) <> 4
+                   OR TG_OP NOT IN ('INSERT', 'UPDATE')
+                   OR TG_ARGV[2] NOT IN ('emittente_fiscale_id', 'emittente_soggetto_ruolo_id')
+                   OR NOT (v_new ? TG_ARGV[1])
+                   OR NOT (v_new ? TG_ARGV[2])
+                   OR NOT (v_new ? 'billing_account_id') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', TG_NAME::text, 'E_DOC_RIGHE_LOCK_MONTAGGIO',
+                    jsonb_build_object('trigger', TG_NAME,
+                                       'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                       'evento',  TG_OP,
+                                       'tg_argv', TG_ARGV),
+                    NULL::uuid,
+                    TG_NAME::text,
+                    TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    'attesi: etichetta del documento, colonna che lo identifica, colonna dell''emittente (emittente_fiscale_id | emittente_soggetto_ruolo_id) e codice d''errore, su una tabella con billing_account_id');
+                END IF;
+
+                v_tipo      := TG_ARGV[0];
+                v_col_ident := TG_ARGV[1];
+                v_col_emit  := TG_ARGV[2];
+                v_codice    := TG_ARGV[3];
+
+                v_ba := (v_new ->> 'billing_account_id')::bigint;
+                IF v_ba IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                v_emittente := (v_new ->> v_col_emit)::bigint;
+                IF v_col_emit = 'emittente_fiscale_id' THEN
+                  v_atteso := anagrafiche.fn_get_emittente_fiscale_pk(v_ba);
+                ELSE
+                  v_atteso := anagrafiche.fn_get_emittente_fiscale_id(v_ba);
+                END IF;
+
+                IF v_emittente IS NOT DISTINCT FROM v_atteso THEN
+                  RETURN NEW;
+                END IF;
+
+                -- ── La frase: nomi, non id (D-2) ─────────────────────────
+                v_documento := v_tipo || ' '
+                               || COALESCE(v_new ->> v_col_ident, '#' || (v_new ->> 'id'));
+
+                -- Il nome dell'azienda: dal ruolo dell'emittente al soggetto.
+                -- Con la PK dell'emittente si passa da emittenti_fiscali.
+                SELECT s.ragione_sociale_completa INTO v_nome
+                  FROM anagrafiche.soggetti_ruoli sr
+                  JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                 WHERE sr.id = CASE WHEN v_col_emit = 'emittente_fiscale_id'
+                                    THEN (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+                                           WHERE ef.id = v_emittente)
+                                    ELSE v_emittente END;
+                SELECT s.ragione_sociale_completa INTO v_nome_atteso
+                  FROM anagrafiche.soggetti_ruoli sr
+                  JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                 WHERE sr.id = CASE WHEN v_col_emit = 'emittente_fiscale_id'
+                                    THEN (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+                                           WHERE ef.id = v_atteso)
+                                    ELSE v_atteso END;
+                v_utente := script.fn_utente_di_sessione('script.trgfn_doc_guard_emittente_ba');
+                SELECT ba.codice INTO v_ba_codice
+                  FROM anagrafiche.billing_account ba
+                 WHERE ba.id = v_ba
+                   AND (v_utente IS NULL OR script.fn_scope_ef_whitelist_via_efba(v_utente, ba.id));
+
+                v_contesto := jsonb_build_object(
+                    'tabella',             TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    'id',                  v_new -> 'id',
+                    'billing_account_id',  v_ba,
+                    'colonna',             v_col_emit,
+                    'emittente',           v_emittente,
+                    'emittente_atteso',    v_atteso);
+                -- `campo` solo se l'errore e' di una persona: su un TECNICO
+                -- (la commessa) non c'e' un campo da accendere.
+                IF EXISTS (SELECT 1 FROM config.codici_errore ce
+                            WHERE ce.codice = v_codice AND ce.classe <> 'TECNICO') THEN
+                  v_contesto := v_contesto || jsonb_build_object('campo', v_col_emit);
+                END IF;
+
+                PERFORM script.fn_log_and_raise_error(
+                  'database', TG_NAME::text, v_codice,
+                  v_contesto,
+                  (v_new ->> 'tx_id')::uuid,
+                  v_documento,
+                  COALESCE(v_nome,        '#' || COALESCE(v_emittente::text, '?')),
+                  COALESCE(v_nome_atteso, '#' || COALESCE(v_atteso::text, '?')),
+                  COALESCE(v_ba_codice,   '#' || v_ba::text));
+                -- fn_log_and_raise_error solleva: non si arriva qui.
+                RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_guard_emittente_scope()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_auth_user_id         anagrafiche.identita_digitali.auth_user_id%TYPE;
+                v_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE;
+                v_col_value            bigint;
+                v_mode                 text := TG_ARGV[0];
+                v_col_name             text := TG_ARGV[1];
+              BEGIN
+                -- =========================================================
+                -- Difesa in profondita': verifica che l'utente corrente abbia
+                -- scope sull'emittente fiscale della riga.
+                --
+                -- Modalita' (TG_ARGV[0]) — la risoluzione vive tutta in
+                -- script.fn_resolve_emittente_fiscale_id:
+                --   'soggetto_ruolo' = la colonna contiene soggetto_ruolo_id
+                --   'fattura'        = la colonna contiene fattura_id
+                --   'fiscale'        = la colonna E' gia' emittente_fiscale_id
+                --   'contabile'      = la colonna contiene contabile_id, e il
+                --                      perimetro si deriva dal CONTO DI INCASSO
+                --                      della distinta (D5)
+                --   'listino'        = la colonna contiene listino_id
+                --   'magazzino'      = la colonna contiene magazzino_id (Lotto 2)
+                --
+                -- Se emittente non risolvibile -> skip (nessun padrone).
+                --
+                -- ⭐ Rev 2026-08-22 (lotto 6, S3-4). La risoluzione era QUI, e
+                --   il guard e' SECURITY INVOKER: nel modo 'fattura' leggeva
+                --   vendite.fatture sotto row security, e per un utente fuori
+                --   perimetro quella lettura dava ZERO RIGHE. Emittente NULL ->
+                --   ramo «non risolvibile» -> RETURN NEW. Il guard si spegneva
+                --   esattamente nel caso che esiste per coprire, e il controllo
+                --   di integrita' referenziale — che gira fuori dalla row
+                --   security — non si opponeva: la riga entrava.
+                --   Adesso la risoluzione la fa una SECURITY DEFINER, che legge
+                --   tutto; qui resta solo l'applicazione della decisione.
+                --
+                -- ⛔ Rev 2026-09-04 (fase 6, brief processi automatici). Il
+                --   ramo «utente NULL -> RETURN NEW» diceva «batch job, nessun
+                --   filtro»: era l'ultima porta da cui un processo applicativo
+                --   scriveva senza dire chi fosse, e bastava NON impostare una
+                --   GUC per aprirla. Adesso passa solo chi bypasserebbe
+                --   comunque la RLS.
+                --
+                -- ⛔ Rev 2026-09-18 (magazzino Lotto 2, sezione 6-ter C1).
+                --   row_security_active risponde per il CURRENT_USER, che
+                --   dentro una SECURITY DEFINER e' il proprietario: FALSE
+                --   sempre. Dentro una DEFINER (current_user <> session_user)
+                --   quella risposta non dice niente su chi sta scrivendo: si
+                --   risolve comunque l'emittente e, se la riga ha un padrone,
+                --   ci si ferma. Una riga senza padrone (le email di sistema)
+                --   passa come prima. Provato con fn_accoda_email_sistema.
+                -- =========================================================
+
+                -- 1. Leggi user_id dalla sessione PG
+                v_auth_user_id := script.fn_utente_di_sessione('script.trgfn_guard_emittente_scope');
+
+                IF v_auth_user_id IS NULL THEN
+                  -- ⭐ UN CRITERIO SOLO, E NON E' NOSTRO.
+                  --   row_security_active() risponde per la tabella in gioco e
+                  --   per QUESTA sessione: false per il proprietario (senza
+                  --   FORCE ROW LEVEL SECURITY), per un superuser e per un
+                  --   ruolo BYPASSRLS. Sono esattamente le sessioni che le
+                  --   policy non filtrano: se la RLS le lascia passare, questo
+                  --   guard non ha titolo per fermarle — e viceversa.
+                  --   ⛔ Non si elenca a mano «proprietario o superuser o
+                  --   bypassrls»: sarebbe una SECONDA scrittura della stessa
+                  --   regola, e due scritture prima o poi dissentono.
+                  IF NOT row_security_active(TG_RELID::regclass) THEN
+                    -- ⚠️ Ma «per QUESTA sessione» vuol dire per il current_user:
+                    --   dentro una SECURITY DEFINER e' il proprietario della
+                    --   funzione, non chi ha chiamato. Fuori da una DEFINER
+                    --   (current_user = session_user) la risposta vale e si passa.
+                    -- ⭐ Rev 2026-10-15: si confronta col ruolo di SESSIONE, non col
+                    --   login. Un utente personale che lavora come proprietario
+                    --   (`SET role`) ha session_user <> current_user anche fuori
+                    --   da una DEFINER; una DEFINER cambia current_user ma non il
+                    --   parametro `role`. Brief: brief-db-ruoli-di-sistema §19.
+                    IF current_user = coalesce(nullif(current_setting('role'), 'none'), session_user) THEN
+                      RETURN NEW;
+                    END IF;
+
+                    -- Dentro una DEFINER, senza identita': si guarda la RIGA.
+                    -- Nessun padrone -> niente da proteggere, passa (email di
+                    -- sistema). Un padrone -> nessuno risponde di questa
+                    -- scrittura: si ferma qui sotto.
+                    v_col_value := (to_jsonb(NEW) ->> v_col_name)::bigint;
+                    IF v_col_value IS NULL THEN
+                      RETURN NEW;
+                    END IF;
+                    v_emittente_fiscale_id :=
+                        script.fn_resolve_emittente_fiscale_id(v_mode, v_col_value);
+                    IF v_emittente_fiscale_id IS NULL THEN
+                      RETURN NEW;
+                    END IF;
+                  END IF;
+
+                  -- Sessione applicativa senza identita': si ferma. Non e'
+                  -- «permesso negato a qualcuno» — non c'e' nessuno a cui
+                  -- negarlo: e' un processo configurato senza identita'.
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'trgfn_guard_emittente_scope',
+                    'E_SCOPE_SENZA_UTENTE',
+                    jsonb_build_object(
+                      'detail', 'Scrittura senza utente in sessione su tabella con perimetro emittente',
+                      'modo', v_mode,
+                      'colonna', v_col_name,
+                      'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'db_user', current_user,
+                      'session_user', session_user,
+                      'dentro_definer', current_user <> coalesce(nullif(current_setting('role'), 'none'), session_user),
+                      'emittente_fiscale_id', v_emittente_fiscale_id,
+                      'operazione', TG_OP
+                    ),
+                    NULL::uuid,
+                    TG_TABLE_SCHEMA::text,
+                    TG_TABLE_NAME::text
+                  );
+                END IF;
+
+                -- 2. Leggi valore colonna da NEW
+                v_col_value := (to_jsonb(NEW) ->> v_col_name)::bigint;
+
+                IF v_col_value IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Su UPDATE, skip se la colonna non e' cambiata
+                IF TG_OP = 'UPDATE' AND
+                   v_col_value = (to_jsonb(OLD) ->> v_col_name)::bigint THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 3. Risolvi l'emittente FUORI dalla row security.
+                v_emittente_fiscale_id :=
+                    script.fn_resolve_emittente_fiscale_id(v_mode, v_col_value);
+
+                IF v_emittente_fiscale_id IS NULL THEN
+                  -- ⭐ Nessun padrone: dati non ancora collegati, oppure una
+                  --   distinta INTERNA (fondo fattura, compensazione) che non e'
+                  --   il canale di nessuno. Prima questo ramo raccoglieva anche
+                  --   i documenti altrui; adesso no.
+                  RETURN NEW;
+                END IF;
+
+                -- 4. Verifica scope (canonica auth_user_id, bypass SUPER_ADMIN)
+                IF NOT script.fn_check_user_emittente_scope(
+                         v_auth_user_id, v_emittente_fiscale_id) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'trgfn_guard_emittente_scope',
+                    'E_SCOPE_EMITTENTE',
+                    jsonb_build_object(
+                      'detail', 'Utente non autorizzato per emittente fiscale',
+                      'auth_user_id', v_auth_user_id,
+                      'emittente_fiscale_id', v_emittente_fiscale_id,
+                      'modo', v_mode,
+                      'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                    ),
+                    NULL::uuid,
+                    format(
+                      'Utente %s non autorizzato per emittente fiscale %s su %s.%s',
+                      v_auth_user_id, v_emittente_fiscale_id,
+                      TG_TABLE_SCHEMA, TG_TABLE_NAME
+                    )
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_blocca_credenziale(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer,
+                  -- Firma invariata (text, come 20260925-14): un tipo diverso qui
+                  -- creerebbe un secondo overload invece di sostituire il verbo.
+                  p_motivo       text
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: bloccare una credenziale su tutte le porte, per decisione di un
+              --   SUPER_ADMIN. Non scade; lo toglie solo script.fn_sblocca_credenziale.
+              DECLARE
+                  v_utente integer;
+                  -- Nudo: l'array dei motivi di fn_check_credenziale_bloccabile.
+                  v_motivi jsonb;
+              BEGIN
+                  -- Prima riga: chi agisce dev'essere SUPER_ADMIN (D-B1). Anche dal
+                  -- server: il blocco ha sempre un autore (chk_credenziali_blocco).
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_super_admin(v_utente);
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_blocca_credenziale', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_auth_user_id', 'valore', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_blocca_credenziale',
+                                         'credenziale assente o non valida']);
+                  END IF;
+
+                  IF p_motivo IS NULL OR btrim(p_motivo) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_blocca_credenziale', 'E_CREDENZIALE_MOTIVO_OBBLIGATORIO',
+                          jsonb_build_object('campo', 'motivo', 'auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM django.auth_user au WHERE au.id = p_auth_user_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_blocca_credenziale', 'E_CREDENZIALE_NON_TROVATA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- La regola sta nella check: qui la si chiama, non la si riscrive
+                  -- (linee-guida-sql §12.5.2).
+                  v_motivi := script.fn_check_credenziale_bloccabile(p_auth_user_id);
+
+                  -- D-1: dal server una credenziale di sistema si blocca, ed e'
+                  -- l'uscita d'emergenza (una chiave rubata). Si toglie SOLO quel
+                  -- motivo, conservando l'ordine degli altri.
+                  IF dbops.fn_sessione_del_migratore() THEN
+                      SELECT COALESCE(jsonb_agg(m.motivo ORDER BY m.pos), '[]'::jsonb)
+                        INTO v_motivi
+                        FROM jsonb_array_elements(v_motivi) WITH ORDINALITY AS m(motivo, pos)
+                       WHERE m.motivo ->> 'reason' <> 'CREDENZIALE_DI_SISTEMA';
+                  END IF;
+
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'database', 'script.fn_blocca_credenziale', v_motivi,
+                      p_context_extra => jsonb_build_object('auth_user_id', p_auth_user_id,
+                                                            'chi_agisce',   v_utente));
+
+                  INSERT INTO config.credenziali AS c
+                         (auth_user_id, bloccata_at, bloccata_da, motivo_blocco)
+                  VALUES (p_auth_user_id, now(), v_utente, btrim(p_motivo))
+                  ON CONFLICT (auth_user_id) DO UPDATE
+                     SET bloccata_at   = EXCLUDED.bloccata_at,
+                         bloccata_da   = EXCLUDED.bloccata_da,
+                         motivo_blocco = EXCLUDED.motivo_blocco;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_sblocca_credenziale(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: togliere il blocco dell'admin da una credenziale, per decisione
+              --   di un SUPER_ADMIN. Non tocca i tentativi.
+              DECLARE
+                  v_utente integer;
+              BEGIN
+                  -- Prima riga: chi agisce dev'essere SUPER_ADMIN (D-B1).
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_super_admin(v_utente);
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_sblocca_credenziale', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_auth_user_id', 'valore', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_sblocca_credenziale',
+                                         'credenziale assente o non valida']);
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM django.auth_user au WHERE au.id = p_auth_user_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_sblocca_credenziale', 'E_CREDENZIALE_NON_TROVATA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  UPDATE config.credenziali c
+                     SET bloccata_at   = NULL,
+                         bloccata_da   = NULL,
+                         motivo_blocco = NULL
+                   WHERE c.auth_user_id = p_auth_user_id
+                     AND c.bloccata_at IS NOT NULL;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_elimina_credenziale(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo: eliminare una credenziale che non ha mai avuto una veste
+              --   ne' lasciato storia, per decisione di un SUPER_ADMIN, e
+              --   lasciarne traccia.
+              DECLARE
+                  v_utente   config.credenziali_eliminate.eliminata_da%TYPE;
+                  -- Nudi: colonne di django.auth_user, niente %TYPE su django.*.
+                  v_username text;
+                  v_email    text;
+                  -- Nudo: l'array dei motivi di fn_check_credenziale_eliminabile.
+                  v_motivi   jsonb;
+              BEGIN
+                  -- Prima riga: chi agisce dev'essere SUPER_ADMIN (D-3).
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_super_admin(v_utente);
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_elimina_credenziale', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_auth_user_id', 'valore', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_elimina_credenziale',
+                                         'credenziale assente o non valida']);
+                  END IF;
+
+                  -- Il lock PRIMA della check: una veste che nasce adesso o e'
+                  -- gia' scritta, o aspetta questa transazione (vedi testata).
+                  SELECT au.username, au.email
+                    INTO v_username, v_email
+                    FROM django.auth_user au
+                   WHERE au.id = p_auth_user_id
+                     FOR UPDATE;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_elimina_credenziale', 'E_CREDENZIALE_NON_TROVATA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- La regola sta nella check: qui la si chiama, non la si riscrive
+                  -- (linee-guida-sql §12.5.2).
+                  v_motivi := script.fn_check_credenziale_eliminabile(p_auth_user_id);
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'database', 'script.fn_elimina_credenziale', v_motivi,
+                      p_context_extra => jsonb_build_object('auth_user_id', p_auth_user_id,
+                                                            'chi_agisce',   v_utente));
+
+                  -- La traccia: la riga di django.auth_user sta per sparire.
+                  INSERT INTO config.credenziali_eliminate
+                         (auth_user_id, username, email, eliminata_da)
+                  VALUES (p_auth_user_id, v_username, v_email, v_utente);
+
+                  BEGIN
+                      DELETE FROM django.auth_user au WHERE au.id = p_auth_user_id;
+                  EXCEPTION WHEN foreign_key_violation THEN
+                      -- La rete: la regola si rilegge, non si indovina.
+                      v_motivi := script.fn_check_credenziale_eliminabile(p_auth_user_id);
+                      PERFORM script.fn_raise_primo_motivo_se_presente(
+                          'database', 'script.fn_elimina_credenziale', v_motivi,
+                          p_context_extra => jsonb_build_object('auth_user_id', p_auth_user_id,
+                                                                'chi_agisce',   v_utente,
+                                                                'rete',         true));
+                      -- Nessun motivo lo spiega: e' un difetto della check, e
+                      -- l'errore originale e' la diagnosi giusta.
+                      RAISE;
+                  END;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_imposta_totp_obbligatorio(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer,
+                  p_valore       config.credenziali.totp_obbligatorio%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: imporre (o togliere) il secondo fattore a una credenziale,
+              --   per decisione di un SUPER_ADMIN. Upsert: la riga nasce qui.
+              BEGIN
+                  -- Prima riga: chi agisce dev'essere SUPER_ADMIN.
+                  PERFORM script.fn_guard_super_admin(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer);
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 OR p_valore IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_imposta_totp_obbligatorio', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id, 'p_valore', p_valore),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_imposta_totp_obbligatorio',
+                                         'credenziale e valore obbligatori']);
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM django.auth_user au WHERE au.id = p_auth_user_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_imposta_totp_obbligatorio', 'E_CREDENZIALE_NON_TROVATA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- R-DB-A6: su una macchina l'obbligo la ferma. Si rifiuta solo
+                  -- l'ACCENSIONE: spegnere e' l'uscita (D-2).
+                  IF p_valore
+                     AND script.fn_categoria_accesso(p_auth_user_id) = 'SISTEMA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_imposta_totp_obbligatorio', 'E_CREDENZIALE_DI_SISTEMA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id, 'valore', p_valore),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  INSERT INTO config.credenziali AS c (auth_user_id, totp_obbligatorio)
+                  VALUES (p_auth_user_id, p_valore)
+                  ON CONFLICT (auth_user_id) DO UPDATE
+                     SET totp_obbligatorio = EXCLUDED.totp_obbligatorio
+                   WHERE c.totp_obbligatorio IS DISTINCT FROM EXCLUDED.totp_obbligatorio;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_totp_conferma_device(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer,
+                  p_passo        config.auth_totp_device.ultimo_passo_usato%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: confermare il device dopo il primo codice verificato dal
+              --   backend, registrandone il passo.
+              DECLARE
+                  v_device_id config.auth_totp_device.id%TYPE;
+              BEGIN
+                  -- Prima riga: chi agisce e' la credenziale stessa.
+                  PERFORM script.fn_guard_utente_stesso(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                      p_auth_user_id);
+
+                  IF p_auth_user_id <= 0 OR p_passo IS NULL OR p_passo < 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_conferma_device', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id, 'p_passo', p_passo),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_totp_conferma_device',
+                                         'credenziale e passo (>= 0) obbligatori']);
+                  END IF;
+
+                  UPDATE config.auth_totp_device d
+                     SET confermato         = true,
+                         ultimo_passo_usato = p_passo,
+                         ultimo_uso_at      = now()
+                   WHERE d.auth_user_id = p_auth_user_id
+                     AND NOT d.confermato
+                  RETURNING d.id INTO v_device_id;
+
+                  IF v_device_id IS NULL THEN
+                      IF EXISTS (SELECT 1 FROM config.auth_totp_device d
+                                  WHERE d.auth_user_id = p_auth_user_id) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'script.fn_totp_conferma_device', 'E_TOTP_DEVICE_GIA_ATTIVO',
+                              jsonb_build_object('auth_user_id', p_auth_user_id),
+                              NULL::uuid,
+                              VARIADIC ARRAY[]::text[]);
+                      END IF;
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_conferma_device', 'E_TOTP_DEVICE_ASSENTE',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_totp_disabilita_device(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer,
+                  -- Esplicito: il motivo non si scrive in una colonna del device (D-T3);
+                  -- dal server finisce nel dettaglio dell'evento (D-T5).
+                  p_motivo       text
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: cancellare il device del secondo fattore di una credenziale:
+              --   l'utente stesso, oppure un altro (migratore o SUPER_ADMIN) con
+              --   un motivo. Dal server lascia la traccia nell'audit degli accessi.
+              DECLARE
+                  v_utente     integer;
+                  v_device_id  config.auth_totp_device.id%TYPE;
+                  -- Esplicito: un flag calcolato, non una colonna.
+                  v_dal_server boolean := false;
+              BEGIN
+                  -- Prima riga: chi agisce. Se non e' la credenziale stessa deve
+                  -- essere la sessione del migratore o un SUPER_ADMIN, con un motivo.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  IF v_utente IS DISTINCT FROM p_auth_user_id THEN
+                      v_dal_server := dbops.fn_sessione_del_migratore();
+                      IF NOT v_dal_server THEN
+                          PERFORM script.fn_guard_super_admin(v_utente);
+                      END IF;
+
+                      IF p_motivo IS NULL OR btrim(p_motivo) = '' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'script.fn_totp_disabilita_device', 'E_TOTP_MOTIVO_OBBLIGATORIO',
+                              jsonb_build_object('campo', 'motivo', 'auth_user_id', p_auth_user_id),
+                              NULL::uuid,
+                              VARIADIC ARRAY[]::text[]);
+                      END IF;
+                  END IF;
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_disabilita_device', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_auth_user_id', 'valore', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_totp_disabilita_device',
+                                         'credenziale assente o non valida']);
+                  END IF;
+
+                  DELETE FROM config.auth_totp_device d
+                   WHERE d.auth_user_id = p_auth_user_id
+                  RETURNING d.id INTO v_device_id;
+
+                  IF v_device_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_disabilita_device', 'E_TOTP_DEVICE_ASSENTE',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                             'chi_agisce',   v_utente,
+                                             'motivo',       btrim(p_motivo)),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- D-T5: dal server il backend non c'e', la traccia la scrive il
+                  -- verbo. session_user e non user_insert: dentro una DEFINER
+                  -- CURRENT_USER e' il proprietario.
+                  IF v_dal_server THEN
+                      INSERT INTO dbops.sessioni_utente (auth_user_id, evento, dettaglio)
+                      VALUES (p_auth_user_id, 'TOTP_DISABILITATO',
+                              jsonb_build_object('via',       'SERVER',
+                                                 'sessione',  session_user,
+                                                 'chi_agisce', v_utente,
+                                                 'motivo',    btrim(p_motivo)));
+                  END IF;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_totp_registra_device(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id        integer,
+                  p_secret_encrypted    config.auth_totp_device.secret_encrypted%TYPE,
+                  p_recovery_codes_hash config.auth_totp_device.recovery_codes_hash%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: registrare il device del secondo fattore, non confermato;
+              --   sostituisce un setup a meta', non un device in uso.
+              DECLARE
+                  v_device_id config.auth_totp_device.id%TYPE;
+              BEGIN
+                  -- Prima riga: chi agisce e' la credenziale stessa.
+                  PERFORM script.fn_guard_utente_stesso(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                      p_auth_user_id);
+
+                  IF p_auth_user_id <= 0
+                     OR p_secret_encrypted IS NULL OR btrim(p_secret_encrypted) = ''
+                     OR NOT script.fn_check_totp_recovery_hash(p_recovery_codes_hash) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_registra_device', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id,
+                                             'segreto_vuoto', p_secret_encrypted IS NULL
+                                                              OR btrim(p_secret_encrypted) = '',
+                                             'recovery_tipo', jsonb_typeof(p_recovery_codes_hash)),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_totp_registra_device',
+                                         'segreto e codici di recupero (array non vuoto di hash distinti) obbligatori']);
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM django.auth_user au WHERE au.id = p_auth_user_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_registra_device', 'E_CREDENZIALE_NON_TROVATA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- Una istruzione: nasce, o sostituisce un setup a meta'. Un
+                  -- device confermato non si tocca (WHERE) e RETURNING resta vuoto.
+                  INSERT INTO config.auth_totp_device AS d
+                         (auth_user_id, secret_encrypted, recovery_codes_hash, confermato)
+                  VALUES (p_auth_user_id, p_secret_encrypted, p_recovery_codes_hash, false)
+                  ON CONFLICT (auth_user_id) DO UPDATE
+                     SET secret_encrypted    = EXCLUDED.secret_encrypted,
+                         recovery_codes_hash = EXCLUDED.recovery_codes_hash,
+                         ultimo_passo_usato  = NULL,
+                         ultimo_uso_at       = NULL
+                   WHERE NOT d.confermato
+                  RETURNING d.id INTO v_device_id;
+
+                  IF v_device_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_registra_device', 'E_TOTP_DEVICE_GIA_ATTIVO',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_totp_rigenera_recovery(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id        integer,
+                  p_recovery_codes_hash config.auth_totp_device.recovery_codes_hash%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, public, pg_temp
+              AS $function$
+              -- Scopo: sostituire il mazzo dei codici di recupero di un device in uso.
+              DECLARE
+                  v_device_id config.auth_totp_device.id%TYPE;
+              BEGIN
+                  -- Prima riga: chi agisce e' la credenziale stessa.
+                  PERFORM script.fn_guard_utente_stesso(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                      p_auth_user_id);
+
+                  IF p_auth_user_id <= 0
+                     OR NOT script.fn_check_totp_recovery_hash(p_recovery_codes_hash) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_rigenera_recovery', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id,
+                                             'recovery_tipo', jsonb_typeof(p_recovery_codes_hash)),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_totp_rigenera_recovery',
+                                         'codici di recupero (array non vuoto di hash distinti) obbligatori']);
+                  END IF;
+
+                  UPDATE config.auth_totp_device d
+                     SET recovery_codes_hash = p_recovery_codes_hash
+                   WHERE d.auth_user_id = p_auth_user_id
+                     AND d.confermato
+                  RETURNING d.id INTO v_device_id;
+
+                  IF v_device_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_totp_rigenera_recovery', 'E_TOTP_DEVICE_ASSENTE',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_parameter_di_sessione(
+                  p_code config.parameters.code%TYPE,
+                  p_chi  config.parameter_overrides.function_name%TYPE DEFAULT NULL)
+               RETURNS config.parameters.default_value%TYPE
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               STABLE
+              AS $function$
+              DECLARE
+                  v_user_id    config.parameter_overrides.django_user_id%TYPE :=
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  v_emittente  config.parameter_overrides.emittente_fiscale_id%TYPE :=
+                      NULLIF(current_setting('app.current_emittente_id', true), '')::bigint;
+                  -- %TYPE[] non esiste: tipo esplicito, come in fn_get_parameter_full
+                  -- (django_group_id e' integer).
+                  v_group_ids  integer[];
+                  -- un interruttore calcolato qui: niente colonna da ancorare
+                  v_gruppi_leggibili boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il valore di p_code con la cascata degli override
+                  --   (utente, gruppo, emittente, funzione, default), col
+                  --   contesto preso dalla sessione. p_chi: chi lo chiede,
+                  --   per il livello «function» e per il log.
+                  --
+                  -- Regole:
+                  --   - GUC vuota o assente = NULL: il livello salta;
+                  --   - i gruppi si leggono solo se la tabella di Django
+                  --     c'e' e il ruolo la puo' leggere: altrimenti il
+                  --     livello resta spento, senza errore (e' una proposta);
+                  --   - nessuna validazione del valore: e' del lettore.
+                  -- =========================================================
+                  IF v_user_id IS NOT NULL THEN
+                      -- Per OID: un nome in uno schema senza USAGE solleva
+                      -- 42501 anche dentro to_regclass.
+                      SELECT has_schema_privilege(n.oid, 'USAGE')
+                             AND has_table_privilege(c.oid, 'SELECT')
+                        INTO v_gruppi_leggibili
+                        FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                       WHERE n.nspname = 'django'
+                         AND c.relname = 'auth_user_groups';
+
+                      -- Zero righe (tabella assente) lascia NULL: IS TRUE.
+                      IF v_gruppi_leggibili IS TRUE THEN
+                          SELECT array_agg(ug.group_id ORDER BY ug.group_id)
+                            INTO v_group_ids
+                            FROM django.auth_user_groups ug
+                           WHERE ug.user_id = v_user_id;
+                      END IF;
+                  END IF;
+
+                  RETURN script.fn_get_parameter_full(
+                      p_code                 => p_code,
+                      p_emittente_fiscale_id => v_emittente,
+                      p_django_user_id       => v_user_id,
+                      p_group_ids            => v_group_ids,
+                      p_function_name        => p_chi);
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_doc_azioni_permesse(
+                  -- la testata: polimorfa, una delle tabelle della mappa script.fn_doc_stato_modello
+                  p_testata     regclass,
+                  -- lo stato di partenza: di uno qualunque dei vocabolari della mappa, bigint in
+                  -- tutti, nessuna colonna comune a cui ancorarlo
+                  p_stato_da_id bigint)
+               RETURNS TABLE(
+                   -- Stati di uno qualunque dei vocabolari della mappa: bigint e
+                   -- testo in tutti, nessuna colonna comune a cui ancorarli.
+                   stato_a_id               bigint,
+                   stato_a_codice           text,
+                   -- Chiave letta da meta: un valore calcolato, non una colonna.
+                   action_key               text,
+                   azione_processo_codename config.azioni_processo.permission_codename%TYPE,
+                   meta                     jsonb)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- I nomi vengono dalla mappa: tipi nudi.
+                  v_vocabolario regclass;
+                  v_matrice     regclass;
+                  v_col_da      text;
+                  v_col_a       text;
+                  v_vivo        text;
+                  v_filtro      text;
+                  -- L'utente della sessione, per l'azione del passaggio.
+                  v_utente      config.user_override_azioni.auth_user_id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: i passaggi manuali dallo stato p_stato_da_id che
+                  --   l'utente della sessione puo' fare.
+                  -- Regole:
+                  --   - testata fuori mappa: il chiamante e' rotto,
+                  --     E_SCRIPT_CHIAMATA_NON_VALIDA;
+                  --   - stato NULL: nessuna riga;
+                  --   - manuale e azione dalla riga del passaggio
+                  --     (script.fn_doc_passaggio), come il verbo;
+                  --   - permesso => nascondi: azione NULL resta (decide il
+                  --     livello sul documento), altrimenti la concessione.
+                  -- =========================================================
+                  SELECT m.vocabolario, m.matrice, m.colonna_da, m.colonna_a, m.colonna_vivo, m.filtro
+                    INTO v_vocabolario, v_matrice, v_col_da, v_col_a, v_vivo, v_filtro
+                    FROM script.fn_doc_stato_modello(p_testata) m;
+
+                  IF v_matrice IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_doc_azioni_permesse', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('testata', p_testata::text),
+                          NULL::uuid,
+                          'script.fn_doc_azioni_permesse',
+                          'p_testata: una testata della mappa del modello (script.fn_doc_stato_modello)');
+                  END IF;
+
+                  IF p_stato_da_id IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  RETURN QUERY EXECUTE format(
+                      'SELECT t.%2$I::bigint, s.codice_interno::text, t.meta ->> ''action_key'','
+                      '       pz.azione_processo_codename, t.meta'
+                      '  FROM %3$s t'
+                      '  JOIN %4$s s ON s.id = t.%2$I'
+                      ' CROSS JOIN LATERAL script.fn_doc_passaggio($1, t.%1$I, t.%2$I) pz'
+                      ' WHERE t.%1$I = $2 AND t.%5$I IS TRUE %6$s'
+                      '   AND pz.manuale IS TRUE'
+                      '   AND (pz.azione_processo_codename IS NULL'
+                      '        OR script.fn_check_azione_processo($3, pz.azione_processo_codename))',
+                      v_col_da, v_col_a, v_matrice, v_vocabolario, v_vivo, v_filtro)
+                    USING p_testata, p_stato_da_id, v_utente;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_ba_emittente_sr_id(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE
+              )
+               RETURNS anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE
+               LANGUAGE sql
+               STABLE
+               COST 5000
+              AS $function$
+                  -- Scopo: «quale emittente fattura questo billing account?» —
+                  --   il soggetto_ruolo dell'emittente, o NULL se non risolvibile.
+                  --   Regola a TRE livelli dal 20260913-01 (D13): mapping
+                  --   specifico; altrimenti, IN SESSIONE, l'emittente di chi
+                  --   sta agendo; altrimenti il default dell'installazione.
+                  -- ⚠️ Il CASE esterno non e' ridondante. Senza, un BA NULL
+                  --   cadrebbe nei rami 2 e 3 e si vedrebbe rispondere un
+                  --   emittente — cioe' «nessun billing account» verrebbe
+                  --   letto come «billing account non ancora collegato», che e'
+                  --   una cosa diversa e apre invece di chiudere.
+                  SELECT CASE
+                           WHEN p_billing_account_id IS NULL THEN NULL
+                           ELSE COALESCE(
+                                  -- 1) Mapping specifico del BA. Al massimo una
+                                  --    riga: uq_emittenti_fiscali_ba. Vince sempre:
+                                  --    il COALESCE non valuta i rami dopo.
+                                  (SELECT efba.emittente_soggetto_ruolo_id
+                                     FROM anagrafiche.emittenti_fiscali_billing_account efba
+                                    WHERE efba.billing_account_id = p_billing_account_id),
+                                  -- 2) Riserva IN SESSIONE: un BA non ancora
+                                  --    collegato appartiene a chi lo sta creando.
+                                  --    E' l'istante fra l'INSERT e il trigger AFTER
+                                  --    z90_link_ef, cioe' il RETURNING: la riserva
+                                  --    dice cio' che il trigger sta per scrivere,
+                                  --    con la STESSA funzione che usa lui.
+                                  -- ⛔ Il CASE e' il guard: fn_resolve_emittente_for_user
+                                  --    SOLLEVA (e logga) su NULL o <= 0, e senza
+                                  --    sessione non va chiamata. Un WHERE sulla
+                                  --    stessa riga non garantirebbe l'ordine.
+                                  (SELECT ef.soggetto_ruolo_id
+                                     FROM anagrafiche.emittenti_fiscali ef
+                                    WHERE ef.id = (SELECT CASE
+                                                            WHEN s.auth_user_id > 0
+                                                            THEN script.fn_resolve_emittente_for_user(s.auth_user_id)
+                                                          END
+                                                     FROM (SELECT NULLIF(current_setting('app.current_user_id', true), '')::integer
+                                                                  AS auth_user_id) s)),
+                                  -- 3) Riserva SENZA sessione: l'emittente di
+                                  --    default dell'installazione (batch,
+                                  --    manutenzione, admin globale senza
+                                  --    emittente attivo). Al massimo uno:
+                                  --    uq_emittenti_fiscali_ba_default.
+                                  (SELECT efba_d.emittente_soggetto_ruolo_id
+                                     FROM anagrafiche.emittenti_fiscali_billing_account efba_d
+                                    WHERE efba_d.is_default)
+                                )
+                         END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_default_emittente_fiscale()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                v_modo          text := TG_ARGV[0];   -- NULL se non passato (indice fuori da TG_NARGS)
+                v_opzione       text := TG_ARGV[1];
+                v_row           jsonb;
+                v_tx_id         uuid;
+                v_auth_user_id  anagrafiche.identita_digitali.auth_user_id%TYPE;
+                v_ef_id         anagrafiche.emittenti_fiscali.id%TYPE;
+              BEGIN
+                -- Scopo: riempire emittente_fiscale_id quando la riga arriva senza,
+                --   con l'emittente di lavoro di chi scrive (attivo di sessione se in
+                --   scope, altrimenti quello assegnato). Building block unico: sostituisce
+                --   le copie per documento di vendite. Brief: brief-db-emittente-di-default-un-bb-solo.
+                -- Regole:
+                --   0. argomenti di montaggio non ammessi -> E_TRIGGER_ARGOMENTI_INVALIDI
+                --      (difetto di chi installa: muore al primo INSERT, non tace);
+                --   1. valore esplicito -> non si sovrascrive mai una scelta dichiarata;
+                --   2. SALTA_CON_SORGENTE e riga con sorgente_tipo_id + una chiave
+                --      (sorgente_id o sorgente_uid, rev 2026-11-06 giro 0.3) ->
+                --      l'emittente e' del documento padre, lo mette il normalize a valle;
+                --   3. GUC app.current_user_id vuota -> LASCIA_NULL: RETURN NEW;
+                --      SOLLEVA: E_EMITTENTE_NON_RISOLTO;
+                --   4. resolver NULL (admin globale senza assegnazione) -> idem;
+                --   5. altrimenti NEW.emittente_fiscale_id := emittente di lavoro.
+
+                -- 0) Argomenti di montaggio.
+                IF TG_OP <> 'INSERT'
+                   OR TG_NARGS < 1 OR TG_NARGS > 2
+                   OR v_modo NOT IN ('SOLLEVA', 'LASCIA_NULL')
+                   OR (TG_NARGS = 2 AND v_opzione IS DISTINCT FROM 'SALTA_CON_SORGENTE') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'script.trgfn_default_emittente_fiscale',
+                    'E_TRIGGER_ARGOMENTI_INVALIDI',
+                    jsonb_build_object(
+                      'detail',    'atteso BEFORE INSERT con TG_ARGV[0] in (SOLLEVA, LASCIA_NULL) e TG_ARGV[1] facoltativo = SALTA_CON_SORGENTE',
+                      'tabella',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'trigger',   TG_NAME,
+                      'tg_op',     TG_OP,
+                      'argomenti', to_jsonb(TG_ARGV)
+                    ),
+                    NULL::uuid,
+                    concat_ws(' ', TG_OP, coalesce(NULLIF(array_to_string(TG_ARGV, ', '), ''), '(nessun argomento)'))
+                  );
+                END IF;
+
+                -- 1) Valore esplicito: non si tocca.
+                IF NEW.emittente_fiscale_id IS NOT NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Le colonne facoltative (sorgente_*, tx_id) si leggono in sola lettura da
+                -- to_jsonb(NEW): esistono su alcune tabelle montate, non su tutte.
+                v_row   := to_jsonb(NEW);
+                v_tx_id := NULLIF(v_row ->> 'tx_id', '')::uuid;
+
+                -- 2) Riga nata da un documento sorgente: l'emittente e' quello del padre.
+                IF v_opzione = 'SALTA_CON_SORGENTE'
+                   AND (v_row ->> 'sorgente_tipo_id') IS NOT NULL
+                   AND ((v_row ->> 'sorgente_id') IS NOT NULL OR (v_row ->> 'sorgente_uid') IS NOT NULL) THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 3) Chi scrive. GUC vuota = nessuno da cui dedurre.
+                v_auth_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                IF v_auth_user_id IS NULL THEN
+                  IF v_modo = 'LASCIA_NULL' THEN
+                    RETURN NEW;
+                  END IF;
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'script.trgfn_default_emittente_fiscale',
+                    'E_EMITTENTE_NON_RISOLTO',
+                    jsonb_build_object(
+                      'detail',  'GUC app.current_user_id vuota e riga senza emittente_fiscale_id: fuori da una sessione utente non c'' e'' nulla da cui dedurlo',
+                      'campo',   'emittente_fiscale_id',
+                      'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                    ),
+                    v_tx_id,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                -- 4) Emittente di lavoro: attivo di sessione se in scope, altrimenti quello
+                --    assegnato in config.user_emittenti_fiscali; NULL per un admin globale
+                --    senza assegnazione (modalita' «tutti gli emittenti», di sola lettura).
+                v_ef_id := script.fn_resolve_emittente_for_user(v_auth_user_id);
+                IF v_ef_id IS NULL THEN
+                  IF v_modo = 'LASCIA_NULL' THEN
+                    RETURN NEW;
+                  END IF;
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'script.trgfn_default_emittente_fiscale',
+                    'E_EMITTENTE_NON_RISOLTO',
+                    jsonb_build_object(
+                      'detail',       'operatore senza emittente assegnato (admin globale in modalita'' tutti gli emittenti): la riga deve dichiararlo',
+                      'campo',        'emittente_fiscale_id',
+                      'tabella',      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'auth_user_id', v_auth_user_id
+                    ),
+                    v_tx_id,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                -- 5) Il default.
+                NEW.emittente_fiscale_id := v_ef_id;
+                RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_doc_guard_emittente_ba()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- TG_ARGV: [0] etichetta del documento, [1] colonna che lo
+                -- identifica, [2] colonna dell'emittente, [3] codice d'errore.
+                v_tipo        text;
+                v_col_ident   text;
+                v_col_emit    text;
+                v_codice      config.codici_errore.codice%TYPE;
+                v_new         jsonb;
+                v_ba          anagrafiche.billing_account.id%TYPE;
+                v_emittente   bigint;  -- id della colonna [2]: emittente_fiscale_id o emittente_soggetto_ruolo_id
+                v_atteso      bigint;  -- lo stesso, risolto dal BA
+                v_documento   text;  -- etichetta + identificativo, composti per la frase
+                v_nome        text;  -- ragione sociale o '#id': un pezzo di frase, non una colonna
+                v_nome_atteso text;  -- idem
+                v_ba_codice   anagrafiche.billing_account.codice%TYPE;
+                v_contesto    jsonb;
+                v_utente      config.user_override_aree.auth_user_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Un documento di vendita e' emesso dall'azienda del suo
+                --   cliente: l'emittente e' quello che il billing account
+                --   risolve. Building block, montato BEFORE INSERT OR UPDATE OF
+                --   (billing_account_id, <colonna dell'emittente>).
+                -- ⚠️ BA NULL: esce, su ogni tabella. Dove il BA e' NOT NULL
+                --   parla il vincolo, che si controlla dopo i BEFORE ROW; dove e'
+                --   NULL ammesso (DDT, reso) non c'e' niente da confrontare.
+                -- ⚠️ I risolutori possono propagare E_EMITTENTE_DEFAULT_MISSING:
+                --   e' un difetto di configurazione, non si maschera.
+                -- ⛔ No-leak: il codice del BA entra nella frase solo se il BA e' nel
+                --   perimetro di chi agisce (fn_scope_ef_whitelist_via_efba, la domanda
+                --   della policy). Dentro un verbo SECURITY DEFINER la RLS non filtra,
+                --   e la frase direbbe il codice di un cliente di un'altra azienda.
+                --   Senza operatore in sessione decide la RLS di chi scrive.
+                -- =========================================================
+                v_new := to_jsonb(NEW);
+
+                -- ── Argomenti: errore di MONTAGGIO, non di dato ───────────
+                IF COALESCE(array_length(TG_ARGV, 1), 0) <> 4
+                   OR TG_OP NOT IN ('INSERT', 'UPDATE')
+                   OR TG_ARGV[2] NOT IN ('emittente_fiscale_id', 'emittente_soggetto_ruolo_id')
+                   OR NOT (v_new ? TG_ARGV[1])
+                   OR NOT (v_new ? TG_ARGV[2])
+                   OR NOT (v_new ? 'billing_account_id') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', TG_NAME::text, 'E_DOC_RIGHE_LOCK_MONTAGGIO',
+                    jsonb_build_object('trigger', TG_NAME,
+                                       'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                       'evento',  TG_OP,
+                                       'tg_argv', TG_ARGV),
+                    NULL::uuid,
+                    TG_NAME::text,
+                    TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    'attesi: etichetta del documento, colonna che lo identifica, colonna dell''emittente (emittente_fiscale_id | emittente_soggetto_ruolo_id) e codice d''errore, su una tabella con billing_account_id');
+                END IF;
+
+                v_tipo      := TG_ARGV[0];
+                v_col_ident := TG_ARGV[1];
+                v_col_emit  := TG_ARGV[2];
+                v_codice    := TG_ARGV[3];
+
+                v_ba := (v_new ->> 'billing_account_id')::bigint;
+                IF v_ba IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                v_emittente := (v_new ->> v_col_emit)::bigint;
+                IF v_col_emit = 'emittente_fiscale_id' THEN
+                  v_atteso := anagrafiche.fn_get_emittente_fiscale_pk(v_ba);
+                ELSE
+                  v_atteso := anagrafiche.fn_get_emittente_fiscale_id(v_ba);
+                END IF;
+
+                IF v_emittente IS NOT DISTINCT FROM v_atteso THEN
+                  RETURN NEW;
+                END IF;
+
+                -- ── La frase: nomi, non id (D-2) ─────────────────────────
+                v_documento := v_tipo || ' '
+                               || COALESCE(v_new ->> v_col_ident, '#' || (v_new ->> 'id'));
+
+                -- Il nome dell'azienda: dal ruolo dell'emittente al soggetto.
+                -- Con la PK dell'emittente si passa da emittenti_fiscali.
+                SELECT s.ragione_sociale_completa INTO v_nome
+                  FROM anagrafiche.soggetti_ruoli sr
+                  JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                 WHERE sr.id = CASE WHEN v_col_emit = 'emittente_fiscale_id'
+                                    THEN (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+                                           WHERE ef.id = v_emittente)
+                                    ELSE v_emittente END;
+                SELECT s.ragione_sociale_completa INTO v_nome_atteso
+                  FROM anagrafiche.soggetti_ruoli sr
+                  JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                 WHERE sr.id = CASE WHEN v_col_emit = 'emittente_fiscale_id'
+                                    THEN (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+                                           WHERE ef.id = v_atteso)
+                                    ELSE v_atteso END;
+                v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                SELECT ba.codice INTO v_ba_codice
+                  FROM anagrafiche.billing_account ba
+                 WHERE ba.id = v_ba
+                   AND (v_utente IS NULL OR script.fn_scope_ef_whitelist_via_efba(v_utente, ba.id));
+
+                v_contesto := jsonb_build_object(
+                    'tabella',             TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    'id',                  v_new -> 'id',
+                    'billing_account_id',  v_ba,
+                    'colonna',             v_col_emit,
+                    'emittente',           v_emittente,
+                    'emittente_atteso',    v_atteso);
+                -- `campo` solo se l'errore e' di una persona: su un TECNICO
+                -- (la commessa) non c'e' un campo da accendere.
+                IF EXISTS (SELECT 1 FROM config.codici_errore ce
+                            WHERE ce.codice = v_codice AND ce.classe <> 'TECNICO') THEN
+                  v_contesto := v_contesto || jsonb_build_object('campo', v_col_emit);
+                END IF;
+
+                PERFORM script.fn_log_and_raise_error(
+                  'database', TG_NAME::text, v_codice,
+                  v_contesto,
+                  (v_new ->> 'tx_id')::uuid,
+                  v_documento,
+                  COALESCE(v_nome,        '#' || COALESCE(v_emittente::text, '?')),
+                  COALESCE(v_nome_atteso, '#' || COALESCE(v_atteso::text, '?')),
+                  COALESCE(v_ba_codice,   '#' || v_ba::text));
+                -- fn_log_and_raise_error solleva: non si arriva qui.
+                RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_guard_emittente_scope()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_auth_user_id         anagrafiche.identita_digitali.auth_user_id%TYPE;
+                v_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE;
+                v_col_value            bigint;
+                v_mode                 text := TG_ARGV[0];
+                v_col_name             text := TG_ARGV[1];
+              BEGIN
+                -- =========================================================
+                -- Difesa in profondita': verifica che l'utente corrente abbia
+                -- scope sull'emittente fiscale della riga.
+                --
+                -- Modalita' (TG_ARGV[0]) — la risoluzione vive tutta in
+                -- script.fn_resolve_emittente_fiscale_id:
+                --   'soggetto_ruolo' = la colonna contiene soggetto_ruolo_id
+                --   'fattura'        = la colonna contiene fattura_id
+                --   'fiscale'        = la colonna E' gia' emittente_fiscale_id
+                --   'contabile'      = la colonna contiene contabile_id, e il
+                --                      perimetro si deriva dal CONTO DI INCASSO
+                --                      della distinta (D5)
+                --   'listino'        = la colonna contiene listino_id
+                --   'magazzino'      = la colonna contiene magazzino_id (Lotto 2)
+                --
+                -- Se emittente non risolvibile -> skip (nessun padrone).
+                --
+                -- ⭐ Rev 2026-08-22 (lotto 6, S3-4). La risoluzione era QUI, e
+                --   il guard e' SECURITY INVOKER: nel modo 'fattura' leggeva
+                --   vendite.fatture sotto row security, e per un utente fuori
+                --   perimetro quella lettura dava ZERO RIGHE. Emittente NULL ->
+                --   ramo «non risolvibile» -> RETURN NEW. Il guard si spegneva
+                --   esattamente nel caso che esiste per coprire, e il controllo
+                --   di integrita' referenziale — che gira fuori dalla row
+                --   security — non si opponeva: la riga entrava.
+                --   Adesso la risoluzione la fa una SECURITY DEFINER, che legge
+                --   tutto; qui resta solo l'applicazione della decisione.
+                --
+                -- ⛔ Rev 2026-09-04 (fase 6, brief processi automatici). Il
+                --   ramo «utente NULL -> RETURN NEW» diceva «batch job, nessun
+                --   filtro»: era l'ultima porta da cui un processo applicativo
+                --   scriveva senza dire chi fosse, e bastava NON impostare una
+                --   GUC per aprirla. Adesso passa solo chi bypasserebbe
+                --   comunque la RLS.
+                --
+                -- ⛔ Rev 2026-09-18 (magazzino Lotto 2, sezione 6-ter C1).
+                --   row_security_active risponde per il CURRENT_USER, che
+                --   dentro una SECURITY DEFINER e' il proprietario: FALSE
+                --   sempre. Dentro una DEFINER (current_user <> session_user)
+                --   quella risposta non dice niente su chi sta scrivendo: si
+                --   risolve comunque l'emittente e, se la riga ha un padrone,
+                --   ci si ferma. Una riga senza padrone (le email di sistema)
+                --   passa come prima. Provato con fn_accoda_email_sistema.
+                -- =========================================================
+
+                -- 1. Leggi user_id dalla sessione PG
+                v_auth_user_id := NULLIF(
+                  current_setting('app.current_user_id', true), ''
+                )::integer;
+
+                IF v_auth_user_id IS NULL THEN
+                  -- ⭐ UN CRITERIO SOLO, E NON E' NOSTRO.
+                  --   row_security_active() risponde per la tabella in gioco e
+                  --   per QUESTA sessione: false per il proprietario (senza
+                  --   FORCE ROW LEVEL SECURITY), per un superuser e per un
+                  --   ruolo BYPASSRLS. Sono esattamente le sessioni che le
+                  --   policy non filtrano: se la RLS le lascia passare, questo
+                  --   guard non ha titolo per fermarle — e viceversa.
+                  --   ⛔ Non si elenca a mano «proprietario o superuser o
+                  --   bypassrls»: sarebbe una SECONDA scrittura della stessa
+                  --   regola, e due scritture prima o poi dissentono.
+                  IF NOT row_security_active(TG_RELID::regclass) THEN
+                    -- ⚠️ Ma «per QUESTA sessione» vuol dire per il current_user:
+                    --   dentro una SECURITY DEFINER e' il proprietario della
+                    --   funzione, non chi ha chiamato. Fuori da una DEFINER
+                    --   (current_user = session_user) la risposta vale e si passa.
+                    -- ⭐ Rev 2026-10-15: si confronta col ruolo di SESSIONE, non col
+                    --   login. Un utente personale che lavora come proprietario
+                    --   (`SET role`) ha session_user <> current_user anche fuori
+                    --   da una DEFINER; una DEFINER cambia current_user ma non il
+                    --   parametro `role`. Brief: brief-db-ruoli-di-sistema §19.
+                    IF current_user = coalesce(nullif(current_setting('role'), 'none'), session_user) THEN
+                      RETURN NEW;
+                    END IF;
+
+                    -- Dentro una DEFINER, senza identita': si guarda la RIGA.
+                    -- Nessun padrone -> niente da proteggere, passa (email di
+                    -- sistema). Un padrone -> nessuno risponde di questa
+                    -- scrittura: si ferma qui sotto.
+                    v_col_value := (to_jsonb(NEW) ->> v_col_name)::bigint;
+                    IF v_col_value IS NULL THEN
+                      RETURN NEW;
+                    END IF;
+                    v_emittente_fiscale_id :=
+                        script.fn_resolve_emittente_fiscale_id(v_mode, v_col_value);
+                    IF v_emittente_fiscale_id IS NULL THEN
+                      RETURN NEW;
+                    END IF;
+                  END IF;
+
+                  -- Sessione applicativa senza identita': si ferma. Non e'
+                  -- «permesso negato a qualcuno» — non c'e' nessuno a cui
+                  -- negarlo: e' un processo configurato senza identita'.
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'trgfn_guard_emittente_scope',
+                    'E_SCOPE_SENZA_UTENTE',
+                    jsonb_build_object(
+                      'detail', 'Scrittura senza utente in sessione su tabella con perimetro emittente',
+                      'modo', v_mode,
+                      'colonna', v_col_name,
+                      'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'db_user', current_user,
+                      'session_user', session_user,
+                      'dentro_definer', current_user <> coalesce(nullif(current_setting('role'), 'none'), session_user),
+                      'emittente_fiscale_id', v_emittente_fiscale_id,
+                      'operazione', TG_OP
+                    ),
+                    NULL::uuid,
+                    TG_TABLE_SCHEMA::text,
+                    TG_TABLE_NAME::text
+                  );
+                END IF;
+
+                -- 2. Leggi valore colonna da NEW
+                v_col_value := (to_jsonb(NEW) ->> v_col_name)::bigint;
+
+                IF v_col_value IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Su UPDATE, skip se la colonna non e' cambiata
+                IF TG_OP = 'UPDATE' AND
+                   v_col_value = (to_jsonb(OLD) ->> v_col_name)::bigint THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 3. Risolvi l'emittente FUORI dalla row security.
+                v_emittente_fiscale_id :=
+                    script.fn_resolve_emittente_fiscale_id(v_mode, v_col_value);
+
+                IF v_emittente_fiscale_id IS NULL THEN
+                  -- ⭐ Nessun padrone: dati non ancora collegati, oppure una
+                  --   distinta INTERNA (fondo fattura, compensazione) che non e'
+                  --   il canale di nessuno. Prima questo ramo raccoglieva anche
+                  --   i documenti altrui; adesso no.
+                  RETURN NEW;
+                END IF;
+
+                -- 4. Verifica scope (canonica auth_user_id, bypass SUPER_ADMIN)
+                IF NOT script.fn_check_user_emittente_scope(
+                         v_auth_user_id, v_emittente_fiscale_id) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    TG_TABLE_SCHEMA::text,
+                    'trgfn_guard_emittente_scope',
+                    'E_SCOPE_EMITTENTE',
+                    jsonb_build_object(
+                      'detail', 'Utente non autorizzato per emittente fiscale',
+                      'auth_user_id', v_auth_user_id,
+                      'emittente_fiscale_id', v_emittente_fiscale_id,
+                      'modo', v_mode,
+                      'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                    ),
+                    NULL::uuid,
+                    format(
+                      'Utente %s non autorizzato per emittente fiscale %s su %s.%s',
+                      v_auth_user_id, v_emittente_fiscale_id,
+                      TG_TABLE_SCHEMA, TG_TABLE_NAME
+                    )
+                  );
+                END IF;
+
+                RETURN NEW;
+              END
+              $function$;

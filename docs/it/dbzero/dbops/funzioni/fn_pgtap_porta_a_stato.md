@@ -177,7 +177,7 @@ BEGIN
             v_matrice, v_corrente, p_stato;
     END IF;
 
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('dbops.fn_pgtap_porta_a_stato');
 
     -- ── Il cammino: un passo alla volta, dai guard veri ──────
     v_da := v_corrente;

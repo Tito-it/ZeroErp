@@ -30,7 +30,7 @@ DECLARE
     v_qta_base  vendite.ddt_righe.quantita%TYPE;
     v_ordine_id vendite.ordini.id%TYPE;
 BEGIN
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('vendite.fn_ddt_riga_correggi_qta_evasa');
 
     -- 1. Parametri.
     IF p_ddt_riga_id IS NULL OR p_ddt_riga_id <= 0 THEN

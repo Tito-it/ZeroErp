@@ -32,7 +32,7 @@ BEGIN
     --   Vedi l'intestazione del changeSet 20261031-66.
     -- Ritorna: quanti preventivi sono scaduti.
     -- ==========================================================
-    v_utente     := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente     := script.fn_utente_di_sessione('vendite.fn_chiudi_preventivi_scaduti');
     v_emesso_id  := script.fn_stato_emissione_id('vendite.preventivi'::regclass);
     v_scaduto_id := script.fn_stato_scadenza_id('vendite.preventivi'::regclass);
 

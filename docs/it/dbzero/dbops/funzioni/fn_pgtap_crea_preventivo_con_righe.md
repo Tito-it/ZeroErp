@@ -59,7 +59,7 @@ BEGIN
                 'fn_pgtap_crea_preventivo_con_righe: preventivo id = % inesistente, invisibile o fuori bozza — le righe si scrivono in bozza',
                 p_preventivo_id;
         END IF;
-        v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+        v_user_id := script.fn_utente_di_sessione('dbops.fn_pgtap_crea_preventivo_con_righe');
     ELSE
         SELECT p.preventivo_id, p.billing_account_id, p.emittente_fiscale_id, p.auth_user_id
           INTO v_preventivo, v_ba_id, v_ef_id, v_user_id

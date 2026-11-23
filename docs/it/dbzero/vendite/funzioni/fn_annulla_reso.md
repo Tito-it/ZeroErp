@@ -53,7 +53,7 @@ DECLARE
     v_ord              RECORD;
     v_sorgente_id      config.sorgenti.id%TYPE;
 BEGIN
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('vendite.fn_annulla_reso');
     IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite','fn_annulla_reso','E_VALIDAZIONE',

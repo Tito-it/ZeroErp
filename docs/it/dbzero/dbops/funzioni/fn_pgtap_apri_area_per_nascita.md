@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_pgtap_apri_area_per_nascita.md" %}
 # ⚙️ Funzione `fn_pgtap_apri_area_per_nascita`
 
 ```sql
@@ -29,7 +30,7 @@ DECLARE
     v_prima   config.user_override_aree%ROWTYPE;
     v_ov      config.user_override_aree.id%TYPE;
 BEGIN
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('dbops.fn_pgtap_apri_area_per_nascita');
     IF v_utente IS NULL THEN
         RAISE EXCEPTION 'fn_pgtap_apri_area_per_nascita: nessun operatore in sessione — chiamare prima fn_pgtap_set_contesto_operatore';
     END IF;
@@ -94,4 +95,3 @@ IS 'Fixture pgTAP: apre a TUTTO l''area dell''oggetto per l''operatore in sessio
 
 ---
 {% include-markdown "signature-core.md" %}
-{% include-markdown "it/dbzero/dbops/manual/fn_pgtap_apri_area_per_nascita.md" %}

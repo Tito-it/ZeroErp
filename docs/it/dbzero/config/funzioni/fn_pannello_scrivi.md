@@ -60,7 +60,7 @@ BEGIN
 
     -- 1. Il permesso: TUTTO sull'oggetto della riga di lista (D-5).
     PERFORM script.fn_guard_livello(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer,
+        script.fn_utente_di_sessione('config.fn_pannello_scrivi'),
         v_voce.app_label, v_voce.model_name, 'TUTTO');
 
     -- 2. Il payload: un oggetto non vuoto, solo colonne scrivibili.

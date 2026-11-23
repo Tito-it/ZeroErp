@@ -25,7 +25,7 @@ DECLARE
 BEGIN
     -- Prima riga: chi agisce e' la credenziale stessa.
     PERFORM script.fn_guard_utente_stesso(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer,
+        script.fn_utente_di_sessione('script.fn_totp_registra_device'),
         p_auth_user_id);
 
     IF p_auth_user_id <= 0

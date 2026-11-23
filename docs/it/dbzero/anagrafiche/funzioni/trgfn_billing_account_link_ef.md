@@ -24,7 +24,7 @@ DECLARE
 BEGIN
     -- 1) Lettura GUC utente corrente (settato dal middleware Django)
     BEGIN
-        v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+        v_user_id := script.fn_utente_di_sessione('anagrafiche.trgfn_billing_account_link_ef');
     EXCEPTION WHEN OTHERS THEN
         v_user_id := NULL;
     END;

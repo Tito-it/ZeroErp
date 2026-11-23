@@ -30,7 +30,7 @@ BEGIN
     --   della validita' di una versione di listino ATTIVA.
     --   Vedi l'intestazione dei changeSet 20261029-02 e -08.
     -- ==========================================================
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('vendite.fn_programma_chiusura_versione_listino');
 
     -- 1. Parametro e versione, nel perimetro.
     IF p_versione_id IS NULL OR p_versione_id <= 0 THEN

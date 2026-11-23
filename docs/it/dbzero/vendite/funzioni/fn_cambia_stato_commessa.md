@@ -33,7 +33,7 @@ BEGIN
     -- rev 2026-10-26 (20261026-30, brief-modello-documento-
     --   vendita §14, C-4): sul verbo comune, DEFINER, senza p_user.
     -- ==========================================================
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('vendite.fn_cambia_stato_commessa');
 
     -- 1. Parametri.
     IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN

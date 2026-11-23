@@ -538,7 +538,7 @@ E_TASK_NOT_IMPLEMENTED,it,Task pipeline non implementato.,740,NULL,NULL
 E_TASK_RESET_REQUIRED,it,Reset necessario prima di rieseguire.,741,NULL,NULL
 E_TIPO_FONDO_NOT_FOUND,it,Tipo fondo non trovato.,742,NULL,NULL
 E_TOKEN,it,"Token non valido, scaduto o gia' utilizzato.",743,NULL,NULL
-E_UI_COLONNA_IN_USO,it,La colonna è in uso in preferenze utente o preset. Disattivala con attivo=false invece di eliminarla.,744,NULL,NULL
+E_UI_COLONNA_IN_USO,it,"La colonna è in uso in un preset: toglila prima dal preset, oppure disattivala con attivo=false invece di eliminarla.",744,NULL,NULL
 E_UI_COLONNA_NON_TROVATA,it,Colonna lista non trovata.,745,NULL,NULL
 E_UI_COLONNA_VALIDAZIONE,it,Colonna lista non valida.,746,NULL,NULL
 E_UI_DEFINIZIONE_IN_USO,it,"La definizione lista e' in uso (preferenze utente, colonne o preset). Disattivala con attivo=false invece di eliminarla.",747,NULL,NULL

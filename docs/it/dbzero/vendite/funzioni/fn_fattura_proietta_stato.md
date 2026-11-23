@@ -30,7 +30,7 @@ BEGIN
     -- rev 2026-10-27 (20261027-10, brief-modello-documento-
     --   vendita §15): nasce, al posto degli UPDATE della pipeline.
     -- ==========================================================
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('vendite.fn_fattura_proietta_stato');
 
     IF p_fattura_id IS NULL OR p_fattura_id <= 0 OR p_stato_doc_fiscale_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
