@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.trasferimenti_righe`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -70,6 +70,12 @@ e da lì al magazzino di origine e al suo emittente. Meccanismo comune: [Linee g
 
 ---
 
+### Chi scrive
+
+L'applicazione legge questa tabella e non la scrive: ogni scrittura passa da un **verbo**, che controlla il livello dell'operatore e il perimetro prima di scrivere. Una riga nasce con [fn_aggiungi_riga_trasferimento](/dbzero/magazzino/funzioni/fn_aggiungi_riga_trasferimento), si modifica con [fn_modifica_riga_documento_interno](/dbzero/magazzino/funzioni/fn_modifica_riga_documento_interno) e si toglie con [fn_togli_riga_documento_interno](/dbzero/magazzino/funzioni/fn_togli_riga_documento_interno), solo con la testata in `DRAFT`.
+
+---
+
 ### Codici errore
 
 * `E_MAG_DOCUMENTO_RIGHE_CONGELATE`: una riga scritta, cambiata o cancellata con la testata fuori
@@ -88,6 +94,7 @@ e da lì al magazzino di origine e al suo emittente. Meccanismo comune: [Linee g
   (`brief-db-magazzino-lotto-3-scarico-da-ddt`).
 * 2026-11-08 — i movimenti non citano più la riga come tipo a sé (`TRASFERIMENTO_RIGA`, ritirato
   da `config.sorgenti`): citano il documento e la riga.
+* 2026-11-23 — in sola lettura per l'applicazione: la scrivono i verbi (`brief-db-magazzino-tutte-le-scritture-dal-verbo`, Lotto 2).
 
 ---
 

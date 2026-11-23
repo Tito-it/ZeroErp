@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GLI INDIRIZZI HANNO MEMORIA CONTINUA: STORICIZZA ACCESO DI DEFAULT
+#   anagrafiche.indirizzi e anagrafiche.indirizzi_dettaglio: storicizza
+#   DEFAULT true, righe esistenti accese, COMMENT della colonna riscritto.
+#   Brief: brief-db-revisione-anagrafiche §18 (Q7 riaperta, strada (b), Tid
+#   2026-11-22), giro 1.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   script.trgfn_storico_generic scrive una versione solo se la riga ha
+#   storicizza acceso, e su queste due tabelle il flag nasceva false: una
+#   modifica lasciava traccia solo se chi scriveva passava true, e nessuna
+#   scrittura dell'applicazione lo passa. Una modifica a un indirizzo di ruolo
+#   o a un civico non lasciava nessuna versione. La garanzia sta nel database,
+#   non nei punti di scrittura del backend, che dimenticherebbero il prossimo
+#   percorso e non coprono la riattivazione dentro
+#   anagrafiche.fn_get_or_create_indirizzo_dettaglio.
+#   Stessa forma di anagrafiche.indirizzi_soggetti e di dati_societari
+#   (20261114-70/-71): DEFAULT true qui, la riga nel registro dello storico in
+#   80_data (20261123-41), perche' il trigger non spenga piu' il flag dopo
+#   ogni modifica. Con il flag acceso anche la cancellazione lascia traccia:
+#   il trigger guarda il flag SALVATO sulla riga.
+#   Le colonne sono gia' NOT NULL: non c'e' un passo di vincolo.
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   1. DEFAULT true: le righe nuove nascono accese.
+#   2. Le righe esistenti si accendono una volta, con i trigger della tabella
+#      SOSPESI (linee-guida-trigger, «Il backfill di una colonna derivata non
+#      passa dai trigger»): accendere il flag non e' un evento di dominio.
+#      Senza la sospensione lo storico scriverebbe una modifica che non c'e'
+#      stata, la normalizzazione e la geolocalizzazione riscriverebbero le
+#      righe, e i guard (forma libera, tipo d'indirizzo, obbligatori,
+#      padre attivo) giudicherebbero di nuovo righe che il modello ha gia'
+#      ammesso. Restano accesi l'audit e il tx_id, come nel precedente: le
+#      righe sono state toccate oggi, ed e' vero.
+#      I trigger si cercano per FUNZIONE, non per nome: storico, audit e
+#      tx_id nascono da ci_apply (linee-guida-sql §11.5), e su un database da
+#      zero qui non ci sono ancora, come le righe: il blocco non fa niente.
+#      Si riaccende solo cio' che era acceso, nel suo modo (O, A, R).
+#      Un trigger interno (FK) non si tocca: la riga non cambia chiave.
+#   3. COMMENT della colonna: il comportamento di oggi (linee-guida-sql §5d).
+#
+# config.stradario ha la stessa decisione in 20261123-39 (default) e
+#   20261123-40 (le righe, dopo il mirror del suo CSV).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261123-38-alter-indirizzi-storicizza-sempre-mctit.yaml
+
+  - changeSet:
+      id: 20261123-38-alter-indirizzi-storicizza-sempre
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.indirizzi e anagrafiche.indirizzi_dettaglio: storicizza DEFAULT true, righe
+        esistenti accese con i trigger della tabella sospesi (tranne audit e tx_id): ogni modifica
+        e cancellazione di un indirizzo o di un civico resta nello storico.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.indirizzi           ALTER COLUMN storicizza SET DEFAULT true;
+              ALTER TABLE anagrafiche.indirizzi_dettaglio ALTER COLUMN storicizza SET DEFAULT true;
+
+              DO $backfill$
+              DECLARE
+                  v_tabella  regclass;  -- una delle due tabelle del giro, non il riflesso di una colonna: regclass per il format
+                  r          record;
+                  v_sospesi  pg_catalog.pg_trigger.tgname%TYPE[];
+                  v_modi     pg_catalog.pg_trigger.tgenabled%TYPE[];
+              BEGIN
+                  FOREACH v_tabella IN ARRAY ARRAY['anagrafiche.indirizzi'::regclass,
+                                                   'anagrafiche.indirizzi_dettaglio'::regclass]
+                  LOOP
+                      v_sospesi := '{}';
+                      v_modi    := '{}';
+
+                      FOR r IN
+                          SELECT t.tgname, t.tgenabled
+                            FROM pg_trigger t
+                           WHERE t.tgrelid = v_tabella
+                             AND NOT t.tgisinternal
+                             AND t.tgenabled <> 'D'
+                             AND t.tgfoid NOT IN ('script.trgfn_audit_data_user_generic'::regproc,
+                                                  'dbops.trgfn_tx_id_managed'::regproc)
+                      LOOP
+                          EXECUTE format('ALTER TABLE %s DISABLE TRIGGER %I', v_tabella, r.tgname);
+                          v_sospesi := v_sospesi || r.tgname;
+                          v_modi    := v_modi || r.tgenabled;
+                      END LOOP;
+
+                      EXECUTE format('UPDATE %s SET storicizza = true WHERE NOT storicizza', v_tabella);
+
+                      -- Si riaccende ogni trigger nel modo in cui era: O (origin), A (always), R (replica).
+                      FOR i IN 1 .. coalesce(array_length(v_sospesi, 1), 0) LOOP
+                          EXECUTE format('ALTER TABLE %s %s TRIGGER %I',
+                                         v_tabella,
+                                         CASE v_modi[i]
+                                             WHEN 'A' THEN 'ENABLE ALWAYS'
+                                             WHEN 'R' THEN 'ENABLE REPLICA'
+                                             ELSE 'ENABLE'
+                                         END,
+                                         v_sospesi[i]);
+                      END LOOP;
+                  END LOOP;
+              END
+              $backfill$;
+
+              COMMENT ON COLUMN anagrafiche.indirizzi.storicizza IS
+                'Se true, ogni modifica e cancellazione della riga lascia una versione in storico.indirizzi (script.trgfn_storico_generic). Nasce true e resta acceso: la tabella è in config.storico_set_storicizza, e il trigger non lo spegne dopo la modifica. Una scrittura che lo porta a false non lascia traccia, e la riga resta senza storico finché qualcuno non lo riaccende.';
+
+              COMMENT ON COLUMN anagrafiche.indirizzi_dettaglio.storicizza IS
+                'Se true, ogni modifica e cancellazione del civico lascia una versione in storico.indirizzi_dettaglio (script.trgfn_storico_generic). Nasce true e resta acceso: la tabella è in config.storico_set_storicizza, e il trigger non lo spegne dopo la modifica. Una scrittura che lo porta a false non lascia traccia, e la riga resta senza storico finché qualcuno non lo riaccende.';
+
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE anagrafiche.indirizzi           ALTER COLUMN storicizza SET DEFAULT false;
+              ALTER TABLE anagrafiche.indirizzi_dettaglio ALTER COLUMN storicizza SET DEFAULT false;
+              COMMENT ON COLUMN anagrafiche.indirizzi.storicizza IS
+                'Se true, al prossimo UPDATE/DELETE verrà creato uno snapshot in storico.indirizzi';
+              COMMENT ON COLUMN anagrafiche.indirizzi_dettaglio.storicizza IS
+                'Storicizza Default=True';

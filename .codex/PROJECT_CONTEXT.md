@@ -3,7 +3,7 @@
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
 >
-> Ultima revisione: 2026-11-22.
+> Ultima revisione: 2026-11-23.
 
 ## Identità del Progetto
 
@@ -217,14 +217,6 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
   vista della merce in viaggio, pgTAP kit/seriali col runner); ⏳ collaudo a video di Tid:
   `work-in-progress/collaudo-in-app-magazzino-bolla-e-reso.md`. Il difetto DB dei motivi della «Conferma» del reso
   è chiuso il 2026-10-14 (`work-done/2026/brief-db-reso-motivi-conferma-con-valori.md`), a video al §5.3/§5.7 del collaudo.
-- 📝 **Magazzino: tutte le scritture dal verbo**
-  (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): Lotto 1 lato DB applicato coi pgTAP verdi
-  il 2026-11-22 (`20261122-01` … `-13`: colonne ammesse, BB di nascita, verbi `fn_aggiungi_*` / `fn_modifica_*`, guard
-  di perimetro, sola lettura per l'app su magazzini, ubicazioni, lotti, seriali, eventi e note, builder pgTAP sui
-  verbi, due fughe d'informazione chiuse nei guard, il cliente del seriale controllato). ⚠️ Ora la R-1 del BE (§7):
-  finché il repository non chiama i verbi, il backend non scrive magazzini, ubicazioni e lotti. Poi il Lotto 2
-  (documenti interni). Il lotto di magazzino è dell'azienda dal 2026-11-22
-  (`work-done/2026/brief-db-magazzino-lotto-dell-azienda.md`, chiuso: DB, BE e FE fatti).
 - **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun
   repository di righe, nessuna chiave i18n). Alla ripartenza: quali articoli ammettono le righe
   d'acquisto è rinviato a `work-done/2026/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5). Il documento passivo
@@ -245,6 +237,12 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
+- 📝 **Le porte che si aprono con la sola GUC** (`work-in-progress/brief-db-porte-aperte-dalla-sola-guc.md`):
+  diciassette porte di trigger (analisi critica del 2026-11-23), in vendite, pagamenti, config, documenti, anagrafiche e dbops, si aprono con una GUC che l'app può
+  accendere da sé, senza chiedere il proprietario (la D-V1 del 2026-09-25). Aperto, non iniziato: quattro decisioni
+  di Tid. Nasce dalla chiusura di `work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`
+  (2026-11-23: tutte le tabelle di `magazzino` in sola lettura per l'app; la R-4 del BE resta parte dello
+  sviluppo del catalogo).
 - **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
   resta R-4, che vuole un brief DB non ancora scritto. ✅ L-6 (date della veste) fatto il 2026-10-07,
   DB e BE/FE (`work-done/2026/brief-db-veste-utilizzabile.md`; giro 3 chiuso: «Valido al» del drawer operatore
@@ -270,7 +268,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   «mai vuota» resta quello di luglio) applicato coi pgTAP verdi il 2026-11-22, con la guida
   `configurazione-dashboard`: resta la doc auto-generata. Al DB il `/verifica-db` dei giri 1a, 2, 3, 4 e 5, poi il giro 6,
   che ha in più U40 (l'ordinamento di partenza nel seed dei preset, chiesto dal team BE il 2026-11-22). Le ricadute
-  BE/FE dei giri 2-5 sono fatte e committate (PR #193 e #194, 2026-11-22). Il residuo di BE25 (2) è fatto il 2026-11-22 (la partenza della lista su ogni porta). Giro 6a (`20261121-26` … `-33`: U40 nel seed, BE10 con `ui.fn_misura_lista` e il BB `ui.fn_misura_pagina_risolta`, U38) applicato coi pgTAP verdi il 2026-11-22. Giro 6b (`20261121-34` … `-37`, i COMMENT di `ui` e le note dei registri) applicato coi pgTAP verdi lo stesso giorno. Le ricadute BE/FE del giro 6 (BE10, BE18, BE29, BE31) sono fatte e verdi il 2026-11-22. Giro 6c (i pgTAP deboli di §5, due test nuovi) verde come app il 2026-11-22; il giro 6 è committato. Resta il `/verifica-db` dei giri 1a-6c, poi la chiusura.
+  BE/FE dei giri 2-5 sono fatte e committate (PR #193 e #194, 2026-11-22). Il residuo di BE25 (2) è fatto il 2026-11-22 (la partenza della lista su ogni porta). Giro 6a (`20261121-26` … `-33`: U40 nel seed, BE10 con `ui.fn_misura_lista` e il BB `ui.fn_misura_pagina_risolta`, U38) applicato coi pgTAP verdi il 2026-11-22. Giro 6b (`20261121-34` … `-37`, i COMMENT di `ui` e le note dei registri) applicato coi pgTAP verdi lo stesso giorno. Le ricadute BE/FE del giro 6 (BE10, BE18, BE29, BE31) sono fatte e verdi il 2026-11-22. Giro 6c (i pgTAP deboli di §5, due test nuovi) verde come app il 2026-11-22; il giro 6 è committato. Le verifiche dei giri 1a-7 sono fatte (2026-11-22 e 2026-11-23). Giro 7 (Q54, Q57, Q58, la regola del 2 col BB `dbops.fn_seed_elenco_colonne`) e giro 8 (Q60: l'utente di sessione da `script.fn_utente_di_sessione` in funzioni, viste e 177 policy, `20261123-16` … `-36`) applicati coi pgTAP verdi e committati il 2026-11-23, con le ricadute BE (BE32-BE34). Resta: la decisione di Tid sul `/verifica-db` del giro 8, il controllo a video di BE29, poi la chiusura.
 - 📝 **Revisione dello schema `anagrafiche`** (`work-in-progress/brief-db-revisione-anagrafiche.md`): censimento in
   sola lettura fatto il 2026-11-22 (195 pagine `manual/`, nessuna allo standard; 56 oggetti senza pagina; il contenuto
   falso e stantio per area; segnalazioni di codice da vagliare per ultime). Q1-Q8 decise da Tid lo stesso giorno. Giro
@@ -283,7 +281,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   ritirato, committato il 2026-11-22, doc auto-generata rigenerata. Q7 riaperta dalla risposta R-BE5 del BE: lo
   storico di `indirizzi`, `indirizzi_dettaglio` e `config.stradario` diventa continuo (giro di codice, in coda). Giro 0e (area E: gli accessi; 23 pagine, i blocchi della
   sincronizzazione e dell'ultimo SUPER_ADMIN, le due guide) scritto e committato il 2026-11-22, doc auto-generata rigenerata: il giro 0 è finito. Prossimo:
-  il vaglio delle segnalazioni S1-S68 (Tid), poi i giri di codice.
+  il vaglio delle segnalazioni S1-S68 (Tid), poi i giri di codice. Il 2026-11-23: il brief ha in testa il piano a spunta (§0)
+  e il vaglio per temi (§17, una decina di decisioni invece di 68); giro 1 (Q7, lo storico continuo di indirizzi, civici
+  e vie, `20261123-38` … `-42`) applicato coi pgTAP verdi e committato: la prova ha trovato `storico.indirizzi` che non
+  accettava nessuna versione. Il vaglio per temi è deciso da Tid il 2026-11-23 (§17.1: T6 e T9 in brief nuovi, S53
+  tema proprio T12, S4 la coppia CF e P.IVA). Prossimo: il giro 2 (T2, i permessi), al via di Tid.
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**

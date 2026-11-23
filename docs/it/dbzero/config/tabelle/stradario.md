@@ -18,7 +18,7 @@
 | data_update | timestamp with time zone | YES | now() |
 | user_update | text | NO | CURRENT_USER |
 | codice_postale_id | integer | NO |  |
-| storicizza | boolean | NO | false |
+| storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | obsoleto_dal | date | YES |  |
 

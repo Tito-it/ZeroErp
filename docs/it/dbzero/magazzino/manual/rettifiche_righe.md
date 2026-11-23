@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.rettifiche_righe`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -68,6 +68,12 @@ da lì al magazzino e al suo emittente. Meccanismo comune: [Linee guida SQL — 
 
 ---
 
+### Chi scrive
+
+L'applicazione legge questa tabella e non la scrive: ogni scrittura passa da un **verbo**, che controlla il livello dell'operatore e il perimetro prima di scrivere. Una riga nasce con [fn_aggiungi_riga_rettifica](/dbzero/magazzino/funzioni/fn_aggiungi_riga_rettifica), si modifica con [fn_modifica_riga_documento_interno](/dbzero/magazzino/funzioni/fn_modifica_riga_documento_interno) e si toglie con [fn_togli_riga_documento_interno](/dbzero/magazzino/funzioni/fn_togli_riga_documento_interno), solo con la testata in `DRAFT`.
+
+---
+
 ### Codici errore
 
 * `E_MAG_DOCUMENTO_RIGHE_CONGELATE`: una riga scritta, cambiata o cancellata con la testata fuori
@@ -83,6 +89,7 @@ da lì al magazzino e al suo emittente. Meccanismo comune: [Linee guida SQL — 
 * 2026-09-18 — arriva `costo_unitario`, con il posting.
 * 2026-11-08 — il movimento non cita più la riga come tipo a sé (`RETTIFICA_RIGA`, ritirato da
   `config.sorgenti`): cita il documento e la riga.
+* 2026-11-23 — in sola lettura per l'applicazione: la scrivono i verbi (`brief-db-magazzino-tutte-le-scritture-dal-verbo`, Lotto 2).
 
 ---
 

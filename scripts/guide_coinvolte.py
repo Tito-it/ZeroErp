@@ -20,6 +20,9 @@
 #      passano gli oggetti con `--oggetti`.
 #   Gli schemi sono le cartelle di `docs/it/dbzero/`: uno schema nuovo
 #   entra da solo appena ha la sua doc.
+#   Un nome senza pagina in `dbzero/<schema>/<tabelle|funzioni|views>/` non
+#   esiste nel DB: non conta fra gli orfani e si elenca a parte (⚠️ se
+#   passato a mano con --oggetti: refuso o nota di dominio passata per oggetto).
 #
 # ── DOVE CERCA ───────────────────────────────────────────────────────
 #   * le guide             `docs/it/guide/*.md`
@@ -88,6 +91,19 @@ def regex_api_relative() -> re.Pattern[str]:
     aree = sorted(p.name for p in BACKEND_DOC.iterdir() if p.is_dir() and not p.name.startswith(("_", ".")))
     alt = "|".join(map(re.escape, aree))
     return re.compile(rf"['`\"]/({alt})/([a-z0-9-]+)")
+
+
+TIPI_OGGETTO = ("tabelle", "funzioni", "views")
+
+
+def esiste_nel_db(nome: str) -> bool:
+    """Un oggetto esiste se la doc auto-generata del DB gli dedica una pagina
+    (`dbzero/<schema>/<tabelle|funzioni|views>/<oggetto>.md`): la doc e' la
+    fonte dell'introspezione, non gli YAML dei changeSet."""
+    schema, _, oggetto = nome.partition(".")
+    if not schema or not oggetto:
+        return False
+    return any((DBZERO / schema / tipo / f"{oggetto}.md").is_file() for tipo in TIPI_OGGETTO)
 
 
 def file_del_perimetro(base: str | None) -> list[Path]:
@@ -198,9 +214,37 @@ def main() -> int:
     if a.tutte:
         sezione("Pagine manual/", manual)
 
-    orfani = sorted((oggetti | api) - coperti)
+    # Un nome senza pagina nella doc del DB non e' un orfano: e' un refuso
+    # (o una nota di dominio passata come oggetto), oppure un oggetto che il
+    # changeSet in lavorazione crea e la doc non ha ancora. Tenerlo fra gli
+    # orfani lo farebbe leggere come «guida che manca».
+    # Le due provenienze pesano diverso: un nome scritto a mano con --oggetti
+    # che non esiste e' quasi sempre un errore di chi lancia; un nome estratto
+    # dai file e' spesso rumore della regex (`vendite.md`, `magazzino.services`,
+    # prefissi `fn_`, policy, indici), ma puo' essere l'oggetto nuovo del
+    # changeSet, e quello va guardato.
+    inesistenti = {o for o in oggetti if not esiste_nel_db(o)}
+    scritti_a_mano = sorted(inesistenti & set(a.oggetti))
+    dai_file = sorted(inesistenti - set(a.oggetti))
+    orfani = sorted((oggetti | api) - coperti - inesistenti)
     print(f"\n## Nomi che nessuna guida né nota di dominio cita ({len(orfani)})")
     print("  " + (", ".join(orfani) if orfani else "nessuno"))
+    if scritti_a_mano:
+        print(f"\n## ⚠️ Nomi passati a --oggetti che non esistono nel DB ({len(scritti_a_mano)})")
+        print("  " + ", ".join(scritti_a_mano))
+        print(
+            "  Nessuna pagina in docs/it/dbzero/<schema>/{tabelle,funzioni,views}/: è un refuso, oppure"
+            "\n  non è un oggetto `schema.nome` (una nota di dominio `_*.md` si apre, non si passa"
+            "\n  a --oggetti), oppure è un oggetto nuovo non ancora applicato e documentato."
+            "\n  Per questi nomi il risultato qui sopra non dice niente: corretti, si rilancia."
+        )
+    if dai_file:
+        print(f"\n## Nomi estratti dai file senza pagina nel DB ({len(dai_file)})")
+        print("  " + ", ".join(dai_file))
+        print(
+            "  Per lo più non sono oggetti (moduli Python, file .md, prefissi, policy, indici)."
+            "\n  Da guardare solo gli oggetti nuovi che il lavoro crea: senza guida, sono orfani."
+        )
     print(
         "\nPer ogni guida e nota trovata l'analisi scrive l'esito: coerente · guida indietro "
         "(si aggiorna nello stesso giro) · lo sviluppo la contraddice (cambio di modello: decide Tid)."

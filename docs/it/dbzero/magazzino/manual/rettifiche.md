@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.rettifiche`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -91,6 +91,12 @@ il verbo, e il `DELETE` è ammesso solo in `DRAFT`
 
 ---
 
+### Chi scrive
+
+L'applicazione legge questa tabella e non la scrive: ogni scrittura passa da un **verbo**, che controlla il livello dell'operatore e il perimetro prima di scrivere. Nasce con [fn_aggiungi_rettifica](/dbzero/magazzino/funzioni/fn_aggiungi_rettifica); si modifica, solo in `DRAFT`, con [fn_modifica_documento_interno](/dbzero/magazzino/funzioni/fn_modifica_documento_interno); cambia stato con [fn_cambia_stato_documento_interno](/dbzero/magazzino/funzioni/fn_cambia_stato_documento_interno) e si elimina, solo in `DRAFT`, con [fn_elimina_documento_interno](/dbzero/magazzino/funzioni/fn_elimina_documento_interno). «Registrato» lo scrive soltanto la registrazione, [fn_posta_rettifica](/dbzero/magazzino/funzioni/fn_posta_rettifica).
+
+---
+
 ### Codici errore
 
 * `E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE`: si prova a cambiare il magazzino della testata.
@@ -117,6 +123,7 @@ il verbo, e il `DELETE` è ammesso solo in `DRAFT`
   di forma e il guard unico al posto del guard tipizzato; esce l'indice unico sulla sorgente. I
   movimenti citano il documento `RETTIFICA` e la riga, non più il tipo `RETTIFICA_RIGA`, ritirato
   da `config.sorgenti`.
+* 2026-11-23 — in sola lettura per l'applicazione: la scrivono i verbi (`brief-db-magazzino-tutte-le-scritture-dal-verbo`, Lotto 2).
 
 ---
 

@@ -69,7 +69,7 @@ Committato il 2026-11-06 (lotti A, C, D, il fix da zero `20261103-29`, i due bri
 > `attivo` ≠ «selezionabile per il nuovo») e `work-done/2026/brief-db-obsoleto-dal-filtro-lookup-e-guard.md`
 > (lookup `p_includi_obsoleti`, guard generico): sono il pattern da cui si parte, chiusi, e non coprivano
 > gli articoli. `work-done/2026/brief-db-articoli-ammessi-per-documento.md` (A-10): blocca la struttura di
-> un articolo usato; asse diverso, nessuna sovrapposizione. `work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`:
+> un articolo usato; asse diverso, nessuna sovrapposizione. `work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`:
 > tocca le scritture di magazzino, che qui **non** si bloccano (O-5). Nessun brief aperto sul tema.
 > **Ambito:** tocca le righe di tutti i documenti di vendita e d'acquisto. Rientra nel fermo allentato
 > (PROJECT_CONTEXT, 2026-10-25) perché poggia su un pezzo comune, il guard generico, montato una volta

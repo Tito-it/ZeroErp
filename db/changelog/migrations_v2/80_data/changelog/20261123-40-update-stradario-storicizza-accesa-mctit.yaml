@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE VIE CHE ESISTONO ACCENDONO LO STORICO
+#   config.stradario: storicizza = true sulle righe spente, con lo storico
+#   della tabella sospeso.
+#   Brief: brief-db-revisione-anagrafiche §18 (Q7 estesa allo stradario, Tid
+#   2026-11-22), giro 1.
+#
+# ── PERCHE' IN 80_data, E DOPO IL MIRROR ────────────────────────
+#   Il default lo porta 20261123-39. Le vie del seed le scrive il mirror
+#   20250814-03, che da questo giro non porta piu' la colonna (il valore e'
+#   quello del default, linee-guida-sql §11.2): da zero nascono gia' accese e
+#   questo changeSet non trova niente. Su un database vivo le vie di ieri sono
+#   spente, e il mirror cambiato ripassa al suo numero, prima di questo file:
+#   ripassa su righe spente e lo storico non scrive. Poi qui si accendono.
+#   Non e' una seconda sorgente del CSV: la colonna non e' piu' nel CSV, e
+#   questo UPDATE la porta una volta sola al valore del default.
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   Come 20261123-38: i trigger della tabella si sospendono cercandoli per
+#   FUNZIONE (storico, audit e tx_id nascono da ci_apply, §11.5), tranne audit
+#   e tx_id; si riaccendono nel modo in cui erano. Accendere il flag non e' una
+#   modifica della via: senza la sospensione lo storico scriverebbe una
+#   versione per ogni via.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261123-40-update-stradario-storicizza-accesa-mctit.yaml
+
+  - changeSet:
+      id: 20261123-40-update-stradario-storicizza-accesa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.stradario: storicizza acceso sulle vie che esistono, con lo storico della tabella
+        sospeso. Da zero non trova righe: le vie del seed nascono col default.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $backfill$
+              DECLARE
+                  r          record;
+                  v_sospesi  pg_catalog.pg_trigger.tgname%TYPE[] := '{}';
+                  v_modi     pg_catalog.pg_trigger.tgenabled%TYPE[] := '{}';
+              BEGIN
+                  FOR r IN
+                      SELECT t.tgname, t.tgenabled
+                        FROM pg_trigger t
+                       WHERE t.tgrelid = 'config.stradario'::regclass
+                         AND NOT t.tgisinternal
+                         AND t.tgenabled <> 'D'
+                         AND t.tgfoid NOT IN ('script.trgfn_audit_data_user_generic'::regproc,
+                                              'dbops.trgfn_tx_id_managed'::regproc)
+                  LOOP
+                      EXECUTE format('ALTER TABLE config.stradario DISABLE TRIGGER %I', r.tgname);
+                      v_sospesi := v_sospesi || r.tgname;
+                      v_modi    := v_modi || r.tgenabled;
+                  END LOOP;
+
+                  UPDATE config.stradario
+                     SET storicizza = true
+                   WHERE NOT storicizza;
+
+                  -- Si riaccende ogni trigger nel modo in cui era: O (origin), A (always), R (replica).
+                  FOR i IN 1 .. coalesce(array_length(v_sospesi, 1), 0) LOOP
+                      EXECUTE format('ALTER TABLE config.stradario %s TRIGGER %I',
+                                     CASE v_modi[i]
+                                         WHEN 'A' THEN 'ENABLE ALWAYS'
+                                         WHEN 'R' THEN 'ENABLE REPLICA'
+                                         ELSE 'ENABLE'
+                                     END,
+                                     v_sospesi[i]);
+                  END LOOP;
+              END
+              $backfill$;
+
+      # Nessuna rollback: le righe accese restano accese. Spegnerle di nuovo
+      # toglierebbe lo storico anche alle vie nate accese dopo questo giro.
+      rollback:
+        - empty: {}

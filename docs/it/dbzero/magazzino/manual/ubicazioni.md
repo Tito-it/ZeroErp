@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.ubicazioni`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -67,6 +67,12 @@ magazzino). Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida
 
 ---
 
+### Chi scrive
+
+L'applicazione legge questa tabella e non la scrive: ogni scrittura passa da un **verbo**, che controlla il livello dell'operatore e il perimetro prima di scrivere. Nasce con [fn_aggiungi_ubicazione](/dbzero/magazzino/funzioni/fn_aggiungi_ubicazione) e si modifica con [fn_modifica_ubicazione](/dbzero/magazzino/funzioni/fn_modifica_ubicazione). Non si elimina: si disattiva con la modifica.
+
+---
+
 ### Codici errore
 
 * `E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO` — il padre sta in un altro magazzino (campo
@@ -89,6 +95,7 @@ magazzino). Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida
   sola ubicazione per riga; l'asset smette di portare la propria.
 * 2026-09-21 — `brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici` (R-1): il guard sul padre e il
   lock di `magazzino_id`.
+* 2026-11-22 — in sola lettura per l'applicazione: la scrivono i verbi (`brief-db-magazzino-tutte-le-scritture-dal-verbo`, Lotto 1).
 
 ---
 

@@ -40,7 +40,7 @@ service valida la forma del payload, chiama, traduce. ⛔ Nessun «rifiuta con
 `E_…`» qui sotto è scritto in Python, salvo dove è detto.
 
 ⭐ **Ogni scrittura è un verbo del DB** (dal 2026-11-23,
-[brief-db-magazzino-tutte-le-scritture-dal-verbo](../../../dev/work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md),
+[brief-db-magazzino-tutte-le-scritture-dal-verbo](../../../dev/work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md),
 R-2): la nascita per famiglia (`magazzino.fn_aggiungi_inventario` /
 `_rettifica`, `fn_aggiungi_riga_inventario` / `_rettifica`) e i verbi comuni
 con la famiglia come primo argomento (`fn_modifica_documento_interno`,

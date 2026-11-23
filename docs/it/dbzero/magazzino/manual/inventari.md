@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.inventari`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -116,6 +116,12 @@ Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-
 
 ---
 
+### Chi scrive
+
+L'applicazione legge questa tabella e non la scrive: ogni scrittura passa da un **verbo**, che controlla il livello dell'operatore e il perimetro prima di scrivere. Nasce con [fn_aggiungi_inventario](/dbzero/magazzino/funzioni/fn_aggiungi_inventario); si modifica, solo in `DRAFT`, con [fn_modifica_documento_interno](/dbzero/magazzino/funzioni/fn_modifica_documento_interno); cambia stato con [fn_cambia_stato_documento_interno](/dbzero/magazzino/funzioni/fn_cambia_stato_documento_interno) e si elimina, solo in `DRAFT`, con [fn_elimina_documento_interno](/dbzero/magazzino/funzioni/fn_elimina_documento_interno). «Registrato» lo scrive soltanto la registrazione, [fn_posta_inventario](/dbzero/magazzino/funzioni/fn_posta_inventario).
+
+---
+
 ### Codici errore
 
 * `E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE`: si prova a cambiare il magazzino della testata.
@@ -143,6 +149,7 @@ Meccanismo comune: [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-
   `uq_mag_invetario_sorgente_fk`: nessuna regola di dominio vuole un inventario per documento. I
   movimenti di allineamento citano il documento `INVENTARIO` e la riga, non più il tipo
   `INVENTARIO_RIGA`, ritirato da `config.sorgenti`.
+* 2026-11-23 — in sola lettura per l'applicazione: la scrivono i verbi (`brief-db-magazzino-tutte-le-scritture-dal-verbo`, Lotto 2).
 
 ---
 

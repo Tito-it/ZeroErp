@@ -1,6 +1,6 @@
 # Guida — Gestione degli Indirizzi
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -478,7 +478,7 @@ Per carichi massivi:
 
 1. Caricare i dati in modalità libera: l'inserimento non scrive storico
 2. Normalizzare in batch: creare i civici in `indirizzi_dettaglio`, poi aggiornare `indirizzo_dettaglio_id` sugli indirizzi
-3. Decidere se la normalizzazione va ricordata ([Storicizzazione](#storicizzazione)): su `indirizzi` lascia traccia solo se le UPDATE passano `storicizza = true`; su `indirizzi_soggetti`, dove il flag è acceso, non la lascia se le UPDATE passano `storicizza = false`, e il flag va poi riacceso
+3. Decidere se la normalizzazione va ricordata ([Storicizzazione](#storicizzazione)): di default ogni UPDATE lascia una versione; per non lasciarla le UPDATE passano `storicizza = false`, e il flag va poi riacceso, altrimenti la riga resta senza storico
 
 ### Riclassificazione vie
 
@@ -493,7 +493,7 @@ Per la procedura completa: vedi [Riclassificazione vie e toponomastica](/guide/r
 
 ## Storicizzazione
 
-Una modifica o una cancellazione di un indirizzo, di un civico o di una via **può** lasciare una versione nella sua tabella `storico.*`: lo snapshot JSONB della riga, il tipo di operazione (`1` la versione di partenza, `2` modifica, `3` cancellazione) e il periodo di validità. L'inserimento non scrive storico: la prima modifica registrata salva anche la versione di partenza.
+Ogni modifica e ogni cancellazione di un indirizzo, di un civico o di una via lascia una versione nella sua tabella `storico.*`: lo snapshot JSONB della riga, il tipo di operazione (`1` la versione di partenza, `2` modifica, `3` cancellazione) e il periodo di validità. L'inserimento non scrive storico: la prima modifica registrata salva anche la versione di partenza.
 
 La scrive il trigger generico [`script.trgfn_storico_generic()`](/dbzero/script/funzioni/trgfn_storico_generic), prima di ogni UPDATE e DELETE, su:
 
@@ -502,22 +502,11 @@ La scrive il trigger generico [`script.trgfn_storico_generic()`](/dbzero/script/
 * `anagrafiche.indirizzi_soggetti` → `storico.indirizzi_soggetti`
 * `config.stradario` → `storico.stradario`
 
-Se una scrittura lascia traccia lo decide la colonna `storicizza` della riga, e le quattro tabelle non seguono la stessa regola:
+Le quattro tabelle seguono la stessa regola, la **memoria continua**: `storicizza` nasce `true`, e le tabelle sono in `config.storico_set_storicizza`, quindi il trigger non spegne il flag dopo la modifica. La garanzia sta nel database, non in chi scrive: vale per il pannello, per le madri, per i verbi di copia, per la riattivazione di un civico dentro il «trova o crea», per la fusione di due vie e per la rinormalizzazione di una via. Anche la cancellazione lascia la sua versione, perché il trigger guarda il flag **salvato** sulla riga, che resta acceso.
 
-| Tabella | `storicizza` di default | Che cosa resta nello storico |
-| --- | --- | --- |
-| `anagrafiche.indirizzi_soggetti` | `true` | **Memoria continua**: la tabella è in `config.storico_set_storicizza`, e il flag resta acceso dopo ogni modifica. Una scrittura che passa `storicizza = false` non lascia traccia |
-| `anagrafiche.indirizzi`, `anagrafiche.indirizzi_dettaglio`, `config.stradario` | `false` | **A richiesta di chi scrive**: una modifica lascia traccia solo se passa `storicizza = true`; registrata la versione, il trigger rimette il flag a `false` |
+Una scrittura che porta il flag a `false` non lascia traccia, e la riga resta senza storico finché qualcuno non lo riaccende: è il modo di chi scrive di dire «questa no», per esempio in un carico massivo.
 
-Sulle tre tabelle a richiesta nessun oggetto del database riaccende il flag: la storia di un indirizzo di ruolo, di un civico o di una via è completa solo se **ogni** scrittura che va ricordata lo chiede.
-
-⚠️ **Oggi nessuna modifica fatta dall'applicazione a un indirizzo di ruolo o a un civico lascia traccia**: nessuna
-scrittura dell'app su `anagrafiche.indirizzi` e `anagrafiche.indirizzi_dettaglio` passa `storicizza = true`, e
-nemmeno la riattivazione di un civico dentro il «trova o crea». Per tutte e tre le tabelle a richiesta, compreso
-`config.stradario`, è deciso lo storico **continuo**, come su `indirizzi_soggetti`, con la regola tenuta dal
-database e non da chi scrive; finché non è fatto, la storia di indirizzi e civici scritti dall'app è vuota.
-
-⚠️ La cancellazione guarda il flag **salvato** sulla riga, non quello della scrittura. Sulle tre tabelle a richiesta il flag salvato è spento dopo ogni modifica, compresa quella che lo ha chiesto: una DELETE lascia traccia solo su una riga scritta con `storicizza = true` e non più modificata.
+⚠️ La rinormalizzazione di una via riscrive tutti i suoi civici con un aggiornamento neutro: ognuno lascia una versione, anche quando il testo normalizzato non cambia.
 
 Le helper di lettura storica:
 

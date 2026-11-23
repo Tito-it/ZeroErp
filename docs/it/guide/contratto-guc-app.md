@@ -66,7 +66,7 @@ il reset (`JWT_GUC_RESET_SQL`), e lì si aggiunge o si toglie una GUC.
 | `app.ruolo_applicativo`    | `text` (valore ENUM) | `identita_digitali.ruolo_applicativo`                                             | policy RLS (il gate sulla veste)                          |
 | `app.soggetto_ruolo_id`    | `bigint`             | `identita_digitali.soggetto_ruolo_id`                                             | policy RLS                                                |
 | `app.current_emittente_id` | `bigint`             | claim dell'emittente attivo (`emittenti_fiscali.id`), rivalidato a ogni richiesta | policy RLS dello **scope emittente**, `dbops.request_log` |
-| `app.current_user_id`      | `integer`            | `auth_user.id`                                                                    | trigger audit                                             |
+| `app.current_user_id`      | `integer`            | `auth_user.id`                                                                    | verbi, trigger di scope, viste e policy RLS, sempre attraverso `script.fn_utente_di_sessione` |
 | `app.jwt_user`             | `text`               | `auth_user.username`                                                              | trigger audit                                             |
 
 **La tripla** (`current_identita_id`, `ruolo_applicativo`, `soggetto_ruolo_id`) è

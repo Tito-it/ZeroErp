@@ -190,7 +190,7 @@ Decisioni aperte di Tid: nessuna (la motivazione dell'offerta decisa (b) il 2026
 > [brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md)
 > (stato iniziale e verbo: candidato a confluire qui, M-6);
 > [brief-db-grammatica-unica-documenti](brief-db-grammatica-unica-documenti.md) (solo i nomi dei
-> tipi: resta suo); [brief-db-magazzino-tutte-le-scritture-dal-verbo](../../work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md)
+> tipi: resta suo); [brief-db-magazzino-tutte-le-scritture-dal-verbo](brief-db-magazzino-tutte-le-scritture-dal-verbo.md)
 > (magazzino; rimanda «`vendite`, brief suo»: è **questo**).
 
 ---
