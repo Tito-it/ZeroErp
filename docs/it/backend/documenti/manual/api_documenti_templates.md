@@ -110,9 +110,6 @@ stata verificata alla stampa. Brief:
 {
   "data": {
     "count": 1,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 1,
@@ -264,9 +261,6 @@ dell'azienda che oggi possono stampare per la coppia.
 {
   "data": {
     "count": 1,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 11,

@@ -15,7 +15,8 @@ import { USO_MISURA, misuraDefault } from '../misurePagina'
 
 // Scopo: crea lo stato e le action di una sezione paginata.
 // - fetchPage: (paging: {limit, offset}, ...args) => Promise (axios) verso
-//   un endpoint con envelope paginato standard {data: {results, count, ...}}.
+//   un endpoint con envelope paginato standard {data: {results, count, ...}}
+//   (`offset_effettivo` dove il BE riporta l'offset all'ultima pagina).
 //   Gli ...args extra di fetch() vengono inoltrati (es. competenza_mese).
 // - misura: l'USO della sezione (`USO_MISURA.PAGINA` di default,
 //   `USO_MISURA.COMPATTA` per un drill-down): il numero di righe di partenza
@@ -61,10 +62,15 @@ export function usePagedDashFetch(
       const payload = res.data?.data ?? {}
       items.value = payload.results ?? []
       count.value = payload.count ?? 0
-      // Adotta la pagina EFFETTIVA dichiarata dal BE: sugli endpoint dash il
+      // Adotta la finestra EFFETTIVA dichiarata dal BE: sugli endpoint dash il
       // clamp SQL serve direttamente l'ultima pagina reale quando quella
-      // richiesta e' oltre la fine (envelope page != richiesta).
-      page.value = payload.page ?? page.value
+      // richiesta e' oltre la fine. ⭐ Dal 2026-11-24 (D-1 di
+      // brief-be-fe-BB-audit) l'envelope e' `{count, results}` e la finestra
+      // effettiva viaggia in `offset_effettivo`, nel dialetto della richiesta:
+      // la pagina del paginatore si ricava qui.
+      if (Number.isInteger(payload.offset_effettivo)) {
+        page.value = Math.floor(payload.offset_effettivo / pageSize.value) + 1
+      }
       // Campi extra dell'envelope (es. riepilogo di perimetro): applicati solo
       // qui dentro, cioe' solo per una risposta che ha superato il guard.
       if (onPayload) onPayload(payload)

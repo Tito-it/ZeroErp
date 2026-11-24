@@ -21,6 +21,7 @@ from apps.pratiche.api.views import (
     ApiPraticheList,
 )
 from apps.core.db._helpers import RICERCA_MIN_CARATTERI
+from apps.core.services.list_helpers import collezione_completa, pagina_con_totale
 
 
 class CercaPraticheTool(AITool):
@@ -103,10 +104,8 @@ class CercaPraticheTool(AITool):
             order_dir="desc",
         )
 
-        return {
-            "count": total,
-            "results": self.simplify_results(items, self._FIELD_MAP, str_fields={"data_insert"}),
-        }
+        risultati = self.simplify_results(items, self._FIELD_MAP, str_fields={"data_insert"})
+        return pagina_con_totale(risultati, total)
 
 
 class DettaglioPraticaTool(AITool):
@@ -201,7 +200,7 @@ class CercaFlussiPraticaTool(AITool):
                 "data_scadenza": str(f.get("data_scadenza", "") or ""),
             })
 
-        return {"count": len(simplified), "results": simplified}
+        return collezione_completa(simplified)
 
 
 class CreaPraticaTool(AITool):

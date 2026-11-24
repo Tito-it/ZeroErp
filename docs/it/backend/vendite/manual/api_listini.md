@@ -78,9 +78,6 @@ Permesso modello `("vendite", "listino")` su tutte le rotte di questa pagina.
 {
   "data": {
     "count": 1,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 10,

@@ -85,7 +85,7 @@ from apps.vendite.services._approvazioni_prezzo_constants import (
     STATO_APPROVAZIONE_PENDING,
     STATO_APPROVAZIONE_REJECTED,
 )
-from apps.core.api.payload_validators import envelope_da_offset
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 # ── Costanti di validazione ──
@@ -282,7 +282,7 @@ def list_preventivi(
         order_by=order_by,
         order_dir=order_dir,
     )
-    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
+    return pagina_con_totale(results, total_count)
 
 
 # Scopo: Etichette leggibili dei filtri attivi, incluse come metadato nel file
@@ -859,7 +859,7 @@ def crea_revisione(preventivo_id: int) -> dict[str, Any]:
 #        `numero` non via `revisione_padre_id`.
 #        Legge prima la testata: fuori perimetro e' un 404 (e non una lista
 #        vuota, che direbbe «nessuna revisione» di un documento che non c'e').
-#        Paginata dal 2026-09-27: ritorna (righe, totale) per `paginated_envelope`.
+#        Paginata dal 2026-09-27: ritorna (righe, totale) per `pagina_con_totale`.
 def list_revisioni(
     preventivo_id: int, *,
     limit: int = DEFAULT_LIMIT, offset: int = 0,

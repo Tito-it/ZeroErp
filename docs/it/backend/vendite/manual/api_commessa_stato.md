@@ -282,7 +282,7 @@ Ordine fisso: `data_insert DESC, id DESC`. Il vocabolario degli eventi è del DB
 e aperto: nessun filtro per evento.
 
 ```json
-{ "data": { "commessa_id": 1, "count": 3, "rows": [
+{ "data": { "commessa_id": 1, "count": 3, "results": [
   { "id": 90, "commessa_attivita_id": 412, "evento": "RIGA_MANUALE_ANNULLATA",
     "dettaglio": { "motivo": "doppio carico" }, "motivo": "doppio carico",
     "data_insert": "2026-10-01T09:12:00+02:00", "user_insert": "mrossi",
@@ -291,7 +291,9 @@ e aperto: nessun filtro per evento.
 ```
 
 Lo scope passa dal `JOIN` su `vendite.commesse_attivita` (che ha la RLS; il log
-no): commessa inesistente o fuori perimetro → `count: 0`, `rows: []`, non 404.
+no): commessa inesistente o fuori perimetro → `count: 0`, `results: []`, non 404.
+Le righe stanno in `results` dal 2026-11-24 (prima `rows`): la forma di ogni
+lista, `pagina_con_totale` più `commessa_id` ([api.md §Paginazione](../../../dev/api.md)).
 
 ## Regole
 

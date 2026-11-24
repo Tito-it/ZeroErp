@@ -41,8 +41,7 @@ Query string:
 | `offset`     | int     | No           | `0`           | Righe da saltare                                  |
 
 ⛔ `page`/`page_size` in query sono un 400 `E_VALIDATION_INPUT` dal 2026-10-21
-(prima erano il contratto di questa lookup). La risposta porta ancora `page` e
-`page_size`, ricavati dall'offset (`envelope_da_offset`).
+(prima erano il contratto di questa lookup). Dal 2026-11-24 la risposta è `{count, results}` ([api.md §Paginazione](../../../dev/api.md)): `page` e `page_size`, che fino a quel giorno ricavava dall'offset, sono usciti.
 
 ### Validazione Python dei parametri
 
@@ -67,9 +66,6 @@ valore fuori limiti (`limit` fuori da 1..200: `limit_fuori_limiti_1_200`; `offse
 {
   "data": {
     "count": 3,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {"id": 1, "codice": "SDI_OK",  "codice_interno": "001", "descrizione": "Consegnato"},
       {"id": 2, "codice": "SDI_ERR", "codice_interno": "002", "descrizione": "Errore consegna"},

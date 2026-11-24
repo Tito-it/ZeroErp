@@ -15,6 +15,7 @@ from typing import Any
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.ai_assistant.tools.base import AITool, EndpointGemello
 from apps.anagrafiche.api.views_billing_account import BillingAccountLookupView
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 class CercaBillingAccountTool(AITool):
@@ -103,7 +104,7 @@ class CercaBillingAccountTool(AITool):
             "valido_al": "valido_al",
         }
         simplified = self.simplify_results(items, _FIELD_MAP)
-        return {"count": total, "results": simplified}
+        return pagina_con_totale(simplified, total)
 
 
 # Scopo: Funzione di registrazione tool billing_account.

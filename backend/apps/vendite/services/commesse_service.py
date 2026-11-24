@@ -45,7 +45,7 @@ from apps.core.db._helpers import (
 from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
 from apps.core.services.documento_modello import e_stato_di_annullo
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import validate_enum_param, validate_order_params
+from apps.core.services.list_helpers import validate_enum_param, validate_order_params, pagina_con_totale
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     translate_db_errors,
@@ -1611,7 +1611,7 @@ def fn_commessa_registro(
         limit=int(limit),
         offset=int(offset),
     )
-    return {"commessa_id": commessa_id, "count": total, "rows": rows}
+    return {"commessa_id": commessa_id, **pagina_con_totale(rows, total)}
 
 
 # Scopo: Annulla una riga MANUALE di commessa caricata per errore (causale

@@ -51,9 +51,6 @@ Restituisce l'elenco paginato dei soggetti con ricerca full-text e filtro per ti
 {
   "data": {
     "count": 42,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 2,
     "results": [
       {
         "id": "a1b2c3d4-...",

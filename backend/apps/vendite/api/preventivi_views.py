@@ -21,7 +21,6 @@ from apps.core.api.payload_validators import (
     optional_bool,
     optional_int,
     optional_iso_date,
-    paginated_envelope,
     parse_list_params,
     qp_bool_optional,
     qp_str,
@@ -50,6 +49,7 @@ from apps.vendite.api._componenti_schema import (
     PREVIEW_COMPONENTI_REQUEST,
     PREVIEW_COMPONENTI_RESPONSE,
 )
+from apps.core.services.list_helpers import pagina_con_totale
 
 # Codice lista configurabile (catalogo ui.lista_definizione id=5). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
@@ -148,7 +148,7 @@ class ApiPreventiviList(DomainAPIView):
     #        a clienti/contratti/offerte/ordini; il vecchio page/page_size era
     #        l'unico outlier del dominio). order_dir assente -> il default 'desc'
     #        di dominio, scritto qui. Usa direttamente
-    #        list_preventivi_rows + paginated_envelope (mirror views_ordini); il
+    #        list_preventivi_rows + pagina_con_totale (mirror views_ordini); il
     #        wrapper list_preventivi(limit/offset, envelope) resta per AI tool + test.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
@@ -171,7 +171,7 @@ class ApiPreventiviList(DomainAPIView):
             order_by=p["order_by"],
             order_dir=order_dir,
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=_PREVENTIVO_CREATE_REQUEST,
@@ -684,7 +684,7 @@ class ApiPreventivoRevisioniList(DomainAPIView):
             order_by=p["order_by"],
             order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
 
 # ── Righe: lista + creazione ──

@@ -24,13 +24,14 @@ from apps.anagrafiche.services.billing_account_service import categoria_cliente_
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json, utente_autenticato, utente_autenticato_id
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
-from apps.core.api.payload_validators import paginated_envelope, parse_list_params, qp_int_optional
+from apps.core.api.payload_validators import parse_list_params, qp_int_optional
 from apps.core.api.permissions import IsAdminZeroERP
 from apps.core.api.success_responses import success_response
 from apps.core.db.parameter_repository import MAX_CODES
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.payload_helpers import SIGNED_INT_RE, SMALLINT_MAX, SMALLINT_MIN
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 # Scope override consentiti dal payload del POST.
@@ -283,7 +284,7 @@ class ParameterSettingsView(DomainAPIView):
             limit=p["limit"],
             offset=p["offset"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
 
 class ParameterOverrideView(DomainAPIView):

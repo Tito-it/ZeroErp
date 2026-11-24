@@ -848,7 +848,7 @@ drawer). Lettura libera in ogni stato.
 ```json
 {
   "data": {
-    "count": 3, "page": 1, "page_size": 25, "total_pages": 1,
+    "count": 3,
     "results": [
       {"id": 1,  "codice": "OFC-0000001", "revisione_numero": 1,
        "stato_codice_interno": "SUPERATA", "data_emissione": "2026-04-10T09:15:00Z", "...": "..."},
@@ -1196,8 +1196,8 @@ Tutte le risposte usano l'envelope `success_response`:
 ```
 
 Per il dettaglio vedi §Detail; le liste paginate (offerte, revisioni) hanno
-`{"data": {"count", "page", "page_size", "total_pages", "results": [...]}}`
-(BB `paginated_envelope`).
+`{"data": {"count", "results": [...]}}`
+(BB `pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)).
 
 ## Regole
 

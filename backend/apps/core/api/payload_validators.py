@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import math
 from datetime import date, datetime
 from typing import Any, overload
 from uuid import UUID
@@ -299,7 +298,7 @@ def pagina_da_query(
 
 
 # Scopo: Parsing standard parametri lista paginata da query string.
-# Restituisce dict con search, limit, offset, order_by, order_dir, page.
+# Restituisce dict con search, limit, offset, order_by, order_dir.
 def parse_list_params(
     qp,
     *,
@@ -307,10 +306,8 @@ def parse_list_params(
     default_limit: int = DEFAULT_LIMIT,
     max_limit: int = MAX_LIMIT,
 ) -> dict:
-    # ⚠️ Il limite sta fra 1 e `max_limit`, l'offset non e' negativo: i
-    #    repository li riportano gia' nei limiti, ma l'envelope si calcola da
-    #    QUESTI valori — con `limit=0` usciva `page_size: 0` accanto a una
-    #    pagina di righe, cioe' un paginatore che non torna.
+    # ⚠️ Il limite sta fra 1 e `max_limit`, l'offset non e' negativo: fuori
+    #    e' un 400 (api.md §Paginazione), non un clamp muto.
     limit, offset = pagina_da_query(qp, default_limit=default_limit, max_limit=max_limit)
     search = qp_str(qp.get("search"))
     order_by = qp.get("order_by") or default_order
@@ -321,52 +318,19 @@ def parse_list_params(
     #    rileggeva la direzione grezza dalla query string. La direzione si
     #    VALIDA a valle (`order_dir_ammessa`, nel service o nel BB SQL).
     order_dir = qp_str(qp.get("order_dir"))
-    page = pagina_di(offset, limit)
     return {
         "search": search,
         "limit": limit,
         "offset": offset,
         "order_by": order_by,
         "order_dir": order_dir,
-        "page": page,
     }
 
 
-# ------------------------------------------------------------------
-# Envelope paginato standard (riusabile da qualsiasi service)
-# ------------------------------------------------------------------
-
-# Scopo: il numero della pagina (da 1) che una finestra `limit`/`offset` mostra.
-#        Sede unica: lo usano `parse_list_params` ed `envelope_da_offset`.
-def pagina_di(offset: int, limit: int) -> int:
-    return offset // limit + 1 if limit > 0 else 1
-
-
-# Scopo: ⭐ L'envelope paginato di una lista letta con `limit`/`offset`: lo
-#        stesso di `paginated_envelope`, con la pagina ricavata dall'offset.
-# ⛔ Dal 2026-10-21 le liste parlano un dialetto solo, `limit`/`offset`
-#    (Tid, brief-be-verifica-documentazione-api §A3, seguito): quelle che
-#    leggevano `page`/`page_size` calcolavano l'offset dalla pagina e l'envelope
-#    a mano, ognuna col suo helper (`risposta_paginata`, `_build_list_response`…).
-#    La risposta NON cambia per il client: `page` e `page_size` restano.
-def envelope_da_offset(
-    results: list, total_count: int, *, limit: int, offset: int,
-) -> dict[str, Any]:
-    return paginated_envelope(results, total_count, pagina_di(offset, limit), limit)
-
-
-# Scopo: Costruisce l'envelope paginato standard con count, page, page_size, total_pages, results.
-def paginated_envelope(
-    results: list, total_count: int, page: int, page_size: int,
-) -> dict[str, Any]:
-    total_pages = math.ceil(total_count / page_size) if page_size > 0 else 0
-    return {
-        "count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "results": results,
-    }
+# ⛔ L'envelope di una lista paginata NON sta qui: e' `pagina_con_totale` di
+#    `apps.core.services.list_helpers` (D-1 di brief-be-fe-BB-audit, Tid
+#    2026-11-24). `paginated_envelope`, `envelope_da_offset` e `pagina_di` sono
+#    ritirati quel giorno con la forma lunga (`page`/`page_size`/`total_pages`).
 
 
 # ⭐ Le letture dei campi opzionali del CORPO JSON nella view: una regola sola,

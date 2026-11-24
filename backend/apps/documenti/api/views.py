@@ -23,7 +23,6 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
-    paginated_envelope,
     parse_list_params,
     qp_bool_optional,
     qp_int_optional,
@@ -43,6 +42,7 @@ from apps.documenti.services.template_service import STATI_VERSIONE, TemplateSer
 from apps.documenti.services.template_versioni_admin_service import (
     TemplateVersioniAdminService,
 )
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 class ApiTemplateList(DomainAPIView):
@@ -117,9 +117,7 @@ class ApiTemplateList(DomainAPIView):
             limit=params["limit"],
             offset=params["offset"],
         )
-        envelope = paginated_envelope(
-            result["results"], result["total_count"], params["page"], params["limit"]
-        )
+        envelope = pagina_con_totale(result["results"], result["total_count"])
         return success_response(envelope)
 
     @extend_schema(
@@ -424,7 +422,7 @@ class ApiTemplateVersioniList(DomainAPIView):
     # Scopo: Lista paginata delle versioni del template (proiezione leggera,
     #        no html), col contratto di lista standard: `limit`/`offset`,
     #        `order_by`/`order_dir` sulla whitelist del repository, `search`
-    #        dal catalogo, envelope `paginated_envelope`.
+    #        dal catalogo, envelope `pagina_con_totale`.
     def get(self, request: Request, template_id: int) -> JsonResponse:
         # ⚠️ `default_order=""` e non "versione": senza `order_by` deve
         #    decidere il repository (`versione DESC`, la piu' recente in cima,
@@ -442,9 +440,7 @@ class ApiTemplateVersioniList(DomainAPIView):
             limit=p["limit"],
             offset=p["offset"],
         )
-        return success_response(paginated_envelope(
-            result["results"], result["total_count"], p["page"], p["limit"],
-        ))
+        return success_response(pagina_con_totale(result["results"], result["total_count"]))
 
     @extend_schema(
         request=inline_serializer(
@@ -729,9 +725,7 @@ class ApiAssetList(DomainAPIView):
             limit=params["limit"],
             offset=params["offset"],
         )
-        envelope = paginated_envelope(
-            result["results"], result["total_count"], params["page"], params["limit"]
-        )
+        envelope = pagina_con_totale(result["results"], result["total_count"])
         return success_response(envelope)
 
     @extend_schema(

@@ -94,7 +94,7 @@ ed export dal factory, permesso `("vendite", "offerta_commerciale")`.
 
 | Metodo / Path | Scopo |
 |---|---|
-| `GET <base>` | Una pagina delle righe **attive**. Envelope paginato standard (`count`, `page`, `page_size`, `total_pages`, `results`) |
+| `GET <base>` | Una pagina delle righe **attive**. Envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)) |
 | `GET <base>export/?formato=csv\|xlsx` | Il file delle righe, con la ricerca e l'ordinamento della lista a video (fino a `EXPORT_MAX_ROWS`) |
 
 **Parametri di query** (tutti facoltativi):

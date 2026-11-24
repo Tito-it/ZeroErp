@@ -54,7 +54,6 @@ class RevisioniApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 200)
         data = response.json()["data"]
         self.assertEqual(data["count"], 12)
-        self.assertEqual(data["page"], 2)
         self.assertEqual(data["results"], [{"id": 5, "rev": 0}])
         svc.list_revisioni.assert_called_once_with(
             5, limit=10, offset=10, order_by="data", order_dir="desc",

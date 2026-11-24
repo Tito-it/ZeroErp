@@ -91,7 +91,7 @@ async function carica() {
       commessa_attivita_id: props.commessaAttivitaId ?? undefined,
       limit: 100,
     })
-    eventi.value = res.data?.data?.rows ?? []
+    eventi.value = res.data?.data?.results ?? []
     caricato.value = true
   } catch (err) {
     notify.error(extractApiError(err, t('common.error')))

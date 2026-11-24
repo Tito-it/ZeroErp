@@ -41,8 +41,13 @@ def guard_user_authenticated(
 #        di id (eventualmente vuota = nessun risultato).
 #        Wrapper esplicito per consentire ai chiamanti di cachare il valore
 #        in una sola invocazione end-to-end (Tranche I evita 2 round-trip).
+# ⭐ Utente assente o anonimo: `E_SCOPE_SENZA_UTENTE` del BB del perimetro
+#    (via `PermissionResolver`), un rifiuto dichiarato e non una lista vuota.
+#    Dal 2026-11-24 (lavoro C di brief-be-fe-BB-audit) e' la sola sede dello
+#    scope nel dominio: `TemplateService` aveva una copia sua che per l'anonimo
+#    rispondeva `[]`.
 def resolve_emittente_scope(
-    user: AbstractBaseUser | AnonymousUser,
+    user: AbstractBaseUser | AnonymousUser | None,
 ) -> list[int] | None:
     return PermissionResolver.get_emittenti_pk_ids(user)
 

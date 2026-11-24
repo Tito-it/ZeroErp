@@ -34,9 +34,6 @@ Le liste paginate restituiscono:
 {
   "data": {
     "count": 250,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 10,
     "results": [ ... ]
   },
   "meta": { "request_id": "..." }

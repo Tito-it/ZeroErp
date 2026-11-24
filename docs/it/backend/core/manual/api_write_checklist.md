@@ -24,6 +24,6 @@ Fornire una checklist operativa pronta per nuovi endpoint write (`POST/PUT/PATCH
 ## Note
 - Per endpoint read-only (`GET` senza side effect), non richiedere `Idempotency-Key`.
 - Se serve eccezione temporanea, motivarla in doc e aprire task di riallineamento.
-- Per endpoint lista/search, seguire `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md` e gli helper di `docs/it/dev/api.md` §«Paginazione» (`pagina_da_query`, `parse_list_params`, `envelope_da_offset`, `fetch_paged_with_total`; `validate_pagination` è ritirato dal 2026-10-21).
+- Per endpoint lista/search, seguire `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md` e gli helper di `docs/it/dev/api.md` §«Paginazione» (`pagina_da_query`, `parse_list_params`, `pagina_con_totale`, `fetch_paged_with_total`; `validate_pagination` è ritirato dal 2026-10-21).
 - Se endpoint search, impostare `is_search_endpoint = True` per attivare throttling DRF.
 - In idempotenza forte, `request_id` e `tx_id` sono entrambi UUID (consigliato mantenere formato UUID anche lato tracing).

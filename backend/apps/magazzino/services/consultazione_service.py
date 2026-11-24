@@ -25,11 +25,11 @@ from apps.magazzino.db.magazzino_repository import (
     MOVIMENTI_SORT_COLUMNS,
     MagazzinoRepository,
 )
+from apps.core.services.list_helpers import pagina_con_totale
 from apps.magazzino.services._helpers import (
     E_VALIDAZIONE,
     articolo_uuid,
     ordinamento_validato,
-    risposta_paginata as _risposta,
 )
 
 _FN = "magazzino.consultazione_service"
@@ -69,7 +69,7 @@ def list_disponibilita(
         limit=limit,
         offset=offset,
     )
-    return _risposta(results, total)
+    return pagina_con_totale(results, total)
 
 
 # Scopo: La disponibilita' per articolo, somma sui magazzini visibili —
@@ -102,7 +102,7 @@ def list_disponibilita_articoli(
         limit=limit,
         offset=offset,
     )
-    return _risposta(results, total)
+    return pagina_con_totale(results, total)
 
 
 # Scopo: I blocchi su (articolo, magazzino): il drill-down di `n_blocchi`.
@@ -171,4 +171,4 @@ def list_movimenti(
         limit=limit,
         offset=offset,
     )
-    return _risposta(results, total)
+    return pagina_con_totale(results, total)

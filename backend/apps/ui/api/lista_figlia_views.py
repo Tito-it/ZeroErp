@@ -65,10 +65,11 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
-from apps.core.api.payload_validators import paginated_envelope, parse_list_params
+from apps.core.api.payload_validators import parse_list_params
 from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.core.services.list_helpers import pagina_con_totale
 
 # La lettura della pagina: (padre_id, search=, order_by=, order_dir=, limit=,
 # offset=, max_limit=, **filtri[, auth_user_id=]) -> (righe, totale).
@@ -198,7 +199,7 @@ def build_lista_figlia_views(
                 **_filtri(request),
                 **_scope(request),
             )
-            return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+            return success_response(pagina_con_totale(results, total))
 
     class _Export(DomainAPIView):
         is_search_endpoint = True

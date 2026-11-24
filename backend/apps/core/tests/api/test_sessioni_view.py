@@ -258,8 +258,6 @@ class SessioniAttiveListViewTests(TestCase):
         call_args = mock_resp.call_args[0][0]
         self.assertEqual(call_args["count"], 1)
         self.assertEqual(call_args["totale_attive"], 1)
-        self.assertEqual(call_args["page"], 1)
-        self.assertEqual(call_args["page_size"], 25)
         self.assertEqual(call_args["results"][0]["jti"], "other-sid")
         kwargs = mock_repo.list_sessioni_attive_paginata.call_args.kwargs
         self.assertEqual(kwargs["escludi_jti"], "current-sid")
@@ -315,7 +313,6 @@ class SessioniAttiveListViewTests(TestCase):
         call_args = mock_resp.call_args[0][0]
         self.assertEqual(call_args["count"], 1)
         self.assertEqual(call_args["totale_attive"], 3)
-        self.assertEqual(call_args["page"], 2)
         kwargs = mock_repo.list_sessioni_attive_paginata.call_args.kwargs
         self.assertEqual(kwargs["search"], "firefox")
         self.assertEqual((kwargs["order_by"], kwargs["order_dir"]), ("ip_address", "asc"))

@@ -53,7 +53,7 @@ def _service(
 
 
 @patch(
-    "apps.documenti.services.template_service.PermissionResolver.get_emittenti_pk_ids",
+    "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
     return_value=[11],
 )
 class MiniaturaAssetTests(SimpleTestCase):

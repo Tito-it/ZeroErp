@@ -18,7 +18,6 @@ from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.payload_validators import (
     corpo_oggetto,
-    paginated_envelope,
     parse_list_params,
     qp_bool_optional,
     qp_int_optional,
@@ -29,6 +28,7 @@ from apps.anagrafiche.services.soggetti_service import SoggettiService
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 # Codice della lista nel registry `ui.lista_definizione`. Stabile per
@@ -74,7 +74,7 @@ class SoggettiView(DomainAPIView):
             limit=p["limit"], offset=p["offset"],
             order_by=p["order_by"], order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=inline_serializer(name="SoggettoCreateReq", fields={

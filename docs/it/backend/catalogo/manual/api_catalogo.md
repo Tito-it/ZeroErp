@@ -76,7 +76,7 @@ Tutte le risposte usano l'envelope standard:
 | `order_by` | string | No | `codice`, `descrizione` (default), `uom_codice`, `attivo`, `data_insert`, `data_update` |
 | `order_dir` | string | No | `asc` oppure `desc`. Assente: `asc` su ogni colonna, date comprese (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata) |
 
-⚠️ La paginazione è `limit`/`offset`: `page`/`page_size` in query sono un 400 `E_VALIDATION_INPUT` (dal 2026-10-20; prima erano ignorati). In risposta `page` e `page_size` sono calcolati da `limit`/`offset`.
+⚠️ La paginazione è `limit`/`offset`: `page`/`page_size` in query sono un 400 `E_VALIDATION_INPUT` (dal 2026-10-20; prima erano ignorati). La risposta è `{count, results}` ([api.md §Paginazione](../../../dev/api.md)): dal 2026-11-24 non riporta più `page` e `page_size`.
 
 #### Risposta (200)
 
@@ -84,9 +84,6 @@ Tutte le risposte usano l'envelope standard:
 {
   "data": {
     "count": 1,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": "019bbee2-5f6a-704f-bbd0-34ed84db252d",
@@ -481,9 +478,6 @@ globale, `emittente_fiscale_id` non serve.
 {
   "data": {
     "count": 2,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 1,
@@ -886,8 +880,7 @@ Prove: `apps/catalogo/tests/db/test_note_catalogo_db.py` (sul DB vero),
 | `order_by` | string | No | `uom_from_codice` (default), `uom_to_codice`, `fattore`, `valido_dal`, `valido_al` (il vuoto va come il massimo, lo dichiara il catalogo), `attivo` |
 | `order_dir` | string | No | `asc`/`desc`. Assente: `asc` su ogni colonna, date comprese (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata) |
 
-Risposta: envelope paginato standard (`count`, `page`, `page_size`,
-`total_pages`, `results`): non è la lista completa. Dal 2026-11-11 la lista
+Risposta: envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)): non è la lista completa. Dal 2026-11-11 la lista
 legge la vista `catalogo.vw_unita_misura_conversioni_dettaglio` (la `vista_sql`
 della lista 22) e ogni riga porta la stessa capability del §3.1
 (`puo_eliminarsi`, `motivo_non_eliminabile`, `puo_cambiare_attivo`,

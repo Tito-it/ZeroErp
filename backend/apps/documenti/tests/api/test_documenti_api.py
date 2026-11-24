@@ -237,8 +237,7 @@ class DocumentiApiSmokeTests(JwtMockedApiTest):
         # Envelope di lista standard (`paginated_envelope`): `count`, non
         # `total_count` — e' cio' che legge lo store del frontend.
         self.assertEqual(data["count"], 1)
-        self.assertEqual(data["page"], 2)
-        self.assertEqual(data["page_size"], 10)
+        self.assertEqual(set(data), {"count", "results"})
         kwargs = mocked_service_cls.return_value.list_versioni.call_args.kwargs
         self.assertEqual(kwargs["order_by"], "valido_al")
         self.assertEqual(kwargs["order_dir"], "desc")

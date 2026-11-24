@@ -979,9 +979,6 @@ class ApiLottiList(DomainAPIView):
                         name="VenditeLottiListData",
                         fields={
                             "count": serializers.IntegerField(),
-                            "page": serializers.IntegerField(),
-                            "page_size": serializers.IntegerField(),
-                            "total_pages": serializers.IntegerField(),
                             "results": serializers.ListField(child=serializers.DictField()),
                             # Ripartizione per stato del perimetro corrente
                             # (mese/recuperi compresi, filtro `stato_lotto`
@@ -1284,9 +1281,6 @@ class ApiLottoFattureList(DomainAPIView):
                         name="VenditeLottoFattureListData",
                         fields={
                             "count": serializers.IntegerField(),
-                            "page": serializers.IntegerField(),
-                            "page_size": serializers.IntegerField(),
-                            "total_pages": serializers.IntegerField(),
                             "results": serializers.ListField(child=serializers.DictField()),
                         },
                     ),
@@ -1376,9 +1370,6 @@ class ApiLottoGruppiList(DomainAPIView):
                         name="VenditeLottoGruppiListData",
                         fields={
                             "count": serializers.IntegerField(),
-                            "page": serializers.IntegerField(),
-                            "page_size": serializers.IntegerField(),
-                            "total_pages": serializers.IntegerField(),
                             "results": serializers.ListField(child=serializers.DictField()),
                         },
                     ),
@@ -1565,9 +1556,6 @@ class ApiGiornale(DomainAPIView):
                         name="VenditeGiornaleData",
                         fields={
                             "count": serializers.IntegerField(),
-                            "page": serializers.IntegerField(),
-                            "page_size": serializers.IntegerField(),
-                            "total_pages": serializers.IntegerField(),
                             "ritirate_count": serializers.IntegerField(),
                             "results": serializers.ListField(child=serializers.DictField()),
                         },
@@ -1693,9 +1681,6 @@ class ApiLottoGiornale(DomainAPIView):
                         fields={
                             "lotto_id": serializers.IntegerField(),
                             "count": serializers.IntegerField(),
-                            "page": serializers.IntegerField(),
-                            "page_size": serializers.IntegerField(),
-                            "total_pages": serializers.IntegerField(),
                             "ritirate_count": serializers.IntegerField(),
                             "info_count": serializers.IntegerField(),
                             "results": serializers.ListField(child=serializers.DictField()),
@@ -2003,7 +1988,7 @@ class ApiCommessaRegistro(DomainAPIView):
                         fields={
                             "commessa_id": serializers.IntegerField(),
                             "count": serializers.IntegerField(),
-                            "rows": serializers.ListField(child=serializers.DictField()),
+                            "results": serializers.ListField(child=serializers.DictField()),
                         },
                     ),
                     "meta": serializers.DictField(required=False),

@@ -75,15 +75,12 @@ per restituire dati pronti per la UI con display fields. La POST delega a
 
 ### GET 200:
 
-Envelope paginata standard (`paginated_envelope`):
+Envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)):
 
 ```json
 {
   "data": {
     "count": 1,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 42,
@@ -165,7 +162,7 @@ Envelope paginata standard (`paginated_envelope`):
   sa quale scegliere. Alimenta, aprendo un documento dal
   flusso, l'eredità+lock cliente e il gating (offerta/contratto richiedono BA). Non è un
   filtro di lista.
-- Paginazione offset: `COUNT(*)` + dati con `LIMIT/OFFSET`. Risposta via `paginated_envelope` (count, page, page_size, total_pages, results).
+- Paginazione offset: `COUNT(*)` + dati con `LIMIT/OFFSET`. Risposta via `pagina_con_totale` (`count`, `results`; dal 2026-11-24, prima `paginated_envelope`).
 - Parsing parametri via `parse_list_params` e `qp_int_strict` (building block core).
 
 ## Dipendenze DB
@@ -187,3 +184,4 @@ Envelope paginata standard (`paginated_envelope`):
 - v2.2 (1 aprile 2026): risposta GET allineata a `paginated_envelope` (aggiunto page, page_size, total_pages). Parsing via `parse_list_params`/`qp_int_strict`. Aggiunti parametri `data_da`, `data_a`, `order_by`, `order_dir`.
 - v2.3 (14 giugno 2026): la pratica nasce direttamente in stato `APERTA` (non piu' `BOZZA`); `data_apertura` valorizzato dal trigger anche alla creazione diretta in `APERTA` (oltre alla transizione `BOZZA → APERTA`). Lo stato `BOZZA` resta nel modello.
 - v2.4 (8 ottobre 2026): POST accetta `billing_account_id`; il `billing_account_id` della GET si legge dalla colonna della pratica (brief-db-istanza-nasce-col-ba, D-9).
+- 2026-11-24: risposta GET `{count, results}` via `pagina_con_totale` (D-1 di brief-be-fe-BB-audit): `page`, `page_size`, `total_pages` escono, `paginated_envelope` è ritirato.

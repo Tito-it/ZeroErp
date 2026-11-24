@@ -2,7 +2,7 @@
 
 ## Scopo
 
-Leggere la finestra di ogni lista in un dialetto solo, `limit`/`offset`, e rispondere con l'envelope paginato standard.
+Leggere la finestra di ogni lista in un dialetto solo, `limit`/`offset`, e rispondere con l'envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)).
 
 ## Contesto
 
@@ -25,16 +25,20 @@ indicato:
   1..`max_limit`, `offset` negativo): non li riporta nei limiti.
 - `parse_list_params(qp, *, default_order, default_limit, max_limit)` — il
   bundle delle liste configurabili (`search`, `limit`, `offset`, `order_by`,
-  `order_dir`, `page`): la finestra la prende da `pagina_da_query`.
+  `order_dir`): la finestra la prende da `pagina_da_query`. Dal 2026-11-24 non
+  ritorna più `page`.
 - `limiti_pagina(limit, offset, *, tetto=MAX_LIMIT)` in `apps/core/db/_helpers.py`
   — il clamp: limite fra 1 e `tetto`, offset non negativo. È la difesa
   interna dei **repository**, non la risposta all'utente: la finestra che
   arriva dalla query string l'ha già validata `pagina_da_query`.
-- `envelope_da_offset(results, total_count, *, limit, offset)` — l'envelope
-  paginato da una finestra `limit`/`offset`; la pagina la ricava
-  `pagina_di(offset, limit)` (`offset // limit + 1`).
-- `paginated_envelope(results, total_count, page, page_size)` — l'envelope di
-  base, che `envelope_da_offset` chiama.
+- `pagina_con_totale(results, totale)` in `apps/core/services/list_helpers.py`
+  — l'envelope di **ogni** lista paginata: `{"count": totale, "results": …}`,
+  con `count` il totale della query. I campi propri di una lista stanno
+  accanto (`{**pagina_con_totale(…), "stati": …}`).
+- ⛔ `envelope_da_offset`, `paginated_envelope` e `pagina_di` sono **ritirati**
+  dal 2026-11-24 (D-1 di brief-be-fe-BB-audit): davano la forma lunga
+  `{count, page, page_size, total_pages, results}`, che ripeteva come pagina la
+  finestra chiesta con `limit`/`offset`.
 - `parametri_finestra(*, default_limit=None, max_limit=None)` in
   `apps/core/api/openapi_params.py` — i due `OpenApiParameter` `limit`/`offset`
   dello schema OpenAPI, con default e massimo letti dalle costanti (o da quelli
@@ -63,10 +67,11 @@ adottate sarebbe tornata a parlare `page`/`page_size`. `REST_FRAMEWORK` in
 
 - `pagina_da_query` → `(limit, offset)` validi, oppure `ValueError` → 400
   `E_VALIDATION_INPUT`.
-- Risposta HTTP: envelope paginato standard
-  `{"count", "page", "page_size", "total_pages", "results"}`. `page` e
-  `page_size` restano nella **risposta**: `page_size` è il `limit` chiesto,
-  `page` la pagina ricavata dall'offset.
+- Risposta HTTP: envelope di lista `{"count", "results"}` (`pagina_con_totale`),
+  più i campi propri della lista. Niente `page`/`page_size`/`total_pages`
+  (dal 2026-11-24; fino a quel giorno la risposta li ricavava dall'offset). I
+  cruscotti che riportano un offset oltre la fine all'ultima pagina lo
+  dichiarano in `offset_effettivo`.
 
 ## Regole
 
@@ -104,3 +109,6 @@ adottate sarebbe tornata a parlare `page`/`page_size`. `REST_FRAMEWORK` in
   accanto alle classi DRF.
 - 2026-10-21 (stesso giorno): il fuori limite diventa un 400; rimosse le
   classi DRF e l'esempio `domain_search_example.py`.
+- 2026-11-24: la risposta di ogni lista diventa `{count, results}`
+  (`pagina_con_totale`, D-1 di brief-be-fe-BB-audit); ritirati
+  `envelope_da_offset`, `paginated_envelope` e `pagina_di`.

@@ -112,8 +112,8 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
 
         self.assertEqual(resp.status_code, 200)
         body = resp.json()["data"]
-        # Envelope di lista standard (`paginated_envelope`, 2026-09-27).
-        self.assertEqual(body["page"], 1)
+        # Envelope di lista, forma unica (`pagina_con_totale`, D-1 2026-11-24).
+        self.assertEqual(set(body), {"count", "results"})
         self.assertEqual(body["count"], 0)
         self.assertEqual(body["results"], [])
 

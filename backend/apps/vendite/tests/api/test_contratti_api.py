@@ -200,8 +200,6 @@ class TestDocumentiContratto(_BaseApiTest):
 
         self.assertEqual(resp.status_code, 200)
         body = resp.json()["data"]
-        self.assertEqual(body["page"], 2)
-        self.assertEqual(body["page_size"], 10)
         self.assertEqual(body["count"], 1)
         kwargs = svc_cls.return_value.list_documenti_per_sorgente.call_args.kwargs
         self.assertEqual(kwargs["sorgente_tipo_id"], 4)

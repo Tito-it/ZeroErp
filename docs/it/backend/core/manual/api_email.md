@@ -89,9 +89,6 @@ Risposta:
 {
   "data": {
     "count": 2,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 1,
@@ -276,7 +273,7 @@ GET /api/v1/amm-software/email-templates/
 | `order_by` | string | No | codice + lingua | Colonna di ordinamento |
 | `order_dir` | string | No | `asc` | `asc` / `desc` |
 
-Risposta paginata come la lista account (`count`, `page`, `page_size`, `total_pages`, `results`).
+Risposta paginata come la lista account: envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)).
 
 ### Crea template
 

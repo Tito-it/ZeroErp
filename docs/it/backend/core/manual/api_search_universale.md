@@ -29,8 +29,7 @@ con stato, ecc.). Il backend delega la logica alle funzioni DB
 | `order_dir` | string | No | `ASC` | Direzione ordinamento: `ASC` o `DESC` |
 
 ⛔ `page`/`page_size` in query sono un 400 `E_VALIDATION_INPUT` dal 2026-10-21
-(prima erano il contratto di questa ricerca). La risposta porta ancora `page` e
-`page_size`, ricavati dall'offset.
+(prima erano il contratto di questa ricerca). Dal 2026-11-24 la risposta è `{count, results}` ([api.md §Paginazione](../../../dev/api.md)): `page` e `page_size`, che fino a quel giorno ricavava dall'offset, sono usciti.
 
 **Nota**: il parametro `comune_id` e' stato rimosso. Il filtro per comune nel livello 1
 era impraticabile (risoluzione indirizzo row-level su migliaia di righe). Indirizzo e
@@ -42,9 +41,6 @@ comune sono ora visibili nel livello 2 (dettaglio per tipo ruolo).
 {
   "data": {
     "count": 42,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 2,
     "results": [
       {
         "soggetto_id": "uuid",
@@ -269,3 +265,5 @@ Risposta: stessa forma, `{"data": {"results": [...]}}`.
 - 2026-10-21: la finestra passa da `page`/`page_size` a `limit`/`offset`
   (`pagina_da_query`, default 25, max 100); `page`/`page_size` in query
   diventano un 400. Envelope invariato
+- 2026-11-24: la risposta è `{count, results}` (`pagina_con_totale`, D-1 di
+  brief-be-fe-BB-audit): `page`, `page_size` e `total_pages` escono.

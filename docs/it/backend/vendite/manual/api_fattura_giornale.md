@@ -66,9 +66,6 @@ Storie in `apps/vendite/api/_giornale_params.py`. ⛔ Il vecchio contratto
   "data": {
     "fattura_id": 19563,
     "count": 2,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "ritirate_count": 1,
     "results": [
       {

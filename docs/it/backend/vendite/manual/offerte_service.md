@@ -142,7 +142,7 @@ del building block note partizionate sul nuovo target `OFFERTA`.
   Ritorna la nuova rev.N+1 (dettaglio completo via `get_offerta`).
 - `list_revisioni(offerta_id, *, limit, offset, order_by, order_dir)
   -> (list[OffertaRow], int)` — una **pagina** della catena di revisioni con la
-  stessa radice (`revisione_radice_id`), col totale per `paginated_envelope`.
+  stessa radice (`revisione_radice_id`), col totale per `pagina_con_totale`.
   Ordine di default `revisione_numero` ASC (whitelist
   `OFFERTA_REVISIONI_ORDER_COLUMNS`). Offerta inesistente -> 404. Lettura libera
   in ogni stato.

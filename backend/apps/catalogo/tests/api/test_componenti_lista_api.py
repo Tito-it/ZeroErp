@@ -70,7 +70,7 @@ class TestComponentiListaApi(JwtMockedApiTest):
         )
         self.assertEqual(resp.status_code, 200)
         data = resp.json()["data"]
-        self.assertEqual((data["count"], data["page"], len(data["results"])), (12, 2, 2))
+        self.assertEqual((data["count"], len(data["results"])), (12, 2))
         args, kwargs = pagina.call_args
         self.assertEqual(str(args[0]), _ARTICOLO)
         self.assertEqual(kwargs, {

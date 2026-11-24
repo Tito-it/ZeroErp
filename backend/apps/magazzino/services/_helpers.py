@@ -3,8 +3,9 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: I pezzi che i due service di `magazzino` condividono — il codice di
-#        validazione del dominio, l'involucro paginato offset-based, la
-#        validazione dell'ordinamento e la lettura di un `articolo_id`.
+#        validazione del dominio, la validazione dell'ordinamento e la
+#        lettura di un `articolo_id`. L'involucro paginato e' passato al core il
+#        2026-11-24 (`pagina_con_totale`).
 # Note: Stampo `pagamenti/services/_helpers.py`: materiale INTERNO del
 #       dominio, non un building block di progetto. Nato il 2026-09-18 alla
 #       seconda occorrenza — `_risposta` era scritto in entrambi i service e
@@ -47,10 +48,9 @@ E_VALIDAZIONE = "E_MAGAZZINO_VALIDATION"
 _PAYLOAD = PayloadValidator(validation_code=E_VALIDAZIONE, function_name=_FN)
 
 
-# Scopo: L'involucro paginato offset-based `{count, results}` — la lingua di
-#        `useSearchTable` e delle liste nate su `<ListaConfigurabile>`.
-def risposta_paginata(results: list[Any], total: int) -> dict[str, Any]:
-    return {"count": total, "results": results}
+# ⛔ L'involucro `{count, results}` non sta qui: e' il BB core
+#    `pagina_con_totale` (2026-11-24, D-1 di brief-be-fe-BB-audit). La copia di
+#    dominio `risposta_paginata` e' ritirata quel giorno.
 
 
 # Scopo: Valida `order_by`/`order_dir` di una lista contro la whitelist del

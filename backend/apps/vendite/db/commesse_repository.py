@@ -43,6 +43,7 @@ from apps.vendite.types import (
     GruppoDiagnosi,
     GruppoEsitoGiro,
 )
+from apps.core.services.list_helpers import pagina_con_totale
 
 # Le colonne di PROVENIENZA del prezzo di una riga di commessa, che
 # `update_attivita_prezzo` scrive con il prezzo. ⭐ Sede unica dal 2026-11-14:
@@ -1914,7 +1915,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                 row_dict[col] = val
             rows.append(row_dict)
 
-        return {"count": total_count, "results": rows}
+        return pagina_con_totale(rows, total_count)
 
     # --- Gruppo 4: Push log ---
 

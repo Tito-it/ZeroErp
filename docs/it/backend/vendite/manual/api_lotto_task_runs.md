@@ -43,9 +43,6 @@ View in `apps/vendite/api/views.py`: `ApiLottoTaskRuns` (lista),
   "data": {
     "lotto_id": 42,
     "count": 90,
-    "page": 1,
-    "page_size": 100,
-    "total_pages": 1,
     "esclusi_count": 0,
     "results": [
       {

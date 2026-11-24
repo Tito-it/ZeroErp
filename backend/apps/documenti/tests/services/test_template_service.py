@@ -6,7 +6,8 @@
 #        init param) e PermissionResolver.get_emittenti_pk_ids (via patch).
 #        Verifica:
 #        - scope emittente: admin globale -> None, operatore -> lista,
-#          user None/non auth -> lista vuota (no leak);
+#          user None/anonimo -> E_SCOPE_SENZA_UTENTE, senza leggere (lavoro C
+#          di brief-be-fe-BB-audit, 2026-11-24: prima una lista vuota);
 #        - get_template solleva E_DOCUMENTI_NOT_FOUND su row None;
 #        - list_versioni pre-verifica visibilita' template (404);
 #        - stato versione invalido -> E_DOCUMENTI_VALIDATION;
@@ -15,7 +16,7 @@
 # Indice test (0..N):
 #   0. list_templates_passes_emittenti_ids_for_operator
 #   1. list_templates_admin_globale_passes_none
-#   2. list_templates_anonymous_user_no_leak
+#   2. list_templates_anonymous_user_rifiutato
 #   3. get_template_not_found_raises
 #   4. get_template_invalid_id_raises_validation
 #   5. list_versioni_404_if_template_invisible
@@ -28,6 +29,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from django.contrib.auth.models import AnonymousUser
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
@@ -43,7 +45,7 @@ def _make_user(*, is_authenticated: bool = True) -> Any:
 class TemplateServiceListTests(SimpleTestCase):
     # 0. operatore -> emittente_ids_scope = lista.
     @patch(
-        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_pk_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=[11, 22],
     )
     def test_list_templates_passes_emittenti_ids_for_operator(self, _mock) -> None:
@@ -60,7 +62,7 @@ class TemplateServiceListTests(SimpleTestCase):
 
     # 1. admin globale -> emittente_ids_scope = None (vede tutto).
     @patch(
-        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_pk_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_list_templates_admin_globale_passes_none(self, _mock) -> None:
@@ -72,27 +74,25 @@ class TemplateServiceListTests(SimpleTestCase):
 
         self.assertIsNone(repo.list_templates.call_args.kwargs["emittente_ids_scope"])
 
-    # 2. user non autenticato -> emittente_ids_scope = [] (no leak).
-    def test_list_templates_anonymous_user_no_leak(self) -> None:
+    # 2. utente anonimo o assente -> il rifiuto dichiarato del BB del
+    #    perimetro (`E_SCOPE_SENZA_UTENTE`), e il repository non si legge.
+    #    ⚠️ Fino al 2026-11-24 `TemplateService` aveva una copia sua dello
+    #    scope che rispondeva `[]` (lavoro C di brief-be-fe-BB-audit).
+    def test_list_templates_anonymous_user_rifiutato(self) -> None:
         repo = MagicMock()
-        repo.list_templates.return_value = ([], 0)
         service = TemplateService(repo=repo)
-
-        service.list_templates(_make_user(is_authenticated=False))
-
-        self.assertEqual(repo.list_templates.call_args.kwargs["emittente_ids_scope"], [])
-
-        # Anche None -> [].
-        repo.reset_mock()
-        repo.list_templates.return_value = ([], 0)
-        service.list_templates(None)
-        self.assertEqual(repo.list_templates.call_args.kwargs["emittente_ids_scope"], [])
+        for user in (AnonymousUser(), None):
+            with self.subTest(user=user):
+                with self.assertRaises(ServiceError) as ctx:
+                    service.list_templates(user)
+                self.assertEqual(ctx.exception.code, "E_SCOPE_SENZA_UTENTE")
+        repo.list_templates.assert_not_called()
 
 
 class TemplateServiceGetTemplateTests(SimpleTestCase):
     # 3. row None -> E_DOCUMENTI_NOT_FOUND.
     @patch(
-        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_pk_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=[11],
     )
     def test_get_template_not_found_raises(self, _mock) -> None:
@@ -118,7 +118,7 @@ class TemplateServiceGetTemplateTests(SimpleTestCase):
 class TemplateServiceVersioniTests(SimpleTestCase):
     # 5. list_versioni: template fuori scope (get_template -> None) -> 404.
     @patch(
-        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_pk_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=[11],
     )
     def test_list_versioni_404_if_template_invisible(self, _mock) -> None:
@@ -133,7 +133,7 @@ class TemplateServiceVersioniTests(SimpleTestCase):
 
     # 6. stato versione fuori whitelist -> E_DOCUMENTI_VALIDATION.
     @patch(
-        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_pk_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_list_versioni_invalid_stato_raises(self, _mock) -> None:
@@ -152,7 +152,7 @@ class TemplateServiceVersioniTests(SimpleTestCase):
 
     # 7. get_versione: template visibile + versione None -> 404 sulla versione.
     @patch(
-        "apps.documenti.services.template_service.PermissionResolver.get_emittenti_pk_ids",
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
     def test_get_versione_404_if_versione_missing(self, _mock) -> None:

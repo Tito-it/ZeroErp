@@ -50,7 +50,11 @@ def require_min_search_length(
 # ⛔ La direzione non ha un insieme proprio (`ALLOWED_ORDER_DIRS`, fino al
 #    2026-09-26): era una seconda copia di `{asc, desc}`, che gia' divergeva
 #    dal BB sugli spazi ai lati. La regola e' una, in `_helpers.py`.
-def validate_order_params(
+# ⚠️ Il nome dice la sede (D-3 di brief-be-fe-BB-audit, Tid 2026-11-24): fino a
+#    quel giorno si chiamava `validate_order_params`, come il BB dei service in
+#    `list_helpers`, che ha un'altra semantica (minuscolo, `None` se assente,
+#    codice d'errore del dominio). Un import sbagliato non dava errore.
+def validate_order_params_ricerca(
     order_by: str | None, order_dir: str | None
 ) -> tuple[str | None, str | None]:
     # ⚠️ La direzione si giudica PRIMA del ramo «nessuna colonna», che la

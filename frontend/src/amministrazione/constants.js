@@ -73,13 +73,6 @@ export const ROUNDING_DECIMALI_RANGE = { MIN: 0, MAX: 2 }
 
 // --- Severity mapping riusabili ---
 
-// Scopo: Restituisce la severity PrimeVue per un livello accesso.
-export function getLivelloSeverity(livello) {
-  if (livello === LIVELLO_ACCESSO.TUTTO) return 'success'
-  if (livello === LIVELLO_ACCESSO.LETTURA) return 'warn'
-  return 'danger'
-}
-
 // Scopo: Restituisce la label i18n per un livello accesso.
 export function getLivelloLabel(t, livello) {
   if (livello === LIVELLO_ACCESSO.TUTTO) return t('amministrazione.livello_tutto')

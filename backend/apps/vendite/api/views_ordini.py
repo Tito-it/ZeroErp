@@ -24,7 +24,6 @@ from apps.core.api.permissions import PassaggioDocumento
 from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
-    paginated_envelope,
     parse_list_params,
     qp_bool_optional,
     qp_int_optional,
@@ -56,6 +55,7 @@ from apps.vendite.api._schema_da_contratto import (
     CAMBIA_STATO_CON_CONFERMA_REQUEST,
     schema_da_contratto,
 )
+from apps.core.services.list_helpers import pagina_con_totale
 
 # Codice lista configurabile (catalogo ui.lista_definizione id=7). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
@@ -210,7 +210,7 @@ class ApiOrdiniList(DomainAPIView):
             order_dir=p["order_dir"],
             **f,
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=_ORDINE_CREATE_REQUEST,

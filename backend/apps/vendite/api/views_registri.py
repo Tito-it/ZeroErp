@@ -36,7 +36,6 @@ from apps.core.api.payload_validators import (
     corpo_oggetto,
     optional_bool,
     optional_int,
-    paginated_envelope,
     parse_list_params,
     qp_bool_optional,
     qp_int_optional,
@@ -51,6 +50,7 @@ from apps.vendite.services.registri_service import (
     RegistriService,
 )
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
+from apps.core.services.list_helpers import pagina_con_totale
 
 _LISTA_CODICE = "vendite.registri_numerazione"
 
@@ -125,7 +125,7 @@ class ApiRegistriList(DomainAPIView):
             limit=p["limit"], offset=p["offset"],
             order_by=p["order_by"], order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         operation_id="vendite_registri_create",

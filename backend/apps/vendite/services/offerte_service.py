@@ -1008,7 +1008,7 @@ class OfferteService:
 
     # Scopo: Ritorna una PAGINA della catena di revisioni che condivide la
     #        radice (rev.1) con l'offerta passata, col totale per
-    #        `paginated_envelope`. Lettura libera in ogni stato.
+    #        `pagina_con_totale`. Lettura libera in ogni stato.
     def list_revisioni(
         self, offerta_id: int, *,
         limit: int = DEFAULT_LIMIT, offset: int = 0,

@@ -17,7 +17,7 @@ from django.http import JsonResponse
 from rest_framework.response import Response
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
-from apps.core.api.payload_validators import paginated_envelope, parse_list_params
+from apps.core.api.payload_validators import parse_list_params
 
 from apps.core.api.success_responses import success_response
 from apps.core.db.session_audit_repository import SessionAuditRepository
@@ -26,6 +26,7 @@ from apps.core.services.request_context import sid_corrente
 from apps.core.services.revoca_token import blocca_token_sessioni
 from apps.core.services.service_errors import ServiceError
 from apps.core.api.endpoint_helpers import utente_autenticato_id
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 class SessioniAttiveListView(DomainAPIView):
@@ -66,9 +67,6 @@ class SessioniAttiveListView(DomainAPIView):
                             "count": serializers.IntegerField(
                                 help_text="Sessioni che rispondono alla ricerca (tutte le pagine)."
                             ),
-                            "page": serializers.IntegerField(),
-                            "page_size": serializers.IntegerField(),
-                            "total_pages": serializers.IntegerField(),
                             "totale_attive": serializers.IntegerField(
                                 help_text=(
                                     "Altre sessioni attive a prescindere dalla ricerca: "
@@ -103,7 +101,7 @@ class SessioniAttiveListView(DomainAPIView):
             limit=p["limit"],
             offset=p["offset"],
         )
-        envelope = paginated_envelope(results, total, p["page"], p["limit"])
+        envelope = pagina_con_totale(results, total)
         envelope["totale_attive"] = (
             repo.conta_sessioni_attive(user_id, escludi_jti=current_sid)
             if p["search"] else total

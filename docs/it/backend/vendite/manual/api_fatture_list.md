@@ -68,8 +68,8 @@ verrebbe intercettato prima della view.
 
 ## Output
 
-Envelope standard `success_response(paginated_envelope(...))`: `results`,
-`count`, `page`, `page_size`, `total_pages`.
+Envelope standard `success_response(pagina_con_totale(...))`: `count` e
+`results` ([api.md §Paginazione](../../../dev/api.md)).
 
 Ogni riga è **la riga della vista** (`SELECT v.*`), e basta: dal changeSet
 `20260829-01/02` la vista porta gia' `frontiera_tipo_codice_interno` e

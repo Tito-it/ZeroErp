@@ -55,9 +55,6 @@ Senza ordinamento: `sequenza` ASC, spareggio su `id`.
 {
   "data": {
     "count": 1,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 5,
@@ -111,7 +108,7 @@ Senza ordinamento: `sequenza` ASC, spareggio su `id`.
 ## Regole
 
 - GET (dal 2026-09-27): lista a catalogo `pratiche.flussi` con envelope
-  paginato (`count`/`page`/`page_size`/`total_pages`/`results`); default
+  di lista (`count`/`results`, `pagina_con_totale` dal 2026-11-24); default
   `sequenza ASC, id ASC` (la posizione del flusso nella pratica). Il conteggio
   usa lo stesso FROM+JOIN della pagina: il JOIN su `pratiche.pratiche` (con
   RLS) resta anche nel `COUNT`, perche' `pratiche.flussi` non ha RLS propria.

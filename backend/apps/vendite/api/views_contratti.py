@@ -24,7 +24,6 @@ from apps.core.api.permissions import PassaggioDocumento
 from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
-    paginated_envelope,
     parse_list_params,
     qp_int_optional,
     qp_iso_date_optional,
@@ -52,6 +51,7 @@ from apps.vendite.api._componenti_schema import (
     PREVIEW_COMPONENTI_REQUEST,
     PREVIEW_COMPONENTI_RESPONSE,
 )
+from apps.core.services.list_helpers import pagina_con_totale
 
 # Codice lista configurabile (ui.lista_definizione) per contratti.
 _LISTA_CODICE_CONTRATTI = "vendite.contratti"
@@ -231,7 +231,7 @@ class ApiContrattiList(DomainAPIView):
             order_by=p["order_by"],
             order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=_CONTRATTO_CREATE_REQUEST,

@@ -41,6 +41,7 @@ from apps.core.services.coda_lavori.repository import (
 )
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import (
+    pagina_con_totale,
     validate_enum_param,
     validate_order_params,
 )
@@ -175,7 +176,7 @@ class ProcessiService:
             limit=limit, offset=offset,
             order_by=order_by, order_dir=order_dir,
         )
-        return {"count": totale, "results": righe}
+        return pagina_con_totale(righe, totale)
 
     # Scopo: I vocabolari dei filtri del pannello (classe, canale), per il
     #        client. Sono `_CLASSI` e `_CANALI`, cioe' le stesse costanti con
@@ -409,7 +410,7 @@ class ProcessiService:
         righe, totale = self._repo.list_run_processo(
             codice, limit=limit, offset=offset,
         )
-        return {"count": totale, "results": righe}
+        return pagina_con_totale(righe, totale)
 
     # Scopo: Lo stato dei presidi, in un round-trip.
     #

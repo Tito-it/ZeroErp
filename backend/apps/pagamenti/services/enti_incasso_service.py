@@ -19,10 +19,9 @@ import json
 import logging
 from typing import Any
 
-from apps.core.api.payload_validators import envelope_da_offset
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import validate_order_params
+from apps.core.services.list_helpers import validate_order_params, pagina_con_totale, collezione_completa
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     make_db_errors_translator,
@@ -125,7 +124,7 @@ def list_enti_incasso(
         limit=limit,
         offset=offset,
     )
-    return envelope_da_offset(results, total, limit=limit, offset=offset)
+    return pagina_con_totale(results, total)
 
 
 # Scopo: Legge il canale o solleva il 404 di dominio.
@@ -166,8 +165,7 @@ def list_conti_incasso(soggetto_ruolo_id: int) -> dict[str, Any]:
     #    scritto qui lo salterebbe il secondo chiamante. ⛔ Non si duplica.
     conti = repository.list_conti_incasso(soggetto_ruolo_id)
     return {
-        "count": len(conti),
-        "results": conti,
+        **collezione_completa(conti),
         # ⭐ Il motivo del vuoto viaggia con la risposta: senza, la schermata
         #    dovrebbe indovinarlo — e indovinerebbe «nessun conto», che e' vero
         #    ma non dice che cosa fare.

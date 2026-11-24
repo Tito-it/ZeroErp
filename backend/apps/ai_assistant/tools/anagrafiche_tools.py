@@ -14,6 +14,7 @@ from typing import Any
 from apps.ai_assistant.tools.base import AITool, EndpointGemello
 from apps.anagrafiche.api.views_soggetti import SoggettiDetailView, SoggettiView
 from apps.core.db._helpers import RICERCA_MIN_CARATTERI
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 class CercaSoggettiTool(AITool):
@@ -85,7 +86,7 @@ class CercaSoggettiTool(AITool):
         for i, item in enumerate(items):
             simplified[i]["ruoli"] = _parse_ruoli(item.get("ruoli"))
 
-        return {"count": total, "results": simplified}
+        return pagina_con_totale(simplified, total)
 
 
 class DettaglioSoggettoTool(AITool):

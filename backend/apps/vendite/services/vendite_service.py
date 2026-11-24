@@ -9,7 +9,6 @@
 # non legate a un sottodominio specifico (pipeline, reset, ecc.).
 
 import logging
-import math
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -30,11 +29,11 @@ from apps.config.sorgenti import (
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
-from apps.core.api.payload_validators import envelope_da_offset
 from apps.core.services.payload_helpers import translate_db_errors
 from apps.core.services.capability_blob import capabilities_o_vuoto
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import (
+    pagina_con_totale,
     validate_enum_param,
     validate_order_params,
 )
@@ -225,22 +224,27 @@ def _valida_ritardo_giorni(
     )
 
 
-# Scopo: L'envelope di una lista dei cruscotti, con la pagina EFFETTIVAMENTE
-#        servita: il repository (`_query_paged_view`) riporta un offset oltre
+# Scopo: L'envelope di una lista dei cruscotti, con la finestra EFFETTIVAMENTE
+#        servita: il repository (`query_paged_view`) riporta un offset oltre
 #        la fine all'ultima pagina (rientro da pagina stantia, in una sola
-#        valutazione della union), e l'envelope deve dichiarare quella — il FE
-#        la adotta (`usePagedDashFetch` sincronizza la pagina dalla risposta).
-# ⚠️ Solo per le liste il cui repository riporta l'offset; le altre usano
-#    `envelope_da_offset` diretto.
+#        valutazione della union), e la risposta deve dichiararlo — il FE lo
+#        adotta (`usePagedDashFetch` ne ricava la pagina del paginatore).
+# ⭐ Dal 2026-11-24 (D-1 di brief-be-fe-BB-audit) l'envelope e' la forma unica
+#    `pagina_con_totale`, e la finestra effettiva sta in un campo suo,
+#    `offset_effettivo`, nel dialetto della richiesta (`limit`/`offset`). Prima
+#    era `page`, dentro la forma lunga che tutte le altre liste ripetevano per
+#    niente.
+# ⚠️ Lo stesso calcolo della `OFFSET LEAST(…)` di `query_paged_view`: con zero
+#    righe la finestra e' la prima. Solo per le liste il cui repository riporta
+#    l'offset; le altre usano `pagina_con_totale` diretto.
 def _envelope_pagina_effettiva(
     results: list, total_count: int, *, limit: int, offset: int,
 ) -> dict[str, Any]:
-    envelope = envelope_da_offset(results, total_count, limit=limit, offset=offset)
-    if total_count > 0 and limit > 0:
-        envelope["page"] = min(envelope["page"], math.ceil(total_count / limit))
-    else:
-        envelope["page"] = 1
-    return envelope
+    ultima = (max(total_count - 1, 0) // limit) * limit if limit > 0 else 0
+    return {
+        **pagina_con_totale(results, total_count),
+        "offset_effettivo": min(offset, ultima),
+    }
 
 
 # Scopo: I filtri della lista lotti che la query non sa rifiutare, validati in
@@ -317,7 +321,7 @@ def fn_list_lotti(
         solo_recuperi_mese=solo_recuperi_mese,
         includi_annullati=includi_annullati,
     )
-    risposta = envelope_da_offset(results, total_count, limit=limit, offset=offset)
+    risposta = pagina_con_totale(results, total_count)
     # ⭐ La ripartizione per stato viaggia NELLA STESSA risposta della lista, e
     #    non su un endpoint suo: cosi' i pulsanti-filtro e le righe sotto
     #    vengono dalla stessa valutazione del perimetro e non possono
@@ -564,7 +568,7 @@ def fn_list_lotto_fatture(
         offset=offset,
         max_rows=max_rows,
     )
-    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
+    return pagina_con_totale(results, total_count)
 
 
 # Scopo: I DOCUMENTI CHE UN LOTTO HA PRESO IN CARICO, con l'esito di ciascuno.
@@ -636,7 +640,7 @@ def fn_list_lotto_gruppi(
     # ⚠️ Tolto e non lasciato «per compatibilita'»: un campo che non discrimina
     #    piu' niente e' peggio di un campo assente, perche' chi lo legge crede
     #    che discrimini.
-    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
+    return pagina_con_totale(results, total_count)
 
 
 # Range anni ammesso per i cruscotti fatturazione (Lente 1: anno libero
@@ -2128,9 +2132,7 @@ def _envelope_giornale(
     offset: int,
     ritirate_nascoste: int,
 ) -> dict[str, Any]:
-    envelope = envelope_da_offset(
-        righe, max(0, int(total_count)), limit=int(limit), offset=int(offset),
-    )
+    envelope = pagina_con_totale(righe, max(0, int(total_count)))
     envelope["ritirate_count"] = ritirate_nascoste
     return envelope
 

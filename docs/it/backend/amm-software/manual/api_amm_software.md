@@ -518,8 +518,7 @@ del rapporto. Il binding SUPER_ADMIN, come prima, non si ripristina da sé.
 Le credenziali di categoria `ALTRO`: clienti e fornitori del portale, clienti
 dello shop, e le credenziali **senza alcuna veste** (`nessun_accesso = true`).
 Legge `anagrafiche.vw_accessi_altri` (`v.*`: la vista e' il contratto), lista a
-catalogo `anagrafiche.accessi_altri` (104). Envelope paginato standard
-(`count`, `page`, `page_size`, `total_pages`, `results`).
+catalogo `anagrafiche.accessi_altri` (104). Envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)).
 
 | Parametro | Tipo | Descrizione |
 |---|---|---|
@@ -1179,9 +1178,6 @@ Solo i reparti attivi (`attivo = true`).
 {
   "data": {
     "count": 1,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 2,

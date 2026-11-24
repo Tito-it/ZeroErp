@@ -92,9 +92,6 @@ class ApiLookupCodici(DomainAPIView):
                         name="CoreLookupCodiciData",
                         fields={
                             "count": serializers.IntegerField(),
-                            "page": serializers.IntegerField(),
-                            "page_size": serializers.IntegerField(),
-                            "total_pages": serializers.IntegerField(),
                             "results": serializers.ListField(child=serializers.DictField()),
                         },
                     ),
@@ -283,10 +280,7 @@ class ApiPermessiAudit(DomainAPIView):
                         fields={
                             "user_id": serializers.IntegerField(),
                             "count": serializers.IntegerField(),
-                            "page": serializers.IntegerField(),
-                            "page_size": serializers.IntegerField(),
-                            "total_pages": serializers.IntegerField(),
-                            "events": serializers.ListField(child=serializers.DictField()),
+                            "results": serializers.ListField(child=serializers.DictField()),
                         },
                     ),
                     "meta": serializers.DictField(required=False),

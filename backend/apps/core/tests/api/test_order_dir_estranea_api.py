@@ -56,7 +56,7 @@ _PERM_ADMIN = "apps.core.api.permissions.IsAdminZeroERP.has_permission"
 _CONN_GEO = "apps.core.db._helpers.connection"
 _CONN_CATEGORIE = "apps.anagrafiche.db.categorie_clienti_repository.connection"
 _CONN_DOCUMENTI = "apps.documenti.db.documenti_repository.connection"
-_SCOPE_DOCUMENTI = "apps.documenti.services.template_service.TemplateService._resolve_emittente_scope"
+_SCOPE_DOCUMENTI = "apps.documenti.services.template_service.resolve_emittente_scope"
 _LOOKUP_REPO = "apps.core.services.lookup_service.DbopsRepository"
 
 

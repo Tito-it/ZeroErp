@@ -54,11 +54,11 @@ from apps.magazzino.db.anagrafiche_magazzino_repository import (
     UBICAZIONI_SORT_COLUMNS,
     AnagraficheMagazzinoRepository,
 )
+from apps.core.services.list_helpers import pagina_con_totale
 from apps.magazzino.services._helpers import (
     E_VALIDAZIONE,
     articolo_uuid,
     ordinamento_validato,
-    risposta_paginata as _risposta,
 )
 from apps.magazzino.types import LottoRow, MagazzinoRow, UbicazioneRow
 
@@ -247,7 +247,7 @@ def list_magazzini(
         auth_user_id=auth_user_id, search=search, attivo=attivo,
         order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
     )
-    return _risposta(results, total)
+    return pagina_con_totale(results, total)
 
 
 # Scopo: Il dettaglio del magazzino; 404 no-leak.
@@ -337,7 +337,7 @@ def list_ubicazioni(
         magazzino_id=magazzino_id, search=search, attivo=attivo, parent_id=parent_id,
         order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
     )
-    return _risposta(results, total)
+    return pagina_con_totale(results, total)
 
 
 # Scopo: Il dettaglio dell'ubicazione del magazzino; 404 no-leak sulla coppia.
@@ -431,7 +431,7 @@ def list_lotti(
         auth_user_id=auth_user_id, articolo_id=articolo, search=search, attivo=attivo,
         order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
     )
-    return _risposta(results, total)
+    return pagina_con_totale(results, total)
 
 
 # Scopo: Il dettaglio del lotto; 404.

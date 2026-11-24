@@ -49,7 +49,6 @@ Envelope standard `{ "data": {...}, "meta": {...} }` con l'envelope paginato.
 |---|---|---|
 | `data.results` | array | Pagina di sessioni attive (esclusa la corrente) |
 | `data.count` | integer | Sessioni che rispondono alla ricerca, su tutte le pagine |
-| `data.page` / `data.page_size` / `data.total_pages` | integer | Paginazione |
 | `data.totale_attive` | integer | Altre sessioni attive **a prescindere dalla ricerca**: quelle che `revoca-tutte` chiude. Senza ricerca coincide con `count` |
 
 Ogni elemento di `results`:
@@ -69,9 +68,6 @@ Ogni elemento di `results`:
 {
   "data": {
     "count": 1,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "jti": "a1b2c3d4-...",

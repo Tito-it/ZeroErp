@@ -15,6 +15,7 @@ from typing import Any, Callable
 from apps.config.sorgenti import SORGENTE_PREVENTIVO
 from apps.ai_assistant.tools.base import AITool, EndpointGemello
 from apps.vendite.api.preventivi_documenti_views import ApiPreventivoDocumentiList
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 # Mappa codice sorgente -> verifica d'accesso (sorgente_id -> il record c'è
@@ -143,15 +144,11 @@ class CercaDocumentiGeneratiTool(AITool):
         rows = result.get("results") or []
         total = int(result.get("total_count") or 0)
 
+        risultati = self.simplify_results(rows, self._FIELD_MAP, str_fields={"generato_at"})
         return {
-            "count": total,
+            **pagina_con_totale(risultati, total),
             "sorgente_code": sorgente_code,
             "sorgente_id": int(params["sorgente_id"]),
-            "results": self.simplify_results(
-                rows,
-                self._FIELD_MAP,
-                str_fields={"generato_at"},
-            ),
         }
 
 

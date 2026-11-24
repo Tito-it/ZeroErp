@@ -41,7 +41,7 @@ from datetime import date
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import validate_enum_param
+from apps.core.services.list_helpers import validate_enum_param, pagina_con_totale
 from apps.core.services.payload_helpers import (
     Lettura,
     PayloadValidator,
@@ -59,7 +59,6 @@ from apps.magazzino.services._helpers import (
     E_VALIDAZIONE,
     articolo_uuid,
     ordinamento_validato,
-    risposta_paginata as _risposta,
 )
 from apps.magazzino.types import DocumentoInternoRow, RigaDocumentoInternoRow
 
@@ -288,7 +287,7 @@ def list_documenti(
         limit=limit,
         offset=offset,
     )
-    return _risposta(results, total)
+    return pagina_con_totale(results, total)
 
 
 # Scopo: Il dettaglio: testata + magazzino + `righe_count` + le `capabilities`,
@@ -487,7 +486,7 @@ def list_piano(
     results, total = repository.list_piano(
         doc_id, search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
     )
-    return _risposta(results, total)
+    return pagina_con_totale(results, total)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -515,7 +514,7 @@ def list_righe(
     results, total = repository.list_righe(
         f, doc_id, search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
     )
-    return _risposta(results, total)
+    return pagina_con_totale(results, total)
 
 
 # Scopo: Il trasporto delle chiavi di riga di una famiglia — le stesse in
