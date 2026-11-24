@@ -41,6 +41,9 @@
 //  12) un click che non apre un drawer si dimentica: un drawer aperto dopo non
 //      evidenzia quella riga
 //  13) `riga-attiva` passata dal caller vince sulla riga del click
+//  14) ⭐ il verso che parte e' quello che la freccia mostra, anche su una
+//      colonna data di una lista aperta DESC: giro crescente -> decrescente
+//      -> niente
 // ------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -56,6 +59,8 @@ vi.mock('../composables/useListaConfig', () => ({
         { codice: 'codice', visibile: true, etichetta: 'Codice' },
         { codice: 'descrizione', visibile: true, etichetta: 'Descrizione' },
         { codice: 'nascosta', visibile: false, etichetta: 'Nascosta' },
+        // Una colonna DATA: il caso del test 14 (verso di ordinamento).
+        { codice: 'scadenza', visibile: true, etichetta: 'Scadenza', tipo_dato: 'date' },
       ],
       ordinamento: [],
       filtri: {},
@@ -82,8 +87,8 @@ import { monta } from '../../../test/montaggio'
 import { useDrawerInCima } from '../composables/useDrawerInCima'
 
 const RIGHE = [
-  { id: 1, codice: 'A-1', descrizione: 'Prima', nascosta: 'x' },
-  { id: 2, codice: 'A-2', descrizione: 'Seconda', nascosta: 'y' },
+  { id: 1, codice: 'A-1', descrizione: 'Prima', nascosta: 'x', scadenza: '2026-06-01' },
+  { id: 2, codice: 'A-2', descrizione: 'Seconda', nascosta: 'y', scadenza: null },
 ]
 
 function montaLista(props = {}) {
@@ -254,5 +259,39 @@ describe('ListaConfigurabile', () => {
     await clicRiga(w, 1)
     expect(attive(w)).toEqual([true, false])
     drawer.scope.stop()
+  })
+
+  // 🔴 Tid, 2026-11-24, lista preventivi: aperta a `data desc`, click su
+  //    «Validita'» — freccia «crescente», richiesta `desc`; il click dopo,
+  //    freccia «decrescente», di nuovo `desc`. Il BB girava a DESC il primo
+  //    click su una data ALLE SPALLE di PrimeVue, e la prop `sortOrder`, gia'
+  //    -1, non cambiava valore: la freccia non si riallineava mai. Regola
+  //    ritirata: il verso e' quello di PrimeVue, e il giro e' lo stesso per
+  //    ogni colonna.
+  it('14) il verso che parte e\' quello della freccia, anche su una data', async () => {
+    const w = montaLista({ rows: RIGHE, total: 7, sortField: 'codice', sortOrder: -1 })
+    await w.vm.$nextTick()
+    const intestazione = () => w.findAll('th').find((th) => th.text().includes('Scadenza'))
+    // Il caller fa quello che fa lo store: riscrive le prop da ciò che riceve.
+    const clic = async () => {
+      await intestazione().trigger('click')
+      const ev = w.emitted('sort').at(-1)[0]
+      await w.setProps({ sortField: ev.sortField ?? null, sortOrder: ev.sortOrder ?? null })
+      return ev
+    }
+
+    const primo = await clic()
+    expect(primo.sortField).toBe('scadenza')
+    expect(primo.sortOrder).toBe(1)
+    expect(intestazione().attributes('aria-sort')).toBe('ascending')
+
+    const secondo = await clic()
+    expect(secondo.sortOrder).toBe(-1)
+    expect(intestazione().attributes('aria-sort')).toBe('descending')
+
+    // `removable-sort`: il terzo click toglie l'ordinamento.
+    const terzo = await clic()
+    expect(terzo.sortField ?? null).toBeNull()
+    expect(intestazione().attributes('aria-sort')).toBe('none')
   })
 })

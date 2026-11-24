@@ -151,16 +151,16 @@ class ListiniInScadenzaDbTests(unittest.TestCase):
         self.assertEqual([r["id"] for r in senza["non_in_scadenza"]], [senza["aperto_id"]])
 
     # La versione senza fine (il successore) e' la piu' lontana: ultima
-    # crescendo, prima calando — e calando e' anche il verso di partenza di una
-    # data (`VERSIONI_ORDER_COLONNE_DATA`). Senza il COALESCE il NULL sarebbe
-    # il minimo del BB e i due versi si scambierebbero.
+    # crescendo, prima calando; senza verso la colonna va crescente (dal
+    # 2026-11-24 nessuna data ha un verso di partenza proprio). Senza il
+    # COALESCE il NULL sarebbe il minimo del BB e i due versi si scambierebbero.
     def test_valido_al_vuoto_e_la_versione_piu_lontana(self) -> None:
         letture = self._letture(successore=True)
         attesa = [letture["versione_id"], letture["successore_id"]]
         ordini = letture["versioni_valido_al"]
         self.assertEqual(ordini["asc"], attesa)
         self.assertEqual(ordini["desc"], attesa[::-1])
-        self.assertEqual(ordini[None], attesa[::-1])
+        self.assertEqual(ordini[None], attesa)
 
     # Il listino che scade fra 5 giorni prima di quello che non scade: il NULL
     # crescendo va in fondo, non in cima.

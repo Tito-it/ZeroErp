@@ -13,7 +13,7 @@
 """
 Indice test:
 1) default: ORDER BY f.sequenza ASC con tiebreak f.id, pratica come parametro.
-2) colonna data senza verso -> DESC (colonne_desc), whitelist sul campo_sorgente.
+2) colonna data senza verso -> ASC come ogni colonna (Tid 2026-11-24), whitelist sul campo_sorgente.
 3) il ripiego del conteggio usa lo STESSO frammento della pagina (JOIN pratiche).
 4) order_by fuori whitelist -> default, nessun SQL dall'input.
 """
@@ -42,9 +42,9 @@ class ListaFlussiRepositoryTests(TestCase):
         self.assertIn("COUNT(*) OVER () AS total_count", sql)
         self.assertEqual(params, [42, 25, 0])
 
-    def test_colonna_data_senza_verso_ordina_desc(self) -> None:
+    def test_colonna_data_senza_verso_ordina_asc(self) -> None:
         sql, _, _ = self._esegui(order_by="data_insert", limit=10, offset=30)
-        self.assertIn("ORDER BY f.data_insert DESC NULLS LAST, f.id DESC", sql)
+        self.assertIn("ORDER BY f.data_insert ASC NULLS FIRST, f.id ASC", sql)
 
     def test_il_conteggio_di_ripiego_ha_il_join_sulla_pratica(self) -> None:
         sql, _, opzioni = self._esegui(order_by="unita_organizzativa_descrizione", offset=25)

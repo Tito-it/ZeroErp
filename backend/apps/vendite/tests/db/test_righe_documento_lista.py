@@ -19,15 +19,16 @@ quattro proiettate a mano in Python, e la riga singola non filtrava
 riga singola alle altre letture sul caso `attivo = false`, che il modello
 ammette). Ora le quattro letture passano da un BB, e le cose che contano
 sono quelle che un errore renderebbe silenziose: l'ordine del DOCUMENTO come
-partenza (non una colonna qualunque), le date che partono DESC, una chiave
-fuori whitelist che ripiega invece di ordinare, il filtro `attivo` su tutte e
-tre le letture.
+partenza (non una colonna qualunque), una data chiesta senza verso che va
+ASC come ogni colonna (la regola «le date partono DESC» e' ritirata dal
+2026-11-24), una chiave fuori whitelist rifiutata invece di ripiegare, il
+filtro `attivo` su tutte e tre le letture.
 
 Indice test:
 
  1) test_pagina_parte_dall_ordine_del_documento
  2) test_pagina_filtra_documento_e_righe_attive
- 3) test_data_senza_direzione_parte_desc
+ 3) test_data_senza_direzione_va_asc
  4) test_chiave_fuori_whitelist_e_rifiutata
  5) test_pagina_rispetta_il_tetto_e_l_export_lo_alza
  6) test_lettura_completa_dalla_vista_attive_in_ordine
@@ -117,17 +118,15 @@ class RigheDocumentoListaTests(unittest.TestCase):
                 self.assertIn(f"FROM {vista} v WHERE v.{fk} = %s AND v.attivo IS TRUE", sql)
                 self.assertEqual(params[0], 42)
 
-    # Scopo: una data si legge dalla piu' recente (regola di Tid del 2026-09-02).
-    def test_data_senza_direzione_parte_desc(self):
-        # ⚠️ Tutte le colonne DESC dichiarate, non una per documento: l'ordine
-        #    ne ha due (confermata e richiesta dal cliente).
+    # Scopo: una data senza verso va ASC come ogni colonna (regola «le date
+    #        partono DESC» ritirata, Tid 2026-11-24).
+    def test_data_senza_direzione_va_asc(self):
         for repo, _, _, _, _, data in _DOCUMENTI:
-            if data is not None:
-                self.assertIn(data, repo._righe_colonne_desc)
-            for colonna in repo._righe_colonne_desc:
-                with self.subTest(repo=repo.__name__, colonna=colonna):
-                    sql, _, _ = _pagina(repo, order_by=colonna, order_dir=None)
-                    self.assertIn(f"ORDER BY {repo._righe_ordinamento[colonna]} DESC", sql)
+            if data is None:
+                continue
+            with self.subTest(repo=repo.__name__, colonna=data):
+                sql, _, _ = _pagina(repo, order_by=data, order_dir=None)
+                self.assertIn(f"ORDER BY {repo._righe_ordinamento[data]} ASC", sql)
 
     # Scopo: una chiave che la lista non ordina e' un 400 (`order_by_invalid`):
     #        non finisce nel SQL e non diventa l'ordine del documento in

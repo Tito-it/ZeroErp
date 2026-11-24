@@ -90,10 +90,7 @@ _RICERCA_EMAIL_LOG = RicercaFull("config.email_log", ("destinatario", "oggetto")
 # ⛔ Le tre liste ordinano col BB `sql_order_clause` (2026-09-26, regola del
 #    2): qui c'era `_email_order_clause`, una sua copia locale con lo spareggio
 #    scritto a mano in ogni query e FISSO (`el.id DESC` anche ordinando ASC) —
-#    il difetto che il BB corregge dal 2026-08-03. Le date dei log aprono DESC
-#    (`colonne_desc`, regola «le date hanno sempre default DESC»): quali sono
-#    le date lo dice il catalogo, e `test_liste_configurabili_seed` lo presidia.
-_EMAIL_LOG_COLONNE_DATA: frozenset[str] = frozenset({"data_insert"})
+#    il difetto che il BB corregge dal 2026-08-03.
 
 
 class EmailRepository:
@@ -657,8 +654,7 @@ class EmailRepository:
         # Default `data_insert DESC`: un log si legge dal piu' recente.
         order_clause = sql_order_clause(
             order_by, order_dir,
-            colonne=EMAIL_LOG_ORDER_COLUMNS, default="el.data_insert", default_desc=True,
-            colonne_desc=_EMAIL_LOG_COLONNE_DATA, tiebreak="el.id",
+            colonne=EMAIL_LOG_ORDER_COLUMNS, default="el.data_insert", default_desc=True, tiebreak="el.id",
         )
         # `emittente_ragione_sociale` e' la colonna 872 del catalogo (lista
         # `config.email_log`, D-4 del brief perimetro-emittente-cataloghi-

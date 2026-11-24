@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Collection, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from types import MappingProxyType
@@ -774,18 +774,6 @@ def colonne_identita(*colonne: str) -> dict[str, str]:
     return {c: c for c in colonne}
 
 
-# Le chiavi di ordinamento che per NOME sono date, per la convenzione del
-# progetto: `data`, `data_*`, `*_at`, `valido_dal/al`, `validita_dal/al`, ogni
-# `*_dal`/`*_al`, `competenza_mese`. La usa `sql_order_clause` per la regola
-# di Tid del 2026-09-02 («le date partono DESC»).
-_CHIAVE_DATA = re.compile(r"^(data|data_.+|.+_at|.+_dal|.+_al|competenza_mese)$")
-
-
-def e_chiave_data(chiave: str) -> bool:
-    """La chiave di ordinamento e' una data per nome (vedi `_CHIAVE_DATA`)."""
-    return bool(_CHIAVE_DATA.match(chiave))
-
-
 def colonna_ordinamento(order_by: str | None, colonne: Mapping[str, str]) -> str | None:
     """La COLONNA di una lista per la chiave `order_by` chiesta dal client.
 
@@ -840,7 +828,6 @@ def sql_order_direction_lista(
     colonne: Mapping[str, str],
     default: str | None = None,
     default_desc: bool = False,
-    colonne_desc: Collection[str] = (),
 ) -> str:
     """La DIREZIONE di una lista, risolta dalla chiave chiesta: la regola di
     `sql_order_clause`, per chi compone l'`ORDER BY` a mano.
@@ -854,16 +841,24 @@ def sql_order_direction_lista(
     - `order_by` che nomina la colonna di DEFAULT (per espressione o per
       chiave) → `default_desc`: la scelta della lista, che per una coda puo'
       essere crescente apposta;
-    - ogni altra colonna → DESC se e' una data (`colonne_desc`, o per NOME con
-      `e_chiave_data`), altrimenti ASC.
+    - ogni altra colonna → ASC, date comprese.
+
+    ⛔ **Nessuna colonna ha un verso di partenza proprio** (Tid, 2026-11-24).
+    Fino a quel giorno una data chiesta senza verso partiva DESC (regola del
+    2026-09-02, dichiarata per lista o riconosciuta dal nome della chiave).
+    E' uscita insieme al suo gemello del frontend, che girava a DESC il primo
+    click su una data e lasciava la freccia di PrimeVue su un verso diverso da
+    quello inviato: il giro di ogni intestazione e'
+    niente -> crescente -> decrescente -> niente, e il backend senza verso
+    dice lo stesso. Resta `default_desc`: e' l'ordinamento di partenza della
+    LISTA, non una proprieta' della colonna.
 
     ⛔ **Una chiave fuori `colonne` e' `ValueError` (400)**, da
     `colonna_ordinamento`: dal 2026-10-20 nessuna lista ripiega in silenzio sul
     default (decisione Tid, brief-be-verifica-documentazione-api §A1).
 
-    ⭐ **Regola del 2 (ok Tid 2026-10-20).** La riga
-    `sql_order_direction(order_dir, default_desc=e_chiave_data(order_by))` era
-    stata ricopiata in 13 `ORDER BY` composti a mano (vendite, magazzino,
+    ⭐ **Regola del 2 (ok Tid 2026-10-20).** La riga che sceglieva il verso
+    dalla chiave chiesta era stata ricopiata in 13 `ORDER BY` composti a mano (vendite, magazzino,
     amm-software, emittenti), e le copie divergevano gia' da `sql_order_clause`:
     guardavano la chiave chiesta e non la colonna risolta, e ignoravano la
     precedenza del default. `sql_order_clause` ora passa di qui.
@@ -876,11 +871,8 @@ def sql_order_direction_lista(
     # Il default si riconosce dall'espressione O dalla chiave: un `default`
     # scritto come chiave (`"data_scadenza"`) con una colonna qualificata
     # (`"v.data_scadenza"`) perderebbe in silenzio il verso della coda.
-    if default is not None and default.strip() in (colonna.strip(), order_by):
-        verso_desc = default_desc
-    else:
-        verso_desc = order_by in colonne_desc or e_chiave_data(order_by)
-    return sql_order_direction(order_dir, default_desc=verso_desc)
+    verso_desc = default is not None and default.strip() in (colonna.strip(), order_by)
+    return sql_order_direction(order_dir, default_desc=verso_desc and default_desc)
 
 
 def sql_order_clause(
@@ -892,7 +884,6 @@ def sql_order_clause(
     default: str | None = None,
     default_clause: str | None = None,
     default_desc: bool = False,
-    colonne_desc: Collection[str] = (),
 ) -> str:
     """Il corpo di un `ORDER BY` di lista: colonna, direzione e spareggio.
 
@@ -920,7 +911,6 @@ def sql_order_clause(
       `default_clause`  **una CLAUSOLA GIA' COMPLETA**, con le sue direzioni
                  dentro, usata verbatim. Alternativa esclusiva a `default`.
       `default_desc`   verso del ramo `default` quando nessuno chiede niente.
-      `colonne_desc`   chiavi di `colonne` il cui verso NATURALE e' DESC.
 
     ⛔ **`default` e `default_clause` sono due parametri e non uno, e la prima
     stesura di questo BB ne aveva uno solo — sbagliando.** Un ordinamento di
@@ -932,18 +922,11 @@ def sql_order_clause(
     distinzione resta nell'API perche' il prossimo chiamante non debba
     scoprirla allo stesso modo.
 
-    ⭐ **`colonne_desc` e' la regola di Tid del 2026-09-02: «gli ordinamenti per
-    DATA hanno sempre default DESC».** Una data si legge dalla piu' recente —
-    chiedere «ordina per data» e ricevere il 2019 in cima e' il contrario di
-    cio' che si e' chiesto. ⚠️ Vale solo quando `order_dir` NON e' indicato: una
-    direzione esplicita vince sempre, altrimenti l'operatore non potrebbe
-    invertire l'ordine di una colonna data.
-    ⭐ **Dal 2026-10-20 le date si riconoscono anche dal NOME** (`e_chiave_data`,
-    decisione di Tid): circa venti liste in sette app non dichiaravano le loro
-    colonne data, e la regola per loro non valeva. `colonne_desc` resta per le
-    date con un nome fuori convenzione. ⚠️ La colonna di DEFAULT, quando
-    `order_by` la nomina (la riempie `parse_list_params`), segue `default_desc`
-    — la scelta della lista, che per una coda puo' essere crescente apposta.
+    ⭐ **Senza `order_dir` la colonna chiesta va ASC** (date comprese: la
+    regola «le date partono DESC» e' ritirata dal 2026-11-24, vedi
+    `sql_order_direction_lista`). ⚠️ La colonna di DEFAULT, quando `order_by`
+    la nomina (la riempie `parse_list_params`), segue `default_desc` — la
+    scelta della lista, che per una coda puo' essere crescente apposta.
 
     ⛔ **Se la colonna risolta E' il tiebreak, lo spareggio non si scrive.**
     Senza questo, il ramo di default di una lista che ordina per `id` produceva
@@ -966,10 +949,10 @@ def sql_order_clause(
             "`default_clause` (una clausola completa), mai entrambi ne' nessuno"
         )
     # La direzione da UNA regola sola, la stessa degli `ORDER BY` composti a
-    # mano: precedenza del default, date DESC (vedi `sql_order_direction_lista`).
+    # mano: precedenza del default (vedi `sql_order_direction_lista`).
     direzione = sql_order_direction_lista(
         order_by, order_dir, colonne=colonne, default=default,
-        default_desc=default_desc, colonne_desc=colonne_desc,
+        default_desc=default_desc,
     )
     risolta = colonna_ordinamento(order_by, colonne)
     if risolta is None:

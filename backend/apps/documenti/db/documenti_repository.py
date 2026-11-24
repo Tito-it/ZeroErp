@@ -74,11 +74,6 @@ DOCUMENTI_SORGENTE_ORDER_COLUMNS: dict[str, str] = {
     "stato": "d.stato",
 }
 
-# Colonne DATA della whitelist qui sopra: senza `order_dir` ordinano DESC
-# (`sql_order_clause(colonne_desc=…)`, regola di Tid del 2026-09-02). Insieme
-# confrontato col seed da `test_liste_configurabili_seed` (test 10).
-DOCUMENTI_SORGENTE_SORT_COLONNE_DATA: frozenset[str] = frozenset({"generato_at"})
-
 # Whitelist ORDER BY delle versioni di un template (lista 88,
 # `documenti.template_versioni`). `valido_al` vuota = senza scadenza: con
 # `COALESCE(…, 'infinity')` sta IN CIMA al DESC, come in ogni lista con
@@ -92,11 +87,6 @@ TEMPLATE_VERSIONI_ORDER_COLUMNS: dict[str, str] = {
     "attivo": "v.attivo",
     "data_update": "v.data_update",
 }
-
-# Colonne DATA della whitelist delle versioni (vedi sopra).
-TEMPLATE_VERSIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset(
-    {"valido_dal", "valido_al", "data_update"}
-)
 
 
 # Whitelist colonne ammesse in INSERT (testata template).
@@ -758,7 +748,6 @@ class DocumentiRepository:
             order_by, order_dir,
             colonne=TEMPLATE_VERSIONI_ORDER_COLUMNS,
             default="v.versione", default_desc=True, tiebreak="v.id",
-            colonne_desc=TEMPLATE_VERSIONI_SORT_COLONNE_DATA,
         )
 
         conditions = ["v.template_documento_id = %s"]
@@ -1454,7 +1443,6 @@ class DocumentiRepository:
             order_by, order_dir,
             colonne=DOCUMENTI_SORGENTE_ORDER_COLUMNS,
             default="d.generato_at", default_desc=True, tiebreak="d.id",
-            colonne_desc=DOCUMENTI_SORGENTE_SORT_COLONNE_DATA,
         )
 
         conditions, params = _filtro_documento_sorgente(

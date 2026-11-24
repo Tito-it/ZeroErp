@@ -120,13 +120,6 @@ _ORDER_COLS_MOVIMENTI: dict[str, str] = {
     "motivo": "m.motivo",
 }
 
-# ⭐ Le colonne DATA della lista 65: il BB `sql_order_clause` le ordina DESC
-#    quando il chiamante non indica un verso — «gli ordinamenti per data hanno
-#    sempre default DESC» (Tid, 2026-09-02).
-# ⚠️ Accanto alla whitelist e non altrove: e' un sottoinsieme delle sue chiavi,
-#    e a distanza le due si separerebbero senza che niente lo dica.
-_ORDER_COLONNE_DATA_MOVIMENTI: frozenset[str] = frozenset({"data_movimento"})
-
 _TITOLO_JOINS = """
               FROM anagrafiche.soggetti_titoli_iva t
               JOIN config.tipi_titolo_iva tt ON tt.id = t.tipo_titolo_iva_id
@@ -618,7 +611,6 @@ class TitoliIvaRepository:
             default="m.data_movimento",
             tiebreak="m.id",
             default_desc=True,
-            colonne_desc=_ORDER_COLONNE_DATA_MOVIMENTI,
         )
         paginazione = "" if limit is None else "\n             LIMIT %s OFFSET %s"
         params: list[Any] = [titolo_id]

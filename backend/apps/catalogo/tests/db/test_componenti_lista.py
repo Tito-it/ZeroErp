@@ -31,7 +31,7 @@ Indice test:
  2) test_pagina_filtra_il_prodotto_dalla_vista
  3) test_in_vigore_al_tiene_le_righe_senza_fine
  4) test_senza_data_nessun_filtro_di_validita
- 5) test_valido_al_vuoto_ordina_come_infinito_e_parte_desc
+ 5) test_valido_al_vuoto_ordina_come_infinito_e_senza_verso_va_asc
  6) test_chiave_fuori_whitelist_e_rifiutata
  7) test_pagina_rispetta_il_tetto_e_l_export_lo_alza
  8) test_la_ricerca_nomina_la_lista_della_distinta
@@ -103,9 +103,14 @@ class ComponentiListaTests(unittest.TestCase):
         self.assertNotIn("valido_al >=", sql)
         self.assertEqual(params[:1], [_ARTICOLO])
 
-    def test_valido_al_vuoto_ordina_come_infinito_e_parte_desc(self):
+    # ⚠️ Senza verso la colonna chiesta va ASC come ogni colonna (la regola
+    #    «le date partono DESC» e' ritirata dal 2026-11-24, Tid): la riga senza
+    #    fine, ordinata come infinito, finisce in fondo.
+    def test_valido_al_vuoto_ordina_come_infinito_e_senza_verso_va_asc(self):
         sql, _, _ = _pagina(order_by="valido_al", order_dir=None)
-        self.assertIn("ORDER BY COALESCE(v.valido_al, 'infinity'::date) DESC", sql)
+        self.assertIn("ORDER BY COALESCE(v.valido_al, 'infinity'::date) ASC", sql)
+        # `valido_dal` e' la colonna di DEFAULT della lista: segue il suo verso
+        # (`_righe_ordine_documento_desc`), non la regola ritirata.
         sql, _, _ = _pagina(order_by="valido_dal", order_dir=None)
         self.assertIn("ORDER BY v.valido_dal DESC", sql)
 

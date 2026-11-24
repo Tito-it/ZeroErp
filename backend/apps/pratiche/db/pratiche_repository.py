@@ -142,11 +142,6 @@ FLUSSI_ORDER_COLS: dict[str, str] = {
     "data_insert": "f.data_insert",
 }
 
-# Colonne DATA della whitelist flussi: senza `order_dir` ordinano DESC (regola
-# di Tid del 2026-09-02). Confrontate col seed da `test_liste_configurabili_seed`
-# (test 10): devono coincidere con le colonne date/datetime ordinabili.
-FLUSSI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_scadenza", "data_insert"})
-
 # Il passo del percorso e' l'unica colonna che il catalogo accende alla ricerca
 # (lista_colonna 954): la chiave e' il nome di USCITA, il valore l'espressione.
 _RICERCA_FLUSSI = RicercaFull("pratiche.flussi", {
@@ -523,7 +518,6 @@ class PraticheRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=FLUSSI_ORDER_COLS, default="f.sequenza", tiebreak="f.id",
-            colonne_desc=FLUSSI_SORT_COLONNE_DATA,
         )
         conditions: list[str] = ["f.pratica_id = %s"]
         params: list[Any] = [pratica_id]

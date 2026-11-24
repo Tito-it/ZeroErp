@@ -168,8 +168,8 @@ com'era: sta con gli altri due lookup di riga in [api_magazzino.md](api_magazzin
 Lista `magazzino.lotti` (catalogo 82). **`articolo_id` obbligatorio** (400 col
 campo se manca o non e' un uuid): un elenco di tutti i lotti di tutti gli
 articoli non e' una domanda di nessuno. Filtri: `search` (sul codice),
-`attivo`. Ordinamento in `LOTTI_SORT_COLUMNS`; senza: `data_arrivo DESC` (le
-date partono DESC). Riga: `id`, `articolo_id`, `emittente_fiscale_id`,
+`attivo`. Ordinamento in `LOTTI_SORT_COLUMNS`; senza: `data_arrivo DESC`
+(senza `order_dir` la colonna chiesta va in crescente; il default della lista resta il suo). Riga: `id`, `articolo_id`, `emittente_fiscale_id`,
 `codice`, `data_arrivo`, `data_scadenza`, `attivo`, `meta`, audit.
 
 La lista e' a catalogo con `perimetro_emittente = true` (dal 2026-11-22): le

@@ -330,7 +330,8 @@ class ApiDistintaRighe(DomainAPIView):
     #    configurabile: bundle standard `parse_list_params` per `limit`/`offset`.
     # ⛔ `order_by` GREZZO e non dal bundle: il suo default (`"descrizione"`)
     #    qui non e' una colonna. `order_dir` dal bundle: assente = `None`, e
-    #    decide il default del repository (`id DESC`, le date DESC).
+    #    decide il default del repository (`id DESC`; una colonna chiesta
+    #    senza verso va ASC).
     def get(self, request: Request, contabile_id: int) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(qp)

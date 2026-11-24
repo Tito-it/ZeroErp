@@ -81,8 +81,8 @@ _SESSIONI_ATTIVE_FROM = """
 # della CTE. `ip_address` ordina l'`inet` vero, non il testo: `10.0.0.9` prima
 # di `10.0.0.10`.
 # ⚠️ `data_inizio` e' NULL quando il LOGIN della sessione non e' piu' nel
-#    registro: col verso naturale DESC (`colonne_desc`) il vuoto va in fondo,
-#    in ASC in testa — la regola «NULL = minimo» di `sql_order_direction`.
+#    registro: in DESC il vuoto va in fondo, in ASC in testa — la regola
+#    «NULL = minimo» di `sql_order_direction`.
 # `dispositivo` (lo user agent) NON ordina: a video e' «browser / sistema»
 # ricavato dal frontend, e ordinare la stringa grezza metterebbe in fila
 # «Mozilla/5.0 (…» senza un ordine che l'operatore riconosca.
@@ -91,10 +91,6 @@ SESSIONI_ATTIVE_ORDER_COLUMNS: dict[str, str] = {
     "data_ultimo_evento": "r.data_insert",
     "data_inizio": "pl.data_inizio",
 }
-
-# Colonne DATA della whitelist qui sopra: senza `order_dir` ordinano DESC
-# (regola di Tid del 2026-09-02, presidio `test_liste_configurabili_seed` test 10).
-SESSIONI_ATTIVE_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_ultimo_evento", "data_inizio"})
 
 # Cosa si PUO' cercare nella lista; cosa si cerca lo dice il catalogo
 # (`add_ricerca_full_condition`). ⭐ «Dispositivo» cerca lo user agent GREZZO:
@@ -175,7 +171,6 @@ class SessionAuditRepository:
             order_by, order_dir,
             colonne=SESSIONI_ATTIVE_ORDER_COLUMNS, default="r.data_insert",
             default_desc=True, tiebreak="r.jti",
-            colonne_desc=SESSIONI_ATTIVE_SORT_COLONNE_DATA,
         )
         conditions, params = self._condizioni_altre_sessioni(auth_user_id, escludi_jti)
         add_ricerca_full_condition(conditions, params, search, _RICERCA_SESSIONI_ATTIVE)

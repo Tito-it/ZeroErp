@@ -40,9 +40,8 @@ lista. Le liste `commesse/`, `gruppi/`, `residui/`, `errori/` e i loro export
 dichiarano `lista_codice` (`vendite.dash_competenza_*`): il cancello di
 perimetro emittente può rispondere `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`.
 
-**Ordinamento comune** a tutte le liste: con `order_by` e senza `order_dir` le
-colonne data (per nome: `data_*`, `*_dal/_al`, `*_at`, `competenza_mese`)
-partono DESC, le altre ASC; il vuoto vale come minimo (`ASC NULLS FIRST` /
+**Ordinamento comune** a tutte le liste: senza `order_dir` la colonna chiesta va in crescente; il default della lista resta il suo (la regola «le date
+partono DESC» è ritirata dal 2026-11-24); il vuoto vale come minimo (`ASC NULLS FIRST` /
 `DESC NULLS LAST`, `sql_order_direction`). Paginazione `limit`/`offset`
 (`pagina_da_query`): `limit` default 25, max 200, `offset` default 0; non
 interi, `limit` fuori da 1..200 o `offset` negativo → 400 `E_VALIDATION_INPUT`

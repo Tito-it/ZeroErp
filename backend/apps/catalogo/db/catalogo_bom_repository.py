@@ -80,9 +80,6 @@ COMPONENTI_SORT_COLUMNS: dict[str, str] = {
     # (dal 2026-10-01 non e' piu' un booleano).
     "esposizione_in_fattura_codice": "v.esposizione_in_fattura_codice",
 }
-# Le date partono DESC quando nessuno chiede un verso (regola di Tid del
-# 2026-09-02).
-COMPONENTI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"valido_dal", "valido_al"})
 
 # I due bersagli delle note catalogo: codici di `config.tipi_entita` (FK del
 # padre `catalogo.note`) e confini delle due partizioni. Li scrive il service
@@ -117,7 +114,6 @@ class CatalogoBomRepository(RigheListaCompletaMixin):
     _righe_ordine_documento_desc = True
     _righe_ordinamento = COMPONENTI_SORT_COLUMNS
     _righe_ricerca = _RICERCA_COMPONENTI
-    _righe_colonne_desc = COMPONENTI_SORT_COLONNE_DATA
     _righe_solo_attive = False
 
     # Scopo: il filtro proprio della lista 101. `valido_al` = «in vigore al»:

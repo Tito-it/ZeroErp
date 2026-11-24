@@ -338,6 +338,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **L'L3 dei componenti non esiste** [DB + BE]
 - **`user_update` nullable su nove tabelle senza audit** [DB]
 - **`data_update` nullable e senza default su tabelle che hanno l'audit** [DB]
+- 📝 **La documentazione d'uso: decisa dominio per dominio, mai come insieme, e l'assistente AI non la legge** [Tid, poi BE + doc]
 - **Residui della roadmap fatturazione**: Esercizio fiscale come entità; Vista push; Alerting sui dati; Diagrammi di stato; Preview di fatturazione del contratto
 
 ### Note operative

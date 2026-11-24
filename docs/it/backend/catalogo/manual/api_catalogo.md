@@ -671,7 +671,7 @@ Envelope paginato standard. Parametri (facoltativi): `valido_al` (data
 fine da quel giorno; assente = tutte le versioni; malformata = `400`),
 `search` (codice e descrizione del componente, dal catalogo), `order_by` /
 `order_dir` (whitelist `COMPONENTI_SORT_COLUMNS`; assente: `valido_dal` DESC;
-`valido_al` vuoto si ordina come «infinito»; le date partono DESC), `limit` /
+`valido_al` vuoto si ordina come «infinito»; senza `order_dir` la colonna chiesta va in crescente; il default della lista resta il suo), `limit` /
 `offset`.
 
 ⭐ **Percorso suo** e non `…/componenti/`: il cancello di perimetro emittente

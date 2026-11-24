@@ -91,11 +91,6 @@ _COLONNE_ELIMINA = """
        elimina.reason_key AS delete_reason_key,
        elimina.dettaglio AS delete_dettaglio"""
 
-# Le colonne DATA delle due liste: senza `order_dir` si leggono dalla piu'
-# recente (regola di Tid, 2026-09-02). Costante di modulo: il presidio
-# `test_liste_configurabili_seed` la confronta con le date ordinabili del seed.
-_COLONNE_DESC: frozenset[str] = frozenset({"ultimo_accesso"})
-
 # Cosa si PUO' cercare; cosa si cerca lo dice il catalogo (`ricercabile_full`).
 # Colonne semplici della vista: la tupla, con l'alias `v`.
 _RICERCA_ACCESSI_ALTRI = RicercaFull(
@@ -166,7 +161,6 @@ class AccessiRepository:
             order_by, order_dir,
             colonne=ACCESSI_ALTRI_ORDER_COLUMNS,
             default="v.nome_visualizzato",
-            colonne_desc=_COLONNE_DESC,
             tiebreak="v.auth_user_id",
         )
         safe_limit, safe_offset = limiti_pagina(limit, offset)
@@ -219,7 +213,6 @@ class AccessiRepository:
             order_by, order_dir,
             colonne=ACCESSI_SISTEMA_ORDER_COLUMNS,
             default="v.username",
-            colonne_desc=_COLONNE_DESC,
             tiebreak="v.auth_user_id",
         )
         safe_limit, safe_offset = limiti_pagina(limit, offset)

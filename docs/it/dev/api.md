@@ -741,22 +741,26 @@ la regola unica `order_dir_ammessa` — il service (`validate_order_params`,
 (`sql_order_direction`) col 400 `E_VALIDATION_INPUT`.
 
 🔴 **Fino a quel giorno l'assenza diventava `"asc"`**, e il difetto era muto: il
-`default_desc` e le `colonne_desc` dei repository si accendono solo su `None`,
+`default_desc` dei repository si accende solo su `None`,
 quindi una lista che deve aprirsi dal più grave (o dal più recente) si apriva al
 contrario, senza errore. Il ripiego che questa sezione prescriveva — passare
 `qp_str(qp.get("order_dir"))` invece di `p["order_dir"]` — è stato **ritirato**
 dalle view che lo usavano solo per la direzione.
 
-⭐ **Le date partono DESC anche dal nome, e il default segue la lista** (dal
-2026-10-20, Tid). `parse_list_params(default_order=...)` riempie `order_by` con la
+⭐ **Il default segue la lista** (dal 2026-10-20, Tid). `parse_list_params(default_order=...)` riempie `order_by` con la
 colonna di default: fino a quel giorno `sql_order_clause` la trattava come una
 colonna scelta e ignorava `default_desc`, e ordini, resi, DDT, fatture, contratti e
 preventivi si aprivano dal più vecchio. Ora la colonna di default segue
 `default_desc` (una coda si apre crescente apposta, come le rate), e ogni altra
-colonna data chiesta senza verso parte DESC, dichiarata in `colonne_desc` **o
-riconosciuta dal nome** (`e_chiave_data`: `data`, `data_*`, `*_at`, `*_dal`/`*_al`,
-`competenza_mese`). Chi compone l'`ORDER BY` a mano passa
-`sql_order_direction(order_dir, default_desc=e_chiave_data(order_by))`.
+colonna chiesta senza verso va ASC, **date comprese**. Chi compone l'`ORDER BY` a
+mano risolve la direzione con `sql_order_direction_lista`.
+
+⛔ **Nessuna colonna ha un verso di partenza proprio** (Tid, 2026-11-24). Dal
+2026-09-02 una data chiesta senza verso partiva DESC (`colonne_desc`, e dal
+2026-10-20 anche per nome con `e_chiave_data`), e il frontend girava a DESC il
+primo click su un'intestazione data. Ritirate entrambe: il ritocco del frontend
+lasciava la freccia di PrimeVue su un verso diverso da quello inviato. Il giro di
+un'intestazione è niente → crescente → decrescente → niente.
 
 ⚠️ **Un validatore di dominio che riceve `p["order_dir"]` deve ammettere
 l'assenza**: `validate_order_params(..., nullable=True)`. Senza, la lista

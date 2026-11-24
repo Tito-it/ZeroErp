@@ -310,7 +310,7 @@ def parse_list_params(
     search = qp_str(qp.get("search"))
     order_by = qp.get("order_by") or default_order
     # ⛔ Assente = `None`, NON "asc" (2026-09-26). Il ripiego su "asc"
-    #    annullava il default dei repository (`default_desc`, `colonne_desc`),
+    #    annullava il default dei repository (`default_desc`),
     #    che si accende solo su `None`: le liste che nascono dal piu' recente
     #    si aprivano al contrario, senza errore, e ogni view che lo sapeva
     #    rileggeva la direzione grezza dalla query string. La direzione si
