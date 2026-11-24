@@ -11,12 +11,15 @@
 --   con guard ultimo-SA). Setup separato SA singleton per testare
 --   il guard E_PROFILO_ULTIMO_SUPER_ADMIN. Stato accumulato tra i
 --   casi (no SAVEPOINT) e rolled-back a fine file.
+--   ⭐ Dal 2026-11-25 (giro 10, brief-db-porte-aperte-dalla-sola-guc §10) il
+--   verbo chiede il SUPER_ADMIN: lo chiama il SA costruito, nel contesto. I
+--   casi del permesso e della porta sono in config/test-porta-scope-emittenti-v1.
 --
 -- Indice test (1..6):
 --   1. MULTI (>1) -> raise E_OPERATORE_SCOPE_MULTI_NON_AMMESSO
 --   2. GLOBAL -> SINGLE  (INSERT)            -> changed=true, riga creata
 --   3. SINGLE -> SINGLE stesso EF (no-op)    -> changed=false, riga invariata
---   4. SINGLE -> GLOBAL  (DELETE + override) -> changed=true, riga rimossa
+--   4. SINGLE -> GLOBAL  (DELETE dalla porta del verbo) -> changed=true, riga rimossa
 --   5. NULL/[] su utente senza riga (no-op)  -> changed=false
 --   6. Ultimo SA cambia scope -> raise E_PROFILO_ULTIMO_SUPER_ADMIN
 --
@@ -38,15 +41,23 @@ SET CONSTRAINTS ALL IMMEDIATE;
 --   del 2026-08-18 aveva imparato a COSTRUIRE lo stato GLOBAL, ma l'operatore a
 --   cui costruirlo lo cercava ancora fra gli esistenti — e su un database
 --   ricostruito dai changelog non ce n'e' nessuno: «p_auth_user_id non valido:
---   NULL», sette asserzioni perse. Tre aziende con
+--   NULL», sette asserzioni perse. Due aziende con
 --   `dbops.fn_pgtap_crea_emittente_operatore()`, PRIMA di aprire il contesto:
---   quella del contesto, quella dell'operatore sotto test, quella del super admin.
+--   quella del contesto e quella su cui si porta l'operatore sotto test.
+--   L'operatore sotto test e il super admin sono persone costruite con
+--   `dbops.fn_pgtap_crea_operatore_umano`, che nascono SENZA azienda (rev
+--   2026-11-25): lo stato GLOBAL e' costruito, senza toccare la porta.
 CREATE TEMP TABLE _mondi AS
 SELECT 'CTX' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
 UNION ALL
-SELECT 'OP'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
-UNION ALL
-SELECT 'SA'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+SELECT 'OP'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+CREATE TEMP TABLE _t_user AS
+SELECT o.auth_user_id AS au_id FROM dbops.fn_pgtap_crea_operatore_umano('scope-sotto-test', false) o;
+
+CREATE TEMP TABLE _t_sa AS
+SELECT o.auth_user_id AS au_id, o.identita_id AS id_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('scope-super-admin', true) o;
 
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
@@ -58,6 +69,12 @@ BEGIN
         (SELECT auth_user_id FROM _mondi WHERE lato = 'CTX'));
 END $ctx$;
 
+-- Chi chiama il verbo e' il super admin costruito: il verbo chiede il SUPER_ADMIN.
+DO $sa$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore((SELECT au_id FROM _t_sa));
+END $sa$;
+
 -- 🔴 plan 6 -> 7 il 2026-08-18: le asserzioni erano SEMPRE state sette (il
 --   punto 2 ne ha due: `changed=true` e la riga effettivamente scritta), ma il
 --   file moriva alla prima e il piano sbagliato non si e' mai visto.
@@ -66,20 +83,6 @@ END $ctx$;
 --   tutte le asserzioni passano — cioe' nasconde il verde, dopo aver nascosto
 --   il rosso.
 SELECT plan(7);
-
--- =========================================================
--- Helper SA: l'identita' OPERATORE costruita per il ruolo SA + binding SA
--- =========================================================
-CREATE OR REPLACE FUNCTION pg_temp.mk_admin(OUT id_id bigint, OUT au_id integer, OUT bind_id bigint)
-LANGUAGE plpgsql AS $$
-BEGIN
-    SELECT m.identita_id, m.auth_user_id INTO id_id, au_id
-      FROM _mondi m
-     WHERE m.lato = 'SA';
-
-    bind_id := config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), id_id);
-END
-$$;
 
 CREATE OR REPLACE FUNCTION pg_temp.disable_other_sa(p_keep_bind_id bigint)
 RETURNS int LANGUAGE plpgsql AS $$
@@ -113,20 +116,14 @@ $$;
 --   difetto che ha gia' colpito test-permessi-user-overrides — «prendi il primo
 --   e spera» — solo al contrario: li' il dato reale c'era di troppo, qui manca.
 --
---   ⭐ Ora lo stato GLOBAL si COSTRUISCE: si prende l'operatore costruito e gli
---   si toglie la riga di scope. Il DELETE passa dall'override GUC perche' la
---   tabella ha un guard sul delete.
---   ⛔ E si toglie a mano invece di chiamare `fn_change_user_emittenti_scope`
---   con array vuoto: sarebbe la funzione SOTTO TEST a costruire la propria
---   precondizione, e un difetto in lei renderebbe il test verde per errore.
+--   ⭐ Ora lo stato GLOBAL si COSTRUISCE: l'operatore sotto test e' una persona
+--   costruita con `dbops.fn_pgtap_crea_operatore_umano` (in testa), che nasce
+--   senza azienda come in produzione.
+--   ⛔ Non si toglie la riga col verbo: sarebbe la funzione SOTTO TEST a
+--   costruire la propria precondizione, e un difetto in lei renderebbe il test
+--   verde per errore. E non la si toglie a mano: dal giro 10 la porta del DELETE
+--   si apre solo dal verbo.
 --   Il file e' transazionale: lo scope vero torna al ROLLBACK.
-CREATE TEMP TABLE _t_user AS
-SELECT m.auth_user_id AS au_id FROM _mondi m WHERE m.lato = 'OP';
-
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT au_id FROM _t_user);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
 
 -- L'EF per il caso SINGLE: quello dell'azienda dell'operatore sotto test
 CREATE TEMP TABLE _t_ef AS
@@ -176,9 +173,9 @@ SELECT is(
 );
 
 -- =========================================================
--- 4) SINGLE -> GLOBAL: DELETE con override interno, changed=true
---    Verifica che il guard_delete venga superato dal SET LOCAL
---    interno (auth_user e' attivo).
+-- 4) SINGLE -> GLOBAL: DELETE dalla porta del verbo, changed=true
+--    Verifica che il guard_delete lasci passare il DELETE del verbo
+--    (la porta sulla riga, da proprietario: auth_user e' attivo).
 -- =========================================================
 SELECT is(
     (SELECT script.fn_change_user_emittenti_scope(
@@ -186,7 +183,7 @@ SELECT is(
                 NULL::bigint[]
             )->>'changed')::boolean,
     true,
-    '4. SINGLE -> GLOBAL: changed=true (override guard_delete via SET LOCAL)'
+    '4. SINGLE -> GLOBAL: changed=true (la porta del guard_delete, dal verbo)'
 );
 
 -- Skip caso 5 perche' ridondante con caso 1 - rimpiazzato con verifica
@@ -200,24 +197,15 @@ SELECT is(
 
 -- =========================================================
 -- 6) Ultimo SA: cambio scope vietato -> raise E_PROFILO_ULTIMO_SUPER_ADMIN
---    Setup: aggiungo SA ad-hoc, garantisco scope GLOBAL del SA
---    (cleanup difensivo) e disabilito gli altri SA.
+--    Setup: il SA costruito in testa (nasce GLOBAL, quindi il target SINGLE
+--    e' un cambio reale) resta l'unico: gli altri SA si spengono. Chiama il
+--    verbo su se stesso: il guard del permesso passa, quello dell'ultimo SA no.
 -- =========================================================
-CREATE TEMP TABLE _t_sa AS SELECT * FROM pg_temp.mk_admin();
-
--- Defensive: forzare GLOBAL sul nuovo SA cosi' il target SINGLE
--- e' un cambio reale (non un no-op).
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM config.user_emittenti_fiscali
-                WHERE auth_user_id = (SELECT au_id FROM _t_sa)) THEN
-        SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-        DELETE FROM config.user_emittenti_fiscali
-         WHERE auth_user_id = (SELECT au_id FROM _t_sa);
-    END IF;
-END $$;
-
-SELECT pg_temp.disable_other_sa((SELECT bind_id FROM _t_sa));
+SELECT pg_temp.disable_other_sa(
+    (SELECT pab.id FROM config.profili_accesso_bindings pab
+       JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
+      WHERE pa.codice = 'SUPER_ADMIN' AND pab.attivo
+        AND pab.identita_digitale_id = (SELECT id_id FROM _t_sa)));
 
 SELECT throws_like(
     format(

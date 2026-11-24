@@ -95,8 +95,7 @@ di scriverlo inline e chiama questa.
 > qui non c'è un operatore — c'è il giro che ha prodotto quelle righe, e che ha
 > già letto il **suo** criterio (punto 2). La funzione lo dichiara con
 > `SET LOCAL zeroerp.allow_contabile_riga_delete_override = 'on'` prima del
-> `DELETE` delle righe, e lo **richiude** subito dopo. Stesso contratto di
-> `script.fn_change_user_emittenti_scope` sulla sua porta. Nessun predicato e
+> `DELETE` delle righe, e lo **richiude** subito dopo. Nessun predicato e
 > nessun conteggio è cambiato.
 
 ---

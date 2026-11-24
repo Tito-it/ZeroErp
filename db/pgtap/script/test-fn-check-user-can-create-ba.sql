@@ -41,7 +41,10 @@ SELECT plan(4);
 --    la sessione del migratore (script.fn_porta_manutenzione_aperta,
 --    brief-db-seed-primo-impianto-non-si-riscrive §16.9). Accesa «per sicurezza»
 --    rendeva verdi per sottrazione le asserzioni che toccano un lucchetto.
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
+-- ⛔ Tolta il 2026-11-25 la riga SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on':
+--    dal giro 10 (brief-db-porte-aperte-dalla-sola-guc §10) la porta del DELETE si
+--    apre solo dal verbo script.fn_change_user_emittenti_scope. La riga di scope si
+--    toglie col builder dbops.fn_pgtap_sposta_scope_operatore, che passa da li'.
 
 -- ============================================================
 -- 1) NULL -> false
@@ -91,8 +94,7 @@ LIMIT 1;
 --  sulla madre, con il filtro OPERATORE che la vista applicava.)
 
 -- Pulizia preventiva
-DELETE FROM config.user_emittenti_fiscali
-WHERE auth_user_id = (SELECT user_id FROM tmp_check_user);
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_check_user), NULL);
 
 -- ============================================================
 -- 3) user con riga -> true
@@ -110,8 +112,7 @@ SELECT is(
 -- ============================================================
 -- 4) user senza riga, esistono emittenti attivi -> false
 -- ============================================================
-DELETE FROM config.user_emittenti_fiscali
-WHERE auth_user_id = (SELECT user_id FROM tmp_check_user);
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_check_user), NULL);
 
 SELECT is(
     script.fn_check_user_can_create_ba((SELECT user_id FROM tmp_check_user)),

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_operatore_umano`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -61,7 +61,9 @@ invece di tornare una riga con un vuoto dentro.
 
 Come in produzione, l'operatore non è legato a nessuna azienda. Per un super admin è il caso
 normale: lavora su più aziende, e toglierla dopo non si potrebbe. Per legarlo a un'azienda si
-usa [fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope).
+usa [fn_pgtap_sposta_scope_operatore](/dbzero/dbops/funzioni/fn_pgtap_sposta_scope_operatore), che
+passa dal verbo [fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope):
+il verbo chiede il SUPER_ADMIN, e il builder glielo dà.
 
 È la differenza con [fn_pgtap_crea_emittente_operatore](/dbzero/dbops/funzioni/fn_pgtap_crea_emittente_operatore),
 che costruisce un utente tecnico già legato alla sua azienda: quando il soggetto del test è

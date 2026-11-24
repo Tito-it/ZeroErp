@@ -143,6 +143,14 @@
 #   D-G a): non apre porte, ma le fusioni sono strumenti DBA. Forward
 #   `90_end/20261123-46`, stesse altre due sedi, stesso pgTAP.
 #
+# ── ⭐ LO SCOPE EMITTENTI SI SPOSTA SOLO DAL VERBO (dal 2026-11-24) ─────────
+#   Brief: brief-db-porte-aperte-dalla-sola-guc, porta 10, giro 10 (D-P a)
+#   In `v_fn_riservate` la primitiva `script.fn_applica_user_emittenti_scope`:
+#   sposta un operatore su un'azienda senza chiedere permessi, e l'app ci arriva
+#   solo dal verbo `script.fn_change_user_emittenti_scope` (DEFINER, SUPER_ADMIN).
+#   Forward su dev `90_end/20261124-06`; terza sede il blocco del provisioning;
+#   pgTAP `db/pgtap/config/test-porta-scope-emittenti-v1.sql`.
+#
 # ── ⭐ LE VISTE IN SOLA LETTURA (dal 2026-11-24) ─────────────────────────────
 #   Brief: brief-db-porte-aperte-dalla-sola-guc, §5 (D-V), giro 3
 #   Ogni vista e vista materializzata riceve solo SELECT: il ramo per tipo
@@ -288,7 +296,12 @@ databaseChangeLog:
                   'dbops.fn_admin_merge_stradario',
                   -- ⭐ Dal 2026-11-24 la gemella, la fusione dei comuni: strumento DBA,
                   --   non apre porte ma non e' dell'app (20261123-46, giro 1-bis).
-                  'dbops.fn_admin_merge_comune'
+                  'dbops.fn_admin_merge_comune',
+                  -- ⭐ Dal 2026-11-24 la primitiva dello scope emittenti: sposta un
+                  --   operatore su un'azienda senza permesso; l'app ci arriva solo dal
+                  --   verbo script.fn_change_user_emittenti_scope (SUPER_ADMIN, DEFINER).
+                  --   Brief: brief-db-porte-aperte-dalla-sola-guc, giro 10 (20261124-06).
+                  'script.fn_applica_user_emittenti_scope'
                 ];
                 -- ⭐ Schemi SENZA DELETE per l'applicazione: le shadow di storico le
                 --   scrive il trigger (INSERT della versione, UPDATE che chiude la

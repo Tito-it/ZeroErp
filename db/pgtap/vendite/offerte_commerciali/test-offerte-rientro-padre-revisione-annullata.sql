@@ -149,10 +149,7 @@ SELECT ok(
     '3) Fixture context completo (BA, emittente, listino/versione, 4 stati) + operatore non-super'
 );
 
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_rp_op);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_rp_op), NULL);
 
 INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id, meta)
 SELECT o.user_id, ctx.emittente_fiscale_id,

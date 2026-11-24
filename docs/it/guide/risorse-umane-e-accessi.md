@@ -1,6 +1,6 @@
 # Guida — Risorse Umane e Accessi al Software
 
-> **Ultimo aggiornamento**: 23 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -39,6 +39,8 @@
 > * [anagrafiche.trgfn_risorse_umane_guard_identita_attiva](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_guard_identita_attiva) — «una risorsa con veste operatore accesa non si disattiva»
 > * [anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_ultimo_super_admin) · [anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_guard_ultimo_super_admin) — l'ultimo `SUPER_ADMIN` senza scadenza, dal lato della veste e del rapporto
 > * [anagrafiche.fn_notify_cambio_reparto](/dbzero/anagrafiche/funzioni/fn_notify_cambio_reparto) — la notifica di cambio reparto
+> * [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — assegna o toglie l'emittente di un operatore, riservato al SUPER_ADMIN
+> * [config.trgfn_user_emittenti_fiscali_guard_delete](/dbzero/config/funzioni/trgfn_user_emittenti_fiscali_guard_delete) — l'emittente di un utente acceso si toglie solo da quel verbo
 >
 > **Vedi anche** — guide correlate:
 >
@@ -418,6 +420,7 @@ Dopo aver creato l'operatore e collegato il suo account Django, e necessario def
 
 **Regole:**
 
+* L'emittente lo assegna, lo cambia o lo toglie **solo il `SUPER_ADMIN`**. Il controllo lo fa l'endpoint, e lo rifà il database nel verbo `script.fn_change_user_emittenti_scope`: chi non e' `SUPER_ADMIN` riceve `E_PERMESSO_NEGATO`, e l'emittente non cambia
 * Se l'operatore non ha nessun emittente assegnato **e fail-closed**: non vede nessun emittente, e il vuoto e un errore di configurazione, non un permesso. Gli operatori rimasti senza assegnazione si contano in `dbops.vw_operatori_senza_emittente`, che deve restare a zero righe. L'unico attore legittimamente multi-emittente e il `SUPER_ADMIN`, che passa da `fn_is_super_admin` e non da questa tabella
 * L'emittente fiscale e un soggetto con ruolo EMITTENTE nel sistema anagrafico — il dropdown mostra la **ragione sociale** del soggetto associato
 * Il vincolo e verificato a runtime da `get_scope_user_id(request)` negli endpoint API: se l'utente ha emittenti assegnati, le query vengono filtrate automaticamente

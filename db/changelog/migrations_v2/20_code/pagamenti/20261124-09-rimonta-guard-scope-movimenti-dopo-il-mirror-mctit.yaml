@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DI SCOPE DEL MOVIMENTO GIRA DOPO IL MIRROR CHE RISOLVE LA FATTURA
+#   pagamenti.vendite_movimenti: script.trgfn_guard_emittente_scope('fattura', 'fattura_id')
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §11 (giro 9; D-S a di Tid,
+#   2026-11-25).
+#
+# -- IL DIFETTO -------------------------------------------------------------
+#   Il guard era montato come trg_vendite_movimenti_a10_guard_emittente_scope_ins_upd,
+#   e il mirror che ricava fattura, cliente, distinta e rata dalla riga
+#   contabile come trg_vendite_movimenti_a10_sync_contabile_from_riga_ins_upd.
+#   PostgreSQL esegue i BEFORE ROW in ordine di nome: «guard» < «sync», quindi
+#   il guard leggeva NEW.fattura_id PRIMA che il mirror la scrivesse. I due
+#   scrittori del movimento (fn_posta_contabile, fn_posta_riga_tardiva) non
+#   passano la fattura: il guard la vedeva vuota e lasciava passare.
+#   Sotto la row security non si vedeva (la WITH CHECK della policy giudica la
+#   riga finale); dentro una SECURITY DEFINER la row security non c'e', e il
+#   guard era muto. Dal 20261124-08 la registrazione tardiva e' la prima
+#   DEFINER che scrive movimenti. Regola: linee-guida-trigger, «Chi legge una
+#   colonna gira dopo chi la risolve».
+#
+# -- LA FORMA ---------------------------------------------------------------
+#   Il guard si rimonta in z10, dopo il mirror e dopo tutti gli a10. Stessa
+#   funzione, stessi argomenti, stessi eventi. Si rimonta per funzione: il nome
+#   storico e' uno solo in tutti i changelog (20_code/config/20260228-27,
+#   20_code/script/20260308-11), e si toglie con IF EXISTS insieme al nuovo.
+#   Gli scrittori di oggi sono INVOKER, e nessuna DEFINER senza utente scrive
+#   movimenti: nessun percorso cambia esito, salvo il movimento su una fattura
+#   fuori perimetro scritto da una DEFINER, che ora si ferma (E_SCOPE_EMITTENTE).
+#   Presidio: pagamenti/test-porta-registrazione-tardiva-v1 (l'ordine e il caso).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20261124-09-rimonta-guard-scope-movimenti-dopo-il-mirror-mctit.yaml
+
+  - changeSet:
+      id: 20261124-09-rimonta-guard-scope-movimenti-dopo-il-mirror
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pagamenti.vendite_movimenti: il guard di scope emittente si rimonta in z10, dopo il mirror
+        che ricava la fattura dalla riga; prima la leggeva vuota. Brief: brief-db-porte-aperte-dalla-sola-guc §11.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_vendite_movimenti_a10_guard_emittente_scope_ins_upd
+                ON pagamenti.vendite_movimenti;
+              DROP TRIGGER IF EXISTS trg_vendite_movimenti_z10_guard_emittente_scope_ins_upd
+                ON pagamenti.vendite_movimenti;
+
+              CREATE TRIGGER trg_vendite_movimenti_z10_guard_emittente_scope_ins_upd
+                BEFORE INSERT OR UPDATE ON pagamenti.vendite_movimenti
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fattura', 'fattura_id');
+
+              COMMENT ON TRIGGER trg_vendite_movimenti_z10_guard_emittente_scope_ins_upd
+                ON pagamenti.vendite_movimenti
+              IS 'Il perimetro emittente del movimento, sulla sua fattura (script.trgfn_guard_emittente_scope). Gira in z10, dopo il mirror trg_vendite_movimenti_a10_sync_contabile_from_riga_ins_upd che ricava la fattura dalla riga contabile: chi scrive il movimento non la passa, e un guard che girasse prima la vedrebbe vuota. Conta dentro una SECURITY DEFINER, dove la row security non c''è.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il montaggio di prima, col nome storico (e l'ordine sbagliato).
+              DROP TRIGGER IF EXISTS trg_vendite_movimenti_z10_guard_emittente_scope_ins_upd
+                ON pagamenti.vendite_movimenti;
+              CREATE TRIGGER trg_vendite_movimenti_a10_guard_emittente_scope_ins_upd
+                BEFORE INSERT OR UPDATE ON pagamenti.vendite_movimenti
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fattura', 'fattura_id');

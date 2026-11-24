@@ -111,10 +111,11 @@ SELECT ok(
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'pagamenti'
           AND c.relname = 'vendite_movimenti'
-          AND t.tgname  = 'trg_vendite_movimenti_a10_guard_emittente_scope_ins_upd'
+          -- z10 dal 2026-11-25: gira dopo il mirror che ricava la fattura dalla riga
+          AND t.tgname  = 'trg_vendite_movimenti_z10_guard_emittente_scope_ins_upd'
           AND NOT t.tgisinternal
     ),
-    'Trigger trg_vendite_movimenti_a10_guard_emittente_scope_ins_upd esiste'
+    'Trigger trg_vendite_movimenti_z10_guard_emittente_scope_ins_upd esiste'
 );
 
 -- ============================================================
@@ -153,11 +154,8 @@ WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
 ORDER BY id.id
 LIMIT 1;
 
--- Pulisce whitelist preesistenti per l'utente di test (guard_delete override).
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_guard_ctx);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+-- Pulisce whitelist preesistenti per l'utente di test, dal verbo (il builder).
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_guard_ctx), NULL);
 
 -- Aggiungi whitelist solo per emittente_ok
 INSERT INTO config.user_emittenti_fiscali

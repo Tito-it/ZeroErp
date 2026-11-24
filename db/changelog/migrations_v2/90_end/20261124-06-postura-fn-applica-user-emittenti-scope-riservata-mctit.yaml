@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PRIMITIVA DELLO SCOPE EMITTENTI E' RISERVATA AL PROPRIETARIO
+#   REVOKE EXECUTE su script.fn_applica_user_emittenti_scope FROM PUBLIC,
+#   zeroerp_app.
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §10 (giro 10, porta 10; D-P a).
+#
+# -- PERCHE' -------------------------------------------------------------
+#   La primitiva (20261124-01) sposta un operatore su un'azienda senza chiedere
+#   permessi: il permesso lo chiede il verbo script.fn_change_user_emittenti_scope
+#   (SUPER_ADMIN, 20261124-02). Se l'app la eseguisse, il guard del verbo si
+#   aggirerebbe chiamando lei (guida dei permessi §7.4: l'app esegue solo i
+#   verbi). La chiamano il verbo e anagrafiche.fn_provisiona_dati_di_sviluppo,
+#   tutti e due DEFINER del proprietario.
+#
+# -- LE SEDI -------------------------------------------------------------
+#   Lo schema script e' nel loop dei grant: le TRE sedi di linee-guida-sql §11.8:
+#     1. questo forward, per dbdev;
+#     2. il loop 90_end/ci_apply/20260205-41, voce in v_fn_riservate;
+#     3. scripts/sql/provision_zeroerp.sql, blocco «LA PORTA SULLE FUNZIONI».
+#   Presidio: config/test-porta-scope-emittenti-v1 (gira come app).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261124-06-postura-fn-applica-user-emittenti-scope-riservata-mctit.yaml
+
+  - changeSet:
+      id: 20261124-06-postura-fn-applica-user-emittenti-scope-riservata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_applica_user_emittenti_scope riservata al proprietario: EXECUTE revocato a PUBLIC e
+        all'app. La raggiungono solo il verbo col guard del SUPER_ADMIN e il provisioning.
+        brief-db-porte-aperte-dalla-sola-guc, giro 10.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_applica_user_emittenti_scope';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- A PUBLIC sempre (=X per default), all'app se il ruolo esiste.
+              REVOKE EXECUTE ON FUNCTION script.fn_applica_user_emittenti_scope(config.user_emittenti_fiscali.auth_user_id%TYPE, bigint[]) FROM PUBLIC;
+              DO $porta$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: revoca all''app saltata.';
+                      RETURN;
+                  END IF;
+                  REVOKE EXECUTE ON FUNCTION script.fn_applica_user_emittenti_scope(config.user_emittenti_fiscali.auth_user_id%TYPE, bigint[]) FROM zeroerp_app;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Riapre la primitiva all'app e a PUBLIC. Senza togliere la voce dal loop
+              -- 20260205-41 e dal provisioning, la passata ci_apply successiva la richiude.
+              GRANT EXECUTE ON FUNCTION script.fn_applica_user_emittenti_scope(config.user_emittenti_fiscali.auth_user_id%TYPE, bigint[]) TO PUBLIC;
+              GRANT EXECUTE ON FUNCTION script.fn_applica_user_emittenti_scope(config.user_emittenti_fiscali.auth_user_id%TYPE, bigint[]) TO zeroerp_app;

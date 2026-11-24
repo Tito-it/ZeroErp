@@ -155,8 +155,8 @@ CREATE TEMP TABLE _op (auth_user_id int, soggetto_id uuid, sr_id bigint, identit
 -- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile): l'operatore viene dalla
 --   MADRE (dbops.fn_pgtap_crea_operatore_umano: persona fisica completa,
 --   risorsa umana, veste OPERATORE accesa come all'invito accettato) e
---   l'emittente gli si da' con la funzione di dominio
---   script.fn_change_user_emittenti_scope. Prima la fixture costruiva
+--   l'emittente gli si da' dal verbo, col builder
+--   dbops.fn_pgtap_sposta_scope_operatore. Prima la fixture costruiva
 --   soggetto, soggetto_ruolo e veste a mano, senza risorsa umana: uno stato
 --   che la madre non produce, e che da D-2 (l'operatore umano vale finche'
 --   vale il suo rapporto, script.fn_veste_utilizzabile) non e' piu' un
@@ -178,9 +178,10 @@ CREATE TEMP TABLE _res (caso text, visibile boolean, n bigint);
 -- (procedura locale: evita 10 ripetizioni degli stessi 4 statement)
 --
 -- ⚠️ Il DELETE sulla whitelist e' protetto da trgfn_user_emittenti_fiscali_guard_delete
---   (solo utente cessato o GUC di manutenzione). Lo si attraversa con la
---   funzione di dominio script.fn_change_user_emittenti_scope, che apre lei
---   l'override: senza, il file fallirebbe nel FIXTURE, cioe' copertura zero.
+--   (solo utente cessato, o la porta del verbo). Lo si attraversa col builder
+--   dbops.fn_pgtap_sposta_scope_operatore, che passa dal verbo
+--   script.fn_change_user_emittenti_scope: senza, il file fallirebbe nel
+--   FIXTURE, cioe' copertura zero.
 -- Il parametro e' un DISCRIMINANTE testuale ('none' | 'own' | 'other') e non
 -- la PK dell'emittente, perche' PostgreSQL non ammette sottoquery negli
 -- argomenti di CALL: passare `(SELECT emit_pk FROM _refs)` fallisce con
@@ -198,11 +199,8 @@ BEGIN
                   ELSE NULL
               END;
 
-    -- ⭐ Rev 2026-10-07: la whitelist si ripunta con la funzione di dominio,
-    --   che apre lei l'override del DELETE (un emittente o nessuno).
-    PERFORM script.fn_change_user_emittenti_scope(
-        (SELECT auth_user_id FROM _op),
-        CASE WHEN v_emit IS NULL THEN '{}'::bigint[] ELSE ARRAY[v_emit] END);
+    -- La whitelist si ripunta dal verbo, col builder (un emittente o nessuno).
+    PERFORM dbops.fn_pgtap_sposta_scope_operatore((SELECT auth_user_id FROM _op), v_emit);
 
     PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', true);
     PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op)::text, true);

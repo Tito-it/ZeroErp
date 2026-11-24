@@ -1,0 +1,171 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO SPOSTAMENTO DELL'OPERATORE DIVENTA UN VERBO DEFINER COL SUO PERMESSO
+#   script.fn_change_user_emittenti_scope
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §10 (giro 10; D-A a, D-P a di
+#   Tid, 2026-11-23/24).
+#
+# -- CHE COSA CAMBIA --------------------------------------------------------
+#   1. SECURITY DEFINER, search_path pg_catalog, public, pg_temp (come i verbi
+#      di magazzino e la pubblicazione dei template). E' cio' che fa valere la
+#      porta del guard del DELETE (20261124-04): dentro il verbo scrive il
+#      proprietario.
+#   2. Il permesso in prima riga: script.fn_guard_super_admin sull'utente di
+#      sessione, lo stesso controllo dell'endpoint (risposta 3d, §4.5): chi
+#      arriva dal backend non riceve un rifiuto nuovo. Nessuna eccezione per la
+#      sessione del migratore: nessun changeSet chiama il verbo, e il
+#      provisioning chiama la primitiva (D-P a).
+#   3. Il corpo passa alla primitiva script.fn_applica_user_emittenti_scope
+#      (20261124-01), che tiene le regole e la porta sulla riga.
+#   4. Firma ancorata con %TYPE (la doc la mostra sciolta): CREATE OR REPLACE,
+#      argomenti e risultato identici al vivo, una sola firma.
+#
+#   Nessuna RLS sulla tabella e nessun perimetro da rimettere: chi passa il
+#   guard e' il SUPER_ADMIN, che vede tutte le aziende. L'EXECUTE all'app resta
+#   (CREATE OR REPLACE conserva l'ACL): il verbo e' la strada dell'endpoint.
+#
+#   Corpo di prima dal catalogo di dbdev (ultimo changeSet 20260805-03).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261124-02-update-fn-change-user-emittenti-scope-definer-guard-mctit.yaml
+
+  - changeSet:
+      id: 20261124-02-update-fn-change-user-emittenti-scope-definer-guard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_change_user_emittenti_scope: SECURITY DEFINER col guard del SUPER_ADMIN, il corpo
+        nella primitiva script.fn_applica_user_emittenti_scope. Brief: brief-db-porte-aperte-dalla-sola-guc §10.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_change_user_emittenti_scope(
+                  p_auth_user_id  config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  -- id di anagrafiche.emittenti_fiscali: %TYPE[] non e' sintassi valida
+                  p_emittente_ids bigint[])
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $fn$
+              -- Scopo:
+              --   Il verbo con cui il SUPER_ADMIN porta un operatore su un'azienda,
+              --   o gliela toglie. E' la strada dell'endpoint di amministrazione.
+              --
+              -- Regole:
+              --   - SECURITY DEFINER: il permesso e' qui, in prima riga, e chiede lo
+              --     stesso controllo dell'endpoint, il SUPER_ADMIN
+              --     (script.fn_guard_super_admin: E_PERMESSO_NEGATO, anche senza utente);
+              --   - le regole dello spostamento e la porta del DELETE stanno nella
+              --     primitiva script.fn_applica_user_emittenti_scope, che l'app non
+              --     esegue.
+              DECLARE
+                  v_utente config.user_emittenti_fiscali.auth_user_id%TYPE;
+              BEGIN
+                  -- Il permesso, prima di ogni altra cosa.
+                  v_utente := script.fn_utente_di_sessione('script.fn_change_user_emittenti_scope');
+                  PERFORM script.fn_guard_super_admin(v_utente);
+
+                  RETURN script.fn_applica_user_emittenti_scope(p_auth_user_id, p_emittente_ids);
+              END;
+              $fn$;
+
+              COMMENT ON FUNCTION script.fn_change_user_emittenti_scope(config.user_emittenti_fiscali.auth_user_id%TYPE, bigint[])
+              IS 'Il verbo con cui il SUPER_ADMIN porta un operatore su un''azienda (un solo emittente) o gliela toglie (array vuoto o NULL). SECURITY DEFINER: in prima riga chiede il SUPER_ADMIN all''utente di sessione (script.fn_guard_super_admin: E_PERMESSO_NEGATO, anche senza utente), lo stesso controllo dell''endpoint. Lo spostamento lo fa la primitiva script.fn_applica_user_emittenti_scope, che l''applicazione non esegue: restituisce changed, scope_mode (SINGLE o GLOBAL) ed emittente_id, e rifiuta parametri non validi (E_OPERATORE_SCOPE_PARAM_NON_VALIDO), più di un emittente (E_OPERATORE_SCOPE_MULTI_NON_AMMESSO) e l''ultimo SUPER_ADMIN attivo (E_PROFILO_ULTIMO_SUPER_ADMIN). Il DELETE della riga di prima passa dalla porta zeroerp.allow_user_emittente_delete_override, che si apre solo per la riga dell''operatore e solo dentro il verbo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il verbo di prima: INVOKER, senza permesso, la porta con 'on'. Si
+              -- rimette prima di togliere la primitiva (rollback di 20261124-01).
+              CREATE OR REPLACE FUNCTION script.fn_change_user_emittenti_scope(
+                  p_auth_user_id  config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  -- id di anagrafiche.emittenti_fiscali: %TYPE[] non e' sintassi valida
+                  p_emittente_ids bigint[])
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $fn$
+              DECLARE
+                  -- un conteggio: nessuna colonna di cui sia il riflesso
+                  v_count_input        integer
+                      := COALESCE(array_length(p_emittente_ids, 1), 0);
+                  v_current_emittente  config.user_emittenti_fiscali.emittente_fiscale_id%TYPE;
+                  v_target_emittente   config.user_emittenti_fiscali.emittente_fiscale_id%TYPE;
+                  -- 'SINGLE' o 'GLOBAL', la forma del risultato: nessuna colonna
+                  v_new_scope_mode     text;
+              BEGIN
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'fn_change_user_emittenti_scope',
+                          'E_OPERATORE_SCOPE_PARAM_NON_VALIDO',
+                          jsonb_build_object('param', 'p_auth_user_id', 'value', p_auth_user_id),
+                          NULL::uuid, 'p_auth_user_id', coalesce(p_auth_user_id::text, 'NULL'));
+                  END IF;
+                  IF v_count_input > 1 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'fn_change_user_emittenti_scope',
+                          'E_OPERATORE_SCOPE_MULTI_NON_AMMESSO',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                             'emittente_ids', p_emittente_ids,
+                                             'count', v_count_input),
+                          NULL::uuid, v_count_input::text);
+                  END IF;
+                  IF v_count_input = 1 THEN
+                      IF p_emittente_ids[1] IS NULL OR p_emittente_ids[1] <= 0 THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'fn_change_user_emittenti_scope',
+                              'E_OPERATORE_SCOPE_PARAM_NON_VALIDO',
+                              jsonb_build_object('param', 'p_emittente_ids[1]', 'value', p_emittente_ids[1]),
+                              NULL::uuid, 'p_emittente_ids[1]', coalesce(p_emittente_ids[1]::text, 'NULL'));
+                      END IF;
+                      v_target_emittente := p_emittente_ids[1];
+                      v_new_scope_mode   := 'SINGLE';
+                  ELSE
+                      v_target_emittente := NULL;
+                      v_new_scope_mode   := 'GLOBAL';
+                  END IF;
+                  SELECT uef.emittente_fiscale_id INTO v_current_emittente
+                    FROM config.user_emittenti_fiscali uef
+                   WHERE uef.auth_user_id = p_auth_user_id
+                     FOR UPDATE;
+                  IF v_current_emittente IS NOT DISTINCT FROM v_target_emittente THEN
+                      RETURN jsonb_build_object('changed', false, 'scope_mode', v_new_scope_mode,
+                                                'emittente_id', v_target_emittente);
+                  END IF;
+                  IF script.fn_check_ultimo_super_admin_attivo(p_auth_user_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'fn_change_user_emittenti_scope',
+                          'E_PROFILO_ULTIMO_SUPER_ADMIN',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                             'current_emittente_id', v_current_emittente,
+                                             'target_emittente_id', v_target_emittente,
+                                             'detail', 'Cambio scope vietato sull''ultimo SUPER_ADMIN attivo'),
+                          NULL::uuid, VARIADIC ARRAY[]::text[]);
+                  END IF;
+                  IF v_current_emittente IS NOT NULL THEN
+                      SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
+                      DELETE FROM config.user_emittenti_fiscali WHERE auth_user_id = p_auth_user_id;
+                      SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+                  END IF;
+                  IF v_target_emittente IS NOT NULL THEN
+                      INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
+                      VALUES (p_auth_user_id, v_target_emittente);
+                  END IF;
+                  RETURN jsonb_build_object('changed', true, 'scope_mode', v_new_scope_mode,
+                                            'emittente_id', v_target_emittente);
+              END;
+              $fn$;

@@ -9,7 +9,9 @@
 -- Elenco test:
 --  1) UPDATE su emittente_fiscale_id -> bloccato
 --  2) DELETE su utente attivo -> bloccato (E_USER_EMITTENTE_DELETE_VIETATO)
---  3) DELETE su utente con override GUC -> consentito
+--  3) DELETE con la GUC della porta accesa dall'app -> bloccato: la porta si apre
+--     solo dal verbo (giro 10, brief-db-porte-aperte-dalla-sola-guc §10; il resto
+--     dei casi della porta in config/test-porta-scope-emittenti-v1)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -74,11 +76,8 @@ WHERE au.is_active = true
 ORDER BY au.id
 LIMIT 1;
 
--- Pulizia preventiva (con override per saltare il guard delete)
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
-WHERE auth_user_id = (SELECT user_id FROM tmp_imm_user);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+-- Pulizia preventiva, dal verbo (il builder): il guard del DELETE si apre solo da li'
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_imm_user), NULL);
 
 -- Inserimento associazione iniziale (sul primo EF disponibile)
 INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
@@ -123,14 +122,18 @@ SELECT throws_like(
 );
 
 -- ============================================================
--- 3) DELETE con override GUC -> consentito
+-- 3) DELETE con la GUC della porta accesa dall'app -> bloccato
 -- ============================================================
+-- ⭐ Rovesciato il 2026-11-25 (giro 10): prima asseriva che con la GUC 'on' il
+--   DELETE passasse, cioe' la porta aperta all'app. Ora la porta chiede anche il
+--   proprietario, e la apre solo il verbo script.fn_change_user_emittenti_scope.
 SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
 
-SELECT lives_ok(
+SELECT throws_like(
     $$ DELETE FROM config.user_emittenti_fiscali
         WHERE auth_user_id = (SELECT user_id FROM tmp_imm_user) $$,
-    'DELETE con override GUC -> consentito'
+    '%Eliminazione vietata%',
+    'DELETE con la GUC accesa dall''app -> bloccato: la porta si apre solo dal verbo'
 );
 
 SET LOCAL zeroerp.allow_user_emittente_delete_override = '';

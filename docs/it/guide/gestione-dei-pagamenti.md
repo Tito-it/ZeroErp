@@ -1,6 +1,6 @@
 # Guida — Gestione dei Pagamenti Vendite
 
-> **Ultimo aggiornamento**: 20 settembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend, analisti funzionali, operatori dell'area incassi
 >
@@ -18,6 +18,7 @@
 > * Saldi: [fn_get_saldo_fattura](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura) · [fn_get_saldo_fattura_contabili](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura_contabili) · [fn_get_saldo_rata](/dbzero/pagamenti/funzioni/fn_get_saldo_rata) · [fn_get_saldi_rate](/dbzero/pagamenti/funzioni/fn_get_saldi_rate) · [script.fn_check_scadenza_di_fattura](/dbzero/script/funzioni/fn_check_scadenza_di_fattura)
 > * Sistemazioni: [fn_conferma_sistemazione](/dbzero/pagamenti/funzioni/fn_conferma_sistemazione) · [fn_annulla_sistemazione](/dbzero/pagamenti/funzioni/fn_annulla_sistemazione)
 > * Guard: [trgfn_vendite_contabili_guard_transizione](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_guard_transizione) · [trgfn_vendite_contabili_righe_guard_transizione](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_transizione) · [trgfn_vendite_contabili_guard_validazione](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_guard_validazione) · [trgfn_vendite_contabili_righe_guard_contenuto](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_contenuto) · [trgfn_vendite_contabili_righe_guard_rata](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_rata) · [trgfn_vendite_contabili_righe_guard_distinta_finale](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_distinta_finale) · [script.fn_check_riga_contabile_eliminabile](/dbzero/script/funzioni/fn_check_riga_contabile_eliminabile)
+> * Movimento: [trgfn_vendite_movimenti_sync_contabile_from_riga](/dbzero/pagamenti/funzioni/trgfn_vendite_movimenti_sync_contabile_from_riga) (i riferimenti dalla riga) · [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope) (il perimetro della fattura, dopo il mirror)
 >
 > **Vedi anche** — guide correlate:
 >
@@ -1233,6 +1234,22 @@ resta indietro **non si perde**, e ha ancora due strade:
 ⚠️ Sulla tardiva torna il **doppio tempo**: se la rata non ha più spazio, la
 domanda c'è come alla nascita. E i movimenti restano **irreversibili**: se serve
 un altro esito si compie un atto nuovo, non si riscrive quello vecchio.
+
+**Chi può farla, e su che cosa.** Il permesso `registra_distinta` lo chiede
+l'endpoint, e lo chiede di nuovo il database, nella prima riga della funzione: chi
+non ce l'ha riceve `E_PERMESSO_NEGATO` anche se la richiesta arrivasse da un'altra
+strada. La funzione lavora fuori dalla row security, e il perimetro lo controlla
+lei, una volta, all'ingresso:
+
+* la riga segue la sua **distinta**: se la distinta è di un'azienda fuori dal
+  perimetro di chi agisce, la riga per lui **non c'è**, con la stessa risposta di
+  una riga inesistente;
+* la **fattura** su cui la si registra dev'essere nel perimetro: il movimento non
+  nasce su un'azienda d'altri (`E_SCOPE_EMITTENTE`).
+
+La porta della distinta chiusa che la tardiva attraversa si apre solo dentro la
+funzione: un aggiornamento fatto a mano, anche presentandosi con l'impostazione
+giusta, resta rifiutato.
 
 ## Regole di dominio
 

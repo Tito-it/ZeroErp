@@ -729,7 +729,11 @@ WHERE (n.nspname, p.proname) IN (
         --   dbops/test-porte-manutenzione-solo-proprietario-v1.
         ('dbops', 'fn_admin_merge_stradario'),
         -- ⭐ Dal 2026-11-24 la gemella, la fusione dei comuni. Forward 90_end/20261123-46.
-        ('dbops', 'fn_admin_merge_comune'))
+        ('dbops', 'fn_admin_merge_comune'),
+        -- ⭐ Dal 2026-11-24 la primitiva dello scope emittenti: ci si arriva solo dal verbo
+        --   script.fn_change_user_emittenti_scope (SUPER_ADMIN). Forward 90_end/20261124-06;
+        --   presidio config/test-porta-scope-emittenti-v1.
+        ('script', 'fn_applica_user_emittenti_scope'))
   AND p.prokind = 'f'
 \gexec
 

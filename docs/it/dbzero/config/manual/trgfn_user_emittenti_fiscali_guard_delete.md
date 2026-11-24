@@ -1,65 +1,54 @@
-# trgfn_user_emittenti_fiscali_guard_delete
+## 📘 Documentazione Concettuale – Funzione `config.trgfn_user_emittenti_fiscali_guard_delete`
 
-### Scopo
+> **Ultimo aggiornamento**: 25 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali) — la tabella che protegge
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — il verbo che apre la porta
+> * [script.fn_applica_user_emittenti_scope](/dbzero/script/funzioni/fn_applica_user_emittenti_scope) — la primitiva che scrive la GUC
+> * [script.fn_is_proprietario_tabella](/dbzero/script/funzioni/fn_is_proprietario_tabella) — chi scrive è il proprietario?
+>
+> Guide:
+>
+> * [Architettura permessi e autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) — §4.9 l'ambito dell'operatore, §7.4 le porte
 
-Trigger function `BEFORE DELETE` su `config.user_emittenti_fiscali` che impone la regola del refactor 2026‑04‑08 (decisione D3 del [WIP](/dev/work-done/2026/refactor-operatore-emittenti)): **l'associazione utente ↔ emittente può essere rimossa solo come parte della disattivazione dell'utente Django**.
+---
 
-Pattern: l'associazione operatore‑emittente è **immutabile**. Per "trasferire" un dipendente da un emittente A a un emittente B, l'admin disattiva l'utente esistente (cessazione tipica) e ne crea uno nuovo per l'altro emittente. Questo garantisce un audit trail naturale: ogni utente = una sola azienda, sempre.
+### 🎯 Scopo Principale
 
-## Schema
+Guard `BEFORE DELETE` (fase `a10`) di `config.user_emittenti_fiscali`. La riga è l'azienda di un
+operatore: senza, l'operatore non vede niente. Il guard decide quando la si può togliere.
 
-`config`
+---
 
-## Trigger associato
+### Le regole
 
-```sql
-CREATE TRIGGER trg_user_emittenti_fiscali_a10_guard_delete_dlt
-BEFORE DELETE ON config.user_emittenti_fiscali
-FOR EACH ROW
-EXECUTE FUNCTION config.trgfn_user_emittenti_fiscali_guard_delete();
-```
+| Caso | Esito |
+| --- | --- |
+| la porta è aperta per questa riga, e chi scrive è il proprietario | passa |
+| l'utente Django è spento | passa: è la cessazione |
+| l'utente Django non esiste più | passa: è la cascata da `django.auth_user` |
+| l'utente Django è acceso, fuori dalla porta | `E_USER_EMITTENTE_DELETE_VIETATO` |
 
-* **Fase**: `a10` (guard precoce, prima del trigger di storicizzazione `z90`).
+---
 
-## Logica
+### 🚪 La porta
 
-1. **Override manutenzione**: se `current_setting('zeroerp.allow_user_emittente_delete_override', true) = 'on'`, il trigger consente la DELETE senza altri controlli (`RETURN OLD`).
-2. Lookup di `django.auth_user.is_active` per `OLD.auth_user_id`.
-3. Se l'utente Django **non esiste** (caso "DELETE in cascata da utente"): consenti DELETE — la cessazione è implicita.
-4. Se l'utente è **ancora attivo** (`is_active = true`): solleva `E_USER_EMITTENTE_DELETE_VIETATO`.
-5. Altrimenti (utente disattivato): consenti DELETE.
+La GUC `zeroerp.allow_user_emittente_delete_override` apre solo se vale l'`auth_user_id` della riga
+**e** chi scrive è il proprietario della tabella (`script.fn_is_proprietario_tabella`). Le due cose
+insieme si hanno solo dentro il verbo
+[fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope), che è
+`SECURITY DEFINER` e scrive la GUC con la sua primitiva. L'applicazione non apre la porta, né con
+`'on'` né col valore giusto: la GUC la può accendere da sé, e da sola non basta.
 
-## Codice errore
+Una correzione a mano dei dati passa anch'essa dal verbo.
 
-| Codice                              | HTTP | Messaggio                                                                                                       |
-| ----------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------- |
-| `E_USER_EMITTENTE_DELETE_VIETATO`   | 400  | Eliminazione vietata: l'associazione utente‑emittente può essere rimossa solo come parte della disattivazione utente. |
+Il guard è `SECURITY INVOKER`: è ciò che gli fa vedere chi scrive.
 
-## Override manutenzione
-
-Per cleanup manuali autorizzati (es. correzione di righe inserite per errore):
-
-```sql
-BEGIN;
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali WHERE id = ...;
-COMMIT;
-```
-
-L'override è **transazione‑locale** (`SET LOCAL`) e non viene mai propagato fuori dalla transazione.
-
-## Caratteristiche
-
-* **Single‑purpose**: si occupa solo del check su `is_active`. Tutta la logica di storicizzazione resta affidata al trigger separato `trg_user_emittenti_fiscali_z90_storico_upd_dlt`.
-* **Lookup difensivo**: `is_active IS NULL` (utente già cancellato) consente la DELETE in cascata invece di fallire.
-
-## Dipendenze
-
-* `django.auth_user` — campo `is_active`
-* `script.fn_log_and_raise_error`
-
-## Vedi anche
-
-* [`config.user_emittenti_fiscali`](/dbzero/config/tabelle/user_emittenti_fiscali) — tabella protetta
-* `script.trgfn_lock_columns` — trigger gemello che impedisce la **modifica** di `emittente_fiscale_id` (vedi `trg_user_emittenti_fiscali_a10_lock_emittente_upd`)
-* [Refactor operatore ↔ emittente §D3](/dev/work-done/2026/refactor-operatore-emittenti)
+Test: `db/pgtap/config/test-porta-scope-emittenti-v1.sql`, `db/pgtap/config/test-user-emittenti-fiscali-immutable.sql`.

@@ -628,7 +628,8 @@ SELECT ok(
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'pagamenti'
           AND c.relname = 'vendite_movimenti'
-          AND t.tgname  = 'trg_vendite_movimenti_a10_guard_emittente_scope_ins_upd'
+          -- z10 dal 2026-11-25: gira dopo il mirror che ricava la fattura dalla riga
+          AND t.tgname  = 'trg_vendite_movimenti_z10_guard_emittente_scope_ins_upd'
           AND NOT t.tgisinternal
     ),
     '24) Trigger pagamenti.vendite_movimenti esiste'
@@ -677,10 +678,7 @@ SELECT is(
 SELECT pg_temp.unset_admin((SELECT identita_id FROM tmp_ctx));
 
 -- Rimuovi whitelist per test "senza whitelist"
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_ctx), NULL);
 
 -- 28) OPERATIVO senza whitelist → '{}' (fail-closed, P-2a 2026-08-18)
 --     ⚠️ Diceva `NULL`, cioe' «nessuna restrizione». Nella convenzione a tre

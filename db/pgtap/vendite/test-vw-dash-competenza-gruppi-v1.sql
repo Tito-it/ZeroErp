@@ -377,10 +377,7 @@ SELECT is(
 -- cambia solo il perimetro, non l'identita'. Se i gruppi restassero
 -- visibili, vorrebbe dire che la vista non eredita davvero lo scope.
 -- ⚠️ Questa riscrittura RESTA (rev 2026-10-24, R-9): e' il caso del test.
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_vg_op);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_vg_op), NULL);
 
 INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
 -- L'emittente diverso e' B, costruito (rev 2026-10-24): prima «il primo
