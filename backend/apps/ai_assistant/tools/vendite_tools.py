@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from apps.ai_assistant.tools.base import AITool, EndpointGemello
+from apps.core.api.endpoint_helpers import get_scope_user_id
 from apps.vendite.api.preventivi_views import ApiPreventiviList, ApiPreventivoDetail
 from apps.vendite.api.views_contratti import ApiContrattiList, ApiContrattoDetail
 from apps.vendite.api.views_listini import ApiListiniList
@@ -112,12 +113,16 @@ class CercaContrattiTool(AITool):
         "stato_descrizione": "stato_descrizione",
     }
 
-    # Scopo: Esegue la ricerca contratti chiamando il service esistente.
+    # Scopo: Esegue la ricerca contratti chiamando il service esistente, con
+    #        il perimetro emittente dell'utente come l'endpoint.
+    # ⛔ Fino al 2026-11-24 non passava `auth_user_id`: il default `None` del
+    #    service spegneva il filtro applicativo, e restava la sola RLS.
     def execute(self, params: dict[str, Any], request: Any) -> dict[str, Any]:
         from apps.vendite.services.contratti_service import ContrattiService
 
         svc = ContrattiService()
         items, total = svc.list_contratti(
+            auth_user_id=get_scope_user_id(request),
             search=self.termine_ricerca(params),
             billing_account_id=params.get("billing_account_id"),
             stato_doc_contratto_id=params.get("stato_doc_contratto_id"),
@@ -305,8 +310,7 @@ class CercaPreventiviTool(AITool):
     def execute(self, params: dict[str, Any], request: Any) -> dict[str, Any]:
         from apps.vendite.services import preventivi_service
 
-        user = getattr(request, "user", None)
-        auth_user_id = getattr(user, "id", None) if user else None
+        auth_user_id = get_scope_user_id(request)
         envelope = preventivi_service.list_preventivi(
             stato_codice=params.get("stato_codice"),
             billing_account_id=params.get("billing_account_id"),
