@@ -26,6 +26,7 @@ _SVC = "apps.vendite.api.preventivi_views.preventivi_service"
 
 
 class PreventiviCampiObbligatoriApiTests(JwtMockedApiTest):
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

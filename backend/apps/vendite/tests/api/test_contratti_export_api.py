@@ -37,6 +37,7 @@ _URL = "/api/v1/vendite/contratti/export/"
 
 class TestContrattiExportApi(JwtMockedApiTest):
     """Smoke test endpoint export contratti."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

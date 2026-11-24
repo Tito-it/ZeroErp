@@ -199,6 +199,7 @@ def _service_che_ordina(whitelist: dict[str, str], risultato: Any):
 
 
 class OrdinamentoDiPartenzaViewVeraTests(JwtMockedApiTest):
+    come_super_admin = True
     def setUp(self) -> None:
         super().setUp()
         self.client = ClientApi()

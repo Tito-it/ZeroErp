@@ -216,7 +216,9 @@ class ApprovaRifiutaTests(TestCase):
     @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
     @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
     @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
-    def test_approva_superuser_bypassa_permesso(
+    # ⛔ Dal 2026-11-24 (D-J) il superuser Django non bypassa: il permesso si
+    #    chiede anche a lui (SUPER_ADMIN lo riceve da `fn_check_azione_processo`).
+    def test_approva_superuser_non_bypassa_permesso(
         self, mock_conn, mock_get_user, mock_perm, mock_repo_cls,
         mock_cambia, mock_nota,
     ):
@@ -224,10 +226,11 @@ class ApprovaRifiutaTests(TestCase):
         mock_user = MagicMock(); mock_user.is_superuser = True
         mock_get_user.return_value = mock_user
         mock_repo_cls.return_value = MagicMock()
+        mock_perm.check_azione.return_value = True
 
         svc.approva(riga_id=50, auth_user_id=99)
 
-        mock_perm.check_azione.assert_not_called()  # bypass
+        mock_perm.check_azione.assert_called_once()
 
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_nota_pratica")
     @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")

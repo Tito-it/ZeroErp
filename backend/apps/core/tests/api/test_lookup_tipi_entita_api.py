@@ -32,6 +32,7 @@ _URL = "/api/v1/core/lookup/tipi-entita/"
 
 
 class LookupTipiEntitaApiTests(JwtMockedApiTest):
+    come_super_admin = True
     def setUp(self) -> None:
         super().setUp()
         self.client = Client()

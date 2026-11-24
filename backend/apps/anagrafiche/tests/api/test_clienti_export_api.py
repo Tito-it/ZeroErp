@@ -38,6 +38,7 @@ _URL = "/api/v1/anagrafiche/clienti/export/"
 
 class TestClientiExportApi(JwtMockedApiTest):
     """Smoke test endpoint export clienti."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

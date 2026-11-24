@@ -670,10 +670,9 @@ def lista_coda(
 
 
 # Scopo: helper Fase 5.B1. Ritorna True se l'utente puo' approvare/rifiutare
-#        secondo permesso azione `approva_prezzo_override`. Superuser bypass.
+#        secondo permesso azione `approva_prezzo_override` (SUPER_ADMIN compreso:
+#        lo concede `fn_check_azione_processo`).
 def _user_can_approve_or_reject(user) -> bool:
-    if getattr(user, "is_superuser", False):
-        return True
     return PermissionResolver.check_azione(user, AZIONE_PROCESSO)
 
 
@@ -813,7 +812,7 @@ def _get_riga_pending(
 
 
 # Scopo: verifica che l'utente abbia l'azione processo approva_prezzo_override.
-#        Bypass per superuser (ma esplicitamente, non implicito al check).
+#        SUPER_ADMIN compreso, dal check stesso (`fn_check_azione_processo`).
 def _check_permesso_approva_prezzo(
     auth_user_id: int | None, *, function_name: str
 ) -> None:
@@ -825,8 +824,6 @@ def _check_permesso_approva_prezzo(
     )
     assert auth_user_id is not None
     user = _get_user(auth_user_id)
-    if getattr(user, "is_superuser", False):
-        return
     abilitato = PermissionResolver.check_azione(user, AZIONE_PROCESSO)
     ErrorManager.require(
         abilitato,

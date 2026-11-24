@@ -281,9 +281,13 @@ class IsAdminZeroERP(BasePermission):
     con le view esistenti; la semantica "ADMIN" diventa "SUPER_ADMIN".
     """
 
-    # Scopo: La decisione, senza richiesta: SUPER_ADMIN o superuser Django
-    #        (coerenza con ZeroERPPermission). Metodo, action e tipo di
-    #        accesso non contano.
+    # Scopo: La decisione, senza richiesta: il binding SUPER_ADMIN. Metodo,
+    #        action e tipo di accesso non contano.
+    # ⛔ Il superuser Django non conta piu' (D-J del 2026-11-24,
+    #    brief-db-porte-aperte-dalla-sola-guc §4.6): era una seconda sede del
+    #    privilegio d'amministrazione che il database non vede, quindi un verbo
+    #    DEFINER lo avrebbe fermato dopo che l'endpoint lo aveva fatto passare.
+    #    L'amministratore e' SUPER_ADMIN, e basta.
     @classmethod
     def valuta(
         cls,
@@ -295,8 +299,6 @@ class IsAdminZeroERP(BasePermission):
         accesso: str | None = None,
         cache: dict[str, Any],
     ) -> EsitoPermesso:
-        if user.is_superuser:
-            return _CONSENTITO
         if PermissionResolver.is_super_admin(user, cache=cache):
             return _CONSENTITO
         return EsitoPermesso(consentito=False, motivo=MotivoDiniego.ADMIN_NEGATO)
@@ -306,9 +308,6 @@ class IsAdminZeroERP(BasePermission):
         user = request.user
         if not user or not user.is_authenticated:
             return False
-
-        if user.is_superuser:
-            return True
 
         with cache_permessi_richiesta(request) as cache:
             esito = self.valuta(
@@ -335,7 +334,7 @@ class IsAdminZeroERP(BasePermission):
 #        `E_PERMESSO_NEGATO`. Regola del 2 (ok Tid, 2026-10-08): la
 #        scrivevano per conto loro permessi effettivi e audit permessi.
 # ⭐ «Amministratore» non si riscrive qui: lo decide `IsAdminZeroERP.valuta`
-#    (superuser Django o SUPER_ADMIN), la sede di quel significato.
+#    (SUPER_ADMIN), la sede di quel significato.
 # ⚠️ Serve alle view con `skip_area_check`, dove la catena non guarda piu'
 #    niente: il controllo sta nel corpo, e il presidio
 #    `test_skip_area_check_registro` (che legge gli attributi) non lo vede.
@@ -461,20 +460,17 @@ class ZeroERPPermission(BasePermission):
         accesso: str | None = None,
         cache: dict[str, Any],
     ) -> EsitoPermesso:
-        # Django superuser bypass
-        if user.is_superuser:
-            return _CONSENTITO
-
         # ⛔ Niente piu' «ruolo DISABILITATO => negato» (ritirato il 2026-10-02,
         #    brief-db-be-fe-area-accessi R-DB-1): una veste spenta tiene il suo
         #    tipo e ha `attivo = false`, e la tabella rifiuta DISABILITATO. Chi
         #    ha solo vesti spente non ha un'identita' attiva: niente GUC di
         #    veste, niente SUPER_ADMIN, e il livello d'area lo nega piu' sotto.
-        # Il ruolo serve ancora al messaggio del diniego d'area (`_esito_livello`).
-        ruolo_app = PermissionResolver.get_ruolo_applicativo(user, cache=cache)
         # SUPER_ADMIN bypass — single source of truth per il privilegio admin.
         if PermissionResolver.is_super_admin(user, cache=cache):
             return _CONSENTITO
+        # Il ruolo serve solo al messaggio del diniego d'area (`_esito_livello`):
+        # si legge dopo il bypass, perche' a chi passa non serve.
+        ruolo_app = PermissionResolver.get_ruolo_applicativo(user, cache=cache)
 
         # Azione custom con permesso esplicito
         # (es. run_pipeline_permission = 'genera_fatture_lotti')
@@ -596,10 +592,6 @@ class ZeroERPPermission(BasePermission):
         user = request.user
         if not user or not user.is_authenticated:
             return False
-
-        # Django superuser bypass (prima della cache: non serve caricarla)
-        if user.is_superuser:
-            return True
 
         # Cache per-request (pre-popolata da Redis L2 se disponibile)
         with cache_permessi_richiesta(request) as cache:

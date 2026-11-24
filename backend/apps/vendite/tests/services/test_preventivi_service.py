@@ -43,11 +43,11 @@ Indice test eseguiti:
 18) test_gestisci_riga_auto_fill_da_resolver — prezzo popolato da resolver se assente
 19) test_gestisci_riga_prezzo_uguale_resolver_ok — payload = resolver ok senza permesso
 20) test_gestisci_riga_override_non_autorizzato — L1 blocca override senza permesso
-21) test_gestisci_riga_override_superuser_ok — superuser bypassa L1, meta MANUALE
+21) test_gestisci_riga_override_superuser_senza_azione_bloccato — il superuser Django senza l'azione e' fermato da L1 (D-J)
 22) test_gestisci_riga_L2_sconto_entro_limite_ok — L1 ok + sconto 10% <= limite 15%
 23) test_gestisci_riga_L2_sconto_oltre_limite_bloccato — sconto 20% > limite 15% -> E_PRICING_SCONTO_ECCESSIVO
 24) test_gestisci_riga_L2_maggiorazione_oltre_limite_bloccato — +10% > limite 5% -> E_PRICING_MAGGIORAZIONE_ECCESSIVA
-25) test_gestisci_riga_L2_superuser_bypass — superuser salta anche L2
+25) test_gestisci_riga_L2_superuser_non_bypassa — il superuser Django passa da L2 come chiunque (D-J)
 26) test_list_riepilogo_iva_delega_a_repo — facade lettura riepilogo IVA aggregato
 27) test_list_preventivi_default_solo_ultima_revisione_true — filtro lista default
 28) test_list_preventivi_solo_ultima_revisione_false — toggle "Mostra storico"
@@ -2212,7 +2212,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     # Scopo: L1 — override prezzo ammesso per superuser (bypass).
     @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
-    def test_gestisci_riga_override_superuser_ok(
+    def test_gestisci_riga_override_superuser_senza_azione_bloccato(
         self, mock_suggerisci, mock_user_model
     ):
         from apps.vendite.services.preventivi_service import gestisci_riga
@@ -2225,23 +2225,24 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "tipo_variazione_applicata": None,
             "valore_variazione_applicata": None,
         }
-        # Superuser bypassa il check
+        # ⛔ Dal 2026-11-24 (D-J) il superuser Django non bypassa L1: senza
+        #    l'azione `prezzo_override_manuale` e' fermato come chiunque.
         mock_user = MagicMock()
         mock_user.is_superuser = True
         mock_user_model.return_value.objects.get.return_value = mock_user
 
-        gestisci_riga(
-            1,
-            {"articolo_id": "uuid-art-1", "uom_operativa_id": 1, "prezzo_unitario": "45.00"},
-            auth_user_id=42,
-        )
+        with patch(
+            "apps.vendite.services._pricing_gate_helpers.PermissionResolver.check_azione",
+            return_value=False,
+        ), self.assertRaises(ServiceError) as ctx:
+            gestisci_riga(
+                1,
+                {"articolo_id": "uuid-art-1", "uom_operativa_id": 1, "prezzo_unitario": "45.00"},
+                auth_user_id=42,
+            )
 
-        call = self.mock_repo.create_riga.call_args.kwargs
-        self.assertEqual(str(call["prezzo_unitario"]), "45.00")
-        # Origine MANUALE nelle colonne, delta tracciato nel meta d'audit
-        self.assertEqual(call["origine_prezzo"], "MANUALE")
-        self.assertEqual(call["meta"]["prezzo_base_resolver"], "50.00")
-        self.assertEqual(call["meta"]["delta_override"], "-5.00")
+        self.assertEqual(ctx.exception.code, "E_PRICING_OVERRIDE_NON_AUTORIZZATO")
+        self.mock_repo.create_riga.assert_not_called()
 
     # Scopo: L2 — sconto entro il limite VENDITE_MAX_SCONTO_PCT passa.
     #        Resolver 50, manuale 45 = -10% sconto, limite 15% -> OK.
@@ -2357,7 +2358,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
     @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
-    def test_gestisci_riga_L2_superuser_bypass(
+    def test_gestisci_riga_L2_superuser_non_bypassa(
         self, mock_suggerisci, mock_user_model, mock_param_service, mock_ba_repo
     ):
         from apps.vendite.services.preventivi_service import gestisci_riga
@@ -2370,21 +2371,24 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "tipo_variazione_applicata": None,
             "valore_variazione_applicata": None,
         }
+        # ⛔ Dal 2026-11-24 (D-J) il superuser Django non salta L2: chi ha
+        #    l'azione di L1 passa da L2 come chiunque, e il limite si legge.
         mock_user = MagicMock()
-        mock_user.is_superuser = True  # bypass L1 e L2
+        mock_user.is_superuser = True
         mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("100")
 
-        gestisci_riga(
-            1,
-            {"articolo_id": "uuid-art-1", "uom_operativa_id": 1, "prezzo_unitario": "30.00"},
-            auth_user_id=99,
-        )
+        with patch(
+            "apps.vendite.services._pricing_gate_helpers.PermissionResolver.check_azione",
+            return_value=True,
+        ):
+            gestisci_riga(
+                1,
+                {"articolo_id": "uuid-art-1", "uom_operativa_id": 1, "prezzo_unitario": "30.00"},
+                auth_user_id=99,
+            )
 
-        # ParameterService MAI chiamato (bypass L2 avviene prima).
-        mock_param_service.return_value.get_parameter_decimal.assert_not_called()
-        # BillingAccountRepository MAI chiamato (ottimizzazione 2026-05-15:
-        # il lookup categoria viene dopo l'early-return superuser).
-        mock_ba_repo.return_value.get_categoria_cliente_id.assert_not_called()
+        mock_param_service.return_value.get_parameter_decimal.assert_called()
         call = self.mock_repo.create_riga.call_args.kwargs
         self.assertEqual(str(call["prezzo_unitario"]), "30.00")
 

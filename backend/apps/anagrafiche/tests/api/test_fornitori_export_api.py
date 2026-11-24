@@ -35,6 +35,7 @@ _RENDER = "apps.ui.api.export_helpers.ListaExportService"
 
 class TestFornitoriExportApi(JwtMockedApiTest):
     """Smoke test endpoint export fornitori."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

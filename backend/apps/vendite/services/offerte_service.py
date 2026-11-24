@@ -494,8 +494,7 @@ class OfferteService:
             "validita_dal_max": validita_dal_max,
             "search": search,
             "solo_ultima_revisione": solo_ultima_revisione,
-            # Scope emittente: `None` = nessuna restrizione (superuser a
-            # livello API); entra nei filtri cosi' righe e conteggio hanno lo
+            # Scope emittente: `None` = nessuna restrizione; entra nei filtri cosi' righe e conteggio hanno lo
             # stesso perimetro.
             "auth_user_id": auth_user_id,
         }

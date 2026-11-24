@@ -50,7 +50,7 @@ class ClientiView(DomainAPIView):
     # Scopo: Lista paginata clienti con search e filtri utility/stato.
     #        Applica scope emittente fiscale (refactor operatore-emittenti,
     #        BE-3.5): un operatore vede solo i clienti dei BA del proprio
-    #        emittente; superuser/admin globale/"0 emittenti" bypassano
+    #        emittente; admin globale/"0 emittenti" bypassano
     #        (emittente_ids = None).
     def get(self, request: Request) -> JsonResponse:
         p = parse_list_params(request.query_params, default_order="ragione_sociale_completa")

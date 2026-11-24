@@ -307,7 +307,7 @@ class TemplateService:
     # ---- helper interni ------------------------------------------------------
 
     # Scopo: Risolve la lista degli emittenti autorizzati per l'utente.
-    #        Admin globale + superuser = None (vede tutto). Operatore
+    #        Admin globale = None (vede tutto). Operatore
     #        ottiene una whitelist di id `emittenti_fiscali.id` (puntiamo
     #        ad una tabella che usa la PK reale, vedi memoria
     #        feedback_emittente_pk_vs_soggetto_ruolo).

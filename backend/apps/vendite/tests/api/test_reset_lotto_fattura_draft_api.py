@@ -23,6 +23,7 @@ from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 
 class VenditeResetLottoFatturaDraftApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()

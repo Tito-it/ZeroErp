@@ -49,7 +49,7 @@ SCOPE_CATEGORIA_CLIENTE = "categoria_cliente"
 ALLOWED_SCOPES = (SCOPE_USER, SCOPE_EMITTENTE, SCOPE_CATEGORIA_CLIENTE)
 
 
-# Scopo: Verifica che l'utente corrente sia ADMIN o superuser.
+# Scopo: Verifica che l'utente corrente sia SUPER_ADMIN.
 #        Riusa la logica di IsAdminZeroERP (l'argomento `view` non e' usato
 #        dall'implementazione, quindi passare None e' sicuro per questo check).
 def _is_admin(request: Request) -> bool:
@@ -120,15 +120,11 @@ def _parse_scope(raw: str | None) -> str:
 
 
 # Scopo: Helper per estrarre contesto utente per la risoluzione parametri.
-#        Ritorna sempre i valori reali (anche per superuser): la cascade
+#        Ritorna sempre i valori reali: la cascade
 #        override (user → group → emittente → default) e' identity-based,
-#        non un filtro di scope. Un superuser che setta un override
-#        personale via UI deve vederlo applicato come qualsiasi altro
-#        utente — il bypass precedente forzava il fallback al solo default
-#        globale e mascherava gli override gia' persistiti.
+#        non un filtro di scope.
 #        Per filtri di scope dati (es. emittenti_scope) usare invece
-#        `get_scope_user_id` (apps/core/api/endpoint_helpers.py) che
-#        applica il bypass superuser.
+#        `get_scope_user_id` (apps/core/api/endpoint_helpers.py).
 def get_user_context(request: Request, svc: ParameterService) -> dict:
     user = utente_autenticato(request)
     return {
@@ -238,7 +234,7 @@ class ParameterSettingsView(DomainAPIView):
     # Scopo: Restituisce una pagina della lista parametri con i valori a ogni
     #        livello di scope e il valore risolto finale per l'utente corrente.
     #        Per la lista settings, risolve sempre django_user_id e
-    #        emittente_fiscale_id anche per superuser, altrimenti il LEFT JOIN
+    #        emittente_fiscale_id, altrimenti il LEFT JOIN
     #        su emittente_fiscale_id = NULL non matcha mai (NULL = NULL e' false
     #        in SQL) e gli override emittente non vengono mostrati.
     #        Post brief DB 2026-05-19 (migration 20260519-01): accetta
@@ -252,7 +248,7 @@ class ParameterSettingsView(DomainAPIView):
         ctx = get_user_context(request, svc)
         qp = request.query_params
 
-        # Fallback per superuser: risolve sempre user e emittente reali.
+        # Fallback: risolve sempre user e emittente reali.
         django_user_id = ctx["django_user_id"] or utente_autenticato_id(request)
         emittente_fiscale_id = ctx["emittente_fiscale_id"] or svc.get_emittente_fiscale_id_for_user(utente_autenticato_id(request))
 

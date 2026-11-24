@@ -143,6 +143,7 @@ class PagamentiAuthTests(JwtMockedApiTest):
 
 
 class DistinteListApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -226,6 +227,7 @@ class DistinteListApiTests(JwtMockedApiTest):
 
 
 class DistintaDetailApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -257,6 +259,7 @@ class DistintaDetailApiTests(JwtMockedApiTest):
 
 
 class RegistrazioneApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -303,6 +306,7 @@ class RegistrazioneApiTests(JwtMockedApiTest):
 
 class CorrezioneApiTests(JwtMockedApiTest):
     """Q-7 — la rotta della correzione guidata."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()
@@ -411,6 +415,7 @@ class Slice3RotteTests(JwtMockedApiTest):
 
 
 class Slice3ApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -579,6 +584,7 @@ class Slice5RotteTests(JwtMockedApiTest):
 
 
 class Slice5ApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -640,6 +646,7 @@ class Slice5ApiTests(JwtMockedApiTest):
 
 class TardivaApiTests(JwtMockedApiTest):
     """D20-b — la rotta della registrazione TARDIVA di una riga."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

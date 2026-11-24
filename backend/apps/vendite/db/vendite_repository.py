@@ -3451,8 +3451,7 @@ class VenditeRepository:
     #        security invece di filtrare da se': viste `security_invoker`,
     #        funzioni `SECURITY INVOKER`, letture dirette di tabelle con
     #        policy. Su un canale di sistema quel perimetro non c'e', e il
-    #        filtro applicativo no-opa con `auth_user_id = None` — che e' anche
-    #        il valore legittimo del superuser, quindi non discrimina.
+    #        filtro applicativo no-opa con `auth_user_id = None`.
     # ⚠️ PERCHE' IN UNA SEDE SOLA: il difetto che previene non fallisce, RIESCE.
     #        Su una lettura mostra i dati di tutti gli emittenti, su una
     #        scrittura li tocca. Un guard riscritto a mano ogni volta e' un
@@ -3509,8 +3508,7 @@ class VenditeRepository:
     ) -> tuple[list[FondoFatturaDaDecidereRow], int]:
         # 🔴 Guard strutturale, non un commento: su un ruolo BYPASSRLS il
         # `security_invoker` della vista non filtra niente e il filtro
-        # applicativo sotto no-opa con auth_user_id=None (che e' anche il
-        # valore legittimo del superuser: non discrimina). Un consumer headless
+        # applicativo sotto no-opa con auth_user_id=None. Un consumer headless
         # su un ruolo `BYPASSRLS` leggerebbe i fondi di TUTTI gli emittenti
         # senza che nulla fallisca.
         self._require_canale_utente(

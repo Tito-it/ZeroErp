@@ -78,6 +78,7 @@ class _BaseApiTest(JwtMockedApiTest):
 
 
 class TestList(_BaseApiTest):
+    come_super_admin = True
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SVC)
     def test_list_contratti_ok(self, svc_cls, _auth):
@@ -120,6 +121,7 @@ class TestList(_BaseApiTest):
 
 
 class TestDetailGet(_BaseApiTest):
+    come_super_admin = True
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SVC)
     def test_get_detail_ok(self, svc_cls, _auth):
@@ -135,6 +137,7 @@ class TestDetailGet(_BaseApiTest):
 
 
 class TestDocumentiContratto(_BaseApiTest):
+    come_super_admin = True
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
     @patch(_SORGENTI_REPO, autospec=True)
@@ -211,6 +214,7 @@ class TestDocumentiContratto(_BaseApiTest):
 
 
 class TestPost(_BaseApiTest):
+    come_super_admin = True
     _OK = {
         "billing_account_id": 10,
         "istanza_utility_id": 20,
@@ -263,6 +267,7 @@ class TestPost(_BaseApiTest):
 
 
 class TestPatch(_BaseApiTest):
+    come_super_admin = True
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SVC)
     def test_patch_update_ok(self, svc_cls, _auth):
@@ -290,6 +295,7 @@ class TestPatch(_BaseApiTest):
 
 
 class TestCambiaStato(_BaseApiTest):
+    come_super_admin = True
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SVC)
     def test_post_cambia_stato_ok(self, svc_cls, _auth):
@@ -342,6 +348,7 @@ class TestCambiaStato(_BaseApiTest):
 
 
 class TestRighe(_BaseApiTest):
+    come_super_admin = True
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SVC)
     def test_post_riga_ok(self, svc_cls, _auth):
@@ -382,6 +389,7 @@ class TestRighe(_BaseApiTest):
 
 
 class TestUtility(_BaseApiTest):
+    come_super_admin = True
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SVC)
     def test_post_utility_ok(self, svc_cls, _auth):
@@ -408,6 +416,7 @@ class TestUtility(_BaseApiTest):
 
 class TestEmissioneAllegatiContratto(_BaseApiTest):
     """Test integration per il flusso emissione + endpoint allegati documento."""
+    come_super_admin = True
 
     # Scopo: integration test ApiContrattoEmetti. Verifica che la view
     # orchestri service.emetti() + genera_documento(allegati=...) passando i

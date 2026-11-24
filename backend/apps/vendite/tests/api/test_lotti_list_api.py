@@ -66,6 +66,7 @@ _LIST_RESPONSE = {
 
 
 class VenditeLottiListApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -210,7 +211,8 @@ class VenditeLottiListApiTests(JwtMockedApiTest):
         kwargs = mocked_list.call_args.kwargs
         self.assertEqual(kwargs["auth_user_id"], 42)
 
-    # Scopo: Superuser passa auth_user_id=None (nessun filtro scope).
+    # Scopo: il superuser Django passa il SUO id, come chiunque: niente piu'
+    #        `None` = «nessun filtro scope» (D-J, 2026-11-24).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
     @patch("apps.vendite.api.views.fn_list_lotti")
     def test_list_lotti_scope_emittente_superuser(self, mocked_list, mock_auth):
@@ -222,11 +224,12 @@ class VenditeLottiListApiTests(JwtMockedApiTest):
         mocked_list.return_value = _LIST_RESPONSE
         self.client.get("/api/v1/vendite/lotti/")
         kwargs = mocked_list.call_args.kwargs
-        self.assertIsNone(kwargs["auth_user_id"])
+        self.assertEqual(kwargs["auth_user_id"], 1)
 
 
 class VenditeLottoDetailApiTests(JwtMockedApiTest):
     """Dettaglio testata singolo lotto (cockpit Fase B, B-1)."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

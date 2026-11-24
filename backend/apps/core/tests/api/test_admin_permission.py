@@ -11,7 +11,7 @@ Indice test eseguiti:
  2) test_operativo_denied — ruolo OPERATIVO -> 403
  3) test_disabilitato_denied — senza binding SUPER_ADMIN attivo (veste spenta) -> 403
  4) test_no_bridge_denied — utente senza bridge (ruolo None) -> 403
- 5) test_superuser_bypass — superuser Django -> accesso consentito senza check ruolo
+ 5) test_superuser_senza_super_admin_negato — superuser Django senza SUPER_ADMIN -> negato (D-J, 2026-11-24)
  6) test_anonymous_denied — utente non autenticato -> 403
 """
 
@@ -87,11 +87,17 @@ class TestIsAdminZeroERP(TestCase):
         result = self.perm.has_permission(request, _mock_view())
         self.assertFalse(result)
 
-    def test_superuser_bypass(self) -> None:
-        """Scopo: Un superuser Django bypassa il check SUPER_ADMIN."""
+    @patch("apps.core.api.permissions.save_user_cache")
+    @patch("apps.core.api.permissions.load_user_cache", return_value=None)
+    @patch("apps.core.api.permissions.PermissionResolver.is_super_admin", return_value=False)
+    def test_superuser_senza_super_admin_negato(
+        self, _mock_check: MagicMock, _mock_load: MagicMock, _mock_save: MagicMock,
+    ) -> None:
+        """Scopo: Un superuser Django senza il binding SUPER_ADMIN NON entra:
+        il flag non concede piu' niente (D-J, 2026-11-24)."""
         request = _mock_request(is_superuser=True)
         result = self.perm.has_permission(request, _mock_view())
-        self.assertTrue(result)
+        self.assertFalse(result)
 
     def test_anonymous_denied(self) -> None:
         """Scopo: Un utente non autenticato non ha accesso."""

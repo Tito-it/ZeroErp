@@ -76,7 +76,7 @@ def guard_uom_id_positive(
 
 
 # Scopo: Gate L1 — verifica che l'operatore abbia l'azione di processo per
-#        override manuale del prezzo. Bypass per superuser. Se auth_user_id
+#        override manuale del prezzo (SUPER_ADMIN compreso, dal check). Se auth_user_id
 #        None (chiamata non autenticata, es. script interni) -> blocca
 #        conservativamente.
 def check_permesso_override_prezzo(
@@ -100,8 +100,6 @@ def check_permesso_override_prezzo(
             detail="Utente non trovato.",
             function_name=function_name,
         )
-    if getattr(user, "is_superuser", False):
-        return
     abilitato = PermissionResolver.check_azione(user, AZIONE_OVERRIDE_PREZZO)
     ErrorManager.require(
         abilitato,
@@ -125,7 +123,7 @@ def check_permesso_override_prezzo(
 #
 # ⛔ Il gate L1 e' UNO: questa funzione delega a `check_permesso_override_prezzo`
 #    (2026-10-20, regola del 2). Fino a quel giorno ne era una seconda copia,
-#    col messaggio suo e il superuser trattato in un altro modo: due risposte
+#    col messaggio suo e un bypass trattato in un altro modo: due risposte
 #    alla stessa domanda «puo' scrivere un prezzo a mano?».
 def validate_componenti_overrides_authorization(
     payload: dict[str, Any],
@@ -221,8 +219,6 @@ def check_limite_variazione_prezzo(
     user = _get_user_or_none(auth_user_id)
     if user is None:
         return None  # L1 avrebbe gia' bloccato.
-    if getattr(user, "is_superuser", False):
-        return None
 
     delta = prezzo_manuale - prezzo_resolver
     if delta == 0:
@@ -275,8 +271,6 @@ def check_limite_variazione_globale(
 
     user = _get_user_or_none(auth_user_id)
     if user is None:
-        return None
-    if getattr(user, "is_superuser", False):
         return None
 
     try:

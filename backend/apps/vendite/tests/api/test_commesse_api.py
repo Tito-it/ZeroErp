@@ -61,6 +61,7 @@ from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 
 
 class VenditeCommesseApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -602,6 +603,7 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
 class VenditeCommessaOneriApiTests(JwtMockedApiTest):
     """POST /api/v1/vendite/commesse/<id>/oneri/ — porta oneri (§A1) e gate
     `prezzo_override_manuale` sugli endpoint prezzo N5/N7 (§C1)."""
+    come_super_admin = True
 
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
@@ -764,6 +766,7 @@ class VenditeCommessaOneriApiTests(JwtMockedApiTest):
 #        posizione (id, payload), la risposta e' il dettaglio, gli errori del
 #        service diventano envelope con `fields` (il campo si accende).
 class VenditeCommessaTestataApiTests(JwtMockedApiTest):
+    come_super_admin = True
     def setUp(self) -> None:
         super().setUp()
         self.client = Client()

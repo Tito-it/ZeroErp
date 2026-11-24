@@ -34,6 +34,7 @@ _FLAG = "apps.core.services.perimetro_emittente.fetch_flag_perimetro"
 
 
 class RevisioniApiTests(JwtMockedApiTest):
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

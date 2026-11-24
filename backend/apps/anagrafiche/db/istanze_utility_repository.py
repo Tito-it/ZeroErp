@@ -34,7 +34,7 @@ from apps.core.db._helpers import row_to_dict, rows_to_list, pattern_contiene
 #        e' visibile se e' visibile un suo BA (con R-7 tutti i suoi BA sono dello
 #        stesso emittente, quindi «un suo BA» e' una risposta sola). Richiede
 #        l'alias `iu`. 2 parametri posizionali: emittente_ids, emittente_ids
-#        (NULL = bypass, admin globale/superuser).
+#        (NULL = bypass, admin globale).
 # ⛔ Fino al 2026-10-08 il restore per id NON la applicava («l'autorizzazione
 #    va gestita dall'endpoint chiamante») e l'endpoint, con `skip_area_check`,
 #    non la gestiva: con un id si leggeva qualunque istanza di qualunque
@@ -182,7 +182,7 @@ class IstanzeUtilityRepository:
         #    `pattern_contiene`).
         search_pattern = pattern_contiene(q)
 
-        # Scope emittente: lista sr_ids autorizzati, None = bypass (superuser/admin globale).
+        # Scope emittente: lista sr_ids autorizzati, None = bypass (admin globale).
         scope_array = emittente_ids if emittente_ids is not None else None
 
         # Parametri condivisi tra count e data query (stessa clausola WHERE).

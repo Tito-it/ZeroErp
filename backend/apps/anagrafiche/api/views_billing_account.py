@@ -151,7 +151,7 @@ class BillingAccountUtilitiesView(DomainAPIView):
     presenti per la coppia (emittente, utility).
 
     Permission: scope emittente sul BA target. Operatori vedono solo le
-    utility dei BA del proprio emittente; admin globale e superuser bypass.
+    utility dei BA del proprio emittente; l'admin globale bypassa.
     """
 
     area_funzionale = "anagrafiche"
@@ -180,12 +180,10 @@ class BillingAccountUtilitiesView(DomainAPIView):
         # user_emittente_id 1-a-1 (PK reale). None per admin globale,
         # "0 emittenti" o utenti senza bridge HR.
         user_emittente_id = PermissionResolver.get_emittente_for_user(request.user)
-        is_superuser = bool(getattr(request.user, "is_superuser", False))
 
         result = BillingAccountService().list_utilities_for_ba(
             billing_account_id=billing_account_id,
             ruolo_codice_soggetto=ruolo,
             user_emittente_id=user_emittente_id,
-            is_superuser=is_superuser,
         )
         return success_response(result)

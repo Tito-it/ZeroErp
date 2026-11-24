@@ -16,6 +16,7 @@ from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
 class CoreDiagnosticsApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()

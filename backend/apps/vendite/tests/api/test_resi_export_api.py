@@ -57,6 +57,7 @@ def _mock_ui(mock_ui_svc, mock_ui_repo, mock_render_cls, *, filename: str) -> No
 
 class TestResiCodeExportApi(JwtMockedApiTest):
     """Smoke test endpoint export code resi (accreditare / ri-consegnare)."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()
@@ -177,6 +178,7 @@ class TestResiCodeExportApi(JwtMockedApiTest):
 
 class TestResiListaExportApi(JwtMockedApiTest):
     """Smoke test endpoint export lista resi (`/vendite/resi/export/`)."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

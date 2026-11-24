@@ -96,6 +96,7 @@ _VERSIONE_DETAIL = {
 
 
 class DocumentiApiSmokeTests(JwtMockedApiTest):
+    come_super_admin = True
     def setUp(self) -> None:
         super().setUp()
         cache.clear()
@@ -303,6 +304,7 @@ class DocumentiApiSmokeTests(JwtMockedApiTest):
 
 class DocumentiApiWriteTests(JwtMockedApiTest):
     """Smoke test write endpoint (POST template, PATCH template) — Tranche E."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()
@@ -420,6 +422,7 @@ class DocumentiApiWriteTests(JwtMockedApiTest):
 
 class DocumentiApiVersioniWriteTests(JwtMockedApiTest):
     """Smoke test write versioni (POST/PATCH/DELETE/clona/pubblica) — Tranche F."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()
@@ -551,6 +554,7 @@ class DocumentiApiVersioniWriteTests(JwtMockedApiTest):
 
 class DocumentiAssetApiTests(JwtMockedApiTest):
     """Smoke test asset endpoint (Tranche G)."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

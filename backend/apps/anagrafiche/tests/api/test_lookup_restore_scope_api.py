@@ -36,6 +36,7 @@ _FAKE_UUID = "00000000-0000-0000-0000-000000000001"
 
 
 class TestLookupRestoreScopeApi(JwtMockedApiTest):
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

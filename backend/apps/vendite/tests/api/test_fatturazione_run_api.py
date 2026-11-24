@@ -59,6 +59,7 @@ def _mock_user(user_id: int = 9, username: str = "op9") -> Mock:
 
 
 class FatturazioneRunApiTests(JwtMockedApiTest):
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

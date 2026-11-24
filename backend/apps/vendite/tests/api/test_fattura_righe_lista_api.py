@@ -50,6 +50,7 @@ _SCOPE = "apps.ui.api.lista_figlia_views.get_scope_user_id"
 
 
 class TestFatturaRigheListaApi(JwtMockedApiTest):
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

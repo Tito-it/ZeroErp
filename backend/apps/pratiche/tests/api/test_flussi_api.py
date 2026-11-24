@@ -73,6 +73,7 @@ def _mock_flusso_row(
 
 
 class FlussiApiTests(JwtMockedApiTest):
+    come_super_admin = True
 
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:

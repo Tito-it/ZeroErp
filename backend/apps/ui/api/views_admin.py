@@ -127,8 +127,6 @@ _COLONNA_UPDATE_REQUEST = schema_da_contratto(
 #        body della view).
 def _require_any_action(request: Request, codenames: list[str]) -> None:
     user = request.user
-    if user.is_superuser:
-        return
     with cache_permessi_richiesta(request) as cache:
         if PermissionResolver.is_super_admin(user, cache=cache):
             return

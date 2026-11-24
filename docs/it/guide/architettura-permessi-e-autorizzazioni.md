@@ -569,11 +569,12 @@ occupano solo di:
   `create` richiede `add`, `update` e `partial_update` richiedono
   `change`, `destroy` richiede `delete`. Questo tipo di accesso e' poi
   confrontato con i verbi ammessi dal livello (TUTTO/LETTURA/BLOCCATO).
-* **Superuser Django.** Se l'utente è superuser Django (`is_superuser =
-  true`), viene ammesso direttamente senza consultare le tabelle config.
-  Comportamento di sicurezza a monte, usato in pratica solo per
-  amministrazione tecnica. **Nota:** `is_superuser` e' il flag Django,
-  non il profilo `SUPER_ADMIN` di ZeroErp — sono concetti distinti.
+* **Il superuser Django non concede niente.** Il flag `is_superuser` di
+  Django non apre nessuna porta: l'unico privilegio d'amministrazione è il
+  profilo `SUPER_ADMIN`, che il database vede (`script.fn_is_super_admin`) e
+  che le funzioni di risoluzione trattano già come «tutto». Un secondo
+  privilegio che il database non conosce farebbe passare un endpoint e poi
+  fermare il verbo che quell'endpoint chiama.
 * **Azioni custom.** Se la view dichiara un permesso esplicito per
   l'azione (es. route "genera-fatture" con `genera_fatture_permission
   = 'genera_fattura'`), la permission class chiama direttamente la
@@ -586,8 +587,8 @@ occupano solo di:
 
 **La quarta: `IsAdminZeroERP`, per le view di amministrazione.** Le view che
 ereditano da `AdminAPIView` (il pannello Amministrazione software) passano da
-`IsAdminZeroERP`, che decide una cosa sola: l'utente è superuser Django o ha il
-profilo `SUPER_ADMIN`, altrimenti 403. Non consulta aree né azioni di processo.
+`IsAdminZeroERP`, che decide una cosa sola: l'utente ha il profilo
+`SUPER_ADMIN`, altrimenti 403. Non consulta aree né azioni di processo.
 ⛔ Per questo un `<metodo>_permission` su una view di amministrazione **non lo
 valuta nessuno**: chi arriva è già `SUPER_ADMIN`, che le azioni le ha tutte, e
 chi non lo è non arriva. Una riga di `config.azioni_processo` nominata solo da
@@ -679,8 +680,8 @@ meccanismo RLS.
 `canale_origine = 'SHOP'` dentro la policy RLS, cosi' il consumer B2C
 non vede gli acquisti B2B della sua azienda.
 
-**Superuser Django.** Non filtrato: vede sempre tutto, a tutela della
-manutenzione tecnica.
+**Superuser Django.** Nessun trattamento a parte: il perimetro lo decide il
+profilo. Chi deve vedere tutte le aziende è `SUPER_ADMIN` con lo scope globale.
 
 L'effetto e' trasparente: la view non deve sapere dello scope — gli
 basta (per operatori) dichiarare il campo emittente, e per portale/shop

@@ -59,6 +59,7 @@ _ORD_BASE = "/api/v1/vendite/ordini/"
 
 class TestDdtApi(JwtMockedApiTest):
     """Smoke test endpoint DDT di vendita."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()
@@ -319,6 +320,7 @@ class TestOrdineGeneraDdtApi(JwtMockedApiTest):
     Vive nel dominio SORGENTE (ordine) ma delega a `ddt_service.crea_ddt_da_ordine`
     (import locale nella view). Mock del service, nessun accesso DB.
     """
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

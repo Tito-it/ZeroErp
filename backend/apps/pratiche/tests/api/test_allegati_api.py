@@ -26,6 +26,7 @@ _VIEWS = "apps.pratiche.api.views"
 
 
 class AllegatiApiTests(JwtMockedApiTest):
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

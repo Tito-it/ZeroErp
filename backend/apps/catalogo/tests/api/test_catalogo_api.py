@@ -73,6 +73,7 @@ _COMPONENTE_UUID = "11111111-2222-3333-4444-555555555555"
 
 
 class CatalogoApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune dei test API catalogo.
     def setUp(self) -> None:
         super().setUp()

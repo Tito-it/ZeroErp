@@ -207,7 +207,7 @@ class ClientiRepository:
     #        Scope emittente fiscale: filtra i clienti i cui BA appartengono
     #        agli emittenti autorizzati per l'utente chiamante (refactor
     #        operatore-emittenti, follow-up BE-3.5). `emittente_ids=None`
-    #        bypassa il filtro (superuser, admin globale, "0 emittenti");
+    #        bypassa il filtro (admin globale, "0 emittenti");
     #        lista vuota ⇒ nessun risultato.
     # ⛔ Lo scope DELEGA a `script.fn_check_ba_visible_for_emittenti`, come
     #    gia' `billing_account_repository` e `istanze_utility_repository`.

@@ -53,6 +53,7 @@ _DDT_BASE = "/api/v1/vendite/ddt/"
 
 class TestResiApi(JwtMockedApiTest):
     """Smoke test endpoint resi di vendita."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

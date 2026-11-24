@@ -81,7 +81,7 @@ def add_emittente_scope_condition_risolta(
 
 # Scopo: Appende a conditions/params la condizione di scope emittente per la
 #        colonna indicata, risolvendo il perimetro con una query. No-op se
-#        auth_user_id e' None (superuser a livello API) o se la fn ritorna
+#        auth_user_id e' None (nessun utente) o se la fn ritorna
 #        NULL (nessuna restrizione).
 # ⚠️ Dentro un giro su N righe usare `add_emittente_scope_condition_risolta`
 #    con il perimetro risolto una volta sola: qui ogni chiamata e' una query.
