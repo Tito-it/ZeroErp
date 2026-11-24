@@ -38,7 +38,7 @@ Area `vendite` **e** permesso modello `("vendite", "promo_articolo")`
 | `limit` | int | 25 default, max 200 |
 | `offset` | int | Paginazione |
 | `order_by` | string | `codice \| descrizione \| articolo_codice \| articolo_descrizione \| uom_codice \| valido_dal \| valido_al \| attivo \| data_insert \| data_update` |
-| `order_dir` | string | `asc \| desc`; assente = `desc` (default `valido_dal DESC`) |
+| `order_dir` | string | `asc \| desc`; assente = `desc` (default `valido_dal DESC`). `valido_al` è dichiarata «vuoto come il massimo» nel catalogo (`ui.lista_colonna.vuoto_ordinato_come_massimo`, dal 2026-11-24), ma la colonna è `NOT NULL`: l'ordine non cambia |
 
 ### Payload create (`POST`)
 

@@ -1315,9 +1315,9 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
                 "apps.vendite.services.preventivi_service.PermissionResolver.check_azione",
                 return_value=False,
             ), patch(
-                "apps.vendite.services.preventivi_service.get_user_model",
+                "apps.vendite.services.preventivi_service.utente_per_id",
             ) as mock_user_model:
-                mock_user_model.return_value.objects.get.return_value = MagicMock()
+                mock_user_model.return_value = MagicMock()
                 with self.assertRaises(ServiceError) as ctx:
                     gestisci_riga(
                         1, {
@@ -2062,7 +2062,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
 
         for finestra in ({"limit": 0}, {"limit": 201}, {"offset": -1}):
             with self.subTest(**finestra), self.assertRaises(ServiceError) as ctx:
-                list_preventivi(**finestra)
+                list_preventivi(auth_user_id=7, **finestra)
             self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
 
     # ── Sprint 2: wiring pricing v5 + L1 override ──
@@ -2180,7 +2180,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
 
     # Scopo: L1 — override prezzo (payload != resolver) bloccato se l'utente
     #        non ha permesso azione prezzo_override_manuale.
-    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.utente_per_id")
     @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     def test_gestisci_riga_override_non_autorizzato(
@@ -2197,7 +2197,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         }
         # User non superuser, azione NON abilitata
         mock_user = operatore_di_prova()
-        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_user_model.return_value = mock_user
         mock_perm.check_azione.return_value = False
 
         with self.assertRaises(ServiceError) as ctx:
@@ -2210,7 +2210,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         self.mock_repo.create_riga.assert_not_called()
 
     # Scopo: L1 — override prezzo ammesso per superuser (bypass).
-    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.utente_per_id")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     def test_gestisci_riga_override_superuser_senza_azione_bloccato(
         self, mock_suggerisci, mock_user_model
@@ -2229,7 +2229,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         #    l'azione `prezzo_override_manuale` e' fermato come chiunque.
         mock_user = MagicMock()
         mock_user.is_superuser = True
-        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_user_model.return_value = mock_user
 
         with patch(
             "apps.vendite.services._pricing_gate_helpers.PermissionResolver.check_azione",
@@ -2247,7 +2247,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     # Scopo: L2 — sconto entro il limite VENDITE_MAX_SCONTO_PCT passa.
     #        Resolver 50, manuale 45 = -10% sconto, limite 15% -> OK.
     @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
-    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.utente_per_id")
     @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     def test_gestisci_riga_L2_sconto_entro_limite_ok(
@@ -2264,7 +2264,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "valore_variazione_applicata": None,
         }
         mock_user = operatore_di_prova()
-        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_user_model.return_value = mock_user
         mock_perm.check_azione.return_value = True  # L1 ok
         # L2: limite sconto 15% -> sconto 10% ammesso.
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("15")
@@ -2282,7 +2282,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     # Scopo: L2 — sconto oltre il limite blocca con E_PRICING_SCONTO_ECCESSIVO.
     #        Resolver 50, manuale 40 = -20% sconto, limite 15% -> bloccato.
     @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
-    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.utente_per_id")
     @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     def test_gestisci_riga_L2_sconto_oltre_limite_bloccato(
@@ -2298,7 +2298,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "valore_variazione_applicata": None,
         }
         mock_user = operatore_di_prova()
-        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_user_model.return_value = mock_user
         mock_perm.check_azione.return_value = True  # L1 ok
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("15")  # limite
 
@@ -2318,7 +2318,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     #        E_PRICING_MAGGIORAZIONE_ECCESSIVA. Resolver 50, manuale 55 = +10%,
     #        limite 5% -> bloccato.
     @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
-    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.utente_per_id")
     @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     def test_gestisci_riga_L2_maggiorazione_oltre_limite_bloccato(
@@ -2334,7 +2334,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "valore_variazione_applicata": None,
         }
         mock_user = operatore_di_prova()
-        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_user_model.return_value = mock_user
         mock_perm.check_azione.return_value = True  # L1 ok
         # Maggiorazione: limite 5% per il secondo parametro.
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("5")
@@ -2356,7 +2356,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     # round-trip DB inutile.
     @patch("apps.vendite.services._pricing_gate_helpers.BillingAccountRepository", autospec=True)
     @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
-    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.utente_per_id")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     def test_gestisci_riga_L2_superuser_non_bypassa(
         self, mock_suggerisci, mock_user_model, mock_param_service, mock_ba_repo
@@ -2375,7 +2375,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         #    l'azione di L1 passa da L2 come chiunque, e il limite si legge.
         mock_user = MagicMock()
         mock_user.is_superuser = True
-        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_user_model.return_value = mock_user
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("100")
 
         with patch(
@@ -2399,7 +2399,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     # e passi il risultato come kwarg `categoria_cliente_id` al risolutore.
     @patch("apps.vendite.services._pricing_gate_helpers.BillingAccountRepository", autospec=True)
     @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
-    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.utente_per_id")
     @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     def test_gestisci_riga_L2_propaga_categoria_cliente(
@@ -2417,7 +2417,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "valore_variazione_applicata": None,
         }
         mock_user = operatore_di_prova()
-        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_user_model.return_value = mock_user
         mock_perm.check_azione.return_value = True
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("15")
         # BA 10 (vedi _testata_completa) ha categoria 42 (PREMIUM).
@@ -2442,7 +2442,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     #        pratica. Verifica che create_riga riceva i nuovi campi corretti.
     @patch("apps.vendite.services.approvazioni_prezzo_service.link_riga_a_pratica")
     @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
-    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.utente_per_id")
     @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_richiesta_approvazione")
@@ -2461,7 +2461,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "valore_variazione_applicata": None,
         }
         mock_user = operatore_di_prova()
-        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_user_model.return_value = mock_user
         mock_perm.check_azione.return_value = True  # L1 ok
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("15")
         mock_crea_pratica.return_value = 7777  # pratica_id ritornato dal service
@@ -2493,7 +2493,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     # Scopo: L3 — flag richiesta_approvazione=False (default): violazione L2
     #        solleva normalmente, NESSUNA pratica creata.
     @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
-    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.utente_per_id")
     @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_richiesta_approvazione")
@@ -2510,7 +2510,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "valore_variazione_applicata": None,
         }
         mock_user = operatore_di_prova()
-        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_user_model.return_value = mock_user
         mock_perm.check_azione.return_value = True
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("15")
 
@@ -2533,7 +2533,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     # Scopo: L3 — sotto limite L2 anche con richiesta_approvazione=True:
     #        pratica NON creata (violazione assente), riga normale (no PENDING).
     @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
-    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.utente_per_id")
     @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_richiesta_approvazione")
@@ -2551,7 +2551,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "valore_variazione_applicata": None,
         }
         mock_user = operatore_di_prova()
-        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_user_model.return_value = mock_user
         mock_perm.check_azione.return_value = True
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("20")
 
@@ -2576,7 +2576,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
     #        con stato_approvazione_prezzo=PENDING.
     @patch("apps.vendite.services.approvazioni_prezzo_service.link_riga_a_pratica")
     @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
-    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.utente_per_id")
     @patch("apps.vendite.services._pricing_gate_helpers.PermissionResolver")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_richiesta_approvazione")
@@ -2598,7 +2598,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "valore_variazione_applicata": None,
         }
         mock_user = operatore_di_prova()
-        mock_user_model.return_value.objects.get.return_value = mock_user
+        mock_user_model.return_value = mock_user
         mock_perm.check_azione.return_value = True
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("15")
         mock_crea_pratica.return_value = 8888
@@ -2642,7 +2642,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
 
         self.mock_repo.list_preventivi.return_value = ([], 0)
 
-        list_preventivi(limit=10)
+        list_preventivi(auth_user_id=7, limit=10)
 
         kwargs = self.mock_repo.list_preventivi.call_args.kwargs
         self.assertTrue(kwargs["solo_ultima_revisione"])
@@ -2654,7 +2654,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
 
         self.mock_repo.list_preventivi.return_value = ([], 0)
 
-        list_preventivi(limit=10, solo_ultima_revisione=False)
+        list_preventivi(auth_user_id=7, limit=10, solo_ultima_revisione=False)
 
         kwargs = self.mock_repo.list_preventivi.call_args.kwargs
         self.assertFalse(kwargs["solo_ultima_revisione"])

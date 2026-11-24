@@ -74,7 +74,7 @@ Tutte le risposte usano l'envelope standard:
 | `limit` | int | No | Righe per pagina, default `25`, max `200` |
 | `offset` | int | No | Righe da saltare, default `0` |
 | `order_by` | string | No | `codice`, `descrizione` (default), `uom_codice`, `attivo`, `data_insert`, `data_update` |
-| `order_dir` | string | No | `asc` oppure `desc`. Assente: `asc`, salvo le colonne data (`data_insert`, `data_update`) che partono `desc` |
+| `order_dir` | string | No | `asc` oppure `desc`. Assente: `asc` su ogni colonna, date comprese (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata) |
 
 ⚠️ La paginazione è `limit`/`offset`: `page`/`page_size` in query sono un 400 `E_VALIDATION_INPUT` (dal 2026-10-20; prima erano ignorati). In risposta `page` e `page_size` sono calcolati da `limit`/`offset`.
 
@@ -883,8 +883,8 @@ Prove: `apps/catalogo/tests/db/test_note_catalogo_db.py` (sul DB vero),
 | `uom_id` | int | No | Filtra le conversioni con `uom_id` come from o to |
 | `limit` | int | No | Default `25`, max `200` |
 | `offset` | int | No | Default `0` |
-| `order_by` | string | No | `uom_from_codice` (default), `uom_to_codice`, `fattore`, `valido_dal`, `valido_al` (vuoto = infinito), `attivo` |
-| `order_dir` | string | No | `asc`/`desc`. Assente: `asc`, salvo `valido_dal`/`valido_al` che partono `desc` |
+| `order_by` | string | No | `uom_from_codice` (default), `uom_to_codice`, `fattore`, `valido_dal`, `valido_al` (il vuoto va come il massimo, lo dichiara il catalogo), `attivo` |
+| `order_dir` | string | No | `asc`/`desc`. Assente: `asc` su ogni colonna, date comprese (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata) |
 
 Risposta: envelope paginato standard (`count`, `page`, `page_size`,
 `total_pages`, `results`): non è la lista completa. Dal 2026-11-11 la lista
@@ -1016,7 +1016,9 @@ permesso di **livello oggetto** sui rispettivi modelli.
   `E_SEARCH_VALIDATION` sotto 3 caratteri (`require_min_search_length`).
 - Liste paginate (articoli, UoM operative §3.1, tipologie UoM, unità di
   misura, conversioni, distinta §4.1-bis, note §5): `limit`/`offset`, default
-  `25`, max `200`; colonne data senza `order_dir` ordinano `desc`.
+  `25`, max `200`; senza `order_dir` la colonna chiesta va in crescente, date comprese
+  (la regola «le date partono `desc`» è ritirata dal 2026-11-24); il default
+  di ogni lista resta il suo.
 - `non_editable_fields: string[]` (Fase 5) sta su: dettaglio articolo,
   envelope lista/lookup UoM operative, riga di create/update UoM operativa,
   dettaglio conversione. **Non** c'è su dettaglio unità di misura, dettaglio

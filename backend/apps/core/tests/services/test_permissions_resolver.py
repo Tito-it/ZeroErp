@@ -30,6 +30,10 @@ Indice test eseguiti:
 19) test_emittenti_no_row_none
 20) test_emittenti_con_righe_lista
 21) test_emittenti_correct_params
+21f) test_emittenti_senza_utente_rifiuto_dichiarato
+21g) test_emittenti_anonimo_rifiuto_non_in_cache
+21h) test_emittenti_sr_correct_params
+21i) test_emittenti_cache_per_convenzione
 21a) test_operatore_con_riga_ritorna_pk
 21b) test_admin_globale_ritorna_none
 21c) test_no_row_ritorna_none
@@ -53,6 +57,7 @@ Indice test eseguiti:
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from apps.core.services.service_errors import ServiceError
 from apps.core.services.permissions_resolver import (
     LIVELLO_MAP,
     PermissionResolver,
@@ -60,6 +65,9 @@ from apps.core.services.permissions_resolver import (
 )
 
 _CONN = "apps.core.services.permissions_resolver.connection"
+# Dal 2026-11-24 (D-K5 a) i metodi emittenti passano dal BB dello scope:
+# la query la fa il modulo del BB, ed e' la sua connessione da simulare.
+_CONN_SCOPE = "apps.core.db.emittente_scope_helpers.connection"
 
 
 def _mock_user(user_id: int = 1) -> MagicMock:
@@ -302,21 +310,21 @@ class PermissionResolverEmittentiTests(TestCase):
     (analisi-software-per-dati-morti §2.7)."""
 
     # Scopo: fn ritorna NULL -> None (nessuna restrizione).
-    @patch(_CONN)
+    @patch(_CONN_SCOPE)
     def test_emittenti_null_none(self, mock_conn):
         _setup_cursor(mock_conn, (None,))
         result = PermissionResolver.get_emittenti_pk_ids(_mock_user())
         self.assertIsNone(result)
 
     # Scopo: Nessuna riga -> None.
-    @patch(_CONN)
+    @patch(_CONN_SCOPE)
     def test_emittenti_no_row_none(self, mock_conn):
         _setup_cursor(mock_conn, None)
         result = PermissionResolver.get_emittenti_pk_ids(_mock_user())
         self.assertIsNone(result)
 
     # Scopo: Array PG -> lista Python.
-    @patch(_CONN)
+    @patch(_CONN_SCOPE)
     def test_emittenti_con_righe_lista(self, mock_conn):
         _setup_cursor(mock_conn, ([1, 3, 5],))
         result = PermissionResolver.get_emittenti_pk_ids(_mock_user())
@@ -324,12 +332,62 @@ class PermissionResolverEmittentiTests(TestCase):
 
     # Scopo: Verifica il binding alla fn guarded (fix B5):
     # get_emittenti_pk_ids interroga fn_get_emittenti_scope_pk_ids.
-    @patch(_CONN)
+    @patch(_CONN_SCOPE)
     def test_emittenti_correct_params(self, mock_conn):
         cursor = _setup_cursor(mock_conn, (None,))
         PermissionResolver.get_emittenti_pk_ids(_mock_user(99))
         cursor.execute.assert_called_once_with(
             "SELECT script.fn_get_emittenti_scope_pk_ids(%s)", [99]
+        )
+
+    # Scopo: D-K5 a — `user=None` e' il rifiuto dichiarato del BB, non un
+    # `AttributeError` (500 generico) come quando il metodo leggeva `user.id`
+    # da se'. Vale per tutte e due le convenzioni.
+    @patch(_CONN_SCOPE)
+    def test_emittenti_senza_utente_rifiuto_dichiarato(self, mock_conn):
+        for metodo in (
+            PermissionResolver.get_emittenti_pk_ids,
+            PermissionResolver.get_emittenti_sr_ids,
+        ):
+            with self.subTest(metodo=metodo.__name__):
+                with self.assertRaises(ServiceError) as ctx:
+                    metodo(None)
+                self.assertEqual(ctx.exception.code, "E_SCOPE_SENZA_UTENTE")
+        mock_conn.cursor.assert_not_called()
+
+    # Scopo: l'anonimo (id None) non interroga il DB col NULL: rifiuto del BB,
+    # e un rifiuto non entra in cache.
+    @patch(_CONN_SCOPE)
+    def test_emittenti_anonimo_rifiuto_non_in_cache(self, mock_conn):
+        cache: dict = {}
+        with self.assertRaises(ServiceError) as ctx:
+            PermissionResolver.get_emittenti_sr_ids(_mock_user(None), cache=cache)
+        self.assertEqual(ctx.exception.code, "E_SCOPE_SENZA_UTENTE")
+        self.assertEqual(cache, {})
+        mock_conn.cursor.assert_not_called()
+
+    # Scopo: la convenzione SR interroga la sua funzione DB (binding per nome).
+    @patch(_CONN_SCOPE)
+    def test_emittenti_sr_correct_params(self, mock_conn):
+        cursor = _setup_cursor(mock_conn, ([7],))
+        result = PermissionResolver.get_emittenti_sr_ids(_mock_user(42))
+        cursor.execute.assert_called_once_with(
+            "SELECT script.fn_get_emittenti_scope_sr_ids(%s)", [42]
+        )
+        self.assertEqual(result, [7])
+
+    # Scopo: la cache della richiesta resta: due chiamate, una query; le due
+    # convenzioni hanno chiavi distinte.
+    @patch(_CONN_SCOPE)
+    def test_emittenti_cache_per_convenzione(self, mock_conn):
+        cursor = _setup_cursor(mock_conn, ([1],))
+        cache: dict = {}
+        PermissionResolver.get_emittenti_pk_ids(_mock_user(), cache=cache)
+        PermissionResolver.get_emittenti_pk_ids(_mock_user(), cache=cache)
+        PermissionResolver.get_emittenti_sr_ids(_mock_user(), cache=cache)
+        self.assertEqual(cursor.execute.call_count, 2)
+        self.assertEqual(
+            set(cache), {"emittenti_pk_ids", "emittenti_sr_ids"},
         )
 
 

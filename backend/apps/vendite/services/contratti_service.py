@@ -631,7 +631,7 @@ class ContrattiService:
         data_da: date | None = None,
         data_a: date | None = None,
         scadenza_mese: str | None = None,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "data",

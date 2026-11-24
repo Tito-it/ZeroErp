@@ -603,7 +603,8 @@ class TitoliSoggettoPaginazioneTests(TestCase):
     #        default sotto i piedi riordinerebbe il dettaglio del soggetto.
     def test_senza_order_by_resta_l_ordinamento_storico(self) -> None:
         sql, _ = self._sql_di()
-        self.assertIn("COALESCE(t.valido_al, 'infinity'::date) DESC", sql)
+        # La validita' piu' lunga per prima: il vuoto («senza scadenza») in cima.
+        self.assertIn("ORDER BY t.valido_al DESC NULLS FIRST, t.valido_dal DESC", sql)
 
     # Scopo: ⛔ una colonna fuori whitelist e' un 400 (`order_by_invalid`), e
     #        non arriva all'SQL (dal 2026-10-20, brief-be-verifica-documentazione-api §A1).

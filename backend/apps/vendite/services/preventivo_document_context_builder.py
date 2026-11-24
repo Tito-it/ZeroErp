@@ -86,7 +86,7 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
         self,
         sorgente_id: int,
         *,
-        auth_user_id: int | None = None,
+        auth_user_id: int,
         locale: str = "it-IT",
     ) -> dict[str, Any]:
         self._v.guard_positive_int(sorgente_id, field="sorgente_id")

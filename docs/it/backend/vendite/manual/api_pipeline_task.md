@@ -231,7 +231,8 @@ ottiene.
 
 ## Catalogo dei task (misurato il 2026-08-19)
 
-Registro: 21 task. In pipeline: **12**.
+Registro: 21 task. In pipeline: **12**. Dal 2026-11-24 il registro ha **20** task e il rollback non ne usa
+nessuno (sotto).
 
 | Step (pipeline) | Task, in ordine |
 | --- | --- |
@@ -239,7 +240,21 @@ Registro: 21 task. In pipeline: **12**.
 | **EMESSA** (3, 2) | `genera_fondi_source_lotto` · `applica_fondi_lotto` · `ricalcola_iva_lotto` · `genera_scadenze_lotto` |
 | **DEFINITIVA** (4, 6) | `numera_fatture` · `popola_fatture_rettifiche` · `stampa_documenti_lotto` |
 | **INVIATA** (5, 7) | `prepare_sdi_payload_lotto` |
-| **rollback** (3) | `reset_lotto_draft` |
+| **rollback** | nessuno |
+
+Dal 2026-11-24 nessuna pipeline ha un `rollback` e il registro ha un task in meno:
+`reset_lotto_draft`, che era il rollback di EMESSA della corsia massiva, è
+**cancellato** a DB (registro, implementazione, policy) e nel BE (voce di
+`ALLOWED_TASK_FUNCTIONS`, handler). Con lui è caduta l'esclusione per nome con cui
+`LottoPipelineRunner._should_execute_auto_step_rollback` lo saltava in auto-run:
+oggi il rollback automatico parte su un rilancio MASSIVO in ERRORE, allo step DRAFT o EMESSA, quando la pipeline
+dello step ha `meta.auto_step_rollback = true` e un `rollback` per quello step
+(`LottoPipelineRunner._should_execute_auto_step_rollback`). Il flag e la lista vengono dalla stessa riga di
+`vendite.fatturazione_pipeline`, risolta da `fn_resolve_fatturazione_pipeline_step` con il fallback per utility e
+tipo documento (`VenditePipelineRepository.is_auto_step_rollback_attivo`); accende solo il booleano JSON `true`.
+⛔ Dal 2026-11-24 (D-I.4 a) il `meta` del body della richiesta di run non lo accende più: è configurazione della
+corsia, come dice la guida `fatturazione` (§ rollback), e il `meta` del body resta il `meta` del lotto. L'annullo
+del lotto è il verbo dell'operatore (`POST /lotti/<id>/reset-draft/`), non un task.
 
 ⚠️ **Sette task sono a registro, hanno un `handler_code`, e NON hanno un handler
 Python**: `acquisisci_preventivi`, `acquisisci_contratti`, `acquisisci_ordini`,

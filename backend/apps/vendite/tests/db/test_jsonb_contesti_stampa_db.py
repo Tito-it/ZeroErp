@@ -28,6 +28,9 @@ from typing import Any
 
 from django.db import connection, transaction
 
+from apps.core.tests._helpers.perimetro_admin_globale_di_prova import (
+    perimetro_admin_globale_di_prova,
+)
 from apps.core.tests.db_e2e import Annulla, apri_transazione_annullata, richiedi_db_provvisto
 
 # Il documento di ciascun builder: SQL che torna il suo id (e apre il
@@ -94,7 +97,13 @@ class JsonbContestiStampaDbTests(unittest.TestCase):
                         for passo in passi:
                             cur.execute(passo)
                         documento_id = cur.fetchone()[0]
-                        contesto = get_builder(codice).build_context(documento_id)
+                        # Il builder della fattura legge col filtro
+                        # applicativo (D-K6 a): il perimetro «nessuna
+                        # restrizione» del BB di test, per un utente qualsiasi.
+                        with perimetro_admin_globale_di_prova():
+                            contesto = get_builder(codice).build_context(
+                                documento_id, auth_user_id=1,
+                            )
                         self.assertEqual(_json_rimasto_testo(contesto), [])
                         raise Annulla
                 except Annulla:

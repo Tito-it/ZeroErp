@@ -198,7 +198,8 @@ def _liveness_worker(corsie: list[tuple[str, str]]) -> dict[tuple[str, str], dic
 #        `{coda_lavori: {pending, in_corso}, coda_stampa: {pending, in_corso},
 #        worker: {coda_lavori: {...}, coda_stampa: {...}}}`. I conteggi sono
 #        SCOPED al chiamante (coda lavori: le sue aziende, dalla RLS; coda stampa
-#        per emittente via JOIN fatture — `auth_user_id` None = nessun limite). La liveness confronta l'ultimo run dei drainer col clock DB;
+#        per emittente via JOIN fatture; `auth_user_id` None solleva). La liveness
+#        confronta l'ultimo run dei drainer col clock DB;
 #        un worker mai girato → {last_run_at: None, attivo: False} (fail-visible:
 #        "worker giù", non un buco nel payload).
 def conteggi_code(user: Any, *, auth_user_id: int | None) -> dict[str, Any]:
@@ -689,11 +690,9 @@ def imposta_archiviazione_stampa(
     repo = VenditePipelineRepository()
     # ⭐ Il perimetro emittente si risolve UNA volta per la richiesta, non per
     #    riga: dentro una richiesta non cambia, e il giro puo' avere 200 righe.
-    #    `None` (nessun utente) resta `None` = nessuna restrizione.
-    emittenti_sr_ids = (
-        None if auth_user_id is None
-        else fetch_emittenti_scope_ids(auth_user_id, convention="sr")
-    )
+    #    ⛔ `auth_user_id=None` solleva (`fetch_emittenti_scope_ids`): fino al
+    #    2026-11-24 apriva la scrittura a tutti gli emittenti.
+    emittenti_sr_ids = fetch_emittenti_scope_ids(auth_user_id, convention="sr")
     return _esegui_archiviazione(
         ids,
         archiviato=archiviato,

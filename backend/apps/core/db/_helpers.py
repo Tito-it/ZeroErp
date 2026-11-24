@@ -20,6 +20,7 @@ from apps.core.services.request_context import (
     OrdinamentoPropostoRifiutato,
     conferma_ordinamento_proposto,
     e_chiave_proposta,
+    vuoto_come_massimo,
 )
 
 
@@ -642,11 +643,23 @@ def sql_order_direction(
     order_dir: str | None,
     *,
     default_desc: bool = False,
+    vuoto_massimo: bool = False,
 ) -> str:
     """Clausola di direzione ORDER BY con **NULL ordinato come valore MINIMO**.
 
     Ritorna `'ASC NULLS FIRST'` oppure `'DESC NULLS LAST'`, da interpolare al
     posto della sola direzione: `ORDER BY {col} {direction}, <tiebreak>`.
+
+    ⭐ **`vuoto_massimo=True`: il NULL come il valore MASSIMO** —
+    `'ASC NULLS LAST'` / `'DESC NULLS FIRST'` (decisioni di Tid del
+    2026-11-24, brief-db-lista-colonna-vuoto-in-ordine). E' la colonna il cui
+    vuoto vuol dire «senza fine» (una fine validita', una scadenza che non
+    c'e'), e lo dichiara il CATALOGO (`ui.lista_colonna.vuoto_ordinato_come_massimo`),
+    non il chiamante: lo passa `sql_order_direction_lista`, che sa quale
+    colonna sta ordinando. Vale per ogni tipo, senza un valore «infinito» per
+    tipo: fino a quel giorno l'eccezione era `COALESCE(col, 'infinity')`
+    scritta a mano nelle whitelist (decisione di Tid del 2026-08-01), e le
+    whitelist che se ne dimenticavano ordinavano il vuoto al contrario.
 
     **Perche' i NULLS espliciti** (decisione Tid 2026-07-19): i default
     PostgreSQL sono l'opposto (ASC -> NULLS LAST, DESC -> NULLS FIRST), quindi
@@ -681,6 +694,8 @@ def sql_order_direction(
         raise ValueError("order_dir_invalid")
     indicata = (order_dir or "").strip().lower()
     is_desc = (indicata or ("desc" if default_desc else "asc")) == "desc"
+    if vuoto_massimo:
+        return "DESC NULLS FIRST" if is_desc else "ASC NULLS LAST"
     return "DESC NULLS LAST" if is_desc else "ASC NULLS FIRST"
 
 
@@ -862,17 +877,57 @@ def sql_order_direction_lista(
     amm-software, emittenti), e le copie divergevano gia' da `sql_order_clause`:
     guardavano la chiave chiesta e non la colonna risolta, e ignoravano la
     precedenza del default. `sql_order_clause` ora passa di qui.
+
+    ⭐ **Dove va il vuoto lo dice il catalogo della lista** (2026-11-24,
+    brief-db-lista-colonna-vuoto-in-ordine): sulla colonna che la lista della
+    richiesta dichiara `vuoto_ordinato_come_massimo` il vuoto va come il
+    massimo (`sql_order_direction(vuoto_massimo=True)`). La dichiarazione la
+    registra la base view (`applica_vuoti_come_massimo`); fuori da una view
+    con `lista_codice` vale la regola generale. La chiave e' quella chiesta,
+    o quella del `default` quando la richiesta non ordina: e' lo stesso
+    `campo_sorgente` del catalogo, su cui la whitelist e' chiavata.
     """
     colonna = colonna_ordinamento(order_by, colonne)
     if colonna is None:
-        return sql_order_direction(order_dir, default_desc=default_desc)
+        return sql_order_direction(
+            order_dir, default_desc=default_desc,
+            vuoto_massimo=_default_vuoto_massimo(default, colonne),
+        )
     assert order_by is not None
     order_by = order_by.strip()
     # Il default si riconosce dall'espressione O dalla chiave: un `default`
     # scritto come chiave (`"data_scadenza"`) con una colonna qualificata
     # (`"v.data_scadenza"`) perderebbe in silenzio il verso della coda.
     verso_desc = default is not None and default.strip() in (colonna.strip(), order_by)
-    return sql_order_direction(order_dir, default_desc=verso_desc and default_desc)
+    return sql_order_direction(
+        order_dir, default_desc=verso_desc and default_desc,
+        vuoto_massimo=vuoto_come_massimo(order_by),
+    )
+
+
+# Scopo: il `default` di una lista ordina il vuoto come il MASSIMO? Lo dice la
+#        dichiarazione della CHIAVE che il default nomina, per chiave o per
+#        espressione (la stessa regola con cui `sql_order_direction_lista` ne
+#        riconosce il verso); `False` se il default non e' una colonna offerta
+#        all'operatore (`s.id`).
+# ⚠️ Serve a dire dove va il vuoto anche quando la richiesta non ordina: il
+#    default di una lista puo' essere una colonna che il catalogo dichiara.
+# ⛔ Piu' chiavi con la stessa espressione del default, dichiarate in modo
+#    diverso, sono una whitelist ambigua: `RuntimeError` (errore di
+#    programmazione), non la prima chiave del dizionario. Fino alla `/verifica`
+#    del 2026-11-24 l'esito dipendeva dall'ordine delle chiavi.
+def _default_vuoto_massimo(default: str | None, colonne: Mapping[str, str]) -> bool:
+    if default is None:
+        return False
+    nome = default.strip()
+    chiavi = [nome] if nome in colonne else [k for k, v in colonne.items() if v.strip() == nome]
+    dichiarazioni = {vuoto_come_massimo(k) for k in chiavi}
+    if len(dichiarazioni) > 1:
+        raise RuntimeError(
+            f"default di lista ambiguo: {nome!r} e' l'espressione di {sorted(chiavi)}, "
+            "che il catalogo dichiara in modo diverso per il vuoto",
+        )
+    return True in dichiarazioni
 
 
 def sql_order_clause(
@@ -915,7 +970,7 @@ def sql_order_clause(
     ⛔ **`default` e `default_clause` sono due parametri e non uno, e la prima
     stesura di questo BB ne aveva uno solo — sbagliando.** Un ordinamento di
     partenza a piu' criteri porta le direzioni dentro di se'
-    (`COALESCE(valido_al,'infinity') DESC, valido_dal DESC`): trattarlo come una
+    (`valido_al DESC NULLS FIRST, valido_dal DESC`): trattarlo come una
     colonna gli appiccica una seconda direzione in coda e produce
     `... DESC DESC NULLS LAST`. ⭐ Li' e' andata bene — PostgreSQL rifiuta la
     query con un errore di sintassi, quindi il difetto si e' visto subito. Ma la

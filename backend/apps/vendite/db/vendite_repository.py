@@ -43,7 +43,6 @@ from apps.core.db._helpers import (
     rows_to_list,
     sql_lateral_primo_motivo,
     sql_order_clause,
-    sql_order_direction,
     sql_tiebreak_direction,
 )
 from apps.core.services.system_context import connection_role_bypasses_rls
@@ -195,8 +194,11 @@ GIORNALE_GRAVITA: tuple[str, ...] = ("ERROR", "WARN", "INFO")
 #    400 (`_valida_ordinamento`), perche' un ordine diverso da quello chiesto
 #    non solleva niente.
 def _giornale_order_clause(sort_by: str | None, sort_dir: str | None) -> str:
-    direzione = sql_order_direction(sort_dir, default_desc=True)
     colonna = colonna_ordinamento(sort_by, GIORNALE_SORT_COLUMNS) or GIORNALE_SORT_COLUMNS[GIORNALE_ORDINE_DEFAULT]
+    direzione = sql_order_direction_lista(
+        sort_by, sort_dir, colonne=GIORNALE_SORT_COLUMNS,
+        default=GIORNALE_ORDINE_DEFAULT, default_desc=True,
+    )
     if colonna == "rango":
         # ⚠️ Dentro la stessa gravita' ordina il TEMPO, sempre dal piu' recente,
         #    e NON segue il verso scelto: «i piu' gravi, e fra quelli i piu'
@@ -1046,7 +1048,7 @@ class VenditeRepository:
         area_geografica_id: int | None = None,
         tipo_doc_fiscale_id: int | None = None,
         emittente_soggetto_ruolo_id: int | None = None,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
         solo_recuperi_mese: bool = False,
     ) -> int:
         conditions, params = self._lotti_conditions(
@@ -1095,7 +1097,7 @@ class VenditeRepository:
         area_geografica_id: int | None = None,
         tipo_doc_fiscale_id: int | None = None,
         emittente_soggetto_ruolo_id: int | None = None,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
         solo_recuperi_mese: bool = False,
         includi_annullati: bool = False,
     ) -> dict[str, int]:
@@ -1136,7 +1138,7 @@ class VenditeRepository:
         area_geografica_id: int | None,
         tipo_doc_fiscale_id: int | None,
         emittente_soggetto_ruolo_id: int | None,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
         order_by: str | None = None,
         order_dir: str | None = None,
         limit: int,
@@ -1228,7 +1230,7 @@ class VenditeRepository:
     #    dalla lista al primo stato abortito nuovo (revisione 2026-09-12: prima
     #    ricopiava frammento e JOIN, «dichiarati» ma pur sempre due copie).
     def count_lotti_per_mese(
-        self, *, anno: int, auth_user_id: int | None = None,
+        self, *, anno: int, auth_user_id: int | None,
         includi_annullati: bool = False,
     ) -> dict[int, int]:
         conditions: list[str] = ["EXTRACT(YEAR FROM fl.competenza_mese) = %s"]
@@ -1383,7 +1385,7 @@ class VenditeRepository:
     #        inesistente, coerente con la RLS operatori, api.md §scope).
     # Perimetro: sola lettura; nessun side-effect.
     def get_lotto(
-        self, *, lotto_id: int, auth_user_id: int | None = None,
+        self, *, lotto_id: int, auth_user_id: int | None,
     ) -> LottoListRow | None:
         conditions: list[str] = ["fl.id = %s"]
         params: list[Any] = [lotto_id]
@@ -3451,7 +3453,11 @@ class VenditeRepository:
     #        security invece di filtrare da se': viste `security_invoker`,
     #        funzioni `SECURITY INVOKER`, letture dirette di tabelle con
     #        policy. Su un canale di sistema quel perimetro non c'e', e il
-    #        filtro applicativo no-opa con `auth_user_id = None`.
+    #        filtro applicativo da solo non basta: un chiamante con un utente
+    #        sbagliato, o un ramo dichiarato senza utente, lascerebbe la
+    #        lettura al solo `security_invoker`, che sul BYPASSRLS non filtra.
+    #        (Fino al 2026-11-24 il filtro applicativo no-opava con
+    #        `auth_user_id = None`; ora `None` solleva.)
     # ⚠️ PERCHE' IN UNA SEDE SOLA: il difetto che previene non fallisce, RIESCE.
     #        Su una lettura mostra i dati di tutti gli emittenti, su una
     #        scrittura li tocca. Un guard riscritto a mano ogni volta e' un
@@ -3500,15 +3506,15 @@ class VenditeRepository:
         self,
         *,
         motivo: str | None = None,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
         order_by: str | None = None,
         order_dir: str | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[FondoFatturaDaDecidereRow], int]:
         # 🔴 Guard strutturale, non un commento: su un ruolo BYPASSRLS il
-        # `security_invoker` della vista non filtra niente e il filtro
-        # applicativo sotto no-opa con auth_user_id=None. Un consumer headless
+        # `security_invoker` della vista non filtra niente, e la vista resta
+        # l'unica difesa se il filtro applicativo manca. Un consumer headless
         # su un ruolo `BYPASSRLS` leggerebbe i fondi di TUTTI gli emittenti
         # senza che nulla fallisca.
         self._require_canale_utente(
@@ -3552,7 +3558,10 @@ class VenditeRepository:
         # `uq_fondi_source_atto_vivo_automatico` presidia i soli AUTOMATICI).
         # `COALESCE(..., 0)` perche' negli altri tre rami l'atto non esiste.
         sort_col = colonna_ordinamento(order_by, self.FONDI_DA_DECIDERE_SORT_COLUMNS)
-        direction = sql_order_direction(order_dir, default_desc=True)
+        direction = sql_order_direction_lista(
+            order_by, order_dir, colonne=self.FONDI_DA_DECIDERE_SORT_COLUMNS,
+            default="data", default_desc=True,
+        )
         tiebreak_dir = sql_tiebreak_direction(direction)
         order_clause = (
             f"ORDER BY {sort_col or 'data'} {direction}, "
@@ -3631,7 +3640,7 @@ class VenditeRepository:
         *,
         lotto_id: int,
         stato_esecuzione: str | None,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
         order_by: str | None = None,
         order_dir: str | None = None,
         limit: int,
@@ -3948,7 +3957,7 @@ class VenditeRepository:
         self,
         *,
         lotto_id: int,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
         stato_esecuzione: str | None = None,
         sort_by: str | None = None,
         sort_dir: str | None = None,
@@ -4306,16 +4315,18 @@ class VenditeRepository:
     #
     #        Lettura pura: nessun calcolo fiscale in Python. None se la fattura
     #        non esiste (o è fuori scope RLS).
-    #        `auth_user_id` opzionale = difesa in profondita' applicativa che si
+    #        `auth_user_id` = difesa in profondita' applicativa che si
     #        SOMMA alla RLS di `vendite.fatture` (policy `rls_fatture_ef_whitelist`,
     #        attiva sul ruolo dell'app: `zeroerp_app` non e' owner della tabella).
-    #        Default `None` = nessun filtro applicativo: e' il percorso del motore
-    #        documentale, che applica lo scope a monte e non va toccato.
+    #        L'argomento e' obbligatorio, e `None` e' il rifiuto
+    #        `E_SCOPE_SENZA_UTENTE` del BB, come per ogni lettura con perimetro
+    #        (dal 2026-11-24, D-K6 a: prima saltava il filtro per il motore
+    #        documentale senza utente).
     def get_fattura_testata(
         self,
         fattura_id: int,
         *,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
     ) -> dict[str, Any] | None:
         sql = """
             SELECT
@@ -4459,9 +4470,14 @@ class VenditeRepository:
             TIPO_INDIRIZZO_FATTURAZIONE,
             int(fattura_id),
         ]
-        # Scope emittente applicativo (convenzione SR) appeso alla WHERE solo
-        # quando il chiamante lo chiede: l'helper non aggiunge nulla per
-        # auth_user_id None o per un utente che vede tutto (admin globale).
+        # Scope emittente applicativo (convenzione SR): l'helper non aggiunge
+        # nulla per un utente che vede tutto (admin globale), e con
+        # `auth_user_id=None` solleva `E_SCOPE_SENZA_UTENTE`.
+        # ⛔ Fino al 2026-11-24 `None` saltava il filtro, con un ramo dichiarato
+        #    per il motore documentale del worker della coda stampa, che
+        #    generava senza utente. Ritirato con D-K6 a (Tid,
+        #    brief-db-porte-aperte-dalla-sola-guc §4.7): il worker passa il suo
+        #    utente tecnico, e il filtro vale per ogni chiamante.
         conditions: list[str] = []
         self._add_scope_emittente(
             auth_user_id, "f.emittente_soggetto_ruolo_id", conditions, params,

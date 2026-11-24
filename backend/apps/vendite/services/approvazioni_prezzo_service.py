@@ -36,6 +36,7 @@ from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.core.services.utente_per_id import utente_per_id
 from apps.pratiche.db.pratiche_repository import (
     PRATICHE_ORDER_COLS,
     PraticheRepository,
@@ -948,14 +949,11 @@ def link_riga_a_pratica(
     aggiorna_pratica(pratica_id, {"meta": meta})
 
 
-# Scopo: lookup utente Django per check permessi. Estratto come helper
-#        per consistenza con preventivi_service e per facilitare mocking.
+# Scopo: l'utente per i check permessi, o il rifiuto del gate prezzi. La
+#        lettura e' il BB `utente_per_id`; qui resta il codice del dominio.
 def _get_user(auth_user_id: int):
-    from django.contrib.auth import get_user_model
-    user_model = get_user_model()
-    try:
-        return user_model.objects.get(pk=auth_user_id)
-    except user_model.DoesNotExist:
+    user = utente_per_id(auth_user_id)
+    if user is None:
         ErrorManager.raise_error(
             code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
             message="Utente non trovato.",

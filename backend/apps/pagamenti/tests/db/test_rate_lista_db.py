@@ -43,6 +43,7 @@ from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.tests.db_e2e import richiedi_db_provvisto, verifica_ricerca_colonna_per_colonna
 from apps.pagamenti.db.pagamenti_repository import RATE_SORT_COLUMNS, PagamentiRepository
 from apps.pagamenti.services import pagamenti_service, saldi_service, sistemazioni_service
+from apps.core.db._helpers import utente_di_sessione
 
 # Il mondo: azienda con operatore (PRIMA del contesto), poi il contesto, poi
 # un cliente fatturabile e due fatture numerate nella stessa serie — 101 e
@@ -191,7 +192,7 @@ class RateListaDbTests(_MondoRateDbTests):
     def test_il_numero_e_un_confronto_esatto(self):
         def _prova(cur, rate, ba_id):
             esito = saldi_service.list_rate(
-                auth_user_id=None, limit=50, billing_account_id=ba_id, fattura_numero=101,
+                auth_user_id=utente_di_sessione(function_name=__name__), limit=50, billing_account_id=ba_id, fattura_numero=101,
             )
             return esito["count"], [r["scadenza_id"] for r in esito["results"]]
         count, ids = self._nel_mondo(_prova)
@@ -205,7 +206,7 @@ class RateListaDbTests(_MondoRateDbTests):
     def test_i_saldi_arrivano_per_ogni_rata_della_pagina(self):
         def _prova(cur, rate, ba_id):
             esito = saldi_service.list_rate(
-                auth_user_id=None, limit=50, billing_account_id=ba_id,
+                auth_user_id=utente_di_sessione(function_name=__name__), limit=50, billing_account_id=ba_id,
             )
             return rate, {int(r["scadenza_id"]): r for r in esito["results"]}
         rate, per_id = self._nel_mondo(_prova)
@@ -226,7 +227,7 @@ class RateListaDbTests(_MondoRateDbTests):
     def test_solo_aperte_toglie_la_rata_esaurita(self):
         def _prova(cur, rate, ba_id):
             esito = saldi_service.list_rate(
-                auth_user_id=None, limit=50, billing_account_id=ba_id, solo_aperte=True,
+                auth_user_id=utente_di_sessione(function_name=__name__), limit=50, billing_account_id=ba_id, solo_aperte=True,
             )
             return rate, esito["count"], esito["results"]
         rate, count, results = self._nel_mondo(_prova)
@@ -244,7 +245,7 @@ class RateListaDbTests(_MondoRateDbTests):
                 for verso in ("asc", "desc"):
                     for solo_aperte in (False, True):
                         righe, _tot = repo.list_rate_paginata(
-                            auth_user_id=None, billing_account_id=ba_id,
+                            auth_user_id=utente_di_sessione(function_name=__name__), billing_account_id=ba_id,
                             solo_aperte=solo_aperte,
                             order_by=colonna, order_dir=verso, limit=5, offset=0,
                         )
@@ -273,12 +274,12 @@ class RateListaDbTests(_MondoRateDbTests):
             # Scopo: gli id delle rate che la ricerca porta, nel cliente del mondo.
             def _ids(termine: str, **filtri) -> set[int]:
                 esito = saldi_service.list_rate(
-                    auth_user_id=None, limit=50, billing_account_id=ba_id,
+                    auth_user_id=utente_di_sessione(function_name=__name__), limit=50, billing_account_id=ba_id,
                     search=termine, **filtri,
                 )
                 return {int(r["scadenza_id"]) for r in esito["results"]}
 
-            per_ba = saldi_service.list_rate(auth_user_id=None, limit=50, search=str(row[0]))
+            per_ba = saldi_service.list_rate(auth_user_id=utente_di_sessione(function_name=__name__), limit=50, search=str(row[0]))
             return (
                 rate,
                 per_ba["count"],
@@ -345,7 +346,7 @@ class RateListaDbTests(_MondoRateDbTests):
 
             def _ids(**kw):
                 esito = saldi_service.list_rate(
-                    auth_user_id=None, limit=50, billing_account_id=ba_id, **kw,
+                    auth_user_id=utente_di_sessione(function_name=__name__), limit=50, billing_account_id=ba_id, **kw,
                 )
                 return esito["count"], {int(r["scadenza_id"]) for r in esito["results"]}
 
@@ -598,7 +599,7 @@ class RicercaListeDbTests(_MondoRateDbTests):
             verifica_ricerca_colonna_per_colonna(
                 self, cur, "pagamenti.rate", rate[1], valori_rata,
                 lambda t: saldi_service.list_rate(
-                    auth_user_id=None, search=t, limit=200,
+                    auth_user_id=utente_di_sessione(function_name=__name__), search=t, limit=200,
                 )["results"],
                 chiave="scadenza_id",
             )

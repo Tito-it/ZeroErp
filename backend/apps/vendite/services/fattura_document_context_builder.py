@@ -141,13 +141,20 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
         self,
         sorgente_id: int,
         *,
-        auth_user_id: int | None = None,
+        auth_user_id: int,
         locale: str = "it-IT",
     ) -> dict[str, Any]:
         self._v.guard_positive_int(sorgente_id, field="sorgente_id")
 
+        # ⭐ L'utente si inoltra (2026-11-24): il filtro applicativo di
+        #    `get_fattura_testata` si somma al guard del motore, dal web e dal
+        #    worker di stampa, che passa il suo utente tecnico (D-K6 a: prima
+        #    passava `None` e il filtro si saltava).
         testata = testata_o_not_found(
-            self._repo.get_fattura_testata, sorgente_id,
+            lambda fattura_id: self._repo.get_fattura_testata(
+                fattura_id, auth_user_id=auth_user_id,
+            ),
+            sorgente_id,
             code=E_NOT_FOUND, message="Fattura non trovata per generazione documento.",
             id_name="fattura_id", function_name="FatturaDocumentContextBuilder.build",
         )

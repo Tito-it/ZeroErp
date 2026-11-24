@@ -35,7 +35,7 @@ from apps.core.db._helpers import (
     fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
-    sql_order_direction,
+    sql_order_direction_lista,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.db._coda_documento_filtro import lettura_coda_per_documento
@@ -197,7 +197,7 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
         data_da: date | None = None,
         data_al: date | None = None,
         search: str | None = None,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
         limit: int,
         offset: int,
         order_by: str = "data",
@@ -450,7 +450,7 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
         etichetta: str | None = None,
         ddt_id: int | None = None,
         ordine_id: int | None = None,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
         limit: int,
         offset: int,
         order_by: str = "data",
@@ -504,7 +504,7 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
         search: str | None = None,
         ddt_id: int | None = None,
         ordine_id: int | None = None,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
         limit: int,
         offset: int,
         order_by: str = "data",
@@ -565,7 +565,9 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
         # rifiuto parlante); con entrambi il BB solleva, per programmazione.
         lettura = lettura_coda_per_documento(vista, ddt_id=ddt_id, ordine_id=ordine_id)
         order_column = colonna_ordinamento(order_by, meta["order_cols"]) or "v.data"
-        direction = sql_order_direction(order_dir, default_desc=True)
+        direction = sql_order_direction_lista(
+            order_by, order_dir, colonne=meta["order_cols"], default="v.data", default_desc=True,
+        )
         # ⚠️ Qui il tiebreak NON si allinea alla direzione (regola 2026-08-03,
         # che vale per gli spareggi TECNICI): `v.reso_id DESC` raggruppa le
         # righe di uno stesso reso e `v.resi_riga_id ASC` le tiene nel loro

@@ -169,6 +169,15 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
         "Il campo sorgente, se indicato, non puo' essere vuoto.",
         "campo_sorgente",
     ),
+    # §5.1.2 di brief-db-lista-colonna-vuoto-in-ordine (2026-11-24): il flag
+    # non e' nel drawer (D-1), ma una colonna dell'installazione che lo porta
+    # perde il campo sorgente da qui. Il campo e' quello che l'operatore tocca.
+    "chk_ui_lista_colonna_vuoto_massimo_con_campo": (
+        E_COLONNA_VALIDATION,
+        "La colonna ordina il vuoto come il massimo: senza campo sorgente non "
+        "avrebbe un vuoto da ordinare.",
+        "campo_sorgente",
+    ),
 }
 
 # Il rifiuto della colonna che sta in un preset: lo dicono il controllo

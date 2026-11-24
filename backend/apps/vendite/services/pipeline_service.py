@@ -647,11 +647,13 @@ ORIGINE_BATCH = "batch"
 # non dice nulla sul mese che si sta fatturando. L'intero pannello parla quindi
 # di UN periodo solo, quello filtrato nella lista sottostante.
 #
-# `user` serve allo split miei/altri dei giri app; `auth_user_id` allo scope
-# della coda stampa. None = uso di sistema (split a 0, coda senza scope).
+# `user` serve allo split miei/altri dei giri app (`None` = split a 0);
+# `auth_user_id` allo scope della coda stampa. ⛔ Dal 2026-11-24
+# `auth_user_id=None` non vuol dire «coda senza scope»: il conteggio della coda
+# solleva `E_SCOPE_SENZA_UTENTE` (brief-db-porte-aperte-dalla-sola-guc §4.7).
 def esiti_fatturazione(
     *,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     competenza_mese: date | None = None,
     user: Any = None,
 ) -> dict[str, Any]:

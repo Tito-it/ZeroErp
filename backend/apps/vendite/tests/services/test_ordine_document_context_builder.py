@@ -135,7 +135,7 @@ class BuildContextOrdineTests(SimpleTestCase):
         ]
         repo.list_riepilogo_iva.return_value = []
 
-        ctx = OrdineDocumentContextBuilder(repo=repo).build_context(7)
+        ctx = OrdineDocumentContextBuilder(repo=repo).build_context(7, auth_user_id=1)
 
         self.assertEqual(len(ctx["righe"]), 2)
         self.assertEqual(ctx["righe"][0]["articolo_descrizione"], "Art A")
@@ -154,7 +154,7 @@ class BuildContextOrdineTests(SimpleTestCase):
             },
         ]
 
-        ctx = OrdineDocumentContextBuilder(repo=repo).build_context(7)
+        ctx = OrdineDocumentContextBuilder(repo=repo).build_context(7, auth_user_id=1)
 
         self.assertEqual(len(ctx["riepilogo_iva"]), 1)
         self.assertEqual(ctx["riepilogo_iva"][0]["iva_aliquota"], "22,00")
@@ -176,7 +176,7 @@ class BuildContextOrdineTests(SimpleTestCase):
         repo.list_righe.return_value = []
         repo.list_riepilogo_iva.return_value = []
 
-        ctx = OrdineDocumentContextBuilder(repo=repo).build_context(7)
+        ctx = OrdineDocumentContextBuilder(repo=repo).build_context(7, auth_user_id=1)
 
         self.assertEqual(
             ctx["ordine"]["origine"],
@@ -194,7 +194,7 @@ class BuildContextOrdineGuardTests(SimpleTestCase):
         for bad in (0, -1, True, "stringa"):
             with self.subTest(value=bad):
                 with self.assertRaises(ServiceError) as ctx:
-                    builder.build_context(bad)  # type: ignore[arg-type]
+                    builder.build_context(bad, auth_user_id=1)  # type: ignore[arg-type]
                 self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.get_ordine.assert_not_called()
 
@@ -204,7 +204,7 @@ class BuildContextOrdineGuardTests(SimpleTestCase):
         repo.get_ordine.return_value = None
         builder = OrdineDocumentContextBuilder(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            builder.build_context(999)
+            builder.build_context(999, auth_user_id=1)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
         repo.list_righe.assert_not_called()
         repo.list_riepilogo_iva.assert_not_called()

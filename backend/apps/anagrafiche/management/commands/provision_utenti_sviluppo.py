@@ -47,6 +47,7 @@ from apps.core.db.auth_repository import AuthRepository
 from apps.core.management.comando_aziendale import ComandoAziendale
 from apps.core.services.coda_lavori.context import operator_identity_context
 from apps.core.services.secondo_fattore_service import SecondoFattoreService
+from apps.core.services.utente_per_id import utente_per_id
 
 # I valori di `dbops.installazione.ambiente` e dell'uscita del verbo.
 AMBIENTE_SVILUPPO = "SVILUPPO"
@@ -130,7 +131,9 @@ class Command(ComandoAziendale):
     # Scopo: Il secondo fattore della credenziale, gia' confermato, dentro il
     #        contesto della sua veste OPERATORE. None se era gia' attivo.
     def _configura_secondo_fattore(self, auth_user_id: int) -> dict[str, Any] | None:
-        user = User.objects.get(pk=auth_user_id)
+        user = utente_per_id(auth_user_id)
+        if user is None:
+            raise CommandError(f"utente {auth_user_id} non trovato: il provisioning l'ha appena creato?")
         vesti = [
             v for v in AuthRepository().find_identita_per_ruolo(auth_user_id, VESTE_OPERATORE)
             if v["attivo"]

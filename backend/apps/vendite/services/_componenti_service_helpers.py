@@ -20,12 +20,12 @@ from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from django.contrib.auth import get_user_model
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.value_normalizer import empty_to_none
+from apps.core.services.utente_per_id import utente_per_id
 from apps.vendite.services._pricing_gate_helpers import check_permesso_override_prezzo
 
 
@@ -209,12 +209,8 @@ def normalize_componenti_attivazioni(
 # modo di chiamare il resolver, ma cio' non deve bloccare la create di
 # righe non composite.
 def resolve_emittente_sr_id_safe(auth_user_id: int | None) -> int | None:
-    if auth_user_id is None:
-        return None
-    user_model = get_user_model()
-    try:
-        user = user_model.objects.get(pk=auth_user_id)
-    except user_model.DoesNotExist:
+    user = utente_per_id(auth_user_id)
+    if user is None:
         return None
     emittenti_sr = PermissionResolver.get_emittenti_sr_ids(user) or []
     if not emittenti_sr:

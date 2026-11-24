@@ -44,6 +44,7 @@ from django.db import connection, transaction
 
 from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 from apps.vendite.services.vendite_service import fn_list_lotto_gruppi
+from apps.core.db._helpers import utente_di_sessione
 
 
 class LottoGruppiOrdineDiApertura(TestCase):
@@ -126,7 +127,7 @@ class LottoGruppiOrdineDiApertura(TestCase):
                 "test non prova niente",
             )
 
-            righe = fn_list_lotto_gruppi(lotto_id=lotto_id)["results"]
+            righe = fn_list_lotto_gruppi(lotto_id=lotto_id, auth_user_id=utente_di_sessione(function_name=__name__))["results"]
             self.assertGreaterEqual(len(righe), 2, "serve la mescolanza")
             # ⛔ IL FALLITO E' IL PRIMO. Senza `NULLS LAST` qui uscivano prima
             #    tutti i mai tentati, perche' `NULL = 'ERRORE'` vale NULL e

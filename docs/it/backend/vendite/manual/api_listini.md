@@ -327,7 +327,7 @@ completa `{count, results}`, senza pagina.
 |---|---|---|---|
 | `search` | string | No | Ricerca libera sulle colonne che il catalogo accende (`codice_versione`); sotto 3 caratteri si ignora |
 | `limit` · `offset` | int | No | Come §1.1 |
-| `order_by` | string | No | `valido_dal` (default, DESC), `valido_al`, `codice_versione`, `righe_count`, `stato`, `giorni_alla_scadenza`. Le date senza direzione si ordinano DESC |
+| `order_by` | string | No | `valido_dal` (default, DESC), `valido_al`, `codice_versione`, `righe_count`, `stato`, `giorni_alla_scadenza`. Senza `order_dir`: `desc` su `valido_dal` (il default della lista), `asc` sulle altre colonne, date comprese (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata) |
 | `order_dir` | string | No | `asc` oppure `desc` |
 
 Campi dal modello del documento (giro 12, brief-modello-documento-vendita §16,

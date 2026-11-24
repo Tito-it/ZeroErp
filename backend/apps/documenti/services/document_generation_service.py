@@ -140,8 +140,10 @@ _DOCUMENTO_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
 # e' diverso da "scope None". Default = deriva lo scope dallo user (path web,
 # invariato per i 6 domini).
 # ⭐ Il path PROCESSO (worker headless) passa `emittente_scope` ESPLICITO — la
-# lista di UN emittente, quello del proprio utente tecnico — e `user=None`
-# (audit a None: l'attore e' in `app.jwt_user`).
+# lista di UN emittente, quello del proprio utente tecnico — e quell'utente
+# tecnico come `user` (dal 2026-11-24, D-K6 a: prima `user=None`, con l'audit
+# `generato_da_user_id` a NULL e il builder della fattura senza filtro
+# applicativo). L'audit ora nomina l'utente tecnico che ha stampato.
 # ⛔ Fino al 2026-09-05 passava `None` («vede tutto») su un canale `BYPASSRLS`:
 # era la porta da cui un worker generava il documento di qualunque azienda. Il
 # canale non esiste piu' e quella combinazione e' rifiutata (R-2/R-4).
@@ -185,8 +187,10 @@ class DocumentGenerationService:
     #        del documento generato + storage_uri del file persistito.
     #        C-0: `emittente_scope` separa CHI AUTORIZZA da COSA GENERA —
     #        default sentinel = deriva dallo `user` (path web, invariato);
-    #        il path sistema passa lo scope gia' risolto (None = vede tutto,
-    #        perimetro esplicito obbligatorio, vedi `_resolve_scope_chiamante`).
+    #        il path sistema passa lo scope gia' risolto (la lista del suo
+    #        emittente). ⛔ `user` serve sempre, anche al path sistema (il
+    #        worker passa l'utente tecnico, D-K6 a): vedi
+    #        `_resolve_scope_chiamante`.
     def genera_documento(
         self,
         user: AbstractBaseUser | AnonymousUser | None,
@@ -218,9 +222,10 @@ class DocumentGenerationService:
             allegati, emittente_fiscale_id, tipo_allegato,
         )
 
-        # 1) autorizzazione: path web deriva lo scope dallo user (auth guard
-        #    + un solo round-trip, riusato in `_resolve_template`); path
-        #    sistema riceve lo scope gia' risolto dal chiamante (C-0).
+        # 1) autorizzazione: auth guard su tutti e due i percorsi; il path web
+        #    deriva lo scope dallo user (un solo round-trip, riusato in
+        #    `_resolve_template`), il path sistema lo riceve gia' risolto dal
+        #    chiamante (C-0).
         scope = self._resolve_scope_chiamante(user, emittente_scope)
         guard_emittente_in_scope(scope, emittente_fiscale_id)
 
@@ -1004,21 +1009,30 @@ class DocumentGenerationService:
     # =================================================================
 
     # Scopo: C-0 — risolve lo scope emittente del chiamante separando CHI
-    #        AUTORIZZA da COSA GENERA. Sentinel (default) = path web: auth
-    #        guard + `resolve_emittente_scope(user)` come sempre. Scope
-    #        esplicito = path caller-resolved: il chiamante ha gia' deciso
-    #        (un worker passa la lista di UN emittente: il proprio). ⛔ Dal
-    #        2026-09-05 la combinazione `scope=None + user=None` — «nessun
-    #        utente e nessun perimetro» — NON e' piu' ammessa da nessun canale:
-    #        o si dice chi si e', o si dice per quale azienda si genera.
+    #        AUTORIZZA da COSA GENERA. Sentinel (default) = path web:
+    #        `resolve_emittente_scope(user)`. Scope esplicito = path
+    #        caller-resolved: il chiamante ha gia' deciso (un worker passa la
+    #        lista di UN emittente: il proprio).
+    # ⛔ L'UTENTE SERVE SU TUTTI E DUE I PERCORSI (2026-11-24, D-K6 a, Tid,
+    #    brief-db-porte-aperte-dalla-sola-guc §4.7). Dal 2026-09-05 bastava
+    #    dire o chi si e' o per quale azienda si genera, e il worker della coda
+    #    stampa generava con `user=None` e il perimetro esplicito: il builder
+    #    della fattura riceveva `auth_user_id=None` e `get_fattura_testata`
+    #    saltava il filtro applicativo, con un ramo dichiarato solo per lui. Un
+    #    ramo senza filtro e' una porta, anche quando oggi la attraversa solo il
+    #    worker. Ora il worker passa il suo utente tecnico, e lo scope esplicito
+    #    resta per quello che e': restringere il perimetro a un'azienda.
+    #    ⛔ E NON si e' sostituito il guard con «la connessione ha un utente
+    #    in sessione?»: la GUC la impone il chiamante, e un guard che la legge
+    #    crede al chiamante. Qui si pretende il DATO.
     def _resolve_scope_chiamante(
         self,
         user: AbstractBaseUser | AnonymousUser | None,
         emittente_scope: Any,
     ) -> list[int] | None:
+        guard_user_authenticated(user)
+        assert user is not None
         if emittente_scope is _SCOPE_DA_UTENTE:
-            guard_user_authenticated(user)
-            assert user is not None
             return resolve_emittente_scope(user)
         # Fail-fast parlante su input malformato del chiamante (lo scope
         # esplicito e' un contratto interno: lista di id oppure None).
@@ -1027,34 +1041,6 @@ class DocumentGenerationService:
             code=E_VALIDATION,
             message="emittente_scope non valido: attesa lista di id o None.",
             detail=f"emittente_scope={type(emittente_scope).__name__}",
-        )
-        # ⛔ SENZA UTENTE E SENZA PERIMETRO NON SI GENERA PIU' (2026-09-05,
-        #    residuo R-4 del cantiere «nessun processo senza operatore»).
-        #    Fino a ieri quella combinazione era ammessa su una connessione
-        #    `BYPASSRLS`: era la porta da cui un worker produceva il documento
-        #    di QUALUNQUE azienda senza dire per conto di chi.
-        #    ⭐ Adesso il worker della coda stampa gira con l'identita'
-        #    dell'utente tecnico e passa il perimetro esplicito
-        #    (`emittente_scope=[id]`), quindi questo ramo non ha piu' nessun
-        #    chiamante legittimo — e restare aperto lo renderebbe di nuovo
-        #    raggiungibile per distrazione.
-        #    ⛔ E NON si e' sostituito il guard con «la connessione ha un utente
-        #    in sessione?»: sarebbe stato un secondo criterio accanto a quello
-        #    che il database applica gia' — la GUC la impone il chiamante, e un
-        #    guard che la legge crede al chiamante. Qui si pretende il DATO:
-        #    o dici chi sei, o dici per quale azienda stai generando.
-        ErrorManager.require(
-            not (emittente_scope is None and user is None),
-            code=E_VALIDATION,
-            message=(
-                "Generazione senza utente e senza perimetro emittente: "
-                "il processo non dichiara per conto di chi genera."
-            ),
-            detail=(
-                "Passare `emittente_scope=[<emittente_fiscale_id>]` — il "
-                "perimetro dell'utente tecnico del processo — oppure lo user "
-                "della richiesta."
-            ),
         )
         return emittente_scope
 
@@ -1200,9 +1186,17 @@ class DocumentGenerationService:
         *,
         locale: str,
     ) -> dict[str, Any]:
+        auth_user_id = getattr(user, "id", None)
+        # ⛔ I due chiamanti (`genera_documento`, `anteprima_documento`) hanno
+        #    gia' passato il guard dell'utente (D-K6 a, 2026-11-24): un id
+        #    mancante qui e' il patto rotto, non un input. RuntimeError e non
+        #    `assert`, cosi' resta acceso anche con `python -O`; prima il `None`
+        #    arrivava al builder della fattura e saltava il filtro applicativo.
+        if auth_user_id is None:
+            raise RuntimeError("contesto di stampa senza utente: guard dell'utente saltato")
         return builder.build_context(
             sorgente_id,
-            auth_user_id=getattr(user, "id", None),
+            auth_user_id=auth_user_id,
             locale=locale,
         )
 

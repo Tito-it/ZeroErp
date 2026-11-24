@@ -56,10 +56,10 @@
 #  24. aggiungi_allegati_append_persiste_file (+ evento ALLEGATO_AGGIUNTO)
 #  25. aggiungi_allegati_documento_inesistente_raises_not_found
 #  26. aggiungi_allegati_lista_vuota_raises_validation
-#  27. genera_documento_path_sistema_completo_audit_none (C-0)
-#  28. genera_documento_scope_none_senza_canale_sistema_raises (C-0)
+#  27. genera_documento_path_processo_completo_audit_utente_tecnico (C-0, D-K6 a)
+#  28. genera_documento_senza_utente_raises_anche_col_perimetro (C-0, D-K6 a)
 #  29. genera_documento_scope_esplicito_guard_emittente (C-0)
-#  30. genera_documento_path_sistema_template_override_usa_repo (C-0)
+#  30. genera_documento_path_processo_template_override_usa_repo (C-0)
 #  31. genera_documento_forma_dei_dati_rifiutata_niente_render (2026-09-30)
 # ------------------------------------------------------------
 
@@ -1021,17 +1021,21 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
     combinazione era la porta da cui un worker generava il documento di
     qualunque azienda.
 
+    ⭐ Dal 2026-11-24 (D-K6 a) il processo passa anche il suo UTENTE TECNICO:
+    `user=None` non e' piu' ammesso nemmeno col perimetro esplicito, perche'
+    era il ramo in cui il builder della fattura leggeva senza filtro.
+
     Indice test (27..30):
-     27. path processo (user=None, scope esplicito) -> pipeline completa,
-         audit a None, PermissionResolver MAI interpellato
-     28. ⛔ user=None + scope=None -> VALIDATION fail-loud SEMPRE, su qualsiasi
-         canale: niente accesso repo/storage
-     29. scope esplicito lista: guard emittente si applica senza auth guard
+     27. path processo (utente tecnico, scope esplicito) -> pipeline completa,
+         audit all'utente tecnico, PermissionResolver MAI interpellato
+     28. ⛔ user=None -> VALIDATION fail-loud SEMPRE, con o senza perimetro:
+         niente accesso repo/storage
+     29. scope esplicito lista: guard emittente sullo scope del chiamante
      30. template override in path processo -> repo.get_template (non reader)
     """
 
-    # 27. path processo: pipeline completa senza utente, ma CON perimetro.
-    def test_genera_documento_path_processo_completo_audit_none(self) -> None:
+    # 27. path processo: pipeline completa con l'utente tecnico e il perimetro.
+    def test_genera_documento_path_processo_completo_audit_utente_tecnico(self) -> None:
         template = template_row()
         versione = versione_row()
         svc, repo, _, storage = service_with_mocks(
@@ -1050,7 +1054,7 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
                 patch_get_builder({"numero": 7}), patch_render():
             with _patch_transaction_atomic_noop():
                 result = svc.genera_documento(
-                    None,
+                    make_user(user_id=501),
                     # ⭐ Il perimetro dell'utente tecnico, non «vedo tutto».
                     emittente_scope=[11],
                     **_GENERA_DEFAULT,
@@ -1058,31 +1062,34 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
         self.assertEqual(result["id"], 99)
         # Lo scope NON viene derivato dallo user: il chiamante l'ha risolto.
         scope_mock.assert_not_called()
+        # L'audit nomina l'utente tecnico che ha stampato (prima None).
         documento_data = repo.create_documento_generato.call_args.args[0]
-        self.assertIsNone(documento_data["generato_da_user_id"])
+        self.assertEqual(documento_data["generato_da_user_id"], 501)
         evento_data = repo.emit_evento_documento.call_args.args[0]
-        self.assertIsNone(evento_data["user_id"])
+        self.assertEqual(evento_data["user_id"], 501)
         storage.write.assert_called_once()
 
-    # 28. ⛔ user=None + scope=None -> fail-loud SEMPRE (R-4, 2026-09-05).
-    #     Prima dipendeva dal canale: su una connessione BYPASSRLS passava, ed
-    #     era la porta. Adesso non c'e' nessun canale che la apra: o si dice chi
-    #     si e', o si dice per quale azienda si genera.
-    def test_genera_documento_senza_utente_e_senza_perimetro_raises(self) -> None:
-        svc, repo, _, storage = service_with_mocks()
-        with self.assertRaises(ServiceError) as ctx:
-            svc.genera_documento(None, emittente_scope=None, **_GENERA_DEFAULT)
-        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
-        repo.risolvi_template_applicabile.assert_not_called()
-        storage.write.assert_not_called()
+    # 28. ⛔ user=None -> fail-loud SEMPRE. Dal 2026-09-05 (R-4) senza utente
+    #     E senza perimetro; dal 2026-11-24 (D-K6 a) anche col perimetro
+    #     esplicito: era il ramo del worker in cui il builder della fattura
+    #     leggeva la testata senza filtro applicativo.
+    def test_genera_documento_senza_utente_raises_anche_col_perimetro(self) -> None:
+        for scope in (None, [11]):
+            with self.subTest(emittente_scope=scope):
+                svc, repo, _, storage = service_with_mocks()
+                with self.assertRaises(ServiceError) as ctx:
+                    svc.genera_documento(None, emittente_scope=scope, **_GENERA_DEFAULT)
+                self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+                repo.risolvi_template_applicabile.assert_not_called()
+                storage.write.assert_not_called()
 
-    # 29. scope esplicito lista: emittente fuori whitelist -> rifiutato,
-    #     senza passare dall'auth guard (user=None ammesso).
+    # 29. scope esplicito lista: emittente fuori whitelist -> rifiutato sullo
+    #     scope del chiamante, non su quello derivato dall'utente.
     def test_genera_documento_scope_esplicito_guard_emittente(self) -> None:
         svc, repo, _, storage = service_with_mocks()
         with self.assertRaises(ServiceError) as ctx:
             svc.genera_documento(
-                None, emittente_scope=[1, 2], **_GENERA_DEFAULT,
+                make_user(user_id=501), emittente_scope=[1, 2], **_GENERA_DEFAULT,
             )
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.risolvi_template_applicabile.assert_not_called()
@@ -1113,7 +1120,7 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
         with patch_get_builder({"numero": 7}), patch_render():
             with _patch_transaction_atomic_noop():
                 svc.genera_documento(
-                    None,
+                    make_user(user_id=501),
                     emittente_scope=[11],
                     template_documento_id=42,
                     **_GENERA_DEFAULT,

@@ -13,6 +13,7 @@ from typing import Any, Callable, TypeVar
 
 from django.db import connection
 
+from apps.core.db import emittente_scope_helpers
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 
 T = TypeVar("T")
@@ -223,7 +224,8 @@ class PermissionResolver:
         cls, user: Any, *, cache: dict[str, Any] | None = None
     ) -> list[int] | None:
         """Scopo: Restituisce i soggetto_ruolo_id degli emittenti fiscali
-        autorizzati per l'utente. Wrapper su fn_get_emittenti_scope_sr_ids.
+        autorizzati per l'utente: fn_get_emittenti_scope_sr_ids, letta dal BB
+        dello scope (`_emittenti_dal_bb`).
 
         **Quando usare**: query che filtrano su colonne <ruolo>_soggetto_ruolo_id
         (BA scope via emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id,
@@ -235,27 +237,15 @@ class PermissionResolver:
         e memoria `feedback_emittente_pk_vs_soggetto_ruolo`.
 
         Semantica: None = nessuna restrizione, [] = nessun accesso."""
-        def _query() -> list[int] | None:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT script.fn_get_emittenti_scope_sr_ids(%s)",
-                    [user.id],
-                )
-                row = cursor.fetchone()
-            # fn_get_emittenti_scope_sr_ids ritorna bigint[] o NULL
-            if row and row[0] is not None:
-                return list(row[0])
-            return None
-
-        return _cached(cache, "emittenti_sr_ids", _query)
+        return cls._emittenti_dal_bb(user, "sr", cache)
 
     @classmethod
     def get_emittenti_pk_ids(
         cls, user: Any, *, cache: dict[str, Any] | None = None
     ) -> list[int] | None:
         """Scopo: Restituisce le PK reali (emittenti_fiscali.id) autorizzate
-        per l'utente. Wrapper su fn_get_emittenti_scope_pk_ids (canonica nuova,
-        2026-05-02).
+        per l'utente: fn_get_emittenti_scope_pk_ids (canonica nuova,
+        2026-05-02), letta dal BB dello scope (`_emittenti_dal_bb`).
 
         **Quando usare**: query che filtrano su colonne PK
         (vw_preventivi_list.emittente_fiscale_id, vendite.preventivi.emittente_fiscale_id
@@ -277,18 +267,34 @@ class PermissionResolver:
         e memoria `feedback_emittente_pk_vs_soggetto_ruolo`.
 
         Semantica: None = nessuna restrizione, [] = nessun accesso."""
-        def _query() -> list[int] | None:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT script.fn_get_emittenti_scope_pk_ids(%s)",
-                    [user.id],
-                )
-                row = cursor.fetchone()
-            if row and row[0] is not None:
-                return list(row[0])
-            return None
+        return cls._emittenti_dal_bb(user, "pk", cache)
 
-        return _cached(cache, "emittenti_pk_ids", _query)
+    @classmethod
+    def _emittenti_dal_bb(
+        cls, user: Any, convention: str, cache: dict[str, Any] | None
+    ) -> list[int] | None:
+        """Scopo: Sede unica dei due metodi emittenti: risolve il perimetro
+        col BB `emittente_scope_helpers.fetch_emittenti_scope_ids` e lo tiene
+        nella cache della richiesta.
+
+        ⛔ Fino al 2026-11-24 i due metodi interrogavano le funzioni DB per
+        conto loro: una seconda sede della stessa domanda (regola del 2), che
+        con `user=None` usciva come `AttributeError`, cioe' un 500 generico.
+        Ora un utente assente o anonimo (`id` None) e' il rifiuto dichiarato
+        `E_SCOPE_SENZA_UTENTE` del BB (D-K5 a, Tid,
+        brief-db-porte-aperte-dalla-sola-guc §4.7). Prima l'anonimo passava
+        NULL e il DB rispondeva chiuso (`'{}'`): chiuso era e chiuso resta, ma
+        ora lo dice. Un rifiuto non entra in cache.
+
+        Il BB si chiama attraverso il modulo, non importato per nome: cosi' il
+        patch del BB di test (`perimetro_admin_globale_di_prova`) arriva anche
+        qui."""
+        def _query() -> list[int] | None:
+            return emittente_scope_helpers.fetch_emittenti_scope_ids(
+                getattr(user, "id", None), convention=convention,
+            )
+
+        return _cached(cache, f"emittenti_{convention}_ids", _query)
 
     @classmethod
     def get_emittente_for_user(

@@ -78,8 +78,8 @@ Ora accetta `limit` / `offset` come ogni altra lista configurabile.
   ⚠️ `residuo` si ordina per **alias** — è un `CASE` che vale NULL sui tipi
   senza tetto, e riscriverne l'espressione ordinerebbe diversamente da come si
   legge.
-- ⚠️ **Senza `order_by` resta l'ordine storico** (`COALESCE(valido_al,'infinity')
-  DESC`), e va preservato: `list_titoli_soggetto` ha un **secondo consumatore**,
+- ⚠️ **Senza `order_by` resta l'ordine storico** (`valido_al DESC NULLS FIRST,
+  valido_dal DESC`: i titoli senza scadenza in cima), e va preservato: `list_titoli_soggetto` ha un **secondo consumatore**,
   `SoggettiService`, che la incorpora nel dettaglio di un soggetto e non passa
   ordinamento.
 - ⛔ `order_by` si legge **grezzo** (`qp_str`), non da `parse_list_params`: il

@@ -119,7 +119,7 @@ Validazione payload e traduzione vincoli DB delegate al building block
 | `limit` | int | No | Righe per pagina, default `25`, max `200` |
 | `offset` | int | No | Righe da saltare, default `0` (la risposta riporta `page`/`page_size` calcolati da `limit`/`offset`) |
 | `order_by` | string | No | `codice` \| `descrizione` \| `ordinamento` \| `partecipa_promo` \| `attivo` \| `data_insert` \| `data_update`. Default: `ordinamento` |
-| `order_dir` | string | No | `asc` oppure `desc`. Assente: `asc`, salvo le colonne data (`data_insert`, `data_update`) che partono `desc` |
+| `order_dir` | string | No | `asc` oppure `desc`. Assente: `asc` su ogni colonna, date comprese (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata) |
 
 ### Risposta (200)
 
