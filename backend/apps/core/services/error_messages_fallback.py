@@ -1359,8 +1359,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # distinte: sono due guasti diversi, e confonderli manda a cercare un
     # permesso dove manca un'identita'.
     "E_SCOPE_SENZA_UTENTE": (
-        "Scrittura senza un utente in sessione su una tabella con perimetro "
-        "emittente: il processo non dichiara chi agisce."
+        "Perimetro emittente richiesto senza un utente: il processo non "
+        "dichiara chi agisce (scrittura su una tabella con perimetro, o "
+        "lettura di una lista con perimetro)."
     ),
     "E_SCRIPT_CHIAMATA_NON_VALIDA": "Chiamata non valida a una funzione del database: anomalia tecnica.",
     "E_SCRITTURA_IN_LETTURA": "Modifica dati non permessa.",

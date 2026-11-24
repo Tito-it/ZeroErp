@@ -75,15 +75,16 @@ DOCUMENTI_SORGENTE_ORDER_COLUMNS: dict[str, str] = {
 }
 
 # Whitelist ORDER BY delle versioni di un template (lista 88,
-# `documenti.template_versioni`). `valido_al` vuota = senza scadenza: con
-# `COALESCE(…, 'infinity')` sta IN CIMA al DESC, come in ogni lista con
-# validita' del progetto (una versione aperta e' la piu' «lunga»).
+# `documenti.template_versioni`). `valido_al` vuota = senza scadenza: sta IN
+# CIMA al DESC, come in ogni lista con validita' del progetto (una versione
+# aperta e' la piu' «lunga»). Lo dichiara il catalogo
+# (`ui.lista_colonna.vuoto_ordinato_come_massimo`), non questa whitelist.
 TEMPLATE_VERSIONI_ORDER_COLUMNS: dict[str, str] = {
     "versione": "v.versione",
     "titolo": "v.titolo",
     "stato": "v.stato",
     "valido_dal": "v.valido_dal",
-    "valido_al": "COALESCE(v.valido_al, 'infinity'::date)",
+    "valido_al": "v.valido_al",
     "attivo": "v.attivo",
     "data_update": "v.data_update",
 }
@@ -192,10 +193,11 @@ VERSIONE_UPDATE_COLUMNS: tuple[str, ...] = (
 
 
 # Mappatura colonne ammesse per ORDER BY lato lista asset.
-# `attivo` e' NUCLEO (lo stato ordina sempre). `valido_al` aggiunta insieme a
-# `valido_dal` gia' presente: dove una lista mostra le date di validita', quelle
-# colonne ordinano — e `valido_al` DESC e' il default d'elezione (i NULL, cioe'
-# gli asset senza scadenza, salgono in testa; le scadenze vecchie vanno in fondo).
+# `attivo` e' NUCLEO (lo stato ordina sempre). ⛔ `valido_al` NON c'e' (D-4 di
+# brief-db-lista-colonna-vuoto-in-ordine, Tid 2026-11-24): la lista di catalogo
+# degli asset non ha la colonna, quindi il frontend non la puo' chiedere, e il
+# suo `COALESCE(…, 'infinity')` era l'eccezione «vuoto come il massimo» scritta
+# fuori dal catalogo.
 # `asset_tipo_descrizione` ed `emittente_ragione_sociale` restano nude: sono
 # alias di output della SELECT (colonne di tabelle JOINte).
 ASSET_ORDER_COLUMNS: dict[str, str] = {
@@ -211,7 +213,6 @@ ASSET_ORDER_COLUMNS: dict[str, str] = {
     "data_insert": "a.data_insert",
     "data_update": "a.data_update",
     "valido_dal": "a.valido_dal",
-    "valido_al": "COALESCE(a.valido_al, 'infinity'::date)",
 }
 
 

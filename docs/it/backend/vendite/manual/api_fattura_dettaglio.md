@@ -154,8 +154,12 @@ Nessuna modifica applicativa è stata necessaria: il percorso operatore legge gl
 
 - **Difesa in profondità**: `get_fattura_testata(..., auth_user_id=...)` somma
   un filtro applicativo (`_add_scope_emittente`, convenzione SR) alla RLS.
-  `auth_user_id=None` (default) = nessun filtro applicativo — è il percorso del
-  motore documentale, che applica lo scope a monte e resta invariato.
+  L'argomento non ha default (dal 2026-11-24), e `auth_user_id=None` è il
+  rifiuto `E_SCOPE_SENZA_UTENTE` del BB dello scope: il ramo che lo leggeva come
+  «nessun filtro» per il motore documentale senza utente è ritirato con D-K6 a
+  (il worker della coda stampa passa il suo utente tecnico). Il service del dettaglio
+  (`get_fattura_dettaglio`) chiede l'utente, senza default: chi lo dimentica
+  riceve un `TypeError`, non una lettura senza filtro.
 - **404 unificato**: inesistente e fuori scope danno la stessa risposta. Un
   errore che li distinguesse confermerebbe l'esistenza di una fattura altrui.
 - `model_permission = ("vendite", "fattura")`: il model **è** catalogato in

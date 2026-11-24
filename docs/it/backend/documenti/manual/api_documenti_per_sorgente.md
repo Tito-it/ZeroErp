@@ -129,7 +129,7 @@ passava — la lista troncava in silenzio).
 | `search` | ricerca libera sulle colonne accese a catalogo (`titolo`, `nome_file`) |
 | `limit` / `offset` | paginazione (default 25, **max 200**) |
 | `order_by` | whitelist `DOCUMENTI_SORGENTE_ORDER_COLUMNS` (`progressivo_sorgente`, `generato_at`, `titolo`, `nome_file`, `stato`); senza = `generato_at DESC` |
-| `order_dir` | `asc` / `desc`; assente = DESC sulle date |
+| `order_dir` | `asc` / `desc`. Assente: `asc` sulla colonna chiesta, date comprese; `desc` solo senza `order_by` o su `generato_at`, il default della lista (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata) |
 | `emittente_fiscale_id` | PK dell'emittente del documento — `lista_emittente_param`: scioglie il cancello di perimetro per chi vede più emittenti (il dialog lo passa dal documento aperto). Non filtra |
 
 Risposta: envelope paginato standard (`count`, `page`, `page_size`,

@@ -91,7 +91,9 @@ _ORDER_COLS_OFFERTE: dict[str, str] = {
     "utility_descrizione": "v.utility_descrizione",
     "listino_codice": "v.listino_codice",
     "validita_dal": "v.validita_dal",
-    "validita_al": "COALESCE(v.validita_al, 'infinity'::date)",
+    # Il vuoto («non scade mai») va come il massimo: lo dichiara il catalogo
+    # (`ui.lista_colonna.vuoto_ordinato_come_massimo`), non questa whitelist.
+    "validita_al": "v.validita_al",
     "data_emissione": "v.data_emissione",
     "stato_descrizione": "v.stato_descrizione",
     "data_accettazione": "v.data_accettazione",
@@ -384,7 +386,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         validita_dal_max: str | None,
         search: str | None,
         solo_ultima_revisione: bool = True,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
     ) -> tuple[str, list[Any]]:
         # Filtri sulla vista canonica `vw_offerte_commerciali_lista` (alias `v`).
         # Tutti i campi consumati qui sono esposti dalla vista — nessun JOIN
@@ -454,7 +456,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         order_dir: str | None = None,
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
     ) -> list[dict[str, Any]]:
         # ⛔ Ordinamento dal BB `sql_order_clause` (2026-09-26). La copia a mano
         #    che c'era («tutto cio' che non e' ASC e' DESC») trasformava in DESC
@@ -510,7 +512,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         validita_dal_max: str | None = None,
         search: str | None = None,
         solo_ultima_revisione: bool = True,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
     ) -> int:
         where_clause, params = self._build_offerte_filters(
             billing_account_id=billing_account_id,

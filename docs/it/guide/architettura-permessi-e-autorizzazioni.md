@@ -644,10 +644,12 @@ policy):
 
 **Operatori interni.** Lo scope policy `EF_WHITELIST` lo applica il
 repository nella query: il building block `add_emittente_scope_condition` (`apps/core/db/emittente_scope_helpers.py`), che legge il perimetro da `script.fn_get_emittenti_scope_pk_ids` / `_sr_ids` (perimetro `user_emittenti_fiscali`
-intersecato con l'emittente attivo della sessione). Semantica del BB: `None` =
-nessuna restrizione (super admin), lista vuota = **fail-closed**. Se
-l'operatore non ha righe non passa **niente**, e la riga mancante e' un errore
-di configurazione (§4.9).
+intersecato con l'emittente attivo della sessione). Semantica del BB: perimetro
+`NULL` dal DB = nessuna restrizione (l'admin globale), lista vuota =
+**fail-closed**. Se l'operatore non ha righe non passa **niente**, e la riga
+mancante e' un errore di configurazione (§4.9). Un perimetro chiesto **senza un
+utente** non si apre: il BB lo rifiuta con `E_SCOPE_SENZA_UTENTE`, e le letture
+con perimetro non hanno un valore di default per l'utente.
 
 **Sul lato DB la stessa regola e' una policy RLS.** Per lo scope emittente degli
 operatori le tabelle del perimetro hanno la RLS **attiva** (`ENABLE`, senza `FORCE`:

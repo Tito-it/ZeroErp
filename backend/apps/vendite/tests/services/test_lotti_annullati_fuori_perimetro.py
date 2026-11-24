@@ -79,6 +79,7 @@ from apps.vendite.db import vendite_repository as vr
 from apps.vendite.db.vendite_repository import VenditeRepository
 from apps.vendite.services import vendite_service
 from apps.vendite.tests._helpers.mock_cursor import mock_cursor as _mock_cursor
+from apps.core.tests._helpers.perimetro_admin_globale_di_prova import perimetro_admin_globale_di_prova
 
 _BASE = {
     "competenza_mese": date(2026, 9, 1),
@@ -87,7 +88,7 @@ _BASE = {
     "area_geografica_id": None,
     "tipo_doc_fiscale_id": None,
     "emittente_soggetto_ruolo_id": None,
-    "auth_user_id": None,
+    "auth_user_id": 7,
     "solo_recuperi_mese": False,
 }
 
@@ -101,6 +102,10 @@ def _where(**kwargs):
 #    con `setattr`; `.cursor` sta sull'oggetto dietro il proxy di Django, `patch`
 #    lo ritiene non locale e all'uscita fa `delattr` — togliendo l'involucro che
 #    `SimpleTestCase` mette per vietare il database, e il `tearDownClass` cade.
+# ⭐ Legge la SQL della lista, non prova il perimetro: il risolutore risponde
+#    «nessuna restrizione» (admin globale). Dal 2026-11-24 `auth_user_id=None`
+#    solleva, quindi il test passa un utente e dichiara il perimetro qui.
+@perimetro_admin_globale_di_prova()
 class LottiAnnullatiPerimetroTests(SimpleTestCase):
     # Scopo: test 0.
     def test_di_default_gli_annullati_sono_fuori(self):
@@ -131,9 +136,9 @@ class LottiAnnullatiPerimetroTests(SimpleTestCase):
         repo = VenditeRepository()
         with patch("apps.vendite.db.vendite_repository.connection") as conn:
             cur = conn.cursor.return_value = _mock_cursor(fetchall=[("ERRORE", 16)])
-            repo.count_lotti_per_stato(competenza_mese=date(2026, 9, 1))
+            repo.count_lotti_per_stato(auth_user_id=7, competenza_mese=date(2026, 9, 1))
             sql_esclusi = cur.execute.call_args[0][0]
-            repo.count_lotti_per_stato(
+            repo.count_lotti_per_stato(auth_user_id=7,
                 competenza_mese=date(2026, 9, 1), includi_annullati=True,
             )
             sql_inclusi = cur.execute.call_args[0][0]
@@ -145,9 +150,9 @@ class LottiAnnullatiPerimetroTests(SimpleTestCase):
         repo = VenditeRepository()
         with patch("apps.vendite.db.vendite_repository.connection") as conn:
             cur = conn.cursor.return_value = _mock_cursor(fetchall=[(9, 2)])
-            repo.count_lotti_per_mese(anno=2026)
+            repo.count_lotti_per_mese(auth_user_id=7, anno=2026)
             sql_esclusi = cur.execute.call_args[0][0]
-            repo.count_lotti_per_mese(anno=2026, includi_annullati=True)
+            repo.count_lotti_per_mese(anno=2026, auth_user_id=7, includi_annullati=True)
             sql_inclusi = cur.execute.call_args[0][0]
         self.assertIn(vr._LOTTI_COND_NON_ABORTITO, sql_esclusi)
         self.assertIn(vr._LOTTI_JOIN_SDF, sql_esclusi)
@@ -159,7 +164,7 @@ class LottiAnnullatiPerimetroTests(SimpleTestCase):
         with patch(
             "apps.vendite.db.vendite_repository.conta_con_perimetro", return_value=43,
         ) as conta:
-            n = VenditeRepository().count_lotti_annullati(
+            n = VenditeRepository().count_lotti_annullati(auth_user_id=7,
                 competenza_mese=date(2026, 9, 1), stato_lotto="ERRORE",
             )
         self.assertEqual(n, 43)
@@ -178,8 +183,8 @@ class LottiAnnullatiPerimetroTests(SimpleTestCase):
             patch.object(VenditeRepository, "count_lotti_per_stato", autospec=True, return_value={}),
             patch.object(VenditeRepository, "count_lotti_annullati", autospec=True, return_value=33) as conta,
         ):
-            nascosti = vendite_service.fn_list_lotti(competenza_mese=date(2026, 9, 1))
-            mostrati = vendite_service.fn_list_lotti(
+            nascosti = vendite_service.fn_list_lotti(auth_user_id=7, competenza_mese=date(2026, 9, 1))
+            mostrati = vendite_service.fn_list_lotti(auth_user_id=7,
                 competenza_mese=date(2026, 9, 1), includi_annullati=True,
             )
         self.assertEqual(nascosti["annullati_count"], 33)

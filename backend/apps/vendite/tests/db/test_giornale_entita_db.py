@@ -30,6 +30,7 @@ from apps.core.tests.db_e2e import richiedi_db_provvisto, richiedi_ruolo_soggett
 from apps.vendite.db.vendite_repository import VenditeRepository
 from apps.vendite.services.vendite_service import get_lotto_giornale
 from apps.vendite.tests.db.test_giornale_trasversale_perimetro import _Mondo
+from apps.core.db._helpers import utente_di_sessione
 
 
 class GiornaleEntitaDbTests(TestCase):
@@ -69,7 +70,7 @@ class GiornaleEntitaDbTests(TestCase):
     def test_con_le_ritirate_il_totale_e_le_righe_mostrate(self) -> None:
         def corpo(mondo):
             data = get_lotto_giornale(
-                lotto_id=mondo.lotto_id, includi_ritirate=True, includi_info=False, limit=200,
+                auth_user_id=utente_di_sessione(function_name=__name__), lotto_id=mondo.lotto_id, includi_ritirate=True, includi_info=False, limit=200,
             )
             self.assertEqual(len(data["results"]), 2)
             self.assertEqual(data["count"], 2)
@@ -79,7 +80,7 @@ class GiornaleEntitaDbTests(TestCase):
     # 2. Ogni riga della Storia porta l'etichetta della sua entita'.
     def test_la_storia_dice_di_chi_e_ogni_riga(self) -> None:
         def corpo(mondo):
-            data = get_lotto_giornale(lotto_id=mondo.lotto_id, includi_info=True, limit=200)
+            data = get_lotto_giornale(auth_user_id=utente_di_sessione(function_name=__name__), lotto_id=mondo.lotto_id, includi_info=True, limit=200)
             self.assertTrue(data["results"])
             for riga in data["results"]:
                 self.assertEqual(riga["entita_display"], f"E2E-GIORNALE-{mondo.sr_id}", riga)

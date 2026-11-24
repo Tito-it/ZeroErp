@@ -63,6 +63,8 @@ class ProvisionUtentiSviluppoTests(SimpleTestCase):
             ("DatiDiSviluppoRepository", MagicMock(return_value=self.repo)),
             ("SecondoFattoreService", MagicMock(return_value=self.servizio)),
             ("User", utenti),
+            # L'utente del secondo fattore, dal BB `utente_per_id` (2026-11-24).
+            ("utente_per_id", MagicMock(return_value=MagicMock(username="dev.smoke"))),
             ("AuthRepository", MagicMock(return_value=auth_repo)),
             ("operator_identity_context", MagicMock(return_value=contextlib.nullcontext())),
             ("make_password", MagicMock(side_effect=lambda p: f"hash:{p}")),

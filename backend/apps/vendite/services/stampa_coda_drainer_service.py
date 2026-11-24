@@ -5,8 +5,9 @@
 # Scopo: Core del worker DRAINER della coda stampa (outbox documentale, Fase C
 #        C-2b/C-2d). Drena `vendite.fatture_stampa_coda`: per ogni fattura in
 #        coda numera (backstop C-2d, idempotente) e genera il PDF via il motore
-#        documentale in CONTESTO SISTEMA (C-0, `emittente_scope=None`), poi
-#        aggiorna lo stato della riga (FATTO / PENDING-riprova / ERRORE).
+#        documentale con l'utente tecnico del badge e il perimetro del suo
+#        emittente (C-0, `emittente_scope=[id]`), poi aggiorna lo stato della
+#        riga (FATTO / PENDING-riprova / ERRORE).
 #
 #        Invarianti (brief-be-fe-processi-fatturazione, §FASE C):
 #         - I-4/D-7: la stampa è stupida. Il drainer non conosce «lotto» né
@@ -41,12 +42,15 @@ import logging
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from django.contrib.auth.base_user import AbstractBaseUser
+
 from apps.core.db.processi_repository import ProcessiRepository
 from apps.core.services.coda_lavori.drain_engine import CHIAVI_ESITO_DRENAGGIO
 from apps.core.services.db_error_fields import bersagli_envelope, diagnostica_db
 from apps.core.services.error_manager import ServiceError
 from apps.core.services.giro_per_azienda import giro_per_azienda
 from apps.core.services.processi import PROCESSO_DRAINA_CODA_STAMPA
+from apps.core.services.utente_per_id import utente_per_id
 from apps.documenti.services.document_generation_service import (
     DocumentGenerationService,
 )
@@ -71,7 +75,7 @@ _STALE_MINUTI_DEFAULT = 30
 #            oltre soglia: il recupero consuma un tentativo, anti poison-job);
 #         2. claim atomico di ≤ `limit` work-item PENDING (SKIP LOCKED);
 #         3. per ciascuno: risolve l'emittente dalla fattura, numera (backstop
-#            C-2d), genera il PDF in contesto sistema, marca l'esito;
+#            C-2d), genera il PDF con l'utente tecnico, marca l'esito;
 #         4. esito strutturato aggregato per il run-log e la console.
 #        Best-effort per-riga: nessun fallimento di render propaga oltre la
 #        riga. Un fallimento di scrittura sulla coda (DB) invece propaga: la
@@ -79,6 +83,7 @@ _STALE_MINUTI_DEFAULT = 30
 def draina_coda_stampa(
     *,
     emittente_fiscale_id: int,
+    utente_tecnico: AbstractBaseUser,
     limit: int = _LIMIT_DEFAULT,
     soglia_tentativi: int = _SOGLIA_TENTATIVI_DEFAULT,
     stale_minuti: int = _STALE_MINUTI_DEFAULT,
@@ -109,6 +114,7 @@ def draina_coda_stampa(
         esito = _lavora_item(
             repo, vendite_repo, doc_service, item, soglia_tentativi,
             emittente_fiscale_id=emittente_fiscale_id,
+            utente_tecnico=utente_tecnico,
         )
         if esito["esito"] == "fatto":
             fatto += 1
@@ -160,8 +166,20 @@ def draina_coda_stampa_per_roster(
 ) -> dict[str, Any]:
     # Scopo: il lavoro di UN badge, gia' dentro la sua identita' (la apre il BB).
     def _drena(badge: Mapping[str, Any]) -> dict[str, Any]:
+        # ⭐ L'utente tecnico del badge e' l'utente del render (D-K6 a,
+        #    2026-11-24): il motore documentale lo pretende, e il filtro
+        #    applicativo della testata fattura vale anche qui. Uno per badge,
+        #    non per riga. Un badge senza utente e' un'azienda fallita del
+        #    giro, non un render senza utente.
+        utente_tecnico = utente_per_id(badge["auth_user_id"])
+        if utente_tecnico is None:
+            raise RuntimeError(
+                f"badge {badge['username']}: l'utente tecnico "
+                f"{badge['auth_user_id']} non esiste"
+            )
         esito = draina_coda_stampa(
             emittente_fiscale_id=badge["emittente_fiscale_id"],
+            utente_tecnico=utente_tecnico,
             limit=limit,
             soglia_tentativi=soglia_tentativi,
             stale_minuti=stale_minuti,
@@ -210,6 +228,7 @@ def _lavora_item(
     soglia_tentativi: int,
     *,
     emittente_fiscale_id: int,
+    utente_tecnico: AbstractBaseUser,
 ) -> dict[str, Any]:
     coda_id = int(item["id"])
     fattura_id = int(item["sorgente_id"])
@@ -257,8 +276,12 @@ def _lavora_item(
         # seleziona gia' la RLS (`rls_fatture_stampa_coda_ef_whitelist`), che
         # sotto l'identita' tecnica mostra solo il proprio emittente. Qui si
         # prende il caso in cui quella policy non ci fosse.
+        # ⭐ Con l'utente tecnico, non `None` (D-K6 a, 2026-11-24): il builder
+        # della fattura legge la testata col filtro applicativo del suo
+        # perimetro, e l'audit del documento nomina chi ha stampato. Fino a
+        # quel giorno era l'unico ramo che saltava il filtro.
         documento = doc_service.genera_documento(
-            None,
+            utente_tecnico,
             emittente_fiscale_id=int(entity["emittente_fiscale_id"]),
             sorgente_tipo_id=int(item["sorgente_tipo_id"]),
             # La fattura per id: la chiave della stampa la sceglie il DB dal

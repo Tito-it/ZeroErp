@@ -26,6 +26,7 @@ from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.core.services.ordinamento_di_partenza import (
     applica_misura_di_partenza,
     applica_ordinamento_di_partenza,
+    applica_vuoti_come_massimo,
     ritira_ordinamento_di_partenza,
 )
 from apps.core.services.request_context import (
@@ -90,13 +91,24 @@ class _ApiViewBase(APIView):
             # E la misura di partenza, quando la richiesta non porta `limit`
             # (BE10): la legge `pagina_da_query` solo se pagina davvero.
             applica_misura_di_partenza(request, lista_codice=self.lista_codice)
+        if self.lista_codice:
+            # Dove va il vuoto quando la lista ordina, dichiarato nel catalogo
+            # (brief-db-lista-colonna-vuoto-in-ordine): la legge il BB
+            # dell'ordinamento solo se risolve una colonna.
+            # ⭐ FUORI dal gate dell'utente autenticato (Tid, 2026-11-24): e' un
+            #    fatto del CATALOGO, uguale per ogni utente, anonimo dello shop
+            #    compreso. Ordinamento e misura restano dentro: dipendono da chi
+            #    legge. Sta dopo il cancello: una lista che non si puo' leggere
+            #    non arriva qui.
+            applica_vuoti_come_massimo(request, lista_codice=self.lista_codice)
 
     # Codice stabile della lista di catalogo servita da questo endpoint, quando
     # ne serve UNA (`"vendite.dash_competenza_gruppi"`). `None` = l'endpoint non
     # alimenta una lista di catalogo.
     # ⭐ Su OGNI porta accende la PARTENZA della lista: l'ordinamento e la misura
     #    della sua configurazione quando la richiesta non li porta
-    #    (`apps.core.services.ordinamento_di_partenza`). Sta qui, e non in
+    #    (`apps.core.services.ordinamento_di_partenza`), e dove va il vuoto
+    #    delle colonne che lo dichiarano quando la lista ordina. Sta qui, e non in
     #    `DomainAPIView`, dal 2026-11-22 (residuo di BE25 (2) di
     #    brief-db-revisione-ui, ok Tid): le liste dell'amministrazione
     #    (`AdminAPIView`) non la ricevevano, e il FE ne teneva le copie.

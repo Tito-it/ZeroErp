@@ -62,7 +62,7 @@ class ApiPermessiEffettiviViewTests(RichiedenteMockatoMixin, TestCase):
 
     # Scopo: La risposta include chiave `modelli` per ogni area — anche vuota.
     @patch("apps.core.api.views.PermissionResolver")
-    @patch("apps.core.api.views.get_user_model")
+    @patch("apps.core.api.views.utente_per_id")
     @patch("apps.config.models.AreaFunzionale")
     def test_aree_includono_modelli(self, mock_area_cls, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiEffettivi
@@ -74,7 +74,7 @@ class ApiPermessiEffettiviViewTests(RichiedenteMockatoMixin, TestCase):
         target = MagicMock()
         target.id = 5
         target.get_username.return_value = "mario"
-        mock_get_user.return_value.objects.get.return_value = target
+        mock_get_user.return_value = target
 
         request = _mock_request(user_id=5)
         view = ApiPermessiEffettivi()
@@ -90,7 +90,7 @@ class ApiPermessiEffettiviViewTests(RichiedenteMockatoMixin, TestCase):
 
     # Scopo: I model registrati nell'area appaiono in `modelli` con il livello risolto.
     @patch("apps.core.api.views.PermissionResolver")
-    @patch("apps.core.api.views.get_user_model")
+    @patch("apps.core.api.views.utente_per_id")
     @patch("apps.config.models.AreaFunzionale")
     def test_modelli_con_livello_oggetto(self, mock_area_cls, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiEffettivi
@@ -112,7 +112,7 @@ class ApiPermessiEffettiviViewTests(RichiedenteMockatoMixin, TestCase):
         target = MagicMock()
         target.id = 5
         target.get_username.return_value = "mario"
-        mock_get_user.return_value.objects.get.return_value = target
+        mock_get_user.return_value = target
 
         request = _mock_request(user_id=5)
         view = ApiPermessiEffettivi()
@@ -129,7 +129,7 @@ class ApiPermessiEffettiviViewTests(RichiedenteMockatoMixin, TestCase):
 
     # Scopo: Area senza model registrati → `modelli` lista vuota.
     @patch("apps.core.api.views.PermissionResolver")
-    @patch("apps.core.api.views.get_user_model")
+    @patch("apps.core.api.views.utente_per_id")
     @patch("apps.config.models.AreaFunzionale")
     def test_modelli_vuoti_se_nessun_override(self, mock_area_cls, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiEffettivi
@@ -144,7 +144,7 @@ class ApiPermessiEffettiviViewTests(RichiedenteMockatoMixin, TestCase):
         target = MagicMock()
         target.id = 5
         target.get_username.return_value = "luigi"
-        mock_get_user.return_value.objects.get.return_value = target
+        mock_get_user.return_value = target
 
         request = _mock_request(user_id=5)
         view = ApiPermessiEffettivi()
@@ -156,7 +156,7 @@ class ApiPermessiEffettiviViewTests(RichiedenteMockatoMixin, TestCase):
 
     # Scopo: ADMIN puo' interrogare permessi di un altro utente.
     @patch("apps.core.api.views.PermissionResolver")
-    @patch("apps.core.api.views.get_user_model")
+    @patch("apps.core.api.views.utente_per_id")
     @patch("apps.config.models.AreaFunzionale")
     def test_admin_puo_vedere_altro_utente(self, mock_area_cls, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiEffettivi
@@ -168,7 +168,7 @@ class ApiPermessiEffettiviViewTests(RichiedenteMockatoMixin, TestCase):
         target = MagicMock()
         target.id = 99
         target.get_username.return_value = "altro"
-        mock_get_user.return_value.objects.get.return_value = target
+        mock_get_user.return_value = target
 
         request = _mock_request(user_id=1)
         view = ApiPermessiEffettivi()
@@ -181,7 +181,7 @@ class ApiPermessiEffettiviViewTests(RichiedenteMockatoMixin, TestCase):
     # GUC della sessione, cioe' «OPERATORE»: la veste di chi guarda. Ora dice
     # la veste operatore del consultato, e la domanda si fa su di lui.
     @patch("apps.core.api.views.PermissionResolver")
-    @patch("apps.core.api.views.get_user_model")
+    @patch("apps.core.api.views.utente_per_id")
     @patch("apps.config.models.AreaFunzionale")
     def test_altro_utente_senza_veste_operatore(self, mock_area_cls, mock_get_user, mock_resolver):
         import json
@@ -196,7 +196,7 @@ class ApiPermessiEffettiviViewTests(RichiedenteMockatoMixin, TestCase):
         target = MagicMock()
         target.id = 99
         target.get_username.return_value = "cliente.portale"
-        mock_get_user.return_value.objects.get.return_value = target
+        mock_get_user.return_value = target
 
         response = ApiPermessiEffettivi().get(_mock_request(user_id=1), user_id=99)
 
@@ -225,18 +225,14 @@ class ApiPermessiEffettiviViewTests(RichiedenteMockatoMixin, TestCase):
 
     # Scopo: user_id inesistente → 404 E_AMM_UTENTE_NOT_FOUND (E-4).
     @patch("apps.core.api.views.PermissionResolver")
-    @patch("apps.core.api.views.get_user_model")
+    @patch("apps.core.api.views.utente_per_id")
     def test_utente_non_trovato(self, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiEffettivi
         from apps.core.services.service_errors import ServiceError
 
         self.richiedente_amministratore()
-        # Serve una vera classe Exception affinche' `except User.DoesNotExist` funzioni.
-        DoesNotExist = type("DoesNotExist", (Exception,), {})
-        User = MagicMock()
-        User.DoesNotExist = DoesNotExist
-        User.objects.get.side_effect = DoesNotExist
-        mock_get_user.return_value = User
+        # Il BB `utente_per_id` risponde `None` per l'utente che non c'e'.
+        mock_get_user.return_value = None
 
         request = _mock_request(user_id=1)
         view = ApiPermessiEffettivi()

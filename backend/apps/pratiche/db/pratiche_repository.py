@@ -128,9 +128,10 @@ _RICERCA_PRATICHE = RicercaFull("pratiche.pratiche", {
 # colonna che si vede. `esito_descrizione` e non `esito`: la lista mostra la
 # descrizione del vocabolario, non il codice grezzo (§8 punto 3, Tid).
 # ⚠️ I vuoti (reparto, operatore, esito, scadenza) li colloca il BB
-#    (`sql_order_direction`: ASC NULLS FIRST / DESC NULLS LAST, «il vuoto sta
-#    dove starebbe lo zero»), come in ogni altra lista: niente `NULLS` scritto
-#    a mano accanto a una sola chiave.
+#    (`sql_order_clause`): come il minimo, «il vuoto sta dove starebbe lo
+#    zero», salvo la colonna che il catalogo dichiara «vuoto come il massimo»
+#    (dal 2026-11-24 `data_scadenza`, la scadenza che non c'e'). Niente `NULLS`
+#    scritto a mano accanto a una sola chiave.
 FLUSSI_ORDER_COLS: dict[str, str] = {
     "sequenza": "f.sequenza",
     "template_flusso_descrizione": "tf.descrizione",

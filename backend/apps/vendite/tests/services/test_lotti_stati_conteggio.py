@@ -40,7 +40,7 @@ class LottiWhereConteggioTests(TestCase):
             "area_geografica_id": None,
             "tipo_doc_fiscale_id": None,
             "emittente_soggetto_ruolo_id": None,
-            "auth_user_id": None,
+            "auth_user_id": 7,
             "solo_recuperi_mese": False,
         }
         base.update(kwargs)
@@ -108,7 +108,7 @@ class LottiStatiEnvelopeTests(TestCase):
     def test_envelope_porta_gli_stati_ordinati(self):
         p_list, p_count = self._patch({"ERRORE": 2, "DRAFT": 5})
         with p_list, p_count:
-            out = fn_list_lotti(competenza_mese=date(2026, 8, 1))
+            out = fn_list_lotti(auth_user_id=7, competenza_mese=date(2026, 8, 1))
         self.assertEqual(
             out["stati"],
             [
@@ -126,7 +126,7 @@ class LottiStatiEnvelopeTests(TestCase):
             # Un valore DEL vocabolario (`chk_fatturazione_lotti_stato_job`):
             # fino al 2026-10-20 qui c'era «DRAFT», che e' lo stato FISCALE e
             # che il filtro accettava senza dire niente.
-            fn_list_lotti(competenza_mese=date(2026, 8, 1), stato_lotto="ERRORE")
+            fn_list_lotti(auth_user_id=7, competenza_mese=date(2026, 8, 1), stato_lotto="ERRORE")
         self.assertNotIn("stato_lotto", mock_count.call_args.kwargs)
 
     # Il resto del contesto invece passa: conteggi e lista guardano lo stesso
@@ -159,7 +159,7 @@ class LottiExportRecuperiTests(TestCase):
         vendite_service.VenditeRepository, "list_lotti", autospec=True, return_value=([], 0),
     )
     def test_export_inoltra_il_perimetro_recuperi(self, mock_list):
-        fn_export_lotti(
+        fn_export_lotti(auth_user_id=7,
             competenza_mese=date(2026, 8, 1), max_rows=10, solo_recuperi_mese=True,
         )
         self.assertTrue(mock_list.call_args.kwargs["solo_recuperi_mese"])
@@ -171,5 +171,5 @@ class LottiExportRecuperiTests(TestCase):
     )
     def test_export_recuperi_senza_mese_rifiutato(self, mock_list):
         with self.assertRaises(ServiceError):
-            fn_export_lotti(competenza_mese=None, max_rows=10, solo_recuperi_mese=True)
+            fn_export_lotti(auth_user_id=7, competenza_mese=None, max_rows=10, solo_recuperi_mese=True)
         mock_list.assert_not_called()

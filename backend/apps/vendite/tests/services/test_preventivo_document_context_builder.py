@@ -182,7 +182,7 @@ class BuildContextHappyPathTests(SimpleTestCase):
         repo.list_riepilogo_iva.return_value = []
         repo.list_indirizzi.return_value = []
 
-        PreventivoDocumentContextBuilder(repo=repo).build_context(1)
+        PreventivoDocumentContextBuilder(repo=repo).build_context(1, auth_user_id=1)
 
         repo.get_preventivo.assert_called_once_with(1)
         repo.list_righe.assert_called_once_with(1)
@@ -200,7 +200,7 @@ class BuildContextGuardTests(SimpleTestCase):
         for bad in (0, -1, True, "stringa"):
             with self.subTest(value=bad):
                 with self.assertRaises(ServiceError) as ctx:
-                    builder.build_context(bad)  # type: ignore[arg-type]
+                    builder.build_context(bad, auth_user_id=1)  # type: ignore[arg-type]
                 self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.get_preventivo.assert_not_called()
 
@@ -212,7 +212,7 @@ class BuildContextGuardTests(SimpleTestCase):
         repo.get_preventivo.return_value = None
         builder = PreventivoDocumentContextBuilder(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            builder.build_context(999)
+            builder.build_context(999, auth_user_id=1)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
         # list_* NON chiamati: 404 prima.
         repo.list_righe.assert_not_called()

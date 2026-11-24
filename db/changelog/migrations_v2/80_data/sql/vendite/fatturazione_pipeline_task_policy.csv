@@ -4,7 +4,6 @@ id,pipeline_id,task_code,annullabile,resume_mode,attivo,meta,data_insert,data_up
 3,3,genera_fondi_source_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA""}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01
 4,3,applica_fondi_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA""}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01
 5,3,ricalcola_iva_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA""}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01
-6,3,reset_lotto_draft,t,RESET_STEP,t,"{""scope"":""EMESSA"",""rollback"":true}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01
 7,4,numera_fatture,f,RESUME_TASK,t,"{""scope"":""DEFINITIVA""}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01
 8,5,prepare_sdi_payload_lotto,t,RESUME_TASK,t,"{""scope"":""INVIATA""}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01
 9,6,numera_fatture,f,RESUME_TASK,t,"{""scope"":""DEFINITIVA"",""tipo_lotto"":""GIORNALIERO""}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01

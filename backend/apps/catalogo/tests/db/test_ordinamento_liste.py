@@ -37,6 +37,7 @@ import unittest
 from unittest.mock import patch
 
 from apps.catalogo.db.catalogo_repository import CatalogoRepository
+from apps.core.services.request_context import imposta_vuoti_come_massimo
 
 _FILTRI_ARTICOLI = {
     "attivo": None, "is_composito": None, "tipo_voce_id": None,
@@ -121,14 +122,19 @@ class OrdinamentoListeCatalogoTests(unittest.TestCase):
                 self.assertIn("DESC NULLS LAST", _order_by(maiuscolo))
 
     # 4. Le date, senza direzione, vanno ASC come ogni colonna (Tid, 2026-11-24).
+    #    `valido_al` delle conversioni (297) il catalogo la dichiara «vuoto come
+    #    il massimo» (brief-db-lista-colonna-vuoto-in-ordine): la dichiarazione
+    #    la registra la base view, qui la si registra a mano.
     def test_le_date_senza_direzione_ordinano_asc(self):
+        imposta_vuoti_come_massimo(lambda: frozenset({"valido_al"}))
+        self.addCleanup(imposta_vuoti_come_massimo, None)
         casi = (
             (_LISTE[1][1], "data_insert", "ut.data_insert ASC NULLS FIRST, ut.id ASC"),
             (_LISTE[2][1], "data_update", "u.data_update ASC NULLS FIRST, u.id ASC"),
             (_LISTE[3][1], "valido_dal", "c.valido_dal ASC NULLS FIRST, c.id ASC"),
             (
                 _LISTE[3][1], "valido_al",
-                "COALESCE(c.valido_al, 'infinity'::date) ASC NULLS FIRST, c.id ASC",
+                "c.valido_al ASC NULLS LAST, c.id ASC",
             ),
         )
         for chiamata, colonna, attesa in casi:

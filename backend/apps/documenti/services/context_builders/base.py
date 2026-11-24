@@ -34,7 +34,11 @@ class DocumentContextBuilder(ABC):
       versione di template che la legge. ⛔ Mai un default: un builder che non
       la dichiara non si registra.
     - `build_context(sorgente_id, *, auth_user_id, locale)` ritorna un dict
-      JSON-serializable usato dal template engine. Il builder NON conosce
+      JSON-serializable usato dal template engine. ⛔ `auth_user_id` e'
+      obbligatorio e senza default (2026-11-24, D-K6 a): il motore lo passa
+      sempre, anche dal worker della coda stampa (il suo utente tecnico), e
+      un builder che legge con il filtro applicativo (la fattura) non ha un
+      ramo «senza utente». Prima il default `None` era quel ramo. Il builder NON conosce
       il template HTML: si limita a fornire i dati. La logica di template
       vive lato `render_service`.
     - le implementazioni leggono dati dai propri repository di dominio,
@@ -49,7 +53,7 @@ class DocumentContextBuilder(ABC):
         self,
         sorgente_id: int,
         *,
-        auth_user_id: int | None = None,
+        auth_user_id: int,
         locale: str = "it-IT",
     ) -> dict[str, Any]:
         """

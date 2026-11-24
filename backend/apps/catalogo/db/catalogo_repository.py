@@ -84,7 +84,9 @@ UOM_CONVERSIONI_ORDER_COLUMNS: dict[str, str] = {
     "uom_to_codice": "c.uom_to_codice",
     "fattore": "c.fattore",
     "valido_dal": "c.valido_dal",
-    "valido_al": "COALESCE(c.valido_al, 'infinity'::date)",
+    # Il vuoto («senza scadenza») va come il massimo: lo dichiara il catalogo
+    # (`ui.lista_colonna.vuoto_ordinato_come_massimo`), non questa whitelist.
+    "valido_al": "c.valido_al",
     "attivo": "c.attivo",
 }
 

@@ -1,0 +1,79 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO: IL TASK DI PIPELINE reset_lotto_draft
+#   Brief: brief-db-porte-aperte-dalla-sola-guc, §4.6 (D-I) e §4.8 (D-I.1 a,
+#   Tid 2026-11-24: il ritiro, non attivo = false).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Il task era il rollback dello step EMESSA della pipeline 3 (MASSIVO).
+#   Nessun percorso lo esegue: a DB nessuna funzione esegue i task, li
+#   leggono soltanto; nel backend l'unico esecutore di un rollback scarta
+#   proprio la lista che lo contiene. L'annullo del lotto ha la sua strada,
+#   il verbo vendite.fn_annulla_lotto_da_draft dall'endpoint. Il backend ne
+#   toglie l'handler dopo questo changeSet: una riga spenta nominerebbe un
+#   handler_code senza codice dietro.
+#
+# ── COME ────────────────────────────────────────────────────────────
+#   Le righe escono dai CSV del registro, dell'implementazione e della
+#   policy, e il rollback della pipeline 3 diventa [] nel suo CSV (lo
+#   riallinea il mirror). loadUpdateData non cancella: il DELETE e' l'unica
+#   eccezione al «dal CSV» (linee-guida-sql §11.2), forward-only. Prima
+#   l'implementazione, che punta al registro con una FK. Sulla chiave
+#   naturale, non sull'id: su un database da zero le righe non nascono e il
+#   DELETE non trova niente.
+#   Restano fuori, e non c'entrano: l'azione config.azioni_processo
+#   reset_lotto_draft, gia' spenta dal 2026-10-27 (D-I.2 a); la GUC
+#   zeroerp.maintenance_reset_lotto_draft, che e' la porta 1 del brief; le
+#   corse storiche in vendite.fatturazione_lotti_task_runs, senza FK.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261123-67-delete-task-reset-lotto-draft-mctit.yaml
+
+  - changeSet:
+      id: 20261123-67-delete-task-reset-lotto-draft
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritiro del task di pipeline reset_lotto_draft: registro, implementazione e policy. Le righe
+        escono anche dai CSV. Brief: brief-db-porte-aperte-dalla-sola-guc, §4.8 (D-I).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM information_schema.tables
+               WHERE (table_schema, table_name) IN (('dbops', 'pipeline_task_registry'),
+                                                    ('dbops', 'pipeline_task_registry_impl'),
+                                                    ('vendite', 'fatturazione_pipeline_task_policy'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.pipeline_task_registry_impl i
+               USING dbops.pipeline_task_registry r
+               WHERE r.id = i.task_registry_id
+                 AND r.task_code = 'reset_lotto_draft';
+
+              DELETE FROM dbops.pipeline_task_registry
+               WHERE task_code = 'reset_lotto_draft';
+
+              DELETE FROM vendite.fatturazione_pipeline_task_policy
+               WHERE task_code = 'reset_lotto_draft';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Forward-only: le righe tornano coi mirror dei tre CSV, se si rimettono nei file.
+              SELECT 1;

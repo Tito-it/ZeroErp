@@ -64,7 +64,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
         return_value=([_ROW_NON_PIU_CAPIENTE], 1),
     )
     def test_ok_envelope_paginato(self, mock_repo):
-        data = fn_fondi_fattura_da_decidere(motivo="NON_PIU_CAPIENTE")
+        data = fn_fondi_fattura_da_decidere(auth_user_id=7, motivo="NON_PIU_CAPIENTE")
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["page"], 1)
         self.assertEqual(data["page_size"], DEFAULT_LIMIT)
@@ -81,7 +81,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
         return_value=([], 0),
     )
     def test_senza_filtri_passthrough_none(self, mock_repo):
-        fn_fondi_fattura_da_decidere()
+        fn_fondi_fattura_da_decidere(auth_user_id=7)
         kwargs = mock_repo.call_args.kwargs
         self.assertIsNone(kwargs["motivo"])
         self.assertEqual(kwargs["order_by"], "data")
@@ -98,7 +98,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
     def test_tutti_i_motivi_della_vista_sono_validi(self, mock_repo):
         for motivo in FONDI_DA_DECIDERE_MOTIVI:
             with self.subTest(motivo=motivo):
-                fn_fondi_fattura_da_decidere(motivo=motivo)
+                fn_fondi_fattura_da_decidere(auth_user_id=7, motivo=motivo)
                 self.assertEqual(mock_repo.call_args.kwargs["motivo"], motivo)
 
     # Scopo: Il vocabolario e' CHIUSO (letterali nei rami della UNION): un motivo
@@ -106,7 +106,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
     #        silenzio sarebbe indistinguibile da «non c'e' niente da decidere».
     def test_motivo_fuori_vocabolario(self):
         with self.assertRaises(ServiceError) as ctx:
-            fn_fondi_fattura_da_decidere(motivo="CONFIGURAZIONE_INCOMPLETA")
+            fn_fondi_fattura_da_decidere(auth_user_id=7, motivo="CONFIGURAZIONE_INCOMPLETA")
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: Ordinamento inoltrato tale e quale al repository (la whitelist
@@ -117,7 +117,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
         return_value=([], 0),
     )
     def test_ordinamento_inoltrato(self, mock_repo):
-        fn_fondi_fattura_da_decidere(order_by="totale_a_pagare", order_dir="asc")
+        fn_fondi_fattura_da_decidere(auth_user_id=7, order_by="totale_a_pagare", order_dir="asc")
         kwargs = mock_repo.call_args.kwargs
         self.assertEqual(kwargs["order_by"], "totale_a_pagare")
         self.assertEqual(kwargs["order_dir"], "asc")
@@ -125,13 +125,13 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
     # Scopo: Colonna fuori whitelist -> 400 (mai interpolata nell'ORDER BY).
     def test_order_by_non_valido(self):
         with self.assertRaises(ServiceError) as ctx:
-            fn_fondi_fattura_da_decidere(order_by="importo_atto; DROP TABLE")
+            fn_fondi_fattura_da_decidere(auth_user_id=7, order_by="importo_atto; DROP TABLE")
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: Direzione fuori {asc, desc} -> 400.
     def test_order_dir_non_valido(self):
         with self.assertRaises(ServiceError) as ctx:
-            fn_fondi_fattura_da_decidere(order_dir="alfabetico")
+            fn_fondi_fattura_da_decidere(auth_user_id=7, order_dir="alfabetico")
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: l'envelope resta quello delle liste paginate: la pagina si
@@ -143,9 +143,9 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
         return_value=([], 120),
     )
     def test_envelope_pagina_dall_offset(self, _mock_repo):
-        data = fn_fondi_fattura_da_decidere(limit=25, offset=50)
+        data = fn_fondi_fattura_da_decidere(auth_user_id=7, limit=25, offset=50)
         self.assertEqual((data["page"], data["page_size"], data["total_pages"]), (3, 25, 5))
-        data = fn_fondi_fattura_da_decidere(limit=25, offset=500)
+        data = fn_fondi_fattura_da_decidere(auth_user_id=7, limit=25, offset=500)
         self.assertEqual(data["page"], 5)
 
     # Scopo: `auth_user_id` arriva al repository. La vista e' security_invoker e
@@ -169,7 +169,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
     def test_limit_offset_arrivano_al_repository(self, mock_repo):
         # ⛔ Dal 2026-10-20 la lista pagina con `limit`/`offset` (§A4): prima
         #    con `page`/`page_size`, unica fra le liste di vendite.
-        fn_fondi_fattura_da_decidere(limit=25, offset=50)
+        fn_fondi_fattura_da_decidere(auth_user_id=7, limit=25, offset=50)
         kwargs = mock_repo.call_args.kwargs
         self.assertEqual(kwargs["limit"], 25)
         self.assertEqual(kwargs["offset"], 50)
@@ -185,7 +185,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
         return_value=([], 0),
     )
     def test_export_salta_la_paginazione(self, mock_repo):
-        fn_fondi_fattura_da_decidere(limit=25, offset=75, max_rows=10_001)
+        fn_fondi_fattura_da_decidere(auth_user_id=7, limit=25, offset=75, max_rows=10_001)
         kwargs = mock_repo.call_args.kwargs
         self.assertEqual(kwargs["limit"], 10_001)
         self.assertEqual(kwargs["offset"], 0)
@@ -195,7 +195,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
     #        che nulla lo dica.
     def test_export_max_rows_non_positivo(self):
         with self.assertRaises(ServiceError) as ctx:
-            fn_fondi_fattura_da_decidere(max_rows=0)
+            fn_fondi_fattura_da_decidere(auth_user_id=7, max_rows=0)
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
 

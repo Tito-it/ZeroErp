@@ -36,14 +36,15 @@ from apps.core.db._helpers import (
     sql_lateral_primo_motivo,
     sql_order_clause,
     rows_to_list,
-    sql_order_direction,
+    sql_order_direction_lista,
     sql_tiebreak_direction,
     utente_di_sessione,
 )
-from apps.core.db.emittente_scope_helpers import (
-    add_emittente_scope_condition_risolta,
-    fetch_emittenti_scope_ids,
-)
+# ⚠️ `fetch_emittenti_scope_ids` dal MODULO, non con `from ... import`: e' il
+#    nome che il BB di test `perimetro_admin_globale_di_prova` patcha, e una
+#    copia importata qui ne resterebbe fuori (la query andrebbe sul DB).
+from apps.core.db import emittente_scope_helpers
+from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition_risolta
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.system_context import connection_role_bypasses_rls
@@ -1676,10 +1677,8 @@ class PagamentiRepository:
         # Il perimetro emittente si risolve UNA volta: con `solo_aperte` la
         # stessa condizione entra due volte (pagina e perimetro del nucleo), e
         # risolverla per ogni entrata sarebbe una query in piu' per niente.
-        scope_ids = (
-            fetch_emittenti_scope_ids(auth_user_id, convention="pk")
-            if auth_user_id is not None else None
-        )
+        # ⛔ `auth_user_id=None` solleva dal BB (2026-11-24): non apre più.
+        scope_ids = emittente_scope_helpers.fetch_emittenti_scope_ids(auth_user_id, convention="pk")
 
         # Scopo: le condizioni della lista su un ALIAS dato — la stessa funzione
         #        per la pagina (`v`) e per il perimetro del nucleo (`p`), cosi'
@@ -1981,11 +1980,11 @@ class PagamentiRepository:
     #    ⛔ Misurato il 2026-08-28 (E-4): senza questa domanda un operatore
     #    dell'emittente A leggeva l'IBAN di incasso dell'emittente B passando il
     #    suo `soggetto_ruolo_id` — e senza nessun errore.
-    # ⛔ SENZA UTENTE NON SI PASSA, e non e' pignoleria: la canonica
-    #    `fn_check_user_emittente_scope` risponde **true** quando
-    #    `p_auth_user_id` e' NULL (regola 1, «job batch»). Delegarle la domanda
-    #    su un percorso senza GUC aprirebbe il perimetro invece di chiuderlo:
-    #    qui «non so chi sei» vale **no**.
+    # ⛔ SENZA UTENTE NON SI PASSA: qui «non so chi sei» vale **no**. Fino al
+    #    2026-10-04 la canonica `fn_check_user_emittente_scope` rispondeva
+    #    **true** con `p_auth_user_id` NULL («job batch»); dalla Q-1 risponde
+    #    FALSE (doc DB della funzione), ma il guard resta qui: la domanda senza
+    #    GUC non si delega.
     def emittente_nel_perimetro(self, emittente_soggetto_ruolo_id: int) -> bool:
         self._guard_canale_sistema("emittente_nel_perimetro")
         # L'utente per cui la connessione agisce, dalla GUC delle policy RLS
@@ -2132,7 +2131,10 @@ class PagamentiRepository:
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         sort_col = colonna_ordinamento(order_by, ECCEDENZE_SORT_COLUMNS) or "eccedenza_cliente"
-        direction = sql_order_direction(order_dir, default_desc=True)
+        direction = sql_order_direction_lista(
+            order_by, order_dir, colonne=ECCEDENZE_SORT_COLUMNS,
+            default="eccedenza_cliente", default_desc=True,
+        )
         tiebreak = sql_tiebreak_direction(direction)
 
         select_sql = f"""

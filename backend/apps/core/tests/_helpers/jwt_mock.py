@@ -191,6 +191,17 @@ class JwtMockedApiTest(SimpleTestCase):
         )
         self.mock_misura_risolta = misura_patcher.start()
         self.addCleanup(misura_patcher.stop)
+        # Le colonne «vuoto come il massimo» della lista
+        # (brief-db-lista-colonna-vuoto-in-ordine): stessa ragione, si mocka la
+        # LETTURA. Lo scenario neutro e' «nessuna colonna dichiarata»: vale la
+        # regola generale, che i test di lista gia' provano. Il BB attivo ha i
+        # suoi test in `apps/core/tests/api/test_vuoto_come_massimo.py`.
+        vuoti_patcher = patch(
+            "apps.core.services.ordinamento_di_partenza.vuoti_come_massimo_risolti",
+            return_value=frozenset(),
+        )
+        self.mock_vuoti_come_massimo = vuoti_patcher.start()
+        self.addCleanup(vuoti_patcher.stop)
 
         scope_patcher = patch(
             "apps.core.services.perimetro_emittente.PermissionResolver"

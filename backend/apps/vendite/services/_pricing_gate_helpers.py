@@ -31,7 +31,6 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any, Callable, NoReturn
 
-from django.contrib.auth import get_user_model
 from django.db import transaction
 
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
@@ -40,6 +39,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.core.services.utente_per_id import utente_per_id
 from apps.vendite.services._approvazioni_prezzo_constants import AZIONE_OVERRIDE_PREZZO
 from apps.vendite.services.pricing_service import (
     PARAM_MAX_MAGGIORAZIONE_PCT,
@@ -89,11 +89,8 @@ def check_permesso_override_prezzo(
         detail="Chiamata senza contesto utente — override bloccato conservativamente.",
         function_name=function_name,
     )
-    assert auth_user_id is not None
-    user_model = get_user_model()
-    try:
-        user = user_model.objects.get(pk=auth_user_id)
-    except user_model.DoesNotExist:
+    user = utente_per_id(auth_user_id)
+    if user is None:
         ErrorManager.raise_error(
             code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
             message="Override prezzo non autorizzato.",
@@ -168,16 +165,6 @@ def _resolve_soglia_variazione_pct(
     )
 
 
-# Scopo: Helper privato. Restituisce l'utente Django dato `auth_user_id` o
-#        None se non trovato (chiamata non autenticata / utente cancellato).
-def _get_user_or_none(auth_user_id: int):
-    user_model = get_user_model()
-    try:
-        return user_model.objects.get(pk=auth_user_id)
-    except user_model.DoesNotExist:
-        return None
-
-
 # Scopo: Gate L2 sulla variazione % fra prezzo manuale e prezzo risolto
 #        dal resolver (caso classico riga preventivo/contratto). Se sconto
 #        (delta < 0) confronta con VENDITE_MAX_SCONTO_PCT; se maggiorazione
@@ -216,7 +203,7 @@ def check_limite_variazione_prezzo(
     if auth_user_id is None:
         return None  # L1 ha gia' bloccato; unreachable difensivo.
 
-    user = _get_user_or_none(auth_user_id)
+    user = utente_per_id(auth_user_id)
     if user is None:
         return None  # L1 avrebbe gia' bloccato.
 
@@ -252,7 +239,10 @@ def check_limite_variazione_prezzo(
 #        05-15 §3-bis-E) — niente delta vs resolver. Si applica solo a
 #        tipo_variazione = PERCENTUALE; VALORE_FISSO skippa silenziosamente
 #        (non comparabile con soglia%, decisione brief DB).
-#        Superuser bypass + auth_user_id None bypass.
+#        `auth_user_id=None` salta il gate (L1 ha gia' deciso): e' un gate di
+#        SCRITTURA, non un perimetro, dichiarato fuori dal rifiuto del `None`
+#        (brief-db-porte-aperte-dalla-sola-guc §4.7). Il bypass del
+#        superuser non c'e' piu' dal 2026-11-24 (D-J).
 def check_limite_variazione_globale(
     *,
     auth_user_id: int | None,
@@ -269,7 +259,7 @@ def check_limite_variazione_globale(
     if auth_user_id is None:
         return None  # Contesto utente richiesto per cascata.
 
-    user = _get_user_or_none(auth_user_id)
+    user = utente_per_id(auth_user_id)
     if user is None:
         return None
 

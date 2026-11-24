@@ -56,6 +56,7 @@ from django.test import SimpleTestCase
 from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 from apps.vendite.db.resi_repository import ResiRepository
 from apps.vendite.db.vendite_repository import VenditeRepository
+from apps.core.tests._helpers.perimetro_admin_globale_di_prova import perimetro_admin_globale_di_prova
 
 _FN_PARTITE = "vendite.fn_partite_merce"
 _FN_SITUAZIONE = "vendite.fn_situazione_merce_ordine"
@@ -98,6 +99,10 @@ def _ultima_execute(cursor: MagicMock) -> tuple[str, list]:
 #    col DB di sviluppo e restare verde raccontando una cosa che in CI non
 #    succede (AGENTS.md §Regole test Django). La classe e2e sotto invece il DB
 #    vero lo vuole, e resta `unittest.TestCase`.
+# ⭐ Legge la SQL della lista, non prova il perimetro: il risolutore risponde
+#    «nessuna restrizione» (admin globale). Dal 2026-11-24 `auth_user_id=None`
+#    solleva, quindi il test passa un utente e dichiara il perimetro qui.
+@perimetro_admin_globale_di_prova()
 class LetturaPerDocumentoDalleFunzioniTests(SimpleTestCase):
     """La forma dell'SQL nei quattro punti, col cursor mockato."""
 
@@ -200,7 +205,7 @@ class LetturaPerDocumentoDalleFunzioniTests(SimpleTestCase):
     #        parametri della sorgente stanno PRIMA di quelli dei filtri.
     def test_coda_di_lavoro_accrediti_con_documento_legge_la_funzione(self) -> None:
         repo = ResiRepository()
-        repo.list_da_accreditare(
+        repo.list_da_accreditare(auth_user_id=7,
             ddt_id=140, etichetta="DOVUTA", billing_account_id=9, limit=50, offset=0
         )
         sql, params = _ultima_execute(self.cursor)
@@ -212,7 +217,7 @@ class LetturaPerDocumentoDalleFunzioniTests(SimpleTestCase):
         # sorgente, poi i filtri nell'ordine del WHERE, poi LIMIT/OFFSET
         self.assertEqual(params, [140, 9, "DOVUTA", 50, 0])
 
-        repo.list_da_accreditare(ordine_id=240, limit=50, offset=0)
+        repo.list_da_accreditare(auth_user_id=7, ordine_id=240, limit=50, offset=0)
         sql, params = _ultima_execute(self.cursor)
         self.assertIn(f"FROM {_FN_ACCREDITI}{_PER_ORDINE} v", sql)
         self.assertNotIn("EXISTS (", sql)
@@ -221,7 +226,7 @@ class LetturaPerDocumentoDalleFunzioniTests(SimpleTestCase):
     # Scopo: senza documento la coda di lavoro resta sulla VISTA: e' la coda
     #        aperta a mano, «tutte», ed e' `fn(NULL, NULL)` per costruzione.
     def test_coda_di_lavoro_accrediti_senza_documento_resta_sulla_vista(self) -> None:
-        ResiRepository().list_da_accreditare(limit=50, offset=0)
+        ResiRepository().list_da_accreditare(auth_user_id=7, limit=50, offset=0)
         sql, params = _ultima_execute(self.cursor)
         self.assertIn(f"FROM {_VW_ACCREDITI} v", sql)
         self.assertNotIn("fn_resi_da_accreditare", sql)
@@ -233,7 +238,7 @@ class LetturaPerDocumentoDalleFunzioniTests(SimpleTestCase):
     #        STESSI parametri nello stesso ordine — un COUNT sulla vista
     #        direbbe il totale di TUTTI i DDT a chi guarda la coda di uno.
     def test_coda_di_lavoro_conteggio_di_ripiego_porta_i_parametri_della_sorgente(self) -> None:
-        ResiRepository().list_da_accreditare(
+        ResiRepository().list_da_accreditare(auth_user_id=7,
             ddt_id=140, billing_account_id=9, limit=50, offset=100
         )
         self.assertEqual(self.cursor.execute.call_count, 2, "atteso il COUNT di ripiego")
@@ -246,7 +251,7 @@ class LetturaPerDocumentoDalleFunzioniTests(SimpleTestCase):
     # Scopo: la coda di lavoro RI-CONSEGNE non cambia (stesso motivo del punto
     #        del pannello): vista + predicato del BB.
     def test_coda_di_lavoro_riconsegne_resta_sul_predicato(self) -> None:
-        ResiRepository().list_da_riconsegnare(ddt_id=140, limit=50, offset=0)
+        ResiRepository().list_da_riconsegnare(auth_user_id=7, ddt_id=140, limit=50, offset=0)
         sql, params = _ultima_execute(self.cursor)
         self.assertIn(f"FROM {_VW_RICONSEGNE} v", sql)
         self.assertIn("v.ddt_id = %s", sql)
@@ -275,7 +280,7 @@ class LetturaPerDocumentoSulDbTests(TestCase):
 
         with transaction.atomic():
             with connection.cursor() as cur:
-                apri_contesto_operatore(cur)
+                uid = apri_contesto_operatore(cur)
                 cur.execute(
                     "SELECT ddt_id, ordine_id FROM vendite.vw_partite_merce "
                     "WHERE ordine_id IS NOT NULL ORDER BY ddt_id LIMIT 1"
@@ -306,8 +311,8 @@ class LetturaPerDocumentoSulDbTests(TestCase):
                     lambda: vendite.list_situazione_merce_accrediti(ordine_id=ordine_id),
                 ),
                 "accrediti_coda": (
-                    lambda: resi.list_da_accreditare(ddt_id=ddt_id, limit=5, offset=0)[0],
-                    lambda: resi.list_da_accreditare(ordine_id=ordine_id, limit=5, offset=0)[0],
+                    lambda: resi.list_da_accreditare(auth_user_id=uid, ddt_id=ddt_id, limit=5, offset=0)[0],
+                    lambda: resi.list_da_accreditare(auth_user_id=uid, ordine_id=ordine_id, limit=5, offset=0)[0],
                 ),
             }.items():
                 for ramo, chiamata in zip(("ddt", "ordine"), chiamate, strict=True):
@@ -326,7 +331,9 @@ class LetturaPerDocumentoSulDbTests(TestCase):
                                 "e' riempito l'array sbagliato?",
                             )
             # E il COUNT di ripiego, sul DB: pagina oltre l'ultima con la sorgente.
-            righe, totale = resi.list_da_accreditare(ddt_id=ddt_id, limit=5, offset=10_000)
+            righe, totale = resi.list_da_accreditare(
+                auth_user_id=uid, ddt_id=ddt_id, limit=5, offset=10_000,
+            )
             self.assertEqual(righe, [])
             self.assertIsInstance(totale, int)
             transaction.set_rollback(True)

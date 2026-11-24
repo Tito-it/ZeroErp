@@ -80,7 +80,9 @@ _ORDER_COLS_CONTRATTI: dict[str, str] = {
     "numero": "v.numero",
     "data": "v.data",
     "valido_dal": "v.valido_dal",
-    "valido_al": "COALESCE(v.valido_al, 'infinity'::date)",
+    # Il vuoto («senza scadenza») va come il massimo: lo dichiara il catalogo
+    # (`ui.lista_colonna.vuoto_ordinato_come_massimo`), non questa whitelist.
+    "valido_al": "v.valido_al",
     "ba_codice": "v.ba_codice",
     "ragione_sociale_completa": "v.ragione_sociale_completa",
     "id_fiscale_univoco_cf_piva": "v.id_fiscale_univoco_cf_piva",
@@ -359,7 +361,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         data_da: date | None = None,
         data_a: date | None = None,
         scadenza_mese: str | None = None,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "data",

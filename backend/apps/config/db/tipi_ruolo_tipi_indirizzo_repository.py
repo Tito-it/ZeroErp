@@ -36,8 +36,11 @@ _ORDER_COLS: dict[str, str] = {
     "tipo_indirizzo_descrizione": "ti.descrizione",
     "obbligatorio": "trti.obbligatorio",
     "attivo": "trti.attivo",
-    "valido_dal": "COALESCE(trti.valido_dal, '-infinity'::date)",
-    "valido_al": "COALESCE(trti.valido_al, 'infinity'::date)",
+    # Il vuoto di `valido_al` («senza fine») va come il massimo: lo dichiara il
+    # catalogo (`ui.lista_colonna.vuoto_ordinato_come_massimo`). Quello di
+    # `valido_dal` («da sempre») e' il minimo, la regola generale.
+    "valido_dal": "trti.valido_dal",
+    "valido_al": "trti.valido_al",
     "data_insert": "trti.data_insert",
     "data_update": "trti.data_update",
 }

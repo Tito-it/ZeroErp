@@ -28,7 +28,6 @@ from apps.core.db._helpers import (
     row_to_dict,
     rows_to_list,
     sql_order_clause,
-    sql_order_direction,
     sql_tiebreak_direction,
 )
 
@@ -85,9 +84,10 @@ _COLONNA_ALTRE_VESTI = """ARRAY(SELECT av.ruolo_applicativo::text
 # amministrativo si usa `is_super_admin` o `ruolo_applicativo`.
 #
 # `valido_al` NULL = incarico senza scadenza, cioe' validita' INFINITA: va in
-# testa in DESC, non in fondo. Senza il COALESCE finirebbe dal lato sbagliato
-# (la SELECT casta a `::text`, quindi l'alias nudo ordinerebbe pure come
-# stringa: qui si ordina la colonna vera).
+# testa in DESC, non in fondo. Lo dichiara il catalogo
+# (`ui.lista_colonna.vuoto_ordinato_come_massimo`, dal 2026-11-24; fino a quel
+# giorno era un `COALESCE` scritto qui). ⚠️ Si ordina la colonna vera, non
+# l'alias: la SELECT casta a `::text`, e l'alias ordinerebbe come stringa.
 ALLOWED_ORDER_COLUMNS: dict[str, str] = {
     "last_name": "last_name",
     "soggetto_cognome": "soggetto_cognome",
@@ -98,7 +98,7 @@ ALLOWED_ORDER_COLUMNS: dict[str, str] = {
     "unita_organizzativa_nome": "unita_organizzativa_nome",
     "override_count": "override_count",
     "valido_dal": "ru.valido_dal",
-    "valido_al": "COALESCE(ru.valido_al, 'infinity'::date)",
+    "valido_al": "ru.valido_al",
 }
 
 
@@ -1399,7 +1399,9 @@ class AmmSoftwareRepository:
         order_column = colonna_ordinamento(order_by, AUDIT_ORDER_COLUMNS)
         # ⛔ Direzione risolta PRIMA del ramo (2026-09-26): il ramo di default
         #    la ignora, e un `order_dir` estraneo passava muto.
-        direction = sql_order_direction(order_dir, default_desc=True)
+        direction = sql_order_direction_lista(
+            order_by, order_dir, colonne=AUDIT_ORDER_COLUMNS, default_desc=True,
+        )
         if order_column:
             # `valid_from DESC` NON e' uno spareggio tecnico ma l'ordine
             # STORICO delle versioni di una stessa riga (la piu' recente

@@ -1,6 +1,6 @@
 # Guida — Fatturazione (processo end-to-end)
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend e database
 >
@@ -454,11 +454,12 @@ avanzamento di step le fatture del lotto vengono allineate (`fn_sync_lotto_fattu
 per **EMESSA(2) prima di DEFINITIVA(8)** — `1→2→8`, **mai** `1→8`. Semantica: non si assegna
 un numero fiscale (DEFINITIVA) a una fattura di cui non si è certificata l'IVA (EMESSA).
 
-* **MASSIVO**: la fattura fa `1→2→8→3`. Lo step EMESSA prepara il documento pre-fiscale
-  (rifacibile: ha rollback `reset_lotto_draft`), poi DEFINITIVA numera.
+* **MASSIVO**: la fattura fa `1→2→8→3`. Lo step EMESSA prepara il documento pre-fiscale,
+  che finché non è numerato si può rifare («riporta in lavorazione») o annullare; poi
+  DEFINITIVA numera.
 * **GIORNALIERO**: stessa sequenza `1→2→8→3` a livello sia di lotto sia di fattura, **con gli
-  stessi task** della corsia massiva. Cambia solo il rollback: la corsia immediata non ne ha,
-  perché arriva da sola fino alla numerazione e una fattura numerata non si resetta.
+  stessi task** della corsia massiva. Nessuna delle due corsie ha un rollback di pipeline
+  (dal 2026-11-24, ritiro di `reset_lotto_draft`).
 
 > ⚠️ **Le due corsie EMESSA devono restare allineate, ed è un invariante presidiato.** Lo step EMESSA
 > non può essere vuoto su una corsia: nessun trigger ricalcola IVA e totali dopo la nascita del
@@ -538,25 +539,32 @@ i task di rollback al posto di quelli forward. Il `PipelineStepExecutor` chiama
 
 **Quando scatta il rollback:**
 
-Il rollback è manuale (richiesto dall'operatore o dall'API `reset_lotto`) oppure
-automatico se la pipeline ha `meta.auto_step_rollback = true`. Non scatta mai
-spontaneamente su errore: un errore lascia il lotto in stato `ERRORE` e serve
-un rerun esplicito.
+Il rollback automatico gira solo se la pipeline ha `meta.auto_step_rollback = true`,
+su un rerun dopo un errore. Non scatta mai spontaneamente su errore: un errore lascia
+il lotto in stato `ERRORE` e serve un rerun esplicito. Le uscite dell'operatore non
+passano dal rollback della pipeline: sono verbi chiamati dall'endpoint (sotto).
 
 **Il seed di oggi (corsia MASSIVO):**
 
-| Step   | `processi`                                                                                           | `rollback`          |
-| ------ | ---------------------------------------------------------------------------------------------------- | ------------------- |
-| DRAFT  | `pull_attivita_da_commessa`, `select_attivita`, `generate_fatture_righe`, `snapshot_indirizzi_lotto` | `[]` (nessuno)      |
-| EMESSA | `genera_fondi_source_lotto`, `applica_fondi_lotto`, `ricalcola_iva_lotto`, `genera_scadenze_lotto`   | `reset_lotto_draft` |
+| Step   | `processi`                                                                                           | `rollback`     |
+| ------ | ---------------------------------------------------------------------------------------------------- | -------------- |
+| DRAFT  | `pull_attivita_da_commessa`, `select_attivita`, `generate_fatture_righe`, `snapshot_indirizzi_lotto` | `[]` (nessuno) |
+| EMESSA | `genera_fondi_source_lotto`, `applica_fondi_lotto`, `ricalcola_iva_lotto`, `genera_scadenze_lotto`   | `[]` (nessuno) |
 
-In questo caso, se un lotto MASSIVO in stato EMESSA deve tornare a DRAFT, il sistema
-esegue il task `reset_lotto_draft`, che ripristina i fondi delle fatture sorgente,
-cancella le righe IVA e i totali generati dallo step forward — **e poi cancella le
-fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
+Nessuna pipeline del seed ha oggi un rollback. Il task `reset_lotto_draft`, che era il
+rollback di EMESSA sulla corsia massiva, è stato **ritirato il 2026-11-24**: nessun
+percorso lo eseguiva, perché l'auto-rollback lo escludeva per nome. Un task nominato nel
+`rollback` deve essere registrato e avere la sua policy, come quelli dei `processi`: lo
+verifica `test-pipeline-processi-invariante-v1.sql` (test 8 e 9).
 
-> ⚠️ **`reset_lotto_draft` non riporta il lotto a DRAFT: lo ANNULLA.**
-> Il nome inganna. Cosa fa davvero, nell'ordine:
+Se un lotto pre-fiscale va abbandonato, l'operatore lo **annulla** col verbo
+`vendite.fn_annulla_lotto_da_draft` (`POST /lotti/<id>/reset-draft/`). Il verbo
+ripristina i fondi delle fatture sorgente, cancella le righe IVA e i totali dello step
+forward, **e poi cancella le fatture e chiude il lotto**. Non è un rollback reversibile:
+è una demolizione.
+
+> ⚠️ **L'annullo non riporta il lotto a DRAFT: lo ANNULLA.**
+> L'URL (`reset-draft`) inganna. Cosa fa davvero, nell'ordine:
 >
 > 1. **pretende il lotto già in DRAFT** (guard *«rollback solo se DRAFT»*): il ritorno
 >    EMESSA→DRAFT lo fa il rerun dello step, *prima*; il task non lo esegue.
@@ -624,7 +632,7 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
 
 **Vincoli:**
 
-* Il rollback pretende il lotto già in **DRAFT**; le **fatture** del lotto possono
+* L'annullo pretende il lotto già in **DRAFT**; le **fatture** del lotto possono
   essere DRAFT o EMESSA (pre-fiscali), altrimenti la fn rifiuta.
   ⚠️ Il vincolo **vale per entrambe le corsie**: anche un giro GIORNALIERO
   interrotto deve poter tornare indietro. Chi trova documentazione che lo dà per
@@ -634,9 +642,9 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
 * Le **fatture non tornano mai a DRAFT**: nella matrice `config.stati_doc_fiscale_transizioni`
   la transizione EMESSA→DRAFT ha `solo_lotto = true`, quindi vale per il **lotto**, non per
   il documento. Una fattura EMESSA si può solo **cancellare** (dal reset), mai retrocedere.
-* L'auto-rollback **esclude** questo task: il `PipelineStepExecutor` non lo esegue mai in
-  auto-run, proprio perché distruttivo. Serve una richiesta esplicita
-  (`POST /lotti/<id>/reset-draft/`).
+* L'annullo non gira mai da solo, perché è distruttivo: serve una richiesta esplicita
+  (`POST /lotti/<id>/reset-draft/`). Fino al 2026-11-24 era anche il task di rollback
+  `reset_lotto_draft`, che l'auto-rollback escludeva per nome; il task è ritirato.
 * Per una singola fattura esiste l'alternativa che **non** annulla il lotto:
   `fn_elimina_fattura_da_lotto`. Il perimetro è **pre-fiscale su
   entrambi i fronti**: sia il lotto sia la fattura devono essere in DRAFT o

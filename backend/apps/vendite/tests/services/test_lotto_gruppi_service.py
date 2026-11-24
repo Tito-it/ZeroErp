@@ -49,6 +49,7 @@ from apps.vendite.db.vendite_repository import (
     VenditeRepository,
 )
 from apps.vendite.services.vendite_service import fn_list_lotto_gruppi
+from apps.core.tests._helpers.perimetro_admin_globale_di_prova import perimetro_admin_globale_di_prova
 
 
 # Riga finta nella forma che `fetch_paged_with_total` consegna: un DIZIONARIO,
@@ -86,6 +87,10 @@ def _riga(**override):
     return riga
 
 
+# ⭐ Legge la SQL della lista, non prova il perimetro: il risolutore risponde
+#    «nessuna restrizione» (admin globale). Dal 2026-11-24 `auth_user_id=None`
+#    solleva, quindi il test passa un utente e dichiara il perimetro qui.
+@perimetro_admin_globale_di_prova()
 class LottoGruppiRepositoryTests(SimpleTestCase):
     # 1) 🔒 `fatturazione_lotti_gruppi` NON ha RLS, `fatturazione_lotti` si':
     #    leggere la figlia da sola sarebbe fail-open. Il JOIN sulla CTE del
@@ -94,7 +99,7 @@ class LottoGruppiRepositoryTests(SimpleTestCase):
     @patch("apps.vendite.db.vendite_repository.fetch_paged_with_total")
     def test_il_cancello_di_scope_e_la_testata(self, mock_fetch):
         mock_fetch.return_value = ([], 0)
-        VenditeRepository().list_lotto_gruppi(lotto_id=10657, limit=25, offset=0)
+        VenditeRepository().list_lotto_gruppi(auth_user_id=7, lotto_id=10657, limit=25, offset=0)
         sql = mock_fetch.call_args.args[0]
         self.assertIn("FROM vendite.fatturazione_lotti l", sql)
         # ⚠️ ENTRAMBE le figlie passano dalla CTE del lotto: e' li' che vive il
@@ -112,7 +117,7 @@ class LottoGruppiRepositoryTests(SimpleTestCase):
     @patch("apps.vendite.db.vendite_repository.fetch_paged_with_total")
     def test_l_identita_si_legge_dalla_vista_non_si_ricostruisce(self, mock_fetch):
         mock_fetch.return_value = ([], 0)
-        VenditeRepository().list_lotto_gruppi(lotto_id=10657, limit=25, offset=0)
+        VenditeRepository().list_lotto_gruppi(auth_user_id=7, lotto_id=10657, limit=25, offset=0)
         sql = mock_fetch.call_args.args[0]
         self.assertIn("FROM vendite.vw_dash_competenza_gruppi g", sql)
         self.assertIn("JOIN lotto ON lotto.competenza_mese = g.competenza_mese", sql)
@@ -132,7 +137,7 @@ class LottoGruppiRepositoryTests(SimpleTestCase):
     @patch("apps.vendite.db.vendite_repository.fetch_paged_with_total")
     def test_default_mette_i_falliti_in_cima(self, mock_fetch):
         mock_fetch.return_value = ([], 0)
-        VenditeRepository().list_lotto_gruppi(lotto_id=10657, limit=25, offset=0)
+        VenditeRepository().list_lotto_gruppi(auth_user_id=7, lotto_id=10657, limit=25, offset=0)
         sql, params = mock_fetch.call_args.args[0], mock_fetch.call_args.args[1]
         # 🔴 `NULLS LAST` e' la meta' che mancava: `DESC` implica `NULLS FIRST`
         #    e `NULL = 'ERRORE'` vale NULL, quindi senza di esso i documenti MAI
@@ -155,7 +160,7 @@ class LottoGruppiRepositoryTests(SimpleTestCase):
     @patch("apps.vendite.db.vendite_repository.fetch_paged_with_total")
     def test_pagina_vuota_ha_un_conteggio_di_riserva(self, mock_fetch):
         mock_fetch.return_value = ([], 7)
-        VenditeRepository().list_lotto_gruppi(lotto_id=10657, limit=25, offset=50)
+        VenditeRepository().list_lotto_gruppi(auth_user_id=7, lotto_id=10657, limit=25, offset=50)
         kwargs = mock_fetch.call_args.kwargs
         conteggio = kwargs.get("fallback_count_sql")
         self.assertIsNotNone(conteggio)
@@ -174,7 +179,7 @@ class LottoGruppiRepositoryTests(SimpleTestCase):
     @patch("apps.vendite.db.vendite_repository.fetch_paged_with_total")
     def test_filtro_stato_entra_come_parametro(self, mock_fetch):
         mock_fetch.return_value = ([], 0)
-        VenditeRepository().list_lotto_gruppi(
+        VenditeRepository().list_lotto_gruppi(auth_user_id=7,
             lotto_id=10657, stato_esecuzione="ERRORE", limit=25, offset=0,
         )
         sql, params = mock_fetch.call_args.args[0], mock_fetch.call_args.args[1]
@@ -187,7 +192,7 @@ class LottoGruppiRepositoryTests(SimpleTestCase):
     @patch("apps.vendite.db.vendite_repository.fetch_paged_with_total")
     def test_mapping_consegna_esito_identita_e_commessa(self, mock_fetch):
         mock_fetch.return_value = ([_riga()], 1)
-        righe, totale = VenditeRepository().list_lotto_gruppi(
+        righe, totale = VenditeRepository().list_lotto_gruppi(auth_user_id=7,
             lotto_id=10657, limit=25, offset=0,
         )
         self.assertEqual(totale, 1)
@@ -212,7 +217,7 @@ class LottoGruppiRepositoryTests(SimpleTestCase):
             stato_esecuzione=None, errore_codice=None,
             errore_messaggio=None, errore_quando=None,
         )], 1)
-        righe, _ = VenditeRepository().list_lotto_gruppi(
+        righe, _ = VenditeRepository().list_lotto_gruppi(auth_user_id=7,
             lotto_id=10657, limit=25, offset=0,
         )
         for chiave in ("stato_esecuzione", "errore_codice", "errore_messaggio",
@@ -239,7 +244,7 @@ class LottoGruppiRepositoryTests(SimpleTestCase):
         self.assertTrue(attese, "il catalogo della lista e' vuoto: seed mancante.")
 
         mock_fetch.return_value = ([_riga()], 1)
-        righe, _ = VenditeRepository().list_lotto_gruppi(
+        righe, _ = VenditeRepository().list_lotto_gruppi(auth_user_id=7,
             lotto_id=10657, limit=25, offset=0,
         )
         mancanti = [c for c in attese if c not in righe[0]]
@@ -258,13 +263,17 @@ class LottoGruppiRepositoryTests(SimpleTestCase):
         mock_fetch.return_value = ([_riga(
             commessa_id=None, commessa_codice=None, commesse_n=2,
         )], 1)
-        righe, _ = VenditeRepository().list_lotto_gruppi(
+        righe, _ = VenditeRepository().list_lotto_gruppi(auth_user_id=7,
             lotto_id=10657, limit=25, offset=0,
         )
         self.assertIsNone(righe[0]["commessa_id"])
         self.assertEqual(righe[0]["commesse_n"], 2)
 
 
+# ⭐ Legge la SQL della lista, non prova il perimetro: il risolutore risponde
+#    «nessuna restrizione» (admin globale). Dal 2026-11-24 `auth_user_id=None`
+#    solleva, quindi il test passa un utente e dichiara il perimetro qui.
+@perimetro_admin_globale_di_prova()
 class LottoGruppiServiceTests(SimpleTestCase):
     # Il cancello di perimetro (`_lotto_perimetro`) legge la testata prima della
     # lista: qui il lotto e' visibile, il caso contrario ha il suo test.
@@ -276,13 +285,13 @@ class LottoGruppiServiceTests(SimpleTestCase):
     # 4) Una colonna fuori whitelist non ordina in silenzio: rifiuta.
     def test_ordinamento_fuori_whitelist_rifiutato(self):
         with self.assertRaises(ServiceError):
-            fn_list_lotto_gruppi(lotto_id=1, order_by="errore_messaggio")
+            fn_list_lotto_gruppi(auth_user_id=7, lotto_id=1, order_by="errore_messaggio")
 
     # 5) Il vocabolario dell'esito e' chiuso: uno stato inventato non filtra
     #    zero righe in silenzio — dice che non esiste.
     def test_stato_esecuzione_fuori_vocabolario_rifiutato(self):
         with self.assertRaises(ServiceError):
-            fn_list_lotto_gruppi(lotto_id=1, stato_esecuzione="ELABORATA")
+            fn_list_lotto_gruppi(auth_user_id=7, lotto_id=1, stato_esecuzione="ELABORATA")
 
     # 10) ⭐ UNA SOLA LETTURA, e nessun campo in più. Il flag
     #     `perimetro_dichiarato` è sparito col problema che risolveva: serviva
@@ -294,7 +303,7 @@ class LottoGruppiServiceTests(SimpleTestCase):
     #     chi lo legge crede che discrimini.
     @patch.object(VenditeRepository, "list_lotto_gruppi", autospec=True, return_value=([], 0))
     def test_nessun_flag_sul_perimetro_nella_risposta(self, mock_lista):
-        out = fn_list_lotto_gruppi(lotto_id=10452)
+        out = fn_list_lotto_gruppi(auth_user_id=7, lotto_id=10452)
         self.assertEqual(out["count"], 0)
         self.assertNotIn("perimetro_dichiarato", out)
         # E una lettura sola: il conteggio non si chiede a nessun altro.
@@ -304,7 +313,7 @@ class LottoGruppiServiceTests(SimpleTestCase):
     #     esportabili: chi costruisce il file legge `results` e `count`.
     @patch.object(VenditeRepository, "list_lotto_gruppi", autospec=True, return_value=([_riga()], 1))
     def test_export_non_pagina(self, mock_lista):
-        fn_list_lotto_gruppi(lotto_id=10657, max_rows=10_001)
+        fn_list_lotto_gruppi(auth_user_id=7, lotto_id=10657, max_rows=10_001)
         self.assertEqual(mock_lista.call_args.kwargs["max_rows"], 10_001)
 
     # 14) ⭐ IL MOTIVO DEL PULSANTE SPENTO SI LEGGE DALLA SUPERFICIE DEL DB, e la
@@ -321,7 +330,7 @@ class LottoGruppiServiceTests(SimpleTestCase):
         self, mock_fetch,
     ):
         mock_fetch.return_value = ([], 0)
-        VenditeRepository().list_lotto_gruppi(lotto_id=10657, limit=25, offset=0)
+        VenditeRepository().list_lotto_gruppi(auth_user_id=7, lotto_id=10657, limit=25, offset=0)
         sql = mock_fetch.call_args.args[0]
         self.assertIn("vendite.vw_lotti_gruppi_azioni", sql)
         self.assertIn("az.uscita_blocco_reason,", sql)
@@ -340,7 +349,7 @@ class LottoGruppiServiceTests(SimpleTestCase):
             "apps.vendite.db.vendite_repository.fetch_paged_with_total",
         ) as mock_fetch:
             mock_fetch.return_value = ([], 0)
-            VenditeRepository().list_lotto_gruppi(lotto_id=10657, limit=25, offset=0)
+            VenditeRepository().list_lotto_gruppi(auth_user_id=7, lotto_id=10657, limit=25, offset=0)
             sql = mock_fetch.call_args.args[0]
         self.assertIn("az.n_trascinati,", sql)
         self.assertNotIn("fn_gruppi_trascinati_da_uscita(", sql)

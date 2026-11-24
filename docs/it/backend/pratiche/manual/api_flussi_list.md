@@ -21,8 +21,8 @@ GET e' la lista a catalogo `pratiche.flussi` (`lista_codice` della view `ApiPrat
 |---|---|---|
 | `search` | string | Ricerca libera sulle colonne accese a catalogo (`template_flusso_descrizione`); sotto la soglia della lista non filtra |
 | `limit` / `offset` | integer | Paginazione (default 25, massimo 200) |
-| `order_by` | string | Whitelist `FLUSSI_ORDER_COLS`: `sequenza`, `template_flusso_descrizione`, `stato_descrizione`, `esito_descrizione`, `data_scadenza`, `risorsa_umana_display`, `unita_organizzativa_descrizione`, `data_insert`; fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
-| `order_dir` | string | `asc` / `desc`; assente = ASC, DESC sulle date (`data_scadenza`, `data_insert`) |
+| `order_by` | string | Whitelist `FLUSSI_ORDER_COLS`: `sequenza`, `template_flusso_descrizione`, `stato_descrizione`, `esito_descrizione`, `data_scadenza`, `risorsa_umana_display`, `unita_organizzativa_descrizione`, `data_insert`; fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20). Su `data_scadenza` il vuoto (nessuna scadenza) va come il massimo: lo dichiara il catalogo (`ui.lista_colonna.vuoto_ordinato_come_massimo`, dal 2026-11-24; prima andava come il minimo) |
+| `order_dir` | string | `asc` / `desc`. Assente: `asc` su ogni colonna, date comprese (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata); senza `order_by` la lista parte da `sequenza` ASC |
 | `emittente_fiscale_id` | integer | Emittente (PK) della pratica aperta — `lista_emittente_param` della view: scioglie il cancello di perimetro per chi ha piu' emittenti nello scope. **Non filtra**: le righe le decide la pratica del path, sotto la sua RLS |
 
 Senza ordinamento: `sequenza` ASC, spareggio su `id`.
