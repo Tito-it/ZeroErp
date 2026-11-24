@@ -1,22 +1,23 @@
 # Brief DB — Dove va il vuoto quando una lista ordina: si dichiara in `ui.lista_colonna`
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-24 (analisi critica della sessione DB)
+## ⏭️ Chi riparte — aggiornato al 2026-11-24 (apply di Tid, lato DB chiuso)
 
-**Riparte: la sessione DB, col giro di §7.7** (D-1 … D-4 decise da Tid il 2026-11-24, §7.6); i numeri dei changeSet li
-dà Tid, perché un'altra sessione DB è attiva.
-Poi il team BE/FE con le ricadute di §5, che **aspettano l'apply**: fino ad allora il BE resta com'è, con i `COALESCE`
-scritti a mano nelle whitelist. Decisioni di Tid prese il 2026-11-24 (§2). La domanda di §6 ha la risposta della
+**Riparte: il team BE/FE, con le ricadute di §5 e §5.1.** Il lato DB è chiuso: Tid ha applicato il giro di §7.7
+(`20261123-65`, `-66`, il seed) il 2026-11-24, col `ci_apply` e il pgTAP come app verde. D-1 … D-4 decise il
+2026-11-24 (§7.6). Fino al giro BE il BE resta com'è, con i `COALESCE` scritti a mano nelle whitelist: le quattro
+colonne divergenti di §3.1 ordinano ancora il vuoto come il minimo. Decisioni di Tid prese il 2026-11-24 (§2). La domanda di §6 ha la risposta della
 sessione DB in §7.2.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 |---|---|---|---|---|
 | 0 | Sessione DB | ✅ Analisi critica (2026-11-24): fatti verificati, risposta a §6, forma, vincolo, sede di lettura, un buco in §5 | §7 | — |
 | 0b | Tid | ✅ Le decisioni D-1 … D-4 (2026-11-24) | §7.6 | — |
-| 1 | Sessione DB | La colonna nuova, il seed, le correzioni di testo, COMMENT, pgTAP, guide e `manual/` | §7.7 | il range dei numeri da Tid |
-| 2 | Tid | Apply | — | 1 |
-| 3 | Team BE/FE | Le ricadute: `sql_order_direction`, lettura dal catalogo, ritiro dei `COALESCE`, presidio, e il drawer (§7.5) | §5, §7.5 | 2 |
+| 1 | Sessione DB | ✅ La colonna nuova, il seed, il registro del primo impianto, COMMENT, pgTAP, guide e `manual/`; provato sullo scratch (2026-11-24) | §7.7 | — |
+| 2 | Tid | ✅ Apply, `ci_apply`, pgTAP `test-lista-colonna-vuoto-ordinato-come-massimo-v1` come app: verde (2026-11-24) | §7.7 | — |
+| 3 | Team BE/FE | Le ricadute: `sql_order_direction`, lettura dal catalogo, ritiro dei `COALESCE`, presidio; e le tre di §5.1 (sede di lettura, il vincolo nuovo per nome, la whitelist degli asset) | §5, §5.1 | 2 |
 
-Decisioni aperte di Tid: nessuna; resta da dare il range dei due changeSet. Da committare: questo brief (§7).
+Decisioni aperte di Tid: nessuna. Da committare: il giro di §7.7, la doc auto-generata rigenerata, le guide e questo brief.
+Il brief si archivia quando il team BE/FE chiude il passo 3.
 
 **Brief vicini verificati** (2026-11-24): `brief-db-revisione-ui` tocca lo schema `ui` (documentazione, difetti, metadati) ed è alla chiusura; non tratta l'ordinamento delle liste né `ui.lista_colonna` come sede di una regola di ordinamento: non basta, e non va fuso. Nessun altro brief aperto su ordinamento, `NULLS` o `COALESCE` di whitelist.
 **Guide verificate** (`guide_coinvolte.py --oggetti ui.lista_colonna`): [configurazione-liste.md](../../guide/configurazione-liste.md) — coerente (non descrive dove va il vuoto quando una lista ordina); dopo l'apply è **guida indietro** e si aggiorna (§4, punto 6).
@@ -131,6 +132,19 @@ Le fa il team BE/FE, su `dev/backend-tid`, dopo l'apply. La sessione DB non tocc
 ⚠️ Una lista che il BE ordina **senza** catalogo (nessuna riga in `ui.lista_definizione`) non può leggere la
 dichiarazione. Il team BE ne fa il censimento quando scrive il punto 2, e porta a Tid i casi che restano.
 
+### 5.1 Dalla sessione DB, dopo le decisioni (2026-11-24)
+
+1. **Dove si legge**: `ui.lista_colonna.vuoto_ordinato_come_massimo`, dalla lettura del catalogo che il BE fa già
+   (`UiRepository.list_colonne_by_codice`). Non da `ui.fn_resolve_lista_config` (§7.7).
+2. **Il vincolo nuovo** `chk_ui_lista_colonna_vuoto_massimo_con_campo` arriva come violazione di vincolo, come gli altri
+   `CHECK` di `ui.lista_colonna` che il BE traduce per nome: va nella sua mappa. Dal drawer non lo si raggiunge (la
+   colonna non c'è, D-1), ma una colonna dell'installazione creata con il flag e senza campo sì.
+3. **D-4 no**: la lista degli asset documentali non riceve la colonna `valido_al`; `valido_al` esce da
+   `ASSET_ORDER_COLUMNS` (§3.4).
+4. **D-1, il drawer non cambia**: la colonna non entra nel drawer «Catalogo colonne». Su una colonna nata dal seed
+   l'installazione non la può cambiare (`E_SEED_COLONNA_DEL_SOFTWARE`): un payload del BE che la scrivesse su una
+   riga di seed sarebbe rifiutato.
+
 ## 6. Domanda aperta per la sessione DB
 
 > ⚠️ Risposta della sessione DB in §7.2 (2026-11-24): la sede resta `ui.lista_colonna`, con un presidio su `valido_al`.
@@ -210,23 +224,49 @@ creata dal drawer nascerebbe `false`: la vede il presidio di §7.2, che legge la
 | D-3 | Il vincolo (§7.4) | `CHECK` sul campo sorgente, non su `ordinabile` | ✅ **sì** |
 | D-4 | §3.4: la colonna `valido_al` della lista degli asset documentali | Di Tid. Se sì, nasce già dichiarata, e la guida `documenti-e-stampe` entra fra le verificate | ✅ **no**: la colonna non entra nel catalogo, il team BE toglie `valido_al` da `ASSET_ORDER_COLUMNS` (§3.4) |
 
-### 7.7 Il giro della sessione DB, dopo le decisioni
+### 7.7 Il giro della sessione DB — scritto il 2026-11-24
 
-1. `00_schema/ui`: la colonna, il `COMMENT` (che cosa vuol dire, che vale per l'ordinamento e non per i filtri), il `CHECK`.
-2. `80_data`: la colonna nel CSV di `ui.lista_colonna` (su tutte le righe) e nell'elenco del caricatore
-   `20260806-15-riancora-mirror-ui-lista-colonna` (`runOnChange: true`, lo stesso percorso di `origine_campo`); `true` sulle
-   righe di §3.1 (e sulla 304, se D-2 dice sì); l'etichetta estesa della 304 corretta.
-3. `00_schema/pratiche`: il `COMMENT` di `pratiche.pratiche.data_scadenza` e di `pratiche.flussi.data_scadenza`
-   («NULL = nessuna scadenza»).
-4. pgTAP in `db/pgtap/ui/`: il default, il `CHECK`, le righe dichiarate cercate per lista e codice (non per id), il
-   presidio di D-2.
-5. **La sede di lettura per il BE (§4.5)**: la tabella, dalla lettura che il BE fa già del catalogo
-   (`list_colonne_by_codice`). Non `ui.fn_resolve_lista_config`: quella risolve come si presenta la lista a un utente
-   (preferenza, preset, permessi, visibilità), e l'ordinamento ha bisogno del catalogo della lista. Metterci il flag
-   mescolerebbe le due cose, e la funzione gira a ogni apertura.
-6. ✅ Le guide e la pagina `manual/` (§7.8), scritte il 2026-11-24: `configurazione-liste` §2.2, §5.2 e l'intestazione
-   delle colonne; `gestione-pratiche`, la tabella delle colonne; `manual/lista_colonna`, la sezione «Dove va il vuoto
-   quando la lista ordina», il codice del vincolo e il test. Valgono dall'apply.
+- [x] `00_schema/ui/20261123-65-alter-ui-lista-colonna-vuoto-ordinato-come-massimo`: la colonna (`boolean NOT NULL
+  DEFAULT false`), il `COMMENT` (che cosa vuol dire, che vale per l'ordinamento e non per i filtri, la convenzione di
+  `valido_al`), `chk_ui_lista_colonna_vuoto_massimo_con_campo` col suo `COMMENT`.
+- [x] `00_schema/pratiche/20261123-66-comment-pratiche-flussi-data-scadenza-nessuna-scadenza`: i due `COMMENT`
+  («NULL = nessuna scadenza»).
+- [x] `80_data`, il CSV di `ui.lista_colonna`: la colonna in coda su tutte le righe (26 campi, nessun `\r`), `t` sulle
+  tredici righe di §3.1 e sulla 304 (D-2), l'etichetta estesa della 304 senza «vuoto significa senza scadenza».
+- [x] `80_data`, **i due caricatori** dello stesso CSV, `20260507-07` e `20260806-15` (tutti e due `runOnChange` con
+  l'elenco delle colonne): la voce `vuoto_ordinato_come_massimo` (`BOOLEAN`). È lo stesso percorso di `origine_campo`
+  (§11.2 delle linee guida SQL). ⚠️ Il brief nominava solo il secondo.
+- [x] `80_data`, **il registro del primo impianto** (`automazione_seed_primo_impianto.csv`, riga 4): la colonna fra
+  quelle del software (D-1), col motivo. ⚠️ Non era nel brief, ed era obbligato: `ui.lista_colonna` è iscritta nella
+  forma per colonna, dove ogni colonna sta in uno dei due elenchi; una colonna non classificata ferma il giro del
+  trigger su quella tabella (pagina `manual/` del registro).
+- [x] pgTAP `db/pgtap/ui/test-lista-colonna-vuoto-ordinato-come-massimo-v1.sql` (plan 11): il default, il vincolo, la
+  dichiarazione indipendente da `ordinabile`, le quattordici righe per lista e codice, la convenzione di `valido_al`
+  (D-2), la colonna del software nel registro e il rifiuto dell'app (D-1), i due `COMMENT`.
+- [x] **La sede di lettura per il BE (§4.5)**: la tabella, dalla lettura che il BE fa già del catalogo
+  (`list_colonne_by_codice`). Non `ui.fn_resolve_lista_config`: quella risolve come si presenta la lista a un utente
+  (preferenza, preset, permessi, visibilità), e l'ordinamento ha bisogno del catalogo della lista. Metterci il flag
+  mescolerebbe le due cose, e la funzione gira a ogni apertura. Nessun oggetto nuovo.
+- [x] Le guide e la pagina `manual/` (§7.8): `configurazione-liste` §2.2, §5.2 e l'intestazione delle colonne;
+  `gestione-pratiche`, la tabella delle colonne; `manual/lista_colonna`, la sezione «Dove va il vuoto quando la lista
+  ordina», il vincolo e il test. Valgono dall'apply.
+- [x] L'apply su dbdev (Tid, 2026-11-24): migrate, poi `ci_apply` (rimonta il trigger del seed col registro nuovo),
+  poi il pgTAP **come app**: verde, caso 9 compreso. La doc auto-generata di `ui.lista_colonna` è rigenerata (la
+  colonna, il vincolo, il trigger del seed con l'elenco nuovo).
+
+**La prova sullo scratch (2026-11-24, `prova_changeset.py`, transazione in `ROLLBACK`, come owner).** I due changeSet:
+preCondition vere, estratto eseguito per intero, catalogo identico dopo. Il pgTAP: 7/11 coi soli changeSet (i casi
+6-9 vogliono il seed, che lo script non carica); 10/11 col seed simulato da un estratto di prova nello scratchpad (gli
+stessi valori del CSV e del registro come `UPDATE`, più il runner del seed su `ui`). Il caso 9 resta rosso **da owner
+per costruzione**: la sessione del proprietario è il migratore, cioè il software, che la colonna la scrive. Come app è
+il caso da guardare. `test-seed-primo-impianto-ui-installazione-v1` uguale prima e dopo (13/19 da owner, i 6 rossi
+sono di perimetro e preesistenti), quindi nessuna divergenza nuova del registro. Il caricatore vero non è provato:
+il CSV è controllato campo per campo (1165 righe, 26 campi, 14 `t`, nessuna dichiarata senza campo, nessuna `valido_al`
+accesa fuori).
+
+**Pre-commit sui file del giro:** verde, tranne `check-i18n-keys`, che segnala
+`anagrafiche.soggetti.cambio_natura_blocco.verso_nessuna`: è del giro delle anagrafiche dell'altra sessione
+(`fn_check_cambio_natura_soggetto`), non di questo.
 
 ### 7.8 Guide e note di dominio (`guide_coinvolte.py --oggetti`, 2026-11-24)
 

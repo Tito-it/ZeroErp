@@ -404,8 +404,9 @@ colonne registrate per quella lista, attive e disattivate.
   disattivare con `attivo=false`. I permessi colonna se ne vanno con lei.
 
 La **priorità di ritiro** (§7) e **dove vanno le righe vuote** (§2.2) non sono nel drawer:
-si regolano nel seed del catalogo. Sono fatti del software, non preferenze: il secondo dice
-che cosa vuol dire il vuoto di quel dato.
+si regolano nel seed del catalogo. Dove vanno le righe vuote è un fatto del software, perché
+dice che cosa vuol dire il vuoto di quel dato: su una colonna nata dal seed l'installazione non
+lo cambia.
 
 #### 5.2.1 I formati di resa (`formato`)
 

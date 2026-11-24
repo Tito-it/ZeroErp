@@ -131,7 +131,9 @@ la applica all'ordinamento della lista: non vale per i filtri.
   si ordina, e torna utile se l'ordinamento si riaccende. Chiede invece un campo sorgente
   (`chk_ui_lista_colonna_vuoto_massimo_con_campo`): una colonna senza valore non ha un vuoto da
   ordinare.
-* Si scrive solo dal seed del catalogo, come la priorità: il drawer delle colonne non la mostra.
+* È una colonna del software: su una colonna nata dal seed l'installazione non la cambia
+  (`E_SEED_COLONNA_DEL_SOFTWARE`, il seed di primo impianto), e il drawer delle colonne non la
+  mostra. Dice che cosa vuol dire il vuoto del dato, non una preferenza di presentazione.
 
 ---
 
