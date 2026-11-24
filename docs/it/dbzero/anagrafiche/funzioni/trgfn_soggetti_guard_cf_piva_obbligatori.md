@@ -70,7 +70,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori()
-IS 'Guard di anagrafiche.soggetti (BEFORE INSERT OR UPDATE OF tipo_soggetto_dettaglio_id, partita_iva, codice_fiscale): la PRESENZA di partita IVA e codice fiscale secondo la natura (config.tipi_soggetto_dettaglio.piva_obbligatoria, cf_obbligatorio). Rifiuti E_PIVA_OBBLIGATORIA ed E_CF_OBBLIGATORIO, col campo; la frase nomina la natura per descrizione, senza id (S42, brief-db-revisione-anagrafiche §20, 2026-11-24). La stringa vuota la fa NULL trgfn_soggetti_normalize (a01); il FORMATO lo valida trgfn_soggetti_valida_cf_piva_dispatch. Senza natura tace.';
+IS 'Guard di anagrafiche.soggetti (BEFORE INSERT OR UPDATE OF tipo_soggetto_dettaglio_id, partita_iva, codice_fiscale): la PRESENZA di partita IVA e codice fiscale secondo la natura (config.tipi_soggetto_dettaglio.piva_obbligatoria, cf_obbligatorio). Rifiuti E_PIVA_OBBLIGATORIA ed E_CF_OBBLIGATORIO, col campo; la frase nomina la natura per descrizione, senza id. La stringa vuota la fa NULL trgfn_soggetti_normalize (a01); il FORMATO lo valida trgfn_soggetti_valida_cf_piva_dispatch. Senza natura tace.';
 ```
 
 </div>
