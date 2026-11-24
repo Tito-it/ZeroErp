@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_indirizzi_resolved_base`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,7 +13,6 @@
 > Approfondimento viste:
 >
 > * [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio) — il civico risolto, per gli indirizzi col dettaglio
-> * [script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo) — la via risolta, da cui legge CAP e provincia degli indirizzi liberi
 > * [anagrafiche.vw_indirizzi_resolved_ruolo](/dbzero/anagrafiche/views/vw_indirizzi_resolved_ruolo) — la proiezione del solo strato `RUOLO`
 > * [anagrafiche.vw_indirizzi_resolved_soggetto](/dbzero/anagrafiche/views/vw_indirizzi_resolved_soggetto) — la proiezione del solo strato `SOGGETTO`
 > * [anagrafiche.vw_indirizzi_resolved_all](/dbzero/anagrafiche/views/vw_indirizzi_resolved_all) — la proiezione dei due strati insieme
@@ -31,8 +30,8 @@
 
 ### 🎯 Scopo Principale
 
-`anagrafiche.vw_indirizzi_resolved_base` è la lettura unica degli indirizzi scritti: una riga per ogni
-indirizzo di un ruolo o di un soggetto, nelle due forme, con il testo da mostrare, il luogo risolto (comune,
+`anagrafiche.vw_indirizzi_resolved_base` è la lettura unica degli indirizzi scritti: una riga, e una sola, per
+ogni indirizzo di un ruolo o di un soggetto, nelle due forme, con il testo da mostrare, il luogo risolto (comune,
 provincia, regione, stato, CAP), il tipo e la posizione. Le tre viste `vw_indirizzi_resolved_*` ne sono
 proiezioni.
 
@@ -58,13 +57,16 @@ ripiego. Quella è di `script.fn_get_indirizzo`, che legge da qui attraverso le 
 * **Col dettaglio**: testo, via, civico e dettaglio vengono dal civico (`anagrafiche.vw_indirizzi_dettaglio`),
   comune, provincia e regione dalla sua via, lo stato dalla regione.
 * **Libera**: il testo è `indirizzo_libero`; comune e CAP sono quelli scritti sulla riga nella forma del
-  catalogo, provincia e regione vengono dal comune; lo stato è quello della riga. Località, area
+  catalogo, provincia e regione vengono dal comune; lo stato è quello della riga. La colonna `cap` è il CAP
+  scelto nella riga, e la provincia quella del comune, letti dalle tabelle del catalogo: le vie del comune non
+  entrano nella lettura di un indirizzo libero. Località, area
   amministrativa, frazione e codice postale escono come sono, per la forma estera.
 * **Il testo da mostrare** (`indirizzo_display`) è l'indirizzo normalizzato del civico, oppure il testo libero:
   via e numero, non il luogo, che sta nelle sue colonne. Il terzo ripiego, che compone località e codice postale,
   non si raggiunge, perché un indirizzo libero ha sempre il testo.
 * **La posizione** è il punto del civico, poi quello della via, poi quello scritto sulla riga: per un indirizzo
-  col dettaglio la vista legge il civico di oggi, non la copia sulla riga.
+  col dettaglio la vista legge il civico di oggi, e la riga non ne tiene una sua; quella scritta sulla riga è la
+  posizione di un indirizzo libero.
 * **Il tipo** esce col codice da mostrare (`tipo_indirizzo_codice`, che l'utente può rinominare), la descrizione
   e il codice interno (`tipo_indirizzo_codice_interno`), che è la chiave da usare nei confronti e nella logica.
 
@@ -78,15 +80,11 @@ aggiunge anche a loro, altrimenti chi passa da una vista all'altra trova un cont
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### Un civico e la sua via
 
-* **Un indirizzo libero col comune esce più volte.** La via risolta (`script.vw_indirizzo_completo`) si unisce
-  sul solo comune, e ha una riga per ogni via: un indirizzo libero nella forma del catalogo esce una volta per
-  ogni via del suo comune, in questa vista e nelle tre proiezioni. Per la stessa ragione la colonna `cap` di un
-  indirizzo libero è il CAP di una via del comune, non quello scritto sulla riga, che è `cap_codice`; e in un
-  comune senza vie nello stradario `cap` e `provincia` restano vuoti.
-* **Un civico la cui via smette di risolversi** esce senza testo, comune e CAP, perché la vista del civico lo
-  perde.
+Un civico la cui via non si risolvesse uscirebbe senza testo, comune e CAP, perché la vista del civico lo perde. Il
+modello non lo produce: un civico non nasce su una via che non si risolve, e una via usata non perde la provincia
+(vedi [vw_indirizzi_dettaglio](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio)).
 
 ---
 
@@ -97,6 +95,8 @@ aggiunge anche a loro, altrimenti chi passa da una vista all'altra trova un cont
 * `db/pgtap/anagrafiche/test-indirizzi-fallback.sql` — le funzioni di lista allineate alla base, i due strati
   che insieme fanno la vista di tutti.
 * `db/pgtap/anagrafiche/test-indirizzi-istanza-cascata.sql` — l'istanza esposta sullo strato del ruolo.
+* `db/pgtap/anagrafiche/test-indirizzi-viste-forma-e-vincoli-v1.sql` (7, 8, 16) — l'indirizzo libero della forma del
+  catalogo esce una volta sola, col CAP scelto; la posizione del civico letta anche dopo che cambia.
 
 ---
 
@@ -105,6 +105,8 @@ aggiunge anche a loro, altrimenti chi passa da una vista all'altra trova un cont
 * 2026-10-18 — `postal_box` diventa `postal_code`.
 * 2026-11-01 — il codice del tipo esce intero (prima era troncato a 10 caratteri), e si aggiunge il codice
   interno, in fondo, nella base e nelle tre proiezioni.
+* 2026-11-24 — un indirizzo libero esce una volta sola, col CAP scelto: prima la vista univa le vie del suo comune,
+  e l'indirizzo usciva una volta per via, col CAP di ciascuna.
 
 ---
 

@@ -1,6 +1,6 @@
 ### 📍 Gli indirizzi obbligatori
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 
 Un soggetto e i suoi ruoli devono avere certi indirizzi: per esempio una società la sede legale, un cliente
 l'indirizzo di fatturazione. Il database lo pretende su due livelli, ognuno con la sua richiesta, le sue tabelle e il suo
@@ -35,8 +35,10 @@ chiederebbe il domicilio fiscale. Lo stesso ruolo su due nature può chiedere in
 lasciarlo incompleto senza che nessun indirizzo sia stato toccato. Su un soggetto **senza natura** la natura
 non conta: il ruolo chiede le sue righe come sono.
 
-Il livello del soggetto è più semplice: la natura chiede le sue righe obbligatorie, il ripiego vale come è
-scritto nella riga, e un soggetto senza natura non deve avere niente.
+Il livello del soggetto è più semplice: la natura chiede le sue righe obbligatorie, il ripiego vale se la natura
+lo ammette, e un soggetto senza natura non deve avere niente. Quali tipi la natura chiede lo dice una funzione
+sola, `anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura`, gemella di quella del ruolo: la leggono i
+mancanti, la copia, i picker e gli strumenti di sviluppo e di prova.
 
 #### Una lettura sola, per chi controlla e per chi propone
 
@@ -44,7 +46,10 @@ scritto nella riga, e un soggetto senza natura non deve avere niente.
 flowchart LR
     R[fn_indirizzi_obbligatori_ruolo<br/>il requisito del ruolo] --> MR[fn_indirizzi_obbligatori_mancanti_ruolo]
     R --> OB[fn_tipo_indirizzo_obbligatorio_per_ruolo]
-    MS[fn_indirizzi_obbligatori_mancanti_soggetto] --> GS[fn_guard_indirizzi_obbligatori_soggetto]
+    N[fn_tipo_indirizzo_obbligatorio_per_natura<br/>il requisito della natura] --> MS[fn_indirizzi_obbligatori_mancanti_soggetto]
+    N --> PS[i picker del soggetto]
+    MS --> GS[fn_guard_indirizzi_obbligatori_soggetto]
+    MS --> CS[la copia degli obbligatori<br/>del soggetto]
     MR --> GR[fn_guard_indirizzi_obbligatori_ruolo]
     MR --> F[fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli<br/>il form]
     MS --> F
@@ -73,16 +78,22 @@ constraint trigger **differiti alla conferma della transazione** (`DEFERRABLE IN
 
 | Strada | Trigger function | Tabella ed evento | Chi si giudica |
 | --- | --- | --- | --- |
-| nasce o si scrive il soggetto, anche cambiandogli la natura | `anagrafiche.trgfn_soggetti_guard_indirizzi_required` | `soggetti`, INSERT e ogni UPDATE | il soggetto |
-| nasce o si scrive il ruolo | `anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required` | `soggetti_ruoli`, INSERT e ogni UPDATE | il ruolo |
-| si cancella un indirizzo del soggetto, o se ne cambia il tipo | `anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto` | `indirizzi_soggetti`, DELETE e UPDATE | il soggetto da cui l'indirizzo esce |
-| si cancella un indirizzo del ruolo, o se ne cambia il tipo | `anagrafiche.trgfn_indirizzi_guard_obbligatori_ruolo` | `indirizzi`, DELETE e UPDATE | il ruolo da cui l'indirizzo esce |
+| nasce il soggetto, o gli si cambia la natura | `anagrafiche.trgfn_soggetti_guard_indirizzi_required` | `soggetti`, INSERT e UPDATE che cambia la natura (`WHEN`) | il soggetto |
+| nasce il ruolo | `anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required` | `soggetti_ruoli`, INSERT | il ruolo |
+| si cancella un indirizzo del soggetto, o se ne cambia il tipo | `anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto` | `indirizzi_soggetti`, DELETE e UPDATE | il soggetto da cui l'indirizzo esce, per ciò che l'indirizzo dava |
+| si cancella un indirizzo del ruolo, o se ne cambia il tipo | `anagrafiche.trgfn_indirizzi_guard_obbligatori_ruolo` | `indirizzi`, DELETE e UPDATE | il ruolo da cui l'indirizzo esce, per ciò che l'indirizzo dava |
 | cambia la natura del soggetto | [trgfn_soggetti_guard_obbligatori_ruoli](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_obbligatori_ruoli) | `soggetti`, UPDATE della natura | tutti i suoi ruoli |
 
 Aggiungere un indirizzo non toglie mai niente, e nessun trigger lo guarda. Il titolare di un indirizzo non si
 sposta, salvo dalla porta di manutenzione: soggetto e ruolo sono bloccati
 (`E_INDIRIZZO_SOGGETTO_TITOLARE_IMMUTABILE`, `E_INDIRIZZO_RUOLO_TITOLARE_IMMUTABILE`), quindi sugli indirizzi le
 strade sono la cancellazione e il cambio di tipo.
+
+⭐ **Una riga di matrice che cambia vale per le scritture che toccano il requisito**, come per i tipi ammessi.
+Chi esiste già non si rigiudica a ogni scrittura: un soggetto o un ruolo a cui una riga nuova chiede un indirizzo
+che non ha resta modificabile su ogni altra colonna. Quando un indirizzo esce, il guard riceve il suo tipo e
+guarda solo le righe che quel tipo soddisfaceva, come tipo o come ripiego: l'unico indirizzo che dava una riga
+obbligatoria non si toglie, uno che nessuno chiede sì. Alla nascita e al cambio di natura si giudica tutto.
 
 Perché il controllo è alla conferma:
 

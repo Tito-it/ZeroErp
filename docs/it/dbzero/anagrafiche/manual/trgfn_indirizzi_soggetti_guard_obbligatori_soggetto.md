@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -37,17 +37,14 @@ all'UPDATE, giudica il soggetto **di prima** dell'indirizzo, con
   indirizzo è bloccato prima (`E_INDIRIZZO_SOGGETTO_TITOLARE_IMMUTABILE`). Quando passa, il soggetto di prima
   si giudica come dopo una cancellazione.
 * Il soggetto cancellato coi suoi indirizzi non si giudica.
+* **Si giudica ciò che l'indirizzo dava**: il trigger passa al guard il tipo che esce e il `tx_id` della riga, che
+  va al log del rifiuto. Si giudicano solo le righe obbligatorie che quel tipo soddisfaceva, come tipo o come
+  ripiego: un soggetto a cui una riga obbligatoria nata dopo chiede un indirizzo che non ha mai avuto può comunque
+  cancellare un indirizzo che nessuno chiede.
 
 ---
 
 {% include-markdown "it/dbzero/anagrafiche/_indirizzi-obbligatori.md" %}
-
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **Il rifiuto non porta la transazione.** Il trigger chiama il guard senza `tx_id`: il log dell'errore non dice
-  in quale transazione l'indirizzo è uscito, a differenza del rifiuto alla scrittura del soggetto.
 
 ---
 
@@ -63,12 +60,17 @@ all'UPDATE, giudica il soggetto **di prima** dell'indirizzo, con
 * `db/pgtap/anagrafiche/test-indirizzi-obbligatori-ripiego-e-cancellazione-v1.sql` — il trigger differito sugli
   eventi giusti; la sede legale di una società, cancellata o cambiata di tipo, rifiutata col codice del
   soggetto; la sostituzione nella stessa transazione, che passa.
+* `db/pgtap/anagrafiche/test-indirizzi-obbligatori-requisito-nuovo-v1.sql` (4, 5) — sul soggetto a cui un
+  obbligatorio nato dopo chiede un indirizzo che non ha, cancellare un indirizzo che nessuno chiede passa;
+  cancellare l'unico indirizzo di una riga obbligatoria si rifiuta.
 
 ---
 
 ### Note di migrazione
 
 * 2026-11-17 — nasce per la strada della cancellazione e del cambio di tipo, che prima nessuno controllava.
+* 2026-11-24 — passa al guard il tipo che esce e il `tx_id` della riga: prima il guard rigiudicava tutto il titolare,
+  e il log del rifiuto non diceva la transazione.
 
 ---
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_indirizzi_ruolo`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,7 +13,7 @@
 >
 > * [anagrafiche.fn_crea_indirizzo_ruolo](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_ruolo) — la singolare, che scrive ogni riga
 > * [anagrafiche.fn_indirizzi_con_obbligatori](/dbzero/anagrafiche/funzioni/fn_indirizzi_con_obbligatori) — la copia del primo negli obbligatori
-> * [anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_obbligatorio_per_ruolo) — quali tipi sono obbligatori oggi
+> * [anagrafiche.fn_indirizzi_obbligatori_ruolo](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_ruolo) — il requisito del ruolo, col tipo richiesto e il ripiego
 > * [anagrafiche.fn_crea_indirizzi_soggetto](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_soggetto) — la gemella del soggetto
 >
 > Guide:
@@ -35,16 +35,20 @@ il builder dei ruoli dei test.
 ### ⭐ La copia del primo negli obbligatori
 
 Ogni ruolo ha i suoi indirizzi **obbligatori**: per il cliente e per il fornitore, la fatturazione. Se chi crea il ruolo
-ne indica uno solo, gli obbligatori che mancano nell'elenco ricevono una **copia del primo**: lo stesso indirizzo, col
+ne indica uno solo, gli obbligatori che mancano davvero ricevono una **copia del primo**: lo stesso indirizzo, col
 tipo cambiato, una per tipo.
 
-Sono obbligatori i tipi per cui `anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo` risponde vero, sul tipo di
-ruolo e sulla natura del soggetto, il giorno operativo. È lo stesso giudizio dei guard degli obbligatori e dei picker:
+I tipi obbligatori li dice il requisito del ruolo, `anagrafiche.fn_indirizzi_obbligatori_ruolo`, sul tipo di ruolo e
+sulla natura del soggetto, il giorno operativo: per ogni riga il tipo richiesto e il ripiego che lo sostituisce. È lo
+stesso giudizio dei guard degli obbligatori e dei picker:
 
 * una riga obbligatoria attiva e valida conta col suo tipo, se la natura lo ammette;
 * se la natura non lo ammette, conta il suo **ripiego**, quando il ruolo e la natura ammettono quello;
 * una riga scaduta, o una di cui la natura vieta tipo e ripiego, non fa nascere una copia, che i guard poi
-  rifiuterebbero.
+  rifiuterebbero;
+* un tipo il cui ripiego è già nell'elenco, o sul ruolo senza istanza, non si copia: il ruolo ha già ciò che la riga
+  chiede, e una copia sarebbe un indirizzo che nessuno ha chiesto. Lo stesso vale per un tipo che l'elenco o il ruolo
+  senza istanza hanno già.
 
 La copia la fa `anagrafiche.fn_indirizzi_con_obbligatori`, la stessa della plurale del soggetto: cambia solo la matrice
 da cui si leggono gli obbligatori.
@@ -66,17 +70,10 @@ da cui si leggono gli obbligatori.
 
 ### Che cosa lascia agli altri
 
-* **I campi di una via nuova** (tipo strada, nome, comune, CAP) non li controlla: arrivano ai vincoli dello stradario.
+* **I campi di una via nuova** (tipo strada, nome, comune, CAP) li controlla `anagrafiche.fn_create_indirizzo`, a cui
+  la via arriva dall'elemento: ogni campo che manca è `E_INDIRIZZO_VIA_NUOVA_INCOMPLETA`, col campo.
 * **La forma dell'indirizzo libero** la dice il guard della tabella, con codice e campo.
 * **Il permesso** lo decide l'applicazione.
-
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **Il ripiego già nell'elenco.** Il guard degli obbligatori è soddisfatto dal tipo obbligatorio o dal suo ripiego, ma la
-  copia guarda solo il tipo: se l'elenco porta il ripiego e non il tipo, nasce lo stesso la copia del tipo, cioè un
-  indirizzo in più di quanti il ruolo ne debba avere.
 
 ---
 
@@ -85,7 +82,9 @@ da cui si leggono gli obbligatori.
 * `E_SCRIPT_CHIAMATA_NON_VALIDA` — gli indirizzi non sono un elenco, o un elemento non è un oggetto.
 * `E_SOGGETTO_RUOLO_NON_TROVATO` — il ruolo non esiste.
 * `E_CAMPO_NON_AMMESSO` — una chiave che un indirizzo non ha, compresa l'istanza.
-* `E_TIPO_INDIRIZZO_NON_TROVATO` — il codice del tipo manca o non esiste.
+* `E_TIPO_INDIRIZZO_NON_TROVATO` — il tipo manca, o l'id o il codice detti non esistono (un id non numerico compreso).
+* `E_TIPO_INDIRIZZO_DISCORDE` — l'id e il codice del tipo dicono due tipi diversi.
+* `E_INDIRIZZO_VIA_NUOVA_INCOMPLETA` — a una via nuova manca un campo.
 * Dalla singolare e dai guard: i rifiuti sul tipo e sulla forma.
 
 ---
@@ -100,6 +99,8 @@ da cui si leggono gli obbligatori.
 * `db/pgtap/anagrafiche/test-check-tipo-indirizzo-v1.sql` — l'obbligatorio scaduto, che non fa nascere la copia.
 * `db/pgtap/anagrafiche/test-fornitore-privato-indirizzi-v1.sql` — l'obbligatorio che la natura vieta non si copia sul
   privato, e si copia sulla società.
+* `db/pgtap/anagrafiche/test-indirizzi-viste-forma-e-vincoli-v1.sql` (12, 13, 14, 17, 18, 19) — l'elemento vuoto o col
+  solo tipo, la via nuova senza toponomastica, il tipo che non esiste, non numerico o discorde dal codice.
 
 ---
 
@@ -110,6 +111,8 @@ da cui si leggono gli obbligatori.
 * 2026-10-18 — la grammatica dell'elemento passa nei building block comuni alla madre del soggetto.
 * 2026-10-19 — le righe le scrive la singolare; il salto dei tipi presenti guarda solo gli indirizzi senza istanza
   (prima un indirizzo di un'istanza faceva saltare quello del ruolo, che poi non nasceva).
+* 2026-11-24 — i tipi da copiare vengono dal requisito del ruolo, senza quelli il cui ripiego è nell'elenco o sul ruolo
+  senza istanza: prima si copiava il tipo anche col ripiego già presente.
 
 ---
 

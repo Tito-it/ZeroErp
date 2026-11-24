@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_indirizzi_soggetto`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,7 +13,8 @@
 >
 > * [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_soggetto) — la singolare, che scrive ogni riga
 > * [anagrafiche.fn_indirizzi_con_obbligatori](/dbzero/anagrafiche/funzioni/fn_indirizzi_con_obbligatori) — la copia del primo negli obbligatori
-> * [anagrafiche.fn_tipo_indirizzo_ammesso_per_natura](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_ammesso_per_natura) — il predicato dei guard, oggi
+> * [anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_mancanti_soggetto) — gli obbligatori che mancano, col ripiego
+> * [anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_obbligatorio_per_natura) — la sede di «obbligatorio per la natura»
 > * [anagrafiche.fn_crea_indirizzi_ruolo](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_ruolo) — la gemella del ruolo
 >
 > Guide:
@@ -34,13 +35,17 @@ quella della natura del soggetto. La usano l'applicazione e i builder dei sogget
 
 ### ⭐ La copia del primo negli obbligatori
 
-Se l'operatore compila un indirizzo solo, gli obbligatori della natura che mancano nell'elenco ricevono una **copia del
+Se l'operatore compila un indirizzo solo, gli obbligatori della natura che mancano davvero ricevono una **copia del
 primo**: lo stesso indirizzo, col tipo cambiato, una per tipo. La fa `anagrafiche.fn_indirizzi_con_obbligatori`, la
 stessa della plurale del ruolo.
 
-Sono obbligatori le righe obbligatorie della natura che il predicato dei guard,
-`anagrafiche.fn_tipo_indirizzo_ammesso_per_natura`, ammette il giorno operativo: attive e nella loro finestra di
-validità. Una riga scaduta non fa nascere una copia, che il guard poi rifiuterebbe.
+Mancano davvero quelli che dicono i mancanti del soggetto (`anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto`)
+nel giorno operativo, tolti quelli di cui l'elenco porta il tipo o il ripiego. È lo stesso giudizio del guard:
+
+* obbligatorio è ciò che dice la sede unica, `anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura`, quindi una
+  riga scaduta o spenta non fa nascere una copia che il guard poi rifiuterebbe;
+* un tipo il cui ripiego, ammesso dalla natura, è già nell'elenco o sul soggetto non si copia: il soggetto ha già
+  ciò che la riga chiede, e una copia sarebbe un indirizzo che nessuno ha chiesto.
 
 La copia si può spegnere (`p_copia_obbligatori`, accesa se non si dice altro): nasce allora solo ciò che l'elenco
 indica, e gli obbligatori li pretende comunque il guard del soggetto al COMMIT.
@@ -53,14 +58,6 @@ indica, e gli obbligatori li pretende comunque il guard del soggetto al COMMIT.
   `anagrafiche.fn_crea_indirizzo_soggetto`, coi suoi controlli sul tipo.
 * **Un tipo che il soggetto ha già si salta**: niente doppioni, nemmeno da una seconda chiamata.
 * **Un elenco vuoto** non scrive niente, nemmeno le copie.
-
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **Il ripiego già nell'elenco.** Il guard degli obbligatori del soggetto è soddisfatto dal tipo obbligatorio o dal suo
-  ripiego, ma la copia guarda solo il tipo: se l'elenco porta il ripiego e non il tipo, nasce lo stesso la copia del
-  tipo, cioè un indirizzo in più di quanti il soggetto ne debba avere.
 
 ---
 
@@ -80,6 +77,8 @@ indica, e gli obbligatori li pretende comunque il guard del soggetto al COMMIT.
 * `db/pgtap/anagrafiche/test-check-tipo-indirizzo-v1.sql` — l'obbligatorio scaduto, che non fa nascere la copia.
 * `db/pgtap/anagrafiche/test-fn-pgtap-crea-soggetto-pf-v1.sql`, `test-fn-pgtap-crea-soggetto-pg-v1.sql` — i builder dei
   soggetti, che scrivono gli indirizzi da qui.
+* `db/pgtap/anagrafiche/test-indirizzi-obbligatori-requisito-nuovo-v1.sql` (9, 10, 11) — con il ripiego
+  nell'elenco il tipo non si copia, il ripiego si scrive, e il tipo senza ripiego si copia.
 
 ---
 
@@ -87,6 +86,8 @@ indica, e gli obbligatori li pretende comunque il guard del soggetto al COMMIT.
 
 * 2026-10-19 — nasce, e prende il posto della procedura dell'applicazione che copiava gli obbligatori e scriveva gli
   indirizzi uno per uno.
+* 2026-11-24 — i tipi da copiare vengono dai mancanti del soggetto, senza quelli il cui ripiego è nell'elenco o
+  sul soggetto: prima la copia leggeva la matrice da sé e copiava il tipo anche col ripiego già presente.
 
 ---
 

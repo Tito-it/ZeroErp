@@ -183,7 +183,8 @@ BEGIN
             PERFORM anagrafiche.fn_crea_indirizzo_soggetto(v_sog, jsonb_build_object('tipo_indirizzo_codice_interno', ti.codice_interno, 'indirizzo_dettaglio_id', v_det))
                FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
                JOIN config.tipi_indirizzi ti ON ti.id = m.tipo_indirizzo_id
-              WHERE m.tipo_soggetto_dettaglio_id = v_tsd_sc AND m.attivo AND m.obbligatorio;
+              WHERE m.tipo_soggetto_dettaglio_id = v_tsd_sc AND anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura(
+               v_tsd_sc, m.tipo_indirizzo_id, script.fn_data_operativa());
             INSERT INTO dbops.soggetti_di_prova (soggetto_id, chiave) VALUES (v_sog, v_el ->> 'chiave');
 
             -- Il ruolo EF non ha indirizzi obbligatori: lo crea il BB.
@@ -230,7 +231,8 @@ BEGIN
             PERFORM anagrafiche.fn_crea_indirizzo_soggetto(v_sog, jsonb_build_object('tipo_indirizzo_codice_interno', ti.codice_interno, 'indirizzo_dettaglio_id', v_det))
                FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
                JOIN config.tipi_indirizzi ti ON ti.id = m.tipo_indirizzo_id
-              WHERE m.tipo_soggetto_dettaglio_id = v_tsd_sc AND m.attivo AND m.obbligatorio;
+              WHERE m.tipo_soggetto_dettaglio_id = v_tsd_sc AND anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura(
+               v_tsd_sc, m.tipo_indirizzo_id, script.fn_data_operativa());
             INSERT INTO dbops.soggetti_di_prova (soggetto_id, chiave) VALUES (v_sog, v_el ->> 'chiave');
 
             PERFORM anagrafiche.fn_crea_cliente(
@@ -276,7 +278,8 @@ BEGIN
             PERFORM anagrafiche.fn_crea_indirizzo_soggetto(v_sog, jsonb_build_object('tipo_indirizzo_codice_interno', ti.codice_interno, 'indirizzo_dettaglio_id', v_det))
                FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
                JOIN config.tipi_indirizzi ti ON ti.id = m.tipo_indirizzo_id
-              WHERE m.tipo_soggetto_dettaglio_id = v_tsd_sc AND m.attivo AND m.obbligatorio;
+              WHERE m.tipo_soggetto_dettaglio_id = v_tsd_sc AND anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura(
+               v_tsd_sc, m.tipo_indirizzo_id, script.fn_data_operativa());
             INSERT INTO dbops.soggetti_di_prova (soggetto_id, chiave) VALUES (v_sog, v_el ->> 'chiave');
 
             PERFORM anagrafiche.fn_crea_fornitore(

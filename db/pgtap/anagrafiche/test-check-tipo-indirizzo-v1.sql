@@ -18,7 +18,7 @@
 --    1) la singolare del soggetto chiama la check e non contiene il predicato
 --    2) la singolare del ruolo chiama la check e non contiene il predicato
 --    3) il guard del ruolo legge il predicato, non la matrice
---    4) le due plurali leggono gli obbligatori col predicato
+--    4) le due plurali leggono gli obbligatori dalle sedi (rev. 2026-11-24)
 --   il predicato del ruolo (matrice costruita)
 --    5) riga attiva e valida: ammesso
 --    6) riga attiva ma scaduta: non ammesso
@@ -195,15 +195,19 @@ SELECT ok(
         NOT LIKE '%config.tipi_ruolo_tipi_indirizzo%',
     '3) il guard del ruolo legge il predicato, non la matrice');
 
+-- rev 2026-11-24 (D-T7a-4, brief-db-revisione-anagrafiche §21): le due plurali
+--   leggono gli obbligatori dalle sedi, coi ripieghi: la soggetto i mancanti
+--   (anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto, che legge
+--   fn_tipo_indirizzo_obbligatorio_per_natura e il predicato), la ruolo il
+--   requisito (anagrafiche.fn_indirizzi_obbligatori_ruolo, che compone il
+--   predicato del ruolo con quello della natura). Prima: il predicato (la
+--   soggetto) e fn_tipo_indirizzo_obbligatorio_per_ruolo (la ruolo, 20261116-20).
 SELECT ok(
     pg_get_functiondef('anagrafiche.fn_crea_indirizzi_soggetto(uuid, jsonb, boolean)'::regprocedure)
-        LIKE '%anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(%'
-    -- rev 2026-11-17 (brief-db-fornitore-privato-indirizzi, 20261116-20): la plurale
-    --   del ruolo legge gli obbligatori dal building block che compone il predicato
-    --   del ruolo con quello della natura.
+        LIKE '%anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto(%'
     AND pg_get_functiondef('anagrafiche.fn_crea_indirizzi_ruolo(bigint, jsonb)'::regprocedure)
-        LIKE '%anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo(%',
-    '4) le due plurali leggono gli obbligatori col predicato');
+        LIKE '%anagrafiche.fn_indirizzi_obbligatori_ruolo(%',
+    '4) le due plurali leggono gli obbligatori dalle sedi');
 
 -- ============================================================
 -- 5-8) Il predicato del ruolo

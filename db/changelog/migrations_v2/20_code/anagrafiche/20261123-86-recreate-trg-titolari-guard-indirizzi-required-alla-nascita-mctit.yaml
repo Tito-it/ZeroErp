@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I trigger dei titolari degli indirizzi obbligatori: il soggetto si giudica
+#   alla nascita e al cambio di natura, il ruolo alla nascita.
+#   D-T7a-1 di Tid (2026-11-24), brief-db-revisione-anagrafiche §21 (S48).
+#
+# -- IL DIFETTO -------------------------------------------------------------------
+#   trg_soggetti_def_guard_indirizzi_required_aft_ins_upd e
+#   trg_soggetti_ruoli_def_guard_indirizzi_required_aft_ins_upd erano
+#   AFTER INSERT OR UPDATE, senza OF ne' WHEN. Una riga di matrice che diventa
+#   obbligatoria non rigiudica nessuno, ma la prossima scrittura del titolare,
+#   su qualunque colonna, era rifiutata: la regola «obbligatorio» rispondeva a
+#   un cambio di matrice in modo diverso dalla regola «ammesso» della stessa
+#   riga, che vale per le scritture che vengono dopo.
+#
+# -- LA REGOLA (D-T7a-1) ----------------------------------------------------------
+#   Si giudica quando il requisito si applica: alla nascita del titolare, e per
+#   il soggetto al cambio di natura (WHEN, linee-guida-trigger: si reagisce a
+#   un cambio di valore; nessun BEFORE di soggetti scrive la natura). Il ruolo
+#   non ha colonne che cambino il requisito: tipo di ruolo e soggetto sono
+#   bloccati (lucchetti del giro 3). Dal lato degli indirizzi giudica -85. Un
+#   titolare incompleto per una matrice nuova resta scrivibile; i mancanti li
+#   dice fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli al form.
+#   ⚠️ Garanzia ritirata: «ogni titolare scritto ha i suoi obbligatori» valeva
+#   solo per chi veniva riscritto. Censimento dei lettori: brief §21.
+#
+# -- LA FORMA (linee-guida-trigger) -------------------------------------------------
+#   Si rimonta per funzione, non per nome: un blocco DO toglie ogni montaggio
+#   delle due funzioni sulle due tabelle (pg_trigger.tgfoid), qualunque nome
+#   abbia (quelli di oggi nascono da 20251220-01 e -02). Poi tre constraint
+#   trigger differiti in fase a10, come il gemello del cambio di natura
+#   (trg_soggetti_a10_guard_obbligatori_ruoli_upd): un trigger differito
+#   vive in pg_trigger e pg_constraint, e DROP TRIGGER toglie entrambi. Le
+#   funzioni trigger non cambiano; cambiano i loro COMMENT.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261123-86-recreate-trg-titolari-guard-indirizzi-required-alla-nascita-mctit.yaml
+
+  - changeSet:
+      id: 20261123-86-recreate-trg-titolari-guard-indirizzi-required-alla-nascita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I trigger dei titolari degli indirizzi obbligatori: il soggetto all'INSERT e al cambio di
+        natura (WHEN), il ruolo all'INSERT. D-T7a-1, brief-db-revisione-anagrafiche §21.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $via$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN
+                      SELECT t.tgname, t.tgrelid::regclass AS tabella
+                        FROM pg_catalog.pg_trigger t
+                       WHERE NOT t.tgisinternal
+                         AND ((t.tgrelid = 'anagrafiche.soggetti'::regclass
+                               AND t.tgfoid = 'anagrafiche.trgfn_soggetti_guard_indirizzi_required()'::regprocedure)
+                           OR (t.tgrelid = 'anagrafiche.soggetti_ruoli'::regclass
+                               AND t.tgfoid = 'anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required()'::regprocedure))
+                  LOOP
+                      EXECUTE format('DROP TRIGGER %I ON %s', r.tgname, r.tabella);
+                  END LOOP;
+              END
+              $via$;
+
+              CREATE CONSTRAINT TRIGGER trg_soggetti_a10_guard_indirizzi_required_ins
+                  AFTER INSERT ON anagrafiche.soggetti
+                  DEFERRABLE INITIALLY DEFERRED
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required();
+
+              CREATE CONSTRAINT TRIGGER trg_soggetti_a10_guard_indirizzi_required_upd
+                  AFTER UPDATE ON anagrafiche.soggetti
+                  DEFERRABLE INITIALLY DEFERRED
+                  FOR EACH ROW
+                  WHEN (OLD.tipo_soggetto_dettaglio_id IS DISTINCT FROM NEW.tipo_soggetto_dettaglio_id)
+                  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required();
+
+              CREATE CONSTRAINT TRIGGER trg_soggetti_ruoli_a10_guard_indirizzi_required_ins
+                  AFTER INSERT ON anagrafiche.soggetti_ruoli
+                  DEFERRABLE INITIALLY DEFERRED
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required();
+
+              COMMENT ON TRIGGER trg_soggetti_a10_guard_indirizzi_required_ins ON anagrafiche.soggetti
+                  IS 'Al commit, il soggetto nato ha gli indirizzi obbligatori che la sua natura chiede (anagrafiche.fn_guard_indirizzi_obbligatori_soggetto). Differito: il soggetto nasce prima dei suoi indirizzi, nella stessa transazione.';
+              COMMENT ON TRIGGER trg_soggetti_a10_guard_indirizzi_required_upd ON anagrafiche.soggetti
+                  IS 'Al commit, dopo un cambio di natura, il soggetto ha gli indirizzi obbligatori che la natura nuova chiede (anagrafiche.fn_guard_indirizzi_obbligatori_soggetto). Una scrittura che non cambia la natura non rigiudica il soggetto: una riga di matrice nuova vale per chi nasce dopo.';
+              COMMENT ON TRIGGER trg_soggetti_ruoli_a10_guard_indirizzi_required_ins ON anagrafiche.soggetti_ruoli
+                  IS 'Al commit, il ruolo nato ha gli indirizzi obbligatori che il suo requisito chiede (anagrafiche.fn_guard_indirizzi_obbligatori_ruolo). Differito: il ruolo nasce prima dei suoi indirizzi. Tipo di ruolo e soggetto sono bloccati: nessun UPDATE cambia il requisito.';
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required()
+                  IS 'Constraint trigger DEFERRABLE su anagrafiche.soggetti, all''INSERT e all''UPDATE che cambia la natura (WHEN): il soggetto deve avere i suoi indirizzi obbligatori. Una scrittura che non cambia la natura non lo rigiudica: una riga di matrice che diventa obbligatoria vale per le scritture che toccano il requisito, come per i tipi ammessi. Il controllo e'' anagrafiche.fn_guard_indirizzi_obbligatori_soggetto (la natura, col ripiego che la natura ammette; E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO al primo mancante), che chiama anche il trigger della cancellazione o del cambio di tipo di un indirizzo del soggetto (anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto, col tipo che esce). ⛔ Da NON confondere con anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required, il gemello del layer RUOLO.';
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required()
+                  IS 'Constraint trigger DEFERRABLE su anagrafiche.soggetti_ruoli, all''INSERT: il ruolo nato deve avere i suoi indirizzi obbligatori. Un UPDATE non cambia il requisito (tipo di ruolo e soggetto sono bloccati) e non lo rigiudica. Il controllo e'' anagrafiche.fn_guard_indirizzi_obbligatori_ruolo (il requisito sul tipo di ruolo e sulla natura del soggetto, col ripiego; E_INDIRIZZO_OBBLIGATORIO_MANCANTE al primo mancante), che chiamano anche i trigger della cancellazione o del cambio di tipo di un indirizzo (anagrafiche.trgfn_indirizzi_guard_obbligatori_ruolo, col tipo che esce) e del cambio di natura del soggetto (anagrafiche.trgfn_soggetti_guard_obbligatori_ruoli). ⛔ Da NON confondere con anagrafiche.trgfn_soggetti_guard_indirizzi_required, il gemello del layer SOGGETTO.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: il giudizio a ogni UPDATE era il difetto.
+              SELECT 1;

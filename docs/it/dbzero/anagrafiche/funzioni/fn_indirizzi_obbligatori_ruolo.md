@@ -29,9 +29,9 @@ BEGIN ATOMIC
     FROM ( SELECT m.tipo_indirizzo_id AS tipo,
              m.fallback_tipo_indirizzo_id AS ripiego,
              anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(fn_indirizzi_obbligatori_ruolo.p_tipo_soggetto_dettaglio_id, m.tipo_indirizzo_id, fn_indirizzi_obbligatori_ruolo.p_oggi) AS tipo_ok,
-             ((m.fallback_tipo_indirizzo_id IS NOT NULL) AND (m.fallback_tipo_indirizzo_id <> m.tipo_indirizzo_id) AND anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo((fn_indirizzi_obbligatori_ruolo.p_tipo_ruolo_id)::bigint, m.fallback_tipo_indirizzo_id, fn_indirizzi_obbligatori_ruolo.p_oggi) AND anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(fn_indirizzi_obbligatori_ruolo.p_tipo_soggetto_dettaglio_id, m.fallback_tipo_indirizzo_id, fn_indirizzi_obbligatori_ruolo.p_oggi)) AS ripiego_ok
+             ((m.fallback_tipo_indirizzo_id IS NOT NULL) AND (m.fallback_tipo_indirizzo_id <> m.tipo_indirizzo_id) AND anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo(fn_indirizzi_obbligatori_ruolo.p_tipo_ruolo_id, m.fallback_tipo_indirizzo_id, fn_indirizzi_obbligatori_ruolo.p_oggi) AND anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(fn_indirizzi_obbligatori_ruolo.p_tipo_soggetto_dettaglio_id, m.fallback_tipo_indirizzo_id, fn_indirizzi_obbligatori_ruolo.p_oggi)) AS ripiego_ok
             FROM config.tipi_ruolo_tipi_indirizzo m
-           WHERE ((m.tipo_ruolo_id = fn_indirizzi_obbligatori_ruolo.p_tipo_ruolo_id) AND m.obbligatorio AND anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo((fn_indirizzi_obbligatori_ruolo.p_tipo_ruolo_id)::bigint, m.tipo_indirizzo_id, fn_indirizzi_obbligatori_ruolo.p_oggi))) r
+           WHERE ((m.tipo_ruolo_id = fn_indirizzi_obbligatori_ruolo.p_tipo_ruolo_id) AND m.obbligatorio AND anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo(fn_indirizzi_obbligatori_ruolo.p_tipo_ruolo_id, m.tipo_indirizzo_id, fn_indirizzi_obbligatori_ruolo.p_oggi))) r
    WHERE (r.tipo_ok OR r.ripiego_ok)
    ORDER BY
          CASE

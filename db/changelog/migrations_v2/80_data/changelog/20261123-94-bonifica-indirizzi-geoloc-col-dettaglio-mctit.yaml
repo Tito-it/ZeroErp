@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.indirizzi e indirizzi_soggetti: la posizione copiata dal civico
+#   si toglie, una volta, dalle righe col dettaglio.
+#   D-T7a-3 di Tid (2026-11-24), brief-db-revisione-anagrafiche §21 (S50).
+#
+# -- PERCHE' SERVE, A PRESCINDERE DALLE RIGHE DI OGGI ---------------------------------
+#   Fino a 20_code -93 trgfn_indirizzi_sync_geoloc copiava nella riga la
+#   posizione del civico. Ora col dettaglio la posizione la dice il civico, e
+#   trgfn_indirizzi_base_normalize la svuota a ogni scrittura: una riga nata
+#   prima tiene una copia che non segue il civico finche' qualcuno non la
+#   riscrive. Il modello vale per ogni database, non per quello di oggi.
+#
+# -- LA FORMA ----------------------------------------------------------------------------
+#   Come 20261123-63 (linee-guida-trigger, «Il backfill di una colonna derivata
+#   non passa dai trigger»): la copia non e' un dato di dominio, quindi i
+#   trigger delle due tabelle si sospendono (restano accesi audit e tx_id) e si
+#   riaccendono nel loro modo (O, A, R). Lo storico non prende versioni di una
+#   correzione che non e' un evento. Senza righe da toccare il blocco non
+#   sospende niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261123-94-bonifica-indirizzi-geoloc-col-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20261123-94-bonifica-indirizzi-geoloc-col-dettaglio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.indirizzi e indirizzi_soggetti: geoloc a NULL dove c'e' il dettaglio (la posizione
+        la dice il civico), coi trigger sospesi tranne audit e tx_id. D-T7a-3, brief-db-revisione-anagrafiche §21.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $bonifica$
+              DECLARE
+                  v_tab      regclass;
+                  r          record;
+                  v_sospesi  pg_catalog.pg_trigger.tgname%TYPE[];
+                  v_modi     pg_catalog.pg_trigger.tgenabled%TYPE[];
+              BEGIN
+                  FOREACH v_tab IN ARRAY ARRAY['anagrafiche.indirizzi'::regclass,
+                                               'anagrafiche.indirizzi_soggetti'::regclass]
+                  LOOP
+                      CONTINUE WHEN NOT EXISTS (
+                          SELECT 1 FROM anagrafiche.indirizzi i
+                           WHERE v_tab = 'anagrafiche.indirizzi'::regclass
+                             AND i.indirizzo_dettaglio_id IS NOT NULL AND i.geoloc IS NOT NULL
+                          UNION ALL
+                          SELECT 1 FROM anagrafiche.indirizzi_soggetti i
+                           WHERE v_tab = 'anagrafiche.indirizzi_soggetti'::regclass
+                             AND i.indirizzo_dettaglio_id IS NOT NULL AND i.geoloc IS NOT NULL);
+
+                      v_sospesi := '{}';
+                      v_modi    := '{}';
+                      FOR r IN
+                          SELECT t.tgname, t.tgenabled
+                            FROM pg_trigger t
+                           WHERE t.tgrelid = v_tab
+                             AND NOT t.tgisinternal
+                             AND t.tgenabled <> 'D'
+                             AND t.tgfoid NOT IN ('script.trgfn_audit_data_user_generic'::regproc,
+                                                  'dbops.trgfn_tx_id_managed'::regproc)
+                      LOOP
+                          EXECUTE format('ALTER TABLE %s DISABLE TRIGGER %I', v_tab, r.tgname);
+                          v_sospesi := v_sospesi || r.tgname;
+                          v_modi    := v_modi || r.tgenabled;
+                      END LOOP;
+
+                      EXECUTE format(
+                          'UPDATE %s SET geoloc = NULL WHERE indirizzo_dettaglio_id IS NOT NULL AND geoloc IS NOT NULL',
+                          v_tab);
+
+                      -- Si riaccende ogni trigger nel modo in cui era: O (origin), A (always), R (replica).
+                      FOR i IN 1 .. coalesce(array_length(v_sospesi, 1), 0) LOOP
+                          EXECUTE format('ALTER TABLE %s %s TRIGGER %I',
+                                         v_tab,
+                                         CASE v_modi[i]
+                                             WHEN 'A' THEN 'ENABLE ALWAYS'
+                                             WHEN 'R' THEN 'ENABLE REPLICA'
+                                             ELSE 'ENABLE'
+                                         END,
+                                         v_sospesi[i]);
+                      END LOOP;
+                  END LOOP;
+              END
+              $bonifica$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la copia non si ricostruisce, e non serve.
+              SELECT 1;

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_guard_indirizzi_obbligatori_ruolo`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -44,14 +44,27 @@ sicurezza di riga.
 
 ---
 
-{% include-markdown "it/dbzero/anagrafiche/_indirizzi-obbligatori.md" %}
+### Col tipo che esce, solo ciò che quel tipo dava
+
+L'ultimo parametro, facoltativo, è il tipo dell'indirizzo che esce, per una cancellazione o un cambio di tipo.
+
+* **Detto**: si giudicano solo le righe obbligatorie che quel tipo soddisfaceva, come tipo richiesto o come
+  ripiego. Il ruolo perde una cosa che gli era chiesta solo se l'indirizzo che esce era quello che la dava: una riga
+  obbligatoria nata dopo, che non ha mai avuto, non ferma la cancellazione di un altro indirizzo.
+* **Non detto**: si giudicano tutte le righe. È il giudizio della nascita del ruolo e del cambio di natura del soggetto.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### Un requisito nuovo vale per chi nasce dopo
 
-* **Il requisito che cambia non rigiudica.** Una riga della matrice che diventa obbligatoria, o entra nella sua
-  validità, non tocca i ruoli che esistono: il rifiuto arriva alla loro prossima scrittura, in qualunque colonna.
+Una riga della matrice che diventa obbligatoria, o entra nella sua validità, non rigiudica i ruoli che esistono, e
+non ferma la loro prossima scrittura su un'altra colonna: come per i tipi ammessi, la matrice che cambia vale per le
+scritture che toccano il requisito. Un titolare incompleto per una matrice nuova resta scrivibile, e i mancanti li
+dice al form `anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli`.
+
+---
+
+{% include-markdown "it/dbzero/anagrafiche/_indirizzi-obbligatori.md" %}
 
 ---
 
@@ -69,6 +82,8 @@ sicurezza di riga.
   che non esiste tace, l'id assente è una chiamata non valida; i tre trigger che lo chiamano senza copie della
   regola; la cancellazione e il cambio di tipo dell'unica fatturazione rifiutati, il ripiego che la lascia
   cancellare, la sostituzione nella stessa transazione e il ruolo cancellato coi suoi indirizzi che passano.
+* `db/pgtap/anagrafiche/test-indirizzi-obbligatori-requisito-nuovo-v1.sql` (6, 7) — col requisito nato dopo il
+  ruolo: la scrittura su un'altra colonna passa, la cancellazione di un indirizzo che nessuno chiede passa.
 * `db/pgtap/anagrafiche/test-indirizzo-obbligatorio-mancante-frase-v1.sql` — la frase intera, con e senza ripiego.
 * `db/pgtap/anagrafiche/test-indirizzi-obbligatori-mancanti-v1.sql` — il guard che legge i mancanti.
 
@@ -78,6 +93,9 @@ sicurezza di riga.
 
 * 2026-11-17 — nasce come sede unica del controllo del ruolo, chiamata dai tre trigger delle strade che possono
   togliere un obbligatorio; prima il controllo stava nel solo trigger della scrittura del ruolo.
+* 2026-11-24 — prende in coda il tipo che esce: dal lato degli indirizzi si giudica ciò che l'indirizzo dava, non
+  tutto il ruolo. Prima una riga obbligatoria nata dopo fermava la cancellazione di qualunque indirizzo, e il
+  trigger passava un `tx_id` vuoto al log.
 
 ---
 

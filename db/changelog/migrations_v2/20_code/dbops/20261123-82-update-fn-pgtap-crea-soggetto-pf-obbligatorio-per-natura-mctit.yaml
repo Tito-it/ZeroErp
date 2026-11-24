@@ -1,0 +1,196 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_pgtap_crea_soggetto_pf: il primo tipo obbligatorio della natura, da cui la madre plurale copia gli altri dalla sede unica
+#   anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura (-77).
+#   D-T7a-4 di Tid (2026-11-24), brief-db-revisione-anagrafiche §21 (S48).
+#
+# -- IL DIFETTO -------------------------------------------------------------------
+#   Leggeva la matrice da se' con «attivo AND obbligatorio», senza la finestra
+#   di validita': una delle sette sedi di «obbligatorio per la natura», e
+#   l'unica variante che contava anche una riga scaduta o non ancora valida.
+#
+# -- LA FORMA -----------------------------------------------------------------------
+#   La condizione diventa la sede unica, il giorno di script.fn_data_operativa(),
+#   come per la madre plurale e il guard (1 punto/i). Nient'altro cambia: firma
+#   e attributi immutati, CREATE OR REPLACE. Corpo da 20261116-22-create-fn-pgtap-crea-soggetto-pf-mctit.yaml, verificato
+#   uguale al catalogo di dbdev (2026-11-24). Il COMMENT non cambia, e
+#   CREATE OR REPLACE lo conserva.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261123-82-update-fn-pgtap-crea-soggetto-pf-obbligatorio-per-natura-mctit.yaml
+
+  - changeSet:
+      id: 20261123-82-update-fn-pgtap-crea-soggetto-pf-obbligatorio-per-natura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_crea_soggetto_pf: «obbligatorio per la natura» da anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura,
+        con la finestra di validita'. D-T7a-4, brief-db-revisione-anagrafiche §21.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_tipo_indirizzo_obbligatorio_per_natura';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_soggetto_pf(
+                  p_cognome                    anagrafiche.soggetti.cognome%TYPE,
+                  p_nome                       anagrafiche.soggetti.nome%TYPE                       DEFAULT 'pgTAP',
+                  -- NULL = il privato (PR) dello stato del soggetto.
+                  p_tipo_soggetto_dettaglio_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE DEFAULT NULL,
+                  p_stato_id                   anagrafiche.soggetti.stato_id%TYPE                   DEFAULT 1,
+                  p_piva                       anagrafiche.soggetti.partita_iva%TYPE                DEFAULT NULL
+              )
+              RETURNS anagrafiche.soggetti.id%TYPE
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: creare per una fixture pgTAP un soggetto PERSONA FISICA
+              --   gia' valido — testata, contatto, indirizzi obbligatori — in un
+              --   colpo solo, dalle madri del dominio. Gemello di
+              --   dbops.fn_pgtap_crea_soggetto_pg.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_s AS
+              --   SELECT dbops.fn_pgtap_crea_soggetto_pf('Rossi') AS id;
+              DECLARE
+                  v_soggetto_id anagrafiche.soggetti.id%TYPE;
+                  v_natura_id   anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE;
+                  v_iso2        config.stati.codice_iso2%TYPE;
+                  v_sesso_pol   config.tipi_soggetto_dettaglio.sesso_policy%TYPE;
+                  v_piva_obbl   config.tipi_soggetto_dettaglio.piva_obbligatoria%TYPE;
+                  v_ds_policy   config.tipi_soggetto_dettaglio.dati_societari_policy%TYPE;
+                  v_ds          boolean;  -- la natura pretende i dati societari
+                  v_piva        anagrafiche.soggetti.partita_iva%TYPE;
+                  v_prov_id     config.province.id%TYPE;
+                  v_forma_id    anagrafiche.dati_societari.forma_giuridica_id%TYPE;
+                  v_rea_policy  config.forme_giuridiche.rea_policy%TYPE;
+                  v_cap_policy  config.forme_giuridiche.capitale_sociale_policy%TYPE;
+                  v_tipo_ind    config.tipi_soggetto_dettaglio_tipi_indirizzo.tipo_indirizzo_id%TYPE;
+              BEGIN
+                  -- La madre riceve lo stato per codice ISO2: si legge da quello del
+                  -- test. Un codice che indica piu' stati lo rifiuta la madre
+                  -- (E_STATO_ISO2_AMBIGUO), come per l'applicazione.
+                  SELECT s.codice_iso2 INTO v_iso2 FROM config.stati s WHERE s.id = p_stato_id;
+                  IF v_iso2 IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_crea_soggetto_pf: nessuno stato con id = %', p_stato_id;
+                  END IF;
+
+                  v_natura_id := COALESCE(
+                      p_tipo_soggetto_dettaglio_id,
+                      (SELECT d.id FROM config.tipi_soggetto_dettaglio d
+                        WHERE d.codice_interno = 'PR' AND d.stato_id = p_stato_id));
+                  IF v_natura_id IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_crea_soggetto_pf: nessun privato (PR) per lo stato id = %', p_stato_id;
+                  END IF;
+
+                  -- I valori li decide la natura, non la fixture. Una natura che non
+                  -- esiste lascia tutto NULL e la rifiuta la madre.
+                  SELECT d.sesso_policy, d.piva_obbligatoria, d.dati_societari_policy
+                    INTO v_sesso_pol, v_piva_obbl, v_ds_policy
+                    FROM config.tipi_soggetto_dettaglio d WHERE d.id = v_natura_id;
+                  v_ds   := v_ds_policy = 'REQUIRED';
+                  v_piva := CASE WHEN p_piva IS NOT NULL THEN p_piva
+                                 WHEN v_piva_obbl THEN dbops.fn_pgtap_piva_libera() END;
+
+                  IF v_ds THEN
+                      SELECT p.id INTO v_prov_id FROM config.province p ORDER BY p.id LIMIT 1;
+
+                      SELECT m.forma_giuridica_id, fg.rea_policy, fg.capitale_sociale_policy
+                        INTO v_forma_id, v_rea_policy, v_cap_policy
+                        FROM config.forme_giuridiche_tipi_soggetto_dettaglio m
+                        JOIN config.forme_giuridiche fg ON fg.id = m.forma_giuridica_id
+                       WHERE m.tipo_soggetto_dettaglio_id = v_natura_id
+                         AND fg.attivo
+                         AND fg.stato_id = p_stato_id
+                         AND anagrafiche.fn_forma_giuridica_ammessa(m.forma_giuridica_id, m.tipo_soggetto_dettaglio_id,
+                                                                    script.fn_giorno_operativo(now()))
+                       ORDER BY m.forma_giuridica_id
+                       LIMIT 1;
+                  END IF;
+
+                  -- ⭐ FINESTRA DIFFERITA, come il gemello: i tre guard di
+                  --   completezza su anagrafiche.soggetti (dati societari,
+                  --   indirizzi, contatti) sono DEFERRABLE INITIALLY DEFERRED
+                  --   perche' un soggetto e' una SAGA. Si costruisce con i guard
+                  --   aperti e si RICHIUDE in fondo: senza la richiusura il
+                  --   ROLLBACK del test se li porterebbe via NON verificati.
+                  SET CONSTRAINTS ALL DEFERRED;
+
+                  -- La madre del dominio: testata, contatto di default e, se la
+                  -- natura li pretende, i dati societari.
+                  -- ⚠️ uq_ds_prov_cea e' UNIQUE su (provincia, numero REA): il numero
+                  --   si deriva dalla partita IVA, che e' unica per costruzione.
+                  v_soggetto_id := anagrafiche.fn_crea_soggetto_pf(
+                      p_cognome                    => p_cognome,
+                      p_nome                       => p_nome,
+                      p_codice_fiscale             => dbops.fn_pgtap_cf_libero(),
+                      p_email                      => 'pgtap@example.com',
+                      p_sesso                      => CASE WHEN v_sesso_pol IS DISTINCT FROM 'NONE' THEN 'M' END,
+                      p_stato_iso2                 => v_iso2,
+                      p_tipo_soggetto_dettaglio_id => v_natura_id,
+                      p_partita_iva                => v_piva,
+                      p_forma_giuridica_id         => CASE WHEN v_ds THEN v_forma_id END,
+                      p_id_prov_iscri_rea          => CASE WHEN v_ds AND v_rea_policy <> 'NONE' THEN v_prov_id END,
+                      p_iscrizione_rea             => CASE WHEN v_ds AND v_rea_policy <> 'NONE' THEN ('REA-' || v_piva)::varchar END,
+                      p_capitale_sociale           => CASE WHEN v_ds AND v_cap_policy <> 'NONE' THEN 10000.00 END,
+                      p_socio_unico                => CASE WHEN v_ds THEN 'SM'::anagrafiche.socio_unico_enum END,
+                      p_liquidazione               => CASE WHEN v_ds THEN 'LN'::anagrafiche.liquidazione_enum END);
+
+                  -- Gli indirizzi dalla madre plurale: un indirizzo del primo tipo
+                  -- obbligatorio della matrice della natura, e la madre lo copia
+                  -- sugli altri obbligatori. Una natura senza tipi obbligatori
+                  -- nasce senza indirizzi: il guard non ne pretende nessuno.
+                  SELECT m.tipo_indirizzo_id INTO v_tipo_ind
+                    FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                   WHERE m.tipo_soggetto_dettaglio_id = v_natura_id
+                     AND anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura(
+                             v_natura_id, m.tipo_indirizzo_id, script.fn_data_operativa())
+                   ORDER BY m.tipo_indirizzo_id
+                   LIMIT 1;
+
+                  IF v_tipo_ind IS NOT NULL THEN
+                      -- I campi della forma dallo stato (catalogo: comune e CAP;
+                      -- estera: localita'), come li vuole il guard della forma.
+                      PERFORM anagrafiche.fn_crea_indirizzi_soggetto(
+                          v_soggetto_id,
+                          (SELECT jsonb_build_array(jsonb_strip_nulls(jsonb_build_object(
+                                      'tipo_indirizzo_id', v_tipo_ind,
+                                      'indirizzo_libero',  'Via pgTAP 1',
+                                      'stato_id',          p_stato_id,
+                                      'comune_id',         f.comune_id,
+                                      'codice_postale_id', f.codice_postale_id,
+                                      'locality',          f.locality,
+                                      'postal_code',       f.postal_code)))
+                             FROM dbops.fn_pgtap_indirizzo_libero_forma(p_stato_id) f),
+                          true);
+                  END IF;
+
+                  -- Saga completa: i tre guard differiti scattano QUI, su un
+                  -- soggetto finito.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN v_soggetto_id;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: il corpo di prima e' quello di 20261116-22.
+              SELECT 1;

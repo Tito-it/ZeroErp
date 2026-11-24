@@ -28,7 +28,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required()
-IS 'Constraint trigger DEFERRABLE su anagrafiche.soggetti_ruoli, all''INSERT e all''UPDATE: il ruolo scritto deve avere i suoi indirizzi obbligatori. Il controllo e'' anagrafiche.fn_guard_indirizzi_obbligatori_ruolo (il requisito sul tipo di ruolo e sulla natura del soggetto, col ripiego; E_INDIRIZZO_OBBLIGATORIO_MANCANTE al primo mancante), che chiamano anche i trigger della cancellazione o del cambio di tipo di un indirizzo (anagrafiche.trgfn_indirizzi_guard_obbligatori_ruolo) e del cambio di natura del soggetto (anagrafiche.trgfn_soggetti_guard_obbligatori_ruoli). ⛔ Da NON confondere con anagrafiche.trgfn_soggetti_guard_indirizzi_required, il gemello del layer SOGGETTO.';
+IS 'Constraint trigger DEFERRABLE su anagrafiche.soggetti_ruoli, all''INSERT: il ruolo nato deve avere i suoi indirizzi obbligatori. Un UPDATE non cambia il requisito (tipo di ruolo e soggetto sono bloccati) e non lo rigiudica. Il controllo e'' anagrafiche.fn_guard_indirizzi_obbligatori_ruolo (il requisito sul tipo di ruolo e sulla natura del soggetto, col ripiego; E_INDIRIZZO_OBBLIGATORIO_MANCANTE al primo mancante), che chiamano anche i trigger della cancellazione o del cambio di tipo di un indirizzo (anagrafiche.trgfn_indirizzi_guard_obbligatori_ruolo, col tipo che esce) e del cambio di natura del soggetto (anagrafiche.trgfn_soggetti_guard_obbligatori_ruoli). ⛔ Da NON confondere con anagrafiche.trgfn_soggetti_guard_indirizzi_required, il gemello del layer SOGGETTO.';
 ```
 
 </div>

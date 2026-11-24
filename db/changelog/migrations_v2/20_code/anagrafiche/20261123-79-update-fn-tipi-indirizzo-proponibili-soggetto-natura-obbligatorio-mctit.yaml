@@ -1,0 +1,147 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I due picker dei tipi d'indirizzo del soggetto: la colonna obbligatorio
+#   dalla sede unica, anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura (-77).
+#   anagrafiche.fn_tipi_indirizzo_proponibili_natura(natura) -> TABLE
+#   anagrafiche.fn_tipi_indirizzo_proponibili_soggetto(soggetto) -> TABLE
+#   D-T7a-4 di Tid (2026-11-24), brief-db-revisione-anagrafiche §21 (S48).
+#
+# -- CHE COSA CAMBIA ----------------------------------------------------------------
+#   Solo la colonna obbligatorio: leggeva da se' la matrice (riga col flag e
+#   il predicato della natura), ora chiede la sede. Il valore non cambia.
+#   Firma, RETURNS e attributi immutati (STABLE, INVOKER, prorows 1000):
+#   CREATE OR REPLACE. Corpi da 20261115-60 (natura) e 20261114-96
+#   (soggetto); COMMENT dal catalogo di dbdev (2026-11-24), cambia la frase
+#   della colonna obbligatorio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261123-79-update-fn-tipi-indirizzo-proponibili-soggetto-natura-obbligatorio-mctit.yaml
+
+  - changeSet:
+      id: 20261123-79-update-fn-tipi-indirizzo-proponibili-soggetto-natura-obbligatorio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I picker anagrafiche.fn_tipi_indirizzo_proponibili_natura e _soggetto: obbligatorio da
+        fn_tipo_indirizzo_obbligatorio_per_natura. D-T7a-4, brief-db-revisione-anagrafiche §21.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_tipo_indirizzo_obbligatorio_per_natura';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_natura(
+                  p_tipo_soggetto_dettaglio_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE)
+              RETURNS TABLE (
+                  tipo_indirizzo_id config.tipi_indirizzi.id%TYPE,
+                  obbligatorio      config.tipi_soggetto_dettaglio_tipi_indirizzo.obbligatorio%TYPE,
+                  ammesso           boolean,  -- esito della check: nessuna colonna
+                  motivo_codice     text,     -- dal primo motivo, un jsonb
+                  reason            text,
+                  reason_key        text,
+                  reason_valori     jsonb,
+                  motivi            jsonb)
+              LANGUAGE sql
+              STABLE
+              BEGIN ATOMIC
+                  SELECT ti.id,
+                         anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura(
+                             p_tipo_soggetto_dettaglio_id, ti.id, script.fn_data_operativa()),
+                         jsonb_array_length(c.motivi) = 0,
+                         c.motivi -> 0 ->> 'codice',
+                         c.motivi -> 0 ->> 'reason',
+                         c.motivi -> 0 ->> 'reason_key',
+                         COALESCE(c.motivi -> 0 -> 'valori', '[]'::jsonb),
+                         c.motivi
+                    FROM config.tipi_indirizzi ti
+                    CROSS JOIN LATERAL (
+                         SELECT anagrafiche.fn_check_tipo_indirizzo_soggetto_su_contesto(
+                                    p_tipo_soggetto_dettaglio_id, '{}'::integer[], ti.id,
+                                    script.fn_data_operativa(), NULL::uuid) AS motivi) c
+                   WHERE p_tipo_soggetto_dettaglio_id IS NULL
+                      OR EXISTS (SELECT 1
+                                   FROM config.tipi_soggetto_dettaglio tsd
+                                  WHERE tsd.id = p_tipo_soggetto_dettaglio_id)
+                   ORDER BY jsonb_array_length(c.motivi) = 0 DESC, ti.codice_interno;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_natura(
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE)
+              IS 'Il picker dei tipi di indirizzo per un soggetto che non esiste ancora, sulla natura di dettaglio scelta nel form: una riga per tipo di config.tipi_indirizzi, con obbligatorio (anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura, oggi), ammesso, il primo motivo (motivo_codice, reason, reason_key, reason_valori) e tutti i motivi. Legge la stessa check della madre singolare, anagrafiche.fn_check_tipo_indirizzo_soggetto_su_contesto, senza tipi presenti: l''unico motivo possibile e'' il tipo che la natura non ammette (E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO). Natura NULL (nessuna natura scelta) o senza matrice: tutti ammessi, come per il guard. Natura che non esiste in config.tipi_soggetto_dettaglio: nessuna riga, come anagrafiche.fn_tipi_indirizzo_proponibili_soggetto per un soggetto che non c''e''. Prima gli ammessi, poi gli altri, per codice interno. Giorno: script.fn_data_operativa().';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_soggetto(
+                  p_soggetto_id anagrafiche.soggetti.id%TYPE)
+              RETURNS TABLE (
+                  tipo_indirizzo_id config.tipi_indirizzi.id%TYPE,
+                  obbligatorio      config.tipi_soggetto_dettaglio_tipi_indirizzo.obbligatorio%TYPE,
+                  ammesso           boolean,  -- esito della check: nessuna colonna
+                  motivo_codice     text,     -- dal primo motivo, un jsonb
+                  reason            text,
+                  reason_key        text,
+                  reason_valori     jsonb,
+                  motivi            jsonb)
+              LANGUAGE sql
+              STABLE
+              BEGIN ATOMIC
+                  SELECT ti.id,
+                         anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura(
+                             ctx.natura, ti.id, script.fn_data_operativa()),
+                         jsonb_array_length(c.motivi) = 0,
+                         c.motivi -> 0 ->> 'codice',
+                         c.motivi -> 0 ->> 'reason',
+                         c.motivi -> 0 ->> 'reason_key',
+                         COALESCE(c.motivi -> 0 -> 'valori', '[]'::jsonb),
+                         c.motivi
+                    FROM (SELECT s.id,
+                                 s.tipo_soggetto_dettaglio_id AS natura,
+                                 ARRAY(SELECT i.tipo_indirizzo_id
+                                         FROM anagrafiche.indirizzi_soggetti i
+                                        WHERE i.soggetto_id = s.id) AS presenti
+                            FROM anagrafiche.soggetti s
+                           WHERE s.id = p_soggetto_id) ctx
+                    CROSS JOIN config.tipi_indirizzi ti
+                    CROSS JOIN LATERAL (
+                         SELECT anagrafiche.fn_check_tipo_indirizzo_soggetto_su_contesto(
+                                    ctx.natura, ctx.presenti, ti.id,
+                                    script.fn_data_operativa(), ctx.id) AS motivi) c
+                   ORDER BY jsonb_array_length(c.motivi) = 0 DESC, ti.codice_interno;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_soggetto(
+                  anagrafiche.soggetti.id%TYPE)
+              IS 'Il picker dei tipi di indirizzo per il soggetto salvato (Aggiungi, e i tipi di destinazione della copia): una riga per tipo di config.tipi_indirizzi, con obbligatorio (anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura, oggi), ammesso, il primo motivo (motivo_codice, reason, reason_key, reason_valori) e tutti i motivi. Contesto: la natura e i tipi che il soggetto ha gia'', letti una volta; i motivi sono quelli di anagrafiche.fn_check_tipo_indirizzo_soggetto_su_contesto, la check che la madre anagrafiche.fn_crea_indirizzo_soggetto solleva: il tipo gia'' presente (E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE), poi il tipo che la natura non ammette (E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO). Prima gli ammessi, poi gli altri, per codice interno. Soggetto inesistente: nessuna riga. SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: i corpi di prima sono quelli di 20261115-60 e 20261114-96.
+              SELECT 1;

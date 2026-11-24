@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_guard_indirizzi_obbligatori_soggetto`
 
 ```sql
-CREATE FUNCTION fn_guard_indirizzi_obbligatori_soggetto(p_soggetto_id uuid, p_tx_id uuid)
+CREATE FUNCTION fn_guard_indirizzi_obbligatori_soggetto(p_soggetto_id uuid, p_tx_id uuid, p_tipo_uscito integer)
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,7 +12,7 @@ CREATE FUNCTION fn_guard_indirizzi_obbligatori_soggetto(p_soggetto_id uuid, p_tx
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(p_soggetto_id uuid, p_tx_id uuid)
+CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(p_soggetto_id uuid, p_tx_id uuid, p_tipo_uscito integer DEFAULT NULL::integer)
  RETURNS void
  LANGUAGE plpgsql
 AS $function$
@@ -47,6 +47,9 @@ BEGIN
       INTO v_tipo_id, v_ripiego_id
       FROM anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto(
                p_soggetto_id, v_natura_id, script.fn_data_operativa()) m
+     -- Con il tipo che esce, solo le righe che lui soddisfaceva.
+     WHERE p_tipo_uscito IS NULL
+        OR p_tipo_uscito IN (m.tipo_indirizzo_id, m.ripiego_tipo_indirizzo_id)
      ORDER BY m.tipo_indirizzo_id
      LIMIT 1;
 
@@ -75,8 +78,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(p_soggetto_id uuid, p_tx_id uuid)
-IS 'Guard: il soggetto deve avere, fra i suoi indirizzi (anagrafiche.indirizzi_soggetti), ogni tipo che config.tipi_soggetto_dettaglio_tipi_indirizzo dichiara obbligatorio per la sua natura, in una riga attiva e valida il giorno di script.fn_data_operativa() (anagrafiche.fn_tipo_indirizzo_ammesso_per_natura), oppure il ripiego della riga: i mancanti li dice anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto, sulla natura del soggetto. Al primo mancante, per tipo, E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO coi valori della frase nell''ordine natura e tipo richiesto col ripiego, per descrizione (anagrafiche.fn_nomi_tipo_indirizzo_richiesto); gli id nel contesto. Natura NULL, o soggetto che non esiste (cancellato nella stessa transazione): tace. Id NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Il tx_id va al log dell''errore. Sede unica del controllo del layer SOGGETTO: la chiamano i constraint trigger differiti di anagrafiche.soggetti (anagrafiche.trgfn_soggetti_guard_indirizzi_required) e di anagrafiche.indirizzi_soggetti (anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto). Gemello di anagrafiche.fn_guard_indirizzi_obbligatori_ruolo, il layer RUOLO. SECURITY INVOKER.';
+COMMENT ON FUNCTION anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(p_soggetto_id uuid, p_tx_id uuid, p_tipo_uscito integer)
+IS 'Guard: il soggetto deve avere, fra i suoi indirizzi (anagrafiche.indirizzi_soggetti), ogni tipo obbligatorio per la sua natura il giorno di script.fn_data_operativa() (anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura), oppure il ripiego della riga, se la natura lo ammette: i mancanti li dice anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto, sulla natura del soggetto. Al primo mancante, per tipo, E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO coi valori della frase nell''ordine natura e tipo richiesto col ripiego, per descrizione (anagrafiche.fn_nomi_tipo_indirizzo_richiesto); gli id nel contesto. Natura NULL, o soggetto che non esiste (cancellato nella stessa transazione): tace. Id NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Il tx_id va al log dell''errore. p_tipo_uscito (in coda, DEFAULT NULL): il tipo dell''indirizzo che esce, per cancellazione o cambio di tipo. Se e'' detto si giudicano solo le righe che quel tipo soddisfaceva (come tipo o come ripiego): una riga obbligatoria nata dopo, che il titolare non ha mai avuto, non ferma la cancellazione di un altro indirizzo (D-T7a-1). NULL: tutte le righe, alla nascita del titolare e al cambio di natura. Sede unica del controllo del layer SOGGETTO: la chiamano i constraint trigger differiti di anagrafiche.soggetti (anagrafiche.trgfn_soggetti_guard_indirizzi_required) e di anagrafiche.indirizzi_soggetti (anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto). Gemello di anagrafiche.fn_guard_indirizzi_obbligatori_ruolo, il layer RUOLO. SECURITY INVOKER.';
 ```
 
 </div>

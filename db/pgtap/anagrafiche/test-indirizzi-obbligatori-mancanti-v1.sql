@@ -122,13 +122,13 @@ UPDATE config.tipi_soggetto_dettaglio_tipi_indirizzo
 -- 1-2) Presidi
 -- ============================================================
 SELECT ok(
-    pg_get_functiondef('anagrafiche.fn_guard_indirizzi_obbligatori_ruolo(bigint, uuid)'::regprocedure)
+    pg_get_functiondef('anagrafiche.fn_guard_indirizzi_obbligatori_ruolo(bigint, uuid, integer)'::regprocedure)
         LIKE '%anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo(%'
-    AND pg_get_functiondef('anagrafiche.fn_guard_indirizzi_obbligatori_ruolo(bigint, uuid)'::regprocedure)
+    AND pg_get_functiondef('anagrafiche.fn_guard_indirizzi_obbligatori_ruolo(bigint, uuid, integer)'::regprocedure)
         NOT LIKE '%fn_indirizzi_obbligatori_ruolo(%'
-    AND pg_get_functiondef('anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(uuid, uuid)'::regprocedure)
+    AND pg_get_functiondef('anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(uuid, uuid, integer)'::regprocedure)
         LIKE '%anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto(%'
-    AND pg_get_functiondef('anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(uuid, uuid)'::regprocedure)
+    AND pg_get_functiondef('anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(uuid, uuid, integer)'::regprocedure)
         !~ '(FROM|JOIN)\s+(config\.)?tipi_soggetto_dettaglio_tipi_indirizzo\M'
     AND pg_get_functiondef('anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli(uuid, bigint)'::regprocedure)
         LIKE '%fn_indirizzi_obbligatori_mancanti_ruolo(%'

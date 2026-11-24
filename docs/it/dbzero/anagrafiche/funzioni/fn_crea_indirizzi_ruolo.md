@@ -92,17 +92,28 @@ BEGIN
                         jsonb_build_object('soggetto_ruolo_id', p_soggetto_ruolo_id)));
     END LOOP;
 
-    -- 2. AUTO-CLONE: i tipi obbligatori per il ruolo e per la
-    --    natura del soggetto, oggi, copiati dal primo indirizzo.
+    -- 2. AUTO-CLONE: i tipi del requisito del ruolo, sulla natura
+    --    del soggetto, oggi, copiati dal primo indirizzo; non quelli
+    --    che il ruolo (senza istanza) o l'elenco hanno gia', col tipo
+    --    o col ripiego (D-T7a-4).
     v_oggi := script.fn_data_operativa();
     v_norm := anagrafiche.fn_indirizzi_con_obbligatori(
         v_norm,
-        ARRAY(SELECT m.tipo_indirizzo_id
-                FROM config.tipi_ruolo_tipi_indirizzo m
-               WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
-                 AND anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo(
-                         v_tipo_ruolo_id, v_natura_id,
-                         m.tipo_indirizzo_id, v_oggi)));
+        ARRAY(SELECT o.tipo_indirizzo_id
+                FROM anagrafiche.fn_indirizzi_obbligatori_ruolo(
+                         v_tipo_ruolo_id, v_natura_id, v_oggi) o
+               WHERE NOT EXISTS (
+                         SELECT 1
+                           FROM anagrafiche.indirizzi i
+                          WHERE i.soggetto_ruolo_id = p_soggetto_ruolo_id
+                            AND i.istanza_utility_id IS NULL
+                            AND i.tipo_indirizzo_id
+                                IN (o.tipo_indirizzo_id, o.ripiego_tipo_indirizzo_id))
+                 AND NOT EXISTS (
+                         SELECT 1
+                           FROM jsonb_array_elements(v_norm) AS x
+                          WHERE (x ->> 'tipo_indirizzo_id')::integer
+                                IN (o.tipo_indirizzo_id, o.ripiego_tipo_indirizzo_id))));
 
     -- 3. La scrittura: un tipo che il ruolo ha gia' (senza
     --    istanza) si salta. La via si risolve solo qui, per gli
@@ -127,7 +138,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_indirizzi_ruolo(p_soggetto_ruolo_id bigint, p_indirizzi jsonb)
-IS 'Madre plurale: scrive gli indirizzi di un ruolo in una sola istruzione e ritorna quanti ne ha scritti. p_indirizzi: array di oggetti, ciascuno col tipo (tipo_indirizzo_id o tipo_indirizzo_codice_interno, codice interno) e l''indirizzo in una di tre forme: libero (indirizzo_libero con stato, poi comune e CAP del catalogo oppure locality e postal_code), dettaglio gia'' risolto (indirizzo_dettaglio_id), via da risolvere (stradario_id oppure toponomastica_id + descrizione_via + comune_id + codice_postale_id, piu'' il civico). AUTO-CLONE: i tipi obbligatori del ruolo assenti dal payload si copiano dal primo indirizzo (anagrafiche.fn_indirizzi_con_obbligatori); sono obbligatori i tipi per cui anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo risponde vero sul tipo di ruolo e sulla natura del soggetto del ruolo, il giorno di script.fn_data_operativa(): riga obbligatoria di config.tipi_ruolo_tipi_indirizzo, ammessa dal tipo di ruolo e dalla natura, lo stesso giudizio dei guard. Un tipo che la natura non ammette non si copia. Un tipo che il ruolo ha gia'' senza istanza si salta (la chiave di uq_indirizzi_ruolo_tipo_no_istanza); payload vuoto: nessuna scrittura. Ogni riga la scrive la singolare anagrafiche.fn_crea_indirizzo_ruolo. Rifiuti: elenco malformato E_SCRIPT_CHIAMATA_NON_VALIDA, ruolo inesistente E_SOGGETTO_RUOLO_NON_TROVATO; l''elemento lo legge anagrafiche.fn_indirizzo_elemento (oggetto, chiavi ammesse, tipo: E_SCRIPT_CHIAMATA_NON_VALIDA, E_CAMPO_NON_AMMESSO, E_TIPO_INDIRIZZO_NON_TROVATO) e la via la risolve anagrafiche.fn_indirizzo_elemento_dettaglio. Non valida i campi di una via nuova (pre-check del backend) ne'' il permesso. SECURITY INVOKER. Gemella di anagrafiche.fn_crea_indirizzi_soggetto.';
+IS 'Madre plurale: scrive gli indirizzi di un ruolo in una sola istruzione e ritorna quanti ne ha scritti. p_indirizzi: array di oggetti, ciascuno col tipo (tipo_indirizzo_id o tipo_indirizzo_codice_interno, codice interno) e l''indirizzo in una di tre forme: libero (indirizzo_libero con stato, poi comune e CAP del catalogo oppure locality e postal_code), dettaglio gia'' risolto (indirizzo_dettaglio_id), via da risolvere (stradario_id oppure toponomastica_id + descrizione_via + comune_id + codice_postale_id, piu'' il civico). AUTO-CLONE: i tipi del requisito del ruolo (anagrafiche.fn_indirizzi_obbligatori_ruolo, sul tipo di ruolo e sulla natura del soggetto, il giorno di script.fn_data_operativa(): lo stesso giudizio dei guard) si copiano dal primo indirizzo (anagrafiche.fn_indirizzi_con_obbligatori), salvo quelli di cui il ruolo senza istanza o il payload hanno gia'' il tipo o il ripiego. Un tipo che la natura non ammette non si copia. Un tipo che il ruolo ha gia'' senza istanza si salta (la chiave di uq_indirizzi_ruolo_tipo_no_istanza); payload vuoto: nessuna scrittura. Ogni riga la scrive la singolare anagrafiche.fn_crea_indirizzo_ruolo. Rifiuti: elenco malformato E_SCRIPT_CHIAMATA_NON_VALIDA, ruolo inesistente E_SOGGETTO_RUOLO_NON_TROVATO; l''elemento lo legge anagrafiche.fn_indirizzo_elemento (oggetto, chiavi ammesse, tipo: E_SCRIPT_CHIAMATA_NON_VALIDA, E_CAMPO_NON_AMMESSO, E_TIPO_INDIRIZZO_NON_TROVATO) e la via la risolve anagrafiche.fn_indirizzo_elemento_dettaglio. La via nuova la valida anagrafiche.fn_create_indirizzo (E_INDIRIZZO_VIA_NUOVA_INCOMPLETA, col campo); il permesso non lo valida. SECURITY INVOKER. Gemella di anagrafiche.fn_crea_indirizzi_soggetto.';
 ```
 
 </div>

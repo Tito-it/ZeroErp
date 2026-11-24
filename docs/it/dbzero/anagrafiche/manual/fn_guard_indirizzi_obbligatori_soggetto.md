@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_guard_indirizzi_obbligatori_soggetto`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -42,17 +42,35 @@ sicurezza di riga.
 
 ---
 
-{% include-markdown "it/dbzero/anagrafiche/_indirizzi-obbligatori.md" %}
+### Il ripiego che la frase propone è uno che il soggetto può avere
+
+Il ripiego di una riga conta, e la frase lo nomina, solo se la natura lo ammette: lo decide
+`anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto`. Gli obbligatori della natura li dice
+`anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura`.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### Col tipo che esce, solo ciò che quel tipo dava
 
-* **Il requisito che cambia non rigiudica.** Una riga della matrice della natura che diventa obbligatoria, o
-  entra nella sua validità, non tocca i soggetti che esistono: il rifiuto arriva alla loro prossima scrittura,
-  in qualunque colonna.
-* **La frase può proporre un ripiego che il soggetto non può avere.** Il ripiego della riga non si confronta con
-  la natura (vedi [fn_indirizzi_obbligatori_mancanti_soggetto](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_mancanti_soggetto)).
+L'ultimo parametro, facoltativo, è il tipo dell'indirizzo che esce, per una cancellazione o un cambio di tipo.
+
+* **Detto**: si giudicano solo le righe obbligatorie che quel tipo soddisfaceva, come tipo richiesto o come
+  ripiego. Il soggetto perde una cosa che gli era chiesta solo se l'indirizzo che esce era quello che la dava: una riga
+  obbligatoria nata dopo, che non ha mai avuto, non ferma la cancellazione di un altro indirizzo.
+* **Non detto**: si giudicano tutte le righe. È il giudizio della nascita del soggetto e del cambio di natura.
+
+---
+
+### Un requisito nuovo vale per chi nasce dopo
+
+Una riga della matrice che diventa obbligatoria, o entra nella sua validità, non rigiudica i soggetti che esistono, e
+non ferma la loro prossima scrittura su un'altra colonna: come per i tipi ammessi, la matrice che cambia vale per le
+scritture che toccano il requisito. Un titolare incompleto per una matrice nuova resta scrivibile, e i mancanti li
+dice al form `anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli`.
+
+---
+
+{% include-markdown "it/dbzero/anagrafiche/_indirizzi-obbligatori.md" %}
 
 ---
 
@@ -70,6 +88,9 @@ sicurezza di riga.
   soggetto che non esiste tace, l'id assente è una chiamata non valida; i due trigger che lo chiamano senza
   copie della regola; la società a cui la cancellazione o il cambio di tipo tolgono la sede legale, rifiutata, e
   la sostituzione nella stessa transazione, che passa.
+* `db/pgtap/anagrafiche/test-indirizzi-obbligatori-requisito-nuovo-v1.sql` (3, 4, 5, 8) — col requisito nato dopo
+  il soggetto: la scrittura su un'altra colonna passa, la cancellazione di un indirizzo che nessuno chiede passa,
+  quella dell'unico indirizzo di una riga obbligatoria si rifiuta; il ripiego vietato non si propone.
 * `db/pgtap/anagrafiche/test-indirizzo-obbligatorio-mancante-frase-v1.sql` — il codice del livello soggetto e la
   frase intera, con e senza ripiego.
 * `db/pgtap/anagrafiche/test-indirizzi-obbligatori-mancanti-v1.sql` — il guard che legge i mancanti.
@@ -81,6 +102,9 @@ sicurezza di riga.
 * 2026-11-17 — nasce come sede unica del controllo del soggetto, chiamata anche dal trigger della cancellazione
   di un indirizzo; prima il controllo stava nel solo trigger della scrittura del soggetto, e sollevava lo stesso
   codice del livello ruolo.
+* 2026-11-24 — prende in coda il tipo che esce: dal lato degli indirizzi si giudica ciò che l'indirizzo dava, non
+  tutto il soggetto. Prima una riga obbligatoria nata dopo fermava la cancellazione di qualunque indirizzo, e il
+  trigger passava un `tx_id` vuoto al log.
 
 ---
 
