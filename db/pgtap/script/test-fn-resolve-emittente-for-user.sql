@@ -37,7 +37,10 @@ SELECT plan(5);
 --    la sessione del migratore (script.fn_porta_manutenzione_aperta,
 --    brief-db-seed-primo-impianto-non-si-riscrive §16.9). Accesa «per sicurezza»
 --    rendeva verdi per sottrazione le asserzioni che toccano un lucchetto.
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
+-- ⛔ Tolta il 2026-11-25 la riga SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on':
+--    dal giro 10 (brief-db-porte-aperte-dalla-sola-guc §10) la porta del DELETE si
+--    apre solo dal verbo script.fn_change_user_emittenti_scope. La riga di scope si
+--    toglie col builder dbops.fn_pgtap_sposta_scope_operatore, che passa da li'.
 
 -- Dal 2026-08-04 il resolver guarda PRIMA l'emittente attivo di sessione
 -- (GUC app.current_emittente_id, impersonazione di scope). Questi cinque casi
@@ -104,8 +107,7 @@ SELECT is(
 -- ============================================================
 -- 4) user con 1 riga in user_emittenti_fiscali -> PK emittente
 -- ============================================================
-DELETE FROM config.user_emittenti_fiscali
-WHERE auth_user_id = (SELECT user_id FROM tmp_resolve_user);
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_resolve_user), NULL);
 
 INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
 SELECT (SELECT user_id FROM tmp_resolve_user),
@@ -120,8 +122,7 @@ SELECT is(
 -- ============================================================
 -- 5) user senza riga (admin globale) -> ritorna NULL
 -- ============================================================
-DELETE FROM config.user_emittenti_fiscali
-WHERE auth_user_id = (SELECT user_id FROM tmp_resolve_user);
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_resolve_user), NULL);
 
 SELECT is(
     script.fn_resolve_emittente_for_user((SELECT user_id FROM tmp_resolve_user)),

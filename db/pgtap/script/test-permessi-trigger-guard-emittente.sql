@@ -153,11 +153,8 @@ WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
 ORDER BY id.id
 LIMIT 1;
 
--- Pulisce whitelist preesistenti per l'utente di test (guard_delete override).
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_guard_ctx);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+-- Pulisce whitelist preesistenti per l'utente di test, dal verbo (il builder).
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_guard_ctx), NULL);
 
 -- Aggiungi whitelist solo per emittente_ok
 INSERT INTO config.user_emittenti_fiscali

@@ -173,7 +173,7 @@ search:
 - [trgfn_toponomastica_bump_normalize](manual/trgfn_toponomastica_bump_normalize.md) — (latest review 30-12-25) Forzare la **rinormalizzazione** dei record di `config.stradario_generale` collegati a un toponimo aggiornato, senza modificare l'ID dei record.
 - [trgfn_toponomastica_normalize](manual/trgfn_toponomastica_normalize.md) — (latest review 02-01-26)
 - [trgfn_toponomastica_protect_update](manual/trgfn_toponomastica_protect_update.md) — (latest review 02-01-26) * **Protezione semantica**: garantire coerenza tra topografia e stradario evitando rinominazioni dirette di toponomastiche già in uso. * **Manutenzione controllata**: consentire correzioni solo tramite GUC di manutenzione e procedura dedicata. * **Centralizzazione**: concentrare la logica di blocco in una sola funzione trigger per ridurre complessità applicativa.
-- [trgfn_user_emittenti_fiscali_guard_delete](manual/trgfn_user_emittenti_fiscali_guard_delete.md)
+- [trgfn_user_emittenti_fiscali_guard_delete](manual/trgfn_user_emittenti_fiscali_guard_delete.md) — Guard `BEFORE DELETE` (fase `a10`) di `config.user_emittenti_fiscali`. La riga è l'azienda di un operatore: senza, l'operatore non vede niente. Il guard decide quando la si può togliere.
 
 ## 🔍 Views (manuale)
 - [vw_codici_errore](manual/vw_codici_errore.md) — (rev 2026-08-21)

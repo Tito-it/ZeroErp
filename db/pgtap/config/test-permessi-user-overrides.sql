@@ -358,13 +358,10 @@ SELECT throws_ok(
 --   che la FK potesse dire la sua, e il test aspettava 23503.
 --   ⚠️ Non e' un difetto del vincolo: e' l'ordine in cui i vincoli parlano. Per
 --   interrogare la FK bisogna prima liberare la chiave.
---   Il DELETE passa dall'override GUC perche' la tabella ha un guard sul delete
---   (trgfn_user_emittenti_fiscali_guard_delete) — la stessa porta che usa
---   script.fn_change_user_emittenti_scope.
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_refs_uo);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+--   La riga si toglie dal verbo script.fn_change_user_emittenti_scope, col builder
+--   dbops.fn_pgtap_sposta_scope_operatore: la porta del DELETE
+--   (trgfn_user_emittenti_fiscali_guard_delete) si apre solo da li'.
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_refs_uo), NULL);
 
 SELECT throws_ok(
     format(

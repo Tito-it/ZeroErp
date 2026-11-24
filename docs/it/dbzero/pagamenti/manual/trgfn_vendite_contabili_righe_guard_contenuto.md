@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `pagamenti.trgfn_vendite_contabili_righe_guard_contenuto`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -85,9 +85,10 @@ dell'**operatore**, e lì non c'è un operatore.
 
 La madre del giro **apre la porta per il proprio `DELETE`** con la GUC transazionale
 `zeroerp.allow_contabile_riga_delete_override` (accesa prima, svuotata dopo), e questo guard la
-onora **solo sul `DELETE`**. È la stessa forma con cui
-[script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope)
-attraversa il guard sul `DELETE` delle associazioni utente-emittente.
+onora **solo sul `DELETE`**. ⚠️ Oggi la porta si apre con la sola GUC, che l'applicazione può
+accendere da sé: la sua strada verso «GUC sulla riga e proprietario» è un giro del cantiere delle
+porte. Quella del `DELETE` delle associazioni utente-emittente, che usava la stessa forma, l'ha già
+fatta: [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope).
 
 ⚠️ **Non è un permesso: è la madre che dichiara «sono io»** dopo aver letto il *suo* criterio
 ([vendite.fn_check_fondo_cancellabile](/dbzero/vendite/funzioni/fn_check_fondo_cancellabile)).

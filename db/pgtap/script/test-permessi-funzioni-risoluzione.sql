@@ -677,10 +677,7 @@ SELECT is(
 SELECT pg_temp.unset_admin((SELECT identita_id FROM tmp_ctx));
 
 -- Rimuovi whitelist per test "senza whitelist"
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_ctx), NULL);
 
 -- 28) OPERATIVO senza whitelist → '{}' (fail-closed, P-2a 2026-08-18)
 --     ⚠️ Diceva `NULL`, cioe' «nessuna restrizione». Nella convenzione a tre

@@ -356,7 +356,9 @@ BEGIN
             PERFORM config.fn_lega_profilo_identita((v_profili ->> (v_el ->> 'profilo'))::integer, v_idg);
         END IF;
         IF (v_el ->> 'whitelist')::boolean THEN
-            PERFORM script.fn_change_user_emittenti_scope(v_au, ARRAY[v_ef_a]);
+            -- L'azienda dell'utente di sviluppo dalla primitiva: qui non c'e' un
+            -- utente in sessione, e il verbo chiederebbe il SUPER_ADMIN.
+            PERFORM script.fn_applica_user_emittenti_scope(v_au, ARRAY[v_ef_a]);
         END IF;
         PERFORM config.fn_imposta_override_oggetti(v_au, v_el -> 'override');
         PERFORM config.fn_imposta_emittente_attivo(v_au, v_ef_a);

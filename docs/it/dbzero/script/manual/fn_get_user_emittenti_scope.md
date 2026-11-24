@@ -92,7 +92,7 @@ can_change_scope = NOT script.fn_check_ultimo_super_admin_attivo(p_auth_user_id)
 > Non considera il guard `is_active=true` di
 > [`trgfn_user_emittenti_fiscali_guard_delete`](/dbzero/config/funzioni/trgfn_user_emittenti_fiscali_guard_delete):
 > [`fn_change_user_emittenti_scope`](/dbzero/script/funzioni/fn_change_user_emittenti_scope)
-> lo bypassa internamente con `SET LOCAL` per i flussi amministrativi.
+> lo attraversa dalla sua porta, che si apre solo dentro il verbo.
 
 ## Caratteristiche
 

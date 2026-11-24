@@ -63,7 +63,7 @@ La tabella **`config.user_emittenti_fiscali`** definisce l'**ambito operativo** 
 
 * **Nessuna modifica di `emittente_fiscale_id`** dopo l'inserimento (trigger `trg_user_emittenti_fiscali_a10_lock_emittente_upd` che riusa `script.trgfn_lock_columns`). Errore: `E_EMITTENTE_NON_MODIFICABILE`.
 * **Nessuna eliminazione finché l'utente Django è attivo** (trigger `trg_user_emittenti_fiscali_a10_guard_delete_dlt`). La riga può essere cancellata solo se `django.auth_user.is_active = false` (cessazione utente). Errore: `E_USER_EMITTENTE_DELETE_VIETATO`.
-* Override di manutenzione (entrambi i trigger): `SET LOCAL zeroerp.allow_lock_columns_override = 'on'` / `SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on'`.
+* Lo spostamento di un operatore su un'altra azienda passa dal verbo [`script.fn_change_user_emittenti_scope`](/dbzero/script/funzioni/fn_change_user_emittenti_scope), riservato al SUPER_ADMIN: toglie la riga di prima dalla porta del guard del `DELETE`, che si apre solo dentro il verbo, e scrive la nuova. Il lucchetto di colonna si apre solo alla sessione del migratore (`script.fn_porta_manutenzione_aperta`).
 
 **Motivazione**: audit trail naturale. Ogni utente = una sola azienda, sempre. Per "trasferire" un dipendente da un emittente A a un emittente B, l'admin **disattiva l'utente** e **crea un nuovo account** legato a B. Vedi [refactor-operatore-emittenti §D3](/dev/work-done/2026/refactor-operatore-emittenti).
 

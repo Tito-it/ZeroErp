@@ -1,8 +1,8 @@
 # Brief DB — le strade per cui l'app scrive senza il verbo: le porte della sola GUC e le viste aggiornabili
 
-> **⏭️ Chi riparte — aggiornato al 2026-11-24**
+> **⏭️ Chi riparte — aggiornato al 2026-11-25**
 >
-> **Riparte: il team BE**, col passo 3n di R-DB-I3 (§4.8: ✅ scritta, applicata da Tid e verde il 2026-11-24) e col 3k-bis
+> **Riparte: il team BE**, col 6b-quinquies del giro 10 (§10.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col passo 3n di R-DB-I3 (§4.8: ✅ scritta, applicata da Tid e verde il 2026-11-24) e col 3k-bis
 > di R-DB-K3, e col 6a-quinquies del giro 16 (§9.5). **Il team DB**, al via di Tid, col giro 10 (il giro 16 è applicato e verde, 2026-11-24) (la risposta 3d è letta, §4.5-bis) e con le due richieste nuove del BE da §4.7, R-DB-K3 (la descrizione di `E_SCOPE_SENZA_UTENTE`, passo 3k: ✅ scritta e applicata il 2026-11-24, ora la rigenerazione del BE, 3k-bis) e R-DB-K4 (i due changeSet del
 > SUPER_ADMIN di sviluppo, passo 3l). Al via di Tid: il verbo di primo impianto (D-K, R-DB-K1, passo 3i) e i giri
 > delle porte del flusso. ✅ Il ritiro di `reset_lotto_draft` è fatto, DB e BE (2026-11-24, §4.8). Il superuser Django è
@@ -51,12 +51,18 @@
 > | 6a-ter | team DB | giro 16: ✅ `20261123-98`, `-99`, pgTAP nuovo e quattordici adeguati, guide e `manual/`, provato sullo scratch (2026-11-24) | §9.4 | — |
 > | 6a-quater | Tid | giro 16: ✅ apply, pgTAP come app verdi, doc auto-generata rigenerata (2026-11-24) | §9.4 | — |
 > | 6a-quinquies | team BE | giro 16: i test Django che pubblicano danno `documenti_template_manage` (§9.5) | §9.5 | — |
+> | 6b | team DB | giro 10: ✅ analisi (2026-11-24) | §10 | — |
+> | 6b-bis | Tid | giro 10: ✅ D-O **a**, ✅ D-P **a**, ✅ D-Q **a**, il via (2026-11-24) | §10.3 | — |
+> | 6b-ter | team DB | giro 10: ✅ `20261124-01` … `-06`, le altre due sedi di §11.8, pgTAP nuovo e ventiquattro adeguati, guide e `manual/`, provato sullo scratch (2026-11-25) | §10.5 | — |
+> | 6b-quater | Tid | giro 10: ✅ apply, pgTAP come app verdi, doc auto-generata rigenerata (2026-11-25) | §10.5 | — |
+> | 6b-quinquies | team BE | giro 10: i test che chiamano il verbo da SUPER_ADMIN; il censimento di chi scrive `config.user_emittenti_fiscali` (per il giro 10-bis) | §10.6 | — |
 >
 > Decisioni aperte di Tid: nessuna. Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
 > (`969ea14566`), dal BE §4.5-§4.7 con D-J (`4271a0dc69`, PR #232), e il 2026-11-24 il lato DB del ritiro di
 > `reset_lotto_draft` con la pulizia della testata (§4.8). Dal BE, il 2026-11-24 (`5fc466c729`): il `None` del perimetro
 > che si rifiuta, il lato BE del ritiro di `reset_lotto_draft`, D-K5, D-K6 e D-I.4, e le richieste R-DB-K3, R-DB-K4 e
-> R-DB-I3. Dal DB, il 2026-11-24 su `dev/db-tid`: R-DB-K3 (§4.7) e R-DB-I3 (§4.8), applicate e verdi. Da committare: niente.
+> R-DB-I3. Dal DB, il 2026-11-24 su `dev/db-tid`: R-DB-K3 (§4.7) e R-DB-I3 (§4.8), applicate e verdi; il giro 16
+> (`3045e11677`) e il 2026-11-25 il giro 10 (§10.5), pushati. Da committare: niente.
 >
 > **Brief vicini verificati (2026-11-23):**
 > [brief-db-magazzino-tutte-le-scritture-dal-verbo](../work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md)
@@ -157,7 +163,14 @@
     - [x] la doc auto-generata rigenerata (Tid, 2026-11-24)
     - [x] commit su `dev/db-tid` (2026-11-24)
     - [ ] il BE: i test Django che pubblicano (§9.5)
-  - [ ] 10, lo scope emittenti: il verbo con `fn_guard_super_admin` (nessuna RLS)
+  - [ ] 10, lo scope emittenti: il verbo con `fn_guard_super_admin` (nessuna RLS) (§10)
+    - [x] analisi (2026-11-24, §10)
+    - [x] D-O **a**, D-P **a**, D-Q **a** (Tid, 2026-11-24)
+    - [x] changeSet, pgTAP nuovo e ventiquattro adeguati, builder, guide e `manual/`; prova sullo scratch (2026-11-25, §10.5)
+    - [x] apply e pgTAP come app: verdi (Tid, 2026-11-25)
+    - [x] la doc auto-generata rigenerata (Tid, 2026-11-25)
+    - [x] commit e push su `dev/db-tid` (2026-11-25)
+    - [ ] il BE: i test che chiamano il verbo da SUPER_ADMIN, e il censimento di chi scrive la tabella (§10.6)
   - [ ] 9, la registrazione tardiva: da qui si prova il perimetro; prima si rilegge la D20-b di `brief-incassi-riconciliazione-rate-promemoria`
   - [ ] 11, la bolla di riconsegna
   - [ ] 8, il fondo fattura: verbo pubblico e primitiva separati; prima si rileggono D10-D11 dello stesso brief. Se viene prima della 1-7, qui nasce `dbops.fn_pgtap_concedi_livello_area` (D-L a) e si ritirano le quattro copie
@@ -178,6 +191,9 @@
   - [x] apply su dbdev e pgTAP `test-rollback-step-automatico-v1` come app: verde (Tid, 2026-11-24)
   - [x] la doc auto-generata rigenerata (Tid, 2026-11-24)
   - [ ] il BE: il runner sulla funzione, i test, il manuale (passo 3n)
+- [ ] Giro 10-bis (D-O **a**, Tid, 2026-11-24): `config.user_emittenti_fiscali` in sola lettura per l'app, con
+  `script.fn_crea_utente_tecnico` a verbo e R-DB-K2 (`fn_crea_operatore_v2`); parte dalla risposta del BE al
+  censimento di §10.6
 - [ ] Le guide: ogni porta scritta nella guida del suo dominio, di flusso o di manutenzione
 
 ## 1. Il problema, sul modello
@@ -1685,10 +1701,164 @@ Chi cambia per primo: il DB. Nessuna firma cambia, nessuna GUC da togliere (il B
 `documenti-e-stampe` — **indietro** dopo il giro (non dice chi può pubblicare né la porta), si aggiorna nello stesso
 giro; il trigger orfano — segnale di «Vedi anche» incompleto, si aggiunge lì.
 
+## 10. Il giro 10, lo scope degli emittenti — analisi del 2026-11-24
+
+### 10.1 Che cosa c'è oggi (catalogo di dbdev, 2026-11-24)
+
+* **Il modello** (guida dei permessi §4.9): `config.user_emittenti_fiscali` ha una riga per operatore (`UNIQUE
+  (auth_user_id)`), ed è **fail-closed**: senza la riga l'operatore non vede nessun emittente. Il SUPER_ADMIN è l'unico
+  multi-emittente e non passa da qui. Quindi **scrivere la riga è dare l'accesso a un'azienda**, cancellarla è
+  toglierlo, e spostarla (cancellare e riscrivere) è far passare l'operatore a un'altra azienda.
+* **Il verbo**, `script.fn_change_user_emittenti_scope(p_auth_user_id, p_emittente_ids)`: `INVOKER`, senza guard del
+  permesso (lo tiene l'endpoint: SUPER_ADMIN, §4.5). Guard dei parametri, niente multi-emittente, il no-op, l'ultimo
+  SUPER_ADMIN. Sposta con `DELETE` e `INSERT`, e apre la porta con `SET LOCAL … = 'on'` per il solo `DELETE`.
+* **Il trigger**, `config.trgfn_user_emittenti_fiscali_guard_delete` (`BEFORE DELETE`): con la GUC `'on'` lascia
+  passare **qualunque** riga, senza chiedere chi scrive. Senza GUC, ammette il `DELETE` solo se l'utente Django è
+  spento o non esiste più (la cascata da `django.auth_user`). È la porta 10.
+* **La tabella**: nessuna RLS; `zeroerp_app` ha `INSERT`, `UPDATE`, `DELETE`. L'`UPDATE` di `emittente_fiscale_id` lo
+  ferma il lucchetto di colonna (`script.trgfn_lock_columns`, che passa da `fn_porta_manutenzione_aperta`: chiuso per
+  l'app). L'`INSERT` **non lo ferma niente**.
+* **Chi chiama il verbo**: il BE (amministrazione, §4.5); `anagrafiche.fn_provisiona_dati_di_sviluppo` (DEFINER,
+  eseguibile dall'app, solo in SVILUPPO), che lo lancia il comando BE degli utenti di sviluppo senza un utente in
+  sessione; quattordici pgTAP, nove dei quali girano da owner.
+* **Chi scrive la tabella senza il verbo**: `script.fn_crea_utente_tecnico` (INVOKER, eseguibile dall'app), con un
+  `INSERT` diretto. La chiamano i changeSet `80_data` `20260904-27` e `-39`, `scripts/sql/provision_zeroerp.sql` e il
+  builder `dbops.fn_pgtap_crea_emittente_operatore`, su cui poggia la maggior parte dei pgTAP del dominio.
+* **I pgTAP che aprono la porta da sé**: quattordici file accendono la GUC e cancellano la riga diretti (dodici come app,
+  uno da owner, più il commento di `test-billing-account-auto-link-ef`). Quasi tutti per **spostare** l'operatore di
+  contesto su un'altra azienda in mezzo al test.
+
+### 10.2 Che cosa si cambia
+
+1. **Il verbo diventa `SECURITY DEFINER`** (`SET search_path TO 'pg_catalog', 'public', 'pg_temp'`), con in prima riga
+   `script.fn_utente_di_sessione` e `script.fn_guard_super_admin`: lo stesso controllo dell'endpoint, quindi nessun
+   rifiuto nuovo per chi arriva dal backend. Firma e risultato invariati.
+2. **La GUC sulla riga**: il verbo la scrive con l'`auth_user_id` dell'operatore che sposta, la spegne all'ingresso, la
+   svuota all'uscita e in errore. Il trigger apre solo se la GUC vale `OLD.auth_user_id` **e** chi scrive è il
+   proprietario (`fn_is_proprietario_tabella`). I due rami senza GUC (utente spento, utente che non esiste più) restano
+   come sono: sono il modello, non una porta.
+3. **Il perimetro**: nessuno da rimettere. La tabella non ha RLS, e chi passa il guard è il SUPER_ADMIN, che vede tutti
+   gli emittenti. Il pgTAP «due emittenti» del piano qui non ha oggetto: lo si dichiara nel test.
+4. **I pgTAP**: uno nuovo, come app, coi controesempi (la GUC accesa dall'app, con `on` e con l'id giusto, e il `DELETE`
+   diretto: si ferma; il verbo da un operatore che non è SUPER_ADMIN: `E_PERMESSO_NEGATO`, e la riga resta; da
+   SUPER_ADMIN sposta, e la GUC dopo è vuota). I quattordici che aprono la porta da sé passano al verbo (D-Q).
+   `test-fn-change-user-emittenti-scope` e `test-user-emittenti-fiscali-immutable`, che provano proprio questa porta,
+   si riscrivono sul modello nuovo.
+5. **Le guide**: `architettura-permessi-e-autorizzazioni` §4.9 («si registra la sua riga»: si scrive col verbo, solo dal
+   SUPER_ADMIN) e §7.4 (lo scope esce dall'elenco delle porte aperte); `risorse-umane-e-accessi` «Assegnazione emittente
+   fiscale» (chi può assegnare). Il verbo e il trigger sono **orfani**: entrano nel «Vedi anche» di quelle due guide.
+6. **La richiesta al BE**: il test `core/tests/db/test_email_bozza_invio_db.py:257`, e ogni test che chiama il verbo,
+   lo chiama da SUPER_ADMIN (§4.5-bis); con D-O **a**, anche il censimento di chi scrive la tabella direttamente.
+
+### 10.3 Tre scelte per Tid
+
+* **D-O, la tabella in sola lettura per l'app.** La guida (§7.4, «La porta») lo dice già: l'app perde `INSERT`,
+  `UPDATE` e `DELETE` sulle tabelle che il verbo protegge. Qui conta più che altrove, perché un `INSERT` diretto per un
+  operatore senza riga gli **dà un'azienda** senza passare dal guard: chiudere solo la porta del `DELETE` lascia aperta
+  la strada più semplice. Il costo è fuori da questo verbo: `fn_crea_utente_tecnico` scrive la tabella come app, e su
+  di lei poggiano il seed degli utenti tecnici, il provisioning e il builder dei pgTAP; portarla a DEFINER chiede di
+  sapere chi la chiama dal BE e con quale permesso, e tocca la stessa zona di R-DB-K2 (`fn_crea_operatore_v2`).
+  **a** il giro 10 chiude la porta e il verbo; la tabella resta scrivibile, dichiarata nelle due guide come aperta
+  («dominio a metà», §7.4), e la sola lettura diventa il **giro 10-bis**, con `fn_crea_utente_tecnico` e R-DB-K2,
+  aperto con la richiesta al BE di questo giro · **b** tutto nel giro 10: sola lettura nel loop dei grant,
+  `fn_crea_utente_tecnico` a DEFINER, prima la risposta del BE · **c** la sola lettura non si fa. ⭐ **a**: il modello
+  non cambia e il giro 10-bis entra subito nel piano, con la data. **c** contraddirebbe la guida. ✅ **Decisa da Tid il 2026-11-24: a.**
+* **D-P, il provisioning dei dati di sviluppo.** Lo lancia il comando BE senza un utente in sessione: col guard nel
+  verbo si fermerebbe. La sessione del migratore (D-M) qui non aiuta, perché la connessione è dell'app. **a** il verbo
+  si divide: il verbo pubblico tiene il nome, la firma e il guard, e chiama una primitiva senza guard
+  (`script.fn_applica_user_emittenti_scope`, nome da confermare) che sposta la riga. La primitiva non è eseguibile
+  dall'app (`v_fn_riservate`, nelle tre sedi di §11.8) e il provisioning, che è DEFINER, chiama lei. È la forma del
+  giro 8 · **b** il provisioning apre il contesto di un SUPER_ADMIN prima di chiamare il verbo: `dev.smoke` nasce nello
+  stesso giro, ma l'ordine dell'elenco diventerebbe una regola. ⭐ **a**: è la forma che il piano già prevede per la 8, e
+  non lega il provisioning a un utente. ✅ **Decisa da Tid il 2026-11-24: a.**
+* **D-Q, come i pgTAP spostano l'operatore.** Dodici file come app fanno la stessa cosa a mano (GUC, `DELETE`,
+  `INSERT`): spostare l'operatore di contesto su un'altra azienda. Dopo il giro la porta non si apre più per loro.
+  **a** nasce `dbops.fn_pgtap_sposta_scope_operatore(utente, emittente)` (INVOKER), che lo fa **dal verbo**: un
+  SUPER_ADMIN di fixture (`fn_pgtap_crea_operatore_umano(…, true)`) entra nel contesto, chiama il verbo, e il contesto di
+  prima si rimette. Le dodici copie si ritirano nello stesso giro (regola del 2) · **b** ogni test lo fa a mano, come
+  il builder. ⭐ **a**: è la stessa operazione dodici volte, e il builder prova il verbo vero invece di aggirarlo. ✅ **Decisa da Tid il 2026-11-24: a.**
+
+### 10.4 Le guide (`guide_coinvolte.py --oggetti` sui quattro oggetti, 2026-11-24)
+
+* `architettura-permessi-e-autorizzazioni`: §7.4 **coerente** con il giro (descrive già la porta sulla riga e la sola
+  lettura); §4.9 e l'elenco delle porte aperte di §7.4 **indietro** dopo il giro, si aggiornano nello stesso giro.
+* `risorse-umane-e-accessi`: **indietro** dopo il giro (non dice che assegna solo il SUPER_ADMIN), si aggiorna.
+* `architettura-multi-face-auth` §5.3, `soggetti-e-ruoli-anagrafici`: descrivono la tabella in lettura, **coerenti**.
+* Orfani: `script.fn_change_user_emittenti_scope` e `config.trgfn_user_emittenti_fiscali_guard_delete`. Sono il verbo e
+  la porta di un concetto del dominio, quindi un «Vedi anche» incompleto, non una guida che manca: entrano nelle due
+  guide sopra.
+
+**Garanzie ritirate.** Nessuna su cui conti un lettore. La GUC accesa dall'app apriva una porta che il modello non
+voleva aperta, e il BE non la accende (§4.2). Chi chiamava il verbo senza essere SUPER_ADMIN ora è rifiutato, e sono
+solo test: l'endpoint chiede già il SUPER_ADMIN.
+
+### 10.5 Il giro scritto — 2026-11-25
+
+| File | Che cosa |
+| --- | --- |
+| `20_code/script/20261124-01-create-fn-applica-user-emittenti-scope` | la primitiva (D-P a): il corpo di prima del verbo, senza permesso; la GUC spenta all'ingresso, scritta con l'`auth_user_id`, svuotata dopo il `DELETE` e in errore; firma ancorata, `bigint[]` con la ragione; `COMMENT` |
+| `20_code/script/20261124-02-update-fn-change-user-emittenti-scope-definer-guard` | il verbo: `SECURITY DEFINER`, `search_path` `pg_catalog, public, pg_temp`, `fn_utente_di_sessione` e `fn_guard_super_admin` in prima riga, poi la primitiva; nessuna eccezione per la sessione del migratore (nessun changeSet lo chiama); firma ancorata, identica al vivo; `COMMENT` |
+| `20_code/anagrafiche/20261124-03-update-fn-provisiona-dati-di-sviluppo-scope-dalla-primitiva` | il provisioning chiama la primitiva: alla riga della chiamata l'utente di sessione è vuoto per costruzione. Corpo e attributi dal catalogo (ultimo `20261123-84`), una riga cambiata |
+| `20_code/config/20261124-04-update-trgfn-user-emittenti-fiscali-guard-delete-porta-sulla-riga` | il guard: la porta chiede la GUC uguale a `OLD.auth_user_id` **e** `fn_is_proprietario_tabella`; utente spento e utente cancellato invariati; `COMMENT`. Montaggio invariato, resta INVOKER |
+| `20_code/dbops/20261124-05-create-fn-pgtap-sposta-scope-operatore` | il builder (D-Q a): un SUPER_ADMIN di fixture entra nel contesto, chiama il verbo, il contesto di prima si rimette, anche in errore. L'utente di prima si legge da `fn_utente_di_sessione` (presidio `test-fn-utente-di-sessione-v1`, 14) |
+| `90_end/20261124-06-postura-fn-applica-user-emittenti-scope-riservata` | la primitiva senza `EXECUTE` a PUBLIC e all'app; le altre due sedi di §11.8: `v_fn_riservate` del loop `20260205-41` e il blocco «LA PORTA SULLE FUNZIONI» di `provision_zeroerp.sql` |
+| `db/pgtap/config/test-porta-scope-emittenti-v1.sql` | nuovo, come app, plan 12: la forma, la primitiva non eseguibile, il verbo da operatore e senza utente (`E_PERMESSO_NEGATO`, la riga resta), il `DELETE` diretto con `on` e con l'id giusto (rifiutato), dal verbo da SUPER_ADMIN (sposta, GUC vuota, contesto rimesso) |
+| ventiquattro pgTAP | undici che chiamavano il verbo per dare o togliere l'azienda alla fixture (nove `rls/`, `script/test-scope-emittenti-fail-closed-v1`, `script/test-fn-scope-ef-whitelist`) e tredici che aprivano la porta a mano: al builder, coi commenti. `test-user-emittenti-fiscali-immutable`, 3, rovesciato (la GUC `on` non apre più). `test-fn-change-user-emittenti-scope` ricostruito: operatore e SUPER_ADMIN da `fn_pgtap_crea_operatore_umano`, che nascono senza azienda, e il verbo chiamato dal SUPER_ADMIN; la precondizione non tocca né la porta né il verbo |
+| guide | `architettura-permessi-e-autorizzazioni` §4.9 (chi scrive la riga, e la tabella ancora aperta per l'`INSERT`), §7.4 (lo scope fuori dalle porte aperte), «Vedi anche»; `risorse-umane-e-accessi` (solo il SUPER_ADMIN assegna), «Vedi anche» |
+| `manual/` | riscritte `fn_change_user_emittenti_scope` e `trgfn_user_emittenti_fiscali_guard_delete` (raccontavano la porta con `on` e il cleanup a mano); nuove `fn_applica_user_emittenti_scope` e `fn_pgtap_sposta_scope_operatore`; corrette `user_emittenti_fiscali`, `fn_get_user_emittenti_scope`, `fn_pgtap_crea_operatore_umano`, `fn_cancella_fondo_fattura` e `trgfn_vendite_contabili_righe_guard_contenuto` (la porta 8 non ha più «la stessa forma» della 10) |
+
+**La prova sullo scratch** (`prova_changeset.py`, owner, `ROLLBACK`; 2026-11-25). I sei changeSet insieme: estratto
+eseguito per intero, catalogo identico dopo. La `preCondition` del `-06` sullo scratch dà 0: la primitiva nasce nel
+`-01` dello stesso giro, sul database che lo incontra c'è. Attributi dopo l'estratto (pgTAP di prova nello
+scratchpad, 8/8): verbo, primitiva e provisioning con una firma sola, argomenti e risultato identici al vivo; ACL del
+verbo e del provisioning invariate; la primitiva eseguibile dal solo proprietario; il guard con un montaggio,
+INVOKER. I trenta pgTAP che nominano verbo, porta, tabella o builder: con l'estratto tutti verdi, salvo
+`test-porta-scope-emittenti-v1` 9 (da owner il proprietario apre la porta: si vede solo come app) e
+`test-rls-email-ambito-reparto-operatore`, rosso da owner come prima del giro (7 ok / 15, test da app). Presidi
+trasversali (`riferimenti-morti`, `security-definer-search-path`, `comment-al-presente`, catalogo dei messaggi, le
+riservate di `dbops` e `pratiche`): stesso esito senza e con. Guardrail dei changeSet e del preambolo, pre-commit:
+verdi.
+
+⚠️ **Da owner i rifiuti del verbo si vedono** (il guard non ha l'eccezione del migratore), **quello della porta col
+valore giusto no**: è il 9 del pgTAP nuovo, e lo vede la corsa di Tid come app. ✅ Applicato da Tid il 2026-11-25:
+`test-porta-scope-emittenti-v1` e i ventiquattro adeguati verdi come app, 9 compreso; doc auto-generata rigenerata.
+
+**Un fatto trovato facendo il giro, per R-DB-K2.** Il builder dà il SUPER_ADMIN con `fn_pgtap_crea_operatore_umano(…,
+true)`, che lavora come app: oggi l'app può crearsi un SUPER_ADMIN (operatore da `fn_crea_operatore_v2` e binding
+scritto diretto). Il builder non apre niente di nuovo, ma lo mostra: è la porta di R-DB-K2, e il giro 10-bis la
+incontra.
+
+### 10.6 La richiesta al team BE/FE (dopo l'apply)
+
+Chi cambia per primo: il DB. Nessuna firma cambia, nessuna GUC da togliere (il BE non la accende, §4.2).
+
+* **I test che chiamano `script.fn_change_user_emittenti_scope`** con un operatore che non è SUPER_ADMIN, o senza
+  contesto, ricevono `E_PERMESSO_NEGATO`: lo chiamano da SUPER_ADMIN (`apri_contesto_operatore(cur,
+  super_admin=True)`, o il BB `super_admin_di_prova` di §4.7). Il noto è `core/tests/db/test_email_bozza_invio_db.py:257`
+  (§4.5, Parte C); la ricerca è del nome, non un elenco chiuso.
+* **I test che tolgono la riga di scope a mano**, accendendo `zeroerp.allow_user_emittente_delete_override` e
+  cancellando da `config.user_emittenti_fiscali`: la porta non si apre più. Passano al verbo da SUPER_ADMIN.
+* **Il censimento per il giro 10-bis** (D-O a): chi scrive `config.user_emittenti_fiscali` senza il verbo, nel
+  codice e nei test (`INSERT`, `DELETE` diretti), e chi chiama `script.fn_crea_utente_tecnico`, con quale utente e
+  quale permesso controlla l'endpoint. Serve a chiudere la tabella in sola lettura per l'app senza rompere chi la
+  scrive oggi.
+* **Il manuale BE** dell'endpoint dello scope (`api_amm_software`), se racconta chi può cambiare l'emittente.
+
+**Guide verificate per il giro** (`guide_coinvolte.py --oggetti` sui cinque oggetti, 2026-11-25):
+`architettura-permessi-e-autorizzazioni` e `risorse-umane-e-accessi` — **indietro**, aggiornate nello stesso giro;
+verbo e guard non più orfani. `anagrafiche.fn_provisiona_dati_di_sviluppo` resta orfano: è uno strumento dello
+sviluppo, non un concetto del dominio. Primitiva e builder non hanno ancora la pagina auto-generata: la porta la
+rigenerazione dopo l'apply.
+
 ## Registro
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-25 | DB | Commit e push su `dev/db-tid`: giro 10 (§10.5), col giro 16 già committato |
+| 2026-11-25 | Tid | Giro 10 applicato, pgTAP come app verdi, doc auto-generata rigenerata (§10.5); al BE il 6b-quinquies |
+| 2026-11-25 | DB | Giro 10 scritto e provato (§10.5): `20261124-01` (la primitiva, GUC sull'`auth_user_id`), `-02` (il verbo DEFINER col guard del SUPER_ADMIN), `-03` (il provisioning dalla primitiva), `-04` (la porta: GUC sulla riga e proprietario), `-05` (il builder dei pgTAP), `-06` e le altre due sedi (la primitiva riservata); pgTAP nuovo, ventiquattro adeguati, guide e `manual/`; richiesta al BE (§10.6); giro 10-bis nel piano |
+| 2026-11-24 | Tid | **D-O a, D-P a, D-Q a** (§10.3) e il via al giro 10 |
+| 2026-11-24 | DB | Giro 10, analisi (§10): verbo DEFINER con `fn_guard_super_admin`, GUC sull'`auth_user_id`, nessun perimetro; l'`INSERT` diretto dell'app dà un'azienda senza guard; il provisioning chiama il verbo senza utente; dodici pgTAP aprono la porta da sé. D-O, D-P e D-Q a Tid |
 | 2026-11-24 | Tid | Giro 16 applicato, pgTAP come app verdi (§9.4); al BE il 6a-quinquies |
 | 2026-11-24 | DB | Giro 16 scritto e provato (§9.4): `20261123-98` (la porta: GUC sull'id del modello e proprietario; il seed dalla sessione del migratore), `-99` (il verbo DEFINER col guard), pgTAP nuovo, quattordici adeguati, guide e `manual/`; richiesta al BE (§9.5) |
 | 2026-11-24 | Tid | **D-M a, D-N a** (§9.3) e il via al giro 16 |

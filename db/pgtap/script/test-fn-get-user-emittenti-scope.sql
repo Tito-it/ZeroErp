@@ -114,15 +114,13 @@ $$;
 --   ⚠️ La precondizione non si CERCA, si COSTRUISCE: la fixture ha smesso di
 --   funzionare il giorno in cui il progetto ha sistemato i dati, che e' il
 --   momento peggiore per scoprirlo.
---   Il DELETE passa dall'override GUC (la tabella ha un guard sul delete) e il
---   file e' transazionale: lo scope vero torna al ROLLBACK.
+--   La riga si toglie dal verbo, col builder dbops.fn_pgtap_sposta_scope_operatore
+--   (la tabella ha un guard sul delete), e il file e' transazionale: lo scope
+--   vero torna al ROLLBACK.
 CREATE TEMP TABLE _t_user_global AS
 SELECT m.auth_user_id AS au_id FROM _mondi m WHERE m.lato = 'GLOBAL';
 
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT au_id FROM _t_user_global);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT au_id FROM _t_user_global), NULL);
 
 -- Setup: l'emittente per il ramo SINGLE e' quello dell'azienda GLOBAL,
 -- che il test 2 gli riassegna.

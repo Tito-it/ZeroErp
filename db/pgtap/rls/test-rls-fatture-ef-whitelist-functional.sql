@@ -110,8 +110,8 @@ CREATE TEMP TABLE _op (tag text, auth_user_id int, soggetto_id uuid, sr_id bigin
 -- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile): l'operatore viene dalla
 --   MADRE (dbops.fn_pgtap_crea_operatore_umano: persona fisica completa,
 --   risorsa umana, veste OPERATORE accesa come all'invito accettato) e
---   l'emittente gli si da' con la funzione di dominio
---   script.fn_change_user_emittenti_scope. Prima la fixture costruiva
+--   l'emittente gli si da' dal verbo, col builder
+--   dbops.fn_pgtap_sposta_scope_operatore. Prima la fixture costruiva
 --   soggetto, soggetto_ruolo e veste a mano, senza risorsa umana: uno stato
 --   che la madre non produce, e che da D-2 (l'operatore umano vale finche'
 --   vale il suo rapporto, script.fn_veste_utilizzabile) non e' piu' un
@@ -131,7 +131,7 @@ BEGIN
     END IF;
 
     IF p_emit IS NOT NULL THEN
-        PERFORM script.fn_change_user_emittenti_scope(v_op.auth_user_id, ARRAY[p_emit]);
+        PERFORM dbops.fn_pgtap_sposta_scope_operatore(v_op.auth_user_id, p_emit);
     END IF;
 
     INSERT INTO _op VALUES (p_tag, v_op.auth_user_id, v_op.soggetto_id,

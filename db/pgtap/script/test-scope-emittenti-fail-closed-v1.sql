@@ -134,8 +134,8 @@ SELECT is(
 
 -- Togli lo scope: da qui l'operatore e' «configurato a meta'».
 -- Si usa la funzione di dominio, non un DELETE: e' la sede unica del modello 1-a-1.
-SELECT script.fn_change_user_emittenti_scope(
-           (SELECT auth_user_id FROM _t_op), '{}'::bigint[]);
+SELECT dbops.fn_pgtap_sposta_scope_operatore(
+           (SELECT auth_user_id FROM _t_op), NULL);
 
 -- 2) * LA correzione: senza riga NON significa piu' «nessuna restrizione».
 SELECT is(

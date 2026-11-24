@@ -10,6 +10,7 @@ search:
 ## ⚙️ Funzioni
 - [fn_ambiente_dichiarato](funzioni/fn_ambiente_dichiarato.md)
 - [fn_ambiente_installazione](funzioni/fn_ambiente_installazione.md)
+- [fn_applica_user_emittenti_scope](funzioni/fn_applica_user_emittenti_scope.md) — Sposta un operatore da un'azienda all'altra, o gli toglie l'azienda. Ha le regole dello spostamento e la porta del `DELETE`, ma **non chiede permessi**: è la primitiva sotto il verbo [fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope), che chiede il SUPER_ADMIN.
 - [fn_area_consente_azione](funzioni/fn_area_consente_azione.md) — (scritta il 04-10-2026)
 - [fn_area_di_oggetto](funzioni/fn_area_di_oggetto.md) — (scritta il 25-09-2026)
 - [fn_arrotonda_importo](funzioni/fn_arrotonda_importo.md) — Arrotondare un importo secondo i **decimali** e il **metodo** configurati, in **un punto solo** per tutto il database.
@@ -32,7 +33,7 @@ search:
 - [fn_canale_log_stringa](funzioni/fn_canale_log_stringa.md) — Dice se il **canale di log fuori transazione** (la connessione `dblink` dei registri) è acceso, e con quale stringa di connessione: restituisce la stringa se il canale è acceso, `NULL` se è spento o non configurato. È la regola unica per chi deve scrivere sul canale.
 - [fn_capability_promo_articolo](funzioni/fn_capability_promo_articolo.md)
 - [fn_categoria_accesso](funzioni/fn_categoria_accesso.md)
-- [fn_change_user_emittenti_scope](funzioni/fn_change_user_emittenti_scope.md)
+- [fn_change_user_emittenti_scope](funzioni/fn_change_user_emittenti_scope.md) — È il **verbo** con cui il SUPER_ADMIN porta un operatore su un'azienda, o gliela toglie. Dietro c'è la sezione «Emittenti Scope» del drawer Operatore.
 - [fn_check_accredito_annullabile](funzioni/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](funzioni/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_annullo_movimento_titolo_iva](funzioni/fn_check_annullo_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)

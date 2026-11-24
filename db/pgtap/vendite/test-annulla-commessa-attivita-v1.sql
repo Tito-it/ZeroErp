@@ -497,10 +497,7 @@ SELECT ef.id AS emittente_fiscale_id
  WHERE ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id
  LIMIT 1;
 
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_op);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_op), NULL);
 
 INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
 SELECT (SELECT user_id FROM tmp_op), (SELECT emittente_fiscale_id FROM tmp_ef);

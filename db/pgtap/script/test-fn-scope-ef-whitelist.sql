@@ -85,8 +85,8 @@ SELECT ok(
 -- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile): l'operatore viene dalla
 --   MADRE (dbops.fn_pgtap_crea_operatore_umano: persona fisica completa,
 --   risorsa umana, veste OPERATORE accesa come all'invito accettato) e
---   l'emittente gli si da' con la funzione di dominio
---   script.fn_change_user_emittenti_scope. Prima la fixture costruiva
+--   l'emittente gli si da' dal verbo, col builder
+--   dbops.fn_pgtap_sposta_scope_operatore. Prima la fixture costruiva
 --   soggetto, soggetto_ruolo e veste a mano, senza risorsa umana: uno stato
 --   che la madre non produce, e che da D-2 (l'operatore umano vale finche'
 --   vale il suo rapporto, script.fn_veste_utilizzabile) non e' piu' un
@@ -173,9 +173,8 @@ SELECT ok(
 -- =========================================================
 -- 6) Setup: popola user_emittenti_fiscali per l'auth_user attivo
 -- =========================================================
-SELECT script.fn_change_user_emittenti_scope(
-    (SELECT auth_user_id FROM _t_au WHERE idx = 1),
-    ARRAY[(SELECT ef_id FROM _t_ef)]);
+SELECT dbops.fn_pgtap_sposta_scope_operatore(
+    (SELECT auth_user_id FROM _t_au WHERE idx = 1), (SELECT ef_id FROM _t_ef));
 
 SELECT ok(
     EXISTS (

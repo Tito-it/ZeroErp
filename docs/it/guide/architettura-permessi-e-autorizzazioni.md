@@ -1,6 +1,6 @@
 # Guida — Architettura Permessi e Autorizzazioni
 
-> **Ultimo aggiornamento**: 24 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -25,6 +25,8 @@
 > * [script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope) — la regola di scope emittente, sede unica
 > * [script.fn_get_emittenti_scope_pk_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_pk_ids) / [script.fn_get_emittenti_scope_sr_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_sr_ids) — gli emittenti nel perimetro dell'utente
 > * [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope) — il write-guard di difesa in profondita'
+> * [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — il verbo che sposta un operatore su un'azienda, riservato al SUPER_ADMIN
+> * [config.trgfn_user_emittenti_fiscali_guard_delete](/dbzero/config/funzioni/trgfn_user_emittenti_fiscali_guard_delete) — il guard del `DELETE` della riga di scope, e la porta del verbo
 > * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) / [script.fn_guard_livello](/dbzero/script/funzioni/fn_guard_livello) / [script.fn_guard_super_admin](/dbzero/script/funzioni/fn_guard_super_admin) / [script.fn_guard_utente_stesso](/dbzero/script/funzioni/fn_guard_utente_stesso) — il permesso nella prima riga di un verbo di scrittura
 > * [script.fn_area_di_oggetto](/dbzero/script/funzioni/fn_area_di_oggetto) — l'area a cui appartiene un oggetto, sede unica per DB e backend
 > * [script.fn_notify_permessi_catalogo](/dbzero/script/funzioni/fn_notify_permessi_catalogo) / [script.trgfn_notify_permessi_catalogo](/dbzero/script/funzioni/trgfn_notify_permessi_catalogo) — l'avviso al backend che il catalogo dei permessi è cambiato
@@ -393,10 +395,21 @@ righe **non vede nessun emittente** — la riga mancante e' un errore di
 configurazione, non un permesso. L'unico attore legittimamente multi-emittente e'
 il `SUPER_ADMIN`, che passa da `fn_is_super_admin` e non da questa tabella.
 
-**Esempio di uso:** per abilitare un operatore sull'emittente 3, si registra la
-sua riga con `auth_user_id` ed `emittente_fiscale_id`. Ogni tentativo di operare
-su un emittente diverso viene bloccato: a livello di policy per le letture, e per
-difesa in profondita' dai trigger DB sulle scritture.
+**Esempio di uso:** per abilitare un operatore sull'emittente 3, il SUPER_ADMIN
+gli assegna l'emittente col verbo `script.fn_change_user_emittenti_scope`, che
+scrive la riga con `auth_user_id` ed `emittente_fiscale_id`. Ogni tentativo di
+operare su un emittente diverso viene bloccato: a livello di policy per le
+letture, e per difesa in profondita' dai trigger DB sulle scritture.
+
+**Chi la scrive.** Scrivere la riga e' dare l'accesso a un'azienda, toglierla e'
+toglierlo: per questo il verbo chiede il SUPER_ADMIN nella prima riga (§7.4). La
+riga di un utente acceso si toglie solo dalla porta del verbo; l'emittente di una
+riga non si cambia (lucchetto di colonna), si sposta togliendo la riga e
+scrivendone un'altra. ⚠️ La tabella non e' ancora in sola lettura per
+l'applicazione: un `INSERT` diretto, per un operatore che non ha la riga, gli da'
+un'azienda senza passare dal verbo. E' una delle tabelle ancora aperte del
+modello; anche gli utenti tecnici dei processi ricevono l'azienda cosi'
+(`script.fn_crea_utente_tecnico`).
 
 Chi resta senza assegnazione si conta in `dbops.vw_operatori_senza_emittente`, che
 **deve restare a zero righe**.
@@ -886,9 +899,10 @@ l'amministratore ragiona come sempre, per area, azione e oggetto.
   guard la confronta con la riga che giudica. Se il guard ha anche un'eccezione
   per il seed, la riconosce dalla **sessione del migratore**
   (`dbops.fn_sessione_del_migratore`), non dal proprietario: dentro un verbo
-  `SECURITY DEFINER` il proprietario e' chiunque lo chiami. ⚠️ Non tutte le porte
-  ci sono gia' arrivate: quelle del reset dei lotti, del contabile, dei DDT di
-  riconsegna e dello scope emittenti si aprono ancora con la sola GUC.
+  `SECURITY DEFINER` il proprietario e' chiunque lo chiami. Lo scope emittenti
+  apre cosi': la GUC porta l'`auth_user_id` dell'operatore che il verbo sposta.
+  ⚠️ Non tutte le porte ci sono gia' arrivate: quelle del reset dei lotti, del
+  contabile e dei DDT di riconsegna si aprono ancora con la sola GUC.
 
 **Il backend chiede, non decide due volte.** L'endpoint tiene il suo controllo:
 risponde 403 subito, con un messaggio utile, prima di aprire la transazione.

@@ -91,14 +91,10 @@ SELECT m.auth_user_id AS user_id,
   FROM _mondi m WHERE m.lato = 'OP';
 
 -- Pulisce eventuali whitelist pre-esistenti per l'utente di test.
--- Override del guard_delete (trgfn_user_emittenti_fiscali_guard_delete)
--- necessario: l'utente Django associato e' ancora attivo. Reset
--- difensivo subito dopo per non lasciar leakare la GUC nel resto del
--- test.
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_refs_scope);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+-- L'utente Django e' acceso, quindi il guard del DELETE
+-- (trgfn_user_emittenti_fiscali_guard_delete) la lascia togliere solo dal
+-- verbo: il builder dbops.fn_pgtap_sposta_scope_operatore passa da li'.
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_refs_scope), NULL);
 
 CREATE TEMP TABLE tmp_emittenti AS
 SELECT m.emittente_fiscale_id AS emittente_id_1,   -- l'azienda di OP, riassegnata al test 10
