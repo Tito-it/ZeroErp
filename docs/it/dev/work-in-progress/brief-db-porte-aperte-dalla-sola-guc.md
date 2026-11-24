@@ -2,9 +2,8 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-24**
 >
-> **Riparte: Tid, girando al team BE la richiesta 3d (§4.4, scritta e precompilata il 2026-11-24)**; intanto il team
-> DB può fare il giro 12-13, che non la aspetta (un pgTAP e la guida, D-E a), al via di Tid; poi i giri delle porte
-> del flusso, alla risposta del BE.
+> **Riparte: Tid, girando al team BE la richiesta 3d (§4.4)**; poi il team DB coi giri delle porte del flusso
+> (16, 10, 9, 11, 8, 1-7), alla risposta del BE. ✅ Giro 12-13 fatto e verde (2026-11-24, §8).
 > ✅ Fatti e verdi (Tid, 2026-11-24): giro 1 (porte di manutenzione 14 e 15, la 17 dichiarata), giro 1-bis (la
 > fusione dei comuni, il presidio di `maintenance`), giro 3 (le viste in sola lettura per l'app, con la fase `post`
 > del provisioning su dbdev). Tutto applicato, niente committato.
@@ -28,10 +27,12 @@
 > | 4b | team DB | ✅ il giro 3, le viste: scritto e provato sullo scratch (2026-11-24) | §7 | — |
 > | 4e | Tid | ✅ il giro 3: apply, `ci_apply`, fase `post` del provisioning su dbdev, pgTAP verde (2026-11-24) | §7.4 | — |
 > | 5 | Tid / team BE | la richiesta 3d girata al BE, e la risposta | §4.4 | — |
-> | 6 | team DB | i giri delle porte del flusso | Il piano | 3d (tranne 12-13) |
+> | 5b | team DB | ✅ il giro 12-13, verde come app (2026-11-24) | §8 | — |
+> | 6 | team DB | i giri delle porte del flusso 16, 10, 9, 11, 8, 1-7 | Il piano | 3d |
 >
-> Decisioni aperte di Tid: nessuna. Da committare: questo file, la §19 di `brief-db-revisione-anagrafiche`
-> che rimanda qui, la voce di `.codex/PROJECT_CONTEXT.md`, e i file dei giri 1 (§6.1), 1-bis (§6.5) e 3 (§7.2).
+> Decisioni aperte di Tid: nessuna. Committati (`64f00b35b1`, 2026-11-24) i giri 1, 1-bis e 3. Da committare: il
+> giro 12-13 (§8) e questo file; le due righe di `brief-db-revisione-anagrafiche` che rimandano qui le porta il
+> commit dell'altra sessione, che ha quel brief in lavorazione.
 >
 > **Brief vicini verificati (2026-11-23):**
 > [brief-db-magazzino-tutte-le-scritture-dal-verbo](../work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md)
@@ -120,9 +121,10 @@
   - le primitive chiuse si scrivono in `v_fn_riservate`, nelle tre sedi di §11.8 (§3-ter.4);
   - nei giri 8 e 1-7: `vendite.fn_check_fondo_cancellabile`, che salta il controllo della figlia congelata con la GUC del reset (§3-ter.3);
   - la guida del dominio e la richiesta al BE del giro.
-  - [ ] 12-13, i legami della bolla (D-E a): niente da cambiare nel trigger (il ramo fuori bozza chiede già il
-    proprietario, §3-ter.2). Un pgTAP che fissa i due rami (come app, fuori bozza con la GUC: si ferma; in bozza con la
-    GUC sulla riga: passa) e la guida che dichiara la bozza «sola GUC sulla riga» come scelta
+  - [x] 12-13, i legami della bolla (D-E a, 2026-11-24, pgTAP verde come app; §8): niente da cambiare nel trigger
+    (il ramo fuori bozza chiede già il proprietario, §3-ter.2). Un pgTAP che fissa i due rami (come app, fuori bozza
+    con le GUC: si ferma; in bozza con la GUC sulla riga: passa) e la guida che dichiara la bozza «sola GUC sulla
+    riga» come scelta
   - [ ] 16, il template: il verbo, e il trigger che distingue il seed dal verbo
   - [ ] 10, lo scope emittenti: il verbo con `fn_guard_super_admin` (nessuna RLS)
   - [ ] 9, la registrazione tardiva: da qui si prova il perimetro; prima si rilegge la D20-b di `brief-incassi-riconciliazione-rate-promemoria`
@@ -786,10 +788,36 @@ dbdev (`sudo -u postgres psql -d zeroerp -v fase=post < scripts/sql/provision_ze
 È la conferma della terza sede di §11.8: le viste di `public` delle estensioni le chiude solo il provisioning.
 ⚠️ Lo scratch si allinea quando lo ricostruisce `ci-local.sh`, che lancia la fase `post`.
 
+## 8. Il giro 12-13, i legami della bolla — scritto il 2026-11-24
+
+Nessun changeSet (D-E a): il trigger `vendite.trgfn_ddt_riga_legame_guard` resta com'è. Il giro fissa i due rami
+del `DELETE` in un pgTAP e li scrive nella guida.
+
+**Che cosa c'era già.** `vendite/test-ddt-righe-evase-dall-ordine-v1` (gira come app) ha il test 41: fuori bozza,
+la sola GUC del legame accesa a mano non toglie il legame. Non prova la condizione del proprietario: senza la
+seconda GUC (`zeroerp.doc_ritira_legami`), `fn_doc_porta_ritiro_ammette` risponde no anche al proprietario. Il
+test 43 è un'altra porta (la correzione della quantità, `zeroerp.ddt_riga_correggi_qta`).
+
+| File | Che cosa |
+| --- | --- |
+| `db/pgtap/vendite/test-ddt-righe-evase-dall-ordine-v1.sql` | piano 43 → 45. **44**: fuori bozza (la bolla A, emessa) l'app accende **tutte e due** le GUC del ritiro dell'annullo e cancella il legame diretta: rifiuto, perché manca il proprietario. Rosso da owner per costruzione, come il 43. **45**: in bozza (bolla K, nuova dal builder) la sola GUC sulla riga basta, il `DELETE` diretto toglie il legame (1 riga): la scelta di D-E a, fissata |
+| guida `gestione-ddt` | §15.3 «Chi toglie un legame»: la bozza con il solo parametro della riga, come scelta; fuori bozza anche il ritiro della bolla e il proprietario. Nel «Vedi anche» il guard e `fn_doc_porta_ritiro_ammette`, che nessuna guida citava |
+
+Il ramo è lo stesso per le due tabelle (`ordini_righe_fulfillment`, porta 12, e `resi_righe_riconsegne`, porta 13):
+una funzione sola, montata con gli argomenti del trigger. Il test lo prova sulla prima; dichiarato. I due casi senza
+bolla o senza stato (`v_ddt_id IS NULL`, `v_stato_ddt IS NULL`) restano aperti con la sola GUC, come in §3-ter.2, e
+non hanno un test: sono le righe che la cascata della testata porta via.
+
+Preambolo pgTAP verde. Nessuna prova sullo scratch: senza changeSet `prova_changeset.py` non si applica, e da owner
+il 44 sarebbe rosso per costruzione. ✅ Verde come app, 45/45 (Tid, 2026-11-24).
+
 ## Registro
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-24 | Tid | Giro 12-13: `test-ddt-righe-evase-dall-ordine-v1` verde come app (§8) |
+| 2026-11-24 | DB | Giro 12-13 scritto (§8): test 44-45 in `test-ddt-righe-evase-dall-ordine-v1`, guida `gestione-ddt` §15.3; nessun changeSet |
+| 2026-11-24 | DB | Commit `64f00b35b1` e push su `dev/db-tid`: giri 1, 1-bis e 3 (`brief-db-revisione-anagrafiche` escluso: ha il lavoro in corso dell'altra sessione, e le due righe di qui ci restano) |
 | 2026-11-24 | DB | Richiesta 3d al BE scritta (§4.4): dieci verbi da portare a DEFINER, precompilati dal ramo del BE (chiamanti, view, meccanismo del permesso); parti B (utente tecnico della pipeline) e C (test che chiamano i verbi, primitive da chiudere) |
 | 2026-11-24 | Tid | Giro 3 applicato; fase `post` del provisioning su dbdev; `test-viste-app-solo-select-v1` verde 5/5 (prima della fase `post` rosso solo sulle quattro viste di `public`, come previsto, §7.4) |
 | 2026-11-24 | DB | Giro 3 scritto (§7): le viste in sola lettura per l'app nelle tre sedi (`20261123-47`, il ramo per tipo del loop, la fase `post`), pgTAP a criterio, §6 e §11.8 delle linee guida, guida dei permessi §7.4; `geometry_columns` deciso (regole `DO INSTEAD NOTHING`, chiusa dal provisioning); provato sullo scratch |
