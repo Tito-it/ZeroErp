@@ -1,0 +1,174 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato su scratch e dbdev, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/anagrafiche/20261123-64.
+# Lo stato del soggetto sotto la regola dell'identificativo fiscale.
+#   Brief: brief-db-revisione-anagrafiche §20 (T5), D-T5-3 a (Tid, 2026-11-23).
+#
+# -- IL DIFETTO (S43-6) -------------------------------------------------------------
+#   La chiave d'unicita' e' (stato_id, id_fiscale_univoco_cf_piva): CF e P.IVA
+#   erano bloccati (20261110-96), lo stato no. Cambiarlo faceva di un soggetto
+#   un altro come cambiare il CF, e chiunque poteva farlo con un UPDATE.
+#
+# -- LA REGOLA (D-T5-3 a) -----------------------------------------------------------
+#   Lo stato si cambia solo dal SUPER_ADMIN, con la stessa funzione della
+#   regola (anagrafiche.fn_id_fiscale_bloccato) letta sul valore OLD. Lo stato
+#   non e' mai NULL (NOT NULL), quindi la regola si riduce a «chi agisce e'
+#   SUPER_ADMIN»: passa per la stessa funzione perche' la regola resti una, e
+#   il valore entra come testo (OLD.stato_id::text) solo per dire «scritto».
+#   Il guard si monta anche OF stato_id. Il form spegne il campo con la stessa
+#   condizione: anagrafiche.fn_soggetto_id_fiscale_bloccato impara la colonna
+#   stato_id, e il registro dbops.lock_columns_conditional ne riceve la riga
+#   (80_data, -52).
+#   Il guard al COMMIT della forma giuridica rilegge il paese quando il
+#   SUPER_ADMIN cambia lo stato (-53, S41-5).
+#
+# -- LA FASE: a05 ---------------------------------------------------------------------
+#   Il trigger era trg_soggetti_a10_guard_id_fiscale_immutabile_upd, e in a10
+#   l'alfabeto lo metteva DOPO trg_soggetti_a10_guard_cf_piva_obbligatori_…
+#   (guard_cf < guard_id): all'operatore che svuota una P.IVA scritta parlava
+#   «la partita IVA e' obbligatoria» invece di «non si cambia». Con la stringa
+#   vuota fatta NULL dalla normalizzazione (-48) il caso diventa comune. Passa
+#   in a05, «il rifiuto che deve parlare per primo» (linee-guida-trigger
+#   §«La fase»): se il dato non si tocca, dire che il valore nuovo e' sbagliato
+#   manda a correggere la cosa sbagliata. Trovato dal pgTAP del giro (14).
+#   Il BE non scrive stato_id in modifica (SOGGETTO_UPDATE_COLS, ramo
+#   origin/dev/backend-tid f1b8f9df7a): nessuno scrittore perde una strada.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261123-51-update-guard-id-fiscale-stato-mctit.yaml
+
+  - changeSet:
+      id: 20261123-51-update-guard-id-fiscale-stato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Lo stato_id di anagrafiche.soggetti sotto la regola dell'identificativo: lo cambia solo il
+        SUPER_ADMIN (trgfn_soggetti_guard_id_fiscale_immutabile, anche OF stato_id), e il form lo
+        spegne (fn_soggetto_id_fiscale_bloccato con la colonna stato_id).
+        brief-db-revisione-anagrafiche §20, D-T5-3 a.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND p.proname IN ('fn_id_fiscale_bloccato', 'trgfn_soggetti_guard_id_fiscale_immutabile');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_id_fiscale_bloccato(anagrafiche.soggetti.codice_fiscale%TYPE) IS
+                  'Vero se una parte dell''identificativo fiscale del soggetto con questo valore attuale non si puo'' cambiare: il valore e'' scritto e chi agisce non e'' SUPER_ADMIN (script.fn_is_super_admin sull''utente di sessione, script.fn_utente_di_sessione; senza utente vale no). Un valore NULL si puo'' riempire. Le parti sono codice_fiscale, partita_iva e stato_id: insieme fanno la chiave d''unicita'' del soggetto (uq_soggetto_idstato_id_fiscale_univoco), e cambiarle farebbe di un soggetto un altro. Lo stato non e'' mai NULL e arriva come testo: per lui la regola e'' «solo il SUPER_ADMIN» (D-T5-3 a, brief-db-revisione-anagrafiche §20, 2026-11-23). La leggono anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile (con il valore OLD) e anagrafiche.fn_soggetto_id_fiscale_bloccato (sulla riga, per il form).';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_soggetto_id_fiscale_bloccato(
+                  p_soggetto_id anagrafiche.soggetti.id%TYPE,
+                  p_colonna     text  -- un nome di colonna: nessuna colonna di cui sia il riflesso
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+                SELECT COALESCE(
+                         (SELECT anagrafiche.fn_id_fiscale_bloccato(
+                                   CASE p_colonna
+                                       WHEN 'codice_fiscale' THEN s.codice_fiscale
+                                       WHEN 'partita_iva'    THEN s.partita_iva
+                                       WHEN 'stato_id'       THEN s.stato_id::text
+                                   END)
+                            FROM anagrafiche.soggetti s
+                           WHERE s.id = p_soggetto_id),
+                         false);
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_soggetto_id_fiscale_bloccato(anagrafiche.soggetti.id%TYPE, text) IS
+                  'La regola di anagrafiche.fn_id_fiscale_bloccato letta sulla riga del soggetto, per la colonna codice_fiscale, partita_iva o stato_id (stato_id dal 2026-11-24, D-T5-3 a di brief-db-revisione-anagrafiche §20). E'' la condizione delle righe di dbops.lock_columns_conditional su anagrafiche.soggetti, che dbops.fn_non_editable_fields valuta per il form: il form spegne esattamente cio'' che il guard rifiuta. Soggetto inesistente o colonna diversa: falso.';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  IF NEW.codice_fiscale IS DISTINCT FROM OLD.codice_fiscale
+                     AND anagrafiche.fn_id_fiscale_bloccato(OLD.codice_fiscale) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'trgfn_soggetti_guard_id_fiscale_immutabile',
+                          'E_SOGGETTO_ID_FISCALE_IMMUTABILE',
+                          jsonb_build_object('campo', 'codice_fiscale', 'soggetto_id', NEW.id),
+                          NEW.tx_id,
+                          'codice fiscale');
+                  END IF;
+
+                  IF NEW.partita_iva IS DISTINCT FROM OLD.partita_iva
+                     AND anagrafiche.fn_id_fiscale_bloccato(OLD.partita_iva) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'trgfn_soggetti_guard_id_fiscale_immutabile',
+                          'E_SOGGETTO_ID_FISCALE_IMMUTABILE',
+                          jsonb_build_object('campo', 'partita_iva', 'soggetto_id', NEW.id),
+                          NEW.tx_id,
+                          'partita IVA');
+                  END IF;
+
+                  -- Lo stato e' meta' della chiave d'unicita' (D-T5-3 a): non e' mai
+                  -- NULL, quindi per lui la regola e' «solo il SUPER_ADMIN». Anche lo
+                  -- stato portato a NULL si ferma qui, prima del NOT NULL della colonna.
+                  IF NEW.stato_id IS DISTINCT FROM OLD.stato_id
+                     AND anagrafiche.fn_id_fiscale_bloccato(OLD.stato_id::text) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'trgfn_soggetti_guard_id_fiscale_immutabile',
+                          'E_SOGGETTO_ID_FISCALE_IMMUTABILE',
+                          jsonb_build_object('campo', 'stato_id', 'soggetto_id', NEW.id),
+                          NEW.tx_id,
+                          'stato');
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile() IS
+                  'Guard di anagrafiche.soggetti (trg_soggetti_a05_guard_id_fiscale_immutabile_upd, BEFORE UPDATE OF codice_fiscale, partita_iva, stato_id; fase a05 dal 2026-11-24, perche'' l''immutabilita'' parli prima della presenza e del formato): le parti dell''identificativo fiscale gia'' scritte non si cambiano e non si svuotano, salvo il SUPER_ADMIN; un CF o una P.IVA vuoti si possono riempire. Lo stato (meta'' della chiave d''unicita'') dal 2026-11-24: D-T5-3 a, brief-db-revisione-anagrafiche §20. La regola e'' anagrafiche.fn_id_fiscale_bloccato, letta sul valore OLD; la stessa regola spegne i campi nel form (dbops.lock_columns_conditional, anagrafiche.fn_soggetto_id_fiscale_bloccato). Confronta i valori gia'' normalizzati da trgfn_soggetti_normalize (a01). Rifiuto: E_SOGGETTO_ID_FISCALE_IMMUTABILE, con campo = la colonna.';
+
+              -- a05: l'immutabilita' parla prima dei guard a10 (presenza, formato, natura).
+              -- I trigger di trgfn_soggetti_guard_id_fiscale_immutabile si tolgono per FUNZIONE, non per
+              --   nome: dbdev e un database costruito da zero li hanno con nomi diversi
+              --   (oggi lo stesso nome nei due, trg_soggetti_a10_guard_id_fiscale_immutabile_upd; 20251119-01 ha rinominato la funzione, non sempre il trigger).
+              DO $via$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN
+                      SELECT t.tgname
+                        FROM pg_trigger t
+                       WHERE t.tgrelid = 'anagrafiche.soggetti'::regclass
+                         AND t.tgfoid = 'anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile'::regproc
+                         AND NOT t.tgisinternal
+                  LOOP
+                      EXECUTE format('DROP TRIGGER %I ON anagrafiche.soggetti', r.tgname);
+                  END LOOP;
+              END
+              $via$;
+              CREATE TRIGGER trg_soggetti_a05_guard_id_fiscale_immutabile_upd
+                  BEFORE UPDATE OF codice_fiscale, partita_iva, stato_id ON anagrafiche.soggetti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: i corpi di prima sono quelli di 20261110-95/-96 e 20261123-19.
+              SELECT 1;

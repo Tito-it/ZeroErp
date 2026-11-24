@@ -19,7 +19,7 @@ AS $function$
     DECLARE
         l_tipo_det RECORD;
         l_error_ctx JSONB;
-        l_cf_valido BOOLEAN;
+        l_cf_valido BOOLEAN;  -- esito di un validatore: nessuna colonna di cui sia il riflesso
     BEGIN
         -- 0) Se tipo_soggetto_dettaglio non specificato, skip
         IF p_tipo_det_id IS NULL THEN
@@ -27,10 +27,18 @@ AS $function$
         END IF;
 
         -- 0b) Recupero il tipo di dettaglio del soggetto
+        --     Natura inesistente: il validatore tace e parla la FK di
+        --     anagrafiche.soggetti, come in fn_check_cambio_natura_soggetto
+        --     (S43-3, brief-db-revisione-anagrafiche §20). Con INTO STRICT
+        --     usciva un no_data_found tecnico prima della FK.
         SELECT formato_cf, formato_piva
-        INTO STRICT l_tipo_det
+        INTO l_tipo_det
         FROM config.tipi_soggetto_dettaglio
         WHERE id = p_tipo_det_id;
+
+        IF NOT FOUND THEN
+            RETURN;
+        END IF;
 
         ----------------------------------------------------------------
         -- 2) Validazione Partita IVA principale (se prevista e valorizzata)
@@ -121,18 +129,20 @@ AS $function$
 COMMENT ON FUNCTION script.fn_validate_cf_piva_it(p_tipo_det_id bigint, p_partita_iva text, p_piva_gruppo text, p_codice_fiscale text)
 IS 'Valida Partita IVA principale, Partita IVA di gruppo e Codice Fiscale per soggetti italiani.
 
-La logica utilizza la configurazione del tipo soggetto di dettaglio (config.tipi_soggetto_dettaglio):
-- se formato_piva = NON_APPLICABILE non viene eseguita alcuna validazione sulla P.IVA;
-- se formato_cf  = NON_APPLICABILE non viene eseguita alcuna validazione sul Codice Fiscale.
+    La logica utilizza la configurazione del tipo soggetto di dettaglio (config.tipi_soggetto_dettaglio):
+    - se formato_piva = NON_APPLICABILE non viene eseguita alcuna validazione sulla P.IVA;
+    - se formato_cf  = NON_APPLICABILE non viene eseguita alcuna validazione sul Codice Fiscale.
 
-Dispatch validazione CF in base a formato_cf:
-- ALFANUM_16: fn_valida_codice_fiscale (algoritmo CF persona fisica, 16 char)
-- NUM_11: fn_valida_partita_iva (algoritmo Luhn, CF persona giuridica = P.IVA)
-- altri formati: nessuna validazione check digit (solo lunghezza)
+    Dispatch validazione CF in base a formato_cf:
+    - ALFANUM_16: fn_valida_codice_fiscale (algoritmo CF persona fisica, 16 char)
+    - NUM_11: fn_valida_partita_iva (algoritmo Luhn, CF persona giuridica = P.IVA)
+    - altri formati: nessuna validazione check digit (solo lunghezza)
 
-In caso di valore non valido richiama script.fn_log_and_raise_error con i codici:
-- PIVA_NON_VALIDA per P.IVA principale o di gruppo non valida,
-- CF_NON_VALIDO per Codice Fiscale non valido.';
+    Natura inesistente: nessuna validazione, parla la FK del chiamante (rev 2026-11-24, S43-3 di brief-db-revisione-anagrafiche §20: prima INTO STRICT dava no_data_found).
+
+    In caso di valore non valido richiama script.fn_log_and_raise_error con i codici:
+    - PIVA_NON_VALIDA per P.IVA principale o di gruppo non valida,
+    - CF_NON_VALIDO per Codice Fiscale non valido.';
 ```
 
 </div>

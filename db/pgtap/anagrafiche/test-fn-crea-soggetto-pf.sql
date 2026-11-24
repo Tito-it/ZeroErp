@@ -150,8 +150,8 @@ SELECT throws_matching(
       (SELECT test_cf FROM tmp_sogg_pf_ctx),
       (SELECT test_email FROM tmp_sogg_pf_ctx)
     ),
-    'Codice fiscale gia',
-    '5. Errore codice fiscale duplicato'
+    'identificativo fiscale',
+    '5. Errore codice fiscale duplicato (E_ADMIN_CF_DUPLICATO, dall''indice: rev 2026-11-24)'
   );
 
 -- =========================================================

@@ -1,6 +1,6 @@
 ### 🧩 Il guard di ruolo di una specializzazione
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 
 Una **specializzazione di ruolo** è la tabella che porta i dati propri di un ruolo d'impresa (il fornitore, il
 vettore, il gestore…) e nomina, con `soggetto_ruolo_id`, la riga di `anagrafiche.soggetti_ruoli` che dice «questo
@@ -48,13 +48,10 @@ il ruolo lo ricontrolla.
   (la funzione di creazione del ruolo, o il chiamante), prima.
 * **Non guarda il soggetto.** La delegata saprebbe confrontare anche il soggetto, ma il guard non glielo passa;
   che il soggetto sia attivo, o che la sua natura ammetta il ruolo, lo controllano altri trigger, su
-  `soggetti_ruoli`.
+  `soggetti_ruoli` (la natura alla nascita del ruolo).
+* **Non vede il ruolo che cambia, e non serve.** Su `soggetti_ruoli` né il soggetto né il tipo si cambiano:
+  due lucchetti (`E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE`, `E_SOGGETTO_RUOLO_TIPO_IMMUTABILE`). Un ruolo è
+  «questo soggetto, questo tipo»: quello sbagliato si toglie e si mette quello giusto. Per questo la
+  specializzazione non resta mai su un ruolo che nel frattempo è diventato di un altro tipo.
 * **Non dipende da chi scrive.** Gira coi permessi di chi scrive, e `soggetti_ruoli` non ha visibilità per azienda:
   ogni ruolo esistente si vede.
-
-#### ⚠️ Che cosa non vede
-
-* **Il ruolo che cambia tipo.** Il guard scatta sulla specializzazione, non su `soggetti_ruoli`. Lì
-  `tipo_ruolo_id` si può modificare (è bloccato solo `soggetto_id`), e il controllo che scatta guarda la natura del
-  soggetto, non le specializzazioni che puntano alla riga: un ruolo `FO` portato a `VT` lascia la riga dei
-  fornitori su un ruolo vettore, finché la riga non si riscrive e il guard la rifiuta.

@@ -1,0 +1,181 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato su scratch e dbdev, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/anagrafiche/20261123-64.
+# anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa: frasi senza id, il
+#   campo nel contesto, e il guard solo alla nascita del ruolo.
+#   Brief: brief-db-revisione-anagrafiche §20 (T5), S42 e D-T5-4 a (Tid,
+#   2026-11-23).
+#
+# -- S42: LE FRASI ---------------------------------------------------------------------
+#   E_RUOLO_NATURA_NON_AMMESSA diceva «Natura soggetto PG non ammessa per il
+#   ruolo 7. Soggetto_id <uuid>», E_RUOLO_NATURA_TIPO_DET_NULL «... il ruolo 7
+#   al soggetto <uuid> ...»: id davanti all'operatore, e nessun campo. Ora il
+#   VARIADIC porta le descrizioni (config.tipi_ruoli.descrizione,
+#   config.tipi_soggetto.descrizione: la matrice e' per macro-tipologia) e il
+#   contesto il campo. I segnaposto cambiano di numero insieme alle frasi del
+#   CSV (unico chiamante dei due codici: questo guard, verificato sul
+#   catalogo).
+#
+# -- D-T5-4 a: SOLO ALLA NASCITA -------------------------------------------------------
+#   Il tipo del ruolo non si cambia piu': lucchetto generato su
+#   soggetti_ruoli.tipo_ruolo_id (E_SOGGETTO_RUOLO_TIPO_IMMUTABILE, registro
+#   dbops.automation_lock_columns, provisioning in 90_end -62). Il guard era
+#   BEFORE INSERT OR UPDATE OF tipo_ruolo_id, e in ordine di nome
+#   (a10_guard_… < a10_lock_columns) avrebbe parlato PRIMA del lucchetto: a
+#   chi cambia il tipo avrebbe detto «natura non ammessa» invece di «il tipo
+#   non si cambia». Diventa BEFORE INSERT, col nome _ins; il ramo DELETE,
+#   morto, si toglie.
+#   Dal lato del soggetto la matrice resta vera senza rigiudicarla: la
+#   natura cambia solo dentro la stessa macro-tipologia (motivo 1 di
+#   fn_check_cambio_natura_soggetto) e da -54 non passa piu' per NULL (S38).
+#   Corpo da pg_get_functiondef; DECLARE ancorato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261123-58-update-trgfn-soggetti-ruoli-guard-natura-ammessa-mctit.yaml
+
+  - changeSet:
+      id: 20261123-58-update-trgfn-soggetti-ruoli-guard-natura-ammessa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa: frasi con le descrizioni, campo nel
+        contesto; il trigger solo BEFORE INSERT (il tipo del ruolo lo blocca il lucchetto).
+        brief-db-revisione-anagrafiche §20, S42 e D-T5-4 a.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_soggetti_ruoli_guard_natura_ammessa';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Guard: la natura (macro-tipologia) del soggetto e' ammessa per il
+              -- ruolo che nasce, secondo la matrice config.tipi_ruoli_nature_ammesse.
+              -- «Matrice assente = libero»: senza righe per il tipo di ruolo, nessun
+              -- vincolo. Solo all'INSERT: il tipo del ruolo non si cambia (lucchetto
+              -- E_SOGGETTO_RUOLO_TIPO_IMMUTABILE), il soggetto nemmeno.
+              DECLARE
+                  v_tipo_soggetto_dettaglio_id  config.tipi_soggetto_dettaglio.id%TYPE;
+                  v_tipo_soggetto_id            config.tipi_soggetto.id%TYPE;
+                  v_ruolo                       config.tipi_ruoli.descrizione%TYPE;
+                  v_natura                      config.tipi_soggetto.descrizione%TYPE;
+                  v_today                       date := script.fn_data_operativa();  -- il giorno aziendale: nessuna colonna
+              BEGIN
+                  -- Caso A: nessuna matrice per il ruolo -> nature libere
+                  IF NOT EXISTS (
+                      SELECT 1
+                        FROM config.tipi_ruoli_nature_ammesse m
+                       WHERE m.tipo_ruolo_id = NEW.tipo_ruolo_id
+                  ) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT s.tipo_soggetto_dettaglio_id
+                    INTO v_tipo_soggetto_dettaglio_id
+                    FROM anagrafiche.soggetti s
+                   WHERE s.id = NEW.soggetto_id;
+
+                  SELECT COALESCE(tr.descrizione, tr.codice_interno)
+                    INTO v_ruolo
+                    FROM config.tipi_ruoli tr
+                   WHERE tr.id = NEW.tipo_ruolo_id;
+
+                  -- Caso B: matrice definita, soggetto senza natura
+                  IF v_tipo_soggetto_dettaglio_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'trgfn_soggetti_ruoli_guard_natura_ammessa',
+                          'E_RUOLO_NATURA_TIPO_DET_NULL',
+                          jsonb_build_object(
+                              'campo',         'tipo_soggetto_dettaglio_id',
+                              'soggetto_id',   NEW.soggetto_id,
+                              'tipo_ruolo_id', NEW.tipo_ruolo_id),
+                          NEW.tx_id,
+                          v_ruolo);
+                  END IF;
+
+                  SELECT tsd.tipo_soggetto_id, COALESCE(ts.descrizione, ts.id)
+                    INTO v_tipo_soggetto_id, v_natura
+                    FROM config.tipi_soggetto_dettaglio tsd
+                    LEFT JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
+                   WHERE tsd.id = v_tipo_soggetto_dettaglio_id;
+
+                  -- Caso C: la natura e' ammessa, attiva e valida oggi
+                  IF NOT EXISTS (
+                      SELECT 1
+                        FROM config.tipi_ruoli_nature_ammesse m
+                       WHERE m.tipo_ruolo_id    = NEW.tipo_ruolo_id
+                         AND m.tipo_soggetto_id = v_tipo_soggetto_id
+                         AND m.attivo           = TRUE
+                         AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                         AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'trgfn_soggetti_ruoli_guard_natura_ammessa',
+                          'E_RUOLO_NATURA_NON_AMMESSA',
+                          jsonb_build_object(
+                              'campo',            'tipo_ruolo_id',
+                              'soggetto_id',      NEW.soggetto_id,
+                              'tipo_ruolo_id',    NEW.tipo_ruolo_id,
+                              'tipo_soggetto_id', v_tipo_soggetto_id),
+                          NEW.tx_id,
+                          v_ruolo,
+                          v_natura);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa() IS
+                  'Guard di anagrafiche.soggetti_ruoli (BEFORE INSERT): la macro-tipologia del soggetto e'' ammessa per il ruolo che nasce, secondo config.tipi_ruoli_nature_ammesse (righe attive e valide alla data operativa); matrice assente per il ruolo = libero. Rifiuti: E_RUOLO_NATURA_NON_AMMESSA (campo tipo_ruolo_id) ed E_RUOLO_NATURA_TIPO_DET_NULL (soggetto senza natura, campo tipo_soggetto_dettaglio_id), con le descrizioni di ruolo e natura nella frase, senza id (S42). Solo all''INSERT dal 2026-11-24: il tipo del ruolo non si cambia (lucchetto E_SOGGETTO_RUOLO_TIPO_IMMUTABILE, D-T5-4 a) e il soggetto nemmeno (E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE). Una riga di matrice spenta non tocca i ruoli che esistono: la configurazione vale alla scrittura. Brief: brief-db-revisione-anagrafiche §20.';
+
+              -- I trigger di trgfn_soggetti_ruoli_guard_natura_ammessa si tolgono per FUNZIONE, non per
+              --   nome: dbdev e un database costruito da zero li hanno con nomi diversi
+              --   (oggi lo stesso nome nei due, trg_soggetti_ruoli_a10_guard_natura_ammessa_ins_upd; 20251119-01 ha rinominato la funzione, non sempre il trigger).
+              DO $via$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN
+                      SELECT t.tgname
+                        FROM pg_trigger t
+                       WHERE t.tgrelid = 'anagrafiche.soggetti_ruoli'::regclass
+                         AND t.tgfoid = 'anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa'::regproc
+                         AND NOT t.tgisinternal
+                  LOOP
+                      EXECUTE format('DROP TRIGGER %I ON anagrafiche.soggetti_ruoli', r.tgname);
+                  END LOOP;
+              END
+              $via$;
+              CREATE TRIGGER trg_soggetti_ruoli_a10_guard_natura_ammessa_ins
+                  BEFORE INSERT ON anagrafiche.soggetti_ruoli
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: il corpo di prima e' quello di 20261009-44; il trigger era _ins_upd OF tipo_ruolo_id.
+              SELECT 1;

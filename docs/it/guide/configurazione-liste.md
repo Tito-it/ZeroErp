@@ -129,6 +129,13 @@ Per ogni lista, l'insieme delle **colonne disponibili**. Ogni colonna ha:
 * flag di comportamento (filtrabile, ordinabile, esportabile, ricercabile,
   **sensibile**). Una colonna `sensibile` non la vede **nessuno** finché un permesso
   colonna non la concede a un profilo (§2.4)
+* **dove vanno le righe vuote** quando la lista ordina per quella colonna. Di regola il
+  vuoto conta come il valore più piccolo: è il «non ancora», come il numero di una
+  bozza. La colonna lo dichiara quando il suo vuoto vuol dire «senza fine», come una
+  fine validità o una scadenza che non c'è: allora il vuoto conta come il più grande, e
+  un contratto senza scadenza viene dopo tutti quelli che scadono. Ogni colonna su
+  `valido_al`, la fine validità di tutto il sistema, lo dichiara. Vale per
+  l'ordinamento, non per i filtri
 
 ### 2.3 Preset (`lista_preset` + `lista_preset_colonna`)
 
@@ -396,7 +403,9 @@ colonne registrate per quella lista, attive e disattivate.
   (prevenzione di configurazioni stale silenziose); l'alternativa raccomandata è
   disattivare con `attivo=false`. I permessi colonna se ne vanno con lei.
 
-La **priorità di ritiro** (§7) non è nel drawer: si regola nel seed del catalogo.
+La **priorità di ritiro** (§7) e **dove vanno le righe vuote** (§2.2) non sono nel drawer:
+si regolano nel seed del catalogo. Sono fatti del software, non preferenze: il secondo dice
+che cosa vuol dire il vuoto di quel dato.
 
 #### 5.2.1 I formati di resa (`formato`)
 
@@ -478,7 +487,9 @@ L'operatore vede ogni lista personalizzabile con due affordance:
   preset e il tipo di colonna, non la modale.
 * **Intestazione delle colonne** — un clic ordina la lista per quella colonna. Il giro è lo stesso
   per ogni colonna, date comprese: primo clic crescente, secondo decrescente, terzo toglie
-  l'ordinamento, e la freccia mostra sempre il verso in cui la lista è ordinata. L'ordinamento vale
+  l'ordinamento, e la freccia mostra sempre il verso in cui la lista è ordinata. Le righe con la
+  cella vuota stanno in testa nel verso crescente e in fondo nel decrescente; sulle colonne il cui
+  vuoto vuol dire «senza fine» (una scadenza che non c'è) è il contrario (§2.2). L'ordinamento vale
   per la sessione e non si salva: riaprendo la lista si riparte da quello del preset.
 * **Banner "preset aggiornato"** — appare quando l'admin modifica il
   preset da cui partiva la preferenza dell'utente. "Vedi novità" apre la modale

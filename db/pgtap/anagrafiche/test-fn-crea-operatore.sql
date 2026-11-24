@@ -296,8 +296,8 @@ SELECT throws_matching(
       (SELECT qualifica_id FROM tmp_crea_op_ctx),
       (SELECT uo_id FROM tmp_crea_op_ctx)
     ),
-    'Codice fiscale gia',
-    '10. Errore codice fiscale duplicato (E_ADMIN_CF_DUPLICATO)'
+    'identificativo fiscale',
+    '10. Errore codice fiscale duplicato (E_ADMIN_CF_DUPLICATO, dall''indice: rev 2026-11-24)'
   );
 
 -- =========================================================

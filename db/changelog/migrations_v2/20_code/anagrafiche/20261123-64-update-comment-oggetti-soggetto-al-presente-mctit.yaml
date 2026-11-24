@@ -1,0 +1,164 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT degli oggetti del giro T5 al presente.
+#   Brief: brief-db-revisione-anagrafiche §20 (T5), 2026-11-24.
+#
+#   I changeSet 20261123-48 … -61 hanno scritto COMMENT con la cronaca dentro
+#   (il nome del brief, «rev …», id di changeSet): linee-guida-sql §5d li
+#   vuole al presente, la storia sta nella testata del changeSet. Una parte
+#   veniva dai COMMENT vivi ricopiati, una parte era nuova. Lo ha fermato
+#   scripts/guardrail_comment_al_presente.py al commit, quando i file erano gia'
+#   applicati su scratch e dbdev: non si riscrivono (checksum), si riscrivono
+#   gli oggetti qui. I file applicati dichiarano in testa l'eccezione, che
+#   rimanda a questo changeSet.
+#   Solo COMMENT ON: nessun corpo, nessun trigger cambia. Le firme con %TYPE,
+#   come nei changeSet di partenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261123-64-update-comment-oggetti-soggetto-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261123-64-update-comment-oggetti-soggetto-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I COMMENT degli oggetti del soggetto toccati dal giro T5 (normalizzazione, identificativo,
+        natura, porte di creazione, ruoli, dati societari) riscritti al presente, senza cronaca.
+        brief-db-revisione-anagrafiche §20.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_trigger t
+               WHERE t.tgrelid = 'anagrafiche.soggetti'::regclass
+                 AND t.tgname = 'trg_soggetti_a01_normalize_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN anagrafiche.soggetti.codice IS
+                'Codice del soggetto: lo genera il sistema codici (trgfn_soggetti_gen_codice) quando chi scrive non lo passa, e non si cambia (lucchetto E_CODICE_NON_MODIFICABILE). Unico (uq_soggetto_codice) e obbligatorio.';
+
+              COMMENT ON COLUMN anagrafiche.soggetti.ragione_sociale_completa IS
+                'Il nome del soggetto per liste e ricerche, generato: la ragione sociale se c''e'', altrimenti cognome e nome uniti da uno spazio, anche se ce n''e'' uno solo. NULL solo se mancano tutti e tre.';
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_normalize() IS
+                  'Normalize di anagrafiche.soggetti, fase a01: gira prima di tutti i guard, perche'' e'' la normalizzazione che i guard leggono. (1) codice_fiscale, partita_iva e piva_gruppo_acquisto in maiuscolo, senza spazi, vuoto -> NULL: e'' la forma che confrontano l''indice uq_soggetto_idstato_id_fiscale_univoco, il guard dell''identificativo e il validatore del formato, per ogni strada di scrittura. (2) stato_id NULL all''INSERT: lo stato proposto (script.fn_stato_proposto_id). In modifica non si propone niente: uno stato NULL lo rifiuta il guard dell''identificativo. La generazione del codice e'' del sistema codici.';
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch() IS
+                  'Guard del FORMATO di codice_fiscale, partita_iva e piva_gruppo_acquisto di anagrafiche.soggetti, per paese: per IT script.fn_validate_cf_piva_it (E_CF_NON_VALIDO / E_PIVA_NON_VALIDA, con campo); uno stato senza validatore passa. La PRESENZA la giudica trgfn_soggetti_guard_cf_piva_obbligatori. Montata due volte in fase a10: trg_soggetti_a10_valida_cf_piva_ins (BEFORE INSERT) e trg_soggetti_a10_valida_cf_piva_upd (BEFORE UPDATE WHEN cambia CF, P.IVA, P.IVA di gruppo, stato o natura): un soggetto con un CF che una configurazione piu'' severa non accetta resta modificabile negli altri campi. Legge i valori gia'' normalizzati da trgfn_soggetti_normalize (a01).';
+
+              COMMENT ON FUNCTION script.fn_validate_cf_piva_it(
+                  config.tipi_soggetto_dettaglio.id%TYPE,
+                  anagrafiche.soggetti.partita_iva%TYPE,
+                  anagrafiche.soggetti.piva_gruppo_acquisto%TYPE,
+                  anagrafiche.soggetti.codice_fiscale%TYPE) IS
+                  'Valida partita IVA principale, partita IVA di gruppo e codice fiscale per i soggetti italiani, secondo la natura di dettaglio (config.tipi_soggetto_dettaglio): formato_piva NON_APPLICABILE salta la P.IVA, formato_cf NON_APPLICABILE salta il CF. Il CF si valida per formato: ALFANUM_16 con script.fn_valida_codice_fiscale (persona fisica), NUM_11 con script.fn_valida_partita_iva (persona giuridica); gli altri formati non hanno controllo del carattere di controllo. Natura NULL o inesistente: nessuna validazione (una natura inesistente la rifiuta la FK del chiamante). Un valore non valido solleva E_PIVA_NON_VALIDA o E_CF_NON_VALIDO, con il campo nel contesto.';
+
+              COMMENT ON FUNCTION anagrafiche.fn_id_fiscale_bloccato(anagrafiche.soggetti.codice_fiscale%TYPE) IS
+                  'Vero se una parte dell''identificativo fiscale del soggetto con questo valore attuale non si puo'' cambiare: il valore e'' scritto e chi agisce non e'' SUPER_ADMIN (script.fn_is_super_admin sull''utente di sessione, script.fn_utente_di_sessione; senza utente vale no). Un valore NULL si puo'' riempire. Le parti sono codice_fiscale, partita_iva e stato_id: insieme fanno la chiave d''unicita'' del soggetto (uq_soggetto_idstato_id_fiscale_univoco), e cambiarle farebbe di un soggetto un altro. Lo stato non e'' mai NULL e arriva come testo: per lui la regola e'' «solo il SUPER_ADMIN». La leggono anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile (con il valore OLD) e anagrafiche.fn_soggetto_id_fiscale_bloccato (sulla riga, per il form).';
+
+              COMMENT ON FUNCTION anagrafiche.fn_soggetto_id_fiscale_bloccato(anagrafiche.soggetti.id%TYPE, text) IS
+                  'La regola di anagrafiche.fn_id_fiscale_bloccato letta sulla riga del soggetto, per la colonna codice_fiscale, partita_iva o stato_id. E'' la condizione delle righe di dbops.lock_columns_conditional su anagrafiche.soggetti, che dbops.fn_non_editable_fields valuta per il form: il form spegne esattamente cio'' che il guard rifiuta. Soggetto inesistente o colonna diversa: falso.';
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile() IS
+                  'Guard di anagrafiche.soggetti (trg_soggetti_a05_guard_id_fiscale_immutabile_upd, BEFORE UPDATE OF codice_fiscale, partita_iva, stato_id; fase a05, perche'' l''immutabilita'' parli prima della presenza e del formato): le parti dell''identificativo fiscale gia'' scritte non si cambiano e non si svuotano, salvo il SUPER_ADMIN; un CF o una P.IVA vuoti si possono riempire. La regola e'' anagrafiche.fn_id_fiscale_bloccato, letta sul valore OLD; la stessa regola spegne i campi nel form (dbops.lock_columns_conditional, anagrafiche.fn_soggetto_id_fiscale_bloccato). Confronta i valori gia'' normalizzati da trgfn_soggetti_normalize (a01). Rifiuto: E_SOGGETTO_ID_FISCALE_IMMUTABILE, con campo = la colonna.';
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_forma_giuridica_natura() IS
+                  'Guard al COMMIT (constraint trigger AFTER UPDATE OF tipo_soggetto_dettaglio_id, stato_id, DEFERRABLE INITIALLY DEFERRED) su anagrafiche.soggetti: la forma giuridica dei dati societari regge il soggetto com''e'' diventato, nell''ordine del guard immediato trgfn_dati_societari_guard_forma_giuridica. 1. il paese della forma e'' lo stato del soggetto, altrimenti E_FORMA_GIURIDICA_PAESE (lo stato lo cambia solo il SUPER_ADMIN); 2. la natura ammette la forma (anagrafiche.fn_forma_giuridica_ammessa), altrimenti E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA. Campo forma_giuridica_id. Differito perche'' natura o stato e forma si cambiano insieme. Rilegge le tabelle, non NEW. Tace senza dati societari o con forma NULL; il punto 2 tace con natura NULL.';
+
+              COMMENT ON FUNCTION anagrafiche.fn_check_cambio_natura_soggetto(
+                  anagrafiche.soggetti.id%TYPE,
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  anagrafiche.soggetti.partita_iva%TYPE,
+                  anagrafiche.soggetti.cliente_pa%TYPE,
+                  anagrafiche.soggetti.split_payment%TYPE)
+              IS 'I motivi per cui il soggetto non puo'' passare alla natura di dettaglio data: check pura, array ordinato di {codice, reason, reason_key, dettaglio, valori}, [] se il cambio si puo'' fare o se la natura non cambia. Il cambio non pulisce niente: i motivi si tolgono a mano. In ordine: la natura tolta, cioe'' una natura scritta portata a nessuna (E_CAMBIO_NATURA_VERSO_NESSUNA, da solo, per tutti: una natura scritta non si svuota; un soggetto senza natura la riceve una volta); un''altra macro-tipologia (E_CAMBIO_NATURA_ALTRA_MACRO_TIPOLOGIA, da solo); l''identita'' fiscale che cambia (P.IVA che nasce o sparisce) con il soggetto in un documento, in qualunque ruolo (E_CAMBIO_NATURA_CON_DOCUMENTI, anagrafiche.fn_soggetto_primo_documento); la P.IVA proposta su una natura che non ne ha (E_CAMBIO_NATURA_PIVA_NON_APPLICABILE); cliente_pa e split_payment proposti a S e non ammessi (E_CLIENTE_PA_NON_AMMESSO, E_SPLIT_PAYMENT_NON_AMMESSO, anagrafiche.fn_regime_pa_campo_non_ammesso); titoli IVA vigenti non ammessi visibili a chi agisce (E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI) e non visibili, di altri emittenti (E_CAMBIO_NATURA_TITOLI_ALTRI_EMITTENTI); la riga di dati societari su una natura senza dati societari (E_CAMBIO_NATURA_CON_DATI_SOCIETARI); indirizzi del soggetto di un tipo non ammesso (E_CAMBIO_NATURA_INDIRIZZI_NON_AMMESSI, anagrafiche.fn_tipo_indirizzo_ammesso_per_natura); indirizzi dei ruoli del soggetto di un tipo non ammesso, con lo stesso predicato (E_CAMBIO_NATURA_INDIRIZZI_RUOLO_NON_AMMESSI, la regola del guard anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo; valori: natura, tipo e ruolo del primo, quanti). P.IVA e flag sono i valori proposti; la natura vecchia e'' quella salvata. Forma giuridica, sesso e indirizzi obbligatori non sono motivi: li giudicano i guard dello stato finale. SECURITY INVOKER: i titoli visibili sono quelli della RLS di chi chiama. Soggetto NULL: E_PARAMETRO_INVALIDO; inesistente: E_SOGGETTO_NOT_FOUND. La leggono anagrafiche.trgfn_soggetti_guard_cambio_natura e anagrafiche.fn_nature_proponibili_soggetto.';
+
+              COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pf(
+                  anagrafiche.soggetti.cognome%TYPE,
+                  anagrafiche.soggetti.nome%TYPE,
+                  anagrafiche.soggetti.codice_fiscale%TYPE,
+                  anagrafiche.contatti.email%TYPE,
+                  anagrafiche.soggetti.data_nascita%TYPE,
+                  anagrafiche.soggetti.sesso%TYPE,
+                  config.stati.codice_iso2%TYPE,
+                  anagrafiche.soggetti.comune_id%TYPE,
+                  config.tipi_contatti.id%TYPE,
+                  config.tipi_soggetto_dettaglio.id%TYPE,
+                  anagrafiche.soggetti.partita_iva%TYPE,
+                  anagrafiche.dati_societari.forma_giuridica_id%TYPE,
+                  anagrafiche.dati_societari.id_prov_iscri_rea%TYPE,
+                  anagrafiche.dati_societari.iscrizione_rea%TYPE,
+                  anagrafiche.dati_societari.capitale_sociale%TYPE,
+                  anagrafiche.dati_societari.socio_unico%TYPE,
+                  anagrafiche.dati_societari.liquidazione%TYPE,
+                  anagrafiche.dati_societari.destinatario_fe%TYPE,
+                  anagrafiche.dati_societari.pec_fatturazione%TYPE,
+                  anagrafiche.dati_societari.codice_sdi%TYPE,
+                  anagrafiche.dati_societari.data_costituzione%TYPE) IS
+                  'Crea un soggetto PERSONA FISICA (natura base PF: privato PR o ditta individuale DI, scelta dal chiamante con p_tipo_soggetto_dettaglio_id, obbligatorio), il suo contatto di default e, se la natura li pretende o se ne riceve almeno un campo, i dati societari (anagrafiche.fn_scrivi_dati_societari_alla_nascita): una ditta individuale li porta se passati, un privato con la sezione lo rifiuta il guard della natura. Il contatto lo scrive anagrafiche.fn_crea_contatto; il tipo di contatto, se non passato, e'' il primo di config.tipi_contatti. Una natura che non e'' PF si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA (la porta giusta e'' fn_crea_soggetto_pg). p_partita_iva per la DI (la pretende il guard su CF e P.IVA). Il sesso passa com''e'', senza default: quando serve lo decide config.tipi_soggetto_dettaglio.sesso_policy nel guard trgfn_soggetti_guard_sesso_policy. Stato: p_stato_iso2 se detto (script.fn_stato_id_da_iso2: E_STATO_ISO2_AMBIGUO se indica piu'' stati, E_CODICE se nessuno), altrimenti lo stato proposto (script.fn_stato_proposto_id). CF e P.IVA entrano come arrivano: li normalizza trgfn_soggetti_normalize. Il doppione lo dice l''indice uq_soggetto_idstato_id_fiscale_univoco sulla coppia (stato, CF + P.IVA), tradotto in E_ADMIN_CF_DUPLICATO con campo codice_fiscale: la ditta individuale di chi e'' gia'' privato nasce. NON crea indirizzi.';
+
+              COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pg(
+                  anagrafiche.soggetti.ragione_sociale%TYPE,
+                  config.tipi_soggetto_dettaglio.id%TYPE,
+                  anagrafiche.contatti.email%TYPE,
+                  anagrafiche.soggetti.codice_fiscale%TYPE,
+                  anagrafiche.soggetti.partita_iva%TYPE,
+                  config.stati.codice_iso2%TYPE,
+                  anagrafiche.dati_societari.forma_giuridica_id%TYPE,
+                  anagrafiche.dati_societari.id_prov_iscri_rea%TYPE,
+                  anagrafiche.dati_societari.iscrizione_rea%TYPE,
+                  anagrafiche.dati_societari.capitale_sociale%TYPE,
+                  anagrafiche.dati_societari.socio_unico%TYPE,
+                  anagrafiche.dati_societari.liquidazione%TYPE,
+                  anagrafiche.dati_societari.destinatario_fe%TYPE,
+                  anagrafiche.dati_societari.pec_fatturazione%TYPE,
+                  anagrafiche.dati_societari.codice_sdi%TYPE,
+                  config.tipi_contatti.id%TYPE,
+                  anagrafiche.dati_societari.data_costituzione%TYPE) IS
+                  'Crea un soggetto PG o ENC, il suo contatto di default (anagrafiche.fn_crea_contatto; il tipo di contatto, se non passato, e'' il primo di config.tipi_contatti) e i dati societari quando la natura li pretende o se ne riceve almeno un campo (anagrafiche.fn_scrivi_dati_societari_alla_nascita, lo stesso BB di fn_crea_soggetto_pf): una sezione passata a una natura NONE la rifiuta il guard della natura. Una natura base PF (privato, ditta individuale) si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA: la porta e'' fn_crea_soggetto_pf. Il sesso non si scrive. Stato: p_stato_iso2 se detto (script.fn_stato_id_da_iso2: E_STATO_ISO2_AMBIGUO se indica piu'' stati, E_CODICE se nessuno), altrimenti lo stato proposto (script.fn_stato_proposto_id). CF e P.IVA entrano come arrivano: li normalizza trgfn_soggetti_normalize. Il doppione lo dice l''indice uq_soggetto_idstato_id_fiscale_univoco sulla coppia (stato, CF + P.IVA), tradotto in E_ADMIN_CF_DUPLICATO con campo partita_iva se passata, altrimenti codice_fiscale. NON crea indirizzi ne'' assegna ruoli.';
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori() IS
+                  'Guard di anagrafiche.soggetti (BEFORE INSERT OR UPDATE OF tipo_soggetto_dettaglio_id, partita_iva, codice_fiscale): la PRESENZA di partita IVA e codice fiscale secondo la natura (config.tipi_soggetto_dettaglio.piva_obbligatoria, cf_obbligatorio). Rifiuti E_PIVA_OBBLIGATORIA ed E_CF_OBBLIGATORIO, col campo; la frase nomina la natura per descrizione, senza id. La stringa vuota la fa NULL trgfn_soggetti_normalize (a01); il FORMATO lo valida trgfn_soggetti_valida_cf_piva_dispatch. Senza natura tace.';
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa() IS
+                  'Guard di anagrafiche.soggetti_ruoli (BEFORE INSERT): la macro-tipologia del soggetto e'' ammessa per il ruolo che nasce, secondo config.tipi_ruoli_nature_ammesse (righe attive e valide alla data operativa); matrice assente per il ruolo = libero. Rifiuti: E_RUOLO_NATURA_NON_AMMESSA (campo tipo_ruolo_id) ed E_RUOLO_NATURA_TIPO_DET_NULL (soggetto senza natura, campo tipo_soggetto_dettaglio_id), con le descrizioni di ruolo e natura nella frase, senza id. Solo all''INSERT: il tipo del ruolo non si cambia (lucchetto E_SOGGETTO_RUOLO_TIPO_IMMUTABILE) e il soggetto nemmeno (E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE). Una riga di matrice spenta non tocca i ruoli che esistono: la configurazione vale alla scrittura.';
+
+              COMMENT ON FUNCTION anagrafiche.fn_scrivi_dati_societari(
+                  anagrafiche.dati_societari.soggetto_id%TYPE,
+                  anagrafiche.dati_societari.forma_giuridica_id%TYPE,
+                  anagrafiche.dati_societari.id_prov_iscri_rea%TYPE,
+                  anagrafiche.dati_societari.iscrizione_rea%TYPE,
+                  anagrafiche.dati_societari.capitale_sociale%TYPE,
+                  anagrafiche.dati_societari.socio_unico%TYPE,
+                  anagrafiche.dati_societari.liquidazione%TYPE,
+                  anagrafiche.dati_societari.destinatario_fe%TYPE,
+                  anagrafiche.dati_societari.pec_fatturazione%TYPE,
+                  anagrafiche.dati_societari.codice_sdi%TYPE,
+                  anagrafiche.dati_societari.data_costituzione%TYPE) IS
+                  'Il verbo di scrittura dei dati societari: crea o aggiorna la riga del soggetto (una per soggetto), STATO INTERO (NULL scrive NULL dove la colonna lo ammette; testi ripuliti, vuoto = NULL). socio_unico e liquidazione NULL valgono il valore proposto dai parametri dati_societari_default_socio_unico / _liquidazione, letto con script.fn_get_parameter_di_sessione, cioe'' con la cascata della sessione e l''override dell''emittente attivo; parametro assente = errore, nessun valore di riserva. Aggiunge solo il controllo del soggetto (NULL solleva E_PARAMETRO_INVALIDO, inesistente E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO), e ne prende la riga FOR NO KEY UPDATE prima di scrivere: due prime scritture concorrenti dello stesso soggetto non urtano uq_ds_soggetto, la seconda aspetta e aggiorna. Forma (anche quella mancante), natura, REA, capitale e canale FE restano ai trigger della tabella. SECURITY DEFINER: l''applicazione non scrive anagrafiche.dati_societari direttamente, e questa e'' la porta; nessun guard di livello, il permesso resta al backend come per anagrafiche.soggetti. Se nella stessa scrittura cambia la natura del soggetto, si aggiorna prima il soggetto e poi si chiama il verbo. Lo chiamano anagrafiche.fn_scrivi_dati_societari_alla_nascita, il backend in modifica e le fixture pgTAP.';
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_dati_societari_guard_tipo_soggetto() IS
+                  'Guard di anagrafiche.dati_societari (trg_dati_societari_a05_guard_tipo_soggetto_ins, BEFORE INSERT, fase a05: parla prima della forma giuridica e del canale FE): la riga nasce solo su un soggetto esistente (E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO) la cui natura ha una policy dei dati societari (E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO) diversa da NONE (E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO, con la natura nella frase). Solo all''INSERT: il soggetto della riga non si cambia (lucchetto E_DATI_SOCIETARI_SOGGETTO_IMMUTABILE), e la natura che cambia la giudica anagrafiche.fn_check_cambio_natura_soggetto. La variabile della policy segue la colonna (%TYPE).';
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica() IS
+                  'Guard BEFORE INSERT OR UPDATE OF forma_giuridica_id, id_prov_iscri_rea, iscrizione_rea, capitale_sociale su anagrafiche.dati_societari. Nell''ordine: la forma c''e'' (E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA, campo forma_giuridica_id; la colonna e'' NOT NULL); e'' del paese del soggetto (E_FORMA_GIURIDICA_PAESE); e'' ammessa dalla natura (anagrafiche.fn_forma_giuridica_ammessa, E_FORMA_GIURIDICA_NON_AMMESSA_PER_TIPO_SOGGETTO); REA secondo rea_policy (E_REA_OBBLIGATORIO / E_REA_NON_AMMESSO) e capitale secondo capitale_sociale_policy (E_CAPITALE_SOCIALE_OBBLIGATORIO / _NON_AMMESSO): REQUIRED presente, NONE assente, OPTIONAL libero. Tace con soggetto o forma inesistenti e, sulla matrice, col soggetto senza natura. Non scatta su soggetto_id: il soggetto della riga non si cambia, e il lucchetto parla per primo. Il cambio di natura o di stato del soggetto lo giudica il guard al COMMIT su anagrafiche.soggetti.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: i COMMENT di prima sono quelli dei changeSet 20261123-48 … -61.
+              SELECT 1;
