@@ -1622,6 +1622,9 @@ che il BE fa oggi. L'elenco è chiuso.
      reason `VERSO_NESSUNA` e reason_key `anagrafiche.soggetti.cambio_natura_blocco.verso_nessuna`, da aggiungere in
      `frontend/src/locales/it.json` ed `en.json` (riga ~6383). La chiave
      `senza_natura_con_titoli_iva` non la emette più nessuno.
+     ✅ **La chiave nuova è nei due locales** (sessione BE/FE, 2026-11-24, brief-be-fe-BB-audit §7.9):
+     `check_i18n_keys.py` è pulito. `senza_natura_con_titoli_iva`, che non citava più nessuno, è
+     tolta dai due locales (ok Tid, 2026-11-24).
    * `E_SOGGETTO_RUOLO_TIPO_IMMUTABILE` (`tipo_ruolo_id`) ed `E_DATI_SOCIETARI_SOGGETTO_IMMUTABILE` (`soggetto_id`):
      sono lucchetti. Il BE non scrive nessuna delle due colonne.
    * `E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA` (`forma_giuridica_id`): prima era un `23502`.

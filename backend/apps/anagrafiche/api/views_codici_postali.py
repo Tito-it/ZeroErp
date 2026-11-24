@@ -16,7 +16,12 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import corpo_oggetto, optional_int, paginated_envelope, parse_list_params
+from apps.core.api.payload_validators import (
+    corpo_oggetto,
+    paginated_envelope,
+    parse_list_params,
+    qp_int_optional,
+)
 from apps.core.api.success_responses import success_response
 from apps.anagrafiche.services.geo_service import GeoService
 
@@ -41,7 +46,7 @@ class CodiciPostaliView(DomainAPIView):
     )
     def get(self, request: Request) -> JsonResponse:
         p = parse_list_params(request.query_params, default_order="codice")
-        comune_id = optional_int({"v": request.query_params.get("comune_id")}, "v")
+        comune_id = qp_int_optional(request.query_params.get("comune_id"), "comune_id", min_val=0)
         svc = GeoService()
         results, total = svc.list_codici_postali_paginated(
             search=p["search"], comune_id=comune_id,

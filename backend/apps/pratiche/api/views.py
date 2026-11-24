@@ -27,6 +27,7 @@ from apps.core.api.payload_validators import (
     qp_bool_optional,
     qp_int_strict,
     qp_str,
+    qp_int_optional,
 )
 from apps.core.api.openapi_params import param_ricerca_full, parametri_finestra, parametri_ordinamento
 from apps.core.api.success_responses import success_response
@@ -94,17 +95,17 @@ class ApiPraticheList(DomainAPIView):
 
         p = parse_list_params(qp, default_order="data_insert")
         stato = qp_str(qp.get("stato"))
-        tipo_prestazione_id = optional_int({"v": qp.get("tipo_prestazione_id")}, "v")
+        tipo_prestazione_id = qp_int_optional(qp.get("tipo_prestazione_id"), "tipo_prestazione_id", min_val=0)
         soggetto_id = qp_str(qp.get("soggetto_id"))
         # Lente di contesto canonica (D1): mutua esclusivita' validata nel
         # service (codice catalogo DB 484).
-        soggetto_ruolo_id = optional_int({"v": qp.get("soggetto_ruolo_id")}, "v")
-        istanza_utility_id = optional_int({"v": qp.get("istanza_utility_id")}, "v")
+        soggetto_ruolo_id = qp_int_optional(qp.get("soggetto_ruolo_id"), "soggetto_ruolo_id", min_val=0)
+        istanza_utility_id = qp_int_optional(qp.get("istanza_utility_id"), "istanza_utility_id", min_val=0)
         solo_interne = qp_bool_optional(qp.get("solo_interne"), "solo_interne") or False
         # Fix 2026-06-12: la dashboard inviava priorita_id/risorsa_umana_id da
         # sempre, ma la view non li leggeva (filtri silenziosamente ignorati).
-        priorita_id = optional_int({"v": qp.get("priorita_id")}, "v")
-        risorsa_umana_id = optional_int({"v": qp.get("risorsa_umana_id")}, "v")
+        priorita_id = qp_int_optional(qp.get("priorita_id"), "priorita_id", min_val=0)
+        risorsa_umana_id = qp_int_optional(qp.get("risorsa_umana_id"), "risorsa_umana_id", min_val=0)
         data_da = qp_iso_date_optional(qp.get("data_da"), "data_da")
         data_a = qp_iso_date_optional(qp.get("data_a"), "data_a")
 
@@ -1319,7 +1320,7 @@ class ApiFormuleTempo(DomainAPIView):
     # Scopo: Restituisce via GET le formule tempo attive per un tipo prestazione.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
-        tipo_prestazione_id = optional_int({"v": qp.get("tipo_prestazione_id")}, "v")
+        tipo_prestazione_id = qp_int_optional(qp.get("tipo_prestazione_id"), "tipo_prestazione_id", min_val=0)
         ErrorManager.require(
             tipo_prestazione_id is not None and tipo_prestazione_id > 0,
             code="E_INVALID_ID",

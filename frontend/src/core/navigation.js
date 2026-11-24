@@ -510,12 +510,10 @@ export function resolveNavigationLabel({ domain, menuKey }, t, te = null) {
   return null
 }
 
-// Risolve la label tab/breadcrumb dalla route meta usando i18n.
-// Usato da router guard, AppBreadcrumb, SidebarDomain e ContentTabs per
-// mantenere le label allineate alla sidebar.
-export function resolveTabLabel(meta, t, te = null) {
-  return resolveNavigationLabel(meta, t, te)
-}
+// ⛔ `resolveTabLabel` ritirato il 2026-11-24 (brief-be-fe-BB-audit F-4): era
+//    un secondo nome di `resolveNavigationLabel`, che router e breadcrumb
+//    chiamano direttamente. L'etichetta A VIDEO di una tab aperta e' un'altra
+//    cosa: `resolveTabDisplayLabel`, sotto.
 
 // Scopo: l'etichetta A VIDEO di una tab aperta, ricalcolata a ogni render
 // (estratto 2026-09-26, regola del 2, ok Tid: barra delle tab e pannello

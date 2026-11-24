@@ -114,7 +114,7 @@ export function misuraDefault(uso = USO_MISURA.PAGINA) {
 // Scopo: la misura di partenza di una lista STANDARD secondo lo schermo — la
 //        compatta sotto il tablet, quella di pagina sopra. Una sede sola:
 //        fino al 2026-09-30 la stessa regola era scritta due volte
-//        (`usePagination`, `useSearchTable`).
+//        (`usePagination`, ritirato il 2026-11-24, e `useSearchTable`).
 //        `width <` e non `max-width: TABLET - 1`: con lo zoom la larghezza e'
 //        frazionaria, e fra 1023 e 1024 il CSS e questa soglia non
 //        concorderebbero.

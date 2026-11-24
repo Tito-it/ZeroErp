@@ -14,6 +14,8 @@ Indice test eseguiti:
 2) test_tetto_integer_dichiarato — con INTEGER_MIN/MAX il passo oltre integer e' invalid
 3) test_assente_e_non_numerico_invariati — None su assente/vuoto, invalid su testo
 4) test_qp_int_strict_default_bigint — stesso tetto di default
+5) test_forme_che_int_accetta_sono_rifiutate — `+3`, `1_000`, cifre non ASCII:
+   la forma e' `SIGNED_INT_RE`, la stessa del corpo JSON (2026-11-24)
 """
 
 from unittest import TestCase
@@ -56,3 +58,17 @@ class TestQpIntOptionalTetto(TestCase):
         self.assertEqual(qp_int_strict(str(BIGINT_MAX), "x", 5), BIGINT_MAX)
         with self.assertRaisesRegex(ValueError, "^x_invalid$"):
             qp_int_strict(str(BIGINT_MAX + 1), "x", 5)
+
+    def test_forme_che_int_accetta_sono_rifiutate(self):
+        """⛔ `int()` da solo legge `"+3"`, `"1_000"` e `"٣"`: un testo che
+        nessun client scrive passava come intero. La forma e' quella del corpo
+        JSON (`SIGNED_INT_RE`, brief-be-fe-BB-audit §2.3)."""
+        self.assertEqual(qp_int_optional("-3", "x"), -3)
+        self.assertEqual(qp_int_strict(" -3 ", "x", 5), -3)
+        for grezzo in ("+3", "1_000", "٣", "²", "3.0", "--3", ""):
+            with self.subTest(grezzo=grezzo):
+                if grezzo:
+                    with self.assertRaisesRegex(ValueError, "^x_invalid$"):
+                        qp_int_optional(grezzo, "x")
+                with self.assertRaisesRegex(ValueError, "^x_invalid$"):
+                    qp_int_strict(grezzo, "x", 5)

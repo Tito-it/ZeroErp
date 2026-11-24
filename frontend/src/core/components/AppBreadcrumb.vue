@@ -3,7 +3,7 @@
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { computed } from 'vue'
-import { resolveTabLabel } from '../navigation'
+import { resolveNavigationLabel } from '../navigation'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -19,8 +19,8 @@ const crumbs = computed(() => {
 
   // Dominio + eventuale voce menu L2 (via utility condivisa)
   const result = [t(`nav.${domain}`)]
-  const menuLabel = resolveTabLabel(route.meta, t)
-  // resolveTabLabel ritorna la label del menuKey se presente, altrimenti la label dominio.
+  const menuLabel = resolveNavigationLabel(route.meta, t)
+  // resolveNavigationLabel ritorna la label del menuKey se presente, altrimenti la label dominio.
   // Per il breadcrumb aggiungiamo il secondo segmento solo se e' diverso dal dominio.
   if (menuLabel && menuLabel !== result[0]) result.push(menuLabel)
   return result

@@ -29,6 +29,7 @@ from apps.core.api.payload_validators import (
     optional_int,
     paginated_envelope,
     parse_list_params,
+    qp_int_optional,
 )
 from apps.core.api.success_responses import success_response
 from apps.core.db.email_repository import EmailRepository
@@ -560,8 +561,8 @@ class EmailLogListView(AdminAPIView):
             search=p["search"],
             stato=qp.get("stato") or None,
             ambito=qp.get("ambito") or None,
-            unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
-            pratica_id=optional_int({"v": qp.get("pratica_id")}, "v"),
+            unita_organizzativa_id=qp_int_optional(qp.get("unita_organizzativa_id"), "unita_organizzativa_id", min_val=0),
+            pratica_id=qp_int_optional(qp.get("pratica_id"), "pratica_id", min_val=0),
             data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
             data_a=qp_iso_date_optional(qp.get("data_a"), "data_a"),
             limit=p["limit"],

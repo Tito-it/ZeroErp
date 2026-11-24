@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import math
-import re
 from datetime import date, datetime
 from typing import Any, overload
 from uuid import UUID
@@ -10,8 +9,8 @@ from uuid import UUID
 from rest_framework.exceptions import ParseError
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
-from apps.core.api.request_parsers import oggetto_json, parse_iso_date
-from apps.core.services.payload_helpers import BIGINT_MAX, BIGINT_MIN, PayloadValidator
+from apps.core.api.request_parsers import oggetto_json
+from apps.core.services.payload_helpers import BIGINT_MAX, BIGINT_MIN, SIGNED_INT_RE, PayloadValidator
 from apps.core.services.request_context import get_misura_di_partenza
 from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
 
@@ -122,13 +121,16 @@ def qp_bool_optional(raw: str | None, name: str, default: bool | None = None) ->
 
 # Scopo: Converte parametro intero da query string; solleva ValueError se non
 #        numerico o fuori da bigint (oltre, nessun intero PG lo regge: un 500).
+# ⛔ La forma e' `SIGNED_INT_RE` (cifre ASCII, segno meno facoltativo), la
+#    stessa del corpo JSON: `int()` da solo accetta `"+3"`, `"1_000"` e `"٣"`
+#    (2026-11-24, brief-be-fe-BB-audit §2.3).
 def qp_int_strict(raw: str | None, name: str, default: int) -> int:
     if raw is None:
         return default
-    try:
-        valore = int(raw.strip())
-    except (ValueError, AttributeError):
-        raise ValueError(f"{name}_invalid") from None
+    cleaned = raw.strip() if isinstance(raw, str) else None
+    if cleaned is None or not SIGNED_INT_RE.fullmatch(cleaned):
+        raise ValueError(f"{name}_invalid")
+    valore = int(cleaned)
     if not BIGINT_MIN <= valore <= BIGINT_MAX:
         raise ValueError(f"{name}_invalid")
     return valore
@@ -156,10 +158,11 @@ def qp_int_optional(
     cleaned = raw.strip()
     if cleaned == "":
         return None
-    try:
-        valore = int(cleaned)
-    except ValueError as exc:
-        raise ValueError(f"{name}_invalid") from exc
+    # La forma di `qp_int_strict`: `int()` da solo accetta anche `"+3"`,
+    # `"1_000"` e le cifre non ASCII.
+    if not SIGNED_INT_RE.fullmatch(cleaned):
+        raise ValueError(f"{name}_invalid")
+    valore = int(cleaned)
     if not min_val <= valore <= max_val:
         raise ValueError(f"{name}_invalid")
     return valore
@@ -185,8 +188,10 @@ def qp_iso_date_optional(raw: str | None, name: str) -> date | None:
 #        malformato — un `%s::uuid` su una stringa qualunque sarebbe un 500.
 #        Simmetrico a qp_int_optional. Estratto 2026-11-17 (regola del 2, ok
 #        Tid): unifica 4 copie di `optional_uuid({"x": qp_str(qp.get("x"))}, "x")`.
-# ⛔ Non e' `optional_uuid` (il PAYLOAD): quello prende 0/"0" per NULL, per
-#    compatibilita' coi form; in query string "0" e' un valore sbagliato.
+# ⛔ Non e' `optional_uuid` (il CORPO JSON): li' `""` e' un 400 col campo,
+#    perche' il FE manda `null` per «nessuno»; in query string il vuoto e'
+#    l'assente (api.md §Query params). Fino al 2026-11-24 `optional_uuid`
+#    prendeva anche 0/"0"/"" per NULL (brief-be-fe-BB-audit §2).
 def qp_uuid_optional(raw: str | None, name: str) -> str | None:
     if raw is None:
         return None
@@ -364,26 +369,22 @@ def paginated_envelope(
     }
 
 
-# Un intero scritto in una stringa: solo cifre ASCII. ⛔ Non `str.isdigit()`:
-# accetta anche «²» o «٣», e il primo poi fa fallire `int()` con un ValueError
-# che non e' il `{key}_invalid` atteso dai chiamanti.
-_INTERO_DECIMALE_RE = re.compile(r"[0-9]+")
+# ⭐ Le letture dei campi opzionali del CORPO JSON nella view: una regola sola,
+#    quella di `PayloadValidator`, col codice `E_VALIDATION_INPUT` e il campo
+#    nell'errore (2026-11-24, brief-be-fe-BB-audit §2, regola del 2). Fino a quel
+#    giorno `optional_int`, `optional_iso_date` e `optional_uuid` avevano regole
+#    loro: `""`, `0` e `"0"` su un uuid valevano None, `""` su una data valeva
+#    None, una data con spazi era rifiutata, e l'errore era un `ValueError` senza
+#    campo. Lo stesso valore aveva due esiti secondo chi lo leggeva.
+# ⛔ Il SERVICE non le usa: legge col proprio `PayloadValidator`, col codice del
+#    dominio. Query string e header sono testo, e hanno i BB `qp_*`.
+_CORPO = PayloadValidator(validation_code=E_VALIDATION_INPUT)
 
 
-# Scopo: Valida e converte il campo opzionale `int` mantenendo `None` se assente.
+# Scopo: Un intero opzionale del corpo (anche zero o negativo): assente o null
+#        -> None; `zero_as_none` legge 0 e "0" come None.
 def optional_int(payload: dict[str, Any], key: str, *, zero_as_none: bool = False) -> int | None:
-    value = payload.get(key)
-    if value is None:
-        return None
-    if zero_as_none and value in (0, "0"):
-        return None
-    if isinstance(value, bool):
-        raise ValueError(f"{key}_invalid")
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str) and _INTERO_DECIMALE_RE.fullmatch(value.strip()):
-        return int(value.strip())
-    raise ValueError(f"{key}_invalid")
+    return _CORPO.optional_int(payload, key, zero_as_none=zero_as_none)
 
 
 # Scopo: Il flag `key` del CORPO JSON: assente o `null` -> `default`.
@@ -397,18 +398,14 @@ def optional_int(payload: dict[str, Any], key: str, *, zero_as_none: bool = Fals
 # ⚠️ Query string e multipart NON passano di qui: li' ogni valore e' una stringa
 #    per natura, e si leggono coi loro BB (`qp_bool_optional`, …).
 def optional_bool(payload: dict[str, Any], key: str, default: bool = False) -> bool:
-    value = PayloadValidator(validation_code=E_VALIDATION_INPUT).optional_bool(payload, key)
+    value = _CORPO.optional_bool(payload, key)
     return default if value is None else value
 
 
-# Scopo: Valida e converte il campo opzionale `iso_date` mantenendo `None` se assente.
-def optional_iso_date(payload: dict[str, Any], key: str):
-    value = payload.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ValueError(f"{key}_invalid")
-    return parse_iso_date(value)
+# Scopo: Una data ISO opzionale del corpo: assente o null -> None; una stringa
+#        vuota o malformata e' un 400 col campo.
+def optional_iso_date(payload: dict[str, Any], key: str) -> date | None:
+    return _CORPO.optional_date(payload, key)
 
 
 # Scopo: Valida e converte il campo opzionale ISTANTE (ISO 8601 con data e ora)
@@ -432,22 +429,7 @@ def optional_istante(payload: dict[str, Any], key: str) -> datetime | None:
     return istante
 
 
-# Scopo: Valida e converte il campo opzionale `uuid` mantenendo `None` se assente.
+# Scopo: Un uuid opzionale del corpo, in forma canonica: assente o null ->
+#        None; `""`, `0` o un testo che non e' un uuid sono un 400 col campo.
 def optional_uuid(payload: dict[str, Any], key: str) -> str | None:
-    value = payload.get(key)
-    if value is None:
-        return None
-    # Per compatibilita` input legacy/UI: 0 o stringa vuota => NULL.
-    if value in (0, "0", ""):
-        return None
-    if isinstance(value, UUID):
-        return str(value)
-    if isinstance(value, str):
-        candidate = value.strip()
-        if not candidate:
-            return None
-        try:
-            return str(UUID(candidate))
-        except ValueError as exc:
-            raise ValueError(f"{key}_invalid") from exc
-    raise ValueError(f"{key}_invalid")
+    return _CORPO.optional_uuid(payload, key)

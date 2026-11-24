@@ -267,7 +267,7 @@ logica di navigazione.
 - ⛔ **Le schede le apre solo il guard del router** (`router.beforeEach`): sidebar, preferiti e widget fanno solo `router.push`. Un secondo punto che chiama `openTab` prima del push farebbe due conferme per un clic. La conferma la mostra `ContentTabs`, perché il guard non ha un componente in cui aprire una dialog: lo store custodisce la richiesta in attesa (`chiediSostituzione`) e ContentTabs risponde. Presidio: `stores/tabs.spec.js`
 - KeepAlive per preservare lo stato dei tab
 - Shortcut: Ctrl+W chiude tab, Ctrl+Tab prossimo, Ctrl+Shift+Tab precedente
-- Tab label derivata automaticamente da route meta via `resolveTabLabel()`
+- Tab label derivata automaticamente da route meta via `resolveNavigationLabel()` (a video: `resolveTabDisplayLabel`)
 
 ### Area contenuto
 
@@ -4663,7 +4663,6 @@ caso peggiore. Il test è nato da lì.
 | `useConfirmAction` | Dialogo conferma azione distruttiva | DefinizioneEditorView |
 | `useConfirmCloseTab` | Conferma chiusura tab con modifiche non salvate | ContentTabs |
 | `useKeyboardShortcuts` | Shortcut globali: Ctrl+K ricerca, Ctrl+W chiudi tab, Ctrl+Tab naviga | AppLayout |
-| `usePagination` | Paginazione server-side locale (fuori da `useSearchTable`) | SearchDrawer |
 | `useContrattoFiltriLista` | Il contratto che una lista offre ai suoi filtri: `chiaviFiltro`, `filtriDefault` (copia **profonda** e congelata), `filtriNeutri` e `azzeraFiltri`. Lo consuma `useListaStoreCore`, e lo adottano in tre righe gli store scritti a mano | useListaStoreCore |
 | `useContrattoFiltriLocali` | Lo stesso contratto per una superficie **senza store-lista**: si dichiara `{ chiave: { rif, default } }` e tornano `segno` + `azzeraFiltri()`. Il default si **dichiara** (non si fotografa dal `ref`) e può essere una **funzione** quando si ricalcola («oggi») | DashboardBacklogView |
 | `useStoreFilterBindings` | Il legame widget ↔ `store.filters`: `bindSelect`, `bindDate`, `bindPeriodo`, `bindToggle`, `bindLookup` | FornitoriSearchTable |
@@ -4675,7 +4674,7 @@ caso peggiore. Il test è nato da lì.
 | `useLookup` | Caricamento lazy/eager di dati lookup con cache | OperatoriListView |
 | `useLookupCodici` | Lookup **generico** di un `rel` nella cache condivisa: chiave (`<rel>` / `<rel>::no-obsoleti`) e fetch composte in un posto — mai scritte a mano (2026-09-19) | LookupSelect |
 | `useLookupEtichettato` | Lookup del catalogo con l'**etichetta dichiarata dal DB** (`etichetta_key`, resa con `labelOrCode`): `etichetta(codice)` per le colonne + `opzioni` con la voce «tutti» — **non** un `LookupSelect`, che rende `descrizione` (2026-09-19, regola del 2) | GiornaleListView |
-| `useServerAutocomplete` | Autocomplete con ricerca server debounce 300ms | ComuneAutocomplete |
+| `useServerAutocomplete` | Autocomplete con ricerca server, debounce 300 ms (`AUTOCOMPLETE_DEBOUNCE_MS`); timer di `useDebouncedAction`, risposte superate scartate con `useFetchVersion` (2026-11-24) | ComuneAutocomplete |
 
 #### Modalita sola lettura e azioni processo
 

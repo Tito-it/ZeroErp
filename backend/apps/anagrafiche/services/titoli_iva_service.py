@@ -28,7 +28,6 @@ from typing import Any
 from apps.anagrafiche.db.titoli_iva_repository import TitoliIvaRepository
 from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
 from apps.anagrafiche.services._validators import require_found
-from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 
@@ -161,7 +160,7 @@ class TitoliIvaService:
                 detail=f"{campo} obbligatorio.",
                 context={"field": campo},
             )
-        emittente_fiscale_id = optional_int(payload, "emittente_fiscale_id")
+        emittente_fiscale_id = _V.optional_int(payload, "emittente_fiscale_id")
         ErrorManager.require(
             emittente_fiscale_id is not None,
             code=E_ANAG_VALIDAZIONE,

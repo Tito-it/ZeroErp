@@ -19,7 +19,6 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 
-import re
 
 from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
 from apps.core.api.base_views import DomainAPIView
@@ -31,11 +30,8 @@ from apps.core.api.success_responses import success_response
 from apps.core.db.parameter_repository import MAX_CODES
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
-from apps.core.services.payload_helpers import SMALLINT_MAX, SMALLINT_MIN
+from apps.core.services.payload_helpers import SIGNED_INT_RE, SMALLINT_MAX, SMALLINT_MIN
 
-# Regex per int firmato stretto: rifiuta degenerazioni come "--5", "++1", "1.0".
-# Coerente con _SIGNED_INT_RE di payload_helpers.py.
-_INT_RE = re.compile(r"^-?\d+$")
 
 # Scope override consentiti dal payload del POST.
 # - user:               override personale (qualunque utente, default)
@@ -94,8 +90,10 @@ def _require_admin_categoria_cliente_id(
     cat_id: int | None = None
     if isinstance(raw_id, int) and not isinstance(raw_id, bool):
         cat_id = raw_id
-    elif isinstance(raw_id, str) and _INT_RE.match(raw_id.strip()):
-        # Regex stretto: rifiuta "--5", "++1", "1.0". Solo int firmato valido.
+    elif isinstance(raw_id, str) and SIGNED_INT_RE.fullmatch(raw_id.strip()):
+        # La forma del BB (cifre ASCII): rifiuta "--5", "++1", "1.0" e "٣".
+        # Fino al 2026-11-24 era una copia locale con `\d`, che ammetteva le
+        # cifre non ASCII (brief-be-fe-BB-audit §2.3).
         cat_id = int(raw_id.strip())
     ErrorManager.require(
         cat_id is not None and cat_id > 0,

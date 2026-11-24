@@ -7,7 +7,8 @@ import { useI18n } from 'vue-i18n'
 import { useServerAutocomplete } from '../../core/composables/useServerAutocomplete'
 import { lookupContiBancari, lookupBankBranches } from '../api/anagrafiche'
 import { DATE_FORMAT, FIELD_LENGTH } from '../../core/constants'
-import { blockNonAlphanumeric, normalizeUpperNoSpaces } from '../../core/utils/string'
+import { blockNonAlphanumeric } from '../../core/utils/string'
+import { riscriviDigitato } from '../../core/utils/maiuscolo'
 import AutoComplete from 'primevue/autocomplete'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
@@ -156,7 +157,7 @@ function ibanOptionLabel(item) {
           @item-select="onIbanItemSelect"
           @change="onIbanChange"
           @keypress="blockNonAlphanumeric"
-          @input="normalizeUpperNoSpaces(form, 'iban')"
+          @input="e => { form.iban = riscriviDigitato(e.target, e.target.value, { senzaSpazi: true }) }"
         />
         <small v-if="errors.includes('iban_format')" class="app-field-error">
           {{ t('anagrafiche.conti_bancari.iban_formato_errore') }}

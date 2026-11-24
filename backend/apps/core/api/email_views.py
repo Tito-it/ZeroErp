@@ -458,7 +458,7 @@ class EmailLogOperatoreListView(DomainAPIView):
         results, total = repo.list_logs(
             search=p["search"],
             stato=qp.get("stato") or None,
-            pratica_id=optional_int({"v": qp.get("pratica_id")}, "v"),
+            pratica_id=qp_int_optional(qp.get("pratica_id"), "pratica_id", min_val=0),
             data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
             data_a=qp_iso_date_optional(qp.get("data_a"), "data_a"),
             limit=p["limit"],

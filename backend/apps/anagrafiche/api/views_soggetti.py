@@ -18,7 +18,6 @@ from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.payload_validators import (
     corpo_oggetto,
-    optional_int,
     paginated_envelope,
     parse_list_params,
     qp_bool_optional,
@@ -65,7 +64,7 @@ class SoggettiView(DomainAPIView):
     #        ha clienti solo su altri emittenti).
     def get(self, request: Request) -> JsonResponse:
         p = parse_list_params(request.query_params, default_order="ragione_sociale_completa")
-        tipo_id = optional_int({"v": request.query_params.get("tipo_soggetto_dettaglio_id")}, "v")
+        tipo_id = qp_int_optional(request.query_params.get("tipo_soggetto_dettaglio_id"), "tipo_soggetto_dettaglio_id", min_val=0)
         cache: dict = {}
         emittente_ids = PermissionResolver.get_emittenti_sr_ids(request.user, cache=cache)
         svc = SoggettiService()
@@ -630,9 +629,7 @@ class SoggettiExportView(DomainAPIView):
             request.query_params,
             default_order="ragione_sociale_completa",
         )
-        tipo_id = optional_int(
-            {"v": request.query_params.get("tipo_soggetto_dettaglio_id")}, "v",
-        )
+        tipo_id = qp_int_optional(request.query_params.get("tipo_soggetto_dettaglio_id"), "tipo_soggetto_dettaglio_id", min_val=0)
         cache: dict = {}
         emittente_ids = PermissionResolver.get_emittenti_sr_ids(
             request.user, cache=cache,

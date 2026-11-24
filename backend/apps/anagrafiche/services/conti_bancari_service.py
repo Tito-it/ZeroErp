@@ -15,7 +15,6 @@ from typing import Any
 
 _IBAN_RE = re.compile(r'^[A-Z0-9]{15,34}$')
 
-from apps.core.api.payload_validators import optional_bool, optional_int
 from apps.core.services.error_manager import ErrorManager
 from apps.anagrafiche.db.conti_bancari_repository import (
     LEGAME_RUOLO_UPDATE_COLS,
@@ -342,7 +341,7 @@ class ContiBancariService:
         legame_payload = self._extract_legame_payload(payload)
         self._guard_predefinito_bloccato(legame_payload)
         # istanza_utility_id opzionale (NULL = generico ruolo)
-        istanza_utility_id = optional_int(payload, "istanza_utility_id")
+        istanza_utility_id = _V.optional_int(payload, "istanza_utility_id")
         if istanza_utility_id is not None:
             legame_payload["istanza_utility_id"] = istanza_utility_id
 
@@ -401,7 +400,7 @@ class ContiBancariService:
     #        Altrimenti usa IBAN per get_or_create nel registro.
     #        Risultato: conto_bancario_id valido.
     def _resolve_conto_bancario(self, payload: dict[str, Any]) -> int:
-        conto_id = optional_int(payload, "conto_bancario_id")
+        conto_id = _V.optional_int(payload, "conto_bancario_id")
         if conto_id is not None:
             # Verifica che il conto esista
             conto = self._repo.get_conto_bancario(conto_id)
@@ -418,7 +417,7 @@ class ContiBancariService:
             code=E_ANAG_VALIDAZIONE,
             message="IBAN non valido: deve contenere da 15 a 34 caratteri alfanumerici.",
         )
-        bank_branch_id = optional_int(payload, "bank_branch_id")
+        bank_branch_id = _V.optional_int(payload, "bank_branch_id")
         ErrorManager.require(
             bank_branch_id is not None and bank_branch_id > 0,
             code=E_ANAG_VALIDAZIONE,
@@ -471,7 +470,8 @@ class ContiBancariService:
         # Booleani: includi solo se la chiave e' presente nel payload
         for bool_key in _FLAG_LEGAME:
             if bool_key in payload:
-                result[bool_key] = optional_bool(payload, bool_key)
+                # Un `null` esplicito vale False, come prima della lettura del dominio.
+                result[bool_key] = bool(_V.optional_bool(payload, bool_key))
 
         # Stringhe/date opzionali
         for str_key in ("valido_dal", "valido_al", "intestazione_dichiarata"):

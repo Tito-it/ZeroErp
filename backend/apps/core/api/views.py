@@ -7,7 +7,7 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.permissions import richiedi_se_stesso_o_amministratore
 
 from apps.core.api.error_responses import exception_to_error_response
-from apps.core.api.payload_validators import pagina_da_query, qp_bool_optional
+from apps.core.api.payload_validators import pagina_da_query, qp_bool_optional, qp_iso_date_optional
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import SearchBurstRateThrottle
 from apps.core.services.lookup_service import fn_list_lookup_codici
@@ -299,7 +299,6 @@ class ApiPermessiAudit(DomainAPIView):
     # filtri opzionali e paginazione. L'elenco e' `PermissionsAuditRepository`.
     # Solo SUPER_ADMIN puo' consultare altri utenti.
     def get(self, request: Request, user_id: int) -> JsonResponse:
-        from apps.core.api.payload_validators import optional_iso_date
         from apps.core.db.permissions_audit_repository import PermissionsAuditRepository
 
         # Stessa policy di permessi-effettivi: lo stesso BB.
@@ -311,12 +310,8 @@ class ApiPermessiAudit(DomainAPIView):
         target_user = _utente_target(user_id)
 
         # Scopo: Parse query params.
-        data_da = optional_iso_date(
-            {"data_da": request.query_params.get("data_da")}, "data_da"
-        )
-        data_a = optional_iso_date(
-            {"data_a": request.query_params.get("data_a")}, "data_a"
-        )
+        data_da = qp_iso_date_optional(request.query_params.get("data_da"), "data_da")
+        data_a = qp_iso_date_optional(request.query_params.get("data_a"), "data_a")
         tabella = request.query_params.get("tabella")
         if tabella:
             tabella = tabella.strip() or None

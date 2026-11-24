@@ -928,12 +928,12 @@ def _parse_lotti_query(qp, *, function_name: str) -> dict:
         )
 
     return {
-        "competenza_mese": optional_iso_date({"competenza_mese": raw_competenza}, "competenza_mese"),
-        "utility_id": optional_int({"utility_id": raw_utility}, "utility_id") if raw_utility is not None else None,
+        "competenza_mese": qp_iso_date_optional(raw_competenza, "competenza_mese"),
+        "utility_id": qp_int_optional(raw_utility, "utility_id", min_val=0),
         "stato_lotto": stato_lotto_raw.strip() or None if stato_lotto_raw is not None else None,
-        "area_geografica_id": optional_int({"area_geografica_id": raw_area}, "area_geografica_id") if raw_area is not None else None,
-        "tipo_doc_fiscale_id": optional_int({"tipo_doc_fiscale_id": raw_tipo_doc}, "tipo_doc_fiscale_id") if raw_tipo_doc is not None else None,
-        "emittente_soggetto_ruolo_id": optional_int({"emittente_soggetto_ruolo_id": raw_emittente}, "emittente_soggetto_ruolo_id") if raw_emittente is not None else None,
+        "area_geografica_id": qp_int_optional(raw_area, "area_geografica_id", min_val=0),
+        "tipo_doc_fiscale_id": qp_int_optional(raw_tipo_doc, "tipo_doc_fiscale_id", min_val=0),
+        "emittente_soggetto_ruolo_id": qp_int_optional(raw_emittente, "emittente_soggetto_ruolo_id", min_val=0),
         "order_by": order_by,
         "order_dir": order_dir,
         # ⭐ Il perimetro della scheda «Recuperi del mese» sta QUI, insieme agli
@@ -2018,9 +2018,7 @@ class ApiCommessaRegistro(DomainAPIView):
         return success_response(
             fn_commessa_registro(
                 commessa_id=commessa_id,
-                commessa_attivita_id=optional_int(
-                    {"v": qp.get("commessa_attivita_id")}, "v",
-                ),
+                commessa_attivita_id=qp_int_optional(qp.get("commessa_attivita_id"), "commessa_attivita_id", min_val=0),
                 limit=limit,
                 offset=offset,
             )
@@ -2062,7 +2060,9 @@ class ApiCommessaAttivita(DomainAPIView):
     def get(self, request: Request, commessa_id: int) -> JsonResponse:
         stato_emissione = request.query_params.get("stato_emissione") or None
         stato_approvazione = request.query_params.get("stato_approvazione") or None
-        competenza_mese = request.query_params.get("competenza_mese") or None
+        competenza_mese = qp_iso_date_optional(
+            request.query_params.get("competenza_mese"), "competenza_mese"
+        )
         limit, offset = pagina_da_query(request.query_params)
         # order_by/order_dir passano al service, che li valida contro la
         # whitelist ATTIVITA_SORT_COLUMNS (specchio della fn DB).
@@ -2126,7 +2126,7 @@ class ApiCommessaAttivitaExport(DomainAPIView):
         filtri: dict[str, Any] = {
             "stato_emissione": qp.get("stato_emissione") or None,
             "stato_approvazione": qp.get("stato_approvazione") or None,
-            "competenza_mese": qp.get("competenza_mese") or None,
+            "competenza_mese": qp_iso_date_optional(qp.get("competenza_mese"), "competenza_mese"),
             "tipo_movimento": qp_str(qp.get("tipo_movimento")),
         }
         # ⚠️ `max_rows` e non `limit`: l'export salta la paginazione invece di

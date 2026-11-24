@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useNavigationStore } from '../stores/navigation'
 import { useTabsStore } from '../stores/tabs'
-import { DOMAINS, findMenuItem, isMenuItemAllowed, resolveTabLabel, resolveTabIcon } from '../core/navigation'
+import { DOMAINS, findMenuItem, isMenuItemAllowed, resolveNavigationLabel, resolveTabIcon } from '../core/navigation'
 import { FE_NAMESPACE, STATUS_ICONS, resolveRuoloFeConfig } from '../core/constants'
 import { MOTIVO_USCITA, sessioneDichiarataChiusa } from '../core/sessione'
 import { caricaMisurePagina } from '../core/misurePagina'
@@ -831,7 +831,7 @@ router.beforeEach(async (to) => {
     }
     const opened = tabs.openTab({
       path: to.path,
-      label: resolveTabLabel(to.meta, t) || to.path,
+      label: resolveNavigationLabel(to.meta, t) || to.path,
       domain: domain,
       menuKey: to.meta.menuKey || null,
       icon: resolveTabIcon(to.meta)

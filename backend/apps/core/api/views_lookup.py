@@ -17,11 +17,11 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.payload_validators import (
-    optional_int,
     parse_list_params,
     qp_int_strict,
     qp_str,
     qp_uuid_optional,
+    qp_int_optional,
 )
 from apps.core.api.success_responses import success_response
 from apps.core.db.lookup_repository import LookupRepository
@@ -72,7 +72,7 @@ class LookupFormeGiuridicheView(DomainAPIView):
     )
     # Scopo: Restituisce forme giuridiche con policy, opzionalmente filtrate per tipo soggetto.
     def get(self, request: Request) -> JsonResponse:
-        tipo_id = optional_int({"v": request.query_params.get("tipo_soggetto_dettaglio_id")}, "v")
+        tipo_id = qp_int_optional(request.query_params.get("tipo_soggetto_dettaglio_id"), "tipo_soggetto_dettaglio_id", min_val=0)
         repo = LookupRepository()
         results = repo.list_forme_giuridiche(tipo_soggetto_dettaglio_id=tipo_id)
         return success_response({"results": results})
@@ -378,7 +378,7 @@ class SearchStradarioView(DomainAPIView):
     # Restituisce stradario_id, via_completa, comune, provincia, CAP.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
-        comune_id = optional_int(qp, "comune_id")
+        comune_id = qp_int_optional(qp.get("comune_id"), "comune_id", min_val=0)
         search = qp_str(qp.get("search"))
         limit = min(qp_int_strict(qp.get("limit"), "limit", 30), 100)
 
@@ -410,7 +410,7 @@ class SearchStradarioGeneraleView(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         search = qp_str(qp.get("search"))
-        toponomastica_id = optional_int(qp, "toponomastica_id")
+        toponomastica_id = qp_int_optional(qp.get("toponomastica_id"), "toponomastica_id", min_val=0)
         limit = min(qp_int_strict(qp.get("limit"), "limit", 30), 100)
 
         repo = LookupRepository()

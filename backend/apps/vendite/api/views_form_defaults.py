@@ -20,7 +20,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_actor_user_id
-from apps.core.api.payload_validators import optional_int
+from apps.core.api.payload_validators import qp_int_optional
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.vendite_form_defaults_service import (
     fn_get_contratto_form_defaults,
@@ -69,7 +69,7 @@ class ApiContrattoFormDefaults(DomainAPIView):
     # Scopo: GET form-defaults contratto. Risolve auth_user_id per applicare
     #        eventuali override personali dei parameters.
     def get(self, request: Request) -> JsonResponse:
-        ba_id = optional_int({"v": request.query_params.get("billing_account_id")}, "v")
+        ba_id = qp_int_optional(request.query_params.get("billing_account_id"), "billing_account_id", min_val=0)
         auth_user_id = get_actor_user_id(request)
         return success_response(
             fn_get_contratto_form_defaults(
@@ -107,7 +107,7 @@ class ApiOffertaFormDefaults(DomainAPIView):
     #        cascata valuta (EF utente fallback) e per override personali
     #        eventuali sui parameters in futuro.
     def get(self, request: Request) -> JsonResponse:
-        ba_id = optional_int({"v": request.query_params.get("billing_account_id")}, "v")
+        ba_id = qp_int_optional(request.query_params.get("billing_account_id"), "billing_account_id", min_val=0)
         auth_user_id = get_actor_user_id(request)
         return success_response(
             fn_get_offerta_form_defaults(
@@ -141,7 +141,7 @@ class ApiOrdineFormDefaults(DomainAPIView):
     )
     # Scopo: GET form-defaults ordine.
     def get(self, request: Request) -> JsonResponse:
-        ba_id = optional_int({"v": request.query_params.get("billing_account_id")}, "v")
+        ba_id = qp_int_optional(request.query_params.get("billing_account_id"), "billing_account_id", min_val=0)
         auth_user_id = get_actor_user_id(request)
         return success_response(
             fn_get_ordine_form_defaults(
@@ -177,7 +177,7 @@ class ApiDdtFormDefaults(DomainAPIView):
     )
     # Scopo: GET form-defaults DDT.
     def get(self, request: Request) -> JsonResponse:
-        ba_id = optional_int({"v": request.query_params.get("billing_account_id")}, "v")
+        ba_id = qp_int_optional(request.query_params.get("billing_account_id"), "billing_account_id", min_val=0)
         auth_user_id = get_actor_user_id(request)
         return success_response(
             fn_get_ddt_form_defaults(
@@ -207,7 +207,7 @@ class ApiPreventivoFormDefaults(DomainAPIView):
     )
     # Scopo: GET form-defaults preventivo.
     def get(self, request: Request) -> JsonResponse:
-        ba_id = optional_int({"v": request.query_params.get("billing_account_id")}, "v")
+        ba_id = qp_int_optional(request.query_params.get("billing_account_id"), "billing_account_id", min_val=0)
         auth_user_id = get_actor_user_id(request)
         return success_response(
             fn_get_preventivo_form_defaults(

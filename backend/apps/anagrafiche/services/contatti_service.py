@@ -26,13 +26,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Final
 
-from apps.anagrafiche.error_codes import E_CONTATTO_INCOMPLETO
+from apps.anagrafiche.error_codes import E_ANAG_VALIDAZIONE, E_CONTATTO_INCOMPLETO
 from apps.anagrafiche.services._validators import create_with_constraint_mapping, optional_str
-from apps.core.api.payload_validators import optional_int
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.service_errors import ServiceError
 
 if TYPE_CHECKING:
     from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
+
+# Il validator del dominio per gli id del contatto (2026-11-24, brief-be-fe-BB-audit §2).
+_V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 
 # Campi del contatto che indicano "l'utente ha iniziato a compilare".
 # Se almeno UNO e' valorizzato, il contatto e' considerato in compilazione
@@ -126,8 +129,8 @@ def campi_contatto(contatto: dict[str, Any]) -> dict[str, Any]:
         "telefono": optional_str(contatto, "telefono"),
         "cellulare": optional_str(contatto, "cellulare"),
         "pec": optional_str(contatto, "pec"),
-        "tipo_contatto_id": optional_int(contatto, "tipo_contatto_id"),
-        "unita_organizzativa_id": optional_int(contatto, "unita_organizzativa_id"),
+        "tipo_contatto_id": _V.optional_int(contatto, "tipo_contatto_id"),
+        "unita_organizzativa_id": _V.optional_int(contatto, "unita_organizzativa_id"),
         "note": optional_str(contatto, "note"),
     }
     return {k: v for k, v in campi.items() if v is not None}

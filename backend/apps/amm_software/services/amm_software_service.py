@@ -17,7 +17,6 @@ from django.contrib.auth.hashers import make_password
 from django.db import DatabaseError, transaction
 
 from apps.core.api.constants import MAX_LIMIT
-from apps.core.api.payload_validators import optional_int
 from apps.core.services.auth_constants import CATEGORIA_ACCESSO_OPERATORE
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_policies import ErrorPolicyRegistry
@@ -321,10 +320,10 @@ class AmmSoftwareService:
             is_super_admin=is_super_admin,
             valido_dal=payload.get("valido_dal"),
             valido_al=payload.get("valido_al"),
-            comune_nascita_id=optional_int(payload, "comune_nascita_id"),
-            indirizzo_resid_dettaglio_id=optional_int(payload, "indirizzo_resid_dettaglio_id"),
-            indirizzo_domfisc_dettaglio_id=optional_int(payload, "indirizzo_domfisc_dettaglio_id"),
-            riusa_auth_user_id=optional_int(payload, "riusa_auth_user_id"),
+            comune_nascita_id=_V_AMM.optional_int(payload, "comune_nascita_id"),
+            indirizzo_resid_dettaglio_id=_V_AMM.optional_int(payload, "indirizzo_resid_dettaglio_id"),
+            indirizzo_domfisc_dettaglio_id=_V_AMM.optional_int(payload, "indirizzo_domfisc_dettaglio_id"),
+            riusa_auth_user_id=_V_AMM.optional_int(payload, "riusa_auth_user_id"),
         )
         dettaglio: Mapping[str, Any] = self._repo.get_operatore_detail(creato["auth_user_id"]) or {}
         return {**dettaglio, "credenziale_riusata": creato["credenziale_riusata"]}
