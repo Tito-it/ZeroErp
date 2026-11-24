@@ -290,13 +290,6 @@ CODA_STAMPA_SORT_SQL: dict[str, str] = {
     "archiviato_il": "c.archiviato_il",
 }
 
-# Le colonne DATA della whitelist: senza direzione indicata partono DESC (regola
-# Tid 2026-09-02, `colonne_desc` di `sql_order_clause`). Coincidono con le date
-# ordinabili del seed — lo verifica `test_liste_configurabili_seed`.
-CODA_STAMPA_SORT_COLONNE_DATA: frozenset[str] = frozenset(
-    {"data_insert", "data_update", "archiviato_il"}
-)
-
 
 # Proiezione e mapping di `GroupAttivitaInput`, in un posto solo.
 #
@@ -2906,7 +2899,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         order_by = sql_order_clause(
             sort_by, sort_dir,
             colonne=CODA_STAMPA_SORT_SQL, default="c.data_insert",
-            default_desc=True, colonne_desc=CODA_STAMPA_SORT_COLONNE_DATA,
+            default_desc=True,
             tiebreak="c.id",
         )
         from_join = """

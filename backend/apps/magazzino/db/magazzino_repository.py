@@ -105,7 +105,6 @@ DOCUMENTI_SORT_COLUMNS: dict[str, str] = {
     "user_insert": "user_insert",
     "id": "id",
 }
-DOCUMENTI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data", "data_insert"})
 
 # Le righe: una whitelist PER FAMIGLIA. ⛔ Il nome della quantita' e' fisico
 # e diverso (`qta_contata` / `qta_delta`), e una whitelist unica che le
@@ -191,7 +190,6 @@ MOVIMENTI_SORT_COLUMNS: dict[str, str] = {
     "sorgente_codice_interno": "sorgente_codice_interno",
     "data_insert": "data_insert",
 }
-MOVIMENTI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_mov", "data_insert"})
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -478,7 +476,6 @@ class MagazzinoRepository:
             default="data",
             tiebreak="id",
             default_desc=True,
-            colonne_desc=DOCUMENTI_SORT_COLONNE_DATA,
         )
         rows, total = lista_paginata(
             select_sql=f"{_documento_select(f)} {where}",
@@ -1001,7 +998,6 @@ class MagazzinoRepository:
             default="data_mov",
             tiebreak="id",
             default_desc=True,
-            colonne_desc=MOVIMENTI_SORT_COLONNE_DATA,
         )
         rows, total = lista_paginata(
             select_sql=f"{_MOVIMENTI_SELECT} {where}",

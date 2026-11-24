@@ -71,9 +71,9 @@ Nessun parametro.
   `cliente_display` | `valore_fermo` | `stato_codice` | `emittente_ragione_sociale`
   (`classe` aggiunta il 2026-08-03: è colonna a video e vocabolario chiuso a 3
   valori, ordinarla raggruppa il lavoro per tipo di intervento); `order_dir` =
-  `asc` | `desc`. Con `order_by` e senza `order_dir`: le colonne data (per nome)
-  partono DESC, le altre ASC — in questa whitelist nessuna è una data, quindi
-  ASC (anche `anzianita_giorni`). Server-side
+  `asc` | `desc`. Con `order_by` e senza `order_dir` la colonna
+  chiesta va in crescente (anche `anzianita_giorni`); il default della lista
+  resta il suo. Server-side
   perché la lista è paginata: ordine corretto su **tutte** le pagine, non solo
   su quella visibile. Colonna fuori whitelist o direzione ≠ asc/desc → 400
   (`E_VENDITE_VALIDATION`). Tiebreak stabile `area ASC, documento_id <stessa

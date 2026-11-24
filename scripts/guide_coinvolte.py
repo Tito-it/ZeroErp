@@ -21,7 +21,7 @@
 #   Gli schemi sono le cartelle di `docs/it/dbzero/`: uno schema nuovo
 #   entra da solo appena ha la sua doc.
 #   Un nome senza pagina in `dbzero/<schema>/<tabelle|funzioni|views>/` non
-#   esiste nel DB: non conta fra gli orfani e si elenca a parte (⚠️ se
+#   esiste nel DB: non si cerca, non conta fra gli orfani e si elenca a parte (⚠️ se
 #   passato a mano con --oggetti: refuso o nota di dominio passata per oggetto).
 #
 # ── DOVE CERCA ───────────────────────────────────────────────────────
@@ -165,6 +165,14 @@ def main() -> int:
         print("Nessun oggetto DB né endpoint nel perimetro: niente da confrontare.")
         return 0
 
+    # Un nome senza pagina nella doc del DB non si cerca: e' un refuso, una
+    # nota di dominio passata come oggetto, o rumore della regex (il modulo
+    # Python di `from apps.vendite.services import` diventa `vendite.services`).
+    # Cercato, alzerebbe in classifica le guide che nominano quel modulo; non
+    # cercato, resta comunque elencato a parte in fondo.
+    inesistenti = {o for o in oggetti if not esiste_nel_db(o)}
+    cercati = oggetti - inesistenti
+
     ingressi_set = {p.resolve() for p in ingressi}
     guide = sorted(GUIDE.glob("*.md"))
     note = sorted(DBZERO.glob("*/_*.md"))
@@ -183,7 +191,7 @@ def main() -> int:
 
     def colpi(p: Path) -> set[str]:
         t = leggi(p)
-        trovati = {f"{s}.{o}" for s, o in re_ogg.findall(t)} & oggetti
+        trovati = {f"{s}.{o}" for s, o in re_ogg.findall(t)} & cercati
         trovati |= {e for e in api if e in t}
         for link, endpoint in pagine_api.items():
             if link in t:
@@ -208,22 +216,18 @@ def main() -> int:
             print(f"  {n:>3}  {nome}\n       {mostra}")
         return coperti
 
-    print(f"Oggetti DB nel perimetro: {len(oggetti)} · endpoint: {len(api)}")
+    print(f"Oggetti DB nel perimetro: {len(cercati)} · endpoint: {len(api)}"
+          + (f" · senza pagina nel DB: {len(inesistenti)} (in fondo)" if inesistenti else ""))
     coperti = sezione("Guide", guide)
     coperti |= sezione("Note di dominio (dbzero/<schema>/_*.md)", note)
     if a.tutte:
         sezione("Pagine manual/", manual)
 
-    # Un nome senza pagina nella doc del DB non e' un orfano: e' un refuso
-    # (o una nota di dominio passata come oggetto), oppure un oggetto che il
-    # changeSet in lavorazione crea e la doc non ha ancora. Tenerlo fra gli
-    # orfani lo farebbe leggere come «guida che manca».
     # Le due provenienze pesano diverso: un nome scritto a mano con --oggetti
     # che non esiste e' quasi sempre un errore di chi lancia; un nome estratto
     # dai file e' spesso rumore della regex (`vendite.md`, `magazzino.services`,
     # prefissi `fn_`, policy, indici), ma puo' essere l'oggetto nuovo del
     # changeSet, e quello va guardato.
-    inesistenti = {o for o in oggetti if not esiste_nel_db(o)}
     scritti_a_mano = sorted(inesistenti & set(a.oggetti))
     dai_file = sorted(inesistenti - set(a.oggetti))
     orfani = sorted((oggetti | api) - coperti - inesistenti)
@@ -236,7 +240,7 @@ def main() -> int:
             "  Nessuna pagina in docs/it/dbzero/<schema>/{tabelle,funzioni,views}/: è un refuso, oppure"
             "\n  non è un oggetto `schema.nome` (una nota di dominio `_*.md` si apre, non si passa"
             "\n  a --oggetti), oppure è un oggetto nuovo non ancora applicato e documentato."
-            "\n  Per questi nomi il risultato qui sopra non dice niente: corretti, si rilancia."
+            "\n  Non sono stati cercati: corretti, si rilancia."
         )
     if dai_file:
         print(f"\n## Nomi estratti dai file senza pagina nel DB ({len(dai_file)})")

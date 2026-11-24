@@ -93,8 +93,7 @@ cancella il documento dal lotto, «non lo so» non può voler dire «vai».
     `ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`,
     `natura_doc_descrizione`, `stato_doc_fiscale_descrizione`,
     `stato_esecuzione`, `totale_doc`, `totale_a_pagare`
-  - `order_dir` (string) — direzione: `asc` | `desc`; assente, la decide la
-    lista (le date partono DESC). ⚠️ Fino al 2026-10-20 i due parametri si
+  - `order_dir` (string) — direzione: `asc` | `desc`; senza `order_dir` la colonna chiesta va in crescente; il default della lista resta il suo. ⚠️ Fino al 2026-10-20 i due parametri si
     chiamavano `sort_by`/`sort_dir`, unica lista del prodotto (brief-be-verifica-
     documentazione-api §A4): i vecchi nomi oggi sono ignorati
   - `limit` (int) — righe per pagina, default `25`, max `200`; fuori da 1..200 → 400 `E_VALIDATION_INPUT` (`limit_fuori_limiti_1_200`)

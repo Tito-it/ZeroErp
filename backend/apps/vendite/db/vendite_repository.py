@@ -219,9 +219,6 @@ LOTTO_FATTURE_SORT_COLUMNS: dict[str, str] = {
     "totale_doc": "f.totale_doc",
     "totale_a_pagare": "f.totale_a_pagare",
 }
-# Le colonne DATA di `LOTTO_FATTURE_SORT_COLUMNS`: senza direzione indicata
-# partono DESC (regola Tid 2026-09-02, `colonne_desc` di `sql_order_clause`).
-LOTTO_FATTURE_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data"})
 
 # Ordinamenti ammessi sui GRUPPI di un lotto — i documenti che il lotto ha
 # preso in carico, con l'esito di ciascuno (brief-db-esito-gruppo-lotto §6).
@@ -2015,9 +2012,8 @@ class VenditeRepository:
         where_clause = "WHERE " + " AND ".join(conditions)
 
         sort_col = colonna_ordinamento(order_by, self.DASH_COMPETENZA_RESIDUI_SORT_COLUMNS)
-        # ⚠️ Senza `order_dir` le colonne data partono DESC (regola «date DESC»,
-        #    inferita dal nome con `e_chiave_data`, 2026-10-20), le altre ASC; la
-        #    stessa direzione vale per il TIEBREAK — altrimenti la primaria
+        # ⚠️ Senza `order_dir` la colonna chiesta va ASC (date comprese, dal
+        #    2026-11-24); la stessa direzione vale per il TIEBREAK — altrimenti la primaria
         #    salirebbe e lo spareggio scenderebbe, cioe' dentro lo stesso mese
         #    l'elenco andrebbe al contrario di come e' stato chiesto (e' il
         #    difetto corretto in 30 punti il 2026-08-03).
@@ -3657,8 +3653,7 @@ class VenditeRepository:
         # allineato alla direzione, e omesso quando e' gia' la colonna scelta).
         order_clause = sql_order_clause(
             order_by, order_dir,
-            colonne=LOTTO_FATTURE_SORT_COLUMNS, default="fllf.fattura_id",
-            colonne_desc=LOTTO_FATTURE_SORT_COLONNE_DATA, tiebreak="fllf.fattura_id",
+            colonne=LOTTO_FATTURE_SORT_COLUMNS, default="fllf.fattura_id", tiebreak="fllf.fattura_id",
         )
 
         # WHERE obbligatorio su lotto_id; filtri opzionali aggiunti dinamicamente.

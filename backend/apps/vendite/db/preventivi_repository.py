@@ -113,11 +113,6 @@ PREVENTIVO_REVISIONI_ORDER_COLUMNS: dict[str, str] = {
     "totale_documento": "v.totale_documento",
 }
 
-# Colonne DATA della whitelist qui sopra: senza `order_dir` ordinano DESC
-# (`sql_order_clause(colonne_desc=…)`, regola di Tid del 2026-09-02),
-# confrontate col seed da `test_liste_configurabili_seed` (test 10).
-PREVENTIVO_REVISIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data"})
-
 # Risoluzione "rev attiva" del legame ROOT preventivo↔pratica/flusso
 # (pratiche_sorgenti, sorgente PREVENTIVO, ruolo ROOT). Il link memorizza l'uid
 # della rev AGGANCIATA (`p_link`); da essa deriviamo numero+emittente e
@@ -210,7 +205,6 @@ class PreventiviRepository(
     _righe_ordine_documento = "ordine"
     _righe_ordinamento = _ORDER_COLS_RIGHE
     _righe_ricerca = _RICERCA_RIGHE
-    _righe_colonne_desc = ("data_consegna_richiesta_cliente",)
     # Le date di consegna in blocco (BB `scrivi_data_consegna`): la sola
     # richiesta, che segue il lock delle righe (solo bozza).
     _righe_date_consegna = {"data_consegna_richiesta_cliente": None}
@@ -742,7 +736,6 @@ class PreventiviRepository(
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=PREVENTIVO_REVISIONI_ORDER_COLUMNS, default="v.rev", tiebreak="v.id",
-            colonne_desc=PREVENTIVO_REVISIONI_SORT_COLONNE_DATA,
         )
         params: list[Any] = [preventivo_id]
         from_where = (
