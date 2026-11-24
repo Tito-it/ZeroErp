@@ -1,0 +1,350 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato su scratch e dbdev, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/anagrafiche/20261123-64.
+# anagrafiche.dati_societari: il «non ammessi» parla per primo, solo alla
+#   nascita della riga; il soggetto della riga non si cambia.
+#   Brief: brief-db-revisione-anagrafiche §20 (T5), S41-6 (Tid, 2026-11-23).
+#
+# -- IL DIFETTO -----------------------------------------------------------------------
+#   trg_dati_societari_guard_tipo_soggetto_ins_upd, senza fase, ordinava dopo
+#   tutti gli a10 (alfabeto): a chi scrive i dati societari di un privato
+#   parlavano prima la forma giuridica e il canale FE, che chiedevano di
+#   correggere campi di una sezione che quel soggetto non puo' avere. E girava
+#   a ogni UPDATE, per una regola che dipende solo dal soggetto della riga.
+#
+# -- LA FORMA -------------------------------------------------------------------------
+#   * Il guard diventa trg_dati_societari_a05_guard_tipo_soggetto_ins, BEFORE
+#     INSERT: a05 e' «il rifiuto che deve parlare per primo» (linee-guida-trigger,
+#     §«La fase»): se la sezione non e' ammessa, gli altri difetti non contano.
+#   * Il soggetto della riga non si cambia: dati_societari.soggetto_id entra
+#     nel registro dei lucchetti (dbops.automation_lock_columns,
+#     E_DATI_SOCIETARI_SOGGETTO_IMMUTABILE; FK di appartenenza,
+#     linee-guida-trigger §«UPDATE OF»), provisioning in 90_end -62. Quindi
+#     l'UPDATE non ha piu' niente da giudicare qui, e la natura che cambia la
+#     giudica fn_check_cambio_natura_soggetto (motivo dei dati societari).
+#   * Il guard della forma giuridica perde soggetto_id dal suo OF: in ordine di
+#     nome (a10_guard_… < a10_lock_columns) avrebbe giudicato la forma sul
+#     soggetto nuovo prima che il lucchetto dicesse «il soggetto non si cambia».
+#   * S41-3: la forma mancante finiva nel 23502 della colonna, senza codice ne'
+#     campo. La rifiuta il guard della forma, per primo fra i suoi controlli:
+#     E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA, campo forma_giuridica_id.
+#     Nel guard e non nel verbo, perche' parli dopo il «non ammessi» della
+#     natura (a05) e da ogni strada.
+#   * La frase di E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO perde lo uuid del
+#     soggetto e nomina la natura per descrizione (stesso difetto di S42;
+#     unico chiamante: questo guard). E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO
+#     resta coi suoi argomenti: la usa anche
+#     trgfn_soggetti_guard_dati_societari_required.
+#   Corpo da pg_get_functiondef, riscritto nella forma di casa; DECLARE ancorato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261123-60-update-trg-dati-societari-guard-tipo-soggetto-a05-mctit.yaml
+
+  - changeSet:
+      id: 20261123-60-update-trg-dati-societari-guard-tipo-soggetto-a05
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.dati_societari: il guard del tipo soggetto in fase a05, solo BEFORE INSERT, con la
+        natura nella frase; il guard della forma giuridica rifiuta la forma mancante col suo codice e
+        non scatta piu' su soggetto_id (lo blocca il lucchetto). brief-db-revisione-anagrafiche §20,
+        S41-3 e S41-6.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND p.proname IN ('trgfn_dati_societari_guard_tipo_soggetto',
+                                   'trgfn_dati_societari_guard_forma_giuridica');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_dati_societari_guard_tipo_soggetto()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: la riga di dati societari nasce solo su un soggetto la cui
+              --   natura li ammette (config.tipi_soggetto_dettaglio.dati_societari_policy):
+              --   NONE -> rifiuto; OPTIONAL, REQUIRED -> ammessi (l'obbligo lo giudica
+              --   al COMMIT trgfn_soggetti_guard_dati_societari_required).
+              -- Aggancio: BEFORE INSERT, fase a05: parla prima della forma e del canale.
+              --   Il soggetto della riga non si cambia (lucchetto
+              --   E_DATI_SOCIETARI_SOGGETTO_IMMUTABILE); la natura che cambia la giudica
+              --   anagrafiche.fn_check_cambio_natura_soggetto.
+              -- =========================================================
+              DECLARE
+                  v_cod_int_tipo config.tipi_soggetto_dettaglio.codice_interno%TYPE;
+                  v_natura       config.tipi_soggetto_dettaglio.descrizione%TYPE;
+                  v_policy       config.tipi_soggetto_dettaglio.dati_societari_policy%TYPE;
+              BEGIN
+                  SELECT tsd.codice_interno,
+                         COALESCE(tsd.descrizione, tsd.codice_interno),
+                         tsd.dati_societari_policy
+                    INTO v_cod_int_tipo, v_natura, v_policy
+                    FROM anagrafiche.soggetti s
+                    LEFT JOIN config.tipi_soggetto_dettaglio tsd
+                           ON tsd.id = s.tipo_soggetto_dettaglio_id
+                   WHERE s.id = NEW.soggetto_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'anagrafiche.trgfn_dati_societari_guard_tipo_soggetto',
+                          'E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO',
+                          jsonb_build_object('soggetto_id', NEW.soggetto_id),
+                          NEW.tx_id,
+                          NEW.soggetto_id::text,
+                          NULL);
+                  END IF;
+
+                  -- Soggetto senza natura, o natura senza policy. Gli argomenti restano
+                  -- quelli della frase condivisa con trgfn_soggetti_guard_dati_societari_required.
+                  IF v_policy IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'anagrafiche.trgfn_dati_societari_guard_tipo_soggetto',
+                          'E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO',
+                          jsonb_build_object('soggetto_id',    NEW.soggetto_id,
+                                             'codice_interno', v_cod_int_tipo),
+                          NEW.tx_id,
+                          NEW.soggetto_id::text,
+                          COALESCE(v_cod_int_tipo, '<NULL>'));
+                  END IF;
+
+                  IF v_policy = 'NONE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'anagrafiche.trgfn_dati_societari_guard_tipo_soggetto',
+                          'E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO',
+                          jsonb_build_object('soggetto_id',           NEW.soggetto_id,
+                                             'codice_interno',        v_cod_int_tipo,
+                                             'dati_societari_policy', v_policy),
+                          NEW.tx_id,
+                          v_natura);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_dati_societari_guard_tipo_soggetto() IS
+                  'Guard di anagrafiche.dati_societari (trg_dati_societari_a05_guard_tipo_soggetto_ins, BEFORE INSERT, fase a05: parla prima della forma giuridica e del canale FE): la riga nasce solo su un soggetto esistente (E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO) la cui natura ha una policy dei dati societari (E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO) diversa da NONE (E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO, con la natura nella frase). Solo all''INSERT dal 2026-11-24 (S41-6, brief-db-revisione-anagrafiche §20): il soggetto della riga non si cambia (lucchetto E_DATI_SOCIETARI_SOGGETTO_IMMUTABILE), e la natura che cambia la giudica anagrafiche.fn_check_cambio_natura_soggetto. La variabile della policy segue la colonna (%TYPE).';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: la forma giuridica dei dati societari regge, nell'ordine:
+              --   1. paese del soggetto            -> E_FORMA_GIURIDICA_PAESE
+              --   2. ammessa dalla natura          -> E_FORMA_GIURIDICA_NON_AMMESSA_PER_TIPO_SOGGETTO
+              --   3. REA secondo rea_policy        -> E_REA_OBBLIGATORIO / E_REA_NON_AMMESSO
+              --   4. capitale secondo capitale_sociale_policy
+              --                                    -> E_CAPITALE_SOCIALE_OBBLIGATORIO / _NON_AMMESSO
+              -- REQUIRED = presente, NONE = assente, OPTIONAL = libero. La coppia
+              --   provincia/numero REA la tiene chk_dati_societari_rea_coppia.
+              -- 0. la forma c'e'                    -> E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA
+              --   (la colonna e' NOT NULL dal 20261011-03: prima un 23502 senza codice;
+              --   S41-3, brief-db-revisione-anagrafiche §20).
+              -- Tace con soggetto o forma inesistenti (FK) e, sulla sola matrice, col soggetto
+              --   senza natura (lo rifiuta trgfn_dati_societari_guard_tipo_soggetto).
+              -- Il cambio di natura del soggetto lo giudica il guard al COMMIT su
+              --   anagrafiche.soggetti (trgfn_soggetti_guard_forma_giuridica_natura).
+              -- Brief: brief-db-dati-fiscali-e-societari-del-soggetto (C-1, B-6).
+              -- =========================================================
+              DECLARE
+                  v_sogg_stato_id  anagrafiche.soggetti.stato_id%TYPE;
+                  v_natura_id      anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE;
+                  v_forma_stato_id config.forme_giuridiche.stato_id%TYPE;
+                  v_forma          config.forme_giuridiche.descrizione%TYPE;
+                  v_rea_policy     config.forme_giuridiche.rea_policy%TYPE;
+                  v_cap_policy     config.forme_giuridiche.capitale_sociale_policy%TYPE;
+                  v_natura         config.tipi_soggetto_dettaglio.descrizione%TYPE;
+                  v_paese          config.stati.descrizione%TYPE;
+                  v_soggetto       anagrafiche.soggetti.ragione_sociale_completa%TYPE;
+              BEGIN
+                  -- 0. La forma c'e'. In a10: il «non ammessi» della natura (a05) parla prima.
+                  IF NEW.forma_giuridica_id IS NULL THEN
+                      SELECT s.ragione_sociale_completa INTO v_soggetto
+                        FROM anagrafiche.soggetti s WHERE s.id = NEW.soggetto_id;
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.trgfn_dati_societari_guard_forma_giuridica',
+                          'E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA',
+                          jsonb_build_object('campo',       'forma_giuridica_id',
+                                             'soggetto_id', NEW.soggetto_id),
+                          NEW.tx_id,
+                          COALESCE(v_soggetto, '-'));
+                  END IF;
+
+                  SELECT s.stato_id, s.tipo_soggetto_dettaglio_id
+                    INTO v_sogg_stato_id, v_natura_id
+                    FROM anagrafiche.soggetti s
+                   WHERE s.id = NEW.soggetto_id;
+                  IF NOT FOUND THEN
+                      RETURN NEW;   -- la FK verso anagrafiche.soggetti parla dopo
+                  END IF;
+
+                  SELECT fg.stato_id, fg.descrizione, fg.rea_policy, fg.capitale_sociale_policy
+                    INTO v_forma_stato_id, v_forma, v_rea_policy, v_cap_policy
+                    FROM config.forme_giuridiche fg
+                   WHERE fg.id = NEW.forma_giuridica_id;
+                  IF NOT FOUND THEN
+                      RETURN NEW;   -- la FK verso config.forme_giuridiche parla dopo
+                  END IF;
+
+                  -- 1. Paese
+                  IF v_sogg_stato_id IS DISTINCT FROM v_forma_stato_id THEN
+                      SELECT st.descrizione INTO v_paese FROM config.stati st WHERE st.id = v_sogg_stato_id;
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.trgfn_dati_societari_guard_forma_giuridica',
+                          'E_FORMA_GIURIDICA_PAESE',
+                          jsonb_build_object('campo',              'forma_giuridica_id',
+                                             'soggetto_id',        NEW.soggetto_id,
+                                             'forma_giuridica_id', NEW.forma_giuridica_id,
+                                             'soggetto_stato_id',  v_sogg_stato_id,
+                                             'forma_stato_id',     v_forma_stato_id),
+                          NEW.tx_id,
+                          COALESCE(v_forma, NEW.forma_giuridica_id::text),
+                          COALESCE(v_paese, v_sogg_stato_id::text));
+                  END IF;
+
+                  -- 2. Ammessa dalla natura (C-1)
+                  IF v_natura_id IS NOT NULL
+                     AND NOT anagrafiche.fn_forma_giuridica_ammessa(
+                                 NEW.forma_giuridica_id, v_natura_id,
+                                 script.fn_giorno_operativo(now())) THEN
+                      SELECT COALESCE(tsd.descrizione, tsd.codice_interno) INTO v_natura
+                        FROM config.tipi_soggetto_dettaglio tsd WHERE tsd.id = v_natura_id;
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.trgfn_dati_societari_guard_forma_giuridica',
+                          'E_FORMA_GIURIDICA_NON_AMMESSA_PER_TIPO_SOGGETTO',
+                          jsonb_build_object('campo',                      'forma_giuridica_id',
+                                             'soggetto_id',                NEW.soggetto_id,
+                                             'forma_giuridica_id',         NEW.forma_giuridica_id,
+                                             'tipo_soggetto_dettaglio_id', v_natura_id),
+                          NEW.tx_id,
+                          COALESCE(v_forma, NEW.forma_giuridica_id::text),
+                          v_natura);
+                  END IF;
+
+                  -- 3. REA (B-6). La coppia la tiene il CHECK: basta il numero.
+                  IF v_rea_policy = 'REQUIRED' AND NEW.iscrizione_rea IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.trgfn_dati_societari_guard_forma_giuridica',
+                          'E_REA_OBBLIGATORIO',
+                          jsonb_build_object('campo',              'iscrizione_rea',
+                                             'soggetto_id',        NEW.soggetto_id,
+                                             'forma_giuridica_id', NEW.forma_giuridica_id),
+                          NEW.tx_id,
+                          COALESCE(v_forma, NEW.forma_giuridica_id::text));
+                  END IF;
+                  IF v_rea_policy = 'NONE' AND NEW.iscrizione_rea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.trgfn_dati_societari_guard_forma_giuridica',
+                          'E_REA_NON_AMMESSO',
+                          jsonb_build_object('campo',              'iscrizione_rea',
+                                             'soggetto_id',        NEW.soggetto_id,
+                                             'forma_giuridica_id', NEW.forma_giuridica_id),
+                          NEW.tx_id,
+                          COALESCE(v_forma, NEW.forma_giuridica_id::text));
+                  END IF;
+
+                  -- 4. Capitale sociale (B-6)
+                  IF v_cap_policy = 'REQUIRED' AND NEW.capitale_sociale IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.trgfn_dati_societari_guard_forma_giuridica',
+                          'E_CAPITALE_SOCIALE_OBBLIGATORIO',
+                          jsonb_build_object('campo',              'capitale_sociale',
+                                             'soggetto_id',        NEW.soggetto_id,
+                                             'forma_giuridica_id', NEW.forma_giuridica_id),
+                          NEW.tx_id,
+                          COALESCE(v_forma, NEW.forma_giuridica_id::text));
+                  END IF;
+                  IF v_cap_policy = 'NONE' AND NEW.capitale_sociale IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.trgfn_dati_societari_guard_forma_giuridica',
+                          'E_CAPITALE_SOCIALE_NON_AMMESSO',
+                          jsonb_build_object('campo',              'capitale_sociale',
+                                             'soggetto_id',        NEW.soggetto_id,
+                                             'forma_giuridica_id', NEW.forma_giuridica_id),
+                          NEW.tx_id,
+                          COALESCE(v_forma, NEW.forma_giuridica_id::text));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica() IS
+                  'Guard BEFORE INSERT OR UPDATE OF forma_giuridica_id, id_prov_iscri_rea, iscrizione_rea, capitale_sociale su anagrafiche.dati_societari. La forma regge, nell''ordine: paese del soggetto (E_FORMA_GIURIDICA_PAESE); ammessa dalla natura (anagrafiche.fn_forma_giuridica_ammessa, E_FORMA_GIURIDICA_NON_AMMESSA_PER_TIPO_SOGGETTO, C-1); REA secondo rea_policy (E_REA_OBBLIGATORIO / E_REA_NON_AMMESSO) e capitale secondo capitale_sociale_policy (E_CAPITALE_SOCIALE_OBBLIGATORIO / _NON_AMMESSO), B-6: REQUIRED presente, NONE assente, OPTIONAL libero. La forma mancante la rifiuta per prima con E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA, campo forma_giuridica_id (la colonna e'' NOT NULL dal 20261011-03: prima un 23502 senza codice, S41-3). Tace con soggetto o forma inesistenti e, sulla matrice, col soggetto senza natura. soggetto_id non e'' piu'' nell''OF dal 2026-11-24: il soggetto della riga non si cambia, e il lucchetto parla per primo (S41-6, brief-db-revisione-anagrafiche §20). Il cambio di natura o di stato del soggetto lo giudica il guard al COMMIT su anagrafiche.soggetti. Brief: brief-db-dati-fiscali-e-societari-del-soggetto.';
+
+              -- I trigger di trgfn_dati_societari_guard_tipo_soggetto si tolgono per FUNZIONE, non per
+              --   nome: dbdev e un database costruito da zero li hanno con nomi diversi
+              --   (dbdev trg_dati_societari_guard_tipo_soggetto_ins_upd, da zero trg_dati_societari_ins_upd_check_tipo_soggetto; 20251119-01 ha rinominato la funzione, non sempre il trigger).
+              DO $via$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN
+                      SELECT t.tgname
+                        FROM pg_trigger t
+                       WHERE t.tgrelid = 'anagrafiche.dati_societari'::regclass
+                         AND t.tgfoid = 'anagrafiche.trgfn_dati_societari_guard_tipo_soggetto'::regproc
+                         AND NOT t.tgisinternal
+                  LOOP
+                      EXECUTE format('DROP TRIGGER %I ON anagrafiche.dati_societari', r.tgname);
+                  END LOOP;
+              END
+              $via$;
+              CREATE TRIGGER trg_dati_societari_a05_guard_tipo_soggetto_ins
+                  BEFORE INSERT ON anagrafiche.dati_societari
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_tipo_soggetto();
+
+              -- I trigger di trgfn_dati_societari_guard_forma_giuridica si tolgono per FUNZIONE, non per
+              --   nome: dbdev e un database costruito da zero li hanno con nomi diversi
+              --   (oggi lo stesso nome nei due, trg_dati_societari_a10_guard_forma_giuridica_ins_upd; 20251119-01 ha rinominato la funzione, non sempre il trigger).
+              DO $via$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN
+                      SELECT t.tgname
+                        FROM pg_trigger t
+                       WHERE t.tgrelid = 'anagrafiche.dati_societari'::regclass
+                         AND t.tgfoid = 'anagrafiche.trgfn_dati_societari_guard_forma_giuridica'::regproc
+                         AND NOT t.tgisinternal
+                  LOOP
+                      EXECUTE format('DROP TRIGGER %I ON anagrafiche.dati_societari', r.tgname);
+                  END LOOP;
+              END
+              $via$;
+              CREATE TRIGGER trg_dati_societari_a10_guard_forma_giuridica_ins_upd
+                  BEFORE INSERT OR UPDATE OF forma_giuridica_id, id_prov_iscri_rea, iscrizione_rea, capitale_sociale
+                  ON anagrafiche.dati_societari
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: il corpo di prima e' quello di 20261009-20, il trigger era _ins_upd senza fase.
+              SELECT 1;

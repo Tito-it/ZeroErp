@@ -1,0 +1,196 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato su scratch e dbdev, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/anagrafiche/20261123-64.
+# script.fn_validate_cf_piva_it: con una natura inesistente il validatore tace
+#   e parla la FK. Brief: brief-db-revisione-anagrafiche §20 (T5), S43-3
+#   (Tid, 2026-11-23).
+#
+#   Il difetto: SELECT ... INTO STRICT sulla natura dava no_data_found
+#   (P0002, nessun codice) prima che la FK fk_soggetti_tipo_soggetto_dettaglio
+#   dicesse il vero motivo. Ora NOT FOUND -> RETURN, come gia' fa
+#   anagrafiche.fn_check_cambio_natura_soggetto («natura inesistente: parla la
+#   FK»).
+#   Corpo da pg_get_functiondef, una sola sostituzione; firma ancorata
+#   (%TYPE): si risolve a (bigint, text, text, text), identica alla viva.
+#   Unico chiamante: anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261123-50-update-fn-validate-cf-piva-it-natura-inesistente-mctit.yaml
+
+  - changeSet:
+      id: 20261123-50-update-fn-validate-cf-piva-it-natura-inesistente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_validate_cf_piva_it: natura inesistente -> nessuna validazione, parla la FK
+        (prima INTO STRICT dava no_data_found). brief-db-revisione-anagrafiche §20, S43-3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_validate_cf_piva_it';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_validate_cf_piva_it(
+                  p_tipo_det_id    config.tipi_soggetto_dettaglio.id%TYPE,
+                  p_partita_iva    anagrafiche.soggetti.partita_iva%TYPE,
+                  p_piva_gruppo    anagrafiche.soggetti.piva_gruppo_acquisto%TYPE,
+                  p_codice_fiscale anagrafiche.soggetti.codice_fiscale%TYPE
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+                  DECLARE
+                      l_tipo_det RECORD;
+                      l_error_ctx JSONB;
+                      l_cf_valido BOOLEAN;  -- esito di un validatore: nessuna colonna di cui sia il riflesso
+                  BEGIN
+                      -- 0) Se tipo_soggetto_dettaglio non specificato, skip
+                      IF p_tipo_det_id IS NULL THEN
+                          RETURN;
+                      END IF;
+
+                      -- 0b) Recupero il tipo di dettaglio del soggetto
+                      --     Natura inesistente: il validatore tace e parla la FK di
+                      --     anagrafiche.soggetti, come in fn_check_cambio_natura_soggetto
+                      --     (S43-3, brief-db-revisione-anagrafiche §20). Con INTO STRICT
+                      --     usciva un no_data_found tecnico prima della FK.
+                      SELECT formato_cf, formato_piva
+                      INTO l_tipo_det
+                      FROM config.tipi_soggetto_dettaglio
+                      WHERE id = p_tipo_det_id;
+
+                      IF NOT FOUND THEN
+                          RETURN;
+                      END IF;
+
+                      ----------------------------------------------------------------
+                      -- 2) Validazione Partita IVA principale (se prevista e valorizzata)
+                      ----------------------------------------------------------------
+                      IF l_tipo_det.formato_piva <> 'NON_APPLICABILE'
+                      AND p_partita_iva IS NOT NULL
+                      AND NOT script.fn_valida_partita_iva(p_partita_iva)
+                      THEN
+                          l_error_ctx := jsonb_build_object(
+                              'campo', 'partita_iva',
+                              'tipo_det', p_tipo_det_id,
+                              'partita_iva', p_partita_iva
+                          );
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'fn_validate_cf_piva_it',
+                              'E_PIVA_NON_VALIDA',
+                              l_error_ctx,
+                              NULL::uuid,
+                              p_partita_iva::text
+                          );
+                      END IF;
+
+                      ----------------------------------------------------------------
+                      -- 3) Validazione Partita IVA Gruppo Acquisto (stesse regole)
+                      ----------------------------------------------------------------
+                      IF l_tipo_det.formato_piva <> 'NON_APPLICABILE'
+                      AND p_piva_gruppo IS NOT NULL
+                      AND NOT script.fn_valida_partita_iva(p_piva_gruppo)
+                      THEN
+                          l_error_ctx := jsonb_build_object(
+                              'campo', 'piva_gruppo_acquisto',
+                              'tipo_det', p_tipo_det_id,
+                              'piva_gruppo_acquisto', p_piva_gruppo
+                          );
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'fn_validate_cf_piva_it',
+                              'E_PIVA_NON_VALIDA',
+                              l_error_ctx,
+                              NULL::uuid,
+                              p_piva_gruppo::text
+                          );
+                      END IF;
+
+                      ----------------------------------------------------------------
+                      -- 4) Validazione Codice Fiscale (se previsto e valorizzato)
+                      --    Dispatch in base a formato_cf:
+                      --    - ALFANUM_16: CF persona fisica (16 char, algoritmo tabella)
+                      --    - NUM_11:     CF persona giuridica (11 cifre, Luhn = P.IVA)
+                      ----------------------------------------------------------------
+                      IF l_tipo_det.formato_cf <> 'NON_APPLICABILE'
+                      AND p_codice_fiscale IS NOT NULL
+                      THEN
+                          -- Selezione validatore in base al formato
+                          IF l_tipo_det.formato_cf = 'ALFANUM_16' THEN
+                              l_cf_valido := script.fn_valida_codice_fiscale(p_codice_fiscale);
+                          ELSIF l_tipo_det.formato_cf = 'NUM_11' THEN
+                              l_cf_valido := script.fn_valida_partita_iva(p_codice_fiscale);
+                          ELSE
+                              -- Formato non ancora supportato per validazione check digit:
+                              -- accettiamo il valore (la lunghezza e' gia' verificata altrove)
+                              l_cf_valido := TRUE;
+                          END IF;
+
+                          IF NOT l_cf_valido THEN
+                              l_error_ctx := jsonb_build_object(
+                                  'campo', 'codice_fiscale',
+                                  'tipo_det', p_tipo_det_id,
+                                  'codice_fiscale', p_codice_fiscale,
+                                  'formato_cf', l_tipo_det.formato_cf
+                              );
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database',
+                                  'fn_validate_cf_piva_it',
+                                  'E_CF_NON_VALIDO',
+                                  l_error_ctx,
+                                  NULL::uuid,
+                                  p_codice_fiscale::text
+                              );
+                          END IF;
+                      END IF;
+
+                      RETURN;
+                  END;
+                  $function$;
+
+              COMMENT ON FUNCTION script.fn_validate_cf_piva_it(
+                  config.tipi_soggetto_dettaglio.id%TYPE,
+                  anagrafiche.soggetti.partita_iva%TYPE,
+                  anagrafiche.soggetti.piva_gruppo_acquisto%TYPE,
+                  anagrafiche.soggetti.codice_fiscale%TYPE) IS
+                  'Valida Partita IVA principale, Partita IVA di gruppo e Codice Fiscale per soggetti italiani.
+
+                  La logica utilizza la configurazione del tipo soggetto di dettaglio (config.tipi_soggetto_dettaglio):
+                  - se formato_piva = NON_APPLICABILE non viene eseguita alcuna validazione sulla P.IVA;
+                  - se formato_cf  = NON_APPLICABILE non viene eseguita alcuna validazione sul Codice Fiscale.
+
+                  Dispatch validazione CF in base a formato_cf:
+                  - ALFANUM_16: fn_valida_codice_fiscale (algoritmo CF persona fisica, 16 char)
+                  - NUM_11: fn_valida_partita_iva (algoritmo Luhn, CF persona giuridica = P.IVA)
+                  - altri formati: nessuna validazione check digit (solo lunghezza)
+
+                  Natura inesistente: nessuna validazione, parla la FK del chiamante (rev 2026-11-24, S43-3 di brief-db-revisione-anagrafiche §20: prima INTO STRICT dava no_data_found).
+
+                  In caso di valore non valido richiama script.fn_log_and_raise_error con i codici:
+                  - PIVA_NON_VALIDA per P.IVA principale o di gruppo non valida,
+                  - CF_NON_VALIDO per Codice Fiscale non valido.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: il corpo di prima (INTO STRICT) e' quello di 20260808-07.
+              SELECT 1;

@@ -11,7 +11,7 @@
 -- I soggetti e le due persone (un operatore senza privilegi, un SUPER_ADMIN) si costruiscono.
 --
 -- Elenco test (plan 11):
---  1) il guard e' montato: BEFORE UPDATE OF codice_fiscale, partita_iva
+--  1) il guard e' montato: BEFORE UPDATE OF codice_fiscale, partita_iva, stato_id
 --  2) ⭐ l'operatore che cambia un CF scritto: E_SOGGETTO_ID_FISCALE_IMMUTABILE, campo codice_fiscale
 --  3) ⭐ l'operatore che cambia una P.IVA scritta: lo stesso, campo partita_iva
 --  4) ⭐ l'operatore che svuota la P.IVA: lo stesso
@@ -75,8 +75,8 @@ SELECT is(
         AND t.tgfoid = 'anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile'::regproc
         AND (t.tgtype & 2) <> 0     -- BEFORE
         AND (t.tgtype & 16) <> 0),  -- UPDATE
-    'codice_fiscale,partita_iva',
-    '1) il guard e'' montato BEFORE UPDATE OF codice_fiscale, partita_iva');
+    'codice_fiscale,partita_iva,stato_id',
+    '1) il guard e'' montato BEFORE UPDATE OF codice_fiscale, partita_iva, stato_id (lo stato dal 2026-11-24, D-T5-3 a)');
 
 -- ============================================================
 -- L'operatore
@@ -132,8 +132,32 @@ SELECT is(
     '',
     '8) il form del SUPER_ADMIN lascia CF e P.IVA accesi');
 
--- Il SUPER_ADMIN svuota la P.IVA del soggetto B (a tipo NULL: il guard dell'obbligo non la pretende).
-UPDATE anagrafiche.soggetti SET tipo_soggetto_dettaglio_id = NULL, partita_iva = NULL
+-- Il SUPER_ADMIN svuota la P.IVA del soggetto B. Serve una natura che non la pretenda: fino al
+--   2026-11-24 si azzerava la natura, ma una natura scritta non si svuota piu' (D-T5-1 a,
+--   brief-db-revisione-anagrafiche §20). B passa a una copia della sua natura senza l'obbligo
+--   della P.IVA (stessa famiglia, stessi formati, stesse forme ammesse: il cambio non ha motivi).
+CREATE TEMP TABLE _nat AS
+SELECT s.tipo_soggetto_dettaglio_id AS da,
+       (SELECT max(id) FROM config.tipi_soggetto_dettaglio) + 100000 AS a
+  FROM anagrafiche.soggetti s WHERE s.id = (SELECT b FROM _sog);
+
+INSERT INTO config.tipi_soggetto_dettaglio
+       (id, tipo_soggetto_id, stato_iso2, codice_interno, descrizione,
+        formato_cf, formato_piva, stato_id, dati_societari_policy,
+        piva_obbligatoria, cf_obbligatorio, sesso_policy,
+        cliente_pa_ammesso, split_payment_ammesso)
+SELECT n.a, d.tipo_soggetto_id, d.stato_iso2, 'PGTAPIDF', d.descrizione || ' (pgTAP, P.IVA facoltativa)',
+       d.formato_cf, d.formato_piva, d.stato_id, d.dati_societari_policy,
+       false, d.cf_obbligatorio, d.sesso_policy,
+       d.cliente_pa_ammesso, d.split_payment_ammesso
+  FROM _nat n JOIN config.tipi_soggetto_dettaglio d ON d.id = n.da;
+
+INSERT INTO config.forme_giuridiche_tipi_soggetto_dettaglio
+       (forma_giuridica_id, tipo_soggetto_dettaglio_id, attivo, valido_dal, valido_al, meta)
+SELECT m.forma_giuridica_id, n.a, m.attivo, m.valido_dal, m.valido_al, m.meta
+  FROM _nat n JOIN config.forme_giuridiche_tipi_soggetto_dettaglio m ON m.tipo_soggetto_dettaglio_id = n.da;
+
+UPDATE anagrafiche.soggetti SET tipo_soggetto_dettaglio_id = (SELECT a FROM _nat), partita_iva = NULL
  WHERE id = (SELECT b FROM _sog);
 
 -- ============================================================

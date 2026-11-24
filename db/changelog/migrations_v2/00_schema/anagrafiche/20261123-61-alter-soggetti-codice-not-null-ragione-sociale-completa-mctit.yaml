@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato su scratch e dbdev, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/anagrafiche/20261123-64.
+# anagrafiche.soggetti: codice NOT NULL e ragione_sociale_completa anche con
+#   un solo nome. Brief: brief-db-revisione-anagrafiche §20 (T5), S43-8 e
+#   S43-9 (Tid, 2026-11-23).
+#
+# -- S43-9: codice -----------------------------------------------------------------------
+#   Il codice lo genera sempre trgfn_soggetti_gen_codice (a10, INSERT e UPDATE
+#   OF codice con valore NULL) e non si cambia (lucchetto
+#   E_CODICE_NON_MODIFICABILE); uq_soggetto_codice lo vuole unico. La colonna
+#   pero' ammetteva NULL: il modello stava solo nei trigger. NOT NULL lo dice
+#   la colonna. Una riga senza codice fa fallire il changeSet, ed e' giusto:
+#   e' un soggetto che il modello non ammette (2026-11-24, dbdev: nessuna).
+#
+# -- S43-8: ragione_sociale_completa ------------------------------------------------------
+#   La colonna generata era COALESCE(ragione_sociale, cognome || ' ' || nome):
+#   con uno dei due NULL il concatenato e' NULL, e un soggetto con il solo
+#   cognome (scrittura diretta: i verbi pretendono i due) non aveva nome in
+#   nessuna lista. La nuova espressione unisce i due che ci sono.
+#   ⚠️ Non concat_ws: e' STABLE, e una colonna generata vuole un'espressione
+#   IMMUTABLE. btrim e || lo sono: COALESCE(x, '') per i due pezzi, btrim
+#   toglie lo spazio di troppo quando uno manca, NULLIF fa NULL il vuoto.
+#   Con entrambi i nomi il risultato e' quello di prima («Cognome Nome»).
+#   SET EXPRESSION riscrive la tabella e i suoi indici (btree e trgm sulla
+#   colonna); le viste che la leggono (31 su dbdev il 2026-11-24) non
+#   cambiano tipo e restano valide. Nessun trigger scatta nella riscrittura.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261123-61-alter-soggetti-codice-not-null-ragione-sociale-completa-mctit.yaml
+
+  - changeSet:
+      id: 20261123-61-alter-soggetti-codice-not-null-ragione-sociale-completa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.soggetti: codice NOT NULL; ragione_sociale_completa generata anche con il solo
+        cognome o il solo nome. brief-db-revisione-anagrafiche §20, S43-8 e S43-9.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute a
+               WHERE a.attrelid = 'anagrafiche.soggetti'::regclass
+                 AND a.attname = 'ragione_sociale_completa'
+                 AND a.attgenerated = 's';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.soggetti ALTER COLUMN codice SET NOT NULL;
+
+              ALTER TABLE anagrafiche.soggetti
+                  ALTER COLUMN ragione_sociale_completa
+                  SET EXPRESSION AS (
+                      COALESCE(ragione_sociale,
+                               NULLIF(btrim(COALESCE(cognome, '') || ' ' || COALESCE(nome, '')), ''))
+                  );
+
+              COMMENT ON COLUMN anagrafiche.soggetti.codice IS
+                'Codice del soggetto: lo genera il sistema codici (trgfn_soggetti_gen_codice) quando chi scrive non lo passa, e non si cambia (lucchetto E_CODICE_NON_MODIFICABILE). Unico (uq_soggetto_codice) e NOT NULL dal 2026-11-24 (S43-9, brief-db-revisione-anagrafiche §20).';
+
+              COMMENT ON COLUMN anagrafiche.soggetti.ragione_sociale_completa IS
+                'Il nome del soggetto per liste e ricerche, generato: la ragione sociale se c''e'', altrimenti cognome e nome uniti da uno spazio, anche se ce n''e'' uno solo (dal 2026-11-24, S43-8 di brief-db-revisione-anagrafiche §20: prima con uno dei due NULL la colonna era NULL). NULL solo se mancano tutti e tre.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.soggetti ALTER COLUMN codice DROP NOT NULL;
+              ALTER TABLE anagrafiche.soggetti
+                  ALTER COLUMN ragione_sociale_completa
+                  SET EXPRESSION AS (COALESCE(ragione_sociale, ((cognome || ' '::text) || nome)));

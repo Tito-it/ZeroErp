@@ -25,8 +25,10 @@ AS $function$
 --                                    -> E_CAPITALE_SOCIALE_OBBLIGATORIO / _NON_AMMESSO
 -- REQUIRED = presente, NONE = assente, OPTIONAL = libero. La coppia
 --   provincia/numero REA la tiene chk_dati_societari_rea_coppia.
--- Tace con forma NULL (dal 20261011-03 la colonna e' NOT NULL), con
---   soggetto o forma inesistenti (FK) e, sulla sola matrice, col soggetto
+-- 0. la forma c'e'                    -> E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA
+--   (la colonna e' NOT NULL dal 20261011-03: prima un 23502 senza codice;
+--   S41-3, brief-db-revisione-anagrafiche §20).
+-- Tace con soggetto o forma inesistenti (FK) e, sulla sola matrice, col soggetto
 --   senza natura (lo rifiuta trgfn_dati_societari_guard_tipo_soggetto).
 -- Il cambio di natura del soggetto lo giudica il guard al COMMIT su
 --   anagrafiche.soggetti (trgfn_soggetti_guard_forma_giuridica_natura).
@@ -41,9 +43,19 @@ DECLARE
     v_cap_policy     config.forme_giuridiche.capitale_sociale_policy%TYPE;
     v_natura         config.tipi_soggetto_dettaglio.descrizione%TYPE;
     v_paese          config.stati.descrizione%TYPE;
+    v_soggetto       anagrafiche.soggetti.ragione_sociale_completa%TYPE;
 BEGIN
+    -- 0. La forma c'e'. In a10: il «non ammessi» della natura (a05) parla prima.
     IF NEW.forma_giuridica_id IS NULL THEN
-        RETURN NEW;
+        SELECT s.ragione_sociale_completa INTO v_soggetto
+          FROM anagrafiche.soggetti s WHERE s.id = NEW.soggetto_id;
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.trgfn_dati_societari_guard_forma_giuridica',
+            'E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA',
+            jsonb_build_object('campo',       'forma_giuridica_id',
+                               'soggetto_id', NEW.soggetto_id),
+            NEW.tx_id,
+            COALESCE(v_soggetto, '-'));
     END IF;
 
     SELECT s.stato_id, s.tipo_soggetto_dettaglio_id
@@ -146,7 +158,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica()
-IS 'Guard BEFORE INSERT OR UPDATE OF forma_giuridica_id, soggetto_id, id_prov_iscri_rea, iscrizione_rea, capitale_sociale su anagrafiche.dati_societari. La forma regge, nell''ordine: paese del soggetto (E_FORMA_GIURIDICA_PAESE); ammessa dalla natura (anagrafiche.fn_forma_giuridica_ammessa, E_FORMA_GIURIDICA_NON_AMMESSA_PER_TIPO_SOGGETTO, C-1); REA secondo rea_policy (E_REA_OBBLIGATORIO / E_REA_NON_AMMESSO) e capitale secondo capitale_sociale_policy (E_CAPITALE_SOCIALE_OBBLIGATORIO / _NON_AMMESSO), B-6: REQUIRED presente, NONE assente, OPTIONAL libero. Tace con forma NULL (la colonna e'' NOT NULL dal 20261011-03), con soggetto o forma inesistenti e, sulla matrice, col soggetto senza natura. Il cambio di natura del soggetto lo giudica il guard al COMMIT su anagrafiche.soggetti. Brief: brief-db-dati-fiscali-e-societari-del-soggetto.';
+IS 'Guard BEFORE INSERT OR UPDATE OF forma_giuridica_id, id_prov_iscri_rea, iscrizione_rea, capitale_sociale su anagrafiche.dati_societari. La forma regge, nell''ordine: paese del soggetto (E_FORMA_GIURIDICA_PAESE); ammessa dalla natura (anagrafiche.fn_forma_giuridica_ammessa, E_FORMA_GIURIDICA_NON_AMMESSA_PER_TIPO_SOGGETTO, C-1); REA secondo rea_policy (E_REA_OBBLIGATORIO / E_REA_NON_AMMESSO) e capitale secondo capitale_sociale_policy (E_CAPITALE_SOCIALE_OBBLIGATORIO / _NON_AMMESSO), B-6: REQUIRED presente, NONE assente, OPTIONAL libero. La forma mancante la rifiuta per prima con E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA, campo forma_giuridica_id (la colonna e'' NOT NULL dal 20261011-03: prima un 23502 senza codice, S41-3). Tace con soggetto o forma inesistenti e, sulla matrice, col soggetto senza natura. soggetto_id non e'' piu'' nell''OF dal 2026-11-24: il soggetto della riga non si cambia, e il lucchetto parla per primo (S41-6, brief-db-revisione-anagrafiche §20). Il cambio di natura o di stato del soggetto lo giudica il guard al COMMIT su anagrafiche.soggetti. Brief: brief-db-dati-fiscali-e-societari-del-soggetto.';
 ```
 
 </div>

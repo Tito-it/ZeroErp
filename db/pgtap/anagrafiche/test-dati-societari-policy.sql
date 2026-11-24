@@ -316,7 +316,7 @@ SELECT throws_like(
         FROM anagrafiche.soggetti s
         WHERE s.codice = 'TST-DSP-PR-001-' || (SELECT sfx FROM tmp_run_sfx);
 $$,
-'%Non sono richiesti dati societari%',
+'%non ammette dati societari%',
 'Soggetto PR (policy NONE): inserimento dati_societari non ammesso'
 );
 -- =========================================================

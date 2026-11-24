@@ -32,7 +32,7 @@ DECLARE
     v_id           anagrafiche.dati_societari.id%TYPE;
     v_socio_unico  anagrafiche.dati_societari.socio_unico%TYPE;
     v_liquidazione anagrafiche.dati_societari.liquidazione%TYPE;
-BEGIN
+              BEGIN
     -- Due rami, due codici: il soggetto non passato e' un chiamante rotto
     -- (PARAMETRO), quello passato e inesistente e' «non trovato».
     IF p_soggetto_id IS NULL THEN
@@ -43,7 +43,21 @@ BEGIN
             'il soggetto e'' obbligatorio');
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM anagrafiche.soggetti s WHERE s.id = p_soggetto_id) THEN
+    -- Il soggetto si legge e si prende FOR NO KEY UPDATE (S41-2, rev
+    --   20261123-59, brief-db-revisione-anagrafiche §20): due prime
+    --   scritture concorrenti dello stesso soggetto facevano tutte e due
+    --   l'UPDATE a vuoto e poi l'INSERT, e la seconda urtava uq_ds_soggetto
+    --   con un 23505 grezzo. Col lucchetto la seconda aspetta la prima e
+    --   trova la riga: l'UPDATE la aggiorna. Non e' un upsert: con
+    --   ON CONFLICT i BEFORE INSERT giudicherebbero la riga proposta anche
+    --   quando poi si aggiorna (linee-guida-trigger, BEFORE e AFTER).
+    --   NO KEY UPDATE non blocca chi legge ne' le FK verso il soggetto.
+    PERFORM 1
+      FROM anagrafiche.soggetti s
+     WHERE s.id = p_soggetto_id
+       FOR NO KEY UPDATE;
+
+    IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'anagrafiche.fn_scrivi_dati_societari',
             'E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO',
@@ -103,7 +117,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_scrivi_dati_societari(p_soggetto_id uuid, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character varying, p_pec_fatturazione character varying, p_codice_sdi character varying, p_data_costituzione date)
-IS 'Il verbo di scrittura dei dati societari: crea o aggiorna la riga del soggetto (una per soggetto), STATO INTERO (NULL scrive NULL dove la colonna lo ammette; testi ripuliti, vuoto = NULL). socio_unico e liquidazione NULL valgono il valore proposto dai parametri dati_societari_default_socio_unico / _liquidazione, letto con script.fn_get_parameter_di_sessione: la cascata col contesto della sessione, quindi con l''override dell''emittente attivo (D-2-bis e D-4 di brief-db-parametri-senza-override); parametro assente = errore, nessun valore di riserva. Aggiunge solo il controllo del soggetto: NULL solleva E_PARAMETRO_INVALIDO, inesistente E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO; forma, natura, REA, capitale e canale FE restano ai trigger della tabella. SECURITY DEFINER: dal 20261011-04 l''applicazione non scrive anagrafiche.dati_societari direttamente, e questa e'' la porta (B-5); nessun guard di livello, il permesso resta al backend come per anagrafiche.soggetti. Se nella stessa scrittura cambia la natura del soggetto, si aggiorna prima il soggetto e poi si chiama il verbo. Lo chiamano anagrafiche.fn_scrivi_dati_societari_alla_nascita, il backend in modifica e le fixture pgTAP. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (B-1..B-5).';
+IS 'Il verbo di scrittura dei dati societari: crea o aggiorna la riga del soggetto (una per soggetto), STATO INTERO (NULL scrive NULL dove la colonna lo ammette; testi ripuliti, vuoto = NULL). socio_unico e liquidazione NULL valgono il valore proposto dai parametri dati_societari_default_socio_unico / _liquidazione, letto con script.fn_get_parameter_di_sessione: la cascata col contesto della sessione, quindi con l''override dell''emittente attivo (D-2-bis e D-4 di brief-db-parametri-senza-override); parametro assente = errore, nessun valore di riserva. Aggiunge solo il controllo del soggetto (NULL solleva E_PARAMETRO_INVALIDO, inesistente E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO); prende la riga del soggetto FOR NO KEY UPDATE prima di scrivere, cosi'' due prime scritture concorrenti non urtano uq_ds_soggetto (S41-2, rev 20261123-59, brief-db-revisione-anagrafiche §20); forma (anche quella mancante, E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA), natura, REA, capitale e canale FE restano ai trigger della tabella. SECURITY DEFINER: dal 20261011-04 l''applicazione non scrive anagrafiche.dati_societari direttamente, e questa e'' la porta (B-5); nessun guard di livello, il permesso resta al backend come per anagrafiche.soggetti. Se nella stessa scrittura cambia la natura del soggetto, si aggiorna prima il soggetto e poi si chiama il verbo. Lo chiamano anagrafiche.fn_scrivi_dati_societari_alla_nascita, il backend in modifica e le fixture pgTAP. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (B-1..B-5).';
 ```
 
 </div>

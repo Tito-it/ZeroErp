@@ -1,6 +1,6 @@
 # Guida — Soggetti e Ruoli Anagrafici
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -111,7 +111,11 @@ non è ancora un cliente o un fornitore: lo diventa quando riceve un ruolo.
 
 Il soggetto ha un **codice** che il database genera alla nascita e che poi non si cambia
 (`E_CODICE_NON_MODIFICABILE`). Codice fiscale e partita IVA sono unici **per paese**: la chiave
-è il paese più una colonna calcolata dai due identificativi. Le colonne e i vincoli sono nella
+è il paese più una colonna calcolata dai due identificativi. Il database li scrive in una forma
+sola, maiuscole e senza spazi, e un campo vuoto è vuoto: lo stesso codice scritto in minuscolo
+è lo stesso codice. Il doppione lo rifiuta la chiave, e i due verbi di creazione lo dicono con
+`E_ADMIN_CF_DUPLICATO`. Lo stesso codice fiscale può stare su due soggetti con partite IVA diverse:
+la persona e la sua ditta individuale sono due soggetti. Le colonne e i vincoli sono nella
 [scheda del soggetto](/dbzero/anagrafiche/tabelle/soggetti).
 
 ### Nasce con un verbo
@@ -156,10 +160,11 @@ La validazione di codice fiscale e partita IVA distingue due aspetti:
 * **formato**: il valore ha la forma giusta? Si controlla per il paese del soggetto, e le
   regole scritte oggi sono quelle italiane.
 
-La natura sul soggetto può mancare. Senza natura i controlli che dipendono da lei tacciono,
-tranne quelli su un dato fiscale che la natura dovrebbe ammettere: un flag del regime PA acceso
-o un titolo IVA vigente sono rifiutati (`E_DATO_FISCALE_SENZA_TIPO_SOGGETTO`), e un ruolo vincolato
-dalla matrice non si assegna (`E_RUOLO_NATURA_TIPO_DET_NULL`).
+La natura sul soggetto può mancare, ma solo finché non la si scrive: **una natura scritta non si
+toglie** (`E_CAMBIO_NATURA_VERSO_NESSUNA`), per nessuno. Senza natura i controlli che dipendono da
+lei tacciono, tranne quelli su un dato fiscale che la natura dovrebbe ammettere: un flag del
+regime PA acceso o un titolo IVA vigente sono rifiutati (`E_DATO_FISCALE_SENZA_TIPO_SOGGETTO`), e
+un ruolo vincolato dalla matrice non si assegna (`E_RUOLO_NATURA_TIPO_DET_NULL`).
 
 **Il sesso non ha mai un valore di comodo.** Lo sceglie chi lo vede: `M` o `F`, oppure `X`
 quando serve ma non si può stabilire (un dato storico, un codice fiscale estero o non
@@ -170,8 +175,9 @@ indicare, ma non è richiesto.
 ### ⛔ L'identificativo fiscale, una volta scritto, non si cambia
 
 Codice fiscale e partita IVA si scrivono quando mancano; una volta che hanno un valore, li
-cambia solo un super admin. Gli altri ricevono `E_SOGGETTO_ID_FISCALE_IMMUTABILE`, col campo
-nel contesto. La regola sta in [anagrafiche.fn_id_fiscale_bloccato](/dbzero/anagrafiche/funzioni/fn_id_fiscale_bloccato),
+cambia solo un super admin. Lo stesso vale per il **paese** del soggetto, che è l'altra metà della
+chiave. Gli altri ricevono `E_SOGGETTO_ID_FISCALE_IMMUTABILE`, col campo nel contesto, prima di
+ogni altro controllo sullo stesso salvataggio. La regola sta in [anagrafiche.fn_id_fiscale_bloccato](/dbzero/anagrafiche/funzioni/fn_id_fiscale_bloccato),
 e [anagrafiche.fn_soggetto_id_fiscale_bloccato](/dbzero/anagrafiche/funzioni/fn_soggetto_id_fiscale_bloccato)
 dice per un soggetto e una colonna se il campo è ancora modificabile: è la stessa condizione
 con cui il form mostra i due campi in sola lettura.
@@ -301,8 +307,9 @@ cliente per ogni billing account** (vedi [Generazione di un Cliente](/guide/gene
 l'identità e il ruolo: una riga dice «questo soggetto ricopre il ruolo X».
 
 * Un soggetto ha **al più un ruolo per tipo**.
-* Il soggetto di un ruolo **non si cambia** (`E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE`): un ruolo non
-  passa da un soggetto a un altro.
+* Il soggetto e il tipo di un ruolo **non si cambiano** (`E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE`,
+  `E_SOGGETTO_RUOLO_TIPO_IMMUTABILE`): un ruolo è «questo soggetto, questo tipo». Quello sbagliato
+  si toglie e si mette quello giusto.
 * La riga non ha date né un suo `attivo`: il ruolo c'è o non c'è. Le date, dove servono, stanno
   nella specializzazione o nei legami.
 * Un ruolo si appoggia a un soggetto attivo: il controllo è al COMMIT.
@@ -321,7 +328,7 @@ Non ogni ruolo si assegna a ogni natura. La matrice
 [config.tipi_ruoli_nature_ammesse](/dbzero/config/tabelle/tipi_ruoli_nature_ammesse) dice, per
 ogni ruolo, quali **macro-tipologie** lo possono ricoprire, e
 [anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ruoli_guard_natura_ammessa)
-lo controlla quando il ruolo nasce o cambia tipo (`E_RUOLO_NATURA_NON_AMMESSA`).
+lo controlla quando il ruolo nasce (`E_RUOLO_NATURA_NON_AMMESSA`, col ruolo e la natura nella frase).
 
 * Una riga della matrice vale se è attiva e valida alla data operativa.
 * Un ruolo **senza nessuna riga** nella matrice è aperto a ogni natura. Basta una riga, anche
@@ -460,18 +467,20 @@ momento e l'ordine di ciascuno, è nella sezione dei trigger di ogni scheda
 
 **Subito**, sulla riga che si scrive, si giudica ciò che la riga dice di sé:
 
-* sul soggetto: presenza e formato di codice fiscale e partita IVA, sesso, regime PA, blocco
-  dell'identificativo fiscale e del codice, cambio di natura;
-* sui dati societari: la natura li ammette, la forma giuridica è del paese e della natura, REA e
+* sul soggetto: prima il blocco dell'identificativo fiscale (codice fiscale, partita IVA, paese),
+  poi presenza e formato di codice fiscale e partita IVA, sesso, regime PA, blocco del codice,
+  cambio di natura;
+* sui dati societari: la natura li ammette (alla nascita della riga, per primo), la forma
+  giuridica c'è ed è del paese e della natura, REA e
   capitale come la forma li vuole, il canale di fatturazione elettronica;
-* sul ruolo: la natura ammette il ruolo, il soggetto non si cambia;
+* sul ruolo: la natura ammette il ruolo, il soggetto e il tipo non si cambiano;
 * sul titolo IVA: la natura ammette il tipo.
 
 **Al COMMIT** si giudica ciò che può arrivare dopo, nella stessa transazione:
 
 * la natura che pretende i dati societari li trova (`E_DATI_SOCIETARI_REQUIRED_MANCANTI`);
 * il soggetto ha almeno un contatto, e gli indirizzi obbligatori suoi e dei suoi ruoli;
-* dopo un cambio di natura, la forma giuridica è ancora ammessa;
+* dopo un cambio di natura o di paese, la forma giuridica è ancora ammessa e del paese giusto;
 * ruoli, dati societari e titoli IVA si appoggiano a un soggetto attivo.
 
 Ne segue l'**ordine** delle scritture: il soggetto si scrive per primo, perché le righe figlie
