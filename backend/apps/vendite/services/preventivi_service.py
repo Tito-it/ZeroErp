@@ -16,7 +16,6 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError, transaction
 
@@ -77,6 +76,7 @@ from apps.vendite.services._indirizzi_documento_helpers import (
     upsert_indirizzo_documento,
 )
 from apps.core.services.partitioned_note_service import contatori_documento
+from apps.core.services.utente_per_id import utente_per_id
 from apps.vendite.db.note_repositories import NOTE_REPO_PREVENTIVO
 from apps.vendite.db.preventivi_repository import TESTATA_PREVENTIVI, PreventiviRepository
 from apps.vendite.types import PreventivoDetailRow
@@ -213,7 +213,7 @@ def list_preventivi_rows(
     data_al: date | None = None,
     search: str | None = None,
     solo_ultima_revisione: bool = True,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     limit: int,
     offset: int,
     order_by: str = "data",
@@ -254,7 +254,7 @@ def list_preventivi(
     data_al: date | None = None,
     search: str | None = None,
     solo_ultima_revisione: bool = True,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     order_by: str = "data",
@@ -1573,12 +1573,8 @@ def _resolve_or_check_override_prezzo(
 def _resolve_emittente_sr_id_or_raise(
     auth_user_id: int | None, *, function_name: str,
 ) -> int:
-    user_model = get_user_model()
-    try:
-        # `pk=None` e' ammesso da Django (diventa `IS NULL`, nessuna riga ->
-        # DoesNotExist, gestito sotto): e' lo stub a non accettare None.
-        user = user_model.objects.get(pk=auth_user_id)  # type: ignore[misc]  # pk=None -> DoesNotExist
-    except user_model.DoesNotExist:
+    user = utente_per_id(auth_user_id)
+    if user is None:
         ErrorManager.raise_error(
             code=E_PREV_VALIDAZIONE,
             message="Utente non trovato.",

@@ -386,7 +386,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         validita_dal_max: str | None,
         search: str | None,
         solo_ultima_revisione: bool = True,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
     ) -> tuple[str, list[Any]]:
         # Filtri sulla vista canonica `vw_offerte_commerciali_lista` (alias `v`).
         # Tutti i campi consumati qui sono esposti dalla vista — nessun JOIN
@@ -456,7 +456,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         order_dir: str | None = None,
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
     ) -> list[dict[str, Any]]:
         # ⛔ Ordinamento dal BB `sql_order_clause` (2026-09-26). La copia a mano
         #    che c'era («tutto cio' che non e' ASC e' DESC») trasformava in DESC
@@ -512,7 +512,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         validita_dal_max: str | None = None,
         search: str | None = None,
         solo_ultima_revisione: bool = True,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
     ) -> int:
         where_clause, params = self._build_offerte_filters(
             billing_account_id=billing_account_id,

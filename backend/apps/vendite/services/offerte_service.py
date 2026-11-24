@@ -471,7 +471,7 @@ class OfferteService:
         offset: int = 0,
         order_by: str = "data_insert",
         order_dir: str = "desc",
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
     ) -> tuple[list[dict[str, Any]], int]:
         self._v.validate_order_by(order_by, allowed=_ORDER_BY_OFFERTE, order_dir=order_dir)
         # ⭐ La soglia del termine (vuoto o sotto 3 caratteri → non filtra) la

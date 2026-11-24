@@ -31,7 +31,7 @@
 #  19-ter) validazione_elenco_righe — vuoto/tipi/tetto/dedup
 #  20) archivia_stampa_passa_auth_user_id — filtro applicativo oltre la RLS
 #  20-bis) perimetro_emittente_risolto_una_volta_sola — niente N+1 nel giro
-#  20-ter) superuser_non_risolve_il_perimetro — None = vede tutto
+#  20-ter) admin_globale_passa_il_perimetro_none_del_db — il None del DB = vede tutto
 #  21) archivia_stampa_fuori_perimetro_non_trovata — no-leak
 #  22) archiviazione_senza_code_manage_403 — il gate e' nel SERVICE, non in
 #      `post_permission` (che salterebbe il controllo di area)
@@ -699,18 +699,22 @@ class ArchiviazioneCodeTests(SimpleTestCase):
         self.assertEqual(n_righe, 5)
         self.assertEqual(self._scope_fn.call_count, 1)
 
-    # 20-ter. Superuser: nessuna restrizione, e il perimetro NON si interroga
-    #     nemmeno — `None` significa «vede tutto», non «lista vuota».
-    def test_superuser_non_risolve_il_perimetro(self) -> None:
+    # 20-ter. Admin globale: il perimetro lo risolve il DB e risponde `None`
+    #     («nessuna restrizione»), che passa com'e' alle righe — non diventa
+    #     una lista vuota. ⛔ Fino al 2026-11-24 il test era «superuser:
+    #     `auth_user_id=None`, il perimetro non si interroga»: quel `None` ora
+    #     solleva (test_scope_senza_utente), e il «vede tutto» lo decide il DB.
+    def test_admin_globale_passa_il_perimetro_none_del_db(self) -> None:
         patches, _resolver, _repo, _maint = _patch_all(
             emittenti=None, code_manage=True,
         )
+        self._scope_fn.return_value = None
         try:
             with patch(
                 "apps.vendite.db.pipeline_repository.VenditePipelineRepository", autospec=True) as pipe_cls:
                 pipe_cls.return_value.imposta_archiviato_stampa.return_value = True
                 svc.imposta_archiviazione_stampa(
-                    MagicMock(), [1], archiviato=True, auth_user_id=None,
+                    MagicMock(), [1], archiviato=True, auth_user_id=42,
                 )
                 kwargs = (
                     pipe_cls.return_value.imposta_archiviato_stampa.call_args.kwargs
@@ -719,7 +723,7 @@ class ArchiviazioneCodeTests(SimpleTestCase):
             for p in patches:
                 p.stop()
         self.assertIsNone(kwargs["emittenti_sr_ids"])
-        self.assertEqual(self._scope_fn.call_count, 0)
+        self.assertEqual(self._scope_fn.call_count, 1)
 
     # 21. Fuori perimetro → 0 righe → riga «non trovata», indistinguibile da
     #     inesistente: un esito diverso confermerebbe l'esistenza di una riga

@@ -1,4 +1,3 @@
-from django.contrib.auth import get_user_model
 from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -14,6 +13,7 @@ from apps.core.api.throttling import SearchBurstRateThrottle
 from apps.core.services.lookup_service import fn_list_lookup_codici
 from apps.core.services.permissions_resolver import LIVELLO_MAP, PermissionResolver
 from apps.core.services.service_errors import ServiceError
+from apps.core.services.utente_per_id import utente_per_id
 
 # Endpoint diagnostici core: utili per verificare contratto error envelope API.
 
@@ -140,16 +140,15 @@ class ApiLookupCodici(DomainAPIView):
 #        2026-10-08 le due view lo scrivevano ciascuna per conto suo con
 #        `E_CORE_VALIDATION` (DATO_ERRATO), cioe' 400.
 def _utente_target(user_id: int):
-    User = get_user_model()
-    try:
-        return User.objects.get(pk=user_id)
-    except User.DoesNotExist:
+    utente = utente_per_id(user_id)
+    if utente is None:
         raise ServiceError(
             code="E_AMM_UTENTE_NOT_FOUND",
             message="Utente non trovato.",
             detail=f"Nessun utente con id={user_id}.",
             context={"user_id": user_id},
-        ) from None
+        )
+    return utente
 
 
 class ApiPermessiEffettivi(DomainAPIView):

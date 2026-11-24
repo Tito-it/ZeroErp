@@ -151,7 +151,7 @@ class BuildContextDdtTests(SimpleTestCase):
             {"id": 2, "articolo_descrizione": "Art B", "qta_operativa": "1"},
         ]
 
-        ctx = DdtDocumentContextBuilder(repo=repo).build_context(54)
+        ctx = DdtDocumentContextBuilder(repo=repo).build_context(54, auth_user_id=1)
 
         self.assertEqual(len(ctx["righe"]), 2)
         self.assertEqual(ctx["righe"][0]["articolo_descrizione"], "Art A")
@@ -171,7 +171,7 @@ class BuildContextDdtTests(SimpleTestCase):
         repo.list_righe.return_value = []
         repo.list_indirizzi.return_value = []
 
-        ctx = DdtDocumentContextBuilder(repo=repo).build_context(54)
+        ctx = DdtDocumentContextBuilder(repo=repo).build_context(54, auth_user_id=1)
 
         self.assertIsNone(ctx["ddt"]["numero"])
         self.assertEqual(ctx["ddt"]["stato"]["codice_interno"], "DRAFT")
@@ -197,7 +197,7 @@ class BuildContextDdtTests(SimpleTestCase):
             },
         ]
 
-        ctx = DdtDocumentContextBuilder(repo=repo).build_context(54)
+        ctx = DdtDocumentContextBuilder(repo=repo).build_context(54, auth_user_id=1)
 
         consegna = ctx["indirizzi"]["consegna"]
         self.assertIsNotNone(consegna)
@@ -215,7 +215,7 @@ class BuildContextDdtTests(SimpleTestCase):
         repo.list_righe.return_value = []
         repo.list_indirizzi.return_value = []
 
-        ctx = DdtDocumentContextBuilder(repo=repo).build_context(54)
+        ctx = DdtDocumentContextBuilder(repo=repo).build_context(54, auth_user_id=1)
 
         self.assertIsNone(ctx["indirizzi"]["consegna"])
 
@@ -230,7 +230,7 @@ class BuildContextDdtGuardTests(SimpleTestCase):
         for bad in (0, -1, True, "stringa"):
             with self.subTest(value=bad):
                 with self.assertRaises(ServiceError) as ctx:
-                    builder.build_context(bad)  # type: ignore[arg-type]
+                    builder.build_context(bad, auth_user_id=1)  # type: ignore[arg-type]
                 self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.get_ddt.assert_not_called()
 
@@ -240,7 +240,7 @@ class BuildContextDdtGuardTests(SimpleTestCase):
         repo.get_ddt.return_value = None
         builder = DdtDocumentContextBuilder(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            builder.build_context(999)
+            builder.build_context(999, auth_user_id=1)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
         repo.list_righe.assert_not_called()
 

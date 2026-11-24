@@ -286,7 +286,7 @@ def fn_list_lotti(
     area_geografica_id: int | None = None,
     tipo_doc_fiscale_id: int | None = None,
     emittente_soggetto_ruolo_id: int | None = None,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     order_by: str | None = None,
     order_dir: str | None = None,
     limit: int = DEFAULT_LIMIT,
@@ -380,7 +380,7 @@ def fn_export_lotti(
     area_geografica_id: int | None = None,
     tipo_doc_fiscale_id: int | None = None,
     emittente_soggetto_ruolo_id: int | None = None,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     order_by: str | None = None,
     order_dir: str | None = None,
     max_rows: int,
@@ -428,7 +428,7 @@ _DASH_ANNO_MAX = 2100
 #        competenza (YYYY-MM-01, chiave stabile per il componente FE) e n_lotti.
 #        Scope emittente applicato in repo (RLS + whitelist), come la lista.
 def fn_lotti_mensile(
-    *, anno: int, auth_user_id: int | None = None, includi_annullati: bool = False,
+    *, anno: int, auth_user_id: int | None, includi_annullati: bool = False,
 ) -> dict[str, Any]:
     ErrorManager.require(
         isinstance(anno, int) and _DASH_ANNO_MIN <= anno <= _DASH_ANNO_MAX,
@@ -479,7 +479,7 @@ def fn_lotti_mensile(
 #        Il FE degrada a sola consultazione (nessuna azione), ma l'operatore
 #        vede comunque il lotto — una rottura delle capability non deve
 #        impedire la lettura dell'entita'.
-def fn_get_lotto(*, lotto_id: int, auth_user_id: int | None = None) -> dict[str, Any]:
+def fn_get_lotto(*, lotto_id: int, auth_user_id: int | None) -> dict[str, Any]:
     ErrorManager.require(
         bool(lotto_id and lotto_id > 0),
         code="E_LOTTO_PARAMETRO_NON_COERENTE",
@@ -510,7 +510,7 @@ def fn_list_lotto_fatture(
     *,
     lotto_id: int,
     stato_esecuzione: str | None = None,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     order_by: str | None = None,
     order_dir: str | None = None,
     limit: int = DEFAULT_LIMIT,
@@ -579,7 +579,7 @@ def fn_list_lotto_fatture(
 def fn_list_lotto_gruppi(
     *,
     lotto_id: int,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     stato_esecuzione: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
@@ -2022,7 +2022,7 @@ def _testata_fattura_o_404(
 def get_fattura_dettaglio(
     *,
     fattura_id: int,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
 ) -> dict[str, Any]:
     repository = VenditeRepository()
 
@@ -2144,7 +2144,7 @@ def _envelope_giornale(
 def list_fattura_righe_pagina(
     fattura_id: int,
     *,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     **opzioni: Any,
 ) -> tuple[list[dict[str, Any]], int]:
     return pagina_dopo_testata(
@@ -2187,7 +2187,7 @@ def get_fattura_giornale(
     order_by: str | None = None,
     order_dir: str | None = None,
     includi_ritirate: bool = False,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
 ) -> dict[str, Any]:
     _valida_lettura_giornale(
         limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
@@ -2267,7 +2267,7 @@ def get_lotto_giornale(
     order_dir: str | None = None,
     includi_info: bool = False,
     includi_ritirate: bool = False,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
 ) -> dict[str, Any]:
     ErrorManager.require(
         bool(lotto_id and lotto_id > 0),
@@ -2433,7 +2433,7 @@ def get_giornale_trasversale(
 def fn_fondi_fattura_da_decidere(
     *,
     motivo: str | None = None,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     order_by: str | None = None,
     order_dir: str | None = None,
     # ⛔ `limit`/`offset` come ogni lista (decisione Tid 2026-10-20,
@@ -2660,7 +2660,7 @@ def list_fatture_rows(
     data_da: date | None = None,
     data_al: date | None = None,
     search: str | None = None,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     limit: int,
     offset: int,
     order_by: str = "data",

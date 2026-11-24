@@ -30,6 +30,7 @@ from django.db import connection
 
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
 from apps.vendite.db.vendite_repository import STATO_DEFINITIVA, VenditeRepository
+from apps.core.db._helpers import utente_di_sessione
 
 
 class LottoAzioniPermesseDbTests(unittest.TestCase):
@@ -56,7 +57,7 @@ class LottoAzioniPermesseDbTests(unittest.TestCase):
             self.emesso_id = cur.fetchone()[0]
 
     def _azioni(self, lotto_id: int) -> list[str]:
-        riga = self.repo.get_lotto(lotto_id=lotto_id)
+        riga = self.repo.get_lotto(lotto_id=lotto_id, auth_user_id=utente_di_sessione(function_name=__name__))
         # Il caso si e' formato davvero: una riga assente (RLS, contesto) non
         # deve passare per «nessuna azione».
         self.assertIsNotNone(riga)
@@ -80,6 +81,7 @@ class LottoAzioniPermesseDbTests(unittest.TestCase):
     def test_lista_porta_lo_stesso(self) -> None:
         self._concedi("numera_fatture_lotti")
         righe, _ = self.repo.list_lotti(
+            auth_user_id=utente_di_sessione(function_name=__name__),
             competenza_mese=None, utility_id=None, stato_lotto=None,
             area_geografica_id=None, tipo_doc_fiscale_id=None,
             emittente_soggetto_ruolo_id=None, limit=500, offset=0,
@@ -102,6 +104,6 @@ class LottoAzioniPermesseDbTests(unittest.TestCase):
             (definitivo_id, True), (self.emesso_id, False), (self.draft_id, False),
         ):
             with self.subTest(lotto_id=lotto_id):
-                riga = self.repo.get_lotto(lotto_id=lotto_id)
+                riga = self.repo.get_lotto(lotto_id=lotto_id, auth_user_id=utente_di_sessione(function_name=__name__))
                 assert riga is not None
                 self.assertIs(riga["ristampabile"], atteso)

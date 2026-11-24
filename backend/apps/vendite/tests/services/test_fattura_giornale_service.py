@@ -50,7 +50,7 @@ class FatturaGiornaleServiceTests(TestCase):
     # Scopo: un id non positivo e' un chiamante rotto, non un dato dell'utente.
     def test_id_non_valido(self):
         with self.assertRaises(ServiceError) as ctx:
-            get_fattura_giornale(fattura_id=0)
+            get_fattura_giornale(auth_user_id=7, fattura_id=0)
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: fattura inesistente -> 404 di dominio.
@@ -58,7 +58,7 @@ class FatturaGiornaleServiceTests(TestCase):
     def test_fattura_non_trovata_404(self, repo_cls):
         repo_cls.return_value.get_fattura_testata.return_value = None
         with self.assertRaises(ServiceError) as ctx:
-            get_fattura_giornale(fattura_id=7)
+            get_fattura_giornale(auth_user_id=7, fattura_id=7)
         self.assertEqual(ctx.exception.code, "E_FATTURA_NON_TROVATA")
 
     # Scopo: fuori scope e inesistente devono dare la STESSA risposta — un
@@ -70,7 +70,7 @@ class FatturaGiornaleServiceTests(TestCase):
         with self.assertRaises(ServiceError) as fuori:
             get_fattura_giornale(fattura_id=7, auth_user_id=42)
         with self.assertRaises(ServiceError) as inesistente:
-            get_fattura_giornale(fattura_id=7, auth_user_id=None)
+            get_fattura_giornale(fattura_id=7, auth_user_id=43)
         self.assertEqual(fuori.exception.code, inesistente.exception.code)
         self.assertEqual(fuori.exception.message, inesistente.exception.message)
 
@@ -85,7 +85,7 @@ class FatturaGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = None
         with self.assertRaises(ServiceError):
-            get_fattura_giornale(fattura_id=7)
+            get_fattura_giornale(auth_user_id=7, fattura_id=7)
         repo.list_giornale_entita.assert_not_called()
 
     # Scopo: lo scope applicativo arriva alla testata — si SOMMA alla RLS, non
@@ -106,7 +106,7 @@ class FatturaGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
         repo.list_giornale_entita.return_value = (_RIGHE, 7, 0, 0)
-        data = get_fattura_giornale(fattura_id=7, limit=3, offset=3)
+        data = get_fattura_giornale(auth_user_id=7, fattura_id=7, limit=3, offset=3)
         self.assertEqual(data["fattura_id"], 7)
         self.assertEqual(data["count"], 7)
         self.assertEqual(data["page"], 2)
@@ -123,7 +123,7 @@ class FatturaGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
         repo.list_giornale_entita.return_value = ([], 0, 0, 0)
-        data = get_fattura_giornale(fattura_id=7)
+        data = get_fattura_giornale(auth_user_id=7, fattura_id=7)
         self.assertEqual(data["count"], 0)
         self.assertEqual(data["results"], [])
 
@@ -135,7 +135,7 @@ class FatturaGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
         repo.list_giornale_entita.return_value = ([], 0, 0, 0)
-        get_fattura_giornale(fattura_id=7)
+        get_fattura_giornale(auth_user_id=7, fattura_id=7)
         chiamata = repo.list_giornale_entita.call_args.kwargs
         self.assertEqual(chiamata["entity_type"], "FATTURA")
         self.assertEqual(chiamata["entity_id"], 7)
@@ -148,7 +148,7 @@ class FatturaGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
         repo.list_giornale_entita.return_value = (_RIGHE, 2, 1, 0)
-        data = get_fattura_giornale(fattura_id=7)
+        data = get_fattura_giornale(auth_user_id=7, fattura_id=7)
         self.assertTrue(repo.list_giornale_entita.call_args.kwargs["escludi_ritirate"])
         # `count` e' cio' che si VEDE, non cio' che esiste.
         self.assertEqual(data["count"], 2)
@@ -161,7 +161,7 @@ class FatturaGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
         repo.list_giornale_entita.return_value = (_RIGHE, 2, 1, 0)
-        data = get_fattura_giornale(fattura_id=7, includi_ritirate=True)
+        data = get_fattura_giornale(auth_user_id=7, fattura_id=7, includi_ritirate=True)
         self.assertFalse(repo.list_giornale_entita.call_args.kwargs["escludi_ritirate"])
         self.assertEqual(data["count"], 3)
         self.assertEqual(data["ritirate_count"], 0)
@@ -179,7 +179,7 @@ class FatturaGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
         repo.list_giornale_entita.return_value = (_RIGHE, 2, 1, 0)
-        get_fattura_giornale(fattura_id=7)
+        get_fattura_giornale(auth_user_id=7, fattura_id=7)
         chiamata = repo.list_giornale_entita.call_args.kwargs
         self.assertIsNone(chiamata["sort_by"])
         self.assertIsNone(chiamata["sort_dir"])
@@ -191,7 +191,7 @@ class FatturaGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
         repo.list_giornale_entita.return_value = (_RIGHE, 2, 1, 0)
-        get_fattura_giornale(fattura_id=7, order_by="gravita", order_dir="asc")
+        get_fattura_giornale(auth_user_id=7, fattura_id=7, order_by="gravita", order_dir="asc")
         chiamata = repo.list_giornale_entita.call_args.kwargs
         self.assertEqual(chiamata["sort_by"], "gravita")
         self.assertEqual(chiamata["sort_dir"], "asc")
@@ -204,6 +204,6 @@ class FatturaGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_fattura_testata.return_value = _TESTATA
         with self.assertRaises(ServiceError) as ctx:
-            get_fattura_giornale(fattura_id=7, order_by="cosa")
+            get_fattura_giornale(auth_user_id=7, fattura_id=7, order_by="cosa")
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         repo.get_fattura_testata.assert_not_called()

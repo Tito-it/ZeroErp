@@ -1649,6 +1649,23 @@ l'utente a un gate (prezzi L1/L2/L3), all'audit o a una pratica usa
 lo scope valeva `None` per il superuser Django, e un gate che lo riceveva lo
 leggeva come «chiamata senza utente».
 
+⛔ **Un perimetro senza utente si rifiuta** (dal 2026-11-24). `auth_user_id=None`
+che arriva al filtro di scope (`fetch_emittenti_scope_ids`, e quindi
+`add_emittente_scope_condition`) solleva `E_SCOPE_SENZA_UTENTE`: prima voleva dire
+«nessuna restrizione», e un chiamante che dimenticava l'argomento leggeva tutti gli
+emittenti senza errore (il tool AI di ricerca contratti, corretto lo stesso giorno). I
+metodi di lista con perimetro **non hanno default** per `auth_user_id`. Il `None` che
+il DB restituisce dalle funzioni di scope (admin globale) è un'altra cosa e resta
+«nessuna restrizione». Eccezione dichiarata (brief-db-porte-aperte-dalla-sola-guc §4.7):
+i verbi del lotto (`numera_lotto`, `ristampa_lotto`, `finestra_numerazione`) tengono il
+default, e con `None` sollevano da `get_lotto`. ⛔ `VenditeRepository.get_fattura_testata`
+non è più un'eccezione (dal 2026-11-24, D-K6 a): il suo ramo che con `None` saltava il
+filtro serviva al motore documentale del worker della coda stampa, che ora passa il suo
+utente tecnico.
+`PermissionResolver.get_emittenti_sr_ids` / `get_emittenti_pk_ids` (sotto) ricevono un
+utente e delegano a `fetch_emittenti_scope_ids` con `user.id`, tenendo la cache della
+richiesta (dal 2026-11-24, D-K5 a): un utente assente o anonimo è lo stesso rifiuto.
+
 Usare `get_emittenti_sr_ids` (filtra su `*_soggetto_ruolo_id`, convenzione SR)
 o `get_emittenti_pk_ids` (filtra su `emittente_fiscale_id` PK) secondo la colonna.
 ⛔ Sono i **soli due nomi**: l'alias `get_emittenti_ids` — dichiarato deprecato

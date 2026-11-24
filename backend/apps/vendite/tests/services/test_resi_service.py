@@ -465,7 +465,7 @@ class ResiCodaAccreditareTests(SimpleTestCase):
         repo.list_da_accreditare.return_value = ([], 0)
         for et in ("DOVUTA", "FACOLTATIVA"):
             with self.subTest(etichetta=et):
-                resi_service.list_da_accreditare(etichetta=et, limit=25, offset=0)
+                resi_service.list_da_accreditare(auth_user_id=7, etichetta=et, limit=25, offset=0)
                 self.assertEqual(
                     repo.list_da_accreditare.call_args.kwargs["etichetta"], et
                 )
@@ -475,7 +475,7 @@ class ResiCodaAccreditareTests(SimpleTestCase):
     @patch(_REPO, autospec=True)
     def test_etichetta_invalida_400(self, repo_cls) -> None:
         with self.assertRaises(ServiceError) as ctx:
-            resi_service.list_da_accreditare(
+            resi_service.list_da_accreditare(auth_user_id=7, 
                 etichetta="OBBLIGATORIA", limit=25, offset=0
             )
         self.assertEqual(ctx.exception.code, "E_RESO_VALIDAZIONE")
@@ -486,7 +486,7 @@ class ResiCodaAccreditareTests(SimpleTestCase):
     def test_etichetta_none_default(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.list_da_accreditare.return_value = ([], 0)
-        resi_service.list_da_accreditare(limit=25, offset=0)
+        resi_service.list_da_accreditare(auth_user_id=7, limit=25, offset=0)
         self.assertIsNone(repo.list_da_accreditare.call_args.kwargs["etichetta"])
 
 
@@ -499,7 +499,7 @@ class ResiCodaFiltroDocumentoTests(SimpleTestCase):
     def test_filtro_ddt_passthrough(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.list_da_accreditare.return_value = ([], 0)
-        resi_service.list_da_accreditare(ddt_id=140, limit=25, offset=0)
+        resi_service.list_da_accreditare(auth_user_id=7, ddt_id=140, limit=25, offset=0)
         kwargs = repo.list_da_accreditare.call_args.kwargs
         self.assertEqual(kwargs["ddt_id"], 140)
         self.assertIsNone(kwargs["ordine_id"])
@@ -510,7 +510,7 @@ class ResiCodaFiltroDocumentoTests(SimpleTestCase):
     def test_filtro_ordine_passthrough(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.list_da_accreditare.return_value = ([], 0)
-        resi_service.list_da_accreditare(ordine_id=240, limit=25, offset=0)
+        resi_service.list_da_accreditare(auth_user_id=7, ordine_id=240, limit=25, offset=0)
         kwargs = repo.list_da_accreditare.call_args.kwargs
         self.assertEqual(kwargs["ordine_id"], 240)
         self.assertIsNone(kwargs["ddt_id"])
@@ -522,10 +522,10 @@ class ResiCodaFiltroDocumentoTests(SimpleTestCase):
     @patch(_REPO, autospec=True)
     def test_filtro_documento_mutuamente_esclusivo(self, repo_cls) -> None:
         for chiamata in (
-            lambda: resi_service.list_da_accreditare(
+            lambda: resi_service.list_da_accreditare(auth_user_id=7, 
                 ddt_id=1, ordine_id=2, limit=25, offset=0
             ),
-            lambda: resi_service.list_da_riconsegnare(
+            lambda: resi_service.list_da_riconsegnare(auth_user_id=7, 
                 ddt_id=1, ordine_id=2, limit=25, offset=0
             ),
         ):
@@ -546,7 +546,7 @@ class ResiCodaFiltroDocumentoTests(SimpleTestCase):
         for kwargs in ({"ddt_id": 0}, {"ddt_id": -1}, {"ordine_id": 0}):
             with self.subTest(**kwargs):
                 with self.assertRaises(ServiceError) as ctx:
-                    resi_service.list_da_accreditare(limit=25, offset=0, **kwargs)
+                    resi_service.list_da_accreditare(auth_user_id=7, limit=25, offset=0, **kwargs)
                 self.assertEqual(ctx.exception.code, "E_RESO_VALIDAZIONE")
         repo_cls.return_value.list_da_accreditare.assert_not_called()
 
@@ -557,8 +557,8 @@ class ResiCodaFiltroDocumentoTests(SimpleTestCase):
         repo = repo_cls.return_value
         repo.list_da_accreditare.return_value = ([], 0)
         repo.list_da_riconsegnare.return_value = ([], 0)
-        resi_service.list_da_accreditare(limit=25, offset=0)
-        resi_service.list_da_riconsegnare(limit=25, offset=0)
+        resi_service.list_da_accreditare(auth_user_id=7, limit=25, offset=0)
+        resi_service.list_da_riconsegnare(auth_user_id=7, limit=25, offset=0)
         for chiamata in (repo.list_da_accreditare, repo.list_da_riconsegnare):
             self.assertIsNone(chiamata.call_args.kwargs["ddt_id"])
             self.assertIsNone(chiamata.call_args.kwargs["ordine_id"])
@@ -570,7 +570,7 @@ class ResiCodaFiltroDocumentoTests(SimpleTestCase):
     def test_filtro_documento_su_riconsegne(self, repo_cls) -> None:
         repo = repo_cls.return_value
         repo.list_da_riconsegnare.return_value = ([], 0)
-        resi_service.list_da_riconsegnare(ddt_id=15848, limit=25, offset=0)
+        resi_service.list_da_riconsegnare(auth_user_id=7, ddt_id=15848, limit=25, offset=0)
         self.assertEqual(
             repo.list_da_riconsegnare.call_args.kwargs["ddt_id"], 15848
         )

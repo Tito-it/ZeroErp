@@ -80,7 +80,11 @@ _CASI = (
           pagina=resi_service.list_righe_pagina, codice="E_RESO_NOT_FOUND"),
     _Caso("fattura", repo_testata="apps.vendite.services.vendite_service.VenditeRepository",
           getter="get_fattura_testata", repo_righe="apps.vendite.services.vendite_service.FattureRepository",
-          pagina=vendite_service.list_fattura_righe_pagina, codice="E_FATTURA_NON_TROVATA"),
+          # La fattura legge la testata col perimetro dell'operatore
+          # (`con_scope=True` della view): l'utente non ha default.
+          pagina=lambda doc_id, **kw: vendite_service.list_fattura_righe_pagina(
+              doc_id, auth_user_id=7, **kw),
+          codice="E_FATTURA_NON_TROVATA"),
     _Caso("contratto", repo_testata="apps.vendite.services.contratti_service.ContrattiRepository",
           getter="get_stato_codice", repo_righe="apps.vendite.services.contratti_service.ContrattoRigheListaRepository",
           pagina=lambda doc_id, **kw: contratti_service.ContrattiService().list_righe_pagina(doc_id, **kw),

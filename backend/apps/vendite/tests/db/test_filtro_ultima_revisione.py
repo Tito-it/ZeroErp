@@ -39,6 +39,7 @@ from unittest.mock import patch
 from apps.vendite.db.offerte_repository import OfferteRepository
 from apps.vendite.db.preventivi_repository import PreventiviRepository
 from apps.vendite.tests._helpers.mock_cursor import mock_cursor as _mock_cursor
+from apps.core.tests._helpers.perimetro_admin_globale_di_prova import perimetro_admin_globale_di_prova
 
 
 def _sql_lista_preventivi(*, solo_ultima_revisione: bool) -> str:
@@ -50,12 +51,16 @@ def _sql_lista_preventivi(*, solo_ultima_revisione: bool) -> str:
     """
     with patch("apps.vendite.db.preventivi_repository.connection.cursor") as fab:
         fab.return_value = _mock_cursor(fetchone=(0,), fetchall=[], description=[])
-        PreventiviRepository().list_preventivi(
+        PreventiviRepository().list_preventivi(auth_user_id=7,
             solo_ultima_revisione=solo_ultima_revisione, limit=10, offset=0,
         )
         return fab.return_value.execute.call_args[0][0]
 
 
+# ⭐ Legge la SQL della lista, non prova il perimetro: il risolutore risponde
+#    «nessuna restrizione» (admin globale). Dal 2026-11-24 `auth_user_id=None`
+#    solleva, quindi il test passa un utente e dichiara il perimetro qui.
+@perimetro_admin_globale_di_prova()
 class FiltroUltimaRevisionePreventiviTests(unittest.TestCase):
 
     # Scopo: 🔴 La lista filtra sulla POSIZIONE nella catena delle revisioni.
@@ -81,7 +86,7 @@ class FiltroUltimaRevisioneOfferteTests(unittest.TestCase):
     Due domande in un flag solo, scritte nero su bianco."""
 
     def _where(self, *, solo_ultima_revisione: bool) -> str:
-        where, _params = OfferteRepository()._build_offerte_filters(
+        where, _params = OfferteRepository()._build_offerte_filters(auth_user_id=7,
             billing_account_id=None, stato_codice_interno=None, utility_id=None,
             listino_id=None, validita_dal_min=None, validita_dal_max=None,
             search=None, solo_ultima_revisione=solo_ultima_revisione,

@@ -262,7 +262,6 @@ class PipelineStepExecutor:
             "numera_fatture_default": self._handle_numera_fatture_task,
             "stampa_documenti_lotto_default": self._handle_stampa_documenti_lotto_task,
             "close_lotto_default": self._handle_close_lotto_task,
-            "reset_lotto_draft_default": self._handle_reset_lotto_draft_task,
             "pull_attivita_da_commessa_default": self._handle_pull_attivita_da_commessa_task,
             "snapshot_indirizzi_lotto_default": self._handle_snapshot_indirizzi_lotto_task,
             "genera_scadenze_lotto_default": self._handle_genera_scadenze_lotto_task,
@@ -624,6 +623,10 @@ class PipelineStepExecutor:
                         # senza `correlation_id` — cioe' l'unico che la
                         # diagnostica non ritroverebbe.
                         "correlation_id": correlation_id,
+                        # Il verso del tentativo, come lo ha scritto la `start`
+                        # qui sopra: senza, la riscrittura del runner darebbe
+                        # per «in avanti» anche un task di rollback fallito.
+                        "rollback": rollback,
                         "error_code": (
                             exc.code
                             if isinstance(exc, ServiceError)
@@ -1187,32 +1190,6 @@ class PipelineStepExecutor:
             stato_doc_fiscale_id=stato_doc_fiscale_id,
             dry_run=dry_run,
             action=_action,
-        )
-
-    # Scopo: Task di ROLLBACK `reset_lotto_draft`: annulla il lotto in DRAFT.
-    #        ⚠️ Il nome dell'handler segue il `task_code` (immutabile, vive nel
-    #        seed CSV dei `rollback`), non la funzione SQL — che dopo D-L si
-    #        chiama `fn_annulla_lotto_da_draft` perche' e' un annullamento e
-    #        non un ritorno in bozza.
-    def _handle_reset_lotto_draft_task(
-        self,
-        *,
-        task: str,
-        fn_name: str | None,
-        lotto_id: int,
-        stato_doc_fiscale_id: int,
-        context: LottoContext,
-        params: dict[str, Any],
-        dry_run: bool,
-    ) -> None:
-        # Reset tecnico completo del lotto massivo in bozza.
-        self._run_validated_task(
-            task=task,
-            fn_name=fn_name,
-            lotto_id=lotto_id,
-            stato_doc_fiscale_id=stato_doc_fiscale_id,
-            dry_run=dry_run,
-            action=lambda: self.repository.annulla_lotto_da_draft(lotto_id),
         )
 
     # Scopo: Pull commesse → attivita fatturabili (step 0 pipeline fatturazione).

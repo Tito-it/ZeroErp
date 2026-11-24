@@ -14,12 +14,14 @@ senza il filtro applicativo di scope emittente — il «B1» dell'analisi RLS
 dalla sola RLS e mai in Python. Preventivi e contratti, stesso dominio e
 stessa colonna, lo avevano: un'asimmetria nel modello, non un caso.
 ⚠️ Un filtro di scope si prova nei DUE versi: che con un utente ristretto la
-clausola ci sia E porti la whitelist risolta, e che con `None` (nessuna
-restrizione) non ci sia. E si prova che lo leggano ENTRAMBE le porte — la
+clausola ci sia E porti la whitelist risolta, e che con il perimetro `None`
+deciso dal DB (admin globale) non ci sia. ⛔ Dal 2026-11-24 `auth_user_id=None`
+non e' piu' «nessuna restrizione»: solleva `E_SCOPE_SENZA_UTENTE`. E si prova che lo leggano ENTRAMBE le porte — la
 lista e l'export — perche' l'export e' quella piu' larga.
 Indice test:
  1) test_where_con_utente_ristretto_filtra_sulla_pk_emittente
- 2) test_where_senza_utente_non_filtra
+ 2) test_where_senza_utente_solleva
+ 2b) test_where_admin_globale_non_filtra
  3) test_where_con_whitelist_vuota_e_fail_closed
  4) test_service_passa_lo_scope_a_righe_e_conteggio
  5) test_view_lista_passa_lo_scope_dell_utente
@@ -31,6 +33,7 @@ from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
 
+from apps.core.services.service_errors import ServiceError
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.db.offerte_repository import OfferteRepository
@@ -61,18 +64,28 @@ class OfferteScopeRepositoryTests(unittest.TestCase):
         self.assertIn("v.emittente_fiscale_id = ANY(%s)", where)
         self.assertIn([3, 5], params)
 
-    # Scopo: `None` = nessuna restrizione (superuser a livello API): nessuna
-    #        clausola e nessun accesso al risolutore.
-    def test_where_senza_utente_non_filtra(self):
-        with patch(_FETCH_SCOPE) as fetch:
-            where, params = OfferteRepository()._build_offerte_filters(
-                billing_account_id=None, stato_codice_interno=None, utility_id=None,
-                listino_id=None, validita_dal_min=None, validita_dal_max=None,
-                search=None, solo_ultima_revisione=False, auth_user_id=None,
-            )
+    # Scopo: ⛔ `auth_user_id=None` SOLLEVA (2026-11-24): fino a quel giorno
+    #        era «nessuna restrizione», la risposta del superuser Django
+    #        ritirato con D-J, e un chiamante che dimenticava l'argomento
+    #        leggeva tutti gli emittenti. Il guard sta nel BB, quindi qui NON
+    #        si patcha il risolutore: il rifiuto arriva prima della query.
+    def test_where_senza_utente_solleva(self):
+        with patch("django.db.connection.cursor") as cursor:
+            with self.assertRaises(ServiceError) as ctx:
+                OfferteRepository()._build_offerte_filters(
+                    billing_account_id=None, stato_codice_interno=None, utility_id=None,
+                    listino_id=None, validita_dal_min=None, validita_dal_max=None,
+                    search=None, solo_ultima_revisione=False, auth_user_id=None,
+                )
+        self.assertEqual(ctx.exception.code, "E_SCOPE_SENZA_UTENTE")
+        cursor.assert_not_called()
+
+    # Scopo: il perimetro `None` che decide il DB (admin globale) resta
+    #        «nessuna restrizione»: nessuna clausola.
+    def test_where_admin_globale_non_filtra(self):
+        where, params = _where(auth_user_id=7, scope_ids=None)
         self.assertNotIn("emittente_fiscale_id", where)
         self.assertEqual(params, [])
-        fetch.assert_not_called()
 
     # Scopo: ⛔ whitelist vuota = operatore senza emittenti: la clausola resta,
     #        con `ANY('{}')` che non matcha nulla (fail-closed, non fail-open).

@@ -129,7 +129,7 @@ class BuildContextContrattoTests(SimpleTestCase):
         ]
         repo.get_utility.return_value = None
 
-        ctx = ContrattoDocumentContextBuilder(repo=repo).build_context(7)
+        ctx = ContrattoDocumentContextBuilder(repo=repo).build_context(7, auth_user_id=1)
 
         self.assertEqual(ctx["contratto"]["pricing"]["modalita"], "C")
         self.assertEqual(ctx["righe"], ctx["righe_contratto"])
@@ -149,7 +149,7 @@ class BuildContextContrattoGuardTests(SimpleTestCase):
         for bad in (0, -1, True, "stringa"):
             with self.subTest(value=bad):
                 with self.assertRaises(ServiceError) as ctx:
-                    builder.build_context(bad)  # type: ignore[arg-type]
+                    builder.build_context(bad, auth_user_id=1)  # type: ignore[arg-type]
                 self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.get_contratto.assert_not_called()
 
@@ -159,7 +159,7 @@ class BuildContextContrattoGuardTests(SimpleTestCase):
         repo.get_contratto.return_value = None
         builder = ContrattoDocumentContextBuilder(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
-            builder.build_context(999)
+            builder.build_context(999, auth_user_id=1)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
         repo.list_righe.assert_not_called()
         repo.get_utility.assert_not_called()

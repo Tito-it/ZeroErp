@@ -45,16 +45,16 @@ class FiltriVocabolarioCablaggioTests(TestCase):
 
         comuni = {"limit": 10, "offset": 0}
         casi = (
-            (ddt_service, lambda: ddt_service.list_ddt_rows(stato_codice="X", **comuni), "config.stati_doc_ddt"),
-            (resi_service, lambda: resi_service.list_resi_rows(stato_codice="X", **comuni), "config.stati_doc_reso"),
-            (preventivi_service, lambda: preventivi_service.list_preventivi_rows(stato_codice="X", **comuni),
+            (ddt_service, lambda: ddt_service.list_ddt_rows(auth_user_id=7, stato_codice="X", **comuni), "config.stati_doc_ddt"),
+            (resi_service, lambda: resi_service.list_resi_rows(auth_user_id=7, stato_codice="X", **comuni), "config.stati_doc_reso"),
+            (preventivi_service, lambda: preventivi_service.list_preventivi_rows(auth_user_id=7, stato_codice="X", **comuni),
              "config.stati_doc_preventivi"),
-            (ordini_service, lambda: ordini_service.list_ordini_rows(stato_codice="X", **comuni), "config.stati_doc_ordini"),
-            (offerte_service, lambda: offerte_service.OfferteService().list_offerte(stato_codice_interno="X"),
+            (ordini_service, lambda: ordini_service.list_ordini_rows(auth_user_id=7, stato_codice="X", **comuni), "config.stati_doc_ordini"),
+            (offerte_service, lambda: offerte_service.OfferteService().list_offerte(auth_user_id=7, stato_codice_interno="X"),
              "config.stati_doc_offerte"),
-            (vendite_service, lambda: vendite_service.list_fatture_rows(stato_codice="X", **comuni),
+            (vendite_service, lambda: vendite_service.list_fatture_rows(auth_user_id=7, stato_codice="X", **comuni),
              "config.stati_doc_fiscale"),
-            (vendite_service, lambda: vendite_service.list_fatture_rows(natura_doc_codice="X", **comuni),
+            (vendite_service, lambda: vendite_service.list_fatture_rows(auth_user_id=7, natura_doc_codice="X", **comuni),
              "config.nature_doc_fiscale"),
             (vendite_service, lambda: vendite_service.get_giornale_trasversale(entity_type="x"), "config.tipi_entita"),
             (pagamenti_service, lambda: pagamenti_service.list_distinte(stato="X"), "pagamenti.vendite_contabili_stati"),
@@ -76,8 +76,8 @@ class FiltriVocabolarioCablaggioTests(TestCase):
         from apps.vendite.services import commesse_service, vendite_service
 
         casi = (
-            ("stato_lotto", lambda: vendite_service.fn_list_lotti(stato_lotto="DRAFT")),
-            ("stato_esecuzione", lambda: vendite_service.fn_list_lotto_fatture(
+            ("stato_lotto", lambda: vendite_service.fn_list_lotti(auth_user_id=7, stato_lotto="DRAFT")),
+            ("stato_esecuzione", lambda: vendite_service.fn_list_lotto_fatture(auth_user_id=7,
                 lotto_id=1, stato_esecuzione="OK")),
             ("stato_emissione", lambda: commesse_service.fn_list_commessa_attivita(
                 commessa_id=1, stato_emissione="BOH")),

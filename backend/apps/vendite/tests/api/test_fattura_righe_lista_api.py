@@ -119,7 +119,7 @@ class FatturaRighePaginaServiceTests(TestCase):
     def test_service_legge_la_pagina_dopo_la_testata(self, venditore, fatture) -> None:
         venditore.return_value.get_fattura_testata.return_value = {"id": 835}
         fatture.return_value.list_righe_pagina.return_value = ([], 0)
-        list_fattura_righe_pagina(835, search="x", limit=10, offset=20)
+        list_fattura_righe_pagina(835, auth_user_id=7, search="x", limit=10, offset=20)
         fatture.return_value.list_righe_pagina.assert_called_once()
         args, kwargs = fatture.return_value.list_righe_pagina.call_args
         self.assertEqual(args, (835,))

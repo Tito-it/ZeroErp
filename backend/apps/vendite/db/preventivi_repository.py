@@ -249,7 +249,7 @@ class PreventiviRepository(
         data_al: date | None = None,
         search: str | None = None,
         solo_ultima_revisione: bool = True,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
         limit: int,
         offset: int,
         order_by: str = "data",

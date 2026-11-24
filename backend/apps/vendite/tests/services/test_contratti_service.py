@@ -112,7 +112,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo = repo_cls.return_value
         repo.list_contratti.return_value = ([], 0)
 
-        ContrattiService().list_contratti()
+        ContrattiService().list_contratti(auth_user_id=7)
 
         call = repo.list_contratti.call_args.kwargs
         self.assertIsNone(call["data_da"])
@@ -122,7 +122,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().list_contratti(order_by="haxxor")
+            ContrattiService().list_contratti(auth_user_id=7, order_by="haxxor")
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: filtro ambito fuori whitelist -> ServiceError.
@@ -130,7 +130,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().list_contratti(ambito="FANTASY")
+            ContrattiService().list_contratti(auth_user_id=7, ambito="FANTASY")
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: scadenza_mese col mese fuori da 01-12 -> ServiceError, prima del
@@ -143,11 +143,11 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo.list_contratti.return_value = ([], 0)
         for valore in ("2026-13", "2026-00", "2026-7", "2026-07-01", "2026-07\n"):
             with self.subTest(scadenza_mese=valore), self.assertRaises(ServiceError) as ctx:
-                ContrattiService().list_contratti(scadenza_mese=valore)
+                ContrattiService().list_contratti(auth_user_id=7, scadenza_mese=valore)
             self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         repo.list_contratti.assert_not_called()
 
-        ContrattiService().list_contratti(scadenza_mese="2026-12")
+        ContrattiService().list_contratti(auth_user_id=7, scadenza_mese="2026-12")
         self.assertEqual(repo.list_contratti.call_args.kwargs["scadenza_mese"], "2026-12")
 
     # --- dettaglio -----------------------------------------------------
@@ -1054,7 +1054,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     # al PATCH testata. Sconto PERCENTUALE oltre soglia -> E_PRICING_SCONTO_ECCESSIVO.
     @patch("apps.vendite.services._pricing_gate_helpers.BillingAccountRepository", autospec=True)
     @patch("apps.vendite.services._pricing_gate_helpers.ParameterService")
-    @patch("apps.vendite.services._pricing_gate_helpers.get_user_model")
+    @patch("apps.vendite.services._pricing_gate_helpers.utente_per_id")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_update_contratto_gate_l2_variazione_globale_sconto_eccessivo(
         self, repo_cls, mock_get_user_model, mock_param_service, mock_ba_repo,
@@ -1065,7 +1065,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo.get_contratto.return_value = _testata_default()
         # Mock user non-superuser
         user_mock = operatore_di_prova()
-        mock_get_user_model.return_value.objects.get.return_value = user_mock
+        mock_get_user_model.return_value = user_mock
         # Soglia max sconto 10%
         mock_param_service.return_value.get_emittente_fiscale_id_for_user.return_value = 5
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("10")
