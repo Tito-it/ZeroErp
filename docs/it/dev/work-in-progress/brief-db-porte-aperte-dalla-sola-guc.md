@@ -6,7 +6,7 @@
 > (16, 10, 9, 11, 8, 1-7), alla risposta del BE. ✅ Giro 12-13 fatto e verde (2026-11-24, §8).
 > ✅ Fatti e verdi (Tid, 2026-11-24): giro 1 (porte di manutenzione 14 e 15, la 17 dichiarata), giro 1-bis (la
 > fusione dei comuni, il presidio di `maintenance`), giro 3 (le viste in sola lettura per l'app, con la fase `post`
-> del provisioning su dbdev). Tutto applicato, niente committato.
+> del provisioning su dbdev). Tutto applicato e committato.
 > Decise: D-A **a**, D-C **b** per 14 e 15, D-D **a** (2026-11-23); dalla verifica critica (§3-ter) D-E **a** e D-F
 > **a** (2026-11-23); D-G **a**, D-H **a** (2026-11-24); D-B decaduta. Il brief ospita anche la seconda famiglia di
 > strade, **le viste aggiornabili** (§5, D-V), nata dal giro 2 di `brief-db-revisione-anagrafiche` (§19).
@@ -30,9 +30,9 @@
 > | 5b | team DB | ✅ il giro 12-13, verde come app (2026-11-24) | §8 | — |
 > | 6 | team DB | i giri delle porte del flusso 16, 10, 9, 11, 8, 1-7 | Il piano | 3d |
 >
-> Decisioni aperte di Tid: nessuna. Committati (`64f00b35b1`, 2026-11-24) i giri 1, 1-bis e 3. Da committare: il
-> giro 12-13 (§8) e questo file; le due righe di `brief-db-revisione-anagrafiche` che rimandano qui le porta il
-> commit dell'altra sessione, che ha quel brief in lavorazione.
+> Decisioni aperte di Tid: nessuna. Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`) e il giro 12-13
+> (`969ea14566`). Da committare: niente di questo brief; le due righe di `brief-db-revisione-anagrafiche` che
+> rimandano qui le porta il commit dell'altra sessione, che ha quel brief in lavorazione.
 >
 > **Brief vicini verificati (2026-11-23):**
 > [brief-db-magazzino-tutte-le-scritture-dal-verbo](../work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md)
@@ -815,6 +815,7 @@ il 44 sarebbe rosso per costruzione. ✅ Verde come app, 45/45 (Tid, 2026-11-24)
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-24 | DB | Commit `969ea14566`: giro 12-13 (pgTAP, guida `gestione-ddt`, §8); merge di `origin/Tito-dev` (PR #228) e push su `dev/db-tid` |
 | 2026-11-24 | Tid | Giro 12-13: `test-ddt-righe-evase-dall-ordine-v1` verde come app (§8) |
 | 2026-11-24 | DB | Giro 12-13 scritto (§8): test 44-45 in `test-ddt-righe-evase-dall-ordine-v1`, guida `gestione-ddt` §15.3; nessun changeSet |
 | 2026-11-24 | DB | Commit `64f00b35b1` e push su `dev/db-tid`: giri 1, 1-bis e 3 (`brief-db-revisione-anagrafiche` escluso: ha il lavoro in corso dell'altra sessione, e le due righe di qui ci restano) |
