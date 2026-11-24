@@ -52,6 +52,7 @@ _URL = "/api/v1/pagamenti/distinte/7/righe/export/"
 
 class TestDistintaRigheExportApi(JwtMockedApiTest):
     """Smoke test della lista paginata delle righe e del suo export."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

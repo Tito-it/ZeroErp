@@ -74,12 +74,14 @@ class _RigaErogazioniApiBase:
 
 
 class TestContrattoRigaErogazioniApi(_RigaErogazioniApiBase, JwtMockedApiTest):
+    come_super_admin = True
     service = "apps.vendite.api.views_contratti.ContrattiService"
     base = "/api/v1/vendite/contratti/42/righe/erogazioni/"
     model_permission = ("vendite", "contratto")
 
 
 class TestOffertaRigaErogazioniApi(_RigaErogazioniApiBase, JwtMockedApiTest):
+    come_super_admin = True
     service = "apps.vendite.api.views_offerte.OfferteService"
     base = "/api/v1/vendite/offerte/42/righe/erogazioni/"
     model_permission = ("vendite", "offerta_commerciale")

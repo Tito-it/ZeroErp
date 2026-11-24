@@ -37,7 +37,7 @@ def guard_user_authenticated(
 
 
 # Scopo: Risolve la whitelist degli emittenti autorizzati per l'utente.
-#        Admin globale + superuser -> None (vede tutto). Operatore -> lista
+#        Admin globale -> None (vede tutto). Operatore -> lista
 #        di id (eventualmente vuota = nessun risultato).
 #        Wrapper esplicito per consentire ai chiamanti di cachare il valore
 #        in una sola invocazione end-to-end (Tranche I evita 2 round-trip).

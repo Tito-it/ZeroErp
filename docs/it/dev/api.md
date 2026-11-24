@@ -339,7 +339,7 @@ class ApiRunLottoPipeline(DomainAPIView):
 
 Non creare classi V1 per nuovi endpoint.
 
-La risoluzione permessi segue la catena: superuser bypass → bypass `SUPER_ADMIN` → azione processo → livello area/oggetto CRUD (dal 2026-10-02 senza il passo «`ruolo_applicativo = DISABILITATO` → nega»: una veste spenta tiene il suo tipo e ha `attivo = false`, quindi non e' l'identita' attiva di nessuna sessione — brief-db-be-fe-area-accessi R-DB-1). Vedi `apps/core/api/permissions.py`.
+La risoluzione permessi segue la catena: bypass `SUPER_ADMIN` → azione processo → livello area/oggetto CRUD (dal 2026-10-02 senza il passo «`ruolo_applicativo = DISABILITATO` → nega»: una veste spenta tiene il suo tipo e ha `attivo = false`, quindi non e' l'identita' attiva di nessuna sessione — brief-db-be-fe-area-accessi R-DB-1). Vedi `apps/core/api/permissions.py`.
 
 ---
 
@@ -486,7 +486,7 @@ class ApiLottiList(DomainAPIView):
             "competenza_mese",
         )
         limit, offset = pagina_da_query(request.query_params)  # la finestra, dal BB
-        auth_user_id = get_scope_user_id(request)       # None per superuser
+        auth_user_id = get_scope_user_id(request)
 
         data = fn_list_lotti(
             competenza_mese=competenza_mese,
@@ -1453,7 +1453,7 @@ Per i building block backend riutilizzabili (helpers, services, repository), con
 | Durata access       | 10 minuti; il frontend lo tiene solo in memoria e lo rinnova dal cookie |
 | JWT claim custom    | `identita_id` + `ruolo_applicativo` + `sid` (session id stabile)        |
 | Permission class    | `ZeroERPPermission` — risoluzione centralizzata                         |
-| Superuser           | Bypass totale                                                           |
+| Superuser Django    | Nessun privilegio: l'amministratore e' `SUPER_ADMIN` (dal 2026-11-24)   |
 | SUPER_ADMIN         | Bypass via `script.fn_is_super_admin` (filtro veste OPERATORE, §8.3.7)  |
 | Veste spenta        | Nessuna identita' attiva: niente GUC di veste, niente SUPER_ADMIN, il livello d'area nega (dal 2026-10-02 `DISABILITATO` non e' piu' un tipo di veste) |
 | Azione processo     | Verificata se la view dichiara `post_permission` / `get_permission`, o letta dalla riga del passaggio (`post_passaggio`) |
@@ -1623,11 +1623,12 @@ Due pattern disponibili in base al dominio:
    risolve in Python i `soggetto_ruolo_id` degli emittenti autorizzati e li passa
    come array `bigint[]` alle query SQL.
 
-⛔ **Perimetro ≠ attore.** `get_scope_user_id` vale `None` per il superuser perché
-il suo perimetro non ha limiti: serve **solo alle letture**. Una scrittura che
-passa l'utente a un gate (prezzi L1/L2/L3), all'audit o a una pratica usa
-`get_actor_user_id(request)`: con lo scope, il gate legge il `None` del superuser
-come «chiamata senza utente» e lo blocca.
+⛔ **Perimetro ≠ attore.** `get_scope_user_id` serve **solo alle letture**: è
+l'utente da cui il database risolve il perimetro. Una scrittura che passa
+l'utente a un gate (prezzi L1/L2/L3), all'audit o a una pratica usa
+`get_actor_user_id(request)`. Oggi i due danno lo stesso id; fino al 2026-11-24
+lo scope valeva `None` per il superuser Django, e un gate che lo riceveva lo
+leggeva come «chiamata senza utente».
 
 Usare `get_emittenti_sr_ids` (filtra su `*_soggetto_ruolo_id`, convenzione SR)
 o `get_emittenti_pk_ids` (filtra su `emittente_fiscale_id` PK) secondo la colonna.

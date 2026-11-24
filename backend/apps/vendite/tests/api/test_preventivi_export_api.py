@@ -39,6 +39,7 @@ _URL = "/api/v1/vendite/preventivi/export/"
 
 class TestPreventiviExportApi(JwtMockedApiTest):
     """Smoke test endpoint export preventivi."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

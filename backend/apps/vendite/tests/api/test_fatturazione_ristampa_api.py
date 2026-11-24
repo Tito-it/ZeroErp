@@ -28,6 +28,7 @@ _URL = "/api/v1/vendite/fatturazione/lotti/5/ristampa/"
 
 
 class FatturazioneRistampaApiTests(JwtMockedApiTest):
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

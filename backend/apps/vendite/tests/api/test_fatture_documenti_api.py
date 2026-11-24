@@ -39,6 +39,7 @@ _BASE = "/api/v1/vendite/fatture/"
 
 class TestFattureDocumentiApi(JwtMockedApiTest):
     """Smoke test endpoint documenti FATTURA."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

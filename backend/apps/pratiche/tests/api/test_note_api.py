@@ -38,6 +38,7 @@ def _mock_nota() -> dict:
 
 
 class NoteApiTests(JwtMockedApiTest):
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

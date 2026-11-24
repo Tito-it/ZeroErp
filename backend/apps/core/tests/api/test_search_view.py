@@ -67,6 +67,7 @@ _DETAIL_RESULT = {
 
 
 class SearchUniversaleApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     # ⭐ La soglia arriva dal catalogo (`soglia_ricerca`, una query): qui la
     #    si fissa a 3, il valore del seed della lista 113.
@@ -226,6 +227,7 @@ class SearchUniversaleApiTests(JwtMockedApiTest):
 
 
 class SearchDetailApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -310,6 +312,7 @@ _TIPI_RUOLI_RESULT = [
 
 
 class LookupTipiRuoliApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()

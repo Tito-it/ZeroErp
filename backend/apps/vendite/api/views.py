@@ -2686,8 +2686,7 @@ def _payload_con_data_documento(payload: dict[str, Any]) -> dict[str, Any]:
 # Scopo: Enqueue comune dei job di fatturazione OPERATORE su dbops.coda_lavori
 #        (C-3 giro, C-4 numerazione di perimetro — regola del 2, ok Tid
 #        2026-07-21): valida+normalizza `competenza_mese` al 1° del mese,
-#        cattura l'identità COMPLETA dell'operatore (id vero anche per
-#        superuser + username + identita_id dal JWT — il worker la riproporrà
+#        cattura l'identità COMPLETA dell'operatore (id vero + username + identita_id dal JWT — il worker la riproporrà
 #        per intero, RLS come nel web), valida il perimetro mirato e accoda
 #        UN LAVORO PER AZIENDA (`accoda_per_azienda`, BE10 a di
 #        brief-db-revisione-dbops). `extra_payload_keys`: chiavi opzionali del

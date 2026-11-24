@@ -700,7 +700,7 @@ class ProcessiEseguiOraView(AdminAPIView):
     #        con l'attore di chi preme (BE10, 2026-11-07).
     def post(self, request: Request, codice: str) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            # ⭐ L'id VERO di chi preme, anche per un superuser: e' l'attore del
+            # ⭐ L'id VERO di chi preme: e' l'attore del
             #    giornale del comando lanciato, non un'identita' con cui il
             #    lavoro gira (un lavoro SISTEMA gira senza).
             # ⚠️ `AdminAPIView` fa entrare solo un utente autenticato: un id

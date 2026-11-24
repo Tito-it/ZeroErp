@@ -47,6 +47,7 @@ _URL = "/api/v1/core/lookup/codici/"
 
 
 class CoreLookupCodiciApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()

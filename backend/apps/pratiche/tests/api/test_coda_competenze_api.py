@@ -56,6 +56,7 @@ def _mock_coda_row():
 
 
 class CodaLavoroApiTests(JwtMockedApiTest):
+    come_super_admin = True
 
     def setUp(self):
         super().setUp()
@@ -86,6 +87,7 @@ class CodaLavoroApiTests(JwtMockedApiTest):
 
 
 class PrendiInCaricoApiTests(JwtMockedApiTest):
+    come_super_admin = True
 
     def setUp(self):
         super().setUp()
@@ -113,6 +115,7 @@ class PrendiInCaricoApiTests(JwtMockedApiTest):
 
 
 class CompetenzeFlussiApiTests(JwtMockedApiTest):
+    come_super_admin = True
 
     def setUp(self):
         super().setUp()

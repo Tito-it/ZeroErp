@@ -29,6 +29,7 @@ _SOGGETTO = "019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b"
 
 
 class LookupTipiIndirizzoTipoRuoloApiTests(JwtMockedApiTest):
+    come_super_admin = True
     def setUp(self) -> None:
         super().setUp()
         self.client = Client()

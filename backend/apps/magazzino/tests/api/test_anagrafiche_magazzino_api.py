@@ -72,6 +72,7 @@ class RotteTests(_Base):
 
 
 class MagazziniApiTests(_Base):
+    come_super_admin = True
     # 3.
     @_AUTH
     @patch(f"{_SVC}.list_magazzini", return_value=_VUOTA)
@@ -114,6 +115,7 @@ class MagazziniApiTests(_Base):
 
 
 class UbicazioniApiTests(_Base):
+    come_super_admin = True
     # 6.
     @_AUTH
     @patch(f"{_SVC}.crea_ubicazione", return_value={"id": 1})
@@ -130,6 +132,7 @@ class UbicazioniApiTests(_Base):
 
 
 class LottiApiTests(_Base):
+    come_super_admin = True
     # 7. `articolo_id` non si valida nella view: lo fa il service (uuid, 400
     #    col campo), e qui arriva GREZZO — anche assente.
     @_AUTH
@@ -143,6 +146,7 @@ class LottiApiTests(_Base):
 
 
 class ExportApiTests(_Base):
+    come_super_admin = True
     # 8.
     @_AUTH
     @patch("apps.ui.api.export_helpers.ListaExportService")

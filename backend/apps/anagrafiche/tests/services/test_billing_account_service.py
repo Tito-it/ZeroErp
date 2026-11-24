@@ -24,7 +24,7 @@ Indice test eseguiti:
 14) test_get_lookup_by_id_bool_rejected — bool rifiutato come id
 15) test_list_utilities_ok_operatore_in_scope — operatore con BA del proprio EF → utility ritornate
 16) test_list_utilities_admin_globale_bypass — user_emittente_id=None → no scope check
-17) test_list_utilities_superuser_bypass — is_superuser=True → no scope check anche se user_emittente_id valorizzato
+17) test_list_utilities_scope_controllato_con_emittente — con user_emittente_id lo scope si controlla sempre (niente bypass del superuser, D-J)
 18) test_list_utilities_403_ba_di_altro_emittente — operatore + BA di altro EF → E_PERMESSO_NEGATO
 19) test_list_utilities_404_ba_inesistente — id BA non esistente → E_ANAG_NOT_FOUND prima dello scope
 20) test_list_utilities_ruolo_invalido — ruolo non in whitelist → E_ANAG_VALIDAZIONE
@@ -293,18 +293,19 @@ class TestBillingAccountListUtilitiesForBa(TestCase):
 
     @patch(_LOOKUP_REPO, autospec=True)
     @patch(_REPO, autospec=True)
-    def test_list_utilities_superuser_bypass(self, mock_repo, mock_lookup):
-        """is_superuser=True → bypass anche se user_emittente_id valorizzato."""
+    def test_list_utilities_scope_controllato_con_emittente(self, mock_repo, mock_lookup):
+        """user_emittente_id valorizzato → lo scope si controlla sempre: il
+        bypass del superuser Django non c'e' piu' (D-J, 2026-11-24)."""
         mock_repo.return_value.exists.return_value = True
+        mock_repo.return_value.get_emittente_fiscale_id.return_value = 7
         mock_lookup.return_value.list_utilities_per_billing_account.return_value = []
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
         BillingAccountService().list_utilities_for_ba(
             billing_account_id=200,
             ruolo_codice_soggetto="FO",
             user_emittente_id=7,
-            is_superuser=True,
         )
-        mock_repo.return_value.get_emittente_fiscale_id.assert_not_called()
+        mock_repo.return_value.get_emittente_fiscale_id.assert_called_once_with(200)
 
     @patch(_LOOKUP_REPO, autospec=True)
     @patch(_REPO, autospec=True)

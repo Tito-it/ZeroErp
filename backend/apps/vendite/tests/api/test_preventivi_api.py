@@ -251,6 +251,7 @@ class TestPreventiviApiViews(JwtMockedApiTest):
 
 class TestPreventivoEmissioneAllegati(JwtMockedApiTest):
     """Test integration per il flusso emissione + endpoint allegati documento."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

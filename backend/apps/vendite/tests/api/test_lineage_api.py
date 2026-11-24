@@ -73,6 +73,7 @@ _ROUTES = {
 
 
 class LineagePassaggiApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()

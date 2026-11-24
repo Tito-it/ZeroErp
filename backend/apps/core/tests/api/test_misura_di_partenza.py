@@ -132,6 +132,7 @@ _SVC_OFFERTE = "apps.vendite.api.views_offerte.OfferteService"
 
 
 class MisuraDiPartenzaViewVeraTests(JwtMockedApiTest):
+    come_super_admin = True
     def setUp(self) -> None:
         super().setUp()
         self.client = ClientApi()

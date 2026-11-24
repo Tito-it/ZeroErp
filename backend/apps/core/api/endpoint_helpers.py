@@ -28,25 +28,27 @@ from apps.core.services.request_context import get_idempotency_key
 logger = logging.getLogger(__name__)
 
 
-# Scopo: Restituisce l'auth_user_id per il filtro scope emittente DB-first.
-# Superuser Django bypassa il filtro (None); per gli altri si usa user.id.
-# ⛔ Serve SOLO al PERIMETRO di una lettura: `None` vuol dire «nessun limite».
-#    Non e' l'utente che agisce: per gate, audit e pratiche usa
-#    `get_actor_user_id`. Passato a un gate prezzi, il `None` del superuser
-#    diventa «chiamata senza utente» e il gate blocca proprio il superuser
-#    (E_PRICING_OVERRIDE_NON_AUTORIZZATO su offerte e contratti, 2026-10-07).
+# Scopo: Restituisce l'auth_user_id per il filtro scope emittente DB-first:
+#        il perimetro lo risolve il database da quell'utente
+#        (`fn_get_emittenti_scope_*`, che per SUPER_ADMIN apre tutto).
+# ⛔ Serve SOLO al PERIMETRO di una lettura. Per gate, audit e pratiche usa
+#    `get_actor_user_id`: oggi i due danno lo stesso id, ma dicono due cose
+#    diverse, e un perimetro che un giorno tornasse a dipendere da qualcosa di
+#    piu' dell'utente non deve trascinarsi dietro i gate.
+# ⛔ Fino al 2026-11-24 il superuser Django riceveva `None`, «nessun limite»:
+#    una lettura senza muri decisa da un flag che il database non vede
+#    (D-J di brief-db-porte-aperte-dalla-sola-guc §4.6). Ritirato.
 def get_scope_user_id(request: HttpRequest | Request) -> int | None:
     user = request.user
-    return None if user.is_superuser else user.id
+    return user.id if user and user.is_authenticated else None
 
 
 # Scopo: Restituisce l'id dell'utente che AGISCE nella richiesta: quello che i
 #        gate autorizzativi controllano (prezzi L1/L2, approvazioni), che
 #        l'audit registra e che apre le pratiche. `None` solo se la richiesta
 #        non e' autenticata, e per i gate vuol dire «blocca».
-# ⭐ Il gemello di `get_scope_user_id`, con la semantica opposta sul
-#    superuser: qui il superuser e' un utente come gli altri (il bypass lo
-#    decide il gate, non la view).
+# ⭐ Il gemello di `get_scope_user_id`: stesso valore, significato diverso
+#    (chi agisce, non fin dove si legge).
 def get_actor_user_id(request: HttpRequest | Request) -> int | None:
     user = request.user
     return user.id if user and user.is_authenticated else None

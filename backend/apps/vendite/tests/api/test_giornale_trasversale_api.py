@@ -53,6 +53,7 @@ def _riga(**override) -> dict:
 
 
 class GiornaleTrasversaleApiTests(JwtMockedApiTest):
+    come_super_admin = True
     def setUp(self) -> None:
         super().setUp()
         self.client = Client()

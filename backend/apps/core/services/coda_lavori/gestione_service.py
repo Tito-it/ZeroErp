@@ -90,7 +90,7 @@ _SOGLIA_LIVENESS_RIPIEGO_MINUTI = 10
 
 
 # Scopo: CHI È il chiamante sui lavori di coda: il suo `auth_user.id` VERO
-#        (anche per un superuser, lo stesso che la cattura dello scope scrive in
+#        (lo stesso che la cattura dello scope scrive in
 #        `scope.auth_user_id` e «Esegui ora» in `payload.richiesto_da`), o None
 #        per un uso senza utente. È ciò con cui la coda dice «mio»: `is_mio`
 #        degli elenchi, il filtro «miei», le azioni di chi non ha
@@ -198,8 +198,7 @@ def _liveness_worker(corsie: list[tuple[str, str]]) -> dict[tuple[str, str], dic
 #        `{coda_lavori: {pending, in_corso}, coda_stampa: {pending, in_corso},
 #        worker: {coda_lavori: {...}, coda_stampa: {...}}}`. I conteggi sono
 #        SCOPED al chiamante (coda lavori: le sue aziende, dalla RLS; coda stampa
-#        per emittente via JOIN fatture — `auth_user_id` None = superuser, vede
-#        tutto). La liveness confronta l'ultimo run dei drainer col clock DB;
+#        per emittente via JOIN fatture — `auth_user_id` None = nessun limite). La liveness confronta l'ultimo run dei drainer col clock DB;
 #        un worker mai girato → {last_run_at: None, attivo: False} (fail-visible:
 #        "worker giù", non un buco nel payload).
 def conteggi_code(user: Any, *, auth_user_id: int | None) -> dict[str, Any]:
@@ -690,7 +689,7 @@ def imposta_archiviazione_stampa(
     repo = VenditePipelineRepository()
     # ⭐ Il perimetro emittente si risolve UNA volta per la richiesta, non per
     #    riga: dentro una richiesta non cambia, e il giro puo' avere 200 righe.
-    #    `None` (superuser) resta `None` = nessuna restrizione.
+    #    `None` (nessun utente) resta `None` = nessuna restrizione.
     emittenti_sr_ids = (
         None if auth_user_id is None
         else fetch_emittenti_scope_ids(auth_user_id, convention="sr")

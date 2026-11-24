@@ -39,6 +39,7 @@ _FAKE_IBAN = "IT60X0542811101000000123456"
 
 class TestContiBancariLookupApi(JwtMockedApiTest):
     """Test endpoint lookup registro IBAN e filiali."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()
@@ -71,6 +72,7 @@ class TestContiBancariLookupApi(JwtMockedApiTest):
 
 class TestContiBancariSoggettoApi(JwtMockedApiTest):
     """Test endpoint CRUD conti bancari soggetto."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()
@@ -152,6 +154,7 @@ class TestContiBancariSoggettoApi(JwtMockedApiTest):
 
 class TestContiBancariRuoloApi(JwtMockedApiTest):
     """Test endpoint CRUD conti bancari ruolo."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

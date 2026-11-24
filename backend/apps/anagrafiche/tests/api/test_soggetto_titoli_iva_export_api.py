@@ -45,6 +45,7 @@ _URL = f"/api/v1/anagrafiche/soggetti/{_SOGG}/titoli-iva/export/"
 
 class TestSoggettoTitoliIvaExportApi(JwtMockedApiTest):
     """Smoke test dell'endpoint di export dei titoli IVA del soggetto."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

@@ -119,7 +119,7 @@ class BillingAccountRepository:
         # Escape wildcard per evitare match indesiderati su '%' e '_' nei dati utente.
         search_pattern = pattern_contiene(q)
 
-        # Scope emittente: lista di ruoli emittente autorizzati, None = bypass (superuser).
+        # Scope emittente: lista di ruoli emittente autorizzati, None = bypass (admin globale).
         # Una lista vuota significa "operatore senza emittenti autorizzati": in quel caso
         # passiamo l'array vuoto al filtro (nessun BA matcha), NON None (che farebbe bypass).
         scope_array = emittente_ids if emittente_ids is not None else None

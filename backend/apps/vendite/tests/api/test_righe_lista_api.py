@@ -69,6 +69,7 @@ _PERMESSO = {
 
 class TestRigheListaApi(JwtMockedApiTest):
     """Le view della lista righe, uguali per costruzione sui quattro documenti."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

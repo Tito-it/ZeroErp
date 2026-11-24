@@ -33,6 +33,7 @@ _SVC = "apps.anagrafiche.api.views_fornitori.FornitoriService"
 
 class TestFornitoriGetApi(JwtMockedApiTest):
     """Test endpoint GET fornitori."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()
@@ -79,6 +80,7 @@ class TestFornitoriGetApi(JwtMockedApiTest):
 
 class TestFornitoriPostApi(JwtMockedApiTest):
     """Test endpoint POST fornitori."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()
@@ -109,6 +111,7 @@ class TestFornitoriPostApi(JwtMockedApiTest):
 
 class TestFornitoriPatchApi(JwtMockedApiTest):
     """Test endpoint PATCH fornitori."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

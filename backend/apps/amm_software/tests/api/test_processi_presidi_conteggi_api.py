@@ -55,6 +55,7 @@ def _riga(vista: str, conteggio, errore=None) -> dict:
 
 
 class ProcessiPresidiConteggiApiTests(JwtMockedApiTest):
+    come_super_admin = True
     def setUp(self) -> None:
         super().setUp()
         self.client = Client()

@@ -76,6 +76,7 @@ class _BaseApiTest(JwtMockedApiTest):
 
 
 class TestResolve(_BaseApiTest):
+    come_super_admin = True
     # Scopo: risoluzione con emittente derivato dal JWT operatore.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM)
@@ -225,6 +226,7 @@ _LIMITI_PS = "apps.vendite.api.views_pricing.ParameterService"
 
 
 class TestLimitiUtente(_BaseApiTest):
+    come_super_admin = True
     # Scopo: endpoint ritorna i default "0/0" quando nessun override.
     #        Post-ottimizzazione O1 usa get_defaults (single round-trip).
     @patch(_AUTH, return_value=(Mock(id=1), None))

@@ -67,6 +67,7 @@ _DOCUMENTI_RESPONSE = {
 
 
 class DashboardApertoApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -97,6 +98,7 @@ class DashboardApertoApiTests(JwtMockedApiTest):
 
 
 class DashboardApertoDocumentiApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()

@@ -61,6 +61,7 @@ _LOOKUP_REPO = "apps.core.services.lookup_service.DbopsRepository"
 
 
 class TestOrderDirEstraneaApi(JwtMockedApiTest):
+    come_super_admin = True
     def setUp(self) -> None:
         super().setUp()
         self.client = Client(raise_request_exception=False)

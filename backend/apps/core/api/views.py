@@ -180,11 +180,11 @@ class ApiPermessiEffettivi(DomainAPIView):
         },
     )
     # Scopo: Restituisce via GET i permessi effettivi risolti per un utente.
-    # Solo SUPER_ADMIN e superuser possono consultare altri utenti.
+    # Solo SUPER_ADMIN puo' consultare altri utenti.
     def get(self, request: Request, user_id: int) -> JsonResponse:
         richiedi_se_stesso_o_amministratore(
             request.user, user_id, cache={},
-            detail="Solo un amministratore (SUPER_ADMIN o superuser) puo' consultare i permessi di un altro utente.",
+            detail="Solo un amministratore (SUPER_ADMIN) puo' consultare i permessi di un altro utente.",
         )
 
         target_user = _utente_target(user_id)
@@ -298,7 +298,7 @@ class ApiPermessiAudit(DomainAPIView):
     # Scopo: Restituisce via GET la timeline audit delle modifiche ai permessi di un utente.
     # Interroga le 8 tabelle storico permessi (5 per utente + 3 per reparto) con
     # filtri opzionali e paginazione. L'elenco e' `PermissionsAuditRepository`.
-    # Solo SUPER_ADMIN e superuser possono consultare altri utenti.
+    # Solo SUPER_ADMIN puo' consultare altri utenti.
     def get(self, request: Request, user_id: int) -> JsonResponse:
         from apps.core.api.payload_validators import optional_iso_date
         from apps.core.db.permissions_audit_repository import PermissionsAuditRepository
@@ -306,7 +306,7 @@ class ApiPermessiAudit(DomainAPIView):
         # Stessa policy di permessi-effettivi: lo stesso BB.
         richiedi_se_stesso_o_amministratore(
             request.user, user_id, cache={},
-            detail="Solo un amministratore (SUPER_ADMIN o superuser) puo' consultare l'audit permessi di un altro utente.",
+            detail="Solo un amministratore (SUPER_ADMIN) puo' consultare l'audit permessi di un altro utente.",
         )
 
         target_user = _utente_target(user_id)

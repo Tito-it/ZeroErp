@@ -78,6 +78,7 @@ _VERSIONE_DETAIL = {
 }
 
 class VenditeListiniApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara contesto comune del test.
     def setUp(self) -> None:
         super().setUp()

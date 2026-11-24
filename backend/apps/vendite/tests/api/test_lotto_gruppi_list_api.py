@@ -49,6 +49,7 @@ _LOTTO_ID = 10657
 
 
 class VenditeLottoGruppiListApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()

@@ -2,9 +2,10 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-24**
 >
-> **Riparte: Tid, girando al team BE la richiesta 3d (§4.4, scritta e precompilata il 2026-11-24)**; intanto il team
-> DB può fare il giro 12-13, che non la aspetta (un pgTAP e la guida, D-E a), al via di Tid; poi i giri delle porte
-> del flusso, alla risposta del BE.
+> **Riparte: il team DB, leggendo la risposta del BE alla richiesta 3d (§4.5, 2026-11-24)**, poi il giro 12-13 (un
+> pgTAP e la guida, D-E a) e i giri delle porte del flusso, al via di Tid. Il superuser Django è deciso (D-J **a**) e
+> fatto nel BE (§4.7). D-K (il primo amministratore di un'installazione nuova) è decisa: al team DB la richiesta
+> R-DB-K1 del verbo di primo impianto, poi il BE col comando (§4.7).
 > ✅ Fatti e verdi (Tid, 2026-11-24): giro 1 (porte di manutenzione 14 e 15, la 17 dichiarata), giro 1-bis (la
 > fusione dei comuni, il presidio di `maintenance`), giro 3 (le viste in sola lettura per l'app, con la fase `post`
 > del provisioning su dbdev). Tutto applicato, niente committato.
@@ -20,15 +21,21 @@
 > | 3 | team DB | ✅ la richiesta unica al BE: chi accende le GUC, chi chiama gli aprenti, chi scrive su una vista (2026-11-23) | §4.1 | — |
 > | 3b | Tid | ✅ superato: la Parte B l'ha risposta il BE, la Parte A l'ha letta il DB (2026-11-23) | §4.1 | — |
 > | 3c | Tid | ✅ D-E (**a**) · ✅ D-F (**a**), 2026-11-23 | §3-ter | — |
-> | 3d | team BE | la richiesta 3d: ✅ scritta e precompilata dal DB (2026-11-24); da girare al team BE (Tid), poi la risposta | §4.4 | i giri 16, 10, 9, 11, 8, 1-7 |
+> | 3d | team BE | la richiesta 3d: ✅ scritta e precompilata dal DB (2026-11-24); ✅ risposta del BE (2026-11-24) | §4.4, §4.5 | — |
+> | 3e | team DB | leggere la risposta 3d: le due correzioni a §4.3 (azioni delle porte 1-7 e 11), i test della Parte C, il task `reset_lotto_draft` | §4.5 | — |
+> | 3f | Tid | ✅ D-I: il task `reset_lotto_draft` si ritira · ✅ D-J: il superuser Django non concede più niente, strada **a** (2026-11-24) | §4.6 | — |
+> | 3h | team BE | D-J: ✅ bypass tolti, test adeguati, suite verde (2026-11-24); da rivedere con `/verifica` | §4.7 | — |
+> | 3i | team DB | D-K: il verbo `fn_crea_primo_amministratore` e la sua prova (R-DB-K1); la porta di `fn_crea_operatore_v2` nel piano dei giri (R-DB-K2) | §4.7 | — |
+> | 3j | team BE | D-K: il comando `crea_primo_amministratore`, il playbook e `configurazione-django.md` senza `createsuperuser` | §4.7 | 3i |
+> | 3g | team DB, poi team BE | il ritiro del task `reset_lotto_draft`: prima i CSV del DB, poi il BE | §4.6 | — |
 > | 4 | team BE / DB | ✅ Parte B, le viste: «nessuno», dal BE (2026-11-23) · ✅ Parte A, le GUC e gli aprenti: letta dal DB sul ramo del BE (2026-11-23) | §4.2, §5.1 | — |
 > | 4a | Tid | ✅ il giro 1: applicato, pgTAP verdi (2026-11-24) | §6 | — |
 > | 4c | Tid | ✅ D-G (**a**) · ✅ D-H (**a**), 2026-11-24 | §6.4, §6.5 | — |
 > | 4d | Tid | ✅ l'apply di `20261123-46`, pgTAP verdi · ✅ il pgTAP di D-H come app, verde (2026-11-24) | §6.5 | — |
 > | 4b | team DB | ✅ il giro 3, le viste: scritto e provato sullo scratch (2026-11-24) | §7 | — |
 > | 4e | Tid | ✅ il giro 3: apply, `ci_apply`, fase `post` del provisioning su dbdev, pgTAP verde (2026-11-24) | §7.4 | — |
-> | 5 | Tid / team BE | la richiesta 3d girata al BE, e la risposta | §4.4 | — |
-> | 6 | team DB | i giri delle porte del flusso | Il piano | 3d (tranne 12-13) |
+> | 5 | Tid / team BE | ✅ la richiesta 3d girata al BE, e la risposta (2026-11-24) | §4.5 | — |
+> | 6 | team DB | i giri delle porte del flusso | Il piano | 3e; 3f per i giri 16 e 1-7 |
 >
 > Decisioni aperte di Tid: nessuna. Da committare: questo file, la §19 di `brief-db-revisione-anagrafiche`
 > che rimanda qui, la voce di `.codex/PROJECT_CONTEXT.md`, e i file dei giri 1 (§6.1), 1-bis (§6.5) e 3 (§7.2).
@@ -104,9 +111,9 @@
     scrittura, e un `tx_id` scritto a mano passa comunque (§3-ter.1). ~~Tutte e due le chiavi al proprietario~~ ⚠️ superato
     da D-F. Il tema «una riga con un `tx_id` non registrato si rifiuta» non è aperto qui
 - [ ] ~~Giro 2: gli interruttori del flusso diventano porte «sulla riga»~~ ⚠️ decaduto con D-A a: la GUC sulla riga entra nel giro di ogni porta
-- [ ] Prima dei giri delle porte del flusso, la tabella «verbo d'ingresso → azione che l'endpoint controlla» dal BE, e
+- [x] Prima dei giri delle porte del flusso, la tabella «verbo d'ingresso → azione che l'endpoint controlla» dal BE, e
   il profilo dell'utente tecnico della pipeline (§4.3, soluzione 2): ✅ richiesta scritta e precompilata il 2026-11-24
-  (§4.4), da girare al BE; si spunta alla risposta
+  (§4.4); ✅ risposta del BE il 2026-11-24 (§4.5), da leggere dal DB
 - [ ] Giri delle porte del flusso (D-A a), uno per riga, in quest'ordine. ⛔ Ognuno chiude **tutte** queste voci, o non è chiuso:
   - **il verbo**: DEFINER sul verbo d'ingresso, guard in prima riga con la **stessa azione** dell'endpoint
     (soluzione 2), la GUC spenta all'ingresso e riaccesa **sulla riga**, le primitive senza `EXECUTE` all'app;
@@ -548,6 +555,263 @@ flusso (16, 10, 9, 11, 8, 1-7); il giro 12-13 non la aspetta.
 > dicesse che oggi l'endpoint non controlla niente. Fino ad allora il backend non cambia niente: nessuna firma
 > cambia, nessuna GUC da togliere.
 
+### 4.5 La risposta del BE alla richiesta 3d — 2026-11-24
+
+Dal team BE, branch `dev/backend-tid` `601fd0b29`, sola lettura, nessun file di `backend/` modificato. **Come si è
+cercato**: i quattordici nomi di funzione (i dieci verbi e le quattro primitive) e i metodi di repository e service
+che li chiamano, su `backend/apps`, `backend/scripts` e gli smoke, senza `error_policies_generated.py`; da ogni
+metodo si è risaliti alla view, al comando o al task; per ogni view si è letto il ramo della catena dei permessi che
+la decide (`apps/core/api/permissions.py`, `ZeroERPPermission.valuta` e `IsAdminZeroERP.valuta`). Nessun tool
+dell'assistente AI è gemello di una di queste view.
+
+**Le tre regole del gate BE che il verbo deve rifare, o nasce un rifiuto nuovo** (`ZeroERPPermission.valuta`):
+
+1. **SUPER_ADMIN passa sempre** (`script.fn_is_super_admin(user_id)`), prima di ogni azione e di ogni livello;
+2. ⚠️ **passa sempre anche il superuser di Django** (`auth_user.is_superuser`), anche senza il binding SUPER_ADMIN.
+   Il DB non lo vede come tale: un superuser senza binding passa l'endpoint e verrebbe fermato dal verbo. Da
+   decidere nel primo giro (16): o il verbo lo ammette, o il BE toglie il bypass (oggi lo usa anche
+   `apri_contesto_operatore` dei test e2e, che di default prende un `is_superuser`);
+3. con un `<metodo>_permission` (o un passaggio che dà un'azione) **decide solo l'azione**
+   (`script.fn_check_azione_processo(user_id, codename)`): il livello d'area non si guarda. Senza azione decide il
+   livello: `POST` chiede `add`, `DELETE` `delete`, e li dà solo `TUTTO`.
+
+**Parte A — la tabella dei verbi, corretta e completata.** Una strada per riga; la funzione di risoluzione è quella
+che il verbo deve usare.
+
+| # | Verbo DB (porta) | Strada BE | View e metodo | Che cosa controlla oggi | Funzione DB della decisione |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `documenti.fn_pubblica_template_documento_versione` (16) | `TemplateVersioniAdminService.pubblica_versione` → `documenti_repository.py:996` | `ApiTemplateVersionePubblica` (`documenti/api/views.py:628`), POST | azione `documenti_template_manage`; il livello sull'area `documenti` **non** conta (regola 3) | `fn_check_azione_processo` |
+| 2 | `script.fn_change_user_emittenti_scope` (10) | `AmmSoftwareService.put_emittenti_scope` → `amm_software_repository.py:871` | `EmittentiScopeView` (`amm_software/api/views.py:266`), PUT; base `AdminAPIView` | SUPER_ADMIN, oppure superuser Django (regola 2); nient'altro | `fn_is_super_admin`, quindi `fn_guard_super_admin` è coerente |
+| 3 | `pagamenti.fn_posta_riga_tardiva` (9) | `pagamenti_service.registra_riga_tardiva` → `pagamenti_repository.py:537` | `ApiRigaRegistra` (`pagamenti/api/views.py:719`), POST | azione `registra_distinta` | `fn_check_azione_processo` |
+| 4 | `vendite.fn_genera_ddt_riconsegna` (11) | `resi_service.genera_ddt_riconsegna` → `resi_repository.py:966` | `ApiResoGeneraDdtRiconsegna` (`vendite/api/views_resi.py:610`), POST | **nessuna azione**: livello `TUTTO` sull'oggetto `vendite.reso` (da `model_permission`), con ricaduta sull'area `vendite` se l'oggetto non ha un livello suo | `fn_resolve_livello_oggetto(user_id, 'vendite', 'reso', 'vendite')` |
+| 5 | `vendite.fn_cancella_fondo_fattura` (8) | `vendite_service.fn_cancella_fondo_fattura` → `vendite_repository.py:3615` | `ApiFondoFatturaDelete` (`vendite/api/views_fondi_fattura.py:196`), DELETE | azione `governa_fondo_fattura` | `fn_check_azione_processo` |
+| 6 | `pagamenti.fn_annulla_sistemazione` (8, chiama la 5) | `sistemazioni_service.annulla_sistemazione` → `pagamenti_repository.py:2360` | `ApiSistemazioneAnnulla` (`pagamenti/api/views.py:1280`), POST | **nessuna azione**: livello `TUTTO` sull'area `pagamenti` | `fn_resolve_livello_area(user_id, 'pagamenti')` |
+| 7 | `vendite.fn_annulla_lotto_da_draft` (1-7) | `pipeline_service.fn_annulla_lotto_da_draft` → `LottoResetService` → `pipeline_repository.py:3142` | `ApiResetLottoDraft` (`vendite/api/views.py:600`), POST | il passaggio verso lo stato d'annullo; oggi la riga DRAFT → annullo non ha azione (Q-F2), quindi decide il livello `TUTTO` sull'area `vendite` | vedi sotto, «Il passaggio» |
+| 7b | idem | task `reset_lotto_draft` della pipeline (`pipeline_step_executor.py:1197`, mappa `pipeline_repository.py:454`) | nessuna | **non raggiunto**: vedi Parte B | — |
+| 8 | `vendite.fn_riporta_lotto_a_draft` (1-7) | `pipeline_service.fn_riporta_lotto_a_draft` → `pipeline_repository.py:3171`; anche lo smoke `smoke-ritorno-lotto-a-draft.py:169` | `ApiRiportaLottoADraft` (`vendite/api/views.py:658`), POST | il passaggio verso lo stato iniziale: da EMESSA l'azione della riga (oggi `numera_fatture_lotti`, dal commento della view); sul lotto già in bozza la riga non c'è e decide il livello `TUTTO` sull'area `vendite` | vedi sotto |
+| 9 | `vendite.fn_elimina_fattura_da_lotto` (1-7) | `pipeline_service.fn_elimina_fattura_da_lotto` → `pipeline_repository.py:3231` | `ApiResetLottoFatturaDraft` (`vendite/api/views.py:718`), POST | azione `reset_lotto_fattura_draft` | `fn_check_azione_processo` |
+| 10 | `vendite.fn_escludi_documento_da_giro` (1-7, chiama la 9) | `pipeline_service.fn_escludi_documenti_da_giro` (un savepoint per documento, `run_fan_out`) → `fn_escludi_documento_da_giro` → `pipeline_repository.py:3260` | `ApiEscludiDocumentiDaGiro` (`vendite/api/views.py:776`), POST | azione `reset_lotto_fattura_draft` | `fn_check_azione_processo` |
+
+**Il passaggio** (righe 7 e 8, `PassaggioDocumento.azione`, `apps/core/api/permissions.py`). Il BE non ha una query
+sua: lo stato d'arrivo è `script.fn_stato_abortito_id('vendite.fatturazione_lotti')` (annullo) o
+`script.fn_doc_stato_iniziale_id(...)` (iniziale), tradotto in codice con `script.fn_doc_stato_codice`; l'azione è
+`azione_processo_codename` di `script.fn_doc_azione_passaggio('vendite.fatturazione_lotti'::regclass, lotto_id,
+<codice>)`. Se è NULL, o la riga non c'è, decide il livello sull'area `vendite` (regola 3, al contrario). Il verbo
+usa le stesse funzioni.
+
+**Due correzioni a §4.3** (fatti del codice, 2026-11-24):
+
+* porte 1-7: `reset_lotto_draft` non è un'azione viva. È spenta nel seed (`azioni_processo.csv`, id 6,
+  `attivo = f`), e le due view l'hanno sostituita col passaggio. Le azioni dei quattro verbi sono quelle della
+  tabella;
+* porta 11: l'endpoint non chiede `conferma_reso`, chiede il livello `TUTTO` sull'oggetto `vendite.reso`. Con
+  `conferma_reso` nel verbo, chi oggi genera la riconsegna senza quell'azione riceverebbe un rifiuto nuovo.
+* Porta 8, il secondo chiamante: `fn_annulla_sistemazione` è protetto dal livello `TUTTO` sull'area `pagamenti`.
+  Non serve un'azione nuova.
+
+**Parte B — l'utente tecnico della pipeline.** I processi headless girano dentro il giro per azienda
+(`apps/core/services/giro_per_azienda.py`), con un utente tecnico per (processo × azienda). Sono:
+`run_fatturazione_batch`, `draina_coda_lavori` con gli handler `fatturazione_giro`, `fatturazione_numera`,
+`chiusura_scadenze`, `notifica_digest_muto` ed `esegui_processo`, poi `draina_coda_stampa` e `send_pending_emails`.
+
+* **Nessuno raggiunge uno dei dieci verbi.** L'unico aggancio è il task `reset_lotto_draft`, nel rollback dello
+  step EMESSA della pipeline 3 MASSIVO (seed `fatturazione_pipeline.csv`). Il runner esegue i rollback solo da
+  `_should_execute_auto_step_rollback` (`pipeline_runner.py:496`), che **esclude** proprio una lista di rollback
+  con `reset_lotto_draft` (righe 521-524, «evita rollback distruttivi in auto-run»). La facade
+  `pipeline_service.fn_execute_pipeline_step` (`:704`), l'altra strada verso un rollback, non la chiama nessuno
+  fuori dai test.
+  ⚠️ Per il DB: il task è registrato (`pipeline_task_registry`, `ALLOWED_TASK_FUNCTIONS`) ma nessun percorso lo
+  esegue. Se un giorno lo eseguisse, l'utente tecnico non avrebbe né l'azione né il livello (punto sotto), e il verbo
+  DEFINER lo fermerebbe. Se dichiararlo o ritirarlo, lo decide Tid col giro 1-7.
+* **Il profilo**: nasce a DB, in `script.fn_crea_utente_tecnico`. Il BE la chiama da
+  `processi_service.py:466`, dietro l'amministrazione (SUPER_ADMIN). Il profilo è facoltativo, solo `AD_HOC`, e
+  «di norma non si passa»: di default l'utente tecnico **non ha azioni né livelli**. Nessun comando BE lo assegna.
+
+**Parte C — chi chiama i verbi senza passare dall'endpoint.** Chiamate vere (non mock), a DB reale:
+
+| `file:riga` | Verbo | Con quale contesto | Dopo il giro |
+| --- | --- | --- | --- |
+| `core/tests/db/test_email_bozza_invio_db.py:257` | `fn_change_user_emittenti_scope` | **nessuno**: il contesto si apre dopo, a `:263` | va dato un SUPER_ADMIN (`fn_pgtap_crea_operatore_umano(…, true)` o `apri_contesto_operatore(cur, super_admin=True)`) |
+| `vendite/tests/services/test_fondi_fattura_service.py:415` (`CancellaFondoFatturaBindingTests`) | `fn_cancella_fondo_fattura` | **nessuno**; si aspetta `E_FONDO_NON_TROVATO` su un id inesistente | col guard in prima riga risponde il permesso: serve un contesto con `governa_fondo_fattura` o SUPER_ADMIN |
+| `documenti/tests/db/test_template_standard_db.py:218, 310, 494, 548, 554` | `fn_pubblica_template_documento_versione` | l'operatore di `dbops.fn_pgtap_crea_emittente_operatore()`, cioè un utente tecnico **senza profilo** | senza `documenti_template_manage`, rifiuto: da confermare dal DB con `fn_check_azione_processo` su quell'utente |
+| `documenti/tests/db/test_versione_contesto_db.py:164, 170, 240, 248` | idem | idem | idem |
+| `core/tests/db/test_date_validita_guard_comune_db.py:318` | idem | idem | idem (il test si aspetta il rifiuto delle date: arriverebbe prima il permesso) |
+| `documenti/tests/db/_stampa.py:78` (`pubblica_per_stampare`), usato da `test_ricerca_liste_db.py:179` e `test_scritture_dinamiche_db.py:228` | idem | idem | idem |
+| `pagamenti/tests/db/test_validata_e_tardiva_db.py:313, 353` | `fn_posta_riga_tardiva` | idem | senza `registra_distinta`, rifiuto |
+| `scripts/tests/smoke-ritorno-lotto-a-draft.py:169` | `fn_riporta_lotto_a_draft` | l'utente degli smoke, SUPER_ADMIN (lo verifica `_smoke_contesto.py`) | passa, se il verbo ammette SUPER_ADMIN come l'endpoint (regola 1) |
+| `scripts/tests/smoke-test-vendite.sh:177`, `smoke-test-resi-vendita.sh:388, 404` | `fn_annulla_lotto_da_draft`, `fn_genera_ddt_riconsegna` | via HTTP, l'utente del login degli smoke | passano dall'endpoint: stessa condizione |
+
+I test API e di service che usano i mock (`test_*_api.py`, `test_resi_service`, `test_sistemazioni_service`,
+`test_escludi_documento_da_giro`, `test_pipeline_*`) non arrivano al DB: non cambiano.
+
+**Le quattro primitive** (`fn_cleanup_fatture_by_ids`, `fn_reset_fondi_fattura`, `fn_ddt_riga_ritira_legami`,
+`fn_check_fondo_cancellabile`): **confermato, nessuna chiamata dal BE**, né nel codice né nei test né negli smoke.
+Compaiono solo nei commenti (`pipeline_repository.py:470`, `pipeline_step_executor.py:222`,
+`vendite_repository.py:3590`).
+
+**Che cosa ne segue per i giri** (fatti datati, non motivi):
+
+* il verbo chiede ciò che la tabella dice, e ammette SUPER_ADMIN. Sul superuser Django decide Tid (regola 2);
+* i test della Parte C si adeguano nel giro della loro porta, come richiesta al BE di quel giro. I sei file di
+  `documenti` e quello di `pagamenti` cambiano tutti nello stesso modo: il builder dell'operatore deve dare l'azione.
+  Se il DB offre un builder con un profilo (o un parametro di `fn_pgtap_crea_emittente_operatore`), il BE lo usa.
+  Altrimenti ogni test apre un SUPER_ADMIN, e il caso «operatore senza l'azione» lo prova il pgTAP;
+* nessuna firma BE cambia, nessuna GUC da togliere.
+
+### 4.6 Le due decisioni nate dalla risposta 3d — 2026-11-24
+
+**D-I, il task `reset_lotto_draft`: ✅ decisa da Tid il 2026-11-24, si ritira.** Riverificato prima della
+decisione (branch `dev/backend-tid` `601fd0b29` e doc generata del DB):
+
+* nel BE l'unico esecutore di un rollback è `_should_execute_auto_step_rollback` (`pipeline_runner.py:496`). Gira
+  solo con `meta.auto_step_rollback` acceso, su un rerun d'errore del MASSIVO, e rifiuta una lista che contiene
+  `reset_lotto_draft`. La facade `fn_execute_pipeline_step` non ha chiamanti fuori dai test, nessuna view la espone,
+  e i giri headless non la usano;
+* a DB nessuna funzione esegue i task: `fn_check_pipeline_task_registered` e `fn_get_pipeline_task_implementation`
+  li leggono soltanto, per il runner del BE. L'annullo del lotto ha la sua strada, il verbo
+  `fn_annulla_lotto_da_draft` dall'endpoint;
+* tolto il task, il rollback della pipeline 3 resta vuoto, e il runner su una lista vuota fa già ciò che fa oggi:
+  non esegue niente.
+
+Che cosa si ritira, e chi cambia per primo. **Il DB per primo**: il BE che toglie l'handler prima del seed lascerebbe
+un task registrato senza implementazione.
+
+| Lato | Che cosa |
+| --- | --- |
+| DB (CSV di `80_data`, §11.2) | la voce di rollback in `vendite/fatturazione_pipeline.csv` (pipeline 3); le righe di `dbops/pipeline_task_registry.csv`, `pipeline_task_registry_impl.csv` e `vendite/fatturazione_pipeline_task_policy.csv`; l'azione spenta `reset_lotto_draft` di `config/azioni_processo.csv`, se nessun binding la nomina più (da verificare a DB) |
+| BE, dopo il DB | `"reset_lotto_draft"` in `ALLOWED_TASK_FUNCTIONS` (`pipeline_repository.py:454`); l'handler `_handle_reset_lotto_draft_task` e la sua voce (`pipeline_step_executor.py:265, 1197`); l'esclusione per nome in `_should_execute_auto_step_rollback` (`pipeline_runner.py:521-524`), che diventa codice morto; i test che li nominano (`test_pipeline_step_executor.py:132` e i casi del rollback) |
+
+Effetto sui giri: la riga 7b della tabella 3d sparisce, e il giro 1-7 ha una strada in meno.
+
+**D-J, il superuser Django: ✅ decisa da Tid il 2026-11-24, strada a.** Il lavoro BE parte subito su
+`dev/backend-tid`, prima del giro 16 (§4.7). I fatti (2026-11-24): nessun percorso di ZeroErp crea un superuser:
+`anagrafiche.fn_crea_auth_user` scrive `is_superuser = false`, l'admin Django non c'è (`settings.py:144`). Ne nasce
+uno solo con `manage.py createsuperuser`. Il BE però lo onora in una decina di punti, e non solo nel gate dei
+permessi (`permissions.py:298, 310, 465, 601`). Lo onora anche nel perimetro (`endpoint_helpers.get_scope_user_id`:
+`None`, cioè «nessun limite»), nello scope dei billing account (`billing_account_service.py:147`), nei gate dei prezzi
+(`_pricing_gate_helpers.py`, `approvazioni_prezzo_service.py`) e in `ui/api/views_admin.py:130`.
+
+* **a** `is_superuser` non concede più niente: il BE toglie tutti i bypass, e l'unico privilegio d'amministrazione
+  resta SUPER_ADMIN, che il DB vede · **b** il verbo DEFINER lo ammette, leggendo `auth_user.is_superuser` ·
+  **c** solo il gate dei permessi lo perde, il resto resta.
+* ⭐ **a**. Il resolver dichiara già SUPER_ADMIN «single source of truth per il privilegio admin». Il superuser è una
+  seconda sede, che nessun oggetto del DB conosce: la RLS non la vede, i verbi nemmeno. **b** la porterebbe dentro
+  ogni guard, e il bypass del perimetro (`get_scope_user_id`) resterebbe una lettura senza muri. **c** lascia le
+  stesse due sedi negli altri punti.
+* Costo di **a**: un lavoro BE a sé (i punti elencati, i loro test, `apri_contesto_operatore` dei test e2e, che di
+  default prende un `is_superuser`), da fare **prima** del giro 16. Chi oggi ha un superuser in sviluppo gli dà il
+  binding SUPER_ADMIN.
+
+### 4.7 D-J nel BE: i bypass di `is_superuser` tolti — ✅ fatto, 2026-11-24
+
+**Fatto, nel codice di produzione** (`dev/backend-tid`, non committato):
+
+| File | Che cosa |
+| --- | --- |
+| `core/api/permissions.py` | tolti i quattro bypass (`IsAdminZeroERP.valuta` e `has_permission`, `ZeroERPPermission.valuta` e `has_permission`); resta SUPER_ADMIN |
+| `core/api/endpoint_helpers.py` | `get_scope_user_id` dà l'id dell'utente autenticato, mai più `None` per il superuser |
+| `ui/api/views_admin.py` | `_require_any_action` senza il bypass |
+| `anagrafiche/api/views_billing_account.py`, `services/billing_account_service.py` | tolto il parametro `is_superuser` |
+| `vendite/services/_pricing_gate_helpers.py` (tre punti), `approvazioni_prezzo_service.py` (due) | tolti i bypass: SUPER_ADMIN passa già da `fn_check_azione_processo`, che gli dà `true` |
+| una ventina di file | i commenti che dicevano «`None` = superuser» |
+
+**Il presidio rosso** (suite completa, 2026-11-24). Base prima del giro: 6743 test, OK. Dopo: **608 failure e
+59 errori in 85 moduli di test**. La causa è una sola: **77 file** di test API autenticano con
+`JWTAuthentication.authenticate` patchato a `(Mock(), None)`. Un `Mock()` nudo ha `is_superuser` vero, quindi quei
+test passavano per il bypass **senza dirlo**, che è il difetto già nominato dal BB `operatore_di_prova`. Senza il
+bypass la catena interroga il DB con l'id di un mock, e risponde 500 o 403. Gli altri rossi (circa 25 punti) sono i
+test che dichiarano `is_superuser=True` per saltare un permesso, e i tre che provavano proprio il bypass
+(`test_admin_permission`, `test_permissions`, `test_billing_account_service`).
+
+> ⚠️ **Superato: deciso da Tid (ok al BB) e fatto lo stesso giorno**, vedi sotto «I test, adeguati il 2026-11-24».
+
+**Da decidere prima di adeguare i test** (regola del 2, a Tid): un BB di test, `super_admin_di_prova()`, in
+`core/tests/_helpers/`. È l'operatore autenticato più il patch di `PermissionResolver.is_super_admin` a `True`, da
+usare dove un test vuole davvero passare la catena per guardare la view. I 77 file passano dal `Mock()` nudo a
+`operatore_di_prova()` + `super_admin_di_prova()` (oppure ai permessi che il test vuole provare), e i tre test del
+bypass si riscrivono come «il superuser senza SUPER_ADMIN è negato».
+
+**Resta fuori, dichiarato**: `core/tests/db_e2e.apri_contesto_operatore` sceglie di default un utente con
+`is_superuser` per aprire la GUC (76 chiamanti). Il DB non guarda quel flag, quindi non concede niente, ma il
+criterio di scelta non ha più senso. Lo si cambia nello stesso giro dei test. ✅ Fatto, vedi sotto.
+
+**I test, adeguati il 2026-11-24** (ok Tid al BB):
+
+* il BB `core/tests/_helpers/super_admin_di_prova.py`, registrato nel catalogo. In `JwtMockedApiTest` si dichiara
+  con l'attributo di classe `come_super_admin = True` (default `False`), messo in **129 classi**;
+* `ZeroERPPermission.valuta` legge il ruolo applicativo **dopo** il bypass SUPER_ADMIN: serve solo al messaggio
+  del diniego;
+* i test che provavano il bypass (`test_admin_permission`, `test_permissions`, `test_billing_account_service`,
+  `test_tool_registry`, `test_approvazioni_prezzo_service`, due di `test_preventivi_service`, i perimetri di
+  `test_actor_user_id_api`, `test_lotti_list_api` e `test_lotto_fatture_list_api`) ora provano il contrario: il
+  superuser senza SUPER_ADMIN è trattato come chiunque. ⚠️ Due di questi (`test_superuser_bypass`,
+  `test_superuser_allowed`) erano verdi **per i dati**: interrogavano il DB vero con l'utente 1, che su dbdev è
+  SUPER_ADMIN. Ora patchano `is_super_admin` a `False`;
+* tre attese `auth_user_id=None` in `test_pipeline_api` passano all'id dell'operatore;
+* `apri_contesto_operatore` di default prende il primo utente con la veste OPERATORE attiva
+  (`script.fn_has_identita_attiva`).
+
+**Esito**: suite completa **6743 test, OK, 339 saltati** (identica alla base); ruff e il cancello mypy verdi.
+
+**Dalla verifica critica** (`/verifica`, 2026-11-24): corretti il catalogo BB (sette voci ancora alla regola del
+superuser), un commento di `gestione_service.py`, il commento di `frontend/src/vendite/api/approvazioniPrezzo.js`.
+Provato che i test rovesciati sono un presidio: con il bypass rimesso in `ZeroERPPermission.valuta`,
+`IsAdminZeroERP.valuta` e `get_scope_user_id` ne diventano rossi sei.
+
+**D-K, il primo amministratore di un'installazione nuova: ✅ decisa da Tid il 2026-11-24.**
+
+*Il problema.* Il playbook e `configurazione-django.md` dicevano che l'utente di `createsuperuser` è il primo con cui
+si entra dal frontend. Non era vero nemmeno prima di D-J: il login chiede una veste attiva (`MultiVesteTokenSerializer`,
+403 `E_VESTE_NON_ATTIVA`), e `createsuperuser` crea solo la credenziale. Dopo D-J il flag non concede neanche più
+niente. Un'installazione nuova non ha quindi una strada scritta per arrivare al primo SUPER_ADMIN.
+`provision_utenti_sviluppo` vale solo fuori da PRODUZIONE.
+
+*Che cosa c'è già* (letto dalla doc generata del DB, 2026-11-24, senza una chiamata vera):
+
+* `anagrafiche.fn_crea_operatore_v2(…, p_is_super_admin)` crea soggetto, credenziale, risorsa umana e veste, e
+  attraverso `fn_crea_risorsa_umana_v2` il binding SUPER_ADMIN (profilo da `config.fn_profilo_super_admin_id`);
+* **nessuno dei due verbi guarda chi li chiama**, e nessun trigger di `config.profili_accesso_bindings` pretende che
+  un SUPER_ADMIN lo conceda: il problema dell'uovo e della gallina non c'è. L'audit
+  (`trgfn_audit_data_user_generic`) senza `app.jwt_user` ripiega su `CURRENT_USER`;
+* la veste OPERATORE nasce **spenta, sempre** (R-2 di brief-db-blocco-login-per-credenziale): la accende
+  l'attivazione dell'invito, cioè una mail. Sul primo impianto serve `anagrafiche.fn_accendi_veste`;
+* «ne esiste già uno» lo dice `script.fn_check_almeno_un_super_admin_attivo`.
+
+*La scelta.* La condizione che apre il bootstrap è «**non esiste ancora un SUPER_ADMIN attivo**», non «non c'è un
+utente». La seconda resterebbe vera per sempre, per chiunque non sia autenticato; la prima si chiude da sola alla
+nascita del primo. ⚠️ Non c'entra con il `None` dei filtri di perimetro (la verifica critica dello stesso giorno):
+quello è un filtro di lettura, e chiudere l'uno non chiude l'altro.
+
+**R-DB-K1 — al team DB: il verbo di primo impianto.** Chi cambia per primo: il DB. Il BE non ha niente da adeguare
+finché il verbo non c'è.
+
+* `anagrafiche.fn_crea_primo_amministratore(...)` (nome e firma li decide il DB), `SECURITY DEFINER`, così non
+  dipende dalla RLS né dalle GUC della connessione che lo chiama;
+* **in prima riga** rifiuta se `fn_check_almeno_un_super_admin_attivo()` è vero, con un codice nuovo (per esempio
+  `E_PRIMO_AMMINISTRATORE_GIA_PRESENTE`, NON_PERMESSO), e serializza la verifica (lock) così due chiamate
+  concorrenti non ne creano due;
+* poi chiama `fn_crea_operatore_v2(…, p_is_super_admin => true)` e accende la veste con `fn_accendi_veste`, nella
+  stessa transazione: o l'amministratore entra, o non nasce niente;
+* riceve l'hash Django della password (il DB non lo calcola, come in `provision_utenti_sviluppo`);
+* il pgTAP: su un DB senza SUPER_ADMIN crea il primo, veste accesa e `fn_is_super_admin` vero; la seconda chiamata
+  è rifiutata; un SUPER_ADMIN **spento** o scaduto non conta come presente (la condizione è quella di
+  `fn_identita_super_admin_senza_scadenza`, da confermare dal DB);
+* da verificare dal DB, perché qui non è stato provato: quali righe di seed il verbo pretende su un'installazione
+  vuota (qualifica, unità organizzativa, il soggetto PR), e se servono a `p_qualifica_id` e
+  `p_unita_organizzativa_id` dei default di primo impianto;
+* il codice d'errore nuovo entra nel catalogo con la sua policy generata e un ripiego senza `%s`.
+
+**R-DB-K2 — al team DB: una porta in più per il piano dei giri.** `fn_crea_operatore_v2` e `fn_crea_risorsa_umana_v2`
+sono `SECURITY INVOKER` e non guardano il chiamante. Oggi l'unico muro fra un utente qualunque e un binding
+SUPER_ADMIN nuovo è l'endpoint del BE (`AdminAPIView`), ed è la classe di questo brief. Va valutata come porta
+(guard SUPER_ADMIN nel verbo con `fn_guard_super_admin`, salvo la strada del primo impianto, che passa da R-DB-K1),
+con la sua riga nella tabella delle porte e il giro che la chiude.
+
+**Al team BE, dopo R-DB-K1** (passo 3j): un management command `crea_primo_amministratore`. Chiede i dati e la
+password, calcola l'hash, chiama il verbo e traduce il rifiuto in un messaggio chiaro. Il playbook (§11) e
+`configurazione-django.md` sostituiscono `createsuperuser` con il comando e tolgono la nota ⚠️ messa il 2026-11-24.
+Il test: il comando chiama il verbo con l'hash, e il rifiuto «già presente» esce come messaggio, non come traceback.
+
 ## 5. La seconda famiglia: le viste aggiornabili — 2026-11-23
 
 **Il varco.** Il loop dei grant (`90_end/ci_apply/20260205-41`) dà all'app `INSERT`, `UPDATE` e `DELETE` «on all
@@ -790,6 +1054,11 @@ dbdev (`sudo -u postgres psql -d zeroerp -v fase=post < scripts/sql/provision_ze
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-24 | Tid | **D-K decisa** (§4.7): il primo amministratore nasce da un verbo DB di primo impianto che si chiude alla nascita del primo SUPER_ADMIN (R-DB-K1), poi un comando BE; la porta di `fn_crea_operatore_v2` al piano dei giri (R-DB-K2) |
+| 2026-11-24 | BE | D-J fatta (§4.7): bypass di `is_superuser` tolti nel BE, BB `super_admin_di_prova` (ok Tid), 129 classi di test dichiarate, test del bypass rovesciati; suite verde come la base |
+| 2026-11-24 | Tid | **D-J decisa: a**, `is_superuser` non concede più niente; il lavoro BE parte subito (§4.7) |
+| 2026-11-24 | Tid | **D-I decisa: il task `reset_lotto_draft` si ritira**, dopo la riverifica (nessun esecutore, né nel BE né a DB); prima il DB, poi il BE (§4.6). D-J proposta (§4.6) |
+| 2026-11-24 | BE | Risposta alla richiesta 3d (§4.5): la tabella dei dieci verbi con le funzioni di decisione; due correzioni a §4.3 (`reset_lotto_draft` spenta, la riconsegna chiede il livello su `vendite.reso` e non `conferma_reso`); il superuser Django passa l'endpoint (decisione a Tid); nessun processo headless raggiunge i verbi, il task `reset_lotto_draft` non lo esegue nessun percorso; i test della Parte C che girano senza contesto o con l'utente tecnico senza profilo; le quattro primitive mai chiamate dal BE |
 | 2026-11-24 | DB | Richiesta 3d al BE scritta (§4.4): dieci verbi da portare a DEFINER, precompilati dal ramo del BE (chiamanti, view, meccanismo del permesso); parti B (utente tecnico della pipeline) e C (test che chiamano i verbi, primitive da chiudere) |
 | 2026-11-24 | Tid | Giro 3 applicato; fase `post` del provisioning su dbdev; `test-viste-app-solo-select-v1` verde 5/5 (prima della fase `post` rosso solo sulle quattro viste di `public`, come previsto, §7.4) |
 | 2026-11-24 | DB | Giro 3 scritto (§7): le viste in sola lettura per l'app nelle tre sedi (`20261123-47`, il ramo per tipo del loop, la fase `post`), pgTAP a criterio, §6 e §11.8 delle linee guida, guida dei permessi §7.4; `geometry_columns` deciso (regole `DO INSTEAD NOTHING`, chiusa dal provisioning); provato sullo scratch |

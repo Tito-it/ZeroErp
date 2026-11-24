@@ -219,7 +219,16 @@ def apri_contesto_operatore(cur, *, super_admin: bool = False) -> int:
             " WHERE u.is_active AND script.fn_is_super_admin(u.id) ORDER BY u.id LIMIT 1"
         )
     else:
-        cur.execute("SELECT id FROM auth_user WHERE is_superuser ORDER BY id LIMIT 1")
+        # ⭐ Un OPERATORE con la veste attiva, cioe' cio' che il nome promette.
+        #    Fino al 2026-11-24 era «il primo `is_superuser`»: un flag che il
+        #    database non guarda e che dal D-J non concede niente nemmeno al
+        #    backend (brief-db-porte-aperte-dalla-sola-guc §4.7).
+        cur.execute(
+            "SELECT u.id FROM auth_user u"
+            " WHERE u.is_active"
+            "   AND script.fn_has_identita_attiva(u.id, 'OPERATORE'::config.ruolo_applicativo)"
+            " ORDER BY u.id LIMIT 1"
+        )
     riga = cur.fetchone()
     if riga is None:
         raise unittest.SkipTest(

@@ -8,7 +8,7 @@
 """
 Indice test eseguiti:
  1) test_anonymous_user_denied
- 2) test_superuser_allowed
+ 2) test_superuser_senza_super_admin_negato
  3) test_admin_ruolo_allowed
  4) test_operativo_area_tutto_get_allowed
  5) test_operativo_area_lettura_post_denied
@@ -91,11 +91,17 @@ class ZeroERPPermissionTests(TestCase):
         view = _mock_view(area="vendite")
         self.assertFalse(self.perm.has_permission(request, view))
 
-    # Scopo: Django superuser deve essere sempre ammesso.
-    def test_superuser_allowed(self):
+    # Scopo: il superuser Django senza SUPER_ADMIN e senza livello NON e'
+    #        ammesso: il flag non concede piu' niente (D-J, 2026-11-24).
+    @patch("apps.core.api.permissions.PermissionResolver")
+    def test_superuser_senza_super_admin_negato(self, mock_resolver):
+        mock_resolver.is_super_admin.return_value = False
+        mock_resolver.get_ruolo_applicativo.return_value = "OPERATORE"
+        mock_resolver.get_livello_area.return_value = "BLOCCATO"
+        mock_resolver.has_profilo_applicabile_per_area.return_value = True
         request = _mock_request(is_superuser=True)
         view = _mock_view(area="vendite")
-        self.assertTrue(self.perm.has_permission(request, view))
+        self.assertFalse(self.perm.has_permission(request, view))
 
     # Scopo: Utente con ruolo_sistema ADMIN deve essere ammesso.
     @patch("apps.core.api.permissions.PermissionResolver")

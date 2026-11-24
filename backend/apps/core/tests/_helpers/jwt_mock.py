@@ -27,6 +27,7 @@ from uuid import uuid4
 from django.test import Client, SimpleTestCase
 
 from apps.core.api.constants import DEFAULT_LIMIT
+from apps.core.tests._helpers.super_admin_di_prova import super_admin_di_prova
 
 
 class ClientApi(Client):
@@ -78,8 +79,19 @@ class JwtMockedApiTest(SimpleTestCase):
 
     client_class = ClientApi
 
+    # ⭐ La classe DICHIARA se le sue richieste passano da SUPER_ADMIN
+    #    (`super_admin_di_prova`, D-J 2026-11-24). Fino a quel giorno lo faceva
+    #    di nascosto il `Mock()` nudo restituito da `authenticate`, col suo
+    #    `is_superuser` vero e il bypass del superuser Django, ora ritirato.
+    #    ⛔ Default False: chi prova un permesso non lo deve ricevere gratis.
+    come_super_admin: bool = False
+
     def setUp(self) -> None:
         super().setUp()
+        if self.come_super_admin:
+            super_admin = super_admin_di_prova()
+            super_admin.start()
+            self.addCleanup(super_admin.stop)
         patcher = patch(
             "apps.core.api.jwt_audit_authentication.JwtAuditAuthentication._set_gucs",
             return_value=None,

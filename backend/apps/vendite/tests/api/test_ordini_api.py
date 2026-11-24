@@ -52,6 +52,7 @@ _BASE = "/api/v1/vendite/ordini/"
 
 class TestOrdiniApi(JwtMockedApiTest):
     """Smoke test endpoint ordini di vendita."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()
@@ -188,6 +189,7 @@ class TestOrdineEmissione(JwtMockedApiTest):
     `ApiPreventivoEmetti` riusando il service di dominio `ordini_service.conferma`
     al posto di `preventivi_service.emetti`.
     """
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

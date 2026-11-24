@@ -23,6 +23,7 @@ _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 
 class TestContattiRuoloApi(JwtMockedApiTest):
     """GET /anagrafiche/ruoli/{id}/contatti/: il parametro dell'istanza."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

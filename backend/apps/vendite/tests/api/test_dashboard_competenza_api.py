@@ -108,6 +108,7 @@ _ERRORI_RESPONSE = {
 
 
 class DashboardCompetenzaApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -159,6 +160,7 @@ class DashboardCompetenzaApiTests(JwtMockedApiTest):
 
 
 class DashboardCompetenzaAttivitaApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -258,6 +260,7 @@ class DashboardCompetenzaAttivitaApiTests(JwtMockedApiTest):
 
 
 class DashboardCompetenzaCommesseApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -324,6 +327,7 @@ class DashboardCompetenzaCommesseApiTests(JwtMockedApiTest):
 
 
 class DashboardCompetenzaErroriApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()

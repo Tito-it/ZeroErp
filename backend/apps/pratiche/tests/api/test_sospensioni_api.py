@@ -39,6 +39,7 @@ _VIEWS = "apps.pratiche.api.views"
 
 
 class SospensioniApiTests(JwtMockedApiTest):
+    come_super_admin = True
 
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:

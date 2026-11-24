@@ -40,6 +40,7 @@ def _mock_user() -> Mock:
 
 
 class ProcessiAccensioneApiTests(JwtMockedApiTest):
+    come_super_admin = True
     def setUp(self) -> None:
         super().setUp()
         self.client = Client()

@@ -2061,7 +2061,7 @@ class ContrattiService:
     #        (refactor 2026-05-15 §3-bis-E). Wrapper sottile sul BB condiviso
     #        `_pricing_gate_helpers.check_limite_variazione_globale` che
     #        contiene la logica (cascata user→categoria→group→emittente,
-    #        superuser bypass, PERCENTUALE-only, raise retryable).
+    #        PERCENTUALE-only, raise retryable).
     #        Qui ci limitiamo a estrarre i campi dal merge (data + existing)
     #        prima di delegare.
     def _check_limite_variazione_globale(

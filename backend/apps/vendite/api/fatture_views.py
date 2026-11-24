@@ -116,8 +116,7 @@ class ApiFatturaDetail(DomainAPIView):
     )
     # Scopo: Restituisce via GET il documento fattura completo per il drawer.
     def get(self, request: Request, fattura_id: int) -> JsonResponse:
-        # `get_scope_user_id` ritorna None per il superuser (vede tutto): lo
-        # scope applicativo si somma alla RLS, non la sostituisce.
+        # Lo scope applicativo si somma alla RLS, non la sostituisce.
         data = get_fattura_dettaglio(
             fattura_id=fattura_id,
             auth_user_id=get_scope_user_id(request),

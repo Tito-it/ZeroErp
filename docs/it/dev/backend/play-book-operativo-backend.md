@@ -273,6 +273,14 @@ systemctl start zeroerp-gunicorn
 Il superuser è il primo utente con cui si entra **dal frontend**: l'admin
 Django non esiste.
 
+⚠️ **Da solo non basta, ed è un buco aperto** (2026-11-24). `createsuperuser` crea solo la credenziale:
+il login chiede una veste attiva (senza, 403 `E_VESTE_NON_ATTIVA`), e il flag `is_superuser` dal 2026-11-24
+non concede niente (D-J di `brief-db-porte-aperte-dalla-sola-guc` §4.6): l'amministratore è il binding
+`SUPER_ADMIN`, che si crea col verbo `anagrafiche.fn_crea_operatore_v2(…, p_is_super_admin)`. Come lo si
+chiama sul primo amministratore di un'installazione nuova non è ancora scritto: la D-K di quel brief (§4.7) l'ha
+decisa, con un verbo DB di primo impianto e un comando che sostituirà `createsuperuser`; finché non ci sono, questo
+passo non dà un amministratore.
+
 ## 12) UFW finale (solo Tailscale per SSH)
 
 ```bash

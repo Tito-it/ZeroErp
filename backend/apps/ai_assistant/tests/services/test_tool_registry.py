@@ -273,11 +273,12 @@ class TestToolRegistry(unittest.TestCase):
         self.mock_is_super_admin.return_value = True
         self.assertTrue(tool_registry.is_tool_allowed_for_user(operatore_di_prova(user_id=7), t))
 
-    # Scopo: il superuser Django passa, come passa dalla UI.
+    # Scopo: il superuser Django senza SUPER_ADMIN NON passa, come dalla UI:
+    #        il flag non concede piu' niente (D-J, 2026-11-24).
     @patch.object(tool_registry, "_get_disabled_tools", return_value=set())
     def test_is_allowed_superuser_django_come_la_ui(self, _mock_disabled):
         t = _tool("t_su", _PraticheView, "POST")
-        self.assertTrue(
+        self.assertFalse(
             tool_registry.is_tool_allowed_for_user(operatore_di_prova(user_id=7, is_superuser=True), t)
         )
 
