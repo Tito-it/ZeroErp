@@ -9,7 +9,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| tipo_ruolo_id | bigint | NO |  |
+| tipo_ruolo_id | integer | NO |  |
 | tipo_indirizzo_id | integer | NO |  |
 | obbligatorio | boolean | NO | false |
 | valido_dal | date | YES |  |
@@ -30,7 +30,6 @@
 | CHECK | chk_ruoli_tipi_indirizzo_validita |  |
 | CHECK | chk_tipi_ruolo_tipi_indirizzo_fallback_not_self |  |
 | FOREIGN KEY | fk_ruoli_tipi_indirizzo_tipo_indirizzo | tipo_indirizzo_id |
-| FOREIGN KEY | fk_tipi_ruoli_tipi_indirizzo_ruolo | tipo_ruolo_id |
 | FOREIGN KEY | fk_tipi_ruolo_tipi_indirizzo_fallback_tipo | fallback_tipo_indirizzo_id |
 | FOREIGN KEY | fk_tipi_ruolo_tipi_indirizzo_tipo_ruolo | tipo_ruolo_id |
 | PRIMARY KEY | pk_ruoli_tipi_indirizzo | id |

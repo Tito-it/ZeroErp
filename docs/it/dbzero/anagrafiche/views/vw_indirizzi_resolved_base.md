@@ -25,9 +25,9 @@ SELECT b.scope,
     b.sublocality,
     b.postal_box AS postal_code,
     COALESCE(vidd.comune_id, b.comune_id) AS comune_id,
-    COALESCE(vidd.descrizione_comune, co_ai.descrizione, co_s.descrizione, ic.comune) AS comune_descrizione,
-    COALESCE(vidd.cap, ic.codice_postale) AS cap,
-    COALESCE(vidd.provincia, ic.provincia) AS provincia,
+    COALESCE(vidd.descrizione_comune, co_ai.descrizione, co_s.descrizione) AS comune_descrizione,
+    COALESCE(vidd.cap, cp_ai.codice) AS cap,
+    COALESCE(vidd.provincia, pr_ai.sigla) AS provincia,
     COALESCE(pr_ai.id, pr_s.id) AS provincia_id,
     COALESCE(pr_ai.sigla, pr_s.sigla) AS provincia_sigla,
     COALESCE(pr_ai.descrizione, pr_s.descrizione) AS provincia_descrizione,
@@ -55,7 +55,7 @@ SELECT b.scope,
     b.data_update,
     b.user_update,
     ti.codice_interno AS tipo_indirizzo_codice_interno
-   FROM (((((((((((((( SELECT 'RUOLO'::text AS scope,
+   FROM ((((((((((((( SELECT 'RUOLO'::text AS scope,
             i.id AS indirizzo_id,
             sr.soggetto_id,
             i.soggetto_ruolo_id,
@@ -105,7 +105,6 @@ SELECT b.scope,
            FROM anagrafiche.indirizzi_soggetti isg) b
      JOIN config.tipi_indirizzi ti ON ((ti.id = b.tipo_indirizzo_id)))
      LEFT JOIN anagrafiche.vw_indirizzi_dettaglio vidd ON ((vidd.indirizzo_dettaglio_id = b.indirizzo_dettaglio_id)))
-     LEFT JOIN script.vw_indirizzo_completo ic ON ((ic.id_comune = b.comune_id)))
      LEFT JOIN config.stradario s ON ((s.id = vidd.stradario_id)))
      LEFT JOIN config.comuni co_s ON ((co_s.id = s.comune_id)))
      LEFT JOIN config.codici_postali cp_s ON ((cp_s.id = s.codice_postale_id)))

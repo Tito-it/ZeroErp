@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-24
 
-**Riparte: Tid**, col commit del giro 3-bis e il passaggio al BE da girare (§20.7, sei voci). Il giro 3-bis, D-T5-6 **b** (il tipo di contatto proposto, §20.8), è chiuso: `20261123-68 … -73` applicato, pgTAP verdi, doc auto-generata rigenerata (Tid e sessione DB, 2026-11-24). Poi la sessione DB riparte con T7. Il giro 3, T5, è chiuso: `20261123-48 … -64` applicato su scratch e dbdev, pgTAP verdi come app, committato (2026-11-24). Poi T7, T4, T8, T12, T3, T10, T11. Il giro 2 (T2) è chiuso: dentro `anagrafiche` non c'è
+**Riparte: la sessione DB con T7b**, al via di Tid (preparato il 2026-11-24, analisi non iniziata). Tid ha da girare il passaggio al BE del giro 4 (§21.7); il giro 4 (T7a, `20261123-74 … -94`, §21.5) è applicato, verde e committato (`359c556da1`, 2026-11-24). Tid ha anche da girare il passaggio al BE (§20.7, sei voci). T7 è diviso in T7a, gli indirizzi, e T7b, i contatti e il catasto (Tid, 2026-11-24); l'analisi di T7a sul catalogo è scritta il 2026-11-24 (§21). Il giro 3-bis, D-T5-6 **b** (il tipo di contatto proposto, §20.8), è chiuso: `20261123-68 … -73` applicato, pgTAP verdi, doc auto-generata rigenerata, committato (`f9b1049de3`, 2026-11-24). Il giro 3, T5, è chiuso: `20261123-48 … -64` applicato su scratch e dbdev, pgTAP verdi come app, committato (2026-11-24). Poi T7, T4, T8, T12, T3, T10, T11. Il giro 2 (T2) è chiuso: dentro `anagrafiche` non c'è
 niente da cambiare. La postura delle viste in tutto il database è decisa (Tid, 2026-11-23, §19.3) e il suo lavoro è
 di [brief-db-porte-aperte-dalla-sola-guc](brief-db-porte-aperte-dalla-sola-guc.md) §5, in un'altra sessione: qui non
 resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta di S50 (§17, riga T7). Il vaglio per temi è deciso (Tid, 2026-11-23, §17.1). Il piano da percorrere, con le fasi spuntate, è il §0.
@@ -17,9 +17,8 @@ resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta d
 | 6 | sessione DB | Il giro dei metadati, per ciò che i giri di codice non hanno già riscritto | §8 | 4 |
 | 7 | sessione DB | Archiviazione in `work-done/`, col debito dei temi spostati scritto nei loro brief | §11 | 5, 6 |
 
-**Decisioni aperte di Tid:** nessuna. D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
-**Da committare:** il giro 3-bis (§20.8: sei changeSet, tre righe CSV, due pgTAP, manual, guide e doc auto-generata, 2026-11-24), la §19 (giro 2, 2026-11-23), le decisioni del vaglio
-(§17.1, 2026-11-23), e le righe di questo brief che registrano il commit `a35a6636dc`, rimaste fuori da quel commit.
+**Decisioni aperte di Tid:** nessuna. D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
+**Da committare:** niente; il giro 4 è in `359c556da1` (2026-11-24).
 
 ## 0. Il piano da percorrere
 
@@ -80,9 +79,17 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] Giro 3: la porta dei lucchetti riletta sul catalogo: è già chiusa per l'app dal 2026-11-17, niente da registrare (2026-11-24, §20.6)
   * [x] Giro 3-bis: D-T5-6 b, il tipo di contatto proposto: analisi, changeSet `20261123-68 … -73`, pgTAP, manual e guide, provati sullo scratch (2026-11-24, §20.8)
   * [x] Giro 3-bis: applicato, pgTAP verdi (Tid, 2026-11-24); doc auto-generata rigenerata (2026-11-24)
-  * [ ] Giro 3-bis: committato
+  * [x] Giro 3-bis: committato (Tid, 2026-11-24, `f9b1049de3`)
   * [ ] Giro 3: il passaggio al BE (§20.7)
-  * [ ] Poi, un giro per tema nell'ordine di §17.1: T7, T4, T8, T12, T3, T10, T11
+  * [x] Giro 4: T7 diviso in T7a (indirizzi) e T7b (contatti e catasto) (Tid, 2026-11-24)
+  * [x] Giro 4: T7a, analisi sul catalogo e guide verificate (2026-11-24, §21)
+  * [x] Giro 4: T7a, D-T7a-3 … -7 decise come proposte (Tid, 2026-11-24, §21.2)
+  * [x] Giro 4: T7a, D-T7a-1 e D-T7a-2 nella forma nuova, decise (Tid, 2026-11-24, §21.2)
+  * [x] Giro 4: T7a, pgTAP rosso: due file, 28 rossi sui loro motivi (2026-11-24, §21.4)
+  * [x] Giro 4: T7a, changeSet `20261123-74 … -94`, CSV, pgTAP adeguati, guida e note, provati sullo scratch (2026-11-24, §21.5)
+  * [x] Giro 4: T7a, apply e pgTAP verdi come app (Tid); doc auto-generata rigenerata (2026-11-24)
+  * [ ] Giro 4: T7a, il passaggio al BE (§21.7)
+  * [ ] Poi T7b, e un giro per tema nell'ordine di §17.1: T4, T8, T12, T3, T10, T11
 * **Fase 9 — Il giro dei metadati** (§8)
   * [ ] I COMMENT, i commenti nei corpi e le note di seed che i giri di codice non hanno già riscritto
 * **Fase 10 — L'archiviazione** (§11)
@@ -1746,3 +1753,265 @@ Il giro 3-bis non ne porta di nuove.
 ⚠️ **Resta fuori, da segnalare**: `dbops.fn_pgtap_crea_soggetto_pg` ha `p_tipo_soggetto_dettaglio_id integer`,
 un'eccezione dichiarata nel corpo (la colonna è `bigint`, ancorarla cambia l'identità della firma: `DROP`, `GRANT`
 di nuovo, il gemello PF ha già `bigint`). Non è del giro 3-bis: un giro a sé, se Tid lo vuole.
+
+## 21. Giro 4 — T7a, gli indirizzi (2026-11-24: decisioni prese, applicato, pgTAP verdi)
+
+T7 si divide in due giri (Tid, 2026-11-24): **T7a, gli indirizzi** (S3, S10, S16 seconda metà, S19, S48, S49 metà,
+S50 senza la porta) e **T7b, i contatti e il catasto** (S8, S46, S11, S47, col pgTAP `create-soggetto-gestori.sql`).
+Questa sezione è l'analisi di T7a, letta sul catalogo di dbdev il 2026-11-24 dopo l'apply del giro 3-bis. I
+changeSet sono in §21.5. Sul ramo `origin/dev/backend-tid` si è guardato solo chi chiama gli oggetti, in sola lettura.
+
+**Guide verificate** (`scripts/guide_coinvolte.py --oggetti`, 26 oggetti, 2026-11-24):
+
+| Guida o nota | Esito |
+| --- | --- |
+| [gestione-degli-indirizzi](../../guide/gestione-degli-indirizzi.md) | **contraddetta su due punti**, decide Tid. R9 descrive come comportamento il blocco del titolare a cui la matrice nuova chiede un indirizzo («non si modifica più»): è la S48, D-T7a-1. R7 dice che con una via incompleta (un comune senza provincia) il «trova o crea» si ferma: è la S50, D-T7a-2. Per il resto è **indietro** dove il giro corregge: R3 (la forma di un elemento vuoto), R8 (la posizione) |
+| nota `_indirizzi-obbligatori` | **contraddetta** con R9 (D-T7a-1): la tabella «Le strade» dichiara «INSERT e ogni UPDATE». È **indietro** sul livello del soggetto: «il ripiego vale come è scritto nella riga» non dice che il ripiego può essere un tipo che la natura vieta |
+| nota `_indirizzo-libero-o-dettaglio` | **indietro**: dice che col dettaglio «comune, CAP, provincia e posizione li dice la via», e insieme che `trgfn_indirizzi_sync_geoloc` copia la posizione nella riga. Le due frasi non stanno insieme (S50, D-T7a-3) |
+| nota `_tipo-indirizzo-ammesso` | **coerente**. Il suo «Quando cambia una matrice: nessuno rigiudica gli indirizzi già scritti» è il modello su cui la D-T7a-1 propone di allineare gli obbligatori |
+| nota `_cambio-di-natura` | **coerente**: il cambio di natura rigiudica i ruoli, e il giro non lo tocca |
+| [catasto-delle-istanze](../../guide/catasto-delle-istanze.md), [generazione-cliente](../../guide/generazione-cliente.md), [gestione-delle-istanze-utility](../../guide/gestione-delle-istanze-utility.md), [riclassificazione-vie](../../guide/riclassificazione-vie.md) | **coerenti**: nominano `indirizzi_dettaglio` per il legame col civico, che il giro non cambia |
+
+Quattro orfani: `fn_indirizzi_con_obbligatori`, `fn_indirizzo_elemento`, `fn_search_indirizzi_dettaglio`,
+`script.vw_indirizzo_completo`. Sono dettagli interni, non concetti del dominio: nessuna guida da scrivere. Il primo
+e il terzo cambiano col giro (D-T7a-4, D-T7a-6).
+
+### 21.1 Che cosa dice il catalogo, segnalazione per segnalazione
+
+| # | Esito | Che cosa dice il catalogo |
+| --- | --- | --- |
+| S3 | **difetto, e più largo** | `vw_indirizzi_resolved_base` fa `LEFT JOIN script.vw_indirizzo_completo ic ON ic.id_comune = b.comune_id`, e la vista ha una riga per via. Un indirizzo libero della forma del catalogo esce una volta per ogni via del suo comune. C'è anche un secondo difetto: `cap` è `COALESCE(vidd.cap, ic.codice_postale)`, cioè il CAP di una via a caso del comune e non quello scelto (`b.codice_postale_id`). In un comune con più CAP la vista ne mostra uno sbagliato. Il join non serve a niente: comune, provincia e CAP sono già in `co_ai`, `pr_ai` e `cp_ai`. La correzione non cambia le colonne: si toglie `ic`, `cap` diventa `cp_ai.codice` e `provincia` diventa `pr_ai.sigla`. Le viste figlie (`_all`, `_ruolo`, `_soggetto`) e `script.fn_get_indirizzo` e `_by_ruolo` la seguono da sole |
+| S16 (2ª metà) | **difetto** | `vw_indirizzi_dettaglio` fa un join interno con `script.vw_indirizzo_completo`, che a sua volta lo fa interno con `config.province`, e `config.comuni.provincia_id` è nullable. Il civico di una via di un comune senza provincia sparisce dalla vista, e con lui l'indirizzo che lo usa sparisce da `vw_indirizzi_resolved_base`, la cui riga resta senza testo. È la stessa radice di S50, D-T7a-2 |
+| S50 (via) | **difetto, la radice è il modello** | `fn_build_indirizzo_normalizzato` legge `via_norm` da `vw_indirizzo_completo`. Quella vista chiede la provincia e il CAP, che per la via non servono: `via_norm` è toponimo più nome. Da `config.stradario` a `stradario_generale` e `toponomastica` le colonne sono tutte `NOT NULL`. Col comune senza provincia `via_norm` resta `NULL`, e dal «trova o crea» arriva `E_INDIRIZZO_VIA_NON_RISOLTA`. Da un INSERT diretto, o modificando il civico, arriva il `23502` grezzo. D-T7a-2 |
+| S50 (forma) | **difetto** | `fn_indirizzo_elemento_dettaglio` decide la forma dal solo testo: con `indirizzo_libero` vuoto o assente, e senza `indirizzo_dettaglio_id`, chiama `fn_create_indirizzo` con tutto `NULL`. Questa scrive `config.stradario_generale` con `toponomastica_id NULL`, e la scrittura cade sul `NOT NULL` di una tabella di configurazione. Così non si arriva mai al guard della forma libera, che darebbe `E_INDIRIZZO_LIBERO_INCOMPLETO` sul campo giusto. Il COMMENT dice «non valida i campi di una via nuova: pre-check del backend», cioè una regola lasciata al BE. D-T7a-5 |
+| S50 (posizione) | **difetto di modello** | Su `indirizzi` e `indirizzi_soggetti`, `trgfn_indirizzi_base_normalize` svuota la posizione quando c'è il dettaglio, e subito dopo `trgfn_indirizzi_sync_geoloc` ci ricopia `civic_geoloc`. La copia non segue il civico: se `civic_geoloc` cambia, la riga resta con quella vecchia. Il lettore la usa solo come ultimo ripiego (`COALESCE(vidd.civic_geoloc, vidd.street_geoloc, b.geoloc)`), quindi la copia è una seconda sede della posizione che nessuno legge per prima. Nella storia non c'è una decisione (`refactor-indirizzi-conti-utility`: «verifica sola»). D-T7a-3 |
+| S48 (requisito nuovo) | **comportamento dichiarato, cambio di modello** | I due trigger dei titolari (`trg_soggetti_def_guard_indirizzi_required_aft_ins_upd`, `trg_soggetti_ruoli_def_guard_indirizzi_required_aft_ins_upd`) sono `AFTER INSERT OR UPDATE`, senza `OF` né `WHEN`. Quando una riga di matrice diventa obbligatoria, chi esiste già non si scrive più su nessuna colonna. Lo stesso vale dal lato degli indirizzi: i due guard di `indirizzi` e `indirizzi_soggetti` rigiudicano **tutto** il titolare, quindi su un titolare incompleto da prima non si cancella nemmeno un indirizzo che nessuno chiede. Il tipo di ruolo e il soggetto del ruolo sono bloccati dal giro 3, quindi per il ruolo non resta nessuna colonna che cambi il requisito. D-T7a-1 |
+| S48 (ripiego del soggetto) | **difetto** | `fn_indirizzi_obbligatori_mancanti_soggetto` conta il ripiego senza chiedersi se la natura lo ammette (sul ruolo `fn_indirizzi_obbligatori_ruolo` lo fa). Il rifiuto può quindi proporre un ripiego che il guard del tipo non lascia scrivere |
+| S48 (copia degli obbligatori) | **difetto** | `fn_indirizzi_con_obbligatori` cerca nell'elenco solo il tipo e ignora il ripiego. Se l'elenco ha il ripiego, nasce comunque la copia del tipo, cioè un indirizzo che nessuno ha chiesto. Le due madri plurali scartano poi solo i tipi già sul titolare, non i ripieghi. D-T7a-4 |
+| S48 (le sedi) | **difetto, regola del 2** | Sul soggetto «obbligatorio per la natura» si calcola in sette posti, con tre varianti. In `fn_crea_indirizzi_soggetto`, `fn_indirizzi_obbligatori_mancanti_soggetto` e i due picker (`_natura`, `_soggetto`) si usa `obbligatorio` più il predicato con la finestra. In `dbops.fn_pgtap_crea_soggetto_pf`, `_pg` e `fn_provisiona_dati_di_sviluppo` si usa `attivo AND obbligatorio`, cioè senza la finestra e senza il predicato. Il ruolo ha la sua sede (`fn_tipo_indirizzo_obbligatorio_per_ruolo`); il soggetto no. D-T7a-4 |
+| S48 (`tx_id`) | **difetto minore** | `trgfn_indirizzi_guard_obbligatori_ruolo` e `trgfn_indirizzi_soggetti_guard_obbligatori_soggetto` passano `NULL::uuid` al guard: il rifiuto si logga senza la transazione. Va passato `OLD.tx_id`. Le due funzioni guardano dal corpo se il tipo o il titolare sono cambiati: un `WHEN` sul trigger eviterebbe l'evento differito a ogni UPDATE. Il `WHEN` è DDL su un trigger, e si scrive in `00_schema` |
+| S49 (tipo per id) | **difetto** | `fn_indirizzo_elemento` prende `tipo_indirizzo_id` così com'è. Un id che non esiste passa, e lo rifiuta poi la FK (⚠️ corretto dalla prova, §21.4: lo rifiuta il guard del tipo, col motivo sbagliato `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO`). Con id e codice insieme vince l'id e il codice non si confronta. Un id non numerico dà il `22P02` del cast. Tutti e tre i casi devono dare `E_TIPO_INDIRIZZO_NON_TROVATO` sul campo |
+| S49 (`bigint`/`integer`) | **difetto, la radice è una colonna** | `config.tipi_ruolo_tipi_indirizzo.tipo_ruolo_id` è `bigint` e punta a `config.tipi_ruoli.id`, che è `integer`. Le firme la seguono: `fn_tipo_indirizzo_ammesso_per_ruolo(bigint, …)`, mentre `fn_check_tipo_indirizzo_ruolo_su_contesto`, `fn_indirizzi_obbligatori_ruolo` e gli altri hanno `integer`. Fatto nuovo: la stessa tabella ha **due FK identiche** su `tipo_ruolo_id` (`fk_tipi_ruoli_tipi_indirizzo_ruolo`, `fk_tipi_ruolo_tipi_indirizzo_tipo_ruolo`). Nel catalogo di `anagrafiche` e `config` è l'unico doppione. D-T7a-7 |
+| S19 | **difetto** | Le FK di `indirizzi` verso `config.comuni`, `codici_postali` e `stati` sono `ON DELETE SET NULL`, quelle di `indirizzi_soggetti` non hanno azione. Non è solo una divergenza fra gemelle: il `SET NULL` è un UPDATE che passa dai trigger della riga. Togliere il comune fa rifiutare la cancellazione dal guard della forma, con un errore che parla dell'indirizzo; togliere lo stato fa scrivere a `trgfn_indirizzi_base_normalize` lo **stato proposto**, e l'indirizzo cambia paese senza che nessuno l'abbia chiesto. ⚠️ Precisato dalla prova (§21.4): col proposto di oggi la cancellazione è rifiutata dal guard della forma; il cambio silenzioso avviene con un proposto senza catalogo. Proposta: nessuna azione anche su `indirizzi`, come la gemella. Un comune in uso non si cancella, si spegne |
+| S10 | **la funzione non ha chiamanti** | `fn_search_indirizzi_dettaglio` non la chiama nessuno, né a DB (`pg_proc`) né sul ramo del BE, che cerca i civici leggendo `vw_indirizzi_dettaglio` (`indirizzi_repository.py`, righe 85 e 108). I difetti letti ci sono: estensione, palazzina, scala, piano e interno si confrontano grezzi con valori salvati in maiuscolo e col `/`, c'è un `RAISE` diretto e `p_limit` non ha tetto. Ma una ricerca che nessuno usa, accanto a quella del BE, è una copia. D-T7a-6 |
+
+**Fatto nuovo, S-T7a-a.** `anagrafiche.fn_create_indirizzo`, chiamata anche dal BE (`indirizzi_repository.py`, riga
+191), sul ramo «via nuova» scrive lo stradario con `ON CONFLICT … DO UPDATE SET comune_id = EXCLUDED.comune_id`
+anche quando la via esiste già. Dal giro 1 (Q7) lo storico di `config.stradario` è continuo, e
+`script.trgfn_storico_generic` non scarta un UPDATE che non cambia niente. Ritrovare una via esistente lascia quindi
+una versione di storico della via a ogni indirizzo creato. Lo stesso `ON CONFLICT` su `stradario_generale` riscrive
+`descrizione` col suo valore. Correzione: `DO NOTHING` più la rilettura per chiave, oppure prima la ricerca e poi
+l'INSERT, come il «trova o crea» del civico. Si prova col pgTAP: la seconda chiamata con la stessa via non aggiunge
+versioni.
+
+### 21.2 Le decisioni per Tid
+
+| # | Domanda | Proposta |
+| --- | --- | --- |
+| D-T7a-1 | **Un requisito nuovo blocca chi esiste?** Oggi sì: ogni scrittura del titolare rigiudica tutto (R9). È un cambio di modello: la guida e la nota lo dichiarano | **No, come per i tipi ammessi**: una matrice che cambia vale per le scritture che toccano il requisito, non per tutte. (a) Il soggetto si giudica all'INSERT e al cambio di natura (`UPDATE OF tipo_soggetto_dettaglio_id` più `WHEN`); il ruolo all'INSERT, perché tipo e soggetto sono bloccati. (b) Dal lato degli indirizzi si giudica solo la riga che esce: chi cancella un indirizzo, o ne cambia il tipo, non può togliere il **solo** indirizzo che soddisfa una riga obbligatoria. Un titolare incompleto per una matrice nuova resta modificabile, e il form lo vede da `fn_indirizzi_obbligatori_mancanti_*`, che c'è già. Argomento sul modello: la stessa matrice ha due regole, «ammesso» e «obbligatorio», che oggi rispondono in modo diverso allo stesso cambio. Si riscrivono R9 e la nota |
+| D-T7a-2 | **Una via di un comune senza provincia si usa?** Oggi no, e la guida lo dice (R7). Il modello però ammette `comuni.provincia_id NULL` | **Sì**: `via_norm` si legge da stradario, stradario generale e toponomastica, tutte colonne `NOT NULL`, e non più da `vw_indirizzo_completo`. `vw_indirizzi_dettaglio` va in `LEFT JOIN` sulla provincia. Una via c'è finché c'è la sua riga: «via non risolta» resta solo per uno `stradario_id` che non esiste, e lo dice già il «trova o crea» (`E_CODICE`). `E_INDIRIZZO_VIA_NON_RISOLTA` diventa obsoleto. Con **no**, invece, la regola va nel guard del civico (`trgfn_indirizzi_dettaglio_guard_chiave`), su ogni strada, e la vista va comunque in `LEFT JOIN`, perché una provincia si può togliere dopo |
+| D-T7a-3 | **La posizione di un indirizzo col dettaglio** | Resta `NULL`, come comune e CAP: la dice il civico. Si ritira `trgfn_indirizzi_sync_geoloc`, con i suoi due trigger, e le righe di oggi si portano a `NULL` nello stesso giro. I lettori leggono già il civico per primo |
+| D-T7a-4 | **Gli obbligatori del soggetto: una sede** | Un BB `anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura(natura, tipo, giorno)`, gemello di quello del ruolo, letto dalle sette sedi, comprese le tre degli strumenti di sviluppo e pgTAP. Il ripiego del soggetto conta solo se la natura lo ammette. `fn_indirizzi_con_obbligatori` riceve, oltre al tipo, il ripiego di ciascuna riga, e non copia un tipo il cui ripiego è già nell'elenco o sul titolare. Le copie si ritirano nello stesso giro |
+| D-T7a-5 | **Un elemento senza forma** | La forma la decide il DB dalle chiavi: un elemento senza dettaglio e senza via è libero, e lo giudica il guard della forma (`E_INDIRIZZO_LIBERO_INCOMPLETO`, campo `indirizzo_libero`). Una via nuova incompleta (manca la toponomastica, la descrizione, il comune o il CAP) ha un codice, con il campo che manca. Il «pre-check del backend» esce dal COMMENT, perché una regola del dato non si lascia al BE |
+| D-T7a-6 | **`fn_search_indirizzi_dettaglio`** | Si ritira (`DROP`), con la sua pagina `manual/`: non la chiama nessuno, e la ricerca vive nel BE. Se Tid la vuole come sede della ricerca dei civici, l'alternativa è correggerla (confronto sui valori normalizzati da `fn_build_indirizzo_normalizzato`, `fn_log_and_raise_error`, un tetto a `p_limit`) e chiedere al BE di passarci. Quella però è una richiesta di sviluppo, non una correzione |
+| D-T7a-7 | **Il tipo di ruolo `bigint`** | `config.tipi_ruolo_tipi_indirizzo.tipo_ruolo_id` diventa `integer`, come la colonna a cui punta, e la FK doppia si toglie. `fn_tipo_indirizzo_ammesso_per_ruolo` cambia firma (§5f di `linee-guida-sql`: `DROP`, `CREATE`, `GRANT`, e i chiamanti `BEGIN ATOMIC` da ricreare). Il BE non la chiama. In alternativa va in T11, la forma |
+
+**Esito del 2026-11-24.** Tutte decise da Tid: D-T7a-3 … D-T7a-7 come proposte, D-T7a-1 come proposta, D-T7a-2 nella forma nuova qui sotto. Su D-T7a-1 e D-T7a-2 Tid ha chiesto chi
+ha ragione, la guida o la correzione. La risposta l'ha data la storia delle decisioni:
+
+* **D-T7a-1: la guida fotografa il codice, non registra una decisione.** I due montaggi `AFTER INSERT OR UPDATE`
+  nascono il 2025-12-21 (`a860ccc7d8`, i primi indirizzi del soggetto). `brief-db-fornitore-privato-indirizzi`
+  (2026-11-16) li ha lasciati com'erano («nessun DDL sui montaggi»), e la frase di R9 «non si modifica più» l'ha
+  scritta il giro 0c (2026-11-22) leggendo il corpo. Nessuno ha mai scelto che il blocco scatti su qualunque
+  colonna. La proposta resta, e non revoca nessuna decisione. È però una **garanzia ritirata**, e il giro avrà la sua
+  sezione: oggi la garanzia è solo apparente, perché un titolare che nessuno riscrive resta incompleto lo stesso.
+* **D-T7a-2: la guida ha ragione, e la proposta si ritira.** R7 registra la **D4 di Tid del 2026-10-25**
+  ([brief-db-unicita-civico-indirizzi-dettaglio](../work-done/2026/brief-db-unicita-civico-indirizzi-dettaglio.md)
+  §D4): su una via che non si risolve si dà un errore. Quel brief ha anche trovato che
+  `config.trgfn_comuni_protect_update` blocca il cambio di provincia di un comune che lo stradario usa. Quindi una
+  via non perde la provincia dopo che ha dei civici, e S16 (il civico che sparisce dalla vista) non si produce con le
+  scritture che passano dai trigger. Resta il solo difetto vero di S50: il codice arriva dal «trova o crea», mentre
+  un INSERT diretto, o la modifica di un civico, danno il `23502`. **Proposta nuova:** il controllo «via non risolta»
+  va nel guard del civico (`trgfn_indirizzi_dettaglio_guard_chiave`), su ogni strada, con lo stesso codice
+  `E_INDIRIZZO_VIA_NON_RISOLTA`. `vw_indirizzi_dettaglio` non cambia, e S16 seconda metà si chiude come «non si
+  costruisce senza saltare i trigger». Argomento sul modello: lo stradario è il catalogo italiano (gli indirizzi
+  esteri usano la forma libera estera), e un indirizzo italiano senza la sigla della provincia non è completo per i
+  documenti.
+
+S3, S19, S49 (tipo per id), il `tx_id` di S48 e S-T7a-a sono correzioni senza scelta: entrano nel giro qualunque
+cosa decida Tid sul resto.
+
+### 21.3 Il piano del giro, dopo le decisioni
+
+* **pgTAP rosso prima**, uno per caso costruito, come app dove si può:
+  * l'indirizzo libero di catalogo in un comune con due vie e due CAP (S3);
+  * il comune senza provincia: il civico, la vista e l'indirizzo (S16, S50);
+  * l'elemento vuoto (S50);
+  * la posizione del civico che cambia (S50);
+  * la matrice che diventa obbligatoria su un titolare che esiste, che poi si scrive su un'altra colonna e da cui si
+    cancella un indirizzo non richiesto (S48);
+  * il ripiego vietato dalla natura e il ripiego nell'elenco (S48);
+  * id inesistente, non numerico, e id e codice discordi (S49);
+  * il comune e lo stato cancellati sotto un indirizzo di ruolo (S19);
+  * la via ritrovata due volte, senza versioni nuove (S-T7a-a).
+* **Le letture da fare prima di scrivere**: `linee-guida-trigger.md` per intero; di `linee-guida-sql` le §5, 5c, 5f,
+  5g, 6, 7f e 11.5, e la §8.7 per la FK tolta.
+* **Ricadute sul BE**, da scrivere in un passaggio solo:
+  * i codici nuovi, e `E_INDIRIZZO_VIA_NON_RISOLTA` obsoleto se D-T7a-2 è sì;
+  * il cambio di forma della risposta su un elemento vuoto;
+  * il censimento dei lettori che contano sul blocco di R9, se D-T7a-1 è sì: è una garanzia ritirata
+    (§«Garanzie ritirate» di AGENTS), e la richiesta al BE va scritta in quella forma.
+
+### 21.4 Il pgTAP rosso (2026-11-24, prima dei changeSet)
+
+Due file nuovi in `db/pgtap/anagrafiche/`, scritti per girare come app. Si costruiscono il mondo: comune, CAP, vie,
+stato, tipi d'indirizzo e righe di matrice nascono nel test (le tabelle di `config` hanno id identity e l'app le
+scrive). Dal seed si leggono solo una provincia, una toponomastica, la natura `PR` e il tipo di ruolo `CL` dei builder.
+
+| File | Esito senza il giro | I verdi, e perché sono verdi |
+| --- | --- | --- |
+| `test-indirizzi-viste-forma-e-vincoli-v1` (25) | 20 rossi | 10 (il «trova o crea» dà già il codice), 11 (la premessa di S16), 16 (la vista legge già il civico per primo), 20 (il solo codice), 23 (la seconda chiamata passa già): sono controlli |
+| `test-indirizzi-obbligatori-requisito-nuovo-v1` (11) | 8 rossi | 5 (l'unico indirizzo obbligatorio non si cancella), 10 e 11 (la copia scrive il ripiego e copia il tipo il cui ripiego è vietato): sono controlli |
+
+Corsa: `scripts/prova_changeset.py` sullo scratch, da owner e in `ROLLBACK`. Il changeSet `20261123-68`, già
+applicato e idempotente, fa solo da veicolo: le corse con e senza sono uguali, e sono lo stato di oggi. Il verde
+della corsa come app è di Tid, dopo l'apply.
+
+**Ogni rosso è sul suo motivo**, letto asserzione per asserzione:
+* S3: due righe per l'indirizzo, coi CAP `T7A1…` e `T7A2…`;
+* S50: `23502` sull'INSERT diretto del civico, sull'elemento vuoto, su quello col solo tipo e sulla via senza
+  toponomastica; la posizione copiata nella riga;
+* S49: il `22P02` sull'id non numerico; id e codice discordi passano, e scrivono il tipo dell'id;
+* S19: i tre `confdeltype = n` (`SET NULL`);
+* S-T7a-a: la via riscritta (il `ctid` cambia) e **due** versioni di storico per una sola chiamata, la versione
+  iniziale e quella finale;
+* D-T7a-1: `E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO` sulla scrittura del soggetto e sulla cancellazione di un
+  indirizzo non chiesto; `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` sulle stesse due strade del ruolo;
+* D-T7a-4: il ripiego vietato proposto (l'id di `tf`), la copia del tipo con il ripiego già nell'elenco, e le sette
+  sedi elencate per nome.
+
+**Due correzioni all'analisi di §21.1, trovate dalla prova:**
+* **S49, l'id che non esiste.** Non lo rifiuta la FK: lo rifiuta prima il guard del tipo, con
+  `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO`, perché un tipo che non c'è non è nella matrice. L'errore è quindi un
+  motivo sbagliato («la natura non lo ammette»), non un errore tecnico. La correzione non cambia.
+* **S19, lo stato cancellato.** Con lo stato proposto di oggi (l'Italia, col catalogo) il `SET NULL` non cambia paese
+  in silenzio. `trgfn_indirizzi_base_normalize` scrive l'Italia, il guard della forma chiede il comune, e la
+  cancellazione è rifiutata con `E_INDIRIZZO_LIBERO_INCOMPLETO`, un errore che parla dell'indirizzo. Il cambio
+  silenzioso avviene quando lo stato proposto ammette la forma della riga, cioè un proposto senza catalogo, che il
+  parametro consente. La correzione non cambia.
+
+**Le scelte fatte scrivendo** (da confermare col changeSet): due codici nuovi, `DATO_ERRATO`, entrambi col campo nel
+contesto. `E_INDIRIZZO_VIA_NUOVA_INCOMPLETA` è la via nuova a cui manca la toponomastica, la descrizione, il comune o
+il CAP (D-T7a-5). `E_TIPO_INDIRIZZO_DISCORDE` è il caso in cui id e codice dicono due tipi (S49).
+
+**I pgTAP esistenti che il giro tocca**, da adeguare con i changeSet:
+* `create-gestore-indirizzo-res-domfisc.sql` chiama `fn_search_indirizzi_dettaglio` (righe 191-222): esce
+  l'asserzione, o la ritrova con `fn_get_or_create_indirizzo_dettaglio`;
+* `test-check-tipo-indirizzo-v1`, `test-fornitore-privato-indirizzi-v1`: `fn_tipo_indirizzo_ammesso_per_ruolo` cambia
+  firma;
+* `test-indirizzi-obbligatori-ripiego-e-cancellazione-v1`, asserzione 3, legge gli eventi dei constraint trigger;
+  `create-cliente.sql` e `test-indirizzo-obbligatorio-mancante-frase-v1` nominano i guard dei titolari;
+* `test-indirizzi-singolare-e-plurale-v1`: `fn_indirizzi_con_obbligatori` cambia firma;
+* sei file nominano `tipi_ruolo_tipi_indirizzo.tipo_ruolo_id` (`test-fn-crea-fornitore-v1`,
+  `test-tipi-indirizzo-proponibili-v1`, `test-check-tipo-indirizzo-v1`, `test-fn-crea-indirizzi-ruolo-v1`,
+  `test-fornitore-privato-indirizzi-v1`, `test-indirizzo-obbligatorio-mancante-frase-v1`): si rileggono per i cast.
+
+### 21.5 Che cosa è scritto (2026-11-24: provato sullo scratch, applicato, pgTAP verdi come app)
+
+| ChangeSet | Che cosa | Decisione |
+| --- | --- | --- |
+| `00_schema/config/20261123-74-alter-tipi-ruolo-tipi-indirizzo-tipo-ruolo-integer` | la catena `BEGIN ATOMIC` tolta, la FK doppia tolta, `tipo_ruolo_id` integer | D-T7a-7 |
+| `00_schema/anagrafiche/20261123-75-update-fk-indirizzi-geografiche-senza-azione` | le tre FK di `indirizzi` senza `SET NULL` | S19 |
+| `20_code/anagrafiche/20261123-76-recreate-catena-tipo-indirizzo-ruolo-tipo-integer` | le sette funzioni della catena, coi corpi di prima | D-T7a-7 |
+| `20_code/anagrafiche/20261123-77-create-fn-tipo-indirizzo-obbligatorio-per-natura` | la sede unica di «obbligatorio per la natura» | D-T7a-4 |
+| `-78` `fn_indirizzi_obbligatori_mancanti_soggetto` | la sede, e il ripiego solo se la natura lo ammette | D-T7a-4 |
+| `-79` i picker `fn_tipi_indirizzo_proponibili_natura` e `_soggetto` | la colonna obbligatorio dalla sede | D-T7a-4 |
+| `-80` `fn_crea_indirizzi_soggetto`, `-81` `fn_crea_indirizzi_ruolo` | si copiano solo gli obbligatori che mancano, non un tipo il cui ripiego c'è già | D-T7a-4 |
+| `20_code/dbops/-82`, `-83` i builder pgTAP PF e PG; `-84` `fn_provisiona_dati_di_sviluppo` | la sede, con la finestra di validità | D-T7a-4 |
+| `-85` i due guard degli obbligatori e i due trigger degli indirizzi | il tipo che esce, in coda (`DEFAULT NULL`); `OLD.tx_id` al log | D-T7a-1, S48 |
+| `-86` i trigger dei titolari | soggetto all'`INSERT` e al cambio di natura (`WHEN`), ruolo all'`INSERT` | D-T7a-1 |
+| `-87` `trgfn_indirizzi_dettaglio_guard_chiave` | `E_INDIRIZZO_VIA_NON_RISOLTA` su ogni strada | D-T7a-2 |
+| `-88` `fn_indirizzo_elemento` | il tipo per id verificato; id e codice discordi `E_TIPO_INDIRIZZO_DISCORDE` | S49 |
+| `-89` `fn_indirizzo_elemento_dettaglio` | senza chiavi di una via l'elemento è libero | D-T7a-5 |
+| `-90` `fn_create_indirizzo` | la via nuova validata (`E_INDIRIZZO_VIA_NUOVA_INCOMPLETA`); la via esistente ritrovata senza riscriverla; firma ri-ancorata con `%TYPE` | D-T7a-5, S-T7a-a |
+| `-91` `vw_indirizzi_resolved_base` | senza il join per via: una riga, col CAP scelto | S3 |
+| `-92` ritiro di `fn_search_indirizzi_dettaglio` | | D-T7a-6 |
+| `-93` ritiro di `trgfn_indirizzi_sync_geoloc` e dei suoi montaggi | | D-T7a-3 |
+| `80_data/changelog/20261123-94-bonifica-indirizzi-geoloc-col-dettaglio` | la posizione copiata tolta dalle righe col dettaglio, a trigger sospesi | D-T7a-3 |
+
+Con due righe nuove in `codici_errore.csv` e `messaggi_errore.csv` (id 1537, 1538) e la nota di
+`E_INDIRIZZO_VIA_NON_RISOLTA` aggiornata.
+
+**Le scelte fatte scrivendo:**
+* il `CHECK` di rete «col dettaglio, niente posizione» non c'è. Su un database esistente partirebbe prima che -93
+  tolga la copia, e la regola la tiene già `trgfn_indirizzi_base_normalize`. La prova è il pgTAP (15);
+* in -90 `descrizione_breve` (varchar 50) prende i primi 50 caratteri della descrizione: prima la prendeva intera, e
+  una via nuova dal nome lungo cadeva su un `22001`;
+* ⚠️ -74 toglie le funzioni con le firme a tipi nudi. È applicato su dbdev dalle 19:14, e ancorarlo ora ne
+  cambierebbe il checksum. Le firme sono quelle esatte del catalogo: resta così.
+
+**La prova** (`scripts/prova_changeset.py`, scratch `zeroerp_ruoli`, i 21 changeSet insieme, da owner):
+* `test-indirizzi-viste-forma-e-vincoli-v1`: 25/25 (senza: 5); `test-indirizzi-obbligatori-requisito-nuovo-v1`:
+  11/11 (senza: 3);
+* i 96 file che nominano gli oggetti del giro, più `dbops/test-riferimenti-morti-v1`, in due corse (la prima si è
+  fermata su `script/test-fn-disdetta-cliente`): uguali prima e dopo, salvo i cinque adeguati qui sotto, ora verdi;
+* `script/test-catalogo-messaggi-errore-completo` (2) è rosso nella prova, perché i due codici nuovi stanno nei CSV,
+  che la prova non carica. Si rilegge dopo l'apply;
+* non provati dallo strumento: `test-soggetti-indirizzi-required` e `test-soggetti-ruoli-indirizzi-required` (più
+  transazioni nello stesso file) e `script/test-fn-disdetta-cliente` (non apre con `BEGIN;`, un difetto suo). I
+  primi due provano l'`INSERT`, che resta giudicato. La corsa come app è di Tid.
+
+**I pgTAP adeguati** (scritti sul contratto di prima):
+* `test-fornitore-privato-indirizzi-v1` (2) e `test-check-tipo-indirizzo-v1` (4): le plurali leggono le sedi (il
+  requisito, i mancanti), non più il building block per riga;
+* `test-indirizzi-obbligatori-mancanti-v1` e `test-indirizzi-obbligatori-ripiego-e-cancellazione-v1`: la firma a tre
+  argomenti dei guard;
+* `test-indirizzo-obbligatorio-mancante-frase-v1`: chiamava il guard con un `UPDATE` che riscriveva lo stesso valore,
+  cioè il comportamento che D-T7a-1 ritira. Ora chiama il guard, la sede della frase;
+* `create-gestore-indirizzo-res-domfisc`: il civico si ritrova col «trova o crea» e dalla vista della ricerca.
+
+**Guide verificate dopo il giro** (`scripts/guide_coinvolte.py` sui file del giro, 2026-11-24):
+* aggiornate nello stesso giro: [gestione-degli-indirizzi](../../guide/gestione-degli-indirizzi.md) (R3, R7, R8, R9,
+  la tabella dei trigger, i test), le note `_indirizzi-obbligatori` (le strade, il ripiego del soggetto, la sede
+  della natura) e `_indirizzo-libero-o-dettaglio` (la posizione, la forma dell'elemento, la via non risolta);
+* **coerenti**: [soggetti-e-ruoli-anagrafici](../../guide/soggetti-e-ruoli-anagrafici.md) (al COMMIT si giudicano
+  gli obbligatori del soggetto nato, che resta vero), le note `_cambio-di-natura` (il cambio di natura resta
+  giudicato) e `_tipo-indirizzo-ammesso` (il modello su cui D-T7a-1 si allinea);
+* le altre 33 nominano oggetti che il giro cita solo nei corpi ricopiati (provisioning, builder): nessun
+  comportamento che descrivono cambia.
+
+**La documentazione** (2026-11-24): 25 pagine `manual/` aggiornate, una nuova
+(`fn_tipo_indirizzo_obbligatorio_per_natura`), due tolte (`fn_search_indirizzi_dettaglio`,
+`trgfn_indirizzi_sync_geoloc`). La doc auto-generata è rigenerata da Tid dopo l'apply (2026-11-24): le schede
+delle due funzioni tolte non ci sono più, e c'è quella della funzione nuova. Restano fuori standard, toccate al minimo, `script/manual/fn_search_stradario` e
+`config/manual/tipi_ruolo_tipi_indirizzo` (pagine vecchio stile): sono del giro dei metadati (§8).
+
+### 21.6 Garanzie ritirate
+
+| Oggetto | La proprietà che i lettori davano per scontata | I lettori lato DB |
+| --- | --- | --- |
+| I trigger dei titolari (-86) | «Un titolare scritto ha i suoi indirizzi obbligatori» | `script.fn_snapshot_indirizzo` e `_soggetto` ricevono l'id dell'indirizzo e rifiutano da sé quello che manca: non ne dipendono. `script.fn_get_search_detail` ha il suo ripiego (`COALESCE`): non ne dipende. Il test della frase ne dipendeva, ed è adeguato (§21.5). La proprietà non valeva nemmeno prima per un titolare nato prima della riga e mai riscritto |
+| `trgfn_indirizzi_sync_geoloc` (-93) | «Una riga col dettaglio ha in `geoloc` la posizione del civico» | nessun lettore legge la colonna: `vw_indirizzi_resolved_base` e da lei `script.fn_get_indirizzo` e `_by_ruolo` leggono il civico per primo, e il ripiego sulla riga resta per la forma libera |
+
+### 21.7 Il passaggio al BE (da girare: il giro è applicato, 2026-11-24)
+
+Letto sul ramo `origin/dev/backend-tid` in sola lettura. Chi cambia per primo: il DB. Nessuna voce rompe ciò che il BE
+fa oggi, salvo dove è detto.
+
+1. **Censire i lettori di `anagrafiche.soggetti` e `anagrafiche.soggetti_ruoli` che contano su «un titolare scritto
+   ha i suoi indirizzi obbligatori»** (§21.6). Da oggi un titolare a cui una riga di matrice nata dopo chiede un
+   indirizzo resta scrivibile, e il rifiuto `E_INDIRIZZO_OBBLIGATORIO_MANCANTE*` arriva solo alla nascita, al
+   cambio di natura e quando esce l'unico indirizzo che una riga chiedeva. Il form può mostrare i mancanti da
+   `fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli`, che il BE legge già per il cambio di natura.
+2. **Codici nuovi**, col campo nel contesto: `E_INDIRIZZO_VIA_NUOVA_INCOMPLETA` (campo `toponomastica_id`,
+   `descrizione_via`, `comune_id` o `codice_postale_id`) e `E_TIPO_INDIRIZZO_DISCORDE` (campo
+   `tipo_indirizzo_codice_interno`). `E_TIPO_INDIRIZZO_NON_TROVATO` può arrivare ora anche col campo
+   `tipo_indirizzo_id`.
+3. **`anagrafiche.fn_create_indirizzo`** (`backend/apps/anagrafiche/db/indirizzi_repository.py`, riga 191) valida la
+   via nuova da sé. Il «controllo preventivo del service», se c'è, è ora una seconda sede della stessa regola: si
+   può togliere. Censire i pre-check della via nuova nel service.
+4. **Un elemento d'indirizzo senza via e senza testo** ora arriva come `E_INDIRIZZO_LIBERO_INCOMPLETO` sul campo
+   `indirizzo_libero`, non più come errore tecnico.
+5. **`anagrafiche.fn_search_indirizzi_dettaglio` non c'è più**. Il BE non la chiama: niente da cambiare.
+6. **La colonna `geoloc`** di `indirizzi` e `indirizzi_soggetti` è `NULL` per un indirizzo col dettaglio. Il BE non la
+   legge (nessun `geoloc` in `backend/` né in `frontend/src`): niente da cambiare.

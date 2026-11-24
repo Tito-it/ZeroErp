@@ -34,6 +34,17 @@ lo contiene si ferma lì.
 
 ---
 
+### Il task distruttivo non parte mai da solo
+
+`distruttivo` dice che il task cancella o annulla dati che un rilancio non ricostruisce. È la
+natura del task, la stessa in ogni pipeline che lo nomina; come il task gira in una corsia lo
+dice invece `vendite.fatturazione_pipeline_task_policy`. Un task distruttivo messo nel `rollback`
+di uno step non gira mai in automatico al rilancio di un lotto: `vendite.fn_check_rollback_step_automatico`
+risponde false, e il rollback resta eseguibile solo su richiesta esplicita. Lo stesso vale per un task
+spento o non registrato. Il default è false: chi registra un task che cancella dati lo dichiara.
+
+---
+
 ### ⛔ Nessun vincolo lega le pipeline al registro
 
 Le pipeline di fatturazione nominano i task per nome, dentro un campo JSON: non c'è una chiave
@@ -53,6 +64,8 @@ tiene insieme è un test, non un vincolo (sotto).
 * `db/pgtap/vendite/test-pipeline-processi-invariante-v1.sql`, test 6-7 e 8-9 — ogni task nominato nei
   processi e nel rollback delle pipeline esiste ed è attivo qui, e ha la sua policy attiva. È il file da lanciare
   dopo aver toccato le pipeline.
+* `db/pgtap/vendite/test-rollback-step-automatico-v1.sql` — la colonna `distruttivo` e la decisione
+  del rollback automatico, coi casi costruiti (distruttivo, spento, sconosciuto).
 * `db/pgtap/vendite/test-pipeline-consuma-plafond-seed-v1.sql` — il task del consumo del plafond si
   risolve con la funzione che usa il backend.
 * `db/pgtap/vendite/test-snapshot-indirizzi-fattura-v1.sql`, `test-stampa-coda-fondamenta-v1.sql` —
@@ -67,6 +80,8 @@ tiene insieme è un test, non un vincolo (sotto).
   policy (`80_data/changelog/20261123-67`): nessun percorso lo eseguiva, e il backend ne toglie
   l'handler. Non è spento come `close_lotto`, perché una riga spenta nominerebbe un handler che
   non esiste più.
+* 2026-11-24 — nasce `distruttivo` (`00_schema/dbops/20261123-95`): il task che cancella dati
+  lo dichiara il registro, e non più il runner per nome.
 * 2026-11-08 — perde `data_update` e `user_update`, che nessuno aggiornava: la tabella la
   scrive solo la migrazione (regola dello scrittore, `automazione-db.md` §1.1;
   `brief-db-revisione-dbops`, giro 7-bis).

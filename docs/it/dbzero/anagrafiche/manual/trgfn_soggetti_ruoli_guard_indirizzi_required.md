@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -33,14 +33,15 @@ ruolo scritto abbia gli indirizzi che il suo tipo di ruolo chiede sulla natura d
 
 ### Quando scatta
 
-È un constraint trigger differito su `anagrafiche.soggetti_ruoli`, all'INSERT e a **ogni** UPDATE. Copre la
-nascita del ruolo, che riceve i suoi indirizzi nella stessa transazione (di solito dalla copia degli
-obbligatori di [fn_crea_indirizzi_ruolo](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_ruolo)), e ogni sua
-modifica, compresa quella del tipo di ruolo, da cui dipende il requisito.
+È montato su `anagrafiche.soggetti_ruoli` da un constraint trigger differito all'INSERT,
+`trg_soggetti_ruoli_a10_guard_indirizzi_required_ins`: copre la nascita del ruolo, che riceve i suoi indirizzi
+nella stessa transazione (di solito dalla copia degli obbligatori di
+[fn_crea_indirizzi_ruolo](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_ruolo)). Un UPDATE non lo fa scattare:
+il tipo di ruolo e il soggetto sono bloccati, e nessuna colonna del ruolo cambia il requisito.
 
 Il trigger passa il ruolo e il suo `tx_id` a `anagrafiche.fn_guard_indirizzi_obbligatori_ruolo`, la sede unica
 del controllo del livello ruolo, che chiamano anche il trigger della cancellazione di un indirizzo e quello del
-cambio di natura del soggetto.
+cambio di natura del soggetto. Qui il tipo che esce non c'è: si giudicano tutte le righe del requisito.
 
 ---
 
@@ -48,11 +49,12 @@ cambio di natura del soggetto.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### Un requisito nuovo non blocca chi esiste
 
-* **Un ruolo rimasto incompleto non si modifica più.** Una riga della matrice che diventa obbligatoria o entra
-  nella sua validità non rigiudica i ruoli che esistono; alla prima scrittura del ruolo, in qualunque colonna,
-  il trigger lo rifiuta finché nella stessa transazione non riceve l'indirizzo che manca.
+Una riga della matrice che diventa obbligatoria o entra nella sua validità vale per i ruoli che nascono dopo:
+un ruolo che esiste resta scrivibile, anche se gli manca l'indirizzo che la riga nuova chiede. Lo si giudica di
+nuovo al cambio di natura del soggetto, e i mancanti li dice al form
+`anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli`.
 
 ---
 
@@ -70,6 +72,8 @@ cambio di natura del soggetto.
 * `db/pgtap/anagrafiche/test-indirizzi-obbligatori-ripiego-e-cancellazione-v1.sql` — il trigger che chiama il
   guard senza copie della regola, il fornitore privato che nasce completo col solo ripiego.
 * `db/pgtap/anagrafiche/create-cliente.sql` — il cliente che nasce coi suoi indirizzi obbligatori.
+* `db/pgtap/anagrafiche/test-indirizzi-obbligatori-requisito-nuovo-v1.sql` (6) — sul ruolo a cui un obbligatorio
+  nato dopo chiede un indirizzo che non ha, una scrittura su un'altra colonna passa.
 
 ---
 
@@ -78,6 +82,8 @@ cambio di natura del soggetto.
 * 2026-11-17 — il controllo passa in `anagrafiche.fn_guard_indirizzi_obbligatori_ruolo`, sul requisito letto
   sulla natura del soggetto, condiviso coi trigger della cancellazione di un indirizzo e del cambio di natura;
   la frase nomina ruolo e tipi per descrizione.
+* 2026-11-24 — il montaggio scatta alla sola nascita del ruolo (prima a ogni UPDATE): una riga di matrice nata dopo
+  non ferma più la scrittura del ruolo su un'altra colonna.
 
 ---
 

@@ -105,8 +105,8 @@ BEGIN
     SELECT m.tipo_indirizzo_id INTO v_tipo_ind
       FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
      WHERE m.tipo_soggetto_dettaglio_id = p_tipo_soggetto_dettaglio_id
-       AND m.attivo
-       AND m.obbligatorio
+       AND anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura(
+               p_tipo_soggetto_dettaglio_id, m.tipo_indirizzo_id, script.fn_data_operativa())
      ORDER BY m.tipo_indirizzo_id
      LIMIT 1;
 

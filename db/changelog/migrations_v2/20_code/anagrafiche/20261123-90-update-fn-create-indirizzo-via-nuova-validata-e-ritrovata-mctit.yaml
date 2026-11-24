@@ -1,0 +1,202 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.fn_create_indirizzo: la via nuova si valida qui, e una via che
+#   esiste si ritrova senza riscriverla.
+#   D-T7a-5 di Tid (2026-11-24) e S-T7a-a, brief-db-revisione-anagrafiche §21.
+#
+# -- I DIFETTI ---------------------------------------------------------------------
+#   * La via nuova non si validava: «controlli preventivi del service», cioe'
+#     una regola del dato lasciata al BE. Una via senza toponomastica, senza
+#     descrizione, senza comune o senza CAP cadeva su un NOT NULL di
+#     config.stradario_generale o config.stradario (23502).
+#   * Ritrovare una via esistente la riscriveva: INSERT … ON CONFLICT DO UPDATE
+#     su stradario_generale (SET descrizione) e su stradario (SET comune_id).
+#     Dal giro 1 (Q7) lo storico di config.stradario e' continuo, e ogni
+#     indirizzo creato su una via esistente lasciava due versioni di storico
+#     della via. E un ON CONFLICT DO UPDATE fa giudicare ai BEFORE INSERT la
+#     riga proposta (linee-guida-trigger, «BEFORE e AFTER»).
+#   * descrizione_breve (varchar 50) prendeva la descrizione intera
+#     (varchar 100): una via nuova dal nome lungo cadeva su un 22001.
+#
+# -- LA FORMA -----------------------------------------------------------------------
+#   * via nuova (stradario_id NULL): ogni campo che manca e'
+#     E_INDIRIZZO_VIA_NUOVA_INCOMPLETA (nuovo, DATO_ERRATO), col campo; la
+#     descrizione vuota conta come mancante;
+#   * prima si cerca, poi si scrive: la via generale per (toponomastica,
+#     descrizione), la via del comune per (comune, via generale, CAP) fra le
+#     vive (obsoleto_dal NULL, la chiave dell'indice parziale). Se manca,
+#     INSERT … ON CONFLICT DO NOTHING e, per la corsa concorrente, la
+#     rilettura: nessuna scrittura su una riga che esiste;
+#   * descrizione_breve: i primi 50 caratteri della descrizione.
+#   Il resto come prima: il civico lo trova o lo crea
+#   anagrafiche.fn_get_or_create_indirizzo_dettaglio.
+#   Firma: gli stessi tipi, ora ancorati con %TYPE (§5g; la firma era a tipi
+#   nudi): l'identita' non cambia, CREATE OR REPLACE, i DEFAULT restano.
+#   Corpo da 20261107-10 (= prosrc di dbdev, 2026-11-24). Il BE la chiama
+#   (indirizzi_repository.py): passaggio al BE nel brief §21.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261123-90-update-fn-create-indirizzo-via-nuova-validata-e-ritrovata-mctit.yaml
+
+  - changeSet:
+      id: 20261123-90-update-fn-create-indirizzo-via-nuova-validata-e-ritrovata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_create_indirizzo: la via nuova incompleta E_INDIRIZZO_VIA_NUOVA_INCOMPLETA col
+        campo; una via esistente si ritrova senza riscriverla (niente versioni di storico). D-T7a-5 e
+        S-T7a-a, brief-db-revisione-anagrafiche §21.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_create_indirizzo(
+                  p_stradario_id      config.stradario.id%TYPE                          DEFAULT NULL,
+                  p_toponomastica_id  config.stradario_generale.toponomastica_id%TYPE   DEFAULT NULL,
+                  p_descrizione_via   config.stradario_generale.descrizione%TYPE        DEFAULT NULL,
+                  p_comune_id         config.stradario.comune_id%TYPE                   DEFAULT NULL,
+                  p_codice_postale_id config.stradario.codice_postale_id%TYPE           DEFAULT NULL,
+                  p_civico            anagrafiche.indirizzi_dettaglio.civico%TYPE            DEFAULT NULL,
+                  p_estensione_civico anagrafiche.indirizzi_dettaglio.estensione_civico%TYPE DEFAULT NULL,
+                  p_palazzina         anagrafiche.indirizzi_dettaglio.palazzina%TYPE         DEFAULT NULL,
+                  p_scala             anagrafiche.indirizzi_dettaglio.scala%TYPE             DEFAULT NULL,
+                  p_piano             anagrafiche.indirizzi_dettaglio.piano%TYPE             DEFAULT NULL,
+                  p_interno           anagrafiche.indirizzi_dettaglio.interno%TYPE           DEFAULT NULL)
+               RETURNS anagrafiche.indirizzi_dettaglio.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  c_chi              CONSTANT text := 'anagrafiche.fn_create_indirizzo';
+                  v_stradario_gen_id config.stradario_generale.id%TYPE;
+                  v_stradario_id     config.stradario.id%TYPE := p_stradario_id;
+                  v_descrizione_via  config.stradario_generale.descrizione%TYPE;
+                  v_campo            text;   -- la colonna che manca
+                  v_cosa             text;   -- la stessa, come la legge una persona
+                  v_indirizzo_id     anagrafiche.indirizzi_dettaglio.id%TYPE;
+              BEGIN
+                  -- ----------------------------------------------------
+                  -- 1) Ramo "via nuova", solo se non e' stato passato uno
+                  --    stradario_id gia' risolto: si valida, si cerca, e si
+                  --    scrive solo cio' che manca.
+                  -- ----------------------------------------------------
+                  IF v_stradario_id IS NULL THEN
+                      v_descrizione_via := NULLIF(btrim(p_descrizione_via), '');
+
+                      -- D-T7a-5: la via nuova la valida il DB, col campo.
+                      IF p_toponomastica_id IS NULL THEN
+                          v_campo := 'toponomastica_id';  v_cosa := 'il tipo di toponimo (via, piazza…)';
+                      ELSIF v_descrizione_via IS NULL THEN
+                          v_campo := 'descrizione_via';   v_cosa := 'il nome della via';
+                      ELSIF p_comune_id IS NULL THEN
+                          v_campo := 'comune_id';         v_cosa := 'il comune';
+                      ELSIF p_codice_postale_id IS NULL THEN
+                          v_campo := 'codice_postale_id'; v_cosa := 'il CAP';
+                      END IF;
+
+                      IF v_campo IS NOT NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'anagrafiche', c_chi, 'E_INDIRIZZO_VIA_NUOVA_INCOMPLETA',
+                              jsonb_build_object(
+                                  'campo',             v_campo,
+                                  'toponomastica_id',  p_toponomastica_id,
+                                  'descrizione_via',   p_descrizione_via,
+                                  'comune_id',         p_comune_id,
+                                  'codice_postale_id', p_codice_postale_id),
+                              NULL::uuid,
+                              v_cosa);
+                      END IF;
+
+                      -- S-T7a-a: prima si cerca. Una via che esiste non si
+                      -- riscrive (lo storico della via e' continuo).
+                      SELECT g.id INTO v_stradario_gen_id
+                        FROM config.stradario_generale g
+                       WHERE g.toponomastica_id = p_toponomastica_id
+                         AND g.descrizione = v_descrizione_via;
+
+                      IF v_stradario_gen_id IS NULL THEN
+                          INSERT INTO config.stradario_generale (
+                              toponomastica_id, descrizione, descrizione_breve)
+                          VALUES (p_toponomastica_id, v_descrizione_via, left(v_descrizione_via, 50))
+                          ON CONFLICT (toponomastica_id, descrizione) DO NOTHING
+                          RETURNING id INTO v_stradario_gen_id;
+
+                          -- La corsa concorrente: l'ha scritta un'altra sessione.
+                          IF v_stradario_gen_id IS NULL THEN
+                              SELECT g.id INTO v_stradario_gen_id
+                                FROM config.stradario_generale g
+                               WHERE g.toponomastica_id = p_toponomastica_id
+                                 AND g.descrizione = v_descrizione_via;
+                          END IF;
+                      END IF;
+
+                      -- La via del comune, fra le vive: la chiave dell'indice
+                      -- parziale (una via soppressa non si riusa).
+                      SELECT s.id INTO v_stradario_id
+                        FROM config.stradario s
+                       WHERE s.comune_id = p_comune_id
+                         AND s.stradario_generale_id = v_stradario_gen_id
+                         AND s.codice_postale_id = p_codice_postale_id
+                         AND s.obsoleto_dal IS NULL;
+
+                      IF v_stradario_id IS NULL THEN
+                          INSERT INTO config.stradario (
+                              stradario_generale_id, comune_id, codice_postale_id)
+                          VALUES (v_stradario_gen_id, p_comune_id, p_codice_postale_id)
+                          -- L'indice e' parziale: l'ON CONFLICT nomina il predicato.
+                          ON CONFLICT (comune_id, stradario_generale_id, codice_postale_id)
+                             WHERE obsoleto_dal IS NULL
+                          DO NOTHING
+                          RETURNING id INTO v_stradario_id;
+
+                          IF v_stradario_id IS NULL THEN
+                              SELECT s.id INTO v_stradario_id
+                                FROM config.stradario s
+                               WHERE s.comune_id = p_comune_id
+                                 AND s.stradario_generale_id = v_stradario_gen_id
+                                 AND s.codice_postale_id = p_codice_postale_id
+                                 AND s.obsoleto_dal IS NULL;
+                          END IF;
+                      END IF;
+                  END IF;
+
+                  -- ----------------------------------------------------
+                  -- 2) Dettaglio civico (figlia DB idempotente).
+                  -- ----------------------------------------------------
+                  v_indirizzo_id := anagrafiche.fn_get_or_create_indirizzo_dettaglio(
+                      v_stradario_id, p_civico, p_estensione_civico,
+                      p_palazzina, p_scala, p_piano, p_interno);
+
+                  RETURN v_indirizzo_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_create_indirizzo(
+                  config.stradario.id%TYPE,
+                  config.stradario_generale.toponomastica_id%TYPE,
+                  config.stradario_generale.descrizione%TYPE,
+                  config.stradario.comune_id%TYPE,
+                  config.stradario.codice_postale_id%TYPE,
+                  anagrafiche.indirizzi_dettaglio.civico%TYPE,
+                  anagrafiche.indirizzi_dettaglio.estensione_civico%TYPE,
+                  anagrafiche.indirizzi_dettaglio.palazzina%TYPE,
+                  anagrafiche.indirizzi_dettaglio.scala%TYPE,
+                  anagrafiche.indirizzi_dettaglio.piano%TYPE,
+                  anagrafiche.indirizzi_dettaglio.interno%TYPE) IS
+                  'Funzione madre atomica dell''indirizzo: risolve o crea la via (la via generale e la via del comune) e l''indirizzo di dettaglio, in una sola istruzione. Senza stradario_id la via nuova si valida qui: toponomastica, nome, comune e CAP, ciascuno mancante E_INDIRIZZO_VIA_NUOVA_INCOMPLETA col campo. Poi si cerca, e si scrive solo cio'' che manca: una via che esiste non si riscrive (lo storico della via resta senza versioni vuote); la corsa concorrente si chiude con ON CONFLICT DO NOTHING e la rilettura. La via del comune si cerca fra le vive: una via soppressa (config.stradario.obsoleto_dal) non si riusa, e se c''e'' solo lei nasce la via viva. Un indirizzo su una via soppressa passata per id lo rifiuta il guard del ritiro su anagrafiche.indirizzi_dettaglio. Il civico lo trova o lo crea anagrafiche.fn_get_or_create_indirizzo_dettaglio. SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: il corpo di prima e' quello di 20261107-10.
+              SELECT 1;

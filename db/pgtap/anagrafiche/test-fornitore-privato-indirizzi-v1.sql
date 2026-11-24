@@ -15,7 +15,8 @@
 --   la nascita
 --    1) privato, ditta individuale e societa' fornitori: tutti completi
 --   presidi «la regola sta in un posto solo»
---    2) i tre lettori di «obbligatorio per il ruolo» leggono il building block
+--    2) i tre lettori di «obbligatorio per il ruolo» leggono la sede: il requisito (la madre)
+--       o il building block (i picker) (rev. 2026-11-24, D-T7a-4)
 --    3) il guard del ruolo legge il predicato della natura, non la matrice
 --    4) una firma sola per nome, con la natura e il soggetto in coda
 --   il contratto del seed (la (C))
@@ -171,9 +172,13 @@ SELECT lives_ok('SET CONSTRAINTS ALL IMMEDIATE',
 -- ============================================================
 -- 2-4) Presidi
 -- ============================================================
+-- La madre plurale legge il requisito, la sede su cui poggia anche il BB:
+-- coi ripieghi, per non copiare un tipo il cui ripiego c'e' gia'
+-- (D-T7a-4, 2026-11-24, brief-db-revisione-anagrafiche §21). Il nome della
+-- matrice resta nel corpo per il %TYPE di v_oggi: non si asserisce.
 SELECT ok(
     pg_get_functiondef('anagrafiche.fn_crea_indirizzi_ruolo(bigint, jsonb)'::regprocedure)
-        LIKE '%anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo(%'
+        LIKE '%anagrafiche.fn_indirizzi_obbligatori_ruolo(%'
     AND pg_get_functiondef('anagrafiche.fn_crea_indirizzi_ruolo(bigint, jsonb)'::regprocedure)
         NOT LIKE '%fn_tipo_indirizzo_ammesso_per_ruolo%'
     AND pg_get_functiondef('anagrafiche.fn_tipi_indirizzo_proponibili_ruolo(bigint, bigint)'::regprocedure)
@@ -184,7 +189,7 @@ SELECT ok(
         LIKE '%fn_tipo_indirizzo_obbligatorio_per_ruolo(%'
     AND pg_get_functiondef('anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(integer, uuid)'::regprocedure)
         NOT LIKE '%tipi_ruolo_tipi_indirizzo%',
-    '2) i tre lettori di «obbligatorio per il ruolo» leggono il building block');
+    '2) i tre lettori di «obbligatorio per il ruolo» leggono la sede (requisito o building block)');
 
 SELECT ok(
     pg_get_functiondef('anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo()'::regprocedure)

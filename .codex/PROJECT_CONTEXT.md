@@ -3,7 +3,7 @@
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
 >
-> Ultima revisione: 2026-11-23.
+> Ultima revisione: 2026-11-24.
 
 ## Identità del Progetto
 
@@ -278,7 +278,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   e il vaglio per temi (§17, una decina di decisioni invece di 68); giro 1 (Q7, lo storico continuo di indirizzi, civici
   e vie, `20261123-38` … `-42`) applicato coi pgTAP verdi e committato: la prova ha trovato `storico.indirizzi` che non
   accettava nessuna versione. Il vaglio per temi è deciso da Tid il 2026-11-23 (§17.1: T6 e T9 in brief nuovi, S53
-  tema proprio T12, S4 la coppia CF e P.IVA). Giro 2 (T2) fatto il 2026-11-23: dentro `anagrafiche` niente da cambiare; deciso che l'app avrà solo `SELECT` sulle viste in tutto il database, lavoro e richiesta BE passati a `brief-db-porte-aperte-dalla-sola-guc` §5 e §4.1. Giro 3 (T5, il soggetto: natura, identificativo, ruoli; `20261123-48` … `-63`) scritto e provato il 2026-11-24, applicato da Tid su scratch e dbdev, pgTAP verdi, committato: normalizzazione di CF e P.IVA in fase `a01`, stato sotto la regola dell'identificativo (guard in `a05`), una natura scritta non si svuota, tipo del ruolo e soggetto dei dati societari bloccati, il doppione dall'indice. Prossimo: D-T5-6 da riprendere, il passaggio al BE (§20.7), poi il giro T7.
+  tema proprio T12, S4 la coppia CF e P.IVA). Giro 2 (T2) fatto il 2026-11-23: dentro `anagrafiche` niente da cambiare; deciso che l'app avrà solo `SELECT` sulle viste in tutto il database, lavoro e richiesta BE passati a `brief-db-porte-aperte-dalla-sola-guc` §5 e §4.1. Giro 3 (T5, il soggetto: natura, identificativo, ruoli; `20261123-48` … `-63`) scritto e provato il 2026-11-24, applicato da Tid su scratch e dbdev, pgTAP verdi, committato: normalizzazione di CF e P.IVA in fase `a01`, stato sotto la regola dell'identificativo (guard in `a05`), una natura scritta non si svuota, tipo del ruolo e soggetto dei dati societari bloccati, il doppione dall'indice. Giro 3-bis (D-T5-6 b, il tipo di contatto proposto, `20261123-68` … `-73`) applicato, verde e committato il 2026-11-24. T7 diviso in T7a (indirizzi) e T7b (contatti e catasto): giro 4, T7a (`20261123-74` … `-94`: requisito nuovo che non blocca chi esiste, via non risolta nel guard del civico, geoloc solo dal civico, sede unica di «obbligatorio per natura», forma dell'elemento decisa dal DB, `tipo_ruolo_id` integer) applicato, pgTAP verdi e doc rigenerata il 2026-11-24, da committare. Restano da girare i passaggi al BE (§20.7, §21.7); poi T7b.
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**

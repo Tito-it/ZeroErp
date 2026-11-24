@@ -1,8 +1,8 @@
 # Brief DB — Dove va il vuoto quando una lista ordina: si dichiara in `ui.lista_colonna`
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-24 (giro BE/FE fatto; D-5 decisa, tocca alla sessione DB, §8.3)
+## ⏭️ Chi riparte — aggiornato al 2026-11-24 (D-5 applicata e verde, tocca al team BE/FE col passo 6)
 
-**Riparte: la sessione DB, col passo 5 (§8.3): Tid ha detto sì a D-5 il 2026-11-24.** Il giro BE/FE di §5 e §5.1 è fatto (§8, 2026-11-24):
+**Riparte: il team BE/FE, col passo 6.** D-5 è scritta dalla sessione DB e applicata da Tid il 2026-11-24, pgTAP verde (§8.6): il presidio della sentinella è rosso, come previsto. Il giro BE/FE di §5 e §5.1 è fatto (§8, 2026-11-24):
 il BE legge la dichiarazione dal catalogo e la applica nel BB dell'ordinamento, i `COALESCE` delle whitelist sono
 ritirati, le colonne che la whitelist dimenticava (lotti, flussi e pratiche: tre, non quattro, §8.2) ordinano il
 vuoto come il massimo. Resta fuori una colonna che §3.4
@@ -17,10 +17,11 @@ dava per assente dal catalogo e che invece c'è: `giorni_alla_scadenza` (righe 1
 | 2 | Tid | ✅ Apply, `ci_apply`, pgTAP `test-lista-colonna-vuoto-ordinato-come-massimo-v1` come app: verde (2026-11-24) | §7.7 | — |
 | 3 | Team BE/FE | ✅ Le ricadute di §5 e §5.1: lettura dal catalogo, `sql_order_direction`, ritiro dei `COALESCE`, presidi, vincolo nella mappa, D-4 (2026-11-24) | §8 | — |
 | 4 | Tid | ✅ D-5: `giorni_alla_scadenza` (righe 1157 e 1164) si dichiara «vuoto come il massimo» — **sì** (2026-11-24) | §8.3 | — |
-| 5 | Sessione DB | `t` sulle righe 1157 e 1164 del CSV di `ui.lista_colonna`, il pgTAP del giro allineato; poi l'apply di Tid | §8.3 | — |
-| 6 | Team BE/FE | Ritira `_SQL_GIORNI_SENZA_SCADENZA` e la voce di `_DEBITO_SENTINELLA` (il presidio diventa rosso da solo all'apply del passo 5) | §8.3 | 5 |
+| 5 | Sessione DB | ✅ `t` sulle righe 1157 e 1164 del CSV di `ui.lista_colonna`, il pgTAP del giro allineato (sedici), guida e `manual/` (2026-11-24) | §8.6 | — |
+| 5-bis | Tid | ✅ Apply (migrate: rigira il caricatore `runOnChange`), pgTAP `test-lista-colonna-vuoto-ordinato-come-massimo-v1` come app: verde (2026-11-24) | §8.6 | — |
+| 6 | Team BE/FE | Ritira `_SQL_GIORNI_SENZA_SCADENZA` e la voce di `_DEBITO_SENTINELLA` (il presidio diventa rosso da solo all'apply del passo 5-bis) | §8.3 | 5-bis |
 
-Decisioni aperte di Tid: nessuna (D-5 decisa il 2026-11-24, §8.3). Da committare: il giro DB di §7.7 (se non già fatto) e il giro BE/FE di §8.1.
+Decisioni aperte di Tid: nessuna (D-5 decisa il 2026-11-24, §8.3). Da committare: niente (il giro DB di D-5, §8.6, è committato il 2026-11-24 su `dev/db-tid`).
 Il brief si archivia quando il passo 6 è chiuso.
 
 **Brief vicini verificati** (2026-11-24): `brief-db-revisione-ui` tocca lo schema `ui` (documentazione, difetti, metadati) ed è alla chiusura; non tratta l'ordinamento delle liste né `ui.lista_colonna` come sede di una regola di ordinamento: non basta, e non va fuso. Nessun altro brief aperto su ordinamento, `NULLS` o `COALESCE` di whitelist.
@@ -386,3 +387,19 @@ per una chiamata interna; i lettori censiti non ordinano per una colonna dichiar
 | `configurazione-liste` (§2.2, §5.2, intestazione delle colonne) | coerente: descrive già il comportamento che il BE ora ha |
 | le altre restituite sui file di `core` (`automazione-db`, `risorse-umane-e-accessi`, `fatturazione`…) | nominano oggetti di quei file per altro: non toccate |
 
+### 8.6 Il giro della sessione DB per D-5 (2026-11-24)
+
+- [x] Il CSV di `ui.lista_colonna`: `vuoto_ordinato_come_massimo = t` sulle righe 1157 (`vendite.listini_versioni`) e
+  1164 (`vendite.listini`). Nessun changeSet nuovo: i due caricatori dello stesso CSV (`20260507-07`, `20260806-15`)
+  sono `runOnChange` ed elencano già la colonna (§7.7). Controllo dopo la modifica: 26 campi su ogni riga, sedici `t`,
+  nessuna dichiarata senza campo sorgente, nessun `\r`.
+- [x] Il pgTAP `test-lista-colonna-vuoto-ordinato-come-massimo-v1`: il caso 6 cerca le due righe per lista e codice
+  (da quattordici a sedici), la semantica attesa dice la ragione di D-5. Il piano resta 11.
+- [x] Guide (§8.5, ripreso): `configurazione-liste` §2.2 e `manual/lista_colonna` («Dove va il vuoto») erano **indietro**,
+  perché dicevano «il vuoto vuol dire senza fine». D-5 allarga la regola a «il vuoto sta oltre ogni valore», e le due
+  pagine ora nominano anche i giorni alla scadenza dei listini. Valgono dall'apply.
+- [x] L'apply di Tid e il pgTAP come app (passo 5-bis): verde (2026-11-24). La sessione DB non l'aveva provato: il
+  cambio è solo nel CSV, e `prova_changeset.py` non carica il seed.
+
+Pre-commit sui file del giro: verde, tranne `check-i18n-keys` (`anagrafiche.soggetti.cambio_natura_blocco.verso_nessuna`,
+del giro anagrafiche, lo stesso rosso di §7.7).

@@ -1,5 +1,7 @@
 ## Documentazione Concettuale -- Funzione `script.fn_search_stradario()`
 
+> **Ultimo aggiornamento**: 24 novembre 2026
+>
 > **Vedi anche**
 >
 **Approfondimento tabelle:**
@@ -12,8 +14,7 @@
 >
 **Approfondimento funzioni:**
 >
-[anagrafiche.fn_search_indirizzi_dettaglio](/dbzero/anagrafiche/manual/fn_search_indirizzi_dettaglio)
-> [anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/manual/fn_get_or_create_indirizzo_dettaglio)
+[anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/manual/fn_get_or_create_indirizzo_dettaglio)
 >
 **Guide:**
 >
@@ -25,9 +26,9 @@
 Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona
 un comune e cerca una via nel comune selezionato.
 
-Pattern coerente con `fn_search_soggetti_universale` e
-`fn_search_indirizzi_dettaglio` — funzione STABLE in `script`,
-usata dal backend come entry point di ricerca.
+Pattern coerente con `fn_search_soggetti_universale` — funzione STABLE in `script`,
+usata dal backend come entry point di ricerca. La ricerca dei civici, invece, non è
+una funzione del database: la fa il backend leggendo `anagrafiche.vw_indirizzi_dettaglio`.
 
 **Flusso utente tipico:**
 

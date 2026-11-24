@@ -52,3 +52,4 @@ databaseChangeLog:
               - column: { name: tipo_lotto, type: STRING }
               - column: { name: utility_id, type: STRING }
               - column: { name: tipo_doc_fiscale_id, type: STRING }
+              - column: { name: auto_step_rollback, type: BOOLEAN }

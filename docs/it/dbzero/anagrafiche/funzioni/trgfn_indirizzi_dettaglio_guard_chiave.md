@@ -26,7 +26,7 @@ DECLARE
 BEGIN
     -- =========================================================
     -- Scopo:
-    --   La chiave dell'indirizzo dettaglio: civico > 0, valori
+    --   La chiave dell'indirizzo dettaglio: la via si risolve, civico > 0, valori
     --   con almeno una lettera o una cifra, e (in UPDATE) nessun
     --   doppione di un'altra riga. Rifiuta col codice e col campo.
     --
@@ -44,6 +44,20 @@ BEGIN
             NEW.palazzina, NEW.scala, NEW.piano, NEW.interno)
     THEN
         RETURN NEW;
+    END IF;
+
+    -- 0) D4 (2026-10-25), su ogni strada (D-T7a-2, 2026-11-24): la
+    --    via si risolve. Il normalize lascia via_norm NULL quando
+    --    la via non si legge con comune, provincia e CAP
+    --    (anagrafiche.fn_build_indirizzo_normalizzato): senza
+    --    questo ramo l'INSERT diretto cadeva sul NOT NULL (23502).
+    IF NEW.via_norm IS NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', v_chi, 'E_INDIRIZZO_VIA_NON_RISOLTA',
+            jsonb_build_object('campo', 'stradario_id',
+                               'stradario_id', NEW.stradario_id),
+            NULL::uuid,
+            NEW.stradario_id::text);
     END IF;
 
     -- 1) D2-a: il civico, se c'e', e' un numero vero.

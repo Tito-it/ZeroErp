@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_indirizzi_guard_obbligatori_ruolo`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -37,17 +37,14 @@ toccato, se si cancella il suo indirizzo o gliene si cambia il tipo. Questo cons
   indirizzo è bloccato prima (`E_INDIRIZZO_RUOLO_TITOLARE_IMMUTABILE`). Quando passa, il ruolo di prima si
   giudica come dopo una cancellazione.
 * Cancellare l'indirizzo del tipo quando il ruolo ha quello del ripiego passa: il requisito resta soddisfatto.
+* **Si giudica ciò che l'indirizzo dava**: il trigger passa al guard il tipo che esce e il `tx_id` della riga, che
+  va al log del rifiuto. Si giudicano solo le righe obbligatorie che quel tipo soddisfaceva, come tipo o come
+  ripiego: un ruolo a cui una riga obbligatoria nata dopo chiede un indirizzo che non ha mai avuto può comunque
+  cancellare un indirizzo che nessuno chiede.
 
 ---
 
 {% include-markdown "it/dbzero/anagrafiche/_indirizzi-obbligatori.md" %}
-
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **Il rifiuto non porta la transazione.** Il trigger chiama il guard senza `tx_id`: il log dell'errore non dice
-  in quale transazione l'indirizzo è uscito, a differenza del rifiuto alla scrittura del ruolo.
 
 ---
 
@@ -64,12 +61,16 @@ toccato, se si cancella il suo indirizzo o gliene si cambia il tipo. Questo cons
   eventi giusti; l'unica fatturazione di un cliente, cancellata o cambiata di tipo, rifiutata con la frase del
   ruolo; la cancellazione che il ripiego lascia passare; la sostituzione nella stessa transazione e il ruolo
   cancellato coi suoi indirizzi, che passano.
+* `db/pgtap/anagrafiche/test-indirizzi-obbligatori-requisito-nuovo-v1.sql` (7) — sul ruolo a cui un obbligatorio nato
+  dopo chiede un indirizzo che non ha, cancellare un indirizzo che nessuno chiede passa.
 
 ---
 
 ### Note di migrazione
 
 * 2026-11-17 — nasce per la strada della cancellazione e del cambio di tipo, che prima nessuno controllava.
+* 2026-11-24 — passa al guard il tipo che esce e il `tx_id` della riga: prima il guard rigiudicava tutto il titolare,
+  e il log del rifiuto non diceva la transazione.
 
 ---
 

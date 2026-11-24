@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite: il rollback automatico di uno step lo accende una colonna della
+#   pipeline, non una chiave del suo meta. Brief:
+#   brief-db-porte-aperte-dalla-sola-guc §4.8 (R-DB-I3 e D-I.4; scelta di Tid del
+#   2026-11-24: colonna).
+#
+# Che cosa cambia:
+#   - vendite.fatturazione_pipeline.auto_step_rollback: boolean NOT NULL DEFAULT false.
+#     true = al rilancio di un lotto in errore il runner puo' eseguire da solo il
+#     `rollback` dello step, se vendite.fn_check_rollback_step_automatico (20261123-97)
+#     lo ammette. E' una proprieta' della corsia, non della singola richiesta.
+#   - La chiave meta.auto_step_rollback, dove c'e', passa nella colonna e lascia il
+#     meta: accende solo il booleano JSON true, come la leggeva il backend.
+#   - chk_fatturazione_pipeline_meta_senza_auto_step_rollback: la chiave non torna
+#     nel meta. Con la chiave nel jsonb un nome scritto storto spegneva il rollback
+#     senza errore, e due sedi dello stesso dato potevano dissentire.
+#
+# ℹ️ L'UPDATE non e' una seconda sorgente del CSV (linee-guida-sql §11.2): il CSV
+#   della tabella non porta la chiave, e l'UPDATE sposta il dato di una riga creata
+#   fuori dal seed da una forma all'altra. Su un database nuovo non tocca niente.
+#
+# ℹ️ PERCHE' QUI, IN 00_schema (linee-guida-sql §11.14): la colonna nasce prima del
+#   mirror del CSV (80_data/20260128-06), che la scrive. Chi scrive la tabella:
+#   quel mirror, le fixture dei pgTAP e nessuna funzione del database. Nessuno di
+#   loro scrive la chiave nel meta, quindi il CHECK nasce valido anche da zero. Il
+#   backend legge la chiave (VenditePipelineRepository.is_auto_step_rollback_attivo)
+#   e un suo test la scrive: e' la ricaduta 3n del brief.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261123-96-alter-fatturazione-pipeline-auto-step-rollback-mctit.yaml
+
+  - changeSet:
+      id: 20261123-96-alter-fatturazione-pipeline-auto-step-rollback
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fatturazione_pipeline.auto_step_rollback (colonna al posto della chiave del meta) e
+        chk_fatturazione_pipeline_meta_senza_auto_step_rollback.
+        Brief: brief-db-porte-aperte-dalla-sola-guc (R-DB-I3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid = to_regclass('vendite.fatturazione_pipeline')
+                 AND attname = 'auto_step_rollback'
+                 AND NOT attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_pipeline
+                  ADD COLUMN auto_step_rollback boolean NOT NULL DEFAULT false;
+
+              UPDATE vendite.fatturazione_pipeline
+                 SET auto_step_rollback = (meta -> 'auto_step_rollback') = 'true'::jsonb,
+                     meta = meta - 'auto_step_rollback'
+               WHERE jsonb_exists(meta, 'auto_step_rollback');
+
+              ALTER TABLE vendite.fatturazione_pipeline
+                  ADD CONSTRAINT chk_fatturazione_pipeline_meta_senza_auto_step_rollback
+                  CHECK (NOT jsonb_exists(meta, 'auto_step_rollback'));
+
+              COMMENT ON COLUMN vendite.fatturazione_pipeline.auto_step_rollback IS
+                  'Il rollback dello step può partire da solo: al rilancio di un lotto in errore il runner esegue il rollback senza che nessuno lo chieda. False, il default: il rollback gira solo su richiesta esplicita. Anche acceso, vendite.fn_check_rollback_step_automatico risponde false se il rollback è vuoto o contiene un task distruttivo, spento o non registrato. È una proprietà della corsia, non della richiesta di run.';
+
+              COMMENT ON CONSTRAINT chk_fatturazione_pipeline_meta_senza_auto_step_rollback ON vendite.fatturazione_pipeline IS
+                  'Il rollback automatico si accende solo dalla colonna auto_step_rollback: la chiave omonima nel meta è rifiutata, perché sarebbe una seconda sede dello stesso dato e un nome scritto storto la spegnerebbe senza errore.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_pipeline DROP CONSTRAINT chk_fatturazione_pipeline_meta_senza_auto_step_rollback;
+              UPDATE vendite.fatturazione_pipeline
+                 SET meta = meta || jsonb_build_object('auto_step_rollback', true)
+               WHERE auto_step_rollback;
+              ALTER TABLE vendite.fatturazione_pipeline DROP COLUMN auto_step_rollback;

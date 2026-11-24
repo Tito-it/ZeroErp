@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_soggetti_guard_indirizzi_required`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -31,13 +31,20 @@ soggetto scritto abbia gli indirizzi che la sua natura dichiara obbligatori, o i
 
 ### Quando scatta
 
-È un constraint trigger differito su `anagrafiche.soggetti`, all'INSERT e a **ogni** UPDATE, qualunque colonna
-cambi. Copre così la nascita del soggetto, che riceve i suoi indirizzi nella stessa transazione, e il cambio di
-natura, che può chiedere tipi che la natura di prima non chiedeva: si giudica lo stato finale.
+È montato su `anagrafiche.soggetti` da due constraint trigger differiti, che scattano quando il requisito si
+applica:
+
+* `trg_soggetti_a10_guard_indirizzi_required_ins`, all'INSERT: la nascita del soggetto, che riceve i suoi
+  indirizzi nella stessa transazione;
+* `trg_soggetti_a10_guard_indirizzi_required_upd`, all'UPDATE che cambia la natura: la natura nuova può chiedere
+  tipi che quella di prima non chiedeva.
+
+Si giudica lo stato finale, alla conferma. Una scrittura che non cambia la natura non rigiudica il soggetto.
 
 Il trigger non decide niente: passa il soggetto e il suo `tx_id` a
 `anagrafiche.fn_guard_indirizzi_obbligatori_soggetto`, la sede unica del controllo del livello soggetto, che
-chiama anche il trigger della cancellazione di un indirizzo. Un soggetto senza natura non deve avere niente.
+chiama anche il trigger della cancellazione di un indirizzo, col tipo che esce. Qui il tipo non c'è: si giudicano
+tutte le righe obbligatorie della natura. Un soggetto senza natura non deve avere niente.
 
 ---
 
@@ -45,12 +52,13 @@ chiama anche il trigger della cancellazione di un indirizzo. Un soggetto senza n
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### Un requisito nuovo non blocca chi esiste
 
-* **Un soggetto rimasto incompleto non si modifica più.** Il requisito può cambiare senza che si scriva il
-  soggetto: una riga della matrice che diventa obbligatoria, che entra nella sua validità, che si aggiunge.
-  Nessuno rigiudica i soggetti che esistono; ma alla prima scrittura del soggetto, in qualunque colonna, il
-  trigger lo giudica e lo rifiuta, finché nella stessa transazione non riceve l'indirizzo che manca.
+Il requisito può cambiare senza che si scriva il soggetto: una riga della matrice che diventa obbligatoria, che
+entra nella sua validità, che si aggiunge. Come per i tipi ammessi, vale per le scritture che toccano il
+requisito: un soggetto che esiste resta scrivibile su ogni altra colonna, anche se gli manca l'indirizzo che la
+riga nuova chiede. Lo si giudica al prossimo cambio di natura, e i mancanti li dice al form
+`anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli`.
 
 ---
 
@@ -67,6 +75,8 @@ chiama anche il trigger della cancellazione di un indirizzo. Un soggetto senza n
   frase intera, col tipo richiesto senza ripiego e col ripiego, su una riga obbligatoria costruita dal test.
 * `db/pgtap/anagrafiche/test-indirizzi-obbligatori-ripiego-e-cancellazione-v1.sql` — il trigger che chiama il
   guard senza copie della regola, e la società che perde la sede legale.
+* `db/pgtap/anagrafiche/test-indirizzi-obbligatori-requisito-nuovo-v1.sql` (3) — sul soggetto a cui un obbligatorio
+  nato dopo chiede un indirizzo che non ha, una scrittura su un'altra colonna passa.
 
 ---
 
@@ -75,6 +85,8 @@ chiama anche il trigger della cancellazione di un indirizzo. Un soggetto senza n
 * 2026-11-17 — il controllo passa in `anagrafiche.fn_guard_indirizzi_obbligatori_soggetto`, condiviso col
   trigger della cancellazione di un indirizzo; il codice diventa proprio del livello soggetto, distinto da
   quello del ruolo, e la frase nomina natura e tipi per descrizione.
+* 2026-11-24 — i montaggi diventano due, all'INSERT e al cambio di natura (prima uno solo, a ogni UPDATE): una riga
+  di matrice nata dopo non ferma più la scrittura del soggetto su un'altra colonna.
 
 ---
 

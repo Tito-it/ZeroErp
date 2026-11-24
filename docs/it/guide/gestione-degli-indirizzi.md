@@ -1,6 +1,6 @@
 # Guida — Gestione degli Indirizzi
 
-> **Ultimo aggiornamento**: 23 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -27,6 +27,8 @@
 > * [anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo) — la matrice tipo/soggetto (R6)
 > * [anagrafiche.trgfn_indirizzi_guard_forma_libera](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_forma_libera) — le due forme dell'indirizzo libero (R3)
 > * [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_soggetto) e [anagrafiche.fn_crea_indirizzi_ruolo](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_ruolo) — le madri che scrivono gli indirizzi, sui due layer
+> * [anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_obbligatorio_per_natura) — quali tipi la natura chiede (R9)
+> * [anagrafiche.fn_create_indirizzo](/dbzero/anagrafiche/funzioni/fn_create_indirizzo) — la via e il civico, trovati o creati, con la via nuova validata (R3)
 > * [script.fn_stato_proposto_id](/dbzero/script/funzioni/fn_stato_proposto_id) — lo stato proposto quando chi scrive non lo dice (R8)
 > * [maintenance.proc_bump_indirizzi_dettaglio](/dbzero/maintenance/funzioni/proc_bump_indirizzi_dettaglio) — rinormalizza i civici di una via, senza spostarli
 > * [dbops.fn_admin_merge_stradario](/dbzero/dbops/funzioni/fn_admin_merge_stradario) — fonde due vie e sposta i civici sulla via che resta (R4)
@@ -315,6 +317,8 @@ Uno stato con il catalogo **ancora incompleto** (per esempio durante la conversi
 
 Il rifiuto lo dà il guard [`trgfn_indirizzi_guard_forma_libera`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_forma_libera), con un codice e il nome del campo da correggere: `E_INDIRIZZO_LIBERO_INCOMPLETO` (manca un campo), `E_INDIRIZZO_CAMPO_ALTRA_FORMA` (un campo dell'altra forma è compilato), `E_INDIRIZZO_COMUNE_ALTRO_STATO` (il comune non è dello stato), `E_INDIRIZZO_CAP_ALTRO_COMUNE` (il CAP non è del comune). I check constraint `chk_indirizzi_free_requirements` e `chk_indirizzi_soggetti_free_requirements` restano come rete per le scritture che non passano dai trigger.
 
+La forma la decide il database da ciò che arriva: un indirizzo senza civico e senza una via (né `stradario_id`, né toponimo e nome di una via nuova) è libero, anche se il testo è vuoto, e il rifiuto è quello della forma libera, sul campo che manca. Una via nuova a cui manca il toponimo, il nome, il comune o il CAP si rifiuta col suo codice, `E_INDIRIZZO_VIA_NUOVA_INCOMPLETA`, e col campo ([`fn_create_indirizzo`](/dbzero/anagrafiche/funzioni/fn_create_indirizzo)). Una via che esiste già si ritrova, senza riscriverla.
+
 ⚠️ Il form legge la stessa proprietà dello stato per scegliere quale variante mostrare: la regola sta in un posto solo.
 
 ### R4 — Protezione stradario_id
@@ -347,7 +351,7 @@ La chiave si confronta sui valori **come li salva** la normalizzazione ([R8](#r8
 
 * **Senza numero civico** si dice lasciando vuoto il civico: è l'unico modo. Un civico `0` o negativo è rifiutato.
 * **Estensione, palazzina, scala, piano e interno** devono contenere almeno una lettera o una cifra: un valore fatto solo di segni (`/`, `-`, `.`) è rifiutato. `-1` (piano interrato) o `BIS` vanno bene.
-* **Il «trova o crea»** ([`fn_get_or_create_indirizzo_dettaglio`](/dbzero/anagrafiche/funzioni/fn_get_or_create_indirizzo_dettaglio)) restituisce sempre un id: l'indirizzo esistente oppure quello appena creato. Se l'indirizzo esisteva ma era disattivato, lo riattiva. Se la via scelta non è completa nell'elenco delle vie (per esempio un comune senza provincia), si ferma con un errore che lo dice.
+* **Il «trova o crea»** ([`fn_get_or_create_indirizzo_dettaglio`](/dbzero/anagrafiche/funzioni/fn_get_or_create_indirizzo_dettaglio)) restituisce sempre un id: l'indirizzo esistente oppure quello appena creato. Se l'indirizzo esisteva ma era disattivato, lo riattiva. Se la via scelta non è completa nell'elenco delle vie (per esempio un comune senza provincia), si ferma con un errore che lo dice. Lo stesso errore arriva da ogni strada che scrive un civico, non solo da questa: lo dà il guard della chiave.
 * **Modificare** un indirizzo esistente vuol dire correggerlo **per tutti** quelli che lo usano. Se dopo la modifica coincide con un altro indirizzo che c'è già, la modifica è rifiutata e l'errore nomina quello esistente.
 
 Le regole le applica il guard [`trgfn_indirizzi_dettaglio_guard_chiave`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_guard_chiave), con un codice e il campo da correggere; i vincoli `CHECK` della tabella e l'indice restano come rete.
@@ -359,7 +363,7 @@ I trigger di normalizzazione (`trgfn_indirizzi_dettaglio_normalize` e `trgfn_ind
 * `via_norm`, `civico_norm`: forme normalizzate per confronti e deduplicazione (`civico_norm` vale `SNC` quando il civico è vuoto)
 * Sul civico, le colonne del dettaglio vanno in maiuscolo senza spazi ai lati, un testo vuoto diventa NULL e l'estensione prende il prefisso `/` (`A` → `/A`)
 * `indirizzo_normalizzato`: stringa leggibile completa
-* In modalità normalizzata, i campi fallback (comune, stato...) vengono azzerati
+* In modalità normalizzata, i campi fallback (comune, stato...) e la posizione vengono azzerati: li dice il civico, e la riga non ne tiene una copia
 * In modalità libera, i testi vuoti diventano NULL (una località di soli spazi non è una località) e lo `stato_id` non detto diventa lo **stato proposto**: il parametro `STATO_PROPOSTO_ISO2`, letto da [`script.fn_stato_proposto_id`](/dbzero/script/funzioni/fn_stato_proposto_id). È una proposta (si può cambiare per utente, per gruppo, per azienda attiva o per sessione); se manca, o indica più di uno stato, il sistema si ferma invece di indovinare
 
 ---
@@ -391,12 +395,14 @@ e il controllo. Ciò che il form propone come obbligatorio è ciò che il salvat
 
 **Quando si controlla.** A fine transazione, ogni volta che il requisito può smettere di essere rispettato:
 
-* quando si scrive il ruolo o il soggetto;
+* quando nasce il ruolo o il soggetto;
 * quando si cancella un indirizzo, o se ne cambia il tipo: si giudica il ruolo o il soggetto da cui l'indirizzo è
-  uscito (il titolare non si cambia, [R10](#r10-un-indirizzo-resta-del-suo-titolare); lo stesso controllo vale per
-  la porta di manutenzione, l'unica che lo sposta);
-* quando cambia la natura del soggetto: si giudicano tutti i suoi ruoli, perché la natura nuova può chiedere un
-  tipo che quella di prima non chiedeva.
+  uscito, e solo per ciò che quell'indirizzo dava. Se era l'unico del tipo richiesto (o del suo ripiego), il
+  rifiuto; se nessuna riga obbligatoria lo chiedeva, passa (il titolare non si cambia,
+  [R10](#r10-un-indirizzo-resta-del-suo-titolare); lo stesso controllo vale per la porta di manutenzione, l'unica
+  che lo sposta);
+* quando cambia la natura del soggetto: si giudicano il soggetto e tutti i suoi ruoli, perché la natura nuova
+  può chiedere un tipo che quella di prima non chiedeva.
 
 Sostituire un indirizzo obbligatorio (cancellarlo e scriverne un altro) passa, se le due operazioni stanno nella
 stessa transazione; cancellare un ruolo o un soggetto insieme ai suoi indirizzi passa. Cancellare l'unica
@@ -420,9 +426,17 @@ ciò che il form chiede è ciò che il salvataggio pretende. Gli indirizzi che l
 tolgono prima del cambio (sono motivi di
 [`fn_check_cambio_natura_soggetto`](/dbzero/anagrafiche/funzioni/fn_check_cambio_natura_soggetto)).
 
-Un cambio della matrice non rigiudica i ruoli e i soggetti già scritti. Il controllo però scatta a ogni scrittura
-del ruolo o del soggetto, su qualunque colonna: un titolare a cui la matrice nuova chiede un indirizzo che non ha
-non si modifica più, finché quell'indirizzo non si dà nello stesso salvataggio.
+Un cambio della matrice non rigiudica i ruoli e i soggetti già scritti, come per i tipi ammessi: la riga nuova
+vale per chi nasce dopo e per chi cambia natura. Un titolare a cui la matrice nuova chiede un indirizzo che non ha
+resta modificabile, e può perdere gli indirizzi che nessuno chiede; il form vede che cosa gli manca dalla stessa
+funzione del cambio di natura,
+[`fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli`](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli).
+
+Sul **soggetto** il ripiego vale solo se la natura lo ammette, come sul ruolo. Quali tipi la natura chiede lo dice
+una funzione sola,
+[`fn_tipo_indirizzo_obbligatorio_per_natura`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_obbligatorio_per_natura),
+gemella di quella del ruolo. La copia degli obbligatori, sui due layer, copia solo i tipi che mancano davvero: non
+un tipo di cui il titolare, o l'elenco che si sta salvando, ha già il ripiego.
 
 ### R10 — Un indirizzo resta del suo titolare
 
@@ -446,7 +460,7 @@ La sequenza tipica per un nuovo indirizzo strutturato:
 
 1. Verificare (o creare) il civico in `anagrafiche.indirizzi_dettaglio` — il vincolo di unicità R7 impedisce duplicati: se il civico esiste già, si usa quello esistente
 2. Inserire in `anagrafiche.indirizzi` (layer ruolo) o `anagrafiche.indirizzi_soggetti` (layer soggetto) con `indirizzo_dettaglio_id` valorizzato
-3. I trigger si occupano di: validare il tipo (R5/R6), normalizzare i campi (R8), sincronizzare la geolocalizzazione, generare `tx_id` e i campi di audit
+3. I trigger si occupano di: validare il tipo (R5/R6), normalizzare i campi (R8), generare `tx_id` e i campi di audit. La posizione la dice il civico: la riga non ne tiene una copia
 
 ### Inserimento di un indirizzo libero (importazione)
 
@@ -522,8 +536,7 @@ Le helper di lettura storica:
 | Funzione / Trigger                                                                                        | Su quale tabella                  | Cosa fa                                                                     |
 | --------------------------------------------------------------------------------------------------------- | --------------------------------- | --------------------------------------------------------------------------- |
 | [`trgfn_indirizzi_dettaglio_normalize`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_normalize) | `indirizzi_dettaglio`             | Calcola `via_norm`, `civico_norm`, `indirizzo_normalizzato`                 |
-| [`trgfn_indirizzi_base_normalize`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize)           | `indirizzi`, `indirizzi_soggetti` | Azzera i campi liberi in modalità normalizzata; in modalità libera porta a NULL i testi vuoti e propone lo stato |
-| [`trgfn_indirizzi_sync_geoloc`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_sync_geoloc)                 | `indirizzi`, `indirizzi_soggetti` | Sincronizza `geoloc` da `indirizzi_dettaglio.civic_geoloc`                  |
+| [`trgfn_indirizzi_base_normalize`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize)           | `indirizzi`, `indirizzi_soggetti` | Azzera i campi liberi e la posizione in modalità normalizzata (li dice il civico); in modalità libera porta a NULL i testi vuoti e propone lo stato |
 
 ### Guard e vincoli
 
@@ -781,6 +794,10 @@ sostituzione nella stessa transazione, il cambio di natura.
 Gli indirizzi che una natura proposta chiede li prova `db/pgtap/anagrafiche/test-indirizzi-obbligatori-mancanti-v1.sql`,
 fino al salvataggio che cambia la natura e scrive gli indirizzi nella stessa transazione.
 Il titolare che non cambia (R10) lo prova `db/pgtap/anagrafiche/test-indirizzi-titolare-immutabile-v1.sql`.
+Una riga obbligatoria nata dopo il titolare, il ripiego che la natura vieta e la copia che non duplica il ripiego li
+prova `db/pgtap/anagrafiche/test-indirizzi-obbligatori-requisito-nuovo-v1.sql`. La vista resolved con una riga per
+indirizzo, la via non risolta su ogni strada, l'elemento senza forma, la posizione e le FK geografiche li prova
+`db/pgtap/anagrafiche/test-indirizzi-viste-forma-e-vincoli-v1.sql`.
 
 ---
 

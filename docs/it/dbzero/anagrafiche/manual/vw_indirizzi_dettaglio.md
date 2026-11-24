@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_indirizzi_dettaglio`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -18,7 +18,6 @@
 >
 > Approfondimento funzioni:
 >
-> * [anagrafiche.fn_search_indirizzi_dettaglio](/dbzero/anagrafiche/funzioni/fn_search_indirizzi_dettaglio) — la ricerca dei civici, che restituisce righe di questa vista
 > * [script.fn_check_indirizzo_duplicato](/dbzero/script/funzioni/fn_check_indirizzo_duplicato) — il controllo del doppione
 > * [script.fn_get_search_detail](/dbzero/script/funzioni/fn_get_search_detail) — il dettaglio di una ricerca
 
@@ -41,24 +40,33 @@ con accanto il comune, il nome del comune, il CAP e la sigla della provincia del
 `indirizzo_normalizzato`, `via_norm` e il dettaglio sono quelli della tabella, cioè i valori scritti dal
 trigger di normalizzazione. La vista non calcola niente: legge.
 
-Escono anche i civici spenti: chi vuole solo quelli in uso filtra su `attivo`, come fa la ricerca.
+Escono anche i civici spenti: chi vuole solo quelli in uso filtra su `attivo`, come fa la ricerca dei civici.
 
 ---
 
 ### Chi la legge
 
 La lettura risolta degli indirizzi (`anagrafiche.vw_indirizzi_resolved_base`) per gli indirizzi col dettaglio,
-le viste dei punti di fornitura e delle istanze, la ricerca dei civici, il controllo del doppione. La vista si
+le viste dei punti di fornitura e delle istanze, il controllo del doppione. La ricerca dei civici la fa il
+backend leggendo questa vista: nel database non c'è una funzione di ricerca dei civici. La vista si
 legge soltanto: i civici si scrivono sulla tabella, attraverso il «trova o crea».
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### Una via che non si risolve non ha civici
 
-* **I civici di una via che non si risolve spariscono**: la vista unisce la via risolta con un join interno, e
-  quando la catena via → comune → provincia → CAP si interrompe (un comune che perde la provincia, per esempio)
-  il civico non esce più, né qui né nelle letture che passano da qui. Negli indirizzi risolti quel civico resta,
-  ma senza testo, comune e CAP.
+La vista unisce la via risolta con un join interno: un civico la cui catena via → comune → provincia → CAP fosse
+interrotta non uscirebbe, né qui né nelle letture che passano da qui. Il modello però non lo produce. Un civico non
+nasce su una via che non si risolve (`E_INDIRIZZO_VIA_NON_RISOLTA`, dal guard della chiave, su ogni strada), e la
+provincia di un comune che lo stradario usa non si toglie (`E_COLONNA_NON_MODIFICABILE`). Il caso si raggiunge solo
+con una scrittura che salta i trigger.
+
+---
+
+### Note di migrazione
+
+* 2026-11-24 — si ritira `anagrafiche.fn_search_indirizzi_dettaglio`, la ricerca dei civici del database che
+  restituiva righe di questa vista: non la chiamava nessuno, e la ricerca del backend legge la vista.
 
 ---
 

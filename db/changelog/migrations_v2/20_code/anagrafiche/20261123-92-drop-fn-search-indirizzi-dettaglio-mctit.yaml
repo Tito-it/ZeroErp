@@ -1,0 +1,51 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.fn_search_indirizzi_dettaglio: si ritira.
+#   D-T7a-6 di Tid (2026-11-24), brief-db-revisione-anagrafiche §21 (S10).
+#
+# -- PERCHE' --------------------------------------------------------------------------
+#   Non la chiama nessuno: ne' una funzione o una vista del database
+#   (pg_proc, pg_depend), ne' il backend (origin/dev/backend-tid, 2026-11-24),
+#   che cerca i civici leggendo anagrafiche.vw_indirizzi_dettaglio
+#   (indirizzi_repository.py). Una ricerca che nessuno usa, accanto a quella
+#   del BE, e' una copia (regola del 2), e aveva i suoi difetti: estensione,
+#   palazzina, scala, piano e interno confrontati grezzi con valori salvati
+#   normalizzati, un RAISE diretto, p_limit senza tetto.
+#   L'unico che la nominava e' il pgTAP anagrafiche/create-gestore-indirizzo-res-domfisc,
+#   riscritto nello stesso giro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261123-92-drop-fn-search-indirizzi-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20261123-92-drop-fn-search-indirizzi-dettaglio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritiro di anagrafiche.fn_search_indirizzi_dettaglio: nessun chiamante, la ricerca dei civici e'
+        del BE. D-T7a-6, brief-db-revisione-anagrafiche §21.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_search_indirizzi_dettaglio(
+                  anagrafiche.indirizzi_dettaglio.stradario_id%TYPE,
+                  anagrafiche.indirizzi_dettaglio.civico%TYPE,
+                  text, text, text, text, text, text, integer);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: il corpo di prima e' quello di 20261010-31.
+              SELECT 1;

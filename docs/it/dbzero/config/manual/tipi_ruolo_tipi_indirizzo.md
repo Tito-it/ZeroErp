@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.tipi_ruolo_tipi_indirizzo`
 
+> **Ultimo aggiornamento**: 24 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 **Tabelle di dominio:**   
@@ -65,7 +67,7 @@ Con `config.tipi_ruolo_tipi_indirizzo`:
 | Colonna                      | Tipo        | Obblig. | Descrizione sintetica                                                                |
 | ---------------------------- | ----------- | ------- | ------------------------------------------------------------------------------------ |
 | `id`                         | bigint      | Sì      | Chiave primaria tecnica.                                                             |
-| `tipo_ruolo_id`              | bigint      | Sì      | FK → `config.tipi_ruoli.id`. Identifica il **tipo ruolo** (es. Gestore, Cliente, …). |
+| `tipo_ruolo_id`              | integer     | Sì      | FK → `config.tipi_ruoli.id`, dello stesso tipo. Identifica il **tipo ruolo** (es. Gestore, Cliente, …). |
 | `tipo_indirizzo_id`          | bigint      | Sì      | FK → `config.tipi_indirizzi.id`. Tipo indirizzo ammesso per quel ruolo.              |
 | `obbligatorio`               | boolean     | Sì      | Se `TRUE`, il ruolo deve avere almeno un indirizzo di quel tipo.                     |
 | `valido_dal` / `valido_al`   | date        | No      | Finestra temporale di validità della regola (permite versioning nel tempo).          |
@@ -78,6 +80,8 @@ Con `config.tipi_ruolo_tipi_indirizzo`:
 
 **Vincoli principali:**
 
+* una FK sola su `tipo_ruolo_id`, `fk_tipi_ruolo_tipi_indirizzo_tipo_ruolo`
+  → il tipo di ruolo esiste in `config.tipi_ruoli`.
 * `UNIQUE (tipo_ruolo_id, tipo_indirizzo_id)`
   → ogni combinazione ruolo/tipo_indirizzo è definita una sola volta.
 * `CHECK valido_dal / valido_al`
@@ -193,6 +197,13 @@ Con questa configurazione:
 
   * Per i ruoli senza configurazione, il sistema continua a funzionare come prima (indirizzi liberi).
   * È possibile introdurre la matrice ruolo per ruolo, senza “rompere” l’esistente.
+
+---
+
+### Note di migrazione
+
+* 2026-11-24 — `tipo_ruolo_id` diventa intero, come `config.tipi_ruoli.id` a cui punta (prima era un intero lungo), e
+  delle due FK identiche sulla colonna resta solo `fk_tipi_ruolo_tipi_indirizzo_tipo_ruolo`.
 
 ---
 

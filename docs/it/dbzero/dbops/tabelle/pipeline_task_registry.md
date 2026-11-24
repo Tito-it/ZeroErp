@@ -16,6 +16,7 @@
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
+| distruttivo | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

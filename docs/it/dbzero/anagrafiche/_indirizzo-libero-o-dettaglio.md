@@ -1,6 +1,6 @@
 ### 🏠 Le due forme di un indirizzo
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 
 Un indirizzo di un ruolo (`anagrafiche.indirizzi`) o di un soggetto (`anagrafiche.indirizzi_soggetti`) ha una
 di due forme, mai tutte e due insieme (`chk_indirizzi_xor_norm_libero`, `chk_indirizzi_soggetti_xor_norm_libero`):
@@ -33,16 +33,27 @@ I trigger della riga girano nell'ordine del loro nome, e quello del giudizio è 
 vedere i valori come si salveranno:
 
 1. `anagrafiche.trgfn_indirizzi_base_normalize` mette in ordine la riga: con il dettaglio svuota tutti i campi
-   della forma libera e la posizione; nella forma libera porta a `NULL` i testi vuoti e scrive lo stato
-   proposto se manca;
-2. `anagrafiche.trgfn_indirizzi_sync_geoloc` copia nella riga la posizione del civico, se c'è il dettaglio;
-3. `anagrafiche.trgfn_indirizzi_guard_forma_libera` giudica la forma libera e, se qualcosa manca o non torna,
+   della forma libera e la posizione, che dice il civico; nella forma libera porta a `NULL` i testi vuoti e
+   scrive lo stato proposto se manca;
+2. `anagrafiche.trgfn_indirizzi_guard_forma_libera` giudica la forma libera e, se qualcosa manca o non torna,
    rifiuta col codice e col nome del campo.
 
 I `CHECK` `chk_indirizzi_free_requirements` e `chk_indirizzi_soggetti_free_requirements` restano come rete,
-con la forma minima comune alle due varianti. Le due tabelle hanno le stesse colonne e montano le stesse tre
+con la forma minima comune alle due varianti. Le due tabelle hanno le stesse colonne e montano le stesse due
 funzioni.
 
 Il civico ha una sua normalizzazione (maiuscolo, vuoto uguale a nessun valore, estensione col `/`, `SNC` per il
 civico senza numero), che vive in `anagrafiche.fn_build_indirizzo_normalizzato`; chi deve collegare un
-civico lo ottiene da `anagrafiche.fn_get_or_create_indirizzo_dettaglio`, che lo trova o lo crea.
+civico lo ottiene da `anagrafiche.fn_get_or_create_indirizzo_dettaglio`, che lo trova o lo crea. Una via che non
+si risolve (il comune senza provincia) si rifiuta con `E_INDIRIZZO_VIA_NON_RISOLTA` da ogni strada che scrive il
+civico: lo dice il guard della chiave, `anagrafiche.trgfn_indirizzi_dettaglio_guard_chiave`.
+
+#### Quale forma ha un indirizzo che arriva a una madre
+
+Chi scrive un indirizzo dalle madri (`anagrafiche.fn_crea_indirizzo_soggetto`, `anagrafiche.fn_crea_indirizzi_ruolo`
+e le altre) manda un elemento, e la forma la decide il database dalle sue chiavi
+(`anagrafiche.fn_indirizzo_elemento_dettaglio`): col testo della via è libero; col civico già risolto è col
+dettaglio; con una via (lo stradario, oppure toponimo e nome di una via nuova) è col dettaglio, e la via e il
+civico li trova o li crea `anagrafiche.fn_create_indirizzo`, che rifiuta una via nuova incompleta col campo
+(`E_INDIRIZZO_VIA_NUOVA_INCOMPLETA`). Senza nessuna di queste chiavi l'elemento è libero, anche col testo vuoto:
+lo giudica il guard della forma, che dice che cosa manca.

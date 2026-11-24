@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_create_indirizzo`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -35,9 +35,15 @@ dati di sviluppo.
 
 * **Una via del catalogo** si indica con la via del comune (`p_stradario_id`): i campi di una via nuova, se ci sono,
   non si guardano.
-* **Una via nuova** si indica col tipo strada, il nome, il comune e il CAP. La via generale (tipo strada e nome) e la
-  via del comune (via generale, comune e CAP) si trovano se ci sono e si creano se mancano: due chiamate con la stessa
-  via danno la stessa riga. Il nome si ripulisce dagli spazi in testa e in coda.
+* **Una via nuova** si indica col tipo strada, il nome, il comune e il CAP, tutti e quattro: ogni campo che manca si
+  rifiuta con `E_INDIRIZZO_VIA_NUOVA_INCOMPLETA` e il nome del campo, e un nome vuoto conta come mancante. Il nome si
+  ripulisce dagli spazi in testa e in coda.
+* **Prima si cerca, poi si scrive.** La via generale (tipo strada e nome) e la via del comune (via generale, comune e
+  CAP) si ritrovano se ci sono e si creano solo se mancano: due chiamate con la stessa via danno la stessa riga. Una via
+  che esiste non si riscrive, e il suo storico non prende una versione per ogni indirizzo creato su di lei. Se due
+  sessioni creano la stessa via insieme, la seconda rilegge quella della prima.
+* **La descrizione breve** di una via generale nuova sono i primi 50 caratteri del nome: un nome lungo non ferma la
+  creazione.
 
 Il civico, con estensione, palazzina, scala, piano e interno, lo risolve
 `anagrafiche.fn_get_or_create_indirizzo_dettaglio`, che allo stesso modo non duplica un dettaglio che c'è già.
@@ -59,19 +65,12 @@ appena creata.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
-
-* **I campi di una via nuova** non si controllano: tipo strada, nome, comune o CAP mancanti arrivano ai vincoli
-  `NOT NULL` delle due tabelle dello stradario, che rifiutano con l'errore grezzo del database e non con un codice
-  del catalogo. Lo stesso succede a un elemento che non indica nessuna forma, perché senza via e senza dettaglio la
-  madre lo tratta come una via nuova.
-
----
-
 ### Codici errore
 
-La funzione non solleva codici suoi: i rifiuti arrivano dal dettaglio (`anagrafiche.fn_get_or_create_indirizzo_dettaglio`
-e i guard di `anagrafiche.indirizzi_dettaglio`, fra cui `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`).
+* `E_INDIRIZZO_VIA_NUOVA_INCOMPLETA` — a una via nuova manca il tipo strada, il nome, il comune o il CAP; il campo
+  dice quale.
+* Gli altri rifiuti arrivano dal dettaglio (`anagrafiche.fn_get_or_create_indirizzo_dettaglio` e i guard di
+  `anagrafiche.indirizzi_dettaglio`, fra cui `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA`).
 
 ---
 
@@ -81,6 +80,9 @@ e i guard di `anagrafiche.indirizzi_dettaglio`, fra cui `E_CATALOGO_OBSOLETO_NUO
   il dettaglio rifiutato che non lascia la via scritta.
 * `db/pgtap/dbops/test-fusioni-comune-stradario-v1.sql` — una via nuova sulla terna (via, comune, CAP) che ha anche una via soppressa
   nasce sulla via viva.
+* `db/pgtap/anagrafiche/test-indirizzi-viste-forma-e-vincoli-v1.sql` (14, 23, 24, 25) — la via nuova senza
+  toponomastica; la seconda chiamata con la stessa via nuova, che passa senza riscrivere la via e senza lasciarle
+  versioni di storico.
 
 ---
 
@@ -88,6 +90,9 @@ e i guard di `anagrafiche.indirizzi_dettaglio`, fra cui `E_CATALOGO_OBSOLETO_NUO
 
 * 2026-07-08 — nasce, e prende il posto dei tre passi che l'applicazione faceva senza una transazione unica: un
   dettaglio rifiutato lasciava scritte le righe dello stradario.
+* 2026-11-24 — la via nuova si valida qui, col suo codice: prima il controllo era lasciato all'applicazione, e un campo
+  mancante cadeva sui vincoli dello stradario. Una via che esiste si ritrova senza riscriverla (prima ogni ritrovamento
+  la riscriveva, e lasciava versioni di storico); la descrizione breve prende i primi 50 caratteri del nome.
 
 ---
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -33,7 +33,9 @@ indirizzi del ruolo.
 
 Riceve il tipo di ruolo, il tipo d'indirizzo e il giorno, e non legge né il ruolo né i suoi indirizzi: lo
 leggono tanto chi scrive un indirizzo sul ruolo quanto il picker di un ruolo che non esiste ancora. Il giorno lo
-passa il chiamante; tutti i lettori passano il giorno operativo.
+passa il chiamante; tutti i lettori passano il giorno operativo. Il tipo di ruolo è un intero, come l'id di
+`config.tipi_ruoli` e come nelle altre funzioni della catena del ruolo: chi la compone non passa da una
+conversione.
 
 Il tipo di ruolo vuoto è ammesso, come il tipo di ruolo senza righe di matrice. Sul ruolo questa è solo metà
 della regola: l'altra metà è la natura del soggetto del ruolo, che giudica il gemello. Chi lo legge chiede
@@ -61,6 +63,7 @@ sempre a tutti e due, prima questo.
   la riga scaduta, il tipo assente, il tipo di ruolo vuoto; il guard legge il predicato, non la matrice.
 * `db/pgtap/anagrafiche/test-tipi-indirizzo-proponibili-v1.sql` — il tipo di ruolo senza matrice: tutti i tipi
   ammessi.
+* `db/pgtap/anagrafiche/test-indirizzi-viste-forma-e-vincoli-v1.sql` (5) — la firma prende il tipo di ruolo intero.
 
 ---
 
@@ -68,6 +71,8 @@ sempre a tutti e due, prima questo.
 
 * 2026-11-15 — estratto dal guard degli indirizzi del ruolo, perché la stessa regola la leggano la check della
   madre, i picker e gli obbligatori.
+* 2026-11-24 — il tipo di ruolo diventa intero, come la colonna della matrice a cui è ancorato: prima era un intero
+  lungo, diverso dalle sorelle della catena.
 
 ---
 

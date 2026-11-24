@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.indirizzi: le FK verso comune, CAP e stato senza azione alla
+#   cancellazione, come quelle di anagrafiche.indirizzi_soggetti.
+#   S19, brief-db-revisione-anagrafiche §21 (giro 4, T7a).
+#
+# -- IL DIFETTO -------------------------------------------------------------------
+#   fk_comuni_config, fk_codici_postali_config e fk_stati_config erano
+#   ON DELETE SET NULL, le gemelle di indirizzi_soggetti senza azione. Il
+#   SET NULL e' un UPDATE che passa dai trigger della riga: cancellare un CAP
+#   o un comune in uso lo fa rifiutare dal guard della forma, con un errore
+#   che parla dell'indirizzo (E_INDIRIZZO_LIBERO_INCOMPLETO); cancellare uno
+#   stato fa scrivere a trgfn_indirizzi_base_normalize lo stato proposto, e
+#   quando il proposto ammette la forma della riga l'indirizzo cambia paese
+#   senza che nessuno l'abbia chiesto.
+#
+# -- LA FORMA -----------------------------------------------------------------------
+#   Stesso nome, stesse colonne, ON UPDATE CASCADE come prima e come la
+#   gemella, nessuna azione alla cancellazione: un comune, un CAP o uno stato
+#   in uso non si cancellano, si spengono. Le righe di oggi rispettano gia'
+#   le FK (non cambia la regola di esistenza), quindi l'ADD valida senza
+#   sorprese; dbops.fk_index_policy le conosce per nome, e il nome non cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261123-75-update-fk-indirizzi-geografiche-senza-azione-mctit.yaml
+
+  - changeSet:
+      id: 20261123-75-update-fk-indirizzi-geografiche-senza-azione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.indirizzi: fk_comuni_config, fk_codici_postali_config, fk_stati_config senza
+        ON DELETE SET NULL, come le gemelle di indirizzi_soggetti. S19, brief-db-revisione-anagrafiche §21.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.indirizzi
+                  DROP CONSTRAINT IF EXISTS fk_comuni_config,
+                  DROP CONSTRAINT IF EXISTS fk_codici_postali_config,
+                  DROP CONSTRAINT IF EXISTS fk_stati_config;
+
+              ALTER TABLE anagrafiche.indirizzi
+                  ADD CONSTRAINT fk_comuni_config
+                      FOREIGN KEY (comune_id) REFERENCES config.comuni (id) ON UPDATE CASCADE,
+                  ADD CONSTRAINT fk_codici_postali_config
+                      FOREIGN KEY (codice_postale_id) REFERENCES config.codici_postali (id) ON UPDATE CASCADE,
+                  ADD CONSTRAINT fk_stati_config
+                      FOREIGN KEY (stato_id) REFERENCES config.stati (id) ON UPDATE CASCADE;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: il SET NULL era il difetto.
+              SELECT 1;

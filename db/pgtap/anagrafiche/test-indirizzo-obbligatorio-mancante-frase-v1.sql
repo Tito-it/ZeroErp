@@ -15,11 +15,11 @@
 --    2) tipo e ripiego, nell'ordine, separati da « / »
 --    3) ripiego uguale al tipo: il solo tipo
 --    4) nessuno dei due nel catalogo: NULL
---   il layer RUOLO (trgfn_soggetti_ruoli_guard_indirizzi_required)
+--   il layer RUOLO (anagrafiche.fn_guard_indirizzi_obbligatori_ruolo)
 --    5) il codice resta E_INDIRIZZO_OBBLIGATORIO_MANCANTE
 --    6) la frase nomina il ruolo e il tipo, senza ripiego
 --    7) ... e col ripiego
---   il layer SOGGETTO (trgfn_soggetti_guard_indirizzi_required)
+--   il layer SOGGETTO (anagrafiche.fn_guard_indirizzi_obbligatori_soggetto)
 --    8) il codice e' E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO
 --    9) la frase nomina la natura e il tipo, senza ripiego
 --   10) ... e col ripiego
@@ -29,9 +29,11 @@
 --    jolly), composta dalle descrizioni del CATALOGO, non da letterali;
 --  - la riga obbligatoria mancante la COSTRUISCE il test (SPED obbligatorio,
 --    ripiego CON), sul fornitore societa' e sul privato gia' nati completi:
---    niente si appoggia alle righe di oggi della matrice. Il guard differito
---    scatta su un UPDATE che riscrive lo stesso valore (AFTER INSERT OR
---    UPDATE, senza WHEN).
+--    niente si appoggia alle righe di oggi della matrice. La frase la compone
+--    il guard, e il test lo chiama direttamente: rev 2026-11-24 (D-T7a-1,
+--    brief-db-revisione-anagrafiche §21), una riga nata dopo il titolare non
+--    lo rigiudica piu' a una scrittura qualunque, e l'UPDATE che riscriveva lo
+--    stesso valore non fa piu' scattare il guard.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -150,13 +152,13 @@ SELECT pg_temp.obbligatorio_ruolo((SELECT fo FROM _ref), 'SPED', NULL);
 
 SELECT is(
     dbops.fn_pgtap_codice_errore(format(
-        'UPDATE anagrafiche.soggetti_ruoli SET tipo_ruolo_id = tipo_ruolo_id WHERE id = %L',
+        'SELECT anagrafiche.fn_guard_indirizzi_obbligatori_ruolo(%L::bigint, NULL::uuid)',
         (SELECT sr_sc FROM _f))),
     'E_INDIRIZZO_OBBLIGATORIO_MANCANTE',
     '5) il codice del layer ruolo resta E_INDIRIZZO_OBBLIGATORIO_MANCANTE');
 
 SELECT throws_like(
-    format('UPDATE anagrafiche.soggetti_ruoli SET tipo_ruolo_id = tipo_ruolo_id WHERE id = %L',
+    format('SELECT anagrafiche.fn_guard_indirizzi_obbligatori_ruolo(%L::bigint, NULL::uuid)',
            (SELECT sr_sc FROM _f)),
     (SELECT format('Il ruolo %s richiede l''indirizzo «%s».', fo_nome, pg_temp.nome('SPED')) FROM _ref),
     '6) la frase nomina il ruolo e il tipo, senza ripiego');
@@ -175,7 +177,7 @@ SELECT (SELECT COALESCE(max(id), 0) + 1 FROM config.tipi_ruolo_tipi_indirizzo),
 SELECT pg_temp.obbligatorio_ruolo((SELECT fo FROM _ref), 'SPED', 'CON');
 
 SELECT throws_like(
-    format('UPDATE anagrafiche.soggetti_ruoli SET tipo_ruolo_id = tipo_ruolo_id WHERE id = %L',
+    format('SELECT anagrafiche.fn_guard_indirizzi_obbligatori_ruolo(%L::bigint, NULL::uuid)',
            (SELECT sr_sc FROM _f)),
     (SELECT format('Il ruolo %s richiede l''indirizzo «%s» / «%s».',
                    fo_nome, pg_temp.nome('SPED'), pg_temp.nome('CON')) FROM _ref),
@@ -188,13 +190,13 @@ SELECT pg_temp.obbligatorio_natura((SELECT pr FROM _ref), 'SPED', NULL);
 
 SELECT is(
     dbops.fn_pgtap_codice_errore(format(
-        'UPDATE anagrafiche.soggetti SET tipo_soggetto_dettaglio_id = tipo_soggetto_dettaglio_id WHERE id = %L',
+        'SELECT anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(%L::uuid, NULL::uuid)',
         (SELECT pr FROM _s))),
     'E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO',
     '8) il codice del layer soggetto e'' E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO');
 
 SELECT throws_like(
-    format('UPDATE anagrafiche.soggetti SET tipo_soggetto_dettaglio_id = tipo_soggetto_dettaglio_id WHERE id = %L',
+    format('SELECT anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(%L::uuid, NULL::uuid)',
            (SELECT pr FROM _s)),
     (SELECT format('Il tipo soggetto %s richiede l''indirizzo «%s».', pr_nome, pg_temp.nome('SPED')) FROM _ref),
     '9) la frase nomina la natura e il tipo, senza ripiego');
@@ -202,7 +204,7 @@ SELECT throws_like(
 SELECT pg_temp.obbligatorio_natura((SELECT pr FROM _ref), 'SPED', 'CON');
 
 SELECT throws_like(
-    format('UPDATE anagrafiche.soggetti SET tipo_soggetto_dettaglio_id = tipo_soggetto_dettaglio_id WHERE id = %L',
+    format('SELECT anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(%L::uuid, NULL::uuid)',
            (SELECT pr FROM _s)),
     (SELECT format('Il tipo soggetto %s richiede l''indirizzo «%s» / «%s».',
                    pr_nome, pg_temp.nome('SPED'), pg_temp.nome('CON')) FROM _ref),

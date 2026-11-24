@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_indirizzi_base_normalize`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,7 +12,6 @@
 > Approfondimento funzioni:
 >
 > * [script.fn_stato_proposto_id](/dbzero/script/funzioni/fn_stato_proposto_id) — lo stato proposto, quando chi scrive non lo dice
-> * [anagrafiche.trgfn_indirizzi_sync_geoloc](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_sync_geoloc) — gira dopo, e riempie la posizione dal civico
 > * [anagrafiche.trgfn_indirizzi_guard_forma_libera](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_forma_libera) — gira dopo, e giudica la riga messa in ordine
 
 ---
@@ -28,8 +27,8 @@ sua forma, prima che lo si giudichi e lo si salvi. Di suo non rifiuta niente.
 
 Se la riga punta un civico, il trigger svuota testo, stato, comune, CAP, località, area amministrativa,
 frazione e codice postale: chi passa all'indirizzo col dettaglio non si porta dietro i pezzi di quello libero,
-e il `CHECK` che vuole una forma sola non scatta per un residuo. Svuota anche la posizione, che il trigger
-successivo riprende dal civico.
+e il `CHECK` che vuole una forma sola non scatta per un residuo. Svuota anche la posizione, e la riga resta
+senza: col dettaglio la posizione la dice il civico, come comune e CAP, e chi legge la prende da lì.
 
 ---
 
@@ -57,6 +56,8 @@ Nessuno suo. Dallo stato proposto possono arrivare quelli di `script.fn_stato_pr
 * `db/pgtap/anagrafiche/test-indirizzo-libero-due-forme-v1.sql` — l'ordine dei trigger, la località di soli
   spazi che diventa mancante, lo stato non detto che diventa lo stato proposto, il parametro vuoto che ferma la
   scrittura senza ripiego.
+* `db/pgtap/anagrafiche/test-indirizzi-viste-forma-e-vincoli-v1.sql` (15, 16) — un indirizzo col dettaglio
+  nasce senza una posizione sua, e la vista legge quella del civico, anche cambiata dopo.
 
 ---
 
@@ -64,6 +65,9 @@ Nessuno suo. Dallo stato proposto possono arrivare quelli di `script.fn_stato_pr
 
 * 2026-10-18 — porta a nessun valore i testi vuoti della forma libera e scrive lo stato proposto, letto dal
   parametro `STATO_PROPOSTO_ISO2`.
+* 2026-11-24 — si ritira `anagrafiche.trgfn_indirizzi_sync_geoloc`, che subito dopo questo trigger ricopiava
+  nella riga la posizione del civico: la posizione svuotata qui ora resta vuota, e le righe che ne avevano una
+  copia la perdono una volta sola.
 
 ---
 

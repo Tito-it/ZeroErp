@@ -4,8 +4,8 @@
 --
 -- Test: ui.lista_colonna.vuoto_ordinato_come_massimo — dove va il vuoto quando
 --   una lista ordina per una colonna.
--- Riferimento: brief-db-lista-colonna-vuoto-in-ordine (§2, §7; D-1 … D-3 di Tid,
---   2026-11-24); changeSet 00_schema/ui/20261123-65 (colonna e CHECK),
+-- Riferimento: brief-db-lista-colonna-vuoto-in-ordine (§2, §7, §8.3; D-1 … D-3 e
+--   D-5 di Tid, 2026-11-24); changeSet 00_schema/ui/20261123-65 (colonna e CHECK),
 --   00_schema/pratiche/20261123-66 (i due COMMENT), il CSV di ui.lista_colonna coi
 --   suoi due caricatori e la riga 4 di dbops.automazione_seed_primo_impianto
 --   (80_data).
@@ -16,7 +16,9 @@
 --   - la dichiarazione chiede un campo sorgente, e non dipende da `ordinabile`
 --     (D-3): una colonna non ordinabile la tiene;
 --   - il seed dichiara le colonne il cui vuoto vuol dire «senza fine» (§3.1 del
---     brief, e la 304 per D-2), cercate per lista e codice, non per id;
+--     brief, e la 304 per D-2) e le due giorni_alla_scadenza dei listini (D-5:
+--     il vuoto, «non in scadenza», sta oltre ogni valore), cercate per lista e
+--     codice, non per id;
 --   - ⭐ la convenzione di valido_al (D-2): ogni colonna accesa su valido_al e'
 --     dichiarata, perche' valido_al NULL vuol dire «aperto» in tutto il database
 --     (linee guida SQL §7b). Il test legge la tabella, non il CSV: vede anche una
@@ -40,7 +42,7 @@
 --    3) una colonna senza campo sorgente non dichiara: rifiutata dal vincolo
 --    4) una colonna con il campo, NON ordinabile, dichiara: entra (D-3)
 --    5) una colonna che non dice niente nasce false
---    6) il seed: le quattordici colonne dichiarate, per lista e codice
+--    6) il seed: le sedici colonne dichiarate, per lista e codice
 --    7) ⭐ la convenzione di valido_al: nessuna colonna accesa su valido_al senza
 --       la dichiarazione
 --    8) il registro del primo impianto: la colonna e' del software
@@ -124,8 +126,8 @@ SELECT is(
 -- ============================================================
 -- 6-7 Il seed e la convenzione di valido_al
 -- ============================================================
--- Le colonne dichiarate (brief §3.1, e la 304 per D-2): si contano quelle che
--- mancano o non sono dichiarate.
+-- Le colonne dichiarate (brief §3.1, la 304 per D-2, giorni_alla_scadenza per
+-- D-5): si contano quelle che mancano o non sono dichiarate.
 SELECT is(
   (SELECT count(*)::int
      FROM (VALUES
@@ -133,6 +135,8 @@ SELECT is(
              ('vendite.preventivi',                    'validita_al'),
              ('vendite.offerte',                       'validita_al'),
              ('vendite.listini_versioni',              'valido_al'),
+             ('vendite.listini_versioni',              'giorni_alla_scadenza'),
+             ('vendite.listini',                       'giorni_alla_scadenza'),
              ('vendite.promo_articoli',                'valido_al'),
              ('catalogo.articolo_componenti',          'valido_al'),
              ('catalogo.conversioni_uom',              'valido_al'),
@@ -147,7 +151,7 @@ SELECT is(
      LEFT JOIN ui.lista_colonna lc ON lc.lista_id = ld.id AND lc.codice = v.colonna
     WHERE lc.id IS NULL OR NOT lc.vuoto_ordinato_come_massimo),
   0,
-  '6) il seed: le quattordici colonne il cui vuoto vuol dire «senza fine» sono dichiarate');
+  '6) il seed: le sedici colonne il cui vuoto sta oltre ogni valore sono dichiarate');
 
 SELECT is(
   (SELECT count(*)::int FROM ui.lista_colonna lc
