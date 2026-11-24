@@ -48,6 +48,12 @@ BEGIN;
 SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- La pubblicazione del template chiede documenti_template_manage (il verbo e'
+--   SECURITY DEFINER col suo guard, giro 16 della porta 16): l'operatore del
+--   contesto la riceve, perche' qui si prova altro.
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(script.fn_utente_di_sessione(), 'documenti_template_manage');
+END $az$;
 
 SELECT plan(18);
 

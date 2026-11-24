@@ -77,6 +77,12 @@
 BEGIN;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- La pubblicazione del template chiede documenti_template_manage (il verbo e'
+--   SECURITY DEFINER col suo guard, giro 16 della porta 16): l'operatore del
+--   contesto la riceve, perche' qui si prova altro.
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(script.fn_utente_di_sessione(), 'documenti_template_manage');
+END $az$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
@@ -415,11 +421,12 @@ SELECT throws_like(
 );
 
 -- La porta si richiude: dopo le pubblicazioni sopra nessuno la trova aperta, e
--- senza porta la chiusura fatta a mano e' rifiutata.
+-- senza porta la chiusura fatta a mano e' rifiutata. Il verbo la scrive con l'id
+-- del modello e la svuota uscendo (giro 16, 20261123-99): vuota, non 'off'.
 SELECT is(
-    current_setting('zeroerp.allow_template_versione_pubblicazione_override', true),
-    'off',
-    '21) dopo la pubblicazione la porta del verbo e'' richiusa'
+    coalesce(current_setting('zeroerp.allow_template_versione_pubblicazione_override', true), ''),
+    '',
+    '21) dopo la pubblicazione la porta del verbo e'' richiusa: la GUC e'' vuota'
 );
 
 SELECT throws_like(
@@ -430,7 +437,10 @@ SELECT throws_like(
     '22) C: senza porta la V2 PUBBLICATA non si chiude a mano'
 );
 
--- A porta aperta passa SOLO la chiusura: con un'altra colonna cambiata, no.
+-- L'app accende la GUC e chiude a mano con un'altra colonna cambiata: rifiutata. Dal
+--   giro 16 (20261123-98) la porta per l'app non si apre nemmeno, perche' chiede anche
+--   il proprietario: la forma «solo la chiusura» la giudica il trigger dentro il verbo
+--   e nella sessione del proprietario (test-porta-pubblicazione-template-v1).
 SELECT throws_like(
     format($q$WITH porta AS (
                   SELECT set_config('zeroerp.allow_template_versione_pubblicazione_override', 'on', true))
@@ -440,7 +450,7 @@ SELECT throws_like(
                WHERE id = %s AND EXISTS (SELECT 1 FROM porta)$q$,
            (SELECT id FROM tmp_ptv_v2 WHERE k = 'C' AND versione = 2)),
     '%Una versione pubblicata di un template documentale non puo%',
-    '23) C: a porta aperta la chiusura con l''HTML cambiato e'' rifiutata: la porta ammette solo la chiusura'
+    '23) C: l''app accende la GUC e chiude con l''HTML cambiato: rifiutata'
 );
 
 SELECT * FROM finish();

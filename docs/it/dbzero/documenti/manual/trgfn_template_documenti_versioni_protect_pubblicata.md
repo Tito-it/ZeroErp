@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `documenti.trgfn_template_documenti_versioni_protect_pubblicata`
 
-> **Ultimo aggiornamento**: 16 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -18,7 +18,8 @@
 > * [documenti.fn_pubblica_template_documento_versione](/dbzero/documenti/funzioni/fn_pubblica_template_documento_versione) — il verbo che porta una versione fuori bozza e chiude la precedente
 > * [documenti.trgfn_template_documenti_versioni_block_delete](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_block_delete) — quali versioni si cancellano
 > * [documenti.trgfn_template_documenti_versioni_guard_derivata_da](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_guard_derivata_da) — l'origine di una copia, che ha il suo guard
-> * [script.fn_is_proprietario_tabella](/dbzero/script/funzioni/fn_is_proprietario_tabella) — il riconoscimento del proprietario della tabella
+> * [script.fn_is_proprietario_tabella](/dbzero/script/funzioni/fn_is_proprietario_tabella) — il proprietario: la seconda condizione della porta
+> * [dbops.fn_sessione_del_migratore](/dbzero/dbops/funzioni/fn_sessione_del_migratore) — la sessione del migratore: il seed
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — la registrazione dell'errore
 >
 > Guide:
@@ -53,6 +54,13 @@ nasce pubblicata od obsoleta, e una bozza non diventa pubblicata con un UPDATE d
 La pubblicazione scrive sotto la porta `zeroerp.allow_template_versione_pubblicazione_override`, e a
 porta aperta il guard ammette una forma sola: da bozza a pubblicata, con le sole date cambiate. Un
 UPDATE che a porta aperta cambia anche il corpo, o porta una bozza a obsoleta, è rifiutato.
+
+**La porta è aperta solo dentro il verbo.** Valgono due condizioni insieme: la GUC contiene l'id del
+modello della riga, e chi scrive è il proprietario della tabella
+([script.fn_is_proprietario_tabella](/dbzero/script/funzioni/fn_is_proprietario_tabella)). Il verbo è
+`SECURITY DEFINER`, quindi scrive come proprietario, e scrive la GUC con l'id del suo modello.
+L'applicazione non è il proprietario: anche accendendo la GUC, o scrivendoci l'id giusto, una sua
+scrittura diretta resta fuori dalla porta.
 
 Una bozza si modifica liberamente, date comprese.
 
@@ -89,16 +97,17 @@ Una versione già obsoleta non si chiude di nuovo.
 
 ---
 
-### Chi passa senza porta: il proprietario della tabella
+### Chi passa senza porta: la sessione del migratore
 
-Il seed e i changeSet, che girano come proprietario della tabella, scrivono lo stato senza porta: è
-così che nasce e si chiude un modello standard. Il riconoscimento è
-[script.fn_is_proprietario_tabella](/dbzero/script/funzioni/fn_is_proprietario_tabella), lo stesso del
-guard di sola lettura dello standard. Le prime due regole valgono per l'applicazione; la terza vale
-anche per il proprietario.
+Il seed e i changeSet scrivono lo stato senza porta: è così che nasce e si chiude un modello
+standard. Il riconoscimento è la **sessione** del migratore
+([dbops.fn_sessione_del_migratore](/dbzero/dbops/funzioni/fn_sessione_del_migratore), che legge
+`session_user`), non il proprietario: dentro il verbo `SECURITY DEFINER` il proprietario è chiunque
+chiami il verbo, e l'eccezione del seed gli farebbe saltare la porta. Le prime due regole valgono
+per ogni altra sessione; la terza vale per tutti.
 
-⚠️ La porta protegge da un backend che sbaglia, non da uno manomesso: una sessione può aprirla a
-mano. Anche aperta, però, ammette solo le due forme del verbo.
+⚠️ Il limite della sessione del migratore: un `SET ROLE` non cambia `session_user`. Chi si collega
+come migratore è il software.
 
 ---
 
@@ -135,9 +144,11 @@ manderebbe a correggere una data che non si può cambiare. Il guard di sola lett
   chiusura; la pubblicazione chiude come deve.
 * `db/pgtap/documenti/test-documenti-template-versioni.sql` — corpo, data di inizio e forma dei dati
   di una pubblicata non cambiano; `meta` sì.
-* Il passaggio del proprietario lo percorrono i pgTAP che girano da owner e costruiscono standard
-  pubblicati e obsoleti: `test-documenti-template-standard-v1.sql`, `-personalizza-v1.sql`,
-  `-template-porta-unica-v1.sql`.
+* `db/pgtap/documenti/test-porta-pubblicazione-template-v1.sql` — come app: l'app non apre la porta,
+  né con la GUC accesa né con l'id del modello, per pubblicare o per chiudere; il verbo con
+  l'azione la apre per le sue due scritture e lascia la GUC vuota.
+* Il passaggio della sessione del migratore lo percorrono i pgTAP che girano da owner e costruiscono
+  standard pubblicati e obsoleti: `test-documenti-template-standard-v1.sql`, `-personalizza-v1.sql`.
 
 ---
 
@@ -152,6 +163,10 @@ manderebbe a correggere una data che non si può cambiare. Il guard di sola lett
   Fino ad allora un UPDATE dello stato, o una versione nata pubblicata, saltava il controllo della
   forma dei dati e la chiusura della precedente. Il trigger monta anche l'INSERT e passa da `a10` ad
   `a05`; la porta prende il nome del verbo (prima `…_chiusura_override`).
+* 2026-11-24 — la porta chiede la GUC sull'id del modello **e** il proprietario: si apre solo dentro
+  il verbo, diventato `SECURITY DEFINER`. Fino ad allora l'applicazione la apriva accendendo la GUC.
+  Il seed si riconosce dalla sessione del migratore, non più dal proprietario
+  (`20_code/documenti/20261123-98`).
 
 ---
 

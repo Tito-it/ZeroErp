@@ -3,7 +3,7 @@
 > **⏭️ Chi riparte — aggiornato al 2026-11-24**
 >
 > **Riparte: il team BE**, col passo 3n di R-DB-I3 (§4.8: ✅ scritta, applicata da Tid e verde il 2026-11-24) e col 3k-bis
-> di R-DB-K3. **Il team DB**, con la lettura della risposta 3d (§4.5, passo 3e) e con le due richieste nuove del BE da §4.7, R-DB-K3 (la descrizione di `E_SCOPE_SENZA_UTENTE`, passo 3k: ✅ scritta e applicata il 2026-11-24, ora la rigenerazione del BE, 3k-bis) e R-DB-K4 (i due changeSet del
+> di R-DB-K3, e col 6a-quinquies del giro 16 (§9.5). **Il team DB**, al via di Tid, col giro 10 (il giro 16 è applicato e verde, 2026-11-24) (la risposta 3d è letta, §4.5-bis) e con le due richieste nuove del BE da §4.7, R-DB-K3 (la descrizione di `E_SCOPE_SENZA_UTENTE`, passo 3k: ✅ scritta e applicata il 2026-11-24, ora la rigenerazione del BE, 3k-bis) e R-DB-K4 (i due changeSet del
 > SUPER_ADMIN di sviluppo, passo 3l). Al via di Tid: il verbo di primo impianto (D-K, R-DB-K1, passo 3i) e i giri
 > delle porte del flusso. ✅ Il ritiro di `reset_lotto_draft` è fatto, DB e BE (2026-11-24, §4.8). Il superuser Django è
 > deciso (D-J **a**) e fatto nel BE (§4.7); il `None` del perimetro si rifiuta (§4.7, BE, 2026-11-24).
@@ -23,7 +23,8 @@
 > | 3b | Tid | ✅ superato: la Parte B l'ha risposta il BE, la Parte A l'ha letta il DB (2026-11-23) | §4.1 | — |
 > | 3c | Tid | ✅ D-E (**a**) · ✅ D-F (**a**), 2026-11-23 | §3-ter | — |
 > | 3d | team BE | la richiesta 3d: ✅ scritta e precompilata dal DB (2026-11-24); ✅ risposta del BE (2026-11-24) | §4.4, §4.5 | — |
-> | 3e | team DB | leggere la risposta 3d: le due correzioni a §4.3 (azioni delle porte 1-7 e 11), i test della Parte C, il task `reset_lotto_draft` | §4.5 | — |
+> | 3e | team DB | ✅ letta la risposta 3d (2026-11-24): §4.3 corretta, il guard di ogni porta coi BB che ci sono, i builder per i test della Parte C, due punti per i giri 8 e 1-7 | §4.5-bis | — |
+> | 3e-bis | Tid | ✅ D-L **a** (2026-11-24): `dbops.fn_pgtap_concedi_livello_area` nasce nel primo giro che lo usa (8 o 1-7), le quattro copie `pg_temp.livello_area` si ritirano nello stesso giro | §4.5-bis | — |
 > | 3f | Tid | ✅ D-I: il task `reset_lotto_draft` si ritira · ✅ D-J: il superuser Django non concede più niente, strada **a** (2026-11-24) | §4.6 | — |
 > | 3h | team BE | D-J: ✅ bypass tolti, test adeguati, suite verde · ✅ rivisto con `/verifica` (2026-11-24) | §4.7 | — |
 > | 3i | team DB | D-K: il verbo `fn_crea_primo_amministratore` e la sua prova (R-DB-K1); la porta di `fn_crea_operatore_v2` nel piano dei giri (R-DB-K2) | §4.7 | — |
@@ -44,7 +45,12 @@
 > | 4e | Tid | ✅ il giro 3: apply, `ci_apply`, fase `post` del provisioning su dbdev, pgTAP verde (2026-11-24) | §7.4 | — |
 > | 5 | Tid / team BE | ✅ la richiesta 3d girata al BE, e la risposta (2026-11-24) | §4.5 | — |
 > | 5b | team DB | ✅ il giro 12-13, verde come app (2026-11-24) | §8 | — |
-> | 6 | team DB | i giri delle porte del flusso 16, 10, 9, 11, 8, 1-7 | Il piano | 3e |
+> | 6 | team DB | i giri delle porte del flusso 16, 10, 9, 11, 8, 1-7 | Il piano | — |
+> | 6a | team DB | giro 16: ✅ analisi (2026-11-24) | §9 | — |
+> | 6a-bis | Tid | giro 16: ✅ D-M **a**, ✅ D-N **a**, il via (2026-11-24) | §9.3 | — |
+> | 6a-ter | team DB | giro 16: ✅ `20261123-98`, `-99`, pgTAP nuovo e quattordici adeguati, guide e `manual/`, provato sullo scratch (2026-11-24) | §9.4 | — |
+> | 6a-quater | Tid | giro 16: ✅ apply, pgTAP come app verdi, doc auto-generata rigenerata (2026-11-24) | §9.4 | — |
+> | 6a-quinquies | team BE | giro 16: i test Django che pubblicano danno `documenti_template_manage` (§9.5) | §9.5 | — |
 >
 > Decisioni aperte di Tid: nessuna. Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
 > (`969ea14566`), dal BE §4.5-§4.7 con D-J (`4271a0dc69`, PR #232), e il 2026-11-24 il lato DB del ritiro di
@@ -125,7 +131,7 @@
 - [ ] ~~Giro 2: gli interruttori del flusso diventano porte «sulla riga»~~ ⚠️ decaduto con D-A a: la GUC sulla riga entra nel giro di ogni porta
 - [x] Prima dei giri delle porte del flusso, la tabella «verbo d'ingresso → azione che l'endpoint controlla» dal BE, e
   il profilo dell'utente tecnico della pipeline (§4.3, soluzione 2): ✅ richiesta scritta e precompilata il 2026-11-24
-  (§4.4); ✅ risposta del BE il 2026-11-24 (§4.5), da leggere dal DB
+  (§4.4); ✅ risposta del BE il 2026-11-24 (§4.5); ✅ letta dal DB il 2026-11-24 (§4.5-bis)
 - [ ] Giri delle porte del flusso (D-A a), uno per riga, in quest'ordine. ⛔ Ognuno chiude **tutte** queste voci, o non è chiuso:
   - **il verbo**: DEFINER sul verbo d'ingresso, guard in prima riga con la **stessa azione** dell'endpoint
     (soluzione 2), la GUC spenta all'ingresso e riaccesa **sulla riga**, le primitive senza `EXECUTE` all'app;
@@ -143,11 +149,18 @@
     (il ramo fuori bozza chiede già il proprietario, §3-ter.2). Un pgTAP che fissa i due rami (come app, fuori bozza
     con le GUC: si ferma; in bozza con la GUC sulla riga: passa) e la guida che dichiara la bozza «sola GUC sulla
     riga» come scelta
-  - [ ] 16, il template: il verbo, e il trigger che distingue il seed dal verbo
+  - [ ] 16, il template: il verbo, e il trigger che distingue il seed dal verbo (§9)
+    - [x] analisi (2026-11-24, §9)
+    - [x] D-M **a** e D-N **a** (Tid, 2026-11-24)
+    - [x] changeSet, pgTAP, guide; prova sullo scratch (2026-11-24, §9.4)
+    - [x] apply e pgTAP come app: verdi (Tid, 2026-11-24)
+    - [x] la doc auto-generata rigenerata (Tid, 2026-11-24)
+    - [x] commit su `dev/db-tid` (2026-11-24)
+    - [ ] il BE: i test Django che pubblicano (§9.5)
   - [ ] 10, lo scope emittenti: il verbo con `fn_guard_super_admin` (nessuna RLS)
   - [ ] 9, la registrazione tardiva: da qui si prova il perimetro; prima si rilegge la D20-b di `brief-incassi-riconciliazione-rate-promemoria`
   - [ ] 11, la bolla di riconsegna
-  - [ ] 8, il fondo fattura: verbo pubblico e primitiva separati; prima si rileggono D10-D11 dello stesso brief
+  - [ ] 8, il fondo fattura: verbo pubblico e primitiva separati; prima si rileggono D10-D11 dello stesso brief. Se viene prima della 1-7, qui nasce `dbops.fn_pgtap_concedi_livello_area` (D-L a) e si ritirano le quattro copie
   - [ ] 1-7, il reset del lotto: quattro verbi d'ingresso, due primitive chiuse
 - [x] Giro 3 (2026-11-24, applicato da Tid con la fase `post` del provisioning, pgTAP verde; §7): le viste (§5): ~~prima i verbi delle scritture che il BE trova~~ (nessuna, §5.1), l'app con solo `SELECT` sulle viste,
   nelle tre sedi di `linee-guida-sql.md` §11.8, col pgTAP di postura a criterio e la guida dei permessi §7.4;
@@ -492,6 +505,9 @@ commenti né stringhe, e da `pg_depend` per le `BEGIN ATOMIC`:
 Tid propende per **a**. Le sue implicazioni, porta per porta, sul catalogo di dbdev (sicurezza dei verbi, azioni di
 `config.azioni_processo`):
 
+> ⚠️ La colonna «Azione che lo protegge» è corretta dalla risposta del BE (§4.5) e dalla sua lettura (§4.5-bis, 2026-11-24):
+> per le porte 1-7, 11 e il secondo chiamante della 8 vale la tabella di §4.5-bis.
+
 | Porte | Il verbo d'ingresso oggi | Che cosa serve con **a** | Azione che lo protegge |
 | --- | --- | --- | --- |
 | 12-13 | i sei `fn_annulla_*` sono **già DEFINER** (senza guard del permesso: lo tiene l'endpoint) | solo il trigger: il proprietario sul ramo **fuori bozza** (la porta del ritiro dell'annullo). Il ramo della bozza resta con la sola GUC sulla riga, perché lo apre anche `trgfn_dlt_block_ordrig_ddtrig` quando l'app cancella una riga di bolla in bozza | nessuna nuova; nessun `fn_annulla_*` si tocca, quindi il fermo del 2026-10-25 non entra |
@@ -689,6 +705,72 @@ Compaiono solo nei commenti (`pipeline_repository.py:470`, `pipeline_step_execut
   Se il DB offre un builder con un profilo (o un parametro di `fn_pgtap_crea_emittente_operatore`), il BE lo usa.
   Altrimenti ogni test apre un SUPER_ADMIN, e il caso «operatore senza l'azione» lo prova il pgTAP;
 * nessuna firma BE cambia, nessuna GUC da togliere.
+
+### 4.5-bis La risposta 3d letta dal DB — 2026-11-24
+
+Letta sui BB del catalogo (doc auto-generata di `script`), non sugli YAML. Le regole 1 e 3 del gate BE il DB le ha già:
+`script.fn_guard_azione` e `script.fn_guard_livello` decidono con le stesse funzioni del BE
+(`fn_check_azione_processo`, `fn_resolve_livello_oggetto`), e tutte e due fanno passare il SUPER_ADMIN. La regola 2, il
+superuser di Django, non c'è più: D-J **a** l'ha tolta dal BE (§4.7), quindi il verbo non la rifà.
+
+**Il guard di ogni porta** (al posto della colonna «Azione che lo protegge» di §4.3):
+
+| Porte | Verbo | Che cosa controlla l'endpoint (§4.5) | Il guard nel verbo |
+| --- | --- | --- | --- |
+| 16 | `fn_pubblica_template_documento_versione` | azione `documenti_template_manage` | `fn_guard_azione(…, 'documenti_template_manage')` |
+| 10 | `fn_change_user_emittenti_scope` | SUPER_ADMIN | `fn_guard_super_admin` |
+| 9 | `fn_posta_riga_tardiva` | azione `registra_distinta` | `fn_guard_azione(…, 'registra_distinta')`, più il perimetro |
+| 11 | `fn_genera_ddt_riconsegna` | livello `TUTTO` sull'oggetto `vendite.reso`, con ricaduta sull'area | `fn_guard_livello(…, 'vendite', 'reso', 'TUTTO')`: è la stessa forma (oggetto, poi area). ⚠️ Non `conferma_reso`, come §4.3 diceva |
+| 8 | `fn_cancella_fondo_fattura` | azione `governa_fondo_fattura` | `fn_guard_azione(…, 'governa_fondo_fattura')` sul verbo pubblico; la primitiva separata non ha guard |
+| 8 | `fn_annulla_sistemazione` (chiama la primitiva) | livello `TUTTO` sull'**area** `pagamenti`, senza oggetto | ⚠️ **Nessun BB lo dice così**: `fn_guard_livello` vuole un oggetto e ricade sull'area solo se l'oggetto non ha un livello suo. Si decide nel giro 8 (punto 2 sotto) |
+| 1-7 | `fn_elimina_fattura_da_lotto`, `fn_escludi_documento_da_giro` | azione `reset_lotto_fattura_draft` | `fn_guard_azione(…, 'reset_lotto_fattura_draft')` |
+| 1-7 | `fn_annulla_lotto_da_draft`, `fn_riporta_lotto_a_draft` | il passaggio verso annullo o stato iniziale: l'azione della riga, oppure, se la riga non ha azione o non c'è, il livello `TUTTO` sull'area `vendite` | ⚠️ `fn_guard_passaggio` **non basta da solo**: con la riga senza azione passa («il permesso lo controlla il backend»), e senza riga sullo stato già raggiunto solleva `E_DOC_GIA_NELLO_STATO`. Si decide nel giro 1-7 (punto 3 sotto) |
+
+`reset_lotto_draft` non è più un'azione del modello (spenta nel seed) e non è più un task (ritirato, D-I, §4.8): la
+correzione del BE per le porte 1-7 è già consumata.
+
+**La Parte B è chiusa.** Nessun processo automatico raggiunge uno dei dieci verbi: l'unico aggancio era il task
+`reset_lotto_draft`, ritirato. L'utente tecnico di default non ha né azioni né livelli (`script.fn_crea_utente_tecnico`),
+e nessun verbo dei giri gli serve. Se un giro aggiungesse una strada dai processi, il suo profilo entra in quel giro.
+
+**La Parte C: con che cosa i test danno il permesso.** L'operatore di `dbops.fn_pgtap_crea_emittente_operatore` non ha
+né azioni né aree (il contratto di `dbops.fn_pgtap_concedi_azione` lo dice): dopo il giro della sua porta ogni test della
+Parte C riceve `E_PERMESSO_NEGATO`, come il BE prevede. I builder ci sono già, e il BE li usa:
+
+* **azione** (porte 16, 9, 8, 1-7 per eliminazione ed esclusione): `dbops.fn_pgtap_concedi_azione(utente, codename)`,
+  che apre anche l'area al minimo dell'azione. Il BE la chiama già (`vendite/tests/db/test_ddt_cambia_stato_db.py`,
+  `test_offerta_cambia_stato_db.py`, uno smoke del magazzino). I sei file di `documenti` e quello di `pagamenti` la
+  usano: è la risposta alla domanda del BE «se il DB offre un builder con un profilo»;
+* **livello d'area** (porta 8 col secondo chiamante, porte 1-7 senza azione): lato BE c'è
+  `core/tests/db_e2e.apri_operatore_con_aree`. Lato DB **nessun BB**: quattro pgTAP scrivono lo stesso helper
+  `pg_temp.livello_area` (`catalogo/test-chiudi-legame-con-prezzi-v1`, `magazzino/test-verbi-anagrafiche-magazzino-v1`,
+  `magazzino/test-lotto-dell-azienda-v1`, `magazzino/test-verbi-documenti-interni-v1`). È la regola del 2 già superata:
+  **D-L** a Tid (sotto);
+* **livello d'oggetto** (porta 11, `vendite.reso`): nessun builder, in nessuno dei due lati. Il test della porta 11
+  costruisce l'override d'oggetto (`config.user_override_oggetti`) o usa il livello d'area, su cui l'oggetto ricade;
+  si decide nel giro 11;
+* **SUPER_ADMIN** (porta 10, e gli smoke): `dbops.fn_pgtap_crea_operatore_umano(…, true)` lato DB,
+  `apri_contesto_operatore(cur, super_admin=True)` lato BE.
+
+**Tre punti per i giri** (non aprono decisioni ora; ognuno si chiude nel giro della sua porta):
+
+1. **D-L, il builder del livello d'area** (Tid). ⭐ Proposta: nel primo giro che ne ha bisogno (la 8, o la 1-7 se
+   viene prima) nasce `dbops.fn_pgtap_concedi_livello_area(utente, area, livello)`, gemello di
+   `fn_pgtap_concedi_azione`, e le quattro copie `pg_temp.livello_area` si ritirano nello stesso giro. Il BE resta sul
+   suo `apri_operatore_con_aree`, che è l'altro lato e non una copia. In alternativa il debito resta, dichiarato.
+   ✅ **Decisa da Tid il 2026-11-24: a.**
+2. **Giro 8, il livello sull'area senza oggetto.** `fn_annulla_sistemazione` chiede `TUTTO` sull'area `pagamenti`. O
+   il verbo usa `fn_resolve_livello_area` con un guard scritto sul posto (prima occorrenza), oppure si sceglie l'oggetto
+   di `pagamenti` che la sistemazione rappresenta e si passa a `fn_guard_livello`. La seconda cambia ciò che il BE
+   controlla oggi (l'override d'oggetto vincerebbe sull'area): va chiesta al BE nel giro.
+3. **Giro 1-7, il passaggio senza azione.** Dove la riga del passaggio non ha azione, il BE ricade sul livello
+   `TUTTO` dell'area `vendite`; `fn_guard_passaggio` invece passa. Il verbo DEFINER, che non ha più la RLS dietro, deve
+   rifare anche la ricaduta: `fn_guard_passaggio` e poi, se la riga non ha azione, il livello. E `fn_riporta_lotto_a_draft`
+   su un lotto già in bozza: il BE lo ammette col livello, `fn_guard_passaggio` risponde `E_DOC_GIA_NELLO_STATO`. Il
+   giro legge il corpo del verbo e sceglie quale dei due è il comportamento voluto.
+
+**Guide.** `architettura-permessi-e-autorizzazioni` (§7.4, le funzioni di risoluzione sono le stesse dei due lati)
+**coerente**. Le guide di dominio delle porte si aggiornano nel giro di ognuna (piano, ultima voce).
 
 ### 4.6 Le due decisioni nate dalla risposta 3d — 2026-11-24
 
@@ -1495,10 +1577,124 @@ non hanno un test: sono le righe che la cascata della testata porta via.
 Preambolo pgTAP verde. Nessuna prova sullo scratch: senza changeSet `prova_changeset.py` non si applica, e da owner
 il 44 sarebbe rosso per costruzione. ✅ Verde come app, 45/45 (Tid, 2026-11-24).
 
+## 9. Il giro 16, la pubblicazione del template — analisi del 2026-11-24
+
+### 9.1 Che cosa c'è oggi (catalogo di dbdev, doc auto-generata del 2026-11-16 e 2026-11-17, dopo l'ultimo changeSet)
+
+* **Il verbo**, `documenti.fn_pubblica_template_documento_versione`, è `INVOKER`, senza guard del permesso (lo tiene
+  l'endpoint: azione `documenti_template_manage`, §4.5). Apre la porta con `set_config(…, 'on', true)` per le sue due
+  scritture (la chiusura delle versioni precedenti, la pubblicazione) e la richiude, anche in errore.
+* **Il trigger**, `documenti.trgfn_template_documenti_versioni_protect_pubblicata`, apre con la **GUC accesa**
+  (`'on'`, tutte le righe) **oppure** col proprietario (`fn_is_proprietario_tabella`, l'eccezione del seed). Per l'app
+  quindi la sola GUC: accesa da sé, un `UPDATE` diretto porta una bozza a `PUBBLICATA`, o chiude a `OBSOLETA` una
+  pubblicata di un altro modello. È la porta 16.
+* **Chi scrive la tabella**: il verbo; `documenti.fn_crea_bozza_da_versione` (nasce in `BOZZA`, la porta non serve); il
+  backend sulle bozze (stato `BOZZA`, la porta non serve). La tabella non ha RLS: il giro non ha perimetro da rimettere.
+* **Il migrate chiama il verbo**: dodici changeSet di `80_data` pubblicano template standard con
+  `fn_pubblica_template_documento_versione`, in una sessione senza utente applicativo.
+* **I pgTAP**: quindici lo nominano. Undici lo chiamano **come app** e nessuno dà `documenti_template_manage` al suo
+  operatore; quattro girano da proprietario (`pgtap-runner: owner`).
+
+### 9.2 Che cosa si cambia
+
+1. **Il verbo diventa `SECURITY DEFINER`** (`SET search_path TO 'pg_catalog', 'public', 'pg_temp'`, come i verbi di
+   magazzino), con in prima riga l'utente di sessione (`script.fn_utente_di_sessione`) e
+   `script.fn_guard_azione(v_utente, 'documenti_template_manage')`: la stessa azione dell'endpoint, quindi nessun rifiuto
+   nuovo per chi arriva dal backend (SUPER_ADMIN passa, regola 1). Firma e `RETURNS TABLE` si ri-ancorano con `%TYPE`
+   (la doc li mostra sciolti): `CREATE OR REPLACE`, la firma non cambia.
+2. **La GUC sulla riga**: il verbo la scrive con l'id del modello (`v_template_id`), non `'on'`, e la svuota all'uscita e
+   in errore. Il trigger apre solo se la GUC vale `NEW.template_documento_id` **e** chi scrive è il proprietario: dentro
+   il verbo DEFINER sì, per l'app mai, anche con la GUC accesa.
+3. **Il seed si distingue dal verbo**: il ramo «il proprietario scrive lo stato senza porta» (regole 1 e 2) passa da
+   `fn_is_proprietario_tabella` (`current_user`, che dentro il verbo DEFINER è il proprietario) a
+   `dbops.fn_sessione_del_migratore()` (`session_user`: il migrate, non un verbo chiamato dall'app). È il BB delle porte
+   di manutenzione e del seed di primo impianto. L'immutabilità fuori bozza vale per tutti, come oggi.
+4. **I pgTAP**: uno nuovo, come app, coi controesempi (GUC accesa dall'app col valore giusto e `UPDATE` diretto: si
+   ferma; il verbo senza l'azione: `E_PERMESSO_NEGATO`; con l'azione: pubblica; la GUC vuota dopo il verbo). Negli
+   undici che lo chiamano come app, `dbops.fn_pgtap_concedi_azione(…, 'documenti_template_manage')` sull'operatore del
+   contesto, col motivo. I quattro da proprietario non cambiano (sessione del migratore).
+5. **Le guide**: `documenti-e-stampe` (chi pubblica, il permesso nel verbo); il trigger è **orfano** (nessuna guida lo
+   nomina): entra nel suo «Vedi anche». `architettura-permessi-e-autorizzazioni` §7.4, la porta 16 fra quelle chiuse.
+6. **La richiesta al BE**: i test della Parte C di `documenti` e `core/tests/db/test_date_validita_guard_comune_db.py`
+   danno l'azione con `dbops.fn_pgtap_concedi_azione` (§4.5-bis); nessuna firma cambia, nessuna GUC da togliere.
+
+### 9.3 Due scelte per Tid
+
+* **D-M, il migrate pubblica senza il guard del permesso.** I dodici changeSet di `80_data` chiamano il verbo in una
+  sessione senza utente: `fn_guard_azione` li fermerebbe (fail-closed), e un database ricostruito da zero non
+  nascerebbe. **a** il guard si salta quando la sessione è del migratore (`dbops.fn_sessione_del_migratore`): il migrate
+  è il software che pubblica uno standard, come per il trigger e le porte di manutenzione · **b** i changeSet futuri
+  pubblicano dal seed senza il verbo, e i dodici vecchi restano col verbo (non si modificano): non regge, i vecchi
+  rigirano da zero. ⭐ **a**: la sessione del migratore è già la definizione di «il software» nel database, e un
+  `SET ROLE` non la finge (limite dichiarato del BB). ✅ **Decisa da Tid il 2026-11-24: a.**
+* **D-N, il valore della GUC sulla riga.** La pubblicazione scrive più righe: la versione nuova e le precedenti che
+  chiude, tutte dello stesso modello. **a** la GUC vale l'id del modello (`template_documento_id`): apre le righe di quel
+  modello e nessun altro · **b** l'id della versione pubblicata: la chiusura delle precedenti chiederebbe un'altra
+  chiave. ⭐ **a**: l'operazione è «la pubblicazione del modello X», e il trigger la confronta con una colonna della
+  riga, senza leggere altro. ✅ **Decisa da Tid il 2026-11-24: a.**
+
+### 9.4 Il giro scritto — 2026-11-24
+
+| File | Che cosa |
+| --- | --- |
+| `20_code/documenti/20261123-98-update-protect-pubblicata-porta-sulla-riga-e-proprietario` | il trigger: la porta chiede la GUC uguale a `NEW.template_documento_id` **e** `fn_is_proprietario_tabella`; i due rami del seed (regole 1 e 2) passano a `dbops.fn_sessione_del_migratore()`; l'immutabilità invariata; `COMMENT`. Montaggio invariato, resta INVOKER |
+| `20_code/documenti/20261123-99-update-fn-pubblica-template-documento-versione-definer-guard` | il verbo: `SECURITY DEFINER`, `search_path` `pg_catalog, public, pg_temp`; fuori dalla sessione del migratore `fn_utente_di_sessione` e `fn_guard_azione(…, 'documenti_template_manage')` (D-M a); la GUC spenta all'ingresso, scritta con l'id del modello, svuotata all'uscita e in errore (D-N a); firma e `RETURNS TABLE` ri-ancorate; `COMMENT` |
+| `db/pgtap/documenti/test-porta-pubblicazione-template-v1.sql` | nuovo, come app, plan 10: la forma (DEFINER, INVOKER), senza l'azione il verbo rifiuta e non scrive, l'app non apre la porta né con `on` né con l'id del modello (pubblicare e chiudere), col verbo pubblica, chiude e lascia la GUC vuota. Operatore costruito, senza azioni |
+| undici pgTAP di `documenti` che pubblicano come app | `dbops.fn_pgtap_concedi_azione(script.fn_utente_di_sessione(), 'documenti_template_manage')` dopo il contesto, col motivo |
+| `test-fn-pubblica-template-documento-versione-v1` | il 21: la GUC dopo il verbo è vuota, non `off`; il 23 e il suo commento: la porta per l'app non si apre |
+| `test-documenti-pubblicazione-e-copia-v1` | 9 e 10, e il commento: la porta per l'app non si apre |
+| guide | `documenti-e-stampe` (chi pubblica; il trigger, orfano, nel «Vedi anche»); `architettura-permessi-e-autorizzazioni` §7.4 (la porta sulla riga, il seed dalla sessione del migratore; la pubblicazione esce dall'elenco delle porte aperte) |
+| `manual/` | `fn_pubblica_template_documento_versione` (il permesso, la porta), `trgfn_template_documenti_versioni_protect_pubblicata` (la porta, la sessione del migratore, il test, la nota) |
+
+**La prova sullo scratch** (`prova_changeset.py`, owner, `ROLLBACK`; 2026-11-24). Estratto eseguito per intero,
+catalogo identico dopo; dopo l'estratto una sola `fn_pubblica_template_documento_versione`, argomenti e risultato
+identici al vivo, `prosecdef` vero. I quindici pgTAP che nominano il verbo e `test-documenti-numero-versione-v1`:
+stesso esito senza e con l'estratto, salvo il 21 di `fn-pubblica`, verde solo con. I rossi da owner che c'erano
+restano uguali (`generati-eventi` 1, `vocabolari-forma` 1, `numero-versione` 3, `pubblicazione-e-copia` 8).
+
+⚠️ **Il limite della prova, e come è stato aggirato.** Da owner la sessione è del migratore: il guard del verbo non
+gira (D-M a) e il proprietario passa la porta. Una copia nello scratchpad dei pgTAP, con
+`dbops.fn_sessione_del_migratore` ridefinita a `false` dentro la transazione, fa girare il guard: il test nuovo dà
+10/10 (con 6 e 9 sostituiti, perché l'owner resta proprietario e la porta gli si apre), e gli undici adeguati danno
+lo stesso esito o meglio (`pubblicazione-e-copia` da 8 rossi a 0: erano rossi da owner). **Il rifiuto dell'app con la
+GUC giusta (6 e 9) si vede solo come app vera**: è il pgTAP di Tid dopo l'apply. ✅ Applicato da Tid il 2026-11-24:
+`test-porta-pubblicazione-template-v1` e gli undici di `documenti` verdi come app, 6 e 9 compresi.
+
+Guardrail sui file del giro: forme dei changeSet, `COMMENT` al presente, `runOnChange`, preambolo dei pgTAP:
+verdi. Pre-commit: verde.
+
+**Garanzie ritirate.** Nessuna che un lettore usasse: la GUC accesa dall'app apriva una porta che il modello non
+voleva aperta. Il proprietario per `current_user` non salta più le regole 1 e 2: lo faceva il migrate, che passa
+ancora (sessione del migratore), e lo farebbe un verbo DEFINER, che invece deve passare dalla porta.
+
+### 9.5 La richiesta al team BE/FE (dopo l'apply)
+
+Chi cambia per primo: il DB. Nessuna firma cambia, nessuna GUC da togliere (il BE non la accende).
+
+* **I test Django che pubblicano** con un operatore di `dbops.fn_pgtap_crea_emittente_operatore` (senza azioni)
+  ricevono `E_PERMESSO_NEGATO`: danno l'azione con `dbops.fn_pgtap_concedi_azione(<auth_user_id>,
+  'documenti_template_manage')`, come già fanno `test_ddt_cambia_stato_db` e `test_offerta_cambia_stato_db`. L'elenco
+  della risposta 3d (§4.5, Parte C), da censire tutto (la ricerca è del nome, non un elenco chiuso):
+  `documenti/tests/db/test_template_standard_db.py`, `test_versione_contesto_db.py`, `_stampa.py`
+  (`pubblica_per_stampare`, e con lui `test_ricerca_liste_db.py`, `test_scritture_dinamiche_db.py`),
+  `core/tests/db/test_date_validita_guard_comune_db.py` (si aspetta il rifiuto delle date: senza l'azione arriverebbe
+  prima il permesso).
+* **Il manuale BE** della pubblicazione dei template, se racconta la porta o chi può pubblicare.
+
+**Guide verificate per il giro** (`guide_coinvolte.py --oggetti` sui tre oggetti, 2026-11-24):
+`documenti-e-stampe` — **indietro** dopo il giro (non dice chi può pubblicare né la porta), si aggiorna nello stesso
+giro; il trigger orfano — segnale di «Vedi anche» incompleto, si aggiunge lì.
+
 ## Registro
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-24 | Tid | Giro 16 applicato, pgTAP come app verdi (§9.4); al BE il 6a-quinquies |
+| 2026-11-24 | DB | Giro 16 scritto e provato (§9.4): `20261123-98` (la porta: GUC sull'id del modello e proprietario; il seed dalla sessione del migratore), `-99` (il verbo DEFINER col guard), pgTAP nuovo, quattordici adeguati, guide e `manual/`; richiesta al BE (§9.5) |
+| 2026-11-24 | Tid | **D-M a, D-N a** (§9.3) e il via al giro 16 |
+| 2026-11-24 | DB | Giro 16, analisi (§9): verbo DEFINER col guard di `documenti_template_manage`, GUC sull'id del modello, il seed riconosciuto dalla sessione del migratore; undici pgTAP da dare l'azione; D-M e D-N a Tid |
+| 2026-11-24 | Tid | **D-L decisa: a** (§4.5-bis): il builder del livello d'area nasce nel primo giro che lo usa, le quattro copie si ritirano lì |
+| 2026-11-24 | DB | Passo 3e: la risposta 3d letta (§4.5-bis). Guard di ogni porta coi BB che ci sono, §4.3 corretta (porta 11 sul livello di `vendite.reso`, non `conferma_reso`), Parte B chiusa, builder dei test della Parte C; D-L a Tid; due punti per i giri 8 e 1-7 |
 | 2026-11-24 | Tid | R-DB-I3 applicata, pgTAP come app verde (§4.8); al BE il passo 3n |
 | 2026-11-24 | DB | R-DB-I3 scritta (§4.8, scelte di Tid: decisione intera, colonna): `distruttivo` sul registro, `auto_step_rollback` colonna con il `CHECK` sul `meta`, `fn_check_rollback_step_automatico`, pgTAP 14/14 sullo scratch, guida `fatturazione` e `manual/`; garanzia ritirata e richiesta al BE (3n) |
 | 2026-11-24 | DB | ⚠️ R-DB-K3 ripristinata: il commit `359c556da1` della sessione anagrafiche aveva riscritto `codici_errore.csv` e `messaggi_errore.csv` dalla sua copia, senza le righe di K3 (il DB applicato le aveva già). Riapplicate le stesse sostituzioni, CSV controllati |

@@ -1,6 +1,6 @@
 # Guida — Documenti e Stampe
 
-> **Ultimo aggiornamento**: 17 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, operatori configuratori.
 >
@@ -25,6 +25,7 @@
 > * [documenti.fn_personalizza_template_standard](/dbzero/documenti/funzioni/fn_personalizza_template_standard) — «personalizza»: la copia di uno standard per un'azienda
 > * [documenti.vw_template_personalizzati_scarto](/dbzero/documenti/views/vw_template_personalizzati_scarto) — quanto una copia è rimasta indietro rispetto al suo standard
 > * [documenti.fn_pubblica_template_documento_versione](/dbzero/documenti/funzioni/fn_pubblica_template_documento_versione) — la pubblicazione di una versione
+> * [documenti.trgfn_template_documenti_versioni_protect_pubblicata](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_protect_pubblicata) — il guard dello stato: una versione esce dalla bozza solo pubblicandosi
 >
 > **Vedi anche** — guide correlate:
 >
@@ -97,7 +98,11 @@ Il numero non cambia più.
 | `OBSOLETA` | Superata da una pubblicazione successiva: stampa ancora fino all'ultimo giorno della sua validità |
 
 Una versione nasce in bozza, e **ne esce solo con «Pubblica»**: è la pubblicazione che controlla la
-forma dei dati e chiude la versione precedente. Una versione spenta non si pubblica: non stamperebbe,
+forma dei dati e chiude la versione precedente. Pubblica chi ha l'azione **gestione dei modelli di
+stampa** (`documenti_template_manage`): la chiede l'endpoint e, di nuovo, il database nella
+pubblicazione stessa, con la stessa regola. Una scrittura che porta una versione fuori bozza senza
+passare dalla pubblicazione il database la rifiuta, anche quando arriva dall'applicazione. Solo
+l'installazione del programma pubblica i modelli standard senza un operatore. Una versione spenta non si pubblica: non stamperebbe,
 e chiuderebbe quella che stampa. Una versione pubblicata **non cambia più**, nemmeno quando diventa
 obsoleta, e non torna in bozza: per cambiare il layout si crea una versione nuova, anche copiando
 una versione esistente dello stesso documento. Per lo stesso modello le versioni attive fuori bozza

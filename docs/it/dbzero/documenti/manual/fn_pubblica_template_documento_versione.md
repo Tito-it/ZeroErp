@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `documenti.fn_pubblica_template_documento_versione`
 
-> **Ultimo aggiornamento**: 17 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -80,6 +80,19 @@ stesso modello nello stesso istante. Un'altra violazione d'esclusione esce com'�
 
 ---
 
+### Il permesso, nel verbo
+
+La funzione è `SECURITY DEFINER` e chiede in prima riga l'azione **`documenti_template_manage`**
+all'utente di sessione, con
+[script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione): la stessa azione e la stessa
+regola dell'endpoint, quindi chi arriva dal backend non riceve un rifiuto nuovo. Senza l'azione:
+`E_PERMESSO_NEGATO`, e nessuna scrittura. La sessione del migratore
+([dbops.fn_sessione_del_migratore](/dbzero/dbops/funzioni/fn_sessione_del_migratore)) non passa dal
+guard: è il software che pubblica i modelli standard, in una sessione senza utente. La tabella non ha
+row level security: non c'è un perimetro da rimettere.
+
+---
+
 ### La porta del verbo
 
 Le due scritture della funzione, la chiusura e la pubblicazione, passano sotto la porta
@@ -88,9 +101,11 @@ ammette solo queste due forme: una pubblicata che diventa obsoleta con la fine a
 che diventa pubblicata con le sole date cambiate. La chiusura è **una scrittura sola**, stato e data
 insieme.
 
-La funzione apre la porta dopo aver scelto le versioni da chiudere e la richiude prima di uscire,
-anche in errore: il valore di `set_config` dura fino alla fine della transazione, e chi chiama dentro
-una transazione più lunga non deve trovarla aperta.
+La funzione scrive nella GUC l'id del modello, dopo aver scelto le versioni da chiudere, e la svuota
+prima di uscire, anche in errore: il valore di `set_config` dura fino alla fine della transazione, e
+chi chiama dentro una transazione più lunga non deve trovarla aperta. Una GUC accesa dal chiamante si
+spegne all'ingresso. Il guard dello stato apre la porta solo con l'id del modello della riga e col
+proprietario della tabella, cioè solo dentro questa funzione.
 
 ---
 
@@ -143,6 +158,9 @@ Audit, `tx_id`, storico e validità li gestiscono i trigger della tabella e la c
   vincolo e registro su pubblicate e obsolete; con la nuova che parte domani oggi stampa la
   precedente, con la nuova che parte oggi stampa la nuova; una pubblicazione che parte dentro una
   obsoleta ferma dal vincolo; immutabilità delle obsolete e porta del verbo.
+* `db/pgtap/documenti/test-porta-pubblicazione-template-v1.sql` — come app: senza l'azione il verbo
+  rifiuta e non scrive; con l'azione pubblica, chiude la precedente e lascia la GUC vuota; l'app non
+  apre la porta a mano.
 * `db/pgtap/documenti/test-documenti-pubblicazione-e-copia-v1.sql` — la bozza spenta rifiutata, con
   la frase e senza toccare la pubblicata; i rifiuti dei parametri, della versione inesistente e della
   versione già pubblicata; lo stesso inizio di una pubblicata fermato dal vincolo.
@@ -162,6 +180,9 @@ Audit, `tx_id`, storico e validità li gestiscono i trigger della tabella e la c
   versione che stampava.
 * 2026-11-17 — la sovrapposizione con una versione fuori bozza esce col codice della funzione,
   `E_DOCUMENTI_VERSIONE_OVERLAP`: prima usciva il 23P01 del vincolo, e il codice lo dava il backend.
+* 2026-11-24 — diventa `SECURITY DEFINER` col permesso in prima riga (`documenti_template_manage`), e
+  la porta vale l'id del modello invece di `on`: l'applicazione non la apre più da sé
+  (`20_code/documenti/20261123-99`).
 
 ---
 

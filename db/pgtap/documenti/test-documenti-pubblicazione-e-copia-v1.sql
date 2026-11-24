@@ -69,6 +69,12 @@
 BEGIN;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- La pubblicazione del template chiede documenti_template_manage (il verbo e'
+--   SECURITY DEFINER col suo guard, giro 16 della porta 16): l'operatore del
+--   contesto la riceve, perche' qui si prova altro.
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(script.fn_utente_di_sessione(), 'documenti_template_manage');
+END $az$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
@@ -198,7 +204,9 @@ SELECT throws_like(
     '%nasce in bozza e ne esce solo con la pubblicazione%',
     '8) una bozza non diventa OBSOLETA con un UPDATE');
 
--- A porta aperta passa solo la forma della pubblicazione: le sole date.
+-- L'app accende la GUC e scrive diretta: rifiutata. Dal giro 16 (20261123-98) la
+--   porta per l'app non si apre nemmeno, perche' chiede anche il proprietario e l'id
+--   del modello: la forma «le sole date» la giudica il trigger dentro il verbo.
 SELECT throws_like(
     format($q$WITH porta AS (
                   SELECT set_config('zeroerp.allow_template_versione_pubblicazione_override', 'on', true))
@@ -208,7 +216,7 @@ SELECT throws_like(
                WHERE id = %s AND EXISTS (SELECT 1 FROM porta)$q$,
            (SELECT id FROM _v WHERE versione = 2)),
     '%nasce in bozza e ne esce solo con la pubblicazione%',
-    '9) a porta aperta, la pubblicazione con l''HTML cambiato e'' rifiutata');
+    '9) l''app accende la GUC e pubblica con l''HTML cambiato: rifiutata');
 
 SELECT throws_like(
     format($q$WITH porta AS (
@@ -218,7 +226,7 @@ SELECT throws_like(
                WHERE id = %s AND EXISTS (SELECT 1 FROM porta)$q$,
            (SELECT id FROM _v WHERE versione = 2)),
     '%nasce in bozza e ne esce solo con la pubblicazione%',
-    '10) a porta aperta, una bozza non diventa OBSOLETA');
+    '10) l''app accende la GUC: una bozza non diventa OBSOLETA');
 
 -- ⭐ Prima del -02 qui parlava il guard comune delle date (a10_date_validita
 --    veniva prima di a10_protect_pubblicata): mandava a correggere una data che
