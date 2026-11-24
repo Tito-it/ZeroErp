@@ -40,6 +40,15 @@ _ordinamento_applicato_var: ContextVar[dict[str, str] | None] = ContextVar(
 _misura_di_partenza_var: ContextVar[Callable[[], int] | None] = ContextVar(
     "misura_di_partenza", default=None,
 )
+# Le colonne della lista della richiesta il cui VUOTO si ordina come il MASSIMO
+# (`ui.lista_colonna.vuoto_ordinato_come_massimo`,
+# brief-db-lista-colonna-vuoto-in-ordine): la base view ci mette la LETTURA
+# (`applica_vuoti_come_massimo`), come per la misura, e il BB dell'ordinamento
+# (`apps.core.db._helpers.sql_order_direction_lista`) la chiama solo quando
+# risolve una colonna. Una richiesta che non ordina non paga la query.
+_vuoti_come_massimo_var: ContextVar[Callable[[], frozenset[str]] | None] = ContextVar(
+    "vuoti_come_massimo", default=None,
+)
 
 
 # Scopo: il rifiuto della chiave PROPOSTA dalla base view (non chiesta dal
@@ -63,6 +72,7 @@ def set_request_context(*, request_id: str | None, idempotency_key: str | None) 
     _ordinamento_proposto_var.set(None)
     _ordinamento_applicato_var.set(None)
     _misura_di_partenza_var.set(None)
+    _vuoti_come_massimo_var.set(None)
 
 
 # Scopo: Gestisce `clear_request_context` nel flusso applicativo del modulo.
@@ -116,6 +126,25 @@ def get_misura_di_partenza() -> int | None:
     # Letta una volta: la seconda domanda della stessa richiesta non rilegge.
     _misura_di_partenza_var.set(lambda: misura)
     return misura
+
+
+# Scopo: registra la LETTURA delle colonne «vuoto come il massimo» della lista
+#        della richiesta corrente (`None` la toglie).
+def imposta_vuoti_come_massimo(lettura: Callable[[], frozenset[str]] | None) -> None:
+    _vuoti_come_massimo_var.set(lettura)
+
+
+# Scopo: la colonna `campo_sorgente` della lista della richiesta corrente
+#        ordina il vuoto come il MASSIMO? `False` fuori da una lista di
+#        catalogo (nessuna lettura registrata): vale la regola generale.
+# ⚠️ Letta una volta per richiesta, alla prima domanda.
+def vuoto_come_massimo(campo_sorgente: str) -> bool:
+    lettura = _vuoti_come_massimo_var.get()
+    if lettura is None:
+        return False
+    colonne = lettura()
+    _vuoti_come_massimo_var.set(lambda: colonne)
+    return campo_sorgente in colonne
 
 
 # Scopo: Recupera `request_id` dal contesto applicativo o dal database.

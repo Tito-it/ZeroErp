@@ -1,12 +1,13 @@
 # Brief DB — Dove va il vuoto quando una lista ordina: si dichiara in `ui.lista_colonna`
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-24 (apply di Tid, lato DB chiuso)
+## ⏭️ Chi riparte — aggiornato al 2026-11-24 (giro BE/FE fatto; D-5 decisa, tocca alla sessione DB, §8.3)
 
-**Riparte: il team BE/FE, con le ricadute di §5 e §5.1.** Il lato DB è chiuso: Tid ha applicato il giro di §7.7
-(`20261123-65`, `-66`, il seed) il 2026-11-24, col `ci_apply` e il pgTAP come app verde. D-1 … D-4 decise il
-2026-11-24 (§7.6). Fino al giro BE il BE resta com'è, con i `COALESCE` scritti a mano nelle whitelist: le quattro
-colonne divergenti di §3.1 ordinano ancora il vuoto come il minimo. Decisioni di Tid prese il 2026-11-24 (§2). La domanda di §6 ha la risposta della
-sessione DB in §7.2.
+**Riparte: la sessione DB, col passo 5 (§8.3): Tid ha detto sì a D-5 il 2026-11-24.** Il giro BE/FE di §5 e §5.1 è fatto (§8, 2026-11-24):
+il BE legge la dichiarazione dal catalogo e la applica nel BB dell'ordinamento, i `COALESCE` delle whitelist sono
+ritirati, le colonne che la whitelist dimenticava (lotti, flussi e pratiche: tre, non quattro, §8.2) ordinano il
+vuoto come il massimo. Resta fuori una colonna che §3.4
+dava per assente dal catalogo e che invece c'è: `giorni_alla_scadenza` (righe 1157 e 1164). Il BE la tiene col suo
+`COALESCE` finché il seed non la dichiara.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 |---|---|---|---|---|
@@ -14,14 +15,18 @@ sessione DB in §7.2.
 | 0b | Tid | ✅ Le decisioni D-1 … D-4 (2026-11-24) | §7.6 | — |
 | 1 | Sessione DB | ✅ La colonna nuova, il seed, il registro del primo impianto, COMMENT, pgTAP, guide e `manual/`; provato sullo scratch (2026-11-24) | §7.7 | — |
 | 2 | Tid | ✅ Apply, `ci_apply`, pgTAP `test-lista-colonna-vuoto-ordinato-come-massimo-v1` come app: verde (2026-11-24) | §7.7 | — |
-| 3 | Team BE/FE | Le ricadute: `sql_order_direction`, lettura dal catalogo, ritiro dei `COALESCE`, presidio; e le tre di §5.1 (sede di lettura, il vincolo nuovo per nome, la whitelist degli asset) | §5, §5.1 | 2 |
+| 3 | Team BE/FE | ✅ Le ricadute di §5 e §5.1: lettura dal catalogo, `sql_order_direction`, ritiro dei `COALESCE`, presidi, vincolo nella mappa, D-4 (2026-11-24) | §8 | — |
+| 4 | Tid | ✅ D-5: `giorni_alla_scadenza` (righe 1157 e 1164) si dichiara «vuoto come il massimo» — **sì** (2026-11-24) | §8.3 | — |
+| 5 | Sessione DB | `t` sulle righe 1157 e 1164 del CSV di `ui.lista_colonna`, il pgTAP del giro allineato; poi l'apply di Tid | §8.3 | — |
+| 6 | Team BE/FE | Ritira `_SQL_GIORNI_SENZA_SCADENZA` e la voce di `_DEBITO_SENTINELLA` (il presidio diventa rosso da solo all'apply del passo 5) | §8.3 | 5 |
 
-Decisioni aperte di Tid: nessuna. Da committare: il giro di §7.7, la doc auto-generata rigenerata, le guide e questo brief.
-Il brief si archivia quando il team BE/FE chiude il passo 3.
+Decisioni aperte di Tid: nessuna (D-5 decisa il 2026-11-24, §8.3). Da committare: il giro DB di §7.7 (se non già fatto) e il giro BE/FE di §8.1.
+Il brief si archivia quando il passo 6 è chiuso.
 
 **Brief vicini verificati** (2026-11-24): `brief-db-revisione-ui` tocca lo schema `ui` (documentazione, difetti, metadati) ed è alla chiusura; non tratta l'ordinamento delle liste né `ui.lista_colonna` come sede di una regola di ordinamento: non basta, e non va fuso. Nessun altro brief aperto su ordinamento, `NULLS` o `COALESCE` di whitelist.
 **Guide verificate** (`guide_coinvolte.py --oggetti ui.lista_colonna`): [configurazione-liste.md](../../guide/configurazione-liste.md) — coerente (non descrive dove va il vuoto quando una lista ordina); dopo l'apply è **guida indietro** e si aggiorna (§4, punto 6).
-Allargate dalla sessione DB il 2026-11-24 a tutti gli oggetti del brief: l'esito per guida è in §7.8.
+Allargate dalla sessione DB il 2026-11-24 a tutti gli oggetti del brief: l'esito per guida è in §7.8; quelle del giro BE
+in §8.5.
 
 ---
 
@@ -92,6 +97,8 @@ qui è indicata la tabella che la scrive.
   dichiarazione.
 
 ### 3.4 Fuori dal seed: il BE ordina, ma il catalogo non ha la colonna
+
+> ⚠️ Corretto dal giro BE (§8.2, 2026-11-24): `giorni_alla_scadenza` **è** una colonna del catalogo. Vedi §8.3.
 
 - **Gli asset documentali** (`documenti.template_asset`): la whitelist del BE ordina per `valido_al` con il `COALESCE`
   (`ASSET_ORDER_COLUMNS` in `documenti_repository.py`), ma la lista di catalogo non ha la colonna, quindi il FE non la
@@ -284,3 +291,98 @@ Oggetti: `ui.lista_colonna`, `ui.fn_resolve_lista_config`, `pratiche.pratiche`, 
 
 Nessuna nota di dominio. **`magazzino.lotti` non lo cita nessuna guida**: è un concetto del dominio, quindi manca una
 guida del magazzino o il «Vedi anche» di una guida esistente è incompleto. Lo decide Tid, fuori da questo brief.
+
+## 8. Il giro del team BE/FE (2026-11-24)
+
+### 8.1 Che cosa fa il BE
+
+- **La lettura** (§4.5, §5.2): `fetch_colonne_vuoto_massimo(lista_codice)` in `apps/core/db/lista_catalogo_repository.py`
+  legge i `campo_sorgente` delle colonne con `vuoto_ordinato_come_massimo`, senza filtro su `attivo` né su `ordinabile`
+  (il flag dice che cosa vuol dire il vuoto del dato, §7.4). ⚠️ Non da `UiRepository.list_colonne_by_codice`, come §5.1.1
+  indicava: la legge la base view, e `core` non importa `ui` (la stessa ragione delle altre letture del catalogo di quel
+  modulo). La sede del dato resta una, la tabella.
+- **Il percorso**: la base view di ogni porta, se ha `lista_codice`, registra nella richiesta la **lettura** (pigra, una
+  per richiesta: `applica_vuoti_come_massimo`, come la misura di partenza). `sql_order_direction_lista`, la sede unica della
+  direzione (la usa `sql_order_clause`), la consulta quando risolve una colonna, per la chiave chiesta o per quella che il
+  `default` della lista nomina. Sulla colonna dichiarata `sql_order_direction(vuoto_massimo=True)` scrive `ASC NULLS LAST` /
+  `DESC NULLS FIRST` (§5.1). Nessun repository cambia firma. ⛔ Ma la dichiarazione la riceve solo chi compone la direzione
+  con `sql_order_direction_lista` (o `sql_order_clause`): cinque `ORDER BY` composti a mano chiamavano
+  `sql_order_direction` diretto (eccedenze di pagamenti, code dei resi, giornale delle entità, fondi da decidere,
+  audit di amm-software) e una colonna dichiarata domani su quelle liste sarebbe rimasta al minimo, senza errore.
+  Portati sul BB dalla `/verifica` del 2026-11-24, con il presidio «nessuna chiamata diretta fuori dal BB». ⭐ Dalla `/verifica` del 2026-11-24 (Tid) la lettura sta
+  **fuori** dal gate dell'utente autenticato: è un fatto del catalogo, e la riceve anche la lista letta da un anonimo
+  dello shop. Ordinamento e misura di partenza restano dentro, perché dipendono da chi legge. Presidio:
+  `test_anche_l_anonimo_riceve_la_dichiarazione` in `core/tests/api/test_vuoto_come_massimo.py`, provato a rovescio.
+  Pagine `manual/` allineate lo stesso giorno: le liste che hanno cambiato ordine (lotti, pratiche, flussi; la promo no, `valido_al` è `NOT NULL`),
+  i `COALESCE` citati come regola (tipi ruolo-tipi indirizzo, titoli IVA, operatori, conversioni UoM), `valido_al`
+  tolto dagli asset.
+- **Il ritiro** (§5.3): via i `COALESCE(…, 'infinity')` da contratti, preventivi, offerte, versioni di listino, componenti
+  della distinta, conversioni UoM, categorie clienti-listini, operatori, tipi ruolo-tipi indirizzo, versioni dei template;
+  via i due `'-infinity'` (preventivi `validita_dal`, tipi ruolo-tipi indirizzo `valido_dal`), che davano già il default.
+  Restano dove non sono ordinamento di lista: il `WHERE` «non scaduto» di `pagamenti_repository.py` e il `daterange` di
+  `listini_repository.py`. `titoli_iva_repository` passa da `COALESCE(valido_al,'infinity') DESC` a
+  `valido_al DESC NULLS FIRST` nel suo `default_clause`: stesso ordine, senza valore «infinito». ⚠️ (Corretto dalla
+  `/verifica` del 2026-11-24.) La lista di catalogo c'è, `anagrafiche.soggetto_titoli_iva` (62), ma `valido_al` non è
+  una sua colonna: il catalogo non la può dichiarare, e la regola scritta nel default è legittima. Il presidio a regex
+  cerca solo i `COALESCE` e non vede un `NULLS FIRST` scritto a mano: questo è l'unico, dichiarato qui.
+- **D-4**: `valido_al` esce da `ASSET_ORDER_COLUMNS`.
+- **Il vincolo nuovo** (§5.1.2): `chk_ui_lista_colonna_vuoto_massimo_con_campo` nella mappa `_CHECK_CONSTRAINTS` di
+  `ListaColonnaAdminService`, sul campo `campo_sorgente`.
+- **Il drawer** (§5.1.4, D-1): invariato.
+- **I presidi** (§5.4): `core/tests/test_vuoto_come_massimo_seed.py` (senza DB): ogni lista che nel seed dichiara una
+  colonna accesa e ordinabile è servita da una view con quel `lista_codice`, altrimenti la dichiarazione non arriva al BB;
+  nessuna whitelist scrive `COALESCE(col, <sentinella>)`, con il registro di debito `_DEBITO_SENTINELLA` che deve calare.
+  `core/tests/api/test_vuoto_come_massimo.py` (BB e base view, senza DB), `core/tests/db/test_vuoto_come_massimo_db.py`
+  (catalogo → BB → righe costruite con `VALUES`, ordinate da PostgreSQL). I test che asserivano il `COALESCE` sono
+  adeguati; `test_listini_in_scadenza_db` legge la dichiarazione dal catalogo vero.
+- **Documentazione**: catalogo BB (partenza della lista, `sql_order_direction`, `sql_order_direction_lista`) con l'indice
+  rigenerato; api.md, «Dove va il vuoto: lo dichiara il catalogo».
+
+Prova (2026-11-24): i test del giro verdi, catena compresa sul DB di sviluppo (`ZEROERP_TEST_DB_E2E=1`); mypy a cricchetto
+verde. La suite intera ha rossi che non sono di questo giro: i repository che chiedono `auth_user_id` e
+`test_scope_senza_utente.py` sono del giro non committato di `brief-db-porte-aperte-dalla-sola-guc`; le due prove delle
+policy d'errore (`E_DATI_SOCIETARI_*`) seguono il DB, avanti rispetto a git.
+
+### 8.2 Correzioni al censimento di §3
+
+- **1154 `vendite.listini_versioni`** non era divergente: la whitelist del BE aveva il `COALESCE`. Le divergenti vere erano
+  tre (lotti, flussi, pratiche). Il seed resta giusto.
+- **§3.4, `giorni_alla_scadenza`**: è una colonna del catalogo, sulla lista 27 (`vendite.listini`, riga 1164) e sulla 112
+  (`vendite.listini_versioni`, riga 1157), `ordinabile = t`, oggi `vuoto_ordinato_come_massimo = f`.
+- **§5, le liste ordinate senza catalogo** (il ⚠️): fuori da una view con `lista_codice` ordinano i tool dell'assistente
+  (`ai_assistant/tools`). Fatto datato del 2026-11-24: ordinano per `data`, `valido_dal`, `codice`, `data_insert`, nessuna
+  colonna dichiarata. Per regola, fuori da una lista vale il minimo: un tool che domani ordinasse per una fine validità
+  non riceve la dichiarazione. Nessun caso da portare a Tid.
+
+### 8.3 D-5: `giorni_alla_scadenza`
+
+Il vuoto della colonna vuol dire «non in scadenza» (la versione ha un successore, o scade oltre il preavviso): nel BE è
+già la scadenza **più lontana** (`COALESCE(giorni_rimanenti, 2147483647)`, `_SQL_GIORNI_SENZA_SCADENZA`, in tutte e due
+le whitelist), cioè l'eccezione «vuoto come il massimo» scritta fuori dal catalogo, quella che §2.2 sposta nel catalogo.
+Togliere il `COALESCE` senza la dichiarazione rovescerebbe l'ordine: il BE lo tiene, registrato come debito.
+
+**Decisione di Tid (2026-11-24): sì**, `t` sulle righe 1157 e 1164. Non è «senza fine» alla lettera, ma per
+l'ordinamento è lo stesso fatto: il vuoto sta oltre ogni valore.
+
+**Richiesta alla sessione DB**: nel CSV di `ui.lista_colonna`, `vuoto_ordinato_come_massimo = t` sulle righe 1157
+(`vendite.listini_versioni`) e 1164 (`vendite.listini`); il pgTAP `test-lista-colonna-vuoto-ordinato-come-massimo-v1`
+conta le righe dichiarate per lista e codice, e va allineato (da quattordici a sedici). Fino all'apply il BE resta com'è
+oggi, con la sentinella: chi cambia per primo è il DB.
+
+Dopo l'apply il presidio `test_il_debito_della_sentinella_si_chiude_con_la_dichiarazione` diventa rosso: il team BE toglie
+`_SQL_GIORNI_SENZA_SCADENZA`, i suoi test (`test_listini_in_scadenza_db`, `test_chi_non_scade_va_in_fondo_crescendo`
+leggerà la dichiarazione come le versioni) e la voce del registro.
+
+### 8.4 Garanzie ritirate
+
+Nessuna: la whitelist dava la stessa proprietà («la fine vuota è la più lontana») che ora dà il catalogo, alle stesse
+liste, per le richieste che passano da una view con `lista_codice`. Fuori da quelle (§8.2) il `COALESCE` valeva anche
+per una chiamata interna; i lettori censiti non ordinano per una colonna dichiarata.
+
+### 8.5 Guide (`guide_coinvolte.py`, 2026-11-24)
+
+| Guida | Esito |
+|---|---|
+| `configurazione-liste` (§2.2, §5.2, intestazione delle colonne) | coerente: descrive già il comportamento che il BE ora ha |
+| le altre restituite sui file di `core` (`automazione-db`, `risorse-umane-e-accessi`, `fatturazione`…) | nominano oggetti di quei file per altro: non toccate |
+

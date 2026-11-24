@@ -246,7 +246,7 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 | `limit`                | int      | Default 25                                                                                  |
 | `offset`               | int      | Default 0                                                                                   |
 | `order_by`             | string   | `campo_sorgente` catalogo `vendite.offerte`: `codice` \| `ragione_sociale_completa` \| `ba_codice` \| `id_fiscale_univoco_cf_piva` \| `utility_codice` \| `utility_descrizione` \| `listino_codice` \| `validita_dal` \| `validita_al` \| `data_emissione` \| `data_accettazione` \| `data_rifiuto` \| `data_annullamento` \| `stato_descrizione` \| `data_insert` \| `pratica_numero` \| `fase` (default `data_insert`). Fuori whitelist → 400. `revisione_numero` **non ordinabile** |
-| `order_dir`            | string   | `asc` \| `desc`. Assente: `desc` sulle colonne data e sul default `data_insert`, `asc` sulle altre |
+| `order_dir`            | string   | `asc` \| `desc`. Assente: `asc` sulla colonna chiesta, date comprese; `desc` solo senza `order_by` o su `data_insert`, il default della lista (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata) |
 
 > **`search` corto o vuoto**: vuoto, whitespace-only o sotto 3 caratteri →
 > nessun filtro, nessun errore (BB `add_ricerca_full_condition`, soglia unica
@@ -842,7 +842,7 @@ drawer). Lettura libera in ogni stato.
 | --- | --- | --- |
 | `limit` / `offset` | int | Default 25 / 0 |
 | `order_by` | string | `revisione_numero` (default) \| `codice` \| `data_emissione` \| `stato_descrizione` |
-| `order_dir` | string | `asc` \| `desc`. Assente: `asc`, `desc` su `data_emissione` (le bozze, senza data, in coda) |
+| `order_dir` | string | `asc` \| `desc`. Assente: `asc` su ogni colonna, `data_emissione` compresa: le bozze, senza data, vanno in testa (il vuoto vale come il minimo; dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata) |
 | `emittente_fiscale_id` | int | Emittente del documento (PK). Lo legge solo il cancello di perimetro, per chi vede più emittenti: non filtra le righe |
 
 ```json

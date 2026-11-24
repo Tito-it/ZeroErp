@@ -36,7 +36,7 @@ from apps.core.db._helpers import (
     sql_lateral_primo_motivo,
     sql_order_clause,
     rows_to_list,
-    sql_order_direction,
+    sql_order_direction_lista,
     sql_tiebreak_direction,
     utente_di_sessione,
 )
@@ -2132,7 +2132,10 @@ class PagamentiRepository:
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         sort_col = colonna_ordinamento(order_by, ECCEDENZE_SORT_COLUMNS) or "eccedenza_cliente"
-        direction = sql_order_direction(order_dir, default_desc=True)
+        direction = sql_order_direction_lista(
+            order_by, order_dir, colonne=ECCEDENZE_SORT_COLUMNS,
+            default="eccedenza_cliente", default_desc=True,
+        )
         tiebreak = sql_tiebreak_direction(direction)
 
         select_sql = f"""

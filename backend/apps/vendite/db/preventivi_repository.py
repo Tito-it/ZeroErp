@@ -75,8 +75,11 @@ _ORDER_COLS_PREVENTIVI: dict[str, str] = {
     "totale_documento": "v.totale_documento",
     "totale_imponibile": "v.totale_imponibile",
     "totale_iva": "v.totale_iva",
-    "validita_al": "COALESCE(v.validita_al, 'infinity'::date)",
-    "validita_dal": "COALESCE(v.validita_dal, '-infinity'::date)",
+    # Il vuoto di `validita_al` («non scade mai») va come il massimo: lo
+    # dichiara il catalogo (`ui.lista_colonna.vuoto_ordinato_come_massimo`).
+    # Quello di `validita_dal` («da sempre») e' il minimo, la regola generale.
+    "validita_al": "v.validita_al",
+    "validita_dal": "v.validita_dal",
     "stato_descrizione": "v.stato_descrizione",
     # `stato_codice_interno` (tecnica, severity del Tag) ed
     # `emittente_fiscale_codice` (la colonna Emittente legge

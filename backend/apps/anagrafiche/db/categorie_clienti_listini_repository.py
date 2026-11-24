@@ -47,7 +47,9 @@ _ORDER_COLS: dict[str, str] = {
     "listino_codice": "l.codice",
     "listino_descrizione": "l.descrizione",
     "valido_dal": "m.valido_dal",
-    "valido_al": "COALESCE(m.valido_al, 'infinity'::date)",
+    # Il vuoto («senza scadenza») va come il massimo: lo dichiara il catalogo
+    # (`ui.lista_colonna.vuoto_ordinato_come_massimo`), non questa whitelist.
+    "valido_al": "m.valido_al",
     "attivo": "m.attivo",
     "data_insert": "m.data_insert",
     "data_update": "m.data_update",

@@ -39,7 +39,7 @@ classe_utenza, listino) si popolano dai rispettivi lookup specifici.
 | `limit` | int (default 25, max 200) | Paginazione |
 | `offset` | int | Paginazione |
 | `order_by` | string | `categoria_codice \| categoria_descrizione \| utility_codice \| utility_descrizione \| emittente_ragione_sociale \| listino_codice \| listino_descrizione \| valido_dal \| valido_al \| attivo \| data_insert \| data_update` (default `valido_dal`) |
-| `order_dir` | string | `asc \| desc`. Assente: le colonne data (`valido_dal`, `valido_al`, `data_insert`, `data_update`) partono `desc`, le altre `asc`; anche la lista senza `order_by` parte da `valido_dal desc` (fino al 2026-10-20 partiva `asc`) |
+| `order_dir` | string | `asc \| desc`. Assente: `asc` sulla colonna chiesta, date comprese; `desc` solo senza `order_by` o su `valido_dal`, il default della lista (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata); la lista senza `order_by` parte da `valido_dal desc` (fino al 2026-10-20 partiva `asc`) |
 
 ### Payload create (`POST`)
 

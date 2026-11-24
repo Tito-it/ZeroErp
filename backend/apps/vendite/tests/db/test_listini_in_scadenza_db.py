@@ -30,8 +30,10 @@ Indice test eseguiti:
    Il ramo `in_scadenza=False` (`s.listino_id IS NULL`): il listino con il
    successore c'e', quello senza no — e il listino senza fine c'e' sempre.
 4) ListiniInScadenzaDbTests.test_valido_al_vuoto_e_la_versione_piu_lontana
-   `order_by=valido_al` delle versioni: la fine vuota ordina come `infinity`
-   (`_SQL_DATE_INFINITY`), in fondo crescendo e in cima calando.
+   `order_by=valido_al` delle versioni: la fine vuota ordina come il massimo,
+   in fondo crescendo e in cima calando. Lo dichiara il catalogo della lista
+   (`vuoto_ordinato_come_massimo`, brief-db-lista-colonna-vuoto-in-ordine),
+   letto qui dal DB vero come lo legge la base view.
 5) ListiniInScadenzaDbTests.test_chi_non_scade_va_in_fondo_crescendo
    `order_by=giorni_alla_scadenza` dei listini: il NULL («non in scadenza»)
    e' la scadenza piu' lontana (`_SQL_GIORNI_SENZA_SCADENZA`), non la minima.
@@ -44,6 +46,8 @@ from uuid import uuid4
 
 from django.db import connection, transaction
 
+from apps.core.db.lista_catalogo_repository import fetch_colonne_vuoto_massimo
+from apps.core.services.request_context import imposta_vuoti_come_massimo
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 from apps.vendite.db.listini_repository import ListiniRepository
 
@@ -102,9 +106,17 @@ class ListiniInScadenzaDbTests(unittest.TestCase):
                     )
                     return [r for r in righe if r["id"] in nostri]
 
-                # Gli id delle versioni del listino, nell'ordine della pagina.
+                # Gli id delle versioni del listino, nell'ordine della pagina,
+                # con la dichiarazione del catalogo della lista che la base
+                # view registra (`applica_vuoti_come_massimo`).
                 def versioni(**kw: Any) -> list[int]:
-                    return [v["id"] for v in repo.list_versioni_pagina(listino_id, **kw)[0]]
+                    imposta_vuoti_come_massimo(
+                        lambda: fetch_colonne_vuoto_massimo("vendite.listini_versioni"),
+                    )
+                    try:
+                        return [v["id"] for v in repo.list_versioni_pagina(listino_id, **kw)[0]]
+                    finally:
+                        imposta_vuoti_come_massimo(None)
 
                 tutte, _ = repo.list_versioni_pagina(listino_id)
                 return {
@@ -152,8 +164,9 @@ class ListiniInScadenzaDbTests(unittest.TestCase):
 
     # La versione senza fine (il successore) e' la piu' lontana: ultima
     # crescendo, prima calando; senza verso la colonna va crescente (dal
-    # 2026-11-24 nessuna data ha un verso di partenza proprio). Senza il
-    # COALESCE il NULL sarebbe il minimo del BB e i due versi si scambierebbero.
+    # 2026-11-24 nessuna data ha un verso di partenza proprio). Senza la
+    # dichiarazione del catalogo il NULL sarebbe il minimo del BB e i due versi
+    # si scambierebbero.
     def test_valido_al_vuoto_e_la_versione_piu_lontana(self) -> None:
         letture = self._letture(successore=True)
         attesa = [letture["versione_id"], letture["successore_id"]]

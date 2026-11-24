@@ -43,7 +43,6 @@ from apps.core.db._helpers import (
     rows_to_list,
     sql_lateral_primo_motivo,
     sql_order_clause,
-    sql_order_direction,
     sql_tiebreak_direction,
 )
 from apps.core.services.system_context import connection_role_bypasses_rls
@@ -195,8 +194,11 @@ GIORNALE_GRAVITA: tuple[str, ...] = ("ERROR", "WARN", "INFO")
 #    400 (`_valida_ordinamento`), perche' un ordine diverso da quello chiesto
 #    non solleva niente.
 def _giornale_order_clause(sort_by: str | None, sort_dir: str | None) -> str:
-    direzione = sql_order_direction(sort_dir, default_desc=True)
     colonna = colonna_ordinamento(sort_by, GIORNALE_SORT_COLUMNS) or GIORNALE_SORT_COLUMNS[GIORNALE_ORDINE_DEFAULT]
+    direzione = sql_order_direction_lista(
+        sort_by, sort_dir, colonne=GIORNALE_SORT_COLUMNS,
+        default=GIORNALE_ORDINE_DEFAULT, default_desc=True,
+    )
     if colonna == "rango":
         # ⚠️ Dentro la stessa gravita' ordina il TEMPO, sempre dal piu' recente,
         #    e NON segue il verso scelto: «i piu' gravi, e fra quelli i piu'
@@ -3552,7 +3554,10 @@ class VenditeRepository:
         # `uq_fondi_source_atto_vivo_automatico` presidia i soli AUTOMATICI).
         # `COALESCE(..., 0)` perche' negli altri tre rami l'atto non esiste.
         sort_col = colonna_ordinamento(order_by, self.FONDI_DA_DECIDERE_SORT_COLUMNS)
-        direction = sql_order_direction(order_dir, default_desc=True)
+        direction = sql_order_direction_lista(
+            order_by, order_dir, colonne=self.FONDI_DA_DECIDERE_SORT_COLUMNS,
+            default="data", default_desc=True,
+        )
         tiebreak_dir = sql_tiebreak_direction(direction)
         order_clause = (
             f"ORDER BY {sort_col or 'data'} {direction}, "

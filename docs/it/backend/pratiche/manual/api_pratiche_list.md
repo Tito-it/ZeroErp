@@ -156,7 +156,7 @@ Envelope paginata standard (`paginated_envelope`):
     e della sua istanza (FK composta `fk_pratiche_billing_account_istanza`)
 - `is_search_endpoint = True` sulla view GET: attiva throttling `SearchBurstRateThrottle`.
 - Ordinamento GET: configurabile via `order_by`/`order_dir`, default `data_insert DESC`, tiebreaker `id`.
-- Whitelist colonne ordinamento: `id`, `codice`, `descrizione`, `data_apertura`, `data_scadenza`, `data_insert`, `tipo_prestazione_descrizione`, `stato_descrizione`, `priorita_descrizione`, `soggetto_display`, `risorsa_umana_display`.
+- Whitelist colonne ordinamento: `id`, `codice`, `descrizione`, `data_apertura`, `data_scadenza`, `data_insert`, `tipo_prestazione_descrizione`, `stato_descrizione`, `priorita_descrizione`, `soggetto_display`, `risorsa_umana_display`. Su `data_scadenza` il vuoto (nessuna scadenza) va come il massimo: lo dichiara il catalogo (`ui.lista_colonna.vuoto_ordinato_come_massimo`, dal 2026-11-24; prima andava come il minimo).
 - Ogni riga espone `billing_account_id`, **colonna della pratica** dal 2026-10-08
   (brief-db-istanza-nasce-col-ba, D-9): il cliente di cui la pratica parla; `null` per le
   pratiche di altri ruoli, interne o con la sola istanza. Fino a quella data era

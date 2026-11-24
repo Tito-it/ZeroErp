@@ -821,6 +821,25 @@ non è più vera. Fuori catalogo (view senza `lista_codice`) resta
 `descrizione_order_by`. Presidio sullo schema generato, nei due versi:
 `core/tests/api/test_openapi_params.py`.
 
+#### ⭐ Dove va il vuoto: lo dichiara il catalogo, non la whitelist (dal 2026-11-24)
+
+Decisioni di Tid (brief-db-lista-colonna-vuoto-in-ordine). Di regola il vuoto
+ordina come il **minimo** (`sql_order_direction`: `ASC NULLS FIRST` /
+`DESC NULLS LAST`): è il «non ancora», il numero di una bozza. La colonna il cui
+vuoto vuol dire «senza fine» (una fine validità, una scadenza che non c'è) lo
+dichiara nel catalogo, `ui.lista_colonna.vuoto_ordinato_come_massimo`, e allora
+il vuoto ordina come il **massimo** (`ASC NULLS LAST` / `DESC NULLS FIRST`).
+
+La view con `lista_codice` registra la lettura del catalogo della sua lista, e
+`sql_order_direction_lista` (quindi `sql_order_clause`) la applica alla colonna
+che risolve. La whitelist resta la colonna nuda: ⛔ niente
+`COALESCE(col, 'infinity')`, `'-infinity'` o massimi di `integer` scritti a mano,
+che fino a quel giorno erano l'eccezione (e che tre liste avevano
+dimenticato). ⛔ Un `ORDER BY` composto a mano prende la direzione da
+`sql_order_direction_lista`, non da `sql_order_direction`: la chiamata diretta non
+riceve la dichiarazione. Una lista ordinata fuori da una view con `lista_codice` segue la
+regola generale. Presidio: `core/tests/test_vuoto_come_massimo_seed.py`.
+
 ### Ricerca e throttling
 
 * `is_search_endpoint = True` sulla view abilita `SearchBurstRateThrottle`

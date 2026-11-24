@@ -6,8 +6,10 @@
 #        view decide prima di servire i dati: il cancello di perimetro emittente
 #        (le DUE colonne che dicono se una lista ha un perimetro e se lo sa
 #        dichiarare, `perimetro_emittente` e `multi_emittente`) e l'ordinamento
-#        di partenza (`fetch_ordinamento_lista`, BE25 (2) di brief-db-revisione-ui) e la misura
-#        di partenza (`fetch_misura_lista`, BE10).
+#        di partenza (`fetch_ordinamento_lista`, BE25 (2) di brief-db-revisione-ui), la misura
+#        di partenza (`fetch_misura_lista`, BE10) e le colonne il cui vuoto si
+#        ordina come il massimo (`fetch_colonne_vuoto_massimo`,
+#        brief-db-lista-colonna-vuoto-in-ordine).
 #
 # ⚠️ Perche' sta in `apps/core/db/` e non in `apps/ui/db/`, dove il catalogo
 #        delle liste ha la sua sede naturale: il consumatore e'
@@ -118,3 +120,34 @@ def fetch_misura_lista(
             [lista_codice, auth_user_id, emittente_fiscale_id],
         )
         return int(fetchone_scalar(cursor))
+
+
+# Scopo: i `campo_sorgente` delle colonne di una lista il cui VUOTO si ordina
+#        come il MASSIMO (`ui.lista_colonna.vuoto_ordinato_come_massimo`,
+#        brief-db-lista-colonna-vuoto-in-ordine, decisioni di Tid del
+#        2026-11-24): il vuoto vuol dire «senza fine» (una fine validita', una
+#        scadenza che non c'e'). Le altre colonne seguono la regola generale,
+#        il vuoto come il minimo (`sql_order_direction`).
+# ⭐ La sede della regola e' il CATALOGO, non il codice delle query: fino al
+#    2026-11-24 l'eccezione era scritta a mano nelle whitelist come
+#    `COALESCE(col, 'infinity')`, e le colonne che se ne dimenticavano
+#    ordinavano il vuoto al contrario di cio' che vuol dire.
+# ⚠️ Senza il filtro `lc.attivo`: il flag dice che cosa vuol dire il vuoto del
+#    DATO, e spegnere la colonna non lo cambia (lo stesso motivo per cui il DB
+#    non lo lega a `ordinabile`, §7.4 del brief). Lista assente: insieme vuoto
+#    (il cancello della view, prima, l'ha gia' rifiutata se spenta).
+# ⚠️ Sta qui, e non in `UiRepository.list_colonne_by_codice` che il brief
+#    indicava, per la ragione dell'intestazione: la legge la base view, e
+#    `core` non importa `ui`. La sede del DATO resta una, la tabella.
+def fetch_colonne_vuoto_massimo(lista_codice: str) -> frozenset[str]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT lc.campo_sorgente "
+            "  FROM ui.lista_colonna     lc "
+            "  JOIN ui.lista_definizione ld ON ld.id = lc.lista_id "
+            " WHERE ld.codice = %s "
+            "   AND lc.vuoto_ordinato_come_massimo "
+            "   AND lc.campo_sorgente IS NOT NULL",
+            [lista_codice],
+        )
+        return frozenset(str(r[0]) for r in cursor.fetchall())

@@ -169,7 +169,7 @@ Lista `magazzino.lotti` (catalogo 82). **`articolo_id` obbligatorio** (400 col
 campo se manca o non e' un uuid): un elenco di tutti i lotti di tutti gli
 articoli non e' una domanda di nessuno. Filtri: `search` (sul codice),
 `attivo`. Ordinamento in `LOTTI_SORT_COLUMNS`; senza: `data_arrivo DESC`
-(senza `order_dir` la colonna chiesta va in crescente; il default della lista resta il suo). Riga: `id`, `articolo_id`, `emittente_fiscale_id`,
+(senza `order_dir` la colonna chiesta va in crescente; il default della lista resta il suo). Su `data_scadenza` il vuoto (nessuna scadenza) va come il massimo: lo dichiara il catalogo (`ui.lista_colonna.vuoto_ordinato_come_massimo`, dal 2026-11-24; prima andava come il minimo). Riga: `id`, `articolo_id`, `emittente_fiscale_id`,
 `codice`, `data_arrivo`, `data_scadenza`, `attivo`, `meta`, audit.
 
 La lista e' a catalogo con `perimetro_emittente = true` (dal 2026-11-22): le

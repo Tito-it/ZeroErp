@@ -84,7 +84,7 @@ operatore disattivato resta in elenco col tipo `OPERATORE` e `veste_attiva = fal
 | `includi_di_prova` | bool | no | `true` mostra anche gli utenti di prova (etichetta del provisioning di sviluppo); assente o `false` li nasconde. Booleano rigoroso: un valore non booleano e' un 400 sul campo |
 | `limit` | int | no | Numero massimo risultati (default 25, max 200) |
 | `offset` | int | no | Offset per paginazione (default 0) |
-| `order_by` | string | no | Colonna di ordinamento: `last_name`, `soggetto_cognome`, `username`, `is_super_admin`, `ruolo_applicativo`, `is_active`, `unita_organizzativa_nome`, `override_count`, `valido_dal`, `valido_al` (NULL = senza scadenza, ordinata come infinito). Senza `order_by`: `soggetto_cognome`, poi `username`, ASC. Fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
+| `order_by` | string | no | Colonna di ordinamento: `last_name`, `soggetto_cognome`, `username`, `is_super_admin`, `ruolo_applicativo`, `is_active`, `unita_organizzativa_nome`, `override_count`, `valido_dal`, `valido_al` (NULL = senza scadenza: il vuoto va come il massimo, lo dichiara il catalogo). Senza `order_by`: `soggetto_cognome`, poi `username`, ASC. Fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
 | `order_dir` | string | no | `ASC` o `DESC` (altro valore: 400). Senza `order_dir` la colonna chiesta va in crescente; il default della lista resta il suo |
 
 **Risposta:**

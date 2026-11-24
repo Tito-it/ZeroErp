@@ -43,9 +43,10 @@ Tutti gli endpoint sono riservati agli amministratori (`AdminAPIView` → `IsAdm
 - `order_by` (str, default `tipo_ruolo_descrizione`) — whitelist:
   `tipo_ruolo_codice`, `tipo_ruolo_descrizione`, `tipo_indirizzo_codice`,
   `tipo_indirizzo_descrizione`, `obbligatorio`, `attivo`, `valido_dal`
-  (vuoto = `-infinity`), `valido_al` (vuoto = `infinity`), `data_insert`,
-  `data_update`
-- `order_dir` (`asc`/`desc`). Assente: il default della lista — `asc` sulle colonne testo, `desc` sulle colonne data (`valido_dal`, `valido_al`, `data_insert`, `data_update`; dal 2026-10-20, prima `asc`)
+  (il vuoto va come il minimo), `valido_al` (il vuoto, «senza fine», va come il
+  massimo: lo dichiara il catalogo, `ui.lista_colonna.vuoto_ordinato_come_massimo`),
+  `data_insert`, `data_update`
+- `order_dir` (`asc`/`desc`). Assente: `asc` su ogni colonna, date comprese (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata)
 
 ### Body POST
 
