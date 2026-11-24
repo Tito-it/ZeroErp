@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `pagamenti.vendite_movimenti`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -66,7 +66,8 @@ una distinta annullata.
 riferimenti (`contabile_id`, `fattura_id`, `billing_account_id`, `scadenza_id`) **non li scrive
 il chiamante**, li copia il trigger di mirror
 [trgfn_vendite_movimenti_sync_contabile_from_riga](/dbzero/pagamenti/funzioni/trgfn_vendite_movimenti_sync_contabile_from_riga).
-Chi ne passa uno diverso da quello della riga viene rifiutato.
+Chi ne passa uno diverso da quello della riga viene rifiutato. Il guard di scope, che giudica
+la fattura, gira dopo il mirror (`z10`), così giudica la fattura che il mirror ha scritto.
 
 Un movimento con `scadenza_id` vuoto è un incasso «sulla fattura, senza rata»: le funzioni dei
 saldi lo imputano alle rate del documento in ordine di scadenza.

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,6 +12,8 @@
 > Approfondimento funzioni:
 >
 > * [pagamenti.fn_posta_contabile](/dbzero/pagamenti/funzioni/fn_posta_contabile) — il posting, che scrive il movimento nominando la riga
+> * [pagamenti.fn_posta_riga_tardiva](/dbzero/pagamenti/funzioni/fn_posta_riga_tardiva) — la registrazione tardiva, che fa lo stesso per una riga
+> * [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope) — il guard di scope del movimento, che gira dopo questo
 
 ---
 
@@ -37,6 +39,12 @@ movimento non li decide, li riceve.
 
 ⚠️ La rata segue la stessa regola degli altri tre: se la riga non ha rata, anche il movimento
 resta senza, e un chiamante che ne passa una è rifiutato.
+
+⚠️ **Chi legge quei riferimenti gira dopo.** Il guard di scope del movimento
+(`trg_vendite_movimenti_z10_guard_emittente_scope_ins_upd`) giudica la fattura che questo
+trigger scrive: per questo è montato in `z10`, dopo tutti gli `a10`. Se girasse prima, su un
+movimento scritto senza fattura la vedrebbe vuota e lascerebbe passare: sotto la row security
+non si vedrebbe, dentro una funzione `SECURITY DEFINER` sì.
 
 ---
 

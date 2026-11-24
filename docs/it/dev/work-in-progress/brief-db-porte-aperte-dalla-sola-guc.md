@@ -2,7 +2,7 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-25**
 >
-> **Riparte: il team BE**, col 6b-quinquies del giro 10 (§10.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col passo 3n di R-DB-I3 (§4.8: ✅ scritta, applicata da Tid e verde il 2026-11-24) e col 3k-bis
+> **Riparte: il team BE**, col 6c-quinquies del giro 9 (§11.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col 6b-quinquies del giro 10 (§10.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col passo 3n di R-DB-I3 (§4.8: ✅ scritta, applicata da Tid e verde il 2026-11-24) e col 3k-bis
 > di R-DB-K3, e col 6a-quinquies del giro 16 (§9.5). **Il team DB**, al via di Tid, col giro 10 (il giro 16 è applicato e verde, 2026-11-24) (la risposta 3d è letta, §4.5-bis) e con le due richieste nuove del BE da §4.7, R-DB-K3 (la descrizione di `E_SCOPE_SENZA_UTENTE`, passo 3k: ✅ scritta e applicata il 2026-11-24, ora la rigenerazione del BE, 3k-bis) e R-DB-K4 (i due changeSet del
 > SUPER_ADMIN di sviluppo, passo 3l). Al via di Tid: il verbo di primo impianto (D-K, R-DB-K1, passo 3i) e i giri
 > delle porte del flusso. ✅ Il ritiro di `reset_lotto_draft` è fatto, DB e BE (2026-11-24, §4.8). Il superuser Django è
@@ -56,13 +56,18 @@
 > | 6b-ter | team DB | giro 10: ✅ `20261124-01` … `-06`, le altre due sedi di §11.8, pgTAP nuovo e ventiquattro adeguati, guide e `manual/`, provato sullo scratch (2026-11-25) | §10.5 | — |
 > | 6b-quater | Tid | giro 10: ✅ apply, pgTAP come app verdi, doc auto-generata rigenerata (2026-11-25) | §10.5 | — |
 > | 6b-quinquies | team BE | giro 10: i test che chiamano il verbo da SUPER_ADMIN; il censimento di chi scrive `config.user_emittenti_fiscali` (per il giro 10-bis) | §10.6 | — |
+> | 6c | team DB | giro 9: ✅ analisi, D20-b riletta (2026-11-25) | §11 | — |
+> | 6c-bis | Tid | giro 9: ✅ D-S **a**, il via (2026-11-25) | §11.3 | — |
+> | 6c-ter | team DB | giro 9: ✅ `20261124-07` … `-09`, pgTAP nuovo e quattro adeguati, guida e `manual/`, provato sullo scratch (2026-11-25) | §11.5 | — |
+> | 6c-quater | Tid | giro 9: ✅ apply, pgTAP come app verdi, doc auto-generata rigenerata (2026-11-25) | §11.5 | — |
+> | 6c-quinquies | team BE | giro 9: i test che chiamano il verbo danno `registra_distinta`; la mappatura di `E_SCOPE_EMITTENTE` dal verbo | §11.6 | — |
 >
 > Decisioni aperte di Tid: nessuna. Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
 > (`969ea14566`), dal BE §4.5-§4.7 con D-J (`4271a0dc69`, PR #232), e il 2026-11-24 il lato DB del ritiro di
 > `reset_lotto_draft` con la pulizia della testata (§4.8). Dal BE, il 2026-11-24 (`5fc466c729`): il `None` del perimetro
 > che si rifiuta, il lato BE del ritiro di `reset_lotto_draft`, D-K5, D-K6 e D-I.4, e le richieste R-DB-K3, R-DB-K4 e
 > R-DB-I3. Dal DB, il 2026-11-24 su `dev/db-tid`: R-DB-K3 (§4.7) e R-DB-I3 (§4.8), applicate e verdi; il giro 16
-> (`3045e11677`) e il 2026-11-25 il giro 10 (§10.5), pushati. Da committare: niente.
+> (`3045e11677`) e il 2026-11-25 il giro 10 (§10.5), pushati. Il 2026-11-25 anche il giro 9 (§11.5), pushato. Da committare: niente.
 >
 > **Brief vicini verificati (2026-11-23):**
 > [brief-db-magazzino-tutte-le-scritture-dal-verbo](../work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md)
@@ -171,7 +176,14 @@
     - [x] la doc auto-generata rigenerata (Tid, 2026-11-25)
     - [x] commit e push su `dev/db-tid` (2026-11-25)
     - [ ] il BE: i test che chiamano il verbo da SUPER_ADMIN, e il censimento di chi scrive la tabella (§10.6)
-  - [ ] 9, la registrazione tardiva: da qui si prova il perimetro; prima si rilegge la D20-b di `brief-incassi-riconciliazione-rate-promemoria`
+  - [ ] 9, la registrazione tardiva: da qui si prova il perimetro; prima si rilegge la D20-b di `brief-incassi-riconciliazione-rate-promemoria` (§11)
+    - [x] analisi, D20-b riletta (2026-11-25, §11)
+    - [x] D-S **a** (Tid, 2026-11-25)
+    - [x] changeSet, pgTAP nuovo e quattro adeguati, guida e `manual/`; prova sullo scratch (2026-11-25, §11.5)
+    - [x] apply e pgTAP come app: verdi (Tid, 2026-11-25)
+    - [x] la doc auto-generata rigenerata (Tid, 2026-11-25)
+    - [x] commit e push su `dev/db-tid` (2026-11-25)
+    - [ ] il BE: i test che chiamano il verbo danno `registra_distinta` (§11.6)
   - [ ] 11, la bolla di riconsegna
   - [ ] 8, il fondo fattura: verbo pubblico e primitiva separati; prima si rileggono D10-D11 dello stesso brief. Se viene prima della 1-7, qui nasce `dbops.fn_pgtap_concedi_livello_area` (D-L a) e si ritirano le quattro copie
   - [ ] 1-7, il reset del lotto: quattro verbi d'ingresso, due primitive chiuse
@@ -1850,10 +1862,144 @@ verbo e guard non più orfani. `anagrafiche.fn_provisiona_dati_di_sviluppo` rest
 sviluppo, non un concetto del dominio. Primitiva e builder non hanno ancora la pagina auto-generata: la porta la
 rigenerazione dopo l'apply.
 
+## 11. Il giro 9, la registrazione tardiva — analisi del 2026-11-25
+
+### 11.1 Che cosa c'è oggi (catalogo di dbdev, 2026-11-25)
+
+* **La decisione che il giro rispetta** (D20-b, `work-done/2026/brief-db-validata-e-registrazione-tardiva` §2.2 e
+  §4.1, riletta): la madre abbina e registra una riga `SOSPESA` sotto una distinta registrata, **passando da
+  `ABBINATA`** perché girino tutti i guard dell'abbinamento (transizione, dati, rata col doppio tempo, scope). Alla
+  4ª mossa del guard sulla distinta finale si presenta con la GUC `app.registrazione_tardiva_riga_id` = l'id della
+  riga, e la richiude prima di uscire. La chiama solo il BE (`POST /pagamenti/righe/{id}/registra/`, permesso
+  `registra_distinta`, BE-3). Il giro non cambia **cosa** fa la madre: cambia **come gira**.
+* **Il verbo**, `pagamenti.fn_posta_riga_tardiva`: `INVOKER`, senza guard del permesso, senza `search_path`. Scrive
+  la riga (due `UPDATE`) e il movimento (`INSERT`). Nessuna funzione DB lo chiama.
+* **Il trigger**, `pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale`: la porta è **già sulla riga**
+  (GUC = `NEW.id`, solo nel ramo del cambio di stato verso uno stato postabile), ma senza il proprietario.
+* **Il perimetro, oggi, lo fa la RLS.** Le tre tabelle hanno la policy dell'operatore:
+  * `vendite_contabili`: la distinta del proprio emittente;
+  * `vendite_contabili_righe`: la riga se è propria la distinta **oppure** la fattura;
+  * `vendite_movimenti`: il movimento se è propria la fattura.
+  Il verbo legge la riga **in join con la distinta**: sotto la RLS la regola effettiva è «la distinta è nel
+  perimetro», e fuori risponde `E_RIGA_CONTABILE_NON_TROVATA` (stessa frase di «non esiste», no-leak). La fattura
+  di destinazione la controllano il guard di scope sulla riga (`trgfn_guard_emittente_scope('fattura')`, quando la
+  colonna cambia) e la `WITH CHECK` della policy del movimento.
+* ⚠️ **Il difetto trovato, sulla rete di sotto.** Su `vendite_movimenti` il guard di scope
+  (`trg_vendite_movimenti_a10_guard_emittente_scope_ins_upd`) gira **prima** del mirror che ricava la fattura dalla
+  riga (`trg_vendite_movimenti_a10_sync_contabile_from_riga_ins_upd`: `guard` < `sync` nell'ordine dei nomi). I due
+  scrittori del movimento (`fn_posta_contabile`, la tardiva) non passano la fattura: il guard la vede vuota e lascia
+  passare. Sotto la RLS non si vedeva (la `WITH CHECK` della policy gira sulla riga finale); dentro una DEFINER la
+  RLS non c'è, e il guard è muto. È la regola «chi legge una colonna gira dopo chi la risolve» (linee guida trigger).
+  Oggi nessuna DEFINER scrive movimenti: la tardiva sarebbe la prima.
+
+### 11.2 Che cosa si cambia
+
+1. **Il verbo diventa `SECURITY DEFINER`** (`search_path` `pg_catalog, public, pg_temp`), con in prima riga
+   `script.fn_utente_di_sessione` e `script.fn_guard_azione(v_utente, 'registra_distinta')`: la stessa azione
+   dell'endpoint (§4.5), quindi nessun rifiuto nuovo per chi arriva dal backend. Firma e `RETURNS TABLE` ri-ancorate
+   con `%TYPE` (la doc le mostra sciolte), identiche al vivo.
+2. **Il perimetro, una volta all'ingresso, sull'oggetto padre.** Dopo la lettura della riga: la distinta deve essere
+   nel perimetro dell'utente (`script.fn_check_user_emittente_scope` sull'emittente di
+   `fn_resolve_emittente_fiscale_id('contabile', …)`), altrimenti `E_RIGA_CONTABILE_NON_TROVATA`, come oggi. È la
+   regola che la RLS faceva valere, non una nuova. E la **fattura di destinazione** deve esserlo
+   (`E_SCOPE_EMITTENTE`, il codice del guard di scope): il guard sulla riga tace se la riga ha già quella fattura, e
+   quello del movimento oggi è muto (sopra). Nessun filtro ricopiato nelle query: le righe figlie seguono la riga.
+3. **La GUC sulla riga** resta com'è nel valore; si spegne all'ingresso e si svuota anche in errore (oggi solo
+   all'uscita buona). Il trigger chiede in più il proprietario (`fn_is_proprietario_tabella`): dentro il verbo sì,
+   per l'app mai.
+4. **La rete del movimento** (D-S): il guard di scope gira dopo il mirror.
+5. **I pgTAP**: uno nuovo, come app, coi controesempi del piano: la GUC accesa dall'app con l'id giusto e l'`UPDATE`
+   diretto (si ferma); senza `registra_distinta` (`E_PERMESSO_NEGATO`, niente scritto); **due emittenti**: la riga
+   di una distinta dell'altro (`E_RIGA_CONTABILE_NON_TROVATA`), una fattura dell'altro su una riga propria
+   (`E_SCOPE_EMITTENTE`), e il movimento non nasce; col permesso registra e la GUC dopo è vuota. Ai tre pgTAP che
+   chiamano il verbo (`test-posta-riga-tardiva-v1`, `test-righe-distinta-annullata-congelate-v1`,
+   `test-fn-posta-contabile`) `dbops.fn_pgtap_concedi_azione(…, 'registra_distinta')`.
+6. **Le guide**: `gestione-dei-pagamenti` «Chi resta indietro» (il permesso lo chiede anche il DB; il perimetro);
+   `architettura-permessi-e-autorizzazioni` §7.4 (il contabile esce dalle porte aperte solo col giro 8: qui solo la
+   tardiva). Il mirror del movimento è orfano: dettaglio interno, nel «Vedi anche» della guida dei pagamenti se D-S
+   lo tocca.
+7. **La richiesta al BE**: i test che chiamano il verbo con un operatore senza `registra_distinta` (Parte C, §4.5).
+
+### 11.3 Una scelta per Tid
+
+* **D-S, l'ordine dei trigger sul movimento.** **a** nello stesso giro: il guard di scope di `vendite_movimenti` si
+  rimonta in `z10` (dopo il mirror), per funzione e con tutti i nomi storici (linee guida trigger, «Un trigger si
+  rimonta per funzione»), col pgTAP che fissa l'ordine e un movimento costruito con la fattura di un altro emittente
+  dentro una DEFINER · **b** il difetto resta dichiarato, e il verbo controlla la fattura all'ingresso (lo fa
+  comunque, punto 2). ⭐ **a**: la rete di §4.3 («sotto resta la rete che c'è») è la premessa dei giri 9, 8 e 1-7, e
+  per il movimento oggi non c'è. Gli scrittori sono due e INVOKER, e nessuna DEFINER senza utente scrive movimenti:
+  con l'ordine giusto nessun percorso di oggi cambia esito (catalogo 2026-11-25). ✅ **Decisa da Tid il 2026-11-25: a.**
+
+### 11.4 Le guide (`guide_coinvolte.py --oggetti` sui sei oggetti, 2026-11-25)
+
+* `gestione-dei-pagamenti` «Chi resta indietro» e «Validare, e poi registrare»: **indietro** dopo il giro (dice
+  «compare solo a chi ha `registra_distinta`», cioè l'endpoint; non dice che lo chiede il DB, né il perimetro). Si
+  aggiorna nello stesso giro.
+* `architettura-permessi-e-autorizzazioni` §7.2 (il guard di scope) e §7.4: **coerente**; §7.4 dice già che il
+  contabile apre ancora con la sola GUC, e resta vero fino al giro 8.
+* `processi-pgagent-funzionali`: descrive il guard di scope per i lavori del proprietario, **coerente**.
+* Orfano: `pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga`, il mirror: è un dettaglio interno; con D-S
+  **a** entra nel «Vedi anche» della guida dei pagamenti.
+
+**Garanzie ritirate.** Nessuna. Il verbo smette di dipendere dalla RLS per il perimetro, e lo rimette all'ingresso
+con la stessa risposta; il permesso è quello dell'endpoint. Con D-S **a** il guard del movimento comincia a
+rifiutare una fattura fuori perimetro: è la garanzia che dichiarava di dare.
+
+### 11.5 Il giro scritto — 2026-11-25
+
+| File | Che cosa |
+| --- | --- |
+| `20_code/pagamenti/20261124-07-update-trgfn-righe-guard-distinta-finale-porta-proprietario` | il guard: la porta della quarta mossa chiede in più `fn_is_proprietario_tabella`; le altre mosse invariate; `COMMENT` riscritto al presente (§5d). Corpo dal catalogo (ultimo `20261103-07`) |
+| `20_code/pagamenti/20261124-08-update-fn-posta-riga-tardiva-definer-guard-perimetro` | il verbo: `SECURITY DEFINER`, `search_path`; `fn_guard_azione(…, 'registra_distinta')` in prima riga; il perimetro all'ingresso (passo 2-bis: la distinta, `E_RIGA_CONTABILE_NON_TROVATA`; la fattura, `E_SCOPE_EMITTENTE`); la GUC spenta all'ingresso e svuotata anche in errore; firma e `RETURNS TABLE` ancorate, identiche al vivo; `COMMENT` al presente. Corpo dal catalogo (ultimo `20260918-40`) |
+| `20_code/pagamenti/20261124-09-rimonta-guard-scope-movimenti-dopo-il-mirror` | D-S a: il guard di scope di `vendite_movimenti` rimontato come `trg_vendite_movimenti_z10_guard_emittente_scope_ins_upd`, tolti con `IF EXISTS` il nome storico e il nuovo; `COMMENT ON TRIGGER`. Non è un trigger di `ci_apply` (guardrail §11.5 verde) |
+| `db/pgtap/pagamenti/test-porta-registrazione-tardiva-v1.sql` | nuovo, come app, plan 11: la forma, l'ordine dei guard del movimento (per funzione), senza `registra_distinta` (rifiuta, non scrive), la GUC sull'id giusto e l'`UPDATE` diretto (rifiutato), due emittenti (la riga di una distinta di B, la fattura di B su una riga di A: niente scritto), col permesso registra, GUC vuota |
+| quattro pgTAP | `test-posta-riga-tardiva-v1` e `test-righe-distinta-annullata-congelate-v1`: `fn_pgtap_concedi_azione(…, 'registra_distinta')`; `script/test-permessi-funzioni-risoluzione` (24) e `script/test-permessi-trigger-guard-emittente` (5): il trigger del movimento col nome nuovo |
+| guide | `gestione-dei-pagamenti` «Chi resta indietro» (il permesso chiesto anche dal DB, il perimetro, la porta), «Vedi anche» (il mirror e il guard di scope del movimento) |
+| `manual/` | `fn_posta_riga_tardiva` (il permesso e il perimetro, la porta, i codici, i test), `trgfn_vendite_contabili_righe_guard_distinta_finale` (la porta col proprietario), `trgfn_vendite_movimenti_sync_contabile_from_riga` e `vendite_movimenti` (chi legge i riferimenti gira dopo) |
+
+**La prova sullo scratch** (`prova_changeset.py`, owner, `ROLLBACK`; 2026-11-25). I tre changeSet insieme: estratto
+eseguito per intero, catalogo identico dopo. Attributi dopo l'estratto (pgTAP di prova, 5/5): una firma sola,
+argomenti, default e risultato identici al vivo; il verbo DEFINER col `search_path`, ACL invariata; il guard INVOKER
+con un montaggio. Il pgTAP nuovo: 10/11, rosso il 6 per costruzione (da owner il proprietario apre la porta: si
+vede solo come app). I 32 pgTAP di `pagamenti` e quelli che nominano movimento, verbo o porta: stesso esito senza e
+con, salvo i quattro adeguati, verdi con. Presidi trasversali (`riferimenti-morti`, `security-definer-search-path`,
+`comment-al-presente`, catalogo dei messaggi, `fn-utente-di-sessione`): invariati. Guardrail, preambolo e
+pre-commit: verdi.
+
+⚠️ **Il caso che il pgTAP non costruisce**: un movimento su una fattura fuori perimetro scritto da una DEFINER. L'app
+non crea funzioni del proprietario, e il verbo lo ferma prima (8). Il guard del movimento lo presidia l'ordine (2).
+
+✅ **Applicato da Tid il 2026-11-25**: `test-porta-registrazione-tardiva-v1` e i quattro adeguati verdi come app, 6
+compreso; doc auto-generata rigenerata. ⚠️ La prima corsa come app ha trovato un difetto **del test**, non del giro: il
+9 leggeva la riga di B nel contesto di A, e la RLS la nascondeva (`NULL` sull'intera stringa; da owner non si vede).
+Ora la riga di B si legge nel contesto del suo operatore.
+
+### 11.6 La richiesta al team BE/FE (dopo l'apply)
+
+Chi cambia per primo: il DB. Nessuna firma cambia, nessuna GUC da togliere (il BE non la accende, §4.2).
+
+* **I test che chiamano `pagamenti.fn_posta_riga_tardiva`** con un operatore senza `registra_distinta` ricevono
+  `E_PERMESSO_NEGATO`: danno l'azione con `dbops.fn_pgtap_concedi_azione(<auth_user_id>, 'registra_distinta')`. La
+  ricerca è del nome, non un elenco chiuso (§4.5, Parte C).
+* **Il perimetro**: una riga di una distinta fuori perimetro risponde `E_RIGA_CONTABILE_NON_TROVATA` come prima (il
+  404 non cambia); una fattura fuori perimetro risponde ora `E_SCOPE_EMITTENTE` dal verbo, dove prima arrivava dal
+  guard della riga o dalla policy del movimento. Se un test o la mappatura degli errori dell'endpoint aspettava
+  l'errore della policy, va allineato.
+* **Il manuale BE** dell'endpoint `POST /pagamenti/righe/{id}/registra/`, se racconta chi può registrare.
+
+**Guide verificate per il giro** (`guide_coinvolte.py --oggetti` sui quattro oggetti, 2026-11-25):
+`gestione-dei-pagamenti` — **indietro**, aggiornata nello stesso giro; il mirror non più orfano.
+`architettura-permessi-e-autorizzazioni` e `processi-pgagent-funzionali` — **coerenti**.
+
 ## Registro
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-25 | DB | Commit e push su `dev/db-tid`: giro 9 (§11.5) |
+| 2026-11-25 | Tid | Giro 9 applicato, pgTAP come app verdi dopo la correzione del test 9 (la riga di B letta nel contesto di B), doc auto-generata rigenerata (§11.5); al BE il 6c-quinquies |
+| 2026-11-25 | DB | Giro 9 scritto e provato (§11.5): `20261124-07` (la porta col proprietario), `-08` (il verbo DEFINER col guard di `registra_distinta` e il perimetro all'ingresso), `-09` (D-S a, il guard di scope del movimento dopo il mirror); pgTAP nuovo, quattro adeguati, guida `gestione-dei-pagamenti` e `manual/`; richiesta al BE (§11.6) |
+| 2026-11-25 | Tid | **D-S a** (§11.3) e il via al giro 9 |
+| 2026-11-25 | DB | Giro 9, analisi (§11): D20-b riletta; verbo DEFINER col guard di `registra_distinta`, il perimetro della distinta all'ingresso (oggi lo dava la RLS), la fattura controllata; trovato il guard di scope del movimento che gira prima del mirror (muto dentro una DEFINER); D-S a Tid |
 | 2026-11-25 | DB | Commit e push su `dev/db-tid`: giro 10 (§10.5), col giro 16 già committato |
 | 2026-11-25 | Tid | Giro 10 applicato, pgTAP come app verdi, doc auto-generata rigenerata (§10.5); al BE il 6b-quinquies |
 | 2026-11-25 | DB | Giro 10 scritto e provato (§10.5): `20261124-01` (la primitiva, GUC sull'`auth_user_id`), `-02` (il verbo DEFINER col guard del SUPER_ADMIN), `-03` (il provisioning dalla primitiva), `-04` (la porta: GUC sulla riga e proprietario), `-05` (il builder dei pgTAP), `-06` e le altre due sedi (la primitiva riservata); pgTAP nuovo, ventiquattro adeguati, guide e `manual/`; richiesta al BE (§10.6); giro 10-bis nel piano |
