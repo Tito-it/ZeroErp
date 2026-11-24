@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL ROLLBACK DI UNO STEP PUO' PARTIRE DA SOLO? vendite.fn_check_rollback_step_automatico
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §4.8 (R-DB-I3; D-I.3 a di Tid e la
+#   forma «decisione intera», 2026-11-24).
+#
+#   Il runner del backend, al rilancio di un lotto in errore, chiedeva due cose per
+#   conto suo: se la corsia accende il rollback automatico (dal meta della
+#   pipeline) e, fino al 2026-11-24, se il rollback era l'unico task distruttivo
+#   del seed (per nome). La regola ora sta qui, una volta: il rollback parte da
+#   solo se la corsia lo accende (auto_step_rollback, 20261123-96), se ha almeno un
+#   task, e se ogni suo task e' registrato, attivo, nel dominio FATTURAZIONE attivo
+#   e NON distruttivo (dbops.pipeline_task_registry.distruttivo, 20261123-95).
+#   ⭐ Fail-closed: un task che il registro non conosce, o spento, chiude il rollback
+#   automatico come uno distruttivo. «Non so che cosa fa» non e' «innocuo».
+#
+#   Lo step si risolve con vendite.fn_resolve_fatturazione_pipeline_step
+#   (p_rollback => true): stessi argomenti, stessa precedenza, stessa riga da cui il
+#   runner legge la lista del rollback. I suoi guard sui parametri valgono anche
+#   qui (E_PARAMETRO_INVALIDO). Step che non si risolve: false.
+#
+#   LANGUAGE sql BEGIN ATOMIC (linee-guida-sql §5c): da solo nel suo sql:, COMMENT
+#   e GRANT nel secondo. Il codice 'FATTURAZIONE' e' la chiave naturale del dominio
+#   di queste pipeline (dbops.domini_task.codice, §6b).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261123-97-create-fn-check-rollback-step-automatico-mctit.yaml
+
+  - changeSet:
+      id: 20261123-97-create-fn-check-rollback-step-automatico
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_check_rollback_step_automatico: il rollback di uno step parte da solo solo se la
+        corsia lo accende e nessun suo task e' distruttivo o sconosciuto.
+        Brief: brief-db-porte-aperte-dalla-sola-guc (R-DB-I3).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_check_rollback_step_automatico(
+                  p_tipo_lotto           vendite.fatturazione_pipeline.tipo_lotto%TYPE,
+                  p_stato_doc_fiscale_id vendite.fatturazione_pipeline.stato_doc_fiscale_id%TYPE,
+                  p_utility_id           vendite.fatturazione_pipeline.utility_id%TYPE DEFAULT NULL,
+                  p_tipo_doc_fiscale_id  vendite.fatturazione_pipeline.tipo_doc_fiscale_id%TYPE DEFAULT NULL)
+               -- boolean: e' la decisione, non il riflesso di una colonna.
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT coalesce((
+                      SELECT fp.auto_step_rollback
+                             AND jsonb_array_length(s.processi) > 0
+                             AND NOT EXISTS (
+                                 SELECT 1
+                                   FROM jsonb_array_elements(s.processi) AS t(elem)
+                                  WHERE NOT EXISTS (
+                                        SELECT 1
+                                          FROM dbops.pipeline_task_registry r
+                                          JOIN dbops.domini_task d ON d.id = r.dominio_id
+                                         WHERE d.codice = 'FATTURAZIONE'
+                                           AND d.attivo
+                                           AND r.task_code = t.elem ->> 'task'
+                                           AND r.attivo
+                                           AND NOT r.distruttivo))
+                        FROM vendite.fn_resolve_fatturazione_pipeline_step(
+                                 p_tipo_lotto, p_stato_doc_fiscale_id, p_utility_id,
+                                 p_tipo_doc_fiscale_id, true) AS s
+                        JOIN vendite.fatturazione_pipeline fp ON fp.id = s.pipeline_id),
+                      false);
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_check_rollback_step_automatico(vendite.fatturazione_pipeline.tipo_lotto%TYPE, vendite.fatturazione_pipeline.stato_doc_fiscale_id%TYPE, vendite.fatturazione_pipeline.utility_id%TYPE, vendite.fatturazione_pipeline.tipo_doc_fiscale_id%TYPE) IS
+                'Il rollback dello step può partire da solo, al rilancio di un lotto in errore? Lo step si risolve come in vendite.fn_resolve_fatturazione_pipeline_step (stessi argomenti, stessa precedenza, p_rollback true). True solo se la sua pipeline ha auto_step_rollback acceso, il rollback ha almeno un task e ogni task è registrato e attivo in dbops.pipeline_task_registry, nel dominio FATTURAZIONE attivo, e non è distruttivo. Un task distruttivo, spento o sconosciuto dà false: il rollback resta eseguibile solo su richiesta esplicita. Step che non si risolve: false. Parametri invalidi: E_PARAMETRO_INVALIDO, dalla risoluzione dello step. Lo chiama il runner della pipeline prima del rollback automatico. STABLE, SECURITY INVOKER.';
+              GRANT EXECUTE ON FUNCTION vendite.fn_check_rollback_step_automatico(vendite.fatturazione_pipeline.tipo_lotto%TYPE, vendite.fatturazione_pipeline.stato_doc_fiscale_id%TYPE, vendite.fatturazione_pipeline.utility_id%TYPE, vendite.fatturazione_pipeline.tipo_doc_fiscale_id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_check_rollback_step_automatico(vendite.fatturazione_pipeline.tipo_lotto%TYPE, vendite.fatturazione_pipeline.stato_doc_fiscale_id%TYPE, vendite.fatturazione_pipeline.utility_id%TYPE, vendite.fatturazione_pipeline.tipo_doc_fiscale_id%TYPE);

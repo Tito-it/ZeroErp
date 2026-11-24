@@ -10,6 +10,8 @@
 > * [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili) — il lavoro fatturabile, riga per riga
 > * [vendite.fatture](/dbzero/vendite/tabelle/fatture) · [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe) · [vendite.fatture_scadenze](/dbzero/vendite/tabelle/fatture_scadenze) — il documento
 > * [vendite.fatturazione_pipeline](/dbzero/vendite/tabelle/fatturazione_pipeline) — gli step e i task della pipeline a lotti
+> * [dbops.pipeline_task_registry](/dbzero/dbops/tabelle/pipeline_task_registry) — i task ammessi, e quali sono distruttivi
+> * [vendite.fn_check_rollback_step_automatico](/dbzero/vendite/funzioni/fn_check_rollback_step_automatico) — se il rollback di uno step può partire da solo
 > * [vendite.event_log](/dbzero/vendite/tabelle/event_log) — la timeline unificata degli eventi
 >
 > **Vedi anche** — funzioni e trigger DB:
@@ -539,10 +541,24 @@ i task di rollback al posto di quelli forward. Il `PipelineStepExecutor` chiama
 
 **Quando scatta il rollback:**
 
-Il rollback automatico gira solo se la pipeline ha `meta.auto_step_rollback = true`,
-su un rerun dopo un errore. Non scatta mai spontaneamente su errore: un errore lascia
-il lotto in stato `ERRORE` e serve un rerun esplicito. Le uscite dell'operatore non
-passano dal rollback della pipeline: sono verbi chiamati dall'endpoint (sotto).
+Il rollback automatico gira solo su un rerun dopo un errore, e solo se la funzione
+`vendite.fn_check_rollback_step_automatico` lo ammette per quello step. Lo ammette quando
+valgono tre cose:
+
+* la corsia lo accende: la colonna `auto_step_rollback` della pipeline è vera. È una
+  proprietà della corsia, non della singola richiesta di run, e la chiave omonima nel
+  `meta` è rifiutata;
+* il rollback ha almeno un task;
+* ogni suo task è registrato e attivo in `dbops.pipeline_task_registry` e **non è
+  distruttivo**. Un task distruttivo (`distruttivo`, sul registro: cancella o annulla dati
+  che un rilancio non ricostruisce) non parte mai da solo. Un task spento o che il registro
+  non conosce chiude il rollback automatico allo stesso modo: «non so che cosa fa» non vuol
+  dire «innocuo».
+
+Altrimenti il rollback resta eseguibile solo su richiesta esplicita. Non scatta mai
+spontaneamente su errore: un errore lascia il lotto in stato `ERRORE` e serve un rerun
+esplicito. Le uscite dell'operatore non passano dal rollback della pipeline: sono verbi
+chiamati dall'endpoint (sotto).
 
 **Il seed di oggi (corsia MASSIVO):**
 

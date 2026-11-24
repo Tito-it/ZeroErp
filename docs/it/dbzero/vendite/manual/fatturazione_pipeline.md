@@ -13,7 +13,7 @@
 > • [`vendite.fn_select_attivita_fatturabili`](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili)  
 >
 ### 🎯 Scopo Principale
-(latest review 28-01-2026)  
+(latest review 24-11-2026)  
 La tabella **`vendite.fatturazione_pipeline`** descrive la **pipeline configurabile**
 dei processi di fatturazione.  
 Ogni riga rappresenta uno **step** logico (coerente con gli stati lotto definiti
@@ -36,6 +36,12 @@ evoluzioni (nuovi step o processi senza refactor massivo).
 * `processi` contiene una lista di “task” tecnici da eseguire (payload jsonb).
 * `rollback` contiene le azioni di pulizia per tornare allo stato precedente.
 * Solo gli step con `attivo=true` vengono eseguiti dalla pipeline.
+* `auto_step_rollback` accende il rollback automatico della corsia: al rilancio di un lotto in
+  errore il runner esegue da solo il `rollback` dello step, se
+  `vendite.fn_check_rollback_step_automatico` lo ammette (rollback non vuoto, nessun task
+  distruttivo, spento o sconosciuto). Default false. La chiave `auto_step_rollback` nel `meta` è
+  rifiutata (`chk_fatturazione_pipeline_meta_senza_auto_step_rollback`): la sede è la colonna.
+  Test: `db/pgtap/vendite/test-rollback-step-automatico-v1.sql`.
 
 ---
 

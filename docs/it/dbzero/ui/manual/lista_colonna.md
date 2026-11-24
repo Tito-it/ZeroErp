@@ -120,8 +120,10 @@ che il vincolo rifiuta.
 `vuoto_ordinato_come_massimo` dice dove stanno le righe con la cella vuota quando la lista ordina per
 la colonna. `false`, il default, è la regola generale: il vuoto conta come il valore più piccolo, il
 «non ancora» (il numero di una bozza, una data di evasione che non è arrivata). `true` lo dichiara la
-colonna il cui vuoto vuol dire «senza fine», come una fine validità o una scadenza che non c'è: il
-vuoto conta come il più grande, in qualunque verso. Il backend legge la dichiarazione dal catalogo e
+colonna il cui vuoto sta oltre ogni valore: il vuoto conta come il più grande, in qualunque verso.
+È il «senza fine» di una fine validità o di una scadenza che non c'è, e anche il vuoto di un conto
+alla scadenza che non riguarda la riga: `giorni_alla_scadenza` dei listini è vuota quando la versione
+ha un successore o scade oltre il preavviso, cioè più lontano di ogni valore mostrato. Il backend legge la dichiarazione dal catalogo e
 la applica all'ordinamento della lista: non vale per i filtri.
 
 * Ogni colonna accesa su `valido_al` la dichiara: è la convenzione di tutto il database, dove

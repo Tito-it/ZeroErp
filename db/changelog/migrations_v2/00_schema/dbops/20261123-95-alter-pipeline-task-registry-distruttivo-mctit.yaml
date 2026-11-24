@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops: il task che cancella dati lo dichiara il registro. Brief:
+#   brief-db-porte-aperte-dalla-sola-guc §4.8 (R-DB-I3; D-I.3 a di Tid, 2026-11-24).
+#
+# Che cosa cambia:
+#   - dbops.pipeline_task_registry.distruttivo: boolean NOT NULL DEFAULT false.
+#     true = il task cancella o annulla dati che un rilancio non ricostruisce, e non
+#     parte mai da solo: in un `rollback` di pipeline gira solo su richiesta
+#     esplicita. Lo legge vendite.fn_check_rollback_step_automatico (20261123-97).
+#
+# ℹ️ PERCHE' SUL TASK E NON SULLA POLICY (vendite.fatturazione_pipeline_task_policy):
+#   che un task cancelli dati e' la sua natura, la stessa in ogni pipeline che lo
+#   nomina. La policy dice come il task gira in UNA corsia (annullabile,
+#   resume_mode): un task distruttivo in una corsia e innocuo in un'altra non esiste.
+#
+# ℹ️ PERCHE' QUI, IN 00_schema (linee-guida-sql §11.14): la colonna nasce prima del
+#   mirror del CSV (80_data/20260208-07), che la scrive. Chi scrive la tabella oggi:
+#   quel mirror e le fixture dei pgTAP, che non la nominano e prendono il default.
+#   Nessuna funzione del database scrive il registro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261123-95-alter-pipeline-task-registry-distruttivo-mctit.yaml
+
+  - changeSet:
+      id: 20261123-95-alter-pipeline-task-registry-distruttivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.pipeline_task_registry.distruttivo: il task che cancella dati non parte mai da solo.
+        Brief: brief-db-porte-aperte-dalla-sola-guc (R-DB-I3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid = to_regclass('dbops.pipeline_task_registry')
+                 AND attname = 'distruttivo'
+                 AND NOT attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.pipeline_task_registry
+                  ADD COLUMN distruttivo boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN dbops.pipeline_task_registry.distruttivo IS
+                  'Il task cancella o annulla dati che un rilancio non ricostruisce. Un task distruttivo non parte mai da solo: nel rollback di uno step gira solo su richiesta esplicita, e vendite.fn_check_rollback_step_automatico risponde false per ogni rollback che ne contiene uno. È la natura del task, la stessa in ogni pipeline che lo nomina; come il task gira in una corsia lo dice vendite.fatturazione_pipeline_task_policy.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.pipeline_task_registry DROP COLUMN distruttivo;

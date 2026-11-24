@@ -131,9 +131,10 @@ Per ogni lista, l'insieme delle **colonne disponibili**. Ogni colonna ha:
   colonna non la concede a un profilo (§2.4)
 * **dove vanno le righe vuote** quando la lista ordina per quella colonna. Di regola il
   vuoto conta come il valore più piccolo: è il «non ancora», come il numero di una
-  bozza. La colonna lo dichiara quando il suo vuoto vuol dire «senza fine», come una
-  fine validità o una scadenza che non c'è: allora il vuoto conta come il più grande, e
-  un contratto senza scadenza viene dopo tutti quelli che scadono. Ogni colonna su
+  bozza. La colonna lo dichiara quando il suo vuoto sta oltre ogni valore: una fine
+  validità o una scadenza che non c'è, oppure i giorni alla scadenza di un listino che
+  non è in scadenza. Allora il vuoto conta come il più grande, e un contratto senza
+  scadenza viene dopo tutti quelli che scadono. Ogni colonna su
   `valido_al`, la fine validità di tutto il sistema, lo dichiara. Vale per
   l'ordinamento, non per i filtri
 

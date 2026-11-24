@@ -2,8 +2,8 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-24**
 >
-> **Riparte: il team DB**, con la lettura della risposta 3d (§4.5, passo 3e), con la richiesta R-DB-I3 sul rollback
-> distruttivo (§4.8, passo 3m, D-I.3 **a**) e con le due richieste nuove del BE da §4.7, R-DB-K3 (la descrizione di `E_SCOPE_SENZA_UTENTE`, passo 3k) e R-DB-K4 (i due changeSet del
+> **Riparte: il team BE**, col passo 3n di R-DB-I3 (§4.8: ✅ scritta, applicata da Tid e verde il 2026-11-24) e col 3k-bis
+> di R-DB-K3. **Il team DB**, con la lettura della risposta 3d (§4.5, passo 3e) e con le due richieste nuove del BE da §4.7, R-DB-K3 (la descrizione di `E_SCOPE_SENZA_UTENTE`, passo 3k: ✅ scritta e applicata il 2026-11-24, ora la rigenerazione del BE, 3k-bis) e R-DB-K4 (i due changeSet del
 > SUPER_ADMIN di sviluppo, passo 3l). Al via di Tid: il verbo di primo impianto (D-K, R-DB-K1, passo 3i) e i giri
 > delle porte del flusso. ✅ Il ritiro di `reset_lotto_draft` è fatto, DB e BE (2026-11-24, §4.8). Il superuser Django è
 > deciso (D-J **a**) e fatto nel BE (§4.7); il `None` del perimetro si rifiuta (§4.7, BE, 2026-11-24).
@@ -27,12 +27,14 @@
 > | 3f | Tid | ✅ D-I: il task `reset_lotto_draft` si ritira · ✅ D-J: il superuser Django non concede più niente, strada **a** (2026-11-24) | §4.6 | — |
 > | 3h | team BE | D-J: ✅ bypass tolti, test adeguati, suite verde · ✅ rivisto con `/verifica` (2026-11-24) | §4.7 | — |
 > | 3i | team DB | D-K: il verbo `fn_crea_primo_amministratore` e la sua prova (R-DB-K1); la porta di `fn_crea_operatore_v2` nel piano dei giri (R-DB-K2) | §4.7 | — |
-> | 3k | team DB | R-DB-K3: la descrizione di `E_SCOPE_SENZA_UTENTE` allargata alle letture | §4.7 | — |
+> | 3k | team DB | R-DB-K3: la descrizione di `E_SCOPE_SENZA_UTENTE` allargata alle letture · ✅ scritta, ✅ applicata da Tid, `test-catalogo-messaggi-errore-completo` verde (2026-11-24) | §4.7 | — |
+> | 3k-bis | team BE | R-DB-K3: dopo l'apply, `manage.py genera_error_policies` (le `note` di `E_SCOPE_SENZA_UTENTE` e `E_UI_CHIAMATA_NON_VALIDA` sono cambiate: `test_il_file_generato_e_allineato_al_catalogo` è rosso fino alla rigenerazione) | §4.7 | 3k |
 > | 3l | team DB | R-DB-K4: i due changeSet del SUPER_ADMIN di sviluppo (`20260309-01`, `20260419-95`): ritirarli o farli passare dal verbo di R-DB-K1 | §4.7 | 3i |
 > | 3j | team BE | D-K: il comando `crea_primo_amministratore`, il playbook e `configurazione-django.md` senza `createsuperuser` | §4.7 | 3i |
 > | 3g | team DB, poi team BE | il ritiro del task `reset_lotto_draft`: ✅ analisi, ✅ D-I.1 **a** e D-I.2 **a** (Tid), ✅ scritto, applicato, pgTAP 9/9, pushato · ✅ il BE: whitelist, handler, esclusione del runner, test e manuali (2026-11-24) | §4.6, §4.8 | — |
-> | 3m | team DB | R-DB-I3 (D-I.3 **a**, Tid): il flag «distruttivo, mai in auto-run» sul task o sulla policy, la funzione che lo legge per lo step, il pgTAP | §4.8 | — |
-> | 3n | team BE | R-DB-I3: il runner non esegue in auto-run un `rollback` con un task distruttivo, e il suo test | §4.8 | 3m |
+> | 3m | team DB | R-DB-I3 (D-I.3 **a**, Tid): ✅ `distruttivo` sul registro, `auto_step_rollback` colonna della pipeline col `CHECK` sul `meta`, `vendite.fn_check_rollback_step_automatico`, pgTAP 14/14 sullo scratch, guide (2026-11-24) | §4.8 | — |
+> | 3m-bis | Tid | R-DB-I3: ✅ apply (`20261123-95`, `-96`, `-97` e i due mirror), pgTAP `test-rollback-step-automatico-v1` come app verde, doc auto-generata rigenerata (2026-11-24) | §4.8 | — |
+> | 3n | team BE | R-DB-I3: il runner chiede `vendite.fn_check_rollback_step_automatico` al posto di `is_auto_step_rollback_attivo`, i test che scrivono la chiave nel `meta` passano alla colonna, manuale `api_pipeline_task` (⚠️ dall'apply `test_auto_step_rollback_dalla_pipeline_db` è rosso: atteso) | §4.8 | — |
 > | 3o | Tid, poi team BE | dalla `/verifica` del 2026-11-24: ✅ D-K5 **a** (il resolver delega al BB), ✅ D-K6 **a** (il motore documentale riceve l'utente tecnico), ✅ D-I.4 **a** (`auto_step_rollback` dalla pipeline) · ✅ il BE, coi test (2026-11-24) | §4.7, §4.8 | — |
 > | 4 | team BE / DB | ✅ Parte B, le viste: «nessuno», dal BE (2026-11-23) · ✅ Parte A, le GUC e gli aprenti: letta dal DB sul ramo del BE (2026-11-23) | §4.2, §5.1 | — |
 > | 4a | Tid | ✅ il giro 1: applicato, pgTAP verdi (2026-11-24) | §6 | — |
@@ -46,9 +48,9 @@
 >
 > Decisioni aperte di Tid: nessuna. Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
 > (`969ea14566`), dal BE §4.5-§4.7 con D-J (`4271a0dc69`, PR #232), e il 2026-11-24 il lato DB del ritiro di
-> `reset_lotto_draft` con la pulizia della testata (§4.8). Da committare, sul ramo del BE: il `None` del perimetro
-> che si rifiuta, la sua `/verifica` e le richieste R-DB-K3 e R-DB-K4 (§4.7; il solo tool AI è già in `dfa44930b`);
-> il lato BE del ritiro di `reset_lotto_draft` e la richiesta R-DB-I3 (§4.8); D-K5, D-K6 e D-I.4 (§4.7, §4.8).
+> `reset_lotto_draft` con la pulizia della testata (§4.8). Dal BE, il 2026-11-24 (`5fc466c729`): il `None` del perimetro
+> che si rifiuta, il lato BE del ritiro di `reset_lotto_draft`, D-K5, D-K6 e D-I.4, e le richieste R-DB-K3, R-DB-K4 e
+> R-DB-I3. Dal DB, il 2026-11-24 su `dev/db-tid`: R-DB-K3 (§4.7) e R-DB-I3 (§4.8), applicate e verdi. Da committare: niente.
 >
 > **Brief vicini verificati (2026-11-23):**
 > [brief-db-magazzino-tutte-le-scritture-dal-verbo](../work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md)
@@ -157,6 +159,12 @@
   - [x] apply su dbdev e pgTAP dell'invariante 9/9 (Tid, 2026-11-24)
   - [x] commit e push su `dev/db-tid` (2026-11-24)
   - [x] il BE: whitelist, handler, esclusione del runner, test e manuali (2026-11-24)
+- [ ] Il rollback distruttivo non parte da solo (R-DB-I3, D-I.3 **a**, §4.8)
+  - [x] scelte di Tid: decisione intera nella funzione, `auto_step_rollback` colonna (2026-11-24)
+  - [x] `20261123-95`, `-96`, `-97`, i due CSV coi mirror, pgTAP, guide: scritto e provato sullo scratch (2026-11-24)
+  - [x] apply su dbdev e pgTAP `test-rollback-step-automatico-v1` come app: verde (Tid, 2026-11-24)
+  - [x] la doc auto-generata rigenerata (Tid, 2026-11-24)
+  - [ ] il BE: il runner sulla funzione, i test, il manuale (passo 3n)
 - [ ] Le guide: ogni porta scritta nella guida del suo dominio, di flusso o di manutenzione
 
 ## 1. Il problema, sul modello
@@ -821,6 +829,34 @@ rovescio (default rimesso su `get_fattura_dettaglio`: rosso). Restano col defaul
 **scrittura** senza chi agisce). Dal 2026-11-24 il BE lo solleva anche per una **lettura** con perimetro senza
 utente: la descrizione del catalogo va allargata ai due casi. Lo stesso significato, non un codice nuovo.
 
+*La risposta del DB (2026-11-24).* Fatta nei due CSV del catalogo, caricati dal mirror `runOnChange` `20260614-08`:
+nessun changeSet nuovo.
+
+* **`codici_errore.csv`, la `note` di `E_SCOPE_SENZA_UTENTE`**: apre col significato comune («il perimetro emittente
+  chiesto senza dire chi agisce: non si apre, si rifiuta») e nomina le due sedi, la scrittura del trigger e la lettura
+  del BE (`fetch_emittenti_scope_ids`, dal 2026-11-24, con la storia del `None` che apriva). Classe invariata, `TECNICO`.
+* **`messaggi_errore.csv`, causa e soluzione**: ognuna dice i due casi («In scrittura… In lettura…»). In lettura la
+  soluzione è passare l'utente della richiesta (`get_scope_user_id`) o l'utente tecnico del worker, e il ⛔ dice che
+  l'assenza non si risolve come «nessuna restrizione».
+* ⚠️ **Il `messaggio` resta quello del trigger** («Scrittura su %s.%s senza un utente in sessione…»). È la frase di chi
+  solleva il codice **dal database**, e l'unico è il trigger, che passa schema e tabella. Il BE solleva con la sua frase,
+  senza segnaposto (`error_messages_fallback.py`, che già dice i due casi), e non mostra la frase del catalogo. Una
+  frase chiusa per tutti e due toglierebbe al trigger la tabella dal messaggio (resterebbe nel contesto) e lo
+  lascerebbe a passare due valori che nessun segnaposto usa: la regola «segnaposto e valori si contano» della guida
+  `Messaggi-di-Errore-e-Generazione-Log` chiederebbe di riscrivere il trigger, montato su 24+ tabelle. Il presidio
+  dell'arità non lo vedrebbe (il test 5 di `test-catalogo-messaggi-errore-completo` conta solo i valori in meno).
+* **Trovato facendo il giro**: la `note` di `E_UI_CHIAMATA_NON_VALIDA` motivava la sua scelta con «non
+  E_SCOPE_SENZA_UTENTE (copre solo la GUC vuota, e parla di scritture)». Dopo R-DB-K3 era falsa. Ora dice che
+  `E_SCOPE_SENZA_UTENTE` è l'assenza di chi agisce sul perimetro emittente, in scrittura o in lettura, mentre lì il
+  guasto è il contesto della lista.
+* **Ricaduta sul BE (passo 3k-bis)**: `error_policies_generated.py` porta la `note` di ogni codice come commento, e
+  `test_error_policies_divergenza_db.test_il_file_generato_e_allineato_al_catalogo` confronta il testo intero. Dopo
+  l'apply è rosso finché il BE non rilancia `manage.py genera_error_policies`. Chi cambia per primo: il DB.
+* ✅ Applicata da Tid il 2026-11-24, `test-catalogo-messaggi-errore-completo` verde.
+* Guide: `architettura-permessi-e-autorizzazioni` (§6.3, già allineata dal BE) **coerente**;
+  `Messaggi-di-Errore-e-Generazione-Log` **coerente** (la regola dei segnaposto vale per il `messaggio`, che non
+  cambia); `manual/trgfn_guard_emittente_scope` descrive il trigger, **coerente**.
+
 **Resta fuori, dichiarato**: `clienti_service._guard_can_create_ba` con `auth_user_id=None` **salta** il gate di
 creazione del billing account («contesto di sistema, test fixture»). È la stessa forma, ma su un gate di scrittura
 e non su un perimetro; la difesa finale è il trigger DB `trgfn_billing_account_guard_admin_globale`. Da decidere
@@ -1137,6 +1173,59 @@ controlla. Un `"auto_step_rolback"` scritto storto spegne il rollback senza erro
 scelta è sua, e la scrive qui: una colonna, un `CHECK` sul tipo, oppure lo stesso flag restituito dalla funzione di
 R-DB-I3. Il BE si adegua nel passo 3n.
 
+**La risposta del DB a R-DB-I3 (2026-11-24).** Le due forme le ha scelte Tid lo stesso giorno: la funzione dà la
+**decisione intera**, e `auto_step_rollback` diventa una **colonna**.
+
+* **La sede del flag: il task**, `dbops.pipeline_task_registry.distruttivo` (`boolean NOT NULL DEFAULT false`,
+  `00_schema/dbops/20261123-95`). Che un task cancelli dati è la sua natura, la stessa in ogni pipeline che lo nomina; la
+  policy dice come il task gira in una corsia (`annullabile`, `resume_mode`), e un task distruttivo in una corsia e innocuo
+  in un'altra non esiste. Il seed nasce tutto `false` (CSV e mirror `20260208-07`).
+* **Il patto della corsia: una colonna**, `vendite.fatturazione_pipeline.auto_step_rollback` (`boolean NOT NULL DEFAULT
+  false`, `00_schema/vendite/20261123-96`). La chiave omonima del `meta`, dove c'è, passa nella colonna (accende solo il
+  booleano JSON `true`, come la leggeva il BE) e lascia il `meta`. Poi `chk_fatturazione_pipeline_meta_senza_auto_step_rollback`
+  la rifiuta: una sede sola, e un nome storto non spegne più niente in silenzio. CSV e mirror `20260128-06` con la colonna,
+  tutta `f`. Nessun changeSet né pgTAP scriveva la chiave: il `CHECK` nasce valido anche da zero (§11.14).
+* **La lettura: `vendite.fn_check_rollback_step_automatico(p_tipo_lotto, p_stato_doc_fiscale_id, p_utility_id,
+  p_tipo_doc_fiscale_id)`** (`20_code/vendite/20261123-97`, `LANGUAGE sql BEGIN ATOMIC`, `STABLE`, `SECURITY INVOKER`,
+  `GRANT` a `zeroerp_app`). Gli argomenti sono quelli di `fn_resolve_fatturazione_pipeline_step`, che risolve lo step
+  (`p_rollback => true`): stessa precedenza e stessa riga da cui il runner legge la lista, e i suoi guard sui parametri
+  (`E_PARAMETRO_INVALIDO`). Risponde `true` solo se la corsia accende il flag, il rollback ha almeno un task, e ogni task è
+  registrato e attivo nel dominio `FATTURAZIONE` attivo e non è distruttivo. ⭐ Fail-closed: un task spento, sconosciuto o
+  un elemento senza la chiave `task` danno `false` come un distruttivo. Step che non si risolve: `false`.
+* **Il presidio: `db/pgtap/vendite/test-rollback-step-automatico-v1.sql`** (plan 14), coi casi **costruiti** (uno stato
+  con la sua pipeline, tre task di prova): le due colonne, il `CHECK`, il controesempio del distruttivo, lo spento, lo
+  sconosciuto, l'elemento senza `task`, un distruttivo nei `processi` che non chiude il rollback, lo step che non si
+  risolve, il parametro invalido. Il seed non saprebbe produrne nessuno: nessuna pipeline ha un rollback.
+* ✅ **Applicata da Tid il 2026-11-24**, pgTAP `test-rollback-step-automatico-v1` come app: verde.
+* **Prova sullo scratch** (`prova_changeset.py`, owner, `ROLLBACK`): preCondition vere, estratto eseguito per intero,
+  catalogo identico dopo. Il test nuovo 14/14 con l'estratto. Uguali prima e dopo: `test-pipeline-processi-invariante-v1`
+  (9/9), `dbops/test-pipeline-task-registry` (10/10), `test-fatturazione-pipeline-fallback` (8/8),
+  `dbops/test-comment-al-presente-v1` (8/8). Il caricatore dei due CSV non è provato: i CSV sono controllati campo per
+  campo (9 e 15 campi su ogni riga, nessun `\r`).
+* **Guide**: `fatturazione` (§ Rollback di step) era **indietro** (diceva `meta.auto_step_rollback`): ora dice la colonna,
+  la funzione e il task distruttivo, con i due oggetti nel «Vedi anche». `analisi-tracciamento-processi-e-job` **coerente**
+  (non tratta il rollback). Pagine `manual/` di `dbops.pipeline_task_registry` (la sezione del distruttivo, il test, la
+  nota) e di `vendite.fatturazione_pipeline` (la colonna e il vincolo) aggiornate. La doc auto-generata si rigenera dopo
+  l'apply.
+
+**Garanzie ritirate.** Una sola, ed è voluta: **«la chiave `meta.auto_step_rollback` accende il rollback automatico»**.
+Dopo l'apply la chiave non può più stare nel `meta`, quindi chi la legge legge sempre «spento». Lettori lato DB: nessuno
+(né funzioni, né viste, né trigger, né job; nessun pgTAP la scrive). Lettori lato BE, da censire tutti dal team BE (il
+censimento qui sotto viene da una ricerca del nome, non è un elenco chiuso): `VenditePipelineRepository.is_auto_step_rollback_attivo`
+(`vendite/db/pipeline_repository.py`), il runner che lo chiama (`vendite/services/pipeline_runner.py`), i test
+`vendite/tests/db/test_auto_step_rollback_dalla_pipeline_db.py` (scrive la chiave nel `meta`: dopo l'apply il `CHECK` lo
+rifiuta, quindi è rosso) e `vendite/tests/services/test_pipeline_runner.py`, il manuale `api_pipeline_task.md`. Effetto in
+esercizio fra l'apply e il passo 3n: nessuno, perché nessuna pipeline ha un rollback.
+
+**Richiesta al team BE (passo 3n), dopo l'apply.** Chi cambia per primo: il DB.
+
+* il runner (`LottoPipelineRunner._should_execute_auto_step_rollback`) chiede `vendite.fn_check_rollback_step_automatico`
+  con gli stessi argomenti con cui legge il rollback dello step, e non legge più il flag per conto suo:
+  `is_auto_step_rollback_attivo` si ritira, insieme alla lettura del `meta` (regola del 2: la regola sta in una sede);
+* i test: il caso distruttivo e la controprova non distruttiva, il flag acceso dalla colonna e non dal `meta`; il test DB
+  di D-I.4 passa alla colonna;
+* il manuale `api_pipeline_task.md` (come parte il rollback automatico).
+
 **Corretto dalla stessa `/verifica`**: il diario di un task di rollback fallito. La riscrittura best-effort della riga
 ERRORE fuori transazione (`LottoPipelineRunner._persist_task_run_error_safely`) scriveva `meta = {"rollback": false}` fisso:
 un rollback fallito, nella riga riscritta, diventava un passo in avanti. Era dormiente finché l'auto-rollback escludeva
@@ -1410,6 +1499,11 @@ il 44 sarebbe rosso per costruzione. ✅ Verde come app, 45/45 (Tid, 2026-11-24)
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-24 | Tid | R-DB-I3 applicata, pgTAP come app verde (§4.8); al BE il passo 3n |
+| 2026-11-24 | DB | R-DB-I3 scritta (§4.8, scelte di Tid: decisione intera, colonna): `distruttivo` sul registro, `auto_step_rollback` colonna con il `CHECK` sul `meta`, `fn_check_rollback_step_automatico`, pgTAP 14/14 sullo scratch, guida `fatturazione` e `manual/`; garanzia ritirata e richiesta al BE (3n) |
+| 2026-11-24 | DB | ⚠️ R-DB-K3 ripristinata: il commit `359c556da1` della sessione anagrafiche aveva riscritto `codici_errore.csv` e `messaggi_errore.csv` dalla sua copia, senza le righe di K3 (il DB applicato le aveva già). Riapplicate le stesse sostituzioni, CSV controllati |
+| 2026-11-24 | Tid | R-DB-K3 applicata, pgTAP verde (§4.7); al BE il passo 3k-bis |
+| 2026-11-24 | DB | R-DB-K3 scritta (§4.7): `note`, causa e soluzione di `E_SCOPE_SENZA_UTENTE` coi due casi, il `messaggio` resta del trigger; corretta la `note` di `E_UI_CHIAMATA_NON_VALIDA`; al BE la rigenerazione di `error_policies_generated.py` (passo 3k-bis) |
 | 2026-11-24 | DB (sessione anagrafiche) | §2: le porte che passano da `fn_porta_manutenzione_aperta`, lucchetti di colonna compresi, dichiarate fuori dal censimento a ragione (chiuse per l'app dal 2026-11-17); nessuna porta nuova |
 | 2026-11-24 | BE | BB `utente_per_id` estratto (regola del 2, ok Tid, §4.7): sette sedi, il rifiuto resta del chiamante; presidio di sede unica |
 | 2026-11-24 | BE | D-K5 **a**, D-K6 **a**, D-I.4 **a** (Tid) fatte (§4.7, §4.8): resolver sul BB dello scope, utente tecnico al motore documentale (ramo senza filtro di `get_fattura_testata` ritirato, `build_context` senza default), `auto_step_rollback` dalla pipeline; test provati a rovescio, uno sul DB vero; nota per R-DB-I3 sul patto del `jsonb` |
