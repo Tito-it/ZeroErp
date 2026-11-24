@@ -82,7 +82,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_dati_societari_guard_tipo_soggetto()
-IS 'Guard di anagrafiche.dati_societari (trg_dati_societari_a05_guard_tipo_soggetto_ins, BEFORE INSERT, fase a05: parla prima della forma giuridica e del canale FE): la riga nasce solo su un soggetto esistente (E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO) la cui natura ha una policy dei dati societari (E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO) diversa da NONE (E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO, con la natura nella frase). Solo all''INSERT dal 2026-11-24 (S41-6, brief-db-revisione-anagrafiche §20): il soggetto della riga non si cambia (lucchetto E_DATI_SOCIETARI_SOGGETTO_IMMUTABILE), e la natura che cambia la giudica anagrafiche.fn_check_cambio_natura_soggetto. La variabile della policy segue la colonna (%TYPE).';
+IS 'Guard di anagrafiche.dati_societari (trg_dati_societari_a05_guard_tipo_soggetto_ins, BEFORE INSERT, fase a05: parla prima della forma giuridica e del canale FE): la riga nasce solo su un soggetto esistente (E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO) la cui natura ha una policy dei dati societari (E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO) diversa da NONE (E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO, con la natura nella frase). Solo all''INSERT: il soggetto della riga non si cambia (lucchetto E_DATI_SOCIETARI_SOGGETTO_IMMUTABILE), e la natura che cambia la giudica anagrafiche.fn_check_cambio_natura_soggetto. La variabile della policy segue la colonna (%TYPE).';
 ```
 
 </div>

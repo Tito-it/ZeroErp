@@ -92,3 +92,8 @@ databaseChangeLog:
               # brief-db-revisione-ui giro 4, Q15): VISTA (default) o LINEAGE, sulle
               # sei colonne «transito» delle liste documentali. Colonna del software.
               - column: { name: origine_campo,        type: STRING }
+              # Dove va il vuoto quando la lista ordina (colonna da 20261123-65,
+              # brief-db-lista-colonna-vuoto-in-ordine): t = il vuoto vuol dire «senza
+              # fine» e conta come il massimo; f, il default, come il minimo. Ogni
+              # colonna accesa su valido_al e' t. Colonna del software.
+              - column: { name: vuoto_ordinato_come_massimo, type: BOOLEAN }

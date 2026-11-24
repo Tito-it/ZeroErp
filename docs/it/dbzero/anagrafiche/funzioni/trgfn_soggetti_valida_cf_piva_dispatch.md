@@ -38,7 +38,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()
-IS 'Guard del FORMATO di codice_fiscale, partita_iva e piva_gruppo_acquisto di anagrafiche.soggetti, per paese: per IT script.fn_validate_cf_piva_it (E_CF_NON_VALIDO / E_PIVA_NON_VALIDA, con campo); uno stato senza validatore passa. La PRESENZA la giudica trgfn_soggetti_guard_cf_piva_obbligatori. Montata due volte in fase a10: trg_soggetti_a10_valida_cf_piva_ins (BEFORE INSERT) e trg_soggetti_a10_valida_cf_piva_upd (BEFORE UPDATE WHEN cambia CF, P.IVA, P.IVA di gruppo, stato o natura): un soggetto con un CF non piu'' accettato resta modificabile negli altri campi (S43-2, brief-db-revisione-anagrafiche §20, 2026-11-23). Legge i valori gia'' normalizzati da trgfn_soggetti_normalize (a01).';
+IS 'Guard del FORMATO di codice_fiscale, partita_iva e piva_gruppo_acquisto di anagrafiche.soggetti, per paese: per IT script.fn_validate_cf_piva_it (E_CF_NON_VALIDO / E_PIVA_NON_VALIDA, con campo); uno stato senza validatore passa. La PRESENZA la giudica trgfn_soggetti_guard_cf_piva_obbligatori. Montata due volte in fase a10: trg_soggetti_a10_valida_cf_piva_ins (BEFORE INSERT) e trg_soggetti_a10_valida_cf_piva_upd (BEFORE UPDATE WHEN cambia CF, P.IVA, P.IVA di gruppo, stato o natura): un soggetto con un CF che una configurazione piu'' severa non accetta resta modificabile negli altri campi. Legge i valori gia'' normalizzati da trgfn_soggetti_normalize (a01).';
 ```
 
 </div>

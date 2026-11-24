@@ -96,7 +96,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa()
-IS 'Guard di anagrafiche.soggetti_ruoli (BEFORE INSERT): la macro-tipologia del soggetto e'' ammessa per il ruolo che nasce, secondo config.tipi_ruoli_nature_ammesse (righe attive e valide alla data operativa); matrice assente per il ruolo = libero. Rifiuti: E_RUOLO_NATURA_NON_AMMESSA (campo tipo_ruolo_id) ed E_RUOLO_NATURA_TIPO_DET_NULL (soggetto senza natura, campo tipo_soggetto_dettaglio_id), con le descrizioni di ruolo e natura nella frase, senza id (S42). Solo all''INSERT dal 2026-11-24: il tipo del ruolo non si cambia (lucchetto E_SOGGETTO_RUOLO_TIPO_IMMUTABILE, D-T5-4 a) e il soggetto nemmeno (E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE). Una riga di matrice spenta non tocca i ruoli che esistono: la configurazione vale alla scrittura. Brief: brief-db-revisione-anagrafiche §20.';
+IS 'Guard di anagrafiche.soggetti_ruoli (BEFORE INSERT): la macro-tipologia del soggetto e'' ammessa per il ruolo che nasce, secondo config.tipi_ruoli_nature_ammesse (righe attive e valide alla data operativa); matrice assente per il ruolo = libero. Rifiuti: E_RUOLO_NATURA_NON_AMMESSA (campo tipo_ruolo_id) ed E_RUOLO_NATURA_TIPO_DET_NULL (soggetto senza natura, campo tipo_soggetto_dettaglio_id), con le descrizioni di ruolo e natura nella frase, senza id. Solo all''INSERT: il tipo del ruolo non si cambia (lucchetto E_SOGGETTO_RUOLO_TIPO_IMMUTABILE) e il soggetto nemmeno (E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE). Una riga di matrice spenta non tocca i ruoli che esistono: la configurazione vale alla scrittura.';
 ```
 
 </div>

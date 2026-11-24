@@ -36,7 +36,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_normalize()
-IS 'Normalize di anagrafiche.soggetti, fase a01 (prima di tutti i guard: la normalizzazione che i guard leggono). (1) codice_fiscale, partita_iva e piva_gruppo_acquisto in maiuscolo, senza spazi, vuoto -> NULL: e'' la forma che confrontano l''indice uq_soggetto_idstato_id_fiscale_univoco, il guard dell''identificativo e il validatore del formato, per ogni strada di scrittura (D-T5-2 a, brief-db-revisione-anagrafiche §20, 2026-11-23). (2) stato_id NULL all''INSERT: lo stato proposto (script.fn_stato_proposto_id). In modifica non si propone niente: uno stato NULL lo rifiuta il guard dell''identificativo (S43-1). La generazione del codice e'' del sistema codici.';
+IS 'Normalize di anagrafiche.soggetti, fase a01: gira prima di tutti i guard, perche'' e'' la normalizzazione che i guard leggono. (1) codice_fiscale, partita_iva e piva_gruppo_acquisto in maiuscolo, senza spazi, vuoto -> NULL: e'' la forma che confrontano l''indice uq_soggetto_idstato_id_fiscale_univoco, il guard dell''identificativo e il validatore del formato, per ogni strada di scrittura. (2) stato_id NULL all''INSERT: lo stato proposto (script.fn_stato_proposto_id). In modifica non si propone niente: uno stato NULL lo rifiuta il guard dell''identificativo. La generazione del codice e'' del sistema codici.';
 ```
 
 </div>
