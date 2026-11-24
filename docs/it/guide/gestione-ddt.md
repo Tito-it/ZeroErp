@@ -1,6 +1,6 @@
 # Guida — Gestione DDT di vendita
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali/logistici,
 > sviluppatori backend/frontend, DBA.
@@ -9,6 +9,7 @@
 >
 > * [vendite.ddt](/dbzero/vendite/tabelle/ddt) / [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe) / [vendite.ddt_righe_componenti](/dbzero/vendite/tabelle/ddt_righe_componenti)
 > * [vendite.ddt_indirizzi](/dbzero/vendite/tabelle/ddt_indirizzi) / [vendite.ordini_righe_fulfillment](/dbzero/vendite/tabelle/ordini_righe_fulfillment) (evasione)
+> * [vendite.trgfn_ddt_riga_legame_guard](/dbzero/vendite/funzioni/trgfn_ddt_riga_legame_guard) / [vendite.fn_doc_porta_ritiro_ammette](/dbzero/vendite/funzioni/fn_doc_porta_ritiro_ammette) — chi può togliere il legame di una riga (§15.3)
 > * [config.stati_doc_ddt](/dbzero/config/tabelle/stati_doc_ddt) / [config.transizioni_stati_ddt](/dbzero/config/tabelle/transizioni_stati_ddt)
 > * [vendite.vw_ddt_lista](/dbzero/vendite/manual/vw_ddt_lista) / [vendite.vw_ddt_riepilogo_iva_dettaglio](/dbzero/vendite/manual/vw_ddt_riepilogo_iva_dettaglio)
 >
@@ -710,6 +711,20 @@ La quantità evasa fotografa ciò che è **spedito**: finché la bolla è in boz
 non è partito niente, e la quantità si corregge (dal solo verbo, insieme alla
 riga) o si ritira (togliendo la riga, o annullando la bolla). Fuori bozza è
 ferma, e l'unico modo di farla tornare da evadere è l'annullo della bolla.
+
+**Chi toglie un legame.** Il legame di una riga (con la riga d'ordine o con la
+riga di reso) non si scrive direttamente: lo protegge un guard, con una porta
+per ciascuno dei due momenti.
+
+* **In bozza** la porta si apre con il parametro di sessione che nomina **quella
+  riga**: lo accende il ritiro dei legami quando si toglie la riga. Basta il
+  parametro, ed è una scelta: la bozza la scrive l'applicazione, che toglie la
+  riga direttamente, e niente è ancora partito.
+* **Fuori bozza** il parametro della riga non basta. Serve anche quello del
+  ritiro della bolla, che accende l'annullo, e a scrivere deve essere il
+  proprietario della tabella: l'annullo è un verbo che gira come proprietario.
+  L'applicazione che accendesse i parametri da sé e cancellasse il legame resta
+  fuori.
 
 ### 15.4 Emittente legato allo user, etichetta dal soggetto
 
