@@ -42,6 +42,12 @@
 BEGIN;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- La pubblicazione del template chiede documenti_template_manage (il verbo e'
+--   SECURITY DEFINER col suo guard, giro 16 della porta 16): l'operatore del
+--   contesto la riceve, perche' qui si prova altro.
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(script.fn_utente_di_sessione(), 'documenti_template_manage');
+END $az$;
 
 -- ⭐ La stampa e' di un preventivo VERO, del mondo dell'operatore in sessione: dal
 --   lotto D di brief-db-sorgente-documento-e-riga il guard unico verifica che il

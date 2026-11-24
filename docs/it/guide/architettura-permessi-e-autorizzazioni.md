@@ -881,9 +881,14 @@ l'amministratore ragiona come sempre, per area, azione e oggetto.
   proprietario. La sola GUC non chiude niente, perche' l'applicazione la puo'
   accendere da se'. Vale anche per le porte di **manutenzione**, che si aprono
   dagli strumenti DBA lanciati come `zeroerp_owner`: l'applicazione non esegue
-  quegli strumenti. ⚠️ Non tutte le porte ci sono gia' arrivate: quelle del
-  reset dei lotti, del contabile, dei DDT di riconsegna, dello scope emittenti e
-  della pubblicazione dei template si aprono ancora con la sola GUC.
+  quegli strumenti. Una porta che si apre per **una riga** porta nella GUC la
+  chiave di quella riga (la pubblicazione dei template: l'id del modello), e il
+  guard la confronta con la riga che giudica. Se il guard ha anche un'eccezione
+  per il seed, la riconosce dalla **sessione del migratore**
+  (`dbops.fn_sessione_del_migratore`), non dal proprietario: dentro un verbo
+  `SECURITY DEFINER` il proprietario e' chiunque lo chiami. ⚠️ Non tutte le porte
+  ci sono gia' arrivate: quelle del reset dei lotti, del contabile, dei DDT di
+  riconsegna e dello scope emittenti si aprono ancora con la sola GUC.
 
 **Il backend chiede, non decide due volte.** L'endpoint tiene il suo controllo:
 risponde 403 subito, con un messaggio utile, prima di aprire la transazione.

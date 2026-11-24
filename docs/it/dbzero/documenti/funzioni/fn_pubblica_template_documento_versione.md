@@ -5,7 +5,7 @@
 CREATE FUNCTION fn_pubblica_template_documento_versione(p_versione_id bigint, p_valido_dal date, p_versione_contesto integer, p_valido_al date)
 ```
 
-> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
 
 **Definizione completa:**
 
@@ -15,6 +15,8 @@ CREATE FUNCTION fn_pubblica_template_documento_versione(p_versione_id bigint, p_
 CREATE OR REPLACE FUNCTION documenti.fn_pubblica_template_documento_versione(p_versione_id bigint, p_valido_dal date, p_versione_contesto integer, p_valido_al date DEFAULT NULL::date)
  RETURNS TABLE(versione_id bigint, template_documento_id bigint, versioni_obsolete integer)
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 -- Scopo:
 --   Pubblica una versione template documento in modo atomico. E'
@@ -39,12 +41,19 @@ AS $function$
 --     template con valido_dal < p_valido_dal e intervallo sovrapposto.
 --     Una OBSOLETA stampa fino al suo valido_al: che cosa stampa lo
 --     decide la validita' (documenti.vw_template_versioni_stampabili);
+--   - SECURITY DEFINER: il permesso e' qui, in prima riga, e chiede la
+--     stessa azione dell'endpoint, documenti_template_manage
+--     (script.fn_guard_azione: E_PERMESSO_NEGATO). La sessione del migratore
+--     (dbops.fn_sessione_del_migratore) pubblica gli standard senza utente
+--     e non passa dal guard: e' il software;
 --   - le due scritture (la chiusura, la pubblicazione) passano sotto la
---     porta zeroerp.allow_template_versione_pubblicazione_override: il
---     guard dello stato (trgfn_template_documenti_versioni_protect_pubblicata)
---     a porta aperta ammette solo queste due forme. La porta si apre
---     dopo la scelta delle versioni e si richiude prima di uscire,
---     anche in errore;
+--     porta zeroerp.allow_template_versione_pubblicazione_override, che il
+--     verbo scrive con l'id del modello: il guard dello stato
+--     (trgfn_template_documenti_versioni_protect_pubblicata) la apre solo
+--     con quel valore e col proprietario, e a porta aperta ammette solo
+--     queste due forme. Una GUC accesa dal chiamante si spegne all'ingresso;
+--     la porta si apre dopo la scelta delle versioni e si svuota prima di
+--     uscire, anche in errore;
 --   - una sovrapposizione che la chiusura non risolve (lo stesso inizio di
 --     una versione fuori bozza, un inizio dentro una OBSOLETA, una
 --     pubblicazione concorrente) la ferma il vincolo
@@ -63,7 +72,20 @@ DECLARE
     v_closed_count integer  := 0;
     -- il nome del vincolo violato, dalla diagnostica dell'errore
     v_vincolo      text;
+    v_utente       config.user_override_azioni.auth_user_id%TYPE;
 BEGIN
+    -- 0. Il permesso, prima di ogni altra cosa. Il migrate pubblica gli
+    --    standard in una sessione senza utente: e' il software, e non passa
+    --    dal guard.
+    IF NOT dbops.fn_sessione_del_migratore() THEN
+        v_utente := script.fn_utente_di_sessione('documenti.fn_pubblica_template_documento_versione');
+        PERFORM script.fn_guard_azione(v_utente, 'documenti_template_manage');
+    END IF;
+
+    -- La porta la apre solo il verbo: quella che il chiamante avesse acceso
+    -- si spegne qui.
+    PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', '', true);
+
     IF p_versione_id IS NULL OR p_versione_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'documenti',
@@ -173,12 +195,13 @@ BEGIN
     -- Calcola subito: evita GET DIAGNOSTICS post-UPDATE.
     v_closed_count := COALESCE(array_length(v_closed_ids, 1), 0);
 
-    -- Le due scritture del verbo, sotto la sua porta. Si apre qui,
-    -- dopo la scelta delle versioni, e si richiude prima di uscire:
+    -- Le due scritture del verbo, sotto la sua porta: la GUC vale l'id del
+    -- modello. Si apre qui, dopo la scelta delle versioni, e si svuota prima
+    -- di uscire:
     -- nel blocco EXCEPTION anche in errore, perche' il terzo argomento
     -- di set_config lega il valore alla transazione, non alla chiamata.
     BEGIN
-        PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', 'on', true);
+        PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', v_template_id::text, true);
 
         IF v_closed_count > 0 THEN
             -- Una scrittura sola, stato e data insieme: a porta aperta il
@@ -213,10 +236,10 @@ BEGIN
             );
         END IF;
 
-        PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', 'off', true);
+        PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', '', true);
     EXCEPTION
         WHEN exclusion_violation THEN
-            PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', 'off', true);
+            PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', '', true);
             GET STACKED DIAGNOSTICS v_vincolo = CONSTRAINT_NAME;
             IF v_vincolo IS DISTINCT FROM 'ex_template_documenti_versioni_no_overlap_pubblicata' THEN
                 RAISE;
@@ -235,7 +258,7 @@ BEGIN
                 VARIADIC ARRAY[]::text[]
             );
         WHEN OTHERS THEN
-            PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', 'off', true);
+            PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', '', true);
             RAISE;
     END;
 
@@ -247,7 +270,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION documenti.fn_pubblica_template_documento_versione(p_versione_id bigint, p_valido_dal date, p_versione_contesto integer, p_valido_al date)
-IS 'Pubblica una versione template BOZZA, ed e'' l''unica strada per cui una versione esce dalla bozza. Nella stessa transazione chiude le versioni PUBBLICATE precedenti sovrapposte: OBSOLETE con fine al giorno prima della nuova, e stampabili fino a quel giorno (documenti.vw_template_versioni_stampabili). Le due scritture passano sotto la porta zeroerp.allow_template_versione_pubblicazione_override, che il guard dello stato (documenti.trgfn_template_documenti_versioni_protect_pubblicata) chiede e che il verbo richiude prima di uscire, anche in errore. Rifiuti: parametri mancanti (E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO), versione inesistente (E_DOCUMENTI_VERSIONE_NOT_FOUND), non in bozza (E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO), bozza spenta (E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA: non stamperebbe, e chiuderebbe la versione che stampa). p_versione_contesto (obbligatorio) e'' la forma dei dati che il builder produce: la versione si pubblica solo se dichiara di leggere quella forma (documenti.fn_guard_versione_contesto: E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA). L''ordine delle date lo giudica il guard comune script.trgfn_guard_date_validita sull''UPDATE della versione (E_DATA_AL_MINORE_DAL); una sovrapposizione che la chiusura non risolve (stesso inizio di una versione fuori bozza, inizio dentro una OBSOLETA, una pubblicazione concorrente) la ferma il vincolo ex_template_documenti_versioni_no_overlap_pubblicata, e il verbo la rende col suo codice (E_DOCUMENTI_VERSIONE_OVERLAP).';
+IS 'Pubblica una versione template BOZZA, ed è l''unica strada per cui una versione esce dalla bozza. SECURITY DEFINER: in prima riga chiede l''azione documenti_template_manage all''utente di sessione (script.fn_guard_azione: E_PERMESSO_NEGATO), la stessa dell''endpoint; la sessione del migratore (dbops.fn_sessione_del_migratore) pubblica gli standard senza utente e non passa dal guard. Nella stessa transazione chiude le versioni PUBBLICATE precedenti sovrapposte: OBSOLETE con fine al giorno prima della nuova, e stampabili fino a quel giorno (documenti.vw_template_versioni_stampabili). Le due scritture passano dalla porta zeroerp.allow_template_versione_pubblicazione_override, che il verbo scrive con l''id del modello e svuota prima di uscire, anche in errore; una GUC accesa dal chiamante si spegne all''ingresso. Il guard dello stato (documenti.trgfn_template_documenti_versioni_protect_pubblicata) la apre solo con quel valore e col proprietario. Rifiuti: parametri mancanti (E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO), versione inesistente (E_DOCUMENTI_VERSIONE_NOT_FOUND), non in bozza (E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO), bozza spenta (E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA: non stamperebbe, e chiuderebbe la versione che stampa). p_versione_contesto (obbligatorio) è la forma dei dati che il builder produce: la versione si pubblica solo se dichiara di leggere quella forma (documenti.fn_guard_versione_contesto: E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA). L''ordine delle date lo giudica il guard comune script.trgfn_guard_date_validita sull''UPDATE della versione. Una sovrapposizione che la chiusura non risolve: E_DOCUMENTI_VERSIONE_OVERLAP.';
 ```
 
 </div>
