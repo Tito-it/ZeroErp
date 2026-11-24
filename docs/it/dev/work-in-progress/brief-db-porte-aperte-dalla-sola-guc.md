@@ -2,13 +2,12 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-24**
 >
-> **Riparte: il team DB, leggendo la risposta del BE alla richiesta 3d (§4.5, 2026-11-24)**, poi il giro 12-13 (un
-> pgTAP e la guida, D-E a) e i giri delle porte del flusso, al via di Tid. Il superuser Django è deciso (D-J **a**) e
-> fatto nel BE (§4.7). D-K (il primo amministratore di un'installazione nuova) è decisa: al team DB la richiesta
-> R-DB-K1 del verbo di primo impianto, poi il BE col comando (§4.7).
+> **Riparte: il team BE, col suo lato del ritiro di `reset_lotto_draft` dopo `/arrivi-db` (§4.8, passo 3g)**; il
+> team DB con la lettura della risposta 3d (§4.5, passo 3e). Al via di Tid: il verbo di primo impianto (D-K,
+> R-DB-K1, passo 3i) e i giri delle porte del flusso. ✅ Il lato DB del ritiro è applicato, verde e pushato (2026-11-24). Il superuser Django è deciso (D-J **a**) e fatto nel BE (§4.7).
 > ✅ Fatti e verdi (Tid, 2026-11-24): giro 1 (porte di manutenzione 14 e 15, la 17 dichiarata), giro 1-bis (la
 > fusione dei comuni, il presidio di `maintenance`), giro 3 (le viste in sola lettura per l'app, con la fase `post`
-> del provisioning su dbdev). Tutto applicato e committato.
+> del provisioning su dbdev), giro 12-13 (i legami della bolla, §8). Tutto applicato e committato.
 > Decise: D-A **a**, D-C **b** per 14 e 15, D-D **a** (2026-11-23); dalla verifica critica (§3-ter) D-E **a** e D-F
 > **a** (2026-11-23); D-G **a**, D-H **a** (2026-11-24); D-B decaduta. Il brief ospita anche la seconda famiglia di
 > strade, **le viste aggiornabili** (§5, D-V), nata dal giro 2 di `brief-db-revisione-anagrafiche` (§19).
@@ -24,10 +23,10 @@
 > | 3d | team BE | la richiesta 3d: ✅ scritta e precompilata dal DB (2026-11-24); ✅ risposta del BE (2026-11-24) | §4.4, §4.5 | — |
 > | 3e | team DB | leggere la risposta 3d: le due correzioni a §4.3 (azioni delle porte 1-7 e 11), i test della Parte C, il task `reset_lotto_draft` | §4.5 | — |
 > | 3f | Tid | ✅ D-I: il task `reset_lotto_draft` si ritira · ✅ D-J: il superuser Django non concede più niente, strada **a** (2026-11-24) | §4.6 | — |
-> | 3h | team BE | D-J: ✅ bypass tolti, test adeguati, suite verde (2026-11-24); da rivedere con `/verifica` | §4.7 | — |
+> | 3h | team BE | D-J: ✅ bypass tolti, test adeguati, suite verde · ✅ rivisto con `/verifica` (2026-11-24) | §4.7 | — |
 > | 3i | team DB | D-K: il verbo `fn_crea_primo_amministratore` e la sua prova (R-DB-K1); la porta di `fn_crea_operatore_v2` nel piano dei giri (R-DB-K2) | §4.7 | — |
 > | 3j | team BE | D-K: il comando `crea_primo_amministratore`, il playbook e `configurazione-django.md` senza `createsuperuser` | §4.7 | 3i |
-> | 3g | team DB, poi team BE | il ritiro del task `reset_lotto_draft`: prima i CSV del DB, poi il BE | §4.6 | — |
+> | 3g | team DB, poi team BE | il ritiro del task `reset_lotto_draft`: ✅ analisi, ✅ D-I.1 **a** e D-I.2 **a** (Tid), ✅ scritto, applicato, pgTAP 9/9, pushato (2026-11-24); ora il BE (handler, whitelist, esclusione del runner, test) | §4.6, §4.8 | — |
 > | 4 | team BE / DB | ✅ Parte B, le viste: «nessuno», dal BE (2026-11-23) · ✅ Parte A, le GUC e gli aprenti: letta dal DB sul ramo del BE (2026-11-23) | §4.2, §5.1 | — |
 > | 4a | Tid | ✅ il giro 1: applicato, pgTAP verdi (2026-11-24) | §6 | — |
 > | 4c | Tid | ✅ D-G (**a**) · ✅ D-H (**a**), 2026-11-24 | §6.4, §6.5 | — |
@@ -35,14 +34,12 @@
 > | 4b | team DB | ✅ il giro 3, le viste: scritto e provato sullo scratch (2026-11-24) | §7 | — |
 > | 4e | Tid | ✅ il giro 3: apply, `ci_apply`, fase `post` del provisioning su dbdev, pgTAP verde (2026-11-24) | §7.4 | — |
 > | 5 | Tid / team BE | ✅ la richiesta 3d girata al BE, e la risposta (2026-11-24) | §4.5 | — |
-> | 6 | team DB | i giri delle porte del flusso | Il piano | 3e; 3f per i giri 16 e 1-7 |
-> | 5 | Tid / team BE | la richiesta 3d girata al BE, e la risposta | §4.4 | — |
 > | 5b | team DB | ✅ il giro 12-13, verde come app (2026-11-24) | §8 | — |
-> | 6 | team DB | i giri delle porte del flusso 16, 10, 9, 11, 8, 1-7 | Il piano | 3d |
+> | 6 | team DB | i giri delle porte del flusso 16, 10, 9, 11, 8, 1-7 | Il piano | 3e |
 >
-> Decisioni aperte di Tid: nessuna. Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`) e il giro 12-13
-> (`969ea14566`). Da committare: niente di questo brief; le due righe di `brief-db-revisione-anagrafiche` che
-> rimandano qui le porta il commit dell'altra sessione, che ha quel brief in lavorazione.
+> Decisioni aperte di Tid: nessuna. Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
+> (`969ea14566`), dal BE §4.5-§4.7 con D-J (`4271a0dc69`, PR #232), e il 2026-11-24 il lato DB del ritiro di
+> `reset_lotto_draft` con la pulizia della testata (§4.8). Da committare: niente di questo brief.
 >
 > **Brief vicini verificati (2026-11-23):**
 > [brief-db-magazzino-tutte-le-scritture-dal-verbo](../work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md)
@@ -144,6 +141,13 @@
 - [x] Giro 3 (2026-11-24, applicato da Tid con la fase `post` del provisioning, pgTAP verde; §7): le viste (§5): ~~prima i verbi delle scritture che il BE trova~~ (nessuna, §5.1), l'app con solo `SELECT` sulle viste,
   nelle tre sedi di `linee-guida-sql.md` §11.8, col pgTAP di postura a criterio e la guida dei permessi §7.4;
   il caso costruito passa dal criterio del loop, non da un `REVOKE` nel test (i privilegi di default danno il DML anche alle viste, §3-ter.4)
+- [ ] Il ritiro del task `reset_lotto_draft` (D-I, §4.8)
+  - [x] analisi (2026-11-24)
+  - [x] D-I.1 **a** e D-I.2 **a**, decise da Tid (2026-11-24)
+  - [x] CSV, `DELETE` `20261123-67`, pgTAP del `rollback`, guide: scritto e provato sullo scratch (2026-11-24)
+  - [x] apply su dbdev e pgTAP dell'invariante 9/9 (Tid, 2026-11-24)
+  - [x] commit e push su `dev/db-tid` (2026-11-24)
+  - [ ] il BE: la sua richiesta, dopo `/arrivi-db`
 - [ ] Le guide: ogni porta scritta nella guida del suo dominio, di flusso o di manutenzione
 
 ## 1. Il problema, sul modello
@@ -817,6 +821,102 @@ password, calcola l'hash, chiama il verbo e traduce il rifiuto in un messaggio c
 `configurazione-django.md` sostituiscono `createsuperuser` con il comando e tolgono la nota ⚠️ messa il 2026-11-24.
 Il test: il comando chiama il verbo con l'hash, e il rifiuto «già presente» esce come messaggio, non come traceback.
 
+### 4.8 Il ritiro del task `reset_lotto_draft` (D-I, passo 3g) — analisi del 2026-11-24
+
+**La richiesta del BE** (2026-11-24, girata da Tid): il DB toglie per primo le righe del task, e le cancella anche
+dal database, non solo dai CSV (§11.2). Poi, dopo il push e `/arrivi-db`, il BE toglie `ALLOWED_TASK_FUNCTIONS`,
+l'handler e la sua voce, l'esclusione per nome di `pipeline_runner.py:521-524` e i test che li nominano. Restano fuori
+dal giro: la GUC `zeroerp.maintenance_reset_lotto_draft`, che è la porta 1 e ha un nome quasi uguale; il commento di
+`W_FONDO_FIGLIA_CONGELATA`; gli YAML storici.
+
+**I fatti** (dbdev e repo, 2026-11-24):
+
+* le quattro righe del task ci sono, tutte attive: `dbops.pipeline_task_registry` id 5,
+  `pipeline_task_registry_impl` id 5 (`reset_lotto_draft_default`), `vendite.fatturazione_pipeline_task_policy`
+  id 6 (`RESET_STEP`) e la voce nel `rollback` della pipeline 3;
+* chiavi esterne: dall'implementazione al registro c'è una FK `NO ACTION`, quindi si cancella prima l'implementazione.
+  Dalla policy alla pipeline c'è una FK, ma la pipeline resta. Fra le pipeline e il registro non c'è una FK: le pipeline
+  nominano i task per nome dentro un JSON. Sul registro e sull'implementazione non ci sono trigger;
+* `vendite.fatturazione_lotti_task_runs` ha zero corse di `reset_lotto_draft`. La colonna `task_code` è testo e non
+  ha FK: un'installazione con corse vecchie le tiene come storia;
+* nessuna funzione del DB nomina il task. Le occorrenze nei corpi sono tutte la GUC della porta 1. I quattro lettori
+  del registro e della policy (`fn_check_pipeline_task_registered`, `fn_get_pipeline_task_implementation`,
+  `fn_get_pipeline_task_policy`, `fn_resolve_lotto_task_execution_mode`) leggono per codice;
+* tolta la policy 6, il valore `RESET_STEP` non lo usa più nessuna riga del seed. Il `CHECK` lo ammette ancora, e il
+  pgTAP `test-fatturazione-pipeline-task-runtime` lo prova con una sua fixture: il valore resta nel vocabolario;
+* l'azione `reset_lotto_draft` (`config.azioni_processo` id 6, spenta) non ha figlie su dbdev, né per id né per
+  codice, in nessuna delle dodici tabelle che la puntano. Due pgTAP però la vogliono **presente e spenta**:
+  `test-permessi-funzioni-risoluzione` test 30 e `test-fattura-lotto-al-modello-v1`, dal giro 11 di
+  `brief-modello-documento-vendita` (Q-F1, 2026-10-27). Lì la riga spenta è la traccia della decisione;
+* il presidio `test-pipeline-processi-invariante-v1` (test 6 e 7) verifica che ogni task nominato nei `processi` sia
+  registrato e abbia la sua policy. Il `rollback` non lo guarda: se un `rollback` nominasse un task tolto dal registro,
+  la migrazione passerebbe e il presidio resterebbe verde;
+* il precedente `close_lotto` (2026-02-18) è stato **spento**, non cancellato, nel registro e nell'implementazione.
+
+**Le guide** (`scripts/guide_coinvolte.py` sui quattro CSV e sulle quattro tabelle):
+
+* [fatturazione](../../guide/fatturazione.md): **indietro**. Le righe 458, 548-560 e 637-639 danno il task come
+  rollback di EMESSA. Il seed diventa `[]`. La demolizione che la guida descrive resta vera, ma la fa il verbo
+  `fn_annulla_lotto_da_draft` dall'endpoint, non un task della pipeline;
+* il manuale di `vendite.fatturazione_pipeline` (righe 105-110: la whitelist e «il reset tecnico in pipeline»):
+  **indietro**;
+* il manuale di `dbops.pipeline_task_registry`: va aggiunta una nota di migrazione;
+* [analisi-tracciamento-processi-e-job](../../guide/analisi-tracciamento-processi-e-job.md),
+  [gestione-pratiche](../../guide/gestione-pratiche.md), il manuale di `config.azioni_processo` e
+  [modello-documento-di-vendita](../../guide/modello-documento-di-vendita.md) (l'azione ritirata): **coerenti**.
+
+**Le due scelte di forma** (decide Tid):
+
+* **D-I.1, il task: cancellato o spento?** · **a** si cancella, come chiede il BE · **b** si spegne, come `close_lotto`.
+  ⭐ **a**. Lo spegnimento di `close_lotto` è servito a lasciare il task riaccendibile. D-I dice che questo task non
+  ha più un ruolo, e il BE ne toglie l'handler. Una riga spenta che nomina un `handler_code` senza codice dietro
+  sarebbe una registrazione falsa.
+* **D-I.2, l'azione `reset_lotto_draft`: si toglie?** · **a** non si tocca · **b** si cancella, e i due pgTAP passano
+  da «presente e spenta» ad «assente». ⭐ **a**. L'azione è già stata ritirata il 2026-10-27, con la decisione di un
+  altro brief. La riga spenta è la traccia di quel ritiro, ed è fissata da due test. Il task e l'azione sono due cose,
+  e D-I riguarda solo il task. La condizione «nessun binding la nomina» è verificata, ma da sola non basta per
+  cancellarla.
+
+**Che cosa si cambia, al via di Tid** (con D-I.1 **a** e D-I.2 **a**):
+
+| File | Che cosa |
+| --- | --- |
+| `80_data/sql/vendite/fatturazione_pipeline.csv` | pipeline id 3: il `rollback` diventa `[]`, lo riallinea il mirror `runOnChange` |
+| `80_data/sql/vendite/fatturazione_pipeline_task_policy.csv` | via la riga id 6 |
+| `80_data/sql/dbops/pipeline_task_registry_impl.csv` | via la riga id 5 |
+| `80_data/sql/dbops/pipeline_task_registry.csv` | via la riga id 5 |
+| `80_data/changelog/<NN>-delete-task-reset-lotto-draft-mctit.yaml` (nuovo) | il `DELETE` forward-only di §11.2, idempotente, sulla chiave naturale (`task_code` / `handler_code` + `task_registry_id`): prima l'implementazione, poi il registro, poi la policy. Il numero lo dà `prossimo_changeset.py` al salvataggio |
+| `db/pgtap/vendite/test-pipeline-processi-invariante-v1.sql` | test 8 e 9, lo specchio dei test 6 e 7 sul `rollback`: ogni task nominato nel `rollback` è registrato, attivo e ha la sua policy. Il controesempio è lo stato a metà: registro cancellato e `rollback` della pipeline 3 ancora pieno. Lì il test 8 è rosso |
+| guida `fatturazione`, manuali `fatturazione_pipeline` e `pipeline_task_registry` | come sopra |
+
+Ogni CSV si modifica per riga, e `git diff --numstat` lo conferma (§11.2). La prova si fa con `prova_changeset.py`:
+il `DELETE` con in coda il pgTAP dell'invariante. Il `rollback` della pipeline 3 lo riscrive il mirror, che nella
+prova non gira. Se lo script non lo simula, i test 8 e 9 si provano dopo l'apply di Tid.
+
+**Dopo il push del DB, al BE**: l'elenco della sua richiesta, senza aggiunte. Il BE cambia dopo il DB: finché le
+righe sono a DB, il codice del BE che le legge resta coerente.
+
+**✅ Decise da Tid il 2026-11-24: D-I.1 a, D-I.2 a.** Scritto lo stesso giorno, come da tabella:
+
+* i quattro CSV, una riga per file (`git diff --numstat`: 0/1, 0/1, 0/1 e 1/1 sul `rollback` della pipeline 3);
+* `80_data/changelog/20261123-67-delete-task-reset-lotto-draft-mctit.yaml`, con una `preCondition` sulle tre tabelle;
+* `test-pipeline-processi-invariante-v1`: piano 7 → 9, test 8 e 9 sul `rollback`. Corretto anche il commento dei
+  test 1-2, che dava il `rollback` delle due corsie come «divergente apposta»;
+* la guida `fatturazione` (le due corsie, il seed del rollback, l'annullo come verbo, i vincoli), i manuali di
+  `fatturazione_pipeline` e `pipeline_task_registry` (nota di migrazione: cancellato, non spento come `close_lotto`),
+  e quello di `azioni_processo`, che diceva «il task resta».
+
+**La prova** (`prova_changeset.py`, scratch `zeroerp_ruoli` come owner, 2026-11-24):
+
+* **il controesempio**, il solo `DELETE` con il `rollback` della pipeline 3 ancora pieno: invariante 9 ok → **7 ok, 2
+  not ok** (i test 8 e 9). Il presidio nuovo vede lo stato a metà;
+* **lo stato finale**, il `DELETE` e il mirror della pipeline 3 simulato da un changeSet di prova (`UPDATE … SET
+  rollback = '[]'`): **9 ok, 0 not ok**. Catalogo identico prima e dopo;
+* guardrail verdi: forme dei changeSet, `runOnChange`, letterali SQL, `preCondition` dei seed, preambolo pgTAP.
+
+✅ Applicato su dbdev da Tid, `test-pipeline-processi-invariante-v1` verde 9/9 (2026-11-24); committato e pushato. Restano invariati
+`test-permessi-funzioni-risoluzione` e `test-fattura-lotto-al-modello-v1`, perché l'azione non si tocca.
+
 ## 5. La seconda famiglia: le viste aggiornabili — 2026-11-23
 
 **Il varco.** Il loop dei grant (`90_end/ci_apply/20260205-41`) dà all'app `INSERT`, `UPDATE` e `DELETE` «on all
@@ -1082,11 +1182,21 @@ il 44 sarebbe rosso per costruzione. ✅ Verde come app, 45/45 (Tid, 2026-11-24)
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-24 | DB | Commit e push su `dev/db-tid`: il lato DB del ritiro di `reset_lotto_draft` e la pulizia della testata; al BE il suo lato (§4.8) |
+| 2026-11-24 | Tid | `20261123-67` applicato su dbdev, `test-pipeline-processi-invariante-v1` verde 9/9 |
+| 2026-11-24 | DB | Ritiro di `reset_lotto_draft` scritto (§4.8): quattro CSV, `DELETE` `20261123-67`, invariante test 8-9 sul `rollback`, guida `fatturazione` e manuali di `fatturazione_pipeline`, `pipeline_task_registry` e `azioni_processo`; provato sullo scratch (controesempio 7/9, stato finale 9/9). Da applicare |
+| 2026-11-24 | Tid | **D-I.1 a** (il task si cancella) · **D-I.2 a** (l'azione spenta non si tocca); via allo sviluppo |
+| 2026-11-24 | DB | Richiesta del BE sul ritiro di `reset_lotto_draft` analizzata (§4.8): righe e FK verificate su dbdev, nessuna corsa né figlia dell'azione; il presidio dell'invariante non guarda il `rollback`; D-I.1 e D-I.2 proposte a Tid; guida `fatturazione` e manuale di `fatturazione_pipeline` indietro |
+| 2026-11-24 | DB | Testata e Registro ripuliti dopo il merge del BE (`4271a0dc69`): tolte le righe 5 e 6 doppie della tabella «Chi riparte», rimesse le quattro righe del Registro sul giro 12-13 e sui commit DB, «Riparte» riallineato |
 | 2026-11-24 | Tid | **D-K decisa** (§4.7): il primo amministratore nasce da un verbo DB di primo impianto che si chiude alla nascita del primo SUPER_ADMIN (R-DB-K1), poi un comando BE; la porta di `fn_crea_operatore_v2` al piano dei giri (R-DB-K2) |
 | 2026-11-24 | BE | D-J fatta (§4.7): bypass di `is_superuser` tolti nel BE, BB `super_admin_di_prova` (ok Tid), 129 classi di test dichiarate, test del bypass rovesciati; suite verde come la base |
 | 2026-11-24 | Tid | **D-J decisa: a**, `is_superuser` non concede più niente; il lavoro BE parte subito (§4.7) |
 | 2026-11-24 | Tid | **D-I decisa: il task `reset_lotto_draft` si ritira**, dopo la riverifica (nessun esecutore, né nel BE né a DB); prima il DB, poi il BE (§4.6). D-J proposta (§4.6) |
 | 2026-11-24 | BE | Risposta alla richiesta 3d (§4.5): la tabella dei dieci verbi con le funzioni di decisione; due correzioni a §4.3 (`reset_lotto_draft` spenta, la riconsegna chiede il livello su `vendite.reso` e non `conferma_reso`); il superuser Django passa l'endpoint (decisione a Tid); nessun processo headless raggiunge i verbi, il task `reset_lotto_draft` non lo esegue nessun percorso; i test della Parte C che girano senza contesto o con l'utente tecnico senza profilo; le quattro primitive mai chiamate dal BE |
+| 2026-11-24 | DB | Commit `969ea14566`: giro 12-13 (pgTAP, guida `gestione-ddt`, §8); merge di `origin/Tito-dev` (PR #228) e push su `dev/db-tid` |
+| 2026-11-24 | Tid | Giro 12-13: `test-ddt-righe-evase-dall-ordine-v1` verde come app (§8) |
+| 2026-11-24 | DB | Giro 12-13 scritto (§8): test 44-45 in `test-ddt-righe-evase-dall-ordine-v1`, guida `gestione-ddt` §15.3; nessun changeSet |
+| 2026-11-24 | DB | Commit `64f00b35b1` e push su `dev/db-tid`: giri 1, 1-bis e 3 (`brief-db-revisione-anagrafiche` escluso: ha il lavoro in corso dell'altra sessione, e le due righe di qui ci restano) |
 | 2026-11-24 | DB | Richiesta 3d al BE scritta (§4.4): dieci verbi da portare a DEFINER, precompilati dal ramo del BE (chiamanti, view, meccanismo del permesso); parti B (utente tecnico della pipeline) e C (test che chiamano i verbi, primitive da chiudere) |
 | 2026-11-24 | Tid | Giro 3 applicato; fase `post` del provisioning su dbdev; `test-viste-app-solo-select-v1` verde 5/5 (prima della fase `post` rosso solo sulle quattro viste di `public`, come previsto, §7.4) |
 | 2026-11-24 | DB | Giro 3 scritto (§7): le viste in sola lettura per l'app nelle tre sedi (`20261123-47`, il ramo per tipo del loop, la fase `post`), pgTAP a criterio, §6 e §11.8 delle linee guida, guida dei permessi §7.4; `geometry_columns` deciso (regole `DO INSTEAD NOTHING`, chiusa dal provisioning); provato sullo scratch |

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.pipeline_task_registry`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -50,8 +50,8 @@ tiene insieme è un test, non un vincolo (sotto).
 
 * `db/pgtap/dbops/test-pipeline-task-registry.sql` — la verifica e la risoluzione su un dominio di
   prova.
-* `db/pgtap/vendite/test-pipeline-processi-invariante-v1.sql`, test 6 e 7 — ogni task nominato nei
-  processi delle pipeline esiste ed è attivo qui, e ha la sua policy attiva. È il file da lanciare
+* `db/pgtap/vendite/test-pipeline-processi-invariante-v1.sql`, test 6-7 e 8-9 — ogni task nominato nei
+  processi e nel rollback delle pipeline esiste ed è attivo qui, e ha la sua policy attiva. È il file da lanciare
   dopo aver toccato le pipeline.
 * `db/pgtap/vendite/test-pipeline-consuma-plafond-seed-v1.sql` — il task del consumo del plafond si
   risolve con la funzione che usa il backend.
@@ -63,6 +63,10 @@ tiene insieme è un test, non un vincolo (sotto).
 ### Note di migrazione
 
 * 2026-02-08 — nasce con il registro multi-dominio. Il task `close_lotto` è spento dal 2026-02-18.
+* 2026-11-24 — il task `reset_lotto_draft` è **cancellato**, con la sua implementazione e la sua
+  policy (`80_data/changelog/20261123-67`): nessun percorso lo eseguiva, e il backend ne toglie
+  l'handler. Non è spento come `close_lotto`, perché una riga spenta nominerebbe un handler che
+  non esiste più.
 * 2026-11-08 — perde `data_update` e `user_update`, che nessuno aggiornava: la tabella la
   scrive solo la migrazione (regola dello scrittore, `automazione-db.md` §1.1;
   `brief-db-revisione-dbops`, giro 7-bis).
