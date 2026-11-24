@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.azioni_processo`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -66,7 +66,7 @@ Un'azione non cambia area finché un widget la cita insieme all'area: lo tiene l
 | approva_fattura | ⛔ **Ritirata** il 2026-10-27 (`attivo = false`): mai usata (F-2) | NO | vendite | seed iniziale |
 | emetti_fattura | ⛔ **Ritirata** il 2026-10-27 (`attivo = false`): mai usata; la fattura non ha un «Emetti», i pulsanti stanno sul lotto (F-2) | NO | vendite | seed iniziale |
 | approva_rimessa | Approva rimessa di pagamento | NO | pagamenti | seed iniziale |
-| reset_lotto_draft | ⛔ **Ritirata** il 2026-10-27 (`attivo = false`): «riporta in bozza» chiede `numera_fatture_lotti`, dalla riga del passaggio nella matrice fiscale (Q-F1). ⚠️ Il task di pipeline `reset_lotto_draft` ha lo stesso nome ed è un'altra cosa: resta | SI | vendite | 2026-03-01 |
+| reset_lotto_draft | ⛔ **Ritirata** il 2026-10-27 (`attivo = false`): «riporta in bozza» chiede `numera_fatture_lotti`, dalla riga del passaggio nella matrice fiscale (Q-F1). ⚠️ Il task di pipeline `reset_lotto_draft` ha lo stesso nome ed è un'altra cosa: è stato cancellato il 2026-11-24, mentre l'azione resta spenta | SI | vendite | 2026-03-01 |
 | reset_lotto_fattura_draft | Reset singola fattura lotto a DRAFT | SI | vendite | 2026-03-01 |
 | run_commesse_push | Invio commesse a sistema esterno | NO | vendite | 2026-03-01 |
 | prezzo_override_manuale | Modifica manuale prezzo | NO | vendite | 2026-04-17 |

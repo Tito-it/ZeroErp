@@ -105,9 +105,12 @@ tecnici. Esempio (schema indicativo):
 * I task eseguiti sono gestiti dal runtime Django (`PipelineStepExecutor`) tramite
   whitelist (es. `select_attivita`, `genera_fondi_source_lotto`,
   `applica_fondi_lotto`, `ricalcola_iva_lotto`, `prepare_sdi_payload_lotto`, `numera_fatture`,
-  `reset_lotto_draft`, `noop`, `log_only`).
-* Il reset tecnico in pipeline e` previsto solo per il flusso `MASSIVO`
-  (sezione `rollback` dello step `EMESSA`).
+  `noop`, `log_only`).
+* Nessuna pipeline del seed ha un `rollback` (tutti `[]`): il task `reset_lotto_draft`, che
+  era il rollback dello step `EMESSA` della corsia `MASSIVO`, e` ritirato dal 2026-11-24.
+  L'annullo del lotto e` il verbo `vendite.fn_annulla_lotto_da_draft`, dall'endpoint.
+  Un task nominato nel `rollback` deve essere registrato e avere la sua policy, come quelli
+  dei `processi` (`test-pipeline-processi-invariante-v1.sql`, test 8 e 9).
 * Nel flusso `MASSIVO`, lo step `EMESSA` include il ciclo:
   source fondi -> applicazione fondi -> ricalcolo IVA/totali.
   La numerazione resta nello step `DEFINITIVA`.
