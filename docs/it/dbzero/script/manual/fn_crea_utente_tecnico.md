@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_crea_utente_tecnico`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -62,7 +62,7 @@ tecnico». Il modello dice il contrario, e il piano è stato riscritto.
 | | |
 | --- | --- |
 | utente Django | password **inutilizzabile** (prefisso `!`): nessuno può fare login al posto del processo |
-| soggetto | un soggetto dedicato, col suo contatto |
+| soggetto | un soggetto dedicato, col suo contatto: il tipo è quello proposto ([fn_tipo_contatto_proposto_id](/dbzero/script/manual/fn_tipo_contatto_proposto_id)), lo stato quello proposto ([fn_stato_proposto_id](/dbzero/script/manual/fn_stato_proposto_id)) |
 | soggetto-ruolo | di tipo `PROC_AUTO` — il tipo riservato ai processi |
 | identità digitale | ruolo `OPERATORE`, con il flag `tecnica` |
 | perimetro | la riga in `config.user_emittenti_fiscali`: **quell'azienda e basta** |

@@ -1,0 +1,41 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO: script.fn_get_tipo_contatto_id(p_cod_int_tipo_contatto)
+#   Cercava un tipo di contatto per codice_interno, con E_DEFAULT_CONTATTO_MISSING
+#   se mancava. Nessun chiamante: ne' in pg_proc (catalogo di dbdev, 2026-11-24),
+#   ne' nel backend. La ricerca del tipo che si usa quando nessuno lo dice ha ora
+#   una sede sola, script.fn_tipo_contatto_proposto_id (20261123-68): la copia si
+#   ritira nello stesso giro (regola del 2). E_DEFAULT_CONTATTO_MISSING diventa
+#   obsoleto in codici_errore.csv. D-T5-6 b di Tid, brief-db-revisione-anagrafiche §20.8 (giro 3-bis).
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261123-73-drop-fn-get-tipo-contatto-id-mctit.yaml
+
+  - changeSet:
+      id: 20261123-73-drop-fn-get-tipo-contatto-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira script.fn_get_tipo_contatto_id: nessun chiamante, la ricerca del tipo di contatto
+        proposto sta in script.fn_tipo_contatto_proposto_id. D-T5-6 b, brief-db-revisione-anagrafiche §20.8 (giro 3-bis).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_tipo_contatto_id(character varying);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La funzione si ricrea dalla sua storia (20260804-59), se servisse.
+              SELECT 1;

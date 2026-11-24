@@ -213,6 +213,12 @@ sul ramo della correzione della quantità.~~ ⚠️ Falso (§3-ter.2): il ramo f
 che chiedono già il proprietario (§5.8 del brief archiviato) e i trigger che leggono la GUC dell'utente
 (`app.jwt_user`, `app.current_user_id`), che non sono porte.
 
+Fuori dal censimento, a ragione, anche le porte che passano da `script.fn_porta_manutenzione_aperta` (dal
+2026-11-17): con la GUC accesa si aprono solo alla sessione del migratore, e lasciano una riga in
+`dbops.porte_manutenzione_passaggi`. Per l'app restano chiuse. Sono i sei trigger del suo `COMMENT`, fra cui i
+lucchetti di colonna (`script.trgfn_lock_columns`, `zeroerp.allow_lock_columns_override`). ⚠️ Riletto sul catalogo il
+2026-11-24, dopo che `brief-db-revisione-anagrafiche` §20.6 li aveva dati per una porta da registrare qui: non lo è.
+
 ## 3. Decisioni aperte — a Tid
 
 ⚠️ Superata da §3-bis.4 (2026-11-23): D-1 … D-3 sono state riformulate in D-A … D-D, tutte decise. Resta scritta
@@ -1404,6 +1410,7 @@ il 44 sarebbe rosso per costruzione. ✅ Verde come app, 45/45 (Tid, 2026-11-24)
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-24 | DB (sessione anagrafiche) | §2: le porte che passano da `fn_porta_manutenzione_aperta`, lucchetti di colonna compresi, dichiarate fuori dal censimento a ragione (chiuse per l'app dal 2026-11-17); nessuna porta nuova |
 | 2026-11-24 | BE | BB `utente_per_id` estratto (regola del 2, ok Tid, §4.7): sette sedi, il rifiuto resta del chiamante; presidio di sede unica |
 | 2026-11-24 | BE | D-K5 **a**, D-K6 **a**, D-I.4 **a** (Tid) fatte (§4.7, §4.8): resolver sul BB dello scope, utente tecnico al motore documentale (ramo senza filtro di `get_fattura_testata` ritirato, `build_context` senza default), `auto_step_rollback` dalla pipeline; test provati a rovescio, uno sul DB vero; nota per R-DB-I3 sul patto del `jsonb` |
 | 2026-11-24 | `/verifica` | §4.7: copia importata di `fetch_emittenti_scope_ids` in pagamenti (presidio nuovo), commenti e ripiego di `E_SCOPE_SENZA_UTENTE` allineati, gate dei prezzi fra i dichiarati; D-K5 e D-K6 a Tid · §4.8: verso del rollback nel diario riscritto (due test), manuali BE; D-I.4 a Tid |

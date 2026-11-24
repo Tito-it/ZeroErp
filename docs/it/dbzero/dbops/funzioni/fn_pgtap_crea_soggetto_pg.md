@@ -27,7 +27,6 @@ DECLARE
     v_piva        anagrafiche.soggetti.partita_iva%TYPE;
     v_iso2        config.stati.codice_iso2%TYPE;
     v_prov_id     config.province.id%TYPE;
-    v_tipo_cont   config.tipi_contatti.id%TYPE;
     v_tipo_ind    config.tipi_soggetto_dettaglio_tipi_indirizzo.tipo_indirizzo_id%TYPE;
     v_forma_id    anagrafiche.dati_societari.forma_giuridica_id%TYPE;
     v_rea_policy  config.forme_giuridiche.rea_policy%TYPE;
@@ -46,7 +45,6 @@ BEGIN
     END IF;
 
     SELECT p.id INTO v_prov_id FROM config.province p ORDER BY p.id LIMIT 1;
-    SELECT t.id INTO v_tipo_cont FROM config.tipi_contatti t ORDER BY t.id LIMIT 1;
 
     -- ⭐ FINESTRA DIFFERITA. I tre guard di completezza su
     --   anagrafiche.soggetti (dati societari, indirizzi, contatti)
@@ -96,8 +94,9 @@ BEGIN
         p_iscrizione_rea             => CASE WHEN v_ds AND v_rea_policy <> 'NONE' THEN ('REA-' || v_piva)::varchar END,
         p_capitale_sociale           => CASE WHEN v_ds AND v_cap_policy <> 'NONE' THEN 10000.00 END,
         p_socio_unico                => CASE WHEN v_ds THEN 'SM'::anagrafiche.socio_unico_enum END,
-        p_liquidazione               => CASE WHEN v_ds THEN 'LN'::anagrafiche.liquidazione_enum END,
-        p_tipo_contatto_id           => v_tipo_cont);
+        p_liquidazione               => CASE WHEN v_ds THEN 'LN'::anagrafiche.liquidazione_enum END);
+        -- Il tipo di contatto non si passa: lo propone la madre
+        -- (script.fn_tipo_contatto_proposto_id), come per ogni chiamante.
 
     -- Gli indirizzi dalla madre plurale: un indirizzo del primo tipo
     -- obbligatorio della matrice del tipo di soggetto, e la madre lo
@@ -137,7 +136,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id integer, p_stato_id integer, p_piva text)
-IS 'Fixture pgTAP: crea un soggetto PERSONA GIURIDICA gia'' valido, dalle madri del dominio: testata, contatto di default e dati societari da anagrafiche.fn_crea_soggetto_pg, indirizzi da anagrafiche.fn_crea_indirizzi_soggetto. I valori li decide la configurazione: forma giuridica la prima ammessa dalla natura, REA e capitale solo se la forma li prevede, niente dati societari se la natura li vieta; partita IVA libera (dbops.fn_pgtap_piva_libera) o quella del test, che e'' anche il codice fiscale; lo stato per id, passato alla madre col suo codice ISO2 (un codice ambiguo lo rifiuta la madre). Indirizzi: uno del primo tipo obbligatorio della matrice del tipo di soggetto (config.tipi_soggetto_dettaglio_tipi_indirizzo), nella forma dello stato (dbops.fn_pgtap_indirizzo_libero_forma), copiato dalla madre sugli altri obbligatori; una natura senza tipi obbligatori nasce senza indirizzi. Apre e RICHIUDE la finestra dei tre guard DEFERRABLE INITIALLY DEFERRED di anagrafiche.soggetti, che il SET CONSTRAINTS ALL IMMEDIATE del preambolo farebbe scattare prima che la saga esista: al ritorno i vincoli sono IMMEDIATE, e un chiamante che dopo costruisce a mano un''altra saga deve aprirsi la sua finestra. Una natura PF la rifiuta la madre (E_SOGGETTO_CREAZIONE_NATURA_ERRATA): la persona fisica ha la sua porta. Ritorna l''id del soggetto.';
+IS 'Fixture pgTAP: crea un soggetto PERSONA GIURIDICA gia'' valido, dalle madri del dominio: testata, contatto di default (col tipo proposto: il tipo non si passa) e dati societari da anagrafiche.fn_crea_soggetto_pg, indirizzi da anagrafiche.fn_crea_indirizzi_soggetto. I valori li decide la configurazione: forma giuridica la prima ammessa dalla natura, REA e capitale solo se la forma li prevede, niente dati societari se la natura li vieta; partita IVA libera (dbops.fn_pgtap_piva_libera) o quella del test, che e'' anche il codice fiscale; lo stato per id, passato alla madre col suo codice ISO2 (un codice ambiguo lo rifiuta la madre). Indirizzi: uno del primo tipo obbligatorio della matrice del tipo di soggetto (config.tipi_soggetto_dettaglio_tipi_indirizzo), nella forma dello stato (dbops.fn_pgtap_indirizzo_libero_forma), copiato dalla madre sugli altri obbligatori; una natura senza tipi obbligatori nasce senza indirizzi. Apre e RICHIUDE la finestra dei tre guard DEFERRABLE INITIALLY DEFERRED di anagrafiche.soggetti, che il SET CONSTRAINTS ALL IMMEDIATE del preambolo farebbe scattare prima che la saga esista: al ritorno i vincoli sono IMMEDIATE, e un chiamante che dopo costruisce a mano un''altra saga deve aprirsi la sua finestra. Una natura PF la rifiuta la madre (E_SOGGETTO_CREAZIONE_NATURA_ERRATA): la persona fisica ha la sua porta. Ritorna l''id del soggetto.';
 ```
 
 </div>
