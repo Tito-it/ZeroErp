@@ -1,6 +1,6 @@
 ### 🔁 Il cambio di natura del soggetto
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 
 La **natura** di un soggetto è la sua natura di dettaglio (`tipo_soggetto_dettaglio_id`: privato, ditta
 individuale, società di capitali, società di persone, ente…), e ogni natura di dettaglio appartiene a una
@@ -17,8 +17,10 @@ cambio finché c'è anche un solo motivo aperto.
   strada arrivi: una società non diventa una persona fisica, un ente non diventa una società.
 * **Da nessuna natura a una natura**: un soggetto senza natura la riceve senza il controllo della
   macro-tipologia e dei documenti, che hanno bisogno di una natura di partenza.
-* **Da una natura a nessuna natura**: ammesso solo se il soggetto non ha titoli IVA vigenti, che senza una
-  natura non si possono giudicare.
+* ⛔ **Da una natura a nessuna natura: mai.** Una natura scritta non si svuota, per nessuno: è la regola
+  dell'identificativo applicata alla natura. Passare da una natura a nessuna e poi a un'altra, in due
+  salvataggi, salterebbe la macro-tipologia, i documenti e le nature ammesse dai ruoli, che hanno bisogno
+  di una natura di partenza.
 
 #### ⛔ Il cambio non pulisce niente
 
@@ -36,6 +38,7 @@ l'applicazione li possa mostrare tutti.
 
 | # | Motivo | Codice | Come si toglie |
 | --- | --- | --- | --- |
+| 0 | La natura nuova è nessuna natura | `E_CAMBIO_NATURA_VERSO_NESSUNA` | Non si toglie: si sceglie un'altra natura della stessa famiglia. Quando c'è, è l'unico motivo restituito |
 | 1 | La natura nuova è di un'altra macro-tipologia | `E_CAMBIO_NATURA_ALTRA_MACRO_TIPOLOGIA` | Non si toglie. Quando c'è, è l'unico motivo restituito: gli altri non hanno senso |
 | 2 | La partita IVA nasce o sparisce (una delle due nature non ne ha) e il soggetto compare già in un documento, in qualunque ruolo | `E_CAMBIO_NATURA_CON_DOCUMENTI` | Non si toglie: il documento porta l'identità fiscale di allora. Fra due nature che tengono tutte e due la partita IVA i documenti non bloccano |
 | 3 | La natura nuova non ha partita IVA e la riga ne porta una | `E_CAMBIO_NATURA_PIVA_NON_APPLICABILE` | Svuotandola nello stesso salvataggio, cosa che solo il SUPER_ADMIN può fare: una partita IVA già scritta è bloccata |
@@ -46,9 +49,6 @@ l'applicazione li possa mostrare tutti.
 | 8 | La natura nuova non ha dati societari e il soggetto ne ha | `E_CAMBIO_NATURA_CON_DATI_SOCIETARI` | Con l'eliminazione dei dati societari, prima del cambio |
 | 9 | Indirizzi del soggetto di un tipo che la natura nuova non ammette | `E_CAMBIO_NATURA_INDIRIZZI_NON_AMMESSI` | Eliminando quegli indirizzi |
 | 10 | Indirizzi dei ruoli del soggetto di un tipo che la natura nuova non ammette | `E_CAMBIO_NATURA_INDIRIZZI_RUOLO_NON_AMMESSI` | Eliminando quegli indirizzi dal ruolo |
-
-Verso **nessuna natura** il solo motivo possibile è un titolo IVA vigente, visibile o no
-(`E_DATO_FISCALE_SENZA_TIPO_SOGGETTO`).
 
 I motivi sono di due famiglie. Quelli **della riga del soggetto** (la partita IVA e i due flag del regime PA)
 si giudicano sui valori **proposti**: chi li corregge nello stesso salvataggio della natura passa. Quelli
@@ -64,11 +64,11 @@ nella stessa transazione.
 
 | Che cosa | Chi lo controlla | Quando |
 | --- | --- | --- |
-| I dieci motivi | `anagrafiche.trgfn_soggetti_guard_cambio_natura` | Subito, all'UPDATE della riga, prima degli altri guard di `soggetti` |
+| Gli undici motivi | `anagrafiche.trgfn_soggetti_guard_cambio_natura` | Subito, all'UPDATE della riga, prima degli altri guard `a10` di `soggetti` (l'immutabilità di CF, P.IVA e stato parla prima, in `a05`) |
 | Codice fiscale e partita IVA obbligatori | `anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori` | Subito |
 | Il sesso | `anagrafiche.trgfn_soggetti_guard_sesso_policy` | Subito |
 | I flag del regime PA (anche fuori dal cambio) | `anagrafiche.trgfn_soggetti_guard_regime_pa` | Subito |
-| La forma giuridica dei dati societari | `anagrafiche.trgfn_soggetti_guard_forma_giuridica_natura` | Al COMMIT |
+| La forma giuridica dei dati societari (natura e paese) | `anagrafiche.trgfn_soggetti_guard_forma_giuridica_natura` | Al COMMIT, anche quando cambia lo stato |
 | I dati societari che la natura pretende | `anagrafiche.trgfn_soggetti_guard_dati_societari_required` | Al COMMIT |
 | Gli indirizzi obbligatori del soggetto | `anagrafiche.trgfn_soggetti_guard_indirizzi_required` | Al COMMIT |
 | Gli indirizzi obbligatori dei ruoli | `anagrafiche.trgfn_soggetti_guard_obbligatori_ruoli` | Al COMMIT |

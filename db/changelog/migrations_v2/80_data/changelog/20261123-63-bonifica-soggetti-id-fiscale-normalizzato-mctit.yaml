@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.soggetti: CF, P.IVA e P.IVA di gruppo gia' scritti, una volta,
+#   nella forma che il DB ora impone. Brief: brief-db-revisione-anagrafiche
+#   §20 (T5), D-T5-2 a (Tid, 2026-11-23).
+#
+# -- PERCHE' SERVE, A PRESCINDERE DALLE RIGHE DI OGGI ---------------------------------
+#   Da 20_code -48 trgfn_soggetti_normalize (a01) scrive le tre colonne in
+#   maiuscolo, senza spazi, vuoto -> NULL, a ogni scrittura. Una riga nata
+#   prima con un CF in minuscolo o con uno spazio non si potrebbe piu'
+#   modificare: alla prima scrittura che nomina il CF la normalizzazione lo
+#   cambierebbe, e il guard dell'identificativo (lo cambia solo il
+#   SUPER_ADMIN) la rifiuterebbe. Il modello vale per ogni database, non per
+#   quello di oggi (2026-11-24, dbdev: nessuna riga da toccare su 884).
+#
+# -- LA FORMA ----------------------------------------------------------------------------
+#   Come il backfill di 20261123-38 (linee-guida-trigger, «Il backfill di una
+#   colonna derivata non passa dai trigger»): normalizzare non e' un evento di
+#   dominio, quindi i trigger della tabella si sospendono (cercati per
+#   funzione: restano accesi audit e tx_id, le righe sono toccate oggi) e si
+#   riaccendono nel loro modo (O, A, R). L'indice d'unicita' resta: due
+#   soggetti che differivano solo per maiuscole o spazi sono lo stesso
+#   identificativo, e il changeSet fallisce con 23505 invece di fonderli. E'
+#   un doppione da risolvere a mano, non da nascondere.
+#   Senza righe da toccare il blocco non sospende niente (nessun lock).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261123-63-bonifica-soggetti-id-fiscale-normalizzato-mctit.yaml
+
+  - changeSet:
+      id: 20261123-63-bonifica-soggetti-id-fiscale-normalizzato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.soggetti: codice_fiscale, partita_iva e piva_gruppo_acquisto esistenti in
+        maiuscolo, senza spazi, vuoto -> NULL, con i trigger della tabella sospesi (tranne audit e
+        tx_id). brief-db-revisione-anagrafiche §20, D-T5-2 a.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_trigger t
+               WHERE t.tgrelid = 'anagrafiche.soggetti'::regclass
+                 AND t.tgname = 'trg_soggetti_a01_normalize_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $bonifica$
+              DECLARE
+                  r          record;
+                  v_sospesi  pg_catalog.pg_trigger.tgname%TYPE[] := '{}';
+                  v_modi     pg_catalog.pg_trigger.tgenabled%TYPE[] := '{}';
+              BEGIN
+                  IF NOT EXISTS (
+                      SELECT 1 FROM anagrafiche.soggetti s
+                       WHERE s.codice_fiscale       IS DISTINCT FROM NULLIF(upper(regexp_replace(s.codice_fiscale, '\s', '', 'g')), '')
+                          OR s.partita_iva          IS DISTINCT FROM NULLIF(upper(regexp_replace(s.partita_iva, '\s', '', 'g')), '')
+                          OR s.piva_gruppo_acquisto IS DISTINCT FROM NULLIF(upper(regexp_replace(s.piva_gruppo_acquisto, '\s', '', 'g')), '')
+                  ) THEN
+                      RETURN;
+                  END IF;
+
+                  FOR r IN
+                      SELECT t.tgname, t.tgenabled
+                        FROM pg_trigger t
+                       WHERE t.tgrelid = 'anagrafiche.soggetti'::regclass
+                         AND NOT t.tgisinternal
+                         AND t.tgenabled <> 'D'
+                         AND t.tgfoid NOT IN ('script.trgfn_audit_data_user_generic'::regproc,
+                                              'dbops.trgfn_tx_id_managed'::regproc)
+                  LOOP
+                      EXECUTE format('ALTER TABLE anagrafiche.soggetti DISABLE TRIGGER %I', r.tgname);
+                      v_sospesi := v_sospesi || r.tgname;
+                      v_modi    := v_modi || r.tgenabled;
+                  END LOOP;
+
+                  UPDATE anagrafiche.soggetti s
+                     SET codice_fiscale       = NULLIF(upper(regexp_replace(s.codice_fiscale, '\s', '', 'g')), ''),
+                         partita_iva          = NULLIF(upper(regexp_replace(s.partita_iva, '\s', '', 'g')), ''),
+                         piva_gruppo_acquisto = NULLIF(upper(regexp_replace(s.piva_gruppo_acquisto, '\s', '', 'g')), '')
+                   WHERE s.codice_fiscale       IS DISTINCT FROM NULLIF(upper(regexp_replace(s.codice_fiscale, '\s', '', 'g')), '')
+                      OR s.partita_iva          IS DISTINCT FROM NULLIF(upper(regexp_replace(s.partita_iva, '\s', '', 'g')), '')
+                      OR s.piva_gruppo_acquisto IS DISTINCT FROM NULLIF(upper(regexp_replace(s.piva_gruppo_acquisto, '\s', '', 'g')), '');
+
+                  -- Si riaccende ogni trigger nel modo in cui era: O (origin), A (always), R (replica).
+                  FOR i IN 1 .. coalesce(array_length(v_sospesi, 1), 0) LOOP
+                      EXECUTE format('ALTER TABLE anagrafiche.soggetti %s TRIGGER %I',
+                                     CASE v_modi[i]
+                                         WHEN 'A' THEN 'ENABLE ALWAYS'
+                                         WHEN 'R' THEN 'ENABLE REPLICA'
+                                         ELSE 'ENABLE'
+                                     END,
+                                     v_sospesi[i]);
+                  END LOOP;
+              END
+              $bonifica$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la forma di prima non si ricostruisce, e non serve.
+              SELECT 1;

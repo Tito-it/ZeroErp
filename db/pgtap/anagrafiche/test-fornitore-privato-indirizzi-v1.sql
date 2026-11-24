@@ -377,6 +377,12 @@ SELECT is(
     '22) ... coi valori natura, tipo, ruolo, quanti')
   FROM _s s JOIN anagrafiche.soggetti so ON so.id = s.di;
 
+-- ⚠️ La P.IVA scritta la svuota solo il SUPER_ADMIN, e il suo rifiuto parla per primo (fase a05,
+--   rev 2026-11-24, brief-db-revisione-anagrafiche §20): il cambio verso il privato, che la deve
+--   togliere, lo fa lui, perche' a parlare sia il motivo del ruolo.
+CREATE TEMP TABLE _sa AS SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('pgTAP-SA-fornitore-privato', true);
+SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _sa));
+
 SELECT is(
     pg_temp.messaggio_di(format(
         'UPDATE anagrafiche.soggetti SET tipo_soggetto_dettaglio_id = %s, partita_iva = NULL WHERE id = %L',

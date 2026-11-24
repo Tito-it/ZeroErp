@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato su scratch e dbdev, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/anagrafiche/20261123-64.
+# Il formato di CF e P.IVA si giudica quando cambia cio' che giudica.
+#   Brief: brief-db-revisione-anagrafiche §20 (T5), S43-2 (Tid, 2026-11-23).
+#
+# -- IL DIFETTO ----------------------------------------------------------------------
+#   trg_soggetti_valida_cf_piva_dispatch_ins_upd scattava a ogni UPDATE, senza
+#   fase. Un soggetto con un CF che il validatore non accetta (scritto prima
+#   di una regola, o con una configurazione della natura cambiata) non si
+#   modificava piu' in nessun campo: cambiare il telefono rispondeva «codice
+#   fiscale non valido», e il CF lo corregge solo il SUPER_ADMIN.
+#
+# -- LA FORMA -------------------------------------------------------------------------
+#   Due trigger sulla stessa funzione, in fase a10 (sono guard):
+#     trg_soggetti_a10_valida_cf_piva_ins   BEFORE INSERT
+#     trg_soggetti_a10_valida_cf_piva_upd   BEFORE UPDATE WHEN cambia CF, P.IVA,
+#                                           P.IVA di gruppo, stato o natura
+#   WHEN e non OF (linee-guida-trigger §«UPDATE OF»): trgfn_soggetti_normalize
+#   (a01) scrive le tre colonne anche quando il SET non le nomina, e la regola
+#   dipende anche da stato e natura. In a10 «valida» ordina dopo i guard
+#   dell'immutabilita' e della presenza (guard_id_fiscale_…, guard_cf_piva_…):
+#   prima «non si cambia» e «manca», poi «e' scritto male».
+#   La funzione resta la stessa; la variabile del paese si ancora (%TYPE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261123-49-update-trg-soggetti-valida-cf-piva-fase-mctit.yaml
+
+  - changeSet:
+      id: 20261123-49-update-trg-soggetti-valida-cf-piva-fase
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il validatore di CF e P.IVA su anagrafiche.soggetti in fase a10: all'INSERT e
+        all'UPDATE solo WHEN cambia CF, P.IVA, P.IVA di gruppo, stato o natura. Un soggetto
+        con un CF non piu' valido torna modificabile negli altri campi.
+        brief-db-revisione-anagrafiche §20, S43-2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_soggetti_valida_cf_piva_dispatch';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_paese config.stati.codice_iso2%TYPE;
+              BEGIN
+                  SELECT st.codice_iso2 INTO v_paese
+                    FROM config.stati st
+                   WHERE st.id = NEW.stato_id;
+
+                  -- Le regole scritte oggi sono quelle italiane: uno stato senza
+                  -- validatore passa (guida soggetti-e-ruoli-anagrafici).
+                  IF v_paese = 'IT' THEN
+                      PERFORM script.fn_validate_cf_piva_it(
+                          NEW.tipo_soggetto_dettaglio_id,
+                          NEW.partita_iva,
+                          NEW.piva_gruppo_acquisto,
+                          NEW.codice_fiscale);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch() IS
+                  'Guard del FORMATO di codice_fiscale, partita_iva e piva_gruppo_acquisto di anagrafiche.soggetti, per paese: per IT script.fn_validate_cf_piva_it (E_CF_NON_VALIDO / E_PIVA_NON_VALIDA, con campo); uno stato senza validatore passa. La PRESENZA la giudica trgfn_soggetti_guard_cf_piva_obbligatori. Montata due volte in fase a10: trg_soggetti_a10_valida_cf_piva_ins (BEFORE INSERT) e trg_soggetti_a10_valida_cf_piva_upd (BEFORE UPDATE WHEN cambia CF, P.IVA, P.IVA di gruppo, stato o natura): un soggetto con un CF non piu'' accettato resta modificabile negli altri campi (S43-2, brief-db-revisione-anagrafiche §20, 2026-11-23). Legge i valori gia'' normalizzati da trgfn_soggetti_normalize (a01).';
+
+              -- I trigger di trgfn_soggetti_valida_cf_piva_dispatch si tolgono per FUNZIONE, non per
+              --   nome: dbdev e un database costruito da zero li hanno con nomi diversi
+              --   (dbdev trg_soggetti_valida_cf_piva_dispatch_ins_upd, da zero trg_soggetti_ins_upd_valida_cf_piva_dispatch; 20251119-01 ha rinominato la funzione, non sempre il trigger).
+              DO $via$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN
+                      SELECT t.tgname
+                        FROM pg_trigger t
+                       WHERE t.tgrelid = 'anagrafiche.soggetti'::regclass
+                         AND t.tgfoid = 'anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch'::regproc
+                         AND NOT t.tgisinternal
+                  LOOP
+                      EXECUTE format('DROP TRIGGER %I ON anagrafiche.soggetti', r.tgname);
+                  END LOOP;
+              END
+              $via$;
+
+              CREATE TRIGGER trg_soggetti_a10_valida_cf_piva_ins
+                  BEFORE INSERT ON anagrafiche.soggetti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch();
+
+              CREATE TRIGGER trg_soggetti_a10_valida_cf_piva_upd
+                  BEFORE UPDATE ON anagrafiche.soggetti
+                  FOR EACH ROW
+                  WHEN (OLD.codice_fiscale             IS DISTINCT FROM NEW.codice_fiscale
+                     OR OLD.partita_iva                IS DISTINCT FROM NEW.partita_iva
+                     OR OLD.piva_gruppo_acquisto       IS DISTINCT FROM NEW.piva_gruppo_acquisto
+                     OR OLD.stato_id                   IS DISTINCT FROM NEW.stato_id
+                     OR OLD.tipo_soggetto_dettaglio_id IS DISTINCT FROM NEW.tipo_soggetto_dettaglio_id)
+                  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_soggetti_a10_valida_cf_piva_ins ON anagrafiche.soggetti;
+              DROP TRIGGER IF EXISTS trg_soggetti_a10_valida_cf_piva_upd ON anagrafiche.soggetti;
+              CREATE TRIGGER trg_soggetti_valida_cf_piva_dispatch_ins_upd
+                  BEFORE INSERT OR UPDATE ON anagrafiche.soggetti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch();

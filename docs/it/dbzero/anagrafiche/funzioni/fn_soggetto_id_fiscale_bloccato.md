@@ -22,6 +22,7 @@ AS $function$
                      CASE p_colonna
                          WHEN 'codice_fiscale' THEN s.codice_fiscale
                          WHEN 'partita_iva'    THEN s.partita_iva
+                         WHEN 'stato_id'       THEN s.stato_id::text
                      END)
               FROM anagrafiche.soggetti s
              WHERE s.id = p_soggetto_id),
@@ -29,7 +30,7 @@ AS $function$
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_soggetto_id_fiscale_bloccato(p_soggetto_id uuid, p_colonna text)
-IS 'La regola di anagrafiche.fn_id_fiscale_bloccato letta sulla riga del soggetto, per la colonna codice_fiscale o partita_iva. E'' la condizione delle due righe di dbops.lock_columns_conditional su anagrafiche.soggetti, che dbops.fn_non_editable_fields valuta per il form: il form spegne esattamente cio'' che il guard rifiuta. Soggetto inesistente o colonna diversa: falso.';
+IS 'La regola di anagrafiche.fn_id_fiscale_bloccato letta sulla riga del soggetto, per la colonna codice_fiscale, partita_iva o stato_id. E'' la condizione delle righe di dbops.lock_columns_conditional su anagrafiche.soggetti, che dbops.fn_non_editable_fields valuta per il form: il form spegne esattamente cio'' che il guard rifiuta. Soggetto inesistente o colonna diversa: falso.';
 ```
 
 </div>

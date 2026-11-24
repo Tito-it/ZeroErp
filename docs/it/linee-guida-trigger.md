@@ -1,6 +1,6 @@
 # Linee guida Trigger (PostgreSQL + Liquibase)
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > **Destinatari**: chi scrive o modifica un trigger o una funzione trigger
 >
@@ -63,6 +63,7 @@ ordina dentro la zona.
 
 | Fase       | Zona e uso                                                                                                                                  |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `a01`      | **la normalizzazione che i guard leggono**: riscrive un valore nella forma che guard, indici e lucchetti confrontano (maiuscole, spazi tolti, vuoto → `NULL`), prima di chiunque lo giudichi |
 | `a05`      | **il rifiuto che deve parlare per primo**: l'immutabilità («questa cosa non si tocca»: documento fuori bozza, forma di un codice)             |
 | `a10`      | **verifica e blocco**: i guard. Se la regola non è rispettata, sollevano l'errore e l'operazione non passa                                   |
 | `a15`, `a20` | **derivazioni e normalizzazioni** che vengono dopo i guard: un valore calcolato da altri (`set_validita`, `set_periodo`)                  |
@@ -85,6 +86,16 @@ agganciare un `BEFORE` si cerca fra i `BEFORE` della tabella chi scrive le colon
 sceglie la fase perché venga dopo (`z10`). Si presidia con un pgTAP di forma (il `tgname` del
 lettore, confrontato in `COLLATE "C"`, è maggiore di quello del risolutore) e con un test di
 comportamento che passa dal percorso reale, non da un helper che scrive la colonna in modo esplicito.
+
+⭐ **`a01` è per la forma del valore, non per il suo significato.** Un `a01` non decide niente e non
+solleva: rende uguali due scritture dello stesso dato («rssmra…» e «RSSMRA…», «» e `NULL`), così
+l'immutabilità non vede un cambio dove non c'è e la presenza non vede un valore dove c'è solo uno
+spazio. Una regola sola per ogni strada di scrittura: il verbo e il backend non ricopiano la
+normalizzazione. Un default che **propone** un valore mancante (lo stato proposto) sta nello stesso
+trigger, ma solo all'`INSERT`: in modifica un valore tolto si rifiuta, non si rimpiazza. Le righe
+scritte prima che l'`a01` esistesse si normalizzano una volta, nello stesso giro, coi trigger
+sospesi, perché la prima scrittura che le tocca non urti l'immutabilità. Primo caso:
+`trg_soggetti_a01_normalize_ins_upd` (codice fiscale, partita IVA, P.IVA di gruppo).
 
 Una fase nuova non si inventa: si sceglie la zona che dice il suo posto, e un numero libero dentro.
 

@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PROVISIONA SUBITO DUE LUCCHETTI DI COLONNA DI anagrafiche
+#   * soggetti_ruoli.tipo_ruolo_id   -> E_SOGGETTO_RUOLO_TIPO_IMMUTABILE
+#     D-T5-4 a (S30, S52, meta' di S49): un ruolo e' «questo soggetto, questo
+#     tipo». Il soggetto era gia' bloccato (20261019-86); il tipo no, e
+#     cambiarlo non rigiudicava ne' la matrice natura <-> ruolo ne' gli
+#     indirizzi del ruolo. Nessuno scrittore lo cambia (DB e BE, verificato):
+#     un tipo sbagliato si corregge togliendo il ruolo e mettendo quello giusto.
+#   * dati_societari.soggetto_id     -> E_DATI_SOCIETARI_SOGGETTO_IMMUTABILE
+#     S41-6: la riga dei dati societari e' del suo soggetto (uq_ds_soggetto),
+#     FK di appartenenza (linee-guida-trigger §«UPDATE OF»). L'app non scrive
+#     la tabella; il verbo fn_scrivi_dati_societari non cambia il soggetto.
+#   Brief: brief-db-revisione-anagrafiche §20 (T5), Tid 2026-11-23. Le righe
+#   sono in 80_data/sql/dbops/automation_lock_columns.csv, i codici nei due
+#   CSV dei codici.
+#
+# -- PERCHE' SUBITO -----------------------------------------------------------------
+#   Su dbdev il ci_apply non rigira le automazioni (il job dei lock e'
+#   serale): senza questo passo le strade resterebbero aperte fino alla sera,
+#   e il pgTAP del giro rosso. Da zero il ci_apply lo monta comunque; il runner
+#   converge (crea, rigenera, toglie), e rigirarlo non fa danni.
+#
+# -- LA FORMA -------------------------------------------------------------------------
+#   Si chiama il RUNNER, non si scrive un CREATE TRIGGER a mano (stessa scelta
+#   di 20261019-86 e 20261121-09). Il runner rigenera
+#   trg_soggetti_ruoli_a10_lock_columns_upd con la seconda coppia
+#   colonna/codice e crea trg_dati_societari_a10_lock_columns_upd.
+#   L'ordine: sui ruoli il guard della natura ammessa e' ormai solo BEFORE
+#   INSERT (20_code -58), sui dati societari il guard della forma non e' piu'
+#   OF soggetto_id (-60): su un UPDATE delle due colonne parla il lucchetto.
+#   ⚠️ Il lucchetto generato (script.trgfn_lock_columns) ha una porta della
+#   sola GUC (zeroerp.allow_lock_columns_override), che il brief
+#   brief-db-porte-aperte-dalla-sola-guc non censisce ancora: questi due
+#   lucchetti valgono quanto quella porta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261123-62-provision-lock-ruolo-tipo-dati-societari-soggetto-mctit.yaml
+
+  - changeSet:
+      id: 20261123-62-provision-lock-ruolo-tipo-dati-societari-soggetto
+      author: mctit
+      runOnChange: false
+      comment: >
+        Provisiona subito i lucchetti di colonna su anagrafiche.soggetti_ruoli.tipo_ruolo_id
+        (E_SOGGETTO_RUOLO_TIPO_IMMUTABILE) e anagrafiche.dati_societari.soggetto_id
+        (E_DATI_SOCIETARI_SOGGETTO_IMMUTABILE) chiamando il runner dei lock sullo schema
+        anagrafiche. brief-db-revisione-anagrafiche §20, D-T5-4 a e S41-6.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # Le due righe del registro devono esserci e essere accese: senza, il
+            # runner non crea niente e il changeSet sarebbe un verde a vuoto.
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT count(*) FROM dbops.automation_lock_columns
+                   WHERE enabled IS TRUE
+                     AND upper(btrim(exec_mode)) = 'AUTO'
+                     AND (target_schema, target_table, column_name, error_code) IN (
+                         ('anagrafiche', 'soggetti_ruoli', 'tipo_ruolo_id', 'E_SOGGETTO_RUOLO_TIPO_IMMUTABILE'),
+                         ('anagrafiche', 'dati_societari', 'soggetto_id',   'E_DATI_SOCIETARI_SOGGETTO_IMMUTABILE'));
+            # I codici devono essere vivi, o il lock risponderebbe con un
+            # segnaposto irrisolto invece che con la sua frase.
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT count(*) FROM config.codici_errore
+                   WHERE codice IN ('E_SOGGETTO_RUOLO_TIPO_IMMUTABILE', 'E_DATI_SOCIETARI_SOGGETTO_IMMUTABILE')
+                     AND (obsoleto_dal IS NULL OR obsoleto_dal > CURRENT_DATE);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_run_automations_lock_columns('AUTO', ARRAY['anagrafiche'], false);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il trigger lo governa il registro: per toglierlo si spegne la
+              -- riga di automation_lock_columns e si rigira il runner, che
+              -- converge. Qui non si tocca niente.
+              SELECT 1;

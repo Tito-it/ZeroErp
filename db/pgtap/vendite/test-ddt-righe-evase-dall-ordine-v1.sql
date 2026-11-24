@@ -19,7 +19,7 @@
 -- ChangeSet: 20261011-05 … -20, -34, -35
 -- Brief: brief-db-ddt-righe-evase-dall-ordine (D-1 … D-5, §5)
 -- ------------------------------------------------------------
--- Indice test (plan 43):
+-- Indice test (plan 45):
 --   1) gli oggetti nuovi esistono e i tre trigger sono montati
 --   2) i quattro codici nuovi sono a catalogo con la loro classe
 --   3) ⭐ regola del 2: le sei madri chiamano il BB e non contengono piu' la proiezione
@@ -73,6 +73,15 @@
 --  43) ⚠️ la porta senza il proprietario: GUC accesa a mano -> rifiuto.
 --      ROSSO DA OWNER, VERDE COME APP: da proprietario della tabella la porta
 --      si apre per costruzione. Per ultimo.
+--  LA PORTA DEL RITIRO DEL LEGAME (rev 2026-11-24, brief-db-porte-aperte-dalla-sola-guc
+--  §3-ter.2, D-E a): i due rami di vendite.trgfn_ddt_riga_legame_guard sul DELETE
+--  44) ⚠️ fuori bozza, con TUTTE E DUE le GUC accese dall'app (il legame e il
+--      ritiro dell'annullo): rifiuto. Il ramo chiede anche il proprietario
+--      (vendite.fn_doc_porta_ritiro_ammette). ROSSO DA OWNER, VERDE COME APP, come il 43.
+--  45) in bozza, la GUC sulla riga basta: il legame si toglie con un DELETE diretto.
+--      E' la scelta dichiarata (D-E a): la bozza la scrive l'app, e il ramo lo apre
+--      anche trgfn_dlt_block_ordrig_ddtrig quando l'app toglie una riga. Il test la
+--      fissa: chi la cambia lo fa sapendolo.
 --
 -- ⚠️ LE FIXTURE SI COSTRUISCONO: cliente e articoli dai builder, bolle da
 --   ordine da dbops.fn_pgtap_crea_ddt_da_ordine (ordine 10 @20, bolla in
@@ -92,7 +101,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- RLS attiva), non come owner.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(43);
+SELECT plan(45);
 
 -- La conferma del reso e' un verbo con l'azione conferma_reso (scenario F).
 DO $az$ BEGIN
@@ -588,6 +597,32 @@ SELECT pg_temp.re_prova('43_porta_a_mano',
 SELECT set_config('zeroerp.ddt_riga_correggi_qta', '', true);
 SELECT ok(pg_temp.re_rifiuto('43_porta_a_mano', 'viene da un ordine o da un reso'),
   '43) la GUC accesa a mano non apre la porta: serve anche il proprietario della tabella');
+
+-- ============================================================
+-- 44) ⚠️ Il ritiro del legame fuori bozza. ROSSO DA OWNER, VERDE COME APP.
+--   La bolla A e' emessa (22). L'app accende le due GUC che apre il ritiro
+--   dell'annullo — il legame di questa riga, e il ritiro di questa bolla — e
+--   cancella diretta: senza il proprietario la porta resta chiusa.
+-- ============================================================
+SELECT set_config('zeroerp.ddt_riga_ritira_legame', pg_temp.re_fix('a1_dr')::text, true);
+SELECT set_config('zeroerp.doc_ritira_legami', 'DDT_VENDITA:' || pg_temp.re_fix('a1_ddt')::text, true);
+SELECT pg_temp.re_prova('44_ritiro_due_guc',
+  format('DELETE FROM vendite.ordini_righe_fulfillment WHERE ddt_riga_id = %s', pg_temp.re_fix('a1_dr')));
+SELECT set_config('zeroerp.ddt_riga_ritira_legame', '', true);
+SELECT set_config('zeroerp.doc_ritira_legami', '', true);
+SELECT ok(pg_temp.re_rifiuto('44_ritiro_due_guc', 'non si scrive direttamente'),
+  '44) fuori bozza le due GUC accese dall''app non tolgono il legame: serve il proprietario');
+
+-- ============================================================
+-- 45) Il ritiro del legame in bozza: la GUC sulla riga basta (D-E a).
+-- ============================================================
+SELECT pg_temp.re_mk_ddt('k1', 'k', 10, p_qta_ordine => 10);
+SELECT set_config('zeroerp.ddt_riga_ritira_legame', pg_temp.re_fix('k1_dr')::text, true);
+SELECT pg_temp.re_prova('45_ritiro_bozza',
+  format('DELETE FROM vendite.ordini_righe_fulfillment WHERE ddt_riga_id = %s', pg_temp.re_fix('k1_dr')));
+SELECT set_config('zeroerp.ddt_riga_ritira_legame', '', true);
+SELECT is((SELECT righe FROM tmp_esito WHERE caso = '45_ritiro_bozza'), 1,
+  '45) in bozza la GUC sulla riga basta: il legame si toglie con un DELETE diretto (scelta dichiarata, D-E a)');
 
 SELECT * FROM finish();
 ROLLBACK;

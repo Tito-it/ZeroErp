@@ -67,17 +67,25 @@ BEGIN
         'soggetto_id',                p_soggetto_id,
         'tipo_soggetto_dettaglio_id', p_tipo_soggetto_dettaglio_id);
 
-    -- ---- Natura nuova NULL: resta solo il titolo vigente ------
+    -- ---- 0. Natura nuova NULL: una natura scritta non si svuota --
+    --   D-T5-1 a (Tid, 2026-11-23, brief-db-revisione-anagrafiche §20):
+    --   qui la natura vecchia c'e' sempre (il cambio e' DISTINCT), e il
+    --   passaggio X -> NULL -> Y saltava la macro-tipologia, i documenti
+    --   e la matrice natura <-> ruolo (S38). Vale per tutti, anche per il
+    --   SUPER_ADMIN. Torna da solo, come la macro-tipologia: gli altri
+    --   motivi parlano di una natura nuova che qui non c'e'. Un soggetto
+    --   senza natura la riceve una volta, come prima.
     IF p_tipo_soggetto_dettaglio_id IS NULL THEN
-        IF anagrafiche.fn_titoli_iva_non_ammessi_conta(p_soggetto_id, NULL) > 0 THEN
-            v_motivi := v_motivi || jsonb_build_object(
-                'codice',     'E_DATO_FISCALE_SENZA_TIPO_SOGGETTO',
-                'reason',     'SENZA_NATURA_CON_TITOLI_IVA',
-                'reason_key', 'anagrafiche.soggetti.cambio_natura_blocco.senza_natura_con_titoli_iva',
-                'dettaglio',  v_dettaglio,
-                'valori',     '[]'::jsonb);
-        END IF;
-        RETURN v_motivi;
+        SELECT COALESCE(tsd.descrizione, tsd.codice_interno)
+          INTO v_vecchia_nome
+          FROM config.tipi_soggetto_dettaglio tsd
+         WHERE tsd.id = v_vecchia_id;
+        RETURN v_motivi || jsonb_build_object(
+            'codice',     'E_CAMBIO_NATURA_VERSO_NESSUNA',
+            'reason',     'VERSO_NESSUNA',
+            'reason_key', 'anagrafiche.soggetti.cambio_natura_blocco.verso_nessuna',
+            'dettaglio',  v_dettaglio,
+            'valori',     jsonb_build_array(v_vecchia_nome));
     END IF;
 
     SELECT tsd.tipo_soggetto_id, tsd.formato_piva, tsd.dati_societari_policy,
@@ -249,7 +257,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_check_cambio_natura_soggetto(p_soggetto_id uuid, p_tipo_soggetto_dettaglio_id bigint, p_partita_iva text, p_cliente_pa character, p_split_payment character)
-IS 'I motivi per cui il soggetto non puo'' passare alla natura di dettaglio data: check pura, array ordinato di {codice, reason, reason_key, dettaglio, valori}, [] se il cambio si puo'' fare o se la natura non cambia. Il cambio non pulisce niente: i motivi si tolgono a mano. In ordine: un''altra macro-tipologia (E_CAMBIO_NATURA_ALTRA_MACRO_TIPOLOGIA, da solo); l''identita'' fiscale che cambia (P.IVA che nasce o sparisce) con il soggetto in un documento, in qualunque ruolo (E_CAMBIO_NATURA_CON_DOCUMENTI, anagrafiche.fn_soggetto_primo_documento); la P.IVA proposta su una natura che non ne ha (E_CAMBIO_NATURA_PIVA_NON_APPLICABILE); cliente_pa e split_payment proposti a S e non ammessi (E_CLIENTE_PA_NON_AMMESSO, E_SPLIT_PAYMENT_NON_AMMESSO, anagrafiche.fn_regime_pa_campo_non_ammesso); titoli IVA vigenti non ammessi visibili a chi agisce (E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI) e non visibili, di altri emittenti (E_CAMBIO_NATURA_TITOLI_ALTRI_EMITTENTI); la riga di dati societari su una natura senza dati societari (E_CAMBIO_NATURA_CON_DATI_SOCIETARI); indirizzi del soggetto di un tipo non ammesso (E_CAMBIO_NATURA_INDIRIZZI_NON_AMMESSI, anagrafiche.fn_tipo_indirizzo_ammesso_per_natura); indirizzi dei ruoli del soggetto di un tipo non ammesso, con lo stesso predicato (E_CAMBIO_NATURA_INDIRIZZI_RUOLO_NON_AMMESSI, la regola del guard anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo; valori: natura, tipo e ruolo del primo, quanti). Natura nuova NULL: solo i titoli vigenti (E_DATO_FISCALE_SENZA_TIPO_SOGGETTO). P.IVA e flag sono i valori proposti; la natura vecchia e'' quella salvata. Forma giuridica, sesso e indirizzi obbligatori non sono motivi: li giudicano i guard dello stato finale. SECURITY INVOKER: i titoli visibili sono quelli della RLS di chi chiama. Soggetto NULL: E_PARAMETRO_INVALIDO; inesistente: E_SOGGETTO_NOT_FOUND. La leggono anagrafiche.trgfn_soggetti_guard_cambio_natura e anagrafiche.fn_nature_proponibili_soggetto.';
+IS 'I motivi per cui il soggetto non puo'' passare alla natura di dettaglio data: check pura, array ordinato di {codice, reason, reason_key, dettaglio, valori}, [] se il cambio si puo'' fare o se la natura non cambia. Il cambio non pulisce niente: i motivi si tolgono a mano. In ordine: la natura tolta, cioe'' una natura scritta portata a nessuna (E_CAMBIO_NATURA_VERSO_NESSUNA, da solo, per tutti: una natura scritta non si svuota; un soggetto senza natura la riceve una volta); un''altra macro-tipologia (E_CAMBIO_NATURA_ALTRA_MACRO_TIPOLOGIA, da solo); l''identita'' fiscale che cambia (P.IVA che nasce o sparisce) con il soggetto in un documento, in qualunque ruolo (E_CAMBIO_NATURA_CON_DOCUMENTI, anagrafiche.fn_soggetto_primo_documento); la P.IVA proposta su una natura che non ne ha (E_CAMBIO_NATURA_PIVA_NON_APPLICABILE); cliente_pa e split_payment proposti a S e non ammessi (E_CLIENTE_PA_NON_AMMESSO, E_SPLIT_PAYMENT_NON_AMMESSO, anagrafiche.fn_regime_pa_campo_non_ammesso); titoli IVA vigenti non ammessi visibili a chi agisce (E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI) e non visibili, di altri emittenti (E_CAMBIO_NATURA_TITOLI_ALTRI_EMITTENTI); la riga di dati societari su una natura senza dati societari (E_CAMBIO_NATURA_CON_DATI_SOCIETARI); indirizzi del soggetto di un tipo non ammesso (E_CAMBIO_NATURA_INDIRIZZI_NON_AMMESSI, anagrafiche.fn_tipo_indirizzo_ammesso_per_natura); indirizzi dei ruoli del soggetto di un tipo non ammesso, con lo stesso predicato (E_CAMBIO_NATURA_INDIRIZZI_RUOLO_NON_AMMESSI, la regola del guard anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo; valori: natura, tipo e ruolo del primo, quanti). P.IVA e flag sono i valori proposti; la natura vecchia e'' quella salvata. Forma giuridica, sesso e indirizzi obbligatori non sono motivi: li giudicano i guard dello stato finale. SECURITY INVOKER: i titoli visibili sono quelli della RLS di chi chiama. Soggetto NULL: E_PARAMETRO_INVALIDO; inesistente: E_SOGGETTO_NOT_FOUND. La leggono anagrafiche.trgfn_soggetti_guard_cambio_natura e anagrafiche.fn_nature_proponibili_soggetto.';
 ```
 
 </div>

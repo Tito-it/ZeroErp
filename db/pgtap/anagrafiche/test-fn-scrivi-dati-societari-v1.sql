@@ -35,7 +35,7 @@
 --   12) SRL senza capitale (REQUIRED) -> E_CAPITALE_SOCIALE_OBBLIGATORIO
 --   13) SRL senza REA (REQUIRED) -> E_REA_OBBLIGATORIO
 --   14) provincia REA senza numero -> CHECK chk_dati_societari_rea_coppia (23514)
---   15) forma NULL -> NOT NULL (23502)
+--   15) forma NULL -> E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA (prima il 23502 della colonna)
 --   cambio di natura (guard al COMMIT 20261010-98)
 --   16) SC -> SP senza cambiare la forma SRL -> E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA al COMMIT
 --   17) SC -> SP e poi forma SNC, nella stessa transazione -> passa
@@ -227,10 +227,12 @@ SELECT throws_ok(
     '23514', NULL,
     '14. la provincia REA senza il numero -> CHECK chk_dati_societari_rea_coppia');
 
-SELECT throws_ok(
-    pg_temp.ds_sql((SELECT id FROM _sc), NULL, 'REA-PGTAP-V15', 10000),
-    '23502', NULL,
-    '15. dati societari senza forma -> NOT NULL (C-2)');
+-- Rev 2026-11-24 (S41-3, brief-db-revisione-anagrafiche §20): prima il 23502 della colonna, senza
+--   codice ne' campo; ora lo dice il guard della forma.
+SELECT is(
+    dbops.fn_pgtap_codice_errore(pg_temp.ds_sql((SELECT id FROM _sc), NULL, 'REA-PGTAP-V15', 10000)),
+    'E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA',
+    '15. dati societari senza forma -> E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA (C-2)');
 
 -- ============================================================
 -- Cambio di natura: il guard al COMMIT (20261010-98)

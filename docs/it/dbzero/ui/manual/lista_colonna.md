@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_colonna`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -113,6 +113,30 @@ che il vincolo rifiuta.
 * `gruppo` e `gruppo_ordine` raggruppano le colonne nel pannello di personalizzazione; `formato`
   suggerisce al frontend la resa del valore.
 
+---
+
+### Dove va il vuoto quando la lista ordina
+
+`vuoto_ordinato_come_massimo` dice dove stanno le righe con la cella vuota quando la lista ordina per
+la colonna. `false`, il default, è la regola generale: il vuoto conta come il valore più piccolo, il
+«non ancora» (il numero di una bozza, una data di evasione che non è arrivata). `true` lo dichiara la
+colonna il cui vuoto vuol dire «senza fine», come una fine validità o una scadenza che non c'è: il
+vuoto conta come il più grande, in qualunque verso. Il backend legge la dichiarazione dal catalogo e
+la applica all'ordinamento della lista: non vale per i filtri.
+
+* Ogni colonna accesa su `valido_al` la dichiara: è la convenzione di tutto il database, dove
+  `valido_al` NULL vuol dire «aperto» (linee guida SQL §7b), e il test del catalogo la controlla.
+  Anche quando la colonna di origine non può essere vuota: lì la dichiarazione non cambia niente.
+* La dichiarazione è del dato, non di ciò che la lista permette: resta anche su una colonna che non
+  si ordina, e torna utile se l'ordinamento si riaccende. Chiede invece un campo sorgente
+  (`chk_ui_lista_colonna_vuoto_massimo_con_campo`): una colonna senza valore non ha un vuoto da
+  ordinare.
+* È una colonna del software: su una colonna nata dal seed l'installazione non la cambia
+  (`E_SEED_COLONNA_DEL_SOFTWARE`, il seed di primo impianto), e il drawer delle colonne non la
+  mostra. Dice che cosa vuol dire il vuoto del dato, non una preferenza di presentazione.
+
+---
+
 ⭐ Il flag `ordinabile` e l'elenco delle colonne su cui il backend ammette l'ordinamento sono una
 modifica sola in due posti: si cambiano insieme, e `scripts/gen_seed_lista.py --verifica-ordinamento`
 dice se sono allineati.
@@ -178,7 +202,8 @@ sulla coppia (colonna, lista).
 * `E_UI_COLONNA_CODICE_IMMUTABILE` — si riscrive il codice della colonna, o la si sposta su un'altra
   lista.
 * L'unicità del codice nella lista, i CHECK dei testi non vuoti, dell'azione senza campo, della
-  colonna senza campo non esportabile, della colonna della lineage e della priorità, e le FK
+  colonna senza campo non esportabile, della colonna della lineage, della priorità e del vuoto
+  dichiarato senza campo, e le FK
   arrivano come violazione di vincolo, e il backend le traduce per nome.
 
 ---
@@ -198,6 +223,8 @@ sulla coppia (colonna, lista).
   documenti.
 * `db/pgtap/ui/test-ui-legami-preset-v1.sql` — la lista di una colonna che un preset nomina non
   cambia.
+* `db/pgtap/ui/test-lista-colonna-vuoto-ordinato-come-massimo-v1.sql` — il default, il vincolo del
+  campo sorgente, le colonne dichiarate, la convenzione di `valido_al`.
 * `db/pgtap/ui/test-ui-ritiro-voce-preferenze-v1.sql` — la colonna cancellata esce dalle preferenze
   della lista; la colonna non cambia lista.
 
