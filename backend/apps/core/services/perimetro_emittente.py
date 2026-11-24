@@ -33,6 +33,7 @@ from typing import Any
 from apps.core.db.lista_catalogo_repository import fetch_flag_perimetro
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.core.services.payload_helpers import SIGNED_INT_RE
 
 # Il rifiuto del cancello. Classe `NON_ESEGUIBILE` a catalogo -> 422, e NON
 # 403: il diritto c'e', manca una precondizione che l'utente scioglie da se'
@@ -78,7 +79,14 @@ def emittente_esplicito_da_query(query_params: Any, *, nome: str) -> int | None:
     if len(valori) != 1:
         return None
     grezzo = valori[0].strip()
-    return int(grezzo) if grezzo.isdigit() else None
+    # ⛔ La forma di un intero in un testo e' `SIGNED_INT_RE` (cifre ASCII), non
+    #    `isdigit()`: `"²".isdigit()` e' vero e `int("²")` era un 500, e `"٣"`
+    #    passava come 3 (2026-11-24, brief-be-fe-BB-audit §2.5). Un negativo
+    #    non e' un emittente, come prima.
+    if not SIGNED_INT_RE.fullmatch(grezzo):
+        return None
+    valore = int(grezzo)
+    return valore if valore >= 0 else None
 
 
 # Scopo: TRUE se l'utente ha piu' di un emittente nel proprio perimetro

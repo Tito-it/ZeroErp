@@ -13,6 +13,11 @@
 // Uso:
 //   <InputMaiuscolo v-model="form.codice_sdi" maxlength="7"
 //                   :invalid="campiErrati.includes('codice_sdi')" :disabled="disabled" />
+//   <InputMaiuscolo v-model="form.codice_fiscale" senza-spazi />   (CF, IBAN…)
+//
+// ⭐ 2026-11-24 (brief-be-fe-BB-audit §7.1 F-2): la forma e il cursore stanno
+//    in `core/utils/maiuscolo.js`, che usa anche l'IBAN (un `AutoComplete`).
+//    `senzaSpazi` ha preso il posto di `normalizeUpperNoSpaces`, ritirato.
 //
 // ⭐ E' un aiuto di digitazione, non una regola: la forma del valore la decide
 //    il DB (CHECK e guard), che risponde col campo in errore.
@@ -21,26 +26,20 @@
 // ⚠️ Gli attributi non dichiarati (`maxlength`, `invalid`, `disabled`, `id`…)
 //    passano all'`InputText`, che e' l'unica radice.
 
-import { ref, nextTick } from 'vue'
+import { ref } from 'vue'
 import InputText from 'primevue/inputtext'
+import { riscriviDigitato } from '../utils/maiuscolo'
 
+const props = defineProps({
+  // Toglie ogni spazio mentre si digita (IBAN, codice fiscale).
+  senzaSpazi: { type: Boolean, default: false },
+})
 const valore = defineModel({ type: String, default: '' })
 const campo = ref(null)
 
-// Scopo: riscrive il valore digitato in maiuscolo.
-// ⚠️ Quando la riscrittura cambia il testo, Vue riassegna il valore all'input
-//    e il cursore salta in fondo: chi corregge una lettera in mezzo si
-//    ritroverebbe a scrivere alla fine. Si rimette il cursore dov'era.
+// Scopo: riscrive il valore digitato in maiuscolo, col cursore dov'era.
 function aggiorna(v) {
-  const scritto = v || ''
-  const maiuscolo = scritto.toUpperCase()
-  const input = campo.value?.$el
-  const inizio = input?.selectionStart
-  const fine = input?.selectionEnd
-  valore.value = maiuscolo
-  if (maiuscolo !== scritto && inizio != null) {
-    nextTick(() => input.setSelectionRange(inizio, fine))
-  }
+  valore.value = riscriviDigitato(campo.value?.$el, v, { senzaSpazi: props.senzaSpazi })
 }
 </script>
 

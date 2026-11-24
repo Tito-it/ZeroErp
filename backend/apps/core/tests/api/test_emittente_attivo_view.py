@@ -165,7 +165,7 @@ class EmittenteAttivoViewTests(SimpleTestCase):
         self.assertNotIn(JWT_CLAIM_EMITTENTE_ATTIVO_ID, token.payload)
 
     # 5. `emittente_fiscale_id` non numerico: 400 `E_VALIDATION_INPUT` dal
-    #    validator (`optional_int` → ValueError → handle_post_json), non un
+    #    validator (`optional_int` → `PayloadValidator`, col campo), non un
     #    `int()` che esplode in 500 — il bug della prima stesura. Il service
     #    non deve nemmeno essere interpellato.
     @patch(_SERVICE)

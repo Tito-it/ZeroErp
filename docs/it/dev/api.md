@@ -381,10 +381,19 @@ I parametri del payload si estraggono con i validator di `apps.core.api.payload_
 
 | Funzione                                       | Scopo                                         |
 | ---------------------------------------------- | --------------------------------------------- |
-| `optional_int(payload, "key")`                 | Estrae int o None, errore se non convertibile |
+| `optional_int(payload, "key")`                 | Estrae int o None (anche zero o negativo, tetto bigint); `zero_as_none` per lo 0 dei form |
 | `optional_bool(payload, "key", default=False)` | Estrae bool con default: **solo booleani JSON** |
-| `optional_iso_date(payload, "key")`            | Estrae `date` da stringa ISO                  |
-| `optional_uuid(payload, "key")`                | Estrae UUID                                   |
+| `optional_iso_date(payload, "key")`            | Estrae `date` da stringa ISO; `""` è un 400   |
+| `optional_uuid(payload, "key")`                | Estrae UUID canonico; `""`, `0`, `"0"` sono un 400 |
+
+⭐ **Una regola sola (dal 2026-11-24, brief-be-fe-BB-audit §2).** Le quattro funzioni
+delegano a `PayloadValidator` col codice `E_VALIDATION_INPUT`: assente o `null` è `None`,
+ogni altro valore che non è del tipo è un 400 **col campo**. Fino a quel giorno int,
+data e uuid avevano regole loro, e lo stesso valore aveva due esiti secondo chi lo leggeva.
+⛔ Servono **alla view**. Un service legge col proprio `PayloadValidator` (§Validazione
+input), col codice del dominio. ⛔ Query string e header sono testo: si leggono coi BB
+`qp_*` (`qp_int_optional`, `qp_iso_date_optional`, `qp_uuid_optional`, `qp_bool_optional`),
+mai avvolgendo il valore in un dizionario per passarlo a queste.
 
 ⛔ **Tre regole del corpo, decise da Tid il 2026-10-20** (brief-be-verifica-documentazione-api):
 
@@ -528,7 +537,10 @@ dichiara `min_val=INTEGER_MIN, max_val=INTEGER_MAX` (`apps.core.services.payload
 * **valore non riconosciuto / non valido** (`?attivo=banana`, `?utility_id=abc`) ⇒
   **`400` `E_VALIDATION_INPUT`** (niente coercion silenziosa: prima alcuni filtri
   bool accettavano il garbage come `True`/`False`).
-* token bool riconosciuti: `1/true/yes/y/on` → `True`, `0/false/no/n/off` → `False`.
+* token bool riconosciuti: solo `true` → `True` e `false` → `False` (maiuscole e spazi
+  ammessi). Ogni altro valore, compresi `1`/`yes`/`on`, è un 400 (decisione di Tid del
+  2026-10-20, `qp_bool_optional`). Fino al 2026-11-24 questa riga elencava ancora i token
+  ritirati quel giorno.
 
 #### ⛔ Un filtro a vocabolario chiuso si valida PRIMA della query (dal 2026-10-20)
 

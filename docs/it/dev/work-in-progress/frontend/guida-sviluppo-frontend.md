@@ -57,7 +57,7 @@ frontend/src/
 │   ├── apiCore.js                  # Endpoint core: lookup, search, stradario, CAP
 │   ├── constants.js                # Costanti UI: DRAWER_WIDTH, TOAST_DURATION, PAGINATION, BREAKPOINTS, SHORTCUTS
 │   ├── i18n.js                     # Istanza vue-i18n
-│   ├── navigation.js               # Fonte unica: DOMAINS, DOMAIN_MENUS, resolveTabLabel
+│   ├── navigation.js               # Fonte unica: DOMAINS, DOMAIN_MENUS, resolveNavigationLabel
 │   └── storage.js                  # Layer localStorage/sessionStorage
 ├── anagrafiche/                    # Dominio attivo
 │   ├── api/anagrafiche.js          # Endpoint anagrafiche: soggetti, contatti, indirizzi, ruoli, CF/PIVA

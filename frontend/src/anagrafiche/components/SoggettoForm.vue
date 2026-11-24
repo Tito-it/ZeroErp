@@ -7,7 +7,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { generaCF, validaCFPIVA } from '../api/anagrafiche'
 import { toDateString, displayDate } from '../../core/utils/date'
-import { capitalizeWords, capitalizeFirst, blockNonAlphanumeric, normalizeUpperNoSpaces } from '../../core/utils/string'
+import { capitalizeWords, capitalizeFirst, blockNonAlphanumeric } from '../../core/utils/string'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import DatePicker from 'primevue/datepicker'
@@ -15,6 +15,7 @@ import Button from 'primevue/button'
 import Message from 'primevue/message'
 import { DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
+import InputMaiuscolo from '../../core/components/InputMaiuscolo.vue'
 import { naturaSpenta, primoMotivoBloccante, fraseMotivo } from '../composables/cambioNatura'
 
 const { t, te } = useI18n()
@@ -274,11 +275,10 @@ async function onValidaPIVA() {
       <div class="form-field">
         <label>{{ t('common.codice_fiscale') }} *</label>
         <div class="app-input-with-action">
-          <InputText v-model="form.codice_fiscale" :disabled="disabled || cfDisabled"
+          <InputMaiuscolo v-model="form.codice_fiscale" senza-spazi :disabled="disabled || cfDisabled"
             :invalid="campiErrati.includes('codice_fiscale') || cfHaErrore"
             @blur="onValidaCF"
-            @keypress="blockNonAlphanumeric"
-            @input="normalizeUpperNoSpaces(form, 'codice_fiscale')" />
+            @keypress="blockNonAlphanumeric" />
           <Button
             v-if="isPF && !cfDisabled"
             :icon="MANAGE_ICONS.GENERA"

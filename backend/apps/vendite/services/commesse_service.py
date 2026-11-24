@@ -988,7 +988,7 @@ def fn_list_commessa_attivita(
     commessa_id: int,
     stato_emissione: str | None = None,
     stato_approvazione: str | None = None,
-    competenza_mese: str | None = None,
+    competenza_mese: date | None = None,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     order_by: str | None = None,
@@ -1049,16 +1049,18 @@ def fn_list_commessa_attivita(
             log_to_db=True,
         )
 
-    from apps.core.api.payload_validators import optional_iso_date as _parse_date
-
-    competenza_mese_date = _parse_date({"competenza_mese": competenza_mese}, "competenza_mese") if competenza_mese else None
-
+    # ⛔ `competenza_mese` arriva gia' come `date`: e' un filtro della query
+    #    string, e lo legge la view con `qp_iso_date_optional` (il vuoto e'
+    #    l'assente, il malformato un 400 col campo). Fino al 2026-11-24 il
+    #    service lo riceveva come testo e lo avvolgeva in un dizionario per il
+    #    lettore del corpo JSON: `?competenza_mese=%20` era un 400 invece di
+    #    «nessun filtro» (api.md §Validazione parametri, brief-be-fe-BB-audit §2.3).
     repo = CommesseRepository()
     data = repo.list_commessa_attivita(
         commessa_id,
         stato_emissione=stato_emissione,
         stato_approvazione=stato_approvazione,
-        competenza_mese=competenza_mese_date,
+        competenza_mese=competenza_mese,
         limit=limit,
         offset=offset,
         order_by=order_by,

@@ -115,8 +115,8 @@ class EmittenteAttivoView(DomainAPIView):
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
             # Stringa vuota = assente (stesso contratto dei filtri opzionali);
-            # garbage → ValueError → 400 `E_VALIDATION_INPUT` di handle_post_json,
-            # non un `int()` che esplode in 500.
+            # garbage → 400 `E_VALIDATION_INPUT` col campo (`optional_int` →
+            # `PayloadValidator`), non un `int()` che esplode in 500.
             emittente_id = (
                 None
                 if payload.get("emittente_fiscale_id") in (None, "")

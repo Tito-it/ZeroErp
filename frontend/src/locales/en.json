@@ -6382,6 +6382,7 @@
       "soggetto": "Subject",
       "cambio_natura_blocco": {
         "altra_macro_tipologia": "The chosen legal nature belongs to another family: a natural person does not become a company, and vice versa. Choose a nature of the same family, or create a new party.",
+        "verso_nessuna": "A legal nature already set cannot be removed: choose another nature of the same family, or keep the current one.",
         "con_documenti": "The party already appears in a document, and this change would remove or add its VAT number: recorded documents carry its current tax identity. The change cannot be made.",
         "piva_non_applicabile": "The chosen nature has no VAT number, and the party has one: it must be cleared before the change (only an administrator can do it).",
         "cliente_pa": "The chosen nature cannot be a Public Administration: set «Public Administration client» back to No.",
@@ -6390,8 +6391,7 @@
         "titoli_iva_altri_emittenti": "The chosen nature does not allow {titoli} VAT exemption declarations in force with other companies, not visible from here: an administrator, or the company that received them, must close them.",
         "dati_societari": "The chosen nature has no company data: delete it before the change.",
         "indirizzi": "The chosen nature does not allow {indirizzi} addresses of the party: delete them before the change.",
-        "indirizzi_ruolo": "The chosen nature does not allow {indirizzi} addresses of the {ruolo} role: delete them from the role before the change.",
-        "senza_natura_con_titoli_iva": "The party has VAT exemption declarations in force and cannot have them without a legal nature: choose a nature, or close the declarations first."
+        "indirizzi_ruolo": "The chosen nature does not allow {indirizzi} addresses of the {ruolo} role: delete them from the role before the change."
       },
       "dati_societari_elimina_blocco": {
         "natura_li_richiede": "The party's legal nature requires company data: to delete it, first change the nature to one that does not require it."

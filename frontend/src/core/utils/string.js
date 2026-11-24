@@ -38,31 +38,10 @@ export function blockNonAlphanumeric(event) {
   }
 }
 
-/**
- * Normalizza un campo reactive a uppercase senza spazi.
- * Usare come handler @input su campi come IBAN, CF, P.IVA.
- *
- * @param {object} form - Oggetto reactive
- * @param {string} field - Nome del campo da normalizzare
- */
-export function normalizeUpperNoSpaces(form, field) {
-  if (typeof form[field] === 'string') {
-    form[field] = form[field].toUpperCase().replace(/\s/g, '')
-  }
-}
-
-/**
- * Normalizza un campo reactive a uppercase (mantiene spazi).
- * Usare come handler @input su campi che ammettono spazi.
- *
- * @param {object} form - Oggetto reactive
- * @param {string} field - Nome del campo da normalizzare
- */
-export function normalizeUpper(form, field) {
-  if (typeof form[field] === 'string') {
-    form[field] = form[field].toUpperCase()
-  }
-}
+// ⛔ `normalizeUpperNoSpaces` e `normalizeUpper` ritirati il 2026-11-24
+//    (brief-be-fe-BB-audit F-2): il maiuscolo mentre si digita sta in
+//    `core/utils/maiuscolo.js` (col cursore rimesso dov'era), usato da
+//    `InputMaiuscolo` e dall'IBAN; il `codice` delle anagrafiche lo alza il DB.
 
 /**
  * Ordina array di oggetti per campo 'fonte' nella cascata standard:

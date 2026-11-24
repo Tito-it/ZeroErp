@@ -25,6 +25,8 @@ from apps.core.api.payload_validators import (
     parse_list_params,
     qp_bool_optional,
     qp_str,
+    qp_int_optional,
+    qp_iso_date_optional,
 )
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
@@ -155,10 +157,10 @@ class ApiPreventiviList(DomainAPIView):
         order_dir = qp_str(qp.get("order_dir")) or "desc"
         results, total = preventivi_service.list_preventivi_rows(
             stato_codice=qp_str(qp.get("stato")),
-            billing_account_id=optional_int({"v": qp.get("billing_account_id")}, "v"),
-            utility_id=optional_int({"v": qp.get("utility_id")}, "v"),
-            data_da=optional_iso_date({"v": qp.get("data_da")}, "v"),
-            data_al=optional_iso_date({"v": qp.get("data_al")}, "v"),
+            billing_account_id=qp_int_optional(qp.get("billing_account_id"), "billing_account_id", min_val=0),
+            utility_id=qp_int_optional(qp.get("utility_id"), "utility_id", min_val=0),
+            data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
+            data_al=qp_iso_date_optional(qp.get("data_al"), "data_al"),
             search=qp_str(qp.get("search")),
             # Default true: lista pulita senza storico revisioni. Il FE
             # passa "false" esplicito col toggle "Mostra storico".
@@ -239,10 +241,10 @@ class ApiPreventiviExportView(DomainAPIView):
         auth_user_id = get_scope_user_id(request)
 
         stato_codice = qp_str(qp.get("stato"))
-        billing_account_id = optional_int({"v": qp.get("billing_account_id")}, "v")
-        utility_id = optional_int({"v": qp.get("utility_id")}, "v")
-        data_da = optional_iso_date({"v": qp.get("data_da")}, "v")
-        data_al = optional_iso_date({"v": qp.get("data_al")}, "v")
+        billing_account_id = qp_int_optional(qp.get("billing_account_id"), "billing_account_id", min_val=0)
+        utility_id = qp_int_optional(qp.get("utility_id"), "utility_id", min_val=0)
+        data_da = qp_iso_date_optional(qp.get("data_da"), "data_da")
+        data_al = qp_iso_date_optional(qp.get("data_al"), "data_al")
         search = qp_str(qp.get("search"))
         solo_ultima_revisione = qp_bool_optional(qp.get("solo_ultima_revisione"), "solo_ultima_revisione", default=True)
 
@@ -591,7 +593,7 @@ class ApiPreventivoRootPerFlusso(DomainAPIView):
         )},
     )
     def get(self, request: Request) -> JsonResponse:
-        flusso_id = optional_int({"v": request.query_params.get("flusso_id")}, "v")
+        flusso_id = qp_int_optional(request.query_params.get("flusso_id"), "flusso_id", min_val=0)
         ErrorManager.require(
             flusso_id is not None,
             code="E_FLUSSO_ID_OBBLIGATORIO",
@@ -625,7 +627,7 @@ class ApiPreventivoRootPerPratica(DomainAPIView):
         )},
     )
     def get(self, request: Request) -> JsonResponse:
-        pratica_id = optional_int({"v": request.query_params.get("pratica_id")}, "v")
+        pratica_id = qp_int_optional(request.query_params.get("pratica_id"), "pratica_id", min_val=0)
         ErrorManager.require(
             pratica_id is not None,
             code="E_PRATICA_ID_OBBLIGATORIO",

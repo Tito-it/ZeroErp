@@ -36,9 +36,19 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.value_normalizer import empty_to_none
 
 
-# Regex per int firmato: segno opzionale seguito da almeno una cifra.
+# Regex per int firmato: segno opzionale seguito da almeno una cifra ASCII.
 # Evita che lstrip("-") accetti stringhe degeneri tipo "--5" o "---0".
-_SIGNED_INT_RE = re.compile(r"^-?\d+$")
+# ⛔ `[0-9]`, non `\d`: in Python `\d` e' ogni cifra Unicode, e `int("٣")`
+#    vale 3 — un valore che nessun client scrive passava come intero. La
+#    funzione della view lo rifiutava gia'; dal 2026-11-24 la regola e' una
+#    (brief-be-fe-BB-audit §2).
+# ⭐ Pubblica: e' la forma di un intero scritto in un testo per il corpo JSON
+#    E per la query string (`qp_int_strict`, `qp_int_optional`). `int()` da
+#    solo accetta anche `"+3"`, `"1_000"` e le cifre non ASCII. Si usa con
+#    `fullmatch` sul testo gia' ripulito dagli spazi.
+SIGNED_INT_RE = re.compile(r"-?[0-9]+")
+# Lo stesso senza segno, per gli interi positivi.
+_UNSIGNED_INT_RE = re.compile(r"[0-9]+")
 
 
 # Costanti range per smallint PostgreSQL (INT2): [-32768, 32767]. I service
@@ -511,8 +521,10 @@ class PayloadValidator:
     #    come id o parametro `bigint`, e oltre il tetto la chiamata fallisce
     #    con 22003 — un `E_DATABASE` tecnico senza campo, loggato come errore,
     #    per un valore sbagliato del client. Qui e' un rifiuto sul campo.
-    # ⚠️ `isdecimal`, non `isdigit`: `"²".isdigit()` e' vero e `int("²")`
-    #    solleva `ValueError`, un 500. `isdecimal` ammette cio' che `int` legge.
+    # ⚠️ Cifre ASCII soltanto (`_UNSIGNED_INT_RE`). Non `isdigit`: `"²".isdigit()`
+    #    e' vero e `int("²")` solleva `ValueError`, un 500. E dal 2026-11-24
+    #    nemmeno `isdecimal`, che ammette `"٣"` (int vale 3): la stessa regola
+    #    degli interi con segno (brief-be-fe-BB-audit §2).
     def _coerce_positive_int(
         self,
         raw: Any,
@@ -533,7 +545,7 @@ class PayloadValidator:
         value: int
         if isinstance(raw, int):
             value = raw
-        elif isinstance(raw, str) and raw.strip().isdecimal():
+        elif isinstance(raw, str) and _UNSIGNED_INT_RE.fullmatch(raw.strip()):
             value = int(raw.strip())
         else:
             ErrorManager.raise_error(
@@ -579,7 +591,60 @@ class PayloadValidator:
         if key not in payload or payload[key] is None:
             return None
         em = self._em_kwargs(log_to_db=log_to_db, function_name=function_name)
-        value = payload[key]
+        return self._coerce_int_in_range(
+            payload[key], key, min_val=min_val, max_val=max_val, em=em,
+        )
+
+    # Scopo: Estrae un intero opzionale qualunque (anche zero o negativo) nel
+    #        tetto del tipo dove arriva (default bigint). Assente o None ->
+    #        None; `zero_as_none` legge 0 e "0" come None (i form che mandano 0
+    #        per «nessuno»). Rifiuta bool, float, stringa vuota o non numerica,
+    #        col campo.
+    # ⭐ 2026-11-24 (brief-be-fe-BB-audit §2, regola del 2): e' la regola di
+    #    `apps.core.api.payload_validators.optional_int`, che delega qui. Fino a
+    #    quel giorno la funzione della view aveva una regola sua (stringhe solo
+    #    non negative, nessun tetto: un intero oltre bigint era un 500) e un
+    #    `ValueError` senza il campo.
+    def optional_int(
+        self,
+        payload: dict[str, Any],
+        key: str,
+        *,
+        zero_as_none: bool = False,
+        min_val: int = BIGINT_MIN,
+        max_val: int = BIGINT_MAX,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> int | None:
+        if key not in payload or payload[key] is None:
+            return None
+        em = self._em_kwargs(log_to_db=log_to_db, function_name=function_name)
+        # ⚠️ Lo zero si riconosce DOPO la coercizione, sul valore letto: prima
+        #    del 2026-11-24 il confronto era sul grezzo (`value in (0, "0")`),
+        #    e `" 0"` o `"-0"` diventavano 0 mentre `"0"` era None; `0.0`
+        #    (uguale a 0) era None mentre `1.0` era un 400. L'intervallo si
+        #    controlla dopo, perche' uno 0 letto come None non ha un intervallo.
+        if zero_as_none:
+            valore = self._coerce_int_in_range(
+                payload[key], key, min_val=min(min_val, 0), max_val=max(max_val, 0), em=em,
+            )
+            if valore == 0:
+                return None
+        return self._coerce_int_in_range(
+            payload[key], key, min_val=min_val, max_val=max_val, em=em,
+        )
+
+    # Scopo: La coercizione comune di `optional_smallint` e `optional_int`: un
+    #        int o una stringa d'intero con segno, nell'intervallo dato.
+    def _coerce_int_in_range(
+        self,
+        value: Any,
+        key: str,
+        *,
+        min_val: int,
+        max_val: int,
+        em: dict[str, Any],
+    ) -> int:
         if isinstance(value, bool):
             ErrorManager.raise_error(
                 code=self._code,
@@ -590,8 +655,8 @@ class PayloadValidator:
         normalized: int
         if isinstance(value, int):
             normalized = value
-        elif isinstance(value, str) and _SIGNED_INT_RE.match(value.strip()):
-            # Regex _SIGNED_INT_RE rifiuta "--5", "++1", "1.0" — solo int firmato valido.
+        elif isinstance(value, str) and SIGNED_INT_RE.fullmatch(value.strip()):
+            # SIGNED_INT_RE rifiuta "--5", "++1", "1.0" — solo int firmato valido.
             normalized = int(value.strip())
         else:
             ErrorManager.raise_error(

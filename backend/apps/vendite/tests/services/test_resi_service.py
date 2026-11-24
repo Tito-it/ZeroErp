@@ -1204,3 +1204,18 @@ class ResiRientriTests(SimpleTestCase):
             resi_service.elimina_rientro(4, 7, 9)
         self.assertEqual(cm.exception.code, "E_RESO_NOT_FOUND")
         repo.delete_rientro.assert_not_called()
+
+
+# Scopo: ⛔ gli id riga in stringa hanno la forma `SIGNED_INT_RE` (cifre ASCII),
+#        non `isdigit()`: `"²"` faceva fallire `int()` con un 500, `"٣"`
+#        passava come riga 3 (2026-11-24, brief-be-fe-BB-audit §2.5).
+class ResiParseRigaIdsTests(SimpleTestCase):
+
+    def test_stringhe_d_intero_ascii_valgono(self) -> None:
+        self.assertEqual(resi_service._parse_resi_riga_ids([" 5 ", 7, "5"]), (5, 7))
+
+    def test_forme_che_isdigit_accettava_sono_rifiutate(self) -> None:
+        for grezzo in ("²", "٣", "+3", "1_0", "0", "-2"):
+            with self.subTest(grezzo=grezzo), self.assertRaises(ServiceError) as cm:
+                resi_service._parse_resi_riga_ids([grezzo])
+            self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")

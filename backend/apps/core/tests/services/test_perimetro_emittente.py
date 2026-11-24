@@ -28,6 +28,7 @@ Indice test eseguiti:
 11-13) richiede_scelta_emittente nei suoi tre termini
 13-bis) la lista SENZA perimetro non chiede niente — e per un'altra ragione
 14-18) emittente_esplicito_da_query: uno / nessuno / due / vuoto / non numerico
+18-bis) cifre non ASCII, segno e negativi non valgono (SIGNED_INT_RE, 2026-11-24)
 """
 
 from unittest import TestCase
@@ -231,6 +232,17 @@ class EmittenteEsplicitoDaQueryTests(TestCase):
         self.assertIsNone(
             pe.emittente_esplicito_da_query(self._q("e=pippo"), nome="e")
         )
+
+    def test_cifre_non_ascii_e_negativi_non_valgono(self) -> None:
+        """⛔ `isdigit()` accettava `"²"` (poi `int()` era un 500) e `"٣"`
+        (passava come 3): la forma e' `SIGNED_INT_RE` (2026-11-24). Un negativo
+        non e' un emittente; lo zero resta letto, come prima."""
+        for grezzo in ("%C2%B2", "%D9%A3", "-1", "%2B3", "1_0"):
+            with self.subTest(grezzo=grezzo):
+                self.assertIsNone(
+                    pe.emittente_esplicito_da_query(self._q(f"e={grezzo}"), nome="e")
+                )
+        self.assertEqual(pe.emittente_esplicito_da_query(self._q("e=0"), nome="e"), 0)
 
     def test_senza_nome_dichiarato_non_si_legge(self) -> None:
         """La query da sola non conta: e' la view a dire quale parametro fissa

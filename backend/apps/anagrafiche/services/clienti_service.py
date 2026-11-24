@@ -26,7 +26,6 @@ from apps.anagrafiche.services._validators import create_with_constraint_mapping
 from apps.anagrafiche.services.contatti_service import VINCOLI_CONTATTO, contatto_inline_per_madre
 from apps.anagrafiche.services.soggetti_service import indirizzi_per_madre
 from apps.core.services.service_errors import ServiceError
-from apps.core.api.payload_validators import optional_int, optional_uuid
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 
@@ -216,20 +215,20 @@ class ClientiService:
         #    (`tipo_gg_scadenza_ft`, `nr_giorni_scadenza`, ...) che la PATCH
         #    gia' rifiutava.
         _V.validate_allowed_keys(payload, allowed=_CREATE_KEYS_CLIENTE)
-        soggetto_id = optional_uuid(payload, "soggetto_id")
+        soggetto_id = _V.optional_uuid(payload, "soggetto_id")
         ErrorManager.require(soggetto_id is not None, code=E_ANAG_VALIDAZIONE,
                              message="soggetto_id obbligatorio.")
         assert soggetto_id is not None
         soggetto_id = str(soggetto_id)
 
-        utility_id = optional_int(payload, "utility_id")
+        utility_id = _V.optional_int(payload, "utility_id")
         ErrorManager.require(utility_id is not None, code=E_ANAG_VALIDAZIONE,
                              message="utility_id obbligatorio.")
         assert utility_id is not None
 
         # Parametri opzionali: entita' pre-esistenti (da pratiche)
-        istanza_utility_id = optional_int(payload, "istanza_utility_id")
-        billing_account_id = optional_int(payload, "billing_account_id")
+        istanza_utility_id = _V.optional_int(payload, "istanza_utility_id")
+        billing_account_id = _V.optional_int(payload, "billing_account_id")
 
         # Guard refactor operatore-emittenti (Q6): admin globale non puo'
         # creare BA se ci sono emittenti. Solo se non c'e' un BA pre-esistente
@@ -238,15 +237,15 @@ class ClientiService:
             self._guard_can_create_ba(auth_user_id)
 
         # Parametri opzionali
-        indirizzo_dettaglio_id = optional_int(payload, "indirizzo_dettaglio_id")
+        indirizzo_dettaglio_id = _V.optional_int(payload, "indirizzo_dettaglio_id")
         ba_fatturazione_ordini = optional_str(payload, "ba_fatturazione_ordini")
-        ba_parent_account_id = optional_int(payload, "ba_parent_account_id")
+        ba_parent_account_id = _V.optional_int(payload, "ba_parent_account_id")
         # Pricing v5 STADIO 2: categoria_cliente_id obbligatoria quando si crea
         # un nuovo BA (no default implicito). Scelta voluta: la categoria e'
         # dimensione commerciale rilevante per il pricing, non deve essere
         # assegnata implicitamente. Se il BA e' pre-esistente la categoria e'
         # gia' sul BA e il valore qui e' ignorato.
-        ba_categoria_cliente_id = optional_int(payload, "ba_categoria_cliente_id")
+        ba_categoria_cliente_id = _V.optional_int(payload, "ba_categoria_cliente_id")
         if billing_account_id is None:
             ErrorManager.require(
                 ba_categoria_cliente_id is not None,
@@ -257,7 +256,7 @@ class ClientiService:
         # Dati cliente (passati direttamente al repository)
         cliente_data: dict[str, Any] = {}
         for key in ["termine_pagamento_id", "modalita_pagamento_id"]:
-            val = optional_int(payload, key)
+            val = _V.optional_int(payload, key)
             if val is not None:
                 cliente_data[key] = val
         # ⛔ Sei chiavi tolte il 2026-08-29 (I0/I8 del brief

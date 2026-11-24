@@ -22,7 +22,6 @@ from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
-    optional_int,
     pagina_da_query,
     paginated_envelope,
     parse_list_params,
@@ -31,6 +30,7 @@ from apps.core.api.payload_validators import (
     qp_str,
     qp_str_upper,
     qp_uuid_optional,
+    qp_int_optional,
 )
 from apps.core.api.success_responses import success_response
 from apps.amm_software.db.amm_software_repository import REPARTI_ORDER_COLUMNS
@@ -89,7 +89,7 @@ class OperatoriListView(AdminAPIView):
         results, total_count = repo.list_operatori(
             search=qp.get("search") or None,
             is_super_admin=is_super_admin,
-            unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
+            unita_organizzativa_id=qp_int_optional(qp.get("unita_organizzativa_id"), "unita_organizzativa_id", min_val=0),
             is_active=is_active,
             includi_di_prova=includi_di_prova is True,
             limit=limit,
@@ -938,7 +938,7 @@ class PermessiRiepilogoView(AdminAPIView):
 #        la pagina chiede righe precise, e una che manca in silenzio sarebbe
 #        un operatore senza chip. Nessun id e' un 400 (il parametro e'
 #        obbligatorio): una chiamata senza operatori e' un chiamante rotto.
-# ⚠️ Il pezzo lo legge `optional_int` (cifre ASCII); qui si aggiunge il tetto
+# ⚠️ Il pezzo lo legge `qp_int_optional` (un testo di query string); qui si aggiunge il tetto
 #    di un `integer` PG (`auth_user.id`, argomento `integer[]` della funzione,
 #    `INTEGER_MAX` di payload_helpers): oltre, il cast fallirebbe a DB — un 500
 #    al posto di un 400.
@@ -950,7 +950,7 @@ def _parse_auth_user_ids(raw: str | None) -> list[int]:
         if not pezzo.strip():
             continue
         try:
-            valore = optional_int({"v": pezzo}, "v")
+            valore = qp_int_optional(pezzo, "auth_user_ids")
         except ValueError:
             valore = None
         ErrorManager.require(

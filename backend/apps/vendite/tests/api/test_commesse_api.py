@@ -50,6 +50,7 @@ VenditeCommessaTestataApiTests (Blocco C, brief-db-modifiche-certe-ciclo-vendita
 
 import json
 
+from datetime import date
 from unittest.mock import ANY, Mock, patch
 
 from django.test import Client
@@ -248,10 +249,38 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 200)
         mocked_list.assert_called_once_with(
             commessa_id=1, stato_emissione="NON_EMESSA", stato_approvazione="APPROVATA",
-            competenza_mese="2026-02-01", limit=DEFAULT_LIMIT, offset=0,
+            competenza_mese=date(2026, 2, 1), limit=DEFAULT_LIMIT, offset=0,
             order_by=None, order_dir=None,
             tipo_movimento=None,
         )
+
+    # Scopo: ⛔ `competenza_mese` e' un filtro della query string: lo legge la
+    #        view con `qp_iso_date_optional` (brief-be-fe-BB-audit §2.3). Il
+    #        vuoto, anche di soli spazi, e' «nessun filtro»; il malformato e' un
+    #        400 col parametro, e il service non parte. Fino al 2026-11-24 il
+    #        service avvolgeva il testo per il lettore del corpo JSON, e
+    #        `?competenza_mese=%20` era un 400.
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views.fn_list_commessa_attivita")
+    def test_competenza_mese_vuota_e_assente_malformata_e_400(self, mocked_list, _mock_auth):
+        mocked_list.return_value = {"commessa_id": 1, "count": 0, "results": []}
+        for qs in ("competenza_mese=", "competenza_mese=%20%20"):
+            with self.subTest(qs=qs):
+                mocked_list.reset_mock()
+                response = self.client.get(f"/api/v1/vendite/commesse/1/attivita/?{qs}")
+                self.assertEqual(response.status_code, 200)
+                self.assertIsNone(mocked_list.call_args.kwargs["competenza_mese"])
+        mocked_list.reset_mock()
+        for rotta in ("attivita/", "attivita/export/"):
+            with self.subTest(rotta=rotta):
+                response = self.client.get(
+                    f"/api/v1/vendite/commesse/1/{rotta}?competenza_mese=ieri&formato=csv"
+                )
+                self.assertEqual(response.status_code, 400)
+                error = response.json()["error"]
+                self.assertEqual(error["code"], "E_VALIDATION_INPUT")
+                self.assertIn("competenza_mese", str(error))
+        mocked_list.assert_not_called()
 
     # Scopo: order_by/order_dir propagati al service (7° lotto liste, 2026-08-03).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

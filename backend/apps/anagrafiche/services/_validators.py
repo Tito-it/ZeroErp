@@ -12,10 +12,9 @@ from typing import Any, NoReturn, TypeVar
 
 from django.db import IntegrityError
 
-from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.db_error_fields import diagnostica_db
-from apps.core.services.payload_helpers import map_integrity_error, vincolo_violato
+from apps.core.services.payload_helpers import PayloadValidator, map_integrity_error, vincolo_violato
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.testata_guard import o_not_found
 from apps.anagrafiche.error_codes import (
@@ -24,6 +23,11 @@ from apps.anagrafiche.error_codes import (
     E_ANAG_NOT_FOUND,
     E_ANAG_VALIDAZIONE,
 )
+
+# Il validator del dominio per le letture di questo modulo: i campi opzionali
+# si leggono col codice di anagrafiche e col campo nell'errore, non con le
+# funzioni della view (2026-11-24, brief-be-fe-BB-audit §2).
+_V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 
 # SQLSTATE di PostgreSQL che decidono la traduzione di un `IntegrityError`.
 _SQLSTATE_UNICITA = "23505"  # unique_violation: «esiste gia'»
@@ -64,20 +68,20 @@ def extract_optional_fields(
     Centralizza il pattern _extract_*_data (fornitori/emittenti): per categoria
     applica il parser appropriato e include la chiave solo se il valore non e'
     None — così il DB usa i propri default sui campi assenti.
-      - ints:    optional_int
-      - bools:   optional_bool (solo se la chiave e' presente e non-None)
+      - ints:    `PayloadValidator.optional_int` (codice E_ANAG_VALIDAZIONE)
+      - bools:   `PayloadValidator.optional_bool` (solo se la chiave e' presente e non-None)
       - strings: optional_str (strip + None se vuoto)
       - numeric: valore grezzo (float/decimal), solo se presente e non-None
-      - dates:   optional_iso_date
+      - dates:   `PayloadValidator.optional_date`
     """
     data: dict[str, Any] = {}
     for key in ints:
-        val_int = optional_int(payload, key)
+        val_int = _V.optional_int(payload, key)
         if val_int is not None:
             data[key] = val_int
     for key in bools:
         if key in payload and payload[key] is not None:
-            data[key] = optional_bool(payload, key)
+            data[key] = _V.optional_bool(payload, key)
     for key in strings:
         val_str = optional_str(payload, key)
         if val_str is not None:
@@ -86,7 +90,7 @@ def extract_optional_fields(
         if key in payload and payload[key] is not None:
             data[key] = payload[key]
     for key in dates:
-        val_data = optional_iso_date(payload, key)
+        val_data = _V.optional_date(payload, key)
         if val_data is not None:
             data[key] = val_data
     return data

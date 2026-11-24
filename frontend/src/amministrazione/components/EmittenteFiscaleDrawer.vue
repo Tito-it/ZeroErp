@@ -13,9 +13,10 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS, FIELD_LENGTH } from '../../core/constants'
 import { getEmittenteFormDefaults } from '../api/amministrazione'
 import { paramBool, paramNumber, paramString } from '../../core/utils/parameterCast'
-import { blockNonAlphanumeric, normalizeUpperNoSpaces } from '../../core/utils/string'
+import { blockNonAlphanumeric } from '../../core/utils/string'
 import { displayTimestamp } from '../../core/utils/date'
 import { voceRegimeFiscale } from '../../core/utils/voceRegimeFiscale'
+import { codiceEmittenteInForma } from '../codiceEmittente'
 import SoggettoResolver from '../../anagrafiche/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import AppDrawer from '../../core/components/AppDrawer.vue'
@@ -222,20 +223,8 @@ watch(() => form.value.bollo_auto, (v) => {
   if (!v) form.value.bollo_soglia = null
 })
 
-// ⭐ LA FORMA DELLA SIGLA, e lo specchio di un vincolo che il DB ha davvero:
-//    `chk_emittenti_fiscali_codice_forma` + il guard che da' la frase
-//    (`anagrafiche.trgfn_emittenti_fiscali_guard_codice_forma`, 2026-08-31).
-// ⛔ I due numeri NON si scrivono qui: vengono da `FIELD_LENGTH`, che e' gia'
-//    la sede dei vincoli di lunghezza campo (`IBAN_MAX`). Servono in tre punti
-//    — regex, `maxlength` e la frase dell'hint — e tre letterali si allineano a
-//    mano finche' qualcuno se ne dimentica.
-// ⚠️ Perche' cosi' corta: dal 2026-08-31 la sigla sta DENTRO il codice commessa
-//    — `CMM-<sigla>-<anno>-<9 cifre>` — che si legge separando sui trattini. E
-//    il `codice` e' IMMUTABILE dopo la create: una sigla sbagliata non si
-//    corregge piu'.
-const CODICE_EMITTENTE_RE = new RegExp(
-  `^[A-Z0-9]{${FIELD_LENGTH.EMITTENTE_CODICE_MIN},${FIELD_LENGTH.EMITTENTE_CODICE_MAX}}$`
-)
+// La forma della sigla (minuscole comprese: le alza il DB) sta in
+// `codiceEmittente.js`, col suo spec.
 
 // In EDIT non c'e' piu' un campo obbligatorio da validare (`descrizione` era
 // l'unico): i restanti sono opzionali o hanno default, quindi il salvataggio e'
@@ -246,7 +235,7 @@ const canSave = computed(() => {
   if (isEdit.value) return !!form.value.regime_fiscale_rf
   return !!soggettoSelezionato.value
       && soggettoHasPartitaIva.value
-      && CODICE_EMITTENTE_RE.test(form.value.codice.trim())
+      && codiceEmittenteInForma(form.value.codice)
       && !!form.value.regime_fiscale_rf
 })
 
@@ -352,13 +341,15 @@ async function save() {
         <template v-if="isEdit || (soggettoSelezionato && soggettoHasPartitaIva)">
           <h4>{{ t('amministrazione.emittenti_fiscali.section_anagrafica') }}</h4>
 
-          <!-- ⚠️ Il maiuscolo si ALZA, il trattino si RIFIUTA: e' la stessa
-               asimmetria del guard DB. `normalizeUpperNoSpaces` porta `acme`
-               a `ACME` (forma canonica, non un requisito da conoscere),
-               mentre `blockNonAlphanumeric` non lascia nemmeno digitare il
-               `-` invece di toglierlo dopo — togliere caratteri a un
-               identificatore appena scritto e' una cosa che chi lo scrive
-               deve sapere. -->
+          <!-- ⚠️ Il maiuscolo si ALZA, il trattino si RIFIUTA: e' l'asimmetria
+               del guard DB (`trgfn_emittenti_fiscali_guard_codice_forma`).
+               Il maiuscolo lo alza il DB (`acme` -> `ACME`, forma canonica),
+               e qui `app-codice-input` lo MOSTRA soltanto: dal 2026-11-24 il
+               valore non si riscrive in JavaScript (brief-be-fe-BB-audit F-2,
+               regola di `app-codice-input`). `blockNonAlphanumeric` invece non
+               lascia nemmeno digitare il `-`, invece di toglierlo dopo:
+               togliere caratteri a un identificatore appena scritto e' una
+               cosa che chi lo scrive deve sapere. -->
           <div class="form-field">
             <label>{{ t('amministrazione.emittenti_fiscali.field_codice') }} *</label>
             <InputText
@@ -368,7 +359,6 @@ async function save() {
               :maxlength="FIELD_LENGTH.EMITTENTE_CODICE_MAX"
               :invalid="campiErrati.includes('codice')"
               @keypress="blockNonAlphanumeric"
-              @input="normalizeUpperNoSpaces(form, 'codice')"
             />
             <small v-if="!isEdit" class="app-field-hint">
               {{ t('amministrazione.emittenti_fiscali.field_codice_hint', {
