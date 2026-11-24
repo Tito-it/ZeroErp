@@ -66,9 +66,6 @@ _AUTH = patch(
 
 _LISTA = {
     "count": 1,
-    "page": 1,
-    "page_size": 50,
-    "total_pages": 1,
     "results": [{"id": 7, "codice": "CNT-0001", "origine": "MANUALE"}],
 }
 
@@ -496,8 +493,7 @@ class Slice3ApiTests(JwtMockedApiTest):
     @_AUTH
     @patch("apps.pagamenti.api.views.pagamenti_service.list_coda_righe")
     def test_coda_filtri_tradotti(self, mocked, _auth):
-        mocked.return_value = {"count": 0, "page": 1, "page_size": 50,
-                               "total_pages": 0, "results": []}
+        mocked.return_value = {"count": 0, "results": []}
         self.client.get("/api/v1/pagamenti/righe/?coda=sospese&billing_account_id=41")
         kwargs = mocked.call_args.kwargs
         self.assertEqual(kwargs["coda"], "SOSPESE")
@@ -594,8 +590,7 @@ class Slice5ApiTests(JwtMockedApiTest):
     @_AUTH
     @patch("apps.pagamenti.api.views.sistemazioni_service.list_eccedenze")
     def test_eccedenze_filtri_tradotti(self, mocked, _auth):
-        mocked.return_value = {"count": 0, "page": 1, "page_size": 50,
-                               "total_pages": 0, "results": []}
+        mocked.return_value = {"count": 0, "results": []}
         self.client.get("/api/v1/pagamenti/eccedenze/?chi_e_in_credito=cliente")
         self.assertEqual(mocked.call_args.kwargs["chi_e_in_credito"], "CLIENTE")
 

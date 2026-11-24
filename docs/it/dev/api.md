@@ -519,9 +519,9 @@ I filtri opzionali da query string si normalizzano con gli helper di
 | `qp_int_optional(raw, name, *, min_val, max_val)`                   | int **opzionale strict**: `None` se assente/vuoto, **400** se non numerico o fuori range (default `bigint`) |
 | `qp_bool_optional(raw, name, default=None)`                         | il **flag** di query string e multipart: `true`/`false` (maiuscole ammesse), assente/vuoto = `default`, **ogni altro valore 400** |
 | `qp_iso_date_optional(raw, name)`                                   | `date` **opzionale strict**: `None` se assente/vuoto, **400** se malformata                             |
-| `parse_list_params(qp, *, default_limit, max_limit, default_order)` | bundle `search/limit/offset/order_by/order_dir/page` di una lista                                        |
+| `parse_list_params(qp, *, default_limit, max_limit, default_order)` | bundle `search/limit/offset/order_by/order_dir` di una lista                                             |
 | `pagina_da_query(qp, *, default_limit, max_limit)`                  | `(limit, offset)` di **ogni** lista: `page`/`page_size` e valori illeggibili sono un **400**, limiti da `limiti_pagina`. Lo usa `parse_list_params` |
-| `envelope_da_offset(results, total_count, *, limit, offset)`        | l'envelope paginato (`count`/`page`/`page_size`/`total_pages`/`results`) da una finestra `limit`/`offset`; `page` la ricava `pagina_di(offset, limit)` |
+| `pagina_con_totale(results, totale)` (`apps.core.services.list_helpers`) | l'envelope di una pagina di lista, `{count, results}`, con `count` = totale della query (§Paginazione) |
 
 ⚠️ **Il tetto di un intero è il tipo DOVE ARRIVA** (dal 2026-10-08): un confronto
 `col = %s` regge qualunque intero, un **parametro di funzione** `integer` o un cast
@@ -669,34 +669,40 @@ repository (dal 2026-10-04): `limit: int = DEFAULT_LIMIT`, mai un numero —
 una lista aveva il suo default nella view e un altro, diverso, nella firma; il
 presidio le guarda, con le eccezioni (lookup, batch) in `_FIRME_AMMESSE`.
 
-Risposta paginata (l'**envelope** conserva `page`/`page_size`: li ricava
-dalla finestra `envelope_da_offset`, e servono al paginatore per leggere dove
-il backend ha riportato una pagina stantia):
+⭐ **La risposta di una lista ha una forma sola: `{count, results}`** (D-1 di
+brief-be-fe-BB-audit, Tid 2026-11-24). `count` è il totale della query, mai le
+righe consegnate (sotto). La costruisce il BB `pagina_con_totale(results, totale)`
+di `apps.core.services.list_helpers`; una collezione consegnata per intero, senza
+`LIMIT`, usa `collezione_completa(results)`.
 
 ```json
 {
   "data": {
     "count": 142,
-    "page": 1,
-    "page_size": 50,
-    "total_pages": 3,
     "results": [...]
   },
   "meta": { "request_id": "..." }
 }
 ```
 
-Forma ridotta (le liste che non dichiarano la pagina: solo il totale e le righe;
-la finestra in ingresso è comunque `limit`/`offset`):
-
-```json
-{
-  "data": {
-    "count": 142,
-    "results": [...]
-  }
-}
-```
+* ⛔ **Niente `page`/`page_size`/`total_pages`.** La finestra si chiede con
+  `limit`/`offset`, e ripeterla nella risposta come pagina era una seconda
+  lingua che la richiesta non parla più: chi pagina sa già quale finestra ha
+  chiesto. Fino al 2026-11-24 le forme erano tre: la lunga
+  (`paginated_envelope` / `envelope_da_offset`, ritirati quel giorno), la corta
+  scritta a mano in una dozzina di punti di sei domini, e `collezione_completa`.
+* ⭐ **La finestra EFFETTIVA dei cruscotti** è un dato vero e ha un campo suo,
+  `offset_effettivo`: le liste che leggono con `query_paged_view` riportano un
+  offset oltre la fine all'ultima pagina, e lo dichiarano lì. Il frontend ne
+  ricava la pagina del paginatore (`usePagedDashFetch`).
+* I campi propri di una lista (gli `stati` dei lotti, `scartate_count`,
+  `archiviate_count`, il riepilogo di perimetro) stanno accanto:
+  `{**pagina_con_totale(…), "stati": …}`.
+* ⛔ Un lookup con un tetto non è una pagina: dichiara `troncato` accanto a
+  `count` (BB `fetch_con_sonda`).
+* Presidio: `apps/core/tests/test_envelope_lista_forma_unica.py` rifiuta un
+  dizionario con `count` e `results` scritto fuori dal BB (le eccezioni sono
+  elencate, ognuna col suo motivo) e ogni chiave `page_size`/`total_pages`.
 
 #### ⛔ Il `count` non si deriva MAI dalle righe che stai consegnando
 
@@ -1103,6 +1109,9 @@ wrapper `handle_post_json` (salvo la modalità forte, seconda riga della tabella
 ```
 
 Generato da `success_response()` in `apps.core.api.success_responses`.
+
+Il `data` di una **lista** ha una forma sola, `{count, results}` (BB
+`pagina_con_totale`, dal 2026-11-24): §Paginazione.
 
 ### Errore
 
@@ -2751,8 +2760,8 @@ Stessa forma di `pgtap-baseline.sh`: non-verde **noto** → silenzio, **nuovo** 
    `unita_di_lavoro=UnitaDiLavoro.A_PASSI` e si registra in `test_unita_di_lavoro.py`
    (§Idempotency-Key)
 7. Per GET: usare `success_response()`; per le liste la finestra si legge con
-   `pagina_da_query` (o `parse_list_params`) e l'envelope si costruisce con
-   `envelope_da_offset` (o direttamente dal BB `fetch_paged_with_total`), §Paginazione
+   `pagina_da_query` (o `parse_list_params`), le righe e il totale vengono dal BB
+   `fetch_paged_with_total` e l'envelope si costruisce con `pagina_con_totale`, §Paginazione
 8. Aggiungere `@extend_schema` con `request` e `responses`. Lo schema del **corpo** di una
    scrittura si legge dal contratto del service con `schema_da_contratto` (chiavi ammesse +
    dizionario dei tipi del dominio): una chiave senza tipo è un errore all'import.

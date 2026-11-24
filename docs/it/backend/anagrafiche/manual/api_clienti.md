@@ -51,7 +51,7 @@ emittenti fiscali autorizzati per l'operatore (`PermissionResolver.get_emittenti
 → filtro applicativo su `emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id`,
 con fallback gestore globale `is_default`). Difesa-in-profondità sommata alla RLS DB.
 
-Risposta: envelope paginato standard (`count`, `page`, `page_size`, `total_pages`, `results`).
+Risposta: envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)).
 
 ---
 

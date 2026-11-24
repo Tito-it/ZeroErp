@@ -40,7 +40,6 @@ from apps.core.tests.db_e2e import richiedi_db_provvisto
 from apps.vendite.db.vendite_repository import FONDI_DA_DECIDERE_MOTIVI
 from apps.vendite.services import vendite_service
 from apps.vendite.services.vendite_service import fn_fondi_fattura_da_decidere
-from apps.core.api.constants import DEFAULT_LIMIT
 
 # Riga del ramo NON_PIU_CAPIENTE: e' l'unico dei quattro motivi in cui le
 # colonne dell'ATTO sono valorizzate — negli altri tre l'atto non esiste ancora.
@@ -66,9 +65,7 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
     def test_ok_envelope_paginato(self, mock_repo):
         data = fn_fondi_fattura_da_decidere(auth_user_id=7, motivo="NON_PIU_CAPIENTE")
         self.assertEqual(data["count"], 1)
-        self.assertEqual(data["page"], 1)
-        self.assertEqual(data["page_size"], DEFAULT_LIMIT)
-        self.assertEqual(data["total_pages"], 1)
+        self.assertEqual(data["offset_effettivo"], 0)
         self.assertEqual(data["results"], [_ROW_NON_PIU_CAPIENTE])
         self.assertEqual(mock_repo.call_args.kwargs["motivo"], "NON_PIU_CAPIENTE")
 
@@ -144,9 +141,11 @@ class FondiFatturaDaDecidereServiceTests(TestCase):
     )
     def test_envelope_pagina_dall_offset(self, _mock_repo):
         data = fn_fondi_fattura_da_decidere(auth_user_id=7, limit=25, offset=50)
-        self.assertEqual((data["page"], data["page_size"], data["total_pages"]), (3, 25, 5))
+        self.assertEqual(data["offset_effettivo"], 50)
+        # Oltre la fine: la finestra effettiva e' l'ultima (stesso calcolo
+        # della `OFFSET LEAST(…)` di `query_paged_view`).
         data = fn_fondi_fattura_da_decidere(auth_user_id=7, limit=25, offset=500)
-        self.assertEqual(data["page"], 5)
+        self.assertEqual(data["offset_effettivo"], 100)
 
     # Scopo: `auth_user_id` arriva al repository. La vista e' security_invoker e
     #        la RLS filtra da se', ma il filtro applicativo resta come

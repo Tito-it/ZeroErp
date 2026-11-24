@@ -511,8 +511,7 @@ in forma 3.
 ## Output
 
 Envelope standard `success_response` (`{"data": …, "meta": {request_id}}`).
-Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
-`results`).
+Liste: `pagina_con_totale` (`count`, `results`; [api.md §Paginazione](../../../dev/api.md)).
 
 ## Regole
 

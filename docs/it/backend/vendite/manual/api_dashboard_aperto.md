@@ -135,7 +135,9 @@ Nessun parametro.
 
 ### Lista documenti
 
-Envelope paginato standard (`count/page/page_size/total_pages/results`); ogni
+Envelope di lista `{count, offset_effettivo, results}` (`pagina_con_totale`,
+[api.md §Paginazione](../../../dev/api.md)): `offset_effettivo` è l'offset davvero servito — chiesto oltre la
+fine, il backend serve l'ultima pagina e lo dichiara lì; ogni
 riga: `area`, chiavi documento (`documento_id`, `documento_uid`, `codice`),
 `cliente_display`, `fase`, `stato_codice_interno`, `stato_codice`,
 `valore_totale` (NULL per aree a conteggi), `unita_totali`, **`anzianita_giorni`**
@@ -187,7 +189,8 @@ invece ASC perché raggruppa, non spareggia. La paginazione deterministica non
   materializzata + `COUNT(*) OVER()` + **offset clampato all'ultima pagina in
   SQL**). Il rientro da una pagina stantia (lista ridotta da altri utenti) non
   costa più un secondo giro: il BE serve subito l'ultima pagina reale e
-  l'envelope dichiara la **pagina effettiva**, che `usePagedDashFetch` adotta.
+  l'envelope dichiara l'**offset effettivo** (`offset_effettivo`), da cui
+  `usePagedDashFetch` ricava la pagina.
 - GET-only, nessun side-effect, nessuna Idempotency-Key.
 
 ## Dipendenze DB
@@ -202,6 +205,9 @@ invece ASC perché raggruppa, non spareggia. La paginazione deterministica non
 - 2026-10-21: la lista documenti legge la finestra come `limit`/`offset`
   (`pagina_da_query`); `page`/`page_size` in query diventano un 400. Envelope
   invariato.
+- 2026-11-24: la lista documenti risponde `{count, offset_effettivo, results}`
+  (`pagina_con_totale`, D-1 di brief-be-fe-BB-audit): `page`, `page_size` e
+  `total_pages` escono, la finestra servita la dichiara `offset_effettivo`.
 - **v2 (serbatoio pre-commessa)** su v1: eliminato il concetto *transitato*
   (in una vista senza asse temporale totalizzava dalla notte dei tempi roba
   già passata, non azionabile). Rimossi dagli endpoint il toggle `solo_aperti`

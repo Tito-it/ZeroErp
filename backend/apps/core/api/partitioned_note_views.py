@@ -21,9 +21,10 @@ from rest_framework.request import Request
 from apps.core.api.openapi_params import param_ricerca_full, parametri_finestra, parametri_ordinamento
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_actor_user_id, handle_post_json
-from apps.core.api.payload_validators import envelope_da_offset, parse_list_params, corpo_oggetto, qp_bool_optional, qp_int_strict, qp_str
+from apps.core.api.payload_validators import parse_list_params, corpo_oggetto, qp_bool_optional, qp_int_strict, qp_str
 from apps.core.api.success_responses import success_response
 from apps.core.services.partitioned_note_service import PartitionedNoteService
+from apps.core.services.list_helpers import pagina_con_totale
 
 # Type alias: il caller fornisce un callable senza argomenti che istanzia
 # il service. Permette di iniettare contesto o mock nei test.
@@ -252,7 +253,7 @@ def make_note_views(
                 limit=limit,
                 offset=offset,
             )
-            return success_response(envelope_da_offset(results, total, limit=limit, offset=offset))
+            return success_response(pagina_con_totale(results, total))
 
         @extend_schema(request=create_request, responses={200: detail_response})
         # Scopo: Crea una nuova nota sul documento padre. Idempotency-Key obbligatoria.

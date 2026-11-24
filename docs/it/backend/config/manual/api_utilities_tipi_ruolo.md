@@ -79,9 +79,6 @@ immutabili per scelta di progetto).
 {
   "data": {
     "count": 12,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 1,
@@ -122,9 +119,6 @@ lista è `multi_emittente` (ogni riga è un emittente) e la vista è admin.
 {
   "data": {
     "count": 2,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "emittente_id": 1,

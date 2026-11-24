@@ -25,7 +25,7 @@ from apps.core.services.error_manager import ErrorManager
 #        ritorna la coppia validata, con `order_dir` NORMALIZZATO (`asc`/`desc`
 #        minuscolo, `None` se assente).
 #
-#        NB: DISTINTO da `apps.core.api.search_validators.validate_order_params`,
+#        NB: DISTINTO da `apps.core.api.search_validators.validate_order_params_ricerca`,
 #        che ha semantica diversa (normalizza maiuscole, ritorna tupla opzionale,
 #        nessun error_code di dominio). Questo opera nei service con rigore
 #        fail-fast e codice errore parametrico.
@@ -160,3 +160,25 @@ def validate_enum_param(
 # stesso helper a rendere la forma sbagliata indistinguibile da quella giusta.
 def collezione_completa(results: list[dict[str, Any]]) -> dict[str, Any]:
     return {"count": len(results), "results": results}
+
+
+# Scopo: Envelope di una PAGINA di lista: le righe della finestra chiesta
+#        (`limit`/`offset`) e `count`, il totale della query (`COUNT(*) OVER ()`
+#        di `fetch_paged_with_total` o di `query_paged_view`), mai le righe
+#        consegnate.
+#
+# ⭐ Una forma sola per ogni lista paginata (D-1 di brief-be-fe-BB-audit, Tid
+#    2026-11-24): `{count, results}`. La finestra si chiede con `limit`/`offset`
+#    (un dialetto solo, Tid 2026-10-21), quindi `page`/`page_size`/
+#    `total_pages` nella risposta ripetevano la finestra in una lingua che la
+#    richiesta non parla piu'. Fino a quel giorno le forme erano tre:
+#    `paginated_envelope` / `envelope_da_offset` (la lunga), questa scritta a
+#    mano in una dozzina di punti, e `collezione_completa`.
+#
+# ⚠️ I campi in piu' di una lista (il riepilogo, gli `stati`, l'offset
+#    EFFETTIVO dei cruscotti) si aggiungono accanto: `{**pagina_con_totale(…),
+#    "stati": …}`. La forma di base non cambia.
+# ⛔ Se la query non ha `LIMIT` e consegna tutto, e' `collezione_completa`; se
+#    e' un lookup con un tetto, `fetch_con_sonda` e `troncato`.
+def pagina_con_totale(results: list, totale: int) -> dict[str, Any]:
+    return {"count": totale, "results": results}

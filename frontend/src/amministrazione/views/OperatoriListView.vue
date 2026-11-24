@@ -25,7 +25,8 @@ import { useLookup } from '../../core/composables/useLookup'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { listUnitaOrganizzative, getPermessiRiepilogo } from '../api/amministrazione'
 import { useSetupStatus } from '../composables/useSetupStatus'
-import { buildFilterSuperAdminOptions, getLivelloLabel, getLivelloSeverity } from '../constants'
+import { buildFilterSuperAdminOptions, getLivelloLabel } from '../constants'
+import { livelloAccessoSeverity } from '../../core/utils/severity'
 import { buildAttivoOptions } from '../../core/utils/options'
 import { READONLY_DOMAINS, TAB_ENTITIES, STATUS_ICONS } from '../../core/constants'
 import OperatoreDrawer from '../components/OperatoreDrawer.vue'
@@ -329,7 +330,7 @@ function onPermessiAperti(acceso) {
         <div v-if="riepilogo[data.auth_user_id]" class="operatore-permessi-aree">
           <span v-for="area in riepilogo[data.auth_user_id]" :key="area.area_id" class="operatore-permessi-area">
             <span class="operatore-permessi-area-nome">{{ area.area_descrizione }}</span>
-            <Tag :value="getLivelloLabel(t, area.livello)" :severity="getLivelloSeverity(area.livello)" />
+            <Tag :value="getLivelloLabel(t, area.livello)" :severity="livelloAccessoSeverity(area.livello)" />
             <Badge
               v-if="area.override_count"
               v-tooltip.top="t('amministrazione.permessi_area_override')"

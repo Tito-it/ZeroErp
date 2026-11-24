@@ -39,8 +39,8 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 - `200`: lista attività, nell'envelope lista standard (`count`, `results`).
   ⚠️ Fino al 2026-09-30 le righe stavano in `rows`: rinominate per la forma di
   tutte le liste, che il BB frontend `useListaDrawerPaginata` legge
-  (brief-db-liste-righe-documento §9.13). Il registro (`…/registro/`) ha ancora
-  `rows`, fuori da questo giro.
+  (brief-db-liste-righe-documento §9.13). Il registro (`…/registro/`) è passato a
+  `results` il 2026-11-24 (D-1 di brief-be-fe-BB-audit).
 
 ```json
 {

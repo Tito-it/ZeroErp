@@ -25,6 +25,7 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.success_responses import success_response
 from apps.core.db.lookup_repository import LookupRepository
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 class LookupTipiSoggettoDettaglioView(DomainAPIView):
@@ -354,7 +355,7 @@ class LookupComuniView(DomainAPIView):
         results, total_count = repo.search_comuni(
             search=p["search"], limit=p["limit"], offset=p["offset"],
         )
-        return success_response({"count": total_count, "results": results})
+        return success_response(pagina_con_totale(results, total_count))
 
 
 class SearchStradarioView(DomainAPIView):

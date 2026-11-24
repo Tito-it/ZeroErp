@@ -70,6 +70,7 @@ from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.core.services.testata_guard import o_not_found
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.services.list_helpers import pagina_con_totale
 
 # Codici dei «non trovato» degli allegati e del file perso sullo storage
 # (brief-db-codici-non-trovato-email-e-permessi §2): `E_EMAIL_OP` resta per i
@@ -242,7 +243,7 @@ class EmailOutboxListView(DomainAPIView):
             limit=limit,
             offset=offset,
         )
-        return success_response({"count": total, "results": results})
+        return success_response(pagina_con_totale(results, total))
 
 
 class EmailOutboxDetailView(DomainAPIView):
@@ -468,7 +469,7 @@ class EmailLogOperatoreListView(DomainAPIView):
             # cima) lo applica `EmailRepository.list_logs`, in una sede sola.
             order_dir=p["order_dir"],
         )
-        return success_response({"count": total, "results": results})
+        return success_response(pagina_con_totale(results, total))
 
 
 # ⭐ Il vocabolario del filtro «stato» della lista qui sopra: stessa porta

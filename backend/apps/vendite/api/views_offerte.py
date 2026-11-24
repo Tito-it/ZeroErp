@@ -31,7 +31,6 @@ from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id,
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     optional_bool,
-    paginated_envelope,
     parse_list_params,
     qp_bool_optional,
     qp_int_optional,
@@ -57,6 +56,7 @@ from apps.vendite.api._componenti_schema import (
     PREVIEW_COMPONENTI_REQUEST,
     PREVIEW_COMPONENTI_RESPONSE,
 )
+from apps.core.services.list_helpers import pagina_con_totale
 
 # Codice lista configurabile (catalogo ui.lista_definizione id=6). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
@@ -203,7 +203,7 @@ class ApiOfferteList(DomainAPIView):
             order_dir=p["order_dir"],
             auth_user_id=get_scope_user_id(request),
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=_OFFERTA_CREATE_REQUEST,
@@ -634,7 +634,7 @@ class ApiOffertaRevisioni(DomainAPIView):
             order_by=p["order_by"],
             order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
 
 # =================================================================

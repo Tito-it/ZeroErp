@@ -615,8 +615,7 @@ class DashCompetenzaAttivitaServiceTests(TestCase):
             competenza_mese=date(2026, 5, 1), stadio="FATTURATA"
         )
         self.assertEqual(data["count"], 1)
-        self.assertEqual(data["page"], 1)
-        self.assertEqual(data["total_pages"], 1)
+        self.assertEqual(data["offset_effettivo"], 0)
         self.assertEqual(data["results"], [{"commessa_attivita_id": 1}])
         kwargs = mock_repo.call_args.kwargs
         self.assertEqual(kwargs["stadio"], "FATTURATA")

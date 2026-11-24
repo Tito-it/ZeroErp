@@ -40,7 +40,7 @@ from apps.core.services.coda_lavori.repository import (
 )
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.fan_out import run_fan_out
-from apps.core.services.list_helpers import validate_order_params
+from apps.core.services.list_helpers import validate_order_params, pagina_con_totale
 from apps.core.services.payload_helpers import translate_db_errors
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.processi import (
@@ -310,8 +310,7 @@ def elenca_coda_lavori(
         sort_dir=sort_dir,
     )
     return {
-        "count": esito["total"],
-        "results": esito["items"],
+        **pagina_con_totale(esito["items"], esito["total"]),
         # Quante righe l'archiviazione lascia fuori dall'elenco. ⚠️ Non è un
         # accessorio: senza, «coda pulita» e «tre righe messe via» si leggono
         # uguali — stessa lezione di `ritirate_count` sul giornale della fattura.
@@ -375,8 +374,7 @@ def elenca_coda_stampa(
         sort_dir=sort_dir,
     )
     return {
-        "count": esito["total"],
-        "results": esito["items"],
+        **pagina_con_totale(esito["items"], esito["total"]),
         "archiviate_count": esito["archiviate"],
     }
 

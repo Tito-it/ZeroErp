@@ -11,11 +11,10 @@ from typing import Any
 
 from django.db import DatabaseError
 
-from apps.core.api.payload_validators import envelope_da_offset
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db.dbops_repository import LOOKUP_ORDER_COLONNE, DbopsRepository
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import validate_order_params
+from apps.core.services.list_helpers import validate_order_params, pagina_con_totale
 
 # La whitelist di ordinamento e' quella del repository (sede unica).
 _ORDER_COL_VALIDI: frozenset[str] = frozenset(LOOKUP_ORDER_COLONNE)
@@ -91,6 +90,6 @@ def fn_list_lookup_codici(
             function_name="core.lookup_service.fn_list_lookup_codici",
         )
 
-    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
+    return pagina_con_totale(results, total_count)
 
 

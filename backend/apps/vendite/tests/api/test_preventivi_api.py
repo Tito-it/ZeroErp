@@ -71,8 +71,7 @@ class TestPreventiviApiViews(JwtMockedApiTest):
     # Scopo: Verifica GET lista preventivi restituisce 200.
     def test_list_preventivi_200(self):
         self.mock_svc.list_preventivi.return_value = {
-            "count": 1, "page": 1, "page_size": 50, "total_pages": 1,
-            "results": [{"id": 1, "numero": "P-0001"}],
+            "count": 1, "results": [{"id": 1, "numero": "P-0001"}],
         }
         response = self.client.get("/api/v1/vendite/preventivi/")
         # Senza auth il middleware JWT blocca; verifichiamo che la route esista

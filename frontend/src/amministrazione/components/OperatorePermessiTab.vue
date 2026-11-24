@@ -43,7 +43,8 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { STATUS_ICONS } from '../../core/constants'
 import { listAreeFunzionali, listAzioniProcesso, getModelOverridesLookup } from '../api/amministrazione'
-import { LIVELLO_ACCESSO, buildLivelloOptions, getLivelloLabel, getLivelloSeverity } from '../constants'
+import { LIVELLO_ACCESSO, buildLivelloOptions, getLivelloLabel } from '../constants'
+import { livelloAccessoSeverity } from '../../core/utils/severity'
 import { areaConsenteAzione, livelloConTettoArea } from '../tettoArea'
 import { oggiAziendaleString } from '../../core/utils/date'
 import MatriceOverride from '../../core/components/MatriceOverride.vue'
@@ -709,7 +710,7 @@ defineExpose({ modificato, chiudiConConferma, salva, puoSalvare, salvando })
         />
         <Tag
           :value="getLivelloLabel(t, livelloAreaVideo(area.id))"
-          :severity="getLivelloSeverity(livelloAreaVideo(area.id))"
+          :severity="livelloAccessoSeverity(livelloAreaVideo(area.id))"
         />
       </template>
 

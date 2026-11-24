@@ -26,7 +26,6 @@ Indice test eseguiti:
 17) test_utente_non_trovato_404                   (E-4)
 """
 
-import math
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest import TestCase
@@ -95,7 +94,7 @@ class PermissionsAuditRepositoryTests(TestCase):
         self.assertNotIn("profili_accesso_bindings", sql)
         # Modello legacy droppato: nessun riferimento residuo.
         self.assertNotIn("profili_reparto", sql)
-        self.assertEqual(len(result["events"]), 1)
+        self.assertEqual(len(result["results"]), 1)
 
     # Scopo: Query vuota restituisce risultato vuoto.
     @patch(_CONN)
@@ -112,8 +111,7 @@ class PermissionsAuditRepositoryTests(TestCase):
         )
 
         self.assertEqual(result["count"], 0)
-        self.assertEqual(result["events"], [])
-        self.assertEqual(result["total_pages"], 0)
+        self.assertEqual(result["results"], [])
 
     # Scopo: Verifica mapping tipo_operazione e struttura evento.
     @patch(_CONN)
@@ -135,17 +133,17 @@ class PermissionsAuditRepositoryTests(TestCase):
         )
 
         self.assertEqual(result["count"], 3)
-        self.assertEqual(len(result["events"]), 3)
+        self.assertEqual(len(result["results"]), 3)
 
-        ev0 = result["events"][0]
+        ev0 = result["results"][0]
         self.assertEqual(ev0["tabella"], "user_override_aree")
         self.assertEqual(ev0["tipo_operazione"], "INIZIALE")
         self.assertEqual(ev0["user_modifica"], "setup")
         self.assertEqual(ev0["snapshot"], {"livello": "TUTTO"})
         self.assertEqual(ev0["tx_id"], "tx-a")
 
-        self.assertEqual(result["events"][1]["tipo_operazione"], "MODIFICA")
-        self.assertEqual(result["events"][2]["tipo_operazione"], "ELIMINAZIONE")
+        self.assertEqual(result["results"][1]["tipo_operazione"], "MODIFICA")
+        self.assertEqual(result["results"][2]["tipo_operazione"], "ELIMINAZIONE")
 
     # Scopo: Filtro data_da viene aggiunto alla query.
     @patch(_CONN)
@@ -234,10 +232,8 @@ class PermissionsAuditRepositoryTests(TestCase):
         self.assertIn(10, params)   # LIMIT
         self.assertIn(20, params)   # OFFSET
 
-        self.assertEqual(result["page"], 3)
-        self.assertEqual(result["page_size"], 10)
+        self.assertEqual(set(result), {"count", "results"})
         self.assertEqual(result["count"], 25)
-        self.assertEqual(result["total_pages"], math.ceil(25 / 10))
 
 
 class PermissionsAuditRepositoryOggettiTests(TestCase):

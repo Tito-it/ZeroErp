@@ -4808,7 +4808,8 @@ Soggetto, indirizzi, contatti, conti bancari e geografia: fino al 2026-09-26 sta
 | `anagrafiche/services/cf_validator_it.py` | Validazione congruenza CF + generazione CF (con omocodia) | SoggettiService |
 | `core/utils/date.js` | `toDateString()` — conversione date frontend→backend | TemplateVersioniSection |
 | `core/api/endpoint_helpers.py` | `handle_post_json` — wrapper POST con parsing + error handling | Tutte le view |
-| `core/api/payload_validators.py` | `optional_int`, `optional_bool`, `paginated_envelope`, `parse_list_params` | Tutte le view |
+| `core/api/payload_validators.py` | `optional_int`, `optional_bool`, `parse_list_params` | Tutte le view |
+| `core/services/list_helpers.py` | `pagina_con_totale` — envelope di lista `{count, results}` | Tutte le liste |
 | `core/services/error_manager.py` | `ErrorManager.require`, `ServiceError` | Tutti i service |
 
 ---

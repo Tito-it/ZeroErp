@@ -17,14 +17,15 @@ from rest_framework.request import Request
 from apps.core.api.openapi_params import parametri_finestra, parametri_ordinamento
 from apps.core.api.base_views import DomainAPIView
 
-from apps.core.api.payload_validators import envelope_da_offset, pagina_da_query, qp_int_optional, qp_str
-from apps.core.api.search_validators import require_min_search_length, validate_order_params
+from apps.core.api.payload_validators import pagina_da_query, qp_int_optional, qp_str
+from apps.core.api.search_validators import require_min_search_length, validate_order_params_ricerca
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import SearchBurstRateThrottle
 from apps.core.db._helpers import soglia_ricerca
 from apps.core.db.search_repository import RICERCA_SOGGETTI, SearchRepository
 from apps.core.services.payload_helpers import INTEGER_MAX, INTEGER_MIN
 from apps.core.services.service_errors import ServiceError
+from apps.core.services.list_helpers import pagina_con_totale
 
 # Ricerca universale soggetti — endpoint a due livelli.
 
@@ -139,9 +140,6 @@ class SearchUniversaleView(DomainAPIView):
                         name="SearchUniversaleData",
                         fields={
                             "count": serializers.IntegerField(),
-                            "page": serializers.IntegerField(),
-                            "page_size": serializers.IntegerField(),
-                            "total_pages": serializers.IntegerField(),
                             "results": serializers.ListField(
                                 child=serializers.DictField()
                             ),
@@ -182,7 +180,7 @@ class SearchUniversaleView(DomainAPIView):
         limit, offset = pagina_da_query(request.query_params, max_limit=_PAGE_SIZE_MAX)
 
         # Ordinamento opzionale
-        order_by, order_dir = validate_order_params(
+        order_by, order_dir = validate_order_params_ricerca(
             qp_str(request.query_params.get("order_by")),
             qp_str(request.query_params.get("order_dir")),
         )
@@ -196,7 +194,7 @@ class SearchUniversaleView(DomainAPIView):
             order_dir=order_dir,
         )
 
-        data = envelope_da_offset(results, total_count, limit=limit, offset=offset)
+        data = pagina_con_totale(results, total_count)
         return success_response(data)
 
 

@@ -90,9 +90,6 @@ modifica rifiutati con `E_CONFIG_VALIDATION`.
 {
   "data": {
     "count": 15,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 1,

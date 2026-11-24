@@ -74,8 +74,8 @@ Query param (tutti opzionali):
 | `order_by` | passato alla funzione DB, che possiede la whitelist |
 | `order_dir` | `asc` \| `desc`, default `desc` |
 
-Risposta: `{lotto_id, count, page, page_size, total_pages, fuori_job_count,
-results}`. `fuori_job_count` = quante segnalazioni restano fuori dall'ultima
+Risposta: `{lotto_id, count, fuori_job_count, results}` (`pagina_con_totale`
+più i campi propri, [api.md §Paginazione](../../../dev/api.md)). `fuori_job_count` = quante segnalazioni restano fuori dall'ultima
 corsa: senza, un elenco filtrato e uno vuoto si leggono uguali.
 
 Campi di riga: `riga_key` (`<origine>:<id>`, chiave di riga e tiebreak),
@@ -178,3 +178,5 @@ catalogo `vendite.lotto_segnalazioni`. Oltre `EXPORT_MAX_ROWS` →
   toglie con la PR successiva.
 - 2026-10-21: `rows/` legge la finestra come `limit`/`offset` (`pagina_da_query`,
   max 500); `page`/`page_size` in query diventano un 400. Envelope invariato.
+- 2026-11-24: la risposta è `{count, results}` (`pagina_con_totale`, D-1 di
+  brief-be-fe-BB-audit): `page`, `page_size` e `total_pages` escono.

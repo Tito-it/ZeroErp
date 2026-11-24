@@ -81,10 +81,8 @@ class TestRepartiListView(TestCase):
         self.assertEqual(len(data["results"]), 1)
         self.assertEqual(data["results"][0]["nome"], "Amministrazione")
         self.assertEqual(data["results"][0]["operatori_count"], 10)
-        self.assertEqual(
-            (data["count"], data["page"], data["page_size"], data["total_pages"]),
-            (1, 1, 25, 1),
-        )
+        self.assertEqual(set(data), {"count", "results"})
+        self.assertEqual(data["count"], 1)
         mock_repo.list_reparti.assert_called_once_with(
             search=None, order_by="descrizione", order_dir=None, limit=25, offset=0,
         )
@@ -117,7 +115,7 @@ class TestRepartiListView(TestCase):
         }
         data = json.loads(RepartiListView().get(request).content)["data"]
 
-        self.assertEqual((data["count"], data["page"], data["total_pages"]), (30, 3, 3))
+        self.assertEqual(data["count"], 30)
         mock_repo.list_reparti.assert_called_once_with(
             search="am", order_by="operatori_count", order_dir="desc", limit=10, offset=20,
         )

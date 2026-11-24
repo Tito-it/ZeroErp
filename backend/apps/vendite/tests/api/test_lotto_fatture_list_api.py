@@ -54,9 +54,6 @@ _FATTURA_ROW = {
 
 _LIST_RESPONSE = {
     "count": 1,
-    "page": 1,
-    "page_size": 50,
-    "total_pages": 1,
     "results": [_FATTURA_ROW],
 }
 
@@ -165,9 +162,6 @@ class VenditeLottoFattureListApiTests(JwtMockedApiTest):
     def test_list_fatture_senza_filtri_lista_vuota_ok(self, mocked_list, _mock_auth):
         mocked_list.return_value = {
             "count": 0,
-            "page": 1,
-            "page_size": 50,
-            "total_pages": 0,
             "results": [],
         }
         response = self.client.get(self.url)

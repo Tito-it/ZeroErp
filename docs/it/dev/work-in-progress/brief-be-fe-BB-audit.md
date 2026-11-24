@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-24
 
-**Riparte: team BE/FE** coi lavori B, C e le righe 10–11, che non aspettano più niente: le decisioni D-1…D-6 sono tutte prese (Tid, 2026-11-24). **Tid** in parallelo: il collaudo a video del FE (§7.8). La prova a mano del BE è fatta (§2.4). Sono fatti, e da committare, A, il catalogo BE e il lavoro F.
+**Riparte: team BE/FE** con la riga 8 (E-1, E-2), che aspetta il giro che tocca quei file; poi l'archiviazione. Tutto il resto è fatto, collaudato a video da Tid (2026-11-24) e committato.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -10,24 +10,25 @@
 | 2 | team BE/FE | ✅ Audit del frontend (2026-11-24) | §7 | — |
 | 3 | Tid | ✅ Decisioni D-1…D-6 prese il 2026-11-24: D-4 per prima (sì a F-1…F-4), poi D-1, D-2, D-3, D-5, D-6 secondo le raccomandazioni | §8 | — |
 | 3-bis | team BE/FE | ✅ Lavoro F (2026-11-24): F-1…F-4, catalogo FE, E-3 ed E-4 guardati | §7.7 | — |
-| 3-quater | Tid | Il collaudo a video del giro F | §7.8 | 3-bis |
+| 3-quater | Tid | ✅ Collaudo a video del giro F (2026-11-24): tutto ok | §7.8 | — |
 | 3-ter | team BE/FE | ✅ Prova a mano dei filtri vuoti sul server (2026-11-24): 200 sui filtri vuoti, 400 col nome del parametro su quelli sbagliati | §2.4 | — |
 | 4 | team BE/FE | ✅ Catalogo BE (2026-11-24): voci vecchie ritirate, righe doppie fuse, indice rigenerato | §5 | — |
 | 5 | team BE/FE | ✅ Lavoro A (2026-11-24): query string e header ai `qp_*`, funzioni del corpo che delegano a `PayloadValidator`, service sul validator del dominio; il FE non aveva niente da correggere | §2.3 | — |
-| 6 | team BE/FE | Lavoro B: un BB core per l'envelope `{count, results}`, le copie si ritirano, la pagina effettiva dei cruscotti in un campo suo | §3 | — (D-1 ✅) |
-| 7 | team BE/FE | Lavoro C: lo scope di `template_service` passa da `_scope` | §4 | — (D-2 ✅) |
+| 6 | team BE/FE | ✅ Lavoro B (2026-11-24): `pagina_con_totale`, forma lunga e copie ritirate, `offset_effettivo` sui cruscotti, presidio | §3.3 | — |
+| 7 | team BE/FE | ✅ Lavoro C (2026-11-24): `TemplateService` legge lo scope da `_scope`, la copia è ritirata | §4 | — |
 | 8 | team BE/FE | I due punti da chiarire, guardati nel giro che tocca quei file | §6 | — |
-| 10 | team BE/FE | D-3: il `validate_order_params` di `search_validators` si rinomina (`validate_order_params_ricerca`), call-site e catalogo nello stesso giro | §5, §8 | — |
-| 11 | team BE/FE | D-5: il colore del livello d'accesso in una sede sola, `core/utils/severity.js`, LETTURA = `warn`; si ritirano `getLivelloSeverity` e `severityForLivello` | §7.7 (E-4), §8 | — |
+| 10 | team BE/FE | ✅ D-3 (2026-11-24): `validate_order_params_ricerca`, call-site, test e catalogo | §5 | — |
+| 11 | team BE/FE | ✅ D-5 (2026-11-24): `livelloAccessoSeverity` in `severity.js`, LETTURA arancio, le due copie ritirate | §7.10 | — |
+| 11-bis | Tid | ✅ Collaudo a video del giro B–C–D (2026-11-24): tutto ok | §3.4 | — |
 | 12 | team BE/FE | ✅ D-6 (2026-11-24, alla revisione): il motivo dei 300 ms in `useServerAutocomplete` e nella sua voce di catalogo; il polling in background dichiarato voluto nella voce di `useJobPolling` | §7.9 | — |
 | 13 | team BE/FE | ✅ Revisione del giro A e del giro F (2026-11-24): quattro difetti corretti | §2.5, §7.9 | — |
-| 9 | team BE/FE | Archiviazione in `work-done/` | — | 3-bis, 3-quater, 4–8, 10–12 |
+| 9 | team BE/FE | Archiviazione in `work-done/` | — | 8 |
 
 **Decisioni aperte di Tid:** nessuna. Le tre proposte dell'audit del backend sono accettate (Tid,
 2026-11-24): A, B, e la pulizia del catalogo; lo stesso giorno D-4 (F-1…F-4) e poi D-1, D-2, D-3,
 D-5, D-6, tutte secondo la raccomandazione di §8.
-**Da committare:** il lavoro A e il catalogo BE (§2.3, §5), il lavoro F (§7.7), le correzioni della
-revisione (§2.5, §7.9), e questo brief.
+**Da committare:** niente. A, il catalogo BE, F e le revisioni sono nel commit `9e25fe7fa`; il giro
+B–C–D (§3.3–3.5, §4, §5, §7.10) nel commit successivo.
 
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-11-24. **A chi:** team BE/FE e Tid.
 > **Origine:** la domanda di Tid «chi mi dice che i building block stessi non siano stati doppiati?».
@@ -40,7 +41,9 @@ revisione (§2.5, §7.9), e questo brief.
 > **Guide verificate** (`scripts/guide_coinvolte.py` sui sette file toccati): le 45 guide e le 12
 > note di dominio trovate nascono dagli oggetti DB che quei moduli condivisi nominano. Il lavoro
 > non cambia nessun oggetto DB e nessuna regola di dominio: cambia il trasporto in Python. Due sono
-> pertinenti:
+> pertinenti (giro A). Per il giro B–C–D (2026-11-24) lo script sul diff restituisce le guide degli
+> endpoint toccati: nessuna descrive la forma dell'envelope di una lista (`configurazione-liste`
+> compresa), quindi **coerenti**; per C vedi §4. Due sono pertinenti al giro A:
 > [Messaggi-di-Errore-e-Generazione-Log](../../guide/Messaggi-di-Errore-e-Generazione-Log.md) è
 > **coerente**: chiede che un dato errato esca col suo campo (`DATO_ERRATO`, «il nome del campo si
 > dichiara»), e il lavoro A ci porta le letture che oggi non lo danno.
@@ -253,6 +256,9 @@ modello: **D-1**, ✅ decisa il 2026-11-24: la forma corta.
 
 ### 3.2 Il piano (D-1 decisa: `{count, results}`)
 
+⚠️ Eseguito il 2026-11-24: il giro è in §3.3, con due varianti al piano (il nome del campo della
+finestra effettiva, e quattro endpoint con una chiave fuori forma).
+
 * **B1 — Il BB.** Una sede core per la forma decisa, accanto a `collezione_completa` in
   `core/services/list_helpers.py`, con un nome che dice la natura (lista paginata, col totale
   della query).
@@ -267,6 +273,70 @@ modello: **D-1**, ✅ decisa il 2026-11-24: la forma corta.
 * **Documentazione:** api.md §Envelope risposte dice la regola; il catalogo aggiorna L46, L408 e
   L1299.
 
+### 3.3 Il giro del 2026-11-24 (team BE/FE)
+
+* **B1 ✅ — Il BB.** `pagina_con_totale(results, totale)` in `core/services/list_helpers.py`, accanto
+  a `collezione_completa`: `{count, results}`, con `count` il totale della query. I campi propri di
+  una lista stanno accanto (`{**pagina_con_totale(…), "stati": …}`).
+* **B2 ✅ — Le copie.** Ritirati `paginated_envelope`, `envelope_da_offset`, `pagina_di` e la chiave
+  `page` di `parse_list_params`. Riscritti i call-site in 47 file (riscrittura meccanica, ruff verde).
+  Passano al BB anche le copie a mano: `risposta_paginata` di magazzino (ritirata, con i tre service),
+  saldi, sistemazioni, titoli IVA, processi, email, lookup comuni, giornale delle pratiche,
+  amm_software, commesse, coda lavori, pagamenti e i tool AI. Le collezioni intere fatte a mano
+  (`len(...)`) passano da `collezione_completa`. Gli schemi OpenAPI perdono `page`/`page_size`/
+  `total_pages`.
+  * Variante: **quattro endpoint avevano una chiave fuori forma**, e passano alla forma unica.
+    L'audit dei permessi (`events` → `results`, nessun consumatore FE), il registro di una commessa
+    (`rows` → `results`; `CommessaRegistroDialog` legge `results`), la coda delle approvazioni prezzo
+    (non ripete più `limit`/`offset`; la legge lo store-lista generico), la lista dei run di un lotto
+    (via la terna, resta l'alias `task_runs`).
+  * **Restano fuori, con motivo** (eccezioni del presidio): le quattro liste admin di `ui`
+    (collezione intera col conteggio di controllo da una query sua, per `troncamentoSospetto`) e il
+    lookup di catalogo con `troncato`, col suo tool AI.
+* **La finestra effettiva dei cruscotti** (variante sul nome): il campo è **`offset_effettivo`**,
+  nel dialetto della richiesta, e non una pagina. Lo producono le liste di situazione aperta,
+  backlog, competenza (cinque) e fondi fattura, con lo stesso calcolo della `OFFSET LEAST(…)` di
+  `query_paged_view`. **B3 ✅** `usePagedDashFetch` ne ricava la pagina; senza il campo resta la
+  pagina chiesta, col rientro in pagina 1. Spec nuovo `usePagedDashFetch.spec.js` (4), provato per
+  mutazione.
+* **B4 ✅ — Presidio.** `core/tests/test_envelope_lista_forma_unica.py`, su AST: nessun dizionario con
+  `count` e `results` fuori da `list_helpers` (gli schemi OpenAPI sono esclusi: descrivono la forma,
+  non la costruiscono), eccezioni elencate col motivo e verificate vive; nessuna chiave `page_size`/
+  `total_pages`.
+* **Documentazione ✅** — api.md §Paginazione (la forma unica, `offset_effettivo`, il presidio) e
+  §Envelope risposte (il rimando), la tabella degli helper e la checklist della view; catalogo BE:
+  voce nuova `pagina_con_totale`, voce ritirata della forma lunga, `query_paged_view`, magazzino,
+  lookup codici, giornale; catalogo FE: `usePagedDashFetch`. Pagine `manual/` del backend: §3.5.
+* **Test:** 34 test asserivano la forma lunga (`page`, `total_pages`, `events`), più i mock che la
+  simulavano: riscritti sulla forma unica, e sui cruscotti su `offset_effettivo`.
+
+### 3.4 Prove (2026-11-24)
+
+* Suite BE intera: **6804 test, OK** (341 saltati, 1 expected failure), dopo B; i test di C e D-3
+  rilanciati a parte, verdi. ruff verde.
+* FE: vitest intero **205 file, 1302 test, verdi**; lint, guard e build verdi.
+* ✅ `kill -HUP` sul master di gunicorn (23:11): worker nuovi, servizio vivo.
+* ✅ **A video (Tid, 2026-11-24): tutto ok.** Le prove: un cruscotto (situazione aperta o competenza) sull'ultima pagina, che si
+  accorcia mentre lo si guarda (un documento della pagina cambia fase in un'altra scheda), poi
+  «Ricarica lista»: il paginatore deve portarsi sull'ultima pagina vera. ⚠️ Corretto il 2026-11-24:
+  diceva «poi un filtro», ma un cambio di filtro riparte già dalla pagina 1 (`onFiltriChange`) e non
+  esercita la finestra effettiva. Prova diretta: in DevTools la risposta di
+  `/vendite/dashboard-aperto/documenti/` porta `count`, `results`, `offset_effettivo` e nient'altro
+  della paginazione; con `?offset=100000` `offset_effettivo` è l'inizio dell'ultima pagina. Il registro
+  di una commessa (il dialog mostra gli eventi); la coda delle approvazioni prezzo; i Tag del livello
+  d'accesso (LETTURA arancio) nei permessi dell'operatore, nei reparti e nei permessi colonna delle
+  liste; la lista dei modelli di documento.
+
+### 3.5 Le pagine `manual/` del backend (2026-11-24)
+
+* ✅ 51 pagine di `docs/it/backend/**/manual/` e `frontend-standards.md` descrivevano la forma lunga:
+  esempi JSON senza `page`/`page_size`/`total_pages`, la prosa rimanda a `pagina_con_totale` e ad
+  api.md §Paginazione, le quattro dashboard dichiarano `offset_effettivo`, l'audit dei permessi e il
+  registro della commessa `results`, la coda delle approvazioni senza `limit`/`offset`. Le righe di
+  storia vecchie restano, con una riga nuova del 2026-11-24 dove la pagina ha un changelog. Restano,
+  volute, le frasi sul dialetto della richiesta (`page`/`page_size` in query sono un 400).
+* Indici di `docs/it/backend/core/` rigenerati (`scripts/gen_bk_docs.py --areas core --ci`).
+
 ## 4. Lavoro C — Lo scope emittente di documenti, due copie
 
 `documenti/services/template_service.py` ha una copia propria della lettura dello scope. Accanto
@@ -276,6 +346,14 @@ restituisce `[]`, la seconda dal 2026-11-24 solleva `E_SCOPE_SENZA_UTENTE`. Oggi
 arrivarci, perché la view chiede già il JWT. Il piano: la copia di `template_service` passa da
 `_scope` e si ritira. Questo punto non era fra le tre proposte accettate: entra con **D-2**, ✅ decisa il 2026-11-24 (sì, in
 questo brief).
+
+✅ **Fatto il 2026-11-24.** `TemplateService` legge lo scope con `_scope.resolve_emittente_scope`, e il
+suo `_resolve_emittente_scope` è ritirato: per l'anonimo o l'utente assente la risposta è ora il
+rifiuto dichiarato `E_SCOPE_SENZA_UTENTE`, come nel resto del dominio. Test:
+`test_list_templates_anonymous_user_rifiutato` (al posto di quello che si aspettava `[]`), provato per
+mutazione; i patch dei test passano da `_scope`. Catalogo: `TemplateService` e `_scope`. Guida
+[architettura-permessi-e-autorizzazioni](../../guide/architettura-permessi-e-autorizzazioni.md)
+§scope **coerente**: descrive già il rifiuto di un perimetro chiesto senza utente.
 
 ## 5. Il catalogo del backend: voci doppie
 
@@ -294,7 +372,9 @@ questo brief).
   di `qp_int_strict` e quella di `qp_bool_optional` (diceva ancora `1/yes/y/on`, ritirati il
   2026-10-20: era vecchia, non doppia), e la riga di `create_with_constraint_mapping` nella sezione
   degli errori di integrità. La riga di anagrafiche resta. L'indice è rigenerato. D-3 ✅ decisa il 2026-11-24: si rinomina quello della ricerca universale
-  (riga 10 di «Chi riparte»).
+  (riga 10 di «Chi riparte»). ✅ **Fatto il 2026-11-24**: `validate_order_params_ricerca` in
+  `search_validators`, con `search_view`, il test e le due righe di catalogo; l'altro omonimo resta
+  `list_helpers.validate_order_params`.
 
 ## 6. Da chiarire (si guardano nel giro che tocca quei file)
 
@@ -472,7 +552,7 @@ Lato frontend soltanto. Il BE non cambia.
 * vitest intero: **202 file, 1294 test, verdi**. Guard (`npm run guards`) verdi. Build verde.
 * Lint: il primo giro ha trovato due nomi di componente di una parola nello spec nuovo
   (`vue/multi-word-component-names`). Corretti, e `npm run lint` è verde.
-* ⏳ **A video (Tid):** un autocomplete (cliente in un documento) con una digitazione veloce e un
+* ✅ **A video (Tid, 2026-11-24): tutto ok.** Le prove: un autocomplete (cliente in un documento) con una digitazione veloce e un
   cambio di scheda subito dopo; l'IBAN e il codice fiscale, correggendo una lettera in mezzo (il
   cursore deve restare lì) e incollando un valore con gli spazi; il codice di un emittente nuovo
   scritto in minuscolo (si vede in maiuscolo, e il DB lo salva in maiuscolo).
@@ -506,6 +586,17 @@ Lato frontend soltanto. Il BE non cambia.
   ritirata `senza_natura_con_titoli_iva`, che non citava più nessuno. Ora il controllo i18n è pulito.
   ⚠️ Nello stesso momento un'altra mano ha alzato in `frontend/package.json` chart.js, oxlint ed
   eslint-plugin-oxlint: lint e build di questa sezione girano sulle versioni di prima.
+
+### 7.10 D-5, il colore del livello d'accesso (2026-11-24)
+
+* ✅ `livelloAccessoSeverity` / `LIVELLO_ACCESSO_MAP` in `core/utils/severity.js`, su
+  `resolveSeverity`: TUTTO verde, LETTURA arancio, BLOCCATO rosso. Ritirati `getLivelloSeverity`
+  (`amministrazione/constants.js`, tre consumatori) e `severityForLivello`
+  (`ListaColonnaPermessoPanel`, dove LETTURA era azzurro). Un valore fuori vocabolario è ora neutro
+  (`secondary`), come per ogni mappa di `severity.js`; prima era rosso in amministrazione.
+* Spec `livelloAccessoSeverity.spec.js`: i colori, e nessuna mappa del livello fuori da
+  `severity.js`. Provato per mutazione con la copia vecchia del pannello.
+* Catalogo FE: voce nuova. Prove in §3.4.
 
 ## 8. Decisioni di Tid
 

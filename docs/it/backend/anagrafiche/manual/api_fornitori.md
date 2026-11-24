@@ -71,9 +71,6 @@ whitelist ripiega sul default.
 {
   "data": {
     "count": 42,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 2,
     "results": [
       {
         "id": 1,

@@ -39,9 +39,6 @@ _GRUPPO_ROW = {
 
 _LIST_RESPONSE = {
     "count": 1,
-    "page": 1,
-    "page_size": 50,
-    "total_pages": 1,
     "results": [_GRUPPO_ROW],
 }
 
@@ -115,5 +112,5 @@ class VenditeLottoGruppiListApiTests(JwtMockedApiTest):
         mocked_list.return_value = {**_LIST_RESPONSE, "count": 0, "results": []}
         dati = self.client.get(self.url).json()["data"]
         self.assertEqual(
-            sorted(dati), ["count", "page", "page_size", "results", "total_pages"],
+            sorted(dati), ["count", "results"],
         )

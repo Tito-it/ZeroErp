@@ -68,8 +68,6 @@ _CODA_RESPONSE = inline_serializer(
     fields={
         "results": serializers.ListField(child=serializers.JSONField()),
         "count": serializers.IntegerField(),
-        "limit": serializers.IntegerField(),
-        "offset": serializers.IntegerField(),
     },
 )
 

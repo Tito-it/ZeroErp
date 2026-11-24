@@ -45,9 +45,6 @@ Le tabelle DB esistono gia' (`vendite.preventivi`, `preventivi_righe`, `preventi
 {
   "data": {
     "count": 42,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 1,
@@ -292,7 +289,7 @@ Nuovo endpoint 2026-05-28. Mirror di `GET /api/v1/vendite/offerte/<id>/revisioni
 ```json
 {
   "data": {
-    "count": 3, "page": 1, "page_size": 25, "total_pages": 1,
+    "count": 3,
     "results": [
       {"id": 1, "numero": "P-0001", "rev": 1,
        "stato_codice_interno": "SUPERATO", "stato_descrizione": "Superato",

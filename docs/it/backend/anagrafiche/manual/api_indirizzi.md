@@ -43,9 +43,6 @@ Restituisce la lista degli indirizzi dettaglio con paginazione e ricerca full-te
 {
   "data": {
     "count": 150,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 6,
     "results": [
       {
         "indirizzo_dettaglio_id": 42,

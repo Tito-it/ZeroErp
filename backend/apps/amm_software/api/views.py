@@ -23,7 +23,6 @@ from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     pagina_da_query,
-    paginated_envelope,
     parse_list_params,
     qp_bool_optional,
     qp_iso_date_optional,
@@ -42,6 +41,7 @@ from apps.core.services.processi_service import ProcessiService
 from apps.core.services.tracciamento_service import fn_list_error_logs
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 # ================================================================== #
@@ -97,7 +97,7 @@ class OperatoriListView(AdminAPIView):
             order_by=qp.get("order_by") or None,
             order_dir=qp.get("order_dir") or None,
         )
-        return success_response({"count": total_count, "results": results})
+        return success_response(pagina_con_totale(results, total_count))
 
     @extend_schema(
         summary="Crea operatore (soggetto nuovo o esistente)",
@@ -341,7 +341,7 @@ class RepartiListView(AdminAPIView):
             limit=p["limit"],
             offset=p["offset"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
 
 class PermessiEreditatiView(AdminAPIView):
@@ -781,7 +781,7 @@ class AuditLogView(AdminAPIView):
             limit=limit,
             offset=offset,
         )
-        return success_response({"count": total_count, "results": events})
+        return success_response(pagina_con_totale(events, total_count))
 
 
 # I filtri della consultazione di `dbops.error_log`, dichiarati UNA volta per

@@ -27,7 +27,6 @@ from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id,
 from apps.core.api.permissions import PassaggioDocumento
 from apps.core.api.payload_validators import (
     corpo_oggetto,
-    paginated_envelope,
     parse_list_params,
     qp_bool_optional,
 )
@@ -55,6 +54,7 @@ from apps.vendite.api._schema_da_contratto import (
     CAMBIA_STATO_CON_CONFERMA_REQUEST,
     schema_da_contratto,
 )
+from apps.core.services.list_helpers import pagina_con_totale
 
 # Codice lista (ui.lista_definizione) usato dall'export per risolvere
 # colonne visibili/ordine/permessi dell'utente.
@@ -138,7 +138,7 @@ class ApiDdtList(DomainAPIView):
             order_dir=p["order_dir"],
             **f,
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=_DDT_CREATE_REQUEST,

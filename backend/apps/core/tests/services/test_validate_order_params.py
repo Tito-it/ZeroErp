@@ -29,7 +29,7 @@ Indice test:
 
 import unittest
 
-from apps.core.api.search_validators import validate_order_params as validate_ricerca
+from apps.core.api.search_validators import validate_order_params_ricerca as validate_ricerca
 from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.service_errors import ServiceError
 

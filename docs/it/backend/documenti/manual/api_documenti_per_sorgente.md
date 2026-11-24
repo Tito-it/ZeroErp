@@ -132,8 +132,7 @@ passava — la lista troncava in silenzio).
 | `order_dir` | `asc` / `desc`. Assente: `asc` sulla colonna chiesta, date comprese; `desc` solo senza `order_by` o su `generato_at`, il default della lista (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata) |
 | `emittente_fiscale_id` | PK dell'emittente del documento — `lista_emittente_param`: scioglie il cancello di perimetro per chi vede più emittenti (il dialog lo passa dal documento aperto). Non filtra |
 
-Risposta: envelope paginato standard (`count`, `page`, `page_size`,
-`total_pages`, `results`). `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` con più
+Risposta: envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)). `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` con più
 emittenti nello scope e nessun `emittente_fiscale_id`.
 
 ### 3.5 `GET/POST /api/v1/vendite/<dominio>/{id}/documenti/{documento_id}/allegati/`

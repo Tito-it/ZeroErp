@@ -44,7 +44,8 @@ creare un fondo, tanto meno a cancellarlo*.
 
 ⚠️ Dal 2026-10-20 la lista pagina con `limit`/`offset` come ogni altra lista
 (brief-be-verifica-documentazione-api §A4): `page`/`page_size` sono un **400**
-`E_VALIDATION_INPUT`. L'envelope non cambia (`page` si ricava dall'offset).
+`E_VALIDATION_INPUT`. Dal 2026-11-24 la risposta è `{count, offset_effettivo, results}`
+([api.md §Paginazione](../../../dev/api.md)): niente più `page`.
 
 ### I quattro motivi
 
@@ -62,8 +63,10 @@ una cosa falsa*.
 
 ## Output
 
-Envelope paginato standard (`count`, `page`, `page_size`, `total_pages`,
-`results`).
+Envelope di lista `{count, offset_effettivo, results}` (`pagina_con_totale`,
+[api.md §Paginazione](../../../dev/api.md)). `offset_effettivo` è l'offset davvero servito: chiesto oltre la
+fine, il backend serve l'ultima pagina e lo dichiara lì (dal 2026-11-24, al
+posto di `page`/`page_size`/`total_pages`).
 
 ⚠️ **Le colonne non sono tutte sempre valorizzate, ed è la forma del dato, non
 un buco**: quelle dell'atto (`fondo_source_id`, `origine`, `stato_atto`,

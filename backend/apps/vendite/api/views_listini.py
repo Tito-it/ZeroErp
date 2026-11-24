@@ -20,7 +20,7 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.permissions import PassaggioDocumento
-from apps.core.api.payload_validators import corpo_oggetto, paginated_envelope, parse_list_params, qp_bool_optional, qp_int_optional, qp_int_strict, qp_str
+from apps.core.api.payload_validators import corpo_oggetto, parse_list_params, qp_bool_optional, qp_int_optional, qp_int_strict, qp_str
 from apps.core.api.success_responses import success_response
 from apps.vendite.db.listini_repository import TESTATA_LISTINI_VERSIONI
 from apps.vendite.services.listini_service import (
@@ -49,6 +49,7 @@ from apps.vendite.services.listini_service import (
     fn_update_riga,
     fn_update_versione,
 )
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 # Scopo: Definisce i campi write listino per lo schema OpenAPI.
@@ -234,7 +235,7 @@ class ApiListiniList(DomainAPIView):
             limit=p["limit"],
             offset=p["offset"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=_LISTINO_CREATE_REQUEST,
@@ -327,7 +328,7 @@ class ApiListinoVersioniList(DomainAPIView):
             limit=p["limit"],
             offset=p["offset"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=_VERSIONE_CREATE_REQUEST,
@@ -503,7 +504,7 @@ class ApiListinoVersioneRigheList(DomainAPIView):
             limit=p["limit"],
             offset=p["offset"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=_RIGA_CREATE_REQUEST,

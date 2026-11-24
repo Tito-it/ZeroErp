@@ -133,9 +133,6 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/?searc
 {
   "data": {
     "count": 1,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 1,
@@ -403,9 +400,6 @@ Envelope paginato standard:
 {
   "data": {
     "count": 2,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 10,

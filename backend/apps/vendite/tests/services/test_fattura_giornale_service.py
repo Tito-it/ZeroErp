@@ -98,8 +98,8 @@ class FatturaGiornaleServiceTests(TestCase):
         get_fattura_giornale(fattura_id=7, auth_user_id=99)
         repo.get_fattura_testata.assert_called_once_with(7, auth_user_id=99)
 
-    # Scopo: envelope paginato standard dal contratto di lista (`limit`/
-    #        `offset`, 2026-09-27): la pagina si RICAVA dall'offset, e l'offset
+    # Scopo: envelope di lista dal contratto di lista (`limit`/`offset`,
+    #        2026-09-27; forma unica `{count, results}` dal 2026-11-24): l'offset
     #        arriva intatto al repository.
     @patch("apps.vendite.services.vendite_service.VenditeRepository", autospec=True)
     def test_shape_risposta_e_paginazione(self, repo_cls):
@@ -109,9 +109,6 @@ class FatturaGiornaleServiceTests(TestCase):
         data = get_fattura_giornale(auth_user_id=7, fattura_id=7, limit=3, offset=3)
         self.assertEqual(data["fattura_id"], 7)
         self.assertEqual(data["count"], 7)
-        self.assertEqual(data["page"], 2)
-        self.assertEqual(data["page_size"], 3)
-        self.assertEqual(data["total_pages"], 3)
         self.assertEqual(data["results"], _RIGHE)
         self.assertEqual(repo.list_giornale_entita.call_args.kwargs["offset"], 3)
 

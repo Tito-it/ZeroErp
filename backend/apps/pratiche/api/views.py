@@ -22,7 +22,6 @@ from apps.core.api.payload_validators import (
     qp_iso_date_optional,
     corpo_oggetto,
     optional_int,
-    paginated_envelope,
     parse_list_params,
     qp_bool_optional,
     qp_int_strict,
@@ -35,6 +34,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.pratiche.db.pratiche_repository import FLUSSI_ORDER_COLS, PraticheRepository
 from apps.pratiche.services import generazione_service, pratiche_service
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 # ⛔ I campi obbligatori del corpo si leggono dal BB, non con `payload["x"]`:
@@ -127,7 +127,7 @@ class ApiPraticheList(DomainAPIView):
             order_by=p["order_by"],
             order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(items, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(items, total))
 
     @extend_schema(
         request=inline_serializer(
@@ -332,7 +332,7 @@ class ApiPraticaGiornale(DomainAPIView):
         limit, offset = pagina_da_query(qp, default_limit=DEFAULT_LIMIT_EVENTI)
 
         items, total = pratiche_service.get_giornale(pratica_id, limit=limit, offset=offset)
-        return success_response({"count": total, "results": items})
+        return success_response(pagina_con_totale(items, total))
 
 
 
@@ -414,7 +414,7 @@ class ApiPraticaFlussiList(DomainAPIView):
             limit=p["limit"],
             offset=p["offset"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=inline_serializer(

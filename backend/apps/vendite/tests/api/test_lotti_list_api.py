@@ -58,9 +58,6 @@ _LOTTO_ROW = {
 
 _LIST_RESPONSE = {
     "count": 1,
-    "page": 1,
-    "page_size": 50,
-    "total_pages": 1,
     "results": [_LOTTO_ROW],
 }
 
@@ -82,7 +79,6 @@ class VenditeLottiListApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 200)
         data = response.json()["data"]
         self.assertEqual(data["count"], 1)
-        self.assertEqual(data["total_pages"], 1)
         self.assertEqual(data["results"][0]["id"], 42)
         self.assertEqual(data["results"][0]["codice"], "LOT-2026-001")
 
@@ -150,7 +146,7 @@ class VenditeLottiListApiTests(JwtMockedApiTest):
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.fn_list_lotti")
     def test_list_lotti_paginazione_parametri(self, mocked_list, _mock_auth):
-        mocked_list.return_value = {**_LIST_RESPONSE, "page": 2, "page_size": 10}
+        mocked_list.return_value = dict(_LIST_RESPONSE)
         self.client.get("/api/v1/vendite/lotti/?limit=10&offset=10")
         kwargs = mocked_list.call_args.kwargs
         self.assertEqual(kwargs["limit"], 10)
@@ -181,9 +177,6 @@ class VenditeLottiListApiTests(JwtMockedApiTest):
     def test_list_lotti_senza_filtri_lista_vuota_ok(self, mocked_list, _mock_auth):
         mocked_list.return_value = {
             "count": 0,
-            "page": 1,
-            "page_size": 50,
-            "total_pages": 0,
             "results": [],
         }
         response = self.client.get("/api/v1/vendite/lotti/")

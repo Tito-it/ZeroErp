@@ -18,6 +18,7 @@ from apps.vendite.api.views_contratti import ApiContrattiList, ApiContrattoDetai
 from apps.vendite.api.views_listini import ApiListiniList
 from apps.vendite.api.views_promo_articoli import PromoArticoliView
 from apps.core.db._helpers import RICERCA_MIN_CARATTERI
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 class CercaContrattiTool(AITool):
@@ -138,14 +139,12 @@ class CercaContrattiTool(AITool):
             order_dir="desc",
         )
 
-        return {
-            "count": total,
-            "results": self.simplify_results(
-                items,
-                self._FIELD_MAP,
-                str_fields={"valido_dal", "valido_al"},
-            ),
-        }
+        risultati = self.simplify_results(
+            items,
+            self._FIELD_MAP,
+            str_fields={"valido_dal", "valido_al"},
+        )
+        return pagina_con_totale(risultati, total)
 
 
 class DettaglioContrattoTool(AITool):
@@ -325,14 +324,12 @@ class CercaPreventiviTool(AITool):
         results = envelope.get("results") or []
         total = int(envelope.get("count") or 0)
 
-        return {
-            "count": total,
-            "results": self.simplify_results(
-                results,
-                self._FIELD_MAP,
-                str_fields={"data", "validita_al", "totale_documento"},
-            ),
-        }
+        risultati = self.simplify_results(
+            results,
+            self._FIELD_MAP,
+            str_fields={"data", "validita_al", "totale_documento"},
+        )
+        return pagina_con_totale(risultati, total)
 
 
 class DettaglioPreventivoTool(AITool):
@@ -481,14 +478,12 @@ class CercaPromoArticoliTool(AITool):
             order_dir="desc",
         )
 
-        return {
-            "count": total,
-            "results": self.simplify_results(
-                items,
-                self._FIELD_MAP,
-                str_fields={"valido_dal", "valido_al", "valore_variazione"},
-            ),
-        }
+        risultati = self.simplify_results(
+            items,
+            self._FIELD_MAP,
+            str_fields={"valido_dal", "valido_al", "valore_variazione"},
+        )
+        return pagina_con_totale(risultati, total)
 
 
 class CercaListiniTool(AITool):
@@ -563,10 +558,8 @@ class CercaListiniTool(AITool):
             order_dir="asc",
         )
 
-        return {
-            "count": total,
-            "results": self.simplify_results(items, self._FIELD_MAP),
-        }
+        risultati = self.simplify_results(items, self._FIELD_MAP)
+        return pagina_con_totale(risultati, total)
 
 
 # Scopo: Funzione di registrazione tool vendite.

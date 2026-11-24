@@ -115,7 +115,7 @@ class FlussiApiTests(JwtMockedApiTest):
             3, search="cont", order_by="data_scadenza", order_dir="desc",
             limit=10, offset=20,
         )
-        self.assertEqual(response.json()["data"]["page"], 3)
+        self.assertEqual(set(response.json()["data"]), {"count", "results"})
 
     # Scopo: la view dichiara lista e parametro dell'emittente — e' il
     #        contratto che il tab dentro il drawer pratica usa per non essere

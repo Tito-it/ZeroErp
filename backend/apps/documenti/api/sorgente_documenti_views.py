@@ -46,12 +46,12 @@ from apps.core.api.permissions import PassaggioDocumento
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     optional_int,
-    paginated_envelope,
     parse_list_params,
 )
 from apps.core.api.success_responses import success_response
 from apps.documenti.api.contesto_helpers import resolve_contesto_documentale
 from apps.documenti.api.multipart_helpers import extract_allegati
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 # Scopo: Costruisce le 7 view documentali per un dominio sorgente. Ritorna un
@@ -337,7 +337,7 @@ def build_documenti_sorgente_views(
         # Scopo: Lista paginata documenti generati per la sorgente (render
         #        history), col contratto di lista standard: `limit`/`offset`,
         #        `order_by`/`order_dir` sulla whitelist del repository, `search`
-        #        dal catalogo, envelope `paginated_envelope` (`count`).
+        #        dal catalogo, envelope `pagina_con_totale` (`count`).
         # ⛔ Fino al 2026-09-27 parlava `page`/`page_size` con default 50 e
         #    rispondeva `total_count`: il frontend non mandava `page_size`, e
         #    la lista si fermava ai primi 50 documenti SENZA dirlo (nessun
@@ -355,9 +355,7 @@ def build_documenti_sorgente_views(
                 limit=p["limit"],
                 offset=p["offset"],
             )
-            return success_response(paginated_envelope(
-                result["results"], result["total_count"], p["page"], p["limit"],
-            ))
+            return success_response(pagina_con_totale(result["results"], result["total_count"]))
 
     DocumentiList.__doc__ = f"`GET .../documenti/` — {schema_prefix}."
 

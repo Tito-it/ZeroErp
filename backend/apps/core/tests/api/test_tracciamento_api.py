@@ -45,8 +45,7 @@ class TestApiAuditLog(TestCase):
         from apps.core.api.views_tracciamento import ApiAuditLog
 
         mock_fn.return_value = {
-            "count": 1, "page": 1, "page_size": 50, "total_pages": 1,
-            "results": [{"id": 1, "status": "SUCCESS"}],
+            "count": 1, "results": [{"id": 1, "status": "SUCCESS"}],
         }
         view = ApiAuditLog()
         request = _make_get_request("/api/v1/core/tracciamento/audit-log/")
@@ -81,8 +80,7 @@ class TestApiDominiTask(TestCase):
         from apps.core.api.views_tracciamento import ApiDominiTask
 
         mock_fn.return_value = {
-            "count": 2, "page": 1, "page_size": 50, "total_pages": 1,
-            "results": [
+            "count": 2, "results": [
                 {"id": 1, "codice": "FATTURAZIONE"},
                 {"id": 2, "codice": "ATTIVITA_FATTURABILI"},
             ],
@@ -103,8 +101,7 @@ class TestApiTaskRegistry(TestCase):
         from apps.core.api.views_tracciamento import ApiTaskRegistry
 
         mock_fn.return_value = {
-            "count": 1, "page": 1, "page_size": 100, "total_pages": 1,
-            "results": [{"id": 1, "task_code": "select_attivita"}],
+            "count": 1, "results": [{"id": 1, "task_code": "select_attivita"}],
         }
         view = ApiTaskRegistry()
         request = _make_get_request(
@@ -123,8 +120,7 @@ class TestApiTaskImplementations(TestCase):
         from apps.core.api.views_tracciamento import ApiTaskImplementations
 
         mock_fn.return_value = {
-            "count": 1, "page": 1, "page_size": 100, "total_pages": 1,
-            "results": [{"id": 1, "handler_code": "select_attivita_default"}],
+            "count": 1, "results": [{"id": 1, "handler_code": "select_attivita_default"}],
         }
         view = ApiTaskImplementations()
         request = _make_get_request("/api/v1/core/tracciamento/task-implementations/")
@@ -140,8 +136,7 @@ class TestApiJobRuns(TestCase):
         from apps.core.api.views_tracciamento import ApiJobRuns
 
         mock_fn.return_value = {
-            "count": 1, "page": 1, "page_size": 50, "total_pages": 1,
-            "results": [{"id": 1, "jobname": "cleanup_weekly", "ok": True}],
+            "count": 1, "results": [{"id": 1, "jobname": "cleanup_weekly", "ok": True}],
         }
         view = ApiJobRuns()
         request = _make_get_request("/api/v1/core/tracciamento/job-runs/")
@@ -156,7 +151,7 @@ class TestApiJobRuns(TestCase):
         from apps.core.api.views_tracciamento import ApiJobRuns
 
         mock_fn.return_value = {
-            "count": 0, "page": 1, "page_size": 50, "total_pages": 0, "results": [],
+            "count": 0, "results": [],
         }
         request = _make_get_request(
             "/api/v1/core/tracciamento/job-runs/",
@@ -177,8 +172,7 @@ class TestApiJobSummary(TestCase):
         from apps.core.api.views_tracciamento import ApiJobSummary
 
         mock_fn.return_value = {
-            "count": 1, "page": 1, "page_size": 50, "total_pages": 1,
-            "results": [{"jobname": "cleanup_weekly", "total_runs": 5}],
+            "count": 1, "results": [{"jobname": "cleanup_weekly", "total_runs": 5}],
         }
         view = ApiJobSummary()
         request = _make_get_request("/api/v1/core/tracciamento/job-summary/")

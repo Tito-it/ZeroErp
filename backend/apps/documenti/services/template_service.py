@@ -4,7 +4,7 @@
 # Doc: Python
 # Scopo: Facade lettura template documentali. Gestisce lo scope
 #        emittente derivandolo dal Django user (whitelist via
-#        PermissionResolver.get_emittenti_pk_ids), valida gli input
+#        `_scope.resolve_emittente_scope`, sede unica dello scope del dominio), valida gli input
 #        (id positivi, codici stato) e mappa i 404 in
 #        ServiceError(E_DOCUMENTI_NOT_FOUND).
 #        Contratto write (CRUD admin) atterra in PR successive.
@@ -22,8 +22,8 @@ from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_enum_param
 from apps.core.services.payload_helpers import PayloadValidator
-from apps.core.services.permissions_resolver import PermissionResolver
 from apps.documenti.db.documenti_repository import DocumentiRepository
+from apps.documenti.services._scope import resolve_emittente_scope
 from apps.documenti.services.context_builders import versione_contesto_registrata
 from apps.documenti.services.storage import DocumentStorage, get_storage, leggi_da_storage
 
@@ -72,7 +72,7 @@ class TemplateService:
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> dict[str, Any]:
-        emittente_ids_scope = self._resolve_emittente_scope(user)
+        emittente_ids_scope = resolve_emittente_scope(user)
         rows, total = self._repo.list_templates(
             attivo=attivo,
             tipo_documento_output_id=tipo_documento_output_id,
@@ -101,7 +101,7 @@ class TemplateService:
         emittente_fiscale_id: int | None = None,
     ) -> dict[str, Any]:
         rows = self._repo.list_risoluzione_emittenti(
-            emittente_ids_scope=self._resolve_emittente_scope(user),
+            emittente_ids_scope=resolve_emittente_scope(user),
             emittente_fiscale_id=emittente_fiscale_id,
         )
         return {"results": rows, "total_count": len(rows)}
@@ -115,7 +115,7 @@ class TemplateService:
         template_id: int,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(template_id, field="template_id")
-        emittente_ids_scope = self._resolve_emittente_scope(user)
+        emittente_ids_scope = resolve_emittente_scope(user)
         row = self._repo.get_template(
             template_id, emittente_ids_scope=emittente_ids_scope
         )
@@ -203,7 +203,7 @@ class TemplateService:
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> dict[str, Any]:
-        emittente_ids_scope = self._resolve_emittente_scope(user)
+        emittente_ids_scope = resolve_emittente_scope(user)
         rows, total = self._repo.list_asset(
             attivo=attivo,
             asset_tipo_id=asset_tipo_id,
@@ -226,7 +226,7 @@ class TemplateService:
         asset_id: int,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(asset_id, field="asset_id")
-        emittente_ids_scope = self._resolve_emittente_scope(user)
+        emittente_ids_scope = resolve_emittente_scope(user)
         row = self._repo.get_asset(
             asset_id, emittente_ids_scope=emittente_ids_scope
         )
@@ -304,22 +304,6 @@ class TemplateService:
             "mime_type": "image/png",
         }
 
-    # ---- helper interni ------------------------------------------------------
-
-    # Scopo: Risolve la lista degli emittenti autorizzati per l'utente.
-    #        Admin globale = None (vede tutto). Operatore
-    #        ottiene una whitelist di id `emittenti_fiscali.id` (puntiamo
-    #        ad una tabella che usa la PK reale, vedi memoria
-    #        feedback_emittente_pk_vs_soggetto_ruolo).
-    def _resolve_emittente_scope(
-        self, user: AbstractBaseUser | AnonymousUser | None,
-    ) -> list[int] | None:
-        if user is None or not getattr(user, "is_authenticated", False):
-            # Caller non autenticato non dovrebbe arrivare qui (DomainAPIView
-            # gia' applica JWT); difensivamente ritorniamo lista vuota
-            # = nessun risultato, mai panel-leak.
-            return []
-        return PermissionResolver.get_emittenti_pk_ids(user)
 
 
 # Scopo: Riduce un'immagine raster a PNG di lato al massimo `LATO_MINIATURA`,

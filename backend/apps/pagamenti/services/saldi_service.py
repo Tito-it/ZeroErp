@@ -24,7 +24,7 @@ from decimal import Decimal
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import validate_order_params
+from apps.core.services.list_helpers import validate_order_params, collezione_completa, pagina_con_totale
 from apps.pagamenti.db.pagamenti_repository import (
     RATE_SORT_COLUMNS,
     PagamentiRepository,
@@ -166,7 +166,7 @@ def saldo_rata(
 def saldi_rate_documento(fattura_id: int) -> dict[str, Any]:
     repository = PagamentiRepository()
     rate = repository.list_rate_con_saldo(fattura_id)
-    return {"count": len(rate), "results": rate}
+    return collezione_completa(rate)
 
 
 # Scopo: L'ELENCO PAGINATO DELLE RATE col saldo dalla base unica — la quarta
@@ -251,7 +251,7 @@ def list_rate(
         limit=limit,
         offset=offset,
     )
-    return {"count": total, "results": results}
+    return pagina_con_totale(results, total)
 
 
 # ══════════════════════════════════════════════════════════════════

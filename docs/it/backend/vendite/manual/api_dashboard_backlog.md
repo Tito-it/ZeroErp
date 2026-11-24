@@ -118,7 +118,9 @@ Nessun parametro.
 
 ### Lista documenti
 
-Envelope paginato standard (`count/page/page_size/total_pages/results`); ogni
+Envelope di lista `{count, offset_effettivo, results}` (`pagina_con_totale`,
+[api.md §Paginazione](../../../dev/api.md)): `offset_effettivo` è l'offset davvero servito — chiesto oltre la
+fine, il backend serve l'ultima pagina e lo dichiara lì; ogni
 riga: `area`, `competenza_mese` (proxy, può essere NULL), chiavi documento
 (`documento_id`, `documento_uid`, `codice`), `cliente_display`, `valore_fermo`
 (NULL per aree a conteggi), `unita_ferme`, `motivo_fermo` (vocabolario
@@ -166,7 +168,8 @@ classe ha una data nota (età sconosciuta ≠ 0 giorni).
   materializzata + `COUNT(*) OVER()` + **offset clampato all'ultima pagina in
   SQL**). Il rientro da una pagina stantia (lista ridotta da altri utenti) non
   costa più un secondo giro: il BE serve subito l'ultima pagina reale e
-  l'envelope dichiara la **pagina effettiva**, che `usePagedDashFetch` adotta.
+  l'envelope dichiara l'**offset effettivo** (`offset_effettivo`), da cui
+  `usePagedDashFetch` ricava la pagina.
 - GET-only, nessun side-effect, nessuna Idempotency-Key.
 
 ## Dipendenze DB
@@ -185,6 +188,9 @@ classe ha una data nota (età sconosciuta ≠ 0 giorni).
 - 2026-10-21: la lista documenti legge la finestra come `limit`/`offset`
   (`pagina_da_query`); `page`/`page_size` in query diventano un 400. Envelope
   invariato.
+- 2026-11-24: la lista documenti risponde `{count, offset_effettivo, results}`
+  (`pagina_con_totale`, D-1 di brief-be-fe-BB-audit): `page`, `page_size` e
+  `total_pages` escono, la finestra servita la dichiara `offset_effettivo`.
 - Substrato DB applicato con migrations `20260706-01..15` (pgTAP
   `test-vw-dash-backlog-v1.sql` plan 14 verde).
 - Test: `apps/vendite/tests/api/test_dashboard_backlog_api.py` (8 casi) +

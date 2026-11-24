@@ -62,6 +62,7 @@ from apps.vendite.services._approvazioni_prezzo_constants import (
     STATO_APPROVAZIONE_PENDING,
     STATO_APPROVAZIONE_REJECTED,
 )
+from apps.core.services.list_helpers import pagina_con_totale
 
 _FN = "vendite.approvazioni_prezzo_service"
 
@@ -667,7 +668,7 @@ def lista_coda(
     user_can_act = _user_can_approve_or_reject(user)
     for item in risultati:
         item.update(_capabilities_per_pratica(item, user_can_act=user_can_act))
-    return {"results": risultati, "count": total, "limit": limit, "offset": offset}
+    return pagina_con_totale(risultati, total)
 
 
 # Scopo: helper Fase 5.B1. Ritorna True se l'utente puo' approvare/rifiutare

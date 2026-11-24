@@ -14,6 +14,7 @@ from typing import Any
 from apps.ai_assistant.tools.base import AITool, EndpointGemello
 from apps.amm_software.api.views import OperatoriListView
 from apps.core.db._helpers import RICERCA_MIN_CARATTERI
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 class CercaOperatoriTool(AITool):
@@ -90,7 +91,7 @@ class CercaOperatoriTool(AITool):
                 or item.get("username", "")
             )
 
-        return {"count": total, "results": simplified}
+        return pagina_con_totale(simplified, total)
 
 
 # Scopo: Funzione di registrazione tool config/amm.

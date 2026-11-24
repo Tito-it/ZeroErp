@@ -45,8 +45,7 @@ creazione), `gestisce_serie` (bool, derivato da `colonna_serie IS NOT NULL`),
 `search`, `order_by` (whitelist, default `codice_interno`; fuori whitelist →
 **400** `E_VALIDATION_INPUT`, dal 2026-10-20), `order_dir` (`asc` default | `desc`), `limit` (default `25`,
 max `200`) / `offset`. Un booleano non riconosciuto è un `400`. Risposta:
-envelope paginato standard (`count`, `page`, `page_size`, `total_pages`,
-`results`).
+envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)).
 
 **Ricerca libera** (`search`, lista ed export): le colonne le decide il catalogo
 della lista `vendite.famiglie_documento` (`ricerca_full` nella configurazione).
