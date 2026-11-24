@@ -605,12 +605,6 @@ DISTINTA_RIGHE_SORT_COLUMNS: dict[str, str] = {
     "stato_descrizione": "stato_descrizione",
 }
 
-# Le colonne DATA della lista 69: verso DESC al primo click senza `order_dir`
-# (regola di Tid del 2026-09-02, come `RATE_SORT_COLONNE_DATA`).
-DISTINTA_RIGHE_SORT_COLONNE_DATA: frozenset[str] = frozenset(
-    {"data_pagamento", "data_valuta", "data_operazione", "scadenza_data"}
-)
-
 # Colonne ordinabili dell'elenco delle rate fuori capienza.
 # ⭐ `numero_documento` (P-1-bis, 2026-09-17): la vista porta il numero
 #    parlante e la colonna 766 lo mostra; si ordina per la coppia
@@ -655,15 +649,6 @@ RATE_SORT_COLUMNS: dict[str, str] = {
     "totale_doc": "totale_doc",
     "stato_descrizione": "stato_descrizione",
 }
-
-# Le colonne DATA della lista 68, per il verso DESC quando il chiamante non ne
-# indica uno (regola di Tid del 2026-09-02). ⚠️ NON e' il default della lista:
-# senza `order_by` la lista si apre `data_scadenza ASC` — e' una CODA, la rata
-# piu' vecchia e' quella che un pagamento piu' probabilmente salda (stessa
-# ragione dei residui di competenza). Il primo click dell'operatore
-# sull'intestazione resta DESC per la regola generale, e lo decide il catalogo
-# (`tipo_dato = date`) nel frontend.
-RATE_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data", "data_scadenza"})
 
 # Colonne ordinabili dell'elenco delle eccedenze da sistemare.
 # ⭐ Il default e' per CLIENTE, non per documento: la decisione si prende
@@ -774,15 +759,6 @@ SISTEMAZIONI_SORT_COLUMNS: dict[str, str] = {
     "motivo": "s.motivo",
     "data_esecuzione": "s.data_esecuzione",
 }
-
-# ⭐ Le colonne DATA della lista 61. Il BB `sql_order_clause` le ordina DESC
-#    quando il chiamante non indica un verso: «gli ordinamenti per data hanno
-#    sempre default DESC» (Tid, 2026-09-02). Una data si legge dalla piu'
-#    recente, e chiedere «ordina per data» ricevendo il caso piu' vecchio in
-#    cima e' il contrario di cio' che si e' chiesto.
-# ⚠️ Vive ACCANTO alla whitelist e non altrove: e' un sottoinsieme delle sue
-#    chiavi, e a distanza le due si separerebbero senza che niente lo dica.
-SISTEMAZIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_esecuzione"})
 
 # Colonne ordinabili dell'elenco dei canali di incasso.
 # ⭐ CHIAVATA SUI `campo_sorgente` FISICI dal 2026-09-02, ed e' il giorno che il
@@ -1246,7 +1222,6 @@ class PagamentiRepository:
             default="id",
             tiebreak="id",
             default_desc=True,
-            colonne_desc=DISTINTA_RIGHE_SORT_COLONNE_DATA,
         )
         # `_RIGHE_DISTINTA_ATTIVE_SQL` finisce col suo `WHERE`: le condizioni
         # in piu' vi si attaccano in `AND`.
@@ -1754,15 +1729,15 @@ class PagamentiRepository:
         conditions, params = _condizioni("v")
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        # ⚠️ `default_desc=False` e' la scelta, non l'omissione: e' una coda
-        #    (vedi `RATE_SORT_COLONNE_DATA`). Il tiebreak `scadenza_id` e' la
-        #    chiave della vista — la PK della rata.
+        # ⚠️ `default_desc=False` e' la scelta, non l'omissione: e' una CODA,
+        #    la rata piu' vecchia e' quella che un pagamento piu' probabilmente
+        #    salda (stessa ragione dei residui di competenza). Il tiebreak
+        #    `scadenza_id` e' la chiave della vista — la PK della rata.
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=RATE_SORT_COLUMNS,
             default="data_scadenza",
             tiebreak="scadenza_id",
-            colonne_desc=RATE_SORT_COLONNE_DATA,
         )
 
         if solo_aperte:
@@ -2327,7 +2302,6 @@ class PagamentiRepository:
             default="s.id",
             tiebreak="s.id",
             default_desc=True,
-            colonne_desc=SISTEMAZIONI_SORT_COLONNE_DATA,
         )
         # ⛔ LIMIT/OFFSET solo se il chiamante impagina: una `LIMIT NULL` sarebbe
         #    legale in PostgreSQL ma legherebbe la query a un parametro in piu'

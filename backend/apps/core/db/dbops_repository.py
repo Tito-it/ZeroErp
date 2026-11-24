@@ -280,9 +280,6 @@ ERROR_LOG_SORT_COLUMNS: dict[str, str] = {
     "classe": "ce.classe",
     "tx_id": "e.tx_id",
 }
-# Le colonne DATA della whitelist: ripiego DESC senza `order_dir` (regola di
-# Tid del 2026-09-02, letta dal test 10 del presidio delle liste).
-_ERROR_LOG_COLONNE_DESC: frozenset[str] = frozenset({"occurred_at"})
 
 
 # Scopo: il prefisso di `function_name` reso sicuro per un `LIKE 'x%'` che
@@ -792,7 +789,6 @@ class DbopsRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=ERROR_LOG_SORT_COLUMNS,
-            colonne_desc=_ERROR_LOG_COLONNE_DESC,
             default="e.occurred_at",
             default_desc=True,
             tiebreak="e.id",

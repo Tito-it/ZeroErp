@@ -86,7 +86,6 @@ MAGAZZINI_SORT_COLUMNS: dict[str, str] = {
     "data_insert": "data_insert",
     "id": "id",
 }
-MAGAZZINI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_insert"})
 
 UBICAZIONI_SORT_COLUMNS: dict[str, str] = {
     "codice": "codice",
@@ -102,7 +101,6 @@ UBICAZIONI_SORT_COLUMNS: dict[str, str] = {
     "data_insert": "data_insert",
     "id": "id",
 }
-UBICAZIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_insert"})
 
 LOTTI_SORT_COLUMNS: dict[str, str] = {
     "codice": "codice",
@@ -112,8 +110,6 @@ LOTTI_SORT_COLUMNS: dict[str, str] = {
     "data_insert": "data_insert",
     "id": "id",
 }
-# Le date: verso naturale DESC (regola di Tid del 2026-09-02).
-LOTTI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_arrivo", "data_scadenza", "data_insert"})
 
 # Cosa si PUO' cercare in ogni lista; cosa si cerca lo dice il catalogo
 # (`add_ricerca_full_condition`, brief-be-ricerca-full-liste-residue §2).
@@ -229,7 +225,6 @@ class AnagraficheMagazzinoRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=MAGAZZINI_SORT_COLUMNS, default="codice", tiebreak="id",
-            colonne_desc=MAGAZZINI_SORT_COLONNE_DATA,
         )
         rows, total = lista_paginata(
             select_sql=f"{_MAGAZZINI_SELECT} {_where(conditions)}",
@@ -306,7 +301,6 @@ class AnagraficheMagazzinoRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=UBICAZIONI_SORT_COLUMNS, default="codice", tiebreak="id",
-            colonne_desc=UBICAZIONI_SORT_COLONNE_DATA,
         )
         rows, total = lista_paginata(
             select_sql=f"{_UBICAZIONI_SELECT} {_where(conditions)}",
@@ -377,7 +371,7 @@ class AnagraficheMagazzinoRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=LOTTI_SORT_COLUMNS, default="data_arrivo", tiebreak="id",
-            default_desc=True, colonne_desc=LOTTI_SORT_COLONNE_DATA,
+            default_desc=True,
         )
         rows, total = lista_paginata(
             select_sql=f"{_LOTTI_SELECT} {_where(conditions)}",

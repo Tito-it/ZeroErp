@@ -88,15 +88,6 @@ UOM_CONVERSIONI_ORDER_COLUMNS: dict[str, str] = {
     "attivo": "c.attivo",
 }
 
-# Colonne DATA delle whitelist qui sopra: senza `order_dir` ordinano DESC
-# (`sql_order_clause(colonne_desc=…)`, regola di Tid del 2026-09-02). Insiemi
-# confrontati col seed da `test_liste_configurabili_seed` (test 10): devono
-# coincidere con le colonne `date`/`datetime` ordinabili del catalogo.
-ARTICOLI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_insert", "data_update"})
-UOM_TIPI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_insert", "data_update"})
-UOM_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_insert", "data_update"})
-UOM_CONVERSIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"valido_dal", "valido_al"})
-
 # Colonne SCRIVIBILI di `catalogo.articoli`: la whitelist RIGIDA del BB
 # `execute_dynamic_insert`/`execute_dynamic_update`. ⭐ Dal 2026-09-26 e' un
 # insieme di NOMI, non piu' una mappa nome -> tipo: il tipo serviva solo a
@@ -356,7 +347,6 @@ class CatalogoRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=ARTICOLI_ORDER_COLUMNS, default="a.descrizione", tiebreak="a.id",
-            colonne_desc=ARTICOLI_SORT_COLONNE_DATA,
         )
 
         conditions: list[str] = []
@@ -667,7 +657,6 @@ class CatalogoRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=UOM_TIPI_ORDER_COLUMNS, default="ut.descrizione", tiebreak="ut.id",
-            colonne_desc=UOM_TIPI_SORT_COLONNE_DATA,
         )
 
         conditions: list[str] = []
@@ -748,7 +737,6 @@ class CatalogoRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=UOM_ORDER_COLUMNS, default="u.codice", tiebreak="u.id",
-            colonne_desc=UOM_SORT_COLONNE_DATA,
         )
 
         conditions: list[str] = []
@@ -841,7 +829,6 @@ class CatalogoRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=UOM_CONVERSIONI_ORDER_COLUMNS, default="c.uom_from_codice", tiebreak="c.id",
-            colonne_desc=UOM_CONVERSIONI_SORT_COLONNE_DATA,
         )
 
         conditions: list[str] = []

@@ -85,7 +85,7 @@ operatore disattivato resta in elenco col tipo `OPERATORE` e `veste_attiva = fal
 | `limit` | int | no | Numero massimo risultati (default 25, max 200) |
 | `offset` | int | no | Offset per paginazione (default 0) |
 | `order_by` | string | no | Colonna di ordinamento: `last_name`, `soggetto_cognome`, `username`, `is_super_admin`, `ruolo_applicativo`, `is_active`, `unita_organizzativa_nome`, `override_count`, `valido_dal`, `valido_al` (NULL = senza scadenza, ordinata come infinito). Senza `order_by`: `soggetto_cognome`, poi `username`, ASC. Fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
-| `order_dir` | string | no | `ASC` o `DESC` (altro valore: 400). Senza `order_dir` le colonne data (`valido_dal`, `valido_al`) partono DESC, le altre ASC |
+| `order_dir` | string | no | `ASC` o `DESC` (altro valore: 400). Senza `order_dir` la colonna chiesta va in crescente; il default della lista resta il suo |
 
 **Risposta:**
 

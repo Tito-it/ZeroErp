@@ -17,7 +17,7 @@ Indice test:
  1) test_desc_maiuscolo_ammesso_e_spareggio_allineato
  2) test_asc_allinea_lo_spareggio
  3) test_direzione_estranea_rifiutata_senza_query
- 4) test_data_senza_direzione_parte_desc   — `colonne_desc`, regola del 02/09
+ 4) test_data_senza_direzione_va_asc       — regola date DESC ritirata (Tid 2026-11-24)
 """
 
 import unittest
@@ -58,9 +58,9 @@ class OfferteOrdinamentoTests(unittest.TestCase):
                 OfferteRepository().list_offerte(order_by="codice", order_dir="giu")
             fab.assert_not_called()
 
-    # Scopo: una colonna data senza direzione parte dalla piu' recente.
-    def test_data_senza_direzione_parte_desc(self):
+    # Scopo: una colonna data senza direzione va ASC come ogni colonna.
+    def test_data_senza_direzione_va_asc(self):
         self.assertIn(
-            "ORDER BY v.data_emissione DESC NULLS LAST, v.id DESC",
+            "ORDER BY v.data_emissione ASC NULLS FIRST, v.id ASC",
             _sql(order_by="data_emissione"),
         )

@@ -103,14 +103,6 @@ _ORDER_COLS_OFFERTE: dict[str, str] = {
     "fase": "v.fase",
 }
 
-# Le colonne DATA della whitelist: senza direzione indicata partono DESC (regola
-# Tid 2026-09-02, `colonne_desc` di `sql_order_clause`). Coincidono con le date
-# ordinabili del seed — lo verifica `test_liste_configurabili_seed` (test 10).
-_ORDER_COLS_OFFERTE_DATA: frozenset[str] = frozenset({
-    "validita_dal", "validita_al", "data_emissione", "data_accettazione",
-    "data_rifiuto", "data_annullamento", "data_insert",
-})
-
 
 # Scopo: whitelist ORDER BY del tab «Revisioni» del drawer offerta (lista
 #        `vendite.offerta_revisioni`, alias `v` su `vw_offerte_commerciali_lista`).
@@ -131,10 +123,6 @@ OFFERTA_REVISIONI_ORDER_COLUMNS: dict[str, str] = {
     "data_emissione": "v.data_emissione",
     "stato_descrizione": "v.stato_descrizione",
 }
-
-# Colonne DATA della whitelist qui sopra (ripiego DESC senza `order_dir`),
-# confrontate col seed da `test_liste_configurabili_seed` (test 10).
-OFFERTA_REVISIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_emissione"})
 
 # === Costante LISTA (vista canonica DEF-8, 2026-06-03) ===
 # La lista paginata legge dalla vista canonica self-contained
@@ -479,7 +467,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=_ORDER_COLS_OFFERTE, default="v.data_insert",
-            default_desc=True, colonne_desc=_ORDER_COLS_OFFERTE_DATA,
+            default_desc=True,
             tiebreak="v.id",
         )
         where_clause, params = self._build_offerte_filters(
@@ -1207,7 +1195,6 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             order_by, order_dir,
             colonne=OFFERTA_REVISIONI_ORDER_COLUMNS, default="v.revisione_numero",
             tiebreak="v.id",
-            colonne_desc=OFFERTA_REVISIONI_SORT_COLONNE_DATA,
         )
         params: list[Any] = [offerta_id]
         from_where = (

@@ -1,6 +1,6 @@
 # Guida — Configurazione, Personalizzazione e Responsività delle Liste
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > **Destinatari**: amministratori del sistema (SUPER_ADMIN), tenant admin
 > con azioni `ui_preset_manage` / `ui_permesso_manage`, operatori finali
@@ -476,7 +476,9 @@ L'operatore vede ogni lista personalizzabile con due affordance:
   Le colonne arrivate nel catalogo dopo l'ultimo salvataggio sono contate e
   segnalate come nuove. Quali colonne restano fissate a sinistra lo decidono il
   preset e il tipo di colonna, non la modale.
-* **Intestazione delle colonne** — un clic ordina la lista per quella colonna. L'ordinamento vale
+* **Intestazione delle colonne** — un clic ordina la lista per quella colonna. Il giro è lo stesso
+  per ogni colonna, date comprese: primo clic crescente, secondo decrescente, terzo toglie
+  l'ordinamento, e la freccia mostra sempre il verso in cui la lista è ordinata. L'ordinamento vale
   per la sessione e non si salva: riaprendo la lista si riparte da quello del preset.
 * **Banner "preset aggiornato"** — appare quando l'admin modifica il
   preset da cui partiva la preferenza dell'utente. "Vedi novità" apre la modale

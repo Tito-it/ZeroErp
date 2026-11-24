@@ -178,9 +178,6 @@ VERSIONI_ORDER_COLUMNS: dict[str, str] = {
     "stato": "x.stato",
     "giorni_alla_scadenza": f"COALESCE(sc.giorni_rimanenti, {_SQL_GIORNI_SENZA_SCADENZA})",
 }
-# Le date della lista si leggono dalla piu' recente (regola di Tid del
-# 2026-09-02): i nomi `valido_*` non le dicono date da soli.
-VERSIONI_ORDER_COLONNE_DATA: frozenset[str] = frozenset({"valido_dal", "valido_al"})
 
 LISTINO_CREATE_COLUMNS: dict[str, str] = {
     "codice": "text",
@@ -503,7 +500,7 @@ class ListiniRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=VERSIONI_ORDER_COLUMNS, default="x.valido_dal", default_desc=True,
-            tiebreak="x.id", colonne_desc=VERSIONI_ORDER_COLONNE_DATA,
+            tiebreak="x.id",
         )
         data_sql = f"""
             SELECT x.*,

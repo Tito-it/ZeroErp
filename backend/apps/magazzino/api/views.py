@@ -17,7 +17,7 @@
 #       la lingua di `useSearchTable`; `order_by`/`order_dir` passano GREZZI
 #       (non dal bundle `parse_list_params`, il cui `order_by` di default,
 #       `"descrizione"`, qui non e' una colonna): assenti = `None`, e decide
-#       il default del repository — per le date, DESC.
+#       il default del repository (una colonna chiesta senza verso va ASC).
 # ------------------------------------------------------------
 
 from __future__ import annotations

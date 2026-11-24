@@ -42,7 +42,7 @@ def sorgente_senza_commenti(testo: str) -> str:
 #        che quel difetto presidia.
 # ⛔ Non e' `sorgente_senza_commenti`: i due linguaggi hanno commenti diversi, e
 #    passare un file Python da qui lascia i `#` dentro (difetto trovato il
-#    2026-11-12 su `_colonne_desc_dichiarate`, che leggeva cosi' i repository).
+#    2026-11-12 su un presidio che leggeva cosi' i repository).
 # ⭐ Il guard gemello `frontend/scripts/check-liste-configurabili.mjs` ha
 #    `senzaCommenti()` con la stessa motivazione. Spostata qui dal modulo
 #    `test_liste_configurabili_seed` il 2026-11-12, dove era un nome privato

@@ -97,25 +97,6 @@
    rinomina senza che questa lettura lo trovi il test fa rosso — non verde a
    vuoto.
 
-10. test_le_colonne_data_dichiarate_sono_quelle_del_seed
-   `sql_order_clause(colonne_desc=…)` e' il ripiego DESC delle colonne DATA
-   quando il client manda `order_by` senza `order_dir` (regola di Tid del
-   2026-09-02). Quell'insieme e' scritto A MANO in ogni repository che lo
-   dichiara, e fino al 18/09 nessuno lo confrontava col `tipo_dato` del seed:
-   una data ordinabile che manca dall'insieme ripiega ASC — nessun errore, la
-   lista si apre dal 2019 — e un nome che nel seed non e' piu' una data resta
-   nell'insieme a raccontare una colonna che non c'e'. L'insieme si LEGGE dal
-   sito di chiamata (`colonne=` accanto a `colonne_desc=`), non da un secondo
-   registro di nomi.
-
-10-bis. test_il_debito_del_ripiego_asc_non_cresce
-   Le liste con date ordinabili il cui `sql_order_clause` NON dichiara
-   `colonne_desc` sono un REGISTRO DI DEBITO (`_DEBITO_RIPIEGO_DATA_ASC`):
-   li' il ramo senza `order_dir` ripiega ASC su una data. Oggi e' dormiente —
-   `useSearchTable.onSort` manda sempre i due campi — ma il contratto e'
-   dichiarato ammesso e va provato per intero. Il registro puo' solo calare:
-   una lista che dichiara il ripiego va tolta, una nuova senza ripiego fa rosso.
-
 ⚠️ I test 1-3 girano su `_liste_allineate()`, cioe' tutte tranne il debito noto.
 I test 4-6 girano su TUTTE: valgono a prescindere dalla chiave della whitelist.
 """
@@ -124,7 +105,7 @@ import json
 import re
 import unittest
 from functools import lru_cache
-from apps.core.tests._repo import repo_root, sorgente_senza_commenti, vue_senza_commenti
+from apps.core.tests._repo import repo_root, vue_senza_commenti
 from apps.core.tests._seed_csv import (
     SEED_UI_DIR,
     RigaSeed,
@@ -302,23 +283,14 @@ def _da_costante(modulo: str, costante: str):
 
         return set(getattr(importlib.import_module(modulo), costante))
 
-    # ⭐ Il test 10 deve TROVARE il sito di chiamata di `sql_order_clause` che
-    #    usa questa whitelist, per leggere il `colonne_desc` accanto: il nome
-    #    della costante e il modulo restano attaccati al risolutore, invece di
-    #    vivere in un secondo elenco che invecchia per conto suo.
-    risolvi.modulo = modulo
-    risolvi.costante = costante
     return risolvi
 
 
 # Scopo: risolutore per le RIGHE di un documento di vendita, che ordinano
 #        tramite il BB `RigheDocumentoRepositoryMixin` (brief-db-liste-righe-
-#        documento, lotto A, 2026-09-28): whitelist e colonne DESC sono
-#        attributi della CLASSE del repository, e la chiamata a
-#        `sql_order_clause` sta nel mixin, non nel modulo.
-# ⛔ Per questo porta con se' `colonne_desc`: senza, il test 10 cercherebbe
-#    il sito di chiamata nel modulo del repository, non lo troverebbe, e
-#    salterebbe la lista — verde per sottrazione su quattro liste con date.
+#        documento, lotto A, 2026-09-28): la whitelist e' un attributo della
+#        CLASSE del repository, e la chiamata a `sql_order_clause` sta nel
+#        mixin, non nel modulo.
 def _da_righe_documento(modulo: str, classe: str):
     def _classe():
         import importlib
@@ -328,9 +300,6 @@ def _da_righe_documento(modulo: str, classe: str):
     def risolvi() -> set[str]:
         return set(_classe().righe_colonne_ordinabili())
 
-    risolvi.colonne_desc = lambda: {
-        f"{classe}._righe_colonne_desc": set(_classe()._righe_colonne_desc),
-    }
     return risolvi
 
 
@@ -666,7 +635,7 @@ _LISTE: tuple[tuple[str, object], ...] = (
     # Storia di un'entita' (`gravita` = il rango, `quando`). ⚠️ Non passa da
     # `sql_order_clause`: l'ordine per gravita' porta il tempo DESC dentro di
     # se' (`_giornale_order_clause`), che e' uno dei dodici casi dichiarati fuori
-    # dal BB — il test 10 non lo vede, e non finge.
+    # dal BB.
     ("vendite.giornale", _da_costante("apps.vendite.db.vendite_repository", "GIORNALE_SORT_COLUMNS")),
     # Flussi di una pratica e utilizzo di una riga della matrice utility/ruoli
     # (2026-09-27, brief-db-liste-datatable-grezze righe 3 e 4): fino a quel
@@ -713,102 +682,6 @@ _LISTE: tuple[tuple[str, object], ...] = (
 # esaminata dai test stretti 1-3. Ri-aggiungere un codice qui non e' una
 # soluzione, e' spegnere il presidio proprio dove serve.
 _DEBITO_WHITELIST_LOGICA: frozenset[str] = frozenset()
-
-
-# ⛔ REGISTRO DI DEBITO — le liste con colonne DATA ordinabili il cui
-# `sql_order_clause` NON dichiara `colonne_desc` (2026-09-18, rilettura critica
-# di D19). Li' il ramo «`order_by` senza `order_dir`» ripiega ASC su una data,
-# contro la regola di Tid del 02/09 («gli ordinamenti per data hanno sempre
-# default DESC»). Il ramo oggi e' DORMIENTE — `useSearchTable.onSort` manda
-# sempre i due campi — ed e' proprio il caso in cui un contratto dichiarato va
-# provato per intero: nessuno lo attraversa, quindi nessuno se ne accorge.
-#
-# Il rimedio per una lista e' una riga nel repository: `colonne_desc=<insieme>`
-# accanto a `colonne=`, con l'insieme che il test 10 confronta col seed. Una
-# lista sanata va TOLTA da qui (il test 10-bis lo pretende); una lista nuova
-# senza ripiego fa rosso e non entra per inerzia.
-#
-# ⚠️ Fuori perimetro, e dichiarato: le liste che non passano da
-#    `sql_order_clause` con una costante di modulo (forma vecchia dell'ORDER BY,
-#    whitelist di classe, funzione DB) — il presidio non le vede, e non finge.
-_DEBITO_RIPIEGO_DATA_ASC: frozenset[str] = frozenset({
-    "amm.processi",
-    "anagrafiche.categorie_clienti_listini",
-    "anagrafiche.clienti",
-    "anagrafiche.emittenti_fiscali",
-    "anagrafiche.fornitori",
-    "pagamenti.distinte",
-    "pagamenti.rate_fuori_capienza",
-    "pagamenti.righe",
-    "vendite.approvazioni_prezzo",
-    "vendite.contratti",
-    "vendite.ddt",
-    "vendite.famiglie_documento",
-    "vendite.fatture",
-    "vendite.ordini",
-    "vendite.preventivi",
-    "pratiche.pratiche",
-    "vendite.promo_articoli",
-    "vendite.registri_numerazione",
-    "vendite.resi",
-})
-
-_TIPI_DATA: frozenset[str] = frozenset({"date", "datetime"})
-
-
-# Scopo: il testo di ogni chiamata `sql_order_clause(...)` in un sorgente, a
-#        parentesi bilanciate (le chiamate sono su piu' righe).
-def _chiamate_sql_order_clause(sorgente: str) -> list[str]:
-    chiamate = []
-    for m in re.finditer(r"sql_order_clause\(", sorgente):
-        i, profondita = m.end(), 1
-        while profondita and i < len(sorgente):
-            profondita += {"(": 1, ")": -1}.get(sorgente[i], 0)
-            i += 1
-        chiamate.append(sorgente[m.end():i - 1])
-    return chiamate
-
-
-# Scopo: per una lista risolta da `_da_costante`, i `colonne_desc` dichiarati
-#        nei siti di chiamata che usano la sua whitelist — `None` se la lista
-#        non passa da `sql_order_clause` con quella costante (fuori perimetro),
-#        insieme vuoto se ci passa e non dichiara nessun ripiego (debito).
-#        Ritorna `{nome_costante: insieme}`, gia' risolto dal modulo.
-def _colonne_desc_dichiarate(whitelist_fn) -> dict[str, set[str]] | None:
-    import importlib
-    from pathlib import Path
-
-    # Il risolutore che le colonne DESC le dichiara da se' (righe di documento).
-    diretto = getattr(whitelist_fn, "colonne_desc", None)
-    if diretto is not None:
-        return diretto()
-    modulo = getattr(whitelist_fn, "modulo", None)
-    costante = getattr(whitelist_fn, "costante", None)
-    if not modulo or not costante:
-        return None
-    mod = importlib.import_module(modulo)
-    sorgente = sorgente_senza_commenti(Path(mod.__file__).read_text(encoding="utf-8"))
-    siti = [
-        c for c in _chiamate_sql_order_clause(sorgente)
-        if re.search(rf"colonne\s*=\s*{re.escape(costante)}\b", c)
-    ]
-    if not siti:
-        return None
-    dichiarate: dict[str, set[str]] = {}
-    for sito in siti:
-        m = re.search(r"colonne_desc\s*=\s*(\w+)", sito)
-        if m:
-            dichiarate[m.group(1)] = set(getattr(mod, m.group(1)))
-    return dichiarate
-
-
-# Scopo: le colonne DATA ordinabili di una lista, per `campo_sorgente` — cio'
-#        che il ripiego DESC deve coprire.
-def _colonne_data_ordinabili(codice: str) -> set[str]:
-    return {
-        r["campo_sorgente"] for r in seed_colonne_attive(codice)
-        if r["ordinabile"] == "t" and r["tipo_dato"] in _TIPI_DATA
-    }
 
 
 # Scopo: liste su cui il contratto seed<->whitelist e' esigibile: tutte tranne
@@ -1365,58 +1238,3 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
         # letture guardano lo stesso file e devono trovarsi.
         for formato in gemelle:
             self.assertIn(formato, _formati_resi_dal_frontend())
-
-
-    # 10. L'insieme delle colonne DATA col ripiego DESC si confronta col seed,
-    #     non si legge da un secondo elenco: il sito di chiamata dice quale
-    #     costante e' (`colonne_desc=`), il seed dice quali colonne SONO date
-    #     (`tipo_dato`) e ordinabili. Uguaglianza nei due versi: una data
-    #     ordinabile fuori dall'insieme ripiega ASC (la lista si apre dal piu'
-    #     vecchio, senza errore); un nome nell'insieme che il seed non ha piu'
-    #     come data ordinabile e' una colonna raccontata e non mostrata.
-    def test_le_colonne_data_dichiarate_sono_quelle_del_seed(self) -> None:
-        esaminate = 0
-        for codice, whitelist_fn in _liste_allineate():
-            dichiarate = _colonne_desc_dichiarate(whitelist_fn)
-            if not dichiarate:
-                continue
-            attese = _colonne_data_ordinabili(codice)
-            for costante, insieme in dichiarate.items():
-                with self.subTest(lista=codice, costante=costante):
-                    esaminate += 1
-                    self.assertEqual(
-                        sorted(insieme), sorted(attese),
-                        f"lista '{codice}': `{costante}` non coincide con le "
-                        "colonne DATA ordinabili del seed (tipo_dato date/datetime, "
-                        "ordinabile=t). Mancanti ripiegano ASC senza errore; in "
-                        "piu' raccontano una colonna che il catalogo non ha.",
-                    )
-        # Il presidio deve avere materia: a zero insiemi esaminati sarebbe
-        # verde per sottrazione (oggi ne dichiara quattro).
-        self.assertGreaterEqual(esaminate, 4)
-
-    # 10-bis. Il registro del ripiego ASC puo' solo calare, e nei due versi: una
-    #         lista che ha guadagnato `colonne_desc` va tolta (o il debito sembra
-    #         piu' grande del vero), una lista nuova con date ordinabili e senza
-    #         ripiego non entra per inerzia. Chi non passa da `sql_order_clause`
-    #         con una costante di modulo resta fuori, ed e' dichiarato.
-    def test_il_debito_del_ripiego_asc_non_cresce(self) -> None:
-        senza_ripiego = set()
-        for codice, whitelist_fn in _liste_allineate():
-            dichiarate = _colonne_desc_dichiarate(whitelist_fn)
-            if dichiarate is None or dichiarate:
-                continue
-            if _colonne_data_ordinabili(codice):
-                senza_ripiego.add(codice)
-        self.assertEqual(
-            sorted(senza_ripiego - _DEBITO_RIPIEGO_DATA_ASC), [],
-            "liste con date ordinabili e senza `colonne_desc` NON registrate: "
-            "o si dichiara il ripiego DESC nel repository, o la lista entra in "
-            "`_DEBITO_RIPIEGO_DATA_ASC` con una decisione, non per inerzia.",
-        )
-        self.assertEqual(
-            sorted(_DEBITO_RIPIEGO_DATA_ASC - senza_ripiego), [],
-            "liste elencate in `_DEBITO_RIPIEGO_DATA_ASC` che hanno ormai il "
-            "ripiego (o non hanno piu' date ordinabili): toglierle, cosi' il "
-            "registro dice la verita' sul debito residuo.",
-        )

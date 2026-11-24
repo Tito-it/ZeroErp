@@ -144,13 +144,6 @@ ELENCA_SORT_SQL: dict[str, str] = {
     "archiviato_il": "archiviato_il",
 }
 
-# Le colonne DATA della whitelist: senza direzione indicata partono DESC (regola
-# Tid 2026-09-02, `colonne_desc` di `sql_order_clause`). Coincidono con le date
-# ordinabili del seed — lo verifica `test_liste_configurabili_seed`.
-ELENCA_SORT_COLONNE_DATA: frozenset[str] = frozenset(
-    {"data_insert", "started_at", "ended_at", "archiviato_il"}
-)
-
 
 class CodaLavoriRepository:
     """Backend `dbops.coda_lavori` per il `QueueDrainEngine` + enqueue/admin.
@@ -670,7 +663,6 @@ class CodaLavoriRepository:
         order_by = sql_order_clause(
             sort_by, sort_dir,
             colonne=ELENCA_SORT_SQL, default="data_insert", default_desc=True,
-            colonne_desc=ELENCA_SORT_COLONNE_DATA,
             tiebreak="id",
         )
         data_sql = f"""

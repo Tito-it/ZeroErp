@@ -82,10 +82,9 @@ Nessun parametro.
   `emittente_ragione_sociale`
   (`area`/`fase`/`stato_codice` aggiunte il 2026-08-03: erano colonne a video
   che non ordinavano, e `stato_codice` lasciava scoperto il nucleo *stato*);
-  `order_dir` = `asc` | `desc`. Con `order_by` e senza `order_dir`: le colonne
-  data (per nome, `e_chiave_data`) partono DESC, le altre ASC — nessuna colonna
-  di questa whitelist è una data, quindi qui è sempre ASC (anche
-  `anzianita_giorni`, che è un numero di giorni). Server-side perché
+  `order_dir` = `asc` | `desc`. Con `order_by` e senza `order_dir` la colonna
+  chiesta va ASC, come in ogni lista (la regola «le date partono DESC» è
+  ritirata dal 2026-11-24). Server-side perché
   la lista è paginata: l'ordine è corretto su **tutte** le pagine, non solo su
   quella visibile. Colonna fuori whitelist o direzione ≠ asc/desc → 400
   (`E_VENDITE_VALIDATION`, whitelist definita una volta nel service). Tiebreak

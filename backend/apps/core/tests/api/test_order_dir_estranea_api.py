@@ -151,7 +151,7 @@ class TestOrderDirEstraneaApi(JwtMockedApiTest):
 
 # 7-8. Il contratto del bundle sulla direzione (2026-09-26). ⛔ Fino a quel
 #      giorno l'assenza diventava "asc", e il default DESC dei repository
-#      (`default_desc`, `colonne_desc`) non si accendeva mai sulle liste che
+#      (`default_desc`) non si accendeva mai sulle liste che
 #      passano da qui: si aprivano al contrario, senza errore.
 class ParseListParamsOrderDirTests(SimpleTestCase):
 

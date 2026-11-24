@@ -122,7 +122,6 @@ class DdtRepository(
     _righe_ordine_documento_extra = ("riga_nr",)
     _righe_ordinamento = _ORDER_COLS_RIGHE
     _righe_ricerca = _RICERCA_RIGHE
-    _righe_colonne_desc = ()
 
     # Configurazione mixin componenti (tabella + FK riga padre).
     _componenti_table_name = "vendite.ddt_righe_componenti"

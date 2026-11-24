@@ -23,7 +23,7 @@ Indice test eseguiti:
 7) RateListaTests.test_i_criteri_passano_intatti
 8) RateListaTests.test_natura_normalizzata_in_maiuscolo
 9) WhitelistTests.test_i_saldi_non_sono_ordinabili
-10) WhitelistTests.test_le_date_hanno_il_verso_naturale_desc
+10) WhitelistTests.test_le_date_della_lista_sono_ordinabili
 """
 
 from decimal import Decimal
@@ -33,7 +33,6 @@ from django.test import SimpleTestCase
 
 from apps.core.services.error_manager import ServiceError
 from apps.pagamenti.db.pagamenti_repository import (
-    RATE_SORT_COLONNE_DATA,
     RATE_SORT_COLUMNS,
     PagamentiRepository,
 )
@@ -158,10 +157,9 @@ class WhitelistTests(SimpleTestCase):
         for campo in saldi_service.CAMPI_SALDO:
             self.assertNotIn(campo, RATE_SORT_COLUMNS)
 
-    # Scopo: le colonne data della lista hanno il verso naturale DESC (regola di
-    #        Tid del 2026-09-02) e sono chiavi della whitelist: un nome che non
-    #        c'e' nella whitelist non ordinerebbe niente.
-    def test_le_date_hanno_il_verso_naturale_desc(self):
-        self.assertEqual(RATE_SORT_COLONNE_DATA, frozenset({"data", "data_scadenza"}))
-        for campo in RATE_SORT_COLONNE_DATA:
+    # Scopo: le colonne data della lista sono chiavi della whitelist: un nome
+    #        che non c'e' nella whitelist non ordinerebbe niente. (Fino al
+    #        2026-11-24 avevano anche un verso di partenza DESC, ritirato.)
+    def test_le_date_della_lista_sono_ordinabili(self):
+        for campo in ("data", "data_scadenza"):
             self.assertIn(campo, RATE_SORT_COLUMNS)
