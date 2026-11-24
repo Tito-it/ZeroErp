@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_soggetto_pf`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -61,7 +61,9 @@ riceve lo stato proposto, che non ripiega mai su un valore scritto nel codice.
   diventa NULL), il comune di nascita e la riga attiva. Prima di scriverlo cerca il codice fiscale fra gli
   identificativi dello stesso stato, e se lo trova si ferma.
 * **Il contatto di default**, con `anagrafiche.fn_crea_contatto`: il nominativo è cognome e nome, l'email quella
-  ricevuta, il tipo quello indicato o, se manca, il primo del catalogo dei tipi di contatto.
+  ricevuta, il tipo quello indicato o, se manca, quello proposto da
+  [script.fn_tipo_contatto_proposto_id](/dbzero/script/manual/fn_tipo_contatto_proposto_id) (il parametro
+  `TIPO_CONTATTO_PROPOSTO`, con gli override per utente, azienda o per questa funzione).
 * **I dati societari**, con `anagrafiche.fn_scrivi_dati_societari_alla_nascita`, lo stesso building block della
   porta delle società: se la natura li pretende, o se almeno un campo della sezione ha un valore (socio unico e
   liquidazione da soli non contano). Per una ditta individuale senza sezione non nasce nessuna riga; un privato
@@ -88,18 +90,17 @@ crea il chiamante, e i guard differiti del soggetto li controllano alla conferma
   diversa, o un privato col CF di una ditta, il soggetto nasce. Al contrario, una ditta individuale col CF di un
   privato esistente la ferma il controllo, anche se l'indice la ammetterebbe: la porta e l'indice non dicono la
   stessa regola.
-* **Il tipo di contatto di ripiego è il primo per id** del catalogo: un dato che nessuno sceglie.
 
 ---
 
 ### Codici errore
 
-* `E_ADMIN_VALIDAZIONE` — cognome, nome, codice fiscale, email o natura mancanti, natura che non esiste, nessun
-  tipo di contatto. Il contesto nomina il parametro.
+* `E_ADMIN_VALIDAZIONE` — cognome, nome, codice fiscale, email o natura mancanti, natura che non esiste. Il contesto nomina il parametro.
 * `E_SOGGETTO_CREAZIONE_NATURA_ERRATA` — la natura non è una persona fisica.
 * `E_STATO_ISO2_AMBIGUO` — il codice dello stato indica più stati.
 * `E_CODICE` — il codice dello stato non indica nessuno stato.
-* `E_CONFIG_MANCANTE`, `E_DEFAULT_ERRATO` — senza codice, lo stato proposto non è configurato o non esiste.
+* `E_CONFIG_MANCANTE`, `E_DEFAULT_ERRATO` — senza codice, lo stato proposto non è configurato o non esiste;
+  senza tipo di contatto, lo stesso per il tipo proposto.
 * `E_ADMIN_CF_DUPLICATO` — il codice fiscale è già l'identificativo di un soggetto dello stesso stato.
 
 Dai trigger del soggetto e dei dati societari arrivano gli altri rifiuti, per esempio `E_PIVA_OBBLIGATORIA`,
@@ -125,6 +126,8 @@ Dai trigger del soggetto e dei dati societari arrivano gli altri rifiuti, per es
 * 2026-10-17 — il contatto lo scrive `anagrafiche.fn_crea_contatto`.
 * 2026-10-18 — lo stato non ripiega più sull'Italia: lo dice il chiamante, o lo stato proposto.
 * 2026-10-20 — riceve i dati societari della ditta individuale, che prima il form mandava e la funzione perdeva.
+* 2026-11-24 — il tipo di contatto non detto è quello proposto, non più il primo per id del catalogo
+  (decisione D-T5-6 b di Tid).
 
 ---
 

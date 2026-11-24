@@ -82,21 +82,12 @@ BEGIN
         );
     END IF;
 
-    -- Tipo contatto: fallback al primo dalla tabella se non fornito
+    -- Tipo contatto: quello detto dal chiamante, altrimenti quello proposto
+    -- (D-T5-6 b), che valida e non ripiega. ⛔ Non «il primo per id».
     v_tipo_contatto_id := COALESCE(
         p_tipo_contatto_id,
-        (SELECT id FROM config.tipi_contatti ORDER BY id LIMIT 1)
+        script.fn_tipo_contatto_proposto_id('anagrafiche.fn_crea_soggetto_pf')
     );
-
-    IF v_tipo_contatto_id IS NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'database', 'anagrafiche.fn_crea_soggetto_pf',
-            'E_ADMIN_VALIDAZIONE',
-            jsonb_build_object('parametro', 'p_tipo_contatto_id'),
-            NULL::uuid,
-            'Tipo contatto obbligatorio e nessun tipo contatto trovato in config.tipi_contatti.'
-        );
-    END IF;
 
     -- Natura di dettaglio: obbligatoria, e di natura base PF
     IF p_tipo_soggetto_dettaglio_id IS NULL OR p_tipo_soggetto_dettaglio_id <= 0 THEN
@@ -240,7 +231,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email character varying, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer, p_tipo_contatto_id integer, p_tipo_soggetto_dettaglio_id bigint, p_partita_iva text, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character varying, p_pec_fatturazione character varying, p_codice_sdi character varying, p_data_costituzione date)
-IS 'Crea un soggetto PERSONA FISICA (natura base PF: privato PR o ditta individuale DI, scelta dal chiamante con p_tipo_soggetto_dettaglio_id, obbligatorio), il suo contatto di default e, se la natura li pretende o se ne riceve almeno un campo, i dati societari (anagrafiche.fn_scrivi_dati_societari_alla_nascita): una ditta individuale li porta se passati, un privato con la sezione lo rifiuta il guard della natura. Il contatto lo scrive anagrafiche.fn_crea_contatto; il tipo di contatto, se non passato, e'' il primo di config.tipi_contatti. Una natura che non e'' PF si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA (la porta giusta e'' fn_crea_soggetto_pg). p_partita_iva per la DI (la pretende il guard su CF e P.IVA). Il sesso passa com''e'', senza default: quando serve lo decide config.tipi_soggetto_dettaglio.sesso_policy nel guard trgfn_soggetti_guard_sesso_policy. Stato: p_stato_iso2 se detto (script.fn_stato_id_da_iso2: E_STATO_ISO2_AMBIGUO se indica piu'' stati, E_CODICE se nessuno), altrimenti lo stato proposto (script.fn_stato_proposto_id). CF e P.IVA entrano come arrivano: li normalizza trgfn_soggetti_normalize. Il doppione lo dice l''indice uq_soggetto_idstato_id_fiscale_univoco sulla coppia (stato, CF + P.IVA), tradotto in E_ADMIN_CF_DUPLICATO con campo codice_fiscale: la ditta individuale di chi e'' gia'' privato nasce. NON crea indirizzi.';
+IS 'Crea un soggetto PERSONA FISICA (natura base PF: privato PR o ditta individuale DI, scelta dal chiamante con p_tipo_soggetto_dettaglio_id, obbligatorio), il suo contatto di default e, se la natura li pretende o se ne riceve almeno un campo, i dati societari (anagrafiche.fn_scrivi_dati_societari_alla_nascita): una ditta individuale li porta se passati, un privato con la sezione lo rifiuta il guard della natura. Il contatto lo scrive anagrafiche.fn_crea_contatto; il tipo di contatto, se non passato, e'' quello proposto (script.fn_tipo_contatto_proposto_id, dal parametro TIPO_CONTATTO_PROPOSTO, senza ripiego). Una natura che non e'' PF si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA (la porta giusta e'' fn_crea_soggetto_pg). p_partita_iva per la DI (la pretende il guard su CF e P.IVA). Il sesso passa com''e'', senza default: quando serve lo decide config.tipi_soggetto_dettaglio.sesso_policy nel guard trgfn_soggetti_guard_sesso_policy. Stato: p_stato_iso2 se detto (script.fn_stato_id_da_iso2: E_STATO_ISO2_AMBIGUO se indica piu'' stati, E_CODICE se nessuno), altrimenti lo stato proposto (script.fn_stato_proposto_id). CF e P.IVA entrano come arrivano: li normalizza trgfn_soggetti_normalize. Il doppione lo dice l''indice uq_soggetto_idstato_id_fiscale_univoco sulla coppia (stato, CF + P.IVA), tradotto in E_ADMIN_CF_DUPLICATO con campo codice_fiscale: la ditta individuale di chi e'' gia'' privato nasce. NON crea indirizzi.';
 ```
 
 </div>

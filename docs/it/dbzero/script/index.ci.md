@@ -171,7 +171,6 @@ search:
 - [fn_get_stato_testata_documento](manual/fn_get_stato_testata_documento.md) — **Rispondere a una domanda sola: la testata di questo documento esiste ancora, e in che stato è?**
 - [fn_get_stradario](manual/fn_get_stradario.md) — * **Ricerca locale per comune**   Se viene specificato `p_comune_id`, esegue una query filtrata sul comune indicato, restituendo tutte le vie e toponomastiche che contengono la stringa `p_indirizzo` nel loro nome.
 - [fn_get_testata_id_di_riga](manual/fn_get_testata_id_di_riga.md) — **Rispondere a una domanda sola: di quale documento è questa riga?**
-- [fn_get_tipo_contatto_id](manual/fn_get_tipo_contatto_id.md) — Recuperare l’ID del tipo di contatto corrispondente a un **codice interno** (`cod_int_tipo_contatto`), garantendo al contempo il logging e la tracciabilità tramite un `tx_id` di sessione.
 - [fn_get_totp_device](manual/fn_get_totp_device.md) — (scritta il 29-09-2026)
 - [fn_get_uo_id_for_user](manual/fn_get_uo_id_for_user.md) — (latest review 19-04-2026)
 - [fn_get_user_actions_map](manual/fn_get_user_actions_map.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
@@ -277,6 +276,7 @@ search:
 - [fn_stato_veste](manual/fn_stato_veste.md)
 - [fn_subentro_cliente](manual/fn_subentro_cliente.md) — (latest review 01-03-26)
 - [fn_tabelle_che_trattengono](manual/fn_tabelle_che_trattengono.md)
+- [fn_tipo_contatto_proposto_id](manual/fn_tipo_contatto_proposto_id.md) — **Il tipo di contatto che si propone quando chi crea un soggetto non lo dice.** Ritorna l'id di `config.tipi_contatti` indicato dal parametro `TIPO_CONTATTO_PROPOSTO`, che contiene il **codice interno** del tipo (in dotazione `PRINCIPALE`).
 - [fn_totp_conferma_device](manual/fn_totp_conferma_device.md) — (scritta il 29-09-2026)
 - [fn_totp_consuma_recovery](manual/fn_totp_consuma_recovery.md) — (scritta il 29-09-2026)
 - [fn_totp_disabilita_device](manual/fn_totp_disabilita_device.md) — (scritta il 29-09-2026)

@@ -1,85 +1,67 @@
 ## 📘 Documentazione Concettuale – Tabella `config.tipi_contatti`
 
+> **Ultimo aggiornamento**: 24 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:    
->
-[anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti)    
->
-Approfondimenti funzioni:   
->
-[script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)     
-> [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)     
+> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti) — i contatti, che portano il tipo
+> * [script.fn_tipo_contatto_proposto_id](/dbzero/script/manual/fn_tipo_contatto_proposto_id) — il tipo proposto quando nessuno lo dice
+> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)
+> * [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 07-01-26)
-La tabella **`config.tipi_contatti`** definisce le **categorie di contatto** utilizzabili
-nell’anagrafica dei soggetti. Il reparto/ufficio di riferimento e' invece gestito da
-`config.unita_organizzative`.
+
+La tabella **`config.tipi_contatti`** definisce le **categorie di contatto** dell'anagrafica dei
+soggetti: principale, referente, segreteria, altro. Il reparto o l'ufficio di riferimento non è un
+tipo di contatto: lo dice `config.unita_organizzative`.
 
 ---
 
-### Vincoli e Caratteristiche Chiave
+### Colonne e vincoli
 
-* **Codice interno (`cod_int_tipo_contatto`)**: non modificabile, garantisce stabilita dei riferimenti.
-* **Descrizione obbligatoria**: la `descrizione` non può essere vuota.
-* **Unicità**: ogni codice interno deve essere unico.
+* **`codice_interno`** (fino a 10 caratteri): il codice stabile con cui il database e il
+  backend riconoscono il tipo. È **unico** (`uq_tipi_contatti_codice_interno`) e **non si
+  modifica** dopo la nascita.
+* **`codice`** (fino a 15 caratteri): il codice mostrato all'utente.
+* **`descrizione`**: obbligatoria.
 
----
-
-### Esempi di Tipologie
-
-Alcuni esempi di categorie di contatto:
-
-* `Principale`
-* `Referente`
-* `Segreteria`
-* `Altro`
+Il codice si salva in maiuscolo (`trg_tipi_contatti_a15_codice_maiuscolo_ins_upd`).
 
 ---
 
-### Relazioni e Indici
+### Il tipo proposto
 
-* **FK in ingresso**:
-
-  * `anagrafiche.contatti.tipo_contatto_id` → `config.tipi_contatti(id)`
-
-* **Indici**:
-
-  * Unico su `cod_int_tipo_contatto`
-
----
-
-### Trigger Associati
-
-1. **`trg_tipi_contatti_upd_lock_cod_interno`**
-
-   * **Quando**: `BEFORE UPDATE` su `cod_int_tipo_contatto`
-   * **Cosa**: blocca la modifica del codice interno, utilizzando `script.trgfn_lock_columns` con error code `CODICE_NON_MODIFICABILE`.
-
-2. **`trg_upd_tipi_contatti_audit_data_user`**
-
-   * **Quando**: `BEFORE UPDATE`
-   * **Cosa**: aggiorna i campi di audit `data_update` e `user_update` automaticamente.
+Quando chi crea un soggetto non dice il tipo del contatto di default, il database scrive il tipo
+**proposto**. È il parametro `TIPO_CONTATTO_PROPOSTO`, che contiene un `codice_interno` (in
+dotazione `PRINCIPALE`) e ammette gli override per utente, azienda o funzione. Lo legge
+[script.fn_tipo_contatto_proposto_id](/dbzero/script/manual/fn_tipo_contatto_proposto_id), che non
+ripiega mai sul primo tipo per id. Il registro `config.parameter_fk_surrogate` rifiuta un parametro
+che indica un codice assente da questa tabella.
 
 ---
 
-### Vantaggi Operativi
+### Relazioni
 
-* **Stabilità dei riferimenti**: codice interno immutabile garantisce coerenza in interfacce e logica.
-* **Integrità dei dati**: constraint e trigger impediscono codici duplicati o vuoti.
-* **Audit completo**: tracciamento automatico delle modifiche.
-* **Centralizzazione**: un’unica fonte per definire tutte le tipologie di contatto.
+* **FK in ingresso**: `anagrafiche.contatti.tipo_contatto_id` → `config.tipi_contatti(id)`.
 
 ---
 
-### Nota di refactor
+### Trigger
 
-In passato `config.tipi_contatti` veniva spesso usata come elenco dei reparti.
-Con l'introduzione di `config.unita_organizzative`, il significato dei reparti
-viene spostato su quella tabella, riducendo ambiguita semantiche.
+| Trigger | Quando | Che cosa fa |
+| --- | --- | --- |
+| `trg_tipi_contatti_a10_lock_columns_upd` | `BEFORE UPDATE OF codice_interno` | rifiuta la modifica del codice interno (`script.trgfn_lock_columns`, `E_CODICE_NON_MODIFICABILE`); la apre solo la porta di manutenzione del migratore |
+| `trg_tipi_contatti_a15_codice_maiuscolo_ins_upd` | `BEFORE INSERT OR UPDATE` | il codice in maiuscolo (`script.trgfn_codice_maiuscolo`) |
+| `trg_tipi_contatti_audit_data_user_upd` | `BEFORE INSERT OR UPDATE` | i campi di audit `data_*` e `user_*` (`script.trgfn_audit_data_user_generic`) |
 
 ---
 
-> **“Una tabella di configurazione per i tipi di contatto assicura coerenza e stabilità nei riferimenti applicativi e semplifica la manutenzione delle logiche di contatto.”**
+### Note di migrazione
+
+* In passato la tabella si usava anche come elenco dei reparti; il reparto è passato a
+  `config.unita_organizzative`.
+* Il codice interno si chiamava `cod_int_tipo_contatto`, e i trigger avevano altri nomi.
+* 2026-11-24 — nasce il tipo proposto (decisione D-T5-6 b di Tid): prima le porte prendevano il
+  primo tipo per id.

@@ -204,6 +204,12 @@ sul ramo della correzione della quantità.~~ ⚠️ Falso (§3-ter.2): il ramo f
 che chiedono già il proprietario (§5.8 del brief archiviato) e i trigger che leggono la GUC dell'utente
 (`app.jwt_user`, `app.current_user_id`), che non sono porte.
 
+Fuori dal censimento, a ragione, anche le porte che passano da `script.fn_porta_manutenzione_aperta` (dal
+2026-11-17): con la GUC accesa si aprono solo alla sessione del migratore, e lasciano una riga in
+`dbops.porte_manutenzione_passaggi`. Per l'app restano chiuse. Sono i sei trigger del suo `COMMENT`, fra cui i
+lucchetti di colonna (`script.trgfn_lock_columns`, `zeroerp.allow_lock_columns_override`). ⚠️ Riletto sul catalogo il
+2026-11-24, dopo che `brief-db-revisione-anagrafiche` §20.6 li aveva dati per una porta da registrare qui: non lo è.
+
 ## 3. Decisioni aperte — a Tid
 
 ⚠️ Superata da §3-bis.4 (2026-11-23): D-1 … D-3 sono state riformulate in D-A … D-D, tutte decise. Resta scritta
@@ -1182,6 +1188,7 @@ il 44 sarebbe rosso per costruzione. ✅ Verde come app, 45/45 (Tid, 2026-11-24)
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-24 | DB (sessione anagrafiche) | §2: le porte che passano da `fn_porta_manutenzione_aperta`, lucchetti di colonna compresi, dichiarate fuori dal censimento a ragione (chiuse per l'app dal 2026-11-17); nessuna porta nuova |
 | 2026-11-24 | DB | Commit e push su `dev/db-tid`: il lato DB del ritiro di `reset_lotto_draft` e la pulizia della testata; al BE il suo lato (§4.8) |
 | 2026-11-24 | Tid | `20261123-67` applicato su dbdev, `test-pipeline-processi-invariante-v1` verde 9/9 |
 | 2026-11-24 | DB | Ritiro di `reset_lotto_draft` scritto (§4.8): quattro CSV, `DELETE` `20261123-67`, invariante test 8-9 sul `rollback`, guida `fatturazione` e manuali di `fatturazione_pipeline`, `pipeline_task_registry` e `azioni_processo`; provato sullo scratch (controesempio 7/9, stato finale 9/9). Da applicare |

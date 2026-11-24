@@ -4,6 +4,7 @@
 >
 [config.stati](/dbzero/config/manual/stati)
 > [script.fn_stato_id_da_iso2](/dbzero/script/manual/fn_stato_id_da_iso2) — la ricerca per codice ISO2
+> [script.fn_tipo_contatto_proposto_id](/dbzero/script/manual/fn_tipo_contatto_proposto_id) — il gemello, per il tipo di contatto
 > [script.fn_get_parameter_di_sessione](/dbzero/script/manual/fn_get_parameter_di_sessione) — la cascata degli override, col contesto della sessione
 >
 **Guide:**

@@ -191,7 +191,7 @@ E_DDT_PREZZO_NON_RISOLVIBILE,CONFLITTO_STATO,NULL,NULL,NULL
 E_DDT_RIGA_NON_TROVATA,NON_TROVATO,NULL,NULL,NULL
 E_DDT_STATO_TRANSIZIONE,CONFLITTO_STATO,2026-11-08,"Lo sollevavano solo i controlli del backend sulla bolla (cancellazione di una bozza con righe, modifica fuori bozza), ritirati: le stesse regole le dice il database, con E_DELETE_DOC_NON_BOZZA, E_DELETE_DOC_CON_RIGHE e i lock fuori bozza.",NULL
 E_DDT_VALIDAZIONE,DATO_ERRATO,NULL,NULL,NULL
-E_DEFAULT_CONTATTO_MISSING,DATO_ERRATO,NULL,NULL,NULL
+E_DEFAULT_CONTATTO_MISSING,DATO_ERRATO,2026-11-24,"Ritirato il 2026-11-24 (D-T5-6 b, brief-db-revisione-anagrafiche §20.8): lo sollevava solo script.fn_get_tipo_contatto_id, che nessuno chiamava ed e' ritirata. Il tipo di contatto che si usa quando chi scrive non lo dice e' il tipo proposto (script.fn_tipo_contatto_proposto_id, parametro TIPO_CONTATTO_PROPOSTO), che fallisce con E_CONFIG_MANCANTE o E_DEFAULT_ERRATO.",NULL
 E_DEFAULT_ERRATO,TECNICO,NULL,"Un parametro di default punta a un valore che la sua tabella non ha: e' un default configurato male, non un dato sbagliato dall'operatore. Dal 2026-10-18 lo solleva script.fn_stato_proposto_id (STATO_PROPOSTO_ISO2 senza stato in config.stati); script.fn_get_default_by_param, che lo sollevava prima, e' ritirata (20261018-93).",NULL
 E_DEFINIZIONE_BOZZA_ESISTENTE,CONFLITTO_STATO,NULL,<- DEFINIZIONE_BOZZA_ESISTENTE  (vivo),NULL
 E_DEFINIZIONE_NON_PUBBLICABILE,CONFLITTO_STATO,NULL,<- DEFINIZIONE_NON_PUBBLICABILE  (vivo),NULL

@@ -127,7 +127,8 @@ Un soggetto nasce con uno dei due verbi di creazione, scelti per macro-tipologia
 
 Un verbo che riceve una natura dell'altra famiglia la rifiuta (`E_SOGGETTO_CREAZIONE_NATURA_ERRATA`):
 una ditta individuale è una persona fisica, e nasce col primo. Nella stessa chiamata il
-verbo crea il contatto del soggetto e, se la natura li pretende o se ne riceve almeno un campo,
+verbo crea il contatto del soggetto (col tipo [proposto](/guide/gestione-dei-contatti#il-tipo-proposto), se il
+chiamante non lo dice) e, se la natura li pretende o se ne riceve almeno un campo,
 i dati societari (con [anagrafiche.fn_scrivi_dati_societari_alla_nascita](/dbzero/anagrafiche/funzioni/fn_scrivi_dati_societari_alla_nascita)).
 
 ### La natura decide le regole

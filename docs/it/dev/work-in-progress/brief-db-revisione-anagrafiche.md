@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-24
 
-**Riparte: Tid**, con l'apply di `20261123-64` (i COMMENT al presente, §20.4), la decisione D-T5-6 da riprendere (§20.6) e il passaggio al BE da girare (§20.7). Il giro 3, T5, è chiuso: `20261123-48 … -63` applicato su scratch e dbdev, pgTAP verdi come app, committato (2026-11-24). Poi T7, T4, T8, T12, T3, T10, T11. Il giro 2 (T2) è chiuso: dentro `anagrafiche` non c'è
+**Riparte: Tid**, col commit del giro 3-bis e il passaggio al BE da girare (§20.7, sei voci). Il giro 3-bis, D-T5-6 **b** (il tipo di contatto proposto, §20.8), è chiuso: `20261123-68 … -73` applicato, pgTAP verdi, doc auto-generata rigenerata (Tid e sessione DB, 2026-11-24). Poi la sessione DB riparte con T7. Il giro 3, T5, è chiuso: `20261123-48 … -64` applicato su scratch e dbdev, pgTAP verdi come app, committato (2026-11-24). Poi T7, T4, T8, T12, T3, T10, T11. Il giro 2 (T2) è chiuso: dentro `anagrafiche` non c'è
 niente da cambiare. La postura delle viste in tutto il database è decisa (Tid, 2026-11-23, §19.3) e il suo lavoro è
 di [brief-db-porte-aperte-dalla-sola-guc](brief-db-porte-aperte-dalla-sola-guc.md) §5, in un'altra sessione: qui non
 resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta di S50 (§17, riga T7). Il vaglio per temi è deciso (Tid, 2026-11-23, §17.1). Il piano da percorrere, con le fasi spuntate, è il §0.
@@ -17,8 +17,8 @@ resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta d
 | 6 | sessione DB | Il giro dei metadati, per ciò che i giri di codice non hanno già riscritto | §8 | 4 |
 | 7 | sessione DB | Archiviazione in `work-done/`, col debito dei temi spostati scritto nei loro brief | §11 | 5, 6 |
 
-**Decisioni aperte di Tid:** D-T5-6, il tipo di contatto (§20.6: il BE lo passa sempre, i chiamanti del DB no; proposta **b**); la porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
-**Da committare:** la §19 (giro 2, 2026-11-23), le decisioni del vaglio
+**Decisioni aperte di Tid:** nessuna. D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
+**Da committare:** il giro 3-bis (§20.8: sei changeSet, tre righe CSV, due pgTAP, manual, guide e doc auto-generata, 2026-11-24), la §19 (giro 2, 2026-11-23), le decisioni del vaglio
 (§17.1, 2026-11-23), e le righe di questo brief che registrano il commit `a35a6636dc`, rimaste fuori da quel commit.
 
 ## 0. Il piano da percorrere
@@ -75,7 +75,13 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] Giro 3: pgTAP rosso, changeSet, CSV, note, guida e linee guida scritti e provati sullo scratch (2026-11-24, §20.4-§20.5)
   * [x] Giro 3: applicato da Tid su scratch e dbdev (2026-11-24, 01:26)
   * [x] Giro 3: pgTAP come app verdi (Tid, 2026-11-24; il resto dei rossi era già rosso prima), committato
-  * [ ] Giro 3: apply di -64, i COMMENT al presente (Tid); D-T5-6 da decidere di nuovo (§20.6); il passaggio al BE (§20.7)
+  * [x] Giro 3: apply di -64, i COMMENT al presente (Tid, 2026-11-24)
+  * [x] Giro 3: D-T5-6 decisa di nuovo, **b** (Tid, 2026-11-24, §20.6)
+  * [x] Giro 3: la porta dei lucchetti riletta sul catalogo: è già chiusa per l'app dal 2026-11-17, niente da registrare (2026-11-24, §20.6)
+  * [x] Giro 3-bis: D-T5-6 b, il tipo di contatto proposto: analisi, changeSet `20261123-68 … -73`, pgTAP, manual e guide, provati sullo scratch (2026-11-24, §20.8)
+  * [x] Giro 3-bis: applicato, pgTAP verdi (Tid, 2026-11-24); doc auto-generata rigenerata (2026-11-24)
+  * [ ] Giro 3-bis: committato
+  * [ ] Giro 3: il passaggio al BE (§20.7)
   * [ ] Poi, un giro per tema nell'ordine di §17.1: T7, T4, T8, T12, T3, T10, T11
 * **Fase 9 — Il giro dei metadati** (§8)
   * [ ] I COMMENT, i commenti nei corpi e le note di seed che i giri di codice non hanno già riscritto
@@ -1487,7 +1493,7 @@ Il «via» del 2026-11-24: l'altra sessione DB è ferma, i numeri `20261123-48 �
 | `20_code/anagrafiche/…-59` | `fn_scrivi_dati_societari` prende la riga del soggetto `FOR NO KEY UPDATE` | S41-2 |
 | `20_code/anagrafiche/…-60` | dati societari: tipo soggetto in `a05`, solo `BEFORE INSERT`, natura nella frase; la forma mancante la rifiuta il guard della forma (`E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA`); quel guard non è più `OF soggetto_id` | S41-3, S41-6 |
 | `80_data/changelog/…-63` | bonifica una tantum di CF, P.IVA e P.IVA di gruppo già scritti, coi trigger sospesi (tranne audit e `tx_id`). Il 2026-11-24 su dbdev non c'è nessuna riga da toccare su 884: la bonifica c'è perché il modello vale per ogni database | D-T5-2 a |
-| `20_code/anagrafiche/…-64` | i `COMMENT` dei 17 oggetti del giro **al presente** (linee-guida-sql §5d): quelli di -48 … -61 portavano la cronaca (il brief, «rev», id di changeSet), e li ha fermati `guardrail_comment_al_presente.py` al commit, a file già applicati. I tredici file dichiarano l'eccezione in testa (riga `#`, fuori dal checksum) e rimandano qui. **Da applicare** | §5d |
+| `20_code/anagrafiche/…-64` | i `COMMENT` dei 17 oggetti del giro **al presente** (linee-guida-sql §5d): quelli di -48 … -61 portavano la cronaca (il brief, «rev», id di changeSet), e li ha fermati `guardrail_comment_al_presente.py` al commit, a file già applicati. I tredici file dichiarano l'eccezione in testa (riga `#`, fuori dal checksum) e rimandano qui. Applicato da Tid il 2026-11-24 | §5d |
 | `90_end/…-62` | il runner dei lucchetti: `soggetti_ruoli.tipo_ruolo_id` (`E_SOGGETTO_RUOLO_TIPO_IMMUTABILE`) e `dati_societari.soggetto_id` (`E_DATI_SOCIETARI_SOGGETTO_IMMUTABILE`) | D-T5-4 a, S41-6 |
 
 I CSV: in `config/codici_errore.csv` ci sono quattro codici nuovi, `E_ADMIN_PIVA_DUPLICATA` è obsoleto dal 2026-11-24
@@ -1557,7 +1563,8 @@ legge nel corpo.
 
 ### 20.6 Che cosa resta
 
-* **D-T5-6, da decidere di nuovo** (la condizione di Tid ha due risposte). Il BE passa sempre il tipo di contatto:
+* ✅ **D-T5-6 decisa: b** (Tid, 2026-11-24): il giro 3-bis è il §20.8. Prima della decisione, la condizione di Tid
+  aveva due risposte. Il BE passa sempre il tipo di contatto:
   `richiedi_contatto_valido` pretende un contatto `VALID`, che ha `tipo_contatto_id` (ramo `f1b8f9df7a`). I
   chiamanti nel DB invece non lo passano:
   * `anagrafiche.fn_crea_operatore_v2` e `anagrafiche.fn_provisiona_dati_di_sviluppo`;
@@ -1567,17 +1574,27 @@ legge nel corpo.
   Con **a** ognuno dovrebbe scegliere un tipo da solo, e la scelta sarebbe la stessa ricopiata in tre posti. Proposta:
   **b**, un tipo proposto dichiarato in `config` e letto da un BB come lo stato proposto. Il ripiego «il primo per
   id» intanto resta com'era: -55 e -56 non lo toccano.
+
+  ⚠️ Fatto trovato il 2026-11-24, rileggendo i chiamanti: le scelte sono già due, e diverse. Le due porte di
+  creazione prendono «il primo per id», mentre `script.fn_crea_utente_tecnico` prende il tipo con
+  `codice_interno = 'PRINCIPALE'`, scritto nel codice. La strada b le porta tutte e due a una sede sola.
 * **Segnalazione nuova, S-T5-a** (fuori dal tema, va a T9 o al tema dell'operatore).
   `anagrafiche.fn_crea_operatore_v2`, per decidere `E_CREDENZIALE_ALTRA_PERSONA`, confronta
   `id_fiscale_univoco_cf_piva` con `UPPER(TRIM(p_codice_fiscale))`. Per una persona che ha anche una ditta individuale
   l'identificativo della ditta è «CF P.IVA», quindi una veste sulla ditta conta come «un'altra persona». È la radice
   di S4, in un'altra sede. Il confronto va fatto sul codice fiscale, che il DB ora normalizza.
-* **La porta dei lucchetti di colonna** (`script.trgfn_lock_columns`, GUC `zeroerp.allow_lock_columns_override`, senza
-  chiedere il proprietario) non è fra le porte censite da
+* ⚠️ **Superato il 2026-11-24, riletto sul catalogo dello scratch: la porta è già chiusa per l'app.** Dal 2026-11-17
+  (`20261117-07`, brief archiviato `brief-db-seed-primo-impianto-non-si-riscrive`) `script.trgfn_lock_columns` chiede
+  `script.fn_porta_manutenzione_aperta`. Con la GUC accesa la porta si apre solo alla sessione del migratore e lascia
+  una riga in `dbops.porte_manutenzione_passaggi`; per l'app resta chiusa. Il censimento del brief delle porte la
+  lascia fuori a ragione, perché cerca i trigger che leggono la GUC da soli. L'unico altro oggetto che nomina la GUC
+  è un commento in `script.trgfn_righe_natura_vendita`. Lì si scrive una riga, perché nessuno rifaccia la stessa
+  lettura. Il testo di prima, sbagliato: ~~la porta dei lucchetti di colonna (`script.trgfn_lock_columns`, GUC
+  `zeroerp.allow_lock_columns_override`, senza chiedere il proprietario) non è fra le porte censite da
   [brief-db-porte-aperte-dalla-sola-guc](brief-db-porte-aperte-dalla-sola-guc.md). I due lucchetti nuovi valgono
-  quanto lei. È da registrare lì.
-* **La doc auto-generata** degli oggetti del giro è rigenerata (Tid, 2026-11-24); dopo l'apply di -64 si rigenera
-  di nuovo, per i COMMENT.
+  quanto lei. È da registrare lì.~~
+* **La doc auto-generata** degli oggetti del giro è rigenerata (Tid, 2026-11-24). -64 è applicato (2026-11-24): si
+  rigenera di nuovo, per i COMMENT, insieme al giro 3-bis.
 * **Il pre-commit `check-i18n-keys` è rosso** per il lato FE: la chiave
   `anagrafiche.soggetti.cambio_natura_blocco.verso_nessuna`, emessa dal DB, non è ancora nei locales. La aggiunge il
   team FE (§20.7, voce 3). È un rosso atteso, non un difetto del giro.
@@ -1614,3 +1631,115 @@ che il BE fa oggi. L'elenco è chiuso.
 5. Le frasi di `E_PIVA_OBBLIGATORIA`, `E_CF_OBBLIGATORIO`, `E_RUOLO_NATURA_NON_AMMESSA`,
    `E_RUOLO_NATURA_TIPO_DET_NULL` ed `E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO` non mostrano più id e hanno un
    segnaposto in meno. Un override del BE che le ricopiasse va riletto.
+6. **Il tipo di contatto proposto** (D-T5-6 b, §20.8). Il BE passa sempre il tipo, quindi non cambia niente nel
+   comportamento. `E_DEFAULT_CONTATTO_MISSING` è obsoleto, perché non lo solleva più nessuno:
+   `backend/apps/core/services/error_messages_fallback.py` (riga 384) ha la sua voce, che si può togliere.
+   `error_policies_generated.py` lo segue da solo, alla rigenerazione.
+
+### 20.8 Giro 3-bis — D-T5-6 b, il tipo di contatto proposto (2026-11-24, al via di Tid)
+
+**La decisione** (Tid, 2026-11-24): quando chi crea un soggetto non dice il tipo del contatto di default, il database
+scrive il **tipo proposto**. È un parametro di `config`, letto da un BB come lo stato proposto: lo stesso modello
+(cascata degli override, nessun ripiego, errore se manca).
+
+**Che cosa dice il catalogo** (dbdev, 2026-11-24, dopo l'apply di -64). Chi sceglie il tipo quando nessuno lo dice
+lo fa in tre modi diversi:
+
+| Lettore | Come sceglie oggi |
+| --- | --- |
+| `anagrafiche.fn_crea_soggetto_pf`, `_pg` | il primo per id (`ORDER BY id LIMIT 1`); se la tabella è vuota, `E_ADMIN_VALIDAZIONE` |
+| `script.fn_crea_utente_tecnico` | `codice_interno = 'PRINCIPALE'`, scritto nel corpo; se manca, `NULL` in silenzio, e lo rifiuta poi `fn_crea_contatto` come contatto incompleto |
+| `dbops.fn_pgtap_crea_soggetto_pg` | il primo per id, e lo passa alla porta |
+
+Ci sono anche due fatti che il giro tocca.
+* `script.fn_get_tipo_contatto_id(codice)`, un BB «dal codice interno all'id», non lo chiama nessuno: né a DB
+  (`pg_proc`), né sul ramo del BE (`origin/dev/backend-tid`, sola lettura). È un'altra copia della stessa ricerca,
+  con un suo codice (`E_DEFAULT_CONTATTO_MISSING`, che il BE ha solo nel fallback dei messaggi) e con una
+  scrittura dentro una funzione `STABLE` (genera un `tx_id`).
+* L'ordine da zero regge. Il parametro nasce dal mirror `20250715-01`, che gira prima del seed di
+  `config.tipi_contatti` (`20250813-03`) e prima dei seed che creano gli utenti tecnici (`20260904-27`, `-39`).
+  `STATO_PROPOSTO_ISO2` sta nello stesso mirror, e lo stesso `fn_crea_utente_tecnico` lo legge già.
+
+**Che cosa si fa:**
+
+| # | Oggetto | Che cosa cambia |
+| --- | --- | --- |
+| 1 | `config.parameters` (CSV, riga 64) | `TIPO_CONTATTO_PROPOSTO`, valore `PRINCIPALE` (il `codice_interno`), `ammette_override = true`, `TESTO` |
+| 2 | `config.parameter_fk_surrogate` (CSV, riga 9) | il valore e ogni override devono essere un `codice_interno` di `config.tipi_contatti` (`EXACT`) |
+| 3 | `script.fn_tipo_contatto_proposto_id(p_chi)`, nuovo | il BB: legge il parametro con `script.fn_get_parameter_di_sessione`; vuoto `E_CONFIG_MANCANTE`, codice senza tipo `E_DEFAULT_ERRATO`. `codice_interno` è unico, quindi non c'è il caso «ambiguo» dello stato |
+| 4 | `fn_crea_soggetto_pf`, `_pg` | `COALESCE(p_tipo_contatto_id, script.fn_tipo_contatto_proposto_id(…))`; esce il ramo «nessun tipo in tabella» |
+| 5 | `script.fn_crea_utente_tecnico` | il BB al posto di `'PRINCIPALE'`; il `COMMENT` si riscrive al presente (§5d: quello di oggi è una cronaca di «Rev») |
+| 6 | `dbops.fn_pgtap_crea_soggetto_pg` | non sceglie più il tipo: lo propone la porta |
+| 7 | `script.fn_get_tipo_contatto_id` | si ritira (`DROP`), nello stesso giro, per la regola del 2. `E_DEFAULT_CONTATTO_MISSING` diventa obsoleto dal 2026-11-24 |
+
+Sono sei changeSet (3 … 7), più i due CSV e la riga di `codici_errore.csv`. Il BE non cambia niente, salvo la voce 6 di
+§20.7.
+
+**La prova sul controesempio.** Un tipo con id 0, cioè minore di tutti, è quello che oggi «il primo per id» prende.
+Col giro le due porte e il builder pgTAP scrivono il tipo proposto. Un override per funzione cambia la proposta, e
+l'utente tecnico la segue: oggi resta `PRINCIPALE`.
+
+**Guide verificate** (`scripts/guide_coinvolte.py --oggetti`, 2026-11-24):
+
+| Guida o nota | Esito |
+| --- | --- |
+| [gestione-dei-contatti](../../guide/gestione-dei-contatti.md) | **indietro**: «Nominativo e tipo di contatto sono obbligatori» è vero, ma non dice che alla nascita del soggetto il tipo non detto è quello proposto. Si aggiunge col giro |
+| [soggetti-e-ruoli-anagrafici](../../guide/soggetti-e-ruoli-anagrafici.md) | **indietro** sullo stesso punto: «il verbo crea il contatto del soggetto» non dice con quale tipo. Si aggiunge col giro |
+| [processi-automatici-classe-e-identita](../../guide/processi-automatici-classe-e-identita.md), [risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md) | **coerenti**: nominano `fn_crea_utente_tecnico` per l'identità, non per il tipo del contatto |
+| [architettura-multi-face-auth](../../guide/architettura-multi-face-auth.md) | **coerente**: nomina `fn_crea_operatore_v2` per le vesti |
+| [gestione-degli-indirizzi](../../guide/gestione-degli-indirizzi.md), nota `_indirizzo-libero-o-dettaglio` | **coerenti**: lo stato proposto è il modello del giro, e non cambia |
+| [pgtap-come-si-scrive-un-test](../../guide/pgtap-come-si-scrive-un-test.md) | **coerente**: il builder PF non cambia firma |
+| nota `_identificativo-fiscale` | **coerente**: il giro non tocca l'identificativo |
+
+Orfano: `anagrafiche.fn_provisiona_dati_di_sviluppo`, uno strumento di sviluppo che non è un concetto del dominio.
+Nessuna guida da scrivere.
+
+**I pgTAP.** Uno nuovo, `anagrafiche/test-tipo-contatto-proposto-v1.sql`, costruito come app (l'app ha `INSERT`,
+`UPDATE` e `DELETE` su `config.parameters`, `parameter_overrides` e `tipi_contatti`, catalogo di dbdev del
+2026-11-24). L'utente tecnico si prova in `script/test-fn-crea-utente-tecnico.sql`, che gira da owner, con un caso in
+più (14).
+
+**La documentazione nello stesso giro:**
+* le pagine `manual/` di `fn_crea_soggetto_pf` e `_pg`: via la riga «⚠️ Il tipo di contatto di ripiego è il primo per
+  id»;
+* le pagine di `fn_crea_utente_tecnico` e `dbops.fn_pgtap_crea_soggetto_pg`;
+* una pagina nuova per il BB, sul modello di `fn_stato_proposto_id`;
+* la pagina di `fn_get_tipo_contatto_id` si toglie con la funzione;
+* `config/manual/tipi_contatti` è stantia: nomina `cod_int_tipo_contatto` e due trigger con un nome che non esiste
+  più. Si riallinea, col tipo proposto;
+* le due guide indietro (sopra).
+
+**Scritto (2026-11-24, numeri dal primo libero, al via di Tid):**
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/script/20261123-68-create-fn-tipo-contatto-proposto-id` | il BB (voce 3) |
+| `20_code/anagrafiche/20261123-69-update-fn-crea-soggetto-pf-tipo-contatto-proposto` | la porta PF (voce 4) |
+| `20_code/anagrafiche/20261123-70-update-fn-crea-soggetto-pg-tipo-contatto-proposto` | la porta PG (voce 4) |
+| `20_code/script/20261123-71-update-fn-crea-utente-tecnico-tipo-contatto-proposto` | l'utente tecnico, firma ri-ancorata con `%TYPE`, `COMMENT` al presente (voce 5) |
+| `20_code/dbops/20261123-72-update-fn-pgtap-crea-soggetto-pg-tipo-contatto-proposto` | il builder pgTAP (voce 6) |
+| `20_code/script/20261123-73-drop-fn-get-tipo-contatto-id` | il ritiro (voce 7) |
+
+Con le tre righe dei CSV, il pgTAP nuovo e il caso 14. Corpi dai sorgenti verificati uguali al catalogo di dbdev;
+`COMMENT` delle porte e del builder dal catalogo (al presente da -64), cambia solo la frase del tipo. Manual: le
+porte, l'utente tecnico, il builder, `tipi_contatti` riallineata, il gemello nello stato proposto, la pagina nuova
+del BB; quella di `fn_get_tipo_contatto_id` è tolta. Le due guide indietro aggiornate.
+
+**La prova** (`scripts/prova_changeset.py`, scratch `zeroerp_ruoli` completo, ricostruito alle 14:33):
+* `test-tipo-contatto-proposto-v1`: con i sei changeSet 12/12; senza, si ferma al BB che manca. Il controesempio
+  con il solo -68 (porte di prima): il caso 4 si ferma su `fn_crea_contatto`, perché la porta ha preso il tipo con
+  id 0;
+* `test-fn-crea-utente-tecnico`: con 14/14, senza rosso il solo caso 14;
+* `test-fn-pgtap-crea-soggetto-pg-v1`: 4/4 prima e dopo.
+
+Corse da owner (lo script): il pgTAP nuovo è scritto per girare come app, e la corsa come app è di Tid.
+
+**Chiusura** (2026-11-24): applicato da Tid su scratch e dbdev, pgTAP verdi. Doc auto-generata rigenerata
+(`scripts/gen_db_docs.py`): la pagina nuova del BB, quella di `fn_get_tipo_contatto_id` tolta come orfana, le due
+porte, l'utente tecnico, il builder, gli indici di `config` e `script`. `scripts/check_i18n_keys.py` segnala una
+chiave: `anagrafiche.soggetti.cambio_natura_blocco.verso_nessuna`, del giro 3, che il FE aggiunge (§20.7, voce 3).
+Il giro 3-bis non ne porta di nuove.
+
+⚠️ **Resta fuori, da segnalare**: `dbops.fn_pgtap_crea_soggetto_pg` ha `p_tipo_soggetto_dettaglio_id integer`,
+un'eccezione dichiarata nel corpo (la colonna è `bigint`, ancorarla cambia l'identità della firma: `DROP`, `GRANT`
+di nuovo, il gemello PF ha già `bigint`). Non è del giro 3-bis: un giro a sé, se Tid lo vuole.

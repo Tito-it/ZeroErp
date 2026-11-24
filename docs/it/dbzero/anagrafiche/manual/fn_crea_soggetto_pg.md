@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_soggetto_pg`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -59,7 +59,9 @@ Come nella porta delle persone fisiche: lo stato detto dal chiamante col codice 
   senza spazi (un valore vuoto diventa NULL) e la riga attiva. Prima di scriverlo cerca il codice fiscale e la
   partita IVA, ognuno per conto suo, fra gli identificativi dello stesso stato, e se li trova si ferma.
 * **Il contatto di default**, con `anagrafiche.fn_crea_contatto`: il nominativo è la ragione sociale, l'email
-  quella ricevuta, il tipo quello indicato o, se manca, il primo del catalogo dei tipi di contatto.
+  quella ricevuta, il tipo quello indicato o, se manca, quello proposto da
+  [script.fn_tipo_contatto_proposto_id](/dbzero/script/manual/fn_tipo_contatto_proposto_id) (il parametro
+  `TIPO_CONTATTO_PROPOSTO`, con gli override per utente, azienda o per questa funzione).
 * **I dati societari**, con `anagrafiche.fn_scrivi_dati_societari_alla_nascita`, lo stesso building block della
   porta delle persone fisiche: se la natura li pretende, o se almeno un campo della sezione ha un valore (socio
   unico e liquidazione da soli non contano). Una sezione passata a una natura che non la ammette la rifiuta il
@@ -88,18 +90,17 @@ societari che la natura pretende.
   l'identificativo è la coppia, e il controllo non lo trova: un soggetto nuovo con lo stesso CF e la stessa P.IVA
   di uno esistente lo ferma l'indice unico, con un errore tecnico al posto di `E_ADMIN_CF_DUPLICATO`; uno con la
   sola P.IVA di un soggetto che ha anche un CF diverso nasce accanto a lui.
-* **Il tipo di contatto di ripiego è il primo per id** del catalogo: un dato che nessuno sceglie.
 
 ---
 
 ### Codici errore
 
-* `E_ADMIN_VALIDAZIONE` — ragione sociale, natura o email mancanti, natura che non esiste, nessun tipo di
-  contatto.
+* `E_ADMIN_VALIDAZIONE` — ragione sociale, natura o email mancanti, natura che non esiste.
 * `E_SOGGETTO_CREAZIONE_NATURA_ERRATA` — la natura è una persona fisica.
 * `E_STATO_ISO2_AMBIGUO` — il codice dello stato indica più stati.
 * `E_CODICE` — il codice dello stato non indica nessuno stato.
-* `E_CONFIG_MANCANTE`, `E_DEFAULT_ERRATO` — senza codice, lo stato proposto non è configurato o non esiste.
+* `E_CONFIG_MANCANTE`, `E_DEFAULT_ERRATO` — senza codice, lo stato proposto non è configurato o non esiste;
+  senza tipo di contatto, lo stesso per il tipo proposto.
 * `E_ADMIN_CF_DUPLICATO`, `E_ADMIN_PIVA_DUPLICATA` — il codice fiscale, o la partita IVA, è già l'identificativo
   di un soggetto dello stesso stato.
 
@@ -128,6 +129,8 @@ Dai trigger del soggetto e dei dati societari arrivano gli altri rifiuti, per es
 * 2026-10-20 — riceve la data di costituzione, che prima si perdeva; quando scrivere i dati societari lo decide il
   building block condiviso con la porta delle persone fisiche, e una sezione passata a una natura che non la
   ammette non si scarta più in silenzio.
+* 2026-11-24 — il tipo di contatto non detto è quello proposto, non più il primo per id del catalogo
+  (decisione D-T5-6 b di Tid).
 
 ---
 

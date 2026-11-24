@@ -1,6 +1,6 @@
 # Guida — Gestione dei Contatti
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -119,6 +119,14 @@ rifiutata col suo nome (`E_CAMPO_NON_AMMESSO`).
 È la sede unica: la usano i verbi di nascita del soggetto, che creano il suo primo contatto nella stessa
 chiamata, quelli del cliente e del fornitore per il contatto del ruolo, la creazione degli utenti tecnici e
 l'applicazione. Se creare un contatto facoltativo lo decide l'applicazione; come si scrive lo decide il database.
+
+### Il tipo proposto
+
+Quando chi crea un soggetto non dice il tipo del suo primo contatto, il database scrive il tipo **proposto**:
+il parametro `TIPO_CONTATTO_PROPOSTO`, che si può cambiare per utente, per azienda o per la singola funzione.
+Lo leggono le due porte di nascita del soggetto e la creazione degli utenti tecnici, tutte dalla stessa sede,
+[script.fn_tipo_contatto_proposto_id](/dbzero/script/manual/fn_tipo_contatto_proposto_id). Un parametro che manca
+o indica un tipo che non esiste ferma la creazione: il database non ripiega su un tipo «a caso».
 
 ---
 
