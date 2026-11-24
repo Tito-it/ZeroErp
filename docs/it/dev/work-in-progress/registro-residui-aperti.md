@@ -434,6 +434,34 @@
   `forme_giuridiche*`, `stradario` e `magazzino.assets`. È un tema di famiglia: Tid ha scelto di deciderlo a parte
   (2026-11-12). Da decidere: `NOT NULL DEFAULT now()` su tutte, col censimento dalla doc auto-generata. Gemella
   della voce qui sopra su `user_update`
+- **La documentazione d'uso: decisa dominio per dominio, mai come insieme, e l'assistente AI non la legge**
+  (raccolta il 2026-11-23 in una sessione su `scripts/guide_coinvolte.py`; nessun brief d'origine, la decisione
+  d'insieme non è mai stata presa). Cosa c'è:
+  - **le guide sono «guide operative»** (PROJECT_CONTEXT, § «Struttura Repository»), e alcune scelte sono già
+    prese: il registro per l'operatore (R-2 di `work-done/2026/piano-residui-orchestrazione-e-cruscotti-vendite.md`:
+    «linguaggio non tecnico, destinatari operatori», dire ciò che dallo schermo non si deduce); guida operativa e
+    guida tecnica separate per i processi di fatturazione (Fase D di `work-done/2026/brief-be-fe-processi-fatturazione.md`);
+    una guida sola con gli esempi tecnici in coda, nell'«Area tecnica — esempi» (`standard-guide.md`). Le due forme
+    convivono senza una regola che dica quando si usa l'una o l'altra;
+  - **fatto datato (2026-11-23): 12 guide su 54 dichiarano gli operatori fra i destinatari** (cruscotti, DDT,
+    ordini, pagamenti, termini di pagamento, documenti e stampe, IVA di riga, configurazione di dashboard, liste e
+    installazione, operazioni che non si ripetono, riclassificazione vie); le altre sono per sviluppatori e analisti,
+    fra cui anagrafiche, indirizzi e magazzino. Alcuni documenti rimandano alla «documentazione utente» come a una
+    cosa che esiste (`work-in-progress/analisi-pratiche-domini-anello3.md` §3.4);
+  - **l'assistente AI è anche per gli operatori** (Tid, 2026-09-11, D5 di
+    `work-done/2026/migliorie-generali-BE-FE-da-test-valutazione.md`), ma della documentazione legge solo
+    `docs/it/ai/ai-context.md`, iniettato nel prompt (ultimo commit 2026-05-15). `AI_DOCS_PATH` e le impostazioni
+    degli embedding stanno in `settings.py` senza un consumatore; `backend/apps/ai_assistant/indexing/` è vuoto;
+  - **`ai-context.md` descrive il modello del dominio** (contratti, listini, stati della pratica) ma non è fra le fonti
+    di `scripts/guide_coinvolte.py`: uno sviluppo che lo smentisce non viene avvisato.
+
+  Da decidere (Tid): (1) se la documentazione d'uso diventa un obiettivo d'insieme, e in quale delle due forme;
+  (2) se e come l'assistente la legge. Strada valutata il 2026-11-23, non decisa: partire dall'oggetto o
+  dall'endpoint della schermata o dell'errore e risalire alle guide col nucleo di `guide_coinvolte.py` estratto in
+  un building block (regola del 2: lo script e l'endpoint gemello dello strumento AI lo usano insieme). Serve al
+  «perché questa schermata fa così», non alle domande a parole («come cambio l'indirizzo di fatturazione?»), che
+  vogliono una ricerca sul testo; e regge solo dove la guida per l'operatore c'è. (3) Se `docs/it/ai/` entra fra le
+  fonti di `guide_coinvolte.py` [script]
 
 **Residui della roadmap fatturazione** (archiviata il 2026-09-12 in
 `docs/it/dev/work-done/2026/fatturazione-roadmap.md`, dove sta il *perché* di
