@@ -47,7 +47,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_cancella_fondo_fattura(p_source_id bigint)
-IS 'Il verbo del gesto «cancella il fondo» (endpoint DELETE /api/v1/vendite/fondi-fattura/{id}/): SECURITY DEFINER, in prima riga script.fn_guard_azione con governa_fondo_fattura, la stessa azione dell''endpoint. Spegne all''ingresso la GUC delle righe contabili e quella del reset del lotto, poi chiama la primitiva vendite.fn_applica_cancellazione_fondo_fattura, che rimette il perimetro sull''atto (fuori: E_FONDO_NON_TROVATO), legge il criterio e fa i tre DELETE, oppure rifiuta dicendo perche''. Firma e risultato di sempre. brief-db-porte-aperte-dalla-sola-guc §13 (giro 8).';
+IS 'Il verbo del gesto «cancella il fondo» (endpoint DELETE /api/v1/vendite/fondi-fattura/{id}/): SECURITY DEFINER, in prima riga script.fn_guard_azione con governa_fondo_fattura, la stessa azione dell''endpoint. Spegne all''ingresso la GUC delle righe contabili e quella del reset del lotto, poi chiama la primitiva vendite.fn_applica_cancellazione_fondo_fattura, che rimette il perimetro sull''atto (fuori: E_FONDO_NON_TROVATO), legge il criterio e fa i tre DELETE, oppure rifiuta dicendo perche''.';
 ```
 
 </div>

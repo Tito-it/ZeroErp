@@ -6,6 +6,7 @@
 # Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato e mergiato, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/vendite/20261125-29.
 # IL PERMESSO DEL PASSAGGIO DEL LOTTO, CON LA RICADUTA SULL'AREA
 #   vendite.fn_guard_passaggio_lotto (nuova)
 #   Brief: brief-db-porte-aperte-dalla-sola-guc §13.5 (giro 1-7; D-X a di Tid, 2026-11-25).

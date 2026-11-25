@@ -1,6 +1,6 @@
 ### 🧩 Resta sempre almeno un SUPER_ADMIN che non scade
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 
 Il sistema deve avere in ogni momento almeno un amministratore che entra **oggi e domani**: se l'ultimo si
 spegnesse, nessuno potrebbe più accendere gli altri. La regola non conta gli amministratori «attivi», ma quelli
@@ -53,6 +53,14 @@ sistema dopo; se non resta nessun amministratore senza scadenza, rifiutano con `
 ⭐ Le scritture che **migliorano** la garanzia passano sempre, anche su un sistema già senza amministratori:
 togliere una data di fine, riaccendere una veste o un rapporto, sbloccare una credenziale, aggiungere un legame.
 È così che si esce da un sistema scoperto.
+
+#### Il primo amministratore
+
+La garanzia vale da quando c'è un amministratore. Il primo di un'installazione nuova lo crea
+`anagrafiche.fn_crea_primo_amministratore`, che si apre solo se **nessuna veste ha mai avuto** un legame verso un
+profilo SUPER_ADMIN (acceso o spento) e lo fa entrare subito, con la veste accesa. Non è una strada di recupero: un
+sistema che aveva un amministratore e lo ha perso resta chiuso per quella funzione, e se ne esce con le scritture
+che migliorano la garanzia, fatte da chi gestisce il database.
 
 #### Le strade chiuse da altro
 

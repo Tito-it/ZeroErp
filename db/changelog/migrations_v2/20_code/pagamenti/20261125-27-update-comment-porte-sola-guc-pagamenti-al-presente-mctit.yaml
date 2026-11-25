@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT di due oggetti di pagamenti al presente.
+#   pagamenti.trgfn_vendite_contabili_righe_guard_contenuto
+#   pagamenti.fn_annulla_sistemazione
+#   Brief: brief-db-porte-aperte-dalla-sola-guc (giro 8), 2026-11-25.
+#
+#   20261125-13 e 20261125-14 hanno riscritto i COMMENT portandosi dietro la
+#   cronaca di prima (rev, brief, id di changeSet, sigle di decisione) e
+#   aggiungendone di nuova: linee-guida-sql §5d li vuole al presente. Li ha
+#   fermati scripts/guardrail_comment_al_presente.py a file gia' applicati e
+#   mergiati: non si riscrivono (checksum), si riscrivono gli oggetti qui. I
+#   due file applicati dichiarano in testa l'eccezione, che rimanda a questo.
+#   Solo COMMENT ON: nessun corpo, nessun trigger cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20261125-27-update-comment-porte-sola-guc-pagamenti-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261125-27-update-comment-porte-sola-guc-pagamenti-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I COMMENT del guard del contenuto della distinta contabile e del verbo di annullo della
+        sistemazione riscritti al presente, senza cronaca. brief-db-porte-aperte-dalla-sola-guc.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(DISTINCT p.proname) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'pagamenti'
+                 AND p.proname IN ('trgfn_vendite_contabili_righe_guard_contenuto',
+                                   'fn_annulla_sistemazione');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_contenuto() IS $c$Il guard del CONTENUTO della distinta contabile: chi puo' togliere, aggiungere o cambiare una riga, e quando. DUE PORTE. (1) ELIMINAZIONE: attivo true -> false, e DELETE — ammessa solo su una MANUALE in BOZZA. Il predicato non sta qui: sta in script.fn_check_riga_contabile_eliminabile, che il guard chiama sollevando il PRIMO motivo con fn_raise_primo_motivo_se_presente, cosi' tooltip del cestino e rifiuto non possono divergere. (2) CONGELAMENTO: INSERT, riattivazione, spostamento da/verso un'altra distinta e UPDATE di un FATTO (importo, data_pagamento, data_valuta, data_operazione, riferimento_ente) sono rifiutati sotto una MANUALE che non e' piu' in BOZZA — E_RIGA_CONTABILE_DISTINTA_VALIDATA. Origine e stato della distinta la porta 2 li legge FUORI dalla row security, con script.fn_get_contabile_stato_origine: una riga si vede anche dalla FATTURA, e chi la vede cosi' non vede la sua distinta. Il codice della distinta si legge sotto RLS, solo per il messaggio. ⭐ Le DECISIONI restano libere anche a distinta validata (stato_id, fattura_id, billing_account_id, scadenza_id, forzata, motivo_forzatura, motivo_sospeso, meta): l'abbinamento non tocca la quadratura e la madre del posting muove lo stato delle righe mentre la distinta e' ancora VALIDATA — per questo il trigger e' UPDATE OF sui soli fatti e su quelle non scatta. ⛔ La porta 2 e' SOLO della MANUALE: fn_sync_contabili_fondo_fattura inserisce e aggiorna righe sotto GENERATE che nascono VALIDATE, fn_conferma_sistemazione sotto una GENERATA in BOZZA; GENERATA e AUTOMATICA non le congela questo guard. ⚠️ La condizione della porta 2 e' il motivo 3 della check, scritta due volte perche' sull'INSERT non c'e' una riga da passare: copia dichiarata, legata dal pgTAP. ⭐ Il DELETE FISICO passa dalla stessa check, e la riga POSTATA riceve il messaggio giusto PRIMA della FK del movimento. 🔴 Una sola strada la apre: vendite.fn_applica_cancellazione_fondo_fattura — sede unica dei DELETE del giro dei fondi, primitiva riservata dietro i verbi DEFINER — cancella fisicamente le righe del suo atto sotto una GENERATA, dove la check risponde DISTINTA_NON_MANUALE, e apre la porta con la GUC transazionale zeroerp.allow_contabile_riga_delete_override uguale all'id dell'atto, richiudendola subito dopo. Il guard la onora SOLO su DELETE, solo sulle righe di quell'atto (fondo_source_id) e solo se chi scrive e' il proprietario della tabella (script.fn_is_proprietario_tabella): l'app che accende la GUC da se' non apre niente. ⚠️ Ordine alfabetico dei BEFORE ROW: parla PRIMA degli altri guard di riga; sotto una FINALE la porta 2 tace e lascia il messaggio a guard_distinta_finale, che e' la sua sede. ⚠️ Residuo dichiarato: sotto una distinta ANNULLATA (righe_lavorabili = false) nessuna scrittura passa — la quinta mossa di guard_distinta_finale rifiuta ogni UPDATE con E_RIGA_CONTABILE_DISTINTA_ANNULLATA, e su attivo -> false e DELETE parla gia' qui la check (motivo DISTINTA_ANNULLATA, prima di DISTINTA_FINALE); sotto una CHIUSA l'importo di una riga — anche POSTATA — resta modificabile da SQL, perche' li' le righe si lavorano ancora (tardiva, «Riprendi») e guard_distinta_finale lascia di proposito le altre scritture.$c$;
+
+              COMMENT ON FUNCTION pagamenti.fn_annulla_sistemazione(pagamenti.sistemazioni.id%TYPE, pagamenti.sistemazioni.motivo%TYPE) IS $c$Verbo SECURITY DEFINER dell'endpoint di annullo della sistemazione: in prima riga script.fn_guard_livello_area con TUTTO sull'area pagamenti (lo stesso controllo dell'endpoint, senza oggetto), poi il perimetro sull'atto (fuori, come un atto che non esiste: E_SISTEMAZIONE_NON_TROVATA); spegne all'ingresso le GUC delle porte delle righe contabili e del reset del lotto. Scarta un atto di sistemazione lasciandolo a REGISTRO con la ragione per cui e' stato scartato — annullare non e' cancellare, ed e' il senso stesso di avere un registro: l'eccedenza continua a comparire nell'elenco (e' vera, non se n'e' andata) e chi guarda trova scritto perche' si e' deciso di lasciarla li'. ⭐ Su un atto gia' CONFERMATA di destinazione RIPORTO fa cadere anche il FONDO che aveva creato, chiamando la primitiva vendite.fn_applica_cancellazione_fondo_fattura — l'atto e il suo effetto cadono insieme, o il registro racconta un fatto che non e' avvenuto. Il fondo cade dalla primitiva, cosi' chi annulla non deve avere anche governa_fondo_fattura. ⭐ Guida pagamenti e non vendite per tre ragioni: chi alza la bandiera la abbassa (il fondo l'ha creato fn_conferma_sistemazione), api.md vieta le chiamate laterali fra moduli di pari livello quindi la sola sede in cui i due schemi si toccano e' il database, e l'atto sta qui mentre il fondo e' la sua conseguenza. ⚠️ L'ORDINE: prima si stacca e si annulla, poi si cancella, perche' fk_sistemazioni_fondo_source e' NO ACTION e trattiene il DELETE finche' l'atto punta il fondo; la garanzia «solo se la cancellazione riesce» regge per costruzione, essendo tutto dentro una funzione: se la cancellazione solleva, l'UPDATE non sopravvive. ⚠️ Il composito dell'esito (data_esecuzione, user_esecuzione, fondo_source_id) cade INTERO, come pretende chk_sistemazioni_eseguita, e cio' che il registro perderebbe finisce sotto meta->'annullata_dopo_esecuzione' — scritta solo quando l'atto era davvero stato eseguito, perche' su una BOZZA una chiave con dentro tre null direbbe il falso. ⚠️ Cancellare il fondo RIAPRE la rigenerazione automatica: l'«atto unico» guarda se un atto esiste in qualunque stato, e il giro successivo ne rifa' uno leggendo il residuo di adesso. ⭐ Non e' una madre nel senso stretto: scrive una riga e ne cancella una in un altro schema, e sta qui perche' e' tutto SQL. ⛔ NON ricontrolla lo stato: su un atto gia' terminale parla trgfn_sistemazioni_guard_transizione, che porta il varco CONFERMATA -> ANNULLATA sul solo RIPORTO e rifiuta l'annullamento degli altri due nominando la correzione guidata. La riga si legge per sapere se c'e' un ESITO da disfare, non per rideliberare. ⭐ Il motivo si fonde e non si sovrascrive: se l'atto ne aveva gia' uno e la chiamata arriva vuota, si tiene quello che c'era.$c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: i COMMENT di prima sono quelli di 20261125-13 e 20261125-14.
+              SELECT 1;

@@ -1,6 +1,6 @@
 # Guida — Architettura Multi-Face Auth
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, frontend e analisti funzionali
 >
@@ -135,7 +135,9 @@ corso. Una veste scaduta non entra e non vede più i suoi dati.
   senza eccezioni. Le vesti esterne nascono da `anagrafiche.fn_crea_veste_portale`, che vuole sapere
   ogni volta se la veste nasce spenta o accesa: l'invito la crea spenta, ma il modello ammette anche
   una veste esterna che nasce accesa. L'utente tecnico di un processo automatico nasce con la veste
-  accesa.
+  accesa. Anche il **primo amministratore** di un'installazione nuova entra con la veste accesa:
+  `anagrafiche.fn_crea_primo_amministratore` la crea spenta attraverso `fn_crea_operatore_v2` e la
+  accende subito, perché non c'è nessuno che possa invitarlo.
 * ⭐ **Porta e profili sono due domande.** La veste accesa dice se la porta è aperta; il binding in
   `config.profili_accesso_bindings` dice cosa si può fare dentro. Un profilo (anche SUPER_ADMIN) si
   assegna anche a una veste spenta, e spegnere una veste non chiede di togliere prima i profili: li

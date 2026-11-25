@@ -1,8 +1,8 @@
 # Brief DB — Revisione dello schema `anagrafiche`: la documentazione, le segnalazioni di codice, i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-24
+## ⏭️ Chi riparte — aggiornato al 2026-11-25
 
-**Riparte: la sessione DB con T7b**, al via di Tid (preparato il 2026-11-24, analisi non iniziata). Tid ha da girare il passaggio al BE del giro 4 (§21.7); il giro 4 (T7a, `20261123-74 … -94`, §21.5) è applicato, verde e committato (`359c556da1`, 2026-11-24). Tid ha anche da girare il passaggio al BE (§20.7, sei voci). T7 è diviso in T7a, gli indirizzi, e T7b, i contatti e il catasto (Tid, 2026-11-24); l'analisi di T7a sul catalogo è scritta il 2026-11-24 (§21). Il giro 3-bis, D-T5-6 **b** (il tipo di contatto proposto, §20.8), è chiuso: `20261123-68 … -73` applicato, pgTAP verdi, doc auto-generata rigenerata, committato (`f9b1049de3`, 2026-11-24). Il giro 3, T5, è chiuso: `20261123-48 … -64` applicato su scratch e dbdev, pgTAP verdi come app, committato (2026-11-24). Poi T7, T4, T8, T12, T3, T10, T11. Il giro 2 (T2) è chiuso: dentro `anagrafiche` non c'è
+**Riparte: Tid**, con le decisioni D-T7b-1 … -7 del giro 5 (T7b, i contatti e il catasto, §22.2; analisi sul catalogo scritta il 2026-11-25, confine con T6 deciso, changeSet da `20261125-36`); poi la sessione DB col pgTAP rosso. Tid ha da girare il passaggio al BE del giro 4 (§21.7); il giro 4 (T7a, `20261123-74 … -94`, §21.5) è applicato, verde e committato (`359c556da1`, 2026-11-24). Tid ha anche da girare il passaggio al BE (§20.7, sei voci). T7 è diviso in T7a, gli indirizzi, e T7b, i contatti e il catasto (Tid, 2026-11-24); l'analisi di T7a sul catalogo è scritta il 2026-11-24 (§21). Il giro 3-bis, D-T5-6 **b** (il tipo di contatto proposto, §20.8), è chiuso: `20261123-68 … -73` applicato, pgTAP verdi, doc auto-generata rigenerata, committato (`f9b1049de3`, 2026-11-24). Il giro 3, T5, è chiuso: `20261123-48 … -64` applicato su scratch e dbdev, pgTAP verdi come app, committato (2026-11-24). Poi T7, T4, T8, T12, T3, T10, T11. Il giro 2 (T2) è chiuso: dentro `anagrafiche` non c'è
 niente da cambiare. La postura delle viste in tutto il database è decisa (Tid, 2026-11-23, §19.3) e il suo lavoro è
 di [brief-db-porte-aperte-dalla-sola-guc](brief-db-porte-aperte-dalla-sola-guc.md) §5, in un'altra sessione: qui non
 resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta di S50 (§17, riga T7). Il vaglio per temi è deciso (Tid, 2026-11-23, §17.1). Il piano da percorrere, con le fasi spuntate, è il §0.
@@ -17,7 +17,7 @@ resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta d
 | 6 | sessione DB | Il giro dei metadati, per ciò che i giri di codice non hanno già riscritto | §8 | 4 |
 | 7 | sessione DB | Archiviazione in `work-done/`, col debito dei temi spostati scritto nei loro brief | §11 | 5, 6 |
 
-**Decisioni aperte di Tid:** nessuna. D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
+**Decisioni aperte di Tid:** D-T7b-1 … D-T7b-7 (§22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
 **Da committare:** niente; il giro 4 è in `359c556da1` (2026-11-24).
 
 ## 0. Il piano da percorrere
@@ -89,7 +89,11 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] Giro 4: T7a, changeSet `20261123-74 … -94`, CSV, pgTAP adeguati, guida e note, provati sullo scratch (2026-11-24, §21.5)
   * [x] Giro 4: T7a, apply e pgTAP verdi come app (Tid); doc auto-generata rigenerata (2026-11-24)
   * [ ] Giro 4: T7a, il passaggio al BE (§21.7)
-  * [ ] Poi T7b, e un giro per tema nell'ordine di §17.1: T4, T8, T12, T3, T10, T11
+  * [x] Giro 5: T7b, il confine con T6 (Tid, 2026-11-25, §22) e l'analisi sul catalogo, guide verificate (2026-11-25, §22.1)
+  * [ ] Giro 5: T7b, le decisioni D-T7b-1 … -7 (Tid, §22.2)
+  * [ ] Giro 5: T7b, pgTAP rosso, changeSet da `20261125-36`, guida e note, provati sullo scratch (§22.3)
+  * [ ] Giro 5: T7b, apply e pgTAP (Tid); doc auto-generata rigenerata; il passaggio al BE
+  * [ ] Poi un giro per tema nell'ordine di §17.1: T4, T8, T12, T3, T10, T11
 * **Fase 9 — Il giro dei metadati** (§8)
   * [ ] I COMMENT, i commenti nei corpi e le note di seed che i giri di codice non hanno già riscritto
 * **Fase 10 — L'archiviazione** (§11)
@@ -2015,3 +2019,107 @@ fa oggi, salvo dove è detto.
 5. **`anagrafiche.fn_search_indirizzi_dettaglio` non c'è più**. Il BE non la chiama: niente da cambiare.
 6. **La colonna `geoloc`** di `indirizzi` e `indirizzi_soggetti` è `NULL` per un indirizzo col dettaglio. Il BE non la
    legge (nessun `geoloc` in `backend/` né in `frontend/src`): niente da cambiare.
+
+## 22. Giro 5 — T7b, i contatti e il catasto (2026-11-25: analisi sul catalogo, decisioni per Tid)
+
+Il perimetro è S8, S46, S11, S47 e il pgTAP `create-soggetto-gestori.sql` (§21, testa). **Il confine con T6** è
+quello proposto e accettato da Tid il 2026-11-25: T7b tiene la regola del contatto predefinito e la lettura;
+restano a T6 il contatto obbligatorio (`trgfn_soggetti_guard_soggetto_contatti`, «almeno un contatto», S45 e la
+riga di S8 che lo nomina), il puntatore `soggetti.default_contatto_id` (che non si svuota mai e che a ogni scrittura
+riscrive il soggetto) e l'ultimo contatto cancellato. I numeri dei changeSet partono da `20261125-36` (Tid,
+2026-11-25). Analisi letta sul catalogo di dbdev il 2026-11-25; sul ramo `origin/dev/backend-tid` si è guardato
+solo chi chiama, in sola lettura.
+
+**Guide verificate** (`scripts/guide_coinvolte.py --oggetti`, 15 oggetti, 2026-11-25; nessun orfano):
+
+| Guida o nota | Esito |
+| --- | --- |
+| [gestione-dei-contatti](../../guide/gestione-dei-contatti.md) | **contraddetta su tre punti**, decide Tid: «la chiave è il soggetto più il contesto» (D-T7b-1), «che cosa la regola non fa» (D-T7b-2), il contatto con l'istanza senza ruolo ammesso (D-T7b-3). **Indietro** su `fn_get_contatti` senza reparto (D-T7b-4) e sull'ordine di `fn_get_contatto_default` fra tipi diversi |
+| nota `_contatto-predefinito` | **contraddetta** con D-T7b-1 e D-T7b-2: è la stessa regola della guida, scritta dal giro 0c leggendo il corpo |
+| [catasto-delle-istanze](../../guide/catasto-delle-istanze.md) | **contraddetta** nel §«Che cosa oggi non copre» (S11, D-T7b-6, D-T7b-7): li descrive come limiti, non come scelte. **Coerente** sull'idempotenza del clone, che il brief vicino della catena tiene (§22.1, S47) |
+| [generazione-cliente](../../guide/generazione-cliente.md), [gestione-delle-istanze-utility](../../guide/gestione-delle-istanze-utility.md) | **coerenti**: nominano il clone al subentro e il legame istanza-unità, che il giro non cambia nella sostanza; da rileggere a giro fatto per il trigger su INSERT (D-T7b-6) |
+| [gestione-degli-indirizzi](../../guide/gestione-degli-indirizzi.md), [risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md), [soggetti-e-ruoli-anagrafici](../../guide/soggetti-e-ruoli-anagrafici.md) | **coerenti**: nominano `contatti` o `istanze_utilities` per altro (la nascita del primo contatto, il luogo dell'istanza) |
+
+**La storia delle decisioni.** La chiave «soggetto più contesto» del predefinito nasce il 2025-06-23 (`748ee6b95c`,
+«Fix Function per aggiunta contatti context»), senza un brief. Il refactor del 2026-03-25
+([refactor-istanza-indirizzi-conti-contatti](../work-done/2026/refactor-istanza-indirizzi-conti-contatti.md) §7) ha
+solo rinominato il contesto `utility` in `istanza`. Lo stesso refactor, per il **conto bancario** predefinito, ha
+scritto la chiave «ruolo, istanza, uso» con due indici unici parziali. Le frasi della guida e della nota sono del
+giro 0c (2026-11-22), lette sul corpo. **Nessuno ha mai scelto che due ruoli condividano un predefinito**: come per
+D-T7a-1, la guida fotografa il codice. Il catasto nasce il 2025-12-16 (`1b18c56b64`); «un'istanza, un'unità» è il
+modello dichiarato dalla guida, e nessun vincolo lo scrive. Sul clone e sulla catena c'è il §4 di
+[brief-db-catena-istanze-pdp](brief-db-catena-istanze-pdp.md) (aperto, cinque decisioni di Tid): un'istanza che ha già
+l'unità la tiene anche se il padre cambia, «sullo stesso PDP l'immobile è lo stesso».
+
+### 22.1 Che cosa dice il catalogo, segnalazione per segnalazione
+
+| # | Esito | Che cosa dice il catalogo |
+| --- | --- | --- |
+| S8 (la chiave) | **cambio di modello** | `trgfn_contatti_set_default_contatto` toglie il segno a ogni altro predefinito con lo stesso `soggetto_id` e lo stesso `default_context`. Il cliente e il fornitore dello stesso soggetto condividono un predefinito: il primo contatto del fornitore non nasce predefinito, perché il contesto `ruolo` ne ha già uno (quello del cliente), e marcare il contatto del fornitore toglie il segno a quello del cliente. Il lettore vero ne dipende: `PortaleRepository.get_email_contatto_suggerita` (BE) sceglie fra i contatti del ruolo «il principale, poi quello `is_default`». La cascata di `fn_get_contatti` è per ruolo, il conto bancario predefinito è per ruolo e istanza. D-T7b-1 |
+| S8 (nessun vincolo) | **difetto** | La regola «al più un predefinito» sta solo nel trigger: nessun indice unico la scrive. Due contatti nati insieme in due transazioni in un contesto vuoto contano zero predefiniti tutti e due, e nascono predefiniti tutti e due. Va con D-T7b-1, che dice su quale chiave |
+| S8 (il segno tolto) | **difetto: dipende da una scrittura incidentale** | Il ramo «nessun predefinito nel contesto» scatta anche su UPDATE. Togliere il segno all'unico predefinito lo lascia senza; la prossima modifica di **qualunque** contatto del contesto (anche una correzione del telefono) lo fa tornare predefinito, scelto da quale contatto si è scritto per primo. Cancellare il predefinito non promuove nessuno. È la regola di `linee-guida-trigger` §«La fase» a dire la forma: un default che propone un valore mancante vale all'INSERT, e in modifica un valore tolto si rifiuta, non si rimpiazza. D-T7b-2 |
+| S8 (istanza senza ruolo) | **difetto di modello** | Un contatto con l'istanza e senza il ruolo è ammesso, e nessuno dei tre indici unici lo copre. In `fn_get_contatti`, chiesto un ruolo, il suo livello è il 3, come un contatto del soggetto. Il BE crea i contatti d'istanza solo dal ruolo (`create_contatto_ruolo`): la forma la produce solo una scrittura diretta. L'istanza non ha un ruolo suo (`istanze_utilities` porta il soggetto). D-T7b-3 |
+| S8 (`fn_get_contatti` senza reparto) | **difetto** | Il filtro `c.unita_organizzativa_id IS NULL OR … IS NOT DISTINCT FROM p_unita_organizzativa_id` con il parametro `NULL` scarta ogni contatto che ha un reparto. Il reparto è facoltativo e dice dove sta il referente: un soggetto il cui solo contatto amministrativo è nel reparto «amministrazione» non ha contatti per chi non chiede il reparto (il portale non lo chiede). D-T7b-4 |
+| S8 (`fn_get_contatto_default` fra tipi) | **difetto** | Fra i candidati (uno per tipo) possono esserci più predefiniti, di contesti diversi: oggi vince l'id più basso, cioè l'ordine di nascita e non il contesto. Il più specifico (istanza, poi ruolo, poi soggetto) è la stessa regola della cascata. Correzione senza scelta |
+| S46 (il doppione) | **difetto** | Il secondo contatto dello stesso tipo nello stesso contesto arriva dal verbo come `23505` grezzo. Il BE lo traduce per nome del vincolo (`VINCOLI_CONTATTO`, `create_with_constraint_mapping`), su creazione e modifica; le madri del DB che chiamano il verbo (`fn_crea_cliente`, `fn_crea_fornitore`, `fn_crea_soggetto_pf`/`_pg`, `fn_crea_utente_tecnico`) no. Il precedente è del giro 3 (S4): il verbo traduce la violazione del **suo** indice, per nome, in un codice col campo. D-T7b-5 |
+| S46 (il tipo) | **difetto** | `(v_campi ->> 'tipo_contatto_id')::integer` dà il `22P02` del cast con un tipo non numerico; un tipo che non esiste arriva come `23503` della FK. Sono i casi di S49 per il tipo d'indirizzo (giro 4, `E_TIPO_INDIRIZZO_NON_TROVATO`). Correzione senza scelta: il non numerico è `E_CONTATTO_INCOMPLETO` sul campo, l'inesistente un codice nuovo sul campo |
+| S46 (`default_context`) | **difetto** | È fra le chiavi ammesse, e il trigger lo sostituisce sempre. Nessun chiamante lo passa (né il DB né il BE): esce dall'elenco, e chi lo passa ha `E_CAMPO_NON_AMMESSO` |
+| S11 | **difetto** | Nessun vincolo unico su `istanze_utilities.catasto_unita_immobiliare_id`: un'istanza agganciata a mano all'unità di un'altra la condivide, contro il modello che la guida dichiara («mai condivisa»). La colonna non ha nemmeno un indice. Si chiude con un indice unico (i `NULL` restano liberi: un'istanza senza unità è ammessa). Correzione senza scelta |
+| S47 (INSERT con la precedente) | **difetto** | `trg_iu_z50_clone_catasto_from_parent_aft_upd` è solo `AFTER UPDATE OF parent_istanza_id`: un'istanza che nasce con la precedente già scritta non riceve il clone. La colonna è scrivibile all'INSERT. D-T7b-6 |
+| S47 (la scrittura incidentale) | **difetto: dipende da una scrittura incidentale** | `UPDATE OF` scatta anche a valore uguale (`linee-guida-trigger` §«Che cosa fa davvero `UPDATE OF`»), e il ramo delle istanze fittizie di `trgfn_clienti_set_parent_istanza` riscrive `parent_istanza_id` senza confronto. Un'unità comparsa sulla precedente dopo il subentro arriva quindi alla prossima scrittura del cliente fittizio, e non arriva mai per un PDP. D-T7b-6 |
+| S47 (la catena che cambia dopo il clone) | **coerente col brief vicino** | L'istanza che ha già l'unità la tiene: è il §4 di `brief-db-catena-istanze-pdp`, che lo motiva sul modello. Si scrive nella guida come scelta, non come limite. Se quel brief decide diversamente, cambia lì |
+| S47 (la ponte non si pulisce) | **difetto** | `trgfn_iu_sync_catasto_unita_indirizzo` aggiunge la coppia (unità, civico) a ogni cambio dell'una o dell'altro e non toglie la vecchia. La coppia lasciata tiene acceso il guard ATTIVO del civico, che non si spegne più. La ponte è scrivibile dall'app (`INSERT`, `UPDATE`, `DELETE`): il modello ammette coppie scritte a mano, molti a molti. D-T7b-7 |
+| S47 (l'unità orfana) | **difetto** | Un'istanza che passa a un'altra unità lascia la prima senza nessuno che la nomini: nessuna FK vi arriva da altrove, e la si raggiunge solo dallo storico. Con S11 un'unità è di una istanza sola. D-T7b-7 |
+| `create-soggetto-gestori.sql` | **da diagnosticare con la prova** | È nelle due baseline come `ASSERZIONE`. Il giro 0d ha letto che il test 4 accetta qualunque `P0001`, mentre il guard solleva `E_GESTORE_SINGLETON_VIOLATO`: va asserito il codice (`throws_like` o il controllo del codice). Quale asserzione è rossa oggi, e se lo è ancora dopo il giro 4 che ha toccato gli indirizzi obbligatori, lo dice la prima prova sullo scratch (`prova_changeset.py --pgtap`) |
+
+**Fatti datati, non motivi** (dbdev, 2026-11-25): nessun contatto con l'istanza e senza ruolo; sei soggetti con un
+predefinito di contesto `ruolo`; nessun soggetto con contatti su due ruoli diversi; nessuna unità catastale nominata
+da due istanze. Servono a sapere se la migrazione ha righe da sistemare, non a decidere la regola.
+
+### 22.2 Le decisioni per Tid
+
+| # | Domanda | Proposta |
+| --- | --- | --- |
+| D-T7b-1 | **Di che cosa è predefinito un contatto?** Oggi del soggetto più il contesto: due ruoli dello stesso soggetto ne condividono uno | **Della riga di contesto**: soggetto, ruolo e istanza, come il conto bancario predefinito. Un indice unico parziale `NULLS NOT DISTINCT (soggetto_id, soggetto_ruolo_id, istanza_utility_id) WHERE is_default` scrive la regola, e il trigger la segue. `default_context` resta, come etichetta del livello. Le righe di oggi: in ogni contesto con contatti e senza predefinito diventa predefinito il primo nato, che è la regola della nascita applicata all'indietro. Si riscrivono guida e nota |
+| D-T7b-2 | **Il segno tolto e il predefinito cancellato** | **Un contesto con contatti ha sempre il suo predefinito, e chi lo cambia lo dice.** Il primo nasce predefinito (solo all'INSERT); si cambia marcando un altro. Togliere il segno all'unico predefinito è rifiutato (codice nuovo, campo `is_default`); cancellare il predefinito di un contesto che ha altri contatti è rifiutato (codice nuovo: «marca prima un altro»); cancellare l'ultimo contatto del contesto passa. Nessuna promozione automatica, che sceglierebbe per id. ⚠️ **Ricaduta BE**: oggi il BE non scrive `is_default` (né in creazione né in `CONTATTO_UPDATE_COLS`), quindi l'operatore non potrebbe cancellare un predefinito che ha accanto altri contatti. Il BE deve esporre «rendi predefinito». In alternativa (b): cancellare il predefinito lascia il contesto senza, e il primo contatto che nasce dopo lo diventa; il segno tolto lascia il contesto senza, e nessuna modifica lo rimette |
+| D-T7b-3 | **Un contatto d'istanza senza ruolo** | **Non si scrive**: `CHECK (istanza_utility_id IS NULL OR soggetto_ruolo_id IS NOT NULL)`. Il contatto d'istanza è il referente di quel ruolo per quell'istanza; i tre indici unici e la cascata coprono così ogni forma. L'alternativa è un quarto indice e un livello suo nella cascata, per un referente dell'istanza «in qualunque ruolo» |
+| D-T7b-4 | **`fn_get_contatti` senza reparto** | Senza reparto contano **tutti** i contatti; col reparto contano quelli del reparto e quelli senza, e vince il reparto, come oggi. Il portale e ogni lettore che non chiede il reparto trovano così il referente che oggi sparisce |
+| D-T7b-5 | **Il doppione per tipo** | **Il verbo lo traduce**, come S4 al giro 3: `fn_crea_contatto` prende la violazione dei tre indici per nome (`GET STACKED DIAGNOSTICS`) e solleva un codice nuovo col campo `tipo_contatto_id` e il livello. La modifica diretta del BE resta tradotta dal BE (non è un verbo, e questo giro non ne scrive uno): per la creazione la traduzione del BE diventa una seconda sede e si può togliere |
+| D-T7b-6 | **Quando si clona il catasto** | **Quando nasce il legame con la precedente**: `AFTER INSERT OR UPDATE`, `WHEN` con `OLD.parent_istanza_id IS DISTINCT FROM NEW.parent_istanza_id` (all'INSERT basta la precedente scritta), sempre con unità vuota e civico presente. Un'unità che compare dopo sulla precedente non arriva: il clone copia ciò che la precedente ha quando il legame nasce, e la rettifica dell'istanza nuova si fa su di lei. Si scrive nella guida come scelta |
+| D-T7b-7 | **La ponte e l'unità lasciata** | (a) Quando l'istanza cambia civico o unità, la coppia (unità di prima, civico di prima) esce dalla ponte, se nessun'altra istanza ha la stessa coppia: è la coppia che l'istanza aveva portato, e con S11 l'unità era sua. Le coppie scritte a mano con altri civici restano. (b) Un'unità che nessuna istanza nomina più si cancella nello stesso momento: lo storico continuo di `catasto_unita_immobiliari` tiene la versione, la ponte la segue in cascata. L'alternativa a (b) è lasciarla e darle un lettore (le unità senza istanza), ma un'unità senza istanza non ha nessuno che la corregga |
+
+S8 (`fn_get_contatto_default` fra tipi), S46 (il tipo, `default_context`) e S11 sono correzioni senza scelta: entrano
+nel giro qualunque cosa decida Tid sul resto.
+
+### 22.3 Il piano del giro, dopo le decisioni
+
+* **pgTAP rosso prima**, come app dove si può, uno per caso costruito:
+  * due ruoli dello stesso soggetto, ciascuno col suo primo contatto: tutti e due predefiniti; marcare il secondo
+    contatto del fornitore non tocca il cliente (D-T7b-1);
+  * il segno tolto all'unico predefinito, la modifica di un altro contatto dopo, la cancellazione del predefinito
+    con un altro accanto e quella dell'ultimo (D-T7b-2);
+  * il contatto d'istanza senza ruolo (D-T7b-3);
+  * `fn_get_contatti` senza reparto con un solo contatto in un reparto (D-T7b-4);
+  * `fn_get_contatto_default` con il predefinito del ruolo nato dopo quello del soggetto;
+  * `fn_crea_contatto`: il doppione, il tipo non numerico, il tipo inesistente, `default_context` passato (S46);
+  * due istanze sulla stessa unità (S11);
+  * l'istanza che nasce con la precedente; la riscrittura della precedente uguale dopo un'unità comparsa (D-T7b-6);
+  * il cambio di civico e quello di unità, la coppia e l'unità di prima, e lo spegnimento del civico di prima
+    (D-T7b-7);
+  * `create-soggetto-gestori.sql`: la prova dice che cosa è rosso; il test 4 asserisce il codice.
+* **Le letture prima di scrivere**: `linee-guida-trigger.md` letta per intero il 2026-11-25; di `linee-guida-sql` le
+  §5, 5d, 5f, 5g, 7f, 8.4, 8.4-bis e 11.5 (la ponte e `istanze_utilities` hanno trigger generati: niente DDL su di
+  loro). Prima di toccare `trgfn_contatti_set_default_contatto` si cercano i suoi pgTAP (`test-contatti-soggetto-
+  cliente`, `test-fn-crea-contatto-v1`, `soggetti-con-contatti`, `create-soggetto-bank-branches`,
+  `test-istanza-dello-stesso-soggetto-v1`) e i seed di `80_data` che scrivono `contatti` (`20260107-12`, `-13`).
+* **Forma**: il trigger del predefinito non ha fase nel nome (`trg_contatti_set_default_contatto_ins_upd`, T11). Se
+  il giro lo rimonta, lo rimonta per funzione con la fase (`linee-guida-trigger` §«Il nome del trigger»), e la voce
+  esce da T11.
+* **Ricadute sul BE**, in un passaggio solo, a giro applicato:
+  * «rendi predefinito» nel form dei contatti, se D-T7b-2 è la proposta; i due codici nuovi del predefinito;
+  * il codice del doppione dalla creazione, e la traduzione per nome che si può togliere per la creazione;
+  * i codici del tipo di contatto;
+  * il cambio di forma di `fn_get_contatti` senza reparto, che il portale legge;
+  * **garanzia ritirata**, se D-T7b-1 passa: «il contesto `ruolo` di un soggetto ha al più un predefinito» diventa
+    «ogni ruolo ha il suo». La richiesta è nella forma di AGENTS: censire i lettori di `contatti.is_default` e
+    `default_context` che contano su quella proprietà.

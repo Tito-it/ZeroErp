@@ -6,6 +6,7 @@
 # Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato e mergiato, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/pagamenti/20261125-27.
 # L'ANNULLO DELLA SISTEMAZIONE: DEFINER, COL LIVELLO D'AREA E IL PERIMETRO
 #   pagamenti.fn_annulla_sistemazione
 #   Brief: brief-db-porte-aperte-dalla-sola-guc §13.2 (giro 8; D-A a, D-U a di Tid).

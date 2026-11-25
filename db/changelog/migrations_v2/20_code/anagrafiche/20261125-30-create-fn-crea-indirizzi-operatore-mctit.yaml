@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GLI INDIRIZZI DI UN OPERATORE: RESIDENZA, E DOMICILIO FISCALE CHE SE MANCA E' LA RESIDENZA
+#   anagrafiche.fn_crea_indirizzi_operatore (nuova)
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §4.9 (R-DB-K1).
+#
+# -- PERCHE' -----------------------------------------------------------------
+#   La regola «il domicilio fiscale, se non e' dato, e' la residenza» stava nel
+#   passo 4 di anagrafiche.fn_crea_operatore_v2, sugli id di dettaglio. Il verbo
+#   di primo impianto (20261125-32) la chiede sugli indirizzi in jsonb: e' la
+#   seconda copia, quindi si estrae (regola del 2) e fn_crea_operatore_v2 la
+#   chiama nello stesso giro (20261125-31).
+#
+# -- CHE COSA FA ---------------------------------------------------------------
+#   Riceve i due indirizzi nella forma di anagrafiche.fn_crea_indirizzo_soggetto
+#   (libero, dettaglio gia' risolto, via da risolvere), SENZA il tipo: il tipo lo
+#   dice il parametro, e un oggetto che lo porta e' una chiamata non valida.
+#   Senza residenza non scrive niente: e' il comportamento del passo 4 di
+#   fn_crea_operatore_v2, che si conserva. INVOKER: scrive coi privilegi e la RLS
+#   di chi la chiama.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261125-30-create-fn-crea-indirizzi-operatore-mctit.yaml
+
+  - changeSet:
+      id: 20261125-30-create-fn-crea-indirizzi-operatore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_crea_indirizzi_operatore: residenza e domicilio fiscale di un operatore,
+        il domicilio fiscale che manca e' la residenza. Brief: brief-db-porte-aperte-dalla-sola-guc §4.9.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_indirizzi_operatore(
+                  p_soggetto_id       anagrafiche.soggetti.id%TYPE,
+                  p_residenza         jsonb,          -- un indirizzo nella forma di fn_crea_indirizzo_soggetto: nessuna colonna
+                  p_domicilio_fiscale jsonb DEFAULT NULL  -- idem
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  c_chi CONSTANT text := 'anagrafiche.fn_crea_indirizzi_operatore';
+                  v_el  jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   I due indirizzi di un operatore: la residenza e il
+                  --   domicilio fiscale, che se non e' dato e' la residenza.
+                  --
+                  -- Regole:
+                  --   - senza residenza non si scrive niente (anche se il
+                  --     domicilio fiscale c'e');
+                  --   - il tipo lo dice il parametro: un oggetto che porta
+                  --     tipo_indirizzo_id o tipo_indirizzo_codice_interno e'
+                  --     una chiamata non valida;
+                  --   - la forma dell'indirizzo la giudica
+                  --     fn_crea_indirizzo_soggetto, che scrive le righe.
+                  -- =========================================================
+                  IF p_residenza IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  FOREACH v_el IN ARRAY ARRAY[p_residenza, p_domicilio_fiscale] LOOP
+                      IF v_el IS NOT NULL
+                         AND (jsonb_typeof(v_el) <> 'object'
+                              OR v_el ? 'tipo_indirizzo_id'
+                              OR v_el ? 'tipo_indirizzo_codice_interno') THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'anagrafiche', c_chi, 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                              jsonb_build_object('soggetto_id', p_soggetto_id),
+                              NULL::uuid,
+                              c_chi,
+                              'ogni indirizzo e'' un oggetto senza il tipo, che lo dice il parametro');
+                      END IF;
+                  END LOOP;
+
+                  PERFORM anagrafiche.fn_crea_indirizzo_soggetto(
+                      p_soggetto_id,
+                      p_residenza || jsonb_build_object('tipo_indirizzo_codice_interno', 'RES'));
+
+                  PERFORM anagrafiche.fn_crea_indirizzo_soggetto(
+                      p_soggetto_id,
+                      COALESCE(p_domicilio_fiscale, p_residenza)
+                          || jsonb_build_object('tipo_indirizzo_codice_interno', 'DOMFISC'));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_crea_indirizzi_operatore(anagrafiche.soggetti.id%TYPE, jsonb, jsonb) IS $c$Scrive i due indirizzi di un operatore: la residenza (RES) e il domicilio fiscale (DOMFISC), che se non e' dato e' la residenza. Ogni indirizzo e' un oggetto nella forma di anagrafiche.fn_crea_indirizzo_soggetto (libero, dettaglio gia' risolto, via da risolvere), senza il tipo: il tipo lo dice il parametro, e un oggetto che porta tipo_indirizzo_id o tipo_indirizzo_codice_interno, o che non e' un oggetto, e' E_SCRIPT_CHIAMATA_NON_VALIDA. Senza residenza non scrive niente, anche se il domicilio fiscale c'e'. La chiamano anagrafiche.fn_crea_operatore_v2 e anagrafiche.fn_crea_primo_amministratore. INVOKER.$c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_crea_indirizzi_operatore(anagrafiche.soggetti.id%TYPE, jsonb, jsonb);

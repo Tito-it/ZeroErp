@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT dei verbi del lotto e del loro guard di passaggio al presente.
+#   vendite.fn_escludi_documento_da_giro   (da 20261125-18)
+#   vendite.fn_annulla_lotto_da_draft      (da 20261125-19)
+#   vendite.fn_riporta_lotto_a_draft       (da 20261125-20)
+#   vendite.fn_guard_passaggio_lotto       (da 20261125-21)
+#   Brief: brief-db-porte-aperte-dalla-sola-guc (giro 1-7), 2026-11-25.
+#
+#   Quei changeSet hanno riscritto i COMMENT portandosi dietro la cronaca di
+#   prima (rev, brief, id di changeSet, sigle di decisione, date) e
+#   aggiungendone di nuova: linee-guida-sql §5d li vuole al presente. Li ha
+#   fermati scripts/guardrail_comment_al_presente.py a file gia' applicati e
+#   mergiati: non si riscrivono (checksum), si riscrivono gli oggetti qui. I
+#   file applicati dichiarano in testa l'eccezione, che rimanda a questo.
+#   Solo COMMENT ON: nessun corpo cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261125-29-update-comment-porte-sola-guc-lotto-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261125-29-update-comment-porte-sola-guc-lotto-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I COMMENT dei verbi DEFINER del lotto (escludi documento, annulla, riporta a DRAFT) e
+        di vendite.fn_guard_passaggio_lotto riscritti al presente, senza cronaca.
+        brief-db-porte-aperte-dalla-sola-guc.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 4
+            sql: >
+              SELECT count(DISTINCT p.proname) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname IN ('fn_escludi_documento_da_giro',
+                                   'fn_annulla_lotto_da_draft',
+                                   'fn_riporta_lotto_a_draft',
+                                   'fn_guard_passaggio_lotto');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_escludi_documento_da_giro(vendite.fatturazione_lotti.id%TYPE, vendite.fatturazione_lotti_esiti.gruppo_key%TYPE, vendite.fatturazione_lotti_esiti.uscita_motivo%TYPE) IS $c$Toglie UN documento rotto dal giro di fatturazione, cosi' che il lotto possa ripartire con quelli che restano. Funzione MADRE: una sola SELECT, atomica per costruzione. Verbo SECURITY DEFINER: in prima riga script.fn_guard_azione con reset_lotto_fattura_draft (l'azione dell'endpoint), poi il perimetro sul lotto (fuori: E_LOTTO_NON_TROVATO); spegne all'ingresso le GUC delle porte. ⭐ Non riscrive il predicato: CHIAMA script.fn_check_documento_escludibile_da_giro — la stessa da cui il frontend prende il motivo del pulsante spento — e solleva il codice del PRIMO motivo, perche' l'ordine dell'array e' il contratto. ⭐ Compone vendite.fn_elimina_fattura_da_lotto invece di riscriverne la semantica (togliere = cancellare, le attivita' tornano NON_EMESSA). ⭐ Se la bozza copre PIU' documenti si cancella lo stesso e li TRASCINA — tornano da emettere, con l'esito riportato a PENDING e non a ESCLUSO (non sono usciti da niente) ne' lasciato a COMPLETED (non hanno piu' una fattura). Rifiutare su bozza condivisa lascerebbe bloccati anche i documenti di un'ALTRA bozza. ⚠️ I trascinati si leggono PRIMA di cancellare: dopo, il legame non esiste piu'. ⚠️ uscita_quando/uscita_da le deriva il trigger dalla GUC, non questa funzione. ⛔ Il perimetro (fatturazione_lotti_gruppi) non si tocca: il lotto ricorda di aver preso in carico anche il documento uscito.$c$;
+
+              COMMENT ON FUNCTION vendite.fn_annulla_lotto_da_draft(vendite.fatturazione_lotti.id%TYPE) IS $c$Verbo SECURITY DEFINER: legge il lotto nel perimetro, e con lui tutte le sue fatture (fuori: E_LOTTO_NON_TROVATO, come un lotto che non esiste), poi il permesso del passaggio verso lo stato d'annullo con vendite.fn_guard_passaggio_lotto (l'azione della riga, o il livello TUTTO sull'area vendite: lo stesso controllo dell'endpoint). Spegne all'ingresso le GUC delle porte; la pulizia riservata gira da proprietario e apre la porta del reset solo mentre lavora. Annullo di un lotto in DRAFT (MASSIVO e GIORNALIERO): precondizioni da script.fn_check_lotto_annullabile, cancella le fatture pre-fiscali e ripristina le attivita' (fn_cleanup_fatture_by_ids), chiude i task run con esito ANNULLATO, porta il lotto a CHIUSO/ANNULLATA senza toccare stato_lotto. Lo stato fiscale lo scrive il verbo del lotto, vendite.fn_cambia_stato_lotto, dopo la pulizia (la porta non lascia passare l'UPDATE); il passaggio DRAFT -> ANNULLATA non chiede un'azione. Lo stato d'annullo viene dal vocabolario (script.fn_stato_abortito_id), non dal letterale ANNULLATA. ⭐ Chiude anche gli ESITI — ogni riga di vendite.fatturazione_lotti_esiti non ancora ESCLUSO passa a ESCLUSO con uscita_motivo «Annullo del lotto <codice>» (timbro dal trigger) — e scrive una riga I nel giornale (fase ANNULLO_LOTTO) col numero di documenti usciti. Un lotto annullato e' VUOTO: nessun controllo deve escluderlo. ⚠️ La sorella fn_riporta_lotto_a_draft non chiude gli esiti, ed e' voluto: il lotto resta vivo e il giro dopo li riscrive. Il backend legge le cinque colonne del risultato per posizione.$c$;
+
+              COMMENT ON FUNCTION vendite.fn_riporta_lotto_a_draft(vendite.fatturazione_lotti.id%TYPE) IS $c$Verbo SECURITY DEFINER: legge il lotto nel perimetro, e con lui tutte le sue fatture (fuori: E_LOTTO_NON_TROVATO, come un lotto che non esiste), poi il permesso del passaggio verso lo stato iniziale con vendite.fn_guard_passaggio_lotto (l'azione della riga, o il livello TUTTO sull'area vendite: lo stesso controllo dell'endpoint). Sul lotto gia' in bozza non c'e' passaggio: conta il livello sull'area e si fa la sola pulizia. Spegne all'ingresso le GUC delle porte; la pulizia riservata gira da proprietario e apre la porta del reset solo mentre lavora. Rollback di un lotto PRE-FISCALE (DRAFT o EMESSA) verso DRAFT, per MASSIVO e GIORNALIERO: si torna indietro per QUALSIASI motivo, e cio' che resta vietato e' numerare un documento incoerente (lo ferma il guard della numerazione). Le precondizioni arrivano da script.fn_check_lotto_riportabile_a_draft, la STESSA che alimenta enabled/reasons di script.fn_available_actions_lotto, cosi' il pulsante e la funzione non possono divergere. ⚠️ Rifiuta se una sola fattura e' gia' NUMERATA (E_LOTTO_FATTURE_NUMERATE): il controllo guarda il numero e non lo stato. Delega TUTTA la pulizia delle tabelle a fn_cleanup_fatture_by_ids e si occupa dello stato del LOTTO: stato fiscale a DRAFT, stato_operativo APERTO, riaperto_il e stato di ESECUZIONE. Lo stato fiscale lo scrive il verbo del lotto, vendite.fn_cambia_stato_lotto, DOPO la pulizia (la porta non lascia passare l'UPDATE), col permesso della riga del passaggio (numera_fatture_lotti). Lo stato iniziale viene dal vocabolario (config.stati_doc_fiscale.iniziale), non dal letterale DRAFT. 🔴 Chiude ad ANNULLATO tutti i task_run attivi del lotto, perche' fn_resolve_lotto_task_execution_mode legge l'ultimo task_run e su COMPLETATO risponde SKIP — senza questo passo il lotto riaperto rilancerebbe A VUOTO, senza errori e senza task_run nuovi. ⚠️ Non basterebbe attivo = false: quella SELECT non filtra su attivo. Le corse non si cancellano: si chiudono con esito, e il giro nuovo apre tentativo = MAX+1, quindi la storia resta leggibile per intero. 🔴 L'atto entra nel GIORNALE: LOTTO_RIAPERTO in vendite.event_log via fn_log_event, severity WARN, payload coi contatori e con lo stato fiscale di partenza. Registro scelto per DUE proprieta' strutturali che fatturazione_lotti_log non ha: append-only per trigger e codice a catalogo (li' c'e' disabilitato, e un atto che distrugge documenti non deve poter essere silenziato). WARN e non INFO perche' vw_giornale_entita mappa TASK_RUN ANNULLATO -> WARN: la causa non puo' stare piu' in basso del proprio effetto. ⛔ Terza ragione della scelta, ed e' di comportamento: le segnalazioni si compongono da fatture_log UNION fatturazione_lotti_log e da event_log si legge la sola ancora PIPELINE_STARTED, quindi questa riga NON entra nel conteggio su cui il runner decide l'avanzamento — un atto registrato non deve diventare un atto che blocca. ⚠️ La scrittura non introduce un ramo di fallimento: emittente_soggetto_ruolo_id e' NOT NULL su fatturazione_lotti e l'esistenza del lotto e' gia' garantita dal check. Il pg_advisory_xact_lock resta DOPO le validazioni: una chiamata invalida non deve serializzare gli altri chiamanti. Sorella di fn_annulla_lotto_da_draft, che invece CHIUDE il lotto portandolo ad ANNULLATA.$c$;
+
+              COMMENT ON FUNCTION vendite.fn_guard_passaggio_lotto(config.user_override_azioni.auth_user_id%TYPE, vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE, config.stati_doc_fiscale.id%TYPE) IS $c$Il permesso di un passaggio di stato fiscale del lotto, come lo controlla l'endpoint: l'azione della riga del passaggio (script.fn_doc_passaggio) se c'e' (script.fn_guard_azione), altrimenti, riga senza azione o nessuna riga, il livello TUTTO sull'area vendite (script.fn_guard_livello_area). Rifiuto: E_PERMESSO_NEGATO. Non giudica la matrice: lo fanno fn_guard_passaggio e il guard di transizione. La chiamano vendite.fn_annulla_lotto_da_draft e vendite.fn_riporta_lotto_a_draft, verbi DEFINER, dopo aver letto il lotto nel perimetro.$c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: i COMMENT di prima sono quelli di 20261125-18, -19, -20 e -21.
+              SELECT 1;

@@ -24,6 +24,8 @@
 > **Vedi anche** — funzioni e trigger DB:
 >
 > * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — crea un operatore: credenziale, soggetto, risorsa umana e veste spenta
+> * [anagrafiche.fn_crea_primo_amministratore](/dbzero/anagrafiche/funzioni/fn_crea_primo_amministratore) — il primo SUPER_ADMIN di un'installazione nuova, con la veste accesa
+> * [anagrafiche.fn_crea_indirizzi_operatore](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_operatore) — residenza e domicilio fiscale dell'operatore
 > * [anagrafiche.fn_crea_risorsa_umana_v2](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana_v2) — crea la risorsa umana e, se c'è la credenziale, la veste `OPERATORE`
 > * [anagrafiche.fn_crea_auth_user](/dbzero/anagrafiche/funzioni/fn_crea_auth_user) — crea la credenziale Django quando l'email non ne ha una
 > * [anagrafiche.fn_crea_veste_portale](/dbzero/anagrafiche/funzioni/fn_crea_veste_portale) — crea una veste di portale o di shop
@@ -448,6 +450,19 @@ assegna una password all'operatore — nemmeno alla creazione: l'account nuovo n
 password utilizzabile, il sistema genera un token monouso, lo invia via email, e l'operatore
 sceglie la propria password attivando l'accesso. Questa scelta elimina il rischio
 di password condivise, annotate su post-it o inviate in chiaro su canali non sicuri.
+
+### Il primo amministratore di un'installazione nuova
+
+L'invito presuppone un amministratore che inviti. Il primo di un'installazione nuova non ce l'ha: lo crea un comando
+che si lancia una volta, dopo l'installazione, e che chiama
+[`anagrafiche.fn_crea_primo_amministratore`](/dbzero/anagrafiche/funzioni/fn_crea_primo_amministratore). Chi lo lancia
+è la persona che diventerà amministratore, e la password la sceglie lei: è l'unico account che nasce con una password
+e con la veste già accesa, senza invito, perché non c'è nessuno che possa mandarlo.
+
+La strada si apre solo finché nessun accesso ha mai avuto il profilo SUPER_ADMIN, e si chiude da sola appena nasce il
+primo. Non serve a recuperare un sistema che ha perso i suoi amministratori: come se ne esce lo dice
+[«Resta sempre almeno un SUPER_ADMIN che non scade»](/dbzero/anagrafiche/_ultimo-super-admin). Gli amministratori
+successivi li crea un SUPER_ADMIN, con l'invito qui sotto.
 
 ### Invito operatore
 
