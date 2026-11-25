@@ -27,16 +27,16 @@ Indice test eseguiti:
    ordinavano il vuoto al contrario (tre, censite il 2026-11-24).
 3) test_la_scansione_vede_le_tre_forme_della_sentinella
    La prova che il 2 non e' verde a vuoto.
-4) test_il_debito_della_sentinella_si_chiude_con_la_dichiarazione
-   `_DEBITO_SENTINELLA` e' un registro di debito: quando il seed dichiara la
-   colonna, la sentinella deve uscire (e la voce con lei).
-5) test_nessun_order_by_compone_la_direzione_senza_la_lista
+   ⛔ Ritirato il 2026-11-25 il registro di debito `_DEBITO_SENTINELLA` col
+   suo test: l'unica voce (`giorni_alla_scadenza` dei listini) si e' chiusa
+   con la dichiarazione del seed (D-5).
+4) test_nessun_order_by_compone_la_direzione_senza_la_lista
    La direzione di un `ORDER BY` composto a mano passa da
    `sql_order_direction_lista`, che sa quale colonna ordina e ne legge la
    dichiarazione: una chiamata diretta a `sql_order_direction` ordina il vuoto
    come il minimo anche sulla colonna dichiarata, senza errore (cinque punti,
    corretti dalla `/verifica` del 2026-11-24).
-6) test_la_scansione_della_direzione_distingue_il_bb_di_lista
+5) test_la_scansione_della_direzione_distingue_il_bb_di_lista
    La prova che il 5 non e' verde a vuoto.
 """
 from __future__ import annotations
@@ -47,26 +47,16 @@ from pathlib import Path
 from django.test import SimpleTestCase
 
 from apps.core.api.rotte import classi_view
-from apps.core.tests._repo import repo_root, sorgente_senza_commenti
+from apps.core.tests._repo import sorgente_senza_commenti
 from apps.core.tests._seed_csv import seed_ui
 
 # Una voce di whitelist il cui valore e' un `COALESCE` su una SENTINELLA: la
-# data infinita (scritta o dalla costante) o il massimo di `integer`.
+# data infinita (scritta o dalla costante) o il massimo di `integer` (la forma
+# dei giorni alla scadenza, ritirata il 2026-11-25).
 _VOCE_CON_SENTINELLA = re.compile(
     r'"(?P<chiave>\w+)"\s*:\s*f?"COALESCE\((?P<argomenti>[^"]*?'
-    r"(?:'-?infinity'|_SQL_DATE_INFINITY|_SQL_GIORNI_SENZA_SCADENZA)[^\"]*)\)\"",
+    r"(?:'-?infinity'|_SQL_DATE_INFINITY|2147483647)[^\"]*)\)\"",
 )
-
-# ⚠️ REGISTRO DI DEBITO, deve calare (brief-db-lista-colonna-vuoto-in-ordine
-#    §8, 2026-11-24): `giorni_alla_scadenza` e' nel catalogo (liste 27 e 112),
-#    ma il seed non la dichiara ancora. La richiesta e' al team DB; quando il
-#    seed la dichiara, la sentinella esce da `listini_repository.py`.
-#    (file relativo a `backend/`, chiave) -> le liste del seed che la portano.
-_DEBITO_SENTINELLA: dict[tuple[str, str], tuple[str, ...]] = {
-    ("apps/vendite/db/listini_repository.py", "giorni_alla_scadenza"): (
-        "vendite.listini", "vendite.listini_versioni",
-    ),
-}
 
 _BACKEND = Path(__file__).resolve().parents[3]
 
@@ -128,39 +118,23 @@ class VuotoComeMassimoSeedTests(SimpleTestCase):
         for percorso in _sorgenti():
             for chiave in _voci_con_sentinella(percorso.read_text(encoding="utf-8")):
                 trovate.add((percorso.relative_to(_BACKEND).as_posix(), chiave))
-        fuori_registro = sorted(trovate - set(_DEBITO_SENTINELLA))
         self.assertEqual(
-            fuori_registro, [],
+            sorted(trovate), [],
             "whitelist con l'eccezione «vuoto come il massimo» scritta a mano: "
             "si dichiara nel catalogo (`ui.lista_colonna.vuoto_ordinato_come_massimo`) "
-            f"e la applica il BB dell'ordinamento → {fuori_registro}",
+            f"e la applica il BB dell'ordinamento → {sorted(trovate)}",
         )
-        # Il registro non resta piu' grande del vero.
-        stantie = sorted(set(_DEBITO_SENTINELLA) - trovate)
-        self.assertEqual(stantie, [], f"voci di `_DEBITO_SENTINELLA` gia' chiuse: toglile → {stantie}")
 
     def test_la_scansione_vede_le_tre_forme_della_sentinella(self) -> None:
         campione = (
             '    "a": "COALESCE(v.a, \'infinity\'::date)",\n'
             '    "b": "COALESCE(v.b, \'-infinity\'::date)",\n'
             '    "c": f"COALESCE(x.c, {_SQL_DATE_INFINITY})",\n'
-            '    "d": f"COALESCE(s.d, {_SQL_GIORNI_SENZA_SCADENZA})",\n'
+            '    "d": "COALESCE(s.d, 2147483647)",\n'
             '    "e": "COALESCE(v.e, 0)",\n'
             "    # \"f\": \"COALESCE(v.f, 'infinity'::date)\",\n"
         )
         self.assertEqual(_voci_con_sentinella(campione), ["a", "b", "c", "d"])
-
-    def test_il_debito_della_sentinella_si_chiude_con_la_dichiarazione(self) -> None:
-        dichiarate = _dichiarate()
-        for (file, chiave), liste in _DEBITO_SENTINELLA.items():
-            for lista in liste:
-                with self.subTest(lista=lista, chiave=chiave):
-                    self.assertNotIn(
-                        chiave, dichiarate.get(lista, set()),
-                        f"il seed dichiara `{lista}.{chiave}`: togli la sentinella da "
-                        f"{file} e la voce da `_DEBITO_SENTINELLA`",
-                    )
-        self.assertTrue((repo_root() / "backend").is_dir())
 
     def test_nessun_order_by_compone_la_direzione_senza_la_lista(self) -> None:
         fuori: list[str] = []

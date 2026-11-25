@@ -135,19 +135,6 @@ _SELECT_VERSIONE = f"""
 """  # noqa: S608 — costanti di modulo TESTATA_LISTINI_VERSIONI e STATO_VERSIONE_ATTIVA
 
 
-# «Non in scadenza» (`giorni_rimanenti` NULL) e' la scadenza PIU' LONTANA:
-# senza, il BB dell'ordine tratta il NULL come minimo, e l'ordine crescente
-# metterebbe in cima i listini che non scadono. Il massimo di `integer`
-# (date - date).
-# ⚠️ DEBITO a tempo (brief-db-lista-colonna-vuoto-in-ordine, §8): e' l'eccezione
-#    «vuoto come il massimo» scritta fuori dal catalogo. Le due colonne
-#    `giorni_alla_scadenza` (liste 27 e 112) sono nel catalogo, ma il seed non
-#    le dichiara ancora `vuoto_ordinato_come_massimo`: la richiesta e' al team
-#    DB. Quando le dichiara, questa costante esce con i suoi test. Fino a quel
-#    giorno resta, o l'ordine si rovescerebbe. Lo registra
-#    `test_vuoto_come_massimo_seed` (`_DEBITO_SENTINELLA`).
-_SQL_GIORNI_SENZA_SCADENZA = "2147483647"
-
 # `attivo` e' NUCLEO: lo stato ordina sempre. Aggiunta in anticipo sul seed
 # della lista listini (passata unica 2026-08-01, richiesta del team DB).
 LISTINI_ORDER_COLUMNS: dict[str, str] = {
@@ -158,8 +145,11 @@ LISTINI_ORDER_COLUMNS: dict[str, str] = {
     "attivo": "l.attivo",
     "data_insert": "l.data_insert",
     "data_update": "l.data_update",
-    # Dalla regola del DB (`_FN_SCADENZA`): NULL = non in scadenza.
-    "giorni_alla_scadenza": f"COALESCE(s.giorni_rimanenti, {_SQL_GIORNI_SENZA_SCADENZA})",
+    # Dalla regola del DB (`_FN_SCADENZA`): NULL = non in scadenza, cioe' la
+    # scadenza piu' lontana. Il vuoto va come il massimo, e lo dichiara il
+    # catalogo (`ui.lista_colonna.vuoto_ordinato_come_massimo`, D-5 di
+    # brief-db-lista-colonna-vuoto-in-ordine), non questa whitelist.
+    "giorni_alla_scadenza": "s.giorni_rimanenti",
 }
 
 # ⭐ «In scadenza senza successore» la dice il DB, una volta per query
@@ -185,7 +175,8 @@ VERSIONI_ORDER_COLUMNS: dict[str, str] = {
     "valido_al": "x.valido_al",
     "righe_count": "x.righe_count",
     "stato": "x.stato",
-    "giorni_alla_scadenza": f"COALESCE(sc.giorni_rimanenti, {_SQL_GIORNI_SENZA_SCADENZA})",
+    # NULL = non in scadenza: come `valido_al`, lo dichiara il catalogo.
+    "giorni_alla_scadenza": "sc.giorni_rimanenti",
 }
 
 LISTINO_CREATE_COLUMNS: dict[str, str] = {

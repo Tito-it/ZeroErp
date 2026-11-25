@@ -1,13 +1,11 @@
 # Brief DB — Dove va il vuoto quando una lista ordina: si dichiara in `ui.lista_colonna`
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-24 (D-5 applicata e verde, tocca al team BE/FE col passo 6)
+## ⏭️ Chi riparte — aggiornato al 2026-11-25 (chiuso e archiviato)
 
-**Riparte: il team BE/FE, col passo 6.** D-5 è scritta dalla sessione DB e applicata da Tid il 2026-11-24, pgTAP verde (§8.6): il presidio della sentinella è rosso, come previsto. Il giro BE/FE di §5 e §5.1 è fatto (§8, 2026-11-24):
-il BE legge la dichiarazione dal catalogo e la applica nel BB dell'ordinamento, i `COALESCE` delle whitelist sono
-ritirati, le colonne che la whitelist dimenticava (lotti, flussi e pratiche: tre, non quattro, §8.2) ordinano il
-vuoto come il massimo. Resta fuori una colonna che §3.4
-dava per assente dal catalogo e che invece c'è: `giorni_alla_scadenza` (righe 1157 e 1164). Il BE la tiene col suo
-`COALESCE` finché il seed non la dichiara.
+**Chiuso e archiviato il 2026-11-25.** Riparte nessuno: il passo 6 è fatto (§8.7), il BE non scrive più
+nessuna eccezione «vuoto come il massimo» a mano, e il registro di debito `_DEBITO_SENTINELLA` è ritirato perché
+la sua unica voce si è chiusa. Nessun residuo: il fatto di §8.2 (i tool dell'assistente ordinano fuori da una lista)
+non è un debito, perché fuori da una lista per regola vale il minimo. La suite intera prima del commit la lancia Tid.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 |---|---|---|---|---|
@@ -19,13 +17,14 @@ dava per assente dal catalogo e che invece c'è: `giorni_alla_scadenza` (righe 1
 | 4 | Tid | ✅ D-5: `giorni_alla_scadenza` (righe 1157 e 1164) si dichiara «vuoto come il massimo» — **sì** (2026-11-24) | §8.3 | — |
 | 5 | Sessione DB | ✅ `t` sulle righe 1157 e 1164 del CSV di `ui.lista_colonna`, il pgTAP del giro allineato (sedici), guida e `manual/` (2026-11-24) | §8.6 | — |
 | 5-bis | Tid | ✅ Apply (migrate: rigira il caricatore `runOnChange`), pgTAP `test-lista-colonna-vuoto-ordinato-come-massimo-v1` come app: verde (2026-11-24) | §8.6 | — |
-| 6 | Team BE/FE | Ritira `_SQL_GIORNI_SENZA_SCADENZA` e la voce di `_DEBITO_SENTINELLA` (il presidio diventa rosso da solo all'apply del passo 5-bis) | §8.3 | 5-bis |
+| 6 | Team BE/FE | ✅ Ritirati `_SQL_GIORNI_SENZA_SCADENZA` e il registro `_DEBITO_SENTINELLA` col suo test; il test dei listini legge la dichiarazione dal catalogo, nei due versi (2026-11-25) | §8.7 | — |
+| 7 | Team BE/FE | ✅ Archiviazione in `work-done/` (2026-11-25) | — | — |
 
-Decisioni aperte di Tid: nessuna (D-5 decisa il 2026-11-24, §8.3). Da committare: niente (il giro DB di D-5, §8.6, è committato il 2026-11-24 su `dev/db-tid`).
-Il brief si archivia quando il passo 6 è chiuso.
+Decisioni aperte di Tid: nessuna (D-5 decisa il 2026-11-24, §8.3). Da committare: il giro BE del passo 6 (§8.7) e
+l'archiviazione, su `dev/backend-tid` (il giro DB di D-5, §8.6, è committato il 2026-11-24 su `dev/db-tid`).
 
 **Brief vicini verificati** (2026-11-24): `brief-db-revisione-ui` tocca lo schema `ui` (documentazione, difetti, metadati) ed è alla chiusura; non tratta l'ordinamento delle liste né `ui.lista_colonna` come sede di una regola di ordinamento: non basta, e non va fuso. Nessun altro brief aperto su ordinamento, `NULLS` o `COALESCE` di whitelist.
-**Guide verificate** (`guide_coinvolte.py --oggetti ui.lista_colonna`): [configurazione-liste.md](../../guide/configurazione-liste.md) — coerente (non descrive dove va il vuoto quando una lista ordina); dopo l'apply è **guida indietro** e si aggiorna (§4, punto 6).
+**Guide verificate** (`guide_coinvolte.py --oggetti ui.lista_colonna`): [configurazione-liste.md](../../../guide/configurazione-liste.md) — coerente (non descrive dove va il vuoto quando una lista ordina); dopo l'apply è **guida indietro** e si aggiorna (§4, punto 6).
 Allargate dalla sessione DB il 2026-11-24 a tutti gli oggetti del brief: l'esito per guida è in §7.8; quelle del giro BE
 in §8.5.
 
@@ -121,7 +120,7 @@ qui è indicata la tabella che la scrive.
 5. **Dove il BE la legge**: la superficie di lettura che il BE usa per il catalogo delle colonne
    (`UiRepository.list_colonne_by_codice`, o `ui.fn_resolve_lista_config` se la sessione DB preferisce esporla da lì).
    Il brief dice quale, così il BE la legge da un posto solo.
-6. Aggiornare la guida [configurazione-liste.md](../../guide/configurazione-liste.md) e la pagina `manual/` della
+6. Aggiornare la guida [configurazione-liste.md](../../../guide/configurazione-liste.md) e la pagina `manual/` della
    tabella, se c'è.
 
 ## 5. Le ricadute sul BE (team BE/FE, dopo l'apply)
@@ -403,3 +402,31 @@ per una chiamata interna; i lettori censiti non ordinano per una colonna dichiar
 
 Pre-commit sui file del giro: verde, tranne `check-i18n-keys` (`anagrafiche.soggetti.cambio_natura_blocco.verso_nessuna`,
 del giro anagrafiche, lo stesso rosso di §7.7).
+
+### 8.7 Il passo 6 del team BE/FE (2026-11-25)
+
+Dopo l'apply di D-5 (passo 5-bis) il presidio `test_il_debito_della_sentinella_si_chiude_con_la_dichiarazione` era
+rosso sulle due liste, come previsto (§8.3). Fatto:
+
+- **`listini_repository.py`**: via `_SQL_GIORNI_SENZA_SCADENZA`. Le due voci `giorni_alla_scadenza` di
+  `LISTINI_ORDER_COLUMNS` e `VERSIONI_ORDER_COLUMNS` ordinano la colonna nuda (`s.giorni_rimanenti`,
+  `sc.giorni_rimanenti`): il vuoto come il massimo lo dà il BB, dalla dichiarazione del catalogo.
+- **`test_listini_in_scadenza_db.py`**: la lettura della lista listini registra la dichiarazione di
+  `vendite.listini` come quella delle versioni registrava già `vendite.listini_versioni` (un helper del file,
+  `_con_la_dichiarazione`, al posto delle due copie). Il caso 5 prova anche il verso calante: crescendo il
+  listino che non scade va in fondo, calando in cima. Provato a rovescio: con una lista che non dichiara niente il
+  caso è rosso (i due listini si scambiano).
+- **`test_vuoto_come_massimo_seed.py`**: ritirati `_DEBITO_SENTINELLA` e il suo test. Un registro vuoto con un test
+  che lo scorre sarebbe stato verde a vuoto; il caso 2 ora chiede che nessuna whitelist abbia una sentinella, senza
+  eccezioni. La scansione cerca il massimo di `integer` come letterale (`2147483647`) al posto del nome della
+  costante ritirata, e il campione del caso 3 lo prova.
+- **Catalogo BB**: la voce della partenza di lista dice che il registro è ritirato. L'indice non cambia
+  (`gen_indice_bb.py --check` verde).
+
+Prova (2026-11-25): `apps.vendite` e il presidio del seed senza DB, 2544 test verdi; sul DB di sviluppo
+(`ZEROERP_TEST_DB_E2E=1`) `test_listini_in_scadenza_db`, `test_vuoto_come_massimo_db` e `test_vuoto_come_massimo`
+(API), 20 test verdi.
+
+Guide (`guide_coinvolte.py` sui tre file): `configurazione-liste` e `manual/lista_colonna` sono già allineate da §8.6
+(nominano i giorni alla scadenza); `gestione-listini` non descrive dove va il vuoto quando la lista ordina:
+**coerente**. Le altre nominano oggetti di quei file per altro: non toccate.
