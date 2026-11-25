@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.catasto_unita_immobiliari_indirizzi`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -48,6 +48,16 @@ scrivere anche direttamente (`zeroerp_app` ha il DML), per i casi di un'unità s
 
 ---
 
+### La ponte segue l'istanza
+
+Quando un'istanza cambia civico o unità, la coppia che aveva portato esce, se nessun'altra istanza ha la stessa
+coppia, e quella nuova entra. Le coppie scritte a mano con altri civici restano: la ponte è molti a molti. Il
+civico lasciato, senza più coppie, si può spegnere. L'unità lasciata che nessuna istanza nomina più si cancella,
+e le sue coppie se ne vanno con lei. La regola sta nella guida
+[Il catasto delle istanze](/guide/catasto-delle-istanze).
+
+---
+
 ### Il civico deve essere attivo, e chi ha un'unità non si spegne
 
 Il legame segue la regola dell'automazione ATTIVO fra un figlio e il suo padre:
@@ -58,17 +68,6 @@ Il legame segue la regola dell'automazione ATTIVO fra un figlio e il suo padre:
   la tabella non ha una colonna `attivo`, quindi conta ogni riga.
 
 La riga se ne va con la sua unità o col suo civico, quando l'uno o l'altro si cancella.
-
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **Le coppie vecchie restano.** Un'istanza che cambia civico o unità aggiunge la coppia nuova e lascia quella di
-  prima: nessun oggetto del DB la toglie. La ponte dice quindi «questa unità è stata legata a questo civico», non
-  «oggi lo è».
-* **Un civico che ha avuto un'unità non si spegne più.** La coppia rimasta basta a fermare lo spegnimento del
-  civico, anche quando nessuna istanza lo usa più con quell'unità; e l'unità non si cancella finché un'istanza la
-  nomina.
 
 ---
 
@@ -83,12 +82,15 @@ La riga se ne va con la sua unità o col suo civico, quando l'uno o l'altro si c
 
 * `db/pgtap/anagrafiche/test-simula-subentro.sql` — la coppia creata dal trigger per l'unità della prima istanza e
   per il clone del subentro, e il duplicato rifiutato da `uq_catunitaindir`.
+* `db/pgtap/anagrafiche/test-catasto-unita-della-sua-istanza-v1.sql` (test 6-10) — il cambio di civico toglie la
+  coppia di prima, il civico lasciato si spegne, il cambio di unità porta via le coppie dell'unità lasciata.
 
 ---
 
 ### Note di migrazione
 
 * 2025-12-10 — nasce al posto della colonna `indirizzo_dettaglio_id` di `catasto_unita_immobiliari`.
+* 2026-11-25 — la coppia lasciata da un'istanza che cambia civico o unità esce dalla ponte.
 
 ---
 

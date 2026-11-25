@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.contatti`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -17,6 +17,7 @@
 >
 > * [anagrafiche.fn_crea_contatto](/dbzero/anagrafiche/funzioni/fn_crea_contatto) — il verbo che fa nascere un contatto
 > * [anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto) — il predefinito di ogni contesto
+> * [anagrafiche.trgfn_contatti_guard_predefinito](/dbzero/anagrafiche/funzioni/trgfn_contatti_guard_predefinito) — il predefinito non si toglie e non si cancella finché il contesto ha altri contatti
 > * [anagrafiche.trgfn_contatti_guard_contesto_soggetto](/dbzero/anagrafiche/funzioni/trgfn_contatti_guard_contesto_soggetto) — ruolo e istanza sono del soggetto del contatto
 > * [anagrafiche.trgfn_soggetti_guard_soggetto_contatti](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_soggetto_contatti) — il soggetto ha almeno un contatto, al COMMIT
 > * [script.fn_get_contatti](/dbzero/script/funzioni/fn_get_contatti) — il contatto migliore per tipo, dal più specifico al soggetto
@@ -46,6 +47,9 @@ l'istanza devono essere **del soggetto del contatto**: lo pretende
 `anagrafiche.trgfn_contatti_guard_contesto_soggetto`, anche quando una modifica sposta il contatto su un altro
 soggetto.
 
+Un contatto d'istanza ha sempre il ruolo: è il referente di quel ruolo per quell'istanza. Lo scrive il vincolo
+`chk_contatti_istanza_con_ruolo`; l'istanza non ha un ruolo suo.
+
 ---
 
 ### Nominativo e tipo, il resto facoltativo
@@ -64,6 +68,13 @@ Tre indici unici parziali, uno per livello, impediscono due contatti dello stess
 * sul soggetto, senza ruolo né istanza: uno per tipo (`uq_contatti_soggetto_tipo`);
 * sul ruolo, senza istanza: uno per tipo e per ruolo (`uq_contatti_ruolo_tipo_no_istanza`);
 * sul ruolo e sull'istanza: uno per tipo, ruolo e istanza (`uq_contatti_ruolo_istanza_tipo`).
+
+`anagrafiche.fn_crea_contatto` traduce la violazione di questi tre indici in `E_CONTATTO_TIPO_DUPLICATO`, col
+campo `tipo_contatto_id`.
+
+Un quarto indice unico, `uq_contatti_predefinito_contesto`, tiene al più un predefinito per riga di contesto
+(soggetto, ruolo, istanza): è parziale sulle righe con `is_default`, e ruolo e istanza nulli contano come valori
+(`NULLS NOT DISTINCT`).
 
 ---
 
@@ -94,8 +105,9 @@ La tabella non ha row security.
 
 Chi cerca il contatto da usare non legge la tabella: `script.fn_get_contatti` dà un contatto per tipo, preferendo
 quello dell'istanza e del ruolo chiesti, poi quello del ruolo, poi quello del soggetto; a parità, quello del
-reparto chiesto, poi il predefinito, poi l'id più basso. `script.fn_get_contatto_default` sceglie il predefinito
-fra quei contatti.
+reparto chiesto, poi il predefinito, poi l'id più basso. Senza reparto contano tutti i contatti, anche quelli che
+un reparto ce l'hanno. `script.fn_get_contatto_default` sceglie il predefinito fra quei contatti: vince il
+contesto più specifico (istanza, poi ruolo, poi soggetto).
 
 ---
 
@@ -103,23 +115,30 @@ fra quei contatti.
 
 ---
 
+### I trigger del predefinito
+
+Due trigger tengono la regola, nell'ordine delle fasi:
+
+* `trg_contatti_a10_guard_predefinito_upd_dlt` (prima di modifica e cancellazione,
+  `anagrafiche.trgfn_contatti_guard_predefinito`) rifiuta il segno tolto al predefinito
+  (`E_CONTATTO_PREDEFINITO_OBBLIGATORIO`) e il predefinito cancellato o spostato mentre il contesto ha altri
+  contatti (`E_CONTATTO_PREDEFINITO_DA_SOSTITUIRE`);
+* `trg_contatti_a20_set_default_contatto_ins_upd` (prima di nascita e modifica,
+  `anagrafiche.trgfn_contatti_set_default_contatto`) mette il segno, lo toglie al predefinito di prima e scrive
+  `default_context`.
+
+I COMMENT di `is_default` e `default_context` dicono la stessa regola: `is_default` è il predefinito della riga
+di contesto, `default_context` il suo livello (`soggetto`, `ruolo`, `istanza`), `NULL` su chi non è predefinito.
+
+---
+
 ### ⚠️ Che cosa oggi non copre
 
-* **Il predefinito di un ruolo o di un'istanza.** La chiave del predefinito è soggetto più contesto: due ruoli,
-  o due istanze, dello stesso soggetto ne condividono uno, e chi cerca il predefinito del suo ruolo può trovarlo
-  vuoto perché il segno l'ha preso un contatto di un altro ruolo.
-* **Il contatto di un'istanza senza ruolo.** È ammesso, e nessuno dei tre indici lo copre: sullo stesso soggetto
-  e sulla stessa istanza possono stare due contatti dello stesso tipo.
-* **Il predefinito che perde il segno o sparisce.** Nessuno ne promuove un altro, e il soggetto continua a
-  puntare il contatto di prima.
 * **Il soggetto che si spegne.** I contatti, che non hanno un loro `attivo`, ne bloccano la disattivazione
   finché esistono; tolti tutti, è la disattivazione stessa a non passare il controllo del contatto obbligatorio.
   Un soggetto con contatti oggi non si disattiva.
-* **La lettura senza reparto.** Senza unità organizzativa fra i parametri, `script.fn_get_contatti` scarta i
-  contatti che ne hanno una, invece di considerarli; `script.fn_get_contatto_default`, quando i predefiniti sono
-  di tipi diversi, sceglie quello con l'id più basso.
-* **I COMMENT.** Quello di `default_context` elenca i valori `soggetto`, `ruolo`, `utility` (il terzo è
-  `istanza`); quello di `is_default` parla di un predefinito «per il soggetto».
+* **Il puntatore del soggetto non si svuota.** Quando l'ultimo contatto del contesto del soggetto si cancella o
+  passa a un ruolo, `anagrafiche.soggetti.default_contatto_id` resta sul contatto di prima.
 
 ---
 
@@ -132,6 +151,9 @@ fra quei contatti.
 * `db/pgtap/anagrafiche/test-istanza-dello-stesso-soggetto-v1.sql` (test 13-16) — ruolo e istanza di un altro
   soggetto rifiutati.
 * `db/pgtap/anagrafiche/soggetti-con-contatti.sql` — un soggetto costruito ha almeno un contatto con un recapito.
+* `db/pgtap/anagrafiche/test-contatto-predefinito-per-contesto-v1.sql` — l'indice del predefinito e il vincolo
+  dell'istanza col ruolo, il predefinito per ruolo, il segno tolto e il predefinito cancellato, la lettura senza
+  reparto e la scelta fra i predefiniti, i codici del verbo.
 
 ---
 
@@ -140,6 +162,9 @@ fra quei contatti.
 * 2026-10-17 — nasce `anagrafiche.fn_crea_contatto`, e prende il posto degli inserimenti diretti dei verbi di
   nascita del soggetto, degli utenti tecnici, delle fixture e dell'applicazione.
 * 2026-10-19 — nasce il controllo che ruolo e istanza siano del soggetto del contatto.
+* 2026-11-25 — il predefinito è della riga di contesto (soggetto, ruolo, istanza), scritto da un indice unico; il
+  segno non si toglie e il predefinito non si cancella finché il contesto ha altri contatti; il contatto d'istanza
+  ha il ruolo. Una bonifica ha riportato ogni contesto a un solo predefinito, il primo marcato o il primo nato.
 
 ---
 

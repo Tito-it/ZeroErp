@@ -1,0 +1,162 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.contatti: un contesto con contatti ha sempre il suo predefinito,
+#   e chi lo cambia lo dice. Il guard del segno tolto e del predefinito
+#   cancellato, col suo montaggio.
+#   D-T7b-2 di Tid (2026-11-25), brief-db-revisione-anagrafiche §22 (S8).
+#
+# -- IL DIFETTO -------------------------------------------------------------------
+#   trgfn_contatti_set_default_contatto rimetteva il segno quando un contesto ne
+#   restava senza, e lo faceva a ogni UPDATE: togliere il segno all'unico
+#   predefinito lo lasciava senza, e la prossima modifica di un QUALUNQUE contatto
+#   del contesto (anche una correzione del telefono) lo faceva tornare, scelto
+#   da quale contatto si scriveva per primo. Cancellare il predefinito non
+#   promuoveva nessuno.
+#
+# -- LA REGOLA (D-T7b-2) ----------------------------------------------------------
+#   Il contesto e' la riga (soggetto, ruolo, istanza) (D-T7b-1, -37). Il primo
+#   contatto nasce predefinito (-37, solo quando entra nel contesto); si cambia
+#   marcandone un altro. Qui:
+#     - togliere il segno al predefinito, restando nel contesto:
+#       E_CONTATTO_PREDEFINITO_OBBLIGATORIO, campo is_default;
+#     - cancellare il predefinito, o portarlo in un altro contesto, quando nel
+#       suo restano altri contatti: E_CONTATTO_PREDEFINITO_DA_SOSTITUIRE;
+#     - cancellare l'ultimo contatto del contesto passa.
+#   Nessuna promozione automatica: sceglierebbe per id.
+#
+# -- LA FORMA (linee-guida-trigger) -------------------------------------------------
+#   BEFORE UPDATE OR DELETE, fase a10 (guard). Prima di lui, in ordine di nome,
+#   trg_contatti_a10_guard_contesto_soggetto_ins_upd: un contesto di un altro
+#   soggetto parla per primo.
+#   ⭐ pg_trigger_depth() > 1: la scrittura l'ha fatta un altro trigger. E' il
+#   segno tolto dal trigger del predefinito quando un altro contatto diventa
+#   predefinito (-37: la riga nuova non e' ancora scritta, e qui il contesto
+#   sembrerebbe restare senza), e la cancellazione in cascata del soggetto (FK
+#   ON DELETE CASCADE). Stesso criterio di vendite.trgfn_doc_righe_lock_fuori_bozza.
+#   Una scrittura diretta (backend, pgTAP, import) ha profondita' 1 e resta
+#   giudicata.
+#   La funzione nasce col suo montaggio, nello stesso changeSet: nessuna finestra
+#   per il presidio dei riferimenti morti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261125-36-create-trgfn-contatti-guard-predefinito-mctit.yaml
+
+  - changeSet:
+      id: 20261125-36-create-trgfn-contatti-guard-predefinito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_contatti_guard_predefinito e il suo montaggio BEFORE UPDATE OR DELETE in
+        fase a10: il predefinito non perde il segno e non esce dal contesto finche' nel contesto
+        restano altri contatti. D-T7b-2, brief-db-revisione-anagrafiche §22.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_contatti_guard_predefinito()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $fn$
+              DECLARE
+                  v_chi CONSTANT text := 'anagrafiche.trgfn_contatti_guard_predefinito';
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Un contesto (soggetto, ruolo, istanza) che ha contatti
+                  --   ha il suo predefinito: chi lo cambia ne marca un altro.
+                  --
+                  -- Regole:
+                  --   - riga non predefinita, o scritta da un altro trigger
+                  --     (pg_trigger_depth() > 1: il segno tolto da
+                  --     trgfn_contatti_set_default_contatto, la cascata del
+                  --     soggetto): niente da giudicare;
+                  --   1. UPDATE che resta nel contesto e toglie il segno:
+                  --      E_CONTATTO_PREDEFINITO_OBBLIGATORIO;
+                  --   2. DELETE, o UPDATE che porta la riga in un altro
+                  --      contesto, con altri contatti nel contesto di prima:
+                  --      E_CONTATTO_PREDEFINITO_DA_SOSTITUIRE.
+                  -- =========================================================
+                  IF NOT OLD.is_default OR pg_trigger_depth() > 1 THEN
+                      IF TG_OP = 'DELETE' THEN
+                          RETURN OLD;
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  -- 1) Il segno tolto, nello stesso contesto.
+                  IF TG_OP = 'UPDATE'
+                     AND (OLD.soggetto_id, OLD.soggetto_ruolo_id, OLD.istanza_utility_id)
+                         IS NOT DISTINCT FROM
+                         (NEW.soggetto_id, NEW.soggetto_ruolo_id, NEW.istanza_utility_id)
+                  THEN
+                      IF NOT NEW.is_default THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'anagrafiche', v_chi, 'E_CONTATTO_PREDEFINITO_OBBLIGATORIO',
+                              jsonb_build_object('campo',              'is_default',
+                                                 'tabella',            TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                                 'contatto_id',        OLD.id,
+                                                 'soggetto_id',        OLD.soggetto_id,
+                                                 'soggetto_ruolo_id',  OLD.soggetto_ruolo_id,
+                                                 'istanza_utility_id', OLD.istanza_utility_id),
+                              OLD.tx_id,
+                              OLD.nominativo::text);
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  -- 2) Il predefinito che esce dal contesto: cancellato o spostato.
+                  IF EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.contatti c
+                       WHERE c.soggetto_id = OLD.soggetto_id
+                         AND c.soggetto_ruolo_id  IS NOT DISTINCT FROM OLD.soggetto_ruolo_id
+                         AND c.istanza_utility_id IS NOT DISTINCT FROM OLD.istanza_utility_id
+                         AND c.id <> OLD.id)
+                  THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', v_chi, 'E_CONTATTO_PREDEFINITO_DA_SOSTITUIRE',
+                          jsonb_build_object('campo',              'is_default',
+                                             'tabella',            TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                             'operazione',         TG_OP,
+                                             'contatto_id',        OLD.id,
+                                             'soggetto_id',        OLD.soggetto_id,
+                                             'soggetto_ruolo_id',  OLD.soggetto_ruolo_id,
+                                             'istanza_utility_id', OLD.istanza_utility_id),
+                          OLD.tx_id,
+                          OLD.nominativo::text);
+                  END IF;
+
+                  IF TG_OP = 'DELETE' THEN
+                      RETURN OLD;
+                  END IF;
+                  RETURN NEW;
+              END;
+              $fn$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_contatti_guard_predefinito()
+                  IS 'Trigger BEFORE UPDATE OR DELETE su anagrafiche.contatti (fase a10): un contesto (soggetto, ruolo, istanza) che ha contatti ha il suo predefinito, e chi lo cambia ne marca un altro. Togliere il segno al predefinito restando nel contesto: E_CONTATTO_PREDEFINITO_OBBLIGATORIO (campo is_default). Cancellare il predefinito, o portarlo in un altro contesto, quando nel suo restano altri contatti: E_CONTATTO_PREDEFINITO_DA_SOSTITUIRE (campo is_default). L''ultimo contatto del contesto si cancella. Una scrittura fatta da un altro trigger (pg_trigger_depth() > 1) non si giudica: e'' il segno tolto da anagrafiche.trgfn_contatti_set_default_contatto quando un altro contatto diventa predefinito, e la cascata della cancellazione del soggetto. Il gemello che mette il segno e'' anagrafiche.trgfn_contatti_set_default_contatto; la regola sta nella nota _contatto-predefinito.';
+
+              CREATE TRIGGER trg_contatti_a10_guard_predefinito_upd_dlt
+                  BEFORE UPDATE OR DELETE ON anagrafiche.contatti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_contatti_guard_predefinito();
+
+              COMMENT ON TRIGGER trg_contatti_a10_guard_predefinito_upd_dlt ON anagrafiche.contatti
+                  IS 'Il predefinito non perde il segno e non esce dal suo contesto finche'' nel contesto restano altri contatti (anagrafiche.trgfn_contatti_guard_predefinito).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contatti_a10_guard_predefinito_upd_dlt ON anagrafiche.contatti;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_contatti_guard_predefinito();

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_get_contatto_default`
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -28,7 +28,7 @@ La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di
 * **tipo di contatto** (categoria opzionale).
 * **unita organizzativa** (reparto/ufficio).
 
-La funzione **riutilizza la logica di `script.fn_get_contatti`** per costruire l’elenco di contatti candidati e applica una selezione che garantisce al massimo **un solo record** come contatto di default, secondo priorità ben definite.
+La funzione **riutilizza la logica di `script.fn_get_contatti`** per costruire l’elenco di contatti candidati e applica una selezione che garantisce al massimo **un solo record** come contatto di default: fra i predefiniti vince il **contesto più specifico** (istanza, poi ruolo, poi soggetto), la stessa regola della cascata di `fn_get_contatti`.
 
 È pensata come **entry point semplificato** per tutti i casi in cui l’applicativo o la logica di dominio hanno bisogno di *“un solo contatto principale”* per un certo contesto.
 
@@ -72,7 +72,7 @@ LANGUAGE sql;
 | `p_soggetto_ruolo_id` | `bigint`  |  No   | Se valorizzato, restringe la ricerca ai contatti legati a **quello specifico ruolo** (`anagrafiche.soggetti_ruoli`). |
 | `p_istanza_utility_id` | `bigint` |  No   | Se valorizzato, filtra per una specifica **istanza utility** (`anagrafiche.istanze_utilities`).                      |
 | `p_tipo_contatto_id`  | `integer` |  No   | Se valorizzato, limita ai contatti di un certo **tipo** (FK a `config.tipi_contatti`).                               |
-| `p_unita_organizzativa_id` | `integer` | No | Se valorizzato, restringe ai contatti del reparto/ufficio (`config.unita_organizzative`). |
+| `p_unita_organizzativa_id` | `integer` | No | Se valorizzato, contano i contatti del reparto/ufficio (`config.unita_organizzative`) e quelli senza reparto; se `NULL`, contano tutti (regola di `fn_get_contatti`). |
 
 > ℹ️ Tutti i parametri opzionali vengono passati “as-is” a `script.fn_get_contatti`, che incapsula la logica di filtro dettagliata.
 
@@ -96,7 +96,7 @@ La funzione restituisce **0 o 1 record** con la stessa struttura di `fn_get_cont
 | `pec`               | `varchar` | Indirizzo PEC, se presente.                                                                            |
 | `note`              | `text`    | Note libere associabili al contatto.                                                                   |
 | `is_default`        | `boolean` | Flag che indica se il contatto è marcato come default nel suo contesto.                                |
-| `default_context`   | `varchar` | Eventuale contesto di default (es. “fatturazione”, “tecnico”, ecc.), determinato da `fn_get_contatti`. |
+| `default_context`   | `varchar` | Il livello del contesto di cui il contatto è predefinito: `soggetto`, `ruolo` o `istanza`. Lo scrive il trigger del predefinito. |
 
 Se non esistono contatti che rispettano i criteri impostati **o nessuno è marcato come `is_default = TRUE`**, la funzione restituisce **zero righe**.
 
@@ -120,14 +120,18 @@ WITH all_candidates AS (
     )
 ),
 only_default AS (
-    SELECT *,
+    SELECT a.*,
            ROW_NUMBER() OVER (
                ORDER BY
-                   CASE WHEN is_default THEN 0 ELSE 1 END,
-                   id
+                   CASE
+                       WHEN a.istanza_utility_id IS NOT NULL THEN 1
+                       WHEN a.soggetto_ruolo_id  IS NOT NULL THEN 2
+                       ELSE 3
+                   END,
+                   a.id
            ) AS rn
-    FROM all_candidates
-    WHERE is_default = TRUE
+    FROM all_candidates a
+    WHERE a.is_default
 )
 SELECT ...
 FROM only_default
@@ -146,14 +150,18 @@ WHERE rn = 1;
    * Mantiene solo le righe con `is_default = TRUE`.
    * Applica una numerazione con `ROW_NUMBER()` per avere una **priorità deterministica**:
 
-     * prima i record `is_default = TRUE` (CASE nel `ORDER BY`),
-     * a parità, il contatto con `id` più basso.
+     * prima il predefinito del contesto più specifico: istanza, poi ruolo, poi soggetto;
+     * a parità di contesto, il contatto con `id` più basso.
+
+   `fn_get_contatti` dà un contatto per tipo, e i predefiniti fra cui scegliere possono venire da contesti
+   diversi: per esempio il predefinito del soggetto per un tipo e quello del ruolo per un altro. Vince quello del
+   ruolo, anche se è nato dopo.
 
 3. **Selezione finale**
 
    * Restituisce **solo il record con `rn = 1`**, garantendo al massimo **un contatto default**.
 
-> La scelta di usare `ROW_NUMBER()` consente di gestire eventuali **dati sporchi** (più contatti marcati default) senza generare errore, ma scegliendo comunque in modo deterministico.
+> Nello stesso contesto i predefiniti sono al più uno (indice `uq_contatti_predefinito_contesto`): la scelta serve fra contesti diversi.
 
 ---
 
@@ -189,7 +197,7 @@ FROM script.fn_get_contatto_default(
 );
 ```
 
-Restituisce il **contatto marcato default** per il soggetto, indipendentemente da ruolo, utility o tipo contatto.
+Restituisce il **predefinito del contesto del soggetto**: senza ruolo e senza istanza i contatti dei ruoli e delle istanze non sono fra i candidati.
 
 ---
 
@@ -229,10 +237,12 @@ Permette di recuperare, ad esempio, il **referente amministrativo predefinito** 
 
   * ogni modifica alla logica di priorità o filtraggio dei contatti dovrebbe avvenire **in `fn_get_contatti`**, lasciando `fn_get_contatto_default` come semplice wrapper.
 
-* **Dati incoerenti (più default):**
+* **Più predefiniti fra i candidati:**
 
-  * se per un dato contesto più contatti risultano marcati `is_default = TRUE`, la funzione **non fallisce**, ma restituisce il contatto con `id` più basso;
-  * è comunque consigliabile prevedere **controlli di coerenza** (pgTAP o vincoli applicativi) per garantire che **esista al massimo un default per contesto**.
+  * in uno stesso contesto (soggetto, ruolo, istanza) il predefinito è uno solo, e lo garantisce l'indice
+    `uq_contatti_predefinito_contesto`;
+  * fra contesti diversi la funzione sceglie il più specifico, e a parità l'`id` più basso. La regola del
+    predefinito sta nella guida [Gestione dei Contatti](/guide/gestione-dei-contatti).
 
 * **Soggetto mancante:**
 
@@ -242,12 +252,14 @@ Permette di recuperare, ad esempio, il **referente amministrativo predefinito** 
 
 * **Assenza di default:**
 
-  * se non esiste alcun contatto marcato default, la funzione restituisce **0 righe**;
-  * lato applicativo, è bene prevedere fallback (es. scegliere fra i candidati non-default o segnalare configurazione incompleta).
+  * se fra i candidati non c'è nessun predefinito, la funzione restituisce **0 righe**. Un contesto che ha
+    contatti ha sempre il suo predefinito, quindi zero righe vuol dire che i contesti letti non hanno contatti (o
+    che i filtri su tipo e reparto hanno scartato i predefiniti).
 
-* **Estendibilità:**
+* **`default_context`:**
 
-  * la colonna `default_context` permette di modellare in futuro contesti diversi di default (es. `"fatturazione"`, `"tecnico"`, `"commerciale"`) senza modificare la firma della funzione.
+  * dice il livello del contesto del predefinito (`soggetto`, `ruolo`, `istanza`); non è una categoria del
+    contatto.
 
 ---
 
@@ -255,6 +267,8 @@ Permette di recuperare, ad esempio, il **referente amministrativo predefinito** 
 
 * `db/pgtap/dbops/test-presidi-codici-corpo-leggibile-v1.sql`, test 10 — la chiamata col soggetto
   `NULL` è rifiutata con `E_CONTATTI_SOGGETTO_OBBLIGATORIO`, come quella a `fn_get_contatti`.
+* `db/pgtap/anagrafiche/test-contatto-predefinito-per-contesto-v1.sql`, test 14 — vince il predefinito del
+  contesto più specifico, anche se nato dopo quello del soggetto.
 
 ---
 
@@ -264,6 +278,8 @@ Permette di recuperare, ad esempio, il **referente amministrativo predefinito** 
   `fn_get_contatti`, `E_CONTATTI_SOGGETTO_OBBLIGATORIO`. Prima la validazione di `fn_get_contatti`
   non girava, e anche questa funzione restituiva zero righe in silenzio (`20261110-94`,
   `brief-db-revisione-dbops`, giro 12).
+* 2026-11-25 — fra i predefiniti vince il contesto più specifico, poi l'`id`: prima vinceva l'`id` più basso,
+  cioè il più vecchio. Firma e colonne non cambiano (`20261125-39`).
 
 ---
 

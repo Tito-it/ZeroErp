@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.istanze_utilities`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -109,10 +109,24 @@ attivazione.
 * **Su un'istanza vera senza PDP**, la catena non si tocca.
 * Un cliente annullato o senza data di attivazione toglie la sua istanza dalla catena.
 
-Quando la catena si allunga e l'istanza ha un indirizzo ma non ancora un'unità catastale, l'unità della
-precedente si clona sulla nuova (`trg_iu_z50_clone_catasto_from_parent_aft_upd`). Un cambio di unità o di
-indirizzo tiene allineato l'indirizzo del catasto (`trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd`).
-Il racconto del catasto sta nelle sue schede.
+---
+
+### Il catasto dell'istanza
+
+Un'unità catastale è di un'istanza sola: lo scrive l'indice unico parziale
+`uq_istanze_utilities_catasto_unita_immobiliare`, sulle sole righe con l'unità. Un'istanza senza unità è
+ammessa, e l'indice copre anche la chiave esterna verso `catasto_unita_immobiliari`.
+
+Quattro trigger, dopo la scrittura, fanno seguire il catasto all'istanza:
+
+* `trg_istanze_utilities_z40_sync_catasto_unita_indirizzo_ins` e `_upd` — alla nascita con unità e civico, e al
+  cambio di unità o di civico, la ponte fra unità e civici segue l'istanza: la coppia di prima esce, l'unità che
+  nessuno nomina più si cancella, la coppia nuova entra.
+* `trg_istanze_utilities_z50_clone_catasto_from_parent_ins` e `_upd` — quando nasce il legame con l'istanza
+  precedente (alla nascita con la precedente già scritta, o al cambio della precedente), l'istanza senza unità e
+  col civico riceve una copia dell'unità della precedente. Una riscrittura uguale della precedente non clona.
+
+Il racconto del catasto sta nella guida [Il catasto delle istanze](/guide/catasto-delle-istanze).
 
 ---
 
@@ -130,8 +144,7 @@ lo passa, si salva nella forma normalizzata (maiuscolo) ed è unico (`uq_istanze
   riscrive solo alla prossima scrittura di un cliente dell'istanza.
 * **Il PDP dell'istanza non è bloccato, e il cliente non lo vede cambiare.** Un cambio di `pdp_id` dopo la
   nascita del cliente arriva sulla riga del cliente, e sullo stato dei PDP, solo alla sua prossima scrittura.
-* **Una sola unità catastale per istanza vale solo per la clonazione.** Nessun vincolo unico su
-  `catasto_unita_immobiliare_id`: due istanze possono puntare alla stessa unità.
+* **La cancellazione dell'istanza non tocca la sua unità catastale**, che resta senza nessuno che la nomini.
 * **Nessuno storico.** La tabella non ha il trigger di storico: una modifica dell'istanza (indirizzo, PDP,
   catena) non lascia la versione di prima.
 * **Un trigger che non fa niente.** `trgfn_istanze_utilities_normalize` scatta a ogni scrittura e restituisce
@@ -158,6 +171,8 @@ lo passa, si salva nella forma normalizzata (maiuscolo) ed è unico (`uq_istanze
 * `db/pgtap/anagrafiche/test-istanza-cliente-chain.sql` — la catena delle istanze sullo stesso PDP.
 * `db/pgtap/anagrafiche/test-simula-subentro.sql` — il subentro: nuova istanza sullo stesso PDP, la catena e
   il catasto clonato.
+* `db/pgtap/anagrafiche/test-catasto-unita-della-sua-istanza-v1.sql` — un'unità per istanza, il clone quando
+  nasce il legame con la precedente, la ponte e l'unità lasciata che seguono l'istanza.
 
 ---
 
@@ -166,6 +181,8 @@ lo passa, si salva nella forma normalizzata (maiuscolo) ed è unico (`uq_istanze
 * 2026-10-08 — l'istanza nasce col suo billing account; prima bastava un satellite qualunque fra BA, dati
   precontrattuali e cliente.
 * 2026-10-14 — la catena vale anche fra le istanze fittizie, per chiave soggetto, utility e azienda.
+* 2026-11-25 — un'unità catastale per istanza, con un indice unico; i trigger del catasto scattano al cambio di
+  valore, il clone anche alla nascita, e prendono i nomi `trg_istanze_utilities_z40_…` e `trg_istanze_utilities_z50_…`.
 * Il modello «un'istanza, al massimo un cliente», con un vincolo unico sull'istanza in `clienti`, non c'è
   più: il vincolo unico del cliente è sul billing account.
 

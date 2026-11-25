@@ -1,6 +1,6 @@
 # Guida — Gestione dei Contatti
 
-> **Ultimo aggiornamento**: 24 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -17,7 +17,8 @@
 > **Vedi anche** — funzioni e trigger DB:
 >
 > * [anagrafiche.fn_crea_contatto](/dbzero/anagrafiche/funzioni/fn_crea_contatto) — il verbo che fa nascere un contatto
-> * [anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto) — il predefinito di ogni soggetto e contesto
+> * [anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto) — il predefinito di ogni riga di contesto
+> * [anagrafiche.trgfn_contatti_guard_predefinito](/dbzero/anagrafiche/funzioni/trgfn_contatti_guard_predefinito) — il segno non si toglie: passa a un altro contatto
 > * [anagrafiche.trgfn_contatti_guard_contesto_soggetto](/dbzero/anagrafiche/funzioni/trgfn_contatti_guard_contesto_soggetto) — ruolo e istanza sono del soggetto del contatto
 > * [anagrafiche.trgfn_soggetti_guard_soggetto_contatti](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_soggetto_contatti) — il soggetto ha almeno un contatto, al COMMIT
 > * [script.fn_get_contatti](/dbzero/script/funzioni/fn_get_contatti) — un contatto per tipo, dal più specifico al soggetto
@@ -68,7 +69,7 @@ soggetti (chi è)
 
 * **Contatto** = un nominativo, un tipo e i suoi recapiti (email, telefono, cellulare, PEC).
 * **Contesto** = che cosa la riga indica oltre al soggetto: niente, un ruolo, un'istanza.
-* **Predefinito** = al più uno per soggetto e contesto, tenuto dal database.
+* **Predefinito** = uno e uno solo per ogni contesto che ha contatti, tenuto dal database.
 
 ---
 
@@ -81,8 +82,12 @@ database rifiuta il ruolo di un altro soggetto (`E_RUOLO_ALTRO_SOGGETTO`) e l'is
 (`E_ISTANZA_ALTRO_SOGGETTO`), anche quando una modifica sposta il contatto su un altro soggetto. Vedi
 [il guard del contesto](/dbzero/anagrafiche/funzioni/trgfn_contatti_guard_contesto_soggetto).
 
-Il contesto non lo sceglie chi scrive: lo dice la riga. Con un'istanza è `istanza`, altrimenti con un ruolo è
-`ruolo`, altrimenti è `soggetto`.
+Il contesto non lo sceglie chi scrive: lo dice la riga. È la terna (soggetto, ruolo, istanza): il cliente e il
+fornitore dello stesso soggetto sono due contesti, il ruolo cliente su un'istanza un terzo. Il suo **livello** è
+`istanza` con un'istanza, altrimenti `ruolo` con un ruolo, altrimenti `soggetto`.
+
+Un contatto con l'istanza ha sempre anche il ruolo: è il referente di quel ruolo per quell'istanza. L'istanza
+senza ruolo è rifiutata dal vincolo `chk_contatti_istanza_con_ruolo`.
 
 ### Nominativo, tipo, reparto e recapiti
 
@@ -103,9 +108,12 @@ referente, non come lo si raggiunge. La scelta del canale da usare spetta all'ap
 
 Sullo stesso soggetto non stanno due contatti dello stesso tipo senza ruolo né istanza; sullo stesso ruolo, due
 dello stesso tipo senza istanza; sullo stesso ruolo e istanza, due dello stesso tipo. Sono tre indici unici
-parziali, uno per livello, elencati nella [scheda della tabella](/dbzero/anagrafiche/tabelle/contatti).
+parziali, uno per livello, elencati nella [scheda della tabella](/dbzero/anagrafiche/tabelle/contatti). Poiché un
+contatto d'istanza ha sempre il ruolo, i tre indici coprono ogni contatto.
 
-⚠️ Un contatto con l'istanza e **senza** il ruolo è ammesso, e nessuno dei tre indici lo copre.
+Il secondo contatto dello stesso tipo nello stesso contesto, creato col verbo, è rifiutato con
+`E_CONTATTO_TIPO_DUPLICATO` sul campo del tipo, e la frase dice il livello. Una modifica diretta che urta un indice
+arriva come violazione del vincolo, col suo nome.
 
 ---
 
@@ -113,8 +121,9 @@ parziali, uno per livello, elencati nella [scheda della tabella](/dbzero/anagraf
 
 Un contatto nasce con [anagrafiche.fn_crea_contatto](/dbzero/anagrafiche/funzioni/fn_crea_contatto): il soggetto,
 il ruolo (vuoto per un contatto del soggetto) e i campi del contatto, in un elenco chiuso. Un contatto senza
-nominativo o senza tipo è rifiutato (`E_CONTATTO_INCOMPLETO`, col campo che manca); una chiave fuori elenco è
-rifiutata col suo nome (`E_CAMPO_NON_AMMESSO`).
+nominativo o senza tipo, o con un tipo che non è un numero intero positivo, è rifiutato (`E_CONTATTO_INCOMPLETO`,
+col campo che manca); un tipo che il catalogo non ha è `E_TIPO_CONTATTO_NON_TROVATO`; una chiave fuori elenco è
+rifiutata col suo nome (`E_CAMPO_NON_AMMESSO`). `default_context` non è fra le chiavi: lo scrive il database.
 
 È la sede unica: la usano i verbi di nascita del soggetto, che creano il suo primo contatto nella stessa
 chiamata, quelli del cliente e del fornitore per il contatto del ruolo, la creazione degli utenti tecnici e
@@ -132,31 +141,38 @@ o indica un tipo che non esiste ferma la creazione: il database non ripiega su u
 
 ## Il contatto predefinito
 
-La regola la tiene [anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto),
-a ogni nascita e a ogni modifica di un contatto. Nella sua scheda c'è per intero; qui l'essenziale.
+La regola la tengono [anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto),
+che mette il segno, e [anagrafiche.trgfn_contatti_guard_predefinito](/dbzero/anagrafiche/funzioni/trgfn_contatti_guard_predefinito),
+che giudica chi lo toglie. Nelle loro schede c'è per intero; qui l'essenziale.
 
-### ⚠️ La chiave è il soggetto più il contesto
+### La chiave è la riga di contesto
 
-C'è al più un predefinito per **soggetto e contesto**: uno fra i contatti del soggetto, uno fra **tutti** i
-contatti di ruolo, uno fra **tutti** i contatti di istanza. Il predefinito non scende al singolo ruolo: il ruolo
-cliente e il ruolo fornitore dello stesso soggetto ne condividono uno, e marcare il contatto del fornitore toglie
-il segno a quello del cliente.
+C'è **uno e un solo** predefinito per ogni contesto (soggetto, ruolo, istanza) che ha contatti, come per il conto
+bancario predefinito. Ogni ruolo ha il suo: marcare il contatto del fornitore non tocca quello del cliente.
+L'unicità la scrive l'indice `uq_contatti_predefinito_contesto`.
 
-### Il primo è predefinito, l'ultimo marcato vince
+### Il primo è predefinito; si cambia marcandone un altro
 
-* Il primo contatto scritto in un contesto senza predefinito lo diventa, anche se nessuno lo chiede.
+* Il primo contatto che entra in un contesto senza predefinito lo diventa, anche se nessuno lo chiede. Entra nel
+  contesto chi nasce, o chi cambia soggetto, ruolo o istanza.
 * Un contatto marcato predefinito toglie il segno a quello di prima nello stesso contesto.
-* `is_default` e `default_context` li tiene il trigger: `default_context` è valorizzato solo sul predefinito, e un
-  valore passato da chi scrive è sostituito.
+* Un contatto spostato in un contesto che ha già il suo predefinito entra senza segno.
+* `is_default` e `default_context` li tiene il database: `default_context` è il livello del predefinito, e sugli
+  altri è vuoto.
 
-Il predefinito del contesto `soggetto` è anche il puntatore `anagrafiche.soggetti.default_contatto_id`, che il
-trigger scrive.
+Il predefinito del contesto del soggetto è anche il puntatore `anagrafiche.soggetti.default_contatto_id`, che il
+trigger scrive quando un contatto lo diventa.
 
-### Che cosa la regola non fa
+### Che cosa è rifiutato
 
-Togliere il segno all'unico predefinito, o cancellarlo, non promuove un altro contatto, e il puntatore del
-soggetto resta sul contatto di prima. Il contatto a cui il soggetto punta non si cancella finché un altro non
-diventa predefinito al suo posto: la chiave esterna lo rifiuta al COMMIT.
+* Togliere il segno al predefinito: `E_CONTATTO_PREDEFINITO_OBBLIGATORIO`. Il segno non si toglie, passa a un
+  altro contatto.
+* Cancellare il predefinito, o spostarlo in un altro contesto, quando nel suo restano altri contatti:
+  `E_CONTATTO_PREDEFINITO_DA_SOSTITUIRE`. Prima si marca un altro contatto.
+* L'ultimo contatto di un contesto si cancella. Il database non promuove nessuno da solo.
+
+Il contatto a cui il soggetto punta non si cancella finché un altro non diventa predefinito al suo posto: la
+chiave esterna lo rifiuta al COMMIT.
 
 ---
 
@@ -199,26 +215,25 @@ Per un soggetto, e se servono un ruolo, un'istanza, un tipo e un reparto, restit
 2. poi quello del ruolo chiesto, senza istanza;
 3. poi quello del soggetto.
 
+Senza reparto fra i parametri contano tutti i contatti; con un reparto contano quelli del reparto e quelli senza.
 A parità di livello vince il contatto del reparto chiesto, poi il predefinito, poi quello con l'id più basso. Il
 soggetto è obbligatorio (`E_CONTATTI_SOGGETTO_OBBLIGATORIO`). Firma e parametri sono nella
 [scheda della funzione](/dbzero/script/funzioni/fn_get_contatti).
-
-⚠️ Senza reparto fra i parametri, la funzione scarta i contatti che ne hanno uno: un contatto collocato in un
-reparto si trova solo chiedendo quel reparto.
 
 ### `script.fn_get_contatto_default`
 
 Prende i contatti di `fn_get_contatti` e tiene i predefiniti: restituisce **zero o un** contatto. È quella da
 usare quando serve un riferimento solo (il contatto di un documento, di una comunicazione). Se fra i tipi
-risultano più predefiniti, sceglie quello con l'id più basso.
+risultano più predefiniti, vince il contesto più specifico, l'istanza, poi il ruolo, poi il soggetto: la stessa
+regola della cascata. A parità, l'id più basso.
 
 ---
 
 ## Buone pratiche
 
 * Creare i contatti con `fn_crea_contatto`, non con una scrittura diretta sulla tabella.
-* Non impostare `default_context`: lo scrive il database. Marcare `is_default` solo per cambiare il predefinito
-  del contesto, sapendo che la chiave è soggetto più contesto.
+* Non impostare `default_context`: lo scrive il database. Per cambiare il predefinito si marca il contatto nuovo;
+  il segno non si toglie.
 * Leggere con `fn_get_contatti` e `fn_get_contatto_default`, non con query dirette.
 * Scegliere il tipo giusto fa parte dell'inserimento; il reparto si indica quando il dato c'è.
 * Non creare tipi di contatto per canale, e tenere pochi tipi ben distinti.
@@ -319,8 +334,8 @@ SELECT anagrafiche.fn_crea_contatto(
                        'telefono', '0212345678'));
 ```
 
-**Il contatto del ruolo, marcato predefinito** — il contesto è `ruolo`: toglie il segno al predefinito di
-**qualunque** ruolo dello stesso soggetto, non a quello del soggetto:
+**Il contatto del ruolo, marcato predefinito** — il contesto è quel ruolo: toglie il segno al predefinito dello
+stesso ruolo, e non tocca quello degli altri ruoli né quello del soggetto:
 
 ```sql
 SELECT anagrafiche.fn_crea_contatto(
@@ -331,6 +346,12 @@ SELECT anagrafiche.fn_crea_contatto(
                        'email', 'tecnico@acme.it',
                        'unita_organizzativa_id', 2,
                        'is_default', true));
+```
+
+**Cambiare il predefinito** — si marca il contatto nuovo; il vecchio perde il segno da solo:
+
+```sql
+UPDATE anagrafiche.contatti SET is_default = true WHERE id = 1234;
 ```
 
 **Il predefinito da usare in un documento** — zero o un contatto: il predefinito fra quelli che `fn_get_contatti`

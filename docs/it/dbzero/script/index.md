@@ -114,7 +114,7 @@ search:
 - [fn_check_versione_listino_clonabile](funzioni/fn_check_versione_listino_clonabile.md)
 - [fn_check_versione_listino_eliminabile](funzioni/fn_check_versione_listino_eliminabile.md)
 - [fn_cliente_dal_billing_account](funzioni/fn_cliente_dal_billing_account.md) — **Il cliente e la utility di un documento sono quelli del suo billing account.**
-- [fn_clone_catasto_from_parent_by_istanza](funzioni/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
+- [fn_clone_catasto_from_parent_by_istanza](funzioni/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 25-11-26) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
 - [fn_codice_dominio](funzioni/fn_codice_dominio.md) — Dice se un errore **catturato** è un errore di dominio, e qual è il suo codice. Riceve lo SQLSTATE e il canale `CONSTRAINT` della diagnostica (`GET STACKED DIAGNOSTICS … RETURNED_SQLSTATE, CONSTRAINT_NAME`) e risponde:
 - [fn_codice_normalizzato](funzioni/fn_codice_normalizzato.md) — È la **forma di un codice dell'operatore**, scritta in un posto solo: senza spazi ai bordi e in maiuscolo. La usano:
 - [fn_crea_utente_tecnico](funzioni/fn_crea_utente_tecnico.md) — (latest review 04-09-2026)

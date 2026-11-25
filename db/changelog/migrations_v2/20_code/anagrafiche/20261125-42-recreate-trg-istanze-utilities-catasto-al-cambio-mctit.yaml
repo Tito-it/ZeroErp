@@ -1,0 +1,131 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.istanze_utilities: i trigger del catasto scattano quando il
+#   valore cambia. Il clone quando nasce il legame con l'istanza precedente,
+#   anche all'INSERT; la ponte all'INSERT e al cambio di unita' o civico.
+#   D-T7b-6 e D-T7b-7 di Tid (2026-11-25), brief-db-revisione-anagrafiche §22 (S47).
+#
+# -- IL DIFETTO -------------------------------------------------------------------
+#   - trg_iu_z50_clone_catasto_from_parent_aft_upd era solo AFTER UPDATE OF
+#     parent_istanza_id: un'istanza nata con la precedente gia' scritta non
+#     riceveva il clone.
+#   - UPDATE OF scatta anche a valore uguale (linee-guida-trigger, «Che cosa fa
+#     davvero UPDATE OF»), e il ramo delle istanze fittizie di
+#     trgfn_clienti_set_parent_istanza riscrive parent_istanza_id senza
+#     confronto: un'unita' comparsa sulla precedente dopo il subentro arrivava
+#     alla prossima scrittura del cliente fittizio, e mai per un PDP.
+#   - trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd era AFTER INSERT OR
+#     UPDATE OF: la funzione ora toglie la coppia di prima (-41) e reagisce a un
+#     cambio di valore.
+#
+# -- LA REGOLA (D-T7b-6) ----------------------------------------------------------
+#   Il clone copia cio' che la precedente ha quando il legame nasce: all'INSERT
+#   con la precedente scritta, e all'UPDATE che la cambia (WHEN OLD IS DISTINCT
+#   FROM NEW), sempre con unita' vuota e civico presente. Un'unita' che compare
+#   dopo sulla precedente non arriva: la rettifica dell'istanza nuova si fa su
+#   di lei. L'istanza che ha gia' l'unita' la tiene (brief-db-catena-istanze-pdp
+#   §4).
+#
+# -- LA FORMA (linee-guida-trigger) -------------------------------------------------
+#   Un WHEN con OLD non sta su un trigger INSERT OR UPDATE: due trigger per
+#   funzione, _ins e _upd. Si rimonta per funzione: un blocco DO toglie ogni
+#   montaggio delle due funzioni su istanze_utilities (pg_trigger.tgfoid),
+#   qualunque nome abbia (quelli di oggi nascono da 20251214-11). I nomi nuovi
+#   portano la tabella intera, come gli altri trigger della tabella
+#   (trg_istanze_utilities_<fase>_…); le fasi restano z40 e z50: la ponte prima
+#   del clone, e il clone, aggiornando l'istanza, rifa' passare la ponte dal
+#   trigger _upd. Le funzioni trigger non sono generate (§11.5): sono di
+#   20251214-11. trgfn_iu_clone_catasto_from_parent non cambia; cambia il suo
+#   COMMENT.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261125-42-recreate-trg-istanze-utilities-catasto-al-cambio-mctit.yaml
+
+  - changeSet:
+      id: 20261125-42-recreate-trg-istanze-utilities-catasto-al-cambio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.istanze_utilities: il clone del catasto all'INSERT con la precedente e al suo cambio
+        (WHEN), la ponte all'INSERT e al cambio di unita' o civico (WHEN). D-T7b-6, D-T7b-7,
+        brief-db-revisione-anagrafiche §22.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $via$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN
+                      SELECT t.tgname
+                        FROM pg_catalog.pg_trigger t
+                       WHERE NOT t.tgisinternal
+                         AND t.tgrelid = 'anagrafiche.istanze_utilities'::regclass
+                         AND t.tgfoid IN ('anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo()'::regprocedure,
+                                          'anagrafiche.trgfn_iu_clone_catasto_from_parent()'::regprocedure)
+                  LOOP
+                      EXECUTE format('DROP TRIGGER %I ON anagrafiche.istanze_utilities', r.tgname);
+                  END LOOP;
+              END
+              $via$;
+
+              CREATE TRIGGER trg_istanze_utilities_z40_sync_catasto_unita_indirizzo_ins
+                  AFTER INSERT ON anagrafiche.istanze_utilities
+                  FOR EACH ROW
+                  WHEN (NEW.catasto_unita_immobiliare_id IS NOT NULL AND NEW.indirizzo_dettaglio_id IS NOT NULL)
+                  EXECUTE FUNCTION anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo();
+
+              CREATE TRIGGER trg_istanze_utilities_z40_sync_catasto_unita_indirizzo_upd
+                  AFTER UPDATE ON anagrafiche.istanze_utilities
+                  FOR EACH ROW
+                  WHEN ((OLD.catasto_unita_immobiliare_id, OLD.indirizzo_dettaglio_id)
+                        IS DISTINCT FROM
+                        (NEW.catasto_unita_immobiliare_id, NEW.indirizzo_dettaglio_id))
+                  EXECUTE FUNCTION anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo();
+
+              CREATE TRIGGER trg_istanze_utilities_z50_clone_catasto_from_parent_ins
+                  AFTER INSERT ON anagrafiche.istanze_utilities
+                  FOR EACH ROW
+                  WHEN (NEW.parent_istanza_id IS NOT NULL
+                        AND NEW.catasto_unita_immobiliare_id IS NULL
+                        AND NEW.indirizzo_dettaglio_id IS NOT NULL)
+                  EXECUTE FUNCTION anagrafiche.trgfn_iu_clone_catasto_from_parent();
+
+              CREATE TRIGGER trg_istanze_utilities_z50_clone_catasto_from_parent_upd
+                  AFTER UPDATE ON anagrafiche.istanze_utilities
+                  FOR EACH ROW
+                  WHEN (OLD.parent_istanza_id IS DISTINCT FROM NEW.parent_istanza_id
+                        AND NEW.parent_istanza_id IS NOT NULL
+                        AND NEW.catasto_unita_immobiliare_id IS NULL
+                        AND NEW.indirizzo_dettaglio_id IS NOT NULL)
+                  EXECUTE FUNCTION anagrafiche.trgfn_iu_clone_catasto_from_parent();
+
+              COMMENT ON TRIGGER trg_istanze_utilities_z40_sync_catasto_unita_indirizzo_ins ON anagrafiche.istanze_utilities
+                  IS 'L''istanza nata con unita'' catastale e civico porta la loro coppia nella ponte catasto_unita_immobiliari_indirizzi (anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo).';
+              COMMENT ON TRIGGER trg_istanze_utilities_z40_sync_catasto_unita_indirizzo_upd ON anagrafiche.istanze_utilities
+                  IS 'Al cambio di unita'' catastale o di civico la ponte segue l''istanza: la coppia di prima esce, l''unita'' che nessuno nomina piu'' si cancella, la coppia nuova entra (anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo).';
+              COMMENT ON TRIGGER trg_istanze_utilities_z50_clone_catasto_from_parent_ins ON anagrafiche.istanze_utilities
+                  IS 'L''istanza nata con l''istanza precedente, senza unita'' e col civico, riceve il clone dell''unita'' catastale della precedente (anagrafiche.trgfn_iu_clone_catasto_from_parent).';
+              COMMENT ON TRIGGER trg_istanze_utilities_z50_clone_catasto_from_parent_upd ON anagrafiche.istanze_utilities
+                  IS 'Quando cambia l''istanza precedente (WHEN), l''istanza senza unita'' e col civico riceve il clone dell''unita'' catastale della precedente; una riscrittura uguale non clona (anagrafiche.trgfn_iu_clone_catasto_from_parent).';
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_iu_clone_catasto_from_parent()
+                  IS 'Trigger AFTER su anagrafiche.istanze_utilities, quando nasce il legame con l''istanza precedente (all''INSERT con parent_istanza_id, all''UPDATE che lo cambia), con unita'' vuota e civico presente: clona l''unita'' catastale della precedente sull''istanza (script.fn_clone_catasto_from_parent_by_istanza, idempotente). Il clone copia cio'' che la precedente ha quando il legame nasce: un''unita'' che compare dopo sulla precedente non arriva, e l''istanza che ha gia'' l''unita'' la tiene. La regola sta nella guida catasto-delle-istanze.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: il clone solo all'UPDATE OF, a valore uguale, era il difetto.
+              SELECT 1;
