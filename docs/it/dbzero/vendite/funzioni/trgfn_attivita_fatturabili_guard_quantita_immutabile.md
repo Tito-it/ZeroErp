@@ -60,7 +60,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_quantita_immutabile()
-IS 'Guard mirror-enforcement quantita attivita_fatturabili: blocca UPDATE che porterebbe la quantita a un valore diverso dalla commessa madre (commessa_attivita_id). L''emit (upsert = specchio) passa; passa anche la porta del reset del lotto (vendite.fn_porta_reset_lotto_aperta: GUC zeroerp.maintenance_reset_lotto_draft e proprietario della tabella). Errore E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE. Brief immutabilita-quantita §4a (2026-07-21).';
+IS 'Guard mirror-enforcement quantita attivita_fatturabili: blocca UPDATE che porterebbe la quantita a un valore diverso dalla commessa madre (commessa_attivita_id). L''emit (upsert = specchio) passa; passa anche la porta del reset del lotto (vendite.fn_porta_reset_lotto_aperta: GUC zeroerp.maintenance_reset_lotto_draft e proprietario della tabella). Errore E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE.';
 ```
 
 </div>

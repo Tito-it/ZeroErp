@@ -52,7 +52,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_commesse_attivita_guard_quantita_immutabile()
-IS 'Guard immutabilita quantita commesse_attivita: blocca UPDATE della quantita su righe EMESSA (stato_emissione <> NON_EMESSA). Il re-push su NON_EMESSA passa; passa anche la porta del reset del lotto (vendite.fn_porta_reset_lotto_aperta: GUC zeroerp.maintenance_reset_lotto_draft e proprietario della tabella). Errore E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE. Brief immutabilita-quantita §4a.';
+IS 'Guard immutabilita quantita commesse_attivita: blocca UPDATE della quantita su righe EMESSA (stato_emissione <> NON_EMESSA). Il re-push su NON_EMESSA passa; passa anche la porta del reset del lotto (vendite.fn_porta_reset_lotto_aperta: GUC zeroerp.maintenance_reset_lotto_draft e proprietario della tabella). Errore E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE.';
 ```
 
 </div>

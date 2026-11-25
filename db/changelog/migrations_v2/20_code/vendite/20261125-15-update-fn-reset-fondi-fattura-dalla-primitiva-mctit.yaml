@@ -6,6 +6,7 @@
 # Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato e mergiato, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/vendite/20261125-28.
 # IL RESET DEI FONDI CHIAMA LA PRIMITIVA, NON IL VERBO PUBBLICO
 #   vendite.fn_reset_fondi_fattura
 #   Brief: brief-db-porte-aperte-dalla-sola-guc §13.2 punto 5 (giro 8 + 1-7; D-T b di Tid).

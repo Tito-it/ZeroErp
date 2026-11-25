@@ -6,6 +6,7 @@
 # Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato e mergiato, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/vendite/20261125-28.
 # LA PRIMITIVA DEL FONDO: I TRE DELETE, IL CRITERIO, IL PERIMETRO SULL'ATTO
 #   vendite.fn_applica_cancellazione_fondo_fattura (nuova)
 #   Brief: brief-db-porte-aperte-dalla-sola-guc §13.2 (giro 8; D-A a, D-T b di Tid).

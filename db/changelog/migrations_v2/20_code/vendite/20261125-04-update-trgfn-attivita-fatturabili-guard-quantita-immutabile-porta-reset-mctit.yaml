@@ -6,6 +6,7 @@
 # Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato e mergiato, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/vendite/20261125-28.
 # LA PORTA DEL RESET CHIEDE ANCHE IL PROPRIETARIO
 #   vendite.trgfn_attivita_fatturabili_guard_quantita_immutabile
 #   Brief: brief-db-porte-aperte-dalla-sola-guc §13.5 (giro 8 + 1-7, porte 1-7; D-A a, D-W a di Tid).

@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT di sette oggetti di vendite (quantita', fondo fattura, pulizia) al presente.
+#   vendite.trgfn_attivita_fatturabili_guard_quantita_immutabile   (da 20261125-04)
+#   vendite.trgfn_commesse_attivita_guard_quantita_immutabile      (da 20261125-05)
+#   vendite.fn_check_fondo_cancellabile                            (da 20261125-10)
+#   vendite.fn_applica_cancellazione_fondo_fattura                 (da 20261125-11)
+#   vendite.fn_cancella_fondo_fattura                              (da 20261125-12)
+#   vendite.fn_reset_fondi_fattura                                 (da 20261125-15)
+#   vendite.fn_cleanup_fatture_by_ids                              (da 20261125-16)
+#   Brief: brief-db-porte-aperte-dalla-sola-guc (giro 8 + 1-7), 2026-11-25.
+#
+#   Quei changeSet hanno riscritto i COMMENT portandosi dietro la cronaca di
+#   prima (rev, brief, id di changeSet, sigle di decisione, date) e
+#   aggiungendone di nuova: linee-guida-sql §5d li vuole al presente. Li ha
+#   fermati scripts/guardrail_comment_al_presente.py a file gia' applicati e
+#   mergiati: non si riscrivono (checksum), si riscrivono gli oggetti qui. I
+#   file applicati dichiarano in testa l'eccezione, che rimanda a questo.
+#   Solo COMMENT ON: nessun corpo, nessun trigger cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261125-28-update-comment-porte-sola-guc-fondo-fattura-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261125-28-update-comment-porte-sola-guc-fondo-fattura-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I COMMENT dei due guard della quantita', del criterio, della primitiva e del verbo del
+        fondo fattura, del reset dei fondi e della pulizia delle fatture riscritti al presente,
+        senza cronaca. brief-db-porte-aperte-dalla-sola-guc.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 7
+            sql: >
+              SELECT count(DISTINCT p.proname) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname IN ('trgfn_attivita_fatturabili_guard_quantita_immutabile',
+                                   'trgfn_commesse_attivita_guard_quantita_immutabile',
+                                   'fn_check_fondo_cancellabile',
+                                   'fn_applica_cancellazione_fondo_fattura',
+                                   'fn_cancella_fondo_fattura',
+                                   'fn_reset_fondi_fattura',
+                                   'fn_cleanup_fatture_by_ids');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_quantita_immutabile() IS $c$Guard mirror-enforcement quantita attivita_fatturabili: blocca UPDATE che porterebbe la quantita a un valore diverso dalla commessa madre (commessa_attivita_id). L'emit (upsert = specchio) passa; passa anche la porta del reset del lotto (vendite.fn_porta_reset_lotto_aperta: GUC zeroerp.maintenance_reset_lotto_draft e proprietario della tabella). Errore E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE.$c$;
+
+              COMMENT ON FUNCTION vendite.trgfn_commesse_attivita_guard_quantita_immutabile() IS $c$Guard immutabilita quantita commesse_attivita: blocca UPDATE della quantita su righe EMESSA (stato_emissione <> NON_EMESSA). Il re-push su NON_EMESSA passa; passa anche la porta del reset del lotto (vendite.fn_porta_reset_lotto_aperta: GUC zeroerp.maintenance_reset_lotto_draft e proprietario della tabella). Errore E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE.$c$;
+
+              COMMENT ON FUNCTION vendite.fn_check_fondo_cancellabile(vendite.fatture_fondi_fattura_source.id%TYPE) IS $c$PERCHE' un atto di fondo fattura non si puo' cancellare — oppure NULL, che vuol dire «si puo'». Vocabolario CHIUSO: ATTO_NON_TROVATO, ATTO_ESEGUITO, RIGA_REGISTRATA, CONTABILE_CHIUSA, FIGLIA_CONGELATA, SISTEMAZIONE_ATTIVA. ⛔ Esiste perche' non si estrae la funzione ma il PREDICATO: i due consumatori vogliono dallo stesso criterio cose opposte — fn_reset_fondi_fattura SEGNALA E PROSEGUE (giro tecnico su N atti, un'eccezione fermerebbe il reset di un lotto), vendite.fn_applica_cancellazione_fondo_fattura (la primitiva del gesto, dietro vendite.fn_cancella_fondo_fattura e pagamenti.fn_annulla_sistemazione) RIFIUTA E LO DICE (gesto di una persona su un atto, e li' il silenzio e' il difetto). Due copie del criterio direbbero, senza nessun errore, che un atto e' intoccabile mentre il reset lo cancella. ⚠️ L'ORDINE dei motivi e' portante: SISTEMAZIONE_ATTIVA si dice per ultimo perche' e' l'unico con un rimedio compibile, e anticiparlo manderebbe a fare un gesto destinato a fallire. ATTO_NON_TROVATO dice l'atto che non esiste (il «non e' tuo» lo dice prima la primitiva, che rimette il perimetro sull'atto); SISTEMAZIONE_ATTIVA e' la FK fk_sistemazioni_fondo_source detta prima che scatti, cioe' un 23503 nudo evitato. ⭐ La quarta condizione legge config.stati_doc_fiscale.congela_fiscale e NON una lista DRAFT/EMESSA: la soglia e' un DATO, e riscrivere la lista qui ne rimetterebbe in circolo una copia. Distingue due casi che il modello ammette entrambi: la figlia che NON SI LEGGE (cancellata, o invisibile sotto la row security) vale CONGELATA — da qui non si puo' certificare che sia lavorabile — mentre la figlia che si legge ma non ha stato NON blocca, ed e' la stessa decisione che trgfn_fattura_satellite_guard_congelamento prende sullo stesso caso. ⚠️ Un COALESCE(..., TRUE) confonderebbe i due casi: le figlie senza stato di test-fondi-fattura.sql lo provano. ⭐ Nessuna porta spegne la quarta condizione: nel reset la figlia e' la fattura che si pulisce, che i criteri d'ingresso vogliono pre-fiscale. SECURITY INVOKER come tutta la famiglia, e eseguibile dall'app: e' un criterio che legge soltanto, e senza porte non apre niente. Dalle primitive dei verbi DEFINER (vendite.fn_applica_cancellazione_fondo_fattura, vendite.fn_reset_fondi_fattura) gira da proprietario, e il perimetro lo rimette chi la chiama; dall'app gira sotto la row security, e un atto invisibile vale ATTO_NON_TROVATO.$c$;
+
+              COMMENT ON FUNCTION vendite.fn_applica_cancellazione_fondo_fattura(vendite.fatture_fondi_fattura_source.id%TYPE) IS $c$La PRIMITIVA del gesto «cancella il fondo»: cancella un atto di fondo fattura che non e' ancora diventato un fatto, oppure RIFIUTA dicendo perche'. Nessun guard del permesso: lo chiede chi la chiama (vendite.fn_cancella_fondo_fattura con governa_fondo_fattura, pagamenti.fn_annulla_sistemazione col livello TUTTO sull'area pagamenti, vendite.fn_reset_fondi_fattura dentro i verbi del reset del lotto). Riservata al proprietario: EXECUTE revocato all'app. SECURITY DEFINER, quindi rimette il perimetro una volta, sull'atto (l'emittente del suo emittente_soggetto_ruolo_id): fuori perimetro E_FONDO_NON_TROVATO, come un atto che non esiste. ⭐ Si cancella e non si annulla: un atto che non e' mai diventato un fatto lascia il posto vuoto che aveva prima. ⭐ Il criterio sta in vendite.fn_check_fondo_cancellabile, letto UNA volta e mappato su quattro codici: E_FONDO_NON_TROVATO, E_FONDO_NON_CANCELLABILE per i tre motivi che parlano di denaro (con la cause nel contesto), E_FONDO_FIGLIA_CONGELATA e E_FONDO_TRATTENUTO_DA_SISTEMAZIONE. ⭐ E' la sede UNICA dei tre DELETE, nell'ordine che le FK NO ACTION impongono (righe contabili, fondo applicato, atto). Le righe contabili le cancella sotto una GENERATA, dove il cestino dell'operatore risponde DISTINTA_NON_MANUALE: apre la porta di pagamenti.trgfn_vendite_contabili_righe_guard_contenuto con la GUC zeroerp.allow_contabile_riga_delete_override uguale all'id dell'atto, e la richiude subito dopo; il guard chiede anche il proprietario. ⚠️ La tabella non e' storicizzata: il DELETE e' definitivo. ⚠️ Cancellare RIAPRE la rigenerazione automatica (l'«atto unico» di fn_fondo_fattura_proponibile).$c$;
+
+              COMMENT ON FUNCTION vendite.fn_cancella_fondo_fattura(vendite.fatture_fondi_fattura_source.id%TYPE) IS $c$Il verbo del gesto «cancella il fondo» (endpoint DELETE /api/v1/vendite/fondi-fattura/{id}/): SECURITY DEFINER, in prima riga script.fn_guard_azione con governa_fondo_fattura, la stessa azione dell'endpoint. Spegne all'ingresso la GUC delle righe contabili e quella del reset del lotto, poi chiama la primitiva vendite.fn_applica_cancellazione_fondo_fattura, che rimette il perimetro sull'atto (fuori: E_FONDO_NON_TROVATO), legge il criterio e fa i tre DELETE, oppure rifiuta dicendo perche'.$c$;
+
+              COMMENT ON FUNCTION vendite.fn_reset_fondi_fattura(vendite.fatture.id%TYPE) IS $c$Reset dei fondi applicati a una fattura FIGLIA. Il CRITERIO sta in vendite.fn_check_fondo_cancellabile, e i tre DELETE nell'ordine che la FK impone stanno nella primitiva vendite.fn_applica_cancellazione_fondo_fattura. Qui sta la sola REAZIONE, che e' l'opposto di quella del gesto manuale: si SEGNALA E SI PROSEGUE, perche' e' un giro tecnico su N atti e un'eccezione fermerebbe il reset di un lotto intero per colpa di una fattura sola. ⛔ Si estrae il PREDICATO e non la funzione, proprio perche' le due reazioni sono opposte; due copie del criterio direbbero, senza errori e senza log, che un atto e' intoccabile mentre il reset lo cancella. ⚠️ Il predicato si legge UNA VOLTA SOLA per atto. ⭐ L'atto NON eseguito si CANCELLA invece di tornare DISPONIBILE, e un atto ESEGUITO non si tocca mai: lo dice il predicato, perche' ATTO_ESEGUITO e' il primo motivo che prova. ⚠️ Due conseguenze accettate: la tabella non e' storicizzata, quindi il DELETE e' definitivo (un atto mai eseguito e' una PROPOSTA, non un fatto); e cancellare RIAPRE la rigenerazione, perche' l'«atto unico» di fn_fondo_fattura_proponibile guarda se un atto esiste in qualunque stato. ⭐ La quarta condizione FIGLIA_CONGELATA non si accende in questo percorso: la figlia e' la fattura che l'unico chiamante, fn_cleanup_fatture_by_ids, sta pulendo, e i criteri d'ingresso dei verbi del reset la vogliono pre-fiscale. Il ramo resta scritto perche' il vocabolario e' chiuso e un motivo senza reazione sarebbe un atto saltato in silenzio. ⭐ Su SISTEMAZIONE_ATTIVA (un riporto sulla figlia) l'atto viene saltato e il diario ne dice la ragione invece di un 23503 nudo: il reset fallisce comunque piu' avanti, ma non in silenzio. ⚠️ Il blocco «distinta CHIUSA» guarda anche le righe non attive: una riga archiviata in una distinta chiusa resta un fatto. ⚠️ E' un'operazione TECNICA sul ciclo di vita della figlia e NON una reazione ai pagamenti: nessun incasso la chiama e nessun incasso deve chiamarla. ⚠️ Il risultato porta deleted_source e deleted_fondi: il conteggio delle righe contabili lo espone la primitiva, e nessun consumatore lo chiede qui. Riservata al proprietario (EXECUTE revocato all'app): la chiama solo vendite.fn_cleanup_fatture_by_ids, dentro i verbi DEFINER del reset del lotto.$c$;
+
+              COMMENT ON FUNCTION vendite.fn_cleanup_fatture_by_ids(bigint[], vendite.fatturazione_lotti.lock_batch_id%TYPE) IS $c$Pulizia centralizzata delle fatture e ripristino COMPLETO di cio' che avevano consumato. Storna dall'ambito di compensazione l'arrotondamento delle fatture cancellate PRIMA di toccarle; azzera i fondi; RIPRISTINA le attivita_fatturabili (sblocco) e le commesse_attivita collegate (ritorno a stato_emissione = NON_EMESSA); e SOLO DOPO cancella note, riepiloghi IVA, righe, log, collegamento al lotto e testate. ⚠️ Il ritorno a NON_EMESSA vive QUI e non nei chiamanti: sono TRE (fn_annulla_lotto_da_draft, fn_elimina_fattura_da_lotto, fn_riporta_lotto_a_draft) e la correttezza di ognuno dipende dal fatto che facciano la stessa cosa — senza, le attivita' restano emesse senza fattura e nessun giro futuro le riprende. ⛔ L'ORDINE DEI PASSI E' PORTANTE: il ripristino avviene PRIMA di qualunque cancellazione. fk_attivita_fatturabili_fattura_riga e' ON DELETE SET NULL e NOT DEFERRABLE, quindi l'azione referenziale scatta a fine istruzione del DELETE sulle righe: con il ripristino a valle il predicato girerebbe quando fattura_riga_id e' gia' NULL e non corrisponde piu' a nessuna riga, e il danno sarebbe DOPPIO perche' dallo stesso predicato nasce l'insieme delle commesse_attivita. L'attivita' resterebbe fatturata senza fattura e la sua riga di commessa su EMESSA, in silenzio: updated_attivita darebbe 0, e nessuno legge quel contatore come un'anomalia. ⭐ Cosi' il legame si usa mentre e' ancora vivo e la SET NULL e' INERTE: quando il DELETE arriva non c'e' piu' nessun puntatore verso le righe che sta cancellando. ⚠️ Chi aggiunge un passo NON lo metta fra il ripristino e i DELETE. ⭐ Il predicato si valuta UNA volta sola: due copie che divergessero sbloccherebbero un insieme e ne rimetterebbero in coda un altro. ⭐ La coppia di scritture del ripristino vive in vendite.fn_libera_attivita_fatturabili, consumata anche dal verbo di recupero «Riporta da emettere»: la duplicazione non esiste. ⚠️ Il ramo su p_lock_batch_id prende TUTTE le attivita' del batch: corretto nel reset globale, ed e' il motivo per cui il reset per-fattura deve passare NULL. ⭐ NON cancella da vendite.fatture_rettifiche, e NON e' una dimenticanza. La proiezione del legame documentale delle note di credito la scrive il task popola_fatture_rettifiche, che gira DOPO numera_fatture: esiste quindi solo su documenti NUMERATI. E un documento numerato non e' raggiungibile da nessuna delle tre porte di reset, perche' tutte e tre lo rifiutano con un controllo ESPLICITO sul numero — fn_check_fattura_eliminabile_da_lotto motivo 4 (E_FATTURA_GIA_NUMERATA), fn_check_lotto_riportabile_a_draft motivo 3 e fn_check_lotto_annullabile motivo 3 (E_LOTTO_FATTURE_NUMERATE). ⚠️ La garanzia sta in quelle CONDIZIONI, non nei nomi delle funzioni: fn_elimina_fattura_da_lotto lavora su tutto il pre-fiscale, non sul solo DRAFT. ⚠️ Se una porta di reset ammettesse un documento numerato, questa funzione dovrebbe cancellare anche la coppia in fatture_rettifiche: fk_fatture_ret_fattura NON e' ON DELETE CASCADE, quindi il reset sbatterebbe su una violazione di chiave esterna grezza dentro una funzione che i suoi chiamanti danno per infallibile. ⭐ Secondo guard fail-loud accanto a quello delle rettifiche: una fattura che ha gia' consumato plafond (script.fn_check_fatture_con_plafond_consumato) non si cancella, E_FATTURE_PLAFOND_CONSUMATO invece del 23503 grezzo sulle FK NO ACTION del registro. ⭐ La porta del reset (zeroerp.maintenance_reset_lotto_draft) si accende prima della pulizia e si spegne prima di uscire; le funzioni di trigger che attraversa chiedono anche il proprietario (vendite.fn_porta_reset_lotto_aperta). Riservata al proprietario (EXECUTE revocato all'app): la chiamano i verbi DEFINER fn_annulla_lotto_da_draft, fn_riporta_lotto_a_draft e fn_elimina_fattura_da_lotto, che rimettono il perimetro su lotto e fatture e il permesso; la funzione gira quindi da proprietario.$c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: i COMMENT di prima sono quelli di 20261125-04, -05, -10, -11, -12, -15 e -16.
+              SELECT 1;

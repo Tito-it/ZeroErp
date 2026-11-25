@@ -47,7 +47,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_guard_passaggio_lotto(p_auth_user_id integer, p_stato_da_id bigint, p_stato_a_id bigint)
-IS 'Il permesso di un passaggio di stato fiscale del lotto, come lo controlla l''endpoint: l''azione della riga del passaggio (script.fn_doc_passaggio) se c''e'' (script.fn_guard_azione), altrimenti, riga senza azione o nessuna riga, il livello TUTTO sull''area vendite (script.fn_guard_livello_area). Rifiuto: E_PERMESSO_NEGATO. Non giudica la matrice: lo fanno fn_guard_passaggio e il guard di transizione. La chiamano vendite.fn_annulla_lotto_da_draft e vendite.fn_riporta_lotto_a_draft, verbi DEFINER, dopo aver letto il lotto nel perimetro. brief-db-porte-aperte-dalla-sola-guc §13 (giro 1-7, D-X a).';
+IS 'Il permesso di un passaggio di stato fiscale del lotto, come lo controlla l''endpoint: l''azione della riga del passaggio (script.fn_doc_passaggio) se c''e'' (script.fn_guard_azione), altrimenti, riga senza azione o nessuna riga, il livello TUTTO sull''area vendite (script.fn_guard_livello_area). Rifiuto: E_PERMESSO_NEGATO. Non giudica la matrice: lo fanno fn_guard_passaggio e il guard di transizione. La chiamano vendite.fn_annulla_lotto_da_draft e vendite.fn_riporta_lotto_a_draft, verbi DEFINER, dopo aver letto il lotto nel perimetro.';
 ```
 
 </div>

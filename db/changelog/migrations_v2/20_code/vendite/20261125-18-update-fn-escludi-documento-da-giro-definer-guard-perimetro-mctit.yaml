@@ -6,6 +6,7 @@
 # Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato e mergiato, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/vendite/20261125-29.
 # «ESCLUDI IL DOCUMENTO DAL GIRO» DIVENTA UN VERBO DEFINER COL SUO PERMESSO E IL SUO PERIMETRO
 #   vendite.fn_escludi_documento_da_giro
 #   Brief: brief-db-porte-aperte-dalla-sola-guc §13.5 (giro 1-7; D-A a di Tid).
