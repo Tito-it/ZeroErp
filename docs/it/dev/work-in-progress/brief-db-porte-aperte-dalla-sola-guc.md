@@ -2,7 +2,7 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-25**
 >
-> **Riparte: il team DB**, con l'analisi della parte 1-7 del giro unico 8 + 1-7 (§13.5): ✅ D-T **b** e D-U **a**, decise da Tid il 2026-11-25 (§13.3). Lo sviluppo del giro parte solo col via di Tid, dopo l'analisi; poi R-DB-K1 e R-DB-K4 insieme (Tid, 2026-11-25). **Il team BE**, col 6d-quinquies del giro 11 (§12.6: ✅ applicato da Tid e verde il 2026-11-25, con `20261124-12`, §12.7). **Il team BE**, col 6c-quinquies del giro 9 (§11.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col 6b-quinquies del giro 10 (§10.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col passo 3n di R-DB-I3 (§4.8: ✅ scritta, applicata da Tid e verde il 2026-11-24) e col 3k-bis
+> **Riparte: Tid**, col via allo sviluppo del giro unico 8 + 1-7: ✅ l'analisi è fatta (team DB, 2026-11-25, §13); ✅ D-T **b**, D-U **a** (§13.3) e D-W **a**, D-X **a**, D-Y **a**, D-Z **a** (§13.7), decise il 2026-11-25. Al via, lo scrive il team DB. Dopo il giro, R-DB-K1 e R-DB-K4 insieme (Tid, 2026-11-25). **Il team BE**, col 6d-quinquies del giro 11 (§12.6: ✅ applicato da Tid e verde il 2026-11-25, con `20261124-12`, §12.7). **Il team BE**, col 6c-quinquies del giro 9 (§11.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col 6b-quinquies del giro 10 (§10.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col passo 3n di R-DB-I3 (§4.8: ✅ scritta, applicata da Tid e verde il 2026-11-24) e col 3k-bis
 > di R-DB-K3, e col 6a-quinquies del giro 16 (§9.5). **Il team DB**, col giro unico 8 + 1-7 (i giri 16, 10, 9, 11 sono applicati e verdi) e con le due richieste nuove del BE da §4.7, R-DB-K3 (la descrizione di `E_SCOPE_SENZA_UTENTE`, passo 3k: ✅ scritta e applicata il 2026-11-24, ora la rigenerazione del BE, 3k-bis) e R-DB-K4 (i due changeSet del
 > SUPER_ADMIN di sviluppo, passo 3l). Al via di Tid: il verbo di primo impianto (D-K, R-DB-K1, passo 3i) e i giri
 > delle porte del flusso. ✅ Il ritiro di `reset_lotto_draft` è fatto, DB e BE (2026-11-24, §4.8). Il superuser Django è
@@ -68,16 +68,17 @@
 > | 6d-quinquies | team BE | giro 11: i test che chiamano il verbo con un operatore senza il livello su `vendite.reso` | §12.6 | — |
 > | 6e | team DB | giro 8: ✅ analisi, D10-D11 rilette (2026-11-25) | §13 | — |
 > | 6e-bis | Tid | giro 8: ✅ D-T **b** (i giri 8 e 1-7 insieme), D-U **a** (2026-11-25) | §13.3 | — |
-> | 6e-ter | team DB | giro 8 + 1-7: l'analisi della parte 1-7, col punto 3 di §4.5-bis (il passaggio senza azione) | §13.5 | — |
-> | 6e-quater | Tid | giro 8 + 1-7: le scelte che l'analisi apre, il via | §13.5 | 6e-ter |
+> | 6e-ter | team DB | giro 8 + 1-7: ✅ l'analisi della parte 1-7, col passaggio senza azione (2026-11-25) | §13.5-§13.8 | — |
+> | 6e-quater | Tid | giro 8 + 1-7: ✅ D-W **a**, D-X **a**, D-Y **a**, D-Z **a** (2026-11-25); il via | §13.7 | — |
+> | 6e-quinquies | team DB | giro 8 + 1-7: changeSet, pgTAP, builder, guide e `manual/`, prova sullo scratch | §13.2, §13.5.2 | 6e-quater (il via) |
 >
-> Decisioni aperte di Tid: nessuna oggi; la parte 1-7 del giro unico ne porta almeno una (§13.5, punto 3 di §4.5-bis). Il blocco `EXCEPTION` del giro 9 si toglie, Tid 2026-11-25: `20261124-12`, §12.7) è deciso.
+> Decisioni aperte di Tid: nessuna; resta il via allo sviluppo del giro 8 + 1-7 (D-W … D-Z decise il 2026-11-25, §13.7). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso.
 > Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
 > (`969ea14566`), dal BE §4.5-§4.7 con D-J (`4271a0dc69`, PR #232), e il 2026-11-24 il lato DB del ritiro di
 > `reset_lotto_draft` con la pulizia della testata (§4.8). Dal BE, il 2026-11-24 (`5fc466c729`): il `None` del perimetro
 > che si rifiuta, il lato BE del ritiro di `reset_lotto_draft`, D-K5, D-K6 e D-I.4, e le richieste R-DB-K3, R-DB-K4 e
 > R-DB-I3. Dal DB, il 2026-11-24 su `dev/db-tid`: R-DB-K3 (§4.7) e R-DB-I3 (§4.8), applicate e verdi; il giro 16
-> (`3045e11677`) e il 2026-11-25 il giro 10 (§10.5), pushati. Il 2026-11-25 anche il giro 9 (§11.5), pushato. Da committare: il giro 11 (§12.5) e `20261124-12` (§12.7), applicati e verdi il 2026-11-25.
+> (`3045e11677`) e il 2026-11-25 il giro 10 (§10.5), pushati. Il 2026-11-25 anche il giro 9 (§11.5), pushato. Il 2026-11-25 anche il giro 11 (§12.5) con `20261124-12` (§12.7), `8f29eee1cb`, PR #241. Da committare: l'analisi della parte 1-7 (§13.5-§13.8), solo il brief.
 >
 > **Brief vicini verificati (2026-11-23):**
 > [brief-db-magazzino-tutte-le-scritture-dal-verbo](../work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md)
@@ -199,13 +200,14 @@
     - [x] changeSet, pgTAP nuovo, guide e `manual/`; prova sullo scratch (2026-11-25, §12.5)
     - [x] apply e pgTAP come app: verdi, con `20261124-12` (Tid, 2026-11-25)
     - [x] la doc auto-generata rigenerata (Tid, 2026-11-25)
-    - [ ] commit e push su `dev/db-tid`
+    - [x] commit e push su `dev/db-tid` (`8f29eee1cb`, 2026-11-25)
     - [ ] il BE: i test che chiamano il verbo senza il livello (§12.6)
   - [ ] 8 + 1-7, un giro solo (D-T **b**, Tid, 2026-11-25): il fondo fattura (verbo pubblico e primitiva separati) e il reset del lotto (quattro verbi d'ingresso, tre primitive chiuse). Qui nasce `dbops.fn_pgtap_concedi_livello_area` (D-L a) e si ritirano le quattro copie (§13)
     - [x] analisi della parte 8, D10-D11 rilette (2026-11-25, §13.1-13.4)
     - [x] D-T **b**, D-U **a** (Tid, 2026-11-25, §13.3)
-    - [ ] analisi della parte 1-7, col passaggio senza azione (§13.5)
-    - [ ] le scelte della parte 1-7 e il via (Tid)
+    - [x] analisi della parte 1-7, col passaggio senza azione (2026-11-25, §13.5-§13.8)
+    - [x] D-W **a**, D-X **a**, D-Y **a**, D-Z **a** (Tid, 2026-11-25, §13.7)
+    - [ ] il via (Tid)
     - [ ] changeSet, pgTAP, builder, guide e `manual/`; prova sullo scratch
     - [ ] apply e pgTAP come app (Tid); doc auto-generata
     - [ ] commit e push su `dev/db-tid`
@@ -2226,30 +2228,202 @@ Nessuna richiesta al BE: niente cambia per chi chiama.
 **Garanzie ritirate.** Nessuna: il perimetro passa dalla RLS al controllo all'ingresso con la stessa risposta; i
 permessi sono quelli degli endpoint; due porte si stringono.
 
-### 13.5 La parte 1-7 entra nel giro (D-T **b**) — da analizzare
+### 13.5 La parte 1-7 entra nel giro (D-T **b**) — analisi del 2026-11-25
 
-Con D-T **b** il giro 8 non si scrive da solo. Prima della scrittura serve l'analisi della parte 1-7, che oggi è
-solo nelle tabelle di §4.3 e §4.5-bis. L'analisi copre:
+Con D-T **b** il giro 8 non si scrive da solo: questa è l'analisi della parte 1-7, che prima stava solo nelle tabelle di
+§4.3 e §4.5-bis. Lo sviluppo parte solo dopo le scelte di §13.7 e il via di Tid.
 
-* **i quattro verbi d'ingresso**: `fn_annulla_lotto_da_draft`, `fn_riporta_lotto_a_draft`, `fn_elimina_fattura_da_lotto`,
-  `fn_escludi_documento_da_giro`. Diventano DEFINER, col guard e il perimetro all'ingresso. Il guard di ognuno sta in
-  §4.5-bis; il task `reset_lotto_draft` è già ritirato (§4.8), quindi c'è una strada in meno;
-* **le primitive chiuse**: `fn_cleanup_fatture_by_ids`, `fn_reset_fondi_fattura` e la primitiva del fondo di §13.2,
-  tutte e tre in `v_fn_riservate`. La GUC del reset diventa sulla riga, e il criterio `fn_check_fondo_cancellabile` la
-  legge solo da dentro un verbo;
-* **il passaggio senza azione** (§4.5-bis punto 3): si decide se il verbo rifà la ricaduta del BE sul livello `TUTTO`
-  dell'area `vendite`, e che cosa risponde `fn_riporta_lotto_a_draft` su un lotto già in bozza. È la scelta di Tid che
-  l'analisi prepara. Se la ricaduta sul livello resta, è la seconda occorrenza del guard d'area di D-U, e nasce il BB;
-* **i pgTAP e le guide** della parte 1-7, che si aggiungono a quelli di §13.2 e §13.4, e la richiesta al BE, che si
-  unisce in una sola;
-* **l'utente tecnico della pipeline**, che chiama i verbi del reset: deve avere i permessi dei verbi (§4.3).
+#### 13.5.1 Che cosa c'è oggi (catalogo di dbdev, 2026-11-25)
 
-Lo sviluppo parte solo dopo l'analisi, le scelte che apre e il via di Tid.
+* **I quattro verbi d'ingresso** sono `INVOKER`, senza guard del permesso e senza `search_path`, e l'app li esegue:
+  `fn_annulla_lotto_da_draft(bigint)`, `fn_riporta_lotto_a_draft(bigint)`, `fn_elimina_fattura_da_lotto(bigint, bigint)`,
+  `fn_escludi_documento_da_giro(bigint, text, text)`. Il perimetro lo fa la RLS. Ognuno legge i suoi motivi da un
+  criterio (`script.fn_check_lotto_annullabile`, `…_riportabile_a_draft`, `…_fattura_eliminabile_da_lotto`,
+  `…_documento_escludibile_da_giro`), poi chiama la primitiva. `fn_escludi_documento_da_giro` chiama
+  `fn_elimina_fattura_da_lotto` una volta per fattura del documento.
+* **I due verbi del passaggio chiamano già un verbo DEFINER**: dopo la pulizia `fn_annulla_lotto_da_draft` e
+  `fn_riporta_lotto_a_draft` scrivono lo stato fiscale con `vendite.fn_cambia_stato_lotto`, che è DEFINER. Quel verbo
+  rimette il perimetro sul lotto (`fn_scope_ef_whitelist_via_lotto`, fuori risponde `E_LOTTO_NON_TROVATO`) e chiama
+  `fn_guard_passaggio`. Il permesso del passaggio arriva quindi **dopo** la pulizia. Un rifiuto annulla tutto, perché la
+  transazione è una sola, ma il lavoro si fa prima del guard. `fn_riporta_lotto_a_draft` su un lotto già in bozza non
+  chiama `fn_cambia_stato_lotto`: il codice lo dice dal 2026-10-27 (`20261027-14`), «non c'è passaggio: si fa la
+  pulizia e basta».
+* **La matrice del lotto** (`config.stati_doc_fiscale_transizioni`, righe con `solo_fattura` falso): `DRAFT → ANNULLATA`
+  manuale **senza azione** (Q-F2), `EMESSA → DRAFT` manuale con `numera_fatture_lotti` (Q-F1). Nessuna delle due ha un
+  vincolo `tipo_lotto` nel `meta`.
+* **La primitiva**, `vendite.fn_cleanup_fatture_by_ids(bigint[], uuid)`: `INVOKER`, l'app la esegue, a DB la chiamano
+  solo i tre verbi. Accende la porta con `set_config('zeroerp.maintenance_reset_lotto_draft', 'on', true)` e **non la
+  spegne**. ⚠️ Un `set_config` locale vale fino alla fine della **transazione**, non della funzione. Dopo la pulizia la
+  porta resta aperta per il resto del verbo e per tutto ciò che il backend fa dopo nella stessa transazione. Dentro il
+  verbo, la scrittura dello stato fiscale di `fn_cambia_stato_lotto` passa quindi con il guard di transizione del lotto
+  (`trgfn_fatturazione_lotti_guard_stato`) **saltato**.
+* **Il trigger delle porte 1-7: sette funzioni con la stessa lettura copiata.** Ognuna fa `current_setting(…)` e
+  confronta con una lista di valori, ma le liste non sono uguali: quattro accettano anche `yes` (`guard_fatturato`,
+  i due `guard_quantita_immutabile`, `fatturazione_lotti_guard_stato`, `commesse_guard_chiave_immutabile`), due no
+  (`fattura_satellite_guard_congelamento`, `logs_guard_delete`). Le funzioni sono montate su dodici tabelle:
+  `attivita_fatturabili` (2), `commesse`, `commesse_attivita`, `fatture`, `fatture_righe`, `fatture_indirizzi`,
+  `fatture_scadenze`, `fatture_atti`, `fatturazione_lotti`, `fatturazione_lotti_log`, `fatture_log`. È la regola del 2
+  già superata, e le copie hanno già cominciato a divergere.
+* **Il criterio del fondo**, `fn_check_fondo_cancellabile`: con la porta del reset accesa salta il controllo della
+  figlia congelata (§3-ter.3). Nella catena del reset la figlia è la fattura che si sta pulendo
+  (`fn_reset_fondi_fattura` filtra `fattura_figlia_id = p_fattura_id`). I tre criteri d'ingresso la vogliono **pre-fiscale**
+  (`script.fn_check_lotto_fatture_pre_fiscali`, e il criterio della fattura singola), e `DRAFT` ed `EMESSA` hanno
+  `congela_fiscale` falso. Sul modello il ramo non cambia mai l'esito del reset. Apre invece la strada dell'app (§3-ter.3).
+* **Il perimetro: lotto e fatture non sono legati per struttura.** `vendite.fatturazione_lotti_fatture` non ha né un
+  vincolo né un trigger che chieda che la fattura sia dell'azienda del lotto. La sua RLS risolve l'emittente dal
+  **lotto**, quella di `vendite.fatture` dalla **fattura**. La rete `trgfn_guard_emittente_scope` su `fatture` e
+  `fatturazione_lotti` copre `INSERT` e `UPDATE`, non `DELETE`, e la pulizia è quasi tutta fatta di `DELETE`. «Le figlie
+  seguono il padre» (§4.3, effetto 1) qui non è garantito dal modello.
+* **Chi chiama, a DB** (corpi senza commenti e `pg_depend`): `fn_cleanup_fatture_by_ids` solo dai tre verbi;
+  `fn_reset_fondi_fattura` solo dalla primitiva; `fn_check_fondo_cancellabile` solo da `fn_cancella_fondo_fattura` e da
+  `fn_reset_fondi_fattura`; nessuna vista ne dipende. Dal BE nessuna delle quattro (§4.5).
+* **L'utente tecnico**: nessun processo automatico raggiunge i verbi (§4.5-bis, Parte B chiusa col ritiro del task).
+  Niente da dare al suo profilo.
+* **I pgTAP, fatto datato del 2026-11-25** (non decide niente: ognuno si adegua per ciò che fa, non per quanti sono):
+  sei aprono la porta da sé (`test-chiave-fattura-tre-specchi-v1`, `test-fondo-fattura-cancellazione`,
+  `test-resolve-termini-livello-sorgente-v1`, `test-fattura-satelliti-lock-congelamento-v1`,
+  `test-arrotondamento-ambito-idempotenza-v1`, `test-guard-quantita-immutabile-v1`); sette chiamano la primitiva
+  diretta; una ventina chiamano i verbi.
+
+#### 13.5.2 Che cosa si cambia
+
+1. **I quattro verbi diventano `SECURITY DEFINER`** (`search_path` `pg_catalog, public, pg_temp`), con firma e `RETURNS`
+   come al vivo: il BE non cambia. Ogni verbo spegne all'ingresso la GUC del reset (e la porta 8, D-T **b**). L'ordine
+   è utente, parametri, **lotto nel perimetro** `FOR UPDATE`, **guard**, motivi, lock, primitiva.
+   ⚠️ Per i due verbi del passaggio il guard non può stare nella prima riga: il permesso dipende dallo stato del lotto,
+   quindi prima si legge il lotto. È lo stesso ordine di `fn_cambia_stato_lotto`. Fuori perimetro la risposta è
+   `E_LOTTO_NON_TROVATO`, come oggi, prima di dire qualunque cosa sullo stato.
+2. **Il guard di ognuno** (§4.5-bis):
+   * `fn_elimina_fattura_da_lotto`, `fn_escludi_documento_da_giro`: `fn_guard_azione(…, 'reset_lotto_fattura_draft')`;
+   * `fn_annulla_lotto_da_draft`: la riga `DRAFT → ANNULLATA` non ha azione, quindi il livello `TUTTO` sull'area `vendite`
+     (D-X, §13.7);
+   * `fn_riporta_lotto_a_draft`: da `EMESSA` l'azione della riga, `numera_fatture_lotti`; da `DRAFT` non c'è riga, e
+     conta il livello `TUTTO` sull'area. La pulizia sul lotto già in bozza **resta** (decisione del 2026-10-27, scritta
+     nel corpo del verbo; il BE la ammette): niente `E_DOC_GIA_NELLO_STATO`.
+   * Il livello sull'area è la **seconda occorrenza** del guard di D-U (il primo è `fn_annulla_sistemazione`, giro 8).
+     Nasce quindi il BB `script.fn_guard_livello_area(utente, area, livello)`, con lo stesso rifiuto di
+     `fn_guard_livello`, e il giro 8 lo usa invece di scriverlo sul posto. Non resta nessuna copia da ritirare, perché
+     il giro è uno solo.
+3. **`fn_escludi_documento_da_giro` chiama il verbo pubblico** `fn_elimina_fattura_da_lotto`, come oggi: l'azione è la
+   stessa, quindi un guard ripetuto per ogni fattura non nega niente di nuovo e non serve una primitiva in più.
+4. **Il perimetro** si controlla sul lotto, e sulle fatture che il verbo tocca (D-Y, §13.7).
+5. **La porta 1-7.** La lettura passa a un BB, `vendite.fn_porta_reset_lotto_aperta(p_tabella regclass)`: GUC accesa
+   **e** `fn_is_proprietario_tabella(p_tabella)`. Le sette funzioni di trigger chiamano il BB, e le sette copie si
+   ritirano nello stesso giro, compresa la divergenza su `yes`. La primitiva accende la GUC e la **spegne prima di
+   uscire**: la porta resta aperta solo mentre la pulizia lavora. Così dopo la pulizia il guard di transizione giudica
+   anche lo stato scritto da `fn_cambia_stato_lotto`. Le due righe sono ammesse, senza vincolo di `tipo_lotto`, e il
+   fermo non si applica (`ANNULLATA` è abortito, `DRAFT` non congela). Che cosa porta la GUC (un interruttore o l'id
+   della riga) è la D-W (§13.7).
+6. **Le primitive chiuse** (`v_fn_riservate`, nelle tre sedi di §11.8): `fn_cleanup_fatture_by_ids`,
+   `fn_reset_fondi_fattura`, `fn_applica_cancellazione_fondo_fattura` (§13.2) e `fn_check_fondo_cancellabile`.
+   Nessuna delle quattro ha un chiamante dal BE, né una vista che dipenda da lei. `fn_libera_attivita_fatturabili` e
+   `fn_riporta_attivita_da_emettere` restano eseguibili: scrivono `attivita_fatturabili`, la cui porta, chiusa,
+   ferma l'app. La seconda non ha chiamanti a DB, e la richiesta al BE chiede se ne ha dal BE.
+7. **Il criterio del fondo**: il ramo della GUC del reset (D-Z, §13.7).
+8. **I pgTAP**: un pgTAP nuovo, come app, per la parte 1-7. Prova la porta (la GUC accesa dall'app e una scrittura
+   diretta su una tabella per funzione di trigger: si ferma), i quattro verbi senza il permesso (`E_PERMESSO_NEGATO`; per
+   `fn_riporta_lotto_a_draft` sia da `EMESSA` senza `numera_fatture_lotti`, sia da `DRAFT` senza il livello d'area), due
+   emittenti (il lotto dell'altro: `E_LOTTO_NON_TROVATO`, niente toccato), la GUC spenta dopo la pulizia e dopo il verbo,
+   e il passaggio giudicato dal guard di transizione. Il builder `dbops.fn_pgtap_concedi_livello_area` di D-L nasce
+   qui, e le quattro copie `pg_temp.livello_area` si ritirano. I pgTAP che aprono la porta da sé diventano controesempi,
+   oppure passano dal verbo o dal seed. Quelli che chiamano la primitiva diretta passano dal verbo. Quelli che chiamano
+   i verbi ricevono l'azione o il livello dal builder.
+9. **Le guide** (§13.6) e **la richiesta al BE** (§13.8), una sola per tutto il giro 8 + 1-7.
+
+### 13.6 Le guide (`guide_coinvolte.py --oggetti` sui quindici oggetti, 2026-11-25)
+
+* `fatturazione` (`fn_annulla_lotto_da_draft`, `fn_check_fondo_cancellabile`, e nel testo `fn_riporta_lotto_a_draft`):
+  **indietro dopo il giro**, e si aggiorna nello stesso giro. Descrive bene **che cosa** fa il reset, ma non chi può
+  farlo: l'annullo col livello sull'area, il ritorno in bozza con `numera_fatture_lotti` da `EMESSA`, «togli» ed «escludi»
+  con `reset_lotto_fattura_draft`. Non dice nemmeno che la porta del reset si apre solo dentro la pulizia. I tre verbi
+  orfani (`fn_riporta_lotto_a_draft`, `fn_elimina_fattura_da_lotto`, `fn_escludi_documento_da_giro`) sono gesti del
+  dominio: il «Vedi anche» è incompleto e li prende.
+* `gestione-dei-pagamenti` (`fn_reset_fondi_fattura`): **coerente**; con D-Z **a** si toglie la riga sul bypass, se la
+  guida la nomina (insieme a §13.4).
+* `modello-documento-di-vendita` (`fn_guard_passaggio`): con D-X **a**, **indietro su un punto**. «Una riga senza azione
+  chiede solo il permesso sul documento» resta vero. Va aggiunto che per il lotto quel permesso lo rifà anche il verbo,
+  perché il verbo DEFINER non ha più la RLS dietro. Con D-X **b**, **contraddetta**: è un cambio di modello del
+  passaggio.
+* `architettura-permessi-e-autorizzazioni` §7.4: **indietro** dopo il giro. Il reset dei lotti esce dalle porte aperte e,
+  insieme al contabile (§13.4), non resta nessuna porta del flusso con la sola GUC.
+* Orfani: le sette funzioni di trigger della porta sono dettagli interni, e non serve una guida.
+
+**Garanzie ritirate.** Nessuna sulle regole: le porte si stringono e i permessi sono quelli degli endpoint. Un fatto da
+censire nel giro: dentro un verbo DEFINER `current_user` è il proprietario. Le colonne che i verbi timbrano con
+`current_user` (`user_update` del lotto, `user_insert` dei log del fondo) diranno `zeroerp_owner` invece di `zeroerp_app`,
+come in ogni verbo DEFINER di oggi (`fn_cambia_stato_lotto`, magazzino). Il giro cerca a DB chi legge quelle colonne
+aspettandosi il ruolo dell'app, e la richiesta al BE chiede lo stesso.
+
+### 13.7 Quattro scelte per Tid
+
+✅ **Decise da Tid il 2026-11-25: D-W a, D-X a, D-Y a, D-Z a.** Lo sviluppo non parte: aspetta il via.
+
+* **D-W, che cosa porta la GUC del reset.** Con D-A **a** il piano vuole la GUC «sulla riga» in ogni porta (D-B decaduta,
+  2026-11-23). Le sette funzioni di trigger della porta stanno però su dodici tabelle, e ognuna avrebbe la sua regola
+  per risalire dalla riga alla fattura o al lotto: la fattura per i satelliti, `fattura_riga_id` o `lock_batch_id` per le attività, la commessa per le altre.
+  In più la pulizia cancella il legame lotto ↔ fattura **prima** della fattura.
+  **a** la GUC resta un interruttore, ma la porta apre solo col proprietario (il BB del punto 5) e per la sola durata
+  della pulizia (la primitiva la spegne prima di uscire). Si scrive come eccezione dichiarata al «sulla riga» di D-A,
+  e il motivo è che la porta la tiene il proprietario dentro una primitiva chiusa · **b** la GUC porta l'id del lotto,
+  o l'elenco delle fatture, e ognuna delle sette funzioni di trigger risale dalla sua riga al lotto: sette regole
+  nuove, e quella delle fatture va scritta prima che il legame sparisca.
+  ⭐ **a**. «Sulla riga» serviva a limitare ciò che una porta aperta lascia passare. Qui la porta la apre solo il
+  proprietario, solo dentro la primitiva, e si richiude prima che il verbo vada avanti: le sole scritture che vede sono
+  quelle della pulizia. **b** aggiunge sette regole di risalita senza chiudere una strada in più.
+  ✅ **Decisa da Tid il 2026-11-25: a.** È un'eccezione dichiarata al «sulla riga» di D-A, per la sola porta 1-7: la
+  guida dei permessi §7.4 e `fatturazione` lo scrivono nel giro.
+* **D-X, il passaggio senza azione** (§4.5-bis punto 3). Il BE, quando la riga non ha azione, ricade sul livello `TUTTO`
+  dell'area `vendite`. `fn_guard_passaggio` invece passa («il permesso lo controlla il backend»).
+  **a** la ricaduta si fa nei due verbi del lotto, col BB `fn_guard_livello_area` del punto 2 · **b** la ricaduta entra
+  in `fn_guard_passaggio`, quindi vale per tutti i verbi di passaggio di tutti i documenti. È un cambio del modello del
+  passaggio (Q-F2 di `work-done/2026/brief-modello-documento-vendita`, 2026-10-27; guida del modello §«L'azione si
+  dichiara sulla riga»), e ogni verbo deve dire quale area chiede.
+  ⭐ **a**: è ciò che fa l'endpoint, senza rifiuti nuovi e dentro il giro. **b** resta una domanda vera e va segnalata.
+  Tutti i verbi di passaggio sono DEFINER, quindi una riga senza azione oggi non chiede niente a DB su nessun
+  documento. È un tema trasversale e lo apre Tid, se vuole, fuori da questo brief.
+  ✅ **Decisa da Tid il 2026-11-25: a.** La ricaduta sta nei due verbi del lotto, col BB `fn_guard_livello_area`.
+  La strada **b** non è aperta qui.
+* **D-Y, il perimetro delle fatture del lotto.** Il modello non lega la fattura all'azienda del lotto (§13.5.1), quindi
+  controllare il solo lotto lascia aperta la fattura d'altri dentro un lotto proprio.
+  **a** il verbo controlla il lotto e **ogni fattura che tocca**. `fn_elimina_fattura_da_lotto` controlla il lotto e la
+  fattura (`fn_scope_ef_whitelist_via_fattura`); annullo e ritorno in bozza controllano il lotto e, con una sola query,
+  tutte le sue fatture. Una fattura fuori perimetro risponde `E_LOTTO_NON_TROVATO`, fail-closed, senza dire che cosa
+  c'è · **b** la regola diventa di struttura: un guard su `fatturazione_lotti_fatture` rifiuta la fattura d'un'altra
+  azienda, e poi basta il lotto. È un cambio di modello che tocca chi scrive quel legame (la pipeline), quindi è un
+  altro giro.
+  ⭐ **a**: chiude il caso dentro il giro, con una query sola all'ingresso. **b** si può aprire dopo, e allora il
+  controllo sulle fatture diventa ridondante ma non sbagliato.
+  ✅ **Decisa da Tid il 2026-11-25: a.**
+* **D-Z, il ramo della GUC nel criterio del fondo.** **a** si toglie: nel reset la figlia è la fattura che si pulisce,
+  e i criteri d'ingresso la vogliono pre-fiscale, cioè non congelata. Il ramo non serve al reset e apre la strada
+  dell'app. Il criterio resta uno solo per il reset e per il gesto, quindi il controllo si fa più stretto e non più
+  largo · **b** resta, letto col BB della porta (quindi solo dal proprietario).
+  ⭐ **a**: la ragione sta sul modello (la figlia di un reset è pre-fiscale per costruzione), non sul fatto che il caso
+  oggi non capiti. Se un giorno il reset toccasse una figlia congelata, il fondo resterebbe e il log lo direbbe
+  (`W_FONDO_FIGLIA_CONGELATA`). È il comportamento fail-closed che il criterio ha già per il gesto.
+  ✅ **Decisa da Tid il 2026-11-25: a.** Il ramo si toglie, e il criterio non legge più la GUC del reset.
+
+### 13.8 La richiesta al team BE/FE (dopo l'apply, una sola per il giro 8 + 1-7)
+
+Si scrive nel giro, insieme a quella di §13.2 punto 8. Il contenuto:
+
+* **Chi cambia per primo**: il DB. Nessuna firma cambia, nessuna GUC da togliere (§4.2).
+* **I test che chiamano uno dei quattro verbi a DB reale** senza il permesso dell'endpoint ricevono `E_PERMESSO_NEGATO`
+  (§4.5, Parte C: lo smoke `smoke-ritorno-lotto-a-draft.py` è SUPER_ADMIN e passa). La ricerca si fa sul nome, non su
+  un elenco chiuso.
+* **Il perimetro**: un lotto o una fattura di un'altra azienda risponde `E_LOTTO_NON_TROVATO`, come prima (il 404 non
+  cambia).
+* **`fn_riporta_attivita_da_emettere`**: se il BE la chiama, e da dove (a DB non ha chiamanti).
+* **I lettori di `user_update` e `user_insert`** delle tabelle che i verbi scrivono, se qualcuno conta che valgano
+  `zeroerp_app` (§13.6, «Garanzie ritirate»).
+* **I manuali BE** degli endpoint del lotto, se raccontano chi può annullare, riportare in bozza, togliere o escludere.
 
 ## Registro
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-25 | Tid | Giro 8 + 1-7: **D-W a** (interruttore col proprietario, vivo solo nella pulizia), **D-X a** (la ricaduta sul livello d'area nei due verbi del lotto), **D-Y a** (il perimetro sul lotto e su ogni fattura toccata), **D-Z a** (il ramo della GUC nel criterio del fondo si toglie) (§13.7). Lo sviluppo non parte: aspetta il via |
+| 2026-11-25 | DB | Giro 8 + 1-7, analisi della parte 1-7 (§13.5-§13.8): quattro verbi DEFINER col lotto nel perimetro prima del guard; trovato che la GUC del reset resta accesa fino alla fine della transazione (il guard di transizione del lotto oggi non giudica gli stati del reset), che le sette letture della porta divergono (`yes`), che lotto e fatture non sono legati per struttura alla stessa azienda e che il ramo della GUC nel criterio del fondo non serve al reset; il BB `fn_guard_livello_area` nasce qui (seconda occorrenza di D-U); D-W, D-X, D-Y, D-Z a Tid |
 | 2026-11-25 | Tid | Giro 8: D-T **b** (i giri 8 e 1-7 in un giro solo, la primitiva del fondo nasce chiusa) e D-U **a** (il guard del livello d'area sul posto). Brief aggiornato: piano fuso, §13.3 chiusa, §13.5 l'analisi della parte 1-7 da fare; lo sviluppo non parte |
 | 2026-11-25 | DB | Giro 8, analisi (§13): D10-D11 rilette; primitiva DEFINER dei tre DELETE col perimetro sull'atto e la porta sulla riga, verbo pubblico col guard di `governa_fondo_fattura`, `fn_annulla_sistemazione` DEFINER col livello d'area, la GUC del reset spenta dai verbi pubblici; D-T e D-U a Tid. Ordine deciso da Tid: giro 8, poi K1 e K4 insieme |
 | 2026-11-25 | Tid | Giro 11 e `20261124-12` applicati, pgTAP come app verdi, doc auto-generata rigenerata (§12.5, §12.7); al BE il 6d-quinquies |

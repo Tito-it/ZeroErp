@@ -23,8 +23,10 @@
 > * [script.fn_resolve_livello_area](/dbzero/script/funzioni/fn_resolve_livello_area) / [script.fn_resolve_livello_oggetto](/dbzero/script/funzioni/fn_resolve_livello_oggetto) — la catena risolta lato DB
 > * [script.fn_get_permessi_effettivi_azioni](/dbzero/script/funzioni/fn_get_permessi_effettivi_azioni) / [script.fn_get_permessi_effettivi_oggetti](/dbzero/script/funzioni/fn_get_permessi_effettivi_oggetti) — la catena col tetto d'area, sede unica di resolver, mappe di `/me/` e pannello permessi
 > * [script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope) — la regola di scope emittente, sede unica
+> * [script.fn_resolve_emittente_for_user](/dbzero/script/funzioni/fn_resolve_emittente_for_user) — l'azienda su cui agisce chi lavora: la scelta in alto se valida, poi la sua riga; vuota in «tutti»
 > * [script.fn_get_emittenti_scope_pk_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_pk_ids) / [script.fn_get_emittenti_scope_sr_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_sr_ids) — gli emittenti nel perimetro dell'utente
 > * [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope) — il write-guard di difesa in profondita'
+> * [config.trgfn_parameter_overrides_guard_emittente_scope](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_emittente_scope) — lo stesso perimetro sugli override dei parametri, una tabella senza RLS: guarda la riga prima e dopo, anche nel `DELETE`
 > * [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — il verbo che sposta un operatore su un'azienda, riservato al SUPER_ADMIN
 > * [config.trgfn_user_emittenti_fiscali_guard_delete](/dbzero/config/funzioni/trgfn_user_emittenti_fiscali_guard_delete) — il guard del `DELETE` della riga di scope, e la porta del verbo
 > * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) / [script.fn_guard_livello](/dbzero/script/funzioni/fn_guard_livello) / [script.fn_guard_super_admin](/dbzero/script/funzioni/fn_guard_super_admin) / [script.fn_guard_utente_stesso](/dbzero/script/funzioni/fn_guard_utente_stesso) — il permesso nella prima riga di un verbo di scrittura
@@ -788,6 +790,29 @@ dell'emittente si ottiene `TRUE` o `FALSE` secondo i rami qui sopra. Il check e'
 riutilizzabile da viste, report e altre funzioni DB che devono filtrare dati in
 base all'ambito dell'utente corrente.
 
+**Su quale azienda agisce chi lavora.** La funzione qui sopra risponde «puo'
+lavorare su questa azienda?». La domanda vicina, «su quale azienda sta lavorando
+adesso?», ha una sede sua:
+[fn_resolve_emittente_for_user](/dbzero/script/funzioni/fn_resolve_emittente_for_user).
+L'azienda di un valore operativo (un parametro, una soglia, la valuta, l'emittente
+di una scrittura) e':
+
+1. quella **del documento**, quando c'e' un documento;
+2. altrimenti quella **di chi agisce**: l'azienda scelta in alto, se l'utente la
+   puo' scegliere, poi l'azienda della sua riga in `user_emittenti_fiscali`.
+
+In «tutti gli emittenti» la risposta e' vuota. Una lettura salta il livello
+dell'azienda, e una scrittura si rifiuta con `E_EMITTENTE_NON_RISOLTO`: «tutti»
+e' sola lettura.
+
+⛔ **Il gestore globale non e' l'azienda di nessuno che agisca.** La predefinita
+dell'installazione, cioe' la riga senza billing account di
+`emittenti_fiscali_billing_account`, risponde a un'altra domanda: di quale
+azienda e' un billing account che non ne dice una. Non si usa come ripiego per
+chi non ha un'azienda. Il super admin senza azienda scelta e l'operatore non
+ancora configurato non hanno un'azienda su cui scrivere, e il loro profilo
+(`fn_get_user_profile`) non ne mostra nessuna.
+
 ### 7.2 Trigger guard per ambito emittente
 
 > Struttura completa: [trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope)
@@ -822,6 +847,17 @@ quando lavora in prima persona. Se la scrittura arriva da una funzione che gira
 con i diritti del proprietario (`SECURITY DEFINER`) ma per conto di qualcun altro,
 quella eccezione non vale: senza un utente, una riga che appartiene a un'azienda
 non si scrive.
+
+**Una tabella per azienda senza RLS: gli override dei parametri.** Il guard qui
+sopra lavora accanto a una policy: la policy toglie di mezzo le righe delle altre
+aziende, e il guard giudica l'azienda che si scrive. `config.parameter_overrides`
+e' configurazione letta da tutti e non ha la RLS, quindi ha un guard suo,
+[trgfn_parameter_overrides_guard_emittente_scope](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_emittente_scope),
+che guarda la riga **prima** e **dopo** la scrittura e copre anche la
+cancellazione. La regola e' la stessa (`fn_check_user_emittente_scope`): chi ha
+scelto un'azienda non modifica ne' cancella l'override di un'altra. Senza un
+utente in sessione passa solo il proprietario della tabella quando lavora in
+prima persona, come sopra.
 
 ### 7.3 Funzioni di risoluzione permessi lato DB
 

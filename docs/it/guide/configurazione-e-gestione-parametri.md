@@ -1,6 +1,6 @@
 # Guida — Configurazione e Gestione Parametri
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend
 >
@@ -22,6 +22,7 @@
 > * [config.trgfn_parameter_overrides_guard_ammette_override](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_ammette_override) · [config.trgfn_parameters_guard_ammette_override](/dbzero/config/funzioni/trgfn_parameters_guard_ammette_override) — il rispetto della famiglia: nessun override su un parametro che vale per tutti
 > * [script.fn_valore_parametro_non_conforme](/dbzero/script/funzioni/fn_valore_parametro_non_conforme) — la regola delle forme del valore (`tipo_valore`)
 > * [config.trgfn_parameters_guard_tipo_valore](/dbzero/config/funzioni/trgfn_parameters_guard_tipo_valore) · [config.trgfn_parameter_overrides_guard_tipo_valore](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_tipo_valore) — la forma del valore rispettata quando si scrive il default o un override
+> * [config.trgfn_parameter_overrides_guard_emittente_scope](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_emittente_scope) — il perimetro emittente: un override di un'azienda lo scrive, lo modifica e lo cancella solo chi lavora su quell'azienda
 >
 > **Vedi anche** — guide correlate:
 >
@@ -171,6 +172,14 @@ parametro.
 * `emittente_fiscale_id` e `categoria_cliente_id` sono FK verso `anagrafiche.emittenti_fiscali` e
   `anagrafiche.categorie_clienti`, con un guard: non si crea un override verso un emittente o una
   categoria **disattivati**;
+* un override per **emittente** appartiene a quell'azienda: lo crea, lo modifica e lo cancella solo
+  chi ha l'azienda nel suo perimetro, con la stessa regola delle altre tabelle per azienda
+  ([architettura dei permessi §7](/guide/architettura-permessi-e-autorizzazioni)). Chi ha scelto
+  un'azienda lavora solo su quella, anche se è super admin: il valore di un override di un'altra
+  azienda non si cambia, e l'override non si sposta su un'azienda che non è nel perimetro. Il
+  rifiuto è `E_SCOPE_EMITTENTE`; una scrittura senza un utente in sessione è `E_SCOPE_SENZA_UTENTE`.
+  Gli override per utente, gruppo, categoria e funzione non appartengono a un'azienda e non hanno
+  questo controllo;
 * `django_user_id` e `django_group_id` puntano a `auth_user` e `auth_group` di Django. ⚠️ Le FK
   esistono solo dove Django c'era già quando sono state create: su un database costruito da zero
   Liquibase gira **prima** delle migrazioni Django, e le due FK non ci sono.
