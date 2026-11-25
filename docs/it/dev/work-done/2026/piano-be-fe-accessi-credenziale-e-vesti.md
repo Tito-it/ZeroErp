@@ -2,6 +2,24 @@
 
 > **Tipo documento**: piano di lavoro backend + frontend (`dev/backend-tid`).
 >
+> 📦 **Archiviato il 2026-11-25, dopo la riverifica sul codice.** Il piano non è
+> superato, ma è quasi tutto fatto: L-0, L-1, L-2, L-3, L-4, L-6, D-3 e D-5 lato
+> codice sono chiusi e coerenti col codice di quella data. Restano due punti, che
+> continuano in
+> [brief-be-accessi-credenziale-e-vesti.md](../../work-in-progress/brief-be-accessi-credenziale-e-vesti.md):
+>
+> - **R-4 → D-4, A-6** (la revoca dell'admin che tiene): il brief DB non esiste
+>   ancora, e `anagrafiche.identita_digitali` non ha dove ricordare la revoca.
+>   `ProfileActivateShopView` controlla solo il ruolo `CLIENTE_PORTALE`, quindi
+>   una veste shop spenta dall'admin si riaccende da sé. Il brief DB sugli
+>   accessi lo ha deciso Tid il 2026-11-23 (T9 di
+>   [brief-db-revisione-anagrafiche](../../work-in-progress/brief-db-revisione-anagrafiche.md)
+>   §17.1, con S64 e S67), ma non è ancora scritto;
+> - **il collaudo a video di D-5** (§4.3-bis): nessun documento di collaudo in
+>   `work-done/`.
+>
+> Il testo sotto è lo stato al 2026-10-07, lasciato com'era.
+>
 > **Data**: 2026-09-24 · **Stato** (riallineato al codice e al DB il
 > 2026-10-06): 🟡 **IN CORSO** — ✅ **L-0** (2026-09-24, §2), ✅ **L-1**
 > (2026-09-25, §3.1-bis), ✅ **L-3** intero, consenso al riuso compreso (A-9:
@@ -11,7 +29,7 @@
 > e allineati dal BE/FE (§5). 🟡 **L-5 iniziato**: i comandi dell'operatore
 > toccano la sola veste operatore (2026-10-02, §4.3).
 > ✅ **L-2 fatto il 2026-10-02** col brief dell'area Accessi
-> ([brief-db-be-fe-area-accessi](../work-done/2026/brief-db-be-fe-area-accessi.md) §8): blocco e
+> ([brief-db-be-fe-area-accessi](brief-db-be-fe-area-accessi.md) §8): blocco e
 > sblocco sulla CREDENZIALE (`credenziali/<id>/blocca|sblocca/`), nei drawer
 > dell'operatore e degli altri accessi. ✅ **R-5 consegnata** dallo stesso brief
 > (R-DB-1: la veste spenta tiene il tipo, `DISABILITATO` voce storica) e allineata
@@ -19,7 +37,7 @@
 > `config.credenziali`, leggibile dall'app; ✅ la capability del blocco come
 > codice del DB (R-DB-A5, `script.fn_check_credenziale_bloccabile`) è
 > consegnata dal
-> [brief credenziale e utenti di sistema](../work-done/2026/brief-db-credenziale-verbi-amministratore.md)
+> [brief credenziale e utenti di sistema](brief-db-credenziale-verbi-amministratore.md)
 > (chiuso il 2026-10-03) e letta da `AccessiRepository`. Il brief dell'area
 > Accessi è chiuso (2026-10-02).
 > ✅ **D-5 chiusa il 2026-10-02**, staccata da L-5 perché solo BE (§4.3-bis):
@@ -42,9 +60,9 @@
 > l'analisi è chiusa (2026-09-28) e sta in `work-done/`. Le sigle ancora aperte
 > sono riassunte qui sotto, §0.
 >
-> **Da dove viene**: [analisi-accessi-credenziale-e-vesti.md](../work-done/2026/analisi-accessi-credenziale-e-vesti.md)
+> **Da dove viene**: [analisi-accessi-credenziale-e-vesti.md](analisi-accessi-credenziale-e-vesti.md)
 > (inventario, difetti M-4/M-5/M-6 e A-1…A-9, decisioni D-1…D-10) e
-> [brief-db-blocco-login-per-credenziale.md](../work-done/2026/brief-db-blocco-login-per-credenziale.md)
+> [brief-db-blocco-login-per-credenziale.md](brief-db-blocco-login-per-credenziale.md)
 > (la forma DB di tentativi, blocco, cambio password obbligatorio ed email,
 > con le decisioni D-B1…D-B5). Questo piano non ripete il perché: lo rimanda.
 >
@@ -57,7 +75,7 @@
 
 ## 0. Le sigle ancora aperte (2026-10-06)
 
-Il perché di ognuna sta nell'[analisi](../work-done/2026/analisi-accessi-credenziale-e-vesti.md)
+Il perché di ognuna sta nell'[analisi](analisi-accessi-credenziale-e-vesti.md)
 §3 e §5; qui solo **cosa** e **dove si chiude**.
 
 | Sigla | Cosa resta | Lotto |
@@ -66,19 +84,19 @@ Il perché di ognuna sta nell'[analisi](../work-done/2026/analisi-accessi-creden
 | ~~**M-6**~~ | ✅ Chiusa: il difetto dal 2026-10-02 (`_VESTE_OPERATORE`, caso costruito); **D-3 fatta il 2026-10-04** — `riattiva_operatore` (repository, service, view, rotta, FE) ritirato, PATCH `attivo: true` su una veste spenta → 400 `E_AMM_VALIDAZIONE`; si riattiva col reinvio (§4.3) | ~~L-5~~ |
 | ~~**A-5**~~ | ✅ Chiusa il 2026-10-02 (§4.3-bis): «Disabilita», interruttore, portale e shop fanno le stesse tre cose sulla veste che spengono — inviti pendenti invalidati, sessioni della veste chiuse, cache a commit. L'operatore invalida gli inviti dentro `_spegni_veste_operatore` (`InvitoVeste.invalida` con `PORTA_OPERATORE`): prima un invito in volo poteva riaccendere la veste appena spenta | ~~L-5~~ |
 | **A-6** | Lo shop si riattiva da solo (`ProfileActivateShopView`) anche dopo una revoca dell'admin (D-4) | L-5 (R-4) |
-| **A-7** | `valido_dal`/`valido_al` della veste non applicati al login né a ogni richiesta | L-6 ✅ 2026-10-07 ([brief DB](../work-done/2026/brief-db-veste-utilizzabile.md): DB e BE/FE) |
+| **A-7** | `valido_dal`/`valido_al` della veste non applicati al login né a ogni richiesta | L-6 ✅ 2026-10-07 ([brief DB](brief-db-veste-utilizzabile.md): DB e BE/FE) |
 | ~~**D-1**~~ | ✅ 2026-10-02: endpoint e FE del blocco dell'admin sulla credenziale (brief area Accessi §8) | ~~L-2~~ |
 | ~~**D-9**~~ | ✅ Chiusa il 2026-10-06 (§4.2): portale e shop entrano con l'email, il reset accetta nome utente o email; il nome utente nell'invito operatore era fatto (R-3, B-15). Le pagine di login di portale e shop nasceranno col campo email (Q-3) | ~~L-4~~ |
 
 ✅ **Chiuse dopo il 2026-09-28**: **A-8** dal T-0 del
-[brief sicurezza](../work-done/2026/brief-be-fe-sicurezza-header-token-mfa.md)
+[brief sicurezza](brief-be-fe-sicurezza-header-token-mfa.md)
 §3.4-bis (`apps/core/api/cancello_obblighi.py`, `PasswordChangeRequiredMiddleware`
 ritirato; `af9c6f659`, 2026-10-01); **A-9** dal
-[brief credenziale per email](../work-done/2026/brief-db-credenziale-per-email.md)
+[brief credenziale per email](brief-db-credenziale-per-email.md)
 (B-20, F-4; `e7be8858b`, 2026-09-27; collaudo eseguito il 2026-10-02).
 
 ~~**L-6 non dipende dal DB**~~ → dal 2026-10-06 sì: §4.4 e
-[brief-db-veste-utilizzabile.md](../work-done/2026/brief-db-veste-utilizzabile.md). **L-4** no: il
+[brief-db-veste-utilizzabile.md](brief-db-veste-utilizzabile.md). **L-4** no: il
 suo prerequisito DB (indice unico sull'email, P-2) è in vigore.
 
 ---
@@ -93,7 +111,7 @@ suo prerequisito DB (indice unico sull'email, P-2) è in vigore.
 | **L-3** | Una persona, una credenziale; invito e attivazione operatore sulla regola unica; ultimo accesso | P-2, R-1, R-2, R-9, brief credenziale per email | D-6, D-8, A-1, A-2, A-3, A-4, A-9 | ✅ 2026-09-27 (collaudo 2026-10-02) |
 | **L-4** | Portale e shop entrano con l'email; il nome utente nell'invito operatore | P-2 (indice email, ✅) + R-3 (✅) | D-9 | ✅ 2026-10-06 (§4.2) |
 | **L-5** | Disattivazione per veste, niente riattivazione diretta, revoca che tiene, sessioni per veste | **R-4** (R-5 ✅; D-5 nessuna, §4.3-bis) | M-5, M-6, D-3, D-4, D-5, A-5, A-6 | 🟡 sola veste operatore fatta (2026-10-02); D-5 chiusa (2026-10-02, §4.3-bis); D-3 chiusa (2026-10-04); resta D-4/A-6, che aspetta il secondo brief DB (R-4) |
-| **L-6** | Validità della veste al login e a ogni richiesta | [brief DB](../work-done/2026/brief-db-veste-utilizzabile.md) (BB «veste utilizzabile») | A-7 (A-8 ➡️ T-0, ✅) | 🟡 decisioni di Tid 2026-10-07 (D-2: per l'operatore contano veste **e** rapporto); lato DB ✅ chiuso il 2026-10-07 (giri 1 e 2 applicati, pgTAP senza regressioni; brief §7, §8: anche l'ultimo amministratore non scade e il batch accende); ✅ BE/FE il 2026-10-07 (brief §9); ✅ giro 3 (§10: «Valido al» modificabile e spento col motivo per l'ultimo SUPER_ADMIN senza data di fine, `null` toglie la data) il 2026-10-07. Brief archiviato |
+| **L-6** | Validità della veste al login e a ogni richiesta | [brief DB](brief-db-veste-utilizzabile.md) (BB «veste utilizzabile») | A-7 (A-8 ➡️ T-0, ✅) | 🟡 decisioni di Tid 2026-10-07 (D-2: per l'operatore contano veste **e** rapporto); lato DB ✅ chiuso il 2026-10-07 (giri 1 e 2 applicati, pgTAP senza regressioni; brief §7, §8: anche l'ultimo amministratore non scade e il batch accende); ✅ BE/FE il 2026-10-07 (brief §9); ✅ giro 3 (§10: «Valido al» modificabile e spento col motivo per l'ultimo SUPER_ADMIN senza data di fine, `null` toglie la data) il 2026-10-07. Brief archiviato |
 
 ---
 
@@ -242,7 +260,7 @@ uno `skip` invece di essere assunta.
 ### 3.3 L-2 — Blocco e sblocco dell'admin
 
 > ✅ **Fatto il 2026-10-02** col
-> [brief dell'area Accessi](../work-done/2026/brief-db-be-fe-area-accessi.md) §8.1
+> [brief dell'area Accessi](brief-db-be-fe-area-accessi.md) §8.1
 > («§4 azioni») e §8.2, in una forma **diversa** dal disegno qui sotto, che
 > resta solo come traccia:
 >
@@ -351,10 +369,10 @@ git…»~~: la `-51` è in git (`64a1ad2f4`); `riusa_auth_user_id` va da view a
 madre, e il dialog legge i dati da `script.fn_get_credenziale_per_email`
 (`AmmSoftwareRepository.get_credenziale_per_email`), la stessa funzione del
 rifiuto — B-20 e F-4 del
-[brief credenziale per email](../work-done/2026/brief-db-credenziale-per-email.md)
+[brief credenziale per email](brief-db-credenziale-per-email.md)
 (`e7be8858b`). `test_login_credenziale_db` prova i due tempi sul DB vero (non più
 sospeso). Collaudo a video
-[eseguito](../work-done/2026/collaudo-in-app-consenso-riuso-credenziale.md) il
+[eseguito](collaudo-in-app-consenso-riuso-credenziale.md) il
 2026-10-02, compreso il caso «email di chi è già operatore»
 (`E_CREDENZIALE_GIA_OPERATORE`, il rimedio è il reinvito).
 
@@ -469,7 +487,7 @@ immediata.
 > legge in `AuthRepository.find_veste_utilizzabile_per_ruoli` (login),
 > `AuthRepository.get_veste_utilizzabile` (refresh, secondo passo, cambio
 > password) e nella CTE di `set_jwt_gucs` (ogni richiesta). Nessun frammento
-> Python: il dettaglio sta nel [brief](../work-done/2026/brief-db-veste-utilizzabile.md) §9.
+> Python: il dettaglio sta nel [brief](brief-db-veste-utilizzabile.md) §9.
 >
 > ⏳ **Stato 2026-10-06: dipende dal DB**, non più «nessuna dipendenza».
 > Facendo il lotto è emerso che la regola sta già a DB in più versioni diverse
@@ -477,7 +495,7 @@ immediata.
 > più copie inline), e che per l'operatore le date sono due: il drawer modifica
 > quelle del **rapporto**, non quelle della veste. Un frammento Python sarebbe
 > stato la quinta versione. ➡️
-> [brief-db-veste-utilizzabile.md](../work-done/2026/brief-db-veste-utilizzabile.md): un BB a DB
+> [brief-db-veste-utilizzabile.md](brief-db-veste-utilizzabile.md): un BB a DB
 > per veste, le copie ritirate, il BE che lo legge nei suoi cinque punti (sono
 > cinque: c'è anche il refresh, `_veste_accesa`). ⏳ Decisioni D-1…D-4 da Tid.
 > Le note sotto sono il punto di partenza, superate dal brief.
@@ -505,12 +523,12 @@ immediata.
 ## 5. Richieste al team DB **non** ancora nel brief
 
 **Stato 2026-10-02.** ✅ R-1, R-2 (P-2), R-3, R-7, R-8, R-9 consegnate nel
-[brief DB](../work-done/2026/brief-db-blocco-login-per-credenziale.md) (§12–§15,
+[brief DB](brief-db-blocco-login-per-credenziale.md) (§12–§15,
 chiuso il 2026-09-27) e allineate dal BE/FE. ✅ **R-5** consegnata dal
-[brief area Accessi](../work-done/2026/brief-db-be-fe-area-accessi.md) (R-DB-1, 2026-10-02).
+[brief area Accessi](brief-db-be-fe-area-accessi.md) (R-DB-1, 2026-10-02).
 **R-6 superata** (lo stato del blocco si legge da `config.credenziali`): al suo posto
 la capability del blocco dal DB, R-DB-A5 nel
-[brief credenziale e utenti di sistema](../work-done/2026/brief-db-credenziale-verbi-amministratore.md),
+[brief credenziale e utenti di sistema](brief-db-credenziale-verbi-amministratore.md),
 ✅ consegnata (2026-10-03) e allineata dal BE.
 ⏳ **Resta R-4**: va in un brief DB che **non esiste ancora**; si scrive prima di
 riprendere D-4.
@@ -522,7 +540,7 @@ riprendere D-4.
 | R-3 | Template `INVITO_OPERATORE` con la variabile del nome utente. ⚠️ **Esteso** (L-3, 2026-09-25): i template `INVITO_OPERATORE` e `INVITO_PORTALE` dicono sempre «imposta la password», anche nel flusso con un clic; il backend passa `is_cross` a tutti e tre (`INVITO_SHOP` lo dichiara già fra le variabili, ma il testo non lo usa). Serve il ramo «attiva l'accesso con le credenziali che hai già». ✅ **Consegnata** (brief §15, `7f3208a58`): `username` in `INVITO_OPERATORE`, tre template `_CROSS`; BE B-15, B-16 | L-4, D-9, L-3 ✅ |
 | R-4 | La veste ricorda di essere stata **revocata** dall'admin (chi, quando), e la riattivazione self-service la rifiuta (sede della regola: DB). ⏳ Brief DB da scrivere | L-5, D-4 |
 | R-5 | `DISABILITATO` **si ritira** come valore di `ruolo_applicativo` (§6 Q-2, deciso): la sua sorte nel tipo `config.ruolo_applicativo` e nei lettori (`fn_is_super_admin`, catena permessi, `trgfn_identita_digitali_guard_coerenza` che oggi lo esenta); le righe che oggi lo portano tornano al ruolo che avevano (dati di sviluppo, a mano). ✅ **Consegnata** (brief area Accessi R-DB-1, 2026-10-02). ⚠️ Lettore in più, trovato il 2026-10-02: `script.fn_get_user_profile` (guard `ruolo_applicativo = 'DISABILITATO'`) | L-5 |
-| ~~R-6~~ | ~~Una funzione di lettura dello stato di blocco dell'admin~~ — **superata** (2026-10-02): `config.credenziali` è leggibile dall'app. Al suo posto R-DB-A5 (capability del blocco) nel [brief credenziale e utenti di sistema](../work-done/2026/brief-db-credenziale-verbi-amministratore.md) | ~~L-2~~ |
+| ~~R-6~~ | ~~Una funzione di lettura dello stato di blocco dell'admin~~ — **superata** (2026-10-02): `config.credenziali` è leggibile dall'app. Al suo posto R-DB-A5 (capability del blocco) nel [brief credenziale e utenti di sistema](brief-db-credenziale-verbi-amministratore.md) | ~~L-2~~ |
 | R-7 | **La risposta del login non dipende dall'esistenza dello username** (✅ Tid, 2026-09-25). Oggi il freno e l'attesa hanno per chiave la **credenziale**: un nome inesistente non conta nulla e resta 401 per sempre, uno esistente dopo la soglia risponde 403 `E_UTENTE_BLOCCATO` (e oltre il tetto `E_LOGIN_ATTESA`) ⇒ chi prova sei password sa se l'utente esiste. La regola, sul modello: **il freno e l'attesa valgono per il NOME TENTATO**, esista o no. Per un nome inesistente, stessa soglia, stesso tetto, stessi codici, stesse due chiamate (check prima, registrazione dopo), così nemmeno il numero di chiamate al DB distingue i due casi. Vincoli: ⛔ il nome **non** si salva in chiaro (nel campo username finiscono anche delle password digitate lì per sbaglio): un hash del nome **normalizzato con la stessa regola del lookup** (oggi uguaglianza esatta sullo username; con L-4 email senza maiuscole, e la normalizzazione deve seguirla); righe con `cleanup_at` come `credenziali_provenienze`; nessuna riga in `config.credenziali` per un nome che non è una credenziale. La forma (tabella a parte o parametro nuovo delle stesse funzioni) la sceglie il DB. ⚠️ Due punti da decidere col brief: (a) hash semplice o HMAC con una chiave del backend: l'hash semplice di una password finita nel campo username si può attaccare offline; (b) `E_CREDENZIALE_BLOCCATA` continua a rivelare che il nome esiste, ma solo per una credenziale bloccata dall'admin, e al titolare quella frase serve per sapere a chi rivolgersi: proposta, **accettarlo e dichiararlo**. ✅ **Consegnata** (brief §13, `20260925-55…-62`, `7f3208a58`); BE B-9…B-12 (`e7dbbad73`) | L-1 ✅ |
 | R-8 | Testo di `E_UTENTE_BLOCCATO` in `messaggi_errore.csv` (✅ Tid, 2026-09-25): oggi dice «Account temporaneamente bloccato per troppi tentativi.», ma il freno riguarda la sola **coppia credenziale + provenienza**, e da un'altra postazione si entra. Proposta: «Troppi tentativi non riusciti da questa postazione: accesso sospeso per qualche minuto.» (lo stesso testo della chiave i18n del login, §3.2). Il BE poi riallinea il ripiego in `error_messages_fallback.py`, **dopo** il changeSet: mai prima, o il ripiego sarebbe avanti rispetto al catalogo. ✅ **Consegnata** (`20260925-52`, `48291b801`); BE/FE B-8, F-1 (2026-09-27) | L-1 ✅ |
 | R-9 | `script.fn_get_operatore_detail` porti lo stato della **veste** OPERATORE (es. `veste_attiva`): oggi `attivo` è quello della risorsa umana e `is_active` quello della credenziale (derivato da **tutte** le vesti), e il FE non ha come distinguere «veste già attiva» dagli altri motivi del non invitabile se non leggendo il testo. ⚠️ La join sulla veste OPERATORE è senza filtro: con più vesti OPERATORE spente (il modello le ammette) il dettaglio restituisce più righe. ✅ **Consegnata** (brief §14, `20260925-53`, `-54`); BE/FE B-13, B-14, F-2 | L-3 ✅ |

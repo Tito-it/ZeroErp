@@ -387,7 +387,7 @@ Il DB del secondo fattore è applicato ([brief-db-secondo-fattore-totp.md](brief
 richieste al BE/FE in §9.5). Decisioni di Tid del 2026-09-30: le decisioni 5 → 8 di §6.
 
 ⛔ **Il «middleware sul modello di `PasswordChangeRequiredMiddleware`» non si fa**: quel
-middleware è **inerte col JWT** (A-8 del [piano accessi](../../work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md):
+middleware è **inerte col JWT** (A-8 del [piano accessi](piano-be-fe-accessi-credenziale-e-vesti.md):
 a `process_view` l'utente del Bearer è ancora anonimo) e scrive a mano un codice che non è a
 catalogo. Copiato, anche l'obbligo del secondo fattore sarebbe fatto rispettare dal solo
 frontend. L'analisi [2FA](autenticazione-due-fattori-e-provider.md) A.2.11 lo diceva già: **lo

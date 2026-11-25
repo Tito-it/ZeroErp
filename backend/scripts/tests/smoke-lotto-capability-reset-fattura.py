@@ -12,7 +12,7 @@
 # ritorni le chiavi attese. Un nome di colonna sbagliato o un `jsonb` letto
 # male passerebbe verde di la' e svuoterebbe il motivo a video.
 #
-# ⚠️ SERVE IL CONTESTO OPERATORE. `vendite.fatture` ha la RLS: senza i cinque
+# ⚠️ SERVE IL CONTESTO OPERATORE. `vendite.fatture` ha la RLS: senza le
 # GUC la lista torna ZERO righe e lo smoke sarebbe verde per sottrazione —
 # «nessuna riga sbagliata» perche' nessuna riga. Il contesto si imposta qui, e
 # il test 1 si rifiuta di proseguire se non ha materia.
@@ -30,6 +30,7 @@
 from django.db import connection, transaction
 
 from apps.vendite.db.vendite_repository import VenditeRepository
+from scripts.tests._smoke_contesto import apri_contesto_smoke
 
 FAIL: list[str] = []
 
@@ -45,10 +46,11 @@ def check(nome: str, ok: bool, dettaglio: str = "") -> None:
 #        legge il test (`fattura_id`, la chiave della whitelist). I nomi sono quelli del contratto di lista
 #        (`order_by`/`order_dir`, rinominati da `sort_by`/`sort_dir` il
 #        2026-10-21, brief-be-verifica-documentazione-api).
-def righe_lotto(lotto_id: int, limit: int = 20):
+def righe_lotto(lotto_id: int, auth_user_id: int, limit: int = 20):
     rows, _ = VenditeRepository().list_lotto_fatture(
         lotto_id=lotto_id,
         stato_esecuzione=None,
+        auth_user_id=auth_user_id,
         order_by="fattura_id",
         order_dir="asc",
         limit=limit,
@@ -61,27 +63,12 @@ with transaction.atomic():
     # ── 1. Fixture ────────────────────────────────────────────────────────
     print("\n=== 1. Fixture ===")
     with connection.cursor() as cur:
-        cur.execute(
-            """
-            SELECT i.id, i.auth_user_id, i.soggetto_ruolo_id, u.username
-              FROM anagrafiche.identita_digitali i
-              JOIN auth_user u ON u.id = i.auth_user_id
-             WHERE i.ruolo_applicativo = 'OPERATORE' AND i.attivo
-             LIMIT 1
-            """
-        )
-        ident = cur.fetchone()
-        if not ident:
-            raise SystemExit("SENZA_MATERIA: nessuna identita OPERATORE attiva.")
-        for chiave, valore in (
-            ("app.current_user_id", str(ident[1])),
-            ("app.current_identita_id", str(ident[0])),
-            ("app.ruolo_applicativo", "OPERATORE"),
-            ("app.soggetto_ruolo_id", str(ident[2])),
-            ("app.jwt_user", ident[3]),
-        ):
-            cur.execute("SELECT set_config(%s, %s, true)", [chiave, valore])
-        check("contesto operatore impostato", True, f"identita {ident[0]}")
+        # Il contesto e' quello del BB degli smoke (`dev.smoke`, super admin):
+        # fino al 2026-11-25 lo apriva una copia locale con la prima veste
+        # OPERATORE trovata (`LIMIT 1` senza ordine), che poteva essere un
+        # utente col perimetro vuoto, il difetto per cui il BB e' nato.
+        auth_user_id = apri_contesto_smoke(cur)
+        check("contesto operatore impostato", True, f"auth_user_id {auth_user_id}")
 
         # I due soggetti: uno oltre la soglia di congelamento e uno sotto.
         # ⚠️ La soglia si legge da `congela_fiscale`, non da una lista di stati
@@ -125,7 +112,7 @@ with transaction.atomic():
 
     # ── 2-3. Oltre soglia: spenta, e col motivo ───────────────────────────
     print("\n=== 2-3. Oltre la soglia: azione spenta, e il motivo c'e' ===")
-    rows_c = righe_lotto(lotto_congelato)
+    rows_c = righe_lotto(lotto_congelato, auth_user_id)
     if not rows_c:
         raise SystemExit("SENZA_MATERIA: il lotto congelato non espone righe (RLS?).")
     r0 = rows_c[0]
@@ -158,7 +145,7 @@ with transaction.atomic():
 
     # ── 4. Sotto soglia: accesa ───────────────────────────────────────────
     print("\n=== 4. Sotto la soglia: azione ammessa ===")
-    rows_a = righe_lotto(lotto_aperto)
+    rows_a = righe_lotto(lotto_aperto, auth_user_id)
     if not rows_a:
         raise SystemExit("SENZA_MATERIA: il lotto aperto non espone righe (RLS?).")
     # ⚠️ Il gemello positivo NON e' ornamentale: senza, un'implementazione che

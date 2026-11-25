@@ -2,7 +2,7 @@
 
 > **Chi scrive:** backend/frontend (`dev/backend-tid`), 2026-09-25. **A chi:**
 > Tid (decisioni, §4), poi team DB (`dev/db-tid`).
-> **Origine:** [piano-be-fe-endpoint-senza-porta.md](../../work-in-progress/piano-be-fe-endpoint-senza-porta.md)
+> **Origine:** [piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md)
 > §3. Il 2026-09-25 Tid ha scelto la strada **(a)**: gli operatori devono poter
 > vedere le mail del loro perimetro, a partire dalla sola lista.
 > **Stato:** ✅ **CHIUSO e archiviato il 2026-09-26** (DB, BE e FE: §6, §8, §9).

@@ -784,7 +784,7 @@ BB **privati del modulo**: le sei entità vivono tutte in `geo_repository`.
 ## Invito e attivazione di una veste — building block unico (`apps/core/`, `apps/portale/`, `apps/shop/`, operatore)
 
 ⭐ **Regola del 2 applicata** (L-3 del
-[piano accessi](../work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md),
+[piano accessi](../work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md),
 ok Tid): operatore, cliente e fornitore portale, cliente shop
 passano da **una** strada. La regola è quella dell'analisi §4.2 — la veste
 nasce **spenta**; flusso scelto sulla **credenziale** (password vera → un clic,

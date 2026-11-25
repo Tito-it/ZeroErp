@@ -243,8 +243,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   proprietario); fatti i giri 1, 1-bis, 3, 12-13 e 16; giro 10 (lo scope emittenti: il verbo DEFINER col guard del SUPER_ADMIN, la porta sulla riga, `20261124-01` … `-06`) applicato e verde il 2026-11-25, al BE la sua richiesta; giro 9 (la registrazione tardiva: il verbo DEFINER col perimetro all'ingresso, il guard di scope del movimento dopo il mirror, `20261124-07` … `-09`) applicato e verde il 2026-11-25, al BE la sua richiesta; giro 11 (la bolla di riconsegna: il verbo DEFINER col livello su `vendite.reso`, il perimetro del reso, la porta col proprietario, `20261124-10`, `-11`, col blocco `EXCEPTION` ridondante tolto dal verbo del giro 9, `-12`) applicato e verde il 2026-11-25, al BE la sua richiesta; il giro 10-bis (la tabella dello scope in sola lettura) nel piano. Nasce dalla chiusura di `work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`
   (2026-11-23: tutte le tabelle di `magazzino` in sola lettura per l'app; la R-4 del BE resta parte dello
   sviluppo del catalogo).
-- **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
-  resta R-4, che vuole un brief DB non ancora scritto. ✅ L-6 (date della veste) fatto il 2026-10-07,
+- **Accessi: una credenziale, più vesti** (`work-in-progress/brief-be-accessi-credenziale-e-vesti.md`; il piano
+  da cui nasce, `work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md`, è archiviato dal 2026-11-25 dopo la
+  riverifica sul codice): restano R-4 (la veste revocata: D-4, A-6), che aspetta il brief DB sugli accessi deciso
+  il 2026-11-23 (T9 di `brief-db-revisione-anagrafiche`, con S64 e S67) e non ancora scritto, e il collaudo a video
+  di D-5. ✅ L-6 (date della veste) fatto il 2026-10-07,
   DB e BE/FE (`work-done/2026/brief-db-veste-utilizzabile.md`; giro 3 chiuso: «Valido al» del drawer operatore
   modificabile, spento col motivo per l'ultimo SUPER_ADMIN senza data di fine, `null` toglie la data): la regola «veste
   utilizzabile» sta in un BB a DB (`script.fn_veste_utilizzabile`), letto da tutte le sedi DB e dai

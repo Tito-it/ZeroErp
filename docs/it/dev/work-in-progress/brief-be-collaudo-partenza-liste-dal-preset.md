@@ -19,7 +19,7 @@ e `backend/scripts/tests/_smoke_partenza_liste.py`.
 > Deciso da Tid il 2026-11-23: passa a un brief BE.
 > **Brief vicini verificati:** [sviluppo-personalizzazioni-liste_def](sviluppo-personalizzazioni-liste_def.md) tiene
 > funzionalità nuove delle liste (viste nominate, condivisione), non il collaudo di ciò che è fatto;
-> [piano-be-fe-endpoint-senza-porta](piano-be-fe-endpoint-senza-porta.md) cita una lista di `ui` solo come fatto.
+> [piano-be-fe-endpoint-senza-porta](../work-done/2026/piano-be-fe-endpoint-senza-porta.md) cita una lista di `ui` solo come fatto.
 > Nessuno dei due copre questo collaudo.
 > **Guide verificate:** [configurazione-liste](../../guide/configurazione-liste.md): coerente. Descrive la partenza della
 > lista dal preset (ordinamento e misura), ed è ciò che il collaudo guarda. Al copione (2026-11-24): coerente, salvo

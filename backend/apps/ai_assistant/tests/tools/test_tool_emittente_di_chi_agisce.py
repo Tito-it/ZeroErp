@@ -129,6 +129,7 @@ class EmittenteFissatoTests(unittest.TestCase):
             "apps.core.services.perimetro_emittente.fetch_flag_perimetro", return_value=flag,
         ), patch(
             "apps.pratiche.db.pratiche_repository.PraticheRepository.get_pratica",
+            autospec=True,
             return_value={"id": 7, "emittente_fiscale_id": 32},
         ):
             CercaFlussiPraticaTool().cancello_del_gemello(_richiesta(), {"pratica_id": 7})
@@ -136,6 +137,7 @@ class EmittenteFissatoTests(unittest.TestCase):
     def test_flussi_pratica_non_visibile_nessun_emittente(self):
         with patch(
             "apps.pratiche.db.pratiche_repository.PraticheRepository.get_pratica",
+            autospec=True,
             return_value=None,
         ):
             self.assertIsNone(CercaFlussiPraticaTool().emittente_fissato({"pratica_id": 7}))
@@ -153,6 +155,7 @@ class EmittenteFissatoTests(unittest.TestCase):
         richiesta.query_params = {"emittente_fiscale_id": "32"}
         with patch(
             "apps.pratiche.db.pratiche_repository.PraticheRepository.get_pratica",
+            autospec=True,
             return_value=None,
         ), patch(_GUARD) as guard:
             CercaFlussiPraticaTool().cancello_del_gemello(richiesta, {"pratica_id": 7})

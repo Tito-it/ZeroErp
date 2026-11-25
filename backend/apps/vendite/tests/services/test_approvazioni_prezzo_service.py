@@ -19,6 +19,7 @@ Indice test:
 10) lista_coda: senza emittente assegnato -> E_APPROVAZIONE_PREZZO_NON_AMMESSA
 11) lookup cache modulo-level: tipo_prestazione_id riusato cross-call
 12) invalidate_lookup_cache forza re-query
+13) _get_user: restituisce l'utente del BB, rifiuta se assente
 """
 
 from decimal import Decimal
@@ -576,3 +577,24 @@ class LookupCacheTests(TestCase):
         svc.invalidate_lookup_cache()
         svc._get_tipo_prestazione_id()
         self.assertEqual(mock_cursor.execute.call_count, 2)
+
+
+# ⛔ Il caso del 2026-11-25: nel passaggio al BB `utente_per_id` il `return`
+#    si era perso, e `_get_user` tornava sempre None (coda approvazioni in 500).
+#    Le classi sopra mockano `_get_user` stesso e non potevano vederlo: qui si
+#    mocka solo il BB che sta sotto.
+class GetUserTests(TestCase):
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.utente_per_id")
+    def test_restituisce_l_utente_trovato(self, mock_per_id):
+        utente = SimpleNamespace(id=42)
+        mock_per_id.return_value = utente
+        self.assertIs(svc._get_user(42), utente)
+        mock_per_id.assert_called_once_with(42)
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.utente_per_id")
+    def test_utente_assente_rifiutato(self, mock_per_id):
+        mock_per_id.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            svc._get_user(42)
+        self.assertEqual(ctx.exception.code, "E_PRICING_OVERRIDE_NON_AUTORIZZATO")

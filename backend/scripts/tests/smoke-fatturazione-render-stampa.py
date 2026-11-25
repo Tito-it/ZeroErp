@@ -129,7 +129,7 @@ print("\n=== SMOKE render stampa fattura (contratto context <-> template) ===\n"
 with connection.cursor() as cur:
     # `vendite.fatture` e' RLS: senza contesto operatore il context builder
     # solleverebbe E_NOT_FOUND su una fattura che esiste.
-    apri_contesto_smoke(cur)
+    auth_user_id = apri_contesto_smoke(cur)
     # Casi 1-8 (sola lettura): la fattura reale piu' ricca, preferendo una con
     # un KIT, che il template stampa su due livelli (padre + componenti). Lo
     # stato non conta: non si scrive niente.
@@ -218,7 +218,7 @@ if versione is None:
     raise SystemExit("Nessuna versione pubblicata: il resto dello smoke non ha senso.")
 print(f"    versione {versione['versione']} (id {versione['id']})\n")
 
-ctx = FatturaDocumentContextBuilder().build_context(fattura_id)
+ctx = FatturaDocumentContextBuilder().build_context(fattura_id, auth_user_id=auth_user_id)
 righe_ctx = ctx["righe"]
 
 # 2) chiavi di contratto — quelle che il template legge con `.get()`.
@@ -401,7 +401,7 @@ else:
               f"l'emittente della fattura {fattura_rate_id} non ha un template "
               "di default pubblicato")
     else:
-        ctx_prima = FatturaDocumentContextBuilder().build_context(fattura_rate_id)
+        ctx_prima = FatturaDocumentContextBuilder().build_context(fattura_rate_id, auth_user_id=auth_user_id)
         ha_piano_prima = bool(ctx_prima.get("scadenze"))
         sezione_prima = re.search(
             r"Scadenze pagamento.*?</table>",
@@ -447,7 +447,7 @@ else:
                                 [fattura_rate_id])
                     cur.fetchone()
 
-            ctx_scad = FatturaDocumentContextBuilder().build_context(fattura_rate_id)
+            ctx_scad = FatturaDocumentContextBuilder().build_context(fattura_rate_id, auth_user_id=auth_user_id)
             scadenze_ctx = ctx_scad.get("scadenze") or []
             html_scad = _render_html_with_jinja(versione_rate["html_template"], ctx_scad)
             sezione = re.search(r"Scadenze pagamento.*?</table>", html_scad, re.S)
