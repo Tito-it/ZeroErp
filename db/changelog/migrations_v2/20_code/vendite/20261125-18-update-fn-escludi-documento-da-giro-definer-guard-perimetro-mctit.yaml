@@ -1,0 +1,375 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «ESCLUDI IL DOCUMENTO DAL GIRO» DIVENTA UN VERBO DEFINER COL SUO PERMESSO E IL SUO PERIMETRO
+#   vendite.fn_escludi_documento_da_giro
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §13.5 (giro 1-7; D-A a di Tid).
+#
+# -- CHE COSA CAMBIA ---------------------------------------------------------
+#   1. SECURITY DEFINER, search_path pg_catalog, public, pg_temp.
+#   2. Il permesso in prima riga: fn_guard_azione(..., 'reset_lotto_fattura_draft'),
+#      l'azione dell'endpoint ApiEscludiDocumentiDaGiro (§4.5).
+#   3. Il perimetro sul lotto, prima dei motivi (E_LOTTO_NON_TROVATO).
+#   4. Le GUC delle porte si spengono all'ingresso.
+#   Le fatture del documento le toglie, come prima, il verbo pubblico
+#   vendite.fn_elimina_fattura_da_lotto: stessa azione, quindi il guard ripetuto
+#   non nega niente di nuovo, e il perimetro su ogni fattura lo rimette lui.
+#   Firma ancorata con %TYPE (stessa identita'). L'EXECUTE all'app resta.
+#   Corpo dal catalogo di dbdev (ultimo changeSet 20260909-68).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261125-18-update-fn-escludi-documento-da-giro-definer-guard-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20261125-18-update-fn-escludi-documento-da-giro-definer-guard-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_escludi_documento_da_giro: DEFINER col guard di reset_lotto_fattura_draft e
+        il perimetro sul lotto. Brief: brief-db-porte-aperte-dalla-sola-guc §13.5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_escludi_documento_da_giro(
+                  p_lotto_id   vendite.fatturazione_lotti.id%TYPE,
+                  p_gruppo_key vendite.fatturazione_lotti_esiti.gruppo_key%TYPE,
+                  p_motivo     vendite.fatturazione_lotti_esiti.uscita_motivo%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo: togliere UN documento dal giro di fatturazione, cosi' che
+              --        il lotto possa ripartire con quelli che restano.
+              -- Ritorna: un consuntivo di cio' che e' stato fatto, perche' il
+              --        chiamante deve poterlo raccontare all'operatore.
+              DECLARE
+                  v_utente      config.user_override_azioni.auth_user_id%TYPE;
+                  v_motivi      jsonb;
+                  v_trascinati  jsonb;
+                  v_fatture     bigint[];
+                  v_fattura_id  vendite.fatture.id%TYPE;
+                  v_cancellate  integer := 0;
+                  v_riemesse    integer := 0;
+                  v_riaperti    integer := 0;
+                  v_esito_riga  RECORD;
+              BEGIN
+                  -- ⭐ rev 2026-11-25 (brief-db-porte-aperte-dalla-sola-guc, giro 1-7): SECURITY DEFINER.
+                  --   Il permesso in prima riga e' l'azione che l'endpoint controlla
+                  --   (reset_lotto_fattura_draft, risposta 3d §4.5); il perimetro lo
+                  --   rimette il verbo sul lotto. Le fatture del documento le toglie il
+                  --   verbo pubblico vendite.fn_elimina_fattura_da_lotto, con la stessa
+                  --   azione e il perimetro su ogni fattura.
+                  v_utente := script.fn_utente_di_sessione('vendite.fn_escludi_documento_da_giro');
+                  PERFORM script.fn_guard_azione(v_utente, 'reset_lotto_fattura_draft');
+
+                  -- Le GUC che dentro un verbo DEFINER aprirebbero una porta si
+                  -- spengono all'ingresso: quella del reset del lotto (la riaccende
+                  -- solo la pulizia, e solo mentre lavora) e quella delle righe
+                  -- contabili del fondo.
+                  PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', '', true);
+                  PERFORM set_config('zeroerp.allow_contabile_riga_delete_override', '', true);
+
+                  -- ── Guard di parametro ────────────────────────────────
+                  -- ⚠️ Il motivo vuoto NON e' una condizione di dominio: il
+                  --    frontend lo rende obbligatorio, quindi se arriva vuoto e'
+                  --    un chiamante rotto. Il CHECK di tabella lo rifiuterebbe
+                  --    comunque, ma con un messaggio che non parla all'operatore.
+                  IF COALESCE(btrim(p_motivo), '') = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_escludi_documento_da_giro', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_motivo'),
+                          NULL::uuid, 'p_motivo obbligatorio: un documento che esce senza motivo non e'' spiegabile');
+                  END IF;
+
+                  -- ── Le precondizioni: sede unica, non riscritte qui ───
+                  -- Il perimetro, una volta, all'ingresso, sul lotto: la regola della
+                  -- policy di vendite.fatturazione_lotti, rimessa qui perche' il verbo
+                  -- legge da proprietario. Fuori perimetro il lotto «non c'e'», come un
+                  -- lotto che non esiste, e prima di dire qualunque cosa sul suo stato.
+                  IF NOT COALESCE(script.fn_scope_ef_whitelist_via_lotto(v_utente, p_lotto_id), false) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_escludi_documento_da_giro', 'E_LOTTO_NON_TROVATO',
+                          jsonb_build_object('detail', 'lotto inesistente o fuori perimetro', 'lotto_id', p_lotto_id),
+                          NULL::uuid, p_lotto_id::text);
+                  END IF;
+
+                  v_motivi := script.fn_check_documento_escludibile_da_giro(p_lotto_id, p_gruppo_key);
+                  -- ⭐ La coda del primo motivo sta in un posto solo: l'helper legge il
+                  --   codice da `v_motivi -> 0`, ne prende i `valori` per la frase, fonde il
+                  --   `dettaglio` nel contesto e ci mette sempre l'elenco COMPLETO dei motivi
+                  --   (il backend puo' mostrarli tutti anche se la frase ne nomina uno).
+                  -- ⚠️ L'IF e' sparito e NON e' fail-open: l'helper tace su un array vuoto,
+                  --   che e' esattamente la risposta «passa». Su un non-array resta rumoroso.
+                  -- 🔴 Rimessa qui dal 20260909-68: il -22, riscrivendo questa funzione per
+                  --   la riga di giornale, aveva ripristinato la coda a mano — e con essa il
+                  --   difetto che il -11 aveva chiuso (p_gruppo_key al posto dello stato del
+                  --   lotto nella frase di E_LOTTO_NON_PRE_FISCALE).
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'fn_escludi_documento_da_giro',
+                      v_motivi,
+                      NULL,          -- nessun campo da accendere: non e' un errore di form
+                      NULL::uuid,
+                      jsonb_build_object('lotto_id',   p_lotto_id,
+                                         'gruppo_key', p_gruppo_key,
+                                         'bersaglio',  jsonb_build_array(
+                                             jsonb_build_object('tipo', 'LOTTO',
+                                                                'id', p_lotto_id::text))));
+
+                  -- ── Chi viene via insieme, PRIMA di cancellare ────────
+                  -- ⚠️ Dopo la cancellazione il legame non c'e' piu': letto qui
+                  --    dopo, direbbe «non trascina nessuno» su un lotto che ha
+                  --    appena riaperto tre documenti.
+                  v_trascinati := script.fn_gruppi_trascinati_da_uscita(p_lotto_id, p_gruppo_key);
+
+                  SELECT COALESCE(array_agg(DISTINCT r.fattura_id), ARRAY[]::bigint[])
+                    INTO v_fatture
+                    FROM script.vw_lotto_documento_righe r
+                   WHERE r.lotto_id = p_lotto_id
+                     AND r.gruppo_key = p_gruppo_key;
+
+                  -- ── Le bozze: si compone la primitiva, non se ne scrive una seconda
+                  -- ⭐ fn_elimina_fattura_da_lotto ha la sua check e la sua
+                  --    semantica gia' decise (RD-7: togliere = cancellare, le
+                  --    attivita' tornano NON_EMESSA). Qui non si duplica niente.
+                  -- ⚠️ Puo' essere piu' di una: le righe di un documento possono
+                  --    finire in bozze diverse.
+                  FOREACH v_fattura_id IN ARRAY v_fatture LOOP
+                      SELECT c.deleted_fatture, c.riemesse_attivita
+                        INTO STRICT v_esito_riga
+                        FROM vendite.fn_elimina_fattura_da_lotto(p_lotto_id, v_fattura_id) AS c;
+                      v_cancellate := v_cancellate + COALESCE(v_esito_riga.deleted_fatture, 0);
+                      v_riemesse   := v_riemesse   + COALESCE(v_esito_riga.riemesse_attivita, 0);
+                  END LOOP;
+
+                  -- ── Il documento esce ────────────────────────────────
+                  -- ⚠️ `uscita_quando` e `uscita_da` NON si scrivono qui: le
+                  --    deriva il trigger dalla GUC. Scriverle sarebbe una seconda
+                  --    sede della stessa regola.
+                  UPDATE vendite.fatturazione_lotti_esiti
+                     SET stato_esecuzione = 'ESCLUSO',
+                         uscita_motivo    = btrim(p_motivo)
+                   WHERE lotto_id = p_lotto_id
+                     AND gruppo_key = p_gruppo_key;
+
+                  -- ── ⭐ L'USCITA SI RACCONTA NEL GIORNALE ──────────────
+                  -- ⛔ Fino al 2026-09-09 l'uscita non lasciava NESSUNA riga di giornale: il
+                  --   timbro stava solo sulla riga dell'esito (uscita_motivo, uscita_quando,
+                  --   uscita_da). Chi guardava la storia del lotto non vedeva che un
+                  --   documento era uscito, ne' perche' — e l'esclusione e' una cosa che si
+                  --   fa apposta, con una motivazione che il CHECK di tabella rende
+                  --   obbligatoria. Un fatto voluto e motivato che il giornale non registra
+                  --   e' esattamente cio' che un giornale non deve fare.
+                  -- ⭐ Status `I`: e' un fatto, non un allarme. E la scelta non e' estetica —
+                  --   dal 2026-09-09 fn_log_pipeline_fase RIFIUTA `W` e `C` su un documento
+                  --   uscito, e accetta le `I` proprio perche' questa riga possa esistere.
+                  -- ⚠️ La `gruppo_key` c'e': senza, la riga sarebbe «del giro» e nessuno
+                  --   potrebbe piu' toglierla ne' capire di chi parla.
+                  -- ⚠️ Il motivo va NEL MESSAGGIO e non solo in meta: chi legge il giornale
+                  --   legge il messaggio, e un motivo che sta solo nel carico e' un motivo
+                  --   che nessuno vede.
+                  PERFORM vendite.fn_log_pipeline_fase(
+                      p_lotto_id,
+                      (SELECT l.stato_doc_fiscale_id FROM vendite.fatturazione_lotti l
+                        WHERE l.id = p_lotto_id),
+                      'USCITA_DAL_GIRO',
+                      'I'::char,
+                      format('Documento %s tolto dal giro: %s', p_gruppo_key, btrim(p_motivo)),
+                      jsonb_build_object('uscita_motivo', btrim(p_motivo)),
+                      NULL,
+                      p_gruppo_key);
+
+                  -- ── I trascinati tornano in coda ─────────────────────
+                  -- ⛔ `PENDING`, non `ESCLUSO`: non sono usciti da niente, e non
+                  --    `COMPLETED`, che direbbe «e' andato bene» su un documento
+                  --    che non ha piu' nessuna fattura.
+                  IF jsonb_array_length(v_trascinati) > 0 THEN
+                      UPDATE vendite.fatturazione_lotti_esiti e
+                         SET stato_esecuzione = 'PENDING',
+                             errore_codice    = NULL,
+                             errore_messaggio = NULL,
+                             errore_quando    = NULL
+                       WHERE e.lotto_id = p_lotto_id
+                         AND e.gruppo_key IN (
+                             SELECT jsonb_array_elements_text(v_trascinati))
+                         -- ⚠️ Un trascinato che fosse gia' uscito per conto suo
+                         --    NON si riapre: dal suo stato terminale non si torna
+                         --    indietro, e il guard rifiuterebbe la scrittura.
+                         AND e.stato_esecuzione <> 'ESCLUSO';
+                      GET DIAGNOSTICS v_riaperti = ROW_COUNT;
+                  END IF;
+
+                  RETURN jsonb_build_object(
+                      'lotto_id',            p_lotto_id,
+                      'gruppo_escluso',      p_gruppo_key,
+                      'fatture_cancellate',  v_cancellate,
+                      'attivita_riemesse',   v_riemesse,
+                      'gruppi_riaperti',     v_trascinati,
+                      'n_gruppi_riaperti',   v_riaperti);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_escludi_documento_da_giro(vendite.fatturazione_lotti.id%TYPE, vendite.fatturazione_lotti_esiti.gruppo_key%TYPE, vendite.fatturazione_lotti_esiti.uscita_motivo%TYPE) IS $c$Toglie UN documento rotto dal giro di fatturazione, cosi' che il lotto possa ripartire con quelli che restano. Funzione MADRE: una sola SELECT, atomica per costruzione. Verbo SECURITY DEFINER: in prima riga script.fn_guard_azione con reset_lotto_fattura_draft (l'azione dell'endpoint), poi il perimetro sul lotto (fuori: E_LOTTO_NON_TROVATO); spegne all'ingresso le GUC delle porte (brief-db-porte-aperte-dalla-sola-guc, giro 1-7). ⭐ Non riscrive il predicato: CHIAMA script.fn_check_documento_escludibile_da_giro — la stessa da cui il frontend prende il motivo del pulsante spento — e solleva il codice del PRIMO motivo, perche' l'ordine dell'array e' il contratto. ⭐ Compone vendite.fn_elimina_fattura_da_lotto invece di riscriverne la semantica (RD-7: togliere = cancellare, le attivita' tornano NON_EMESSA). ⭐ D-2b: se la bozza copre PIU' documenti si cancella lo stesso e li TRASCINA — tornano da emettere, con l'esito riportato a PENDING e non a ESCLUSO (non sono usciti da niente) ne' lasciato a COMPLETED (non hanno piu' una fattura). Rifiutare su bozza condivisa lascerebbe bloccati anche i documenti di un'ALTRA bozza. ⚠️ I trascinati si leggono PRIMA di cancellare: dopo, il legame non esiste piu'. ⚠️ uscita_quando/uscita_da le deriva il trigger dalla GUC, non questa funzione. ⛔ Il perimetro (fatturazione_lotti_gruppi) non si tocca (D-1): il lotto ricorda di aver preso in carico anche il documento uscito. Brief: brief-db-uscita-documento-dal-giro.$c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_escludi_documento_da_giro(p_lotto_id bigint, p_gruppo_key text, p_motivo text)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: togliere UN documento dal giro di fatturazione, cosi' che
+              --        il lotto possa ripartire con quelli che restano.
+              -- Ritorna: un consuntivo di cio' che e' stato fatto, perche' il
+              --        chiamante deve poterlo raccontare all'operatore.
+              DECLARE
+                  v_motivi      jsonb;
+                  v_trascinati  jsonb;
+                  v_fatture     bigint[];
+                  v_fattura_id  vendite.fatture.id%TYPE;
+                  v_cancellate  integer := 0;
+                  v_riemesse    integer := 0;
+                  v_riaperti    integer := 0;
+                  v_esito_riga  RECORD;
+              BEGIN
+                  -- ── Guard di parametro ────────────────────────────────
+                  -- ⚠️ Il motivo vuoto NON e' una condizione di dominio: il
+                  --    frontend lo rende obbligatorio, quindi se arriva vuoto e'
+                  --    un chiamante rotto. Il CHECK di tabella lo rifiuterebbe
+                  --    comunque, ma con un messaggio che non parla all'operatore.
+                  IF COALESCE(btrim(p_motivo), '') = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_escludi_documento_da_giro', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_motivo'),
+                          NULL::uuid, 'p_motivo obbligatorio: un documento che esce senza motivo non e'' spiegabile');
+                  END IF;
+
+                  -- ── Le precondizioni: sede unica, non riscritte qui ───
+                  v_motivi := script.fn_check_documento_escludibile_da_giro(p_lotto_id, p_gruppo_key);
+                  -- ⭐ La coda del primo motivo sta in un posto solo: l'helper legge il
+                  --   codice da `v_motivi -> 0`, ne prende i `valori` per la frase, fonde il
+                  --   `dettaglio` nel contesto e ci mette sempre l'elenco COMPLETO dei motivi
+                  --   (il backend puo' mostrarli tutti anche se la frase ne nomina uno).
+                  -- ⚠️ L'IF e' sparito e NON e' fail-open: l'helper tace su un array vuoto,
+                  --   che e' esattamente la risposta «passa». Su un non-array resta rumoroso.
+                  -- 🔴 Rimessa qui dal 20260909-68: il -22, riscrivendo questa funzione per
+                  --   la riga di giornale, aveva ripristinato la coda a mano — e con essa il
+                  --   difetto che il -11 aveva chiuso (p_gruppo_key al posto dello stato del
+                  --   lotto nella frase di E_LOTTO_NON_PRE_FISCALE).
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'fn_escludi_documento_da_giro',
+                      v_motivi,
+                      NULL,          -- nessun campo da accendere: non e' un errore di form
+                      NULL::uuid,
+                      jsonb_build_object('lotto_id',   p_lotto_id,
+                                         'gruppo_key', p_gruppo_key,
+                                         'bersaglio',  jsonb_build_array(
+                                             jsonb_build_object('tipo', 'LOTTO',
+                                                                'id', p_lotto_id::text))));
+
+                  -- ── Chi viene via insieme, PRIMA di cancellare ────────
+                  -- ⚠️ Dopo la cancellazione il legame non c'e' piu': letto qui
+                  --    dopo, direbbe «non trascina nessuno» su un lotto che ha
+                  --    appena riaperto tre documenti.
+                  v_trascinati := script.fn_gruppi_trascinati_da_uscita(p_lotto_id, p_gruppo_key);
+
+                  SELECT COALESCE(array_agg(DISTINCT r.fattura_id), ARRAY[]::bigint[])
+                    INTO v_fatture
+                    FROM script.vw_lotto_documento_righe r
+                   WHERE r.lotto_id = p_lotto_id
+                     AND r.gruppo_key = p_gruppo_key;
+
+                  -- ── Le bozze: si compone la primitiva, non se ne scrive una seconda
+                  -- ⭐ fn_elimina_fattura_da_lotto ha la sua check e la sua
+                  --    semantica gia' decise (RD-7: togliere = cancellare, le
+                  --    attivita' tornano NON_EMESSA). Qui non si duplica niente.
+                  -- ⚠️ Puo' essere piu' di una: le righe di un documento possono
+                  --    finire in bozze diverse.
+                  FOREACH v_fattura_id IN ARRAY v_fatture LOOP
+                      SELECT c.deleted_fatture, c.riemesse_attivita
+                        INTO STRICT v_esito_riga
+                        FROM vendite.fn_elimina_fattura_da_lotto(p_lotto_id, v_fattura_id) AS c;
+                      v_cancellate := v_cancellate + COALESCE(v_esito_riga.deleted_fatture, 0);
+                      v_riemesse   := v_riemesse   + COALESCE(v_esito_riga.riemesse_attivita, 0);
+                  END LOOP;
+
+                  -- ── Il documento esce ────────────────────────────────
+                  -- ⚠️ `uscita_quando` e `uscita_da` NON si scrivono qui: le
+                  --    deriva il trigger dalla GUC. Scriverle sarebbe una seconda
+                  --    sede della stessa regola.
+                  UPDATE vendite.fatturazione_lotti_esiti
+                     SET stato_esecuzione = 'ESCLUSO',
+                         uscita_motivo    = btrim(p_motivo)
+                   WHERE lotto_id = p_lotto_id
+                     AND gruppo_key = p_gruppo_key;
+
+                  -- ── ⭐ L'USCITA SI RACCONTA NEL GIORNALE ──────────────
+                  -- ⛔ Fino al 2026-09-09 l'uscita non lasciava NESSUNA riga di giornale: il
+                  --   timbro stava solo sulla riga dell'esito (uscita_motivo, uscita_quando,
+                  --   uscita_da). Chi guardava la storia del lotto non vedeva che un
+                  --   documento era uscito, ne' perche' — e l'esclusione e' una cosa che si
+                  --   fa apposta, con una motivazione che il CHECK di tabella rende
+                  --   obbligatoria. Un fatto voluto e motivato che il giornale non registra
+                  --   e' esattamente cio' che un giornale non deve fare.
+                  -- ⭐ Status `I`: e' un fatto, non un allarme. E la scelta non e' estetica —
+                  --   dal 2026-09-09 fn_log_pipeline_fase RIFIUTA `W` e `C` su un documento
+                  --   uscito, e accetta le `I` proprio perche' questa riga possa esistere.
+                  -- ⚠️ La `gruppo_key` c'e': senza, la riga sarebbe «del giro» e nessuno
+                  --   potrebbe piu' toglierla ne' capire di chi parla.
+                  -- ⚠️ Il motivo va NEL MESSAGGIO e non solo in meta: chi legge il giornale
+                  --   legge il messaggio, e un motivo che sta solo nel carico e' un motivo
+                  --   che nessuno vede.
+                  PERFORM vendite.fn_log_pipeline_fase(
+                      p_lotto_id,
+                      (SELECT l.stato_doc_fiscale_id FROM vendite.fatturazione_lotti l
+                        WHERE l.id = p_lotto_id),
+                      'USCITA_DAL_GIRO',
+                      'I'::char,
+                      format('Documento %s tolto dal giro: %s', p_gruppo_key, btrim(p_motivo)),
+                      jsonb_build_object('uscita_motivo', btrim(p_motivo)),
+                      NULL,
+                      p_gruppo_key);
+
+                  -- ── I trascinati tornano in coda ─────────────────────
+                  -- ⛔ `PENDING`, non `ESCLUSO`: non sono usciti da niente, e non
+                  --    `COMPLETED`, che direbbe «e' andato bene» su un documento
+                  --    che non ha piu' nessuna fattura.
+                  IF jsonb_array_length(v_trascinati) > 0 THEN
+                      UPDATE vendite.fatturazione_lotti_esiti e
+                         SET stato_esecuzione = 'PENDING',
+                             errore_codice    = NULL,
+                             errore_messaggio = NULL,
+                             errore_quando    = NULL
+                       WHERE e.lotto_id = p_lotto_id
+                         AND e.gruppo_key IN (
+                             SELECT jsonb_array_elements_text(v_trascinati))
+                         -- ⚠️ Un trascinato che fosse gia' uscito per conto suo
+                         --    NON si riapre: dal suo stato terminale non si torna
+                         --    indietro, e il guard rifiuterebbe la scrittura.
+                         AND e.stato_esecuzione <> 'ESCLUSO';
+                      GET DIAGNOSTICS v_riaperti = ROW_COUNT;
+                  END IF;
+
+                  RETURN jsonb_build_object(
+                      'lotto_id',            p_lotto_id,
+                      'gruppo_escluso',      p_gruppo_key,
+                      'fatture_cancellate',  v_cancellate,
+                      'attivita_riemesse',   v_riemesse,
+                      'gruppi_riaperti',     v_trascinati,
+                      'n_gruppi_riaperti',   v_riaperti);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_escludi_documento_da_giro(vendite.fatturazione_lotti.id%TYPE, vendite.fatturazione_lotti_esiti.gruppo_key%TYPE, vendite.fatturazione_lotti_esiti.uscita_motivo%TYPE) IS $c$Toglie UN documento rotto dal giro di fatturazione, cosi' che il lotto possa ripartire con quelli che restano. Funzione MADRE: una sola SELECT, atomica per costruzione, SECURITY INVOKER (RLS e perimetro emittente restano applicati). ⭐ Non riscrive il predicato: CHIAMA script.fn_check_documento_escludibile_da_giro — la stessa da cui il frontend prende il motivo del pulsante spento — e solleva il codice del PRIMO motivo, perche' l'ordine dell'array e' il contratto. ⭐ Compone vendite.fn_elimina_fattura_da_lotto invece di riscriverne la semantica (RD-7: togliere = cancellare, le attivita' tornano NON_EMESSA). ⭐ D-2b: se la bozza copre PIU' documenti si cancella lo stesso e li TRASCINA — tornano da emettere, con l'esito riportato a PENDING e non a ESCLUSO (non sono usciti da niente) ne' lasciato a COMPLETED (non hanno piu' una fattura). Rifiutare su bozza condivisa lascerebbe bloccati anche i documenti di un'ALTRA bozza. ⚠️ I trascinati si leggono PRIMA di cancellare: dopo, il legame non esiste piu'. ⚠️ uscita_quando/uscita_da le deriva il trigger dalla GUC, non questa funzione. ⛔ Il perimetro (fatturazione_lotti_gruppi) non si tocca (D-1): il lotto ricorda di aver preso in carico anche il documento uscito. Brief: brief-db-uscita-documento-dal-giro.$c$;

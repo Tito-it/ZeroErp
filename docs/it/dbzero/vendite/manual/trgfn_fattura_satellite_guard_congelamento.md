@@ -1,21 +1,21 @@
 ## 📘 Documentazione Concettuale – Trigger function `vendite.trgfn_fattura_satellite_guard_congelamento`
 
+> **Ultimo aggiornamento**: 25 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> **Tabelle sorvegliate:**
+> Approfondimento tabelle:
 >
-> • [vendite.fatture_scadenze](/dbzero/vendite/tabelle/fatture_scadenze) · [vendite.fatture_indirizzi](/dbzero/vendite/tabelle/fatture_indirizzi)
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture) — colonne `emittente_snapshot` / `cliente_snapshot`
+> * [vendite.fatture_scadenze](/dbzero/vendite/tabelle/fatture_scadenze) · [vendite.fatture_indirizzi](/dbzero/vendite/tabelle/fatture_indirizzi) — i satelliti sorvegliati
+> * [vendite.fatture](/dbzero/vendite/tabelle/fatture) — colonne `emittente_snapshot` / `cliente_snapshot`
 >
-> **Parenti:**
+> Approfondimento funzioni:
 >
-> • ~~`vendite.trgfn_fatture_righe_guard_congelamento` — l'originale da cui è clonata~~
->   → ⛔ **non esiste più dal 2026-08-30**: è stata **riassorbita qui** (`D34`).
->   Era la stessa funzione scritta due giorni prima, senza il parametro.
+> * [vendite.fn_porta_reset_lotto_aperta](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta) — la porta del reset del lotto: la GUC e il proprietario
+> * [vendite.fn_cleanup_fatture_by_ids](/dbzero/vendite/funzioni/fn_cleanup_fatture_by_ids) — la pulizia del lotto, l'unica che apre la porta
 
 ---
 ### 🎯 Scopo Principale
-(latest review 02-08-2026)
 
 Impedisce di modificare i **satelliti** di una fattura dopo che il documento è
 **congelato**: da lì non si fa più `INSERT`, `UPDATE` né `DELETE`.
@@ -99,13 +99,22 @@ esercitato da un test apposta.
 
 ---
 
-### 🚪 Il bypass GUC
+### 🚪 La porta del reset del lotto
 
-Come gli altri guard di dominio, riconosce la GUC di manutenzione del reset lotto.
+Il guard lascia passare la scrittura quando la **porta del reset del lotto** è aperta. La legge
+[`vendite.fn_porta_reset_lotto_aperta`](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta), che
+risponde sì solo se la GUC `zeroerp.maintenance_reset_lotto_draft` è accesa **e** chi scrive è il
+proprietario della tabella.
+
+La GUC la accende solo la pulizia del lotto,
+[`vendite.fn_cleanup_fatture_by_ids`](/dbzero/vendite/funzioni/fn_cleanup_fatture_by_ids), riservata
+al proprietario, e la spegne prima di uscire: la porta è aperta solo mentre la pulizia lavora. ⛔ Per
+l'applicazione la porta è sempre chiusa: accendere la GUC da sé e scrivere diretta non apre niente.
+
 Il reset **rientra** nella bozza, quindi deve poter riscrivere i satelliti.
 
 ⚠️ Da non confondere con il guard di **uscita** da DRAFT, che invece **non ha
-bypass**: lì il bypass sarebbe una porta di servizio sull'emissione.
+porta**: lì sarebbe una porta di servizio sull'emissione.
 
 ---
 
@@ -120,4 +129,22 @@ di coerenza alla numerazione (D-K) verifica anche che i riepiloghi **quadrino**
 con i totali di testata — un controllo che sembrerebbe ridondante e non lo è.
 
 ---
+
+### Test
+
+* `db/pgtap/vendite/test-porta-reset-lotto-e-fondo-v1.sql` — con la GUC accesa dall'applicazione
+  la porta resta chiusa.
+
+---
+
+### Note di migrazione
+
+* 2026-08-30 — riassorbe `vendite.trgfn_fatture_righe_guard_congelamento`, l'originale da cui era
+  clonata (`D34`), e legge la soglia da `config.stati_doc_fiscale.congela_fiscale` (`D33`).
+* 2026-11-25 — la porta del reset si legge da `vendite.fn_porta_reset_lotto_aperta` e chiede anche
+  il proprietario; prima bastava la GUC, che l'applicazione poteva accendere da sé
+  (brief-db-porte-aperte-dalla-sola-guc, giro 1-7).
+
+---
+
 {% include-markdown "signature-core.md" %}

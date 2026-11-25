@@ -39,7 +39,6 @@ DECLARE
     v_riga_id     bigint;
     v_stato       config.stati_doc_fiscale.codice_interno%TYPE;
     v_congela config.stati_doc_fiscale.congela_fiscale%TYPE;
-    v_allow_reset text;
 BEGIN
     -- Guard di montaggio: senza la colonna FK il trigger non sa
     -- quale fattura guardare. Errore esplicito, mai silenzio.
@@ -57,11 +56,10 @@ BEGIN
         );
     END IF;
 
-    -- Bypass di manutenzione: stesso contratto degli altri guard
-    -- della famiglia. fn_cleanup_fatture_by_ids (reset lotto)
-    -- imposta questa GUC per attraversarli.
-    v_allow_reset := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
-    IF COALESCE(lower(v_allow_reset), 'off') IN ('on', 'true', '1') THEN
+    -- La porta del reset del lotto: stesso BB degli altri guard
+    -- della famiglia (GUC e proprietario). fn_cleanup_fatture_by_ids
+    -- la apre solo mentre pulisce.
+    IF vendite.fn_porta_reset_lotto_aperta(TG_RELID) THEN
         IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
     END IF;
 
@@ -132,7 +130,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_fattura_satellite_guard_congelamento()
-IS 'Guard (BEFORE INSERT OR UPDATE OR DELETE) PARAMETRICO per i satelliti della fattura: oltre la soglia DRAFT/EMESSA il documento e'' uno snapshot fiscale e i suoi satelliti non si toccano piu''. La colonna FK verso vendite.fatture si passa in TG_ARGV[0], cosi'' la stessa regola vale su fatture_scadenze, fatture_indirizzi e (quando servira'') fatture_riepiloghi_iva senza copie da tenere allineate. Soglia identica a fn_ricalcola_riepilogo_iva_fattura, per codice_interno. Bypass via GUC zeroerp.maintenance_reset_lotto_draft, che vendite.fn_cleanup_fatture_by_ids imposta per il reset lotto. Esce in testa se la fattura non ha stato: e'' il caso della DELETE in CASCADE dalla testata, in cui la riga padre non esiste piu'' quando i figli scattano. Errore: E_FATTURA_SATELLITE_CONGELATO. Modello: trgfn_fatture_righe_guard_congelamento. piano-db-satelliti-fattura C-11, Fase 1.1.';
+IS 'Guard (BEFORE INSERT OR UPDATE OR DELETE) PARAMETRICO per i satelliti della fattura: oltre la soglia DRAFT/EMESSA il documento e'' uno snapshot fiscale e i suoi satelliti non si toccano piu''. La colonna FK verso vendite.fatture si passa in TG_ARGV[0], cosi'' la stessa regola vale su fatture_scadenze, fatture_indirizzi e (quando servira'') fatture_riepiloghi_iva senza copie da tenere allineate. Soglia identica a fn_ricalcola_riepilogo_iva_fattura, per codice_interno. Passa la porta del reset del lotto (vendite.fn_porta_reset_lotto_aperta: GUC zeroerp.maintenance_reset_lotto_draft e proprietario della tabella), che vendite.fn_cleanup_fatture_by_ids apre solo mentre pulisce. Esce in testa se la fattura non ha stato: e'' il caso della DELETE in CASCADE dalla testata, in cui la riga padre non esiste piu'' quando i figli scattano. Errore: E_FATTURA_SATELLITE_CONGELATO. Modello: trgfn_fatture_righe_guard_congelamento. piano-db-satelliti-fattura C-11, Fase 1.1.';
 ```
 
 </div>

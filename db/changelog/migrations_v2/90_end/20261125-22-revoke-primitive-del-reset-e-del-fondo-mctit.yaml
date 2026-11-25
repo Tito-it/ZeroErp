@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE PRIMITIVE DEL RESET DEL LOTTO E DEL FONDO SONO RISERVATE AL PROPRIETARIO
+#   REVOKE EXECUTE FROM PUBLIC, zeroerp_app su:
+#     vendite.fn_cleanup_fatture_by_ids, vendite.fn_reset_fondi_fattura,
+#     vendite.fn_applica_cancellazione_fondo_fattura
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §13 (giro 8 + 1-7; D-A a, D-T b di Tid).
+#
+# -- PERCHE' -----------------------------------------------------------------
+#   Le tre funzioni non chiedono permessi: la pulizia accende la porta del
+#   reset, il reset dei fondi e la primitiva del fondo cancellano. Il criterio
+#   vendite.fn_check_fondo_cancellabile resta eseguibile: legge soltanto, e senza
+#   il ramo della GUC (20261125-10) non apre niente. Se l'app le eseguisse, aggirerebbe il
+#   guard dei verbi chiamando loro (guida dei permessi §7.4: l'app esegue solo i
+#   verbi). Le chiamano i verbi DEFINER del reset del lotto (20261125-17 ... -20),
+#   il verbo pubblico del fondo (20261125-12) e l'annullo della sistemazione
+#   (20261125-14). Il backend non ne chiama nessuna (risposta 3d, §4.5).
+#
+# -- LE SEDI -----------------------------------------------------------------
+#   Gli schemi sono nel loop dei grant: le TRE sedi di linee-guida-sql §11.8:
+#     1. questo forward, per dbdev;
+#     2. il loop 90_end/ci_apply/20260205-41, voci in v_fn_riservate;
+#     3. scripts/sql/provision_zeroerp.sql, blocco «LA PORTA SULLE FUNZIONI».
+#   Presidio: vendite/test-porta-reset-lotto-e-fondo-v1 (gira come app).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261125-22-revoke-primitive-del-reset-e-del-fondo-mctit.yaml
+
+  - changeSet:
+      id: 20261125-22-revoke-primitive-del-reset-e-del-fondo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le primitive del reset del lotto e del fondo fattura riservate al proprietario: EXECUTE
+        revocato a PUBLIC e all'app. Brief: brief-db-porte-aperte-dalla-sola-guc, giro 8 + 1-7.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "3"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE
+              n.nspname = 'vendite' AND p.proname IN ('fn_cleanup_fatture_by_ids',
+              'fn_reset_fondi_fattura', 'fn_applica_cancellazione_fondo_fattura');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- A PUBLIC sempre (=X per default), all'app se il ruolo esiste.
+              REVOKE EXECUTE ON FUNCTION vendite.fn_cleanup_fatture_by_ids(bigint[], vendite.fatturazione_lotti.lock_batch_id%TYPE) FROM PUBLIC;
+              REVOKE EXECUTE ON FUNCTION vendite.fn_reset_fondi_fattura(vendite.fatture.id%TYPE) FROM PUBLIC;
+              REVOKE EXECUTE ON FUNCTION vendite.fn_applica_cancellazione_fondo_fattura(vendite.fatture_fondi_fattura_source.id%TYPE) FROM PUBLIC;
+              DO $porta$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: revoca all''app saltata.';
+                      RETURN;
+                  END IF;
+                  REVOKE EXECUTE ON FUNCTION vendite.fn_cleanup_fatture_by_ids(bigint[], vendite.fatturazione_lotti.lock_batch_id%TYPE) FROM zeroerp_app;
+                  REVOKE EXECUTE ON FUNCTION vendite.fn_reset_fondi_fattura(vendite.fatture.id%TYPE) FROM zeroerp_app;
+                  REVOKE EXECUTE ON FUNCTION vendite.fn_applica_cancellazione_fondo_fattura(vendite.fatture_fondi_fattura_source.id%TYPE) FROM zeroerp_app;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Riapre le primitive all'app e a PUBLIC. Senza togliere le voci dal loop
+              -- 20260205-41 e dal provisioning, la passata ci_apply successiva le richiude.
+              GRANT EXECUTE ON FUNCTION vendite.fn_cleanup_fatture_by_ids(bigint[], vendite.fatturazione_lotti.lock_batch_id%TYPE) TO PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_cleanup_fatture_by_ids(bigint[], vendite.fatturazione_lotti.lock_batch_id%TYPE) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION vendite.fn_reset_fondi_fattura(vendite.fatture.id%TYPE) TO PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_reset_fondi_fattura(vendite.fatture.id%TYPE) TO zeroerp_app;
+              GRANT EXECUTE ON FUNCTION vendite.fn_applica_cancellazione_fondo_fattura(vendite.fatture_fondi_fattura_source.id%TYPE) TO PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_applica_cancellazione_fondo_fattura(vendite.fatture_fondi_fattura_source.id%TYPE) TO zeroerp_app;

@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DEL LIVELLO SU UN'AREA, SENZA OGGETTO
+#   script.fn_guard_livello_area (nuova)
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §13 (giro 8 + 1-7; D-U a e D-X a di Tid, 2026-11-25).
+#
+# -- PERCHE' -----------------------------------------------------------------
+#   Tre verbi che diventano SECURITY DEFINER chiedono cio' che l'endpoint
+#   controlla gia': il livello TUTTO su un'area, senza oggetto.
+#   pagamenti.fn_annulla_sistemazione sull'area pagamenti; l'annullo e il
+#   ritorno in bozza del lotto sull'area vendite, quando la riga del passaggio
+#   non ha azione (il backend, risposta 3d, regola 3). script.fn_guard_livello
+#   vuole un oggetto e ricade sull'area solo se l'oggetto non ha un livello suo:
+#   un override d'oggetto deciderebbe al posto dell'area. Alla seconda
+#   occorrenza (D-U) il guard diventa un BB, gemello di fn_guard_livello, con la
+#   stessa forma del rifiuto (E_PERMESSO_NEGATO, senza segnaposto).
+#   INVOKER e volatile come la gemella: non legge nulla da proprietario.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261125-01-create-fn-guard-livello-area-mctit.yaml
+
+  - changeSet:
+      id: 20261125-01-create-fn-guard-livello-area
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_guard_livello_area: il guard del livello minimo su un'area, senza oggetto;
+        gemello di fn_guard_livello. Brief: brief-db-porte-aperte-dalla-sola-guc §13.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_guard_livello_area(
+                  p_auth_user_id   config.user_override_aree.auth_user_id%TYPE,
+                  p_area_schema_db config.aree_funzionali.schema_db%TYPE,
+                  p_livello_minimo config.user_override_aree.livello%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: applicare un livello minimo su un'AREA, senza oggetto, nella prima
+              --   riga di un verbo di scrittura. E' il gate del backend sulle view che non
+              --   dichiarano un modello: decide il livello sull'area. La regola la decide
+              --   script.fn_resolve_livello_area (la stessa del backend: gate di contesto,
+              --   SUPER_ADMIN, override, profilo).
+              -- Uso: PERFORM script.fn_guard_livello_area(v_utente, 'vendite', 'TUTTO');
+              -- Gemella di script.fn_guard_livello (oggetto, con la ricaduta sull'area):
+              --   stesso codice e stessa forma del rifiuto.
+              DECLARE
+                  v_livello config.user_override_aree.livello%TYPE;
+              BEGIN
+                  IF p_auth_user_id IS NOT NULL AND p_area_schema_db IS NOT NULL THEN
+                      v_livello := script.fn_resolve_livello_area(p_auth_user_id, p_area_schema_db);
+                  END IF;
+
+                  -- ⛔ L'enum e' TUTTO < LETTURA < BLOCCATO: sotto il minimo vuol dire
+                  --    livello > minimo. NULL da qualunque parte vale no (fail-closed).
+                  IF v_livello IS NULL OR p_livello_minimo IS NULL
+                     OR v_livello > p_livello_minimo THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_guard_livello_area', 'E_PERMESSO_NEGATO',
+                          jsonb_build_object('area',           p_area_schema_db,
+                                             'livello',        v_livello,
+                                             'livello_minimo', p_livello_minimo,
+                                             'auth_user_id',   p_auth_user_id,
+                                             'senza_utente',   p_auth_user_id IS NULL),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_guard_livello_area(config.user_override_aree.auth_user_id%TYPE, config.aree_funzionali.schema_db%TYPE, config.user_override_aree.livello%TYPE) IS $c$Guard di prima riga di un verbo: il livello minimo su un'AREA funzionale, senza oggetto (script.fn_resolve_livello_area: gate di contesto, SUPER_ADMIN, override, profilo). Sotto il minimo, o senza utente, E_PERMESSO_NEGATO, con la stessa forma di script.fn_guard_livello, che decide sull'oggetto con la ricaduta sull'area. E' il gate del backend sulle view senza modello. Lo chiamano pagamenti.fn_annulla_sistemazione (area pagamenti) e i due verbi del passaggio del lotto, vendite.fn_annulla_lotto_da_draft e vendite.fn_riporta_lotto_a_draft, quando la riga del passaggio non ha azione (area vendite).$c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_guard_livello_area(config.user_override_aree.auth_user_id%TYPE, config.aree_funzionali.schema_db%TYPE, config.user_override_aree.livello%TYPE);

@@ -99,8 +99,8 @@ condivisa.
 ### ⛔ Non imposta la GUC di manutenzione, ed è il presidio
 
 `trgfn_attivita_fatturabili_guard_fatturato` rifiuta l'`UPDATE` quando
-`fattura_riga_id` è valorizzato, salvo GUC
-`zeroerp.maintenance_reset_lotto_draft`.
+`fattura_riga_id` è valorizzato, salvo la porta del reset del lotto (la GUC
+`zeroerp.maintenance_reset_lotto_draft` e il proprietario della tabella, dentro la pulizia).
 
 Su un'attività **orfana** quel puntatore è già `NULL`, quindi il guard **lascia
 passare da sé** e nessuna GUC serve. Impostarla sarebbe l'unico modo di

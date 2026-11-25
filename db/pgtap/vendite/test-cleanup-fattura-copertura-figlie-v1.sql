@@ -221,6 +221,10 @@ SELECT string_agg(pg_get_functiondef(p.oid), E'\n') AS src
  WHERE n.nspname = 'vendite'
    AND p.proname IN ('fn_cleanup_fatture_by_ids',
                      'fn_reset_fondi_fattura',
+                     -- rev 2026-11-25 (brief-db-porte-aperte-dalla-sola-guc, giro 8):
+                     --   i tre DELETE del fondo passano dal verbo pubblico alla
+                     --   primitiva. Il verbo resta nell'elenco: e' la sede storica.
+                     'fn_applica_cancellazione_fondo_fattura',
                      'fn_cancella_fondo_fattura');
 
 -- ============================================================

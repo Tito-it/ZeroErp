@@ -12,7 +12,7 @@
 --
 -- ⭐ I casi si COSTRUISCONO: due emittenti con il loro operatore
 --   (fn_pgtap_crea_emittente_operatore: BLOCCATO ovunque); il livello lo
---   scrive il test (pg_temp.livello_area). Il documento di B nasce nel
+--   scrive il test (dbops.fn_pgtap_concedi_livello_area). Il documento di B nasce nel
 --   contesto di B, il tentativo si fa in quello di A.
 --
 -- ⚠️ Gira come l'APPLICAZIONE: i verbi sono la strada dell'operatore.
@@ -77,15 +77,9 @@ LANGUAGE sql AS $$
 $$;
 
 -- Il livello d'area di un operatore (l'upsert di config.user_override_aree).
-CREATE OR REPLACE FUNCTION pg_temp.livello_area(p_utente integer, p_livello text) RETURNS void
-LANGUAGE sql AS $fx$
-    INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)
-    SELECT p_utente, af.id, p_livello::config.livello_accesso,
-           'pgTAP: verbi dei documenti interni di magazzino'
-      FROM config.aree_funzionali af
-     WHERE af.schema_db = 'magazzino'
-    ON CONFLICT (auth_user_id, area_id) DO UPDATE SET livello = EXCLUDED.livello
-$fx$;
+-- ⭐ rev 2026-11-25 (D-L a, brief-db-porte-aperte-dalla-sola-guc): il livello d'area lo
+--   da' il builder dbops.fn_pgtap_concedi_livello_area; la copia pg_temp.livello_area
+--   che stava qui e' ritirata (regola del 2).
 
 -- ============================================================
 -- Fixture: B col suo magazzino e una sua rettifica, nel suo contesto
@@ -93,7 +87,7 @@ $fx$;
 CREATE TEMP TABLE _b AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _b)); END $ctx$;
 CREATE TEMP TABLE _fb AS SELECT dbops.fn_pgtap_crea_magazzino('PGT-VDI-B', false) AS mag;
-DO $b$ BEGIN PERFORM pg_temp.livello_area((SELECT auth_user_id FROM _b), 'TUTTO'); END $b$;
+DO $b$ BEGIN PERFORM dbops.fn_pgtap_concedi_livello_area((SELECT auth_user_id FROM _b), 'magazzino', 'TUTTO'); END $b$;
 CREATE TEMP TABLE _db AS SELECT magazzino.fn_aggiungi_rettifica((SELECT mag FROM _fb)) AS rett;
 
 -- ============================================================
@@ -115,7 +109,7 @@ SELECT is(
     'E_PERMESSO_NEGATO',
     '1. senza livello: fn_aggiungi_inventario -> E_PERMESSO_NEGATO');
 
-DO $a$ BEGIN PERFORM pg_temp.livello_area((SELECT auth_user_id FROM _a), 'TUTTO'); END $a$;
+DO $a$ BEGIN PERFORM dbops.fn_pgtap_concedi_livello_area((SELECT auth_user_id FROM _a), 'magazzino', 'TUTTO'); END $a$;
 
 SELECT is(
     dbops.fn_pgtap_codice_errore($$SELECT magazzino.fn_cambia_stato_documento_interno('PIPPO', 1, 'CONFIRM')$$),

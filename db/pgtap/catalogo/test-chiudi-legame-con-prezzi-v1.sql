@@ -186,18 +186,12 @@ $fx$ SELECT id FROM tmp_cl_pr WHERE k = p $fx$;
 -- Scopo: il livello su un'area dell'operatore MIA, come lo scrive il pannello dei
 --   permessi. L'operatore costruito non ha il catalogo, e ha gia' la sua riga sulle
 --   vendite: si scrive o si cambia.
-CREATE OR REPLACE FUNCTION pg_temp.livello_area(p_area text, p_livello text) RETURNS void
-LANGUAGE sql AS $fx$
-    INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)
-    SELECT m.auth_user_id, af.id, p_livello::config.livello_accesso,
-           'pgTAP: chiusura del legame coi prezzi'
-      FROM tmp_cl_mondi m, config.aree_funzionali af
-     WHERE m.lato = 'MIA' AND af.schema_db = p_area
-    ON CONFLICT (auth_user_id, area_id) DO UPDATE SET livello = EXCLUDED.livello
-$fx$;
+-- ⭐ rev 2026-11-25 (D-L a, brief-db-porte-aperte-dalla-sola-guc): il livello d'area lo
+--   da' il builder dbops.fn_pgtap_concedi_livello_area; la copia pg_temp.livello_area
+--   che stava qui e' ritirata (regola del 2).
 
-SELECT pg_temp.livello_area('catalogo', 'TUTTO');
-SELECT pg_temp.livello_area('vendite', 'LETTURA');
+SELECT dbops.fn_pgtap_concedi_livello_area((SELECT auth_user_id FROM tmp_cl_mondi WHERE lato = 'MIA'), 'catalogo', 'TUTTO');
+SELECT dbops.fn_pgtap_concedi_livello_area((SELECT auth_user_id FROM tmp_cl_mondi WHERE lato = 'MIA'), 'vendite', 'LETTURA');
 
 -- ============================================================
 -- L1: un prezzo da chiudere, uno da togliere.
@@ -231,7 +225,7 @@ SELECT throws_like(
     pg_temp.msg('E_PERMESSO_NEGATO'),
     '4) col solo diritto sul catalogo, un legame con prezzi non si chiude: servono anche i listini');
 
-SELECT pg_temp.livello_area('vendite', 'TUTTO');
+SELECT dbops.fn_pgtap_concedi_livello_area((SELECT auth_user_id FROM tmp_cl_mondi WHERE lato = 'MIA'), 'vendite', 'TUTTO');
 
 -- 4-bis
 SELECT throws_like(

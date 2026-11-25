@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_porta_manutenzione_aperta`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -62,8 +62,10 @@ tocca colonne protette non lascia traccia.
 ⚠️ **Le porte di verbo non passano di qui.** Una porta di verbo è una GUC che una funzione accende
 per sé, dentro la propria transazione, per una scrittura che il dominio prevede (per esempio
 `zeroerp.maintenance_reset_lotto_draft`, che `vendite.fn_cleanup_fatture_by_ids` accende per il
-reset del lotto in bozza chiamato dall'applicazione). Quella resta letta dal suo guard come prima:
-chiuderla al migratore spegnerebbe una funzione dell'app.
+reset del lotto). Quella la legge il suo guard, con la sua regola: per il reset del lotto, la GUC
+accesa e il proprietario della tabella, cioè la pulizia dentro i verbi del reset
+([vendite.fn_porta_reset_lotto_aperta](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta)).
+Chiuderla al migratore spegnerebbe una funzione dell'app.
 
 ---
 

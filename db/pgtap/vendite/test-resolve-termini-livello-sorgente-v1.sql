@@ -1,5 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture cambia, con la porta del reset del lotto, il termine di una
+--   commessa che ha gia' attivita': uno stato che il guard della chiave vieta all'app
+--   e che solo uno scrittore privilegiato costruisce. Dal giro 8 + 1-7 la porta si
+--   apre solo al proprietario
+--   (brief-db-porte-aperte-dalla-sola-guc, giro 8 + 1-7, 2026-11-25: scelta di Tid). Il lato
+--   dell'app lo prova vendite/test-porta-reset-lotto-e-fondo-v1.
 -- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10):
 --   la commessa del caso 7 nasce APERTA con l'attivita' del builder (p_con_attivita
 --   => true, prima false): BOZZA -> APERTA e' spenta, APERTA si raggiunge solo da

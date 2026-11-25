@@ -151,6 +151,17 @@
 #   Forward su dev `90_end/20261124-06`; terza sede il blocco del provisioning;
 #   pgTAP `db/pgtap/config/test-porta-scope-emittenti-v1.sql`.
 #
+# ── ⭐ IL RESET DEL LOTTO E IL FONDO FATTURA DAI SOLI VERBI (dal 2026-11-25) ──
+#   Brief: brief-db-porte-aperte-dalla-sola-guc, porte 1-8, giro 8 + 1-7
+#   In `v_fn_riservate` le tre primitive: `vendite.fn_cleanup_fatture_by_ids`
+#   (accende la porta del reset), `vendite.fn_reset_fondi_fattura` e
+#   `vendite.fn_applica_cancellazione_fondo_fattura` (i tre DELETE del fondo).
+#   Il criterio `vendite.fn_check_fondo_cancellabile` resta eseguibile: legge
+#   soltanto, e senza il ramo della GUC non apre niente. L'app ci arriva solo dai
+#   verbi DEFINER, ognuno col suo permesso e il suo perimetro. Forward su dev
+#   `90_end/20261125-22`; terza sede il blocco del provisioning; pgTAP
+#   `db/pgtap/vendite/test-porta-reset-lotto-e-fondo-v1.sql`.
+#
 # ── ⭐ LE VISTE IN SOLA LETTURA (dal 2026-11-24) ─────────────────────────────
 #   Brief: brief-db-porte-aperte-dalla-sola-guc, §5 (D-V), giro 3
 #   Ogni vista e vista materializzata riceve solo SELECT: il ramo per tipo
@@ -301,7 +312,15 @@ databaseChangeLog:
                   --   operatore su un'azienda senza permesso; l'app ci arriva solo dal
                   --   verbo script.fn_change_user_emittenti_scope (SUPER_ADMIN, DEFINER).
                   --   Brief: brief-db-porte-aperte-dalla-sola-guc, giro 10 (20261124-06).
-                  'script.fn_applica_user_emittenti_scope'
+                  'script.fn_applica_user_emittenti_scope',
+                  -- ⭐ Dal 2026-11-25 le primitive del reset del lotto e del fondo fattura:
+                  --   la pulizia, il reset dei fondi, la cancellazione del fondo. Senza
+                  --   guard del permesso; l'app ci arriva solo dai verbi
+                  --   DEFINER del reset, del fondo e della sistemazione.
+                  --   Brief: brief-db-porte-aperte-dalla-sola-guc, giro 8 + 1-7 (20261125-22).
+                  'vendite.fn_cleanup_fatture_by_ids',
+                  'vendite.fn_reset_fondi_fattura',
+                  'vendite.fn_applica_cancellazione_fondo_fattura'
                 ];
                 -- ⭐ Schemi SENZA DELETE per l'applicazione: le shadow di storico le
                 --   scrive il trigger (INSERT della versione, UPDATE che chiude la

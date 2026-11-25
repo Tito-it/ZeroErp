@@ -74,6 +74,14 @@ SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('fondo_cancellazione');
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_mondo)); END $ctx$;
 
+-- ⭐ rev 2026-11-25 (brief-db-porte-aperte-dalla-sola-guc, giro 8 + 1-7): il gesto sul fondo e'
+--   SECURITY DEFINER e chiede il permesso che l'endpoint controlla (governa_fondo_fattura). Chi
+--   agisce lo riceve qui; il caso senza permesso lo prova
+--   vendite/test-porta-reset-lotto-e-fondo-v1.
+DO $perm$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM tmp_mondo), 'governa_fondo_fattura');
+END $perm$;
+
 -- ⚠️ 3. VINCOLI DIFFERITI: senza, non verrebbero mai esercitati (si chiude in
 --   ROLLBACK) e il file sarebbe verde per sottrazione.
 SET CONSTRAINTS ALL IMMEDIATE;
@@ -303,17 +311,20 @@ SELECT throws_ok(
 );
 
 -- ============================================================
--- ⭐ IL BYPASS DI MANUTENZIONE — due porte, non una
+-- ⭐ NESSUNA PORTA SALTA LA QUARTA CONDIZIONE (D-Z a, 2026-11-25)
 -- ============================================================
--- La GUC spegne la SOLA quarta condizione: e' quello che rende il reset di un
--- lotto una cosa diversa dal gesto di una persona. ⚠️ `true` = locale alla
--- transazione, cosi' non contamina il resto della sessione.
+-- Fino al 20261125-10 la GUC del reset del lotto spegneva il controllo della
+-- figlia congelata, e l'app, accendendola, cancellava il fondo di una figlia
+-- gia' congelata. Il ramo e' tolto: nel reset la figlia e' la fattura che si
+-- pulisce, e i criteri d'ingresso la vogliono pre-fiscale. Questo e' il
+-- controesempio: la GUC accesa non cambia la risposta.
+-- ⚠️ `true` = locale alla transazione, cosi' non contamina il resto della sessione.
 SELECT set_config('zeroerp.maintenance_reset_lotto_draft', 'on', true);
 
 SELECT is(
   vendite.fn_check_fondo_cancellabile((SELECT source_id FROM tmp_atto_ko)),
-  NULL::text,
-  '11) ⭐ Il bypass di manutenzione spegne la SOLA quarta condizione'
+  'FIGLIA_CONGELATA'::text,
+  '11) ⭐ con la GUC del reset accesa la figlia congelata resta FIGLIA_CONGELATA: nessuna porta la salta'
 );
 
 SELECT set_config('zeroerp.maintenance_reset_lotto_draft', 'off', true);

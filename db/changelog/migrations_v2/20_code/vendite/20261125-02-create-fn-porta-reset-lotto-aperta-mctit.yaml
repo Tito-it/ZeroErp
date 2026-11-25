@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA DEL RESET DEL LOTTO IN UNA SEDE SOLA, COL PROPRIETARIO
+#   vendite.fn_porta_reset_lotto_aperta (nuova)
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §13.5 (giro 8 + 1-7, porte 1-7; D-A a, D-W a di Tid).
+#
+# -- PERCHE' -----------------------------------------------------------------
+#   Sette funzioni di trigger leggevano la stessa porta copiando la stessa
+#   lettura, e le copie divergevano gia' (quattro accettavano anche 'yes').
+#   Alla porta mancava il proprietario: l'app accendeva la GUC e scriveva
+#   diretta, su tutte le righe delle dodici tabelle. Regola del 2: la lettura
+#   diventa un BB, e le sette copie si ritirano in 20261125-03 ... -09.
+#   La GUC resta un interruttore (D-W a): la tiene il proprietario dentro
+#   vendite.fn_cleanup_fatture_by_ids (riservata, 20261125-22), che la spegne
+#   prima di uscire (20261125-16).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261125-02-create-fn-porta-reset-lotto-aperta-mctit.yaml
+
+  - changeSet:
+      id: 20261125-02-create-fn-porta-reset-lotto-aperta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_porta_reset_lotto_aperta: la porta del reset del lotto, GUC accesa e
+        proprietario della tabella. Brief: brief-db-porte-aperte-dalla-sola-guc §13.5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_porta_reset_lotto_aperta(p_tabella regclass)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: dire se la porta del reset del lotto e' aperta per la scrittura
+                  --   su p_tabella (in un trigger: TG_RELID). Due condizioni in AND (D-V1):
+                  --   la GUC zeroerp.maintenance_reset_lotto_draft accesa, e chi scrive e'
+                  --   il proprietario della tabella (script.fn_is_proprietario_tabella).
+                  --   La GUC la accende solo vendite.fn_cleanup_fatture_by_ids, primitiva
+                  --   riservata, e la spegne prima di uscire: la porta e' aperta solo
+                  --   mentre la pulizia lavora, dentro i verbi DEFINER del reset.
+                  -- ⚠️ INVOKER, ed e' portante: fn_is_proprietario_tabella guarda
+                  --   current_user, cioe' chi scrive davvero.
+                  -- ⚠️ La GUC e' un interruttore, non l'id di una riga (D-W a): la porta
+                  --   la tiene il proprietario dentro una primitiva chiusa.
+                  SELECT COALESCE(lower(current_setting('zeroerp.maintenance_reset_lotto_draft', true)), '')
+                             IN ('on', 'true', '1')
+                         AND script.fn_is_proprietario_tabella(p_tabella)
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_porta_reset_lotto_aperta(regclass) IS $c$La porta del reset del lotto: vera se la GUC zeroerp.maintenance_reset_lotto_draft e' accesa (on, true, 1) e chi scrive e' il proprietario della tabella (script.fn_is_proprietario_tabella). La leggono le sette funzioni di trigger che il reset attraversa (attivita fatturabili, commesse, satelliti della fattura, stato del lotto, log). La GUC la accende e la spegne vendite.fn_cleanup_fatture_by_ids, riservata al proprietario: per l'app la porta e' sempre chiusa. INVOKER: deve vedere chi scrive.$c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_porta_reset_lotto_aperta(regclass);

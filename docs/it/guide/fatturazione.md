@@ -1,6 +1,6 @@
 # Guida — Fatturazione (processo end-to-end)
 
-> **Ultimo aggiornamento**: 24 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend e database
 >
@@ -19,6 +19,15 @@
 > * [vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa) — l'emissione da commessa
 > * [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa) — match o creazione della commessa
 > * [vendite.fn_assign_numero_fattura](/dbzero/vendite/funzioni/fn_assign_numero_fattura) — il punto unico in cui si assegna il progressivo
+> * [vendite.fn_annulla_lotto_da_draft](/dbzero/vendite/funzioni/fn_annulla_lotto_da_draft) — «annulla lotto»: il lotto pre-fiscale si demolisce e si chiude
+> * [vendite.fn_riporta_lotto_a_draft](/dbzero/vendite/funzioni/fn_riporta_lotto_a_draft) — «riporta in lavorazione»: il lotto torna in bozza e si rifà
+> * [vendite.fn_elimina_fattura_da_lotto](/dbzero/vendite/funzioni/fn_elimina_fattura_da_lotto) — «togli la fattura dal lotto»: una fattura sola, il lotto prosegue
+> * [vendite.fn_escludi_documento_da_giro](/dbzero/vendite/funzioni/fn_escludi_documento_da_giro) — «escludi dal giro»: un documento rotto esce, il lotto riparte
+> * [vendite.fn_cleanup_fatture_by_ids](/dbzero/vendite/funzioni/fn_cleanup_fatture_by_ids) — la pulizia comune ai verbi del reset, riservata al proprietario
+> * [vendite.fn_porta_reset_lotto_aperta](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta) — la porta del reset del lotto: la GUC e il proprietario
+> * [vendite.fn_guard_passaggio_lotto](/dbzero/vendite/funzioni/fn_guard_passaggio_lotto) — il permesso dell'annullo e del ritorno in bozza
+> * [script.fn_guard_livello_area](/dbzero/script/funzioni/fn_guard_livello_area) — il livello `TUTTO` sull'area `vendite`, quando il passaggio non ha azione
+> * [vendite.fn_check_fondo_cancellabile](/dbzero/vendite/funzioni/fn_check_fondo_cancellabile) — il criterio dei fondi che il reset non tocca
 >
 > **Vedi anche** — API e service backend:
 >
@@ -672,6 +681,52 @@ forward, **e poi cancella le fatture e chiude il lotto**. Non è un rollback rev
   passaggio nel lotto. È la stessa cosa che il ritorno in bozza fa su tutte le
   fatture del lotto insieme — qui la si fa su una sola.
 * Se `rollback` è `[]` (array vuoto), lo step non prevede operazioni di pulizia.
+
+### Chi può uscire da un lotto, e la porta del reset
+
+Le quattro uscite dell'operatore sono verbi del database: girano come proprietario, e quindi
+permesso e perimetro li controllano loro, all'ingresso, prima di toccare qualunque cosa. Il
+permesso è quello dell'endpoint: chi arriva dall'interfaccia non riceve un rifiuto nuovo.
+
+| Uscita | Verbo | Permesso |
+| --- | --- | --- |
+| **annulla lotto** | `fn_annulla_lotto_da_draft` | la riga `DRAFT → ANNULLATA` non ha azione: il livello `TUTTO` sull'area `vendite` |
+| **riporta in lavorazione** da EMESSA | `fn_riporta_lotto_a_draft` | l'azione della riga `EMESSA → DRAFT`, `numera_fatture_lotti` |
+| **riporta in lavorazione** di un lotto già in DRAFT | `fn_riporta_lotto_a_draft` | non c'è passaggio, si fa la sola pulizia: il livello `TUTTO` sull'area `vendite` |
+| **togli la fattura dal lotto** | `fn_elimina_fattura_da_lotto` | l'azione `reset_lotto_fattura_draft` |
+| **escludi il documento dal giro** | `fn_escludi_documento_da_giro` | l'azione `reset_lotto_fattura_draft` |
+
+Senza il permesso il verbo risponde `E_PERMESSO_NEGATO`. Per l'annullo e il ritorno in bozza il
+permesso dipende dallo stato del lotto, quindi il verbo prima legge il lotto e poi chiede il
+permesso, sempre **prima** della pulizia.
+
+**Il perimetro.** Il lotto dev'essere di un'azienda di chi agisce, e così le fatture che il verbo
+tocca: tutte quelle del lotto per l'annullo e il ritorno in bozza, quella indicata per «togli».
+Il controllo è doppio perché il modello non lega la fattura all'azienda del lotto. Fuori dal
+perimetro la risposta è quella di un oggetto che non esiste: `E_LOTTO_NON_TROVATO`, e per la
+fattura di «togli» `E_FATTURA_NON_TROVATA`.
+
+**La porta del reset.** La pulizia comune ai verbi, `fn_cleanup_fatture_by_ids`, scrive su tabelle
+che i loro guard proteggono: attività già fatturate, quantità emesse, satelliti della fattura, stato
+del lotto, log. Per farlo accende la GUC `zeroerp.maintenance_reset_lotto_draft`, e i guard la
+lasciano passare solo se chi scrive è anche il proprietario della tabella
+(`fn_porta_reset_lotto_aperta`).
+
+* La porta si apre **solo dentro la pulizia**: la pulizia la accende prima di cominciare e la
+  spegne prima di uscire. Lo stato del lotto che il verbo scrive dopo lo giudica di nuovo il guard
+  di transizione del lotto.
+* La pulizia è **riservata al proprietario**: l'applicazione non la può chiamare, ci arriva solo
+  dai verbi.
+* ⛔ Per l'applicazione la porta è sempre chiusa: accendere la GUC da sé e scrivere diretta su una
+  di quelle tabelle non apre niente.
+* ⚠️ La GUC è un **interruttore**, non l'id di una riga come nelle altre porte. È un'eccezione
+  voluta: la porta la tiene il proprietario dentro una funzione riservata, per la sola durata della
+  pulizia, e le sue scritture sono le sole che vede.
+
+⭐ **Il criterio dei fondi non ha porte.** `fn_check_fondo_cancellabile` vale identico per il reset e
+per il gesto «cancella il fondo»: nessuna GUC salta il controllo della fattura figlia congelata. Nel
+reset la figlia è una fattura pre-fiscale per costruzione, quindi quel motivo non scatta; se un
+giorno scattasse, il fondo resterebbe e il diario lo direbbe (`W_FONDO_FIGLIA_CONGELATA`).
 
 ### Regole operative del modello lotti
 

@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: il test chiama diretta vendite.fn_reset_fondi_fattura, riservata al proprietario
+--   dal giro 8 + 1-7: l'app ci arriva solo dai verbi del reset del lotto, che la
+--   vogliono dentro un lotto. Il passo che il test usa non sta sul percorso dell'app
+--   (brief-db-porte-aperte-dalla-sola-guc, giro 8 + 1-7, 2026-11-25: scelta di Tid). Il lato
+--   dell'app lo prova vendite/test-porta-reset-lotto-e-fondo-v1.
 -- pgTAP test per Zero ERP
 -- Test: il fondo fattura REGISTRATO — quarto stato ESEGUITO e sue conseguenze
 --

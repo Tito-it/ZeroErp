@@ -1,5 +1,13 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture cambia, con la porta del reset del lotto, il termine di una
+--   commessa che ha gia' attivita': uno stato che il guard della chiave vieta all'app
+--   e che solo uno scrittore privilegiato costruisce. Dal giro 8 + 1-7 la porta si
+--   apre solo al proprietario;
+--   e chiama diretta vendite.fn_cleanup_fatture_by_ids, riservata
+--   (brief-db-porte-aperte-dalla-sola-guc, giro 8 + 1-7, 2026-11-25: scelta di Tid). Il lato
+--   dell'app lo prova vendite/test-porta-reset-lotto-e-fondo-v1.
 -- pgTAP test per Zero ERP
 -- Test: ambito di compensazione degli arrotondamenti — idempotenza del
 --       ricalcolo, separazione degli ambiti, storno alla cancellazione

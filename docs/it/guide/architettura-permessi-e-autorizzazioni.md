@@ -29,8 +29,10 @@
 > * [config.trgfn_parameter_overrides_guard_emittente_scope](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_emittente_scope) — lo stesso perimetro sugli override dei parametri, una tabella senza RLS: guarda la riga prima e dopo, anche nel `DELETE`
 > * [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — il verbo che sposta un operatore su un'azienda, riservato al SUPER_ADMIN
 > * [config.trgfn_user_emittenti_fiscali_guard_delete](/dbzero/config/funzioni/trgfn_user_emittenti_fiscali_guard_delete) — il guard del `DELETE` della riga di scope, e la porta del verbo
-> * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) / [script.fn_guard_livello](/dbzero/script/funzioni/fn_guard_livello) / [script.fn_guard_super_admin](/dbzero/script/funzioni/fn_guard_super_admin) / [script.fn_guard_utente_stesso](/dbzero/script/funzioni/fn_guard_utente_stesso) — il permesso nella prima riga di un verbo di scrittura
+> * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) / [script.fn_guard_livello](/dbzero/script/funzioni/fn_guard_livello) / [script.fn_guard_livello_area](/dbzero/script/funzioni/fn_guard_livello_area) / [script.fn_guard_super_admin](/dbzero/script/funzioni/fn_guard_super_admin) / [script.fn_guard_utente_stesso](/dbzero/script/funzioni/fn_guard_utente_stesso) — il permesso nella prima riga di un verbo di scrittura
 > * [script.fn_area_di_oggetto](/dbzero/script/funzioni/fn_area_di_oggetto) — l'area a cui appartiene un oggetto, sede unica per DB e backend
+> * [vendite.fn_porta_reset_lotto_aperta](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta) — la porta del reset del lotto: l'interruttore che apre solo al proprietario
+> * [vendite.fn_applica_cancellazione_fondo_fattura](/dbzero/vendite/funzioni/fn_applica_cancellazione_fondo_fattura) — una primitiva riservata dietro tre verbi, ognuno col suo permesso; apre la porta delle righe contabili sulla riga
 > * [script.fn_notify_permessi_catalogo](/dbzero/script/funzioni/fn_notify_permessi_catalogo) / [script.trgfn_notify_permessi_catalogo](/dbzero/script/funzioni/trgfn_notify_permessi_catalogo) — l'avviso al backend che il catalogo dei permessi è cambiato
 > * [config.fn_pannello_scrivi](/dbzero/config/funzioni/fn_pannello_scrivi) / [config.fn_pannello_colonne_scrivibili](/dbzero/config/funzioni/fn_pannello_colonne_scrivibili) — il verbo del pannello di configurazione e le colonne che scrive
 >
@@ -896,10 +898,11 @@ guard, senza controlli scritti a mano:
 | --- | --- | --- |
 | `script.fn_guard_azione` | operazioni di processo (registra, emetti, cambia stato…): il verbo **e'** l'azione | `fn_check_azione_processo` |
 | `script.fn_guard_livello` | operazioni semplici (crea, modifica): il verbo dichiara l'**oggetto** su cui scrive e il livello minimo | `fn_resolve_livello_oggetto`, con l'area da `fn_area_di_oggetto` |
+| `script.fn_guard_livello_area` | il verbo di un endpoint che decide sull'**area**, senza un oggetto: il verbo dichiara l'area e il livello minimo | `fn_resolve_livello_area` |
 | `script.fn_guard_super_admin` | le porte che non sono un'area del catalogo (la gestione accessi, riservata al SUPER_ADMIN) | `fn_is_super_admin` |
 | `script.fn_guard_utente_stesso` | le cose **proprie** di una persona (il dispositivo del secondo fattore): chi agisce dev'essere lei | il confronto con la credenziale su cui si agisce |
 
-I quattro guard si comportano allo stesso modo: l'utente arriva come parametro
+I cinque guard si comportano allo stesso modo: l'utente arriva come parametro
 (il verbo lo legge con `script.fn_utente_di_sessione`, la sede unica della
 lettura di `app.current_user_id`), la regola la decide la funzione
 di risoluzione che usa anche il backend, e il rifiuto e' `E_PERMESSO_NEGATO`,
@@ -922,8 +925,12 @@ l'amministratore ragiona come sempre, per area, azione e oggetto.
 * il verbo gira come **proprietario** (`SECURITY DEFINER`), e il perimetro che
   la RLS non applica piu' lo rimette il verbo o il guard di ambito;
 * l'applicazione esegue **solo i verbi**, non le primitive che i verbi usano:
-  altrimenti il controllo si aggira chiamando la primitiva. Un guard che deve
-  sapere se e' attraversato da un verbo lo chiede a
+  altrimenti il controllo si aggira chiamando la primitiva. Una primitiva che piu'
+  verbi condividono non chiede permessi: lo chiede ogni verbo, il suo. Il fondo
+  fattura cade dalla stessa primitiva da tre verbi (il gesto «cancella il fondo» con
+  la sua azione, l'annullo di una sistemazione col livello sull'area `pagamenti`, il
+  reset del lotto col suo permesso), e nessuno dei tre pretende il permesso degli
+  altri. Un guard che deve sapere se e' attraversato da un verbo lo chiede a
   `script.fn_is_proprietario_tabella`;
 * un guard che lascia passare una scrittura quando una GUC e' accesa (una
   **porta**) chiede due cose insieme: la GUC, e che a scrivere sia il
@@ -939,8 +946,17 @@ l'amministratore ragiona come sempre, per area, azione e oggetto.
   apre cosi': la GUC porta l'`auth_user_id` dell'operatore che il verbo sposta;
   la riconsegna di un reso porta l'id del reso, e l'esenzione vale per i soli
   articoli di quel reso.
-  ⚠️ Non tutte le porte ci sono gia' arrivate: quelle del reset dei lotti e del
-  contabile si aprono ancora con la sola GUC.
+  Le righe contabili del giro dei fondi aprono cosi': la GUC porta l'id dell'atto che
+  la primitiva sta cancellando, e il guard la onora solo sulle righe di quell'atto.
+  ⚠️ **Un'eccezione dichiarata: la porta del reset dei lotti.** Lì la GUC resta un
+  **interruttore**, perche' i guard che la leggono stanno su molte tabelle e ognuno
+  dovrebbe risalire dalla sua riga al lotto per una strada diversa. Il limite lo
+  danno il proprietario e la durata: i guard la onorano solo se a scrivere e' il
+  proprietario (`vendite.fn_porta_reset_lotto_aperta`), e la accende solo la pulizia
+  del lotto, una primitiva riservata, che la spegne prima di uscire. Le sole
+  scritture che la porta vede sono quelle della pulizia.
+  Il reset dei lotti e le righe contabili non hanno piu' porte che si aprono con la
+  sola GUC.
 
 **Il backend chiede, non decide due volte.** L'endpoint tiene il suo controllo:
 risponde 403 subito, con un messaggio utile, prima di aprire la transazione.
@@ -1373,7 +1389,7 @@ erDiagram
 * **Ambito dati operatore** → condizione di scope nei repository (`add_emittente_scope_condition`, applica EF_WHITELIST) + RLS sulle tabelle del perimetro
 * **Defense-in-depth** → trigger DB + RLS policy + scope functions `script.fn_scope_*`; fail-closed su tripla GUC incoerente
 * **Utenti del database** → quattro utenti tecnici fissi (§7.6), nessuno dei quali scavalca la RLS lavorando per conto di un'azienda
-* **Permesso nella scrittura** → verbi DB con `fn_guard_azione` / `fn_guard_livello` / `fn_guard_super_admin` nella prima riga; tabelle protette in sola lettura per l'app (loop dei grant); il pannello di configurazione scrive col verbo generico `config.fn_pannello_scrivi`
+* **Permesso nella scrittura** → verbi DB con `fn_guard_azione` / `fn_guard_livello` / `fn_guard_livello_area` / `fn_guard_super_admin` nella prima riga; tabelle protette in sola lettura per l'app (loop dei grant); il pannello di configurazione scrive col verbo generico `config.fn_pannello_scrivi`
 
 ---
 

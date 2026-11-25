@@ -1,52 +1,30 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_reset_fondi_fattura`
 
+> **Ultimo aggiornamento**: 25 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
-> • [vendite.fatture_fondi_fattura_source](/dbzero/vendite/tabelle/fatture_fondi_fattura_source)  
-> • [vendite.fatture_fondi_fattura](/dbzero/vendite/tabelle/fatture_fondi_fattura)  
+> * [vendite.fatture](/dbzero/vendite/tabelle/fatture) — la fattura figlia di cui si disfano i fondi
+> * [vendite.fatture_fondi_fattura_source](/dbzero/vendite/tabelle/fatture_fondi_fattura_source) — l'atto
+> * [vendite.fatture_fondi_fattura](/dbzero/vendite/tabelle/fatture_fondi_fattura) — il fondo applicato
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-• [vendite.fn_applica_fondi_fattura](/dbzero/vendite/funzioni/fn_applica_fondi_fattura)  
+> * [vendite.fn_check_fondo_cancellabile](/dbzero/vendite/funzioni/fn_check_fondo_cancellabile) — il criterio
+> * [vendite.fn_applica_cancellazione_fondo_fattura](/dbzero/vendite/funzioni/fn_applica_cancellazione_fondo_fattura) — la primitiva che cancella
+> * [vendite.fn_cleanup_fatture_by_ids](/dbzero/vendite/funzioni/fn_cleanup_fatture_by_ids) — l'unico chiamante: la pulizia del lotto
+> * [vendite.fn_applica_fondi_fattura](/dbzero/vendite/funzioni/fn_applica_fondi_fattura) — chi applica i fondi che qui si disfano
 >
-### ⭐ rev 31-08-2026 — IL CRITERIO NON STA PIÙ QUI (D-21)
-
-I tre blocchi «l'atto non è ancora un fatto» e i tre `DELETE` nell'ordine imposto
-dalla FK **si sono spostati**:
-
-```text
-il CRITERIO  →  vendite.fn_check_fondo_cancellabile
-l'AZIONE     →  vendite.fn_cancella_fondo_fattura
-la REAZIONE  →  resta qui, ed è l'opposto di quella del gesto manuale
-```
-
-| Chi | Quando l'atto è bloccato |
-| --- | --- |
-| **questa funzione** | **segnala e prosegue** — è un giro tecnico su N atti, e un'eccezione fermerebbe il reset di un lotto intero |
-| `fn_cancella_fondo_fattura` | **rifiuta e lo dice** — è il gesto di una persona su un atto |
-
-⚠️ **Il comportamento non cambia**, e va detto dove: il blocco degli atti
-`ESEGUITO` chiede al predicato invece di guardare lo stato, e la popolazione è la
-stessa perché `ATTO_ESEGUITO` è il primo motivo che il predicato prova. La quarta
-condizione (`FIGLIA_CONGELATA`) **non si accende in questo percorso**: l'unico
-chiamante, `fn_cleanup_fatture_by_ids`, imposta la GUC
-`zeroerp.maintenance_reset_lotto_draft`.
-
-⭐ **Un difetto latente chiuso**: un lotto la cui figlia aveva ricevuto un
-**riporto** faceva fallire il reset con un `23503` nudo sulla FK
-`fk_sistemazioni_fondo_source`. Adesso l'atto viene **saltato** con una nota nel
-diario (`W_FONDO_TRATTENUTO_DA_SISTEMAZIONE`). ⚠️ Il reset del lotto fallirà
-comunque più avanti — l'atto continua a puntare la fattura che si sta
-cancellando — ma il diario dice perché: *fallire ad alta voce resta, il silenzio
-no.*
+> Guide:
+>
+> * [Fatturazione](/guide/fatturazione) — il reset del lotto e i fondi che non tocca
+> * [Gestione dei pagamenti](/guide/gestione-dei-pagamenti) — i fondi fattura
 
 ---
 
 ### 🎯 Scopo Principale
-(latest review 22-08-2026)
 
 La funzione **`vendite.fn_reset_fondi_fattura()`** disfa i fondi fattura
 applicati ad una **fattura figlia**:
@@ -81,6 +59,48 @@ applicati ad una **fattura figlia**:
 > pagamento diventa un credito sulla sorgente e si governa nel **processo
 > rimborsi**, in `pagamenti`. Senza questa riga è il tipo di funzione che al giro
 > dopo qualcuno chiama credendo di aver trovato il pezzo mancante.
+
+---
+
+### Il criterio e la cancellazione stanno altrove
+
+I controlli «l'atto non è ancora un fatto» e i tre `DELETE` nell'ordine imposto
+dalle chiavi esterne non sono scritti qui:
+
+```text
+il CRITERIO  →  vendite.fn_check_fondo_cancellabile
+l'AZIONE     →  vendite.fn_applica_cancellazione_fondo_fattura (la primitiva)
+la REAZIONE  →  resta qui, ed è l'opposto di quella del gesto manuale
+```
+
+| Chi | Quando l'atto è bloccato |
+| --- | --- |
+| **questa funzione** | **segnala e prosegue** — è un giro tecnico su N atti, e un'eccezione fermerebbe il reset di un lotto intero |
+| il gesto «cancella il fondo» (`fn_cancella_fondo_fattura`, con la primitiva) | **rifiuta e lo dice** — è il gesto di una persona su un atto |
+
+Il blocco degli atti `ESEGUITO` chiede al criterio invece di guardare lo stato:
+`ATTO_ESEGUITO` è il primo motivo che il criterio prova. La quarta condizione
+(`FIGLIA_CONGELATA`) **non si accende in questo percorso**: la figlia è la fattura
+che la pulizia del lotto sta cancellando, e i controlli d'ingresso dei verbi del
+reset la vogliono pre-fiscale. Il ramo resta scritto, perché un motivo senza
+reazione sarebbe un atto saltato in silenzio.
+
+⭐ **Un atto trattenuto da un riporto** viene **saltato** con una nota nel diario
+(`W_FONDO_TRATTENUTO_DA_SISTEMAZIONE`), invece di far fallire il reset con un
+errore nudo di chiave esterna. ⚠️ Il reset del lotto fallirà comunque più avanti
+— l'atto continua a puntare la fattura che si sta cancellando — ma il diario dice
+perché: *fallire ad alta voce resta, il silenzio no.*
+
+---
+
+### Chi la chiama
+
+È riservata al proprietario: l'applicazione non la può eseguire. La chiama solo
+[`vendite.fn_cleanup_fatture_by_ids`](/dbzero/vendite/funzioni/fn_cleanup_fatture_by_ids),
+dentro i verbi del reset del lotto, che chiedono il loro permesso e rimettono il
+perimetro su lotto e fatture. Per questo cancella con la primitiva e non col
+verbo pubblico, che chiede `governa_fondo_fattura`: il reset del lotto ha il suo
+permesso, nei suoi verbi.
 
 ---
 
@@ -133,14 +153,15 @@ Ritorna:
 
 ---
 
-### Esempio d’uso
+### Note di migrazione
 
-```sql
-SELECT *
-FROM vendite.fn_reset_fondi_fattura(
-  p_fattura_id => 123
-);
-```
+* 2026-08-21 — l'atto non eseguito si cancella invece di tornare `DISPONIBILE`, e un atto
+  eseguito non si tocca mai; la prima colonna del risultato si chiamava `updated_source`.
+* 2026-08-31 — il criterio passa a `fn_check_fondo_cancellabile` e i tre `DELETE` a una sede
+  unica (brief-db-fondo-fattura-ricalcolo-e-governo, D-21).
+* 2026-11-25 — cancella con la primitiva `fn_applica_cancellazione_fondo_fattura` invece che col
+  verbo pubblico, e diventa riservata al proprietario (brief-db-porte-aperte-dalla-sola-guc,
+  giro 8 + 1-7).
 
 ---
 

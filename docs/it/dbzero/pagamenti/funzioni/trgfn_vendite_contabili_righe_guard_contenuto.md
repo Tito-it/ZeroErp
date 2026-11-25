@@ -17,9 +17,8 @@ CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_contenu
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    -- NUDI di proposito: l'array e la GUC non riflettono nessuna colonna.
+    -- NUDO di proposito: l'array non riflette nessuna colonna.
     v_motivi     jsonb;
-    v_override   text;
     v_testata_id pagamenti.vendite_contabili.id%TYPE;
     v_codice     pagamenti.vendite_contabili.codice%TYPE;
     v_origine    pagamenti.vendite_contabili.origine%TYPE;
@@ -51,16 +50,19 @@ BEGIN
 
     -- ── PORTA 1a — DELETE fisico ─────────────────────────────
     IF TG_OP = 'DELETE' THEN
-        -- ⭐ La madre del giro dei fondi (fn_cancella_fondo_fattura)
-        --    cancella FISICAMENTE le righe del suo atto sotto una
-        --    GENERATA, e ha gia' letto il SUO criterio
-        --    (fn_check_fondo_cancellabile). Dichiara «sono io» con
-        --    questa GUC, transazionale, e la richiude subito dopo.
-        --    Stesso contratto di fn_change_user_emittenti_scope
-        --    su trgfn_user_emittenti_fiscali_guard_delete.
+        -- ⭐ La primitiva del giro dei fondi
+        --    (vendite.fn_applica_cancellazione_fondo_fattura) cancella
+        --    FISICAMENTE le righe del suo atto sotto una GENERATA, e ha
+        --    gia' letto il SUO criterio (fn_check_fondo_cancellabile).
+        --    La porta ha due condizioni in AND (D-V1, giro 8): la GUC
+        --    vale l'id dell'atto della riga (SULLA RIGA), e chi scrive
+        --    e' il proprietario, cioe' la primitiva DEFINER. L'app che
+        --    accende la GUC da se' non apre niente.
         -- ⚠️ SOLO qui: sulla disattivazione nessuna madre passa.
-        v_override := current_setting('zeroerp.allow_contabile_riga_delete_override', true);
-        IF COALESCE(lower(v_override), 'off') IN ('on', 'true', '1') THEN
+        IF OLD.fondo_source_id IS NOT NULL
+           AND NULLIF(current_setting('zeroerp.allow_contabile_riga_delete_override', true), '')
+               = OLD.fondo_source_id::text
+           AND script.fn_is_proprietario_tabella(TG_RELID) THEN
             RETURN OLD;
         END IF;
 
@@ -190,7 +192,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_contenuto()
-IS 'Il guard del CONTENUTO della distinta contabile: chi puo'' togliere, aggiungere o cambiare una riga, e quando. DUE PORTE. (1) ELIMINAZIONE (D17): attivo true -> false, e DELETE — ammessa solo su una MANUALE in BOZZA. Il predicato NON sta qui: sta in script.fn_check_riga_contabile_eliminabile, che il guard CHIAMA sollevando il PRIMO motivo con fn_raise_primo_motivo_se_presente (§12.5.2: tooltip del cestino e rifiuto non possono divergere). (2) CONGELAMENTO (D18, confermata da Tid il 2026-09-14): INSERT, riattivazione, spostamento da/verso un''altra distinta e UPDATE di un FATTO (importo, data_pagamento, data_valuta, data_operazione, riferimento_ente) sono rifiutati sotto una MANUALE che non e'' piu'' in BOZZA — E_RIGA_CONTABILE_DISTINTA_VALIDATA. ⭐ Le DECISIONI restano libere anche a distinta validata (stato_id, fattura_id, billing_account_id, scadenza_id, forzata, motivo_forzatura, motivo_sospeso, meta): l''abbinamento non tocca la quadratura (D12-e) e la madre del posting muove lo stato delle righe mentre la distinta e'' ancora VALIDATA — per questo il trigger e'' UPDATE OF sui soli fatti e su quelle non scatta. ⛔ La porta 2 e'' SOLO della MANUALE: fn_sync_contabili_fondo_fattura inserisce e aggiorna righe sotto GENERATE che nascono VALIDATE, fn_conferma_sistemazione sotto una GENERATA in BOZZA. L''immutabilita'' di GENERATA e AUTOMATICA e'' di D12-d e arriva con l''import. ⚠️ La condizione della porta 2 e'' il motivo 3 della check, scritta due volte perche'' sull''INSERT non c''e'' una riga da passare: copia dichiarata, legata dal pgTAP. ⭐ IL DELETE FISICO passa dalla stessa check (D12-d, tre porte), e la riga POSTATA riceve il messaggio giusto PRIMA della FK del movimento. 🔴 Ma vendite.fn_cancella_fondo_fattura — sede unica dei DELETE del giro dei fondi — cancella fisicamente le righe del suo atto sotto una GENERATA, dove la check risponde DISTINTA_NON_MANUALE: la madre APRE la porta con la GUC transazionale zeroerp.allow_contabile_riga_delete_override (SET LOCAL ''on'' prima, '''' dopo; changeSet 20260914-06), che questo guard onora SOLO su DELETE — precedente identico: fn_change_user_emittenti_scope su trgfn_user_emittenti_fiscali_guard_delete. Non e'' un permesso, e'' la madre che dichiara «sono io» dopo aver letto il SUO criterio (fn_check_fondo_cancellabile). ⚠️ Ordine alfabetico dei BEFORE ROW: parla PRIMA degli altri guard di riga; sotto una FINALE la porta 2 tace e lascia il messaggio a guard_distinta_finale, che e'' la sua sede. ⚠️ Residuo dichiarato, ristretto il 2026-09-30: sotto una distinta ANNULLATA (righe_lavorabili = false) nessuna scrittura passa piu'' — la quinta mossa di guard_distinta_finale rifiuta ogni UPDATE con E_RIGA_CONTABILE_DISTINTA_ANNULLATA, e su attivo -> false e DELETE parla gia'' qui la check (motivo DISTINTA_ANNULLATA, prima di DISTINTA_FINALE); sotto una CHIUSA l''importo di una riga — anche POSTATA — resta modificabile da SQL, perche'' li'' le righe si lavorano ancora (tardiva, «Riprendi») e guard_distinta_finale lascia di proposito le altre scritture (brief-db-righe-distinta-annullata-fuori-dalle-code §8.1). Brief: brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga §2.2, §2.3, §4 P-2/P-5. 🔴 rev 2026-11-03: nella porta 2 origine e stato della distinta si leggono FUORI dalla row security con script.fn_get_contabile_stato_origine. Una riga si vede anche dalla FATTURA, e chi la vede cosi'' non vede la sua distinta: letta sotto RLS l''origine era NULL e la porta taceva. Il codice resta letto sotto RLS, solo per il messaggio.';
+IS 'Il guard del CONTENUTO della distinta contabile: chi puo'' togliere, aggiungere o cambiare una riga, e quando. DUE PORTE. (1) ELIMINAZIONE (D17): attivo true -> false, e DELETE — ammessa solo su una MANUALE in BOZZA. Il predicato NON sta qui: sta in script.fn_check_riga_contabile_eliminabile, che il guard CHIAMA sollevando il PRIMO motivo con fn_raise_primo_motivo_se_presente (§12.5.2: tooltip del cestino e rifiuto non possono divergere). (2) CONGELAMENTO (D18, confermata da Tid il 2026-09-14): INSERT, riattivazione, spostamento da/verso un''altra distinta e UPDATE di un FATTO (importo, data_pagamento, data_valuta, data_operazione, riferimento_ente) sono rifiutati sotto una MANUALE che non e'' piu'' in BOZZA — E_RIGA_CONTABILE_DISTINTA_VALIDATA. ⭐ Le DECISIONI restano libere anche a distinta validata (stato_id, fattura_id, billing_account_id, scadenza_id, forzata, motivo_forzatura, motivo_sospeso, meta): l''abbinamento non tocca la quadratura (D12-e) e la madre del posting muove lo stato delle righe mentre la distinta e'' ancora VALIDATA — per questo il trigger e'' UPDATE OF sui soli fatti e su quelle non scatta. ⛔ La porta 2 e'' SOLO della MANUALE: fn_sync_contabili_fondo_fattura inserisce e aggiorna righe sotto GENERATE che nascono VALIDATE, fn_conferma_sistemazione sotto una GENERATA in BOZZA. L''immutabilita'' di GENERATA e AUTOMATICA e'' di D12-d e arriva con l''import. ⚠️ La condizione della porta 2 e'' il motivo 3 della check, scritta due volte perche'' sull''INSERT non c''e'' una riga da passare: copia dichiarata, legata dal pgTAP. ⭐ IL DELETE FISICO passa dalla stessa check (D12-d, tre porte), e la riga POSTATA riceve il messaggio giusto PRIMA della FK del movimento. 🔴 Ma vendite.fn_applica_cancellazione_fondo_fattura — sede unica dei DELETE del giro dei fondi, primitiva riservata dietro i verbi DEFINER — cancella fisicamente le righe del suo atto sotto una GENERATA, dove la check risponde DISTINTA_NON_MANUALE: APRE la porta con la GUC transazionale zeroerp.allow_contabile_riga_delete_override uguale all''id dell''atto, e la richiude subito dopo. Il guard la onora SOLO su DELETE, solo sulle righe di quell''atto (fondo_source_id) e solo se chi scrive e'' il proprietario della tabella (script.fn_is_proprietario_tabella): l''app che accende la GUC da se'' non apre niente (brief-db-porte-aperte-dalla-sola-guc, giro 8). ⚠️ Ordine alfabetico dei BEFORE ROW: parla PRIMA degli altri guard di riga; sotto una FINALE la porta 2 tace e lascia il messaggio a guard_distinta_finale, che e'' la sua sede. ⚠️ Residuo dichiarato, ristretto il 2026-09-30: sotto una distinta ANNULLATA (righe_lavorabili = false) nessuna scrittura passa piu'' — la quinta mossa di guard_distinta_finale rifiuta ogni UPDATE con E_RIGA_CONTABILE_DISTINTA_ANNULLATA, e su attivo -> false e DELETE parla gia'' qui la check (motivo DISTINTA_ANNULLATA, prima di DISTINTA_FINALE); sotto una CHIUSA l''importo di una riga — anche POSTATA — resta modificabile da SQL, perche'' li'' le righe si lavorano ancora (tardiva, «Riprendi») e guard_distinta_finale lascia di proposito le altre scritture (brief-db-righe-distinta-annullata-fuori-dalle-code §8.1). Brief: brief-db-riga-manuale-nasce-abbinata-ed-elimina-riga §2.2, §2.3, §4 P-2/P-5. 🔴 rev 2026-11-03: nella porta 2 origine e stato della distinta si leggono FUORI dalla row security con script.fn_get_contabile_stato_origine. Una riga si vede anche dalla FATTURA, e chi la vede cosi'' non vede la sua distinta: letta sotto RLS l''origine era NULL e la porta taceva. Il codice resta letto sotto RLS, solo per il messaggio.';
 ```
 
 </div>

@@ -5,7 +5,7 @@
 CREATE FUNCTION fn_annulla_sistemazione(p_sistemazione_id bigint, p_motivo text)
 ```
 
-> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
 
 **Definizione completa:**
 
@@ -15,8 +15,11 @@ CREATE FUNCTION fn_annulla_sistemazione(p_sistemazione_id bigint, p_motivo text)
 CREATE OR REPLACE FUNCTION pagamenti.fn_annulla_sistemazione(p_sistemazione_id bigint, p_motivo text DEFAULT NULL::text)
  RETURNS character varying
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
+    v_utente config.user_override_aree.auth_user_id%TYPE;
     v_atto  pagamenti.sistemazioni%ROWTYPE;
     v_stato pagamenti.sistemazioni.stato%TYPE;
 BEGIN
@@ -35,7 +38,22 @@ BEGIN
     --   due sedi che prima o poi divergono. La riga si legge per
     --   sapere se c'e' un ESITO da disfare, non per rideliberare
     --   se l'annullamento sia ammesso.
+    --
+    -- ⭐ rev 2026-11-25 (brief-db-porte-aperte-dalla-sola-guc §13,
+    --   giro 8): SECURITY DEFINER. Il permesso in prima riga e' quello
+    --   dell'endpoint (risposta 3d, §4.5): il livello TUTTO sull'AREA
+    --   pagamenti, senza oggetto (D-U a). Il perimetro lo rimette il
+    --   verbo, sull'atto, con la risposta di prima. Il fondo cade dalla
+    --   primitiva, non dal verbo pubblico: chi annulla una sistemazione
+    --   non deve avere anche governa_fondo_fattura.
     -- =========================================================
+    v_utente := script.fn_utente_di_sessione('pagamenti.fn_annulla_sistemazione');
+    PERFORM script.fn_guard_livello_area(v_utente, 'pagamenti', 'TUTTO');
+
+    -- Le GUC che dentro un verbo DEFINER aprirebbero una porta si
+    -- spengono all'ingresso (le righe contabili, il reset del lotto).
+    PERFORM set_config('zeroerp.allow_contabile_riga_delete_override', '', true);
+    PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', '', true);
 
     -- ⚠️ FOR UPDATE: due annullamenti in parallelo sullo stesso
     --   atto arriverebbero entrambi alla cancellazione del fondo,
@@ -45,11 +63,18 @@ BEGIN
      WHERE id = p_sistemazione_id
        FOR UPDATE;
 
-    -- ⚠️ Zero righe vuol dire due cose che devono restare
-    --   indistinguibili: l'atto non esiste, oppure la row security
-    --   non lo fa vedere a chi sta chiedendo. Distinguerle direbbe
-    --   a chi e' fuori perimetro che quell'atto c'e'.
-    IF NOT FOUND THEN
+    -- ⚠️ Due cose devono restare indistinguibili: l'atto non
+    --   esiste, oppure e' fuori dal perimetro di chi chiede.
+    --   Distinguerle direbbe a chi e' fuori perimetro che quell'atto
+    --   c'e'. Il perimetro e' la regola della policy di
+    --   pagamenti.sistemazioni (l'emittente del suo
+    --   emittente_soggetto_ruolo_id), rimessa qui perche' il verbo
+    --   legge da proprietario.
+    IF NOT FOUND
+       OR NOT COALESCE(script.fn_check_user_emittente_scope(
+              v_utente,
+              script.fn_resolve_emittente_fiscale_id('soggetto_ruolo', v_atto.emittente_soggetto_ruolo_id)),
+              false) THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'pagamenti.fn_annulla_sistemazione',
             'E_SISTEMAZIONE_NON_TROVATA',
@@ -108,7 +133,7 @@ BEGIN
     -- ⭐ La garanzia che il brief chiedeva («solo se la
     --   cancellazione riesce») regge lo stesso, per costruzione:
     --   siamo dentro UNA funzione, cioe' una transazione. Se
-    --   fn_cancella_fondo_fattura solleva, l'UPDATE non
+    --   la primitiva solleva, l'UPDATE non
     --   sopravvive, e il record che il brief temeva — sistemazione
     --   annullata con il suo fondo ancora vivo — non e'
     --   raggiungibile.
@@ -121,7 +146,7 @@ BEGIN
        AND v_atto.destinazione = 'RIPORTO'
        AND v_atto.fondo_source_id IS NOT NULL
     THEN
-        PERFORM vendite.fn_cancella_fondo_fattura(v_atto.fondo_source_id);
+        PERFORM vendite.fn_applica_cancellazione_fondo_fattura(v_atto.fondo_source_id);
     END IF;
 
     RETURN v_stato;
@@ -129,7 +154,7 @@ END
 $function$
 
 COMMENT ON FUNCTION pagamenti.fn_annulla_sistemazione(p_sistemazione_id bigint, p_motivo text)
-IS 'Scarta un atto di sistemazione lasciandolo a REGISTRO con la ragione per cui e'' stato scartato — annullare non e'' cancellare, ed e'' il senso stesso di avere un registro: l''eccedenza continuera'' a comparire nell''elenco (e'' vera, non se n''e'' andata) e chi guarda trovera'' scritto perche'' la volta scorsa si e'' deciso di lasciarla li''. ⭐ rev 2026-08-31 (D-25 di brief-db-fondo-fattura-ricalcolo-e-governo §9.6, decisione G-4 di Tid): su un atto gia'' CONFERMATA di destinazione RIPORTO fa cadere anche il FONDO che aveva creato, chiamando vendite.fn_cancella_fondo_fattura — l''atto e il suo effetto cadono insieme, o il registro racconta un fatto che non e'' avvenuto. ⭐ Guida pagamenti e non vendite per tre ragioni: chi alza la bandiera la abbassa (il fondo l''ha creato fn_conferma_sistemazione), api.md vieta le chiamate laterali fra moduli di pari livello quindi la sola sede in cui i due schemi si toccano e'' il database, e l''atto sta qui mentre il fondo e'' la sua conseguenza. ⚠️ L''ORDINE e'' invertito rispetto al brief — prima si stacca e si annulla, poi si cancella — perche'' fk_sistemazioni_fondo_source e'' NO ACTION e trattiene il DELETE finche'' l''atto punta il fondo; la garanzia «solo se la cancellazione riesce» regge per costruzione, essendo tutto dentro una funzione: se la cancellazione solleva, l''UPDATE non sopravvive. ⚠️ Il composito dell''esito (data_esecuzione, user_esecuzione, fondo_source_id) cade INTERO, come pretende chk_sistemazioni_eseguita, e cio'' che il registro perderebbe finisce sotto meta->''annullata_dopo_esecuzione'' — scritta solo quando l''atto era davvero stato eseguito, perche'' su una BOZZA una chiave con dentro tre null direbbe il falso. ⚠️ Cancellare il fondo RIAPRE la rigenerazione automatica: l''«atto unico» guarda se un atto esiste in qualunque stato, e il giro successivo ne rifa'' uno leggendo il residuo di adesso. ⭐ Non e'' una madre nel senso stretto: scrive una riga e ne cancella una in un altro schema, e sta qui perche'' e'' tutto SQL. ⛔ NON ricontrolla lo stato: su un atto gia'' terminale parla trgfn_sistemazioni_guard_transizione, che dal changeSet 20260831-66 porta il varco CONFERMATA -> ANNULLATA sul solo RIPORTO e rifiuta l''annullamento degli altri due nominando la correzione guidata. La riga si legge per sapere se c''e'' un ESITO da disfare, non per rideliberare. ⭐ Il motivo si fonde e non si sovrascrive: se l''atto ne aveva gia'' uno e la chiamata arriva vuota, si tiene quello che c''era.';
+IS 'Verbo SECURITY DEFINER dell''endpoint di annullo della sistemazione: in prima riga script.fn_guard_livello_area con TUTTO sull''area pagamenti (lo stesso controllo dell''endpoint, senza oggetto), poi il perimetro sull''atto (fuori, come un atto che non esiste: E_SISTEMAZIONE_NON_TROVATA); spegne all''ingresso le GUC delle porte delle righe contabili e del reset del lotto. Il fondo cade dalla primitiva, cosi'' chi annulla non deve avere anche governa_fondo_fattura (brief-db-porte-aperte-dalla-sola-guc, giro 8). Scarta un atto di sistemazione lasciandolo a REGISTRO con la ragione per cui e'' stato scartato — annullare non e'' cancellare, ed e'' il senso stesso di avere un registro: l''eccedenza continuera'' a comparire nell''elenco (e'' vera, non se n''e'' andata) e chi guarda trovera'' scritto perche'' la volta scorsa si e'' deciso di lasciarla li''. ⭐ rev 2026-08-31 (D-25 di brief-db-fondo-fattura-ricalcolo-e-governo §9.6, decisione G-4 di Tid): su un atto gia'' CONFERMATA di destinazione RIPORTO fa cadere anche il FONDO che aveva creato, chiamando la primitiva vendite.fn_applica_cancellazione_fondo_fattura — l''atto e il suo effetto cadono insieme, o il registro racconta un fatto che non e'' avvenuto. ⭐ Guida pagamenti e non vendite per tre ragioni: chi alza la bandiera la abbassa (il fondo l''ha creato fn_conferma_sistemazione), api.md vieta le chiamate laterali fra moduli di pari livello quindi la sola sede in cui i due schemi si toccano e'' il database, e l''atto sta qui mentre il fondo e'' la sua conseguenza. ⚠️ L''ORDINE e'' invertito rispetto al brief — prima si stacca e si annulla, poi si cancella — perche'' fk_sistemazioni_fondo_source e'' NO ACTION e trattiene il DELETE finche'' l''atto punta il fondo; la garanzia «solo se la cancellazione riesce» regge per costruzione, essendo tutto dentro una funzione: se la cancellazione solleva, l''UPDATE non sopravvive. ⚠️ Il composito dell''esito (data_esecuzione, user_esecuzione, fondo_source_id) cade INTERO, come pretende chk_sistemazioni_eseguita, e cio'' che il registro perderebbe finisce sotto meta->''annullata_dopo_esecuzione'' — scritta solo quando l''atto era davvero stato eseguito, perche'' su una BOZZA una chiave con dentro tre null direbbe il falso. ⚠️ Cancellare il fondo RIAPRE la rigenerazione automatica: l''«atto unico» guarda se un atto esiste in qualunque stato, e il giro successivo ne rifa'' uno leggendo il residuo di adesso. ⭐ Non e'' una madre nel senso stretto: scrive una riga e ne cancella una in un altro schema, e sta qui perche'' e'' tutto SQL. ⛔ NON ricontrolla lo stato: su un atto gia'' terminale parla trgfn_sistemazioni_guard_transizione, che dal changeSet 20260831-66 porta il varco CONFERMATA -> ANNULLATA sul solo RIPORTO e rifiuta l''annullamento degli altri due nominando la correzione guidata. La riga si legge per sapere se c''e'' un ESITO da disfare, non per rideliberare. ⭐ Il motivo si fonde e non si sovrascrive: se l''atto ne aveva gia'' uno e la chiamata arriva vuota, si tiene quello che c''era.';
 ```
 
 </div>
