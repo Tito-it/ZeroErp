@@ -2,10 +2,11 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-25**
 >
-> **Riparte: il team BE/FE**, con la prova di `/me/` dei tre utenti (§4.4). Il lavoro DB è
-> applicato da Tid il 2026-11-25, coi pgTAP verdi (R-DB-1 in §3.2, R-DB-2 in §4.6), con la doc
-> auto-generata rigenerata, e committato su `dev/db-tid`: il BE lo riceve con la PR. Il BE non deve cambiare per primo: per lui cambia
-> solo che `E_SCOPE_EMITTENTE` può arrivare anche da un UPDATE del valore o da un DELETE (§3.1).
+> **Chiuso e archiviato il 2026-11-25, su decisione di Tid.** Riparte nessuno. Il lavoro DB è
+> applicato, coi pgTAP verdi, e committato su `dev/db-tid`; il lavoro BE/FE (§2, §4.7) è committato
+> su `dev/backend-tid`. Nessun debito: il passaggio del super admin in «tutti gli emittenti» (§3,
+> §3.1) è il comportamento del modello, lo stesso delle altre tabelle col guard di scope, e non un
+> residuo.
 >
 > | # | Chi | Che cosa | Dove | Aspetta |
 > | --- | --- | --- | --- | --- |
@@ -15,13 +16,15 @@
 > | 4 | team DB | ✅ R-DB-2 (a): il blocco `emittente` di `script.fn_get_user_profile` senza il ripiego sul gestore globale, `20261124-14`, col pgTAP e la pagina `manual/`; provato con l'estratto (2026-11-25) | §4.6 | — |
 > | 5 | Tid | ✅ Apply e pgTAP di R-DB-1 e R-DB-2 (2026-11-25) | — | — |
 > | 5-bis | Tid, team DB | ✅ La doc auto-generata rigenerata e il commit del giro DB (2026-11-25); resta la PR | — | — |
-> | 6 | team BE/FE | Dopo R-DB-2: la prova di `/me/` con i tre utenti (§4.4); dopo R-DB-1 nessun lavoro, solo la nota di §3.1 | §4.4 | 5 |
-> | 7 | team DB | Chiusura: suite pgTAP, archiviazione in `work-done/` | — | 6 |
+> | 6 | team BE/FE | ✅ La prova di `/me/` con i tre utenti, verde sul DB vero; la riga morta di `emittenteCorrente` tolta; la doc BE allineata a §2 (2026-11-25) | §4.7 | — |
+> | 6-bis | team BE/FE | ✅ Il commit del giro BE/FE su `dev/backend-tid` (2026-11-25) | §4.7 | — |
+> | 7 | Tid | ✅ Chiusura e archiviazione in `work-done/` (2026-11-25). La suite pgTAP intera non è stata rilanciata alla chiusura: i pgTAP del giro e quelli vicini sono verdi (§3.2, §4.6), la suite gira in CI sulla PR | — | — |
 >
 > **Decisioni aperte di Tid:** nessuna. Dove nominare `script.fn_resolve_emittente_for_user` l'ha
 > deciso il 2026-11-25: in §7 della guida dei permessi, ed è scritto (§6.1). **Committato** su
 > `dev/db-tid` il 2026-11-25: il giro DB intero (R-DB-1 e R-DB-2, guide, pagine `manual/`, doc
-> auto-generata rigenerata da Tid) e questo brief. Il lavoro BE di §2 sta su `dev/backend-tid`.
+> auto-generata rigenerata da Tid) e questo brief. Il lavoro BE di §2 è committato su
+> `dev/backend-tid` (`9511ed0f6`), e così il giro BE/FE di §4.7 con l'archiviazione (2026-11-25).
 >
 > **Brief vicini verificati (2026-11-25):** nessuno. In `work-in-progress/` nominano
 > `config.parameter_overrides` solo `brief-db-revisione-anagrafiche` (§ giro 3-bis, i GRANT dell'app
@@ -31,10 +34,10 @@
 > **Guide verificate (2026-11-25):** gli esiti sono in §6.
 >
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-11-25. **A chi:** team DB e Tid.
-> **Origine:** E1-6 di [brief-be-fe-BB-audit](../work-done/2026/brief-be-fe-BB-audit.md) (§6.2). L'approfondimento
+> **Origine:** E1-6 di [brief-be-fe-BB-audit](brief-be-fe-BB-audit.md) (§6.2). L'approfondimento
 > completo, con i riferimenti, è in §6.1 di quel brief; qui c'è solo ciò che serve al DB.
-> ⚠️ Il lavoro BE descritto in §2 sta su `dev/backend-tid` ed **è ancora da committare** alla data
-> di questo brief.
+> Il lavoro BE descritto in §2 è committato su `dev/backend-tid` (`9511ed0f6`, verificato il
+> 2026-11-25).
 
 ## 0. Il piano da percorrere
 
@@ -69,9 +72,10 @@
 - [x] R-DB-1: apply di Tid (`20261124-13`), pgTAP verdi — 2026-11-25
 - [x] R-DB-2: apply di Tid (`20261124-14`), pgTAP verdi — 2026-11-25
 - [x] La doc auto-generata rigenerata (Tid) e il commit del giro DB su `dev/db-tid` — 2026-11-25
-- [ ] Il passaggio al team BE/FE: la prova di `/me/` (§4.4) e la nota su `E_SCOPE_EMITTENTE` (§3.1)
-- [ ] La prova di `/me/` del team BE/FE (§4.4)
-- [ ] Suite pgTAP intera e archiviazione
+- [x] Il passaggio al team BE/FE: la prova di `/me/` (§4.4) e la nota su `E_SCOPE_EMITTENTE` (§3.1)
+  — 2026-11-25
+- [x] La prova di `/me/` del team BE/FE (§4.7) — 2026-11-25
+- [x] Archiviazione, su decisione di Tid (la suite pgTAP intera gira in CI sulla PR) — 2026-11-25
 
 ## 1. La regola, decisa da Tid il 2026-11-25
 
@@ -379,6 +383,61 @@ porta la revisione. Il rollback rimette il corpo e il COMMENT di prima.
 verso `fn_resolve_emittente_for_user`, il blocco `emittente`, il flusso (passo 8) e le
 ottimizzazioni. Nessuna guida descriveva il ripiego (§6.1).
 
+### 4.7 Il giro BE/FE della prova di `/me/` (team BE/FE, 2026-11-25)
+
+**La prova.** Un test e2e sul DB vero, in transazione annullata:
+`backend/apps/core/tests/db/test_me_emittente_senza_gestore_globale_db.py` (opt-in
+`ZEROERP_TEST_DB_E2E=1`). I tre utenti si **costruiscono** con i builder del pgTAP di §4.6
+(`fn_pgtap_crea_operatore_umano`, `fn_pgtap_crea_emittente`, `fn_pgtap_sposta_scope_operatore`), e
+anche il gestore globale, se manca: senza di lui i casi senza riga sarebbero verdi anche col
+ripiego. La view `/me/` è quella vera, col claim dell'emittente attivo che il login emetterebbe
+(`EmittenteAttivoService.risolvi_per_login`). Il FE ricava l'emittente di scrittura da `emittente`
+**e** da `emittente_attivo`, quindi il test li prova tutti e due.
+
+| Utente | `emittente` | `is_admin_globale` | `emittente_attivo` |
+| --- | --- | --- | --- |
+| super admin senza riga | NULL | `true` | nessun claim, `puo_scegliere` |
+| operatore configurato | la sua azienda, con la sua riga | `false` | la sua azienda, non sceglie |
+| operatore senza riga | NULL | `false` | nessun claim, non sceglie e non deve scegliere |
+
+Esito: 4 su 4 verdi (dbdev, 2026-11-25). Il quarto è il presupposto: esiste un gestore globale
+attivo, quindi il ripiego avrebbe avuto qualcosa da restituire.
+
+**Il FE.** In `stores/auth.js`, `emittenteCorrente` aveva `if (isAdminGlobale) return null`, per
+scartare il gestore globale del blocco. Dopo R-DB-2 non cambia più il risultato: «admin globale» è,
+per definizione, il super admin **senza** riga (`me_view._compute_is_admin_globale`), e senza riga il
+blocco è NULL. Tolta, col commento corretto; corretto anche il commento di `pratiche/stores/pratiche.js`.
+In `auth.spec.js` c'è il caso 8: `emittenteScritturaId` e il ruolo sono null per l'operatore senza
+riga e per l'admin in «tutti», e valgono l'emittente scelto per l'admin che ne ha uno.
+
+**La doc BE, che era rimasta indietro rispetto a §2.** Cinque pagine `manual/` descrivevano ancora
+il ripiego sul gestore globale come emittente di chi agisce, o nominavano
+`get_emittente_fiscale_id_for_user`, che è stata ritirata:
+
+* `core/manual/api_parameter_settings.md`: l'emittente di chi agisce nella lista; il 400
+  `E_EMITTENTE_NON_RISOLTO` in «tutti» per POST e DELETE (`emittente_per_scrivere`); il 403
+  `E_SCOPE_EMITTENTE` del guard `20261124-13` come rete, anche sul DELETE; le dipendenze DB;
+* `vendite/manual/api_vendite_form_defaults.md` e `api_offerte.md`: il livello 3 della valuta è
+  l'emittente di chi agisce, vuoto in «tutti»;
+* `anagrafiche/manual/api_clienti.md`: lo scope della lista non ha un ripiego `is_default`, come
+  il BB `fn_get_emittenti_scope_sr_ids` da cui viene.
+
+Anche nei commenti e negli help_text dei form-defaults (`views_form_defaults.py`,
+`vendite_form_defaults_service.py`) «gestore globale» indicava il livello 4 della valuta, che è
+`anagrafiche.gestori` (§5), oppure il ripiego dell'«EF utente», che è ritirato. Ora sono corretti.
+
+**Guide (`scripts/guide_coinvolte.py` sui file del giro).** Escono le guide di §6.1, dalle tabelle che
+il test legge e dai builder. Sono tutte **coerenti**: il giro non cambia comportamenti, e prova
+quello che `risorse-umane-e-accessi` e §7.1 di `architettura-permessi-e-autorizzazioni` descrivono
+già. Anche `pgtap-come-si-scrive-un-test` è coerente: il test usa i builder come li descrive la
+guida. **Orfani:** `/api/v1/core/me/` (endpoint, documentato in `docs/it/backend/`) e
+`dbops.fn_pgtap_sposta_scope_operatore` (builder di test). Sono dettagli interni.
+
+**Test lanciati:** il test e2e nuovo, `core.tests.api.test_me_view`,
+`vendite.tests.api.test_form_defaults_api`, `vendite.tests.services.test_vendite_form_defaults_service`,
+`core.tests.test_schema_openapi_registro`, e con vitest `stores/auth.spec.js` e `src/pratiche`.
+Tutti verdi.
+
 ## 5. Esaminati e fuori perimetro
 
 Non fanno parte di questa richiesta, e non vanno letti come «da allineare» per analogia:
@@ -392,11 +451,11 @@ Non fanno parte di questa richiesta, e non vanno letti come «da allineare» per
 
 ## 6. Guide
 
-* [configurazione-e-gestione-parametri](../../guide/configurazione-e-gestione-parametri.md),
+* [configurazione-e-gestione-parametri](../../../guide/configurazione-e-gestione-parametri.md),
   §«I riferimenti degli ambiti»: dice «con un guard: non si crea un override verso un emittente o
   una categoria **disattivati**». Con R-DB-1 il guard di scope si aggiunge, e la guida va
   aggiornata nello stesso giro.
-* [architettura-permessi-e-autorizzazioni](../../guide/architettura-permessi-e-autorizzazioni.md):
+* [architettura-permessi-e-autorizzazioni](../../../guide/architettura-permessi-e-autorizzazioni.md):
   la regola «restringe, non allarga» di `fn_check_user_emittente_scope` è quella che R-DB-1
   applica. Coerente.
 * La pagina manuale di `fn_get_user_profile` (`docs/it/dbzero/script/manual/`, L290-292 e L323)

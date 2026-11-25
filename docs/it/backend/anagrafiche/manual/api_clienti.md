@@ -48,8 +48,8 @@ via `parse_list_params`.
 
 **Scope emittente (RLS).** La lista restituisce solo i clienti i cui BA appartengono agli
 emittenti fiscali autorizzati per l'operatore (`PermissionResolver.get_emittenti_sr_ids`
-→ filtro applicativo su `emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id`,
-con fallback gestore globale `is_default`). Difesa-in-profondità sommata alla RLS DB.
+→ filtro applicativo su `emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id`).
+Difesa-in-profondità sommata alla RLS DB.
 
 Risposta: envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)).
 

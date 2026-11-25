@@ -114,7 +114,7 @@ load()
   - Per ogni parametro: valore a ciascun livello di scope + valore risolto finale
   - Cascata di risoluzione (post brief DB 2026-05-19, migration `20260519-01-recreate-fn-list-parameters-for-user-categoria-cliente-mctit`): `user > categoria_cliente > group > emittente > default`
   - `user_override_id` / `emittente_override_id` / `categoria_cliente_override_id`: ID dei rispettivi override (null se assente), da usare nel DELETE con lo `scope` corrispondente. `categoria_cliente_override_id` è **bigint** (non integer) per coerenza con `config.parameter_overrides.id` (derivato via `%TYPE`).
-  - `emittente_fiscale_id` risolto automaticamente: whitelist personale `config.user_emittenti_fiscali`, altrimenti gestore globale da `anagrafiche.emittenti_fiscali_billing_account` (riga con `billing_account_id` NULL e `is_default`)
+  - `emittente_fiscale_id` risolto automaticamente: è l'emittente **di chi agisce** (BB `contesto_cascata`, cioè `script.fn_resolve_emittente_for_user`: l'emittente attivo, poi la riga di `config.user_emittenti_fiscali`). In «tutti gli emittenti» è NULL e il livello emittente si salta, come in `script.fn_get_parameter_di_sessione`. ⛔ Fino al 2026-11-25 ripiegava sul gestore globale (la riga `is_default` senza BA di `anagrafiche.emittenti_fiscali_billing_account`): il gestore globale non è l'emittente di nessuno che agisca ([architettura-permessi-e-autorizzazioni](../../../guide/architettura-permessi-e-autorizzazioni.md) §7.1, «Su quale azienda agisce chi lavora»)
   - `billing_account_id` che non risulta (inesistente o fuori scope): 404 `E_ANAG_NOT_FOUND` (dal 2026-10-08; prima la categoria restava NULL senza errore)
   - `ammette_override`: la famiglia del parametro (`config.parameters.ammette_override`, NOT NULL, dal 2026-10-25, [brief-db-parametri-senza-override](../../../dev/work-done/2026/brief-db-parametri-senza-override.md)). Dove e' `false` il parametro vale per tutti: i livelli sono `null` e `resolved_value` e' il default per costruzione, perche' il DB rifiuta ogni override (endpoint 3). La UI non offre la personalizzazione su quelle righe
   - `categoria_cliente_value` / `categoria_cliente_override_id` sono SEMPRE presenti come chiavi nello shape della risposta; restano `null` se la richiesta non ha passato né `categoria_cliente_id` né `billing_account_id`
@@ -148,15 +148,17 @@ load()
 - Regole:
   - Esegue UPSERT su `config.parameter_overrides` di un override per **un** ambito, la sola dimensione dello scope valorizzata:
     - `user` → `django_user_id = utente corrente`
-    - `emittente` → `emittente_fiscale_id = EF utente`
+    - `emittente` → `emittente_fiscale_id` = l'emittente su cui scrive chi agisce (BB `emittente_per_scrivere`); in «tutti gli emittenti» **400 `E_EMITTENTE_NON_RISOLTO`**, niente scritto
     - `categoria_cliente` → `categoria_cliente_id = <id>`
     Che le altre dimensioni siano NULL lo garantisce il DB (`chk_parameter_overrides_un_ambito`, dal 2026-10-07): le righe miste non esistono. Fino ad allora il perimetro lo teneva il repository (F-5 dell'[analisi difetti](../../../dev/work-done/2026/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
   - Se l'override esiste gia' sullo stesso ambito, aggiorna il valore e `data_update` e lo **riattiva** (`attivo = true`): impostare un override vuol dire volerlo in vigore. L'upsert e' un `INSERT … ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5 DO UPDATE` (unicita' `NULLS NOT DISTINCT`): due richieste concorrenti sullo stesso ambito non creano un doppione e non rispondono errore, la seconda aggiorna (dal 2026-10-07; prima il vincolo v4 non scattava e il doppione era possibile). Fino al 2026-09-28 una riga spenta (`attivo` false o NULL) veniva aggiornata e restava spenta — risposta con l'id, ma override ignorato dalla risoluzione e assente dalla lista, che leggono solo `attivo = true`
   - Se il `parameter_code` non esiste in `config.parameters` → **404 `E_PARAMETER_NOT_FOUND`**, niente scritto (dal 2026-09-28, E-9: prima `E_DATABASE` 400 dalla violazione del NOT NULL)
   - Se il parametro vale per tutti (`ammette_override = false`) → **400 `E_PARAMETER_OVERRIDE_NON_AMMESSO`** dal guard del DB (`config.trgfn_parameter_overrides_guard_ammette_override`), niente scritto. Il rimedio e' cambiare il default. Fino al 2026-10-25 l'override nasceva e il lettore del default lo ignorava
 - Errori:
-  - `E_PARAMETER_VALIDATION` (400) — codice parametro vuoto, `value` assente o `null`, `scope` non ammesso, `categoria_cliente_id` mancante/non-positivo per scope categoria, emittente non risolvibile per scope emittente
+  - `E_PARAMETER_VALIDATION` (400) — codice parametro vuoto, `value` assente o `null`, `scope` non ammesso, `categoria_cliente_id` mancante/non-positivo per scope categoria
+  - `E_EMITTENTE_NON_RISOLTO` (400) — scope `emittente` in «tutti gli emittenti»: si sceglie l'emittente in alto
   - `E_PERMISSION_DENIED` (403) — scope `emittente` o `categoria_cliente` da non-admin
+  - `E_SCOPE_EMITTENTE` (403, dal DB) — override su un emittente fuori dal perimetro di chi scrive. Il BE scrive solo sull'emittente di chi agisce e non lo incontra; è la rete del guard `config.trgfn_parameter_overrides_guard_emittente_scope` (`20261124-13`), che guarda la riga di prima e di dopo
   - `E_PARAMETER_NOT_FOUND` (404) — `parameter_code` inesistente
   - `E_PARAMETER_OVERRIDE_NON_AMMESSO` (400, dal DB) — parametro che vale per tutti (`ammette_override = false`)
 
@@ -185,12 +187,14 @@ load()
 - Regole:
   - Si cancella l'override per id **e** scope: l'id di un altro proprietario non basta:
   - `user` → `django_user_id = self`
-  - `emittente` → `emittente_fiscale_id = EF utente` (admin-only)
+  - `emittente` → `emittente_fiscale_id` = l'emittente di chi agisce (admin-only, BB `emittente_per_scrivere`; in «tutti gli emittenti» 400 `E_EMITTENTE_NON_RISOLTO`)
   - `categoria_cliente` → `categoria_cliente_id = <id query param>` (admin-only). Difesa anti-tampering: niente cancellazione cross-categoria.
 - Errori:
   - `E_PARAMETER_NOT_FOUND` (404) — override non trovato o non appartenente allo scope
   - `E_PARAMETER_VALIDATION` (400) — ID override non valido, `scope` non ammesso o `categoria_cliente_id` mancante/non-positivo
+  - `E_EMITTENTE_NON_RISOLTO` (400) — scope `emittente` in «tutti gli emittenti»
   - `E_PERMISSION_DENIED` (403) — scope `emittente` o `categoria_cliente` da non-admin
+  - `E_SCOPE_EMITTENTE` (403, dal DB) — la rete del guard di scope anche sul DELETE (`20261124-13`); il filtro del BE sull'emittente di chi agisce non la fa scattare
 
 ---
 
@@ -202,8 +206,8 @@ load()
 | `config.parameter_overrides` | Tabella | Override per scope (user, group, emittente, session, function) |
 | `script.fn_get_parameter_full()` | Funzione | Risoluzione singolo parametro con catena di priorita' |
 | `script.fn_list_parameters_for_user()` | Funzione | Lista completa parametri con valori a ogni livello per l'utente |
-| `anagrafiche.emittenti_fiscali_billing_account` | Tabella | Ripiego della risoluzione `emittente_fiscale_id`: gestore globale (`billing_account_id` NULL, `is_default`) |
-| `config.user_emittenti_fiscali` | Tabella | Risoluzione `emittente_fiscale_id` dell'utente (`get_emittente_fiscale_id_for_user`; ⚠️ fino al 2026-09-12 questa riga nominava la vista `risorse_umane_auth_user`, nome vecchio del ponte in ritiro (analisi-software-per-dati-morti §2.1), e `risorse_umane` non ha una colonna `emittente_fiscale_id`) |
+| `script.fn_resolve_emittente_for_user()` | Funzione | L'emittente di chi agisce: l'emittente attivo se valido per l'utente, poi la riga di `config.user_emittenti_fiscali`; NULL in «tutti gli emittenti». Nessun ripiego sul gestore globale (dal 2026-11-25) |
+| `config.trgfn_parameter_overrides_guard_emittente_scope()` | Funzione trigger | Guard di scope degli override per emittente, su INSERT, UPDATE e DELETE (`20261124-13`) |
 
 ## Codici errore
 
@@ -212,7 +216,9 @@ load()
 | `E_PARAMETER_NOT_FOUND` | 404 | Parametro o override non trovato |
 | `E_PARAMETER_VALIDATION` | 400 | Valore parametro non valido o parametri di input mancanti |
 | `E_PARAMETER_OVERRIDE_NON_AMMESSO` | 400 | Override su un parametro che vale per tutti (`ammette_override = false`): lo rifiuta il DB |
+| `E_EMITTENTE_NON_RISOLTO` | 400 | Override per emittente in «tutti gli emittenti» |
 | `E_PERMISSION_DENIED` | 403 | Scope `emittente` / `categoria_cliente` da non amministratore |
+| `E_SCOPE_EMITTENTE` | 403 | Dal DB: override per emittente fuori dal perimetro di chi scrive (INSERT, UPDATE, DELETE) |
 
 ## Architettura backend
 
@@ -231,8 +237,7 @@ parameter_repository.py (ParameterRepository)
     ├── get_parameters()      → fn_get_parameter_full() x N
     ├── list_for_user()       → fn_list_parameters_for_user()
     ├── upsert_{user,emittente,categoria_cliente}_override() → INSERT … ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5 DO UPDATE
-    ├── delete_{user,emittente,categoria_cliente}_override() → DELETE con verifica di appartenenza allo scope
-    └── get_emittente_fiscale_id_for_user() → whitelist personale, poi gestore globale
+    └── delete_{user,emittente,categoria_cliente}_override() → DELETE con verifica di appartenenza allo scope
 ```
 
 ## Frontend

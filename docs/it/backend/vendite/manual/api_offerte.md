@@ -204,7 +204,7 @@ Risoluzione `valuta_id` (BB `resolve_valuta_default`, allineato a
 
 1. `billing_account.valuta_id` se valorizzato
 2. EF del BA via `fn_get_emittente_fiscale_pk`
-3. EF dell'utente loggato (con fallback gestore globale)
+3. EF di chi agisce (`script.fn_resolve_emittente_for_user`; vuoto in «tutti»)
 4. `anagrafiche.gestori.valuta_id` (primo per id)
 5. `null` se nessuna sorgente
 

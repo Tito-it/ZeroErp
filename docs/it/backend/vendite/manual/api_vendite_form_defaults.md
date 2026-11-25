@@ -26,7 +26,7 @@ Il service combina:
   per la cascata `valuta_id`, allineato 2026-05-29 alla fn DB
   `vendite.fn_get_valuta_id` (single source of truth cross-layer):
   `BA.valuta_id` → EF del BA (catena `fn_get_emittente_fiscale_pk`) →
-  EF utente loggato (con fallback gestore globale) → primo
+  EF di chi agisce (`script.fn_resolve_emittente_for_user`, vuoto in «tutti») → primo
   `anagrafiche.gestori` per id → `{}`
 - `ListiniRepository.get_listino` / `get_versione` / `list_versioni` per le
   3 view contestuali alle versioni listino
@@ -181,9 +181,11 @@ Risoluzione `valuta_id` (BB `resolve_valuta_default`, allineato a
 1. `billing_account.valuta_id` se valorizzato
 2. altrimenti `emittenti_fiscali.valuta_id` dell'EF associato al BA
    (catena `fn_get_emittente_fiscale_pk`)
-3. altrimenti `emittenti_fiscali.valuta_id` dell'EF dell'utente loggato
-   (proxy form-defaults: il documento non esiste ancora; include fallback
-   gestore globale `is_default` via `get_emittente_fiscale_id_for_user`)
+3. altrimenti `emittenti_fiscali.valuta_id` dell'EF di chi agisce
+   (proxy form-defaults: il documento non esiste ancora), cioè
+   `script.fn_resolve_emittente_for_user`: l'emittente attivo, poi la riga di
+   `config.user_emittenti_fiscali`. In «tutti gli emittenti» è vuoto e si passa
+   al livello 4: il gestore globale non è l'emittente di nessuno che agisca
 4. altrimenti `anagrafiche.gestori.valuta_id` (primo per id) — mirror del
    livello 3 di `fn_get_valuta_id`
 5. altrimenti `null` (operatore valorizza)
@@ -201,7 +203,7 @@ sovrascrittura solo dei campi vuoti per non distruggere scelte utente).
 ### `GET /api/v1/vendite/ordini/form-defaults/`
 
 Query: `billing_account_id` (opzionale). Senza BA torna la sola valuta (catena
-EF utente → gestore globale); con il BA aggiunge utility/istanza del BA e i
+EF di chi agisce → `anagrafiche.gestori`); con il BA aggiunge utility/istanza del BA e i
 default di pagamento dell'anagrafica cliente (tripletta istanza + soggetto ruolo
 + utility). Niente IVA né categoria: l'ordine non le ha in testata.
 

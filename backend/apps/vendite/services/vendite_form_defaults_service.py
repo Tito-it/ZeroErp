@@ -299,7 +299,7 @@ def fn_get_offerta_form_defaults(
 # Scopo: Defaults per il form ordine di vendita. Allinea ordini alla famiglia
 #        (preventivi/offerte/contratti propongono i default all'apertura del
 #        drawer): senza BA ritorna la `valuta_id` dalla catena EF utente →
-#        gestore globale (BB centralizzato `resolve_valuta_default`); con BA
+#        gestore `anagrafiche.gestori` (BB centralizzato `resolve_valuta_default`); con BA
 #        aggiunge i campi BA-derived (utility, categoria). La utility di default
 #        "globale" (parameter DEFAULT_UTILITY) la risolve il FE via
 #        useUtilityDefaultId, come negli altri drawer: qui la utility arriva
@@ -389,7 +389,7 @@ def fn_get_ordine_form_defaults(
 # Scopo: Defaults per il form DDT di vendita. Allinea il DDT alla famiglia
 #        (ordini/preventivi/offerte propongono i default all'apertura del
 #        drawer): senza BA ritorna la `valuta_id` dalla catena EF utente →
-#        gestore globale (BB centralizzato `resolve_valuta_default`); con BA
+#        gestore `anagrafiche.gestori` (BB centralizzato `resolve_valuta_default`); con BA
 #        aggiunge i campi utility BA-derived + la valuta del cliente. Il DDT è
 #        un documento di trasporto: NON ha termini/modalita di pagamento in
 #        testata, quindi il payload si limita a utility + valuta (calco ridotto
@@ -459,8 +459,8 @@ def fn_get_ddt_form_defaults(
 #        Sempre presente `param_defaults` (validita_gg) per il calcolo
 #        validita_al = oggi + N. Quando billing_account_id e' assente, i
 #        campi BA-derived restano None ma valuta_id viene comunque
-#        risolta dall'EF dell'utente loggato (fallback gestore globale per
-#        admin globale).
+#        risolta dall'EF di chi agisce (`script.fn_resolve_emittente_for_user`,
+#        vuoto in «tutti gli emittenti»), poi dal gestore `anagrafiche.gestori`.
 def fn_get_preventivo_form_defaults(
     *,
     billing_account_id: int | None,
@@ -516,7 +516,7 @@ def fn_get_preventivo_form_defaults(
         assert ba is not None
 
     # Risoluzione valuta con catena standard (BB cross-dominio):
-    # 1) ba.valuta_id  2) EF-del-BA  3) EF-utente (fallback gestore globale).
+    # 1) ba.valuta_id  2) EF-del-BA  3) EF di chi agisce  4) anagrafiche.gestori.
     valuta = resolve_valuta_default(
         billing_account_id=ba_id,
         ba_obj=ba,

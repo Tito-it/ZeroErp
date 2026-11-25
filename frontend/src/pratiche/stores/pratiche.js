@@ -52,9 +52,8 @@ export const usePraticheStore = defineStore('pratiche', () => {
   //    picker delle rate; frontend-standards §Dialog con una lista dentro).
   const lista = useListaStoreCore({
     // Refactor operatore-emittenti: usa emittenteCorrente (1-a-1
-    // dell'operatore), NON `auth.user.emittente.emittente_fiscale_id`
-    // che per admin globale ritornerebbe il "gestore globale" via
-    // cascata 4b di fn_get_user_profile — semantica diversa.
+    // dell'operatore), la sede unica della lettura del blocco `emittente`
+    // del profilo, e non lo rilegge qui.
     // E' contesto, non un filtro: per questo sta nella `fetchPage` e non nei
     // `filterDefaults`.
     fetchPage: (params) => listPratiche({ ...params, emittente_fiscale_id: auth.emittenteCorrente?.id }),
