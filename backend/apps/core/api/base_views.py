@@ -10,6 +10,8 @@
 #        Ref: docs/it/dev/api.md
 # ------------------------------------------------------------
 
+from typing import Any
+
 from rest_framework.views import APIView
 
 from apps.core.api.jwt_audit_authentication import JwtAuditAuthentication
@@ -34,6 +36,12 @@ from apps.core.services.request_context import (
     get_idempotency_key,
 )
 from apps.core.services.service_errors import ServiceError
+
+# Il default di `_cancello_di_lista(emittente_esplicito=...)`: l'emittente
+# fissato si legge dalla query della richiesta (`lista_emittente_param`). Un
+# oggetto e non `None`, perche' `None` e' un valore legittimo: «nessun emittente
+# fissato», che non deve ricadere sulla query.
+EMITTENTE_DALLA_RICHIESTA: Any = object()
 
 
 class _ApiViewBase(APIView):
@@ -121,7 +129,10 @@ class _ApiViewBase(APIView):
 
     # Scopo: il cancello della PORTA sulla lista, prima della partenza. Nessuno
     #        sulla base: lo ha `DomainAPIView` (perimetro emittente).
-    def _cancello_di_lista(self, request, *, lista_codice: str) -> None:
+    #        `emittente_esplicito`: vedi `DomainAPIView._cancello_di_lista`.
+    def _cancello_di_lista(
+        self, request, *, lista_codice: str, emittente_esplicito: Any = EMITTENTE_DALLA_RICHIESTA,
+    ) -> None:
         return None
 
     # Scopo: il repository ha rifiutato la chiave dell'ordinamento di partenza
@@ -238,11 +249,24 @@ class DomainAPIView(_ApiViewBase):
     #    eseguirebbe sullo stesso perimetro ambiguo che il cancello sta
     #    rifiutando di mostrare.
     # ⭐ Lo chiama `_ApiViewBase.initial()` prima della partenza della lista.
-    def _cancello_di_lista(self, request, *, lista_codice: str) -> None:
+    # ⭐ `emittente_esplicito`: l'emittente che il chiamante FISSA, al posto di
+    #    quello letto dalla query (`lista_emittente_param`). Lo passa chi chiama il
+    #    cancello fuori da una richiesta HTTP alla view: l'assistente AI
+    #    (`AITool.cancello_del_gemello`), che fissa l'emittente dal suo input e non
+    #    deve leggere la query della richiesta di chat, che non e' sua. Vale solo
+    #    se la view dichiara `lista_emittente_param`: dove la schermata non puo'
+    #    fissare un emittente, non lo fissa nemmeno il tool.
+    def _cancello_di_lista(
+        self, request, *, lista_codice: str, emittente_esplicito: Any = EMITTENTE_DALLA_RICHIESTA,
+    ) -> None:
+        if emittente_esplicito is EMITTENTE_DALLA_RICHIESTA:
+            emittente_esplicito = self._emittente_esplicito(request)
+        elif not self.lista_emittente_param:
+            emittente_esplicito = None
         perimetro_emittente.guard_lista_per_codice(
             user=request.user,
             lista_codice=lista_codice,
-            emittente_esplicito=self._emittente_esplicito(request),
+            emittente_esplicito=emittente_esplicito,
         )
 
     # Scopo: l'emittente che la richiesta FISSA, quando questo endpoint ne

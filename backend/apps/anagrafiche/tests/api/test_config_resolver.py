@@ -179,6 +179,29 @@ class TestConfigResolverCliente(TestCase):
         self.assertEqual(sorted(result["nature_ammesse"]), ["ENTE", "PF", "PG"])
         self.assertEqual(len(result["tipi_soggetto_dettaglio"]), 5)
 
+    # Scopo: il default del tipo dettaglio si risolve con la cascata di chi
+    #        agisce, passata intera alla lettura del parametro (E1-5 di
+    #        brief-be-fe-BB-audit, 2026-11-25: prima il solo emittente, e la view
+    #        non lo passava).
+    def test_config_resolver_cascata_di_chi_agisce(self, mock_conn, mock_get_param):
+        from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
+
+        mock_cur = _mock_cursor()
+        _setup_conn(mock_conn, mock_cur)
+        mock_cur.execute.side_effect = _build_side_effect(
+            mock_cur,
+            (2, "CL", "Cliente"),
+            [("PF", "Persona Fisica", "PF")],
+            [(1, "PR", "Privato", "PF", "PF", True, False, "ALFANUM_16", "NON_APPLICABILE", "NONE")],
+        )
+        ctx = {"django_user_id": 5, "group_ids": [10], "emittente_fiscale_id": 32}
+
+        SoggettiRepository().get_config_resolver("CL", contesto_cascata=ctx)
+
+        self.assertEqual(
+            {k: mock_get_param.call_args.kwargs[k] for k in ctx}, ctx,
+        )
+
 
 @patch(_GET_PARAM_PATH, return_value=None, autospec=True)
 @patch("apps.anagrafiche.db.soggetti_repository.connection")

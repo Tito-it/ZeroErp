@@ -24,11 +24,11 @@ Indice test eseguiti:
 11) ParameterServiceTests.test_upsert_user_override_empty_code_raises
 12) ParameterServiceTests.test_delete_user_override
 13) ParameterServiceTests.test_delete_user_override_not_found_raises
-14) ParameterServiceTests.test_get_emittente_fiscale_id_for_user
 15) ParameterServiceTests.test_upsert_parametro_inesistente_e_404_a_ogni_livello (E-9)
 16) ParameterServiceTests.test_get_default_date_legge_il_default
 17) ParameterServiceTests.test_get_default_date_assente_o_vuoto
 18) ParameterServiceTests.test_get_default_date_non_iso
+19) ContestoCascataTests — il BB `contesto_cascata`: utente, gruppi, emittente di chi agisce; senza utente {}
 """
 
 from datetime import date
@@ -36,7 +36,7 @@ from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import patch, MagicMock
 
-from apps.core.services.parameter_service import ParameterService
+from apps.core.services.parameter_service import ParameterService, contesto_cascata
 from apps.core.services.service_errors import ServiceError
 
 REPO_PATH = "apps.core.services.parameter_service.ParameterRepository"
@@ -241,13 +241,6 @@ class ParameterServiceTests(TestCase):
             self.svc.delete_user_override(42, 5)
         self.assertEqual(ctx.exception.code, "E_PARAMETER_NOT_FOUND")
 
-    # Scopo: Verifica che get_emittente_fiscale_id_for_user deleghi al repository.
-    def test_get_emittente_fiscale_id_for_user(self):
-        self._mock_repo.get_emittente_fiscale_id_for_user.return_value = 7
-        result = self.svc.get_emittente_fiscale_id_for_user(1)
-        self.assertEqual(result, 7)
-        self._mock_repo.get_emittente_fiscale_id_for_user.assert_called_once_with(1)
-
     # === Phase B 2026-05-19: CRUD scope categoria_cliente ===
 
     # Scopo: Verifica che upsert_categoria_cliente_override chiami il repository.
@@ -329,3 +322,29 @@ class ParameterServiceTests(TestCase):
             with self.assertRaises(ServiceError) as ctx:
                 self.svc.get_default_date("P_DATA")
             self.assertEqual(ctx.exception.code, "E_CONFIG_MANCANTE")
+
+
+class ContestoCascataTests(TestCase):
+    """E1-5 di brief-be-fe-BB-audit (2026-11-25): il contesto della cascata di
+    chi agisce, in un posto solo."""
+
+    # Scopo: i tre livelli d'identita', l'emittente dal resolver di chi agisce
+    #        (in «tutti» None: il livello si salta).
+    def test_utente_gruppi_ed_emittente_di_chi_agisce(self):
+        user = MagicMock(id=5)
+        user.groups.values_list.return_value = [10, 20]
+        with patch(
+            "apps.core.services.parameter_service.PermissionResolver.get_emittente_for_user",
+            return_value=32,
+        ) as emittente:
+            ctx = contesto_cascata(user)
+        self.assertEqual(
+            ctx, {"django_user_id": 5, "group_ids": [10, 20], "emittente_fiscale_id": 32},
+        )
+        emittente.assert_called_once_with(user)
+
+    # Scopo: senza utente (un processo) nessun livello d'identita': la cascata
+    #        parte dal default.
+    def test_senza_utente_contesto_vuoto(self):
+        self.assertEqual(contesto_cascata(None), {})
+

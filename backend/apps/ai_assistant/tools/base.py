@@ -79,6 +79,41 @@ class AITool(abc.ABC):
     def requires_confirmation(self) -> bool:
         return self.scrive
 
+    # Scopo: il cancello della LISTA del gemello, prima di eseguire: la stessa
+    #        domanda «serve un emittente scelto?» che la view si fa in
+    #        `initial()` (`_cancello_di_lista`, BB `perimetro_emittente`). In
+    #        «tutti gli emittenti» un tool su una lista che non regge piu'
+    #        emittenti si ferma come la schermata: 422
+    #        `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`.
+    # ⭐ Lo chiede la view gemella stessa, non una copia della regola: le porte
+    #    esenti (`AdminAPIView`) restano esenti, e l'endpoint che dichiara
+    #    `lista_codice` lo applica a ogni metodo — anche alla creazione.
+    # ⛔ Fino al 2026-11-25 il tool ereditava dal gemello il permesso
+    #    (`valuta_accesso_endpoint`) ma non il cancello: in «tutti» cercava
+    #    pratiche, soggetti, contratti e preventivi dove la UI sbarra, e creava
+    #    pratiche sul gestore globale (E1-2 di brief-be-fe-BB-audit §6.1).
+    # ⭐ L'emittente FISSATO lo da' il tool (`emittente_fissato`), non la query
+    #    della richiesta di chat, che non e' un input del tool: e' la stessa
+    #    possibilita' della schermata, che lo fissa col `lista_emittente_param`
+    #    della view (il tab Flussi dentro una pratica), e vale solo dove la view
+    #    lo dichiara.
+    def cancello_del_gemello(self, request: Any, params: dict[str, Any]) -> None:
+        lista_codice = getattr(self.endpoint.view, "lista_codice", None)
+        if not lista_codice or not getattr(request.user, "is_authenticated", False):
+            return
+        self.endpoint.view()._cancello_di_lista(
+            request,
+            lista_codice=lista_codice,
+            emittente_esplicito=self.emittente_fissato(params),
+        )
+
+    # Scopo: l'emittente che l'input del tool FISSA, come la schermata gemella lo
+    #        fissa col `lista_emittente_param` della view. `None` = nessuno, e il
+    #        cancello decide sul solo perimetro di chi agisce. Lo sovrascrive il
+    #        tool la cui schermata ne fissa uno (`cerca_flussi_pratica`).
+    def emittente_fissato(self, params: dict[str, Any]) -> int | None:
+        return None
+
     # Scopo: Esegue il tool con i parametri forniti dall'LLM.
     #        Ogni sottoclasse deve implementare questo metodo.
     #        Il request originale viene passato per ereditare il contesto

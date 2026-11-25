@@ -56,6 +56,7 @@ from apps.core.db._helpers import (
     pattern_contiene,
     RicercaFull,
     add_ricerca_full_condition,
+    lista_paginata,
     call_jsonb_fn,
     fetchone_scalar,
     jsonb_out,
@@ -65,10 +66,7 @@ from apps.core.db._helpers import (
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import campi_jsonb, esegui_verbo
-from apps.magazzino.db._helpers import (
-    guard_canale_sistema,
-    lista_paginata,
-)
+from apps.magazzino.db._helpers import guard_canale_sistema
 from apps.magazzino.db.famiglie import FAMIGLIE, INVENTARI, RETTIFICHE, FamigliaDocumentoInterno
 from apps.magazzino.types import (
     BloccoRow,

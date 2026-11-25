@@ -1,8 +1,8 @@
 # Brief BE/FE — Audit dei building block: i BB che fanno la stessa cosa
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-24
+## ⏭️ Chi riparte — aggiornato al 2026-11-25
 
-**Riparte: team BE/FE** con la riga 8 (E-1, E-2), che aspetta il giro che tocca quei file; poi l'archiviazione. Tutto il resto è fatto, collaudato a video da Tid (2026-11-24) e committato.
+**Riparte: team BE/FE** con E-1 (riga 8): E1-1…E1-5 sono fatti (§6.3-6.5). La richiesta al team DB (E1-6) è scritta in [brief-db-emittente-del-super-admin](brief-db-emittente-del-super-admin.md) e da lì prosegue. E-2 ed E1 sono da committare. Poi l'archiviazione.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -16,7 +16,7 @@
 | 5 | team BE/FE | ✅ Lavoro A (2026-11-24): query string e header ai `qp_*`, funzioni del corpo che delegano a `PayloadValidator`, service sul validator del dominio; il FE non aveva niente da correggere | §2.3 | — |
 | 6 | team BE/FE | ✅ Lavoro B (2026-11-24): `pagina_con_totale`, forma lunga e copie ritirate, `offset_effettivo` sui cruscotti, presidio | §3.3 | — |
 | 7 | team BE/FE | ✅ Lavoro C (2026-11-24): `TemplateService` legge lo scope da `_scope`, la copia è ritirata | §4 | — |
-| 8 | team BE/FE | I due punti da chiarire, guardati nel giro che tocca quei file | §6 | — |
+| 8 | team BE/FE | E-2 ✅ (2026-11-24, BB `lista_paginata` nel core, copie ritirate). E-1: approfondito (§6.1), Tid decide il 2026-11-25 che le incoerenze del super admin si risolvono; piano E1-1…E1-6 | §6 | — |
 | 10 | team BE/FE | ✅ D-3 (2026-11-24): `validate_order_params_ricerca`, call-site, test e catalogo | §5 | — |
 | 11 | team BE/FE | ✅ D-5 (2026-11-24): `livelloAccessoSeverity` in `severity.js`, LETTURA arancio, le due copie ritirate | §7.10 | — |
 | 11-bis | Tid | ✅ Collaudo a video del giro B–C–D (2026-11-24): tutto ok | §3.4 | — |
@@ -27,8 +27,8 @@
 **Decisioni aperte di Tid:** nessuna. Le tre proposte dell'audit del backend sono accettate (Tid,
 2026-11-24): A, B, e la pulizia del catalogo; lo stesso giorno D-4 (F-1…F-4) e poi D-1, D-2, D-3,
 D-5, D-6, tutte secondo la raccomandazione di §8.
-**Da committare:** niente. A, il catalogo BE, F e le revisioni sono nel commit `9e25fe7fa`; il giro
-B–C–D (§3.3–3.5, §4, §5, §7.10) nel commit successivo.
+**Da committare:** E-2 (BB `lista_paginata`, §6), E1-1…E1-5 (§6.3-6.5) e §6.1-6.5 di questo brief. Già committati: A, il
+catalogo BE, F e le revisioni nel `9e25fe7fa`; il giro B–C–D (§3.3–3.5, §4, §5, §7.10) nel `b179d1bce`.
 
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-11-24. **A chi:** team BE/FE e Tid.
 > **Origine:** la domanda di Tid «chi mi dice che i building block stessi non siano stati doppiati?».
@@ -226,7 +226,8 @@ stata fatta.
   0/`"0"` per NULL) ed `emittente_attivo_views` (`ValueError`).
 * **Prove:** suite BE intera **6797 test, OK** (341 saltati, 1 expected failure); ruff verde sui
   file toccati. Rilanciata dopo i due lettori `isdigit()`: **6800 test, OK** (341 saltati, 1 expected
-  failure). ⏳ Resta la prova a mano di §2.4, e serve un `kill -HUP` dopo queste modifiche.
+  failure). ✅ La prova a mano è in §2.4 (riga 3-ter di «Chi riparte»); il `kill -HUP` delle
+  23:11 (§3.4) è successivo a queste modifiche.
 
 ## 3. Lavoro B — L'envelope delle liste: tre forme, una senza sede
 
@@ -384,9 +385,277 @@ mutazione; i patch dei test passano da `_scope`. Catalogo: `TemplateService` e `
   dice che la semantica è diversa (il primo ha il ripiego sul gestore globale). Da verificare se
   la lettura della tabella è doppia: se lo è, il ripiego resta in Python e la lettura passa dalla
   funzione del DB, oppure è una richiesta al team DB.
+  🔵 **Guardato il 2026-11-24: non è un doppione, è una regola diversa, e la regola sbagliata è
+  quella del BE.** Il dettaglio sta in §6.1. **Decisione di Tid (2026-11-25): le incoerenze del super
+  admin si risolvono.** Il piano è in §6.2.
 * **E-2 — `magazzino/db/_helpers.lista_paginata`.** Dalla descrizione del catalogo (L1301) fa lo
   stesso lavoro di `fetch_paged_with_total`, cioè `COUNT(*) OVER ()` più il conteggio di ripiego
-  sulla pagina stantia. Il codice non è stato aperto.
+  sulla pagina stantia.
+  ✅ **Guardato e chiuso il 2026-11-24.** Non era un doppione di `fetch_paged_with_total`: lo
+  chiamava, e ci metteva sopra l'avvolgimento della SELECT. Il doppione era un altro:
+  `PagamentiRepository._lista_paginata`, la stessa funzione salvo la parola `ORDER BY` dentro
+  `order_clause` e l'aggancio `dopo_pagina`. Regola del 2, **ok Tid** (2026-11-24): il BB
+  `lista_paginata` sta in `core/db/_helpers.py`, con `order_clause` come corpo senza `ORDER BY`
+  (la forma di `sql_order_clause`) e `dopo_pagina` facoltativo, che riceve l'ordine intero. Le due
+  copie sono ritirate; i 17 call-site di magazzino non cambiano, gli 8 di pagamenti perdono
+  `ORDER BY`. Il conteggio di ripiego resta esplicito: con `dopo_pagina` la query non finisce più
+  con `LIMIT/OFFSET` e non saprebbe rileggersi. Catalogo (voce nuova accanto a
+  `fetch_paged_with_total`, voce di magazzino corretta) e indice rigenerato.
+  **Guide** (`guide_coinvolte.py` sui tre file): restituisce le guide degli oggetti DB che i
+  repository nominano; nessuna descrive come si compone la pagina in Python, quindi **coerenti**.
+  **Prove:** `test_lista_paginata` (4, nuovo) + `test_fetch_paged_with_total` + le suite
+  `magazzino` e `pagamenti`: 333 test, OK (23 saltati); ruff verde.
+
+### 6.1 E-1, l'approfondimento (2026-11-24)
+
+> Lettura del codice e della doc DB generata, nessuna misura a DB. [V] = verificato nel codice,
+> [I] = ipotesi da confermare nel giro che tocca il punto. I casi 1, 2 e 4 dell'elenco
+> delle incoerenze sono stati riletti a mano dopo l'agente che ha fatto il censimento.
+
+**La regola dichiarata dalle guide.**
+
+* Il super admin non ha un'azienda sua: lavora sull'emittente che sceglie (GUC
+  `app.current_emittente_id`), e senza scelta il DB rifiuta le creazioni
+  ([pgtap-come-si-scrive-un-test](../../guide/pgtap-come-si-scrive-un-test.md) L213-221;
+  [risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md) L292, L421;
+  [architettura-permessi-e-autorizzazioni](../../guide/architettura-permessi-e-autorizzazioni.md) L394).
+* La scelta **restringe, non allarga mai**: in `script.fn_check_user_emittente_scope` il ramo
+  «emittente diverso da quello attivo → FALSE» viene prima del bypass del super admin
+  (architettura-permessi L758-771).
+* «Tutti gli emittenti» è **sola lettura per costruzione**: il FE spegne le creazioni, il DB le
+  rifiuta con `E_EMITTENTE_NON_RISOLTO` (`emittente_attivo_service.py` L39-45, COMMENT di
+  `script.fn_resolve_emittente_for_user`: «NULL = admin globale in modalità tutti»).
+* **Nessun ripiego sul default dell'installazione per attribuire qualcosa**
+  (`pagamenti_service.py` L581-590: «attribuirebbe denaro a un emittente che nessuno ha scelto»).
+* Il ripiego sul **gestore globale** (G: la riga di `emittenti_fiscali_billing_account` con BA
+  NULL e `is_default`) è scritto solo nel commento di `ParameterRepository`
+  (`parameter_repository.py` L390-407, «comportamento storico») e nel blocco emittente di
+  `script.fn_get_user_profile`. **Nessuna guida lo descrive** [V].
+
+**Il blocco «serve un emittente scelto».** Non c'è un meccanismo unico [V]:
+
+1. il trigger `script.trgfn_default_emittente_fiscale('SOLLEVA')` in INSERT (preventivi, ordini,
+   contratti, offerte, pratiche, magazzini, lotti, assets, template documenti e asset, titoli IVA;
+   sui DDT `LASCIA_NULL` + `SALTA_CON_SORGENTE`);
+2. guard BE espliciti: `email_views.py` L167-182, coda approvazioni
+   (`approvazioni_prezzo_service.py` L644-653), BA (`clienti_service.py` L188-199 +
+   `fn_check_user_can_create_ba`), distinta (`fn_get_emittente_distinta`), coda lavori per azienda
+   (`coda_lavori/scope.py` L83);
+3. il FE (`frontend/src/stores/auth.js` L366-394, `modalita_globale` / `emittenteScritturaId`).
+
+La difesa di fondo è `fn_check_user_emittente_scope`, nelle policy RLS e in
+`trgfn_guard_emittente_scope`.
+
+**I risolutori di «l'emittente di chi agisce».**
+
+| Punto | Guarda l'emittente attivo | Ripiega su G | Restituisce |
+| --- | --- | --- | --- |
+| `script.fn_resolve_emittente_for_user` (BE: `PermissionResolver.get_emittente_for_user`) | sì, validato | no: NULL in «tutti» | PK |
+| `ParameterRepository.get_emittente_fiscale_id_for_user` | **no** | **sì** | PK |
+| `EmittenteAttivoRepository.get_emittente_di_permesso` | no, voluto (circolare) | no | PK |
+| `script.fn_get_user_profile`, blocco emittente | **no** | **sì** | PK + SR |
+| `script.fn_get_ba_emittente_sr_id` (BA, poi chi agisce, poi `is_default`) | sì, al 2° livello | sì, al 3° | SR |
+| `anagrafiche.fn_get_emittente_fiscale_id` (senza BA ripiega su `is_default`) | no, senza BA | sì | SR |
+| `script.fn_get_parameter_di_sessione` (cascata parametri dentro il DB) | **GUC** | **no**: vuota = livello saltato | PK |
+| `ai_assistant/services/user_context.get_emittente_fiscale_id` (profilo, poi `get_emittenti_pk_ids[0]`) | no | **sì**, dal profilo | PK |
+| `email_views.py` L169, `coda_lavori/scope.py` L83 | claim del JWT | no | PK |
+
+Copie della lettura della tabella in Python: `ParameterRepository` e `EmittenteAttivoRepository`
+(stesso SQL); quella di `amm_software_repository.py` L274 è una descrizione, innocua. La query di G
+in Python sta solo in `ParameterRepository` [V].
+
+**Le incoerenze, dalla più grave.** Per l'operatore tutte le strade danno lo stesso emittente
+(al login l'emittente attivo è quello del permesso, `emittente_attivo_service.py` L66-69): le
+divergenze sono **solo del super admin**.
+
+1. **Alta, scrittura sbagliata.** Gli override dei parametri «per emittente» si scrivono sempre su
+   G, anche con X scelto: `_require_admin_emittente_id` (`views_parameters.py` L60-71) prende
+   l'emittente da `get_emittente_fiscale_id_for_user`, e il super admin non ha riga in
+   `user_emittenti_fiscali`. `config.parameter_overrides` non ha un guard di scope
+   sull'emittente: passa in silenzio. Dalla UI non si imposta un override per un emittente
+   diverso da G [V; I che non ci sia un'altra strada].
+2. **Alta, scrittura attribuita a G.** In «tutti» l'assistente AI crea pratiche su G
+   (`pratiche_tools.py` L264 → `user_context.py` L22-50): la GUC è vuota e il guard di scope
+   passa [V]. Con X ≠ G la creazione la rifiuta `trg_pratiche_a10_guard_emittente_scope` [V]. La
+   ricerca pratiche del tool filtra su G [I sull'esito RLS], mentre l'API vuole l'emittente
+   esplicito (`pratiche/api/views.py` L65).
+3. **Media, controllo fatto con l'emittente sbagliato.** Il gate prezzi L2 delle righe (preventivi,
+   ordini, DDT, contratti) prende la soglia dall'utente, cioè da G, e non dal documento
+   (`_pricing_gate_helpers.py` L141-162). Dal 2026-11-24 il super admin passa davvero dal gate [V].
+4. **Media, cascata dei parametri divergente BE/DB.** Con X scelto il DB risponde X, il BE G; in
+   «tutti» il DB salta il livello, il BE risponde G [V]. Ci ricadono `ParameterDefaultsView` e
+   `ParameterSettingsView` (`views_parameters.py` L127-133, L139, L183, L252: mostrano i valori di
+   G come «i tuoi»; in «tutti» `ParameterSettingsView` è sbarrata dal cancello della lista
+   `config.parametri_impostazioni`, `ParameterDefaultsView` e le due view di override no) e
+   `PricingLimitiUtenteView` (`views_pricing.py` L366-372: l'hint di sconto e
+   maggiorazione del drawer riga).
+5. **Bassa/media.** La valuta di default proposta senza BA è quella di G anche con X scelto
+   (`valuta_resolver.py` L80-82, consumato dai form-defaults dei cinque documenti), mentre il
+   trigger scriverà X sul documento.
+6. ~~**Bassa, incoerenza d'area.** La coda approvazioni è bloccata in lettura in «tutti».~~
+   ❌ **Smentita (Tid e verifica, 2026-11-25): non è un'eccezione.** La coda dichiara
+   `lista_codice = "vendite.approvazioni_prezzo"` e passa dal BB `perimetro_emittente`
+   (`guard_lista_per_codice`, 422 `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`), come le altre liste con
+   `perimetro_emittente` e senza `multi_emittente` nel seed di `ui.lista_definizione` (79 su 113 il
+   2026-11-25, fatto datato). Il guard dentro `lista_coda` (`E_APPROVAZIONE_PREZZO_NON_AMMESSA`)
+   copre un altro caso: l'operatore senza emittente, che il cancello lascia passare (scope vuoto,
+   nessuna ambiguità).
+7. **Bassa.** I form-defaults (`vendite_form_defaults_service.py` L165, L458…) e la config ruoli
+   (`views_ruoli_config.py` L96) risolvono i parametri **senza** livello emittente, per tutti:
+   una terza variante della cascata.
+8. **Bassa.** Il ripiego di `_iva_contesto_documento.py` L180 non scatta mai:
+   `emittente_fiscale_id` è NOT NULL su preventivi, ordini e DDT; il commento L242-245 è rimasto
+   indietro rispetto allo schema [V sullo schema; I che i loader proiettino sempre la colonna].
+9. **Bassa.** `email_views` e `coda_lavori` leggono il claim del JWT e non la GUC, che il
+   middleware rivalida a ogni richiesta (contratto-guc-app L107-110).
+   ❌ **Il rischio ipotizzato cade (Tid, 2026-11-25): un emittente non si disattiva più.** Lo
+   impediscono i `trgfn_prevent_deactivate_if_children` su `anagrafiche.emittenti_fiscali` (documenti,
+   magazzino, email, override, mapping BA, permessi degli operatori). Resta solo il fatto che la
+   stessa informazione si legge da due fonti: allineamento facoltativo, non un difetto.
+10. **Nota, non un accesso.** L'operatore senza riga (non configurato) riceve G da
+    `fn_get_user_profile` e da `ParameterRepository`: il FE gli mostra G come emittente corrente
+    (`auth.js` L301-306), mentre lo scope è fail-closed.
+
+### 6.2 Il piano (decisione di Tid del 2026-11-25: si risolvono)
+
+**La regola unica.** L'emittente su cui si legge un **valore operativo** (parametro, soglia,
+valuta, emittente di una scrittura) è quello **del documento** quando c'è un documento, altrimenti
+quello **di chi agisce**, cioè `script.fn_resolve_emittente_for_user`: emittente attivo validato,
+poi la riga del permesso. In «tutti» la risposta è **NULL**: la lettura salta il livello emittente
+(come `fn_get_parameter_di_sessione`), la scrittura si rifiuta. G non è un ripiego operativo:
+resta, al più, un'etichetta da mostrare.
+
+| # | Chi | Che cosa | Incoerenza |
+| --- | --- | --- | --- |
+| E1-1 | team BE/FE | ✅ 2026-11-25 — Override per emittente sull'emittente scelto; in «tutti» 400 `E_EMITTENTE_NON_RISOLTO`. Il FE non cambia: in «tutti» la lista `config.parametri_impostazioni` è sbarrata e i comandi partono dalle sue righe | 1 |
+| E1-2 | team BE/FE | ✅ 2026-11-25 — `crea_pratica` sull'emittente di chi agisce (in «tutti» 400), `cerca_pratiche` su quello di chi agisce; ogni tool applica il cancello della lista del gemello | 2 |
+| E1-3 | team BE/FE | ✅ 2026-11-25 — Gate L2 con l'emittente del documento (riga e variazione globale del contratto), hint con quello di chi agisce | 3, 4 |
+| E1-4 | team BE/FE | ✅ 2026-11-25 — `get_emittente_fiscale_id_for_user` ritirata (service e repository); valuta di default sull'emittente di chi agisce. `get_emittente_di_permesso` resta la sola lettura diretta della tabella | 4, 5 |
+| E1-5 | team BE/FE | ✅ 2026-11-25 — (8) ramo morto IVA tolto; (7) BB `contesto_cascata`, ok Tid (§6.5). Il 6 e il rischio del 9 sono smentiti; claim → GUC fatto col BB di §6.3 | 7, 8 |
+| E1-6 | team DB | ✍️ Brief scritto il 2026-11-25: [brief-db-emittente-del-super-admin](brief-db-emittente-del-super-admin.md) (R-DB-1 guard di scope su `config.parameter_overrides`, R-DB-2 profilo senza il gestore globale). Sostituisce la richiesta di una funzione «PK del gestore globale», che con questa regola non serve più | 1, 10 |
+
+Prima di scrivere: `scripts/guide_coinvolte.py` sui file di ogni riga; il FE di E1-1 ed E1-4 si
+apre con gli indici BB di tutti e due i lati.
+
+### 6.3 Il giro E1-1 / E1-2 (2026-11-25, team BE/FE)
+
+* **BB nuovo, regola del 2 (ok Tid 2026-11-25)**: `emittente_per_scrivere(user, *, function_name)` in
+  `core/services/perimetro_emittente.py`. L'emittente di chi agisce
+  (`PermissionResolver.get_emittente_for_user`), altrimenti 400 `E_EMITTENTE_NON_RISOLTO`, il codice
+  del trigger DB delle creazioni. Nessun ripiego sul gestore globale. Tre consumatori:
+  * la bozza email, che lo leggeva dal claim del token (l'allineamento facoltativo del punto 9);
+  * gli override dei parametri per emittente (E1-1);
+  * `crea_pratica` dell'assistente (E1-2).
+* **E1-1, letture.** `get_user_context` (view parametri, default dei form di catalogo e di
+  amministrazione software) prende l'emittente da `get_emittente_for_user`: la cascata BE coincide
+  con quella del DB, e in «tutti» il livello emittente si salta. Ritirato il ripiego di
+  `ParameterSettingsView` su `get_emittente_fiscale_id_for_user`. È un anticipo di E1-4 sullo
+  stesso file.
+* **E1-2, più largo del previsto.** I tool ereditavano dal gemello il permesso ma non il cancello
+  della lista: in «tutti» leggevano dove la schermata sbarra. Sono i tool con gemello di
+  dominio e lista a perimetro: `cerca_pratiche`, `crea_pratica`, `cerca_flussi_pratica`,
+  `cerca_soggetti`, `cerca_contratti`, `cerca_preventivi`, `cerca_promo_articoli`,
+  `cerca_listini`, `cerca_documenti_generati` (registro del 2026-11-25, 18 tool; `cerca_operatori`
+  è su una `AdminAPIView`, esente). Ora `AITool.cancello_del_gemello` chiede
+  alla view gemella il suo `_cancello_di_lista`, prima di anteprima ed esecuzione e di nuovo alla
+  conferma. Le porte esenti (`AdminAPIView`) restano esenti. `user_context.get_emittente_fiscale_id`
+  (attributo → profilo → primo emittente visibile) è ritirato. Resta `emittente_di_lettura`, che
+  per l'operatore senza emittente risponde con un rifiuto che spiega il motivo.
+* **Guide** (`guide_coinvolte.py` sui file toccati):
+  [configurazione-e-gestione-parametri](../../guide/configurazione-e-gestione-parametri.md) e
+  [gestione-pratiche](../../guide/gestione-pratiche.md) sono **coerenti**: nessuna delle due dice su
+  quale emittente scrive il backend. Le altre arrivano da `anagrafiche.billing_account` e non sono
+  toccate.
+* **Catalogo**: voci nuove `emittente_per_scrivere` e `AITool.cancello_del_gemello`;
+  `ParameterService.get_emittente_fiscale_id_for_user` segnato «da ritirare» (E1-4), con i
+  consumatori che restano. Indice rigenerato.
+* **Prove**: test nuovi `ParameterOverrideEmittenteTests` (5),
+  `test_tool_emittente_di_chi_agisce` (7) e il caso 7 delle email; i test dei parametri e
+  `test_tools_fase4` sono passati alla nuova fonte dell'emittente. **Suite BE intera: 6821 test,
+  OK** (341 saltati, 1 expected failure); ruff verde.
+
+### 6.4 Il giro E1-3 / E1-4 / E1-5 (2026-11-25, team BE/FE)
+
+* **E1-3, il gate L2.** `check_limite_variazione_prezzo` e `check_limite_variazione_globale`
+  ricevono `emittente_fiscale_id` come keyword **obbligatoria, senza default**: un chiamante che
+  la dimentica non compila. La riga la prende dalla testata (`testata["emittente_fiscale_id"]`,
+  indicizzato: una testata senza emittente è un difetto del loader, e con `.get()` il livello
+  salterebbe in silenzio). Le letture di testata dei cinque documenti la portano: preventivo,
+  offerta, contratto, ordine e DDT. La variazione globale del contratto prende l'emittente del
+  contratto; alla nascita senza emittente nel payload prende quello che il trigger gli darà
+  (`get_emittente_for_user`).
+* **E1-3, l'hint** (`PricingLimitiUtenteView`). Usa l'emittente di chi agisce: con un emittente
+  scelto si vedono solo i suoi documenti, e in «tutti» le liste dei documenti sono sbarrate.
+* **E1-4.** `ParameterService` e `ParameterRepository.get_emittente_fiscale_id_for_user` sono
+  **ritirati**. `resolve_valuta_default`, al livello 3, usa l'emittente di chi agisce; in «tutti»
+  si scende al livello 4, il gestore dell'installazione, come `vendite.fn_get_valuta_id`.
+* **E1-5 (8).** `contesto_da_testata` non ripiega più sull'operatore: `emittente_fiscale_id` è NOT
+  NULL su preventivi, ordini e DDT (verificato nella doc DB), e una testata senza emittente si
+  ferma (`P3`). Tolti `usa_auth_user` dalla factory e `auth_user_id` dalla view di anteprima IVA.
+* **E1-5 (7), fermo.** I default dei form di vendite (`vendite_form_defaults_service`: contratto,
+  preventivo, versioni di listino) passano alla cascata **solo l'utente**: mancano gruppi ed
+  emittente. La config ruoli (`get_config_resolver`) passa **solo l'emittente** (oggi None). Il
+  contesto completo, cioè utente, gruppi ed emittente di chi agisce, lo costruisce oggi solo
+  `get_user_context` nelle view dei parametri. Darlo anche a questi punti ne farebbe una seconda
+  copia. **Proposta per Tid:** un BB `contesto_cascata(user) -> {django_user_id, group_ids,
+  emittente_fiscale_id}` in `ParameterService`. `get_user_context` gli delega, e lo usano i form
+  e la config ruoli.
+* **Guide** (`guide_coinvolte.py` sui quattro file): gestione-listini, gestione-preventivi,
+  gestione-ordini, gestione-contratti, gestione-ddt e iva-risolutore-di-riga sono **coerenti**:
+  nominano la soglia L2 e il risolutore, ma non dicono di quale emittente. Le altre arrivano da
+  `emittenti_fiscali` e `config.sorgenti` e non sono toccate.
+* **Catalogo**: le due voci della funzione segnate «ritirato»; il gate L2 e `resolve_valuta_default`
+  aggiornati. Indice rigenerato.
+* **Prove**: test nuovi `test_gate_l2_alla_nascita_emittente_di_chi_agisce` e
+  `test_limiti_utente_emittente_di_chi_agisce`; asserzioni sull'emittente del documento nei test
+  del gate di preventivi e contratti; i test di valuta e del contesto IVA passati alla regola
+  nuova. **Suite BE intera: 6820 test, OK** (341 saltati, 1 expected failure); ruff verde.
+
+### 6.5 E1-5 (7), il contesto della cascata (2026-11-25, team BE/FE)
+
+* **BB nuovo, regola del 2 (ok Tid 2026-11-25)**: `contesto_cascata(user)` in
+  `core/services/parameter_service.py` → `{django_user_id, group_ids, emittente_fiscale_id}` di chi
+  agisce, con l'emittente da `get_emittente_for_user`; senza utente `{}`. È una funzione di modulo
+  e non un metodo: i test che sostituiscono `ParameterService` con un mock non la spengono.
+* **Consumatori:**
+  * `get_user_context` delle view dei parametri, che ora delega al BB;
+  * le cinque letture di `vendite_form_defaults_service` (contratto, preventivo, versione di
+    listino nuova, clonata e chiusa), che prima passavano il solo utente;
+  * `RuoliConfigResolverView` → `SoggettiRepository.get_config_resolver(contesto_cascata=)`, che
+    prima riceveva il solo emittente e la view non lo passava.
+* **Guide**: [configurazione-e-gestione-parametri](../../guide/configurazione-e-gestione-parametri.md)
+  è **coerente**: descrive la cascata a cinque livelli, che ora arriva intera anche a questi punti.
+* **Prove**: test nuovi `ContestoCascataTests` (2), `FormDefaultsCascataTests` (1) e
+  `test_config_resolver_cascata_di_chi_agisce` (1). **Suite BE intera: 6824 test, OK** (341
+  saltati, 1 expected failure); ruff verde. Catalogo: voce nuova `contesto_cascata`, indice
+  rigenerato.
+
+### 6.6 /verifica del giro E-1 / E-2 (2026-11-25, sessione nuova)
+
+* **Il tool dei flussi era più severo della sua schermata.** `ApiPraticaFlussiList` dichiara
+  `lista_emittente_param`: il tab Flussi le passa l'emittente della pratica e in «tutti» passa il
+  cancello. `AITool.cancello_del_gemello` leggeva quel parametro dalla query della richiesta di
+  chat, che non lo porta mai: in «tutti» `cerca_flussi_pratica` rifiutava (422) i flussi che la
+  schermata mostra. **Corretto (ok Tid):** `cancello_del_gemello(request, params)` passa a
+  `_cancello_di_lista(emittente_esplicito=)` l'emittente che il tool fissa (`emittente_fissato`,
+  default `None`), mai la query della chat. Vale solo dove la view dichiara il parametro. Lo
+  sovrascrive `cerca_flussi_pratica` con l'emittente della pratica. Il default di
+  `_cancello_di_lista` resta la lettura dalla query (`EMITTENTE_DALLA_RICHIESTA`).
+* **Regola del 2 (ok Tid):** `PermissionResolver.get_emittente_for_user_id(auth_user_id)`. La
+  coppia `utente_per_id` + `get_emittente_for_user` stava in `valuta_resolver` e nel gate L2 del
+  contratto alla nascita. La funzione del DB vuole solo l'id, quindi la lettura dell'utente era una
+  query in più.
+* **Doc indietro:** il docstring di `get_emittente_for_user` e la sua voce di catalogo dicevano
+  «`None` per admin globale», mentre dal 2026-08-04 la funzione DB risponde l'emittente attivo
+  validato anche al super admin: è il comportamento su cui poggiano `emittente_per_scrivere` e
+  `contesto_cascata`. Allineati; voce `cancello_del_gemello` aggiornata; indice rigenerato.
+* **Guide:** nessuna nomina `fn_resolve_emittente_for_user`; la regola «la scelta restringe, non
+  allarga» di architettura-permessi-e-autorizzazioni è **coerente** col docstring nuovo.
+* **Prove:** 4 test nuovi in `test_tool_emittente_di_chi_agisce` (8-10); il test 8 va in errore
+  (422) con il codice di prima. Test dei moduli toccati (ai_assistant, cancello e perimetro del
+  core, parametri, email, permessi, valuta, config ruoli, flussi, liste di vendite e catalogo,
+  pricing, contratti, form-defaults): **667 test, OK** (2 saltati). Ruff verde su tutti i file
+  Python del perimetro. Suite intera non lanciata (regola del 2026-11-25: alla chiusura del brief).
 
 ## 7. Audit del frontend (2026-11-24)
 

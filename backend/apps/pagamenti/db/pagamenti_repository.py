@@ -20,7 +20,6 @@
 #       nelle letture di lista, non affidato al ricordo.
 # ------------------------------------------------------------
 
-from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
 from typing import Any, cast
@@ -33,6 +32,7 @@ from apps.core.db._helpers import (
     add_ricerca_full_condition,
     conta_con_perimetro,
     fetch_paged_with_total,
+    lista_paginata,
     sql_lateral_primo_motivo,
     sql_order_clause,
     rows_to_list,
@@ -341,7 +341,7 @@ _LATERAL_ELIMINA = f"""
 #        check gira sulle righe che escono, non su quelle che la lettura ha
 #        scorso per arrivarci.
 # ⭐ E' la ragione per cui sta SOPRA e non dentro `_RIGA_FROM`: nelle liste
-#    paginate `_lista_paginata` la applica alla PAGINA (dopo `LIMIT/OFFSET`),
+#    paginate `lista_paginata` la applica alla PAGINA (dopo `LIMIT/OFFSET`),
 #    quindi la check gira per riga mostrata e non per riga filtrata sotto la
 #    `COUNT(*) OVER ()`. Una sede sola per le quattro letture (dettaglio,
 #    anteprima, righe della distinta, coda).
@@ -583,7 +583,7 @@ RIGHE_SORT_COLUMNS: dict[str, str] = {
 # ed export, come gli atti di sistemazione dal 02/09). Le chiavi sono i
 # `campo_sorgente` FISICI del seed, i valori gli alias della proiezione
 # `_RIGA_COLONNE` (la clausola si applica FUORI, sul risultato di
-# `_lista_paginata`).
+# `lista_paginata`).
 # ⭐ `fattura_numero_documento` ordina per la COPPIA `(fattura_numero,
 #    fattura_serie)` — il costruttore del numero parlante — e non per il testo
 #    «numero - serie»: ordinando il testo «10 - A» verrebbe prima di «9 - A»
@@ -846,50 +846,6 @@ class PagamentiRepository:
             function_name=f"{_FN}.{metodo}",
         )
 
-    # Scopo: Esegue una lista paginata: pagina + totale in una valutazione, e
-    #        il conteggio di ripiego per la pagina stantia.
-    # Nota: era scritto tre volte (distinte, coda, rate fuori capienza) — e tre
-    #       copie della stessa paginazione divergono alla prima correzione.
-    # ⚠️ `order_clause` si compone dalla WHITELIST del chiamante e MAI da input
-    #    utente: qui dentro finisce in una stringa SQL.
-    # ⭐ `dopo_pagina`: cio' che si calcola sulle righe MOSTRATE e non su quelle
-    #    filtrate — oggi il blocco «elimina» delle righe (`_sql_con_elimina`).
-    #    Riceve la query della pagina (gia' con `total_count` e `LIMIT/OFFSET`)
-    #    e la clausola d'ordine da ripassare sopra. Il conteggio di ripiego non
-    #    lo paga: conta le righe, non le giudica.
-    @staticmethod
-    def _lista_paginata(
-        *,
-        select_sql: str,
-        params: list[Any],
-        order_clause: str,
-        limit: int,
-        offset: int,
-        dopo_pagina: Callable[[str, str], str] | None = None,
-    ) -> tuple[list[dict[str, Any]], int]:
-        data_sql = f"""
-            SELECT *, COUNT(*) OVER () AS total_count FROM (
-                {select_sql}
-            ) q
-            {order_clause}
-            LIMIT %s OFFSET %s
-        """  # noqa: S608 — select_sql da costanti del modulo, order_clause da sql_order_clause su whitelist, valori come parametri
-        if dopo_pagina is not None:
-            data_sql = dopo_pagina(data_sql, order_clause)
-        # ⚠️ Il conteggio di ripiego serve SOLO a pagina oltre l'ultima: li' la
-        # window function non ha righe su cui calcolare il totale e
-        # risponderebbe zero. Senza, a chi e' rimasto su una pagina stantia di
-        # una lista che si e' accorciata sotto di lui diremmo «nessun
-        # risultato» — una cosa falsa, con l'aria di un dato.
-        count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"  # noqa: S608 — select_sql da costanti del modulo e frammenti letterali, valori come parametri
-        return fetch_paged_with_total(
-            data_sql,
-            [*params, limit, offset],
-            fallback_count_sql=count_sql,
-            fallback_params=list(params),
-            offset=offset,
-        )
-
     # ══════════════════════════════════════════════════════════════
     #  Cataloghi di stato
     # ══════════════════════════════════════════════════════════════
@@ -996,10 +952,10 @@ class PagamentiRepository:
             default_desc=True,
         )
 
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=f"{_DISTINTA_SELECT}{_TOTALI_LATERAL}{where_clause}",
             params=params,
-            order_clause=f"ORDER BY {ordinamento}",
+            order_clause=ordinamento,
             limit=limit,
             offset=offset,
         )
@@ -1236,10 +1192,10 @@ class PagamentiRepository:
             params.append(escludi_stato_codice)
         add_ricerca_full_condition(conditions, params, search, _RICERCA_RIGHE_DISTINTA)
         select_sql = " AND ".join([_RIGHE_DISTINTA_ATTIVE_SQL, *conditions])
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=select_sql,
             params=params,
-            order_clause=f"ORDER BY {ordinamento}",
+            order_clause=ordinamento,
             limit=limit,
             offset=offset,
             dopo_pagina=_sql_con_elimina,
@@ -1758,21 +1714,21 @@ class PagamentiRepository:
                     ON s.scadenza_id = v.scadenza_id
                  {where}{" AND" if where else " WHERE"} s.saldo <> 0
             """  # noqa: S608
-            return self._lista_paginata(
+            return lista_paginata(
                 select_sql=select_sql,
                 # Prima i parametri del perimetro (l'`ARRAY(...)` sta nella
                 # `FROM`), poi quelli del `WHERE` della pagina: l'ordine e'
                 # quello in cui psycopg incontra i `%s`.
                 params=[*params_p, *params],
-                order_clause=f"ORDER BY {ordinamento}",
+                order_clause=ordinamento,
                 limit=limit,
                 offset=offset,
             )
 
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=f"SELECT v.* FROM vendite.vw_fatture_scadenze_lista v {where}",  # noqa: S608
             params=params,
-            order_clause=f"ORDER BY {ordinamento}",
+            order_clause=ordinamento,
             limit=limit,
             offset=offset,
         )
@@ -1849,10 +1805,10 @@ class PagamentiRepository:
             default_desc=True,
         )
 
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=f'{_RIGA_CODA_SELECT} WHERE {" AND ".join(conditions)}',
             params=params,
-            order_clause=f"ORDER BY {ordinamento}",
+            order_clause=ordinamento,
             limit=limit,
             offset=offset,
             dopo_pagina=_sql_con_elimina,
@@ -1898,14 +1854,12 @@ class PagamentiRepository:
             default_desc=True,
         )
 
-        return self._lista_paginata(
+        return lista_paginata(
             select_sql=(
                 f"SELECT v.* FROM pagamenti.vw_rate_fuori_capienza v {where_clause}"  # noqa: S608 — WHERE da frammenti letterali + colonne _RICERCA_RATE_FUORI_CAPIENZA, valori come parametri
             ),
             params=params,
-            order_clause=(
-                f"ORDER BY {ordinamento}"
-            ),
+            order_clause=ordinamento,
             limit=limit,
             offset=offset,
         )
@@ -1956,10 +1910,10 @@ class PagamentiRepository:
             {_ENTE_INCASSO_SELECT}
             {where_clause}
         """
-        return self._lista_paginata(
+        return lista_paginata(
             select_sql=select_sql,
             params=params,
-            order_clause=f"ORDER BY {ordinamento}",
+            order_clause=ordinamento,
             limit=limit,
             offset=offset,
         )
@@ -2145,14 +2099,14 @@ class PagamentiRepository:
                      ON srd.soggetto_ruolo_id = v.cliente_soggetto_ruolo_id
               {where_clause}
         """  # noqa: S608 — WHERE da frammenti letterali + colonne _RICERCA_ECCEDENZE, valori come parametri
-        return self._lista_paginata(
+        return lista_paginata(
             select_sql=select_sql,
             params=params,
             # ⚠️ Tiebreak sul CLIENTE prima che sul documento: ordinando per
             # eccedenza di cliente, i documenti dello stesso cliente devono
             # restare insieme — altrimenti l'elenco «per cliente» li sparpaglia.
             order_clause=(
-                f"ORDER BY {sort_col} {direction}, "
+                f"{sort_col} {direction}, "
                 f"cliente_soggetto_ruolo_id {tiebreak}, fattura_id {tiebreak}"
             ),
             limit=limit,

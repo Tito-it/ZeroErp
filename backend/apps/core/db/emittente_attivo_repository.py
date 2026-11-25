@@ -68,8 +68,11 @@ class EmittenteAttivoRepository:
     #        attivo, che è esattamente il valore che stiamo per calcolare. Usarlo
     #        qui sarebbe circolare — risponderebbe «il tuo emittente è quello che
     #        hai già attivo», e al login (GUC vuota) direbbe None a chiunque.
-    #        Stessa scelta, e stesso motivo di indipendenza, di
-    #        `ParameterRepository.get_emittente_fiscale_id_for_user`.
+    #        ⭐ E' l'UNICA lettura diretta di quella tabella nel backend: fino al
+    #        2026-11-25 ce n'era una gemella in
+    #        `ParameterRepository.get_emittente_fiscale_id_for_user`, ritirata
+    #        (E1-4 di brief-be-fe-BB-audit). Chi vuole l'emittente di chi agisce
+    #        usa `PermissionResolver.get_emittente_for_user`.
     def get_emittente_di_permesso(self, auth_user_id: int) -> int | None:
         with connection.cursor() as cursor:
             cursor.execute(

@@ -2076,6 +2076,8 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "billing_account_id": 10,
             "utility_id": 3,
             "data": "2026-04-17",
+            # La soglia L2 e' dell'azienda del documento (E1-3, 2026-11-25).
+            "emittente_fiscale_id": 32,
         }
 
     # Scopo: Auto-fill prezzo dal resolver quando payload non specifica
@@ -2434,6 +2436,9 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         # 2. get_parameter_decimal chiamato con categoria_cliente_id=42.
         _, kwargs = mock_param_service.return_value.get_parameter_decimal.call_args
         self.assertEqual(kwargs.get("categoria_cliente_id"), 42)
+        # 3. ...e con l'emittente del DOCUMENTO, non di chi scrive (E1-3,
+        #    2026-11-25: prima era il gestore globale per il super admin).
+        self.assertEqual(kwargs.get("emittente_fiscale_id"), 32)
 
     # ── Sprint E: hook L3 richiesta_approvazione ──
 

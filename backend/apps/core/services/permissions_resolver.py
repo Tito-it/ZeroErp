@@ -303,11 +303,17 @@ class PermissionResolver:
         """Scopo: Risolve l'emittente fiscale 1-a-1 dell'utente (refactor
         operatore-emittenti). Wrapper Python su `script.fn_resolve_emittente_for_user`.
 
-        Ritorna `emittenti_fiscali.id` (PK reale) se l'utente ha esattamente
-        una riga in `config.user_emittenti_fiscali` (operatore o admin di
-        emittente), altrimenti `None`:
-          - admin globale (0 righe in `user_emittenti_fiscali`) → None
+        L'emittente DI CHI AGISCE, con la regola unica della funzione DB (rev
+        2026-08-04): l'emittente attivo (GUC `app.current_emittente_id`) se e'
+        valido per l'utente, altrimenti la sua riga in
+        `config.user_emittenti_fiscali`. Ritorna la PK `emittenti_fiscali.id`,
+        oppure `None`:
+          - super admin in «tutti gli emittenti» (GUC vuota, nessuna riga) → None
+          - operatore senza riga (non configurato) → None
           - istanza "0 emittenti" (gestore = emittente) → None
+        Il super admin con un emittente scelto riceve QUELLO: la scelta
+        restringe, e il controllo di validita' passa da
+        `fn_check_user_emittente_scope`. Nessun ripiego sul gestore globale.
 
         I chiamanti devono trattare il `None` in base al loro contesto.
         Per la creazione BA, il check di legittimità "admin globale +
@@ -319,11 +325,24 @@ class PermissionResolver:
         questa funzione ritorna **la PK reale `emittenti_fiscali.id`**,
         NON `soggetto_ruolo_id`.
         """
+        return cls.get_emittente_for_user_id(user.id, cache=cache)
+
+    # Scopo: la stessa risposta di `get_emittente_for_user`, dato l'id
+    #        dell'utente: per chi ha in mano `auth_user_id` e non l'utente (i
+    #        service). La funzione del DB vuole solo l'id: leggere prima l'utente
+    #        (`utente_per_id`) sarebbe una query in piu' per non usarlo.
+    # ⭐ Regola del 2 (2026-11-25, /verifica di brief-be-fe-BB-audit E1-3/E1-4,
+    #    ok Tid): `utente_per_id` + `get_emittente_for_user` stava in
+    #    `valuta_resolver` e nel gate L2 del contratto alla nascita.
+    @classmethod
+    def get_emittente_for_user_id(
+        cls, auth_user_id: int, *, cache: dict[str, Any] | None = None
+    ) -> int | None:
         def _query() -> int | None:
             with connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT script.fn_resolve_emittente_for_user(%s)",
-                    [user.id],
+                    [auth_user_id],
                 )
                 row = cursor.fetchone()
             return int(row[0]) if row and row[0] is not None else None

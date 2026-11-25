@@ -134,10 +134,16 @@ def validate_componenti_overrides_authorization(
 
 
 # Scopo: Helper privato. Risolve la soglia % di variazione applicabile a
-#        (utente, BA) attraverso la cascata user → categoria_cliente → group
-#        → emittente → default. Centralizza il pattern usato da entrambi i
-#        gate L2 (riga e variazione globale). Il lookup BA→categoria avviene
-#        solo se `ba_id` e' fornito.
+#        (utente, BA, emittente) attraverso la cascata user → categoria_cliente
+#        → group → emittente → default. Centralizza il pattern usato da
+#        entrambi i gate L2 (riga e variazione globale). Il lookup
+#        BA→categoria avviene solo se `ba_id` e' fornito.
+# ⭐ L'emittente e' quello del DOCUMENTO, passato dal chiamante: la soglia e'
+#    dell'azienda che vende, non di chi scrive. ⛔ Fino al 2026-11-25 veniva
+#    dall'utente (`get_emittente_fiscale_id_for_user`), che al super admin
+#    rispondeva il gestore globale: su un documento dell'emittente X il gate
+#    applicava la soglia di un'altra azienda (E1-3 di brief-be-fe-BB-audit §6.1).
+#    Senza default: un chiamante che non lo passa non compila la chiamata.
 #
 #        Restituisce la soglia come Decimal. Solleva
 #        E_PARAMETER_VALIDATION se il parametro DB e' malformato (stato
@@ -147,17 +153,14 @@ def _resolve_soglia_variazione_pct(
     auth_user_id: int,
     param_code: str,
     ba_id: int | None,
+    emittente_fiscale_id: int | None,
 ) -> Decimal:
-    param_service = ParameterService()
-    emittente_fiscale_id = param_service.get_emittente_fiscale_id_for_user(
-        auth_user_id,
-    )
     categoria_cliente_id: int | None = None
     if ba_id is not None:
         categoria_cliente_id = BillingAccountRepository().get_categoria_cliente_id(
             int(ba_id),
         )
-    return param_service.get_parameter_decimal(
+    return ParameterService().get_parameter_decimal(
         param_code,
         django_user_id=auth_user_id,
         emittente_fiscale_id=emittente_fiscale_id,
@@ -194,6 +197,7 @@ def check_limite_variazione_prezzo(
     prezzo_resolver,  # Decimal | None
     prezzo_manuale,   # Decimal
     function_name: str,
+    emittente_fiscale_id: int | None,
     accept_for_approval: bool = False,
     ba_id: int | None = None,
 ) -> dict[str, Any] | None:
@@ -220,6 +224,7 @@ def check_limite_variazione_prezzo(
         auth_user_id=auth_user_id,
         param_code=param_code,
         ba_id=ba_id,
+        emittente_fiscale_id=emittente_fiscale_id,
     )
 
     if variazione_abs <= limite:
@@ -249,6 +254,7 @@ def check_limite_variazione_globale(
     tipo_variazione: str | None,
     valore_variazione,  # Decimal | None
     function_name: str,
+    emittente_fiscale_id: int | None,
     accept_for_approval: bool = False,
     ba_id: int | None = None,
 ) -> dict[str, Any] | None:
@@ -283,6 +289,7 @@ def check_limite_variazione_globale(
         auth_user_id=auth_user_id,
         param_code=param_code,
         ba_id=ba_id,
+        emittente_fiscale_id=emittente_fiscale_id,
     )
 
     if variazione_abs <= limite:
@@ -574,7 +581,8 @@ def rifiuta_provenienza_dichiarata(
 #
 #        Parametri:
 #          - `testata`: dict con almeno `id`, `billing_account_id`,
-#            `utility_id`, `data`.
+#            `utility_id`, `data`, `emittente_fiscale_id` (la soglia L2 e'
+#            dell'azienda del documento, dal 2026-11-25).
 #          - `resolver_fn`: `(documento_id, *, articolo_id, uom_id,
 #            auth_user_id) -> dict` con `prezzo_finale` (None se non risolto),
 #            `origine`, `listino_versione_id`, `listino_riga_id`,
@@ -731,6 +739,10 @@ def resolve_or_check_override_prezzo(
         function_name=function_name,
         accept_for_approval=richiesta_approvazione,
         ba_id=testata.get("billing_account_id"),
+        # La soglia dell'azienda del documento (E1-3, 2026-11-25). Indicizzato,
+        # non `.get()`: una testata senza emittente e' un difetto del loader, e
+        # un None qui salterebbe il livello emittente in silenzio.
+        emittente_fiscale_id=testata["emittente_fiscale_id"],
     )
 
     meta_patch: dict[str, Any] = {

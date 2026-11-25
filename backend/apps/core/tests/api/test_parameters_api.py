@@ -23,6 +23,7 @@ Indice test eseguiti:
  8) ParameterOverrideDeleteViewTests.test_delete_override_not_found
  9) ParameterSettingsViewTests.test_list_settings_ba_non_risulta_404 — BA inesistente o fuori scope → E_ANAG_NOT_FOUND (F-6)
 10) ParameterSettingsViewTests.test_list_settings_ba_zero_400 — billing_account_id <= 0 → ValueError (400 E_VALIDATION_INPUT)
+11) ParameterOverrideEmittenteTests — override per emittente sull'emittente scelto; in «tutti» 400 E_EMITTENTE_NON_RISOLTO (POST e DELETE); defaults in «tutti» senza livello emittente (E1-1)
 """
 
 from unittest import TestCase
@@ -31,6 +32,22 @@ from unittest.mock import MagicMock, patch
 from apps.core.services.service_errors import ServiceError
 
 SVC_PATH = "apps.core.api.views_parameters.ParameterService"
+
+
+# Scopo: l'emittente di chi agisce, finto per tutti i test del file. Lo leggono
+#        `get_user_context` (letture) e il BB `emittente_per_scrivere` (override
+#        per emittente), entrambi da `PermissionResolver.get_emittente_for_user`
+#        (dal 2026-11-25: prima `ParameterService.get_emittente_fiscale_id_for_user`,
+#        che ripiegava sul gestore globale). Default None = «tutti gli emittenti».
+class _ConEmittenteDiChiAgisce(TestCase):
+
+    def setUp(self) -> None:
+        patcher = patch(
+            "apps.core.services.permissions_resolver.PermissionResolver.get_emittente_for_user",
+            return_value=None,
+        )
+        self.emittente = patcher.start()
+        self.addCleanup(patcher.stop)
 
 
 def _make_request(user_id=1, is_superuser=False, query_params=None, data=None):
@@ -48,7 +65,7 @@ def _make_request(user_id=1, is_superuser=False, query_params=None, data=None):
     return request
 
 
-class ParameterDefaultsViewTests(TestCase):
+class ParameterDefaultsViewTests(_ConEmittenteDiChiAgisce):
 
     # Scopo: Verifica che GET defaults restituisca i valori risolti.
     @patch(SVC_PATH)
@@ -58,7 +75,7 @@ class ParameterDefaultsViewTests(TestCase):
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
         mock_svc.get_defaults.return_value = {"DEFAULT_IVA_ID": "22"}
-        mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
+        self.emittente.return_value = 3
 
         view = ParameterDefaultsView()
         request = _make_request(query_params={"codes": "DEFAULT_IVA_ID"})
@@ -91,7 +108,7 @@ class ParameterDefaultsViewTests(TestCase):
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
         mock_svc.get_defaults.return_value = {"P1": "v1"}
-        mock_svc.get_emittente_fiscale_id_for_user.return_value = 5
+        self.emittente.return_value = 5
 
         view = ParameterDefaultsView()
         request = _make_request(user_id=7, query_params={"codes": "P1"})
@@ -115,7 +132,7 @@ class ParameterDefaultsViewTests(TestCase):
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
         mock_svc.get_defaults.return_value = {"DEFAULT_UTILITY": "BASE"}
-        mock_svc.get_emittente_fiscale_id_for_user.return_value = 9
+        self.emittente.return_value = 9
 
         view = ParameterDefaultsView()
         request = _make_request(
@@ -132,7 +149,7 @@ class ParameterDefaultsViewTests(TestCase):
         )
 
 
-class ParameterSettingsViewTests(TestCase):
+class ParameterSettingsViewTests(_ConEmittenteDiChiAgisce):
 
     # Scopo: Verifica che GET settings restituisca la lista parametri con livelli.
     @patch(SVC_PATH)
@@ -141,7 +158,7 @@ class ParameterSettingsViewTests(TestCase):
 
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
-        mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
+        self.emittente.return_value = 3
         mock_svc.list_parameters_for_user.return_value = ([
             {
                 "code": "DEFAULT_IVA_ID",
@@ -186,7 +203,7 @@ class ParameterSettingsViewTests(TestCase):
 
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
-        mock_svc.get_emittente_fiscale_id_for_user.return_value = 7
+        self.emittente.return_value = 7
         mock_svc.list_parameters_for_user.return_value = ([], 0)
 
         view = ParameterSettingsView()
@@ -210,7 +227,7 @@ class ParameterSettingsViewTests(TestCase):
 
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
-        mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
+        self.emittente.return_value = 3
         mock_svc.list_parameters_for_user.return_value = ([], 0)
 
         view = ParameterSettingsView()
@@ -236,7 +253,7 @@ class ParameterSettingsViewTests(TestCase):
 
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
-        mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
+        self.emittente.return_value = 3
         mock_svc.list_parameters_for_user.return_value = ([], 0)
         mock_ba_repo = MagicMock()
         mock_ba_repo_cls.return_value = mock_ba_repo
@@ -266,7 +283,7 @@ class ParameterSettingsViewTests(TestCase):
 
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
-        mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
+        self.emittente.return_value = 3
         mock_ba_repo_cls.return_value.get_categoria_cliente_id.return_value = None
 
         view = ParameterSettingsView()
@@ -283,7 +300,7 @@ class ParameterSettingsViewTests(TestCase):
     def test_list_settings_ba_zero_400(self, mock_svc_cls, mock_ba_repo_cls):
         from apps.core.api.views_parameters import ParameterSettingsView
 
-        mock_svc_cls.return_value.get_emittente_fiscale_id_for_user.return_value = 3
+        self.emittente.return_value = 3
 
         view = ParameterSettingsView()
         request = _make_request(user_id=1, query_params={"billing_account_id": "0"})
@@ -301,7 +318,7 @@ class ParameterSettingsViewTests(TestCase):
 
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
-        mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
+        self.emittente.return_value = 3
 
         view = ParameterSettingsView()
         for raw in ("0", "-2", "abc"):
@@ -321,7 +338,7 @@ class ParameterSettingsViewTests(TestCase):
 
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
-        mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
+        self.emittente.return_value = 3
         mock_svc.list_parameters_for_user.return_value = ([], 0)
         mock_ba_repo = MagicMock()
         mock_ba_repo_cls.return_value = mock_ba_repo
@@ -344,7 +361,7 @@ class ParameterSettingsViewTests(TestCase):
         )
 
 
-class ParameterOverrideViewTests(TestCase):
+class ParameterOverrideViewTests(_ConEmittenteDiChiAgisce):
 
     # Scopo: Verifica che POST override crei/aggiorni l'override personale.
     @patch(SVC_PATH)
@@ -402,7 +419,7 @@ class ParameterOverrideViewTests(TestCase):
         mock_svc_cls.return_value.upsert_user_override.assert_called_once()
 
 
-class ParameterOverrideDeleteViewTests(TestCase):
+class ParameterOverrideDeleteViewTests(_ConEmittenteDiChiAgisce):
 
     # Scopo: Verifica che DELETE override rimuova l'override.
     @patch(SVC_PATH)
@@ -442,7 +459,7 @@ class ParameterOverrideDeleteViewTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_PARAMETER_NOT_FOUND")
 
 
-class ParameterOverrideCategoriaClienteTests(TestCase):
+class ParameterOverrideCategoriaClienteTests(_ConEmittenteDiChiAgisce):
     """Phase B 2026-05-19: CRUD override scope categoria_cliente (admin-only)."""
 
     # Scopo: POST override scope=categoria_cliente crea override per la categoria.
@@ -589,3 +606,78 @@ class ParameterOverrideCategoriaClienteTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             view.delete(request, override_id=314)
         self.assertEqual(ctx.exception.code, "E_PARAMETER_VALIDATION")
+
+
+class ParameterOverrideEmittenteTests(_ConEmittenteDiChiAgisce):
+    """E1-1 di brief-be-fe-BB-audit (2026-11-25): l'override per emittente si
+    scrive sull'emittente SCELTO, e in «tutti gli emittenti» si rifiuta. Fino a
+    quel giorno finiva sempre sul gestore globale."""
+
+    _CORPO = {"parameter_code": "VENDITE_MAX_SCONTO_PCT", "value": "20", "scope": "emittente"}
+
+    # Scopo: con l'emittente 32 scelto, l'override si scrive su 32.
+    @patch("apps.core.api.views_parameters._is_admin", return_value=True)
+    @patch(SVC_PATH)
+    def test_upsert_sull_emittente_scelto(self, mock_svc_cls, _is_admin):
+        from apps.core.api.views_parameters import ParameterOverrideView
+
+        self.emittente.return_value = 32
+        mock_svc_cls.return_value.upsert_emittente_override.return_value = 7
+        response = ParameterOverrideView().post(_make_request(user_id=1, data=self._CORPO))
+        self.assertEqual(response.status_code, 200)
+        mock_svc_cls.return_value.upsert_emittente_override.assert_called_once_with(
+            parameter_code="VENDITE_MAX_SCONTO_PCT", emittente_fiscale_id=32, value="20",
+        )
+
+    # Scopo: in «tutti gli emittenti» 400 E_EMITTENTE_NON_RISOLTO, niente scritto.
+    @patch("apps.core.api.views_parameters._is_admin", return_value=True)
+    @patch(SVC_PATH)
+    def test_upsert_in_tutti_gli_emittenti_rifiutato(self, mock_svc_cls, _is_admin):
+        import json
+
+        from apps.core.api.views_parameters import ParameterOverrideView
+
+        response = ParameterOverrideView().post(_make_request(user_id=1, data=self._CORPO))
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(json.loads(response.content)["error"]["code"], "E_EMITTENTE_NON_RISOLTO")
+        mock_svc_cls.return_value.upsert_emittente_override.assert_not_called()
+
+    # Scopo: la cancellazione segue la stessa regola: sull'emittente scelto...
+    @patch("apps.core.api.views_parameters._is_admin", return_value=True)
+    @patch(SVC_PATH)
+    def test_delete_sull_emittente_scelto(self, mock_svc_cls, _is_admin):
+        from apps.core.api.views_parameters import ParameterOverrideDeleteView
+
+        self.emittente.return_value = 32
+        response = ParameterOverrideDeleteView().delete(
+            _make_request(user_id=1, query_params={"scope": "emittente"}), override_id=9,
+        )
+        self.assertEqual(response.status_code, 200)
+        mock_svc_cls.return_value.delete_emittente_override.assert_called_once_with(
+            override_id=9, emittente_fiscale_id=32,
+        )
+
+    # Scopo: ...e in «tutti gli emittenti» si rifiuta.
+    @patch("apps.core.api.views_parameters._is_admin", return_value=True)
+    @patch(SVC_PATH)
+    def test_delete_in_tutti_gli_emittenti_rifiutato(self, mock_svc_cls, _is_admin):
+        from apps.core.api.views_parameters import ParameterOverrideDeleteView
+
+        with self.assertRaises(ServiceError) as ctx:
+            ParameterOverrideDeleteView().delete(
+                _make_request(user_id=1, query_params={"scope": "emittente"}), override_id=9,
+            )
+        self.assertEqual(ctx.exception.code, "E_EMITTENTE_NON_RISOLTO")
+        mock_svc_cls.return_value.delete_emittente_override.assert_not_called()
+
+    # Scopo: in lettura «tutti gli emittenti» salta il livello emittente (None),
+    #        come la cascata dentro il DB — non il gestore globale.
+    @patch(SVC_PATH)
+    def test_defaults_in_tutti_gli_emittenti_senza_livello_emittente(self, mock_svc_cls):
+        from apps.core.api.views_parameters import ParameterDefaultsView
+
+        mock_svc_cls.return_value.get_defaults.return_value = {}
+        ParameterDefaultsView().get(_make_request(user_id=1, query_params={"codes": "P1"}))
+        self.assertIsNone(
+            mock_svc_cls.return_value.get_defaults.call_args.kwargs["emittente_fiscale_id"],
+        )

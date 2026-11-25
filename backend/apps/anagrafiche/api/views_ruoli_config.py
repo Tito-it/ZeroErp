@@ -16,6 +16,8 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.endpoint_helpers import utente_autenticato
+from apps.core.services.parameter_service import contesto_cascata
 from apps.core.api.success_responses import success_response
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 
@@ -93,7 +95,12 @@ class RuoliConfigResolverView(DomainAPIView):
         # La chiave e' il `codice_interno` (scritto dal programma, fuori
         # dall'automazione CODICE_MAIUSCOLO): si confronta ESATTA, come le
         # rotte `lookup/tipi-ruolo/{codice}/…` (Tid, 2026-11-04).
-        result = repo.get_config_resolver(tipo_ruolo_codice)
+        # Il default del tipo dettaglio si risolve con la cascata di chi agisce
+        # (BB `contesto_cascata` (`core/services/parameter_service`), E1-5 di brief-be-fe-BB-audit).
+        result = repo.get_config_resolver(
+            tipo_ruolo_codice,
+            contesto_cascata=contesto_cascata(utente_autenticato(request)),
+        )
         if result is None:
             from apps.core.services.service_errors import ServiceError
 

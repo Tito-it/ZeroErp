@@ -12,9 +12,8 @@
 #
 # Indice test:
 #   1. contesto: l'emittente e' la PK della TESTATA, non si va a cercarlo altrove
-#   2. contesto: senza emittente in testata si ripiega sull'operatore
-#   3. contesto: ⛔ P3 — senza emittente da nessuna fonte CI SI FERMA
-#   4. contesto: ⛔ senza `auth_user_id` NON si ripiega (DDT e ordini)
+#   2. contesto: ⛔ P3 — senza emittente in testata CI SI FERMA (nessun ripiego
+#      sull'operatore dal 2026-11-25: la colonna e' NOT NULL sui tre documenti)
 #   5. contesto: senza data ci si ferma, con errore di dominio
 #   6. contesto: la data ISO diventa `date`, una `date` resta com'e'
 #   7. normalizza_iva_id: ⛔ lo ZERO e' un errore, non un'assenza
@@ -29,7 +28,6 @@
 import unittest
 import unittest.mock
 from datetime import date
-from unittest.mock import patch
 
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services import _iva_contesto_documento as mod
@@ -62,33 +60,16 @@ class ContestoDaTestataTests(unittest.TestCase):
         self.assertEqual(ctx["utility_id"], 5)
         self.assertEqual(ctx["data_riferimento"], date(2026, 8, 31))
 
-    # Scopo: il ripiego sull'operatore — il caso dell'admin globale che non ha
-    #        scelto l'emittente sul preventivo.
-    @patch.object(mod, "ParameterService")
-    def test_ripiego_sull_operatore(self, param_cls):
-        param_cls.return_value.get_emittente_fiscale_id_for_user.return_value = 44
-        ctx = _ctx(self._testata(emittente_fiscale_id=None), auth_user_id=7)
-        self.assertEqual(ctx["emittente_fiscale_id"], 44)
-
     # Scopo: ⛔ P3 (decisione di Tid) — «un operatore ha sempre un emittente; se
     #        non lo ha, il calcolo si ferma e segnala». Il difetto che previene
     #        non ha sintomi: zero titoli letti sotto RLS e aliquota ordinaria.
-    @patch.object(mod, "ParameterService")
-    def test_senza_emittente_da_nessuna_fonte_si_ferma(self, param_cls):
-        param_cls.return_value.get_emittente_fiscale_id_for_user.return_value = None
+    # ⛔ Nessun ripiego su chi guarda: fino al 2026-11-25 i preventivi
+    #    ripiegavano sull'emittente dell'operatore (per il super admin il
+    #    gestore globale). Un documento con la testata rotta si ferma.
+    def test_senza_emittente_in_testata_si_ferma(self):
         with self.assertRaises(ServiceError) as c:
-            _ctx(self._testata(emittente_fiscale_id=None), auth_user_id=7)
-        self.assertEqual(c.exception.code, _COD)
-
-    # Scopo: ⚠️ il gemello negativo, e non e' ornamentale. DDT e ordini NON
-    #        passano `auth_user_id` — la loro testata l'emittente ce l'ha
-    #        sempre. Se il ripiego scattasse comunque, un documento con la
-    #        testata rotta prenderebbe l'emittente di CHI STA GUARDANDO.
-    @patch.object(mod, "ParameterService")
-    def test_senza_auth_user_non_si_ripiega(self, param_cls):
-        with self.assertRaises(ServiceError):
             _ctx(self._testata(emittente_fiscale_id=None))
-        param_cls.return_value.get_emittente_fiscale_id_for_user.assert_not_called()
+        self.assertEqual(c.exception.code, _COD)
 
     # Scopo: il risolutore prende una data e non legge mai `CURRENT_DATE` (D14):
     #        senza, errore di dominio e non un `ValueError` da `fromisoformat`.

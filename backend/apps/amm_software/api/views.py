@@ -1068,9 +1068,8 @@ class EmittentiFormDefaultsView(AdminAPIView):
     # Scopo: Restituisce defaults form emittente fiscale (Fase 3 — A5).
     def get(self, request: Request) -> JsonResponse:
         from apps.core.api.views_parameters import get_user_context
-        from apps.core.services.parameter_service import ParameterService
 
-        ctx = get_user_context(request, ParameterService())
+        ctx = get_user_context(request)
         return success_response(
             AmmSoftwareService().get_emittente_form_defaults(**ctx)
         )

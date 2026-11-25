@@ -30,7 +30,11 @@ from apps.anagrafiche.services.valuta_resolver import resolve_valuta_default
 _MOD = "apps.anagrafiche.services.valuta_resolver"
 _BA_REPO = f"{_MOD}.BillingAccountRepository"
 _EF_REPO = f"{_MOD}.EmittentiFiscaliRepository"
-_PARAM = f"{_MOD}.ParameterService"
+# L'emittente di chi agisce (livello 3): dal 2026-11-25 da
+# `PermissionResolver.get_emittente_for_user_id` (E1-4 di brief-be-fe-BB-audit),
+# prima `ParameterService.get_emittente_fiscale_id_for_user`, che ripiegava sul
+# gestore globale. Il mock E' il metodo: `return_value` e' l'emittente.
+_PARAM = f"{_MOD}.PermissionResolver.get_emittente_for_user_id"
 _CONN = f"{_MOD}.connection"
 
 
@@ -87,7 +91,7 @@ class TestResolveValutaDefault(TestCase):
     def test_no_ba_user_ef_valuta(self, mock_param_cls, mock_ef_repo_cls):
         # Scopo: livello 3 = EF dell'utente. Mappa valuta_iso -> valuta_codice
         #        per omogeneita' di shape col payload form-defaults.
-        mock_param_cls.return_value.get_emittente_fiscale_id_for_user.return_value = 42
+        mock_param_cls.return_value = 42
         mock_ef_repo_cls.return_value.get_emittente.return_value = {
             "id": 42,
             "valuta_id": 1,
@@ -106,7 +110,7 @@ class TestResolveValutaDefault(TestCase):
         self, mock_param_cls, mock_ef_repo_cls, mock_conn,
     ):
         # Scopo: EF utente esiste ma valuta_id NULL -> livello 4 = gestore.
-        mock_param_cls.return_value.get_emittente_fiscale_id_for_user.return_value = 42
+        mock_param_cls.return_value = 42
         mock_ef_repo_cls.return_value.get_emittente.return_value = {
             "id": 42, "valuta_id": None,
         }
@@ -127,7 +131,7 @@ class TestResolveValutaDefault(TestCase):
         self, mock_param_cls, mock_ef_repo_cls, mock_conn,
     ):
         # Scopo: admin globale senza EF -> livello 4 = gestore.
-        mock_param_cls.return_value.get_emittente_fiscale_id_for_user.return_value = None
+        mock_param_cls.return_value = None
         cur = MagicMock()
         cur.fetchone.return_value = (1, "EUR", "Euro")
         mock_conn.cursor.return_value.__enter__.return_value = cur
@@ -162,7 +166,7 @@ class TestResolveValutaDefault(TestCase):
         ba_repo = mock_ba_repo_cls.return_value
         ba_repo.get_lookup_by_id.return_value = None
         ba_repo.get_emittente_valuta.return_value = {}
-        mock_param_cls.return_value.get_emittente_fiscale_id_for_user.return_value = 42
+        mock_param_cls.return_value = 42
         mock_ef_repo_cls.return_value.get_emittente.return_value = {
             "valuta_id": 1, "valuta_iso": "EUR", "valuta_descrizione": "Euro",
         }
