@@ -1,6 +1,6 @@
 # Guida — Gestione DDT di vendita
 
-> **Ultimo aggiornamento**: 24 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali/logistici,
 > sviluppatori backend/frontend, DBA.
@@ -18,6 +18,7 @@
 > * [script.fn_available_actions_ddt](/dbzero/script/funzioni/fn_available_actions_ddt) — azioni disponibili sullo stato corrente
 > * [vendite.trgfn_ddt_guard_transizione](/dbzero/vendite/funzioni/trgfn_ddt_guard_transizione) — enforcement del grafo stati
 > * [vendite.fn_genera_ddt_da_ordine](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine) — evasione delle righe ordine in un DDT
+> * [vendite.fn_genera_ddt_riconsegna](/dbzero/vendite/funzioni/fn_genera_ddt_riconsegna) / [script.trgfn_righe_guard_articolo_ammesso](/dbzero/script/funzioni/trgfn_righe_guard_articolo_ammesso) — la bolla di riconsegna di un reso: chi la genera, su quale reso, e l'esenzione degli articoli resi
 > * [vendite.fn_ddt_riga_correggi_qta_evasa](/dbzero/vendite/funzioni/fn_ddt_riga_correggi_qta_evasa) / [vendite.trgfn_ddt_righe_guard_riga_evasa](/dbzero/vendite/funzioni/trgfn_ddt_righe_guard_riga_evasa) — la riga evasa: ferma, corretta solo dal verbo
 > * [vendite.fn_annulla_ddt](/dbzero/vendite/funzioni/fn_annulla_ddt) / [vendite.fn_documento_legami](/dbzero/vendite/funzioni/fn_documento_legami) — l'annullo di una bolla con righe legate a ordini o resi
 > * [vendite.fn_list_ddt_da_pushare](/dbzero/vendite/funzioni/fn_list_ddt_da_pushare) — righe eleggibili al push a commessa
@@ -182,7 +183,9 @@ il messaggio dice perché e dove va invece l'articolo. Un **kit senza componenti
 **Nella ricerca dell'articolo** trovi prima quelli che la riga può usare. Gli altri compaiono dopo, in grigio, col motivo sotto, e non si possono scegliere: chi cerca un codice preciso e non lo trova fra i primi vede perché. La ricerca e il rifiuto al salvataggio usano la stessa regola, quindi un articolo proposto non viene rifiutato dopo.
 
 La **riconsegna** di un reso è esente: restituisce ciò che è uscito, anche se l'articolo nel
-frattempo è diventato «solo componente».
+frattempo è diventato «solo componente». L'esenzione vale solo per le righe che scrive la
+generazione della bolla di riconsegna, e solo per gli articoli di quel reso: una riga aggiunta a
+mano con lo stesso articolo, anche sulla bolla di riconsegna, è rifiutata come le altre.
 
 > **Prezzo opzionale = DDT di solo trasporto.** Se le righe non hanno prezzo, il
 > DDT documenta solo il movimento della merce e il *Riepilogo IVA* resta vuoto
@@ -589,7 +592,10 @@ Come funziona, dal punto di vista del DDT:
   stato del DDT;
 * **reso per ri-consegna** → riapre il **residuo** dell'ordine (l'addendo
   `qta_resa_per_riconsegna`, §2.1): l'ordine torna evadibile e si genera un nuovo
-  DDT di ri-consegna (`fn_genera_ddt_riconsegna`);
+  DDT di ri-consegna (`fn_genera_ddt_riconsegna`). Lo genera chi ha il livello pieno
+  (`TUTTO`) sul reso, lo stesso che chiede l'interfaccia, e solo su un reso della
+  propria azienda: un reso di un'altra azienda risponde «reso non trovato», come uno
+  che non esiste;
 * **reso a credito** → alimenta la coda "da accreditare" (vista
   `vw_resi_da_accreditare`) per la futura nota di credito. L'accredito scrive una
   **rettifica** nella commessa della riga fatturata che corregge;

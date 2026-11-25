@@ -213,7 +213,7 @@ search:
 - [fn_fattura_proietta_stato](funzioni/fn_fattura_proietta_stato.md)
 - [fn_fondo_fattura_proponibile](funzioni/fn_fondo_fattura_proponibile.md) — (latest review 15-08-2026)
 - [fn_genera_ddt_da_ordine](funzioni/fn_genera_ddt_da_ordine.md) — **`vendite.fn_genera_ddt_da_ordine`** è la **funzione madre** dell'evasione: da un ordine di vendita crea un **DDT** (testata `DRAFT` + righe + componenti) e il **fulfillment** riga↔riga. È DB-first e **atomica** (una `SELECT`, `SECURITY INVOKER`), sullo stile di `fn_push_preventivo_a_ordine`.
-- [fn_genera_ddt_riconsegna](funzioni/fn_genera_ddt_riconsegna.md) — **Funzione madre atomica** (`SECURITY INVOKER`) che genera il **DDT di ri-spedizione** per un reso emesso (confermato) e chiude l'aggancio duro con la coda di ri-consegna.
+- [fn_genera_ddt_riconsegna](funzioni/fn_genera_ddt_riconsegna.md) — **Funzione madre atomica** (`SECURITY DEFINER`) che genera il **DDT di ri-spedizione** per un reso emesso (confermato) e chiude l'aggancio duro con la coda di ri-consegna.
 - [fn_genera_fondi_fattura_lotto](funzioni/fn_genera_fondi_fattura_lotto.md) — (latest review 15-08-2026)
 - [fn_genera_fondi_fattura_source](funzioni/fn_genera_fondi_fattura_source.md) — (latest review 15-08-2026)   La funzione **`vendite.fn_genera_fondi_fattura_source()`** crea in `fatture_fondi_fattura_source` i fondi delle fatture **«di minimo»**, cioè quelle il cui importo cade dentro la banda configurata per emittente × utility: sono i documenti che **non si incassano da soli** e il cui valore viene riportato sulla fattura successiva.
 - [fn_genera_ordine_da_offerta](funzioni/fn_genera_ordine_da_offerta.md)

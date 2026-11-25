@@ -900,9 +900,11 @@ l'amministratore ragiona come sempre, per area, azione e oggetto.
   per il seed, la riconosce dalla **sessione del migratore**
   (`dbops.fn_sessione_del_migratore`), non dal proprietario: dentro un verbo
   `SECURITY DEFINER` il proprietario e' chiunque lo chiami. Lo scope emittenti
-  apre cosi': la GUC porta l'`auth_user_id` dell'operatore che il verbo sposta.
-  ⚠️ Non tutte le porte ci sono gia' arrivate: quelle del reset dei lotti, del
-  contabile e dei DDT di riconsegna si aprono ancora con la sola GUC.
+  apre cosi': la GUC porta l'`auth_user_id` dell'operatore che il verbo sposta;
+  la riconsegna di un reso porta l'id del reso, e l'esenzione vale per i soli
+  articoli di quel reso.
+  ⚠️ Non tutte le porte ci sono gia' arrivate: quelle del reset dei lotti e del
+  contabile si aprono ancora con la sola GUC.
 
 **Il backend chiede, non decide due volte.** L'endpoint tiene il suo controllo:
 risponde 403 subito, con un messaggio utile, prima di aprire la transazione.
