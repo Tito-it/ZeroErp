@@ -88,8 +88,9 @@ transazione, `app.registrazione_tardiva_riga_id`, che porta l'id della riga: il 
 apre **solo** per quella riga, **solo** in quella transazione, **solo** nel ramo del cambio di
 stato, e **solo se chi scrive è il proprietario** della tabella: dentro la funzione sì,
 per l'applicazione mai, nemmeno se accende la GUC da sé. La funzione la spegne all'ingresso,
-e la **richiude prima di uscire**, anche in errore: dopo il ritorno nessun'altra scrittura
-della stessa transazione la trova aperta.
+e la **richiude prima di uscire**: dopo il ritorno nessun'altra scrittura della stessa
+transazione la trova aperta. In errore la riporta indietro l'annullamento della transazione (o del
+savepoint del chiamante): una GUC locale torna al valore di prima, senza un blocco che la svuoti.
 
 Poi il **movimento**, poi **`POSTATA`**: istruzioni separate sulla stessa riga, come nella
 registrazione della distinta, così ognuna vede ciò che la precedente ha scritto.

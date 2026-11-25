@@ -2,8 +2,8 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-25**
 >
-> **Riparte: il team BE**, col 6c-quinquies del giro 9 (§11.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col 6b-quinquies del giro 10 (§10.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col passo 3n di R-DB-I3 (§4.8: ✅ scritta, applicata da Tid e verde il 2026-11-24) e col 3k-bis
-> di R-DB-K3, e col 6a-quinquies del giro 16 (§9.5). **Il team DB**, al via di Tid, col giro 10 (il giro 16 è applicato e verde, 2026-11-24) (la risposta 3d è letta, §4.5-bis) e con le due richieste nuove del BE da §4.7, R-DB-K3 (la descrizione di `E_SCOPE_SENZA_UTENTE`, passo 3k: ✅ scritta e applicata il 2026-11-24, ora la rigenerazione del BE, 3k-bis) e R-DB-K4 (i due changeSet del
+> **Riparte: il team DB**, con l'analisi della parte 1-7 del giro unico 8 + 1-7 (§13.5): ✅ D-T **b** e D-U **a**, decise da Tid il 2026-11-25 (§13.3). Lo sviluppo del giro parte solo col via di Tid, dopo l'analisi; poi R-DB-K1 e R-DB-K4 insieme (Tid, 2026-11-25). **Il team BE**, col 6d-quinquies del giro 11 (§12.6: ✅ applicato da Tid e verde il 2026-11-25, con `20261124-12`, §12.7). **Il team BE**, col 6c-quinquies del giro 9 (§11.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col 6b-quinquies del giro 10 (§10.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col passo 3n di R-DB-I3 (§4.8: ✅ scritta, applicata da Tid e verde il 2026-11-24) e col 3k-bis
+> di R-DB-K3, e col 6a-quinquies del giro 16 (§9.5). **Il team DB**, col giro unico 8 + 1-7 (i giri 16, 10, 9, 11 sono applicati e verdi) e con le due richieste nuove del BE da §4.7, R-DB-K3 (la descrizione di `E_SCOPE_SENZA_UTENTE`, passo 3k: ✅ scritta e applicata il 2026-11-24, ora la rigenerazione del BE, 3k-bis) e R-DB-K4 (i due changeSet del
 > SUPER_ADMIN di sviluppo, passo 3l). Al via di Tid: il verbo di primo impianto (D-K, R-DB-K1, passo 3i) e i giri
 > delle porte del flusso. ✅ Il ritiro di `reset_lotto_draft` è fatto, DB e BE (2026-11-24, §4.8). Il superuser Django è
 > deciso (D-J **a**) e fatto nel BE (§4.7); il `None` del perimetro si rifiuta (§4.7, BE, 2026-11-24).
@@ -61,13 +61,23 @@
 > | 6c-ter | team DB | giro 9: ✅ `20261124-07` … `-09`, pgTAP nuovo e quattro adeguati, guida e `manual/`, provato sullo scratch (2026-11-25) | §11.5 | — |
 > | 6c-quater | Tid | giro 9: ✅ apply, pgTAP come app verdi, doc auto-generata rigenerata (2026-11-25) | §11.5 | — |
 > | 6c-quinquies | team BE | giro 9: i test che chiamano il verbo danno `registra_distinta`; la mappatura di `E_SCOPE_EMITTENTE` dal verbo | §11.6 | — |
+> | 6d | team DB | giro 11: ✅ analisi, nessuna decisione nuova (2026-11-25) | §12 | — |
+> | 6d-ter | team DB | giro 11: ✅ `20261124-10`, `-11`, pgTAP nuovo (i ventuno esistenti invariati), guide e `manual/`, provato sullo scratch (2026-11-25) | §12.5 | — |
+> | 6d-bis | team DB | il blocco `EXCEPTION` del giro 9 tolto (decisione di Tid, 2026-11-25): ✅ `20261124-12` scritto e provato | §12.7 | — |
+> | 6d-quater | Tid | giro 11 e `20261124-12`: ✅ apply, pgTAP come app verdi, doc auto-generata rigenerata (2026-11-25) | §12.5, §12.7 | — |
+> | 6d-quinquies | team BE | giro 11: i test che chiamano il verbo con un operatore senza il livello su `vendite.reso` | §12.6 | — |
+> | 6e | team DB | giro 8: ✅ analisi, D10-D11 rilette (2026-11-25) | §13 | — |
+> | 6e-bis | Tid | giro 8: ✅ D-T **b** (i giri 8 e 1-7 insieme), D-U **a** (2026-11-25) | §13.3 | — |
+> | 6e-ter | team DB | giro 8 + 1-7: l'analisi della parte 1-7, col punto 3 di §4.5-bis (il passaggio senza azione) | §13.5 | — |
+> | 6e-quater | Tid | giro 8 + 1-7: le scelte che l'analisi apre, il via | §13.5 | 6e-ter |
 >
-> Decisioni aperte di Tid: nessuna. Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
+> Decisioni aperte di Tid: nessuna oggi; la parte 1-7 del giro unico ne porta almeno una (§13.5, punto 3 di §4.5-bis). Il blocco `EXCEPTION` del giro 9 si toglie, Tid 2026-11-25: `20261124-12`, §12.7) è deciso.
+> Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
 > (`969ea14566`), dal BE §4.5-§4.7 con D-J (`4271a0dc69`, PR #232), e il 2026-11-24 il lato DB del ritiro di
 > `reset_lotto_draft` con la pulizia della testata (§4.8). Dal BE, il 2026-11-24 (`5fc466c729`): il `None` del perimetro
 > che si rifiuta, il lato BE del ritiro di `reset_lotto_draft`, D-K5, D-K6 e D-I.4, e le richieste R-DB-K3, R-DB-K4 e
 > R-DB-I3. Dal DB, il 2026-11-24 su `dev/db-tid`: R-DB-K3 (§4.7) e R-DB-I3 (§4.8), applicate e verdi; il giro 16
-> (`3045e11677`) e il 2026-11-25 il giro 10 (§10.5), pushati. Il 2026-11-25 anche il giro 9 (§11.5), pushato. Da committare: niente.
+> (`3045e11677`) e il 2026-11-25 il giro 10 (§10.5), pushati. Il 2026-11-25 anche il giro 9 (§11.5), pushato. Da committare: il giro 11 (§12.5) e `20261124-12` (§12.7), applicati e verdi il 2026-11-25.
 >
 > **Brief vicini verificati (2026-11-23):**
 > [brief-db-magazzino-tutte-le-scritture-dal-verbo](../work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md)
@@ -184,9 +194,22 @@
     - [x] la doc auto-generata rigenerata (Tid, 2026-11-25)
     - [x] commit e push su `dev/db-tid` (2026-11-25)
     - [ ] il BE: i test che chiamano il verbo danno `registra_distinta` (§11.6)
-  - [ ] 11, la bolla di riconsegna
-  - [ ] 8, il fondo fattura: verbo pubblico e primitiva separati; prima si rileggono D10-D11 dello stesso brief. Se viene prima della 1-7, qui nasce `dbops.fn_pgtap_concedi_livello_area` (D-L a) e si ritirano le quattro copie
-  - [ ] 1-7, il reset del lotto: quattro verbi d'ingresso, due primitive chiuse
+  - [ ] 11, la bolla di riconsegna: il verbo col livello su `vendite.reso`, il perimetro del reso (§12)
+    - [x] analisi, nessuna decisione nuova (2026-11-25, §12)
+    - [x] changeSet, pgTAP nuovo, guide e `manual/`; prova sullo scratch (2026-11-25, §12.5)
+    - [x] apply e pgTAP come app: verdi, con `20261124-12` (Tid, 2026-11-25)
+    - [x] la doc auto-generata rigenerata (Tid, 2026-11-25)
+    - [ ] commit e push su `dev/db-tid`
+    - [ ] il BE: i test che chiamano il verbo senza il livello (§12.6)
+  - [ ] 8 + 1-7, un giro solo (D-T **b**, Tid, 2026-11-25): il fondo fattura (verbo pubblico e primitiva separati) e il reset del lotto (quattro verbi d'ingresso, tre primitive chiuse). Qui nasce `dbops.fn_pgtap_concedi_livello_area` (D-L a) e si ritirano le quattro copie (§13)
+    - [x] analisi della parte 8, D10-D11 rilette (2026-11-25, §13.1-13.4)
+    - [x] D-T **b**, D-U **a** (Tid, 2026-11-25, §13.3)
+    - [ ] analisi della parte 1-7, col passaggio senza azione (§13.5)
+    - [ ] le scelte della parte 1-7 e il via (Tid)
+    - [ ] changeSet, pgTAP, builder, guide e `manual/`; prova sullo scratch
+    - [ ] apply e pgTAP come app (Tid); doc auto-generata
+    - [ ] commit e push su `dev/db-tid`
+    - [ ] il BE: i test della Parte C del giro
 - [x] Giro 3 (2026-11-24, applicato da Tid con la fase `post` del provisioning, pgTAP verde; §7): le viste (§5): ~~prima i verbi delle scritture che il BE trova~~ (nessuna, §5.1), l'app con solo `SELECT` sulle viste,
   nelle tre sedi di `linee-guida-sql.md` §11.8, col pgTAP di postura a criterio e la guida dei permessi §7.4;
   il caso costruito passa dal criterio del loop, non da un `REVOKE` nel test (i privilegi di default danno il DML anche alle viste, §3-ter.4)
@@ -1991,10 +2014,247 @@ Chi cambia per primo: il DB. Nessuna firma cambia, nessuna GUC da togliere (il B
 `gestione-dei-pagamenti` — **indietro**, aggiornata nello stesso giro; il mirror non più orfano.
 `architettura-permessi-e-autorizzazioni` e `processi-pgagent-funzionali` — **coerenti**.
 
+## 12. Il giro 11, la bolla di riconsegna — analisi e giro scritto del 2026-11-25
+
+### 12.1 Che cosa c'è oggi (catalogo di dbdev, 2026-11-25)
+
+* **Il verbo**, `vendite.fn_genera_ddt_riconsegna`: `INVOKER`, senza guard del permesso, senza `search_path`. Lo
+  chiama il BE (`resi_repository.genera_ddt_riconsegna`, endpoint `ApiResoGeneraDdtRiconsegna`, §4.5) e, a DB, la
+  sola fixture `dbops.fn_pgtap_crea_ddt_riconsegna`. Scrive la bolla, i suoi indirizzi, le righe, il ponte
+  `resi_righe_riconsegne` e, se il reso è legato a un ordine, il fulfillment; poi proietta lo stato dell'ordine.
+* **Il trigger**, `script.trgfn_righe_guard_articolo_ammesso`, building block montato su sette tabelle di righe; la
+  porta la legge solo il montaggio `DDT_VENDITA` (`vendite.ddt_righe`). La porta è **già sulla riga**: la GUC
+  `zeroerp.ddt_riconsegna` vale l'id del reso, e l'articolo dev'essere fra le righe di quel reso. Manca il
+  proprietario: l'app accende la GUC con l'id di un suo reso e scrive diretta, su una bolla qualsiasi, una riga con un
+  articolo che la bolla non ammette più (diventato solo componente, obsoleto, d'altra natura).
+* **Il perimetro, oggi, lo fa la RLS.** Tutte le tabelle che il verbo legge e scrive hanno la policy dell'operatore
+  (`vendite.resi` e `vendite.ddt` sulla colonna `emittente_fiscale_id`, le figlie risolte dal padre). Un reso fuori
+  perimetro risponde `E_RESO_NOT_FOUND` (non si vede). Su `vendite.ddt` c'è anche la rete,
+  `trg_ddt_z10_guard_emittente_scope_ins_upd` (`script.trgfn_guard_emittente_scope('fiscale', …)`), che legge l'utente
+  di sessione e vale anche dentro una DEFINER; su `resi`, righe e ponti no.
+* **Il permesso dell'endpoint** (§4.5, §4.5-bis): nessuna azione, il livello `TUTTO` sull'oggetto `vendite.reso` con la
+  ricaduta sull'area. Non `conferma_reso`.
+
+### 12.2 Che cosa si cambia
+
+1. **Il verbo diventa `SECURITY DEFINER`** (`search_path` `pg_catalog, public, pg_temp`), con in prima riga
+   `script.fn_utente_di_sessione` e `script.fn_guard_livello(v_utente, 'vendite', 'reso', 'TUTTO')`: la stessa forma
+   dell'endpoint (oggetto, poi area), quindi nessun rifiuto nuovo. Firma e `RETURNS` ancorate come nell'ultimo
+   changeSet (`20261114-54`), identiche al vivo.
+2. **Il perimetro, una volta, sul reso.** La lettura del reso porta anche `r.emittente_fiscale_id`, la colonna che la
+   policy di `vendite.resi` legge; fuori perimetro (`script.fn_check_user_emittente_scope`, la stessa del giro 9)
+   risponde `E_RESO_NOT_FOUND`, come oggi, e **prima** dello stato (non dice se il reso d'altri è confermato). Tutto il
+   resto discende dal reso; la bolla nuova prende l'azienda dalla bolla d'origine, e la giudica la rete di
+   `vendite.ddt`. Nessun filtro ricopiato nelle query.
+3. **La porta**: la GUC si spegne all'ingresso; il trigger chiede in più `fn_is_proprietario_tabella(TG_RELID)`.
+   ⚠️ **Nessun blocco `EXCEPTION` che la svuoti in errore**, a differenza del giro 9: una GUC locale torna indietro da
+   sola quando la transazione o la sottotransazione si annulla (provato sul catalogo il 2026-11-25: dentro un blocco
+   `EXCEPTION` e con un `ROLLBACK TO SAVEPOINT` il valore torna quello di prima). Nel giro 9 il blocco è quindi
+   ridondante, e costa una sottotransazione per chiamata: Tid lo fa togliere (§12.7).
+4. **Nessuna primitiva da chiudere**: il verbo è l'unica strada e tiene l'`EXECUTE` all'app; niente in
+   `v_fn_riservate`.
+5. **I pgTAP**: uno nuovo, come app (sotto). I ventuno che chiamano il verbo o la fixture **non cambiano**: tutti
+   costruiscono il reso con `dbops.fn_pgtap_crea_reso`, che concede `conferma_reso` e con essa l'area `vendite` al
+   minimo, `TUTTO`, su cui l'oggetto ricade. Stesso esito senza e con il giro (§12.5).
+6. **D-L non entra**: il caso «senza permesso» si costruisce con un override sull'oggetto `vendite.reso` a `LETTURA`
+   (col tetto d'area vince il più restrittivo), scritto sul posto: è la prima occorrenza. Il builder del livello d'area
+   resta per il giro 8 o 1-7.
+
+### 12.3 Decisioni
+
+Nessuna. Il guard è quello già fissato in §4.5-bis; la strada è la D-A **a**.
+
+### 12.4 Le guide (`guide_coinvolte.py --oggetti` sui quattro oggetti, 2026-11-25)
+
+* `gestione-ddt` (`vendite.ddt_righe`): **indietro**. Diceva «la riconsegna è esente» senza dire che l'esenzione vale
+  solo dal verbo, né chi genera la riconsegna e su quale reso. Aggiornata: l'esenzione solo per le righe della
+  generazione e gli articoli del reso, il livello `TUTTO` sul reso e il perimetro, il verbo e il guard nel «Vedi anche».
+* `architettura-permessi-e-autorizzazioni` §7.4: **indietro** («i DDT di riconsegna si aprono ancora con la sola
+  GUC»). Aggiornata: la riconsegna porta nella GUC l'id del reso; restano aperti il reset dei lotti e il contabile.
+* `gestione-listini` (la tabella dei guard): **coerente**, non parla della porta.
+* `gestione-preventivi`, `statistiche-del-planner` (`vendite.ddt_righe`): **coerenti**, non toccano la riconsegna.
+* `pgtap-come-si-scrive-un-test` (la fixture `fn_pgtap_crea_ddt_riconsegna`): **coerente**, la fixture non cambia.
+* Orfano: `vendite.fn_genera_ddt_riconsegna`. Non più: è nel «Vedi anche» di `gestione-ddt`.
+* Rilancio sul diff (i due changeSet e il pgTAP, 2026-11-25): trenta guide, perché i corpi nominano i building block
+  che usano (`fn_log_and_raise_error`, `fn_check_articolo_riga`, `fn_check_user_emittente_scope`, i builder pgTAP…).
+  Il giro li usa senza cambiarli: tutte **coerenti**, salvo le due già aggiornate sopra.
+
+**Garanzie ritirate.** Nessuna. Il verbo smette di dipendere dalla RLS per il perimetro e lo rimette all'ingresso con
+la stessa risposta; il permesso è quello dell'endpoint; la porta si stringe.
+
+### 12.5 Il giro scritto — 2026-11-25
+
+| File | Che cosa |
+| --- | --- |
+| `20_code/script/20261124-10-update-trgfn-righe-guard-articolo-ammesso-porta-proprietario` | il guard: la porta della riconsegna chiede in più `fn_is_proprietario_tabella(TG_RELID)`; il resto invariato; `COMMENT` al presente. Corpo dal catalogo (ultimo `20261105-11`) |
+| `20_code/vendite/20261124-11-update-fn-genera-ddt-riconsegna-definer-guard-perimetro` | il verbo: `SECURITY DEFINER`, `search_path`; `fn_guard_livello(…, 'vendite', 'reso', 'TUTTO')` in prima riga; la GUC spenta all'ingresso; il perimetro del reso (passo 2-bis, `E_RESO_NOT_FOUND`); firma e `RETURNS` ancorate; `COMMENT` al presente. Corpo dal catalogo (ultimo `20261114-54`) |
+| `db/pgtap/vendite/test-porta-ddt-riconsegna-v1.sql` | nuovo, come app, plan 8: la forma; area `TUTTO` e oggetto `vendite.reso` a `LETTURA` (rifiuta, non scrive); la GUC sull'id del reso e la riga diretta con l'articolo diventato solo componente (rifiutata); due emittenti (il reso di B: `E_RESO_NOT_FOUND`, niente scritto, letto nel contesto di B); col permesso la bolla nasce con l'articolo del reso; GUC vuota dopo |
+| guide | `gestione-ddt` (data, «Vedi anche», l'esenzione, chi genera la riconsegna), `architettura-permessi-e-autorizzazioni` §7.4 |
+| `manual/` | `fn_genera_ddt_riconsegna` (DEFINER, «Chi la chiama, e su quale reso», la porta, nota di migrazione), `trgfn_righe_guard_articolo_ammesso` (la porta con il proprietario) |
+
+**La prova sullo scratch** (`prova_changeset.py`, owner, `ROLLBACK`; 2026-11-25). I due changeSet insieme: estratto
+eseguito per intero, catalogo identico dopo. Il pgTAP nuovo: con 7/8, rosso il 4 per costruzione (da owner il
+proprietario apre la porta: si vede solo come app); senza 2/8. I ventuno pgTAP che nominano il verbo, la porta o la
+fixture: stesso esito senza e con; i rossi già presenti (`test-ddt-righe-evase-dall-ordine-v1` 2,
+`test-fn-partite-merce-chiusura-v1`, `test-fn-situazione-merce-ordine-chiusura-v1`, `test-vw-situazione-merce-ordine-v1`
+1 ciascuno) sono di perimetro da owner, invariati. Presidi trasversali (`comment-al-presente`, `riferimenti-morti`,
+`security-definer-search-path`, catalogo dei messaggi, `fn-utente-di-sessione`, `app-definer-dichiarate`,
+`permessi-trigger-guard-emittente`): invariati. Pre-commit sui file nuovi: verde.
+
+⚠️ La prima stesura del pgTAP costruiva le due aziende con due `fn_pgtap_crea_mondo_cliente`: con un contesto aperto
+il builder riusa l'azienda di chi agisce, e le due erano la stessa (il 5 passava il perimetro). B ora nasce da
+`fn_pgtap_crea_emittente_operatore`, e il suo mondo nel suo contesto.
+
+✅ **Applicato da Tid il 2026-11-25**, insieme a `20261124-12` (§12.7): pgTAP come app verdi, `test-porta-ddt-riconsegna-v1`
+compreso il 4; doc auto-generata rigenerata.
+
+### 12.6 La richiesta al team BE/FE (dopo l'apply)
+
+Chi cambia per primo: il DB. Nessuna firma cambia, nessuna GUC da togliere (il BE non la accende, §4.2).
+
+* **I test che chiamano `vendite.fn_genera_ddt_riconsegna`** (o la fixture `dbops.fn_pgtap_crea_ddt_riconsegna`)
+  con un operatore senza il livello `TUTTO` su `vendite.reso` (né sull'area `vendite`) ricevono `E_PERMESSO_NEGATO`.
+  La ricerca è del nome, non un elenco chiuso: in §4.5, Parte C, il BE non ne aveva trovati (gli smoke dei resi passano
+  dall'endpoint).
+* **Il perimetro**: un reso di un'altra azienda risponde `E_RESO_NOT_FOUND` come prima (il 404 non cambia).
+* **Il manuale BE** dell'endpoint di generazione della riconsegna, se racconta chi può generarla.
+
+### 12.7 Il blocco `EXCEPTION` del giro 9 si toglie — 2026-11-25
+
+✅ **Decisione di Tid, 2026-11-25**: si toglie. `20_code/pagamenti/20261124-12-update-fn-posta-riga-tardiva-senza-blocco-exception`:
+le tre scritture di `pagamenti.fn_posta_riga_tardiva` tornano nel corpo, nello stesso ordine, senza il blocco che
+svuotava la GUC e rilanciava; la porta si accende e si richiude come prima. Firma, `SECURITY DEFINER`, `search_path`,
+permesso e perimetro identici al vivo; il `COMMENT` dice che in errore la porta la richiude il rollback. Corpo dal
+catalogo (ultimo `20261124-08`), con il rollback al corpo di prima. Manuale `fn_posta_riga_tardiva` allineato.
+
+**La prova sullo scratch** (2026-11-25): da solo e insieme al giro 11, estratto per intero e catalogo identico dopo.
+`test-porta-registrazione-tardiva-v1` 10/11 senza e con (il 6 rosso per costruzione da owner),
+`test-posta-riga-tardiva-v1` 19/19, `test-righe-distinta-annullata-congelate-v1` 22/22, `test-fn-posta-contabile` 19/19,
+`comment-al-presente` e `security-definer-search-path` invariati.
+
+⚠️ Che la GUC torni indietro in errore non lo fissa nessun pgTAP: proverebbe la semantica di PostgreSQL, non il
+verbo. Il fatto è scritto qui e nel `COMMENT`; il test 11 della porta 9 fissa la GUC vuota dopo una chiamata buona.
+
+Nessuna richiesta al BE: niente cambia per chi chiama.
+
+## 13. Il giro 8, il fondo fattura — analisi del 2026-11-25
+
+### 13.1 Che cosa c'è oggi (catalogo di dbdev, 2026-11-25)
+
+* **La decisione che il giro rispetta** (D10-D11 di `brief-incassi-riconciliazione-rate-promemoria`, rilette): il fondo
+  vale il residuo alla nascita e non insegue; `ESEGUITO` è un fatto e non si cancella mai; il reset cancella l'atto non
+  eseguito e il giro successivo ne rifà uno nuovo. Il giro non cambia **che cosa** si cancella: cambia **come gira**.
+* **La sede dei tre DELETE**, `vendite.fn_cancella_fondo_fattura`: `INVOKER`, senza guard, senza `search_path`. Legge
+  l'atto (`FOR UPDATE`), chiede il motivo a `vendite.fn_check_fondo_cancellabile`, e cancella righe contabili, fondo
+  applicato e atto, aprendo la porta con `SET LOCAL zeroerp.allow_contabile_riga_delete_override = 'on'`. Tre chiamanti,
+  ciascuno col suo permesso:
+  * il BE, endpoint `ApiFondoFatturaDelete` (azione `governa_fondo_fattura`);
+  * `pagamenti.fn_annulla_sistemazione` (`INVOKER`), che il BE chiama dall'endpoint `ApiSistemazioneAnnulla` (livello
+    `TUTTO` sull'**area** `pagamenti`, senza oggetto, §4.5);
+  * `vendite.fn_reset_fondi_fattura` (`INVOKER`), nella catena del reset del lotto (giro 1-7).
+* **Il trigger**, `pagamenti.trgfn_vendite_contabili_righe_guard_contenuto`, ramo `DELETE`: la porta è un
+  **interruttore** (`on`/`true`/`1`), per tutte le righe, senza il proprietario. Oggi l'app la accende e cancella
+  qualunque riga sotto una distinta GENERATA o chiusa.
+* **Il criterio**, `vendite.fn_check_fondo_cancellabile`: con `zeroerp.maintenance_reset_lotto_draft` accesa salta il
+  controllo della figlia congelata (§3-ter.3). Oggi l'app accende quella GUC e cancella il fondo di una figlia già
+  congelata, dall'endpoint o diretta.
+* **Il perimetro, oggi, lo fa la RLS**: l'atto (`fatture_fondi_fattura_source`) e la sistemazione si vedono se
+  l'emittente del loro `emittente_soggetto_ruolo_id` è nel perimetro; fuori rispondono `E_FONDO_NON_TROVATO` e
+  `E_SISTEMAZIONE_NON_TROVATA` (no-leak). Su `vendite_contabili_righe` c'è anche la rete di scope.
+
+### 13.2 Che cosa si cambia
+
+1. **La primitiva**: i tre DELETE e il criterio passano a una funzione nuova, `vendite.fn_applica_cancellazione_fondo_fattura`
+   (`SECURITY DEFINER`, nessun guard del permesso: la gemella di `fn_applica_user_emittenti_scope` del giro 10;
+   senza `EXECUTE` all'app, in `v_fn_riservate`, D-T **b**). Rimette
+   il perimetro **una volta**, sull'atto: fuori risponde `E_FONDO_NON_TROVATO`, come oggi. Accende la porta **sulla
+   riga**: la GUC vale l'id dell'atto, non `on`.
+2. **Il verbo pubblico**, `vendite.fn_cancella_fondo_fattura` (stessa firma: il BE non cambia): `SECURITY DEFINER`, in
+   prima riga `fn_guard_azione(…, 'governa_fondo_fattura')`, spegne all'ingresso le due GUC (la porta 8 e quella del reset
+   del lotto, che dentro il verbo farebbe saltare la figlia congelata), poi chiama la primitiva.
+3. **`fn_annulla_sistemazione`**: `SECURITY DEFINER`, il guard del livello `TUTTO` sull'area `pagamenti` (D-U), il
+   perimetro della sistemazione all'ingresso (`E_SISTEMAZIONE_NON_TROVATA`, come oggi), le due GUC spente, la primitiva
+   al posto del verbo pubblico: chi annulla una sistemazione non deve avere anche `governa_fondo_fattura`.
+4. **Il trigger**: il ramo `DELETE` apre se la GUC vale `OLD.fondo_source_id` **e** chi scrive è il proprietario.
+5. **`fn_reset_fondi_fattura`** chiama la primitiva invece del verbo pubblico, e diventa anch'essa una primitiva chiusa:
+   la chiamano solo i verbi DEFINER del reset del lotto, che nascono nello stesso giro (D-T **b**, §13.5).
+6. **I pgTAP**: uno nuovo, come app (la porta con la GUC accesa dall'app: si ferma, con `on` e con l'id giusto; senza
+   `governa_fondo_fattura` e senza il livello d'area: `E_PERMESSO_NEGATO`; due emittenti: l'atto e la sistemazione
+   dell'altro non ci sono; la GUC del reset accesa dall'app non fa più cancellare il fondo di una figlia congelata dal
+   verbo). Nasce `dbops.fn_pgtap_concedi_livello_area` (D-L **a**) e le quattro copie `pg_temp.livello_area` si ritirano
+   nello stesso giro. Si adeguano `test-righe-contabili-eliminazione-v1` (il 27 apriva la porta da sé: diventa il
+   controesempio) e il cleanup di `test-fondi-fattura-governo` (la porta non si apre più; lo fa il `ROLLBACK`); gli altri
+   quattro che chiamano verbo o sistemazione ricevono l'azione o il livello dal builder.
+7. **Le guide**: `gestione-dei-pagamenti` (il fondo e la sistemazione, chi può), `fatturazione` (il criterio),
+   `architettura-permessi-e-autorizzazioni` §7.4 (il contabile esce dalle porte aperte). Il verbo è orfano: entra nel
+   «Vedi anche» di `gestione-dei-pagamenti`.
+8. **La richiesta al BE**: `CancellaFondoFatturaBindingTests` (§4.5, Parte C) e i test che annullano una sistemazione
+   senza il livello d'area.
+
+### 13.3 Due scelte per Tid
+
+* **D-T, la primitiva fino al giro 1-7.** La primitiva la chiamano tre strade, e una, il reset del lotto, gira ancora
+  `INVOKER` fino al giro 1-7: se la primitiva perde ora l'`EXECUTE` all'app, il reset si rompe.
+  **a** la primitiva tiene l'`EXECUTE` all'app fino al giro 1-7, dichiarata come debito di un giro, col perimetro
+  dentro; il giro 1-7 la mette in `v_fn_riservate`. Fino ad allora l'app può chiamarla diretta senza
+  `governa_fondo_fattura` (come oggi) e con la GUC del reset accesa saltare la figlia congelata (come oggi); la porta
+  del DELETE diretto si chiude subito · **b** i giri 8 e 1-7 si fanno insieme, in un giro solo. ⭐ **a**: il giro 8
+  chiude subito le due strade dirette (la porta e il verbo) e non peggiora niente; la chiusura completa è il giro 1-7,
+  che va comunque fatto e tocca già la primitiva.
+  ✅ **Decisa da Tid il 2026-11-25: b.** Nessun debito di un giro: la primitiva nasce già chiusa, e il giro 8 si fa
+  insieme al giro 1-7 (§13.5).
+* **D-U, il livello sull'area senza oggetto** (§4.5-bis, punto 2). L'endpoint di `fn_annulla_sistemazione` chiede
+  `TUTTO` sull'area `pagamenti`; `fn_guard_livello` vuole un oggetto, e nessun BB lo dice per la sola area.
+  **a** il guard sul posto con `script.fn_resolve_livello_area` (gate di contesto e SUPER_ADMIN già dentro), stesso
+  codice e stessa forma del rifiuto di `fn_guard_livello`: è la prima occorrenza, alla seconda diventa un BB
+  (`fn_guard_livello_area`) · **b** si sceglie un oggetto di `pagamenti` che la sistemazione rappresenta e si passa a
+  `fn_guard_livello`: cambia ciò che il BE controlla (un override d'oggetto vincerebbe sull'area), quindi va chiesto al
+  BE. ⭐ **a**: è ciò che l'endpoint fa oggi, senza rifiuti nuovi.
+  ✅ **Decisa da Tid il 2026-11-25: a.** Il guard sta nel verbo, con lo stesso rifiuto di `fn_guard_livello`; se nel
+  giro 1-7 serve una seconda volta (il passaggio senza azione ricade sul livello dell'area `vendite`, §4.5-bis punto
+  3), nasce lì il BB `fn_guard_livello_area` e il guard sul posto si ritira nello stesso giro (regola del 2).
+
+### 13.4 Le guide (`guide_coinvolte.py --oggetti` sui sei oggetti, 2026-11-25)
+
+* `gestione-dei-pagamenti` (la sistemazione, il guard del contenuto, l'atto, il reset): **indietro dopo il giro**,
+  si aggiorna nello stesso giro.
+* `fatturazione` (il criterio come predicato): **coerente** oggi; dopo il giro va detto che la GUC del reset non vale
+  dai verbi pubblici.
+* Orfano: `vendite.fn_cancella_fondo_fattura`, un concetto del dominio (il gesto «cancella il fondo»): entra nel «Vedi
+  anche» di `gestione-dei-pagamenti`.
+
+**Garanzie ritirate.** Nessuna: il perimetro passa dalla RLS al controllo all'ingresso con la stessa risposta; i
+permessi sono quelli degli endpoint; due porte si stringono.
+
+### 13.5 La parte 1-7 entra nel giro (D-T **b**) — da analizzare
+
+Con D-T **b** il giro 8 non si scrive da solo. Prima della scrittura serve l'analisi della parte 1-7, che oggi è
+solo nelle tabelle di §4.3 e §4.5-bis. L'analisi copre:
+
+* **i quattro verbi d'ingresso**: `fn_annulla_lotto_da_draft`, `fn_riporta_lotto_a_draft`, `fn_elimina_fattura_da_lotto`,
+  `fn_escludi_documento_da_giro`. Diventano DEFINER, col guard e il perimetro all'ingresso. Il guard di ognuno sta in
+  §4.5-bis; il task `reset_lotto_draft` è già ritirato (§4.8), quindi c'è una strada in meno;
+* **le primitive chiuse**: `fn_cleanup_fatture_by_ids`, `fn_reset_fondi_fattura` e la primitiva del fondo di §13.2,
+  tutte e tre in `v_fn_riservate`. La GUC del reset diventa sulla riga, e il criterio `fn_check_fondo_cancellabile` la
+  legge solo da dentro un verbo;
+* **il passaggio senza azione** (§4.5-bis punto 3): si decide se il verbo rifà la ricaduta del BE sul livello `TUTTO`
+  dell'area `vendite`, e che cosa risponde `fn_riporta_lotto_a_draft` su un lotto già in bozza. È la scelta di Tid che
+  l'analisi prepara. Se la ricaduta sul livello resta, è la seconda occorrenza del guard d'area di D-U, e nasce il BB;
+* **i pgTAP e le guide** della parte 1-7, che si aggiungono a quelli di §13.2 e §13.4, e la richiesta al BE, che si
+  unisce in una sola;
+* **l'utente tecnico della pipeline**, che chiama i verbi del reset: deve avere i permessi dei verbi (§4.3).
+
+Lo sviluppo parte solo dopo l'analisi, le scelte che apre e il via di Tid.
+
 ## Registro
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-25 | Tid | Giro 8: D-T **b** (i giri 8 e 1-7 in un giro solo, la primitiva del fondo nasce chiusa) e D-U **a** (il guard del livello d'area sul posto). Brief aggiornato: piano fuso, §13.3 chiusa, §13.5 l'analisi della parte 1-7 da fare; lo sviluppo non parte |
+| 2026-11-25 | DB | Giro 8, analisi (§13): D10-D11 rilette; primitiva DEFINER dei tre DELETE col perimetro sull'atto e la porta sulla riga, verbo pubblico col guard di `governa_fondo_fattura`, `fn_annulla_sistemazione` DEFINER col livello d'area, la GUC del reset spenta dai verbi pubblici; D-T e D-U a Tid. Ordine deciso da Tid: giro 8, poi K1 e K4 insieme |
+| 2026-11-25 | Tid | Giro 11 e `20261124-12` applicati, pgTAP come app verdi, doc auto-generata rigenerata (§12.5, §12.7); al BE il 6d-quinquies |
+| 2026-11-25 | DB | `20261124-12` scritto e provato (§12.7): il blocco `EXCEPTION` ridondante tolto da `fn_posta_riga_tardiva`, decisione di Tid; manuale allineato |
+| 2026-11-25 | DB | Giro 11 analizzato e scritto (§12): `20261124-10` (la porta col proprietario), `-11` (il verbo DEFINER col livello `TUTTO` su `vendite.reso` e il perimetro del reso all'ingresso); pgTAP nuovo, i ventuno esistenti invariati; guide `gestione-ddt` e §7.4 dei permessi, `manual/`; provato sullo scratch; richiesta al BE (§12.6). Trovato che il blocco `EXCEPTION` del giro 9 è ridondante (a Tid) |
 | 2026-11-25 | DB | Commit e push su `dev/db-tid`: giro 9 (§11.5) |
 | 2026-11-25 | Tid | Giro 9 applicato, pgTAP come app verdi dopo la correzione del test 9 (la riga di B letta nel contesto di B), doc auto-generata rigenerata (§11.5); al BE il 6c-quinquies |
 | 2026-11-25 | DB | Giro 9 scritto e provato (§11.5): `20261124-07` (la porta col proprietario), `-08` (il verbo DEFINER col guard di `registra_distinta` e il perimetro all'ingresso), `-09` (D-S a, il guard di scope del movimento dopo il mirror); pgTAP nuovo, quattro adeguati, guida `gestione-dei-pagamenti` e `manual/`; richiesta al BE (§11.6) |

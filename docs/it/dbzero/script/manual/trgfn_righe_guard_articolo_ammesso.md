@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.trgfn_righe_guard_articolo_ammesso`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -76,10 +76,13 @@ una riconsegna legata a un ordine è uguale a quella di una bolla da ordine. Qui
 passa da una **porta del verbo**: `vendite.fn_genera_ddt_riconsegna` accende
 `zeroerp.ddt_riconsegna` con l'id del reso mentre scrive le righe, e la spegne subito dopo.
 
-⭐ La porta è **stretta**: esenta solo una riga il cui articolo sta fra le righe di **quel**
-reso. Il verbo è `SECURITY INVOKER`, quindi manca il controllo «proprietario della tabella»
-delle altre porte: senza questo vincolo una GUC accesa per sbaglio esenterebbe qualunque
-articolo.
+⭐ La porta chiede tre cose insieme: la GUC vale l'id di un reso, l'articolo della riga sta fra
+le righe di **quel** reso, e chi scrive è il proprietario della tabella
+(`script.fn_is_proprietario_tabella`). Le tre si hanno solo dentro il verbo, che è
+`SECURITY DEFINER`: l'applicazione può accendere la GUC da sé, ma una riga scritta diretta resta
+giudicata come le altre. Per questo il guard resta `SECURITY INVOKER`: è ciò che fa vedere al
+controllo chi scrive davvero. Prova: `test-porta-ddt-riconsegna-v1.sql` (come app) e
+`test-righe-articolo-ammesso-v1.sql` (14-16).
 
 ---
 {% include-markdown "signature-core.md" %}
