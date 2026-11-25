@@ -495,13 +495,15 @@ class LottoPipelineRunner:
         return steps
 
     # Scopo: Valuta se eseguire il rollback automatico dello step in rerun: corsia MASSIVO
-    #        in errore, step DRAFT o EMESSA, `meta.auto_step_rollback` acceso sulla
-    #        PIPELINE dello step, e un `rollback` non vuoto nella stessa pipeline.
-    # ⛔ Il flag non viene piu' dal body della richiesta (2026-11-24, D-I.4 a):
-    #    chi lanciava il giro decideva se un rollback partiva da solo. Ora e'
-    #    configurazione della corsia (`is_auto_step_rollback_attivo`), come dice
-    #    la guida `fatturazione` (§ rollback); il `meta` del body resta il `meta`
-    #    del lotto, e basta.
+    #        in errore, step DRAFT o EMESSA, e il DB che dice si'
+    #        (`is_rollback_step_automatico`: il flag della corsia, un rollback non
+    #        vuoto, nessun task distruttivo, sconosciuto o spento).
+    # ⛔ La decisione non si ricompone qui (R-DB-I3, passo 3n, 2026-11-25): fino
+    #    al 2026-11-24 il runner leggeva da se' il flag e la lista, e prima
+    #    ancora escludeva per NOME `reset_lotto_draft`. Un elenco di nomi non
+    #    protegge il task che verra'; «distruttivo, mai in auto-run» lo dichiara
+    #    il registro dei task, e la regola la applica una funzione sola.
+    #    Il flag non viene dal body della richiesta (D-I.4 a, 2026-11-24).
     def _should_execute_auto_step_rollback(
         self,
         *,
@@ -516,27 +518,12 @@ class LottoPipelineRunner:
             and step.stato_doc_fiscale_id in rerun_reset_step_ids
         ):
             return False
-        if not self.repository.is_auto_step_rollback_attivo(
+        return self.repository.is_rollback_step_automatico(
             step.stato_doc_fiscale_id,
             tipo_lotto=effective_tipo_lotto,
             utility_id=lotto_context.utility_id,
             tipo_doc_fiscale_id=lotto_context.tipo_doc_fiscale_id,
-        ):
-            return False
-        rollback_processes = self.repository.get_step_processes(
-            step.stato_doc_fiscale_id,
-            tipo_lotto=effective_tipo_lotto,
-            utility_id=lotto_context.utility_id,
-            tipo_doc_fiscale_id=lotto_context.tipo_doc_fiscale_id,
-            rollback=True,
         )
-        # ⚠️ Fino al 2026-11-24 qui si escludeva per NOME `reset_lotto_draft`,
-        #    l'unico rollback distruttivo del seed. Il task e' ritirato (D-I) e
-        #    con lui l'esclusione: un elenco di nomi non protegge il task che
-        #    verra', lo nasconde. La proprieta' «distruttivo, mai in auto-run»
-        #    la dichiara il DB (R-DB-I3, brief-db-porte-aperte-dalla-sola-guc
-        #    §4.8): dopo il suo push questo metodo la legge da li'.
-        return bool(rollback_processes)
 
     # Scopo: Gestisce un singolo step pipeline aggiornando stato lotto, log di fase e sincronizzazione esito fatture
     def _execute_pipeline_step(

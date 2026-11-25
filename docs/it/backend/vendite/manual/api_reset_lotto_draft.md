@@ -22,6 +22,11 @@ View `ApiResetLottoDraft` → `fn_annulla_lotto_da_draft`
   di brief-modello-documento-vendita, 2026-10-27), e decide il **livello sul
   documento** (area `vendite`). Se la matrice le dà un'azione, il gate la segue.
   Prima chiedeva `reset_lotto_draft`, ritirata dal catalogo.
+- Il permesso lo ricontrolla anche il DB (dal 2026-11-25, giro 8 + 1-7 di
+  `brief-db-porte-aperte-dalla-sola-guc` §13): il verbo è `SECURITY DEFINER` e chiede il
+  livello `TUTTO` sull'area `vendite` (D-X), dopo aver letto il lotto nel perimetro
+  (`E_LOTTO_NON_TROVATO` fuori, come prima). Col tetto d'area il livello sul documento non
+  supera quello dell'area, quindi ciò che il gate ammette lo ammette anche il verbo.
 - Body JSON: vuoto
 
 ## Output
@@ -40,6 +45,9 @@ View `ApiResetLottoDraft` → `fn_annulla_lotto_da_draft`
   run e lascia un guscio col fiscale `ANNULLATA` (fuori dal registro lotti di
   default, vedi [api_lotti_list.md](api_lotti_list.md)).
 - Pattern core `handle_post_json(..., require_idempotency_key=True)`.
+- ⛔ La pulizia apre le porte dei guard (fatture, satelliti, attività, log) solo mentre lavora, dentro
+  il verbo: la GUC `zeroerp.maintenance_reset_lotto_draft` accesa dall'app non apre niente, e il
+  backend non la accende (giro 8 + 1-7).
 
 ## Ritorno a bozza — `POST lotti/{lotto_id}/riporta-a-draft/`
 
@@ -53,6 +61,9 @@ View `ApiResetLottoDraft` → `fn_annulla_lotto_da_draft`
   §15.13), mai un `'DRAFT'` scritto nel backend. Su un lotto già in bozza (sola
   pulizia) la riga non c'è e basta il livello sul documento. Prima chiedeva
   `reset_lotto_draft`, ritirata dal catalogo. `Idempotency-Key` obbligatorio, body vuoto.
+- Anche qui il DB ricontrolla (giro 8 + 1-7): il verbo `SECURITY DEFINER` legge il lotto nel
+  perimetro, poi chiede `numera_fatture_lotti` da EMESSA e il livello `TUTTO` sull'area
+  `vendite` sul lotto già in bozza, come il gate.
 - È la via d'uscita da EMESSA, dove l'annullamento è rifiutato: il lotto torna in
   lavorazione e il giro successivo rifà lo step (`riaperto`). Precondizioni (tipo
   lotto, stato, nessuna fattura numerata) nella funzione DB.

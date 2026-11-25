@@ -453,7 +453,8 @@ di password condivise, annotate su post-it o inviate in chiaro su canali non sic
 
 ### Il primo amministratore di un'installazione nuova
 
-L'invito presuppone un amministratore che inviti. Il primo di un'installazione nuova non ce l'ha: lo crea un comando
+L'invito presuppone un amministratore che inviti. Il primo di un'installazione nuova non ce l'ha: lo crea il comando
+`manage.py crea_primo_amministratore` (come si lancia: [Installazione](/installazione), «Il primo amministratore»),
 che si lancia una volta, dopo l'installazione, e che chiama
 [`anagrafiche.fn_crea_primo_amministratore`](/dbzero/anagrafiche/funzioni/fn_crea_primo_amministratore). Chi lo lancia
 è la persona che diventerà amministratore, e la password la sceglie lei: è l'unico account che nasce con una password

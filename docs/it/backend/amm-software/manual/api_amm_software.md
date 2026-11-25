@@ -952,6 +952,12 @@ curl -H "Authorization: Bearer <token>" \
   l'unico attivo, il cambio scope -> SINGLE viene rifiutato con
   `E_PROFILO_ULTIMO_SUPER_ADMIN` (HTTP 409). Il preview `can_change_scope`
   lato detail e' fast-path UX, non garanzia (race tra sessioni).
+- **Chi puo' cambiarlo: solo un SUPER_ADMIN, e lo dice il DB.** Dal 2026-11-25 (giro 10 di
+  `brief-db-porte-aperte-dalla-sola-guc` §10) `fn_change_user_emittenti_scope` e' `SECURITY DEFINER` e in
+  prima riga chiama `script.fn_guard_super_admin`: chi non lo e' riceve `403` `E_PERMESSO_NEGATO`, anche
+  arrivando al DB per un'altra strada. E' la stessa regola di `AdminAPIView`, quindi dall'endpoint nessun
+  rifiuto nuovo. La riga di scope si toglie solo dal verbo: la porta
+  `zeroerp.allow_user_emittente_delete_override` accesa dall'app non apre piu' niente.
 - Invalida la cache permessi dell'utente.
 
 **Risposta:** stesso shape del GET §2.5 con i valori post-change (rilettura

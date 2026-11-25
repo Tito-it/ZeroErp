@@ -150,9 +150,18 @@ Il criterio sta in `vendite.fn_check_fondo_cancellabile`, che la madre legge
 | `FIGLIA_CONGELATA` | `E_FONDO_FIGLIA_CONGELATA` | **409** |
 | `SISTEMAZIONE_ATTIVA` | `E_FONDO_TRATTENUTO_DA_SISTEMAZIONE` | **409** |
 
-⛔ **«Non esiste» e «non è tuo» danno la stessa risposta**, di proposito: la
-tabella ha la row security, e distinguerle direbbe a chi è fuori perimetro che
-quel fondo c'è.
+⛔ **«Non esiste» e «non è tuo» danno la stessa risposta**, di proposito:
+distinguerle direbbe a chi è fuori perimetro che quel fondo c'è.
+
+⭐ **Il permesso e il perimetro li ricontrolla il DB** (dal 2026-11-25, giro 8 di
+`brief-db-porte-aperte-dalla-sola-guc` §13). La madre è `SECURITY DEFINER`: in
+prima riga chiede `governa_fondo_fattura` (`403` `E_PERMESSO_NEGATO` a chi non ce
+l'ha, prima di dire qualunque cosa sul fondo), poi chiama la primitiva
+`vendite.fn_applica_cancellazione_fondo_fattura`, chiusa all'app. È la primitiva
+a rimettere il perimetro dell'atto, che fuori risponde `E_FONDO_NON_TROVATO`, e
+ad aprire la porta del guard **sulla riga**, solo per quell'atto. ⛔ La porta non
+la apre più una GUC accesa dall'app, né quella del fondo né quella del reset del
+lotto: il backend non accende niente.
 
 ⭐ **Il service usa `translate_db_errors` e non un elenco locale di codici
 ammessi**, ed è una scelta: quel predicato ha **sei** motivi dove il piano ne
@@ -164,10 +173,11 @@ il suo **bersaglio** (la fattura — sorgente o figlia secondo il motivo).
 ### 🔴 Guard di canale
 
 Il repository rifiuta la chiamata da un ruolo `BYPASSRLS`. È lo stesso presidio
-dell'elenco, ma **pesa di più**: la madre è `SECURITY INVOKER` e si appoggia alla
-row security accesa da D-20. Su un canale di sistema il perimetro emittente
-sparisce, e qui non si *leggerebbe* l'atto di un altro emittente — lo si
-**cancellerebbe**. ⚠️ Un conteggio non lo troverebbe: l'operazione riuscirebbe.
+dell'elenco. Fino al 2026-11-24 pesava di più, perché la madre era `SECURITY
+INVOKER` e il perimetro lo faceva solo la row security: su un canale di sistema
+spariva, e l'atto di un altro emittente si sarebbe **cancellato**. Dal giro 8 il
+perimetro lo rimette la primitiva per l'utente della sessione. Il guard resta,
+perché un canale di sistema non è l'operatore della richiesta: il gesto è suo.
 
 ## Dipendenze DB
 

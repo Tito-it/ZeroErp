@@ -245,11 +245,11 @@ macchina si perde al primo `git pull`, o peggio diverge in silenzio. Le
 impostazioni e la loro verifica: [Configurazione Django](configurazione-django.md),
 «Sicurezza della superficie pubblica».
 
-## 11) Migrazioni, privilegi, superuser, avvio
+## 11) Migrazioni, privilegi, primo amministratore, avvio
 
 L'ordine: **Liquibase** (lo applica chi ha i diritti sul DB, da `db/`, vedi
 [liquibase-setup-workflow](/liquibase-setup-workflow)) → **`manage.py migrate`
-come migratore** → **provisioning** (§7-bis) → superuser e avvio.
+come migratore** → **provisioning** (§7-bis) → primo amministratore e avvio.
 
 `manage.py migrate` crea le tabelle dello schema `django`, che appartengono al
 migratore come il resto: si lancia con le credenziali del migratore, **non** con
@@ -265,21 +265,40 @@ DB_USER=${DB_MIGRATOR} DB_PASSWORD='⚠️PasswordMigratore' .venv/bin/python ma
 sudo -u $APP_USER bash -lc "
 cd $APP_DIR/backend
 ./manage-env.sh collectstatic --noinput
-./manage-env.sh createsuperuser
 "
 systemctl start zeroerp-gunicorn
 ```
 
-Il superuser è il primo utente con cui si entra **dal frontend**: l'admin
-Django non esiste.
+Poi il **primo amministratore**, che è il primo utente con cui si entra **dal frontend** (l'admin Django
+non esiste). Lo crea `crea_primo_amministratore`, lanciato dalla persona che lo sarà: chiede la password due
+volte, chiama il verbo DB `anagrafiche.fn_crea_primo_amministratore` con l'hash, e l'account nasce con la veste
+OPERATORE accesa e il legame `SUPER_ADMIN`, senza invito.
 
-⚠️ **Da solo non basta, ed è un buco aperto** (2026-11-24). `createsuperuser` crea solo la credenziale:
-il login chiede una veste attiva (senza, 403 `E_VESTE_NON_ATTIVA`), e il flag `is_superuser` dal 2026-11-24
-non concede niente (D-J di `brief-db-porte-aperte-dalla-sola-guc` §4.6): l'amministratore è il binding
-`SUPER_ADMIN`, che si crea col verbo `anagrafiche.fn_crea_operatore_v2(…, p_is_super_admin)`. Come lo si
-chiama sul primo amministratore di un'installazione nuova non è ancora scritto: la D-K di quel brief (§4.7) l'ha
-decisa, con un verbo DB di primo impianto e un comando che sostituirà `createsuperuser`; finché non ci sono, questo
-passo non dà un amministratore.
+```bash
+sudo -u $APP_USER bash -lc "
+cd $APP_DIR/backend
+./manage-env.sh crea_primo_amministratore \\
+  --cognome Rossi --nome Anna --codice-fiscale RSSNNA80A41H501X --sesso F \\
+  --email anna.rossi@azienda.it --username anna.rossi \\
+  --residenza '{\"indirizzo_libero\": \"Via Roma 1\", \"stato_id\": 1, \"comune_id\": 5, \"codice_postale_id\": 9}'
+"
+```
+
+* `--residenza` è obbligatoria, un oggetto JSON nella forma di `anagrafiche.fn_crea_indirizzo_soggetto` senza il
+  tipo (libero, dettaglio già risolto o via da risolvere); `--domicilio-fiscale` è facoltativo, e se manca è la
+  residenza. Facoltativi anche `--data-nascita` (AAAA-MM-GG) e `--comune-nascita-id`. Gli id (`stato_id`,
+  `comune_id`, `codice_postale_id`) si leggono con `dbshell`: le due query sono in
+  [Installazione](/installazione), «Il primo amministratore».
+* Senza terminale: `--noinput` e la password in `ZEROERP_PRIMO_AMMINISTRATORE_PASSWORD`, mai come argomento.
+* Email già di una credenziale (`E_CREDENZIALE_DA_CONFERMARE`, per esempio una creata col vecchio
+  `createsuperuser`): il comando la mostra e chiede se riusarla; con `--noinput` la si dichiara con
+  `--riusa-credenziale <auth_user_id>`. Riusata, nome utente e password restano i suoi.
+* Si apre solo finché nessuna veste ha mai avuto un legame `SUPER_ADMIN`: dopo esce con
+  `E_PRIMO_AMMINISTRATORE_GIA_PRESENTE`. Non è una strada di recupero: un sistema che ha perso i suoi
+  amministratori se ne esce dal proprietario del DB (nota `_ultimo-super-admin`).
+
+⛔ Non `createsuperuser`: crea solo la credenziale, senza veste (il login risponde 403 `E_VESTE_NON_ATTIVA`), e il
+flag `is_superuser` non concede niente dal 2026-11-24 (D-J di `brief-db-porte-aperte-dalla-sola-guc` §4.6).
 
 ## 12) UFW finale (solo Tailscale per SSH)
 

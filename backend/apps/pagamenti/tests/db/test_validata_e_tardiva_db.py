@@ -63,6 +63,12 @@ _FIXTURE_MONDO: tuple[str, ...] = (
     """
     SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))
     """,
+    # Dal giro 9 (brief-db-porte-aperte-dalla-sola-guc §11) la registrazione
+    # tardiva chiede l'azione dell'endpoint, `registra_distinta`: il test la
+    # da' al suo operatore, come la darebbe il pannello dei permessi.
+    """
+    SELECT dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM _mondo), 'registra_distinta')
+    """,
     """
     CREATE TEMP TABLE _cli_vt AS
     SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('validata e tardiva') c

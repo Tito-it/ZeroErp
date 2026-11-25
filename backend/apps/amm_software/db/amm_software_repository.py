@@ -621,6 +621,69 @@ class AmmSoftwareRepository:
                 "credenziale_riusata": bool(row[2]),
             }
 
+    # Scopo: Crea il PRIMO SUPER_ADMIN di un'installazione nuova, dal verbo DB
+    #        `anagrafiche.fn_crea_primo_amministratore` (R-DB-K1, D-K7 b,
+    #        brief-db-porte-aperte-dalla-sola-guc §4.9). Lo chiama solo il comando
+    #        `crea_primo_amministratore`. Ritorna {auth_user_id, username,
+    #        credenziale_riusata}, come `crea_operatore`.
+    # ⭐ Tutto il resto e' del verbo: si apre solo se nessuna veste ha mai
+    #    avuto un legame SUPER_ADMIN (`E_PRIMO_AMMINISTRATORE_GIA_PRESENTE`),
+    #    sceglie la qualifica `AMMINISTRATORE`, compone `fn_crea_operatore_v2`
+    #    (i suoi rifiuti, compreso `E_CREDENZIALE_DA_CONFERMARE`, valgono qui),
+    #    scrive gli indirizzi e accende la veste. Il backend calcola l'hash.
+    # ⚠️ Gli indirizzi viaggiano come jsonb nella forma di
+    #    `fn_crea_indirizzo_soggetto`, SENZA il tipo: il tipo lo dice il
+    #    parametro (residenza, domicilio fiscale). Gli indirizzi obbligatori li
+    #    giudicano guard DIFFERITI: il rifiuto arriva al COMMIT, non qui.
+    def crea_primo_amministratore(
+        self,
+        *,
+        cognome: str,
+        nome: str,
+        codice_fiscale: str,
+        sesso: str,
+        email: str,
+        username: str,
+        password_hash: str,
+        indirizzo_residenza: dict[str, Any],
+        indirizzo_domicilio_fiscale: dict[str, Any] | None = None,
+        data_nascita: date | None = None,
+        comune_nascita_id: int | None = None,
+        riusa_auth_user_id: int | None = None,
+    ) -> dict[str, Any]:
+        sql = """
+            SELECT auth_user_id, username, credenziale_riusata
+              FROM anagrafiche.fn_crea_primo_amministratore(
+                p_cognome                     := %s,
+                p_nome                        := %s,
+                p_codice_fiscale              := %s,
+                p_sesso                       := %s,
+                p_email                       := %s,
+                p_username                    := %s,
+                p_password_hash               := %s,
+                p_indirizzo_residenza         := %s::jsonb,
+                p_indirizzo_domicilio_fiscale := %s::jsonb,
+                p_data_nascita                := %s::date,
+                p_comune_nascita_id           := %s,
+                p_riusa_auth_user_id          := %s
+            )
+        """
+        params = [
+            cognome, nome, codice_fiscale, sesso, email, username, password_hash,
+            json.dumps(indirizzo_residenza),
+            json.dumps(indirizzo_domicilio_fiscale) if indirizzo_domicilio_fiscale is not None else None,
+            data_nascita, comune_nascita_id, riusa_auth_user_id,
+        ]
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            row = cursor.fetchone()
+        assert row is not None
+        return {
+            "auth_user_id": int(row[0]),
+            "username": row[1],
+            "credenziale_riusata": bool(row[2]),
+        }
+
     # Scopo: La credenziale che porta un'email, con username e vesti, per il
     #        dialog di conferma del riuso (B-20). Sede unica della lettura:
     #        `script.fn_get_credenziale_per_email`, la stessa che la madre usa

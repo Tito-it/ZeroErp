@@ -18,6 +18,12 @@ dal service applicativo; la pubblicazione di una versione delega al DB la
 chiusura atomica della versione pubblicata precedente tramite
 `documenti.fn_pubblica_template_documento_versione(...)`.
 
+Dal 2026-11-24 (giro 16 di `brief-db-porte-aperte-dalla-sola-guc` §9) quel verbo è `SECURITY DEFINER` e
+**ricontrolla da sé** l'azione dell'endpoint, `documenti_template_manage`: chi non ce l'ha riceve `403`
+`E_PERMESSO_NEGATO` anche se arriva al DB per un'altra strada. È l'unica strada per la pubblicazione: il guard
+della versione pubblicata apre solo dentro il verbo, e un `UPDATE` diretto dell'app verso `PUBBLICATA` si ferma
+anche con la GUC accesa. Il backend non accende niente.
+
 Gli endpoint template/versioni hanno `area_funzionale = "documenti"`
 (id area=11, schema_db=`documenti`). Il livello area si applica con la
 catena standard TUTTO/LETTURA/BLOCCATO; lo scope dati e' applicato in
