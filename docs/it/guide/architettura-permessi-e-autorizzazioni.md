@@ -28,6 +28,7 @@
 > * [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope) — il write-guard di difesa in profondita'
 > * [config.trgfn_parameter_overrides_guard_emittente_scope](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_emittente_scope) — lo stesso perimetro sugli override dei parametri, una tabella senza RLS: guarda la riga prima e dopo, anche nel `DELETE`
 > * [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — il verbo che sposta un operatore su un'azienda, riservato al SUPER_ADMIN
+> * [anagrafiche.fn_crea_primo_amministratore](/dbzero/anagrafiche/funzioni/fn_crea_primo_amministratore) — il solo verbo senza guard: il primo SUPER_ADMIN, chiuso dalla sua condizione
 > * [config.trgfn_user_emittenti_fiscali_guard_delete](/dbzero/config/funzioni/trgfn_user_emittenti_fiscali_guard_delete) — il guard del `DELETE` della riga di scope, e la porta del verbo
 > * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) / [script.fn_guard_livello](/dbzero/script/funzioni/fn_guard_livello) / [script.fn_guard_livello_area](/dbzero/script/funzioni/fn_guard_livello_area) / [script.fn_guard_super_admin](/dbzero/script/funzioni/fn_guard_super_admin) / [script.fn_guard_utente_stesso](/dbzero/script/funzioni/fn_guard_utente_stesso) — il permesso nella prima riga di un verbo di scrittura
 > * [script.fn_area_di_oggetto](/dbzero/script/funzioni/fn_area_di_oggetto) — l'area a cui appartiene un oggetto, sede unica per DB e backend
@@ -907,6 +908,14 @@ I cinque guard si comportano allo stesso modo: l'utente arriva come parametro
 lettura di `app.current_user_id`), la regola la decide la funzione
 di risoluzione che usa anche il backend, e il rifiuto e' `E_PERMESSO_NEGATO`,
 lo stesso codice del backend — anche quando l'utente manca (fail-closed).
+
+⚠️ **Un verbo senza guard, dichiarato: il primo amministratore.**
+[`anagrafiche.fn_crea_primo_amministratore`](/dbzero/anagrafiche/funzioni/fn_crea_primo_amministratore)
+gira come proprietario e non chiama nessun guard, perche' sul primo impianto non c'e'
+ancora nessuno che possa avere un permesso. Al posto del guard lo chiude la sua
+condizione: si apre solo se nessuna veste ha mai avuto un legame SUPER_ADMIN, e si
+chiude da sola alla nascita del primo. Un verbo nuovo senza guard non si appoggia a
+questo: e' l'unico caso in cui chi agisce, per costruzione, non esiste.
 
 Una forma sola per le operazioni di processo, una per quelle semplici:
 `azioni_processo` non si riempie di azioni che ripetono il livello, e

@@ -291,21 +291,17 @@ BEGIN
         p_attivo                 := false
     ) INTO v_ru_id;
 
-    -- ============ Step 4: indirizzi soggetto (invariato) ============
-    IF p_indirizzo_resid_dettaglio_id IS NOT NULL THEN
-        -- Rev 2026-10-18 (D-4 di Tid): la madre prende l'indirizzo in jsonb.
-        PERFORM anagrafiche.fn_crea_indirizzo_soggetto(
-            v_soggetto_id,
-            jsonb_build_object('tipo_indirizzo_codice_interno',  'RES',
-                               'indirizzo_dettaglio_id', p_indirizzo_resid_dettaglio_id));
-
-        PERFORM anagrafiche.fn_crea_indirizzo_soggetto(
-            v_soggetto_id,
-            jsonb_build_object('tipo_indirizzo_codice_interno',  'DOMFISC',
-                               'indirizzo_dettaglio_id', COALESCE(
-                                   p_indirizzo_domfisc_dettaglio_id,
-                                   p_indirizzo_resid_dettaglio_id)));
-    END IF;
+    -- ============ Step 4: indirizzi soggetto ============
+    -- La regola dei due indirizzi (il domicilio fiscale che manca e' la
+    --   residenza; senza residenza niente) sta in un posto solo,
+    --   anagrafiche.fn_crea_indirizzi_operatore, che la chiama anche il
+    --   verbo di primo impianto. Qui gli indirizzi sono dettagli gia' risolti.
+    PERFORM anagrafiche.fn_crea_indirizzi_operatore(
+        v_soggetto_id,
+        CASE WHEN p_indirizzo_resid_dettaglio_id IS NOT NULL
+             THEN jsonb_build_object('indirizzo_dettaglio_id', p_indirizzo_resid_dettaglio_id) END,
+        CASE WHEN p_indirizzo_domfisc_dettaglio_id IS NOT NULL
+             THEN jsonb_build_object('indirizzo_dettaglio_id', p_indirizzo_domfisc_dettaglio_id) END);
 
     -- ============ Ritorno: lo username EFFETTIVO ============
     SELECT au.username
@@ -318,7 +314,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_operatore_v2(p_soggetto_id uuid, p_cognome text, p_nome text, p_codice_fiscale text, p_username text, p_email text, p_password_hash text, p_qualifica_id integer, p_unita_organizzativa_id integer, p_data_nascita date, p_sesso character, p_is_super_admin boolean, p_valido_dal date, p_valido_al date, p_comune_nascita_id integer, p_indirizzo_resid_dettaglio_id bigint, p_indirizzo_domfisc_dettaglio_id bigint, p_riusa_auth_user_id integer)
-IS 'Orchestratore della creazione di un operatore (flusso A: soggetto PF nuovo; flusso B: soggetto esistente). ⭐ Rev 20260925-42 (brief-db-blocco-login-per-credenziale §5.2): (1) la credenziale dell''email, se esiste, si RIUSA (D-6, una persona una credenziale) senza toccarne password, username e nome — la cerca script.fn_get_auth_user_id_for_email, senza distinguere maiuscole e minuscole; altrimenti la crea fn_crea_auth_user; (2) la veste OPERATORE nasce SPENTA, sempre (regola unica dell''invito, R-2): la accende l''attivazione, e p_attivo e'' uscito dalla firma; (3) una credenziale che ha gia'' una veste OPERATORE, attiva o spenta, si rifiuta con E_CREDENZIALE_GIA_OPERATORE (il rimedio e'' il reinvito). ⭐ Rev 20260925-51 (§12.7): il riuso non e'' piu'' silenzioso — una credenziale con una veste su una PERSONA FISICA diversa dall''operatore si rifiuta (E_CREDENZIALE_ALTRA_PERSONA); negli altri casi serve il consenso, p_riusa_auth_user_id = la credenziale trovata, altrimenti E_CREDENZIALE_DA_CONFERMARE (dichiarazione di cio'' che si e'' visto, come pagamenti.fn_posta_contabile). ⭐ Rev 20260927-41 (§17): username e vesti della credenziale trovata li legge script.fn_get_credenziale_per_email, la stessa funzione del dialog di conferma del backend; nel contesto dell''errore restano per il log, che al client non arriva. ⭐ Rev 20261009-27 (brief-db-sesso-senza-default): p_sesso senza default (era ''M''); nel flusso A il soggetto nasce privato (PR), e il sesso e'' obbligatorio per il guard trgfn_soggetti_guard_sesso_policy (E_SESSO_OBBLIGATORIO); nel flusso B il sesso non si legge. Ritorna TABLE(auth_user_id, username effettivo, credenziale_riusata): con credenziale_riusata = true la password passata e'' stata IGNORATA. Si legge con SELECT * FROM. INVOKER. Rev 2026-10-18 (D-4 di Tid): gli indirizzi di residenza e domicilio fiscale passano a anagrafiche.fn_crea_indirizzo_soggetto in jsonb (contratto nuovo della madre).';
+IS 'Crea un operatore: credenziale, soggetto, rapporto di lavoro e veste OPERATORE, in una transazione. Due flussi sul soggetto: A, un soggetto nuovo, persona fisica privata (PR), con cognome, nome e codice fiscale obbligatori e il sesso chiesto dal guard trgfn_soggetti_guard_sesso_policy (E_SESSO_OBBLIGATORIO); B, un soggetto esistente, che deve essere una persona fisica (nel flusso B il sesso non si legge). Email e qualifica sono obbligatorie (E_ADMIN_VALIDAZIONE). La credenziale dell''email, se esiste, si riusa senza toccarne password, username e nome (una persona, una credenziale): la cerca script.fn_get_auth_user_id_for_email, senza distinguere maiuscole e minuscole; altrimenti la crea anagrafiche.fn_crea_auth_user. Una credenziale che ha gia'' una veste OPERATORE, attiva o spenta, si rifiuta con E_CREDENZIALE_GIA_OPERATORE (il rimedio e'' il reinvito); una con una veste su una persona fisica diversa dall''operatore con E_CREDENZIALE_ALTRA_PERSONA. Negli altri casi il riuso vuole il consenso: p_riusa_auth_user_id deve dire la credenziale trovata (NULL se l''email e'' nuova), altrimenti E_CREDENZIALE_DA_CONFERMARE, con username e vesti letti da script.fn_get_credenziale_per_email, la stessa funzione del dialog di conferma del backend; il consenso si chiede dopo il soggetto, cosi'' i rifiuti definitivi parlano per primi. La veste OPERATORE nasce spenta, sempre: la accende l''attivazione dell''invito. Con p_is_super_admin la veste riceve il legame al profilo SUPER_ADMIN (config.fn_profilo_super_admin_id). Gli indirizzi di residenza e domicilio fiscale, dettagli gia'' risolti, li scrive anagrafiche.fn_crea_indirizzi_operatore: il domicilio fiscale che manca e'' la residenza, e senza residenza non si scrive nessun indirizzo. Ritorna TABLE(auth_user_id, username effettivo, credenziale_riusata): con credenziale_riusata = true la password passata e'' ignorata. Si legge con SELECT * FROM. INVOKER.';
 ```
 
 </div>

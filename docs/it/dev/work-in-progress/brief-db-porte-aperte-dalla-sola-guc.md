@@ -2,7 +2,7 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-25**
 >
-> **Riparte: Tid**, con la richiesta al BE del giro unico 8 + 1-7 (§13.9, committato `e4bf00af69`: ✅ scritto e provato dal team DB, ✅ applicato da Tid, pgTAP come app verdi e doc auto-generata rigenerata il 2026-11-25; `20261125-01` … `-22`, `-26`): la richiesta di §13.8 (6e-septies). **Il team DB**, al via di Tid: R-DB-K1 e R-DB-K4 insieme (Tid, 2026-11-25), poi il giro 10-bis quando il BE risponde al censimento di §10.6. **Il team BE**, col 6d-quinquies del giro 11 (§12.6: ✅ applicato da Tid e verde il 2026-11-25, con `20261124-12`, §12.7). **Il team BE**, col 6c-quinquies del giro 9 (§11.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col 6b-quinquies del giro 10 (§10.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col passo 3n di R-DB-I3 (§4.8: ✅ scritta, applicata da Tid e verde il 2026-11-24) e col 3k-bis
+> **Riparte: il team BE**, con la richiesta di R-DB-K1 e R-DB-K4 (§4.9.7, passo 3j: `20261125-30` … `-32`, i due CSV degli errori, i due seed di `tid` tolti; ✅ scritto e provato sullo scratch, ✅ applicato da Tid e pgTAP verdi il 2026-11-25, doc auto-generata rigenerata, committato). **Tid**, con la richiesta al BE del giro unico 8 + 1-7 (§13.9, committato `e4bf00af69`: ✅ scritto e provato dal team DB, ✅ applicato da Tid, pgTAP come app verdi e doc auto-generata rigenerata il 2026-11-25; `20261125-01` … `-22`, `-26`): la richiesta di §13.8 (6e-septies). **Il team DB**, al via di Tid: il giro 10-bis quando il BE risponde al censimento di §10.6. **Il team BE**, col 6d-quinquies del giro 11 (§12.6: ✅ applicato da Tid e verde il 2026-11-25, con `20261124-12`, §12.7). **Il team BE**, col 6c-quinquies del giro 9 (§11.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col 6b-quinquies del giro 10 (§10.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col passo 3n di R-DB-I3 (§4.8: ✅ scritta, applicata da Tid e verde il 2026-11-24) e col 3k-bis
 > di R-DB-K3, e col 6a-quinquies del giro 16 (§9.5). **Il team DB**, col giro unico 8 + 1-7 (i giri 16, 10, 9, 11 sono applicati e verdi) e con le due richieste nuove del BE da §4.7, R-DB-K3 (la descrizione di `E_SCOPE_SENZA_UTENTE`, passo 3k: ✅ scritta e applicata il 2026-11-24, ora la rigenerazione del BE, 3k-bis) e R-DB-K4 (i due changeSet del
 > SUPER_ADMIN di sviluppo, passo 3l). Al via di Tid: il verbo di primo impianto (D-K, R-DB-K1, passo 3i) e i giri
 > delle porte del flusso. ✅ Il ritiro di `reset_lotto_draft` è fatto, DB e BE (2026-11-24, §4.8). Il superuser Django è
@@ -27,11 +27,14 @@
 > | 3e-bis | Tid | ✅ D-L **a** (2026-11-24): `dbops.fn_pgtap_concedi_livello_area` nasce nel primo giro che lo usa (8 o 1-7), le quattro copie `pg_temp.livello_area` si ritirano nello stesso giro | §4.5-bis | — |
 > | 3f | Tid | ✅ D-I: il task `reset_lotto_draft` si ritira · ✅ D-J: il superuser Django non concede più niente, strada **a** (2026-11-24) | §4.6 | — |
 > | 3h | team BE | D-J: ✅ bypass tolti, test adeguati, suite verde · ✅ rivisto con `/verifica` (2026-11-24) | §4.7 | — |
-> | 3i | team DB | D-K: il verbo `fn_crea_primo_amministratore` e la sua prova (R-DB-K1); la porta di `fn_crea_operatore_v2` nel piano dei giri (R-DB-K2) | §4.7 | — |
+> | 3i | team DB | D-K: il verbo `fn_crea_primo_amministratore` e la sua prova (R-DB-K1); la porta di `fn_crea_operatore_v2` nel piano dei giri (R-DB-K2) · ✅ analisi con R-DB-K4, ✅ scritto e provato (2026-11-25) | §4.7, §4.9 | — |
+> | 3i-bis | Tid | R-DB-K1 e R-DB-K4: ✅ D-K7 **b**, ✅ D-K8 **a2**, ✅ il via (2026-11-25) | §4.9.3, §4.9.4 | — |
+> | 3i-ter | team DB | R-DB-K1 e R-DB-K4: ✅ `20261125-30` … `-32`, CSV, seed tolti, pgTAP, guide e `manual/`; prova sullo scratch (2026-11-25) | §4.9.6 | — |
+> | 3i-quater | Tid | R-DB-K1 e R-DB-K4: ✅ apply, ✅ pgTAP come app e `test-crea-primo-amministratore-v1` su dbdev verdi, ✅ doc auto-generata rigenerata (2026-11-25) | §4.9.6 | 3i-ter |
+> | 3j | team BE | il comando, `genera_error_policies`, il censimento dei lettori: la richiesta | §4.9.7 | 3i-quater |
 > | 3k | team DB | R-DB-K3: la descrizione di `E_SCOPE_SENZA_UTENTE` allargata alle letture · ✅ scritta, ✅ applicata da Tid, `test-catalogo-messaggi-errore-completo` verde (2026-11-24) | §4.7 | — |
 > | 3k-bis | team BE | R-DB-K3: dopo l'apply, `manage.py genera_error_policies` (le `note` di `E_SCOPE_SENZA_UTENTE` e `E_UI_CHIAMATA_NON_VALIDA` sono cambiate: `test_il_file_generato_e_allineato_al_catalogo` è rosso fino alla rigenerazione) | §4.7 | 3k |
-> | 3l | team DB | R-DB-K4: i due changeSet del SUPER_ADMIN di sviluppo (`20260309-01`, `20260419-95`): ritirarli o farli passare dal verbo di R-DB-K1 | §4.7 | 3i |
-> | 3j | team BE | D-K: il comando `crea_primo_amministratore`, il playbook e `configurazione-django.md` senza `createsuperuser` | §4.7 | 3i |
+> | 3l | team DB | R-DB-K4: i due changeSet del SUPER_ADMIN di sviluppo (`20260309-01`, `20260419-95`): ritirarli o farli passare dal verbo di R-DB-K1 · ✅ analisi: la (b) non si può fare; ✅ D-K8 **a2**, i due file tolti (2026-11-25) | §4.7, §4.9.4 | — |
 > | 3g | team DB, poi team BE | il ritiro del task `reset_lotto_draft`: ✅ analisi, ✅ D-I.1 **a** e D-I.2 **a** (Tid), ✅ scritto, applicato, pgTAP 9/9, pushato · ✅ il BE: whitelist, handler, esclusione del runner, test e manuali (2026-11-24) | §4.6, §4.8 | — |
 > | 3m | team DB | R-DB-I3 (D-I.3 **a**, Tid): ✅ `distruttivo` sul registro, `auto_step_rollback` colonna della pipeline col `CHECK` sul `meta`, `vendite.fn_check_rollback_step_automatico`, pgTAP 14/14 sullo scratch, guide (2026-11-24) | §4.8 | — |
 > | 3m-bis | Tid | R-DB-I3: ✅ apply (`20261123-95`, `-96`, `-97` e i due mirror), pgTAP `test-rollback-step-automatico-v1` come app verde, doc auto-generata rigenerata (2026-11-24) | §4.8 | — |
@@ -74,7 +77,7 @@
 > | 6e-sexies | Tid | giro 8 + 1-7: ✅ apply, ✅ pgTAP come app verdi, ✅ doc auto-generata rigenerata dopo le pagine `manual/` (2026-11-25) | §13.9 | — |
 > | 6e-septies | team BE | giro 8 + 1-7: la richiesta | §13.8 | — |
 >
-> Decisioni aperte di Tid: nessuna (D-W … D-Z decise il 2026-11-25, §13.7). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso.
+> Decisioni aperte di Tid: nessuna (D-K7 **b** e D-K8 **a2** decise il 2026-11-25, §4.9; D-W … D-Z il 2026-11-25, §13.7). R-DB-K1 e R-DB-K4 sono applicati, verdi e committati (2026-11-25). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso.
 > Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
 > (`969ea14566`), dal BE §4.5-§4.7 con D-J (`4271a0dc69`, PR #232), e il 2026-11-24 il lato DB del ritiro di
 > `reset_lotto_draft` con la pulizia della testata (§4.8). Dal BE, il 2026-11-24 (`5fc466c729`): il `None` del perimetro
@@ -231,6 +234,14 @@
   - [x] apply su dbdev e pgTAP `test-rollback-step-automatico-v1` come app: verde (Tid, 2026-11-24)
   - [x] la doc auto-generata rigenerata (Tid, 2026-11-24)
   - [ ] il BE: il runner sulla funzione, i test, il manuale (passo 3n)
+- [ ] R-DB-K1 e R-DB-K4 insieme (Tid, 2026-11-25): il verbo di primo impianto e il ritiro dei due seed di `tid` (§4.9)
+  - [x] analisi, guide verificate (2026-11-25, §4.9)
+  - [x] D-K7 **b** e D-K8 **a2** (Tid), il via (2026-11-25)
+  - [x] changeSet, codice d'errore, pgTAP, guide e nota `_ultimo-super-admin`; prova sullo scratch (2026-11-25, §4.9.6)
+  - [x] apply e pgTAP come app e su dbdev verdi (Tid, 2026-11-25)
+  - [x] commit su `dev/db-tid` (2026-11-25)
+  - [x] doc auto-generata rigenerata (Tid, 2026-11-25)
+  - [ ] il BE: passo 3j, `genera_error_policies`, il censimento (§4.9.7)
 - [ ] Giro 10-bis (D-O **a**, Tid, 2026-11-24): `config.user_emittenti_fiscali` in sola lettura per l'app, con
   `script.fn_crea_utente_tecnico` a verbo e R-DB-K2 (`fn_crea_operatore_v2`); parte dalla risposta del BE al
   censimento di §10.6
@@ -1372,6 +1383,217 @@ provati a rovescio (`PersistTaskRunErrorVersoTests` del runner, `test_execute_st
 dell'executor). Manuali BE: `api_pipeline_task` (registro a 20, come parte il rollback automatico),
 `fn_reset_lotto_draft` (titolo e catena), indice di `vendite` rigenerato.
 
+### 4.9 R-DB-K1 e R-DB-K4 insieme: il verbo di primo impianto e i due seed di `tid` — analisi del 2026-11-25
+
+Si fanno insieme (Tid, 2026-11-25). Lettura in sola lettura sul catalogo di dbdev e sullo scratch, corpi da
+`pg_get_functiondef`. Nessun changeSet scritto: si aspetta il via.
+
+**Guide verificate** (`guide_coinvolte.py` sui due changeSet e su otto oggetti, 2026-11-25):
+
+| Guida o nota | Esito |
+| --- | --- |
+| nota `anagrafiche/_ultimo-super-admin` | **coerente**, ed è la fonte della D-K7 qui sotto: «le scritture che migliorano la garanzia passano sempre… è così che si esce da un sistema scoperto», e §«Che cosa oggi non vede» elenca stati scoperti raggiungibili. **Indietro** col giro: non nomina il verbo di primo impianto fra le strade che fanno nascere un SUPER_ADMIN |
+| [risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md) | **indietro** col giro: §«Primo accesso e gestione credenziali» descrive solo l'invito, che presuppone un amministratore. Il primo amministratore di un'installazione nuova va scritto lì |
+| [architettura-multi-face-auth](../../guide/architettura-multi-face-auth.md) | **coerente**: la veste OPERATORE nasce spenta (R-2); il verbo la accende nella stessa transazione, ed è un'eccezione da dichiarare nella guida, non una contraddizione: R-2 dice chi accende la veste di un operatore invitato |
+| [architettura-permessi-e-autorizzazioni](../../guide/architettura-permessi-e-autorizzazioni.md) | **coerente**: il SUPER_ADMIN ha lo scope `NULL` (tutto) da `fn_get_emittenti_scope_pk_ids`, quindi il primo amministratore non ha bisogno di nessun emittente, e su un'installazione vuota non ce n'è nessuno. §7.4: il verbo è DEFINER **senza** guard di permesso, perché non c'è ancora nessuno che possa averlo: lo si dichiara come la sola eccezione, chiusa dalla sua condizione |
+| altre dodici (soggetti, contatti, commesse, iva…) | nominano solo le tabelle (`soggetti`, `emittenti_fiscali`): il giro non ne cambia il comportamento |
+
+Orfano: `config.fn_profilo_super_admin_id`, dettaglio interno di `fn_crea_risorsa_umana_v2`.
+
+#### 4.9.1 Che cosa c'è oggi (catalogo di dbdev, 2026-11-25)
+
+* `anagrafiche.fn_crea_operatore_v2` e `fn_crea_risorsa_umana_v2`: INVOKER. Il primo vuole email e qualifica
+  (`p_qualifica_id` obbligatorio, attivo in `config.qualifiche`), nel flusso A crea il soggetto **PR** (persona fisica
+  privata, sesso obbligatorio), riusa la credenziale dell'email **solo col consenso** (`p_riusa_auth_user_id`, altrimenti
+  `E_CREDENZIALE_DA_CONFERMARE`), crea la veste OPERATORE **spenta** e, con `p_is_super_admin`, il legame al profilo
+  scelto dal tipo (`config.fn_profilo_super_admin_id`: esattamente un profilo `SUPER_ADMIN` attivo, altrimenti
+  `E_CONFIG_MANCANTE`). Ritorna `auth_user_id`, `username`, `credenziale_riusata`, **non** l'id della veste.
+* `anagrafiche.fn_accendi_veste(p_identita_id, p_auth_user_id, p_vesti)`: INVOKER, accende se la veste è di quella
+  credenziale.
+* `script.fn_check_almeno_un_super_admin_attivo()`: la condizione è «esiste una veste **senza scadenza**»
+  (`fn_identita_super_admin_senza_scadenza`: legame attivo a profilo `SUPER_ADMIN` attivo, veste OPERATORE utilizzabile
+  oggi, nessuna data di fine su veste e rapporto, credenziale non bloccata).
+* Sulle sei tabelle che il verbo scrive (`soggetti`, `soggetti_ruoli`, `risorse_umane`, `identita_digitali`,
+  `profili_accesso_bindings`, `credenziali`) nessun trigger legge una GUC `zeroerp.*` o chiede
+  `fn_is_proprietario_tabella`: il verbo DEFINER non ha GUC da spegnere (memoria della D-V1, §5.8 del brief archiviato).
+* In `script` e `dbops` nessuna funzione usa `pg_advisory_xact_lock`: non c'è un BB di serializzazione da riusare.
+* La qualifica `AMMINISTRATORE` è nel seed di catalogo (`80_data/sql/config/qualifiche.csv`, `codice_interno`).
+
+#### 4.9.2 R-DB-K1, il verbo — che cosa si propone
+
+`anagrafiche.fn_crea_primo_amministratore(p_cognome, p_nome, p_codice_fiscale, p_sesso, p_email, p_username,
+p_password_hash, p_data_nascita DEFAULT NULL, p_comune_nascita_id DEFAULT NULL, p_riusa_auth_user_id DEFAULT NULL)`
+→ `TABLE(auth_user_id, username, credenziale_riusata)`, i tipi con `%TYPE` dove c'è una colonna. `SECURITY DEFINER`,
+`SET search_path = pg_catalog, public, pg_temp` come i verbi dei giri 9-11, `EXECUTE` a `zeroerp_app` (il comando del BE
+gira come app, §6.5).
+
+1. **Serializza** con `LOCK TABLE config.profili_accesso_bindings IN SHARE ROW EXCLUSIVE MODE`. Il modo è in conflitto
+   con se stesso e con ogni `INSERT`/`UPDATE` della tabella: si serializza «nasce un legame», da qualunque strada
+   arrivi, non solo due chiamate del verbo fra loro (un advisory lock fermerebbe solo quelle; la strada di
+   `fn_crea_operatore_v2` resta aperta finché R-DB-K2 non la chiude). Il blocco dura una transazione sola, una volta
+   per installazione.
+2. **La condizione** (D-K7): se non è vera, `E_PRIMO_AMMINISTRATORE_GIA_PRESENTE` (NON_PERMESSO, ripiego senza `%s`).
+3. **La qualifica** per `codice_interno = 'AMMINISTRATORE'`, non per id; mancante o spenta: `E_CODICE`, come il PR in
+   `fn_crea_operatore_v2`. L'unità organizzativa resta `NULL` (facoltativa).
+4. `fn_crea_operatore_v2(…, p_is_super_admin => true, p_riusa_auth_user_id => p_riusa_auth_user_id)`: il consenso al
+   riuso passa così com'è. Serve: chi ha seguito il playbook vecchio ha già una credenziale da `createsuperuser` con
+   quell'email.
+5. La veste: `SELECT id … WHERE auth_user_id = … AND ruolo_applicativo = 'OPERATORE'` (una sola: il verbo madre rifiuta
+   una credenziale già operatore), poi `fn_accendi_veste(id, auth_user_id, ARRAY['OPERATORE'])`.
+6. ⚠️ Superato dal giro scritto (§4.9.6): la postcondizione non entra nel verbo, la prova il pgTAP. ~~**Postcondizione fail-loud**: se dopo `fn_check_almeno_un_super_admin_attivo()` non è vera, errore e `ROLLBACK`
+   implicito. È la promessa del D-K «o l'amministratore entra, o non nasce niente», scritta come controllo e non come
+   speranza (una `fn_data_operativa` diversa dalla data del server, una veste non utilizzabile per un motivo nuovo).~~
+7. Nessun guard di permesso in prima riga: non c'è ancora nessuno che possa averlo. Il posto del guard lo prende la
+   condizione, e la guida dei permessi §7.4 lo dichiara.
+8. L'audit: dentro il DEFINER, senza `app.jwt_user`, `user_insert` è il proprietario. È il vero: nessuna persona è
+   autenticata.
+
+#### 4.9.3 D-K7, la condizione che apre il verbo — a Tid
+
+Il verbo è eseguibile dall'app, quindi da qualunque strada del backend, anche sbagliata. La condizione è l'unica cosa
+che lo chiude. La richiesta del BE diceva «un SUPER_ADMIN spento o scaduto non conta come presente», da confermare dal
+DB. Sul modello non regge da sola: la nota `_ultimo-super-admin` elenca stati scoperti che si raggiungono senza che
+nessun guard parli (la veste dell'ultimo amministratore spostata su una credenziale bloccata, il profilo che cambia
+tipo, la cancellazione del rapporto dalla porta di manutenzione). Con la condizione «nessuno senza scadenza», in quegli
+stati l'app può far nascere un SUPER_ADMIN nuovo, con dati scelti da lei. E il sistema scoperto ha già la sua uscita, che
+passa dal proprietario: le scritture che migliorano la garanzia passano sempre.
+
+✅ **D-K7 decisa da Tid il 2026-11-25: b.**
+
+**D-K7**: **a** si apre se `fn_check_almeno_un_super_admin_attivo()` è falso (la richiesta del BE: si riapre su un
+sistema scoperto, e diventa anche una strada di recupero aperta all'app) · **b** si apre solo se **nessuna veste ha un
+legame `SUPER_ADMIN`, acceso o spento**: è l'installazione nuova, e si chiude alla nascita del primo legame. Il
+recupero di un sistema scoperto resta del proprietario, con le scritture che migliorano la garanzia. ⭐ **b**: è il
+«si chiude da sola alla nascita del primo» del D-K preso alla lettera. E non lascia all'app una porta che si riapre
+quando la garanzia si rompe, che è proprio il momento in cui non la si vuole aperta. ⚠️ Con **b** un legame si può
+ancora cancellare quando non è l'ultimo senza scadenza: cancellando tutti i legami di amministratori che scadono si
+torna a «nessun legame». È un caso costruito, che chiede di cancellare righe a cui l'app oggi arriva solo da
+SUPER_ADMIN: lo si scrive nel pgTAP come limite dichiarato, non si chiude qui.
+
+#### 4.9.4 R-DB-K4, i due seed di `tid` — i fatti e la proposta
+
+*I fatti* (2026-11-25):
+
+* su **dbdev** tutti e due sono `MARK_RAN` (2026-03-09 e 2026-04-19): il SUPER_ADMIN di sviluppo di dbdev non è nato da
+  loro;
+* sullo **scratch**, costruito da zero, `20260419-95` è `MARK_RAN` e `20260309-01` **non è nel `databasechangelog`**.
+  La sua `preCondition` legge `anagrafiche.risorse_umane_auth_user`, che da zero non esiste quando gira `80_data` (le
+  fasi vanno in ordine, §11.14, e la tabella è stata ritirata). Con `failOnError: false` l'errore si perde, e il
+  changeSet si ritenta a ogni `update`;
+* il commento di `80_data/changelog/20260127-57` (2026-09-02) li nomina già fra i seed di macchina «da trattare, e per
+  quelli il contesto serve davvero», insieme a `20260819-05` e `20260831-03`. Nessuno dei quattro ha il `context`;
+* **il controesempio, sul modello**: su un database con `auth_user id = 1` e senza una sua veste OPERATORE,
+  `20260419-95` cerca «l'ultima risorsa umana attiva senza veste attiva» e, se la trova, ci appoggia la veste di `id = 1`
+  col legame al profilo `9100`. Su un'installazione popolata vuol dire dare il SUPER_ADMIN a una credenziale qualunque,
+  **sul soggetto di un altro dipendente**, senza la condizione di R-DB-K1. A questo si aggiungono gli id cablati
+  (emittente 32, tipo ruolo 14, qualifica 1, profilo 9100) e il legame all'emittente 32, che a un SUPER_ADMIN non serve
+  (lo scope è `NULL`).
+
+*Le strade.* La (b) della richiesta, «tenerli e farli passare dal verbo», non si può fare senza riscrivere un changeSet
+applicato, e non serve: la strada di sviluppo c'è già, è `provision_utenti_sviluppo` del BE, fuori da PRODUZIONE. Resta
+la (a), il ritiro, in due forme:
+
+✅ **D-K8 decisa da Tid il 2026-11-25: a2.**
+
+**D-K8**: **a1** `context: dati_macchina` sui due file: è la forma prevista da §11.7 e scritta nel file del
+2026-09-02, il `context` non entra nel checksum. Però filtra solo dove l'invocazione dice `!dati_macchina` (la CI sì,
+la produzione «solo se la riga c'è»), e tocca due file pushati · **a2** si tolgono i due file dal changelog: sui
+database che li hanno, la riga del `databasechangelog` resta e non dà fastidio; su un database nuovo non esistono più.
+Chiude la strada ovunque, senza dipendere dalla riga di comando, ma è un'eccezione a «mai modificare un changelog
+pushato» (§11) · **a3** un changeSet nuovo non basta: i due vecchi girerebbero comunque prima di lui su un database
+nuovo. ⭐ **a2**: è l'unica che chiude la strada del controesempio su ogni installazione. Il divieto di §11 protegge la
+catena dei checksum, e un file tolto non la rompe: lo si dichiara come eccezione, col motivo. Se Tid preferisce restare
+dentro la regola alla lettera, **a1**, sapendo che in produzione il filtro dipende dalla riga di comando.
+
+⚠️ Vicini, fuori da questo giro: `20260819-05` e `20260831-03` (l'intestazione dei registri) sono della stessa lista
+del 2026-09-02 e sono ancora senza `context`. Il loro guard *fail-loud* sull'emittente li rende innocui su un database
+vuoto. Decide Tid se trattarli con la stessa D-K8 o lasciarli.
+
+#### 4.9.5 Il pgTAP e le altre sedi, quando arriva il via
+
+* **pgTAP nuovo** `anagrafiche/test-crea-primo-amministratore-v1`. ⚠️ Per costruire «nessun SUPER_ADMIN» bisogna
+  ridurre la garanzia, e i guard dell'ultimo SUPER_ADMIN lo rifiutano. Il test gira quindi col runner owner e tiene
+  spenti i quattro guard nella sua transazione, oppure usa la porta di manutenzione: la forma si sceglie dall'indice dei
+  pattern pgTAP prima di scrivere, e la chiamata al verbo avviene come app (`SET LOCAL ROLE zeroerp_app`). Casi: sul
+  sistema vuoto nasce il primo (veste accesa, `fn_is_super_admin` vero, soggetto PR, qualifica `AMMINISTRATORE`, nessun
+  emittente); la seconda chiamata è rifiutata; con un SUPER_ADMIN presente è rifiutata e non nasce nessuna riga; il caso
+  della D-K7 (solo legami spenti: **a** crea, **b** rifiuta); l'email con una credenziale senza consenso:
+  `E_CREDENZIALE_DA_CONFERMARE` e nessuna riga; postura (DEFINER, `EXECUTE` all'app). La concorrenza non si prova in
+  una sessione sola: la presidia il lock, ed è dichiarato.
+* **Catalogo errori**: `E_PRIMO_AMMINISTRATORE_GIA_PRESENTE` in `80_data/sql/config/messaggi_errore.csv`, con un
+  ripiego senza `%s`.
+* **Al BE, dopo l'apply**: il passo 3j (il comando, il playbook, `configurazione-django.md`), più
+  `manage.py genera_error_policies` per il codice nuovo, come il 3k-bis.
+* **Guide**: `risorse-umane-e-accessi` (il primo amministratore), la nota `_ultimo-super-admin` (la strada che fa
+  nascere il primo), `architettura-permessi-e-autorizzazioni` §7.4 (il verbo senza guard, chiuso dalla condizione).
+
+#### 4.9.6 Il giro scritto — 2026-11-25
+
+D-K7 **b** e D-K8 **a2** (Tid), poi il via. Numeri `20261125-30` … `-32` e id `1539` dei messaggi, assegnati da Tid.
+
+**La prova del punto 1** (scratch, in `ROLLBACK`, prima di scrivere): i passi del verbo fatti a mano da proprietario
+sul sistema vuoto danno un amministratore che entra (veste accesa, `fn_is_super_admin`, perimetro `NULL`,
+`fn_check_almeno_un_super_admin_attivo` vero). Il vuoto si costruisce: lo scratch, costruito da zero, ha **zero**
+legami SUPER_ADMIN, mentre su dbdev ci sono. Da proprietario, col guard dei legami spento nella transazione, si
+cancellano; acceso, il guard rifiuta. Due fatti che hanno cambiato la forma:
+
+* il soggetto PR pretende **residenza e domicilio fiscale** (`E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO`) e un
+  contatto, con guard **differiti** al `COMMIT`. `fn_crea_operatore_v2` riceve gli indirizzi solo come id di dettaglio,
+  che il comando di un'installazione vuota non ha. Il verbo riceve quindi `p_indirizzo_residenza jsonb` (e
+  `p_indirizzo_domicilio_fiscale`, facoltativo) nella forma di `fn_crea_indirizzo_soggetto`;
+* «il domicilio fiscale che manca è la residenza» era già nel passo 4 di `fn_crea_operatore_v2`: la seconda copia si
+  **estrae** (regola del 2) in `anagrafiche.fn_crea_indirizzi_operatore`, e la madre la chiama.
+
+**Due scostamenti da §4.9.2, dichiarati:**
+
+* la classe di `E_PRIMO_AMMINISTRATORE_GIA_PRESENTE` è **CONFLITTO_STATO** (409), non NON_PERMESSO: il rifiuto dipende
+  da com'è il sistema, non da un diritto che manca (la guida dei messaggi, §classi), gemello di
+  `E_CREDENZIALE_GIA_OPERATORE`;
+* la postcondizione del punto 6 non entra: per sollevarla serviva un secondo codice nuovo, TECNICO, che il catalogo non
+  ha in forma generica, e un id non assegnato. La garanzia «il primo amministratore entra» la prova il pgTAP (test 6-9)
+  sulla composizione vera.
+
+| File | Che cosa |
+| --- | --- |
+| `20_code/anagrafiche/20261125-30-create-fn-crea-indirizzi-operatore` | il BB: residenza e domicilio fiscale in jsonb, senza tipo (il tipo nell'oggetto è `E_SCRIPT_CHIAMATA_NON_VALIDA`), senza residenza niente |
+| `20_code/anagrafiche/20261125-31-update-fn-crea-operatore-v2-indirizzi-dal-bb` | il passo 4 dal BB. Corpo dal catalogo, firma ancorata come in `20261101-11`, attributi invariati (INVOKER, VOLATILE, COST 100); il `COMMENT` riscritto al presente; rollback = il corpo vivo |
+| `20_code/anagrafiche/20261125-32-create-fn-crea-primo-amministratore` | il verbo: DEFINER, `search_path`, il lock dei legami, la condizione D-K7 b, la qualifica per codice, la madre, il BB, la veste accesa. `EXECUTE` all'app dal loop dei grant |
+| `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` | `E_PRIMO_AMMINISTRATORE_GIA_PRESENTE`, CONFLITTO_STATO, id 1539, senza segnaposto. Li ricarica il mirror `runOnChange` |
+| `80_data/changelog/20260309-01-…`, `20260419-95-…` | **tolti** (D-K8 a2). Il master li prende con `includeAll`: nessuna riga da togliere; nessuno script o pgTAP li nomina. Eccezione dichiarata a «mai modificare un changelog pushato»: la catena dei checksum non si rompe, le righe del `databasechangelog` restano dove ci sono |
+| `db/pgtap/anagrafiche/test-crea-primo-amministratore-v1` | nuovo, runner owner (i guard dell'ultimo SUPER_ADMIN si spengono con `DISABLE TRIGGER`; il verbo è DEFINER, quindi dal runner owner si prova lo stesso corpo; l'`EXECUTE` dell'app lo asserisce il test 2). Piano 18 |
+| `db/pgtap/dbops/test-character-n-v1` | il verbo nel registro delle funzioni: `p_sesso` ancora `anagrafiche.soggetti.sesso%TYPE`, una colonna del registro, come `fn_crea_operatore_v2` |
+| `manual/` | `fn_crea_primo_amministratore`, `fn_crea_indirizzi_operatore` (nuove), `fn_crea_operatore_v2` |
+| guide | `risorse-umane-e-accessi` (§«Il primo amministratore di un'installazione nuova», header), `architettura-permessi-e-autorizzazioni` §7.4 (il verbo senza guard, header), `architettura-multi-face-auth` (la veste accesa del primo), nota `_ultimo-super-admin` (§«Il primo amministratore») |
+
+**Prova sullo scratch** (`prova_changeset.py`, da owner; le due righe del catalogo errori da uno YAML usa-e-getta
+fuori dal repo, perché la prova non legge i CSV): il pgTAP nuovo 18/18 con l'estratto (senza: interrotto, il verbo
+non c'è); `test-character-n-v1` 8/8 con (senza: 7/8, il registro nomina una funzione che non c'è ancora: atteso fino
+all'apply); invariati gli undici pgTAP che chiamano `fn_crea_operatore_v2` (cinque passano gli indirizzi, quindi
+passano dal BB) e i presidi trasversali (catalogo messaggi, codici nei corpi, `search_path` delle DEFINER, DEFINER
+dichiarate, rubinetto del primo motivo). Catalogo identico dopo il `ROLLBACK`. Guardrail verdi (forme, `COMMENT` al
+presente, letterali, runOnChange, preambolo pgTAP).
+
+✅ **Applicato da Tid il 2026-11-25, pgTAP verdi**, compreso `test-crea-primo-amministratore-v1` su dbdev: il ramo che
+cancella legami SUPER_ADMIN **veri** (lo scratch non ne ha) è provato. Doc auto-generata rigenerata.
+
+#### 4.9.7 La richiesta al team BE/FE (dopo l'apply)
+
+Chi cambia per primo: il DB. Il BE non ha niente da adeguare finché il verbo non è applicato.
+
+* **Passo 3j**: il comando `crea_primo_amministratore`. Chiede cognome, nome, codice fiscale, sesso, email, username,
+  password e la **residenza** (un indirizzo libero con stato, comune e CAP, o una via da risolvere, nella forma di
+  `fn_crea_indirizzo_soggetto` senza il tipo); il domicilio fiscale facoltativo (se manca è la residenza: il comando
+  non lo ricopia). Calcola l'hash Django e chiama `anagrafiche.fn_crea_primo_amministratore` con una sola `SELECT * FROM`.
+  Traduce `E_PRIMO_AMMINISTRATORE_GIA_PRESENTE` in un messaggio («il primo amministratore esiste già»), e
+  `E_CREDENZIALE_DA_CONFERMARE` in una domanda di conferma che richiama il verbo con `p_riusa_auth_user_id` (chi ha
+  seguito il playbook vecchio ha già una credenziale da `createsuperuser` con quell'email). Il playbook e
+  `configurazione-django.md` sostituiscono `createsuperuser` col comando. Il test: il comando chiama il verbo con
+  l'hash, e i due rifiuti escono come messaggio, non come traceback.
+* **`manage.py genera_error_policies`**: il codice nuovo è nel catalogo, e
+  `test_il_file_generato_e_allineato_al_catalogo` è rosso fino alla rigenerazione.
+* **Censisci i lettori di `fn_crea_operatore_v2`** che contano sul suo `COMMENT` o sulla sua firma: la firma non cambia,
+  il comportamento neanche (gli indirizzi passano da un BB, con la stessa regola). Atteso: «nessuno».
+
 ## 5. La seconda famiglia: le viste aggiornabili — 2026-11-23
 
 **Il varco.** Il loop dei grant (`90_end/ci_apply/20260205-41`) dà all'app `INSERT`, `UPDATE` e `DELETE` «on all
@@ -2506,6 +2728,11 @@ i dodici a runner owner, i quattro del builder. ✅ **Doc auto-generata rigenera
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-25 | DB | Commit su `dev/db-tid`: R-DB-K1 e R-DB-K4 (§4.9.6); al BE il passo 3j (§4.9.7) |
+| 2026-11-25 | Tid | R-DB-K1 e R-DB-K4 applicati, pgTAP come app e `test-crea-primo-amministratore-v1` su dbdev verdi, doc auto-generata rigenerata (§4.9.6) |
+| 2026-11-25 | DB | R-DB-K1 e R-DB-K4 scritti (§4.9.6): `20261125-30` (il BB degli indirizzi dell'operatore, regola del 2), `-31` (la madre dal BB), `-32` (il verbo), `E_PRIMO_AMMINISTRATORE_GIA_PRESENTE` (CONFLITTO_STATO, id 1539), i due seed di `tid` tolti, pgTAP nuovo 18/18 e `test-character-n` adeguato, guide e `manual/`. Trovati dalla prova: il PR pretende residenza e domicilio fiscale (il verbo li riceve in jsonb); lo scratch ha zero legami SUPER_ADMIN. La postcondizione di §4.9.2 non entra. Da applicare |
+| 2026-11-25 | Tid | **D-K7 decisa: b** (il verbo si apre solo senza nessun legame SUPER_ADMIN) · **D-K8 decisa: a2** (i due seed di `tid` si tolgono) · il via, numeri `-30` … `-32` e id 1539 |
+| 2026-11-25 | DB | R-DB-K1 e R-DB-K4, analisi (§4.9): il verbo DEFINER senza guard, chiuso dalla condizione e serializzato col lock sui legami; D-K7 (la condizione: proposta **b**, nessun legame SUPER_ADMIN, perché «nessuno senza scadenza» si riapre all'app sugli stati scoperti della nota `_ultimo-super-admin`); D-K8 (il ritiro dei due seed: proposta **a2**). Trovati: `20260309-01` non registrato da zero (la sua `preCondition` legge una tabella ritirata, `failOnError: false`), l'euristica di `20260419-95` che appoggia il SUPER_ADMIN sul soggetto di un altro dipendente. Nessun changeSet: si aspetta il via |
 | 2026-11-25 | DB | Commit `e4bf00af69` e push su `dev/db-tid`: il giro 8 + 1-7 (i changeSet `-23` … `-25` e le modifiche anagrafiche dell'altra sessione esclusi) |
 | 2026-11-25 | Tid | Giro 8 + 1-7: pgTAP come app verdi, doc auto-generata rigenerata dopo le pagine `manual/` (§13.9); al BE il 6e-septies (§13.8). Sul lato DB i giri delle porte del flusso sono chiusi tutti |
 | 2026-11-25 | DB | Giro 8 + 1-7: guide e `manual/` (cinque nuove, ventisette aggiornate, cinque guide); trovato l'apply di Tid (17:14) sul `databasechangelog`; §13.9 chiusa con la copertura della porta dichiarata |

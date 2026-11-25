@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_operatore_v2`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -14,7 +14,8 @@
 > * [anagrafiche.fn_crea_auth_user](/dbzero/anagrafiche/funzioni/fn_crea_auth_user) — crea la credenziale quando l'email non ne ha una
 > * [anagrafiche.fn_crea_soggetto_pf](/dbzero/anagrafiche/funzioni/fn_crea_soggetto_pf) — crea la persona fisica nel flusso A
 > * [anagrafiche.fn_crea_risorsa_umana_v2](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana_v2) — il rapporto, la veste e il legame SUPER_ADMIN
-> * [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_soggetto) — residenza e domicilio fiscale
+> * [anagrafiche.fn_crea_indirizzi_operatore](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_operatore) — residenza e domicilio fiscale, e il domicilio che manca
+> * [anagrafiche.fn_crea_primo_amministratore](/dbzero/anagrafiche/funzioni/fn_crea_primo_amministratore) — il primo SUPER_ADMIN, che la compone
 > * [script.fn_get_auth_user_id_for_email](/dbzero/script/funzioni/fn_get_auth_user_id_for_email) — quale credenziale ha questa email
 > * [script.fn_get_credenziale_per_email](/dbzero/script/funzioni/fn_get_credenziale_per_email) — username e vesti della credenziale, per il dialog di conferma
 > * [script.fn_check_operatore_invitabile](/dbzero/script/funzioni/fn_check_operatore_invitabile) — quando l'operatore appena creato si può invitare
@@ -35,7 +36,8 @@ indirizzi di residenza e domicilio fiscale. Restituisce la credenziale, il suo u
 riusata.
 
 È la madre della creazione di un operatore umano: la chiama il backend dall'amministrazione degli utenti, e dentro
-il database il provisioning dei dati di sviluppo e la fixture pgTAP `dbops.fn_pgtap_crea_operatore_umano`. Il
+il database il verbo del primo amministratore (`anagrafiche.fn_crea_primo_amministratore`), il provisioning dei dati
+di sviluppo e la fixture pgTAP `dbops.fn_pgtap_crea_operatore_umano`. Il
 suffisso `_v2` è un nome rimasto: non esiste una funzione con lo stesso nome senza suffisso.
 
 ---
@@ -121,6 +123,9 @@ Se si passa l'indirizzo di residenza, la funzione scrive sul soggetto la residen
 domicilio, se non si passa, è la residenza. Senza residenza non scrive nessun indirizzo, e la completezza del
 soggetto la verificano i suoi guard alla chiusura della transazione.
 
+La regola dei due indirizzi sta in `anagrafiche.fn_crea_indirizzi_operatore`, che la usa anche il verbo del primo
+amministratore: qui gli indirizzi sono dettagli già risolti.
+
 ---
 
 ### Tutto o niente
@@ -163,8 +168,9 @@ Più quelli propagati da `fn_crea_auth_user` (username o email già presi, dati 
   soggetto.
 * `db/pgtap/script/test-fn-get-credenziale-per-email-v1.sql` — la lettura che il rifiuto condivide col dialog.
 * `db/pgtap/anagrafiche/test-soggetti-sesso-policy-v1.sql` — il sesso obbligatorio del privato.
-* Nessun test prova gli indirizzi (residenza e domicilio, il ripiego del domicilio sulla residenza) né le date
-  passate al rapporto e alla veste.
+* `db/pgtap/anagrafiche/test-crea-primo-amministratore-v1.sql` — il ripiego del domicilio sulla residenza, dal
+  building block che questa funzione condivide col verbo del primo amministratore.
+* Nessun test prova le date passate al rapporto e alla veste.
 
 ---
 
@@ -178,6 +184,8 @@ Più quelli propagati da `fn_crea_auth_user` (username o email già presi, dati 
 * 2026-10-02 — un operatore disattivato è una veste OPERATORE spenta: `DISABILITATO` non è più un tipo di veste.
 * 2026-10-09 — il sesso senza default (era maschile) e il soggetto del flusso A chiesto come privato.
 * 2026-10-18 — gli indirizzi passano a `fn_crea_indirizzo_soggetto` nel contratto nuovo della madre.
+* 2026-11-25 — la regola dei due indirizzi passa a `fn_crea_indirizzi_operatore`, condivisa col verbo del primo
+  amministratore; comportamento invariato.
 
 ---
 

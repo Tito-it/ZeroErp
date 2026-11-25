@@ -1,0 +1,190 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PRIMO AMMINISTRATORE DI UN'INSTALLAZIONE NUOVA
+#   anagrafiche.fn_crea_primo_amministratore (nuova)
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §4.9 (R-DB-K1; D-K, D-K7 b di Tid).
+#
+# -- PERCHE' -----------------------------------------------------------------
+#   Un'installazione nuova non ha una strada per il primo SUPER_ADMIN: il login
+#   chiede una veste attiva, `createsuperuser` crea solo la credenziale, e il
+#   flag di Django non concede piu' niente. Gli altri amministratori li crea un
+#   SUPER_ADMIN; il primo no, perche' non c'e' ancora nessuno.
+#
+# -- CHE COSA FA ---------------------------------------------------------------
+#   1. SECURITY DEFINER, search_path pg_catalog, public, pg_temp: non dipende
+#      dalla RLS ne' dalle GUC della connessione che lo chiama. NESSUN guard di
+#      permesso: non c'e' ancora nessuno che possa averlo. Lo chiude la
+#      condizione del passo 3, ed e' l'unica cosa che lo chiude.
+#   2. LOCK TABLE config.profili_accesso_bindings IN SHARE ROW EXCLUSIVE MODE:
+#      serializza la nascita di un legame da qualunque strada arrivi, non solo
+#      due chiamate di questo verbo fra loro.
+#   3. La condizione (D-K7 b): nessuna veste ha un legame verso un profilo
+#      SUPER_ADMIN, acceso o spento. E' l'installazione nuova. Altrimenti
+#      E_PRIMO_AMMINISTRATORE_GIA_PRESENTE (CONFLITTO_STATO). Un sistema che
+#      ha avuto un amministratore e lo ha perso non si riapre da qui: il
+#      recupero passa dal proprietario, con le scritture che migliorano la
+#      garanzia dell'ultimo SUPER_ADMIN.
+#   4. La qualifica per codice_interno AMMINISTRATORE (E_CODICE se manca).
+#   5. fn_crea_operatore_v2, flusso A, p_is_super_admin: credenziale (o riuso
+#      col consenso), soggetto PR, rapporto, veste spenta, legame SUPER_ADMIN.
+#   6. Gli indirizzi da fn_crea_indirizzi_operatore (20261125-30), in jsonb: il
+#      comando che lo chiama non ha un dettaglio gia' risolto. Quali indirizzi
+#      siano obbligatori lo dice la configurazione dei tipi d'indirizzo, col
+#      suo guard differito al COMMIT: qui non si ricopia.
+#   7. La veste si accende con fn_accendi_veste: il primo amministratore entra
+#      senza invito, perche' non c'e' nessuno che lo inviti.
+#   Nessuna GUC da spegnere: nessun trigger delle tabelle scritte legge una GUC
+#   `zeroerp.*` o chiede il proprietario (catalogo di dbdev, 2026-11-25).
+#   L'EXECUTE all'app arriva dal loop dei grant (§11.8): la chiama il comando
+#   del backend, che gira come app.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261125-32-create-fn-crea-primo-amministratore-mctit.yaml
+
+  - changeSet:
+      id: 20261125-32-create-fn-crea-primo-amministratore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_crea_primo_amministratore: il primo SUPER_ADMIN di un'installazione nuova,
+        DEFINER, chiuso dalla condizione «nessun legame SUPER_ADMIN». Brief:
+        brief-db-porte-aperte-dalla-sola-guc §4.9.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_primo_amministratore(
+                  p_cognome                     anagrafiche.soggetti.cognome%TYPE,
+                  p_nome                        anagrafiche.soggetti.nome%TYPE,
+                  p_codice_fiscale              anagrafiche.soggetti.codice_fiscale%TYPE,
+                  p_sesso                       anagrafiche.soggetti.sesso%TYPE,
+                  p_email                       text,   -- django.auth_user: niente %TYPE (§11.9)
+                  p_username                    text,   -- idem
+                  p_password_hash               text,   -- idem
+                  p_indirizzo_residenza         jsonb,  -- un indirizzo nella forma di fn_crea_indirizzo_soggetto: nessuna colonna
+                  p_indirizzo_domicilio_fiscale jsonb DEFAULT NULL,  -- idem
+                  p_data_nascita                anagrafiche.soggetti.data_nascita%TYPE DEFAULT NULL,
+                  p_comune_nascita_id           anagrafiche.soggetti.comune_id%TYPE DEFAULT NULL,
+                  p_riusa_auth_user_id          integer DEFAULT NULL  -- django.auth_user.id: niente %TYPE
+              )
+              -- auth_user_id integer nudo: colonna di django.auth_user, niente %TYPE (linee-guida-sql §5g, §11.9)
+               RETURNS TABLE(auth_user_id integer, username text, credenziale_riusata boolean)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  c_chi CONSTANT text := 'anagrafiche.fn_crea_primo_amministratore';
+                  v_qualifica_id config.qualifiche.id%TYPE;
+                  v_auth_user_id integer;   -- django.auth_user.id: niente %TYPE
+                  v_username     text;      -- idem
+                  v_riusata      boolean;
+                  v_soggetto_id  anagrafiche.soggetti.id%TYPE;
+                  v_identita_id  anagrafiche.identita_digitali.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il primo SUPER_ADMIN di un'installazione nuova, che entra
+                  --   subito: operatore, legame SUPER_ADMIN, veste accesa.
+                  --
+                  -- Regole:
+                  --   - DEFINER senza guard di permesso: lo chiude la
+                  --     condizione, «nessuna veste ha un legame SUPER_ADMIN,
+                  --     acceso o spento»;
+                  --   - la condizione si legge sotto il lock dei legami, che
+                  --     serializza due nascite concorrenti;
+                  --   - tutto o niente: e' una funzione sola.
+                  -- =========================================================
+
+                  -- 1. Il lock, poi la condizione: letta sotto il lock, la
+                  --    seconda chiamata concorrente vede il legame della prima.
+                  LOCK TABLE config.profili_accesso_bindings IN SHARE ROW EXCLUSIVE MODE;
+
+                  IF EXISTS (
+                      SELECT 1
+                        FROM config.profili_accesso_bindings pab
+                        JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
+                       WHERE pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                         AND pab.identita_digitale_id IS NOT NULL
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', c_chi, 'E_PRIMO_AMMINISTRATORE_GIA_PRESENTE',
+                          '{}'::jsonb,
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- 2. La qualifica, per codice e non per id.
+                  SELECT q.id
+                    INTO v_qualifica_id
+                    FROM config.qualifiche q
+                   WHERE q.codice_interno = 'AMMINISTRATORE'
+                     AND q.attivo;
+
+                  IF v_qualifica_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', c_chi, 'E_CODICE',
+                          jsonb_build_object('codice_interno', 'AMMINISTRATORE'),
+                          NULL::uuid,
+                          'AMMINISTRATORE', 'config.qualifiche');
+                  END IF;
+
+                  -- 3. L'operatore: flusso A, legame SUPER_ADMIN, veste spenta.
+                  --    Gli indirizzi non passano di qui: fn_crea_operatore_v2 li
+                  --    vuole come dettagli gia' risolti.
+                  SELECT o.auth_user_id, o.username, o.credenziale_riusata
+                    INTO v_auth_user_id, v_username, v_riusata
+                    FROM anagrafiche.fn_crea_operatore_v2(
+                             p_cognome            := p_cognome,
+                             p_nome               := p_nome,
+                             p_codice_fiscale     := p_codice_fiscale,
+                             p_username           := p_username,
+                             p_email              := p_email,
+                             p_password_hash      := p_password_hash,
+                             p_qualifica_id       := v_qualifica_id,
+                             p_data_nascita       := p_data_nascita,
+                             p_sesso              := p_sesso,
+                             p_is_super_admin     := true,
+                             p_comune_nascita_id  := p_comune_nascita_id,
+                             p_riusa_auth_user_id := p_riusa_auth_user_id) o;
+
+                  -- 4. La veste: una sola OPERATORE per credenziale (la madre
+                  --    rifiuta una credenziale che ne ha gia' una).
+                  SELECT idg.id, sr.soggetto_id
+                    INTO v_identita_id, v_soggetto_id
+                    FROM anagrafiche.identita_digitali idg
+                    JOIN anagrafiche.soggetti_ruoli sr ON sr.id = idg.soggetto_ruolo_id
+                   WHERE idg.auth_user_id = v_auth_user_id
+                     AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo;
+
+                  -- 5. Gli indirizzi, nella forma che il comando sa scrivere.
+                  PERFORM anagrafiche.fn_crea_indirizzi_operatore(
+                      v_soggetto_id, p_indirizzo_residenza, p_indirizzo_domicilio_fiscale);
+
+                  -- 6. La veste si accende: nessuno puo' invitare il primo.
+                  PERFORM anagrafiche.fn_accendi_veste(
+                      v_identita_id, v_auth_user_id,
+                      ARRAY['OPERATORE']::config.ruolo_applicativo[]);
+
+                  RETURN QUERY SELECT v_auth_user_id, v_username, v_riusata;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_crea_primo_amministratore(anagrafiche.soggetti.cognome%TYPE, anagrafiche.soggetti.nome%TYPE, anagrafiche.soggetti.codice_fiscale%TYPE, anagrafiche.soggetti.sesso%TYPE, text, text, text, jsonb, jsonb, anagrafiche.soggetti.data_nascita%TYPE, anagrafiche.soggetti.comune_id%TYPE, integer) IS $c$Crea il primo SUPER_ADMIN di un'installazione nuova, che entra subito: un operatore con soggetto privato (PR) nuovo, la qualifica AMMINISTRATORE (per codice_interno; E_CODICE se manca), il legame al profilo SUPER_ADMIN e la veste OPERATORE accesa, senza invito. Si apre solo se nessuna veste ha un legame verso un profilo SUPER_ADMIN, acceso o spento: altrimenti E_PRIMO_AMMINISTRATORE_GIA_PRESENTE. Un sistema che ha avuto un amministratore e lo ha perso non si riapre da qui: il recupero passa dal proprietario del database, con le scritture che migliorano la garanzia di script.fn_check_almeno_un_super_admin_attivo. La condizione si legge sotto LOCK TABLE config.profili_accesso_bindings IN SHARE ROW EXCLUSIVE MODE, che serializza la nascita di un legame da qualunque strada. SECURITY DEFINER e senza guard di permesso, perche' non c'e' ancora nessuno che possa averlo: la condizione e' l'unica cosa che lo chiude. Compone anagrafiche.fn_crea_operatore_v2 (credenziale nuova, o riuso col consenso di p_riusa_auth_user_id; i suoi rifiuti valgono qui), anagrafiche.fn_crea_indirizzi_operatore (residenza e domicilio fiscale in jsonb, nella forma di fn_crea_indirizzo_soggetto, senza tipo; il domicilio fiscale che manca e' la residenza) e anagrafiche.fn_accendi_veste. Quali indirizzi sono obbligatori lo dice la configurazione dei tipi d'indirizzo, col suo guard differito al COMMIT. Riceve l'hash Django della password: il database non lo calcola. Le colonne d'audit portano il proprietario: nessuna persona e' autenticata. Ritorna TABLE(auth_user_id, username effettivo, credenziale_riusata), come fn_crea_operatore_v2.$c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_crea_primo_amministratore(anagrafiche.soggetti.cognome%TYPE, anagrafiche.soggetti.nome%TYPE, anagrafiche.soggetti.codice_fiscale%TYPE, anagrafiche.soggetti.sesso%TYPE, text, text, text, jsonb, jsonb, anagrafiche.soggetti.data_nascita%TYPE, anagrafiche.soggetti.comune_id%TYPE, integer);
