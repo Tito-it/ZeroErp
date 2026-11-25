@@ -2,7 +2,7 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-25**
 >
-> **Riparte: Tid**, col commit del giro unico 8 + 1-7 (§13.9: ✅ scritto e provato dal team DB, ✅ applicato da Tid, pgTAP come app verdi e doc auto-generata rigenerata il 2026-11-25; `20261125-01` … `-22`, `-26`), poi al BE la richiesta di §13.8 (6e-septies). **Il team DB**, al via di Tid: R-DB-K1 e R-DB-K4 insieme (Tid, 2026-11-25), poi il giro 10-bis quando il BE risponde al censimento di §10.6. **Il team BE**, col 6d-quinquies del giro 11 (§12.6: ✅ applicato da Tid e verde il 2026-11-25, con `20261124-12`, §12.7). **Il team BE**, col 6c-quinquies del giro 9 (§11.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col 6b-quinquies del giro 10 (§10.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col passo 3n di R-DB-I3 (§4.8: ✅ scritta, applicata da Tid e verde il 2026-11-24) e col 3k-bis
+> **Riparte: Tid**, con la richiesta al BE del giro unico 8 + 1-7 (§13.9, committato `e4bf00af69`: ✅ scritto e provato dal team DB, ✅ applicato da Tid, pgTAP come app verdi e doc auto-generata rigenerata il 2026-11-25; `20261125-01` … `-22`, `-26`): la richiesta di §13.8 (6e-septies). **Il team DB**, al via di Tid: R-DB-K1 e R-DB-K4 insieme (Tid, 2026-11-25), poi il giro 10-bis quando il BE risponde al censimento di §10.6. **Il team BE**, col 6d-quinquies del giro 11 (§12.6: ✅ applicato da Tid e verde il 2026-11-25, con `20261124-12`, §12.7). **Il team BE**, col 6c-quinquies del giro 9 (§11.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col 6b-quinquies del giro 10 (§10.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col passo 3n di R-DB-I3 (§4.8: ✅ scritta, applicata da Tid e verde il 2026-11-24) e col 3k-bis
 > di R-DB-K3, e col 6a-quinquies del giro 16 (§9.5). **Il team DB**, col giro unico 8 + 1-7 (i giri 16, 10, 9, 11 sono applicati e verdi) e con le due richieste nuove del BE da §4.7, R-DB-K3 (la descrizione di `E_SCOPE_SENZA_UTENTE`, passo 3k: ✅ scritta e applicata il 2026-11-24, ora la rigenerazione del BE, 3k-bis) e R-DB-K4 (i due changeSet del
 > SUPER_ADMIN di sviluppo, passo 3l). Al via di Tid: il verbo di primo impianto (D-K, R-DB-K1, passo 3i) e i giri
 > delle porte del flusso. ✅ Il ritiro di `reset_lotto_draft` è fatto, DB e BE (2026-11-24, §4.8). Il superuser Django è
@@ -80,7 +80,7 @@
 > `reset_lotto_draft` con la pulizia della testata (§4.8). Dal BE, il 2026-11-24 (`5fc466c729`): il `None` del perimetro
 > che si rifiuta, il lato BE del ritiro di `reset_lotto_draft`, D-K5, D-K6 e D-I.4, e le richieste R-DB-K3, R-DB-K4 e
 > R-DB-I3. Dal DB, il 2026-11-24 su `dev/db-tid`: R-DB-K3 (§4.7) e R-DB-I3 (§4.8), applicate e verdi; il giro 16
-> (`3045e11677`) e il 2026-11-25 il giro 10 (§10.5), pushati. Il 2026-11-25 anche il giro 9 (§11.5), pushato. Il 2026-11-25 anche il giro 11 (§12.5) con `20261124-12` (§12.7), `8f29eee1cb`, PR #241. Da committare: il giro 8 + 1-7 (§13.9), applicato e verde.
+> (`3045e11677`) e il 2026-11-25 il giro 10 (§10.5), pushati. Il 2026-11-25 anche il giro 9 (§11.5), pushato. Il 2026-11-25 anche il giro 11 (§12.5) con `20261124-12` (§12.7), `8f29eee1cb`, PR #241. Il 2026-11-25 anche il giro 8 + 1-7 (§13.9), `e4bf00af69`, pushato.
 >
 > **Brief vicini verificati (2026-11-23):**
 > [brief-db-magazzino-tutte-le-scritture-dal-verbo](../work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md)
@@ -213,7 +213,7 @@
     - [x] changeSet, pgTAP, builder, guide e `manual/`; prova sullo scratch (2026-11-25, §13.9)
     - [x] apply e pgTAP come app: verdi (Tid, 2026-11-25)
     - [x] la doc auto-generata rigenerata, anche dopo le pagine `manual/` (Tid, 2026-11-25)
-    - [ ] commit e push su `dev/db-tid`
+    - [x] commit e push su `dev/db-tid` (`e4bf00af69`, 2026-11-25)
     - [ ] il BE: i test della Parte C del giro
 - [x] Giro 3 (2026-11-24, applicato da Tid con la fase `post` del provisioning, pgTAP verde; §7): le viste (§5): ~~prima i verbi delle scritture che il BE trova~~ (nessuna, §5.1), l'app con solo `SELECT` sulle viste,
   nelle tre sedi di `linee-guida-sql.md` §11.8, col pgTAP di postura a criterio e la guida dei permessi §7.4;
@@ -2506,6 +2506,7 @@ i dodici a runner owner, i quattro del builder. ✅ **Doc auto-generata rigenera
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-25 | DB | Commit `e4bf00af69` e push su `dev/db-tid`: il giro 8 + 1-7 (i changeSet `-23` … `-25` e le modifiche anagrafiche dell'altra sessione esclusi) |
 | 2026-11-25 | Tid | Giro 8 + 1-7: pgTAP come app verdi, doc auto-generata rigenerata dopo le pagine `manual/` (§13.9); al BE il 6e-septies (§13.8). Sul lato DB i giri delle porte del flusso sono chiusi tutti |
 | 2026-11-25 | DB | Giro 8 + 1-7: guide e `manual/` (cinque nuove, ventisette aggiornate, cinque guide); trovato l'apply di Tid (17:14) sul `databasechangelog`; §13.9 chiusa con la copertura della porta dichiarata |
 | 2026-11-25 | DB | Giro 8 + 1-7 scritto e provato (§13.9): `20261125-01` … `-22` e `-26`; pgTAP nuovo, tredici adeguati, dodici a runner owner (scelta di Tid), quattro copie `pg_temp.livello_area` ritirate; il criterio del fondo resta eseguibile (§13.5.2 punto 6 corretto); range: `-23` … `-25` presi dall'altra sessione |

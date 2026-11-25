@@ -6,6 +6,7 @@
 # Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato e mergiato, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/config/20261125-24.
 # UN OVERRIDE PER EMITTENTE SI SCRIVE E SI CANCELLA SOLO DENTRO IL PROPRIO PERIMETRO
 #   config.trgfn_parameter_overrides_guard_emittente_scope
 #   trg_parameter_overrides_a10_guard_emittente_scope_ins_upd_dlt

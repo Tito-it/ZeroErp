@@ -1,0 +1,54 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il COMMENT di config.trgfn_parameter_overrides_guard_emittente_scope al presente.
+#   Brief: brief-db-emittente-del-super-admin §3.1 (R-DB-1), 2026-11-25.
+#
+#   20261124-13 ha scritto il COMMENT col nome del brief e la data della
+#   decisione: linee-guida-sql §5d lo vuole al presente. Lo ha fermato
+#   scripts/guardrail_comment_al_presente.py in CI, a file gia' applicato e
+#   mergiato: non si riscrive (checksum), si riscrive l'oggetto qui. Il file
+#   applicato dichiara in testa l'eccezione, che rimanda a questo.
+#   Solo COMMENT ON: nessun corpo, nessun trigger cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261125-24-update-comment-parameter-overrides-guard-emittente-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261125-24-update-comment-parameter-overrides-guard-emittente-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il COMMENT del guard di perimetro emittente di config.parameter_overrides riscritto al
+        presente, senza cronaca. brief-db-emittente-del-super-admin §3.1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'config'
+                 AND p.proname = 'trgfn_parameter_overrides_guard_emittente_scope';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION config.trgfn_parameter_overrides_guard_emittente_scope() IS
+                  'Guard di perimetro emittente di config.parameter_overrides (a10, BEFORE INSERT OR UPDATE OR DELETE): la riga di prima (UPDATE, DELETE) e quella di dopo (INSERT, UPDATE) con emittente_fiscale_id valorizzato devono stare nel perimetro di chi agisce secondo script.fn_check_user_emittente_scope, altrimenti E_SCOPE_EMITTENTE; anche l''UPDATE del solo valore si giudica. Emittente NULL (override per utente, gruppo, categoria, funzione): nessun padrone, passa. Senza utente in sessione passa solo, fuori da una SECURITY DEFINER, la sessione che la RLS non filtrerebbe (superuser, BYPASSRLS, proprietario della tabella anche per appartenenza), altrimenti E_SCOPE_SENZA_UTENTE. Non e'' il BB script.trgfn_guard_emittente_scope perche'' la tabella non ha la RLS: il BB lavora accanto a una policy, e da solo lascerebbe passare l''UPDATE a emittente invariato, il DELETE e la sessione senza utente. In «tutti gli emittenti» il super admin passa (bypass di fn_check_user_emittente_scope).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: il COMMENT di prima e' quello di 20261124-13.
+              SELECT 1;
