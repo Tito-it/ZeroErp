@@ -2,8 +2,8 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-25**
 >
-> **Riparte: Tid**, col commit del lavoro BE su `dev/backend-tid` (2026-11-25, da committare): tutte le richieste del
-> DB al BE sono evase. Sono 3j (il comando `crea_primo_amministratore`, §4.9.7), 3k-bis (`genera_error_policies`, §4.7),
+> **Riparte: Tid**, col via al team DB per il giro 10-bis: il lavoro BE è committato su `dev/backend-tid`
+> (`e4af0106a`, 2026-11-25), e tutte le richieste del DB al BE sono evase. Sono 3j (il comando `crea_primo_amministratore`, §4.9.7), 3k-bis (`genera_error_policies`, §4.7),
 > 3n (il runner sulla funzione del rollback, §4.8), 6a … 6e (test, censimenti e manuali dei giri 16, 10, 9, 11 e
 > 8 + 1-7, §9.5, §10.6, §11.6, §12.6, §13.8). **Poi il team DB**, al via di Tid: il giro 10-bis, che parte dalla
 > risposta del BE al censimento di §10.6 («nessuno scrive `config.user_emittenti_fiscali` senza il verbo»), e la voce
@@ -80,7 +80,7 @@
 > | 6e-sexies | Tid | giro 8 + 1-7: ✅ apply, ✅ pgTAP come app verdi, ✅ doc auto-generata rigenerata dopo le pagine `manual/` (2026-11-25) | §13.9 | — |
 > | 6e-septies | team BE | giro 8 + 1-7: la richiesta · ✅ test, tre censimenti e manuali (2026-11-25) | §13.8 | — |
 >
-> Decisioni aperte di Tid: nessuna (le due della verifica del passo 3j, decise e fatte il 2026-11-25, §4.9.7; D-K7 **b** e D-K8 **a2** decise il 2026-11-25, §4.9; D-W … D-Z il 2026-11-25, §13.7). R-DB-K1 e R-DB-K4 sono applicati, verdi e committati (2026-11-25). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso. ⚠️ Il lavoro BE del 2026-11-25 (tutte le richieste evase) è **da committare** su `dev/backend-tid`.
+> Decisioni aperte di Tid: nessuna (le due della verifica del passo 3j, decise e fatte il 2026-11-25, §4.9.7; D-K7 **b** e D-K8 **a2** decise il 2026-11-25, §4.9; D-W … D-Z il 2026-11-25, §13.7). R-DB-K1 e R-DB-K4 sono applicati, verdi e committati (2026-11-25). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso. ✅ Il lavoro BE del 2026-11-25 (tutte le richieste evase) è committato su `dev/backend-tid` (`e4af0106a`). Restano due voci del piano, del team DB: il giro 10-bis e «Le guide».
 > Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
 > (`969ea14566`), dal BE §4.5-§4.7 con D-J (`4271a0dc69`, PR #232), e il 2026-11-24 il lato DB del ritiro di
 > `reset_lotto_draft` con la pulizia della testata (§4.8). Dal BE, il 2026-11-24 (`5fc466c729`): il `None` del perimetro
