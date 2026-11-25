@@ -174,6 +174,7 @@ search:
 - [trgfn_iva_stati_normalize](funzioni/trgfn_iva_stati_normalize.md) — (latest review 15-01-26) * **Impostare valori di default** per campi mancanti in `config.iva_stati` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 - [trgfn_parameter_overrides_fk_surrogate_dispatch](funzioni/trgfn_parameter_overrides_fk_surrogate_dispatch.md) — (latest review 02-05-2026)
 - [trgfn_parameter_overrides_guard_ammette_override](funzioni/trgfn_parameter_overrides_guard_ammette_override.md) — (scritta il 25-10-2026)
+- [trgfn_parameter_overrides_guard_emittente_scope](funzioni/trgfn_parameter_overrides_guard_emittente_scope.md) — Un override **per emittente** appartiene a quell'azienda: lo crea, lo modifica e lo cancella solo chi la ha nel suo perimetro, secondo `script.fn_check_user_emittente_scope`. Chi ha scelto un'azienda lavora solo su quella, anche se è super admin. Il rifiuto è `E_SCOPE_EMITTENTE`.
 - [trgfn_parameter_overrides_guard_tipo_valore](funzioni/trgfn_parameter_overrides_guard_tipo_valore.md)
 - [trgfn_parameters_fk_surrogate_dispatch](funzioni/trgfn_parameters_fk_surrogate_dispatch.md) — (latest review 02-05-2026)
 - [trgfn_parameters_guard_ammette_override](funzioni/trgfn_parameters_guard_ammette_override.md) — (scritta il 25-10-2026)

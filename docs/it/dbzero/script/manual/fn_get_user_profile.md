@@ -1,5 +1,7 @@
 ## Documentazione Concettuale -- Funzione `script.fn_get_user_profile`
 
+> **Ultimo aggiornamento**: 25 novembre 2026
+
 > Vedi anche
 >
 > Funzioni correlate:
@@ -10,6 +12,7 @@
 > [script.fn_get_user_object_permissions_map](/dbzero/script/funzioni/fn_get_user_object_permissions_map)
 > [script.fn_is_super_admin](/dbzero/script/funzioni/fn_is_super_admin)
 > [script.fn_current_identita_context](/dbzero/script/funzioni/fn_current_identita_context)
+> [script.fn_resolve_emittente_for_user](/dbzero/script/funzioni/fn_resolve_emittente_for_user) — l'emittente di chi agisce, che il blocco `emittente` non è
 >
 > Approfondimento tabelle:
 >
@@ -244,7 +247,21 @@ Se risolto, il blocco contiene:
 piu' tutti i campi soggetto dell'emittente, ottenuti ancora tramite
 `fn_get_soggetto_dati_by_ruolo`.
 
-Se nessun emittente e' disponibile, il valore e' `null`.
+Il blocco è l'emittente **configurato** dell'utente: la sua riga di
+`config.user_emittenti_fiscali`, al più una per utente, con l'emittente attivo.
+Senza riga il valore è `null`: per il super admin, che è multi-emittente e non ha
+la riga, e per l'operatore non ancora configurato, che non ha nessuna azienda su
+cui scrivere.
+
+⛔ Il gestore globale (la riga di `anagrafiche.emittenti_fiscali_billing_account`
+senza billing account e predefinita) **non** entra nel blocco: non è l'azienda di
+nessuno che agisca. Fino al 25 novembre 2026 era il ripiego di chi non aveva una
+riga, e i form proponevano a un operatore non configurato di scrivere su
+un'azienda non sua.
+
+Il blocco descrive l'utente, non la sessione: non segue l'emittente scelto in
+alto (`app.current_emittente_id`). L'emittente su cui chi agisce legge e scrive è
+`script.fn_resolve_emittente_for_user`.
 
 #### `permessi_area`
 
@@ -287,9 +304,8 @@ normalizzato con `COALESCE(..., false)`.
    identita OPERATORE (context-aware post PR-B)
 6. Costruzione blocco `risorse_umane`
 7. Costruzione blocco `soggetto` via `fn_get_soggetto_dati_by_ruolo`
-8. Risoluzione emittente con priorita':
-   - whitelist personale `config.user_emittenti_fiscali`
-   - fallback gestore globale `emittenti_fiscali_billing_account`
+8. Blocco emittente: la riga personale di `config.user_emittenti_fiscali`,
+   altrimenti `null` (nessun ripiego, rev 2026-11-25)
 9. Composizione finale con `jsonb_build_object`
 
 ### Context-awareness (post PR-B 21-04-2026)
@@ -319,8 +335,8 @@ La revisione `20260410-16` ha ridotto il costo della funzione in due punti:
 - **query iniziale accorpata**
   prima i blocchi `auth_user`, il ponte utente (oggi `identita_digitali`) e `risorse_umane`
   venivano letti in query separate
-- **risoluzione emittente in un solo blocco SQL**
-  con priorita' `whitelist -> fallback`, evitando due rami separati di lookup
+- **risoluzione emittente in un solo blocco SQL**: dal 25 novembre 2026 è una
+  lettura sola della riga personale, senza il ramo del gestore globale
 
 Il refactor resta retrocompatibile sul payload: cambia l'implementazione,
 non il contratto del JSONB.

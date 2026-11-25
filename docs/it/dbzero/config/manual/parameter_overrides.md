@@ -1,6 +1,6 @@
 ## Documentazione Concettuale — Tabella `config.parameter_overrides`
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 
 > **Vedi anche**
 >
@@ -100,7 +100,9 @@ per Mario sempre, anche fuori da PREMIUM (`brief-db-codici-sfilati-e-lista-param
 | Nome | Timing | Evento | Azione |
 |---|---|---|---|
 | `trg_parameter_overrides_a05_guard_ammette_override_ins_upd` | BEFORE | INSERT, UPDATE OF `parameter_id` | Rifiuta un override, anche spento, su un parametro che vale per tutti (`config.parameters.ammette_override = false`): `E_PARAMETER_OVERRIDE_NON_AMMESSO`. In `a05`, prima del dispatcher: se il parametro non si personalizza, la frase giusta è questa ([la funzione](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_ammette_override)) |
+| `trg_parameter_overrides_a07_guard_tipo_valore_ins_upd` | BEFORE | INSERT, UPDATE OF `parameter_id, overridden_value` | Il valore ha la forma del tipo del parametro: `E_PARAMETER_VALORE_NON_CONFORME` ([la funzione](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_tipo_valore)) |
 | `trg_parameter_overrides_a10_fk_surrogate_dispatch_ins_upd` | BEFORE | INSERT, UPDATE OF `parameter_id, overridden_value` | Valida `overridden_value` contro le FK-surrogate registrate in `config.parameter_fk_surrogate` |
+| `trg_parameter_overrides_a10_guard_emittente_scope_ins_upd_dlt` | BEFORE | INSERT, UPDATE, DELETE | Il perimetro emittente: un override per emittente lo scrive, lo modifica e lo cancella solo chi ha quell'azienda nel perimetro (`E_SCOPE_EMITTENTE`); senza utente in sessione `E_SCOPE_SENZA_UTENTE`. Guarda la riga prima e dopo, perché la tabella non ha la RLS ([la funzione](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_emittente_scope)) |
 | `trg_parameter_overrides_a10_emittenti_fiscali_require_at_...` | AFTER | INSERT, UPDATE | Blocca override su emittente disattivato |
 | `trg_parameter_overrides_a10_cat_clienti_req_attivo_ins_upd` | AFTER | INSERT, UPDATE OF `categoria_cliente_id` | Blocca override su categoria cliente disattivata |
 | `trg_parameter_overrides_audit_data_user_upd` | BEFORE | INSERT, UPDATE | Aggiorna campi audit `data_update`, `user_update` |
@@ -160,6 +162,9 @@ categoria (priorità 2): Maria ottiene sempre 20%, anche su clienti PREMIUM.
 
 ### Storia
 
+* 2026-11-25 — nasce il guard del perimetro emittente, `trg_parameter_overrides_a10_guard_emittente_scope_ins_upd_dlt`
+  (`20261124-13`): fino a quel giorno un override per emittente entrava senza controllo sull'azienda di chi
+  scriveva. Brief-db-emittente-del-super-admin §3.1.
 * 2026-11-09 — esce il livello sessione degli override, da tutte e due le catene: via la
   colonna `session_key`. La UNIQUE diventa `uq_overrides_full_scope_v6` (`NULLS NOT DISTINCT`,
   `parameter_id` più le cinque dimensioni); `chk_parameter_overrides_un_ambito` tiene il nome e
