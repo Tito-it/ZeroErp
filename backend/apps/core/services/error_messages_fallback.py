@@ -174,6 +174,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CAMBIO_NATURA_INDIRIZZI_RUOLO_NON_AMMESSI": "Il tipo soggetto scelto non ammette alcuni indirizzi di un ruolo del soggetto: vanno eliminati dal ruolo prima del cambio.",
     "E_CAMBIO_NATURA_PIVA_NON_APPLICABILE": "Il tipo soggetto scelto non ha partita IVA: va svuotata prima del cambio (lo puo' fare solo un amministratore).",
     "E_CAMBIO_NATURA_TITOLI_ALTRI_EMITTENTI": "Il tipo soggetto scelto non ammette titoli IVA in vigore presentati ad altre aziende: deve chiuderli un amministratore.",
+    "E_CAMBIO_NATURA_VERSO_NESSUNA": "Il tipo soggetto non si puo' togliere: si puo' solo cambiare con un altro della stessa famiglia.",
     "E_CAMBIO_PASSWORD_RICHIESTO": "Prima di continuare e' necessario cambiare la password.",
     "E_CAMPO_NON_AMMESSO": "Un campo inviato non si puo' scrivere con questa operazione.",
     "E_CANALE_ORIGINE_IMMUTABILE": "Il canale origine non e' modificabile dopo l'inserimento.",
@@ -287,6 +288,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE": "La distinta contabile ha righe che nessuno ha ancora lavorato: si valida solo quando ogni riga e' stata guardata.",
     "E_CONTATTI_SOGGETTO_OBBLIGATORIO": "Indicare il soggetto di cui leggere i contatti.",
     "E_CONTATTO_INCOMPLETO": "Contatto incompleto: hai inserito qualche dato ma mancano i campi obbligatori (nominativo e tipo contatto). Completa il contatto oppure svuota tutti i campi.",
+    "E_CONTATTO_PREDEFINITO_DA_SOSTITUIRE": "Il contatto e' il predefinito e ha altri contatti accanto: prima segnare come predefinito un altro contatto, poi cancellare o spostare questo.",
+    "E_CONTATTO_PREDEFINITO_OBBLIGATORIO": "Il contatto e' il predefinito: per cambiarlo, segnare come predefinito un altro contatto.",
+    "E_CONTATTO_TIPO_DUPLICATO": "C'e' gia' un contatto di questo tipo: modificare quello esistente oppure scegliere un altro tipo.",
     "E_CONTO_BANCARIO": "Il conto bancario indicato non e' utilizzabile.",
     "E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO": "L'articolo e' gia' presente nel listino del documento: usare OVERRIDE per modificarne il prezzo, non AGGIUNTA.",
     "E_CONTRATTO_ANNULLATO_CON_FATTURE": "Impossibile annullare il contratto: esistono attivita' gia' fatturate. Per chiudere il contratto usa la cessazione (stato CESSATO con data di fine validita').",
@@ -338,9 +342,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DATI_DI_SVILUPPO_IN_PRODUZIONE": "I dati di sviluppo (utenti, soggetti e regimi fiscali di prova) non si creano in un'installazione di produzione.",
     "E_DATI_SOCIETARI_CODICE_SDI_MANCANTE": "Hai scelto di inviare la fattura elettronica con il codice SDI, ma il codice manca.",
     "E_DATI_SOCIETARI_CODICE_SDI_NON_VALIDO": "Il codice destinatario SDI non e' valido: 7 caratteri, lettere maiuscole e cifre (6 per una pubblica amministrazione).",
+    "E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA": "La forma giuridica e' obbligatoria nei dati societari.",
     "E_DATI_SOCIETARI_NON_ELIMINABILI": "Il tipo soggetto richiede i dati societari: non si possono eliminare.",
     "E_DATI_SOCIETARI_PEC_FATTURAZIONE_MANCANTE": "Hai scelto di inviare la fattura elettronica via PEC, ma la PEC manca.",
     "E_DATI_SOCIETARI_REQUIRED_MANCANTI": "Dati societari obbligatori mancanti per questo tipo soggetto.",
+    "E_DATI_SOCIETARI_SOGGETTO_IMMUTABILE": "Il soggetto dei dati societari non e' modificabile: i dati societari appartengono al loro soggetto.",
     "E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO": "Soggetto non trovato.",
     "E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO": "Policy dati societari non configurata per questo tipo soggetto.",
     "E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO": "Per questo tipo soggetto i dati societari non sono previsti.",
@@ -708,6 +714,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE": "Il soggetto ha già un indirizzo di questo tipo. Modificare l'indirizzo che c'è, oppure scegliere un altro tipo.",
     "E_INDIRIZZO_SOGGETTO_TITOLARE_IMMUTABILE": "Un indirizzo appartiene per sempre al suo soggetto: se è sul soggetto sbagliato si elimina e si ricrea.",
     "E_INDIRIZZO_VIA_NON_RISOLTA": "La via scelta non e' completa nell'elenco delle vie: manca il comune, la provincia o il CAP.",
+    "E_INDIRIZZO_VIA_NUOVA_INCOMPLETA": "Per creare la via nuova mancano dei dati obbligatori.",
     "E_INVALID_ID": "ID non valido.",
     "E_INVITO_OPERATORE": "Operatore non invitabile.",
     "E_INVITO_PORTALE": "Invito portale non inviabile.",
@@ -1203,6 +1210,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # «Esegui ora» su una sveglia (brief-db-avvio-manuale-di-un-processo §9):
     # i tre motivi del predicato e i due esiti dell'handler. A catalogo portano
     # unit, id del lavoro, secondi ed exit code: qui la frase senza.
+    "E_PRIMO_AMMINISTRATORE_GIA_PRESENTE": "Il primo amministratore esiste gia': il primo impianto e' chiuso.",
     "E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO": "Per accendere o spegnere a mano un processo automatico serve un motivo.",
     "E_PROCESSO_AVVIO_FALLITO": (
         "Il comando della sveglia e' uscito con un errore: il dettaglio e' nel "
@@ -1408,6 +1416,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_SOGGETTO_NULL": "Soggetto mancante per il ruolo indicato.",
     "E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE": "Un ruolo appartiene per sempre al suo soggetto: se e' sul soggetto sbagliato si ritira e si ricrea.",
     "E_SOGGETTO_RUOLO_NON_TROVATO": "Il ruolo del soggetto non esiste.",
+    "E_SOGGETTO_RUOLO_TIPO_IMMUTABILE": "Il tipo di un ruolo non si cambia.",
     "E_SORGENTE_CON_RIGHE_EMESSE": "Il documento ha righe di commessa gia' emesse: non si puo' chiudere finche' ci sono. Si recuperano prima dalla dashboard di competenza, casella «Emesse non fatturate», col verbo «Riporta da emettere»; fatto questo il documento si chiude e il ritiro le prende insieme alle altre.",
     "E_SORG_CHIAVE_NON_CONFORME": "La provenienza non e' scritta con la chiave che il suo tipo richiede.",
     "E_SORG_CONF": "Configurazione sorgente mancante o non attiva.",
@@ -1468,6 +1477,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # misura del §10.1: 3 dei suoi punti dicevano 400 dove serve 500. E' un
     # difetto di MONTAGGIO del trigger — se ne accorge chi lo installa, mai
     # l'operatore — quindi il messaggio non gli chiede di correggere niente.
+    "E_TIPO_INDIRIZZO_DISCORDE": "Il tipo di indirizzo non corrisponde al suo codice.",
     "E_TIPO_RUOLO_NON_RICERCABILE": "Questo tipo ruolo non si cerca nella ricerca universale.",
     "E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI": "Il nuovo tipo soggetto non ammette un titolo IVA ancora in vigore: chiudere prima il titolo.",
     "E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA": "Il nuovo tipo soggetto non ammette la forma giuridica: cambiare anche la forma.",
@@ -1500,6 +1510,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_TOTP_RECOVERY_NON_VALIDO": "Codice di recupero non valido o gia' usato.",
     "E_TOTP_SFIDA_NON_VALIDA": "La verifica e' scaduta: accedere di nuovo con la password.",
     "E_TRIGGER_ARGOMENTI_INVALIDI": "Trigger montato con argomenti non validi.",
+    "E_TIPO_CONTATTO_NON_TROVATO": "Il tipo di contatto indicato non esiste: sceglierlo dall'elenco.",
     "E_TIPO_FONDO_NOT_FOUND": "Tipo fondo non trovato.",
     "E_TIPO_INDIRIZZO": "Tipo indirizzo non ammesso per questo documento.",
     "E_TIPO_INDIRIZZO_NON_PERMESSO": "Il ruolo non prevede questo tipo di indirizzo. Scegliere un altro tipo, oppure aggiungerlo ai tipi di indirizzo ammessi per il ruolo.",

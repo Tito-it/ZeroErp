@@ -1675,20 +1675,19 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             )
             return cursor.rowcount
 
-    # Scopo: Il rollback automatico dello step e' acceso? Lo dice la pipeline,
-    #        non la richiesta: `meta.auto_step_rollback = true` sulla riga di
-    #        `vendite.fatturazione_pipeline` dello step, risolta con la stessa
-    #        funzione e gli stessi argomenti del suo `rollback`
-    #        (`fn_resolve_fatturazione_pipeline_step`, con il fallback per
-    #        utility e tipo documento), cosi' flag e lista vengono dalla stessa
-    #        riga. Solo il booleano JSON `true` accende; chiave assente, `false`
-    #        o un testo `"true"` no. Nessuna pipeline per lo step -> False.
-    # ⭐ Dal 2026-11-24 (D-I.4 a, Tid, brief-db-porte-aperte-dalla-sola-guc
-    #    §4.8): prima il runner leggeva il flag solo dal `meta` del body della
-    #    richiesta di run, e la colonna della pipeline, quella che la guida
-    #    `fatturazione` (§ rollback) descrive, non la leggeva nessuno. E' una
-    #    proprieta' della corsia, non di una singola richiesta.
-    def is_auto_step_rollback_attivo(
+    # Scopo: Il rollback dello step puo' partire da solo? Lo decide il DB,
+    #        per intero: `vendite.fn_check_rollback_step_automatico`, con gli
+    #        argomenti con cui `get_step_processes` legge il rollback dello step
+    #        (stessa risoluzione, stessa riga). Risponde `true` solo se la
+    #        corsia accende `fatturazione_pipeline.auto_step_rollback`, il
+    #        rollback ha almeno un task, e ogni task e' registrato, attivo nel
+    #        dominio `FATTURAZIONE` e non `distruttivo`. Fail-closed: uno step
+    #        che non si risolve, un task sconosciuto o spento danno False.
+    # ⭐ Dal 2026-11-25 (R-DB-I3, passo 3n di brief-db-porte-aperte-dalla-sola-guc
+    #    §4.8): prima il BE leggeva da se' la chiave `meta.auto_step_rollback`
+    #    della pipeline, e la lista non diceva se un task cancellava dati. La
+    #    chiave nel `meta` ora la rifiuta un CHECK: la regola ha una sede sola.
+    def is_rollback_step_automatico(
         self,
         stato_doc_fiscale_id: int,
         *,
@@ -1699,15 +1698,12 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT COALESCE(fp.meta -> 'auto_step_rollback' = 'true'::jsonb, false)
-                FROM vendite.fn_resolve_fatturazione_pipeline_step(
+                SELECT vendite.fn_check_rollback_step_automatico(
                     p_tipo_lotto => %s,
                     p_stato_doc_fiscale_id => %s,
                     p_utility_id => %s,
-                    p_tipo_doc_fiscale_id => %s,
-                    p_rollback => true
-                ) AS r
-                JOIN vendite.fatturazione_pipeline fp ON fp.id = r.pipeline_id
+                    p_tipo_doc_fiscale_id => %s
+                )
                 """,
                 [tipo_lotto, stato_doc_fiscale_id, utility_id, tipo_doc_fiscale_id],
             )

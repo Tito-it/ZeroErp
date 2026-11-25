@@ -336,15 +336,62 @@ verifica è il §13 del play-book.
 
 ## Il primo amministratore
 
-⚠️ **Oggi su un'installazione nuova questo passo non si può completare** (stato al 2026-11-25).
+Il primo amministratore lo crea `manage.py crea_primo_amministratore`, una volta,
+dopo il provisioning. Lo lancia la persona che diventerà amministratore: chiede la
+password due volte, e l'account nasce con la veste già accesa, senza invito.
 
-`manage.py createsuperuser` crea solo la credenziale. Il login vuole anche una
-veste attiva: senza, risponde 403 `E_VESTE_NON_ATTIVA`. E il flag `is_superuser`
-non concede più niente. L'amministratore è il binding `SUPER_ADMIN`, che si crea
-col verbo `anagrafiche.fn_crea_operatore_v2(…, p_is_super_admin)`. Come lo si
-chiama sul primo amministratore è deciso: un verbo DB di primo impianto e un
-comando che sostituirà `createsuperuser` (D-K di `brief-db-porte-aperte-dalla-sola-guc`,
-§4.7). Né il verbo né il comando esistono ancora. Il dettaglio è nel play-book, §11.
+```bash
+sudo -u $APP_USER bash -lc "
+cd $APP_DIR/backend
+./manage-env.sh crea_primo_amministratore \\
+  --cognome Rossi --nome Anna --codice-fiscale RSSNNA80A41H501X --sesso F \\
+  --email anna.rossi@azienda.it --username anna.rossi \\
+  --residenza '{\"indirizzo_libero\": \"Via Roma 1\", \"stato_id\": 1, \"comune_id\": 5, \"codice_postale_id\": 9}'
+"
+```
+
+* La **residenza** è obbligatoria. È un oggetto JSON nella forma degli indirizzi del
+  soggetto, senza il tipo: un indirizzo libero (testo, stato e, per lo stato, comune
+  e CAP del catalogo) oppure una via da risolvere. `--domicilio-fiscale`, nella
+  stessa forma, è facoltativo: se manca, il domicilio fiscale è la residenza.
+* Gli **id** dell'indirizzo (`stato_id`, `comune_id`, `codice_postale_id`) sono
+  quelli del catalogo del database, e si leggono con `dbshell`, dalla stessa
+  cartella, prima di lanciare il comando:
+
+  ```bash
+  # lo stato: per un indirizzo italiano e' l'Italia
+  ./manage-env.sh dbshell -- -c "SELECT id, descrizione FROM config.stati WHERE sigla_stato = 'ITA'"
+
+  # il comune e il CAP: si cambia il nome del comune; un comune con piu' CAP da' piu' righe
+  ./manage-env.sh dbshell -- -c "
+    SELECT c.id AS comune_id, c.descrizione AS comune, p.sigla AS provincia,
+           cp.id AS codice_postale_id, cp.codice AS cap
+      FROM config.comuni c
+      JOIN config.codici_postali cp ON cp.comune_id = c.id
+      LEFT JOIN config.province p ON p.id = c.provincia_id
+     WHERE c.descrizione ILIKE 'Bologna'
+     ORDER BY cp.codice"
+  ```
+
+  Per l'Italia servono il comune e il CAP, presi dalla **stessa riga**: il CAP deve
+  essere di quel comune. Per uno stato estero, che non ha il catalogo dei comuni, al
+  posto di `comune_id` e `codice_postale_id` si scrive la località (`"locality"`) e,
+  se c'è, il codice postale (`"postal_code"`). Come vale la regola:
+  [L'indirizzo libero](/dbzero/anagrafiche/_indirizzo-libero-o-dettaglio).
+* Senza terminale si aggiunge `--noinput` e la password si passa nella variabile
+  `ZEROERP_PRIMO_AMMINISTRATORE_PASSWORD`, mai come argomento.
+* Se l'email è già di un account (per esempio uno creato con il vecchio
+  `createsuperuser`), il comando lo mostra e chiede se riusarlo. Con `--noinput`
+  il riuso si dichiara con `--riusa-credenziale <auth_user_id>`. Riusato, l'account
+  tiene il suo nome utente e la sua password: quella digitata non si usa, e il
+  comando lo dice prima di chiederla.
+* Il comando funziona solo finché nessun accesso ha mai avuto il profilo
+  SUPER_ADMIN; dopo risponde che il primo impianto è chiuso. Gli amministratori
+  successivi li crea un SUPER_ADMIN, con l'invito.
+
+⛔ `manage.py createsuperuser` non dà un amministratore: crea solo una credenziale
+senza veste (il login risponde 403 `E_VESTE_NON_ATTIVA`), e il flag `is_superuser`
+non concede niente. Il dettaglio è nel play-book, §11.
 
 Una volta entrati, ciò che si configura dentro il programma (azienda, operatori,
 posta, destinatario delle segnalazioni, parametri, modelli di stampa) è in

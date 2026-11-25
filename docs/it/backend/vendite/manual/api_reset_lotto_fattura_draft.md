@@ -56,6 +56,11 @@ View `ApiResetLottoFatturaDraft` → `fn_elimina_fattura_da_lotto`
 - View `ApiEscludiDocumentiDaGiro` → `fn_escludi_documenti_da_giro` → per ogni
   chiave `vendite.fn_escludi_documento_da_giro`.
 - Stesso permesso `reset_lotto_fattura_draft`, `Idempotency-Key` obbligatorio.
+- Il permesso lo ricontrolla anche il DB (dal 2026-11-25, giro 8 + 1-7 di
+  `brief-db-porte-aperte-dalla-sola-guc` §13): `fn_elimina_fattura_da_lotto` e
+  `fn_escludi_documento_da_giro` sono `SECURITY DEFINER`, chiedono `reset_lotto_fattura_draft`
+  (`403` `E_PERMESSO_NEGATO`) e rimettono il perimetro su lotto e fattura (`E_LOTTO_NON_TROVATO`
+  fuori, come prima).
 - Body: `{ "gruppo_keys": ["ORDINE_VENDITA:…", "MAN:45"], "motivo": "…" }`.
   `gruppo_keys` lista non vuota di stringhe non vuote (deduplicata nell'ordine);
   `motivo` testo, **uno** per il giro, obbligatorio (lo impone il DB). La

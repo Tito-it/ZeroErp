@@ -768,6 +768,15 @@ registra_distinta`): scrive un movimento. Chi la chiama: la coda «Sospese» e i
 drawer di una distinta chiusa («Abbina e registra»). ⛔ Mai un job: la tardiva
 è una decisione di chi ha identificato il denaro.
 
+⭐ **Il cancello lo ricontrolla anche il DB** (dal 2026-11-25, giro 9 di
+`brief-db-porte-aperte-dalla-sola-guc` §11). La madre è `SECURITY DEFINER`: in
+prima riga chiede `registra_distinta` (`403` `E_PERMESSO_NEGATO` a chi non ce
+l'ha) e all'ingresso rimette il perimetro. Una riga fuori perimetro è
+`E_RIGA_CONTABILE_NON_TROVATA` (404), come prima; una fattura fuori perimetro
+è `E_SCOPE_EMITTENTE` (403), detta dalla madre e non più dalla policy del
+movimento. La porta della quarta mossa si apre solo dentro la madre: la GUC
+accesa dall'app non la apre. Il backend non accende niente.
+
 ### `GET /api/v1/pagamenti/righe/`
 
 La coda del riconciliatore: le righe **di tutte le distinte** in uno degli
@@ -1212,6 +1221,15 @@ L'atto si scarta e resta a registro con la sua ragione.
 ⚠️ **Il motivo è obbligatorio se l'atto non ne aveva già uno**: lo pretende il
 guard sui dati (`E_SISTEMAZIONE_MOTIVO_OBBLIGATORIO`, 400), che sa se ce n'era
 uno — il backend non replica la regola. Risponde `{ "sistemazione": {…} }`.
+
+**Chi può annullare: il livello `TUTTO` sull'area `pagamenti`**, lo stesso che
+l'endpoint chiede a una `POST`. Dal 2026-11-25 (giro 8 di
+`brief-db-porte-aperte-dalla-sola-guc` §13, D-U) lo ricontrolla anche il verbo
+DB, che è `SECURITY DEFINER`: chi non ce l'ha riceve `403` `E_PERMESSO_NEGATO`.
+Il verbo rimette all'ingresso il perimetro della sistemazione
+(`E_SISTEMAZIONE_NON_TROVATA`, 404, come prima) e fa cadere il fondo di un
+riporto dalla primitiva del fondo. Non serve anche `governa_fondo_fattura`:
+chi annulla una sistemazione non sta governando il fondo.
 
 ⭐ **E dal 2026-08-31 si annulla anche un atto CONFERMATO — sul solo
 `RIPORTO`** (decisioni G-4/G-5 di Tid, rev. del trigger di transizione). Il

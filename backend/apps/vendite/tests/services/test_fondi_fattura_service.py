@@ -27,6 +27,7 @@ Indice test eseguiti:
 12) FondiFatturaVocabolarioTests.test_configurazione_incompleta_non_e_un_motivo
 13) FondiFatturaVistaGuardrailTests.test_motivi_misurati_dalla_vista_viva (e2e, opt-in)
 14) CancellaFondoFatturaBindingTests.test_binding_reale_su_id_inesistente (e2e, opt-in)
+15) CancellaFondoFatturaBindingTests.test_senza_azione_e_permesso_negato (e2e, opt-in, giro 8)
 """
 
 import re
@@ -36,7 +37,8 @@ from unittest.mock import ANY, patch
 from django.db import DatabaseError
 
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.services.error_policies import ErrorPolicyRegistry
+from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
 from apps.vendite.db.vendite_repository import FONDI_DA_DECIDERE_MOTIVI
 from apps.vendite.services import vendite_service
 from apps.vendite.services.vendite_service import fn_fondi_fattura_da_decidere
@@ -410,6 +412,10 @@ class CancellaFondoFatturaBindingTests(TestCase):
                 "condizione d'ambiente)",
             )
 
+        # Dal giro 8 (brief-db-porte-aperte-dalla-sola-guc §13) il verbo e'
+        # DEFINER e chiede l'azione dell'endpoint: un operatore costruito, col
+        # contesto aperto e `governa_fondo_fattura`, come lo vede il backend.
+        self._operatore(con_azione=True)
         with self.assertRaises(ServiceError) as ctx:
             vendite_service.fn_cancella_fondo_fattura(fondo_source_id=999_999_999)
         self.assertEqual(
@@ -418,3 +424,35 @@ class CancellaFondoFatturaBindingTests(TestCase):
             "il codice del database non arriva intero al service: rotta la "
             "catena fn_log_and_raise_error -> translate_db_errors",
         )
+
+    # Scopo: la controprova: lo stesso operatore SENZA l'azione riceve il
+    #        rifiuto del verbo, `E_PERMESSO_NEGATO` (403), prima che il verbo
+    #        dica qualunque cosa sul fondo. E' il rifiuto nuovo del giro 8, e
+    #        arriva al service intero come gli altri.
+    def test_senza_azione_e_permesso_negato(self):
+        self._operatore(con_azione=False)
+        with self.assertRaises(ServiceError) as ctx:
+            vendite_service.fn_cancella_fondo_fattura(fondo_source_id=999_999_999)
+        self.assertEqual(ctx.exception.code, "E_PERMESSO_NEGATO")
+        self.assertEqual(ErrorPolicyRegistry.resolve("E_PERMESSO_NEGATO").http_status, 403)
+
+    # Scopo: un operatore costruito (`dbops.fn_pgtap_crea_emittente_operatore`),
+    #        col contesto aperto e, a richiesta, l'azione del fondo.
+    # ⚠️ La classe e' un `unittest.TestCase`, senza la transazione di Django:
+    #    la apre qui `apri_transazione_annullata`, e l'annullo e' registrato
+    #    prima di scrivere, cosi' l'operatore non resta sul DB.
+    def _operatore(self, *, con_azione: bool) -> int:
+        from django.db import connection
+
+        apri_transazione_annullata(self)
+        with connection.cursor() as cur:
+            cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_emittente_operatore()")
+            row = cur.fetchone()
+            assert row is not None
+            utente = int(row[0])
+            cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [utente])
+            if con_azione:
+                cur.execute(
+                    "SELECT dbops.fn_pgtap_concedi_azione(%s, 'governa_fondo_fattura')", [utente],
+                )
+        return utente

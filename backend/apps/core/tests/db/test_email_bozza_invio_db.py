@@ -253,11 +253,14 @@ class EmailLogDelCollegaDbTests(unittest.TestCase):
                 io = cur.fetchone()[0]
                 cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano('email collega')")
                 collega = cur.fetchone()[0]
-                cur.execute(
-                    "SELECT script.fn_change_user_emittenti_scope(u, ARRAY[%s]::bigint[]) "
-                    "  FROM unnest(ARRAY[%s, %s]) AS u",
-                    [emittente, io, collega],
-                )
+                # Lo scope lo cambia solo un SUPER_ADMIN (giro 10 di
+                # brief-db-porte-aperte-dalla-sola-guc §10): il builder ne
+                # costruisce uno, chiama il verbo e rimette il contesto.
+                for operatore in (io, collega):
+                    cur.execute(
+                        "SELECT dbops.fn_pgtap_sposta_scope_operatore(%s, %s)",
+                        [operatore, emittente],
+                    )
                 mia = self._mail_di(cur, io, emittente, "mail mia")
                 sua = self._mail_di(cur, collega, emittente, "mail del collega")
 

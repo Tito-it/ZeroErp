@@ -70,6 +70,12 @@ export via `ListaExportService`, scope emittente RLS + filtro applicativo).
   `{righe?: [{resi_riga_id, qta}], data?}` in unità BASE; omesse/null = tutta la
   copertura residua. Il DDT nasce DRAFT. Righe degeneri → 400 (mai degrado a
   "ri-spedisci tutto"). Risposta `{reso_id, ddt_id, numero: null}`.
+  Permesso: il livello `TUTTO` sul documento reso (`model_permission = ("vendite", "reso")`,
+  una `POST`). Dal 2026-11-25 (giro 11 di `brief-db-porte-aperte-dalla-sola-guc` §12) lo
+  ricontrolla anche la madre, che è `SECURITY DEFINER` e chiede lo stesso livello su
+  `vendite.reso` (`403` `E_PERMESSO_NEGATO`). Rimette all'ingresso il perimetro del reso
+  (`E_RESO_NOT_FOUND`, 404, come prima) e apre la porta dei legami della bolla solo per la
+  sua scrittura. Il backend non accende niente.
 - Chiudi ri-consegna `POST /<id>/chiudi-riconsegna/` — dichiara **definitiva**
   una quota resa per ri-consegna (non tornerà al cliente), fn madre
   `fn_chiudi_riconsegna_reso`: il residuo ordine si chiude (→ EVASO) e

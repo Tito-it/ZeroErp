@@ -2,11 +2,14 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-25**
 >
-> **Riparte: il team BE**, con la richiesta di R-DB-K1 e R-DB-K4 (§4.9.7, passo 3j: `20261125-30` … `-32`, i due CSV degli errori, i due seed di `tid` tolti; ✅ scritto e provato sullo scratch, ✅ applicato da Tid e pgTAP verdi il 2026-11-25, doc auto-generata rigenerata, committato). **Tid**, con la richiesta al BE del giro unico 8 + 1-7 (§13.9, committato `e4bf00af69`: ✅ scritto e provato dal team DB, ✅ applicato da Tid, pgTAP come app verdi e doc auto-generata rigenerata il 2026-11-25; `20261125-01` … `-22`, `-26`): la richiesta di §13.8 (6e-septies). **Il team DB**, al via di Tid: il giro 10-bis quando il BE risponde al censimento di §10.6. **Il team BE**, col 6d-quinquies del giro 11 (§12.6: ✅ applicato da Tid e verde il 2026-11-25, con `20261124-12`, §12.7). **Il team BE**, col 6c-quinquies del giro 9 (§11.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col 6b-quinquies del giro 10 (§10.6: ✅ applicato da Tid e verde il 2026-11-25). **Il team BE**, col passo 3n di R-DB-I3 (§4.8: ✅ scritta, applicata da Tid e verde il 2026-11-24) e col 3k-bis
-> di R-DB-K3, e col 6a-quinquies del giro 16 (§9.5). **Il team DB**, col giro unico 8 + 1-7 (i giri 16, 10, 9, 11 sono applicati e verdi) e con le due richieste nuove del BE da §4.7, R-DB-K3 (la descrizione di `E_SCOPE_SENZA_UTENTE`, passo 3k: ✅ scritta e applicata il 2026-11-24, ora la rigenerazione del BE, 3k-bis) e R-DB-K4 (i due changeSet del
-> SUPER_ADMIN di sviluppo, passo 3l). Al via di Tid: il verbo di primo impianto (D-K, R-DB-K1, passo 3i) e i giri
-> delle porte del flusso. ✅ Il ritiro di `reset_lotto_draft` è fatto, DB e BE (2026-11-24, §4.8). Il superuser Django è
-> deciso (D-J **a**) e fatto nel BE (§4.7); il `None` del perimetro si rifiuta (§4.7, BE, 2026-11-24).
+> **Riparte: Tid**, col via al team DB per il giro 10-bis: il lavoro BE è committato su `dev/backend-tid`
+> (`e4af0106a`, 2026-11-25), e tutte le richieste del DB al BE sono evase. Sono 3j (il comando `crea_primo_amministratore`, §4.9.7), 3k-bis (`genera_error_policies`, §4.7),
+> 3n (il runner sulla funzione del rollback, §4.8), 6a … 6e (test, censimenti e manuali dei giri 16, 10, 9, 11 e
+> 8 + 1-7, §9.5, §10.6, §11.6, §12.6, §13.8). **Poi il team DB**, al via di Tid: il giro 10-bis, che parte dalla
+> risposta del BE al censimento di §10.6 («nessuno scrive `config.user_emittenti_fiscali` senza il verbo»), e la voce
+> «Le guide» del piano. Il dettaglio di ogni risposta sta nella sezione della sua richiesta.
+> ✅ Il ritiro di `reset_lotto_draft` è fatto, DB e BE (2026-11-24, §4.8). Il superuser Django è deciso (D-J **a**) e
+> fatto nel BE (§4.7); il `None` del perimetro si rifiuta (§4.7, BE, 2026-11-24).
 > ✅ Fatti e verdi (Tid, 2026-11-24): giro 1 (porte di manutenzione 14 e 15, la 17 dichiarata), giro 1-bis (la
 > fusione dei comuni, il presidio di `maintenance`), giro 3 (le viste in sola lettura per l'app, con la fase `post`
 > del provisioning su dbdev), giro 12-13 (i legami della bolla, §8). Tutto applicato e committato.
@@ -31,14 +34,14 @@
 > | 3i-bis | Tid | R-DB-K1 e R-DB-K4: ✅ D-K7 **b**, ✅ D-K8 **a2**, ✅ il via (2026-11-25) | §4.9.3, §4.9.4 | — |
 > | 3i-ter | team DB | R-DB-K1 e R-DB-K4: ✅ `20261125-30` … `-32`, CSV, seed tolti, pgTAP, guide e `manual/`; prova sullo scratch (2026-11-25) | §4.9.6 | — |
 > | 3i-quater | Tid | R-DB-K1 e R-DB-K4: ✅ apply, ✅ pgTAP come app e `test-crea-primo-amministratore-v1` su dbdev verdi, ✅ doc auto-generata rigenerata (2026-11-25) | §4.9.6 | 3i-ter |
-> | 3j | team BE | il comando, `genera_error_policies`, il censimento dei lettori: la richiesta | §4.9.7 | 3i-quater |
+> | 3j | team BE | il comando, `genera_error_policies`, il censimento dei lettori: la richiesta · ✅ fatto il 2026-11-25: il comando, i test (anche sul DB vero), playbook, `configurazione-django.md` e `installazione.md`, `genera_error_policies`, il censimento | §4.9.7 | 3i-quater |
 > | 3k | team DB | R-DB-K3: la descrizione di `E_SCOPE_SENZA_UTENTE` allargata alle letture · ✅ scritta, ✅ applicata da Tid, `test-catalogo-messaggi-errore-completo` verde (2026-11-24) | §4.7 | — |
-> | 3k-bis | team BE | R-DB-K3: dopo l'apply, `manage.py genera_error_policies` (le `note` di `E_SCOPE_SENZA_UTENTE` e `E_UI_CHIAMATA_NON_VALIDA` sono cambiate: `test_il_file_generato_e_allineato_al_catalogo` è rosso fino alla rigenerazione) | §4.7 | 3k |
+> | 3k-bis | team BE | R-DB-K3: dopo l'apply, `manage.py genera_error_policies` (le `note` di `E_SCOPE_SENZA_UTENTE` e `E_UI_CHIAMATA_NON_VALIDA` sono cambiate: `test_il_file_generato_e_allineato_al_catalogo` è rosso fino alla rigenerazione) · ✅ rigenerato il 2026-11-25 insieme al codice di R-DB-K1 (`E_PRIMO_AMMINISTRATORE_GIA_PRESENTE`) e ai codici dei giri T5/T7a di `brief-db-revisione-anagrafiche`, sette ripieghi nuovi in `error_messages_fallback.py`, nessuna classe cambiata, `--check` pulito | §4.7 | 3k |
 > | 3l | team DB | R-DB-K4: i due changeSet del SUPER_ADMIN di sviluppo (`20260309-01`, `20260419-95`): ritirarli o farli passare dal verbo di R-DB-K1 · ✅ analisi: la (b) non si può fare; ✅ D-K8 **a2**, i due file tolti (2026-11-25) | §4.7, §4.9.4 | — |
 > | 3g | team DB, poi team BE | il ritiro del task `reset_lotto_draft`: ✅ analisi, ✅ D-I.1 **a** e D-I.2 **a** (Tid), ✅ scritto, applicato, pgTAP 9/9, pushato · ✅ il BE: whitelist, handler, esclusione del runner, test e manuali (2026-11-24) | §4.6, §4.8 | — |
 > | 3m | team DB | R-DB-I3 (D-I.3 **a**, Tid): ✅ `distruttivo` sul registro, `auto_step_rollback` colonna della pipeline col `CHECK` sul `meta`, `vendite.fn_check_rollback_step_automatico`, pgTAP 14/14 sullo scratch, guide (2026-11-24) | §4.8 | — |
 > | 3m-bis | Tid | R-DB-I3: ✅ apply (`20261123-95`, `-96`, `-97` e i due mirror), pgTAP `test-rollback-step-automatico-v1` come app verde, doc auto-generata rigenerata (2026-11-24) | §4.8 | — |
-> | 3n | team BE | R-DB-I3: il runner chiede `vendite.fn_check_rollback_step_automatico` al posto di `is_auto_step_rollback_attivo`, i test che scrivono la chiave nel `meta` passano alla colonna, manuale `api_pipeline_task` (⚠️ dall'apply `test_auto_step_rollback_dalla_pipeline_db` è rosso: atteso) | §4.8 | — |
+> | 3n | team BE | R-DB-I3: il runner chiede `vendite.fn_check_rollback_step_automatico` al posto di `is_auto_step_rollback_attivo`, i test che scrivono la chiave nel `meta` passano alla colonna, manuale `api_pipeline_task` (⚠️ dall'apply `test_auto_step_rollback_dalla_pipeline_db` è rosso: atteso) · ✅ fatto il 2026-11-25: `is_rollback_step_automatico` al posto di `is_auto_step_rollback_attivo`, test DB riscritto sui casi costruiti (`test_rollback_step_automatico_db`), manuale | §4.8 | — |
 > | 3o | Tid, poi team BE | dalla `/verifica` del 2026-11-24: ✅ D-K5 **a** (il resolver delega al BB), ✅ D-K6 **a** (il motore documentale riceve l'utente tecnico), ✅ D-I.4 **a** (`auto_step_rollback` dalla pipeline) · ✅ il BE, coi test (2026-11-24) | §4.7, §4.8 | — |
 > | 4 | team BE / DB | ✅ Parte B, le viste: «nessuno», dal BE (2026-11-23) · ✅ Parte A, le GUC e gli aprenti: letta dal DB sul ramo del BE (2026-11-23) | §4.2, §5.1 | — |
 > | 4a | Tid | ✅ il giro 1: applicato, pgTAP verdi (2026-11-24) | §6 | — |
@@ -53,31 +56,31 @@
 > | 6a-bis | Tid | giro 16: ✅ D-M **a**, ✅ D-N **a**, il via (2026-11-24) | §9.3 | — |
 > | 6a-ter | team DB | giro 16: ✅ `20261123-98`, `-99`, pgTAP nuovo e quattordici adeguati, guide e `manual/`, provato sullo scratch (2026-11-24) | §9.4 | — |
 > | 6a-quater | Tid | giro 16: ✅ apply, pgTAP come app verdi, doc auto-generata rigenerata (2026-11-24) | §9.4 | — |
-> | 6a-quinquies | team BE | giro 16: i test Django che pubblicano danno `documenti_template_manage` (§9.5) | §9.5 | — |
+> | 6a-quinquies | team BE | giro 16: i test Django che pubblicano danno `documenti_template_manage` (§9.5) · ✅ test e manuale (2026-11-25) | §9.5 | — |
 > | 6b | team DB | giro 10: ✅ analisi (2026-11-24) | §10 | — |
 > | 6b-bis | Tid | giro 10: ✅ D-O **a**, ✅ D-P **a**, ✅ D-Q **a**, il via (2026-11-24) | §10.3 | — |
 > | 6b-ter | team DB | giro 10: ✅ `20261124-01` … `-06`, le altre due sedi di §11.8, pgTAP nuovo e ventiquattro adeguati, guide e `manual/`, provato sullo scratch (2026-11-25) | §10.5 | — |
 > | 6b-quater | Tid | giro 10: ✅ apply, pgTAP come app verdi, doc auto-generata rigenerata (2026-11-25) | §10.5 | — |
-> | 6b-quinquies | team BE | giro 10: i test che chiamano il verbo da SUPER_ADMIN; il censimento di chi scrive `config.user_emittenti_fiscali` (per il giro 10-bis) | §10.6 | — |
+> | 6b-quinquies | team BE | giro 10: i test che chiamano il verbo da SUPER_ADMIN; il censimento di chi scrive `config.user_emittenti_fiscali` (per il giro 10-bis) · ✅ test e censimento (2026-11-25): nessuno scrive la tabella senza il verbo; manuale | §10.6 | — |
 > | 6c | team DB | giro 9: ✅ analisi, D20-b riletta (2026-11-25) | §11 | — |
 > | 6c-bis | Tid | giro 9: ✅ D-S **a**, il via (2026-11-25) | §11.3 | — |
 > | 6c-ter | team DB | giro 9: ✅ `20261124-07` … `-09`, pgTAP nuovo e quattro adeguati, guida e `manual/`, provato sullo scratch (2026-11-25) | §11.5 | — |
 > | 6c-quater | Tid | giro 9: ✅ apply, pgTAP come app verdi, doc auto-generata rigenerata (2026-11-25) | §11.5 | — |
-> | 6c-quinquies | team BE | giro 9: i test che chiamano il verbo danno `registra_distinta`; la mappatura di `E_SCOPE_EMITTENTE` dal verbo | §11.6 | — |
+> | 6c-quinquies | team BE | giro 9: i test che chiamano il verbo danno `registra_distinta`; la mappatura di `E_SCOPE_EMITTENTE` dal verbo · ✅ test, mappatura e manuale (2026-11-25) | §11.6 | — |
 > | 6d | team DB | giro 11: ✅ analisi, nessuna decisione nuova (2026-11-25) | §12 | — |
 > | 6d-ter | team DB | giro 11: ✅ `20261124-10`, `-11`, pgTAP nuovo (i ventuno esistenti invariati), guide e `manual/`, provato sullo scratch (2026-11-25) | §12.5 | — |
 > | 6d-bis | team DB | il blocco `EXCEPTION` del giro 9 tolto (decisione di Tid, 2026-11-25): ✅ `20261124-12` scritto e provato | §12.7 | — |
 > | 6d-quater | Tid | giro 11 e `20261124-12`: ✅ apply, pgTAP come app verdi, doc auto-generata rigenerata (2026-11-25) | §12.5, §12.7 | — |
-> | 6d-quinquies | team BE | giro 11: i test che chiamano il verbo con un operatore senza il livello su `vendite.reso` | §12.6 | — |
+> | 6d-quinquies | team BE | giro 11: i test che chiamano il verbo con un operatore senza il livello su `vendite.reso` · ✅ nessuno da adeguare, manuale (2026-11-25) | §12.6 | — |
 > | 6e | team DB | giro 8: ✅ analisi, D10-D11 rilette (2026-11-25) | §13 | — |
 > | 6e-bis | Tid | giro 8: ✅ D-T **b** (i giri 8 e 1-7 insieme), D-U **a** (2026-11-25) | §13.3 | — |
 > | 6e-ter | team DB | giro 8 + 1-7: ✅ l'analisi della parte 1-7, col passaggio senza azione (2026-11-25) | §13.5-§13.8 | — |
 > | 6e-quater | Tid | giro 8 + 1-7: ✅ D-W **a**, D-X **a**, D-Y **a**, D-Z **a**, ✅ il via, ✅ runner owner per i pgTAP delle strade chiuse (2026-11-25) | §13.7, §13.9 | — |
 > | 6e-quinquies | team DB | giro 8 + 1-7: ✅ changeSet, pgTAP, builder, guide e `manual/`, prova sullo scratch (2026-11-25) | §13.9 | — |
 > | 6e-sexies | Tid | giro 8 + 1-7: ✅ apply, ✅ pgTAP come app verdi, ✅ doc auto-generata rigenerata dopo le pagine `manual/` (2026-11-25) | §13.9 | — |
-> | 6e-septies | team BE | giro 8 + 1-7: la richiesta | §13.8 | — |
+> | 6e-septies | team BE | giro 8 + 1-7: la richiesta · ✅ test, tre censimenti e manuali (2026-11-25) | §13.8 | — |
 >
-> Decisioni aperte di Tid: nessuna (D-K7 **b** e D-K8 **a2** decise il 2026-11-25, §4.9; D-W … D-Z il 2026-11-25, §13.7). R-DB-K1 e R-DB-K4 sono applicati, verdi e committati (2026-11-25). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso.
+> Decisioni aperte di Tid: nessuna (le due della verifica del passo 3j, decise e fatte il 2026-11-25, §4.9.7; D-K7 **b** e D-K8 **a2** decise il 2026-11-25, §4.9; D-W … D-Z il 2026-11-25, §13.7). R-DB-K1 e R-DB-K4 sono applicati, verdi e committati (2026-11-25). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso. ✅ Il lavoro BE del 2026-11-25 (tutte le richieste evase) è committato su `dev/backend-tid` (`e4af0106a`). Restano due voci del piano, del team DB: il giro 10-bis e «Le guide».
 > Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
 > (`969ea14566`), dal BE §4.5-§4.7 con D-J (`4271a0dc69`, PR #232), e il 2026-11-24 il lato DB del ritiro di
 > `reset_lotto_draft` con la pulizia della testata (§4.8). Dal BE, il 2026-11-24 (`5fc466c729`): il `None` del perimetro
@@ -159,7 +162,7 @@
 - [x] Prima dei giri delle porte del flusso, la tabella «verbo d'ingresso → azione che l'endpoint controlla» dal BE, e
   il profilo dell'utente tecnico della pipeline (§4.3, soluzione 2): ✅ richiesta scritta e precompilata il 2026-11-24
   (§4.4); ✅ risposta del BE il 2026-11-24 (§4.5); ✅ letta dal DB il 2026-11-24 (§4.5-bis)
-- [ ] Giri delle porte del flusso (D-A a), uno per riga, in quest'ordine. ⛔ Ognuno chiude **tutte** queste voci, o non è chiuso:
+- [x] Giri delle porte del flusso (D-A a), uno per riga, in quest'ordine. ⛔ Ognuno chiude **tutte** queste voci, o non è chiuso:
   - **il verbo**: DEFINER sul verbo d'ingresso, guard in prima riga con la **stessa azione** dell'endpoint
     (soluzione 2), la GUC spenta all'ingresso e riaccesa **sulla riga**, le primitive senza `EXECUTE` all'app;
   - **il perimetro** (soluzione 1): **un** controllo d'ambito all'ingresso, sull'oggetto padre (lotto, fattura,
@@ -176,38 +179,38 @@
     (il ramo fuori bozza chiede già il proprietario, §3-ter.2). Un pgTAP che fissa i due rami (come app, fuori bozza
     con le GUC: si ferma; in bozza con la GUC sulla riga: passa) e la guida che dichiara la bozza «sola GUC sulla
     riga» come scelta
-  - [ ] 16, il template: il verbo, e il trigger che distingue il seed dal verbo (§9)
+  - [x] 16, il template: il verbo, e il trigger che distingue il seed dal verbo (§9)
     - [x] analisi (2026-11-24, §9)
     - [x] D-M **a** e D-N **a** (Tid, 2026-11-24)
     - [x] changeSet, pgTAP, guide; prova sullo scratch (2026-11-24, §9.4)
     - [x] apply e pgTAP come app: verdi (Tid, 2026-11-24)
     - [x] la doc auto-generata rigenerata (Tid, 2026-11-24)
     - [x] commit su `dev/db-tid` (2026-11-24)
-    - [ ] il BE: i test Django che pubblicano (§9.5)
-  - [ ] 10, lo scope emittenti: il verbo con `fn_guard_super_admin` (nessuna RLS) (§10)
+    - [x] il BE: i test Django che pubblicano, il manuale (§9.5, 2026-11-25)
+  - [x] 10, lo scope emittenti: il verbo con `fn_guard_super_admin` (nessuna RLS) (§10)
     - [x] analisi (2026-11-24, §10)
     - [x] D-O **a**, D-P **a**, D-Q **a** (Tid, 2026-11-24)
     - [x] changeSet, pgTAP nuovo e ventiquattro adeguati, builder, guide e `manual/`; prova sullo scratch (2026-11-25, §10.5)
     - [x] apply e pgTAP come app: verdi (Tid, 2026-11-25)
     - [x] la doc auto-generata rigenerata (Tid, 2026-11-25)
     - [x] commit e push su `dev/db-tid` (2026-11-25)
-    - [ ] il BE: i test che chiamano il verbo da SUPER_ADMIN, e il censimento di chi scrive la tabella (§10.6)
-  - [ ] 9, la registrazione tardiva: da qui si prova il perimetro; prima si rilegge la D20-b di `brief-incassi-riconciliazione-rate-promemoria` (§11)
+    - [x] il BE: i test che chiamano il verbo da SUPER_ADMIN, e il censimento di chi scrive la tabella (§10.6, 2026-11-25)
+  - [x] 9, la registrazione tardiva: da qui si prova il perimetro; prima si rilegge la D20-b di `brief-incassi-riconciliazione-rate-promemoria` (§11)
     - [x] analisi, D20-b riletta (2026-11-25, §11)
     - [x] D-S **a** (Tid, 2026-11-25)
     - [x] changeSet, pgTAP nuovo e quattro adeguati, guida e `manual/`; prova sullo scratch (2026-11-25, §11.5)
     - [x] apply e pgTAP come app: verdi (Tid, 2026-11-25)
     - [x] la doc auto-generata rigenerata (Tid, 2026-11-25)
     - [x] commit e push su `dev/db-tid` (2026-11-25)
-    - [ ] il BE: i test che chiamano il verbo danno `registra_distinta` (§11.6)
-  - [ ] 11, la bolla di riconsegna: il verbo col livello su `vendite.reso`, il perimetro del reso (§12)
+    - [x] il BE: i test che chiamano il verbo danno `registra_distinta` (§11.6, 2026-11-25)
+  - [x] 11, la bolla di riconsegna: il verbo col livello su `vendite.reso`, il perimetro del reso (§12)
     - [x] analisi, nessuna decisione nuova (2026-11-25, §12)
     - [x] changeSet, pgTAP nuovo, guide e `manual/`; prova sullo scratch (2026-11-25, §12.5)
     - [x] apply e pgTAP come app: verdi, con `20261124-12` (Tid, 2026-11-25)
     - [x] la doc auto-generata rigenerata (Tid, 2026-11-25)
     - [x] commit e push su `dev/db-tid` (`8f29eee1cb`, 2026-11-25)
-    - [ ] il BE: i test che chiamano il verbo senza il livello (§12.6)
-  - [ ] 8 + 1-7, un giro solo (D-T **b**, Tid, 2026-11-25): il fondo fattura (verbo pubblico e primitiva separati) e il reset del lotto (quattro verbi d'ingresso, tre primitive chiuse). Qui nasce `dbops.fn_pgtap_concedi_livello_area` (D-L a) e si ritirano le quattro copie (§13)
+    - [x] il BE: i test che chiamano il verbo senza il livello: nessuno (§12.6, 2026-11-25)
+  - [x] 8 + 1-7, un giro solo (D-T **b**, Tid, 2026-11-25): il fondo fattura (verbo pubblico e primitiva separati) e il reset del lotto (quattro verbi d'ingresso, tre primitive chiuse). Qui nasce `dbops.fn_pgtap_concedi_livello_area` (D-L a) e si ritirano le quattro copie (§13)
     - [x] analisi della parte 8, D10-D11 rilette (2026-11-25, §13.1-13.4)
     - [x] D-T **b**, D-U **a** (Tid, 2026-11-25, §13.3)
     - [x] analisi della parte 1-7, col passaggio senza azione (2026-11-25, §13.5-§13.8)
@@ -217,7 +220,7 @@
     - [x] apply e pgTAP come app: verdi (Tid, 2026-11-25)
     - [x] la doc auto-generata rigenerata, anche dopo le pagine `manual/` (Tid, 2026-11-25)
     - [x] commit e push su `dev/db-tid` (`e4bf00af69`, 2026-11-25)
-    - [ ] il BE: i test della Parte C del giro
+    - [x] il BE: i test della Parte C del giro, i censimenti, i manuali (§13.8, 2026-11-25)
 - [x] Giro 3 (2026-11-24, applicato da Tid con la fase `post` del provisioning, pgTAP verde; §7): le viste (§5): ~~prima i verbi delle scritture che il BE trova~~ (nessuna, §5.1), l'app con solo `SELECT` sulle viste,
   nelle tre sedi di `linee-guida-sql.md` §11.8, col pgTAP di postura a criterio e la guida dei permessi §7.4;
   il caso costruito passa dal criterio del loop, non da un `REVOKE` nel test (i privilegi di default danno il DML anche alle viste, §3-ter.4)
@@ -228,20 +231,20 @@
   - [x] apply su dbdev e pgTAP dell'invariante 9/9 (Tid, 2026-11-24)
   - [x] commit e push su `dev/db-tid` (2026-11-24)
   - [x] il BE: whitelist, handler, esclusione del runner, test e manuali (2026-11-24)
-- [ ] Il rollback distruttivo non parte da solo (R-DB-I3, D-I.3 **a**, §4.8)
+- [x] Il rollback distruttivo non parte da solo (R-DB-I3, D-I.3 **a**, §4.8)
   - [x] scelte di Tid: decisione intera nella funzione, `auto_step_rollback` colonna (2026-11-24)
   - [x] `20261123-95`, `-96`, `-97`, i due CSV coi mirror, pgTAP, guide: scritto e provato sullo scratch (2026-11-24)
   - [x] apply su dbdev e pgTAP `test-rollback-step-automatico-v1` come app: verde (Tid, 2026-11-24)
   - [x] la doc auto-generata rigenerata (Tid, 2026-11-24)
-  - [ ] il BE: il runner sulla funzione, i test, il manuale (passo 3n)
-- [ ] R-DB-K1 e R-DB-K4 insieme (Tid, 2026-11-25): il verbo di primo impianto e il ritiro dei due seed di `tid` (§4.9)
+  - [x] il BE: il runner sulla funzione, i test, il manuale (passo 3n, 2026-11-25)
+- [x] R-DB-K1 e R-DB-K4 insieme (Tid, 2026-11-25): il verbo di primo impianto e il ritiro dei due seed di `tid` (§4.9)
   - [x] analisi, guide verificate (2026-11-25, §4.9)
   - [x] D-K7 **b** e D-K8 **a2** (Tid), il via (2026-11-25)
   - [x] changeSet, codice d'errore, pgTAP, guide e nota `_ultimo-super-admin`; prova sullo scratch (2026-11-25, §4.9.6)
   - [x] apply e pgTAP come app e su dbdev verdi (Tid, 2026-11-25)
   - [x] commit su `dev/db-tid` (2026-11-25)
   - [x] doc auto-generata rigenerata (Tid, 2026-11-25)
-  - [ ] il BE: passo 3j, `genera_error_policies`, il censimento (§4.9.7)
+  - [x] il BE: passo 3j, `genera_error_policies`, il censimento (§4.9.7, 2026-11-25)
 - [ ] Giro 10-bis (D-O **a**, Tid, 2026-11-24): `config.user_emittenti_fiscali` in sola lettura per l'app, con
   `script.fn_crea_utente_tecnico` a verbo e R-DB-K2 (`fn_crea_operatore_v2`); parte dalla risposta del BE al
   censimento di §10.6
@@ -1375,6 +1378,19 @@ esercizio fra l'apply e il passo 3n: nessuno, perché nessuna pipeline ha un rol
   di D-I.4 passa alla colonna;
 * il manuale `api_pipeline_task.md` (come parte il rollback automatico).
 
+**✅ Fatto nel BE (passo 3n, 2026-11-25).** `VenditePipelineRepository.is_auto_step_rollback_attivo` è ritirato; al
+suo posto `is_rollback_step_automatico` chiama `vendite.fn_check_rollback_step_automatico` con gli argomenti per nome
+con cui `get_step_processes` legge il rollback. `_should_execute_auto_step_rollback` non legge più la lista: tiene le
+condizioni del rilancio (MASSIVO in ERRORE, step DRAFT o EMESSA) e per il resto risponde il DB. Censimento dei lettori
+della chiave `meta.auto_step_rollback` nel BE: i quattro dell'elenco qui sopra, nessun altro (ricerca del nome in
+`backend/` e `docs/`; il `meta` del body del run lo ignora già da D-I.4). Test: il test DB è rinominato
+`vendite/tests/db/test_rollback_step_automatico_db.py` e **costruisce** i casi (due task di prova nel registro, uno
+distruttivo; la colonna e il `rollback` scritti dal test): corsia accesa con task innocuo sì, corsia spenta no, il
+distruttivo da solo o accanto all'innocuo no, task sconosciuto no, la chiave nel `meta` rifiutata dal `CHECK`, step
+sconosciuto no (6/6 sul DB vero). Runner: il 7 verifica anche gli argomenti passati al DB, l'8 diventa la controprova
+«il DB dice no con un rollback pronto» (`test_runner_massivo_error_rerun_db_dice_no_non_lo_esegue`), il 37 e il mock
+base passano al metodo nuovo; runner ed executor 128/128. Manuale `api_pipeline_task.md` allineato.
+
 **Corretto dalla stessa `/verifica`**: il diario di un task di rollback fallito. La riscrittura best-effort della riga
 ERRORE fuori transazione (`LottoPipelineRunner._persist_task_run_error_safely`) scriveva `meta = {"rollback": false}` fisso:
 un rollback fallito, nella riga riscritta, diventava un passo in avanti. Era dormiente finché l'auto-rollback escludeva
@@ -1593,6 +1609,66 @@ Chi cambia per primo: il DB. Il BE non ha niente da adeguare finché il verbo no
   `test_il_file_generato_e_allineato_al_catalogo` è rosso fino alla rigenerazione.
 * **Censisci i lettori di `fn_crea_operatore_v2`** che contano sul suo `COMMENT` o sulla sua firma: la firma non cambia,
   il comportamento neanche (gli indirizzi passano da un BB, con la stessa regola). Atteso: «nessuno».
+  ✅ **Risposta del BE (2026-11-25): nessuno.** Un solo chiamante, `AmmSoftwareRepository`, con il binding per nome sui
+  diciotto argomenti, che coincide con la firma viva (`pg_get_function_identity_arguments`) e col `RETURNS TABLE`.
+  Nessuno legge il `COMMENT`. `genera_error_policies` è fatto col 3k-bis.
+
+**✅ Il passo 3j fatto nel BE (2026-11-25).**
+
+* **Il comando** `manage.py crea_primo_amministratore`
+  (`backend/apps/anagrafiche/management/commands/`, accanto a `provision_utenti_sviluppo`).
+  * Gli argomenti: cognome, nome, codice fiscale, sesso, email e username obbligatori; `--residenza` obbligatoria,
+    un oggetto JSON nella forma di `fn_crea_indirizzo_soggetto` senza il tipo, ripulito dal BB `indirizzo_per_madre`;
+    `--domicilio-fiscale`, `--data-nascita` e `--comune-nascita-id` facoltativi.
+  * La password si chiede due volte al terminale. Con `--noinput` arriva da `ZEROERP_PRIMO_AMMINISTRATORE_PASSWORD`,
+    mai da un argomento. La valida `valida_nuova_password`, su un `User` non salvato coi dati della persona, perché il
+    validatore di somiglianza abbia con che cosa confrontare. Poi `make_password`.
+  * Il binding sta in `AmmSoftwareRepository.crea_primo_amministratore`, accanto a `crea_operatore`, per nome sui
+    dodici argomenti. La transazione intera sta dentro `translate_db_errors`, perché gli indirizzi obbligatori
+    parlano al COMMIT.
+  * I rifiuti: `E_PRIMO_AMMINISTRATORE_GIA_PRESENTE` esce come messaggio che dice dove andare (l'invito).
+    `E_CREDENZIALE_DA_CONFERMARE` mostra la credenziale trovata, con la stessa lettura del rifiuto
+    (`get_credenziale_per_email`), e chiede se riusarla; confermato, richiama il verbo con `p_riusa_auth_user_id`.
+    Con `--noinput` dice di rilanciare con `--riusa-credenziale <id>`. Ogni altro rifiuto esce col suo messaggio e
+    il suo codice.
+* **I test**:
+  * `anagrafiche/tests/services/test_crea_primo_amministratore.py`, dodici test col repository finto: l'hash e
+    mai la password; i due rifiuti come messaggio; il riuso confermato, negato e dichiarato; la password che non
+    coincide o è debole, la residenza non JSON e `--noinput` senza variabile, che fermano prima del verbo;
+  * `anagrafiche/tests/db/test_crea_primo_amministratore_db.py`, sul DB vero: un SUPER_ADMIN di fixture chiude il
+    primo impianto, e il comando esce col rifiuto del verbo. Provato a rovescio: con un argomento rinominato nel
+    binding è rosso. Il ramo che crea lo prova il pgTAP, perché l'app non sa costruire un sistema senza legami
+    SUPER_ADMIN;
+  * il presidio `test_comandi_fuso_aziendale` vede il comando nuovo.
+* **La documentazione**:
+  * il play-book §11 e `installazione.md` §«Il primo amministratore» spiegano il comando, con un esempio;
+    `configurazione-django.md` rimanda al play-book;
+  * il «buco aperto» di `createsuperuser` è chiuso nei tre documenti, che dicono di non usarlo;
+  * guide (`guide_coinvolte.py`): `risorse-umane-e-accessi`, `architettura-multi-face-auth`,
+    `architettura-permessi-e-autorizzazioni` e la nota `_ultimo-super-admin` sono **coerenti** («lo crea un
+    comando che si lancia una volta… la password la sceglie lei»). `script.fn_get_credenziale_per_email` resta
+    orfano: è un dettaglio interno della lettura.
+
+**Verifica critica del passo 3j (`/verifica`, 2026-11-25).**
+
+* ✅ **Corretto: il testo del rifiuto stava ricopiato nel comando.** `_rifiuto` scriveva a mano la frase di
+  `E_PRIMO_AMMINISTRATORE_GIA_PRESENTE` e la sua soluzione, che il catalogo porta già (`messaggi_errore`, colonne
+  `messaggio` e `soluzione`), e che arrivano alla `ServiceError` come `message` e `hint`. La copia diceva già cose
+  diverse: «e'» per «è», e mancava il recupero «lo fa chi gestisce il database». Ora ogni rifiuto esce come
+  `messaggio + soluzione + (codice)`, letti dal catalogo, e anche gli altri rifiuti portano la loro soluzione. I test:
+  il test 3 di servizio vuole la frase e la soluzione esatte del rifiuto, il test DB vuole frase e soluzione vere del
+  catalogo («con l'invito»). Provato a rovescio: senza l'`hint` sono rossi tutti e due.
+* ✅ **Guida indietro**: `risorse-umane-e-accessi` §«Il primo amministratore di un'installazione nuova» diceva «un
+  comando» senza nominarlo: ora nomina `manage.py crea_primo_amministratore` e rimanda a `installazione.md`.
+* ✅ **Deciso da Tid (2026-11-25): la doc dice come si leggono gli id della residenza.** Il comando vuole
+  `stato_id`, `comune_id` e `codice_postale_id`, e chi installa non li conosce. `installazione.md` §«Il primo
+  amministratore» ora ha le due query con `dbshell` (lo stato per sigla, comune e CAP dalla stessa riga), più la forma
+  estera (`locality`); il play-book §11 rimanda lì. Il verbo continua ad accettare solo gli id: nessuna richiesta al DB.
+* ✅ **Deciso da Tid (2026-11-25): l'avviso prima della password.** Con il riuso di una credenziale il comando
+  chiede comunque la password, e poi non la usa (l'account tiene la sua). Ora, prima della domanda, il comando dice
+  quando non verrà usata: con `--riusa-credenziale` già dichiarato lo dice e basta, altrimenti avverte che succede se
+  l'email è già di un account. La domanda resta: il contratto del verbo non dice che accetti un hash vuoto sul
+  riuso, e non si è chiesto al DB. Test: `test_avviso_password_prima_della_domanda`.
 
 ## 5. La seconda famiglia: le viste aggiornabili — 2026-11-23
 
@@ -1959,6 +2035,14 @@ Chi cambia per primo: il DB. Nessuna firma cambia, nessuna GUC da togliere (il B
   prima il permesso).
 * **Il manuale BE** della pubblicazione dei template, se racconta la porta o chi può pubblicare.
 
+**✅ La risposta del BE (2026-11-25).** Trovati lanciando i test sul DB vero di `documenti`, `core`, `pagamenti`,
+`vendite` e `amm_software` (944 test, `ZEROERP_TEST_DB_E2E=1`), non dal solo elenco: i rossi della pubblicazione erano
+quelli di §4.5, Parte C, nessuno in più. I quattro mondi di prova (`test_template_standard_db`,
+`test_versione_contesto_db`, `test_ricerca_liste_db`, `test_scritture_dinamiche_db`, che con `_stampa.pubblica_per_stampare`
+coprono anche le stampe) danno `documenti_template_manage` al loro operatore con `dbops.fn_pgtap_concedi_azione`;
+`test_date_validita_guard_comune_db` la dà prima di provare la pubblicazione, così il rifiuto torna quello delle date.
+Gli smoke passano: girano come `dev.smoke`, che è SUPER_ADMIN. Il manuale `documenti/manual/api_documenti_templates.md` dice che il verbo ricontrolla l'azione e che è l'unica strada per la pubblicazione.
+
 **Guide verificate per il giro** (`guide_coinvolte.py --oggetti` sui tre oggetti, 2026-11-24):
 `documenti-e-stampe` — **indietro** dopo il giro (non dice chi può pubblicare né la porta), si aggiorna nello stesso
 giro; il trigger orfano — segnale di «Vedi anche» incompleto, si aggiunge lì.
@@ -2106,6 +2190,24 @@ Chi cambia per primo: il DB. Nessuna firma cambia, nessuna GUC da togliere (il B
   scrive oggi.
 * **Il manuale BE** dell'endpoint dello scope (`api_amm_software`), se racconta chi può cambiare l'emittente.
 
+**✅ La risposta del BE (2026-11-25).**
+
+* **I test**: un rosso solo, quello noto (`core/tests/db/test_email_bozza_invio_db.py`). Ora sposta i due operatori con
+  `dbops.fn_pgtap_sposta_scope_operatore`, che costruisce il SUPER_ADMIN di fixture e rimette il contesto: non dipende da
+  un SUPER_ADMIN già presente sul DB, che su un DB da zero, dopo R-DB-K4, potrebbe non esserci. Nessun test accende
+  `zeroerp.allow_user_emittente_delete_override`: il nome sta solo nella `note` del catalogo generata.
+* **Il censimento per il giro 10-bis.** **Nessuno scrive `config.user_emittenti_fiscali` senza il verbo**, né nel codice
+  né nei test né negli smoke. La ricerca è stata fatta sul nome della tabella file per file, perché l'SQL su più righe
+  sfugge a un `grep` di riga, e sul modello ORM `config.UserEmittenteFiscale`, che è `managed = False` e che nessuno
+  usa. Il solo scrittore è il verbo, da `AmmSoftwareRepository` (endpoint dello scope, `AdminAPIView`). Il
+  provisioning di sviluppo (`manage.py provision_utenti_sviluppo`) passa da `anagrafiche.fn_provisiona_dati_di_sviluppo`,
+  cioè dal DB. Gli altri file che nominano la tabella la **leggono**: perimetro, `/me/`, audit dei permessi, processi.
+  **`script.fn_crea_utente_tecnico`** ha un chiamante solo, `ProcessiService.crea_utente_tecnico`, dall'endpoint
+  `ProcessiIdentitaView` (`AdminAPIView`, quindi SUPER_ADMIN con `IsAdminZeroERP`). L'utente in sessione è il
+  SUPER_ADMIN della richiesta (`JwtAuditMiddleware`). I test lo mockano. Per il BE la tabella può andare in sola
+  lettura per l'app.
+* Il manuale `amm-software/manual/api_amm_software.md` §2.6: solo un SUPER_ADMIN, e lo dice il DB; la porta del `DELETE` non si apre più dall'app.
+
 **Guide verificate per il giro** (`guide_coinvolte.py --oggetti` sui cinque oggetti, 2026-11-25):
 `architettura-permessi-e-autorizzazioni` e `risorse-umane-e-accessi` — **indietro**, aggiornate nello stesso giro;
 verbo e guard non più orfani. `anagrafiche.fn_provisiona_dati_di_sviluppo` resta orfano: è uno strumento dello
@@ -2237,6 +2339,14 @@ Chi cambia per primo: il DB. Nessuna firma cambia, nessuna GUC da togliere (il B
   l'errore della policy, va allineato.
 * **Il manuale BE** dell'endpoint `POST /pagamenti/righe/{id}/registra/`, se racconta chi può registrare.
 
+**✅ La risposta del BE (2026-11-25).** Due rossi, tutti e due in `pagamenti/tests/db/test_validata_e_tardiva_db.py`.
+Il mondo di prova ora dà `registra_distinta` al suo operatore. La mappatura: `registra_riga_tardiva` traduce col
+traduttore standard (`make_db_errors_translator`), che lascia passare intatto il codice del verbo. `E_SCOPE_EMITTENTE`
+è `NON_PERMESSO`, quindi 403, e nessun test né mappatura aspettava l'errore della policy. Fuori dal giro ma trovato
+nello stesso giro di test: `test_riga_elimina_e_transizioni_db.test_la_check_della_coda_sta_sopra_la_window` era rosso
+dall'E-2 di `brief-be-fe-BB-audit`, perché intercettava `fetch_paged_with_total` nel repository e non dove passa la query
+(`apps.core.db._helpers`). Corretto. Il manuale `pagamenti/manual/api_pagamenti.md` (§ registrazione tardiva) dice che la madre ricontrolla `registra_distinta` e il perimetro.
+
 **Guide verificate per il giro** (`guide_coinvolte.py --oggetti` sui quattro oggetti, 2026-11-25):
 `gestione-dei-pagamenti` — **indietro**, aggiornata nello stesso giro; il mirror non più orfano.
 `architettura-permessi-e-autorizzazioni` e `processi-pgagent-funzionali` — **coerenti**.
@@ -2345,6 +2455,10 @@ Chi cambia per primo: il DB. Nessuna firma cambia, nessuna GUC da togliere (il B
   dall'endpoint).
 * **Il perimetro**: un reso di un'altra azienda risponde `E_RESO_NOT_FOUND` come prima (il 404 non cambia).
 * **Il manuale BE** dell'endpoint di generazione della riconsegna, se racconta chi può generarla.
+
+**✅ La risposta del BE (2026-11-25).** Nessun test da adeguare. Nessun test sul DB vero chiama
+`vendite.fn_genera_ddt_riconsegna` o la fixture: `test_resi_service` la mocka, i test sul DB di `vendite` sono verdi, e
+gli smoke dei resi passano dall'endpoint come `dev.smoke`, che è SUPER_ADMIN. Il gate dell'endpoint (`model_permission = ("vendite", "reso")`, `POST`, cioè `TUTTO`) chiede ciò che chiede il verbo. Il manuale `vendite/manual/api_resi.md` lo dice.
 
 ### 12.7 Il blocco `EXCEPTION` del giro 9 si toglie — 2026-11-25
 
@@ -2652,6 +2766,35 @@ Si scrive nel giro, insieme a quella di §13.2 punto 8. Il contenuto:
   Uno già noto: `docs/it/backend/vendite/manual/api_fondi_fattura.md` (riga 116, 2026-11-25) descrive la cancellazione
   del fondo col meccanismo di prima. La ricerca resta del tema, non di un elenco chiuso.
 
+**✅ La risposta del BE (2026-11-25).**
+
+* **I test**: un rosso, `CancellaFondoFatturaBindingTests`. Ora si costruisce un operatore
+  (`dbops.fn_pgtap_crea_emittente_operatore`, in una transazione annullata, perché la classe è un `unittest.TestCase`)
+  con `governa_fondo_fattura`, e il binding torna a dire `E_FONDO_NON_TROVATO`. In più c'è la controprova senza
+  l'azione: `E_PERMESSO_NEGATO`, 403, arriva intero al service. Gli altri chiamanti dei quattro verbi del reset
+  (`test_reset_lotto_*_api`, `test_escludi_documento_da_giro`) sono mockati, e i test sul DB di `vendite` e `pagamenti`
+  sono verdi. Nessun test sul DB vero annulla una sistemazione. Il gate degli endpoint chiede quello che chiede il
+  verbo: la sistemazione chiede `add` sull'area `pagamenti`, cioè `TUTTO`, come D-U; il reset in bozza chiede il
+  livello sul documento, che col tetto d'area non supera quello dell'area chiesto dal verbo (D-X).
+* **`fn_riporta_attivita_da_emettere`: sì, il BE la chiama.** Il percorso è `POST
+  /vendite/attivita-fatturabili/riporta-da-emettere/` (`ApiAttivitaRiportaDaEmettere`, azione `riporta_da_emettere`) →
+  `vendite_service` → `VenditeRepository.riporta_attivita_da_emettere`. Resta INVOKER e non le serve la porta (il suo
+  `COMMENT`: su un'attività orfana `fattura_riga_id` è già NULL). Provato come app, con `psql` e la credenziale del
+  backend, dato che il runner di questo server non ha `~/.pgpass` per l'app: `test-riporta-attivita-da-emettere-v1`
+  15/15 e `test-motivo-non-fatturata-v1` 20/20.
+* **I lettori di `user_update`/`user_insert`**: nessuno conta che valgano `zeroerp_app`. Le colonne timbrate
+  `current_user` dai verbi del giro sono `vendite.fatturazione_lotti.user_update` e `user_insert`/`user_update` di
+  `vendite.fatture_log`. Il BE scrive `fatture_log` (`_insert_fatture_log`) ma non lo rilegge per autore. L'unico
+  confronto per autore (`is_mio`, su `c.user_insert`) è su un'altra tabella. I `l.user_update` letti nel BE sono dei
+  lotti di magazzino e dei listini. Nessun letterale `'zeroerp_app'` è usato come confronto: le due occorrenze sono
+  commenti.
+* I manuali:
+  * `vendite/manual/api_fondi_fattura.md`: il permesso e il perimetro li ricontrolla il DB; il «guard di canale» non
+    dice più che la madre è INVOKER;
+  * `vendite/manual/api_reset_lotto_draft.md` e `api_reset_lotto_fattura_draft.md`: i quattro verbi DEFINER, col
+    permesso dell'endpoint e il perimetro, e la GUC del reset che dall'app non apre più;
+  * `pagamenti/manual/api_pagamenti.md` (§ annullo della sistemazione): il livello `TUTTO` sull'area, D-U.
+
 ### 13.9 Il giro scritto — 2026-11-25
 
 Range `20261125-01` … `-30` dato da Tid. ⚠️ L'altra sessione DB ha preso `-23`, `-24` e `-25` dentro il range mentre
@@ -2728,6 +2871,7 @@ i dodici a runner owner, i quattro del builder. ✅ **Doc auto-generata rigenera
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-25 | BE | Evase tutte le richieste al BE, da committare su `dev/backend-tid`: 3k-bis (`genera_error_policies`, sette ripieghi), 3n (il runner su `fn_check_rollback_step_automatico`, test DB sui casi costruiti), 6a … 6e (test sul DB vero adeguati: 13 rossi di permesso, tutti attesi; censimenti: nessuno scrive lo scope senza il verbo, `fn_riporta_attivita_da_emettere` chiamata dal BE e verde come app, nessun lettore di `user_update`/`user_insert`; manuali), 3j (il comando `crea_primo_amministratore`, i test, play-book, `configurazione-django`, `installazione`). Fuori brief: il patch rotto di `test_riga_elimina_e_transizioni_db` dall'E-2 dell'audit BB |
 | 2026-11-25 | DB | Commit su `dev/db-tid`: R-DB-K1 e R-DB-K4 (§4.9.6); al BE il passo 3j (§4.9.7) |
 | 2026-11-25 | Tid | R-DB-K1 e R-DB-K4 applicati, pgTAP come app e `test-crea-primo-amministratore-v1` su dbdev verdi, doc auto-generata rigenerata (§4.9.6) |
 | 2026-11-25 | DB | R-DB-K1 e R-DB-K4 scritti (§4.9.6): `20261125-30` (il BB degli indirizzi dell'operatore, regola del 2), `-31` (la madre dal BB), `-32` (il verbo), `E_PRIMO_AMMINISTRATORE_GIA_PRESENTE` (CONFLITTO_STATO, id 1539), i due seed di `tid` tolti, pgTAP nuovo 18/18 e `test-character-n` adeguato, guide e `manual/`. Trovati dalla prova: il PR pretende residenza e domicilio fiscale (il verbo li riceve in jsonb); lo scratch ha zero legami SUPER_ADMIN. La postcondizione di §4.9.2 non entra. Da applicare |

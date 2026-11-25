@@ -7,7 +7,7 @@ Indice test eseguiti:
 5) LottoPipelineRunnerUnitTests.test_runner_completed_lotto_reexecutes_pipeline_steps
 6) LottoPipelineRunnerUnitTests.test_runner_massivo_error_rerun_resumes_from_current_step
 7) LottoPipelineRunnerUnitTests.test_runner_massivo_error_rerun_executes_step_rollback_when_enabled
-8) LottoPipelineRunnerUnitTests.test_runner_massivo_error_rerun_senza_rollback_non_lo_esegue
+8) LottoPipelineRunnerUnitTests.test_runner_massivo_error_rerun_db_dice_no_non_lo_esegue (R-DB-I3)
 8a) LottoPipelineRunnerUnitTests.test_runner_flag_nel_body_non_accende_il_rollback (D-I.4 a)
 9) LottoPipelineRunnerUnitTests.test_runner_blocks_when_lotto_in_esecuzione
 10) LottoPipelineRunnerUnitTests.test_runner_closes_lotto_when_stato_has_chiude_lotto_flag
@@ -257,9 +257,10 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             # `rollback`. Chi prova il rollback lo dichiara nel suo mock.
             return []
 
-        # Il flag `meta.auto_step_rollback` della pipeline dello step (D-I.4 a,
-        # 2026-11-24): spento come nel seed. Chi prova il rollback lo accende.
-        def is_auto_step_rollback_attivo(
+        # La decisione del DB sul rollback automatico dello step
+        # (`fn_check_rollback_step_automatico`, R-DB-I3): no, come nel seed.
+        # Chi prova il rollback la accende.
+        def is_rollback_step_automatico(
             self,
             stato_doc_fiscale_id,
             *,
@@ -621,8 +622,11 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     return [{"task": "noop", "params": {}}]
                 return []
 
-            # Il flag acceso sulla PIPELINE dello step (D-I.4 a), non nel body.
-            def is_auto_step_rollback_attivo(self, stato_doc_fiscale_id, **_kw):
+            # Il DB dice si' per lo step 2 (R-DB-I3); il runner non ricompone
+            # la decisione. Registra con che cosa e' stato chiesto.
+            def is_rollback_step_automatico(self, stato_doc_fiscale_id, **kw):
+                self.chieste = getattr(self, "chieste", [])
+                self.chieste.append((stato_doc_fiscale_id, kw))
                 return stato_doc_fiscale_id == 2
 
         repo = _ErroredRepo()
@@ -638,12 +642,20 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
         self.assertTrue(step_executor.calls[0]["rollback"])
         self.assertEqual(step_executor.calls[1]["stato_doc_fiscale_id"], 2)
         self.assertFalse(step_executor.calls[1]["rollback"])
+        # Gli argomenti con cui il runner legge il rollback dello step: stessa
+        # corsia, stesso contesto del lotto (stessa riga risolta dal DB).
+        self.assertEqual(
+            repo.chieste,
+            [(2, {"tipo_lotto": "MASSIVO", "utility_id": 1, "tipo_doc_fiscale_id": 1})],
+        )
 
-    # Scopo: la controprova del 7, sul seed di oggi: con `auto_step_rollback`
-    #        acceso sulla pipeline ma senza `rollback`, il rerun rifa' lo step e
-    #        non chiama nessun rollback. Prima del 2026-11-24 lo stesso esito
-    #        veniva dall'esclusione per nome di `reset_lotto_draft` (D-I).
-    def test_runner_massivo_error_rerun_senza_rollback_non_lo_esegue(self):
+    # Scopo: la controprova del 7: il rollback c'e' ma il DB dice no (un task
+    #        distruttivo, sconosciuto o spento, o la corsia spenta: la ragione
+    #        la sa il DB, R-DB-I3). Il rerun rifa' lo step senza rollback: il
+    #        runner non scavalca la decisione leggendo la lista per conto suo.
+    #        Prima del 2026-11-24 lo stesso esito veniva dall'esclusione per
+    #        nome di `reset_lotto_draft` (D-I).
+    def test_runner_massivo_error_rerun_db_dice_no_non_lo_esegue(self):
         class _ErroredRepo(self._RepoMock):
             # Scopo: Recupera `lotto_job_stato` dal contesto applicativo o dal database.
             def get_lotto_job_stato(self, lotto_id):
@@ -653,8 +665,14 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
             def get_lotto_stato_doc_fiscale_id(self, lotto_id):
                 return 2
 
-            def is_auto_step_rollback_attivo(self, stato_doc_fiscale_id, **_kw):
-                return True
+            # Un rollback pronto nella pipeline: senza, il test sarebbe vacuo.
+            def get_step_processes(self, stato_doc_fiscale_id, *, rollback, **_kw):
+                if rollback and stato_doc_fiscale_id == 2:
+                    return [{"task": "cancella_qualcosa", "params": {}}]
+                return []
+
+            def is_rollback_step_automatico(self, stato_doc_fiscale_id, **_kw):
+                return False
 
         repo = _ErroredRepo()
         step_executor = self._StepExecutorMock()
@@ -1754,9 +1772,9 @@ class LottoPipelineRunnerUnitTests(SimpleTestCase):
                     return [{"task": "ricalcola_iva_lotto", "params": {}}]
                 return []
 
-            # Acceso sulla pipeline (D-I.4 a): il rollback non deve partire
-            # per la riapertura, non per il flag spento.
-            def is_auto_step_rollback_attivo(self, stato_doc_fiscale_id, **_kw):
+            # Il DB dice si' (R-DB-I3): il rollback non deve partire per la
+            # riapertura, non per la decisione del DB.
+            def is_rollback_step_automatico(self, stato_doc_fiscale_id, **_kw):
                 return True
 
         repo = _RiapertoRepo()

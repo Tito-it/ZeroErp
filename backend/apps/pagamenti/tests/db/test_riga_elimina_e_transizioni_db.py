@@ -53,10 +53,12 @@ from __future__ import annotations
 import re
 import unittest
 from datetime import date
+from unittest.mock import patch
 from decimal import Decimal
 
 from django.db import DatabaseError, connection, transaction
 
+from apps.core.db import _helpers as _helpers_mod
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.error_manager import ServiceError
@@ -363,16 +365,17 @@ class LettureTests(_DbTestCase):
             catturata["sql"], catturata["params"] = data_sql, params
             return [], 0
 
+        # ⚠️ Si intercetta dove la query PASSA, non dove la si importava: dal
+        #    2026-11-25 (E-2 di brief-be-fe-BB-audit) la coda passa da
+        #    `lista_paginata`, che chiama `fetch_paged_with_total` del suo
+        #    modulo (`apps.core.db._helpers`). Il nome importato nel repository
+        #    non lo attraversa piu' nessuno, e il patch li' non catturava niente.
         def _piano(cur):
-            originale = repo_mod.fetch_paged_with_total
-            repo_mod.fetch_paged_with_total = _cattura
-            try:
+            with patch.object(_helpers_mod, "fetch_paged_with_total", _cattura):
                 PagamentiRepository().list_righe_coda(
                     stati=pagamenti_service.CODE_RIGHE["TUTTE"],
                     order_by="data_pagamento", order_dir="desc", limit=25, offset=0,
                 )
-            finally:
-                repo_mod.fetch_paged_with_total = originale
             cur.execute("EXPLAIN (FORMAT JSON, VERBOSE) " + catturata["sql"], catturata["params"])
             return cur.fetchone()[0]
 
