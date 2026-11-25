@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from types import MappingProxyType
@@ -1231,6 +1231,51 @@ def fetch_paged_with_total(
                 row = cursor.fetchone()
                 total_count = row[0] if row else 0
     return results, total_count
+
+
+# Scopo: la pagina di una SELECT data intera — la SELECT si avvolge in una
+#        sottoquery con `COUNT(*) OVER ()`, l'ordine e la finestra si mettono
+#        sopra, e il conteggio di ripiego e' la stessa SELECT contata.
+#        `order_clause` e' il CORPO di un `ORDER BY`, senza la parola (la forma
+#        di `sql_order_clause`).
+# ⭐ Regola del 2 (2026-11-24, E-2 di brief-be-fe-BB-audit, ok Tid): era scritto
+#    in `magazzino/db/_helpers.lista_paginata` e in
+#    `PagamentiRepository._lista_paginata`, uguali salvo la parola `ORDER BY`.
+# ⭐ `dopo_pagina(data_sql, "ORDER BY …")`: cio' che si calcola sulle righe
+#    MOSTRATE e non su quelle filtrate (in pagamenti il blocco «elimina»). Avvolge
+#    la query della pagina e ne ripete l'ordine sopra: la query non finisce piu'
+#    con `LIMIT %s OFFSET %s`, ed e' il motivo per cui il conteggio di ripiego
+#    qui e' sempre esplicito. Il ripiego non paga `dopo_pagina`: conta le righe,
+#    non le giudica.
+# ⚠️ `select_sql` e `order_clause` si compongono da costanti e WHITELIST, MAI da
+#    input utente: finiscono in una stringa SQL.
+def lista_paginata(
+    *,
+    select_sql: str,
+    params: list[Any],
+    order_clause: str,
+    limit: int,
+    offset: int,
+    dopo_pagina: Callable[[str, str], str] | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    ordine = f"ORDER BY {order_clause}"
+    data_sql = f"""
+        SELECT *, COUNT(*) OVER () AS total_count FROM (
+            {select_sql}
+        ) q
+        {ordine}
+        LIMIT %s OFFSET %s
+    """  # noqa: S608 — select_sql e order_clause da costanti e whitelist del chiamante, valori come parametri
+    if dopo_pagina is not None:
+        data_sql = dopo_pagina(data_sql, ordine)
+    count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"  # noqa: S608 — select_sql da costanti del chiamante, valori come parametri
+    return fetch_paged_with_total(
+        data_sql,
+        [*params, limit, offset],
+        fallback_count_sql=count_sql,
+        fallback_params=list(params),
+        offset=offset,
+    )
 
 
 # Scopo: l'offset della pagina per `fetch_paged_with_total`: dalla coda

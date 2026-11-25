@@ -952,7 +952,6 @@ def get_root_per_pratica(pratica_id: int) -> dict[str, Any]:
 _risolvi_iva_riga = make_risolvi_iva_riga(
     error_code=E_PREV_VALIDAZIONE,
     function_name=f"{_FN}._risolvi_iva_riga",
-    usa_auth_user=True,
 )
 
 
@@ -1101,7 +1100,6 @@ def gestisci_riga(
         testata,
         articolo_id=str(articolo_id),
         payload_iva_id=None,
-        auth_user_id=auth_user_id,
     )
     if iva_meta:
         merged_meta = {**(merged_meta or {}), **iva_meta}

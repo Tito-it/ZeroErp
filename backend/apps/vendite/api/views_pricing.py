@@ -20,7 +20,7 @@ from rest_framework.request import Request
 
 from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import get_actor_user_id, handle_post_json
+from apps.core.api.endpoint_helpers import get_actor_user_id, handle_post_json, utente_autenticato
 from apps.core.api.request_parsers import parse_iso_date
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
@@ -359,16 +359,21 @@ class PricingLimitiUtenteView(DomainAPIView):
         # Single round-trip: risolve entrambe le chiavi in una query DB.
         # Valori ritornati come stringa (envelope stabile); il FE le converte
         # in Number (zero-safe) per l'interpolazione dell'hint.
-        # Derivazione emittente dell'operatore: senza questo passaggio la
-        # cascata user → categoria_cliente → group → emittente → default
-        # salterebbe lo step "emittente" e gli override impostati per EF non
-        # sarebbero mai applicati (sintomo: admin imposta MAX_SCONTO_PCT=10
-        # per emittente X, l'operatore vede sempre 0 nel drawer).
+        # Derivazione emittente: quello di chi agisce
+        # (`PermissionResolver.get_emittente_for_user`, l'emittente scelto in
+        # alto), che e' l'azienda del documento aperto: con un emittente scelto
+        # si vedono solo i suoi documenti, e in «tutti» le liste dei documenti
+        # sono sbarrate. Senza, la cascata salterebbe lo step "emittente" e gli
+        # override per EF non sarebbero mai applicati.
+        # ⛔ Fino al 2026-11-25 era `get_emittente_fiscale_id_for_user`: al super
+        #    admin l'hint mostrava la soglia del gestore globale mentre il gate
+        #    (che dal 2026-11-25 usa l'emittente del documento) applicava
+        #    un'altra soglia (E1-3 di brief-be-fe-BB-audit).
         # Derivazione categoria: solo se il FE passa billing_account_id come
         # query param. Senza BA il livello categoria_cliente viene saltato.
         param_service = ParameterService()
         emittente_fiscale_id = (
-            param_service.get_emittente_fiscale_id_for_user(auth_user_id)
+            PermissionResolver.get_emittente_for_user(utente_autenticato(request))
             if auth_user_id is not None else None
         )
         # BA malformato → 400, BA che non risulta (inesistente o fuori scope

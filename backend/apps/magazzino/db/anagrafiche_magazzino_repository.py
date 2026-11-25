@@ -52,15 +52,13 @@ from django.db import connection
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
+    lista_paginata,
     rows_to_list,
     sql_order_clause,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import campi_jsonb as _jsonb, esegui_verbo as _verbo
-from apps.magazzino.db._helpers import (
-    guard_canale_sistema,
-    lista_paginata,
-)
+from apps.magazzino.db._helpers import guard_canale_sistema
 from apps.magazzino.types import LottoRow, MagazzinoRow, UbicazioneRow
 
 _FN = "magazzino.anagrafiche_magazzino_repository"

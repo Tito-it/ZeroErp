@@ -1149,11 +1149,16 @@ class SoggettiRepository:
     # i tipi_soggetto_dettaglio con i requisiti CF/PIVA, il default
     # tipo_soggetto_dettaglio (da config.parameters) e min_search_length.
     # Usato dal SoggettoResolver frontend per adattare form e ricerca.
-    # emittente_fiscale_id: se valorizzato, usato per risolvere override
-    # del default sul livello emittente (catena fn_get_parameter_full).
+    # contesto_cascata: il contesto della cascata dei parametri per chi agisce
+    # (BB `contesto_cascata` (`core/services/parameter_service`): utente, gruppi, emittente), con
+    # cui si risolve il default del tipo dettaglio (catena fn_get_parameter_full).
+    # Assente = solo il default.
+    # ⛔ Fino al 2026-11-25 riceveva il solo `emittente_fiscale_id`, e la view non
+    #    lo passava: gli override per utente, gruppo ed emittente del default non
+    #    arrivavano mai al form (E1-5 di brief-be-fe-BB-audit §6.4).
     def get_config_resolver(
         self, tipo_ruolo_codice: str,
-        emittente_fiscale_id: int | None = None,
+        contesto_cascata: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         # 1. Recupera tipo_ruolo
         sql_ruolo = """
@@ -1225,7 +1230,7 @@ class SoggettiRepository:
         #    tipo ammesso. Con `get_parameter` un ruolo senza parametro
         #    (RIS_UMANA, EF) mandava in errore tutto il risolutore.
         default_codice = ParameterRepository().get_parameter_se_dichiarato(
-            param_code, emittente_fiscale_id=emittente_fiscale_id,
+            param_code, **(contesto_cascata or {}),
         )
 
         # Risolvi id dal codice_interno matchando i dettagli gia' caricati

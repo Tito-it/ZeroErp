@@ -25,7 +25,8 @@ from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.anagrafiche.services.valuta_resolver import resolve_valuta_default
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.parameter_service import ParameterService
+from apps.core.services.parameter_service import ParameterService, contesto_cascata
+from apps.core.services.utente_per_id import utente_per_id
 from apps.vendite.db._documento_eccezioni_repo import fornitura_da_anagrafica
 from apps.vendite.db.listini_repository import ListiniRepository
 
@@ -52,6 +53,17 @@ _PARAM_LISTINI_CLOSE_VERSIONE_LEAD_GG = "VENDITE_LISTINI_CLOSE_VERSIONE_LEAD_GG"
 # ══════════════════════════════════════════════════════════
 #  Helpers privati
 # ══════════════════════════════════════════════════════════
+
+
+# Scopo: il contesto della cascata dei parametri per chi apre il form: il BB
+#        `contesto_cascata` (`core/services/parameter_service`) (utente, gruppi, emittente di chi
+#        agisce), che e' anche l'azienda su cui il documento nascera' (il trigger
+#        `script.trgfn_default_emittente_fiscale` gli da' quella).
+# ⛔ Fino al 2026-11-25 i default passavano alla cascata il SOLO utente: gli
+#    override per gruppo e per emittente non arrivavano mai al form (E1-5 di
+#    brief-be-fe-BB-audit §6.4).
+def _contesto_cascata(auth_user_id: int | None) -> dict[str, Any]:
+    return contesto_cascata(utente_per_id(auth_user_id))
 
 
 # Scopo: Cast int safe con default. ParameterService.get_defaults restituisce
@@ -167,7 +179,7 @@ def fn_get_contratto_form_defaults(
             _PARAM_CONTRATTO_VALIDO_DAL_LEAD_GG,
             _PARAM_CONTRATTO_DATA_LEAD_GG,
         ],
-        django_user_id=auth_user_id,
+        **_contesto_cascata(auth_user_id),
     )
     today = oggi_aziendale()
     valido_dal_lead = _param_int(param_defaults_raw, _PARAM_CONTRATTO_VALIDO_DAL_LEAD_GG, 0)
@@ -457,7 +469,7 @@ def fn_get_preventivo_form_defaults(
     function_name = f"{_FN}.fn_get_preventivo_form_defaults"
     param_defaults_raw = ParameterService().get_defaults(
         [_PARAM_PREVENTIVO_VALIDITA_GG],
-        django_user_id=auth_user_id,
+        **_contesto_cascata(auth_user_id),
     )
     today = oggi_aziendale()
     validita_gg = _param_int(param_defaults_raw, _PARAM_PREVENTIVO_VALIDITA_GG, 30)
@@ -573,7 +585,7 @@ def fn_get_versione_new_defaults(*, listino_id: int, auth_user_id: int | None = 
     )
     param_defaults_raw = ParameterService().get_defaults(
         [_PARAM_LISTINI_NEW_VERSIONE_LEAD_GG],
-        django_user_id=auth_user_id,
+        **_contesto_cascata(auth_user_id),
     )
     lead_gg = _param_int(param_defaults_raw, _PARAM_LISTINI_NEW_VERSIONE_LEAD_GG, 0)
     versioni = listini_repo.list_versioni(listino_id_int)
@@ -633,7 +645,7 @@ def fn_get_versione_clone_defaults(
             _PARAM_LISTINI_CLONE_VERSIONE_LEAD_GG,
             _PARAM_LISTINI_CLONE_VERSIONE_CODICE_SUFFIX,
         ],
-        django_user_id=auth_user_id,
+        **_contesto_cascata(auth_user_id),
     )
     lead_gg = _param_int(param_defaults_raw, _PARAM_LISTINI_CLONE_VERSIONE_LEAD_GG, 1)
     suffix = _param_str(param_defaults_raw, _PARAM_LISTINI_CLONE_VERSIONE_CODICE_SUFFIX, "-clone")
@@ -695,7 +707,7 @@ def fn_get_versione_close_defaults(
     assert versione is not None
     param_defaults_raw = ParameterService().get_defaults(
         [_PARAM_LISTINI_CLOSE_VERSIONE_LEAD_GG],
-        django_user_id=auth_user_id,
+        **_contesto_cascata(auth_user_id),
     )
     lead_gg = _param_int(param_defaults_raw, _PARAM_LISTINI_CLOSE_VERSIONE_LEAD_GG, 0)
     today = oggi_aziendale()

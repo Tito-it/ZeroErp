@@ -88,6 +88,7 @@ def _testata_default() -> dict[str, object]:
         "tipo_variazione_globale": "PERCENTUALE",
         "valore_variazione_globale": Decimal("-10"),
         "ambito": "COMMODITY",
+        "emittente_fiscale_id": 32,
     }
 
 
@@ -1067,7 +1068,6 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         user_mock = operatore_di_prova()
         mock_get_user_model.return_value = user_mock
         # Soglia max sconto 10%
-        mock_param_service.return_value.get_emittente_fiscale_id_for_user.return_value = 5
         mock_param_service.return_value.get_parameter_decimal.return_value = Decimal("10")
         mock_ba_repo.return_value.get_categoria_cliente_id.return_value = 7
 
@@ -1085,6 +1085,13 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(ctx.exception.code, "E_PRICING_SCONTO_ECCESSIVO")
         self.assertTrue(ctx.exception.retryable)
         repo.update_contratto.assert_not_called()
+        # La soglia e' dell'azienda del contratto, non di chi scrive (E1-3).
+        self.assertEqual(
+            mock_param_service.return_value.get_parameter_decimal.call_args.kwargs[
+                "emittente_fiscale_id"
+            ],
+            32,
+        )
 
     # Scopo: ⛔ il gate L2 scatta quando cambia UNO QUALUNQUE dei suoi ingressi
     #        (valore, tipo, cliente), e misura i valori che il contratto AVRA':
@@ -1098,6 +1105,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             "tipo_variazione_globale": "PERCENTUALE",
             "valore_variazione_globale": Decimal("-20"),
             "billing_account_id": 1,
+            "emittente_fiscale_id": 32,
         }
         svc = ContrattiService()
         svc._check_limite_variazione_globale(
@@ -1105,6 +1113,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         )
         kwargs = gate.call_args.kwargs
         self.assertEqual(kwargs["ba_id"], 2)
+        self.assertEqual(kwargs["emittente_fiscale_id"], 32)
         self.assertEqual(kwargs["valore_variazione"], Decimal("-20"))
         self.assertEqual(kwargs["tipo_variazione"], "PERCENTUALE")
 
@@ -1120,6 +1129,22 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             existing=existing, data={"note": "x"}, auth_user_id=42,
         )
         gate.assert_not_called()
+
+    # Scopo: alla NASCITA senza emittente nel payload la soglia e' quella
+    #        dell'azienda che il trigger dara' al contratto: l'emittente di chi
+    #        agisce (E1-3, 2026-11-25), non il gestore globale.
+    @patch("apps.vendite.services.contratti_service.PermissionResolver.get_emittente_for_user_id", return_value=77)
+    @patch("apps.vendite.services.contratti_service.check_limite_variazione_globale")
+    def test_gate_l2_alla_nascita_emittente_di_chi_agisce(self, gate, emittente):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        ContrattiService()._check_limite_variazione_globale(
+            existing={},
+            data={"tipo_variazione_globale": "PERCENTUALE", "valore_variazione_globale": Decimal("-5")},
+            auth_user_id=42,
+        )
+        self.assertEqual(gate.call_args.kwargs["emittente_fiscale_id"], 77)
+        emittente.assert_called_once_with(42)
 
     # Scopo: il listino sotto le righe lo giudica il DB, per contratto e
     #        offerta (`script.trgfn_doc_guard_listino_con_righe`,
@@ -2644,7 +2669,7 @@ class ContrattiServicePricingGateTests(TestCase):
             "prezzo_resolver_context": {"prezzo_base_snapshot": 30},
         }
         testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
-                   "data": "2026-05-15"}
+                   "data": "2026-05-15", "emittente_fiscale_id": 32}
 
         esito = resolve_or_check_override_prezzo_riga_contratto(
             testata=testata,
@@ -2685,7 +2710,7 @@ class ContrattiServicePricingGateTests(TestCase):
             "origine": "CONTRATTO_LISTINO",
         }
         testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
-                   "data": "2026-05-15"}
+                   "data": "2026-05-15", "emittente_fiscale_id": 32}
 
         esito = resolve_or_check_override_prezzo_riga_contratto(
             testata=testata,
@@ -2727,7 +2752,7 @@ class ContrattiServicePricingGateTests(TestCase):
             "prezzo_resolver_context": {"k": 1},
         }
         testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
-                   "data": "2026-05-15"}
+                   "data": "2026-05-15", "emittente_fiscale_id": 32}
 
         esito = resolve_or_check_override_prezzo_riga_contratto(
             testata=testata, articolo_id="abc", uom_id=5,
@@ -2754,7 +2779,7 @@ class ContrattiServicePricingGateTests(TestCase):
         )
 
         testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
-                   "data": "2026-05-15"}
+                   "data": "2026-05-15", "emittente_fiscale_id": 32}
         casi = {
             "un'altra riga": {"prezzo_finale": "30.00", "listino_riga_id": 71},
             "un altro prezzo": {"prezzo_finale": "31.00", "listino_riga_id": 70},
@@ -2794,7 +2819,7 @@ class ContrattiServicePricingGateTests(TestCase):
             message="L1 blocco.",
         )
         testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
-                   "data": "2026-05-15"}
+                   "data": "2026-05-15", "emittente_fiscale_id": 32}
 
         with self.assertRaises(ServiceError) as ctx:
             resolve_or_check_override_prezzo_riga_contratto(
@@ -2838,7 +2863,7 @@ class ContrattiServicePricingGateTests(TestCase):
             "kind_label": "Sconto",
         }
         testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
-                   "data": "2026-05-15"}
+                   "data": "2026-05-15", "emittente_fiscale_id": 32}
 
         esito = resolve_or_check_override_prezzo_riga_contratto(
             testata=testata,
@@ -2883,7 +2908,7 @@ class ContrattiServicePricingGateTests(TestCase):
 
         resolver_fn.return_value = {"prezzo_finale": "30.00", "origine": "LISTINO"}
         testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
-                   "data": "2026-05-15"}
+                   "data": "2026-05-15", "emittente_fiscale_id": 32}
 
         for raw in ("", "trenta", True, "NaN", "Infinity"):
             with self.subTest(raw=raw):

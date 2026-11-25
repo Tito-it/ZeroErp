@@ -306,6 +306,17 @@ sede al primo aggiornamento, e allora questo file diventa fuorviante.
 - **Bug di dati in sviluppo**: prima di scrivere un fix software per dati
   sbagliati, chiedere se è più veloce correggerli a mano. Un fix per un problema
   di dati lascia codice che poi va tolto.
+- ⛔ **I test si lanciano sul blocco di attività, mai la suite intera di
+  iniziativa** (decisione di Tid, 2026-11-25). La suite Django supera i 10 minuti
+  e gira già in CI su ogni push e PR (`CI-Validate`): rilanciarla a ogni blocco
+  la fa girare tre volte sullo stesso codice.
+  A fine blocco si lanciano **solo** i test di ciò che il blocco ha toccato: i
+  moduli di test dei file cambiati e quelli che li importano o li chiamano
+  (`./manage-test.sh apps.<app>.tests.<modulo>`, `npx vitest run <file>`,
+  `scripts/prova_changeset.py … --pgtap <test>`).
+  La suite intera (Django, vitest o pgTAP) si lancia in due casi soli: **alla
+  chiusura del brief**, prima di spostarlo in `work-done/`, una volta, oppure
+  **quando Tid la chiede**.
 
 ## Database e Liquibase — le regole che si rompono solo in CI
 

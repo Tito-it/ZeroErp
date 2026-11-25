@@ -625,3 +625,30 @@ class TestListinoVersioneFormDefaults(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             fn_get_versione_close_defaults(listino_id=12, versione_id=999)
         self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+
+
+class FormDefaultsCascataTests(TestCase):
+    """E1-5 di brief-be-fe-BB-audit (2026-11-25): i default dei form passano alla
+    cascata utente, gruppi ed emittente di chi agisce (BB `contesto_cascata`).
+    Prima il solo utente: gli override per gruppo ed emittente non arrivavano."""
+
+    @patch(f"{_MOD}.resolve_valuta_default", return_value={})
+    @patch(
+        "apps.core.services.parameter_service.PermissionResolver.get_emittente_for_user",
+        return_value=32,
+    )
+    @patch(f"{_MOD}.utente_per_id")
+    @patch(_PARAM)
+    def test_preventivo_cascata_di_chi_agisce(self, mock_param_cls, mock_utente, _emittente, _valuta):
+        user = MagicMock(id=5)
+        user.groups.values_list.return_value = [10]
+        mock_utente.return_value = user
+        mock_param_cls.return_value.get_defaults.return_value = {}
+
+        fn_get_preventivo_form_defaults(billing_account_id=None, auth_user_id=5)
+
+        kwargs = mock_param_cls.return_value.get_defaults.call_args.kwargs
+        self.assertEqual(kwargs["django_user_id"], 5)
+        self.assertEqual(kwargs["group_ids"], [10])
+        self.assertEqual(kwargs["emittente_fiscale_id"], 32)
+

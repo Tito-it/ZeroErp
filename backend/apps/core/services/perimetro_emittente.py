@@ -32,6 +32,7 @@ from typing import Any
 
 from apps.core.db.lista_catalogo_repository import fetch_flag_perimetro
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.payload_helpers import SIGNED_INT_RE
 
@@ -39,6 +40,10 @@ from apps.core.services.payload_helpers import SIGNED_INT_RE
 # 403: il diritto c'e', manca una precondizione che l'utente scioglie da se'
 # scegliendo un emittente dalla combo di topbar.
 E_LISTA_EMITTENTE_DA_SCEGLIERE = "E_UI_LISTA_EMITTENTE_DA_SCEGLIERE"
+
+# Il rifiuto di chi SCRIVE senza un emittente (`emittente_per_scrivere`): lo
+# stesso codice del trigger DB `script.trgfn_default_emittente_fiscale`.
+E_EMITTENTE_NON_RISOLTO = "E_EMITTENTE_NON_RISOLTO"
 
 
 # Nome del parametro con cui l'endpoint di CONFIG di una lista riceve
@@ -236,3 +241,38 @@ def guard_lista_per_codice(
     ):
         return
     _rifiuta(lista_codice)
+
+
+# Scopo: l'emittente su cui SCRIVE chi agisce: l'emittente attivo, se valido per
+#        lui, altrimenti quello del suo permesso (`script.fn_resolve_emittente_for_user`,
+#        via `PermissionResolver.get_emittente_for_user`). Se non ce n'e' uno —
+#        la modalita' «tutti gli emittenti», di sola lettura — 400
+#        `E_EMITTENTE_NON_RISOLTO`: il codice che il DB solleva gia' sulle
+#        creazioni senza emittente, il rimedio e' scegliere l'azienda in alto.
+# ⭐ Regola del 2 (2026-11-25, E1-1/E1-2 di brief-be-fe-BB-audit, ok Tid): la
+#    scrivevano le email (dal claim del JWT), e l'avrebbero riscritta gli
+#    override dei parametri e l'assistente AI.
+# ⛔ Nessun ripiego sul gestore globale (la riga `is_default` della mappa BA):
+#    attribuirebbe la scrittura a un'azienda che nessuno ha scelto. Fino al
+#    2026-11-25 gli override per emittente ci finivano sempre, anche con un
+#    altro emittente scelto (§6.1 del brief).
+# ⚠️ E' la domanda di chi SCRIVE. Chi legge e vuole «l'emittente se c'e'» chiama
+#    `PermissionResolver.get_emittente_for_user` e tratta il `None` come «livello
+#    emittente saltato».
+def emittente_per_scrivere(
+    user: Any,
+    *,
+    function_name: str,
+    detail: str | None = None,
+    cache: dict[str, Any] | None = None,
+) -> int:
+    emittente_id = PermissionResolver.get_emittente_for_user(user, cache=cache)
+    ErrorManager.require(
+        emittente_id is not None,
+        code=E_EMITTENTE_NON_RISOLTO,
+        message=USER_MESSAGE_FALLBACK[E_EMITTENTE_NON_RISOLTO],
+        detail=detail,
+        function_name=function_name,
+    )
+    assert emittente_id is not None
+    return emittente_id

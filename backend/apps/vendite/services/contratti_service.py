@@ -51,6 +51,7 @@ from apps.core.services.documento_modello import (
     stato_di_emissione,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.vendite.services._campi_canone import CAMPI_CANONE, campi_canone, check_campi_canone
@@ -2083,6 +2084,16 @@ class ContrattiService:
         def dopo(chiave: str) -> Any:
             return data[chiave] if chiave in data else existing.get(chiave)
 
+        # L'azienda del contratto: la sua, o alla nascita quella del payload;
+        # senza, quella che il trigger `script.trgfn_default_emittente_fiscale`
+        # gli dara' — l'emittente di chi agisce (`fn_resolve_emittente_for_user`).
+        # In «tutti gli emittenti» e' None e la nascita la rifiuta il trigger.
+        # ⛔ Fino al 2026-11-25 la soglia era quella dell'utente, cioe' del
+        #    gestore globale per il super admin (E1-3 di brief-be-fe-BB-audit).
+        emittente_fiscale_id = dopo("emittente_fiscale_id")
+        if emittente_fiscale_id is None and auth_user_id is not None:
+            emittente_fiscale_id = PermissionResolver.get_emittente_for_user_id(auth_user_id)
+
         check_limite_variazione_globale(
             auth_user_id=auth_user_id,
             tipo_variazione=dopo("tipo_variazione_globale"),
@@ -2092,6 +2103,7 @@ class ContrattiService:
             # AVRA': quello del payload (nascita, o cambio cliente in bozza),
             # altrimenti quello che ha.
             ba_id=dopo("billing_account_id"),
+            emittente_fiscale_id=emittente_fiscale_id,
         )
 
     # Scopo: Verifica coerenza della coppia variazione globale (tipo + valore).
