@@ -341,7 +341,7 @@ portano solo ciò che resta, e il chiuso sta qui e nei brief:
   [brief-modello-documento-vendita.md](work-done/2026/brief-modello-documento-vendita.md)
 - **Accessi**: L-2, L-4, L-6 e il collaudo del consenso al riuso erano chiusi
   ma la mappa li dava aperti; resta L-5 (R-4) e il collaudo di D-5 —
-  [piano-be-fe-accessi-credenziale-e-vesti.md](work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md)
+  [piano-be-fe-accessi-credenziale-e-vesti.md](work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md)
 - **Incassi, magazzino, permesso nel verbo**: ridotti a ciò che resta (la prova
   a video; collaudi e residui del piano §5; il passo 3)
 
@@ -784,7 +784,7 @@ i provider esterni. Vedi
 [brief-db-veste-utilizzabile.md](work-done/2026/brief-db-veste-utilizzabile.md),
 [brief-db-codici-non-trovato-email-e-permessi.md](work-done/2026/brief-db-codici-non-trovato-email-e-permessi.md),
 [collaudo-in-app-consenso-riuso-credenziale.md](work-done/2026/collaudo-in-app-consenso-riuso-credenziale.md),
-[piano-be-fe-accessi-credenziale-e-vesti.md](work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md),
+[piano-be-fe-accessi-credenziale-e-vesti.md](work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md),
 [piano-autenticazione-provider-esterni-oauth.md](work-in-progress/piano-autenticazione-provider-esterni-oauth.md).
 
 ### Nucleo, interfaccia e magazzino — 13 ottobre
@@ -1228,7 +1228,7 @@ L-6 del piano BE/FE. Vedi
 [brief-db-credenziale-per-email.md](work-done/2026/brief-db-credenziale-per-email.md),
 [brief-db-email-visibilita-per-ambito.md](work-done/2026/brief-db-email-visibilita-per-ambito.md),
 [brief-db-area-funzionale-assistente-ai.md](work-done/2026/brief-db-area-funzionale-assistente-ai.md),
-[piano-be-fe-accessi-credenziale-e-vesti.md](work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md).
+[piano-be-fe-accessi-credenziale-e-vesti.md](work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md).
 
 ### Rimasti per intero — «In breve», senza un brief
 

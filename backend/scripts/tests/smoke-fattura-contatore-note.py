@@ -26,13 +26,14 @@
 # IDEMPOTENZA. Tutto dentro una transazione con `set_rollback(True)` finale: la
 # nota creata per il caso 4 non persiste. Rieseguibile all'infinito.
 #
-# Indice test (1..6):
+# Indice test (1..6b):
 #   1  count_per_target esegue sulla partizione reale
 #   2  `contatori` presente nel payload del dettaglio
 #   3  contatori.note coincide con la lettura diretta
 #   4  il contatore e' vivo: una nota reale lo fa salire di 1
 #   5  perimetro allineato: nota invisibile contata come nella lista API
 #   6  senza contesto operatore -> 404 (il cancello precede il conteggio)
+#   6b senza utente -> E_SCOPE_SENZA_UTENTE (il perimetro non si apre col None)
 # ------------------------------------------------------------
 
 import uuid
@@ -125,11 +126,22 @@ with transaction.atomic():
             "SELECT set_config('app.ruolo_applicativo','',false),"
             "       set_config('app.current_user_id','',false)"
         )
+    #    L'utente applicativo c'e': e' la RLS sola a chiudere.
     try:
-        get_fattura_dettaglio(fattura_id=fattura_id)
+        get_fattura_dettaglio(fattura_id=fattura_id, auth_user_id=auth_user_id)
         check("6) senza GUC -> 404", False, "ha restituito un documento!")
     except ServiceError as exc:
         check("6) senza GUC -> 404 (RLS)", exc.code == "E_FATTURA_NON_TROVATA",
+              f"code={exc.code}")
+
+    # 6b) e senza utente il perimetro si rifiuta prima di leggere: dal
+    #     2026-11-24 `None` non apre niente (brief-db-porte-aperte-dalla-sola-
+    #     guc §4.7). Fino ad allora il 6 lo chiamava senza utente e provava la RLS.
+    try:
+        get_fattura_dettaglio(fattura_id=fattura_id, auth_user_id=None)
+        check("6b) senza utente -> rifiuto", False, "ha restituito un documento!")
+    except ServiceError as exc:
+        check("6b) senza utente -> E_SCOPE_SENZA_UTENTE", exc.code == "E_SCOPE_SENZA_UTENTE",
               f"code={exc.code}")
 
     transaction.set_rollback(True)

@@ -19,11 +19,13 @@
 > compare, o un pulsante spento che sembra una regola. E nessuna bolla ha ancora
 > **mosso merce a video**.
 >
-> **Stato**: ✏️ scritto il 2026-10-14, da eseguire.
+> **Stato**: ✏️ scritto il 2026-10-14, riallineato al codice e ai dati il 2026-11-25, **da eseguire**.
 > **Ambiente**: sviluppo (`dbdev`). **Utente**: un operatore con Vendite (DDT, resi)
 > e Magazzino in scrittura, e le azioni di processo `emetti_ddt`, `conferma_reso`,
-> `blocca_merce`. ⚠️ **Non il super admin** per il §8: passa senza azioni, e i casi
-> dei permessi verrebbero verdi per costruzione.
+> `blocca_merce`, `registra_magazzino`. ⚠️ **Non il super admin**, per tutto il copione
+> e soprattutto per il §8: passa senza azioni, e i casi dei permessi sarebbero verdi per
+> costruzione. Il super admin è il binding `SUPER_ADMIN`. Dal 2026-11-24 il flag
+> `is_superuser` di Django non concede più niente (D-J di `brief-db-porte-aperte-dalla-sola-guc`).
 > **Dove**: Vendite → *DDT*, *Resi*, *Offerte*; Magazzino → *Magazzini*, *Inventari*,
 > *Disponibilità*, *Movimenti*.
 
@@ -31,11 +33,21 @@
 
 ## ⛔ Prima di cominciare
 
-Il dato del copione va **costruito**. Letto su `dbdev` il 2026-10-14: due magazzini,
-`TEST` (azienda 32, con scaffali, due ubicazioni) ed `EMITEST` (azienda 44,
-**predefinito**, con scaffali acceso ma **nessuna ubicazione**); cinque articoli
-gestiti a magazzino, **nessuno** a lotti o a seriali; **nessun movimento** sul
-registro, nessun blocco. Il copione si fa nell'azienda con cui lavori (qui la 44).
+Il dato del copione va **costruito**. Letto su `dbdev` il 2026-11-25, nell'azienda 44 (quella con
+cui si lavora):
+
+* un solo magazzino, `EMITEST`: **predefinito**, «usa ubicazioni» acceso, **nessuna ubicazione**;
+* tre articoli semplici gestiti a magazzino, esclusi quelli creati dagli smoke (`SMK-…`, `…GUARD…`);
+* nessun articolo a lotti o a seriali, e nessun lotto né seriale;
+* nessun kit con un componente gestito: i kit di `dbdev` sono degli smoke e hanno i componenti
+  non gestiti;
+* nessun movimento, nessun inventario, nessun blocco.
+
+Rispetto al 14-10 è cambiato anche il modello di due anagrafiche. Dal 2026-11-22 il lotto
+appartiene all'**azienda**: nasce in quella della sessione. E magazzini, ubicazioni e lotti
+si scrivono solo dai verbi del DB ([brief-db-magazzino-tutte-le-scritture-dal-verbo](../work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md)).
+Le schermate sono le stesse. Un rifiuto con `E_PERMESSO_NEGATO` mentre crei un'anagrafica vuol
+dire che l'operatore non ha il livello «tutto» su quell'oggetto: è il verbo che lo chiede.
 
 | | Cosa | Perché conta |
 | --- | --- | --- |
@@ -45,19 +57,23 @@ registro, nessun blocco. Il copione si fa nell'azienda con cui lavori (qui la 44
 | **Articolo a lotti** | «Gestito a magazzino» + «Richiede lotto», e **due** lotti (`L1`, `L2`) da «Gestisci lotti» | Il §3.1, il §5.2 |
 | **Articolo a seriali** | «Gestito a magazzino» + «Richiede Seriale», e **due** seriali: ⚠️ non c'è una schermata che li crea (gli asset non hanno scrittore dall'app), quindi via SQL, sotto | Il §3.3 |
 | **Articolo non gestito** | Uno qualunque senza «Gestito a magazzino» | Il §1.4: la bolla si emette come prima |
-| **Kit** | Un kit il cui padre **non** è gestito e i componenti sì | Il §3.5. Se non ce n'è uno pronto, salta il caso e annotalo |
+| **Kit** | Un kit il cui padre **non** è gestito e almeno un componente sì. Su `dbdev` non c'è: va **costruito**. Nuovo articolo composito non gestito, con componente uno dei tre semplici gestiti. Non riusare i kit degli smoke: li ricrea ogni notte | Il §3.8 |
 | **Giacenza** | Un **inventario** per magazzino che carica: semplice 10, lotti 5 su `L1` + 5 su `L2`, i due seriali; sul magazzino con scaffali, semplice 10 in `UX` | È il copione del Lotto 2 ([collaudo-in-app-magazzino-inventario-e-rettifica](collaudo-in-app-magazzino-inventario-e-rettifica.md) §1): se il carico non riesce, **fermati lì** |
 | **Cliente** | Un cliente dell'azienda, con una bolla di vendita **consegnata** per il §5 (la fai al §1, e la porti a Consegnata) | Il reso nasce da una bolla consegnata |
-| **Operatori** | Uno **senza** `emetti_ddt`, uno **senza** `blocca_merce`, uno **senza** `conferma_reso` (anche lo stesso profilo, a turno) | Il §8 |
+| **Operatori** | Uno **senza** `emetti_ddt`, uno **senza** `blocca_merce`, uno **senza** `conferma_reso`, uno **senza** `registra_magazzino`, uno con Vendite **sotto** «tutto» sui resi (anche lo stesso profilo, a turno) | Il §8 |
 
-I due seriali (da `dbdev`, come proprietario; sostituisci il codice dell'articolo):
+I due seriali si creano da `dbdev` come proprietario (`zeroerp_owner`), sostituendo il codice
+dell'articolo. Si passa dal building block di nascita `magazzino.fn_crea_asset`, la sede unica
+della scrittura: un `INSERT` diretto la scavalcherebbe. Il verbo per l'operatore,
+`fn_aggiungi_asset`, esiste, ma nessuna rotta del backend lo espone:
 
 ```sql
-INSERT INTO magazzino.assets (articolo_id, seriale, stato_id, ownership_id, emittente_fiscale_id)
-SELECT a.id, s.seriale,
-       (SELECT id FROM config.stati_assets     WHERE codice_interno = 'ASSET_ST_IN_STOCK'),
-       (SELECT id FROM config.assets_ownership WHERE codice_interno = 'ASSET_OWNED'),
-       (SELECT emittente_fiscale_id FROM magazzino.magazzini WHERE codice = 'EMITEST')
+SELECT magazzino.fn_crea_asset(
+         a.id, s.seriale,
+         (SELECT id FROM config.stati_assets     WHERE codice_interno = 'ASSET_ST_IN_STOCK'),
+         (SELECT id FROM config.assets_ownership WHERE codice_interno = 'ASSET_OWNED'),
+         '{}'::jsonb,
+         (SELECT emittente_fiscale_id FROM magazzino.magazzini WHERE codice = 'EMITEST'))
   FROM catalogo.articoli a
  CROSS JOIN (VALUES ('SN-COLL-001'), ('SN-COLL-002')) AS s(seriale)
  WHERE a.codice = '<codice articolo a seriali>';
@@ -93,7 +109,7 @@ dice «entro la giacenza», guarda prima la Disponibilità.
 | **2.3** | Di nuovo «Trasferimento», senza arrivo → «Emetti» | Spento con *«La bolla di trasferimento non indica il magazzino di arrivo.»* | — |
 | **2.4** | Partenza il predefinito, arrivo quello **con scaffali**, 2 pezzi del semplice → «Emetti» | Emessa. Movimenti: **solo** l'uscita (`TRASF_OUT`) dalla partenza. L'arrivo **non** sale ancora: la merce è in viaggio | Entrata subito = l'entrata non aspetta il `CONSEGNATO` (D-L3-c) |
 | **2.5** | Nella sezione Prelievi della bolla emessa | «**Scaffale di arrivo**» si sceglie anche ora (fino alla consegna): scegli `UY`. Niente aggiunte né cestini sui prelievi | Spento = il guard o la capability chiudono anche l'arrivo. Tendina vuota in sola lettura = il difetto corretto dalla revisione del 13-10 è tornato |
-| **2.6** | Porta la bolla a **Consegnata** | Movimenti: l'entrata (`TRASF_IN`) nel magazzino di arrivo, in `UY`. Disponibilità: −2 in partenza, +2 in arrivo | Nessuna entrata = fermati e segnala |
+| **2.6** | Porta la bolla a **Consegnata** | Movimenti: l'entrata (`TRASF_IN`) nel magazzino di arrivo, in `UY`. Disponibilità: −2 in partenza, +2 in arrivo. ⚠️ Questa consegna chiede anche `registra_magazzino`, perché è un'operazione di magazzino dentro il passaggio (T-4) | Nessuna entrata = fermati e segnala. *«Non hai i permessi»* = all'operatore manca `registra_magazzino` (il caso del §8.5) |
 | **2.7** | Bolla consegnata: riapri i Prelievi | Anche lo scaffale di arrivo è **spento** | — |
 
 ---
@@ -138,7 +154,8 @@ portata a Consegnata).
 | **5.6** | Reso con magazzino di rientro **con scaffali** | Lo scaffale si chiede, e la voce non è più automatica | — |
 | **5.7** | Rientro che supera l'uscito del suo lotto (contando gli altri resi della bolla) | «Conferma» spenta col motivo, **coi numeri**: *«Riga N del reso: rientrerebbero X pezzi di un lotto o seriale da cui ne erano usciti Y…»* | Segnaposti al posto dei numeri = come al §5.3 |
 | **5.8** | Annulla il reso confermato del §5.4 | La giacenza riscende: storno (`STORNO_NEG`) dei carichi | Nessuno storno = l'annullo non passa dal verbo (`fn_annulla_reso`) |
-| **5.9** | (Facoltativo) dalla bolla del §5.1 genera la **ri-consegna** ed emettila | Scarica di nuovo la merce rientrata col reso: la giacenza torna a quella di prima del reso | Scarico che porta sotto zero = il reso non aveva ricaricato (l'errore che il 3-bis chiude) |
+| **5.9** | (Facoltativo) Il reso del §5.1, se è di tipo **«Reso per ri-consegna»** (`RESO_PER_RICONSEGNA`, l'unico che riapre il residuo), va **confermato**. Poi, dal reso, «**DDT ri-spedizione**»: tutte le righe, poi «Emetti» sulla bolla nata | Nasce una bolla **in bozza**, con la testata della bolla d'origine e la provenienza dal reso. La riga esce dalla coda «Da ri-consegnare». All'emissione la merce rientrata riparte: la giacenza torna a quella di prima del reso | Scarico che porta sotto zero = il reso non aveva ricaricato (l'errore che il 3-bis chiude). Azione assente = reso a credito, o non confermato (`E_RESO_NON_CONFERMATO`) |
+| **5.10** | (Dopo il §5.9) «Annulla» sul reso ri-spedito | Rifiutato: *«Il reso e' gia' stato ri-spedito: non e' annullabile.»* | Annullato = la merce risulterebbe rientrata e ripartita insieme: fermati e segnala |
 
 ---
 
@@ -170,10 +187,12 @@ Non è magazzino, ma è il giro C2 dello stesso piano.
 
 | | Cosa fare | Cosa deve succedere | Se non succede |
 | --- | --- | --- | --- |
-| **8.1** | Operatore **senza** `emetti_ddt` → «Emetti» su una bolla | *«Non hai i permessi»* (o il pulsante assente) | Emessa = il guard del verbo non morde: fermati e segnala |
+| **8.1** | Operatore **senza** `emetti_ddt` → «Emetti» su una bolla, una che muove merce **e** una che non la muove | *«Non hai i permessi»* (o il pulsante assente), **in tutti e due i casi**: dal 2026-10-25 il permesso lo chiede il verbo su ogni emissione, dalla riga del passaggio | Emessa = il guard del verbo non morde: fermati e segnala |
 | **8.2** | Operatore **senza** `blocca_merce` → Disponibilità | «Blocca merce» **non** c'è; «Libera» nemmeno | — |
 | **8.3** | Operatore **senza** `conferma_reso` → «Conferma» su un reso | *«Non hai i permessi»* | — |
 | **8.4** | Operatore di **un'altra azienda** | Non vede bolle, resi e magazzini di questa; la tendina dei magazzini non li propone | Se li vede, la RLS non è quella attesa |
+| **8.5** | Operatore **con** `emetti_ddt` ma **senza** `registra_magazzino` → porta a Consegnata la bolla di trasferimento del §2 | *«Non hai i permessi»*. La bolla resta Emessa, nessuna entrata | Consegnata senza il permesso = il guard della consegna del trasferimento non morde |
+| **8.6** | Operatore **sotto** «tutto» sui resi → «DDT ri-spedizione» su un reso confermato | *«Non hai i permessi»*, nessuna bolla nata. Dal 2026-11-25 la ri-consegna si apre solo dal verbo, che chiede il livello «tutto» su `vendite.reso` (porta 11) | Bolla nata = il guard del verbo non morde |
 
 ---
 
@@ -182,10 +201,10 @@ Non è magazzino, ma è il giro C2 dello stesso piano.
 | | Cosa | Dove sta scritto |
 | --- | --- | --- |
 | **Motivi del reso** | Chiuso lato DB (`20261014-07` applicato e pgTAP verde): la «Conferma» porta `reasons` coi `valori`, come la «Emetti» della bolla. Si conferma a video al §5.3 e al §5.7. | [brief-db-reso-motivi-conferma-con-valori](../work-done/2026/brief-db-reso-motivi-conferma-con-valori.md) (archiviato, il collaudo è passato qui) |
-| **Bolle senza merce** | Il permesso all'emissione di una bolla che **non** muove merce lo controlla il backend, non il verbo (D-L3-e affinata, limite dichiarato) | brief del Lotto 3, §9 (28-09) |
+| ~~**Bolle senza merce**~~ | ✅ Superato il 2026-10-25. Il 28-09 il permesso all'emissione di una bolla che non muove merce lo controllava il backend. Ora lo chiede il verbo su ogni emissione (`fn_cambia_stato_ddt`, il passaggio con `emetti_ddt`): si prova al §8.1 | brief del Lotto 3, §9 (28-09); brief-modello-documento-vendita §7 |
 | **Merce presso terzi** | Conto visione, riparazione, conto lavoro non muovono (§1.8): decisione a sé | D-L3-g |
 | **Merce in viaggio** | Nessuna vista la mostra fra il §2.4 e il §2.6: nasce col suo lettore (P-13.2) | [piano §5](piano-be-fe-magazzino-lotto-3.md) |
-| **Seriali** | Nessuna schermata li crea: il §0 li inserisce in SQL | brief tutte-le-scritture-dal-verbo §1, D-L2-l |
+| **Seriali** | Nessuna schermata li crea. Il verbo `fn_aggiungi_asset` c'è dal 2026-11-22, ma nessuna rotta lo espone: il §0 passa dal building block in SQL | brief tutte-le-scritture-dal-verbo (chiuso), D-L2-l |
 
 ---
 
@@ -195,3 +214,4 @@ Non è magazzino, ma è il giro C2 dello stesso piano.
 | --- | --- |
 | **2026-10-14** | ✏️ Stesura, dall'elenco breve del piano BE/FE (§4, blocchi A, B, C) più i casi del modello che l'elenco non aveva: l'entrata del trasferimento al consegnato (§2.4-2.6), gli storni (§4, §5.8), la ri-consegna (§5.9), le causali che non muovono (§1.8). Dati di partenza letti su `dbdev`. Tutto a codice, **niente visto a video** |
 | **2026-10-14** | Assorbito il collaudo del brief-db-reso-motivi-conferma-con-valori (archiviato): §5.3 e §5.7 ora attendono i numeri nel tooltip, §9 aggiornato |
+| **2026-11-25** | 🔄 Riallineato prima dell'esecuzione, senza averlo ancora eseguito. Cosa è cambiato: **§0** dati riletti su `dbdev` (un solo magazzino nell'azienda 44, nessun kit utilizzabile, il lotto dell'azienda, le anagrafiche dai verbi, i seriali dal BB `fn_crea_asset` invece dell'`INSERT`); **§2.6** e **§8.5** la consegna del trasferimento chiede `registra_magazzino`; **§5.9** la ri-consegna nasce dal reso confermato «per ri-consegna», col nome a video, e il **§5.10** nuovo (reso ri-spedito non annullabile); **§8.1** il permesso anche sulle bolle senza merce, **§8.6** nuovo (porta 11); **§9** «Bolle senza merce» superato; **testata** il super admin è il binding, non `is_superuser` |

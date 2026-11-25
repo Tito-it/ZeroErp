@@ -26,7 +26,7 @@
 >   di ogni limite di frequenza (`security.limite_frequenza`).
 >
 > **Prerequisito**: il piano accessi
-> ([piano-be-fe-accessi-credenziale-e-vesti.md](piano-be-fe-accessi-credenziale-e-vesti.md)),
+> ([piano-be-fe-accessi-credenziale-e-vesti.md](../work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md)),
 > per i lotti che toccano il ciclo di vita della credenziale.
 >
 > ⚠️ Il testo di §B è quello del 2026-09-25: i riferimenti al «2FA» e al «passo 2» che lì sono

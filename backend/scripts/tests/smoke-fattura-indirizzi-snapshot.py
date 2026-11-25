@@ -66,7 +66,7 @@ repo = VenditePipelineRepository()
 
 with transaction.atomic():
     with connection.cursor() as cur:
-        apri_contesto_smoke(cur)
+        auth_user_id = apri_contesto_smoke(cur)
         # La base della fixture si COSTRUISCE dalle radici di prova
         # (brief-be-utenti-di-sviluppo T-7b): niente attivita' esistente da
         # copiare, che su un database nuovo non c'e'.
@@ -324,7 +324,7 @@ with transaction.atomic():
     )
     builder = FatturaDocumentContextBuilder()
     fattura_id_1 = fattura_ids[0]
-    ctx_prima = builder.build_context(fattura_id_1)
+    ctx_prima = builder.build_context(fattura_id_1, auth_user_id=auth_user_id)
     with connection.cursor() as cur:
         cur.execute(
             """
@@ -346,7 +346,7 @@ with transaction.atomic():
             "   SET indirizzo_libero = 'VIA DERIVATA DOPO EMISSIONE 999'"
             " WHERE id = %s", [id_fatt_nuovo],
         )
-    ctx_dopo = builder.build_context(fattura_id_1)
+    ctx_dopo = builder.build_context(fattura_id_1, auth_user_id=auth_user_id)
     check("8) ristampa conforme: contesto dagli snapshot, immune alla deriva anagrafica",
           display_snap is not None
           and ctx_prima["cliente"]["indirizzo"] == display_snap

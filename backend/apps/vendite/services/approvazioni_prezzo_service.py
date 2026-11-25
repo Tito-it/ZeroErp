@@ -961,3 +961,7 @@ def _get_user(auth_user_id: int):
             detail=f"auth_user_id={auth_user_id}",
             function_name=f"{_FN}._get_user",
         )
+    # ⛔ Il `return` si era perso il 2026-11-24 nel passaggio al BB: la funzione
+    #    tornava sempre None e la coda rispondeva 500. I test mockavano
+    #    `_get_user` stesso; ora c'e' `GetUserTests`, che mocka solo il BB.
+    return user

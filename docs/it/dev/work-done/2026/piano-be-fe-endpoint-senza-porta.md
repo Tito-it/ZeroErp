@@ -12,6 +12,26 @@
 > leggono uguali. Qui c'è la risposta per ciascuno (§1) e il piano per l'unica
 > che cambia qualcosa a video (§2).
 >
+> 📦 **Archiviato il 2026-11-25, dopo la riverifica sul codice.** Rispetto al
+> testo sotto, che è lo stato al 2026-09-25:
+>
+> * ✅ **§1 #10 `rettifica-controllata`**: ha una porta dal 2026-11-15
+>   (`VersioneDrawer.vue`, `rettificaRiga`; Listini 6f-ter, `44ba001ec`). Non è
+>   più un «cantiere suo».
+> * ⚠️ **§1 #7 `core/users/{id}/permessi-effettivi/`**: dal 2026-10-04 (tetto
+>   d'area) il pannello admin ha un suo endpoint,
+>   `amm-software/operatori/<id>/permessi-effettivi/`, che mostra cosa risulta
+>   davvero. La rotta `core` non ha chiamanti FE, e il motivo per tenerla non
+>   vale più: diventa candidata al ritiro.
+> * ✅ **§0, §2.1, §3.1** dicono ancora «zero file FE», «solo l'area `config`» e
+>   «schermata da fare»: la lista del log c'è dal 2026-09-26, come dice lo stato
+>   qui sotto.
+> * ⏳ **Restano**: l'outbox (§2.3 passo 5), con l'azione `invia_email` che non
+>   esiste a catalogo e che nessun brief DB chiede; i ritiri di `job-summary` e
+>   `manual-lookup` (§2.5), mai decisi, più quello di `permessi-effettivi`.
+>   Continuano in
+>   [brief-be-endpoint-senza-porta.md](../../work-in-progress/brief-be-endpoint-senza-porta.md).
+>
 > **Stato al 2026-09-25** (dettaglio in §3):
 >
 > * ✅ **§1 la decisione**: chiusa il 2026-09-11.
@@ -23,7 +43,7 @@
 > * ✅ **Il prerequisito è chiuso** (§3.3): dal 2026-09-25 la RLS applica gli
 >   ambiti `REPARTO`/`OPERATORE` su log, bozze e allegati, e dal 2026-09-26 il
 >   backend non ne tiene più una copia
->   ([brief-db-email-visibilita-per-ambito.md](../work-done/2026/brief-db-email-visibilita-per-ambito.md) §9).
+>   ([brief-db-email-visibilita-per-ambito.md](brief-db-email-visibilita-per-ambito.md) §9).
 > * ✅ **§2.3 passi 1-4 fatti il 2026-09-26**: la lista del log è aperta a ogni
 >   operatore (skip d'area, decisione di Tid) nel dominio frontend
 >   Strumenti, voce «Email» senza `requireArea` (era il dominio «Personale», assorbito
@@ -240,7 +260,7 @@ stesso emittente. Sull'outbox potrebbe anche **spedirne** la bozza.
 
 ⇒ ⛔ La correzione **non** va nella view: sarebbe la seconda sede del §1.1. Va
 nelle policy:
-[brief-db-email-visibilita-per-ambito.md](../work-done/2026/brief-db-email-visibilita-per-ambito.md)
+[brief-db-email-visibilita-per-ambito.md](brief-db-email-visibilita-per-ambito.md)
 (decisioni D-1 → D-4 ✅ prese da Tid il 2026-09-25; il lavoro è del team DB). Il §2.3 riparte quando quel brief è chiuso.
 ✅ **Chiuso**: DB il 2026-09-25, BE il 2026-09-26 (brief §9, che ha trovato anche
 un difetto preesistente: l'`INSERT` del log non scriveva l'emittente, quindi

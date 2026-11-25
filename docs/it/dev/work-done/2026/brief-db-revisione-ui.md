@@ -109,7 +109,7 @@ e questo brief; e la verifica del giro 6 (§3.6-quater, «La verifica»): `ui/te
 > ([brief-db-revisione-documenti](brief-db-revisione-documenti.md)).
 > **Brief vicini verificati:** [sviluppo-personalizzazioni-liste_def](../../work-in-progress/sviluppo-personalizzazioni-liste_def.md) tiene
 > gli sviluppi non fatti delle liste (viste nominate, condivisione) e la domanda sulle dashboard: sono funzionalità
-> nuove, non revisione, e qui non si toccano. [piano-be-fe-endpoint-senza-porta](../../work-in-progress/piano-be-fe-endpoint-senza-porta.md)
+> nuove, non revisione, e qui non si toccano. [piano-be-fe-endpoint-senza-porta](piano-be-fe-endpoint-senza-porta.md)
 > cita una lista di `ui` solo come fatto. Nel [registro dei residui](../../work-in-progress/registro-residui-aperti.md) nessuna voce ha per
 > oggetto le tabelle o le funzioni di `ui`. ⚠️ Mancava, trovato il 2026-11-20:
 > [brief-db-seed-primo-impianto-non-si-riscrive](brief-db-seed-primo-impianto-non-si-riscrive.md). Le tabelle di catalogo

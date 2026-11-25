@@ -1,7 +1,7 @@
 # Brief DB — Tre codici a catalogo: il cancello degli obblighi e la sfida del login TOTP
 
 > **Chi scrive:** backend (`dev/backend-tid`), 2026-09-30. **A chi:** team DB (`dev/db-tid`).
-> **Origine:** §3.4 di [brief-be-fe-sicurezza-header-token-mfa.md](../work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md),
+> **Origine:** §3.4 di [brief-be-fe-sicurezza-header-token-mfa.md](brief-be-fe-sicurezza-header-token-mfa.md),
 > lotti T-0 e T-2 (decisioni di Tid del 2026-09-30).
 > **Stato:** ✅ **chiuso il 2026-09-30.** DB: righe nei due CSV (§4, `dev/db-tid` `4e627064a`)
 > e applicate. Backend: `genera_error_policies` (solo le tre voci nuove, nessuna classe
@@ -20,7 +20,7 @@
 ## 1. Perché servono
 
 * **Il cancello degli obblighi** (lotto T-0, chiude A-8 del
-  [piano accessi](../../work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md) §4.4): il controllo «questa
+  [piano accessi](piano-be-fe-accessi-credenziale-e-vesti.md) §4.4): il controllo «questa
   credenziale deve prima fare qualcosa» si sposta dopo l'autenticazione DRF, dove l'utente del
   JWT è noto. Oggi `PasswordChangeRequiredMiddleware` è inerte col JWT e scrive a mano un
   envelope con `E_CAMBIO_PASSWORD_RICHIESTO`, un codice **mai registrato a catalogo**: nessuna

@@ -3,7 +3,7 @@
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-06. **A chi:** team DB
 > (`dev/db-tid`); poi BE/FE (§6), che **attende** la consegna DB.
 > **Origine:** L-6 del
-> [piano accessi](../../work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md) §4.4 (A-7 dell'analisi
+> [piano accessi](piano-be-fe-accessi-credenziale-e-vesti.md) §4.4 (A-7 dell'analisi
 > accessi). Il piano diceva «si estrae un frammento comune» lato Python e «il lotto
 > decide se la regola comune è quella di `fn_get_user_profile`». Facendo il lotto è
 > emerso che la regola **c'è già a DB**, scritta in più sedi e non uguale, e che il
