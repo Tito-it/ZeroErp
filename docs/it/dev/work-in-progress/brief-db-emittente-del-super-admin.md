@@ -14,7 +14,7 @@
 > | 4 | team BE/FE | Dopo R-DB-2: la prova di `/me/` per l'operatore senza emittente (§4.4) | §4.4 | 3 |
 >
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-11-25. **A chi:** team DB e Tid.
-> **Origine:** E1-6 di [brief-be-fe-BB-audit](brief-be-fe-BB-audit.md) (§6.2). L'approfondimento
+> **Origine:** E1-6 di [brief-be-fe-BB-audit](../work-done/2026/brief-be-fe-BB-audit.md) (§6.2). L'approfondimento
 > completo, con i riferimenti, è in §6.1 di quel brief; qui c'è solo ciò che serve al DB.
 > ⚠️ Il lavoro BE descritto in §2 sta su `dev/backend-tid` ed **è ancora da committare** alla data
 > di questo brief.

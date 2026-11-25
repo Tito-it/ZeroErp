@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-25
 
-**Riparte: team BE/FE** con E-1 (riga 8): E1-1…E1-5 sono fatti (§6.3-6.5). La richiesta al team DB (E1-6) è scritta in [brief-db-emittente-del-super-admin](brief-db-emittente-del-super-admin.md) e da lì prosegue. E-2 ed E1 sono da committare. Poi l'archiviazione.
+**Chiuso e archiviato il 2026-11-25.** Riparte nessuno: tutto il lavoro BE/FE è fatto e committato. L'unico seguito, la richiesta al team DB (E1-6), vive in [brief-db-emittente-del-super-admin](../../work-in-progress/brief-db-emittente-del-super-admin.md). La suite intera prima dell'archiviazione la lancia Tid.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -16,26 +16,27 @@
 | 5 | team BE/FE | ✅ Lavoro A (2026-11-24): query string e header ai `qp_*`, funzioni del corpo che delegano a `PayloadValidator`, service sul validator del dominio; il FE non aveva niente da correggere | §2.3 | — |
 | 6 | team BE/FE | ✅ Lavoro B (2026-11-24): `pagina_con_totale`, forma lunga e copie ritirate, `offset_effettivo` sui cruscotti, presidio | §3.3 | — |
 | 7 | team BE/FE | ✅ Lavoro C (2026-11-24): `TemplateService` legge lo scope da `_scope`, la copia è ritirata | §4 | — |
-| 8 | team BE/FE | E-2 ✅ (2026-11-24, BB `lista_paginata` nel core, copie ritirate). E-1: approfondito (§6.1), Tid decide il 2026-11-25 che le incoerenze del super admin si risolvono; piano E1-1…E1-6 | §6 | — |
+| 8 | team BE/FE | ✅ E-2 (2026-11-24, BB `lista_paginata` nel core, copie ritirate). ✅ E-1 (2026-11-25): E1-1…E1-5 fatti e rivisti (§6.3-6.6); E1-6 passa al team DB nel suo brief | §6 | — |
 | 10 | team BE/FE | ✅ D-3 (2026-11-24): `validate_order_params_ricerca`, call-site, test e catalogo | §5 | — |
 | 11 | team BE/FE | ✅ D-5 (2026-11-24): `livelloAccessoSeverity` in `severity.js`, LETTURA arancio, le due copie ritirate | §7.10 | — |
 | 11-bis | Tid | ✅ Collaudo a video del giro B–C–D (2026-11-24): tutto ok | §3.4 | — |
 | 12 | team BE/FE | ✅ D-6 (2026-11-24, alla revisione): il motivo dei 300 ms in `useServerAutocomplete` e nella sua voce di catalogo; il polling in background dichiarato voluto nella voce di `useJobPolling` | §7.9 | — |
 | 13 | team BE/FE | ✅ Revisione del giro A e del giro F (2026-11-24): quattro difetti corretti | §2.5, §7.9 | — |
-| 9 | team BE/FE | Archiviazione in `work-done/` | — | 8 |
+| 9 | team BE/FE | ✅ Archiviazione in `work-done/` (2026-11-25) | — | — |
 
 **Decisioni aperte di Tid:** nessuna. Le tre proposte dell'audit del backend sono accettate (Tid,
 2026-11-24): A, B, e la pulizia del catalogo; lo stesso giorno D-4 (F-1…F-4) e poi D-1, D-2, D-3,
 D-5, D-6, tutte secondo la raccomandazione di §8.
-**Da committare:** E-2 (BB `lista_paginata`, §6), E1-1…E1-5 (§6.3-6.5) e §6.1-6.5 di questo brief. Già committati: A, il
-catalogo BE, F e le revisioni nel `9e25fe7fa`; il giro B–C–D (§3.3–3.5, §4, §5, §7.10) nel `b179d1bce`.
+**Da committare:** niente. A, il catalogo BE, F e le revisioni sono nel commit `9e25fe7fa`; il giro
+B–C–D (§3.3–3.5, §4, §5, §7.10) nel `b179d1bce`; E-2, E1-1…E1-5 e la `/verifica` (§6.1-6.6) nel
+`9511ed0f6`.
 
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-11-24. **A chi:** team BE/FE e Tid.
 > **Origine:** la domanda di Tid «chi mi dice che i building block stessi non siano stati doppiati?».
 > La regola del 2 confronta il codice nuovo col catalogo, mai un BB con un altro BB, e il
 > pre-commit (`gen_indice_bb.py --check`) controlla solo che l'indice sia allineato al catalogo.
 > **Brief vicini verificati:** nessuno copre il tema.
-> [piano-migrazione-primevue-5](piano-migrazione-primevue-5.md) nomina `paginated_envelope` e
+> [piano-migrazione-primevue-5](../../work-in-progress/piano-migrazione-primevue-5.md) nomina `paginated_envelope` e
 > `parse_list_params` solo come BB già esistenti; i brief di `work-in-progress/` non toccano
 > `optional_*`, `risposta_paginata` né `envelope_da_offset`.
 > **Guide verificate** (`scripts/guide_coinvolte.py` sui sette file toccati): le 45 guide e le 12
@@ -44,10 +45,10 @@ catalogo BE, F e le revisioni nel `9e25fe7fa`; il giro B–C–D (§3.3–3.5, �
 > pertinenti (giro A). Per il giro B–C–D (2026-11-24) lo script sul diff restituisce le guide degli
 > endpoint toccati: nessuna descrive la forma dell'envelope di una lista (`configurazione-liste`
 > compresa), quindi **coerenti**; per C vedi §4. Due sono pertinenti al giro A:
-> [Messaggi-di-Errore-e-Generazione-Log](../../guide/Messaggi-di-Errore-e-Generazione-Log.md) è
+> [Messaggi-di-Errore-e-Generazione-Log](../../../guide/Messaggi-di-Errore-e-Generazione-Log.md) è
 > **coerente**: chiede che un dato errato esca col suo campo (`DATO_ERRATO`, «il nome del campo si
 > dichiara»), e il lavoro A ci porta le letture che oggi non lo danno.
-> [configurazione-liste](../../guide/configurazione-liste.md) è **coerente**: non descrive la forma
+> [configurazione-liste](../../../guide/configurazione-liste.md) è **coerente**: non descrive la forma
 > dell'envelope. Le altre guide non sono toccate.
 
 ## 1. L'audit del backend (2026-11-24)
@@ -75,9 +76,9 @@ stessa strada:
 ### 2.1 Il fatto
 
 Le funzioni della view in
-[payload_validators.py](../../../../backend/apps/core/api/payload_validators.py) (`optional_int`,
+[payload_validators.py](../../../../../backend/apps/core/api/payload_validators.py) (`optional_int`,
 `optional_iso_date`, `optional_uuid`) e i metodi di `PayloadValidator` in
-[payload_helpers.py](../../../../backend/apps/core/services/payload_helpers.py) (`optional_uuid`,
+[payload_helpers.py](../../../../../backend/apps/core/services/payload_helpers.py) (`optional_uuid`,
 `optional_date`, `optional_positive_int`…) rispondono alla stessa domanda. Allo stesso input
 danno risposte diverse (codice letto il 2026-11-24):
 
@@ -252,7 +253,7 @@ Il frontend, letto il 2026-11-24, usa `count` e `results`. Legge `page` dalla ri
 all'ultima). `page_size` e `total_pages` non li legge nessuno. È un fatto, non il motivo della
 scelta: il motivo è in D-1.
 
-[api.md](../api.md) §Envelope risposte non dice se le forme siano ammesse tutte. È una scelta di
+[api.md](../../api.md) §Envelope risposte non dice se le forme siano ammesse tutte. È una scelta di
 modello: **D-1**, ✅ decisa il 2026-11-24: la forma corta.
 
 ### 3.2 Il piano (D-1 decisa: `{count, results}`)
@@ -353,7 +354,7 @@ suo `_resolve_emittente_scope` è ritirato: per l'anonimo o l'utente assente la 
 rifiuto dichiarato `E_SCOPE_SENZA_UTENTE`, come nel resto del dominio. Test:
 `test_list_templates_anonymous_user_rifiutato` (al posto di quello che si aspettava `[]`), provato per
 mutazione; i patch dei test passano da `_scope`. Catalogo: `TemplateService` e `_scope`. Guida
-[architettura-permessi-e-autorizzazioni](../../guide/architettura-permessi-e-autorizzazioni.md)
+[architettura-permessi-e-autorizzazioni](../../../guide/architettura-permessi-e-autorizzazioni.md)
 §scope **coerente**: descrive già il rifiuto di un perimetro chiesto senza utente.
 
 ## 5. Il catalogo del backend: voci doppie
@@ -416,9 +417,9 @@ mutazione; i patch dei test passano da `_scope`. Catalogo: `TemplateService` e `
 
 * Il super admin non ha un'azienda sua: lavora sull'emittente che sceglie (GUC
   `app.current_emittente_id`), e senza scelta il DB rifiuta le creazioni
-  ([pgtap-come-si-scrive-un-test](../../guide/pgtap-come-si-scrive-un-test.md) L213-221;
-  [risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md) L292, L421;
-  [architettura-permessi-e-autorizzazioni](../../guide/architettura-permessi-e-autorizzazioni.md) L394).
+  ([pgtap-come-si-scrive-un-test](../../../guide/pgtap-come-si-scrive-un-test.md) L213-221;
+  [risorse-umane-e-accessi](../../../guide/risorse-umane-e-accessi.md) L292, L421;
+  [architettura-permessi-e-autorizzazioni](../../../guide/architettura-permessi-e-autorizzazioni.md) L394).
 * La scelta **restringe, non allarga mai**: in `script.fn_check_user_emittente_scope` il ramo
   «emittente diverso da quello attivo → FALSE» viene prima del bypass del super admin
   (architettura-permessi L758-771).
@@ -532,7 +533,7 @@ resta, al più, un'etichetta da mostrare.
 | E1-3 | team BE/FE | ✅ 2026-11-25 — Gate L2 con l'emittente del documento (riga e variazione globale del contratto), hint con quello di chi agisce | 3, 4 |
 | E1-4 | team BE/FE | ✅ 2026-11-25 — `get_emittente_fiscale_id_for_user` ritirata (service e repository); valuta di default sull'emittente di chi agisce. `get_emittente_di_permesso` resta la sola lettura diretta della tabella | 4, 5 |
 | E1-5 | team BE/FE | ✅ 2026-11-25 — (8) ramo morto IVA tolto; (7) BB `contesto_cascata`, ok Tid (§6.5). Il 6 e il rischio del 9 sono smentiti; claim → GUC fatto col BB di §6.3 | 7, 8 |
-| E1-6 | team DB | ✍️ Brief scritto il 2026-11-25: [brief-db-emittente-del-super-admin](brief-db-emittente-del-super-admin.md) (R-DB-1 guard di scope su `config.parameter_overrides`, R-DB-2 profilo senza il gestore globale). Sostituisce la richiesta di una funzione «PK del gestore globale», che con questa regola non serve più | 1, 10 |
+| E1-6 | team DB | ✍️ Brief scritto il 2026-11-25: [brief-db-emittente-del-super-admin](../../work-in-progress/brief-db-emittente-del-super-admin.md) (R-DB-1 guard di scope su `config.parameter_overrides`, R-DB-2 profilo senza il gestore globale). Sostituisce la richiesta di una funzione «PK del gestore globale», che con questa regola non serve più | 1, 10 |
 
 Prima di scrivere: `scripts/guide_coinvolte.py` sui file di ogni riga; il FE di E1-1 ed E1-4 si
 apre con gli indici BB di tutti e due i lati.
@@ -562,8 +563,8 @@ apre con gli indici BB di tutti e due i lati.
   (attributo → profilo → primo emittente visibile) è ritirato. Resta `emittente_di_lettura`, che
   per l'operatore senza emittente risponde con un rifiuto che spiega il motivo.
 * **Guide** (`guide_coinvolte.py` sui file toccati):
-  [configurazione-e-gestione-parametri](../../guide/configurazione-e-gestione-parametri.md) e
-  [gestione-pratiche](../../guide/gestione-pratiche.md) sono **coerenti**: nessuna delle due dice su
+  [configurazione-e-gestione-parametri](../../../guide/configurazione-e-gestione-parametri.md) e
+  [gestione-pratiche](../../../guide/gestione-pratiche.md) sono **coerenti**: nessuna delle due dice su
   quale emittente scrive il backend. Le altre arrivano da `anagrafiche.billing_account` e non sono
   toccate.
 * **Catalogo**: voci nuove `emittente_per_scrivere` e `AITool.cancello_del_gemello`;
@@ -623,7 +624,7 @@ apre con gli indici BB di tutti e due i lati.
     listino nuova, clonata e chiusa), che prima passavano il solo utente;
   * `RuoliConfigResolverView` → `SoggettiRepository.get_config_resolver(contesto_cascata=)`, che
     prima riceveva il solo emittente e la view non lo passava.
-* **Guide**: [configurazione-e-gestione-parametri](../../guide/configurazione-e-gestione-parametri.md)
+* **Guide**: [configurazione-e-gestione-parametri](../../../guide/configurazione-e-gestione-parametri.md)
   è **coerente**: descrive la cascata a cinque livelli, che ora arriva intera anche a questi punti.
 * **Prove**: test nuovi `ContestoCascataTests` (2), `FormDefaultsCascataTests` (1) e
   `test_config_resolver_cascata_di_chi_agisce` (1). **Suite BE intera: 6824 test, OK** (341
@@ -670,7 +671,7 @@ righe vecchie nel catalogo, due punti da chiarire. ✅ Le proposte F sono accett
 ### 7.1 Doppioni nel codice
 
 * **F-1 — Il debounce di `useServerAutocomplete` è una seconda copia di `useDebouncedAction`.**
-  [useServerAutocomplete.js](../../../../frontend/src/core/composables/useServerAutocomplete.js)
+  [useServerAutocomplete.js](../../../../../frontend/src/core/composables/useServerAutocomplete.js)
   ha un `setTimeout` suo. Le due copie divergono già:
   * lo spegne solo su `onUnmounted`, mai su `onDeactivated`. È il difetto che `useDebouncedAction`
     dichiara di chiudere: una ricerca digitata appena prima di cambiare scheda (KeepAlive) parte con
@@ -687,9 +688,9 @@ righe vecchie nel catalogo, due punti da chiarire. ✅ Le proposte F sono accett
   il ritardo diventa una costante con nome accanto a `SEARCH_DEBOUNCE_MS`. Ci vuole un test per il
   cambio di scheda e uno per la risposta fuori ordine.
 * **F-2 — Il maiuscolo mentre si digita: `InputMaiuscolo` e `normalizeUpper*`.**
-  [InputMaiuscolo.vue](../../../../frontend/src/core/components/InputMaiuscolo.vue) (codice SDI,
+  [InputMaiuscolo.vue](../../../../../frontend/src/core/components/InputMaiuscolo.vue) (codice SDI,
   estensione del civico) e `normalizeUpperNoSpaces` di
-  [string.js](../../../../frontend/src/core/utils/string.js) (`@input` su IBAN, codice fiscale e
+  [string.js](../../../../../frontend/src/core/utils/string.js) (`@input` su IBAN, codice fiscale e
   `codice` dell'emittente) dicono la stessa cosa. Divergono già:
   * `InputMaiuscolo` rimette il cursore dov'era, `normalizeUpperNoSpaces` no. Chi corregge una
     lettera in mezzo a un IBAN o a un codice fiscale si ritrova il cursore in fondo, proprio il
@@ -710,7 +711,7 @@ righe vecchie nel catalogo, due punti da chiarire. ✅ Le proposte F sono accett
   `core/misurePagina.js`. La paginazione delle liste in drawer è `useListaDrawerPaginata`, quella
   degli store-lista `useListaStoreCore`. **Piano:** si ritira il file e la voce diventa «ritirato»,
   con la data. Prima si cerca anche negli spec e nei componenti `.vue` caricati dinamicamente.
-* **F-4 — `resolveTabLabel`** in [navigation.js](../../../../frontend/src/core/navigation.js) è un
+* **F-4 — `resolveTabLabel`** in [navigation.js](../../../../../frontend/src/core/navigation.js) è un
   alias di `resolveNavigationLabel` (lo restituisce e basta). Due nomi per la stessa regola, accanto
   a `resolveTabDisplayLabel`, che è un'altra cosa (l'etichetta a video). **Piano:** i due chiamanti
   (router e `AppBreadcrumb`) chiamano `resolveNavigationLabel` e l'alias si ritira. In alternativa
@@ -841,16 +842,16 @@ Lato frontend soltanto. Il BE non cambia.
 * **Guide verificate** (`scripts/guide_coinvolte.py` sul diff del giro A e F): le guide trovate
   nascono dagli oggetti DB che le view e i service toccati nominano; il giro cambia la lettura dei
   parametri, non il dominio. Le pertinenti a F-2:
-  [numerazione-documenti-e-codici](../../guide/numerazione-documenti-e-codici.md) (la sigla:
+  [numerazione-documenti-e-codici](../../../guide/numerazione-documenti-e-codici.md) (la sigla:
   maiuscole e cifre, salvata così) **coerente**;
-  [automazione-db](../../guide/automazione-db.md) §4.8 (il codice lo alza il DB) **coerente**;
-  [soggetti-e-ruoli-anagrafici](../../guide/soggetti-e-ruoli-anagrafici.md) (codice fiscale in
-  forma sola, dal DB) e [gestione-conti-bancari](../../guide/gestione-conti-bancari.md) (IBAN
+  [automazione-db](../../../guide/automazione-db.md) §4.8 (il codice lo alza il DB) **coerente**;
+  [soggetti-e-ruoli-anagrafici](../../../guide/soggetti-e-ruoli-anagrafici.md) (codice fiscale in
+  forma sola, dal DB) e [gestione-conti-bancari](../../../guide/gestione-conti-bancari.md) (IBAN
   normalizzato dal trigger) **coerenti**: il maiuscolo del FE resta un aiuto di digitazione.
 * **Prove:** vitest intero **203 file, 1296 test, verdi**; lint, guard, classi morte e build
   verdi. Il controllo i18n segnalava una chiave emessa dal DB e assente dai locales
   (`anagrafiche.soggetti.cambio_natura_blocco.verso_nessuna`), che non nasceva da questo giro: è la
-  voce 3 di §20.7 di [brief-db-revisione-anagrafiche](brief-db-revisione-anagrafiche.md), e su
+  voce 3 di §20.7 di [brief-db-revisione-anagrafiche](../../work-in-progress/brief-db-revisione-anagrafiche.md), e su
   richiesta di Tid è aggiunta in `it.json` ed `en.json` (2026-11-24). Con l'ok di Tid è tolta la chiave
   ritirata `senza_natura_con_titoli_iva`, che non citava più nessuno. Ora il controllo i18n è pulito.
   ⚠️ Nello stesso momento un'altra mano ha alzato in `frontend/package.json` chart.js, oxlint ed
