@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-25
 
-**Chiuso e archiviato il 2026-11-25.** Riparte nessuno: tutto il lavoro BE/FE è fatto e committato. L'unico seguito, la richiesta al team DB (E1-6), vive in [brief-db-emittente-del-super-admin](../../work-in-progress/brief-db-emittente-del-super-admin.md). La suite intera prima dell'archiviazione la lancia Tid.
+**Chiuso e archiviato il 2026-11-25.** Riparte nessuno: tutto il lavoro BE/FE è fatto e committato. L'unico seguito, la richiesta al team DB (E1-6), vive in [brief-db-emittente-del-super-admin](brief-db-emittente-del-super-admin.md). La suite intera prima dell'archiviazione la lancia Tid.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -533,7 +533,7 @@ resta, al più, un'etichetta da mostrare.
 | E1-3 | team BE/FE | ✅ 2026-11-25 — Gate L2 con l'emittente del documento (riga e variazione globale del contratto), hint con quello di chi agisce | 3, 4 |
 | E1-4 | team BE/FE | ✅ 2026-11-25 — `get_emittente_fiscale_id_for_user` ritirata (service e repository); valuta di default sull'emittente di chi agisce. `get_emittente_di_permesso` resta la sola lettura diretta della tabella | 4, 5 |
 | E1-5 | team BE/FE | ✅ 2026-11-25 — (8) ramo morto IVA tolto; (7) BB `contesto_cascata`, ok Tid (§6.5). Il 6 e il rischio del 9 sono smentiti; claim → GUC fatto col BB di §6.3 | 7, 8 |
-| E1-6 | team DB | ✍️ Brief scritto il 2026-11-25: [brief-db-emittente-del-super-admin](../../work-in-progress/brief-db-emittente-del-super-admin.md) (R-DB-1 guard di scope su `config.parameter_overrides`, R-DB-2 profilo senza il gestore globale). Sostituisce la richiesta di una funzione «PK del gestore globale», che con questa regola non serve più | 1, 10 |
+| E1-6 | team DB | ✍️ Brief scritto il 2026-11-25: [brief-db-emittente-del-super-admin](brief-db-emittente-del-super-admin.md) (R-DB-1 guard di scope su `config.parameter_overrides`, R-DB-2 profilo senza il gestore globale). Sostituisce la richiesta di una funzione «PK del gestore globale», che con questa regola non serve più | 1, 10 |
 
 Prima di scrivere: `scripts/guide_coinvolte.py` sui file di ogni riga; il FE di E1-1 ed E1-4 si
 apre con gli indici BB di tutti e due i lati.

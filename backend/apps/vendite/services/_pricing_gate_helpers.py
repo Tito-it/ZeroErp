@@ -173,8 +173,10 @@ def _resolve_soglia_variazione_pct(
 #        (delta < 0) confronta con VENDITE_MAX_SCONTO_PCT; se maggiorazione
 #        (delta > 0) con VENDITE_MAX_MAGGIORAZIONE_PCT.
 #        Skip se prezzo_resolver e' None o 0 (non calcolabile / safe-fail).
-#        Superuser bypass. Parametri risolti via cascata estesa user →
-#        categoria_cliente → group → emittente → default.
+#        Nessun bypass: quello del superuser non c'e' piu' dal 2026-11-24 (D-J),
+#        e il limite vale anche per SUPER_ADMIN. Parametri risolti via cascata
+#        estesa user → categoria_cliente → group → emittente → default, dove
+#        l'emittente e' quello del DOCUMENTO (E1-3, 2026-11-25), non di chi agisce.
 #
 #        `ba_id` opzionale: se fornito alimenta il livello categoria_cliente.
 #        Lookup DB avviene DOPO gli early-return per non sprecare round-trip.

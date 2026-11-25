@@ -97,7 +97,7 @@ class ApiOffertaFormDefaults(DomainAPIView):
                 description=(
                     "Se presente, popola i campi BA-derived (categoria_cliente, "
                     "utility, valuta). Se assente, ritorna valuta da EF utente "
-                    "o gestore globale, BA-derived a null."
+                    "o dal gestore (`anagrafiche.gestori`), BA-derived a null."
                 ),
             ),
         ],
@@ -120,7 +120,7 @@ class ApiOffertaFormDefaults(DomainAPIView):
 class ApiOrdineFormDefaults(DomainAPIView):
     # Scopo: Defaults form ordine di vendita contestuali al BA (utility, valuta).
     #        Allinea ordini alla famiglia: senza BA ritorna valuta dalla catena
-    #        EF utente → gestore globale; con BA aggiunge utility BA-derived. La
+    #        EF utente → gestore (`anagrafiche.gestori`); con BA aggiunge utility BA-derived. La
     #        utility di default globale (DEFAULT_UTILITY) la risolve il FE.
     area_funzionale = "vendite"
     model_permission = ("vendite", "ordine")
@@ -133,7 +133,7 @@ class ApiOrdineFormDefaults(DomainAPIView):
                 required=False,
                 description=(
                     "Se presente, popola utility BA-derived + valuta. Se assente, "
-                    "ritorna valuta da EF utente o gestore globale."
+                    "ritorna valuta da EF utente o dal gestore (`anagrafiche.gestori`)."
                 ),
             ),
         ],
@@ -154,7 +154,7 @@ class ApiOrdineFormDefaults(DomainAPIView):
 class ApiDdtFormDefaults(DomainAPIView):
     # Scopo: Defaults form DDT di vendita contestuali al BA (utility, valuta).
     #        Allinea il DDT alla famiglia ordini/preventivi/offerte: senza BA
-    #        ritorna la valuta dalla catena EF utente → gestore globale; con BA
+    #        ritorna la valuta dalla catena EF utente → gestore (`anagrafiche.gestori`); con BA
     #        aggiunge utility BA-derived + valuta del cliente. Il DDT è un
     #        documento di trasporto: nessun termine/modalita di pagamento in
     #        testata.
@@ -169,7 +169,7 @@ class ApiDdtFormDefaults(DomainAPIView):
                 required=False,
                 description=(
                     "Se presente, popola utility BA-derived + valuta. Se assente, "
-                    "ritorna valuta da EF utente o gestore globale."
+                    "ritorna valuta da EF utente o dal gestore (`anagrafiche.gestori`)."
                 ),
             ),
         ],
