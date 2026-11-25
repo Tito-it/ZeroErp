@@ -13,12 +13,12 @@
 >
 **Automazioni collegate:**
 >
-Trigger: `anagrafiche.trg_iu_z50_clone_catasto_from_parent_aft_upd` (subentro: clonazione catasto)     
-> Trigger: `anagrafiche.trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd` (sync tabella ponte catasto↔indirizzi)    
+Trigger: `anagrafiche.trg_istanze_utilities_z50_clone_catasto_from_parent_ins` e `_upd` (subentro: clonazione catasto, quando nasce il legame con la precedente)     
+> Trigger: `anagrafiche.trg_istanze_utilities_z40_sync_catasto_unita_indirizzo_ins` e `_upd` (sync tabella ponte catasto↔indirizzi)    
 
 ---
 ### 🎯 Scopo Principale
-(latest review 15-12-25)
+(latest review 25-11-26)
 La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
 
 ✅ La sorgente viene determinata **esclusivamente** da:
@@ -192,9 +192,11 @@ Infine:
 
 Nel flusso previsto:
 
-1. si valorizza `parent_istanza_id` sull’istanza (subentro)
-2. trigger `trg_iu_z50_clone_catasto_from_parent_aft_upd` esegue la clonazione (tipicamente invocando questa funzione, direttamente o via `trgfn_*` wrapper)
-3. trigger `trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd` garantisce la presenza del legame nella tabella ponte `catasto_unita_immobiliari_indirizzi` quando sono presenti **entrambi** i riferimenti (istanza ha catasto + indirizzo)
+1. nasce il legame con l'istanza precedente: l'istanza nasce con `parent_istanza_id` già scritto, oppure una modifica lo cambia (subentro)
+2. il trigger `trg_istanze_utilities_z50_clone_catasto_from_parent_ins` (alla nascita) o `_upd` (al cambio della precedente; una riscrittura uguale non scatta), con l'istanza senza unità e col civico, chiama questa funzione attraverso `anagrafiche.trgfn_iu_clone_catasto_from_parent`
+3. l'aggancio della copia cambia l'unità dell'istanza, e il trigger `trg_istanze_utilities_z40_sync_catasto_unita_indirizzo_upd` porta la coppia (copia, civico) nella tabella ponte `catasto_unita_immobiliari_indirizzi`
+
+Il clone copia ciò che la precedente ha quando il legame nasce: un'unità che compare dopo sulla precedente non arriva.
 
 Questa funzione copre il cuore del punto 2: **crea e aggancia** il catasto clonato.
 

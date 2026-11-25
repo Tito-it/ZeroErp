@@ -1,0 +1,44 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.contatti: i COMMENT di is_default e default_context dicono la
+#   regola del predefinito per riga di contesto.
+#   D-T7b-1 di Tid (2026-11-25), brief-db-revisione-anagrafiche §22.
+#
+#   default_context nominava ancora il livello «utility», rinominato «istanza»
+#   dal refactor del 2026-03-25 (§5d: il COMMENT descrive l'oggetto di oggi).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261125-43-update-comment-contatti-predefinito-per-contesto-mctit.yaml
+
+  - changeSet:
+      id: 20261125-43-update-comment-contatti-predefinito-per-contesto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.contatti: COMMENT di is_default e default_context sulla regola del predefinito per
+        riga di contesto. D-T7b-1, brief-db-revisione-anagrafiche §22.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN anagrafiche.contatti.is_default
+                  IS 'Il contatto predefinito della sua riga di contesto (soggetto, ruolo, istanza): uno per contesto (indice uq_contatti_predefinito_contesto), e un contesto con contatti ne ha sempre uno. Lo propone il trigger a chi entra in un contesto che non ne ha; si cambia marcando un altro contatto (anagrafiche.trgfn_contatti_set_default_contatto, anagrafiche.trgfn_contatti_guard_predefinito).';
+              COMMENT ON COLUMN anagrafiche.contatti.default_context
+                  IS 'Il livello del contesto di cui il contatto e'' predefinito: soggetto, ruolo o istanza; NULL su chi non e'' predefinito. Lo scrive il trigger anagrafiche.trgfn_contatti_set_default_contatto: non e'' una chiave di scrittura.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: i COMMENT di prima descrivevano la regola ritirata.
+              SELECT 1;

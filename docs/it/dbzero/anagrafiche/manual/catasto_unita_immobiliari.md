@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.catasto_unita_immobiliari`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -50,17 +50,19 @@ erDiagram
     indirizzi_dettaglio ||--o{ catasto_unita_immobiliari_indirizzi : "indirizzo_dettaglio_id"
 ```
 
-Un'unità può quindi esistere senza istanza (inserita e non ancora agganciata, o lasciata da un'istanza che è
-passata a un'altra unità) e senza indirizzo.
+Un'unità può quindi esistere senza istanza (inserita e non ancora agganciata, o rimasta da un'istanza cancellata)
+e senza indirizzo. L'unità lasciata da un'istanza che passa a un'altra unità, invece, si cancella, se nessun'altra
+istanza la nomina: lo fa `anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo`, e lo storico ne tiene la versione.
 
 ---
 
-### Un'unità per istanza, per costruzione e non per vincolo
+### Un'unità per istanza
 
 Il modello vuole che ogni istanza abbia la sua unità: al subentro l'unità della precedente si **clona**, non si
-condivide, e una modifica sul catasto dell'istanza nuova non tocca quello dell'uscente. Lo garantisce la strada
-della clonazione, che crea sempre una riga nuova. Il racconto del flusso sta in
-[Il catasto delle istanze](/guide/catasto-delle-istanze).
+condivide, e una modifica sul catasto dell'istanza nuova non tocca quello dell'uscente. Lo scrive l'indice unico
+`uq_istanze_utilities_catasto_unita_immobiliare` sull'istanza: un'istanza agganciata a mano all'unità di un'altra
+è rifiutata. La strada della clonazione lo rispetta da sé, perché crea sempre una riga nuova. Il racconto del
+flusso sta in [Il catasto delle istanze](/guide/catasto-delle-istanze).
 
 ---
 
@@ -91,11 +93,8 @@ Cancellata un'unità, i suoi legami con i civici se ne vanno con lei.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Due istanze sulla stessa unità.** Nessun vincolo unico su `istanze_utilities.catasto_unita_immobiliare_id`:
-  un'istanza agganciata a mano all'unità di un'altra la condivide, e una modifica dell'una cambia il catasto
-  dell'altra.
-* **Le unità orfane restano.** Un'istanza che passa a un'altra unità lascia la prima senza nessuno che la nomini,
-  e nessun oggetto del DB la ritira.
+* **La cancellazione dell'istanza** non tocca la sua unità: un'istanza cancellata lascia l'unità senza nessuno
+  che la nomini, e nessun oggetto del DB la ritira.
 
 ---
 
@@ -103,11 +102,15 @@ Cancellata un'unità, i suoi legami con i civici se ne vanno con lei.
 
 * `db/pgtap/anagrafiche/test-simula-subentro.sql` — l'unità della prima istanza, il legame col civico creato dal
   trigger, il clone sull'istanza del subentro (id diverso, dati uguali) e il suo legame col civico.
+* `db/pgtap/anagrafiche/test-catasto-unita-della-sua-istanza-v1.sql` — due istanze sulla stessa unità rifiutate
+  dall'indice, il clone che nasce col legame, l'unità lasciata che si cancella.
 
 ---
 
 ### Note di migrazione
 
+* 2026-11-25 — un'unità è di un'istanza sola (indice unico sull'istanza); l'unità lasciata da un'istanza che
+  passa a un'altra si cancella.
 * 2026-11-22 — ritirato `db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql`, scritto sul modello in cui
   l'unità nominava l'istanza (`istanza_utility_id`): provava colonne e chiavi esterne che non esistono più.
 * 2025-12-10 — la tabella perde `indirizzo_dettaglio_id`: il legame col civico passa alla tabella ponte.

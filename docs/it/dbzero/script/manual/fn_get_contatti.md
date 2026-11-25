@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_get_contatti`
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -38,8 +38,13 @@ La funzione **`script.fn_get_contatti(p_soggetto_id UUID, p_soggetto_ruolo_id BI
 
   In questo modo, se esistono contatti specifici per ruolo/utility, vengono preferiti rispetto a quelli generici del soggetto.
 
+* **Il reparto è facoltativo**
+  Il reparto (`p_unita_organizzativa_id`) dice dove sta il referente, e non esclude nessuno se non lo si chiede:
+  senza reparto contano **tutti** i contatti, anche quelli che un reparto ce l'hanno. Con il reparto contano i
+  contatti di quel reparto e quelli senza reparto, e a parità di `priority` vince il contatto del reparto.
+
 * **Preferenza per i contatti default**
-  A parità di `priority`, la funzione privilegia i contatti con **`is_default = TRUE`**, lasciando comunque la possibilità di avere contatti non di default per lo stesso tipo.
+  A parità di `priority` (e di reparto), la funzione privilegia i contatti con **`is_default = TRUE`**, lasciando comunque la possibilità di avere contatti non di default per lo stesso tipo.
 
 * **Validazione e logging centralizzato**
   `p_soggetto_id` è **obbligatorio**: se `NULL`, la funzione rifiuta la chiamata prima di leggere un dato, con il codice `E_CONTATTI_SOGGETTO_OBBLIGATORIO` (classe `DATO_ERRATO`, messaggio «Indicare il soggetto di cui leggere i contatti.»), sollevato da `script.fn_log_and_raise_error` col canale `parametro` = `p_soggetto_id`.
@@ -57,7 +62,7 @@ La funzione **`script.fn_get_contatti(p_soggetto_id UUID, p_soggetto_ruolo_id BI
 | `p_soggetto_ruolo_id` | `BIGINT` | `NULL`  | ❌ No         | Se valorizzato, consente di privilegiare/filtrare i contatti legati a uno specifico ruolo del soggetto.                            |
 | `p_istanza_utility_id` | `BIGINT` | `NULL`  | ❌ No         | Se valorizzato, consente di privilegiare/filtrare i contatti associati a una determinata istanza utility.                         |
 | `p_tipo_contatto_id`  | `INT`    | `NULL`  | ❌ No         | Se valorizzato, limita il risultato ai contatti di uno specifico `tipo_contatto`. |
-| `p_unita_organizzativa_id` | `INT` | `NULL` | ❌ No | Se valorizzato, privilegia/filtra i contatti legati a una unita organizzativa specifica. |
+| `p_unita_organizzativa_id` | `INT` | `NULL` | ❌ No | Se valorizzato, contano i contatti di quel reparto e quelli senza reparto, e a parità di livello vince il reparto. Se `NULL`, contano tutti i contatti, con o senza reparto. |
 
 ---
 
@@ -109,8 +114,12 @@ Per ogni `tipo_contatto_id`, è restituita **al più una riga** (la “migliore�
      AND (c.soggetto_ruolo_id IS NULL OR c.soggetto_ruolo_id IS NOT DISTINCT FROM p_soggetto_ruolo_id)
      AND (c.istanza_utility_id IS NULL OR c.istanza_utility_id IS NOT DISTINCT FROM p_istanza_utility_id)
      AND (p_tipo_contatto_id IS NULL OR c.tipo_contatto_id  = p_tipo_contatto_id)
-     AND (c.unita_organizzativa_id IS NULL OR c.unita_organizzativa_id IS NOT DISTINCT FROM p_unita_organizzativa_id)
+     AND (p_unita_organizzativa_id IS NULL
+          OR c.unita_organizzativa_id IS NULL
+          OR c.unita_organizzativa_id = p_unita_organizzativa_id)
      ```
+
+     L'ultimo filtro è quello del reparto: senza reparto non scarta nessuno.
 
    * viene calcolata una colonna `priority` secondo lo schema:
 
@@ -129,6 +138,7 @@ Per ogni `tipo_contatto_id`, è restituita **al più una riga** (la “migliore�
    Per ogni `tipo_contatto_id`, viene calcolato un ordinamento che combina:
 
    * `priority` (contesto più specifico → più importante)
+   * il contatto del reparto chiesto prima di quello senza reparto (solo se il reparto è chiesto)
    * preferenza per i contatti `is_default = TRUE`
    * `id` come tie-breaker stabile
 
@@ -200,6 +210,8 @@ FROM script.fn_get_contatti(
 
 * `db/pgtap/dbops/test-presidi-codici-corpo-leggibile-v1.sql`, test 9 — la chiamata col soggetto
   `NULL` è rifiutata con `E_CONTATTI_SOGGETTO_OBBLIGATORIO`.
+* `db/pgtap/anagrafiche/test-contatto-predefinito-per-contesto-v1.sql`, test 12-13 — senza reparto la funzione
+  trova il contatto che ha un reparto; con il reparto vince il contatto del reparto.
 
 ---
 
@@ -213,6 +225,8 @@ FROM script.fn_get_contatti(
   `NULL` con `E_CONTATTI_SOGGETTO_OBBLIGATORIO`, e con un soggetto valido restituisce le stesse righe
   di prima; firma, colonne restituite e permessi non cambiano (`20261110-94`,
   `brief-db-revisione-dbops`, giro 12).
+* 2026-11-25 — senza reparto contano tutti i contatti: prima il filtro scartava ogni contatto che ha un reparto.
+  Firma, colonne e cascata non cambiano (`20261125-38`).
 
 ---
 

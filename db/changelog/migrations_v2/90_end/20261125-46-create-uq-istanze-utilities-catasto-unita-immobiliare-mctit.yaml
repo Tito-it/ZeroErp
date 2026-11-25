@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.istanze_utilities: un'unita' catastale e' di un'istanza sola.
+#   Correzione senza scelta, brief-db-revisione-anagrafiche §22 (S11).
+#
+# -- IL DIFETTO -------------------------------------------------------------------
+#   Nessun vincolo unico su catasto_unita_immobiliare_id: un'istanza agganciata
+#   a mano all'unita' di un'altra la condivideva, contro il modello che la guida
+#   catasto-delle-istanze dichiara (il subentro clona l'unita', non la
+#   condivide). La colonna non aveva nemmeno un indice.
+#
+# -- LA REGOLA ----------------------------------------------------------------------
+#   Indice unico parziale WHERE catasto_unita_immobiliare_id IS NOT NULL: un
+#   NULL non e' un'unita', e un'istanza senza unita' e' ammessa (§8.4: sulla FK
+#   nullabile il parziale copre anche il controllo referenziale).
+#   Sta in 90_end per §11.14, come -45. Un database con due istanze sulla stessa
+#   unita' ferma il migrate col nome dell'indice: quale delle due tiene l'unita'
+#   lo decide chi la trova.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261125-46-create-uq-istanze-utilities-catasto-unita-immobiliare-mctit.yaml
+
+  - changeSet:
+      id: 20261125-46-create-uq-istanze-utilities-catasto-unita-immobiliare
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.istanze_utilities: indice unico parziale su catasto_unita_immobiliare_id (un'unita',
+        un'istanza). S11, brief-db-revisione-anagrafiche §22.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE UNIQUE INDEX uq_istanze_utilities_catasto_unita_immobiliare
+                  ON anagrafiche.istanze_utilities (catasto_unita_immobiliare_id)
+                  WHERE catasto_unita_immobiliare_id IS NOT NULL;
+
+              COMMENT ON INDEX anagrafiche.uq_istanze_utilities_catasto_unita_immobiliare
+                  IS 'Un''unita'' catastale e'' di un''istanza sola; un''istanza senza unita'' e'' ammessa. Copre anche la FK fk_iu_catasto_unita_immobiliare.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS anagrafiche.uq_istanze_utilities_catasto_unita_immobiliare;

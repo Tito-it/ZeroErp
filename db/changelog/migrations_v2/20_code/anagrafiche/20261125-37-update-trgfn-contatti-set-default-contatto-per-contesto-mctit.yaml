@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.trgfn_contatti_set_default_contatto: il predefinito e' della
+#   riga di contesto (soggetto, ruolo, istanza), e il segno lo propone solo il
+#   contatto che entra nel contesto. Rimontato per funzione, in fase a20.
+#   D-T7b-1 e D-T7b-2 di Tid (2026-11-25), brief-db-revisione-anagrafiche §22 (S8).
+#
+# -- IL DIFETTO -------------------------------------------------------------------
+#   La chiave era il soggetto piu' l'etichetta del livello (default_context):
+#   il cliente e il fornitore dello stesso soggetto condividevano un
+#   predefinito. Il primo contatto del fornitore non nasceva predefinito
+#   (il contesto «ruolo» ne aveva gia' uno, quello del cliente), e marcare il
+#   contatto del fornitore toglieva il segno al cliente. La regola non l'aveva
+#   decisa nessuno (2025-06-23, un fix senza brief); il conto bancario
+#   predefinito e la cascata di script.fn_get_contatti sono per ruolo.
+#   E il segno si rimetteva a ogni UPDATE (vedi -36).
+#
+# -- LA REGOLA ----------------------------------------------------------------------
+#   - Un contatto ENTRA nel contesto quando nasce o quando cambia soggetto,
+#     ruolo o istanza. Entrando, e' predefinito se lo chiede (is_default
+#     passato a true: chi c'era lo perde) o se il contesto non ne ha uno;
+#     un segno portato da un altro contesto non conta come richiesta.
+#   - Nello stesso contesto, il segno passato da false a true e' la richiesta:
+#     chi c'era lo perde. Il segno tolto lo giudica -36.
+#   - default_context e' l'etichetta del livello del predefinito
+#     (soggetto|ruolo|istanza), NULL su chi non lo e'.
+#   - Il predefinito del soggetto (ne' ruolo ne' istanza) e' anche
+#     soggetti.default_contatto_id, scritto quando lo diventa. Il puntatore
+#     resta di T6 (non si svuota, §22): qui si smette solo di riscriverlo a ogni
+#     scrittura del contatto.
+#   L'unicita' la scrive l'indice uq_contatti_predefinito_contesto (90_end -45);
+#   il segno tolto agli altri viene prima della riga nuova, e l'indice non vede
+#   mai due predefiniti.
+#
+# -- LA FORMA (linee-guida-trigger) -------------------------------------------------
+#   Il montaggio storico trg_contatti_set_default_contatto_ins_upd non aveva la
+#   fase (T11). Si rimonta per funzione: un blocco DO toglie ogni montaggio della
+#   funzione su contatti (pg_trigger.tgfoid), qualunque nome abbia (il nome di
+#   oggi nasce dalla rinomina 20251119-01). Fase a20 (derivazione): dopo i due
+#   guard a10.
+#   ⚠️ Il trigger scrive altre righe della stessa tabella in un BEFORE: e' la
+#   condizione perche' l'indice unico non veda due predefiniti. Quelle
+#   scritture hanno pg_trigger_depth() 2, e -36 le lascia passare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261125-37-update-trgfn-contatti-set-default-contatto-per-contesto-mctit.yaml
+
+  - changeSet:
+      id: 20261125-37-update-trgfn-contatti-set-default-contatto-per-contesto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_contatti_set_default_contatto: il predefinito per riga di contesto (soggetto,
+        ruolo, istanza), proposto solo a chi entra nel contesto; rimontato per funzione come
+        trg_contatti_a20_set_default_contatto_ins_upd. D-T7b-1, D-T7b-2, brief-db-revisione-anagrafiche §22.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_contatti_set_default_contatto()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $fn$
+              DECLARE
+                  v_entra   boolean;
+                  v_chiesto boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il predefinito della riga di contesto (soggetto, ruolo,
+                  --   istanza): il primo contatto che entra nel contesto, o
+                  --   quello che lo chiede.
+                  --
+                  -- Regole:
+                  --   - entra nel contesto chi nasce o cambia soggetto, ruolo
+                  --     o istanza;
+                  --   - chiede il segno chi lo passa a true (all'INSERT, o da
+                  --     false a true); un segno portato da un altro contesto
+                  --     non e' una richiesta;
+                  --   1. chi chiede il segno lo toglie agli altri del contesto;
+                  --   2. chi entra senza chiederlo e' predefinito se il
+                  --      contesto non ne ha uno;
+                  --   3. default_context = il livello del predefinito, NULL
+                  --      sugli altri;
+                  --   4. il predefinito del soggetto e' anche
+                  --      soggetti.default_contatto_id.
+                  --   Il segno tolto lo giudica trgfn_contatti_guard_predefinito.
+                  -- =========================================================
+                  v_entra := TG_OP = 'INSERT'
+                          OR (OLD.soggetto_id, OLD.soggetto_ruolo_id, OLD.istanza_utility_id)
+                             IS DISTINCT FROM
+                             (NEW.soggetto_id, NEW.soggetto_ruolo_id, NEW.istanza_utility_id);
+                  v_chiesto := NEW.is_default AND (TG_OP = 'INSERT' OR NOT OLD.is_default);
+
+                  IF v_chiesto THEN
+                      -- 1) Il segno passa a questa riga.
+                      UPDATE anagrafiche.contatti c
+                         SET is_default = false
+                       WHERE c.soggetto_id = NEW.soggetto_id
+                         AND c.soggetto_ruolo_id  IS NOT DISTINCT FROM NEW.soggetto_ruolo_id
+                         AND c.istanza_utility_id IS NOT DISTINCT FROM NEW.istanza_utility_id
+                         AND c.is_default
+                         AND c.id <> NEW.id;
+                  ELSIF v_entra THEN
+                      -- 2) Chi entra senza chiederlo: predefinito se il contesto non ne ha.
+                      NEW.is_default := NOT EXISTS (
+                          SELECT 1
+                            FROM anagrafiche.contatti c
+                           WHERE c.soggetto_id = NEW.soggetto_id
+                             AND c.soggetto_ruolo_id  IS NOT DISTINCT FROM NEW.soggetto_ruolo_id
+                             AND c.istanza_utility_id IS NOT DISTINCT FROM NEW.istanza_utility_id
+                             AND c.is_default
+                             AND c.id <> NEW.id);
+                  END IF;
+
+                  -- 3) L'etichetta del livello.
+                  NEW.default_context := CASE
+                      WHEN NOT NEW.is_default               THEN NULL
+                      WHEN NEW.istanza_utility_id IS NOT NULL THEN 'istanza'
+                      WHEN NEW.soggetto_ruolo_id  IS NOT NULL THEN 'ruolo'
+                      ELSE 'soggetto'
+                  END;
+
+                  -- 4) Il predefinito del soggetto, quando lo diventa.
+                  IF NEW.is_default
+                     AND NEW.soggetto_ruolo_id IS NULL
+                     AND NEW.istanza_utility_id IS NULL
+                     AND (v_entra OR NOT OLD.is_default)
+                  THEN
+                      UPDATE anagrafiche.soggetti s
+                         SET default_contatto_id = NEW.id
+                       WHERE s.id = NEW.soggetto_id
+                         AND s.default_contatto_id IS DISTINCT FROM NEW.id;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $fn$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_contatti_set_default_contatto()
+                  IS 'Trigger BEFORE INSERT OR UPDATE su anagrafiche.contatti (fase a20): il predefinito della riga di contesto (soggetto, ruolo, istanza). Chi chiede il segno (is_default a true all''INSERT, o da false a true) lo toglie agli altri del contesto; chi entra nel contesto (nasce, o cambia soggetto, ruolo o istanza) senza chiederlo e'' predefinito se il contesto non ne ha uno. Un segno portato da un altro contesto non e'' una richiesta. default_context e'' il livello del predefinito (soggetto|ruolo|istanza), NULL sugli altri. Il predefinito del soggetto e'' anche soggetti.default_contatto_id, scritto quando lo diventa. Il segno tolto e il predefinito cancellato li giudica anagrafiche.trgfn_contatti_guard_predefinito; l''unicita'' la scrive l''indice uq_contatti_predefinito_contesto. La regola sta nella nota _contatto-predefinito.';
+
+              DO $via$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN
+                      SELECT t.tgname
+                        FROM pg_catalog.pg_trigger t
+                       WHERE NOT t.tgisinternal
+                         AND t.tgrelid = 'anagrafiche.contatti'::regclass
+                         AND t.tgfoid = 'anagrafiche.trgfn_contatti_set_default_contatto()'::regprocedure
+                  LOOP
+                      EXECUTE format('DROP TRIGGER %I ON anagrafiche.contatti', r.tgname);
+                  END LOOP;
+              END
+              $via$;
+
+              CREATE TRIGGER trg_contatti_a20_set_default_contatto_ins_upd
+                  BEFORE INSERT OR UPDATE ON anagrafiche.contatti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_contatti_set_default_contatto();
+
+              COMMENT ON TRIGGER trg_contatti_a20_set_default_contatto_ins_upd ON anagrafiche.contatti
+                  IS 'Il predefinito della riga di contesto (soggetto, ruolo, istanza): a chi lo chiede, o a chi entra in un contesto che non ne ha (anagrafiche.trgfn_contatti_set_default_contatto). Fase a20: dopo i guard a10.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la chiave per soggetto ed etichetta era il difetto.
+              SELECT 1;

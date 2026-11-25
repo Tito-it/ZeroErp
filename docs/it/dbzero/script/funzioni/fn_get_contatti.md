@@ -24,8 +24,10 @@ ciascun tipo_contatto_id, con priorita' a 3 livelli:
   1) soggetto + ruolo + istanza
   2) soggetto + ruolo (generico)
   3) solo soggetto
-A parita' di priorita' vince l'unita' organizzativa richiesta, poi il
-contatto is_default = TRUE, poi l'id piu' basso.
+Il reparto (p_unita_organizzativa_id): senza, contano tutti i
+contatti; con, contano quelli del reparto e quelli senza, e a
+parita' di livello vince il reparto. Poi il contatto is_default =
+TRUE, poi l'id piu' basso.
 Il soggetto e' obbligatorio: NULL -> E_CONTATTI_SOGGETTO_OBBLIGATORIO.
 */
 BEGIN
@@ -81,8 +83,10 @@ BEGIN
                OR c.istanza_utility_id IS NOT DISTINCT FROM p_istanza_utility_id)
           AND (p_tipo_contatto_id IS NULL
                OR c.tipo_contatto_id = p_tipo_contatto_id)
-          AND (c.unita_organizzativa_id IS NULL
-               OR c.unita_organizzativa_id IS NOT DISTINCT FROM p_unita_organizzativa_id)
+          -- Senza reparto contano tutti; col reparto, il reparto e chi non ne ha.
+          AND (p_unita_organizzativa_id IS NULL
+               OR c.unita_organizzativa_id IS NULL
+               OR c.unita_organizzativa_id = p_unita_organizzativa_id)
     ),
     ranked AS (
         -- Una sola riga per tipo_contatto_id
@@ -122,7 +126,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_contatti(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint, p_tipo_contatto_id integer, p_unita_organizzativa_id integer)
-IS 'Contatto migliore per tipo_contatto_id con cascata a 3 livelli: (1) ruolo+istanza, (2) ruolo generico, (3) soggetto; a parita'' l''unita'' organizzativa richiesta, poi is_default, poi l''id. p_soggetto_id e'' obbligatorio: NULL -> E_CONTATTI_SOGGETTO_OBBLIGATORIO, col canale parametro.';
+IS 'Contatto migliore per tipo_contatto_id con cascata a 3 livelli: (1) ruolo+istanza, (2) ruolo generico, (3) soggetto. Il reparto (p_unita_organizzativa_id): senza, contano tutti i contatti; con, contano quelli del reparto e quelli senza, e a parita'' di livello vince il reparto. Poi is_default, poi l''id. p_soggetto_id e'' obbligatorio: NULL -> E_CONTATTI_SOGGETTO_OBBLIGATORIO, col canale parametro.';
 ```
 
 </div>
