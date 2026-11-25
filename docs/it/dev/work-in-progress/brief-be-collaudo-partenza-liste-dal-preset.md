@@ -90,6 +90,14 @@ Un 401 `E_IDENTITA_NON_ATTIVA` a metà di un giro non si è ripetuto nei tre gir
 fuori, non una lista. Il numero di righe è un fatto di quei giorni: dice cosa lo smoke ha potuto vedere, non quali liste
 contano.
 
+**Nella baseline degli smoke, dal 2026-11-25** (decisione di Tid): `smoke-test-ui-partenza-liste.sh` vi è registrato
+come **PARZIALE**. `scripts/smoke-baseline.sh` tratta come copertura zero ogni `SKIP` del riepilogo, e qui gli SKIP
+nascono dalla struttura: le liste che vogliono un filtro e quelle con meno di due righe. Quel giorno lo smoke ha
+trovato anche un FAIL vero: `vendite.approvazioni_prezzo` rispondeva 500, perché `_get_user` di
+`approvazioni_prezzo_service` aveva perso il `return` nel passaggio al BB `utente_per_id` (24-11). È corretto, con il
+test `GetUserTests`. Un FAIL nuovo cambia l'esito in ASSERZIONE, e il runner lo segnala come regressione. Il numero
+degli SKIP, invece, non lo guarda nessuno.
+
 ### 2.2 La parte FE: i campioni a video
 
 L'intestazione accesa, il paginatore e il clic li fa solo il FE. Basta una superficie per tipo di componente, su un

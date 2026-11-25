@@ -15,6 +15,7 @@
 #  1) Preflight permessi (vendite/anagrafiche/catalogo)
 #  1.5) Cleanup residui run precedenti (categoria/matrice/promo/listino/contratti SMK-V5-*)
 #  2) Seed: articolo attivo + UoM + BA esistente + utility + emittente
+#  2.6) Soglia di sconto dell'emittente attivo: override dello smoke, rimesso all'uscita
 #  3) Categoria cliente: crea SMK-V5-* (partecipa_promo=true)
 #  4) Categoria cliente: PATCH descrizione
 #  5) Listino: crea SMK-V5-* (utility+tipologia+emittente)
@@ -276,6 +277,77 @@ if [[ -z "$EMITTENTE_SR" ]]; then
 fi
 log_info "Emittente soggetto_ruolo_id=${EMITTENTE_SR}"
 
+# --- 2.6 La soglia di sconto dell'emittente: la costruisce lo smoke ---
+# Dal 2026-11-25 il gate L2 misura la variazione sulla soglia dell'azienda del
+# DOCUMENTO (E1-3 di brief-be-fe-BB-audit): i contratti nascono sull'emittente
+# attivo, e senza un override il default `VENDITE_MAX_SCONTO_PCT` e' 0, quindi
+# il -3% del contratto A e il -4% della riga del contratto B rispondevano 403
+# E_PRICING_SCONTO_ECCESSIVO. Fino ad allora la soglia veniva, per l'utente,
+# dal gestore globale, che su dbdev ha un override al 10%: lo smoke era verde
+# per un dato della macchina.
+# ⚠️ Il POST e' un upsert: un override gia' presente sull'emittente si legge
+#    prima e si rimette all'uscita (`smoke_ripristina_soglia`, nel trap), anche
+#    se lo smoke si ferma a meta'. Se non c'era, si cancella quello creato.
+# Lo smoke prova contratti e resolver, non il limite: 10 lascia passare le
+# variazioni dei passi 15 e 18 (-3%, -4%).
+SOGLIA_PARAM="VENDITE_MAX_SCONTO_PCT"
+SOGLIA_SMOKE="10"
+SOGLIA_PRIMA=""
+SOGLIA_TOCCATA=""
+echo ""
+echo "-- 2.6 Soglia di sconto dell'emittente attivo (${SOGLIA_PARAM}=${SOGLIA_SMOKE}) --"
+do_curl GET "/api/v1/core/parameters/settings/?search=${SOGLIA_PARAM}&limit=5"
+check "Lettura soglia dell'emittente" "200" || exit 3
+# ⚠️ C'era un override se c'e' il suo id, non se il valore e' non vuoto: la
+#    stringa vuota esplicita e' un valore (api_parameter_settings, POST). E una
+#    risposta che non si sa leggere ferma lo smoke: letta come «nessun override»,
+#    l'uscita cancellerebbe quello che c'era.
+SOGLIA_C_ERA=""
+if ! SOGLIA_LETTA=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+righe = [r for r in json.load(sys.stdin)['data']['results'] if r['code'] == '${SOGLIA_PARAM}']
+if len(righe) != 1:
+    sys.exit('parametro ${SOGLIA_PARAM} non trovato nella lista')
+r = righe[0]
+print('si' if r['emittente_override_id'] is not None else 'no')
+print(r['emittente_value'] or '')
+"); then
+    echo -e "${RED}ERRORE:${NC} soglia dell'emittente non leggibile: lo smoke non la tocca."
+    exit 3
+fi
+SOGLIA_C_ERA=$(sed -n 1p <<< "$SOGLIA_LETTA")
+SOGLIA_PRIMA=$(sed -n 2p <<< "$SOGLIA_LETTA")
+if [[ "$SOGLIA_C_ERA" == "si" ]]; then
+    log_info "Soglia dell'emittente prima dello smoke: '${SOGLIA_PRIMA}'"
+else
+    log_info "Soglia dell'emittente prima dello smoke: nessun override"
+fi
+
+# Scopo: rimette la soglia dell'emittente com'era prima dello smoke.
+#        Idempotente: dal trap di uscita, una volta sola.
+smoke_ripristina_soglia() {
+    [[ -n "$SOGLIA_TOCCATA" ]] || return 0
+    SOGLIA_TOCCATA=""
+    if [[ "$SOGLIA_C_ERA" == "si" ]]; then
+        do_curl POST "/api/v1/core/parameters/settings/override/" \
+            "{\"parameter_code\":\"${SOGLIA_PARAM}\",\"value\":\"${SOGLIA_PRIMA}\",\"scope\":\"emittente\"}"
+    else
+        do_curl DELETE "/api/v1/core/parameters/settings/override/${SOGLIA_OVERRIDE_ID}/?scope=emittente"
+    fi
+    if [[ "$LAST_STATUS" == "200" ]]; then
+        log_info "Soglia dell'emittente rimessa (${SOGLIA_PRIMA:-override tolto})"
+    else
+        echo -e "  ${RED}ATTENZIONE${NC} soglia dell'emittente NON rimessa (HTTP ${LAST_STATUS}): ${SOGLIA_PARAM} resta ${SOGLIA_SMOKE}, era ${SOGLIA_PRIMA:-senza override}"
+    fi
+}
+
+do_curl POST "/api/v1/core/parameters/settings/override/" \
+    "{\"parameter_code\":\"${SOGLIA_PARAM}\",\"value\":\"${SOGLIA_SMOKE}\",\"scope\":\"emittente\"}"
+check "Soglia dello smoke sull'emittente" "200" ".data.override_id" || exit 3
+SOGLIA_OVERRIDE_ID="$EXTRACTED"
+SOGLIA_TOCCATA="si"
+trap 'smoke_ripristina_soglia; rm -f "$TMPFILE"' EXIT
+
 # --- 2.5 Cleanup mirato promo residue sull'articolo seed ---
 # Il cleanup iniziale SMK-V5-% non copre promo residue da run v3/v4 con
 # codice diverso che possono condividere (articolo_id, uom_id). Le
@@ -310,7 +382,7 @@ fi
 # non guarda lo stato, ma non serve liberarlo: ogni giro usa anni propri
 # (YEAR_A…), quindi cessare basta, e un contratto cessato il prezzo non lo vede.
 smoke_chiudi_contratti "$BA_ID" COMMERCIO
-trap 'smoke_chiudi_contratti "$BA_ID" COMMERCIO; rm -f "$TMPFILE"' EXIT
+trap 'smoke_chiudi_contratti "$BA_ID" COMMERCIO; smoke_ripristina_soglia; rm -f "$TMPFILE"' EXIT
 
 # Gli anni dei contratti di questo giro: il primo DOPO il piu' alto gia' usato
 # dai contratti COMMERCIO del cliente (minimo 2100). Il vincolo di non
