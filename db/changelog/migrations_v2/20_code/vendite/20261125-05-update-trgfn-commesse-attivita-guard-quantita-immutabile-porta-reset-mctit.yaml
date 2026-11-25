@@ -1,0 +1,127 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA DEL RESET CHIEDE ANCHE IL PROPRIETARIO
+#   vendite.trgfn_commesse_attivita_guard_quantita_immutabile
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §13.5 (giro 8 + 1-7, porte 1-7; D-A a, D-W a di Tid).
+#
+# -- CHE COSA CAMBIA ---------------------------------------------------------
+#   La porta del reset del lotto si legge da vendite.fn_porta_reset_lotto_aperta
+#   (20261125-02): GUC accesa E proprietario della tabella. Prima bastava la
+#   GUC, e l'app poteva accenderla da se' e scrivere diretta. La lettura copiata
+#   qui si ritira (regola del 2). Il resto del guard e' invariato; il COMMENT
+#   si riscrive al presente (linee-guida-sql §5d).
+#   Corpo dal catalogo di dbdev.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261125-05-update-trgfn-commesse-attivita-guard-quantita-immutabile-porta-reset-mctit.yaml
+
+  - changeSet:
+      id: 20261125-05-update-trgfn-commesse-attivita-guard-quantita-immutabile-porta-reset
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_commesse_attivita_guard_quantita_immutabile: la porta del reset del lotto
+        dal BB, GUC e proprietario. Brief: brief-db-porte-aperte-dalla-sola-guc §13.5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_attivita_guard_quantita_immutabile()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Immutabilita della quantita: una riga di commessa EMESSA e'
+                  --   un fatto e non si modifica con UPDATE (si corregge con righe
+                  --   nuove). Brief immutabilita-quantita §0/§4a.
+                  -- Regole:
+                  --   - blocca UPDATE della quantita se stato_emissione <> 'NON_EMESSA';
+                  --   - il re-push su NON_EMESSA (fn_upsert_commessa_attivita) passa
+                  --     (riga non emessa) -> nessun bypass necessario nella hot-path;
+                  --   - passa la porta del reset del lotto: GUC e proprietario
+                  --     (vendite.fn_porta_reset_lotto_aperta), come gli altri guard.
+                  -- =========================================================
+                  IF vendite.fn_porta_reset_lotto_aperta(TG_RELID) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF OLD.stato_emissione <> 'NON_EMESSA'
+                     AND NEW.quantita IS DISTINCT FROM OLD.quantita THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE',
+                          jsonb_build_object(
+                              'id', OLD.id,
+                              'segment_key', OLD.segment_key,
+                              'stato_emissione', OLD.stato_emissione,
+                              'quantita_old', OLD.quantita,
+                              'quantita_new', NEW.quantita),
+                          NULL::uuid, OLD.id::text, OLD.segment_key
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_commesse_attivita_guard_quantita_immutabile() IS $c$Guard immutabilita quantita commesse_attivita: blocca UPDATE della quantita su righe EMESSA (stato_emissione <> NON_EMESSA). Il re-push su NON_EMESSA passa; passa anche la porta del reset del lotto (vendite.fn_porta_reset_lotto_aperta: GUC zeroerp.maintenance_reset_lotto_draft e proprietario della tabella). Errore E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE. Brief immutabilita-quantita §4a.$c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_attivita_guard_quantita_immutabile()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_bypass text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Immutabilita della quantita: una riga di commessa EMESSA e'
+                  --   un fatto e non si modifica con UPDATE (si corregge con righe
+                  --   nuove). Brief immutabilita-quantita §0/§4a.
+                  -- Regole:
+                  --   - blocca UPDATE della quantita se stato_emissione <> 'NON_EMESSA';
+                  --   - il re-push su NON_EMESSA (fn_upsert_commessa_attivita) passa
+                  --     (riga non emessa) -> nessun bypass necessario nella hot-path;
+                  --   - bypass tecnico via GUC zeroerp.maintenance_reset_lotto_draft
+                  --     (reset lotto), coerente con gli altri guard di dominio.
+                  -- =========================================================
+                  v_bypass := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
+                  IF v_bypass IS NOT NULL AND lower(v_bypass) IN ('1','true','on','yes') THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF OLD.stato_emissione <> 'NON_EMESSA'
+                     AND NEW.quantita IS DISTINCT FROM OLD.quantita THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE',
+                          jsonb_build_object(
+                              'id', OLD.id,
+                              'segment_key', OLD.segment_key,
+                              'stato_emissione', OLD.stato_emissione,
+                              'quantita_old', OLD.quantita,
+                              'quantita_new', NEW.quantita),
+                          NULL::uuid, OLD.id::text, OLD.segment_key
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_commesse_attivita_guard_quantita_immutabile() IS $c$Guard immutabilita quantita commesse_attivita: blocca UPDATE della quantita su righe EMESSA (stato_emissione <> NON_EMESSA). Il re-push su NON_EMESSA passa; bypass tecnico via GUC zeroerp.maintenance_reset_lotto_draft. Errore E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE. Brief immutabilita-quantita §4a.$c$;

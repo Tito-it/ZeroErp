@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `pagamenti.vendite_contabili_righe`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -24,7 +24,7 @@
 > * [pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_marca_fondo_eseguito) — porta l'atto di fondo a `ESEGUITO`
 > * [script.fn_check_riga_contabile_eliminabile](/dbzero/script/funzioni/fn_check_riga_contabile_eliminabile) — i motivi per cui una riga non si elimina
 > * [script.fn_resolve_emittente_fiscale_id](/dbzero/script/funzioni/fn_resolve_emittente_fiscale_id) — il risolutore dell'emittente che la policy interroga
-> * [vendite.fn_cancella_fondo_fattura](/dbzero/vendite/funzioni/fn_cancella_fondo_fattura) — l'unico `DELETE` di sistema ammesso
+> * [vendite.fn_applica_cancellazione_fondo_fattura](/dbzero/vendite/funzioni/fn_applica_cancellazione_fondo_fattura) — l'unico `DELETE` di sistema ammesso, dietro i verbi del fondo, della sistemazione e del reset
 >
 > Guide:
 >
@@ -94,8 +94,8 @@ trigger, non il chiamante.
 
 ⚠️ La chiave esterna è **`NO ACTION`** di proposito: cancellare un atto pretende di aver prima
 cancellato le sue righe. È l'ordine che
-[vendite.fn_cancella_fondo_fattura](/dbzero/vendite/funzioni/fn_cancella_fondo_fattura), sede
-unica dei `DELETE` del giro dei fondi, rispetta (righe contabili, poi fondo applicato, poi
+[vendite.fn_applica_cancellazione_fondo_fattura](/dbzero/vendite/funzioni/fn_applica_cancellazione_fondo_fattura),
+sede unica dei `DELETE` del giro dei fondi, rispetta (righe contabili, poi fondo applicato, poi
 atto). Una chiave differita avrebbe *nascosto* l'ordine invece di dichiararlo.
 
 ℹ️ Da non confondere con l'origine `FONDO_FATTURA` scritta nel `meta`, che resta: quella
@@ -121,9 +121,10 @@ Il backend legge gli stessi motivi per spegnere il cestino col perché: tooltip 
 possono divergere.
 
 ⚠️ Il `DELETE` ha **un** passaggio legittimo: il giro dei fondi cancella le righe del suo atto
-sotto una distinta `GENERATA`, e lo dichiara con la GUC transazionale
-`zeroerp.allow_contabile_riga_delete_override`. Non è un permesso: è la madre che dice «sono io»,
-dopo aver letto il suo criterio. Il resto sta nella scheda del guard.
+sotto una distinta `GENERATA`. Lo apre la primitiva del fondo, che gira come proprietario: accende la
+GUC transazionale `zeroerp.allow_contabile_riga_delete_override` con l'id del suo atto, e il guard
+lascia passare solo le righe di quell'atto, e solo al proprietario. L'applicazione che accende la
+GUC da sé non apre niente. Il resto sta nella scheda del guard.
 
 ---
 

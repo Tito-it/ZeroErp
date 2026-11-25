@@ -75,7 +75,7 @@ SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('fondi_governo');
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_mondo_ffg)); END $ctx$;
 
-SELECT plan(30);
+SELECT plan(29);
 
 -- ============================================================
 -- 0) Riferimenti
@@ -814,71 +814,12 @@ SELECT is(
 -- ============================================================
 -- Cleanup
 -- ============================================================
--- ⚠️ Dal 2026-09-14 (D17) il DELETE di una riga contabile passa dal guard del
---    contenuto della distinta: sotto una CHIUSA o una GENERATA e' rifiutato.
---    Questo cleanup e' un passaggio tecnico e lo dichiara con la stessa GUC
---    che usa la madre del giro dei fondi (fn_cancella_fondo_fattura); il
---    ROLLBACK farebbe comunque il lavoro.
-SELECT set_config('zeroerp.allow_contabile_riga_delete_override', 'on', true);
-DELETE FROM pagamenti.vendite_contabili_righe
- WHERE id IN (SELECT id FROM tmp_righe_ffg);
-
-DELETE FROM vendite.fatture_fondi_fattura
- WHERE fattura_id IN (SELECT id FROM tmp_figlia);
-
-DELETE FROM vendite.fatture_fondi_fattura_source
- WHERE fattura_sorgente_id IN (
-   SELECT id FROM tmp_src_pos
-   UNION ALL SELECT id FROM tmp_src_neg
-   UNION ALL SELECT id FROM tmp_src_eme
-   UNION ALL SELECT id FROM tmp_src_term
-   UNION ALL SELECT id FROM tmp_src_zero
-   UNION ALL SELECT id FROM tmp_src_c_prop
-   UNION ALL SELECT id FROM tmp_src_c_nc
-   UNION ALL SELECT id FROM tmp_src_c_noutil
-   UNION ALL SELECT id FROM tmp_src_c_cap
-   UNION ALL SELECT id FROM tmp_src_c_ctrl);
-
-DELETE FROM vendite.fatture
- WHERE id IN (
-   SELECT id FROM tmp_src_pos
-   UNION ALL SELECT id FROM tmp_src_neg
-   UNION ALL SELECT id FROM tmp_src_eme
-   UNION ALL SELECT id FROM tmp_src_term
-   UNION ALL SELECT id FROM tmp_src_zero
-   UNION ALL SELECT id FROM tmp_src_c_prop
-   UNION ALL SELECT id FROM tmp_src_c_nc
-   UNION ALL SELECT id FROM tmp_src_c_noutil
-   UNION ALL SELECT id FROM tmp_src_c_cap
-   UNION ALL SELECT id FROM tmp_src_c_ctrl
-   UNION ALL SELECT id FROM tmp_figlia);
-
--- ⚠️ Il conteggio guarda anche la VISTA: se una riga sopravvivesse al
---    cleanup, l'elenco continuerebbe a mostrarla — ed e' il modo in cui una
---    fixture dimenticata contamina la corsa successiva.
-SELECT is(
-    (SELECT count(*)::INTEGER
-       FROM vendite.fatture_fondi_fattura_source s
-      WHERE s.fattura_sorgente_id IN (
-        SELECT id FROM tmp_src_pos
-        UNION ALL SELECT id FROM tmp_src_neg
-        UNION ALL SELECT id FROM tmp_src_eme
-        UNION ALL SELECT id FROM tmp_src_term
-        UNION ALL SELECT id FROM tmp_src_zero
-        UNION ALL SELECT id FROM tmp_src_c_prop
-        UNION ALL SELECT id FROM tmp_src_c_nc
-        UNION ALL SELECT id FROM tmp_src_c_noutil
-        UNION ALL SELECT id FROM tmp_src_c_cap
-        UNION ALL SELECT id FROM tmp_src_c_ctrl))
-    + (SELECT count(*)::INTEGER FROM vendite.vw_fondi_fattura_da_decidere v
-        WHERE v.fattura_sorgente_id IN (
-          SELECT id FROM tmp_src_c_prop
-          UNION ALL SELECT id FROM tmp_src_c_nc
-          UNION ALL SELECT id FROM tmp_src_c_noutil
-          UNION ALL SELECT id FROM tmp_src_c_cap)),
-    0,
-    'Cleanup completato'
-  );
+-- ⭐ rev 2026-11-25 (brief-db-porte-aperte-dalla-sola-guc, giro 8): niente
+--   cleanup a mano. Il DELETE di una riga contabile sotto una GENERATA lo
+--   apre solo la primitiva del fondo, sulla riga del suo atto e col
+--   proprietario: un cleanup del test non puo' piu' accendere la porta. Il
+--   lavoro lo fa il ROLLBACK in fondo, ed era gia' cosi' («il ROLLBACK farebbe
+--   comunque il lavoro»): il test 30, che contava il cleanup, se ne va con lui.
 
 SELECT * FROM finish();
 ROLLBACK;

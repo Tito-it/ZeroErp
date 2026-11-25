@@ -6,6 +6,7 @@
 # Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato e mergiato, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/script/20261125-25.
 # script.fn_get_user_profile: L'EMITTENTE DEL PROFILO E' QUELLO CONFIGURATO, O NESSUNO
 #   Brief: brief-db-emittente-del-super-admin §4 (R-DB-2, forma (a), Tid 2026-11-25)
 #

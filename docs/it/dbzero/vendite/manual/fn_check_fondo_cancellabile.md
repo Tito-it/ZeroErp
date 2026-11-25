@@ -1,23 +1,27 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_check_fondo_cancellabile`
 
+> **Ultimo aggiornamento**: 25 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> **I due consumatori, che reagiscono in modo OPPOSTO:**
+> Approfondimento tabelle:
 >
-> • [vendite.fn_reset_fondi_fattura](/dbzero/vendite/funzioni/fn_reset_fondi_fattura) — segnala e prosegue
-> • [vendite.fn_cancella_fondo_fattura](/dbzero/vendite/funzioni/fn_cancella_fondo_fattura) — rifiuta e lo dice
+> * [config.stati_doc_fiscale](/dbzero/config/tabelle/stati_doc_fiscale) — colonna `congela_fiscale`, la soglia della quarta condizione
 >
-> **La soglia della quarta condizione:**
+> Approfondimento funzioni:
 >
-> • [config.stati_doc_fiscale](/dbzero/config/tabelle/stati_doc_fiscale) — colonna `congela_fiscale`
-> • [vendite.trgfn_fattura_satellite_guard_congelamento](/dbzero/vendite/funzioni/trgfn_fattura_satellite_guard_congelamento) — la stessa soglia, sugli altri satelliti
+> * [vendite.fn_reset_fondi_fattura](/dbzero/vendite/funzioni/fn_reset_fondi_fattura) — consumatore: segnala e prosegue
+> * [vendite.fn_applica_cancellazione_fondo_fattura](/dbzero/vendite/funzioni/fn_applica_cancellazione_fondo_fattura) — consumatore: la primitiva del gesto, rifiuta e lo dice
+> * [vendite.fn_cancella_fondo_fattura](/dbzero/vendite/funzioni/fn_cancella_fondo_fattura) — il gesto «cancella il fondo», che chiama la primitiva
+> * [vendite.trgfn_fattura_satellite_guard_congelamento](/dbzero/vendite/funzioni/trgfn_fattura_satellite_guard_congelamento) — la stessa soglia, sugli altri satelliti
 >
-> **Piano:** [brief-db-fondo-fattura-ricalcolo-e-governo](/dev/work-done/2026/brief-db-fondo-fattura-ricalcolo-e-governo) §9.5-a, §9.7-b — passo D-21
+> Guide:
+>
+> * [Fatturazione](/guide/fatturazione) — il reset del lotto e i fondi che non tocca
 
 ---
 
 ### 🎯 Scopo Principale
-(latest review 31-08-2026)
 
 Risponde a una domanda sola: **«perché questo atto di fondo non si può
 cancellare?»** — oppure `NULL`, che vuol dire *si può*.
@@ -54,7 +58,7 @@ dallo stesso criterio cose opposte**:
 | Chi | Che cosa fa quando l'atto è bloccato | Perché |
 | --- | --- | --- |
 | `fn_reset_fondi_fattura` | **segnala e prosegue** (`W_…` nel diario) | è un giro tecnico su N atti: un'eccezione fermerebbe il reset di un lotto intero per colpa di una fattura sola |
-| `fn_cancella_fondo_fattura` | **rifiuta e lo dice** (`E_…`) | è il gesto di **una persona** su **un** atto, e lì il silenzio è il difetto |
+| `fn_applica_cancellazione_fondo_fattura`, la primitiva del gesto (la chiamano `fn_cancella_fondo_fattura` e l'annullo di una sistemazione) | **rifiuta e lo dice** (`E_…`) | è il gesto di **una persona** su **un** atto, e lì il silenzio è il difetto |
 
 > ℹ️ È la «regola del 2», già applicata due volte in questo cantiere
 > (`fn_saldo_sorgente_fondo`, `fn_check_fondo_fattura_capiente`).
@@ -106,22 +110,27 @@ stato**, e il modello ammette entrambi:
 
 ---
 
-### ⭐ Il bypass di manutenzione: due porte, non una
+### ⭐ Nessuna porta spegne la quarta condizione
 
-`zeroerp.maintenance_reset_lotto_draft` spegne **la sola quarta condizione** —
-stesso contratto della guardia dei satelliti, e la imposta
-`fn_cleanup_fatture_by_ids` per il ritorno di un lotto in bozza.
+Il criterio non legge nessuna GUC: vale identico per il reset e per il gesto, e
+nessuno lo può allargare.
 
-È così che *il gesto di una persona e la pulizia di un lotto restano due porte
-diverse*, in codice e non in prosa: il gesto quella GUC non ce l'ha e non può
-darsela.
+Nel reset di un lotto la figlia è la fattura che si sta pulendo, e i controlli
+d'ingresso dei verbi del reset la vogliono **pre-fiscale**, cioè non congelata.
+La quarta condizione quindi non scatta, per costruzione. Se un giorno il reset
+toccasse una figlia congelata, il fondo resterebbe dov'è e il diario lo direbbe
+(`W_FONDO_FIGLIA_CONGELATA`): lo stesso comportamento prudente che il gesto ha già.
 
 ---
 
 ### Regole principali
 
-* `STABLE`, `SECURITY INVOKER`: gira come chi chiama, quindi la row security
-  resta applicata identica.
+* `STABLE`, `SECURITY INVOKER`: gira come chi chiama. Le primitive che la
+  chiamano girano come proprietario, e il perimetro lo rimettono loro prima di
+  chiederla; chiamata dall'applicazione, gira sotto la row security, e un atto
+  invisibile vale `ATTO_NON_TROVATO`.
+* L'applicazione la può eseguire: è un criterio che legge soltanto, e senza
+  porte non apre niente.
 * Guard di parametro con `E_VENDITE_CHIAMATA_NON_VALIDA` (`TECNICO`): un id
   assente o `<= 0` non lo produce nessuna interfaccia — è il chiamante a essere
   rotto.
@@ -129,7 +138,7 @@ darsela.
   `CHIUSA`: senza, un codice interno assente farebbe dire «nessuna riga
   registrata», cioè **fail-open sul caso più grave**.
 
-> ⚠️ **Le due letture che possono essere cieche.**
+> ⚠️ **Le due letture che possono essere cieche, quando la chiama l'applicazione.**
 > `pagamenti.vendite_contabili` e `vendite_contabili_righe` hanno la row
 > security, quindi in teoria un chiamante che vede l'atto ma non la sua distinta
 > non vedrebbe `CONTABILE_CHIUSA`. Nel percorso reale non succede — la policy
@@ -143,20 +152,22 @@ darsela.
 
 ---
 
-### Esempio d'uso
-
-```sql
--- Si può cancellare?
-SELECT vendite.fn_check_fondo_cancellabile(987);   -- NULL = sì
-
--- Il partizionamento di un insieme, con UNA lettura per atto
-SELECT x AS id, vendite.fn_check_fondo_cancellabile(x) AS motivo
-  FROM unnest(ARRAY[101, 102, 103]) AS x;
-```
+### Si legge una volta sola per atto
 
 ⚠️ **Si legge una volta sola per atto.** Chiamare il criterio due volte sulla
 stessa riga significa accettarne metà e rifiutarne l'altra: è il difetto già
 pagato in Fase C di questo cantiere.
+
+---
+
+### Note di migrazione
+
+* 2026-08-31 — nasce estraendo il predicato da `fn_reset_fondi_fattura`, per il gesto manuale
+  (brief-db-fondo-fattura-ricalcolo-e-governo, D-21).
+* 2026-11-25 — esce il ramo che, con `zeroerp.maintenance_reset_lotto_draft` accesa, saltava la
+  quarta condizione: l'applicazione poteva accendere la GUC da sé e cancellare il fondo di una
+  figlia congelata. Il consumatore che rifiuta è ora la primitiva
+  `fn_applica_cancellazione_fondo_fattura` (brief-db-porte-aperte-dalla-sola-guc, D-Z a).
 
 ---
 

@@ -77,7 +77,8 @@ stato**, e la differenza è voluta:
 
 ### ⛔ Nessun bypass di manutenzione
 
-Il gemello sulla quantità riconosce la GUC `zeroerp.maintenance_reset_lotto_draft`. Questo
+Il gemello sulla quantità riconosce la porta del reset del lotto (la GUC
+`zeroerp.maintenance_reset_lotto_draft` e il proprietario). Questo
 **no**, deliberatamente: è stato verificato che il reset lotto (`fn_cleanup_fatture_by_ids`)
 scrive su questa tabella soltanto `stato_emissione`, quindi non incontra mai questo guard.
 

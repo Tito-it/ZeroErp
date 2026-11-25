@@ -52,8 +52,8 @@ funzione appena corretta.
 ### ⛔ Non imposta la GUC di manutenzione, ed è la parte portante
 
 [`trgfn_attivita_fatturabili_guard_fatturato`](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_guard_fatturato)
-rifiuta l'`UPDATE` quando `OLD.fattura_riga_id` è valorizzato, salvo GUC
-`zeroerp.maintenance_reset_lotto_draft`.
+rifiuta l'`UPDATE` quando `OLD.fattura_riga_id` è valorizzato, salvo la porta del reset del lotto
+(la GUC `zeroerp.maintenance_reset_lotto_draft` e il proprietario della tabella, dentro la pulizia).
 
 Se **questa** funzione impostasse quella GUC, diventerebbe **il modo di
 scollegare una fattura viva**: chiunque la chiamasse su un'attività ancora

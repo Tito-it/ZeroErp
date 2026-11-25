@@ -29,16 +29,14 @@ AS $function$
 --     nulla, non c'e' promessa da tradire);
 --   - riscrivere lo STESSO valore non e' un cambio di chiave e
 --     passa (IS DISTINCT FROM);
---   - bypass tecnico via GUC zeroerp.maintenance_reset_lotto_draft,
---     coerente con gli altri guard di dominio.
+--   - passa la porta del reset del lotto: GUC e proprietario
+--     (vendite.fn_porta_reset_lotto_aperta), come gli altri guard.
 -- =========================================================
 DECLARE
-    v_bypass    text;
     v_attivita  bigint;
     v_campo     text;
 BEGIN
-    v_bypass := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
-    IF v_bypass IS NOT NULL AND lower(v_bypass) IN ('1','true','on','yes') THEN
+    IF vendite.fn_porta_reset_lotto_aperta(TG_RELID) THEN
         RETURN NEW;
     END IF;
 
@@ -84,7 +82,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_commesse_guard_chiave_immutabile()
-IS 'Guard D-R: termine/modalita'' di pagamento sono elemento della chiave di raggruppamento della commessa, quindi non si cambiano una volta che ci sono attivita'' collegate (si apre una commessa nuova). Commessa vuota: ammesso. Riscrittura dello stesso valore: ammessa. Bypass via GUC zeroerp.maintenance_reset_lotto_draft. Errore E_COMMESSA_CHIAVE_IMMUTABILE.';
+IS 'Guard D-R: termine/modalita'' di pagamento sono elemento della chiave di raggruppamento della commessa, quindi non si cambiano una volta che ci sono attivita'' collegate (si apre una commessa nuova). Commessa vuota: ammesso. Riscrittura dello stesso valore: ammessa. Passa la porta del reset del lotto (vendite.fn_porta_reset_lotto_aperta: GUC zeroerp.maintenance_reset_lotto_draft e proprietario della tabella). Errore E_COMMESSA_CHIAVE_IMMUTABILE.';
 ```
 
 </div>

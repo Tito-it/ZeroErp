@@ -15,7 +15,8 @@
 > * [script.fn_raise_primo_motivo_se_presente](/dbzero/script/funzioni/fn_raise_primo_motivo_se_presente) — solleva il primo motivo della check
 > * [pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_distinta_finale) — il guard vicino: ingresso sotto una distinta finale, sola lettura sotto un'annullata
 > * [pagamenti.trgfn_vendite_contabili_guard_validazione](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_guard_validazione) — la quadratura, e la riapertura della sola manuale
-> * [vendite.fn_cancella_fondo_fattura](/dbzero/vendite/funzioni/fn_cancella_fondo_fattura) — la madre che apre la porta del `DELETE`
+> * [vendite.fn_applica_cancellazione_fondo_fattura](/dbzero/vendite/funzioni/fn_applica_cancellazione_fondo_fattura) — la primitiva del fondo, che apre la porta del `DELETE` sulle righe del suo atto
+> * [script.fn_is_proprietario_tabella](/dbzero/script/funzioni/fn_is_proprietario_tabella) — la seconda condizione della porta: chi scrive è il proprietario
 > * [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — il precedente della stessa forma di porta
 > * [script.fn_get_contabile_stato_origine](/dbzero/script/funzioni/fn_get_contabile_stato_origine) — origine e stato della distinta, letti fuori dalla row security
 >
@@ -77,23 +78,30 @@ il `DELETE` passa dalla **stessa check** della disattivazione, e una riga `POSTA
 messaggio giusto **prima** che parli la chiave esterna del movimento.
 
 🔴 **Ma un `DELETE` legittimo esiste, ed è del giro dei fondi.**
-[vendite.fn_cancella_fondo_fattura](/dbzero/vendite/funzioni/fn_cancella_fondo_fattura), sede
-unica dei `DELETE` del giro (chiamata dal reset dei fondi, dall'annullo di una sistemazione e
-dall'endpoint che cancella un fondo), cancella **fisicamente** le righe di un atto sotto una
-`GENERATA`, dove la check risponde `DISTINTA_NON_MANUALE`: quel predicato è il cestino
-dell'**operatore**, e lì non c'è un operatore.
+[vendite.fn_applica_cancellazione_fondo_fattura](/dbzero/vendite/funzioni/fn_applica_cancellazione_fondo_fattura),
+la primitiva del fondo e sede unica dei suoi `DELETE` (riservata al proprietario; ci si arriva dal
+gesto che cancella un fondo, dall'annullo di una sistemazione e dal reset dei fondi), cancella
+**fisicamente** le righe di un atto sotto una `GENERATA`, dove la check risponde
+`DISTINTA_NON_MANUALE`: quel predicato è il cestino dell'**operatore**, e lì non c'è un operatore.
 
-La madre del giro **apre la porta per il proprio `DELETE`** con la GUC transazionale
-`zeroerp.allow_contabile_riga_delete_override` (accesa prima, svuotata dopo), e questo guard la
-onora **solo sul `DELETE`**. ⚠️ Oggi la porta si apre con la sola GUC, che l'applicazione può
-accendere da sé: la sua strada verso «GUC sulla riga e proprietario» è un giro del cantiere delle
-porte. Quella del `DELETE` delle associazioni utente-emittente, che usava la stessa forma, l'ha già
-fatta: [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope).
+**La porta, sulla riga.** La primitiva apre la porta per il proprio `DELETE` con la GUC
+transazionale `zeroerp.allow_contabile_riga_delete_override`, che porta **l'id dell'atto** che sta
+cancellando: la accende prima delle righe e la svuota subito dopo. Questo guard la onora solo se
+valgono tre cose insieme:
 
-⚠️ **Non è un permesso: è la madre che dichiara «sono io»** dopo aver letto il *suo* criterio
-([vendite.fn_check_fondo_cancellabile](/dbzero/vendite/funzioni/fn_check_fondo_cancellabile)).
-E si **richiude**: lasciata aperta renderebbe verdi per sottrazione tutti i `DELETE` successivi
-della transazione. I pgTAP che cancellano righe nel cleanup la impostano allo stesso modo.
+* l'operazione è un `DELETE`;
+* la riga appartiene a **quell'atto**: la GUC vale il suo `fondo_source_id`;
+* chi scrive è il **proprietario** della tabella
+  ([script.fn_is_proprietario_tabella](/dbzero/script/funzioni/fn_is_proprietario_tabella)).
+
+⛔ L'applicazione che accende la GUC da sé non apre niente: né con `on`, né con l'id giusto. È la
+stessa forma di porta del `DELETE` delle associazioni utente-emittente
+([script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope)).
+
+⚠️ **Non è un permesso: è la primitiva che dichiara «sono io»** dopo aver letto il *suo* criterio
+([vendite.fn_check_fondo_cancellabile](/dbzero/vendite/funzioni/fn_check_fondo_cancellabile)). Il
+permesso lo chiede il verbo che la chiama. E la porta si **richiude**: lasciata aperta renderebbe
+verdi per sottrazione i `DELETE` successivi della transazione.
 
 ---
 
@@ -158,8 +166,8 @@ chiuso: chiuderlo è una decisione.
 
 * `db/pgtap/pagamenti/test-righe-contabili-eliminazione-v1.sql` — il trigger montato sui soli
   fatti, la check su bozza, generata e validata, il congelamento di inserimento, importo e
-  spostamento, l'abbinamento che passa a distinta validata, l'aggiornamento a valore invariato,
-  la porta del `DELETE` del giro.
+  spostamento, l'abbinamento che passa a distinta validata, l'aggiornamento a valore invariato;
+  la GUC accesa a mano non apre la porta del `DELETE`.
 * `db/pgtap/pagamenti/test-righe-distinta-annullata-congelate-v1.sql` — sotto un'annullata il
   `DELETE` e la disattivazione rifiutati col motivo `DISTINTA_ANNULLATA`, e uno solo.
 * `db/pgtap/script/test-rubinetto-primo-motivo-v1.sql` — il guard fra i chiamanti del rubinetto
@@ -167,6 +175,8 @@ chiuso: chiuderlo è una decisione.
 * `db/pgtap/pagamenti/test-righe-guard-distinta-vista-dalla-fattura-v1.sql` — la porta 2 sulla
   riga vista dalla fattura: l'importo non si cambia sotto la manuale validata di un'altra
   azienda, e si cambia sotto la sua bozza.
+* `db/pgtap/vendite/test-porta-reset-lotto-e-fondo-v1.sql` — il fondo cade dai verbi, col loro
+  permesso e nel loro perimetro; l'app non esegue la primitiva.
 
 ---
 
@@ -180,6 +190,10 @@ chiuso: chiuderlo è una decisione.
   scrittura passa; resta l'importo sotto una chiusa.
 * 2026-11-03 — la porta 2 legge origine e stato della distinta fuori dalla row security. Prima li
   leggeva con i diritti di chi scrive, e la riga vista dalla fattura passava senza controllo.
+* 2026-11-25 — la porta del `DELETE` del giro si apre sulla riga e col proprietario: la GUC porta
+  l'id dell'atto, non più `on`. Prima l'applicazione la accendeva da sé e cancellava qualunque riga
+  sotto una distinta generata o chiusa. La apre la primitiva `fn_applica_cancellazione_fondo_fattura`
+  (brief-db-porte-aperte-dalla-sola-guc, giro 8).
 
 ---
 

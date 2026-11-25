@@ -5,7 +5,7 @@
 CREATE FUNCTION fn_escludi_documento_da_giro(p_lotto_id bigint, p_gruppo_key text, p_motivo text)
 ```
 
-> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
 
 **Definizione completa:**
 
@@ -15,12 +15,15 @@ CREATE FUNCTION fn_escludi_documento_da_giro(p_lotto_id bigint, p_gruppo_key tex
 CREATE OR REPLACE FUNCTION vendite.fn_escludi_documento_da_giro(p_lotto_id bigint, p_gruppo_key text, p_motivo text)
  RETURNS jsonb
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 -- Scopo: togliere UN documento dal giro di fatturazione, cosi' che
 --        il lotto possa ripartire con quelli che restano.
 -- Ritorna: un consuntivo di cio' che e' stato fatto, perche' il
 --        chiamante deve poterlo raccontare all'operatore.
 DECLARE
+    v_utente      config.user_override_azioni.auth_user_id%TYPE;
     v_motivi      jsonb;
     v_trascinati  jsonb;
     v_fatture     bigint[];
@@ -30,6 +33,22 @@ DECLARE
     v_riaperti    integer := 0;
     v_esito_riga  RECORD;
 BEGIN
+    -- ⭐ rev 2026-11-25 (brief-db-porte-aperte-dalla-sola-guc, giro 1-7): SECURITY DEFINER.
+    --   Il permesso in prima riga e' l'azione che l'endpoint controlla
+    --   (reset_lotto_fattura_draft, risposta 3d §4.5); il perimetro lo
+    --   rimette il verbo sul lotto. Le fatture del documento le toglie il
+    --   verbo pubblico vendite.fn_elimina_fattura_da_lotto, con la stessa
+    --   azione e il perimetro su ogni fattura.
+    v_utente := script.fn_utente_di_sessione('vendite.fn_escludi_documento_da_giro');
+    PERFORM script.fn_guard_azione(v_utente, 'reset_lotto_fattura_draft');
+
+    -- Le GUC che dentro un verbo DEFINER aprirebbero una porta si
+    -- spengono all'ingresso: quella del reset del lotto (la riaccende
+    -- solo la pulizia, e solo mentre lavora) e quella delle righe
+    -- contabili del fondo.
+    PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', '', true);
+    PERFORM set_config('zeroerp.allow_contabile_riga_delete_override', '', true);
+
     -- ── Guard di parametro ────────────────────────────────
     -- ⚠️ Il motivo vuoto NON e' una condizione di dominio: il
     --    frontend lo rende obbligatorio, quindi se arriva vuoto e'
@@ -43,6 +62,17 @@ BEGIN
     END IF;
 
     -- ── Le precondizioni: sede unica, non riscritte qui ───
+    -- Il perimetro, una volta, all'ingresso, sul lotto: la regola della
+    -- policy di vendite.fatturazione_lotti, rimessa qui perche' il verbo
+    -- legge da proprietario. Fuori perimetro il lotto «non c'e'», come un
+    -- lotto che non esiste, e prima di dire qualunque cosa sul suo stato.
+    IF NOT COALESCE(script.fn_scope_ef_whitelist_via_lotto(v_utente, p_lotto_id), false) THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_escludi_documento_da_giro', 'E_LOTTO_NON_TROVATO',
+            jsonb_build_object('detail', 'lotto inesistente o fuori perimetro', 'lotto_id', p_lotto_id),
+            NULL::uuid, p_lotto_id::text);
+    END IF;
+
     v_motivi := script.fn_check_documento_escludibile_da_giro(p_lotto_id, p_gruppo_key);
     -- ⭐ La coda del primo motivo sta in un posto solo: l'helper legge il
     --   codice da `v_motivi -> 0`, ne prende i `valori` per la frase, fonde il
@@ -159,7 +189,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_escludi_documento_da_giro(p_lotto_id bigint, p_gruppo_key text, p_motivo text)
-IS 'Toglie UN documento rotto dal giro di fatturazione, cosi'' che il lotto possa ripartire con quelli che restano. Funzione MADRE: una sola SELECT, atomica per costruzione, SECURITY INVOKER (RLS e perimetro emittente restano applicati). ⭐ Non riscrive il predicato: CHIAMA script.fn_check_documento_escludibile_da_giro — la stessa da cui il frontend prende il motivo del pulsante spento — e solleva il codice del PRIMO motivo, perche'' l''ordine dell''array e'' il contratto. ⭐ Compone vendite.fn_elimina_fattura_da_lotto invece di riscriverne la semantica (RD-7: togliere = cancellare, le attivita'' tornano NON_EMESSA). ⭐ D-2b: se la bozza copre PIU'' documenti si cancella lo stesso e li TRASCINA — tornano da emettere, con l''esito riportato a PENDING e non a ESCLUSO (non sono usciti da niente) ne'' lasciato a COMPLETED (non hanno piu'' una fattura). Rifiutare su bozza condivisa lascerebbe bloccati anche i documenti di un''ALTRA bozza. ⚠️ I trascinati si leggono PRIMA di cancellare: dopo, il legame non esiste piu''. ⚠️ uscita_quando/uscita_da le deriva il trigger dalla GUC, non questa funzione. ⛔ Il perimetro (fatturazione_lotti_gruppi) non si tocca (D-1): il lotto ricorda di aver preso in carico anche il documento uscito. Brief: brief-db-uscita-documento-dal-giro.';
+IS 'Toglie UN documento rotto dal giro di fatturazione, cosi'' che il lotto possa ripartire con quelli che restano. Funzione MADRE: una sola SELECT, atomica per costruzione. Verbo SECURITY DEFINER: in prima riga script.fn_guard_azione con reset_lotto_fattura_draft (l''azione dell''endpoint), poi il perimetro sul lotto (fuori: E_LOTTO_NON_TROVATO); spegne all''ingresso le GUC delle porte (brief-db-porte-aperte-dalla-sola-guc, giro 1-7). ⭐ Non riscrive il predicato: CHIAMA script.fn_check_documento_escludibile_da_giro — la stessa da cui il frontend prende il motivo del pulsante spento — e solleva il codice del PRIMO motivo, perche'' l''ordine dell''array e'' il contratto. ⭐ Compone vendite.fn_elimina_fattura_da_lotto invece di riscriverne la semantica (RD-7: togliere = cancellare, le attivita'' tornano NON_EMESSA). ⭐ D-2b: se la bozza copre PIU'' documenti si cancella lo stesso e li TRASCINA — tornano da emettere, con l''esito riportato a PENDING e non a ESCLUSO (non sono usciti da niente) ne'' lasciato a COMPLETED (non hanno piu'' una fattura). Rifiutare su bozza condivisa lascerebbe bloccati anche i documenti di un''ALTRA bozza. ⚠️ I trascinati si leggono PRIMA di cancellare: dopo, il legame non esiste piu''. ⚠️ uscita_quando/uscita_da le deriva il trigger dalla GUC, non questa funzione. ⛔ Il perimetro (fatturazione_lotti_gruppi) non si tocca (D-1): il lotto ricorda di aver preso in carico anche il documento uscito. Brief: brief-db-uscita-documento-dal-giro.';
 ```
 
 </div>

@@ -43,6 +43,14 @@ SELECT script.fn_pgtap_set_contesto_operatore() AS auth_user_id;
 
 SELECT plan(11);
 
+-- ⭐ rev 2026-11-25 (brief-db-porte-aperte-dalla-sola-guc, giro 8 + 1-7): «togli la fattura dal lotto» e'
+--   SECURITY DEFINER e chiede il permesso che l'endpoint controlla (reset_lotto_fattura_draft). Chi
+--   agisce lo riceve qui; il caso senza permesso lo prova
+--   vendite/test-porta-reset-lotto-e-fondo-v1.
+DO $perm$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM tmp_rpc_ctx), 'reset_lotto_fattura_draft');
+END $perm$;
+
 -- ============================================================
 -- FIXTURE
 -- ============================================================
@@ -158,11 +166,16 @@ SELECT throws_like(
     '%consumato il plafond%',
     '8) la madre «elimina fattura» solleva E_FATTURE_PLAFOND_CONSUMATO invece di esplodere sulla FK');
 
-SELECT throws_like(
+-- ⭐ rev 2026-11-25 (brief-db-porte-aperte-dalla-sola-guc, giro 1-7): la pulizia
+--   e' riservata al proprietario, l'app ci arriva solo dai verbi del reset. La
+--   quarta porta non c'e' piu': il codice lo dice la madre (8).
+-- ⚠️ Gira come l'applicazione: da proprietario la chiamata passa e solleva il
+--   codice del plafond, quindi 9 e' rosso per costruzione.
+SELECT throws_ok(
     format('SELECT * FROM vendite.fn_cleanup_fatture_by_ids(ARRAY[%s]::bigint[], NULL::uuid)',
            (SELECT fa FROM tmp_rpc_fatt)),
-    '%consumato il plafond%',
-    '9) la pulizia chiamata direttamente solleva il codice: e'' la difesa della quarta porta');
+    '42501', NULL,
+    '9) la pulizia chiamata direttamente dall''app: 42501, e'' riservata ai verbi del reset');
 
 -- ⚠️ Il controllo: il motivo nuovo non deve fermare cio' che prima passava.
 SELECT ok(

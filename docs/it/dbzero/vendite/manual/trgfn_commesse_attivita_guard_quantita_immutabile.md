@@ -1,20 +1,23 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.trgfn_commesse_attivita_guard_quantita_immutabile()`
 
+> **Ultimo aggiornamento**: 25 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:
-> • [vendite.trgfn_attivita_fatturabili_guard_quantita_immutabile](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_guard_quantita_immutabile)
-> • [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita)
-> • [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+> * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — la tabella che protegge
+> * [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili) — dove la quantità è già uscita
+>
+> Approfondimento funzioni:
+>
+> * [vendite.trgfn_attivita_fatturabili_guard_quantita_immutabile](/dbzero/vendite/funzioni/trgfn_attivita_fatturabili_guard_quantita_immutabile) — il gemello sulle attività fatturabili
+> * [vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita) — il re-push, che il guard non ferma
+> * [vendite.fn_porta_reset_lotto_aperta](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta) — la porta del reset del lotto: la GUC e il proprietario
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 ---
 ### 🎯 Scopo Principale
-
-(rev 2026-08-21)
 
 **Una riga di commessa già emessa è un fatto, e i fatti non si modificano.** Il guard
 blocca l'`UPDATE` della quantità su una riga il cui `stato_emissione` è diverso da
@@ -47,24 +50,26 @@ permette all'`ON CONFLICT DO UPDATE` di `fn_upsert_commessa_attivita` di non rom
 ripassa su righe già allineate.
 
 **Il re-push normale non incontra il guard**: agisce su righe `NON_EMESSA`, che la prima
-condizione lascia fuori. Non serve nessun bypass nella hot-path.
+condizione lascia fuori. Non serve nessuna porta nella hot-path.
 
 ---
 
-### Il bypass di manutenzione
+### La porta del reset del lotto
 
-```sql
-SET LOCAL zeroerp.maintenance_reset_lotto_draft = 'on';
-```
+Il guard lascia passare la scrittura quando la **porta del reset del lotto** è aperta. La legge
+[`vendite.fn_porta_reset_lotto_aperta`](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta), che
+risponde sì solo se la GUC `zeroerp.maintenance_reset_lotto_draft` è accesa **e** chi scrive è il
+proprietario della tabella.
 
-Con questa GUC valorizzata (`1`, `true`, `on`, `yes`) il guard esce in testa e lascia
-passare tutto. Serve al **reset di un lotto a DRAFT**, dove le righe già emesse vanno
-riportate indietro e la loro quantità torna legittimamente modificabile.
+La GUC la accende solo la pulizia del lotto,
+[`vendite.fn_cleanup_fatture_by_ids`](/dbzero/vendite/funzioni/fn_cleanup_fatture_by_ids), riservata
+al proprietario, e la spegne prima di uscire: la porta è aperta solo mentre la pulizia lavora. ⛔ Per
+l'applicazione la porta è sempre chiusa: accendere la GUC da sé e scrivere diretta non apre niente.
 
-⚠️ È una porta di servizio reale: aperta la GUC, l'immutabilità **non esiste più** per
-l'intera transazione, su ogni riga toccata — non solo su quelle del lotto che si sta
-resettando. Va usata con `SET LOCAL` (mai `SET` di sessione) e sul perimetro più stretto
-possibile.
+Serve al **reset di un lotto**, dove le righe già emesse tornano `NON_EMESSA` e la loro
+quantità torna legittimamente modificabile. ⚠️ Mentre la porta è aperta il guard lascia passare
+tutto, non solo le righe del lotto: il limite è che la apre solo la pulizia, e solo per la sua
+durata.
 
 ---
 
@@ -79,7 +84,7 @@ I due si dividono il lavoro così:
 * **qui**: la riga emessa non cambia quantità;
 * **là**: l'attività fatturabile non si stacca dalla commessa che la genera.
 
-Entrambi riconoscono la stessa GUC di bypass.
+Entrambi leggono la stessa porta del reset del lotto.
 
 ---
 
@@ -95,9 +100,19 @@ senza risalire alla riga.
 
 ---
 
-### Riferimenti
+### Test
 
-Brief *immutabilità quantità* §0 / §4a (2026-07-21).
+* `db/pgtap/vendite/test-porta-reset-lotto-e-fondo-v1.sql` — con la GUC accesa dall'applicazione
+  la porta resta chiusa.
+
+---
+
+### Note di migrazione
+
+* 2026-07-21 — nasce (brief immutabilità quantità §0, §4a).
+* 2026-11-25 — la porta del reset si legge da `vendite.fn_porta_reset_lotto_aperta` e chiede anche
+  il proprietario; prima bastava la GUC, che l'applicazione poteva accendere da sé
+  (brief-db-porte-aperte-dalla-sola-guc, giro 1-7).
 
 ---
 

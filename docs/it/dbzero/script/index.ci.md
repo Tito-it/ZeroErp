@@ -185,6 +185,7 @@ search:
 - [fn_guard_azione](manual/fn_guard_azione.md) — (scritta il 24-09-2026)
 - [fn_guard_campi_ammessi](manual/fn_guard_campi_ammessi.md) — Il controllo dei **campi facoltativi** che una porta di scrittura riceve tutti insieme: devono essere un oggetto, e ogni campo deve stare nella lista che la porta ammette.
 - [fn_guard_livello](manual/fn_guard_livello.md) — (scritta il 25-09-2026)
+- [fn_guard_livello_area](manual/fn_guard_livello_area.md) — È il guard con cui un verbo di scrittura chiede che **chi agisce abbia almeno un certo livello su un'area funzionale**, senza un oggetto. Si chiama nella prima riga del verbo: se il livello non basta, il verbo si ferma prima di toccare qualunque cosa.
 - [fn_guard_passaggio](manual/fn_guard_passaggio.md)
 - [fn_guard_soggetto_pf_pura](manual/fn_guard_soggetto_pf_pura.md) — (latest review 18-04-2026)
 - [fn_guard_soggetto_ruolo](manual/fn_guard_soggetto_ruolo.md) — (latest review 05-12-25) - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.

@@ -733,7 +733,12 @@ WHERE (n.nspname, p.proname) IN (
         -- ⭐ Dal 2026-11-24 la primitiva dello scope emittenti: ci si arriva solo dal verbo
         --   script.fn_change_user_emittenti_scope (SUPER_ADMIN). Forward 90_end/20261124-06;
         --   presidio config/test-porta-scope-emittenti-v1.
-        ('script', 'fn_applica_user_emittenti_scope'))
+        ('script', 'fn_applica_user_emittenti_scope'),
+        -- ⭐ Dal 2026-11-25 le primitive del reset del lotto e del fondo fattura: ci si
+        --   arriva solo dai verbi DEFINER del reset, del fondo e della sistemazione.
+        --   Forward 90_end/20261125-22; presidio vendite/test-porta-reset-lotto-e-fondo-v1.
+        ('vendite', 'fn_cleanup_fatture_by_ids'), ('vendite', 'fn_reset_fondi_fattura'),
+        ('vendite', 'fn_applica_cancellazione_fondo_fattura'))
   AND p.prokind = 'f'
 \gexec
 

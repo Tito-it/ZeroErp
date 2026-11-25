@@ -10,7 +10,7 @@
 -- ⭐ I casi si COSTRUISCONO: due emittenti con il loro operatore
 --   (fn_pgtap_crea_emittente_operatore: tecnici, non super admin, senza
 --   righe d'area, cioe' BLOCCATO ovunque). Il livello lo scrive il test
---   (pg_temp.livello_area, l'upsert di config.user_override_aree). Il mondo
+--   (dbops.fn_pgtap_concedi_livello_area, l'upsert di config.user_override_aree). Il mondo
 --   di B si costruisce nel SUO contesto, il tentativo si fa in quello di A.
 --
 -- ⚠️ Gira come l'APPLICAZIONE. Le fixture nascono dai builder, che passano dai
@@ -91,15 +91,9 @@ SELECT dbops.fn_pgtap_crea_ubicazione(f.mag, 'PGT-VAM-U0',
   FROM _fa f;
 
 -- Il livello d'area dell'operatore A.
-CREATE OR REPLACE FUNCTION pg_temp.livello_area(p_area text, p_livello text) RETURNS void
-LANGUAGE sql AS $fx$
-    INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)
-    SELECT a.auth_user_id, af.id, p_livello::config.livello_accesso,
-           'pgTAP: verbi delle anagrafiche di magazzino'
-      FROM _a a, config.aree_funzionali af
-     WHERE af.schema_db = p_area
-    ON CONFLICT (auth_user_id, area_id) DO UPDATE SET livello = EXCLUDED.livello
-$fx$;
+-- ⭐ rev 2026-11-25 (D-L a, brief-db-porte-aperte-dalla-sola-guc): il livello d'area lo
+--   da' il builder dbops.fn_pgtap_concedi_livello_area; la copia pg_temp.livello_area
+--   che stava qui e' ritirata (regola del 2).
 
 -- ============================================================
 -- 1-4 Il permesso
@@ -116,14 +110,14 @@ SELECT is(
     'E_PERMESSO_NEGATO',
     '2. senza livello: fn_modifica_ubicazione -> E_PERMESSO_NEGATO');
 
-SELECT pg_temp.livello_area('magazzino', 'LETTURA');
+SELECT dbops.fn_pgtap_concedi_livello_area((SELECT auth_user_id FROM _a), 'magazzino', 'LETTURA');
 SELECT is(
     dbops.fn_pgtap_codice_errore($$SELECT magazzino.fn_aggiungi_lotto((SELECT art_lotti FROM _fa),
         'PGT-VAM-LX', DATE '2026-11-01')$$),
     'E_PERMESSO_NEGATO',
     '3. LETTURA su magazzino: fn_aggiungi_lotto -> E_PERMESSO_NEGATO');
 
-SELECT pg_temp.livello_area('magazzino', 'TUTTO');
+SELECT dbops.fn_pgtap_concedi_livello_area((SELECT auth_user_id FROM _a), 'magazzino', 'TUTTO');
 SELECT set_config('app.current_user_id', '', true);
 SELECT is(
     dbops.fn_pgtap_codice_errore($$SELECT magazzino.fn_aggiungi_lotto((SELECT art_lotti FROM _fa),

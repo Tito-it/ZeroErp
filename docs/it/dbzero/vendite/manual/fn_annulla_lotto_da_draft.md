@@ -1,27 +1,32 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_annulla_lotto_da_draft`
 
+> **Ultimo aggiornamento**: 25 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
-> • [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)  
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
-> • [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)  
-> • [vendite.fatture_riepiloghi_iva](/dbzero/vendite/tabelle/fatture_riepiloghi_iva)  
-> • [vendite.fatture_log](/dbzero/vendite/tabelle/fatture_log)  
-> • [vendite.note_fatture](/dbzero/vendite/tabelle/note_fatture)  
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
-> • [vendite.fatturazione_lotti_esiti](/dbzero/vendite/tabelle/fatturazione_lotti_esiti)  
+> * [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti) · [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture) — il lotto e le sue fatture
+> * [vendite.fatture](/dbzero/vendite/tabelle/fatture) · [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe) · [vendite.fatture_riepiloghi_iva](/dbzero/vendite/tabelle/fatture_riepiloghi_iva) — le fatture che si cancellano
+> * [vendite.fatture_log](/dbzero/vendite/tabelle/fatture_log) · [vendite.note_fatture](/dbzero/vendite/tabelle/note_fatture) — log e note della fattura
+> * [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili) — le attività che tornano libere
+> * [vendite.fatturazione_lotti_esiti](/dbzero/vendite/tabelle/fatturazione_lotti_esiti) — gli esiti, che diventano `ESCLUSO`
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-• [vendite.fn_select_attivita_fatturabili](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili)  
-> • [vendite.fn_escludi_documento_da_giro](/dbzero/vendite/funzioni/fn_escludi_documento_da_giro) — *l'uscita di un documento solo*  
+> * [vendite.fn_guard_passaggio_lotto](/dbzero/vendite/funzioni/fn_guard_passaggio_lotto) — il permesso del passaggio verso l'annullo
+> * [vendite.fn_cleanup_fatture_by_ids](/dbzero/vendite/funzioni/fn_cleanup_fatture_by_ids) — la pulizia, riservata
+> * [vendite.fn_cambia_stato_lotto](/dbzero/vendite/funzioni/fn_cambia_stato_lotto) — il verbo che scrive lo stato del lotto, dopo la pulizia
+> * [vendite.fn_select_attivita_fatturabili](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili) — chi aveva bloccato le attività
+> * [vendite.fn_escludi_documento_da_giro](/dbzero/vendite/funzioni/fn_escludi_documento_da_giro) — l'uscita di un documento solo
+>
+> Guide:
+>
+> * [Fatturazione](/guide/fatturazione) — le vie d'uscita da un lotto, e chi le può prendere
 
 ---
 ### 🎯 Scopo Principale
-(latest review 23-09-2026)  
+
 La funzione **`vendite.fn_annulla_lotto_da_draft()`** effettua il **rollback tecnico**
 di un lotto in stato **DRAFT**, eliminando i documenti generati dal draft,
 ripristinando le righe di `attivita_fatturabili` e **chiudendo** il lotto
@@ -37,6 +42,32 @@ annullato: non c'è più niente da segnalare.
 > [`fn_riporta_lotto_a_draft`](/dbzero/vendite/funzioni/fn_riporta_lotto_a_draft)
 > fa la stessa pulizia ma **lascia il lotto vivo** e lo rimette in bozza perché
 > riparta. Questa invece lo **chiude**: il lotto non lavorerà più.
+
+---
+
+### Chi la chiama, con quale permesso e su quale lotto
+
+È il verbo dell'endpoint «annulla lotto». Gira come proprietario (`SECURITY DEFINER`), fuori dalla
+row security, quindi perimetro e permesso li controlla lei, all'ingresso e in quest'ordine:
+
+1. **il perimetro**, sul lotto **e** su tutte le sue fatture, con una lettura sola: devono essere di
+   un'azienda di chi agisce. Il controllo è doppio perché il modello non lega la fattura all'azienda
+   del lotto. Fuori dal perimetro il lotto «non c'è» (`E_LOTTO_NON_TROVATO`, la stessa risposta di
+   un lotto inesistente), anche se fuori è una fattura sola, e prima di dire qualunque cosa sul suo
+   stato;
+2. **il permesso** del passaggio verso lo stato d'annullo
+   ([`vendite.fn_guard_passaggio_lotto`](/dbzero/vendite/funzioni/fn_guard_passaggio_lotto)). Viene
+   dopo la lettura del lotto perché dipende dal suo stato. La riga `DRAFT → ANNULLATA` non dichiara
+   un'azione, quindi conta il livello `TUTTO` sull'area `vendite`, lo stesso controllo
+   dell'endpoint. Sotto il livello: `E_PERMESSO_NEGATO`.
+
+Il permesso arriva **prima** della pulizia: un rifiuto non lascia lavoro fatto e poi annullato.
+
+**Le porte.** Il verbo spegne all'ingresso la GUC del reset del lotto e quella delle righe
+contabili. La porta del reset la riapre solo la pulizia, mentre lavora, e la richiude prima di
+uscire. Lo stato d'annullo che il verbo scrive dopo, con
+[`vendite.fn_cambia_stato_lotto`](/dbzero/vendite/funzioni/fn_cambia_stato_lotto), lo giudica il
+guard di transizione del lotto.
 
 ---
 
@@ -75,7 +106,8 @@ annullato: non c'è più niente da segnalare.
   * testate `fatture`
 * Ripristina `attivita_fatturabili` (unlock + reset flags).
 * Cleanup centralizzato tramite `vendite.fn_cleanup_fatture_by_ids`.
-* Usa una **GUC di manutenzione** per bypassare il guard di fatturato durante il reset.
+* La pulizia apre la porta del reset del lotto solo mentre lavora, e solo perché gira come
+  proprietario (sezione «Chi la chiama»).
 * I log di lotto (`fatturazione_lotti_log`) **non** vengono eliminati.
 
 ---
@@ -96,14 +128,33 @@ dice la riga `ANNULLO_LOTTO` del giornale.
 
 ---
 
-### Esempio d’uso
+### Codici errore
 
-```sql
-SELECT *
-FROM vendite.fn_annulla_lotto_da_draft(
-  p_lotto_id => 123
-);
-```
+* `E_LOTTO_NON_TROVATO` — il lotto non esiste, oppure il lotto o una sua fattura sono fuori dal
+  perimetro di chi agisce.
+* `E_PERMESSO_NEGATO` — manca il livello `TUTTO` sull'area `vendite`.
+* I motivi di `script.fn_check_lotto_annullabile`, se il lotto non si può annullare.
+
+---
+
+### Test
+
+* `db/pgtap/vendite/test-porta-reset-lotto-e-fondo-v1.sql` — gira come l'applicazione: il verbo è
+  `SECURITY DEFINER`; con l'area a `LETTURA` risponde `E_PERMESSO_NEGATO`; il lotto di un'altra
+  azienda risponde `E_LOTTO_NON_TROVATO` e resta com'era; col permesso l'annullo riesce anche con la
+  GUC accesa davanti, e dopo il verbo la GUC è vuota.
+* `db/pgtap/vendite/test-annulla-lotto-non-riscrive-stato-v1.sql`,
+  `db/pgtap/vendite/test-annulla-lotto-task-runs-v1.sql`,
+  `db/pgtap/vendite/test-annulla-lotto-vuoto-v1.sql` — che cosa fa l'annullo.
+
+---
+
+### Note di migrazione
+
+* 2026-11-25 — `SECURITY DEFINER`: il perimetro su lotto e fatture all'ingresso (prima lo dava la
+  row security), il permesso del passaggio prima della pulizia e con la ricaduta sull'area (prima
+  arrivava dopo, da `fn_cambia_stato_lotto`), le porte spente all'ingresso
+  (brief-db-porte-aperte-dalla-sola-guc, giro 1-7, D-X a, D-Y a).
 
 ---
 

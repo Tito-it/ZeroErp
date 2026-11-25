@@ -1,30 +1,32 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_cleanup_fatture_by_ids`
 
+> **Ultimo aggiornamento**: 25 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)  
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
-> • [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe)  
-> • [vendite.fatture_riepiloghi_iva](/dbzero/vendite/tabelle/fatture_riepiloghi_iva)  
-> • [vendite.fatture_log](/dbzero/vendite/tabelle/fatture_log)  
-> • [vendite.note_fatture](/dbzero/vendite/tabelle/note_fatture)  
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
-> • [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)  
+> * [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture) — il legame lotto-fattura, che si cancella
+> * [vendite.fatture](/dbzero/vendite/tabelle/fatture) · [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe) · [vendite.fatture_riepiloghi_iva](/dbzero/vendite/tabelle/fatture_riepiloghi_iva) — il documento che si cancella
+> * [vendite.fatture_log](/dbzero/vendite/tabelle/fatture_log) · [vendite.note_fatture](/dbzero/vendite/tabelle/note_fatture) — log e note della fattura
+> * [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili) · [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — ciò che si ripristina
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-• [vendite.fn_annulla_lotto_da_draft](/dbzero/vendite/funzioni/fn_annulla_lotto_da_draft)  
-> • [vendite.fn_elimina_fattura_da_lotto](/dbzero/vendite/funzioni/fn_elimina_fattura_da_lotto)  
-> • [vendite.fn_riporta_lotto_a_draft](/dbzero/vendite/funzioni/fn_riporta_lotto_a_draft)  
-> • [vendite.fn_reset_fondi_fattura](/dbzero/vendite/funzioni/fn_reset_fondi_fattura)  
-> • [vendite.fn_libera_attivita_fatturabili](/dbzero/vendite/funzioni/fn_libera_attivita_fatturabili)  
+> * [vendite.fn_annulla_lotto_da_draft](/dbzero/vendite/funzioni/fn_annulla_lotto_da_draft) — chiamante: l'annullo del lotto
+> * [vendite.fn_elimina_fattura_da_lotto](/dbzero/vendite/funzioni/fn_elimina_fattura_da_lotto) — chiamante: togli una fattura dal lotto
+> * [vendite.fn_riporta_lotto_a_draft](/dbzero/vendite/funzioni/fn_riporta_lotto_a_draft) — chiamante: il ritorno in bozza
+> * [vendite.fn_reset_fondi_fattura](/dbzero/vendite/funzioni/fn_reset_fondi_fattura) — il reset dei fondi della fattura
+> * [vendite.fn_libera_attivita_fatturabili](/dbzero/vendite/funzioni/fn_libera_attivita_fatturabili) — le due scritture del ripristino
+> * [vendite.fn_porta_reset_lotto_aperta](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta) — la porta del reset, che questa funzione accende
+>
+> Guide:
+>
+> * [Fatturazione](/guide/fatturazione) — il reset del lotto
 
 ---
 
 ### 🎯 Scopo Principale
-(latest review 03-08-2026)  
 
 La funzione **`vendite.fn_cleanup_fatture_by_ids()`** è il **proprietario unico**
 del ripristino: cancella le fatture indicate e riporta indietro **tutto** ciò che
@@ -77,6 +79,25 @@ annullamento.
 
 ---
 
+### Chi la chiama, e la porta del reset
+
+È **riservata al proprietario**: l'applicazione non la può eseguire. La chiamano solo i tre
+verbi qui sopra, che girano come proprietario e all'ingresso controllano il permesso e il
+perimetro su lotto e fatture. Questa funzione non ripete quei controlli: chi ci arriva è già
+passato da un verbo.
+
+**La porta del reset.** La pulizia scrive su tabelle che i loro guard proteggono: attività già
+fatturate, quantità emesse, satelliti della fattura, log. Per farlo accende la GUC
+`zeroerp.maintenance_reset_lotto_draft` prima di cominciare, e la **spegne prima di uscire**. I
+guard lasciano passare solo se la GUC è accesa **e** chi scrive è il proprietario della tabella
+([`vendite.fn_porta_reset_lotto_aperta`](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta)).
+
+⭐ Così la porta resta aperta solo mentre la pulizia lavora. Quello che il verbo scrive dopo, come
+lo stato del lotto, lo giudicano di nuovo i guard. Per l'applicazione la porta è sempre chiusa:
+accendere la GUC da sé e scrivere diretta non apre niente.
+
+---
+
 ### Cosa ripristina
 
 > ⛔ **L'ordine è portante, e viene prima dell'elenco.** *Prima si ripristina,
@@ -98,11 +119,10 @@ annullamento.
   cancellate, **prima** di toccarle — in testa alla funzione, così resta corretto
   qualunque passo venga aggiunto dopo.
 * **Azzera i fondi** via [`fn_reset_fondi_fattura`](/dbzero/vendite/funzioni/fn_reset_fondi_fattura).
-  ⚠️ Quella funzione **non cancella** `fatture_fondi_fattura_source`: ne azzera
-  `fattura_figlia_id` e rimette il fondo `DISPONIBILE`. È il trattamento giusto —
-  un credito deve **sopravvivere** alla fattura che lo consumava. In caso di
-  movimenti già contabilizzati non elimina i dati e registra un warning in
-  `fatture_log`.
+  Quella funzione **cancella** l'atto di fondo che non è stato eseguito: un atto
+  mai eseguito è una proposta, e il giro successivo ne fa una nuova sul residuo
+  di adesso. Un atto già eseguito, o bloccato per un'altra ragione, non lo tocca:
+  lo segnala con un avviso in `fatture_log` e va avanti.
 * **Sblocca** le `attivita_fatturabili` (lock, flag `fatturato`, legame alla riga,
   `stato_esecuzione` a NULL).
 * **Riporta le `commesse_attivita` a `NON_EMESSA`** (dal 03-08-2026). Senza questo
@@ -110,8 +130,8 @@ annullamento.
   filtra su `stato_emissione = 'EMESSA'` e non le riprenderebbe mai più. Lo stesso
   campo decide come il cruscotto competenza classifica la riga.
   Le attività **ANNULLATE** non si toccano: sono state annullate di proposito.
-* Usa la GUC `zeroerp.maintenance_reset_lotto_draft` per bypassare il guard
-  «fatturato».
+* Accende la porta del reset per le sue scritture, e la spegne prima di uscire
+  (sezione qui sopra).
 
 ⭐ **Le due popolazioni sono una sola per costruzione** (dal 26-08-2026). Il
 perimetro si calcola **una volta** — mentre il legame con la riga è ancora vivo —
@@ -122,7 +142,7 @@ che serve anche il verbo di recupero. Prima erano **due filtri identici scritti
 due volte**, «di proposito»: bastava che divergessero per sbloccare un insieme di
 attività e rimetterne in coda un altro, in silenzio. Ora quel rischio non esiste.
 
-⚠️ **La primitiva non apre la GUC di manutenzione, e non deve.** Il guard di riga
+⚠️ **La primitiva non apre la porta del reset, e non deve.** Il guard di riga
 rifiuta di toccare un'attività ancora agganciata a una fattura: è ciò che
 impedisce di usare il ripristino per **scollegare una fattura viva**. Ad aprirla
 è chi la fattura la sta cancellando — cioè questa funzione, due passi più in su.
@@ -203,17 +223,28 @@ direbbe «dieci cose fatte» senza distinguere attività **sbloccate** da attivi
 
 ---
 
-### Esempio d'uso
+Il cleanup delle note avviene su `vendite.note` (partizione `note_fatture`).
 
-```sql
-SELECT *
-FROM vendite.fn_cleanup_fatture_by_ids(
-  p_fatture_ids   => ARRAY[1001, 1002],
-  p_lock_batch_id => NULL
-);
-```
+---
 
-Nota: il cleanup delle note avviene su `vendite.note` (partizione `note_fatture`).
+### Test
+
+* `db/pgtap/vendite/test-porta-reset-lotto-e-fondo-v1.sql` — gira come l'applicazione: l'app non
+  esegue la funzione; la GUC del reset la accende solo lei; dopo il verbo che la chiama la GUC è
+  vuota.
+* `db/pgtap/vendite/test-cleanup-fattura-copertura-figlie-v1.sql` — ogni figlia di
+  `vendite.fatture` è classificata.
+* `db/pgtap/vendite/test-af-emessa-non-lockata-reset-e-riporto-v1.sql` — le attività col marchio
+  del giro e senza lucchetto.
+
+---
+
+### Note di migrazione
+
+* 2026-11-25 — riservata al proprietario; la GUC del reset si spegne prima di uscire. Prima
+  restava accesa fino alla fine della transazione, per il resto del verbo e per ciò che il backend
+  faceva dopo, e i guard la onoravano senza chiedere chi scriveva
+  (brief-db-porte-aperte-dalla-sola-guc, giro 1-7, D-W a).
 
 ---
 

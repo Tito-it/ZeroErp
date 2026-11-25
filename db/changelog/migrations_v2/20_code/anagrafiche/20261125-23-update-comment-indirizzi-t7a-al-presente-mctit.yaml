@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT degli oggetti degli indirizzi del giro T7a al presente.
+#   Brief: brief-db-revisione-anagrafiche §21 (T7a), 2026-11-25.
+#
+#   I changeSet 20261123-87, -88 e -89 hanno scritto COMMENT con la cronaca
+#   dentro (il nome di un brief, sigle di decisione, date di nascita):
+#   linee-guida-sql §5d li vuole al presente. Lo ha fermato
+#   scripts/guardrail_comment_al_presente.py in CI, a file gia' applicati e
+#   mergiati: non si riscrivono (checksum), si riscrivono gli oggetti qui.
+#   I file applicati dichiarano in testa l'eccezione, che rimanda a questo.
+#
+#   ⚠️ Il COMMENT di anagrafiche.trgfn_indirizzi_dettaglio_guard_chiave che
+#   20261123-87 voleva scrivere (con E_INDIRIZZO_VIA_NON_RISOLTA) era finito
+#   in un primo blocco `rollback:` duplicato, scartato dal parser (vince
+#   l'ultima chiave): sul vivo e' rimasto il testo senza la via non risolta.
+#   Qui il COMMENT dice anche quella regola, che il corpo fa valere.
+#
+#   Solo COMMENT ON: nessun corpo, nessun trigger cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261125-23-update-comment-indirizzi-t7a-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261125-23-update-comment-indirizzi-t7a-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I COMMENT del guard della chiave di indirizzi_dettaglio e dei due BB che leggono un
+        elemento indirizzo riscritti al presente, senza cronaca. brief-db-revisione-anagrafiche §21.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND p.proname IN ('trgfn_indirizzi_dettaglio_guard_chiave',
+                                   'fn_indirizzo_elemento',
+                                   'fn_indirizzo_elemento_dettaglio');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_guard_chiave() IS
+                  'Guard della chiave di anagrafiche.indirizzi_dettaglio, in fascia z10: dopo il normalize, che scrive i valori come si salvano. E_INDIRIZZO_VIA_NON_RISOLTA: la via non si risolve (via_norm NULL, per esempio il comune senza provincia), su ogni strada di scrittura. E_INDIRIZZO_CIVICO_NON_POSITIVO: civico <= 0 (SNC = civico NULL). E_INDIRIZZO_DETTAGLIO_SENZA_LETTERE: estensione, palazzina, scala, piano o interno senza una lettera o una cifra. E_INDIRIZZO_DETTAGLIO_DUPLICATO, solo in UPDATE: la riga andrebbe sulla chiave di un''altra, che la frase nomina (in INSERT il doppione lo cerca il BB fn_get_or_create_indirizzo_dettaglio e la corsa la chiude l''indice). UPDATE che non tocca la chiave: esce. Reti: i CHECK chk_indirizzi_dettaglio_civico_positivo e chk_indirizzi_dettaglio_dettaglio_leggibile, l''indice uq_indirizzi_dettaglio_norm_v2.';
+
+              COMMENT ON FUNCTION anagrafiche.fn_indirizzo_elemento(jsonb, text, jsonb) IS
+                  'BB: legge un indirizzo in jsonb per le madri degli indirizzi. Un oggetto (E_SCRIPT_CHIAMATA_NON_VALIDA), solo chiavi ammesse (E_CAMPO_NON_AMMESSO: le colonne della riga, tipo_indirizzo_codice_interno e i campi di una via da risolvere), il tipo risolto da tipo_indirizzo_id o tipo_indirizzo_codice_interno (codice interno): un id che non esiste o non e'' un numero, o un codice che non c''e'', E_TIPO_INDIRIZZO_NON_TROVATO col campo; id e codice che dicono due tipi, E_TIPO_INDIRIZZO_DISCORDE. Ritorna l''elemento con tipo_indirizzo_id e senza il codice. p_chi: la madre che chiama; p_contesto: chiavi aggiunte al contesto dei rifiuti. Non giudica completezza ne'' forma: e'' anagrafiche.trgfn_indirizzi_guard_forma_libera. Chiamanti: anagrafiche.fn_crea_indirizzi_ruolo e fn_crea_indirizzo_soggetto, che leggono cosi'' un indirizzo con una grammatica sola.';
+
+              COMMENT ON FUNCTION anagrafiche.fn_indirizzo_elemento_dettaglio(jsonb) IS
+                  'BB: l''indirizzo normalizzato di un elemento letto da anagrafiche.fn_indirizzo_elemento. Indirizzo libero (indirizzo_libero non vuoto): NULL. indirizzo_dettaglio_id: quello. Nessuna chiave di una via (stradario_id, toponomastica_id, descrizione_via): NULL, la riga e'' libera e il guard della forma (anagrafiche.trgfn_indirizzi_guard_forma_libera) dice che cosa manca, anche per un elemento vuoto. Altrimenti la via (stradario_id, oppure toponomastica_id + descrizione_via + comune_id + codice_postale_id) e il civico, risolti da anagrafiche.fn_create_indirizzo, idempotente, che valida la via nuova (E_INDIRIZZO_VIA_NUOVA_INCOMPLETA). Chiamanti: anagrafiche.fn_crea_indirizzi_ruolo e fn_crea_indirizzo_soggetto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: i COMMENT di prima sono quelli di 20261123-87, -88 e -89.
+              SELECT 1;

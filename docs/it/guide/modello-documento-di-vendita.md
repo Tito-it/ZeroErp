@@ -1,6 +1,6 @@
 # Guida — Il modello del documento di vendita
 
-> **Ultimo aggiornamento**: 13 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > **Destinatari**: chi lavora su un documento di vendita o d'acquisto — sviluppatori database,
 > backend, frontend e analisti funzionali. Prima di cambiare come un documento nasce, cambia stato,
@@ -30,6 +30,8 @@
 > * [script.fn_doc_azione_passaggio](/dbzero/script/funzioni/fn_doc_azione_passaggio) — la domanda del backend: che cosa chiede questo passaggio?
 > * [script.fn_doc_azioni_permesse](/dbzero/script/funzioni/fn_doc_azioni_permesse) — i passaggi manuali che l'operatore può fare da uno stato: lo leggono le capability e le liste
 > * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) — il permesso dentro il verbo
+> * [vendite.fn_guard_passaggio_lotto](/dbzero/vendite/funzioni/fn_guard_passaggio_lotto) — il permesso del passaggio del lotto, che sulla riga senza azione rifà il permesso sul documento
+> * [script.fn_guard_livello_area](/dbzero/script/funzioni/fn_guard_livello_area) — il livello su un'area, che il lotto chiede sulla riga senza azione
 > * [script.fn_check_azione_processo](/dbzero/script/funzioni/fn_check_azione_processo) — la regola del permesso, la stessa per DB e backend
 > * [vendite.trgfn_doc_guard_annullo_con_legami](/dbzero/vendite/funzioni/trgfn_doc_guard_annullo_con_legami) — l'annullo di un documento con legami si conferma
 >
@@ -206,6 +208,15 @@ permesso sul documento. La stessa riga la leggono tre punti, e nessuno dei tre d
 
 Un punto unico è ciò che rende i permessi **configurabili**: un'azione scritta nel corpo di un verbo,
 o nel codice di una view, non la cambia nessuno senza un rilascio.
+
+⚠️ **Il lotto di fatturazione rifà a DB anche il permesso sul documento.** Sulla riga senza azione il
+guard comune del passaggio lascia passare: il permesso sul documento lo controlla il backend. I due
+verbi del lotto che cambiano stato insieme alla pulizia, l'annullo e il ritorno in bozza, girano come
+proprietario, senza la row security dietro. Per questo, sulla riga senza azione, o quando non c'è un
+passaggio (il ritorno in bozza di un lotto già in bozza), chiedono anche il livello `TUTTO` sull'area
+`vendite`, lo stesso controllo dell'endpoint
+([`vendite.fn_guard_passaggio_lotto`](/dbzero/vendite/funzioni/fn_guard_passaggio_lotto)). Vale solo
+per il lotto: gli altri documenti non cambiano.
 
 **Il permesso di un'operazione dentro il passaggio** non sta sulla riga. Se un passaggio, in certi
 casi, fa anche un'operazione che ha un permesso suo, quel permesso lo chiede il verbo quando la fa.

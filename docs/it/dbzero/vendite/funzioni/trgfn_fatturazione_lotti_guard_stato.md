@@ -32,16 +32,14 @@ AS $function$
 DECLARE
     v_ok BOOLEAN;  -- esito di EXISTS sulla matrice
     v_applica   config.stati_doc_fiscale.applica_lotto%TYPE;
-    v_bypass TEXT;
-    v_tipo_lotto TEXT;
+    v_tipo_lotto vendite.fatturazione_lotti.tipo_lotto%TYPE;
     v_congela   config.stati_doc_fiscale.congela_fiscale%TYPE;
     v_abortito  config.stati_doc_fiscale.is_abortito%TYPE;
     v_fermo     boolean;  -- verdetto della sede unica
     v_motivo    text;     -- motivo del fermo, dalla sede unica
 BEGIN
-    -- Bypass per reset tecnico
-    v_bypass := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
-    IF v_bypass IS NOT NULL AND lower(v_bypass) IN ('1', 'true', 'on', 'yes') THEN
+    -- La porta del reset del lotto: GUC e proprietario.
+    IF vendite.fn_porta_reset_lotto_aperta(TG_RELID) THEN
         RETURN NEW;
     END IF;
     IF NEW.stato_doc_fiscale_id IS DISTINCT FROM OLD.stato_doc_fiscale_id THEN
@@ -96,7 +94,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_fatturazione_lotti_guard_stato()
-IS 'Guard (BEFORE UPDATE OF stato_doc_fiscale_id) del cambio di stato del lotto di fatturazione. Lo stato d''arrivo deve applicarsi al lotto (config.stati_doc_fiscale.applica_lotto): la regola sta sulla destinazione; la nascita la copre il CHECK chk_stati_doc_fiscale_iniziale_applica. Il passaggio deve essere una riga ammessa di config.stati_doc_fiscale_transizioni con solo_fattura = false e, se la riga lo dichiara in meta, lo stesso tipo_lotto. Errore dei due controlli: E_LOTTO_PARAMETRO_NON_COERENTE (parametro stato_doc_fiscale_id o transizione_stato). Un lotto fermo (vendite.vw_lotti_segnalazioni_summary.fermo: segnalazioni critiche, fatture o documenti in errore) non entra in uno stato congelato e non abortito (congela_fiscale, is_abortito): E_PIPELINE_LOTTO_CRITICAL, lo stesso codice del runner; l''annullo resta ammesso. Bypass per il reset tecnico: GUC zeroerp.maintenance_reset_lotto_draft.';
+IS 'Guard (BEFORE UPDATE OF stato_doc_fiscale_id) del cambio di stato del lotto di fatturazione. Lo stato d''arrivo deve applicarsi al lotto (config.stati_doc_fiscale.applica_lotto): la regola sta sulla destinazione; la nascita la copre il CHECK chk_stati_doc_fiscale_iniziale_applica. Il passaggio deve essere una riga ammessa di config.stati_doc_fiscale_transizioni con solo_fattura = false e, se la riga lo dichiara in meta, lo stesso tipo_lotto. Errore dei due controlli: E_LOTTO_PARAMETRO_NON_COERENTE (parametro stato_doc_fiscale_id o transizione_stato). Un lotto fermo (vendite.vw_lotti_segnalazioni_summary.fermo: segnalazioni critiche, fatture o documenti in errore) non entra in uno stato congelato e non abortito (congela_fiscale, is_abortito): E_PIPELINE_LOTTO_CRITICAL, lo stesso codice del runner; l''annullo resta ammesso. Passa la porta del reset del lotto (vendite.fn_porta_reset_lotto_aperta: GUC zeroerp.maintenance_reset_lotto_draft e proprietario della tabella), aperta solo durante la pulizia: lo stato che i verbi del reset scrivono dopo la pulizia lo giudica questo guard.';
 ```
 
 </div>

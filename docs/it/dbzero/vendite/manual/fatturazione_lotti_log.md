@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.fatturazione_lotti_log`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -38,7 +38,9 @@ relativi ai processi del lotto di fatturazione.
   restano in `vendite.fatture_log`.
 * `DELETE` diretto bloccato: consentito solo con GUC
   `zeroerp.maintenance_allow_delete_logs = on`
-  (compatibile con GUC tecnica `zeroerp.maintenance_reset_lotto_draft = on`).
+  Il reset del lotto li cancella dalla sua porta: la GUC `zeroerp.maintenance_reset_lotto_draft`
+  accesa e il proprietario della tabella, dentro la pulizia
+  ([vendite.fn_porta_reset_lotto_aperta](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta)).
 
 ---
 

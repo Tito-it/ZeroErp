@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `pagamenti.fn_annulla_sistemazione`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -16,9 +16,14 @@
 > Approfondimento funzioni:
 >
 > * [pagamenti.trgfn_sistemazioni_guard_transizione](/dbzero/pagamenti/funzioni/trgfn_sistemazioni_guard_transizione) — la sede unica della regola sugli stati, e del varco sul riporto
-> * [vendite.fn_cancella_fondo_fattura](/dbzero/vendite/funzioni/fn_cancella_fondo_fattura) — il gesto che fa cadere il fondo del riporto
+> * [vendite.fn_applica_cancellazione_fondo_fattura](/dbzero/vendite/funzioni/fn_applica_cancellazione_fondo_fattura) — la primitiva che fa cadere il fondo del riporto
+> * [script.fn_guard_livello_area](/dbzero/script/funzioni/fn_guard_livello_area) — il permesso: il livello `TUTTO` sull'area `pagamenti`
 > * [vendite.fn_reset_fondi_fattura](/dbzero/vendite/funzioni/fn_reset_fondi_fattura) — la rigenerazione automatica, che la cancellazione del fondo riapre
 > * [pagamenti.fn_conferma_sistemazione](/dbzero/pagamenti/funzioni/fn_conferma_sistemazione) — il verbo gemello, che aveva creato l'esito
+>
+> Guide:
+>
+> * [Gestione dei pagamenti](/guide/gestione-dei-pagamenti) — le sistemazioni e i fondi fattura
 
 ---
 
@@ -32,12 +37,36 @@ perché la volta scorsa si è deciso di lasciarla lì.
 
 ---
 
+### Chi la chiama, con quale permesso e su quale atto
+
+È il verbo dell'endpoint di annullo della sistemazione. Gira come proprietario
+(`SECURITY DEFINER`), fuori dalla row security, quindi permesso e perimetro li controlla lei,
+all'ingresso:
+
+* **il permesso**, in prima riga: il livello `TUTTO` sull'area `pagamenti`
+  ([`script.fn_guard_livello_area`](/dbzero/script/funzioni/fn_guard_livello_area)), senza un
+  oggetto. È ciò che l'endpoint controlla già: chi arriva dall'interfaccia non riceve un rifiuto
+  nuovo. Sotto il livello: `E_PERMESSO_NEGATO`;
+* **il perimetro**, sull'atto: la sistemazione dev'essere di un'azienda di chi agisce. Fuori dal
+  perimetro l'atto «non c'è» (`E_SISTEMAZIONE_NON_TROVATA`, la stessa risposta di un atto
+  inesistente).
+
+**Le porte spente all'ingresso.** Il verbo spegne la GUC delle righe contabili e quella del reset
+del lotto prima di cominciare.
+
+⭐ **Chi annulla non deve avere anche `governa_fondo_fattura`.** Il fondo del riporto cade dalla
+primitiva [`vendite.fn_applica_cancellazione_fondo_fattura`](/dbzero/vendite/funzioni/fn_applica_cancellazione_fondo_fattura),
+che non chiede permessi suoi, e non dal verbo pubblico del gesto «cancella il fondo», che quel
+permesso lo chiede.
+
+---
+
 ### ⭐ È piccola, e deve restarlo
 
 Esiste per tre ragioni:
 
-1. dare un messaggio giusto a «quell'atto non c'è», che sotto la row security vuol dire anche
-   «non è tuo», e le due cose devono restare indistinguibili;
+1. dare un messaggio giusto a «quell'atto non c'è», che vuol dire anche «non è tuo», e le due
+   cose devono restare indistinguibili;
 2. far arrivare il **motivo** nello stesso gesto in cui si annulla, invece di chiedere a chi
    chiama di scriverlo prima con un aggiornamento a parte;
 3. disfare l'**esito** di un riporto confermato, perché l'atto e il suo effetto cadono insieme.
@@ -64,8 +93,8 @@ mesi nessuno saprebbe se è stata una scelta o una dimenticanza.
 
 ### ⭐ Su un riporto confermato, il fondo cade con l'atto
 
-Se l'atto era `CONFERMATA` e la destinazione è `RIPORTO`, l'annullamento chiama
-`vendite.fn_cancella_fondo_fattura`, e il fondo creato dalla conferma **sparisce insieme alla
+Se l'atto era `CONFERMATA` e la destinazione è `RIPORTO`, l'annullamento chiama la primitiva
+`vendite.fn_applica_cancellazione_fondo_fattura`, e il fondo creato dalla conferma **sparisce insieme alla
 decisione**: l'atto e il suo effetto cadono insieme, o il registro racconta un fatto che non è
 avvenuto.
 
@@ -97,14 +126,15 @@ merita un fondo lo si rifà), ma è un effetto reale.
 
 ### Codici errore
 
+* `E_PERMESSO_NEGATO` — manca il livello `TUTTO` sull'area `pagamenti`, o manca l'utente.
 * `E_SISTEMAZIONE_NON_TROVATA` — l'atto non esiste o è fuori perimetro.
 * `E_SISTEMAZIONE_IMMUTABILE` — l'atto è già terminale (dal guard di transizione).
 * `E_SISTEMAZIONE_ANNULLO_NON_AMMESSO` — l'atto è un rimborso o una compensazione già
   confermati (dal guard di transizione).
 * `E_SISTEMAZIONE_MOTIVO_OBBLIGATORIO` — né la chiamata né l'atto portano un motivo (dal guard
   dei dati).
-* i codici di `vendite.fn_cancella_fondo_fattura`, se il fondo del riporto non si può
-  cancellare.
+* i codici di `vendite.fn_applica_cancellazione_fondo_fattura`, se il fondo del riporto non si
+  può cancellare.
 
 ---
 
@@ -115,6 +145,9 @@ merita un fondo lo si rifà), ma è un effetto reale.
   ne conserva la memoria in `meta`; su una compensazione il rifiuto nomina l'alternativa.
 * `db/pgtap/pagamenti/test-sistemazioni-giro-completo.sql` — il test 12: l'annullamento lascia
   l'atto a registro, e su un atto inesistente rifiuta.
+* `db/pgtap/vendite/test-porta-reset-lotto-e-fondo-v1.sql` — gira come l'applicazione: il verbo è
+  `SECURITY DEFINER`; con l'area `pagamenti` a `LETTURA` risponde `E_PERMESSO_NEGATO`; la
+  sistemazione di un'altra azienda risponde `E_SISTEMAZIONE_NON_TROVATA` e resta com'era.
 
 ---
 
@@ -124,6 +157,10 @@ merita un fondo lo si rifà), ma è un effetto reale.
 * 2026-08-31 — sul riporto confermato fa cadere anche il fondo. Il piano chiedeva l'ordine inverso,
   prima il fondo e poi l'atto: alla lettera non era eseguibile per la FK `NO ACTION`, e la
   stessa garanzia la dà la transazione unica.
+* 2026-11-25 — `SECURITY DEFINER`: il livello d'area dell'endpoint in prima riga, il perimetro
+  sull'atto all'ingresso (prima lo dava la row security), le porte spente all'ingresso; il fondo
+  cade dalla primitiva e non più dal verbo pubblico (brief-db-porte-aperte-dalla-sola-guc, giro 8,
+  D-U a).
 
 ---
 

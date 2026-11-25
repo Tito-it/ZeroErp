@@ -428,7 +428,7 @@ SELECT throws_like(
     '25) il DELETE della riga registrata parla PRIMA della FK, col messaggio giusto');
 
 -- ============================================================
--- 26-28) La porta del DELETE: chiusa, aperta dalla madre, richiusa
+-- 26-28) La porta del DELETE: chiusa, e la GUC a mano non la apre
 -- ============================================================
 SELECT throws_like(
     format($q$DELETE FROM pagamenti.vendite_contabili_righe WHERE id = %s$q$,
@@ -436,13 +436,20 @@ SELECT throws_like(
     '%non e'' compilata a mano%',
     '26) il DELETE sotto una GENERATA e'' rifiutato: la porta e'' chiusa');
 
--- ⭐ E' cio' che fa vendite.fn_cancella_fondo_fattura attorno al SUO DELETE.
+-- ⭐ rev 2026-11-25 (brief-db-porte-aperte-dalla-sola-guc, giro 8): la porta e'
+--   SULLA RIGA e col proprietario. La apre solo la primitiva del fondo
+--   (vendite.fn_applica_cancellazione_fondo_fattura, DEFINER), con la GUC
+--   uguale all'id del suo atto, e solo per le righe di quell'atto. Accesa a
+--   mano a 'on', non apre niente: e' il controesempio. Il DELETE della
+--   primitiva lo provano vendite/test-fondo-fattura-cancellazione e
+--   vendite/test-porta-reset-lotto-e-fondo-v1.
 SELECT set_config('zeroerp.allow_contabile_riga_delete_override', 'on', true);
 
-SELECT lives_ok(
+SELECT throws_like(
     format($q$DELETE FROM pagamenti.vendite_contabili_righe WHERE id = %s$q$,
            (SELECT id FROM tmp_righe WHERE et = 'C')),
-    '27) ...ma la madre del giro la apre con la GUC, e il suo DELETE passa');
+    '%non e'' compilata a mano%',
+    '27) ...e la GUC accesa a mano non la apre: la porta e'' della primitiva del fondo, sulla riga del suo atto');
 
 SELECT set_config('zeroerp.allow_contabile_riga_delete_override', '', true);
 

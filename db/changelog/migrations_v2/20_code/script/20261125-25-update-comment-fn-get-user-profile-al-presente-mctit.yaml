@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il COMMENT di script.fn_get_user_profile al presente.
+#   Brief: brief-db-emittente-del-super-admin §4 (R-DB-2), 2026-11-25.
+#
+#   20261124-14 ha ricopiato il COMMENT vivo, che portava la cronaca di ogni
+#   giro (fasi, «Rev …», id di changeSet, brief), e ci ha aggiunto la sua:
+#   linee-guida-sql §5d lo vuole al presente. Lo ha fermato
+#   scripts/guardrail_comment_al_presente.py in CI, a file gia' applicato e
+#   mergiato: non si riscrive (checksum), si riscrive l'oggetto qui. Il file
+#   applicato dichiara in testa l'eccezione, che rimanda a questo.
+#   Solo COMMENT ON: nessun corpo cambia. Firma con %TYPE, come nel
+#   changeSet di partenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261125-25-update-comment-fn-get-user-profile-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261125-25-update-comment-fn-get-user-profile-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il COMMENT di script.fn_get_user_profile riscritto al presente, senza cronaca.
+        brief-db-emittente-del-super-admin §4.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_get_user_profile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_get_user_profile(anagrafiche.identita_digitali.auth_user_id%TYPE) IS
+                  'Profilo utente completo (JSONB) della credenziale. Richiede l''identita'' OPERATORE e la risorsa umana, altrimenti E_ADMIN_VALIDAZIONE, che viene prima. La veste OPERATORE e'' quella di riferimento della credenziale (script.fn_veste_di_riferimento: l''accesa, o la spenta piu'' recente), e deve essere utilizzabile oggi (script.fn_veste_utilizzabile: veste accesa e nelle sue date, soggetto attivo, rapporto attivo e nelle sue date), altrimenti E_UTENTE_DISABILITATO, col segnaposto lo username. Le chiavi top-level: ruolo_applicativo segue la GUC app.ruolo_applicativo della sessione se c''e'', altrimenti il ruolo dell''identita''; is_super_admin e'' script.fn_is_super_admin, che legge il contesto della sessione. deve_cambiare_password e'' della credenziale (script.fn_get_deve_cambiare_password). Il blocco emittente e'' l''emittente configurato dell''utente, la sua riga di config.user_emittenti_fiscali (al piu'' una), con emittente_descrizione = la ragione_sociale_completa del soggetto emittente; senza riga e'' NULL, anche per il super admin. Non segue l''emittente attivo della sessione: l''emittente di chi agisce e'' script.fn_resolve_emittente_for_user.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: il COMMENT di prima e' quello di 20261124-14.
+              SELECT 1;

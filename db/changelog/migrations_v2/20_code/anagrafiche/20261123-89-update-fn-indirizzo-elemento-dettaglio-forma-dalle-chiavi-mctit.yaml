@@ -6,6 +6,7 @@
 # Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato e mergiato, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/anagrafiche/20261125-23.
 # anagrafiche.fn_indirizzo_elemento_dettaglio: la forma dell'elemento la
 #   decide il DB dalle chiavi.
 #   D-T7a-5 di Tid (2026-11-24), brief-db-revisione-anagrafiche §21 (S50).

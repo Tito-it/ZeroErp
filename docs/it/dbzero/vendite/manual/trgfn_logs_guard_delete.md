@@ -1,17 +1,18 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.trgfn_logs_guard_delete`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [vendite.fatture_log](/dbzero/vendite/tabelle/fatture_log)  
+> • [vendite.fatture_log](/dbzero/vendite/tabelle/fatture_log)  
 > • [vendite.fatturazione_lotti_log](/dbzero/vendite/tabelle/fatturazione_lotti_log)  
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-• [vendite.trgfn_event_log_append_only](/dbzero/vendite/funzioni/trgfn_event_log_append_only) — il gemello su `event_log`  
+> • [vendite.fn_porta_reset_lotto_aperta](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta) — la porta del reset del lotto: la GUC e il proprietario  
+> • [vendite.trgfn_event_log_append_only](/dbzero/vendite/funzioni/trgfn_event_log_append_only) — il gemello su `event_log`  
 > • [dbops.trgfn_cleanup_at_alla_nascita](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita) — chi scrive la scadenza  
 > • [dbops.fn_purge_cleanup_expired](/dbzero/dbops/funzioni/fn_purge_cleanup_expired) — chi la ritira  
 > • [script.fn_porta_manutenzione_aperta](/dbzero/script/funzioni/fn_porta_manutenzione_aperta) — la porta di manutenzione, solo per il migratore  
@@ -30,9 +31,11 @@ distinguendo però fra **cancellare la storia** e **ritirare ciò che è scaduto
   * `vendite.fatture_log`
   * `vendite.fatturazione_lotti_log`
 * `DELETE` **ammesso** in tre casi, in quest'ordine:
-  1. la porta di **verbo** `zeroerp.maintenance_reset_lotto_draft` è accesa: la accende
-     `vendite.fn_cleanup_fatture_by_ids` per il reset di un lotto in bozza chiamato
-     dall'applicazione, e il guard la legge da sé;
+  1. la porta del **reset del lotto** è aperta
+     ([fn_porta_reset_lotto_aperta](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta)): la
+     GUC `zeroerp.maintenance_reset_lotto_draft` è accesa **e** chi cancella è il proprietario
+     della tabella. La GUC la accende solo `vendite.fn_cleanup_fatture_by_ids`, riservata al
+     proprietario, e la spegne prima di uscire. Per l'applicazione la GUC accesa non apre niente;
   2. **la riga è scaduta**: `cleanup_at IS NOT NULL AND cleanup_at <= now()` — è la
      retention che passa;
   3. la porta di **manutenzione** `zeroerp.maintenance_allow_delete_logs` è aperta, cioè
@@ -101,6 +104,8 @@ Nessun output funzionale (trigger guard: ritorna `OLD` in caso consentito).
   dall'applicazione non apre, e la riga viva si rifiuta.
 * `db/pgtap/vendite/test-registri-fatturazione-scadenza-alla-nascita.sql` — il ramo 2
   (riga scaduta) e la conseguenza su `critical`.
+* `db/pgtap/vendite/test-porta-reset-lotto-e-fondo-v1.sql` — la porta del reset accesa
+  dall'applicazione non apre: una riga viva del log del lotto non si cancella.
 
 ---
 
@@ -111,6 +116,9 @@ Nessun output funzionale (trigger guard: ritorna `OLD` in caso consentito).
   apre solo alla sessione del migratore, e si chiede dopo la retention, così il diario
   registra solo le righe vive cancellate. La porta di verbo del reset del lotto resta com'è
   (`brief-db-seed-primo-impianto-non-si-riscrive`).
+* 2026-11-25 — la porta del reset si legge da `vendite.fn_porta_reset_lotto_aperta` e chiede anche
+  il proprietario; prima bastava la GUC, che l'applicazione poteva accendere da sé
+  (brief-db-porte-aperte-dalla-sola-guc, giro 1-7).
 
 ---
 

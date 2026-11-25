@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: il test chiama diretta vendite.fn_cleanup_fatture_by_ids, riservata al proprietario
+--   dal giro 8 + 1-7: l'app ci arriva solo dai verbi del reset del lotto, che la
+--   vogliono dentro un lotto. Il passo che il test usa non sta sul percorso dell'app
+--   (brief-db-porte-aperte-dalla-sola-guc, giro 8 + 1-7, 2026-11-25: scelta di Tid). Il lato
+--   dell'app lo prova vendite/test-porta-reset-lotto-e-fondo-v1.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la commessa da dbops.fn_pgtap_crea_commessa (sorgente ROOT), le attivita' da dbops.fn_pgtap_crea_commessa_attivita (sorgente DDT_VENDITA, E-3), le fatture agganciate da dbops.fn_pgtap_fattura_attivita: ritirato pg_temp.ann_fattura; il reset del lotto (pg_temp.ann_reset_lotto, UPDATE a mano) diventa il verbo vero vendite.fn_cleanup_fatture_by_ids sulle note che fatturano le rettifiche (E-4); restano a mano la seconda riga di fattura e la seconda coppia sul ponte (il caso del plurale).
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso dal builder dbops.fn_pgtap_crea_reso (che concede da se' conferma_reso); resta scritta a mano la commessa con la fattura e la seconda coppia sul ponte, che sono il caso del test.
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine; resta scritto a mano il reso (giro 2) e la commessa con la fattura, che sono il caso del test.

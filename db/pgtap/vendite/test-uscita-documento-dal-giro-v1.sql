@@ -51,6 +51,14 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: questo test gira come gira l'applicazione.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
+-- ⭐ rev 2026-11-25 (brief-db-porte-aperte-dalla-sola-guc, giro 8 + 1-7): «escludi dal giro» e'
+--   SECURITY DEFINER e chiede il permesso che l'endpoint controlla (reset_lotto_fattura_draft). Chi
+--   agisce lo riceve qui; il caso senza permesso lo prova
+--   vendite/test-porta-reset-lotto-e-fondo-v1.
+DO $perm$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'reset_lotto_fattura_draft');
+END $perm$;
+
 SELECT plan(22);
 
 -- ============================================================

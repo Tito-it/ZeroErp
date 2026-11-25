@@ -12,7 +12,7 @@
 --
 -- ⭐ I casi si COSTRUISCONO: due emittenti con il loro operatore
 --   (fn_pgtap_crea_emittente_operatore: BLOCCATO ovunque, il livello lo scrive
---   il test con pg_temp.livello_area). Il mondo di B (lotto con lo STESSO
+--   il test con dbops.fn_pgtap_concedi_livello_area). Il mondo di B (lotto con lo STESSO
 --   codice e seriale dello stesso articolo) nasce nel SUO contesto; i
 --   tentativi si fanno in quello di A.
 --
@@ -85,16 +85,10 @@ SELECT dbops.fn_pgtap_crea_magazzino('PGT-LDA-A', false)                        
 CREATE TEMP TABLE _inv AS SELECT dbops.fn_pgtap_crea_inventario(mag) AS inv FROM _fa;
 
 -- Il livello d'area dell'operatore A.
-CREATE OR REPLACE FUNCTION pg_temp.livello_area(p_area text, p_livello text) RETURNS void
-LANGUAGE sql AS $fx$
-    INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)
-    SELECT a.auth_user_id, af.id, p_livello::config.livello_accesso,
-           'pgTAP: il lotto dell''azienda'
-      FROM _a a, config.aree_funzionali af
-     WHERE af.schema_db = p_area
-    ON CONFLICT (auth_user_id, area_id) DO UPDATE SET livello = EXCLUDED.livello
-$fx$;
-SELECT pg_temp.livello_area('magazzino', 'TUTTO');
+-- ⭐ rev 2026-11-25 (D-L a, brief-db-porte-aperte-dalla-sola-guc): il livello d'area lo
+--   da' il builder dbops.fn_pgtap_concedi_livello_area; la copia pg_temp.livello_area
+--   che stava qui e' ritirata (regola del 2).
+SELECT dbops.fn_pgtap_concedi_livello_area((SELECT auth_user_id FROM _a), 'magazzino', 'TUTTO');
 
 -- I montaggi di una funzione trigger, come «schema.tabella:arg1:arg2:…»,
 -- letti per funzione e argomenti (linee-guida-trigger: mai per nome).
