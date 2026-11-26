@@ -39,7 +39,7 @@ search:
 - [fn_check_articolo_riga_su_contesto](manual/fn_check_articolo_riga_su_contesto.md) — (nasce 2026-10-14, brief-db-articoli-ammessi-per-documento, Lotto 4: A-2, D-6)
 - [fn_check_attivita_riportabile_da_emettere](manual/fn_check_attivita_riportabile_da_emettere.md) — (latest review 26-08-2026)
 - [fn_check_azione_processo](manual/fn_check_azione_processo.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
-- [fn_check_ba_cambio_emittente](manual/fn_check_ba_cambio_emittente.md) — (latest review 27-08-26)
+- [fn_check_ba_cambio_emittente](manual/fn_check_ba_cambio_emittente.md) — Risponde alla domanda: *«questo billing account può passare da un'azienda all'altra?»*. È la regola del cambio d'azienda sul collegamento (`anagrafiche.emittenti_fiscali_billing_account`): il billing account cambia azienda solo se non ha nessun documento, di qualunque famiglia e in qualunque stato, anche in bozza.
 - [fn_check_ba_visible_for_emittenti](manual/fn_check_ba_visible_for_emittenti.md) — (latest review 18-08-26)
 - [fn_check_blocco_login](manual/fn_check_blocco_login.md) — (riscritta il 25-09-2026)
 - [fn_check_commessa_annullabile](manual/fn_check_commessa_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-07-24)
@@ -133,8 +133,8 @@ search:
 - [fn_get_auth_user_id_for_email](manual/fn_get_auth_user_id_for_email.md)
 - [fn_get_auth_user_id_for_risorsa_umana](manual/fn_get_auth_user_id_for_risorsa_umana.md) — (nata il 12-09-2026, `20_code/script/20260912-17`)
 - [fn_get_auth_user_stato](manual/fn_get_auth_user_stato.md) — Dire, per un utente dell'anagrafica di Django, **come si chiama** e **se è attivo**. Nient'altro.
-- [fn_get_ba_emittente_sr_id](manual/fn_get_ba_emittente_sr_id.md) — (latest review 13-09-26)
-- [fn_get_ba_emittente_sr_id_installazione](manual/fn_get_ba_emittente_sr_id_installazione.md) — (latest review 10-10-26)
+- [fn_get_ba_emittente_sr_id](manual/fn_get_ba_emittente_sr_id.md) — Risponde a una domanda sola, e la mette per la prima volta in forma di **nome** invece che di sì/no:
+- [fn_get_ba_emittente_sr_id_installazione](manual/fn_get_ba_emittente_sr_id_installazione.md) — Risponde a: **di quale azienda è questo billing account, per l'installazione?**
 - [fn_get_ba_id_da_coppia](manual/fn_get_ba_id_da_coppia.md) — (nata il 2026-10-21, `20261021-24`)
 - [fn_get_catasto_source_by_istanza](manual/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
 - [fn_get_contabile_stato_origine](manual/fn_get_contabile_stato_origine.md) — Risponde lo **stato** e l'**origine** di una distinta contabile, letti fuori dalla row security. È il building block dei guard delle righe contabili, che devono giudicare la distinta anche quando chi scrive la riga non la vede.

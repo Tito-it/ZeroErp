@@ -1,19 +1,20 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_lookup_utilities_per_ba`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
 > * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — il billing account di cui si cercano le utility
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il ruolo del billing account, da cui si legge il tipo
 > * [config.utilities_tipi_ruolo](/dbzero/config/tabelle/utilities_tipi_ruolo) — quali utility sono ammesse per quale tipo di ruolo
 > * [anagrafiche.emittenti_fiscali_utilities](/dbzero/anagrafiche/tabelle/emittenti_fiscali_utilities) — i parametri d'importo propri di un'azienda
 >
 > Approfondimento funzioni:
 >
 > * [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk) — l'azienda del billing account
-> * [script.fn_get_ba_emittente_sr_id](/dbzero/script/funzioni/fn_get_ba_emittente_sr_id) — la regola a tre livelli dietro quella risposta
+> * [script.fn_get_ba_emittente_sr_id](/dbzero/script/funzioni/fn_get_ba_emittente_sr_id) — la regola dietro quella risposta: il collegamento del billing account
 > * [anagrafiche.fn_parametri_importo_utility](/dbzero/anagrafiche/funzioni/fn_parametri_importo_utility) — i parametri d'importo effettivi
 
 ---
@@ -31,21 +32,34 @@ parametri d'importo effettivi.
 Una utility esce se in `config.utilities_tipi_ruolo` è ammessa, con una riga attiva e valida nel giorno
 operativo:
 
-* per il **tipo di ruolo** passato da chi chiama (`p_ruolo_codice_soggetto`, un codice interno come `CL`, `FO`,
-  `GE`);
+* per il **tipo di ruolo** del billing account, che chi chiama passa (`p_ruolo_codice_soggetto`, un codice
+  interno come `CL`, `FO`, `GE`);
 * per il tipo di ruolo **emittente** (`EF`).
 
-Tutti e due i tipi si cercano per codice interno, che non cambia. Un codice che non esiste, o che non ha
-utility ammesse, dà zero righe e non un errore.
+Tutti e due i tipi si cercano per codice interno, che non cambia. Un tipo di ruolo ammesso che non ha utility
+dà zero righe e non un errore.
+
+---
+
+### ⛔ Il billing account e il suo ruolo si leggono, non si credono
+
+La funzione legge il billing account e il tipo del suo ruolo prima di rispondere:
+
+* un id che non è un billing account, o che chi chiama non vede (la funzione gira coi suoi permessi), è
+  rifiutato: non ricade sull'azienda predefinita;
+* un tipo di ruolo che non è quello del billing account è rifiutato: l'elenco di un altro tipo di ruolo non
+  sarebbe proponibile per quel conto.
+
+Tutti e due rispondono `E_PARAMETRO_INVALIDO`, come un parametro mancante: è chi chiama a sbagliare. Il
+parametro del ruolo resta nella firma, che il backend chiama per posizione.
 
 ---
 
 ### L'azienda del billing account
 
-L'azienda si risolve con `fn_get_emittente_fiscale_pk`, cioè con la regola a tre livelli: il collegamento del
-billing account; senza, in sessione, l'azienda di chi agisce; senza sessione, l'azienda predefinita. Se nessuno
-dei tre risponde, `E_EMITTENTE_DEFAULT_MISSING`. L'azienda decide i parametri, non l'elenco: l'elenco lo fa la
-matrice dei tipi di ruolo.
+L'azienda si risolve con `anagrafiche.fn_get_emittente_fiscale_pk`: è quella del collegamento del billing
+account, che ogni billing account ha. L'azienda decide i parametri, non l'elenco: l'elenco lo fa la matrice dei
+tipi di ruolo.
 
 ---
 
@@ -63,21 +77,11 @@ Una utility ammessa senza la riga dell'azienda resta nell'elenco, coi valori di 
 
 ---
 
-### ⚠️ Che cosa oggi non copre
-
-* **Il ruolo non lo legge dal billing account.** Il tipo di ruolo lo dice chi chiama, e la funzione non
-  verifica che sia quello del ruolo del billing account: un codice diverso dà l'elenco di un altro tipo di
-  ruolo senza errore.
-* **Il billing account non deve esistere.** Un id positivo che non corrisponde a nessun billing account non è
-  rifiutato: senza collegamento, l'azienda si risolve dalla sessione o dalla predefinita, e la funzione risponde
-  con le utility di quell'azienda.
-
----
-
 ### Codici errore
 
-* `E_PARAMETRO_INVALIDO` — billing account mancante o non positivo, o tipo di ruolo vuoto.
-* `E_EMITTENTE_DEFAULT_MISSING` — da `fn_get_emittente_fiscale_pk`: nessuna azienda risolvibile.
+* `E_PARAMETRO_INVALIDO` — billing account mancante, non positivo, inesistente o fuori dal perimetro di chi
+  chiama; tipo di ruolo vuoto o diverso da quello del billing account.
+* `E_EMITTENTE_DEFAULT_MISSING` — da `anagrafiche.fn_get_emittente_fiscale_pk`: nessuna azienda risolvibile.
 
 ---
 
@@ -86,6 +90,8 @@ Una utility ammessa senza la riga dell'azienda resta nell'elenco, coi valori di 
 * `db/pgtap/anagrafiche/test-fn-lookup-utilities-per-ba.sql` — i parametri obbligatori, la riga
   personalizzata, l'utility ammessa per cliente ed emittente, la risoluzione per codice interno anche quando il
   codice visibile del tipo di ruolo cambia.
+* `db/pgtap/anagrafiche/test-fn-lookup-utilities-per-ba-legge-il-ba-v1.sql` — l'id che non è un billing account
+  e il ruolo che non è il suo sono rifiutati; col ruolo del billing account la funzione risponde.
 * `db/pgtap/vendite/test-parametri-importo-utility-v1.sql` — il lookup mostra i parametri effettivi, mai vuoti.
 
 ---
@@ -95,6 +101,8 @@ Una utility ammessa senza la riga dell'azienda resta nell'elenco, coi valori di 
 * 2026-06-29 — i tipi di ruolo si cercano per codice interno: col codice visibile la funzione rispondeva zero
   righe.
 * 2026-10-21 — i parametri d'importo sono quelli effettivi: prima, senza la riga dell'azienda, uscivano vuoti.
+* 2026-11-26 — legge il billing account: prima un id che non era un billing account ricadeva sulla predefinita,
+  e un tipo di ruolo diverso dava l'elenco di un altro ruolo, senza errore.
 
 ---
 

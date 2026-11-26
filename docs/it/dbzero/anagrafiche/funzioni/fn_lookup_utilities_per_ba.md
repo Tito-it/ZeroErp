@@ -20,7 +20,9 @@ AS $function$
 DECLARE
     v_emittente_pk        anagrafiche.emittenti_fiscali.id%TYPE;
     v_emittente_sr_id     anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+    -- il giorno operativo: nessuna colonna dietro
     v_today               date := script.fn_data_operativa();
+    v_ruolo_ba            config.tipi_ruoli.codice_interno%TYPE;
 BEGIN
     -- rev 2026-10-21 (brief-db-modelli-documento-standard §10.3 K-7):
     --   i parametri d'importo sono quelli effettivi, dal BB
@@ -60,6 +62,47 @@ BEGIN
             ),
             NULL::uuid,
             'p_ruolo_codice_soggetto obbligatorio'
+        );
+    END IF;
+
+    -- Il BA esiste (ed e' nel perimetro di chi chiama: la funzione e'
+    -- INVOKER), e il ruolo chiesto e' il suo. Un id che non e' un BA
+    -- ricadeva sulla predefinita e rispondeva; un ruolo diverso dava le
+    -- utility di un altro ruolo.
+    SELECT tr.codice_interno
+      INTO v_ruolo_ba
+      FROM anagrafiche.billing_account ba
+      JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+      JOIN config.tipi_ruoli tr          ON tr.id = sr.tipo_ruolo_id
+     WHERE ba.id = p_billing_account_id;
+
+    IF NOT FOUND THEN
+        PERFORM script.fn_log_and_raise_error(
+            'anagrafiche',
+            'fn_lookup_utilities_per_ba',
+            'E_PARAMETRO_INVALIDO',
+            jsonb_build_object(
+                'detail', 'p_billing_account_id non e'' un billing account',
+                'billing_account_id', p_billing_account_id
+            ),
+            NULL::uuid,
+            'p_billing_account_id non e'' un billing account'
+        );
+    END IF;
+
+    IF v_ruolo_ba IS DISTINCT FROM p_ruolo_codice_soggetto THEN
+        PERFORM script.fn_log_and_raise_error(
+            'anagrafiche',
+            'fn_lookup_utilities_per_ba',
+            'E_PARAMETRO_INVALIDO',
+            jsonb_build_object(
+                'detail', 'p_ruolo_codice_soggetto non e'' il ruolo del billing account',
+                'billing_account_id', p_billing_account_id,
+                'ruolo_codice_soggetto', p_ruolo_codice_soggetto,
+                'ruolo_del_billing_account', v_ruolo_ba
+            ),
+            NULL::uuid,
+            'p_ruolo_codice_soggetto non e'' il ruolo del billing account'
         );
     END IF;
 
@@ -114,7 +157,7 @@ END
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_lookup_utilities_per_ba(p_billing_account_id bigint, p_ruolo_codice_soggetto text)
-IS 'Utility ammesse per un billing account, guidate da emittente: intersezione ruolo soggetto (p_ruolo_codice_soggetto, codice_interno: CL/FO/GE) AND ruolo EF (codice_interno EF), con override parametri per emittente (LEFT JOIN). rev 2026-06-29: ruoli risolti per codice_interno (analisi-hardcoded-codice §3a #15) - col vecchio codice ritornava 0 righe. rev 2026-10-21 (brief-db-modelli-documento-standard §10.3 K-7): i parametri d''importo sono quelli effettivi di anagrafiche.fn_parametri_importo_utility, la riga dell''emittente se c''e'' e altrimenti il valore di sistema dell''utility; is_personalizzata_per_ef dice se la riga c''e''.';
+IS 'Le utility ammesse per un billing account: quelle ammesse sia per il ruolo del soggetto del billing account (p_ruolo_codice_soggetto, per codice_interno: CL, FO, GE) sia per il ruolo dell''emittente (EF), con i parametri d''importo effettivi dell''azienda del billing account (anagrafiche.fn_parametri_importo_utility). Il billing account deve esistere ed essere nel perimetro di chi chiama, e il ruolo deve essere il suo: altrimenti E_PARAMETRO_INVALIDO, come per un parametro mancante. Ruoli e validita'' si leggono al giorno operativo. STABLE, SECURITY INVOKER.';
 ```
 
 </div>

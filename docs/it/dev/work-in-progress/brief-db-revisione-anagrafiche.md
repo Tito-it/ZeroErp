@@ -2,9 +2,10 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-26
 
-**Ripartono in due, senza aspettarsi.** La **sessione DB** con il giro 6 (T4, l'azienda del billing account:
-decisioni prese da Tid il 2026-11-26, §24.5; piano in §24.6, serve il range dei changeSet) (il giro 5-bis, il titolo
-IVA che chiede la partita IVA, è ritirato da Tid il 2026-11-26: il controllo esiste già, §23.4), e in coda il brief
+**Ripartono in due, senza aspettarsi.** La **sessione DB** con T8, il prossimo tema di §17.1: il giro 6 (T4, l'azienda
+del billing account) è chiuso lato DB, `20261126-26 … -41` applicati su scratch e dbdev, pgTAP verdi (Tid, 2026-11-26,
+§24.7), committato il 2026-11-26; il suo passaggio al BE (§24.5, §24.7) è del **team BE/FE**. Il giro 5-bis (il titolo IVA che
+chiede la partita IVA) è ritirato da Tid il 2026-11-26: il controllo esiste già, §23.4. In coda il brief
 nuovo di T6 (che porta anche l'ultimo contatto del soggetto, §22.7). Il **team BE/FE** coi passaggi al BE ancora
 aperti dei giri 3 (§20.7: `_NULLABLE` di `update_soggetto` e i due codici obsoleti nel ripiego sono ancora lì,
 verificato il 2026-11-26) e 4 (§21.7), più la fase 7. Il giro 5 è chiuso: il DB committato (`7f8d9506d`, PR #249),
@@ -23,8 +24,8 @@ resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta d
 | 6 | sessione DB | Il giro dei metadati, per ciò che i giri di codice non hanno già riscritto | §8 | 4 |
 | 7 | sessione DB | Archiviazione in `work-done/`, col debito dei temi spostati scritto nei loro brief | §11 | 5, 6 |
 
-**Decisioni aperte di Tid:** nessuna del giro 6 (T4): decise il 2026-11-26 (§24.5); serve il range dei changeSet. Il giro 5-bis è ritirato (Tid, 2026-11-26, §23.4). Nessuna del giro 5 (D-T7b-1 … -7 prese come proposte, Tid 2026-11-25, §22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
-**Da committare:** il brief, con la sezione del giro 5-bis ritirato (2026-11-26); il giro 5 è committato (DB `7f8d9506d`, BE 2026-11-26).
+**Decisioni aperte di Tid:** nessuna del giro 6 (T4): D-T4-1 … -12 decise il 2026-11-26 (§24.5, §24.7.1, §24.7). Il giro 5-bis è ritirato (Tid, 2026-11-26, §23.4). Nessuna del giro 5 (D-T7b-1 … -7 prese come proposte, Tid 2026-11-25, §22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
+**Da committare:** niente: il giro 6 (T4) è committato (2026-11-26, «DB: anagrafiche giro 6 (T4)», insieme al giro 5-bis ritirato); il giro 5 è committato (DB `7f8d9506d`, BE 2026-11-26).
 
 ## 0. Il piano da percorrere
 
@@ -106,7 +107,10 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
     del titolo, file tolti, numeri `20261125-77 … -80` liberi (2026-11-26, §23.4)
   * [x] Giro 6: T4, analisi sul catalogo, guide verificate, ciò che esiste già (2026-11-26, §24.1)
   * [x] Giro 6: T4, le decisioni (Tid, 2026-11-26, §24.5)
-  * [ ] Giro 6: T4, pgTAP rosso, changeSet, doc, prova sullo scratch; apply (Tid); commit; la richiesta al BE (§24.6)
+  * [x] Giro 6: T4, pgTAP rosso, changeSet `20261126-26 … -41`, doc, prova sullo scratch (2026-11-26, §24.7)
+  * [x] Giro 6: T4, apply su scratch e dbdev e pgTAP verdi col runner (Tid, 2026-11-26)
+  * [x] Giro 6: T4, commit (2026-11-26, «DB: anagrafiche giro 6 (T4)»)
+  * [ ] Giro 6: T4, il passaggio al BE (§24.5, §24.7): da girare
   * [ ] Poi un giro per tema nell'ordine di §17.1: T8, T12, T3, T10, T11
 * **Fase 9 — Il giro dei metadati** (§8)
   * [ ] I COMMENT, i commenti nei corpi e le note di seed che i giri di codice non hanno già riscritto
@@ -2524,3 +2528,180 @@ cancellazione di un collegamento di un BA è rifiutata; la frase del blocco per 
 * [ ] la nota `_emittente-del-billing-account` riscritta (due livelli, tre movimenti, «Vedi anche» completo),
   `manual/billing_account`, le pagine delle funzioni ritirate, le guide indietro
 * [ ] apply e pgTAP (Tid); doc auto-generata rigenerata; commit; la richiesta al BE
+
+### 24.7 Che cosa è scritto (giro 6, in corso)
+
+Range dei changeSet: `20261126-26 … -40` (Tid, 2026-11-26: «il primo progressivo libero, altri cantieri fermi»),
+occupato per intero con segnaposto lo stesso giorno. Il giro si costruisce in due blocchi: **A** i difetti
+indipendenti (S28, S31, S29, S32, S27), **B** il modello «ogni BA ha sempre il suo collegamento».
+
+* ✅ **S28, l'albero a un livello** (`-37`, 2026-11-26): `anagrafiche.fn_check_ba_padre` (SECURITY DEFINER, i motivi
+  `E_PARENT_CON_PADRE`, `E_PARENT_HA_FIGLI`, `E_PARENT_SECONDO_PADRE`) chiamata da
+  `trgfn_billing_account_guard_normalize` quando il padre nasce o cambia; lo stacco con attività non fatturate vale
+  anche per il cambio. Codici in coda ai due cataloghi (messaggi `1550 … 1552`), la frase di
+  `E_DISSOCIAZIONE_PARENT_CON_ATTIVITA` riscritta. pgTAP nuovo `anagrafiche/test-billing-account-albero-un-livello-v1`:
+  senza 1 ok / 5 rossi, con 6/6; `test-billing-account-guard-parent` e `test-guard-albero-ba-omogeneo-v1` invariati.
+  Prova sullo scratch col seed dei codici simulato (lo script non carica i CSV: il caricatore lo prova l'apply).
+  Fatto del 2026-11-26: su scratch e dbdev nessun albero fuori dalla regola nuova.
+* ✅ **S31, l'utente illeggibile** (`-28`, 2026-11-26): `trgfn_billing_account_guard_admin_globale` senza il blocco
+  `EXCEPTION`, `v_user_id` ancorata. pgTAP nuovo `anagrafiche/test-billing-account-utente-illeggibile-v1`: il test 1
+  (il BA con `app.current_user_id` illeggibile è rifiutato) rosso senza, verde con; il test 2 (nessun `EXCEPTION WHEN
+  OTHERS` nei due trigger) resta rosso finché `-27` non riscrive `trgfn_billing_account_link_ef`.
+  `test-billing-account-auto-link-ef` invariato.
+* ✅ **S29, la valuta** (`-38`, 2026-11-26): `fk_billing_account_valute` e `fk_emittenti_fiscali_valute` verso
+  `config.valute(id)`, `ON UPDATE CASCADE`; nella politica degli indici `SENZA_INDICE` per le due e per la gemella
+  `fk_fornitori_valute`, che era `DA_DECIDERE` (stesso significato). Fatto del 2026-11-26: nessun orfano su scratch e
+  dbdev. pgTAP nuovo `anagrafiche/test-valuta-fk-billing-account-emittente-v1`: senza 0/3, con 3/3.
+* ✅ **S32, il lookup** (`-39`, 2026-11-26): `fn_lookup_utilities_per_ba` legge il ruolo del BA e rifiuta un id che non
+  è un BA e un ruolo che non è il suo (`E_PARAMETRO_INVALIDO`); firma invariata. pgTAP nuovo
+  `anagrafiche/test-fn-lookup-utilities-per-ba-legge-il-ba-v1`: senza 1/3, con 3/3; il vecchio
+  `test-fn-lookup-utilities-per-ba` invariato (7/7). ⚠️ Debito di quel test, non di questo giro: i casi 4-7 dipendono
+  dai dati della macchina e degradano a «soft-pass» (regola zero, corollario sui test).
+* ✅ **S27, la fattura** (`-36`, 2026-11-26): `script.trgfn_doc_guard_emittente_ba` montato su `vendite.fatture`
+  (`'Fattura', 'numero', 'emittente_soggetto_ruolo_id', 'E_DOC_EMITTENTE_BA_INCOERENTE'`). pgTAP nuovo
+  `vendite/test-fatture-guard-emittente-ba-v1`: senza 0/3, con 3/3; invariati `test-chiave-fattura-tre-specchi-v1`,
+  `test-lotto-rilancio-emittente-del-lotto-v1`, `test-registri-per-emittente-v1`,
+  `test-ricalcola-totali-fattura-arrotondamento` (il motore scrive l'azienda del BA).
+* ⏳ **Blocco B**, il modello «ogni BA ha sempre il suo collegamento» (`-26`, `-27`, `-29 … -35`): da scrivere.
+
+#### 24.7.1 Il blocco B, letto prima di scrivere (2026-11-26): tre fatti che ne cambiano la portata
+
+D-T4-11 decisa da Tid il 2026-11-26: **a**, un BA nasce solo se esiste almeno un'azienda (senza, la nascita è
+rifiutata per la predefinita mancante); lo scenario «0 emittenti» di `script.fn_check_user_can_create_ba`
+(2026-04-08) non vale più per la nascita di un BA.
+
+1. **La FK del collegamento non ha `ON DELETE`** (`fk_emittenti_fiscali_billing_account_ba`): oggi per cancellare un
+   BA se ne cancella prima il collegamento. Vietare la cancellazione del collegamento di un BA vivo bloccherebbe anche
+   la cancellazione del BA. Forma: la FK diventa `ON DELETE CASCADE` (`-40`, in `00_schema`), e un guard immediato
+   vieta di cancellare il collegamento di un BA che esiste ancora o di spostarlo su un altro conto. Il controllo a fine
+   transazione non serve più.
+2. **La lista dei collegamenti del backend spegne il cestino con il motivo letto dal DB**
+   (`backend/apps/anagrafiche/db/emittenti_fiscali_repository.py`, `sql_lateral_primo_motivo` su
+   `script.fn_check_ba_cambio_emittente`, righe 382-421 al 2026-11-26). Con la regola nuova il collegamento di un BA
+   non si cancella **mai**: il motivo del cestino è un altro, e va in una `fn_check_*` che il guard e la lista leggono
+   insieme (linee-guida-sql §12.5.2). Richiesta al BE: la lista legge la check nuova.
+3. **I guard della predefinita sono quattro, non tre**: c'è anche `anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale`
+   (la chiave del cliente manuale contiene l'azienda del BA), chiamata da `trgfn_efba_guard_clienti_chiave` per la riga
+   di default. Si ritira con gli altri. `backend/apps/anagrafiche/services/emittenti_fiscali_service.py` nomina
+   `fn_guard_ba_gestore_globale_storia` (riga 311 al 2026-11-26): da censire nella richiesta al BE.
+
+**S33, un fatto nuovo su D-T4-9**: rendere differiti i guard di nascita sposta l'errore al COMMIT anche per l'app che
+crea un BA con un padre di un'altra azienda (un errore ordinario di chi compila). Decide Tid: differire, oppure tenere
+i guard immediati e dichiarare il limite della creazione senza sessione con un'azienda chiesta diversa dalla
+predefinita e un padre su quell'azienda.
+
+**Risposte di Tid sui tre fatti (2026-11-26)**
+
+* **1. Il billing account non si cancella** (Tid: «il cliente è giusto che sia non cancellabile, c'è la possibilità di
+  mettere lo stato ad annullato, usiamo quello»). Letto sul catalogo: `billing_account` non ha uno stato (solo
+  `valido_dal`, `valido_al`); lo stato è del cliente (`clienti.stato_cliente_id` → `config.stati_cliente`, fra cui
+  `AN` «annulla servizio»), e un BA ha un solo cliente. Nessuna funzione del DB e nessun punto del backend cancellano un
+  BA; lo fanno tre pgTAP (`test-billing-account-guard-parent`, `test-istanza-nasce-col-ba-v1`,
+  `test-fn-disdetta-cliente`). Ne segue: **niente `ON DELETE CASCADE`** (il punto 1 di §24.7.1 è superato); un guard
+  rifiuta la cancellazione di un BA, e il collegamento di un BA non si cancella e non si sposta su un altro conto. Il
+  `-40` resta per il guard sulla cancellazione del BA.
+* **2. Il cestino della lista dei collegamenti** (Tid: «allinearsi al cambio stato»): da confermare la lettura, in chat.
+* **3. Il quarto guard della predefinita** (chiave unica del cliente manuale): Tid ha chiesto una spiegazione, in chat.
+  Non è una decisione: con ogni BA collegato quel guard non ha più niente da cercare e si ritira con gli altri tre.
+* **4. S33: b** (Tid). I guard di nascita restano immediati; il limite (creazione senza sessione, con un'azienda chiesta
+  diversa dalla predefinita e un padre su quell'azienda) si scrive nella pagina di `fn_crea_billing_account` e nella
+  nota. Il `-35` torna libero come riserva.
+
+**Verifica degli YAML scritti (su richiesta di Tid, 2026-11-26)**, su `-26`, `-28`, `-36`, `-37`, `-38`, `-39`:
+`guardrail_forme_changeset` aveva un solo rilievo, il `RETURNS TABLE` del `-39` coi tipi sciolti dal catalogo
+(`id-senza-type` su `utility_id`). Lì il tipo resta esplicito con la ragione scritta: è la firma che il backend
+legge, e i valori sono cast (`u.id::bigint` su un `integer`) o uscite di funzione, non il riflesso di una colonna
+(§5f, §5g). Ogni altro tipo nudo ha la ragione sulla riga sopra (motivi, esiti, conteggi, il giorno operativo, la
+riga di una SELECT statica). `guardrail_comment_al_presente` e `guardrail_run_on_change`: puliti. Tutti gli YAML si
+leggono. Il `-39` riprovato dopo il ritocco: invariato (3/3).
+
+* ✅ **D-T4-4, la storia è qualunque documento** (`-26`, 2026-11-26): `fn_ba_ha_storia_emittente` e
+  `fn_get_storia_emittente_ba` non chiedono più il numero; firma e `RETURNS TABLE` ri-ancorati. La frase e la causa di
+  `E_BA_EMITTENTE_CON_STORIA` dicono «documenti», non «documenti numerati». Il pgTAP
+  `test-ba-storia-solo-numerati-v1` asseriva la regola revocata: riscritto (test 2 e 3: la bozza fa storia, il cambio
+  è respinto) e rinominato `test-ba-storia-qualunque-documento-v1` (`git mv`): senza 5/7, con 7/7.
+  `test-ba-cambio-emittente-storia-v1` invariato (14/14). ⚠️ Tre pagine `manual/` citano il nome vecchio e la regola
+  vecchia (`fn_guard_ba_cambio_emittente`, `fn_ba_ha_storia_emittente`, `fn_get_storia_emittente_ba`): si correggono
+  nel giro della documentazione.
+* ⏳ **Blocco B scritto** (2026-11-26): `-27` (la nascita sempre collegata: azienda di chi agisce, o predefinita senza
+  sessione; senza aziende `E_EMITTENTE_DEFAULT_MISSING`; senza il blocco `EXCEPTION`, la seconda metà di S31), `-29`
+  (i BA scollegati collegati alla predefinita di oggi), `-30` e `-31` (il collegamento non si cancella e non passa a un
+  altro conto: il building block «rifiuta sempre», `E_BA_COLLEGAMENTO_NON_SI_TOGLIE`, `E_BA_COLLEGAMENTO_NON_SI_SPOSTA`),
+  `-32` (i quattro trigger del collegamento senza i rami della predefinita), `-33` (ritiro dei quattro guard della
+  predefinita), `-34` (`fn_crea_billing_account` senza sessione modifica il collegamento nato; il limite di S33 nel
+  COMMENT), `-40` (il BA non si cancella: «rifiuta sempre», `E_BA_NON_SI_CANCELLA`). Codici in coda ai cataloghi
+  (messaggi `1553 … 1555`). Il `-35` resta di riserva. Prova sullo scratch, coi codici simulati: il pgTAP nuovo
+  `anagrafiche/test-billing-account-sempre-collegato-v1` senza 3/9, con 9/9; verdi con l'estratto
+  `test-billing-account-auto-link-ef` (il test 1 adeguato: senza sessione il BA nasce collegato alla predefinita),
+  `test-billing-account-utente-illeggibile-v1` (2/2), `test-ba-storia-qualunque-documento-v1`,
+  `test-ba-cambio-emittente-storia-v1`.
+  **Da adeguare, perché descrivono la regola di prima**: `test-istanza-ba-gestore-globale-v1` (prova i guard ritirati:
+  si ritira, il caso utile lo coprono i test 7-8 del nuovo), `test-guard-albero-ba-omogeneo-v1` (test 5, la
+  cancellazione del collegamento), `test-istanza-nasce-col-ba-v1` (test 3-4, la cancellazione del BA),
+  `test-cliente-manuale-chiave-unica-v1`, `test-emittenti-fiscali`, `test-billing-account-guard-parent` (si
+  interrompono), `test-fn-disdetta-cliente` (lo script non lo corre: la prima istruzione non è `BEGIN`).
+  ⚠️ **Fatto nuovo per Tid**: col BA che non si cancella, `trg_billing_account_z90_require_istanza_ha_ba_dlt` (un'istanza
+  non resta senza BA, `E_ISTANZA_SENZA_BA`), che scatta solo alla cancellazione di un BA, non ha più un caso: da
+  decidere se ritirarlo in questo giro.
+* ✅ **Blocco B provato** (2026-11-26, sullo scratch, tutti i changeSet del giro insieme, coi codici simulati). La
+  prova ha trovato un difetto del `-34`, corretto: l'`UPDATE` del collegamento scriveva `billing_account_id` senza
+  alias, ambiguo con la colonna omonima del `RETURNS TABLE` (42702). **pgTAP adeguati al contratto nuovo**, con la
+  ragione scritta sopra: `test-billing-account-auto-link-ef` (1), `test-cliente-manuale-chiave-unica-v1` (25a, 25: la
+  predefinita non cambia la chiave di nessuno), `test-guard-albero-ba-omogeneo-v1` (5: la cancellazione del
+  collegamento è rifiutata; 10-11: la predefinita si sposta senza toccare l'albero), `test-emittenti-fiscali` (8, 9,
+  12, 13: il BA nasce collegato, il cambio d'azienda si fa modificando il collegamento), `test-istanza-nasce-col-ba-v1`
+  (3, 4: `E_BA_NON_SI_CANCELLA`), `test-fn-crea-cliente-v1` (6: senza sessione il legame è alla predefinita),
+  `rls/test-rls-clienti` (il secondo BA del mondo A si porta all'azienda di A modificandone il collegamento),
+  `test-billing-account-guard-parent` e `script/test-fn-disdetta-cliente` (tolte le cancellazioni di BA e collegamenti:
+  la seconda era una pulizia in autocommit prima del `BEGIN`). **Ritirato** `test-istanza-ba-gestore-globale-v1` (`git
+  rm`): provava i quattro guard ritirati. Esito: verdi con l'estratto tutti i pgTAP del censimento (una
+  quarantina, §24.7); i rossi che restano (`test-cliente-manuale-chiave-unica-v1` 1,
+  `test-billing-account-guard-cf-confrontabile-v1` 1, `test-distinta-numerazione-registro-v1` 2,
+  `test-rls-billing-account-returning-secondo-emittente` 1) ci sono uguali senza l'estratto: da owner, non del giro.
+* ⏳ **Resta del giro 6**: la documentazione (la nota `_emittente-del-billing-account` da riscrivere: due livelli,
+  niente movimento 4, il collegamento che non si toglie; le pagine `manual/` dei sei oggetti toccati, delle due funzioni
+  nuove e delle quattro ritirate; le guide `generazione-cliente`, `emittenti-fiscali`, `fatturazione`; le tre pagine col
+  nome vecchio del test della storia, le sette che citano il test ritirato); la decisione di Tid su
+  `trg_billing_account_z90_require_istanza_ha_ba_dlt`; il passaggio al BE (§24.5, la lista dei collegamenti senza
+  cestino, `delete_mapping`, `emittenti_fiscali_service.py`); poi apply e pgTAP (Tid). Il `-35` resta di riserva.
+* ✅ **Applicato** `-26 … -40` su scratch e dbdev (letto sul `databasechangelog`, 2026-11-26). Correzioni dei pgTAP
+  trovate da Tid col runner: `test-cliente-manuale-chiave-unica-v1` 25a (il BA va sulla terza azienda *dopo* la nascita
+  del cliente, dentro la finestra differita: prima, come operatore, la RLS non glielo faceva più vedere, `E_CODICE`
+  da `trgfn_clienti_sync_utility_from_ba`; la prova da owner non lo vede), `test-valuta-fk-billing-account-emittente-v1`
+  1 (la tabella puntata per OID: `regclass::text` dipende dal `search_path`). ✅ Verdi col runner (Tid, 2026-11-26).
+* ✅ **D-T4-12, il guard della cancellazione del BA sull'istanza: ritirato** (Tid, 2026-11-26), `-35`:
+  `trg_billing_account_z90_require_istanza_ha_ba_dlt` e la sua funzione; restano `fn_guard_istanza_ha_ba` ed
+  `E_ISTANZA_SENZA_BA` (la nascita dell'istanza). La nota di `automation_lock_columns.csv` (le due righe della coppia
+  del BA) nomina ora il rifiuto della cancellazione del BA.
+* ✅ **La documentazione** (2026-11-26, 51 file sotto `docs/it`, letta a campione): riscritta la nota
+  `_emittente-del-billing-account`, aggiornata `_chiave-unica-cliente`, 41 pagine `manual/` (anagrafiche, script,
+  vendite), creata `manual/fn_check_ba_padre`, tolte con `git rm` le cinque pagine degli oggetti ritirati, cinque guide
+  (`generazione-cliente`, `emittenti-fiscali`, `soggetti-e-ruoli-anagrafici`, `gestione-delle-istanze-utility`,
+  `fatturazione`). Nelle righe aggiunte nessun brief, id di changeSet o cronaca datata. Intestazioni dei pgTAP
+  allineate (`test-billing-account-albero-un-livello-v1`, `test-istanza-nasce-col-ba-v1`).
+* ✅ **`-41`** (scritto e provato il 2026-11-26; applicato da Tid, test verdi, lo stesso giorno): i COMMENT al presente di `fn_guard_istanza_ha_ba`,
+  `fn_guard_istanza_ba_emittente`, `script.fn_get_ba_emittente_sr_id_installazione`,
+  `script.fn_check_ba_cambio_emittente`, e il commento del ramo NULL nel corpo di `fn_ba_ha_storia_emittente`
+  (rimandavano agli oggetti ritirati o alla regola del documento numerato).
+* **Debito residuo, letto dalla revisione della doc** (non del giro): `anagrafiche/index.ci.md` (generato) linka le
+  pagine `manual/` ritirate fino alla prossima rigenerazione; `script/manual/fn_check_user_can_create_ba.md` e
+  `fn_get_ba_emittente_sr_id.md` fuori standard di forma (titoli, cronaca), `famiglie_documento.md` col «Vedi anche»
+  malformato: vanno con T11.
+* **Da girare al BE** (con §24.5): la lista dei collegamenti senza cestino (`script.fn_check_ba_cambio_emittente` col
+  ramo «billing account NULL» resta finché la lista lo legge); `delete_mapping` → un `UPDATE` dell'azienda sul
+  collegamento; il drawer «Gestisci billing account» non toglie più collegamenti; le pagine API in `docs/it/backend/`
+  che descrivono la cancellazione di un collegamento; `emittenti_fiscali_service.py` riga 311 (nomina il guard ritirato).
+* ✅ **Confermato da Tid** (2026-11-26): «il cliente si chiude annullandolo» vale come scritto nelle guide. Nel
+  percorso degli stati `AN` si raggiunge solo da pre-contrattuale e attivo; un cliente sospeso o chiuso, se è stato una
+  fornitura, si chiude col suo ciclo di vita.
+
+### 24.8 Che cosa resta del giro 6 (2026-11-26)
+
+* ✅ DB: `20261126-26 … -41` applicati su scratch e dbdev, pgTAP verdi col runner (Tid). Il range si chiude a `-41`
+  (`-40` e `-41` usati: il guard della cancellazione del BA e i COMMENT al presente); nessun segnaposto avanzato.
+* ✅ Commit (2026-11-26, «DB: anagrafiche giro 6 (T4)»).
+* ⏳ Il passaggio al BE: §24.5 («Richiesta al team BE/FE») e §24.7 («Da girare al BE»). Il censimento applicativo:
+  «censisci chi scrive o cancella `anagrafiche.emittenti_fiscali_billing_account` e chi conta sul BA senza
+  collegamento, o sulla cancellazione di un BA».
+* Debito residuo, non del giro: le pagine fuori forma e l'indice generato (§24.7), con T11; i casi 4-7 di
+  `test-fn-lookup-utilities-per-ba` che dipendono dai dati della macchina.

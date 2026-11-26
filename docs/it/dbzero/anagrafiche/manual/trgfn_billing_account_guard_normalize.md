@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_billing_account_guard_normalize`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,6 +11,8 @@
 >
 > Approfondimento funzioni:
 >
+> * [anagrafiche.fn_check_ba_padre](/dbzero/anagrafiche/funzioni/fn_check_ba_padre) — l'albero a un livello e un padre per cliente e per azienda
+> * [script.fn_raise_primo_motivo_se_presente](/dbzero/script/funzioni/fn_raise_primo_motivo_se_presente) — solleva il primo motivo della check
 > * [script.trgfn_guard_date_validita](/dbzero/script/funzioni/trgfn_guard_date_validita) — l'ordine delle due date, che non è qui
 > * [anagrafiche.trgfn_billing_account_guard_albero_emittente](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_albero_emittente) — padre e figli della stessa azienda, l'altra domanda sull'albero
 
@@ -19,8 +21,9 @@
 ### 🎯 Scopo Principale
 
 `anagrafiche.trgfn_billing_account_guard_normalize` tiene le regole del conto padre di un billing account: il
-padre non è il conto stesso, è della stessa identità fiscale, porta una data d'inizio, e non si toglie finché
-ci sono attività da fatturare.
+padre non è il conto stesso, è dello stesso cliente, rispetta l'albero a un livello e il padre unico per
+cliente e per azienda, porta una data d'inizio, e non si toglie né si cambia finché ci sono attività da
+fatturare.
 
 Nonostante il nome non normalizza niente: non tocca il codice né altre colonne, e restituisce la riga com'è.
 Gira prima di ogni inserimento e modifica del billing account.
@@ -29,8 +32,26 @@ Gira prima di ogni inserimento e modifica del billing account.
 
 ### Il padre non è il conto stesso
 
-Un billing account con sé stesso come padre è rifiutato (`E_PARENT_SELF`). È l'unico controllo sulla forma
-dell'albero: un padre che ha a sua volta un padre, o due conti che si fanno da padre l'un l'altro, passano.
+Un billing account con sé stesso come padre è rifiutato (`E_PARENT_SELF`).
+
+---
+
+### ⭐ L'albero ha un livello solo, e un cliente un padre per azienda
+
+Quando il padre nasce o cambia, il trigger chiede ad `anagrafiche.fn_check_ba_padre` i motivi per cui il
+billing account non lo può prendere, e solleva il primo:
+
+* il padre proposto ha già un padre (`E_PARENT_CON_PADRE`);
+* il billing account fa già da padre (`E_PARENT_HA_FIGLI`);
+* il cliente ha già un altro padre sulla stessa azienda (`E_PARENT_SECONDO_PADRE`).
+
+Le prime due insieme rendono impossibile anche un ciclo: in un ciclo ogni conto sarebbe padre e figlio. Con un
+livello solo la fattura va al padre diretto senza ambiguità. Non c'è un indicatore «è un padre»: la
+semantica sta tutta in `parent_account_id`.
+
+La regola sta nella check, e non qui, perché deve leggere il padre del padre, i figli e gli altri padri del
+cliente, che la RLS di chi scrive può nascondere: la check gira coi privilegi del proprietario, il trigger no.
+Una modifica che non tocca il padre non rilegge l'albero.
 
 ---
 
@@ -60,22 +81,18 @@ Il confronto avviene a ogni scrittura con un padre, anche quando il padre non ca
 
 ---
 
-### Il padre non si toglie con attività da fatturare
+### Il padre non si toglie né si cambia con attività da fatturare
 
-Se una modifica svuota il padre e il billing account ha attività fatturabili non ancora fatturate, è
-rifiutata (`E_DISSOCIAZIONE_PARENT_CON_ATTIVITA`): quelle attività finiranno in una fattura intestata al padre,
-e il distacco le farebbe uscire con un'altra intestazione a metà del ciclo.
+Se una modifica svuota il padre o lo cambia con un altro, e il billing account ha attività fatturabili non
+ancora fatturate, è rifiutata (`E_DISSOCIAZIONE_PARENT_CON_ATTIVITA`): quelle attività finiranno in una fattura
+intestata al padre, e il distacco o il cambio le farebbe uscire con un'altra intestazione a metà del ciclo.
 
 ---
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Il cambio di padre non è giudicato come il distacco.** Da un padre a un altro il legame si sposta anche con
-  attività non fatturate: il controllo guarda solo il padre che diventa vuoto.
-* **Nessun controllo di profondità o di ciclo** oltre al padre uguale a sé (vedi sopra).
 * **Il nome del trigger non ha fascia** (`trg_billing_account_guard_normalize_ins_upd`): gira, per ordine
   alfabetico, dopo i guard di fascia `a` e prima di quelli di fascia `z`.
-* **Il COMMENT della funzione** dice che controlla le date e normalizza il codice: non lo fa.
 
 ---
 
@@ -86,7 +103,8 @@ e il distacco le farebbe uscire con un'altra intestazione a metà del ciclo.
 * `E_PARENT_NON_RAGGIUNGIBILE` — il padre non esiste o non è visibile a chi scrive.
 * `E_PARENT_SOGGETTO_DIVERSO` — manca un codice fiscale e i soggetti sono diversi.
 * `E_ID_FISCALI_DIVERSI` — i due codici fiscali sono diversi.
-* `E_DISSOCIAZIONE_PARENT_CON_ATTIVITA` — si toglie il padre con attività non fatturate.
+* `E_PARENT_CON_PADRE`, `E_PARENT_HA_FIGLI`, `E_PARENT_SECONDO_PADRE` — da `anagrafiche.fn_check_ba_padre`.
+* `E_DISSOCIAZIONE_PARENT_CON_ATTIVITA` — si toglie o si cambia il padre con attività non fatturate.
 
 ---
 
@@ -96,6 +114,9 @@ e il distacco le farebbe uscire con un'altra intestazione a metà del ciclo.
   fiscale, il padre fuori perimetro e quello inesistente.
 * `db/pgtap/anagrafiche/test-billing-account-guard-parent.sql` — il distacco con attività non fatturate,
   con attività fatturate, senza attività.
+* `db/pgtap/anagrafiche/test-billing-account-albero-un-livello-v1.sql` — il padre che ha un padre, il conto che
+  fa da padre, il ciclo, il secondo padre dello stesso cliente sulla stessa azienda, il cambio di padre con
+  attività non fatturate, il padre ammesso.
 * `db/pgtap/dbops/test-punti-canale-campo-v1.sql` — il campo dell'errore sul padre uguale a sé.
 
 ---
@@ -107,6 +128,8 @@ e il distacco le farebbe uscire con un'altra intestazione a metà del ciclo.
   diversi» con due codici identici.
 * 2026-09-23 — l'ordine delle date passa al guard comune; resta qui la regola «`valido_al` richiede
   `valido_dal`».
+* 2026-11-26 — l'albero passa a un livello solo con un padre per cliente e per azienda, e il cambio di padre è
+  giudicato come il distacco; prima solo il padre uguale a sé era rifiutato.
 
 ---
 

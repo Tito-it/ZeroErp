@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_billing_account`
 
-> **Ultimo aggiornamento**: 23 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -15,15 +15,16 @@
 > * [script.fn_guard_campi_ammessi](/dbzero/script/funzioni/fn_guard_campi_ammessi) — il guard che rifiuta la chiave fuori elenco (`E_CAMPO_NON_AMMESSO`)
 > * [anagrafiche.fn_crea_cliente](/dbzero/anagrafiche/funzioni/fn_crea_cliente) — il verbo del cliente, che la usa
 > * [script.fn_scrivi_riga_da_jsonb](/dbzero/script/funzioni/fn_scrivi_riga_da_jsonb) — la scrittura delle due righe
-> * [anagrafiche.trgfn_billing_account_link_ef](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef) — il collegamento scritto dal trigger, con un operatore in sessione
+> * [anagrafiche.trgfn_billing_account_link_ef](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef) — il collegamento scritto dal trigger alla nascita, sempre
+> * [anagrafiche.trgfn_billing_account_guard_albero_emittente](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_albero_emittente) e [anagrafiche.trgfn_billing_account_guard_istanza_emittente](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_istanza_emittente) — i guard di nascita, che giudicano prima della modifica del collegamento
 
 ---
 
 ### 🎯 Scopo Principale
 
 `anagrafiche.fn_crea_billing_account` apre il billing account di un ruolo per una utility in una sola
-chiamata: l'istanza fittizia del soggetto, se non se ne indica una, il billing account e, se chiesto, il suo
-collegamento a un'azienda. Restituisce il billing account e l'istanza.
+chiamata: l'istanza fittizia del soggetto, se non se ne indica una, il billing account e, se chiesta,
+l'azienda del suo collegamento. Restituisce il billing account e l'istanza.
 
 Un billing account può esistere senza il cliente: è la catena minima che i documenti pretendono. Per il cliente
 completo c'è `fn_crea_cliente`, che la chiama.
@@ -47,11 +48,17 @@ vede solo dopo il collegamento che il trigger scrive dopo l'inserimento.
 
 ### L'azienda del billing account
 
-* **Con un operatore in sessione** il collegamento lo scrive il trigger della nascita, verso l'azienda di chi
-  agisce. Un'azienda chiesta (`p_emittente_soggetto_ruolo_id`) uguale a quella passa; diversa è un errore.
-* **Senza sessione** (il provisioning, i builder dei test) il collegamento lo scrive questa funzione, verso
-  l'azienda chiesta, come collegamento proprio del billing account. Senza azienda chiesta il billing account
-  non ha collegamento, e segue l'azienda predefinita.
+Il billing account nasce sempre collegato: il collegamento lo scrive il trigger della nascita
+(`anagrafiche.trgfn_billing_account_link_ef`), verso l'azienda di chi agisce o, senza sessione, verso la
+predefinita. La funzione non scrive mai un collegamento suo.
+
+* **Con un operatore in sessione** il billing account è dell'azienda di chi agisce. Un'azienda chiesta
+  (`p_emittente_soggetto_ruolo_id`) uguale a quella passa; diversa è una chiamata sbagliata
+  (`E_SCRIPT_CHIAMATA_NON_VALIDA`).
+* **Senza sessione** (il provisioning, i builder dei test) un'azienda chiesta diversa dalla predefinita si
+  ottiene **modificando** il collegamento appena nato: il billing account è nato in questa stessa chiamata e
+  non ha documenti, quindi il cambio d'azienda è ammesso. Senza azienda chiesta il billing account resta
+  dell'azienda predefinita, col suo collegamento.
 
 ---
 
@@ -68,20 +75,21 @@ Gira coi permessi di chi chiama.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Senza sessione, l'azienda chiesta arriva dopo i guard dell'azienda.** I controlli «un'istanza, un'azienda»
-  e «albero omogeneo» girano subito dopo l'inserimento, prima del collegamento che la funzione scrive: in quel
-  momento il billing account nuovo è dell'azienda predefinita. Un secondo billing account su un'istanza
-  esistente, o un figlio sotto un padre, collegati a un'azienda diversa dalla predefinita sono quindi rifiutati
-  anche quando l'azienda chiesta è quella giusta. Con un operatore in sessione non succede: il collegamento lo
-  scrive il trigger, prima dei controlli.
+* **Senza sessione, l'azienda chiesta arriva dopo i guard di nascita.** I controlli «un'istanza, un'azienda»
+  e «albero omogeneo» del billing account giudicano all'inserimento, sul collegamento appena nato verso la
+  predefinita, prima che la funzione lo modifichi. Un secondo billing account su un'istanza esistente, o un
+  figlio sotto un padre, di un'azienda diversa dalla predefinita sono quindi rifiutati anche quando l'azienda
+  chiesta è quella giusta. È un limite scelto: i guard restano immediati, perché differirli sposterebbe al
+  commit anche l'errore ordinario di chi, in sessione, sceglie un padre di un'altra azienda. Con un operatore in
+  sessione il caso non nasce: il billing account è dell'azienda di chi agisce fin dall'inserimento.
 
 ---
 
 ### Codici errore
 
 * `E_SCRIPT_CHIAMATA_NON_VALIDA` — ruolo o utility mancanti, campi che non sono oggetti, un'istanza esistente
-  insieme ai campi di una nuova, o un'azienda chiesta diversa da quella a cui il trigger ha già collegato il
-  billing account.
+  insieme ai campi di una nuova, o, con un operatore in sessione, un'azienda chiesta diversa dalla sua.
+* `E_EMITTENTE_DEFAULT_MISSING` — dal trigger della nascita: nell'installazione non c'è nessuna azienda.
 * `E_CAMPO_NON_AMMESSO` — una chiave fuori elenco, nei campi del billing account o dell'istanza.
 * `E_SOGGETTO_RUOLO_NON_TROVATO` — il ruolo non esiste.
 
@@ -90,7 +98,7 @@ Gira coi permessi di chi chiama.
 ### Test
 
 * `db/pgtap/anagrafiche/test-fn-crea-cliente-v1.sql` — l'istanza fittizia del soggetto del ruolo, il codice
-  generato e il default della fatturazione, il collegamento chiesto senza sessione, un secondo billing account
+  generato e il default della fatturazione, il collegamento alla predefinita e quello chiesto senza sessione, un secondo billing account
   su un'istanza esistente, le chiamate malformate, le chiavi estranee, il ruolo inesistente; con un operatore in
   sessione il collegamento del trigger e il rifiuto di un'azienda diversa.
 
@@ -100,6 +108,8 @@ Gira coi permessi di chi chiama.
 
 * 2026-10-18 — nasce, e prende il posto delle scritture a mano di istanza, billing account e collegamento nel
   servizio dei clienti e nei builder dei test.
+* 2026-11-26 — senza sessione, con un'azienda chiesta, modifica il collegamento nato col billing account invece
+  di scriverne uno: il billing account nasce sempre collegato.
 
 ---
 

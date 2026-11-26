@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_check_famiglia_documento_disattivabile`
 
-> **Ultimo aggiornamento**: 10 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -36,11 +36,11 @@ perché.** Ritorna `[]` se si può, altrimenti l'array **ordinato** dei motivi:
 
 Spegnere una famiglia sembra nascondere una voce da un elenco. Non è così.
 
-Il controllo che risponde *«questo cliente ha già documenti numerati?»* —
+Il controllo che risponde *«questo cliente ha già documenti?»* —
 `anagrafiche.fn_ba_ha_storia_emittente` e la sua gemella — scorre le famiglie
 **attive**. Una famiglia spenta **esce dal giro**, e da quel momento i suoi
 documenti smettono di trattenere il cliente presso l'emittente che li ha
-numerati.
+scritti.
 
 ⚠️ **Nessun errore, nessuna riga di diario**: il controllo guarda semplicemente
 in un posto in meno. È il difetto peggiore, perché non si vede.

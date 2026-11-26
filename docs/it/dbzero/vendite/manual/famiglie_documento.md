@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.famiglie_documento`
 
+> **Ultimo aggiornamento**: 26 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 **Approfondimento tabelle:**
@@ -31,9 +33,9 @@ Sarebbe stato più veloce scrivere quei cinque nomi dentro il campo del registro
 finirla lì. Non basta, e la ragione non è «un domani potrebbero servirne altri».
 
 La ragione è che **un'altra regola deve leggerli**. Un cliente non si sposta da un
-emittente a un altro quando ha già un documento numerato: quel numero viene dal
-registro di quell'emittente e nessuno lo rifà. Per rispondere «questo cliente ha
-già dei documenti numerati?» bisogna guardare in cinque tabelle diverse.
+emittente a un altro quando ha già un documento, di qualunque famiglia e anche in
+bozza: quel documento è già dell'emittente che lo ha scritto. Per rispondere
+«questo cliente ha già dei documenti?» bisogna guardare in cinque tabelle diverse.
 
 Se quell'elenco di cinque tabelle fosse **ricopiato** dentro la regola, il giorno
 in cui un sesto documento entrasse nei registri qualcuno dovrebbe ricordarsi di
@@ -176,10 +178,10 @@ toccarla** sono diventate presidi veri.
 #### 1. Non si spegne una famiglia che è ancora la regola di qualcuno
 
 Spegnere una famiglia **non nasconde una voce di catalogo: spegne un
-controllo**. Le due funzioni che rispondono *«questo cliente ha già documenti
-numerati?»* scorrono le famiglie **attive**: una famiglia spenta esce dal giro, e
+controllo**. Le due funzioni che rispondono *«questo cliente ha già
+documenti?»* scorrono le famiglie **attive**: una famiglia spenta esce dal giro, e
 da quel momento i suoi documenti smettono di trattenere il cliente presso
-l'emittente che li ha numerati. Nessun errore, nessuna riga di diario — il
+l'emittente che li ha scritti. Nessun errore, nessuna riga di diario — il
 controllo guarda semplicemente in un posto in meno.
 
 ⇒ Una famiglia si spegne **solo** quando non ha più registri accesi né documenti
@@ -270,7 +272,7 @@ tipo di documento è la tabella in cui vive. Un «DDT di reso» non è una famig
 nuova — fa parte dell'insieme dei DDT.
 
 ⛔ **Cosa impedisce davvero.** Il controllo che risponde *«questo cliente ha già
-documenti numerati?»* scorre le famiglie e per ognuna conta le righe della sua
+documenti?»* scorre le famiglie e per ognuna conta le righe della sua
 tabella. Con due famiglie sulla stessa tabella conterebbe **gli stessi documenti
 due volte**, e li elencherebbe sotto due nomi diversi: il blocco reggerebbe —
 basta che ce ne sia uno — ma la frase che una persona legge direbbe il falso.

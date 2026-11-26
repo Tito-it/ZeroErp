@@ -40,7 +40,7 @@ AS $function$
 $function$
 
 COMMENT ON FUNCTION script.fn_get_ba_emittente_sr_id_installazione(p_billing_account_id bigint)
-IS 'L''azienda emittente (soggetto_ruolo_id) di un billing account per l''INSTALLAZIONE: il collegamento specifico in emittenti_fiscali_billing_account, altrimenti la predefinita (is_default). A differenza di script.fn_get_ba_emittente_sr_id non guarda chi agisce: e'' la risposta che vale anche fuori sessione (job, altri utenti). Serve ai guard dello spostamento della predefinita (fn_guard_istanza_ba_gestore_globale, fn_guard_albero_ba_gestore_globale), che con il risolutore di sessione lasciavano passare una coppia mista se a spostarla era un utente con un''azienda. Input NULL -> NULL; BA scollegato senza predefinita -> NULL (chi confronta lo tratta come diverso). Brief: brief-db-istanza-nasce-col-ba-residui (D-5).';
+IS 'L''azienda (soggetto_ruolo_id) di un billing account per l''installazione: il suo collegamento in anagrafiche.emittenti_fiscali_billing_account, altrimenti l''azienda predefinita. Non guarda chi agisce: e'' la risposta che vale anche fuori sessione. Ogni billing account ha sempre il suo collegamento, quindi la predefinita risponde solo nell''istante della nascita, prima che il collegamento sia scritto. La leggono i controlli che confrontano l''azienda di due billing account indipendentemente da chi agisce, come anagrafiche.fn_check_ba_padre. Input NULL: NULL.';
 ```
 
 </div>

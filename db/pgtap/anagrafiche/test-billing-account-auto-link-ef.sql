@@ -7,8 +7,9 @@
 --       - trgfn_billing_account_link_ef (z90 - auto-link)
 --
 -- Elenco test:
---  1) GUC app.current_user_id assente -> INSERT passa, nessun mapping
---     (rev 2026-10-04: senza RETURNING, vedi il test)
+--  1) GUC app.current_user_id assente -> INSERT passa, collegato all'azienda
+--     predefinita (dal 2026-11-26, 20261126-27: ogni BA ha sempre il suo
+--     collegamento; prima nasceva scollegato) (rev 2026-10-04: senza RETURNING)
 --  2) Operatore con EF assegnato -> INSERT passa, mapping specifico creato
 --  3) Mapping non duplicato (idempotenza)
 --  4) Super admin senza emittente di lavoro + esistono emittenti -> INSERT bloccata
@@ -185,7 +186,7 @@ CREATE TEMP TABLE tmp_link_results (
 );
 
 -- ============================================================
--- 1) GUC app.current_user_id assente -> INSERT passa, 0 mapping
+-- 1) GUC app.current_user_id assente -> INSERT passa, collegato alla predefinita
 -- ============================================================
 SELECT set_config('app.current_user_id', '', true);
 
@@ -228,9 +229,13 @@ BEGIN
         (SELECT id FROM anagrafiche.categorie_clienti WHERE codice_interno = 'STANDARD')
     );
 
+    -- Il collegamento nato col BA, sull'azienda predefinita: 1 se c'e' ed e'
+    -- quello, 0 altrimenti.
     SELECT COUNT(*)::int INTO v_mapping_count
-      FROM anagrafiche.emittenti_fiscali_billing_account
-     WHERE billing_account_id = v_new_id;
+      FROM anagrafiche.emittenti_fiscali_billing_account e
+      JOIN anagrafiche.emittenti_fiscali_billing_account d ON d.is_default
+     WHERE e.billing_account_id = v_new_id
+       AND e.emittente_soggetto_ruolo_id = d.emittente_soggetto_ruolo_id;
 
     INSERT INTO tmp_link_results (test_name, setup_ok, new_ba_id, mapping_count)
     VALUES ('test1', true, v_new_id, v_mapping_count);
@@ -238,8 +243,8 @@ END $$;
 
 SELECT is(
     (SELECT mapping_count FROM tmp_link_results WHERE test_name = 'test1'),
-    0,
-    'GUC assente -> nessun mapping auto-creato'
+    1,
+    'GUC assente -> il BA nasce collegato all''azienda predefinita'
 );
 
 -- ============================================================

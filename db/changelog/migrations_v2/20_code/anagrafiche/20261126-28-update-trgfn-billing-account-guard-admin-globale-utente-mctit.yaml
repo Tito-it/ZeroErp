@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DELL'ADMIN GLOBALE NON INGOIA L'UTENTE ILLEGGIBILE
+#   anagrafiche.trgfn_billing_account_guard_admin_globale()
+#   Brief: brief-db-revisione-anagrafiche §24.5 (S31)
+#
+# -- LA REGOLA --------------------------------------------------------
+#   L'utente di sessione si legge con script.fn_utente_di_sessione, che
+#   rifiuta un app.current_user_id che non e' l'id di un utente
+#   (E_SCRIPT_CHIAMATA_NON_VALIDA). Il guard lo chiamava dentro
+#   EXCEPTION WHEN OTHERS THEN v_user_id := NULL: il rifiuto diventava
+#   «nessun utente», cioe' il ramo dei seed, e il BA nasceva senza controllo.
+#   Ora il rifiuto sale, come in anagrafiche.fn_id_fiscale_bloccato.
+#   Il gemello in trgfn_billing_account_link_ef si corregge in 20261126-27,
+#   che riscrive quel trigger.
+#
+# -- LA FORMA ---------------------------------------------------------
+#   * v_user_id ancorata (era integer nudo).
+#   * Il resto del corpo e' quello vivo del catalogo, invariato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261126-28-update-trgfn-billing-account-guard-admin-globale-utente-mctit.yaml
+
+  - changeSet:
+      id: 20261126-28-update-trgfn-billing-account-guard-admin-globale-utente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_billing_account_guard_admin_globale lascia salire il rifiuto di
+        script.fn_utente_di_sessione su un utente di sessione illeggibile, invece di trattarlo
+        come «nessun utente».
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_user_id config.user_override_aree.auth_user_id%TYPE;
+                  -- l'esito di script.fn_check_user_can_create_ba: nessuna colonna dietro
+                  v_can_create boolean;
+              BEGIN
+                  -- Lettura GUC app.current_user_id (settato dal middleware Django).
+                  -- Il secondo parametro 'true' di current_setting evita errore se
+                  -- il GUC non e' definito (ritorna NULL).
+                  -- ⛔ Nessun blocco EXCEPTION: un app.current_user_id che non e' l'id di
+                  --   un utente lo rifiuta script.fn_utente_di_sessione, e il rifiuto sale.
+                  --   Ingoiato, l'utente illeggibile diventava «nessun utente» e la riga
+                  --   passava senza il controllo.
+                  v_user_id := script.fn_utente_di_sessione('anagrafiche.trgfn_billing_account_guard_admin_globale');
+
+                  -- Bootstrap / seed / job senza utente: non bloccare.
+                  -- Le INSERT applicative passano sempre da middleware quindi
+                  -- il GUC c'e'. L'unico scenario senza GUC sono i seed di
+                  -- migrazione e le manutenzioni manuali.
+                  IF v_user_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- La regola sta in fn_check_user_can_create_ba (rev 2026-08-04):
+                  -- serve un emittente su cui scrivere, cioe' una riga in
+                  -- user_emittenti_fiscali oppure app.current_emittente_id valido
+                  -- per l'utente; senza, passa solo un'istanza a zero emittenti attivi.
+                  v_can_create := script.fn_check_user_can_create_ba(v_user_id);
+
+                  IF v_can_create IS NOT TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME,
+                          'E_BA_ADMIN_GLOBALE_VIETATO',
+                          jsonb_build_object(
+                              'detail', 'Nessun emittente fiscale su cui scrivere (ne'' riga in user_emittenti_fiscali ne'' app.current_emittente_id valido) ed esistono emittenti attivi: billing account non creabile',
+                              'auth_user_id', v_user_id,
+                              'codice_ba', NEW.codice
+                          ),
+                          NULL::uuid,
+                          coalesce(NEW.codice, '')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale() IS
+                'Guard BEFORE INSERT di anagrafiche.billing_account: rifiuta la creazione quando l''utente di sessione non ha un''azienda su cui scrivere (ne'' una riga in config.user_emittenti_fiscali ne'' un app.current_emittente_id valido per lui, tipicamente il super admin in «Tutti gli emittenti») ed esistono emittenti fiscali attivi: E_BA_ADMIN_GLOBALE_VIETATO. La regola e'' script.fn_check_user_can_create_ba. Senza utente di sessione (seed, manutenzione) tace; un app.current_user_id che non e'' l''id di un utente lo rifiuta script.fn_utente_di_sessione (E_SCRIPT_CHIAMATA_NON_VALIDA), e il rifiuto sale.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente si ripristina dal suo changeSet precedente.
+              SELECT 1;

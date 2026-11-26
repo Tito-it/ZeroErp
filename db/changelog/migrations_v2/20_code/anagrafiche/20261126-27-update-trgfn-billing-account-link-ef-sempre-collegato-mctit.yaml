@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BILLING ACCOUNT NASCE SEMPRE COLLEGATO A UN'AZIENDA
+#   anagrafiche.trgfn_billing_account_link_ef()
+#     (trg_billing_account_z90_link_ef_ins, AFTER INSERT, invariato)
+#   Brief: brief-db-revisione-anagrafiche §24.5 (D-T4-3), §24.7.1 (D-T4-11 a), S31
+#
+# -- LA REGOLA --------------------------------------------------------
+#   Ogni billing account ha sempre il suo collegamento a un'azienda
+#   (anagrafiche.emittenti_fiscali_billing_account). Alla nascita:
+#     * con un utente di sessione che ha un'azienda: quella;
+#     * senza sessione (batch, import, manutenzione), o senza un'azienda di
+#       chi agisce: l'azienda predefinita;
+#     * senza nessuna azienda nell'installazione: la nascita e' rifiutata,
+#       E_EMITTENTE_DEFAULT_MISSING (D-T4-11 a: un cliente fattura sempre per
+#       un'azienda).
+#   Prima, senza sessione, il BA nasceva scollegato e «seguiva la
+#   predefinita»: spostarla spostava tutti i clienti scollegati (revocato,
+#   D-T4-3).
+#   S31: l'utente si legge con script.fn_utente_di_sessione SENZA il blocco
+#   EXCEPTION che ne ingoiava il rifiuto (un utente illeggibile diventava
+#   «nessun utente»). Il gemello in trgfn_billing_account_guard_admin_globale
+#   e' 20261126-28.
+#
+# -- LA FORMA ---------------------------------------------------------
+#   * Un super admin senza azienda, con aziende nell'installazione, non arriva
+#     qui: lo rifiuta prima trgfn_billing_account_guard_admin_globale (a10).
+#   * L'idempotenza resta: se il collegamento c'e' gia' (una doppia
+#     esecuzione), non se ne scrive un secondo.
+#   * Tipi ancorati; il montaggio non cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261126-27-update-trgfn-billing-account-link-ef-sempre-collegato-mctit.yaml
+
+  - changeSet:
+      id: 20261126-27-update-trgfn-billing-account-link-ef-sempre-collegato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_billing_account_link_ef collega sempre il billing account nato:
+        all'azienda di chi agisce, o alla predefinita senza sessione; senza nessuna azienda la
+        nascita e' rifiutata (E_EMITTENTE_DEFAULT_MISSING). L'utente illeggibile non e' piu'
+        ingoiato.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_link_ef()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_user_id         config.user_override_aree.auth_user_id%TYPE;
+                  v_emittente_id    anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_emittente_sr_id anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+                  v_existing        anagrafiche.emittenti_fiscali_billing_account.id%TYPE;
+              BEGIN
+                  -- 1) L'azienda di chi agisce. ⛔ Nessun blocco EXCEPTION: un
+                  --    app.current_user_id illeggibile lo rifiuta il building block,
+                  --    e il rifiuto sale.
+                  v_user_id := script.fn_utente_di_sessione('anagrafiche.trgfn_billing_account_link_ef');
+
+                  IF v_user_id IS NOT NULL THEN
+                      v_emittente_id := script.fn_resolve_emittente_for_user(v_user_id);
+                      IF v_emittente_id IS NOT NULL THEN
+                          SELECT ef.soggetto_ruolo_id
+                            INTO v_emittente_sr_id
+                            FROM anagrafiche.emittenti_fiscali ef
+                           WHERE ef.id = v_emittente_id;
+                      END IF;
+                  END IF;
+
+                  -- 2) Senza sessione, o senza un'azienda di chi agisce: la
+                  --    predefinita. Un BA non resta mai scollegato.
+                  IF v_emittente_sr_id IS NULL THEN
+                      SELECT d.emittente_soggetto_ruolo_id
+                        INTO v_emittente_sr_id
+                        FROM anagrafiche.emittenti_fiscali_billing_account d
+                       WHERE d.is_default;
+                  END IF;
+
+                  -- 3) Nessuna azienda nell'installazione: il BA non nasce.
+                  IF v_emittente_sr_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.trgfn_billing_account_link_ef',
+                          'E_EMITTENTE_DEFAULT_MISSING',
+                          jsonb_build_object('billing_account_id', NEW.id,
+                                             'codice',             NEW.codice),
+                          NEW.tx_id,
+                          'un billing account nasce collegato a un''azienda, e non ne esiste nessuna');
+                  END IF;
+
+                  -- 4) Idempotenza: il collegamento c'e' gia' (doppia esecuzione).
+                  SELECT efba.id
+                    INTO v_existing
+                    FROM anagrafiche.emittenti_fiscali_billing_account efba
+                   WHERE efba.billing_account_id = NEW.id;
+                  IF v_existing IS NOT NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  INSERT INTO anagrafiche.emittenti_fiscali_billing_account (
+                      billing_account_id,
+                      emittente_soggetto_ruolo_id,
+                      is_default
+                  ) VALUES (
+                      NEW.id,
+                      v_emittente_sr_id,
+                      false
+                  );
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_link_ef() IS
+                'Trigger AFTER INSERT di anagrafiche.billing_account: il billing account nasce collegato a un''azienda (anagrafiche.emittenti_fiscali_billing_account). L''azienda e'' quella di chi agisce (script.fn_resolve_emittente_for_user), oppure, senza sessione o senza un''azienda di chi agisce, l''azienda predefinita. Senza nessuna azienda la nascita e'' rifiutata (E_EMITTENTE_DEFAULT_MISSING). Un app.current_user_id che non e'' l''id di un utente lo rifiuta script.fn_utente_di_sessione. Se il collegamento c''e'' gia'' non ne scrive un altro. Ogni billing account ha sempre il suo collegamento: spostare la predefinita non cambia l''azienda di nessun cliente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente si ripristina dal suo changeSet precedente.
+              SELECT 1;

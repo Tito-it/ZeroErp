@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_guard_istanza_ba_emittente`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,7 +13,7 @@
 >
 > * [anagrafiche.fn_check_ba_coppia_emittente_omogenea](/dbzero/anagrafiche/funzioni/fn_check_ba_coppia_emittente_omogenea) — il confronto di una coppia
 > * [anagrafiche.trgfn_billing_account_guard_istanza_emittente](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_istanza_emittente) — chiamante: nasce un billing account
-> * [anagrafiche.trgfn_efba_guard_istanza_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_istanza_emittente) — chiamante: cambia il collegamento all'azienda
+> * [anagrafiche.trgfn_efba_guard_istanza_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_istanza_emittente) — chiamante: il collegamento all'azienda nasce o cambia azienda
 > * [anagrafiche.fn_guard_albero_ba_emittente](/dbzero/anagrafiche/funzioni/fn_guard_albero_ba_emittente) — il gemello sull'albero padre/figli
 >
 > Guide:
@@ -41,21 +41,15 @@ con quello toccato, in ordine, e si ferma alla prima coppia di aziende diverse.
 ### Lo stesso confronto dell'albero
 
 È il gemello del guard sull'albero padre/figli: cambia l'insieme guardato, qui gli altri billing account della
-stessa istanza, e il confronto è lo stesso, `fn_check_ba_coppia_emittente_omogenea`, sull'azienda risolta a tre
-livelli come la usa la fatturazione. Due controlli che la calcolassero in modo diverso potrebbero dire cose
-diverse sullo stesso billing account.
+stessa istanza, e il confronto è lo stesso, `anagrafiche.fn_check_ba_coppia_emittente_omogenea`, sull'azienda
+come la usa la fatturazione: quella del collegamento, che ogni billing account ha sempre. Due controlli che la
+calcolassero in modo diverso potrebbero dire cose diverse sullo stesso billing account.
 
-Un billing account che non esiste più (cancellato nella stessa transazione) non ha niente da presidiare. Il
+Un id che non trova un billing account non ha niente da presidiare; il billing account, del resto, non si
+cancella. Spostare l'azienda predefinita non cambia l'azienda di nessun billing account, e non chiede questo
+controllo. Il
 guard gira coi privilegi del proprietario: coi permessi di chi scrive, un billing account di un'altra azienda
 sarebbe invisibile e il controllo direbbe «a posto» proprio nel caso da fermare.
-
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **Lo scollegamento fatto in sessione.** Tolto il collegamento da un utente in sessione, il billing account
-  si confronta con l'azienda di chi agisce, non con la predefinita su cui ricade: l'istanza può restare su due
-  aziende per l'installazione (vedi `fn_check_ba_coppia_emittente_omogenea`).
 
 ---
 
@@ -76,6 +70,8 @@ sarebbe invisibile e il controllo direbbe «a posto» proprio nel caso da fermar
 ### Note di migrazione
 
 * 2026-10-08 — nasce con la regola «un'istanza, un'azienda».
+* 2026-11-26 — ogni billing account ha sempre il suo collegamento: il confronto risponde col collegamento, e il
+  gemello che giudicava lo spostamento della predefinita è ritirato.
 
 ---
 

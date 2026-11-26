@@ -24,6 +24,8 @@ DECLARE
   v_cf_parent  anagrafiche.soggetti.id_fiscale_univoco_cf_piva%TYPE;
   v_sog_child  anagrafiche.soggetti.id%TYPE;
   v_sog_parent anagrafiche.soggetti.id%TYPE;
+  -- i motivi di anagrafiche.fn_check_ba_padre: nessuna colonna dietro
+  v_motivi     jsonb;
 BEGIN
   ------------------------------------------------------------------
   -- 1) NORMALIZE (pulizie/derive)
@@ -157,13 +159,29 @@ BEGIN
     );
   END IF;
 
-  -- 2.4) Guard dissociazione parent: blocca la rimozione di parent_account_id
-  --      quando esistono attivita_fatturabili non ancora fatturate sul BA figlio.
+  -- 2.3-bis) Un livello solo, e un solo padre per cliente e per azienda.
+  --   La regola e' in anagrafiche.fn_check_ba_padre, SECURITY DEFINER: legge
+  --   il padre del padre, i figli di questo BA e gli altri padri del cliente,
+  --   righe che la RLS di chi scrive puo' nascondere. Il padre proposto e
+  --   l'id entrano come parametri (la riga che cambia non si rilegge).
+  --   Si giudica solo quando il padre nasce o cambia.
+  IF NEW.parent_account_id IS NOT NULL
+     AND (TG_OP = 'INSERT' OR NEW.parent_account_id IS DISTINCT FROM OLD.parent_account_id)
+  THEN
+    v_motivi := anagrafiche.fn_check_ba_padre(NEW.id, NEW.codice, NEW.parent_account_id);
+    PERFORM script.fn_raise_primo_motivo_se_presente(
+      'database', TG_NAME::text, v_motivi, 'parent_account_id', NEW.tx_id);
+  END IF;
+
+  -- 2.4) Guard dissociazione parent: blocca la rimozione E IL CAMBIO di
+  --      parent_account_id quando esistono attivita_fatturabili non ancora
+  --      fatturate sul BA figlio: cambiare padre sposta la testata delle sue
+  --      fatture come toglierlo.
   --      Questo previene la corruzione della catena di fatturazione:
   --        fatture.billing_account_id (padre) → fatture_righe.dest_billing_account_id (figlio)
   IF TG_OP = 'UPDATE'
      AND OLD.parent_account_id IS NOT NULL
-     AND NEW.parent_account_id IS NULL
+     AND NEW.parent_account_id IS DISTINCT FROM OLD.parent_account_id
   THEN
     IF EXISTS (
       SELECT 1
@@ -177,7 +195,7 @@ BEGIN
           'billing_account_id', NEW.id,
           'codice', NEW.codice,
           'ex_parent_account_id', OLD.parent_account_id,
-          'detail', 'Impossibile rimuovere parent_account_id: esistono attivita non fatturate collegate a questo billing account'
+          'detail', 'Impossibile togliere o cambiare parent_account_id: esistono attivita non fatturate collegate a questo billing account'
         ),
         NULL::uuid,
         NEW.id::text, OLD.parent_account_id::text
@@ -190,18 +208,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_normalize()
-IS 'Guard/normalize: valida parent e date; normalizza codice se presente.
-Include guard dissociazione parent: blocca la rimozione di parent_account_id
-quando esistono attivita_fatturabili non fatturate sul BA figlio.
-Rev 2026-08-18 (P-3, brief perimetro-emittente §4 e §11.1): il §2.2 non
-confronta piu'' il solo codice fiscale con IS DISTINCT FROM. Il padre non
-raggiungibile (inesistente o fuori dal perimetro RLS: la funzione e''
-SECURITY INVOKER) ha ora un codice suo, E_PARENT_NON_RAGGIUNGIBILE, invece
-di cadere su E_ID_FISCALI_DIVERSI con i due CF identici. E quando almeno un
-codice fiscale manca, il confronto ripiega sul SOGGETTO
-(E_PARENT_SOGGETTO_DIVERSO): chiude il fail-open di NULL IS DISTINCT FROM
-NULL senza rifiutare due BA dello stesso soggetto privo di CF.
-Rev 20260923-43: l''ordine delle date (valido_al non precede valido_dal) non e'' piu'' qui: ha una sede sola, script.trgfn_guard_date_validita (automazione DATE_VALIDITA). Resta la regola propria di questa tabella: valido_al richiede valido_dal.';
+IS 'Guard BEFORE INSERT OR UPDATE di anagrafiche.billing_account sul padre e sulle date. Il padre non e'' il billing account stesso (E_PARENT_SELF), esiste ed e'' nel perimetro di chi scrive (E_PARENT_NON_RAGGIUNGIBILE), e'' dello stesso cliente: la stessa identita'' fiscale (E_ID_FISCALI_DIVERSI) o, senza codice fiscale, lo stesso soggetto (E_PARENT_SOGGETTO_DIVERSO). L''albero ha un livello solo e un solo padre per cliente e per azienda: lo giudica anagrafiche.fn_check_ba_padre quando il padre nasce o cambia. Con un padre valido_dal e'' obbligatorio, e valido_al lo richiede (E_VALORE_MANCANTE); l''ordine delle date lo tiene script.trgfn_guard_date_validita. Il padre non si toglie ne'' si cambia con attivita'' non fatturate sul billing account (E_DISSOCIAZIONE_PARENT_CON_ATTIVITA): sposterebbe la testata delle sue fatture.';
 ```
 
 </div>

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_guard_albero_ba_emittente`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,8 +12,7 @@
 >
 > * [anagrafiche.fn_check_ba_coppia_emittente_omogenea](/dbzero/anagrafiche/funzioni/fn_check_ba_coppia_emittente_omogenea) — il confronto di una coppia
 > * [anagrafiche.trgfn_billing_account_guard_albero_emittente](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_albero_emittente) — chiamante: nasce un billing account, o cambia il padre
-> * [anagrafiche.trgfn_efba_guard_albero_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_albero_emittente) — chiamante: cambia il collegamento all'azienda
-> * [anagrafiche.fn_guard_albero_ba_gestore_globale](/dbzero/anagrafiche/funzioni/fn_guard_albero_ba_gestore_globale) — lo stesso controllo, quando si sposta la predefinita
+> * [anagrafiche.trgfn_efba_guard_albero_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_albero_emittente) — chiamante: il collegamento all'azienda nasce o cambia azienda
 
 ---
 
@@ -38,8 +37,9 @@ Il controllo guarda prima **verso il padre**, poi **verso ogni figlio**, in ordi
 dimentica: cambiare l'azienda di un billing account non spezza solo il legame verso l'alto, ma tutti quelli
 verso il basso in un colpo. Il primo rifiuto trovato dice il verso, i due billing account e le due aziende.
 
-L'azienda confrontata è quella risolta, sui tre livelli; un billing account che non esiste più (cancellato
-nella stessa transazione) non ha niente da presidiare.
+L'azienda confrontata è quella del collegamento, che ogni billing account ha sempre. Un id che non trova un
+billing account non ha niente da presidiare. Spostare l'azienda predefinita non cambia l'azienda di nessun
+billing account, e non chiede questo controllo.
 
 ---
 
@@ -50,15 +50,7 @@ un'altra azienda sarebbe invisibile, e «non lo vedo» diventerebbe «è a posto
 privilegi del proprietario. Non ha eccezioni per i dati preesistenti né un modo per spegnerlo.
 
 Risponde a una domanda diversa da quella della storia: un cambio di azienda ammesso perché il cliente non ha
-documenti numerati resta vietato se rende misto l'albero. I due cancelli si sommano.
-
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **Lo scollegamento fatto in sessione.** Tolto il collegamento da un utente in sessione, il billing account
-  si confronta con l'azienda di chi agisce, non con la predefinita su cui ricade: l'albero può restare misto
-  per l'installazione (vedi `fn_check_ba_coppia_emittente_omogenea`).
+documenti resta vietato se rende misto l'albero. I due cancelli si sommano.
 
 ---
 
@@ -72,14 +64,17 @@ documenti numerati resta vietato se rende misto l'albero. I due cancelli si somm
 ### Test
 
 * `db/pgtap/anagrafiche/test-guard-albero-ba-omogeneo-v1.sql` — padre di un'altra azienda, azienda cambiata sul
-  figlio e sul padre, collegamento del figlio cancellato: tutti rifiutati; due alberi separati dello stesso
-  soggetto ammessi; il guard vede un figlio fuori dal perimetro di chi scrive.
+  figlio e sul padre: rifiutati; la cancellazione del collegamento del figlio è rifiutata prima
+  (`E_BA_COLLEGAMENTO_NON_SI_TOGLIE`); due alberi separati dello stesso soggetto ammessi; il guard vede un
+  figlio fuori dal perimetro di chi scrive; lo spostamento della predefinita lascia l'albero com'è.
 
 ---
 
 ### Note di migrazione
 
 * 2026-08-18 — nasce col perimetro dell'azienda sulle liste e sulla gerarchia dei billing account.
+* 2026-11-26 — ogni billing account ha sempre il suo collegamento: il confronto risponde col collegamento, e il
+  gemello che giudicava lo spostamento della predefinita è ritirato.
 
 ---
 
