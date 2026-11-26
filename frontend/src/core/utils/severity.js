@@ -812,8 +812,11 @@ export function statoEmailLogSeverity(codice) {
 // NON_SPEDITO e' rosso e non giallo: il link c'e' ma l'email non e' partita
 // (F-3), e la persona non puo' attivare finche' non si reinvia.
 // NESSUNO (nessuna veste) cade sul ripiego neutro.
+// REVOCATA e' rossa come DISATTIVO: spenta, e il link vecchio non la riapre
+// (2026-11-26).
 export const STATO_VESTE_MAP = {
   [STATO_VESTE.ATTIVO]: 'success',
+  [STATO_VESTE.REVOCATA]: 'danger',
   [STATO_VESTE.PENDING]: 'warn',
   [STATO_VESTE.NON_SPEDITO]: 'danger',
   [STATO_VESTE.DISATTIVO]: 'danger',

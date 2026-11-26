@@ -48,7 +48,11 @@ from apps.catalogo.db.catalogo_repository import CatalogoRepository
 from apps.catalogo.services.catalogo_service import fn_get_articolo, fn_update_articolo
 from apps.core.services.db_error_fields import db_error_code
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
+from apps.core.tests.db_e2e import (
+    Annulla,
+    apri_super_admin_costruito,
+    richiedi_db_provvisto,
+)
 
 
 class ArticoliAmmessiDbTests(unittest.TestCase):
@@ -167,12 +171,7 @@ class ArticoliAmmessiDbTests(unittest.TestCase):
     def test_correggi_struttura_forma_dei_campi(self):
         try:
             with transaction.atomic(), connection.cursor() as cur:
-                cur.execute(
-                    "SELECT auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano('struttura admin', true)"
-                )
-                admin = cur.fetchone()[0]
-                cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
-                cur.execute("SET LOCAL app.current_user_id = %s", [str(admin)])
+                apri_super_admin_costruito(cur, etichetta="struttura admin")
                 for campi in (None, {}, ["requires_lotto"]):
                     with self.subTest(campi=campi):
                         with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
@@ -189,16 +188,12 @@ class ArticoliAmmessiDbTests(unittest.TestCase):
     @staticmethod
     def _admin_e_articolo(cur) -> str:
         cur.execute(
-            "SELECT auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano('struttura admin', true)"
-        )
-        admin = cur.fetchone()[0]
-        cur.execute(
             "SELECT dbops.fn_pgtap_crea_articolo(%s, true, false)",
             [f"PYSTR-{uuid.uuid4().hex[:8]}"],
         )
         articolo_id = str(cur.fetchone()[0])
-        cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
-        cur.execute("SET LOCAL app.current_user_id = %s", [str(admin)])
+        # Il builder dell'articolo PRIMA del contesto, come nei pgTAP.
+        apri_super_admin_costruito(cur, etichetta="struttura admin")
         return articolo_id
 
     @staticmethod

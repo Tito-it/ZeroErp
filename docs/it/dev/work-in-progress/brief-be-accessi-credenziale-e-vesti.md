@@ -2,16 +2,17 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-26
 
-**Riparte: il team BE/FE**, con la richiesta del [brief DB unico](brief-db-accessi-area-clienti.md) §4: R-4 è
-applicato a DB il 2026-11-26. Il collaudo a video (§2) non aspetta nessuno.
+**Riparte: Tid**, col collaudo a video (§2). D-4 e A-6 sono fatti lato BE/FE il 2026-11-26 (il passo 3b del
+[brief DB unico](brief-db-accessi-area-clienti.md) §4.1), da committare.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 0 | Tid | ~~D-R1 … D-R5~~ decise il 2026-11-25 | §1.3 | — |
 | 1 | ~~sessione DB~~ | ~~R-4 a DB: il segno, il guard, i verbi~~ costruito il 2026-11-25, applicato il 2026-11-26 (brief DB §2) | brief DB §2 | 0 |
-| 2 | team BE/FE | D-4 e A-6 sulla regola consegnata dal DB: la richiesta per intero è nel brief DB §4 (al posto del §1.2, scritto sul pulsante) | brief DB §4 | — |
+| 2 | ~~team BE/FE~~ | ~~D-4 e A-6 sulla regola consegnata dal DB~~ fatti il 2026-11-26, da committare: «Disabilita» e «Disattiva» revocano, il nuovo invito toglie il segno, il pulsante «Attiva shop» su una veste revocata si ferma con `E_VESTE_REVOCATA` (brief DB §4.1) | brief DB §4.1 | — |
 | 3 | Tid | Il collaudo a video di D-5 | §2 | — |
 | 4 | team BE/FE | Archiviazione in `work-done/` | §3 | 2, 3 |
+| 5 | team BE/FE | Il contesto dei test sul DB vero per la sola transazione: il BB `apri_contesto_su` e i ~30 file che chiamano `script.fn_pgtap_set_contesto_operatore` | §4 | `/arrivi-db` del giro 10-bis |
 
 **Decisioni aperte di Tid:** nessuna in questo brief (D-R1, D-R2, D-R4, D-R5 decise il 2026-11-25, §1.3). La forma della marca
 «revocata» la sceglie il DB nel suo brief. La registrazione da sé (D-R3, D-R6 e le decisioni R-1 … R-3 del
@@ -138,6 +139,10 @@ persona) e va preso dalla GUC dell'utente; in `script.fn_stato_veste` lo stato `
 `ATTIVO` (con D-R1 non convive con un invito pendente). Il `CHECK` «revocata ⇒ spenta» si scrive con `num_nulls`
 (PG19).
 
+✅ **Fatto il 2026-11-26** (brief DB §4.1): A-6 è chiuso dal guard. I test sul DB vero
+(`apps/core/tests/db/test_revoca_veste_db.py`) provano revocata → nuovo invito → il link accende, e revocata → la
+veste non si riaccende. Il caso «l'iscrizione si ferma» aspetta il verbo dell'iscrizione, giro 3 del brief DB.
+
 **Ricaduta sul §1.2**, ancora scritto sul pulsante: finché il pulsante non è ritirato il guard lo ferma comunque
 (chiama `fn_accendi_veste`), quindi A-6 si chiude **col guard di R-4** e poi sparisce col ritiro. Al BE resta: lo
 spegnimento dell'admin col verbo DB (operatore e portale), la policy del codice nuovo, il pannello con «revocato»,
@@ -169,8 +174,44 @@ Non blocca nulla.
 
 ## 3. Alla chiusura
 
-Il brief va in `work-done/` quando D-4 e A-6 sono fatti e il collaudo è eseguito. Si aggiornano la riga «Accessi»
+Il brief va in `work-done/` quando D-4 e A-6 sono fatti e il collaudo è eseguito. Il §4 non lo trattiene: se è
+ancora aperto, passa come voce in `.codex/PROJECT_CONTEXT.md` § «Aperto». Si aggiornano la riga «Accessi»
 di `.codex/PROJECT_CONTEXT.md` e i «⚠️ Difetto noto» delle doc `manual/` che rimandano ad A-6.
+
+## 4. Il contesto dei test sul DB vero, per la sola transazione (revisione del 2026-11-26)
+
+**Il difetto.** `script.fn_pgtap_set_contesto_operatore` scrive le GUC `app.ruolo_applicativo` e
+`app.current_user_id` per la **sessione** (`set_config(…, false)`). Nei pgTAP è innocuo: ogni file gira in una
+sessione sua. Nei test Django la connessione è **condivisa** fra i test, e le GUC sopravvivono al rollback: il test
+dopo gira col contesto di un utente annullato. Un test può essere verde, o rosso, per il contesto lasciato dal
+test prima. Trovato estraendo `apri_super_admin_costruito`, la cui prima versione passava da quella funzione e
+faceva cadere i test successivi su `E_PERMESSO_NEGATO`.
+
+**Già corretto il 2026-11-26** (da committare col passo 3b): `apri_super_admin_costruito` (nuovo) e
+`apri_operatore_con_aree` in `apps/core/tests/db_e2e.py`, e `_agisci` di `test_soggetti_id_fiscale_immutabile_db`,
+scrivono le due GUC con `SET LOCAL`.
+
+**Da fare, lato BE** (non è una richiesta al DB: la funzione serve ai pgTAP e lì va bene com'è):
+
+1. **Il BB `apri_contesto_su(cur, auth_user_id) -> int`** in `db_e2e.py` (regola del 2, ok di Tid il 2026-11-26):
+   le due righe `SET LOCAL` e il controllo di essere dentro un blocco atomico. Diventa la sede unica di quelle due
+   righe, oggi ricopiate in `apri_contesto_operatore`, `apri_super_admin_costruito`, `apri_operatore_con_aree` e
+   `_agisci`; i tre BB la chiamano. Voce nel catalogo BB backend e indice rigenerato.
+2. **I file che chiamano `script.fn_pgtap_set_contesto_operatore` da soli** passano dal BB. Censimento del
+   2026-11-26, da rifare al momento (`grep -rln fn_pgtap_set_contesto_operatore backend/apps --include=*.py`): una
+   trentina di file in `pagamenti`, `magazzino`, `documenti`, `catalogo`, `anagrafiche`, `vendite`, `core`.
+   ⚠️ Dove la funzione è chiamata **senza** argomento sceglie lei l'operatore, o lo costruisce: lì il BB non basta,
+   e il test si costruisce il suo utente (`apri_operatore_con_aree`, `apri_super_admin_costruito`, o un builder).
+3. **Un presidio**, perché il difetto non torni: un test che fallisce se un file di test Django chiama
+   `fn_pgtap_set_contesto_operatore` (lo stampo dei guard su sorgente che il progetto già usa).
+4. Test di tutti i moduli toccati col DB vero, **lanciati insieme**: un contesto che perde si vede solo fra test
+   diversi della stessa corsa.
+
+**Aspetta** l'allineamento del push DB del giro 10-bis (`8d349d36b`, «le tabelle che danno l'accesso si scrivono
+solo dai verbi del SUPER_ADMIN»), già applicato al DB di sviluppo: tocca proprio i contesti dei test. Con quel
+push sono rossi `test_login_credenziale_db` (contesto preso da «il primo operatore attivo», che non è SUPER_ADMIN)
+e `test_error_policies_divergenza_db` (DB avanti rispetto a git: non si rigenera prima dell'allineamento). Si
+riparte da `/arrivi-db`.
 
 ---
 {% include-markdown "signature-core.md" %}

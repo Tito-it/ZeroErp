@@ -69,9 +69,14 @@ const vesteOptions = buildOptionsConTutti(t,
 )
 // Gli stati del riassunto: il vocabolario intero (NESSUNO compreso), non le
 // chiavi della mappa dei colori.
+// ⛔ Tranne REVOCATA (2026-11-26): e' uno stato della veste, e le singole vesti
+//    della riga lo mostrano, ma l'aggregato `stato_accesso` della vista non lo
+//    produce ancora (R-3b-1 del brief-db-accessi-area-clienti). Nel filtro
+//    risponderebbe sempre la lista vuota; il BE lo rifiuta con un 400. Entra
+//    col changeSet, insieme a `STATI_ACCESSO` del BE (`test_accessi_db`).
+const STATI_FILTRO = Object.values(STATO_VESTE).filter(s => s !== STATO_VESTE.REVOCATA)
 const statoOptions = buildOptionsConTutti(t,
-  Object.values(STATO_VESTE)
-    .map(s => ({ value: s, label: t(`auth.stato_veste.${s}`) })),
+  STATI_FILTRO.map(s => ({ value: s, label: t(`auth.stato_veste.${s}`) })),
 )
 const fattoreOptions = buildOptionsConTutti(t,
   Object.values(STATO_SECONDO_FATTORE)

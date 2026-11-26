@@ -220,9 +220,10 @@ class InvitoPortaleService:
         )
 
     # Scopo: core comune della disattivazione — risolve l'identita, la
-    # disattiva se attiva, invalida i token pendenti, chiude le sessioni della
-    # veste e la cache dei permessi. Tutto in una transazione: una chiusura
-    # fallita annulla anche lo spegnimento.
+    # revoca (anche se gia' spenta), invalida i token pendenti, chiude le
+    # sessioni della veste e la cache dei permessi. Tutto in una transazione:
+    # una chiusura fallita annulla anche la revoca. Lo stato che ne esce e'
+    # sempre `REVOCATA` (`script.fn_stato_veste`).
     def _disattiva_veste_common(
         self,
         *,
@@ -242,7 +243,6 @@ class InvitoPortaleService:
             if existing.get("auth_user_id") is not None
             else None
         )
-        was_active = bool(existing.get("attivo"))
 
         # Invalida i token pendenti della veste in ogni caso (anche su una
         # veste gia' spenta: un invito in volo smette di funzionare).
@@ -256,8 +256,12 @@ class InvitoPortaleService:
         #    rimaste vive da prima di questa regola.
         porta = porta_della_veste(ruolo_applicativo)
         with transaction.atomic():
-            if was_active:
-                self._repo.disattiva_identita(identita_id)
+            # ⭐ La revoca SEMPRE, anche sulla veste gia' spenta con l'invito
+            #    pendente (R2-a, brief-db-accessi-area-clienti §4.1,
+            #    2026-11-26): il segno ferma il link vecchio e il pulsante
+            #    «Attiva shop». Se era accesa lo dice il verbo, sotto il lock
+            #    della riga.
+            was_active = self._auth_repo.revoca_veste(identita_id)
             if auth_user_id is not None:
                 self._invito.chiudi_veste_spenta(
                     porta, auth_user_id=auth_user_id, identita_id=identita_id,
@@ -270,7 +274,7 @@ class InvitoPortaleService:
         )
         return {
             "disattivato": was_active,
-            "stato": "DISATTIVO",
+            "stato": "REVOCATA",
             "identita_id": identita_id,
         }
 

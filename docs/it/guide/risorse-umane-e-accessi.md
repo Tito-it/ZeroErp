@@ -428,7 +428,7 @@ Si torna **solo con un nuovo invito dell'amministratore**: [anagrafiche.fn_togli
 
 I due verbi controllano il permesso dall'utente della sessione, con [anagrafiche.fn_guard_gestione_veste](/dbzero/anagrafiche/funzioni/fn_guard_gestione_veste): `SUPER_ADMIN` per una veste operatore o tecnica, il livello `TUTTO` su clienti o fornitori per le vesti dei portali e dello shop. Il segno non si scrive né si cancella in altro modo: chi prova a scriverlo direttamente, o a cancellare una veste revocata, riceve `E_VESTE_REVOCA_SOLO_DAL_VERBO`.
 
-⚠️ Il backend non passa ancora dai due verbi: lo spegnimento dell'operatore e della veste di portale scrive `attivo = false` direttamente, e quella veste resta spenta ma **senza segno**; il reinvito non chiama ancora `fn_togli_revoca_veste`. Fino ad allora la revoca la lascia solo chi chiama `fn_revoca_veste`.
+Il backend passa dai due verbi in un punto solo per ciascuno. «Disabilita» dell'operatore (anche dall'interruttore «Accesso attivo») e «Disattiva» di portale e shop **revocano**, anche una veste già spenta con l'invito pendente, e nella stessa transazione chiudono gli inviti e le sessioni di quella veste. Ogni invito o reinvito dell'amministratore, per ogni porta, toglie il segno nella transazione del token. Un'accensione che non nasce da un invito, come il pulsante «Attiva shop» del cliente del portale, su una veste revocata si ferma con `E_VESTE_REVOCATA`.
 
 **Perche questo ordine?** E il verso inverso della cessazione, e la ragione e la stessa: la veste attiva e cio che tiene in piedi l'accesso, la risorsa attiva e cio che la rende sensata. Riaprendo prima la risorsa si evita la finestra in cui la veste risulta attiva su una persona non ancora in forza.
 

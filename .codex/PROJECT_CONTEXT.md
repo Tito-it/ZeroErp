@@ -246,8 +246,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **Accessi: una credenziale, più vesti** (`work-in-progress/brief-be-accessi-credenziale-e-vesti.md`; il piano
   da cui nasce, `work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md`, è archiviato dal 2026-11-25 dopo la
   riverifica sul codice): restano R-4 (la veste revocata: D-4, A-6), che aspetta il brief DB sugli accessi deciso
-  il 2026-11-23 (T9 di `brief-db-revisione-anagrafiche`, con S64 e S67) e non ancora scritto, e il collaudo a video
-  di D-5. ✅ L-6 (date della veste) fatto il 2026-10-07,
+  il 2026-11-23 (T9 di `brief-db-revisione-anagrafiche`, con S64 e S67): ✅ fatto lato DB e BE il 2026-11-26 nel
+  `brief-db-accessi-area-clienti` (D-4, A-6). Resta il collaudo a video di D-5. ✅ L-6 (date della veste) fatto il 2026-10-07,
   DB e BE/FE (`work-done/2026/brief-db-veste-utilizzabile.md`; giro 3 chiuso: «Valido al» del drawer operatore
   modificabile, spento col motivo per l'ultimo SUPER_ADMIN senza data di fine, `null` toglie la data): la regola «veste
   utilizzabile» sta in un BB a DB (`script.fn_veste_utilizzabile`), letto da tutte le sedi DB e dai
@@ -256,7 +256,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   l'email, il reset accetta nome utente o email. Chiuso il 2026-10-03
   `work-done/2026/brief-db-credenziale-verbi-amministratore.md` (motivo del blocco dal DB, verbi
   dell'amministratore che rifiutano le credenziali di sistema).
-- 📝 **L'area clienti: una porta sola, l'iscrizione da sé, il documento scelto all'ordine** (`work-in-progress/analisi-modello-area-clienti.md`, Tid 2026-11-25): portale e shop non sono più due porte; la visibilità la decide il soggetto, non il canale; privati e partite IVA si iscrivono da sé con la conferma dell'email; l'email resta la chiave, protegge il secondo fattore. Revoca le decisioni 1, 3, 4 del 2026-04-20 (`work-done/2026/pr-b-shop-b2c-cambio-modello.md`). D-M4, D-M5 (aziende), D-M7, D-M8 decise il 2026-11-25; aperta D-M9 (l'accesso dei privati: secondo fattore o provider, con `piano-autenticazione-provider-esterni-oauth`). Poi **un brief DB unico**, `work-in-progress/brief-db-accessi-area-clienti.md` (aperto il 2026-11-25), con T9 di `brief-db-revisione-anagrafiche` e R-4 come primo giro: **giro 1 applicato il 2026-11-26** (la veste revocata: segno, guard, `fn_revoca_veste`, `fn_togli_revoca_veste`, stato `REVOCATA`); aspetta il passo BE 3b.
+- 📝 **L'area clienti: una porta sola, l'iscrizione da sé, il documento scelto all'ordine** (`work-in-progress/analisi-modello-area-clienti.md`, Tid 2026-11-25): portale e shop non sono più due porte; la visibilità la decide il soggetto, non il canale; privati e partite IVA si iscrivono da sé con la conferma dell'email; l'email resta la chiave, protegge il secondo fattore. Revoca le decisioni 1, 3, 4 del 2026-04-20 (`work-done/2026/pr-b-shop-b2c-cambio-modello.md`). D-M4, D-M5 (aziende), D-M7, D-M8 decise il 2026-11-25; aperta D-M9 (l'accesso dei privati: secondo fattore o provider, con `piano-autenticazione-provider-esterni-oauth`). Poi **un brief DB unico**, `work-in-progress/brief-db-accessi-area-clienti.md` (aperto il 2026-11-25), con T9 di `brief-db-revisione-anagrafiche` e R-4 come primo giro: **giri 1 e 2 applicati il 2026-11-26** (la veste revocata: segno, guard, `fn_revoca_veste`, `fn_togli_revoca_veste`, stato `REVOCATA`; le regole della veste e della sync); **passo BE 3b fatto il 2026-11-26** (il BE revoca e reinvita dai verbi, A-6 chiuso dal guard; da committare); aspetta il passo DB 3c con R-3b-1 e R-3b-2.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
@@ -310,7 +310,6 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **La corsa appesa non è «in corso» nella liveness del BE** [BE/FE]
 - **La lista dei processi non dice se un processo gira adesso**
 - **Presidi, i residui del brief dei testi per chi agisce**: D-4, le quattro misure larghe per costruzione; la postura in sola lettura di `dbops.presidi` per l'app
-- ⏭️ **La SQL dei contatti del ruolo scritta nella view** [BE]
 - **Le colonne «predefinito» delle liste col `formato = predefinito`** [DB, poi FE]
 - **`HTML_MARKDOWN_BLOCKS` si sceglie ma non fa niente** [BE]
 - **Le versioni pubblicate stampano coi margini delle colonne (15 mm), non coi 18/16 mm del loro CSS**

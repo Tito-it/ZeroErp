@@ -38,7 +38,7 @@ from apps.core.services.coda_lavori.repository import (
     STATI_VIVI,
     CodaLavoriRepository,
 )
-from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_super_admin_costruito, richiedi_db_provvisto
 
 # Due tipi a catalogo (FK dura): i due giri di fatturazione dall'app.
 _TIPO = "FATTURAZIONE_GIRO"
@@ -58,9 +58,9 @@ class LavoriViviPerChiaveTests(TestCase):
     #        torna l'id.
     def _scrivi(self, cur, *, tipo: str, chiave: str, stato: str) -> int:
         # ⛔ Come SUPER ADMIN (dal blocco 5b la coda e' sotto RLS: una riga
-        #    SISTEMA la scrive e la legge solo lui o il drenatore). `SET LOCAL`:
-        #    vale per la transazione del test, e ripeterlo e' innocuo.
-        apri_contesto_operatore(cur, super_admin=True)
+        #    SISTEMA la scrive e la legge solo lui o il drenatore): il contesto
+        #    lo apre il test, una volta, su un SUPER_ADMIN costruito
+        #    (`apri_super_admin_costruito`, 2026-11-26).
         cur.execute(
             """
             INSERT INTO dbops.coda_lavori
@@ -80,6 +80,7 @@ class LavoriViviPerChiaveTests(TestCase):
     def test_vivi_sono_pending_e_in_corso_e_gli_altri_no(self) -> None:
         with transaction.atomic():
             with connection.cursor() as cur:
+                apri_super_admin_costruito(cur, etichetta="coda lavori admin")
                 attesi = {}
                 for stato in STATI_VIVI:
                     chiave = f"test:vivi:{stato.lower()}"
@@ -103,6 +104,7 @@ class LavoriViviPerChiaveTests(TestCase):
     def test_il_tipo_e_un_perimetro(self) -> None:
         with transaction.atomic():
             with connection.cursor() as cur:
+                apri_super_admin_costruito(cur, etichetta="coda lavori admin")
                 self._scrivi(cur, tipo=_ALTRO_TIPO, chiave="test:vivi:altro", stato="PENDING")
             vivi = self.repo.lavori_vivi_per_chiave(job_type=_TIPO, chiavi=["test:vivi:altro"])
             self.assertEqual(vivi, {})

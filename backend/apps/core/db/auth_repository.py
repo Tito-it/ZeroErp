@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Building block repository per auth_user (Django).
-# Chiama anagrafiche.fn_crea_auth_user per creare un utente
-# Django con guard unicita' username/email.
+# Scopo: Building block repository per auth_user (Django) e per le vesti
+# della credenziale.
+# ⚠️ `crea_auth_user` (wrapper di anagrafiche.fn_crea_auth_user) ritirato il
+# 2026-11-26 (Tid): nessun chiamante. Una credenziale nasce dalle madri del DB
+# (`fn_crea_operatore`) o dall'invito del portale.
 # Gestisce anche lo stato della credenziale (config.credenziali, P-1 del
 # brief-db-blocco-login-per-credenziale): freno sui tentativi falliti per
 # credenziale + provenienza, attesa crescente, cambio password obbligatorio.
@@ -40,31 +42,6 @@ _SELECT_VESTE = """
 
 class AuthRepository:
     """Building block: operazioni atomiche su auth_user."""
-
-    # Scopo: Crea un auth_user Django invocando fn_crea_auth_user.
-    # Ritorna auth_user.id. Guard unicita' username/email nel DB.
-    def crea_auth_user(
-        self,
-        *,
-        username: str,
-        email: str,
-        password_hash: str,
-        first_name: str | None = None,
-        last_name: str | None = None,
-    ) -> int:
-        sql = """
-            SELECT anagrafiche.fn_crea_auth_user(
-                p_username      := %s,
-                p_email         := %s,
-                p_password_hash := %s,
-                p_first_name    := %s,
-                p_last_name     := %s
-            )
-        """
-        params = [username, email, password_hash, first_name, last_name]
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return fetchone_scalar(cursor)
 
     # Scopo: La credenziale di un'email, senza distinguere maiuscole e
     # minuscole. La regola vive nel DB (`script.fn_get_auth_user_id_for_email`,
@@ -389,6 +366,44 @@ class AuthRepository:
                 "SELECT anagrafiche.fn_accendi_veste("
                 "%s::bigint, %s::integer, %s::config.ruolo_applicativo[])",
                 [identita_id, auth_user_id, list(ruoli_applicativi)],
+            )
+            row = cursor.fetchone()
+        return bool(row and row[0])
+
+    # Scopo: Revoca una veste: la spegne e ci scrive il segno della revoca
+    # (quando, chi), col verbo del DB `anagrafiche.fn_revoca_veste`. Ritorna
+    # se la veste era accesa prima della chiamata.
+    # ⭐ La sede unica dello spegnimento dell'amministratore (regola del 2, ok
+    #    Tid 2026-11-26, R2-a del brief-db-accessi-area-clienti §4.1): la
+    #    usano «Disabilita» dell'operatore e la disattivazione di portale e
+    #    shop. Fino a quel giorno ognuno aveva il suo `UPDATE … SET attivo =
+    #    false`, che non lasciava il segno: un link d'invito vecchio
+    #    riaccendeva la veste.
+    # ⛔ Il segno si mette anche su una veste GIA' SPENTA (invito pendente):
+    #    e' il caso che la revoca copre. Il permesso, per tipo di veste, lo
+    #    decide il DB (`fn_guard_gestione_veste`) sull'utente della sessione.
+    # ⚠️ Non chiude sessioni ne' token: lo fa il chiamante nella stessa
+    #    transazione (`InvitoVeste.chiudi_veste_spenta`).
+    def revoca_veste(self, identita_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT anagrafiche.fn_revoca_veste(%s::bigint)", [identita_id]
+            )
+            row = cursor.fetchone()
+        return bool(row and row[0])
+
+    # Scopo: Toglie il segno della revoca dalla coppia (credenziale, ruolo
+    # anagrafico, veste) di `identita_id`, col verbo del DB
+    # `anagrafiche.fn_togli_revoca_veste`. La veste resta spenta: la accende
+    # il link dell'invito. Idempotente; ritorna se ha tolto un segno.
+    # ⭐ Lo chiama solo `InvitoVeste.emetti` (R2-b, ok Tid 2026-11-26): il
+    #    nuovo invito dell'amministratore e' l'unico gesto che riapre una veste
+    #    revocata. Le accensioni dal lato del cliente (il pulsante «Attiva
+    #    shop») non lo chiamano, e il DB le rifiuta con `E_VESTE_REVOCATA`.
+    def togli_revoca_veste(self, identita_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT anagrafiche.fn_togli_revoca_veste(%s::bigint)", [identita_id]
             )
             row = cursor.fetchone()
         return bool(row and row[0])

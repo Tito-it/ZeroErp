@@ -914,6 +914,7 @@
       "PENDING": "Invitation sent",
       "NON_SPEDITO": "Invitation not sent",
       "ATTIVO": "Active",
+      "REVOCATA": "Revoked",
       "DISATTIVO": "Disabled"
     },
     "account": {
