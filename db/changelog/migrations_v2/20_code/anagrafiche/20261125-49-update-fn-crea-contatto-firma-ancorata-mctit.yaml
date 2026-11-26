@@ -1,0 +1,157 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.fn_crea_contatto: la firma torna dichiarata col %TYPE.
+#
+#   Il 20261123-03 dichiarava ancorati p_soggetto_id e p_soggetto_ruolo_id;
+#   il 20261125-40 (gia' applicato) li ha copiati sciolti dalla definizione al
+#   vivo, che mostra i %TYPE gia' risolti.
+#   Qui la dichiarazione torna quella del modello (linee-guida-sql §5g).
+#   I tipi risolti sono gli stessi (uuid, bigint, jsonb): CREATE OR REPLACE
+#   ammesso, l'oggetto compilato e' identico; COMMENT e GRANT restano. Cambia la fonte
+#   che il prossimo changeSet della funzione ricopiera'.
+#   Corpo = quello del 20261125-40, invariato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261125-49-update-fn-crea-contatto-firma-ancorata-mctit.yaml
+
+  - changeSet:
+      id: 20261125-49-update-fn-crea-contatto-firma-ancorata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_crea_contatto: la firma torna col %TYPE (il 20261125-40 l'aveva sciolta). Corpo invariato.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('anagrafiche.fn_crea_contatto(uuid,bigint,jsonb)'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_contatto(
+                  p_soggetto_id       anagrafiche.contatti.soggetto_id%TYPE,
+                  p_soggetto_ruolo_id anagrafiche.contatti.soggetto_ruolo_id%TYPE,
+                  p_campi             jsonb)
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_chi      CONSTANT text := 'anagrafiche.fn_crea_contatto';
+                  v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_manca    text;   -- il nome della chiave obbligatoria che manca, non una colonna
+                  v_tipo_txt text;   -- il tipo come arriva, prima di sapere se e' un numero
+                  v_tipo     anagrafiche.contatti.tipo_contatto_id%TYPE;
+                  v_vincolo  text;
+                  c_ammesse  CONSTANT text[] := ARRAY[
+                      'tipo_contatto_id', 'nominativo', 'email', 'telefono', 'cellulare',
+                      'pec', 'note', 'is_default', 'titolo_cortesia_id',
+                      'unita_organizzativa_id', 'istanza_utility_id'];
+                  c_doppioni CONSTANT text[] := ARRAY[
+                      'uq_contatti_soggetto_tipo', 'uq_contatti_ruolo_tipo_no_istanza',
+                      'uq_contatti_ruolo_istanza_tipo'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare un contatto del soggetto (p_soggetto_ruolo_id
+                  --   NULL) o di un suo ruolo, con le chiavi di p_campi (le
+                  --   assenti al DEFAULT). Ritorna la riga creata.
+                  --
+                  -- Regole:
+                  --   - una chiave estranea si rifiuta: E_CAMPO_NON_AMMESSO;
+                  --   - nominativo e tipo di contatto obbligatori, non vuoti,
+                  --     il tipo un intero positivo: E_CONTATTO_INCOMPLETO col
+                  --     primo campo che manca;
+                  --   - il tipo esiste nel catalogo: E_TIPO_CONTATTO_NON_TROVATO;
+                  --   - un contatto per tipo nel contesto (i tre indici
+                  --     uq_contatti_*): E_CONTATTO_TIPO_DUPLICATO.
+                  -- =========================================================
+                  IF p_soggetto_id IS NULL OR jsonb_typeof(v_campi) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', v_chi, 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('soggetto_id', p_soggetto_id,
+                                             'tipo_campi',  jsonb_typeof(v_campi)),
+                          NULL::uuid,
+                          v_chi,
+                          'soggetto mancante o campi che non sono un oggetto');
+                  END IF;
+
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, c_ammesse,
+                      'anagrafiche', v_chi,
+                      jsonb_build_object('soggetto_id', p_soggetto_id));
+
+                  -- Il tipo si legge come testo: il cast arriva solo su un intero.
+                  v_tipo_txt := btrim(v_campi ->> 'tipo_contatto_id');
+                  v_tipo := CASE WHEN v_tipo_txt ~ '^[0-9]{1,9}$' THEN v_tipo_txt::integer END;
+
+                  v_manca := CASE
+                                 WHEN NULLIF(btrim(v_campi ->> 'nominativo'), '') IS NULL THEN 'nominativo'
+                                 WHEN COALESCE(v_tipo, 0) <= 0 THEN 'tipo_contatto_id'
+                             END;
+                  IF v_manca IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', v_chi, 'E_CONTATTO_INCOMPLETO',
+                          jsonb_build_object('campo', v_manca, 'soggetto_id', p_soggetto_id,
+                                             'tipo_contatto_id', v_tipo_txt),
+                          NULL::uuid,
+                          v_manca);
+                  END IF;
+
+                  IF NOT EXISTS (SELECT 1 FROM config.tipi_contatti t WHERE t.id = v_tipo) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', v_chi, 'E_TIPO_CONTATTO_NON_TROVATO',
+                          jsonb_build_object('campo', 'tipo_contatto_id', 'soggetto_id', p_soggetto_id,
+                                             'tipo_contatto_id', v_tipo),
+                          NULL::uuid,
+                          v_tipo::text);
+                  END IF;
+
+                  BEGIN
+                      RETURN script.fn_scrivi_riga_da_jsonb(
+                                 'anagrafiche.contatti'::regclass,
+                                 v_campi || jsonb_build_object('soggetto_id',       p_soggetto_id,
+                                                               'soggetto_ruolo_id', p_soggetto_ruolo_id));
+                  EXCEPTION
+                      WHEN unique_violation THEN
+                          GET STACKED DIAGNOSTICS v_vincolo = CONSTRAINT_NAME;
+                          IF v_vincolo IS NULL OR NOT (v_vincolo = ANY (c_doppioni)) THEN
+                              RAISE;
+                          END IF;
+                          PERFORM script.fn_log_and_raise_error(
+                              'anagrafiche', v_chi, 'E_CONTATTO_TIPO_DUPLICATO',
+                              jsonb_build_object('campo',              'tipo_contatto_id',
+                                                 'vincolo',            v_vincolo,
+                                                 'soggetto_id',        p_soggetto_id,
+                                                 'soggetto_ruolo_id',  p_soggetto_ruolo_id,
+                                                 'istanza_utility_id', v_campi ->> 'istanza_utility_id',
+                                                 'tipo_contatto_id',   v_tipo),
+                              NULL::uuid,
+                              (SELECT t.descrizione FROM config.tipi_contatti t WHERE t.id = v_tipo),
+                              CASE v_vincolo
+                                  WHEN 'uq_contatti_ruolo_istanza_tipo'    THEN 'per questo ruolo su questa istanza'
+                                  WHEN 'uq_contatti_ruolo_tipo_no_istanza' THEN 'per questo ruolo'
+                                  ELSE 'per questo soggetto'
+                              END);
+                  END;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: l'oggetto compilato e' lo stesso; la firma sciolta era il difetto.
+              SELECT 1;

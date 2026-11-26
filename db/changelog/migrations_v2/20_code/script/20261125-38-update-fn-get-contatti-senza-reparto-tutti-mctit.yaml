@@ -21,6 +21,8 @@
 #   reparto e quelli senza, e a parita' di livello vince il reparto, come prima.
 #   Firma, colonne e cascata non cambiano. Il corpo e' quello di
 #   20261110-94 con il solo filtro cambiato.
+# type-perso: ammesso — debito chiuso: la firma e' stata copiata sciolta dalla definizione al vivo, e il changeSet era gia' applicato quando il guardrail l'ha visto (ancorarlo qui ne cambia il checksum). Il 20261125-47 la ri-ancora col corpo identico
+# id-senza-type: ammesso — debito chiuso: la firma e' stata copiata sciolta dalla definizione al vivo, e il changeSet era gia' applicato quando il guardrail l'ha visto (ancorarlo qui ne cambia il checksum). Il 20261125-47 la ri-ancora col corpo identico
 # ------------------------------------------------------------
 
 databaseChangeLog:

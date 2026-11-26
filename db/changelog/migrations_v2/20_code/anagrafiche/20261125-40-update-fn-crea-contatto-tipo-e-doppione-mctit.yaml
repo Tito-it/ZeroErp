@@ -34,6 +34,8 @@
 #     violazione risale com'e'.
 #   - default_context esce dalle chiavi: chi lo passa ha E_CAMPO_NON_AMMESSO.
 #   Firma invariata.
+# type-perso: ammesso — debito chiuso: la firma e' stata copiata sciolta dalla definizione al vivo, e il changeSet era gia' applicato quando il guardrail l'ha visto (ancorarlo qui ne cambia il checksum). Il 20261125-49 la ri-ancora col corpo identico
+# id-senza-type: ammesso — debito chiuso: la firma e' stata copiata sciolta dalla definizione al vivo, e il changeSet era gia' applicato quando il guardrail l'ha visto (ancorarlo qui ne cambia il checksum). Il 20261125-49 la ri-ancora col corpo identico
 # ------------------------------------------------------------
 
 databaseChangeLog:
