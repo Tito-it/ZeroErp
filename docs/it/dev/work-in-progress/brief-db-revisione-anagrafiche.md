@@ -2,7 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-26
 
-**Ripartono in due, senza aspettarsi.** La **sessione DB** con T4, il prossimo tema di §17.1, e in coda il brief
+**Ripartono in due, senza aspettarsi.** La **sessione DB** con il giro 6 (T4, l'azienda del billing account:
+decisioni prese da Tid il 2026-11-26, §24.5; piano in §24.6, serve il range dei changeSet) (il giro 5-bis, il titolo
+IVA che chiede la partita IVA, è ritirato da Tid il 2026-11-26: il controllo esiste già, §23.4), e in coda il brief
 nuovo di T6 (che porta anche l'ultimo contatto del soggetto, §22.7). Il **team BE/FE** coi passaggi al BE ancora
 aperti dei giri 3 (§20.7: `_NULLABLE` di `update_soggetto` e i due codici obsoleti nel ripiego sono ancora lì,
 verificato il 2026-11-26) e 4 (§21.7), più la fase 7. Il giro 5 è chiuso: il DB committato (`7f8d9506d`, PR #249),
@@ -21,8 +23,8 @@ resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta d
 | 6 | sessione DB | Il giro dei metadati, per ciò che i giri di codice non hanno già riscritto | §8 | 4 |
 | 7 | sessione DB | Archiviazione in `work-done/`, col debito dei temi spostati scritto nei loro brief | §11 | 5, 6 |
 
-**Decisioni aperte di Tid:** nessuna del giro 5 (D-T7b-1 … -7 prese come proposte, Tid 2026-11-25, §22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
-**Da committare:** niente (il giro 5 è committato: DB `7f8d9506d`, BE 2026-11-26).
+**Decisioni aperte di Tid:** nessuna del giro 6 (T4): decise il 2026-11-26 (§24.5); serve il range dei changeSet. Il giro 5-bis è ritirato (Tid, 2026-11-26, §23.4). Nessuna del giro 5 (D-T7b-1 … -7 prese come proposte, Tid 2026-11-25, §22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
+**Da committare:** il brief, con la sezione del giro 5-bis ritirato (2026-11-26); il giro 5 è committato (DB `7f8d9506d`, BE 2026-11-26).
 
 ## 0. Il piano da percorrere
 
@@ -99,7 +101,13 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] Giro 5: T7b, apply e pgTAP (Tid); doc auto-generata rigenerata (2026-11-25)
   * [x] Giro 5: T7b, committato (Tid, `7f8d9506d`, PR #249)
   * [x] Giro 5: T7b, il passaggio al BE (§22.6): le otto voci fatte o censite senza modifiche, committato (2026-11-26)
-  * [ ] Poi un giro per tema nell'ordine di §17.1: T4, T8, T12, T3, T10, T11
+  * [x] Giro 5-bis: il titolo IVA che chiede la partita IVA, anticipato da T10; analisi e decisioni D-T10a-1 … -3 (Tid, 2026-11-26, §23)
+  * [x] Giro 5-bis: ⚠️ ritirato da Tid dopo la prova sullo scratch: il controllo esiste già nella matrice e nel guard
+    del titolo, file tolti, numeri `20261125-77 … -80` liberi (2026-11-26, §23.4)
+  * [x] Giro 6: T4, analisi sul catalogo, guide verificate, ciò che esiste già (2026-11-26, §24.1)
+  * [x] Giro 6: T4, le decisioni (Tid, 2026-11-26, §24.5)
+  * [ ] Giro 6: T4, pgTAP rosso, changeSet, doc, prova sullo scratch; apply (Tid); commit; la richiesta al BE (§24.6)
+  * [ ] Poi un giro per tema nell'ordine di §17.1: T8, T12, T3, T10, T11
 * **Fase 9 — Il giro dei metadati** (§8)
   * [ ] I COMMENT, i commenti nei corpi e le note di seed che i giri di codice non hanno già riscritto
 * **Fase 10 — L'archiviazione** (§11)
@@ -2270,3 +2278,249 @@ cancellazione (`views_contatti_ruolo.py` riga 165, `SoggettiRepository.delete_co
   arriva al client come `400 E_DATABASE` senza frase né campo; il BE non la traduce per nome della FK (sarebbe una
   seconda sede della regola), aspetta il codice parlante di T6;
 * la voce di T11 sul montaggio senza fase del predefinito è chiusa da -37.
+
+## 23. Giro 5-bis — il titolo IVA che chiede la partita IVA (2026-11-26: ⚠️ RITIRATO da Tid lo stesso giorno, §23.4)
+
+> ⚠️ **Ritirato** (Tid, 2026-11-26): il giro replicava un'informazione che il modello ha già. §23.1-§23.3 restano come
+> vicolo cieco; l'esito e la verifica di ciò che esiste stanno in §23.4.
+
+**La regola chiesta da Tid** (2026-11-26): un soggetto senza partita IVA non può avere un titolo IVA da soggetto IVA.
+Nasce dentro T10 (i titoli IVA, §17.1) e Tid lo **anticipa prima di T4**. Il resto di T10 (S44) resta al suo posto.
+
+**Guide verificate** (`scripts/guide_coinvolte.py --oggetti`, 6 oggetti, 2026-11-26; nessun orfano):
+
+| Guida o nota | Esito |
+| --- | --- |
+| nota [_titolo-iva-per-natura](../../dbzero/anagrafiche/_titolo-iva-per-natura.md) | **coerente**; con il giro resta **indietro**: la tabella «Le strade che toccano la regola» prende le strade nuove, nello stesso giro |
+| [soggetti-e-ruoli-anagrafici](../../guide/soggetti-e-ruoli-anagrafici.md) §«I titoli IVA ammessi dalla natura» | **coerente**; prende la frase della regola nuova nello stesso giro |
+| [iva-risolutore-di-riga](../../guide/iva-risolutore-di-riga.md) | **coerente**: legge i titoli, il giro non ne cambia la lettura |
+| `generazione-cliente`, `gestione-dei-contatti`, `gestione-delle-istanze-utility`, `gestione-pratiche`, `messaggi-audit`, `risorse-umane-e-accessi`, note `_contatto-predefinito`, `_sincronizzazione-accesso` | **coerenti**: nominano `soggetti` per altro |
+
+### 23.1 Che cosa dice il contratto (letto sul seed e sul corpo, 2026-11-26)
+
+* La matrice `config.tipi_titolo_iva_tipi_soggetto_dettaglio` ammette `INTENTO` e `USO_INDUSTRIALE` solo per nature con
+  `piva_obbligatoria = t` (DI, SP, SC, ENC); la presenza della P.IVA la garantisce
+  `anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori`. **La regola oggi regge per composizione di due dati di
+  configurazione, e nessuna sede la dice**: una riga di matrice `INTENTO → PR`, o `piva_obbligatoria` spenta su una
+  natura che ha titoli in matrice, fa entrare nel risolutore un titolo da soggetto IVA su chi ha il solo CF.
+* **Il controesempio alla regola larga**: `AGEVOLATA_104` è ammessa **solo** per il privato (PR), cioè per chi ha il
+  solo CF, ed è giusto sul modello (l'agevolazione è della persona). La regola è **per tipo di titolo**, non per tutti.
+* `COOPERATIVA` non ha righe di matrice: nessuna natura la ammette. Resta D-4 del registro dei residui
+  (`brief-db-dati-fiscali-e-societari-del-soggetto`), fuori da questo giro.
+
+### 23.2 Le decisioni (Tid, 2026-11-26; ⚠️ revocate lo stesso giorno, §23.4)
+
+| # | Domanda | Decisione |
+| --- | --- | --- |
+| D-T10a-1 | Dove sta la regola | **a**: un flag `richiede_partita_iva` sul tipo di titolo (`config.tipi_titolo_iva`), controllato dove si configura. ~~b, il controllo sulla `partita_iva` del soggetto nel guard del titolo~~: ripete la regola della natura in una seconda sede e apre le strade del cambio di P.IVA e di natura |
+| D-T10a-2 | Quali tipi la chiedono | `INTENTO` e `USO_INDUSTRIALE` sì; `AGEVOLATA_104` no; `COOPERATIVA` no (D-4 resta aperta) |
+| D-T10a-3 | Quando | Prima di T4; poi si prosegue con T4 |
+
+### 23.3 Il piano del giro (⚠️ superato: §23.4)
+
+Le strade che possono rompere la coerenza «titolo che chiede la P.IVA ⇒ natura con P.IVA obbligatoria» sono tre, e
+ognuna ha il suo guard; la domanda «c'è una coppia incoerente?» ha una sede sola, letta dai tre:
+
+1. una riga di matrice attiva nasce, si riattiva o si sposta su una coppia incoerente;
+2. una natura spegne `piva_obbligatoria` con titoli in matrice che la chiedono;
+3. un tipo di titolo accende `richiede_partita_iva` con righe di matrice attive su nature senza P.IVA obbligatoria.
+
+* [ ] pgTAP rosso che costruisce le tre strade
+* [ ] changeSet: la colonna, il CSV, la funzione-sede, i tre guard, i codici d'errore
+* [ ] provati sullo scratch con `scripts/prova_changeset.py`
+* [ ] pagine `manual/`, la nota `_titolo-iva-per-natura`, la guida
+* [ ] apply e pgTAP (Tid); doc auto-generata rigenerata
+* [ ] commit (Tid)
+
+### 23.4 Il ritiro, e che cosa esiste già (2026-11-26)
+
+**Ritirato da Tid il 2026-11-26.** Il giro era scritto e provato sullo scratch (`20261125-77 … -80`: la colonna
+`config.tipi_titolo_iva.richiede_partita_iva`, la funzione `config.fn_titolo_iva_partita_iva_incoerenza`, un guard
+montato su matrice, tipo e natura, il codice `E_TITOLO_IVA_RICHIEDE_PARTITA_IVA`, il pgTAP
+`config/test-titolo-iva-richiede-partita-iva-v1.sql`, verde 17/17). Niente è stato applicato né committato: i file
+sono tolti, i CSV ripristinati, i numeri `20261125-77 … -80` tornano liberi.
+
+**Perché, sul modello: il riconoscimento «partita IVA sì o no» c'è già, ed è della natura.**
+`config.tipi_soggetto_dettaglio` lo porta in due colonne tenute coerenti da un `CHECK`
+(`chk_tipi_soggetto_dettaglio_piva_obbl_vs_formato`): `piva_obbligatoria` e `formato_piva`. `formato_piva =
+NON_APPLICABILE` vuol dire «chi ha questa natura ha il solo codice fiscale» (oggi il privato, PR); `cf_obbligatorio` è
+acceso su tutte le nature e non distingue niente. Un flag sul tipo di titolo diceva di nuovo, da un'altra tabella, una
+cosa che la matrice titoli × natura dice già riga per riga: una seconda sede della stessa regola.
+
+**Il controllo «un titolo da soggetto IVA non si usa su chi ha il solo CF» esiste ed è completo** (letto sul corpo,
+2026-11-26). Ogni strada che può far diventare vigente un titolo su una natura che non lo ammette è chiusa:
+
+| Strada | Chi la chiude | Rifiuto |
+| --- | --- | --- |
+| si scrive o si riaccende un titolo, o se ne cambia tipo o titolare | `anagrafiche.trgfn_soggetti_titoli_iva_guard_tipo_soggetto`, che legge la matrice con `anagrafiche.fn_titolo_iva_ammesso` | `E_TITOLO_IVA_NON_AMMESSO_PER_TIPO_SOGGETTO`; senza natura `E_DATO_FISCALE_SENZA_TIPO_SOGGETTO` |
+| il soggetto cambia natura (una ditta diventa privato) | `anagrafiche.fn_check_cambio_natura_soggetto` | `E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI`, `E_CAMBIO_NATURA_TITOLI_ALTRI_EMITTENTI` |
+| una riga della matrice smette di ammettere | `config.trgfn_tipi_titolo_iva_tipi_soggetto_dettaglio_guard_ritiro` | `E_TITOLO_IVA_AMMISSIONE_IN_USO` |
+| la natura ha la P.IVA obbligatoria ma il soggetto non la scrive | `anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori` | `E_PIVA_OBBLIGATORIA` |
+
+Lo prova già `anagrafiche/test-soggetti-titoli-iva-tipo-soggetto-v1.sql`: il test 16 rifiuta un `INTENTO` su un
+privato, il 18 il cambio di natura con un titolo vigente che la natura nuova non ammette. La matrice di seed abbina `INTENTO` e `USO_INDUSTRIALE` solo
+a DI, SP, SC ed ENC, cioè a nature con la partita IVA.
+
+**Dove sta quindi la regola**: nella matrice, che è configurazione. Una riga che abbina un titolo da soggetto IVA a una
+natura con `formato_piva = NON_APPLICABILE` non deve esistere; chi configura la matrice (CSV o pannello) ne risponde.
+Un controllo di coerenza fra matrice e natura non c'è: era il giro ritirato.
+
+**L'eccezione voluta**: `AGEVOLATA_104` è ammessa **solo** al privato, cioè a chi ha il solo CF: l'agevolazione è
+della persona. Una regola «nessun titolo su chi ha il solo CF» la renderebbe inutilizzabile.
+
+**Il vicolo cieco, perché non si riprovi**: la proposta è partita da «nessuna sede dice la regola» senza leggere
+prima che cosa del modello la diceva già (le colonne della natura, la matrice, il guard del titolo). Il giro è stato
+costruito e provato prima di accorgersene.
+
+## 24. Giro 6 — T4, l'azienda del billing account (2026-11-26: analisi letta sul catalogo, decisioni di Tid aperte)
+
+Il perimetro è S2, S24, S25, S26, S27, S28, S29, S31, S32, S33 (§17) e la FK di `emittenti_fiscali.valuta_id` portata da
+S53 (§17.1). Corpi letti sul catalogo dello scratch (`zeroerp_ruoli`) il 2026-11-26; sul backend si è guardato solo
+chi chiama, in sola lettura.
+
+**Guide verificate** (`scripts/guide_coinvolte.py --oggetti`, 18 oggetti, 2026-11-26):
+
+| Guida o nota | Esito |
+| --- | --- |
+| nota [_emittente-del-billing-account](../../dbzero/anagrafiche/_emittente-del-billing-account.md) | **coerente** sui tre livelli, i quattro movimenti e la storia («una bozza non blocca»). Con D-T4-1 e D-T4-2 resta **indietro**: «i controlli che guardano lo spostamento della predefinita chiedono l'azienda per l'installazione» varrà per tutti i cancelli. ⚠️ Nomina i cancelli senza schema, e lo script li dà orfani (`fn_guard_ba_gestore_globale_storia`, i tre `trgfn_efba_guard_*`, `fn_check_ba_coppia_emittente_omogenea`, `fn_ba_ha_storia_emittente`, `script.fn_check_ba_cambio_emittente`): l'header «Vedi anche» è incompleto, si completa nello stesso giro |
+| pagina `manual/billing_account` §«Che cosa non fa» | **coerente** con il codice di oggi: descrive come limiti S28 («la gerarchia non ha un limite di livelli», «cambiare il padre non è giudicato come toglierlo»). È la fotografia del giro 0a, non una decisione: con D-T4-5 si riscrive |
+| `anagrafiche/test-istanza-ba-gestore-globale-v1.sql`, test 1 e 5 | **contraddetto** da D-T4-2: trattano come lecito il passo che S24 segnala. Si riscrivono nello stesso giro, con la ragione |
+| [generazione-cliente](../../guide/generazione-cliente.md) | **coerente** (l'albero sullo stesso emittente; la tabella dei trigger del BA). Con D-T4-5 la riga di `trgfn_billing_account_guard_normalize` resta indietro |
+| [fatturazione](../../guide/fatturazione.md) | **coerente**; con D-T4-4 dice che la fattura passa dal guard dell'azienda del cliente come gli altri documenti |
+| [gestione-commesse](../../guide/gestione-commesse.md), [gestione-ordini](../../guide/gestione-ordini.md), [gestione-ddt](../../guide/gestione-ddt.md) | **coerenti**: descrivono `script.trgfn_doc_guard_emittente_ba` sul loro documento |
+| [soggetti-e-ruoli-anagrafici](../../guide/soggetti-e-ruoli-anagrafici.md), [emittenti-fiscali](../../guide/emittenti-fiscali.md), [gestione-delle-istanze-utility](../../guide/gestione-delle-istanze-utility.md), nota `_chiave-unica-cliente` | **coerenti**: nominano il collegamento e la creazione per altro |
+| `architettura-multi-face-auth`, `architettura-permessi-e-autorizzazioni`, `automazione-db`, `configurazione-e-gestione-parametri`, `contratto-guc-app`, `gestione-dei-pagamenti`, `integrazione-ai`, `iva-risolutore-di-riga`, `pgtap-come-si-scrive-un-test` | **coerenti**: nominano `vendite.fatture` o `emittenti_fiscali` per altro |
+
+**La storia delle decisioni.** I tre cancelli (storia, albero, istanza) e la «storia = documento numerato di qualunque
+famiglia» sono del cantiere del 31 agosto. La **D-5 del 2026-10-10**
+([brief-db-istanza-nasce-col-ba-residui](../work-done/2026/brief-db-istanza-nasce-col-ba-residui.md), `20261010-57 …
+-59`) ha introdotto `script.fn_get_ba_emittente_sr_id_installazione` e ci ha portato i soli guard della predefinita,
+perché «con il risolutore di sessione un utente con un'azienda vedeva il BA scollegato restare alla SUA azienda, e lo
+spostamento passava». I guard sul singolo BA sono rimasti al risolutore di sessione: S24 è lo stesso difetto, sull'altro
+ramo.
+
+### 24.1 Che cosa esiste già, segnalazione per segnalazione
+
+| # | Che cosa dice il corpo | Che cosa esiste già e si riusa | Esito |
+| --- | --- | --- | --- |
+| **S2** | `fn_guard_ba_gestore_globale_storia` sceglie il primo BA scollegato con «ha fatture o commesse» (anche in bozza) e delega a `fn_guard_ba_cambio_emittente`, che decide con `anagrafiche.fn_ba_ha_storia_emittente` (documento numerato di qualunque famiglia attiva). Un BA con soli ordini o DDT numerati non è scelto; un BA con una fattura in bozza è scelto, la delegata tace, gli altri non si guardano | `anagrafiche.fn_ba_ha_storia_emittente`: è la definizione di storia, già sede unica per il ramo del singolo BA | **Difetto**: due definizioni della stessa regola. La scelta si fa col BB |
+| **S24** | `fn_check_ba_coppia_emittente_omogenea` (chiamata da `fn_guard_albero_ba_emittente` e `fn_guard_istanza_ba_emittente`, nessun chiamante nel backend) risolve con `fn_get_emittente_fiscale_id`, il risolutore di sessione: un BA appena scollegato si confronta con l'azienda dell'operatore, non con la predefinita su cui ricade | `script.fn_get_ba_emittente_sr_id_installazione` (D-5). Alla nascita del BA il collegamento lo scrive `trg_billing_account_z90_link_ef_ins` prima dei guard `z95`, quindi anche lì l'azienda d'installazione è quella giusta | **Difetto**; la correzione completa D-5 |
+| **S25** | Un `UPDATE` che porta la riga da collegamento a predefinita, o il contrario, passa dai guard di storia e di albero solo sul singolo BA (il gemello dell'istanza chiama anche quello della predefinita). Sostituire la predefinita con `DELETE` + `INSERT` è rifiutato alla `DELETE` (`dopo = NULL`) se un BA scollegato ha storia, anche se la riga nuova riporta la stessa azienda | Il ramo dell'istanza, `trgfn_efba_guard_istanza_emittente`, è già la forma giusta | **Difetto** il primo; il secondo è una scelta da dichiarare (D-T4-3) |
+| **S26** | I due guard della predefinita guardano lo stato dopo (esiste una coppia mista?), non la differenza | — | **Scelta**: l'invariante è globale; una coppia mista che c'è già nasce solo da S24, e chiusa S24 è un difetto di dati che si corregge a mano. Si scrive nella nota |
+| **S27** | `script.trgfn_doc_guard_emittente_ba` è montato su ordini, DDT, resi, commesse, contratti, offerte, preventivi e seriali; non su `vendite.fatture`, che ha `billing_account_id` ed `emittente_soggetto_ruolo_id` come `vendite.commesse` | Il BB, con i suoi argomenti (etichetta, colonna che identifica, colonna dell'emittente, codice). Il fermo dei temi trasversali lo ammette: poggia su un pezzo comune già fatto (§17) | **Difetto** il montaggio mancante. ⚠️ La seconda metà («una bozza resta all'azienda di prima quando il BA cambia azienda») vale per **tutte** le famiglie, non per la sola fattura: il guard giudica il documento quando lo si scrive, non quando il BA si sposta |
+| **S28** | `trgfn_billing_account_guard_normalize` rifiuta solo il padre uguale a sé: nessun limite di livelli, nessun controllo dei cicli; il blocco per attività non fatturate scatta solo se il padre diventa vuoto, non se cambia | Il blocco dello stacco c'è già (`E_DISSOCIAZIONE_PARENT_CON_ATTIVITA`): basta giudicarci anche il cambio | **Difetto** il ciclo e il cambio di padre; il limite di livelli è una decisione di modello (D-T4-5) |
+| **S29** | `billing_account.valuta_id` ed `emittenti_fiscali.valuta_id` (`integer`, nullable) senza FK; `fornitori` e `gestori` l'hanno verso `config.valute(id)` (`integer`) | Le FK gemelle di `fornitori` e `gestori` | **Difetto** |
+| **S31** | `trgfn_billing_account_guard_admin_globale` e `trgfn_billing_account_link_ef` leggono l'utente con `script.fn_utente_di_sessione` dentro `EXCEPTION WHEN OTHERS THEN v_user_id := NULL`: un utente illeggibile diventa «nessun utente» e la riga passa | `fn_id_fiscale_bloccato` lascia già salire il rifiuto | **Difetto**: si toglie il blocco; `v_user_id integer` e `v_existing bigint` si ancorano |
+| **S32** | `fn_lookup_utilities_per_ba(p_billing_account_id, p_ruolo_codice_soggetto)` non legge il BA: il ruolo arriva dal chiamante e non si confronta con `billing_account.soggetto_ruolo_id`; un id che non è un BA ricade sulla predefinita e risponde | Il ruolo vero sta sul BA. Chiamanti: `backend/apps/core/db/lookup_repository.py` e il pgTAP `test-fn-lookup-utilities-per-ba.sql` | **Difetto**; firma invariata (§5f) |
+| **S33** (prima metà) | Senza sessione `fn_crea_billing_account` scrive il BA, i guard `z95` di albero e istanza lo giudicano sulla predefinita, e solo dopo la funzione scrive il collegamento con l'azienda chiesta: un figlio di un padre di un'altra azienda è rifiutato anche se la coppia finale è omogenea | — | **Difetto** (D-T4-9) |
+| **S33** (seconda metà) | Con `usa_sequenza` spento `script.fn_generate_codice` restituisce `NULL` per contratto, e il rifiuto è il `NOT NULL` (23502) | Il generatore è un BB con 12 chiamanti: lo stesso caso vale per ogni tabella col codice generato | **Forma**, di tutta la famiglia: proposta in T11 (D-T4-10) |
+
+### 24.2 Le decisioni per Tid
+
+⚠️ **Riletto il 2026-11-26, su domanda di Tid**: di T4 era già deciso (§17.1, 2026-11-23) che si fa qui e che S27
+monta il guard su `vendite.fatture` (D-T4-4 nella sua prima parte). Le altre righe sono **difetti** che si correggono
+riusando pezzi esistenti (§24.1) e seguono la proposta, come nei giri 3-5. Restano a Tid **due scelte vere**: D-T4-5
+(i livelli dell'albero) e D-T4-3 (b) (la predefinita si sostituisce con `UPDATE`); e la conferma dei due rinvii (la
+bozza di ogni famiglia nel registro dei residui, D-T4-4; il codice con la sequenza spenta in T11, D-T4-10).
+
+| # | Domanda | Proposta |
+| --- | --- | --- |
+| D-T4-1 | S2: la predefinita sceglie i BA da controllare con `fn_ba_ha_storia_emittente` | **Sì**. Effetto: un BA con soli ordini o DDT numerati blocca lo spostamento della predefinita; una fattura in bozza no, come dice la nota |
+| D-T4-2 | S24: i guard sul singolo BA (albero e istanza) chiedono l'azienda per l'installazione, come quelli della predefinita | **Sì**, completa D-5. Il risolutore di sessione resta per gli altri lettori. I test 1 e 5 di `test-istanza-ba-gestore-globale-v1` si riscrivono |
+| D-T4-3 | S25: (a) il trasformarsi di una riga da collegamento a predefinita, o il contrario, passa anche dai guard della predefinita; (b) la predefinita si sostituisce con `UPDATE` | **(a) sì**, come fa già il ramo dell'istanza. **(b) scelta dichiarata**: `DELETE` + `INSERT` resta rifiutato quando un BA scollegato ha storia, e la nota lo dice. L'alternativa, un giudizio differito a fine transazione, costa un trigger differito per un percorso che ha già una strada |
+| D-T4-4 | S27: `vendite.fatture` monta `script.trgfn_doc_guard_emittente_ba('Fattura', 'numero', 'emittente_soggetto_ruolo_id', <codice>)` | **Già deciso** (Tid, 2026-11-23, §17.1), con `E_DOC_EMITTENTE_BA_INCOERENTE` come ordini e DDT. Prima del montaggio, il pgTAP della pipeline di fatturazione prova che il motore scrive sempre l'azienda del BA. La bozza di ogni famiglia che resta all'azienda di prima **non** entra in T4: tocca tutti i documenti di vendita (serve l'ok di Tid) e va nel registro dei residui |
+| D-T4-5 | S28: quanti livelli ha l'albero dei BA | **a**: uno solo (un padre non ha padre, un figlio non fa da padre), che chiude anche i cicli; «la fattura va al padre diretto» resta vero senza ambiguità. **b**: più livelli, rifiutando i soli cicli. In tutti e due i casi il cambio di padre con attività non fatturate è rifiutato come lo stacco |
+| D-T4-6 | S29: FK `valuta_id` → `config.valute(id)` su `billing_account` ed `emittenti_fiscali` | **Sì**, `ON UPDATE CASCADE` come le gemelle; prima si leggono gli orfani, che impedirebbero il vincolo |
+| D-T4-7 | S31: via il blocco `EXCEPTION` dai due trigger | **Sì** |
+| D-T4-8 | S32: il lookup rifiuta un BA che non c'è e un ruolo che non è quello del BA | **Sì**, firma invariata; i codici si cercano a catalogo prima di coniarne uno |
+| D-T4-9 | S33: come si giudica l'albero e l'istanza di un BA nato senza sessione con l'azienda chiesta | **a**: i due guard sulla nascita del BA (`z95` albero e istanza) diventano differiti a fine transazione, quando il collegamento c'è. ⚠️ I pgTAP girano `IMMEDIATE`: il caso si prova con `SET CONSTRAINTS … DEFERRED` nel test. **b**: la funzione scrive il BA e il collegamento in un'istruzione sola (non si può: la FK va dal collegamento al BA) |
+| D-T4-10 | S33: il codice mancante con la sequenza spenta | **In T11**: il caso è del generatore e dei suoi 12 chiamanti, non del BA |
+
+### 24.3 Il piano del giro (dopo le decisioni)
+
+* [x] Analisi sul catalogo, guide verificate, ciò che esiste già (2026-11-26, §24.1)
+* [ ] Le due scelte D-T4-5 e D-T4-3 (b), e i due rinvii (Tid); il resto segue la proposta
+* [ ] pgTAP rosso, un caso costruito per segnalazione
+* [ ] changeSet (il range lo dà Tid), prova sullo scratch con `scripts/prova_changeset.py`
+* [ ] la nota `_emittente-del-billing-account` (con il «Vedi anche» completo), `manual/billing_account`, le guide indietro
+* [ ] apply e pgTAP (Tid); doc auto-generata rigenerata; commit
+
+### 24.4 Le risposte di Tid (2026-11-26) e la storia che toccano
+
+* **D-T4-3, la predefinita (Tid): «un BA non può cambiare emittente»; la predefinita non deve spostare i clienti.**
+  L'idea di Tid: prima di togliere il flag alla predefinita, i BA senza collegamento si collegano tutti alla
+  predefinita di oggi; solo dopo il flag si sposta. ⚠️ **È un cambio di modello**: revoca il ripiego «senza
+  collegamento il BA segue la predefinita» (il movimento 4, «raggio N», di
+  [brief-db-billing-account-cambio-emittente](../work-done/2026/brief-db-billing-account-cambio-emittente.md) §6.2,
+  2026-08-26) e la nota `_emittente-del-billing-account` (terzo livello, quarto movimento). **La forma proposta, da
+  confermare**: un BA ha **sempre** il suo collegamento. Nasce collegato all'azienda di chi lo crea, o alla
+  predefinita se non c'è sessione (oggi `trgfn_billing_account_link_ef` senza sessione non collega); i BA esistenti
+  senza collegamento si collegano una volta, alla predefinita di oggi. Da lì la predefinita decide solo l'azienda dei
+  BA che **nasceranno**, e spostarla non cambia più nessun cliente. ⚠️ Ricadute da censire prima di costruire: il
+  backend «sposta» un cliente cancellando il collegamento e creandone uno nuovo (§2.2 di quel brief), e la
+  cancellazione lascerebbe un BA senza collegamento; i guard della predefinita sull'albero e sull'istanza
+  (`fn_guard_*_gestore_globale`) non avrebbero più niente da cercare, e si ritirerebbero.
+* **D-T4-4, le bozze (Tid): «se ci sono documenti il cliente non può cambiare azienda»; chi ha sbagliato cancella i
+  documenti.** Qualunque documento di qualunque famiglia, **anche in bozza**, chiude il cambio d'azienda del BA.
+  ⚠️ **Revoca** «conta solo il documento numerato, una bozza non blocca»
+  ([brief-db-registri-di-numerazione-emittente-e-trasloco](../work-done/2026/brief-db-registri-di-numerazione-emittente-e-trasloco.md),
+  2026-08-30) e **completa** D-1 **b** di brief-db-billing-account-cambio-emittente (2026-08-26): la finestra di
+  correzione resta, ma solo finché il BA non ha nessun documento. Con questa regola la seconda metà di S27 (la bozza
+  rimasta all'azienda di prima) non può più nascere: il rinvio al registro dei residui non serve. La sede della regola
+  resta una, `anagrafiche.fn_ba_ha_storia_emittente`, che smette di chiedere il numero.
+* **D-T4-10, il codice con la sequenza spenta (Tid): da correggere.** Sede proposta: T11, per tutti i 12 chiamanti
+  del generatore.
+* **D-T4-5, i livelli dell'albero: Tid chiede come nasce un padre di un padre**, e propone un solo padre per partita
+  IVA o codice fiscale, forse con un flag «padre». La spiegazione e la proposta sono in chat (2026-11-26); ⚠️ la
+  decisione esistente da rispettare o revocare:
+  [analisi-critiche-modello-clienti-utilities-catasto](../work-done/2026/analisi-critiche-modello-clienti-utilities-catasto.md)
+  §2.2 ha scartato un flag `fattura_aggregata` perché «creerebbe ridondanza e uno stato incoerente»: la semantica sta
+  già in `parent_account_id`. Il motore di fatturazione legge un livello solo (`COALESCE(ba.parent_account_id, ba.id)`
+  in `fn_build_fattura_key`, `fn_resolve_registro_documento`, `fn_resolve_termini_pagamento`).
+
+### 24.5 Decise da Tid (2026-11-26)
+
+| # | Decisione |
+| --- | --- |
+| D-T4-5 | **Un livello solo, senza flag**: chi ha un padre non fa da padre, chi fa da padre non ha un padre (i cicli diventano impossibili); **un solo padre per cliente e per azienda** (stessa identità fiscale, stesso emittente). Il cambio di padre con attività non fatturate è rifiutato come lo stacco. Rispetta la decisione di `analisi-critiche-modello-clienti-utilities-catasto` §2.2 (nessun flag: la semantica sta in `parent_account_id`) |
+| D-T4-3 | **Ogni BA ha sempre il suo collegamento a un'azienda.** Nasce collegato all'azienda di chi lo crea, o alla predefinita se non c'è sessione; i BA esistenti senza collegamento si collegano una volta alla predefinita di oggi. La predefinita decide solo l'azienda dei BA che nasceranno: spostarla non cambia nessun cliente. Revoca il ripiego «senza collegamento segue la predefinita» (brief-db-billing-account-cambio-emittente §6.2, 2026-08-26) |
+| D-T4-3 bis | **Un BA cambia azienda solo se non ha documenti** (Tid: «solo con documenti» è il divieto). La forma **b** di D-1 (2026-08-26) resta: la finestra di correzione c'è finché il BA non ha nessun documento |
+| D-T4-4 | **Qualunque documento, anche in bozza, chiude il cambio d'azienda** (§24.4). S27: il guard dell'azienda montato su `vendite.fatture` (deciso il 2026-11-23) |
+| D-T4-10 | Il codice con la sequenza spenta si corregge, in T11 (§24.4) |
+| il resto | S2, S24, S25 (a), S29, S31, S32, S33 seguono la proposta di §24.2 |
+
+**Che cosa ne segue sul modello** (letto sui corpi, 2026-11-26):
+
+* Con ogni BA collegato il risolutore trova sempre il collegamento al primo livello: **S24 si chiude per costruzione**
+  (sessione e installazione danno la stessa risposta), e così S26. I tre guard della predefinita (storia, albero,
+  istanza, «raggio N») non hanno più niente da cercare: **si ritirano nello stesso giro**, coi rami del movimento 4
+  dei tre trigger di `emittenti_fiscali_billing_account`. S2 si chiude con loro.
+* Un BA senza collegamento diventa uno stato che il modello non ammette: lo presidia un controllo **a fine
+  transazione** (il BA nasce, il collegamento arriva subito dopo), su `billing_account` e sulla cancellazione o lo
+  spostamento di un collegamento. S25 (a) si chiude per costruzione: un collegamento non diventa più la predefinita.
+* Lo spostamento di un BA fra due aziende (ammesso senza documenti) si fa **modificando** il collegamento, non
+  cancellandolo: la cancellazione da sola lascerebbe il BA scollegato.
+* `fn_crea_billing_account` con l'azienda chiesta trova già il collegamento scritto alla nascita (di chi agisce o della
+  predefinita) e lo **corregge** se diverso, invece di rifiutare (§24.1, S33).
+* La «storia» diventa «qualunque documento»: `anagrafiche.fn_ba_ha_storia_emittente` e
+  `anagrafiche.fn_get_storia_emittente_ba` smettono di chiedere il numero; la sede resta una.
+
+**Richiesta al team BE/FE** (da girare dopo l'apply, con l'elenco dei file già noti, e il censimento: «censisci chi
+scrive o cancella `anagrafiche.emittenti_fiscali_billing_account` e chi conta sul BA senza collegamento»):
+`backend/apps/anagrafiche/db/emittenti_fiscali_repository.py`, `create_mapping` e `delete_mapping` (righe 470-500 al
+2026-11-26): lo spostamento di un cliente diventa un `UPDATE` di `emittente_soggetto_ruolo_id` sul collegamento; la
+cancellazione di un collegamento di un BA è rifiutata; la frase del blocco per storia nomina anche le bozze.
+
+### 24.6 Il piano del giro, dopo le decisioni
+
+* [x] Le decisioni (Tid, 2026-11-26, §24.5)
+* [ ] pgTAP rosso: un caso costruito per ogni regola (la nascita senza sessione collegata alla predefinita; il BA senza
+  collegamento rifiutato a fine transazione; la predefinita che si sposta senza toccare nessuno; la bozza che blocca;
+  lo spostamento per modifica; il padre di un padre, il ciclo, il secondo padre per cliente e azienda, il cambio di
+  padre con attività; la fattura con l'azienda sbagliata; la valuta inesistente; l'utente illeggibile; il lookup con
+  BA o ruolo sbagliati; la creazione senza sessione con l'azienda chiesta)
+* [ ] changeSet (range da Tid), prova sullo scratch; i pgTAP che il ritiro dei guard della predefinita rompe,
+  riscritti nello stesso changeSet (`test-istanza-ba-gestore-globale-v1` e i gemelli)
+* [ ] la nota `_emittente-del-billing-account` riscritta (due livelli, tre movimenti, «Vedi anche» completo),
+  `manual/billing_account`, le pagine delle funzioni ritirate, le guide indietro
+* [ ] apply e pgTAP (Tid); doc auto-generata rigenerata; commit; la richiesta al BE

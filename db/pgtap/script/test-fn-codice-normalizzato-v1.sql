@@ -84,8 +84,8 @@ SELECT is(
        FROM unnest(ARRAY[
               'script.trgfn_codice_maiuscolo()',
               'anagrafiche.trgfn_emittenti_fiscali_guard_codice_forma()',
-              'config.fn_scrivi_profilo_accesso(config.tipo_profilo_accesso,character varying,text,jsonb,jsonb,jsonb)',
-              'script.fn_crea_utente_tecnico(text,character varying,character varying)',
+              'config.fn_applica_scrivi_profilo_accesso(config.tipo_profilo_accesso,character varying,text,jsonb,jsonb,jsonb)',
+              'script.fn_applica_crea_utente_tecnico(text,character varying,character varying)',
               'script.fn_riattiva_utente_tecnico(text,character varying)',
               'config.fn_resolve_email_template(character varying,integer,integer,character varying)',
               'vendite.fn_canone_periodi(date,date,character varying,smallint,character varying,date,date)',

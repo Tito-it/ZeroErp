@@ -2,12 +2,12 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-26**
 >
-> **Riparte: Tid**, col via al team DB per il giro 10-bis: il lavoro BE è committato su `dev/backend-tid`
-> (`e4af0106a`, 2026-11-25), e tutte le richieste del DB al BE sono evase. Sono 3j (il comando `crea_primo_amministratore`, §4.9.7), 3k-bis (`genera_error_policies`, §4.7),
-> 3n (il runner sulla funzione del rollback, §4.8), 6a … 6e (test, censimenti e manuali dei giri 16, 10, 9, 11 e
-> 8 + 1-7, §9.5, §10.6, §11.6, §12.6, §13.8). **Poi il team DB**, al via di Tid: il giro 10-bis, che parte dalla
-> risposta del BE al censimento di §10.6 («nessuno scrive `config.user_emittenti_fiscali` senza il verbo»), e la voce
-> «Le guide» del piano. Il dettaglio di ogni risposta sta nella sezione della sua richiesta.
+> **Riparte: Tid**, con due cose. **(1)** Il giro 10-bis è applicato su dbdev e sullo scratch (2026-11-26), e i
+> pgTAP rilanciati come app sono verdi: doc auto-generata rigenerata e commit fatti (§14.8). **(2)**
+> Girare al BE/FE la richiesta del giro 10-ter (§10-ter.5) e quella del 10-bis (§14.9), insieme. **Poi il team
+> BE/FE** con le due richieste, e **il team DB** col giro 10-quater (gli override utente, D-AG) e la voce «Le guide»
+> del piano. Le richieste precedenti al BE (3j, 3k-bis, 3n, 6a … 6e) sono evase e committate (`e4af0106a`,
+> 2026-11-25); il dettaglio di ogni risposta sta nella sezione della sua richiesta.
 > ✅ Il ritiro di `reset_lotto_draft` è fatto, DB e BE (2026-11-24, §4.8). Il superuser Django è deciso (D-J **a**) e
 > fatto nel BE (§4.7); il `None` del perimetro si rifiuta (§4.7, BE, 2026-11-24).
 > ✅ Fatti e verdi (Tid, 2026-11-24): giro 1 (porte di manutenzione 14 e 15, la 17 dichiarata), giro 1-bis (la
@@ -65,8 +65,17 @@
 > | 6b-sexies | team DB | giro 10-ter, l'operatore non è mai «globale» (Tid, 2026-11-26): ✅ analisi (2026-11-26) | §10-ter | — |
 > | 6b-septies | Tid | giro 10-ter: ✅ D-AA **a**, ✅ D-AB **b**, ✅ il via (2026-11-26) | §10-ter.4 | — |
 > | 6b-octies | team DB | giro 10-ter: ✅ `20261125-74` … `-76`, codice d'errore, pgTAP del giro e tredici adeguati, guide e `manual/`, provato sullo scratch (2026-11-26) | §10-ter.6 | — |
-> | 6b-nonies | Tid | giro 10-ter: ✅ apply `20261125-72` … `-76` (col `-73` dell'altra sessione), ✅ doc auto-generata rigenerata (2026-11-26); pgTAP come app | §10-ter.6 | 6b-octies |
-> | 6b-decies | team BE/FE | giro 10-ter: la richiesta | §10-ter.5 | 6b-nonies |
+> | 6b-nonies | Tid | giro 10-ter: ✅ apply `20261125-72` … `-76` (col `-73` dell'altra sessione), ✅ doc auto-generata rigenerata, ✅ suite pgTAP intera verde su dbdev e sullo scratch, ✅ commit `3d3d804b92` (PR #253) (2026-11-26) | §10-ter.6 | — |
+> | 6b-decies | Tid, poi team BE/FE | giro 10-ter: la richiesta, da girare al BE | §10-ter.5 | — |
+> | 6f | team DB | giro 10-bis: ✅ analisi (2026-11-26) | §14 | — |
+> | 6f-bis | Tid | giro 10-bis: ✅ D-AC **a**, D-AD **b**, D-AE **a** (2026-11-26); la richiesta di §14.5 al BE | §14.3, §14.5 | — |
+> | 6f-ter | team BE | giro 10-bis: ✅ il censimento integrativo (2026-11-26) | §14.5 | — |
+> | 6f-ter-bis | Tid | giro 10-bis: ✅ D-AF **a**, ✅ D-AG **a**, ✅ l'ok sul codice morto del BE (2026-11-26); il via | §14.6, §14.7 | — |
+> | 6f-ter-ter | team DB | giro 10-bis: ✅ il contenuto del profilo censito sul ramo del BE, al posto della richiesta (2026-11-26) | §14.7 | — |
+> | 6f-quater | team DB | giro 10-bis: ✅ il via (Tid), ✅ `20261126-01` … `-25`, loop e provisioning, CSV, pgTAP nuovo e 57 adeguati, guide e `manual/`, provato sullo scratch (2026-11-26) | §14.8 | — |
+> | 6f-quinquies | Tid | giro 10-bis: ✅ apply su dbdev e scratch, ✅ pgTAP come app verdi, ✅ doc auto-generata rigenerata, ✅ commit (2026-11-26) | §14.8 | — |
+> | 6f-sexies | Tid, poi team BE/FE | giro 10-bis: la richiesta, da girare insieme a quella del 10-ter | §14.9 | — |
+> | 6g | team DB | giro 10-quater, gli override utente (D-AG **a**): analisi e censimento del BE | Il piano | 6f-quater |
 > | 6c | team DB | giro 9: ✅ analisi, D20-b riletta (2026-11-25) | §11 | — |
 > | 6c-bis | Tid | giro 9: ✅ D-S **a**, il via (2026-11-25) | §11.3 | — |
 > | 6c-ter | team DB | giro 9: ✅ `20261124-07` … `-09`, pgTAP nuovo e quattro adeguati, guida e `manual/`, provato sullo scratch (2026-11-25) | §11.5 | — |
@@ -85,7 +94,7 @@
 > | 6e-sexies | Tid | giro 8 + 1-7: ✅ apply, ✅ pgTAP come app verdi, ✅ doc auto-generata rigenerata dopo le pagine `manual/` (2026-11-25) | §13.9 | — |
 > | 6e-septies | team BE | giro 8 + 1-7: la richiesta · ✅ test, tre censimenti e manuali (2026-11-25) | §13.8 | — |
 >
-> Decisioni aperte di Tid: nessuna (D-AA **a** e D-AB **b** del giro 10-ter decise il 2026-11-26, §10-ter.4; le due della verifica del passo 3j, decise e fatte il 2026-11-25, §4.9.7; D-K7 **b** e D-K8 **a2** decise il 2026-11-25, §4.9; D-W … D-Z il 2026-11-25, §13.7). R-DB-K1 e R-DB-K4 sono applicati, verdi e committati (2026-11-25). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso. ✅ Il lavoro BE del 2026-11-25 (tutte le richieste evase) è committato su `dev/backend-tid` (`e4af0106a`). Restano due voci del piano, del team DB: il giro 10-bis e «Le guide».
+> Decisioni aperte di Tid: nessuna. Prese: (D-AF **a**, D-AG **a**, il codice morto del BE che si ritira, il 2026-11-26, §14.6; D-AC **a**, D-AD **b**, D-AE **a** del giro 10-bis il 2026-11-26, §14.3; D-AA **a** e D-AB **b** del giro 10-ter decise il 2026-11-26, §10-ter.4; le due della verifica del passo 3j, decise e fatte il 2026-11-25, §4.9.7; D-K7 **b** e D-K8 **a2** decise il 2026-11-25, §4.9; D-W … D-Z il 2026-11-25, §13.7). R-DB-K1 e R-DB-K4 sono applicati, verdi e committati (2026-11-25). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso. ✅ Il lavoro BE del 2026-11-25 (tutte le richieste evase) è committato su `dev/backend-tid` (`e4af0106a`). Restano tre voci del piano, del team DB: il giro 10-bis, il giro 10-quater e «Le guide».
 > Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
 > (`969ea14566`), dal BE §4.5-§4.7 con D-J (`4271a0dc69`, PR #232), e il 2026-11-24 il lato DB del ritiro di
 > `reset_lotto_draft` con la pulizia della testata (§4.8). Dal BE, il 2026-11-24 (`5fc466c729`): il `None` del perimetro
@@ -255,11 +264,26 @@
   - [x] D-AA **a**, D-AB **b**, il via (Tid, 2026-11-26)
   - [x] changeSet (firme col `%TYPE`), codice d'errore, pgTAP del giro e tredici adeguati, guide e `manual/`; prova sullo scratch (2026-11-26, §10-ter.6)
   - [x] apply e doc auto-generata rigenerata (Tid, 2026-11-26)
-  - [ ] pgTAP come app: verdi (Tid)
+  - [x] pgTAP come app: verdi, suite intera su dbdev e sullo scratch `zeroerp_ruoli` (Tid, 2026-11-26)
+  - [x] commit su `dev/db-tid` (`3d3d804b92`, PR #253, 2026-11-26)
   - [ ] il BE/FE: testi del banner e del riquadro, ripieghi, mappatura del codice, test, manuale (§10-ter.5)
-- [ ] Giro 10-bis (D-O **a**, Tid, 2026-11-24): `config.user_emittenti_fiscali` in sola lettura per l'app, con
-  `script.fn_crea_utente_tecnico` a verbo e R-DB-K2 (`fn_crea_operatore_v2`); parte dalla risposta del BE al
-  censimento di §10.6
+- [ ] Giro 10-bis (D-O **a**, Tid, 2026-11-24): le tabelle che danno l'accesso in sola lettura per l'app, coi verbi che le scrivono a DEFINER (§14)
+  - [x] analisi (2026-11-26, §14): R-DB-K2 è la tabella dei legami di profilo, non solo `fn_crea_operatore_v2`
+  - [x] D-AC **a**, D-AD **b**, D-AE **a** (Tid, 2026-11-26)
+  - [x] il censimento integrativo del BE (2026-11-26, §14.5), letto dal DB (§14.6)
+  - [x] l'ok sul codice morto del BE: si ritira (Tid, 2026-11-26)
+  - [x] D-AF **a**, D-AG **a** (Tid, 2026-11-26)
+  - [x] il contenuto del profilo censito dal DB sul ramo del BE (2026-11-26, §14.7)
+  - [x] il via, numeri da `20261126-01` (Tid, 2026-11-26)
+  - [x] changeSet, pgTAP, builder, guide e `manual/`; prova sullo scratch (2026-11-26, §14.8)
+  - [x] apply su dbdev e scratch, pgTAP come app: verdi, con i due file della credenziale di sistema separati (Tid, 2026-11-26)
+  - [x] la doc auto-generata rigenerata (Tid, 2026-11-26)
+  - [x] commit su `dev/db-tid` (2026-11-26)
+  - [ ] il BE: i test e i manuali del giro
+- [ ] Giro 10-quater (D-AG **a**, Tid, 2026-11-26): il resto del catalogo dei permessi in sola lettura per l'app, cioè gli override utente (`config.user_override_aree`, `_azioni`, `_oggetti`), `config.azioni_processo` e `config.area_model_overrides`, coi verbi che li scrivono e i builder pgTAP (`fn_pgtap_concedi_azione`, `fn_pgtap_concedi_livello_area`). Aperto, non iniziato: parte dopo il 10-bis (§14.6)
+  - [ ] analisi sul catalogo, guide
+  - [ ] il censimento del BE: chi scrive le tabelle senza un verbo, chi chiama i verbi
+  - [ ] le decisioni e il via (Tid)
 - [ ] Le guide: ogni porta scritta nella guida del suo dominio, di flusso o di manutenzione
 
 ## 1. Il problema, sul modello
@@ -3048,10 +3072,360 @@ doc auto-generata rigenerata. ✅ **pgTAP del giro come app verdi** (Tid, 2026-1
 i dodici a runner owner, i quattro del builder. ✅ **Doc auto-generata rigenerata** una seconda volta, dopo le pagine
 `manual/` (gli indici prendono il primo paragrafo dello Scopo). Restano il commit e la richiesta al BE (§13.8).
 
+## 14. Il giro 10-bis, le tabelle che danno l'accesso — analisi del 2026-11-26
+
+Il piano lo descriveva così: `config.user_emittenti_fiscali` in sola lettura per l'app, `script.fn_crea_utente_tecnico`
+a verbo, e R-DB-K2 (`fn_crea_operatore_v2`). Riletto sul catalogo, il perimetro è più largo. R-DB-K2 non è una
+funzione: è una **tabella**, quella dei legami di profilo.
+
+### 14.1 Che cosa c'è oggi (catalogo di dbdev, 2026-11-26)
+
+* **Due tabelle danno l'accesso**, e l'app le scrive tutte e due: `config.user_emittenti_fiscali` (l'azienda
+  dell'operatore) e `config.profili_accesso_bindings` (il profilo, `SUPER_ADMIN` compreso). Entrambe hanno `arwd` per
+  `zeroerp_app` e nessuna RLS. Sui legami ci sono trigger di coerenza e dell'ultimo SUPER_ADMIN, ma **nessuno chiede chi
+  scrive**. Un `INSERT` diretto dell'app con `config.fn_profilo_super_admin_id()` crea un SUPER_ADMIN. È lo stesso
+  argomento di D-O, sulla tabella accanto.
+* **Le funzioni che le scrivono sono tutte `INVOKER`, senza guard e eseguibili dall'app**:
+
+| Funzione | Che cosa scrive | Chiamanti a DB |
+| --- | --- | --- |
+| `script.fn_crea_utente_tecnico` | `django.auth_user`, soggetto, veste tecnica, **lo scope**, il legame del profilo (se chiesto), `dbops.processi_identita` | `fn_pgtap_crea_emittente_operatore`; i seed `80_data` `20260904-27` e `-39` |
+| `config.fn_lega_profilo_identita`, `fn_slega_profilo_identita` | **il legame del profilo** | `fn_crea_risorsa_umana`, `fn_crea_utente_tecnico`, `fn_provisiona_dati_di_sviluppo` (DEFINER) |
+| `config.fn_lega_profilo_reparto`, `fn_slega_profilo_reparto` | il legame del profilo di reparto | — |
+| `anagrafiche.fn_crea_risorsa_umana` | rapporto, veste e, con `p_is_super_admin`, il legame SUPER_ADMIN | `fn_crea_operatore` |
+| `anagrafiche.fn_crea_operatore` (e l'involucro `_v2`) | credenziale, soggetto, rapporto, veste, legame SUPER_ADMIN | `fn_pgtap_crea_operatore_umano`, `fn_crea_primo_amministratore` (DEFINER) |
+
+  `fn_crea_risorsa_umana_v2`, citata in §4.7 e §4.9, si chiama oggi `fn_crea_risorsa_umana`: è stata rinominata da
+  `brief-db-accessi-area-clienti`, giro 2 (`20261125-67` … `-70`).
+* **Il censimento del BE di §10.6** copre lo scope e `fn_crea_utente_tecnico`. **Non copre** i legami di profilo, i
+  verbi `fn_lega_*`/`fn_slega_*` né `fn_crea_operatore`/`fn_crea_risorsa_umana`.
+* **I pgTAP poggiano sulla strada aperta.** `dbops.fn_pgtap_crea_emittente_operatore` crea l'utente tecnico con
+  `fn_crea_utente_tecnico` come app, e lo usano 200 file. `dbops.fn_pgtap_crea_operatore_umano` crea l'operatore
+  (anche SUPER_ADMIN) con `fn_crea_operatore_v2` come app, e lo usano 89 file. Su quest'ultimo poggia
+  `fn_pgtap_sposta_scope_operatore`, il builder di D-Q. `fn_lega_profilo_identita` compare in 26 file, i legami di
+  profilo in 45 (letture e scritture insieme, da separare nel giro). Conteggi del 2026-11-26: indicano il costo, non
+  decidono la forma.
+* **Il cancello dell'ambiente è vero.** `fn_provisiona_dati_di_sviluppo` parte solo se
+  `dbops.fn_dati_di_sviluppo_ammessi_su_valori(script.fn_ambiente_installazione())` lo ammette, e l'app ha solo `r` su
+  `dbops.installazione`.
+* **Il brief vicino.** [brief-db-accessi-area-clienti](brief-db-accessi-area-clienti.md) §2.4, passo 3c (aspetta il
+  passo 3b del BE): l'app perde l'`UPDATE` di `attivo` e il `DELETE` su `anagrafiche.identita_digitali`;
+  `fn_accendi_veste` e `fn_riattiva_utente_tecnico` diventano DEFINER; si ritira `fn_crea_operatore_v2`. I **verbi di
+  creazione** sono gli stessi del 10-bis: scrivono la veste e, insieme, i legami e lo scope.
+
+### 14.2 Che cosa si cambia (proposta)
+
+1. **Le tabelle in sola lettura per l'app**: `config.user_emittenti_fiscali` e, con D-AC **a**,
+   `config.profili_accesso_bindings`, nelle tre sedi di §11.8 (`v_tabelle_sola_lettura_app` del loop `20260205-41`,
+   il changeSet `90_end` del giro, `provision_zeroerp.sql`).
+2. **I verbi pubblici diventano `SECURITY DEFINER`**, col `search_path` fissato e il guard in prima riga:
+   `fn_guard_super_admin`, lo stesso controllo dell'endpoint (`AdminAPIView`). Sono `fn_crea_utente_tecnico`,
+   `fn_crea_operatore` e i verbi dei legami che il BE chiama (dal censimento di §14.5).
+3. **Le primitive restano senza permesso, ma chiuse all'app** (`v_fn_riservate`): `fn_crea_risorsa_umana` e la
+   scrittura del legame, che oggi è sia verbo sia primitiva. Se il BE chiama `fn_lega_profilo_identita`, si divide
+   come al giro 10: il verbo tiene nome e firma col guard, la primitiva fa l'`INSERT`.
+4. **I chiamanti senza utente in sessione.**
+   * I seed `20260904-27` e `-39` chiamano `fn_crea_utente_tecnico` dentro un migrate. Con il guard si fermerebbero
+     su un DB da zero, quindi si riconoscono dalla **sessione del migratore** (`dbops.fn_sessione_del_migratore`,
+     come D-M al giro 16), non dal proprietario.
+   * Il provisioning di sviluppo e `fn_crea_primo_amministratore` chiamano le primitive, come al giro 10 (D-P).
+5. **I pgTAP**: secondo D-AE.
+6. **Le guide** (§14.4) e la **richiesta al BE** (§14.5).
+
+### 14.3 Tre scelte per Tid — ✅ decise il 2026-11-26: D-AC a, D-AD b, D-AE a
+
+* **D-AC, quali tabelle chiude il giro.**
+  * **a**: lo scope **e** i legami di profilo, con tutti i verbi che li scrivono. R-DB-K2 si chiude per intero.
+  * **b**: solo lo scope e `fn_crea_utente_tecnico`, come diceva il piano. I legami restano scrivibili e vanno in un
+    giro 10-quater.
+  * ⭐ **a**: chiudere `fn_crea_operatore` e lasciare aperti `fn_lega_profilo_identita` e l'`INSERT` diretto non
+    ferma niente. Una tabella che dà un SUPER_ADMIN, e che si scrive come app, è la porta più larga del brief.
+* **D-AD, dove vanno i verbi di creazione, che il passo 3c di `brief-db-accessi-area-clienti` tocca anche lui.**
+  * **a**: un giro solo, qui, che chiude anche `identita_digitali`. Il 3c rimanda qui, ma il 10-bis aspetterebbe il
+    passo 3b del BE.
+  * **b**: il 10-bis porta qui a DEFINER i verbi di creazione, una volta sola, e chiude scope e legami. Il 3c resta
+    lì e si riduce a `identita_digitali`: il grant, `fn_accendi_veste`, il default di `attivo` e il ritiro del `_v2`.
+    Ogni funzione si riscrive una volta: il 3c trova i verbi di creazione già DEFINER, e la loro scrittura della veste
+    non dipende più dal grant dell'app.
+  * **c**: tutto nel 3c, e il 10-bis si chiude rimandando lì.
+  * ⭐ **b**: i due giri aspettano due censimenti diversi del BE. Il punto da non sbagliare è che ogni funzione si
+    riscriva una volta sola, e con **b** questo vale. Nel brief vicino va scritta la riga che lo dice.
+* **D-AE, come i pgTAP costruiscono operatori, SUPER_ADMIN e utenti tecnici quando le strade si chiudono.** Il
+  builder lavora come app, e il primo SUPER_ADMIN di fixture non ha nessun SUPER_ADMIN da cui farsi creare.
+  * **a**: una primitiva di fixture `SECURITY DEFINER` in `dbops`, che parte solo dove partono i dati di sviluppo
+    (`fn_dati_di_sviluppo_ammessi_su_valori`, come il provisioning). I builder la chiamano al posto dei verbi. In
+    PRODUZIONE si rifiuta.
+  * **b**: i test che costruiscono queste fixture girano col runner owner, come per le strade chiuse del giro 8 + 1-7.
+    Sono circa 290 file.
+  * **c**: il builder del SUPER_ADMIN entra nel contesto di un SUPER_ADMIN già presente. Su un DB da zero, dopo
+    R-DB-K4, non ce n'è nessuno.
+  * ⭐ **a**: è il cancello che il progetto usa già per il provisioning, e non lega i test a un dato. Il limite va
+    dichiarato: in SVILUPPO l'app può crearsi un SUPER_ADMIN di fixture. È lo stesso limite che il provisioning ha
+    già oggi.
+
+### 14.4 Le guide (`guide_coinvolte.py --oggetti` sui quattordici oggetti, 2026-11-26)
+
+* `risorse-umane-e-accessi`: **coerente** oggi (la tabella dei verbi di creazione, «solo dal SUPER_ADMIN» per lo
+  scope). Va **indietro** col giro, perché non dice che creare un operatore o legare un profilo è riservato al
+  SUPER_ADMIN: si aggiorna nel giro.
+* `architettura-permessi-e-autorizzazioni`: §7.4 **coerente** (la regola della sola lettura c'è già). §4.9 va
+  **indietro** col giro, perché dice che la tabella è ancora aperta per l'`INSERT`. Il «Vedi anche» è incompleto.
+* `processi-automatici-classe-e-identita`: va **indietro** col giro, perché non dice chi può creare un utente tecnico.
+* `pgtap-come-si-scrive-un-test`: con D-AE **a** va **indietro**, e il builder si descrive col suo cancello.
+* `_ultimo-super-admin` (nota di dominio): **coerente**, perché il guard sul legame resta.
+* `architettura-multi-face-auth`, `automazione-db`, `emittenti-fiscali`, `soggetti-e-ruoli-anagrafici`: nominano le
+  tabelle. Si rileggono al giro, con l'esito.
+* **Orfani**: `fn_lega_profilo_identita`, `fn_slega_profilo_identita`, `fn_lega_profilo_reparto`,
+  `fn_slega_profilo_reparto` sono l'assegnazione del profilo, un concetto del dominio. È un «Vedi anche» incompleto,
+  non una guida che manca: entrano in `architettura-permessi-e-autorizzazioni`. `fn_crea_operatore_v2` è un
+  involucro in ritiro.
+
+**Garanzie ritirate.** Nessuna: il giro aggiunge rifiuti e non toglie proprietà su cui un lettore conti.
+
+### 14.5 La richiesta al team BE/FE (prima del giro): il censimento che manca
+
+Chi cambia per primo: il DB, dopo la risposta. Il censimento di §10.6 resta valido per lo scope. Mancano:
+
+* **chi scrive `config.profili_accesso_bindings` senza un verbo**, nel codice, nei test e negli smoke;
+* **chi chiama** `config.fn_lega_profilo_identita`, `fn_slega_profilo_identita`, `fn_lega_profilo_reparto`,
+  `fn_slega_profilo_reparto`, `anagrafiche.fn_crea_operatore` (e `_v2`), `fn_crea_risorsa_umana`,
+  `fn_crea_auth_user`: da quale endpoint, con quale permesso, con quale utente in sessione;
+* **i test che creano operatori o legano profili** chiamando quei verbi con un utente che non è SUPER_ADMIN, o senza
+  contesto: col giro ricevono `E_PERMESSO_NEGATO`.
+
+La ricerca va fatta sul nome, file per file come a §10.6, e non è un elenco chiuso.
+
+**✅ La risposta del BE (2026-11-26).** La ricerca è stata fatta file per file in `backend/`, `frontend/src`, `scripts/`
+e negli smoke, compreso il modello ORM `config.ProfiloAccessoBinding` (`managed = False`, nessun uso). Non è un elenco
+chiuso. ⚠️ Il BE ha letto un albero con modifiche non committate di un'altra sessione, anche in
+`amm_software_repository.py`.
+
+* **Nessuno scrive `config.profili_accesso_bindings` senza un verbo**: né il codice, né i test, né gli smoke, né il FE.
+  Gli altri file la leggono (`list_reparti`, `get_profilo_reparto`, `permissions_audit_repository`, l'`EXISTS` di
+  `test_operatore_valido_al_db`). Per il BE la tabella può andare in sola lettura per l'app.
+* **I chiamanti.** Tutti gli endpoint sono `AdminAPIView` (`IsAdminZeroERP`, cioè `fn_is_super_admin`). L'utente in
+  sessione è il SUPER_ADMIN della richiesta.
+
+| Verbo | Chiamante BE | Endpoint |
+| --- | --- | --- |
+| `fn_lega_profilo_identita`, `fn_slega_profilo_identita` | `AmmSoftwareRepository._set_super_admin_binding`, da `update_operatore`, quando la PATCH porta `is_super_admin` | `OperatoriDetailView.patch` |
+| `fn_lega_profilo_reparto` | `AmmSoftwareRepository.put_profilo_reparto`, passo 3 | `RepartoProfiloView.put` |
+| `fn_slega_profilo_reparto` | nessuno | — |
+| `fn_crea_operatore` | `AmmSoftwareRepository.crea_operatore` | `OperatoriListView.post` |
+| `fn_crea_operatore_v2` | nessuno | — |
+| `fn_crea_primo_amministratore` | il comando `crea_primo_amministratore`, senza utente in sessione | — (già DEFINER) |
+| `fn_crea_risorsa_umana` | `RisorseUmaneCoreRepository.crea_risorsa_umana`, senza chiamanti di produzione | — |
+| `fn_crea_auth_user` | `AuthRepository.crea_auth_user`, senza chiamanti di produzione | — |
+
+* **Un verbo vicino, fuori dall'elenco.** Prima del legame, `put_profilo_reparto` scrive il profilo stesso, cioè aree
+  e azioni del reparto, con `config.fn_scrivi_profilo_accesso`. È un'altra strada per dare poteri.
+* **I test che col giro ricevono `E_PERMESSO_NEGATO`** girano tutti sul DB vero:
+  * in `amm_software/tests/db/test_operatore_altre_vesti_db.py`, i test 3, 3-bis e 3b aprono il contesto di un
+    operatore normale e cambiano `is_super_admin`; il 3a chiama `fn_lega_profilo_identita` senza contesto, come
+    fixture;
+  * `test_profilo_reparto_secondo_fattore_db.py` e `test_profilo_reparto_tetto_area_db.py` chiamano
+    `put_profilo_reparto` da operatore normale.
+
+  Dopo l'apply il BE li porta a un SUPER_ADMIN costruito (`fn_pgtap_crea_operatore_umano(…, true)`), non a uno già
+  presente sul DB. I test di service e di API mockano il repository.
+* **I builder**: 49 file di test BE usano `fn_pgtap_crea_operatore_umano`, `fn_pgtap_crea_emittente_operatore` o
+  `fn_pgtap_sposta_scope_operatore`. Con D-AE **a** non cambiano, se **firme e colonne di ritorno restano le stesse**.
+* **Il codice morto**: `crea_risorsa_umana` e `crea_auth_user`, coi loro test mockati. Il BE propone di ritirarli nel
+  suo giro, con l'ok di Tid.
+* **Chi cambia per primo**: il DB. Il BE adegua i quattro file di test dopo l'apply. Nessun endpoint e nessuna firma
+  cambiano.
+
+### 14.6 La risposta letta dal DB — 2026-11-26
+
+**La forma di ogni verbo**, che corregge §14.2 punti 2-3 coi chiamanti veri:
+
+| Funzione | Forma nel giro |
+| --- | --- |
+| `fn_lega_profilo_identita`, `fn_slega_profilo_identita` | **verbi** DEFINER col guard del SUPER_ADMIN, per il BE. Il corpo va in due **primitive** riservate (nomi da fissare nel giro), che chiamano i chiamanti interni senza un SUPER_ADMIN in sessione: `fn_crea_risorsa_umana`, `fn_crea_utente_tecnico`, il provisioning |
+| `fn_lega_profilo_reparto` | verbo DEFINER col guard; nessun chiamante interno, quindi niente primitiva |
+| `fn_slega_profilo_reparto` | la stessa forma del suo gemello: è il gesto inverso di un verbo che esiste, non un ritiro |
+| `fn_crea_operatore` | verbo DEFINER col guard. Il corpo va in una primitiva riservata, che chiamano `fn_crea_primo_amministratore` (senza utente) e la primitiva di fixture |
+| `fn_crea_operatore_v2` | in `v_fn_riservate` da subito: non ha chiamanti BE. Il ritiro resta al 3c di `brief-db-accessi-area-clienti` |
+| `fn_crea_risorsa_umana`, `fn_crea_auth_user` | in `v_fn_riservate`: sono primitive, e non hanno chiamanti di produzione nel BE |
+| `fn_crea_utente_tecnico` | verbo DEFINER col guard, con l'eccezione della sessione del migratore per i seed `20260904-27` e `-39` |
+| la primitiva di fixture (D-AE **a**) | DEFINER in `dbops`, col cancello dei dati di sviluppo. I builder la chiamano. ⛔ **Firme e colonne di ritorno dei tre builder restano identiche**: è la condizione del BE |
+
+**La domanda del BE sul test 3a** («per legare un profilo come fixture si passa dal SUPER_ADMIN costruito?»): sì,
+dal verbo vero. Nasce un builder `dbops.fn_pgtap_lega_profilo_identita(identita, profilo)` (nome da confermare),
+fatto come `fn_pgtap_sposta_scope_operatore`: un SUPER_ADMIN di fixture entra nel contesto, chiama il verbo, e il
+contesto di prima si rimette. I 26 pgTAP che chiamano `fn_lega_profilo_identita` come fixture passano a lui (regola
+del 2, D-Q), e il BE usa lo stesso. Non serve una seconda primitiva di fixture: quella di D-AE serve solo a far
+nascere il primo SUPER_ADMIN, che non ha nessuno da cui farsi creare.
+
+**Il verbo vicino: il contenuto del profilo** (catalogo di dbdev, 2026-11-26). `config.fn_scrivi_profilo_accesso` è
+INVOKER, senza guard ed eseguibile dall'app. Scrive `config.profili_accesso`, `profili_accesso_aree` e
+`profili_accesso_azioni`, che l'app scrive anche direttamente (`arwd`, nessuna RLS). Il legame dice **chi** ha un
+profilo, il contenuto dice **che cosa** il profilo concede. Chiudere l'uno lasciando aperto l'altro non chiude niente:
+un operatore con un profilo di reparto si alza il livello scrivendo una riga di `profili_accesso_aree`.
+
+**Più in là, la stessa classe** (catalogo di dbdev, 2026-11-26). L'app ha `INSERT` anche su `config.user_override_aree`,
+`user_override_azioni`, `user_override_oggetti` (le eccezioni per utente), `config.azioni_processo` e
+`config.area_model_overrides`. Sono il resto del catalogo dei permessi. Il costo sta nei builder: `fn_pgtap_concedi_azione`
+(116 pgTAP) e `fn_pgtap_concedi_livello_area` scrivono gli override come app. Non c'è un censimento del BE.
+
+**Due scelte per Tid, e un ok — ✅ decise il 2026-11-26: D-AF a, D-AG a, il codice morto si ritira:**
+
+* **D-AF, il contenuto del profilo.**
+  * **a**: entra nel 10-bis. `fn_scrivi_profilo_accesso` diventa verbo DEFINER col guard, e le tre tabelle passano in
+    sola lettura per l'app. Lo stesso endpoint, `RepartoProfiloView.put`, chiama questo verbo e il legame: chiuderne
+    metà lascia aperto l'endpoint. Il BE deve aggiungere al censimento chi scrive le tre tabelle senza il verbo.
+  * **b**: va nel giro 10-quater, con gli override.
+  * ⭐ **a**. ✅ **Decisa da Tid il 2026-11-26: a.**
+* **D-AG, il resto del catalogo dei permessi** (override utente, `azioni_processo`, `area_model_overrides`).
+  * **a**: un giro 10-quater **in questo brief** (stesso tema, «un tema, un brief»), aperto e non iniziato, con la
+    sua analisi e il suo censimento del BE dopo il 10-bis.
+  * **b**: un brief nuovo.
+  * ⭐ **a**: è la stessa classe di porta, e i builder dei pgTAP sono gli stessi. ✅ **Decisa da Tid il 2026-11-26: a.**
+* ✅ **L'ok sul codice morto del BE: sì** (Tid, 2026-11-26, «se morto, si ritira»): ritirare `crea_risorsa_umana` e `crea_auth_user` coi loro test mockati.
+  Consiglio sì: dopo il giro le due funzioni DB non sono più eseguibili dall'app, quindi quel codice non potrebbe
+  comunque funzionare.
+
+### 14.7 Il contenuto del profilo, letto dal DB sul ramo del BE — 2026-11-26
+
+⚠️ La richiesta al BE scritta qui è **ritirata** (Tid, 2026-11-26): il ramo del BE l'ha letto il DB, in sola lettura,
+su indicazione di Tid (come §4.2). Ramo `origin/dev/backend-tid` a `8a829b9e9c`; ricerca sui nomi delle tre tabelle,
+del verbo e dei modelli ORM in `backend/`, `frontend/src` e `scripts/`.
+
+* **In produzione l'unico scrittore è il verbo.** `config.fn_scrivi_profilo_accesso` lo chiama solo
+  `AmmSoftwareRepository.put_profilo_reparto` (endpoint `RepartoProfiloView.put`, `AdminAPIView`). Gli altri file
+  **leggono**: le query del repository di `amm_software`, `permissions_audit_repository`, `ui_admin_repository`, le
+  tendine del FE.
+* **I modelli ORM** `ProfiloAccesso`, `ProfiloAccessoArea`, `ProfiloAccessoAzione` sono `managed = False` e nessuno
+  li usa fuori da `config/models.py`.
+* **I test BE che col giro si rompono** (da aggiungere ai quattro di §14.5):
+  * `amm_software/tests/db/test_operatore_altre_vesti_db.py`, `test_due_profili_super_admin_attivi_non_si_sceglie` e
+    `test_super_admin_su_un_accesso_con_un_altro_profilo_e_un_400`: chiamano `fn_scrivi_profilo_accesso` come fixture,
+    senza contesto. Il secondo lega anche il profilo con `fn_lega_profilo_identita` (è il test 3a di §14.5);
+  * `ui/tests/db/test_audit_ui_dal_trigger_db.py`, `test_upsert_permesso_audit_dal_trigger`: `INSERT` diretto su
+    `config.profili_accesso` per fabbricare il profilo.
+
+  Passano ai builder del giro (sotto). L'elenco non è chiuso: la ricerca è di riga, e i test che scrivono con l'SQL
+  su più righe li mostra la corsa dopo l'apply.
+* **Lato DB** (2026-11-26): nessun builder di `dbops` scrive i profili. Quattordici pgTAP scrivono direttamente
+  `profili_accesso`, `_aree` o `_azioni`, ventidue i legami, ventisei chiamano `fn_lega_profilo_identita`. Quelli che
+  girano come app si portano ai builder; quelli a runner owner non cambiano. Si rileggono caso per caso nel giro.
+
+**Che cosa ne segue per il giro.** Due builder nuovi, fatti come `fn_pgtap_sposta_scope_operatore`: un SUPER_ADMIN di
+fixture entra nel contesto, chiama il verbo vero, e il contesto di prima si rimette. `dbops.fn_pgtap_crea_profilo`
+(dal verbo `fn_scrivi_profilo_accesso`) e `dbops.fn_pgtap_lega_profilo_identita` (dal verbo del legame); i nomi si
+fissano nel giro. Li usano i pgTAP e i test BE. Dopo l'apply, nel giro BE del 10-bis: i test di §14.5 e di qui, e il
+ritiro di `crea_risorsa_umana` e `crea_auth_user` coi loro test mockati (ok di Tid).
+
+### 14.8 Il giro scritto — 2026-11-26
+
+Il via di Tid il 2026-11-26, coi numeri da `20261126-01`. Venticinque changeSet: tre in più dei ventidue annunciati,
+per la regola del 2 (il gesto «entra come SUPER_ADMIN di fixture, chiama il verbo, rimetti il contesto» stava già in
+`fn_pgtap_sposta_scope_operatore`, e i due builder nuovi lo avrebbero ricopiato). Corpi e attributi dal catalogo di
+dbdev, identici allo scratch; firme ancorate come nell'ultima revisione YAML di ogni funzione.
+
+| File | Che cosa |
+| --- | --- |
+| `20_code/config/20261126-01` | la primitiva del legame di un'identità, `config.fn_applica_lega_profilo_identita`: il corpo del verbo, senza permesso |
+| `20_code/config/20261126-02` | `config.fn_lega_profilo_identita`: DEFINER, `fn_guard_super_admin` in prima riga, poi la primitiva |
+| `20_code/config/20261126-03` … `-05` | `fn_slega_profilo_identita`, `fn_lega_profilo_reparto`, `fn_slega_profilo_reparto`: DEFINER col guard, il corpo invariato (nessun chiamante a DB, niente primitiva) |
+| `20_code/config/20261126-06`, `-07` | il contenuto del profilo: la primitiva `config.fn_applica_scrivi_profilo_accesso`, il verbo `fn_scrivi_profilo_accesso` DEFINER col guard |
+| `20_code/anagrafiche/20261126-08` | `fn_crea_risorsa_umana`: il legame SUPER_ADMIN dalla primitiva; COMMENT da primitiva |
+| `20_code/anagrafiche/20261126-09`, `-10` | l'operatore: la primitiva `anagrafiche.fn_applica_crea_operatore` (il corpo di `fn_crea_operatore`), il verbo DEFINER col guard |
+| `20_code/anagrafiche/20261126-11` | il primo amministratore: l'operatore dalla primitiva, al posto dell'involucro `_v2` |
+| `20_code/anagrafiche/20261126-12` | il provisioning di sviluppo: profilo, operatore e i due legami dalle primitive (quattro chiamate) |
+| `20_code/script/20261126-13`, `-14` | l'utente tecnico: la primitiva `script.fn_applica_crea_utente_tecnico` (le chiavi della configurazione proposta restano col nome del verbo), il verbo DEFINER col guard, salvo la **sessione del migratore** per i seed `20260904-27` e `-39` |
+| `20_code/dbops/20261126-15`, `-16` | le fixture di D-AE **a**: `fn_pgtap_fixture_crea_operatore`, `fn_pgtap_fixture_crea_utente_tecnico`, DEFINER col cancello dei dati di sviluppo (`E_DATI_DI_SVILUPPO_IN_PRODUZIONE`), firma dei verbi |
+| `20_code/dbops/20261126-17`, `-18` | i builder che esistono, dalle fixture: firme e colonne di ritorno identiche (la condizione del BE); il `RETURNS TABLE` dell'operatore umano ancorato sugli stessi tipi |
+| `20_code/dbops/20261126-19` … `-21` | regola del 2: `fn_pgtap_entra_come_super_admin` e `fn_pgtap_rimetti_contesto`, e `fn_pgtap_sposta_scope_operatore` che li usa (firma e comportamento invariati) |
+| `20_code/dbops/20261126-22`, `-23` | i builder nuovi `fn_pgtap_scrivi_profilo_accesso`, `fn_pgtap_lega_profilo_identita`: il verbo vero da un SUPER_ADMIN di fixture, con la firma del verbo |
+| `90_end/20261126-24` | le cinque tabelle in sola lettura per l'app; con le altre due sedi di §11.8 (il loop `20260205-41`, il provisioning) |
+| `90_end/20261126-25` | sette funzioni chiuse a PUBLIC e all'app: le quattro primitive, `fn_crea_risorsa_umana`, `fn_crea_auth_user`, l'involucro `_v2`; con le altre due sedi |
+| `codici_errore.csv` | la `note` di `E_DATI_DI_SVILUPPO_IN_PRODUZIONE` nomina le due fixture (i campi restano cinque) |
+| `db/pgtap/config/test-porta-tabelle-accesso-v1` | nuovo, come app, plan 18: la forma, la sola lettura (l'`INSERT` diretto di un legame SUPER_ADMIN si ferma: 42501), il permesso dei verbi, il cancello delle fixture, il builder dal SUPER_ADMIN |
+| 57 pgTAP adeguati | dove creavano operatori, profili o legami per costruirsi il mondo: i builder e le fixture (quattordici file; la credenziale nuda e la postura di `django` con l'`INSERT` diretto, che Django fa). I test dei verbi (`test-fn-crea-operatore`, `test-crea-operatore-riusa-credenziale-v1`, `test-fn-scrivi-profilo-accesso-v1`, `test-legami-profilo-lega-e-slega-v1`, `test-totp-obbligo-v1`) girano come app da un SUPER_ADMIN costruito. Ventiquattro passano a runner owner col motivo (forma 2 e 3 del criterio): collaudano il guard di una di quelle tabelle o una primitiva chiusa, o costruiscono un mondo che nessun verbo offre (legami spenti a mano, legami per ruolo). `test-porta-scope-emittenti-v1` 7 e 9 si fermano ora sul privilegio. ⚠️ `test-credenziale-di-sistema-v1` resta come app e si divide (corsa di Tid, 2026-11-26): da owner i casi 6-7 erano rossi, perché la sessione del proprietario è quella del migratore e `fn_blocca_credenziale` le lascia bloccare una credenziale di sistema; i casi 14-16, che spengono a mano i legami SUPER_ADMIN, passano al file nuovo `config/test-credenziale-di-sistema-ultimo-super-admin-v1` (runner owner, 3/3). Quattro presidi strutturali (`test-fn-crea-contatto-v1`, `test-character-n-v1`, `test-processo-vivo-v1`, `test-fn-guard-campi-ammessi-v1`) e tre dei verbi leggono il corpo delle primitive |
+| guide | `architettura-permessi-e-autorizzazioni` (§4.5 chi scrive profili e legami, §4.9, §7.4 le fixture senza guard dichiarate, «Vedi anche»); `risorse-umane-e-accessi`; `processi-automatici-classe-e-identita`; `pgtap-come-si-scrive-un-test` (i builder dell'accesso); `architettura-multi-face-auth` |
+| `manual/` | dieci pagine nuove (le quattro primitive, le due fixture, i quattro builder); riscritta `fn_lega_profilo_identita`; corrette diciassette (i verbi, la risorsa umana, la credenziale, il primo amministratore, il provisioning, i tre builder, le cinque tabelle) |
+
+**La prova sullo scratch** (`prova_changeset.py`, owner, `ROLLBACK`; i venticinque insieme; 2026-11-26). Estratto
+eseguito per intero, catalogo identico dopo. La `preCondition` del `-25` sullo scratch dà 3 su 7: le quattro primitive
+nascono nel giro, sul database che lo incontra ci sono. Guardrail della CI (dieci) e licenze: verdi. pgTAP, ciascuno
+senza e con l'estratto:
+
+* i 58 file censiti: lo stesso esito; i due di perimetro (`test-guard-attivo-occhi-del-proprietario-v1`,
+  `test-rls-listini-ef-whitelist-write`) rossi da owner come la loro versione di HEAD;
+* gli altri 264 che usano i builder o nominano gli oggetti: 253 uguali, uno rosso uguale prima e dopo
+  (`test-veste-revocata-v1`), quattro presidi da puntare alle primitive (fatto, verdi con l'estratto), due non provati
+  dallo strumento perché non aprono con `BEGIN;` (`test-commesse-emittente-invariante-v1`,
+  `test-documenti-numerazione-trasloco-v1`: usano solo `fn_pgtap_crea_emittente_operatore`);
+* quindici presidi trasversali (riferimenti morti, `search_path` delle DEFINER, COMMENT al presente, catalogo dei
+  messaggi, posture e riservate): lo stesso esito;
+* `test-porta-tabelle-accesso-v1`: 14/18, i quattro rossi dichiarati in testata (5-7, il privilegio; 12, da owner la
+  sessione è del migratore).
+
+⚠️ **Che cosa la prova non vede.** Un file portato a owner si confronta **owner con owner**: un caso rosso da owner
+e verde come app (la sessione del migratore che un verbo lascia passare) risulta «uguale» senza e con l'estratto. Lo
+ha trovato la corsa di Tid su `test-credenziale-di-sistema-v1`; ricontrollati i ventiquattro file a owner: nessun
+altro ha rossi da owner con l'estratto. Gira da owner: i privilegi tolti all'app e le funzioni chiuse non si vedono, e i
+rifiuti del guard sì. I file come app li ho riletti a criterio (nessuna scrittura diretta sulle cinque tabelle, nessuna
+chiamata a una funzione chiusa, i verbi solo da un SUPER_ADMIN): la prova vera è la corsa come app dopo l'apply.
+
+**Garanzie ritirate.** Nessuna: il giro aggiunge rifiuti. Lettori lato DB dei verbi: tutti adeguati sopra.
+
+**Guide verificate** (`guide_coinvolte.py` sui venticinque changeSet, 2026-11-26): le cinque di §14.4 e
+`architettura-multi-face-auth` **indietro**, aggiornate nel giro; `automazione-db`, `emittenti-fiscali`,
+`soggetti-e-ruoli-anagrafici` **coerenti** (leggono le tabelle). Le altre ventisei nominano oggetti che i corpi
+ricopiati chiamano senza cambiarli (indirizzi, contatti, clienti, parametri): **coerenti**. Orfani di §14.4 non più
+orfani: `fn_lega_profilo_*` e `fn_slega_profilo_*` stanno nel «Vedi anche» della guida dei permessi.
+
+✅ **Applicato da Tid il 2026-11-26** su dbdev e sullo scratch; pgTAP come app verdi, compresi `test-credenziale-di-sistema-v1` e `test-credenziale-di-sistema-ultimo-super-admin-v1` dopo la divisione. Era da applicare: `20261126-01` … `-25` e il CSV. Su dbdev le sedi che contano sono i due forward; il loop
+riparte alla prossima `ci_apply`, il provisioning alla prossima fase `post`. Poi i pgTAP come app, con
+`test-porta-tabelle-accesso-v1` in testa.
+
+### 14.9 La richiesta al team BE/FE (dopo l'apply)
+
+Chi cambia per primo: il DB. Nessuna firma e nessun endpoint cambiano; firme e colonne dei builder sono identiche.
+
+* **I test sul DB vero che chiamano i verbi senza essere SUPER_ADMIN**, ora `E_PERMESSO_NEGATO`:
+  * `amm_software/tests/db/test_operatore_altre_vesti_db.py`: i test 3, 3-bis e 3b (`update_operatore(is_super_admin=…)`
+    da un operatore normale); il 3a e i due test di §14.7, che chiamano `config.fn_scrivi_profilo_accesso` e
+    `config.fn_lega_profilo_identita` come fixture senza contesto: passano a `dbops.fn_pgtap_scrivi_profilo_accesso`
+    e `dbops.fn_pgtap_lega_profilo_identita`, che hanno la firma dei verbi;
+  * `test_profilo_reparto_secondo_fattore_db.py`, `test_profilo_reparto_tetto_area_db.py` (`put_profilo_reparto` da
+    operatore normale): da un SUPER_ADMIN costruito;
+  * `ui/tests/db/test_audit_ui_dal_trigger_db.py`, `test_upsert_permesso_audit_dal_trigger`: l'`INSERT` diretto su
+    `config.profili_accesso` si ferma sul privilegio; il profilo da `dbops.fn_pgtap_scrivi_profilo_accesso`.
+
+  La ricerca è del nome, non un elenco chiuso: i test con l'SQL su più righe li mostra la corsa.
+* **Il codice morto, con l'ok di Tid**: `RisorseUmaneCoreRepository.crea_risorsa_umana` e `AuthRepository.crea_auth_user`
+  coi loro test mockati. Le due funzioni DB non sono più eseguibili dall'app.
+* **`manage.py genera_error_policies`**: la `note` di `E_DATI_DI_SVILUPPO_IN_PRODUZIONE` è cambiata, e
+  `test_il_file_generato_e_allineato_al_catalogo` è rosso fino alla rigenerazione.
+* **Il manuale** `amm-software/manual/api_amm_software.md`: creare un operatore, dare o togliere il SUPER_ADMIN e
+  scrivere il profilo di un reparto lo chiede anche il DB, al SUPER_ADMIN; le tabelle dei profili e dello scope sono
+  in sola lettura per l'app.
+
 ## Registro
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-26 | DB | Commit su `dev/db-tid` del giro 10-bis, con la doc auto-generata rigenerata da Tid (`brief-db-revisione-anagrafiche` escluso: è dell'altra sessione) |
+| 2026-11-26 | Tid | Giro 10-bis applicato su dbdev e sullo scratch; i pgTAP come app verdi, compresi i due file della credenziale di sistema dopo la divisione. Restano doc auto-generata e commit; al BE la richiesta di §14.9 |
+| 2026-11-26 | DB | Giro 10-bis, dalla corsa di Tid: `test-credenziale-di-sistema-v1` torna come app (6-7 rossi da owner: la sessione del proprietario è quella del migratore, che `fn_blocca_credenziale` lascia passare); i casi dell'ultimo SUPER_ADMIN nel file nuovo `test-credenziale-di-sistema-ultimo-super-admin-v1` (owner). Ricontrollati gli altri ventiquattro file a owner: verdi da owner con l'estratto (§14.8) |
+| 2026-11-26 | DB | Giro 10-bis scritto e provato (§14.8): venticinque changeSet (`20261126-01` … `-25`: i verbi dei legami e del profilo, dell'operatore e dell'utente tecnico DEFINER col guard del SUPER_ADMIN, quattro primitive, le due fixture col cancello dei dati di sviluppo, quattro builder, le cinque tabelle in sola lettura e sette funzioni chiuse), loop e provisioning, la `note` di `E_DATI_DI_SVILUPPO_IN_PRODUZIONE`; pgTAP nuovo e 57 adeguati (25 a runner owner col motivo); sei guide e ventisette pagine `manual/`. Prova sullo scratch: 322 pgTAP senza e con l'estratto, lo stesso esito; i privilegi si vedono solo come app. Richiesta al BE (§14.9). Da applicare |
+| 2026-11-26 | Tid | Il via al giro 10-bis, numeri da `20261126-01` |
+| 2026-11-26 | DB | §14.7: la richiesta al BE ritirata; il ramo del BE letto dal DB (Tid): l'unico scrittore del profilo è il verbo; tre test BE e una cinquantina di pgTAP da portare a due builder nuovi |
+| 2026-11-26 | Tid | **D-AF a** (il contenuto del profilo entra nel 10-bis), **D-AG a** (gli override utente e il resto del catalogo dei permessi nel giro 10-quater, in questo brief); Lo sviluppo non parte: aspetta il via |
+| 2026-11-26 | Tid | Il codice morto del BE si ritira: `crea_risorsa_umana`, `crea_auth_user` e i loro test mockati, nel giro BE del 10-bis (§14.6) |
+| 2026-11-26 | DB | Giro 10-bis: la risposta del BE letta (§14.6). La forma di ogni verbo coi chiamanti veri; il builder del legame per il test 3a; trovato che anche il contenuto del profilo (`fn_scrivi_profilo_accesso`, tre tabelle) e gli override utente sono scrivibili dall'app. D-AF, D-AG e l'ok sul codice morto a Tid |
+| 2026-11-26 | BE | Censimento integrativo del giro 10-bis (§14.5): nessuno scrive i legami senza un verbo; i chiamanti dei verbi, tutti da `AdminAPIView`; `fn_crea_risorsa_umana` e `fn_crea_auth_user` senza chiamanti di produzione; quattro file di test da adeguare dopo l'apply; segnalato `fn_scrivi_profilo_accesso` |
+| 2026-11-26 | Tid | **D-AC a** (il giro chiude scope e legami di profilo), **D-AD b** (i verbi di creazione a DEFINER qui, il 3c di `brief-db-accessi-area-clienti` si riduce a `identita_digitali`), **D-AE a** (le fixture pgTAP da una primitiva DEFINER col cancello dei dati di sviluppo) (§14.3). Lo sviluppo non parte: aspetta il censimento del BE e il via |
+| 2026-11-26 | DB | Giro 10-bis, analisi (§14): anche `config.profili_accesso_bindings` è scrivibile dall'app, e i verbi che legano un profilo (SUPER_ADMIN compreso) sono INVOKER senza guard: R-DB-K2 è la tabella. I builder pgTAP poggiano sulle strade aperte. Il passo 3c di `brief-db-accessi-area-clienti` tocca gli stessi verbi di creazione. D-AC, D-AD, D-AE a Tid; censimento integrativo al BE (§14.5). Nessun changeSet |
+| 2026-11-26 | DB | Testata e piano riallineati al 10-ter (suite verde, commit) |
+| 2026-11-26 | Tid | Giro 10-ter: suite pgTAP intera verde su dbdev e sullo scratch `zeroerp_ruoli`; commit `3d3d804b92` (PR #253). La richiesta di §10-ter.5 resta da girare al BE |
+| 2026-11-26 | Tid | Giro 10-ter applicato (`20261125-72` … `-76`, col `-73` dell'altra sessione), doc auto-generata rigenerata |
+| 2026-11-26 | DB | Giro 10-ter scritto e provato (§10-ter.6): la primitiva rifiuta «globale» per chi non è SUPER_ADMIN (`E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`, id 1549), il getter offre solo `SINGLE`, firme col `%TYPE`; pgTAP del giro e tredici adeguati; guide `emittenti-fiscali` e `risorse-umane-e-accessi`, `manual/`; richiesta al BE/FE (§10-ter.5) |
+| 2026-11-26 | Tid | **D-AA a** (l'operatore senza azienda si costruisce, non si toglie), **D-AB b** (il SUPER_ADMIN senza azienda può perdere il profilo, lo segnala il banner) e il via al giro 10-ter |
+| 2026-11-26 | DB | Giro 10-ter, analisi (§10-ter): «globale» offerto a ogni operatore dal getter e accettato dalla primitiva, residuo del modello di prima del fail-closed; non è un cambio di modello. D-AA e D-AB a Tid |
 | 2026-11-25 | BE | Evase tutte le richieste al BE, da committare su `dev/backend-tid`: 3k-bis (`genera_error_policies`, sette ripieghi), 3n (il runner su `fn_check_rollback_step_automatico`, test DB sui casi costruiti), 6a … 6e (test sul DB vero adeguati: 13 rossi di permesso, tutti attesi; censimenti: nessuno scrive lo scope senza il verbo, `fn_riporta_attivita_da_emettere` chiamata dal BE e verde come app, nessun lettore di `user_update`/`user_insert`; manuali), 3j (il comando `crea_primo_amministratore`, i test, play-book, `configurazione-django`, `installazione`). Fuori brief: il patch rotto di `test_riga_elimina_e_transizioni_db` dall'E-2 dell'audit BB |
 | 2026-11-25 | DB | Commit su `dev/db-tid`: R-DB-K1 e R-DB-K4 (§4.9.6); al BE il passo 3j (§4.9.7) |
 | 2026-11-25 | Tid | R-DB-K1 e R-DB-K4 applicati, pgTAP come app e `test-crea-primo-amministratore-v1` su dbdev verdi, doc auto-generata rigenerata (§4.9.6) |

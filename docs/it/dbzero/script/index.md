@@ -10,6 +10,7 @@ search:
 ## ⚙️ Funzioni
 - [fn_ambiente_dichiarato](funzioni/fn_ambiente_dichiarato.md)
 - [fn_ambiente_installazione](funzioni/fn_ambiente_installazione.md)
+- [fn_applica_crea_utente_tecnico](funzioni/fn_applica_crea_utente_tecnico.md) — Crea l'utente tecnico di un processo automatico per un emittente: l'utente Django con la password inutilizzabile, il soggetto col suo contatto, il ruolo `PROC_AUTO`, l'identità `OPERATORE` tecnica, la riga di perimetro in `config.user_emittenti_fiscali` e il legame del processo. Ha tutte le regole della creazione, raccontate nella pagina del verbo [fn_crea_utente_tecnico](/dbzero/script/funzioni/fn_crea_utente_tecnico), ma **non chiede permessi**.
 - [fn_applica_user_emittenti_scope](funzioni/fn_applica_user_emittenti_scope.md) — Sposta un operatore da un'azienda all'altra, o toglie l'azienda a un SUPER_ADMIN. Ha le regole dello spostamento e la porta del `DELETE`, ma **non chiede permessi**: è la primitiva sotto il verbo [fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope), che chiede il SUPER_ADMIN.
 - [fn_area_consente_azione](funzioni/fn_area_consente_azione.md) — (scritta il 04-10-2026)
 - [fn_area_di_oggetto](funzioni/fn_area_di_oggetto.md) — (scritta il 25-09-2026)

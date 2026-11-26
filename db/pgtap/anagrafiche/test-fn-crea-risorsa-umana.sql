@@ -1,5 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: il test chiama diretti anagrafiche.fn_crea_risorsa_umana e fn_crea_auth_user, riservata al proprietario
+--   dal giro 10-bis: e' un passo interno della creazione dell'operatore, che l'app
+--   raggiunge solo dal verbo anagrafiche.fn_crea_operatore del SUPER_ADMIN. Il soggetto
+--   del test non sta sul percorso dell'app (brief-db-porte-aperte-dalla-sola-guc §14, giro 10-bis, 2026-11-26).
 -- pgtap-differiti: escluso — la fixture non soddisfa un vincolo DIFFERITO e la
 --   ragione e' scritta per esteso piu' sotto. Debito noto (§22.4): quando la
 --   fixture viene completata, si toglie questa riga e si rimette il

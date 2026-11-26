@@ -1,0 +1,79 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BUILDER DEI pgTAP CHE SCRIVE UN PROFILO DI ACCESSO DAL VERBO
+#   dbops.fn_pgtap_scrivi_profilo_accesso
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §14 (giro 10-bis; D-AC a, D-AD b, D-AE a, D-AF a di Tid, 2026-11-26).
+#
+#   Con la tabella in sola lettura per l'app (90_end/20261126-24), un pgTAP
+#   che scrive un profilo di accesso come fixture non lo fa piu' con un INSERT diretto ne' col verbo
+#   da un operatore qualunque. Il builder chiama il verbo vero config.fn_scrivi_profilo_accesso
+#   da un SUPER_ADMIN di fixture (dbops.fn_pgtap_entra_come_super_admin,
+#   20261126-19) e rimette il contesto, anche in errore: prova il verbo, non lo
+#   aggira (come dbops.fn_pgtap_sposta_scope_operatore). Firma e risultato
+#   quelli del verbo: un test cambia solo il nome della chiamata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261126-22-create-fn-pgtap-scrivi-profilo-accesso-mctit.yaml
+
+  - changeSet:
+      id: 20261126-22-create-fn-pgtap-scrivi-profilo-accesso
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_scrivi_profilo_accesso: scrive un profilo di accesso nei pgTAP dal verbo config.fn_scrivi_profilo_accesso, da un SUPER_ADMIN di fixture. brief-db-porte-aperte-dalla-sola-guc §14.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_scrivi_profilo_accesso(
+                  p_tipo        config.profili_accesso.tipo%TYPE,
+                  p_codice      config.profili_accesso.codice%TYPE,
+                  p_descrizione config.profili_accesso.descrizione%TYPE,
+                  p_aree        jsonb DEFAULT NULL::jsonb,
+                  p_azioni      jsonb DEFAULT NULL::jsonb,
+                  p_campi       jsonb DEFAULT '{}'::jsonb)
+               RETURNS config.profili_accesso.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: in un pgTAP, scrive un profilo di accesso dal verbo config.fn_scrivi_profilo_accesso, da un SUPER_ADMIN di
+              --   fixture. Restituisce il risultato del verbo; un rifiuto arriva al test
+              --   com'e'. Il contesto di prima si rimette, anche in errore.
+              DECLARE
+                  v_prima jsonb;  -- il contesto di prima, dalla fixture: nessuna colonna
+                  v_esito config.profili_accesso.id%TYPE;
+              BEGIN
+                  v_prima := dbops.fn_pgtap_entra_come_super_admin('scrivi-profilo-accesso');
+
+                  BEGIN
+                      v_esito := config.fn_scrivi_profilo_accesso(p_tipo, p_codice, p_descrizione, p_aree, p_azioni, p_campi);
+                  EXCEPTION
+                      WHEN OTHERS THEN
+                          PERFORM dbops.fn_pgtap_rimetti_contesto(v_prima);
+                          RAISE;
+                  END;
+
+                  PERFORM dbops.fn_pgtap_rimetti_contesto(v_prima);
+
+                  RETURN v_esito;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_scrivi_profilo_accesso(p_tipo config.tipo_profilo_accesso, p_codice character varying, p_descrizione text, p_aree jsonb, p_azioni jsonb, p_campi jsonb)
+              IS 'Builder dei pgTAP: scrive un profilo di accesso dal verbo config.fn_scrivi_profilo_accesso, da un SUPER_ADMIN di fixture (dbops.fn_pgtap_entra_come_super_admin), e rimette il contesto di prima, anche in errore (dbops.fn_pgtap_rimetti_contesto). Argomenti e risultato sono quelli del verbo; un rifiuto del verbo arriva al test com''è.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_scrivi_profilo_accesso(p_tipo config.tipo_profilo_accesso, p_codice character varying, p_descrizione text, p_aree jsonb, p_azioni jsonb, p_campi jsonb);

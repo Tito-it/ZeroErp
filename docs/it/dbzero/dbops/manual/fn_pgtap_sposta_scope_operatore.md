@@ -35,10 +35,11 @@ PERFORM dbops.fn_pgtap_sposta_scope_operatore(
 
 ### Come lavora
 
-Il verbo chiede il SUPER_ADMIN. Il builder ne crea uno a ogni chiamata, con
-[fn_pgtap_crea_operatore_umano](/dbzero/dbops/funzioni/fn_pgtap_crea_operatore_umano), lo mette nel
-contesto, chiama il verbo e rimette il contesto di prima (`app.current_user_id`,
-`app.ruolo_applicativo`), anche in errore. `app.current_emittente_id` non lo tocca.
+Il verbo chiede il SUPER_ADMIN. Il builder entra nel contesto di un SUPER_ADMIN creato a ogni chiamata
+([fn_pgtap_entra_come_super_admin](/dbzero/dbops/funzioni/fn_pgtap_entra_come_super_admin)), chiama il verbo e
+rimette il contesto di prima ([fn_pgtap_rimetti_contesto](/dbzero/dbops/funzioni/fn_pgtap_rimetti_contesto):
+`app.current_user_id`, `app.ruolo_applicativo`), anche in errore. `app.current_emittente_id` non lo tocca. Le
+stesse due fixture le usano i builder del profilo e del legame.
 
 Le regole sono quelle del verbo: l'ultimo SUPER_ADMIN attivo non si sposta, più di un'azienda no, e a un
 operatore normale l'azienda non si toglie (`E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`). Un rifiuto del verbo

@@ -177,7 +177,8 @@ SELECT is(
                 'anagrafiche.fn_crea_emittente_fiscale', 'anagrafiche.fn_crea_fornitore',
                 'anagrafiche.fn_crea_cliente', 'anagrafiche.fn_crea_billing_account',
                 'anagrafiche.fn_crea_contatto', 'anagrafiche.fn_indirizzo_elemento',
-                'config.fn_scrivi_profilo_accesso', 'config.fn_imposta_override_oggetti']) AS f
+                -- dal giro 10-bis il corpo del verbo del profilo sta nella primitiva
+                'config.fn_applica_scrivi_profilo_accesso', 'config.fn_imposta_override_oggetti']) AS f
       WHERE pg_temp.corpo(f::regproc::regprocedure) !~ 'script\.fn_guard_campi_ammessi\('),
     NULL,
     '11. le quindici porte chiamano il guard (nessuna lo salta)');

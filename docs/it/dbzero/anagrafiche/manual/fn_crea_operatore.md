@@ -35,12 +35,18 @@ persona fisica, le dà il rapporto di lavoro e la veste OPERATORE spenta, con l'
 indirizzi di residenza e domicilio fiscale. Restituisce la credenziale, il suo username effettivo e se è stata
 riusata.
 
-È la madre della creazione di un operatore umano: la chiama il backend dall'amministrazione degli utenti, e dentro
-il database il verbo del primo amministratore (`anagrafiche.fn_crea_primo_amministratore`), il provisioning dei dati
-di sviluppo e la fixture pgTAP `dbops.fn_pgtap_crea_operatore_umano`.
+È il verbo della creazione di un operatore umano: la chiama il backend dall'amministrazione degli utenti.
 
-Il nome storico `anagrafiche.fn_crea_operatore_v2` è un involucro di questa funzione, con la stessa firma: lo
-chiamano ancora il backend, il verbo del primo amministratore e la fixture, finché non passano al nome nuovo.
+⛔ **Il permesso.** È `SECURITY DEFINER` col `search_path` fissato, e nella prima riga chiede il SUPER_ADMIN
+all'utente di sessione (`script.fn_guard_super_admin`): un altro operatore, o nessun utente, riceve
+`E_PERMESSO_NEGATO`. È lo stesso controllo dell'endpoint. Le regole che seguono le tiene la primitiva
+[fn_applica_crea_operatore](/dbzero/anagrafiche/manual/fn_applica_crea_operatore), che l'applicazione non
+esegue. La chiamano direttamente le strade senza un SUPER_ADMIN in sessione: il verbo del primo amministratore
+(`anagrafiche.fn_crea_primo_amministratore`), il provisioning dei dati di sviluppo e la fixture dei pgTAP
+`dbops.fn_pgtap_fixture_crea_operatore`.
+
+Il nome storico `anagrafiche.fn_crea_operatore_v2` è un involucro di questa funzione, con la stessa firma. Non ha
+più chiamanti, e l'applicazione non lo esegue.
 
 ---
 

@@ -18,13 +18,14 @@ CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_operatore_umano(p_etichetta text 
 AS $function$
 -- Scopo: dare a una fixture pgTAP un OPERATORE UMANO — persona
 --   fisica, risorsa umana, utente, identita' OPERATORE ATTIVA — dal
---   percorso di produzione (anagrafiche.fn_crea_operatore_v2, poi
+--   percorso di produzione (le regole di anagrafiche.fn_crea_operatore,
+--   dalla fixture dbops.fn_pgtap_fixture_crea_operatore, poi
 --   l'attivazione dell'invito), volendo super admin.
 -- Uso:
 --   CREATE TEMP TABLE tmp_sa AS
 --   SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('albero', true);
 -- ⚠️ Nasce SENZA azienda, come in produzione: per legarlo a un
---   emittente si chiama script.fn_change_user_emittenti_scope.
+--   emittente si chiama dbops.fn_pgtap_sposta_scope_operatore.
 --   Un super admin senza azienda e' il caso NORMALE (multi-emittente).
 -- ⚠️ Non apre il contesto, ed esce con i vincoli IMMEDIATE.
 -- ⛔ Cio' che scrive si legge in un'ISTRUZIONE SEPARATA: un JOIN
@@ -63,7 +64,7 @@ BEGIN
     -- Rev 20260925-45: la madre ritorna una TABLE (si legge con FROM).
     SELECT m.auth_user_id
       INTO v_user_id
-      FROM anagrafiche.fn_crea_operatore_v2(
+      FROM dbops.fn_pgtap_fixture_crea_operatore(
         p_cognome                     := 'Operatore ' || p_etichetta,
         p_nome                        := 'pgTAP',
         p_codice_fiscale              := v_cf,
@@ -117,7 +118,7 @@ BEGIN
     --   in la'.
     IF v_identita IS NULL THEN
         RAISE EXCEPTION
-            'fn_pgtap_crea_operatore_umano: fn_crea_operatore_v2 ha risposto auth_user_id = % ma non si legge nessuna identita'' OPERATORE attiva con una risorsa umana',
+            'fn_pgtap_crea_operatore_umano: la fixture ha risposto auth_user_id = % ma non si legge nessuna identita'' OPERATORE attiva con una risorsa umana',
             v_user_id;
     END IF;
 
@@ -127,7 +128,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_operatore_umano(p_etichetta text, p_super_admin boolean)
-IS 'Fixture pgTAP: un OPERATORE UMANO (persona fisica, risorsa umana, utente, identita'' OPERATORE attiva) costruito chiamando la madre di produzione anagrafiche.fn_crea_operatore_v2, volendo SUPER ADMIN (secondo parametro). Aggiunge solo cio'' che una fixture non sceglie bene da se'': la finestra differita (il guard degli indirizzi del soggetto e'' DEFERRABLE e gli indirizzi arrivano all''ultimo passo), un codice fiscale libero e lo username derivato, il sesso esplicito (la madre non ha default), un indirizzo di dettaglio. La madre crea la veste OPERATORE spenta, come per un invito; il builder fa il passo che in esercizio fa l''attivazione dell''invito e la accende col building block anagrafiche.fn_accendi_veste. Diverso da dbops.fn_pgtap_crea_emittente_operatore, che costruisce un utente TECNICO legato alla sua azienda: questo nasce SENZA azienda, come in produzione (un super admin senza azienda e'' il caso normale, multi-emittente, e toglierla dopo non si puo''). Per legarlo a un emittente: script.fn_change_user_emittenti_scope. ⚠️ Non apre il contesto; esce con i vincoli IMMEDIATE. ⛔ Cio'' che scrive si legge in un''istruzione SEPARATA: un JOIN o una funzione STABLE (script.fn_is_super_admin) nella stessa istruzione della chiamata vede la snapshot di prima.';
+IS 'Fixture pgTAP: un OPERATORE UMANO (persona fisica, risorsa umana, utente, identità OPERATORE attiva), volendo SUPER_ADMIN (secondo parametro), costruito con dbops.fn_pgtap_fixture_crea_operatore: le regole della creazione sono quelle del verbo anagrafiche.fn_crea_operatore, senza il suo permesso, e solo dove sono ammessi i dati di sviluppo. Aggiunge ciò che una fixture non sceglie bene da sé: la finestra differita (il guard degli indirizzi del soggetto è DEFERRABLE e gli indirizzi arrivano all''ultimo passo), un codice fiscale libero e lo username derivato, il sesso esplicito, un indirizzo di dettaglio. La creazione lascia la veste OPERATORE spenta, come per un invito; il builder fa il passo che in esercizio fa l''attivazione dell''invito e la accende con anagrafiche.fn_accendi_veste. Diverso da dbops.fn_pgtap_crea_emittente_operatore, che costruisce un utente TECNICO legato alla sua azienda: questo nasce SENZA azienda, come in produzione. Per legarlo a un emittente: dbops.fn_pgtap_sposta_scope_operatore. ⚠️ Non apre il contesto; esce con i vincoli IMMEDIATE. ⛔ Ciò che scrive si legge in un''istruzione SEPARATA: un JOIN o una funzione STABLE (script.fn_is_super_admin) nella stessa istruzione della chiamata vede la snapshot di prima.';
 ```
 
 </div>

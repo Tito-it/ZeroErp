@@ -152,6 +152,10 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | un soggetto con un ruolo e basta (CL, FO, BANK_B…) | `dbops.fn_pgtap_crea_soggetto_pg(...)` + `fn_pgtap_crea_soggetto_ruolo(..., 'CL')` |
 | una **persona fisica** già valida — privato o ditta individuale, con i suoi indirizzi obbligatori — **senza** risorsa umana né identità | `dbops.fn_pgtap_crea_soggetto_pf('<cognome>'[, '<nome>'[, <natura_id>]])` |
 | un **super admin** (senza azienda, come in produzione) | `dbops.fn_pgtap_crea_operatore_umano('<etichetta>', p_super_admin := true)` — sotto, §«Un super admin non ha un'azienda» |
+| **un profilo di accesso**, con le sue aree e azioni, dal verbo vero chiamato da un super admin costruito | `dbops.fn_pgtap_scrivi_profilo_accesso('<tipo>', '<codice>', '<descrizione>'[, <aree>[, <azioni>[, <campi>]]])` — gli argomenti del verbo `config.fn_scrivi_profilo_accesso` |
+| **un profilo legato a un'identità**, dal verbo vero chiamato da un super admin costruito | `dbops.fn_pgtap_lega_profilo_identita(<profilo_id>, <identita_id>)` |
+| **l'azienda di un operatore**, o il passaggio a un'altra, dal verbo vero | `dbops.fn_pgtap_sposta_scope_operatore(<auth_user_id>, <emittente_id>)` |
+| **entrare come super admin** per chiamare un verbo che lo chiede, e rimettere il contesto | `v_prima := dbops.fn_pgtap_entra_come_super_admin('<etichetta>')`, poi `dbops.fn_pgtap_rimetti_contesto(v_prima)`, anche in errore |
 | **un articolo** del test, costruito intero con la struttura che il test sceglie: non gestito a magazzino se il test non misura il magazzino; kit, solo componente, lotto e seriale a richiesta | `dbops.fn_pgtap_crea_articolo('<codice>'[, <gestito>[, …]])` |
 | cambiare la **struttura di un articolo già usato**, dalla porta vera e come super admin costruito | `dbops.fn_pgtap_articolo_correggi_struttura(<articolo_id>, <campi>)` |
 | **articoli dentro una versione di listino**: una riga attiva per articolo, con prezzo e periodicità (va chiamato prima di usare l'articolo: ne allinea la tipologia) | `dbops.fn_pgtap_listino_aggiungi_articoli(<versione_id>, ARRAY[<articolo_id>, …][, <prezzo>[, '<periodicita>']])` |
@@ -217,7 +221,18 @@ un dettaglio: un billing account senza legame ricade sull'emittente di **chi
 agisce** prima che sul gestore globale, quindi un super admin costruito come
 utente tecnico (che un'azienda ce l'ha sempre) sposta il ripiego. E toglierla
 dopo non si può. Si costruisce con `fn_pgtap_crea_operatore_umano(…,
-p_super_admin := true)`, che passa dalla madre di produzione e nasce senza.
+p_super_admin := true)`, che passa dalle regole della madre di produzione e nasce senza.
+
+⚠️ **Operatori, profili, legami e scope non si scrivono a mano.** Le tabelle che danno
+l'accesso sono in sola lettura per l'applicazione, e i verbi che le scrivono chiedono il
+super admin. Un test che ne ha bisogno come fixture usa i builder della tabella sopra,
+che chiamano i verbi veri da un super admin costruito. Il primo super admin di un test
+non ha nessuno da cui farsi creare: lo fanno le fixture
+`dbops.fn_pgtap_fixture_crea_operatore` e `dbops.fn_pgtap_fixture_crea_utente_tecnico`,
+che usano le regole dei verbi senza il loro permesso e partono solo dove sono ammessi i
+dati di sviluppo (in PRODUZIONE rifiutano). Le chiamano i builder, non i test. Un test
+che collauda il guard di una di quelle tabelle, o un mondo che nessun verbo costruisce
+(legami spenti a mano, legami per ruolo), dichiara il runner owner col suo motivo.
 Un super admin **lavora** su un'azienda solo se la **sceglie**, come in alto:
 `app.current_emittente_id`. Con l'azienda scelta, il mondo e i builder che lo
 compongono (fattura, ordine, contratto…) costruiscono su quella, come il trigger

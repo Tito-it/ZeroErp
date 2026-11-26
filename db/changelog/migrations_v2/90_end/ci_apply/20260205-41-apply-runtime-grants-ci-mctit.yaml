@@ -320,7 +320,20 @@ databaseChangeLog:
                   --   Brief: brief-db-porte-aperte-dalla-sola-guc, giro 8 + 1-7 (20261125-22).
                   'vendite.fn_cleanup_fatture_by_ids',
                   'vendite.fn_reset_fondi_fattura',
-                  'vendite.fn_applica_cancellazione_fondo_fattura'
+                  'vendite.fn_applica_cancellazione_fondo_fattura',
+                  -- ⭐ Dal 2026-11-26 le primitive dell'accesso e i passi interni della
+                  --   creazione dell'operatore: scrivono scope, legami, profili e
+                  --   operatori senza permesso; l'app ci arriva solo dai verbi DEFINER
+                  --   col guard del SUPER_ADMIN. L'involucro fn_crea_operatore_v2 non ha
+                  --   chiamanti nel backend.
+                  --   Brief: brief-db-porte-aperte-dalla-sola-guc, giro 10-bis (20261126-25).
+                  'config.fn_applica_lega_profilo_identita',
+                  'config.fn_applica_scrivi_profilo_accesso',
+                  'anagrafiche.fn_applica_crea_operatore',
+                  'script.fn_applica_crea_utente_tecnico',
+                  'anagrafiche.fn_crea_risorsa_umana',
+                  'anagrafiche.fn_crea_auth_user',
+                  'anagrafiche.fn_crea_operatore_v2'
                 ];
                 -- ⭐ Schemi SENZA DELETE per l'applicazione: le shadow di storico le
                 --   scrive il trigger (INSERT della versione, UPDATE che chiude la
@@ -451,7 +464,17 @@ databaseChangeLog:
                   'magazzino.rettifiche',
                   'magazzino.rettifiche_righe',
                   'magazzino.trasferimenti',
-                  'magazzino.trasferimenti_righe'
+                  'magazzino.trasferimenti_righe',
+                  -- ⭐ Dal 2026-11-26 le TABELLE CHE DANNO L'ACCESSO: lo scope, i legami
+                  --   e il contenuto dei profili li scrivono i verbi DEFINER col guard
+                  --   del SUPER_ADMIN, il provisioning, il primo amministratore e le
+                  --   fixture dei pgTAP (brief-db-porte-aperte-dalla-sola-guc, giro 10-bis).
+                  --   Forward 90_end/20261126-24.
+                  'config.user_emittenti_fiscali',
+                  'config.profili_accesso_bindings',
+                  'config.profili_accesso',
+                  'config.profili_accesso_aree',
+                  'config.profili_accesso_azioni'
                 ];
                 -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
                 --   di v_schemi_senza_delete): un blocco di magazzino si chiude

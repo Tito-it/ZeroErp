@@ -11,7 +11,8 @@
 --   stessa unita' di lavoro), si toglie questa riga e si rimette IMMEDIATE.
 -- pgTAP test per Zero ERP
 --
--- Test anagrafiche.fn_crea_operatore_v2 (orchestratore) e i suoi building block
+-- Test anagrafiche.fn_crea_operatore (orchestratore) e i suoi building block. Dal
+-- giro 10-bis il verbo chiede il SUPER_ADMIN: il contesto e' un SUPER_ADMIN costruito.
 -- (fn_crea_auth_user, fn_crea_soggetto_pf, fn_crea_risorsa_umana).
 --
 -- Elenco test (plan 12):
@@ -68,7 +69,10 @@ BEGIN;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- Il contesto e' un SUPER_ADMIN costruito: dal giro 10-bis il verbo sotto prova lo
+-- chiede in prima riga (brief-db-porte-aperte-dalla-sola-guc §14, giro 10-bis, 2026-11-26).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT o.auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano('crea-operatore', true) o)); END $ctx$;
 
 -- ⚠️ VINCOLI DIFFERITI — ⭐ LA FINESTRA SI RIAPRE, NON SI PRESUME.
 --   La madre dell'operatore non nasce completa in un'istruzione (esenzione
@@ -123,7 +127,7 @@ SELECT ok(
 -- =========================================================
 SELECT lives_ok(
     format(
-      $$UPDATE tmp_crea_op_ctx SET auth_user_id = (SELECT m.auth_user_id FROM anagrafiche.fn_crea_operatore_v2(
+      $$UPDATE tmp_crea_op_ctx SET auth_user_id = (SELECT m.auth_user_id FROM anagrafiche.fn_crea_operatore(
         p_cognome := 'Rossi',
         p_nome := 'Mario',
         p_codice_fiscale := %L,
@@ -142,7 +146,7 @@ SELECT lives_ok(
       (SELECT qualifica_id FROM tmp_crea_op_ctx),
       (SELECT uo_id FROM tmp_crea_op_ctx)
     ),
-    '2. fn_crea_operatore_v2 eseguita senza errori'
+    '2. fn_crea_operatore eseguita senza errori'
   );
 
 -- =========================================================
@@ -227,7 +231,7 @@ DO $$
 DECLARE v_c text;
 BEGIN
     BEGIN
-        PERFORM anagrafiche.fn_crea_operatore_v2(
+        PERFORM anagrafiche.fn_crea_operatore(
             p_cognome := 'Bianchi',
             p_nome := 'Luca',
             p_codice_fiscale := 'TSTDUP' || lpad(floor(random() * 10000000)::text, 10, '0'),
@@ -257,7 +261,7 @@ SELECT is(
 -- =========================================================
 SELECT throws_matching(
     format(
-      $$SELECT anagrafiche.fn_crea_operatore_v2(
+      $$SELECT anagrafiche.fn_crea_operatore(
         p_cognome := 'Verdi',
         p_nome := 'Anna',
         p_codice_fiscale := 'TSTDUP' || lpad(floor(random() * 10000000)::text, 10, '0'),
@@ -281,7 +285,7 @@ SELECT throws_matching(
 -- =========================================================
 SELECT throws_matching(
     format(
-      $$SELECT anagrafiche.fn_crea_operatore_v2(
+      $$SELECT anagrafiche.fn_crea_operatore(
         p_cognome := 'Neri',
         p_nome := 'Paolo',
         p_codice_fiscale := %L,
@@ -305,7 +309,7 @@ SELECT throws_matching(
 -- =========================================================
 SELECT throws_matching(
     format(
-      $$SELECT anagrafiche.fn_crea_operatore_v2(
+      $$SELECT anagrafiche.fn_crea_operatore(
         p_cognome := 'Test',
         p_nome := 'UO',
         p_codice_fiscale := 'PNZFDN78A01L219Y',
@@ -327,7 +331,7 @@ SELECT throws_matching(
 -- =========================================================
 SELECT throws_matching(
     format(
-      $$SELECT anagrafiche.fn_crea_operatore_v2(
+      $$SELECT anagrafiche.fn_crea_operatore(
         p_cognome := '',
         p_nome := 'Test',
         p_codice_fiscale := 'PNZFDN78A01L219Y',

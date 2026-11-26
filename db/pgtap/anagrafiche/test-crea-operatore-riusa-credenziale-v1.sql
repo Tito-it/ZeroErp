@@ -2,7 +2,8 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: anagrafiche.fn_crea_operatore_v2 — UNA PERSONA, UNA CREDENZIALE (D-6)
+-- Test: anagrafiche.fn_crea_operatore — UNA PERSONA, UNA CREDENZIALE (D-6). Dal giro
+--   10-bis il verbo chiede il SUPER_ADMIN: il contesto e' un SUPER_ADMIN costruito.
 --   e la veste OPERATORE che nasce SPENTA (regola unica dell'invito, R-2).
 --   Brief: brief-db-blocco-login-per-credenziale, sezione 5.2 e sezione 12
 --   (test 25-26 del §6).
@@ -62,7 +63,10 @@
 --   cliente dello stesso soggetto, che e' cio' che il test voleva dire.
 -- ------------------------------------------------------------
 BEGIN;
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- Il contesto e' un SUPER_ADMIN costruito: dal giro 10-bis il verbo sotto prova lo
+-- chiede in prima riga (brief-db-porte-aperte-dalla-sola-guc §14, giro 10-bis, 2026-11-26).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT o.auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano('riusa-credenziale', true) o)); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(20);
@@ -104,7 +108,7 @@ CREATE OR REPLACE FUNCTION pg_temp.crea_op(p_email text, p_username text, p_cogn
 RETURNS TABLE (auth_user_id integer, username text, credenziale_riusata boolean)
 LANGUAGE sql AS $$
     SELECT m.auth_user_id, m.username, m.credenziale_riusata
-      FROM anagrafiche.fn_crea_operatore_v2(
+      FROM anagrafiche.fn_crea_operatore(
                p_soggetto_id                  := p_soggetto,
                p_cognome                      := p_cognome,
                p_nome                         := 'pgTAP',

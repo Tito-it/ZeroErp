@@ -157,7 +157,7 @@ CREATE TEMP TABLE t_quattro AS
 SELECT p.oid::regprocedure AS f
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
  WHERE (n.nspname, p.proname) IN (('anagrafiche', 'fn_crea_soggetto_pf'), ('anagrafiche', 'fn_crea_soggetto_pg'),
-                                  ('script', 'fn_crea_utente_tecnico'), ('dbops', 'fn_pgtap_crea_soggetto_pg'));
+                                  ('script', 'fn_applica_crea_utente_tecnico'), ('dbops', 'fn_pgtap_crea_soggetto_pg'));  -- dal giro 10-bis il corpo dell'utente tecnico sta nella primitiva
 
 SELECT is(
     (SELECT count(*)::int FROM t_quattro WHERE pg_temp.corpo(f) ~* 'INSERT\s+INTO\s+anagrafiche\.contatti'),

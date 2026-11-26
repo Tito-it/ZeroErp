@@ -132,7 +132,7 @@ SELECT is(
     '4) tecnica = true su una veste di portale si rifiuta');
 
 SELECT is(
-    pg_temp.codice(format('SELECT config.fn_lega_profilo_identita(config.fn_profilo_super_admin_id(), %s)',
+    pg_temp.codice(format('SELECT config.fn_applica_lega_profilo_identita(config.fn_profilo_super_admin_id(), %s)',
                           (SELECT identita_id FROM _tec))),
     'E_SUPER_ADMIN_SU_VESTE_TECNICA',
     '5) il SUPER_ADMIN non si lega a un''identita'' tecnica');

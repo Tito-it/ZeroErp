@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_operatore_umano`
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -34,9 +34,13 @@ credenziale, identità, risorsa umana, soggetto ruolo e soggetto.
 
 ### ⭐ Dal percorso di produzione
 
-L'operatore lo costruisce la madre di produzione
+L'operatore lo costruiscono le regole della madre di produzione
 [fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore), con la
-qualifica di dipendente. La fixture aggiunge solo ciò che un test non sceglie bene da sé:
+qualifica di dipendente. Il verbo chiede il SUPER_ADMIN, e il primo SUPER_ADMIN di un test non ha nessuno da
+cui farsi creare: la chiamata passa dalla fixture
+[fn_pgtap_fixture_crea_operatore](/dbzero/dbops/funzioni/fn_pgtap_fixture_crea_operatore), che ha firma e regole
+del verbo senza il permesso, e parte solo dove sono ammessi i dati di sviluppo. Firma e colonne di ritorno del
+builder non cambiano. La fixture aggiunge solo ciò che un test non sceglie bene da sé:
 
 * un codice fiscale libero adesso, chiesto una volta sola subito prima di scriverlo, e da lui
   lo username e l'email, quindi la credenziale è sempre nuova;

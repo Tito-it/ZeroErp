@@ -124,7 +124,7 @@ SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('eccezione altro SA', true);
 SET CONSTRAINTS ALL DEFERRED;
 CREATE TEMP TABLE _sa AS
 SELECT m.auth_user_id
-  FROM anagrafiche.fn_crea_operatore_v2(
+  FROM dbops.fn_pgtap_fixture_crea_operatore(
            p_cognome                      := 'Eccezione',
            p_nome                         := 'pgTAP',
            p_codice_fiscale               := dbops.fn_pgtap_cf_libero(),

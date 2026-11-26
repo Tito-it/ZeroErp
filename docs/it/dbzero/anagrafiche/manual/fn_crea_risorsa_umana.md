@@ -11,9 +11,9 @@
 >
 > Approfondimento funzioni:
 >
-> * [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore) — l'unica madre che la chiama
+> * [anagrafiche.fn_applica_crea_operatore](/dbzero/anagrafiche/funzioni/fn_applica_crea_operatore) — l'unica funzione che la chiama, la primitiva del verbo `fn_crea_operatore`
 > * [config.fn_profilo_super_admin_id](/dbzero/config/funzioni/fn_profilo_super_admin_id) — quale profilo è il SUPER_ADMIN
-> * [config.fn_lega_profilo_identita](/dbzero/config/funzioni/fn_lega_profilo_identita) — scrive il legame fra la veste e il profilo
+> * [config.fn_applica_lega_profilo_identita](/dbzero/config/funzioni/fn_applica_lega_profilo_identita) — scrive il legame fra la veste e il profilo
 > * [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile) — quando una veste apre davvero la porta
 > * [anagrafiche.trgfn_identita_digitali_sync_auth_user_active](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_sync_auth_user_active) — la credenziale segue le vesti
 >
@@ -70,12 +70,19 @@ secondo la regola «accesa se almeno una veste è utilizzabile» (vedi la scheda
 
 ---
 
+### ⛔ Chi la esegue
+
+Solo il proprietario: è il passo interno della creazione dell'operatore, e l'applicazione non ha `EXECUTE`, e
+nemmeno `PUBLIC`. Il permesso lo chiede il verbo `anagrafiche.fn_crea_operatore` (il SUPER_ADMIN); da qui il
+legame del profilo passa dalla primitiva, perché la creazione arriva anche da strade senza un SUPER_ADMIN in
+sessione (il primo amministratore, il provisioning, la fixture dei pgTAP).
+
 ### Il profilo SUPER_ADMIN si risolve prima di scrivere
 
 Con `p_is_super_admin` vero e una credenziale, il profilo SUPER_ADMIN si cerca **prima** di ogni scrittura, con
 `config.fn_profilo_super_admin_id`: per tipo, fra i profili attivi, esattamente uno. Se non è uno solo la funzione
 si ferma con `E_CONFIG_MANCANTE` senza aver scritto niente. Il legame fra la veste e il profilo lo scrive
-`config.fn_lega_profilo_identita`, e nasce attivo anche quando la veste nasce spenta: la porta e il profilo sono
+la primitiva `config.fn_applica_lega_profilo_identita`, e nasce attivo anche quando la veste nasce spenta: la porta e il profilo sono
 due domande diverse. Chi difende l'ultimo SUPER_ADMIN è il guard della veste
 ([`trgfn_identita_digitali_guard_ultimo_super_admin`](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_ultimo_super_admin)).
 

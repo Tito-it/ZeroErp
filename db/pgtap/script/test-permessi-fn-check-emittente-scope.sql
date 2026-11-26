@@ -1,5 +1,13 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture cancella a mano un legame SUPER_ADMIN e scrive la riga
+--   di scope diretta:
+--   dal giro 10-bis le tabelle che danno l'accesso (scope, legami e contenuto dei
+--   profili) sono in sola lettura per l'app, e le scrivono solo i verbi del SUPER_ADMIN
+--   (brief-db-porte-aperte-dalla-sola-guc §14, giro 10-bis, 2026-11-26).
+--   I soggetti del test sono funzioni di lettura delle tabelle di config, che
+--   non hanno RLS: il ruolo di connessione non cambia cio' che misurano.
 -- pgTAP test per Zero ERP
 --
 -- Test: funzioni scope emittente e flag SUPER_ADMIN
@@ -73,7 +81,7 @@ SELECT 'OP'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore(p_persona :
 UNION ALL
 SELECT 'SA2' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore(p_persona := true);
 
-DO $lega$ BEGIN PERFORM config.fn_lega_profilo_identita(9100, (SELECT identita_id FROM _mondi WHERE lato = 'SA2')); END $lega$;
+DO $lega$ BEGIN PERFORM config.fn_applica_lega_profilo_identita(9100, (SELECT identita_id FROM _mondi WHERE lato = 'SA2')); END $lega$;
 
 DO $ctx$
 BEGIN
@@ -163,7 +171,7 @@ SELECT is(
 -- Post-Fase 7: INSERT binding SUPER_ADMIN su identita esistente.
 DO $lega$
 BEGIN
-    PERFORM config.fn_lega_profilo_identita(9100, ctx.identita_id) FROM tmp_refs_scope ctx;
+    PERFORM config.fn_applica_lega_profilo_identita(9100, ctx.identita_id) FROM tmp_refs_scope ctx;
 END
 $lega$;
 

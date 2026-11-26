@@ -368,18 +368,15 @@ SELECT anagrafiche.fn_crea_veste_portale(c.auth_user_id, m.cliente_soggetto_ruol
        AS identita_id
   FROM _ctx c CROSS JOIN _mondo m;
 
+-- Dai builder: dal giro 10-bis profili e legami li scrivono i verbi del SUPER_ADMIN.
 CREATE TEMP TABLE _pr AS
-WITH ins AS (
-  INSERT INTO config.profili_accesso (tipo, codice, descrizione, attivo)
-  VALUES ('AD_HOC', '_PGTAP_CATALOGO_' || upper(substr(md5(clock_timestamp()::text), 1, 8)),
-          'Profilo AD_HOC test catalogo liste', TRUE)
-  RETURNING id
-)
-SELECT id AS profilo_id FROM ins;
+SELECT dbops.fn_pgtap_scrivi_profilo_accesso(
+           'AD_HOC', '_PGTAP_CATALOGO_' || upper(substr(md5(clock_timestamp()::text), 1, 8)),
+           'Profilo AD_HOC test catalogo liste') AS profilo_id;
 
 DO $lega$
 BEGIN
-  PERFORM config.fn_lega_profilo_identita((SELECT profilo_id FROM _pr), (SELECT identita_id FROM _idp));
+  PERFORM dbops.fn_pgtap_lega_profilo_identita((SELECT profilo_id FROM _pr), (SELECT identita_id FROM _idp));
 END
 $lega$;
 

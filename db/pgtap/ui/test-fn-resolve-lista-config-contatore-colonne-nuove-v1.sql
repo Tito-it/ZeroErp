@@ -63,22 +63,25 @@ SELECT plan(5);
 --    ramo «colonna sensibile CON grant» non si raggiunge (un grant si aggancia a
 --    un profilo), e i casi 3-4 sarebbero verdi per la ragione sbagliata; su un
 --    database ricostruito nessun utente ne ha uno.
+-- Dai builder: dal giro 10-bis profili e legami li scrivono i verbi del SUPER_ADMIN.
 CREATE TEMP TABLE _t_profilo AS
-WITH ins AS (
-    INSERT INTO config.profili_accesso (tipo, codice, descrizione, attivo)
-    VALUES ('AD_HOC',
-            '_PGTAP_COLNEW_' || upper(substr(md5(clock_timestamp()::text), 1, 8)),
-            'Profilo AD_HOC per il contatore colonne_nuove', TRUE)
-    RETURNING id
-)
-SELECT id AS profilo_id FROM ins;
+SELECT dbops.fn_pgtap_scrivi_profilo_accesso(
+           'AD_HOC', '_PGTAP_COLNEW_' || upper(substr(md5(clock_timestamp()::text), 1, 8)),
+           'Profilo AD_HOC per il contatore colonne_nuove') AS profilo_id;
 
+-- ⚠️ L'identita' si legge prima: il builder entra e esce dal contesto di un
+--   SUPER_ADMIN di fixture, e la riga non deve dipendere da app.current_user_id
+--   mentre la chiamata e' in corso.
 DO $lega$
+DECLARE
+    v_identita anagrafiche.identita_digitali.id%TYPE;
 BEGIN
-    PERFORM config.fn_lega_profilo_identita((SELECT profilo_id FROM _t_profilo), idg.id) FROM anagrafiche.identita_digitali idg
- WHERE idg.auth_user_id = NULLIF(current_setting('app.current_user_id', true), '')::integer
-   AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-   AND idg.attivo;
+    SELECT idg.id INTO v_identita
+      FROM anagrafiche.identita_digitali idg
+     WHERE idg.auth_user_id = NULLIF(current_setting('app.current_user_id', true), '')::integer
+       AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+       AND idg.attivo;
+    PERFORM dbops.fn_pgtap_lega_profilo_identita((SELECT profilo_id FROM _t_profilo), v_identita);
 END
 $lega$;
 

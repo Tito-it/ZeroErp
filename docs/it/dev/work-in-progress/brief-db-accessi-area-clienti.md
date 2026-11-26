@@ -136,6 +136,13 @@ fare nello stesso giro, trovate costruendo il giro 1:
   il default va a `false`, oppure anche la nascita passa dai verbi (`fn_crea_veste_portale` e le fabbriche);
 - censire ogni scrittura diretta rimasta nel backend (la richiesta del §4).
 
+⚠️ **I verbi di creazione li porta a DEFINER il giro 10-bis** di
+[brief-db-porte-aperte-dalla-sola-guc](brief-db-porte-aperte-dalla-sola-guc.md) §14 (D-AD **b**, Tid, 2026-11-26):
+`fn_crea_operatore` (e l'involucro `_v2`), `fn_crea_risorsa_umana`, `fn_crea_utente_tecnico`, i verbi dei legami di
+profilo, con le fixture pgTAP. Una funzione si riscrive una volta sola: il 3c non li riscrive, li trova già DEFINER.
+Qui restano `identita_digitali` (il grant, il default di `attivo`), `fn_accendi_veste`, `fn_riattiva_utente_tecnico`,
+`fn_crea_veste_portale` e il ritiro del `_v2`. Se il 3c parte prima del 10-bis, l'ordine lo decide Tid.
+
 ### Garanzie ritirate
 
 Nessuna in questo giro: si aggiungono rifiuti, non si tolgono garanzie. Lettori del segno lato DB: il guard e

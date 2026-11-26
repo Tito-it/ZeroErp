@@ -53,7 +53,7 @@ SELECT 'ALTRUI' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
 UNION ALL
 SELECT 'SA'     AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore(p_persona := true);
 
-DO $lega$ BEGIN PERFORM config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), (SELECT identita_id FROM _mondi WHERE lato = 'SA')); END $lega$;
+DO $lega$ BEGIN PERFORM dbops.fn_pgtap_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), (SELECT identita_id FROM _mondi WHERE lato = 'SA')); END $lega$;
 
 -- ⚠️ L'helper esce con i vincoli IMMEDIATE; questo file li vuole DIFFERITI
 --   fino a dopo la fixture (vedi sotto), quindi li riapre.

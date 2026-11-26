@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FIXTURE CHE RIMETTE IL CONTESTO DI PRIMA
+#   dbops.fn_pgtap_rimetti_contesto
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §14 (giro 10-bis; D-AC a, D-AD b, D-AE a, D-AF a di Tid, 2026-11-26).
+#
+#   La gemella di dbops.fn_pgtap_entra_come_super_admin (20261126-19): riceve
+#   il contesto di prima e lo rimette.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261126-20-create-fn-pgtap-rimetti-contesto-mctit.yaml
+
+  - changeSet:
+      id: 20261126-20-create-fn-pgtap-rimetti-contesto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_rimetti_contesto: rimette il contesto restituito da dbops.fn_pgtap_entra_come_super_admin. brief-db-porte-aperte-dalla-sola-guc §14.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_rimetti_contesto(
+                  p_prima jsonb)  -- il contesto di prima, {utente, ruolo}: nessuna colonna
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: in un pgTAP, rimettere il contesto che
+              --   dbops.fn_pgtap_entra_come_super_admin ha restituito.
+              BEGIN
+                  IF p_prima IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_rimetti_contesto: manca il contesto di prima';
+                  END IF;
+
+                  PERFORM set_config('app.current_user_id', COALESCE(p_prima ->> 'utente', ''), false);
+                  PERFORM set_config('app.ruolo_applicativo', COALESCE(p_prima ->> 'ruolo', ''), false);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_rimetti_contesto(jsonb)
+              IS 'Fixture dei pgTAP: rimette il contesto che dbops.fn_pgtap_entra_come_super_admin ha restituito: app.current_user_id e app.ruolo_applicativo tornano com''erano, anche vuoti. Un argomento NULL solleva: un builder che lo passa ha perso il contesto di prima.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_rimetti_contesto(jsonb);

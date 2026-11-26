@@ -28,6 +28,9 @@
 > * [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope) — il write-guard di difesa in profondita'
 > * [config.trgfn_parameter_overrides_guard_emittente_scope](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_emittente_scope) — lo stesso perimetro sugli override dei parametri, una tabella senza RLS: guarda la riga prima e dopo, anche nel `DELETE`
 > * [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — il verbo che sposta un operatore su un'azienda, riservato al SUPER_ADMIN
+> * [config.fn_lega_profilo_identita](/dbzero/config/funzioni/fn_lega_profilo_identita) / [config.fn_slega_profilo_identita](/dbzero/config/funzioni/fn_slega_profilo_identita) / [config.fn_lega_profilo_reparto](/dbzero/config/funzioni/fn_lega_profilo_reparto) / [config.fn_slega_profilo_reparto](/dbzero/config/funzioni/fn_slega_profilo_reparto) — i verbi che danno e tolgono un profilo a un'identità o a un reparto, riservati al SUPER_ADMIN
+> * [config.fn_scrivi_profilo_accesso](/dbzero/config/funzioni/fn_scrivi_profilo_accesso) — il verbo che scrive un profilo con le sue aree e azioni, riservato al SUPER_ADMIN
+> * [dbops.fn_pgtap_fixture_crea_operatore](/dbzero/dbops/funzioni/fn_pgtap_fixture_crea_operatore) / [dbops.fn_pgtap_fixture_crea_utente_tecnico](/dbzero/dbops/funzioni/fn_pgtap_fixture_crea_utente_tecnico) — le fixture dei pgTAP senza permesso, chiuse dall'ambiente
 > * [anagrafiche.fn_crea_primo_amministratore](/dbzero/anagrafiche/funzioni/fn_crea_primo_amministratore) — il solo verbo senza guard: il primo SUPER_ADMIN, chiuso dalla sua condizione
 > * [config.trgfn_user_emittenti_fiscali_guard_delete](/dbzero/config/funzioni/trgfn_user_emittenti_fiscali_guard_delete) — il guard del `DELETE` della riga di scope, e la porta del verbo
 > * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) / [script.fn_guard_livello](/dbzero/script/funzioni/fn_guard_livello) / [script.fn_guard_livello_area](/dbzero/script/funzioni/fn_guard_livello_area) / [script.fn_guard_super_admin](/dbzero/script/funzioni/fn_guard_super_admin) / [script.fn_guard_utente_stesso](/dbzero/script/funzioni/fn_guard_utente_stesso) — il permesso nella prima riga di un verbo di scrittura
@@ -340,6 +343,20 @@ codename Django (es. `genera_fattura`) e al flag di abilitazione. Da
 quel momento tutti gli operatori del reparto vedranno il pulsante di
 generazione attivo senza ulteriori override individuali.
 
+**Chi scrive i profili e i loro legami.** Il legame dice chi ha un profilo, il
+contenuto del profilo (le sue aree e azioni) dice che cosa concede: scrivere l'uno o
+l'altro e' dare poteri. Per questo `config.profili_accesso`, `profili_accesso_aree`,
+`profili_accesso_azioni` e `profili_accesso_bindings` sono in sola lettura per
+l'applicazione (§7.4), e li scrivono i verbi del SUPER_ADMIN:
+`config.fn_scrivi_profilo_accesso` il profilo con aree e azioni,
+`config.fn_lega_profilo_identita` / `fn_slega_profilo_identita` il legame di
+un'identita', `config.fn_lega_profilo_reparto` / `fn_slega_profilo_reparto` quello di
+un reparto. Ognuno chiede il SUPER_ADMIN nella prima riga. La creazione di un
+operatore lega il profilo SUPER_ADMIN dentro lo stesso verbo
+(`anagrafiche.fn_crea_operatore`), che chiede anche lui il SUPER_ADMIN. Un legame
+verso il profilo SUPER_ADMIN scritto direttamente, che farebbe un amministratore,
+si ferma sul privilegio.
+
 ### 4.6 Tabella `config.user_override_aree`
 
 > Struttura completa: [user_override_aree](/dbzero/config/tabelle/user_override_aree)
@@ -410,11 +427,10 @@ letture, e per difesa in profondita' dai trigger DB sulle scritture.
 toglierlo: per questo il verbo chiede il SUPER_ADMIN nella prima riga (§7.4). La
 riga di un utente acceso si toglie solo dalla porta del verbo; l'emittente di una
 riga non si cambia (lucchetto di colonna), si sposta togliendo la riga e
-scrivendone un'altra. ⚠️ La tabella non e' ancora in sola lettura per
-l'applicazione: un `INSERT` diretto, per un operatore che non ha la riga, gli da'
-un'azienda senza passare dal verbo. E' una delle tabelle ancora aperte del
-modello; anche gli utenti tecnici dei processi ricevono l'azienda cosi'
-(`script.fn_crea_utente_tecnico`).
+scrivendone un'altra. La tabella e' in sola lettura per l'applicazione: un `INSERT`
+diretto, che a un operatore senza riga darebbe un'azienda, si ferma sul privilegio.
+L'utente tecnico di un processo riceve la sua azienda alla nascita, dal verbo
+`script.fn_crea_utente_tecnico`, che chiede anch'esso il SUPER_ADMIN.
 
 Chi resta senza assegnazione si conta in `dbops.vw_operatori_senza_emittente`, che
 **deve restare a zero righe**.
@@ -918,6 +934,17 @@ ancora nessuno che possa avere un permesso. Al posto del guard lo chiude la sua
 condizione: si apre solo se nessuna veste ha mai avuto un legame SUPER_ADMIN, e si
 chiude da sola alla nascita del primo. Un verbo nuovo senza guard non si appoggia a
 questo: e' l'unico caso in cui chi agisce, per costruzione, non esiste.
+
+⚠️ **Due funzioni senza guard per i test, dichiarate: le fixture dei pgTAP.**
+[`dbops.fn_pgtap_fixture_crea_operatore`](/dbzero/dbops/funzioni/fn_pgtap_fixture_crea_operatore)
+e [`dbops.fn_pgtap_fixture_crea_utente_tecnico`](/dbzero/dbops/funzioni/fn_pgtap_fixture_crea_utente_tecnico)
+creano un operatore (anche SUPER_ADMIN) o un utente tecnico con le regole dei loro
+verbi, senza il loro permesso: il primo SUPER_ADMIN di un test non ha nessuno da cui
+farsi creare. Girano come proprietario e l'applicazione le esegue. Al posto del guard
+le chiude l'**ambiente**: partono solo dove sono ammessi i dati di sviluppo, come il
+provisioning, e in PRODUZIONE rifiutano (`E_DATI_DI_SVILUPPO_IN_PRODUZIONE`).
+L'ambiente l'applicazione non lo cambia. Il limite e' quello del provisioning: su
+un'installazione di sviluppo l'applicazione puo' crearsi un SUPER_ADMIN di fixture.
 
 Una forma sola per le operazioni di processo, una per quelle semplici:
 `azioni_processo` non si riempie di azioni che ripetono il livello, e
