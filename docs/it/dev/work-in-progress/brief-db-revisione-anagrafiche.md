@@ -1,8 +1,12 @@
 # Brief DB — Revisione dello schema `anagrafiche`: la documentazione, le segnalazioni di codice, i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-25
+## ⏭️ Chi riparte — aggiornato al 2026-11-26
 
-**Riparte: Tid**, col commit del giro 5 (T7b, i contatti e il catasto: `20261125-36 … -46` applicati, pgTAP verdi, doc auto-generata rigenerata, 2026-11-25, §22.4) e il passaggio al BE del giro 5 da girare (§22.6). I segnaposto `-47 … -60` sono tolti e l'autogen rigenerato (§22.7). Poi T4. Tid ha da girare il passaggio al BE del giro 4 (§21.7); il giro 4 (T7a, `20261123-74 … -94`, §21.5) è applicato, verde e committato (`359c556da1`, 2026-11-24). Tid ha anche da girare il passaggio al BE (§20.7, sei voci). T7 è diviso in T7a, gli indirizzi, e T7b, i contatti e il catasto (Tid, 2026-11-24); l'analisi di T7a sul catalogo è scritta il 2026-11-24 (§21). Il giro 3-bis, D-T5-6 **b** (il tipo di contatto proposto, §20.8), è chiuso: `20261123-68 … -73` applicato, pgTAP verdi, doc auto-generata rigenerata, committato (`f9b1049de3`, 2026-11-24). Il giro 3, T5, è chiuso: `20261123-48 … -64` applicato su scratch e dbdev, pgTAP verdi come app, committato (2026-11-24). Poi T7, T4, T8, T12, T3, T10, T11. Il giro 2 (T2) è chiuso: dentro `anagrafiche` non c'è
+**Ripartono in due, senza aspettarsi.** La **sessione DB** con T4, il prossimo tema di §17.1, e in coda il brief
+nuovo di T6 (che porta anche l'ultimo contatto del soggetto, §22.7). Il **team BE/FE** coi passaggi al BE ancora
+aperti dei giri 3 (§20.7: `_NULLABLE` di `update_soggetto` e i due codici obsoleti nel ripiego sono ancora lì,
+verificato il 2026-11-26) e 4 (§21.7), più la fase 7. Il giro 5 è chiuso: il DB committato (`7f8d9506d`, PR #249),
+il passaggio al BE fatto e committato su `dev/backend-tid` il 2026-11-26 (§22.6, esito in coda alla sezione). Tid ha da girare il passaggio al BE del giro 4 (§21.7); il giro 4 (T7a, `20261123-74 … -94`, §21.5) è applicato, verde e committato (`359c556da1`, 2026-11-24). Tid ha anche da girare il passaggio al BE (§20.7, sei voci). T7 è diviso in T7a, gli indirizzi, e T7b, i contatti e il catasto (Tid, 2026-11-24); l'analisi di T7a sul catalogo è scritta il 2026-11-24 (§21). Il giro 3-bis, D-T5-6 **b** (il tipo di contatto proposto, §20.8), è chiuso: `20261123-68 … -73` applicato, pgTAP verdi, doc auto-generata rigenerata, committato (`f9b1049de3`, 2026-11-24). Il giro 3, T5, è chiuso: `20261123-48 … -64` applicato su scratch e dbdev, pgTAP verdi come app, committato (2026-11-24). Poi T7, T4, T8, T12, T3, T10, T11. Il giro 2 (T2) è chiuso: dentro `anagrafiche` non c'è
 niente da cambiare. La postura delle viste in tutto il database è decisa (Tid, 2026-11-23, §19.3) e il suo lavoro è
 di [brief-db-porte-aperte-dalla-sola-guc](brief-db-porte-aperte-dalla-sola-guc.md) §5, in un'altra sessione: qui non
 resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta di S50 (§17, riga T7). Il vaglio per temi è deciso (Tid, 2026-11-23, §17.1). Il piano da percorrere, con le fasi spuntate, è il §0.
@@ -18,7 +22,7 @@ resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta d
 | 7 | sessione DB | Archiviazione in `work-done/`, col debito dei temi spostati scritto nei loro brief | §11 | 5, 6 |
 
 **Decisioni aperte di Tid:** nessuna del giro 5 (D-T7b-1 … -7 prese come proposte, Tid 2026-11-25, §22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
-**Da committare:** il giro 5 (§22.4): applicato, verde, doc rigenerata (2026-11-25).
+**Da committare:** niente (il giro 5 è committato: DB `7f8d9506d`, BE 2026-11-26).
 
 ## 0. Il piano da percorrere
 
@@ -93,7 +97,8 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] Giro 5: T7b, le decisioni D-T7b-1 … -7 (Tid, 2026-11-25, §22.2: tutte come proposte)
   * [x] Giro 5: T7b, pgTAP rosso, changeSet `20261125-36 … -46`, guida e note, provati sullo scratch (2026-11-25, §22.4)
   * [x] Giro 5: T7b, apply e pgTAP (Tid); doc auto-generata rigenerata (2026-11-25)
-  * [ ] Giro 5: T7b, il passaggio al BE (§22.6, da girare)
+  * [x] Giro 5: T7b, committato (Tid, `7f8d9506d`, PR #249)
+  * [x] Giro 5: T7b, il passaggio al BE (§22.6): le otto voci fatte o censite senza modifiche, committato (2026-11-26)
   * [ ] Poi un giro per tema nell'ordine di §17.1: T4, T8, T12, T3, T10, T11
 * **Fase 9 — Il giro dei metadati** (§8)
   * [ ] I COMMENT, i commenti nei corpi e le note di seed che i giri di codice non hanno già riscritto
@@ -2197,7 +2202,7 @@ Con quattro righe nuove in `codici_errore.csv` e `messaggi_errore.csv` (id 1540 
 | Il predefinito (-37, -45) | «Il livello `ruolo` (o `istanza`) di un soggetto ha al più un predefinito»: ora ogni ruolo, e ogni ruolo su un'istanza, ha il suo | `trgfn_soggetti_guard_soggetto_contatti` cerca «almeno un predefinito o un recapito»: con più predefiniti è solo più facile da soddisfare. `fn_get_contatti` e `fn_get_contatto_default` scelgono per contesto. I verbi che passano `is_default` (`fn_crea_soggetto_pf`, `_pg`, `script.fn_crea_utente_tecnico`) scrivono il contatto del soggetto, il cui contesto non cambia. Nessun lettore ne dipende |
 | `fn_get_contatti` senza reparto (-38) | «Chi non chiede il reparto non vede i contatti che ne hanno uno» | `fn_get_contatto_default` la chiama col reparto che riceve. Nessun lettore DB ne dipendeva |
 
-### 22.6 Il passaggio al BE (da girare: il giro è applicato, 2026-11-25)
+### 22.6 Il passaggio al BE (✅ fatto, 2026-11-26)
 
 Letto sul ramo `origin/dev/backend-tid` in sola lettura. Chi cambia per primo: il DB. Il percorso censito: creazione
 (`contatti_service.crea_contatto_validato`), modifica (`SoggettiRepository.update_contatto`, `CONTATTO_UPDATE_COLS`),
@@ -2232,14 +2237,36 @@ cancellazione (`views_contatti_ruolo.py` riga 165, `SoggettiRepository.delete_co
    la segue, e l'unità lasciata si cancella. Censire le scritture BE di `catasto_unita_immobiliare_id` e della
    ponte.
 
+**Esito del passaggio (BE, 2026-11-26).**
+
+* **1-4, fatte.** «Rendi predefinito» come azione `POST …/contatti/{id}/predefinito/` (soggetto e ruolo), che
+  scrive solo `is_default = true`; i due codici del predefinito e quelli del tipo risalgono dalla loro policy;
+  `VINCOLI_CONTATTO` resta alla sola modifica diretta. Le rotte del soggetto toccano i soli contatti senza ruolo.
+  Doc: `api_soggetti` §6, `api_contatti_ruolo` §5. Il FE mostra il segno con il BB `PredefinitoSegno`.
+* **7, niente da cambiare**: il BE crea i contatti d'istanza solo dal ruolo.
+
+* **5 e 6, chiuse insieme.** Il censimento dei lettori di `is_default` e `default_context` nel BE trova un solo
+  punto che sceglie per il segno: `PortaleRepository.get_email_contatto_suggerita`. Prendeva il predefinito con
+  l'id più basso fra quelli della cascata, cioè di solito quello del **soggetto** anche quando il ruolo ha il suo.
+  Ora, dopo il PRINCIPALE, legge il BB `script.fn_get_contatto_default` (vince il contesto più specifico). Se quel
+  predefinito non ha email non si suggerisce niente, senza ripiegare su un contesto meno specifico (Tid,
+  2026-11-26). Test sul DB vero: `portale/tests/db/test_email_suggerita_db.py`, caso 2. Gli altri lettori
+  (`views_contatti_ruolo`, `get_soggetto_contatti`, il drawer dei contatti) mostrano il segno senza sceglierci
+  sopra.
+* **8, chiusa senza modifiche.** Nel BE non c'è nessuna scrittura di `catasto_unita_immobiliare_id` né della ponte.
+
 ### 22.7 Che cosa resta
 
 * ✅ apply di `-36 … -46`, pgTAP verdi, doc auto-generata rigenerata (Tid, 2026-11-25);
-* il passaggio al BE (§22.6), da girare;
+* ✅ il passaggio al BE (§22.6), fatto il 2026-11-26;
 * ✅ i segnaposto `-47 … -60` tolti e `changelog-autogen.yaml` rigenerato (2026-11-25). Erano `databaseChangeLog: []`:
   su dbdev e sullo scratch nessuna riga di `databasechangelog` li nomina. Il prossimo numero libero è `-47`;
 * **debito residuo**: la cancellazione di un'istanza lascia la sua unità senza nessuno che la nomini (§22.4). Due
   contatti nati insieme in un contesto vuoto, in due transazioni, urtano ora l'indice del predefinito (23505) invece
   di nascere predefiniti tutti e due: il secondo va riprovato;
 * T6 tiene il contatto obbligatorio, il puntatore `soggetti.default_contatto_id` e l'ultimo contatto cancellato;
+  **richiesta dal BE** (verifica del passaggio §22.6, 2026-11-26): la cancellazione dell'ultimo contatto del
+  contesto del soggetto (`DELETE /soggetti/{id}/contatti/{contatto_id}/`) urta `fk_contatti_anagrafiche` e
+  arriva al client come `400 E_DATABASE` senza frase né campo; il BE non la traduce per nome della FK (sarebbe una
+  seconda sede della regola), aspetta il codice parlante di T6;
 * la voce di T11 sul montaggio senza fase del predefinito è chiusa da -37.

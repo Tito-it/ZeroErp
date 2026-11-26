@@ -9,13 +9,14 @@ import { useContattoForm } from '../composables/useContattoForm'
 import { useSoggettoRuoloCollection } from '../composables/useSoggettoRuoloCollection'
 import {
   listSoggettoContatti, createSoggettoContatto,
-  updateSoggettoContatto, deleteSoggettoContatto,
+  updateSoggettoContatto, deleteSoggettoContatto, rendiPredefinitoSoggettoContatto,
   listRuoloContatti, createRuoloContatto,
-  updateRuoloContatto, deleteRuoloContatto
+  updateRuoloContatto, deleteRuoloContatto, rendiPredefinitoRuoloContatto
 } from '../api/anagrafiche'
 import { DRAWER_WIDTH, MANAGE_ICONS, RECAPITO_ICONS, STATUS_ICONS } from '../../core/constants'
 import ContattoForm from './ContattoForm.vue'
 import AppDrawer from '../../core/components/AppDrawer.vue'
+import PredefinitoSegno from '../../core/components/PredefinitoSegno.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
@@ -51,6 +52,7 @@ const {
   startEdit: onStartEdit,
   saveForm: onSaveForm,
   deleteItem: onDelete,
+  eseguiSuRiga,
   modificato: modificatoInline,
   annullaForm,
   chiudiConConferma,
@@ -61,9 +63,11 @@ const {
   istanzaUtilityId: () => props.istanzaUtilityId,
   apiMap: {
     soggetto: { list: listSoggettoContatti, create: createSoggettoContatto,
-                update: updateSoggettoContatto, remove: deleteSoggettoContatto },
+                update: updateSoggettoContatto, remove: deleteSoggettoContatto,
+                predefinito: rendiPredefinitoSoggettoContatto },
     ruolo: { list: listRuoloContatti, create: createRuoloContatto,
-             update: updateRuoloContatto, remove: deleteRuoloContatto },
+             update: updateRuoloContatto, remove: deleteRuoloContatto,
+             predefinito: rendiPredefinitoRuoloContatto },
   },
   splitKeys: { propri: 'contatti_ruolo', ereditati: 'contatti_soggetto' },
   flatSort: (a, b) =>
@@ -89,6 +93,13 @@ const {
   onSaved: () => emit('saved'),
   formDaConfrontare: () => ({ ...contatto.form }),
 })
+
+// «Rendi predefinito» (brief-db-revisione-anagrafiche §22.6): l'unico modo di
+// cambiare il predefinito del contesto. Il segno non si toglie, e il
+// predefinito si cancella solo quando e' l'ultimo: prima se ne marca un altro.
+function onRendiPredefinito(c) {
+  eseguiSuRiga('predefinito', c, t('anagrafiche.contatto.predefinito_cambiato'))
+}
 
 </script>
 
@@ -128,6 +139,7 @@ const {
               <Tag v-if="c.tipo_contatto_descrizione"
                 :value="c.tipo_contatto_descrizione"
                 severity="info" />
+              <PredefinitoSegno :value="c.is_default" />
               <strong>{{ c.nominativo }}</strong>
             </div>
             <div class="contatto-card-detail">
@@ -138,6 +150,9 @@ const {
             </div>
           </div>
           <div v-if="!formMode && !isReadonly && c.fonte !== 'soggetto'" class="contatto-card-actions">
+            <Button v-if="!c.is_default" :icon="MANAGE_ICONS.PREDEFINITO" text rounded size="small"
+              class="app-action-btn" :title="t('anagrafiche.contatto.rendi_predefinito')"
+              :disabled="saving" @click="onRendiPredefinito(c)" />
             <Button :icon="MANAGE_ICONS.EDIT" text rounded size="small"
               class="app-action-btn" :title="t('common.edit')" @click="onStartEdit(c)" />
             <Button :icon="MANAGE_ICONS.DELETE" text rounded size="small"

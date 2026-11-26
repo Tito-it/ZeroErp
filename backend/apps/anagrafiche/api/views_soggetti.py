@@ -289,6 +289,28 @@ class SoggettiContattiDetailView(DomainAPIView):
 
 
 # =================================================================
+# Contatto predefinito (POST, azione)
+# =================================================================
+
+class SoggettiContattoPredefinitoView(DomainAPIView):
+    """POST rende il contatto il predefinito del suo contesto."""
+    area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "soggetto")
+
+    @extend_schema(
+        request=None,
+        responses={200: inline_serializer(name="ContattoPredefinitoResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: «Rendi predefinito»: il predefinito di prima perde il segno da se'
+    #        (DB). Corpo vuoto; serve l'Idempotency-Key come ogni POST.
+    def post(self, request: Request, soggetto_id: str, contatto_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda _p: SoggettiService().rendi_predefinito_contatto(soggetto_id, contatto_id),
+        )
+
+
+# =================================================================
 # Indirizzi soggetto
 # =================================================================
 

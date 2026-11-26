@@ -61,7 +61,7 @@ class RuoloContattiView(DomainAPIView):
         _COLS = """c.id, c.nominativo, c.email, c.telefono, c.cellulare,
                    c.pec, c.note, c.tipo_contatto_id,
                    tc.descrizione AS tipo_contatto_descrizione,
-                   c.unita_organizzativa_id, c.istanza_utility_id,
+                   c.unita_organizzativa_id, c.istanza_utility_id, c.is_default,
                    (SELECT u.codice FROM config.utilities u
                     WHERE u.id = COALESCE(
                       (SELECT idp.utility_id FROM anagrafiche.istanze_dati_precontrattuali idp
@@ -174,3 +174,27 @@ class RuoloContattiDetailView(DomainAPIView):
         ErrorManager.require(deleted, code=E_ANAG_NOT_FOUND,
                              message="Contatto non trovato o non appartiene al ruolo.")
         return success_response({"deleted": True})
+
+
+# =================================================================
+# Contatto ruolo — predefinito (POST, azione)
+# =================================================================
+
+class RuoloContattoPredefinitoView(DomainAPIView):
+    """POST rende il contatto del ruolo il predefinito del suo contesto."""
+    area_funzionale = "anagrafiche"
+
+    @extend_schema(
+        request=None,
+        responses={200: inline_serializer(name="RuoloContattoPredefinitoResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: «Rendi predefinito» (`SoggettiService.rendi_predefinito_contatto_ruolo`):
+    #        il predefinito di prima nel contesto (ruolo, istanza) perde il
+    #        segno da se' (DB). Corpo vuoto; serve l'Idempotency-Key.
+    def post(self, request: Request, soggetto_ruolo_id: int, contatto_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda _p: SoggettiService().rendi_predefinito_contatto_ruolo(
+                soggetto_ruolo_id, contatto_id,
+            ),
+        )

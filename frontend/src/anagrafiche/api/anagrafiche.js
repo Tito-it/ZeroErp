@@ -176,6 +176,11 @@ export function deleteSoggettoContatto(soggettoId, contattoId) {
   return api.delete(`${BASE}/soggetti/${soggettoId}/contatti/${contattoId}/`)
 }
 
+// «Rendi predefinito»: il predefinito di prima nel contesto perde il segno da se' (DB).
+export function rendiPredefinitoSoggettoContatto(soggettoId, contattoId) {
+  return api.post(`${BASE}/soggetti/${soggettoId}/contatti/${contattoId}/predefinito/`, {})
+}
+
 export function listSoggettoIndirizzi(soggettoId) {
   return api.get(`${BASE}/soggetti/${soggettoId}/indirizzi/`)
 }
@@ -431,6 +436,10 @@ export function updateRuoloContatto(ruoloId, contattoId, payload) {
 
 export function deleteRuoloContatto(ruoloId, contattoId) {
   return api.delete(`${BASE}/ruoli/${ruoloId}/contatti/${contattoId}/`)
+}
+
+export function rendiPredefinitoRuoloContatto(ruoloId, contattoId) {
+  return api.post(`${BASE}/ruoli/${ruoloId}/contatti/${contattoId}/predefinito/`, {})
 }
 
 // --- Conti bancari ruolo ---

@@ -170,7 +170,8 @@ class InvitoPortaleService:
     # Scopo: L'email da proporre nell'invito, una regola per cliente e
     #        fornitore: (1) quella dell'identita' che esiste gia' (il reinvio
     #        la riusa; per il cliente prima la veste portale, poi lo shop);
-    #        (2) quella dei contatti del ruolo, PRINCIPALE poi `is_default`
+    #        (2) quella dei contatti del ruolo, PRINCIPALE poi il predefinito
+    #        del contesto piu' specifico
     #        (`PortaleRepository.get_email_contatto_suggerita`); (3) None, e
     #        l'operatore la scrive. Nata il 2026-11-21: fino ad allora il
     #        drawer passava un'email iniziale che sul cliente non esisteva

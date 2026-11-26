@@ -205,14 +205,21 @@ export function useSoggettoRuoloCollection(config) {
     onSaved?.()
   }
 
-  async function _doDelete(item) {
-    const result = await execute(() => apiFor('remove')(ownerId(), item.id), {
-      successMessage: messages.deleted,
-    })
+  // Scopo: Un'azione di riga senza form (elimina, rendi predefinito): la
+  //        chiamata `apiMap[context][action](ownerId, item.id)`, poi lista
+  //        ricaricata e `onSaved`. Ritorna il risultato di `execute` (null se
+  //        fallita). La sede unica dei due gesti (regola del 2).
+  async function eseguiSuRiga(action, item, successMessage) {
+    const result = await execute(() => apiFor(action)(ownerId(), item.id), { successMessage })
     if (result !== null) {
       await loadList()
       onSaved?.()
     }
+    return result
+  }
+
+  function _doDelete(item) {
+    return eseguiSuRiga('remove', item, messages.deleted)
   }
 
   function deleteItem(item) {
@@ -252,6 +259,7 @@ export function useSoggettoRuoloCollection(config) {
     cancelForm,
     saveForm,
     deleteItem,
+    eseguiSuRiga,
     modificato: fotografia.modificato,
     annullaForm: () => fotografia.chiudiConConferma(cancelForm),
     chiudiConConferma: fotografia.chiudiConConferma,

@@ -44,7 +44,7 @@
     "new": "New",
     "create": "Create",
     "add": "Add",
-    "default": "Default",
+    "predefinito": "Default",
     "edit": "Edit",
     "delete": "Delete",
     "remove": "Remove",
@@ -5403,7 +5403,6 @@
       "titolo_singolare": "Warehouse",
       "nuovo": "New warehouse",
       "search_placeholder": "Search by code or description…",
-      "tag_predefinito": "Default",
       "conferma_disattiva_title": "Deactivate warehouse",
       "conferma_disattiva": "Deactivate warehouse {codice}? With active locations, documents or movements the database refuses.",
       "conferma_riattiva_title": "Reactivate warehouse",
@@ -6501,6 +6500,8 @@
       "contatto_creato": "Contact created",
       "contatto_salvato": "Contact saved",
       "contatto_eliminato": "Contact deleted",
+      "rendi_predefinito": "Make default",
+      "predefinito_cambiato": "Default contact changed",
       "gestisci_contatti": "Manage contacts"
     }
   },

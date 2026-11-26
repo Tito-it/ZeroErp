@@ -309,6 +309,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **La corsa appesa non è «in corso» nella liveness del BE** [BE/FE]
 - **La lista dei processi non dice se un processo gira adesso**
 - **Presidi, i residui del brief dei testi per chi agisce**: D-4, le quattro misure larghe per costruzione; la postura in sola lettura di `dbops.presidi` per l'app
+- ⏭️ **La SQL dei contatti del ruolo scritta nella view** [BE]
+- **Le colonne «predefinito» delle liste col `formato = predefinito`** [DB, poi FE]
 - **`HTML_MARKDOWN_BLOCKS` si sceglie ma non fa niente** [BE]
 - **Le versioni pubblicate stampano coi margini delle colonne (15 mm), non coi 18/16 mm del loro CSS**
 - 🟡 **L'editor dei workflow perde le righe in compilazione senza chiedere** [FE]

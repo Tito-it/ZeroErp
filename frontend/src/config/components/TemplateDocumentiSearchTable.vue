@@ -21,6 +21,7 @@ import { TAB_ENTITIES } from '../../core/constants'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import AttivoTag from '../../core/components/AttivoTag.vue'
+import PredefinitoSegno from '../../core/components/PredefinitoSegno.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useLookupEtichettato } from '../../core/composables/useLookupEtichettato'
 import { buildBoolOptions } from '../../core/utils/options'
@@ -101,8 +102,10 @@ const boolOptions = buildBoolOptions(t)
     <template #cell-tipo_documento_output_descrizione="{ data }">
       {{ labelOrCode(t, te, data.tipo_documento_output_etichetta_key, data.tipo_documento_output_descrizione) }}
     </template>
+    <!-- ⏭️ Lo slot si toglie quando la riga 311 di `ui.lista_colonna` porta
+         `formato=predefinito` (richiesta al team DB, 2026-11-26). -->
     <template #cell-is_default="{ data }">
-      <Tag v-if="data.is_default" :value="t('common.yes')" severity="info" />
+      <PredefinitoSegno :value="data.is_default" />
     </template>
     <template #cell-attivo="{ data }">
       <AttivoTag :active="data.attivo" />

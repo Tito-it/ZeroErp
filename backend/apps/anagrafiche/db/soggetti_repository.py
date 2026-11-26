@@ -614,16 +614,22 @@ class SoggettiRepository:
     # Contatti
     # =================================================================
 
-    # Scopo: Lista contatti di un soggetto.
+    # Scopo: I contatti DEL SOGGETTO (contesto senza ruolo), con `is_default`.
+    # ⚠️ Fino al 2026-11-25 erano tutti i contatti del soggetto, anche quelli dei
+    #    suoi ruoli, senza dire di chi fossero; da quando ogni contesto ha il
+    #    suo predefinito (brief-db-revisione-anagrafiche §22) il drawer avrebbe
+    #    mostrato piu' predefiniti. I contatti dei ruoli li legge la lista del
+    #    ruolo, che porta anche questi con la loro `fonte` (decisione di Tid).
     def get_soggetto_contatti(self, soggetto_id: str) -> list[dict[str, Any]]:
         sql = """
             SELECT c.id, c.nominativo, c.email, c.telefono, c.cellulare,
                    c.pec, c.note, c.tipo_contatto_id,
                    tc.descrizione AS tipo_contatto_descrizione,
-                   c.unita_organizzativa_id
+                   c.unita_organizzativa_id, c.is_default
               FROM anagrafiche.contatti c
               LEFT JOIN config.tipi_contatti tc ON tc.id = c.tipo_contatto_id
              WHERE c.soggetto_id = %s::uuid
+               AND c.soggetto_ruolo_id IS NULL
              ORDER BY c.id
         """
         with connection.cursor() as cursor:
@@ -663,6 +669,8 @@ class SoggettiRepository:
         return {k: riga.get(k) for k in _CONTATTO_CREATO_COLS}
 
     # Scopo: Aggiorna un contatto esistente con verifica ownership soggetto o ruolo.
+    #        L'ownership del soggetto vale per i soli contatti del soggetto
+    #        (senza ruolo): quelli di un ruolo si toccano dalla rotta del ruolo.
     #        SET composto dal BB `sql_set_clause` (whitelist RIGIDA
     #        `CONTATTO_UPDATE_COLS`, dal 2026-09-26): il WHERE di ownership lo
     #        scrive il metodo, per questo non e' `execute_dynamic_update`.
@@ -675,7 +683,7 @@ class SoggettiRepository:
         values.append(contatto_id)
         where = "WHERE id = %s"
         if soggetto_id is not None:
-            where += " AND soggetto_id = %s::uuid"
+            where += " AND soggetto_id = %s::uuid AND soggetto_ruolo_id IS NULL"
             values.append(soggetto_id)
         if soggetto_ruolo_id is not None:
             where += " AND soggetto_ruolo_id = %s"
@@ -685,11 +693,39 @@ class SoggettiRepository:
             cursor.execute(sql, values)
             return cursor.rowcount > 0
 
-    # Scopo: Elimina contatto con ownership check.
+    # Scopo: Rende un contatto il predefinito del suo contesto (soggetto, ruolo,
+    #        istanza), con l'ownership del soggetto o del ruolo. Scrive SOLO
+    #        `is_default = true`: il segno al predefinito di prima lo toglie
+    #        `trgfn_contatti_set_default_contatto`, insieme al puntatore
+    #        `soggetti.default_contatto_id`. A `false` non si scrive mai: il
+    #        segno non si toglie, passa a un altro contatto
+    #        (`E_CONTATTO_PREDEFINITO_OBBLIGATORIO`, D-T7b-2,
+    #        brief-db-revisione-anagrafiche §22). Su un contatto che lo e'
+    #        gia' e' una riscrittura uguale.
+    def rendi_predefinito_contatto(
+        self, contatto_id: int, *,
+        soggetto_id: str | None = None, soggetto_ruolo_id: int | None = None,
+    ) -> bool:
+        if soggetto_id is None and soggetto_ruolo_id is None:
+            raise ValueError("rendi_predefinito_contatto: ownership soggetto o ruolo obbligatoria")
+        values: list[Any] = [contatto_id]
+        where = "WHERE id = %s"
+        if soggetto_id is not None:
+            where += " AND soggetto_id = %s::uuid AND soggetto_ruolo_id IS NULL"
+            values.append(soggetto_id)
+        if soggetto_ruolo_id is not None:
+            where += " AND soggetto_ruolo_id = %s"
+            values.append(soggetto_ruolo_id)
+        sql = f"UPDATE anagrafiche.contatti SET is_default = true {where}"  # noqa: S608 — WHERE letterale del metodo, valori come parametri
+        with connection.cursor() as cursor:
+            cursor.execute(sql, values)
+            return cursor.rowcount > 0
+
+    # Scopo: Elimina un contatto del soggetto (senza ruolo) con ownership check.
     def delete_contatto(self, contatto_id: int, soggetto_id: str) -> bool:
         sql = """
             DELETE FROM anagrafiche.contatti
-             WHERE id = %s AND soggetto_id = %s::uuid
+             WHERE id = %s AND soggetto_id = %s::uuid AND soggetto_ruolo_id IS NULL
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [contatto_id, soggetto_id])

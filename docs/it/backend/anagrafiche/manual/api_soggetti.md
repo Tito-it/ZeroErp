@@ -440,6 +440,11 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" \
 | **Metodo** | `GET` |
 | **URL** | `/api/v1/anagrafiche/soggetti/{soggetto_id}/contatti/` |
 
+I soli contatti **del soggetto** (senza ruolo), con `is_default`. Dal 2026-11-25 i contatti dei ruoli non ci
+sono più: li elenca `GET /ruoli/{soggetto_ruolo_id}/contatti/`, insieme a quelli del soggetto con la loro
+`fonte` ([api_contatti_ruolo](api_contatti_ruolo.md)). Anche modifica, eliminazione e «rendi predefinito» di
+queste rotte toccano solo i contatti del soggetto: un contatto di un ruolo è `404 E_ANAG_NOT_FOUND`.
+
 ### Risposta (200)
 
 ```json
@@ -454,7 +459,8 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" \
         "cellulare": null,
         "pec": null,
         "tipo_contatto_id": null,
-        "note": null
+        "note": null,
+        "is_default": true
       }
     ]
   }
@@ -583,6 +589,37 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" \
 ```bash
 curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
   "https://host/api/v1/anagrafiche/soggetti/a1b2c3d4-.../contatti/1/"
+```
+
+Il predefinito non si cancella finché nel suo contesto (soggetto, ruolo, istanza) ci sono altri
+contatti: `409 E_CONTATTO_PREDEFINITO_DA_SOSTITUIRE`, campo `is_default`. Prima si rende
+predefinito un altro contatto (§6.3). L'ultimo contatto del contesto di un ruolo si cancella; quello del
+**soggetto** no: `soggetti.default_contatto_id` lo punta, e la chiave esterna lo rifiuta. Oggi esce come
+`400 E_DATABASE` generico (misurato il 2026-11-26): il codice parlante è del DB, col contatto obbligatorio di T6
+(brief-db-revisione-anagrafiche §22.7).
+
+### 6.3 Rendi predefinito
+
+| | |
+|---|---|
+| **Metodo** | `POST` |
+| **URL** | `/api/v1/anagrafiche/soggetti/{soggetto_id}/contatti/{contatto_id}/predefinito/` |
+
+Il contatto diventa il predefinito del suo contesto (soggetto, ruolo, istanza); quello di prima
+perde il segno da sé, e il predefinito del contesto del soggetto è anche
+`soggetti.default_contatto_id` (lo scrive il database). È l'unico modo di cambiare il predefinito:
+`is_default` non è fra le chiavi della modifica, e il segno non si toglie mai
+(`E_CONTATTO_PREDEFINITO_OBBLIGATORIO`). Sul contatto che è già il predefinito è una riscrittura
+uguale. Corpo vuoto (`{}`); serve l'`Idempotency-Key` come ogni POST. La regola è nella guida
+[gestione dei contatti](../../../guide/gestione-dei-contatti.md), §«Il contatto predefinito».
+
+Risposta (200): `{"data": {"is_default": true}}`. Contatto inesistente o di un altro soggetto →
+`404 E_ANAG_NOT_FOUND`.
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" -d '{}' \
+  "https://host/api/v1/anagrafiche/soggetti/a1b2c3d4-.../contatti/2/predefinito/"
 ```
 
 ---

@@ -29,27 +29,39 @@ class PortaleRepository:
     # Scopo: L'email da proporre nell'invito al portale, presa dai contatti
     #        del ruolo. I candidati li sceglie il BB del DB
     #        `script.fn_get_contatti` (un contatto per tipo: ruolo+istanza,
-    #        poi ruolo, poi soggetto; a parita' `is_default`); qui si sceglie
-    #        tra i tipi: prima il contatto PRINCIPALE, poi quello marcato
-    #        `is_default`. Nessuno dei due, o senza email: None.
-    # ⚠️ Un contatto di un altro tipo, non di default, NON si propone (scelta
-    #    di Tid del 2026-11-21): l'operatore scrive l'email.
+    #        poi ruolo, poi soggetto); qui si sceglie tra i tipi: prima il
+    #        contatto PRINCIPALE, poi IL predefinito del BB
+    #        `script.fn_get_contatto_default`. Nessuno dei due con email: None.
+    # ⭐ Dal 2026-11-26 il predefinito lo sceglie il BB: ogni contesto ha il
+    #    suo (brief-db-revisione-anagrafiche §22, D-T7b-4), e fra quello del
+    #    ruolo e quello del soggetto vince il piu' specifico. Prima l'ORDER BY
+    #    locale prendeva il predefinito con l'id piu' basso, cioe' di solito
+    #    quello del SOGGETTO: l'invito andava a un'altra persona.
+    # ⚠️ Il predefinito piu' specifico senza email NON ripiega su quello di un
+    #    contesto meno specifico (Tid, 2026-11-26), e un contatto di un altro
+    #    tipo, non predefinito, non si propone (Tid, 2026-11-21): l'operatore
+    #    scrive l'email.
     def get_email_contatto_suggerita(
         self, soggetto_id: str, soggetto_ruolo_id: int,
     ) -> str | None:
         sql = """
-            SELECT NULLIF(btrim(c.email), '')
-              FROM script.fn_get_contatti(%s::uuid, %s::bigint) c
-              LEFT JOIN config.tipi_contatti tc ON tc.id = c.tipo_contatto_id
-             WHERE NULLIF(btrim(c.email), '') IS NOT NULL
-               AND (tc.codice = %s OR c.is_default)
-             ORDER BY (tc.codice = %s) DESC NULLS LAST, c.is_default DESC, c.id
+            SELECT email FROM (
+                SELECT NULLIF(btrim(c.email), '') AS email, 1 AS ordine
+                  FROM script.fn_get_contatti(%s::uuid, %s::bigint) c
+                  JOIN config.tipi_contatti tc ON tc.id = c.tipo_contatto_id
+                 WHERE tc.codice = %s
+                UNION ALL
+                SELECT NULLIF(btrim(d.email), ''), 2
+                  FROM script.fn_get_contatto_default(%s::uuid, %s::bigint) d
+            ) candidati
+             WHERE email IS NOT NULL
+             ORDER BY ordine
              LIMIT 1
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
+                str(soggetto_id), soggetto_ruolo_id, TIPO_CONTATTO_PRINCIPALE,
                 str(soggetto_id), soggetto_ruolo_id,
-                TIPO_CONTATTO_PRINCIPALE, TIPO_CONTATTO_PRINCIPALE,
             ])
             row = cursor.fetchone()
         return row[0] if row else None
