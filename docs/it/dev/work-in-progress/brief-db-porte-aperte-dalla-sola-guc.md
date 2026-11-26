@@ -1,10 +1,13 @@
 # Brief DB — le strade per cui l'app scrive senza il verbo: le porte della sola GUC e le viste aggiornabili
 
-> **⏭️ Chi riparte — aggiornato al 2026-11-26**
+> **⏭️ Chi riparte — aggiornato al 2026-11-27**
 >
-> **Riparte: Tid**, col commit del lavoro BE/FE dei giri 10-bis e 10-ter (§14.9, §10-ter.5: ✅ fatto il
-> 2026-11-26, da committare su `dev/backend-tid`) e una domanda aperta del BE (`apri_contesto_operatore`, §14.9).
-> **Poi il team DB** col giro 10-quater (gli override utente, D-AG) e la voce «Le guide» del piano. Le richieste precedenti al BE (3j, 3k-bis, 3n, 6a … 6e) sono evase e committate (`e4af0106a`,
+> **Riparte: Tid**, col via al giro 10-quater: D-AI, D-AJ, D-AK e D-AL sono decise (**a**, 2026-11-27, §15.4), e
+> analisi e censimento del BE sono fatti (§15.5). Poi il team DB scrive il giro (§15.6), e infine la voce «Le guide»
+> del piano. In parallelo **il team BE**, con D-AH (§14.9): `apri_contesto_operatore` non consegna più un SUPER_ADMIN
+> che il test non ha chiesto. Il lavoro BE/FE dei giri 10-bis e 10-ter è fatto e committato (`16d095e72`, PR #257,
+> 2026-11-26). Lo schema `storico` scrivibile dall'app (D-AL **a**) è passato al brief nuovo
+> [brief-db-storico-scrivibile-dall-app](brief-db-storico-scrivibile-dall-app.md), aperto e non iniziato. Le richieste precedenti al BE (3j, 3k-bis, 3n, 6a … 6e) sono evase e committate (`e4af0106a`,
 > 2026-11-25); il dettaglio di ogni risposta sta nella sezione della sua richiesta.
 > ✅ Il ritiro di `reset_lotto_draft` è fatto, DB e BE (2026-11-24, §4.8). Il superuser Django è deciso (D-J **a**) e
 > fatto nel BE (§4.7); il `None` del perimetro si rifiuta (§4.7, BE, 2026-11-24).
@@ -73,7 +76,13 @@
 > | 6f-quater | team DB | giro 10-bis: ✅ il via (Tid), ✅ `20261126-01` … `-25`, loop e provisioning, CSV, pgTAP nuovo e 57 adeguati, guide e `manual/`, provato sullo scratch (2026-11-26) | §14.8 | — |
 > | 6f-quinquies | Tid | giro 10-bis: ✅ apply su dbdev e scratch, ✅ pgTAP come app verdi, ✅ doc auto-generata rigenerata, ✅ commit (2026-11-26) | §14.8 | — |
 > | 6f-sexies | Tid, poi team BE/FE | giro 10-bis: la richiesta · ✅ fatta dal BE (2026-11-26): test adeguati (quattro erano verdi solo per i dati di dbdev), policy rigenerate, codice morto ritirato, test sul DB vero di `crea_operatore`, manuale | §14.9 | — |
-> | 6g | team DB | giro 10-quater, gli override utente (D-AG **a**): analisi e censimento del BE | Il piano | 6f-quater |
+> | 6f-septies | Tid | giro 10-bis: ✅ D-AH **a**, la proposta del BE su `apri_contesto_operatore` (2026-11-26) | §14.9 | — |
+> | 6f-octies | team BE | giro 10-bis, D-AH: `apri_contesto_operatore` senza `super_admin=True` non consegna mai un SUPER_ADMIN | §14.9 | 6f-septies |
+> | 6g | team DB | giro 10-quater, gli override utente e i due cataloghi (D-AG **a**): ✅ analisi (2026-11-26) | §15 | — |
+> | 6g-bis | team DB | giro 10-quater: ✅ il censimento letto sul ramo del BE, al posto della richiesta (Tid, 2026-11-26) | §15.5 | — |
+> | 6g-ter | Tid | giro 10-quater: ✅ D-AI **a**, D-AJ **a**, D-AK **a**, D-AL **a** (2026-11-27); il via | §15.4 | — |
+> | 6g-quater | team DB | giro 10-quater: changeSet, verbi, builder, pgTAP, guide e `manual/`; prova sullo scratch | §15.6 | 6g-ter |
+> | 6g-quinquies | Tid, poi team BE | giro 10-quater: apply, pgTAP, doc auto-generata, commit; poi la richiesta al BE | §15.6 | 6g-quater |
 > | 6c | team DB | giro 9: ✅ analisi, D20-b riletta (2026-11-25) | §11 | — |
 > | 6c-bis | Tid | giro 9: ✅ D-S **a**, il via (2026-11-25) | §11.3 | — |
 > | 6c-ter | team DB | giro 9: ✅ `20261124-07` … `-09`, pgTAP nuovo e quattro adeguati, guida e `manual/`, provato sullo scratch (2026-11-25) | §11.5 | — |
@@ -92,7 +101,7 @@
 > | 6e-sexies | Tid | giro 8 + 1-7: ✅ apply, ✅ pgTAP come app verdi, ✅ doc auto-generata rigenerata dopo le pagine `manual/` (2026-11-25) | §13.9 | — |
 > | 6e-septies | team BE | giro 8 + 1-7: la richiesta · ✅ test, tre censimenti e manuali (2026-11-25) | §13.8 | — |
 >
-> Decisioni aperte di Tid: nessuna. Prese: (D-AF **a**, D-AG **a**, il codice morto del BE che si ritira, il 2026-11-26, §14.6; D-AC **a**, D-AD **b**, D-AE **a** del giro 10-bis il 2026-11-26, §14.3; D-AA **a** e D-AB **b** del giro 10-ter decise il 2026-11-26, §10-ter.4; le due della verifica del passo 3j, decise e fatte il 2026-11-25, §4.9.7; D-K7 **b** e D-K8 **a2** decise il 2026-11-25, §4.9; D-W … D-Z il 2026-11-25, §13.7). R-DB-K1 e R-DB-K4 sono applicati, verdi e committati (2026-11-25). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso. ✅ Il lavoro BE del 2026-11-25 (tutte le richieste evase) è committato su `dev/backend-tid` (`e4af0106a`). Restano tre voci del piano, del team DB: il giro 10-bis, il giro 10-quater e «Le guide».
+> Decisioni aperte di Tid: nessuna; manca il via al giro 10-quater. Prese: (D-AI **a**, D-AJ **a**, D-AK **a**, D-AL **a** del giro 10-quater, il 2026-11-27, §15.4; D-AH **a**, `apri_contesto_operatore`, il 2026-11-26, §14.9; D-AF **a**, D-AG **a**, il codice morto del BE che si ritira, il 2026-11-26, §14.6; D-AC **a**, D-AD **b**, D-AE **a** del giro 10-bis il 2026-11-26, §14.3; D-AA **a** e D-AB **b** del giro 10-ter decise il 2026-11-26, §10-ter.4; le due della verifica del passo 3j, decise e fatte il 2026-11-25, §4.9.7; D-K7 **b** e D-K8 **a2** decise il 2026-11-25, §4.9; D-W … D-Z il 2026-11-25, §13.7). R-DB-K1 e R-DB-K4 sono applicati, verdi e committati (2026-11-25). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso. ✅ Il lavoro BE del 2026-11-25 (tutte le richieste evase) è committato su `dev/backend-tid` (`e4af0106a`). Restano tre voci del piano, del team DB: il giro 10-bis, il giro 10-quater e «Le guide».
 > Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
 > (`969ea14566`), dal BE §4.5-§4.7 con D-J (`4271a0dc69`, PR #232), e il 2026-11-24 il lato DB del ritiro di
 > `reset_lotto_draft` con la pulizia della testata (§4.8). Dal BE, il 2026-11-24 (`5fc466c729`): il `None` del perimetro
@@ -279,9 +288,14 @@
   - [x] commit su `dev/db-tid` (2026-11-26)
   - [ ] il BE: i test e i manuali del giro
 - [ ] Giro 10-quater (D-AG **a**, Tid, 2026-11-26): il resto del catalogo dei permessi in sola lettura per l'app, cioè gli override utente (`config.user_override_aree`, `_azioni`, `_oggetti`), `config.azioni_processo` e `config.area_model_overrides`, coi verbi che li scrivono e i builder pgTAP (`fn_pgtap_concedi_azione`, `fn_pgtap_concedi_livello_area`). Aperto, non iniziato: parte dopo il 10-bis (§14.6)
-  - [ ] analisi sul catalogo, guide
-  - [ ] il censimento del BE: chi scrive le tabelle senza un verbo, chi chiama i verbi
-  - [ ] le decisioni e il via (Tid)
+  - [x] analisi sul catalogo, guide (2026-11-26, §15)
+  - [x] il censimento del BE: chi scrive le tabelle senza un verbo, chi chiama i verbi (letto dal DB sul ramo del BE, 2026-11-26, §15.5)
+  - [x] D-AI **a**, D-AJ **a**, D-AK **a**, D-AL **a** (Tid, 2026-11-27, §15.4)
+  - [x] D-AL **a**: il brief nuovo `brief-db-storico-scrivibile-dall-app`, aperto e non iniziato (2026-11-27)
+  - [ ] il via (Tid)
+  - [ ] changeSet, verbi, builder, pgTAP, guide e `manual/`; prova sullo scratch (§15.6)
+  - [ ] apply, pgTAP come app, doc auto-generata, commit (Tid)
+  - [ ] il BE: repository sui verbi nuovi, i sei test e `apri_operatore_con_aree` ai builder, manuali (§15.6)
 - [ ] Le guide: ogni porta scritta nella guida del suo dominio, di flusso o di manutenzione
 
 ## 1. Il problema, sul modello
@@ -3439,14 +3453,226 @@ oggi**.
   `fn_crea_operatore` dal repository (nessun test lo chiamava senza mock) e il rifiuto `E_PERMESSO_NEGATO` per un
   operatore con livello TUTTO sulle anagrafiche.
 * Manuale: «Contesto» (i verbi che chiedono il SUPER_ADMIN, le tabelle in sola lettura), §1.2, §1.4, §3.3.
-* ⚠️ **Domanda aperta a Tid**: `apri_contesto_operatore` resta un contesto preso dai dati. Chi lo usa per un verbo col
-  guard del SUPER_ADMIN passa o no secondo chi è il primo operatore del DB. Proposta del BE: farlo fallire (o
-  dichiararlo) quando l'operatore trovato è SUPER_ADMIN e il test non lo chiede.
+* **D-AH, la domanda del BE a Tid**: `apri_contesto_operatore` resta un contesto preso dai dati. Chi lo usa per un
+  verbo col guard del SUPER_ADMIN passa o no secondo chi è il primo operatore del DB. Proposta del BE: farlo fallire
+  (o dichiararlo) quando l'operatore trovato è SUPER_ADMIN e il test non lo chiede.
+  ✅ **Decisa da Tid: a, la proposta del BE (2026-11-26).** Un test che non chiede il SUPER_ADMIN non deve poterlo
+  ricevere dai dati del DB: il verde «per il primo operatore di dbdev» non prova la regola. Chi lo vuole lo chiede,
+  con `super_admin=True` (la variante c'è già) o con `apri_super_admin_costruito`.
+
+**Richiesta al BE (D-AH, 2026-11-26).**
+
+* `core/tests/db_e2e.apri_contesto_operatore`: senza `super_admin=True`, se l'operatore scelto è SUPER_ADMIN il BB
+  non lo consegna. Fra «fallire» e «prendere un altro operatore non SUPER_ADMIN» sceglie il BE; in tutti e due i casi
+  il motivo si legge nell'errore o nel docstring, e se non c'è un operatore adatto il BB fallisce con un messaggio che
+  lo dice, non tace.
+* I chiamanti che oggi passano solo perché ricevono un SUPER_ADMIN si trovano facendo girare i test sul DB vero
+  (`ZEROERP_TEST_DB_E2E=1`) dopo la modifica: ognuno passa a `super_admin=True`, ad `apri_super_admin_costruito`, o
+  ai permessi che il test vuole davvero provare.
+* La voce del BB nel catalogo backend, con l'indice rigenerato.
+* Nessun lavoro DB: la regola sta tutta nel BB di test.
+
+## 15. Il giro 10-quater, il resto del catalogo dei permessi — analisi del 2026-11-26
+
+Il 10-bis ha chiuso **chi ha** un profilo e **che cosa** il profilo concede. Restano aperte le due strade che danno
+poteri senza passare dal profilo: le **eccezioni per utente** (gli override) e i **due cataloghi** che dicono dove cade
+un permesso. È la stessa classe di porta (D-AG **a**).
+
+### 15.1 Che cosa c'è oggi (catalogo di dbdev, 2026-11-26)
+
+* **Cinque tabelle, scrivibili dall'app** (`INSERT`, `UPDATE`, `DELETE`, nessuna RLS), accanto alle cinque che il 10-bis
+  ha chiuso:
+
+| Tabella | Che cosa decide | Chi la possiede |
+| --- | --- | --- |
+| `config.user_override_aree` | il livello di un utente su un'area, sopra il profilo | l'amministratore, dall'interfaccia |
+| `config.user_override_azioni` | un'azione di processo concessa o negata a un utente | l'amministratore, dall'interfaccia |
+| `config.user_override_oggetti` | il livello di un utente su un oggetto (restringe l'area) | l'amministratore, dall'interfaccia |
+| `config.azioni_processo` | il catalogo delle azioni: l'area di ognuna e il **livello minimo d'area** che il guard pretende | il CSV, con `loadUpdateData` (`20260228-18`) |
+| `config.area_model_overrides` | il catalogo degli oggetti: l'**area** di ogni oggetto e se è riservato | il CSV, con `loadUpdateData` (`20260928-03`) |
+
+* **Perché danno poteri, sul modello.** Un operatore che scrive una riga di `user_override_aree` (sé stesso, l'area,
+  `TUTTO`) si alza il livello. Una riga di `user_override_azioni` gli concede un'azione. Nei cataloghi basta meno:
+  abbassare `livello_minimo_area` di un'azione, o spostare l'`area_id` di un oggetto in un'area dove l'operatore ha
+  `TUTTO`, cambia il permesso di **tutti**. E `riservato = false` su una tabella del kernel dei permessi apre l'override
+  che la guida vieta (§4.3). È l'argomento di D-AF, sulle tabelle accanto.
+* **Chi le scrive a DB.** Un solo verbo: `config.fn_imposta_override_oggetti(auth_user_id, jsonb)`, che sostituisce
+  l'elenco degli override sugli oggetti di un utente. È `INVOKER`, **senza guard**, eseguibile dall'app. Lo chiama
+  anche il provisioning di sviluppo (`anagrafiche.fn_provisiona_dati_di_sviluppo`, DEFINER). Per gli override
+  d'area e d'azione **non c'è nessun verbo**: chi li scrive, li scrive direttamente. I due cataloghi non li scrive
+  nessuna funzione: solo il seed.
+* **Il pannello generico non c'entra**: nessuna delle cinque sta in `config.tabelle_gestibili`.
+* **I builder pgTAP scrivono come app**, tutti `INVOKER`:
+  * `dbops.fn_pgtap_concedi_azione` (override d'azione, e se serve d'area per il tetto): 116 file;
+  * `dbops.fn_pgtap_concedi_livello_area` (override d'area): 12 file;
+  * `dbops.fn_pgtap_apri_area_per_nascita` e `fn_pgtap_richiudi_area` (aprono l'area a `TUTTO` per far nascere una
+    fixture, e la rimettono com'era): nessun pgTAP li chiama direttamente, li usano **dodici builder di magazzino**
+    (`fn_pgtap_crea_magazzino`, `_ubicazione`, `_inventario`, `_rettifica`, `_trasferimento`, le loro righe, il lotto,
+    l'asset, il cambio di stato del documento interno).
+* **I pgTAP che scrivono direttamente** (2026-11-26): `user_override_aree` 15 file, `_azioni` 6, `_oggetti` 9,
+  `azioni_processo` 7, `area_model_overrides` 6. Sette sono già a runner owner. Si rileggono caso per caso nel giro.
+  Conteggi datati: indicano il costo, non decidono la forma.
+* **Le quattro copie `pg_temp.livello_area`** di D-L sono ritirate: restano solo i commenti che lo dicono.
+
+**Fuori dalla classe, dichiarato.** `config.azioni_riga` è scrivibile dall'app, ma non concede poteri: dice al
+frontend quale controllo e quale verbo legge un pulsante, e il verbo tiene il suo guard. Non entra nel giro.
+
+### 15.2 Che cosa si cambia (proposta)
+
+1. **Le cinque tabelle in sola lettura per l'app**, nelle tre sedi di §11.8 (il loop `20260205-41`, il changeSet
+   `90_end` del giro, `provision_zeroerp.sql`).
+2. **Gli override, dai verbi del SUPER_ADMIN** (D-AJ). `fn_imposta_override_oggetti` diventa verbo DEFINER col guard
+   in prima riga, e il corpo va in una primitiva riservata, che chiama il provisioning. Per gli override d'area e
+   d'azione nascono i verbi che oggi mancano, con la forma che il censimento ha trovato (D-AK).
+3. **I due cataloghi, solo dal seed** (D-AI): nessun verbo, come `config.aree_funzionali`.
+4. **I builder**, col gesto del 10-bis: entrano come SUPER_ADMIN di fixture (`fn_pgtap_entra_come_super_admin`),
+   chiamano il verbo vero, rimettono il contesto. ⛔ Firme e colonne di ritorno restano identiche (la condizione del
+   BE al 10-bis, §14.5): i 116 + 12 file e i dodici builder di magazzino non cambiano.
+5. **I pgTAP che scrivono direttamente**: come al 10-bis, al builder se costruiscono il mondo, a runner owner col
+   motivo se collaudano il guard di una di quelle tabelle o un caso che nessun verbo offre.
+
+**Garanzie ritirate.** Nessuna: il giro aggiunge rifiuti e non toglie proprietà su cui un lettore conti.
+
+### 15.3 Le guide (`guide_coinvolte.py --oggetti` sulle cinque tabelle, il verbo e i quattro builder, 2026-11-26)
+
+* `architettura-permessi-e-autorizzazioni`: §3 e §7.4 **coerenti** (la regola della sola lettura c'è già). §4.2, §4.3,
+  §4.6-§4.8 **indietro** col giro: non dicono chi scrive gli override, e dei due cataloghi non dicono quello che §4.1
+  dice di `aree_funzionali` («la possiede il CSV, l'applicazione la legge soltanto»). ⚠️ §4.3 dice che un oggetto «si
+  può assegnare a un'area diversa scegliendola dal catalogo delle aree». Il censimento (§15.5) dice che non è un gesto
+  dell'interfaccia: si sceglie nel CSV. Con D-AI **a** la frase si riscrive così, e non è un cambio di modello.
+* `risorse-umane-e-accessi`, `architettura-multi-face-auth`: nominano gli override come eccezioni individuali.
+  **Coerenti**; si rileggono al giro.
+* `modello-documento-di-vendita`: nomina `azioni_processo` come catalogo che si concede a un profilo. **Coerente**.
+* `pgtap-come-si-scrive-un-test`: §«I permessi dell'operatore del test» **coerente** («il test se li concede, come
+  farebbe un amministratore»). La tabella dei builder va **indietro** solo se cambia quello che il builder chiede al
+  test.
+* **Orfani**: `config.fn_imposta_override_oggetti` è l'assegnazione di un'eccezione, un concetto del dominio: va nel
+  «Vedi anche» della guida dei permessi. `fn_pgtap_apri_area_per_nascita` e `fn_pgtap_richiudi_area` sono dettagli
+  interni dei builder di magazzino.
+
+### 15.4 Le scelte per Tid
+
+* **D-AI, i due cataloghi.**
+  * **a**: in sola lettura per l'app, senza verbo. Li possiede il CSV, come `config.aree_funzionali` (§4.1 della
+    guida). Un'azione nuova o un oggetto nuovo nascono col codice che li usa, quindi col seed.
+  * **b**: un verbo del SUPER_ADMIN per ognuno, per chi deve cambiarli dall'interfaccia.
+  * ⭐ **a**: il censimento (§15.5) conferma che nessuno li scrive. Il seed li riscrive comunque a ogni migrate
+    (`loadUpdateData`): una modifica fatta dall'app oggi dura fino al migrate dopo, e il catalogo che il codice legge
+    non deve dipendere dall'installazione.
+* **D-AJ, chi scrive gli override.**
+  * **a**: il SUPER_ADMIN (`fn_guard_super_admin`), come profili e legami al 10-bis.
+  * **b**: un'azione di processo di gestione dei permessi, concessa a un profilo. Oggi nel catalogo non c'è (c'è solo
+    `ui_permesso_manage`, che riguarda le colonne delle liste).
+  * ⭐ **a**: è già il cancello del BE (i tre endpoint sono `AdminAPIView`, §15.5), e il DB lo ripete. Un'eccezione per
+    utente dà gli stessi poteri di un profilo. Con **b** chi ha l'azione se la concede da
+    sé su qualunque area, e il tetto della gestione accessi diventa un'azione come le altre.
+* **D-AK, la forma dei verbi degli override.**
+  * **a**: «sostituisci l'elenco di un utente», come `fn_imposta_override_oggetti`: nascono
+    `config.fn_imposta_override_aree` e `config.fn_imposta_override_azioni`, con la stessa firma (`auth_user_id`,
+    `jsonb`) e le stesse regole (chiave assente = DEFAULT, chiave estranea rifiutata). Il repository le chiama al
+    posto di `DELETE` e `INSERT`.
+  * **b**: una riga per volta (concedi, togli), e l'elenco lo ricompone il BE.
+  * ⭐ **a**: è quello che fanno tutti e tre gli endpoint (§15.5), e il gemello esiste già. Con **b** il BE terrebbe la
+    «sostituzione» in Python, e il verbo degli oggetti resterebbe di un'altra forma.
+* **D-AL, lo storico, fuori dal perimetro.** L'app ha `INSERT` e `UPDATE` su **tutte** le tabelle di `storico` (116 su
+  116, 2026-11-26), compreso lo storico di override, profili, legami e scope, che l'audit dei permessi legge (§13.2
+  della guida). Il trigger dello storico (`script.trgfn_storico_generic`) è `INVOKER` e scrive coi privilegi di chi
+  scrive la tabella madre, ed è per questo che l'app ne ha bisogno. Una tabella scritta solo da verbi DEFINER non ne
+  ha più bisogno, ma lo schema intero è un tema suo: tocca tutti i domini, ed è il cantiere `storico` che è «senza
+  decisione». Nessun brief aperto ne parla.
+  * **a**: un brief nuovo, aperto e non iniziato.
+  * **b**: una voce del registro dei residui.
+  * **c**: entra qui, per le sole otto tabelle di storico dell'accesso.
+  * ⭐ **a**: è un tema di tutto lo schema, e con **c** le otto tabelle si chiuderebbero con una regola che le altre 108
+    non hanno.
+
+✅ **Deciso (Tid, 2026-11-27): D-AI a, D-AJ a, D-AK a, D-AL a.** I due cataloghi restano del seed, senza verbo; gli
+override li scrive solo il SUPER_ADMIN, dai verbi «sostituisci l'elenco» `config.fn_imposta_override_aree`,
+`config.fn_imposta_override_azioni` e `config.fn_imposta_override_oggetti`; lo storico va nel brief nuovo
+[brief-db-storico-scrivibile-dall-app](brief-db-storico-scrivibile-dall-app.md). Lo sviluppo aspetta il via.
+
+### 15.5 Il censimento, letto dal DB sul ramo del BE — 2026-11-26
+
+⚠️ Non è una richiesta al BE: il ramo l'ha letto il DB, in sola lettura, su indicazione di Tid (come §14.7). Ramo
+`origin/dev/backend-tid` a `387b1efa8`, allineato con `Tito-dev` e `dev/db-tid`. Ricerca sui nomi delle cinque tabelle,
+del verbo e dei modelli ORM in `backend/` (test e smoke compresi), `frontend/src` e `scripts/`. La ricerca è di riga:
+non è un elenco chiuso, e i test con l'SQL su più righe li mostra la corsa dopo l'apply.
+
+**In produzione** gli override si scrivono da tre endpoint, tutti `AdminAPIView` (`IsAdminZeroERP`, cioè il
+SUPER_ADMIN), con l'utente della richiesta in sessione. Tutti e tre **sostituiscono l'elenco** di un utente:
+
+| Endpoint | Service e repository | Come scrive oggi |
+| --- | --- | --- |
+| `OverrideAreeView.put` | `AmmSoftwareService.put_override_aree` → `AmmSoftwareRepository.put_override_aree` | `DELETE` e `INSERT` diretti su `config.user_override_aree` |
+| `OverrideAzioniView.put` | `put_override_azioni` → `put_override_azioni` | `DELETE` e `INSERT` diretti su `config.user_override_azioni` |
+| `OverrideOggettiView.put` | `put_override_oggetti` → `put_override_oggetti` | il verbo `config.fn_imposta_override_oggetti`, con le sei chiavi sempre presenti |
+
+Il service traduce i vincoli in `E_AMM_VALIDAZIONE` per nome (`uq_user_override_aree_user_area`,
+`fk_user_override_aree_area`, `uq_user_override_azioni_user_azione`, `fk_user_override_azioni_azione`,
+`fk_user_override_oggetti_catalogo`): se il verbo nuovo conserva i vincoli, la traduzione resta vera.
+
+**I due cataloghi non li scrive nessuno.** `azioni_processo` e `area_model_overrides` si leggono soltanto: le query
+del repository, il resolver, l'audit, la tendina degli oggetti (`ModelOverridesLookupView`, solo `GET`). Nessun gesto
+dell'interfaccia assegna un oggetto a un'area. I modelli ORM delle cinque tabelle (`config/models.py`) sono
+`managed = False`, e nessuno ne chiama `objects`.
+
+**I test e gli smoke che col giro si rompono:**
+
+* **Scrivono gli override direttamente** (col giro, 42501):
+  * `core/tests/db_e2e.py`, il BB `apri_operatore_con_aree`: un `INSERT … ON CONFLICT` su `user_override_aree` per
+    l'operatore che costruisce. Lo usano otto file di test e lo smoke `smoke-magazzino-inventario-primo-carico.py`.
+    Fa la stessa cosa di `dbops.fn_pgtap_concedi_livello_area` (regola del 2): con il giro passa a lui;
+  * `core/tests/db/test_pannello_verbo_db.py:201`: `INSERT` su `user_override_aree`;
+  * `magazzino/tests/db/test_anagrafiche_magazzino_db.py:325` e `test_documento_interno_db.py:715`: `UPDATE` del
+    livello a `LETTURA`, per provare il rifiuto. Il builder scrive anche un livello più basso, quindi passano a lui;
+  * `vendite/tests/db/test_commessa_cambia_stato_db.py:79`: `INSERT` su `user_override_azioni` con
+    `abilitata = false`, per provare il rifiuto. `fn_pgtap_concedi_azione` concede soltanto: serve un builder che
+    neghi, oppure un parametro (si decide nel giro).
+* **Chiamano il verbo degli oggetti senza un SUPER_ADMIN** (col giro, `E_PERMESSO_NEGATO`):
+  `amm_software/tests/db/test_override_oggetti_catalogo_db.py` (`put_override_oggetti` con l'operatore costruito) e
+  `anagrafiche/tests/db/test_creazioni_dalle_madri_db.py:560` (il contesto da `apri_contesto_operatore` di default:
+  è il caso di D-AH).
+* **Gli smoke** `smoke-test-amm-software.sh` e `smoke-test-permessi-oggetto.sh` passano dalle API col login
+  dell'amministratore: non cambiano.
+* **I builder dal BE**: 17 file usano `fn_pgtap_concedi_azione`, 6 `fn_pgtap_crea_magazzino` (che apre l'area per la
+  nascita). Con il punto 4 di §15.2 non cambiano.
+* I test di service e di API (`test_override_permessi`, `test_amm_software_service`) mockano il repository.
+
+### 15.6 Il giro, con le decisioni prese (D-AI … D-AL **a**, 2026-11-27) — da scrivere dopo il via
+
+È §15.2 con le scelte fatte. I numeri dei changeSet si prendono al via (`scripts/prossimo_changeset.py`).
+
+**DB**
+
+| Che cosa | Come |
+| --- | --- |
+| La primitiva degli oggetti | `config.fn_applica_imposta_override_oggetti`: il corpo di oggi di `fn_imposta_override_oggetti`, senza permesso, riservata (`v_fn_riservate`). La chiama il provisioning di sviluppo, che resta DEFINER |
+| Il verbo degli oggetti | `config.fn_imposta_override_oggetti`: DEFINER, `fn_guard_super_admin` in prima riga, poi la primitiva. Firma e regole invariate |
+| I due verbi nuovi (D-AK **a**) | `config.fn_imposta_override_aree(auth_user_id, jsonb)` e `config.fn_imposta_override_azioni(auth_user_id, jsonb)`: DEFINER col guard, «sostituisci l'elenco» come il gemello (chiave assente = DEFAULT, chiave estranea rifiutata). Firme col `%TYPE`. I vincoli `uq_`/`fk_` restano quelli di oggi, perché il service del BE li traduce per nome. Se un chiamante a DB serve, la primitiva nasce col verbo; se no, niente primitiva (come `fn_slega_profilo_identita` al 10-bis) |
+| La sola lettura (D-AI **a**, D-AJ **a**) | le cinque tabelle nelle tre sedi di §11.8: il loop `20260205-41`, un changeSet `90_end` del giro, `provision_zeroerp.sql`. I due cataloghi restano del CSV (`loadUpdateData`), senza verbo |
+| I builder | `fn_pgtap_concedi_azione`, `fn_pgtap_concedi_livello_area`, `fn_pgtap_apri_area_per_nascita`, `fn_pgtap_richiudi_area`: entrano come SUPER_ADMIN di fixture, chiamano il verbo vero, rimettono il contesto (il gesto del 10-bis). ⛔ Firme e colonne di ritorno identiche. Il verbo sostituisce l'elenco intero: il builder legge l'elenco dell'utente, cambia la sua chiave e lo riscrive, così le concessioni già fatte nello stesso test restano |
+| Il rifiuto d'azione | `vendite/tests/db/test_commessa_cambia_stato_db.py` prova un'azione **negata** (`abilitata = false`): si sceglie nel giro fra un parametro di `fn_pgtap_concedi_azione` col default di oggi e un builder gemello che nega. Regola del 2: non una terza strada |
+| pgTAP | uno nuovo, come app: la sola lettura delle cinque (42501), il permesso dei tre verbi, la sostituzione dell'elenco, i builder dal SUPER_ADMIN. Quelli che scrivono direttamente (§15.1) al builder se costruiscono il mondo, a runner owner col motivo se collaudano il guard di una di quelle tabelle o un caso che nessun verbo offre |
+| Guide e `manual/` | `architettura-permessi-e-autorizzazioni` §4.2, §4.3 (la frase dell'area di un oggetto: si sceglie nel CSV), §4.6-§4.8, «Vedi anche» col verbo degli oggetti; `pgtap-come-si-scrive-un-test` se cambia la tabella dei builder; le pagine `manual/` dei verbi, della primitiva, dei builder e delle cinque tabelle |
+
+**La richiesta al BE**, da mandare dopo l'apply (elenco di §15.5, da ricontrollare con la corsa):
+
+* `AmmSoftwareRepository.put_override_aree` e `put_override_azioni`: il verbo al posto di `DELETE` e `INSERT`;
+* `core/tests/db_e2e.py`, `apri_operatore_con_aree`: passa a `dbops.fn_pgtap_concedi_livello_area` (regola del 2);
+  con lui gli otto file e lo smoke che lo usano;
+* `test_pannello_verbo_db.py:201`, `test_anagrafiche_magazzino_db.py:325`, `test_documento_interno_db.py:715`,
+  `test_commessa_cambia_stato_db.py:79`: ai builder;
+* `test_override_oggetti_catalogo_db.py` e `test_creazioni_dalle_madri_db.py:560`: il verbo da un SUPER_ADMIN (con
+  D-AH il secondo lo chiede esplicitamente);
+* `genera_error_policies` se il giro aggiunge un codice; i manuali.
 
 ## Registro
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-27 | Tid | Giro 10-quater: **D-AI a**, **D-AJ a**, **D-AK a**, **D-AL a** (§15.4). Il DB ha scritto nel brief il giro da fare (§15.6) e aperto `brief-db-storico-scrivibile-dall-app`, non iniziato. Lo sviluppo aspetta il via |
+| 2026-11-26 | DB | Giro 10-quater, analisi (§15): cinque tabelle scrivibili dall'app, un solo verbo senza guard (`fn_imposta_override_oggetti`), i builder che scrivono come app; D-AI, D-AJ, D-AK e D-AL a Tid. Il censimento l'ha letto il DB sul ramo del BE (Tid, §15.5): tre endpoint del SUPER_ADMIN che sostituiscono l'elenco, nessuno scrive i cataloghi, sei test e un BB del BE da portare ai builder. Segnalato lo schema `storico` scrivibile dall'app (D-AL) |
+| 2026-11-26 | Tid | D-AH **a**: accolta la proposta del BE su `apri_contesto_operatore`, che senza `super_admin=True` non consegna più un SUPER_ADMIN. Richiesta al BE in §14.9 |
 | 2026-11-26 | DB | Commit su `dev/db-tid` del giro 10-bis, con la doc auto-generata rigenerata da Tid (`brief-db-revisione-anagrafiche` escluso: è dell'altra sessione) |
 | 2026-11-26 | Tid | Giro 10-bis applicato su dbdev e sullo scratch; i pgTAP come app verdi, compresi i due file della credenziale di sistema dopo la divisione. Restano doc auto-generata e commit; al BE la richiesta di §14.9 |
 | 2026-11-26 | DB | Giro 10-bis, dalla corsa di Tid: `test-credenziale-di-sistema-v1` torna come app (6-7 rossi da owner: la sessione del proprietario è quella del migratore, che `fn_blocca_credenziale` lascia passare); i casi dell'ultimo SUPER_ADMIN nel file nuovo `test-credenziale-di-sistema-ultimo-super-admin-v1` (owner). Ricontrollati gli altri ventiquattro file a owner: verdi da owner con l'estratto (§14.8) |

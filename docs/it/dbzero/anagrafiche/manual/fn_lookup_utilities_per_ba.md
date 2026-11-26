@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_lookup_utilities_per_ba`
 
-> **Ultimo aggiornamento**: 26 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -50,8 +50,9 @@ La funzione legge il billing account e il tipo del suo ruolo prima di rispondere
 * un tipo di ruolo che non è quello del billing account è rifiutato: l'elenco di un altro tipo di ruolo non
   sarebbe proponibile per quel conto.
 
-Tutti e due rispondono `E_PARAMETRO_INVALIDO`, come un parametro mancante: è chi chiama a sbagliare. Il
-parametro del ruolo resta nella firma, che il backend chiama per posizione.
+Il primo risponde `E_BILLING_ACCOUNT_NOT_FOUND`: la cosa indicata non esiste, per chi chiama. Il secondo
+risponde `E_PARAMETRO_INVALIDO`, come un parametro mancante: è chi chiama a sbagliare. Il parametro del ruolo
+resta nella firma, che il backend chiama per posizione.
 
 ---
 
@@ -79,8 +80,9 @@ Una utility ammessa senza la riga dell'azienda resta nell'elenco, coi valori di 
 
 ### Codici errore
 
-* `E_PARAMETRO_INVALIDO` — billing account mancante, non positivo, inesistente o fuori dal perimetro di chi
-  chiama; tipo di ruolo vuoto o diverso da quello del billing account.
+* `E_PARAMETRO_INVALIDO` — billing account mancante o non positivo; tipo di ruolo vuoto o diverso da quello del
+  billing account.
+* `E_BILLING_ACCOUNT_NOT_FOUND` — l'id non è un billing account, o è fuori dal perimetro di chi chiama.
 * `E_EMITTENTE_DEFAULT_MISSING` — da `anagrafiche.fn_get_emittente_fiscale_pk`: nessuna azienda risolvibile.
 
 ---
