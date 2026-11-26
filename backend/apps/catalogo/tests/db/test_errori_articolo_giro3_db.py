@@ -33,7 +33,12 @@ from django.db import DatabaseError, connection, transaction
 from apps.catalogo.db.catalogo_repository import CatalogoRepository
 from apps.catalogo.services.catalogo_service import fn_update_articolo
 from apps.core.services.error_translator import ErrorTranslator
-from apps.core.tests.db_e2e import apri_contesto_operatore, apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import (
+    apri_contesto_operatore,
+    apri_super_admin_costruito,
+    apri_transazione_annullata,
+    richiedi_db_provvisto,
+)
 
 _VINCOLO_IVA = "catalogo.trg_articoli_a10_guard_iva_bom_attiva_upd"
 
@@ -113,7 +118,7 @@ class ErroriArticoloGiro3DbTests(unittest.TestCase):
     #    verbo, e il campo da accendere e' la colonna, non `p_campi`.
     def test_correzione_struttura_valore_vuoto_accende_la_colonna(self) -> None:
         with connection.cursor() as cur:
-            apri_contesto_operatore(cur, super_admin=True)
+            apri_super_admin_costruito(cur, etichetta="articolo giro3 admin")
             cur.execute(
                 "SELECT dbops.fn_pgtap_crea_articolo(%s)::text", [f"PYSTR3-{self.sfx}"],
             )

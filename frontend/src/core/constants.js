@@ -260,6 +260,10 @@ export const STATO_SECONDO_FATTORE = {
 // `AccessiAltriTab`.
 export const STATO_VESTE = Object.freeze({
   ATTIVO: 'ATTIVO',
+  // Spenta dall'amministratore, col segno della revoca: non si riaccende
+  // finche' un nuovo invito non toglie il segno (giro 1 del
+  // brief-db-accessi-area-clienti, 2026-11-26).
+  REVOCATA: 'REVOCATA',
   PENDING: 'PENDING',
   NON_SPEDITO: 'NON_SPEDITO',
   DISATTIVO: 'DISATTIVO',

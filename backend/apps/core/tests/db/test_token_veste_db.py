@@ -11,6 +11,10 @@
 #        nei test con i mock. Qui i token si fabbricano sul DB vero, dentro una
 #        transazione annullata; la credenziale e' finta, le vesti sono solo
 #        l'`identita_id` nel meta (il repository non ne guarda altro).
+#        ⚠️ Tranne il test 3: dal 2026-11-26 `InvitoVeste.emetti` toglie il
+#        segno della revoca col verbo del DB (R2-b, brief-db-accessi-area-
+#        clienti §4.1), che vuole una veste VERA e un amministratore di
+#        contesto. Il test se le costruisce.
 # ------------------------------------------------------------
 
 """
@@ -37,7 +41,11 @@ from rest_framework.test import APIClient
 from apps.core.api.throttling import ConfermaTokenRateThrottle, PasswordResetRateThrottle
 from apps.core.services.invito_veste import PORTA_PORTALE, InvitoVeste
 from apps.core.services.token_service import TokenService
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import (
+    apri_super_admin_costruito,
+    apri_transazione_annullata,
+    richiedi_db_provvisto,
+)
 
 # Due vesti finte della stessa porta: bastano due identita_id distinti.
 _VESTE_CLIENTE = 900_001
@@ -73,6 +81,27 @@ class TokenVesteDbTests(_TransazioneAnnullata):
     def _vale(self, token: str) -> bool:
         return self.tokens.validate(token, PORTA_PORTALE.token_invito) is not None
 
+    # Scopo: Due vesti VERE e spente della credenziale `uid` (cliente e
+    #        fornitore portale) e il contesto di un SUPER_ADMIN costruito, per
+    #        il test che passa dall'emissione del BB. Ritorna (admin, veste
+    #        cliente, veste fornitore). ⚠️ I builder PRIMA del contesto.
+    def _vesti_vere(self, uid: int) -> tuple[int, int, int]:
+        with connection.cursor() as cur:
+            vesti = []
+            for tipo_ruolo, veste in (("CL", "CLIENTE_PORTALE"), ("FO", "FORNITORE_PORTALE")):
+                cur.execute("SELECT dbops.fn_pgtap_crea_soggetto_pg(%s)", [f"Token {tipo_ruolo}"])
+                soggetto = cur.fetchone()[0]
+                cur.execute("SELECT dbops.fn_pgtap_crea_soggetto_ruolo(%s, %s)", [soggetto, tipo_ruolo])
+                ruolo = cur.fetchone()[0]
+                cur.execute(
+                    "INSERT INTO anagrafiche.identita_digitali (soggetto_ruolo_id, auth_user_id, "
+                    "ruolo_applicativo, attivo) VALUES (%s, %s, %s, false) RETURNING id",
+                    [ruolo, uid, veste],
+                )
+                vesti.append(cur.fetchone()[0])
+            admin = apri_super_admin_costruito(cur, etichetta="token admin")
+        return admin, vesti[0], vesti[1]
+
     # Scopo: Il token della seconda veste non spegne quello della prima.
     def test_create_non_spegne_il_token_di_un_altra_veste(self):
         uid = _credenziale().id
@@ -95,15 +124,16 @@ class TokenVesteDbTests(_TransazioneAnnullata):
     # spegne (uno vivo per veste), quello dell'altra veste resta.
     def test_emissione_bb_spegne_solo_il_link_precedente_della_veste(self):
         uid = _credenziale().id
-        fornitore = self._crea(uid, _VESTE_FORNITORE)
+        admin, veste_cliente, veste_fornitore = self._vesti_vere(uid)
+        fornitore = self._crea(uid, veste_fornitore)
         invito = InvitoVeste()
         primo = invito.emetti(
-            PORTA_PORTALE, auth_user_id=uid, identita_id=_VESTE_CLIENTE,
-            ruolo_applicativo="CLIENTE_PORTALE", invitato_da_user_id=uid,
+            PORTA_PORTALE, auth_user_id=uid, identita_id=veste_cliente,
+            ruolo_applicativo="CLIENTE_PORTALE", invitato_da_user_id=admin,
         )
         secondo = invito.emetti(
-            PORTA_PORTALE, auth_user_id=uid, identita_id=_VESTE_CLIENTE,
-            ruolo_applicativo="CLIENTE_PORTALE", invitato_da_user_id=uid,
+            PORTA_PORTALE, auth_user_id=uid, identita_id=veste_cliente,
+            ruolo_applicativo="CLIENTE_PORTALE", invitato_da_user_id=admin,
         )
         self.assertFalse(self._vale(primo.token))
         self.assertTrue(self._vale(secondo.token))

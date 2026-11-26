@@ -33,7 +33,7 @@ from unittest import TestCase
 from django.db import connection, transaction
 
 from apps.core.services.coda_lavori.repository import CodaLavoriRepository
-from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_super_admin_costruito, richiedi_db_provvisto
 
 # Un tipo a catalogo (FK dura): quello del giro di fatturazione dall'app.
 _JOB_TYPE = "FATTURAZIONE_GIRO"
@@ -54,9 +54,9 @@ class SummaryPerJobTypeSulDatabaseTests(TestCase):
     #        devono restituire per una conclusa.
     def _scrivi(self, cur, stato: str, *, started: str, ended: str | None) -> tuple[int, str]:
         # ⛔ Come SUPER ADMIN (dal blocco 5b la coda e' sotto RLS: una riga
-        #    SISTEMA la scrive e la legge solo lui o il drenatore). `SET LOCAL`:
-        #    vale per la transazione del test, e ripeterlo e' innocuo.
-        apri_contesto_operatore(cur, super_admin=True)
+        #    SISTEMA la scrive e la legge solo lui o il drenatore): il contesto
+        #    lo apre il test, una volta, su un SUPER_ADMIN costruito
+        #    (`apri_super_admin_costruito`, 2026-11-26).
         cur.execute(
             """
             INSERT INTO dbops.coda_lavori
@@ -83,6 +83,7 @@ class SummaryPerJobTypeSulDatabaseTests(TestCase):
     def test_un_lavoro_in_corso_non_e_un_esito_e_la_conclusa_porta_la_sua_data(self) -> None:
         with transaction.atomic():
             with connection.cursor() as cur:
+                apri_super_admin_costruito(cur, etichetta="coda lavori admin")
                 _id_fatto, avvio_fatto = self._scrivi(
                     cur, "FATTO",
                     started="2099-01-10 07:30:00+00", ended="2099-01-10 07:31:00+00",
@@ -108,6 +109,7 @@ class SummaryPerJobTypeSulDatabaseTests(TestCase):
     def test_un_lavoro_annullato_non_e_ne_in_corso_ne_concluso(self) -> None:
         with transaction.atomic():
             with connection.cursor() as cur:
+                apri_super_admin_costruito(cur, etichetta="coda lavori admin")
                 _id_err, avvio_err = self._scrivi(
                     cur, "ERRORE",
                     started="2099-01-11 07:30:00+00", ended="2099-01-11 07:31:00+00",

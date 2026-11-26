@@ -44,7 +44,10 @@ from apps.core.services.coda_lavori.repository import (
     RUN_AS_SISTEMA,
     CodaLavoriRepository,
 )
-from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
+from apps.core.tests.db_e2e import (
+    apri_super_admin_costruito,
+    richiedi_db_provvisto,
+)
 
 # Le tre righe del brief, come chiavi di catalogo (non id: gli id sono un fatto
 # del CSV, i codici sono il contratto).
@@ -165,7 +168,7 @@ class AvvioManualeCatalogoTests(TestCase):
         #    rilettura qui sotto tornava `{}` — lo zero che sembra un dato.
         with transaction.atomic():
             with connection.cursor() as cur:
-                apri_contesto_operatore(cur, super_admin=True)
+                apri_super_admin_costruito(cur, etichetta="esegui ora admin")
             primo = _accoda()
             secondo = _accoda()
             self.assertGreater(primo, 0)

@@ -45,7 +45,10 @@ from django.db import connection, transaction
 
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.error_translator import ErrorTranslator
-from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
+from apps.core.tests.db_e2e import (
+    apri_super_admin_costruito,
+    richiedi_db_provvisto,
+)
 
 _OGGI = oggi_aziendale()
 _DAL = _OGGI + timedelta(days=30)
@@ -438,7 +441,7 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
             #    livello TUTTO su catalogo (`script.fn_guard_livello`): senza
             #    contesto il rifiuto sarebbe E_PERMESSO_NEGATO, e il periodo non
             #    si proverebbe.
-            apri_contesto_operatore(cur, super_admin=True)
+            apri_super_admin_costruito(cur, etichetta="date validita admin")
             self._rifiuto_del_periodo(
                 "catalogo.componente.chiudi",
                 lambda: svc.fn_chiudi_componente(

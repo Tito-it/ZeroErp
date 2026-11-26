@@ -16,6 +16,8 @@
 //  3) senza suggerita il campo resta vuoto
 //  4) cio' che l'operatore ha scritto non si sovrascrive al ricarico
 //  5) un'altra entita' riparte dalla sua email, non da quella precedente
+//  6) veste REVOCATA: «Invia invito» e niente «Disattiva», portale e shop
+//  7) veste PENDING: «Reinvia» e «Disattiva» (il ramo opposto, per contrasto)
 // ------------------------------------------------------------
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
@@ -23,12 +25,11 @@ import { flushPromises } from '@vue/test-utils'
 import PortaleAccessoPanel from './PortaleAccessoPanel.vue'
 import { monta } from '../../../test/montaggio'
 
-const risposte = { cliente: {}, fornitore: {} }
+const risposte = { cliente: {}, fornitore: {}, vesti: null }
 const chiamate = []
 function stato(email_suggerita) {
-  return Promise.resolve({ data: { data: {
-    portale: { stato: 'NESSUNO' }, shop: { stato: 'NESSUNO' }, email_suggerita,
-  } } })
+  const vesti = risposte.vesti || { portale: { stato: 'NESSUNO' }, shop: { stato: 'NESSUNO' } }
+  return Promise.resolve({ data: { data: { ...vesti, email_suggerita } } })
 }
 vi.mock('../api/portaleAdminApi', () => ({
   getStatoAccessiCliente: (id) => { chiamate.push(['cliente', id]); return stato(risposte.cliente[id]) },
@@ -52,6 +53,7 @@ describe('PortaleAccessoPanel — email suggerita', () => {
   beforeEach(() => {
     risposte.cliente = {}
     risposte.fornitore = {}
+    risposte.vesti = null
     chiamate.length = 0
   })
 
@@ -92,5 +94,37 @@ describe('PortaleAccessoPanel — email suggerita', () => {
     await w.setProps({ entitaId: 8 })
     await flushPromises()
     expect(campoEmail(w)).toBe('secondo@fornitore.test')
+  })
+})
+
+// I pulsanti del pannello sullo stato della veste (2026-11-26, passo 3b del
+// brief-db-accessi-area-clienti): una veste revocata si riapre solo con un
+// nuovo invito, e non si «disattiva» di nuovo.
+describe('PortaleAccessoPanel — pulsanti per stato della veste', () => {
+  beforeEach(() => {
+    risposte.cliente = {}
+    risposte.vesti = null
+  })
+  const etichette = (w) => w.findAll('button').map(b => b.text())
+
+  it('veste REVOCATA: «Invia invito» e niente «Disattiva», portale e shop', async () => {
+    risposte.vesti = { portale: { stato: 'REVOCATA' }, shop: { stato: 'REVOCATA' } }
+    const w = await montaPanel({ entitaTipo: 'cliente', entitaId: 1 })
+    const b = etichette(w)
+    expect(b).toContain('portale.btn_invia_invito')
+    expect(b).toContain('shop.btn_invia_invito')
+    expect(b).not.toContain('portale.btn_reinvia_invito')
+    expect(b).not.toContain('shop.btn_reinvia_invito')
+    expect(b).not.toContain('portale.btn_disattiva')
+    expect(b).not.toContain('shop.btn_disattiva')
+  })
+
+  it('veste PENDING: «Reinvia» e «Disattiva» (il ramo opposto, per contrasto)', async () => {
+    risposte.vesti = { portale: { stato: 'PENDING' }, shop: { stato: 'PENDING' } }
+    const w = await montaPanel({ entitaTipo: 'cliente', entitaId: 1 })
+    const b = etichette(w)
+    expect(b).toContain('portale.btn_reinvia_invito')
+    expect(b).toContain('portale.btn_disattiva')
+    expect(b).not.toContain('portale.btn_invia_invito')
   })
 })

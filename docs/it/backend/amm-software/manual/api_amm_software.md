@@ -142,7 +142,7 @@ curl -H "Authorization: Bearer <token>" \
 
 Crea un nuovo operatore completo: credenziale, soggetto persona fisica, risorsa
 umana e veste `OPERATORE`. La creazione e' orchestrata dalla funzione DB
-`anagrafiche.fn_crea_operatore_v2`.
+`anagrafiche.fn_crea_operatore`.
 
 **Contract Fase 1 multi-face**: il payload accetta `is_super_admin` (booleano).
 Il campo legacy `ruolo_sistema` e' **rifiutato** con `E_AMM_VALIDAZIONE`.
@@ -425,8 +425,11 @@ curl -X PATCH -H "Authorization: Bearer <token>" \
 
 ### 1.5 POST /api/v1/amm-software/operatori/{id}/disabilita/ -- Disabilita utente
 
-Disabilita un utente: la veste OPERATORE di riferimento `attivo=false` (il tipo
-resta, R-DB-1), la sua risorsa umana `attivo=false`+`valido_al=oggi`. Sincronizza `auth_user.is_active`,
+Disabilita un utente: **revoca** la veste OPERATORE di riferimento col verbo
+del DB `anagrafiche.fn_revoca_veste` (dal 2026-11-26: `attivo=false` e il segno
+della revoca, che un invito vecchio non scavalca; il tipo resta, R-DB-1), poi la
+sua risorsa umana `attivo=false`+`valido_al=oggi`. La riapre solo un nuovo invito
+(«Reinvia invito»), che toglie il segno. Sincronizza `auth_user.is_active`,
 invalida la cache permessi a commit avvenuto, invalida gli **inviti operatore
 pendenti** di quella veste (A-5, 2026-10-02: prima un invito in volo poteva
 ancora riaccenderla) e mette in blacklist le sessioni della **sola veste
@@ -448,8 +451,11 @@ l'envelope errore (HTTP 409).
 
 **Regole:**
 
-- Ordine disattivazione: figlio (`identita_digitali`) prima del padre
-  (`risorse_umane`) per rispettare il framework ATTIVO del DB.
+- Ordine disattivazione: figlio (`identita_digitali`, dalla revoca) prima del
+  padre (`risorse_umane`) per rispettare il framework ATTIVO del DB.
+- La revoca la chiede il DB al SUPER_ADMIN della sessione
+  (`anagrafiche.fn_guard_gestione_veste`): un contesto senza SUPER_ADMIN riceve
+  `E_PERMESSO_NEGATO`, anche se la porta lo ha fatto passare.
 - Chiama `anagrafiche.fn_sync_auth_user_is_active` per sincronizzare
   `auth_user.is_active`.
 - Invalida la cache permessi dell'utente (a commit avvenuto).
@@ -524,7 +530,7 @@ catalogo `anagrafiche.accessi_altri` (104). Envelope di lista `{count, results}`
 |---|---|---|
 | `search` | string | Ricerca libera sulle colonne accese dal catalogo (nome, username, email, vesti, soggetti) |
 | `ruolo_applicativo` | string | Una veste di quel tipo fra le vesti della credenziale (`CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`, …). `DISABILITATO` → 400 |
-| `stato_accesso` | string | Il migliore fra le vesti: `ATTIVO`, `PENDING`, `NON_SPEDITO`, `DISATTIVO`, `NESSUNO`. Estraneo → 400 |
+| `stato_accesso` | string | Il migliore fra le vesti: `ATTIVO`, `PENDING`, `NON_SPEDITO`, `DISATTIVO`, `NESSUNO`. Estraneo → 400. ⚠️ `REVOCATA` (stato della veste dal 2026-11-26) e' ancora un 400: l'aggregato della vista non lo produce, ed entra nel filtro col changeSet di R-3b-1 (brief-db-accessi-area-clienti §4.2) |
 | `nessun_accesso` | bool | Nessuna veste |
 | `secondo_fattore_stato` | string | `ASSENTE`, `DA_CONFERMARE`, `ATTIVO` |
 | `secondo_fattore_obbligatorio` | bool | |
@@ -2149,7 +2155,7 @@ Un operatore conta se la sua veste e' utilizzabile oggi
 | `chk_emittenti_fiscali_rounding_policy` | `anagrafiche` | **Fase 3**. CHECK constraint sulla colonna `emittenti_fiscali.rounding_policy`: ammette **4 valori** (`UP`, `DOWN`, `HALF_UP`, `HALF_DOWN`). Niente `HALF_EVEN` (a differenza di catalogo UoM operativa). E' il riferimento per `_ROUNDING_MODE_VALIDI_EMITTENTE` lato Python |
 | `vw_audit_sources` | `script` | **Fase 5**. Vista `(code, label_key, area_funzionale)` filtrata `attivo=true` ordinata per `code`. 8 sorgenti audit (incluse `user_override_oggetti` permessi v2 + `identita_digitali` multi-face). Letta da `list_audit_sources` per il lookup e da `list_audit_log` per build dinamico delle UNION ALL |
 | `fn_audit_summary(text, bigint)` | `script` | **Fase 5**. Calcola `{summary, diff}` per uno snapshot audit. Param: `(audit_source_code, storico_id)` dove `storico_id` e' la PK riga in `storico.<code>`. Esclude le 5 colonne audit standard (`data_*`, `user_*`, `tx_id`). Solleva `E_AUDIT_SNAPSHOT_NON_TROVATO` con marker stabile |
-| `fn_crea_operatore_v2(...)` | `anagrafiche` | Orchestratore creazione operatore (credenziale + soggetto PF + risorsa umana + veste OPERATORE spenta) |
+| `fn_crea_operatore(...)` | `anagrafiche` | Orchestratore creazione operatore (credenziale + soggetto PF + risorsa umana + veste OPERATORE spenta) |
 | `fn_sync_auth_user_is_active(INTEGER)` | `anagrafiche` | Sincronizza `auth_user.is_active` con stato identita digitale + risorsa umana |
 | `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` | `config` | Trigger DB autorita' finale per anti-lockout: blocca DELETE/UPDATE binding SUPER_ADMIN se ultimo attivo. Solleva con marker `E_PROFILO_ULTIMO_SUPER_ADMIN` |
 | `auth_user` | Django | Tabella autenticazione utenti |

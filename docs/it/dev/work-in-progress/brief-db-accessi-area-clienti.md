@@ -2,19 +2,21 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-26
 
-**Riparte: il team BE/FE col passo 3b** (§4, con i punti del giro 2); poi la sessione DB col passo 3c e il ritiro di
-`fn_crea_operatore_v2`. Giri 1 e 2 applicati, verdi e committati il 2026-11-26 (giro 1: `6440e685d8`).
+**Riparte: la sessione DB col passo 3c** (§2.4), con le richieste del BE al §4.2 (R-3b-1, R-3b-2) e il ritiro di
+`fn_crea_operatore_v2`. Il passo 3b è fatto lato BE/FE il 2026-11-26 (§4.1), da committare. Giri 1 e 2 applicati,
+verdi e committati il 2026-11-26 (giro 1: `6440e685d8`).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 2 | team BE/FE | Il passo 3b: i verbi della revoca, i codici nuovi, lo stato `REVOCATA`, `fn_crea_operatore`, il censimento di chi scrive `attivo` | §4 | — |
-| 4 | sessione DB | Il passo 3c (le scritture dell'app) e il ritiro di `fn_crea_operatore_v2` | §2.4, §5.2 | 2 |
+| 2 | ~~team BE/FE~~ | ~~Il passo 3b~~ fatto il 2026-11-26, da committare: esiti al §4.1 | §4.1 | — |
+| 3 | Tid | Il commit del passo 3b (branch `dev/backend-tid`) | §4.1 | 2 |
+| 4 | sessione DB | Il passo 3c (le scritture dell'app), R-3b-1 (lo stato `REVOCATA` nell'aggregato di `vw_accessi_altri`), R-3b-2 (la scrittura di `invito_inviato_at` e i test Django che scrivono `attivo`), il ritiro di `fn_crea_operatore_v2` | §2.4, §4.2, §5.2 | 2 |
 | 5 | sessione DB | Giri 3-6 (S64, la veste cliente unica, l'iscrizione da sé, il ritiro dei rami shop) | §5 | 4 |
 
 **Decisioni aperte di Tid:** nessuna per i giri 1 e 2. Per i successivi restano D-M6 e D-M9
 ([analisi-modello-area-clienti](analisi-modello-area-clienti.md) §7) e l'emittente del cliente iscritto da sé
 ([sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md) §3.6).
-**Da committare:** niente.
+**Da committare:** il passo 3b (BE/FE, doc, brief), sul branch `dev/backend-tid`.
 
 ## 0. Il piano da percorrere
 
@@ -39,12 +41,12 @@
   - [x] Apply e corsa dei pgTAP (Tid): verdi — 2026-11-26
 - **Fase 3 — Il passaggio col BE**
   - [x] 3a — DB consegna i verbi e la richiesta al BE (§4) — 2026-11-25
-  - [ ] 3b — BE passa dai verbi
+  - [x] 3b — BE passa dai verbi (§4.1, da committare) — 2026-11-26
   - [ ] 3c — DB ritira le scritture dell'app (§2.4), con la sezione «Garanzie ritirate» compilata
 - **Fase 4 — Doc**
   - [x] Guida `risorse-umane-e-accessi` (§«La revoca»), guida dei processi automatici, `manual/identita_digitali` — 2026-11-25
   - [x] Doc auto-generata rigenerata dopo l'apply (le quattro funzioni nuove, la tabella, `fn_stato_veste`, `fn_riattiva_utente_tecnico`) — 2026-11-26
-  - [ ] A-6 chiuso nel brief BE accessi; riga «Accessi» di `PROJECT_CONTEXT`
+  - [x] A-6 chiuso nel brief BE accessi; riga «Accessi» di `PROJECT_CONTEXT` — 2026-11-26
 - **Giro 2 — Le regole della veste e della sincronizzazione** (§5.1, T9: S5, S6, S22, S59-S63, S65, S66)
   - [x] Il via di Tid — 2026-11-26
   - [x] L'analisi sui corpi vivi (dbdev) — 2026-11-26
@@ -257,6 +259,99 @@ Dal giro 2 (2026-11-26, dopo l'apply di `20261125-58` … `-71`):
     (CONFLITTO_STATO: arriva se dall'amministrazione si dà il profilo SUPER_ADMIN all'utente di un processo).
 11. **Le policy generate** nominano ancora `fn_crea_operatore_v2` e `fn_crea_risorsa_umana_v2` nei commenti: si
     rigenerano dal catalogo, che porta i nomi nuovi.
+
+### 4.1 Il piano del BE/FE per il passo 3b (sessione BE, 2026-11-26)
+
+**Regola del 2, ok di Tid il 2026-11-26:**
+
+- **R2-a**: lo spegnimento ha una sede sola, `AuthRepository.revoca_veste(identita_id) → bool` (accanto ad
+  `attiva_identita`), che chiama `fn_revoca_veste`; la usano `AmmSoftwareRepository.disabilita_operatore` e
+  `InvitoPortaleService._disattiva_veste_common`. `PortaleRepository.disattiva_identita` si ritira.
+- **R2-b**: il segno lo toglie `InvitoVeste.emetti`, nella transazione del token: è già il punto unico di ogni
+  invito e reinvito (operatore, cliente, fornitore, shop). Le attivazioni dal lato cliente (`ProfileActivateShopView`)
+  non lo toglono: è la chiusura di A-6.
+
+| Blocco | Punti §4 | Che cosa |
+| --- | --- | --- |
+| B0 | — | Indici BB backend e frontend per intero; api.md §Tassonomia errori |
+| B1 | 1 | La revoca da R2-a; `_disattiva_veste_common` revoca sempre, `was_active` dal ritorno. Il sync esplicito di `disabilita_operatore` si verifica sul corpo vivo prima di toccarlo |
+| B2 | 2 | R2-b |
+| B3 | 3, 10, 11 | Policy rigenerate dal catalogo (`genera_error_policies`), ripiego senza `%s` per i codici nuovi |
+| B4 | 4 | `REVOCATA`: `STATI_ACCESSO`, filtro e OpenAPI della lista «Altri accessi», mappa di `PortaleRepository`; FE `STATO_VESTE`, severity, i18n, `PortaleAccessoPanel` (su `REVOCATA` «Invia», non «Disattiva»); catalogo FE e indice |
+| B5 | 8 | `AmmSoftwareRepository` su `fn_crea_operatore`; poi il DB ritira il `_v2` |
+| B6 | 5 | Test Django di `fn_riattiva_utente_tecnico` con un super admin |
+| B7 | 9 | `sync_auth_user_active` (doc, test); `create_auth_user_portale` (R-BE6): la veste nasce nella stessa transazione? |
+| B8 | 6 | Il censimento di chi scrive `attivo` e cancella vesti, con gli `INSERT` (il `DEFAULT true`, §2.4); verbi mancanti tornano al DB tutti insieme |
+| B9 | 7 | A-6 nel brief BE accessi, con il test della veste revocata dal pulsante shop |
+| B10 | — | Guide: `risorse-umane-e-accessi` (il BE passa dai verbi); catalogo BB backend (L801, L811) |
+| B11 | — | Test dei soli moduli toccati |
+
+**Esiti (sessione BE, 2026-11-26, da committare):**
+
+| Blocco | Esito |
+| --- | --- |
+| B0 | Letti i due indici; aperte le voci BE L801, L804, L809, L811-L813, L861 e FE L338, L445 |
+| B1 | `AuthRepository.revoca_veste` / `togli_revoca_veste` (nuovi, accanto ad `attiva_identita`). `disabilita_operatore`: il passo 1 revoca la veste di `get_veste_operatore_id`; passi 2-3 (rapporto, sync esplicito) invariati. `_disattiva_veste_common` revoca sempre, `disattivato` dal ritorno del verbo, `stato: REVOCATA` in risposta. `PortaleRepository.disattiva_identita` ritirato |
+| B2 | `InvitoVeste.emetti` toglie il segno per primo, nella transazione del token. Gli altri inviti non chiamano il verbo da sé |
+| B3 | `error_policies_generated.py` rigenerato (DB allineato a git: i sei codici nuovi sono nei CSV committati; uno è `E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN` del giro 10-ter, entrato con la stessa rigenerazione); ripiego senza `%s` per i sei; i commenti portano i nomi senza `_v2` |
+| B4 | `REVOCATA` nella mappa di `PortaleRepository`, in `STATO_VESTE` (FE), rosso in `STATO_VESTE_MAP`, i18n it/en («Revocato»), `PortaleAccessoPanel`: su `REVOCATA` «Invia invito» e niente «Disattiva». ⛔ **Non** nel filtro di «Altri accessi» (Tid, 2026-11-26, dalla revisione): né in `STATI_ACCESSO` né in `STATI_FILTRO` di `AccessiAltriTab`, perché la vista non lo produce ancora (R-3b-1 qui sotto) e il filtro risponderebbe la lista vuota |
+| B5 | `AmmSoftwareRepository.crea_operatore` chiama `fn_crea_operatore`; i manuali BE coi nomi nuovi. Nel BE nessuno nomina più `fn_crea_operatore_v2`: il DB lo può ritirare |
+| B6 | Niente da adeguare: la porta è un'`AdminAPIView` (SUPER_ADMIN), e nessun test Django chiama la funzione sul DB vero |
+| B7 | `sync_auth_user_active`: la testata dice che spegne anche la credenziale senza vesti; i test sono a mock e non ne dipendono. R-BE6: `create_auth_user_portale` gira nella stessa transazione di `_ensure_identita` (`InvitoPortaleService._invia_invito_common`), quindi la credenziale non resta mai senza veste. `AuthRepository.crea_auth_user` non aveva chiamanti fuori dal suo test: ritirato col test (Tid, 2026-11-26) |
+| B8 | Il censimento qui sotto, R-3b-2 |
+| B9 | A-6 chiuso dal guard nel brief BE accessi; la view «Attiva shop» lo dice nel commento |
+| B10 | Guide e cataloghi: §4.3 |
+| B11 | Test dei moduli toccati: 380 Django (uno `skip`, R-3b-1; ritirato dalla revisione, vedi R-3b-1) col DB vero acceso, 211 vitest, ruff verde, mypy pulito sui file di codice (i 6 rilievi stanno nei test, che `mypy.ini` esclude, e c'erano già). Nuovo `apps/core/tests/db/test_revoca_veste_db.py` (6 casi costruiti). Adeguati: `test_token_veste_db` (l'emissione vuole una veste vera), `test_operatore_altre_vesti_db` (dopo «Disabilita» l'attivazione passa dal nuovo invito; il contesto dei gesti di spegnimento è un SUPER_ADMIN dichiarato, non «il primo operatore attivo»), `test_accessi_db` (il presidio degli stati legge anche la vista), `test_invito_portale_service`. Dalla revisione: `PortaleAccessoPanel.spec.js` prova i pulsanti su `REVOCATA` e `PENDING` |
+
+### 4.2 Le richieste del BE al DB per il passo 3c (2026-11-26)
+
+- **R-3b-1, `anagrafiche.vw_accessi_altri.stato_accesso` non conosce `REVOCATA`.** Le vesti nel jsonb `vesti` portano
+  lo stato giusto, ma l'aggregato «il migliore fra le vesti» ha `ATTIVO`, `PENDING`, `NON_SPEDITO` e poi `ELSE
+  'DISATTIVO'`: una credenziale con tutte le vesti revocate risulta `DISATTIVO`, e un filtro `stato_accesso=REVOCATA`
+  risponderebbe **la lista vuota, senza errore**. Il presidio BE non lo vedeva, perché leggeva il corpo di
+  `fn_stato_veste` e non la vista. Ora la legge. Fino al changeSet `REVOCATA` **resta fuori dal filtro** (Tid,
+  2026-11-26): il BE lo rifiuta con un 400, il FE non lo offre. `test_uno_stato_che_la_vista_impara_entra_nel_filtro`
+  diventa rosso quando la vista lo produce: allora si aggiunge a `STATI_ACCESSO` (BE) e a `STATI_FILTRO`
+  (`AccessiAltriTab`) nello stesso giro, nell'ordine scelto dal DB. La posizione nell'ordine la decide il DB. Proposta: dopo `NON_SPEDITO` e prima di `DISATTIVO`, perché
+  una veste spenta senza segno si riapre con un invito come una revocata, ma la revocata dice di più.
+- **R-3b-2, il censimento di chi scrive le vesti dal BE** (§4 punto 6). La ricerca copre SQL su più righe e ORM in
+  `backend/apps`, fuori dai test. Dopo il 3b:
+  - `attivo` e il segno si scrivono **solo dai verbi**: `fn_revoca_veste`, `fn_togli_revoca_veste`,
+    `fn_accendi_veste`, `fn_crea_veste_portale`, `fn_crea_operatore`, `fn_riattiva_utente_tecnico`;
+  - **nessun `DELETE`** e nessun `INSERT` diretto: la nascita passa da `fn_crea_veste_portale` (invito spento, shop
+    acceso) e da `fn_crea_operatore`. Il `DEFAULT true` di `attivo` non tocca il codice applicativo;
+  - **resta un `UPDATE` diretto**: `AuthRepository.set_invito_inviato_at`, `SET invito_inviato_at = now()`, che
+    filtra su `id` e `auth_user_id`. Non tocca `attivo` né il segno. Se il 3c toglie all'app l'`UPDATE` della
+    tabella intera e non per colonna, serve un verbo (`fn_segna_invito_inviato`?);
+  - fuori dalla tabella: `disabilita_operatore` scrive ancora `risorse_umane.attivo` e `valido_al` con un `UPDATE`
+    diretto, dopo la revoca;
+  - ⚠️ **I test Django sul DB vero scrivono `attivo` direttamente** per costruire i casi: `test_accessi_db`,
+    `test_operatore_valido_al_db`, `test_login_credenziale_db`, `test_revoca_veste_db`, `test_commessa_testata_db`
+    (e `tecnica` in `test_operatori_senza_utenti_tecnici`); con un `INSERT` diretto della veste, spenta,
+    `test_token_veste_db` e `test_operatore_altre_vesti_db` (revisione del 2026-11-26). Al 3c si rompono. La strada va decisa insieme: una
+    fixture `dbops.fn_pgtap_*` per spegnere e accendere una veste, come per i pgTAP, oppure i verbi.
+- **Il ritiro di `fn_crea_operatore_v2`**: il BE è passato (B5). Restano i due chiamanti DB del §5.2.
+
+### 4.3 Guide e cataloghi del passo 3b
+
+`scripts/guide_coinvolte.py` sui file del diff, senza i due file generati dal catalogo errori e senza le traduzioni,
+che nominano tutto:
+
+- [risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md): **guida indietro, aggiornata**. Il «⚠️ il
+  backend non passa ancora dai due verbi» del §«La revoca» ora descrive i punti che passano dai verbi e il pulsante
+  shop che si ferma;
+- `architettura-multi-face-auth`: resta contraddetta dal modello dell'area clienti, si riscrive coi giri 3-6. Le
+  sue righe sulla disattivazione (§8.1) restano vere;
+- `architettura-permessi-e-autorizzazioni`, `processi-automatici-classe-e-identita`, `contratto-guc-app`,
+  `_sincronizzazione-accesso`, `_ultimo-super-admin`: **coerenti** (i verbi col guard in testa, l'utente dalla
+  sessione, la sync dai trigger);
+- le altre trenta: oggetti in comune coi repository toccati, che nominano altri domini (clienti, fatturazione,
+  pratiche…). Regole invariate, **coerenti**;
+- manuali BE aggiornati: `api_invito_portale_shop` (stato `REVOCATA`, la risposta della disattivazione),
+  `api_amm_software` (§1.5 «Disabilita» è una revoca, il filtro `stato_accesso`), `api_invito_operatore` (il nome
+  nuovo);
+- cataloghi BB: BE L801 (`emetti` toglie il segno), L809 (`revoca_veste`, `togli_revoca_veste`), L811, L812
+  (`disattiva_identita` ritirato); FE L338, L445 (`REVOCATA`). Indici rigenerati.
 
 ## 5. I giri successivi
 

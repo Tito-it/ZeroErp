@@ -180,7 +180,7 @@ anagrafiche ≥ LETTURA.
 }
 ```
 
-`stato` ∈ `{NESSUNO, PENDING, NON_SPEDITO, ATTIVO, DISATTIVO}`:
+`stato` ∈ `{NESSUNO, PENDING, NON_SPEDITO, ATTIVO, REVOCATA, DISATTIVO}`:
 
 | Stato | Significato |
 | --- | --- |
@@ -188,7 +188,8 @@ anagrafiche ≥ LETTURA.
 | `PENDING` | identita `attivo=false` + token non consumato non scaduto, **e** l'email d'invito e' partita dopo la sua emissione (`invito_inviato_at >= data_insert` del token) |
 | `NON_SPEDITO` | come `PENDING`, ma l'email di quel token **non e' partita** (`invito_inviato_at` nullo o precedente al token): la persona non ha il link, si reinvia |
 | `ATTIVO` | identita `attivo=true` |
-| `DISATTIVO` | identita `attivo=false`, nessun token pending (revocata o invito scaduto) |
+| `REVOCATA` | identita `attivo=false` col segno della revoca dell'amministratore (`revocata_at`): non si riaccende, nemmeno con un token in volo, finche' un nuovo invito non toglie il segno. La UI propone «Invia invito» |
+| `DISATTIVO` | identita `attivo=false`, senza segno di revoca e nessun token pending (invito scaduto) |
 
 `token_scade_at` e' la scadenza piu' lontana fra i token vivi della veste (invito
 + cross) — usato dalla UI per mostrare "scade tra N ore". E' valorizzato ogni
@@ -225,10 +226,12 @@ Simmetrico al precedente ma per fornitori: restituisce solo il blocco
 - `POST /api/v1/anagrafiche/clienti/{cliente_id}/disattiva-shop/`
 - `POST /api/v1/anagrafiche/fornitori/{fornitore_id}/disattiva-portale/`
 
-Soft-revoke veste non-operatore. Imposta `identita.attivo=false` e
-invalida i token pendenti (invito + cross) **della veste**. **Idempotente**:
-se la veste e' gia' disattiva o non esiste, la chiamata succede senza
-errore (`disattivato=false`, stato ritornato coerente).
+Revoca della veste non-operatore, dal verbo del DB `anagrafiche.fn_revoca_veste`
+(dal 2026-11-26): la spegne e ci scrive il segno della revoca, **anche se era
+gia' spenta** con l'invito pendente, e invalida i token pendenti (invito +
+cross) **della veste**. Una veste revocata si riapre solo con un nuovo invito
+dell'amministratore, che toglie il segno. **Idempotente**: se la veste e' gia'
+revocata o non esiste, la chiamata succede senza errore (`disattivato=false`).
 
 **Body**: nessuno (POST vuoto).
 
@@ -238,14 +241,14 @@ errore (`disattivato=false`, stato ritornato coerente).
 {
   "data": {
     "disattivato": true,
-    "stato": "DISATTIVO",
+    "stato": "REVOCATA",
     "identita_id": 500
   }
 }
 ```
 
-- `disattivato: true` se ha effettivamente flippato `attivo` da `true` a `false`
-- `disattivato: false` + `stato="DISATTIVO"` se era gia' disattiva (idempotente)
+- `disattivato: true` se la veste era accesa
+- `disattivato: false` + `stato="REVOCATA"` se era gia' spenta (il segno si mette lo stesso)
 - `disattivato: false` + `stato="NESSUNO"` se la veste non esiste affatto
 
 **Effetti collaterali**:
