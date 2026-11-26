@@ -9,8 +9,8 @@
 #          - get_colonna(colonna_id)      — dettaglio singolo
 #          - create_colonna(lista_id, ..) — INSERT con validazione enum + UX
 #          - update_colonna(colonna_id, ..) — PATCH (lista_id immutabile)
-#          - delete_colonna(colonna_id, *, force=False)
-#                                          — DELETE con soft-block preferenze
+#          - delete_colonna(colonna_id)    — DELETE col rifiuto parlante
+#                                            dei preset che la compongono
 #
 #        Validazione lato Python:
 #          - whitelist chiavi payload via PayloadValidator
@@ -39,11 +39,15 @@
 #            regola era `chk_ui_lista_colonna_azione_non_esportabile`, ora
 #            ritirato): un valore esplicito contrario e' un 400 sul campo.
 #
-#        Soft-block DELETE: prima del DELETE il service conta le preferenze
-#        utente che nominano la colonna per codice nel JSONB
-#        `configurazione->colonne`, poi i preset che la compongono, e blocca
-#        con E_UI_COLONNA_IN_USO. Soft-disable via PATCH `attivo=false`
-#        resta il gesto ordinario (decisione 5 _def.md).
+#        DELETE: prima del DELETE il service cerca i preset che compongono
+#        la colonna e, se ce n'e', rifiuta con E_UI_COLONNA_IN_USO
+#        nominandoli. ⛔ Le preferenze utente NON fermano piu' la
+#        cancellazione (Q56 (a) di brief-db-revisione-ui, Tid 2026-11-22):
+#        dal giro 2 (Q55) il DB toglie da se' la voce della colonna dalle
+#        preferenze che la nominano (`ui.trgfn_voce_ritira_dalle_preferenze`),
+#        e un rifiuto qui darebbe alla stessa cancellazione due esiti secondo
+#        chi la fa (il migratore passa). Soft-disable via PATCH
+#        `attivo=false` resta il gesto ordinario (decisione 5 _def.md).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -163,6 +167,15 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "chk_lista_colonna_campo_sorgente_non_vuoto": (
         E_COLONNA_VALIDATION,
         "Il campo sorgente, se indicato, non puo' essere vuoto.",
+        "campo_sorgente",
+    ),
+    # §5.1.2 di brief-db-lista-colonna-vuoto-in-ordine (2026-11-24): il flag
+    # non e' nel drawer (D-1), ma una colonna dell'installazione che lo porta
+    # perde il campo sorgente da qui. Il campo e' quello che l'operatore tocca.
+    "chk_ui_lista_colonna_vuoto_massimo_con_campo": (
+        E_COLONNA_VALIDATION,
+        "La colonna ordina il vuoto come il massimo: senza campo sorgente non "
+        "avrebbe un vuoto da ordinare.",
         "campo_sorgente",
     ),
 }
@@ -316,13 +329,13 @@ class ListaColonnaAdminService:
         )
         return self.get_colonna(colonna_id)
 
-    # Scopo: Cancella colonna. Due soft-block prima del DELETE, ognuno col
-    #        suo messaggio: le preferenze utente che nominano il `codice`
-    #        nel JSONB configurazione->colonne (nessuna FK le protegge), e
-    #        i preset che compongono la colonna (FK NO ACTION, Q18: il
-    #        messaggio li nomina, perche' vanno tolti prima da li'). I
-    #        permessi di colonna vanno a cascata e non fermano niente.
-    #        ⚠️ Una colonna nata dal seed salta i due controlli: non si
+    # Scopo: Cancella colonna. Prima del DELETE il controllo dei preset che
+    #        la compongono (FK NO ACTION, Q18: il messaggio li nomina, perche'
+    #        vanno tolti prima da li'). I permessi di colonna vanno a cascata;
+    #        le preferenze utente che la nominano per `codice` le ripulisce
+    #        il DB (Q55/Q56 di brief-db-revisione-ui): nessuna delle due
+    #        ferma niente.
+    #        ⚠️ Una colonna nata dal seed salta il controllo: non si
     #        cancella comunque, e il rifiuto vero e' quello del DB
     #        (E_SEED_RIGA_NON_CANCELLABILE, trigger BEFORE DELETE, che a DB
     #        scatta prima della FK). Rimandare l'operatore a togliere la
@@ -330,11 +343,11 @@ class ListaColonnaAdminService:
     #        un rimedio falso. Soft-disable via PATCH attivo=false.
     def delete_colonna(self, colonna_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(colonna_id, field="colonna_id")
-        # 404 + serve il codice + lista_id per il count preferenze.
+        # 404; il codice e la lista servono al messaggio del rifiuto.
         current = self.get_colonna(colonna_id)
 
         if not current.get("nata_dal_seed"):
-            self._richiedi_colonna_non_in_uso(colonna_id, current)
+            self._richiedi_colonna_in_nessun_preset(colonna_id, current)
 
         try:
             deleted = self._repo.delete_colonna(colonna_id)
@@ -370,35 +383,13 @@ class ListaColonnaAdminService:
         )
         return {"deleted": True, "id": colonna_id}
 
-    # Scopo: I due soft-block della cancellazione di una colonna, nell'ordine
-    #        in cui l'operatore li risolve: le preferenze utente (che nessuna
-    #        FK protegge), poi i preset che la compongono (FK NO ACTION).
-    #        Ognuno solleva E_UI_COLONNA_IN_USO col suo messaggio; quello dei
-    #        preset li nomina per codice.
-    def _richiedi_colonna_non_in_uso(
+    # Scopo: Il rifiuto parlante della cancellazione di una colonna che un
+    #        preset compone (FK NO ACTION): E_UI_COLONNA_IN_USO coi codici
+    #        dei preset da cui toglierla. Anticipa la FK, che resta il
+    #        presidio vero (vedi `delete_colonna`).
+    def _richiedi_colonna_in_nessun_preset(
         self, colonna_id: int, current: dict[str, Any],
     ) -> None:
-        n_pref = self._repo.count_preferenze_referenced_by_colonna(
-            lista_id=int(current["lista_id"]),
-            codice=str(current["codice"]),
-        )
-        ErrorManager.require(
-            n_pref == 0,
-            code=E_COLONNA_IN_USE,
-            message=(
-                "La colonna e' in uso da preferenze utente. Disattivala con "
-                "attivo=false invece di eliminarla."
-            ),
-            detail=(
-                f"preferenze_count={n_pref}, lista_id={current['lista_id']}, "
-                f"codice={current['codice']!r}"
-            ),
-            context={
-                "colonna_id": colonna_id,
-                "preferenze_count": n_pref,
-            },
-        )
-
         preset = self._repo.preset_con_colonna(colonna_id)
         ErrorManager.require(
             not preset,

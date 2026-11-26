@@ -17,63 +17,83 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_contatti_set_default_contatto()
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  cnt INTEGER;
-  ctx TEXT;
+    v_entra   boolean;
+    v_chiesto boolean;
 BEGIN
-  -- 1) Reset del context
-  NEW.default_context := NULL;
+    -- =========================================================
+    -- Scopo:
+    --   Il predefinito della riga di contesto (soggetto, ruolo,
+    --   istanza): il primo contatto che entra nel contesto, o
+    --   quello che lo chiede.
+    --
+    -- Regole:
+    --   - entra nel contesto chi nasce o cambia soggetto, ruolo
+    --     o istanza;
+    --   - chiede il segno chi lo passa a true (all'INSERT, o da
+    --     false a true); un segno portato da un altro contesto
+    --     non e' una richiesta;
+    --   1. chi chiede il segno lo toglie agli altri del contesto;
+    --   2. chi entra senza chiederlo e' predefinito se il
+    --      contesto non ne ha uno;
+    --   3. default_context = il livello del predefinito, NULL
+    --      sugli altri;
+    --   4. il predefinito del soggetto e' anche
+    --      soggetti.default_contatto_id.
+    --   Il segno tolto lo giudica trgfn_contatti_guard_predefinito.
+    -- =========================================================
+    v_entra := TG_OP = 'INSERT'
+            OR (OLD.soggetto_id, OLD.soggetto_ruolo_id, OLD.istanza_utility_id)
+               IS DISTINCT FROM
+               (NEW.soggetto_id, NEW.soggetto_ruolo_id, NEW.istanza_utility_id);
+    v_chiesto := NEW.is_default AND (TG_OP = 'INSERT' OR NOT OLD.is_default);
 
-  -- 2) Determino il contesto per questo contatto
-  ctx := CASE
-    WHEN NEW.istanza_utility_id IS NOT NULL THEN 'istanza'
-    WHEN NEW.soggetto_ruolo_id  IS NOT NULL THEN 'ruolo'
-    ELSE 'soggetto'
-  END;
-
-  -- 3) Se il nuovo contatto e marcato default:
-  IF NEW.is_default THEN
-    UPDATE anagrafiche.contatti
-      SET is_default = FALSE,
-          default_context = NULL
-    WHERE soggetto_id = NEW.soggetto_id
-      AND id <> COALESCE(NEW.id, 0)
-      AND is_default
-      AND default_context = ctx;
-
-    NEW.default_context := ctx;
-
-    IF ctx = 'soggetto' THEN
-      UPDATE anagrafiche.soggetti
-        SET default_contatto_id = NEW.id
-      WHERE id = NEW.soggetto_id;
+    IF v_chiesto THEN
+        -- 1) Il segno passa a questa riga.
+        UPDATE anagrafiche.contatti c
+           SET is_default = false
+         WHERE c.soggetto_id = NEW.soggetto_id
+           AND c.soggetto_ruolo_id  IS NOT DISTINCT FROM NEW.soggetto_ruolo_id
+           AND c.istanza_utility_id IS NOT DISTINCT FROM NEW.istanza_utility_id
+           AND c.is_default
+           AND c.id <> NEW.id;
+    ELSIF v_entra THEN
+        -- 2) Chi entra senza chiederlo: predefinito se il contesto non ne ha.
+        NEW.is_default := NOT EXISTS (
+            SELECT 1
+              FROM anagrafiche.contatti c
+             WHERE c.soggetto_id = NEW.soggetto_id
+               AND c.soggetto_ruolo_id  IS NOT DISTINCT FROM NEW.soggetto_ruolo_id
+               AND c.istanza_utility_id IS NOT DISTINCT FROM NEW.istanza_utility_id
+               AND c.is_default
+               AND c.id <> NEW.id);
     END IF;
+
+    -- 3) L'etichetta del livello.
+    NEW.default_context := CASE
+        WHEN NOT NEW.is_default               THEN NULL
+        WHEN NEW.istanza_utility_id IS NOT NULL THEN 'istanza'
+        WHEN NEW.soggetto_ruolo_id  IS NOT NULL THEN 'ruolo'
+        ELSE 'soggetto'
+    END;
+
+    -- 4) Il predefinito del soggetto, quando lo diventa.
+    IF NEW.is_default
+       AND NEW.soggetto_ruolo_id IS NULL
+       AND NEW.istanza_utility_id IS NULL
+       AND (v_entra OR NOT OLD.is_default)
+    THEN
+        UPDATE anagrafiche.soggetti s
+           SET default_contatto_id = NEW.id
+         WHERE s.id = NEW.soggetto_id
+           AND s.default_contatto_id IS DISTINCT FROM NEW.id;
+    END IF;
+
     RETURN NEW;
-  END IF;
-
-  -- 4) Se non esiste ancora alcun default in questo contesto
-  SELECT COUNT(*) INTO cnt
-    FROM anagrafiche.contatti
-  WHERE soggetto_id = NEW.soggetto_id
-    AND is_default
-    AND default_context = ctx;
-
-  IF cnt = 0 THEN
-      NEW.is_default      := TRUE;
-      NEW.default_context := ctx;
-
-      IF ctx = 'soggetto' THEN
-        UPDATE anagrafiche.soggetti
-          SET default_contatto_id = NEW.id
-        WHERE id = NEW.soggetto_id;
-      END IF;
-  END IF;
-
-  RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_contatti_set_default_contatto()
-IS 'Trigger: imposta il primo contatto come default nel contesto corretto (soggetto|ruolo|istanza). Aggiorna default_contatto_id su soggetti. Ripulisce solo quelli dello stesso contesto.';
+IS 'Trigger BEFORE INSERT OR UPDATE su anagrafiche.contatti (fase a20): il predefinito della riga di contesto (soggetto, ruolo, istanza). Chi chiede il segno (is_default a true all''INSERT, o da false a true) lo toglie agli altri del contesto; chi entra nel contesto (nasce, o cambia soggetto, ruolo o istanza) senza chiederlo e'' predefinito se il contesto non ne ha uno. Un segno portato da un altro contesto non e'' una richiesta. default_context e'' il livello del predefinito (soggetto|ruolo|istanza), NULL sugli altri. Il predefinito del soggetto e'' anche soggetti.default_contatto_id, scritto quando lo diventa. Il segno tolto e il predefinito cancellato li giudica anagrafiche.trgfn_contatti_guard_predefinito; l''unicita'' la scrive l''indice uq_contatti_predefinito_contesto. La regola sta nella nota _contatto-predefinito.';
 ```
 
 </div>

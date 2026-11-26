@@ -48,9 +48,6 @@ def _envelope(results=None, count=0):
     return {
         "results": results if results is not None else [],
         "count": count,
-        "page": 1,
-        "page_size": 50,
-        "total_pages": 1,
     }
 
 

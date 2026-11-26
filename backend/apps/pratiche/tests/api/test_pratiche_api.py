@@ -72,6 +72,7 @@ def _mock_pratica_row(pratica_id: int = 1) -> dict:
 
 
 class PraticheApiTests(JwtMockedApiTest):
+    come_super_admin = True
 
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:

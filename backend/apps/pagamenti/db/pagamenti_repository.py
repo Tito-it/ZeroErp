@@ -20,7 +20,6 @@
 #       nelle letture di lista, non affidato al ricordo.
 # ------------------------------------------------------------
 
-from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
 from typing import Any, cast
@@ -33,17 +32,19 @@ from apps.core.db._helpers import (
     add_ricerca_full_condition,
     conta_con_perimetro,
     fetch_paged_with_total,
+    lista_paginata,
     sql_lateral_primo_motivo,
     sql_order_clause,
     rows_to_list,
-    sql_order_direction,
+    sql_order_direction_lista,
     sql_tiebreak_direction,
     utente_di_sessione,
 )
-from apps.core.db.emittente_scope_helpers import (
-    add_emittente_scope_condition_risolta,
-    fetch_emittenti_scope_ids,
-)
+# ⚠️ `fetch_emittenti_scope_ids` dal MODULO, non con `from ... import`: e' il
+#    nome che il BB di test `perimetro_admin_globale_di_prova` patcha, e una
+#    copia importata qui ne resterebbe fuori (la query andrebbe sul DB).
+from apps.core.db import emittente_scope_helpers
+from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition_risolta
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, sql_set_clause
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.system_context import connection_role_bypasses_rls
@@ -340,7 +341,7 @@ _LATERAL_ELIMINA = f"""
 #        check gira sulle righe che escono, non su quelle che la lettura ha
 #        scorso per arrivarci.
 # ⭐ E' la ragione per cui sta SOPRA e non dentro `_RIGA_FROM`: nelle liste
-#    paginate `_lista_paginata` la applica alla PAGINA (dopo `LIMIT/OFFSET`),
+#    paginate `lista_paginata` la applica alla PAGINA (dopo `LIMIT/OFFSET`),
 #    quindi la check gira per riga mostrata e non per riga filtrata sotto la
 #    `COUNT(*) OVER ()`. Una sede sola per le quattro letture (dettaglio,
 #    anteprima, righe della distinta, coda).
@@ -582,7 +583,7 @@ RIGHE_SORT_COLUMNS: dict[str, str] = {
 # ed export, come gli atti di sistemazione dal 02/09). Le chiavi sono i
 # `campo_sorgente` FISICI del seed, i valori gli alias della proiezione
 # `_RIGA_COLONNE` (la clausola si applica FUORI, sul risultato di
-# `_lista_paginata`).
+# `lista_paginata`).
 # ⭐ `fattura_numero_documento` ordina per la COPPIA `(fattura_numero,
 #    fattura_serie)` — il costruttore del numero parlante — e non per il testo
 #    «numero - serie»: ordinando il testo «10 - A» verrebbe prima di «9 - A»
@@ -604,12 +605,6 @@ DISTINTA_RIGHE_SORT_COLUMNS: dict[str, str] = {
     "scadenza_data": "scadenza_data",
     "stato_descrizione": "stato_descrizione",
 }
-
-# Le colonne DATA della lista 69: verso DESC al primo click senza `order_dir`
-# (regola di Tid del 2026-09-02, come `RATE_SORT_COLONNE_DATA`).
-DISTINTA_RIGHE_SORT_COLONNE_DATA: frozenset[str] = frozenset(
-    {"data_pagamento", "data_valuta", "data_operazione", "scadenza_data"}
-)
 
 # Colonne ordinabili dell'elenco delle rate fuori capienza.
 # ⭐ `numero_documento` (P-1-bis, 2026-09-17): la vista porta il numero
@@ -655,15 +650,6 @@ RATE_SORT_COLUMNS: dict[str, str] = {
     "totale_doc": "totale_doc",
     "stato_descrizione": "stato_descrizione",
 }
-
-# Le colonne DATA della lista 68, per il verso DESC quando il chiamante non ne
-# indica uno (regola di Tid del 2026-09-02). ⚠️ NON e' il default della lista:
-# senza `order_by` la lista si apre `data_scadenza ASC` — e' una CODA, la rata
-# piu' vecchia e' quella che un pagamento piu' probabilmente salda (stessa
-# ragione dei residui di competenza). Il primo click dell'operatore
-# sull'intestazione resta DESC per la regola generale, e lo decide il catalogo
-# (`tipo_dato = date`) nel frontend.
-RATE_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data", "data_scadenza"})
 
 # Colonne ordinabili dell'elenco delle eccedenze da sistemare.
 # ⭐ Il default e' per CLIENTE, non per documento: la decisione si prende
@@ -775,15 +761,6 @@ SISTEMAZIONI_SORT_COLUMNS: dict[str, str] = {
     "data_esecuzione": "s.data_esecuzione",
 }
 
-# ⭐ Le colonne DATA della lista 61. Il BB `sql_order_clause` le ordina DESC
-#    quando il chiamante non indica un verso: «gli ordinamenti per data hanno
-#    sempre default DESC» (Tid, 2026-09-02). Una data si legge dalla piu'
-#    recente, e chiedere «ordina per data» ricevendo il caso piu' vecchio in
-#    cima e' il contrario di cio' che si e' chiesto.
-# ⚠️ Vive ACCANTO alla whitelist e non altrove: e' un sottoinsieme delle sue
-#    chiavi, e a distanza le due si separerebbero senza che niente lo dica.
-SISTEMAZIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_esecuzione"})
-
 # Colonne ordinabili dell'elenco dei canali di incasso.
 # ⭐ CHIAVATA SUI `campo_sorgente` FISICI dal 2026-09-02, ed e' il giorno che il
 #    commento precedente aveva previsto: *«il giorno in cui la schermata dei
@@ -867,50 +844,6 @@ class PagamentiRepository:
                 "la connessione dell'utente della richiesta."
             ),
             function_name=f"{_FN}.{metodo}",
-        )
-
-    # Scopo: Esegue una lista paginata: pagina + totale in una valutazione, e
-    #        il conteggio di ripiego per la pagina stantia.
-    # Nota: era scritto tre volte (distinte, coda, rate fuori capienza) — e tre
-    #       copie della stessa paginazione divergono alla prima correzione.
-    # ⚠️ `order_clause` si compone dalla WHITELIST del chiamante e MAI da input
-    #    utente: qui dentro finisce in una stringa SQL.
-    # ⭐ `dopo_pagina`: cio' che si calcola sulle righe MOSTRATE e non su quelle
-    #    filtrate — oggi il blocco «elimina» delle righe (`_sql_con_elimina`).
-    #    Riceve la query della pagina (gia' con `total_count` e `LIMIT/OFFSET`)
-    #    e la clausola d'ordine da ripassare sopra. Il conteggio di ripiego non
-    #    lo paga: conta le righe, non le giudica.
-    @staticmethod
-    def _lista_paginata(
-        *,
-        select_sql: str,
-        params: list[Any],
-        order_clause: str,
-        limit: int,
-        offset: int,
-        dopo_pagina: Callable[[str, str], str] | None = None,
-    ) -> tuple[list[dict[str, Any]], int]:
-        data_sql = f"""
-            SELECT *, COUNT(*) OVER () AS total_count FROM (
-                {select_sql}
-            ) q
-            {order_clause}
-            LIMIT %s OFFSET %s
-        """  # noqa: S608 — select_sql da costanti del modulo, order_clause da sql_order_clause su whitelist, valori come parametri
-        if dopo_pagina is not None:
-            data_sql = dopo_pagina(data_sql, order_clause)
-        # ⚠️ Il conteggio di ripiego serve SOLO a pagina oltre l'ultima: li' la
-        # window function non ha righe su cui calcolare il totale e
-        # risponderebbe zero. Senza, a chi e' rimasto su una pagina stantia di
-        # una lista che si e' accorciata sotto di lui diremmo «nessun
-        # risultato» — una cosa falsa, con l'aria di un dato.
-        count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"  # noqa: S608 — select_sql da costanti del modulo e frammenti letterali, valori come parametri
-        return fetch_paged_with_total(
-            data_sql,
-            [*params, limit, offset],
-            fallback_count_sql=count_sql,
-            fallback_params=list(params),
-            offset=offset,
         )
 
     # ══════════════════════════════════════════════════════════════
@@ -1019,10 +952,10 @@ class PagamentiRepository:
             default_desc=True,
         )
 
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=f"{_DISTINTA_SELECT}{_TOTALI_LATERAL}{where_clause}",
             params=params,
-            order_clause=f"ORDER BY {ordinamento}",
+            order_clause=ordinamento,
             limit=limit,
             offset=offset,
         )
@@ -1246,7 +1179,6 @@ class PagamentiRepository:
             default="id",
             tiebreak="id",
             default_desc=True,
-            colonne_desc=DISTINTA_RIGHE_SORT_COLONNE_DATA,
         )
         # `_RIGHE_DISTINTA_ATTIVE_SQL` finisce col suo `WHERE`: le condizioni
         # in piu' vi si attaccano in `AND`.
@@ -1260,10 +1192,10 @@ class PagamentiRepository:
             params.append(escludi_stato_codice)
         add_ricerca_full_condition(conditions, params, search, _RICERCA_RIGHE_DISTINTA)
         select_sql = " AND ".join([_RIGHE_DISTINTA_ATTIVE_SQL, *conditions])
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=select_sql,
             params=params,
-            order_clause=f"ORDER BY {ordinamento}",
+            order_clause=ordinamento,
             limit=limit,
             offset=offset,
             dopo_pagina=_sql_con_elimina,
@@ -1701,10 +1633,8 @@ class PagamentiRepository:
         # Il perimetro emittente si risolve UNA volta: con `solo_aperte` la
         # stessa condizione entra due volte (pagina e perimetro del nucleo), e
         # risolverla per ogni entrata sarebbe una query in piu' per niente.
-        scope_ids = (
-            fetch_emittenti_scope_ids(auth_user_id, convention="pk")
-            if auth_user_id is not None else None
-        )
+        # ⛔ `auth_user_id=None` solleva dal BB (2026-11-24): non apre più.
+        scope_ids = emittente_scope_helpers.fetch_emittenti_scope_ids(auth_user_id, convention="pk")
 
         # Scopo: le condizioni della lista su un ALIAS dato — la stessa funzione
         #        per la pagina (`v`) e per il perimetro del nucleo (`p`), cosi'
@@ -1754,15 +1684,15 @@ class PagamentiRepository:
         conditions, params = _condizioni("v")
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        # ⚠️ `default_desc=False` e' la scelta, non l'omissione: e' una coda
-        #    (vedi `RATE_SORT_COLONNE_DATA`). Il tiebreak `scadenza_id` e' la
-        #    chiave della vista — la PK della rata.
+        # ⚠️ `default_desc=False` e' la scelta, non l'omissione: e' una CODA,
+        #    la rata piu' vecchia e' quella che un pagamento piu' probabilmente
+        #    salda (stessa ragione dei residui di competenza). Il tiebreak
+        #    `scadenza_id` e' la chiave della vista — la PK della rata.
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=RATE_SORT_COLUMNS,
             default="data_scadenza",
             tiebreak="scadenza_id",
-            colonne_desc=RATE_SORT_COLONNE_DATA,
         )
 
         if solo_aperte:
@@ -1784,21 +1714,21 @@ class PagamentiRepository:
                     ON s.scadenza_id = v.scadenza_id
                  {where}{" AND" if where else " WHERE"} s.saldo <> 0
             """  # noqa: S608
-            return self._lista_paginata(
+            return lista_paginata(
                 select_sql=select_sql,
                 # Prima i parametri del perimetro (l'`ARRAY(...)` sta nella
                 # `FROM`), poi quelli del `WHERE` della pagina: l'ordine e'
                 # quello in cui psycopg incontra i `%s`.
                 params=[*params_p, *params],
-                order_clause=f"ORDER BY {ordinamento}",
+                order_clause=ordinamento,
                 limit=limit,
                 offset=offset,
             )
 
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=f"SELECT v.* FROM vendite.vw_fatture_scadenze_lista v {where}",  # noqa: S608
             params=params,
-            order_clause=f"ORDER BY {ordinamento}",
+            order_clause=ordinamento,
             limit=limit,
             offset=offset,
         )
@@ -1875,10 +1805,10 @@ class PagamentiRepository:
             default_desc=True,
         )
 
-        rows, total = self._lista_paginata(
+        rows, total = lista_paginata(
             select_sql=f'{_RIGA_CODA_SELECT} WHERE {" AND ".join(conditions)}',
             params=params,
-            order_clause=f"ORDER BY {ordinamento}",
+            order_clause=ordinamento,
             limit=limit,
             offset=offset,
             dopo_pagina=_sql_con_elimina,
@@ -1924,14 +1854,12 @@ class PagamentiRepository:
             default_desc=True,
         )
 
-        return self._lista_paginata(
+        return lista_paginata(
             select_sql=(
                 f"SELECT v.* FROM pagamenti.vw_rate_fuori_capienza v {where_clause}"  # noqa: S608 — WHERE da frammenti letterali + colonne _RICERCA_RATE_FUORI_CAPIENZA, valori come parametri
             ),
             params=params,
-            order_clause=(
-                f"ORDER BY {ordinamento}"
-            ),
+            order_clause=ordinamento,
             limit=limit,
             offset=offset,
         )
@@ -1982,10 +1910,10 @@ class PagamentiRepository:
             {_ENTE_INCASSO_SELECT}
             {where_clause}
         """
-        return self._lista_paginata(
+        return lista_paginata(
             select_sql=select_sql,
             params=params,
-            order_clause=f"ORDER BY {ordinamento}",
+            order_clause=ordinamento,
             limit=limit,
             offset=offset,
         )
@@ -2006,20 +1934,19 @@ class PagamentiRepository:
     #    ⛔ Misurato il 2026-08-28 (E-4): senza questa domanda un operatore
     #    dell'emittente A leggeva l'IBAN di incasso dell'emittente B passando il
     #    suo `soggetto_ruolo_id` — e senza nessun errore.
-    # ⛔ SENZA UTENTE NON SI PASSA, e non e' pignoleria: la canonica
-    #    `fn_check_user_emittente_scope` risponde **true** quando
-    #    `p_auth_user_id` e' NULL (regola 1, «job batch»). Delegarle la domanda
-    #    su un percorso senza GUC aprirebbe il perimetro invece di chiuderlo:
-    #    qui «non so chi sei» vale **no**.
+    # ⛔ SENZA UTENTE NON SI PASSA: qui «non so chi sei» vale **no**. Fino al
+    #    2026-10-04 la canonica `fn_check_user_emittente_scope` rispondeva
+    #    **true** con `p_auth_user_id` NULL («job batch»); dalla Q-1 risponde
+    #    FALSE (doc DB della funzione), ma il guard resta qui: la domanda senza
+    #    GUC non si delega.
     def emittente_nel_perimetro(self, emittente_soggetto_ruolo_id: int) -> bool:
         self._guard_canale_sistema("emittente_nel_perimetro")
         # L'utente per cui la connessione agisce, dalla GUC delle policy RLS
         # (BB `utente_di_sessione`: il nome della GUC e il suo tranello stanno
         # li'). Senza utente non c'e' perimetro: si rifiuta. Un valore che non
-        # e' un id utente e' una chiamata rotta: `E_PAGAMENTI_CHIAMATA_NON_VALIDA`
-        # (BE31 di brief-db-revisione-ui), non il 22P02 del cast.
+        # e' un id utente e' una chiamata rotta: `E_SCRIPT_CHIAMATA_NON_VALIDA`
+        # dal BB DB (BE34 di brief-db-revisione-ui), non il 22P02 del cast.
         auth_user_id = utente_di_sessione(
-            codice_errore=_E_CHIAMATA,
             function_name="pagamenti_repository.emittente_nel_perimetro",
         )
         if auth_user_id is None:
@@ -2158,7 +2085,10 @@ class PagamentiRepository:
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         sort_col = colonna_ordinamento(order_by, ECCEDENZE_SORT_COLUMNS) or "eccedenza_cliente"
-        direction = sql_order_direction(order_dir, default_desc=True)
+        direction = sql_order_direction_lista(
+            order_by, order_dir, colonne=ECCEDENZE_SORT_COLUMNS,
+            default="eccedenza_cliente", default_desc=True,
+        )
         tiebreak = sql_tiebreak_direction(direction)
 
         select_sql = f"""
@@ -2169,14 +2099,14 @@ class PagamentiRepository:
                      ON srd.soggetto_ruolo_id = v.cliente_soggetto_ruolo_id
               {where_clause}
         """  # noqa: S608 — WHERE da frammenti letterali + colonne _RICERCA_ECCEDENZE, valori come parametri
-        return self._lista_paginata(
+        return lista_paginata(
             select_sql=select_sql,
             params=params,
             # ⚠️ Tiebreak sul CLIENTE prima che sul documento: ordinando per
             # eccedenza di cliente, i documenti dello stesso cliente devono
             # restare insieme — altrimenti l'elenco «per cliente» li sparpaglia.
             order_clause=(
-                f"ORDER BY {sort_col} {direction}, "
+                f"{sort_col} {direction}, "
                 f"cliente_soggetto_ruolo_id {tiebreak}, fattura_id {tiebreak}"
             ),
             limit=limit,
@@ -2328,7 +2258,6 @@ class PagamentiRepository:
             default="s.id",
             tiebreak="s.id",
             default_desc=True,
-            colonne_desc=SISTEMAZIONI_SORT_COLONNE_DATA,
         )
         # ⛔ LIMIT/OFFSET solo se il chiamante impagina: una `LIMIT NULL` sarebbe
         #    legale in PostgreSQL ma legherebbe la query a un parametro in piu'

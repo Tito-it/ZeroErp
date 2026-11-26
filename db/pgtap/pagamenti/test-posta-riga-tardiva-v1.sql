@@ -57,6 +57,13 @@ SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
     (SELECT auth_user_id FROM _mondo)); END $ctx$;
 
+-- La registrazione tardiva chiede registra_distinta all'utente di sessione (il
+-- verbo e' SECURITY DEFINER dal giro 9 di brief-db-porte-aperte-dalla-sola-guc
+-- §11): l'operatore costruito non ha azioni, gliela da' la fixture.
+DO $az$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM _mondo), 'registra_distinta');
+END $az$;
+
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 

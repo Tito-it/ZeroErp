@@ -117,9 +117,6 @@ class ApiAuditLog(DomainAPIView):
                     name="AuditLogData",
                     fields={
                         "count": serializers.IntegerField(),
-                        "page": serializers.IntegerField(),
-                        "page_size": serializers.IntegerField(),
-                        "total_pages": serializers.IntegerField(),
                         "results": serializers.ListField(child=serializers.DictField()),
                     },
                 ),
@@ -167,9 +164,6 @@ class ApiDominiTask(DomainAPIView):
                     name="DominiTaskData",
                     fields={
                         "count": serializers.IntegerField(),
-                        "page": serializers.IntegerField(),
-                        "page_size": serializers.IntegerField(),
-                        "total_pages": serializers.IntegerField(),
                         "results": serializers.ListField(child=serializers.DictField()),
                     },
                 ),
@@ -216,9 +210,6 @@ class ApiTaskRegistry(DomainAPIView):
                     name="TaskRegistryData",
                     fields={
                         "count": serializers.IntegerField(),
-                        "page": serializers.IntegerField(),
-                        "page_size": serializers.IntegerField(),
-                        "total_pages": serializers.IntegerField(),
                         "results": serializers.ListField(child=serializers.DictField()),
                     },
                 ),
@@ -272,9 +263,6 @@ class ApiTaskImplementations(DomainAPIView):
                     name="TaskImplData",
                     fields={
                         "count": serializers.IntegerField(),
-                        "page": serializers.IntegerField(),
-                        "page_size": serializers.IntegerField(),
-                        "total_pages": serializers.IntegerField(),
                         "results": serializers.ListField(child=serializers.DictField()),
                     },
                 ),
@@ -347,9 +335,6 @@ class ApiJobRuns(DomainAPIView):
                     name="JobRunsData",
                     fields={
                         "count": serializers.IntegerField(),
-                        "page": serializers.IntegerField(),
-                        "page_size": serializers.IntegerField(),
-                        "total_pages": serializers.IntegerField(),
                         "results": serializers.ListField(child=serializers.DictField()),
                     },
                 ),
@@ -399,9 +384,6 @@ class ApiJobSummary(DomainAPIView):
                     name="JobSummaryData",
                     fields={
                         "count": serializers.IntegerField(),
-                        "page": serializers.IntegerField(),
-                        "page_size": serializers.IntegerField(),
-                        "total_pages": serializers.IntegerField(),
                         "results": serializers.ListField(child=serializers.DictField()),
                     },
                 ),

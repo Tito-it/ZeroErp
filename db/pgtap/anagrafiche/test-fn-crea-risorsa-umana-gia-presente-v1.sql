@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: anagrafiche.fn_crea_risorsa_umana_v2 — UNA PERSONA E' UNA RISORSA
+-- Test: anagrafiche.fn_crea_risorsa_umana — UNA PERSONA E' UNA RISORSA
 --   UMANA SOLA (uq_risorse_umane_soggetto_ruolo, non parziale).
 --   ChangeSet: 20261002-01 (il guard), codice E_RISORSA_UMANA_GIA_PRESENTE.
 --   Richiesta del team BE, 2026-10-02.
@@ -93,7 +93,7 @@ $$;
 CREATE OR REPLACE FUNCTION pg_temp.bb_diretto() RETURNS text
 LANGUAGE sql AS $$
     SELECT format(
-        $f$SELECT anagrafiche.fn_crea_risorsa_umana_v2(
+        $f$SELECT anagrafiche.fn_crea_risorsa_umana(
                p_soggetto_id  := %L::uuid,
                p_qualifica_id := %s)$f$,
         (SELECT soggetto_id FROM _op), (SELECT qualifica_id FROM _q))

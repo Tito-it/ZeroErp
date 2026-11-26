@@ -45,7 +45,7 @@ Tutti gli endpoint sono riservati agli amministratori (`AdminAPIView` → `IsAdm
 - `order_by` (str, default `utility_descrizione`) — whitelist:
   `utility_codice`, `utility_descrizione`, `tipo_ruolo_codice`,
   `tipo_ruolo_descrizione`, `attivo`, `data_insert`, `data_update`
-- `order_dir` (`asc`/`desc`). Assente: il default della lista — `asc` sulle colonne testo, `desc` sulle colonne data (`data_insert`, `data_update`; dal 2026-10-20, prima `asc`)
+- `order_dir` (`asc`/`desc`). Assente: `asc` su ogni colonna, date comprese (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata)
 
 ### Body POST
 
@@ -79,9 +79,6 @@ immutabili per scelta di progetto).
 {
   "data": {
     "count": 12,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 1,
@@ -122,9 +119,6 @@ lista è `multi_emittente` (ogni riga è un emittente) e la vista è admin.
 {
   "data": {
     "count": 2,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "emittente_id": 1,

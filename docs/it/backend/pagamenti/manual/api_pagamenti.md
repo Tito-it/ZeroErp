@@ -110,7 +110,7 @@ quindi `vendite` non può chiedere un saldo a `pagamenti`.
 | Regola | Dettaglio |
 | --- | --- |
 | Envelope | `{"data": …, "meta": {"request_id"}}`; errori nell'envelope standard di [api.md](../../../dev/api.md) |
-| Paginazione | **`limit`/`offset`**, su ogni lista (`pagina_da_query`): `limit` default 25, max 200, `offset` default 0; un valore non intero (`limit_invalid`/`offset_invalid`), un `limit` fuori da 1..200 (`limit_fuori_limiti_1_200`) o un `offset` negativo (`offset_negativo`) è un `400 E_VALIDATION_INPUT` — il fuori limite dal 2026-10-21, prima si riportava nei limiti in silenzio. ⛔ `page`/`page_size` in query sono un `400 E_VALIDATION_INPUT` dal 2026-10-21 (prima erano il contratto di distinte, coda righe, rate fuori capienza, eccedenze, enti incasso). Risposta `{count, page, page_size, total_pages, results}`, con `page` ricavata dall'offset (`envelope_da_offset`). ⛔ `count` viene da `COUNT(*) OVER ()` nella stessa valutazione, mai da `len(results)`. ⚠️ Le tre liste nate su `<ListaConfigurabile>` con `createListaStore` — `fatture/{id}/sistemazioni/` (02/09), `rate/` (17/09) e `distinte/{id}/righe/` (18/09) — rispondono il solo `{count, results}` |
+| Paginazione | **`limit`/`offset`**, su ogni lista (`pagina_da_query`): `limit` default 25, max 200, `offset` default 0; un valore non intero (`limit_invalid`/`offset_invalid`), un `limit` fuori da 1..200 (`limit_fuori_limiti_1_200`) o un `offset` negativo (`offset_negativo`) è un `400 E_VALIDATION_INPUT` — il fuori limite dal 2026-10-21, prima si riportava nei limiti in silenzio. ⛔ `page`/`page_size` in query sono un `400 E_VALIDATION_INPUT` dal 2026-10-21 (prima erano il contratto di distinte, coda righe, rate fuori capienza, eccedenze, enti incasso). Risposta `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md); fino al 2026-11-24 `{count, page, page_size, total_pages, results}` da `envelope_da_offset`, ritirato). ⛔ `count` viene da `COUNT(*) OVER ()` nella stessa valutazione, mai da `len(results)`. Le tre liste nate su `<ListaConfigurabile>` con `createListaStore` — `fatture/{id}/sistemazioni/` (02/09), `rate/` (17/09) e `distinte/{id}/righe/` (18/09) — rispondevano già il solo `{count, results}` |
 | Ordinamento | `order_by` su una **whitelist per lista** (tabella sotto) — il nome è quello **fisico** della colonna, come la lista lo espone; `order_dir` `asc\|desc`. Fuori whitelist → `400 E_PAGAMENTI_VALIDATION` |
 | Query param opzionali | contratto degli helper `qp_*_optional`: vuoto = assente, malformato = `400` |
 | Vocabolari a `CHECK` | `stato`, `origine`, `coda`, `motivo`, `chi_e_in_credito`, `tipo`, `destinazione`: un valore fuori vocabolario è un **400**, mai una lista vuota — su due valori possibili una lista vuota è indistinguibile da «non c'è niente», cioè dalla risposta più rassicurante |
@@ -126,9 +126,9 @@ quindi `vendite` non può chiedere un saldo a `pagamenti`.
 | --- | --- | --- |
 | `distinte/` | `data_contabile` · `codice` · `stato_descrizione` · `origine` · `centro_descrizione` · `totale_righe` | `data_contabile` DESC |
 | `righe/` | `data_pagamento` · `importo` · `stato_descrizione` · `contabile_codice` | `data_pagamento` DESC |
-| `distinte/{id}/righe/` (+ `export/`) | `id` · `data_pagamento` · `data_valuta` · `data_operazione` · `riferimento_ente` · `importo` · `billing_account_descrizione` · `billing_account_codice` · `fattura_numero_documento` (coppia `(fattura_numero, fattura_serie)`, non il testo) · `scadenza_numero_rata` · `scadenza_data` · `stato_descrizione` | `id` **DESC** — ⭐ **l'ultima riga digitata in cima** (decisione di Tid del 02/09 sugli atti di sistemazione, stessa ragione: da quando la lista impagina, una riga appena scritta in ordine crescente finirebbe nell'ultima pagina); le quattro date partono DESC al primo click |
+| `distinte/{id}/righe/` (+ `export/`) | `id` · `data_pagamento` · `data_valuta` · `data_operazione` · `riferimento_ente` · `importo` · `billing_account_descrizione` · `billing_account_codice` · `fattura_numero_documento` (coppia `(fattura_numero, fattura_serie)`, non il testo) · `scadenza_numero_rata` · `scadenza_data` · `stato_descrizione` | `id` **DESC** — ⭐ **l'ultima riga digitata in cima** (decisione di Tid del 02/09 sugli atti di sistemazione, stessa ragione: da quando la lista impagina, una riga appena scritta in ordine crescente finirebbe nell'ultima pagina); senza `order_dir` le quattro date vanno in crescente, come ogni colonna (la regola «le date partono DESC» è ritirata dal 2026-11-24) |
 | `rate/fuori-capienza/` | `data_scadenza` · `motivo` · `residuo` · `importo_rata` · `fattura_numero` · `numero_documento` (dal 17/09: ordina per la coppia `(fattura_numero, serie)`, non per il testo) | `data_scadenza` DESC |
-| `rate/` | `numero_documento` (coppia `(numero, serie)`) · `data` · `ragione_sociale_completa` · `ba_codice` · `numero_rata` · `data_scadenza` · `importo` · `totale_doc` · `stato_descrizione` — ⛔ **non** i tre saldi: non stanno nella vista, arrivano dopo la pagina | `data_scadenza` **ASC** — è una **coda**, la rata più vecchia prima; le due date hanno verso naturale DESC quando le si chiede senza `order_dir` |
+| `rate/` | `numero_documento` (coppia `(numero, serie)`) · `data` · `ragione_sociale_completa` · `ba_codice` · `numero_rata` · `data_scadenza` · `importo` · `totale_doc` · `stato_descrizione` — ⛔ **non** i tre saldi: non stanno nella vista, arrivano dopo la pagina | `data_scadenza` **ASC** — è una **coda**, la rata più vecchia prima; senza `order_dir` la colonna chiesta va in crescente; il default della lista resta il suo |
 | `eccedenze/` | `eccedenza_cliente` · `cliente_ragione_sociale` · `eccedenza` · `fattura_data` · `fattura_numero` | `eccedenza_cliente` DESC — ⭐ **per cliente, non per documento**: la decisione si prende guardando il cliente |
 | `fatture/{id}/sistemazioni/` | `destinazione` · `importo` · `stato` · `motivo` · `data_esecuzione` | quello del repository (`data_esecuzione` DESC) |
 | `enti-incasso/` | `codice` · `descrizione` · `tipo` · `centro_descrizione` | `codice` ASC |
@@ -768,6 +768,15 @@ registra_distinta`): scrive un movimento. Chi la chiama: la coda «Sospese» e i
 drawer di una distinta chiusa («Abbina e registra»). ⛔ Mai un job: la tardiva
 è una decisione di chi ha identificato il denaro.
 
+⭐ **Il cancello lo ricontrolla anche il DB** (dal 2026-11-25, giro 9 di
+`brief-db-porte-aperte-dalla-sola-guc` §11). La madre è `SECURITY DEFINER`: in
+prima riga chiede `registra_distinta` (`403` `E_PERMESSO_NEGATO` a chi non ce
+l'ha) e all'ingresso rimette il perimetro. Una riga fuori perimetro è
+`E_RIGA_CONTABILE_NON_TROVATA` (404), come prima; una fattura fuori perimetro
+è `E_SCOPE_EMITTENTE` (403), detta dalla madre e non più dalla policy del
+movimento. La porta della quarta mossa si apre solo dentro la madre: la GUC
+accesa dall'app non la apre. Il backend non accende niente.
+
 ### `GET /api/v1/pagamenti/righe/`
 
 La coda del riconciliatore: le righe **di tutte le distinte** in uno degli
@@ -1212,6 +1221,15 @@ L'atto si scarta e resta a registro con la sua ragione.
 ⚠️ **Il motivo è obbligatorio se l'atto non ne aveva già uno**: lo pretende il
 guard sui dati (`E_SISTEMAZIONE_MOTIVO_OBBLIGATORIO`, 400), che sa se ce n'era
 uno — il backend non replica la regola. Risponde `{ "sistemazione": {…} }`.
+
+**Chi può annullare: il livello `TUTTO` sull'area `pagamenti`**, lo stesso che
+l'endpoint chiede a una `POST`. Dal 2026-11-25 (giro 8 di
+`brief-db-porte-aperte-dalla-sola-guc` §13, D-U) lo ricontrolla anche il verbo
+DB, che è `SECURITY DEFINER`: chi non ce l'ha riceve `403` `E_PERMESSO_NEGATO`.
+Il verbo rimette all'ingresso il perimetro della sistemazione
+(`E_SISTEMAZIONE_NON_TROVATA`, 404, come prima) e fa cadere il fondo di un
+riporto dalla primitiva del fondo. Non serve anche `governa_fondo_fattura`:
+chi annulla una sistemazione non sta governando il fondo.
 
 ⭐ **E dal 2026-08-31 si annulla anche un atto CONFERMATO — sul solo
 `RIPORTO`** (decisioni G-4/G-5 di Tid, rev. del trigger di transizione). Il

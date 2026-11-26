@@ -24,8 +24,9 @@ Indice test eseguiti:
 13) test_missing_required_fields_empty_for_valid  — VALID → lista vuota
 14) test_missing_required_fields_none_returns_all — None → tutti i required
 15) test_missing_required_fields_empty_dict_returns_all — {} → tutti i required
-16) test_crea_contatto_validato_duplicato_tipo — ogni unicita' per tipo → E_ANAG_DUPLICATO col campo tipo_contatto_id
+16) test_crea_contatto_validato_non_traduce_le_unicita — la creazione lascia risalire l'IntegrityError (traduce il verbo del DB)
 17) test_crea_contatto_validato_incompleto — contatto non VALIDO → E_CONTATTO_INCOMPLETO, nessuna scrittura
+18) test_update_contatto_e_ruolo_duplicato_tipo — la modifica (soggetto e ruolo) traduce ogni unicita' in E_ANAG_DUPLICATO sul tipo
 """
 
 from unittest import TestCase
@@ -137,28 +138,23 @@ class TestCreaContattoValidato(TestCase):
 
     _VALIDO = {"nominativo": "Mario Rossi", "tipo_contatto_id": 3}
 
-    # 16. Le tre unicita' (soggetto, ruolo, ruolo per istanza) si traducono
-    #     sul campo che l'operatore sceglie, non in un `E_DATABASE`.
-    def test_crea_contatto_validato_duplicato_tipo(self):
+    # 16. La creazione NON traduce le unicita': dal 2026-11-25 lo fa il verbo
+    #     del DB (`E_CONTATTO_TIPO_DUPLICATO`); un IntegrityError che arrivasse
+    #     risale com'e', senza una seconda sede che lo travesta.
+    def test_crea_contatto_validato_non_traduce_le_unicita(self):
         from unittest.mock import MagicMock
 
+        from django.db import IntegrityError
+
         from apps.anagrafiche.services.contatti_service import crea_contatto_validato
-        from apps.core.services.service_errors import ServiceError
         from apps.core.tests.db_error_fakes import SQLSTATE_UNICITA, make_integrity_error
 
-        for vincolo in (
-            "uq_contatti_soggetto_tipo",
-            "uq_contatti_ruolo_tipo_no_istanza",
-            "uq_contatti_ruolo_istanza_tipo",
-        ):
-            with self.subTest(vincolo=vincolo):
-                repo = MagicMock()
-                repo.crea_contatto.side_effect = make_integrity_error(SQLSTATE_UNICITA, vincolo=vincolo)
-                with self.assertRaises(ServiceError) as ctx:
-                    crea_contatto_validato(repo, "s", dict(self._VALIDO))
-                self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
-                # Il canale del campo singolo (il traduttore lo porta in `error.fields`).
-                self.assertEqual(ctx.exception.context.get("field"), "tipo_contatto_id")
+        repo = MagicMock()
+        repo.crea_contatto.side_effect = make_integrity_error(
+            SQLSTATE_UNICITA, vincolo="uq_contatti_soggetto_tipo",
+        )
+        with self.assertRaises(IntegrityError):
+            crea_contatto_validato(repo, "s", dict(self._VALIDO))
 
     # 17. Il contatto si pretende VALIDO: niente scrittura altrimenti.
     def test_crea_contatto_validato_incompleto(self):
@@ -174,3 +170,37 @@ class TestCreaContattoValidato(TestCase):
         self.assertEqual(ctx.exception.fields, ("tipo_contatto_id",))
         repo.crea_contatto.assert_not_called()
 
+
+class TestModificaContattoUnicita(TestCase):
+    """La MODIFICA traduce le tre unicita' sul tipo (`VINCOLI_CONTATTO`)."""
+
+    # 18. Soggetto e ruolo: ogni indice e' `E_ANAG_DUPLICATO` sul tipo contatto.
+    def test_update_contatto_e_ruolo_duplicato_tipo(self):
+        from unittest.mock import patch
+
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        from apps.core.services.service_errors import ServiceError
+        from apps.core.tests.db_error_fakes import SQLSTATE_UNICITA, make_integrity_error
+
+        chiamate = {
+            "soggetto": lambda svc: svc.update_contatto(1, {"tipo_contatto_id": 3}, soggetto_id="s"),
+            "ruolo": lambda svc: svc.update_contatto_ruolo(10, 1, {"tipo_contatto_id": 3}),
+        }
+        for vincolo in (
+            "uq_contatti_soggetto_tipo",
+            "uq_contatti_ruolo_tipo_no_istanza",
+            "uq_contatti_ruolo_istanza_tipo",
+        ):
+            for nome, chiama in chiamate.items():
+                with self.subTest(vincolo=vincolo, rotta=nome), \
+                        patch(
+                            "apps.anagrafiche.services.soggetti_service.SoggettiRepository",
+                            autospec=True,
+                        ) as repo:
+                    repo.return_value.update_contatto.side_effect = make_integrity_error(
+                        SQLSTATE_UNICITA, vincolo=vincolo,
+                    )
+                    with self.assertRaises(ServiceError) as ctx:
+                        chiama(SoggettiService())
+                    self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
+                    self.assertEqual(ctx.exception.context.get("field"), "tipo_contatto_id")

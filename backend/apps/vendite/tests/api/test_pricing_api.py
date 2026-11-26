@@ -76,6 +76,7 @@ class _BaseApiTest(JwtMockedApiTest):
 
 
 class TestResolve(_BaseApiTest):
+    come_super_admin = True
     # Scopo: risoluzione con emittente derivato dal JWT operatore.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM)
@@ -225,6 +226,20 @@ _LIMITI_PS = "apps.vendite.api.views_pricing.ParameterService"
 
 
 class TestLimitiUtente(_BaseApiTest):
+    come_super_admin = True
+
+    # L'emittente di chi agisce, finto: dal 2026-11-25 la view lo chiede a
+    # `PermissionResolver.get_emittente_for_user` (E1-3), che senza patch
+    # andrebbe sul DB. None = «tutti gli emittenti», livello emittente saltato.
+    def setUp(self) -> None:
+        super().setUp()
+        patcher = patch(
+            "apps.vendite.api.views_pricing.PermissionResolver.get_emittente_for_user",
+            return_value=None,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     # Scopo: endpoint ritorna i default "0/0" quando nessun override.
     #        Post-ottimizzazione O1 usa get_defaults (single round-trip).
     @patch(_AUTH, return_value=(Mock(id=1), None))
@@ -274,6 +289,27 @@ class TestLimitiUtente(_BaseApiTest):
         self.assertEqual(resp.status_code, 200)
         _, kwargs = ps_cls.return_value.get_defaults.call_args
         self.assertIsNone(kwargs.get("categoria_cliente_id"))
+
+    # Scopo: l'emittente della cascata e' quello di chi agisce (l'emittente
+    # scelto in alto), non il gestore globale (E1-3 di brief-be-fe-BB-audit,
+    # 2026-11-25).
+    @patch(
+        "apps.vendite.api.views_pricing.PermissionResolver.get_emittente_for_user",
+        return_value=32,
+    )
+    @patch(_AUTH, return_value=(Mock(id=1), None))
+    @patch(_LIMITI_PS)
+    def test_limiti_utente_emittente_di_chi_agisce(self, ps_cls, _auth, _emittente):
+        ps_cls.return_value.get_defaults.return_value = {
+            "VENDITE_MAX_SCONTO_PCT": "10",
+            "VENDITE_MAX_MAGGIORAZIONE_PCT": "10",
+        }
+
+        resp = self.client.get(_LIMITI_BASE)
+
+        self.assertEqual(resp.status_code, 200)
+        _, kwargs = ps_cls.return_value.get_defaults.call_args
+        self.assertEqual(kwargs.get("emittente_fiscale_id"), 32)
 
     # Scopo: con billing_account_id la view recupera la categoria del BA
     # via BillingAccountRepository e la propaga a ParameterService.

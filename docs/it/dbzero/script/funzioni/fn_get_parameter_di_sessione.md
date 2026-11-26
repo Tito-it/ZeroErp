@@ -19,7 +19,7 @@ CREATE OR REPLACE FUNCTION script.fn_get_parameter_di_sessione(p_code character 
 AS $function$
 DECLARE
     v_user_id    config.parameter_overrides.django_user_id%TYPE :=
-        NULLIF(current_setting('app.current_user_id', true), '')::integer;
+        script.fn_utente_di_sessione('script.fn_get_parameter_di_sessione');
     v_emittente  config.parameter_overrides.emittente_fiscale_id%TYPE :=
         NULLIF(current_setting('app.current_emittente_id', true), '')::bigint;
     -- %TYPE[] non esiste: tipo esplicito, come in fn_get_parameter_full

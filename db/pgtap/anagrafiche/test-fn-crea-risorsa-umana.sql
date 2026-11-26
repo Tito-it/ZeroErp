@@ -6,7 +6,7 @@
 --   SET CONSTRAINTS ALL IMMEDIATE nel punto in cui l'unita' di lavoro e' completa.
 -- pgTAP test per Zero ERP
 --
--- Test anagrafiche.fn_crea_risorsa_umana_v2 (building block):
+-- Test anagrafiche.fn_crea_risorsa_umana (building block):
 --   1. Precondizione: esiste qualifica attiva e UO attiva
 --   2. Setup: soggetto PF 1 (senza utente)
 --   3. Setup: soggetto PF 2 (con utente)
@@ -161,7 +161,7 @@ SET auth_user_id = (
 -- =========================================================
 SELECT lives_ok(
     format(
-      $$SELECT anagrafiche.fn_crea_risorsa_umana_v2(
+      $$SELECT anagrafiche.fn_crea_risorsa_umana(
         p_soggetto_id := %L::uuid,
         p_qualifica_id := %s,
         p_unita_organizzativa_id := %s
@@ -170,7 +170,7 @@ SELECT lives_ok(
       (SELECT qualifica_id FROM tmp_ru_ctx),
       (SELECT uo_id FROM tmp_ru_ctx)
     ),
-    '4. fn_crea_risorsa_umana_v2 senza utente eseguita'
+    '4. fn_crea_risorsa_umana senza utente eseguita'
   );
 
 -- =========================================================
@@ -194,7 +194,7 @@ SELECT ok(
 -- =========================================================
 SELECT lives_ok(
     format(
-      $$SELECT anagrafiche.fn_crea_risorsa_umana_v2(
+      $$SELECT anagrafiche.fn_crea_risorsa_umana(
         p_soggetto_id := %L::uuid,
         p_qualifica_id := %s,
         p_unita_organizzativa_id := %s,
@@ -207,7 +207,7 @@ SELECT lives_ok(
       (SELECT uo_id FROM tmp_ru_ctx),
       (SELECT auth_user_id FROM tmp_ru_ctx)
     ),
-    '6. fn_crea_risorsa_umana_v2 con utente eseguita'
+    '6. fn_crea_risorsa_umana con utente eseguita'
   );
 
 -- =========================================================
@@ -234,7 +234,7 @@ SELECT ok(
 -- =========================================================
 SELECT throws_matching(
     format(
-      $$SELECT anagrafiche.fn_crea_risorsa_umana_v2(
+      $$SELECT anagrafiche.fn_crea_risorsa_umana(
         p_soggetto_id := NULL,
         p_qualifica_id := %s
       ) $$,
@@ -249,7 +249,7 @@ SELECT throws_matching(
 -- =========================================================
 SELECT throws_matching(
     format(
-      $$SELECT anagrafiche.fn_crea_risorsa_umana_v2(
+      $$SELECT anagrafiche.fn_crea_risorsa_umana(
         p_soggetto_id := %L::uuid,
         p_qualifica_id := %s,
         p_unita_organizzativa_id := -999

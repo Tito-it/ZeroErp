@@ -106,6 +106,7 @@ from django.db import connection, transaction
 
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 from apps.core.tests._seed_csv import seed_colonne_attive, seed_ui
+from apps.core.tests._helpers.perimetro_admin_globale_di_prova import perimetro_admin_globale_di_prova
 from apps.core.tests.test_liste_configurabili_seed import (
     _LISTE,
     campi_gemelli_per_formato,
@@ -127,6 +128,13 @@ _MESE = date(2026, 1, 1)
 #    che non esiste va benissimo: torna zero righe, e le colonne le dichiara
 #    comunque il cursore.
 _ID_FINTO = 999_999_999
+
+# ⭐ L'utente delle liste con perimetro emittente (2026-11-24). Il presidio
+#    guarda colonne e ordinamenti, non il perimetro: il risolutore lo risponde
+#    il BB `perimetro_admin_globale_di_prova` sulla classe («nessuna
+#    restrizione»), quindi questo id NON si interroga. Fino a quel giorno si
+#    passava `auth_user_id=None`, che ora solleva `E_SCOPE_SENZA_UTENTE`.
+_UTENTE_FINTO = _ID_FINTO
 
 
 # Scopo: come si esercita una lista, cioe' l'unica cosa che il censimento non
@@ -686,6 +694,7 @@ _ESERCIZI: dict[str, Esercizio] = {
         chiama=lambda ob, od: _r(
             "apps.vendite.db.vendite_repository", "VenditeRepository"
         ).list_lotti(
+            auth_user_id=_UTENTE_FINTO,
             competenza_mese=None,
             utility_id=None,
             stato_lotto=None,
@@ -810,7 +819,9 @@ _ESERCIZI: dict[str, Esercizio] = {
         dove="vendite/db/vendite_repository.py::list_fondi_fattura_da_decidere",
         chiama=lambda ob, od: _r(
             "apps.vendite.db.vendite_repository", "VenditeRepository"
-        ).list_fondi_fattura_da_decidere(limit=1, offset=0, **_ordine(ob, od)),
+        ).list_fondi_fattura_da_decidere(
+            auth_user_id=_UTENTE_FINTO, limit=1, offset=0, **_ordine(ob, od),
+        ),
     ),
     "vendite.lotto_fatture": Esercizio(
         dove="vendite/db/vendite_repository.py::list_lotto_fatture",
@@ -822,6 +833,7 @@ _ESERCIZI: dict[str, Esercizio] = {
         chiama=lambda ob, od: _r(
             "apps.vendite.db.vendite_repository", "VenditeRepository"
         ).list_lotto_fatture(
+            auth_user_id=_UTENTE_FINTO,
             lotto_id=_ID_FINTO,
             stato_esecuzione=None,
             limit=1,
@@ -839,6 +851,7 @@ _ESERCIZI: dict[str, Esercizio] = {
         chiama=lambda ob, od: _r(
             "apps.vendite.db.vendite_repository", "VenditeRepository"
         ).list_lotto_gruppi(
+            auth_user_id=_UTENTE_FINTO,
             lotto_id=_ID_FINTO,
             limit=1,
             offset=0,
@@ -1002,7 +1015,7 @@ _ESERCIZI: dict[str, Esercizio] = {
         chiama=lambda ob, od: _r(
             "apps.pagamenti.db.pagamenti_repository", "PagamentiRepository"
         ).list_rate_paginata(
-            auth_user_id=None, solo_aperte=True, limit=1, offset=0,
+            auth_user_id=_UTENTE_FINTO, solo_aperte=True, limit=1, offset=0,
             **_ordine(ob, od, None),
         ),
     ),
@@ -1080,7 +1093,7 @@ _ESERCIZI: dict[str, Esercizio] = {
         chiama=lambda ob, od: _r(
             "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
         ).list_documenti(
-            _famiglia("inventari"), auth_user_id=None, limit=1, offset=0,
+            _famiglia("inventari"), auth_user_id=_UTENTE_FINTO, limit=1, offset=0,
             **_ordine(ob, od, None),
         ),
     ),
@@ -1089,7 +1102,7 @@ _ESERCIZI: dict[str, Esercizio] = {
         chiama=lambda ob, od: _r(
             "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
         ).list_documenti(
-            _famiglia("rettifiche"), auth_user_id=None, limit=1, offset=0,
+            _famiglia("rettifiche"), auth_user_id=_UTENTE_FINTO, limit=1, offset=0,
             **_ordine(ob, od, None),
         ),
     ),
@@ -1119,7 +1132,7 @@ _ESERCIZI: dict[str, Esercizio] = {
         dove="magazzino/db/magazzino_repository.py::list_disponibilita",
         chiama=lambda ob, od: _r(
             "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
-        ).list_disponibilita(auth_user_id=None, limit=1, offset=0, **_ordine(ob, od, None)),
+        ).list_disponibilita(auth_user_id=_UTENTE_FINTO, limit=1, offset=0, **_ordine(ob, od, None)),
     ),
     "magazzino.disponibilita_articoli": Esercizio(
         dove="magazzino/db/magazzino_repository.py::list_disponibilita_articoli",
@@ -1131,7 +1144,7 @@ _ESERCIZI: dict[str, Esercizio] = {
         dove="magazzino/db/magazzino_repository.py::list_movimenti",
         chiama=lambda ob, od: _r(
             "apps.magazzino.db.magazzino_repository", "MagazzinoRepository"
-        ).list_movimenti(auth_user_id=None, limit=1, offset=0, **_ordine(ob, od, None)),
+        ).list_movimenti(auth_user_id=_UTENTE_FINTO, limit=1, offset=0, **_ordine(ob, od, None)),
     ),
     # ── Le tre anagrafiche di magazzino (2026-09-21, piano anagrafiche-fuori-
     #    dal-pannello-config). I lotti si leggono per articolo: un uuid finto
@@ -1140,7 +1153,7 @@ _ESERCIZI: dict[str, Esercizio] = {
         dove="magazzino/db/anagrafiche_magazzino_repository.py::list_magazzini",
         chiama=lambda ob, od: _r(
             "apps.magazzino.db.anagrafiche_magazzino_repository", "AnagraficheMagazzinoRepository"
-        ).list_magazzini(auth_user_id=None, limit=1, offset=0, **_ordine(ob, od, None)),
+        ).list_magazzini(auth_user_id=_UTENTE_FINTO, limit=1, offset=0, **_ordine(ob, od, None)),
     ),
     "magazzino.ubicazioni": Esercizio(
         dove="magazzino/db/anagrafiche_magazzino_repository.py::list_ubicazioni",
@@ -1152,7 +1165,7 @@ _ESERCIZI: dict[str, Esercizio] = {
         dove="magazzino/db/anagrafiche_magazzino_repository.py::list_lotti",
         chiama=lambda ob, od: _r(
             "apps.magazzino.db.anagrafiche_magazzino_repository", "AnagraficheMagazzinoRepository"
-        ).list_lotti(auth_user_id=None, articolo_id="00000000-0000-0000-0000-000000000000", limit=1, offset=0, **_ordine(ob, od, None)),
+        ).list_lotti(auth_user_id=_UTENTE_FINTO, articolo_id="00000000-0000-0000-0000-000000000000", limit=1, offset=0, **_ordine(ob, od, None)),
     ),
 }
 
@@ -1216,6 +1229,7 @@ def _tutte_le_query() -> list[tuple[str, Esercizio]]:
 _ESENZIONI: dict[str, str] = {}
 
 
+@perimetro_admin_globale_di_prova()
 class ListaProiezioneCampoSorgenteTests(unittest.TestCase):
     """Il legame catalogo <-> proiezione, per le liste che il DB non presidia."""
 

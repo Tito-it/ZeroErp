@@ -5,7 +5,7 @@ from uuid import uuid4
 from django.http import HttpRequest, HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 
-from apps.core.api.payload_validators import optional_uuid
+from apps.core.api.payload_validators import qp_uuid_optional
 from apps.core.api.retry_policies import get_idempotency_key
 from apps.core.services.request_context import clear_request_context, set_request_context
 
@@ -19,9 +19,11 @@ from apps.core.services.request_context import clear_request_context, set_reques
 #    solo log (S-1, 2026-09-27). Non valido = se ne genera uno nuovo, senza
 #    rifiutare la richiesta: la correlazione e' un aiuto, non un requisito.
 #    In forma canonica, anche nella risposta: niente valori lunghi rimandati.
+# ⭐ Un header e' testo come la query string: lo legge `qp_uuid_optional`, non
+#    il lettore del corpo JSON (2026-11-24, brief-be-fe-BB-audit §2).
 def _request_id_dal_client(request: HttpRequest) -> str | None:
     try:
-        return optional_uuid({"id": request.headers.get("X-Request-ID")}, "id")
+        return qp_uuid_optional(request.headers.get("X-Request-ID"), "X-Request-ID")
     except ValueError:
         return None
 

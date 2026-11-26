@@ -18,7 +18,8 @@ CREATE OR REPLACE FUNCTION script.fn_check_documento_interno_registrabile(p_fami
  STABLE
 AS $function$
 -- Scopo: elencare i motivi che impediscono di REGISTRARE un documento
---        interno di magazzino — un inventario o una rettifica. Funzione
+--        interno di magazzino — un inventario, una rettifica o un
+--        trasferimento. Funzione
 --        PURA (fn_check_*): nessuna scrittura, nessun raise di dominio
 --        salvo i due guard di chiamata (parametro, documento non letto).
 -- Consumatori: magazzino.fn_posta_inventario e magazzino.fn_posta_rettifica,
@@ -53,11 +54,17 @@ DECLARE
     v_primo        jsonb;
     -- rev 2026-09-28: il magazzino di ARRIVO del trasferimento interno.
     v_magazzino_to magazzino.trasferimenti.magazzino_id_to%TYPE;
+    -- La riga del registro delle famiglie (nomi di tabella e di colonna).
+    v_fam          record;
 BEGIN
     -- ⛔ Guard di PARAMETRO: forme che nessuna interfaccia produce. TECNICO,
     --    e non E_PARAMETRO_INVALIDO, che e' un debito e non una sede.
-    IF p_famiglia IS NULL
-       OR p_famiglia NOT IN ('INVENTARIO', 'RETTIFICA', 'TRASFERIMENTO')
+    -- La famiglia e le sue tabelle: dal registro, la sede unica
+    -- (magazzino.fn_documento_interno_famiglia). Nessuna riga = la famiglia
+    -- non esiste.
+    SELECT f.* INTO v_fam FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f;
+
+    IF v_fam.famiglia IS NULL
        OR p_documento_id IS NULL OR p_documento_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_check_documento_interno_registrabile',
@@ -73,24 +80,12 @@ BEGIN
     -- La testata, sotto RLS. ⚠️ «Non trovata» vuol dire «non esiste» oppure
     -- «non e' nel tuo perimetro», e le due risposte restano indistinguibili
     -- (convenzione no-leak).
-    IF p_famiglia = 'INVENTARIO' THEN
-        SELECT i.magazzino_id, i.stato_mag_inventario
-          INTO v_magazzino_id, v_stato
-          FROM magazzino.inventari i
-         WHERE i.id = p_documento_id;
-    ELSIF p_famiglia = 'RETTIFICA' THEN
-        SELECT t.magazzino_id, t.stato_mag_rettifiche
-          INTO v_magazzino_id, v_stato
-          FROM magazzino.rettifiche t
-         WHERE t.id = p_documento_id;
-    ELSE
-        -- rev 2026-09-28: il trasferimento interno (D-L2-g). Il magazzino di
-        -- riferimento e' quello di PARTENZA; l'arrivo serve al motivo 3.
-        SELECT t.magazzino_id_from, t.magazzino_id_to, t.stato_trasferimento
-          INTO v_magazzino_id, v_magazzino_to, v_stato
-          FROM magazzino.trasferimenti t
-         WHERE t.id = p_documento_id;
-    END IF;
+    -- Il magazzino di riferimento e' quello del perimetro (per il
+    -- trasferimento la PARTENZA). Nomi dal registro, quotati: mai da un input.
+    EXECUTE format('SELECT t.%I, t.%I FROM magazzino.%I t WHERE t.id = $1',
+                   v_fam.colonna_magazzino, v_fam.colonna_stato, v_fam.tabella)
+       INTO v_magazzino_id, v_stato
+      USING p_documento_id;
 
     -- ⛔ Non si risponde [] su un documento che non si legge: sarebbe «si
     --    puo' registrare» detto di una cosa che non si vede. Stesso codice
@@ -140,19 +135,10 @@ BEGIN
     -- ============================================================
     -- MOTIVO 2 — almeno una riga: un documento vuoto non registra niente.
     -- ============================================================
-    IF p_famiglia = 'INVENTARIO' THEN
-        SELECT count(*) INTO v_n_righe
-          FROM magazzino.inventari_righe r
-         WHERE r.inventario_id = p_documento_id;
-    ELSIF p_famiglia = 'RETTIFICA' THEN
-        SELECT count(*) INTO v_n_righe
-          FROM magazzino.rettifiche_righe r
-         WHERE r.rettifica_id = p_documento_id;
-    ELSE
-        SELECT count(*) INTO v_n_righe
-          FROM magazzino.trasferimenti_righe r
-         WHERE r.trasferimento_id = p_documento_id;
-    END IF;
+    EXECUTE format('SELECT count(*) FROM magazzino.%I r WHERE r.%I = $1',
+                   v_fam.tabella_righe, v_fam.colonna_fk)
+       INTO v_n_righe
+      USING p_documento_id;
 
     IF v_n_righe = 0 THEN
         v_motivi := v_motivi || jsonb_build_object(
@@ -194,7 +180,11 @@ BEGIN
          LIMIT 1;
     ELSE
         -- rev 2026-09-28 — il TRASFERIMENTO INTERNO (D-L2-g), tre domande per
-        -- riga, in ordine di id: la prima che parla vince.
+        -- riga, in ordine di id: la prima che parla vince. L'arrivo e' una
+        -- colonna della sola famiglia: si legge qui, dove serve.
+        SELECT t.magazzino_id_to INTO v_magazzino_to
+          FROM magazzino.trasferimenti t
+         WHERE t.id = p_documento_id;
         -- (a) Nello stesso magazzino una riga deve andare da un'ubicazione a
         --     un'ALTRA: senza le due ubicazioni partenza e arrivo coincidono.
         --     (Due ubicazioni uguali le rifiuta gia' il CHECK di riga.)
@@ -279,7 +269,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_documento_interno_registrabile(p_famiglia text, p_documento_id bigint)
-IS 'I motivi che impediscono di REGISTRARE un documento interno di magazzino (p_famiglia = INVENTARIO | RETTIFICA | TRASFERIMENTO). Funzione PURA: torna [] se si puo'' registrare, altrimenti un array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. I motivi sono i TRE rifiuti delle madri del posting, in quest''ordine (precedenza dichiarata, si esce al primo): stato diverso da CONFIRM (E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA, con reason DOCUMENTO_NON_CONFERMATO | DOCUMENTO_GIA_REGISTRATO | DOCUMENTO_ANNULLATO secondo lo stato: un codice, tre tooltip), nessuna riga (E_MAG_DOCUMENTO_SENZA_RIGHE), una riga che la primitiva rifiuterebbe — li'' il `codice` e i `valori` sono quelli del PRIMO motivo di script.fn_check_riga_magazzino (la stessa funzione che magazzino.fn_scrivi_movimento chiama), mentre `reason` e `reason_key` sono del documento (RIGHE_NON_POSTABILI). Per il trasferimento lo stato e'' stato_trasferimento e le righe trasferimenti_righe, e al terzo motivo le domande per riga sono tre: nello stesso magazzino servono due ubicazioni (E_MAG_TRASFERIMENTO_STESSA_POSIZIONE), poi la partenza (magazzino di origine, ubicazione_id_da) e l''arrivo (magazzino di destinazione, ubicazione_id_a) con script.fn_check_riga_magazzino. ⭐ La chiamano le tre madri del posting (magazzino.fn_posta_inventario, fn_posta_rettifica, fn_posta_trasferimento) e la capability script.fn_available_actions_documento_interno: una sede sola, perche'' un pulsante non puo'' promettere cio'' che la madre rifiutera'' (linee-guida-sql §12.1, §12.5.2). INVOKER e STABLE: sotto RLS un documento fuori perimetro NON C''E'' e si solleva E_MAG_DOCUMENTO_NON_TROVATO, mai [] (sarebbe un fail-open).';
+IS 'I motivi che impediscono di REGISTRARE un documento interno di magazzino (p_famiglia = INVENTARIO | RETTIFICA | TRASFERIMENTO). Funzione PURA: torna [] se si puo'' registrare, altrimenti un array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. I motivi sono i TRE rifiuti delle madri del posting, in quest''ordine (precedenza dichiarata, si esce al primo): stato diverso da CONFIRM (E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA, con reason DOCUMENTO_NON_CONFERMATO | DOCUMENTO_GIA_REGISTRATO | DOCUMENTO_ANNULLATO secondo lo stato: un codice, tre tooltip), nessuna riga (E_MAG_DOCUMENTO_SENZA_RIGHE), una riga che la primitiva rifiuterebbe — li'' il `codice` e i `valori` sono quelli del PRIMO motivo di script.fn_check_riga_magazzino (la stessa funzione che magazzino.fn_scrivi_movimento chiama), mentre `reason` e `reason_key` sono del documento (RIGHE_NON_POSTABILI). La tabella della testata, quella delle righe, la colonna di stato e il magazzino di riferimento li legge dal registro delle famiglie, magazzino.fn_documento_interno_famiglia (una famiglia che il registro non conosce: E_MAG_CHIAMATA_NON_VALIDA). Per il trasferimento il magazzino di riferimento e'' quello di partenza, e al terzo motivo le domande per riga sono tre: nello stesso magazzino servono due ubicazioni (E_MAG_TRASFERIMENTO_STESSA_POSIZIONE), poi la partenza (magazzino di origine, ubicazione_id_da) e l''arrivo (magazzino di destinazione, ubicazione_id_a) con script.fn_check_riga_magazzino. ⭐ La chiamano le tre madri del posting (magazzino.fn_posta_inventario, fn_posta_rettifica, fn_posta_trasferimento) e la capability script.fn_available_actions_documento_interno: una sede sola, perche'' un pulsante non puo'' promettere cio'' che la madre rifiutera'' (linee-guida-sql §12.1, §12.5.2). INVOKER e STABLE: sotto RLS un documento fuori perimetro NON C''E'' e si solleva E_MAG_DOCUMENTO_NON_TROVATO, mai [] (sarebbe un fail-open).';
 ```
 
 </div>

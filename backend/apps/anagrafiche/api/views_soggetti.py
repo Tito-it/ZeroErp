@@ -18,8 +18,6 @@ from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.payload_validators import (
     corpo_oggetto,
-    optional_int,
-    paginated_envelope,
     parse_list_params,
     qp_bool_optional,
     qp_int_optional,
@@ -30,6 +28,7 @@ from apps.anagrafiche.services.soggetti_service import SoggettiService
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 # Codice della lista nel registry `ui.lista_definizione`. Stabile per
@@ -65,7 +64,7 @@ class SoggettiView(DomainAPIView):
     #        ha clienti solo su altri emittenti).
     def get(self, request: Request) -> JsonResponse:
         p = parse_list_params(request.query_params, default_order="ragione_sociale_completa")
-        tipo_id = optional_int({"v": request.query_params.get("tipo_soggetto_dettaglio_id")}, "v")
+        tipo_id = qp_int_optional(request.query_params.get("tipo_soggetto_dettaglio_id"), "tipo_soggetto_dettaglio_id", min_val=0)
         cache: dict = {}
         emittente_ids = PermissionResolver.get_emittenti_sr_ids(request.user, cache=cache)
         svc = SoggettiService()
@@ -75,7 +74,7 @@ class SoggettiView(DomainAPIView):
             limit=p["limit"], offset=p["offset"],
             order_by=p["order_by"], order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=inline_serializer(name="SoggettoCreateReq", fields={
@@ -286,6 +285,28 @@ class SoggettiContattiDetailView(DomainAPIView):
     def delete(self, request: Request, soggetto_id: str, contatto_id: int) -> JsonResponse:
         return success_response(
             SoggettiService().delete_contatto(soggetto_id, contatto_id)
+        )
+
+
+# =================================================================
+# Contatto predefinito (POST, azione)
+# =================================================================
+
+class SoggettiContattoPredefinitoView(DomainAPIView):
+    """POST rende il contatto il predefinito del suo contesto."""
+    area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "soggetto")
+
+    @extend_schema(
+        request=None,
+        responses={200: inline_serializer(name="ContattoPredefinitoResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: «Rendi predefinito»: il predefinito di prima perde il segno da se'
+    #        (DB). Corpo vuoto; serve l'Idempotency-Key come ogni POST.
+    def post(self, request: Request, soggetto_id: str, contatto_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda _p: SoggettiService().rendi_predefinito_contatto(soggetto_id, contatto_id),
         )
 
 
@@ -630,9 +651,7 @@ class SoggettiExportView(DomainAPIView):
             request.query_params,
             default_order="ragione_sociale_completa",
         )
-        tipo_id = optional_int(
-            {"v": request.query_params.get("tipo_soggetto_dettaglio_id")}, "v",
-        )
+        tipo_id = qp_int_optional(request.query_params.get("tipo_soggetto_dettaglio_id"), "tipo_soggetto_dettaglio_id", min_val=0)
         cache: dict = {}
         emittente_ids = PermissionResolver.get_emittenti_sr_ids(
             request.user, cache=cache,

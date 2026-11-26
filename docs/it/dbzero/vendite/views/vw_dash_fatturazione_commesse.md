@@ -45,7 +45,7 @@ SELECT 'COMMESSA'::character varying AS area,
      LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
      LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
      LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
-     CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+     CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids(script.fn_utente_di_sessione('vendite.vw_dash_fatturazione_commesse'::text)) AS sr_ids) escope)
   WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)))
   GROUP BY co.id, co.codice, co.emittente_soggetto_ruolo_id, ca.competenza_mese, sc.codice_interno, sc.codice, s.ragione_sociale_completa;
 ```

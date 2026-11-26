@@ -72,9 +72,6 @@ _MENSILE_RESPONSE = {
 
 _ATTIVITA_RESPONSE = {
     "count": 1,
-    "page": 1,
-    "page_size": 50,
-    "total_pages": 1,
     "results": [
         {
             "commessa_attivita_id": 7,
@@ -92,9 +89,6 @@ _ATTIVITA_RESPONSE = {
 
 _ERRORI_RESPONSE = {
     "count": 1,
-    "page": 1,
-    "page_size": 50,
-    "total_pages": 1,
     "results": [
         {
             "tipo_evento": "TASK_ERRORE",
@@ -108,6 +102,7 @@ _ERRORI_RESPONSE = {
 
 
 class DashboardCompetenzaApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -159,6 +154,7 @@ class DashboardCompetenzaApiTests(JwtMockedApiTest):
 
 
 class DashboardCompetenzaAttivitaApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -258,6 +254,7 @@ class DashboardCompetenzaAttivitaApiTests(JwtMockedApiTest):
 
 
 class DashboardCompetenzaCommesseApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -271,8 +268,7 @@ class DashboardCompetenzaCommesseApiTests(JwtMockedApiTest):
     @patch("apps.vendite.api.views_dashboard_competenza.fn_dash_competenza_commesse")
     def test_commesse_ok(self, mocked_fn, _mock_auth):
         mocked_fn.return_value = {
-            "count": 1, "page": 1, "page_size": 50, "total_pages": 1,
-            "results": [{
+            "count": 1, "results": [{
                 "commessa_id": 7, "commessa_codice": "COMM-0007",
                 "cliente_display": "Rossi Impianti SRL", "n_attivita": 4,
                 "n_in_ritardo": 1, "valore_tot": "3960.00",
@@ -311,7 +307,7 @@ class DashboardCompetenzaCommesseApiTests(JwtMockedApiTest):
     @patch("apps.vendite.api.views_dashboard_competenza.fn_dash_competenza_commesse")
     def test_commesse_normalizza_e_ordina(self, mocked_fn, _mock_auth):
         mocked_fn.return_value = {
-            "count": 0, "page": 1, "page_size": 50, "total_pages": 0, "results": [],
+            "count": 0, "results": [],
         }
         self.client.get(
             f"{self._URL}?competenza_mese=2026-05-01&stadio=da_emettere"
@@ -324,6 +320,7 @@ class DashboardCompetenzaCommesseApiTests(JwtMockedApiTest):
 
 
 class DashboardCompetenzaErroriApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()

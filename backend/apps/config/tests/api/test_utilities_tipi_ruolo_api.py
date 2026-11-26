@@ -295,7 +295,7 @@ class TestUtilitiesTipiRuoloUsage(JwtMockedApiTest):
             "&limit=10&offset=10",
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["data"]["page"], 2)
+        self.assertEqual(set(resp.json()["data"]), {"count", "results"})
         mock_svc_cls.return_value.list_usage.assert_called_once_with(
             4, search="acme", order_by="override_attivo", order_dir="desc",
             limit=10, offset=10,

@@ -162,6 +162,30 @@ BEGIN
                 );
             END IF;
 
+            -- ⛔ Mai su un'identita' tecnica: un processo automatico
+            --   passerebbe sopra ogni permesso. La veste che diventa
+            --   tecnica col binding gia' addosso la ferma il guard di
+            --   coerenza di anagrafiche.identita_digitali.
+            IF EXISTS (SELECT 1
+                         FROM anagrafiche.identita_digitali idg
+                        WHERE idg.id = NEW.identita_digitale_id
+                          AND idg.tecnica)
+            THEN
+                PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_SUPER_ADMIN_SU_VESTE_TECNICA',
+                    jsonb_build_object(
+                        'campo', 'identita_digitale_id',
+                        'table', TG_TABLE_NAME,
+                        'profilo_accesso_id', NEW.profilo_accesso_id,
+                        'identita_id', NEW.identita_digitale_id
+                    ),
+                    NULL::uuid,
+                    NEW.identita_digitale_id::text
+                );
+            END IF;
+
         ELSE
             -- Nuovo valore dell'enum tipo_profilo_accesso senza
             -- regola qui: fail-fast esplicito (anti-bypass).
@@ -186,7 +210,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION config.trgfn_profili_accesso_bindings_guard_coerenza()
-IS 'Guard a10 BEFORE INSERT/UPDATE su config.profili_accesso_bindings: verifica coerenza tra tipo del profilo e tipo del binding (REPARTO/PORTALE/AD_HOC/SUPER_ADMIN). Si somma al CHECK chk_profili_accesso_bindings_xor che impone una sola colonna NOT NULL. Passa a fn_log_and_raise_error entrambi i valori che il messaggio di E_PROFILO_ACCESSO_BINDING_INCOERENTE richiede (id profilo e tipo): con uno solo il guard falliva in format() senza mai dire la ragione. rev 2026-08-06: il fail-fast sul profilo inesistente solleva E_PROFILO_ACCESSO_NON_TROVATO (895) invece di E_PARAMETRO_INVALIDO — quel codice e'' nominato da 113 funzioni e la sua policy 400 e'' giusta in 111, quindi la correzione e'' qui e non nella policy (brief terzo lato §18.2).';
+IS 'Guard a10 BEFORE INSERT/UPDATE su config.profili_accesso_bindings: il tipo del profilo e la colonna del binding sono coerenti (REPARTO -> unita_organizzativa_id, PORTALE -> ruolo_applicativo, AD_HOC e SUPER_ADMIN -> identita_digitale_id), e il SUPER_ADMIN non si lega mai a un''identita'' tecnica (E_SUPER_ADMIN_SU_VESTE_TECNICA). Incoerenza: E_PROFILO_ACCESSO_BINDING_INCOERENTE, con id e tipo del profilo; profilo assente: E_PROFILO_ACCESSO_NON_TROVATO; tipo sconosciuto: E_PROFILO_ACCESSO_TIPO_NON_GESTITO. Si somma al CHECK chk_profili_accesso_bindings_xor (una sola colonna valorizzata), e parla prima di lui.';
 ```
 
 </div>

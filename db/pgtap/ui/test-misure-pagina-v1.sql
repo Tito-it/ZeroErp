@@ -19,7 +19,7 @@
 --   Il catalogo
 --    1) un default per uso: COMPATTA e PAGINA, una riga ciascuno
 --    2) fn_get_misure_pagina: misure strettamente crescenti, le stesse del catalogo,
---       e i due default quelli di ui.fn_misura_pagina_default
+--       e i due default di default_per_uso quelli di ui.fn_misura_pagina_default
 --    3) un uso fuori vocabolario -> E_UI_MISURA_PAGINA_DEFAULT_MANCANTE
 --   Il preset
 --    4) una misura fuori catalogo -> E_UI_MISURA_PAGINA_NON_AMMESSA (non 23503)
@@ -45,7 +45,8 @@
 --       funzione e tabella, non per nome (linee-guida-trigger)
 --   Gli usi dall'enum (giro 7, Q58; in coda)
 --   19) default_per_uso: una chiave per ogni valore di ui.uso_misura_pagina, col
---       default del BB; le due chiavi di prima uguali; il corpo legge l'enum
+--       default del BB; la risposta ha solo misure e default_per_uso (le due
+--       chiavi di prima ritirate da 20261122-48, BE33); il corpo legge l'enum
 --
 -- ⚠️ Gira come l'APPLICAZIONE (il backend scrive preset e preferenze). Il 16 e'
 --   rosso da owner per costruzione.
@@ -137,8 +138,8 @@ SELECT is(
                                 EXCEPT SELECT jsonb_array_elements_text(g -> 'misure'))
                     AND NOT EXISTS (SELECT jsonb_array_elements_text(g -> 'misure')
                                     EXCEPT SELECT m.misura::text FROM ui.misure_pagina m))::text,
-                   ((g ->> 'default_compatta')::int = (SELECT d_com FROM _m))::text,
-                   ((g ->> 'default_pagina')::int = (SELECT d_pag FROM _m))::text)
+                   ((g -> 'default_per_uso' ->> 'COMPATTA')::int = (SELECT d_com FROM _m))::text,
+                   ((g -> 'default_per_uso' ->> 'PAGINA')::int = (SELECT d_pag FROM _m))::text)
        FROM (SELECT ui.fn_get_misure_pagina() AS g) x),
     'true|true|true|true',
     '2) fn_get_misure_pagina: misure crescenti, le stesse del catalogo, i due default del BB');
@@ -266,13 +267,13 @@ SELECT is(
                           FROM unnest(enum_range(NULL::ui.uso_misura_pagina)) u)
                    AND (SELECT bool_and((g -> 'default_per_uso' ->> u::text)::int = ui.fn_misura_pagina_default(u::text))
                           FROM unnest(enum_range(NULL::ui.uso_misura_pagina)) u))::text,
-                   ((g ->> 'default_compatta') = (g -> 'default_per_uso' ->> 'COMPATTA')
-                   AND (g ->> 'default_pagina') = (g -> 'default_per_uso' ->> 'PAGINA'))::text,
+                   ((SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(g) k)
+                     = ARRAY['default_per_uso', 'misure'])::text,
                    (pg_get_functiondef('ui.fn_get_misure_pagina()'::regprocedure)
                      ~ 'enum_range\(NULL::ui\.uso_misura_pagina\)')::text)
        FROM (SELECT ui.fn_get_misure_pagina() AS g) x),
     'true|true|true',
-    '19) default_per_uso: un default per ogni uso dell''enum, quello del BB; le due chiavi di prima uguali');
+    '19) default_per_uso: un default per ogni uso dell''enum, quello del BB; nessun''altra chiave');
 
 SELECT * FROM finish();
 ROLLBACK;

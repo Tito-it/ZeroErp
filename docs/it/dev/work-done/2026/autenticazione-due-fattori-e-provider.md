@@ -85,7 +85,7 @@ aperto se una **porta** possa chiedere il TOTP *in più* (§F, Q-1).
 
 Portale e shop entrano con l'**email**, l'operatore con il nome utente (D-9,
 lotto L-4 di
-[piano-be-fe-accessi-credenziale-e-vesti.md](../../work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md)).
+[piano-be-fe-accessi-credenziale-e-vesti.md](piano-be-fe-accessi-credenziale-e-vesti.md)).
 
 La sequenza, in `AuditTokenObtainPairView.post`
 ([auth_views.py](../../../../../backend/apps/core/api/auth_views.py)):

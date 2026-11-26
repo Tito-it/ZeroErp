@@ -44,9 +44,6 @@ _RIEPILOGO_RESPONSE = {
 # v2: via i campi transitato/is_aperto; dentro anzianita_giorni (derivata BE).
 _DOCUMENTI_RESPONSE = {
     "count": 1,
-    "page": 1,
-    "page_size": 50,
-    "total_pages": 1,
     "results": [
         {
             "area": "PREVENTIVO",
@@ -67,6 +64,7 @@ _DOCUMENTI_RESPONSE = {
 
 
 class DashboardApertoApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -97,6 +95,7 @@ class DashboardApertoApiTests(JwtMockedApiTest):
 
 
 class DashboardApertoDocumentiApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()

@@ -28,7 +28,6 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id
 from apps.core.api.payload_validators import (
-    paginated_envelope,
     parse_list_params,
     qp_str,
 )
@@ -50,6 +49,7 @@ from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamen
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.vendite.db.fatture_repository import FattureRepository
 from apps.vendite.services import vendite_service
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 class ApiFatturaDetail(DomainAPIView):
@@ -116,8 +116,7 @@ class ApiFatturaDetail(DomainAPIView):
     )
     # Scopo: Restituisce via GET il documento fattura completo per il drawer.
     def get(self, request: Request, fattura_id: int) -> JsonResponse:
-        # `get_scope_user_id` ritorna None per il superuser (vede tutto): lo
-        # scope applicativo si somma alla RLS, non la sostituisce.
+        # Lo scope applicativo si somma alla RLS, non la sostituisce.
         data = get_fattura_dettaglio(
             fattura_id=fattura_id,
             auth_user_id=get_scope_user_id(request),
@@ -168,9 +167,6 @@ class ApiFatturaGiornale(DomainAPIView):
                         fields={
                             "fattura_id": serializers.IntegerField(),
                             "count": serializers.IntegerField(),
-                            "page": serializers.IntegerField(),
-                            "page_size": serializers.IntegerField(),
-                            "total_pages": serializers.IntegerField(),
                             "ritirate_count": serializers.IntegerField(),
                             "results": serializers.ListField(child=serializers.DictField()),
                         },
@@ -273,7 +269,7 @@ class ApiFattureList(DomainAPIView):
             order_dir=p["order_dir"],
             **_filtri_lista_fatture(qp),
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
 
 class ApiFattureExportView(DomainAPIView):

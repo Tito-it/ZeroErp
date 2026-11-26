@@ -279,7 +279,16 @@ SELECT is(
             'stradario',
             (SELECT id::text FROM tmp_stradario_a),
             'stradario_id',
-            (SELECT ts_pre FROM tmp_ts_a)
+            -- ⚠️ Un istante PRIMA della transazione. Dentro una transazione
+            --   sola ogni versione nasce allo stesso istante (now()), quindi
+            --   «com'era a ts_pre» e' la versione piu' recente di quell'istante.
+            --   Finche' lo stradario aveva lo storico a richiesta, il cambio di
+            --   nome non lasciava traccia (il flag acceso al passo 4 si
+            --   rispegneva) e a ts_pre restava la via vecchia per caso. Con lo
+            --   storico continuo il cambio lascia la sua versione: la via di
+            --   prima e' quella della versione di partenza, che vale fino
+            --   all'inizio della transazione.
+            (SELECT ts_pre - interval '1 millisecond' FROM tmp_ts_a)
         ) ->> 'stradario_generale_id'
     ),
     (SELECT stradario_generale_id::text FROM tmp_stradario_a),

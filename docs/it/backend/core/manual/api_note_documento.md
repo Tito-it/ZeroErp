@@ -62,9 +62,9 @@ Ogni dominio espone **due** rotte:
 in query sono un 400 `E_VALIDATION_INPUT` dal 2026-10-21 (prima erano il
 contratto di questa lista).
 
-Risposta: envelope paginato standard `data: {count, page, page_size,
-total_pages, results}` (`envelope_da_offset`). `page_size` è il `limit`
-chiesto, `page` la pagina ricavata dall'offset.
+Risposta: `data: {count, results}`, envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)).
+Fino al 2026-11-24 portava anche `page`, `page_size` e `total_pages`
+(`envelope_da_offset`, ritirato).
 
 ⭐ **`include_invisible` sta a `true` di default, ed e' la scelta giusta**:
 l'endpoint serve il drawer dell'operatore, che le note nascoste **deve** vederle

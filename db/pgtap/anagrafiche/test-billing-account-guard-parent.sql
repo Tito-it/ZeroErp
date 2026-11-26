@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: il test chiama diretta vendite.fn_cleanup_fatture_by_ids, riservata al proprietario
+--   dal giro 8 + 1-7: l'app ci arriva solo dai verbi del reset del lotto, che la
+--   vogliono dentro un lotto. Il passo che il test usa non sta sul percorso dell'app
+--   (brief-db-porte-aperte-dalla-sola-guc, giro 8 + 1-7, 2026-11-25: scelta di Tid). Il lato
+--   dell'app lo prova vendite/test-porta-reset-lotto-e-fondo-v1.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): commessa (sorgente ROOT), attivita' e attivita' fatturabile da dbops.fn_pgtap_crea_commessa / _attivita e dall'emissione della madre; la fattura agganciata da dbops.fn_pgtap_fattura_attivita; lo smontaggio col verbo vero vendite.fn_cleanup_fatture_by_ids (E-4) al posto dello sgancio a mano con la GUC. Restano a mano istanze e BA padre/figli (il caso: la gerarchia) e il cleanup, ora per id.
 -- pgTAP test per Zero ERP
 --

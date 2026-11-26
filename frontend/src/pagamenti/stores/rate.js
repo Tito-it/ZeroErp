@@ -22,8 +22,10 @@
 //       ⭐ ORDINE DI PARTENZA `data_scadenza ASC`, non DESC come le liste di
 //       lettura: e' una CODA — la rata piu' vecchia e' quella che un pagamento
 //       piu' probabilmente salda (stessa ragione dei residui di competenza). E'
-//       l'`ordinamento_default` del preset a catalogo (68); il primo click
-//       dell'operatore sull'intestazione resta DESC per la regola generale.
+//       l'`ordinamento_default` del preset a catalogo (68). Il click
+//       dell'operatore su un'intestazione segue il giro di PrimeVue
+//       (crescente -> decrescente -> niente: la regola «le date partono DESC»
+//       e' ritirata dal 2026-11-24).
 //
 //       ⛔ `solo_aperte` e' un filtro del backend (`residuo <> 0`, Q-B di Tid):
 //       nel picker NON si usa per nascondere le esaurite — quelle si vedono e

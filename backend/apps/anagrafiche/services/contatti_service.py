@@ -26,13 +26,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Final
 
-from apps.anagrafiche.error_codes import E_CONTATTO_INCOMPLETO
-from apps.anagrafiche.services._validators import create_with_constraint_mapping, optional_str
-from apps.core.api.payload_validators import optional_int
+from apps.anagrafiche.error_codes import E_ANAG_VALIDAZIONE, E_CONTATTO_INCOMPLETO
+from apps.anagrafiche.services._validators import optional_str
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.service_errors import ServiceError
 
 if TYPE_CHECKING:
     from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
+
+# Il validator del dominio per gli id del contatto (2026-11-24, brief-be-fe-BB-audit §2).
+_V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 
 # Campi del contatto che indicano "l'utente ha iniziato a compilare".
 # Se almeno UNO e' valorizzato, il contatto e' considerato in compilazione
@@ -126,8 +129,8 @@ def campi_contatto(contatto: dict[str, Any]) -> dict[str, Any]:
         "telefono": optional_str(contatto, "telefono"),
         "cellulare": optional_str(contatto, "cellulare"),
         "pec": optional_str(contatto, "pec"),
-        "tipo_contatto_id": optional_int(contatto, "tipo_contatto_id"),
-        "unita_organizzativa_id": optional_int(contatto, "unita_organizzativa_id"),
+        "tipo_contatto_id": _V.optional_int(contatto, "tipo_contatto_id"),
+        "unita_organizzativa_id": _V.optional_int(contatto, "unita_organizzativa_id"),
         "note": optional_str(contatto, "note"),
     }
     return {k: v for k, v in campi.items() if v is not None}
@@ -152,6 +155,11 @@ def richiedi_contatto_valido(contatto: dict[str, Any] | None) -> None:
 # tipo, sul soggetto, sul ruolo, sul ruolo per istanza. Il campo e' il tipo
 # contatto: e' l'unica colonna che l'operatore sceglie (soggetto, ruolo e
 # istanza li da' il contesto della pagina).
+# ⭐ Dal 2026-11-25 vale per la sola MODIFICA (`SoggettiService.update_contatto`
+#    e `update_contatto_ruolo`), che scrive con un UPDATE diretto. La creazione
+#    passa da `anagrafiche.fn_crea_contatto`, che riconosce gli stessi tre
+#    indici per nome e risponde `E_CONTATTO_TIPO_DUPLICATO` col campo (D-T7b-5,
+#    brief-db-revisione-anagrafiche §22.6 voce 3): qui sarebbe una seconda sede.
 VINCOLI_CONTATTO: Final[dict[str, str | tuple[str, str]]] = {
     "uq_contatti_soggetto_tipo": (
         "Il soggetto ha gia' un contatto di questo tipo.", "tipo_contatto_id",
@@ -166,7 +174,9 @@ VINCOLI_CONTATTO: Final[dict[str, str | tuple[str, str]]] = {
 
 
 # Scopo: crea un contatto (del soggetto, del ruolo o del ruolo per istanza)
-#        con la regola del contatto valido e le unicita' tradotte.
+#        con la regola del contatto valido. I rifiuti del verbo del DB
+#        (`E_CONTATTO_TIPO_DUPLICATO`, `E_TIPO_CONTATTO_NON_TROVATO`, col campo)
+#        risalgono com'e': li traduce il middleware dalla loro policy.
 # ⭐ Regola del 2 (2026-10-09): stava in tre punti — `SoggettiService.
 #    create_contatto`, la view `RuoloContattiView.post` e il VALID di
 #    `crea_contatto_inline_se_valido` — e nessuno dei tre la scriveva intera.
@@ -184,13 +194,9 @@ def crea_contatto_validato(
 ) -> dict[str, Any]:
     richiedi_contatto_valido(contatto)
     campi = campi_contatto(contatto)
-    risultato: dict[str, Any] = create_with_constraint_mapping(
-        lambda: sogg_repo.crea_contatto(
-            soggetto_id,
-            **campi,
-            soggetto_ruolo_id=soggetto_ruolo_id,
-            istanza_utility_id=istanza_utility_id,
-        ),
-        VINCOLI_CONTATTO,
+    return sogg_repo.crea_contatto(
+        soggetto_id,
+        **campi,
+        soggetto_ruolo_id=soggetto_ruolo_id,
+        istanza_utility_id=istanza_utility_id,
     )
-    return risultato

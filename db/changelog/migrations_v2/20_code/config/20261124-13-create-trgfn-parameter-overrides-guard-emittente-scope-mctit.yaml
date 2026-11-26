@@ -1,0 +1,253 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato e mergiato, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/config/20261125-24.
+# UN OVERRIDE PER EMITTENTE SI SCRIVE E SI CANCELLA SOLO DENTRO IL PROPRIO PERIMETRO
+#   config.trgfn_parameter_overrides_guard_emittente_scope
+#   trg_parameter_overrides_a10_guard_emittente_scope_ins_upd_dlt
+#   Brief: brief-db-emittente-del-super-admin §3.1 (R-DB-1, forma (A), Tid 2026-11-25)
+#
+# ── PERCHE' NON IL BB script.trgfn_guard_emittente_scope ─────────
+#   config.parameter_overrides non ha la row level security, e per §10.1
+#   delle linee guida SQL non la deve avere: e' configurazione letta da
+#   tutti. Il BB e' scritto per lavorare ACCANTO a una policy, e qui da
+#   solo lascerebbe tre buchi:
+#   1. salta l'UPDATE quando l'emittente non cambia: altrove la riga di un
+#      altro emittente non si vede e la policy la toglie dall'UPDATE; qui si
+#      vede, e il valore dell'override di Y si cambierebbe lavorando su X;
+#   2. non e' montato sul DELETE, che altrove copre la policy;
+#   3. senza utente in sessione si affida a row_security_active(), che su
+#      una tabella senza RLS risponde falso per chiunque: l'app passerebbe.
+#   E' la prima tabella con perimetro emittente senza RLS: la regola resta
+#   qui (regola del 2), e il BB montato su 32 tabelle non cambia.
+#
+# ── LA REGOLA ────────────────────────────────────────────────────
+#   * Si guarda la riga di PRIMA (UPDATE, DELETE) e quella di DOPO (INSERT,
+#     UPDATE), sempre, anche quando l'emittente non cambia.
+#   * Ogni riga con emittente_fiscale_id valorizzato chiede a
+#     script.fn_check_user_emittente_scope: no -> E_SCOPE_EMITTENTE. Un
+#     override per utente, gruppo, categoria o funzione ha l'emittente NULL:
+#     nessun padrone, passa.
+#   * Spostare un override da X a Y chiede il perimetro su tutte e due.
+#     ⭐ Vagliato e non fatto (brief §3.1): il lucchetto della colonna.
+#     L'override non ha figli e lo storico registra la versione: cambiare
+#     azienda non lascia niente di incoerente, la colonna non e' identita'.
+#   * In «tutti gli emittenti» il super admin passa, per il bypass di
+#     fn_check_user_emittente_scope: come sulle tabelle del BB.
+#
+# ── SENZA UTENTE IN SESSIONE ─────────────────────────────────────
+#   Su una riga con padrone passa solo la sessione che la row level security
+#   non filtrerebbe se ci fosse, e fuori da una SECURITY DEFINER, come nel BB:
+#   superuser, BYPASSRLS, o il proprietario della tabella (anche per
+#   appartenenza al ruolo, come lo intende PostgreSQL: pg_has_role USAGE).
+#   ⚠️ E' una seconda scrittura del criterio che il BB lascia dire a
+#   row_security_active(): qui quella funzione non risponde, perche' la
+#   tabella non ha la RLS. Dentro una DEFINER current_user e' il proprietario
+#   della funzione e non dice chi agisce: senza identita' si ferma.
+#   Chi altrimenti: E_SCOPE_SENZA_UTENTE.
+#
+# ── LA FASE: a10 ─────────────────────────────────────────────────
+#   Un guard di verifica e blocco. Il nome lo mette dopo a05 (ammette
+#   override), a07 (forma del valore) e a10_fk_surrogate_dispatch: su un
+#   INSERT o UPDATE che quelli rifiutano parla prima la loro frase, e la
+#   scrittura e' rifiutata comunque. Sul DELETE parla solo lui (lo storico
+#   z90 viene dopo). Nessun BEFORE della tabella scrive emittente_fiscale_id:
+#   il trigger e' BEFORE UPDATE senza OF, e giudica la riga intera.
+#   Lunghezza del nome: 61.
+#
+# ── CHI PASSA ANCORA (linee-guida-trigger, «Dove si mette un guard») ──
+#   * il BE (apps/core/db/parameter_repository.py: INSERT ... ON CONFLICT e DELETE)
+#     scrive e cancella sull'emittente di chi agisce dal 2026-11-25 (brief
+#     §2): passa. L'upsert passa due volte, dal BEFORE INSERT con la riga
+#     proposta e dal BEFORE UPDATE del conflitto;
+#   * nessuna funzione del database scrive config.parameter_overrides
+#     (catalogo dello scratch, 2026-11-25), e nessun seed di 80_data;
+#   * Liquibase e i pgTAP da proprietario: proprietario della tabella, passano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261124-13-create-trgfn-parameter-overrides-guard-emittente-scope-mctit.yaml
+
+  - changeSet:
+      id: 20261124-13-create-trgfn-parameter-overrides-guard-emittente-scope
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard config.trgfn_parameter_overrides_guard_emittente_scope su config.parameter_overrides
+        (a10, BEFORE INSERT OR UPDATE OR DELETE): la riga di prima e quella di dopo devono stare
+        nel perimetro emittente di chi agisce (script.fn_check_user_emittente_scope,
+        E_SCOPE_EMITTENTE); senza utente in sessione passa solo chi la RLS non filtrerebbe
+        (E_SCOPE_SENZA_UTENTE). Tabella senza RLS: il BB script.trgfn_guard_emittente_scope
+        non basta. Brief: brief-db-emittente-del-super-admin §3.1 (R-DB-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_check_user_emittente_scope';
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_utente_di_sessione';
+            - columnExists:
+                schemaName: config
+                tableName: parameter_overrides
+                columnName: emittente_fiscale_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_parameter_overrides_guard_emittente_scope()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: un override per emittente si scrive, si modifica e si
+              --   cancella solo dentro il perimetro emittente di chi agisce.
+              --   Si giudicano la riga di prima e quella di dopo.
+              -- Tabella senza row level security: il BB
+              --   script.trgfn_guard_emittente_scope non basta (il perche' e'
+              --   nell'header del changeSet 20261124-13).
+              -- Brief: brief-db-emittente-del-super-admin §3.1 (R-DB-1).
+              -- =========================================================
+              DECLARE
+                  v_auth_user_id   anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_ef_prima       config.parameter_overrides.emittente_fiscale_id%TYPE;
+                  v_ef_dopo        config.parameter_overrides.emittente_fiscale_id%TYPE;
+                  v_ruolo_sessione pg_catalog.pg_roles.rolname%TYPE;
+                  -- Esito del controllo «la RLS non la filtrerebbe»: nessuna colonna.
+                  v_fuori_rls      boolean;
+              BEGIN
+                  IF TG_OP IN ('UPDATE', 'DELETE') THEN
+                      v_ef_prima := OLD.emittente_fiscale_id;
+                  END IF;
+                  IF TG_OP IN ('INSERT', 'UPDATE') THEN
+                      v_ef_dopo := NEW.emittente_fiscale_id;
+                  END IF;
+
+                  -- Nessun padrone, ne' prima ne' dopo: niente da proteggere.
+                  IF num_nonnulls(v_ef_prima, v_ef_dopo) = 0 THEN
+                      IF TG_OP = 'DELETE' THEN
+                          RETURN OLD;
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  v_auth_user_id := script.fn_utente_di_sessione(
+                      'config.trgfn_parameter_overrides_guard_emittente_scope');
+
+                  IF v_auth_user_id IS NULL THEN
+                      -- Il ruolo di sessione, non il login (come il BB, rev 2026-10-15):
+                      -- un utente personale che lavora come proprietario (SET role) e'
+                      -- il proprietario; una DEFINER cambia current_user, non `role`.
+                      v_ruolo_sessione := coalesce(nullif(current_setting('role'), 'none'), session_user);
+
+                      SELECT r.rolsuper
+                          OR r.rolbypassrls
+                          OR pg_has_role(current_user, c.relowner, 'USAGE')
+                        INTO v_fuori_rls
+                        FROM pg_catalog.pg_roles r
+                        CROSS JOIN pg_catalog.pg_class c
+                       WHERE r.rolname = current_user
+                         AND c.oid = TG_RELID;
+
+                      IF current_user = v_ruolo_sessione AND coalesce(v_fuori_rls, false) THEN
+                          IF TG_OP = 'DELETE' THEN
+                              RETURN OLD;
+                          END IF;
+                          RETURN NEW;
+                      END IF;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'config.trgfn_parameter_overrides_guard_emittente_scope',
+                          'E_SCOPE_SENZA_UTENTE',
+                          jsonb_build_object(
+                              'detail', 'Scrittura senza utente in sessione su un override per emittente',
+                              'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'operazione', TG_OP,
+                              'emittente_prima', v_ef_prima,
+                              'emittente_dopo', v_ef_dopo,
+                              'db_user', current_user,
+                              'session_user', session_user,
+                              'dentro_definer', current_user <> v_ruolo_sessione),
+                          NULL::uuid,
+                          TG_TABLE_SCHEMA::text,
+                          TG_TABLE_NAME::text);
+                  END IF;
+
+                  -- La riga di prima: chi non ha quell'azienda non la modifica e
+                  -- non la cancella, anche se l'emittente non cambia.
+                  IF v_ef_prima IS NOT NULL
+                     AND NOT script.fn_check_user_emittente_scope(v_auth_user_id, v_ef_prima) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'config.trgfn_parameter_overrides_guard_emittente_scope',
+                          'E_SCOPE_EMITTENTE',
+                          jsonb_build_object(
+                              'detail', 'Utente non autorizzato per l''emittente dell''override esistente',
+                              'auth_user_id', v_auth_user_id,
+                              'emittente_fiscale_id', v_ef_prima,
+                              'riga', 'prima',
+                              'operazione', TG_OP,
+                              'override_id', OLD.id,
+                              'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME),
+                          NULL::uuid,
+                          format('Utente %s non autorizzato per emittente fiscale %s su %s.%s',
+                                 v_auth_user_id, v_ef_prima, TG_TABLE_SCHEMA, TG_TABLE_NAME));
+                  END IF;
+
+                  -- La riga di dopo: se e' la stessa azienda e' gia' giudicata.
+                  IF v_ef_dopo IS NOT NULL
+                     AND v_ef_dopo IS DISTINCT FROM v_ef_prima
+                     AND NOT script.fn_check_user_emittente_scope(v_auth_user_id, v_ef_dopo) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'config.trgfn_parameter_overrides_guard_emittente_scope',
+                          'E_SCOPE_EMITTENTE',
+                          jsonb_build_object(
+                              'detail', 'Utente non autorizzato per l''emittente dell''override scritto',
+                              'auth_user_id', v_auth_user_id,
+                              'emittente_fiscale_id', v_ef_dopo,
+                              'riga', 'dopo',
+                              'operazione', TG_OP,
+                              'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME),
+                          NULL::uuid,
+                          format('Utente %s non autorizzato per emittente fiscale %s su %s.%s',
+                                 v_auth_user_id, v_ef_dopo, TG_TABLE_SCHEMA, TG_TABLE_NAME));
+                  END IF;
+
+                  IF TG_OP = 'DELETE' THEN
+                      RETURN OLD;
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_parameter_overrides_guard_emittente_scope() IS
+                  'Guard di perimetro emittente di config.parameter_overrides (a10, BEFORE INSERT OR UPDATE OR DELETE): la riga di prima (UPDATE, DELETE) e quella di dopo (INSERT, UPDATE) con emittente_fiscale_id valorizzato devono stare nel perimetro di chi agisce secondo script.fn_check_user_emittente_scope, altrimenti E_SCOPE_EMITTENTE; anche l''UPDATE del solo valore si giudica. Emittente NULL (override per utente, gruppo, categoria, funzione): nessun padrone, passa. Senza utente in sessione passa solo, fuori da una SECURITY DEFINER, la sessione che la RLS non filtrerebbe (superuser, BYPASSRLS, proprietario della tabella anche per appartenenza), altrimenti E_SCOPE_SENZA_UTENTE. Non e'' il BB script.trgfn_guard_emittente_scope perche'' la tabella non ha la RLS (linee guida SQL §10.1): il BB lavora accanto a una policy, e qui saltava l''UPDATE a emittente invariato, il DELETE e la sessione senza utente. In «tutti gli emittenti» il super admin passa (bypass di fn_check_user_emittente_scope). Brief: brief-db-emittente-del-super-admin §3.1 (R-DB-1, 2026-11-25).';
+
+              DROP TRIGGER IF EXISTS trg_parameter_overrides_a10_guard_emittente_scope_ins_upd_dlt
+                  ON config.parameter_overrides;
+              CREATE TRIGGER trg_parameter_overrides_a10_guard_emittente_scope_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON config.parameter_overrides
+                  FOR EACH ROW EXECUTE FUNCTION config.trgfn_parameter_overrides_guard_emittente_scope();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_parameter_overrides_a10_guard_emittente_scope_ins_upd_dlt ON config.parameter_overrides;
+              DROP FUNCTION IF EXISTS config.trgfn_parameter_overrides_guard_emittente_scope();

@@ -62,9 +62,9 @@ END $fix$;
 -- ============================================================
 CREATE TEMP TABLE _inv1 AS SELECT NULL::bigint AS id;
 DO $i$ DECLARE v_id bigint; BEGIN
-    INSERT INTO magazzino.inventari (magazzino_id, data) SELECT mag, script.fn_data_operativa() - 1 FROM _fix RETURNING id INTO v_id;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id, costo_unitario) SELECT v_id, art, 10, ux, 7 FROM _fix;
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_id;
+    SELECT dbops.fn_pgtap_crea_inventario(mag, jsonb_build_object('data', script.fn_data_operativa() - 1)) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_id, art, 10, jsonb_build_object('ubicazione_id', ux, 'costo_unitario', 7)) FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_id, 'CONFIRM');
     UPDATE _inv1 SET id = v_id;
 END $i$;
 
@@ -90,9 +90,9 @@ SELECT is(
 -- ============================================================
 CREATE TEMP TABLE _inv2 AS SELECT NULL::bigint AS id;
 DO $i$ DECLARE v_id bigint; BEGIN
-    INSERT INTO magazzino.inventari (magazzino_id) SELECT mag FROM _fix RETURNING id INTO v_id;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id) SELECT v_id, art, 12, uy FROM _fix;
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_id;
+    SELECT dbops.fn_pgtap_crea_inventario(mag) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_id, art, 12, jsonb_build_object('ubicazione_id', uy)) FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_id, 'CONFIRM');
     UPDATE _inv2 SET id = v_id;
 END $i$;
 SELECT is(
@@ -101,10 +101,10 @@ SELECT is(
     'UY:RETT_POS:0 UX:NON_CONTATA:10',
     '5) contata in UY con 10 in UX: (UY) RETT_POS e (UX) NON_CONTATA — informazione, non blocco');
 
-UPDATE magazzino.inventari SET stato_mag_inventario = 'DRAFT' WHERE id = (SELECT id FROM _inv2);
-INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id) SELECT id, (SELECT art FROM _fix), 10, (SELECT ux FROM _fix) FROM _inv2;
-INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id) SELECT id, (SELECT art_no FROM _fix), 3, (SELECT ux FROM _fix) FROM _inv2;
-UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = (SELECT id FROM _inv2);
+SELECT dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', (SELECT id FROM _inv2), 'DRAFT');
+SELECT dbops.fn_pgtap_crea_riga_inventario(id, (SELECT art FROM _fix), 10, jsonb_build_object('ubicazione_id', (SELECT ux FROM _fix))) FROM _inv2;
+SELECT dbops.fn_pgtap_crea_riga_inventario(id, (SELECT art_no FROM _fix), 3, jsonb_build_object('ubicazione_id', (SELECT ux FROM _fix))) FROM _inv2;
+SELECT dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', (SELECT id FROM _inv2), 'CONFIRM');
 SELECT is(
     (SELECT string_agg(p.esito || COALESCE(':' || p.posting_blocco_reason, ''), ' ' ORDER BY p.riga_id NULLS LAST)
        FROM magazzino.fn_inventario_piano((SELECT id FROM _inv2)) p WHERE p.riga_id IS NOT NULL),
@@ -121,9 +121,12 @@ SELECT is(
     '(CONFIRM,1)',
     '7b) ...e non resta niente: testata CONFIRM, un solo movimento a registro (all-or-nothing)');
 
-UPDATE magazzino.inventari SET stato_mag_inventario = 'DRAFT' WHERE id = (SELECT id FROM _inv2);
-DELETE FROM magazzino.inventari_righe WHERE inventario_id = (SELECT id FROM _inv2) AND articolo_id = (SELECT art_no FROM _fix);
-UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = (SELECT id FROM _inv2);
+SELECT dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', (SELECT id FROM _inv2), 'DRAFT');
+-- La riga si toglie dal verbo: l'operatore ha TUTTO sull'area (registra_magazzino, fixture).
+SELECT magazzino.fn_togli_riga_documento_interno('INVENTARIO', (SELECT id FROM _inv2),
+           (SELECT r.id FROM magazzino.inventari_righe r
+             WHERE r.inventario_id = (SELECT id FROM _inv2) AND r.articolo_id = (SELECT art_no FROM _fix)));
+SELECT dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', (SELECT id FROM _inv2), 'CONFIRM');
 -- ⚠️ Il verbo in un'istruzione SEPARATA (memoria pgtap_stessa_istruzione_snapshot).
 CREATE TEMP TABLE _post2 AS SELECT * FROM magazzino.fn_posta_inventario((SELECT id FROM _inv2));
 SELECT is(
@@ -147,7 +150,9 @@ SELECT throws_like(
 
 CREATE TEMP TABLE _inv3 AS SELECT NULL::bigint AS id;
 DO $i$ DECLARE v_id bigint; BEGIN
-    INSERT INTO magazzino.inventari (magazzino_id, stato_mag_inventario) SELECT mag, 'CONFIRM' FROM _fix RETURNING id INTO v_id;
+    -- Lo stato non nasce dai campi: la nascita e' in DRAFT, la conferma e' il suo verbo.
+    SELECT dbops.fn_pgtap_crea_inventario(mag) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_id, 'CONFIRM');
     UPDATE _inv3 SET id = v_id;
 END $i$;
 SELECT throws_like(
@@ -157,8 +162,8 @@ SELECT throws_like(
 
 CREATE TEMP TABLE _inv4 AS SELECT NULL::bigint AS id;
 DO $i$ DECLARE v_id bigint; BEGIN
-    INSERT INTO magazzino.inventari (magazzino_id) SELECT mag FROM _fix RETURNING id INTO v_id;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata) SELECT v_id, art, 1 FROM _fix;
+    SELECT dbops.fn_pgtap_crea_inventario(mag) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_id, art, 1) FROM _fix;
     UPDATE _inv4 SET id = v_id;
 END $i$;
 SELECT is(
@@ -168,8 +173,8 @@ SELECT is(
 
 CREATE TEMP TABLE _inv5 AS SELECT NULL::bigint AS id;
 DO $i$ DECLARE v_id bigint; BEGIN
-    INSERT INTO magazzino.inventari (magazzino_id) SELECT mag_no FROM _fix RETURNING id INTO v_id;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id) SELECT v_id, art, 1, ux FROM _fix;
+    SELECT dbops.fn_pgtap_crea_inventario(mag_no) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_id, art, 1, jsonb_build_object('ubicazione_id', ux)) FROM _fix;
     UPDATE _inv5 SET id = v_id;
 END $i$;
 SELECT is(
@@ -183,15 +188,15 @@ SELECT is(
 CREATE TEMP TABLE _inv6 AS SELECT NULL::bigint AS id;
 DO $i$ DECLARE v_id bigint; BEGIN
     -- 3 nel lotto L1 e 17 nel lotto L2 (magazzino senza ubicazioni), postati
-    INSERT INTO magazzino.inventari (magazzino_id) SELECT mag_no FROM _fix RETURNING id INTO v_id;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, lotto_id) SELECT v_id, art_lotto, 3, l1 FROM _fix;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, lotto_id) SELECT v_id, art_lotto, 17, l2 FROM _fix;
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_id;
+    SELECT dbops.fn_pgtap_crea_inventario(mag_no) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_id, art_lotto, 3, jsonb_build_object('lotto_id', l1)) FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_id, art_lotto, 17, jsonb_build_object('lotto_id', l2)) FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_id, 'CONFIRM');
     PERFORM magazzino.fn_posta_inventario(v_id);
     -- il conteggio nuovo: L1 = 5
-    INSERT INTO magazzino.inventari (magazzino_id) SELECT mag_no FROM _fix RETURNING id INTO v_id;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, lotto_id) SELECT v_id, art_lotto, 5, l1 FROM _fix;
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_id;
+    SELECT dbops.fn_pgtap_crea_inventario(mag_no) INTO v_id FROM _fix;
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_id, art_lotto, 5, jsonb_build_object('lotto_id', l1)) FROM _fix;
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_id, 'CONFIRM');
     UPDATE _inv6 SET id = v_id;
 END $i$;
 SELECT is(

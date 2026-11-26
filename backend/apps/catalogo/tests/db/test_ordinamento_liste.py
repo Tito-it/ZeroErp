@@ -21,8 +21,9 @@ Indice test eseguiti:
 3) OrdinamentoListeCatalogoTests.test_la_direzione_non_dipende_dalle_maiuscole
    `DESC` e `desc` danno la stessa clausola: le copie usavano `.upper()`
    (conversioni) e `.lower()` (le altre).
-4) OrdinamentoListeCatalogoTests.test_le_date_senza_direzione_ordinano_desc
-   `order_by` su una colonna data senza `order_dir` -> DESC (colonne_desc).
+4) OrdinamentoListeCatalogoTests.test_le_date_senza_direzione_ordinano_asc
+   `order_by` su una colonna data senza `order_dir` -> ASC, come ogni colonna
+   (regola «le date partono DESC» ritirata, Tid 2026-11-24).
 5) OrdinamentoListeCatalogoTests.test_il_totale_ha_il_ripiego_per_la_pagina_stantia
    La query porta `COUNT(*) OVER ()` e il COUNT di ripiego ha lo stesso
    FROM/WHERE della pagina, con i soli parametri del filtro.
@@ -36,6 +37,7 @@ import unittest
 from unittest.mock import patch
 
 from apps.catalogo.db.catalogo_repository import CatalogoRepository
+from apps.core.services.request_context import imposta_vuoti_come_massimo
 
 _FILTRI_ARTICOLI = {
     "attivo": None, "is_composito": None, "tipo_voce_id": None,
@@ -119,15 +121,20 @@ class OrdinamentoListeCatalogoTests(unittest.TestCase):
                 self.assertEqual(_order_by(maiuscolo), _order_by(minuscolo))
                 self.assertIn("DESC NULLS LAST", _order_by(maiuscolo))
 
-    # 4. Le date, senza direzione, si leggono dalla piu' recente.
-    def test_le_date_senza_direzione_ordinano_desc(self):
+    # 4. Le date, senza direzione, vanno ASC come ogni colonna (Tid, 2026-11-24).
+    #    `valido_al` delle conversioni (297) il catalogo la dichiara «vuoto come
+    #    il massimo» (brief-db-lista-colonna-vuoto-in-ordine): la dichiarazione
+    #    la registra la base view, qui la si registra a mano.
+    def test_le_date_senza_direzione_ordinano_asc(self):
+        imposta_vuoti_come_massimo(lambda: frozenset({"valido_al"}))
+        self.addCleanup(imposta_vuoti_come_massimo, None)
         casi = (
-            (_LISTE[1][1], "data_insert", "ut.data_insert DESC NULLS LAST, ut.id DESC"),
-            (_LISTE[2][1], "data_update", "u.data_update DESC NULLS LAST, u.id DESC"),
-            (_LISTE[3][1], "valido_dal", "c.valido_dal DESC NULLS LAST, c.id DESC"),
+            (_LISTE[1][1], "data_insert", "ut.data_insert ASC NULLS FIRST, ut.id ASC"),
+            (_LISTE[2][1], "data_update", "u.data_update ASC NULLS FIRST, u.id ASC"),
+            (_LISTE[3][1], "valido_dal", "c.valido_dal ASC NULLS FIRST, c.id ASC"),
             (
                 _LISTE[3][1], "valido_al",
-                "COALESCE(c.valido_al, 'infinity'::date) DESC NULLS LAST, c.id DESC",
+                "c.valido_al ASC NULLS LAST, c.id ASC",
             ),
         )
         for chiamata, colonna, attesa in casi:

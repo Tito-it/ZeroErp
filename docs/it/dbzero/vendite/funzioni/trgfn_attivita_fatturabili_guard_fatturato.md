@@ -16,17 +16,15 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_fatturato()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
-DECLARE
-  v_bypass text;
 BEGIN
   -- =========================================================
   -- Scopo:
   --   Blocca UPDATE/DELETE se la riga e' gia' fatturata
   --   (fattura_riga_id valorizzato).
-  --   Bypass controllato via GUC per reset tecnico.
+  --   Passa solo dalla porta del reset del lotto: GUC e proprietario
+  --   (vendite.fn_porta_reset_lotto_aperta).
   -- =========================================================
-  v_bypass := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
-  IF v_bypass IS NOT NULL AND lower(v_bypass) IN ('1','true','on','yes') THEN
+  IF vendite.fn_porta_reset_lotto_aperta(TG_RELID) THEN
     IF TG_OP = 'DELETE' THEN
       RETURN OLD;
     END IF;
@@ -58,7 +56,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_fatturato()
-IS 'Blocca update/delete se fattura_riga_id e'' valorizzato; bypass via GUC zeroerp.maintenance_reset_lotto_draft.';
+IS 'Blocca update/delete se fattura_riga_id e'' valorizzato; la scrittura la lascia passare solo la porta del reset del lotto (vendite.fn_porta_reset_lotto_aperta: GUC zeroerp.maintenance_reset_lotto_draft e proprietario della tabella, dentro la pulizia di vendite.fn_cleanup_fatture_by_ids).';
 ```
 
 </div>

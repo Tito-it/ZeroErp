@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA DEI DOCUMENTI INTERNI DI MAGAZZINO (Lotto 2, P-5c)
+#   A zeroerp_app solo SELECT su:
+#     magazzino.inventari, inventari_righe, rettifiche, rettifiche_righe,
+#     trasferimenti, trasferimenti_righe.
+#
+# -- PERCHE' --------------------------------------------------------------
+#   brief-db-magazzino-tutte-le-scritture-dal-verbo, Lotto 2 (P-5c): ogni
+#   scrittura di queste tabelle passa da un verbo DEFINER che controlla il
+#   livello: la nascita per famiglia (fn_aggiungi_<documento>,
+#   fn_aggiungi_riga_<documento>), modifica, righe, stato ed eliminazione coi
+#   verbi comuni (fn_*_documento_interno), la registrazione (fn_posta_*).
+#   Il backend scrive dai verbi dalla R-2 (sessione BE, 2026-11-23): la porta
+#   si chiude dopo, perche' il backend non resti senza strada.
+#   Le note dei documenti interni sono chiuse dal Lotto 1 (20261122-10).
+#
+# ── 🔴 TRE SEDI (linee-guida §11.8) ─────────────────────────────────
+#   · QUESTO changeSet (subito su dev);
+#   · v_tabelle_sola_lettura_app del loop 90_end/ci_apply/20260205-41;
+#   · il blocco «POSTURA DICHIARATA» di scripts/sql/provision_zeroerp.sql.
+#   Le tiene allineate db/pgtap/magazzino/test-documenti-interni-sola-lettura-v1.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261123-12-revoke-app-scrittura-documenti-interni-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20261123-12-revoke-app-scrittura-documenti-interni-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La porta dei documenti interni di magazzino: a zeroerp_app SELECT soltanto su inventari,
+        rettifiche, trasferimenti e le loro righe; le scrivono i verbi. Postura resa stabile dal
+        loop 20260205-41 e dal provisioning.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              DECLARE
+                  v_tabella text;  -- un nome qualificato da format(): nessuna colonna
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip porta dei documenti interni di magazzino.';
+                      RETURN;
+                  END IF;
+
+                  FOREACH v_tabella IN ARRAY ARRAY[
+                      'magazzino.inventari', 'magazzino.inventari_righe',
+                      'magazzino.rettifiche', 'magazzino.rettifiche_righe',
+                      'magazzino.trasferimenti', 'magazzino.trasferimenti_righe']
+                  LOOP
+                      EXECUTE format('GRANT SELECT ON TABLE %s TO zeroerp_app', v_tabella);
+                      EXECUTE format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM zeroerp_app', v_tabella);
+                  END LOOP;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Senza togliere le voci dal loop 20260205-41 e dal provisioning la
+              -- passata ci_apply successiva richiude la porta.
+              DO $riapri$
+              DECLARE
+                  v_tabella text;  -- un nome qualificato da format(): nessuna colonna
+              BEGIN
+                  FOREACH v_tabella IN ARRAY ARRAY[
+                      'magazzino.inventari', 'magazzino.inventari_righe',
+                      'magazzino.rettifiche', 'magazzino.rettifiche_righe',
+                      'magazzino.trasferimenti', 'magazzino.trasferimenti_righe']
+                  LOOP
+                      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %s TO zeroerp_app', v_tabella);
+                  END LOOP;
+              END
+              $riapri$;

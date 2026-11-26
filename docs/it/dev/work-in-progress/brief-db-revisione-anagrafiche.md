@@ -1,32 +1,114 @@
 # Brief DB — Revisione dello schema `anagrafiche`: la documentazione, le segnalazioni di codice, i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-22
+## ⏭️ Chi riparte — aggiornato al 2026-11-26
 
-**Riparte: Tid**, col vaglio
-delle segnalazioni di codice (§7, S1-S68: passo 5); poi la sessione DB coi giri di codice (Q1). Il giro 0 è finito: le
-aree 0a-0e sono scritte e committate (§12-§16), con la doc auto-generata rigenerata dopo ognuna; lo 0e: 23 pagine, due
-blocchi comuni, le due guide degli accessi. Q1-Q8 sono decise da Tid il 2026-11-22 (§10). Al team
-BE/FE R-BE1 … R-BE5 hanno risposta (§9.1); R-BE6 (§16.3) è una domanda nuova, che non ferma niente.
+**Ripartono in due, senza aspettarsi.** La **sessione DB** con T4, il prossimo tema di §17.1, e in coda il brief
+nuovo di T6 (che porta anche l'ultimo contatto del soggetto, §22.7). Il **team BE/FE** coi passaggi al BE ancora
+aperti dei giri 3 (§20.7: `_NULLABLE` di `update_soggetto` e i due codici obsoleti nel ripiego sono ancora lì,
+verificato il 2026-11-26) e 4 (§21.7), più la fase 7. Il giro 5 è chiuso: il DB committato (`7f8d9506d`, PR #249),
+il passaggio al BE fatto e committato su `dev/backend-tid` il 2026-11-26 (§22.6, esito in coda alla sezione). Tid ha da girare il passaggio al BE del giro 4 (§21.7); il giro 4 (T7a, `20261123-74 … -94`, §21.5) è applicato, verde e committato (`359c556da1`, 2026-11-24). Tid ha anche da girare il passaggio al BE (§20.7, sei voci). T7 è diviso in T7a, gli indirizzi, e T7b, i contatti e il catasto (Tid, 2026-11-24); l'analisi di T7a sul catalogo è scritta il 2026-11-24 (§21). Il giro 3-bis, D-T5-6 **b** (il tipo di contatto proposto, §20.8), è chiuso: `20261123-68 … -73` applicato, pgTAP verdi, doc auto-generata rigenerata, committato (`f9b1049de3`, 2026-11-24). Il giro 3, T5, è chiuso: `20261123-48 … -64` applicato su scratch e dbdev, pgTAP verdi come app, committato (2026-11-24). Poi T7, T4, T8, T12, T3, T10, T11. Il giro 2 (T2) è chiuso: dentro `anagrafiche` non c'è
+niente da cambiare. La postura delle viste in tutto il database è decisa (Tid, 2026-11-23, §19.3) e il suo lavoro è
+di [brief-db-porte-aperte-dalla-sola-guc](brief-db-porte-aperte-dalla-sola-guc.md) §5, in un'altra sessione: qui non
+resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta di S50 (§17, riga T7). Il vaglio per temi è deciso (Tid, 2026-11-23, §17.1). Il piano da percorrere, con le fasi spuntate, è il §0.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | ✅ sessione DB | Censimento in sola lettura: la forma delle 195 pagine `manual/`, il contenuto falso e stantio per area, gli oggetti senza pagina, le guide, le segnalazioni di codice, i metadati | §3-§9 | — |
-| 2 | ✅ Tid | Le decisioni Q1-Q8 e il via al giro 0 (2026-11-22) | §10 | 1 |
-| 3 | sessione DB | Giro 0, un'area per sessione (0a-0e): le pagine `manual/` allo standard e al codice di oggi, le pagine nuove, le guide dell'area. ✅ 0a (area C, §12), ✅ 0b (area A, §13), ✅ 0c (area B, §14), ✅ 0d (area D, §15), ✅ 0e (area E, §16), 2026-11-22 | §2, §4-§6, §12-§16 | 2 |
-| 4 | Tid | Doc auto-generata rigenerata dopo ogni area (le schede prendono le pagine nuove, l'indice le descrizioni). ✅ dopo ogni area, 0a-0e (2026-11-22) | §2, §12.4 | 3 |
-| 5 | Tid | Il vaglio delle segnalazioni di codice: quali sono difetti, quali sono volute | §7 | 1 |
-| 6 | ✅ team BE/FE | Le cinque domande di censimento R-BE1 … R-BE5: risposte il 2026-11-22. ⚠️ R-BE5 smentisce la premessa di Q7 | §9, §9.1 | 2 |
-| 6-bis | team BE/FE | R-BE6: le due scritture del portale su credenziale e veste (§16.3), con S59 | §16.3 | — |
-| 7 | sessione DB | I giri di codice e di metadati, dopo tutto il giro 0 (Q1, Tid: «le funzionalità per ultime») | §7, §8 | 3, 5 |
-| 8 | sessione DB | Archiviazione in `work-done/` | §11 | 3, 7 |
+| 1 | ✅ Tid | Apply e pgTAP del giro 1 (Q7): applicato, test verdi (2026-11-23) | §18 | — |
+| 2 | ✅ Tid | Il vaglio per temi, con S4 e S53 (2026-11-23) | §17.1 | — |
+| 3 | team BE/FE | R-BE6 e due correzioni di documentazione del backend | §0, fase 7 | — |
+| 4 | sessione DB | I giri di codice dei temi che restano qui, uno per tema, nell'ordine di §17.1 | §0, fase 8; §17.1 | via di Tid per ogni giro |
+| 5 | sessione DB | I brief nuovi di T6 (spegnimento del soggetto) e T9 (accessi, con R-4, S64, S67); S1 portata in `sviluppo-gestione-clienti-v2` | §17.1 | — |
+| 6 | sessione DB | Il giro dei metadati, per ciò che i giri di codice non hanno già riscritto | §8 | 4 |
+| 7 | sessione DB | Archiviazione in `work-done/`, col debito dei temi spostati scritto nei loro brief | §11 | 5, 6 |
 
-**Decisioni di Tid:** Q1-Q8 il 2026-11-22 (§10); Q7 riaperta e decisa di nuovo lo stesso giorno, strada (b), estesa a `config.stradario` (§10). Nessuna decisione aperta. **Da committare:** le pagine del giro 0 man mano
-che si scrivono, un commit per area.
+**Decisioni aperte di Tid:** nessuna del giro 5 (D-T7b-1 … -7 prese come proposte, Tid 2026-11-25, §22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
+**Da committare:** niente (il giro 5 è committato: DB `7f8d9506d`, BE 2026-11-26).
+
+## 0. Il piano da percorrere
+
+Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettaglio sta nella sezione indicata.
+
+* **Fase 1 — Il censimento in sola lettura** (§3-§9)
+  * [x] La forma delle 195 pagine, il contenuto falso e stantio per area, gli oggetti senza pagina, le guide, le
+    segnalazioni di codice, i metadati (2026-11-22)
+* **Fase 2 — Le decisioni Q1-Q8** (§10)
+  * [x] Q1-Q8 decise da Tid; Q7 riaperta e decisa di nuovo, strada (b), estesa a `config.stradario` (2026-11-22)
+  * [x] R-BE1 … R-BE5, le risposte del team BE/FE (§9.1, 2026-11-22)
+* **Fase 3 — Il giro 0, la documentazione, un'area per sessione** (§12-§16)
+  * [x] 0a, area C (§12) · [x] 0b, area A (§13) · [x] 0c, area B (§14) · [x] 0d, area D (§15) · [x] 0e, area E
+    (§16), tutte scritte e committate il 2026-11-22
+  * [x] La doc auto-generata rigenerata da Tid dopo ogni area (2026-11-22)
+* **Fase 4 — Il passo A: il brief riallineato e il vaglio preparato** (2026-11-23)
+  * [x] La testata e questo piano; §2, §9 e §15.4 riallineati; il §4 marcato come censimento di partenza
+  * [x] S31 riletta sul corpo dopo il giro 8b di `ui`: resta aperta (§12.3). Le otto pagine `manual/` toccate dai
+    changeSet del 2026-11-23 riallineate (§12.5)
+  * [x] I metadati trovati nei giri 0a-0e raccolti in §8.1
+  * [x] Il vaglio per temi, con una proposta per tema (§17)
+  * [x] La correzione del giro 0a riportata in `brief-db-catena-istanze-pdp` (§2.1 e §5)
+  * [x] Commit (Tid, 2026-11-23, `a35a6636dc`, insieme al giro 1)
+* **Fase 5 — Il giro 1: Q7, lo storico continuo di indirizzi, civici e stradario** (§18)
+  * [x] ChangeSet e pgTAP scritti, provati sullo scratch con `scripts/prova_changeset.py` (2026-11-23,
+    `20261123-38` … `-42`; la prova ha trovato `storico.indirizzi` che non accettava versioni, §18.2)
+  * [x] Le pagine `manual/` e le guide allineate al comportamento nuovo (2026-11-23)
+  * [x] Apply e pgTAP (Tid, 2026-11-23: applicato, test verdi)
+  * [x] Doc auto-generata rigenerata (Tid, 2026-11-23): le schede di `indirizzi`, `indirizzi_dettaglio`,
+    `config.stradario` e `storico.indirizzi` hanno il default e la forma nuovi
+  * [x] Commit (Tid, 2026-11-23, `a35a6636dc`)
+* **Fase 6 — Il vaglio per temi** (Tid, §17)
+  * [x] Per ogni tema: qui, nel brief vicino o in un brief nuovo; l'ordine dei giri (Tid, 2026-11-23, §17.1)
+  * [x] S4: la chiave è la coppia CF e P.IVA. S53: tema proprio (T12). S64 e S67 vanno nel brief degli accessi (T9)
+    (Tid, 2026-11-23)
+  * [ ] Il brief nuovo di T6 e quello di T9; S1 scritta in `sviluppo-gestione-clienti-v2`
+* **Fase 7 — Le ricadute sul backend** (team BE/FE)
+  * [ ] R-BE6: le due scritture del portale su credenziale e veste (§16.3)
+  * [ ] `docs/it/backend/anagrafiche/manual/api_emittenti_fiscali.md`, riga 90: nomina
+    `trgfn_emittenti_fiscali_guard_attivo`, che non esiste (§15.2)
+  * [ ] `docs/it/backend/core/manual/api_tracciamento.md`: la data va dopo lo Scopo, o l'indice la prende come
+    descrizione (§12.4)
+* **Fase 8 — I giri di codice dei temi che restano qui** (uno per tema, nell'ordine deciso in fase 6)
+  * [x] Giro 2: T2, i permessi delle viste: analisi sul catalogo (2026-11-23, §19). Dentro `anagrafiche` niente da
+    cambiare; S40 e `security_invoker` voluti
+  * [x] Giro 2: la postura delle viste in tutto il database, decisa da Tid: l'app solo `SELECT` sulle viste
+    (2026-11-23, §19.3)
+  * [x] La postura delle viste passata a `brief-db-porte-aperte-dalla-sola-guc` §5, con la richiesta al BE unita a
+    quella delle porte (2026-11-23, §19.3). Il BE ha risposto «nessuna scrittura su una vista» lo stesso giorno: il
+    lavoro è tutto di quel brief, e il giro 2 di qui è chiuso
+  * [x] Giro 3: T5, analisi sul catalogo e sul ramo BE (2026-11-23, §20)
+  * [x] Giro 3: le decisioni D-T5-1 … D-T5-6, tutte le proposte (Tid, 2026-11-23, §20.2)
+  * [x] Giro 3: pgTAP rosso, changeSet, CSV, note, guida e linee guida scritti e provati sullo scratch (2026-11-24, §20.4-§20.5)
+  * [x] Giro 3: applicato da Tid su scratch e dbdev (2026-11-24, 01:26)
+  * [x] Giro 3: pgTAP come app verdi (Tid, 2026-11-24; il resto dei rossi era già rosso prima), committato
+  * [x] Giro 3: apply di -64, i COMMENT al presente (Tid, 2026-11-24)
+  * [x] Giro 3: D-T5-6 decisa di nuovo, **b** (Tid, 2026-11-24, §20.6)
+  * [x] Giro 3: la porta dei lucchetti riletta sul catalogo: è già chiusa per l'app dal 2026-11-17, niente da registrare (2026-11-24, §20.6)
+  * [x] Giro 3-bis: D-T5-6 b, il tipo di contatto proposto: analisi, changeSet `20261123-68 … -73`, pgTAP, manual e guide, provati sullo scratch (2026-11-24, §20.8)
+  * [x] Giro 3-bis: applicato, pgTAP verdi (Tid, 2026-11-24); doc auto-generata rigenerata (2026-11-24)
+  * [x] Giro 3-bis: committato (Tid, 2026-11-24, `f9b1049de3`)
+  * [ ] Giro 3: il passaggio al BE (§20.7)
+  * [x] Giro 4: T7 diviso in T7a (indirizzi) e T7b (contatti e catasto) (Tid, 2026-11-24)
+  * [x] Giro 4: T7a, analisi sul catalogo e guide verificate (2026-11-24, §21)
+  * [x] Giro 4: T7a, D-T7a-3 … -7 decise come proposte (Tid, 2026-11-24, §21.2)
+  * [x] Giro 4: T7a, D-T7a-1 e D-T7a-2 nella forma nuova, decise (Tid, 2026-11-24, §21.2)
+  * [x] Giro 4: T7a, pgTAP rosso: due file, 28 rossi sui loro motivi (2026-11-24, §21.4)
+  * [x] Giro 4: T7a, changeSet `20261123-74 … -94`, CSV, pgTAP adeguati, guida e note, provati sullo scratch (2026-11-24, §21.5)
+  * [x] Giro 4: T7a, apply e pgTAP verdi come app (Tid); doc auto-generata rigenerata (2026-11-24)
+  * [ ] Giro 4: T7a, il passaggio al BE (§21.7)
+  * [x] Giro 5: T7b, il confine con T6 (Tid, 2026-11-25, §22) e l'analisi sul catalogo, guide verificate (2026-11-25, §22.1)
+  * [x] Giro 5: T7b, le decisioni D-T7b-1 … -7 (Tid, 2026-11-25, §22.2: tutte come proposte)
+  * [x] Giro 5: T7b, pgTAP rosso, changeSet `20261125-36 … -46`, guida e note, provati sullo scratch (2026-11-25, §22.4)
+  * [x] Giro 5: T7b, apply e pgTAP (Tid); doc auto-generata rigenerata (2026-11-25)
+  * [x] Giro 5: T7b, committato (Tid, `7f8d9506d`, PR #249)
+  * [x] Giro 5: T7b, il passaggio al BE (§22.6): le otto voci fatte o censite senza modifiche, committato (2026-11-26)
+  * [ ] Poi un giro per tema nell'ordine di §17.1: T4, T8, T12, T3, T10, T11
+* **Fase 9 — Il giro dei metadati** (§8)
+  * [ ] I COMMENT, i commenti nei corpi e le note di seed che i giri di codice non hanno già riscritto
+* **Fase 10 — L'archiviazione** (§11)
+  * [ ] I criteri di §11; il brief in `work-done/`, il debito spostato nei brief dei temi
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-22. **A chi:** Tid e team DB.
 > **Origine:** revisione della documentazione dello schema `anagrafiche` chiesta da Tid: cercare le parti stantie e
 > quelle che non descrivono lo sviluppo di oggi. Metodo dei brief di revisione di `catalogo`, `dbops`, `documenti`,
-> `maintenance` e `ui` ([brief-db-revisione-ui](brief-db-revisione-ui.md)).
+> `maintenance` e `ui` ([brief-db-revisione-ui](../work-done/2026/brief-db-revisione-ui.md)).
 > **Brief vicini verificati:**
 > [brief-db-catena-istanze-pdp](brief-db-catena-istanze-pdp.md) ha già i rami irraggiungibili di
 > `trgfn_clienti_set_parent_istanza` (suo §2.1) e cinque decisioni aperte: qui quel trigger si documenta com'è e la
@@ -34,7 +116,7 @@ che si scrivono, un commit per area.
 > come sviluppo da fare: la segnalazione S1 (§7) tocca le stesse due funzioni e va letta insieme.
 > [analisi-critiche-modello-clienti-utilities-catasto-v2](analisi-critiche-modello-clienti-utilities-catasto-v2.md)
 > parla dell'orchestratore Django del cliente, che la guida `generazione-cliente` dà ancora per «previsto» (§6).
-> [piano-be-fe-accessi-credenziale-e-vesti](piano-be-fe-accessi-credenziale-e-vesti.md) e
+> [piano-be-fe-accessi-credenziale-e-vesti](../work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md) e
 > [sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md) sono lavoro BE/FE sugli accessi: non
 > toccano le pagine `manual/`. Nel [registro dei residui](registro-residui-aperti.md) tre voci hanno per oggetto
 > tabelle di `anagrafiche` (i residui di `brief-db-dati-fiscali-e-societari-del-soggetto`, «La coerenza tra codice
@@ -78,7 +160,7 @@ portati come gravi sono riverificati sul catalogo dalla sessione che coordina (m
 
 ## 2. Il piano: i giri
 
-Proposta, da confermare con Q5 e Q6. Il giro 0 qui è sei volte quello di `ui` (195 pagine contro 32): si fa
+Deciso con Q5 e Q6 (Tid, 2026-11-22); i giri dopo il giro 0 sono nel §0, fasi 5-9. Il giro 0 qui è sei volte quello di `ui` (195 pagine contro 32): si fa
 **un'area per sessione**. L'ordine è per distanza dal codice: prima le aree dove la pagina racconta un modello che
 non c'è più.
 
@@ -89,7 +171,7 @@ non c'è più.
 | 0c | **Area B**, indirizzi, contatti, catasto: 38 pagine (9 da riscrivere), 28 oggetti senza pagina, guida `gestione-dei-contatti`, le sezioni di `gestione-degli-indirizzi` | È l'area con più oggetti senza pagina; la parte indirizzi è la più recente e regge |
 | 0d | **Area D**, ruoli d'impresa e banche: 46 pagine (9 da riscrivere), 1 oggetto senza pagina, 1 pagina da ritirare, guida `gestione-conti-bancari` | Sette guard di ruolo con lo stesso corpo e sette pagine che dicono cose diverse |
 | 0e | **Area E**, accessi: 23 pagine (4 da riscrivere), guida `risorse-umane-e-accessi`, le sezioni di `architettura-multi-face-auth` | L'area più piccola; la guida è il pezzo grosso |
-| 1 … | I giri di codice, dopo il vaglio di §7 (Q1) | — |
+| 1 … | I giri di codice, un tema per giro, nell'ordine deciso col vaglio (§17.1) | — |
 | ultimo | Metadati: i COMMENT (§8) | Si riscrivono una volta sola, dopo i giri di codice |
 
 Ogni giro 0 comprende: le pagine esistenti nella cornice, col contenuto al presente; le pagine nuove; i difetti
@@ -165,6 +247,10 @@ non esiste più: la regola la regge il trigger generato dall'automazione ATTIVO 
 schemi (Q3).
 
 ## 4. Il contenuto: che cosa è falso o stantio, per area
+
+> ⚠️ **Censimento di partenza, superato dal giro 0** (2026-11-23). Le pagine qui giudicate sono riscritte nei giri
+> 0a-0e (§12-§16), che hanno anche corretto questo censimento dove sbagliava (i §12.2, 13.2, 14.2, 15.2, 16.2). Resta
+> come fonte delle segnalazioni di codice; non descrive più le pagine.
 
 Forma compatta: una riga per pagina, col giudizio e ciò che non è vero. I giudizi: **riscrivere** (la pagina
 racconta un modello superato), **ritocco** (pochi punti), **regge** (contenuto vero, resta la forma). Dove non è
@@ -367,7 +453,7 @@ vanno provate con un caso costruito prima di scriverne la correzione.
 | S1 ✔︎ | `clienti.data_chiusura` | **Due significati.** `trgfn_clienti_set_periodo` calcola `[attivazione, chiusura)`: il giorno di chiusura è fuori. I COMMENT di `data_chiusura` («inclusiva») e di `periodo` («`data_chiusura+1`») dicono il contrario. `script.fn_subentro_cliente` chiude il cliente uscente a «attivazione nuova − 1 giorno», che sotto la regola del trigger lascia un giorno senza cliente sul PDP; `script.fn_disdetta_cliente` scrive la data di cessazione così com'è. Da leggere con `sviluppo-gestione-clienti-v2` |
 | S2 ✔︎ | `fn_guard_ba_gestore_globale_storia` | Sceglie i BA da controllare con «ha fatture o commesse» e `LIMIT 1`, poi delega a `fn_guard_ba_cambio_emittente`, che dal 31 agosto decide su «documento numerato di qualunque famiglia». Le due definizioni non coincidono: un BA con soli ordini o DDT numerati non viene scelto; un BA con una fattura in bozza viene scelto, la delegata non solleva, e gli altri non si guardano |
 | S3 ✔︎ | `vw_indirizzi_resolved_base` | Il join con `script.vw_indirizzo_completo` è sul solo `comune_id`, e quella vista ha una riga per **via**: un indirizzo libero col comune valorizzato esce una volta per ogni via del comune. Da provare con un caso |
-| S4 ✔︎ | `fn_crea_soggetto_pf`, `fn_crea_soggetto_pg` | Il pre-controllo «CF già presente» confronta `id_fiscale_univoco_cf_piva` col solo CF (o la sola P.IVA), ma la colonna generata vale «CF spazio P.IVA» quando ci sono tutti e due e sono diversi. Anche l'indice unico è sulla colonna generata: il modello ammette lo stesso CF su due soggetti con P.IVA diverse. Da decidere se è voluto |
+| S4 ✔︎ | `fn_crea_soggetto_pf`, `fn_crea_soggetto_pg` | Il pre-controllo «CF già presente» confronta `id_fiscale_univoco_cf_piva` col solo CF (o la sola P.IVA), ma la colonna generata vale «CF spazio P.IVA» quando ci sono tutti e due e sono diversi. Anche l'indice unico è sulla colonna generata: il modello ammette lo stesso CF su due soggetti con P.IVA diverse. ~~Da decidere se è voluto~~ → deciso (Tid, 2026-11-23, §17.1): la chiave è la coppia, il pre-controllo si allinea all'indice nel giro T5 |
 | S5 | La sincronizzazione di `is_active` | Tre casi che il trigger non copre e che riallinea solo il batch: il cambio di `auth_user_id` di una veste (la credenziale di prima resta com'era); il cambio di `soggetto_ruolo_id` della risorsa; lo spegnimento del soggetto (`fn_veste_utilizzabile` legge `soggetti.attivo`, nessun trigger su `soggetti` chiama la sync) |
 | S6 | `fn_crea_risorsa_umana_v2` | `p_attivo DEFAULT true` contro la regola «la veste nasce spenta» (la funzione gemella del portale non ha default apposta); `p_is_super_admin = true` senza credenziale è ignorato in silenzio |
 | S7 ✔︎ | Il job `sync_auth_user_expired_daily` | ~~Da dire quale dei due è il progetto~~. **Non è un difetto di codice: è voluto** (letto il 2026-11-22). Dal 2026-10-09 il job ha una sveglia oraria al minuto 10, perché la funzione è idempotente e una scadenza si riallinea entro l'ora invece che il mattino dopo; lo stesso changeSet ha portato `chiusura_scadenze_daily` alla sveglia oraria. Stantii sono guida, pagina e COMMENT, che dicono ancora «ogni giorno alle 06:00»: si correggono nel giro 0e. Il nome del job, che dice «daily», resta |
@@ -384,8 +470,8 @@ vanno provate con un caso costruito prima di scriverne la correzione.
 | S18 | I conti bancari | «Il conto è attivo» sta in due sedi (il guard `BEFORE` e il trigger differito dell'automazione ATTIVO, che così non parla mai per primo). «Un conto predefinito non si blocca» la tiene solo il backend. `paese` non si ricalcola al cambio di IBAN. `emittenti_fiscali_utilities.utility_id` è `bigint`, `config.utilities.id` è `integer` |
 | S19 | Le FK geografiche | `ON DELETE SET NULL` su `indirizzi`, nessuna azione su `indirizzi_soggetti`: gemelle che divergono, e il SET NULL urterebbe il CHECK della forma libera |
 | S20 | `trgfn_soggetti_guard_cf_piva_obbligatori` | Guarda solo `IS NULL`: una stringa vuota passa la presenza |
-| S21 | Forma | Trigger senza fascia nel nome (`trg_soggetti_normalize_ins_upd`, `trg_soggetti_valida_cf_piva_dispatch_ins_upd`, `trg_dati_societari_guard_tipo_soggetto_ins_upd`, tre su `billing_account`); variabili senza `%TYPE` (`trgfn_gestori_guard`, `trgfn_risorse_umane_guard_ruolo`, `trgfn_soggetti_valida_cf_piva_dispatch`); `zeroerp_app` ha il DML sulla vista `vw_risorse_umane_dettaglio`; il codice `CODICE_NON_MODIFICABILE` senza prefisso è ancora in `config.messaggi_errore` |
-| S22 | I nomi `_v2` | `fn_crea_operatore_v2` e `fn_crea_risorsa_umana_v2` non hanno più una versione accanto: è un nome rimasto. Caso analogo `fn_sync_auth_user_expired`, che ora anche riaccende |
+| S21 | Forma | Trigger senza fascia nel nome (`trg_soggetti_normalize_ins_upd`, `trg_soggetti_valida_cf_piva_dispatch_ins_upd`, `trg_dati_societari_guard_tipo_soggetto_ins_upd`, tre su `billing_account`); variabili senza `%TYPE` (`trgfn_gestori_guard`, `trgfn_risorse_umane_guard_ruolo`, `trgfn_soggetti_valida_cf_piva_dispatch`); `zeroerp_app` ha il DML sulla vista `vw_risorse_umane_dettaglio`; il codice `CODICE_NON_MODIFICABILE` senza prefisso è ancora in `config.messaggi_errore` → La parte sul DML della vista è chiusa: decisa da Tid il 2026-11-23, lavoro di `brief-db-porte-aperte-dalla-sola-guc` §5 (§19.3). Il resto resta in T11 |
+| S22 | I nomi `_v2` | `fn_crea_operatore_v2` e `fn_crea_risorsa_umana_v2` non hanno più una versione accanto: è un nome rimasto. Caso analogo `fn_sync_auth_user_expired`, che ora anche riaccende. → Tutta nel brief degli accessi (T9, §17.1) |
 | S23 | Lo strumento della doc | `scripts/gen_db_docs.py` non mostra i vincoli `EXCLUDE` fra i vincoli della scheda (`ex_clienti_no_overlap_stesso_pdp`, `ex_categ_cli_listini_no_overlap`): compaiono solo fra gli indici |
 
 I rami irraggiungibili di `trgfn_clienti_set_parent_istanza` non sono qui: sono il §2.1 di
@@ -427,9 +513,50 @@ colonne.
 | M17 | `fn_lookup_utilities_per_ba`, `fn_parametri_importo_utility`, `fn_guard_istanza_ba_emittente`, `fn_indirizzo_elemento`, i due `fn_tipo_indirizzo_ammesso_*` | Elenchi di lettori e di chiamanti non più veri |
 | M18 | `script.fn_veste_utilizzabile` | «`CURRENT_DATE`»: il corpo usa il giorno operativo. Fuori schema, segnalato |
 
+### 8.1 Le voci trovate nei giri 0a-0e (raccolte il 2026-11-23)
+
+I giri 0a-0e hanno trovato altri metadati falsi, scritti nei loro §x.2. Qui sono raccolti in un elenco solo, perché il
+giro dei metadati parta da una lista e non da sei. La colonna «Sede» dice **dove si corregge**, e decide chi lo fa:
+
+* **COMMENT**: un `COMMENT ON`, nel giro dei metadati;
+* **corpo**: un commento dentro il corpo di una funzione, che si cambia solo con un `CREATE OR REPLACE`. Lo corregge
+  il giro di codice che riscrive quella funzione; se nessun giro la tocca, resta nel giro dei metadati, che allora
+  riscrive il corpo solo per il commento;
+* **seed**: una riga di `80_data`, che si corregge dal CSV (`linee-guida-sql.md` §11.2), non con un `UPDATE`.
+
+⭐ Regola per i giri di codice: il COMMENT resta attaccato alla funzione anche dopo un `CREATE OR REPLACE`. Un giro
+che riscrive una funzione ne riscrive anche il COMMENT, nello stesso changeSet, e la voce si spunta qui: così nessun
+COMMENT si scrive due volte.
+
+| # | Dove | Che cosa | Sede |
+| --- | --- | --- | --- |
+| M9-bis | `trgfn_billing_account_link_ef`, `trgfn_efba_guard_storia_emittente` | «Fatture o commesse», come M9 (§12.2) | COMMENT |
+| M19 | `fn_get_emittente_fiscale_id` | La regola dell'azienda del BA a due livelli: sono tre (§12.2) | corpo |
+| M20 | `emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id` | «→ `soggetti_ruoli.id`»: la FK punta a `emittenti_fiscali.soggetto_ruolo_id` (§12.2) | COMMENT |
+| M21 | `trgfn_clienti_sync_utility_from_ba` | «Scrive se manca» vale per la utility, non per il ruolo, che il guard prima rifiuta NULL (§12.2) | COMMENT |
+| M15-bis | `trgfn_soggetti_titoli_iva_guard_coerenza`, `fn_consuma_plafond_titolo_iva_righe` | «Il nome sceglie l'ORDINE»; «l'imponibile si legge dalla riga» (il corpo usa l'importo passato) (§13.2) | COMMENT |
+| M22 | `trgfn_soggetti_titoli_iva_guard_tipo_soggetto` | Nomina come vivo `trgfn_soggetti_guard_titoli_iva_ammessi`, ritirato il 2026-11-14 (§13.2) | corpo |
+| M16 | `trgfn_soggetti_guard_forma_giuridica_natura` | ⚠️ Correzione di M16: questo COMMENT non descrive il cambio di natura, ha solo un marcatore «Brief: …» (§13.2) | COMMENT |
+| M23 | `indirizzi_dettaglio.storicizza` | «Default=True», quando è `false`. ✅ Riscritto dal giro 1 (`20261123-38`, §18), insieme a quelli di `indirizzi` e `config.stradario` | COMMENT |
+| M24 | `fn_check_tipo_indirizzo_soggetto` | «I tipi che chi chiama vede»: le tabelle sotto non hanno RLS, nessun filtro (§14.2) | COMMENT |
+| M25 | `contatti.default_context`, `contatti.is_default` | «soggetto\|ruolo\|utility», «per il soggetto»: il contesto è `istanza`, la chiave è soggetto e contesto (§14.2) | COMMENT |
+| M17-bis | `fn_indirizzi_con_obbligatori`, i predicati del tipo ammesso | Marcatori di cantiere; i lettori veri (§14.2) | COMMENT |
+| M26 | `vettori.soggetto_ruolo_id`, `fornitori.rating` | «Ruolo atteso: RES» (è `VT`); «0-100 o 1-5» (il CHECK è 0..100) (§15.2) | COMMENT |
+| M27 | `trgfn_emittenti_fiscali_guard_codice_forma` | «`varchar(10)`»: la colonna è `varchar(32)`, il limite di 10 lo tiene il CHECK. Lo ripete il test 9 del suo pgTAP (§15.2) | corpo, pgTAP |
+| M14-bis | Tre guard di ruolo | «Nuovo o esistente» nel corpo (§15.2) | corpo |
+| M28 | `identita_digitali.tecnica` | «Non ha MAI il profilo SUPER_ADMIN»: nessun oggetto lo impedisce (S63) | COMMENT, o la regola con T8 |
+| M29 | `fn_sync_auth_user_expired`, `maintenance.proc_sync_auth_user_expired_job`, `pgagent.pga_job.jobdesc` di `sync_auth_user_expired_daily` | «Batch notturno», «disattiva», «una volta per giorno aziendale»: è orario e riallinea nei due versi (§16.2) | COMMENT; il `jobdesc` dal changeSet che crea il job |
+| M30 | `fn_crea_operatore_v2`, `trgfn_risorse_umane_guard_ruolo` | Un elenco di revisioni con nomi di brief; il guard tace il controllo del soggetto, e l'intestazione del corpo parla di fornitori (§16.2) | COMMENT, corpo |
+| M31 | La sync della veste, `fn_crea_operatore_v2` | Commenti nei corpi che danno `DISABILITATO` per vivo (§16.2) | corpo |
+| M32 | `config.codici_errore` | La nota di `E_PROFILO_ULTIMO_SUPER_ADMIN` (una sede sola, «post-cutover»); la `causa` vuota di `E_RISORSA_UMANA_SOGGETTO_MISMATCH` (§16.2) | seed |
+
+Senza COMMENT, oltre all'elenco sopra: la tabella `risorse_umane` e quasi tutte le sue colonne, la vista
+`vw_risorse_umane_dettaglio` (§16.2).
+
 ## 9. Ricadute su BE e FE
 
-Il giro 0 non cambia nessun contratto: non ci sono ricadute da sviluppare. Ci sono quattro domande di censimento,
+Il giro 0 non cambia nessun contratto: non ci sono ricadute da sviluppare. Ci sono cinque domande di censimento
+(R-BE6, la sesta, è nata nel giro 0e: §16.3),
 che la sessione DB non può chiudere perché non legge `backend/`, e la cui risposta decide che cosa scrivono le
 pagine:
 
@@ -440,7 +567,6 @@ pagine:
 | R-BE3 | Chi chiama `fn_check_fornitore_attivo` e `fn_guard_fornitore_attivo`? Nel DB nessun corpo plpgsql le nomina | Dire nella pagina i lettori veri |
 | R-BE4 | La regola «un conto predefinito non si blocca» è solo nel service dei conti bancari? In quali punti | S18: se diventa una regola del DB, il brief dirà chi cambia per primo |
 | R-BE5 | Ogni scrittura dell'app su `anagrafiche.indirizzi` e `anagrafiche.indirizzi_dettaglio` (UPDATE e DELETE, compresi i verbi di copia e le madri) passa `storicizza = true`? Quali no. E prima di una DELETE l'app riscrive la riga con `true`? Il DB guarda il flag *salvato*, che dopo ogni modifica è `false` (§14.2) | S9, Q7: la guida degli indirizzi dirà quali modifiche lasciano traccia |
-
 
 ### 9.1 Le risposte del team BE/FE — 2026-11-22
 
@@ -549,7 +675,8 @@ questa revisione (schema `config`), si corregge col giro di codice.
 * Ogni oggetto dello schema ha la sua pagina, e l'indice dello schema non porta più marcatori come descrizioni.
 * Le sezioni «⚠️ Che cosa oggi non copre» rimaste aperte hanno ciascuna un giro o un brief che le chiude.
 * Le segnalazioni di §7 sono tutte vagliate: difetto con il suo giro, oppure voluta e scritta come tale nella
-  pagina.
+  pagina. Una segnalazione che il vaglio (§17) manda in un brief vicino o in uno nuovo conta come vagliata quando
+  quel brief la porta scritta, col rimando a questo.
 * Il brief va in `work-done/` quando i giri sono applicati e le domande R-BE hanno risposta.
 
 ## 12. Giro 0a — l'area C, 2026-11-22 (scritto, committato)
@@ -615,7 +742,7 @@ Lette sui corpi dagli agenti del giro, non provate con un caso. Si vagliano con 
 | S28 | L'albero dei billing account | Nessun limite di profondità e nessun controllo dei cicli: è rifiutato solo «parent = sé stesso». Spostare un BA da un parent a un altro con attività da fatturare non è controllato (solo togliere il parent) |
 | S29 | `billing_account.valuta_id` | Senza FK a `config.valute` (`fornitori` e `gestori` l'hanno) |
 | S30 | `soggetti_ruoli.tipo_ruolo_id` | Non è bloccato: un ruolo `CL` può cambiare tipo dopo che il suo BA esiste |
-| S31 | `trgfn_billing_account_guard_admin_globale`, `trgfn_billing_account_link_ef` | Un `app.current_user_id` che non è un numero è trattato come «nessun utente», e i due trigger lasciano passare la riga |
+| S31 ✔︎ | `trgfn_billing_account_guard_admin_globale`, `trgfn_billing_account_link_ef` | Un `app.current_user_id` che non è un numero è trattato come «nessun utente», e i due trigger lasciano passare la riga. ⚠️ **Riletta il 2026-11-23 sul corpo vivo**, dopo `20261123-19` (giro 8b di [brief-db-revisione-ui](../work-done/2026/brief-db-revisione-ui.md)): i due trigger leggono l'utente da `script.fn_utente_di_sessione`, che un valore illeggibile lo rifiuta, ma la chiamata è dentro `EXCEPTION WHEN OTHERS THEN v_user_id := NULL`: il BB solleva, i trigger ingoiano. **Resta aperta**; la correzione è togliere il blocco, come in `fn_id_fiscale_bloccato`, che dallo stesso changeSet lascia salire il rifiuto |
 | S32 | `fn_lookup_utilities_per_ba` | Non confronta il codice del ruolo con il ruolo del BA; un id che non corrisponde a nessun BA non è rifiutato |
 | S33 | `fn_crea_billing_account` | Senza sessione, i guard dell'azienda girano prima del collegamento che la funzione scrive. Con `usa_sequenza` spento il codice manca e il rifiuto è un NOT NULL, non un codice di dominio |
 | S34 | I clienti | `trgfn_clienti_guard_ruolo_cliente` ripete un controllo che il BA fa già. In `fn_update_cliente` un delta che non è un oggetto dà l'errore tecnico di PostgreSQL, e `categoria_aggiornata` vale vero anche se la categoria non cambia. `fn_get_evento_stato_corrente_cliente` è STABLE PARALLEL SAFE e sui rifiuti chiama `fn_log_and_raise_error`, che non lo è. Il modello non dice in quali stati un cliente può nascere. Un cliente chiuso il giorno stesso dell'attivazione ha un periodo vuoto |
@@ -646,6 +773,23 @@ sono provati direttamente; di `trgfn_clienti_sync_stato_pdp` è provato solo il 
 * `billing_account.md` è di 178 righe: la tabella ha quattro policy, tre chiavi composte e i lock da spiegare.
 * Residui fuori dai punti assegnati, da chiudere col giro della guida: in `gestione-delle-istanze-utility` restano due
   frasi di cronaca («Fino al 2026-10-08…», «decisione di Tid del…»).
+
+### 12.5 Le pagine invecchiate dai changeSet del 2026-11-23
+
+Le pagine del giro 0 sono scritte dal catalogo del 22. Il giorno dopo due cantieri vicini hanno riscritto otto
+funzioni dello schema, senza toccarne le pagine. Riallineate dal passo A (2026-11-23), lette dal corpo vivo di dbdev:
+
+* `20261123-03` ([brief-db-magazzino-tutte-le-scritture-dal-verbo](../work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md),
+  P-5a) porta `fn_crea_emittente_fiscale`, `fn_crea_fornitore`, `fn_crea_cliente`, `fn_crea_billing_account`,
+  `fn_crea_contatto` e `fn_indirizzo_elemento` a `script.fn_guard_campi_ammessi`. Il comportamento non cambia (stesso
+  codice, stessa frase, `context.campo`): le sei pagine prendono il BB nel «Vedi anche».
+* `20261123-19` ([brief-db-revisione-ui](../work-done/2026/brief-db-revisione-ui.md), giro 8b) porta `fn_id_fiscale_bloccato` e i due
+  trigger del BA a `script.fn_utente_di_sessione`. La pagina di `fn_id_fiscale_bloccato` regge (dice «l'utente della
+  richiesta», senza dire come si legge). Le due pagine dei trigger prendono il BB nel «Vedi anche» e, in «Che cosa
+  oggi non copre», il blocco che ingoia l'errore (S31, §12.3).
+
+⚠️ La lezione per i giri di codice: prima di toccare un oggetto si guarda se ha un changeSet più recente della sua
+pagina. Le pagine di questo brief invecchiano anche coi cantieri degli altri.
 
 ## 13. Giro 0b — l'area A, 2026-11-22 (scritto, committato)
 
@@ -810,8 +954,8 @@ Lette sui corpi dagli agenti del giro, non provate con un caso salvo dove detto.
 | S47 | Il catasto | Il clone si fa una volta: un cambio di catena dopo il clone, o un'unità comparsa dopo sulla precedente, non arrivano; un'istanza inserita con la precedente già scritta non riceve il clone (il trigger è solo su UPDATE). La ponte non si pulisce al cambio di civico o di unità, e col blocco ATTIVO quel civico non si spegne più. Un'unità lasciata da un'istanza resta orfana |
 | S48 | Gli indirizzi obbligatori | **Un requisito nuovo blocca chi esiste.** Una riga di matrice che diventa obbligatoria non rigiudica nessuno, ma i due trigger dei titolari scattano a ogni UPDATE (niente `OF` né `WHEN`): la prossima scrittura del soggetto o del ruolo, su qualunque colonna, è rifiutata. Il ripiego del livello soggetto non si confronta con la natura, e il rifiuto può proporre un ripiego che il guard del tipo non lascia scrivere. I due trigger sugli indirizzi chiamano il guard senza `tx_id`. `fn_indirizzi_con_obbligatori` ignora il ripiego: con il ripiego nell'elenco nasce comunque la copia del tipo. «Obbligatorio per la natura» è calcolato in quattro sedi (i due picker, `fn_indirizzi_obbligatori_mancanti_soggetto`, `fn_crea_indirizzi_soggetto`); sul ruolo in una sola |
 | S49 | Il tipo d'indirizzo | Il cambio del tipo di ruolo (S30) non rigiudica gli indirizzi che il ruolo ha. `fn_indirizzo_elemento` non verifica il tipo per id (provato con una chiamata in sola lettura: l'id 999999 torna senza errore; con id e codice vale l'id e il codice non si confronta): il rifiuto arriva dalla FK, non da `E_TIPO_INDIRIZZO_NON_TROVATO`. `fn_tipo_indirizzo_ammesso_per_ruolo` prende il tipo di ruolo `bigint`, `fn_check_tipo_indirizzo_ruolo_su_contesto` `integer` |
-| S50 | La normalizzazione | Con una via non risolta, un INSERT diretto o la modifica di un civico falliscono sul NOT NULL di `via_norm` senza codice (solo il «trova o crea» dà `E_INDIRIZZO_VIA_NON_RISOLTA`). Un elemento senza forma, anche un libero col testo vuoto, finisce sui NOT NULL dello stradario e non arriva al guard della forma libera. La porta `zeroerp.maintenance_indirizzi_dettaglio` è un parametro di sessione che chiunque scriva accende. `geoloc` è una copia presa alla scrittura e non segue `civic_geoloc` |
-| S51 | I permessi | Come S21 e 13.2: `zeroerp_app` ha il DML sulle cinque viste degli indirizzi, che non sono aggiornabili; non sono `security_invoker` (oggi innocuo: le tabelle sotto non hanno RLS) |
+| S50 | La normalizzazione | Con una via non risolta, un INSERT diretto o la modifica di un civico falliscono sul NOT NULL di `via_norm` senza codice (solo il «trova o crea» dà `E_INDIRIZZO_VIA_NON_RISOLTA`). Un elemento senza forma, anche un libero col testo vuoto, finisce sui NOT NULL dello stradario e non arriva al guard della forma libera. ~~La porta `zeroerp.maintenance_indirizzi_dettaglio` è un parametro di sessione che chiunque scriva accende.~~ ⚠️ Questo pezzo esce da T7 (Tid, 2026-11-23, D-D): lo chiude il giro 1 di [brief-db-porte-aperte-dalla-sola-guc](brief-db-porte-aperte-dalla-sola-guc.md), con la porta della toponomastica. `geoloc` è una copia presa alla scrittura e non segue `civic_geoloc` |
+| S51 | I permessi | Come S21 e 13.2: `zeroerp_app` ha il DML sulle cinque viste degli indirizzi, che non sono aggiornabili; non sono `security_invoker` (oggi innocuo: le tabelle sotto non hanno RLS) → Chiusa il 2026-11-23: postura di tutto il database, decisa da Tid, lavoro di `brief-db-porte-aperte-dalla-sola-guc` §5 (§19.3) |
 
 pgTAP mancanti: nessun test proprio per `trgfn_soggetti_guard_soggetto_contatti`, né per il passaggio del segno fra
 due contatti dello stesso contesto; l'intestazione di `test-contatti-soggetto-cliente.sql` parla di un «tipo_contatto
@@ -879,12 +1023,12 @@ Lette sui corpi dagli agenti del giro, non provate con un caso.
 | # | Dove | Che cosa |
 | --- | --- | --- |
 | S52 | Gli otto guard di ruolo | Il cambio di `soggetti_ruoli.tipo_ruolo_id` (S30) non fa scattare i guard: un ruolo `FO` portato a `VT` lascia la riga di `fornitori` su un ruolo vettore. Vale per tutte le specializzazioni. Nessun pgTAP prova il rifiuto `E_SOGGETTI_RUOLI` |
-| S53 | Lo spegnimento dell'emittente | Fatture, commesse, registri, listini, lotti, distinte, sistemazioni e `dbops.coda_lavori` puntano a `soggetti_ruoli` e non fermano lo spegnimento: un emittente con fatture si spegne, uno con un ordine no. Un primo emittente nato spento è respinto al COMMIT con `E_ATTIVO_PADRE_NON_ATTIVO`. `emittenti_fiscali.valuta_id` è senza FK (con S29) |
+| S53 | Lo spegnimento dell'emittente | Fatture, commesse, registri, listini, lotti, distinte, sistemazioni e `dbops.coda_lavori` puntano a `soggetti_ruoli` e non fermano lo spegnimento: un emittente con fatture si spegne, uno con un ordine no. Un primo emittente nato spento è respinto al COMMIT con `E_ATTIVO_PADRE_NON_ATTIVO`. `emittenti_fiscali.valuta_id` è senza FK (con S29). → Tema proprio T12, con la regola di Tid (§17.1); la FK della valuta va con S29 in T4 |
 | S54 | Le letture dell'emittente | `fn_get_emittente_fiscale_id` e `_pk` danno un'azienda a un id di BA che non esiste; `fn_parametri_importo_utility` non rifiuta un ruolo che non è un emittente. Il maiuscolo della sigla si fa due volte (`a05` e `a15`) |
 | S55 | I conti | L'IBAN si modifica sotto i legami. `uso` del legame del ruolo non è bloccato: un canale d'incasso resta appeso a un legame che non è più `INCASSO`. Il soggetto del ruolo non deve essere attivo (il gemello sul soggetto lo pretende). Un predefinito a scadenza non è programmabile: l'indice del predefinito ignora la validità. Il normalize toglie solo gli spazi (un trattino resta e il CHECK rifiuta). Il BIC non si normalizza; filiale e IBAN non si confrontano; la stessa coppia ABI/CAB è ammessa su due banche. `iban_snapshot` del mandato SEPA non si confronta col conto |
 | S56 | Fornitori e vettori | `fornitori.soggetto_ruolo_id` non è bloccato (un fornitore si sposta su un altro soggetto). `vendite.ddt.vettore_soggetto_ruolo_id` ha la sola FK su `soggetti_ruoli`: nessuno chiede che sia `VT`, che abbia una riga in `vettori`, che sia attivo. «Fornitore attivo» sta in due corpi (`fn_check_fornitore_attivo`, `fn_guard_fornitore_attivo`), che nessun oggetto del DB chiama; `E_FORNITORE_BLOCCATO` riempie il segnaposto dell'id con una frase |
 | S57 | Gestori e reseller | Il gestore unico è una lettura, non un vincolo: due inserimenti concorrenti passano. La P.IVA del gestore si giudica solo quando si scrive il gestore. Nessun oggetto legge `gestori_utilities`. `resellers_billing_account` non ha guard di ruolo; il guard attivo dei reseller conta anche i legami chiusi, quindi un reseller che ha avuto clienti non si spegne senza cancellarne la storia |
-| S58 | I permessi | Come S21: `zeroerp_app` ha il DML su `vw_fornitori_dettaglio` e `vw_conti_bancari_per_ruolo`, viste non aggiornabili; la prima non è `security_invoker` |
+| S58 | I permessi | Come S21: `zeroerp_app` ha il DML su `vw_fornitori_dettaglio` e `vw_conti_bancari_per_ruolo`, viste non aggiornabili; la prima non è `security_invoker` → Chiusa il 2026-11-23: come S51 (§19.3) |
 
 pgTAP mancanti: nessun test prova `E_CONTO_BANCARIO` su un conto spento, la normalizzazione dei conti, il guard SEPA,
 il rifiuto di un ruolo non `BANK_B` o non `EF`, `E_EMITTENTE_DEFAULT_SINGLETON` al COMMIT, né gli oggetti di gestori,
@@ -897,10 +1041,9 @@ reseller e PSP salvo il gestore unico (rosso).
   nessun link a `manual/` né morto. I nomi che il catalogo non conosce stanno nelle Note di migrazione
   (`trgfn_emittenti_fiscali_guard_attivo`, `uq_gestori_singleton`) o sono una sequenza (`vettori_codice_seq`). Il
   blocco non ha `##` né il tag include. La guida: link vivi, nessun link a `manual/` o a brief.
-* **La doc auto-generata è da rigenerare** (passo 4): la scheda della pagina nuova non la include, l'indice porta i
-  marcatori dell'area D, e `index.ci.md` ha ancora il link alla pagina ritirata.
+* ~~La doc auto-generata è da rigenerare~~ ✅ rigenerata da Tid il 2026-11-22, prima del giro 0e.
 * `emittenti_fiscali.md` è di 176 righe (21 trigger di spegnimento da spiegare). La build della doc non è lanciata.
-* **Ritirato anche il pgTAP del catasto** (14.2), nello stesso albero: da committare con questo giro.
+* **Ritirato anche il pgTAP del catasto** (14.2), nello stesso albero: ✅ committato con questo giro.
 
 ## 16. Giro 0e — l'area E, 2026-11-22 (scritto, committato)
 
@@ -971,11 +1114,11 @@ Lette sui corpi dagli agenti del giro, non provate.
 | S61 | L'ultimo SUPER_ADMIN | Il guard della veste guarda solo `attivo` e le date: spostare la veste dell'ultimo amministratore su un'altra credenziale (anche bloccata), su un ruolo col rapporto chiuso, o farla diventare non OPERATORE, non passa da nessun guard. Un profilo SUPER_ADMIN si porta a un altro `tipo` senza guard. Con la porta di manutenzione aperta si cancella il rapporto dell'ultimo amministratore: il guard del rapporto scatta solo sull'UPDATE |
 | S62 | `trgfn_risorse_umane_guard_identita_attiva` | Cerca la veste su `NEW.soggetto_ruolo_id`: uno spegnimento che nella stessa modifica sposta il ruolo passa, con la veste accesa sul ruolo di prima |
 | S63 | La veste tecnica | `trgfn_identita_digitali_guard_coerenza` legge `tecnica` solo nel ramo OPERATORE: una veste di portale o di shop con `tecnica = true` passa. Nessun controllo impedisce il SUPER_ADMIN su un'identità tecnica, contro il COMMENT della colonna; `script.fn_is_super_admin_account` non esclude `tecnica` |
-| S64 | `script.fn_stato_veste` | `ATTIVO` vuol dire «accesa», non «utilizzabile»: una veste accesa e scaduta, o col rapporto chiuso, è `ATTIVO` in `vw_accessi_altri`. Il COMMENT lo dichiara come scelta: da dire se resta |
+| S64 | `script.fn_stato_veste` | `ATTIVO` vuol dire «accesa», non «utilizzabile»: una veste accesa e scaduta, o col rapporto chiuso, è `ATTIVO` in `vw_accessi_altri`. Il COMMENT lo dichiara come scelta: da dire se resta. → Si decide nel brief degli accessi (T9, §17.1) |
 | S65 | `fn_crea_risorsa_umana_v2` | Oltre a S6: con `p_valido_dal` passato nullo l'INSERT del rapporto fallisce sul NOT NULL (23502, senza codice del catalogo), e il ripiego sul giorno operativo scritto per la veste non si raggiunge; chiamata da sola, non controlla che la credenziale abbia già una veste OPERATORE spenta (gli indici unici valgono per le vesti accese) |
 | S66 | `fn_provisiona_dati_di_sviluppo` | Al rilancio riaccende le vesti ma non rimette il SUPER_ADMIN di `dev.smoke`, né le date, il rapporto o il soggetto: un utente di prova scaduto resta senza accesso |
-| S67 | La veste dello shop | Il COMMENT di `fn_crea_veste_portale` la fa nascere accesa; `architettura-multi-face-auth` §8.2 la disegna spenta, accesa dalla verifica dell'email. Lo shop self-service non c'è ancora: da decidere quale dei due vale |
-| S68 | I permessi delle viste | Come S21 e S58: `zeroerp_app` ha il DML anche su `vw_accessi_altri` e `vw_accessi_sistema`; `vw_risorse_umane_dettaglio` non è `security_invoker` (sotto non c'è RLS) |
+| S67 | La veste dello shop | Il COMMENT di `fn_crea_veste_portale` la fa nascere accesa; `architettura-multi-face-auth` §8.2 la disegna spenta, accesa dalla verifica dell'email. Lo shop self-service non c'è ancora: da decidere quale dei due vale. → Si decide nel brief degli accessi (T9, §17.1) |
+| S68 | I permessi delle viste | Come S21 e S58: `zeroerp_app` ha il DML anche su `vw_accessi_altri` e `vw_accessi_sistema`; `vw_risorse_umane_dettaglio` non è `security_invoker` (sotto non c'è RLS) → Chiusa il 2026-11-23: come S51 (§19.3) |
 
 pgTAP mancanti: nessun test prova la cancellazione o lo spostamento dell'ultima veste rispetto a `is_active`, il batch
 che lascia fuori le credenziali senza vesti e la sua seconda chiamata a vuoto, i casi di S61, i due rifiuti di
@@ -1001,3 +1144,1129 @@ decide se la credenziale resta accesa.
   Non snellite le sezioni di sistema (GUC, pgbouncer, secondo fattore), che sono del backend.
 * **La doc auto-generata è rigenerata** (Tid, 2026-11-22): le schede prendono le pagine nuove, l'indice le descrizioni.
   La build della doc non è lanciata.
+
+## 17. Il vaglio per temi — proposta del 2026-11-23
+
+Le 68 segnalazioni stanno in sei tabelle (§7, 12.3, 13.3, 14.3, 15.3, 16.3). Quasi tutte sono lette sui corpi e non
+provate, e mescolano difetti, scelte da dichiarare, forma e permessi. Vagliarle una per una sono 68 decisioni. Per
+**tema** sono una decina, e ogni tema è già un giro di codice. Per ogni tema Tid decide **dove va** (qui, nel brief
+vicino, in un brief nuovo) e l'**ordine**. Dentro un tema, il giro distingue ancora difetto da scelta voluta, riga per
+riga, e scrive la scelta nella pagina.
+
+Due regole valgono per tutti i giri:
+
+* **Ogni segnalazione non ✔︎ entra nel suo giro con un pgTAP che costruisce il caso e lo vede rosso**, prima della
+  correzione (regola zero, corollario sui test). Se il caso non si costruisce, la segnalazione non era un difetto, e
+  lo si scrive.
+* **I pgTAP vanno col loro tema**: i test mancanti elencati in coda a §12.3-16.3, e i rossi in baseline della
+  famiglia (`create-soggetto-gestori.sql` con T7; i quattro della sync, `test-sync-auth-user-is-active-multi-role`,
+  `test-fn-sync-auth-user-is-active-or`, `test-identita-digitali-unique-multi-veste`,
+  `test-identita-digitali-guard-coerenza`, con T8). Non c'è un giro solo per i pgTAP.
+
+| Tema | Segnalazioni | La più grave, sul modello | Proposta: dove va |
+| --- | --- | --- | --- |
+| **T1** Lo storico degli indirizzi | S9 | Nessuna modifica fatta dall'app lascia traccia | Qui. **Deciso** (Q7), è il giro 1 (§18) |
+| **T2** I permessi delle viste e delle funzioni | S21 (il DML), S37 (`security_invoker`), S40, S51, S58, S68 | `fn_soggetto_primo_documento` e `fn_titoli_iva_non_ammessi_conta` sono `SECURITY DEFINER` con EXECUTE a `PUBLIC` | Qui, giro 2. Il `REVOKE` del DML sulle viste va nel loop dei grant, non in un changeSet a parte (`linee-guida-sql.md` §11.8) |
+| **T3** Il cliente e il PDP | S1, S14, S16 (prima metà), S17, S34, S35, S36, S37 (`vw_pdp`); il ritiro di `vw_pdp` (R-BE1) | S1: il subentro lascia un giorno senza cliente sul PDP | **S1 in [sviluppo-gestione-clienti-v2](sviluppo-gestione-clienti-v2.md)** (Q1). Il resto qui. La catena delle istanze resta in [brief-db-catena-istanze-pdp](brief-db-catena-istanze-pdp.md) |
+| **T4** L'azienda del billing account | S2 ✔︎, S24, S25, S26, S27, S28, S29, S31 ✔︎, S32, S33 | S2: due definizioni di «storia» fanno scegliere i BA sbagliati da controllare | Qui. S27 monta su `vendite.fatture` il guard che ordini, DDT, commesse e resi hanno già: poggia su un pezzo comune già fatto, quindi il fermo allentato del 2026-10-25 lo ammette |
+| **T5** Il soggetto: natura, identificativo, ruoli | S4, S20, S30, S38 ✔︎, S41, S42, S43, S52 | S38: passando dalla natura vuota si aggirano i due divieti definitivi del cambio di natura | Qui. Bloccare `soggetti_ruoli.tipo_ruolo_id` (S30) chiude anche S52 e metà di S49 |
+| **T6** Lo spegnimento del soggetto e il contatto obbligatorio | S39, S45 | Un soggetto non si spegne: delle nove figlie che bloccano, sette non hanno `attivo` | **Brief nuovo**: è una decisione di modello («che cosa vuol dire spegnere un soggetto»), non una correzione |
+| **T7** Indirizzi e contatti | S3 ✔︎, S8, S10, S11, S16 (seconda metà), S19, S46, S47, S48, S49, S50 | S3: un indirizzo libero esce una volta per ogni via del comune. S48: un requisito nuovo blocca la prossima scrittura di chi esiste già | Qui. ⚠️ 2026-11-23: la porta di S50 (`zeroerp.maintenance_indirizzi_dettaglio`) è la **porta 14** di `brief-db-porte-aperte-dalla-sola-guc`: ~~la regola si decide lì (D-C), e D-D propone di applicarla qui, in T7~~ ⚠️ decise da Tid il 2026-11-23: D-C **b**, D-D **a**, la porta la chiude il giro 1 di quel brief, non T7. T7 non tocca `trgfn_indirizzi_dettaglio_protect_update` |
+| **T8** Ruoli d'impresa, conti, emittente | S12 ✔︎, S13, S15 (parte), S18, S53, S54, S55, S56, S57; il ritiro di `fn_check_fornitore_attivo` e `fn_guard_fornitore_attivo` (R-BE3); «un predefinito non si blocca» al DB (R-BE4) | S12: `resellers.codice` è NOT NULL e nessuno lo genera. S53: un emittente con fatture si spegne | Qui, salvo S53, che tocca tutte le tabelle di documento che puntano a `soggetti_ruoli`: ~~da decidere se è un tema proprio~~ → lo è, T12 (§17.1) |
+| **T9** Gli accessi | S5, S6, S22 (⚠️ tutta, §17.1), S59-S67, R-BE6 | S59: una credenziale rimasta senza vesti resta accesa per sempre. S61: l'ultimo SUPER_ADMIN si sposta senza passare da un guard | **Brief DB nuovo sugli accessi**, che porti anche **R-4** di [piano-be-fe-accessi-credenziale-e-vesti](../work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md) (la veste revocata), che aspetta un brief DB mai scritto. S67 (lo shop nasce acceso o spento) è la stessa materia di R-4 |
+| **T10** I titoli IVA | S44 | Nessuna funzione scrive i movimenti `NOTA_CREDITO`, e niente impedisce di restituire più di quanto la fattura aveva consumato | Qui, oppure col cantiere che porterà le note di credito: ~~da decidere~~ → qui (§17.1) |
+| **T11** La forma | S15 (i quattro `*_normalize` vuoti), S21 (fasce, `%TYPE`, `CODICE_NON_MODIFICABILE`), ~~S22 (i nomi `_v2`)~~ → in T9 (§17.1) | — | Qui, per ultimo |
+| fuori DB | S23 (`scripts/gen_db_docs.py` non mostra i vincoli `EXCLUDE` fra i vincoli) | — | Una correzione dello strumento della doc, quando Tid lo dice |
+
+Già chiuse: **S7** (voluto, la doc è corretta nel giro 0e).
+
+**L'ordine proposto** dei giri che restano qui, per gravità sul modello: T1 (giro 1), T2 (giro 2), T5, T7, T4, T8,
+T3, T10, T11. ⚠️ Deciso con T12 dopo T8: §17.1.
+
+**Le tre decisioni aperte**, con la proposta (⚠️ decise il 2026-11-23: §17.1):
+
+| # | Domanda | Proposta |
+| --- | --- | --- |
+| S4 | Lo stesso codice fiscale su due soggetti con partite IVA diverse è ammesso? | Il difetto c'è comunque: il pre-controllo dei due verbi e l'indice unico dicono due regole diverse. Tid sceglie la regola; il giro T5 porta la seconda sede sulla prima |
+| S64 | `ATTIVO` in `script.fn_stato_veste` vuol dire «accesa» o «utilizzabile»? | Resta «accesa», come dice il suo COMMENT, e la lista degli accessi mostra l'utilizzabilità a parte. Si decide nel brief degli accessi (T9) |
+| S67 | La veste dello shop nasce accesa (COMMENT di `fn_crea_veste_portale`) o spenta, accesa dalla verifica dell'email (`architettura-multi-face-auth` §8.2)? | Nel brief degli accessi (T9), insieme a R-4: lo shop self-service non c'è ancora |
+
+### 17.1 Decise da Tid — 2026-11-23
+
+* **Le proposte della tabella, tutte accettate**: T2, T4, T5, T7, T8, T11 qui; T3 qui, con S1 in
+  [sviluppo-gestione-clienti-v2](sviluppo-gestione-clienti-v2.md); T6 in un brief nuovo; T9 in un brief DB nuovo sugli
+  accessi, con R-4 del piano accessi (la veste **non** si tratta qui); S23 fuori DB, quando lo dice Tid. L'ordine è quello
+  proposto, con T12 dopo T8: T2 (giro 2), T5, T7, T4, T8, T12, T3, T10, T11.
+* **T10, i titoli IVA: qui**, come giro di questa revisione e non col cantiere delle note di credito.
+* **S4: la chiave è la coppia** CF e P.IVA, come l'indice unico `uq_soggetto_idstato_id_fiscale_univoco`. Il giro T5
+  allinea il pre-controllo «già presente» di `fn_crea_soggetto_pf` e `fn_crea_soggetto_pg` all'indice. Argomento sul
+  modello: i membri di un gruppo IVA hanno la stessa P.IVA e CF diversi.
+* **S64, S67**: nel brief degli accessi (T9).
+* **S22, i nomi `_v2`: tutta in T9**, non in T11 (Tid, 2026-11-23): sono verbi degli accessi che quel brief riscrive
+  per S6 e S65, e due brief sulle stesse funzioni si pestano i piedi. Il rinomino e la sua richiesta al BE le scrive lì.
+* **S53 è un tema proprio: T12, lo spegnimento dell'emittente.** La regola di Tid: **un emittente definito non si
+  spegne se ha qualunque cosa associata** (un'anagrafica, un documento, un registro, una riga di qualunque tabella che
+  lo nomini), non solo le figlie che oggi fermano lo spegnimento. Il giro, prima di costruire, cerca la decisione
+  esistente sullo spegnimento dei ruoli (l'automazione ATTIVO, `E_ATTIVO_*`) e dice se la completa o la revoca; censisce
+  le tabelle che puntano all'emittente (direttamente o attraverso `soggetti_ruoli`). Viene dopo T8 (Tid, 2026-11-23),
+  che tocca gli stessi ruoli d'impresa. Il resto di S53 si divide così: il primo emittente nato spento va con T12; la
+  FK mancante di `emittenti_fiscali.valuta_id` va con S29, in T4.
+
+## 18. Giro 1 — Q7, lo storico continuo di indirizzi, civici e vie (2026-11-23, applicato, pgTAP verdi, committato)
+
+Decisione: Q7 riaperta, strada (b), estesa a `config.stradario` (Tid, 2026-11-22, §10). Via allo sviluppo: Tid,
+2026-11-23. **Guide verificate** (`scripts/guide_coinvolte.py --oggetti anagrafiche.indirizzi
+anagrafiche.indirizzi_dettaglio config.stradario config.storico_set_storicizza script.trgfn_storico_generic`):
+
+| Guida o nota | Esito |
+| --- | --- |
+| `gestione-degli-indirizzi` | Guida indietro dopo il giro: riscritta §Storicizzazione (una regola sola per le quattro tabelle) e il passo 3 dell'import massivo |
+| `riclassificazione-vie` | Prima del giro il codice la smentiva («Storico garantito», punto 4): ora è vera, ed è precisata insieme al punto della rinormalizzazione |
+| `storicizzazione-tabelle` | Coerente: consigliava già di registrare le tabelle anagrafiche |
+| `catasto-delle-istanze`, `generazione-cliente`, `gestione-delle-istanze-utility`, `audit-e-tracciabilita`, `automazione-db` | Coerenti: non dicono niente dello storico di queste tre tabelle, o lo dicono del trigger in generale |
+| `storico/_tabelle-storico`, `anagrafiche/_indirizzo-libero-o-dettaglio`, `_indirizzi-obbligatori`, `_tipo-indirizzo-ammesso` | Coerenti |
+
+### 18.1 Che cosa è scritto
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `00_schema/anagrafiche/20261123-38` | `indirizzi` e `indirizzi_dettaglio`: `storicizza` DEFAULT `true`, righe esistenti accese con i trigger della tabella sospesi (tranne audit e `tx_id`, cercati per funzione), COMMENT della colonna (chiude M23) |
+| `00_schema/config/20261123-39` | `config.stradario`: DEFAULT `true` e COMMENT. Le righe no: vedi -40 |
+| `00_schema/storico/20261123-42` | `storico.indirizzi`: `change_type` DEFAULT `'A'` e `indirizzi_id` `bigint`, come le altre ombre (18.2) |
+| `80_data/changelog/20261123-40` | Le vie che esistono si accendono, con lo storico sospeso, **dopo** il mirror dello stradario |
+| `80_data/changelog/20261123-41` | Le tre tabelle in `config.storico_set_storicizza`, con `insert_manuale = true` (una decisione, che la sync settimanale non pota) |
+| `80_data/changelog/20250814-03` e `80_data/sql/config/stradario.csv` | La colonna `storicizza` esce dal CSV e dal mirror: il valore giusto è il default della tabella (`linee-guida-sql.md` §11.2). Le 4.278 righe hanno ora 11 campi |
+
+**Perché le vie si accendono in `80_data` e non in `00_schema`.** Il mirror `20250814-03` è `runOnChange`, e
+toglierne una colonna lo fa ripassare al migrate successivo su dbdev, al suo numero, cioè prima di ogni file di
+`80_data` datato oggi. Il ripasso è un `UPDATE` su ogni via, e `script.trgfn_storico_generic` non salta le modifiche
+a vuoto: con le righe già accese avrebbe scritto due versioni per ogni via. Così il mirror ripassa su righe ancora
+spente, e -40 le accende dopo, con lo storico sospeso. Da zero il mirror inserisce le vie col default, e -40 non
+trova niente.
+
+**pgTAP nuovo:** `db/pgtap/anagrafiche/test-storico-indirizzi-continuo-v1.sql`, 16 asserzioni: il default sulle tre
+tabelle, il registro, e per via, civico e indirizzo di ruolo fabbricati dal test la riga che nasce accesa, due
+modifiche che lasciano partenza e due versioni, il flag che resta acceso, la cancellazione che lascia la sua (via e
+civico), una scrittura che spegne il flag e non lascia traccia. La cancellazione dell'indirizzo di ruolo non si prova:
+se il tipo è obbligatorio per il ruolo il guard la rifiuta, e la fixture non sceglie il tipo.
+
+**pgTAP corretto:** `db/pgtap/config/test-stradario-riclassificazione-unico.sql`, test 13. Chiedeva lo snapshot «a
+`now()`» dentro la transazione: tutte le versioni nascono a quell'istante, e la via vecchia tornava solo perché il
+cambio di nome, sotto lo storico a richiesta, non lasciava traccia. Ora chiede l'istante prima della transazione.
+
+**Pagine e guide:** `manual/indirizzi.md`, `manual/indirizzi_dettaglio.md` (la sezione «Lo storico è continuo» al
+posto di «a richiesta», tolti i punti di «Che cosa oggi non copre», il test nuovo), `config/manual/stradario.md`
+(solo il punto dello storico: la pagina è fuori da questa revisione e resta nel formato vecchio), le due guide sopra.
+
+### 18.2 Che cosa ha trovato la prova
+
+* ⭐ **`storico.indirizzi` non accettava nessuna versione.** È un'ombra della prima generazione: `change_type` è
+  `NOT NULL` senza default, e il trigger generico non lo scrive. Ogni modifica o cancellazione di un indirizzo di
+  ruolo col flag acceso falliva con `E_SNAPSHOT_INIT_INSERT_ERROR` (23502), e con lei la scrittura. Nessuno lo vedeva
+  perché nessuna scrittura accendeva il flag: l'ombra è vuota su dbdev e sullo scratch. Con lo storico continuo
+  **ogni** modifica di un indirizzo di ruolo dall'app si sarebbe fermata lì. L'ha trovato il pgTAP del giro prima
+  dell'apply; il censimento sul catalogo dice che è l'unica ombra con una colonna obbligatoria che il trigger non
+  scrive. Corretto da -42, che quindi va applicato **insieme** a -38.
+* `storico.indirizzi_dettaglio` è vuota e `storico.stradario` ha poche righe (dbdev, 2026-11-23): fatto datato, che
+  conferma S9 e R-BE5.
+* **Conseguenza dichiarata, voluta dalla guida delle vie:** `maintenance.proc_bump_indirizzi_dettaglio` riscrive ogni
+  civico di una via con un aggiornamento neutro, e ora ognuno lascia una versione anche quando il testo non cambia.
+  Gira a mano, su una via sola; nessun job la chiama.
+* **Fatto per il team BE/FE, non una richiesta:** la PUT dell'indirizzo del ruolo (`soggetti_service.replace_indirizzo_ruolo`,
+  R-BE5 riga 3) è una DELETE più una INSERT. Ora la DELETE lascia la sua versione, ma la riga nuova ha un altro id:
+  la storia di «quell'indirizzo» si spezza su due id. Se si vuole una storia sola, la PUT diventa un UPDATE: lo decide
+  il team BE/FE.
+
+### 18.3 La prova
+
+`scripts/prova_changeset.py` sui cinque changeSet, sullo scratch, in `ROLLBACK`, con 30 pgTAP che scrivono le tre
+tabelle (censiti per `UPDATE`/`DELETE` diretti, madri, verbi di copia, «trova o crea», bump e fusione):
+
+* il test nuovo: senza i changeSet 1 ok e 15 rossi (la regola che manca), con i changeSet 16 ok;
+* 28 test invariati, verdi nelle due corse;
+* `test-stradario-riclassificazione-unico`: 13 ok senza, 12 ok e 1 rosso con i changeSet prima della correzione del
+  test 13, 13 ok dopo;
+* `config/test-toponomastica-stradario-generale.sql` **non provato**: comincia con una pulizia fuori transazione
+  (voluta, spiegata in testa al file), e lo script non lancia un file che non comincia con `BEGIN;`. Non scrive
+  `config.stradario`.
+
+I presidi statici (`guardrail_comment_al_presente`, `_ddl_su_trigger_automazione`, `_forme_changeset`,
+`_grant_ruolo_batch`, `_pgtap_preambolo`, `_precondition_seed`, `_run_on_change`, `_sql_letterali`,
+`_timestamp_senza_fuso`) sono verdi.
+
+### 18.4 Che cosa resta
+
+* ✅ **Apply e pgTAP: Tid, 2026-11-23**, applicato con i test verdi. Prima dell'apply i due blocchi `DO` di -38 e
+  -40 sono stati portati a `%TYPE` (gli array dei trigger sospesi ancorati a `pg_catalog.pg_trigger.tgname` e
+  `tgenabled`, `linee-guida-sql.md` §5g; `regclass` resta esplicito col motivo) e riprovati sullo scratch.
+* ✅ Doc auto-generata rigenerata da Tid e **commit** `a35a6636dc` (2026-11-23), insieme al passo A. Il giro 1 è
+  chiuso.
+* Le pagine delle tre ombre (`storico/manual/indirizzi.md`, `indirizzi_dettaglio.md`, `stradario.md`) sono nel
+  formato vecchio e dicono cose non vere sullo storico (per esempio «il trigger logga l'eccezione senza bloccare»: la
+  solleva). Sono dello schema `storico`, fuori da questa revisione: debito per la revisione di quello schema.
+* M23 si chiude con -38 (§8.1).
+
+## 19. Giro 2 — T2, i permessi delle viste e delle funzioni (2026-11-23, analisi letta sul catalogo)
+
+Via: Tid, 2026-11-23. Il giro parte dalle segnalazioni S21 (il DML), S37, S40, S51, S58, S68. Le letture sono sul
+catalogo di dbdev il 2026-11-23, e sono letture di **struttura** (ACL, `reloptions`, `prosecdef`, aggiornabilità):
+nessun conteggio di righe decide qualcosa. **Guide verificate** (`scripts/guide_coinvolte.py --oggetti` sulle due
+funzioni e sulle otto viste del giro):
+
+| Guida o nota | Esito |
+| --- | --- |
+| `anagrafiche/_titolo-iva-per-natura` §«Perché due lettori girano sopra la RLS», `anagrafiche/_cambio-di-natura` §«Chi vede che cosa» | Coerenti: descrivono già le due DEFINER di S40 come scelta, con ciò che possono rispondere |
+| `risorse-umane-e-accessi`, `gestione-commesse`, `gestione-conti-bancari`, `gestione-degli-indirizzi` | Coerenti: nominano le viste per ciò che espongono, non per i privilegi |
+
+Orfani: `vw_fornitori_dettaglio`, `vw_istanze_utilities_dettaglio`, `vw_soggetti_ruoli_dettaglio`. Sono proiezioni per
+le liste, non concetti del dominio: nessuna guida da scrivere.
+
+### 19.1 Che cosa dice il catalogo
+
+* **Le DEFINER di S40 sono il pattern del progetto, non un difetto.** `fn_soggetto_primo_documento` e
+  `fn_titoli_iva_non_ammessi_conta` leggono sopra la RLS perché il cambio di natura deve vedere i documenti e i titoli
+  di tutte le aziende. È l'invariante di `linee-guida-sql.md` §10.5 («un guard che legge tabelle sotto policy non può
+  essere INVOKER»), e le due funzioni rispettano la sua condizione: rispondono solo un codice di tipo o un numero, mai
+  una riga. L'`EXECUTE` all'app serve, perché le chiama `fn_check_cambio_natura_soggetto`, che è INVOKER. L'`EXECUTE`
+  a `PUBLIC` non allarga niente: sullo schema `anagrafiche` hanno `USAGE` solo `zeroerp_owner` e `zeroerp_app`
+  (`nspacl`). Lo stesso vale per le altre 17 DEFINER dello schema con `=X`.
+* **`security_invoker` assente non è un difetto.** La regola vuole il flag sulle viste che arrivano a dati sotto RLS, e
+  la presidia **a criterio** `rls/test-rls-viste-security-invoker`, transitivo e attraverso le funzioni: una vista
+  senza flag oggi lecita diventa rossa lì il giorno in cui una sua tabella va sotto policy. Le viste di S37, S40, S51,
+  S58 e S68 senza flag non arrivano a tabelle con RLS.
+* **Il DML dell'app sulle viste non è di `anagrafiche`: è di tutto il database.** Il loop dei grant
+  (`90_end/ci_apply/20260205-41`) e la fase `post` del provisioning danno `SELECT, INSERT, UPDATE, DELETE` «on all
+  tables», e le viste ci rientrano: l'app ha il DML su ogni vista di ogni schema, tranne `maintenance`. Nelle 19 viste
+  di `anagrafiche` è inerte: nessuna è aggiornabile (`pg_relation_is_updatable` = 0), e non ci sono trigger
+  `INSTEAD OF` né regole.
+* ⚠️ **Il buco che il DML lascia aperto è un altro, e non è di questo schema.** Una vista **aggiornabile** e **senza**
+  `security_invoker` controlla i permessi sulla tabella sotto come il suo proprietario. Con il DML sulla vista, l'app
+  scrive la tabella sotto anche quando la tabella è in sola lettura per lei: la vista aggira la postura «una scrittura =
+  un verbo». Oggi le viste così sono sei, su otto tabelle, in `catalogo`, `dbops` e `script` (fra cui
+  `dbops.vw_emittenti_regime_non_confermato` su `anagrafiche.emittenti_fiscali`), e su tutte le tabelle sotto l'app ha
+  già il DML: oggi non c'è niente che si apre in più. Il modello però lo ammette, e nessun presidio lo guarda:
+  basta una vista semplice su una tabella di `magazzino`, che dal 2026-11-23 è tutta in sola lettura per l'app.
+
+### 19.2 L'esito delle segnalazioni
+
+| # | Esito |
+| --- | --- |
+| S40 (le due DEFINER) | Voluta, scritta nelle due note di dominio. Le pagine `manual/` delle due funzioni la dicono già (COMMENT e Scopo) |
+| S37, S40, S51, S58, S68 (`security_invoker`) | Voluta e presidiata a criterio. Le pagine delle viste lo dicono nel giro dei metadati, una riga |
+| S21, S51, S58, S68 (il DML sulle viste) | Inerte in questo schema. È una postura di tutto il database: ✅ decisa da Tid il 2026-11-23 (sotto), il lavoro è di `brief-db-porte-aperte-dalla-sola-guc` §5. Chiuse qui |
+
+### 19.3 La decisione per Tid
+
+> ✅ **Decisa da Tid il 2026-11-23: la proposta.** L'app riceve solo `SELECT` sulle viste, in tutto il database. La
+> richiesta al BE e il lavoro DB (le tre sedi di §11.8, il pgTAP di postura, e prima il verbo di ogni scrittura che il
+> censimento trova) stanno in [brief-db-porte-aperte-dalla-sola-guc](brief-db-porte-aperte-dalla-sola-guc.md): §5 la
+> famiglia delle viste, §4.1 la richiesta unica al BE, unita a quella delle porte. Lì, non qui. L'alternativa più
+> stretta è scartata.
+>
+> **Esito, 2026-11-23.** Il BE ha risposto «nessuno»: in `backend/` e `frontend/` nessun punto scrive su una vista, e
+> non serve nessun verbo nuovo; il DB ha verificato i due limiti della ricerca sul catalogo (dettaglio in
+> `brief-db-porte-aperte-dalla-sola-guc` §5.1). La revoca la fa quel brief, nel suo giro 3, senza aspettare il BE.
+> Per `anagrafiche` non cambia niente: le sue 19 viste non sono aggiornabili. S21, S51, S58 e S68 sono chiuse qui.
+
+Il giro 2 non ha niente da cambiare dentro `anagrafiche`. Resta la postura delle viste, che è un tema di **tutti gli
+schemi**, e per questo vuole l'ok esplicito di Tid (regola «un tema, un brief»). La proposta:
+
+* **l'app riceve solo `SELECT` sulle viste**, dichiarato nel loop dei grant come eccezione per `relkind = 'v'`, nelle
+  tre sedi di §11.8 (il changeSet `90_end` che revoca subito, il loop, la fase `post` del provisioning);
+* un **pgTAP di postura a criterio**: nessuna vista dà all'app più di `SELECT`, e i casi costruiti (una vista
+  aggiornabile senza flag su una tabella in sola lettura) rispondono `42501`;
+* **prima**, una richiesta al team BE/FE: **censire ogni scrittura dell'app che passa da una vista** (`INSERT`,
+  `UPDATE`, `DELETE` il cui bersaglio è un `vw_*`, anche costruito per nome, e il pannello generico). Il DB cambia dopo
+  la risposta: una scrittura trovata vuole prima il suo verbo.
+
+L'alternativa più stretta: lasciare il DML e togliere solo il buco, con un presidio che rifiuta una vista aggiornabile
+senza `security_invoker`. Costa meno, ma lascia all'app un privilegio che nessun oggetto del DB usa. Se lo usa il BE, lo dice il censimento.
+
+#### ~~R-BE7 — Il testo per il team BE/FE (2026-11-23)~~
+
+> ⚠️ **Superata il 2026-11-23, prima di partire**: unita alla richiesta delle porte, in
+> `brief-db-porte-aperte-dalla-sola-guc` §4.1 (Parte B). Il testo sotto resta come storia.
+
+**Le scritture dell'app che passano da una vista.** Oggi `zeroerp_app` ha `INSERT`, `UPDATE` e `DELETE` su tutte le
+viste di ogni schema (tranne `maintenance`), perché il loop dei grant le conta fra le tabelle. Il DB toglierà quel
+permesso: sulle viste l'app avrà solo `SELECT`. Il motivo: una vista aggiornabile senza `security_invoker` scrive la
+tabella sotto coi permessi del suo proprietario, e aggira la sola lettura dell'app («una scrittura = un verbo»).
+
+Una scrittura su una vista non aggiornabile fallisce già oggi. Quelle che riescono possono passare solo da queste
+quindici viste, le uniche aggiornabili (catalogo di dbdev, 2026-11-23):
+
+| Schema | Viste |
+| --- | --- |
+| `catalogo` | `vw_causali_onere_assegnabili` |
+| `config` | `vw_codici_errore_identita`, `vw_email_in_coda` |
+| `dbops` | `vw_af_senza_giro`, `vw_coda_lavori_da_guardare`, `vw_email_da_guardare`, `vw_emittenti_regime_non_confermato`, `vw_fatture_stampa_coda_da_guardare`, `vw_liste_multi_emittente_non_certificate`, `vw_magazzino_movimenti_senza_costo`, `vw_processi_dominio_su_pgagent` |
+| `documenti` | `vw_template_asset_utilizzabili` |
+| `script` | `vw_audit_sources`, `vw_stati_estesi` |
+| `vendite` | `vw_preventivi_righe_smistabili_ordine` |
+
+Chiediamo un **elenco chiuso** di ogni punto di `backend/` e `frontend/` dove l'app scrive (`INSERT`, `UPDATE`,
+`DELETE`, `MERGE`, `COPY … FROM`) su una vista. I punti da guardare:
+
+1. l'SQL scritto a mano (`cursor.execute`, `raw`), anche col nome della vista costruito a runtime;
+2. i modelli Django `managed = False` con `db_table` su una vista, e le loro `save`, `create`, `update`, `delete`,
+   `bulk_*`, anche dall'admin;
+3. il pannello generico e le liste in modifica, quando la sorgente o la destinazione è una vista;
+4. i test e le fixture del BE che scrivono su una vista con la connessione dell'app.
+
+Per ogni punto: `file:riga`, la vista, l'operazione, il dato di dominio che vuole cambiare. Se il punto ha già un
+verbo DB che fa la stessa cosa, il nome del verbo. «Nessuno» è una risposta valida, se dice come si è cercato.
+
+**Chi cambia per primo.** Nessuna urgenza: il DB non cambia finché non arriva la risposta. Se l'elenco è vuoto, il DB
+revoca. Se ci sono scritture, il DB scrive prima i verbi che mancano, poi il BE passa ai verbi, e solo dopo il DB
+revoca. Il BE non deve cambiare niente finché non riceve i verbi.
+
+## 20. Giro 3 — T5, il soggetto: natura, identificativo, ruoli (2026-11-23, decise da Tid; applicato, pgTAP verdi, committato il 2026-11-24)
+
+Via di Tid il 2026-11-23. Segnalazioni: S4, S20, S30, S38 ✔︎, S41, S42, S43, S52 (e metà di S49, che si chiude con
+S30). Letti sul catalogo di dbdev i corpi di `fn_crea_soggetto_pf`/`_pg`, dei guard di `soggetti`, `soggetti_ruoli` e
+`dati_societari`, di `fn_check_cambio_natura_soggetto`, `script.fn_validate_cf_piva_it`, `fn_scrivi_dati_societari`;
+i trigger delle tre tabelle; il registro `dbops.automation_lock_columns`. Letto il ramo `origin/dev/backend-tid`
+(`f1b8f9df7a`, sola lettura) per gli scrittori delle colonne toccate. Nessun changeSet scritto.
+
+**Guide verificate** (`scripts/guide_coinvolte.py --oggetti` sugli oggetti del tema):
+
+| Guida o nota | Esito |
+| --- | --- |
+| [_identificativo-fiscale](../../dbzero/anagrafiche/_identificativo-fiscale.md) | **coerente** con S4 deciso (la coppia). La sezione «⚠️ Che cosa la regola oggi non copre» (normalizzazione, stato non bloccato, stringa vuota) è la lista di D-T5-2 e D-T5-3: si riscrive col giro |
+| [_cambio-di-natura](../../dbzero/anagrafiche/_cambio-di-natura.md) | **contraddetta** da D-T5-1: «Da una natura a nessuna natura: ammesso solo se il soggetto non ha titoli IVA vigenti» è il varco di S38. Cambio di modello: decide Tid |
+| [_guard-di-ruolo](../../dbzero/anagrafiche/_guard-di-ruolo.md) | **coerente**: «⚠️ Il ruolo che cambia tipo» descrive il buco di S30/S52 come buco, non come scelta; con D-T5-4 la sezione si toglie |
+| [_dati-societari](../../dbzero/anagrafiche/_dati-societari.md) | **coerente**: l'app ha solo `SELECT` sulla tabella (verificato), quindi «la DELETE diretta non guarda la natura» (S41) è solo del proprietario |
+| [soggetti-e-ruoli-anagrafici](../../guide/soggetti-e-ruoli-anagrafici.md) | **coerente** oggi; **indietro** su ciò che il giro cambia: «La natura sul soggetto può mancare» (D-T5-1), «Il soggetto di un ruolo non si cambia» (si aggiunge il tipo, D-T5-4), lo stato (D-T5-3) |
+| [linee-guida-trigger](../../linee-guida-trigger.md) §«La fase» | **contraddetta** da D-T5-2 a: non c'è una zona per una normalizzazione che i guard leggono. Decide Tid |
+| `gestione-dei-contatti`, `risorse-umane-e-accessi`, `generazione-cliente`, `gestione-pratiche`, `gestione-delle-istanze-utility`, `messaggi-audit`, `Messaggi-di-Errore-e-Generazione-Log`, note `_contatto-predefinito`, `_sincronizzazione-accesso`, `_indirizzi-obbligatori`, `_tipo-indirizzo-ammesso`, `_titolo-iva-per-natura` | nominano `soggetti`/`soggetti_ruoli` per altro: **coerenti**, il giro non tocca ciò che descrivono |
+
+Orfani: `trgfn_soggetti_normalize`, `trgfn_soggetti_valida_cf_piva_dispatch` (dettagli interni dei guard; la nota
+dell'identificativo li nominerà col giro).
+
+### 20.1 Che cosa dice il catalogo, segnalazione per segnalazione
+
+**Il fatto che regge tutto il tema: l'app ha `INSERT`, `UPDATE` e `DELETE` su `soggetti` e `soggetti_ruoli`**, non
+su `dati_societari`. Una regola che sta solo in `fn_crea_soggetto_*` è muta sull'`UPDATE` diretto, che il BE fa
+(`soggetti_repository.update_soggetto`, BB `execute_dynamic_update`, colonne `SOGGETTO_UPDATE_COLS`: CF, P.IVA,
+natura, nomi, flag PA; **non** `stato_id`). Il BE non scrive mai `soggetti_ruoli` con un `UPDATE` (né a DB).
+
+| # | Esito sul corpo | Che cosa si fa |
+| --- | --- | --- |
+| **S4** | **Difetto confermato**, con un caso in più: il pre-controllo cerca `id_fiscale_univoco_cf_piva = CF`, l'indice guarda la coppia. Una ditta individuale (CF + P.IVA) di una persona che è già un privato (stesso CF, niente P.IVA) è **rifiutata** dal pre-controllo, mentre il modello (la nota, e la decisione di Tid) la ammette. Il doppione vero (stessa coppia) sfugge al pre-controllo e arriva all'indice come `23505` senza codice. In `fn_crea_soggetto_pg` lo stesso, sui due campi separati | Il pre-controllo si ritira: la regola è l'indice, una sede sola. Il verbo traduce la violazione **di quell'indice** (per nome del vincolo, `GET STACKED DIAGNOSTICS`) in `E_ADMIN_CF_DUPLICATO`, coi due valori; anche la corsa fra due creazioni ha così il suo codice. Il messaggio dice «identificativo fiscale», non «codice fiscale» |
+| **S20** | **Difetto**: `'' IS NULL` è falso, la stringa vuota passa la presenza. Il BE la toglie da sé (`_NULLABLE` in `update_soggetto`), una scrittura diretta no | Con D-T5-2 |
+| **S30** | **Difetto**: `tipo_ruolo_id` non è bloccato; nessuno scrittore lo cambia (né DB né BE) | D-T5-4 |
+| **S38** ✔︎ | **Difetto**, riletto: con la natura nuova `NULL` la regola guarda solo i titoli IVA, e X → `NULL` → Y salta macro-tipologia e documenti. Lo stesso varco salta la matrice natura ↔ ruolo, che è per macro-tipologia | D-T5-1 |
+| **S41** | Sei punti, esiti diversi: (1) la `DELETE` diretta che non guarda la natura è solo del proprietario: **scelta**, si dichiara; (2) due prime scritture concorrenti in `fn_scrivi_dati_societari` urtano `uq_ds_soggetto` grezzo: **difetto**; (3) una natura `REQUIRED` senza forma riceve `23502` senza codice: **difetto**; (4) il codice SDI di 6 o 7 caratteri vale per chiunque: **da decidere** (D-T5-5); (5) un cambio di `stato_id` non rilegge la forma dello Stato: **difetto**, si chiude con D-T5-3; il cambio delle policy della forma in `config` non rilegge le righe: **scelta** (la configurazione vale alla scrittura, come la matrice dei ruoli e i requisiti degli indirizzi di S48); (6) `trgfn_dati_societari_guard_tipo_soggetto` senza fase parla dopo forma e canale (alfabeto) e gira a ogni `UPDATE`: **difetto** di ordine | (2) il verbo prende la riga del soggetto `FOR NO KEY UPDATE` prima dell'`UPDATE`/`INSERT` (l'upsert no: linee-guida-trigger, «un `BEFORE INSERT` giudica la riga proposta»); (3) il verbo rifiuta la forma mancante con un codice e `campo`; (5) il guard differito della forma per natura scatta anche al cambio di `stato_id`; (6) il guard diventa `a05` (il «non ammessi» parla prima di forma e canale) e `BEFORE INSERT`, e `dati_societari.soggetto_id` entra nel registro dei lucchetti (FK di appartenenza: linee-guida-trigger §`UPDATE OF`) |
+| **S42** | **Difetto** di forma: i messaggi di `E_RUOLO_NATURA_NON_AMMESSA` e `E_RUOLO_NATURA_TIPO_DET_NULL` mostrano id (anche lo `uuid` del soggetto), il contesto non ha `campo`. Una riga di matrice spenta non tocca i ruoli che esistono: **scelta**, come S41 (5) | I messaggi con le descrizioni (natura, ruolo), il contesto con `campo`. Lo stesso per `E_PIVA_OBBLIGATORIA` e `E_CF_OBBLIGATORIO`, stesso guard di S20 («Soggetto_id %s») |
+| **S43** | Nove punti: (1) `trgfn_soggetti_normalize` in modifica rimette lo stato proposto su un `stato_id` portato a `NULL`: **difetto**, cambia in silenzio metà della chiave; (2) il dispatch del formato gira a ogni `UPDATE`: un soggetto con un CF che il validatore non accetta non si modifica più in nessun campo, e il CF lo corregge solo il SUPER_ADMIN: **difetto**; (3) con una natura inesistente `INTO STRICT` dà un errore tecnico prima della FK: **difetto**; (4) uno stato senza validatore passa: **scelta**, la guida lo dice («le regole scritte oggi sono quelle italiane»); (5) il DB non normalizza CF e P.IVA: D-T5-2; (6) `stato_id` non è bloccato: D-T5-3; (7) la stringa vuota: D-T5-2; (8) `ragione_sociale_completa` è `NULL` se manca nome o cognome: **difetto** (la scrittura diretta lo permette); (9) `codice` ammette `NULL`: il trigger lo genera sempre, la colonna non lo dice: **difetto di forma**; (10) il tipo di contatto di ripiego «il primo per id»: un ripiego silenzioso, come quello dello stato ritirato il 2026-10-18: D-T5-6 | (1) il default dello stato solo all'`INSERT`; (2) il dispatch scatta all'`UPDATE` solo `WHEN` CF, P.IVA, P.IVA di gruppo, stato o natura cambiano (non `OF`: `trgfn_soggetti_normalize` scrive `stato_id`); (3) natura inesistente → il validatore tace e parla la FK, come fa già `fn_check_cambio_natura_soggetto`; (8) la colonna generata con `concat_ws` (`ALTER COLUMN … SET EXPRESSION`); (9) `NOT NULL` su `codice` |
+| **S52** | **Difetto**, stessa radice di S30; e nessun pgTAP prova il rifiuto `E_SOGGETTI_RUOLI` | Si chiude con D-T5-4; il pgTAP del rifiuto entra col giro |
+| S49 (metà) | Il cambio del tipo di ruolo non rigiudica gli indirizzi del ruolo | Si chiude con D-T5-4; l'altra metà (il tipo per id in `fn_indirizzo_elemento`, i tipi `bigint`/`integer`) resta in T7 |
+
+### 20.2 Le decisioni per Tid
+
+> ✅ **Decise da Tid il 2026-11-23: tutte le proposte** (D-T5-1 a, D-T5-2 a, D-T5-3 a, D-T5-4 a, D-T5-5 b, D-T5-6 a se
+> il BE passa sempre il tipo di contatto, altrimenti b). La nota `_cambio-di-natura` e le linee guida dei trigger
+> cambiano nello stesso giro.
+
+| # | Domanda | Strade | Proposta |
+| --- | --- | --- | --- |
+| **D-T5-1** (S38) | Una natura scritta si può svuotare? | **a** no: «una natura scritta non si svuota», per tutti (il SUPER_ADMIN non ha eccezioni sul cambio di natura); un soggetto senza natura la riceve una volta, come oggi · **b** sì, ma il passaggio successivo da `NULL` si giudica sull'ultima natura avuta (serve una memoria della natura) | ⭐ **a**: è la regola dell'identificativo applicata alla natura, sta nella stessa `fn_check_cambio_natura_soggetto` (un motivo nuovo, che legge anche il picker), e chiude S38 senza memoria. **Cambia il modello** della nota `_cambio-di-natura` |
+| **D-T5-2** (S20, S43) | CF e P.IVA: il DB li normalizza o rifiuta ciò che non è normalizzato? | **a** normalizza (maiuscole, spazi tolti, vuoto → `NULL`) in un trigger che gira **prima** dei guard, con una zona nuova nelle linee guida dei trigger («la normalizzazione che i guard leggono») · **b** rifiuta, con un guard `a10` della forma (vuoto, spazi, minuscole): normalizzano i verbi, come oggi, e il BE per il suo `UPDATE` | ⭐ **a**: una regola sola per ogni strada, il BE può ritirare la sua copia (`_NULLABLE` per CF e P.IVA); il prezzo è la zona nuova, che è una regola delle linee guida, e la si scrive lì. Con **a** un valore digitato in minuscolo urta l'indice come quello in maiuscolo |
+| **D-T5-3** (S43, S41) | `stato_id` è metà dell'identificativo: si blocca? | **a** sì, con la regola dell'identificativo (lo cambia solo il SUPER_ADMIN), nella stessa `fn_id_fiscale_bloccato` e nel form · **b** sì, per tutti · **c** no, resta libero e si dichiara | ⭐ **a**: il BE non lo scrive mai (non è in `SOGGETTO_UPDATE_COLS`); lo stato è parte della chiave, e la correzione dell'errore resta a chi corregge CF e P.IVA. Col blocco, il guard differito della forma giuridica rilegge la forma quando il SUPER_ADMIN cambia lo stato (S41-5) |
+| **D-T5-4** (S30, S52, S49) | `soggetti_ruoli.tipo_ruolo_id` si blocca? | **a** sì: lucchetto generato (`dbops.automation_lock_columns`), codice suo · **b** no, e i guard di ruolo e degli indirizzi si rigiudicano al cambio | ⭐ **a**: un ruolo è «questo soggetto, questo tipo», come il soggetto che già non si cambia; nessuno scrittore lo cambia oggi. Un tipo sbagliato si corregge togliendo il ruolo e mettendo quello giusto |
+| **D-T5-5** (S41-4) | Il codice SDI di 6 caratteri (ufficio della PA) e di 7 (privati) si lega al flag `cliente_pa`? | **a** sì: 6 solo con `cliente_pa = 'S'`, 7 solo con `'N'`, giudicato anche al cambio del flag · **b** no, si dichiara: il codice dell'ufficio PA è per ufficio, e la sua sede vera è il destinatario della fattura, non il soggetto | ⭐ **b**: la PA ha più uffici, e un codice per soggetto è già una semplificazione; il legame col flag si giudica dove si sceglie l'ufficio, nella fatturazione |
+| **D-T5-6** (S43-10) | Il tipo di contatto «il primo per id» quando il chiamante non lo passa | **a** si ritira: il tipo è obbligatorio (`E_ADMIN_VALIDAZIONE`, come gli altri parametri) · **b** un tipo proposto dichiarato in `config` (come lo stato proposto) | ⭐ **a**, se il BE lo passa sempre (lo dice il percorso BE, da leggere prima di scrivere); altrimenti **b** |
+
+### 20.3 Il piano del giro, dopo le decisioni
+
+1. I **pgTAP rossi prima** (§17, «ogni segnalazione non ✔︎ entra col suo caso»): S4 (la ditta del privato rifiutata;
+   il doppione come `23505`), S20, S30/S52, S41 (2, 3, 6), S42, S43 (1, 2, 3, 8), costruiti come **app**.
+2. I changeSet di `20_code` (verbi e guard), il CSV dei messaggi e dei codici nuovi, le righe del registro dei
+   lucchetti, `ALTER COLUMN` per `codice` e `ragione_sociale_completa`. Prova con `scripts/prova_changeset.py`.
+3. Le note `_identificativo-fiscale`, `_cambio-di-natura`, `_guard-di-ruolo`, `_dati-societari`, la guida
+   `soggetti-e-ruoli-anagrafici` e, con D-T5-2 a, `linee-guida-trigger` §«La fase», nello stesso giro.
+4. **Al BE, un passaggio solo** a giro chiuso: con D-T5-2 a, ritirare la normalizzazione di CF e P.IVA in
+   `update_soggetto`; i codici nuovi (blocco della natura, del tipo di ruolo, dello stato; forma mancante); con
+   D-T5-6 a, il tipo di contatto obbligatorio. Prima di scrivere, il percorso BE di ognuno si legge sul ramo.
+
+### 20.4 Che cosa è scritto (2026-11-24, provato sullo scratch; applicato da Tid su scratch e dbdev alle 01:26)
+
+Il «via» del 2026-11-24: l'altra sessione DB è ferma, i numeri `20261123-48 … -63` li ha dati
+`scripts/prossimo_changeset.py` e sono occupati per intero. Nessun commit.
+
+| ChangeSet | Che cosa fa | Segnalazione |
+| --- | --- | --- |
+| `00_schema/anagrafiche/…-61` | `soggetti.codice` `NOT NULL`; `ragione_sociale_completa` generata anche con il solo cognome o il solo nome (`SET EXPRESSION`, `btrim` e `\|\|`: `concat_ws` è `STABLE` e una colonna generata vuole `IMMUTABLE`) | S43-8, S43-9 |
+| `20_code/anagrafiche/…-48` | `trgfn_soggetti_normalize` in fase **`a01`**: CF, P.IVA e P.IVA di gruppo in maiuscolo, senza spazi, vuoto → `NULL`; lo stato proposto solo all'`INSERT` | D-T5-2 a, S20, S43-1 |
+| `20_code/anagrafiche/…-49` | il formato in fase `a10`: `_ins` all'`INSERT`, `_upd` all'`UPDATE` con `WHEN` (CF, P.IVA, P.IVA di gruppo, stato, natura) | S43-2 |
+| `20_code/script/…-50` | `fn_validate_cf_piva_it`: natura inesistente → tace, parla la FK | S43-3 |
+| `20_code/anagrafiche/…-51` | lo stato sotto la regola dell'identificativo (guard `OF … stato_id`, `fn_soggetto_id_fiscale_bloccato` con la colonna `stato_id`); il guard passa in **`a05`** | D-T5-3 a |
+| `80_data/changelog/…-52` | la riga di `stato_id` in `dbops.lock_columns_conditional`; riscritte le descrizioni di CF e P.IVA, che nominano il guard | D-T5-3 a |
+| `20_code/anagrafiche/…-53` | il guard al COMMIT della forma giuridica giudica anche il paese, e scatta `OF stato_id` | S41-5 |
+| `20_code/anagrafiche/…-54` | `fn_check_cambio_natura_soggetto`: natura scritta → nessuna, motivo `E_CAMBIO_NATURA_VERSO_NESSUNA`, da solo, per tutti | D-T5-1 a, S38 |
+| `20_code/anagrafiche/…-55`, `-56` | le due porte di creazione: via i pre-controlli; la violazione di `uq_soggetto_idstato_id_fiscale_univoco`, per nome, diventa `E_ADMIN_CF_DUPLICATO` col campo; via le copie `UPPER(TRIM(…))` | S4 |
+| `20_code/anagrafiche/…-57` | `E_PIVA_OBBLIGATORIA`, `E_CF_OBBLIGATORIO`: la natura per descrizione, senza id | S42 |
+| `20_code/anagrafiche/…-58` | `E_RUOLO_NATURA_*`: ruolo e natura per descrizione, `campo`; il guard solo `BEFORE INSERT` | S42, D-T5-4 a |
+| `20_code/anagrafiche/…-59` | `fn_scrivi_dati_societari` prende la riga del soggetto `FOR NO KEY UPDATE` | S41-2 |
+| `20_code/anagrafiche/…-60` | dati societari: tipo soggetto in `a05`, solo `BEFORE INSERT`, natura nella frase; la forma mancante la rifiuta il guard della forma (`E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA`); quel guard non è più `OF soggetto_id` | S41-3, S41-6 |
+| `80_data/changelog/…-63` | bonifica una tantum di CF, P.IVA e P.IVA di gruppo già scritti, coi trigger sospesi (tranne audit e `tx_id`). Il 2026-11-24 su dbdev non c'è nessuna riga da toccare su 884: la bonifica c'è perché il modello vale per ogni database | D-T5-2 a |
+| `20_code/anagrafiche/…-64` | i `COMMENT` dei 17 oggetti del giro **al presente** (linee-guida-sql §5d): quelli di -48 … -61 portavano la cronaca (il brief, «rev», id di changeSet), e li ha fermati `guardrail_comment_al_presente.py` al commit, a file già applicati. I tredici file dichiarano l'eccezione in testa (riga `#`, fuori dal checksum) e rimandano qui. Applicato da Tid il 2026-11-24 | §5d |
+| `90_end/…-62` | il runner dei lucchetti: `soggetti_ruoli.tipo_ruolo_id` (`E_SOGGETTO_RUOLO_TIPO_IMMUTABILE`) e `dati_societari.soggetto_id` (`E_DATI_SOCIETARI_SOGGETTO_IMMUTABILE`) | D-T5-4 a, S41-6 |
+
+I CSV: in `config/codici_errore.csv` ci sono quattro codici nuovi, `E_ADMIN_PIVA_DUPLICATA` è obsoleto dal 2026-11-24
+(lo sollevava solo il pre-controllo di `_pg`), e cambiano le note di `E_ADMIN_CF_DUPLICATO`,
+`E_SOGGETTO_ID_FISCALE_IMMUTABILE` ed `E_DATO_FISCALE_SENZA_TIPO_SOGGETTO`. In `config/messaggi_errore.csv` ci sono le
+quattro frasi nuove (id 1533-1536) e sette frasi riscritte, senza id e coi segnaposto contati sul chiamante unico di
+ogni codice. In `dbops/automation_lock_columns.csv` ci sono due righe nuove. La frase di `E_ADMIN_CF_DUPLICATO` resta
+«%s.», perché la usa anche `fn_crea_operatore_v2`.
+
+Il pgTAP nuovo è `anagrafiche/test-soggetto-natura-identificativo-ruoli-v1.sql`, con 32 asserzioni costruite come
+**app**, un operatore e un SUPER_ADMIN.
+
+Ho adeguato sette pgTAP: in ognuno la riga che cambia è una decisione del giro, ed è scritta nel test.
+* `test-soggetti-id-fiscale-immutabile-v1`: il guard è anche `OF stato_id`, e la fixture passa B a una copia
+  della sua natura invece di svuotarla.
+* `test-billing-account-guard-cf-confrontabile-v1`: stessa fixture, sui due soggetti.
+* `test-fornitore-privato-indirizzi-v1` (23): il cambio verso il privato lo fa il SUPER_ADMIN, perché lo
+  svuotamento della P.IVA parla in `a05`.
+* `test-dati-societari-alla-nascita-v1` (16) e `test-fn-scrivi-dati-societari-v1` (15): il codice al posto del
+  `23502`.
+* `test-dati-societari-policy` (9): la frase nuova.
+* `test-fn-crea-soggetto-pf` (5) e `test-fn-crea-operatore` (10): «identificativo fiscale».
+* `test-soggetti-ruoli-guard-natura-ammessa`: ho cambiato solo il nome del trigger nell'intestazione.
+
+Note, guide e linee guida aggiornate nello stesso giro:
+* le note `_identificativo-fiscale`, `_cambio-di-natura` (cambio di modello, D-T5-1), `_guard-di-ruolo` (via
+  «⚠️ Il ruolo che cambia tipo») e `_dati-societari`;
+* la guida `soggetti-e-ruoli-anagrafici`;
+* `linee-guida-trigger` §«La fase», con la zona `a01` e la sua regola.
+
+### 20.5 Che cosa ha trovato la prova
+
+* **dev ≠ zero sui nomi dei trigger** (⛔, è una regola che c'era già e ho saltato: linee-guida-trigger
+  §«Il nome del trigger», «Un trigger si rimonta per funzione, non per nome»). Su un database costruito da zero tre
+  dei trigger da rimontare hanno un altro nome: `trg_soggetti_ins_upd_clean_fields` (normalize),
+  `trg_soggetti_ins_upd_valida_cf_piva_dispatch` e `trg_dati_societari_ins_upd_check_tipo_soggetto`. La rinomina
+  `20251119-01` ha rinominato le funzioni, non quei trigger. Col `DROP` per nome il trigger vecchio restava acceso
+  accanto al nuovo, e il pgTAP (21) l'ha visto. Ora i sei changeSet che rimontano tolgono i trigger per
+  `tgfoid`.
+* **La presenza parlava prima dell'immutabilità.** In `a10` l'alfabeto metteva `guard_cf_piva_obbligatori` prima di
+  `guard_id_fiscale_immutabile`. Con la stringa vuota fatta `NULL`, a chi svuota una P.IVA scritta il database
+  avrebbe risposto «è obbligatoria» invece di «non si cambia». Il guard dell'identificativo è passato in `a05`,
+  come dicono le linee guida.
+* **La forma mancante nel verbo parlava prima della natura.** Al privato con la sezione dei dati societari il
+  verbo diceva «manca la forma» invece di «questo tipo soggetto non ha dati societari», e se ne è accorto
+  `test-dati-societari-alla-nascita-v1` (17). La regola è passata nel guard della forma.
+* **`concat_ws` non è `IMMUTABLE`**: l'espressione della colonna generata usa `btrim` e `||`.
+
+**La prova** (`scripts/prova_changeset.py`, sullo scratch `zeroerp_ruoli`, come owner). Il catalogo errori e i
+lucchetti li ha simulati un seed d'appoggio nello scratchpad, perché il loader dei CSV non ha SQL da estrarre: la
+prova del loader è il migrate. Il test nuovo dà 32 ok su 32 con l'estratto, ed è rosso senza. Per la regressione
+ho lanciato i pgTAP di `anagrafiche`, i presidi del catalogo errori e dei lucchetti, e i vicini in `script`,
+`config`, `dbops` e `rls`, 135 file in tutto. Nella prima corsa ci sono otto rossi nuovi, tutti spiegati: sono i
+sette test adeguati in §20.4 e il difetto della forma nel verbo. Nella seconda corsa, ripetuta dopo le
+correzioni, 111 file sono verdi. Gli ultimi 22 si sono interrotti perché Tid ha applicato il giro sullo scratch a
+metà corsa (lo script: «il catalogo è cambiato»), e vanno ripresi dalla corsa di Tid. Dopo l'apply ogni funzione ha
+un solo montaggio col nome nuovo, su dbdev come sullo scratch. Tre cose restano da provare.
+* Due file non li lancia lo script, perché hanno più di una riga `BEGIN;`:
+  `test-soggetti-indirizzi-required` e `test-soggetti-ruoli-indirizzi-required`.
+* `test-identita-digitali-guard-coerenza` si interrompe con e senza l'estratto: è un rosso che c'era già.
+* L'esito come app l'ha dato la corsa di Tid (2026-11-24): **verdi**. Il solo rosso del giro era nella fixture di
+  `test-billing-account-guard-cf-confrontabile-v1`, dove il codice interno della natura copiata superava i 10
+  caratteri di `codice_interno`; è corretto. Il resto dei rossi era già rosso prima.
+
+⛔ **Non provato**: S41-2, le due prime scritture concorrenti, perché serve una seconda sessione. Il lucchetto si
+legge nel corpo.
+
+### 20.6 Che cosa resta
+
+* ✅ **D-T5-6 decisa: b** (Tid, 2026-11-24): il giro 3-bis è il §20.8. Prima della decisione, la condizione di Tid
+  aveva due risposte. Il BE passa sempre il tipo di contatto:
+  `richiedi_contatto_valido` pretende un contatto `VALID`, che ha `tipo_contatto_id` (ramo `f1b8f9df7a`). I
+  chiamanti nel DB invece non lo passano:
+  * `anagrafiche.fn_crea_operatore_v2` e `anagrafiche.fn_provisiona_dati_di_sviluppo`;
+  * l'helper `dbops.fn_pgtap_crea_soggetto_pf`;
+  * circa 80 chiamate dirette nei pgTAP.
+
+  Con **a** ognuno dovrebbe scegliere un tipo da solo, e la scelta sarebbe la stessa ricopiata in tre posti. Proposta:
+  **b**, un tipo proposto dichiarato in `config` e letto da un BB come lo stato proposto. Il ripiego «il primo per
+  id» intanto resta com'era: -55 e -56 non lo toccano.
+
+  ⚠️ Fatto trovato il 2026-11-24, rileggendo i chiamanti: le scelte sono già due, e diverse. Le due porte di
+  creazione prendono «il primo per id», mentre `script.fn_crea_utente_tecnico` prende il tipo con
+  `codice_interno = 'PRINCIPALE'`, scritto nel codice. La strada b le porta tutte e due a una sede sola.
+* **Segnalazione nuova, S-T5-a** (fuori dal tema, va a T9 o al tema dell'operatore).
+  `anagrafiche.fn_crea_operatore_v2`, per decidere `E_CREDENZIALE_ALTRA_PERSONA`, confronta
+  `id_fiscale_univoco_cf_piva` con `UPPER(TRIM(p_codice_fiscale))`. Per una persona che ha anche una ditta individuale
+  l'identificativo della ditta è «CF P.IVA», quindi una veste sulla ditta conta come «un'altra persona». È la radice
+  di S4, in un'altra sede. Il confronto va fatto sul codice fiscale, che il DB ora normalizza.
+* ⚠️ **Superato il 2026-11-24, riletto sul catalogo dello scratch: la porta è già chiusa per l'app.** Dal 2026-11-17
+  (`20261117-07`, brief archiviato `brief-db-seed-primo-impianto-non-si-riscrive`) `script.trgfn_lock_columns` chiede
+  `script.fn_porta_manutenzione_aperta`. Con la GUC accesa la porta si apre solo alla sessione del migratore e lascia
+  una riga in `dbops.porte_manutenzione_passaggi`; per l'app resta chiusa. Il censimento del brief delle porte la
+  lascia fuori a ragione, perché cerca i trigger che leggono la GUC da soli. L'unico altro oggetto che nomina la GUC
+  è un commento in `script.trgfn_righe_natura_vendita`. Lì si scrive una riga, perché nessuno rifaccia la stessa
+  lettura. Il testo di prima, sbagliato: ~~la porta dei lucchetti di colonna (`script.trgfn_lock_columns`, GUC
+  `zeroerp.allow_lock_columns_override`, senza chiedere il proprietario) non è fra le porte censite da
+  [brief-db-porte-aperte-dalla-sola-guc](brief-db-porte-aperte-dalla-sola-guc.md). I due lucchetti nuovi valgono
+  quanto lei. È da registrare lì.~~
+* **La doc auto-generata** degli oggetti del giro è rigenerata (Tid, 2026-11-24). -64 è applicato (2026-11-24): si
+  rigenera di nuovo, per i COMMENT, insieme al giro 3-bis.
+* **Il pre-commit `check-i18n-keys` è rosso** per il lato FE: la chiave
+  `anagrafiche.soggetti.cambio_natura_blocco.verso_nessuna`, emessa dal DB, non è ancora nei locales. La aggiunge il
+  team FE (§20.7, voce 3). È un rosso atteso, non un difetto del giro.
+* **Il passaggio al BE**, uno solo, è §20.7.
+
+### 20.7 Il passaggio al BE (da girare dopo l'apply)
+
+Letto sul ramo `origin/dev/backend-tid` (`f1b8f9df7a`). Chi cambia per primo: il DB, perché nessuna voce rompe ciò
+che il BE fa oggi. L'elenco è chiuso.
+
+1. **CF e P.IVA li normalizza il database** (maiuscole, senza spazi, vuoto → `NULL`), da ogni strada.
+   `backend/apps/anagrafiche/db/soggetti_repository.py`, `update_soggetto`: `codice_fiscale` e `partita_iva` si
+   possono togliere da `_NULLABLE` (riga 571). Gli altri campi restano.
+2. **Il doppione dell'identificativo** arriva dalle due porte come `E_ADMIN_CF_DUPLICATO` (`P0001`), col campo:
+   `codice_fiscale` per `fn_crea_soggetto_pf`, `partita_iva` (o `codice_fiscale`) per `_pg`. Non arriva più come
+   `23505` su `uq_soggetto_idstato_id_fiscale_univoco`.
+   * `backend/apps/anagrafiche/services/soggetti_service.py`, `_create_pf` e `_create_pg`: la voce
+     `uq_soggetto_idstato_id_fiscale_univoco` di `create_with_constraint_mapping` non scatta più in creazione,
+     mentre `_MSG_PF_CF_DUPLICATO` e `_MSG_PG_CF_PIVA_DUPLICATA` restano per la modifica diretta.
+   * Con la modifica la ditta individuale di chi è già privato nasce: prima il database la rifiutava.
+   * `backend/apps/core/services/error_messages_fallback.py`: `E_ADMIN_PIVA_DUPLICATA` è obsoleto, perché il
+     database non lo solleva più.
+3. **Codici nuovi**, tutti col campo nel contesto tranne il primo, che è un motivo del cambio di natura:
+   * `E_CAMBIO_NATURA_VERSO_NESSUNA`: una natura scritta non si svuota. È un motivo del cambio di natura, con
+     reason `VERSO_NESSUNA` e reason_key `anagrafiche.soggetti.cambio_natura_blocco.verso_nessuna`, da aggiungere in
+     `frontend/src/locales/it.json` ed `en.json` (riga ~6383). La chiave
+     `senza_natura_con_titoli_iva` non la emette più nessuno.
+     ✅ **La chiave nuova è nei due locales** (sessione BE/FE, 2026-11-24, brief-be-fe-BB-audit §7.9):
+     `check_i18n_keys.py` è pulito. `senza_natura_con_titoli_iva`, che non citava più nessuno, è
+     tolta dai due locales (ok Tid, 2026-11-24).
+   * `E_SOGGETTO_RUOLO_TIPO_IMMUTABILE` (`tipo_ruolo_id`) ed `E_DATI_SOCIETARI_SOGGETTO_IMMUTABILE` (`soggetto_id`):
+     sono lucchetti. Il BE non scrive nessuna delle due colonne.
+   * `E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA` (`forma_giuridica_id`): prima era un `23502`.
+4. **Lo stato del soggetto** lo cambia solo il SUPER_ADMIN, e `dbops.fn_non_editable_fields` lo spegne per gli altri.
+   Il BE non scrive `stato_id` in modifica (`SOGGETTO_UPDATE_COLS`), quindi non c'è niente da cambiare, salvo un form
+   che lo mostrasse modificabile.
+5. Le frasi di `E_PIVA_OBBLIGATORIA`, `E_CF_OBBLIGATORIO`, `E_RUOLO_NATURA_NON_AMMESSA`,
+   `E_RUOLO_NATURA_TIPO_DET_NULL` ed `E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO` non mostrano più id e hanno un
+   segnaposto in meno. Un override del BE che le ricopiasse va riletto.
+6. **Il tipo di contatto proposto** (D-T5-6 b, §20.8). Il BE passa sempre il tipo, quindi non cambia niente nel
+   comportamento. `E_DEFAULT_CONTATTO_MISSING` è obsoleto, perché non lo solleva più nessuno:
+   `backend/apps/core/services/error_messages_fallback.py` (riga 384) ha la sua voce, che si può togliere.
+   `error_policies_generated.py` lo segue da solo, alla rigenerazione.
+
+### 20.8 Giro 3-bis — D-T5-6 b, il tipo di contatto proposto (2026-11-24, al via di Tid)
+
+**La decisione** (Tid, 2026-11-24): quando chi crea un soggetto non dice il tipo del contatto di default, il database
+scrive il **tipo proposto**. È un parametro di `config`, letto da un BB come lo stato proposto: lo stesso modello
+(cascata degli override, nessun ripiego, errore se manca).
+
+**Che cosa dice il catalogo** (dbdev, 2026-11-24, dopo l'apply di -64). Chi sceglie il tipo quando nessuno lo dice
+lo fa in tre modi diversi:
+
+| Lettore | Come sceglie oggi |
+| --- | --- |
+| `anagrafiche.fn_crea_soggetto_pf`, `_pg` | il primo per id (`ORDER BY id LIMIT 1`); se la tabella è vuota, `E_ADMIN_VALIDAZIONE` |
+| `script.fn_crea_utente_tecnico` | `codice_interno = 'PRINCIPALE'`, scritto nel corpo; se manca, `NULL` in silenzio, e lo rifiuta poi `fn_crea_contatto` come contatto incompleto |
+| `dbops.fn_pgtap_crea_soggetto_pg` | il primo per id, e lo passa alla porta |
+
+Ci sono anche due fatti che il giro tocca.
+* `script.fn_get_tipo_contatto_id(codice)`, un BB «dal codice interno all'id», non lo chiama nessuno: né a DB
+  (`pg_proc`), né sul ramo del BE (`origin/dev/backend-tid`, sola lettura). È un'altra copia della stessa ricerca,
+  con un suo codice (`E_DEFAULT_CONTATTO_MISSING`, che il BE ha solo nel fallback dei messaggi) e con una
+  scrittura dentro una funzione `STABLE` (genera un `tx_id`).
+* L'ordine da zero regge. Il parametro nasce dal mirror `20250715-01`, che gira prima del seed di
+  `config.tipi_contatti` (`20250813-03`) e prima dei seed che creano gli utenti tecnici (`20260904-27`, `-39`).
+  `STATO_PROPOSTO_ISO2` sta nello stesso mirror, e lo stesso `fn_crea_utente_tecnico` lo legge già.
+
+**Che cosa si fa:**
+
+| # | Oggetto | Che cosa cambia |
+| --- | --- | --- |
+| 1 | `config.parameters` (CSV, riga 64) | `TIPO_CONTATTO_PROPOSTO`, valore `PRINCIPALE` (il `codice_interno`), `ammette_override = true`, `TESTO` |
+| 2 | `config.parameter_fk_surrogate` (CSV, riga 9) | il valore e ogni override devono essere un `codice_interno` di `config.tipi_contatti` (`EXACT`) |
+| 3 | `script.fn_tipo_contatto_proposto_id(p_chi)`, nuovo | il BB: legge il parametro con `script.fn_get_parameter_di_sessione`; vuoto `E_CONFIG_MANCANTE`, codice senza tipo `E_DEFAULT_ERRATO`. `codice_interno` è unico, quindi non c'è il caso «ambiguo» dello stato |
+| 4 | `fn_crea_soggetto_pf`, `_pg` | `COALESCE(p_tipo_contatto_id, script.fn_tipo_contatto_proposto_id(…))`; esce il ramo «nessun tipo in tabella» |
+| 5 | `script.fn_crea_utente_tecnico` | il BB al posto di `'PRINCIPALE'`; il `COMMENT` si riscrive al presente (§5d: quello di oggi è una cronaca di «Rev») |
+| 6 | `dbops.fn_pgtap_crea_soggetto_pg` | non sceglie più il tipo: lo propone la porta |
+| 7 | `script.fn_get_tipo_contatto_id` | si ritira (`DROP`), nello stesso giro, per la regola del 2. `E_DEFAULT_CONTATTO_MISSING` diventa obsoleto dal 2026-11-24 |
+
+Sono sei changeSet (3 … 7), più i due CSV e la riga di `codici_errore.csv`. Il BE non cambia niente, salvo la voce 6 di
+§20.7.
+
+**La prova sul controesempio.** Un tipo con id 0, cioè minore di tutti, è quello che oggi «il primo per id» prende.
+Col giro le due porte e il builder pgTAP scrivono il tipo proposto. Un override per funzione cambia la proposta, e
+l'utente tecnico la segue: oggi resta `PRINCIPALE`.
+
+**Guide verificate** (`scripts/guide_coinvolte.py --oggetti`, 2026-11-24):
+
+| Guida o nota | Esito |
+| --- | --- |
+| [gestione-dei-contatti](../../guide/gestione-dei-contatti.md) | **indietro**: «Nominativo e tipo di contatto sono obbligatori» è vero, ma non dice che alla nascita del soggetto il tipo non detto è quello proposto. Si aggiunge col giro |
+| [soggetti-e-ruoli-anagrafici](../../guide/soggetti-e-ruoli-anagrafici.md) | **indietro** sullo stesso punto: «il verbo crea il contatto del soggetto» non dice con quale tipo. Si aggiunge col giro |
+| [processi-automatici-classe-e-identita](../../guide/processi-automatici-classe-e-identita.md), [risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md) | **coerenti**: nominano `fn_crea_utente_tecnico` per l'identità, non per il tipo del contatto |
+| [architettura-multi-face-auth](../../guide/architettura-multi-face-auth.md) | **coerente**: nomina `fn_crea_operatore_v2` per le vesti |
+| [gestione-degli-indirizzi](../../guide/gestione-degli-indirizzi.md), nota `_indirizzo-libero-o-dettaglio` | **coerenti**: lo stato proposto è il modello del giro, e non cambia |
+| [pgtap-come-si-scrive-un-test](../../guide/pgtap-come-si-scrive-un-test.md) | **coerente**: il builder PF non cambia firma |
+| nota `_identificativo-fiscale` | **coerente**: il giro non tocca l'identificativo |
+
+Orfano: `anagrafiche.fn_provisiona_dati_di_sviluppo`, uno strumento di sviluppo che non è un concetto del dominio.
+Nessuna guida da scrivere.
+
+**I pgTAP.** Uno nuovo, `anagrafiche/test-tipo-contatto-proposto-v1.sql`, costruito come app (l'app ha `INSERT`,
+`UPDATE` e `DELETE` su `config.parameters`, `parameter_overrides` e `tipi_contatti`, catalogo di dbdev del
+2026-11-24). L'utente tecnico si prova in `script/test-fn-crea-utente-tecnico.sql`, che gira da owner, con un caso in
+più (14).
+
+**La documentazione nello stesso giro:**
+* le pagine `manual/` di `fn_crea_soggetto_pf` e `_pg`: via la riga «⚠️ Il tipo di contatto di ripiego è il primo per
+  id»;
+* le pagine di `fn_crea_utente_tecnico` e `dbops.fn_pgtap_crea_soggetto_pg`;
+* una pagina nuova per il BB, sul modello di `fn_stato_proposto_id`;
+* la pagina di `fn_get_tipo_contatto_id` si toglie con la funzione;
+* `config/manual/tipi_contatti` è stantia: nomina `cod_int_tipo_contatto` e due trigger con un nome che non esiste
+  più. Si riallinea, col tipo proposto;
+* le due guide indietro (sopra).
+
+**Scritto (2026-11-24, numeri dal primo libero, al via di Tid):**
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/script/20261123-68-create-fn-tipo-contatto-proposto-id` | il BB (voce 3) |
+| `20_code/anagrafiche/20261123-69-update-fn-crea-soggetto-pf-tipo-contatto-proposto` | la porta PF (voce 4) |
+| `20_code/anagrafiche/20261123-70-update-fn-crea-soggetto-pg-tipo-contatto-proposto` | la porta PG (voce 4) |
+| `20_code/script/20261123-71-update-fn-crea-utente-tecnico-tipo-contatto-proposto` | l'utente tecnico, firma ri-ancorata con `%TYPE`, `COMMENT` al presente (voce 5) |
+| `20_code/dbops/20261123-72-update-fn-pgtap-crea-soggetto-pg-tipo-contatto-proposto` | il builder pgTAP (voce 6) |
+| `20_code/script/20261123-73-drop-fn-get-tipo-contatto-id` | il ritiro (voce 7) |
+
+Con le tre righe dei CSV, il pgTAP nuovo e il caso 14. Corpi dai sorgenti verificati uguali al catalogo di dbdev;
+`COMMENT` delle porte e del builder dal catalogo (al presente da -64), cambia solo la frase del tipo. Manual: le
+porte, l'utente tecnico, il builder, `tipi_contatti` riallineata, il gemello nello stato proposto, la pagina nuova
+del BB; quella di `fn_get_tipo_contatto_id` è tolta. Le due guide indietro aggiornate.
+
+**La prova** (`scripts/prova_changeset.py`, scratch `zeroerp_ruoli` completo, ricostruito alle 14:33):
+* `test-tipo-contatto-proposto-v1`: con i sei changeSet 12/12; senza, si ferma al BB che manca. Il controesempio
+  con il solo -68 (porte di prima): il caso 4 si ferma su `fn_crea_contatto`, perché la porta ha preso il tipo con
+  id 0;
+* `test-fn-crea-utente-tecnico`: con 14/14, senza rosso il solo caso 14;
+* `test-fn-pgtap-crea-soggetto-pg-v1`: 4/4 prima e dopo.
+
+Corse da owner (lo script): il pgTAP nuovo è scritto per girare come app, e la corsa come app è di Tid.
+
+**Chiusura** (2026-11-24): applicato da Tid su scratch e dbdev, pgTAP verdi. Doc auto-generata rigenerata
+(`scripts/gen_db_docs.py`): la pagina nuova del BB, quella di `fn_get_tipo_contatto_id` tolta come orfana, le due
+porte, l'utente tecnico, il builder, gli indici di `config` e `script`. `scripts/check_i18n_keys.py` segnala una
+chiave: `anagrafiche.soggetti.cambio_natura_blocco.verso_nessuna`, del giro 3, che il FE aggiunge (§20.7, voce 3).
+Il giro 3-bis non ne porta di nuove.
+
+⚠️ **Resta fuori, da segnalare**: `dbops.fn_pgtap_crea_soggetto_pg` ha `p_tipo_soggetto_dettaglio_id integer`,
+un'eccezione dichiarata nel corpo (la colonna è `bigint`, ancorarla cambia l'identità della firma: `DROP`, `GRANT`
+di nuovo, il gemello PF ha già `bigint`). Non è del giro 3-bis: un giro a sé, se Tid lo vuole.
+
+## 21. Giro 4 — T7a, gli indirizzi (2026-11-24: decisioni prese, applicato, pgTAP verdi)
+
+T7 si divide in due giri (Tid, 2026-11-24): **T7a, gli indirizzi** (S3, S10, S16 seconda metà, S19, S48, S49 metà,
+S50 senza la porta) e **T7b, i contatti e il catasto** (S8, S46, S11, S47, col pgTAP `create-soggetto-gestori.sql`).
+Questa sezione è l'analisi di T7a, letta sul catalogo di dbdev il 2026-11-24 dopo l'apply del giro 3-bis. I
+changeSet sono in §21.5. Sul ramo `origin/dev/backend-tid` si è guardato solo chi chiama gli oggetti, in sola lettura.
+
+**Guide verificate** (`scripts/guide_coinvolte.py --oggetti`, 26 oggetti, 2026-11-24):
+
+| Guida o nota | Esito |
+| --- | --- |
+| [gestione-degli-indirizzi](../../guide/gestione-degli-indirizzi.md) | **contraddetta su due punti**, decide Tid. R9 descrive come comportamento il blocco del titolare a cui la matrice nuova chiede un indirizzo («non si modifica più»): è la S48, D-T7a-1. R7 dice che con una via incompleta (un comune senza provincia) il «trova o crea» si ferma: è la S50, D-T7a-2. Per il resto è **indietro** dove il giro corregge: R3 (la forma di un elemento vuoto), R8 (la posizione) |
+| nota `_indirizzi-obbligatori` | **contraddetta** con R9 (D-T7a-1): la tabella «Le strade» dichiara «INSERT e ogni UPDATE». È **indietro** sul livello del soggetto: «il ripiego vale come è scritto nella riga» non dice che il ripiego può essere un tipo che la natura vieta |
+| nota `_indirizzo-libero-o-dettaglio` | **indietro**: dice che col dettaglio «comune, CAP, provincia e posizione li dice la via», e insieme che `trgfn_indirizzi_sync_geoloc` copia la posizione nella riga. Le due frasi non stanno insieme (S50, D-T7a-3) |
+| nota `_tipo-indirizzo-ammesso` | **coerente**. Il suo «Quando cambia una matrice: nessuno rigiudica gli indirizzi già scritti» è il modello su cui la D-T7a-1 propone di allineare gli obbligatori |
+| nota `_cambio-di-natura` | **coerente**: il cambio di natura rigiudica i ruoli, e il giro non lo tocca |
+| [catasto-delle-istanze](../../guide/catasto-delle-istanze.md), [generazione-cliente](../../guide/generazione-cliente.md), [gestione-delle-istanze-utility](../../guide/gestione-delle-istanze-utility.md), [riclassificazione-vie](../../guide/riclassificazione-vie.md) | **coerenti**: nominano `indirizzi_dettaglio` per il legame col civico, che il giro non cambia |
+
+Quattro orfani: `fn_indirizzi_con_obbligatori`, `fn_indirizzo_elemento`, `fn_search_indirizzi_dettaglio`,
+`script.vw_indirizzo_completo`. Sono dettagli interni, non concetti del dominio: nessuna guida da scrivere. Il primo
+e il terzo cambiano col giro (D-T7a-4, D-T7a-6).
+
+### 21.1 Che cosa dice il catalogo, segnalazione per segnalazione
+
+| # | Esito | Che cosa dice il catalogo |
+| --- | --- | --- |
+| S3 | **difetto, e più largo** | `vw_indirizzi_resolved_base` fa `LEFT JOIN script.vw_indirizzo_completo ic ON ic.id_comune = b.comune_id`, e la vista ha una riga per via. Un indirizzo libero della forma del catalogo esce una volta per ogni via del suo comune. C'è anche un secondo difetto: `cap` è `COALESCE(vidd.cap, ic.codice_postale)`, cioè il CAP di una via a caso del comune e non quello scelto (`b.codice_postale_id`). In un comune con più CAP la vista ne mostra uno sbagliato. Il join non serve a niente: comune, provincia e CAP sono già in `co_ai`, `pr_ai` e `cp_ai`. La correzione non cambia le colonne: si toglie `ic`, `cap` diventa `cp_ai.codice` e `provincia` diventa `pr_ai.sigla`. Le viste figlie (`_all`, `_ruolo`, `_soggetto`) e `script.fn_get_indirizzo` e `_by_ruolo` la seguono da sole |
+| S16 (2ª metà) | **difetto** | `vw_indirizzi_dettaglio` fa un join interno con `script.vw_indirizzo_completo`, che a sua volta lo fa interno con `config.province`, e `config.comuni.provincia_id` è nullable. Il civico di una via di un comune senza provincia sparisce dalla vista, e con lui l'indirizzo che lo usa sparisce da `vw_indirizzi_resolved_base`, la cui riga resta senza testo. È la stessa radice di S50, D-T7a-2 |
+| S50 (via) | **difetto, la radice è il modello** | `fn_build_indirizzo_normalizzato` legge `via_norm` da `vw_indirizzo_completo`. Quella vista chiede la provincia e il CAP, che per la via non servono: `via_norm` è toponimo più nome. Da `config.stradario` a `stradario_generale` e `toponomastica` le colonne sono tutte `NOT NULL`. Col comune senza provincia `via_norm` resta `NULL`, e dal «trova o crea» arriva `E_INDIRIZZO_VIA_NON_RISOLTA`. Da un INSERT diretto, o modificando il civico, arriva il `23502` grezzo. D-T7a-2 |
+| S50 (forma) | **difetto** | `fn_indirizzo_elemento_dettaglio` decide la forma dal solo testo: con `indirizzo_libero` vuoto o assente, e senza `indirizzo_dettaglio_id`, chiama `fn_create_indirizzo` con tutto `NULL`. Questa scrive `config.stradario_generale` con `toponomastica_id NULL`, e la scrittura cade sul `NOT NULL` di una tabella di configurazione. Così non si arriva mai al guard della forma libera, che darebbe `E_INDIRIZZO_LIBERO_INCOMPLETO` sul campo giusto. Il COMMENT dice «non valida i campi di una via nuova: pre-check del backend», cioè una regola lasciata al BE. D-T7a-5 |
+| S50 (posizione) | **difetto di modello** | Su `indirizzi` e `indirizzi_soggetti`, `trgfn_indirizzi_base_normalize` svuota la posizione quando c'è il dettaglio, e subito dopo `trgfn_indirizzi_sync_geoloc` ci ricopia `civic_geoloc`. La copia non segue il civico: se `civic_geoloc` cambia, la riga resta con quella vecchia. Il lettore la usa solo come ultimo ripiego (`COALESCE(vidd.civic_geoloc, vidd.street_geoloc, b.geoloc)`), quindi la copia è una seconda sede della posizione che nessuno legge per prima. Nella storia non c'è una decisione (`refactor-indirizzi-conti-utility`: «verifica sola»). D-T7a-3 |
+| S48 (requisito nuovo) | **comportamento dichiarato, cambio di modello** | I due trigger dei titolari (`trg_soggetti_def_guard_indirizzi_required_aft_ins_upd`, `trg_soggetti_ruoli_def_guard_indirizzi_required_aft_ins_upd`) sono `AFTER INSERT OR UPDATE`, senza `OF` né `WHEN`. Quando una riga di matrice diventa obbligatoria, chi esiste già non si scrive più su nessuna colonna. Lo stesso vale dal lato degli indirizzi: i due guard di `indirizzi` e `indirizzi_soggetti` rigiudicano **tutto** il titolare, quindi su un titolare incompleto da prima non si cancella nemmeno un indirizzo che nessuno chiede. Il tipo di ruolo e il soggetto del ruolo sono bloccati dal giro 3, quindi per il ruolo non resta nessuna colonna che cambi il requisito. D-T7a-1 |
+| S48 (ripiego del soggetto) | **difetto** | `fn_indirizzi_obbligatori_mancanti_soggetto` conta il ripiego senza chiedersi se la natura lo ammette (sul ruolo `fn_indirizzi_obbligatori_ruolo` lo fa). Il rifiuto può quindi proporre un ripiego che il guard del tipo non lascia scrivere |
+| S48 (copia degli obbligatori) | **difetto** | `fn_indirizzi_con_obbligatori` cerca nell'elenco solo il tipo e ignora il ripiego. Se l'elenco ha il ripiego, nasce comunque la copia del tipo, cioè un indirizzo che nessuno ha chiesto. Le due madri plurali scartano poi solo i tipi già sul titolare, non i ripieghi. D-T7a-4 |
+| S48 (le sedi) | **difetto, regola del 2** | Sul soggetto «obbligatorio per la natura» si calcola in sette posti, con tre varianti. In `fn_crea_indirizzi_soggetto`, `fn_indirizzi_obbligatori_mancanti_soggetto` e i due picker (`_natura`, `_soggetto`) si usa `obbligatorio` più il predicato con la finestra. In `dbops.fn_pgtap_crea_soggetto_pf`, `_pg` e `fn_provisiona_dati_di_sviluppo` si usa `attivo AND obbligatorio`, cioè senza la finestra e senza il predicato. Il ruolo ha la sua sede (`fn_tipo_indirizzo_obbligatorio_per_ruolo`); il soggetto no. D-T7a-4 |
+| S48 (`tx_id`) | **difetto minore** | `trgfn_indirizzi_guard_obbligatori_ruolo` e `trgfn_indirizzi_soggetti_guard_obbligatori_soggetto` passano `NULL::uuid` al guard: il rifiuto si logga senza la transazione. Va passato `OLD.tx_id`. Le due funzioni guardano dal corpo se il tipo o il titolare sono cambiati: un `WHEN` sul trigger eviterebbe l'evento differito a ogni UPDATE. Il `WHEN` è DDL su un trigger, e si scrive in `00_schema` |
+| S49 (tipo per id) | **difetto** | `fn_indirizzo_elemento` prende `tipo_indirizzo_id` così com'è. Un id che non esiste passa, e lo rifiuta poi la FK (⚠️ corretto dalla prova, §21.4: lo rifiuta il guard del tipo, col motivo sbagliato `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO`). Con id e codice insieme vince l'id e il codice non si confronta. Un id non numerico dà il `22P02` del cast. Tutti e tre i casi devono dare `E_TIPO_INDIRIZZO_NON_TROVATO` sul campo |
+| S49 (`bigint`/`integer`) | **difetto, la radice è una colonna** | `config.tipi_ruolo_tipi_indirizzo.tipo_ruolo_id` è `bigint` e punta a `config.tipi_ruoli.id`, che è `integer`. Le firme la seguono: `fn_tipo_indirizzo_ammesso_per_ruolo(bigint, …)`, mentre `fn_check_tipo_indirizzo_ruolo_su_contesto`, `fn_indirizzi_obbligatori_ruolo` e gli altri hanno `integer`. Fatto nuovo: la stessa tabella ha **due FK identiche** su `tipo_ruolo_id` (`fk_tipi_ruoli_tipi_indirizzo_ruolo`, `fk_tipi_ruolo_tipi_indirizzo_tipo_ruolo`). Nel catalogo di `anagrafiche` e `config` è l'unico doppione. D-T7a-7 |
+| S19 | **difetto** | Le FK di `indirizzi` verso `config.comuni`, `codici_postali` e `stati` sono `ON DELETE SET NULL`, quelle di `indirizzi_soggetti` non hanno azione. Non è solo una divergenza fra gemelle: il `SET NULL` è un UPDATE che passa dai trigger della riga. Togliere il comune fa rifiutare la cancellazione dal guard della forma, con un errore che parla dell'indirizzo; togliere lo stato fa scrivere a `trgfn_indirizzi_base_normalize` lo **stato proposto**, e l'indirizzo cambia paese senza che nessuno l'abbia chiesto. ⚠️ Precisato dalla prova (§21.4): col proposto di oggi la cancellazione è rifiutata dal guard della forma; il cambio silenzioso avviene con un proposto senza catalogo. Proposta: nessuna azione anche su `indirizzi`, come la gemella. Un comune in uso non si cancella, si spegne |
+| S10 | **la funzione non ha chiamanti** | `fn_search_indirizzi_dettaglio` non la chiama nessuno, né a DB (`pg_proc`) né sul ramo del BE, che cerca i civici leggendo `vw_indirizzi_dettaglio` (`indirizzi_repository.py`, righe 85 e 108). I difetti letti ci sono: estensione, palazzina, scala, piano e interno si confrontano grezzi con valori salvati in maiuscolo e col `/`, c'è un `RAISE` diretto e `p_limit` non ha tetto. Ma una ricerca che nessuno usa, accanto a quella del BE, è una copia. D-T7a-6 |
+
+**Fatto nuovo, S-T7a-a.** `anagrafiche.fn_create_indirizzo`, chiamata anche dal BE (`indirizzi_repository.py`, riga
+191), sul ramo «via nuova» scrive lo stradario con `ON CONFLICT … DO UPDATE SET comune_id = EXCLUDED.comune_id`
+anche quando la via esiste già. Dal giro 1 (Q7) lo storico di `config.stradario` è continuo, e
+`script.trgfn_storico_generic` non scarta un UPDATE che non cambia niente. Ritrovare una via esistente lascia quindi
+una versione di storico della via a ogni indirizzo creato. Lo stesso `ON CONFLICT` su `stradario_generale` riscrive
+`descrizione` col suo valore. Correzione: `DO NOTHING` più la rilettura per chiave, oppure prima la ricerca e poi
+l'INSERT, come il «trova o crea» del civico. Si prova col pgTAP: la seconda chiamata con la stessa via non aggiunge
+versioni.
+
+### 21.2 Le decisioni per Tid
+
+| # | Domanda | Proposta |
+| --- | --- | --- |
+| D-T7a-1 | **Un requisito nuovo blocca chi esiste?** Oggi sì: ogni scrittura del titolare rigiudica tutto (R9). È un cambio di modello: la guida e la nota lo dichiarano | **No, come per i tipi ammessi**: una matrice che cambia vale per le scritture che toccano il requisito, non per tutte. (a) Il soggetto si giudica all'INSERT e al cambio di natura (`UPDATE OF tipo_soggetto_dettaglio_id` più `WHEN`); il ruolo all'INSERT, perché tipo e soggetto sono bloccati. (b) Dal lato degli indirizzi si giudica solo la riga che esce: chi cancella un indirizzo, o ne cambia il tipo, non può togliere il **solo** indirizzo che soddisfa una riga obbligatoria. Un titolare incompleto per una matrice nuova resta modificabile, e il form lo vede da `fn_indirizzi_obbligatori_mancanti_*`, che c'è già. Argomento sul modello: la stessa matrice ha due regole, «ammesso» e «obbligatorio», che oggi rispondono in modo diverso allo stesso cambio. Si riscrivono R9 e la nota |
+| D-T7a-2 | **Una via di un comune senza provincia si usa?** Oggi no, e la guida lo dice (R7). Il modello però ammette `comuni.provincia_id NULL` | **Sì**: `via_norm` si legge da stradario, stradario generale e toponomastica, tutte colonne `NOT NULL`, e non più da `vw_indirizzo_completo`. `vw_indirizzi_dettaglio` va in `LEFT JOIN` sulla provincia. Una via c'è finché c'è la sua riga: «via non risolta» resta solo per uno `stradario_id` che non esiste, e lo dice già il «trova o crea» (`E_CODICE`). `E_INDIRIZZO_VIA_NON_RISOLTA` diventa obsoleto. Con **no**, invece, la regola va nel guard del civico (`trgfn_indirizzi_dettaglio_guard_chiave`), su ogni strada, e la vista va comunque in `LEFT JOIN`, perché una provincia si può togliere dopo |
+| D-T7a-3 | **La posizione di un indirizzo col dettaglio** | Resta `NULL`, come comune e CAP: la dice il civico. Si ritira `trgfn_indirizzi_sync_geoloc`, con i suoi due trigger, e le righe di oggi si portano a `NULL` nello stesso giro. I lettori leggono già il civico per primo |
+| D-T7a-4 | **Gli obbligatori del soggetto: una sede** | Un BB `anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura(natura, tipo, giorno)`, gemello di quello del ruolo, letto dalle sette sedi, comprese le tre degli strumenti di sviluppo e pgTAP. Il ripiego del soggetto conta solo se la natura lo ammette. `fn_indirizzi_con_obbligatori` riceve, oltre al tipo, il ripiego di ciascuna riga, e non copia un tipo il cui ripiego è già nell'elenco o sul titolare. Le copie si ritirano nello stesso giro |
+| D-T7a-5 | **Un elemento senza forma** | La forma la decide il DB dalle chiavi: un elemento senza dettaglio e senza via è libero, e lo giudica il guard della forma (`E_INDIRIZZO_LIBERO_INCOMPLETO`, campo `indirizzo_libero`). Una via nuova incompleta (manca la toponomastica, la descrizione, il comune o il CAP) ha un codice, con il campo che manca. Il «pre-check del backend» esce dal COMMENT, perché una regola del dato non si lascia al BE |
+| D-T7a-6 | **`fn_search_indirizzi_dettaglio`** | Si ritira (`DROP`), con la sua pagina `manual/`: non la chiama nessuno, e la ricerca vive nel BE. Se Tid la vuole come sede della ricerca dei civici, l'alternativa è correggerla (confronto sui valori normalizzati da `fn_build_indirizzo_normalizzato`, `fn_log_and_raise_error`, un tetto a `p_limit`) e chiedere al BE di passarci. Quella però è una richiesta di sviluppo, non una correzione |
+| D-T7a-7 | **Il tipo di ruolo `bigint`** | `config.tipi_ruolo_tipi_indirizzo.tipo_ruolo_id` diventa `integer`, come la colonna a cui punta, e la FK doppia si toglie. `fn_tipo_indirizzo_ammesso_per_ruolo` cambia firma (§5f di `linee-guida-sql`: `DROP`, `CREATE`, `GRANT`, e i chiamanti `BEGIN ATOMIC` da ricreare). Il BE non la chiama. In alternativa va in T11, la forma |
+
+**Esito del 2026-11-24.** Tutte decise da Tid: D-T7a-3 … D-T7a-7 come proposte, D-T7a-1 come proposta, D-T7a-2 nella forma nuova qui sotto. Su D-T7a-1 e D-T7a-2 Tid ha chiesto chi
+ha ragione, la guida o la correzione. La risposta l'ha data la storia delle decisioni:
+
+* **D-T7a-1: la guida fotografa il codice, non registra una decisione.** I due montaggi `AFTER INSERT OR UPDATE`
+  nascono il 2025-12-21 (`a860ccc7d8`, i primi indirizzi del soggetto). `brief-db-fornitore-privato-indirizzi`
+  (2026-11-16) li ha lasciati com'erano («nessun DDL sui montaggi»), e la frase di R9 «non si modifica più» l'ha
+  scritta il giro 0c (2026-11-22) leggendo il corpo. Nessuno ha mai scelto che il blocco scatti su qualunque
+  colonna. La proposta resta, e non revoca nessuna decisione. È però una **garanzia ritirata**, e il giro avrà la sua
+  sezione: oggi la garanzia è solo apparente, perché un titolare che nessuno riscrive resta incompleto lo stesso.
+* **D-T7a-2: la guida ha ragione, e la proposta si ritira.** R7 registra la **D4 di Tid del 2026-10-25**
+  ([brief-db-unicita-civico-indirizzi-dettaglio](../work-done/2026/brief-db-unicita-civico-indirizzi-dettaglio.md)
+  §D4): su una via che non si risolve si dà un errore. Quel brief ha anche trovato che
+  `config.trgfn_comuni_protect_update` blocca il cambio di provincia di un comune che lo stradario usa. Quindi una
+  via non perde la provincia dopo che ha dei civici, e S16 (il civico che sparisce dalla vista) non si produce con le
+  scritture che passano dai trigger. Resta il solo difetto vero di S50: il codice arriva dal «trova o crea», mentre
+  un INSERT diretto, o la modifica di un civico, danno il `23502`. **Proposta nuova:** il controllo «via non risolta»
+  va nel guard del civico (`trgfn_indirizzi_dettaglio_guard_chiave`), su ogni strada, con lo stesso codice
+  `E_INDIRIZZO_VIA_NON_RISOLTA`. `vw_indirizzi_dettaglio` non cambia, e S16 seconda metà si chiude come «non si
+  costruisce senza saltare i trigger». Argomento sul modello: lo stradario è il catalogo italiano (gli indirizzi
+  esteri usano la forma libera estera), e un indirizzo italiano senza la sigla della provincia non è completo per i
+  documenti.
+
+S3, S19, S49 (tipo per id), il `tx_id` di S48 e S-T7a-a sono correzioni senza scelta: entrano nel giro qualunque
+cosa decida Tid sul resto.
+
+### 21.3 Il piano del giro, dopo le decisioni
+
+* **pgTAP rosso prima**, uno per caso costruito, come app dove si può:
+  * l'indirizzo libero di catalogo in un comune con due vie e due CAP (S3);
+  * il comune senza provincia: il civico, la vista e l'indirizzo (S16, S50);
+  * l'elemento vuoto (S50);
+  * la posizione del civico che cambia (S50);
+  * la matrice che diventa obbligatoria su un titolare che esiste, che poi si scrive su un'altra colonna e da cui si
+    cancella un indirizzo non richiesto (S48);
+  * il ripiego vietato dalla natura e il ripiego nell'elenco (S48);
+  * id inesistente, non numerico, e id e codice discordi (S49);
+  * il comune e lo stato cancellati sotto un indirizzo di ruolo (S19);
+  * la via ritrovata due volte, senza versioni nuove (S-T7a-a).
+* **Le letture da fare prima di scrivere**: `linee-guida-trigger.md` per intero; di `linee-guida-sql` le §5, 5c, 5f,
+  5g, 6, 7f e 11.5, e la §8.7 per la FK tolta.
+* **Ricadute sul BE**, da scrivere in un passaggio solo:
+  * i codici nuovi, e `E_INDIRIZZO_VIA_NON_RISOLTA` obsoleto se D-T7a-2 è sì;
+  * il cambio di forma della risposta su un elemento vuoto;
+  * il censimento dei lettori che contano sul blocco di R9, se D-T7a-1 è sì: è una garanzia ritirata
+    (§«Garanzie ritirate» di AGENTS), e la richiesta al BE va scritta in quella forma.
+
+### 21.4 Il pgTAP rosso (2026-11-24, prima dei changeSet)
+
+Due file nuovi in `db/pgtap/anagrafiche/`, scritti per girare come app. Si costruiscono il mondo: comune, CAP, vie,
+stato, tipi d'indirizzo e righe di matrice nascono nel test (le tabelle di `config` hanno id identity e l'app le
+scrive). Dal seed si leggono solo una provincia, una toponomastica, la natura `PR` e il tipo di ruolo `CL` dei builder.
+
+| File | Esito senza il giro | I verdi, e perché sono verdi |
+| --- | --- | --- |
+| `test-indirizzi-viste-forma-e-vincoli-v1` (25) | 20 rossi | 10 (il «trova o crea» dà già il codice), 11 (la premessa di S16), 16 (la vista legge già il civico per primo), 20 (il solo codice), 23 (la seconda chiamata passa già): sono controlli |
+| `test-indirizzi-obbligatori-requisito-nuovo-v1` (11) | 8 rossi | 5 (l'unico indirizzo obbligatorio non si cancella), 10 e 11 (la copia scrive il ripiego e copia il tipo il cui ripiego è vietato): sono controlli |
+
+Corsa: `scripts/prova_changeset.py` sullo scratch, da owner e in `ROLLBACK`. Il changeSet `20261123-68`, già
+applicato e idempotente, fa solo da veicolo: le corse con e senza sono uguali, e sono lo stato di oggi. Il verde
+della corsa come app è di Tid, dopo l'apply.
+
+**Ogni rosso è sul suo motivo**, letto asserzione per asserzione:
+* S3: due righe per l'indirizzo, coi CAP `T7A1…` e `T7A2…`;
+* S50: `23502` sull'INSERT diretto del civico, sull'elemento vuoto, su quello col solo tipo e sulla via senza
+  toponomastica; la posizione copiata nella riga;
+* S49: il `22P02` sull'id non numerico; id e codice discordi passano, e scrivono il tipo dell'id;
+* S19: i tre `confdeltype = n` (`SET NULL`);
+* S-T7a-a: la via riscritta (il `ctid` cambia) e **due** versioni di storico per una sola chiamata, la versione
+  iniziale e quella finale;
+* D-T7a-1: `E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO` sulla scrittura del soggetto e sulla cancellazione di un
+  indirizzo non chiesto; `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` sulle stesse due strade del ruolo;
+* D-T7a-4: il ripiego vietato proposto (l'id di `tf`), la copia del tipo con il ripiego già nell'elenco, e le sette
+  sedi elencate per nome.
+
+**Due correzioni all'analisi di §21.1, trovate dalla prova:**
+* **S49, l'id che non esiste.** Non lo rifiuta la FK: lo rifiuta prima il guard del tipo, con
+  `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO`, perché un tipo che non c'è non è nella matrice. L'errore è quindi un
+  motivo sbagliato («la natura non lo ammette»), non un errore tecnico. La correzione non cambia.
+* **S19, lo stato cancellato.** Con lo stato proposto di oggi (l'Italia, col catalogo) il `SET NULL` non cambia paese
+  in silenzio. `trgfn_indirizzi_base_normalize` scrive l'Italia, il guard della forma chiede il comune, e la
+  cancellazione è rifiutata con `E_INDIRIZZO_LIBERO_INCOMPLETO`, un errore che parla dell'indirizzo. Il cambio
+  silenzioso avviene quando lo stato proposto ammette la forma della riga, cioè un proposto senza catalogo, che il
+  parametro consente. La correzione non cambia.
+
+**Le scelte fatte scrivendo** (da confermare col changeSet): due codici nuovi, `DATO_ERRATO`, entrambi col campo nel
+contesto. `E_INDIRIZZO_VIA_NUOVA_INCOMPLETA` è la via nuova a cui manca la toponomastica, la descrizione, il comune o
+il CAP (D-T7a-5). `E_TIPO_INDIRIZZO_DISCORDE` è il caso in cui id e codice dicono due tipi (S49).
+
+**I pgTAP esistenti che il giro tocca**, da adeguare con i changeSet:
+* `create-gestore-indirizzo-res-domfisc.sql` chiama `fn_search_indirizzi_dettaglio` (righe 191-222): esce
+  l'asserzione, o la ritrova con `fn_get_or_create_indirizzo_dettaglio`;
+* `test-check-tipo-indirizzo-v1`, `test-fornitore-privato-indirizzi-v1`: `fn_tipo_indirizzo_ammesso_per_ruolo` cambia
+  firma;
+* `test-indirizzi-obbligatori-ripiego-e-cancellazione-v1`, asserzione 3, legge gli eventi dei constraint trigger;
+  `create-cliente.sql` e `test-indirizzo-obbligatorio-mancante-frase-v1` nominano i guard dei titolari;
+* `test-indirizzi-singolare-e-plurale-v1`: `fn_indirizzi_con_obbligatori` cambia firma;
+* sei file nominano `tipi_ruolo_tipi_indirizzo.tipo_ruolo_id` (`test-fn-crea-fornitore-v1`,
+  `test-tipi-indirizzo-proponibili-v1`, `test-check-tipo-indirizzo-v1`, `test-fn-crea-indirizzi-ruolo-v1`,
+  `test-fornitore-privato-indirizzi-v1`, `test-indirizzo-obbligatorio-mancante-frase-v1`): si rileggono per i cast.
+
+### 21.5 Che cosa è scritto (2026-11-24: provato sullo scratch, applicato, pgTAP verdi come app)
+
+| ChangeSet | Che cosa | Decisione |
+| --- | --- | --- |
+| `00_schema/config/20261123-74-alter-tipi-ruolo-tipi-indirizzo-tipo-ruolo-integer` | la catena `BEGIN ATOMIC` tolta, la FK doppia tolta, `tipo_ruolo_id` integer | D-T7a-7 |
+| `00_schema/anagrafiche/20261123-75-update-fk-indirizzi-geografiche-senza-azione` | le tre FK di `indirizzi` senza `SET NULL` | S19 |
+| `20_code/anagrafiche/20261123-76-recreate-catena-tipo-indirizzo-ruolo-tipo-integer` | le sette funzioni della catena, coi corpi di prima | D-T7a-7 |
+| `20_code/anagrafiche/20261123-77-create-fn-tipo-indirizzo-obbligatorio-per-natura` | la sede unica di «obbligatorio per la natura» | D-T7a-4 |
+| `-78` `fn_indirizzi_obbligatori_mancanti_soggetto` | la sede, e il ripiego solo se la natura lo ammette | D-T7a-4 |
+| `-79` i picker `fn_tipi_indirizzo_proponibili_natura` e `_soggetto` | la colonna obbligatorio dalla sede | D-T7a-4 |
+| `-80` `fn_crea_indirizzi_soggetto`, `-81` `fn_crea_indirizzi_ruolo` | si copiano solo gli obbligatori che mancano, non un tipo il cui ripiego c'è già | D-T7a-4 |
+| `20_code/dbops/-82`, `-83` i builder pgTAP PF e PG; `-84` `fn_provisiona_dati_di_sviluppo` | la sede, con la finestra di validità | D-T7a-4 |
+| `-85` i due guard degli obbligatori e i due trigger degli indirizzi | il tipo che esce, in coda (`DEFAULT NULL`); `OLD.tx_id` al log | D-T7a-1, S48 |
+| `-86` i trigger dei titolari | soggetto all'`INSERT` e al cambio di natura (`WHEN`), ruolo all'`INSERT` | D-T7a-1 |
+| `-87` `trgfn_indirizzi_dettaglio_guard_chiave` | `E_INDIRIZZO_VIA_NON_RISOLTA` su ogni strada | D-T7a-2 |
+| `-88` `fn_indirizzo_elemento` | il tipo per id verificato; id e codice discordi `E_TIPO_INDIRIZZO_DISCORDE` | S49 |
+| `-89` `fn_indirizzo_elemento_dettaglio` | senza chiavi di una via l'elemento è libero | D-T7a-5 |
+| `-90` `fn_create_indirizzo` | la via nuova validata (`E_INDIRIZZO_VIA_NUOVA_INCOMPLETA`); la via esistente ritrovata senza riscriverla; firma ri-ancorata con `%TYPE` | D-T7a-5, S-T7a-a |
+| `-91` `vw_indirizzi_resolved_base` | senza il join per via: una riga, col CAP scelto | S3 |
+| `-92` ritiro di `fn_search_indirizzi_dettaglio` | | D-T7a-6 |
+| `-93` ritiro di `trgfn_indirizzi_sync_geoloc` e dei suoi montaggi | | D-T7a-3 |
+| `80_data/changelog/20261123-94-bonifica-indirizzi-geoloc-col-dettaglio` | la posizione copiata tolta dalle righe col dettaglio, a trigger sospesi | D-T7a-3 |
+
+Con due righe nuove in `codici_errore.csv` e `messaggi_errore.csv` (id 1537, 1538) e la nota di
+`E_INDIRIZZO_VIA_NON_RISOLTA` aggiornata.
+
+**Le scelte fatte scrivendo:**
+* il `CHECK` di rete «col dettaglio, niente posizione» non c'è. Su un database esistente partirebbe prima che -93
+  tolga la copia, e la regola la tiene già `trgfn_indirizzi_base_normalize`. La prova è il pgTAP (15);
+* in -90 `descrizione_breve` (varchar 50) prende i primi 50 caratteri della descrizione: prima la prendeva intera, e
+  una via nuova dal nome lungo cadeva su un `22001`;
+* ⚠️ -74 toglie le funzioni con le firme a tipi nudi. È applicato su dbdev dalle 19:14, e ancorarlo ora ne
+  cambierebbe il checksum. Le firme sono quelle esatte del catalogo: resta così.
+
+**La prova** (`scripts/prova_changeset.py`, scratch `zeroerp_ruoli`, i 21 changeSet insieme, da owner):
+* `test-indirizzi-viste-forma-e-vincoli-v1`: 25/25 (senza: 5); `test-indirizzi-obbligatori-requisito-nuovo-v1`:
+  11/11 (senza: 3);
+* i 96 file che nominano gli oggetti del giro, più `dbops/test-riferimenti-morti-v1`, in due corse (la prima si è
+  fermata su `script/test-fn-disdetta-cliente`): uguali prima e dopo, salvo i cinque adeguati qui sotto, ora verdi;
+* `script/test-catalogo-messaggi-errore-completo` (2) è rosso nella prova, perché i due codici nuovi stanno nei CSV,
+  che la prova non carica. Si rilegge dopo l'apply;
+* non provati dallo strumento: `test-soggetti-indirizzi-required` e `test-soggetti-ruoli-indirizzi-required` (più
+  transazioni nello stesso file) e `script/test-fn-disdetta-cliente` (non apre con `BEGIN;`, un difetto suo). I
+  primi due provano l'`INSERT`, che resta giudicato. La corsa come app è di Tid.
+
+**I pgTAP adeguati** (scritti sul contratto di prima):
+* `test-fornitore-privato-indirizzi-v1` (2) e `test-check-tipo-indirizzo-v1` (4): le plurali leggono le sedi (il
+  requisito, i mancanti), non più il building block per riga;
+* `test-indirizzi-obbligatori-mancanti-v1` e `test-indirizzi-obbligatori-ripiego-e-cancellazione-v1`: la firma a tre
+  argomenti dei guard;
+* `test-indirizzo-obbligatorio-mancante-frase-v1`: chiamava il guard con un `UPDATE` che riscriveva lo stesso valore,
+  cioè il comportamento che D-T7a-1 ritira. Ora chiama il guard, la sede della frase;
+* `create-gestore-indirizzo-res-domfisc`: il civico si ritrova col «trova o crea» e dalla vista della ricerca.
+
+**Guide verificate dopo il giro** (`scripts/guide_coinvolte.py` sui file del giro, 2026-11-24):
+* aggiornate nello stesso giro: [gestione-degli-indirizzi](../../guide/gestione-degli-indirizzi.md) (R3, R7, R8, R9,
+  la tabella dei trigger, i test), le note `_indirizzi-obbligatori` (le strade, il ripiego del soggetto, la sede
+  della natura) e `_indirizzo-libero-o-dettaglio` (la posizione, la forma dell'elemento, la via non risolta);
+* **coerenti**: [soggetti-e-ruoli-anagrafici](../../guide/soggetti-e-ruoli-anagrafici.md) (al COMMIT si giudicano
+  gli obbligatori del soggetto nato, che resta vero), le note `_cambio-di-natura` (il cambio di natura resta
+  giudicato) e `_tipo-indirizzo-ammesso` (il modello su cui D-T7a-1 si allinea);
+* le altre 33 nominano oggetti che il giro cita solo nei corpi ricopiati (provisioning, builder): nessun
+  comportamento che descrivono cambia.
+
+**La documentazione** (2026-11-24): 25 pagine `manual/` aggiornate, una nuova
+(`fn_tipo_indirizzo_obbligatorio_per_natura`), due tolte (`fn_search_indirizzi_dettaglio`,
+`trgfn_indirizzi_sync_geoloc`). La doc auto-generata è rigenerata da Tid dopo l'apply (2026-11-24): le schede
+delle due funzioni tolte non ci sono più, e c'è quella della funzione nuova. Restano fuori standard, toccate al minimo, `script/manual/fn_search_stradario` e
+`config/manual/tipi_ruolo_tipi_indirizzo` (pagine vecchio stile): sono del giro dei metadati (§8).
+
+### 21.6 Garanzie ritirate
+
+| Oggetto | La proprietà che i lettori davano per scontata | I lettori lato DB |
+| --- | --- | --- |
+| I trigger dei titolari (-86) | «Un titolare scritto ha i suoi indirizzi obbligatori» | `script.fn_snapshot_indirizzo` e `_soggetto` ricevono l'id dell'indirizzo e rifiutano da sé quello che manca: non ne dipendono. `script.fn_get_search_detail` ha il suo ripiego (`COALESCE`): non ne dipende. Il test della frase ne dipendeva, ed è adeguato (§21.5). La proprietà non valeva nemmeno prima per un titolare nato prima della riga e mai riscritto |
+| `trgfn_indirizzi_sync_geoloc` (-93) | «Una riga col dettaglio ha in `geoloc` la posizione del civico» | nessun lettore legge la colonna: `vw_indirizzi_resolved_base` e da lei `script.fn_get_indirizzo` e `_by_ruolo` leggono il civico per primo, e il ripiego sulla riga resta per la forma libera |
+
+### 21.7 Il passaggio al BE (da girare: il giro è applicato, 2026-11-24)
+
+Letto sul ramo `origin/dev/backend-tid` in sola lettura. Chi cambia per primo: il DB. Nessuna voce rompe ciò che il BE
+fa oggi, salvo dove è detto.
+
+1. **Censire i lettori di `anagrafiche.soggetti` e `anagrafiche.soggetti_ruoli` che contano su «un titolare scritto
+   ha i suoi indirizzi obbligatori»** (§21.6). Da oggi un titolare a cui una riga di matrice nata dopo chiede un
+   indirizzo resta scrivibile, e il rifiuto `E_INDIRIZZO_OBBLIGATORIO_MANCANTE*` arriva solo alla nascita, al
+   cambio di natura e quando esce l'unico indirizzo che una riga chiedeva. Il form può mostrare i mancanti da
+   `fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli`, che il BE legge già per il cambio di natura.
+2. **Codici nuovi**, col campo nel contesto: `E_INDIRIZZO_VIA_NUOVA_INCOMPLETA` (campo `toponomastica_id`,
+   `descrizione_via`, `comune_id` o `codice_postale_id`) e `E_TIPO_INDIRIZZO_DISCORDE` (campo
+   `tipo_indirizzo_codice_interno`). `E_TIPO_INDIRIZZO_NON_TROVATO` può arrivare ora anche col campo
+   `tipo_indirizzo_id`.
+3. **`anagrafiche.fn_create_indirizzo`** (`backend/apps/anagrafiche/db/indirizzi_repository.py`, riga 191) valida la
+   via nuova da sé. Il «controllo preventivo del service», se c'è, è ora una seconda sede della stessa regola: si
+   può togliere. Censire i pre-check della via nuova nel service.
+4. **Un elemento d'indirizzo senza via e senza testo** ora arriva come `E_INDIRIZZO_LIBERO_INCOMPLETO` sul campo
+   `indirizzo_libero`, non più come errore tecnico.
+5. **`anagrafiche.fn_search_indirizzi_dettaglio` non c'è più**. Il BE non la chiama: niente da cambiare.
+6. **La colonna `geoloc`** di `indirizzi` e `indirizzi_soggetti` è `NULL` per un indirizzo col dettaglio. Il BE non la
+   legge (nessun `geoloc` in `backend/` né in `frontend/src`): niente da cambiare.
+
+## 22. Giro 5 — T7b, i contatti e il catasto (2026-11-25: decisioni prese, scritto e provato sullo scratch)
+
+Il perimetro è S8, S46, S11, S47 e il pgTAP `create-soggetto-gestori.sql` (§21, testa). **Il confine con T6** è
+quello proposto e accettato da Tid il 2026-11-25: T7b tiene la regola del contatto predefinito e la lettura;
+restano a T6 il contatto obbligatorio (`trgfn_soggetti_guard_soggetto_contatti`, «almeno un contatto», S45 e la
+riga di S8 che lo nomina), il puntatore `soggetti.default_contatto_id` (che non si svuota mai e che a ogni scrittura
+riscrive il soggetto) e l'ultimo contatto cancellato. I numeri dei changeSet partono da `20261125-36` (Tid,
+2026-11-25). Analisi letta sul catalogo di dbdev il 2026-11-25; sul ramo `origin/dev/backend-tid` si è guardato
+solo chi chiama, in sola lettura.
+
+**Guide verificate** (`scripts/guide_coinvolte.py --oggetti`, 15 oggetti, 2026-11-25; nessun orfano):
+
+| Guida o nota | Esito |
+| --- | --- |
+| [gestione-dei-contatti](../../guide/gestione-dei-contatti.md) | **contraddetta su tre punti**, decide Tid: «la chiave è il soggetto più il contesto» (D-T7b-1), «che cosa la regola non fa» (D-T7b-2), il contatto con l'istanza senza ruolo ammesso (D-T7b-3). **Indietro** su `fn_get_contatti` senza reparto (D-T7b-4) e sull'ordine di `fn_get_contatto_default` fra tipi diversi |
+| nota `_contatto-predefinito` | **contraddetta** con D-T7b-1 e D-T7b-2: è la stessa regola della guida, scritta dal giro 0c leggendo il corpo |
+| [catasto-delle-istanze](../../guide/catasto-delle-istanze.md) | **contraddetta** nel §«Che cosa oggi non copre» (S11, D-T7b-6, D-T7b-7): li descrive come limiti, non come scelte. **Coerente** sull'idempotenza del clone, che il brief vicino della catena tiene (§22.1, S47) |
+| [generazione-cliente](../../guide/generazione-cliente.md), [gestione-delle-istanze-utility](../../guide/gestione-delle-istanze-utility.md) | **coerenti**: nominano il clone al subentro e il legame istanza-unità, che il giro non cambia nella sostanza; da rileggere a giro fatto per il trigger su INSERT (D-T7b-6) |
+| [gestione-degli-indirizzi](../../guide/gestione-degli-indirizzi.md), [risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md), [soggetti-e-ruoli-anagrafici](../../guide/soggetti-e-ruoli-anagrafici.md) | **coerenti**: nominano `contatti` o `istanze_utilities` per altro (la nascita del primo contatto, il luogo dell'istanza) |
+
+**La storia delle decisioni.** La chiave «soggetto più contesto» del predefinito nasce il 2025-06-23 (`748ee6b95c`,
+«Fix Function per aggiunta contatti context»), senza un brief. Il refactor del 2026-03-25
+([refactor-istanza-indirizzi-conti-contatti](../work-done/2026/refactor-istanza-indirizzi-conti-contatti.md) §7) ha
+solo rinominato il contesto `utility` in `istanza`. Lo stesso refactor, per il **conto bancario** predefinito, ha
+scritto la chiave «ruolo, istanza, uso» con due indici unici parziali. Le frasi della guida e della nota sono del
+giro 0c (2026-11-22), lette sul corpo. **Nessuno ha mai scelto che due ruoli condividano un predefinito**: come per
+D-T7a-1, la guida fotografa il codice. Il catasto nasce il 2025-12-16 (`1b18c56b64`); «un'istanza, un'unità» è il
+modello dichiarato dalla guida, e nessun vincolo lo scrive. Sul clone e sulla catena c'è il §4 di
+[brief-db-catena-istanze-pdp](brief-db-catena-istanze-pdp.md) (aperto, cinque decisioni di Tid): un'istanza che ha già
+l'unità la tiene anche se il padre cambia, «sullo stesso PDP l'immobile è lo stesso».
+
+### 22.1 Che cosa dice il catalogo, segnalazione per segnalazione
+
+| # | Esito | Che cosa dice il catalogo |
+| --- | --- | --- |
+| S8 (la chiave) | **cambio di modello** | `trgfn_contatti_set_default_contatto` toglie il segno a ogni altro predefinito con lo stesso `soggetto_id` e lo stesso `default_context`. Il cliente e il fornitore dello stesso soggetto condividono un predefinito: il primo contatto del fornitore non nasce predefinito, perché il contesto `ruolo` ne ha già uno (quello del cliente), e marcare il contatto del fornitore toglie il segno a quello del cliente. Il lettore vero ne dipende: `PortaleRepository.get_email_contatto_suggerita` (BE) sceglie fra i contatti del ruolo «il principale, poi quello `is_default`». La cascata di `fn_get_contatti` è per ruolo, il conto bancario predefinito è per ruolo e istanza. D-T7b-1 |
+| S8 (nessun vincolo) | **difetto** | La regola «al più un predefinito» sta solo nel trigger: nessun indice unico la scrive. Due contatti nati insieme in due transazioni in un contesto vuoto contano zero predefiniti tutti e due, e nascono predefiniti tutti e due. Va con D-T7b-1, che dice su quale chiave |
+| S8 (il segno tolto) | **difetto: dipende da una scrittura incidentale** | Il ramo «nessun predefinito nel contesto» scatta anche su UPDATE. Togliere il segno all'unico predefinito lo lascia senza; la prossima modifica di **qualunque** contatto del contesto (anche una correzione del telefono) lo fa tornare predefinito, scelto da quale contatto si è scritto per primo. Cancellare il predefinito non promuove nessuno. È la regola di `linee-guida-trigger` §«La fase» a dire la forma: un default che propone un valore mancante vale all'INSERT, e in modifica un valore tolto si rifiuta, non si rimpiazza. D-T7b-2 |
+| S8 (istanza senza ruolo) | **difetto di modello** | Un contatto con l'istanza e senza il ruolo è ammesso, e nessuno dei tre indici unici lo copre. In `fn_get_contatti`, chiesto un ruolo, il suo livello è il 3, come un contatto del soggetto. Il BE crea i contatti d'istanza solo dal ruolo (`create_contatto_ruolo`): la forma la produce solo una scrittura diretta. L'istanza non ha un ruolo suo (`istanze_utilities` porta il soggetto). D-T7b-3 |
+| S8 (`fn_get_contatti` senza reparto) | **difetto** | Il filtro `c.unita_organizzativa_id IS NULL OR … IS NOT DISTINCT FROM p_unita_organizzativa_id` con il parametro `NULL` scarta ogni contatto che ha un reparto. Il reparto è facoltativo e dice dove sta il referente: un soggetto il cui solo contatto amministrativo è nel reparto «amministrazione» non ha contatti per chi non chiede il reparto (il portale non lo chiede). D-T7b-4 |
+| S8 (`fn_get_contatto_default` fra tipi) | **difetto** | Fra i candidati (uno per tipo) possono esserci più predefiniti, di contesti diversi: oggi vince l'id più basso, cioè l'ordine di nascita e non il contesto. Il più specifico (istanza, poi ruolo, poi soggetto) è la stessa regola della cascata. Correzione senza scelta |
+| S46 (il doppione) | **difetto** | Il secondo contatto dello stesso tipo nello stesso contesto arriva dal verbo come `23505` grezzo. Il BE lo traduce per nome del vincolo (`VINCOLI_CONTATTO`, `create_with_constraint_mapping`), su creazione e modifica; le madri del DB che chiamano il verbo (`fn_crea_cliente`, `fn_crea_fornitore`, `fn_crea_soggetto_pf`/`_pg`, `fn_crea_utente_tecnico`) no. Il precedente è del giro 3 (S4): il verbo traduce la violazione del **suo** indice, per nome, in un codice col campo. D-T7b-5 |
+| S46 (il tipo) | **difetto** | `(v_campi ->> 'tipo_contatto_id')::integer` dà il `22P02` del cast con un tipo non numerico; un tipo che non esiste arriva come `23503` della FK. Sono i casi di S49 per il tipo d'indirizzo (giro 4, `E_TIPO_INDIRIZZO_NON_TROVATO`). Correzione senza scelta: il non numerico è `E_CONTATTO_INCOMPLETO` sul campo, l'inesistente un codice nuovo sul campo |
+| S46 (`default_context`) | **difetto** | È fra le chiavi ammesse, e il trigger lo sostituisce sempre. Nessun chiamante lo passa (né il DB né il BE): esce dall'elenco, e chi lo passa ha `E_CAMPO_NON_AMMESSO` |
+| S11 | **difetto** | Nessun vincolo unico su `istanze_utilities.catasto_unita_immobiliare_id`: un'istanza agganciata a mano all'unità di un'altra la condivide, contro il modello che la guida dichiara («mai condivisa»). La colonna non ha nemmeno un indice. Si chiude con un indice unico (i `NULL` restano liberi: un'istanza senza unità è ammessa). Correzione senza scelta |
+| S47 (INSERT con la precedente) | **difetto** | `trg_iu_z50_clone_catasto_from_parent_aft_upd` è solo `AFTER UPDATE OF parent_istanza_id`: un'istanza che nasce con la precedente già scritta non riceve il clone. La colonna è scrivibile all'INSERT. D-T7b-6 |
+| S47 (la scrittura incidentale) | **difetto: dipende da una scrittura incidentale** | `UPDATE OF` scatta anche a valore uguale (`linee-guida-trigger` §«Che cosa fa davvero `UPDATE OF`»), e il ramo delle istanze fittizie di `trgfn_clienti_set_parent_istanza` riscrive `parent_istanza_id` senza confronto. Un'unità comparsa sulla precedente dopo il subentro arriva quindi alla prossima scrittura del cliente fittizio, e non arriva mai per un PDP. D-T7b-6 |
+| S47 (la catena che cambia dopo il clone) | **coerente col brief vicino** | L'istanza che ha già l'unità la tiene: è il §4 di `brief-db-catena-istanze-pdp`, che lo motiva sul modello. Si scrive nella guida come scelta, non come limite. Se quel brief decide diversamente, cambia lì |
+| S47 (la ponte non si pulisce) | **difetto** | `trgfn_iu_sync_catasto_unita_indirizzo` aggiunge la coppia (unità, civico) a ogni cambio dell'una o dell'altro e non toglie la vecchia. La coppia lasciata tiene acceso il guard ATTIVO del civico, che non si spegne più. La ponte è scrivibile dall'app (`INSERT`, `UPDATE`, `DELETE`): il modello ammette coppie scritte a mano, molti a molti. D-T7b-7 |
+| S47 (l'unità orfana) | **difetto** | Un'istanza che passa a un'altra unità lascia la prima senza nessuno che la nomini: nessuna FK vi arriva da altrove, e la si raggiunge solo dallo storico. Con S11 un'unità è di una istanza sola. D-T7b-7 |
+| `create-soggetto-gestori.sql` | **da diagnosticare con la prova** | È nelle due baseline come `ASSERZIONE`. Il giro 0d ha letto che il test 4 accetta qualunque `P0001`, mentre il guard solleva `E_GESTORE_SINGLETON_VIOLATO`: va asserito il codice (`throws_like` o il controllo del codice). Quale asserzione è rossa oggi, e se lo è ancora dopo il giro 4 che ha toccato gli indirizzi obbligatori, lo dice la prima prova sullo scratch (`prova_changeset.py --pgtap`) |
+
+**Fatti datati, non motivi** (dbdev, 2026-11-25): nessun contatto con l'istanza e senza ruolo; sei soggetti con un
+predefinito di contesto `ruolo`; nessun soggetto con contatti su due ruoli diversi; nessuna unità catastale nominata
+da due istanze. Servono a sapere se la migrazione ha righe da sistemare, non a decidere la regola.
+
+### 22.2 Le decisioni (Tid, 2026-11-25: tutte come proposte)
+
+| # | Domanda | Proposta |
+| --- | --- | --- |
+| D-T7b-1 | **Di che cosa è predefinito un contatto?** Oggi del soggetto più il contesto: due ruoli dello stesso soggetto ne condividono uno | **Della riga di contesto**: soggetto, ruolo e istanza, come il conto bancario predefinito. Un indice unico parziale `NULLS NOT DISTINCT (soggetto_id, soggetto_ruolo_id, istanza_utility_id) WHERE is_default` scrive la regola, e il trigger la segue. `default_context` resta, come etichetta del livello. Le righe di oggi: in ogni contesto con contatti e senza predefinito diventa predefinito il primo nato, che è la regola della nascita applicata all'indietro. Si riscrivono guida e nota |
+| D-T7b-2 | **Il segno tolto e il predefinito cancellato** | **Un contesto con contatti ha sempre il suo predefinito, e chi lo cambia lo dice.** Il primo nasce predefinito (solo all'INSERT); si cambia marcando un altro. Togliere il segno all'unico predefinito è rifiutato (codice nuovo, campo `is_default`); cancellare il predefinito di un contesto che ha altri contatti è rifiutato (codice nuovo: «marca prima un altro»); cancellare l'ultimo contatto del contesto passa. Nessuna promozione automatica, che sceglierebbe per id. ⚠️ **Ricaduta BE**: oggi il BE non scrive `is_default` (né in creazione né in `CONTATTO_UPDATE_COLS`), quindi l'operatore non potrebbe cancellare un predefinito che ha accanto altri contatti. Il BE deve esporre «rendi predefinito». In alternativa (b): cancellare il predefinito lascia il contesto senza, e il primo contatto che nasce dopo lo diventa; il segno tolto lascia il contesto senza, e nessuna modifica lo rimette |
+| D-T7b-3 | **Un contatto d'istanza senza ruolo** | **Non si scrive**: `CHECK (istanza_utility_id IS NULL OR soggetto_ruolo_id IS NOT NULL)`. Il contatto d'istanza è il referente di quel ruolo per quell'istanza; i tre indici unici e la cascata coprono così ogni forma. L'alternativa è un quarto indice e un livello suo nella cascata, per un referente dell'istanza «in qualunque ruolo» |
+| D-T7b-4 | **`fn_get_contatti` senza reparto** | Senza reparto contano **tutti** i contatti; col reparto contano quelli del reparto e quelli senza, e vince il reparto, come oggi. Il portale e ogni lettore che non chiede il reparto trovano così il referente che oggi sparisce |
+| D-T7b-5 | **Il doppione per tipo** | **Il verbo lo traduce**, come S4 al giro 3: `fn_crea_contatto` prende la violazione dei tre indici per nome (`GET STACKED DIAGNOSTICS`) e solleva un codice nuovo col campo `tipo_contatto_id` e il livello. La modifica diretta del BE resta tradotta dal BE (non è un verbo, e questo giro non ne scrive uno): per la creazione la traduzione del BE diventa una seconda sede e si può togliere |
+| D-T7b-6 | **Quando si clona il catasto** | **Quando nasce il legame con la precedente**: `AFTER INSERT OR UPDATE`, `WHEN` con `OLD.parent_istanza_id IS DISTINCT FROM NEW.parent_istanza_id` (all'INSERT basta la precedente scritta), sempre con unità vuota e civico presente. Un'unità che compare dopo sulla precedente non arriva: il clone copia ciò che la precedente ha quando il legame nasce, e la rettifica dell'istanza nuova si fa su di lei. Si scrive nella guida come scelta |
+| D-T7b-7 | **La ponte e l'unità lasciata** | (a) Quando l'istanza cambia civico o unità, la coppia (unità di prima, civico di prima) esce dalla ponte, se nessun'altra istanza ha la stessa coppia: è la coppia che l'istanza aveva portato, e con S11 l'unità era sua. Le coppie scritte a mano con altri civici restano. (b) Un'unità che nessuna istanza nomina più si cancella nello stesso momento: lo storico continuo di `catasto_unita_immobiliari` tiene la versione, la ponte la segue in cascata. L'alternativa a (b) è lasciarla e darle un lettore (le unità senza istanza), ma un'unità senza istanza non ha nessuno che la corregga |
+
+S8 (`fn_get_contatto_default` fra tipi), S46 (il tipo, `default_context`) e S11 sono correzioni senza scelta: entrano
+nel giro qualunque cosa decida Tid sul resto.
+
+### 22.3 Il piano del giro, dopo le decisioni
+
+* **pgTAP rosso prima**, come app dove si può, uno per caso costruito:
+  * due ruoli dello stesso soggetto, ciascuno col suo primo contatto: tutti e due predefiniti; marcare il secondo
+    contatto del fornitore non tocca il cliente (D-T7b-1);
+  * il segno tolto all'unico predefinito, la modifica di un altro contatto dopo, la cancellazione del predefinito
+    con un altro accanto e quella dell'ultimo (D-T7b-2);
+  * il contatto d'istanza senza ruolo (D-T7b-3);
+  * `fn_get_contatti` senza reparto con un solo contatto in un reparto (D-T7b-4);
+  * `fn_get_contatto_default` con il predefinito del ruolo nato dopo quello del soggetto;
+  * `fn_crea_contatto`: il doppione, il tipo non numerico, il tipo inesistente, `default_context` passato (S46);
+  * due istanze sulla stessa unità (S11);
+  * l'istanza che nasce con la precedente; la riscrittura della precedente uguale dopo un'unità comparsa (D-T7b-6);
+  * il cambio di civico e quello di unità, la coppia e l'unità di prima, e lo spegnimento del civico di prima
+    (D-T7b-7);
+  * `create-soggetto-gestori.sql`: la prova dice che cosa è rosso; il test 4 asserisce il codice.
+* **Le letture prima di scrivere**: `linee-guida-trigger.md` letta per intero il 2026-11-25; di `linee-guida-sql` le
+  §5, 5d, 5f, 5g, 7f, 8.4, 8.4-bis e 11.5 (la ponte e `istanze_utilities` hanno trigger generati: niente DDL su di
+  loro). Prima di toccare `trgfn_contatti_set_default_contatto` si cercano i suoi pgTAP (`test-contatti-soggetto-
+  cliente`, `test-fn-crea-contatto-v1`, `soggetti-con-contatti`, `create-soggetto-bank-branches`,
+  `test-istanza-dello-stesso-soggetto-v1`) e i seed di `80_data` che scrivono `contatti` (`20260107-12`, `-13`).
+* **Forma**: il trigger del predefinito non ha fase nel nome (`trg_contatti_set_default_contatto_ins_upd`, T11). Se
+  il giro lo rimonta, lo rimonta per funzione con la fase (`linee-guida-trigger` §«Il nome del trigger»), e la voce
+  esce da T11.
+* **Ricadute sul BE**, in un passaggio solo, a giro applicato:
+  * «rendi predefinito» nel form dei contatti, se D-T7b-2 è la proposta; i due codici nuovi del predefinito;
+  * il codice del doppione dalla creazione, e la traduzione per nome che si può togliere per la creazione;
+  * i codici del tipo di contatto;
+  * il cambio di forma di `fn_get_contatti` senza reparto, che il portale legge;
+  * **garanzia ritirata**, se D-T7b-1 passa: «il contesto `ruolo` di un soggetto ha al più un predefinito» diventa
+    «ogni ruolo ha il suo». La richiesta è nella forma di AGENTS: censire i lettori di `contatti.is_default` e
+    `default_context` che contano su quella proprietà.
+
+### 22.4 Che cosa è scritto (2026-11-25: provato sullo scratch, applicato, pgTAP verdi, doc rigenerata)
+
+Le decisioni D-T7b-1 … -7 sono di Tid, 2026-11-25, tutte come proposte. Intervallo riservato `20261125-36 … -60`
+(Tid): `-36 … -46` scritti; `-47 … -60` erano segnaposto vuoti, tolti a giro chiuso (§22.7).
+
+| ChangeSet | Che cosa | Decisione |
+| --- | --- | --- |
+| `20_code/anagrafiche/20261125-36-create-trgfn-contatti-guard-predefinito` | il guard nuovo, `BEFORE UPDATE OR DELETE`, fase a10: il segno tolto `E_CONTATTO_PREDEFINITO_OBBLIGATORIO`, il predefinito cancellato o spostato con altri accanto `E_CONTATTO_PREDEFINITO_DA_SOSTITUIRE` | D-T7b-2 |
+| `-37` `trgfn_contatti_set_default_contatto` | il contesto è la terna (soggetto, ruolo, istanza); il segno lo propone solo chi entra nel contesto; rimontato per funzione come `trg_contatti_a20_set_default_contatto_ins_upd` (esce da T11) | D-T7b-1, D-T7b-2 |
+| `20_code/script/-38` `fn_get_contatti` | senza reparto contano tutti i contatti | D-T7b-4 |
+| `20_code/script/-39` `fn_get_contatto_default` | fra i predefiniti vince il contesto più specifico | S8, senza scelta |
+| `-40` `fn_crea_contatto` | tipo non numerico `E_CONTATTO_INCOMPLETO`, inesistente `E_TIPO_CONTATTO_NON_TROVATO`, doppione `E_CONTATTO_TIPO_DUPLICATO` per nome del vincolo, `default_context` fuori dalle chiavi | D-T7b-5, S46 |
+| `-41` `trgfn_iu_sync_catasto_unita_indirizzo` | la coppia di prima esce dalla ponte, l'unità che nessuno nomina si cancella | D-T7b-7 |
+| `-42` i trigger del catasto su `istanze_utilities` | clone `_ins` e `_upd` (col `WHEN` sul cambio), ponte `_ins` e `_upd`; rimontati per funzione col nome della tabella intera | D-T7b-6, D-T7b-7 |
+| `00_schema/anagrafiche/-43` | `COMMENT` di `is_default` e `default_context` (che nominava ancora `utility`) | D-T7b-1 |
+| `80_data/changelog/-44` | un predefinito per riga di contesto (il primo marcato, o il primo nato), a trigger sospesi tranne audit e `tx_id` | D-T7b-1 |
+| `90_end/-45` | `uq_contatti_predefinito_contesto` (`NULLS NOT DISTINCT`, `WHERE is_default`) e `chk_contatti_istanza_con_ruolo` | D-T7b-1, D-T7b-3 |
+| `90_end/-46` | `uq_istanze_utilities_catasto_unita_immobiliare`, parziale sulle righe con l'unità | S11 |
+
+Con quattro righe nuove in `codici_errore.csv` e `messaggi_errore.csv` (id 1540 … 1543).
+
+**Le scelte fatte scrivendo:**
+* il segno tolto dal trigger quando un altro contatto diventa predefinito passa dal guard perché lo scrive un
+  trigger (`pg_trigger_depth() > 1`), come in `vendite.trgfn_doc_righe_lock_fuori_bozza`. La riga nuova non è
+  ancora scritta quando il segno si toglie alla vecchia, e il guard vedrebbe il contesto restare senza. Lo stesso
+  criterio lascia passare la cascata della cancellazione del soggetto;
+* il cambio di contesto è un'entrata: il contatto spostato è predefinito se il contesto nuovo non ne ha, e il
+  segno che porta da quello di prima non conta come richiesta. Dal contesto di prima esce come una cancellazione;
+* `soggetti.default_contatto_id` si scrive quando un contatto diventa il predefinito del soggetto, non più a ogni
+  scrittura del contatto. Il puntatore resta di T6, che non si svuota;
+* la cancellazione dell'istanza non cancella la sua unità: D-T7b-7 parla del cambio di civico o di unità, e
+  `istanze_utilities` ha sei FK in entrata; resta nel §22.7;
+* l'indice del predefinito e il `CHECK` stanno in `90_end` (§11.14), dopo la bonifica di `80_data`. Una riga che il
+  `CHECK` rifiuta, o due istanze sulla stessa unità, fermano il migrate col nome del vincolo: su dbdev non ce ne
+  sono (fatti del 2026-11-25, §22.1).
+
+**La prova** (`scripts/prova_changeset.py`, scratch `zeroerp_ruoli`, gli undici changeSet insieme, da owner):
+* `test-contatto-predefinito-per-contesto-v1`: 19/20 (senza: 5). Il 16 asserisce la frase del codice nuovo, che
+  sta nel CSV e la prova non carica. Dopo l'apply è verde (Tid, 2026-11-25);
+* `test-catasto-unita-della-sua-istanza-v1`: 10/10 (senza: 2);
+* i 60 file che nominano contatti, catasto, `is_default` o `default_context`: uguali prima e dopo. Non provato
+  dallo strumento `test-soggetti-indirizzi-required` (quattro `BEGIN;`), che non tocca il predefinito;
+* `create-soggetto-gestori.sql`, diagnosticato: il test 3 contava il gestore della macchina, e su un database
+  ricostruito dai changelog `anagrafiche.gestori` è vuota. Il test 4 creava il «secondo» gestore, che era il primo,
+  e passava. Ora il gestore lo prende o lo costruisce `dbops.fn_pgtap_crea_gestore`, e il test 4 asserisce
+  `E_GESTORE_SINGLETON_VIOLATO`. 5/5 su scratch e su dbdev, in `ROLLBACK`; tolto dalle due baseline;
+* `script/test-catalogo-messaggi-errore-completo`: verde dopo l'apply (Tid, 2026-11-25).
+
+**Applicato** da Tid il 2026-11-25: pgTAP verdi, doc auto-generata rigenerata (c'è la scheda di
+`trgfn_contatti_guard_predefinito`, e il suo link dalle guide non è più rotto).
+
+**Guide verificate dopo il giro:**
+* aggiornate nello stesso giro: [gestione-dei-contatti](../../guide/gestione-dei-contatti.md) (il contesto, la
+  chiave, che cosa è rifiutato, la lettura, gli esempi), la nota `_contatto-predefinito` (riscritta),
+  [catasto-delle-istanze](../../guide/catasto-delle-istanze.md) (l'indice, il clone quando nasce il legame, la ponte e
+  l'unità al cambio; «Che cosa oggi non copre» tiene solo la cancellazione dell'istanza e la catena svuotata);
+* indietro, aggiornata: [generazione-cliente](../../guide/generazione-cliente.md) (la tabella dei trigger
+  dell'istanza, l'indice dell'unità);
+* **coerenti**: [gestione-delle-istanze-utility](../../guide/gestione-delle-istanze-utility.md),
+  [soggetti-e-ruoli-anagrafici](../../guide/soggetti-e-ruoli-anagrafici.md) (rimanda ai contatti per il
+  predefinito), [risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md) (il primo contatto dell'utente
+  tecnico, del soggetto); le altre 16 di `guide_coinvolte.py` nominano solo `fn_log_and_raise_error`,
+  `soggetti` o il `tx_id`;
+* le pagine `manual/` degli oggetti del giro, e quella nuova di `trgfn_contatti_guard_predefinito`.
+
+### 22.5 Garanzie ritirate
+
+| Oggetto | La proprietà che i lettori davano per scontata | I lettori lato DB |
+| --- | --- | --- |
+| Il predefinito (-37, -45) | «Il livello `ruolo` (o `istanza`) di un soggetto ha al più un predefinito»: ora ogni ruolo, e ogni ruolo su un'istanza, ha il suo | `trgfn_soggetti_guard_soggetto_contatti` cerca «almeno un predefinito o un recapito»: con più predefiniti è solo più facile da soddisfare. `fn_get_contatti` e `fn_get_contatto_default` scelgono per contesto. I verbi che passano `is_default` (`fn_crea_soggetto_pf`, `_pg`, `script.fn_crea_utente_tecnico`) scrivono il contatto del soggetto, il cui contesto non cambia. Nessun lettore ne dipende |
+| `fn_get_contatti` senza reparto (-38) | «Chi non chiede il reparto non vede i contatti che ne hanno uno» | `fn_get_contatto_default` la chiama col reparto che riceve. Nessun lettore DB ne dipendeva |
+
+### 22.6 Il passaggio al BE (✅ fatto, 2026-11-26)
+
+Letto sul ramo `origin/dev/backend-tid` in sola lettura. Chi cambia per primo: il DB. Il percorso censito: creazione
+(`contatti_service.crea_contatto_validato`), modifica (`SoggettiRepository.update_contatto`, `CONTATTO_UPDATE_COLS`),
+cancellazione (`views_contatti_ruolo.py` riga 165, `SoggettiRepository.delete_contatto`), lettura del portale
+(`PortaleRepository.get_email_contatto_suggerita`), form `frontend/src/anagrafiche/components/ContattoForm.vue`.
+
+1. **«Rendi predefinito».** Il BE oggi non scrive `is_default`: non è in `CONTATTO_UPDATE_COLS` né fra i campi della
+   creazione. Da oggi il predefinito non si cancella finché nel suo contesto ci sono altri contatti
+   (`E_CONTATTO_PREDEFINITO_DA_SOSTITUIRE`), e il segno non si toglie (`E_CONTATTO_PREDEFINITO_OBBLIGATORIO`): senza
+   un'azione che marca un contatto, l'operatore non può più cancellare un predefinito che ha accanto altri contatti.
+   Serve l'azione «rendi predefinito», che scrive `is_default = true` sul contatto scelto: il vecchio perde il segno
+   da solo. Il segno non si scrive mai a `false`.
+2. **I due codici del predefinito**, campo `is_default`, sulla cancellazione e sulla modifica dei contatti, del
+   soggetto e del ruolo.
+3. **Il doppione dalla creazione** arriva come `E_CONTATTO_TIPO_DUPLICATO`, campo `tipo_contatto_id`, con il tipo e
+   il livello nella frase. In `crea_contatto_validato` la traduzione per nome (`VINCOLI_CONTATTO`) è ora una seconda
+   sede per la creazione: si può togliere lì. Resta per la modifica diretta, che non passa da un verbo.
+4. **I codici del tipo**: un tipo non numerico è `E_CONTATTO_INCOMPLETO` sul campo `tipo_contatto_id`, un tipo che
+   non esiste `E_TIPO_CONTATTO_NON_TROVATO` sullo stesso campo. `default_context` passato a `fn_crea_contatto` è
+   `E_CAMPO_NON_AMMESSO`: il BE non lo passa.
+5. **`script.fn_get_contatti` senza reparto** restituisce ora anche i contatti che hanno un reparto.
+   `PortaleRepository.get_email_contatto_suggerita` la chiama senza reparto: può trovare un'email che prima non
+   vedeva. È il comportamento voluto; censire gli altri lettori che contavano sul filtro.
+6. **Garanzia ritirata** (§22.5): «il livello `ruolo` di un soggetto ha al più un predefinito» diventa «ogni ruolo
+   ha il suo». Censire i lettori di `contatti.is_default` e `default_context` che contano su quella proprietà.
+   `get_email_contatto_suggerita` legge i contatti del ruolo e ne prende il predefinito: con la regola nuova trova
+   quello del suo ruolo, non quello di un altro.
+7. **Un contatto d'istanza ha il ruolo** (`chk_contatti_istanza_con_ruolo`, 23514). Il BE crea i contatti d'istanza
+   solo dal ruolo (`create_contatto_ruolo`): niente da cambiare, salvo scritture dirette che il censimento trovi.
+8. **Il catasto**: un'istanza agganciata all'unità di un'altra è rifiutata dall'indice
+   `uq_istanze_utilities_catasto_unita_immobiliare` (23505). Al cambio di civico o di unità di un'istanza la ponte
+   la segue, e l'unità lasciata si cancella. Censire le scritture BE di `catasto_unita_immobiliare_id` e della
+   ponte.
+
+**Esito del passaggio (BE, 2026-11-26).**
+
+* **1-4, fatte.** «Rendi predefinito» come azione `POST …/contatti/{id}/predefinito/` (soggetto e ruolo), che
+  scrive solo `is_default = true`; i due codici del predefinito e quelli del tipo risalgono dalla loro policy;
+  `VINCOLI_CONTATTO` resta alla sola modifica diretta. Le rotte del soggetto toccano i soli contatti senza ruolo.
+  Doc: `api_soggetti` §6, `api_contatti_ruolo` §5. Il FE mostra il segno con il BB `PredefinitoSegno`.
+* **7, niente da cambiare**: il BE crea i contatti d'istanza solo dal ruolo.
+
+* **5 e 6, chiuse insieme.** Il censimento dei lettori di `is_default` e `default_context` nel BE trova un solo
+  punto che sceglie per il segno: `PortaleRepository.get_email_contatto_suggerita`. Prendeva il predefinito con
+  l'id più basso fra quelli della cascata, cioè di solito quello del **soggetto** anche quando il ruolo ha il suo.
+  Ora, dopo il PRINCIPALE, legge il BB `script.fn_get_contatto_default` (vince il contesto più specifico). Se quel
+  predefinito non ha email non si suggerisce niente, senza ripiegare su un contesto meno specifico (Tid,
+  2026-11-26). Test sul DB vero: `portale/tests/db/test_email_suggerita_db.py`, caso 2. Gli altri lettori
+  (`views_contatti_ruolo`, `get_soggetto_contatti`, il drawer dei contatti) mostrano il segno senza sceglierci
+  sopra.
+* **8, chiusa senza modifiche.** Nel BE non c'è nessuna scrittura di `catasto_unita_immobiliare_id` né della ponte.
+
+### 22.7 Che cosa resta
+
+* ✅ apply di `-36 … -46`, pgTAP verdi, doc auto-generata rigenerata (Tid, 2026-11-25);
+* ✅ il passaggio al BE (§22.6), fatto il 2026-11-26;
+* ✅ i segnaposto `-47 … -60` tolti e `changelog-autogen.yaml` rigenerato (2026-11-25). Erano `databaseChangeLog: []`:
+  su dbdev e sullo scratch nessuna riga di `databasechangelog` li nomina. Il prossimo numero libero è `-47`;
+* **debito residuo**: la cancellazione di un'istanza lascia la sua unità senza nessuno che la nomini (§22.4). Due
+  contatti nati insieme in un contesto vuoto, in due transazioni, urtano ora l'indice del predefinito (23505) invece
+  di nascere predefiniti tutti e due: il secondo va riprovato;
+* T6 tiene il contatto obbligatorio, il puntatore `soggetti.default_contatto_id` e l'ultimo contatto cancellato;
+  **richiesta dal BE** (verifica del passaggio §22.6, 2026-11-26): la cancellazione dell'ultimo contatto del
+  contesto del soggetto (`DELETE /soggetti/{id}/contatti/{contatto_id}/`) urta `fk_contatti_anagrafiche` e
+  arriva al client come `400 E_DATABASE` senza frase né campo; il BE non la traduce per nome della FK (sarebbe una
+  seconda sede della regola), aspetta il codice parlante di T6;
+* la voce di T11 sul montaggio senza fase del predefinito è chiusa da -37.

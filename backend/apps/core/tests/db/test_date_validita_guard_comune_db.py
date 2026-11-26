@@ -313,6 +313,12 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
                 "template_versioni.update",
                 lambda: svc.update_versione(m.user, tid, versione["id"], dict(date_invertite)),
             )
+            # Pubblicare chiede l'azione dell'endpoint dal giro 16
+            # (brief-db-porte-aperte-dalla-sola-guc §9): senza, il verbo
+            # risponderebbe col permesso prima di guardare le date.
+            cur.execute(
+                "SELECT dbops.fn_pgtap_concedi_azione(%s, 'documenti_template_manage')", [m.uid],
+            )
             self._rifiuto_del_periodo(
                 "template_versioni.pubblica",
                 lambda: svc.pubblica_versione(m.user, tid, versione["id"], dict(date_invertite)),

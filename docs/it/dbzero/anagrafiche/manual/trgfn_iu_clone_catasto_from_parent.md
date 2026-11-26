@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_iu_clone_catasto_from_parent`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -25,7 +25,7 @@
 ### 🎯 Scopo Principale
 
 `anagrafiche.trgfn_iu_clone_catasto_from_parent` dà all'istanza del subentro una copia dell'unità catastale
-dell'istanza che la precede. Scatta quando la catena delle istanze si scrive, e passa la mano a
+dell'istanza che la precede. Scatta quando nasce il legame con l'istanza precedente, e passa la mano a
 `script.fn_clone_catasto_from_parent_by_istanza`.
 
 ---
@@ -34,17 +34,26 @@ dell'istanza che la precede. Scatta quando la catena delle istanze si scrive, e 
 
 L'istanza nuova riceve una riga nuova di `catasto_unita_immobiliari`, con gli stessi dati catastali della
 precedente: due istanze, due unità. Così una rettifica sul catasto di chi subentra non cambia quello di chi è
-uscito, che resta com'era sull'istanza chiusa.
+uscito, che resta com'era sull'istanza chiusa. Un'unità è di un'istanza sola: lo scrive l'indice
+`uq_istanze_utilities_catasto_unita_immobiliare`.
 
 ---
 
 ### Quando scatta
 
-Il trigger `trg_iu_z50_clone_catasto_from_parent_aft_upd` scatta dopo una modifica di `parent_istanza_id`, e
-solo quando l'istanza ha una precedente, ha un civico e non ha ancora un'unità. La modifica della catena la fa
-`anagrafiche.trgfn_clienti_set_parent_istanza`, alla scrittura del cliente: per questo il clone arriva con la
-nascita del cliente sull'istanza nuova, non con la nascita dell'istanza. Un'istanza fittizia senza civico non
-riceve il clone.
+Il clone scatta quando nasce il legame con l'istanza precedente, sempre con l'istanza senza unità e col civico.
+È montato due volte, dopo la scrittura di `anagrafiche.istanze_utilities`:
+
+* `trg_istanze_utilities_z50_clone_catasto_from_parent_ins` — l'istanza che nasce con la precedente già scritta;
+* `trg_istanze_utilities_z50_clone_catasto_from_parent_upd` — la modifica che cambia la precedente. Il trigger
+  confronta il valore di prima con quello nuovo: una riscrittura uguale di `parent_istanza_id` non clona.
+
+Di solito la precedente la scrive `anagrafiche.trgfn_clienti_set_parent_istanza`, alla scrittura del cliente: il
+clone arriva allora con la nascita del cliente sull'istanza nuova. Un'istanza fittizia senza civico non riceve il
+clone.
+
+Il clone copia ciò che la precedente ha quando il legame nasce: un'unità che compare dopo sulla precedente non
+arriva, e la rettifica dell'istanza nuova si fa su di lei.
 
 La funzione del trigger non decide niente: le condizioni stanno sul trigger, il lavoro nella funzione di `script`.
 
@@ -55,8 +64,8 @@ La funzione del trigger non decide niente: le condizioni stanno sul trigger, il 
 * **L'istanza ha già un'unità**: niente, resta quella.
 * **L'istanza precedente non ha un'unità**: niente, senza errore. Il subentro e la nascita del cliente proseguono.
 * **Altrimenti**: copia l'unità della precedente in una riga nuova, compreso il flag dello storico, e la scrive
-  sull'istanza. Quella scrittura fa scattare `anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo`, che lega la
-  copia al civico dell'istanza nuova.
+  sull'istanza. Quella scrittura cambia l'unità, e fa scattare
+  `anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo`, che lega la copia al civico dell'istanza nuova.
 
 La sorgente è solo la precedente diretta: non si risale la catena. Copia l'unità, non i suoi legami coi civici:
 la copia nasce legata al solo civico dell'istanza. La riga dell'istanza è bloccata per la durata del clone, così
@@ -66,12 +75,8 @@ due scritture concorrenti non creano due copie.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Il clone avviene una volta.** Una catena che cambia dopo il clone, o che si svuota perché il cliente è
-  annullato, lascia sull'istanza l'unità copiata dalla precedente di allora.
-* **Un'unità arrivata dopo sulla precedente** si clona solo alla prossima scrittura della catena, non quando
-  l'unità nasce.
-* **Un'istanza che nasce con la precedente già scritta** non riceve il clone: il trigger guarda solo le modifiche.
-  Nessuna funzione del DB crea un'istanza così, ma chi scrive l'istanza direttamente può farlo.
+* **Il clone avviene una volta.** Una catena che si svuota perché il cliente è annullato lascia sull'istanza
+  l'unità copiata dalla precedente di allora.
 
 ---
 
@@ -79,6 +84,8 @@ due scritture concorrenti non creano due copie.
 
 * `db/pgtap/anagrafiche/test-simula-subentro.sql` — il subentro sullo stesso PDP: la catena scritta dal cliente
   nuovo, l'unità clonata con un id diverso e gli stessi dati, il legame della copia col civico.
+* `db/pgtap/anagrafiche/test-catasto-unita-della-sua-istanza-v1.sql` (test 3-5) — l'istanza che nasce con la
+  precedente riceve il clone, un'unità sua; la precedente riscritta uguale non clona.
 
 ---
 
@@ -86,6 +93,8 @@ due scritture concorrenti non creano due copie.
 
 * 2026-02-15 — senza un'unità sulla precedente il clone non solleva più errore; il codice
   `CATASTO_SOURCE_NOT_FOUND` esce dal catalogo dei messaggi il 2026-08-05.
+* 2026-11-25 — il clone scatta anche all'INSERT con la precedente, e all'UPDATE solo se la precedente cambia;
+  i due montaggi prendono i nomi `trg_istanze_utilities_z50_…_ins` e `_upd`.
 
 ---
 

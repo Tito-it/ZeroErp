@@ -31,7 +31,7 @@ Indice test eseguiti:
 19) test_require_positive_int_float             — float rifiutato
 19b) test_require_positive_int_oltre_bigint     — oltre il tetto di bigint -> VALIDATION sul campo
      (int e stringa); il tetto stesso passa
-19c) test_require_positive_int_cifra_non_decimale — "²" -> VALIDATION, non ValueError
+19c) test_require_positive_int_cifra_non_decimale — "²" e "٣" -> VALIDATION, non ValueError né 3
 20) test_optional_positive_int_absent           — chiave assente -> None
 21) test_optional_positive_int_none             — None esplicito -> None
 22) test_optional_positive_int_ok               — valore valido
@@ -287,6 +287,12 @@ class TestRequirePositiveInt(_Base):
     def test_require_positive_int_cifra_non_decimale(self):
         with self.assertRaisesValidation():
             self.v.require_positive_int({"id": "²"}, "id")
+        # ⛔ Nemmeno una cifra decimale non ASCII (2026-11-24): `"٣".isdecimal()`
+        #    e' vero e `int("٣")` vale 3. La forma e' quella degli interi con
+        #    segno, cifre ASCII soltanto (brief-be-fe-BB-audit §2.3).
+        for grezzo in ("٣", "٣٤", "+3", "1_000"):
+            with self.subTest(grezzo=grezzo), self.assertRaisesValidation():
+                self.v.require_positive_int({"id": grezzo}, "id")
 
 
 class TestOptionalPositiveInt(_Base):

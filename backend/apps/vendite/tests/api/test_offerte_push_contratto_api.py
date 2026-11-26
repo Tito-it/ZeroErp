@@ -31,6 +31,7 @@ _URL = "/api/v1/vendite/offerte/7/push-contratto/"
 
 
 class TestOffertaPushContrattoChiudiEsistente(JwtMockedApiTest):
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

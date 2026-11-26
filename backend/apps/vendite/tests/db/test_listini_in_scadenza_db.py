@@ -30,22 +30,42 @@ Indice test eseguiti:
    Il ramo `in_scadenza=False` (`s.listino_id IS NULL`): il listino con il
    successore c'e', quello senza no — e il listino senza fine c'e' sempre.
 4) ListiniInScadenzaDbTests.test_valido_al_vuoto_e_la_versione_piu_lontana
-   `order_by=valido_al` delle versioni: la fine vuota ordina come `infinity`
-   (`_SQL_DATE_INFINITY`), in fondo crescendo e in cima calando.
+   `order_by=valido_al` delle versioni: la fine vuota ordina come il massimo,
+   in fondo crescendo e in cima calando. Lo dichiara il catalogo della lista
+   (`vuoto_ordinato_come_massimo`, brief-db-lista-colonna-vuoto-in-ordine),
+   letto qui dal DB vero come lo legge la base view.
 5) ListiniInScadenzaDbTests.test_chi_non_scade_va_in_fondo_crescendo
    `order_by=giorni_alla_scadenza` dei listini: il NULL («non in scadenza»)
-   e' la scadenza piu' lontana (`_SQL_GIORNI_SENZA_SCADENZA`), non la minima.
+   e' la scadenza piu' lontana, non la minima. Lo dichiara il catalogo della
+   lista (D-5 di brief-db-lista-colonna-vuoto-in-ordine), letto dal DB vero
+   come per le versioni.
 """
 from __future__ import annotations
 
 import unittest
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeVar
 from uuid import uuid4
 
 from django.db import connection, transaction
 
+from apps.core.db.lista_catalogo_repository import fetch_colonne_vuoto_massimo
+from apps.core.services.request_context import imposta_vuoti_come_massimo
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 from apps.vendite.db.listini_repository import ListiniRepository
+
+T = TypeVar("T")
+
+
+# Scopo: legge `leggi()` con la dichiarazione «vuoto come il massimo» del
+#        catalogo di `lista`, letta dal DB vero e registrata come la registra
+#        la base view (`applica_vuoti_come_massimo`).
+def _con_la_dichiarazione(lista: str, leggi: Callable[[], T]) -> T:
+    imposta_vuoti_come_massimo(lambda: fetch_colonne_vuoto_massimo(lista))
+    try:
+        return leggi()
+    finally:
+        imposta_vuoti_come_massimo(None)
 
 
 class ListiniInScadenzaDbTests(unittest.TestCase):
@@ -94,17 +114,22 @@ class ListiniInScadenzaDbTests(unittest.TestCase):
                 nostri = (listino_id, aperto_id)
 
                 # I listini della utility (solo i due del test, nell'ordine
-                # della pagina) per ogni valore del filtro.
+                # della pagina) per ogni valore del filtro, con la
+                # dichiarazione del catalogo della lista.
                 def listini(**kw: Any) -> list[dict]:
-                    righe, _ = repo.list_listini(
+                    righe, _ = _con_la_dichiarazione("vendite.listini", lambda: repo.list_listini(
                         utility_id=utility_id, tipologia_id=None, attivo=None, search=None,
                         limit=500, offset=0, **{"order_by": "codice", "order_dir": None, **kw},
-                    )
+                    ))
                     return [r for r in righe if r["id"] in nostri]
 
-                # Gli id delle versioni del listino, nell'ordine della pagina.
+                # Gli id delle versioni del listino, nell'ordine della pagina,
+                # con la dichiarazione del catalogo della lista.
                 def versioni(**kw: Any) -> list[int]:
-                    return [v["id"] for v in repo.list_versioni_pagina(listino_id, **kw)[0]]
+                    return _con_la_dichiarazione(
+                        "vendite.listini_versioni",
+                        lambda: [v["id"] for v in repo.list_versioni_pagina(listino_id, **kw)[0]],
+                    )
 
                 tutte, _ = repo.list_versioni_pagina(listino_id)
                 return {
@@ -119,9 +144,12 @@ class ListiniInScadenzaDbTests(unittest.TestCase):
                         verso: versioni(order_by="valido_al", order_dir=verso)
                         for verso in ("asc", "desc", None)
                     },
-                    "listini_giorni_asc": [
-                        r["id"] for r in listini(order_by="giorni_alla_scadenza", order_dir="asc")
-                    ],
+                    "listini_giorni": {
+                        verso: [
+                            r["id"] for r in listini(order_by="giorni_alla_scadenza", order_dir=verso)
+                        ]
+                        for verso in ("asc", "desc")
+                    },
                 }
             finally:
                 transaction.set_rollback(True)
@@ -151,21 +179,23 @@ class ListiniInScadenzaDbTests(unittest.TestCase):
         self.assertEqual([r["id"] for r in senza["non_in_scadenza"]], [senza["aperto_id"]])
 
     # La versione senza fine (il successore) e' la piu' lontana: ultima
-    # crescendo, prima calando — e calando e' anche il verso di partenza di una
-    # data (`VERSIONI_ORDER_COLONNE_DATA`). Senza il COALESCE il NULL sarebbe
-    # il minimo del BB e i due versi si scambierebbero.
+    # crescendo, prima calando; senza verso la colonna va crescente (dal
+    # 2026-11-24 nessuna data ha un verso di partenza proprio). Senza la
+    # dichiarazione del catalogo il NULL sarebbe il minimo del BB e i due versi
+    # si scambierebbero.
     def test_valido_al_vuoto_e_la_versione_piu_lontana(self) -> None:
         letture = self._letture(successore=True)
         attesa = [letture["versione_id"], letture["successore_id"]]
         ordini = letture["versioni_valido_al"]
         self.assertEqual(ordini["asc"], attesa)
         self.assertEqual(ordini["desc"], attesa[::-1])
-        self.assertEqual(ordini[None], attesa[::-1])
+        self.assertEqual(ordini[None], attesa)
 
     # Il listino che scade fra 5 giorni prima di quello che non scade: il NULL
-    # crescendo va in fondo, non in cima.
+    # crescendo va in fondo, calando in cima. Senza la dichiarazione del
+    # catalogo il NULL sarebbe il minimo del BB e i due versi si scambierebbero.
     def test_chi_non_scade_va_in_fondo_crescendo(self) -> None:
         letture = self._letture(successore=False)
-        self.assertEqual(
-            letture["listini_giorni_asc"], [letture["listino_id"], letture["aperto_id"]],
-        )
+        attesa = [letture["listino_id"], letture["aperto_id"]]
+        self.assertEqual(letture["listini_giorni"]["asc"], attesa)
+        self.assertEqual(letture["listini_giorni"]["desc"], attesa[::-1])

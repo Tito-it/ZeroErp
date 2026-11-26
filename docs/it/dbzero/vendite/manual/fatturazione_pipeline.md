@@ -13,7 +13,7 @@
 > • [`vendite.fn_select_attivita_fatturabili`](/dbzero/vendite/funzioni/fn_select_attivita_fatturabili)  
 >
 ### 🎯 Scopo Principale
-(latest review 28-01-2026)  
+(latest review 24-11-2026)  
 La tabella **`vendite.fatturazione_pipeline`** descrive la **pipeline configurabile**
 dei processi di fatturazione.  
 Ogni riga rappresenta uno **step** logico (coerente con gli stati lotto definiti
@@ -36,6 +36,12 @@ evoluzioni (nuovi step o processi senza refactor massivo).
 * `processi` contiene una lista di “task” tecnici da eseguire (payload jsonb).
 * `rollback` contiene le azioni di pulizia per tornare allo stato precedente.
 * Solo gli step con `attivo=true` vengono eseguiti dalla pipeline.
+* `auto_step_rollback` accende il rollback automatico della corsia: al rilancio di un lotto in
+  errore il runner esegue da solo il `rollback` dello step, se
+  `vendite.fn_check_rollback_step_automatico` lo ammette (rollback non vuoto, nessun task
+  distruttivo, spento o sconosciuto). Default false. La chiave `auto_step_rollback` nel `meta` è
+  rifiutata (`chk_fatturazione_pipeline_meta_senza_auto_step_rollback`): la sede è la colonna.
+  Test: `db/pgtap/vendite/test-rollback-step-automatico-v1.sql`.
 
 ---
 
@@ -105,9 +111,12 @@ tecnici. Esempio (schema indicativo):
 * I task eseguiti sono gestiti dal runtime Django (`PipelineStepExecutor`) tramite
   whitelist (es. `select_attivita`, `genera_fondi_source_lotto`,
   `applica_fondi_lotto`, `ricalcola_iva_lotto`, `prepare_sdi_payload_lotto`, `numera_fatture`,
-  `reset_lotto_draft`, `noop`, `log_only`).
-* Il reset tecnico in pipeline e` previsto solo per il flusso `MASSIVO`
-  (sezione `rollback` dello step `EMESSA`).
+  `noop`, `log_only`).
+* Nessuna pipeline del seed ha un `rollback` (tutti `[]`): il task `reset_lotto_draft`, che
+  era il rollback dello step `EMESSA` della corsia `MASSIVO`, e` ritirato dal 2026-11-24.
+  L'annullo del lotto e` il verbo `vendite.fn_annulla_lotto_da_draft`, dall'endpoint.
+  Un task nominato nel `rollback` deve essere registrato e avere la sua policy, come quelli
+  dei `processi` (`test-pipeline-processi-invariante-v1.sql`, test 8 e 9).
 * Nel flusso `MASSIVO`, lo step `EMESSA` include il ciclo:
   source fondi -> applicazione fondi -> ricalcolo IVA/totali.
   La numerazione resta nello step `DEFINITIVA`.

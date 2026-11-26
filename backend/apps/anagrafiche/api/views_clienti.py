@@ -17,12 +17,17 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
-from apps.core.api.payload_validators import corpo_oggetto, optional_int, paginated_envelope, parse_list_params
+from apps.core.api.payload_validators import (
+    corpo_oggetto,
+    parse_list_params,
+    qp_int_optional,
+)
 from apps.core.api.success_responses import success_response
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.anagrafiche.services.clienti_service import ClientiService
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 # =================================================================
@@ -50,12 +55,12 @@ class ClientiView(DomainAPIView):
     # Scopo: Lista paginata clienti con search e filtri utility/stato.
     #        Applica scope emittente fiscale (refactor operatore-emittenti,
     #        BE-3.5): un operatore vede solo i clienti dei BA del proprio
-    #        emittente; superuser/admin globale/"0 emittenti" bypassano
+    #        emittente; admin globale/"0 emittenti" bypassano
     #        (emittente_ids = None).
     def get(self, request: Request) -> JsonResponse:
         p = parse_list_params(request.query_params, default_order="ragione_sociale_completa")
-        utility_id = optional_int({"v": request.query_params.get("utility_id")}, "v")
-        stato_id = optional_int({"v": request.query_params.get("stato_cliente_id")}, "v")
+        utility_id = qp_int_optional(request.query_params.get("utility_id"), "utility_id", min_val=0)
+        stato_id = qp_int_optional(request.query_params.get("stato_cliente_id"), "stato_cliente_id", min_val=0)
         # sr_ids perche' la query filtra su
         # emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id
         cache: dict = {}
@@ -69,7 +74,7 @@ class ClientiView(DomainAPIView):
             limit=p["limit"], offset=p["offset"],
             order_by=p["order_by"], order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=inline_serializer(name="ClienteCreateReq", fields={
@@ -221,12 +226,8 @@ class ClientiExportView(DomainAPIView):
             request.query_params,
             default_order="ragione_sociale_completa",
         )
-        utility_id = optional_int(
-            {"v": request.query_params.get("utility_id")}, "v",
-        )
-        stato_id = optional_int(
-            {"v": request.query_params.get("stato_cliente_id")}, "v",
-        )
+        utility_id = qp_int_optional(request.query_params.get("utility_id"), "utility_id", min_val=0)
+        stato_id = qp_int_optional(request.query_params.get("stato_cliente_id"), "stato_cliente_id", min_val=0)
         cache: dict = {}
         emittente_ids = PermissionResolver.get_emittenti_sr_ids(
             request.user, cache=cache,

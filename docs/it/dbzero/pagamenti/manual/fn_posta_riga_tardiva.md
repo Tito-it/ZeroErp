@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `pagamenti.fn_posta_riga_tardiva`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -18,6 +18,12 @@
 > * [pagamenti.trgfn_vendite_contabili_righe_guard_stato_dati](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_stato_dati) — i dati che l'abbinamento pretende
 > * [pagamenti.trgfn_vendite_contabili_righe_guard_transizione](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_transizione) — la matrice degli stati della riga
 > * [pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga](/dbzero/pagamenti/funzioni/trgfn_vendite_movimenti_sync_contabile_from_riga) — il mirror che deriva i riferimenti del movimento dalla riga
+> * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) — il permesso in prima riga
+> * [script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope) — il perimetro dell'operatore
+>
+> Guide:
+>
+> * [Gestione dei pagamenti](/guide/gestione-dei-pagamenti) — «Chi resta indietro: la registrazione tardiva»
 
 ---
 
@@ -46,6 +52,27 @@ suo posto.
 
 ---
 
+### 🔐 Il permesso e il perimetro
+
+La funzione è `SECURITY DEFINER`. Nella prima riga legge l'utente di sessione e gli chiede
+`registra_distinta` con `script.fn_guard_azione`: la stessa azione dell'endpoint. Chi non ce
+l'ha riceve `E_PERMESSO_NEGATO`, e niente è scritto.
+
+Girando come proprietario, la funzione è fuori dalla row security: il perimetro lo rimette lei,
+**una volta, all'ingresso**, e le scritture che seguono riguardano solo quella riga.
+
+* La riga segue la sua **distinta**: la distinta dev'essere nel perimetro di chi agisce. Se
+  non lo è, la riga «non c'è» (`E_RIGA_CONTABILE_NON_TROVATA`), con la stessa risposta di una
+  riga inesistente.
+* La **fattura** su cui la si registra dev'essere nel perimetro (`E_SCOPE_EMITTENTE`): il
+  movimento non nasce su un'azienda d'altri.
+
+Sotto restano i guard di scope della riga e del movimento
+([trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope)); quello
+del movimento gira dopo il mirror, che gli consegna la fattura.
+
+---
+
 ### ⭐ Passa da `ABBINATA`, e alla quarta mossa si presenta
 
 La funzione non porta la riga da `SOSPESA` a `POSTATA` in un colpo. La porta prima
@@ -59,12 +86,14 @@ Alla **quarta mossa** del guard sulla distinta finale, che rifiuterebbe l'ingres
 stato pronto sotto una `CHIUSA`, si **presenta** con un'impostazione valida per la sola
 transazione, `app.registrazione_tardiva_riga_id`, che porta l'id della riga: il guard
 apre **solo** per quella riga, **solo** in quella transazione, **solo** nel ramo del cambio di
-stato. Il precedente in casa è `app.cessazione_automatica`. ⚠️ La porta si **richiude in coda
-alla funzione**, non al commit: dopo il ritorno nessun'altra scrittura la trova aperta.
+stato, e **solo se chi scrive è il proprietario** della tabella: dentro la funzione sì,
+per l'applicazione mai, nemmeno se accende la GUC da sé. La funzione la spegne all'ingresso,
+e la **richiude prima di uscire**: dopo il ritorno nessun'altra scrittura della stessa
+transazione la trova aperta. In errore la riporta indietro l'annullamento della transazione (o del
+savepoint del chiamante): una GUC locale torna al valore di prima, senza un blocco che la svuoti.
 
-Poi il **movimento**, poi **`POSTATA`**: istruzioni separate sulla stessa riga, perché con la
-RLS attiva padre e figlio nella stessa istantanea non si vedono — la stessa ragione delle due
-istruzioni della registrazione della distinta.
+Poi il **movimento**, poi **`POSTATA`**: istruzioni separate sulla stessa riga, come nella
+registrazione della distinta, così ognuna vede ciò che la precedente ha scritto.
 
 ---
 
@@ -110,8 +139,11 @@ La forzatura senza motivo è **ammessa**, come sull'abbinamento normale.
   positivi: un chiamante rotto, perché il backend valida il form prima (tecnico). Il cliente
   mancante **non** è un rifiuto di qui: risponde il guard sui dati entrando in `ABBINATA`,
   col campo da accendere.
-* `E_RIGA_CONTABILE_NON_TROVATA` — la riga non si legge: inesistente o di un altro, senza
-  dire quale dei due.
+* `E_PERMESSO_NEGATO` — chi agisce non ha `registra_distinta`, o non c'è un utente in
+  sessione.
+* `E_RIGA_CONTABILE_NON_TROVATA` — la riga non esiste, o la sua distinta è fuori dal
+  perimetro di chi agisce: senza dire quale dei due.
+* `E_SCOPE_EMITTENTE` — la fattura su cui registrarla è fuori dal perimetro.
 * `E_RIGA_CONTABILE_TARDIVA_STATO` — la riga non è attiva o non è `SOSPESA`: da `SCARTATA`
   si passa prima da «Riprendi»; da `POSTATA` il movimento c'è già.
 * `E_RIGA_CONTABILE_TARDIVA_DISTINTA_NON_REGISTRATA` — la distinta non è registrata (finale
@@ -131,11 +163,17 @@ La forzatura senza motivo è **ammessa**, come sull'abbinamento normale.
 della capienza, i rifiuti, e la **porta**: un aggiornamento a mano resta rifiutato,
 l'impostazione con un altro id non apre, dopo la funzione è vuota.
 
+`db/pgtap/pagamenti/test-porta-registrazione-tardiva-v1.sql` — il permesso, la porta col
+valore giusto scritta dall'applicazione (rifiutata), i due emittenti (la riga di una distinta
+d'altri, la fattura d'altri), l'ordine dei guard sul movimento.
+
 ---
 
 ### Note di migrazione
 
 * 2026-09-18 — nasce, insieme alla porta della quarta mossa.
+* 2026-11-25 — `SECURITY DEFINER` col permesso e il perimetro all'ingresso; la porta chiede
+  anche il proprietario.
 
 ---
 

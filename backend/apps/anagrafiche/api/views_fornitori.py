@@ -16,12 +16,18 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import corpo_oggetto, optional_int, paginated_envelope, parse_list_params, qp_bool_optional
+from apps.core.api.payload_validators import (
+    corpo_oggetto,
+    parse_list_params,
+    qp_bool_optional,
+    qp_int_optional,
+)
 from apps.core.api.success_responses import success_response
 from apps.anagrafiche.services.fornitori_service import FornitoriService
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 # Codice della lista nel registry `ui.lista_definizione`. Stabile per
@@ -55,7 +61,7 @@ class FornitoriView(DomainAPIView):
     # Scopo: Lista paginata fornitori con search e filtri stato/attivo.
     def get(self, request: Request) -> JsonResponse:
         p = parse_list_params(request.query_params, default_order="ragione_sociale_completa")
-        stato_id = optional_int({"v": request.query_params.get("stato_fornitore_id")}, "v")
+        stato_id = qp_int_optional(request.query_params.get("stato_fornitore_id"), "stato_fornitore_id", min_val=0)
         # Filtro opzionale: None quando il parametro manca (nessun filtro), non False.
         attivo = qp_bool_optional(request.query_params.get("attivo"), "attivo")
         svc = FornitoriService()
@@ -66,7 +72,7 @@ class FornitoriView(DomainAPIView):
             limit=p["limit"], offset=p["offset"],
             order_by=p["order_by"], order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=inline_serializer(name="FornitoreCreateReq", fields={
@@ -185,9 +191,7 @@ class FornitoriExportView(DomainAPIView):
             request.query_params,
             default_order="ragione_sociale_completa",
         )
-        stato_id = optional_int(
-            {"v": request.query_params.get("stato_fornitore_id")}, "v",
-        )
+        stato_id = qp_int_optional(request.query_params.get("stato_fornitore_id"), "stato_fornitore_id", min_val=0)
 
         svc = FornitoriService()
         results, total = svc.list_fornitori(

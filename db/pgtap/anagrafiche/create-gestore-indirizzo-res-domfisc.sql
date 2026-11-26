@@ -12,13 +12,13 @@
 --   - Crea l'indirizzo RES del ruolo su quell'indirizzo_dettaglio
 --   - Crea l'indirizzo DOMFISC del ruolo sullo stesso indirizzo_dettaglio
 --   - Verifica:
---       * l'indirizzo_dettaglio si ritrova con fn_search_indirizzi_dettaglio
+--       * l'indirizzo_dettaglio si ritrova col «trova o crea» e dalla vista della ricerca
 --       * 1 indirizzo RES e 1 DOMFISC per il ruolo
 --       * entrambi puntano allo stesso indirizzo_dettaglio_id
 
---  Aggiunta del 2024-06-11  utilizzo di fn_search_indirizzi_dettaglio
---  per verificare che l'indirizzo_dettaglio creato sia effettivamente
---  reperibile tramite la funzione di ricerca indirizzi_dettaglio 3-bis)
+--  3-bis) che l'indirizzo_dettaglio creato si ritrovi: dal 2026-11-24 col
+--  «trova o crea» e dalla vista della ricerca (fn_search_indirizzi_dettaglio
+--  e' ritirata, D-T7a-6).
 
 -- ------------------------------------------------------------
 
@@ -188,38 +188,27 @@ SELECT is(
 );
 
 -- =========================================================
--- 3-bis) Verifica tramite fn_search_indirizzi_dettaglio
---        (aggiunta del 2024-06-11)
---    Il pattern e' l'indirizzo_normalizzato che il dettaglio ha DAVVERO
---    (colonna generata da via_norm, riscritto dal trigger), riletto in
---    un'istruzione separata.
+-- 3-bis) Il civico si ritrova dai suoi lettori veri.
+--    rev 2026-11-24: anagrafiche.fn_search_indirizzi_dettaglio e' ritirata
+--    (D-T7a-6, brief-db-revisione-anagrafiche §21, nessun chiamante). Il
+--    civico si ritrova col «trova o crea», che lo restituisce invece di
+--    crearne un secondo, e dalla vista che il backend legge per cercarlo.
 -- =========================================================
-CREATE TEMP TABLE tmp_search_indirizzo AS
-SELECT *
-FROM anagrafiche.fn_search_indirizzi_dettaglio(
-    p_stradario_id      => (SELECT id FROM tmp_stradario),
-    p_civico            => (SELECT civico FROM tmp_civico),
-    p_estensione_civico => NULL,
-    p_palazzina         => NULL,
-    p_scala             => NULL,
-    p_piano             => NULL,
-    p_interno           => NULL,
-    p_indirizzo_norm    => (SELECT idd.indirizzo_normalizzato
-                              FROM anagrafiche.indirizzi_dettaglio idd
-                              JOIN tmp_indirizzo_dettaglio t ON t.id = idd.id),
-    p_limit             => 10
-);
-
 SELECT is(
-    (SELECT count(*)::int FROM tmp_search_indirizzo),
-    1,
-    'fn_search_indirizzi_dettaglio trova esattamente 1 indirizzo per stradario, civico e indirizzo normalizzato'
-);
-
-SELECT is(
-    (SELECT indirizzo_dettaglio_id FROM tmp_search_indirizzo),
+    anagrafiche.fn_get_or_create_indirizzo_dettaglio(
+        (SELECT id FROM tmp_stradario)::integer,
+        (SELECT civico FROM tmp_civico)),
     (SELECT id FROM tmp_indirizzo_dettaglio),
-    'fn_search_indirizzi_dettaglio restituisce l''indirizzo_dettaglio_id appena creato'
+    'il «trova o crea» ritrova il civico appena creato, non ne crea un altro'
+);
+
+SELECT is(
+    (SELECT count(*)::int
+       FROM anagrafiche.vw_indirizzi_dettaglio v
+      WHERE v.indirizzo_dettaglio_id = (SELECT id FROM tmp_indirizzo_dettaglio)
+        AND v.attivo),
+    1,
+    'vw_indirizzi_dettaglio, la vista della ricerca del backend, mostra il civico'
 );
 
 -- =========================================================

@@ -68,8 +68,6 @@ _CODA_RESPONSE = inline_serializer(
     fields={
         "results": serializers.ListField(child=serializers.JSONField()),
         "count": serializers.IntegerField(),
-        "limit": serializers.IntegerField(),
-        "offset": serializers.IntegerField(),
     },
 )
 
@@ -78,7 +76,7 @@ class ApprovaPrezzoView(DomainAPIView):
     """POST /api/v1/vendite/righe/<riga_id>/approva-prezzo/
 
     Approva l'override prezzo su una riga preventivo PENDING.
-    Richiede azione processo `approva_prezzo_override` (oppure superuser bypass).
+    Richiede azione processo `approva_prezzo_override` (SUPER_ADMIN compreso).
     """
 
     area_funzionale = "vendite"

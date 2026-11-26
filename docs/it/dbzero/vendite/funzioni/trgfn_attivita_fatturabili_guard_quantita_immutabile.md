@@ -17,7 +17,6 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_quantita_imm
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_bypass text;
     v_qta_ca vendite.commesse_attivita.quantita%TYPE;
 BEGIN
     -- =========================================================
@@ -28,11 +27,11 @@ BEGIN
     --   costruzione; un UPDATE manuale a valore diverso e' bloccato.
     --   Brief immutabilita-quantita §4a (mirror-enforcement, 2026-07-21).
     -- Regole:
-    --   - bypass tecnico via GUC zeroerp.maintenance_reset_lotto_draft;
+    --   - passa la porta del reset del lotto: GUC e proprietario
+    --     (vendite.fn_porta_reset_lotto_aperta);
     --   - se commessa_attivita_id IS NULL non c'e' specchio da imporre.
     -- =========================================================
-    v_bypass := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
-    IF v_bypass IS NOT NULL AND lower(v_bypass) IN ('1','true','on','yes') THEN
+    IF vendite.fn_porta_reset_lotto_aperta(TG_RELID) THEN
         RETURN NEW;
     END IF;
 
@@ -61,7 +60,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_quantita_immutabile()
-IS 'Guard mirror-enforcement quantita attivita_fatturabili: blocca UPDATE che porterebbe la quantita a un valore diverso dalla commessa madre (commessa_attivita_id). L''emit (upsert = specchio) passa; bypass via GUC zeroerp.maintenance_reset_lotto_draft. Errore E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE. Brief immutabilita-quantita §4a (2026-07-21).';
+IS 'Guard mirror-enforcement quantita attivita_fatturabili: blocca UPDATE che porterebbe la quantita a un valore diverso dalla commessa madre (commessa_attivita_id). L''emit (upsert = specchio) passa; passa anche la porta del reset del lotto (vendite.fn_porta_reset_lotto_aperta: GUC zeroerp.maintenance_reset_lotto_draft e proprietario della tabella). Errore E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE.';
 ```
 
 </div>

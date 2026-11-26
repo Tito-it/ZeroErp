@@ -22,10 +22,12 @@
 | tipo_lotto | text | NO | 'MASSIVO'::text |
 | utility_id | integer | YES |  |
 | tipo_doc_fiscale_id | bigint | YES |  |
+| auto_step_rollback | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_fatturazione_pipeline_meta_senza_auto_step_rollback |  |
 | CHECK | chk_fatturazione_pipeline_tipo_lotto |  |
 | FOREIGN KEY | fk_fatturazione_pipeline_stato_doc_fiscale | stato_doc_fiscale_id |
 | FOREIGN KEY | fk_fatturazione_pipeline_tipo_doc_fiscale | tipo_doc_fiscale_id |

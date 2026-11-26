@@ -120,13 +120,6 @@ _ORDER_COLS_MOVIMENTI: dict[str, str] = {
     "motivo": "m.motivo",
 }
 
-# ⭐ Le colonne DATA della lista 65: il BB `sql_order_clause` le ordina DESC
-#    quando il chiamante non indica un verso — «gli ordinamenti per data hanno
-#    sempre default DESC» (Tid, 2026-09-02).
-# ⚠️ Accanto alla whitelist e non altrove: e' un sottoinsieme delle sue chiavi,
-#    e a distanza le due si separerebbero senza che niente lo dica.
-_ORDER_COLONNE_DATA_MOVIMENTI: frozenset[str] = frozenset({"data_movimento"})
-
 _TITOLO_JOINS = """
               FROM anagrafiche.soggetti_titoli_iva t
               JOIN config.tipi_titolo_iva tt ON tt.id = t.tipo_titolo_iva_id
@@ -323,8 +316,8 @@ class TitoliIvaRepository:
         order_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         # ⭐ Senza `order_by` resta l'ordinamento STORICO — validita' piu' lunga
-        #    per prima, con `COALESCE(valido_al,'infinity')` che porta in cima i
-        #    titoli senza scadenza (`feedback_ordinamento_validita_infinity`).
+        #    per prima, con `NULLS FIRST` che porta in cima i titoli senza
+        #    scadenza (il vuoto come il massimo, senza un valore «infinito»).
         #    ⚠️ Va preservato perche' questo metodo ha un SECONDO consumatore:
         #    `soggetti_service` lo incorpora nel dettaglio di un soggetto e non
         #    passa nessun ordinamento. Cambiargli il default sotto i piedi
@@ -337,7 +330,7 @@ class TitoliIvaRepository:
             #    Passarlo come colonna gli farebbe appiccicare una seconda
             #    direzione in coda (`DESC DESC`), che PostgreSQL rifiuta.
             default_clause=(
-                "COALESCE(t.valido_al, 'infinity'::date) DESC, t.valido_dal DESC"
+                "t.valido_al DESC NULLS FIRST, t.valido_dal DESC"
             ),
             tiebreak="t.id",
             default_desc=True,
@@ -618,7 +611,6 @@ class TitoliIvaRepository:
             default="m.data_movimento",
             tiebreak="m.id",
             default_desc=True,
-            colonne_desc=_ORDER_COLONNE_DATA_MOVIMENTI,
         )
         paginazione = "" if limit is None else "\n             LIMIT %s OFFSET %s"
         params: list[Any] = [titolo_id]

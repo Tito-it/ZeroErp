@@ -339,7 +339,7 @@ class ApiRunLottoPipeline(DomainAPIView):
 
 Non creare classi V1 per nuovi endpoint.
 
-La risoluzione permessi segue la catena: superuser bypass → bypass `SUPER_ADMIN` → azione processo → livello area/oggetto CRUD (dal 2026-10-02 senza il passo «`ruolo_applicativo = DISABILITATO` → nega»: una veste spenta tiene il suo tipo e ha `attivo = false`, quindi non e' l'identita' attiva di nessuna sessione — brief-db-be-fe-area-accessi R-DB-1). Vedi `apps/core/api/permissions.py`.
+La risoluzione permessi segue la catena: bypass `SUPER_ADMIN` → azione processo → livello area/oggetto CRUD (dal 2026-10-02 senza il passo «`ruolo_applicativo = DISABILITATO` → nega»: una veste spenta tiene il suo tipo e ha `attivo = false`, quindi non e' l'identita' attiva di nessuna sessione — brief-db-be-fe-area-accessi R-DB-1). Vedi `apps/core/api/permissions.py`.
 
 ---
 
@@ -381,10 +381,19 @@ I parametri del payload si estraggono con i validator di `apps.core.api.payload_
 
 | Funzione                                       | Scopo                                         |
 | ---------------------------------------------- | --------------------------------------------- |
-| `optional_int(payload, "key")`                 | Estrae int o None, errore se non convertibile |
+| `optional_int(payload, "key")`                 | Estrae int o None (anche zero o negativo, tetto bigint); `zero_as_none` per lo 0 dei form |
 | `optional_bool(payload, "key", default=False)` | Estrae bool con default: **solo booleani JSON** |
-| `optional_iso_date(payload, "key")`            | Estrae `date` da stringa ISO                  |
-| `optional_uuid(payload, "key")`                | Estrae UUID                                   |
+| `optional_iso_date(payload, "key")`            | Estrae `date` da stringa ISO; `""` è un 400   |
+| `optional_uuid(payload, "key")`                | Estrae UUID canonico; `""`, `0`, `"0"` sono un 400 |
+
+⭐ **Una regola sola (dal 2026-11-24, brief-be-fe-BB-audit §2).** Le quattro funzioni
+delegano a `PayloadValidator` col codice `E_VALIDATION_INPUT`: assente o `null` è `None`,
+ogni altro valore che non è del tipo è un 400 **col campo**. Fino a quel giorno int,
+data e uuid avevano regole loro, e lo stesso valore aveva due esiti secondo chi lo leggeva.
+⛔ Servono **alla view**. Un service legge col proprio `PayloadValidator` (§Validazione
+input), col codice del dominio. ⛔ Query string e header sono testo: si leggono coi BB
+`qp_*` (`qp_int_optional`, `qp_iso_date_optional`, `qp_uuid_optional`, `qp_bool_optional`),
+mai avvolgendo il valore in un dizionario per passarlo a queste.
 
 ⛔ **Tre regole del corpo, decise da Tid il 2026-10-20** (brief-be-verifica-documentazione-api):
 
@@ -486,7 +495,7 @@ class ApiLottiList(DomainAPIView):
             "competenza_mese",
         )
         limit, offset = pagina_da_query(request.query_params)  # la finestra, dal BB
-        auth_user_id = get_scope_user_id(request)       # None per superuser
+        auth_user_id = get_scope_user_id(request)
 
         data = fn_list_lotti(
             competenza_mese=competenza_mese,
@@ -510,9 +519,9 @@ I filtri opzionali da query string si normalizzano con gli helper di
 | `qp_int_optional(raw, name, *, min_val, max_val)`                   | int **opzionale strict**: `None` se assente/vuoto, **400** se non numerico o fuori range (default `bigint`) |
 | `qp_bool_optional(raw, name, default=None)`                         | il **flag** di query string e multipart: `true`/`false` (maiuscole ammesse), assente/vuoto = `default`, **ogni altro valore 400** |
 | `qp_iso_date_optional(raw, name)`                                   | `date` **opzionale strict**: `None` se assente/vuoto, **400** se malformata                             |
-| `parse_list_params(qp, *, default_limit, max_limit, default_order)` | bundle `search/limit/offset/order_by/order_dir/page` di una lista                                        |
+| `parse_list_params(qp, *, default_limit, max_limit, default_order)` | bundle `search/limit/offset/order_by/order_dir` di una lista                                             |
 | `pagina_da_query(qp, *, default_limit, max_limit)`                  | `(limit, offset)` di **ogni** lista: `page`/`page_size` e valori illeggibili sono un **400**, limiti da `limiti_pagina`. Lo usa `parse_list_params` |
-| `envelope_da_offset(results, total_count, *, limit, offset)`        | l'envelope paginato (`count`/`page`/`page_size`/`total_pages`/`results`) da una finestra `limit`/`offset`; `page` la ricava `pagina_di(offset, limit)` |
+| `pagina_con_totale(results, totale)` (`apps.core.services.list_helpers`) | l'envelope di una pagina di lista, `{count, results}`, con `count` = totale della query (§Paginazione) |
 
 ⚠️ **Il tetto di un intero è il tipo DOVE ARRIVA** (dal 2026-10-08): un confronto
 `col = %s` regge qualunque intero, un **parametro di funzione** `integer` o un cast
@@ -528,7 +537,10 @@ dichiara `min_val=INTEGER_MIN, max_val=INTEGER_MAX` (`apps.core.services.payload
 * **valore non riconosciuto / non valido** (`?attivo=banana`, `?utility_id=abc`) ⇒
   **`400` `E_VALIDATION_INPUT`** (niente coercion silenziosa: prima alcuni filtri
   bool accettavano il garbage come `True`/`False`).
-* token bool riconosciuti: `1/true/yes/y/on` → `True`, `0/false/no/n/off` → `False`.
+* token bool riconosciuti: solo `true` → `True` e `false` → `False` (maiuscole e spazi
+  ammessi). Ogni altro valore, compresi `1`/`yes`/`on`, è un 400 (decisione di Tid del
+  2026-10-20, `qp_bool_optional`). Fino al 2026-11-24 questa riga elencava ancora i token
+  ritirati quel giorno.
 
 #### ⛔ Un filtro a vocabolario chiuso si valida PRIMA della query (dal 2026-10-20)
 
@@ -657,34 +669,40 @@ repository (dal 2026-10-04): `limit: int = DEFAULT_LIMIT`, mai un numero —
 una lista aveva il suo default nella view e un altro, diverso, nella firma; il
 presidio le guarda, con le eccezioni (lookup, batch) in `_FIRME_AMMESSE`.
 
-Risposta paginata (l'**envelope** conserva `page`/`page_size`: li ricava
-dalla finestra `envelope_da_offset`, e servono al paginatore per leggere dove
-il backend ha riportato una pagina stantia):
+⭐ **La risposta di una lista ha una forma sola: `{count, results}`** (D-1 di
+brief-be-fe-BB-audit, Tid 2026-11-24). `count` è il totale della query, mai le
+righe consegnate (sotto). La costruisce il BB `pagina_con_totale(results, totale)`
+di `apps.core.services.list_helpers`; una collezione consegnata per intero, senza
+`LIMIT`, usa `collezione_completa(results)`.
 
 ```json
 {
   "data": {
     "count": 142,
-    "page": 1,
-    "page_size": 50,
-    "total_pages": 3,
     "results": [...]
   },
   "meta": { "request_id": "..." }
 }
 ```
 
-Forma ridotta (le liste che non dichiarano la pagina: solo il totale e le righe;
-la finestra in ingresso è comunque `limit`/`offset`):
-
-```json
-{
-  "data": {
-    "count": 142,
-    "results": [...]
-  }
-}
-```
+* ⛔ **Niente `page`/`page_size`/`total_pages`.** La finestra si chiede con
+  `limit`/`offset`, e ripeterla nella risposta come pagina era una seconda
+  lingua che la richiesta non parla più: chi pagina sa già quale finestra ha
+  chiesto. Fino al 2026-11-24 le forme erano tre: la lunga
+  (`paginated_envelope` / `envelope_da_offset`, ritirati quel giorno), la corta
+  scritta a mano in una dozzina di punti di sei domini, e `collezione_completa`.
+* ⭐ **La finestra EFFETTIVA dei cruscotti** è un dato vero e ha un campo suo,
+  `offset_effettivo`: le liste che leggono con `query_paged_view` riportano un
+  offset oltre la fine all'ultima pagina, e lo dichiarano lì. Il frontend ne
+  ricava la pagina del paginatore (`usePagedDashFetch`).
+* I campi propri di una lista (gli `stati` dei lotti, `scartate_count`,
+  `archiviate_count`, il riepilogo di perimetro) stanno accanto:
+  `{**pagina_con_totale(…), "stati": …}`.
+* ⛔ Un lookup con un tetto non è una pagina: dichiara `troncato` accanto a
+  `count` (BB `fetch_con_sonda`).
+* Presidio: `apps/core/tests/test_envelope_lista_forma_unica.py` rifiuta un
+  dizionario con `count` e `results` scritto fuori dal BB (le eccezioni sono
+  elencate, ognuna col suo motivo) e ogni chiave `page_size`/`total_pages`.
 
 #### ⛔ Il `count` non si deriva MAI dalle righe che stai consegnando
 
@@ -741,22 +759,26 @@ la regola unica `order_dir_ammessa` — il service (`validate_order_params`,
 (`sql_order_direction`) col 400 `E_VALIDATION_INPUT`.
 
 🔴 **Fino a quel giorno l'assenza diventava `"asc"`**, e il difetto era muto: il
-`default_desc` e le `colonne_desc` dei repository si accendono solo su `None`,
+`default_desc` dei repository si accende solo su `None`,
 quindi una lista che deve aprirsi dal più grave (o dal più recente) si apriva al
 contrario, senza errore. Il ripiego che questa sezione prescriveva — passare
 `qp_str(qp.get("order_dir"))` invece di `p["order_dir"]` — è stato **ritirato**
 dalle view che lo usavano solo per la direzione.
 
-⭐ **Le date partono DESC anche dal nome, e il default segue la lista** (dal
-2026-10-20, Tid). `parse_list_params(default_order=...)` riempie `order_by` con la
+⭐ **Il default segue la lista** (dal 2026-10-20, Tid). `parse_list_params(default_order=...)` riempie `order_by` con la
 colonna di default: fino a quel giorno `sql_order_clause` la trattava come una
 colonna scelta e ignorava `default_desc`, e ordini, resi, DDT, fatture, contratti e
 preventivi si aprivano dal più vecchio. Ora la colonna di default segue
 `default_desc` (una coda si apre crescente apposta, come le rate), e ogni altra
-colonna data chiesta senza verso parte DESC, dichiarata in `colonne_desc` **o
-riconosciuta dal nome** (`e_chiave_data`: `data`, `data_*`, `*_at`, `*_dal`/`*_al`,
-`competenza_mese`). Chi compone l'`ORDER BY` a mano passa
-`sql_order_direction(order_dir, default_desc=e_chiave_data(order_by))`.
+colonna chiesta senza verso va ASC, **date comprese**. Chi compone l'`ORDER BY` a
+mano risolve la direzione con `sql_order_direction_lista`.
+
+⛔ **Nessuna colonna ha un verso di partenza proprio** (Tid, 2026-11-24). Dal
+2026-09-02 una data chiesta senza verso partiva DESC (`colonne_desc`, e dal
+2026-10-20 anche per nome con `e_chiave_data`), e il frontend girava a DESC il
+primo click su un'intestazione data. Ritirate entrambe: il ritocco del frontend
+lasciava la freccia di PrimeVue su un verso diverso da quello inviato. Il giro di
+un'intestazione è niente → crescente → decrescente → niente.
 
 ⚠️ **Un validatore di dominio che riceve `p["order_dir"]` deve ammettere
 l'assenza**: `validate_order_params(..., nullable=True)`. Senza, la lista
@@ -816,6 +838,25 @@ l'ordine del repository quando il preset non ne ha uno, `verso` il ripiego di
 non è più vera. Fuori catalogo (view senza `lista_codice`) resta
 `descrizione_order_by`. Presidio sullo schema generato, nei due versi:
 `core/tests/api/test_openapi_params.py`.
+
+#### ⭐ Dove va il vuoto: lo dichiara il catalogo, non la whitelist (dal 2026-11-24)
+
+Decisioni di Tid (brief-db-lista-colonna-vuoto-in-ordine). Di regola il vuoto
+ordina come il **minimo** (`sql_order_direction`: `ASC NULLS FIRST` /
+`DESC NULLS LAST`): è il «non ancora», il numero di una bozza. La colonna il cui
+vuoto vuol dire «senza fine» (una fine validità, una scadenza che non c'è) lo
+dichiara nel catalogo, `ui.lista_colonna.vuoto_ordinato_come_massimo`, e allora
+il vuoto ordina come il **massimo** (`ASC NULLS LAST` / `DESC NULLS FIRST`).
+
+La view con `lista_codice` registra la lettura del catalogo della sua lista, e
+`sql_order_direction_lista` (quindi `sql_order_clause`) la applica alla colonna
+che risolve. La whitelist resta la colonna nuda: ⛔ niente
+`COALESCE(col, 'infinity')`, `'-infinity'` o massimi di `integer` scritti a mano,
+che fino a quel giorno erano l'eccezione (e che tre liste avevano
+dimenticato). ⛔ Un `ORDER BY` composto a mano prende la direzione da
+`sql_order_direction_lista`, non da `sql_order_direction`: la chiamata diretta non
+riceve la dichiarazione. Una lista ordinata fuori da una view con `lista_codice` segue la
+regola generale. Presidio: `core/tests/test_vuoto_come_massimo_seed.py`.
 
 ### Ricerca e throttling
 
@@ -1068,6 +1109,9 @@ wrapper `handle_post_json` (salvo la modalità forte, seconda riga della tabella
 ```
 
 Generato da `success_response()` in `apps.core.api.success_responses`.
+
+Il `data` di una **lista** ha una forma sola, `{count, results}` (BB
+`pagina_con_totale`, dal 2026-11-24): §Paginazione.
 
 ### Errore
 
@@ -1422,8 +1466,8 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 #### Pagamenti, magazzino e documenti
 
 * **Pagamenti — il giro degli incassi** (registrato qui il 2026-09-12: le 25 rotte erano in esercizio dal 2026-08-24 e nessuna pagina le nominava — `copertura_doc_api` dava l'area al **4%**): [api_pagamenti.md](/backend/pagamenti/manual/api_pagamenti) — una pagina sola per il dominio, come per la generazione documenti: la **distinta** (`distinte/`, `<id>/stato/`, e dal 2026-09-18 le righe come **lista configurabile** `distinte/<id>/righe/` + `export/` — lista `pagamenti.distinta_righe`, paginata, «la contabile in CSV/Excel»; fino a quel giorno viaggiavano dentro il dettaglio, su una `DataTable` grezza senza pagina né export), la **registrazione** (`anteprima-registrazione/`, `registra/` — una sola `SELECT` sulla madre, esito `NULLA_DA_POSTARE` che risale intatto — e la **correzione guidata** `correggi/`), l'**abbinamento** (`righe/<id>/abbina/` con la forzatura a due tempi: `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` è il primo codice con `ui_action = confirm_and_retry`), le due **code** (`righe/?coda=`), `rate/fuori-capienza/`, la **base dei saldi** a tre livelli (`rate/<id>/saldo/`, `fatture/<id>/saldo/`, `fatture/<id>/rate/` — sede unica, forma unica `residuo · in_lavorazione · incassato`; `escludi_riga_id` = «prima di sé» sulla rata dal 17/09 e sul documento dal 18/09, stesso parametro dichiarato una volta) e dal 2026-09-17 la sua **quarta lettura**, `rate/` — l'elenco paginato delle rate col saldo (lista `pagamenti.rate`), sorgente del **picker** della distinta e dello scadenzario: pagina prima, saldo dopo dal nucleo `fn_get_saldi_rate` con l'array degli id, numero fattura **esatto** (101 non porta 1010), «aperta» = `residuo <> 0`, e dal 18/09 `solo_numerate` — le rate delle **bozze** fuori, il picker lo passa sempre; e il verbo di collezione `distinte/<id>/righe/da-rate/` — **N rate scelte → N righe** con esito **PARZIALE per riga** via `run_fan_out`, ogni fallita col suo errore intero (`ui_action` compresa: il secondo tempo della capienza è per riga) —, le **sistemazioni** (`eccedenze/`, `sistemazioni/` + `conferma/`/`annulla/`, `fatture/<id>/sistemazioni/` + `export/`) e i **canali di incasso** (`enti-incasso/`, `conti-incasso/`). ⚠️ Le quattro rotte `fatture/<id>/…` hanno `skip_area_check`: le consuma il drawer fattura di `vendite`, che non può chiamare `pagamenti` lateralmente. 🔴 `registra/` e `correggi/` sono gated su `registra_distinta`, fail-closed finché l'azione non è assegnata a un profilo
-* **Magazzino — le anagrafiche** (2026-09-21, [piano](work-done/2026/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)): [api_anagrafiche_magazzino.md](/backend/magazzino/manual/api_anagrafiche_magazzino) — `GET/POST /magazzino/magazzini/` (+ `export/`, `<id>/` GET/PATCH), le ubicazioni **sotto il padre** `GET/POST /magazzino/magazzini/<id>/ubicazioni/` (+ `export/`, `<uid>/`), i lotti **per articolo** `GET/POST /magazzino/lotti/?articolo_id=` (+ `export/`, `<id>/`). Liste a catalogo 80-82; RLS sull'emittente del magazzino (404 no-leak, `E_MAG_*_NON_TROVAT*`), `lotti` senza perimetro (`perimetro_emittente = false`). Il documento interno, i lookup di riga e la consultazione hanno la loro pagina (riga sotto).
-* **Magazzino — il documento interno e la consultazione** (2026-09-25, [piano Lotto 2](work-done/2026/piano-be-fe-magazzino-lotto-2-motore.md)): [api_magazzino.md](/backend/magazzino/manual/api_magazzino) — inventario e rettifica come **una famiglia** (`FamigliaDocumentoInterno`, rotte sotto `/magazzino/{inventari|rettifiche}/` dalla stessa factory): lista + `export/`, crea/dettaglio/`PATCH`/`DELETE`, `<id>/stato/`, **`<id>/registra/`** (il gesto irreversibile: `post_permission = registra_magazzino` **e** lo stesso controllo dentro il verbo a DB), righe (lista, `export/`, CRUD), e solo per l'inventario `<id>/piano/` (+ `export/`). Il dettaglio porta il blob `capabilities` di `fn_available_actions_<famiglia>` **intatto**, con la terna `can_registra*`. L'anteprima `righe/motivi/` è `fn_check_riga_magazzino` così com'è; tre lookup di riga dedicati (ubicazioni, lotti, seriali). Consultazione: `disponibilita/` (+ `articoli/`, `blocchi/`), `movimenti/` (con `inventario_id`/`rettifica_id` per il deep-link dal documento registrato). Liste a catalogo 70-77. Scritta il 2026-09-25: le rotte erano in esercizio dal 2026-09-18 senza una pagina che le nominasse.
+* **Magazzino — le anagrafiche** (2026-09-21, [piano](work-done/2026/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)): [api_anagrafiche_magazzino.md](/backend/magazzino/manual/api_anagrafiche_magazzino) — `GET/POST /magazzino/magazzini/` (+ `export/`, `<id>/` GET/PATCH), le ubicazioni **sotto il padre** `GET/POST /magazzino/magazzini/<id>/ubicazioni/` (+ `export/`, `<ubicazione_id>/`, l'id intero), i lotti **per articolo** `GET/POST /magazzino/lotti/?articolo_id=` (+ `export/`, `<id>/`). Liste a catalogo 80-82; RLS sull'emittente del magazzino (404 no-leak, `E_MAG_*_NON_TROVAT*`), i lotti **dell'azienda** dal 2026-11-22 (RLS sull'emittente del lotto, lista con `perimetro_emittente = true`). Le scritture passano dai **verbi del DB** (`fn_aggiungi_*` / `fn_modifica_*`), che dicono anche le chiavi ammesse (`fn_<tabella>_colonne_ammesse`). Il documento interno, i lookup di riga e la consultazione hanno la loro pagina (riga sotto).
+* **Magazzino — il documento interno e la consultazione** (2026-09-25, [piano Lotto 2](work-done/2026/piano-be-fe-magazzino-lotto-2-motore.md)): [api_magazzino.md](/backend/magazzino/manual/api_magazzino) — inventario e rettifica come **una famiglia** (`FamigliaDocumentoInterno`, rotte sotto `/magazzino/{inventari|rettifiche}/` dalla stessa factory): lista + `export/`, crea/dettaglio/`PATCH`/`DELETE`, `<id>/stato/`, **`<id>/registra/`** (il gesto irreversibile: `post_permission = registra_magazzino` **e** lo stesso controllo dentro il verbo a DB), righe (lista, `export/`, CRUD; ogni scrittura è un **verbo del DB**, chiavi ammesse da `fn_documento_interno_colonne_ammesse`, testata modificabile solo in `DRAFT`), e solo per l'inventario `<id>/piano/` (+ `export/`). Il dettaglio porta il blob `capabilities` di `fn_available_actions_<famiglia>` **intatto**, con la terna `can_registra*`. L'anteprima `righe/motivi/` è `fn_check_riga_magazzino` così com'è; tre lookup di riga dedicati (ubicazioni, lotti, seriali). Consultazione: `disponibilita/` (+ `articoli/`, `blocchi/`), `movimenti/` (con `inventario_id`/`rettifica_id` per il deep-link dal documento registrato). Liste a catalogo 70-77. Scritta il 2026-09-25: le rotte erano in esercizio dal 2026-09-18 senza una pagina che le nominasse.
 * **Documenti**: [api_documenti_templates.md](/backend/documenti/manual/api_documenti_templates) — il motore documentale: template (CRUD della testata, i modelli **standard** senza emittente e `personalizza/` che ne copia uno per un emittente), versioni (CRUD, `clona`, `pubblica`), asset (upload multipart, PATCH, download, miniatura) e `context-builders`. [api_documenti_per_sorgente.md](/backend/documenti/manual/api_documenti_per_sorgente) — le rotte documenti dei sei domini sorgente. Building block trasversali per view "per sorgente" (offerta/preventivo/contratto): [api_documenti_helpers.md](/backend/documenti/manual/api_documenti_helpers) — `resolve_contesto_documentale` + `extract_allegati` (2026-05-28). **Ristampa fedele** (2026-08-03): [api_ristampa_fedele.md](/backend/documenti/manual/api_ristampa_fedele) — `GET .../documenti/<id>/ristampa/` sui 6 domini sorgente: ri-renderizza il documento **com'era** (versione di template pinnata, anche OBSOLETA + `context_json` congelato), senza persistere nulla. È il terzo percorso, distinto dallo **scarica originale** (`file/`, richiede il file su storage: la persistenza è iniziata il 2026-07-21) e dal **genera nuovo documento** (`genera/`, modello e dati di oggi — che fino al 2026-08-03 si chiamava impropriamente «ristampa»). Fedeltà dichiarata in header `X-Ristampa-Pdf-Hash-Match`: byte diversi = fedele nel contenuto, non un errore.
 * **Core — Gestione code (tracciamento)**: [api_gestione_code.md](/backend/core/manual/api_gestione_code) — badge conteggi code + liveness worker (`tracciamento/code/conteggi/`), liste coda lavori/stampa (`tracciamento/coda-lavori/`, `tracciamento/coda-stampa/`, di default i lavori accodati da me, `?ambito=tutti` quelli delle mie aziende come li mostra la RLS: visibilità aperta a ogni operatore, `code_manage` serve per azioni e dettaglio sui lavori altrui), dettaglio job e azioni `annulla/`/`requeue/` (proprietà **per persona**, chi ha accodato; il perimetro d'azienda lo mette la RLS di `dbops.coda_lavori`, dal 2026-11-07; 404 no-leak). ⭐ Dal 2026-09-04 anche l'**archiviazione** — `archivia/` e `ripristina/` su **entrambe** le code, rotte di **collezione** (`{"ids": [...]}`, tetto 200, dedup) perché il gesto è di massa e il menu di riga manda un elenco di uno: toglie una riga dall'**elenco** senza toccarne lo **stato**, perché i conteggi del pannello «Esiti fatturazione» sono un `GROUP BY` sullo stato **senza filtro di visibilità** e qualunque cancellazione o annullamento li sposterebbe. ⛔ Gate **`code_manage`** e non l'ownership degli altri due verbi: l'effetto è **globale** (chi archivia toglie la riga anche all'amministratore), e un verbo globale in un modello di permessi per-proprietario non compone. ⛔ Il criterio «solo una riga non viva si archivia» sta nel **trigger** (`dbops.trgfn_coda_archiviazione`, una funzione per due code) più il `CHECK`: il backend traduce `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` (409) e passa, senza tenerne una copia — e nemmeno scrive `archiviato_il`/`archiviato_da`, che le deriva il trigger dalla GUC. ⚠️ Le liste nascondono le archiviate di default (`?archiviate=1` le chiede) e dichiarano **`archiviate_count`**: senza quel numero «coda pulita» e «tre righe messe via» si leggono uguali. ⛔ E la bandiera **non entra** nel `WHERE` di claim, drainer, reaper, `mark_*` e `count_*`: è la cosa che distingue l'archiviazione da un annullamento silenzioso. ⛔ **Esito PARZIALE via `run_fan_out`** (un savepoint per riga): il rifiuto è per riga, quindi venti archiviazioni buone non si perdono per una riga tornata al lavoro — chi consuma guarda `esito` e `falliti[]`, non lo status. È anche la ragione per cui non si fa un solo `UPDATE … WHERE id = ANY(…)` col predicato di stato: sarebbe la seconda copia di «riga viva». ⭐ **Dal 2026-09-06 la soglia di liveness del badge non è più un numero nel backend**: è il **contratto del processo**, `dbops.processi.tolleranza_minuti`, letto via `ProcessiRepository.contratti_liveness` — lo stesso numero con cui il database dichiara un processo `MUTO`. ⚠️ Dal 2026-09-06 al 2026-09-11 stava nel *dichiarato di deploy* (`backend/deploy/sveglie.json`): oggi quel file dice solo come il deploy sveglia il processo, e se il campo `tolleranza_minuti` ricompare lì `carica_sveglie()` lo rifiuta — vedi [sveglie_processi.md](/backend/core/manual/sveglie_processi). Prima era `WORKER_ATTIVO_SOGLIA_MINUTI = 10` accanto a un commento che spiegava la scelta con l'`OnCalendar` scritto in un ALTRO file — cioè lo stesso fatto in due sedi che non si conoscevano, e la divergenza sarebbe stata **muta**: un pallino verde su un worker fermo. ⚠️ Il contratto della risposta per worker è `{last_run_at, attivo, in_corso, ultima_conclusa}` — dal 2026-09-14 senza `last_ok`, che era l'esito di una corsa accanto alla data di un'altra (dettaglio in [api_gestione_code.md](/backend/core/manual/api_gestione_code) §1)
 * **UI — Personalizzazioni liste (runtime)**: [api_ui_liste.md](/backend/ui/manual/api_ui_liste) — risoluzione configurazione lista, catalogo modale, UPSERT/DELETE preferenza utente, e dal 2026-09-30 `GET /ui/misure-pagina/`: le misure «righe per pagina» e i due default dal catalogo DB `ui.misure_pagina`, per **tutti** i paginatori (il frontend le legge una volta per sessione). Meta-API trasversale (`skip_area_check=True`).
@@ -1449,7 +1493,7 @@ Per i building block backend riutilizzabili (helpers, services, repository), con
 | Durata access       | 10 minuti; il frontend lo tiene solo in memoria e lo rinnova dal cookie |
 | JWT claim custom    | `identita_id` + `ruolo_applicativo` + `sid` (session id stabile)        |
 | Permission class    | `ZeroERPPermission` — risoluzione centralizzata                         |
-| Superuser           | Bypass totale                                                           |
+| Superuser Django    | Nessun privilegio: l'amministratore e' `SUPER_ADMIN` (dal 2026-11-24)   |
 | SUPER_ADMIN         | Bypass via `script.fn_is_super_admin` (filtro veste OPERATORE, §8.3.7)  |
 | Veste spenta        | Nessuna identita' attiva: niente GUC di veste, niente SUPER_ADMIN, il livello d'area nega (dal 2026-10-02 `DISABILITATO` non e' piu' un tipo di veste) |
 | Azione processo     | Verificata se la view dichiara `post_permission` / `get_permission`, o letta dalla riga del passaggio (`post_passaggio`) |
@@ -1619,11 +1663,29 @@ Due pattern disponibili in base al dominio:
    risolve in Python i `soggetto_ruolo_id` degli emittenti autorizzati e li passa
    come array `bigint[]` alle query SQL.
 
-⛔ **Perimetro ≠ attore.** `get_scope_user_id` vale `None` per il superuser perché
-il suo perimetro non ha limiti: serve **solo alle letture**. Una scrittura che
-passa l'utente a un gate (prezzi L1/L2/L3), all'audit o a una pratica usa
-`get_actor_user_id(request)`: con lo scope, il gate legge il `None` del superuser
-come «chiamata senza utente» e lo blocca.
+⛔ **Perimetro ≠ attore.** `get_scope_user_id` serve **solo alle letture**: è
+l'utente da cui il database risolve il perimetro. Una scrittura che passa
+l'utente a un gate (prezzi L1/L2/L3), all'audit o a una pratica usa
+`get_actor_user_id(request)`. Oggi i due danno lo stesso id; fino al 2026-11-24
+lo scope valeva `None` per il superuser Django, e un gate che lo riceveva lo
+leggeva come «chiamata senza utente».
+
+⛔ **Un perimetro senza utente si rifiuta** (dal 2026-11-24). `auth_user_id=None`
+che arriva al filtro di scope (`fetch_emittenti_scope_ids`, e quindi
+`add_emittente_scope_condition`) solleva `E_SCOPE_SENZA_UTENTE`: prima voleva dire
+«nessuna restrizione», e un chiamante che dimenticava l'argomento leggeva tutti gli
+emittenti senza errore (il tool AI di ricerca contratti, corretto lo stesso giorno). I
+metodi di lista con perimetro **non hanno default** per `auth_user_id`. Il `None` che
+il DB restituisce dalle funzioni di scope (admin globale) è un'altra cosa e resta
+«nessuna restrizione». Eccezione dichiarata (brief-db-porte-aperte-dalla-sola-guc §4.7):
+i verbi del lotto (`numera_lotto`, `ristampa_lotto`, `finestra_numerazione`) tengono il
+default, e con `None` sollevano da `get_lotto`. ⛔ `VenditeRepository.get_fattura_testata`
+non è più un'eccezione (dal 2026-11-24, D-K6 a): il suo ramo che con `None` saltava il
+filtro serviva al motore documentale del worker della coda stampa, che ora passa il suo
+utente tecnico.
+`PermissionResolver.get_emittenti_sr_ids` / `get_emittenti_pk_ids` (sotto) ricevono un
+utente e delegano a `fetch_emittenti_scope_ids` con `user.id`, tenendo la cache della
+richiesta (dal 2026-11-24, D-K5 a): un utente assente o anonimo è lo stesso rifiuto.
 
 Usare `get_emittenti_sr_ids` (filtra su `*_soggetto_ruolo_id`, convenzione SR)
 o `get_emittenti_pk_ids` (filtra su `emittente_fiscale_id` PK) secondo la colonna.
@@ -2698,8 +2760,8 @@ Stessa forma di `pgtap-baseline.sh`: non-verde **noto** → silenzio, **nuovo** 
    `unita_di_lavoro=UnitaDiLavoro.A_PASSI` e si registra in `test_unita_di_lavoro.py`
    (§Idempotency-Key)
 7. Per GET: usare `success_response()`; per le liste la finestra si legge con
-   `pagina_da_query` (o `parse_list_params`) e l'envelope si costruisce con
-   `envelope_da_offset` (o direttamente dal BB `fetch_paged_with_total`), §Paginazione
+   `pagina_da_query` (o `parse_list_params`), le righe e il totale vengono dal BB
+   `fetch_paged_with_total` e l'envelope si costruisce con `pagina_con_totale`, §Paginazione
 8. Aggiungere `@extend_schema` con `request` e `responses`. Lo schema del **corpo** di una
    scrittura si legge dal contratto del service con `schema_da_contratto` (chiavi ammesse +
    dizionario dei tipi del dominio): una chiave senza tipo è un errore all'import.

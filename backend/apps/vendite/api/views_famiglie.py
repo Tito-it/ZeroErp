@@ -31,7 +31,6 @@ from apps.core.api.base_views import AdminAPIView, DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
-    paginated_envelope,
     parse_list_params,
     qp_bool_optional,
 )
@@ -41,6 +40,7 @@ from apps.ui.api.export_helpers import build_export_response, parse_export_forma
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.services.famiglie_service import FamiglieDocumentoService
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
+from apps.core.services.list_helpers import pagina_con_totale
 
 # Il codice della lista a catalogo. ⚠️ Vive in una costante perche' lo leggono
 # in tre: la lista, l'export e — indirettamente — il presidio di copertura.
@@ -109,7 +109,7 @@ class ApiFamiglieList(AdminAPIView):
             limit=p["limit"], offset=p["offset"],
             order_by=p["order_by"], order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         operation_id="vendite_famiglie_create",

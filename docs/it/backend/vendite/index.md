@@ -57,7 +57,7 @@
 - [fn_generate_fatture_righe](manual/fn_generate_fatture_righe.md) — Generare in Django le righe fattura a partire da attivita_fatturabili lockate sul lotto.
 - [fn_group_attivita_fatturabili](manual/fn_group_attivita_fatturabili.md) — Costruire in Django la chiave di aggregazione delle attivita fatturabili.
 - [fn_prepare_sdi_payload_lotto](manual/fn_prepare_sdi_payload_lotto.md) — Reperire dal database il dataset SDI di un lotto, aprendo/riusando i tentativi di invio e restituendo le righe da usare per la generazione file.
-- [fn_reset_lotto_draft](manual/fn_reset_lotto_draft.md) — Eseguire il reset tecnico di un lotto MASSIVO in DRAFT invocando la funzione DB.
+- [fn_reset_lotto_draft](manual/fn_reset_lotto_draft.md) — Annullare un lotto in DRAFT invocando la funzione DB, da pipeline_service.fn_annulla_lotto_da_draft.
 - [fn_reset_lotto_fattura_draft](manual/fn_reset_lotto_fattura_draft.md) — Eseguire il reset tecnico di una singola fattura in un lotto MASSIVO DRAFT.
 - [modello-contratti](manual/modello-contratti.md) — Un contratto e' un accordo cliente-fornitore che fissa **come si prezza** un articolo per un cliente specifico, su una specifica utility, per un periodo di validita'. E' il ponte tra:
 - [offerte_service](manual/offerte_service.md) — Facade applicativa CRUD per vendite.offerte_commerciali + eccezioni (mirror di contratti_righe) + utility 1:1 (estensione contratti_utilities), con gestione della state machine di processo (BOZZA / EMESSA / ACCETTATA /…

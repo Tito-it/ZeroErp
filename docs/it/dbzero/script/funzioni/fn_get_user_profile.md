@@ -232,23 +232,34 @@ BEGIN
       INTO v_soggetto
       FROM script.fn_get_soggetto_dati_by_ruolo(v_soggetto_ruolo_id) t;
 
-    -- 3. Risolve emittente fiscale (priorita' whitelist -> gestore)
+    -- 3. L'emittente CONFIGURATO dell'utente: la sua riga di
+    --    config.user_emittenti_fiscali, al piu' una
+    --    (uq_user_emittenti_fiscali_auth_user). Senza riga: NULL.
     --    ⚠️ Fase 1 cantiere emittente (2026-08-02):
     --    emittente_descrizione viene dalla ragione sociale del
-    --    SOGGETTO dell'emittente, non piu' da ef.descrizione. I
-    --    due rami del UNION ALL joinano entrambi soggetti_ruoli ->
-    --    soggetti: il tipo resta text in tutti e due, quindi il
-    --    UNION non cambia forma.
+    --    SOGGETTO dell'emittente, non da ef.descrizione.
+    --    ⛔ Rev 2026-11-25 (brief-db-emittente-del-super-admin,
+    --    R-DB-2): esce il ripiego sul gestore globale (la riga di
+    --    anagrafiche.emittenti_fiscali_billing_account con BA NULL e
+    --    is_default). Chi non aveva una riga di permesso riceveva
+    --    il gestore globale COME SE FOSSE il suo emittente: il super
+    --    admin, e l'operatore non ancora configurato, a cui i form
+    --    proponevano di scrivere su un'azienda non sua. Il gestore
+    --    globale non e' un ripiego per chi agisce (decisione di Tid,
+    --    2026-11-25). Il blocco descrive l'utente, non la sessione:
+    --    non segue l'emittente attivo (app.current_emittente_id), e
+    --    l'emittente di chi agisce resta
+    --    script.fn_resolve_emittente_for_user.
     v_emittente := NULL;
 
-    SELECT x.user_emittente_fiscale_id,
-           x.emittente_fiscale_id,
-           x.emittente_fiscale_uid,
-           x.emittente_codice,
-           x.emittente_descrizione,
-           x.emittente_soggetto_ruolo_id,
-           x.regime_fiscale_rf,
-           x.valuta_id
+    SELECT uef.id,
+           ef.id,
+           ef.uid,
+           ef.codice,
+           s_ef.ragione_sociale_completa,
+           ef.soggetto_ruolo_id,
+           ef.regime_fiscale_rf,
+           ef.valuta_id
       INTO v_uef_id,
            v_ef_id,
            v_ef_uid,
@@ -257,59 +268,15 @@ BEGIN
            v_ef_sr_id,
            v_ef_regime,
            v_ef_valuta_id
-      FROM (
-          SELECT *
-            FROM (
-                SELECT 1 AS priorita,
-                       uef.id  AS user_emittente_fiscale_id,
-                       ef.id   AS emittente_fiscale_id,
-                       ef.uid  AS emittente_fiscale_uid,
-                       ef.codice AS emittente_codice,
-                       s_ef.ragione_sociale_completa AS emittente_descrizione,
-                       ef.soggetto_ruolo_id AS emittente_soggetto_ruolo_id,
-                       ef.regime_fiscale_rf,
-                       ef.valuta_id
-                  FROM config.user_emittenti_fiscali uef
-                  JOIN anagrafiche.emittenti_fiscali ef
-                    ON ef.id = uef.emittente_fiscale_id
-                  LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
-                    ON sr_ef.id = ef.soggetto_ruolo_id
-                  LEFT JOIN anagrafiche.soggetti s_ef
-                    ON s_ef.id = sr_ef.soggetto_id
-                 WHERE uef.auth_user_id = p_auth_user_id
-                   AND ef.attivo = true
-                 ORDER BY uef.id
-                 LIMIT 1
-            ) whitelist
-
-          UNION ALL
-
-          SELECT *
-            FROM (
-                SELECT 2 AS priorita,
-                       NULL::bigint AS user_emittente_fiscale_id,
-                       ef.id   AS emittente_fiscale_id,
-                       ef.uid  AS emittente_fiscale_uid,
-                       ef.codice AS emittente_codice,
-                       s_ef.ragione_sociale_completa AS emittente_descrizione,
-                       ef.soggetto_ruolo_id AS emittente_soggetto_ruolo_id,
-                       ef.regime_fiscale_rf,
-                       ef.valuta_id
-                  FROM anagrafiche.emittenti_fiscali_billing_account efba
-                  JOIN anagrafiche.emittenti_fiscali ef
-                    ON ef.soggetto_ruolo_id = efba.emittente_soggetto_ruolo_id
-                  LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
-                    ON sr_ef.id = ef.soggetto_ruolo_id
-                  LEFT JOIN anagrafiche.soggetti s_ef
-                    ON s_ef.id = sr_ef.soggetto_id
-                 WHERE efba.billing_account_id IS NULL
-                   AND efba.is_default = true
-                   AND ef.attivo = true
-                 LIMIT 1
-            ) fallback
-      ) x
-     ORDER BY x.priorita
-     LIMIT 1;
+      FROM config.user_emittenti_fiscali uef
+      JOIN anagrafiche.emittenti_fiscali ef
+        ON ef.id = uef.emittente_fiscale_id
+      LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+        ON sr_ef.id = ef.soggetto_ruolo_id
+      LEFT JOIN anagrafiche.soggetti s_ef
+        ON s_ef.id = sr_ef.soggetto_id
+     WHERE uef.auth_user_id = p_auth_user_id
+       AND ef.attivo = true;
 
     IF v_ef_id IS NOT NULL THEN
         DECLARE
@@ -352,7 +319,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
-IS 'Profilo utente completo (JSONB). Post Fase 7 step 3 (29-04-2026): rimossa la chiave ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''. Top-level ruolo_applicativo GUC-aware (20260421-05); is_super_admin context-aware (20260421-03/04). Richiede identita OPERATORE (raise E_ADMIN_VALIDAZIONE altrimenti). La chiave emittente.emittente_descrizione porta la ragione_sociale_completa del soggetto emittente (Fase 1 cantiere emittente 2026-08-02: prima leggeva emittenti_fiscali.descrizione nuda, cioe'' l''etichetta interna). La chiave deve_cambiare_password e'' della CREDENZIALE (D-7, rev 2026-09-25): si legge da script.fn_get_deve_cambiare_password, non piu'' dall''identita OPERATORE. ⭐ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): la veste OPERATORE e'' quella di riferimento della credenziale (script.fn_veste_di_riferimento: l''accesa, o la spenta piu'' recente), non una qualunque; spenta si legge solo da attivo (E_UTENTE_DISABILITATO), DISABILITATO non esiste piu'' nella tabella viva. Il segnaposto di E_UTENTE_DISABILITATO e'' lo username. Rev 2026-10-07 (brief-db-veste-utilizzabile, D-4): un solo guard, «la veste OPERATORE e'' utilizzabile oggi» (script.fn_veste_utilizzabile: veste accesa e nelle sue date, soggetto attivo, rapporto attivo e nelle sue date), con un solo codice, E_UTENTE_DISABILITATO; i due codici delle date sono ritirati. La risorsa umana mancante resta E_ADMIN_VALIDAZIONE e viene prima.';
+IS 'Profilo utente completo (JSONB) della credenziale. Richiede l''identita'' OPERATORE e la risorsa umana, altrimenti E_ADMIN_VALIDAZIONE, che viene prima. La veste OPERATORE e'' quella di riferimento della credenziale (script.fn_veste_di_riferimento: l''accesa, o la spenta piu'' recente), e deve essere utilizzabile oggi (script.fn_veste_utilizzabile: veste accesa e nelle sue date, soggetto attivo, rapporto attivo e nelle sue date), altrimenti E_UTENTE_DISABILITATO, col segnaposto lo username. Le chiavi top-level: ruolo_applicativo segue la GUC app.ruolo_applicativo della sessione se c''e'', altrimenti il ruolo dell''identita''; is_super_admin e'' script.fn_is_super_admin, che legge il contesto della sessione. deve_cambiare_password e'' della credenziale (script.fn_get_deve_cambiare_password). Il blocco emittente e'' l''emittente configurato dell''utente, la sua riga di config.user_emittenti_fiscali (al piu'' una), con emittente_descrizione = la ragione_sociale_completa del soggetto emittente; senza riga e'' NULL, anche per il super admin. Non segue l''emittente attivo della sessione: l''emittente di chi agisce e'' script.fn_resolve_emittente_for_user.';
 ```
 
 </div>

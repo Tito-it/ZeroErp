@@ -35,6 +35,14 @@
 -- 27) fn_get_user_profile: il blocco risorse_umane NON porta piu'
 --     `risorse_umane_auth_user_id` (nome vecchio del ponte, portava l'id
 --     dell'identita': tolta il 12-09-2026, 20_code/20260912-24)
+-- Il blocco emittente senza il gestore globale (20261124-14,
+-- brief-db-emittente-del-super-admin R-DB-2). ⭐ Il gestore globale si
+-- COSTRUISCE se manca: senza, i tre casi sarebbero verdi anche col ripiego,
+-- perche' il ripiego non avrebbe niente da restituire.
+-- 28) il presupposto: esiste un gestore globale con l'emittente attivo
+-- 29) operatore configurato: il blocco e' la sua azienda, con la sua riga
+-- 30) operatore senza riga di permesso: il blocco e' NULL, non il gestore
+-- 31) super admin senza riga di permesso: il blocco e' NULL, non il gestore
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -54,7 +62,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(26);
+SELECT plan(30);
 
 -- ============================================================
 -- 0. Setup: raccolta riferimenti da dati esistenti
@@ -354,6 +362,81 @@ SELECT ok(
         ) -> 'risorse_umane' ? 'risorse_umane_auth_user_id'
     ),
     'fn_get_user_profile: il blocco risorse_umane non porta risorse_umane_auth_user_id (20_code/20260912-24)'
+);
+
+-- ============================================================
+-- F. Il blocco emittente senza il gestore globale (20261124-14)
+-- ============================================================
+-- Il gestore globale: si usa quello che c'e', o se ne costruisce uno
+-- (un emittente nuovo, la riga senza BA e predefinita).
+DO $gg$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM anagrafiche.emittenti_fiscali_billing_account g
+                    WHERE g.billing_account_id IS NULL AND g.is_default) THEN
+        INSERT INTO anagrafiche.emittenti_fiscali_billing_account
+               (emittente_soggetto_ruolo_id, billing_account_id, is_default)
+        SELECT e.soggetto_ruolo_id, NULL, true
+          FROM dbops.fn_pgtap_crea_emittente() e;
+    END IF;
+END
+$gg$;
+
+-- I tre utenti, ciascuno in un'istruzione sua: le letture vengono dopo.
+-- ⚠️ Un operatore UMANO legato a un'azienda col verbo (via il builder dello
+--   scope): l'utente tecnico di fn_pgtap_crea_emittente_operatore non ha una
+--   risorsa umana, e il profilo lo rifiuta (E_ADMIN_VALIDAZIONE).
+CREATE TEMP TABLE tmp_emi_configurato AS
+SELECT o.auth_user_id, e.emittente_fiscale_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('profilo con azienda', false) o,
+       dbops.fn_pgtap_crea_emittente() e;
+
+SELECT dbops.fn_pgtap_sposta_scope_operatore(c.auth_user_id, c.emittente_fiscale_id) IS NOT NULL AS scope_spostato
+  FROM tmp_emi_configurato c;
+
+CREATE TEMP TABLE tmp_emi_senza_riga AS
+SELECT o.auth_user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('profilo senza azienda', false) o;
+
+CREATE TEMP TABLE tmp_emi_sa AS
+SELECT o.auth_user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('profilo SA senza azienda', true) o;
+
+-- 28) Il presupposto: col codice di prima, i casi 30 e 31 avrebbero
+--     restituito questo emittente.
+SELECT ok(
+    EXISTS (SELECT 1
+              FROM anagrafiche.emittenti_fiscali_billing_account g
+              JOIN anagrafiche.emittenti_fiscali ef
+                ON ef.soggetto_ruolo_id = g.emittente_soggetto_ruolo_id
+             WHERE g.billing_account_id IS NULL AND g.is_default AND ef.attivo),
+    'fn_get_user_profile: esiste un gestore globale con l''emittente attivo (il ripiego avrebbe da restituire)'
+);
+
+-- 29) L'operatore configurato: la sua azienda, con la sua riga di permesso.
+SELECT is(
+    (SELECT format('%s|%s',
+                   (script.fn_get_user_profile(c.auth_user_id) -> 'emittente' ->> 'emittente_fiscale_id')::bigint
+                       = c.emittente_fiscale_id,
+                   (script.fn_get_user_profile(c.auth_user_id) -> 'emittente' ->> 'user_emittente_fiscale_id') IS NOT NULL)
+       FROM tmp_emi_configurato c),
+    't|t',  -- format() stampa un booleano come t/f
+    'fn_get_user_profile: operatore configurato -> il blocco emittente e'' la sua azienda, con la sua riga'
+);
+
+-- 30) L'operatore senza riga: nessun emittente, non il gestore globale.
+SELECT is(
+    (SELECT jsonb_typeof(script.fn_get_user_profile(s.auth_user_id) -> 'emittente')
+       FROM tmp_emi_senza_riga s),
+    'null',
+    'fn_get_user_profile: operatore senza riga di permesso -> blocco emittente NULL (era il gestore globale)'
+);
+
+-- 31) Il super admin senza riga: nessun emittente, non il gestore globale.
+SELECT is(
+    (SELECT jsonb_typeof(script.fn_get_user_profile(a.auth_user_id) -> 'emittente')
+       FROM tmp_emi_sa a),
+    'null',
+    'fn_get_user_profile: super admin senza riga di permesso -> blocco emittente NULL (era il gestore globale)'
 );
 
 SELECT * FROM finish();

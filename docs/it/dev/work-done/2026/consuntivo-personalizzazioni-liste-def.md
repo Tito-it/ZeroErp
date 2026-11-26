@@ -78,7 +78,43 @@ resa nello slot `cell-{codice}` del caller. Consumatori attuali: `CodaLavoriTab`
 clienti.
 
 Resta aperta solo la domanda di **forma**, non di sostanza: se formalizzarlo come
-`tipo_colonna='composta'` insieme a DEF-7. Vedi il backlog.
+`tipo_colonna='composta'` insieme a DEF-7.
+
+> ⚠️ **Superato il 2026-08-22**: la domanda di forma si è chiusa con DEF-7 (sotto).
+> Il pattern composte è una regola scritta del generatore di seed
+> ([piano-migrazione-primevue-5.md](../../work-in-progress/piano-migrazione-primevue-5.md)
+> §8-bis), e non si introduce nessun `tipo_colonna` nuovo.
+
+### DEF-7 — Colonne calcolate lato client ⚪ chiusa, non necessaria (2026-08-22)
+
+*Spostata qui dal documento delle voci aperte il 2026-11-25.*
+
+**Cosa chiedeva.** Informazioni che non esistono come colonna nella view SQL ma
+si derivano (es. «giorni alla scadenza» = `CURRENT_DATE - data_scadenza`),
+dichiarate a **dato** con `tipo_colonna='calcolata'` + `formula_client` e un
+registry di funzioni lato Vue.
+
+**Perché si chiude.** Il gemello DEF-10 si è risolto col pattern composte:
+`campo_sorgente` vuoto a catalogo + slot `cell-{codice}` nel caller. Una colonna
+«giorni alla scadenza» si scrive già così, senza `formula_client` e senza registry.
+Le sole due cose che `tipo_colonna='calcolata'` avrebbe aggiunto non reggono il
+proprio costo:
+
+1. **Dichiarare la formula a dato invece che a codice.** La formula la scrive
+   comunque uno sviluppatore; a codice è tipizzata, testabile e versionata con il
+   caller, a dato diventa una micro-lingua da progettare, validare e mantenere.
+2. **Renderla esportabile.** L'export è lato BE: la formula andrebbe scritta anche
+   in Python, cioè due verità sullo stesso valore. L'alternativa coerente — non
+   esportabile, come `tipo_colonna='azione'` — è già ciò che fa il pattern
+   composte.
+
+In più, **ordinare** un valore calcolato lato FE richiederebbe calcolarlo su tutte
+le pagine, incompatibile con LIMIT/OFFSET.
+
+**Conseguenza operativa.** Nessuna riga con `tipo_colonna='calcolata'` va seedata.
+Una colonna derivata si fa con lo slot del caller; se deve essere **ordinabile o
+esportabile**, non è una colonna calcolata: è una colonna che manca nella
+`vista_sql` e va chiesta al team DB.
 
 ## 3. Le convenzioni acquisite (valgono per ogni lista nuova)
 

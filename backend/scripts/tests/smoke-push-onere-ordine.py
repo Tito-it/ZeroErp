@@ -90,7 +90,7 @@ with transaction.atomic():
     with connection.cursor() as cur:
         # RLS: ordini e commesse sono scoped per emittente (senza GUC operatore
         # le SELECT tornano vuote e sembrano un dato).
-        apri_contesto_smoke(cur)
+        auth_user_id = apri_contesto_smoke(cur)
 
         cur.execute(
             """
@@ -197,7 +197,7 @@ with transaction.atomic():
           f"ordine={ordine_letto} e_onere={[r['e_onere'] for r in righe]}")
 
     # 5) La stampa legge la stessa lettura: stesso ordine, nessun riordino suo.
-    ctx = OrdineDocumentContextBuilder().build_context(ordine_id)
+    ctx = OrdineDocumentContextBuilder().build_context(ordine_id, auth_user_id=auth_user_id)
     stampa = [r["id"] for r in ctx["righe"]]
     check("5) stampa della conferma d'ordine: stesso ordine della lettura",
           stampa == [riga_merce, riga_onere], f"ordine={stampa}")

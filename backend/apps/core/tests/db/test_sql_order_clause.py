@@ -21,7 +21,7 @@
 2. test_colonna_fuori_whitelist_e_rifiutata          (decisione Tid 2026-10-20)
 3. test_il_tiebreak_segue_la_direzione_primaria
 4. test_il_tiebreak_non_si_ripete_quando_e_gia_la_colonna
-5. test_le_colonne_data_partono_desc          (regola Tid 2026-09-02)
+5. test_una_colonna_data_senza_verso_va_asc   (regola date DESC ritirata, Tid 2026-11-24)
 6. test_una_direzione_esplicita_vince_anche_su_una_colonna_data
 7. test_default_clause_non_prende_una_seconda_direzione
 8. test_default_e_default_clause_si_escludono
@@ -31,9 +31,7 @@
 12. test_una_direzione_estranea_e_rifiutata_su_ogni_ramo (2026-09-26)
 13. test_la_direzione_assente_prende_il_default_su_ogni_ramo
 14. test_la_colonna_di_default_indicata_prende_il_verso_del_default (2026-10-20)
-15. test_una_colonna_data_per_nome_parte_desc (2026-10-20, inferenza dal nome)
 16. test_la_coda_resta_crescente_sul_suo_default
-17. test_e_chiave_data_riconosce_la_convenzione_e_non_i_falsi_amici
 18. test_direzione_lista_rifiuta_fuori_whitelist (BB `sql_order_direction_lista`)
 19. test_direzione_lista_default_per_chiave_o_espressione
 20. test_direzione_lista_e_la_stessa_regola_di_sql_order_clause
@@ -45,7 +43,6 @@ import unittest
 
 from apps.core.db._helpers import (
     colonna_ordinamento,
-    e_chiave_data,
     sql_order_clause,
     sql_order_direction_lista,
 )
@@ -101,33 +98,32 @@ class SqlOrderClauseTests(unittest.TestCase):
         )
         self.assertEqual(clausola, "s.id ASC NULLS FIRST")
 
-    def test_le_colonne_data_partono_desc(self) -> None:
-        # ⭐ Regola di Tid del 2026-09-02: «gli ordinamenti per data hanno sempre
-        #    default DESC». Una data si legge dalla piu' recente.
-        clausola = sql_order_clause(
-            "data_evento", None,
-            colonne=_COLONNE, default="t.codice", tiebreak="t.id",
-            colonne_desc={"data_evento"},
-        )
-        self.assertEqual(clausola, "t.data_evento DESC NULLS LAST, t.id DESC")
-        # E una colonna NON data resta ASC: la regola vale per le date, non per
-        # tutto — altrimenti sarebbe `default_desc` con un altro nome.
-        clausola_codice = sql_order_clause(
-            "codice", None,
-            colonne=_COLONNE, default="t.codice", tiebreak="t.id",
-            colonne_desc={"data_evento"},
-        )
-        self.assertEqual(clausola_codice, "t.codice ASC NULLS FIRST, t.id ASC")
+    def test_una_colonna_data_senza_verso_va_asc(self) -> None:
+        # ⛔ Nessuna colonna ha un verso di partenza proprio (Tid, 2026-11-24):
+        #    la regola «le date partono DESC» (2026-09-02) e' ritirata insieme
+        #    al suo gemello del frontend, che faceva dire alla freccia un verso
+        #    diverso da quello inviato. Una data chiesta senza verso va ASC come
+        #    ogni altra colonna, anche quando il NOME la dice data.
+        colonne = {"codice": "t.codice", "data_evento": "t.data_evento",
+                   "data_insert": "t.data_insert", "inviato_at": "t.inviato_at",
+                   "valido_al": "t.valido_al"}
+        for chiave in ("data_evento", "data_insert", "inviato_at", "valido_al", "codice"):
+            with self.subTest(chiave=chiave):
+                self.assertEqual(
+                    sql_order_clause(chiave, None, colonne=colonne, default="t.codice", tiebreak="t.id"),
+                    f"{colonne[chiave]} ASC NULLS FIRST, t.id ASC",
+                )
 
     def test_una_direzione_esplicita_vince_anche_su_una_colonna_data(self) -> None:
-        # ⚠️ Senza questo, l'operatore non potrebbe INVERTIRE l'ordine di una
-        #    colonna data: il secondo click resterebbe DESC come il primo.
-        clausola = sql_order_clause(
-            "data_evento", "asc",
-            colonne=_COLONNE, default="t.codice", tiebreak="t.id",
-            colonne_desc={"data_evento"},
-        )
-        self.assertEqual(clausola, "t.data_evento ASC NULLS FIRST, t.id ASC")
+        for verso, attesa in (("asc", "ASC NULLS FIRST, t.id ASC"), ("desc", "DESC NULLS LAST, t.id DESC")):
+            with self.subTest(verso=verso):
+                self.assertEqual(
+                    sql_order_clause(
+                        "data_evento", verso,
+                        colonne=_COLONNE, default="t.codice", tiebreak="t.id",
+                    ),
+                    f"t.data_evento {attesa}",
+                )
 
     def test_default_clause_non_prende_una_seconda_direzione(self) -> None:
         # 🔴 Difetto reale della prima stesura del BB, trovato in giornata: un
@@ -218,9 +214,9 @@ class SqlOrderClauseTests(unittest.TestCase):
                 self.assertEqual(
                     sql_order_clause(
                         "data_evento", assente, colonne=_COLONNE, default="t.codice",
-                        tiebreak="t.id", colonne_desc=("data_evento",),
+                        tiebreak="t.id",
                     ),
-                    "t.data_evento DESC NULLS LAST, t.id DESC",
+                    "t.data_evento ASC NULLS FIRST, t.id ASC",
                 )
                 self.assertEqual(
                     sql_order_clause(
@@ -259,47 +255,21 @@ class SqlOrderClauseTests(unittest.TestCase):
             "t.data_evento ASC NULLS FIRST, t.id ASC",
         )
 
-    # 15. ⭐ La data si riconosce dal NOME: senza `colonne_desc` una chiave
-    #     `data_*`, `*_at`, `valido_*`... parte DESC; una non-data resta ASC.
-    def test_una_colonna_data_per_nome_parte_desc(self) -> None:
-        colonne = {"codice": "t.codice", "data_insert": "t.data_insert",
-                   "inviato_at": "t.inviato_at", "valido_al": "t.valido_al"}
-        for chiave in ("data_insert", "inviato_at", "valido_al"):
-            with self.subTest(chiave=chiave):
-                self.assertEqual(
-                    sql_order_clause(chiave, None, colonne=colonne, default="t.codice", tiebreak="t.id"),
-                    f"{colonne[chiave]} DESC NULLS LAST, t.id DESC",
-                )
-        self.assertEqual(
-            sql_order_clause("codice", None, colonne=colonne, default="t.data_insert", tiebreak="t.id"),
-            "t.codice ASC NULLS FIRST, t.id ASC",
-        )
-
     # 16. Una CODA si apre crescente sulla sua data di default (`default_desc`
-    #     False), anche quando `order_by` la nomina; un'altra data parte DESC.
+    #     False), anche quando `order_by` la nomina; e un'altra data senza
+    #     verso va ASC anch'essa: non eredita niente dal default.
     def test_la_coda_resta_crescente_sul_suo_default(self) -> None:
         colonne = {"data_scadenza": "v.data_scadenza", "data": "v.data"}
         self.assertEqual(
             sql_order_clause("data_scadenza", None, colonne=colonne, default="v.data_scadenza",
-                             tiebreak="v.id", colonne_desc=("data", "data_scadenza")),
+                             tiebreak="v.id"),
             "v.data_scadenza ASC NULLS FIRST, v.id ASC",
         )
         self.assertEqual(
-            sql_order_clause("data", None, colonne=colonne, default="v.data_scadenza", tiebreak="v.id"),
-            "v.data DESC NULLS LAST, v.id DESC",
+            sql_order_clause("data", None, colonne=colonne, default="v.data_scadenza",
+                             tiebreak="v.id", default_desc=True),
+            "v.data ASC NULLS FIRST, v.id ASC",
         )
-
-    # 17. La convenzione dei nomi data, e i nomi che le somigliano senza esserlo
-    #     (trovati nell'inventario del 2026-10-20).
-    def test_e_chiave_data_riconosce_la_convenzione_e_non_i_falsi_amici(self) -> None:
-        for chiave in ("data", "data_insert", "data_scadenza", "generato_at", "valido_dal",
-                       "valido_al", "validita_al", "competenza_mese"):
-            with self.subTest(data=chiave):
-                self.assertTrue(e_chiave_data(chiave))
-        for chiave in ("codice", "user_insert", "presidia_data_documento",
-                       "scadenza_numero_rata", "originale", "totale", ""):
-            with self.subTest(non_data=chiave):
-                self.assertFalse(e_chiave_data(chiave))
 
     # 18. ⛔ Una chiave FUORI whitelist e' rifiutata anche dal BB della sola
     #     direzione (2026-10-20): prima ripiegava sul verso del default.
@@ -311,7 +281,7 @@ class SqlOrderClauseTests(unittest.TestCase):
         self.assertEqual(
             sql_order_direction_lista(None, None, colonne=colonne, default_desc=True), "DESC NULLS LAST",
         )
-        self.assertEqual(sql_order_direction_lista("data", None, colonne=colonne), "DESC NULLS LAST")
+        self.assertEqual(sql_order_direction_lista("data", None, colonne=colonne), "ASC NULLS FIRST")
         self.assertEqual(sql_order_direction_lista("codice", None, colonne=colonne), "ASC NULLS FIRST")
         # La direzione esplicita vince, e una estranea e' rifiutata su ogni ramo.
         self.assertEqual(sql_order_direction_lista("data", "asc", colonne=colonne), "ASC NULLS FIRST")

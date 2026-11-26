@@ -28,6 +28,7 @@ DECLARE
     v_dati_societari_policy       config.tipi_soggetto_dettaglio.dati_societari_policy%TYPE;
     v_tipo_contatto_id            config.tipi_contatti.id%TYPE;
     v_soggetto_id                 anagrafiche.soggetti.id%TYPE;
+    v_vincolo                     pg_catalog.pg_constraint.conname%TYPE;
 BEGIN
     -- Validazione parametri obbligatori
     IF p_ragione_sociale IS NULL OR TRIM(p_ragione_sociale) = '' THEN
@@ -87,21 +88,12 @@ BEGIN
         );
     END IF;
 
-    -- Tipo contatto: fallback al primo dalla tabella se non fornito
+    -- Tipo contatto: quello detto dal chiamante, altrimenti quello proposto
+    -- (D-T5-6 b), che valida e non ripiega. ⛔ Non «il primo per id».
     v_tipo_contatto_id := COALESCE(
         p_tipo_contatto_id,
-        (SELECT id FROM config.tipi_contatti ORDER BY id LIMIT 1)
+        script.fn_tipo_contatto_proposto_id('anagrafiche.fn_crea_soggetto_pg')
     );
-
-    IF v_tipo_contatto_id IS NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'database', 'anagrafiche.fn_crea_soggetto_pg',
-            'E_ADMIN_VALIDAZIONE',
-            jsonb_build_object('parametro', 'p_tipo_contatto_id'),
-            NULL::uuid,
-            'Tipo contatto obbligatorio e nessun tipo contatto trovato in config.tipi_contatti.'
-        );
-    END IF;
 
     -- Stato (nazionalita). Rev 2026-10-18 (D-1 di Tid): quello detto dal
     -- chiamante, cercato dal BB che rifiuta un codice con piu' stati
@@ -127,55 +119,48 @@ BEGIN
         );
     END IF;
 
-    -- Guard unicita CF/PIVA per stato (se forniti)
-    IF p_codice_fiscale IS NOT NULL AND TRIM(p_codice_fiscale) <> '' THEN
-        IF EXISTS (
-            SELECT 1 FROM anagrafiche.soggetti
-             WHERE stato_id = v_stato_id
-               AND id_fiscale_univoco_cf_piva = UPPER(TRIM(p_codice_fiscale))
-        ) THEN
+    -- Step 1: Creazione soggetto (Persona Giuridica)
+    -- ⭐ Rev 20261123-56 (S4, brief-db-revisione-anagrafiche §20):
+    --   - CF e P.IVA passano come arrivano: li normalizza
+    --     trgfn_soggetti_normalize (a01), una regola sola (D-T5-2 a);
+    --   - il doppione lo dice l'indice uq_soggetto_idstato_id_fiscale_univoco,
+    --     sulla coppia (stato, CF + P.IVA). Il pre-controllo di prima
+    --     guardava un campo per volta: diceva altro dall'indice, e il
+    --     doppione che gli sfuggiva arrivava come 23505 senza codice. Qui
+    --     la violazione di QUELL'indice (per nome) diventa
+    --     E_ADMIN_CF_DUPLICATO, anche nella corsa fra due creazioni; ogni
+    --     altra violazione risale com'e'.
+    BEGIN
+        INSERT INTO anagrafiche.soggetti (
+            ragione_sociale, codice_fiscale, partita_iva,
+            stato_id, tipo_soggetto_dettaglio_id, attivo
+        )
+        VALUES (
+            TRIM(p_ragione_sociale),
+            p_codice_fiscale,
+            p_partita_iva,
+            v_stato_id, p_tipo_soggetto_dettaglio_id, true
+        )
+        RETURNING id INTO v_soggetto_id;
+    EXCEPTION
+        WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS v_vincolo = CONSTRAINT_NAME;
+            IF v_vincolo IS DISTINCT FROM 'uq_soggetto_idstato_id_fiscale_univoco' THEN
+                RAISE;
+            END IF;
             PERFORM script.fn_log_and_raise_error(
                 'database', 'anagrafiche.fn_crea_soggetto_pg',
                 'E_ADMIN_CF_DUPLICATO',
-                jsonb_build_object('codice_fiscale', p_codice_fiscale),
-                NULL::uuid, 'Codice fiscale gia'' presente in anagrafica.'
-            );
-        END IF;
-    END IF;
-
-    IF p_partita_iva IS NOT NULL AND TRIM(p_partita_iva) <> '' THEN
-        IF EXISTS (
-            SELECT 1 FROM anagrafiche.soggetti
-             WHERE stato_id = v_stato_id
-               AND id_fiscale_univoco_cf_piva = UPPER(TRIM(p_partita_iva))
-        ) THEN
-            PERFORM script.fn_log_and_raise_error(
-                'database', 'anagrafiche.fn_crea_soggetto_pg',
-                'E_ADMIN_PIVA_DUPLICATA',
-                jsonb_build_object('partita_iva', p_partita_iva),
-                NULL::uuid, 'Partita IVA gia'' presente in anagrafica.'
-            );
-        END IF;
-    END IF;
-
-    -- Step 1: Creazione soggetto (Persona Giuridica)
-    INSERT INTO anagrafiche.soggetti (
-        ragione_sociale, codice_fiscale, partita_iva,
-        stato_id, tipo_soggetto_dettaglio_id, attivo
-    )
-    VALUES (
-        TRIM(p_ragione_sociale),
-        CASE WHEN p_codice_fiscale IS NOT NULL AND TRIM(p_codice_fiscale) <> ''
-             THEN UPPER(TRIM(p_codice_fiscale))
-             ELSE NULL
-        END,
-        CASE WHEN p_partita_iva IS NOT NULL AND TRIM(p_partita_iva) <> ''
-             THEN UPPER(TRIM(p_partita_iva))
-             ELSE NULL
-        END,
-        v_stato_id, p_tipo_soggetto_dettaglio_id, true
-    )
-    RETURNING id INTO v_soggetto_id;
+                jsonb_build_object('campo',          CASE WHEN NULLIF(btrim(p_partita_iva), '') IS NOT NULL THEN 'partita_iva' ELSE 'codice_fiscale' END,
+                                   'vincolo',        v_vincolo,
+                                   'stato_id',       v_stato_id,
+                                   'codice_fiscale', p_codice_fiscale,
+                                   'partita_iva',    p_partita_iva),
+                NULL::uuid,
+                format('Esiste gia'' un soggetto con lo stesso identificativo fiscale nello stesso stato (codice fiscale %s, partita IVA %s)',
+                       COALESCE(NULLIF(btrim(p_codice_fiscale), ''), '-'),
+                       COALESCE(NULLIF(btrim(p_partita_iva), ''), '-')));
+    END;
 
     -- Step 2: Creazione contatto default con tipo_contatto_id
     --         (BB anagrafiche.fn_crea_contatto, rev 2026-10-17)
@@ -212,7 +197,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email character varying, p_codice_fiscale text, p_partita_iva text, p_stato_iso2 character, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character varying, p_pec_fatturazione character varying, p_codice_sdi character varying, p_tipo_contatto_id integer, p_data_costituzione date)
-IS 'Crea soggetto PG o ENC + contatto default con tipo_contatto_id + dati societari (se la natura li pretende o se passati). Una natura base PF (privato, ditta individuale) si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA: la porta e'' fn_crea_soggetto_pf (rev 20261009-28, brief-db-sesso-senza-default). Il sesso non si scrive: per PG ed ENC e'' NULL (sesso_policy NONE). Fallback tipo contatto: primo da config.tipi_contatti. Stato: p_stato_iso2 se detto (script.fn_stato_id_da_iso2, E_STATO_ISO2_AMBIGUO se indica piu'' stati, E_CODICE se nessuno), altrimenti lo stato proposto (script.fn_stato_proposto_id, rev 2026-10-18: via il ripiego a ''IT'' e il parametro soggetto_default_stato_iso2). Default socio_unico e liquidazione da config.parameters. NON crea indirizzi ne assegna ruoli. Rev 20261011-01: i dati societari si scrivono con anagrafiche.fn_scrivi_dati_societari (B-4); REA, capitale e canale FE non si pretendono piu'' qui (li governano la forma giuridica e il canale, B-6/B-7). Brief: brief-db-dati-fiscali-e-societari-del-soggetto. Rev 2026-10-17: il contatto lo scrive il BB anagrafiche.fn_crea_contatto (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 3); comportamento invariato. Rev 20261020-02 (brief-db-dati-societari-in-creazione): p_data_costituzione in coda; quando scrivere i dati societari lo decide anagrafiche.fn_scrivi_dati_societari_alla_nascita, lo stesso BB di fn_crea_soggetto_pf: policy REQUIRED o almeno un campo con un valore; una sezione passata a una natura NONE la rifiuta il guard della natura invece di essere scartata.';
+IS 'Crea un soggetto PG o ENC, il suo contatto di default (anagrafiche.fn_crea_contatto; il tipo di contatto, se non passato, e'' quello proposto (script.fn_tipo_contatto_proposto_id, dal parametro TIPO_CONTATTO_PROPOSTO, senza ripiego)) e i dati societari quando la natura li pretende o se ne riceve almeno un campo (anagrafiche.fn_scrivi_dati_societari_alla_nascita, lo stesso BB di fn_crea_soggetto_pf): una sezione passata a una natura NONE la rifiuta il guard della natura. Una natura base PF (privato, ditta individuale) si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA: la porta e'' fn_crea_soggetto_pf. Il sesso non si scrive. Stato: p_stato_iso2 se detto (script.fn_stato_id_da_iso2: E_STATO_ISO2_AMBIGUO se indica piu'' stati, E_CODICE se nessuno), altrimenti lo stato proposto (script.fn_stato_proposto_id). CF e P.IVA entrano come arrivano: li normalizza trgfn_soggetti_normalize. Il doppione lo dice l''indice uq_soggetto_idstato_id_fiscale_univoco sulla coppia (stato, CF + P.IVA), tradotto in E_ADMIN_CF_DUPLICATO con campo partita_iva se passata, altrimenti codice_fiscale. NON crea indirizzi ne'' assegna ruoli.';
 ```
 
 </div>

@@ -1,0 +1,321 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato e mergiato, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/vendite/20261125-28.
+# LA PRIMITIVA DEL FONDO: I TRE DELETE, IL CRITERIO, IL PERIMETRO SULL'ATTO
+#   vendite.fn_applica_cancellazione_fondo_fattura (nuova)
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §13.2 (giro 8; D-A a, D-T b di Tid).
+#
+# -- PERCHE' -----------------------------------------------------------------
+#   vendite.fn_cancella_fondo_fattura aveva tre chiamanti, ognuno col suo
+#   permesso: l'endpoint (governa_fondo_fattura), pagamenti.fn_annulla_sistemazione
+#   (il livello sull'area pagamenti), vendite.fn_reset_fondi_fattura (il reset
+#   del lotto). Col guard nel verbo, chi annulla una sistemazione dovrebbe avere
+#   anche governa_fondo_fattura. Si separa la primitiva dal verbo pubblico: la
+#   primitiva e' il corpo di prima, senza guard del permesso, SECURITY DEFINER,
+#   col perimetro sull'atto (prima lo dava la row security) e la porta delle
+#   righe contabili SULLA RIGA (la GUC vale l'id dell'atto, non 'on').
+#   Riservata al proprietario in 20261125-22 (D-T b: nasce gia' chiusa).
+#   Corpo dal catalogo di dbdev (vendite.fn_cancella_fondo_fattura, ultimo
+#   changeSet 20260914-06).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261125-11-create-fn-applica-cancellazione-fondo-fattura-mctit.yaml
+
+  - changeSet:
+      id: 20261125-11-create-fn-applica-cancellazione-fondo-fattura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_applica_cancellazione_fondo_fattura: la primitiva del fondo, DEFINER, col
+        perimetro sull'atto e la porta delle righe contabili sulla riga. Brief: brief-db-porte-
+        aperte-dalla-sola-guc §13.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_applica_cancellazione_fondo_fattura(p_source_id vendite.fatture_fondi_fattura_source.id%TYPE)
+               RETURNS TABLE(deleted_righe integer, deleted_fondi integer, deleted_source integer)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente    config.user_override_azioni.auth_user_id%TYPE;
+                  v_atto      vendite.fatture_fondi_fattura_source%ROWTYPE;
+                  v_motivo    text;
+                  v_numero_sorgente text;
+                  v_numero_figlia   text;
+                  v_stato_figlia    config.stati_doc_fiscale.codice_interno%TYPE;
+                  v_sistemazione_id pagamenti.sistemazioni.id%TYPE;
+                  v_causa     text;
+                  v_righe     integer := 0;
+                  v_fondi     integer := 0;
+                  v_source    integer := 0;
+              BEGIN
+                  -- =========================================================
+                  -- La PRIMITIVA del gesto «cancella il fondo» (brief
+                  -- brief-db-porte-aperte-dalla-sola-guc §13, giro 8): i tre DELETE
+                  -- e il criterio, senza guard del permesso. Il permesso lo chiede
+                  -- chi la chiama, ognuno il suo: vendite.fn_cancella_fondo_fattura
+                  -- (governa_fondo_fattura), pagamenti.fn_annulla_sistemazione (il
+                  -- livello sull'area pagamenti), vendite.fn_reset_fondi_fattura
+                  -- dentro i verbi del reset del lotto. Riservata al proprietario
+                  -- (20261125-22): l'app ci arriva solo da quei verbi.
+                  -- ⭐ SECURITY DEFINER, quindi la row security non c'e' piu': il
+                  --   perimetro lo rimette lei, UNA volta, sull'atto (passo 1-bis).
+                  -- =========================================================
+                  v_utente := script.fn_utente_di_sessione('vendite.fn_applica_cancellazione_fondo_fattura');
+
+                  -- =========================================================
+                  -- Scopo:
+                  --   Cancellare un atto di fondo fattura che non e' ancora
+                  --   diventato un fatto — oppure rifiutare, DICENDO perche'.
+                  --   ⭐ Un atto che non e' mai diventato un fatto non lascia
+                  --   una riga di registro: lascia il posto vuoto che aveva
+                  --   prima (G-1, e changeSet 20260821-54 sul reset).
+                  --
+                  -- ⚠️ La tabella NON e' storicizzata: il DELETE e' definitivo.
+                  --   Per il riporto la traccia resta su pagamenti.sistemazioni,
+                  --   che va ad ANNULLATA con il motivo — ed e' la ragione per
+                  --   cui il motivo li' e' obbligatorio.
+                  --
+                  -- ⚠️ Cancellare RIAPRE la rigenerazione automatica: l'«atto
+                  --   unico» di fn_fondo_fattura_proponibile guarda se un atto
+                  --   esiste in qualunque stato, quindi il giro successivo ne
+                  --   rifa' uno leggendo il residuo di adesso. E' il
+                  --   comportamento cercato, ma va detto.
+                  -- =========================================================
+
+                  IF p_source_id IS NULL OR p_source_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_applica_cancellazione_fondo_fattura',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_source_id',
+                                             'valore',    p_source_id),
+                          NULL::uuid,
+                          'vendite.fn_applica_cancellazione_fondo_fattura',
+                          'l''identificativo dell''atto di fondo, che deve essere valorizzato e maggiore di zero');
+                  END IF;
+
+                  -- ── 1. L'atto, e il lucchetto ──────────────────────────
+                  -- ⚠️ FOR UPDATE: due gesti in parallelo sullo stesso atto
+                  --   arriverebbero entrambi ai DELETE, e il secondo
+                  --   cancellerebbe zero righe dicendo di aver fatto qualcosa.
+                  -- ℹ️ Se non trova niente si prosegue: a dirlo e' il predicato,
+                  --   che risponde ATTO_NON_TROVATO. Non si duplica qui il
+                  --   criterio.
+                  SELECT * INTO v_atto
+                    FROM vendite.fatture_fondi_fattura_source
+                   WHERE id = p_source_id
+                     FOR UPDATE;
+
+                  -- ── 1-bis. Il perimetro, sull'atto ──────────────────────
+                  -- ⭐ La stessa regola che la policy di
+                  --   fatture_fondi_fattura_source applicava quando il gesto girava
+                  --   come l'app (l'emittente del suo emittente_soggetto_ruolo_id),
+                  --   con la stessa risposta: fuori perimetro l'atto «non c'e'».
+                  --   Tutto il resto discende dall'atto.
+                  IF FOUND
+                     AND NOT COALESCE(script.fn_check_user_emittente_scope(
+                             v_utente,
+                             script.fn_resolve_emittente_fiscale_id('soggetto_ruolo', v_atto.emittente_soggetto_ruolo_id)),
+                             false) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_applica_cancellazione_fondo_fattura',
+                          'E_FONDO_NON_TROVATO',
+                          jsonb_build_object(
+                              'detail',          'atto di fondo inesistente o fuori perimetro',
+                              'fondo_source_id', p_source_id,
+                              'fuori_perimetro', true),
+                          NULL::uuid,
+                          p_source_id::text);
+                  END IF;
+
+                  -- ── 2. Il predicato, letto UNA VOLTA SOLA ─────────────
+                  -- ⚠️ E' il difetto gia' pagato in Fase C: chiamare il
+                  --   criterio due volte sulla stessa riga vuol dire accettarne
+                  --   meta' e rifiutarne l'altra.
+                  v_motivo := vendite.fn_check_fondo_cancellabile(p_source_id);
+
+                  IF v_motivo IS NOT NULL THEN
+                      IF v_motivo = 'ATTO_NON_TROVATO' THEN
+                          -- ⚠️ «Non esiste» e «non e' tuo» danno lo stesso
+                          --   messaggio di proposito: distinguerli direbbe a chi
+                          --   e' fuori perimetro che quell'atto c'e'. Stessa
+                          --   scelta di E_FATTURA_NON_TROVATA.
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', 'fn_applica_cancellazione_fondo_fattura',
+                              'E_FONDO_NON_TROVATO',
+                              jsonb_build_object(
+                                  'detail',          'atto di fondo inesistente o fuori perimetro',
+                                  'fondo_source_id', p_source_id),
+                              NULL::uuid,
+                              p_source_id::text);
+                      END IF;
+
+                      SELECT COALESCE(f.numero::text, 'in bozza')
+                        INTO v_numero_sorgente
+                        FROM vendite.fatture f
+                       WHERE f.id = v_atto.fattura_sorgente_id;
+
+                      IF v_motivo = 'FIGLIA_CONGELATA' THEN
+                          -- ⚠️ Lo stato puo' restare NULL: la figlia potrebbe non
+                          --   risolversi (cancellata, o invisibile sotto la row
+                          --   security). La frase non lo afferma — dice che il
+                          --   documento non e' piu' modificabile, che e' vero in
+                          --   entrambi i casi — e il contesto porta lo stato per
+                          --   chi legge dbops.error_log.
+                          SELECT COALESCE(f.numero::text, 'in bozza'), s.codice_interno
+                            INTO v_numero_figlia, v_stato_figlia
+                            FROM vendite.fatture f
+                            LEFT JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
+                           WHERE f.id = v_atto.fattura_figlia_id;
+
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', 'fn_applica_cancellazione_fondo_fattura',
+                              'E_FONDO_FIGLIA_CONGELATA',
+                              jsonb_build_object(
+                                  'detail',            'la fattura che ha ricevuto il fondo e'' oltre la soglia di congelamento',
+                                  'fondo_source_id',   p_source_id,
+                                  'fattura_figlia_id', v_atto.fattura_figlia_id,
+                                  'stato_figlia',      v_stato_figlia,
+                                  'soglia',            'congela_fiscale',
+                                  -- Il documento su cui l'errore e' successo, in testa.
+                                  'bersaglio', jsonb_build_array(
+                                      jsonb_build_object('tipo', 'FATTURA',
+                                                         'id',   v_atto.fattura_figlia_id::text))),
+                              NULL::uuid,
+                              COALESCE(v_numero_figlia, 'indicata dall''atto'));
+                      END IF;
+
+                      IF v_motivo = 'SISTEMAZIONE_ATTIVA' THEN
+                          SELECT si.id INTO v_sistemazione_id
+                            FROM pagamenti.sistemazioni si
+                           WHERE si.fondo_source_id = p_source_id;
+
+                          -- ⭐ Il rifiuto NOMINA L'ALTERNATIVA invece dello
+                          --   stato: e' la stessa autocritica scritta nel
+                          --   COMMENT del guard delle sistemazioni.
+                          -- ⛔ Nessun bersaglio: config.tipi_entita non ha un
+                          --   codice per le sistemazioni, e un tipo non
+                          --   dichiarato fa fallire la CI (e in runtime si
+                          --   perderebbe in silenzio).
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', 'fn_applica_cancellazione_fondo_fattura',
+                              'E_FONDO_TRATTENUTO_DA_SISTEMAZIONE',
+                              jsonb_build_object(
+                                  'detail',          'l''atto nasce da una sistemazione: si disfa da li''',
+                                  'fondo_source_id', p_source_id,
+                                  'sistemazione_id', v_sistemazione_id),
+                              NULL::uuid,
+                              COALESCE(v_sistemazione_id::text, 'collegata'));
+                      END IF;
+
+                      -- I tre motivi che parlano di DENARO. La `cause` va nel
+                      -- contesto (e' il vocabolario della macchina) e la frase
+                      -- che una persona legge la compone il ramo qui sotto.
+                      v_causa := CASE v_motivo
+                          WHEN 'ATTO_ESEGUITO'    THEN 'il trasferimento e'' gia'' stato registrato in contabilita'''
+                          WHEN 'RIGA_REGISTRATA'  THEN 'una sua riga contabile risulta gia'' registrata'
+                          WHEN 'CONTABILE_CHIUSA' THEN 'la distinta contabile che lo contiene e'' gia'' chiusa'
+                          -- ⛔ Nessun ELSE muto: un motivo nuovo del predicato
+                          --   deve arrivare qui come frase, non come stringa
+                          --   vuota dentro il messaggio dell'operatore.
+                          ELSE v_motivo
+                      END;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_applica_cancellazione_fondo_fattura',
+                          'E_FONDO_NON_CANCELLABILE',
+                          jsonb_build_object(
+                              'detail',              'atto non cancellabile',
+                              'cause',               v_motivo,
+                              'fondo_source_id',     p_source_id,
+                              'fattura_sorgente_id', v_atto.fattura_sorgente_id,
+                              'bersaglio', jsonb_build_array(
+                                  jsonb_build_object('tipo', 'FATTURA',
+                                                     'id',   v_atto.fattura_sorgente_id::text))),
+                          NULL::uuid,
+                          COALESCE(v_numero_sorgente, 'di origine'), v_causa);
+                  END IF;
+
+                  -- ── 3. I TRE DELETE, nell'ordine che la FK impone ─────
+                  -- ⚠️ Prima le righe contabili: fk_vendite_contabili_righe_fondo_source
+                  --   e' NO ACTION di proposito — cancellare un atto pretende di
+                  --   aver prima cancellato le sue righe, e una FK differita
+                  --   nasconderebbe l'ordine invece di dirlo.
+                  -- ⭐ Rev 2026-09-14 (D17, brief riga-manuale-nasce-abbinata): dal
+                  --   changeSet 20260914-05 il DELETE di una riga contabile passa da
+                  --   pagamenti.trgfn_vendite_contabili_righe_guard_contenuto, che
+                  --   chiede a script.fn_check_riga_contabile_eliminabile — e sotto
+                  --   una GENERATA la risposta e' DISTINTA_NON_MANUALE, perche' quel
+                  --   predicato e' il cestino dell'OPERATORE. Qui non c'e' un
+                  --   operatore: c'e' il giro che ha prodotto quelle righe e che ha
+                  --   gia' letto il SUO criterio (punto 2). Si dichiara «sono io» con
+                  --   la GUC transazionale, e la si RICHIUDE subito dopo: lasciata
+                  --   aperta renderebbe verdi per sottrazione tutti i DELETE
+                  --   successivi della transazione. Stesso contratto di
+                  --   script.fn_change_user_emittenti_scope su
+                  --   zeroerp.allow_user_emittente_delete_override.
+                  -- ⭐ La porta e' SULLA RIGA (giro 8): la GUC vale l'id dell'atto, e il
+                  --   guard apre solo le righe di quell'atto, e solo al proprietario.
+                  -- ⚠️ Una GUC locale segue la transazione (e il savepoint): se il
+                  --   DELETE fallisce, rientra da sola.
+                  PERFORM set_config('zeroerp.allow_contabile_riga_delete_override', p_source_id::text, true);
+
+                  WITH del_cr AS (
+                      DELETE FROM pagamenti.vendite_contabili_righe cr
+                       WHERE cr.fondo_source_id = p_source_id
+                       RETURNING cr.id
+                  )
+                  SELECT COUNT(*)::INTEGER INTO v_righe FROM del_cr;
+
+                  PERFORM set_config('zeroerp.allow_contabile_riga_delete_override', '', true);
+
+                  -- Il fondo APPLICATO alla figlia. ℹ️ Il legame non e' una FK
+                  -- verso l'atto — vendite.fatture_fondi_fattura non ha
+                  -- fondo_source_id — ma la coppia (figlia, sorgente), che e'
+                  -- esattamente come lo scrive fn_applica_fondi_fattura e come
+                  -- lo cancellava fn_reset_fondi_fattura.
+                  IF v_atto.fattura_figlia_id IS NOT NULL THEN
+                      WITH del_ff AS (
+                          DELETE FROM vendite.fatture_fondi_fattura ff
+                           WHERE ff.fattura_id             = v_atto.fattura_figlia_id
+                             AND ff.riferimento_fattura_id = v_atto.fattura_sorgente_id
+                             AND ff.tipo_fondo_fattura_id  = v_atto.tipo_fondo_fattura_id
+                           RETURNING ff.id
+                      )
+                      SELECT COUNT(*)::INTEGER INTO v_fondi FROM del_ff;
+                  END IF;
+
+                  WITH del_src AS (
+                      DELETE FROM vendite.fatture_fondi_fattura_source s
+                       WHERE s.id = p_source_id
+                       RETURNING s.id
+                  )
+                  SELECT COUNT(*)::INTEGER INTO v_source FROM del_src;
+
+                  RETURN QUERY SELECT COALESCE(v_righe, 0),
+                                      COALESCE(v_fondi, 0),
+                                      COALESCE(v_source, 0);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_applica_cancellazione_fondo_fattura(vendite.fatture_fondi_fattura_source.id%TYPE) IS $c$La PRIMITIVA del gesto «cancella il fondo»: cancella un atto di fondo fattura che non e' ancora diventato un fatto, oppure RIFIUTA dicendo perche'. Nessun guard del permesso: lo chiede chi la chiama (vendite.fn_cancella_fondo_fattura con governa_fondo_fattura, pagamenti.fn_annulla_sistemazione col livello TUTTO sull'area pagamenti, vendite.fn_reset_fondi_fattura dentro i verbi del reset del lotto). Riservata al proprietario: EXECUTE revocato all'app. SECURITY DEFINER, quindi rimette il perimetro una volta, sull'atto (l'emittente del suo emittente_soggetto_ruolo_id): fuori perimetro E_FONDO_NON_TROVATO, come un atto che non esiste. ⭐ Si cancella e non si annulla (G-1): un atto che non e' mai diventato un fatto lascia il posto vuoto che aveva prima. ⭐ Il criterio sta in vendite.fn_check_fondo_cancellabile, letto UNA volta e mappato su quattro codici: E_FONDO_NON_TROVATO, E_FONDO_NON_CANCELLABILE per i tre motivi che parlano di denaro (con la cause nel contesto), E_FONDO_FIGLIA_CONGELATA e E_FONDO_TRATTENUTO_DA_SISTEMAZIONE. ⭐ E' la sede UNICA dei tre DELETE, nell'ordine che le FK NO ACTION impongono (righe contabili, fondo applicato, atto). Le righe contabili le cancella sotto una GENERATA, dove il cestino dell'operatore risponde DISTINTA_NON_MANUALE: apre la porta di pagamenti.trgfn_vendite_contabili_righe_guard_contenuto con la GUC zeroerp.allow_contabile_riga_delete_override uguale all'id dell'atto, e la richiude subito dopo; il guard chiede anche il proprietario. ⚠️ La tabella non e' storicizzata: il DELETE e' definitivo. ⚠️ Cancellare RIAPRE la rigenerazione automatica (l'«atto unico» di fn_fondo_fattura_proponibile). brief-db-fondo-fattura-ricalcolo-e-governo D-21; brief-db-porte-aperte-dalla-sola-guc §13 (giro 8).$c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_applica_cancellazione_fondo_fattura(vendite.fatture_fondi_fattura_source.id%TYPE);

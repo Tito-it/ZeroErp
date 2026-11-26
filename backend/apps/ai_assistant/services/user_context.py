@@ -16,33 +16,27 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.permissions_resolver import PermissionResolver
 
 
-# Scopo: Recupera l'emittente_fiscale_id dal profilo utente.
-#        Catena di fallback: attributo diretto → profilo DB → PermissionResolver.
-#        Usato dai tool AI che necessitano del contesto emittente.
-def get_emittente_fiscale_id(request: Any) -> int:
-    user = request.user
-
-    # Fast path: attributo diretto (se arricchito dal middleware)
-    if hasattr(user, "emittente_fiscale_id"):
-        return user.emittente_fiscale_id
-
-    from apps.core.db.core_repository import CoreRepository
-
-    repo = CoreRepository()
-
-    # Fallback 1: profilo utente (emittente e' un blocco annidato)
-    profile = repo.get_user_profile(user.id)
-    emittente = profile.get("emittente") if profile else None
-    if emittente and emittente.get("emittente_fiscale_id"):
-        return int(emittente["emittente_fiscale_id"])
-
-    # Fallback 2: PermissionResolver (componente generico core)
-    emittenti_ids = PermissionResolver.get_emittenti_pk_ids(user)
-    if emittenti_ids:
-        return emittenti_ids[0]
-
-    ErrorManager.raise_error(
+# Scopo: l'emittente su cui LEGGE un tool: quello di chi agisce
+#        (`PermissionResolver.get_emittente_for_user`: l'emittente attivo
+#        validato, poi quello del permesso). La modalita' «tutti gli emittenti»
+#        l'ha gia' fermata il cancello del gemello (`AITool.cancello_del_gemello`);
+#        qui resta solo l'operatore senza emittente assegnato, che non ha niente
+#        da leggere: lo si dice, invece di cercare su un emittente a caso.
+# ⚠️ Chi SCRIVE non passa di qui: usa il BB `emittente_per_scrivere`
+#    (`apps.core.services.perimetro_emittente`), come gli endpoint.
+# ⛔ Fino al 2026-11-25 una catena sua (attributo dell'utente → profilo →
+#    primo degli emittenti visibili): il profilo risponde il gestore globale a chi
+#    non ha una riga di permesso, cioe' al super admin anche con un altro
+#    emittente scelto (E1-2 di brief-be-fe-BB-audit §6.1).
+def emittente_di_lettura(request: Any) -> int:
+    emittente_id = PermissionResolver.get_emittente_for_user(request.user)
+    ErrorManager.require(
+        emittente_id is not None,
         code="E_PRATICA_VALIDATION",
         message="Impossibile determinare l'emittente fiscale dell'operatore.",
         detail="L'operatore non ha emittenti fiscali associati.",
+        function_name="ai_assistant.user_context.emittente_di_lettura",
     )
+    assert emittente_id is not None
+    return emittente_id
+

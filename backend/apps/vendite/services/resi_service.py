@@ -44,6 +44,7 @@ from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bo
 from apps.core.services.fan_out import FanOutRunLogger, run_fan_out
 from apps.core.services.list_helpers import validate_enum_param
 from apps.core.services.payload_helpers import (
+    SIGNED_INT_RE,
     PayloadValidator,
     make_db_errors_translator,
 )
@@ -202,7 +203,7 @@ def list_resi_rows(
     data_da: date | None = None,
     data_al: date | None = None,
     search: str | None = None,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     limit: int,
     offset: int,
     order_by: str = "data",
@@ -353,7 +354,7 @@ def list_da_accreditare(
     etichetta: str | None = None,
     ddt_id: int | None = None,
     ordine_id: int | None = None,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     limit: int,
     offset: int,
     order_by: str = "data",
@@ -404,7 +405,7 @@ def list_da_riconsegnare(
     search: str | None = None,
     ddt_id: int | None = None,
     ordine_id: int | None = None,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     limit: int,
     offset: int,
     order_by: str = "data",
@@ -1183,6 +1184,9 @@ def _riga_fallita(
 #    lavorare un perimetro che nessuno ha chiesto, su un documento fiscale.
 # ⚠️ `bool` e' un `int` in Python: `[True]` passerebbe come riga 1 senza questo
 #    controllo di tipo esplicito.
+# ⛔ Un id in stringa ha la forma `SIGNED_INT_RE` (cifre ASCII), non `isdigit()`:
+#    `"²"` faceva fallire `int()` con un 500, e `"٣"` passava come riga 3
+#    (2026-11-24, brief-be-fe-BB-audit §2.5).
 def _parse_resi_riga_ids(raw: Any) -> tuple[int, ...]:
     fn = f"{_FN}._parse_resi_riga_ids"
     ErrorManager.require(
@@ -1197,7 +1201,7 @@ def _parse_resi_riga_ids(raw: Any) -> tuple[int, ...]:
         valido = (
             isinstance(elemento, int) and not isinstance(elemento, bool)
             and elemento > 0
-        ) or (isinstance(elemento, str) and elemento.strip().isdigit()
+        ) or (isinstance(elemento, str) and SIGNED_INT_RE.fullmatch(elemento.strip()) is not None
               and int(elemento) > 0)
         ErrorManager.require(
             valido,

@@ -77,12 +77,15 @@ class HelperUtenteTests(TestCase):
         )
 
     # Scopo: il perimetro del superuser resta «nessun limite».
-    def test_scope_superuser_resta_none(self):
-        self.assertIsNone(get_scope_user_id(Mock(user=_utente(superuser=True))))
+    # ⛔ Dal 2026-11-24 (D-J) il superuser Django non ha un perimetro suo: lo
+    #    scope e' il suo id, come per chiunque. Era `None`, «nessun limite».
+    def test_scope_superuser_e_il_suo_id(self):
+        self.assertEqual(get_scope_user_id(Mock(user=_utente(superuser=True))), _USER_ID)
         self.assertEqual(get_scope_user_id(Mock(user=_utente(superuser=False))), _USER_ID)
 
 
 class ScrittureAttoreApiTests(JwtMockedApiTest):
+    come_super_admin = True
     def setUp(self) -> None:
         super().setUp()
         cache.clear()
@@ -151,7 +154,8 @@ class ScrittureAttoreApiTests(JwtMockedApiTest):
         svc_cls.return_value.list_contratti.return_value = ([], 0)
         resp = self.client.get(_BASE + "contratti/")
         self.assertEqual(resp.status_code, 200, resp.content)
-        self.assertIsNone(svc_cls.return_value.list_contratti.call_args.kwargs["auth_user_id"])
+        # ⛔ Non piu' `None` (D-J, 2026-11-24): il perimetro e' quello del suo id.
+        self.assertEqual(svc_cls.return_value.list_contratti.call_args.kwargs["auth_user_id"], _USER_ID)
 
     @patch(_AUTH, return_value=_superuser_auth())
     @patch("apps.vendite.api.views_ordini.ordini_service")

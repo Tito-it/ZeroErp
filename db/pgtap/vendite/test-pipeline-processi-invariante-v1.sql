@@ -16,8 +16,14 @@
 --       SEQUENZA dei nomi, che dice quale task e' comparso e se e' nel
 --       posto giusto. Un `jsonb_array_length(...) = N` si romperebbe a
 --       ogni aggiunta senza spiegare ne' quale ne' dove.
+--
+-- rev 2026-11-24 (brief-db-porte-aperte-dalla-sola-guc §4.8, D-I): test 8
+--       e 9, lo specchio di 6 e 7 sul `rollback`. Il task
+--       reset_lotto_draft esce dal registro: un `rollback` che lo
+--       nominasse ancora passerebbe la migrazione (nessuna FK lega le
+--       pipeline al registro) e 6-7 resterebbero verdi.
 -- ------------------------------------------------------------
--- Indice test (1..7):
+-- Indice test (1..9):
 --   1)  step EMESSA MASSIVO (id 3): sequenza fondi -> fondi -> IVA -> scadenze
 --   2)  step EMESSA GIORNALIERO (id 2): stessa sequenza (D-C: corsia riempita)
 --   3)  ordinalita' su ENTRAMBE le corsie EMESSA: scadenze DOPO ricalcolo IVA
@@ -25,6 +31,8 @@
 --   5)  nessuna pipeline attiva con processi vuoti (il difetto che D-C chiude)
 --   6)  ogni task nominato nei processi esiste ed e' attivo nel registry
 --   7)  ogni (pipeline, task) armato ha la sua task_policy attiva
+--   8)  ogni task nominato nel rollback esiste ed e' attivo nel registry
+--   9)  ogni (pipeline, task) di rollback ha la sua task_policy attiva
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -43,13 +51,13 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(7);
+SELECT plan(9);
 
 -- ============================================================
 -- 1-2) Armamento: la sequenza esatta delle due corsie EMESSA.
 --      Le due corsie devono essere gemelle nei `processi`; il
---      `rollback` invece diverge apposta (D-C: la corsia immediata
---      non ha fermata, e una fattura numerata non si resetta).
+--      `rollback` non e' vincolato a esserlo (D-C: la corsia immediata
+--      non ha fermata). Dal 2026-11-24 nessuna delle due ne ha uno.
 -- ============================================================
 SELECT is(
     (SELECT jsonb_path_query_array(processi, '$[*].task')
@@ -161,6 +169,39 @@ SELECT is(
                            AND tp.attivo)),
     0,
     'ogni (pipeline, task) armato ha la sua task_policy attiva');
+
+-- ============================================================
+-- 8-9) Lo stesso, sul `rollback`. Il runner esegue i task di
+--      rollback con lo stesso meccanismo di quelli in avanti: un
+--      nome che il registro non conosce o senza policy si scopre al
+--      primo ritorno indietro. Il caso da cui nascono: il ritiro di
+--      reset_lotto_draft (D-I), tolto dal registro e dalla policy
+--      insieme alla sua voce nel rollback della pipeline 3.
+-- ============================================================
+SELECT is(
+    (SELECT count(*)::int
+       FROM vendite.fatturazione_pipeline p
+       CROSS JOIN LATERAL jsonb_array_elements(p.rollback) AS n(elem)
+      WHERE p.attivo
+        AND NOT EXISTS (SELECT 1
+                          FROM dbops.pipeline_task_registry r
+                         WHERE r.task_code = n.elem ->> 'task'
+                           AND r.attivo)),
+    0,
+    'ogni task di rollback e'' registrato e attivo in dbops.pipeline_task_registry');
+
+SELECT is(
+    (SELECT count(*)::int
+       FROM vendite.fatturazione_pipeline p
+       CROSS JOIN LATERAL jsonb_array_elements(p.rollback) AS n(elem)
+      WHERE p.attivo
+        AND NOT EXISTS (SELECT 1
+                          FROM vendite.fatturazione_pipeline_task_policy tp
+                         WHERE tp.pipeline_id = p.id
+                           AND tp.task_code = n.elem ->> 'task'
+                           AND tp.attivo)),
+    0,
+    'ogni (pipeline, task) di rollback ha la sua task_policy attiva');
 
 SELECT * FROM finish();
 ROLLBACK;

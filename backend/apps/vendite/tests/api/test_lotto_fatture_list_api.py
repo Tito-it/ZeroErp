@@ -54,9 +54,6 @@ _FATTURA_ROW = {
 
 _LIST_RESPONSE = {
     "count": 1,
-    "page": 1,
-    "page_size": 50,
-    "total_pages": 1,
     "results": [_FATTURA_ROW],
 }
 
@@ -64,6 +61,7 @@ _LOTTO_ID = 42
 
 
 class VenditeLottoFattureListApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -164,9 +162,6 @@ class VenditeLottoFattureListApiTests(JwtMockedApiTest):
     def test_list_fatture_senza_filtri_lista_vuota_ok(self, mocked_list, _mock_auth):
         mocked_list.return_value = {
             "count": 0,
-            "page": 1,
-            "page_size": 50,
-            "total_pages": 0,
             "results": [],
         }
         response = self.client.get(self.url)
@@ -195,7 +190,8 @@ class VenditeLottoFattureListApiTests(JwtMockedApiTest):
         kwargs = mocked_list.call_args.kwargs
         self.assertEqual(kwargs["auth_user_id"], 42)
 
-    # Scopo: Superuser passa auth_user_id=None (nessun filtro scope).
+    # Scopo: il superuser Django passa il SUO id, come chiunque: niente piu'
+    #        `None` = «nessun filtro scope» (D-J, 2026-11-24).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate")
     @patch("apps.vendite.api.views.fn_list_lotto_fatture")
     def test_list_fatture_scope_emittente_superuser(self, mocked_list, mock_auth):
@@ -207,4 +203,4 @@ class VenditeLottoFattureListApiTests(JwtMockedApiTest):
         mocked_list.return_value = _LIST_RESPONSE
         self.client.get(self.url)
         kwargs = mocked_list.call_args.kwargs
-        self.assertIsNone(kwargs["auth_user_id"])
+        self.assertEqual(kwargs["auth_user_id"], 1)

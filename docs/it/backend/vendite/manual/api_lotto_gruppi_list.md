@@ -46,8 +46,8 @@ non è passato?»* — e l'ordine alfabetico dello stato metterebbe `ERRORE` **d
 
 ## Output
 
-Envelope lista standard (`count`, `page`, `page_size`, `total_pages`,
-`results`), e **nient'altro** — vedi «L'unione di due fatti» più sotto.
+Envelope di lista `{count, results}` (`pagina_con_totale`,
+[api.md §Paginazione](../../../dev/api.md)), e **nient'altro** — vedi «L'unione di due fatti» più sotto.
 
 | Campo di riga | Cosa |
 |---|---|
@@ -139,6 +139,8 @@ dell'elenco (`lotto_visibile`): lotto non visibile → `404`, non elenco vuoto.
 - 2026-10-21: la finestra passa da `page`/`page_size` a `limit`/`offset`
   (`pagina_da_query`); `page`/`page_size` in query diventano un 400. Envelope
   di risposta invariato.
+- 2026-11-24: la risposta è `{count, results}` (`pagina_con_totale`, D-1 di
+  brief-be-fe-BB-audit): `page`, `page_size` e `total_pages` escono.
 
 ⚠️ **L'esito nasce assente.** Lo scrive `vendite.fn_segna_esito_gruppo_lotto`,
 che il backend chiama dal `_handle_pull_attivita_da_commessa_task`: finché non

@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: il test chiama diretta vendite.fn_cleanup_fatture_by_ids, riservata al proprietario
+--   dal giro 8 + 1-7: l'app ci arriva solo dai verbi del reset del lotto, che la
+--   vogliono dentro un lotto. Il passo che il test usa non sta sul percorso dell'app
+--   (brief-db-porte-aperte-dalla-sola-guc, giro 8 + 1-7, 2026-11-25: scelta di Tid). Il lato
+--   dell'app lo prova vendite/test-porta-reset-lotto-e-fondo-v1.
 -- rev 2026-10-26 (brief-modello-documento-vendita §14, giro 10): test 2, l'annullo «diretto» non e'
 --   piu' un UPDATE dello stato (la porta lo ferma prima, E_DOC_STATO_SOLO_DAL_VERBO, e il motivo D-3
 --   non si vedrebbe): e' il verbo vendite.fn_annulla_commessa senza conferma dei legami, che prova

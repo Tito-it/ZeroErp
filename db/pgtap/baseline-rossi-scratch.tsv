@@ -1,5 +1,4 @@
 # pgtap-runner: app
-db/pgtap/anagrafiche/create-soggetto-gestori.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-fn-sync-auth-user-is-active-or.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-identita-digitali-guard-coerenza.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-identita-digitali-unique-multi-veste.sql	ASSERZIONE
@@ -8,12 +7,10 @@ db/pgtap/config/test-soglia-congelamento-sede-unica.sql	ASSERZIONE
 db/pgtap/script/test-capability-annulla-aspetto-e-stato-leggibile-v1.sql	ASSERZIONE
 db/pgtap/script/test-fn-raise-primo-motivo-se-presente-v1.sql	ASSERZIONE
 db/pgtap/script/test-search-soggetti-universale.sql	ERRORE_FIXTURE
-db/pgtap/script/test-vw-giornale-entita.sql	ERRORE_FIXTURE
 db/pgtap/ui/test-lista-competenza-gruppi-colonna-emittente-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-af-emit-batch-marchio-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-utilities-guard-tipo-classe-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-fn-contratto-righe-preview-nuovi-campi-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-guard-congelamento-fusione-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-numero-prefisso-registro-v1.sql	ASSERZIONE
-db/pgtap/vendite/test-refactor-qta-operativa-preventivi-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-snapshot-indirizzi-fattura-v1.sql	ASSERZIONE

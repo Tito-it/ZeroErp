@@ -69,10 +69,11 @@ class UiRepository:
         #    quindi valeva la pena verificarlo prima di toglierla.
         return jsonb_out(row[0])
 
-    # Scopo: le misure «righe per pagina» ammesse e i due default, per TUTTI i
-    #        paginatori dell'applicazione. Wrapper 1:1 di
-    #        `ui.fn_get_misure_pagina()`: `{misure, default_compatta,
-    #        default_pagina}`. Se un default manca a catalogo la fn solleva
+    # Scopo: le misure «righe per pagina» ammesse e il default di ogni uso,
+    #        per TUTTI i paginatori dell'applicazione. Wrapper 1:1 di
+    #        `ui.fn_get_misure_pagina()`: `{misure, default_per_uso}` (le due
+    #        chiavi `default_compatta`/`default_pagina` sono in ritiro, BE33:
+    #        non si leggono). Se un default manca a catalogo la fn solleva
     #        `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE` (TECNICO): mai un NULL.
     def get_misure_pagina(self) -> dict[str, Any]:
         with connection.cursor() as cursor:
@@ -92,12 +93,11 @@ class UiRepository:
 
     # Scopo: l'utente del contesto di sessione (GUC `app.current_user_id`), cioe'
     #        quello per cui `ha_ricerca_full` e la ricerca vera rispondono. Lo
-    #        legge la guardia di `UiService.get_lista_config_per_video`.
+    #        legge la guardia di `UiService.get_lista_config_per_video`. Una GUC
+    #        che non e' l'id di un utente: `E_SCRIPT_CHIAMATA_NON_VALIDA` dal BB
+    #        DB (BE34 di brief-db-revisione-ui).
     def utente_di_sessione(self) -> int | None:
-        return utente_di_sessione(
-            codice_errore="E_UI_CHIAMATA_NON_VALIDA",
-            function_name="ui_repository.utente_di_sessione",
-        )
+        return utente_di_sessione(function_name="ui_repository.utente_di_sessione")
 
     # Scopo: la `lista_definizione.id` di una lista accesa, dal suo codice,
     #        letta dal BB del DB `ui.fn_lista_da_codice` (U39 di

@@ -8,7 +8,8 @@
 #
 #          1) ba.valuta_id                         (BA presente e valorizzato)
 #          2) emittente fiscale del BA → valuta_id (catena fn_get_emittente_fiscale_pk)
-#          3) emittente fiscale dell'utente → valuta_id (con fallback gestore globale)
+#          3) emittente fiscale di chi agisce → valuta_id (l'emittente scelto in
+#             alto, `PermissionResolver.get_emittente_for_user`; in «tutti» si salta)
 #          4) anagrafiche.gestori.valuta_id        (primo gestore per id)
 #          5) {} se nessuna sorgente
 #
@@ -16,7 +17,7 @@
 #        per il livello 4:
 #          - BillingAccountRepository.get_lookup_by_id    (livello 1)
 #          - BillingAccountRepository.get_emittente_valuta(livello 2)
-#          - ParameterService.get_emittente_fiscale_id_for_user (user → EF)
+#          - PermissionResolver.get_emittente_for_user_id  (user → EF)
 #          - EmittentiFiscaliRepository.get_emittente     (livello 3)
 #          - SELECT primo gestore per id                  (livello 4)
 #
@@ -24,7 +25,12 @@
 #        utente, assente in `fn_get_valuta_id` che riceve l'emittente come
 #        parametro esplicito): il BE form-defaults non ha un emittente del
 #        documento perché il documento non esiste ancora, quindi usa l'EF
-#        utente come proxy. Allineamento al DB sul livello 4 (gestore)
+#        di chi agisce come proxy: e' quello che il trigger
+#        `script.trgfn_default_emittente_fiscale` dara' al documento.
+#        ⛔ Fino al 2026-11-25 era `get_emittente_fiscale_id_for_user`, che al
+#        super admin rispondeva il gestore globale anche con un altro emittente
+#        scelto: la valuta proposta non era quella del documento che nasceva
+#        (E1-4 di brief-be-fe-BB-audit §6.1). Allineamento al DB sul livello 4 (gestore)
 #        deciso 2026-05-29 dopo handoff team DB su dev/db-tid (vedi brief
 #        work-done/brief-db-valuta-offerte-contratti.md).
 # ------------------------------------------------------------
@@ -37,7 +43,7 @@ from django.db import connection
 
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.anagrafiche.db.emittenti_fiscali_repository import EmittentiFiscaliRepository
-from apps.core.services.parameter_service import ParameterService
+from apps.core.services.permissions_resolver import PermissionResolver
 
 
 # Scopo: Risolve la valuta_id di default applicando la catena
@@ -77,9 +83,9 @@ def resolve_valuta_default(
         if emittente_ba:
             return emittente_ba
 
-    # Livello 3: EF dell'utente (con fallback gestore globale per admin globale).
+    # Livello 3: EF di chi agisce (in «tutti gli emittenti» None: si scende al 4).
     if auth_user_id is not None:
-        ef_id = ParameterService().get_emittente_fiscale_id_for_user(auth_user_id)
+        ef_id = PermissionResolver.get_emittente_for_user_id(auth_user_id)
         if ef_id is not None:
             ef = EmittentiFiscaliRepository().get_emittente(ef_id)
             if ef and ef.get("valuta_id") is not None:

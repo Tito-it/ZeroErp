@@ -772,7 +772,7 @@ raggiungeva. ⚠️ Residuo dichiarato: sulle collezioni **senza** `LIMIT` il
 
 ### ✅ D7 — Endpoint senza porta: la decisione — 2026-09-11
 
-[piano-be-fe-endpoint-senza-porta.md](../../work-in-progress/piano-be-fe-endpoint-senza-porta.md) §1,
+[piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md) §1,
 per tutte e tredici le rotte: due famiglie (10 rotte, `/core/email/log/` e
 l'outbox) sono funzioni finite senza porta, **due sono candidate al ritiro**
 (`job-summary`, `manual-lookup`), una è un cantiere dichiarato (N6 dei listini),
@@ -786,7 +786,9 @@ applica gli ambiti `REPARTO`/`OPERATORE`), poi la lista del log con
 (era il dominio «Personale»). Dettaglio:
 [brief-db-email-visibilita-per-ambito.md](brief-db-email-visibilita-per-ambito.md)
 §9.6. L'outbox resta sotto `config` fino all'azione `invia_email`: è nel
-[piano](../../work-in-progress/piano-be-fe-endpoint-senza-porta.md) §2.3 passo 5, non qui.
+[piano](piano-be-fe-endpoint-senza-porta.md) §2.3 passo 5, non qui.
+Dal 2026-11-25 il residuo del piano sta in
+[brief-be-endpoint-senza-porta.md](../../work-in-progress/brief-be-endpoint-senza-porta.md).
 
 ### ✅ D8 — Le view sotto `KeepAlive` — 2026-09-10
 

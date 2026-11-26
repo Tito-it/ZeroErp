@@ -18,9 +18,7 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_natura(p_ti
  STABLE
 BEGIN ATOMIC
  SELECT ti.id,
-     (EXISTS ( SELECT 1
-            FROM config.tipi_soggetto_dettaglio_tipi_indirizzo mo
-           WHERE ((mo.tipo_soggetto_dettaglio_id = fn_tipi_indirizzo_proponibili_natura.p_tipo_soggetto_dettaglio_id) AND (mo.tipo_indirizzo_id = ti.id) AND mo.obbligatorio AND anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(fn_tipi_indirizzo_proponibili_natura.p_tipo_soggetto_dettaglio_id, ti.id, script.fn_data_operativa())))) AS "exists",
+     anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura(fn_tipi_indirizzo_proponibili_natura.p_tipo_soggetto_dettaglio_id, ti.id, script.fn_data_operativa()) AS fn_tipo_indirizzo_obbligatorio_per_natura,
      (jsonb_array_length(c.motivi) = 0),
      ((c.motivi -> 0) ->> 'codice'::text),
      ((c.motivi -> 0) ->> 'reason'::text),
@@ -36,7 +34,7 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_natura(p_tipo_soggetto_dettaglio_id bigint)
-IS 'Il picker dei tipi di indirizzo per un soggetto che non esiste ancora, sulla natura di dettaglio scelta nel form: una riga per tipo di config.tipi_indirizzi, con obbligatorio (riga obbligatoria della matrice che anagrafiche.fn_tipo_indirizzo_ammesso_per_natura ammette oggi), ammesso, il primo motivo (motivo_codice, reason, reason_key, reason_valori) e tutti i motivi. Legge la stessa check della madre singolare, anagrafiche.fn_check_tipo_indirizzo_soggetto_su_contesto, senza tipi presenti: l''unico motivo possibile e'' il tipo che la natura non ammette (E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO). Natura NULL (nessuna natura scelta) o senza matrice: tutti ammessi, come per il guard. Natura che non esiste in config.tipi_soggetto_dettaglio: nessuna riga, come anagrafiche.fn_tipi_indirizzo_proponibili_soggetto per un soggetto che non c''e''. Prima gli ammessi, poi gli altri, per codice interno. Giorno: script.fn_data_operativa().';
+IS 'Il picker dei tipi di indirizzo per un soggetto che non esiste ancora, sulla natura di dettaglio scelta nel form: una riga per tipo di config.tipi_indirizzi, con obbligatorio (anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura, oggi), ammesso, il primo motivo (motivo_codice, reason, reason_key, reason_valori) e tutti i motivi. Legge la stessa check della madre singolare, anagrafiche.fn_check_tipo_indirizzo_soggetto_su_contesto, senza tipi presenti: l''unico motivo possibile e'' il tipo che la natura non ammette (E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO). Natura NULL (nessuna natura scelta) o senza matrice: tutti ammessi, come per il guard. Natura che non esiste in config.tipi_soggetto_dettaglio: nessuna riga, come anagrafiche.fn_tipi_indirizzo_proponibili_soggetto per un soggetto che non c''e''. Prima gli ammessi, poi gli altri, per codice interno. Giorno: script.fn_data_operativa().';
 ```
 
 </div>

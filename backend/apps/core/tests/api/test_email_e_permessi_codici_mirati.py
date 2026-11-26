@@ -21,6 +21,7 @@ Indice test eseguiti:
 4) test_file_dell_allegato_perso_e_500 — riga presente, file assente → E_EMAIL_ALLEGATO_FILE_MANCANTE
 5) test_le_permission_riservate_portano_il_codice_nell_envelope — admin, portale, shop → 403 col codice mirato
 6) test_bozza_senza_azienda_attiva_e_emittente_non_risolto — «Tutti gli emittenti» → 400 E_EMITTENTE_NON_RISOLTO, nessuna bozza
+7) test_bozza_sull_emittente_di_chi_scrive — la bozza prende l'emittente del BB `emittente_per_scrivere`
 """
 
 import json
@@ -50,6 +51,7 @@ from apps.core.services.error_policies import ErrorPolicyRegistry
 _REPO_VIEW = "apps.core.api.email_views.EmailRepository"
 _REPO_SERVICE = "apps.core.services.email_outbox_service.EmailRepository"
 _SERVICE_VIEW = "apps.core.api.email_views.EmailOutboxService"
+_EMITTENTE_DI_CHI_AGISCE = "apps.core.services.perimetro_emittente.PermissionResolver.get_emittente_for_user"
 
 
 # Scopo: La view senza il cancello dei permessi: qui si prova cosa risponde
@@ -149,12 +151,13 @@ class EmailOperatoreNonTrovatoTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_EMAIL_ALLEGATO_FILE_MANCANTE")
         self.assertEqual(ErrorPolicyRegistry.resolve(ctx.exception.code).http_status, 500)
 
-    # Scopo: Senza azienda attiva (modalita' «Tutti gli emittenti»: nessun
-    #        claim) una bozza che non e' di sistema si rifiuta col codice del
-    #        catalogo per questa condizione — lo stesso di ordini e contratti —
-    #        e non arriva al service.
+    # Scopo: Senza azienda attiva (modalita' «Tutti gli emittenti»: il
+    #        resolver risponde None) una bozza che non e' di sistema si rifiuta
+    #        col codice del catalogo per questa condizione — lo stesso di ordini
+    #        e contratti — e non arriva al service.
+    @patch(_EMITTENTE_DI_CHI_AGISCE, return_value=None)
     @patch(_SERVICE_VIEW)
-    def test_bozza_senza_azienda_attiva_e_emittente_non_risolto(self, mock_service):
+    def test_bozza_senza_azienda_attiva_e_emittente_non_risolto(self, mock_service, _resolver):
         request = MagicMock()
         request.method = "POST"
         request.auth = None
@@ -168,6 +171,25 @@ class EmailOperatoreNonTrovatoTests(SimpleTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(json.loads(response.content)["error"]["code"], "E_EMITTENTE_NON_RISOLTO")
         mock_service.return_value.prepare_draft.assert_not_called()
+
+    # Scopo: Con un emittente scelto la bozza nasce su quello, letto dal BB e
+    #        non dal claim del token (fino al 2026-11-25).
+    @patch(_EMITTENTE_DI_CHI_AGISCE, return_value=32)
+    @patch(_SERVICE_VIEW)
+    def test_bozza_sull_emittente_di_chi_scrive(self, mock_service, _resolver):
+        mock_service.return_value.prepare_draft.return_value = {"id": 1}
+        request = MagicMock()
+        request.method = "POST"
+        request.auth = None
+        request.user = MagicMock(id=5)
+        request.body = json.dumps({
+            "codice_template": "T", "destinatario": "a@b.it", "ambito": "OPERATORE",
+        }).encode("utf-8")
+
+        _view(EmailPrepareView).post(request)
+
+        kwargs = mock_service.return_value.prepare_draft.call_args.kwargs
+        self.assertEqual(kwargs["emittente_fiscale_id"], 32)
 
 
 @contextmanager

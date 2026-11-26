@@ -54,7 +54,7 @@ Restituisce l'elenco paginato dei fornitori con ricerca full-text e filtri.
 | `limit` | int | No | Risultati per pagina (default: 25, max: 200) |
 | `offset` | int | No | Offset per paginazione |
 | `order_by` | string | No | Campo di ordinamento (default: `ragione_sociale_completa`) |
-| `order_dir` | string | No | Direzione: `asc` o `desc`. Se omessa: `asc`, salvo le colonne data (`data_insert`, `data_update`) che partono `desc` |
+| `order_dir` | string | No | Direzione: `asc` o `desc`. Se omessa: `asc` su ogni colonna, date comprese (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata) |
 
 **Colonne ordinabili:** `codice`, `ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`,
 `stato_descrizione`, `modalita_pagamento_desc`, `data_insert`, `data_update`
@@ -71,9 +71,6 @@ whitelist ripiega sul default.
 {
   "data": {
     "count": 42,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 2,
     "results": [
       {
         "id": 1,

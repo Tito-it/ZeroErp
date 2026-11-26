@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato su scratch e dbdev, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/anagrafiche/20261123-64.
+# anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori: la frase nomina la
+#   natura, non mostra id. Brief: brief-db-revisione-anagrafiche §20 (T5),
+#   S42 (Tid, 2026-11-23).
+#
+#   Le frasi di E_PIVA_OBBLIGATORIA ed E_CF_OBBLIGATORIO erano «... per tipo
+#   soggetto %s. Soggetto_id %s»: il codice interno della natura e lo uuid
+#   del soggetto, cioe' due id davanti all'operatore. Ora il VARIADIC porta la
+#   descrizione della natura, e il segnaposto e' uno solo (le frasi cambiano
+#   nel CSV dei messaggi nello stesso giro: un segnaposto in piu' o in meno
+#   rompe format(); l'unico chiamante dei due codici e' questo guard,
+#   verificato sul catalogo). L'id resta nel contesto, per il log; il campo
+#   c'era gia'.
+#   La stringa vuota (S20) non arriva piu' qui: la fa NULL
+#   trgfn_soggetti_normalize in a01 (-48), e IS NULL basta.
+#   Corpo da pg_get_functiondef; DECLARE ancorato dove c'e' una colonna.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261123-57-update-trgfn-soggetti-guard-cf-piva-obbligatori-messaggi-mctit.yaml
+
+  - changeSet:
+      id: 20261123-57-update-trgfn-soggetti-guard-cf-piva-obbligatori-messaggi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori: E_PIVA_OBBLIGATORIA ed
+        E_CF_OBBLIGATORIO con la descrizione della natura, senza id nella frase.
+        brief-db-revisione-anagrafiche §20, S42.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_soggetti_guard_cf_piva_obbligatori';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Guard: la PRESENZA di partita_iva e codice_fiscale secondo la natura
+              -- (config.tipi_soggetto_dettaglio.piva_obbligatoria, cf_obbligatorio).
+              -- Il FORMATO lo valida trgfn_soggetti_valida_cf_piva_dispatch; la
+              -- stringa vuota l'ha gia' fatta NULL trgfn_soggetti_normalize (a01).
+              DECLARE
+                  v_piva_obbl  config.tipi_soggetto_dettaglio.piva_obbligatoria%TYPE;
+                  v_cf_obbl    config.tipi_soggetto_dettaglio.cf_obbligatorio%TYPE;
+                  v_cod_int    config.tipi_soggetto_dettaglio.codice_interno%TYPE;
+                  v_natura     config.tipi_soggetto_dettaglio.descrizione%TYPE;
+              BEGIN
+                  -- Senza natura non si impone niente; una natura inesistente la dice la FK.
+                  IF NEW.tipo_soggetto_dettaglio_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT tsd.piva_obbligatoria, tsd.cf_obbligatorio, tsd.codice_interno,
+                         COALESCE(tsd.descrizione, tsd.codice_interno)
+                    INTO v_piva_obbl, v_cf_obbl, v_cod_int, v_natura
+                    FROM config.tipi_soggetto_dettaglio tsd
+                   WHERE tsd.id = NEW.tipo_soggetto_dettaglio_id;
+
+                  IF v_piva_obbl AND NEW.partita_iva IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'trgfn_soggetti_guard_cf_piva_obbligatori',
+                          'E_PIVA_OBBLIGATORIA',
+                          jsonb_build_object(
+                              'campo',                      'partita_iva',
+                              'soggetto_id',                NEW.id,
+                              'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                              'codice_interno',             v_cod_int),
+                          NEW.tx_id,
+                          v_natura);
+                  END IF;
+
+                  IF v_cf_obbl AND NEW.codice_fiscale IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'trgfn_soggetti_guard_cf_piva_obbligatori',
+                          'E_CF_OBBLIGATORIO',
+                          jsonb_build_object(
+                              'campo',                      'codice_fiscale',
+                              'soggetto_id',                NEW.id,
+                              'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                              'codice_interno',             v_cod_int),
+                          NEW.tx_id,
+                          v_natura);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori() IS
+                  'Guard di anagrafiche.soggetti (BEFORE INSERT OR UPDATE OF tipo_soggetto_dettaglio_id, partita_iva, codice_fiscale): la PRESENZA di partita IVA e codice fiscale secondo la natura (config.tipi_soggetto_dettaglio.piva_obbligatoria, cf_obbligatorio). Rifiuti E_PIVA_OBBLIGATORIA ed E_CF_OBBLIGATORIO, col campo; la frase nomina la natura per descrizione, senza id (S42, brief-db-revisione-anagrafiche §20, 2026-11-24). La stringa vuota la fa NULL trgfn_soggetti_normalize (a01); il FORMATO lo valida trgfn_soggetti_valida_cf_piva_dispatch. Senza natura tace.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: il corpo di prima e' quello di 20260808-06, coi due id nella frase.
+              SELECT 1;

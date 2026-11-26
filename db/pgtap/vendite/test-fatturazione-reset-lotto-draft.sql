@@ -99,6 +99,15 @@ SELECT 'RL2', c.*
                                     (SELECT billing_account_id FROM tmp_comm_rl WHERE slot = 'RL1'),
                                     p_con_sorgente_root => true) c;
 
+-- ⭐ rev 2026-11-25 (brief-db-porte-aperte-dalla-sola-guc, giro 8 + 1-7): annullo e «togli la fattura» sono
+--   SECURITY DEFINER e chiede il permesso che l'endpoint controlla (il livello TUTTO sull'area vendite, reset_lotto_fattura_draft). Chi
+--   agisce lo riceve qui; il caso senza permesso lo prova
+--   vendite/test-porta-reset-lotto-e-fondo-v1.
+DO $perm$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_livello_area(current_setting('app.current_user_id')::integer, 'vendite', 'TUTTO');
+  PERFORM dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'reset_lotto_fattura_draft');
+END $perm$;
+
 SELECT plan(16);
 -- ============================================================
 -- 0) Riferimenti e costanti

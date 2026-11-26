@@ -12,7 +12,7 @@
 -- Test: script.fn_crea_utente_tecnico
 -- Brief: brief-db-processi-automatici-identita-e-perimetro §4 (fase 3b)
 --
--- Elenco test (plan 13):
+-- Elenco test (plan 14):
 --  1) la funzione esiste
 --  2) ⛔ PUBLIC non ha EXECUTE sulla fabbrica
 --  3) su un processo eleggibile crea l'utente e ritorna l'auth_user_id
@@ -28,6 +28,10 @@
 -- 13) ⭐ l'emittente passato in MINUSCOLO si trova, e lo username porta il
 --     codice SALVATO (20261104-36): il 3) crea con la sigla in minuscolo, il
 --     10) rifiuta il doppione scritto in maiuscolo
+-- 14) ⭐ il contatto del soggetto di processo ha il tipo PROPOSTO
+--     (script.fn_tipo_contatto_proposto_id, D-T5-6 b, brief-db-revisione-anagrafiche
+--     §20.8): un override per funzione lo porta a REFERENTE, e la fabbrica lo
+--     segue. Con 'PRINCIPALE' scritto nel corpo era rosso
 --
 -- Scopo:
 --  - provare che i CINQUE inserimenti coordinati riescono davvero: e' il test
@@ -59,7 +63,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   scratch ricostruito da zero.
 SET CONSTRAINTS ALL DEFERRED;
 
-SELECT plan(13);
+SELECT plan(14);
 
 -- ============================================================
 -- 1..2. Esistenza e postura dei privilegi
@@ -114,6 +118,17 @@ BEGIN
      LIMIT 1;
 
     PERFORM set_config('pgtap.profilo_non_adhoc', COALESCE(v_profilo, ''), true);
+
+    -- Il tipo di contatto proposto, per questa sola fabbrica: REFERENTE.
+    --   Gli override di oggi non decidono il test, si tolgono.
+    DELETE FROM config.parameter_overrides o
+     USING config.parameters p
+     WHERE p.id = o.parameter_id
+       AND p.code = 'TIPO_CONTATTO_PROPOSTO';
+    INSERT INTO config.parameter_overrides (parameter_id, overridden_value, function_name)
+    SELECT p.id, 'REFERENTE', 'script.fn_crea_utente_tecnico'
+      FROM config.parameters p
+     WHERE p.code = 'TIPO_CONTATTO_PROPOSTO';
 END
 $fixture$;
 
@@ -274,6 +289,25 @@ SELECT is(
       WHERE au.id = current_setting('pgtap.auth_user_id')::integer),
     'PGTAP-FABBRICA-OK@' || current_setting('pgtap.emittente'),
     'lo username porta il codice salvato dell''emittente, non quello passato in minuscolo'
+);
+
+-- ============================================================
+-- 14. ⭐ Il tipo del contatto e' quello proposto
+-- ============================================================
+-- ⛔ Non 'PRINCIPALE' scritto nel corpo: il tipo che si usa quando nessuno lo
+--   dice ha una sede sola, script.fn_tipo_contatto_proposto_id, la stessa delle
+--   due porte di creazione del soggetto. L'override per funzione della fixture
+--   lo porta a REFERENTE.
+SELECT is(
+    (SELECT tc.codice_interno::text
+       FROM anagrafiche.contatti c
+       JOIN config.tipi_contatti tc ON tc.id = c.tipo_contatto_id
+       JOIN anagrafiche.soggetti_ruoli sr ON sr.soggetto_id = c.soggetto_id
+       JOIN anagrafiche.identita_digitali idg ON idg.soggetto_ruolo_id = sr.id
+      WHERE idg.auth_user_id = current_setting('pgtap.auth_user_id')::integer
+        AND c.is_default),
+    'REFERENTE',
+    'il contatto del soggetto di processo ha il tipo proposto (override per funzione)'
 );
 
 SELECT * FROM finish();

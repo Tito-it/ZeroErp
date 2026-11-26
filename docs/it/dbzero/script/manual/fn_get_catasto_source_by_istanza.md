@@ -9,8 +9,8 @@
 >
 **Automazioni collegate (subentro/catasto):**
 >
-Trigger: `anagrafiche.trg_iu_z50_clone_catasto_from_parent_aft_upd` (clonazione catasto da parent)     
-> Trigger: `anagrafiche.trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd` (sync tabella ponte catasto↔indirizzi)    
+Trigger: `anagrafiche.trg_istanze_utilities_z50_clone_catasto_from_parent_ins` e `_upd` (clonazione catasto da parent)     
+> Trigger: `anagrafiche.trg_istanze_utilities_z40_sync_catasto_unita_indirizzo_ins` e `_upd` (sync tabella ponte catasto↔indirizzi)    
 
 ---
 ### 🎯 Scopo Principale
@@ -162,9 +162,9 @@ LEFT JOIN LATERAL script.fn_get_catasto_source_by_istanza(iu.id) AS src
 
 Questa funzione è pensata per essere usata come **building-block** dalla logica di clonazione, tipicamente:
 
-1. l’istanza riceve `parent_istanza_id`
-2. un trigger AFTER (`trg_iu_z50_clone_catasto_from_parent_aft_upd`) clona e valorizza `catasto_unita_immobiliare_id`
-3. un trigger di sync (`trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd`) crea/garantisce la relazione catasto↔indirizzo nella tabella ponte
+1. l’istanza nasce con `parent_istanza_id`, o lo riceve
+2. un trigger AFTER (`trg_istanze_utilities_z50_clone_catasto_from_parent_ins` o `_upd`) clona e valorizza `catasto_unita_immobiliare_id`
+3. un trigger di sync (`trg_istanze_utilities_z40_sync_catasto_unita_indirizzo_upd`) crea/garantisce la relazione catasto↔indirizzo nella tabella ponte
 
 La funzione qui documentata copre **solo** il punto 2.a: *determinare il record sorgente*.
 

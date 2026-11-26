@@ -37,7 +37,7 @@ l'ultimo evento per ogni `sid`.
 | `search` | string | Ricerca libera sulle colonne accese a catalogo (`user_agent`, `ip_address`); sotto la soglia della lista non filtra |
 | `limit` / `offset` | integer | Paginazione (default 25, massimo 200) |
 | `order_by` | string | `ip_address`, `data_ultimo_evento`, `data_inizio`; fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
-| `order_dir` | string | `asc` / `desc`; assente = DESC sulle date |
+| `order_dir` | string | `asc` / `desc`. Assente: `asc` sulla colonna chiesta, date comprese; `desc` solo senza `order_by` o su `data_ultimo_evento`, il default della lista (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata) |
 
 Senza ordinamento: `data_ultimo_evento` DESC, spareggio sul `sid`.
 
@@ -49,7 +49,6 @@ Envelope standard `{ "data": {...}, "meta": {...} }` con l'envelope paginato.
 |---|---|---|
 | `data.results` | array | Pagina di sessioni attive (esclusa la corrente) |
 | `data.count` | integer | Sessioni che rispondono alla ricerca, su tutte le pagine |
-| `data.page` / `data.page_size` / `data.total_pages` | integer | Paginazione |
 | `data.totale_attive` | integer | Altre sessioni attive **a prescindere dalla ricerca**: quelle che `revoca-tutte` chiude. Senza ricerca coincide con `count` |
 
 Ogni elemento di `results`:
@@ -69,9 +68,6 @@ Ogni elemento di `results`:
 {
   "data": {
     "count": 1,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "jti": "a1b2c3d4-...",

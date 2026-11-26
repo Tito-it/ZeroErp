@@ -11,11 +11,10 @@
 from datetime import date
 
 from apps.core.api.constants import DEFAULT_LIMIT
-from apps.core.api.payload_validators import envelope_da_offset
 from apps.core.db.dbops_repository import ERROR_LOG_SORT_COLUMNS, DbopsRepository
 from apps.core.db.maintenance_repository import MaintenanceRepository
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import validate_order_params
+from apps.core.services.list_helpers import validate_order_params, pagina_con_totale
 
 _STATUS_VALIDI: frozenset[str] = frozenset({"SUCCESS", "FAILED", "WARNING"})
 
@@ -60,7 +59,7 @@ def fn_list_audit_logs(
         limit=limit,
         offset=offset,
     )
-    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
+    return pagina_con_totale(results, total_count)
 
 
 # ------------------------------------------------------------------
@@ -120,7 +119,7 @@ def fn_list_error_logs(
         order_by=order_by,
         order_dir=order_dir,
     )
-    return envelope_da_offset(results, total_count, limit=int(limit), offset=int(offset))
+    return pagina_con_totale(results, total_count)
 
 
 # ------------------------------------------------------------------
@@ -139,7 +138,7 @@ def fn_list_domini_task(
     results, total_count = repo.list_domini_task(
         attivo_only=attivo_only, search=search, limit=limit, offset=offset,
     )
-    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
+    return pagina_con_totale(results, total_count)
 
 
 # Scopo: Restituisce la lista paginata dei task registrati, con filtro dominio opzionale.
@@ -156,7 +155,7 @@ def fn_list_task_registry(
         dominio_codice=dominio_codice, attivo_only=attivo_only,
         search=search, limit=limit, offset=offset,
     )
-    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
+    return pagina_con_totale(results, total_count)
 
 
 # Scopo: Restituisce le implementazioni dei task con filtro su task_code e dominio.
@@ -173,7 +172,7 @@ def fn_list_task_implementations(
         task_code=task_code, dominio_codice=dominio_codice,
         attivo_only=attivo_only, limit=limit, offset=offset,
     )
-    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
+    return pagina_con_totale(results, total_count)
 
 
 # ------------------------------------------------------------------
@@ -199,7 +198,7 @@ def fn_list_job_runs(
         date_from=date_from, date_to=date_to,
         search=search, limit=limit, offset=offset,
     )
-    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
+    return pagina_con_totale(results, total_count)
 
 
 # Scopo: Restituisce il riepilogo per corsia — la coppia (processo_codice,
@@ -213,4 +212,4 @@ def fn_list_job_summary(
     results, total_count = repo.list_job_summary(
         limit=limit, offset=offset,
     )
-    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
+    return pagina_con_totale(results, total_count)

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/fn_aggiungi_lotto.md" %}
 # ⚙️ Funzione `fn_aggiungi_lotto`
 
 ```sql
@@ -23,7 +24,7 @@ BEGIN
     --   default di sessione e la controlla il guard di perimetro
     --   della tabella. Ritorna l'id.
     PERFORM script.fn_guard_livello(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer,
+        script.fn_utente_di_sessione('magazzino.fn_aggiungi_lotto'),
         'magazzino', 'lotti', 'TUTTO');
 
     RETURN magazzino.fn_crea_lotto(p_articolo_id, p_codice, p_data_arrivo, p_campi);

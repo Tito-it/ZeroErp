@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> La personalizzazione di una lista per un utente: una riga per utente e lista. La configurazione porta solo le chiavi che l'utente ha scelto (colonne, pagina_dimensione); le altre le dà il preset di base (ui.fn_preset_di_base), e ui.fn_resolve_lista_config compone le due. La forma la controlla ui.trgfn_preferenza_guard_forma. Senza audit, per scelta: e' un dato personale, scritto solo dal suo proprietario e spesso; data_update la scrive il database a ogni scrittura (ui.trgfn_preferenza_data_update), e non c'e' user_update.
+> La personalizzazione di una lista per un utente: una riga per utente e lista. La configurazione porta solo le chiavi che l'utente ha scelto (colonne, pagina_dimensione); le altre le dà il preset di base (ui.fn_preset_di_base), e ui.fn_resolve_lista_config compone le due. La forma la controlla ui.trgfn_preferenza_guard_forma. Senza audit, per scelta: e' un dato personale, scritto spesso dal suo proprietario; il database lo riscrive quando ritira una voce uscita dal catalogo (ui.trgfn_voce_ritira_dalle_preferenze per una colonna, ui.trgfn_misure_pagina_ritira_dalle_preferenze per una misura). data_update la scrive il database a ogni scrittura (ui.trgfn_preferenza_data_update), anche la sua: e' l'ultima scrittura della riga. Non c'e' user_update.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

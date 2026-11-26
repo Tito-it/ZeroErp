@@ -16,9 +16,6 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_logs_guard_delete()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
-DECLARE
-    -- text nudo: il valore di una GUC, non il riflesso di una colonna
-    v_allow_reset text;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -27,9 +24,9 @@ BEGIN
     --   CANCELLARE LA STORIA e RITIRARE CIO' CHE E' SCADUTO.
     --
     -- Regole:
-    --   DELETE del reset tecnico   -> ammesso (porta di verbo
-    --     zeroerp.maintenance_reset_lotto_draft, aperta da
-    --     vendite.fn_cleanup_fatture_by_ids)
+    --   DELETE del reset tecnico   -> ammesso (la porta del reset:
+    --     GUC zeroerp.maintenance_reset_lotto_draft e proprietario,
+    --     vendite.fn_porta_reset_lotto_aperta)
     --   DELETE di riga scaduta     -> ammesso (retention)
     --   DELETE dalla porta di manutenzione -> ammesso
     --     (zeroerp.maintenance_allow_delete_logs, solo per la
@@ -46,10 +43,8 @@ BEGIN
     --   si conserva.
     -- =========================================================
 
-    -- 1. Il reset tecnico di un lotto in bozza: porta di verbo, com'era.
-    v_allow_reset := current_setting('zeroerp.maintenance_reset_lotto_draft', true);
-
-    IF COALESCE(lower(v_allow_reset), 'off') IN ('on', 'true', '1') THEN
+    -- 1. Il reset tecnico di un lotto: la porta, col proprietario.
+    IF vendite.fn_porta_reset_lotto_aperta(TG_RELID) THEN
         RETURN OLD;
     END IF;
 
@@ -80,7 +75,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_logs_guard_delete()
-IS 'BEFORE DELETE su vendite.fatture_log e vendite.fatturazione_lotti_log. Vieta la cancellazione di una riga VIVA (E_DELETE_NOT_ALLOWED). La ammette: dal reset tecnico del lotto in bozza (porta di verbo zeroerp.maintenance_reset_lotto_draft, aperta da vendite.fn_cleanup_fatture_by_ids); su una riga SCADUTA (cleanup_at <= now(), la retention, con lo stesso criterio di vendite.trgfn_event_log_append_only: non CHI cancella ma COSA, cosi'' dbops.fn_purge_cleanup_expired funziona com''e''); dalla porta di manutenzione zeroerp.maintenance_allow_delete_logs, che apre solo per la sessione del migratore (script.fn_porta_manutenzione_aperta) e lascia la riga in dbops.porte_manutenzione_passaggi. cleanup_at NULL = non scade mai. ⛔ Legge OLD.cleanup_at: si monta solo su tabelle che hanno la colonna.';
+IS 'BEFORE DELETE su vendite.fatture_log e vendite.fatturazione_lotti_log. Vieta la cancellazione di una riga VIVA (E_DELETE_NOT_ALLOWED). La ammette: dal reset tecnico del lotto (la porta del reset, vendite.fn_porta_reset_lotto_aperta: GUC zeroerp.maintenance_reset_lotto_draft e proprietario della tabella, aperta solo durante la pulizia di vendite.fn_cleanup_fatture_by_ids); su una riga SCADUTA (cleanup_at <= now(), la retention, con lo stesso criterio di vendite.trgfn_event_log_append_only: non CHI cancella ma COSA, cosi'' dbops.fn_purge_cleanup_expired funziona com''e''); dalla porta di manutenzione zeroerp.maintenance_allow_delete_logs, che apre solo per la sessione del migratore (script.fn_porta_manutenzione_aperta) e lascia la riga in dbops.porte_manutenzione_passaggi. cleanup_at NULL = non scade mai. ⛔ Legge OLD.cleanup_at: si monta solo su tabelle che hanno la colonna.';
 ```
 
 </div>

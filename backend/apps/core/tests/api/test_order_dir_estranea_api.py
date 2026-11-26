@@ -56,11 +56,12 @@ _PERM_ADMIN = "apps.core.api.permissions.IsAdminZeroERP.has_permission"
 _CONN_GEO = "apps.core.db._helpers.connection"
 _CONN_CATEGORIE = "apps.anagrafiche.db.categorie_clienti_repository.connection"
 _CONN_DOCUMENTI = "apps.documenti.db.documenti_repository.connection"
-_SCOPE_DOCUMENTI = "apps.documenti.services.template_service.TemplateService._resolve_emittente_scope"
+_SCOPE_DOCUMENTI = "apps.documenti.services.template_service.resolve_emittente_scope"
 _LOOKUP_REPO = "apps.core.services.lookup_service.DbopsRepository"
 
 
 class TestOrderDirEstraneaApi(JwtMockedApiTest):
+    come_super_admin = True
     def setUp(self) -> None:
         super().setUp()
         self.client = Client(raise_request_exception=False)
@@ -151,7 +152,7 @@ class TestOrderDirEstraneaApi(JwtMockedApiTest):
 
 # 7-8. Il contratto del bundle sulla direzione (2026-09-26). ⛔ Fino a quel
 #      giorno l'assenza diventava "asc", e il default DESC dei repository
-#      (`default_desc`, `colonne_desc`) non si accendeva mai sulle liste che
+#      (`default_desc`) non si accendeva mai sulle liste che
 #      passano da qui: si aprivano al contrario, senza errore.
 class ParseListParamsOrderDirTests(SimpleTestCase):
 

@@ -91,7 +91,9 @@ _ORDER_COLS_OFFERTE: dict[str, str] = {
     "utility_descrizione": "v.utility_descrizione",
     "listino_codice": "v.listino_codice",
     "validita_dal": "v.validita_dal",
-    "validita_al": "COALESCE(v.validita_al, 'infinity'::date)",
+    # Il vuoto («non scade mai») va come il massimo: lo dichiara il catalogo
+    # (`ui.lista_colonna.vuoto_ordinato_come_massimo`), non questa whitelist.
+    "validita_al": "v.validita_al",
     "data_emissione": "v.data_emissione",
     "stato_descrizione": "v.stato_descrizione",
     "data_accettazione": "v.data_accettazione",
@@ -102,14 +104,6 @@ _ORDER_COLS_OFFERTE: dict[str, str] = {
     "pratica_numero": "v.pratica_numero",
     "fase": "v.fase",
 }
-
-# Le colonne DATA della whitelist: senza direzione indicata partono DESC (regola
-# Tid 2026-09-02, `colonne_desc` di `sql_order_clause`). Coincidono con le date
-# ordinabili del seed — lo verifica `test_liste_configurabili_seed` (test 10).
-_ORDER_COLS_OFFERTE_DATA: frozenset[str] = frozenset({
-    "validita_dal", "validita_al", "data_emissione", "data_accettazione",
-    "data_rifiuto", "data_annullamento", "data_insert",
-})
 
 
 # Scopo: whitelist ORDER BY del tab «Revisioni» del drawer offerta (lista
@@ -131,10 +125,6 @@ OFFERTA_REVISIONI_ORDER_COLUMNS: dict[str, str] = {
     "data_emissione": "v.data_emissione",
     "stato_descrizione": "v.stato_descrizione",
 }
-
-# Colonne DATA della whitelist qui sopra (ripiego DESC senza `order_dir`),
-# confrontate col seed da `test_liste_configurabili_seed` (test 10).
-OFFERTA_REVISIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_emissione"})
 
 # === Costante LISTA (vista canonica DEF-8, 2026-06-03) ===
 # La lista paginata legge dalla vista canonica self-contained
@@ -396,7 +386,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         validita_dal_max: str | None,
         search: str | None,
         solo_ultima_revisione: bool = True,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
     ) -> tuple[str, list[Any]]:
         # Filtri sulla vista canonica `vw_offerte_commerciali_lista` (alias `v`).
         # Tutti i campi consumati qui sono esposti dalla vista — nessun JOIN
@@ -466,7 +456,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         order_dir: str | None = None,
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
     ) -> list[dict[str, Any]]:
         # ⛔ Ordinamento dal BB `sql_order_clause` (2026-09-26). La copia a mano
         #    che c'era («tutto cio' che non e' ASC e' DESC») trasformava in DESC
@@ -479,7 +469,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=_ORDER_COLS_OFFERTE, default="v.data_insert",
-            default_desc=True, colonne_desc=_ORDER_COLS_OFFERTE_DATA,
+            default_desc=True,
             tiebreak="v.id",
         )
         where_clause, params = self._build_offerte_filters(
@@ -522,7 +512,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         validita_dal_max: str | None = None,
         search: str | None = None,
         solo_ultima_revisione: bool = True,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
     ) -> int:
         where_clause, params = self._build_offerte_filters(
             billing_account_id=billing_account_id,
@@ -1207,7 +1197,6 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             order_by, order_dir,
             colonne=OFFERTA_REVISIONI_ORDER_COLUMNS, default="v.revisione_numero",
             tiebreak="v.id",
-            colonne_desc=OFFERTA_REVISIONI_SORT_COLONNE_DATA,
         )
         params: list[Any] = [offerta_id]
         from_where = (

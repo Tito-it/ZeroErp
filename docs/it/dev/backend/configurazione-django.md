@@ -49,8 +49,12 @@ Browser → Nginx :443 ─┬─ /api/, /health → Gunicorn 127.0.0.1:8000 → 
 | 4 | **Swagger/OpenAPI e' uno strumento di sviluppo**: `/api/docs/` e `/api/schema/` elencano l'intera superficie API senza token. Esistono solo con `API_DOCS_ENABLED` (default = `DEBUG`), altrove **404** | `settings.API_DOCS_ENABLED`, `apps/core/api/api_docs_gate.py`; stesso test | `/api/docs/` → **404** con flag spento |
 | 5 | **Cintura in Nginx** su 3 e 4: cio' che Django gia' non serve resta chiuso anche se un giorno lato Django ricomparisse | `location ~ ^/(admin\|api/docs\|api/schema)(/\|$) { return 404; }` nel vhost | come sopra; con Gunicorn fermo la risposta e' comunque il 404 di Nginx |
 
-Il superuser (`createsuperuser`) serve ancora: e' il primo utente `auth_user` con
-cui si entra **dal frontend**, non da un pannello.
+Il primo utente con cui si entra **dal frontend**, non da un pannello, lo crea
+`manage.py crea_primo_amministratore` (verbo DB `anagrafiche.fn_crea_primo_amministratore`): la
+credenziale, la veste OPERATORE accesa e il legame `SUPER_ADMIN`, una volta per installazione. Come si
+lancia è nel play-book, §11. ⛔ Non `createsuperuser`: crea solo la credenziale, senza veste (403
+`E_VESTE_NON_ATTIVA`), e il flag `is_superuser` non concede niente dal 2026-11-24 (D-J di
+`brief-db-porte-aperte-dalla-sola-guc` §4.6).
 
 ### Rate limiting — file `http {}` (una tantum)
 

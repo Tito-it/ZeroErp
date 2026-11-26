@@ -37,7 +37,7 @@ BEGIN
     --   riga fuori dalla bozza. Vedi l'intestazione del changeSet
     --   20261115-67.
     -- ==========================================================
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('vendite.fn_rettifica_riga_listino');
 
     -- 1. Parametri e riga, nel perimetro.
     IF p_listino_riga_id IS NULL OR p_listino_riga_id <= 0 THEN

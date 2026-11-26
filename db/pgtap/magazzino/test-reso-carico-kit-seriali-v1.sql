@@ -82,12 +82,12 @@ BEGIN
     SELECT v_mag, v_magu, v_u1, v_k, v_cs, v_cl, v_ser, v_sem, v_la, v_sn;
 
     -- Il carico: C_SEMPLICE 10 a 2, C_LOTTI 10 nel lotto A a 4, il seriale a 100, SEMPLICE 10 a 5.
-    INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_mag) RETURNING id INTO v_inv;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, costo_unitario) VALUES (v_inv, v_cs, 10, 2);
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, lotto_id, qta_contata, costo_unitario) VALUES (v_inv, v_cl, v_la, 10, 4);
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, asset_id, qta_contata, costo_unitario) VALUES (v_inv, v_ser, v_sn, 1, 100);
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, costo_unitario) VALUES (v_inv, v_sem, 10, 5);
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_inv;
+    v_inv := dbops.fn_pgtap_crea_inventario(v_mag);
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_inv, v_cs, 10, jsonb_build_object('costo_unitario', 2));
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_inv, v_cl, 10, jsonb_build_object('lotto_id', v_la, 'costo_unitario', 4));
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_inv, v_ser, 1, jsonb_build_object('asset_id', v_sn, 'costo_unitario', 100));
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_inv, v_sem, 10, jsonb_build_object('costo_unitario', 5));
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_inv, 'CONFIRM');
     PERFORM magazzino.fn_posta_inventario(v_inv);
 END $fix$;
 

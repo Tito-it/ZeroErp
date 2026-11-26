@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.anagrafiche.db.geo_repository import GeoRepository
@@ -34,13 +33,13 @@ from apps.anagrafiche.services._validators import (
 #        (`SoggettiService.create_indirizzi_ruolo`), che alla madre passano la
 #        via da risolvere.
 def richiedi_via(payload: dict) -> None:
-    stradario_id = optional_int(payload, "stradario_id")
+    stradario_id = _V.optional_int(payload, "stradario_id")
     if stradario_id is not None:
         ErrorManager.require(stradario_id > 0, code=E_ANAG_VALIDAZIONE, message="stradario_id non valido.")
         return
-    toponomastica_id = optional_int(payload, "toponomastica_id")
-    comune_id = optional_int(payload, "comune_id")
-    codice_postale_id = optional_int(payload, "codice_postale_id")
+    toponomastica_id = _V.optional_int(payload, "toponomastica_id")
+    comune_id = _V.optional_int(payload, "comune_id")
+    codice_postale_id = _V.optional_int(payload, "codice_postale_id")
     ErrorManager.require(toponomastica_id is not None and toponomastica_id > 0,
                          code=E_ANAG_VALIDAZIONE, message="Tipo strada obbligatorio per via nuova.")
     ErrorManager.require(bool((payload.get("descrizione_via") or "").strip()),
@@ -123,7 +122,7 @@ class GeoService:
     def create_comune(self, payload: dict) -> dict:
         descrizione = _require_str(payload, "descrizione", "Descrizione comune obbligatoria.")
         return _create_with_dedup(
-            lambda: self._geo.create_comune(descrizione=descrizione, provincia_id=optional_int(payload, "provincia_id")),
+            lambda: self._geo.create_comune(descrizione=descrizione, provincia_id=_V.optional_int(payload, "provincia_id")),
             "Comune gia' esistente.",
         )
 
@@ -145,7 +144,7 @@ class GeoService:
     # Scopo: Crea codice postale con validazione.
     def create_codice_postale(self, payload: dict) -> dict:
         codice = _require_str(payload, "codice", "Codice CAP obbligatorio.")
-        comune_id = optional_int(payload, "comune_id")
+        comune_id = _V.optional_int(payload, "comune_id")
         ErrorManager.require(comune_id is not None and comune_id > 0, code=E_ANAG_VALIDAZIONE, message="Comune obbligatorio.")
         assert comune_id is not None
         return _create_with_dedup(
@@ -189,7 +188,7 @@ class GeoService:
         descrizione = _require_str(payload, "descrizione", "Descrizione obbligatoria.")
         sigla = _require_str(payload, "sigla", "Sigla obbligatoria.")
         return _create_with_dedup(
-            lambda: self._geo.create_provincia(descrizione=descrizione, sigla=sigla, regione_id=optional_int(payload, "regione_id")),
+            lambda: self._geo.create_provincia(descrizione=descrizione, sigla=sigla, regione_id=_V.optional_int(payload, "regione_id")),
             "Sigla provincia gia' esistente.",
         )
 
@@ -229,7 +228,7 @@ class GeoService:
     def create_regione(self, payload: dict) -> dict:
         descrizione = _require_str(payload, "descrizione", "Descrizione obbligatoria.")
         return _create_with_dedup(
-            lambda: self._geo.create_regione(descrizione=descrizione, stato_id=optional_int(payload, "stato_id")),
+            lambda: self._geo.create_regione(descrizione=descrizione, stato_id=_V.optional_int(payload, "stato_id")),
             "Regione gia' esistente.",
         )
 
@@ -304,9 +303,9 @@ class GeoService:
     #        Python e' passante: chiama la funzione, formatta il risultato.
     #        Due flussi: stradario_id diretto, oppure stradario_generale_id + comune_id.
     def check_indirizzo_duplicato(self, payload: dict) -> dict[str, Any]:
-        stradario_id = optional_int(payload, "stradario_id")
-        stradario_generale_id = optional_int(payload, "stradario_generale_id")
-        comune_id = optional_int(payload, "comune_id")
+        stradario_id = _V.optional_int(payload, "stradario_id")
+        stradario_generale_id = _V.optional_int(payload, "stradario_generale_id")
+        comune_id = _V.optional_int(payload, "comune_id")
         warnings: list[dict[str, Any]] = []
         # Serve almeno stradario_id oppure stradario_generale_id + comune_id
         if not stradario_id and not (stradario_generale_id and comune_id):
@@ -314,7 +313,7 @@ class GeoService:
 
         existing = self._ind.find_duplicato(
             stradario_id=stradario_id,
-            civico=optional_int(payload, "civico"),
+            civico=_V.optional_int(payload, "civico"),
             estensione_civico=(payload.get("estensione_civico") or "").strip() or None,
             palazzina=(payload.get("palazzina") or "").strip() or None,
             scala=(payload.get("scala") or "").strip() or None,
@@ -322,7 +321,7 @@ class GeoService:
             interno=(payload.get("interno") or "").strip() or None,
             stradario_generale_id=stradario_generale_id,
             comune_id=comune_id,
-            codice_postale_id=optional_int(payload, "codice_postale_id"),
+            codice_postale_id=_V.optional_int(payload, "codice_postale_id"),
         )
         if existing:
             label = existing["indirizzo_normalizzato"]
@@ -373,12 +372,12 @@ class GeoService:
         # Prima erano get_or_create_stradario + create_indirizzo_dettaglio
         # separati → righe stradario di registro orfane se il dettaglio falliva.
         return self._ind.create_indirizzo_atomico(
-            stradario_id=optional_int(payload, "stradario_id"),
-            toponomastica_id=optional_int(payload, "toponomastica_id"),
+            stradario_id=_V.optional_int(payload, "stradario_id"),
+            toponomastica_id=_V.optional_int(payload, "toponomastica_id"),
             descrizione_via=(payload.get("descrizione_via") or "").strip() or None,
-            comune_id=optional_int(payload, "comune_id"),
-            codice_postale_id=optional_int(payload, "codice_postale_id"),
-            civico=optional_int(payload, "civico"),
+            comune_id=_V.optional_int(payload, "comune_id"),
+            codice_postale_id=_V.optional_int(payload, "codice_postale_id"),
+            civico=_V.optional_int(payload, "civico"),
             estensione_civico=(payload.get("estensione_civico") or "").strip() or None,
             palazzina=(payload.get("palazzina") or "").strip() or None,
             scala=(payload.get("scala") or "").strip() or None,

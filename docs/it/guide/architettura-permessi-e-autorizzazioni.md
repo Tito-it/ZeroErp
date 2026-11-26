@@ -1,6 +1,6 @@
 # Guida — Architettura Permessi e Autorizzazioni
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -23,10 +23,17 @@
 > * [script.fn_resolve_livello_area](/dbzero/script/funzioni/fn_resolve_livello_area) / [script.fn_resolve_livello_oggetto](/dbzero/script/funzioni/fn_resolve_livello_oggetto) — la catena risolta lato DB
 > * [script.fn_get_permessi_effettivi_azioni](/dbzero/script/funzioni/fn_get_permessi_effettivi_azioni) / [script.fn_get_permessi_effettivi_oggetti](/dbzero/script/funzioni/fn_get_permessi_effettivi_oggetti) — la catena col tetto d'area, sede unica di resolver, mappe di `/me/` e pannello permessi
 > * [script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope) — la regola di scope emittente, sede unica
+> * [script.fn_resolve_emittente_for_user](/dbzero/script/funzioni/fn_resolve_emittente_for_user) — l'azienda su cui agisce chi lavora: la scelta in alto se valida, poi la sua riga; vuota in «tutti»
 > * [script.fn_get_emittenti_scope_pk_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_pk_ids) / [script.fn_get_emittenti_scope_sr_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_sr_ids) — gli emittenti nel perimetro dell'utente
 > * [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope) — il write-guard di difesa in profondita'
-> * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) / [script.fn_guard_livello](/dbzero/script/funzioni/fn_guard_livello) / [script.fn_guard_super_admin](/dbzero/script/funzioni/fn_guard_super_admin) / [script.fn_guard_utente_stesso](/dbzero/script/funzioni/fn_guard_utente_stesso) — il permesso nella prima riga di un verbo di scrittura
+> * [config.trgfn_parameter_overrides_guard_emittente_scope](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_emittente_scope) — lo stesso perimetro sugli override dei parametri, una tabella senza RLS: guarda la riga prima e dopo, anche nel `DELETE`
+> * [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — il verbo che sposta un operatore su un'azienda, riservato al SUPER_ADMIN
+> * [anagrafiche.fn_crea_primo_amministratore](/dbzero/anagrafiche/funzioni/fn_crea_primo_amministratore) — il solo verbo senza guard: il primo SUPER_ADMIN, chiuso dalla sua condizione
+> * [config.trgfn_user_emittenti_fiscali_guard_delete](/dbzero/config/funzioni/trgfn_user_emittenti_fiscali_guard_delete) — il guard del `DELETE` della riga di scope, e la porta del verbo
+> * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) / [script.fn_guard_livello](/dbzero/script/funzioni/fn_guard_livello) / [script.fn_guard_livello_area](/dbzero/script/funzioni/fn_guard_livello_area) / [script.fn_guard_super_admin](/dbzero/script/funzioni/fn_guard_super_admin) / [script.fn_guard_utente_stesso](/dbzero/script/funzioni/fn_guard_utente_stesso) — il permesso nella prima riga di un verbo di scrittura
 > * [script.fn_area_di_oggetto](/dbzero/script/funzioni/fn_area_di_oggetto) — l'area a cui appartiene un oggetto, sede unica per DB e backend
+> * [vendite.fn_porta_reset_lotto_aperta](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta) — la porta del reset del lotto: l'interruttore che apre solo al proprietario
+> * [vendite.fn_applica_cancellazione_fondo_fattura](/dbzero/vendite/funzioni/fn_applica_cancellazione_fondo_fattura) — una primitiva riservata dietro tre verbi, ognuno col suo permesso; apre la porta delle righe contabili sulla riga
 > * [script.fn_notify_permessi_catalogo](/dbzero/script/funzioni/fn_notify_permessi_catalogo) / [script.trgfn_notify_permessi_catalogo](/dbzero/script/funzioni/trgfn_notify_permessi_catalogo) — l'avviso al backend che il catalogo dei permessi è cambiato
 > * [config.fn_pannello_scrivi](/dbzero/config/funzioni/fn_pannello_scrivi) / [config.fn_pannello_colonne_scrivibili](/dbzero/config/funzioni/fn_pannello_colonne_scrivibili) — il verbo del pannello di configurazione e le colonne che scrive
 >
@@ -393,10 +400,21 @@ righe **non vede nessun emittente** — la riga mancante e' un errore di
 configurazione, non un permesso. L'unico attore legittimamente multi-emittente e'
 il `SUPER_ADMIN`, che passa da `fn_is_super_admin` e non da questa tabella.
 
-**Esempio di uso:** per abilitare un operatore sull'emittente 3, si registra la
-sua riga con `auth_user_id` ed `emittente_fiscale_id`. Ogni tentativo di operare
-su un emittente diverso viene bloccato: a livello di policy per le letture, e per
-difesa in profondita' dai trigger DB sulle scritture.
+**Esempio di uso:** per abilitare un operatore sull'emittente 3, il SUPER_ADMIN
+gli assegna l'emittente col verbo `script.fn_change_user_emittenti_scope`, che
+scrive la riga con `auth_user_id` ed `emittente_fiscale_id`. Ogni tentativo di
+operare su un emittente diverso viene bloccato: a livello di policy per le
+letture, e per difesa in profondita' dai trigger DB sulle scritture.
+
+**Chi la scrive.** Scrivere la riga e' dare l'accesso a un'azienda, toglierla e'
+toglierlo: per questo il verbo chiede il SUPER_ADMIN nella prima riga (§7.4). La
+riga di un utente acceso si toglie solo dalla porta del verbo; l'emittente di una
+riga non si cambia (lucchetto di colonna), si sposta togliendo la riga e
+scrivendone un'altra. ⚠️ La tabella non e' ancora in sola lettura per
+l'applicazione: un `INSERT` diretto, per un operatore che non ha la riga, gli da'
+un'azienda senza passare dal verbo. E' una delle tabelle ancora aperte del
+modello; anche gli utenti tecnici dei processi ricevono l'azienda cosi'
+(`script.fn_crea_utente_tecnico`).
 
 Chi resta senza assegnazione si conta in `dbops.vw_operatori_senza_emittente`, che
 **deve restare a zero righe**.
@@ -504,7 +522,9 @@ il resolver deve sapere per conto di **quale veste** si sta risolvendo.
   profilo `SUPER_ADMIN` (id 9100), la risoluzione restituisce `TUTTO`
   su ogni area e ogni azione senza consultare il resto della catena.
   L'helper `script.fn_is_super_admin(auth_user_id)` espone il check in
-  un'unica query STABLE.
+  un'unica query STABLE. Il profilo e' di una **persona**: non si lega mai
+  all'identita' tecnica di un processo (`E_SUPER_ADMIN_SU_VESTE_TECNICA`), e
+  il check non la conta.
 
 **Punti di attenzione:**
 
@@ -569,11 +589,12 @@ occupano solo di:
   `create` richiede `add`, `update` e `partial_update` richiedono
   `change`, `destroy` richiede `delete`. Questo tipo di accesso e' poi
   confrontato con i verbi ammessi dal livello (TUTTO/LETTURA/BLOCCATO).
-* **Superuser Django.** Se l'utente è superuser Django (`is_superuser =
-  true`), viene ammesso direttamente senza consultare le tabelle config.
-  Comportamento di sicurezza a monte, usato in pratica solo per
-  amministrazione tecnica. **Nota:** `is_superuser` e' il flag Django,
-  non il profilo `SUPER_ADMIN` di ZeroErp — sono concetti distinti.
+* **Il superuser Django non concede niente.** Il flag `is_superuser` di
+  Django non apre nessuna porta: l'unico privilegio d'amministrazione è il
+  profilo `SUPER_ADMIN`, che il database vede (`script.fn_is_super_admin`) e
+  che le funzioni di risoluzione trattano già come «tutto». Un secondo
+  privilegio che il database non conosce farebbe passare un endpoint e poi
+  fermare il verbo che quell'endpoint chiama.
 * **Azioni custom.** Se la view dichiara un permesso esplicito per
   l'azione (es. route "genera-fatture" con `genera_fatture_permission
   = 'genera_fattura'`), la permission class chiama direttamente la
@@ -586,8 +607,8 @@ occupano solo di:
 
 **La quarta: `IsAdminZeroERP`, per le view di amministrazione.** Le view che
 ereditano da `AdminAPIView` (il pannello Amministrazione software) passano da
-`IsAdminZeroERP`, che decide una cosa sola: l'utente è superuser Django o ha il
-profilo `SUPER_ADMIN`, altrimenti 403. Non consulta aree né azioni di processo.
+`IsAdminZeroERP`, che decide una cosa sola: l'utente ha il profilo
+`SUPER_ADMIN`, altrimenti 403. Non consulta aree né azioni di processo.
 ⛔ Per questo un `<metodo>_permission` su una view di amministrazione **non lo
 valuta nessuno**: chi arriva è già `SUPER_ADMIN`, che le azioni le ha tutte, e
 chi non lo è non arriva. Una riga di `config.azioni_processo` nominata solo da
@@ -643,10 +664,12 @@ policy):
 
 **Operatori interni.** Lo scope policy `EF_WHITELIST` lo applica il
 repository nella query: il building block `add_emittente_scope_condition` (`apps/core/db/emittente_scope_helpers.py`), che legge il perimetro da `script.fn_get_emittenti_scope_pk_ids` / `_sr_ids` (perimetro `user_emittenti_fiscali`
-intersecato con l'emittente attivo della sessione). Semantica del BB: `None` =
-nessuna restrizione (super admin), lista vuota = **fail-closed**. Se
-l'operatore non ha righe non passa **niente**, e la riga mancante e' un errore
-di configurazione (§4.9).
+intersecato con l'emittente attivo della sessione). Semantica del BB: perimetro
+`NULL` dal DB = nessuna restrizione (l'admin globale), lista vuota =
+**fail-closed**. Se l'operatore non ha righe non passa **niente**, e la riga
+mancante e' un errore di configurazione (§4.9). Un perimetro chiesto **senza un
+utente** non si apre: il BB lo rifiuta con `E_SCOPE_SENZA_UTENTE`, e le letture
+con perimetro non hanno un valore di default per l'utente.
 
 **Sul lato DB la stessa regola e' una policy RLS.** Per lo scope emittente degli
 operatori le tabelle del perimetro hanno la RLS **attiva** (`ENABLE`, senza `FORCE`:
@@ -679,8 +702,8 @@ meccanismo RLS.
 `canale_origine = 'SHOP'` dentro la policy RLS, cosi' il consumer B2C
 non vede gli acquisti B2B della sua azienda.
 
-**Superuser Django.** Non filtrato: vede sempre tutto, a tutela della
-manutenzione tecnica.
+**Superuser Django.** Nessun trattamento a parte: il perimetro lo decide il
+profilo. Chi deve vedere tutte le aziende è `SUPER_ADMIN` con lo scope globale.
 
 L'effetto e' trasparente: la view non deve sapere dello scope — gli
 basta (per operatori) dichiarare il campo emittente, e per portale/shop
@@ -699,7 +722,7 @@ l'enforcement al livello piu' basso dello stack.
 
 | GUC                       | Popolato da                                      | Usato da                                      |
 | ------------------------- | ------------------------------------------------ | --------------------------------------------- |
-| `app.current_user_id`     | `auth_user.id` del JWT                           | Trigger audit, retrocompatibilita'            |
+| `app.current_user_id`     | `auth_user.id` del JWT                           | Verbi, trigger di scope, viste e policy RLS, attraverso `script.fn_utente_di_sessione` |
 | `app.current_identita_id` | Claim JWT `identita_id`                          | Policy RLS, scope policy                      |
 | `app.ruolo_applicativo`   | `identita_digitali.ruolo_applicativo` della riga | Gate policy RLS, discriminazione portale/shop |
 | `app.soggetto_ruolo_id`   | `identita_digitali.soggetto_ruolo_id` della riga | Helper scope (quando serve il SR dell'utente) |
@@ -772,6 +795,29 @@ dell'emittente si ottiene `TRUE` o `FALSE` secondo i rami qui sopra. Il check e'
 riutilizzabile da viste, report e altre funzioni DB che devono filtrare dati in
 base all'ambito dell'utente corrente.
 
+**Su quale azienda agisce chi lavora.** La funzione qui sopra risponde «puo'
+lavorare su questa azienda?». La domanda vicina, «su quale azienda sta lavorando
+adesso?», ha una sede sua:
+[fn_resolve_emittente_for_user](/dbzero/script/funzioni/fn_resolve_emittente_for_user).
+L'azienda di un valore operativo (un parametro, una soglia, la valuta, l'emittente
+di una scrittura) e':
+
+1. quella **del documento**, quando c'e' un documento;
+2. altrimenti quella **di chi agisce**: l'azienda scelta in alto, se l'utente la
+   puo' scegliere, poi l'azienda della sua riga in `user_emittenti_fiscali`.
+
+In «tutti gli emittenti» la risposta e' vuota. Una lettura salta il livello
+dell'azienda, e una scrittura si rifiuta con `E_EMITTENTE_NON_RISOLTO`: «tutti»
+e' sola lettura.
+
+⛔ **Il gestore globale non e' l'azienda di nessuno che agisca.** La predefinita
+dell'installazione, cioe' la riga senza billing account di
+`emittenti_fiscali_billing_account`, risponde a un'altra domanda: di quale
+azienda e' un billing account che non ne dice una. Non si usa come ripiego per
+chi non ha un'azienda. Il super admin senza azienda scelta e l'operatore non
+ancora configurato non hanno un'azienda su cui scrivere, e il loro profilo
+(`fn_get_user_profile`) non ne mostra nessuna.
+
 ### 7.2 Trigger guard per ambito emittente
 
 > Struttura completa: [trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope)
@@ -806,6 +852,17 @@ quando lavora in prima persona. Se la scrittura arriva da una funzione che gira
 con i diritti del proprietario (`SECURITY DEFINER`) ma per conto di qualcun altro,
 quella eccezione non vale: senza un utente, una riga che appartiene a un'azienda
 non si scrive.
+
+**Una tabella per azienda senza RLS: gli override dei parametri.** Il guard qui
+sopra lavora accanto a una policy: la policy toglie di mezzo le righe delle altre
+aziende, e il guard giudica l'azienda che si scrive. `config.parameter_overrides`
+e' configurazione letta da tutti e non ha la RLS, quindi ha un guard suo,
+[trgfn_parameter_overrides_guard_emittente_scope](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_emittente_scope),
+che guarda la riga **prima** e **dopo** la scrittura e copre anche la
+cancellazione. La regola e' la stessa (`fn_check_user_emittente_scope`): chi ha
+scelto un'azienda non modifica ne' cancella l'override di un'altra. Senza un
+utente in sessione passa solo il proprietario della tabella quando lavora in
+prima persona, come sopra.
 
 ### 7.3 Funzioni di risoluzione permessi lato DB
 
@@ -844,13 +901,23 @@ guard, senza controlli scritti a mano:
 | --- | --- | --- |
 | `script.fn_guard_azione` | operazioni di processo (registra, emetti, cambia stato…): il verbo **e'** l'azione | `fn_check_azione_processo` |
 | `script.fn_guard_livello` | operazioni semplici (crea, modifica): il verbo dichiara l'**oggetto** su cui scrive e il livello minimo | `fn_resolve_livello_oggetto`, con l'area da `fn_area_di_oggetto` |
+| `script.fn_guard_livello_area` | il verbo di un endpoint che decide sull'**area**, senza un oggetto: il verbo dichiara l'area e il livello minimo | `fn_resolve_livello_area` |
 | `script.fn_guard_super_admin` | le porte che non sono un'area del catalogo (la gestione accessi, riservata al SUPER_ADMIN) | `fn_is_super_admin` |
 | `script.fn_guard_utente_stesso` | le cose **proprie** di una persona (il dispositivo del secondo fattore): chi agisce dev'essere lei | il confronto con la credenziale su cui si agisce |
 
-I quattro guard si comportano allo stesso modo: l'utente arriva come parametro
-(il verbo lo legge da `app.current_user_id`), la regola la decide la funzione
+I cinque guard si comportano allo stesso modo: l'utente arriva come parametro
+(il verbo lo legge con `script.fn_utente_di_sessione`, la sede unica della
+lettura di `app.current_user_id`), la regola la decide la funzione
 di risoluzione che usa anche il backend, e il rifiuto e' `E_PERMESSO_NEGATO`,
 lo stesso codice del backend — anche quando l'utente manca (fail-closed).
+
+⚠️ **Un verbo senza guard, dichiarato: il primo amministratore.**
+[`anagrafiche.fn_crea_primo_amministratore`](/dbzero/anagrafiche/funzioni/fn_crea_primo_amministratore)
+gira come proprietario e non chiama nessun guard, perche' sul primo impianto non c'e'
+ancora nessuno che possa avere un permesso. Al posto del guard lo chiude la sua
+condizione: si apre solo se nessuna veste ha mai avuto un legame SUPER_ADMIN, e si
+chiude da sola alla nascita del primo. Un verbo nuovo senza guard non si appoggia a
+questo: e' l'unico caso in cui chi agisce, per costruzione, non esiste.
 
 Una forma sola per le operazioni di processo, una per quelle semplici:
 `azioni_processo` non si riempie di azioni che ripetono il livello, e
@@ -862,12 +929,45 @@ l'amministratore ragiona come sempre, per area, azione e oggetto.
   protegge. La postura si dichiara nel loop dei grant, non con un `REVOKE`
   sparso: l'elenco delle tabelle in sola lettura per l'app e' la lista
   `v_tabelle_sola_lettura_app` del loop;
+* sulle **viste** l'applicazione ha solo `SELECT`, in tutto il database: una
+  vista aggiornabile che gira coi permessi del suo proprietario scriverebbe la
+  tabella sotto, e aggirerebbe la sola lettura. Una vista non e' una strada per
+  scrivere: la scrittura passa da un verbo;
 * il verbo gira come **proprietario** (`SECURITY DEFINER`), e il perimetro che
   la RLS non applica piu' lo rimette il verbo o il guard di ambito;
 * l'applicazione esegue **solo i verbi**, non le primitive che i verbi usano:
-  altrimenti il controllo si aggira chiamando la primitiva. Un guard che deve
-  sapere se e' attraversato da un verbo lo chiede a
-  `script.fn_is_proprietario_tabella`.
+  altrimenti il controllo si aggira chiamando la primitiva. Una primitiva che piu'
+  verbi condividono non chiede permessi: lo chiede ogni verbo, il suo. Il fondo
+  fattura cade dalla stessa primitiva da tre verbi (il gesto «cancella il fondo» con
+  la sua azione, l'annullo di una sistemazione col livello sull'area `pagamenti`, il
+  reset del lotto col suo permesso), e nessuno dei tre pretende il permesso degli
+  altri. Un guard che deve sapere se e' attraversato da un verbo lo chiede a
+  `script.fn_is_proprietario_tabella`;
+* un guard che lascia passare una scrittura quando una GUC e' accesa (una
+  **porta**) chiede due cose insieme: la GUC, e che a scrivere sia il
+  proprietario. La sola GUC non chiude niente, perche' l'applicazione la puo'
+  accendere da se'. Vale anche per le porte di **manutenzione**, che si aprono
+  dagli strumenti DBA lanciati come `zeroerp_owner`: l'applicazione non esegue
+  quegli strumenti. Una porta che si apre per **una riga** porta nella GUC la
+  chiave di quella riga (la pubblicazione dei template: l'id del modello), e il
+  guard la confronta con la riga che giudica. Se il guard ha anche un'eccezione
+  per il seed, la riconosce dalla **sessione del migratore**
+  (`dbops.fn_sessione_del_migratore`), non dal proprietario: dentro un verbo
+  `SECURITY DEFINER` il proprietario e' chiunque lo chiami. Lo scope emittenti
+  apre cosi': la GUC porta l'`auth_user_id` dell'operatore che il verbo sposta;
+  la riconsegna di un reso porta l'id del reso, e l'esenzione vale per i soli
+  articoli di quel reso.
+  Le righe contabili del giro dei fondi aprono cosi': la GUC porta l'id dell'atto che
+  la primitiva sta cancellando, e il guard la onora solo sulle righe di quell'atto.
+  ⚠️ **Un'eccezione dichiarata: la porta del reset dei lotti.** Lì la GUC resta un
+  **interruttore**, perche' i guard che la leggono stanno su molte tabelle e ognuno
+  dovrebbe risalire dalla sua riga al lotto per una strada diversa. Il limite lo
+  danno il proprietario e la durata: i guard la onorano solo se a scrivere e' il
+  proprietario (`vendite.fn_porta_reset_lotto_aperta`), e la accende solo la pulizia
+  del lotto, una primitiva riservata, che la spegne prima di uscire. Le sole
+  scritture che la porta vede sono quelle della pulizia.
+  Il reset dei lotti e le righe contabili non hanno piu' porte che si aprono con la
+  sola GUC.
 
 **Il backend chiede, non decide due volte.** L'endpoint tiene il suo controllo:
 risponde 403 subito, con un messaggio utile, prima di aprire la transazione.
@@ -1300,7 +1400,7 @@ erDiagram
 * **Ambito dati operatore** → condizione di scope nei repository (`add_emittente_scope_condition`, applica EF_WHITELIST) + RLS sulle tabelle del perimetro
 * **Defense-in-depth** → trigger DB + RLS policy + scope functions `script.fn_scope_*`; fail-closed su tripla GUC incoerente
 * **Utenti del database** → quattro utenti tecnici fissi (§7.6), nessuno dei quali scavalca la RLS lavorando per conto di un'azienda
-* **Permesso nella scrittura** → verbi DB con `fn_guard_azione` / `fn_guard_livello` / `fn_guard_super_admin` nella prima riga; tabelle protette in sola lettura per l'app (loop dei grant); il pannello di configurazione scrive col verbo generico `config.fn_pannello_scrivi`
+* **Permesso nella scrittura** → verbi DB con `fn_guard_azione` / `fn_guard_livello` / `fn_guard_livello_area` / `fn_guard_super_admin` nella prima riga; tabelle protette in sola lettura per l'app (loop dei grant); il pannello di configurazione scrive col verbo generico `config.fn_pannello_scrivi`
 
 ---
 

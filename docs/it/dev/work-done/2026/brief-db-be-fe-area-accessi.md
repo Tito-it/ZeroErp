@@ -10,7 +10,7 @@
 > ✅ **CHIUSO il 2026-10-02.** Quello che restava ha una sede propria: le tre richieste al team DB
 > (§8.3) nel [brief credenziale e utenti di sistema](brief-db-credenziale-verbi-amministratore.md);
 > la conferma di §8.4 è la decisione D-3, già presa, e il lavoro che ne segue sta nel
-> [piano accessi](../../work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md) (L-5). ~~Ora tocca
+> [piano accessi](piano-be-fe-accessi-credenziale-e-vesti.md) (L-5). ~~Ora tocca
 > al BE: **R-BE-a per primo** (§7.8).~~ Il resto della testata qui sotto è del momento della scrittura. Tutte le richieste di §3
 > (R-DB-1, R-DB-2, R-DB-A1, A2, A2-bis, A3) hanno il loro changeSet o seed. **Da leggere per
 > primo: §7.11** (i passi di Tid, in ordine: prima dell'apply c'è una query da lanciare), poi
@@ -636,7 +636,7 @@ erano questo giro.
 > invito, per tutte le vesti», quindi «Invia invito» sull'operatore disattivato è il comportamento
 > voluto. Resta **lavoro**, non una decisione: ritirare la riattivazione diretta (l'interruttore
 > riacceso e `operatori/<id>/riattiva/`). Si segue nel
-> [piano accessi](../../work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md), L-5/D-3.
+> [piano accessi](piano-be-fe-accessi-credenziale-e-vesti.md), L-5/D-3.
 
 * **La conseguenza 1 di §7.2**: un operatore disattivato è **invitabile** (la capability `can_invite`
   arriva dal DB, e il drawer la segue): a video, sul suo drawer compare «Invia invito», che lo riaccende

@@ -153,7 +153,7 @@ costruito.
 | --- | --- |
 | Copertura vera della suite | Nel progetto non c'è `coverage`: il numero di test è un limite superiore, non una misura |
 | Header di licenza mancanti | L'hook guarda solo i file **aggiunti**, per scelta; un conteggio sull'intero repo non ha ancora un comando |
-| Endpoint senza consumatore | Le famiglie cross-dominio sono chiamate col dominio come parametro: uno strumento testuale non le vede ([piano](work-in-progress/piano-be-fe-endpoint-senza-porta.md)) |
+| Endpoint senza consumatore | Le famiglie cross-dominio sono chiamate col dominio come parametro: uno strumento testuale non le vede ([piano](work-done/2026/piano-be-fe-endpoint-senza-porta.md)) |
 | Rilievi `ruff`, `oxlint` | Sono già un cancello a zero: se sono rossi, la CI è rossa |
 | Patch di repository senza `autospec` | Cancello a zero dal 2026-11-08: `test_presidio_autospec_repository` gira nella suite Django, quindi in CI |
 

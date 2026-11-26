@@ -117,9 +117,9 @@ Validazione payload e traduzione vincoli DB delegate al building block
 | `attivo` | bool | No | Filtro flag attivo. `true`/`false`/`1`/`0`/`yes`/`no`. Stringa vuota (`attivo=`) equivale a chiave assente (nessun filtro); altro valore -> 400 |
 | `partecipa_promo` | bool | No | Filtro flag partecipazione promo (stesso contratto di `attivo`) |
 | `limit` | int | No | Righe per pagina, default `25`, max `200` |
-| `offset` | int | No | Righe da saltare, default `0` (la risposta riporta `page`/`page_size` calcolati da `limit`/`offset`) |
+| `offset` | int | No | Righe da saltare, default `0` |
 | `order_by` | string | No | `codice` \| `descrizione` \| `ordinamento` \| `partecipa_promo` \| `attivo` \| `data_insert` \| `data_update`. Default: `ordinamento` |
-| `order_dir` | string | No | `asc` oppure `desc`. Assente: `asc`, salvo le colonne data (`data_insert`, `data_update`) che partono `desc` |
+| `order_dir` | string | No | `asc` oppure `desc`. Assente: `asc` su ogni colonna, date comprese (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata) |
 
 ### Risposta (200)
 
@@ -127,9 +127,6 @@ Validazione payload e traduzione vincoli DB delegate al building block
 {
   "data": {
     "count": 5,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 1,

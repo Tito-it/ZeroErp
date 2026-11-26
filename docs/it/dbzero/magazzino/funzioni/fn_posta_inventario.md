@@ -48,7 +48,7 @@ DECLARE
     v_piano        record;
 BEGIN
     -- 0. Il permesso, prima di ogni altra cosa: lo stesso del backend.
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('magazzino.fn_posta_inventario');
     PERFORM script.fn_guard_azione(v_utente, 'registra_magazzino');
 
     -- 1. Parametro

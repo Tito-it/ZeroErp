@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,8 +11,10 @@
 >
 > Approfondimento funzioni:
 >
-> * [anagrafiche.fn_tipo_indirizzo_ammesso_per_natura](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_ammesso_per_natura) — la riga attiva e valida
+> * [anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_obbligatorio_per_natura) — quali tipi la natura rende obbligatori
+> * [anagrafiche.fn_tipo_indirizzo_ammesso_per_natura](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_ammesso_per_natura) — se la natura ammette il ripiego
 > * [anagrafiche.fn_guard_indirizzi_obbligatori_soggetto](/dbzero/anagrafiche/funzioni/fn_guard_indirizzi_obbligatori_soggetto) — il guard, che la legge sulla natura del soggetto
+> * [anagrafiche.fn_crea_indirizzi_soggetto](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_soggetto) — la copia degli obbligatori, che la legge per sapere che cosa manca
 > * [anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli) — la lettura del form, sulla natura proposta
 > * [anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_mancanti_ruolo) — la gemella del livello ruolo
 
@@ -29,7 +31,8 @@ soggetto non ha né un indirizzo del tipo né uno del ripiego.
 ### La natura è un parametro
 
 Come la gemella del ruolo, giudica la natura **passata**, non quella del soggetto: il guard le passa quella che
-il soggetto ha, la lettura del form quella che un cambio propone. Una riga conta se è obbligatoria, attiva e
+il soggetto ha, la lettura del form quella che un cambio propone. Quali tipi sono obbligatori lo dice la sede
+unica, `anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura`: una riga conta se è obbligatoria, attiva e
 valida nel giorno dato. Un soggetto che non esiste, o una natura assente, non hanno mancanti. Le righe sono
 ordinate per tipo: la prima è quella che il guard solleva.
 
@@ -39,13 +42,13 @@ ordinate per tipo: la prima è quella che il guard solleva.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### Il ripiego vale solo se la natura lo ammette
 
-* **Il ripiego del soggetto non si confronta con la natura.** A differenza del livello ruolo, il ripiego della
-  riga vale com'è scritto: non si chiede se la natura lo ammetta. Un ripiego che la natura non ammette non si
-  può scrivere sul soggetto (lo ferma il guard del tipo,
-  [trgfn_indirizzi_soggetti_guard_tipo_indirizzo](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo)),
-  ma la funzione lo restituisce come alternativa e la frase del rifiuto lo propone.
+Come al livello ruolo, il ripiego della riga vale, e si restituisce, solo se è un tipo diverso da quello
+richiesto e la natura lo ammette nel giorno dato. Altrimenti esce vuoto, e la riga si soddisfa col solo tipo:
+la frase del rifiuto non propone un ripiego che il guard del tipo
+([trgfn_indirizzi_soggetti_guard_tipo_indirizzo](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo))
+non lascerebbe scrivere.
 
 ---
 
@@ -54,6 +57,8 @@ ordinate per tipo: la prima è quella che il guard solleva.
 * `db/pgtap/anagrafiche/test-indirizzi-obbligatori-mancanti-v1.sql` — il guard che legge questa funzione; il
   soggetto completo, il tipo chiesto dalla natura proposta, il ripiego riportato, la natura assente e il
   soggetto che non esiste (niente).
+* `db/pgtap/anagrafiche/test-indirizzi-obbligatori-requisito-nuovo-v1.sql` (8) — un ripiego che la natura vieta
+  non si propone: il mancante ha il ripiego vuoto.
 
 ---
 
@@ -61,6 +66,8 @@ ordinate per tipo: la prima è quella che il guard solleva.
 
 * 2026-11-17 — nasce estraendo dal guard la domanda «che cosa manca», per darla anche al form del cambio di
   natura.
+* 2026-11-24 — gli obbligatori vengono da `anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura`, e il ripiego
+  conta solo se la natura lo ammette: prima valeva com'era scritto nella riga, anche quando la natura lo vietava.
 
 ---
 

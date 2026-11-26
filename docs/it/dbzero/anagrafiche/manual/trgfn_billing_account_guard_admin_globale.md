@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_billing_account_guard_admin_globale`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,6 +11,7 @@
 >
 > Approfondimento funzioni:
 >
+> * [script.fn_utente_di_sessione](/dbzero/script/funzioni/fn_utente_di_sessione) — l'utente della richiesta, letto da una sede sola
 > * [script.fn_check_user_can_create_ba](/dbzero/script/funzioni/fn_check_user_can_create_ba) — la regola «può creare?»
 > * [script.fn_check_user_emittente_scope](/dbzero/script/funzioni/fn_check_user_emittente_scope) — l'azienda di lavoro è nel perimetro dell'utente?
 > * [anagrafiche.trgfn_billing_account_link_ef](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef) — il collegamento che questa regola rende possibile
@@ -52,8 +53,9 @@ il collegamento.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Un utente in sessione illeggibile vale come assente.** Un `app.current_user_id` che non è un numero non
-  solleva: il trigger lo tratta come «nessun utente» e lascia passare.
+* **Un utente in sessione illeggibile vale come assente.** Il trigger legge l'utente da
+  `script.fn_utente_di_sessione`, che rifiuta un `app.current_user_id` che non è l'id di un utente; ma la chiamata
+  sta in un blocco che ingoia ogni errore, e il trigger tratta il valore come «nessun utente» e lascia passare.
 
 ---
 

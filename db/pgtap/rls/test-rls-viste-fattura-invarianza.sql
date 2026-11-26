@@ -131,8 +131,8 @@ CREATE TEMP TABLE _op (auth_user_id int, soggetto_id uuid, sr_id bigint, identit
 -- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile): l'operatore viene dalla
 --   MADRE (dbops.fn_pgtap_crea_operatore_umano: persona fisica completa,
 --   risorsa umana, veste OPERATORE accesa come all'invito accettato) e
---   l'emittente gli si da' con la funzione di dominio
---   script.fn_change_user_emittenti_scope. Prima la fixture costruiva
+--   l'emittente gli si da' dal verbo, col builder
+--   dbops.fn_pgtap_sposta_scope_operatore. Prima la fixture costruiva
 --   soggetto, soggetto_ruolo e veste a mano, senza risorsa umana: uno stato
 --   che la madre non produce, e che da D-2 (l'operatore umano vale finche'
 --   vale il suo rapporto, script.fn_veste_utilizzabile) non e' piu' un
@@ -144,8 +144,8 @@ SELECT o.auth_user_id, o.soggetto_id, o.soggetto_ruolo_id, o.identita_id
 
 -- Whitelist = A, con la funzione di dominio (l'operatore nasce senza azienda,
 -- come in produzione).
-SELECT script.fn_change_user_emittenti_scope(
-    (SELECT auth_user_id FROM _op), ARRAY[(SELECT emit_pk FROM _refs)]);
+SELECT dbops.fn_pgtap_sposta_scope_operatore(
+    (SELECT auth_user_id FROM _op), (SELECT emit_pk FROM _refs));
 
 -- Sessione operatore: resta identica per entrambe le misure.
 SELECT set_config('app.ruolo_applicativo', 'OPERATORE', true);

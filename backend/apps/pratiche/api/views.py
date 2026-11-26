@@ -22,11 +22,11 @@ from apps.core.api.payload_validators import (
     qp_iso_date_optional,
     corpo_oggetto,
     optional_int,
-    paginated_envelope,
     parse_list_params,
     qp_bool_optional,
     qp_int_strict,
     qp_str,
+    qp_int_optional,
 )
 from apps.core.api.openapi_params import param_ricerca_full, parametri_finestra, parametri_ordinamento
 from apps.core.api.success_responses import success_response
@@ -34,6 +34,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.pratiche.db.pratiche_repository import FLUSSI_ORDER_COLS, PraticheRepository
 from apps.pratiche.services import generazione_service, pratiche_service
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 # ⛔ I campi obbligatori del corpo si leggono dal BB, non con `payload["x"]`:
@@ -94,17 +95,17 @@ class ApiPraticheList(DomainAPIView):
 
         p = parse_list_params(qp, default_order="data_insert")
         stato = qp_str(qp.get("stato"))
-        tipo_prestazione_id = optional_int({"v": qp.get("tipo_prestazione_id")}, "v")
+        tipo_prestazione_id = qp_int_optional(qp.get("tipo_prestazione_id"), "tipo_prestazione_id", min_val=0)
         soggetto_id = qp_str(qp.get("soggetto_id"))
         # Lente di contesto canonica (D1): mutua esclusivita' validata nel
         # service (codice catalogo DB 484).
-        soggetto_ruolo_id = optional_int({"v": qp.get("soggetto_ruolo_id")}, "v")
-        istanza_utility_id = optional_int({"v": qp.get("istanza_utility_id")}, "v")
+        soggetto_ruolo_id = qp_int_optional(qp.get("soggetto_ruolo_id"), "soggetto_ruolo_id", min_val=0)
+        istanza_utility_id = qp_int_optional(qp.get("istanza_utility_id"), "istanza_utility_id", min_val=0)
         solo_interne = qp_bool_optional(qp.get("solo_interne"), "solo_interne") or False
         # Fix 2026-06-12: la dashboard inviava priorita_id/risorsa_umana_id da
         # sempre, ma la view non li leggeva (filtri silenziosamente ignorati).
-        priorita_id = optional_int({"v": qp.get("priorita_id")}, "v")
-        risorsa_umana_id = optional_int({"v": qp.get("risorsa_umana_id")}, "v")
+        priorita_id = qp_int_optional(qp.get("priorita_id"), "priorita_id", min_val=0)
+        risorsa_umana_id = qp_int_optional(qp.get("risorsa_umana_id"), "risorsa_umana_id", min_val=0)
         data_da = qp_iso_date_optional(qp.get("data_da"), "data_da")
         data_a = qp_iso_date_optional(qp.get("data_a"), "data_a")
 
@@ -126,7 +127,7 @@ class ApiPraticheList(DomainAPIView):
             order_by=p["order_by"],
             order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(items, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(items, total))
 
     @extend_schema(
         request=inline_serializer(
@@ -331,7 +332,7 @@ class ApiPraticaGiornale(DomainAPIView):
         limit, offset = pagina_da_query(qp, default_limit=DEFAULT_LIMIT_EVENTI)
 
         items, total = pratiche_service.get_giornale(pratica_id, limit=limit, offset=offset)
-        return success_response({"count": total, "results": items})
+        return success_response(pagina_con_totale(items, total))
 
 
 
@@ -413,7 +414,7 @@ class ApiPraticaFlussiList(DomainAPIView):
             limit=p["limit"],
             offset=p["offset"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=inline_serializer(
@@ -1319,7 +1320,7 @@ class ApiFormuleTempo(DomainAPIView):
     # Scopo: Restituisce via GET le formule tempo attive per un tipo prestazione.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
-        tipo_prestazione_id = optional_int({"v": qp.get("tipo_prestazione_id")}, "v")
+        tipo_prestazione_id = qp_int_optional(qp.get("tipo_prestazione_id"), "tipo_prestazione_id", min_val=0)
         ErrorManager.require(
             tipo_prestazione_id is not None and tipo_prestazione_id > 0,
             code="E_INVALID_ID",

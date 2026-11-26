@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura(natura, tipo, giorno) -> boolean
+#   La sede unica di «obbligatorio per la natura», gemella di
+#   anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo.
+#   D-T7a-4 di Tid (2026-11-24), brief-db-revisione-anagrafiche §21 (S48).
+#
+# -- PERCHE' (regola del 2) ------------------------------------------------------------
+#   La domanda si faceva in sette posti con tre varianti: le due madri
+#   plurali e i due picker leggevano «obbligatorio» piu' il predicato della
+#   finestra; i mancanti del soggetto lo stesso; i builder pgTAP e il
+#   provisioning di sviluppo «attivo AND obbligatorio», senza la finestra. Da
+#   qui la leggono tutti (20_code -78 … -84), e un pgTAP presidia che sia
+#   l'unica a leggere la colonna (test-indirizzi-obbligatori-requisito-nuovo-v1, 2).
+#
+# -- LA REGOLA --------------------------------------------------------------------------
+#   Vero se la natura ha la riga del tipo col flag obbligatorio e il
+#   predicato della natura (anagrafiche.fn_tipo_indirizzo_ammesso_per_natura)
+#   ammette il tipo il giorno dato, cioe' la riga e' attiva e valida. Natura
+#   NULL: falso (un soggetto senza natura non deve avere niente). Il ripiego
+#   non e' qui: e' una proprieta' della riga, e lo leggono i mancanti.
+#   BEGIN ATOMIC (§5c), STABLE, SECURITY INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261123-77-create-fn-tipo-indirizzo-obbligatorio-per-natura-mctit.yaml
+
+  - changeSet:
+      id: 20261123-77-create-fn-tipo-indirizzo-obbligatorio-per-natura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura: la sede unica di «obbligatorio per la
+        natura», gemella di quella del ruolo. D-T7a-4, brief-db-revisione-anagrafiche §21.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura(
+                  p_tipo_soggetto_dettaglio_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  p_tipo_indirizzo_id          config.tipi_soggetto_dettaglio_tipi_indirizzo.tipo_indirizzo_id%TYPE,
+                  p_oggi                       config.tipi_soggetto_dettaglio_tipi_indirizzo.valido_dal%TYPE)
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT EXISTS (SELECT 1
+                                   FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                                  WHERE m.tipo_soggetto_dettaglio_id = p_tipo_soggetto_dettaglio_id
+                                    AND m.tipo_indirizzo_id = p_tipo_indirizzo_id
+                                    AND m.obbligatorio)
+                     AND anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                             p_tipo_soggetto_dettaglio_id, p_tipo_indirizzo_id, p_oggi);
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura(
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  config.tipi_soggetto_dettaglio_tipi_indirizzo.tipo_indirizzo_id%TYPE,
+                  config.tipi_soggetto_dettaglio_tipi_indirizzo.valido_dal%TYPE)
+              IS 'Vero se il tipo di indirizzo e'' obbligatorio per la natura, il giorno dato: la natura ha in config.tipi_soggetto_dettaglio_tipi_indirizzo la riga del tipo col flag obbligatorio, e anagrafiche.fn_tipo_indirizzo_ammesso_per_natura ammette il tipo quel giorno (la riga e'' attiva e valida). Natura NULL: falso. Il ripiego della riga non conta qui: lo leggono i mancanti (anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto). Sede unica della domanda sul layer SOGGETTO: la leggono i mancanti, la madre plurale anagrafiche.fn_crea_indirizzi_soggetto, i picker anagrafiche.fn_tipi_indirizzo_proponibili_natura e _soggetto, i builder dbops.fn_pgtap_crea_soggetto_pf e _pg e anagrafiche.fn_provisiona_dati_di_sviluppo. Gemella di anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo. STABLE, SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura(
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  config.tipi_soggetto_dettaglio_tipi_indirizzo.tipo_indirizzo_id%TYPE,
+                  config.tipi_soggetto_dettaglio_tipi_indirizzo.valido_dal%TYPE);

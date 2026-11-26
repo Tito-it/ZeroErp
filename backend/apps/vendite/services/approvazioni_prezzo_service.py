@@ -36,6 +36,7 @@ from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.core.services.utente_per_id import utente_per_id
 from apps.pratiche.db.pratiche_repository import (
     PRATICHE_ORDER_COLS,
     PraticheRepository,
@@ -61,6 +62,7 @@ from apps.vendite.services._approvazioni_prezzo_constants import (
     STATO_APPROVAZIONE_PENDING,
     STATO_APPROVAZIONE_REJECTED,
 )
+from apps.core.services.list_helpers import pagina_con_totale
 
 _FN = "vendite.approvazioni_prezzo_service"
 
@@ -666,14 +668,13 @@ def lista_coda(
     user_can_act = _user_can_approve_or_reject(user)
     for item in risultati:
         item.update(_capabilities_per_pratica(item, user_can_act=user_can_act))
-    return {"results": risultati, "count": total, "limit": limit, "offset": offset}
+    return pagina_con_totale(risultati, total)
 
 
 # Scopo: helper Fase 5.B1. Ritorna True se l'utente puo' approvare/rifiutare
-#        secondo permesso azione `approva_prezzo_override`. Superuser bypass.
+#        secondo permesso azione `approva_prezzo_override` (SUPER_ADMIN compreso:
+#        lo concede `fn_check_azione_processo`).
 def _user_can_approve_or_reject(user) -> bool:
-    if getattr(user, "is_superuser", False):
-        return True
     return PermissionResolver.check_azione(user, AZIONE_PROCESSO)
 
 
@@ -813,7 +814,7 @@ def _get_riga_pending(
 
 
 # Scopo: verifica che l'utente abbia l'azione processo approva_prezzo_override.
-#        Bypass per superuser (ma esplicitamente, non implicito al check).
+#        SUPER_ADMIN compreso, dal check stesso (`fn_check_azione_processo`).
 def _check_permesso_approva_prezzo(
     auth_user_id: int | None, *, function_name: str
 ) -> None:
@@ -825,8 +826,6 @@ def _check_permesso_approva_prezzo(
     )
     assert auth_user_id is not None
     user = _get_user(auth_user_id)
-    if getattr(user, "is_superuser", False):
-        return
     abilitato = PermissionResolver.check_azione(user, AZIONE_PROCESSO)
     ErrorManager.require(
         abilitato,
@@ -951,17 +950,18 @@ def link_riga_a_pratica(
     aggiorna_pratica(pratica_id, {"meta": meta})
 
 
-# Scopo: lookup utente Django per check permessi. Estratto come helper
-#        per consistenza con preventivi_service e per facilitare mocking.
+# Scopo: l'utente per i check permessi, o il rifiuto del gate prezzi. La
+#        lettura e' il BB `utente_per_id`; qui resta il codice del dominio.
 def _get_user(auth_user_id: int):
-    from django.contrib.auth import get_user_model
-    user_model = get_user_model()
-    try:
-        return user_model.objects.get(pk=auth_user_id)
-    except user_model.DoesNotExist:
+    user = utente_per_id(auth_user_id)
+    if user is None:
         ErrorManager.raise_error(
             code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
             message="Utente non trovato.",
             detail=f"auth_user_id={auth_user_id}",
             function_name=f"{_FN}._get_user",
         )
+    # ⛔ Il `return` si era perso il 2026-11-24 nel passaggio al BB: la funzione
+    #    tornava sempre None e la coda rispondeva 500. I test mockavano
+    #    `_get_user` stesso; ora c'e' `GetUserTests`, che mocka solo il BB.
+    return user

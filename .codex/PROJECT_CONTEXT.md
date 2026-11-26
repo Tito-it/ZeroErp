@@ -3,7 +3,7 @@
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
 >
-> Ultima revisione: 2026-11-22.
+> Ultima revisione: 2026-11-25.
 
 ## Identità del Progetto
 
@@ -217,14 +217,6 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
   vista della merce in viaggio, pgTAP kit/seriali col runner); ⏳ collaudo a video di Tid:
   `work-in-progress/collaudo-in-app-magazzino-bolla-e-reso.md`. Il difetto DB dei motivi della «Conferma» del reso
   è chiuso il 2026-10-14 (`work-done/2026/brief-db-reso-motivi-conferma-con-valori.md`), a video al §5.3/§5.7 del collaudo.
-- 📝 **Magazzino: tutte le scritture dal verbo**
-  (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): Lotto 1 lato DB applicato coi pgTAP verdi
-  il 2026-11-22 (`20261122-01` … `-13`: colonne ammesse, BB di nascita, verbi `fn_aggiungi_*` / `fn_modifica_*`, guard
-  di perimetro, sola lettura per l'app su magazzini, ubicazioni, lotti, seriali, eventi e note, builder pgTAP sui
-  verbi, due fughe d'informazione chiuse nei guard, il cliente del seriale controllato). ⚠️ Ora la R-1 del BE (§7):
-  finché il repository non chiama i verbi, il backend non scrive magazzini, ubicazioni e lotti. Poi il Lotto 2
-  (documenti interni). Il lotto di magazzino è dell'azienda dal 2026-11-22
-  (`work-done/2026/brief-db-magazzino-lotto-dell-azienda.md`, chiuso: DB, BE e FE fatti).
 - **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun
   repository di righe, nessuna chiave i18n). Alla ripartenza: quali articoli ammettono le righe
   d'acquisto è rinviato a `work-done/2026/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5). Il documento passivo
@@ -245,8 +237,17 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
-- **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
-  resta R-4, che vuole un brief DB non ancora scritto. ✅ L-6 (date della veste) fatto il 2026-10-07,
+- 📝 **Le strade per cui l'app scrive senza il verbo: le porte della sola GUC e le viste aggiornabili** (`work-in-progress/brief-db-porte-aperte-dalla-sola-guc.md`; le viste dal 2026-11-23, D-V decisa: l'app solo `SELECT` sulle viste; una richiesta unica al BE per le due famiglie, §4.1: sulle viste il BE risponde «nessuno» il 2026-11-23, il giro delle viste non aspetta più il BE; sulle GUC il DB ha letto il ramo BE, §4.2: il BE non accende nessuna porta da sé; D-A, D-C e D-D decise; dalla verifica critica del 2026-11-23, §3-ter, anche D-E e D-F: tutte le decisioni prese; giro 1, le porte di manutenzione 14 e 15, con `20261123-43` … `-45`, applicato e verde il 2026-11-24; giro 1-bis il 2026-11-24, la fusione dei comuni riservata con `20261123-46`, applicato e verde; D-H a, in `maintenance` un presidio a criterio sulle DEFINER aperte all'app, §6.5; giro 3, le viste in sola lettura per l'app, `20261123-47` e la fase post del provisioning, applicato e verde il 2026-11-24, §7; giro 12-13 (i legami della bolla, pgTAP e guida) verde il 2026-11-24, §8; la richiesta al BE del passo 3d scritta il 2026-11-24, §4.4, da girare; poi le porte del flusso):
+  diciassette porte di trigger (analisi critica del 2026-11-23), in vendite, pagamenti, config, documenti, anagrafiche e dbops, si aprono con una GUC che l'app può
+  accendere da sé, senza chiedere il proprietario (la D-V1 del 2026-09-25). In corso: decise D-A … D-H (le porte del flusso al verbo DEFINER, quelle di manutenzione al
+  proprietario); fatti i giri 1, 1-bis, 3, 12-13 e 16; giro 10 (lo scope emittenti: il verbo DEFINER col guard del SUPER_ADMIN, la porta sulla riga, `20261124-01` … `-06`) applicato e verde il 2026-11-25, al BE la sua richiesta; giro 9 (la registrazione tardiva: il verbo DEFINER col perimetro all'ingresso, il guard di scope del movimento dopo il mirror, `20261124-07` … `-09`) applicato e verde il 2026-11-25, al BE la sua richiesta; giro 11 (la bolla di riconsegna: il verbo DEFINER col livello su `vendite.reso`, il perimetro del reso, la porta col proprietario, `20261124-10`, `-11`, col blocco `EXCEPTION` ridondante tolto dal verbo del giro 9, `-12`) applicato e verde il 2026-11-25, al BE la sua richiesta; il giro 8 + 1-7 (il fondo fattura e il reset del lotto: la primitiva del fondo e i quattro verbi del reset DEFINER col permesso dell'endpoint e il perimetro su lotto e fatture, la porta del reset col proprietario e viva solo nella pulizia, D-T … D-Z decise, `20261125-01` … `-22`, `-26`) applicato e verde il 2026-11-25, da committare, al BE la sua richiesta: con lui sono chiusi lato DB tutti i giri delle porte del flusso; R-DB-K1 con R-DB-K4 (il verbo di primo impianto `fn_crea_primo_amministratore`, D-K7 b; i due seed di `tid` tolti, D-K8 a2; `20261125-30` … `-32`) applicati e verdi il 2026-11-25, al BE la sua richiesta (§4.9.7); il 2026-11-25 il BE ha evaso tutte le richieste (3j, 3k-bis, 3n, 6a … 6e: comando `crea_primo_amministratore`, runner, test, censimenti, manuali; da committare); resta il giro 10-bis (la tabella dello scope in sola lettura) nel piano, che parte dal censimento del BE: nessuno scrive la tabella senza il verbo. Nasce dalla chiusura di `work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`
+  (2026-11-23: tutte le tabelle di `magazzino` in sola lettura per l'app; la R-4 del BE resta parte dello
+  sviluppo del catalogo).
+- **Accessi: una credenziale, più vesti** (`work-in-progress/brief-be-accessi-credenziale-e-vesti.md`; il piano
+  da cui nasce, `work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md`, è archiviato dal 2026-11-25 dopo la
+  riverifica sul codice): restano R-4 (la veste revocata: D-4, A-6), che aspetta il brief DB sugli accessi deciso
+  il 2026-11-23 (T9 di `brief-db-revisione-anagrafiche`, con S64 e S67) e non ancora scritto, e il collaudo a video
+  di D-5. ✅ L-6 (date della veste) fatto il 2026-10-07,
   DB e BE/FE (`work-done/2026/brief-db-veste-utilizzabile.md`; giro 3 chiuso: «Valido al» del drawer operatore
   modificabile, spento col motivo per l'ultimo SUPER_ADMIN senza data di fine, `null` toglie la data): la regola «veste
   utilizzabile» sta in un BB a DB (`script.fn_veste_utilizzabile`), letto da tutte le sedi DB e dai
@@ -255,22 +256,16 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   l'email, il reset accetta nome utente o email. Chiuso il 2026-10-03
   `work-done/2026/brief-db-credenziale-verbi-amministratore.md` (motivo del blocco dal DB, verbi
   dell'amministratore che rifiutano le credenziali di sistema).
+- 📝 **L'area clienti: una porta sola, l'iscrizione da sé, il documento scelto all'ordine** (`work-in-progress/analisi-modello-area-clienti.md`, Tid 2026-11-25): portale e shop non sono più due porte; la visibilità la decide il soggetto, non il canale; privati e partite IVA si iscrivono da sé con la conferma dell'email; l'email resta la chiave, protegge il secondo fattore. Revoca le decisioni 1, 3, 4 del 2026-04-20 (`work-done/2026/pr-b-shop-b2c-cambio-modello.md`). D-M4, D-M5 (aziende), D-M7, D-M8 decise il 2026-11-25; aperta D-M9 (l'accesso dei privati: secondo fattore o provider, con `piano-autenticazione-provider-esterni-oauth`). Poi **un brief DB unico**, `work-in-progress/brief-db-accessi-area-clienti.md` (aperto il 2026-11-25), con T9 di `brief-db-revisione-anagrafiche` e R-4 come primo giro: **giro 1 applicato il 2026-11-26** (la veste revocata: segno, guard, `fn_revoca_veste`, `fn_togli_revoca_veste`, stato `REVOCATA`); aspetta il passo BE 3b.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il
   cambio di licenza.
-- 📝 **Revisione dello schema `ui`** (`work-in-progress/brief-db-revisione-ui.md`): giro 0 fatto il 2026-11-18 (32
-  pagine `manual/` allo standard, guida `configurazione-liste` riallineata); censimento di 39 difetti, tre di classe A;
-  decisioni Q1-Q49 prese da Tid dal 2026-11-18 al 2026-11-21; giri 1a e 1b applicati con i pgTAP verdi il 2026-11-20,
-  giro 2 (2a e 2b: forma delle preferenze, ritiro di filtri e ordinamento, legami di preset e pool) e giro 3 (le misure,
-  `20261120-36` … `-42`) il 2026-11-21. Giro 4 (il catalogo delle liste, `20261120-43` … `-52`) applicato coi pgTAP
-  verdi e committato il 2026-11-21. Giro 5 (il catalogo delle dashboard, `20261120-53` … `-62`, Q49 e Q50 (a): il
-  «mai vuota» resta quello di luglio) applicato coi pgTAP verdi il 2026-11-22, con la guida
-  `configurazione-dashboard`: resta la doc auto-generata. Al DB il `/verifica-db` dei giri 1a, 2, 3, 4 e 5, poi il giro 6,
-  che ha in più U40 (l'ordinamento di partenza nel seed dei preset, chiesto dal team BE il 2026-11-22). Le ricadute
-  BE/FE dei giri 2-5 sono fatte e committate (PR #193 e #194, 2026-11-22). Il residuo di BE25 (2) è fatto il 2026-11-22 (la partenza della lista su ogni porta). Giro 6a (`20261121-26` … `-33`: U40 nel seed, BE10 con `ui.fn_misura_lista` e il BB `ui.fn_misura_pagina_risolta`, U38) applicato coi pgTAP verdi il 2026-11-22. Giro 6b (`20261121-34` … `-37`, i COMMENT di `ui` e le note dei registri) applicato coi pgTAP verdi lo stesso giorno. Le ricadute BE/FE del giro 6 (BE10, BE18, BE29, BE31) sono fatte e verdi il 2026-11-22. Giro 6c (i pgTAP deboli di §5, due test nuovi) verde come app il 2026-11-22; il giro 6 è committato. Resta il `/verifica-db` dei giri 1a-6c, poi la chiusura.
+- 📝 **Il collaudo a video della partenza delle liste dal preset** (`work-in-progress/brief-be-collaudo-partenza-liste-dal-preset.md`): il residuo di
+  `work-done/2026/brief-db-revisione-ui.md`, chiuso il 2026-11-23 (BE29 e il residuo di BE25 (2)). Aperto, non
+  iniziato: il copione lo scrive il team BE/FE, poi il collaudo di Tid.
 - 📝 **Revisione dello schema `anagrafiche`** (`work-in-progress/brief-db-revisione-anagrafiche.md`): censimento in
   sola lettura fatto il 2026-11-22 (195 pagine `manual/`, nessuna allo standard; 56 oggetti senza pagina; il contenuto
   falso e stantio per area; segnalazioni di codice da vagliare per ultime). Q1-Q8 decise da Tid lo stesso giorno. Giro
@@ -283,7 +278,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   ritirato, committato il 2026-11-22, doc auto-generata rigenerata. Q7 riaperta dalla risposta R-BE5 del BE: lo
   storico di `indirizzi`, `indirizzi_dettaglio` e `config.stradario` diventa continuo (giro di codice, in coda). Giro 0e (area E: gli accessi; 23 pagine, i blocchi della
   sincronizzazione e dell'ultimo SUPER_ADMIN, le due guide) scritto e committato il 2026-11-22, doc auto-generata rigenerata: il giro 0 è finito. Prossimo:
-  il vaglio delle segnalazioni S1-S68 (Tid), poi i giri di codice.
+  il vaglio delle segnalazioni S1-S68 (Tid), poi i giri di codice. Il 2026-11-23: il brief ha in testa il piano a spunta (§0)
+  e il vaglio per temi (§17, una decina di decisioni invece di 68); giro 1 (Q7, lo storico continuo di indirizzi, civici
+  e vie, `20261123-38` … `-42`) applicato coi pgTAP verdi e committato: la prova ha trovato `storico.indirizzi` che non
+  accettava nessuna versione. Il vaglio per temi è deciso da Tid il 2026-11-23 (§17.1: T6 e T9 in brief nuovi, S53
+  tema proprio T12, S4 la coppia CF e P.IVA). Giro 2 (T2) fatto il 2026-11-23: dentro `anagrafiche` niente da cambiare; deciso che l'app avrà solo `SELECT` sulle viste in tutto il database, lavoro e richiesta BE passati a `brief-db-porte-aperte-dalla-sola-guc` §5 e §4.1. Giro 3 (T5, il soggetto: natura, identificativo, ruoli; `20261123-48` … `-63`) scritto e provato il 2026-11-24, applicato da Tid su scratch e dbdev, pgTAP verdi, committato: normalizzazione di CF e P.IVA in fase `a01`, stato sotto la regola dell'identificativo (guard in `a05`), una natura scritta non si svuota, tipo del ruolo e soggetto dei dati societari bloccati, il doppione dall'indice. Giro 3-bis (D-T5-6 b, il tipo di contatto proposto, `20261123-68` … `-73`) applicato, verde e committato il 2026-11-24. T7 diviso in T7a (indirizzi) e T7b (contatti e catasto): giro 4, T7a (`20261123-74` … `-94`: requisito nuovo che non blocca chi esiste, via non risolta nel guard del civico, geoloc solo dal civico, sede unica di «obbligatorio per natura», forma dell'elemento decisa dal DB, `tipo_ruolo_id` integer) applicato, pgTAP verdi e doc rigenerata il 2026-11-24, da committare. Restano da girare i passaggi al BE (§20.7, §21.7); poi T7b.
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**
@@ -311,6 +310,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **La corsa appesa non è «in corso» nella liveness del BE** [BE/FE]
 - **La lista dei processi non dice se un processo gira adesso**
 - **Presidi, i residui del brief dei testi per chi agisce**: D-4, le quattro misure larghe per costruzione; la postura in sola lettura di `dbops.presidi` per l'app
+- ⏭️ **La SQL dei contatti del ruolo scritta nella view** [BE]
+- **Le colonne «predefinito» delle liste col `formato = predefinito`** [DB, poi FE]
 - **`HTML_MARKDOWN_BLOCKS` si sceglie ma non fa niente** [BE]
 - **Le versioni pubblicate stampano coi margini delle colonne (15 mm), non coi 18/16 mm del loro CSS**
 - 🟡 **L'editor dei workflow perde le righe in compilazione senza chiedere** [FE]
@@ -343,6 +344,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **L'L3 dei componenti non esiste** [DB + BE]
 - **`user_update` nullable su nove tabelle senza audit** [DB]
 - **`data_update` nullable e senza default su tabelle che hanno l'audit** [DB]
+- 📝 **La documentazione d'uso: decisa dominio per dominio, mai come insieme, e l'assistente AI non la legge** [Tid, poi BE + doc]
 - **Residui della roadmap fatturazione**: Esercizio fiscale come entità; Vista push; Alerting sui dati; Diagrammi di stato; Preview di fatturazione del contratto
 
 ### Note operative

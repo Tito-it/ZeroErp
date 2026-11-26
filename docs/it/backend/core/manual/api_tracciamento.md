@@ -180,15 +180,12 @@ L'endpoint non ha filtri. I due filtri del repository (`processo_codice`,
 
 ## Output
 
-Tutti gli endpoint restituiscono l'envelope paginato standard:
+Tutti gli endpoint restituiscono l'envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)):
 
 ```json
 {
   "data": {
     "count": 42,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [...]
   },
   "meta": {"request_id": "..."}
@@ -206,8 +203,9 @@ Tutti gli endpoint restituiscono l'envelope paginato standard:
   `offset_negativo`), che prima si riportava nei limiti in silenzio.
 - ⛔ `page`/`page_size` in query sono un `400 E_VALIDATION_INPUT`
   (`page_non_ammesso_usare_limit_offset`) dal 2026-10-21: fino a quel giorno
-  erano il contratto di questi sei endpoint. La risposta porta ancora `page` e
-  `page_size`, ricavati dall'offset (`envelope_da_offset`).
+  erano il contratto di questi sei endpoint. Dal 2026-11-24 la
+  risposta è `{count, results}` (`pagina_con_totale`): `page` e `page_size`
+  sono usciti.
 - I filtri date (`date_from`/`date_to`, `YYYY-MM-DD`) sono giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09), `date_to` incluso. Malformate → `400 E_VALIDATION_INPUT` (fino al 2026-10-09 arrivavano al DB come stringa, e il confine alto era compreso: `<= date_to + 1 giorno`).
 - Throttling `SearchBurstRateThrottle` su cinque endpoint su sei: tutti tranne
   `job-summary`, che non ha né ricerca né filtri.
@@ -309,8 +307,10 @@ lavori).
   `date_from`. Il giornale è limitato dalla ritenzione
   ([Ritenzione del giornale](#ritenzione-del-giornale)).
 - I tipi condivisi (`AuditLogRow`, `DominioTaskRow`, `TaskRegistryRow`, `TaskRegistryImplRow`, `JobRunLogRow`) sono in `apps/core/types.py` per riuso cross-dominio.
-- Gli helper generici `qp_bool_optional`, `qp_str`, `pagina_da_query`, `envelope_da_offset` sono in `apps/core/api/payload_validators.py` e riusabili da qualsiasi endpoint GET.
+- Gli helper generici `qp_bool_optional`, `qp_str`, `pagina_da_query` sono in `apps/core/api/payload_validators.py` e riusabili da qualsiasi endpoint GET; l'envelope di lista è `pagina_con_totale` in `apps/core/services/list_helpers.py` (`envelope_da_offset` ritirato il 2026-11-24).
 - 2026-10-21: i sei endpoint leggono la finestra come `limit`/`offset` (`pagina_da_query`); `page`/`page_size` in query diventano un 400. Envelope invariato.
+- 2026-11-24: la risposta è `{count, results}` (`pagina_con_totale`, D-1 di
+  brief-be-fe-BB-audit): `page`, `page_size` e `total_pages` escono.
 - 2026-11-22: revisione dei riferimenti a `maintenance`. Il giornale è di
   entrambe le origini (prima: «esecuzioni job pgAgent»); censiti i campi di
   `job-runs` e i metodi di `MaintenanceRepository` fuori da questi endpoint;

@@ -1,5 +1,15 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: dal 2026-11-23 dbops.fn_admin_merge_stradario e' riservata
+--   al proprietario (v_fn_riservate, 90_end/20261123-45) e la porta degli indirizzi
+--   che apre si apre solo da lui (20_code/anagrafiche/20261123-43): la fusione
+--   delle vie non sta sul percorso applicativo. Le fusioni sono strumenti DBA,
+--   lanciati da zeroerp_owner: dal 2026-11-24 anche fn_admin_merge_comune e'
+--   riservata (90_end/20261123-46). Che l'app ne resti fuori lo prova
+--   dbops/test-porte-manutenzione-solo-proprietario-v1. ⚠️ Il test 26 (figlia
+--   sotto RLS) regge da owner: la tabella temporanea e' in FORCE.
+--   Brief: brief-db-porte-aperte-dalla-sola-guc, giro 1.
 -- pgTAP test per Zero ERP
 -- Copyright (C) 2026 Tid (Michele Carlo Titini)
 --

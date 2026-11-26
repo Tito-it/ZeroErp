@@ -28,13 +28,18 @@
 #       famiglia (`db/famiglie.py`, validati da regex all'import) e dalle
 #       whitelist di ordinamento; i VALORI viaggiano nei `params`.
 #
-#       ⭐ 2026-09-26: testate e righe si scrivono coi BB core
-#       (`execute_dynamic_insert` / `execute_dynamic_update` /
-#       `sql_set_clause`). ⛔ Whitelist RIGIDA: una colonna fuori da
-#       `_COLONNE_TESTATA_AGGIORNABILI` / `_colonne_riga` (o `descrizione` su
-#       una famiglia che non la ha) e' `RuntimeError`, non piu' uno scarto
-#       silenzioso — il contratto dell'operatore lo chiude il service
-#       (`validate_allowed_keys`, 400) prima di arrivare qui.
+#       ⭐ 2026-11-23 (R-2 di brief-db-magazzino-tutte-le-scritture-dal-verbo):
+#       testate, righe e cambi di stato passano dai VERBI del DB — la nascita
+#       per famiglia (`magazzino.fn_aggiungi_<famiglia>`,
+#       `fn_aggiungi_riga_<famiglia>`: obbligatori come argomenti, il resto in
+#       jsonb) e i verbi comuni con la famiglia come primo argomento
+#       (`fn_modifica_documento_interno`, `fn_elimina_…`, `fn_cambia_stato_…`,
+#       `fn_modifica_riga_…`, `fn_togli_riga_…`). DEFINER, col livello `TUTTO`
+#       sull'oggetto della famiglia e il perimetro nella prima riga. Le
+#       colonne ammesse le dice il DB (`colonne_ammesse`, su
+#       `fn_documento_interno_colonne_ammesse`): le whitelist di scrittura che
+#       stavano qui sono ritirate. ⛔ Nessuna scrittura diretta sulle sei
+#       tabelle: alla chiusura (P-5c) l'app ricevera' `42501`.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -51,6 +56,7 @@ from apps.core.db._helpers import (
     pattern_contiene,
     RicercaFull,
     add_ricerca_full_condition,
+    lista_paginata,
     call_jsonb_fn,
     fetchone_scalar,
     jsonb_out,
@@ -59,12 +65,8 @@ from apps.core.db._helpers import (
     sql_tiebreak_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
-from apps.core.db.sql_write_helpers import (
-    execute_dynamic_insert,
-    execute_dynamic_update,
-    sql_set_clause,
-)
-from apps.magazzino.db._helpers import guard_canale_sistema, lista_paginata, meta_mai_null
+from apps.core.db.sql_write_helpers import campi_jsonb, esegui_verbo
+from apps.magazzino.db._helpers import guard_canale_sistema
 from apps.magazzino.db.famiglie import FAMIGLIE, INVENTARI, RETTIFICHE, FamigliaDocumentoInterno
 from apps.magazzino.types import (
     BloccoRow,
@@ -101,7 +103,6 @@ DOCUMENTI_SORT_COLUMNS: dict[str, str] = {
     "user_insert": "user_insert",
     "id": "id",
 }
-DOCUMENTI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data", "data_insert"})
 
 # Le righe: una whitelist PER FAMIGLIA. ⛔ Il nome della quantita' e' fisico
 # e diverso (`qta_contata` / `qta_delta`), e una whitelist unica che le
@@ -187,7 +188,6 @@ MOVIMENTI_SORT_COLUMNS: dict[str, str] = {
     "sorgente_codice_interno": "sorgente_codice_interno",
     "data_insert": "data_insert",
 }
-MOVIMENTI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_mov", "data_insert"})
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -391,25 +391,12 @@ _MOVIMENTI_SELECT = f"""
       LEFT JOIN config.sorgenti sg ON sg.id = mv.sorgente_tipo_id
 """  # noqa: S608 — frammenti costanti del modulo (_DECODIFICA_POSIZIONE_*, _MAGAZZINO_*)
 
-# Le colonne di testata che il PATCH puo' toccare. ⛔ `magazzino_id` NO: si
-# sceglie alla nascita (R-4 lo difendera' a DB). `descrizione` solo sulla
-# famiglia che ce l'ha — lo decide il service dalla config.
-_COLONNE_TESTATA_AGGIORNABILI = frozenset({"data", "descrizione", "meta"})
-# Le colonne jsonb scritte dal dominio (`meta`, NOT NULL: `meta_mai_null`).
-_JSONB_COLS = ("meta",)
-
-# Le colonne di riga che si scrivono (create e PATCH). La quantita' e il
-# motivo variano per famiglia e li aggiunge `_colonne_riga`.
-_COLONNE_RIGA_COMUNI = frozenset(
-    {"articolo_id", "costo_unitario", "ubicazione_id", "lotto_id", "asset_id", "meta"}
-)
-
-
-def _colonne_riga(f: FamigliaDocumentoInterno) -> frozenset[str]:
-    extra = {f.col_qta}
-    if f.con_motivo:
-        extra.add("motivo")
-    return _COLONNE_RIGA_COMUNI | extra
+# Le due PARTI di un documento interno e i due GESTI di scrittura, come li
+# chiama `fn_documento_interno_colonne_ammesse`. Fuori elenco e' un errore del
+# chiamante, non un input: il DB su una combinazione ignota risponderebbe con
+# una lista vuota, cioe' «niente e' ammesso», in silenzio.
+PARTI: frozenset[str] = frozenset({"testata", "riga"})
+GESTI: frozenset[str] = frozenset({"crea", "modifica"})
 
 
 class MagazzinoRepository:
@@ -487,7 +474,6 @@ class MagazzinoRepository:
             default="data",
             tiebreak="id",
             default_desc=True,
-            colonne_desc=DOCUMENTI_SORT_COLONNE_DATA,
         )
         rows, total = lista_paginata(
             select_sql=f"{_documento_select(f)} {where}",
@@ -578,59 +564,59 @@ class MagazzinoRepository:
     #  Documento interno — scrittura
     # ══════════════════════════════════════════════════════════════
 
-    # Scopo: Crea la BOZZA di una famiglia. L'app scrive le testate: sono sotto
-    #        RLS (`WITH CHECK`), non dietro la porta della primitiva.
-    def create_documento(
-        self,
-        f: FamigliaDocumentoInterno,
-        *,
-        magazzino_id: int,
-        data: date | None,
-        descrizione: str | None,
-        meta: dict[str, Any] | None,
-    ) -> int:
-        # Chiavi LETTERALI (`allowed=None`). `skip_none`: `data` assente lascia
-        # il DEFAULT del DB (oggi), `descrizione` assente resta NULL; `meta`
-        # viaggia sempre (`{}` se None, la colonna e' NOT NULL).
-        valori: dict[str, Any] = {"magazzino_id": int(magazzino_id), "meta": meta or {}, "data": data}
-        if f.ha_descrizione:
-            valori["descrizione"] = descrizione
-        riga = execute_dynamic_insert(f.tabella, valori, allowed=None, skip_none=True, jsonb=_JSONB_COLS)
-        return int(riga["id"])
+    # Scopo: Le colonne che il verbo accetta per (famiglia, parte, gesto),
+    #        dalla sede unica del DB (`fn_documento_interno_colonne_ammesse`,
+    #        D-M4). Le legge il service per il contratto del payload.
+    def colonne_ammesse(self, f: FamigliaDocumentoInterno, parte: str, gesto: str) -> frozenset[str]:
+        if parte not in PARTI or gesto not in GESTI:
+            raise RuntimeError(f"colonne_ammesse: parte {parte!r} o gesto {gesto!r} fuori elenco")
+        return frozenset(esegui_verbo(
+            "SELECT magazzino.fn_documento_interno_colonne_ammesse(%s, %s, %s)",
+            [f.famiglia_db, parte, gesto],
+        ) or ())
 
-    # Scopo: Aggiorna i campi di testata che una persona compila.
-    # ⚠️ `None` AZZERA il campo nullable (la semantica dei documenti): `data`
-    #    e' NOT NULL e il service non la manda a `None`; `meta` None vale `{}`.
-    # ⛔ `descrizione` su una famiglia senza la colonna (rettifica) e' fuori
-    #    whitelist: `RuntimeError`, non piu' scartata (il service non la ammette).
+    # Scopo: Fa nascere la BOZZA col verbo della famiglia: il magazzino e'
+    #        l'argomento, i campi (data, descrizione…) viaggiano in jsonb; un
+    #        campo assente prende il DEFAULT del DB (la data: oggi).
+    def create_documento(
+        self, f: FamigliaDocumentoInterno, *, magazzino_id: int, campi: dict[str, Any]
+    ) -> int:
+        return int(esegui_verbo(
+            f"SELECT {f.fn_aggiungi}(%s::bigint, %s::jsonb)",  # verbo dal registro FAMIGLIE (regex in famiglie.py)
+            [int(magazzino_id), campi_jsonb(campi)],
+        ))
+
+    # Scopo: Modifica la testata per DELTA (una chiave a `None` svuota, una
+    #        assente resta). Il verbo la ammette solo in `DRAFT`
+    #        (`E_MAG_DOCUMENTO_TESTATA_CONGELATA`). Ritorna id e colonne
+    #        modificabili.
     def update_documento(
         self, f: FamigliaDocumentoInterno, doc_id: int, campi: dict[str, Any]
-    ) -> bool:
-        ammesse = _COLONNE_TESTATA_AGGIORNABILI
-        if not f.ha_descrizione:
-            ammesse = ammesse - {"descrizione"}
-        return execute_dynamic_update(
-            f.tabella, int(doc_id), meta_mai_null(campi), allowed=ammesse, jsonb=_JSONB_COLS,
-        )
+    ) -> dict[str, Any]:
+        return cast(dict[str, Any], esegui_verbo(
+            "SELECT magazzino.fn_modifica_documento_interno(%s, %s, %s::jsonb)",
+            [f.famiglia_db, int(doc_id), campi_jsonb(campi)],
+        ))
 
-    # Scopo: Chiede al database il cambio di stato: `UPDATE … SET <stato>` e il
-    #        guard decide (`E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA`, la porta
-    #        `POSTED`). Zero righe = la testata non c'e' (o non e' visibile).
+    # Scopo: Chiede al verbo il cambio di stato: la matrice la fanno
+    #        rispettare i controlli della tabella
+    #        (`E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA`, la porta `POSTED`).
+    #        Ritorna lo stato scritto.
     def set_stato_documento(
         self, f: FamigliaDocumentoInterno, doc_id: int, stato: str
-    ) -> int:
-        sql = f"UPDATE {f.tabella} SET {f.col_stato} = %s WHERE id = %s"  # noqa: S608 — tabella e colonna di stato dal registro FAMIGLIE, valori come parametri
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [stato, int(doc_id)])
-            return cursor.rowcount
+    ) -> str:
+        return str(esegui_verbo(
+            "SELECT magazzino.fn_cambia_stato_documento_interno(%s, %s, %s)",
+            [f.famiglia_db, int(doc_id), stato],
+        ))
 
-    # Scopo: Elimina una testata. Il DB decide (`E_MAG_DOCUMENTO_NON_ELIMINABILE`
-    #        fuori da `DRAFT`); le righe cascano.
-    def delete_documento(self, f: FamigliaDocumentoInterno, doc_id: int) -> int:
-        sql = f"DELETE FROM {f.tabella} WHERE id = %s"  # noqa: S608 — tabella dal registro FAMIGLIE, valori come parametri
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [int(doc_id)])
-            return cursor.rowcount
+    # Scopo: Elimina una BOZZA col verbo (`E_MAG_DOCUMENTO_NON_ELIMINABILE`
+    #        fuori da `DRAFT`); le righe vanno con lei.
+    def delete_documento(self, f: FamigliaDocumentoInterno, doc_id: int) -> None:
+        esegui_verbo(
+            "SELECT magazzino.fn_elimina_documento_interno(%s, %s)",
+            [f.famiglia_db, int(doc_id)],
+        )
 
     # Scopo: IL POSTING — una sola `SELECT` sulla funzione madre, atomica per
     #        costruzione (api.md §Atomicita'). Rifiuta non-`CONFIRM`, senza
@@ -718,45 +704,43 @@ class MagazzinoRepository:
             rows = rows_to_list(cursor)
         return rows[0] if rows else None  # type: ignore[return-value]
 
-    # Scopo: Inserisce una riga. Il guard di famiglia (`E_MAG_DOCUMENTO_
-    #        RIGHE_CONGELATE`), i CHECK e l'UNIQUE di posizione rispondono da
-    #        soli: qui si scrive e basta.
+    # Scopo: Fa nascere una riga col verbo della famiglia: articolo e
+    #        quantita' (il nome fisico e' della famiglia) sono argomenti, il
+    #        resto in jsonb. Il guard di famiglia (`E_MAG_DOCUMENTO_RIGHE_
+    #        CONGELATE`), i CHECK e l'UNIQUE di posizione rispondono da soli.
     def create_riga(
-        self, f: FamigliaDocumentoInterno, doc_id: int, campi: dict[str, Any]
+        self,
+        f: FamigliaDocumentoInterno,
+        doc_id: int,
+        *,
+        articolo_id: str,
+        qta: Any,
+        campi: dict[str, Any],
     ) -> int:
-        # La FK verso la testata viene dall'argomento e VINCE sul payload.
-        riga = execute_dynamic_insert(
-            f.tabella_righe,
-            meta_mai_null({**campi, f.fk_riga: int(doc_id)}),
-            allowed=_colonne_riga(f) | {f.fk_riga},
-            jsonb=_JSONB_COLS,
-        )
-        return int(riga["id"])
+        return int(esegui_verbo(
+            f"SELECT {f.fn_aggiungi_riga}(%s::bigint, %s::uuid, %s::numeric, %s::jsonb)",  # verbo dal registro FAMIGLIE (regex in famiglie.py)
+            [int(doc_id), str(articolo_id), qta, campi_jsonb(campi)],
+        ))
 
-    # Scopo: Aggiorna una riga della testata indicata. `None` azzera un campo
-    #        nullable (togliere il lotto, l'ubicazione, il costo). Legata alla
-    #        SUA testata nella `WHERE`: per questo il SET dal BB e il WHERE qui.
+    # Scopo: Modifica per DELTA una riga DELLA testata indicata: la coppia
+    #        (documento, riga) e' la chiave del verbo, e una riga di un altro
+    #        documento risponde `E_MAG_DOCUMENTO_RIGA_NON_TROVATA`. `None`
+    #        svuota un nullable (togliere il lotto, l'ubicazione, il costo).
     def update_riga(
         self, f: FamigliaDocumentoInterno, doc_id: int, riga_id: int, campi: dict[str, Any]
-    ) -> bool:
-        if not campi:
-            return False
-        set_sql, params = sql_set_clause(meta_mai_null(campi), allowed=_colonne_riga(f), jsonb=_JSONB_COLS)
-        sql = (
-            f"UPDATE {f.tabella_righe} SET {set_sql} "  # noqa: S608 — tabella/FK dal registro FAMIGLIE, SET da sql_set_clause (colonne verificate sulla whitelist _colonne_riga), valori come parametri
-            f"WHERE id = %s AND {f.fk_riga} = %s"
-        )
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [*params, int(riga_id), int(doc_id)])
-            return cursor.rowcount > 0
+    ) -> dict[str, Any]:
+        return cast(dict[str, Any], esegui_verbo(
+            "SELECT magazzino.fn_modifica_riga_documento_interno(%s, %s, %s, %s::jsonb)",
+            [f.famiglia_db, int(doc_id), int(riga_id), campi_jsonb(campi)],
+        ))
 
-    # Scopo: Elimina una riga della testata indicata (il guard di famiglia
-    #        decide se lo stato lo ammette).
-    def delete_riga(self, f: FamigliaDocumentoInterno, doc_id: int, riga_id: int) -> int:
-        sql = f"DELETE FROM {f.tabella_righe} WHERE id = %s AND {f.fk_riga} = %s"  # noqa: S608 — tabella e FK dal registro FAMIGLIE, valori come parametri
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [int(riga_id), int(doc_id)])
-            return cursor.rowcount
+    # Scopo: Toglie una riga della testata indicata (solo in `DRAFT`: lo dice
+    #        il guard di famiglia).
+    def delete_riga(self, f: FamigliaDocumentoInterno, doc_id: int, riga_id: int) -> None:
+        esegui_verbo(
+            "SELECT magazzino.fn_togli_riga_documento_interno(%s, %s, %s)",
+            [f.famiglia_db, int(doc_id), int(riga_id)],
+        )
 
     # Scopo: I motivi per cui una riga NON sarebbe scrivibile a registro —
     #        `script.fn_check_riga_magazzino` cosi' com'e': la stessa funzione
@@ -1012,7 +996,6 @@ class MagazzinoRepository:
             default="data_mov",
             tiebreak="id",
             default_desc=True,
-            colonne_desc=MOVIMENTI_SORT_COLONNE_DATA,
         )
         rows, total = lista_paginata(
             select_sql=f"{_MOVIMENTI_SELECT} {where}",

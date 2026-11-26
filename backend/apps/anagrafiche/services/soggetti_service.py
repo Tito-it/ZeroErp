@@ -13,7 +13,6 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.non_editable_fields_helper import compute_non_editable_fields
 from apps.anagrafiche.db.conti_bancari_repository import ContiBancariRepository
@@ -42,6 +41,7 @@ from apps.anagrafiche.services._validators import (
 from apps.anagrafiche.services.cf_validator_it import genera_cf_it, valida_cf_congruenza_it
 from apps.anagrafiche.services.geo_service import richiedi_via
 from apps.anagrafiche.services.contatti_service import (
+    VINCOLI_CONTATTO,
     crea_contatto_validato,
     richiedi_contatto_valido,
 )
@@ -293,7 +293,7 @@ class SoggettiService:
     def create_soggetto(self, payload: dict[str, Any]) -> dict[str, Any]:
         from django.db import transaction
 
-        tipo_id = optional_int(payload, "tipo_soggetto_dettaglio_id")
+        tipo_id = _V.optional_int(payload, "tipo_soggetto_dettaglio_id")
         ErrorManager.require(tipo_id is not None, code=E_ANAG_VALIDAZIONE,
                              message="Tipo soggetto obbligatorio.")
         assert tipo_id is not None
@@ -648,7 +648,7 @@ class SoggettiService:
         return crea_contatto_validato(
             self._repo, soggetto_id, payload,
             soggetto_ruolo_id=soggetto_ruolo_id,
-            istanza_utility_id=optional_int(payload, "istanza_utility_id"),
+            istanza_utility_id=_V.optional_int(payload, "istanza_utility_id"),
         )
 
     # Scopo: Aggiorna contatto esistente con verifica ownership.
@@ -660,7 +660,12 @@ class SoggettiService:
         # ⛔ Un PATCH senza campi e' un 400, non il 404 che dava l'UPDATE vuoto
         #    (Tid, 2026-10-20, brief-be-verifica-documentazione-api §A2).
         _V.require_campi_da_aggiornare(payload)
-        updated = self._repo.update_contatto(contatto_id, payload, soggetto_id=soggetto_id)
+        # Un tipo gia' usato nel contesto urta uno dei tre indici: tradotto sul
+        # campo (`VINCOLI_CONTATTO`, la sede della modifica diretta).
+        updated = create_with_constraint_mapping(
+            lambda: self._repo.update_contatto(contatto_id, payload, soggetto_id=soggetto_id),
+            VINCOLI_CONTATTO,
+        )
         ErrorManager.require(updated, code=E_ANAG_NOT_FOUND,
                              message="Contatto non trovato.")
         return {"updated": True}
@@ -678,12 +683,39 @@ class SoggettiService:
         # ⛔ Un PATCH senza campi e' un 400, non il 404 che dava l'UPDATE vuoto
         #    (Tid, 2026-10-20, brief-be-verifica-documentazione-api §A2).
         _V.require_campi_da_aggiornare(payload)
-        updated = self._repo.update_contatto(
-            contatto_id, payload, soggetto_ruolo_id=soggetto_ruolo_id,
+        updated = create_with_constraint_mapping(
+            lambda: self._repo.update_contatto(
+                contatto_id, payload, soggetto_ruolo_id=soggetto_ruolo_id,
+            ),
+            VINCOLI_CONTATTO,
         )
         ErrorManager.require(updated, code=E_ANAG_NOT_FOUND,
                              message="Contatto non trovato o non appartiene al ruolo.")
         return {"updated": True}
+
+    # Scopo: «Rendi predefinito» un contatto del soggetto, nel suo contesto.
+    #        E' l'unico modo di cambiare il predefinito: il segno non si toglie
+    #        e il predefinito non si cancella finche' ha altri contatti accanto
+    #        (i due rifiuti li da' il DB, D-T7b-2, brief-db-revisione-anagrafiche
+    #        §22.6). Il predefinito di prima lo perde da se'.
+    def rendi_predefinito_contatto(self, soggetto_id: str, contatto_id: int) -> dict[str, Any]:
+        self._require_soggetto_exists(soggetto_id)
+        updated = self._repo.rendi_predefinito_contatto(contatto_id, soggetto_id=soggetto_id)
+        ErrorManager.require(updated, code=E_ANAG_NOT_FOUND,
+                             message="Contatto non trovato.")
+        return {"is_default": True}
+
+    # Scopo: «Rendi predefinito» un contatto del RUOLO (anche per un'istanza),
+    #        con ownership check sul ruolo. Gemello di `rendi_predefinito_contatto`.
+    def rendi_predefinito_contatto_ruolo(
+        self, soggetto_ruolo_id: int, contatto_id: int,
+    ) -> dict[str, Any]:
+        updated = self._repo.rendi_predefinito_contatto(
+            contatto_id, soggetto_ruolo_id=soggetto_ruolo_id,
+        )
+        ErrorManager.require(updated, code=E_ANAG_NOT_FOUND,
+                             message="Contatto non trovato o non appartiene al ruolo.")
+        return {"is_default": True}
 
     # Scopo: Aggiorna un indirizzo del RUOLO con ownership check sul ruolo.
     #        Stessa storia di `update_contatto_ruolo`: la view scriveva
@@ -1045,7 +1077,7 @@ class SoggettiService:
         piva = (payload.get("partita_iva") or "").strip().upper()
         sesso = _V.optional_upper(payload, "sesso")
         data_nascita_raw = payload.get("data_nascita")
-        comune_nascita_id = optional_int(payload, "comune_nascita_id")
+        comune_nascita_id = _V.optional_int(payload, "comune_nascita_id")
 
         # --- Validazione congruenza CF ---
         if cf and len(cf) == 16:
@@ -1107,7 +1139,7 @@ class SoggettiService:
             message="Il codice fiscale si calcola solo con sesso M o F.",
             context={"field": "sesso"},
         )
-        comune_id = optional_int(payload, "comune_nascita_id")
+        comune_id = _V.optional_int(payload, "comune_nascita_id")
         ErrorManager.require(
             comune_id is not None and comune_id > 0,
             code=E_ANAG_VALIDAZIONE,
@@ -1182,8 +1214,8 @@ class SoggettiService:
                 data_nascita=optional_str(payload, "data_nascita"),
                 sesso=sesso,
                 stato_iso2=optional_str(payload, "stato_iso2"),
-                comune_nascita_id=optional_int(payload, "comune_nascita_id"),
-                tipo_contatto_id=optional_int(contatto, "tipo_contatto_id"),
+                comune_nascita_id=_V.optional_int(payload, "comune_nascita_id"),
+                tipo_contatto_id=_V.optional_int(contatto, "tipo_contatto_id"),
                 tipo_soggetto_dettaglio_id=tipo_id,
                 partita_iva=optional_str(payload, "partita_iva"),
                 dati_societari=dati_societari,
@@ -1226,7 +1258,7 @@ class SoggettiService:
                 partita_iva=optional_str(payload, "partita_iva"),
                 stato_iso2=optional_str(payload, "stato_iso2"),
                 dati_societari=dati_societari,
-                tipo_contatto_id=optional_int(contatto, "tipo_contatto_id"),
+                tipo_contatto_id=_V.optional_int(contatto, "tipo_contatto_id"),
             ),
             # ⚠️ La creazione scrive DUE tabelle con unicita' proprie: il REA
             #    duplicato (`uq_ds_prov_cea`, dentro `fn_scrivi_dati_societari`)
@@ -1254,8 +1286,8 @@ class SoggettiService:
                 "telefono": optional_str(contatto, "telefono"),
                 "cellulare": optional_str(contatto, "cellulare"),
                 "pec": optional_str(contatto, "pec"),
-                "tipo_contatto_id": optional_int(contatto, "tipo_contatto_id"),
-                "unita_organizzativa_id": optional_int(contatto, "unita_organizzativa_id"),
+                "tipo_contatto_id": _V.optional_int(contatto, "tipo_contatto_id"),
+                "unita_organizzativa_id": _V.optional_int(contatto, "unita_organizzativa_id"),
                 "note": optional_str(contatto, "note"),
             })
 
@@ -1380,7 +1412,7 @@ class SoggettiService:
                 pass
 
         codice_catastale = None
-        comune_id = optional_int(payload, "comune_nascita_id") or optional_int(payload, "comune_id")
+        comune_id = _V.optional_int(payload, "comune_nascita_id") or _V.optional_int(payload, "comune_id")
         if comune_id:
             codice_catastale = self._repo.get_codice_catastale(comune_id)
 

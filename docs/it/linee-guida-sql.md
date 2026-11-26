@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -748,6 +748,14 @@ composto da loro; il nome del flag dice tutte e due le domande.
 precisione** (`col::numeric(18,6)`). `RETURNS TABLE` non conserva precisione e scala del tipo, e
 `CREATE OR REPLACE VIEW` accetta di perderle ma poi rifiuta di riprenderle. Una colonna nuova nel
 `RETURNS TABLE` vuole il `DROP` della funzione e di tutte le viste che la leggono (§5f).
+
+**Sulle viste l'applicazione ha solo `SELECT`.** Una vista aggiornabile senza `security_invoker`
+controlla i permessi sulla tabella sotto come il suo proprietario: con `INSERT`, `UPDATE` o `DELETE`
+sulla vista, l'app scriverebbe anche una tabella che ha in sola lettura. Il loop dei grant tratta le
+viste e le materializzate **per tipo** (`relkind` `'v'`, `'m'`), non per nome, nelle tre sedi di
+§11.8; il provisioning chiude anche le viste di `public` delle estensioni. Una vista che deve
+accettare scritture non si apre all'app: la scrittura passa da un verbo. Presidio, a criterio:
+`db/pgtap/dbops/test-viste-app-solo-select-v1.sql`.
 
 ---
 
@@ -1856,7 +1864,7 @@ sottoquery scalare **non correlata**: PostgreSQL la valuta una volta
 USING ((current_setting('app.ruolo_applicativo', true) = 'OPERATORE')
        AND script.fn_scope_ef_perimetro(
                (SELECT script.fn_get_emittenti_scope_pk_ids(
-                   NULLIF(current_setting('app.current_user_id', true), '')::integer)),
+                   script.fn_utente_di_sessione('<schema>.<tabella>.<policy>'))),
                emittente_fiscale_id))
 ```
 
@@ -1950,8 +1958,19 @@ GUC di riferimento:
 La policy chiama la funzione passando i GUC, **mai** leggendoli dentro la funzione — questo
 mantiene la funzione pura e testabile con input espliciti.
 
-`current_setting('app.xxx', true)` ritorna stringa vuota se il GUC non e' settato.
-Gestire il fallback con `NULLIF(..., '')::bigint` o un guard esplicito nel caller.
+`current_setting('app.xxx', true)` ritorna stringa vuota se il GUC non e' settato: per le
+altre GUC il fallback si scrive con `NULLIF(..., '')::tipo`.
+
+**`app.current_user_id` in una funzione, una vista o una policy: dal BB.** Si legge con
+[`script.fn_utente_di_sessione('<chi legge>')`](/dbzero/script/funzioni/fn_utente_di_sessione),
+mai con `NULLIF(current_setting(...), '')::integer`: GUC assente o vuota da' `NULL`, un valore
+che non e' l'id di un utente da' `E_SCRIPT_CHIAMATA_NON_VALIDA` col nome di chi legge (la
+conversione a mano dava il 22P02 grezzo). Chi legge e' `<schema.funzione>` in una funzione,
+`<schema>.<tabella>.<policy>` in una policy. Nella policy il BB sta in una sottoquery non
+correlata, `(SELECT ...)`, anche quando e' un argomento diretto della funzione di perimetro:
+cosi' e' valutato una volta per istruzione, non per riga (§10.3). Il presidio e'
+`script/test-fn-utente-di-sessione-v1`: una funzione, una vista o una policy nuova che converte
+la GUC da se' lo fa diventare rosso.
 
 **Helper `script.fn_current_identita_context()`** — per leggere i tre GUC multi-face-auth
 (`app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id`) in un unico
@@ -2905,7 +2924,10 @@ proprietario — una DEFINER, un seed, il migratore), `v_tabelle_senza_delete` e
 `v_schemi_senza_delete` (tutto tranne `DELETE`), e `v_fn_riservate` (funzioni a
 cui l'`EXECUTE` è revocato **a PUBLIC e all'app**). Il presidio sta nell'unico
 posto che avrebbe potuto annullarlo, e si dichiara come dato — non come un
-secondo file che rincorre il primo.
+secondo file che rincorre il primo. Prima degli elenchi c'è un ramo **per tipo**:
+le viste e le materializzate ricevono solo `SELECT`, ovunque (§6). ⚠️ I
+privilegi di default (`ON TABLES`) non distinguono una vista da una tabella: un
+oggetto nuovo nasce col DML all'app fino alla passata `ci_apply` successiva.
 
 ⚠️ **Servono comunque TRE sedi, non due** — fino al 2026-09-18 questa riga
 diceva «due file», e la terza era scritta solo nell'intestazione del loop

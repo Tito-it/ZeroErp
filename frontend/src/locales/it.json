@@ -44,7 +44,7 @@
     "new": "Nuovo",
     "create": "Crea",
     "add": "Aggiungi",
-    "default": "Default",
+    "predefinito": "Predefinito",
     "edit": "Modifica",
     "delete": "Elimina",
     "remove": "Rimuovi",
@@ -5403,7 +5403,6 @@
       "titolo_singolare": "Magazzino",
       "nuovo": "Nuovo magazzino",
       "search_placeholder": "Cerca per codice o descrizione…",
-      "tag_predefinito": "Predefinito",
       "conferma_disattiva_title": "Disattiva magazzino",
       "conferma_disattiva": "Disattivare il magazzino {codice}? Con ubicazioni, documenti o movimenti attivi il database lo rifiuta.",
       "conferma_riattiva_title": "Riattiva magazzino",
@@ -6382,6 +6381,7 @@
       "soggetto": "Soggetto",
       "cambio_natura_blocco": {
         "altra_macro_tipologia": "La natura scelta è di un'altra famiglia: una persona fisica non diventa una società, e viceversa. Si sceglie una natura della stessa famiglia, oppure si crea un soggetto nuovo.",
+        "verso_nessuna": "Una natura già scritta non si può togliere: si sceglie un'altra natura della stessa famiglia, oppure si lascia quella attuale.",
         "con_documenti": "Il soggetto compare già in un documento, e questo cambio gli toglierebbe o gli darebbe la partita IVA: i documenti registrati portano l'identità fiscale che ha oggi. Il cambio non si può fare.",
         "piva_non_applicabile": "La natura scelta non ha partita IVA, e il soggetto ne ha una scritta: va svuotata prima del cambio (lo può fare solo un amministratore).",
         "cliente_pa": "La natura scelta non può essere una Pubblica Amministrazione: «Cliente PA» va riportato a No.",
@@ -6390,8 +6390,7 @@
         "titoli_iva_altri_emittenti": "La natura scelta non ammette {titoli} titoli IVA in vigore presentati ad altre aziende, che da qui non si vedono: deve chiuderli un amministratore, o l'azienda che li ha ricevuti.",
         "dati_societari": "La natura scelta non ha dati societari: vanno eliminati prima del cambio.",
         "indirizzi": "La natura scelta non ammette {indirizzi} indirizzi del soggetto: vanno eliminati prima del cambio.",
-        "indirizzi_ruolo": "La natura scelta non ammette {indirizzi} indirizzi del ruolo {ruolo}: vanno eliminati dal ruolo prima del cambio.",
-        "senza_natura_con_titoli_iva": "Il soggetto ha titoli IVA in vigore, e senza una natura non li può avere: si sceglie la natura, oppure si chiudono prima i titoli."
+        "indirizzi_ruolo": "La natura scelta non ammette {indirizzi} indirizzi del ruolo {ruolo}: vanno eliminati dal ruolo prima del cambio."
       },
       "dati_societari_elimina_blocco": {
         "natura_li_richiede": "La natura del soggetto richiede i dati societari: per eliminarli si cambia prima la natura in una che non li prevede."
@@ -6501,6 +6500,8 @@
       "contatto_creato": "Contatto creato",
       "contatto_salvato": "Contatto salvato",
       "contatto_eliminato": "Contatto eliminato",
+      "rendi_predefinito": "Rendi predefinito",
+      "predefinito_cambiato": "Contatto predefinito cambiato",
       "gestisci_contatti": "Gestisci contatti"
     }
   },
@@ -6607,7 +6608,7 @@
       "colonna_tab_comportamento": "Comportamento",
       "colonna_tab_layout": "Layout",
       "colonna_delete_titolo": "Elimina colonna",
-      "colonna_delete_messaggio": "Confermi l'eliminazione della colonna \"{codice}\"? Operazione bloccata se referenziata da preferenze utente. In tal caso, disattiva la colonna invece.",
+      "colonna_delete_messaggio": "Confermi l'eliminazione della colonna \"{codice}\"? Sparirà anche dalle personalizzazioni degli utenti che la mostrano. Operazione bloccata se un preset la compone: in tal caso toglila prima dal preset, oppure disattiva la colonna.",
       "tipo_colonna_identificatore": "Identificatore",
       "tipo_colonna_informazione": "Informazione",
       "tipo_colonna_azione": "Azione",

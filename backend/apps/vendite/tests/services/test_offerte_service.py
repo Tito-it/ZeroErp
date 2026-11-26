@@ -143,7 +143,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         from apps.vendite.services.offerte_service import OfferteService
 
         with self.assertRaises(ServiceError) as cm:
-            OfferteService().list_offerte(order_by="prezzo_segreto")
+            OfferteService().list_offerte(auth_user_id=7, order_by="prezzo_segreto")
         self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: search sotto soglia NON e' un errore (fino al 2026-09-23 era un
@@ -156,7 +156,7 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo = repo_cls.return_value
         repo.list_offerte.return_value = []
         repo.count_offerte.return_value = 0
-        self.assertEqual(OfferteService().list_offerte(search="ab"), ([], 0))
+        self.assertEqual(OfferteService().list_offerte(auth_user_id=7, search="ab"), ([], 0))
         self.assertEqual(repo.list_offerte.call_args.kwargs["search"], "ab")
 
     # --- dettaglio ----------------------------------------------------

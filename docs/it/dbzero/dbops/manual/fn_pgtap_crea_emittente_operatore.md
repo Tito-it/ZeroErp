@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_emittente_operatore`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -42,9 +42,15 @@ l'utente tecnico è il secondo parametro (default `chiusura_scadenze_daily`). Pe
 test attraversano è un operatore a tutti gli effetti: identità OPERATORE attiva, non super
 admin, un emittente nel perimetro.
 
-⛔ Non si usa dove il soggetto del test è l'**operatore umano** (la natura tecnica, i profili
-di accesso, il super admin): lì si costruisce con
-[fn_pgtap_crea_operatore_umano](/dbzero/dbops/funzioni/fn_pgtap_crea_operatore_umano).
+⛔ Un utente tecnico non ha mai il profilo SUPER_ADMIN (il legame si rifiuta con
+`E_SUPER_ADMIN_SU_VESTE_TECNICA`). Dove il test fa dell'operatore dell'azienda un SUPER_ADMIN, o
+gli lega un profilo, si passa **`p_persona := true`**: l'operatore è allora una persona, costruita
+con [fn_pgtap_crea_operatore_umano](/dbzero/dbops/funzioni/fn_pgtap_crea_operatore_umano) (non
+super admin: lo promuove il test), con l'azienda nel perimetro e come emittente attivo. L'azienda
+entra nel perimetro da [fn_pgtap_sposta_scope_operatore](/dbzero/dbops/funzioni/fn_pgtap_sposta_scope_operatore),
+cioè dal verbo `script.fn_change_user_emittenti_scope`: la primitiva sotto il verbo l'app non la
+esegue, e la fixture gira col runner app. Dove il
+soggetto del test è l'operatore umano senza un'azienda, si usa direttamente quella fixture.
 
 ---
 

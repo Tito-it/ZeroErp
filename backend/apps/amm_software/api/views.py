@@ -22,15 +22,14 @@ from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
-    optional_int,
     pagina_da_query,
-    paginated_envelope,
     parse_list_params,
     qp_bool_optional,
     qp_iso_date_optional,
     qp_str,
     qp_str_upper,
     qp_uuid_optional,
+    qp_int_optional,
 )
 from apps.core.api.success_responses import success_response
 from apps.amm_software.db.amm_software_repository import REPARTI_ORDER_COLUMNS
@@ -42,6 +41,7 @@ from apps.core.services.processi_service import ProcessiService
 from apps.core.services.tracciamento_service import fn_list_error_logs
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 # ================================================================== #
@@ -89,7 +89,7 @@ class OperatoriListView(AdminAPIView):
         results, total_count = repo.list_operatori(
             search=qp.get("search") or None,
             is_super_admin=is_super_admin,
-            unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
+            unita_organizzativa_id=qp_int_optional(qp.get("unita_organizzativa_id"), "unita_organizzativa_id", min_val=0),
             is_active=is_active,
             includi_di_prova=includi_di_prova is True,
             limit=limit,
@@ -97,7 +97,7 @@ class OperatoriListView(AdminAPIView):
             order_by=qp.get("order_by") or None,
             order_dir=qp.get("order_dir") or None,
         )
-        return success_response({"count": total_count, "results": results})
+        return success_response(pagina_con_totale(results, total_count))
 
     @extend_schema(
         summary="Crea operatore (soggetto nuovo o esistente)",
@@ -341,7 +341,7 @@ class RepartiListView(AdminAPIView):
             limit=p["limit"],
             offset=p["offset"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
 
 class PermessiEreditatiView(AdminAPIView):
@@ -700,7 +700,7 @@ class ProcessiEseguiOraView(AdminAPIView):
     #        con l'attore di chi preme (BE10, 2026-11-07).
     def post(self, request: Request, codice: str) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            # ⭐ L'id VERO di chi preme, anche per un superuser: e' l'attore del
+            # ⭐ L'id VERO di chi preme: e' l'attore del
             #    giornale del comando lanciato, non un'identita' con cui il
             #    lavoro gira (un lavoro SISTEMA gira senza).
             # ⚠️ `AdminAPIView` fa entrare solo un utente autenticato: un id
@@ -781,7 +781,7 @@ class AuditLogView(AdminAPIView):
             limit=limit,
             offset=offset,
         )
-        return success_response({"count": total_count, "results": events})
+        return success_response(pagina_con_totale(events, total_count))
 
 
 # I filtri della consultazione di `dbops.error_log`, dichiarati UNA volta per
@@ -938,7 +938,7 @@ class PermessiRiepilogoView(AdminAPIView):
 #        la pagina chiede righe precise, e una che manca in silenzio sarebbe
 #        un operatore senza chip. Nessun id e' un 400 (il parametro e'
 #        obbligatorio): una chiamata senza operatori e' un chiamante rotto.
-# ⚠️ Il pezzo lo legge `optional_int` (cifre ASCII); qui si aggiunge il tetto
+# ⚠️ Il pezzo lo legge `qp_int_optional` (un testo di query string); qui si aggiunge il tetto
 #    di un `integer` PG (`auth_user.id`, argomento `integer[]` della funzione,
 #    `INTEGER_MAX` di payload_helpers): oltre, il cast fallirebbe a DB — un 500
 #    al posto di un 400.
@@ -950,7 +950,7 @@ def _parse_auth_user_ids(raw: str | None) -> list[int]:
         if not pezzo.strip():
             continue
         try:
-            valore = optional_int({"v": pezzo}, "v")
+            valore = qp_int_optional(pezzo, "auth_user_ids")
         except ValueError:
             valore = None
         ErrorManager.require(
@@ -1068,9 +1068,8 @@ class EmittentiFormDefaultsView(AdminAPIView):
     # Scopo: Restituisce defaults form emittente fiscale (Fase 3 — A5).
     def get(self, request: Request) -> JsonResponse:
         from apps.core.api.views_parameters import get_user_context
-        from apps.core.services.parameter_service import ParameterService
 
-        ctx = get_user_context(request, ParameterService())
+        ctx = get_user_context(request)
         return success_response(
             AmmSoftwareService().get_emittente_form_defaults(**ctx)
         )

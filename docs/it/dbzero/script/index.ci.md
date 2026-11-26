@@ -7,6 +7,7 @@ search:
 
 ## ⚙️ Funzioni (manuale)
 - [fn_ambiente_installazione](manual/fn_ambiente_installazione.md)
+- [fn_applica_user_emittenti_scope](manual/fn_applica_user_emittenti_scope.md) — Sposta un operatore da un'azienda all'altra, o toglie l'azienda a un SUPER_ADMIN. Ha le regole dello spostamento e la porta del `DELETE`, ma **non chiede permessi**: è la primitiva sotto il verbo [fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope), che chiede il SUPER_ADMIN.
 - [fn_area_consente_azione](manual/fn_area_consente_azione.md) — (scritta il 04-10-2026)
 - [fn_area_di_oggetto](manual/fn_area_di_oggetto.md) — (scritta il 25-09-2026)
 - [fn_arrotonda_importo](manual/fn_arrotonda_importo.md) — Arrotondare un importo secondo i **decimali** e il **metodo** configurati, in **un punto solo** per tutto il database.
@@ -29,7 +30,7 @@ search:
 - [fn_canale_log_stringa](manual/fn_canale_log_stringa.md) — Dice se il **canale di log fuori transazione** (la connessione `dblink` dei registri) è acceso, e con quale stringa di connessione: restituisce la stringa se il canale è acceso, `NULL` se è spento o non configurato. È la regola unica per chi deve scrivere sul canale.
 - [fn_capability_promo_articolo](manual/fn_capability_promo_articolo.md)
 - [fn_categoria_accesso](manual/fn_categoria_accesso.md)
-- [fn_change_user_emittenti_scope](manual/fn_change_user_emittenti_scope.md)
+- [fn_change_user_emittenti_scope](manual/fn_change_user_emittenti_scope.md) — È il **verbo** con cui il SUPER_ADMIN porta un operatore su un'azienda, o la toglie a un SUPER_ADMIN. Dietro c'è il riquadro «Scope emittenti fiscali» del drawer Operatore.
 - [fn_check_accredito_annullabile](manual/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](manual/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_annullo_movimento_titolo_iva](manual/fn_check_annullo_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
@@ -94,7 +95,7 @@ search:
 - [fn_check_versione_listino_clonabile](manual/fn_check_versione_listino_clonabile.md)
 - [fn_check_versione_listino_eliminabile](manual/fn_check_versione_listino_eliminabile.md)
 - [fn_cliente_dal_billing_account](manual/fn_cliente_dal_billing_account.md) — **Il cliente e la utility di un documento sono quelli del suo billing account.**
-- [fn_clone_catasto_from_parent_by_istanza](manual/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
+- [fn_clone_catasto_from_parent_by_istanza](manual/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 25-11-26) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
 - [fn_codice_dominio](manual/fn_codice_dominio.md) — Dice se un errore **catturato** è un errore di dominio, e qual è il suo codice. Riceve lo SQLSTATE e il canale `CONSTRAINT` della diagnostica (`GET STACKED DIAGNOSTICS … RETURNED_SQLSTATE, CONSTRAINT_NAME`) e risponde:
 - [fn_codice_normalizzato](manual/fn_codice_normalizzato.md) — È la **forma di un codice dell'operatore**, scritta in un posto solo: senza spazi ai bordi e in maiuscolo. La usano:
 - [fn_crea_utente_tecnico](manual/fn_crea_utente_tecnico.md) — (latest review 04-09-2026)
@@ -171,11 +172,10 @@ search:
 - [fn_get_stato_testata_documento](manual/fn_get_stato_testata_documento.md) — **Rispondere a una domanda sola: la testata di questo documento esiste ancora, e in che stato è?**
 - [fn_get_stradario](manual/fn_get_stradario.md) — * **Ricerca locale per comune**   Se viene specificato `p_comune_id`, esegue una query filtrata sul comune indicato, restituendo tutte le vie e toponomastiche che contengono la stringa `p_indirizzo` nel loro nome.
 - [fn_get_testata_id_di_riga](manual/fn_get_testata_id_di_riga.md) — **Rispondere a una domanda sola: di quale documento è questa riga?**
-- [fn_get_tipo_contatto_id](manual/fn_get_tipo_contatto_id.md) — Recuperare l’ID del tipo di contatto corrispondente a un **codice interno** (`cod_int_tipo_contatto`), garantendo al contempo il logging e la tracciabilità tramite un `tx_id` di sessione.
 - [fn_get_totp_device](manual/fn_get_totp_device.md) — (scritta il 29-09-2026)
 - [fn_get_uo_id_for_user](manual/fn_get_uo_id_for_user.md) — (latest review 19-04-2026)
 - [fn_get_user_actions_map](manual/fn_get_user_actions_map.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
-- [fn_get_user_emittenti_scope](manual/fn_get_user_emittenti_scope.md)
+- [fn_get_user_emittenti_scope](manual/fn_get_user_emittenti_scope.md) — Dice al drawer dell'operatore **com'è assegnato un utente** e **che cosa gli si può scegliere**. Ritorna sempre una riga, anche per un utente senza assegnazione. Il drawer non deduce niente da sé: spegne le scelte e il Salva da questa risposta.
 - [fn_get_user_object_permissions_map](manual/fn_get_user_object_permissions_map.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
 - [fn_get_user_permissions_map](manual/fn_get_user_permissions_map.md)
 - [fn_get_user_profile](manual/fn_get_user_profile.md) — - **Profilo utente completo in una chiamata** - **Payload JSONB stabile ed estendibile** - **Riuso delle funzioni di dominio** per soggetto e mappe permessi - **Riduzione query interne**: dalla revisione `20260410-16` la lettura di   `auth_user + identita_digitali + risorse_umane + lookup qualifica/UO`   viene eseguita in una sola `SELECT`
@@ -183,7 +183,9 @@ search:
 - [fn_gruppi_di_commessa_nel_lotto](manual/fn_gruppi_di_commessa_nel_lotto.md) — (latest review 2026-09-08)
 - [fn_gruppi_trascinati_da_uscita](manual/fn_gruppi_trascinati_da_uscita.md) — (latest review 2026-09-08)
 - [fn_guard_azione](manual/fn_guard_azione.md) — (scritta il 24-09-2026)
+- [fn_guard_campi_ammessi](manual/fn_guard_campi_ammessi.md) — Il controllo dei **campi facoltativi** che una porta di scrittura riceve tutti insieme: devono essere un oggetto, e ogni campo deve stare nella lista che la porta ammette.
 - [fn_guard_livello](manual/fn_guard_livello.md) — (scritta il 25-09-2026)
+- [fn_guard_livello_area](manual/fn_guard_livello_area.md) — È il guard con cui un verbo di scrittura chiede che **chi agisce abbia almeno un certo livello su un'area funzionale**, senza un oggetto. Si chiama nella prima riga del verbo: se il livello non basta, il verbo si ferma prima di toccare qualunque cosa.
 - [fn_guard_passaggio](manual/fn_guard_passaggio.md)
 - [fn_guard_soggetto_pf_pura](manual/fn_guard_soggetto_pf_pura.md) — (latest review 18-04-2026)
 - [fn_guard_soggetto_ruolo](manual/fn_guard_soggetto_ruolo.md) — (latest review 05-12-25) - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
@@ -276,6 +278,7 @@ search:
 - [fn_stato_veste](manual/fn_stato_veste.md)
 - [fn_subentro_cliente](manual/fn_subentro_cliente.md) — (latest review 01-03-26)
 - [fn_tabelle_che_trattengono](manual/fn_tabelle_che_trattengono.md)
+- [fn_tipo_contatto_proposto_id](manual/fn_tipo_contatto_proposto_id.md) — **Il tipo di contatto che si propone quando chi crea un soggetto non lo dice.** Ritorna l'id di `config.tipi_contatti` indicato dal parametro `TIPO_CONTATTO_PROPOSTO`, che contiene il **codice interno** del tipo (in dotazione `PRINCIPALE`).
 - [fn_totp_conferma_device](manual/fn_totp_conferma_device.md) — (scritta il 29-09-2026)
 - [fn_totp_consuma_recovery](manual/fn_totp_consuma_recovery.md) — (scritta il 29-09-2026)
 - [fn_totp_disabilita_device](manual/fn_totp_disabilita_device.md) — (scritta il 29-09-2026)
@@ -284,6 +287,7 @@ search:
 - [fn_totp_registra_uso](manual/fn_totp_registra_uso.md) — (scritta il 29-09-2026)
 - [fn_totp_ricifra_segreto](manual/fn_totp_ricifra_segreto.md) — (scritta il 01-10-2026)
 - [fn_totp_rigenera_recovery](manual/fn_totp_rigenera_recovery.md) — (scritta il 29-09-2026)
+- [fn_utente_di_sessione](manual/fn_utente_di_sessione.md) — Dà l'utente della richiesta: l'id che il backend scrive nella sessione (`app.current_user_id`) a ogni chiamata autenticata. Ogni funzione, vista e policy RLS del database che ha bisogno di sapere chi sta agendo lo legge da qui, invece di convertire il valore da sé.
 - [fn_valida_codice_fiscale](manual/fn_valida_codice_fiscale.md) — * **Validazione formale** del Codice Fiscale (CF) calcolando e confrontando il carattere di controllo. * **Supporto omocodici**, garantendo validità anche per CF derivati con omolettere. * **Delegare al backend** i controlli di congruenza con data di nascita, sesso e luogo di nascita per mantenere flessibilità applicativa.
 - [fn_valida_partita_iva](manual/fn_valida_partita_iva.md) — Verificare **formalmente** la correttezza di una Partita IVA italiana (11 cifre) calcolando il **check digit** con l’algoritmo di Luhn modificato, restituendo:
 - [fn_validate_cf_piva_it](manual/fn_validate_cf_piva_it.md) — * **Centralizzazione Validazioni**: Unico punto per verificare CF e P.IVA in accordo ai formati configurati. * **Dinamicità**: I formati (alfanumerico, numerico, lunghezza) sono letti da `config.tipi_soggetto_dettaglio` e possono variare per Stato. * **Estendibilità**: Aggiunta futura di funzioni con suffissi di Stato, es. `_FR`, `_DE`, `_UK`.

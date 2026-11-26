@@ -37,8 +37,8 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
   - `limit` (int) — righe per pagina, default `25`, max `200`; fuori da 1..200 → 400 `E_VALIDATION_INPUT` (`limit_fuori_limiti_1_200`)
   - `offset` (int) — righe da saltare, default `0`; negativo → 400 (`offset_negativo`)
   - ⛔ `page`/`page_size` sono un **400** `E_VALIDATION_INPUT` (dal 2026-10-21:
-    fino a quel giorno erano il contratto di questa lista). La risposta porta
-    ancora `page`/`page_size`, ricavati da `limit`/`offset`
+    fino a quel giorno erano il contratto di questa lista). Dal 2026-11-24 la
+    risposta è `{count, results}` più i campi propri ([api.md §Paginazione](../../../dev/api.md))
   - `order_by` (string) — colonna di ordinamento, da **whitelist**
     (`VenditeRepository.LOTTI_SORT_COLUMNS`); la chiave è il `campo_sorgente` del
     catalogo liste, non il `codice` logico
@@ -52,9 +52,6 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
 {
   "data": {
     "count": 1,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "stati": [{"stato_lotto": "COMPLETATO", "n_lotti": 1}],
     "annullati_count": 3,
     "results": [
@@ -213,6 +210,8 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
 - 2026-10-21: la finestra passa da `page`/`page_size` a `limit`/`offset`
   (`pagina_da_query`, un dialetto solo per tutte le liste); `page`/`page_size`
   in query diventano un 400. Envelope di risposta invariato.
+- 2026-11-24: la risposta è `{count, results}` (`pagina_con_totale`, D-1 di
+  brief-be-fe-BB-audit): `page`, `page_size` e `total_pages` escono.
 - ⛔ **Il payload lo compone `_LOTTO_SELECT_COLS`, non una vista**: `vendite.lotti`
   è l'unica delle liste documento **senza `vista_sql`**. Chi aggiunge una colonna
   al catalogo (`ui.lista_colonna`) deve quindi aggiungerla **prima** qui, o la

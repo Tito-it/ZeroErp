@@ -172,10 +172,12 @@ SELECT ok(
 -- Fixture: tre aziende in tre istruzioni, il SA, un indirizzo, un BA di A
 -- ============================================================
 CREATE TEMP TABLE _m ON COMMIT DROP AS
+-- ⚠️ Rev 2026-11-26 (D-G2-3, brief-db-accessi-area-clienti §5.1): chi diventa SUPER_ADMIN
+--   nasce PERSONA (p_persona): un'identita' tecnica non ha mai il SUPER_ADMIN.
 SELECT 'A'::text AS lato, m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
 INSERT INTO _m SELECT 'B', m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
-INSERT INTO _m SELECT 'S', m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
-INSERT INTO _m SELECT 'Z', m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
+INSERT INTO _m SELECT 'S', m.* FROM dbops.fn_pgtap_crea_emittente_operatore(p_persona := true) m;
+INSERT INTO _m SELECT 'Z', m.* FROM dbops.fn_pgtap_crea_emittente_operatore(p_persona := true) m;
 -- il SA: l'operatore di S con binding al profilo SUPER_ADMIN (definizione di fn_is_super_admin).
 -- ⚠️ E un SECONDO SA (l'operatore di Z, mai attore): senza, sul database da zero S
 --   sarebbe l'ultimo SA e fn_change_user_emittenti_scope lo rifiuterebbe (vedi testa).

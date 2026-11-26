@@ -38,6 +38,14 @@
 -- L'INSERT del contatto e' sparito: lo fa l'helper, ed era li' solo per
 -- soddisfare il guard differito dei contatti (nessuna asserzione lo guardava).
 -- ============================================================================
+-- rev 2026-11-25 — brief-db-revisione-anagrafiche §22 (T7b). Rosso nelle due
+-- baseline: il test 3 contava il gestore DELLA MACCHINA. Su un database
+-- ricostruito dai changelog anagrafiche.gestori e' vuota (e' dato di
+-- macchina), il conteggio era 0, e il test 4 creava il «secondo» gestore, che
+-- era il primo, e passava. Ora il gestore lo prende-o-costruisce
+-- dbops.fn_pgtap_crea_gestore prima del test 3, e il test 4 asserisce il
+-- codice del guard (E_GESTORE_SINGLETON_VIOLATO), non un P0001 qualunque.
+-- ============================================================================
 
 BEGIN;
 
@@ -53,6 +61,22 @@ SET CONSTRAINTS ALL IMMEDIATE;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(5);
+
+-- Il codice di dominio di un errore (canale CONSTRAINT di
+-- script.fn_log_and_raise_error), o lo SQLSTATE se non ne ha uno.
+CREATE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
+LANGUAGE plpgsql AS $f$
+DECLARE
+    v_codice text;
+    v_stato  text;
+BEGIN
+    EXECUTE p_sql;
+    RETURN 'ok';
+EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_codice = CONSTRAINT_NAME, v_stato = RETURNED_SQLSTATE;
+    RETURN COALESCE(NULLIF(v_codice, ''), v_stato);
+END;
+$f$;
 
 -- =========================================================
 -- Costanti. La P.IVA si prende PRIMA e si tiene: il test 5 la riusa per
@@ -112,6 +136,11 @@ SELECT is(
 --   Cio' che resta vero, ed e' quello che il test dice ora, e' che il
 --   singleton REGGE: uno, e crearne un altro non si puo' (test 4).
 -- ---------------------------------------------------------
+-- Il gestore dell'installazione: quello che c'e', o uno costruito se la
+-- tabella e' vuota (database ricostruito dai changelog).
+CREATE TEMP TABLE tmp_gestore AS
+SELECT * FROM dbops.fn_pgtap_crea_gestore('singleton');
+
 SELECT is(
     (SELECT count(*)::int FROM anagrafiche.gestori),
     1,
@@ -122,8 +151,8 @@ SELECT is(
 -- 4) Singleton in azione: creare un gestore sul ruolo NUOVO e' respinto,
 --    perche' uno nel sistema c'e' gia'
 -- ---------------------------------------------------------
-SELECT throws_ok(
-    $$
+SELECT is(
+    pg_temp.codice_errore($$
     INSERT INTO anagrafiche.gestori (
         soggetto_ruolo_id, descrizione, cd_prod_software, valuta_id
     )
@@ -135,10 +164,9 @@ SELECT throws_ok(
            tmp_costanti k,
            LATERAL (SELECT vv.id FROM config.valute vv
                      WHERE vv.iso_code = k.codice_valuta
-                     ORDER BY vv.id LIMIT 1) v;
-    $$,
-    'P0001',
-    NULL,
+                     ORDER BY vv.id LIMIT 1) v
+    $$),
+    'E_GESTORE_SINGLETON_VIOLATO',
     'Il tentativo di creare un secondo gestore genera un errore (regola singleton)'
 );
 

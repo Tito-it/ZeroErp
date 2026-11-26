@@ -21,6 +21,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useListaAzioni } from '../../core/composables/useListaAzioni'
 import { useInjectBlocked, useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS } from '../../core/constants'
+import { livelloAccessoSeverity } from '../../core/utils/severity'
 import { useUiAdminStore } from '../stores/uiAdmin'
 import { useUiPermessoAdminStore } from '../stores/uiPermessoAdmin'
 import ListaColonnaPermessoDrawer from './ListaColonnaPermessoDrawer.vue'
@@ -117,12 +118,6 @@ async function onDrawerSaved() {
   await reload()
 }
 
-function severityForLivello(livello) {
-  if (livello === 'TUTTO') return 'success'
-  if (livello === 'LETTURA') return 'info'
-  if (livello === 'BLOCCATO') return 'danger'
-  return 'secondary'
-}
 </script>
 
 <template>
@@ -163,7 +158,7 @@ function severityForLivello(livello) {
         <template #cell-livello_accesso="{ data }">
           <Tag
             :value="t(`common.livello_${data.livello_accesso.toLowerCase()}`)"
-            :severity="severityForLivello(data.livello_accesso)"
+            :severity="livelloAccessoSeverity(data.livello_accesso)"
           />
         </template>
         <template #actions="{ data }">

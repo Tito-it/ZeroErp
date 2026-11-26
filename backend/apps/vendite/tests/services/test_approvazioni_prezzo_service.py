@@ -19,6 +19,7 @@ Indice test:
 10) lista_coda: senza emittente assegnato -> E_APPROVAZIONE_PREZZO_NON_AMMESSA
 11) lookup cache modulo-level: tipo_prestazione_id riusato cross-call
 12) invalidate_lookup_cache forza re-query
+13) _get_user: restituisce l'utente del BB, rifiuta se assente
 """
 
 from decimal import Decimal
@@ -216,7 +217,9 @@ class ApprovaRifiutaTests(TestCase):
     @patch("apps.vendite.services.approvazioni_prezzo_service.PermissionResolver")
     @patch("apps.vendite.services.approvazioni_prezzo_service._get_user")
     @patch("apps.vendite.services.approvazioni_prezzo_service.connection")
-    def test_approva_superuser_bypassa_permesso(
+    # ⛔ Dal 2026-11-24 (D-J) il superuser Django non bypassa: il permesso si
+    #    chiede anche a lui (SUPER_ADMIN lo riceve da `fn_check_azione_processo`).
+    def test_approva_superuser_non_bypassa_permesso(
         self, mock_conn, mock_get_user, mock_perm, mock_repo_cls,
         mock_cambia, mock_nota,
     ):
@@ -224,10 +227,11 @@ class ApprovaRifiutaTests(TestCase):
         mock_user = MagicMock(); mock_user.is_superuser = True
         mock_get_user.return_value = mock_user
         mock_repo_cls.return_value = MagicMock()
+        mock_perm.check_azione.return_value = True
 
         svc.approva(riga_id=50, auth_user_id=99)
 
-        mock_perm.check_azione.assert_not_called()  # bypass
+        mock_perm.check_azione.assert_called_once()
 
     @patch("apps.vendite.services.approvazioni_prezzo_service.crea_nota_pratica")
     @patch("apps.vendite.services.approvazioni_prezzo_service.cambia_stato_pratica")
@@ -573,3 +577,24 @@ class LookupCacheTests(TestCase):
         svc.invalidate_lookup_cache()
         svc._get_tipo_prestazione_id()
         self.assertEqual(mock_cursor.execute.call_count, 2)
+
+
+# ⛔ Il caso del 2026-11-25: nel passaggio al BB `utente_per_id` il `return`
+#    si era perso, e `_get_user` tornava sempre None (coda approvazioni in 500).
+#    Le classi sopra mockano `_get_user` stesso e non potevano vederlo: qui si
+#    mocka solo il BB che sta sotto.
+class GetUserTests(TestCase):
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.utente_per_id")
+    def test_restituisce_l_utente_trovato(self, mock_per_id):
+        utente = SimpleNamespace(id=42)
+        mock_per_id.return_value = utente
+        self.assertIs(svc._get_user(42), utente)
+        mock_per_id.assert_called_once_with(42)
+
+    @patch("apps.vendite.services.approvazioni_prezzo_service.utente_per_id")
+    def test_utente_assente_rifiutato(self, mock_per_id):
+        mock_per_id.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            svc._get_user(42)
+        self.assertEqual(ctx.exception.code, "E_PRICING_OVERRIDE_NON_AUTORIZZATO")

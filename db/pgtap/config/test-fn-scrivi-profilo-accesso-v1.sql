@@ -6,7 +6,7 @@
 --   config.fn_scrivi_profilo_accesso                (20261018-42)
 --   config.fn_lega_profilo_identita                 (20261018-43)
 --   script.fn_crea_utente_tecnico, passo 6          (20261018-44)
---   anagrafiche.fn_crea_risorsa_umana_v2, binding SA (20261018-45)
+--   anagrafiche.fn_crea_risorsa_umana, binding SA (20261018-45)
 --   Brief: brief-db-processi-accensione-per-ambiente (§5-ter.2, 2b-1 lotto 8).
 --
 -- ⭐ Il caso si COSTRUISCE: un profilo AD_HOC col codice del test, le prime
@@ -169,7 +169,7 @@ SELECT is(
 CREATE TEMP TABLE t_madri AS
 SELECT p.oid::regprocedure AS f
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
- WHERE (n.nspname, p.proname) IN (('script', 'fn_crea_utente_tecnico'), ('anagrafiche', 'fn_crea_risorsa_umana_v2'));
+ WHERE (n.nspname, p.proname) IN (('script', 'fn_crea_utente_tecnico'), ('anagrafiche', 'fn_crea_risorsa_umana'));
 
 SELECT is(
     (SELECT count(*)::int FROM t_madri WHERE pg_temp.corpo(f) ~* 'INSERT\s+INTO\s+config\.profili_accesso_bindings'),

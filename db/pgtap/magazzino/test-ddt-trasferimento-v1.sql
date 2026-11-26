@@ -54,9 +54,9 @@ BEGIN
     v_b   := dbops.fn_pgtap_crea_magazzino('PGT-L3T-B', false);
     v_art := dbops.fn_pgtap_crea_articolo('PGT-L3T-ART', true, false, false);
     INSERT INTO _fix VALUES (v_a, v_b, v_art);
-    INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_a) RETURNING id INTO v_inv;
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, costo_unitario) VALUES (v_inv, v_art, 10, 5);
-    UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_inv;
+    v_inv := dbops.fn_pgtap_crea_inventario(v_a);
+    PERFORM dbops.fn_pgtap_crea_riga_inventario(v_inv, v_art, 10, jsonb_build_object('costo_unitario', 5));
+    PERFORM dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', v_inv, 'CONFIRM');
     PERFORM magazzino.fn_posta_inventario(v_inv);
 END $fix$;
 

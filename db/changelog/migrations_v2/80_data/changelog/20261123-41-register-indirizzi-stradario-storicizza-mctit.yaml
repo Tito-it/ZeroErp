@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# indirizzi, civici e vie entrano nel registro dello storico: storicizzazione
+#   PERMANENTE. Senza la riga script.trgfn_storico_generic rimette il flag a
+#   false dopo ogni modifica, e la modifica successiva (o la cancellazione) non
+#   lascerebbe traccia.
+#   Il DEFAULT true e le righe accese li mettono 20261123-38 (indirizzi e
+#   civici), 20261123-39 e -40 (vie).
+#   Stessa forma di 20261114-71 (anagrafiche.dati_societari): il registro non
+#   ha un mirror CSV (80_data/sql/config/storico_set_storicizza.csv non e'
+#   caricato da nessun changeSet), e insert_manuale = true perche' e' una
+#   decisione, che maintenance.proc_sync_storico_set_storicizza non pota.
+#   Brief: brief-db-revisione-anagrafiche §18 (Q7, Tid 2026-11-22), giro 1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261123-41-register-indirizzi-stradario-storicizza-mctit.yaml
+
+  - changeSet:
+      id: 20261123-41-register-indirizzi-stradario-storicizza
+      author: mctit
+      failOnError: true
+      comment: >
+        Registra anagrafiche.indirizzi, anagrafiche.indirizzi_dettaglio e config.stradario in
+        config.storico_set_storicizza: ogni modifica e cancellazione lascia una versione.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: indirizzi
+                columnName: storicizza
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: indirizzi_dettaglio
+                columnName: storicizza
+            - columnExists:
+                schemaName: config
+                tableName: stradario
+                columnName: storicizza
+            - tableExists:
+                schemaName: config
+                tableName: storico_set_storicizza
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              INSERT INTO config.storico_set_storicizza (table_name, insert_manuale)
+              VALUES ('anagrafiche.indirizzi', true),
+                     ('anagrafiche.indirizzi_dettaglio', true),
+                     ('config.stradario', true)
+              ON CONFLICT (table_name) DO UPDATE SET insert_manuale = true;
+
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM config.storico_set_storicizza
+               WHERE table_name IN ('anagrafiche.indirizzi',
+                                    'anagrafiche.indirizzi_dettaglio',
+                                    'config.stradario');

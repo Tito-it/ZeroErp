@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GLI APRENTI DELLE PORTE DI MANUTENZIONE SONO RISERVATI AL PROPRIETARIO
+#   REVOKE EXECUTE su dbops.fn_admin_merge_stradario e su
+#   maintenance.proc_bump_toponomastica FROM PUBLIC, zeroerp_app.
+#   Brief: brief-db-porte-aperte-dalla-sola-guc, porte 14 e 15, giro 1 (D-C b).
+#
+# -- PERCHE' -------------------------------------------------------------
+#   Dal 20261123-43 e -44 le due porte si aprono solo dal proprietario della
+#   tabella. L'app che chiamasse ancora uno dei due strumenti arriverebbe fino
+#   al trigger, dopo aver gia' scritto il registro delle trasformazioni: il
+#   rifiuto giusto e' 42501 all'ingresso. Ne' il backend ne' una funzione DB li
+#   chiamano (brief §4.2); i pgTAP che li chiamano girano come owner.
+#
+# -- LE SEDI -------------------------------------------------------------
+#   dbops.fn_admin_merge_stradario, schema nel loop dei grant: le TRE sedi di
+#   linee-guida-sql §11.8:
+#     1. questo forward, per dbdev;
+#     2. il loop 90_end/ci_apply/20260205-41, voce in v_fn_riservate;
+#     3. scripts/sql/provision_zeroerp.sql, blocco «LA PORTA SULLE FUNZIONI».
+#   maintenance.proc_bump_toponomastica: lo schema maintenance e' fuori dal
+#   loop e dal provisioning delle funzioni, quindi questo forward basta (stessa
+#   forma di 20_code/maintenance/20261014-55). L'EXECUTE all'app arrivava solo
+#   dall'=X di PUBLIC.
+#   Presidio: dbops/test-porte-manutenzione-solo-proprietario-v1 (gira come app).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261123-45-postura-aprenti-manutenzione-riservati-mctit.yaml
+
+  - changeSet:
+      id: 20261123-45-postura-aprenti-manutenzione-riservati
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_admin_merge_stradario e maintenance.proc_bump_toponomastica riservati al
+        proprietario: EXECUTE revocato a PUBLIC e all'app. Le porte che aprono (indirizzi,
+        toponomastica) si aprono solo dal proprietario. brief-db-porte-aperte-dalla-sola-guc, giro 1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('dbops', 'fn_admin_merge_stradario'),
+                                                ('maintenance', 'proc_bump_toponomastica'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- A PUBLIC sempre (=X per default), all'app se il ruolo esiste.
+              REVOKE EXECUTE ON FUNCTION dbops.fn_admin_merge_stradario(integer, integer, character, date, text) FROM PUBLIC;
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_bump_toponomastica(integer, text) FROM PUBLIC;
+              DO $porta$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: revoca all''app saltata.';
+                      RETURN;
+                  END IF;
+                  REVOKE EXECUTE ON FUNCTION dbops.fn_admin_merge_stradario(integer, integer, character, date, text) FROM zeroerp_app;
+                  REVOKE EXECUTE ON PROCEDURE maintenance.proc_bump_toponomastica(integer, text) FROM zeroerp_app;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Riapre i due strumenti all'app e a PUBLIC. Senza togliere la voce di
+              -- fn_admin_merge_stradario dal loop 20260205-41 e dal provisioning, la
+              -- passata ci_apply successiva la richiude.
+              GRANT EXECUTE ON FUNCTION dbops.fn_admin_merge_stradario(integer, integer, character, date, text) TO PUBLIC;
+              GRANT EXECUTE ON FUNCTION dbops.fn_admin_merge_stradario(integer, integer, character, date, text) TO zeroerp_app;
+              GRANT EXECUTE ON PROCEDURE maintenance.proc_bump_toponomastica(integer, text) TO PUBLIC;

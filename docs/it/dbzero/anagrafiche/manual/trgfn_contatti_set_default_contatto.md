@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_contatti_set_default_contatto`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,6 +12,7 @@
 > Approfondimento funzioni:
 >
 > * [anagrafiche.fn_crea_contatto](/dbzero/anagrafiche/funzioni/fn_crea_contatto) — il verbo che fa nascere i contatti
+> * [anagrafiche.trgfn_contatti_guard_predefinito](/dbzero/anagrafiche/funzioni/trgfn_contatti_guard_predefinito) — il gemello che giudica il segno tolto e il predefinito cancellato
 > * [script.fn_get_contatto_default](/dbzero/script/funzioni/fn_get_contatto_default) — chi legge il predefinito
 >
 > Guide:
@@ -22,33 +23,46 @@
 
 ### 🎯 Scopo Principale
 
-`anagrafiche.trgfn_contatti_set_default_contatto` tiene il contatto predefinito di ogni soggetto e contesto: a
-ogni nascita e a ogni modifica di un contatto ne calcola il contesto, fa predefinito il primo del contesto o
-quello marcato, toglie il segno all'altro, e aggiorna il puntatore del soggetto.
+`anagrafiche.trgfn_contatti_set_default_contatto` mette il segno del contatto predefinito di ogni riga di contesto
+(soggetto, ruolo, istanza): al primo contatto che entra in un contesto senza predefinito, o al contatto che lo
+chiede. Lo toglie al predefinito di prima, scrive il livello in `default_context` e, per il contesto del soggetto,
+il puntatore `anagrafiche.soggetti.default_contatto_id`.
+
+Il segno tolto e il predefinito cancellato non li giudica lui: li giudica il gemello
+[anagrafiche.trgfn_contatti_guard_predefinito](/dbzero/anagrafiche/funzioni/trgfn_contatti_guard_predefinito).
+
+---
+
+### Quando scatta
+
+Prima di ogni nascita e di ogni modifica di `anagrafiche.contatti`, montato come
+`trg_contatti_a20_set_default_contatto_ins_upd`. La fase `a20` lo fa girare dopo i due guard `a10` (il contesto
+del soggetto e il predefinito).
 
 ---
 
 ### Che cosa fa a ogni scrittura
 
-Prima della scrittura di ogni riga di `anagrafiche.contatti`, su qualunque colonna:
+* **Chi chiede il segno** (`is_default` a `true` alla nascita, o passato da `false` a `true`) lo toglie al
+  predefinito di prima dello stesso contesto.
+* **Chi entra nel contesto** senza chiederlo (nasce, o cambia soggetto, ruolo o istanza) è predefinito se il
+  contesto non ne ha uno, e senza segno se ce l'ha. Un segno portato da un altro contesto non è una richiesta.
+* **Una modifica che non tocca il segno né il contesto** non sposta niente.
+* `default_context` prende il livello del predefinito (`istanza`, `ruolo` o `soggetto`) ed è `NULL` sugli altri.
+* Quando un contatto **diventa** il predefinito del contesto del soggetto (né ruolo né istanza), il suo id va in
+  `anagrafiche.soggetti.default_contatto_id`, se il puntatore non lo ha già.
 
-* calcola il contesto dalla riga (istanza, poi ruolo, poi soggetto) e svuota `default_context`;
-* se la riga è marcata predefinita, toglie il segno agli altri predefiniti dello stesso soggetto e contesto, e
-  scrive il contesto sulla riga;
-* se non è marcata e il contesto non ha un predefinito, la marca;
-* se la riga è, o diventa, il predefinito del contesto `soggetto`, scrive il suo id in
-  `anagrafiche.soggetti.default_contatto_id`.
-
-Togliere il segno agli altri è una modifica di quelle righe, e il trigger scatta anche su di loro: lì il
-predefinito di prima c'è ancora, e la riga resta senza segno.
+Il segno tolto agli altri è scritto prima della riga nuova: l'indice `uq_contatti_predefinito_contesto` non vede
+mai due predefiniti nello stesso contesto. Quelle scritture le fa il trigger, e il guard del predefinito le lascia
+passare.
 
 ---
 
-### ⚠️ Una modifica del predefinito riscrive il soggetto
+### Il soggetto si riscrive solo quando cambia il suo predefinito
 
-Ogni scrittura del predefinito del contesto `soggetto` (anche il cambio di un'email) aggiorna il soggetto, pure
-quando il puntatore non cambia. Fa scattare quindi i trigger di `anagrafiche.soggetti`, compresi i controlli
-differiti al COMMIT: il contatto obbligatorio, gli indirizzi obbligatori, i dati societari.
+Il puntatore del soggetto si scrive solo quando un contatto diventa il predefinito del contesto del soggetto, e
+solo se non punta già lì. Una modifica dei recapiti del predefinito non tocca il soggetto e non fa scattare i suoi
+trigger.
 
 ---
 
@@ -58,23 +72,21 @@ differiti al COMMIT: il contatto obbligatorio, gli indirizzi obbligatori, i dati
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Il predefinito per ruolo e per istanza.** La chiave è soggetto più contesto: marcare il contatto di un ruolo
-  toglie il segno a quello di un altro ruolo dello stesso soggetto.
-* **Il contesto senza predefinito.** Togliere il segno o cancellare il predefinito non promuove nessuno, e il
-  puntatore del soggetto resta sul contatto di prima, anche quando quello esce dal contesto `soggetto`.
-* **Il COMMENT di `default_context`** elenca `utility` fra i valori: il trigger scrive `istanza`.
+* **Il puntatore del soggetto non si svuota.** Quando l'ultimo contatto del contesto del soggetto si cancella, o
+  passa a un ruolo, `anagrafiche.soggetti.default_contatto_id` resta sul contatto di prima.
 
 ---
 
 ### Test
 
+* `db/pgtap/anagrafiche/test-contatto-predefinito-per-contesto-v1.sql` — il primo contatto di ogni ruolo dello
+  stesso soggetto nasce predefinito (test 3); marcare un contatto del fornitore non tocca il cliente e toglie il
+  segno al predefinito di prima, con `default_context` `NULL` (4-5); la modifica di un altro contatto del contesto
+  non sposta il segno (7); il predefinito che passa a un ruolo che ha già il suo entra senza segno (20).
 * `db/pgtap/anagrafiche/test-contatti-soggetto-cliente.sql` — un contatto di ruolo marcato predefinito prende il
   contesto `ruolo` e non tocca il puntatore del soggetto.
 * `db/pgtap/anagrafiche/test-fn-crea-contatto-v1.sql` — il primo contatto di un soggetto costruito nasce
   predefinito.
-
-Nessun test prova il passaggio del segno fra due contatti dello stesso contesto, né i due ruoli che condividono
-un predefinito.
 
 ---
 

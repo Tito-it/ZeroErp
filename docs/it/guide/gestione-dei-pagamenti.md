@@ -1,6 +1,6 @@
 # Guida — Gestione dei Pagamenti Vendite
 
-> **Ultimo aggiornamento**: 20 settembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend, analisti funzionali, operatori dell'area incassi
 >
@@ -16,8 +16,10 @@
 >
 > * Il ciclo: [fn_get_or_create_vendite_contabile](/dbzero/pagamenti/funzioni/fn_get_or_create_vendite_contabile) · [fn_posta_contabile](/dbzero/pagamenti/funzioni/fn_posta_contabile) · [fn_posta_riga_tardiva](/dbzero/pagamenti/funzioni/fn_posta_riga_tardiva) · [fn_crea_distinta_correzione](/dbzero/pagamenti/funzioni/fn_crea_distinta_correzione)
 > * Saldi: [fn_get_saldo_fattura](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura) · [fn_get_saldo_fattura_contabili](/dbzero/pagamenti/funzioni/fn_get_saldo_fattura_contabili) · [fn_get_saldo_rata](/dbzero/pagamenti/funzioni/fn_get_saldo_rata) · [fn_get_saldi_rate](/dbzero/pagamenti/funzioni/fn_get_saldi_rate) · [script.fn_check_scadenza_di_fattura](/dbzero/script/funzioni/fn_check_scadenza_di_fattura)
-> * Sistemazioni: [fn_conferma_sistemazione](/dbzero/pagamenti/funzioni/fn_conferma_sistemazione) · [fn_annulla_sistemazione](/dbzero/pagamenti/funzioni/fn_annulla_sistemazione)
+> * Sistemazioni: [fn_conferma_sistemazione](/dbzero/pagamenti/funzioni/fn_conferma_sistemazione) · [fn_annulla_sistemazione](/dbzero/pagamenti/funzioni/fn_annulla_sistemazione) · [script.fn_guard_livello_area](/dbzero/script/funzioni/fn_guard_livello_area) (il livello sull'area `pagamenti` che l'annullo chiede)
+> * Fondi fattura: [vendite.fn_cancella_fondo_fattura](/dbzero/vendite/funzioni/fn_cancella_fondo_fattura) (il gesto «cancella il fondo») · [vendite.fn_applica_cancellazione_fondo_fattura](/dbzero/vendite/funzioni/fn_applica_cancellazione_fondo_fattura) (la primitiva: perimetro, criterio e i tre `DELETE`) · [vendite.fn_check_fondo_cancellabile](/dbzero/vendite/funzioni/fn_check_fondo_cancellabile) (il criterio) · [vendite.fn_reset_fondi_fattura](/dbzero/vendite/funzioni/fn_reset_fondi_fattura) (il reset dei fondi, nel reset del lotto)
 > * Guard: [trgfn_vendite_contabili_guard_transizione](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_guard_transizione) · [trgfn_vendite_contabili_righe_guard_transizione](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_transizione) · [trgfn_vendite_contabili_guard_validazione](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_guard_validazione) · [trgfn_vendite_contabili_righe_guard_contenuto](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_contenuto) · [trgfn_vendite_contabili_righe_guard_rata](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_rata) · [trgfn_vendite_contabili_righe_guard_distinta_finale](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_distinta_finale) · [script.fn_check_riga_contabile_eliminabile](/dbzero/script/funzioni/fn_check_riga_contabile_eliminabile)
+> * Movimento: [trgfn_vendite_movimenti_sync_contabile_from_riga](/dbzero/pagamenti/funzioni/trgfn_vendite_movimenti_sync_contabile_from_riga) (i riferimenti dalla riga) · [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope) (il perimetro della fattura, dopo il mirror)
 >
 > **Vedi anche** — guide correlate:
 >
@@ -726,7 +728,9 @@ Da un punto di vista tecnico:
 Il reset centralizzato in `vendite.fn_reset_fondi_fattura()` **cancella** i fondi
 `ASSEGNATO` che non sono stati eseguiti — un atto mai eseguito e una proposta, e
 il giro successivo ne fa una nuova sul residuo di adesso — e **non tocca** quelli
-`ESEGUITO`, che si limita a segnalare nel diario della fattura.
+`ESEGUITO`, che si limita a segnalare nel diario della fattura. È riservato al
+proprietario: lo chiama solo la pulizia del lotto, dentro i verbi del reset, che
+chiedono il loro permesso.
 
 > ⚠️ **Il reset e un'operazione tecnica sulla fattura figlia** (il ritorno di un
 > lotto in bozza), **non una reazione ai pagamenti**: nessun incasso riapre o
@@ -767,6 +771,22 @@ persona**. Le righe che aspettano una decisione stanno in
 > azione «pericolosa»): non basta l'accesso all'area vendite. E **cancellare
 > riapre la generazione automatica** — il giro successivo puo' riproporre un
 > fondo nuovo, letto sul residuo di quel momento.
+>
+> 🔒 **Chi puo' cancellare un fondo, e chi annullare una sistemazione.** Lo
+> controlla anche il database, con lo stesso permesso dell'endpoint:
+>
+> | Gesto | Verbo | Permesso | Fuori dal perimetro |
+> | --- | --- | --- | --- |
+> | cancellare l'atto | `vendite.fn_cancella_fondo_fattura` | l'azione `governa_fondo_fattura` | `E_FONDO_NON_TROVATO` |
+> | annullare la sistemazione (e con lei il fondo del riporto) | `pagamenti.fn_annulla_sistemazione` | il livello `TUTTO` sull'area `pagamenti` | `E_SISTEMAZIONE_NON_TROVATA` |
+>
+> Senza il permesso la risposta e' `E_PERMESSO_NEGATO`. Fuori dal perimetro
+> l'atto «non c'e'», con la stessa risposta di un atto inesistente. Tutti e due
+> i verbi fanno cadere il fondo con la stessa **primitiva**,
+> `vendite.fn_applica_cancellazione_fondo_fattura`, che l'applicazione non puo'
+> chiamare: per questo chi annulla una sistemazione non deve avere anche
+> `governa_fondo_fattura`. Il criterio (`fn_check_fondo_cancellabile`) e' uno
+> solo, e nessuna GUC lo allarga.
 >
 > ⭐ **Un fondo puo' nascere anche da `pagamenti`.** Quando un'eccedenza viene
 > sistemata con destinazione **riporto**, e' il processo delle sistemazioni a
@@ -870,6 +890,11 @@ Da un punto di vista tecnico:
 Sono i due gesti del registro delle sistemazioni: la **conferma** (che fa nascere
 il documento — un fondo o una distinta) e l'**annullamento** di una decisione non
 ancora confermata. Il giro completo è nella sezione «Le sistemazioni».
+
+L'annullamento è un verbo `SECURITY DEFINER`: chiede il livello `TUTTO` sull'area
+`pagamenti`, lo stesso controllo dell'endpoint, e controlla che la sistemazione
+sia di un'azienda di chi agisce. Su un riporto confermato fa cadere anche il fondo,
+con la primitiva del fondo e senza chiedere `governa_fondo_fattura`.
 
 > Documentazione dettagliata: [pagamenti.fn_conferma_sistemazione](/dbzero/pagamenti/funzioni/fn_conferma_sistemazione) · [pagamenti.fn_annulla_sistemazione](/dbzero/pagamenti/funzioni/fn_annulla_sistemazione)
 
@@ -1035,7 +1060,7 @@ Questo trigger (BEFORE INSERT/UPDATE su `vendite_movimenti`) garantisce la coere
 
 ### Il contenuto della distinta: `trgfn_vendite_contabili_righe_guard_contenuto`
 
-Questo trigger (BEFORE INSERT / UPDATE dei fatti / DELETE su `vendite_contabili_righe`) custodisce **chi puo' togliere, aggiungere o cambiare una riga, e quando**: una riga si elimina solo su una distinta **manuale in bozza**, e sotto una manuale **validata** il contenuto e' fermo finche' non torna in bozza. Il predicato dell'eliminazione sta in una funzione sola, `script.fn_check_riga_contabile_eliminabile`, che il guard chiama e il backend legge per spegnere il cestino col perche'. Il `DELETE` del giro dei fondi passa perche' la sua madre lo dichiara. Tutto il resto — le due porte, l'ordine dei motivi, il residuo dichiarato — sta nella scheda: [trgfn_vendite_contabili_righe_guard_contenuto](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_contenuto).
+Questo trigger (BEFORE INSERT / UPDATE dei fatti / DELETE su `vendite_contabili_righe`) custodisce **chi puo' togliere, aggiungere o cambiare una riga, e quando**: una riga si elimina solo su una distinta **manuale in bozza**, e sotto una manuale **validata** il contenuto e' fermo finche' non torna in bozza. Il predicato dell'eliminazione sta in una funzione sola, `script.fn_check_riga_contabile_eliminabile`, che il guard chiama e il backend legge per spegnere il cestino col perche'. Il `DELETE` del giro dei fondi passa perche' la primitiva del fondo (`vendite.fn_applica_cancellazione_fondo_fattura`) apre la porta **sulla riga**: la GUC `zeroerp.allow_contabile_riga_delete_override` porta l'id dell'atto che sta cancellando, e il guard la onora solo sulle righe di quell'atto e solo se chi scrive e' il proprietario. L'applicazione che accende la GUC da se' non apre niente. Tutto il resto — le due porte, l'ordine dei motivi, il residuo dichiarato — sta nella scheda: [trgfn_vendite_contabili_righe_guard_contenuto](/dbzero/pagamenti/funzioni/trgfn_vendite_contabili_righe_guard_contenuto).
 
 ---
 
@@ -1233,6 +1258,22 @@ resta indietro **non si perde**, e ha ancora due strade:
 ⚠️ Sulla tardiva torna il **doppio tempo**: se la rata non ha più spazio, la
 domanda c'è come alla nascita. E i movimenti restano **irreversibili**: se serve
 un altro esito si compie un atto nuovo, non si riscrive quello vecchio.
+
+**Chi può farla, e su che cosa.** Il permesso `registra_distinta` lo chiede
+l'endpoint, e lo chiede di nuovo il database, nella prima riga della funzione: chi
+non ce l'ha riceve `E_PERMESSO_NEGATO` anche se la richiesta arrivasse da un'altra
+strada. La funzione lavora fuori dalla row security, e il perimetro lo controlla
+lei, una volta, all'ingresso:
+
+* la riga segue la sua **distinta**: se la distinta è di un'azienda fuori dal
+  perimetro di chi agisce, la riga per lui **non c'è**, con la stessa risposta di
+  una riga inesistente;
+* la **fattura** su cui la si registra dev'essere nel perimetro: il movimento non
+  nasce su un'azienda d'altri (`E_SCOPE_EMITTENTE`).
+
+La porta della distinta chiusa che la tardiva attraversa si apre solo dentro la
+funzione: un aggiornamento fatto a mano, anche presentandosi con l'impostazione
+giusta, resta rifiutato.
 
 ## Regole di dominio
 

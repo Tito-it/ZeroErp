@@ -58,14 +58,14 @@ def scope_key_da_emittenti(emittente_ids: list[int] | None) -> str:
 #        whitelist degli emittenti e la `scope_key` che ne deriva. E' il dict
 #        che si passa a `CodaLavoriRepository.accoda(scope=...)`.
 #
-# ⭐ L'id e' quello VERO (`user.id`, anche per un superuser) — NON
-#    `get_scope_user_id`, che per un superuser e' None e bloccherebbe l'admin
-#    globale: qui l'identita' serve all'audit e alla RLS del worker, non allo
+# ⭐ L'id e' quello VERO (`user.id`) — NON
+#    `get_scope_user_id`, che oggi da' lo stesso id ma risponde a un'altra
+#    domanda (fin dove si legge): qui l'identita' serve all'audit e alla RLS del worker, non allo
 #    scope di una lista.
 # ⛔ La TERNA e' obbligatoria e si rifiuta QUI, prima di accodare: un lavoro
 #    OPERATORE senza `identita_id` nascerebbe e morirebbe un minuto dopo nel
 #    drenatore (`operator_identity_context` solleva lo stesso codice). Dirlo
-#    adesso a chi puo' fare qualcosa — un superuser Django senza identita'
+#    adesso a chi puo' fare qualcosa — un utente senza identita'
 #    OPERATORE non accoda lavori per conto proprio — e' l'unica differenza.
 # ⚠️ L'emittente ATTIVO si cattura PRIMA della whitelist, ed e' un ordine che
 #    conta: dal 2026-08-04 le funzioni di scope intersecano con l'emittente

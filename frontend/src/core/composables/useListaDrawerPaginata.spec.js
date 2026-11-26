@@ -25,7 +25,7 @@ const risposta = (results, count) => ({ data: { data: { results, count } } })
 describe('useListaDrawerPaginata', () => {
   beforeEach(() => {
     notifiche.error.mockReset()
-    registraMisurePagina({ misure: [10, 25, 50, 100], default_compatta: 10, default_pagina: 25 })
+    registraMisurePagina({ misure: [10, 25, 50, 100], default_per_uso: { COMPATTA: 10, PAGINA: 25 } })
   })
 
   it('parte dalla misura COMPATTA del catalogo e legge l\'envelope lista', async () => {

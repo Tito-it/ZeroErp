@@ -226,7 +226,7 @@ def list_ordini_rows(
     data_da: date | None = None,
     data_al: date | None = None,
     search: str | None = None,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     limit: int,
     offset: int,
     order_by: str = "data",

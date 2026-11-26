@@ -6,6 +6,11 @@
 # Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+# 2026-11-23: la colonna storicizza esce dal CSV e da questo mirror. Il valore
+#   giusto e' il default della tabella (true, 20261123-39: lo stradario ha lo
+#   storico continuo), e linee-guida-sql §11.2 vuole che allora la colonna si
+#   tolga. Le vie che esistono le accende 20261123-40, dopo questo mirror.
+# ------------------------------------------------------------
 databaseChangeLog:
   - changeSet:
       id: 20250814-03-upsert-stradario
@@ -61,7 +66,6 @@ databaseChangeLog:
                   defaultValue: "NOW()"
               - column: { name: user_update, type: STRING }
               - column: { name: tx_id, type: uuid }
-              - column: { name: storicizza, type: STRING }
         # 3) Conversione in geometry(Point,4326) da EWKT
         - sql:
             sql: |

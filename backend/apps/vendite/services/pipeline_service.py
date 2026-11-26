@@ -11,7 +11,6 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any
 
-from apps.core.api.payload_validators import envelope_da_offset
 from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 from apps.core.db._helpers import order_dir_ammessa
 from apps.core.db.dbops_repository import DbopsRepository
@@ -47,6 +46,7 @@ from apps.vendite.types import (
     LottoTaskRunRow,
     RiportaLottoADraftResult,
 )
+from apps.core.services.list_helpers import pagina_con_totale
 
 # Facade servizi: mantiene firme dichiarative e delega alle classi OOP.
 
@@ -533,7 +533,7 @@ def fn_list_lotto_segnalazioni(
     )
     return {
         "lotto_id": lotto_id,
-        **envelope_da_offset(righe, total_count, limit=limit, offset=offset),
+        **pagina_con_totale(righe, total_count),
         # ⭐ Quante segnalazioni restano FUORI dal job corrente: e' il numero che
         # rende onesto il filtro «solo l'ultima corsa». Senza, un elenco filtrato
         # e uno vuoto si leggono uguali.
@@ -647,11 +647,13 @@ ORIGINE_BATCH = "batch"
 # non dice nulla sul mese che si sta fatturando. L'intero pannello parla quindi
 # di UN periodo solo, quello filtrato nella lista sottostante.
 #
-# `user` serve allo split miei/altri dei giri app; `auth_user_id` allo scope
-# della coda stampa. None = uso di sistema (split a 0, coda senza scope).
+# `user` serve allo split miei/altri dei giri app (`None` = split a 0);
+# `auth_user_id` allo scope della coda stampa. ⛔ Dal 2026-11-24
+# `auth_user_id=None` non vuol dire «coda senza scope»: il conteggio della coda
+# solleva `E_SCOPE_SENZA_UTENTE` (brief-db-porte-aperte-dalla-sola-guc §4.7).
 def esiti_fatturazione(
     *,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     competenza_mese: date | None = None,
     user: Any = None,
 ) -> dict[str, Any]:
@@ -1037,18 +1039,14 @@ def fn_get_lotto_task_runs(
     # ⚠️ ENVELOPE PAGINATO, non piu' `{lotto_id, count, task_runs}`: `count`
     # diceva quante righe erano ARRIVATE, cioe' la dimensione della pagina, e
     # una lista che si paginava da sola l'avrebbe letto come «totale». Le
-    # chiavi sono quelle di tutte le altre liste (`envelope_da_offset`), cosi'
+    # chiavi sono quelle di tutte le altre liste (`pagina_con_totale`), cosi'
     # il BB di lista non ha bisogno di sapere che questa e' speciale.
     # 📌 `task_runs` resta come alias di `results` per il consumatore attuale
     # del drawer: la conversione a `<ListaConfigurabile>` e' un altro passo
     # (FE-2) e questo endpoint non deve romperlo nel frattempo.
-    envelope = envelope_da_offset(runs, total_count, limit=limit, offset=offset)
     return {
         "lotto_id": lotto_id,
-        "count": envelope["count"],
-        "page": envelope["page"],
-        "page_size": envelope["page_size"],
-        "total_pages": envelope["total_pages"],
+        **pagina_con_totale(runs, total_count),
         # ⭐ Quante righe i filtri lasciano FUORI — il gemello di
         # `fuori_job_count` delle segnalazioni, con un nome piu' largo perche'
         # qui i filtri sono DUE (stato e giro): un nome che parlasse del giro
@@ -1057,7 +1055,6 @@ def fn_get_lotto_task_runs(
         # leggono uguali — ed e' il difetto che il filtro «giro corrente»
         # produrrebbe da solo, visto che sul lotto 6260 mostra 1 riga su 90.
         "esclusi_count": esclusi_count,
-        "results": runs,
         "task_runs": runs,
     }
 

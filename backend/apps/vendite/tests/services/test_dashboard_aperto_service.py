@@ -199,8 +199,7 @@ class DashApertoDocumentiServiceTests(TestCase):
     def test_documenti_ok_envelope_paginato(self, mock_repo):
         data = fn_dash_aperto_documenti(area="PREVENTIVO", fase="APERTO")
         self.assertEqual(data["count"], 1)
-        self.assertEqual(data["page"], 1)
-        self.assertEqual(data["total_pages"], 1)
+        self.assertEqual(data["offset_effettivo"], 0)
         self.assertEqual(data["results"], [{"documento_id": 1}])
         kwargs = mock_repo.call_args.kwargs
         self.assertEqual(kwargs["area"], "PREVENTIVO")
@@ -366,8 +365,7 @@ class DashApertoDocumentiServiceTests(TestCase):
     def test_documenti_pagina_stantia_clampata(self, _mock_repo):
         data = fn_dash_aperto_documenti(limit=50, offset=4900)
         self.assertEqual(data["count"], 10)
-        self.assertEqual(data["page"], 1)
-        self.assertEqual(data["total_pages"], 1)
+        self.assertEqual(data["offset_effettivo"], 0)
 
     # Scopo: order_by/order_dir (whitelist) inoltrati al repository per
     #        l'ordinamento server-side su tutte le pagine.

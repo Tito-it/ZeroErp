@@ -1,6 +1,6 @@
 # Guida — Risorse Umane e Accessi al Software
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -23,13 +23,19 @@
 >
 > **Vedi anche** — funzioni e trigger DB:
 >
-> * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — crea un operatore: credenziale, soggetto, risorsa umana e veste spenta
-> * [anagrafiche.fn_crea_risorsa_umana_v2](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana_v2) — crea la risorsa umana e, se c'è la credenziale, la veste `OPERATORE`
+> * [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore) — crea un operatore: credenziale, soggetto, risorsa umana e veste spenta
+> * [anagrafiche.fn_crea_primo_amministratore](/dbzero/anagrafiche/funzioni/fn_crea_primo_amministratore) — il primo SUPER_ADMIN di un'installazione nuova, con la veste accesa
+> * [anagrafiche.fn_crea_indirizzi_operatore](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_operatore) — residenza e domicilio fiscale dell'operatore
+> * [anagrafiche.fn_crea_risorsa_umana](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana) — crea la risorsa umana e, se c'è la credenziale, la veste `OPERATORE`
 > * [anagrafiche.fn_crea_auth_user](/dbzero/anagrafiche/funzioni/fn_crea_auth_user) — crea la credenziale Django quando l'email non ne ha una
 > * [anagrafiche.fn_crea_veste_portale](/dbzero/anagrafiche/funzioni/fn_crea_veste_portale) — crea una veste di portale o di shop
 > * [anagrafiche.fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste) — accende una veste (l'attivazione dell'invito)
+> * [anagrafiche.fn_revoca_veste](/dbzero/anagrafiche/funzioni/fn_revoca_veste) — l'amministratore revoca una veste: la spegne e ci lascia il segno
+> * [anagrafiche.fn_togli_revoca_veste](/dbzero/anagrafiche/funzioni/fn_togli_revoca_veste) — il nuovo invito toglie il segno della revoca
+> * [anagrafiche.fn_guard_gestione_veste](/dbzero/anagrafiche/funzioni/fn_guard_gestione_veste) — chi può revocare una veste, per tipo di veste
+> * [anagrafiche.trgfn_identita_digitali_guard_revoca](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_revoca) — una veste revocata non si riaccende
 > * [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile) — quando una veste conta «oggi»
-> * [script.fn_stato_veste](/dbzero/script/funzioni/fn_stato_veste) — lo stato di una veste per le liste: accesa, invito pendente, invito non spedito, spenta
+> * [script.fn_stato_veste](/dbzero/script/funzioni/fn_stato_veste) — lo stato di una veste per le liste: accesa, revocata, invito pendente, invito non spedito, spenta
 > * [script.fn_categoria_accesso](/dbzero/script/funzioni/fn_categoria_accesso) — in quale lista degli accessi cade una credenziale
 > * [anagrafiche.fn_sync_auth_user_is_active](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active) — allinea `auth_user.is_active` alle vesti della credenziale
 > * [anagrafiche.fn_sync_auth_user_expired](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired) — il riallineamento periodico, per le date che arrivano
@@ -39,10 +45,13 @@
 > * [anagrafiche.trgfn_risorse_umane_guard_identita_attiva](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_guard_identita_attiva) — «una risorsa con veste operatore accesa non si disattiva»
 > * [anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_ultimo_super_admin) · [anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_guard_ultimo_super_admin) — l'ultimo `SUPER_ADMIN` senza scadenza, dal lato della veste e del rapporto
 > * [anagrafiche.fn_notify_cambio_reparto](/dbzero/anagrafiche/funzioni/fn_notify_cambio_reparto) — la notifica di cambio reparto
+> * [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — assegna o toglie l'emittente di un operatore, riservato al SUPER_ADMIN
+> * [config.trgfn_user_emittenti_fiscali_guard_delete](/dbzero/config/funzioni/trgfn_user_emittenti_fiscali_guard_delete) — l'emittente di un utente acceso si toglie solo da quel verbo
 >
 > **Vedi anche** — guide correlate:
 >
 > * [Guida Soggetti & Ruoli](/guide/soggetti-e-ruoli-anagrafici)
+> * [Gli emittenti fiscali](/guide/emittenti-fiscali) — le aziende che emettono, e per quale lavora ogni operatore
 > * [Gestione dei contatti](/guide/gestione-dei-contatti)
 > * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
 > * [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth)
@@ -132,7 +141,7 @@ Il reparto o ufficio a cui la risorsa appartiene. E il perno del sistema permess
 
 ### Soggetto gestore
 
-L'azienda che usa il sistema (singleton). Il gestore e il soggetto PG con ruolo GESTORE — identifica il datore di lavoro. Il guard sull'accesso al software **non** verifica l'appartenenza al gestore (sarebbe impossibile: RIS_UMANA e solo PF, GESTORE e solo PG), ma verifica che il soggetto sia una **persona fisica pura** ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura)). Il vincolo emittente fiscale (su quali emittenti l'utente puo operare) e verificato al login lato Django.
+L'azienda che usa il sistema (singleton). Il gestore e il soggetto PG con ruolo GESTORE — identifica il datore di lavoro. Il guard sull'accesso al software **non** verifica l'appartenenza al gestore (sarebbe impossibile: RIS_UMANA e solo PF, GESTORE e solo PG), ma verifica che il soggetto sia una **persona fisica pura** ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura)). L'azienda su cui l'operatore lavora non dipende dal gestore: è la sua riga in `config.user_emittenti_fiscali` (vedi [Assegnazione emittente fiscale](#assegnazione-emittente-fiscale-scope-operativo)).
 
 ---
 
@@ -176,7 +185,7 @@ Il collegamento a `django.auth_user` e consentito **solo** per soggetti **person
 
 Il vincolo vale per la veste `OPERATORE` persona. Portale e shop **non** lo hanno: un cliente persona giuridica puo avere la sua identita digitale; il guard chiede solo che la veste stia sul ruolo giusto (cliente per `CLIENTE_PORTALE` e `SHOP_CUSTOMER`, fornitore per `FORNITORE_PORTALE`). La veste `API_CLIENT` non ha vincolo di coerenza col soggetto-ruolo, ma rispetta [R6](#r6--persona-o-macchina).
 
-Il vincolo emittente fiscale ("su quali emittenti l'utente puo operare?") **non** e verificato a livello DB ma al login lato Django (auth view), perche `config.user_emittenti_fiscali` richiede un `auth_user_id` che esiste solo dopo la creazione dell'identita. Per limitare l'operativita per emittente, esiste la whitelist `config.user_emittenti_fiscali` (vedi [Autorizzazioni e permessi](#autorizzazioni-e-permessi)).
+L'azienda dell'operatore ("per quale emittente lavora?") **non** fa parte di questo vincolo: la riga di `config.user_emittenti_fiscali` chiede un `auth_user_id`, che esiste solo dopo la creazione dell'identità, e si scrive dopo, dal `SUPER_ADMIN`. La fa valere il database, con le policy e i guard di scope: senza la riga l'operatore non vede nessun emittente (vedi [Assegnazione emittente fiscale](#assegnazione-emittente-fiscale-scope-operativo)).
 
 ### R5 — Unicita per persona
 <a id="r5--unicita-per-persona"></a>
@@ -187,6 +196,8 @@ La catena `soggetti_ruoli(soggetto_id, tipo_ruolo_id)` UNIQUE + `risorse_umane(s
 <a id="r6--persona-o-macchina"></a>
 
 Tutte le vesti di una credenziale hanno la **stessa natura**: o sono di una persona, o sono di una macchina. Una veste e «di macchina» quando e `API_CLIENT` oppure ha `tecnica = true` ([script.fn_veste_di_sistema](/dbzero/script/funzioni/fn_veste_di_sistema)). Contano anche le vesti spente: una veste spenta resta della sua credenziale, e riaccenderla non deve poter mescolare le due nature.
+
+`tecnica = true` si scrive solo su una veste `OPERATORE`: un processo automatico entra solo dalla porta dell'operatore, e su ogni altra veste il flag e rifiutato (`E_VESTE_TECNICA_SOLO_OPERATORE`). Un'identita tecnica non ha mai il profilo `SUPER_ADMIN`: il legame si rifiuta da tutti e due i lati, il binding e la veste che diventa tecnica (`E_SUPER_ADMIN_SU_VESTE_TECNICA`), e [script.fn_is_super_admin_account](/dbzero/script/funzioni/fn_is_super_admin_account) non la conta.
 
 Lo presidia [trgfn_identita_digitali_guard_natura_credenziale](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_natura_credenziale), alla nascita della veste e quando cambiano la credenziale, il tipo o il flag `tecnica`: chi prova a mescolare riceve `E_CREDENZIALE_PERSONA_E_SISTEMA`. La stessa natura decide in quale lista degli accessi cade la credenziale (vedi [Le liste degli accessi](#le-liste-degli-accessi)).
 
@@ -223,14 +234,19 @@ Il secondo livello decide **se l'utente puo entrare**. Una veste non utilizzabil
 | Evento               | Trigger                                               | Cosa succede                                                                                                   |
 | -------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | Nuova veste          | `trg_identita_digitali_z90_sync_auth_user_active_ins` | AFTER INSERT su `identita_digitali`                                                                            |
-| Cambio della veste   | `trg_identita_digitali_z90_sync_auth_user_active_upd` | AFTER UPDATE di `attivo`, `valido_dal`, `valido_al`, `ruolo_applicativo` o `auth_user_id` su `identita_digitali` |
-| Cambio del rapporto  | `trg_risorse_umane_z90_sync_auth_user_active_upd`     | AFTER UPDATE di `attivo`, `valido_dal` o `valido_al` su `risorse_umane`, solo se il valore cambia               |
+| Cambio della veste   | `trg_identita_digitali_z90_sync_auth_user_active_upd` | AFTER UPDATE di `attivo`, `valido_dal`, `valido_al`, `ruolo_applicativo`, `auth_user_id`, `soggetto_ruolo_id` o `tecnica` su `identita_digitali` |
+| Veste cancellata     | `trg_identita_digitali_z90_sync_auth_user_active_dlt` | AFTER DELETE su `identita_digitali`                                                                            |
+| Nuovo rapporto       | `trg_risorse_umane_z90_sync_auth_user_active_ins`     | AFTER INSERT su `risorse_umane`                                                                                |
+| Cambio del rapporto  | `trg_risorse_umane_z90_sync_auth_user_active_upd`     | AFTER UPDATE di `attivo`, `valido_dal`, `valido_al` o `soggetto_ruolo_id` su `risorse_umane`, solo se il valore cambia |
+| Rapporto cancellato  | `trg_risorse_umane_z90_sync_auth_user_active_dlt`     | AFTER DELETE su `risorse_umane`                                                                                |
 
-Sulla veste la sync guarda la credenziale che la veste ha **dopo** la scrittura; sul rapporto guarda la credenziale della veste `OPERATORE` della risorsa ([trgfn_risorse_umane_sync_auth_user_active](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_sync_auth_user_active)), e non fa niente se la risorsa non ha accesso.
+Sulla veste la sync guarda la credenziale che la veste ha **dopo** la scrittura e, quando la veste se ne va o cambia credenziale, anche quella di **prima**: una credenziale rimasta senza vesti utilizzabili si spegne. Sul rapporto guarda ogni credenziale con una veste `OPERATORE` sul ruolo del rapporto, e sul ruolo di prima se e cambiato ([trgfn_risorse_umane_sync_auth_user_active](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_sync_auth_user_active)).
 
-**Le date che arrivano.** I trigger reagiscono alle scritture: una data di fine che passa, o una data di inizio che arriva, non scrive niente e non fa partire nessun trigger. Se ne occupa la funzione [`anagrafiche.fn_sync_auth_user_expired`](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired), eseguita dal job pgAgent `sync_auth_user_expired_daily` **ogni ora, al minuto 10** (il nome dice «daily», ma il job e orario: la funzione e idempotente, e una scadenza si riallinea entro l'ora). Riallinea le credenziali che hanno delle vesti **nei due versi**, con la stessa regola della sync: spegne quelle che non ne hanno piu nessuna utilizzabile (veste scaduta, oppure rapporto scaduto) e **accende** quelle che ne hanno una diventata valida (data di inizio arrivata). Una credenziale senza nessuna veste resta fuori. Al posto del job si puo usare il management command Django `sync_auth_user_active`, che offre la stessa funzionalita — con un `--dry-run` per il solo report, senza modifiche — ed e la via da preferire quando si vuole far girare il controllo a mano.
+Lo spegnimento del soggetto non chiama la sync, ma non si raggiunge: un soggetto con dei ruoli non si spegne, e una veste ha sempre un ruolo.
 
-⚠️ **Che cosa la sincronizzazione non vede subito.** Quattro scritture non chiamano la sync, e la credenziale si riallinea solo al giro successivo del job: il cambio di `auth_user_id` di una veste (la credenziale di prima resta com'era), il cambio di `soggetto_ruolo_id` di una risorsa, lo spegnimento del soggetto (la regola legge `soggetti.attivo`, ma nessun trigger su `soggetti` chiama la sync) e la cancellazione di una veste. Per la cancellazione il job non basta: se la veste cancellata era l'ultima, la credenziale non ha piu vesti e il job la lascia com'era.
+**Le date che arrivano.** I trigger reagiscono alle scritture: una data di fine che passa, o una data di inizio che arriva, non scrive niente e non fa partire nessun trigger. Se ne occupa la funzione [`anagrafiche.fn_sync_auth_user_expired`](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired), eseguita dal job pgAgent `sync_auth_user_expired_daily` **ogni ora, al minuto 10** (il nome dice «daily», ma il job e orario: la funzione e idempotente, e una scadenza si riallinea entro l'ora). Riallinea le credenziali **nei due versi**, con la stessa regola della sync: spegne quelle che non hanno piu nessuna veste utilizzabile (veste scaduta, rapporto scaduto, o nessuna veste) e **accende** quelle che ne hanno una diventata valida (data di inizio arrivata). Una credenziale senza nessuna veste e spenta: senza una veste non c'e una porta da cui entrare. Al posto del job si puo usare il management command Django `sync_auth_user_active`, che offre la stessa funzionalita — con un `--dry-run` per il solo report, senza modifiche — ed e la via da preferire quando si vuole far girare il controllo a mano.
+
+⚠️ **Che cosa la sincronizzazione non vede subito.** Solo il tempo: una data che arriva non scrive niente, e la riallinea il job entro l'ora. Ogni scrittura che cambia l'utilizzabilita di una veste (sulla veste, sul rapporto, la cancellazione dell'una o dell'altro) chiama la sync nella stessa istruzione.
 
 **Invalidazione cache permessi.** Il management command `sync_auth_user_active` invalida automaticamente la cache permessi per ogni utente riallineato (spento o acceso), cosi il blocco e immediato e non deve attendere la scadenza naturale della cache (TTL 300s). Per le disattivazioni real-time dei trigger la cache si rinnova alla scadenza del TTL; il listener LISTEN/NOTIFY (vedi [Cambio reparto](#cambio-reparto)) e il pattern event-driven su cui estendere anche questi scenari.
 
@@ -242,6 +258,7 @@ Sulla veste la sync guarda la credenziale che la veste ha **dopo** la scrittura;
 | Stato         | Quando                                                                      |
 | ------------- | --------------------------------------------------------------------------- |
 | `ATTIVO`      | la veste e accesa                                                           |
+| `REVOCATA`    | spenta dall'amministratore: non si riaccende fino a un nuovo invito ([La revoca](#la-revoca)) |
 | `PENDING`     | spenta, con un invito pendente la cui email e partita                       |
 | `NON_SPEDITO` | spenta, con un invito pendente la cui email non e partita                   |
 | `DISATTIVO`   | spenta, senza inviti pendenti                                               |
@@ -308,11 +325,13 @@ Una persona entra nell'organico attraverso le **funzioni di creazione** del DB, 
 
 | Caso | Funzione | Cosa fa |
 | --- | --- | --- |
-| Operatore che accede al software | [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) | Tutto in una transazione: la credenziale, il soggetto, la risorsa umana, la veste `OPERATORE` **spenta**, il binding `SUPER_ADMIN` se richiesto, gli indirizzi |
-| Risorsa umana, con o senza credenziale | [anagrafiche.fn_crea_risorsa_umana_v2](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana_v2) | Il ruolo `RIS_UMANA` ([R1](#r1--ruolo-corretto)), la risorsa (che nasce attiva) e, se riceve la credenziale, la veste `OPERATORE` e l'eventuale binding `SUPER_ADMIN`. E il passo interno della funzione dell'operatore |
+| Operatore che accede al software | [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore) | Tutto in una transazione: la credenziale, il soggetto, la risorsa umana, la veste `OPERATORE` **spenta**, il binding `SUPER_ADMIN` se richiesto, gli indirizzi |
+| Risorsa umana, con o senza credenziale | [anagrafiche.fn_crea_risorsa_umana](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana) | Il ruolo `RIS_UMANA` ([R1](#r1--ruolo-corretto)), la risorsa (che nasce attiva) e, se riceve la credenziale, la veste `OPERATORE` e l'eventuale binding `SUPER_ADMIN`. E il passo interno della funzione dell'operatore |
 | Credenziale nuova | [anagrafiche.fn_crea_auth_user](/dbzero/anagrafiche/funzioni/fn_crea_auth_user) | Crea l'utente Django; rifiuta uno username o un'email gia presenti. La chiama la funzione dell'operatore solo quando l'email non ha ancora una credenziale |
 | Veste di portale o di shop | [anagrafiche.fn_crea_veste_portale](/dbzero/anagrafiche/funzioni/fn_crea_veste_portale) | Crea una veste `CLIENTE_PORTALE`, `FORNITORE_PORTALE` o `SHOP_CUSTOMER` su una credenziale; chi la chiama dice sempre se nasce accesa o spenta |
 | Accensione di una veste | [anagrafiche.fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste) | Accende la veste di una credenziale: e il gesto dell'attivazione dell'invito |
+| Revoca di una veste | [anagrafiche.fn_revoca_veste](/dbzero/anagrafiche/funzioni/fn_revoca_veste) | L'amministratore spegne la veste e ci scrive quando e chi ([La revoca](#la-revoca)) |
+| Nuovo invito su una veste revocata | [anagrafiche.fn_togli_revoca_veste](/dbzero/anagrafiche/funzioni/fn_togli_revoca_veste) | Toglie il segno della revoca: la veste resta spenta e la accende il link |
 
 La creazione dell'operatore segue due strade sul soggetto: una persona nuova (nasce persona fisica privata, con codice fiscale e sesso obbligatori) o un soggetto persona fisica che esiste gia. Sulla credenziale vale «una persona, un accesso»: se l'email ha gia una credenziale si **riusa**, ma solo con il consenso esplicito di chi crea (`E_CREDENZIALE_DA_CONFERMARE` finche non lo dichiara), e mai se la credenziale e di un'altra persona fisica (`E_CREDENZIALE_ALTRA_PERSONA`) o porta gia una veste operatore (`E_CREDENZIALE_GIA_OPERATORE`, il rimedio e il reinvito). Una persona che e gia risorsa umana riceve `E_RISORSA_UMANA_GIA_PRESENTE` ([R5](#r5--unicita-per-persona)).
 
@@ -367,7 +386,7 @@ UPDATE di `risorse_umane.qualifica_id`.
 
 Quando una persona lascia l'organico, la sequenza e:
 
-1. Spegnere la veste `OPERATORE` (`attivo = false`, il tipo resta) — il trigger di sync porta `auth_user.is_active` a `false` se la credenziale non ha un'altra veste utilizzabile, e il login viene bloccato; se la persona e anche, per esempio, cliente del portale, entra ancora da quella porta
+1. Spegnere la veste `OPERATORE` (`attivo = false`, il tipo resta; con [fn_revoca_veste](/dbzero/anagrafiche/funzioni/fn_revoca_veste) resta anche il segno della [revoca](#la-revoca)) — il trigger di sync porta `auth_user.is_active` a `false` se la credenziale non ha un'altra veste utilizzabile, e il login viene bloccato; se la persona e anche, per esempio, cliente del portale, entra ancora da quella porta
 2. Spegnere la risorsa (`risorse_umane.attivo = false`)
 3. Il backend invalida la cache permessi dell'utente
 
@@ -393,10 +412,23 @@ Il vincolo di unicita ([R5](#r5--unicita-per-persona)) garantisce un solo record
 
 La sequenza e l'inversa della cessazione, e si fa in due tempi, da due persone diverse:
 
-1. **L'amministratore reinvia l'invito** (drawer dell'operatore, «Reinvia invito»). Nella stessa transazione del token la risorsa si riapre: `risorse_umane.attivo = true`, e `valido_al` si azzera se è già arrivata (una fine rapporto futura resta); `valido_dal` resta l'inizio del rapporto. La veste resta spenta.
+1. **L'amministratore reinvia l'invito** (drawer dell'operatore, «Reinvia invito»). Nella stessa transazione del token si toglie il segno della [revoca](#la-revoca) e la risorsa si riapre: `risorse_umane.attivo = true`, e `valido_al` si azzera se è già arrivata (una fine rapporto futura resta); `valido_dal` resta l'inizio del rapporto. La veste resta spenta.
 2. **La persona attiva il link**: la veste si accende ([fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste)), il trigger di sync imposta `auth_user.is_active = true` e il login torna possibile. Chi ha gia una password conferma con un clic.
 
 L'interruttore «Accesso attivo» del drawer spegne soltanto: da spento resta fermo, e non c'e un comando che riaccenda la veste direttamente.
+
+### La revoca
+<a id="la-revoca"></a>
+
+Una veste spenta dall'amministratore **ricorda di essere stata revocata**: [anagrafiche.fn_revoca_veste](/dbzero/anagrafiche/funzioni/fn_revoca_veste) la spegne e ci scrive quando (`revocata_at`) e chi (`revocata_da_user_id`, l'utente della sessione). Il segno lo mette anche su una veste mai accesa con l'invito ancora pendente. Vale per tutte le vesti: operatore, portale, shop, utente tecnico.
+
+Finché il segno c'è, la veste **non si riaccende** da nessuna strada: né dal link di un invito vecchio, né da una scrittura diretta, né creando un'altra veste accesa sulla stessa coppia di credenziale, ruolo anagrafico e tipo di veste. Lo impedisce il guard della tabella, [trgfn_identita_digitali_guard_revoca](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_revoca), con `E_VESTE_REVOCATA`. Lo stato della veste è `REVOCATA`.
+
+Si torna **solo con un nuovo invito dell'amministratore**: [anagrafiche.fn_togli_revoca_veste](/dbzero/anagrafiche/funzioni/fn_togli_revoca_veste), chiamata nella transazione del token, toglie il segno dalla coppia, e il link accende. Per un utente tecnico il gesto è la riattivazione, [script.fn_riattiva_utente_tecnico](/dbzero/script/funzioni/fn_riattiva_utente_tecnico), che toglie il segno con lo stesso verbo.
+
+I due verbi controllano il permesso dall'utente della sessione, con [anagrafiche.fn_guard_gestione_veste](/dbzero/anagrafiche/funzioni/fn_guard_gestione_veste): `SUPER_ADMIN` per una veste operatore o tecnica, il livello `TUTTO` su clienti o fornitori per le vesti dei portali e dello shop. Il segno non si scrive né si cancella in altro modo: chi prova a scriverlo direttamente, o a cancellare una veste revocata, riceve `E_VESTE_REVOCA_SOLO_DAL_VERBO`.
+
+⚠️ Il backend non passa ancora dai due verbi: lo spegnimento dell'operatore e della veste di portale scrive `attivo = false` direttamente, e quella veste resta spenta ma **senza segno**; il reinvito non chiama ancora `fn_togli_revoca_veste`. Fino ad allora la revoca la lascia solo chi chiama `fn_revoca_veste`.
 
 **Perche questo ordine?** E il verso inverso della cessazione, e la ragione e la stessa: la veste attiva e cio che tiene in piedi l'accesso, la risorsa attiva e cio che la rende sensata. Riaprendo prima la risorsa si evita la finestra in cui la veste risulta attiva su una persona non ancora in forza.
 
@@ -404,30 +436,34 @@ L'interruttore «Accesso attivo» del drawer spegne soltanto: da spento resta fe
 
 ### Assegnazione emittente fiscale (scope operativo)
 
-Dopo aver creato l'operatore e collegato il suo account Django, e necessario definire **su quali emittenti fiscali** l'operatore puo lavorare. Questo vincolo determina il **perimetro dati** visibile: un operatore assegnato a un emittente vedra solo documenti, fatture, pratiche e movimenti di quell'emittente.
+Dopo aver creato l'operatore, il `SUPER_ADMIN` gli assegna **l'emittente fiscale** per cui lavora. L'assegnazione decide il **perimetro dei dati**: l'operatore vede solo documenti, fatture, pratiche e movimenti di quell'emittente.
 
-**Tabella coinvolta:** `config.user_emittenti_fiscali` — legame N:1 tra `auth_user` e `anagrafiche.emittenti_fiscali`.
+**Tabella coinvolta:** `config.user_emittenti_fiscali`. Ha **una riga per operatore** (`UNIQUE (auth_user_id)`): un operatore lavora per un emittente solo, e un emittente ha quanti operatori servono.
 
 **Come si configura (da interfaccia):**
 
 1. Andare in **Amm. Software → Operatori**
 2. Aprire l'operatore in modifica (click sulla riga)
-3. Passare al **tab Permessi**
-4. Nella sezione **Emittenti Scope** selezionare l'emittente fiscale dal dropdown
-5. Premere **Salva** nella sezione
+3. Nella scheda **Dati**, riquadro **Scope emittenti fiscali**, scegliere «Un solo emittente» e l'emittente dall'elenco
+4. Premere **Salva**
 
 **Regole:**
 
-* Se l'operatore non ha nessun emittente assegnato **e fail-closed**: non vede nessun emittente, e il vuoto e un errore di configurazione, non un permesso. Gli operatori rimasti senza assegnazione si contano in `dbops.vw_operatori_senza_emittente`, che deve restare a zero righe. L'unico attore legittimamente multi-emittente e il `SUPER_ADMIN`, che passa da `fn_is_super_admin` e non da questa tabella
-* L'emittente fiscale e un soggetto con ruolo EMITTENTE nel sistema anagrafico — il dropdown mostra la **ragione sociale** del soggetto associato
-* Il vincolo e verificato a runtime da `get_scope_user_id(request)` negli endpoint API: se l'utente ha emittenti assegnati, le query vengono filtrate automaticamente
-* La modifica dell'emittente ha effetto immediato — non richiede invalidazione cache perche il check avviene ad ogni richiesta API
+* L'emittente lo assegna o lo cambia **solo il `SUPER_ADMIN`**. Il controllo lo fa l'endpoint, e lo rifà il database nel verbo `script.fn_change_user_emittenti_scope`: chi non è `SUPER_ADMIN` riceve `E_PERMESSO_NEGATO`, e l'emittente non cambia.
+* Cambiare emittente è uno **spostamento**: il verbo toglie la riga di prima e scrive la nuova nello stesso momento. Fuori dal verbo l'assegnazione di un utente attivo non si cancella e l'emittente di una riga non si riscrive.
+* Un operatore **senza assegnazione non vede nessun emittente** (fail-closed): il vuoto è un errore di configurazione, non un permesso. Gli operatori rimasti senza assegnazione si contano in `dbops.vw_operatori_senza_emittente`, che deve restare a zero righe, e li segnala il banner della lista degli operatori.
+* Solo il `SUPER_ADMIN` lavora su più emittenti: passa da `fn_is_super_admin`, non da questa tabella, e sceglie l'emittente di lavoro dalla barra in alto. **Un operatore normale non è mai «globale»**: il riquadro gli offre solo «Un solo emittente», e il verbo rifiuta di togliergli l'azienda (`E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`). Per spostarlo si sceglie un'altra azienda; per fermarlo si spegne l'operatore.
+* L'ultimo `SUPER_ADMIN` attivo non si sposta (`E_PROFILO_ULTIMO_SUPER_ADMIN`).
+* L'emittente fiscale è il ruolo `EF` di un soggetto con partita IVA: l'elenco mostra la **ragione sociale** del soggetto.
+* Al salvataggio il backend invalida la cache dell'operatore: la nuova azienda vale dalla richiesta successiva.
 
 **Quando serve:**
 
-* **Azienda mono-emittente**: assegnare l'unico emittente a tutti gli operatori (il sistema lo pre-seleziona se ce n'e uno solo)
-* **Gruppo multi-emittente**: assegnare a ciascun operatore solo gli emittenti su cui opera
-* **Consulenti esterni**: limitare lo scope al singolo emittente del cliente che seguono
+* **Azienda con un solo emittente**: assegnare l'unico emittente a tutti gli operatori.
+* **Gruppo con più emittenti**: assegnare a ciascun operatore l'emittente su cui lavora. Chi deve vedere tutte le aziende è un `SUPER_ADMIN`.
+* **Consulenti esterni**: assegnarli al solo emittente del cliente che seguono.
+
+Il modello completo (gli emittenti, il super admin che sceglie l'emittente di lavoro, l'admin di un emittente) sta nella guida [Gli emittenti fiscali](/guide/emittenti-fiscali).
 
 ---
 
@@ -445,6 +481,20 @@ assegna una password all'operatore — nemmeno alla creazione: l'account nuovo n
 password utilizzabile, il sistema genera un token monouso, lo invia via email, e l'operatore
 sceglie la propria password attivando l'accesso. Questa scelta elimina il rischio
 di password condivise, annotate su post-it o inviate in chiaro su canali non sicuri.
+
+### Il primo amministratore di un'installazione nuova
+
+L'invito presuppone un amministratore che inviti. Il primo di un'installazione nuova non ce l'ha: lo crea il comando
+`manage.py crea_primo_amministratore` (come si lancia: [Installazione](/installazione), «Il primo amministratore»),
+che si lancia una volta, dopo l'installazione, e che chiama
+[`anagrafiche.fn_crea_primo_amministratore`](/dbzero/anagrafiche/funzioni/fn_crea_primo_amministratore). Chi lo lancia
+è la persona che diventerà amministratore, e la password la sceglie lei: è l'unico account che nasce con una password
+e con la veste già accesa, senza invito, perché non c'è nessuno che possa mandarlo.
+
+La strada si apre solo finché nessun accesso ha mai avuto il profilo SUPER_ADMIN, e si chiude da sola appena nasce il
+primo. Non serve a recuperare un sistema che ha perso i suoi amministratori: come se ne esce lo dice
+[«Resta sempre almeno un SUPER_ADMIN che non scade»](/dbzero/anagrafiche/_ultimo-super-admin). Gli amministratori
+successivi li crea un SUPER_ADMIN, con l'invito qui sotto.
 
 ### Invito operatore
 
@@ -781,7 +831,7 @@ Ogni operazione nel sistema porta con se l'**identita** di chi l'ha eseguita: il
 In pratica:
 
 * L'autenticazione JWT propaga l'utente e la sua veste come parametri di sessione PostgreSQL: `app.current_user_id` e `app.jwt_user`, piu la tripla multi-veste `app.current_identita_id`, `app.ruolo_applicativo`, `app.soggetto_ruolo_id` (vedi [Propagazione identita utente al database](#propagazione-identita-utente-al-database-guc-app))
-* I trigger defense-in-depth (es. ambito emittente fiscale) usano `current_setting('app.current_user_id')` per verificare le autorizzazioni a livello DB
+* I trigger defense-in-depth (es. ambito emittente fiscale), i verbi e le policy RLS leggono l'utente con `script.fn_utente_di_sessione`, la sede unica della lettura di `app.current_user_id`, per verificare le autorizzazioni a livello DB
 * L'`auth_user_id` che esegue le pipeline di fatturazione, i push commesse e i lotti e lo stesso che arriva dalla catena risorsa → veste → utente
 
 > Per i dettagli su audit e defense-in-depth: vedi [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni).
@@ -827,6 +877,7 @@ I contatti non sostituiscono le risorse umane, ma possono riferirle quando serve
 | `trgfn_risorse_umane_guard_ruolo`                  | BEFORE INSERT/UPDATE su `risorse_umane`                | Verifica che il ruolo sia RIS_UMANA e che il soggetto coincida con quello del ruolo ([R1](#r1--ruolo-corretto), [R2](#r2--coerenza-soggetto))               |
 | `trgfn_risorse_umane_guard_identita_attiva`        | BEFORE UPDATE di `attivo` su `risorse_umane`           | Rifiuta di spegnere una risorsa che ha ancora una veste `OPERATORE` accesa (`E_RISORSA_UMANA_IDENTITA_ATTIVA`)                                                |
 | `trgfn_identita_digitali_guard_coerenza`           | BEFORE INSERT/UPDATE su `identita_digitali`            | Rifiuta il tipo ritirato `DISABILITATO`, verifica la coerenza fra veste e tipo di soggetto-ruolo, e la persona fisica pura per `OPERATORE` persona ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura)) |
+| `trgfn_identita_digitali_guard_revoca`             | BEFORE INSERT/UPDATE/DELETE su `identita_digitali`     | Il segno della revoca si scrive solo dai verbi; una veste revocata non si cancella né cambia coppia; nessuna veste accesa sulla coppia di una veste revocata ([La revoca](#la-revoca)) |
 | `trgfn_identita_digitali_guard_natura_credenziale` | BEFORE INSERT/UPDATE di `auth_user_id`, `ruolo_applicativo`, `tecnica` su `identita_digitali` | Rifiuta di mescolare vesti di persona e di macchina sulla stessa credenziale ([R6](#r6--persona-o-macchina)) |
 | `trgfn_identita_digitali_guard_ultimo_super_admin` | AFTER UPDATE su `identita_digitali`, quando cambiano `attivo` o le date | Presidia l'ultimo `SUPER_ADMIN` **senza scadenza** ([sopra](#lultimo-amministratore-non-scade)) dal lato della veste |
 | `trgfn_risorse_umane_guard_ultimo_super_admin`     | AFTER UPDATE su `risorse_umane`, quando cambiano `attivo`, le date o il soggetto-ruolo | Lo stesso dal lato del **rapporto** |

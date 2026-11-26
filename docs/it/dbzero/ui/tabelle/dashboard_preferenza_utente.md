@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> La personalizzazione di una dashboard per un utente: una riga per utente e dashboard. La configurazione porta solo le chiavi che l'utente ha scelto (widget, dimensione_max); le altre le dà il preset di base (ui.fn_preset_di_base), e ui.fn_resolve_dashboard_config compone le due. La forma la controlla ui.trgfn_preferenza_guard_forma. Senza audit, per scelta: e' un dato personale, scritto solo dal suo proprietario e spesso; data_update la scrive il database a ogni scrittura (ui.trgfn_preferenza_data_update), e non c'e' user_update.
+> La personalizzazione di una dashboard per un utente: una riga per utente e dashboard. La configurazione porta solo le chiavi che l'utente ha scelto (widget, dimensione_max); le altre le dà il preset di base (ui.fn_preset_di_base), e ui.fn_resolve_dashboard_config compone le due. La forma la controlla ui.trgfn_preferenza_guard_forma. Senza audit, per scelta: e' un dato personale, scritto spesso dal suo proprietario; il database lo riscrive quando ritira una card uscita dal pool (ui.trgfn_voce_ritira_dalle_preferenze). data_update la scrive il database a ogni scrittura (ui.trgfn_preferenza_data_update), anche la sua: e' l'ultima scrittura della riga. Non c'e' user_update.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

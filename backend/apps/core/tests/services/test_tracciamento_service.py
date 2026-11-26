@@ -40,7 +40,6 @@ class TestListAuditLogs(TestCase):
         )
         result = fn_list_audit_logs(limit=50, offset=0)
         self.assertEqual(result["count"], 1)
-        self.assertEqual(result["page"], 1)
         self.assertEqual(len(result["results"]), 1)
         mock_repo.list_audit_logs.assert_called_once()
 
@@ -74,7 +73,7 @@ class TestListAuditLogs(TestCase):
         result = fn_list_audit_logs(limit=50, offset=100)
         kwargs = MockRepo.return_value.list_audit_logs.call_args.kwargs
         self.assertEqual((kwargs["limit"], kwargs["offset"]), (50, 100))
-        self.assertEqual((result["page"], result["page_size"], result["total_pages"]), (3, 50, 3))
+        self.assertEqual(set(result), {"count", "results"})
 
 
 class TestListDominiTask(TestCase):

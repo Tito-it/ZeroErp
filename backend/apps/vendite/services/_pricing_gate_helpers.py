@@ -31,7 +31,6 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any, Callable, NoReturn
 
-from django.contrib.auth import get_user_model
 from django.db import transaction
 
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
@@ -40,6 +39,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.core.services.utente_per_id import utente_per_id
 from apps.vendite.services._approvazioni_prezzo_constants import AZIONE_OVERRIDE_PREZZO
 from apps.vendite.services.pricing_service import (
     PARAM_MAX_MAGGIORAZIONE_PCT,
@@ -76,7 +76,7 @@ def guard_uom_id_positive(
 
 
 # Scopo: Gate L1 — verifica che l'operatore abbia l'azione di processo per
-#        override manuale del prezzo. Bypass per superuser. Se auth_user_id
+#        override manuale del prezzo (SUPER_ADMIN compreso, dal check). Se auth_user_id
 #        None (chiamata non autenticata, es. script interni) -> blocca
 #        conservativamente.
 def check_permesso_override_prezzo(
@@ -89,19 +89,14 @@ def check_permesso_override_prezzo(
         detail="Chiamata senza contesto utente — override bloccato conservativamente.",
         function_name=function_name,
     )
-    assert auth_user_id is not None
-    user_model = get_user_model()
-    try:
-        user = user_model.objects.get(pk=auth_user_id)
-    except user_model.DoesNotExist:
+    user = utente_per_id(auth_user_id)
+    if user is None:
         ErrorManager.raise_error(
             code="E_PRICING_OVERRIDE_NON_AUTORIZZATO",
             message="Override prezzo non autorizzato.",
             detail="Utente non trovato.",
             function_name=function_name,
         )
-    if getattr(user, "is_superuser", False):
-        return
     abilitato = PermissionResolver.check_azione(user, AZIONE_OVERRIDE_PREZZO)
     ErrorManager.require(
         abilitato,
@@ -125,7 +120,7 @@ def check_permesso_override_prezzo(
 #
 # ⛔ Il gate L1 e' UNO: questa funzione delega a `check_permesso_override_prezzo`
 #    (2026-10-20, regola del 2). Fino a quel giorno ne era una seconda copia,
-#    col messaggio suo e il superuser trattato in un altro modo: due risposte
+#    col messaggio suo e un bypass trattato in un altro modo: due risposte
 #    alla stessa domanda «puo' scrivere un prezzo a mano?».
 def validate_componenti_overrides_authorization(
     payload: dict[str, Any],
@@ -139,10 +134,16 @@ def validate_componenti_overrides_authorization(
 
 
 # Scopo: Helper privato. Risolve la soglia % di variazione applicabile a
-#        (utente, BA) attraverso la cascata user → categoria_cliente → group
-#        → emittente → default. Centralizza il pattern usato da entrambi i
-#        gate L2 (riga e variazione globale). Il lookup BA→categoria avviene
-#        solo se `ba_id` e' fornito.
+#        (utente, BA, emittente) attraverso la cascata user → categoria_cliente
+#        → group → emittente → default. Centralizza il pattern usato da
+#        entrambi i gate L2 (riga e variazione globale). Il lookup
+#        BA→categoria avviene solo se `ba_id` e' fornito.
+# ⭐ L'emittente e' quello del DOCUMENTO, passato dal chiamante: la soglia e'
+#    dell'azienda che vende, non di chi scrive. ⛔ Fino al 2026-11-25 veniva
+#    dall'utente (`get_emittente_fiscale_id_for_user`), che al super admin
+#    rispondeva il gestore globale: su un documento dell'emittente X il gate
+#    applicava la soglia di un'altra azienda (E1-3 di brief-be-fe-BB-audit §6.1).
+#    Senza default: un chiamante che non lo passa non compila la chiamata.
 #
 #        Restituisce la soglia come Decimal. Solleva
 #        E_PARAMETER_VALIDATION se il parametro DB e' malformato (stato
@@ -152,17 +153,14 @@ def _resolve_soglia_variazione_pct(
     auth_user_id: int,
     param_code: str,
     ba_id: int | None,
+    emittente_fiscale_id: int | None,
 ) -> Decimal:
-    param_service = ParameterService()
-    emittente_fiscale_id = param_service.get_emittente_fiscale_id_for_user(
-        auth_user_id,
-    )
     categoria_cliente_id: int | None = None
     if ba_id is not None:
         categoria_cliente_id = BillingAccountRepository().get_categoria_cliente_id(
             int(ba_id),
         )
-    return param_service.get_parameter_decimal(
+    return ParameterService().get_parameter_decimal(
         param_code,
         django_user_id=auth_user_id,
         emittente_fiscale_id=emittente_fiscale_id,
@@ -170,23 +168,15 @@ def _resolve_soglia_variazione_pct(
     )
 
 
-# Scopo: Helper privato. Restituisce l'utente Django dato `auth_user_id` o
-#        None se non trovato (chiamata non autenticata / utente cancellato).
-def _get_user_or_none(auth_user_id: int):
-    user_model = get_user_model()
-    try:
-        return user_model.objects.get(pk=auth_user_id)
-    except user_model.DoesNotExist:
-        return None
-
-
 # Scopo: Gate L2 sulla variazione % fra prezzo manuale e prezzo risolto
 #        dal resolver (caso classico riga preventivo/contratto). Se sconto
 #        (delta < 0) confronta con VENDITE_MAX_SCONTO_PCT; se maggiorazione
 #        (delta > 0) con VENDITE_MAX_MAGGIORAZIONE_PCT.
 #        Skip se prezzo_resolver e' None o 0 (non calcolabile / safe-fail).
-#        Superuser bypass. Parametri risolti via cascata estesa user →
-#        categoria_cliente → group → emittente → default.
+#        Nessun bypass: quello del superuser non c'e' piu' dal 2026-11-24 (D-J),
+#        e il limite vale anche per SUPER_ADMIN. Parametri risolti via cascata
+#        estesa user → categoria_cliente → group → emittente → default, dove
+#        l'emittente e' quello del DOCUMENTO (E1-3, 2026-11-25), non di chi agisce.
 #
 #        `ba_id` opzionale: se fornito alimenta il livello categoria_cliente.
 #        Lookup DB avviene DOPO gli early-return per non sprecare round-trip.
@@ -209,6 +199,7 @@ def check_limite_variazione_prezzo(
     prezzo_resolver,  # Decimal | None
     prezzo_manuale,   # Decimal
     function_name: str,
+    emittente_fiscale_id: int | None,
     accept_for_approval: bool = False,
     ba_id: int | None = None,
 ) -> dict[str, Any] | None:
@@ -218,11 +209,9 @@ def check_limite_variazione_prezzo(
     if auth_user_id is None:
         return None  # L1 ha gia' bloccato; unreachable difensivo.
 
-    user = _get_user_or_none(auth_user_id)
+    user = utente_per_id(auth_user_id)
     if user is None:
         return None  # L1 avrebbe gia' bloccato.
-    if getattr(user, "is_superuser", False):
-        return None
 
     delta = prezzo_manuale - prezzo_resolver
     if delta == 0:
@@ -237,6 +226,7 @@ def check_limite_variazione_prezzo(
         auth_user_id=auth_user_id,
         param_code=param_code,
         ba_id=ba_id,
+        emittente_fiscale_id=emittente_fiscale_id,
     )
 
     if variazione_abs <= limite:
@@ -256,13 +246,17 @@ def check_limite_variazione_prezzo(
 #        05-15 §3-bis-E) — niente delta vs resolver. Si applica solo a
 #        tipo_variazione = PERCENTUALE; VALORE_FISSO skippa silenziosamente
 #        (non comparabile con soglia%, decisione brief DB).
-#        Superuser bypass + auth_user_id None bypass.
+#        `auth_user_id=None` salta il gate (L1 ha gia' deciso): e' un gate di
+#        SCRITTURA, non un perimetro, dichiarato fuori dal rifiuto del `None`
+#        (brief-db-porte-aperte-dalla-sola-guc §4.7). Il bypass del
+#        superuser non c'e' piu' dal 2026-11-24 (D-J).
 def check_limite_variazione_globale(
     *,
     auth_user_id: int | None,
     tipo_variazione: str | None,
     valore_variazione,  # Decimal | None
     function_name: str,
+    emittente_fiscale_id: int | None,
     accept_for_approval: bool = False,
     ba_id: int | None = None,
 ) -> dict[str, Any] | None:
@@ -273,10 +267,8 @@ def check_limite_variazione_globale(
     if auth_user_id is None:
         return None  # Contesto utente richiesto per cascata.
 
-    user = _get_user_or_none(auth_user_id)
+    user = utente_per_id(auth_user_id)
     if user is None:
-        return None
-    if getattr(user, "is_superuser", False):
         return None
 
     try:
@@ -299,6 +291,7 @@ def check_limite_variazione_globale(
         auth_user_id=auth_user_id,
         param_code=param_code,
         ba_id=ba_id,
+        emittente_fiscale_id=emittente_fiscale_id,
     )
 
     if variazione_abs <= limite:
@@ -590,7 +583,8 @@ def rifiuta_provenienza_dichiarata(
 #
 #        Parametri:
 #          - `testata`: dict con almeno `id`, `billing_account_id`,
-#            `utility_id`, `data`.
+#            `utility_id`, `data`, `emittente_fiscale_id` (la soglia L2 e'
+#            dell'azienda del documento, dal 2026-11-25).
 #          - `resolver_fn`: `(documento_id, *, articolo_id, uom_id,
 #            auth_user_id) -> dict` con `prezzo_finale` (None se non risolto),
 #            `origine`, `listino_versione_id`, `listino_riga_id`,
@@ -747,6 +741,10 @@ def resolve_or_check_override_prezzo(
         function_name=function_name,
         accept_for_approval=richiesta_approvazione,
         ba_id=testata.get("billing_account_id"),
+        # La soglia dell'azienda del documento (E1-3, 2026-11-25). Indicizzato,
+        # non `.get()`: una testata senza emittente e' un difetto del loader, e
+        # un None qui salterebbe il livello emittente in silenzio.
+        emittente_fiscale_id=testata["emittente_fiscale_id"],
     )
 
     meta_patch: dict[str, Any] = {

@@ -31,7 +31,7 @@ BEGIN
     --   Vedi l'intestazione del changeSet 20261028-13.
     -- Ritorna: quante versioni sono state chiuse.
     -- ==========================================================
-    v_utente    := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente    := script.fn_utente_di_sessione('vendite.fn_chiudi_versioni_listino_scadute');
     v_attiva_id := script.fn_doc_stato_id('vendite.listini_versioni'::regclass, 'ATTIVA');
     v_chiusa_id := script.fn_doc_stato_id('vendite.listini_versioni'::regclass, 'CHIUSA');
 

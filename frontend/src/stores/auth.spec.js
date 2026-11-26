@@ -21,6 +21,9 @@ Indice test eseguiti:
 5) obbligo del secondo fattore → dal profilo (`obblighi_pendenti`), non ricalcolato
 6) la chiave d'ingresso è del canale: email per PORTALE e SHOP, nome utente per ADMIN (L-4)
 7) il profilo consegna il fuso dell'azienda a `core/utils/date` (F-1)
+8) emittente di scrittura dal profilo di /me/ (brief-db-emittente-del-super-admin §4.4):
+   operatore configurato → la sua azienda; operatore senza riga e admin globale
+   senza scelta → null; admin globale con l'emittente scelto → quello attivo
 */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -133,5 +136,48 @@ describe('login a due passi (brief sicurezza §3.4-bis, T-4)', () => {
     expect(auth.mustConfigureSecondFactor).toBe(false)
     auth.user = { obblighi_pendenti: ['SECONDO_FATTORE'] }
     expect(auth.mustConfigureSecondFactor).toBe(true)
+  })
+})
+
+describe("l'emittente di scrittura dal profilo (brief-db-emittente-del-super-admin §4.4)", () => {
+  const configurato = {
+    is_admin_globale: false,
+    emittente: { emittente_fiscale_id: 7, soggetto_ruolo_id: 70, user_emittente_fiscale_id: 1 },
+    emittente_attivo: { emittente_fiscale_id: 7, puo_scegliere: false },
+  }
+  const senzaRiga = {
+    is_admin_globale: false,
+    emittente: null,
+    emittente_attivo: { emittente_fiscale_id: null, puo_scegliere: false },
+  }
+  const adminGlobale = {
+    is_admin_globale: true,
+    emittente: null,
+    emittente_attivo: { emittente_fiscale_id: null, puo_scegliere: true },
+  }
+
+  it('8) configurato → la sua azienda; senza riga e admin in «tutti» → null; admin con scelta → quella', () => {
+    const auth = useAuthStore()
+    auth.user = configurato
+    expect(auth.emittenteCorrente?.id).toBe(7)
+    expect(auth.emittenteScritturaId).toBe(7)
+    expect(auth.emittenteScritturaSoggettoRuoloId).toBe(70)
+
+    // ⭐ Il caso che cambia: prima il blocco era il gestore globale.
+    auth.user = senzaRiga
+    expect(auth.emittenteCorrente).toBeNull()
+    expect(auth.emittenteScritturaId).toBeNull()
+    expect(auth.emittenteScritturaSoggettoRuoloId).toBeNull()
+
+    auth.user = adminGlobale
+    expect(auth.emittenteCorrente).toBeNull()
+    expect(auth.emittenteScritturaId).toBeNull()
+
+    auth.user = {
+      ...adminGlobale,
+      emittente_attivo: { emittente_fiscale_id: 9, soggetto_ruolo_id: 90, puo_scegliere: true },
+    }
+    expect(auth.emittenteScritturaId).toBe(9)
+    expect(auth.emittenteScritturaSoggettoRuoloId).toBe(90)
   })
 })

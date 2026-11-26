@@ -20,13 +20,13 @@ lista principale, che `rev`/`revisione_numero` non li ordina (§7.3).
 Indice test:
 
  1) test_preventivo_default_rev_asc_con_spareggio
- 2) test_preventivo_data_senza_direzione_parte_desc
+ 2) test_preventivo_data_senza_direzione_va_asc
  3) test_preventivo_chiave_della_lista_principale_e_rifiutata
  4) test_preventivo_paginazione_e_conteggio_di_ripiego
  5) test_preventivo_nessun_filtro_emittente
  6) test_offerta_legge_la_radice_per_uguaglianza_non_ricorsione
  7) test_offerta_default_revisione_numero_asc
- 8) test_offerta_data_emissione_senza_direzione_parte_desc
+ 8) test_offerta_data_emissione_senza_direzione_va_asc
  9) test_offerta_codice_ordina_e_chiave_principale_rifiutata
 10) test_offerta_nessun_filtro_emittente
 11) test_whitelist_separate_da_quelle_principali
@@ -62,10 +62,11 @@ class PreventivoRevisioniListaTests(unittest.TestCase):
             "v.numero = (SELECT numero FROM vendite.preventivi WHERE id = %s)", sql,
         )
 
-    # Scopo: `data` e' una colonna DATA a catalogo: senza direzione, DESC.
-    def test_preventivo_data_senza_direzione_parte_desc(self):
+    # Scopo: `data` e' una colonna DATA a catalogo: senza direzione va ASC come
+    #        ogni colonna (regola «le date partono DESC» ritirata, 2026-11-24).
+    def test_preventivo_data_senza_direzione_va_asc(self):
         sql, _, _ = self._cattura(order_by="data", order_dir=None)
-        self.assertIn("ORDER BY v.data DESC NULLS LAST, v.id DESC", sql)
+        self.assertIn("ORDER BY v.data ASC NULLS FIRST, v.id ASC", sql)
 
     # Scopo: una chiave della lista PRINCIPALE non appartiene a questa lista:
     #        e' un 400 (`order_by_invalid`), non il default (dal 2026-10-20).
@@ -114,11 +115,11 @@ class OffertaRevisioniListaTests(unittest.TestCase):
         sql, _, _ = self._cattura(order_by=None, order_dir=None)
         self.assertIn("ORDER BY v.revisione_numero ASC NULLS FIRST, v.id ASC", sql)
 
-    # Scopo: `data_emissione` e' DATA: senza direzione DESC, le bozze (NULL)
-    #        in coda.
-    def test_offerta_data_emissione_senza_direzione_parte_desc(self):
+    # Scopo: `data_emissione` e' DATA: senza direzione va ASC come ogni colonna,
+    #        le bozze (NULL, il minimo) in testa.
+    def test_offerta_data_emissione_senza_direzione_va_asc(self):
         sql, _, _ = self._cattura(order_by="data_emissione", order_dir=None)
-        self.assertIn("ORDER BY v.data_emissione DESC NULLS LAST, v.id DESC", sql)
+        self.assertIn("ORDER BY v.data_emissione ASC NULLS FIRST, v.id ASC", sql)
 
     # Scopo: `codice` (la colonna «Numero») ordina dal 2026-09-28 (§9.1 del
     #        brief, colonna del nucleo resa `ordinabile = t`, gemella di

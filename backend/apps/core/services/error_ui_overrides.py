@@ -613,11 +613,10 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_TIPO_INDIRIZZO_NON_PERMESSO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_TIPO_RUOLO_NON_TROVATO": "show_error_banner",  # classe NON_TROVATO
     # CRUD ui.lista_colonna (DEF-5b T2). E_UI_COLONNA_IN_USO viene
-    # sollevato dai due soft-block applicativi (le preferenze utente che
-    # nominano la colonna nel JSONB `configurazione->colonne`, i preset
-    # che la compongono) e dalla FK NO ACTION di lista_preset_colonna
-    # (Q18 di brief-db-revisione-ui). I permessi di colonna vanno a
-    # cascata e non lo sollevano.
+    # sollevato dal controllo preventivo dei preset che compongono la
+    # colonna e dalla FK NO ACTION di lista_preset_colonna (Q18 di
+    # brief-db-revisione-ui). I permessi di colonna vanno a cascata, e le
+    # preferenze utente non lo sollevano piu' (Q56: la voce la toglie il DB).
     "E_UI_COLONNA_VALIDAZIONE": "highlight_form_fields",  # classe DATO_ERRATO
     # Blocco F Fase 2 (DEF-5b): CRUD `ui.lista_definizione` e
     # `ui.lista_colonna`. SUPER_ADMIN-only. La cancellazione di una

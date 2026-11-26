@@ -66,8 +66,16 @@ class MisurePaginaDbTests(unittest.TestCase):
         self.assertTrue(misure, "nessuna misura a catalogo")
         self.assertTrue(all(isinstance(m, int) for m in misure))
         self.assertEqual(misure, sorted(misure))
-        self.assertIn(esito["default_compatta"], misure)
-        self.assertIn(esito["default_pagina"], misure)
+        # BE33: un default per ogni valore dell'enum degli usi, letto dal
+        # catalogo e non scritto qui, e ognuno fra le misure ammesse.
+        with connection.cursor() as cur:
+            cur.execute("SELECT enum_range(NULL::ui.uso_misura_pagina)::text[]")
+            riga = cur.fetchone()
+        assert riga is not None
+        per_uso = esito["default_per_uso"]
+        self.assertEqual(set(per_uso), set(riga[0]))
+        for uso, misura in per_uso.items():
+            self.assertIn(misura, misure, uso)
 
     def test_preset_con_misura_fuori_catalogo_400(self) -> None:
         with connection.cursor() as cur:

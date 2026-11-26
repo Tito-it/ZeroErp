@@ -127,7 +127,6 @@ class OrdiniRepository(
     _righe_ordine_documento_extra = ("riga_nr",)
     _righe_ordinamento = _ORDER_COLS_RIGHE
     _righe_ricerca = _RICERCA_RIGHE
-    _righe_colonne_desc = ("data_consegna_confermata", "data_consegna_richiesta_cliente")
     # Le date di consegna in blocco (BB `scrivi_data_consegna`): la confermata
     # salta le righe gia' spedite, motivo della check di riga (D-7, BF-1).
     _righe_date_consegna = {
@@ -169,7 +168,7 @@ class OrdiniRepository(
         data_da: date | None = None,
         data_al: date | None = None,
         search: str | None = None,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
         limit: int,
         offset: int,
         order_by: str = "data",

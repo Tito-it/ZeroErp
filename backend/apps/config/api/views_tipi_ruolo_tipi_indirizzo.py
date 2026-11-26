@@ -20,13 +20,13 @@ from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
-    paginated_envelope,
     parse_list_params,
     qp_bool_optional,
     qp_int_optional,
 )
 from apps.core.api.success_responses import success_response
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 class TipiRuoloTipiIndirizzoView(AdminAPIView):
@@ -68,7 +68,7 @@ class TipiRuoloTipiIndirizzoView(AdminAPIView):
             order_by=p["order_by"],
             order_dir=p["order_dir"],
         )
-        envelope = paginated_envelope(results, total, p["page"], p["limit"])
+        envelope = pagina_con_totale(results, total)
         envelope["non_editable_fields"] = svc.get_non_editable_fields()
         return success_response(envelope)
 

@@ -1,12 +1,14 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_guard_livello()`
 
+> **Ultimo aggiornamento**: 25 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > **La regola che applica:** [script.fn_resolve_livello_oggetto](/dbzero/script/funzioni/fn_resolve_livello_oggetto) — la stessa del backend
 >
 > **L'area dell'oggetto:** [script.fn_area_di_oggetto](/dbzero/script/funzioni/fn_area_di_oggetto)
 >
-> **I gemelli:** [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) (azione di processo) · [script.fn_guard_super_admin](/dbzero/script/funzioni/fn_guard_super_admin)
+> **I gemelli:** [script.fn_guard_livello_area](/dbzero/script/funzioni/fn_guard_livello_area) (livello su un'area, senza oggetto) · [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) (azione di processo) · [script.fn_guard_super_admin](/dbzero/script/funzioni/fn_guard_super_admin)
 >
 > **Chi la chiama:** [config.fn_pannello_scrivi](/dbzero/config/funzioni/fn_pannello_scrivi)
 
@@ -27,6 +29,11 @@ Il verbo dichiara **l'oggetto**, non l'area: l'area la ricava
 `fn_area_di_oggetto`. La regola la decide `fn_resolve_livello_oggetto`, la stessa
 che usa il backend: un override dell'utente sull'oggetto vale anche qui.
 
+Quando l'endpoint decide sull'**area**, senza un oggetto, il verbo usa la gemella
+[`script.fn_guard_livello_area`](/dbzero/script/funzioni/fn_guard_livello_area): stesso
+codice e stessa forma del rifiuto, ma senza la strada dell'oggetto, così un override
+sull'oggetto non decide al posto dell'area.
+
 ---
 
 ### Cosa risponde
@@ -46,7 +53,7 @@ chi è bloccato.
 
 ```sql
 PERFORM script.fn_guard_livello(
-    NULLIF(current_setting('app.current_user_id', true), '')::integer,
+    script.fn_utente_di_sessione('schema.fn_verbo'),
     'magazzino', 'causali', 'TUTTO');
 ```
 

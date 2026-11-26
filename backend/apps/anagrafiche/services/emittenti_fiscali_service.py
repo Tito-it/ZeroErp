@@ -30,7 +30,6 @@ from apps.anagrafiche.services._validators import (
     regime_nel_catalogo,
     require_str,
 )
-from apps.core.api.payload_validators import optional_bool, optional_int, optional_uuid
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.non_editable_fields_helper import (
     compute_non_editable_fields,
@@ -141,7 +140,7 @@ class EmittentiFiscaliService:
         _V.validate_allowed_keys(
             payload, allowed=_CREA_EMITTENTE_KEYS, message="Payload emittente fiscale non valido.",
         )
-        soggetto_id = optional_uuid(payload, "soggetto_id")
+        soggetto_id = _V.optional_uuid(payload, "soggetto_id")
         ErrorManager.require(
             soggetto_id is not None,
             code=E_ANAG_VALIDAZIONE,
@@ -370,7 +369,7 @@ class EmittentiFiscaliBillingAccountService:
     #        I trigger DB (default_guard) impediscono piu' di un default.
     def crea_mapping(self, emittente_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         soggetto_ruolo_id = self._parent._resolve_soggetto_ruolo_id(emittente_id)
-        billing_account_id = optional_int(payload, "billing_account_id")
+        billing_account_id = _V.optional_int(payload, "billing_account_id")
         result = create_with_dedup(
             lambda: {"id": self._repo.create_mapping(soggetto_ruolo_id, billing_account_id)},
             duplicate_message=(
@@ -503,7 +502,7 @@ class EmittentiFiscaliUtilitiesService:
     #        Campi obbligatori: utility_id, arrotondamento_importi_dec, metodo_arrotondamento_importi.
     def crea_record(self, emittente_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         soggetto_ruolo_id = self._parent._resolve_soggetto_ruolo_id(emittente_id)
-        utility_id = optional_int(payload, "utility_id")
+        utility_id = _V.optional_int(payload, "utility_id")
         ErrorManager.require(
             utility_id is not None,
             code=E_ANAG_VALIDAZIONE,
@@ -511,7 +510,7 @@ class EmittentiFiscaliUtilitiesService:
         )
         assert utility_id is not None
 
-        arrot_dec = optional_int(payload, "arrotondamento_importi_dec")
+        arrot_dec = _V.optional_int(payload, "arrotondamento_importi_dec")
         ErrorManager.require(
             arrot_dec is not None,
             code=E_ANAG_VALIDAZIONE,
@@ -527,7 +526,7 @@ class EmittentiFiscaliUtilitiesService:
         )
         assert metodo is not None
 
-        attivo = optional_bool(payload, "attivo") if payload.get("attivo") is not None else None
+        attivo = _V.optional_bool(payload, "attivo")
 
         # Non `create_with_dedup`: la tabella ha quattro CHECK oltre alla UNIQUE,
         # e ricondurli tutti a «duplicato» diceva una cosa falsa (vedi la mappa).

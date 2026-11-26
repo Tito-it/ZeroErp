@@ -18,10 +18,9 @@ import json
 import logging
 from typing import Any
 
-from apps.core.api.payload_validators import envelope_da_offset
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import validate_order_params
+from apps.core.services.list_helpers import validate_order_params, pagina_con_totale
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     make_db_errors_translator,
@@ -126,7 +125,7 @@ def list_eccedenze(
         limit=limit,
         offset=offset,
     )
-    return envelope_da_offset(results, total, limit=limit, offset=offset)
+    return pagina_con_totale(results, total)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -262,7 +261,7 @@ def list_sistemazioni_fattura(
         fattura_id,
         limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
     )
-    return {"results": atti, "count": totale}
+    return pagina_con_totale(atti, totale)
 
 
 # ══════════════════════════════════════════════════════════════════

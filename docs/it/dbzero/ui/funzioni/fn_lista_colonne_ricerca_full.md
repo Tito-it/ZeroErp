@@ -28,12 +28,10 @@ AS $function$
 -- Contesto dalla sessione: utente da app.current_user_id, veste da
 -- ui.fn_veste_corrente(). L'emittente non entra nel livello di colonna.
 -- ⚠️ Senza utente: nessun grant, le colonne sensibili escono.
--- Un id utente che non e' un intero e' una chiamata fuori contesto:
--- E_UI_CHIAMATA_NON_VALIDA, non il 22P02 del cast.
+-- L'utente dal BB script.fn_utente_di_sessione: un id che non e' l'id di
+-- un utente e' una chiamata fuori contesto, E_SCRIPT_CHIAMATA_NON_VALIDA.
 DECLARE
   v_lista_id     ui.lista_definizione.id%TYPE;
-  -- text: il valore della GUC com'e' scritto, prima di leggerlo come id
-  v_guc          text := NULLIF(current_setting('app.current_user_id', true), '');
   -- integer: l'id di django.auth_user, tabella dell'applicazione: un changeSet non
   -- la cita con %TYPE (lo schema django e' del provisioning)
   v_auth_user_id integer;
@@ -41,22 +39,8 @@ BEGIN
   -- Lista assente o spenta: E_UI_LISTA_NON_TROVATA, sollevato dal BB.
   v_lista_id := (ui.fn_lista_da_codice(p_lista_codice)).id;
 
-  IF v_guc IS NOT NULL THEN
-    -- Il CASE garantisce l'ordine: il confronto numerico solo su sole cifre.
-    IF (CASE WHEN v_guc ~ '^[0-9]{1,10}$' THEN v_guc::bigint > 2147483647
-             ELSE TRUE END) THEN
-      PERFORM script.fn_log_and_raise_error(
-        'database',
-        'ui.fn_lista_colonne_ricerca_full',
-        'E_UI_CHIAMATA_NON_VALIDA',
-        jsonb_build_object(
-          'lista_codice',        p_lista_codice,
-          'app_current_user_id', v_guc),
-        NULL::uuid,
-        VARIADIC ARRAY[]::text[]);
-    END IF;
-    v_auth_user_id := v_guc::integer;
-  END IF;
+  -- Dopo la lista, come prima: l'utente dal BB (GUC assente o vuota: NULL).
+  v_auth_user_id := script.fn_utente_di_sessione('ui.fn_lista_colonne_ricerca_full');
 
   RETURN QUERY
   SELECT lc.codice,
@@ -74,7 +58,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_lista_colonne_ricerca_full(p_lista_codice character varying)
-IS 'Le colonne di una lista in cui l''utente corrente può fare la ricerca libera, con il campo_sorgente da interrogare: accese, ricercabile_full, con un campo sorgente, a un livello effettivo diverso da BLOCCATO (LETTURA entra). Il livello viene da ui.fn_lista_colonne_livello, lo stesso di ui.fn_resolve_lista_config: non si cerca in una colonna che la lista non mostra. Utente da app.current_user_id, veste da ui.fn_veste_corrente(); l''emittente non entra nel livello di colonna. Senza utente (GUC assente o vuota) nessun grant: le colonne sensibili escono. Un app.current_user_id che non è un intero è una chiamata fuori contesto: E_UI_CHIAMATA_NON_VALIDA. Lista assente o spenta: E_UI_LISTA_NON_TROVATA, dal building block ui.fn_lista_da_codice. STABLE.';
+IS 'Le colonne di una lista in cui l''utente corrente può fare la ricerca libera, con il campo_sorgente da interrogare: accese, ricercabile_full, con un campo sorgente, a un livello effettivo diverso da BLOCCATO (LETTURA entra). Il livello viene da ui.fn_lista_colonne_livello, lo stesso di ui.fn_resolve_lista_config: non si cerca in una colonna che la lista non mostra. Utente dal building block script.fn_utente_di_sessione, veste da ui.fn_veste_corrente(); l''emittente non entra nel livello di colonna. Senza utente (GUC assente o vuota) nessun grant: le colonne sensibili escono. Un app.current_user_id che non è l''id di un utente: E_SCRIPT_CHIAMATA_NON_VALIDA, dal building block. Lista assente o spenta: E_UI_LISTA_NON_TROVATA, dal building block ui.fn_lista_da_codice. STABLE.';
 ```
 
 </div>

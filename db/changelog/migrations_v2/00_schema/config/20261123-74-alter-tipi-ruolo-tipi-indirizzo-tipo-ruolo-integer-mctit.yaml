@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.tipi_ruolo_tipi_indirizzo.tipo_ruolo_id: integer, come la colonna a
+#   cui punta (config.tipi_ruoli.id), e una FK sola.
+#   D-T7a-7 di Tid (2026-11-24), brief-db-revisione-anagrafiche §21 (S49).
+#
+# -- IL DIFETTO -------------------------------------------------------------------
+#   La colonna e' bigint e punta a un integer. Le firme la seguono col %TYPE:
+#   anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo prende il tipo di ruolo
+#   bigint, le sue sorelle (anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE)
+#   integer, e chi le compone passa da un cast. Sulla stessa colonna ci sono
+#   due FK identiche: fk_tipi_ruoli_tipi_indirizzo_ruolo, nata con la tabella
+#   (20251129-01, quando si chiamava ruoli_tipi_indirizzo), e
+#   fk_tipi_ruolo_tipi_indirizzo_tipo_ruolo, aggiunta dal refactor
+#   (20251130-01) senza togliere la prima. Resta la seconda, che e' quella
+#   registrata in dbops.fk_index_policy.
+#
+# -- LA FORMA (linee-guida-sql §5c) -------------------------------------------------
+#   La colonna la leggono due funzioni BEGIN ATOMIC, e cinque altre dipendono
+#   da loro (pg_depend, dbdev 2026-11-24): ALTER COLUMN ... TYPE le rifiuta.
+#   Si tolgono qui, dalla foglia alla radice, e le ricrea 20_code -76 nella
+#   stessa corsa, coi corpi di prima: sono ancorate con %TYPE alla colonna e
+#   prendono integer da sole. Su un database nato da zero qui non c'e' niente
+#   da togliere (IF EXISTS): le crea 20_code, dopo questa fase, e -76 le
+#   ricrea di nuovo sulla firma nuova.
+#   L'ALTER non perde valori: gli id di config.tipi_ruoli sono integer.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261123-74-alter-tipi-ruolo-tipi-indirizzo-tipo-ruolo-integer-mctit.yaml
+
+  - changeSet:
+      id: 20261123-74-alter-tipi-ruolo-tipi-indirizzo-tipo-ruolo-integer
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.tipi_ruolo_tipi_indirizzo.tipo_ruolo_id integer, come config.tipi_ruoli.id, e via la FK
+        doppia; la catena BEGIN ATOMIC che legge la colonna si toglie qui e la ricrea 20_code -76.
+        D-T7a-7, brief-db-revisione-anagrafiche §21.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La catena, dalla foglia alla radice (pg_depend).
+              DROP FUNCTION IF EXISTS anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli(uuid, bigint);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_tipi_indirizzo_proponibili_ruolo(bigint, bigint);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(integer, uuid);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo(bigint, bigint, date);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo(integer, bigint, integer, date);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_indirizzi_obbligatori_ruolo(integer, bigint, date);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo(bigint, integer, date);
+
+              ALTER TABLE config.tipi_ruolo_tipi_indirizzo
+                  DROP CONSTRAINT IF EXISTS fk_tipi_ruoli_tipi_indirizzo_ruolo;
+
+              ALTER TABLE config.tipi_ruolo_tipi_indirizzo
+                  ALTER COLUMN tipo_ruolo_id TYPE integer;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: il bigint e la FK doppia erano il difetto.
+              SELECT 1;

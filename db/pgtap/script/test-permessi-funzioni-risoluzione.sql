@@ -628,7 +628,8 @@ SELECT ok(
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'pagamenti'
           AND c.relname = 'vendite_movimenti'
-          AND t.tgname  = 'trg_vendite_movimenti_a10_guard_emittente_scope_ins_upd'
+          -- z10 dal 2026-11-25: gira dopo il mirror che ricava la fattura dalla riga
+          AND t.tgname  = 'trg_vendite_movimenti_z10_guard_emittente_scope_ins_upd'
           AND NOT t.tgisinternal
     ),
     '24) Trigger pagamenti.vendite_movimenti esiste'
@@ -676,11 +677,14 @@ SELECT is(
 
 SELECT pg_temp.unset_admin((SELECT identita_id FROM tmp_ctx));
 
--- Rimuovi whitelist per test "senza whitelist"
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_ctx);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
+-- Il caso "senza whitelist" e' un secondo operatore, costruito senza azienda.
+-- ⛔ Rev 2026-11-26 (giro 10-ter, brief-db-porte-aperte-dalla-sola-guc §10-ter, D-AA a):
+--   fino a oggi si toglieva l'azienda all'operatore di tmp_ctx col builder; dal
+--   20261125-74 l'azienda si toglie solo a un SUPER_ADMIN. Il 29 resta su tmp_ctx,
+--   che ha la whitelist: la veste spenta da' '{}' anche con la riga.
+CREATE TEMP TABLE tmp_op_senza AS
+SELECT o.auth_user_id AS user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('risoluzione-senza-azienda', false) o;
 
 -- 28) OPERATIVO senza whitelist → '{}' (fail-closed, P-2a 2026-08-18)
 --     ⚠️ Diceva `NULL`, cioe' «nessuna restrizione». Nella convenzione a tre
@@ -691,7 +695,7 @@ SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
 --     Brief perimetro-emittente §2.5.
 SELECT is(
     script.fn_get_emittenti_scope_sr_ids(
-        (SELECT user_id FROM tmp_ctx)
+        (SELECT user_id FROM tmp_op_senza)
     ),
     '{}'::bigint[],
     '28) fn_get_emittenti_scope_sr_ids: OPERATIVO senza whitelist → ''{}'' (P-2a)'

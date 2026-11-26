@@ -2,12 +2,31 @@
 // Un solo punto di modifica per i colori di stato in tutta l'applicazione.
 // Ogni mappa associa codice_interno (con trim) a una severity PrimeVue.
 
-import { MANAGE_ICONS, STATO_VESTE, STATUS_ICONS } from '../constants'
+import { LIVELLO_ACCESSO, MANAGE_ICONS, STATO_VESTE, STATUS_ICONS } from '../constants'
 
 // --- Resolver generico ---
 // Scopo: Risolve severity da una mappa. Trim automatico, fallback 'secondary'.
 export function resolveSeverity(map, codice) {
   return map[(codice || '').trim()] || 'secondary'
+}
+
+// --- Mappa del livello d'accesso (config.livello_accesso) ---
+// TUTTO=verde, LETTURA=arancio, BLOCCATO=rosso.
+// ⭐ Una sede sola (D-5 di brief-be-fe-BB-audit, Tid 2026-11-24): fino a quel
+//    giorno le mappe erano due, `getLivelloSeverity` delle pagine di
+//    amministrazione (LETTURA arancio) e `severityForLivello` dei permessi
+//    colonna delle liste (LETTURA azzurro), e lo stesso livello aveva due
+//    colori secondo la pagina. LETTURA e' una LIMITAZIONE, e l'arancio la
+//    segnala come tale: l'azzurro la faceva sembrare un'informazione neutra.
+export const LIVELLO_ACCESSO_MAP = {
+  [LIVELLO_ACCESSO.TUTTO]: 'success',
+  [LIVELLO_ACCESSO.LETTURA]: 'warn',
+  [LIVELLO_ACCESSO.BLOCCATO]: 'danger',
+}
+
+// Scopo: Il colore di un livello d'accesso (Tag di aree, profili, permessi colonna).
+export function livelloAccessoSeverity(codice) {
+  return resolveSeverity(LIVELLO_ACCESSO_MAP, codice)
 }
 
 // --- Mappa stati cliente ---

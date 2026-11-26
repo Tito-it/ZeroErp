@@ -51,7 +51,7 @@ la stessa forma dell'export delle famiglie documento).
 
 ## Output
 
-Envelope paginato standard (`count`, `page`, `page_size`, `total_pages`, `results`),
+Envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)),
 `count` da `COUNT(*) OVER ()` nella stessa valutazione (`fetch_paged_with_total`).
 
 ```json

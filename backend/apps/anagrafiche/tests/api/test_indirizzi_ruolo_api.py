@@ -43,6 +43,7 @@ _SVC_REPO = "apps.anagrafiche.services.soggetti_service.SoggettiRepository"
 
 class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
     """Test endpoint CRUD indirizzi ruolo (POST, PATCH, DELETE)."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()
@@ -204,6 +205,7 @@ _ROTTE_COPIA = (
 
 class TestCopiaSuRuoloApi(JwtMockedApiTest):
     """Le due copie verso il ruolo, dalla rotta al repository (brief-db-copia-indirizzo-destinazione)."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

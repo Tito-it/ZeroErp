@@ -70,6 +70,7 @@ class _BaseApiTest(JwtMockedApiTest):
 
 
 class TestIvaResolve(_BaseApiTest):
+    come_super_admin = True
     # Scopo: il giro normale — l'emittente non lo passa il client, lo deriva
     #        il backend dall'operatore.
     @patch(_AUTH, return_value=(Mock(), None))

@@ -13,6 +13,12 @@
 > **Stato:** ⏸️ in attesa — si apre quando si riapre il cantiere pratiche.
 > Nessuna riga scritta, per scelta.
 >
+> **Riverificato sul codice il 2026-11-25:** il brief **non è superato**. Le
+> tre anomalie del §3 sono ancora tutte aperte; righe e riferimenti sono
+> riallineati al codice di quella data. L'unica parte cambiata nel frattempo
+> è la lista flussi (§3.2): ora è paginata e dichiara già
+> `lista_emittente_param`, ma continua a non leggere la testata.
+>
 > **Da leggere per primo: §2 — che cosa regge oggi, e perché non è urgente.**
 
 ---
@@ -56,6 +62,11 @@ Verificato sul DB vivo il 21-09 (struttura, non popolazione):
   azzera i GUC per richiesta e rifiuta un ruolo con bypass
   (`E_DB_ROLE_UNSAFE`).
 
+Al 2026-11-25 le policy di `pratiche.*` ci sono ancora, attive: l'ultimo
+changeSet che le tocca (`20261123-34-update-policy-pratiche-utente-di-sessione`,
+revisione ui giro 8b) le fa leggere l'utente da `script.fn_utente_di_sessione`,
+senza toglierne nessuna.
+
 ⇒ Un operatore fuori perimetro **non legge e non scrive** una pratica altrui,
 oggi, per qualunque via. Il brief non chiude una falla: chiude un'asimmetria
 con `vendite` che, finché resta, si paga in due modi — un pannello **vuoto**
@@ -66,7 +77,7 @@ non lo è.
 
 ### 3.1 `list_pratiche` riceve l'emittente dal client e non lo verifica
 
-[views.py:71](../../../../backend/apps/pratiche/api/views.py) — la lista
+[views.py:89](../../../../backend/apps/pratiche/api/views.py#L89) (`ApiPraticheList.get`) — la lista
 pretende `emittente_fiscale_id` in query string, obbligatorio e `> 0`, e lo
 passa al repository come **filtro**. Nessun punto Python lo confronta con la
 whitelist dell'operatore (`get_emittenti_pk_ids`).
@@ -94,28 +105,37 @@ al repository senza leggere la testata.
 
 | Service (`pratiche_service.py`) | Riga | Cosa manca |
 | --- | --- | --- |
-| `get_giornale` | 1004 | `_get_testata_or_raise` prima del repository |
-| `get_note_pratica` | 1015 | idem |
-| `get_allegati_pratica` | 1068 | idem |
-| `get_sospensioni` | 1379 | idem |
-| `get_calcoli_tempo` | 1388 | idem |
+| `get_giornale` | 1065 | `_get_testata_or_raise` prima del repository |
+| `get_note_pratica` | 1076 | idem |
+| `get_allegati_pratica` | 1129 | idem |
+| `get_sospensioni` | 1431 | idem |
+| `get_calcoli_tempo` | 1440 | idem |
 
-Più `ApiPraticaFlussiList.get` ([views.py:348](../../../../backend/apps/pratiche/api/views.py)),
-che chiama `repo.list_flussi(pratica_id)` **dalla view**, senza service e
-senza testata — due deviazioni in una riga (tre layer, e ordine di lettura).
+Più `ApiPraticaFlussiList.get` ([views.py:409](../../../../backend/apps/pratiche/api/views.py#L409)),
+che chiama `PraticheRepository().list_flussi_pagina(pratica_id, …)` **dalla
+view**, senza service e senza testata — due deviazioni in una riga (tre layer,
+e ordine di lettura).
+
+> 📅 **Cambiato dal 21-09 (rilevato il 2026-11-25).** La lista flussi non usa
+> più `list_flussi`: è diventata una lista di catalogo paginata e ordinabile
+> (`lista_codice = "pratiche.flussi"`, `list_flussi_pagina`), e dichiara già
+> `lista_emittente_param = "emittente_fiscale_id"`: il cancello di perimetro
+> non chiede più di scegliere l'emittente di una pratica già aperta
+> (brief-db-liste-datatable-grezze §4.1). Resta aperta **solo** la parte di
+> questo paragrafo: chiamata dalla view e testata non letta.
 
 Il BB c'è già: `testata_o_not_found` in
 `apps/core/services/testata_guard.py`, con il wrapper di dominio
 `_get_testata_or_raise(repo, id, *, op)` — stesso nome in ordini, DDT,
 preventivi, resi. In `pratiche` il codice è `E_PRATICA_NOT_FOUND` (già a
 catalogo, classe `NON_TROVATO`), e la view di dettaglio
-([views.py:172](../../../../backend/apps/pratiche/api/views.py)) contiene già
+([views.py:204](../../../../backend/apps/pratiche/api/views.py#L204)) contiene già
 il blocco inline da cui il wrapper nasce.
 
 ### 3.3 Il dettaglio della pratica è scritto nella view
 
-`ApiPraticaDetail.get` fa `repo.get_pratica` + `ErrorManager.require` **nella
-view** — il service non ha un `get_pratica`. È il punto in cui il wrapper del
+`ApiPraticaDetail.get` ([views.py:202](../../../../backend/apps/pratiche/api/views.py#L202))
+fa `repo.get_pratica` + `ErrorManager.require` **nella view** — il service non ha un `get_pratica`. È il punto in cui il wrapper del
 §3.2 va a vivere: una volta che esiste nel service, la view torna a una riga.
 
 ## 4. Il lavoro, quando si apre
@@ -128,16 +148,23 @@ mandare `emittente_fiscale_id`, cambia solo cosa il server ne fa).
    (`E_PRATICA_NOT_FOUND`, «Pratica non trovata.», `pratica_id`); `get_pratica`
    nel service; `ApiPraticaDetail.get` a una riga.
 2. **I cinque satelliti** del §3.2 lo chiamano prima del repository;
-   `ApiPraticaFlussiList` passa da un `list_flussi(pratica_id)` di service che
-   fa lo stesso. Test: per ciascuno, testata `None` → `ServiceError`
+   `ApiPraticaFlussiList` passa da un metodo di service sopra
+   `list_flussi_pagina` (stessa firma: `pratica_id`, ricerca, ordinamento,
+   finestra) che legge prima la testata. Test: per ciascuno, testata `None` → `ServiceError`
    `E_PRATICA_NOT_FOUND` e repository non chiamato (calco:
    `OrdiniSatellitiTestataTests` in `test_ordini_service.py`).
 3. **`list_pratiche`**: `emittente_fiscale_id` resta un filtro **facoltativo**
    del client; lo scope lo mette il server con
    `add_emittente_scope_condition(..., auth_user_id=get_scope_user_id(request),
    column="p.emittente_fiscale_id", convention="pk")` nel repository, su righe
-   **e** conteggio; la view dichiara `lista_emittente_param =
-   "emittente_fiscale_id"` così il cancello di perimetro sa che è già fissato.
+   **e** conteggio; `ApiPraticheList` dichiara `lista_emittente_param =
+   "emittente_fiscale_id"` così il cancello di perimetro sa che è già fissato
+   (la lista flussi lo dichiara già: va fatto solo sulla lista pratiche).
+   ⚠️ Quando l'attributo c'è, va aggiornato il test del tool AI
+   `test_fissato_ignorato_dove_la_view_non_lo_dichiara`
+   (`apps/ai_assistant/tests/tools/test_tool_emittente_di_chi_agisce.py`), che
+   oggi usa proprio `ApiPraticheList` come esempio di view che **non** lo
+   dichiara.
    Test nei due versi (clausola presente con whitelist, assente con `None`,
    fail-closed con `[]`), calco: `test_offerte_scope_emittente.py`.
    ⚠️ **Decisione da prendere allora, non qui**: se il parametro resti

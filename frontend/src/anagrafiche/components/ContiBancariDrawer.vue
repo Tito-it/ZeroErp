@@ -19,6 +19,7 @@ import {
 import { DRAWER_WIDTH, MANAGE_ICONS, READONLY_DOMAINS, READONLY_MODELS, RECAPITO_ICONS, STATUS_ICONS } from '../../core/constants'
 import ContoBancarioForm from './ContoBancarioForm.vue'
 import AppDrawer from '../../core/components/AppDrawer.vue'
+import PredefinitoSegno from '../../core/components/PredefinitoSegno.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
@@ -185,7 +186,7 @@ function usoSeverity(uso) {
                 <Tag v-if="c.verificato && !c.bloccato" :value="t('anagrafiche.conti_bancari.verificato')" severity="info" />
               </div>
               <div class="app-mono conto-card-iban">
-                <i v-if="c.predefinito" class="conto-predefinito" :class="MANAGE_ICONS.PREDEFINITO" v-tooltip.top="t('anagrafiche.conti_bancari.predefinito')" />
+                <PredefinitoSegno :value="c.predefinito" />
                 {{ c.iban }}
               </div>
               <div class="conto-card-detail">
@@ -264,11 +265,6 @@ function usoSeverity(uso) {
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.25rem;
-}
-
-.conto-predefinito {
-  color: var(--app-success-color);
-  font-size: 1.1rem;
 }
 
 .conto-card-iban {

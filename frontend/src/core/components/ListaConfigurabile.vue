@@ -354,9 +354,9 @@ const colonneRender = computed(() => {
         formato: m.formato || null,
         allineamento: m.allineamento || 'left',
         ordinabile: m.ordinabile !== false,
-        // ⭐ Serve al VERSO DI PARTENZA dell'ordinamento (vedi `onSort`): una
-        //    colonna data si legge dalla piu' recente. `c` prima di `m` perche'
-        //    la config arriva a ogni richiesta, il catalogo e' un secondo giro.
+        // Serve alla resa della cella (`CellaConfigurabile`: un booleano senza
+        // formato e' `SiNoTag`). `c` prima di `m` perche' la config arriva a
+        // ogni richiesta, il catalogo e' un secondo giro.
         tipo_dato: c.tipo_dato || m.tipo_dato || null,
       }
     })
@@ -608,67 +608,22 @@ function onPage(event) {
   emit('page', event)
 }
 
-// ⭐ REGOLA DI TID (2026-09-02): «gli ordinamenti per DATA hanno sempre default
-//    DESC». Una data si legge dalla piu' recente — cliccare «Data» e ricevere il
-//    2019 in cima e' il contrario di cio' che si e' chiesto, e su una lista di
-//    presidio e' anche il caso meno utile.
-// ⚠️ QUALI SIANO LE COLONNE DATA NON SI DECIDE QUI: lo dice il catalogo
-//    (`ui.lista_colonna.tipo_dato`), che e' gia' la sede di quel fatto. Un
-//    elenco di nomi scritto nel frontend sarebbe una seconda verita' che
-//    diverge alla prima colonna aggiunta a catalogo.
-const TIPI_DATO_CRONOLOGICI = new Set(['date', 'datetime'])
-
-// I `campo_sorgente` — cioe' i valori che PrimeVue manda in `sortField` — delle
-// colonne cronologiche di QUESTA lista.
-const campiCronologici = computed(() => new Set(
-  colonneRender.value
-    .filter((c) => TIPI_DATO_CRONOLOGICI.has(c.tipo_dato))
-    .map((c) => c.campo_sorgente),
-))
-
-// ⛔ MEMORIA DEL CAMPO SU CUI SI STA CICLANDO, e non e' un dettaglio: senza,
-//    il giro DESC qui sotto rende una colonna data NON PIU' ORDINABILE IN
-//    CRESCENTE. Il motivo e' `removable-sort`: PrimeVue alterna
-//    asc -> desc -> NIENTE, e nello stato «niente» il `sortField` applicato
-//    torna `null`. Il click successivo sulla STESSA colonna sembra allora un
-//    primo click — campo diverso da `null` — e viene girato di nuovo a DESC.
-//    ⇒ il ciclo si chiude su desc -> niente -> desc, e l'ASC non si raggiunge
-//    piu'. 🔴 Difetto reale, trovato da Tid in collaudo sulla lista DDT il
-//    2026-09-02.
-// ⚠️ La memoria sopravvive allo stato «niente» apposta: e' l'unica cosa che
-//    distingue «sto ancora ciclando su Data» da «sono passato a un'altra
-//    colonna», e lo stato intermedio cancella l'informazione da `props`.
-const ultimoCampoOrdinato = ref(null)
-
-// Scopo: il verso del PRIMO click su un'intestazione data.
-// ⛔ SOLO IL PRIMO: girare anche i click successivi renderebbe la colonna non
-//    invertibile. Con la memoria il ciclo e' desc -> niente -> asc -> desc,
-//    cioe' lo stesso ciclo di prima letto dall'altro capo.
-// ⚠️ Non tocca le liste non paginate: la' l'ordine lo calcola PrimeVue in
-//    locale e questo evento non parte nemmeno (vedi la guardia sotto).
-function versoIniziale(event) {
-  const campoPrecedente = props.sortField ?? ultimoCampoOrdinato.value
-  const nuovaColonna = event?.sortField && event.sortField !== campoPrecedente
-  if (
-    event?.sortOrder === 1
-    && nuovaColonna
-    && campiCronologici.value.has(event.sortField)
-  ) {
-    return { ...event, sortOrder: -1 }
-  }
-  return event
-}
-
+// ⛔ IL VERSO E' QUELLO DI PRIMEVUE, SENZA RITOCCHI (Tid, 2026-11-24): il giro
+//    di ogni intestazione e' niente -> crescente -> decrescente -> niente,
+//    date comprese. Fino a quel giorno il primo click su una colonna data
+//    veniva girato a DESC qui (regola del 2026-09-02, ritirata). Il ritocco
+//    avveniva ALLE SPALLE di PrimeVue: la sua freccia restava sul verso che
+//    aveva scelto lui, e si riallineava solo se la prop `sortOrder` CAMBIAVA
+//    valore. Su una lista aperta gia' DESC (preventivi a `data desc`) la prop
+//    restava -1, e la freccia diceva «crescente» su dati decrescenti; il click
+//    dopo mandava di nuovo `desc`. 🔴 Visto da Tid sulla validita' dei
+//    preventivi, e su ogni colonna data delle liste aperte DESC.
+// ⚠️ Chi volesse tornare a un verso di partenza per colonna non lo ritocca
+//    nell'evento: deve passare per lo stato di PrimeVue, o la freccia mente.
 function onSort(event) {
   if (!props.paginata) return
   resetExpansionSePropria()
-  const risolto = versoIniziale(event)
-  // ⚠️ La memoria si aggiorna DOPO la decisione, e tiene il valore vecchio
-  //    quando l'evento non porta un campo (stato «niente»): e' esattamente il
-  //    caso per cui esiste.
-  ultimoCampoOrdinato.value =
-    event?.sortField ?? props.sortField ?? ultimoCampoOrdinato.value
-  emit('sort', risolto)
+  emit('sort', event)
 }
 
 // ⭐ LA RIGA APERTA IN UN DRAWER (2026-10-04, Tid): aprendo un drawer da una

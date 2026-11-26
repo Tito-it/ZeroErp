@@ -16,9 +16,18 @@
 #       decide se una transizione e' ammessa ne' se una riga e' coerente:
 #       chiede, e traduce la risposta.
 #
-#       ⛔ Q-2 (Tid, 2026-09-18): il `PATCH` della testata NON aggiunge un
-#       guard di stato che il DB non ha — `data`/`descrizione` restano libere
-#       in ogni stato (a video il form e' readonly fuori da `DRAFT`).
+#       ⭐ 2026-11-23 (R-2 di brief-db-magazzino-tutte-le-scritture-dal-verbo):
+#       ogni scrittura passa da un VERBO del DB (il repository), che controlla
+#       il livello `TUTTO` sull'oggetto della famiglia e il perimetro. Le
+#       chiavi AMMESSE le dice il DB (`fn_documento_interno_colonne_ammesse`,
+#       lette a ogni scrittura); qui resta il TRASPORTO di ogni chiave. Una
+#       divergenza fra DB e lettori e' un `RuntimeError` (500), mai uno
+#       scarto silenzioso (`PayloadValidator.campi_del_gesto`). `meta` non e' fra le colonne
+#       dei verbi: il contratto non lo porta piu'.
+#       ⚠️ Q-2 (Tid, 2026-09-18) SUPERATA dal P-5b del brief: la testata si
+#       modifica solo in `DRAFT`, e lo dice il verbo
+#       (`E_MAG_DOCUMENTO_TESTATA_CONGELATA`, 409). Il BE non aggiunge un
+#       guard suo: traduce.
 #       ⛔ Q-3 (Tid, 2026-09-18): la riga incoerente PASSA — il DB l'ammette in
 #       `DRAFT` (C8 b) e il piano la dichiara `NON_POSTABILE`; il form la
 #       MOSTRA (`righe/motivi/`). Un rifiuto qui sarebbe una regola piu'
@@ -32,10 +41,11 @@ from datetime import date
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import validate_enum_param
+from apps.core.services.list_helpers import validate_enum_param, pagina_con_totale
 from apps.core.services.payload_helpers import (
-    MISSING,
+    Lettura,
     PayloadValidator,
+    chiavi_lettura,
     make_db_errors_translator,
 )
 from apps.magazzino.db.famiglie import FAMIGLIE, INVENTARI, FamigliaDocumentoInterno
@@ -49,7 +59,6 @@ from apps.magazzino.services._helpers import (
     E_VALIDAZIONE,
     articolo_uuid,
     ordinamento_validato,
-    risposta_paginata as _risposta,
 )
 from apps.magazzino.types import DocumentoInternoRow, RigaDocumentoInternoRow
 
@@ -80,6 +89,21 @@ STATI_DOCUMENTO_INTERNO: tuple[str, ...] = ("DRAFT", "CONFIRM", "POSTED", "CANCE
 STATI_RICHIEDIBILI: tuple[str, ...] = ("CONFIRM", "CANCEL", "DRAFT")
 
 _PAYLOAD = PayloadValidator(validation_code=E_VALIDAZIONE, function_name=_FN)
+
+# Lunghezze dei testi: quelle delle colonne (`inventari.descrizione`
+# varchar(255), `rettifiche_righe.motivo` varchar(64)). Un testo piu' lungo e'
+# un 400 col campo, non un `22001` del DB. Pubbliche: le legge anche lo schema
+# OpenAPI (`api/views.py`), che le dichiara come `max_length`.
+MAX_DESCRIZIONE_DOCUMENTO = 255
+MAX_MOTIVO_RIGA = 64
+
+# ⛔ La PROVENIENZA (`sorgente_*`) il DB la ammette alla nascita (D-M11), ma
+#    non e' un dato che l'operatore compila: la scrive chi fa nascere il
+#    documento da un altro documento, dal SUO service, chiamando il
+#    repository. Il gesto dell'operatore la toglie per nome, cosi' ogni
+#    ALTRA chiave che il DB ammettesse resta un `RuntimeError` se qui nessuno
+#    la sa leggere.
+_PROVENIENZA = frozenset({"sorgente_tipo_id", "sorgente_id", "sorgente_uid", "sorgente_riga"})
 
 # Traduzione degli errori del database. ⚠️ I guard di `magazzino` sollevano
 # codici registrati con la loro frase: passano INTATTI. Qui si traducono le
@@ -263,7 +287,7 @@ def list_documenti(
         limit=limit,
         offset=offset,
     )
-    return _risposta(results, total)
+    return pagina_con_totale(results, total)
 
 
 # Scopo: Il dettaglio: testata + magazzino + `righe_count` + le `capabilities`,
@@ -294,72 +318,82 @@ def get_documento(codice_famiglia: str, doc_id: int) -> dict[str, Any]:
 #  Documento interno — scrittura
 # ══════════════════════════════════════════════════════════════════
 
-# Scopo: Crea la BOZZA: il magazzino (obbligatorio, e decide tutto il resto),
-#        la data (default oggi, a DB) e — solo inventario — la descrizione.
+# Scopo: Il trasporto delle chiavi di testata di una famiglia: la data (NOT
+#        NULL: `null` e' un 400; assente alla nascita = oggi, DEFAULT del DB)
+#        e, solo dove la colonna c'e', la descrizione (nullable).
+def _lettura_testata(f: FamigliaDocumentoInterno) -> Lettura:
+    return {
+        "testi": {"descrizione": (True, MAX_DESCRIZIONE_DOCUMENTO)} if f.ha_descrizione else {},
+        "altri": {"data": _PAYLOAD.require_date},
+    }
+
+
+# Scopo: Le chiavi che il backend sa LEGGERE per (famiglia, parte, gesto),
+#        senza le identita' che il verbo riceve come argomento (il magazzino
+#        della testata). Sono le colonne del DB per il gesto dell'operatore:
+#        un test sul DB vero le confronta con `fn_documento_interno_colonne_
+#        ammesse` (la nascita della testata senza la provenienza).
+def chiavi_lette(f: FamigliaDocumentoInterno, parte: str, gesto: str) -> frozenset[str]:
+    lettura = _lettura_testata(f) if parte == "testata" else _lettura_riga(f)
+    return chiavi_lettura(lettura)
+
+
+# Scopo: Crea la BOZZA: il magazzino (obbligatorio, e decide tutto il resto:
+#        e' l'argomento del verbo), la data, e — solo inventario — la
+#        descrizione. Le chiavi le dice il DB (lista «crea» della testata).
 def crea_documento(codice_famiglia: str, payload: dict[str, Any]) -> dict[str, Any]:
     f = famiglia(codice_famiglia)
-    chiavi = {"magazzino_id", "data", "meta"}
-    if f.ha_descrizione:
-        chiavi.add("descrizione")
-    _PAYLOAD.validate_allowed_keys(payload, allowed=frozenset(chiavi))
-    magazzino_id = _PAYLOAD.require_positive_int(payload, "magazzino_id")
-    data = _PAYLOAD.optional_date(payload, "data")
-    descrizione = (
-        _PAYLOAD.optional_string(payload, "descrizione", max_len=500) if f.ha_descrizione else None
-    )
-    meta = _PAYLOAD.optional_meta(payload, "meta")
-
     repository = MagazzinoRepository()
+    lettura = _lettura_testata(f)
+    lettura["interi"] = {"magazzino_id": False}
+    campi = _PAYLOAD.campi_del_gesto(
+        payload,
+        ammesse=(repository.colonne_ammesse(f, "testata", "crea") - _PROVENIENZA) | {"magazzino_id"},
+        lettura=lettura,
+        function_name=f"{_FN}.crea_documento",
+        obbligatori=("magazzino_id",),
+    )
+    magazzino_id = campi.pop("magazzino_id")
     _magazzino_o_400(repository, magazzino_id)
     with _db_errors("crea_documento"):
-        doc_id = repository.create_documento(
-            f, magazzino_id=magazzino_id, data=data, descrizione=descrizione, meta=meta,
-        )
+        doc_id = repository.create_documento(f, magazzino_id=magazzino_id, campi=campi)
     return get_documento(codice_famiglia, doc_id)
 
 
-# Scopo: Aggiorna la testata: `data`, `descrizione` (solo inventario), `meta`.
-# ⛔ `magazzino_id` non e' fra le chiavi ammesse: si sceglie alla nascita.
-# ⛔ Nessun guard di stato (Q-2): il DB non lo ha, e il BE non ne conia uno.
+# Scopo: Aggiorna la testata per DELTA (lista «modifica» del DB: la data, e la
+#        descrizione dove c'e'). Fuori da `DRAFT` risponde il verbo
+#        (`E_MAG_DOCUMENTO_TESTATA_CONGELATA`, 409).
+# ⛔ `magazzino_id` non e' fra le chiavi: si sceglie alla nascita.
 def aggiorna_documento(codice_famiglia: str, doc_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     f = famiglia(codice_famiglia)
-    chiavi = {"data", "meta"}
-    if f.ha_descrizione:
-        chiavi.add("descrizione")
-    _PAYLOAD.validate_allowed_keys(payload, allowed=frozenset(chiavi))
-    campi: dict[str, Any] = {}
-    if "data" in payload:
-        campi["data"] = _PAYLOAD.require_date(payload, "data")
-    if f.ha_descrizione and "descrizione" in payload:
-        descrizione = _PAYLOAD.extract_optional_string(payload, "descrizione", nullable=True)
-        if descrizione is not MISSING:
-            campi["descrizione"] = descrizione
-    if "meta" in payload:
-        campi["meta"] = _PAYLOAD.optional_meta(payload, "meta") or {}
-    _PAYLOAD.require_campi_da_aggiornare(
-        campi,
+    repository = MagazzinoRepository()
+    campi = _PAYLOAD.campi_del_gesto(
+        payload,
+        ammesse=repository.colonne_ammesse(f, "testata", "modifica"),
+        lettura=_lettura_testata(f),
         function_name=f"{_FN}.aggiorna_documento",
     )
-    repository = MagazzinoRepository()
     _documento_o_404(repository, f, doc_id)
     with _db_errors("aggiorna_documento"):
         repository.update_documento(f, doc_id, campi)
     return get_documento(codice_famiglia, doc_id)
 
 
-# Scopo: Elimina una BOZZA. Il DB decide (`E_MAG_DOCUMENTO_NON_ELIMINABILE`,
-#        409 fuori da `DRAFT`): qui si legge la testata (404) e si passa.
+# Scopo: Elimina una BOZZA. Il verbo decide (`E_MAG_DOCUMENTO_NON_ELIMINABILE`,
+#        409 fuori da `DRAFT`): qui si legge la testata (404) e si passa. Il
+#        verbo risponde o solleva: tornato, il documento non c'e' piu'.
 def elimina_documento(codice_famiglia: str, doc_id: int) -> dict[str, Any]:
     f = famiglia(codice_famiglia)
     repository = MagazzinoRepository()
     _documento_o_404(repository, f, doc_id)
     with _db_errors("elimina_documento"):
-        toccate = repository.delete_documento(f, doc_id)
-    return {"id": doc_id, "eliminato": toccate > 0}
+        repository.delete_documento(f, doc_id)
+    return {"id": doc_id, "eliminato": True}
 
 
-# Scopo: Chiede un cambio di stato fra i RICHIEDIBILI; la matrice la applica
-#        il guard (`E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA`, 409).
+# Scopo: Chiede un cambio di stato fra i RICHIEDIBILI al verbo; la matrice la
+#        applicano i controlli della tabella
+#        (`E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA`, 409).
 def cambia_stato_documento(codice_famiglia: str, doc_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     f = famiglia(codice_famiglia)
     _PAYLOAD.validate_allowed_keys(payload, allowed=frozenset({"stato"}))
@@ -452,7 +486,7 @@ def list_piano(
     results, total = repository.list_piano(
         doc_id, search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
     )
-    return _risposta(results, total)
+    return pagina_con_totale(results, total)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -480,62 +514,62 @@ def list_righe(
     results, total = repository.list_righe(
         f, doc_id, search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
     )
-    return _risposta(results, total)
+    return pagina_con_totale(results, total)
 
 
-# Scopo: I campi di una riga letti dal payload, per famiglia. `parziale=True`
-#        (PATCH) tiene i soli campi presenti; `None` esplicito AZZERA un
-#        nullable (togliere il lotto). La quantita' e' obbligatoria alla
-#        nascita, e il motivo (rettifica) e' libero.
-def _campi_riga(f: FamigliaDocumentoInterno, payload: dict[str, Any], *, parziale: bool) -> dict[str, Any]:
-    chiavi = {"articolo_id", f.col_qta, "costo_unitario", "ubicazione_id", "lotto_id", "asset_id", "meta"}
-    if f.con_motivo:
-        chiavi.add("motivo")
-    _PAYLOAD.validate_allowed_keys(payload, allowed=frozenset(chiavi))
-
-    campi: dict[str, Any] = {}
-    if not parziale or "articolo_id" in payload:
-        campi["articolo_id"] = _PAYLOAD.require_uuid(payload, "articolo_id")
-    # Quantita' e costo come Decimal ESATTI (bool e NaN rifiutati): il rigore
-    # sta nel BB, uguale per tutti i domini.
-    if not parziale or f.col_qta in payload:
-        campi[f.col_qta] = _PAYLOAD.require_decimal(payload, f.col_qta)
-    if "costo_unitario" in payload:
-        campi["costo_unitario"] = _PAYLOAD.optional_decimal(payload, "costo_unitario")
-    for chiave in ("ubicazione_id", "lotto_id", "asset_id"):
-        if chiave in payload:
-            campi[chiave] = _PAYLOAD.optional_positive_int(payload, chiave)
-    if f.con_motivo and "motivo" in payload:
-        motivo = _PAYLOAD.extract_optional_string(payload, "motivo", nullable=True)
-        if motivo is not MISSING:
-            campi["motivo"] = motivo
-    if "meta" in payload:
-        campi["meta"] = _PAYLOAD.optional_meta(payload, "meta") or {}
-    return campi
+# Scopo: Il trasporto delle chiavi di riga di una famiglia — le stesse in
+#        nascita e in modifica (le due liste del DB coincidono). L'articolo
+#        come UUID canonico; quantita' e costo come Decimal ESATTI (bool e NaN
+#        rifiutati: il rigore sta nel BB); `null` svuota un nullable
+#        (togliere il lotto). Il motivo solo sulla famiglia che lo porta.
+def _lettura_riga(f: FamigliaDocumentoInterno) -> Lettura:
+    return {
+        "testi": {"motivo": (True, MAX_MOTIVO_RIGA)} if f.con_motivo else {},
+        "interi": {"ubicazione_id": True, "lotto_id": True, "asset_id": True},
+        "altri": {
+            "articolo_id": _PAYLOAD.require_uuid,
+            f.col_qta: _PAYLOAD.require_decimal,
+            "costo_unitario": _PAYLOAD.optional_decimal,
+        },
+    }
 
 
-# Scopo: Aggiunge una riga alla testata. ⛔ Il BE NON ricalcola la coerenza
-#        della riga (Q-3): il DB la accetta in `DRAFT`, il piano la dichiara,
-#        il form la mostra con `righe/motivi/`.
+# Scopo: Aggiunge una riga alla testata: articolo e quantita' obbligatori
+#        (argomenti del verbo), il resto dalla lista «crea» della riga.
+# ⛔ Il BE NON ricalcola la coerenza della riga (Q-3): il DB la accetta in
+#    `DRAFT`, il piano la dichiara, il form la mostra con `righe/motivi/`.
 def crea_riga(codice_famiglia: str, doc_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     f = famiglia(codice_famiglia)
-    campi = _campi_riga(f, payload, parziale=False)
     repository = MagazzinoRepository()
+    campi = _PAYLOAD.campi_del_gesto(
+        payload,
+        ammesse=repository.colonne_ammesse(f, "riga", "crea"),
+        lettura=_lettura_riga(f),
+        function_name=f"{_FN}.crea_riga",
+        obbligatori=("articolo_id", f.col_qta),
+    )
     _documento_o_404(repository, f, doc_id)
     with _db_errors("crea_riga"):
-        riga_id = repository.create_riga(f, doc_id, campi)
+        riga_id = repository.create_riga(
+            f, doc_id,
+            articolo_id=campi.pop("articolo_id"),
+            qta=campi.pop(f.col_qta),
+            campi=campi,
+        )
     return dict(_riga_o_404(repository, f, doc_id, riga_id))
 
 
-# Scopo: Aggiorna una riga (parziale). Il guard di famiglia risponde fuori da `DRAFT`.
+# Scopo: Aggiorna una riga per DELTA (lista «modifica» della riga). Fuori da
+#        `DRAFT` risponde il guard di famiglia.
 def aggiorna_riga(codice_famiglia: str, doc_id: int, riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     f = famiglia(codice_famiglia)
-    campi = _campi_riga(f, payload, parziale=True)
-    _PAYLOAD.require_campi_da_aggiornare(
-        campi,
+    repository = MagazzinoRepository()
+    campi = _PAYLOAD.campi_del_gesto(
+        payload,
+        ammesse=repository.colonne_ammesse(f, "riga", "modifica"),
+        lettura=_lettura_riga(f),
         function_name=f"{_FN}.aggiorna_riga",
     )
-    repository = MagazzinoRepository()
     _documento_o_404(repository, f, doc_id)
     _riga_o_404(repository, f, doc_id, riga_id)
     with _db_errors("aggiorna_riga"):
@@ -543,15 +577,16 @@ def aggiorna_riga(codice_famiglia: str, doc_id: int, riga_id: int, payload: dict
     return dict(_riga_o_404(repository, f, doc_id, riga_id))
 
 
-# Scopo: Elimina una riga. Il guard di famiglia risponde fuori da `DRAFT`.
+# Scopo: Toglie una riga col verbo. Il guard di famiglia risponde fuori da
+#        `DRAFT`; tornato il verbo, la riga non c'e' piu'.
 def elimina_riga(codice_famiglia: str, doc_id: int, riga_id: int) -> dict[str, Any]:
     f = famiglia(codice_famiglia)
     repository = MagazzinoRepository()
     _documento_o_404(repository, f, doc_id)
     _riga_o_404(repository, f, doc_id, riga_id)
     with _db_errors("elimina_riga"):
-        toccate = repository.delete_riga(f, doc_id, riga_id)
-    return {"riga_id": riga_id, "eliminata": toccate > 0}
+        repository.delete_riga(f, doc_id, riga_id)
+    return {"riga_id": riga_id, "eliminata": True}
 
 
 # Scopo: I MOTIVI per cui una riga non sarebbe postabile — `fn_check_riga_

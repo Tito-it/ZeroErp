@@ -24,7 +24,7 @@ BEGIN ATOMIC
              lv.listino_id,
              lr.articolo_id,
              catalogo.fn_uom_primo_giorno_non_convertibile(lr.articolo_id, lr.uom_id, lv.validita) AS primo,
-             script.fn_scope_ef_whitelist_via_listino_versione((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, lr.listino_versione_id) AS visibile
+             script.fn_scope_ef_whitelist_via_listino_versione(script.fn_utente_di_sessione('vendite.fn_listini_attivi_uom_non_convertibili'::text), lr.listino_versione_id) AS visibile
             FROM (((vendite.listini_righe lr
               JOIN catalogo.articoli a ON ((a.id = lr.articolo_id)))
               JOIN vendite.listini_versioni lv ON ((lv.id = lr.listino_versione_id)))

@@ -16,61 +16,53 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori(
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
--- Guard: verifica la presenza obbligatoria di partita_iva e/o codice_fiscale
--- in base alla configurazione di config.tipi_soggetto_dettaglio.
--- Complementare a trgfn_soggetti_valida_cf_piva_dispatch che valida il FORMATO.
--- Questa funzione valida la PRESENZA.
+-- Guard: la PRESENZA di partita_iva e codice_fiscale secondo la natura
+-- (config.tipi_soggetto_dettaglio.piva_obbligatoria, cf_obbligatorio).
+-- Il FORMATO lo valida trgfn_soggetti_valida_cf_piva_dispatch; la
+-- stringa vuota l'ha gia' fatta NULL trgfn_soggetti_normalize (a01).
 DECLARE
-    v_det RECORD;
-    v_error_ctx jsonb;
+    v_piva_obbl  config.tipi_soggetto_dettaglio.piva_obbligatoria%TYPE;
+    v_cf_obbl    config.tipi_soggetto_dettaglio.cf_obbligatorio%TYPE;
+    v_cod_int    config.tipi_soggetto_dettaglio.codice_interno%TYPE;
+    v_natura     config.tipi_soggetto_dettaglio.descrizione%TYPE;
 BEGIN
-    -- Se tipo_soggetto_dettaglio_id e' NULL, non possiamo imporre nulla
+    -- Senza natura non si impone niente; una natura inesistente la dice la FK.
     IF NEW.tipo_soggetto_dettaglio_id IS NULL THEN
         RETURN NEW;
     END IF;
 
-    -- Recupero configurazione obbligatorieta' dal tipo di dettaglio
-    SELECT tsd.piva_obbligatoria, tsd.cf_obbligatorio, tsd.codice_interno
-      INTO v_det
+    SELECT tsd.piva_obbligatoria, tsd.cf_obbligatorio, tsd.codice_interno,
+           COALESCE(tsd.descrizione, tsd.codice_interno)
+      INTO v_piva_obbl, v_cf_obbl, v_cod_int, v_natura
       FROM config.tipi_soggetto_dettaglio tsd
      WHERE tsd.id = NEW.tipo_soggetto_dettaglio_id;
 
-    -- Guard partita_iva obbligatoria
-    IF v_det.piva_obbligatoria = true AND NEW.partita_iva IS NULL THEN
-        v_error_ctx := jsonb_build_object(
-            'campo', 'partita_iva',
-            'soggetto_id', NEW.id,
-            'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
-            'codice_interno', v_det.codice_interno
-        );
+    IF v_piva_obbl AND NEW.partita_iva IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'database',
             'trgfn_soggetti_guard_cf_piva_obbligatori',
             'E_PIVA_OBBLIGATORIA',
-            v_error_ctx,
+            jsonb_build_object(
+                'campo',                      'partita_iva',
+                'soggetto_id',                NEW.id,
+                'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                'codice_interno',             v_cod_int),
             NEW.tx_id,
-            v_det.codice_interno::text,
-            NEW.id::text
-        );
+            v_natura);
     END IF;
 
-    -- Guard codice_fiscale obbligatorio
-    IF v_det.cf_obbligatorio = true AND NEW.codice_fiscale IS NULL THEN
-        v_error_ctx := jsonb_build_object(
-            'campo', 'codice_fiscale',
-            'soggetto_id', NEW.id,
-            'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
-            'codice_interno', v_det.codice_interno
-        );
+    IF v_cf_obbl AND NEW.codice_fiscale IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'database',
             'trgfn_soggetti_guard_cf_piva_obbligatori',
             'E_CF_OBBLIGATORIO',
-            v_error_ctx,
+            jsonb_build_object(
+                'campo',                      'codice_fiscale',
+                'soggetto_id',                NEW.id,
+                'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                'codice_interno',             v_cod_int),
             NEW.tx_id,
-            v_det.codice_interno::text,
-            NEW.id::text
-        );
+            v_natura);
     END IF;
 
     RETURN NEW;
@@ -78,10 +70,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori()
-IS 'Guard trigger: verifica la presenza obbligatoria di partita_iva e/o codice_fiscale
-in base alla configurazione di config.tipi_soggetto_dettaglio (piva_obbligatoria, cf_obbligatorio).
-Se tipo_soggetto_dettaglio_id e'' NULL, nessun controllo viene eseguito.
-Complementare a trgfn_soggetti_valida_cf_piva_dispatch che valida il FORMATO.';
+IS 'Guard di anagrafiche.soggetti (BEFORE INSERT OR UPDATE OF tipo_soggetto_dettaglio_id, partita_iva, codice_fiscale): la PRESENZA di partita IVA e codice fiscale secondo la natura (config.tipi_soggetto_dettaglio.piva_obbligatoria, cf_obbligatorio). Rifiuti E_PIVA_OBBLIGATORIA ed E_CF_OBBLIGATORIO, col campo; la frase nomina la natura per descrizione, senza id. La stringa vuota la fa NULL trgfn_soggetti_normalize (a01); il FORMATO lo valida trgfn_soggetti_valida_cf_piva_dispatch. Senza natura tace.';
 ```
 
 </div>

@@ -27,8 +27,8 @@ from apps.core.api.payload_validators import (
     qp_iso_date_optional,
     corpo_oggetto,
     optional_int,
-    paginated_envelope,
     parse_list_params,
+    qp_int_optional,
 )
 from apps.core.api.success_responses import success_response
 from apps.core.db.email_repository import EmailRepository
@@ -44,6 +44,7 @@ from apps.core.services.html_sanitizer_service import sanitize_email_html
 from apps.core.services.payload_helpers import PayloadValidator
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.services.list_helpers import pagina_con_totale
 
 E_EMAIL_ADMIN = "E_EMAIL_ADMIN"
 # Validator stateless del modulo (solo il codice).
@@ -220,7 +221,7 @@ class EmailAccountListView(AdminAPIView):
             order_by=p["order_by"],
             order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(request=_ACCOUNT_CREATE_REQUEST, responses={200: dict})
     # Scopo: Crea un nuovo account email SMTP.
@@ -403,7 +404,7 @@ class EmailTemplateListView(AdminAPIView):
             order_by=p["order_by"] or None,
             order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(request=_TEMPLATE_CREATE_REQUEST, responses={200: dict})
     # Scopo: Crea un nuovo template email.
@@ -560,8 +561,8 @@ class EmailLogListView(AdminAPIView):
             search=p["search"],
             stato=qp.get("stato") or None,
             ambito=qp.get("ambito") or None,
-            unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
-            pratica_id=optional_int({"v": qp.get("pratica_id")}, "v"),
+            unita_organizzativa_id=qp_int_optional(qp.get("unita_organizzativa_id"), "unita_organizzativa_id", min_val=0),
+            pratica_id=qp_int_optional(qp.get("pratica_id"), "pratica_id", min_val=0),
             data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
             data_a=qp_iso_date_optional(qp.get("data_a"), "data_a"),
             limit=p["limit"],
@@ -571,7 +572,7 @@ class EmailLogListView(AdminAPIView):
             # testa) lo applica `EmailRepository.list_logs`, in una sede sola.
             order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
 
 class EmailLogDetailView(AdminAPIView):

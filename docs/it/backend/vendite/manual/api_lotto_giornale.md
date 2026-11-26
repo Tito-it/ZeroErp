@@ -62,8 +62,7 @@ risolvere: qui c'è anche ciò che è andato bene e i tentativi poi superati.
 ## Output
 
 ```json
-{"data": {"lotto_id": 6260, "count": 113, "page": 1, "page_size": 25,
-          "total_pages": 5, "ritirate_count": 2, "info_count": 173,
+{"data": {"lotto_id": 6260, "count": 113, "ritirate_count": 2, "info_count": 173,
           "results": [...]}}
 ```
 

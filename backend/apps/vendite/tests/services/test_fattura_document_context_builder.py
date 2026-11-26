@@ -199,7 +199,7 @@ class BuildContextFatturaTests(SimpleTestCase):
             },
         ])
 
-        ctx = builder.build_context(42)
+        ctx = builder.build_context(42, auth_user_id=1)
 
         self.assertEqual(len(ctx["righe"]), 2)
         self.assertEqual(ctx["righe"][0]["articolo_descrizione"], "Art A")
@@ -222,7 +222,7 @@ class BuildContextFatturaTests(SimpleTestCase):
             },
         ])
 
-        riga = builder.build_context(42)["righe"][0]
+        riga = builder.build_context(42, auth_user_id=1)["righe"][0]
 
         for chiave in ("quantita", "prezzo_unitario", "sconto_percentuale", "importo_riga"):
             self.assertIn(chiave, riga, f"chiave di contratto mancante: {chiave}")
@@ -251,7 +251,7 @@ class BuildContextFatturaTests(SimpleTestCase):
             },
         ])
 
-        righe = builder.build_context(42)["righe"]
+        righe = builder.build_context(42, auth_user_id=1)["righe"]
 
         self.assertEqual(len(righe), 1)
         kit = righe[0]
@@ -282,7 +282,7 @@ class BuildContextFatturaTests(SimpleTestCase):
             },
         ])
 
-        kit = builder.build_context(42)["righe"][0]
+        kit = builder.build_context(42, auth_user_id=1)["righe"][0]
 
         self.assertIsNone(kit["importo_riga"])
         valorizzato, descrittivo = kit["componenti"]
@@ -316,7 +316,7 @@ class BuildContextFatturaTests(SimpleTestCase):
             },
         ])
 
-        kit, puntuale = builder.build_context(42)["righe"]
+        kit, puntuale = builder.build_context(42, auth_user_id=1)["righe"]
 
         self.assertEqual(kit["competenza_dal"], "01-01-2026")
         self.assertEqual(kit["competenza_al"], "31-01-2026")
@@ -339,7 +339,7 @@ class BuildContextFatturaTests(SimpleTestCase):
             },
         ])
 
-        kit = builder.build_context(42)["righe"][0]
+        kit = builder.build_context(42, auth_user_id=1)["righe"][0]
 
         self.assertIsNone(kit["quantita"])
         self.assertIsNone(kit["prezzo_unitario"])
@@ -357,7 +357,7 @@ class BuildContextFatturaTests(SimpleTestCase):
             },
         ]
 
-        ctx = builder.build_context(42)
+        ctx = builder.build_context(42, auth_user_id=1)
 
         self.assertEqual(len(ctx["riepilogo_iva"]), 1)
         self.assertEqual(ctx["riepilogo_iva"][0]["iva_aliquota"], "22,00")
@@ -379,7 +379,7 @@ class BuildContextFatturaTests(SimpleTestCase):
             },
         ]
 
-        ctx = builder.build_context(42)
+        ctx = builder.build_context(42, auth_user_id=1)
 
         self.assertEqual(len(ctx["scadenze"]), 2)
         s0 = ctx["scadenze"][0]
@@ -401,7 +401,7 @@ class BuildContextFatturaTests(SimpleTestCase):
             {"codice": "ALTRA", "testo": "Seconda voce"},
         ]
 
-        ctx = builder.build_context(42)
+        ctx = builder.build_context(42, auth_user_id=1)
 
         self.assertEqual(ctx["annotazioni"], [
             {"codice": "ESIGIBILITA_DIFFERITA", "testo": "Operazione con IVA per cassa"},
@@ -421,7 +421,7 @@ class BuildContextFatturaTests(SimpleTestCase):
              "etichetta": "Contratto", "uid": "u-2", "codice": None},
         ]
 
-        ctx = builder.build_context(42)
+        ctx = builder.build_context(42, auth_user_id=1)
 
         self.assertEqual(ctx["fattura"]["origini"], [
             {"livello": 1, "tipo": "ORDINE", "etichetta": "Ordine", "codice": "ORD-2026-0001"},
@@ -439,7 +439,7 @@ class BuildContextFatturaGuardTests(SimpleTestCase):
         for bad in (0, -1, True, "stringa"):
             with self.subTest(value=bad):
                 with self.assertRaises(ServiceError) as ctx:
-                    builder.build_context(bad)  # type: ignore[arg-type]
+                    builder.build_context(bad, auth_user_id=1)  # type: ignore[arg-type]
                 self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.get_fattura_testata.assert_not_called()
 
@@ -448,7 +448,7 @@ class BuildContextFatturaGuardTests(SimpleTestCase):
         builder, repo, righe_repo = _builder()
         repo.get_fattura_testata.return_value = None
         with self.assertRaises(ServiceError) as ctx:
-            builder.build_context(999)
+            builder.build_context(999, auth_user_id=1)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
         righe_repo.list_righe.assert_not_called()
         repo.list_fattura_riepilogo_iva.assert_not_called()

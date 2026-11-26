@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-import math
-import re
 from datetime import date, datetime
 from typing import Any, overload
 from uuid import UUID
@@ -10,8 +8,8 @@ from uuid import UUID
 from rest_framework.exceptions import ParseError
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
-from apps.core.api.request_parsers import oggetto_json, parse_iso_date
-from apps.core.services.payload_helpers import BIGINT_MAX, BIGINT_MIN, PayloadValidator
+from apps.core.api.request_parsers import oggetto_json
+from apps.core.services.payload_helpers import BIGINT_MAX, BIGINT_MIN, SIGNED_INT_RE, PayloadValidator
 from apps.core.services.request_context import get_misura_di_partenza
 from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
 
@@ -122,13 +120,16 @@ def qp_bool_optional(raw: str | None, name: str, default: bool | None = None) ->
 
 # Scopo: Converte parametro intero da query string; solleva ValueError se non
 #        numerico o fuori da bigint (oltre, nessun intero PG lo regge: un 500).
+# ⛔ La forma e' `SIGNED_INT_RE` (cifre ASCII, segno meno facoltativo), la
+#    stessa del corpo JSON: `int()` da solo accetta `"+3"`, `"1_000"` e `"٣"`
+#    (2026-11-24, brief-be-fe-BB-audit §2.3).
 def qp_int_strict(raw: str | None, name: str, default: int) -> int:
     if raw is None:
         return default
-    try:
-        valore = int(raw.strip())
-    except (ValueError, AttributeError):
-        raise ValueError(f"{name}_invalid") from None
+    cleaned = raw.strip() if isinstance(raw, str) else None
+    if cleaned is None or not SIGNED_INT_RE.fullmatch(cleaned):
+        raise ValueError(f"{name}_invalid")
+    valore = int(cleaned)
     if not BIGINT_MIN <= valore <= BIGINT_MAX:
         raise ValueError(f"{name}_invalid")
     return valore
@@ -156,10 +157,11 @@ def qp_int_optional(
     cleaned = raw.strip()
     if cleaned == "":
         return None
-    try:
-        valore = int(cleaned)
-    except ValueError as exc:
-        raise ValueError(f"{name}_invalid") from exc
+    # La forma di `qp_int_strict`: `int()` da solo accetta anche `"+3"`,
+    # `"1_000"` e le cifre non ASCII.
+    if not SIGNED_INT_RE.fullmatch(cleaned):
+        raise ValueError(f"{name}_invalid")
+    valore = int(cleaned)
     if not min_val <= valore <= max_val:
         raise ValueError(f"{name}_invalid")
     return valore
@@ -185,8 +187,10 @@ def qp_iso_date_optional(raw: str | None, name: str) -> date | None:
 #        malformato — un `%s::uuid` su una stringa qualunque sarebbe un 500.
 #        Simmetrico a qp_int_optional. Estratto 2026-11-17 (regola del 2, ok
 #        Tid): unifica 4 copie di `optional_uuid({"x": qp_str(qp.get("x"))}, "x")`.
-# ⛔ Non e' `optional_uuid` (il PAYLOAD): quello prende 0/"0" per NULL, per
-#    compatibilita' coi form; in query string "0" e' un valore sbagliato.
+# ⛔ Non e' `optional_uuid` (il CORPO JSON): li' `""` e' un 400 col campo,
+#    perche' il FE manda `null` per «nessuno»; in query string il vuoto e'
+#    l'assente (api.md §Query params). Fino al 2026-11-24 `optional_uuid`
+#    prendeva anche 0/"0"/"" per NULL (brief-be-fe-BB-audit §2).
 def qp_uuid_optional(raw: str | None, name: str) -> str | None:
     if raw is None:
         return None
@@ -294,7 +298,7 @@ def pagina_da_query(
 
 
 # Scopo: Parsing standard parametri lista paginata da query string.
-# Restituisce dict con search, limit, offset, order_by, order_dir, page.
+# Restituisce dict con search, limit, offset, order_by, order_dir.
 def parse_list_params(
     qp,
     *,
@@ -302,88 +306,49 @@ def parse_list_params(
     default_limit: int = DEFAULT_LIMIT,
     max_limit: int = MAX_LIMIT,
 ) -> dict:
-    # ⚠️ Il limite sta fra 1 e `max_limit`, l'offset non e' negativo: i
-    #    repository li riportano gia' nei limiti, ma l'envelope si calcola da
-    #    QUESTI valori — con `limit=0` usciva `page_size: 0` accanto a una
-    #    pagina di righe, cioe' un paginatore che non torna.
+    # ⚠️ Il limite sta fra 1 e `max_limit`, l'offset non e' negativo: fuori
+    #    e' un 400 (api.md §Paginazione), non un clamp muto.
     limit, offset = pagina_da_query(qp, default_limit=default_limit, max_limit=max_limit)
     search = qp_str(qp.get("search"))
     order_by = qp.get("order_by") or default_order
     # ⛔ Assente = `None`, NON "asc" (2026-09-26). Il ripiego su "asc"
-    #    annullava il default dei repository (`default_desc`, `colonne_desc`),
+    #    annullava il default dei repository (`default_desc`),
     #    che si accende solo su `None`: le liste che nascono dal piu' recente
     #    si aprivano al contrario, senza errore, e ogni view che lo sapeva
     #    rileggeva la direzione grezza dalla query string. La direzione si
     #    VALIDA a valle (`order_dir_ammessa`, nel service o nel BB SQL).
     order_dir = qp_str(qp.get("order_dir"))
-    page = pagina_di(offset, limit)
     return {
         "search": search,
         "limit": limit,
         "offset": offset,
         "order_by": order_by,
         "order_dir": order_dir,
-        "page": page,
     }
 
 
-# ------------------------------------------------------------------
-# Envelope paginato standard (riusabile da qualsiasi service)
-# ------------------------------------------------------------------
-
-# Scopo: il numero della pagina (da 1) che una finestra `limit`/`offset` mostra.
-#        Sede unica: lo usano `parse_list_params` ed `envelope_da_offset`.
-def pagina_di(offset: int, limit: int) -> int:
-    return offset // limit + 1 if limit > 0 else 1
+# ⛔ L'envelope di una lista paginata NON sta qui: e' `pagina_con_totale` di
+#    `apps.core.services.list_helpers` (D-1 di brief-be-fe-BB-audit, Tid
+#    2026-11-24). `paginated_envelope`, `envelope_da_offset` e `pagina_di` sono
+#    ritirati quel giorno con la forma lunga (`page`/`page_size`/`total_pages`).
 
 
-# Scopo: ⭐ L'envelope paginato di una lista letta con `limit`/`offset`: lo
-#        stesso di `paginated_envelope`, con la pagina ricavata dall'offset.
-# ⛔ Dal 2026-10-21 le liste parlano un dialetto solo, `limit`/`offset`
-#    (Tid, brief-be-verifica-documentazione-api §A3, seguito): quelle che
-#    leggevano `page`/`page_size` calcolavano l'offset dalla pagina e l'envelope
-#    a mano, ognuna col suo helper (`risposta_paginata`, `_build_list_response`…).
-#    La risposta NON cambia per il client: `page` e `page_size` restano.
-def envelope_da_offset(
-    results: list, total_count: int, *, limit: int, offset: int,
-) -> dict[str, Any]:
-    return paginated_envelope(results, total_count, pagina_di(offset, limit), limit)
+# ⭐ Le letture dei campi opzionali del CORPO JSON nella view: una regola sola,
+#    quella di `PayloadValidator`, col codice `E_VALIDATION_INPUT` e il campo
+#    nell'errore (2026-11-24, brief-be-fe-BB-audit §2, regola del 2). Fino a quel
+#    giorno `optional_int`, `optional_iso_date` e `optional_uuid` avevano regole
+#    loro: `""`, `0` e `"0"` su un uuid valevano None, `""` su una data valeva
+#    None, una data con spazi era rifiutata, e l'errore era un `ValueError` senza
+#    campo. Lo stesso valore aveva due esiti secondo chi lo leggeva.
+# ⛔ Il SERVICE non le usa: legge col proprio `PayloadValidator`, col codice del
+#    dominio. Query string e header sono testo, e hanno i BB `qp_*`.
+_CORPO = PayloadValidator(validation_code=E_VALIDATION_INPUT)
 
 
-# Scopo: Costruisce l'envelope paginato standard con count, page, page_size, total_pages, results.
-def paginated_envelope(
-    results: list, total_count: int, page: int, page_size: int,
-) -> dict[str, Any]:
-    total_pages = math.ceil(total_count / page_size) if page_size > 0 else 0
-    return {
-        "count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "results": results,
-    }
-
-
-# Un intero scritto in una stringa: solo cifre ASCII. ⛔ Non `str.isdigit()`:
-# accetta anche «²» o «٣», e il primo poi fa fallire `int()` con un ValueError
-# che non e' il `{key}_invalid` atteso dai chiamanti.
-_INTERO_DECIMALE_RE = re.compile(r"[0-9]+")
-
-
-# Scopo: Valida e converte il campo opzionale `int` mantenendo `None` se assente.
+# Scopo: Un intero opzionale del corpo (anche zero o negativo): assente o null
+#        -> None; `zero_as_none` legge 0 e "0" come None.
 def optional_int(payload: dict[str, Any], key: str, *, zero_as_none: bool = False) -> int | None:
-    value = payload.get(key)
-    if value is None:
-        return None
-    if zero_as_none and value in (0, "0"):
-        return None
-    if isinstance(value, bool):
-        raise ValueError(f"{key}_invalid")
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str) and _INTERO_DECIMALE_RE.fullmatch(value.strip()):
-        return int(value.strip())
-    raise ValueError(f"{key}_invalid")
+    return _CORPO.optional_int(payload, key, zero_as_none=zero_as_none)
 
 
 # Scopo: Il flag `key` del CORPO JSON: assente o `null` -> `default`.
@@ -397,18 +362,14 @@ def optional_int(payload: dict[str, Any], key: str, *, zero_as_none: bool = Fals
 # ⚠️ Query string e multipart NON passano di qui: li' ogni valore e' una stringa
 #    per natura, e si leggono coi loro BB (`qp_bool_optional`, …).
 def optional_bool(payload: dict[str, Any], key: str, default: bool = False) -> bool:
-    value = PayloadValidator(validation_code=E_VALIDATION_INPUT).optional_bool(payload, key)
+    value = _CORPO.optional_bool(payload, key)
     return default if value is None else value
 
 
-# Scopo: Valida e converte il campo opzionale `iso_date` mantenendo `None` se assente.
-def optional_iso_date(payload: dict[str, Any], key: str):
-    value = payload.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ValueError(f"{key}_invalid")
-    return parse_iso_date(value)
+# Scopo: Una data ISO opzionale del corpo: assente o null -> None; una stringa
+#        vuota o malformata e' un 400 col campo.
+def optional_iso_date(payload: dict[str, Any], key: str) -> date | None:
+    return _CORPO.optional_date(payload, key)
 
 
 # Scopo: Valida e converte il campo opzionale ISTANTE (ISO 8601 con data e ora)
@@ -432,22 +393,7 @@ def optional_istante(payload: dict[str, Any], key: str) -> datetime | None:
     return istante
 
 
-# Scopo: Valida e converte il campo opzionale `uuid` mantenendo `None` se assente.
+# Scopo: Un uuid opzionale del corpo, in forma canonica: assente o null ->
+#        None; `""`, `0` o un testo che non e' un uuid sono un 400 col campo.
 def optional_uuid(payload: dict[str, Any], key: str) -> str | None:
-    value = payload.get(key)
-    if value is None:
-        return None
-    # Per compatibilita` input legacy/UI: 0 o stringa vuota => NULL.
-    if value in (0, "0", ""):
-        return None
-    if isinstance(value, UUID):
-        return str(value)
-    if isinstance(value, str):
-        candidate = value.strip()
-        if not candidate:
-            return None
-        try:
-            return str(UUID(candidate))
-        except ValueError as exc:
-            raise ValueError(f"{key}_invalid") from exc
-    raise ValueError(f"{key}_invalid")
+    return _CORPO.optional_uuid(payload, key)

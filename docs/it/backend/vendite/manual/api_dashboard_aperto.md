@@ -82,10 +82,9 @@ Nessun parametro.
   `emittente_ragione_sociale`
   (`area`/`fase`/`stato_codice` aggiunte il 2026-08-03: erano colonne a video
   che non ordinavano, e `stato_codice` lasciava scoperto il nucleo *stato*);
-  `order_dir` = `asc` | `desc`. Con `order_by` e senza `order_dir`: le colonne
-  data (per nome, `e_chiave_data`) partono DESC, le altre ASC — nessuna colonna
-  di questa whitelist è una data, quindi qui è sempre ASC (anche
-  `anzianita_giorni`, che è un numero di giorni). Server-side perché
+  `order_dir` = `asc` | `desc`. Con `order_by` e senza `order_dir` la colonna
+  chiesta va ASC, come in ogni lista (la regola «le date partono DESC» è
+  ritirata dal 2026-11-24). Server-side perché
   la lista è paginata: l'ordine è corretto su **tutte** le pagine, non solo su
   quella visibile. Colonna fuori whitelist o direzione ≠ asc/desc → 400
   (`E_VENDITE_VALIDATION`, whitelist definita una volta nel service). Tiebreak
@@ -136,7 +135,9 @@ Nessun parametro.
 
 ### Lista documenti
 
-Envelope paginato standard (`count/page/page_size/total_pages/results`); ogni
+Envelope di lista `{count, offset_effettivo, results}` (`pagina_con_totale`,
+[api.md §Paginazione](../../../dev/api.md)): `offset_effettivo` è l'offset davvero servito — chiesto oltre la
+fine, il backend serve l'ultima pagina e lo dichiara lì; ogni
 riga: `area`, chiavi documento (`documento_id`, `documento_uid`, `codice`),
 `cliente_display`, `fase`, `stato_codice_interno`, `stato_codice`,
 `valore_totale` (NULL per aree a conteggi), `unita_totali`, **`anzianita_giorni`**
@@ -188,7 +189,8 @@ invece ASC perché raggruppa, non spareggia. La paginazione deterministica non
   materializzata + `COUNT(*) OVER()` + **offset clampato all'ultima pagina in
   SQL**). Il rientro da una pagina stantia (lista ridotta da altri utenti) non
   costa più un secondo giro: il BE serve subito l'ultima pagina reale e
-  l'envelope dichiara la **pagina effettiva**, che `usePagedDashFetch` adotta.
+  l'envelope dichiara l'**offset effettivo** (`offset_effettivo`), da cui
+  `usePagedDashFetch` ricava la pagina.
 - GET-only, nessun side-effect, nessuna Idempotency-Key.
 
 ## Dipendenze DB
@@ -203,6 +205,9 @@ invece ASC perché raggruppa, non spareggia. La paginazione deterministica non
 - 2026-10-21: la lista documenti legge la finestra come `limit`/`offset`
   (`pagina_da_query`); `page`/`page_size` in query diventano un 400. Envelope
   invariato.
+- 2026-11-24: la lista documenti risponde `{count, offset_effettivo, results}`
+  (`pagina_con_totale`, D-1 di brief-be-fe-BB-audit): `page`, `page_size` e
+  `total_pages` escono, la finestra servita la dichiara `offset_effettivo`.
 - **v2 (serbatoio pre-commessa)** su v1: eliminato il concetto *transitato*
   (in una vista senza asse temporale totalizzava dalla notte dei tempi roba
   già passata, non azionabile). Rimossi dagli endpoint il toggle `solo_aperti`

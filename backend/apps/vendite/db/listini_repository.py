@@ -135,12 +135,6 @@ _SELECT_VERSIONE = f"""
 """  # noqa: S608 — costanti di modulo TESTATA_LISTINI_VERSIONI e STATO_VERSIONE_ATTIVA
 
 
-# «Non in scadenza» (`giorni_rimanenti` NULL) e' la scadenza PIU' LONTANA, come
-# la fine validita' vuota e' `infinity` (`_SQL_DATE_INFINITY`): senza, il BB
-# dell'ordine tratta il NULL come minimo, e l'ordine crescente metterebbe in
-# cima i listini che non scadono. Il massimo di `integer` (date - date).
-_SQL_GIORNI_SENZA_SCADENZA = "2147483647"
-
 # `attivo` e' NUCLEO: lo stato ordina sempre. Aggiunta in anticipo sul seed
 # della lista listini (passata unica 2026-08-01, richiesta del team DB).
 LISTINI_ORDER_COLUMNS: dict[str, str] = {
@@ -151,8 +145,11 @@ LISTINI_ORDER_COLUMNS: dict[str, str] = {
     "attivo": "l.attivo",
     "data_insert": "l.data_insert",
     "data_update": "l.data_update",
-    # Dalla regola del DB (`_FN_SCADENZA`): NULL = non in scadenza.
-    "giorni_alla_scadenza": f"COALESCE(s.giorni_rimanenti, {_SQL_GIORNI_SENZA_SCADENZA})",
+    # Dalla regola del DB (`_FN_SCADENZA`): NULL = non in scadenza, cioe' la
+    # scadenza piu' lontana. Il vuoto va come il massimo, e lo dichiara il
+    # catalogo (`ui.lista_colonna.vuoto_ordinato_come_massimo`, D-5 di
+    # brief-db-lista-colonna-vuoto-in-ordine), non questa whitelist.
+    "giorni_alla_scadenza": "s.giorni_rimanenti",
 }
 
 # ⭐ «In scadenza senza successore» la dice il DB, una volta per query
@@ -173,14 +170,14 @@ VERSIONI_ORDER_COLUMNS: dict[str, str] = {
     "codice_versione": "x.codice_versione",
     "valido_dal": "x.valido_dal",
     # Fine vuota = validita' infinita: la versione aperta e' la piu' lontana.
-    "valido_al": f"COALESCE(x.valido_al, {_SQL_DATE_INFINITY})",
+    # Il vuoto va come il massimo, e lo dichiara il catalogo
+    # (`ui.lista_colonna.vuoto_ordinato_come_massimo`), non questa whitelist.
+    "valido_al": "x.valido_al",
     "righe_count": "x.righe_count",
     "stato": "x.stato",
-    "giorni_alla_scadenza": f"COALESCE(sc.giorni_rimanenti, {_SQL_GIORNI_SENZA_SCADENZA})",
+    # NULL = non in scadenza: come `valido_al`, lo dichiara il catalogo.
+    "giorni_alla_scadenza": "sc.giorni_rimanenti",
 }
-# Le date della lista si leggono dalla piu' recente (regola di Tid del
-# 2026-09-02): i nomi `valido_*` non le dicono date da soli.
-VERSIONI_ORDER_COLONNE_DATA: frozenset[str] = frozenset({"valido_dal", "valido_al"})
 
 LISTINO_CREATE_COLUMNS: dict[str, str] = {
     "codice": "text",
@@ -503,7 +500,7 @@ class ListiniRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=VERSIONI_ORDER_COLUMNS, default="x.valido_dal", default_desc=True,
-            tiebreak="x.id", colonne_desc=VERSIONI_ORDER_COLONNE_DATA,
+            tiebreak="x.id",
         )
         data_sql = f"""
             SELECT x.*,

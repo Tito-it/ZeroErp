@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_soggetto_pg`
 
-> **Ultimo aggiornamento**: 17 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -65,7 +65,8 @@ immediati: un chiamante che poi costruisce a mano un'altra saga deve aprirsi la 
   indirizzi lo copia sugli altri tipi obbligatori. Una natura senza tipi obbligatori nasce
   **senza** indirizzi: il guard degli indirizzi non ne pretende nessuno.
 * **Contatto**: il contatto predefinito della madre, col nominativo uguale alla ragione
-  sociale e un'email di prova.
+  sociale e un'email di prova. Il tipo non lo sceglie la fixture: lo propone la madre
+  ([script.fn_tipo_contatto_proposto_id](/dbzero/script/manual/fn_tipo_contatto_proposto_id)), come a ogni chiamante.
 
 ⚠️ Una natura di persona fisica non passa: la rifiuta la madre
 (`E_SOGGETTO_CREAZIONE_NATURA_ERRATA`), perché la persona fisica ha la sua porta. Per una persona fisica c'è il
@@ -119,6 +120,7 @@ richiusura della finestra.
 * 2026-10-17 — il contatto passa dal building block (`brief-db-processi-accensione-per-ambiente`).
 * 2026-10-19 — gli indirizzi nella forma che lo stato pretende; prima avevano la forma estera anche per l'Italia.
 * 2026-11-08 — testata e indirizzi dalle madri del dominio; il contatto prende il nominativo della madre; il ripiego «almeno un indirizzo» per una natura senza obbligatori è ritirato (decisione di Tid del 2026-11-07).
+* 2026-11-24 — la fixture non sceglie più il tipo di contatto (prima il primo per id): lo propone la madre.
 
 ---
 

@@ -189,15 +189,12 @@ SELECT ok(
     '6) Fixture context completo (BA, emittente, listino/versione, stati) + operatore non-super'
 );
 
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_osa_op);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
-
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id, meta)
-SELECT o.user_id, ctx.emittente_fiscale_id,
-       '{"test_scope":"pgtap_offerte_superata_vs_abortito"}'::jsonb
-  FROM tmp_osa_op o, tmp_osa_ctx ctx;
+-- ⛔ Rev 2026-11-26 (giro 10-ter, brief-db-porte-aperte-dalla-sola-guc §10-ter, D-AA a):
+--   uno SPOSTAMENTO solo, dal verbo col builder. Fino a oggi il file toglieva
+--   l'azienda (NULL) e scriveva la nuova riga con un INSERT: dal 20261125-74 l'azienda
+--   si toglie solo a un SUPER_ADMIN, e spostare e' cio' che il verbo fa.
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_osa_op),
+                                             (SELECT emittente_fiscale_id FROM tmp_osa_ctx));
 
 SELECT set_config('app.current_user_id',
     (SELECT user_id::text FROM tmp_osa_op), true);

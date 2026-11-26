@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.magazzini`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -118,6 +118,12 @@ come uno che non esiste, così il rifiuto non rivela niente fuori dal perimetro.
 
 ---
 
+### Chi scrive
+
+L'applicazione legge questa tabella e non la scrive: ogni scrittura passa da un **verbo**, che controlla il livello dell'operatore e il perimetro prima di scrivere. Nasce con [fn_aggiungi_magazzino](/dbzero/magazzino/funzioni/fn_aggiungi_magazzino) e si modifica con [fn_modifica_magazzino](/dbzero/magazzino/funzioni/fn_modifica_magazzino). Non si elimina: si disattiva con la modifica.
+
+---
+
 ### Codici errore
 
 * `E_EMITTENTE_NON_RISOLTO` — il magazzino nasce senza emittente e chi scrive non ne ha uno
@@ -140,6 +146,7 @@ come uno che non esiste, così il rifiuto non rivela niente fuori dal perimetro.
 * 2026-09-18 — entra `usa_ubicazioni` (Lotto 2).
 * 2026-09-28 — entra `predefinito` (Lotto 3); il reso prende il magazzino della bolla
   d'origine (Lotto 3-bis).
+* 2026-11-22 — in sola lettura per l'applicazione: la scrivono i verbi (`brief-db-magazzino-tutte-le-scritture-dal-verbo`, Lotto 1).
 
 ---
 

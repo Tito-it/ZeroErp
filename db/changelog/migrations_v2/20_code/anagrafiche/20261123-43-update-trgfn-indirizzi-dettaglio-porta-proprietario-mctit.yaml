@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA DELLO STRADARIO_ID DI UN INDIRIZZO SI APRE SOLO DAL PROPRIETARIO
+#   anagrafiche.trgfn_indirizzi_dettaglio_protect_update: «GUC + proprietario».
+#   Brief: brief-db-porte-aperte-dalla-sola-guc, porta 14, giro 1 (D-C b, D-D a).
+#
+# -- PERCHE' -------------------------------------------------------------
+#   La porta si apriva con la sola GUC zeroerp.maintenance_indirizzi_dettaglio.
+#   L'app la puo' accendere da se' (set_config) e poi cambiare lo stradario_id
+#   di un indirizzo con un UPDATE diretto: la regola «lo stradario_id non si
+#   cambia a mano» proteggeva solo da chi non sapeva della GUC.
+#   Chi la apre di diritto e' la fusione delle vie (dbops.fn_admin_merge_stradario,
+#   INVOKER), uno strumento DBA lanciato da zeroerp_owner: dentro, chi scrive
+#   e' il proprietario della tabella. Nessuna funzione DEFINER la chiama, e il
+#   backend non la chiama (brief §4.2).
+#
+# -- CHE COSA CAMBIA -----------------------------------------------------
+#   La porta chiede GUC accesa E script.fn_is_proprietario_tabella(TG_RELID).
+#   Con la sola GUC, l'app finisce sul controllo di sempre: un cambio di
+#   stradario_id solleva E_COLONNA_NON_MODIFICABILE, stesso codice e stessa
+#   frase di oggi. Le altre colonne passano come prima.
+#   La funzione resta INVOKER: e' cio' che fa vedere al BB chi scrive davvero.
+#   Il corpo viene dal catalogo vivo (pg_get_functiondef su dbdev, 2026-11-23).
+#   Nuovo il COMMENT, che la funzione non aveva.
+#
+# -- LA POSTURA ACCANTO --------------------------------------------------
+#   L'EXECUTE dell'app sull'aprente si toglie in 90_end/20261123-45, nelle tre
+#   sedi di linee-guida-sql §11.8. Presidio: dbops/test-porte-manutenzione-solo-proprietario-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261123-43-update-trgfn-indirizzi-dettaglio-porta-proprietario-mctit.yaml
+
+  - changeSet:
+      id: 20261123-43-update-trgfn-indirizzi-dettaglio-porta-proprietario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La porta di manutenzione dello stradario_id degli indirizzi si apre con la GUC
+        zeroerp.maintenance_indirizzi_dettaglio E il proprietario della tabella: la sola GUC,
+        che l'app puo' accendere, non basta piu'.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_indirizzi_dettaglio_protect_update';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_is_proprietario_tabella';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_protect_update()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Scopo: lo stradario_id di un indirizzo non si cambia a mano.
+                --
+                -- La porta di manutenzione: GUC accesa E chi scrive e' il
+                --   proprietario della tabella (la fusione delle vie,
+                --   dbops.fn_admin_merge_stradario, lanciata da zeroerp_owner).
+                -- ⛔ La sola GUC non basta: l'applicazione la puo' accendere da
+                --   se'. Il BB vede chi scrive perche' questa funzione e'
+                --   INVOKER: non va resa SECURITY DEFINER.
+                IF current_setting('zeroerp.maintenance_indirizzi_dettaglio', true) = 'on'
+                   AND script.fn_is_proprietario_tabella(TG_RELID) THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Fuori dalla porta: il cambio di stradario_id si rifiuta.
+                IF NEW.stradario_id IS DISTINCT FROM OLD.stradario_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_COLONNA_NON_MODIFICABILE',
+                    jsonb_build_object('column','stradario_id','id',OLD.id),
+                    NULL::uuid,
+                    'stradario_id'
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_protect_update() IS
+              'Guard BEFORE UPDATE di anagrafiche.indirizzi_dettaglio: lo stradario_id non si cambia a mano (E_COLONNA_NON_MODIFICABILE). Porta di manutenzione: la GUC zeroerp.maintenance_indirizzi_dettaglio accesa e chi scrive proprietario della tabella (la fusione delle vie, dbops.fn_admin_merge_stradario, da zeroerp_owner). La sola GUC non apre.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il corpo di prima: la porta con la sola GUC.
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_protect_update()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Consenti aggiornamenti in manutenzione esplicita
+                IF current_setting('zeroerp.maintenance_indirizzi_dettaglio', true) = 'on' THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Blocca cambio stradario_id se non in manutenzione
+                IF NEW.stradario_id IS DISTINCT FROM OLD.stradario_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_COLONNA_NON_MODIFICABILE',
+                    jsonb_build_object('column','stradario_id','id',OLD.id),
+                    NULL::uuid,
+                    'stradario_id'
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_dettaglio_protect_update() IS NULL;

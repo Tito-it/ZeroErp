@@ -4,7 +4,7 @@
 > **Da dove viene**: tre giorni di lavoro nell'agosto 2026, e ogni regola qui
 > sotto è costata un difetto vero. Storia e misure:
 > `docs/it/dev/work-done/2026/brief-db-pgtap-runner-rls-baseline.md`.
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 
 ## La cosa da sapere per prima
 
@@ -142,7 +142,8 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | **un'attività** approvata su una commessa costruita, scritta dalla madre (articolo costruito, pronta per l'emissione; articolo e listino del chiamante se li dà); con la **sorgente** l'attività che la push di una riga avrebbe scritto — la chiave la compone `script.fn_segment_key`, mai a mano — con quantità, stati e periodo dichiarati | `dbops.fn_pgtap_crea_commessa_attivita(<commessa_id>[, …], p_sorgente_codice => …, p_sorgente_chiave => …, p_sorgente_riga_id => …, p_stato_emissione => …)` (per nome) |
 | una **filiale bancaria** su cui agganciare un conto | `dbops.fn_pgtap_crea_filiale_bancaria('<etichetta>')` |
 | il **gestore** dell'installazione (lo prende se c'è, lo costruisce se non c'è) | `dbops.fn_pgtap_crea_gestore('<etichetta>')` |
-| un'azienda con il suo operatore (e identità) | `dbops.fn_pgtap_crea_emittente_operatore()` |
+| un'azienda con il suo operatore (e identità): un utente tecnico | `dbops.fn_pgtap_crea_emittente_operatore()` |
+| un'azienda con un operatore **persona** nel perimetro, da promuovere SUPER_ADMIN o a cui legare un profilo (un'identità tecnica non ha mai il SUPER_ADMIN) | `dbops.fn_pgtap_crea_emittente_operatore(p_persona := true)` |
 | un **operatore umano** — persona fisica, risorsa umana, identità — **senza azienda**, volendo super admin | `dbops.fn_pgtap_crea_operatore_umano('<etichetta>'[, p_super_admin := true])` |
 | un **punto di prelievo** nuovo, su un indirizzo suo | `dbops.fn_pgtap_crea_pdp(['<utility>'])` |
 | un **listino** con una versione ATTIVA, dell'azienda di chi agisce (contesto aperto prima) | `dbops.fn_pgtap_crea_listino(<utility_id>[, '<etichetta>'[, valido_dal[, valido_al]]])` |
@@ -163,6 +164,7 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | la **provenienza** che una chiave del push nomina, per scrivere una riga di commessa con la madre | `dbops.fn_pgtap_provenienza_da_chiave('<segment_key>')` |
 | una **sorgente di prova**: un tipo di documento che il catalogo non ha (una famiglia di numerazione o un ambito di prova) | `dbops.fn_pgtap_crea_sorgente('<codice>'[, '<tabella>'::regclass])` |
 | **un'azione di processo concessa** a un utente, e fatta valere anche sull'area — sotto, §«I permessi dell'operatore del test» | `dbops.fn_pgtap_concedi_azione(<auth_user_id>, '<azione>')` |
+| **un livello su un'area** dato a un utente, anche più basso di quello che ha (è così che si costruisce il caso «senza il livello») — sotto, §«I permessi dell'operatore del test» | `dbops.fn_pgtap_concedi_livello_area(<auth_user_id>, '<area>', '<livello>')` |
 | lo **scope di un lavoro in coda** accodato da chi è in sessione | `dbops.fn_pgtap_scope_operatore([<emittente_id>])` |
 | ⚠️ valuta, forma dell'indirizzo e verifica del conto li risolvono i builder | `dbops.fn_pgtap_valuta` / `dbops.fn_pgtap_indirizzo_libero_forma` / `dbops.fn_pgtap_cliente_ba_del_mondo` (building block, non si chiamano dal test) |
 
@@ -326,10 +328,13 @@ serve inventare un valore, la domanda è chi lo scrive davvero.
 L'operatore che i builder costruiscono non porta con sé i permessi dei verbi:
 il test se li concede, come farebbe un amministratore, e non li dà per scontati.
 
-* **Il livello d'area** che `script.fn_guard_livello` pretende si scrive con una
-  riga in `config.user_override_aree` per il proprio operatore; senza, il verbo
-  risponde `E_PERMESSO_NEGATO`, perché il guard nega quando non trova niente.
-  Modello: `db/pgtap/config/test-fn-pannello-scrivi-v1.sql`.
+* **Il livello d'area** che `script.fn_guard_livello_area` pretende, o che
+  `script.fn_guard_livello` ricade a cercare, lo concede
+  `dbops.fn_pgtap_concedi_livello_area`, il gemello di `fn_pgtap_concedi_azione`;
+  senza, il verbo risponde `E_PERMESSO_NEGATO`, perché il guard nega quando non
+  trova niente. Il secondo giro scrive il livello nuovo anche se è più basso: è
+  così che il test prova il rifiuto. ⛔ Non si riscrive un aiuto proprio
+  (`pg_temp.livello_area`) che fa la stessa cosa.
 * **L'azione di processo** che `script.fn_guard_azione` pretende la concede
   `dbops.fn_pgtap_concedi_azione`. Si concede nel setup, **prima** della prima
   lettura di capability: una capability letta prima della concessione nasconde

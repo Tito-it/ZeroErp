@@ -26,7 +26,6 @@ Indice test eseguiti:
 17) test_utente_non_trovato_404                   (E-4)
 """
 
-import math
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest import TestCase
@@ -95,7 +94,7 @@ class PermissionsAuditRepositoryTests(TestCase):
         self.assertNotIn("profili_accesso_bindings", sql)
         # Modello legacy droppato: nessun riferimento residuo.
         self.assertNotIn("profili_reparto", sql)
-        self.assertEqual(len(result["events"]), 1)
+        self.assertEqual(len(result["results"]), 1)
 
     # Scopo: Query vuota restituisce risultato vuoto.
     @patch(_CONN)
@@ -112,8 +111,7 @@ class PermissionsAuditRepositoryTests(TestCase):
         )
 
         self.assertEqual(result["count"], 0)
-        self.assertEqual(result["events"], [])
-        self.assertEqual(result["total_pages"], 0)
+        self.assertEqual(result["results"], [])
 
     # Scopo: Verifica mapping tipo_operazione e struttura evento.
     @patch(_CONN)
@@ -135,17 +133,17 @@ class PermissionsAuditRepositoryTests(TestCase):
         )
 
         self.assertEqual(result["count"], 3)
-        self.assertEqual(len(result["events"]), 3)
+        self.assertEqual(len(result["results"]), 3)
 
-        ev0 = result["events"][0]
+        ev0 = result["results"][0]
         self.assertEqual(ev0["tabella"], "user_override_aree")
         self.assertEqual(ev0["tipo_operazione"], "INIZIALE")
         self.assertEqual(ev0["user_modifica"], "setup")
         self.assertEqual(ev0["snapshot"], {"livello": "TUTTO"})
         self.assertEqual(ev0["tx_id"], "tx-a")
 
-        self.assertEqual(result["events"][1]["tipo_operazione"], "MODIFICA")
-        self.assertEqual(result["events"][2]["tipo_operazione"], "ELIMINAZIONE")
+        self.assertEqual(result["results"][1]["tipo_operazione"], "MODIFICA")
+        self.assertEqual(result["results"][2]["tipo_operazione"], "ELIMINAZIONE")
 
     # Scopo: Filtro data_da viene aggiunto alla query.
     @patch(_CONN)
@@ -234,10 +232,8 @@ class PermissionsAuditRepositoryTests(TestCase):
         self.assertIn(10, params)   # LIMIT
         self.assertIn(20, params)   # OFFSET
 
-        self.assertEqual(result["page"], 3)
-        self.assertEqual(result["page_size"], 10)
+        self.assertEqual(set(result), {"count", "results"})
         self.assertEqual(result["count"], 25)
-        self.assertEqual(result["total_pages"], math.ceil(25 / 10))
 
 
 class PermissionsAuditRepositoryOggettiTests(TestCase):
@@ -292,7 +288,7 @@ class ApiPermessiAuditViewTests(RichiedenteMockatoMixin, TestCase):
 
     # Scopo: ADMIN puo' vedere audit di un altro utente.
     @patch("apps.core.api.views.PermissionResolver")
-    @patch("apps.core.api.views.get_user_model")
+    @patch("apps.core.api.views.utente_per_id")
     @patch(_CONN)
     def test_admin_can_view_other_user(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
@@ -302,7 +298,7 @@ class ApiPermessiAuditViewTests(RichiedenteMockatoMixin, TestCase):
 
         target = MagicMock()
         target.id = 99
-        mock_get_user.return_value.objects.get.return_value = target
+        mock_get_user.return_value = target
 
         mock_cursor = MagicMock()
         mock_cursor.description = _DESCRIZIONE
@@ -319,16 +315,15 @@ class ApiPermessiAuditViewTests(RichiedenteMockatoMixin, TestCase):
     # Scopo: user_id inesistente → 404 E_AMM_UTENTE_NOT_FOUND (E-4: prima
     # E_CORE_VALIDATION, 400), senza toccare il DB dell'audit.
     @patch("apps.core.api.views.PermissionResolver")
-    @patch("apps.core.api.views.get_user_model")
+    @patch("apps.core.api.views.utente_per_id")
     @patch(_CONN)
     def test_utente_non_trovato_404(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
         from apps.core.services.service_errors import ServiceError
 
         self.richiedente_amministratore()
-        DoesNotExist = type("DoesNotExist", (Exception,), {})
-        mock_get_user.return_value.DoesNotExist = DoesNotExist
-        mock_get_user.return_value.objects.get.side_effect = DoesNotExist
+        # Il BB `utente_per_id` risponde `None` per l'utente che non c'e'.
+        mock_get_user.return_value = None
 
         with self.assertRaises(ServiceError) as ctx:
             ApiPermessiAudit().get(_mock_request(user_id=1), user_id=9999)
@@ -338,7 +333,7 @@ class ApiPermessiAuditViewTests(RichiedenteMockatoMixin, TestCase):
 
     # Scopo: OPERATIVO puo' vedere il proprio audit.
     @patch("apps.core.api.views.PermissionResolver")
-    @patch("apps.core.api.views.get_user_model")
+    @patch("apps.core.api.views.utente_per_id")
     @patch(_CONN)
     def test_operativo_can_view_self(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
@@ -347,7 +342,7 @@ class ApiPermessiAuditViewTests(RichiedenteMockatoMixin, TestCase):
 
         target = MagicMock()
         target.id = 5
-        mock_get_user.return_value.objects.get.return_value = target
+        mock_get_user.return_value = target
 
         mock_cursor = MagicMock()
         mock_cursor.description = _DESCRIZIONE
@@ -381,7 +376,7 @@ class ApiPermessiAuditViewTests(RichiedenteMockatoMixin, TestCase):
 
     # Scopo: Tabella non valida restituisce errore di validazione.
     @patch("apps.core.api.views.PermissionResolver")
-    @patch("apps.core.api.views.get_user_model")
+    @patch("apps.core.api.views.utente_per_id")
     def test_tabella_invalida_rejected(self, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
         from apps.core.services.service_errors import ServiceError
@@ -390,7 +385,7 @@ class ApiPermessiAuditViewTests(RichiedenteMockatoMixin, TestCase):
 
         target = MagicMock()
         target.id = 5
-        mock_get_user.return_value.objects.get.return_value = target
+        mock_get_user.return_value = target
 
         request = _mock_request(user_id=1, query_params={"tabella": "tabella_inventata"})
         view = ApiPermessiAudit()
@@ -404,7 +399,7 @@ class ApiPermessiAuditViewTests(RichiedenteMockatoMixin, TestCase):
     # via `ValueError`): dal 2026-10-21 la finestra e' `limit`/`offset`
     # (`pagina_da_query`), e un `offset` negativo si riporta a 0 (F-4).
     @patch("apps.core.api.views.PermissionResolver")
-    @patch("apps.core.api.views.get_user_model")
+    @patch("apps.core.api.views.utente_per_id")
     @patch(_CONN)
     def test_page_zero_rifiutata(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
@@ -412,7 +407,7 @@ class ApiPermessiAuditViewTests(RichiedenteMockatoMixin, TestCase):
         self.richiedente_amministratore()
         target = MagicMock()
         target.id = 5
-        mock_get_user.return_value.objects.get.return_value = target
+        mock_get_user.return_value = target
 
         for qp, atteso in (
             ({"page": "0"}, "page_non_ammesso_usare_limit_offset"),
@@ -427,7 +422,7 @@ class ApiPermessiAuditViewTests(RichiedenteMockatoMixin, TestCase):
     # Scopo: ⛔ un `limit` oltre 200 e' un 400 (Tid 2026-10-21), non una
     #        riduzione muta a 200: la query non parte.
     @patch("apps.core.api.views.PermissionResolver")
-    @patch("apps.core.api.views.get_user_model")
+    @patch("apps.core.api.views.utente_per_id")
     @patch(_CONN)
     def test_limit_oltre_200_e_400(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
@@ -437,7 +432,7 @@ class ApiPermessiAuditViewTests(RichiedenteMockatoMixin, TestCase):
 
         target = MagicMock()
         target.id = 5
-        mock_get_user.return_value.objects.get.return_value = target
+        mock_get_user.return_value = target
 
         mock_cursor = MagicMock()
         mock_cursor.description = _DESCRIZIONE

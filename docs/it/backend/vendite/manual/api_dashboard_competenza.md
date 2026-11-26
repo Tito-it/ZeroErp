@@ -40,16 +40,17 @@ lista. Le liste `commesse/`, `gruppi/`, `residui/`, `errori/` e i loro export
 dichiarano `lista_codice` (`vendite.dash_competenza_*`): il cancello di
 perimetro emittente può rispondere `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`.
 
-**Ordinamento comune** a tutte le liste: con `order_by` e senza `order_dir` le
-colonne data (per nome: `data_*`, `*_dal/_al`, `*_at`, `competenza_mese`)
-partono DESC, le altre ASC; il vuoto vale come minimo (`ASC NULLS FIRST` /
+**Ordinamento comune** a tutte le liste: senza `order_dir` la colonna chiesta va in crescente; il default della lista resta il suo (la regola «le date
+partono DESC» è ritirata dal 2026-11-24); il vuoto vale come minimo (`ASC NULLS FIRST` /
 `DESC NULLS LAST`, `sql_order_direction`). Paginazione `limit`/`offset`
 (`pagina_da_query`): `limit` default 25, max 200, `offset` default 0; non
 interi, `limit` fuori da 1..200 o `offset` negativo → 400 `E_VALIDATION_INPUT`
 (il fuori limite dal 2026-10-21: prima si riportava nei limiti in silenzio). ⛔
 `page`/`page_size` in query sono un 400 `E_VALIDATION_INPUT` dal 2026-10-21
-(prima erano il contratto di queste liste); la risposta porta ancora `page` e
-`page_size`, ricavati dall'offset.
+(prima erano il contratto di queste liste). Dal 2026-11-24 la risposta è
+`{count, offset_effettivo, results}` ([api.md §Paginazione](../../../dev/api.md)): `offset_effettivo` è l'offset
+davvero servito (chiesto oltre la fine, il backend serve l'ultima pagina e lo
+dice lì), al posto della `page` che fino a quel giorno ricavava dall'offset.
 
 Catena: view (`views_dashboard_competenza.py`) →
 `vendite_service.fn_dash_competenza_{mensile,attivita,commesse,errori}` →
@@ -317,7 +318,7 @@ paginata, e sommare la pagina darebbe un parziale con l'aspetto di un totale.
 
 ### Drill-down attività
 
-Envelope paginato standard (`count/page/page_size/total_pages/results`); ogni riga:
+Envelope di lista `{count, offset_effettivo, results}` (`pagina_con_totale`); ogni riga:
 chiavi (`commessa_attivita_id`, `commessa_id`, `commessa_codice`),
 `cliente_display`, articolo decodificato via JOIN (`articolo_id`,
 `articolo_codice`, `articolo_descrizione`), `data_attivita`, `quantita`, `stadio`,
@@ -335,7 +336,7 @@ direzione **whitelistate** (mai input grezzo).
 
 ### Drill-down per commessa (aggregato)
 
-Envelope paginato standard; `count` = numero di **commesse** distinte. Ogni riga:
+Envelope di lista `{count, offset_effettivo, results}`; `count` = numero di **commesse** distinte. Ogni riga:
 `commessa_id`, `commessa_codice`, `cliente_display`, `n_attivita` (COUNT),
 `n_in_ritardo` (COUNT FILTER `emessa_in_ritardo`), `valore_tot` (SUM `valore`),
 `valore_fatturato_tot` (SUM `valore_fatturato`), `data_attivita_min` /
@@ -346,7 +347,7 @@ stesso tiebreak.
 
 ### Gruppi fatturabili
 
-Envelope paginato standard **più** la chiave `riepilogo` — i totali di TUTTO il
+Envelope di lista `{count, offset_effettivo, results}` **più** la chiave `riepilogo` — i totali di TUTTO il
 perimetro, non della pagina: `n_gruppi`, `n_attivita`, `valore`,
 `n_gruppi_oneri`, `n_gruppi_trattenuti` (i primi quattro **escludono** i gruppi
 trattenuti da un lotto ancora in gioco, che restano visibili in lista). Vengono dal DB
@@ -568,7 +569,7 @@ tendine, è fra **partizione** e **appartenenza multipla**.
 ```json
 {
   "data": {
-    "count": 5, "page": 1, "page_size": 25, "total_pages": 1,
+    "count": 5, "offset_effettivo": 0,
     "results": [
       {
         "attivita_fatturabile_id": 1123,
@@ -602,7 +603,7 @@ dove dichiara di che natura sono le righe che si stanno leggendo.
 
 ### Errori vivi
 
-Envelope paginato standard; ogni riga: `tipo_evento`
+Envelope di lista `{count, offset_effettivo, results}`; ogni riga: `tipo_evento`
 (`TASK_ERRORE | FATTURA_CRITICA`), `competenza_mese`, `lotto_id/lotto_codice/
 stato_lotto`, `fattura_id/anno/serie/numero`, `task_code`, `error_code`,
 `messaggio`, `data_evento`, `commesse_fallite`, `n_commesse_fallite`,
@@ -733,3 +734,6 @@ tecnica in `meta.context.dettaglio_tecnico` della riga di log.
 - 2026-10-21: le cinque liste (`attivita/`, `commesse/`, `gruppi/`, `residui/`,
   `errori/`) leggono la finestra come `limit`/`offset` (`pagina_da_query`);
   `page`/`page_size` in query diventano un 400. Envelope invariato.
+- 2026-11-24: le cinque liste rispondono `{count, offset_effettivo, results}`
+  (`pagina_con_totale`, D-1 di brief-be-fe-BB-audit): `page`, `page_size` e
+  `total_pages` escono, la finestra servita la dichiara `offset_effettivo`.

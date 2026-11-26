@@ -68,6 +68,7 @@ possono "coprire" un tipo); al livello 1 restano tutti.
         "tipo_contatto_descrizione": "Referente commerciale",
         "unita_organizzativa_id": null,
         "istanza_utility_id": 100,
+        "is_default": true,
         "utility_codice": "ELE",
         "fonte": "istanza"
       }
@@ -143,7 +144,27 @@ altro ruolo → `404 E_ANAG_NOT_FOUND`.
 | **URL** | `/api/v1/anagrafiche/ruoli/{soggetto_ruolo_id}/contatti/{contatto_id}/` |
 
 Ownership check su `soggetto_ruolo_id`. Risposta (200): `{"data": {"deleted": true}}`.
-Contatto inesistente o di un altro ruolo → `404 E_ANAG_NOT_FOUND`.
+Contatto inesistente o di un altro ruolo → `404 E_ANAG_NOT_FOUND`. Il predefinito con altri
+contatti nel suo contesto (ruolo, istanza) → `409 E_CONTATTO_PREDEFINITO_DA_SOSTITUIRE`, campo
+`is_default`: prima se ne rende predefinito un altro (§5).
+
+---
+
+## 5. Rendi predefinito un contatto del ruolo
+
+| | |
+|---|---|
+| **Metodo** | `POST` |
+| **URL** | `/api/v1/anagrafiche/ruoli/{soggetto_ruolo_id}/contatti/{contatto_id}/predefinito/` |
+
+Ownership check su `soggetto_ruolo_id`. Il contatto diventa il predefinito del suo contesto
+(il ruolo, o il ruolo su un'istanza); quello di prima perde il segno da sé. Il predefinito del
+soggetto e quello degli altri ruoli non cambiano. Corpo vuoto (`{}`), con l'`Idempotency-Key`.
+Gemello di `POST /soggetti/{soggetto_id}/contatti/{contatto_id}/predefinito/`
+([api_soggetti](api_soggetti.md) §6.3).
+
+Risposta (200): `{"data": {"is_default": true}}`. Contatto inesistente, di un altro ruolo o del
+soggetto → `404 E_ANAG_NOT_FOUND`.
 
 ---
 

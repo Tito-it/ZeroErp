@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> I job che chiedono un occhio; deve restare VUOTA. Per ogni job si guarda l'ultima corsa VERA (le corse saltate sono escluse), cosi' un job che torna a funzionare esce da solo. Quattro motivi: l'ultima corsa e' FALLITA; e' rimasta aperta da oltre un'ora (presa e mai chiusa: il job e' morto senza arrivare al gestore d'eccezione); e' verde ma c'e' un rosso negli ultimi sette giorni (intermittente, anche se in corso da meno di un'ora); per un processo col verdetto completo, e' verde ma e' ricaduto dopo essere tornato verde (instabile, almeno due tratti rossi). falliti_ultimi_7_giorni conta le CORSE fallite (run_uuid distinti) dall'ultima corsa vera all'indietro: quando il chiamante di maintenance.fn_run_and_log cattura l'eccezione, una corsa fallita lascia due righe rosse con lo stesso run_uuid. Le colonne in coda dicono a chi tocca: sqlstate dell'ultima corsa; causa (dbops.cause_fallimento) = AMBIENTE per una corsa appesa o per lo SQLSTATE d'ambiente dell'ultimo rosso (script.fn_sqlstate_di_ambiente), poi la causa del codice dell'ultimo rosso (config.codici_errore), poi quella del processo (dbops.processi), PROGRAMMA senza processo a catalogo; ultimo_rosso_job_run_id e' la corsa da cui la causa e' letta. Il lavoro che non parte affatto non sta qui: lo vede dbops.vw_processi_programmazione_da_guardare, dalla tolleranza dichiarata nel catalogo. Niente RLS: un giro di manutenzione non appartiene a un'azienda; chi la vede lo decide il backend.
+> I job che chiedono un occhio; deve restare VUOTA. Una riga per corsia, la coppia (processo_codice, jobname) di maintenance.vw_job_run_corsie: due processi con una corsia dello stesso nome sono due righe, e i rossi dell'una non toccano l'altra. Per ogni corsia si guarda l'ultima corsa VERA (le corse saltate sono escluse), cosi' una corsia che torna a funzionare esce da sola. Quattro motivi: l'ultima corsa e' FALLITA; e' rimasta aperta da oltre un'ora (presa e mai chiusa: il job e' morto senza arrivare al gestore d'eccezione); e' verde ma c'e' un rosso negli ultimi sette giorni (intermittente, anche se in corso da meno di un'ora); per un processo col verdetto completo, e' verde ma e' ricaduto dopo essere tornato verde (instabile, almeno due tratti rossi). falliti_ultimi_7_giorni conta le CORSE fallite della corsia (run_uuid distinti) dall'ultima corsa vera all'indietro: quando il chiamante di maintenance.fn_run_and_log cattura l'eccezione, una corsa fallita lascia due righe rosse con lo stesso run_uuid. Le colonne in coda dicono a chi tocca: sqlstate dell'ultima corsa; causa (dbops.cause_fallimento) = AMBIENTE per una corsa appesa o per lo SQLSTATE d'ambiente dell'ultimo rosso (script.fn_sqlstate_di_ambiente), poi la causa del codice dell'ultimo rosso (config.codici_errore), poi quella del processo (dbops.processi), PROGRAMMA senza processo a catalogo; ultimo_rosso_job_run_id e' la corsa della stessa corsia da cui la causa e' letta. Il lavoro che non parte affatto non sta qui: lo vede dbops.vw_processi_programmazione_da_guardare, dalla tolleranza dichiarata nel catalogo. Niente RLS: un giro di manutenzione non appartiene a un'azienda; chi la vede lo decide il backend.
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
@@ -11,16 +11,7 @@
 
 ```sql
 CREATE OR REPLACE VIEW maintenance.vw_job_run_da_guardare AS
-WITH RECURSIVE jobs AS (
-         SELECT min(j0.jobname) AS jobname
-           FROM maintenance.job_run_log j0
-        UNION ALL
-         SELECT ( SELECT min(j1.jobname) AS min
-                   FROM maintenance.job_run_log j1
-                  WHERE (j1.jobname > jobs.jobname)) AS jobname
-           FROM jobs
-          WHERE (jobs.jobname IS NOT NULL)
-        ), ultima AS (
+WITH ultima AS (
          SELECT u_1.id,
             u_1.jobname,
             u_1.stepname,
@@ -37,7 +28,7 @@ WITH RECURSIVE jobs AS (
             u_1.meta,
             u_1.sqlstate,
             u_1.verdetto_completo
-           FROM (jobs j
+           FROM (maintenance.vw_job_run_corsie k
              CROSS JOIN LATERAL ( SELECT l.id,
                     l.jobname,
                     l.stepname,
@@ -56,19 +47,20 @@ WITH RECURSIVE jobs AS (
                     COALESCE(pr_1.corsa_verdetto_completo, false) AS verdetto_completo
                    FROM (maintenance.job_run_log l
                      LEFT JOIN dbops.processi pr_1 ON ((pr_1.codice = l.processo_codice)))
-                  WHERE ((l.jobname = j.jobname) AND (NOT l.saltata) AND (NOT (COALESCE(pr_1.corsa_verdetto_completo, false) AND (l.ok IS NULL) AND (l.ended_at IS NULL) AND (l.started_at >= (now() - '01:00:00'::interval)))))
+                  WHERE ((l.processo_codice = k.processo_codice) AND (l.jobname = k.jobname) AND (NOT l.saltata) AND (NOT (COALESCE(pr_1.corsa_verdetto_completo, false) AND (l.ok IS NULL) AND (l.ended_at IS NULL) AND (l.started_at >= (now() - '01:00:00'::interval)))))
                   ORDER BY l.started_at DESC, l.id DESC
                  LIMIT 1) u_1)
-          WHERE (j.jobname IS NOT NULL)
         ), tratti AS (
-         SELECT s.jobname,
+         SELECT s.processo_codice,
+            s.jobname,
             count(*) FILTER (WHERE ((s.ok IS FALSE) AND (s.precedente IS DISTINCT FROM false))) AS tratti_rossi
-           FROM ( SELECT p.jobname,
+           FROM ( SELECT p.processo_codice,
+                    p.jobname,
                     p.ok,
-                    lag(p.ok) OVER (PARTITION BY p.jobname ORDER BY p.started_at, p.id) AS precedente
+                    lag(p.ok) OVER (PARTITION BY p.processo_codice, p.jobname ORDER BY p.started_at, p.id) AS precedente
                    FROM maintenance.job_run_log p
                   WHERE ((NOT p.saltata) AND (p.ok IS NOT NULL) AND (p.started_at >= (now() - '7 days'::interval)))) s
-          GROUP BY s.jobname
+          GROUP BY s.processo_codice, s.jobname
         ), da_guardare AS (
          SELECT u.id,
             u.jobname,
@@ -86,10 +78,10 @@ WITH RECURSIVE jobs AS (
             ((u.ok IS NULL) AND (u.ended_at IS NULL) AND (u.started_at < (now() - '01:00:00'::interval))) AS appesa,
             u.verdetto_completo
            FROM (ultima u
-             LEFT JOIN tratti t ON ((t.jobname = u.jobname)))
+             LEFT JOIN tratti t ON (((t.processo_codice = u.processo_codice) AND (t.jobname = u.jobname))))
           WHERE ((u.ok IS FALSE) OR ((NOT u.verdetto_completo) AND (EXISTS ( SELECT 1
                    FROM maintenance.job_run_log p
-                  WHERE ((p.jobname = u.jobname) AND (p.ok IS FALSE) AND (p.started_at >= (now() - '7 days'::interval)))))) OR (u.verdetto_completo AND (COALESCE(t.tratti_rossi, (0)::bigint) >= 2)) OR ((u.ok IS NULL) AND (u.ended_at IS NULL) AND (u.started_at < (now() - '01:00:00'::interval))))
+                  WHERE ((p.processo_codice = u.processo_codice) AND (p.jobname = u.jobname) AND (p.ok IS FALSE) AND (p.started_at >= (now() - '7 days'::interval)))))) OR (u.verdetto_completo AND (COALESCE(t.tratti_rossi, (0)::bigint) >= 2)) OR ((u.ok IS NULL) AND (u.ended_at IS NULL) AND (u.started_at < (now() - '01:00:00'::interval))))
         )
  SELECT g.jobname,
     g.processo_codice,
@@ -111,7 +103,7 @@ WITH RECURSIVE jobs AS (
     g.id AS job_run_id,
     ( SELECT count(DISTINCT p.run_uuid) AS count
            FROM maintenance.job_run_log p
-          WHERE ((p.jobname = g.jobname) AND (p.ok IS FALSE) AND (p.started_at >= (g.started_at - '7 days'::interval)))) AS falliti_ultimi_7_giorni,
+          WHERE ((p.processo_codice = g.processo_codice) AND (p.jobname = g.jobname) AND (p.ok IS FALSE) AND (p.started_at >= (g.started_at - '7 days'::interval)))) AS falliti_ultimi_7_giorni,
     g.sqlstate,
         CASE
             WHEN g.appesa THEN 'AMBIENTE'::text
@@ -122,14 +114,13 @@ WITH RECURSIVE jobs AS (
    FROM (((da_guardare g
      LEFT JOIN LATERAL ( SELECT p.id,
             p.error_code,
-            p.sqlstate,
-            p.processo_codice
+            p.sqlstate
            FROM maintenance.job_run_log p
-          WHERE ((p.jobname = g.jobname) AND (p.ok IS FALSE))
+          WHERE ((p.processo_codice = g.processo_codice) AND (p.jobname = g.jobname) AND (p.ok IS FALSE))
           ORDER BY p.started_at DESC, p.id DESC
          LIMIT 1) r ON (true))
      LEFT JOIN config.codici_errore ce ON ((ce.codice = r.error_code)))
-     LEFT JOIN dbops.processi pr ON ((pr.codice = COALESCE(r.processo_codice, g.processo_codice))));
+     LEFT JOIN dbops.processi pr ON ((pr.codice = g.processo_codice)));
 ```
 
 </div>

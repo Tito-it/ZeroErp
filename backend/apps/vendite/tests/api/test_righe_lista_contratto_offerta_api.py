@@ -118,6 +118,7 @@ class _RigheListaApiBase:
 
 
 class TestContrattoRigheListaApi(_RigheListaApiBase, JwtMockedApiTest):
+    come_super_admin = True
     service = "apps.vendite.api.views_contratti.ContrattiService"
     base = "/api/v1/vendite/contratti/42/righe/lista/"
     risorsa_scrittura = "/api/v1/vendite/contratti/42/righe/"
@@ -126,6 +127,7 @@ class TestContrattoRigheListaApi(_RigheListaApiBase, JwtMockedApiTest):
 
 
 class TestOffertaRigheListaApi(_RigheListaApiBase, JwtMockedApiTest):
+    come_super_admin = True
     service = "apps.vendite.api.views_offerte.OfferteService"
     base = "/api/v1/vendite/offerte/42/righe/lista/"
     risorsa_scrittura = "/api/v1/vendite/offerte/42/eccezioni/"

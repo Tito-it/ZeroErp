@@ -30,7 +30,8 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useLookup } from '../../core/composables/useLookup'
 import { listAreeFunzionali, listAzioniProcesso } from '../api/amministrazione'
-import { LIVELLO_ACCESSO, buildLivelloOptions, getLivelloLabel, getLivelloSeverity } from '../constants'
+import { LIVELLO_ACCESSO, buildLivelloOptions, getLivelloLabel } from '../constants'
+import { livelloAccessoSeverity } from '../../core/utils/severity'
 import { areaConsenteAzione } from '../tettoArea'
 import { DRAWER_WIDTH, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
@@ -264,7 +265,7 @@ function tettoAzione(az) {
           :value="riassunti[area.area_id].abilitate"
           severity="info"
         />
-        <Tag :value="getLivelloLabel(t, area.livello)" :severity="getLivelloSeverity(area.livello)" />
+        <Tag :value="getLivelloLabel(t, area.livello)" :severity="livelloAccessoSeverity(area.livello)" />
       </template>
 
       <template #dettaglio="{ voce: area }">

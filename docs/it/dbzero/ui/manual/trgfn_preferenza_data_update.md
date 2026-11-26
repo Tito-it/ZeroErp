@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `ui.trgfn_preferenza_data_update`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -25,9 +25,15 @@ INSERT e UPDATE: è l'ora della transazione che scrive. Il valore che arriva da 
 
 ### Perché non l'audit generico
 
-Le preferenze non hanno audit, per scelta: sono un dato personale, scritto solo dal suo proprietario e
-spesso. Non hanno `user_insert` né `user_update`, che il trigger d'audit generico scriverebbe. Resta la
-data dell'ultima scrittura, e questa funzione è la sua sola sede.
+Le preferenze non hanno audit, per scelta: sono un dato personale, scritto spesso dal suo proprietario.
+Non hanno `user_insert` né `user_update`, che il trigger d'audit generico scriverebbe. Resta la data
+dell'ultima scrittura, e questa funzione è la sua sola sede.
+
+L'ultima scrittura è quella della riga, chiunque la faccia: anche il database riscrive una preferenza,
+quando una colonna, una card o una misura che nomina esce dal catalogo
+([trgfn_voce_ritira_dalle_preferenze](/dbzero/ui/funzioni/trgfn_voce_ritira_dalle_preferenze),
+[trgfn_misure_pagina_ritira_dalle_preferenze](/dbzero/ui/funzioni/trgfn_misure_pagina_ritira_dalle_preferenze)),
+e anche allora `data_update` si sposta. Non dice quando l'utente ha salvato l'ultima volta.
 
 ---
 

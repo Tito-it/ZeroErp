@@ -1,6 +1,6 @@
 # Guida — Fatturazione (processo end-to-end)
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend e database
 >
@@ -10,6 +10,8 @@
 > * [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili) — il lavoro fatturabile, riga per riga
 > * [vendite.fatture](/dbzero/vendite/tabelle/fatture) · [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe) · [vendite.fatture_scadenze](/dbzero/vendite/tabelle/fatture_scadenze) — il documento
 > * [vendite.fatturazione_pipeline](/dbzero/vendite/tabelle/fatturazione_pipeline) — gli step e i task della pipeline a lotti
+> * [dbops.pipeline_task_registry](/dbzero/dbops/tabelle/pipeline_task_registry) — i task ammessi, e quali sono distruttivi
+> * [vendite.fn_check_rollback_step_automatico](/dbzero/vendite/funzioni/fn_check_rollback_step_automatico) — se il rollback di uno step può partire da solo
 > * [vendite.event_log](/dbzero/vendite/tabelle/event_log) — la timeline unificata degli eventi
 >
 > **Vedi anche** — funzioni e trigger DB:
@@ -17,6 +19,15 @@
 > * [vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa) — l'emissione da commessa
 > * [vendite.fn_get_or_create_commessa](/dbzero/vendite/funzioni/fn_get_or_create_commessa) — match o creazione della commessa
 > * [vendite.fn_assign_numero_fattura](/dbzero/vendite/funzioni/fn_assign_numero_fattura) — il punto unico in cui si assegna il progressivo
+> * [vendite.fn_annulla_lotto_da_draft](/dbzero/vendite/funzioni/fn_annulla_lotto_da_draft) — «annulla lotto»: il lotto pre-fiscale si demolisce e si chiude
+> * [vendite.fn_riporta_lotto_a_draft](/dbzero/vendite/funzioni/fn_riporta_lotto_a_draft) — «riporta in lavorazione»: il lotto torna in bozza e si rifà
+> * [vendite.fn_elimina_fattura_da_lotto](/dbzero/vendite/funzioni/fn_elimina_fattura_da_lotto) — «togli la fattura dal lotto»: una fattura sola, il lotto prosegue
+> * [vendite.fn_escludi_documento_da_giro](/dbzero/vendite/funzioni/fn_escludi_documento_da_giro) — «escludi dal giro»: un documento rotto esce, il lotto riparte
+> * [vendite.fn_cleanup_fatture_by_ids](/dbzero/vendite/funzioni/fn_cleanup_fatture_by_ids) — la pulizia comune ai verbi del reset, riservata al proprietario
+> * [vendite.fn_porta_reset_lotto_aperta](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta) — la porta del reset del lotto: la GUC e il proprietario
+> * [vendite.fn_guard_passaggio_lotto](/dbzero/vendite/funzioni/fn_guard_passaggio_lotto) — il permesso dell'annullo e del ritorno in bozza
+> * [script.fn_guard_livello_area](/dbzero/script/funzioni/fn_guard_livello_area) — il livello `TUTTO` sull'area `vendite`, quando il passaggio non ha azione
+> * [vendite.fn_check_fondo_cancellabile](/dbzero/vendite/funzioni/fn_check_fondo_cancellabile) — il criterio dei fondi che il reset non tocca
 >
 > **Vedi anche** — API e service backend:
 >
@@ -454,11 +465,12 @@ avanzamento di step le fatture del lotto vengono allineate (`fn_sync_lotto_fattu
 per **EMESSA(2) prima di DEFINITIVA(8)** — `1→2→8`, **mai** `1→8`. Semantica: non si assegna
 un numero fiscale (DEFINITIVA) a una fattura di cui non si è certificata l'IVA (EMESSA).
 
-* **MASSIVO**: la fattura fa `1→2→8→3`. Lo step EMESSA prepara il documento pre-fiscale
-  (rifacibile: ha rollback `reset_lotto_draft`), poi DEFINITIVA numera.
+* **MASSIVO**: la fattura fa `1→2→8→3`. Lo step EMESSA prepara il documento pre-fiscale,
+  che finché non è numerato si può rifare («riporta in lavorazione») o annullare; poi
+  DEFINITIVA numera.
 * **GIORNALIERO**: stessa sequenza `1→2→8→3` a livello sia di lotto sia di fattura, **con gli
-  stessi task** della corsia massiva. Cambia solo il rollback: la corsia immediata non ne ha,
-  perché arriva da sola fino alla numerazione e una fattura numerata non si resetta.
+  stessi task** della corsia massiva. Nessuna delle due corsie ha un rollback di pipeline
+  (dal 2026-11-24, ritiro di `reset_lotto_draft`).
 
 > ⚠️ **Le due corsie EMESSA devono restare allineate, ed è un invariante presidiato.** Lo step EMESSA
 > non può essere vuoto su una corsia: nessun trigger ricalcola IVA e totali dopo la nascita del
@@ -538,25 +550,46 @@ i task di rollback al posto di quelli forward. Il `PipelineStepExecutor` chiama
 
 **Quando scatta il rollback:**
 
-Il rollback è manuale (richiesto dall'operatore o dall'API `reset_lotto`) oppure
-automatico se la pipeline ha `meta.auto_step_rollback = true`. Non scatta mai
-spontaneamente su errore: un errore lascia il lotto in stato `ERRORE` e serve
-un rerun esplicito.
+Il rollback automatico gira solo su un rerun dopo un errore, e solo se la funzione
+`vendite.fn_check_rollback_step_automatico` lo ammette per quello step. Lo ammette quando
+valgono tre cose:
+
+* la corsia lo accende: la colonna `auto_step_rollback` della pipeline è vera. È una
+  proprietà della corsia, non della singola richiesta di run, e la chiave omonima nel
+  `meta` è rifiutata;
+* il rollback ha almeno un task;
+* ogni suo task è registrato e attivo in `dbops.pipeline_task_registry` e **non è
+  distruttivo**. Un task distruttivo (`distruttivo`, sul registro: cancella o annulla dati
+  che un rilancio non ricostruisce) non parte mai da solo. Un task spento o che il registro
+  non conosce chiude il rollback automatico allo stesso modo: «non so che cosa fa» non vuol
+  dire «innocuo».
+
+Altrimenti il rollback resta eseguibile solo su richiesta esplicita. Non scatta mai
+spontaneamente su errore: un errore lascia il lotto in stato `ERRORE` e serve un rerun
+esplicito. Le uscite dell'operatore non passano dal rollback della pipeline: sono verbi
+chiamati dall'endpoint (sotto).
 
 **Il seed di oggi (corsia MASSIVO):**
 
-| Step   | `processi`                                                                                           | `rollback`          |
-| ------ | ---------------------------------------------------------------------------------------------------- | ------------------- |
-| DRAFT  | `pull_attivita_da_commessa`, `select_attivita`, `generate_fatture_righe`, `snapshot_indirizzi_lotto` | `[]` (nessuno)      |
-| EMESSA | `genera_fondi_source_lotto`, `applica_fondi_lotto`, `ricalcola_iva_lotto`, `genera_scadenze_lotto`   | `reset_lotto_draft` |
+| Step   | `processi`                                                                                           | `rollback`     |
+| ------ | ---------------------------------------------------------------------------------------------------- | -------------- |
+| DRAFT  | `pull_attivita_da_commessa`, `select_attivita`, `generate_fatture_righe`, `snapshot_indirizzi_lotto` | `[]` (nessuno) |
+| EMESSA | `genera_fondi_source_lotto`, `applica_fondi_lotto`, `ricalcola_iva_lotto`, `genera_scadenze_lotto`   | `[]` (nessuno) |
 
-In questo caso, se un lotto MASSIVO in stato EMESSA deve tornare a DRAFT, il sistema
-esegue il task `reset_lotto_draft`, che ripristina i fondi delle fatture sorgente,
-cancella le righe IVA e i totali generati dallo step forward — **e poi cancella le
-fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
+Nessuna pipeline del seed ha oggi un rollback. Il task `reset_lotto_draft`, che era il
+rollback di EMESSA sulla corsia massiva, è stato **ritirato il 2026-11-24**: nessun
+percorso lo eseguiva, perché l'auto-rollback lo escludeva per nome. Un task nominato nel
+`rollback` deve essere registrato e avere la sua policy, come quelli dei `processi`: lo
+verifica `test-pipeline-processi-invariante-v1.sql` (test 8 e 9).
 
-> ⚠️ **`reset_lotto_draft` non riporta il lotto a DRAFT: lo ANNULLA.**
-> Il nome inganna. Cosa fa davvero, nell'ordine:
+Se un lotto pre-fiscale va abbandonato, l'operatore lo **annulla** col verbo
+`vendite.fn_annulla_lotto_da_draft` (`POST /lotti/<id>/reset-draft/`). Il verbo
+ripristina i fondi delle fatture sorgente, cancella le righe IVA e i totali dello step
+forward, **e poi cancella le fatture e chiude il lotto**. Non è un rollback reversibile:
+è una demolizione.
+
+> ⚠️ **L'annullo non riporta il lotto a DRAFT: lo ANNULLA.**
+> L'URL (`reset-draft`) inganna. Cosa fa davvero, nell'ordine:
 >
 > 1. **pretende il lotto già in DRAFT** (guard *«rollback solo se DRAFT»*): il ritorno
 >    EMESSA→DRAFT lo fa il rerun dello step, *prima*; il task non lo esegue.
@@ -624,7 +657,7 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
 
 **Vincoli:**
 
-* Il rollback pretende il lotto già in **DRAFT**; le **fatture** del lotto possono
+* L'annullo pretende il lotto già in **DRAFT**; le **fatture** del lotto possono
   essere DRAFT o EMESSA (pre-fiscali), altrimenti la fn rifiuta.
   ⚠️ Il vincolo **vale per entrambe le corsie**: anche un giro GIORNALIERO
   interrotto deve poter tornare indietro. Chi trova documentazione che lo dà per
@@ -634,9 +667,9 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
 * Le **fatture non tornano mai a DRAFT**: nella matrice `config.stati_doc_fiscale_transizioni`
   la transizione EMESSA→DRAFT ha `solo_lotto = true`, quindi vale per il **lotto**, non per
   il documento. Una fattura EMESSA si può solo **cancellare** (dal reset), mai retrocedere.
-* L'auto-rollback **esclude** questo task: il `PipelineStepExecutor` non lo esegue mai in
-  auto-run, proprio perché distruttivo. Serve una richiesta esplicita
-  (`POST /lotti/<id>/reset-draft/`).
+* L'annullo non gira mai da solo, perché è distruttivo: serve una richiesta esplicita
+  (`POST /lotti/<id>/reset-draft/`). Fino al 2026-11-24 era anche il task di rollback
+  `reset_lotto_draft`, che l'auto-rollback escludeva per nome; il task è ritirato.
 * Per una singola fattura esiste l'alternativa che **non** annulla il lotto:
   `fn_elimina_fattura_da_lotto`. Il perimetro è **pre-fiscale su
   entrambi i fronti**: sia il lotto sia la fattura devono essere in DRAFT o
@@ -648,6 +681,52 @@ fatture e chiude il lotto**. Non è un rollback reversibile: è una demolizione.
   passaggio nel lotto. È la stessa cosa che il ritorno in bozza fa su tutte le
   fatture del lotto insieme — qui la si fa su una sola.
 * Se `rollback` è `[]` (array vuoto), lo step non prevede operazioni di pulizia.
+
+### Chi può uscire da un lotto, e la porta del reset
+
+Le quattro uscite dell'operatore sono verbi del database: girano come proprietario, e quindi
+permesso e perimetro li controllano loro, all'ingresso, prima di toccare qualunque cosa. Il
+permesso è quello dell'endpoint: chi arriva dall'interfaccia non riceve un rifiuto nuovo.
+
+| Uscita | Verbo | Permesso |
+| --- | --- | --- |
+| **annulla lotto** | `fn_annulla_lotto_da_draft` | la riga `DRAFT → ANNULLATA` non ha azione: il livello `TUTTO` sull'area `vendite` |
+| **riporta in lavorazione** da EMESSA | `fn_riporta_lotto_a_draft` | l'azione della riga `EMESSA → DRAFT`, `numera_fatture_lotti` |
+| **riporta in lavorazione** di un lotto già in DRAFT | `fn_riporta_lotto_a_draft` | non c'è passaggio, si fa la sola pulizia: il livello `TUTTO` sull'area `vendite` |
+| **togli la fattura dal lotto** | `fn_elimina_fattura_da_lotto` | l'azione `reset_lotto_fattura_draft` |
+| **escludi il documento dal giro** | `fn_escludi_documento_da_giro` | l'azione `reset_lotto_fattura_draft` |
+
+Senza il permesso il verbo risponde `E_PERMESSO_NEGATO`. Per l'annullo e il ritorno in bozza il
+permesso dipende dallo stato del lotto, quindi il verbo prima legge il lotto e poi chiede il
+permesso, sempre **prima** della pulizia.
+
+**Il perimetro.** Il lotto dev'essere di un'azienda di chi agisce, e così le fatture che il verbo
+tocca: tutte quelle del lotto per l'annullo e il ritorno in bozza, quella indicata per «togli».
+Il controllo è doppio perché il modello non lega la fattura all'azienda del lotto. Fuori dal
+perimetro la risposta è quella di un oggetto che non esiste: `E_LOTTO_NON_TROVATO`, e per la
+fattura di «togli» `E_FATTURA_NON_TROVATA`.
+
+**La porta del reset.** La pulizia comune ai verbi, `fn_cleanup_fatture_by_ids`, scrive su tabelle
+che i loro guard proteggono: attività già fatturate, quantità emesse, satelliti della fattura, stato
+del lotto, log. Per farlo accende la GUC `zeroerp.maintenance_reset_lotto_draft`, e i guard la
+lasciano passare solo se chi scrive è anche il proprietario della tabella
+(`fn_porta_reset_lotto_aperta`).
+
+* La porta si apre **solo dentro la pulizia**: la pulizia la accende prima di cominciare e la
+  spegne prima di uscire. Lo stato del lotto che il verbo scrive dopo lo giudica di nuovo il guard
+  di transizione del lotto.
+* La pulizia è **riservata al proprietario**: l'applicazione non la può chiamare, ci arriva solo
+  dai verbi.
+* ⛔ Per l'applicazione la porta è sempre chiusa: accendere la GUC da sé e scrivere diretta su una
+  di quelle tabelle non apre niente.
+* ⚠️ La GUC è un **interruttore**, non l'id di una riga come nelle altre porte. È un'eccezione
+  voluta: la porta la tiene il proprietario dentro una funzione riservata, per la sola durata della
+  pulizia, e le sue scritture sono le sole che vede.
+
+⭐ **Il criterio dei fondi non ha porte.** `fn_check_fondo_cancellabile` vale identico per il reset e
+per il gesto «cancella il fondo»: nessuna GUC salta il controllo della fattura figlia congelata. Nel
+reset la figlia è una fattura pre-fiscale per costruzione, quindi quel motivo non scatta; se un
+giorno scattasse, il fondo resterebbe e il diario lo direbbe (`W_FONDO_FIGLIA_CONGELATA`).
 
 ### Regole operative del modello lotti
 

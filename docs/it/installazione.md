@@ -1,17 +1,32 @@
 # Installazione
 
-> **Ultimo aggiornamento**: 15 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 
 Questa pagina dice **in che ordine** si tira su ZeroErp su una macchina nuova e
 rimanda alle pagine che spiegano ogni passo. Ciò che si configura **dentro** il
 programma (azienda, operatori, posta, timer) sta in
 [Configurazione iniziale](configurazione-iniziale.md).
 
-⚠️ La forma del setup «macchina singola» (Docker o ambiente virtuale Python) non
-è ancora decisa ([promemoria](dev/work-in-progress/promemoria-installazione-md.md)).
-La parte del **database** non dipende da quella scelta ed è scritta per intero qui
-sotto. La messa in opera completa di un server è nel
-[play-book operativo](dev/backend/play-book-operativo-backend.md).
+La procedura qui sotto è quella con l'**ambiente virtuale Python** (venv), che
+è il setup di oggi. Un'installazione con Docker non c'è ancora: se e come farla
+è una decisione aperta ([promemoria](dev/work-in-progress/promemoria-installazione-md.md)).
+La parte del database non dipende da quella scelta.
+
+Questa pagina vale per una macchina qualsiasi. I comandi passo per passo del
+server di riferimento (container Proxmox, Tailscale, UFW, certificato
+self-signed) stanno nel
+[play-book operativo](dev/backend/play-book-operativo-backend.md): sono
+**l'infrastruttura di quella macchina**, non requisiti di ZeroErp.
+
+L'ordine:
+
+1. prerequisiti, codice, ambiente Python e Liquibase;
+2. le variabili d'ambiente, che servono già al database;
+3. il database;
+4. il backend, dietro Nginx;
+5. il primo amministratore;
+6. i processi automatici;
+7. il frontend.
 
 ## Prerequisiti
 
@@ -25,6 +40,8 @@ sotto. La messa in opera completa di un server è nel
 - Node.js, per il frontend (Vue 3 + Vite), alla versione di `engines.node` in
   `frontend/package.json`
 - Redis, la cache del backend (in alternativa, solo per una prova, `CACHE_BACKEND=locmem`)
+- Nginx, l'unico ingresso: davanti al backend e, in sviluppo, anche davanti a Vite
+- systemd, per il backend e per i processi automatici
 - Le **librerie di sistema di WeasyPrint**, che stampa i PDF: senza, l'import di WeasyPrint fallisce
   e non esce nessuna stampa. L'elenco dei pacchetti è uno solo, nel `Dockerfile` (il blocco
   `apt-get install` delle librerie native, fra cui `libharfbuzz-subset0`), e sulle macchine di
@@ -58,6 +75,33 @@ Si può rilanciare: ciò che c'è già nella versione giusta non si riscarica. D
 poi Liquibase si lancia **solo** dal wrapper `scripts/liquibase5.sh`, che aggancia il
 driver della versione fissata; nel `PATH` non serve nessun `liquibase`. La CI legge
 le stesse versioni dallo stesso file.
+
+## Le variabili d'ambiente
+
+Si fanno **prima del database**, perché il passo 7 (`manage.py migrate`) le legge.
+
+```bash
+cd backend
+cp .env.example env.sh && chmod 600 env.sh
+# si valorizza env.sh, poi lo stesso elenco senza «export» per systemd:
+sed 's/^export //' env.sh > .env.systemd && chmod 600 .env.systemd
+cd ..
+```
+
+Le obbligatorie sono `DJANGO_SECRET_KEY`, `DJANGO_FIELD_ENCRYPTION_KEYS`,
+`DB_NAME`, `DB_USER` (sempre `zeroerp_app`), `DB_PASSWORD`,
+`DJANGO_TRUSTED_PROXY_COUNT` e `FRONTEND_URL`. Poi `DB_HOST` e
+`DJANGO_ALLOWED_HOSTS`, che servono appena il database o il browser non sono
+sulla stessa macchina. Che cosa decide ognuna, come si generano le chiavi e
+quale dei tre file vince su quale (`env.sh`, `.env.systemd`, `.env`) è spiegato
+in [Configurazione Django](dev/backend/configurazione-django.md), «Variabili
+d'ambiente»: l'elenco vale lì e non si ricopia qui.
+
+⛔ Nessuno di questi file si committa: li tengono fuori `.gitignore` e gitleaks.
+
+⚠️ Due variabili sbagliate **non danno errore**. Con `DJANGO_TRUSTED_PROXY_COUNT`
+il backend si fida dell'indirizzo sbagliato, e con `FRONTEND_URL` le email
+mandano link rotti.
 
 ## Il database
 
@@ -189,6 +233,7 @@ scripts/liquibase5.sh --url=jdbc:postgresql://<DB_HOST>:5432/zeroerp \
 
 # 7. le tabelle di Django, con le credenziali di zeroerp_owner
 cd backend
+set -a; source ./env.sh; set +a
 export DB_USER=zeroerp_owner DB_PASSWORD='…'
 python manage.py migrate contenttypes --noinput
 python manage.py migrate auth --noinput
@@ -256,6 +301,124 @@ fa tutto e poi annulla. I passi sono in
   (privilegi, attributi dei ruoli, RLS);
 * il giorno dopo, il pannello dei presidi non segnala lavori notturni eseguiti da
   un amministratore (`maintenance.vw_job_run_da_superuser` vuota).
+
+## Il backend
+
+Prima i file statici, poi il servizio:
+
+```bash
+cd backend
+./manage-env.sh collectstatic --noinput
+```
+
+Il backend gira con Gunicorn, avviato dal wrapper versionato
+`backend/bin/start-gunicorn.sh`. Il wrapper ascolta **solo** su `127.0.0.1:8000`
+e legge `env.sh`. Lo avvia l'unità systemd `zeroerp-gunicorn`, con un drop-in
+che aggiunge `.env.systemd`. L'unità, il vhost di Nginx e le impostazioni di
+sicurezza dietro proxy sono in
+[Configurazione Django](dev/backend/configurazione-django.md) («Gunicorn con
+systemd», «Nginx»). I comandi per crearli sono nel play-book, §8 e §9.
+
+```bash
+sudo systemctl enable --now zeroerp-gunicorn
+```
+
+Per una prova senza systemd basta `./manage-env.sh run` (runserver su
+`127.0.0.1:8000`).
+
+⚠️ Il backend non si ricarica da solo: dopo una modifica al codice Python ci
+vuole `kill -HUP` sul processo master. Dopo una modifica a una variabile
+d'ambiente ci vuole `sudo systemctl restart zeroerp-gunicorn`, perché `HUP`
+non rilegge l'ambiente.
+
+⛔ Django (8000) e Vite (5173) non si espongono mai: si entra solo da Nginx. La
+verifica è il §13 del play-book.
+
+## Il primo amministratore
+
+Il primo amministratore lo crea `manage.py crea_primo_amministratore`, una volta,
+dopo il provisioning. Lo lancia la persona che diventerà amministratore: chiede la
+password due volte, e l'account nasce con la veste già accesa, senza invito.
+
+```bash
+sudo -u $APP_USER bash -lc "
+cd $APP_DIR/backend
+./manage-env.sh crea_primo_amministratore \\
+  --cognome Rossi --nome Anna --codice-fiscale RSSNNA80A41H501X --sesso F \\
+  --email anna.rossi@azienda.it --username anna.rossi \\
+  --residenza '{\"indirizzo_libero\": \"Via Roma 1\", \"stato_id\": 1, \"comune_id\": 5, \"codice_postale_id\": 9}'
+"
+```
+
+* La **residenza** è obbligatoria. È un oggetto JSON nella forma degli indirizzi del
+  soggetto, senza il tipo: un indirizzo libero (testo, stato e, per lo stato, comune
+  e CAP del catalogo) oppure una via da risolvere. `--domicilio-fiscale`, nella
+  stessa forma, è facoltativo: se manca, il domicilio fiscale è la residenza.
+* Gli **id** dell'indirizzo (`stato_id`, `comune_id`, `codice_postale_id`) sono
+  quelli del catalogo del database, e si leggono con `dbshell`, dalla stessa
+  cartella, prima di lanciare il comando:
+
+  ```bash
+  # lo stato: per un indirizzo italiano e' l'Italia
+  ./manage-env.sh dbshell -- -c "SELECT id, descrizione FROM config.stati WHERE sigla_stato = 'ITA'"
+
+  # il comune e il CAP: si cambia il nome del comune; un comune con piu' CAP da' piu' righe
+  ./manage-env.sh dbshell -- -c "
+    SELECT c.id AS comune_id, c.descrizione AS comune, p.sigla AS provincia,
+           cp.id AS codice_postale_id, cp.codice AS cap
+      FROM config.comuni c
+      JOIN config.codici_postali cp ON cp.comune_id = c.id
+      LEFT JOIN config.province p ON p.id = c.provincia_id
+     WHERE c.descrizione ILIKE 'Bologna'
+     ORDER BY cp.codice"
+  ```
+
+  Per l'Italia servono il comune e il CAP, presi dalla **stessa riga**: il CAP deve
+  essere di quel comune. Per uno stato estero, che non ha il catalogo dei comuni, al
+  posto di `comune_id` e `codice_postale_id` si scrive la località (`"locality"`) e,
+  se c'è, il codice postale (`"postal_code"`). Come vale la regola:
+  [L'indirizzo libero](/dbzero/anagrafiche/_indirizzo-libero-o-dettaglio).
+* Senza terminale si aggiunge `--noinput` e la password si passa nella variabile
+  `ZEROERP_PRIMO_AMMINISTRATORE_PASSWORD`, mai come argomento.
+* Se l'email è già di un account (per esempio uno creato con il vecchio
+  `createsuperuser`), il comando lo mostra e chiede se riusarlo. Con `--noinput`
+  il riuso si dichiara con `--riusa-credenziale <auth_user_id>`. Riusato, l'account
+  tiene il suo nome utente e la sua password: quella digitata non si usa, e il
+  comando lo dice prima di chiederla.
+* Il comando funziona solo finché nessun accesso ha mai avuto il profilo
+  SUPER_ADMIN; dopo risponde che il primo impianto è chiuso. Gli amministratori
+  successivi li crea un SUPER_ADMIN, con l'invito.
+
+⛔ `manage.py createsuperuser` non dà un amministratore: crea solo una credenziale
+senza veste (il login risponde 403 `E_VESTE_NON_ATTIVA`), e il flag `is_superuser`
+non concede niente. Il dettaglio è nel play-book, §11.
+
+Una volta entrati, ciò che si configura dentro il programma (azienda, operatori,
+posta, destinatario delle segnalazioni, parametri, modelli di stampa) è in
+[Configurazione iniziale](configurazione-iniziale.md).
+
+## I processi automatici
+
+Fatturazione, code di lavoro e di stampa, email, digest dei presidi e listener
+girano come timer e servizi systemd. Le unità sono template versionati in
+`backend/deploy/systemd/`. Chi si sveglia e con che cadenza lo dichiara
+`backend/deploy/sveglie.json`. Le installa uno script idempotente, che si può
+rilanciare:
+
+```bash
+sudo backend/bin/install-timers.sh
+systemctl list-timers | grep zeroerp
+```
+
+Se un processo lavora non lo decide l'installer. A ogni sveglia lo chiede al
+database, secondo l'ambiente scelto al passo 8 o la scelta fatta a mano dal
+drawer dei processi.
+
+⚠️ I due giri di fatturazione nascono **spenti**: emettono documenti, e si
+accendono dal drawer solo quando l'installazione è pronta per SDI.
+
+Il modello e i comandi sono nel play-book, §15 e §16, e in
+[Servizi ZeroERP — i comandi](dev/backend/servizi-zeroerp-comandi.md).
 
 ## Il frontend
 

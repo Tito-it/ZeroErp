@@ -17,18 +17,26 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_normalize()
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-  ------------------------------------------------------------------
-  -- 1) Imposta stato_id di default da config.stati se e' NULL
-  IF NEW.stato_id IS NULL THEN
-    NEW.stato_id := script.fn_stato_proposto_id(TG_NAME);           -- cast al tipo integer di stato_id
-  END IF;
+    -- 1) L'identificativo fiscale nella forma che l'indice d'unicita'
+    --    e i guard confrontano (D-T5-2 a): maiuscole, nessuno spazio,
+    --    vuoto -> NULL. Una regola sola per ogni strada di scrittura.
+    NEW.codice_fiscale       := NULLIF(upper(regexp_replace(NEW.codice_fiscale, '\s', '', 'g')), '');
+    NEW.partita_iva          := NULLIF(upper(regexp_replace(NEW.partita_iva, '\s', '', 'g')), '');
+    NEW.piva_gruppo_acquisto := NULLIF(upper(regexp_replace(NEW.piva_gruppo_acquisto, '\s', '', 'g')), '');
 
-  RETURN NEW;
+    -- 2) Lo stato proposto, solo alla nascita (S43-1). In modifica uno
+    --    stato NULL e' mezza chiave tolta: lo rifiuta il guard
+    --    dell'identificativo, non lo sostituisce questo trigger.
+    IF TG_OP = 'INSERT' AND NEW.stato_id IS NULL THEN
+        NEW.stato_id := script.fn_stato_proposto_id(TG_NAME);
+    END IF;
+
+    RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_normalize()
-IS 'Normalize: imposta stato_id default (script.fn_stato_proposto_id, rev 2026-10-18: prima state_code_iso3 con fn_get_default_by_param, ritirati; D-1 di Tid); generazione codice demandata al sistema_codici.';
+IS 'Normalize di anagrafiche.soggetti, fase a01: gira prima di tutti i guard, perche'' e'' la normalizzazione che i guard leggono. (1) codice_fiscale, partita_iva e piva_gruppo_acquisto in maiuscolo, senza spazi, vuoto -> NULL: e'' la forma che confrontano l''indice uq_soggetto_idstato_id_fiscale_univoco, il guard dell''identificativo e il validatore del formato, per ogni strada di scrittura. (2) stato_id NULL all''INSERT: lo stato proposto (script.fn_stato_proposto_id). In modifica non si propone niente: uno stato NULL lo rifiuta il guard dell''identificativo. La generazione del codice e'' del sistema codici.';
 ```
 
 </div>

@@ -31,7 +31,7 @@ Indice test:
  2) test_pagina_filtra_il_prodotto_dalla_vista
  3) test_in_vigore_al_tiene_le_righe_senza_fine
  4) test_senza_data_nessun_filtro_di_validita
- 5) test_valido_al_vuoto_ordina_come_infinito_e_parte_desc
+ 5) test_valido_al_vuoto_ordina_come_il_massimo_e_senza_verso_va_asc
  6) test_chiave_fuori_whitelist_e_rifiutata
  7) test_pagina_rispetta_il_tetto_e_l_export_lo_alza
  8) test_la_ricerca_nomina_la_lista_della_distinta
@@ -47,6 +47,7 @@ from apps.catalogo.db import catalogo_bom_repository as modulo
 from apps.catalogo.db.catalogo_bom_repository import CatalogoBomRepository
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.db import righe_lista_mixin as bb
+from apps.core.services.request_context import imposta_vuoti_come_massimo
 
 _VISTA = "catalogo.vw_articoli_componenti_dettaglio"
 _ARTICOLO = "11111111-1111-1111-1111-111111111111"
@@ -103,9 +104,18 @@ class ComponentiListaTests(unittest.TestCase):
         self.assertNotIn("valido_al >=", sql)
         self.assertEqual(params[:1], [_ARTICOLO])
 
-    def test_valido_al_vuoto_ordina_come_infinito_e_parte_desc(self):
+    # ⚠️ Senza verso la colonna chiesta va ASC come ogni colonna (la regola
+    #    «le date partono DESC» e' ritirata dal 2026-11-24, Tid): la riga senza
+    #    fine, il cui vuoto il catalogo dichiara come il massimo
+    #    (brief-db-lista-colonna-vuoto-in-ordine), finisce in fondo. La
+    #    dichiarazione la registra la base view: qui la si registra a mano.
+    def test_valido_al_vuoto_ordina_come_il_massimo_e_senza_verso_va_asc(self):
+        imposta_vuoti_come_massimo(lambda: frozenset({"valido_al"}))
+        self.addCleanup(imposta_vuoti_come_massimo, None)
         sql, _, _ = _pagina(order_by="valido_al", order_dir=None)
-        self.assertIn("ORDER BY COALESCE(v.valido_al, 'infinity'::date) DESC", sql)
+        self.assertIn("ORDER BY v.valido_al ASC NULLS LAST", sql)
+        # `valido_dal` e' la colonna di DEFAULT della lista: segue il suo verso
+        # (`_righe_ordine_documento_desc`), non la regola ritirata.
         sql, _, _ = _pagina(order_by="valido_dal", order_dir=None)
         self.assertIn("ORDER BY v.valido_dal DESC", sql)
 

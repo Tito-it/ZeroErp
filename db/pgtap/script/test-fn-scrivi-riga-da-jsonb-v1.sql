@@ -40,7 +40,10 @@
 --   i chiamanti (strutturali: le copie sono ritirate)
 --   19) il pannello chiama i due BB e non compone piu' l'INSERT
 --   20) la madre del contratto chiama il BB e non compone piu' l'INSERT
---   21) il verbo dell'emittente chiama i due BB
+--   21) il verbo dell'emittente chiama fn_scrivi_riga_da_jsonb e
+--       script.fn_guard_campi_ammessi (che usa fn_prima_chiave_estranea;
+--       20261123-03, il guard dei campi ha un test suo:
+--       script/test-fn-guard-campi-ammessi-v1)
 --   22) nessuna di queste tre contiene piu' jsonb_populate_record
 --   la rilettura a istruzione finita (p_rileggi_per, 20261018-34)
 --   23) INSERT riletta per la chiave: la riga col DEFAULT e l'id
@@ -219,8 +222,8 @@ SELECT ok(
 
 SELECT ok(
     pg_temp.corpo('anagrafiche.fn_crea_emittente_fiscale(uuid, character varying, jsonb)'::regprocedure) ~ 'script\.fn_scrivi_riga_da_jsonb\('
-    AND pg_temp.corpo('anagrafiche.fn_crea_emittente_fiscale(uuid, character varying, jsonb)'::regprocedure) ~ 'script\.fn_prima_chiave_estranea\(',
-    '21. il verbo dell''emittente chiama i due BB');
+    AND pg_temp.corpo('anagrafiche.fn_crea_emittente_fiscale(uuid, character varying, jsonb)'::regprocedure) ~ 'script\.fn_guard_campi_ammessi\(',
+    '21. il verbo dell''emittente scrive col BB e rifiuta le chiavi estranee col guard dei campi');
 
 SELECT is(
     (SELECT count(*)::int

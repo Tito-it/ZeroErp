@@ -1,6 +1,6 @@
 # Guida — Configurare il sistema senza perdere le modifiche agli aggiornamenti
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > **Destinatari**: chi configura il sistema per un'azienda (amministratori, consulenti di avvio),
 > analisti funzionali, chi assiste gli operatori; sviluppatori che vogliono il quadro prima del
@@ -112,7 +112,9 @@ Le righe create dall'azienda seguono le regole della loro pagina.
 
 Le colonne di una vista salvata fanno parte della vista. Se l'azienda cambia quali colonne mostra
 una vista proposta dal programma, o il loro ordine, la vista diventa dell'azienda: gli
-aggiornamenti successivi non ne cambiano più le colonne.
+aggiornamenti successivi non ne cambiano più le colonne. Fa eccezione una colonna che il programma
+ritira dalla lista: esce anche dalle viste dell'azienda, perché non c'è più niente da mostrare, e
+gli utenti che partivano da quella vista vedono subito l'avviso «preset aggiornato».
 
 Finché una vista proposta resta intatta, invece, il programma può migliorarla. Gli utenti che
 partivano da quella vista vedono allora l'avviso «preset aggiornato», come quando la modifica un

@@ -21,6 +21,8 @@ DECLARE
     v_processo     dbops.processi%ROWTYPE;
     v_emittente    anagrafiche.emittenti_fiscali%ROWTYPE;
     v_emit_perim   anagrafiche.emittenti_fiscali.id%TYPE;
+    v_utente       anagrafiche.identita_digitali.revocata_da_user_id%TYPE;
+    v_veste_id     anagrafiche.identita_digitali.id%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -35,6 +37,11 @@ BEGIN
     --   non libera lo username, quindi la fabbrica non puo'
     --   rifarlo. Senza questo verbo quella strada e' chiusa.
     -- =========================================================
+
+    -- Guard 0: e' il gesto dell'amministratore (toglie anche la
+    -- revoca): solo SUPER_ADMIN, dalla sessione.
+    v_utente := script.fn_utente_di_sessione('script.fn_riattiva_utente_tecnico');
+    PERFORM script.fn_guard_super_admin(v_utente);
 
     -- Guard 1: il processo deve esistere. «Non c'e'» e «non e'
     -- eleggibile» sono due cose diverse (DB-8).
@@ -103,6 +110,19 @@ BEGIN
             NULL::uuid, p_processo_codice, p_emittente_codice);
     END IF;
 
+    -- La revoca si toglie col suo verbo, prima di riaccendere:
+    -- con il segno il guard della tabella rifiuta l'accensione.
+    FOR v_veste_id IN
+        SELECT idg.id
+          FROM anagrafiche.identita_digitali idg
+         WHERE idg.auth_user_id = v_auth_user_id
+           AND idg.tecnica
+           AND idg.revocata_at IS NOT NULL
+         ORDER BY idg.id
+    LOOP
+        PERFORM anagrafiche.fn_togli_revoca_veste(v_veste_id);
+    END LOOP;
+
     -- ⭐ I TRE LIVELLI, e si riaccendono INSIEME: spegnerne uno
     --   solo basta a fermare l'utente, quindi riaccenderne uno
     --   solo lo lascerebbe inerte in un modo che non si vede.
@@ -128,7 +148,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_riattiva_utente_tecnico(p_processo_codice text, p_emittente_codice character varying)
-IS 'Riaccende un utente tecnico che ESISTE ed e'' spento, per la coppia (processo, emittente): il legame in dbops.processi_identita, l''identita'' in anagrafiche.identita_digitali e l''utente in django.auth_user. Ritorna l''auth_user_id. ⭐ Esiste perche'' lo username degli utenti tecnici e'' deterministico (processo@emittente) e il suo UNIQUE non ha condizioni: disattivare il legame non libera lo username, quindi la fabbrica non puo'' rifare l''utente — e senza questo verbo la strada di sostituzione documentata resta chiusa. ⛔ NON ricostruisce niente: non crea soggetti, non tocca il perimetro, non assegna profili. Se manca un pezzo la coppia non e'' «da riattivare», e'' rotta. ⛔ E il perimetro NON si sposta: config.user_emittenti_fiscali e'' 1-a-1 con emittente immutabile, quindi se l''utente aveva un''altra azienda la funzione si ferma invece di riaccenderlo — riaccenderlo lo farebbe lavorare per l''azienda sbagliata. Compagna di script.fn_crea_utente_tecnico: quella CREA cio'' che non c''e'', questa RIACCENDE cio'' che c''e''. Brief: brief-db-processi-automatici-residui-be, DB-6. Rev 2026-11-04 (20261104-37, D-2 di Tid): l''emittente si cerca con script.fn_codice_normalizzato, e lo username da riattivare si compone col codice SALVATO dell''emittente (v_emittente.codice), come in script.fn_crea_utente_tecnico.';
+IS 'Riaccende un utente tecnico che ESISTE ed e'' spento, per la coppia (processo, emittente): il legame in dbops.processi_identita, l''identita'' in anagrafiche.identita_digitali e l''utente in django.auth_user. Ritorna l''auth_user_id. E'' un gesto dell''amministratore: chiede SUPER_ADMIN all''utente della sessione (script.fn_guard_super_admin, E_PERMESSO_NEGATO) e toglie il segno della revoca dalle vesti tecniche con anagrafiche.fn_togli_revoca_veste prima di riaccenderle. Esiste perche'' lo username degli utenti tecnici e'' deterministico (processo@emittente) e il suo UNIQUE non ha condizioni: disattivare il legame non libera lo username, quindi la fabbrica non puo'' rifare l''utente. Non ricostruisce niente: non crea soggetti, non tocca il perimetro, non assegna profili; se manca un pezzo la coppia e'' rotta (E_UTENTE_TECNICO_NON_TROVATO). Il perimetro non si sposta: se l''utente aveva un''altra azienda si ferma invece di riaccenderlo. L''emittente si cerca con script.fn_codice_normalizzato, e lo username si compone col codice salvato dell''emittente, come in script.fn_crea_utente_tecnico, la sua compagna: quella crea cio'' che non c''e'', questa riaccende cio'' che c''e''.';
 ```
 
 </div>

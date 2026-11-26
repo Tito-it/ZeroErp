@@ -1,6 +1,6 @@
 # Guida — Il catasto delle istanze
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -97,8 +97,9 @@ Il modello vuole che ogni istanza abbia la sua unità, mai condivisa con un'altr
 dell'istanza precedente si **clona**: l'istanza nuova riceve una riga nuova con gli stessi dati, e una rettifica
 del catasto di chi subentra non tocca quello di chi è uscito. Le istanze chiuse tengono il catasto che avevano.
 
-La regola la garantisce la strada della clonazione, che crea sempre una riga nuova; non c'è un vincolo che la
-imponga a chi scrive l'istanza direttamente (vedi [Che cosa oggi non copre](#che-cosa-oggi-non-copre)).
+La regola la scrive l'indice unico `uq_istanze_utilities_catasto_unita_immobiliare`: un'unità è di un'istanza
+sola, e un'istanza senza unità è ammessa. La strada del clone la rispetta da sé, perché crea sempre una riga nuova;
+un'istanza agganciata a mano all'unità di un'altra è rifiutata dall'indice.
 
 ---
 
@@ -117,7 +118,8 @@ trgfn_clienti_set_parent_istanza          BEFORE, su clienti
   → UPDATE istanze_utilities: parent_istanza_id = istanza del precedente
   │
   ▼
-trgfn_iu_clone_catasto_from_parent        AFTER UPDATE OF parent_istanza_id, su istanze_utilities
+trgfn_iu_clone_catasto_from_parent        AFTER, su istanze_utilities, quando nasce il legame con la
+                                          precedente: all'INSERT con la precedente, all'UPDATE che la cambia
   (solo se l'istanza ha una precedente, ha un civico e non ha ancora un'unità)
   → fn_clone_catasto_from_parent_by_istanza
       → l'unità della precedente (fn_get_catasto_source_by_istanza); se non c'è, fine
@@ -125,7 +127,7 @@ trgfn_iu_clone_catasto_from_parent        AFTER UPDATE OF parent_istanza_id, su 
       → UPDATE istanze_utilities: catasto_unita_immobiliare_id = copia
   │
   ▼
-trgfn_iu_sync_catasto_unita_indirizzo     AFTER UPDATE OF catasto_unita_immobiliare_id, su istanze_utilities
+trgfn_iu_sync_catasto_unita_indirizzo     AFTER, su istanze_utilities, all'INSERT e al cambio di unità o civico
   → INSERT idempotente della coppia (copia, civico dell'istanza) nella ponte
 ```
 
@@ -135,7 +137,12 @@ stessa chiave soggetto, utility e azienda. Il clone scatta allo stesso modo, se 
 ### Le regole del clone
 
 * **Sorgente unica**: la precedente diretta, da `parent_istanza_id`. Non si risale la catena.
-* **Idempotente**: un'istanza che ha già un'unità la tiene.
+* **Quando nasce il legame**: il clone scatta quando l'istanza nasce con la precedente già scritta, e quando la
+  precedente cambia. Una riscrittura uguale della precedente non clona: il clone copia ciò che la precedente ha
+  quando il legame nasce, e un'unità che compare dopo sulla precedente non arriva. La rettifica dell'istanza nuova
+  si fa su di lei.
+* **Idempotente**: un'istanza che ha già un'unità la tiene, anche se la sua precedente cambia: sullo stesso PDP
+  l'immobile è lo stesso.
 * **Nessun errore senza sorgente**: se la precedente non ha un'unità, il clone non fa niente e il cliente nasce lo
   stesso.
 * **Copia l'unità, non i suoi civici**: la copia si lega al solo civico dell'istanza nuova.
@@ -150,6 +157,11 @@ stessa chiave soggetto, utility e azienda. Il clone scatta allo stesso modo, se 
 * **Modifica**: `catasto_unita_immobiliari` è registrata in `config.storico_set_storicizza`, quindi ogni modifica e
   ogni cancellazione lasciano la versione di prima in `storico.catasto_unita_immobiliari`.
 * **Il civico**: un legame nella ponte chiede un civico attivo, e un civico che ha legami non si spegne.
+* **Il cambio di civico o di unità**: la ponte segue l'istanza. La coppia (unità, civico) che l'istanza aveva
+  portato esce, se nessun'altra istanza ha la stessa coppia, e quella nuova entra. Le coppie scritte a mano con
+  altri civici restano: la ponte è molti a molti. Il civico lasciato, senza più legami, si spegne.
+* **L'unità lasciata**: un'istanza che passa a un'altra unità cancella la prima, se nessun'altra istanza la
+  nomina. La sua versione resta nello storico, e i suoi legami coi civici se ne vanno con lei.
 * **Cancellazione**: un'unità nominata da un'istanza non si cancella; un'unità cancellata porta via i suoi legami
   coi civici.
 
@@ -157,14 +169,10 @@ stessa chiave soggetto, utility e azienda. Il clone scatta allo stesso modo, se 
 
 ## Che cosa oggi non copre
 
-* **Nessun vincolo unico su `istanze_utilities.catasto_unita_immobiliare_id`.** «Un'istanza, un'unità» vale per la
-  strada del clone: un'istanza agganciata a mano all'unità di un'altra la condivide.
-* **Il clone avviene una volta.** Una catena che cambia dopo il clone, o che si svuota per un cliente annullato,
-  lascia l'unità copiata dalla precedente di allora; un'unità arrivata dopo sulla precedente si copia solo alla
-  prossima scrittura della catena.
-* **La ponte non si pulisce.** Un cambio di civico o di unità dell'istanza aggiunge la coppia nuova e lascia la
-  vecchia, che continua a impedire lo spegnimento del civico.
-* **Le unità orfane restano.** Un'istanza che passa a un'altra unità lascia la prima senza nessuno che la nomini.
+* **La cancellazione dell'istanza** non tocca l'unità: un'istanza cancellata lascia la sua unità senza nessuno
+  che la nomini.
+* **Una catena che si svuota** per un cliente annullato lascia all'istanza l'unità copiata dalla precedente di
+  allora.
 
 ---
 
@@ -172,6 +180,8 @@ stessa chiave soggetto, utility e azienda. Il clone scatta allo stesso modo, se 
 
 * `db/pgtap/anagrafiche/test-simula-subentro.sql` — il subentro completo sullo stesso PDP: catena, clone con id
   diverso e dati uguali, legame della copia col civico, duplicato nella ponte rifiutato.
+* `db/pgtap/anagrafiche/test-catasto-unita-della-sua-istanza-v1.sql` — un'unità per istanza, il clone
+  all'INSERT e non alla riscrittura uguale, la coppia e l'unità lasciate al cambio di civico e di unità.
 
 ---
 

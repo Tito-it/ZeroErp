@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.lotti`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -62,6 +62,12 @@ prelievo — i guard li genera il framework delle automazioni.
 
 ---
 
+### Chi scrive
+
+L'applicazione legge questa tabella e non la scrive: ogni scrittura passa da un **verbo**, che controlla il livello dell'operatore e il perimetro prima di scrivere. Nasce con [fn_aggiungi_lotto](/dbzero/magazzino/funzioni/fn_aggiungi_lotto) e si modifica con [fn_modifica_lotto](/dbzero/magazzino/funzioni/fn_modifica_lotto). Non si elimina: si disattiva con la modifica.
+
+---
+
 ### Note di migrazione
 
 * 2026-09-15 — tabella nuova (`brief-db-magazzino-lotto-1-terreno-vuoto`, §4.3; analisi
@@ -69,6 +75,7 @@ prelievo — i guard li genera il framework delle automazioni.
   righe, e due scritture diverse dello stesso codice erano due lotti.
 * 2026-11-22 — il lotto prende l'emittente (`brief-db-magazzino-lotto-dell-azienda`): prima
   era condiviso fra tutte le aziende, e una poteva cambiare la scadenza del lotto di un'altra.
+* 2026-11-22 — in sola lettura per l'applicazione: la scrivono i verbi (`brief-db-magazzino-tutte-le-scritture-dal-verbo`, Lotto 1).
 
 ---
 

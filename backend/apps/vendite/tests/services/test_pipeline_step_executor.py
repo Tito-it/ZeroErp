@@ -16,7 +16,6 @@ Indice test eseguiti:
 6) PipelineStepExecutorUnitTests.test_execute_step_runs_prepare_sdi_payload_lotto_task
 7) PipelineStepExecutorUnitTests.test_execute_step_runs_numera_fatture_task
 8) PipelineStepExecutorUnitTests.test_execute_step_runs_close_lotto_task
-9) PipelineStepExecutorUnitTests.test_execute_step_runs_reset_lotto_draft_task
 10) PipelineStepExecutorUnitTests.test_execute_step_numera_logs_fattura_error_on_single_failure
 11) PipelineStepExecutorUnitTests.test_execute_step_logs_lotto_error_on_not_allowed_function
 12) PipelineStepExecutorUnitTests.test_execute_step_logs_lotto_error_on_missing_handler
@@ -27,6 +26,7 @@ Indice test eseguiti:
 15) PipelineStepExecutorUnitTests.test_execute_step_raises_when_execution_mode_is_reset_required
 16) PipelineStepExecutorUnitTests.test_execute_step_traces_task_run_on_success
 17) PipelineStepExecutorUnitTests.test_execute_step_traces_fail_on_handler_error
+17a) PipelineStepExecutorUnitTests.test_execute_step_fail_in_rollback_porta_il_verso
 18) PipelineStepExecutorUnitTests.test_execute_step_no_tracing_when_no_pipeline_id
 19) PipelineStepExecutorUnitTests.test_execute_step_no_tracing_when_no_policy
 20) PipelineStepExecutorUnitTests.test_execute_step_select_attivita_uses_emittente_from_context
@@ -129,7 +129,6 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
             "prepare_sdi_payload_lotto": "vendite.fn_prepare_sdi_payload",
             "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
             "close_lotto": None,
-            "reset_lotto_draft": "vendite.fn_annulla_lotto_da_draft",
             "snapshot_indirizzi_lotto": "vendite.fn_snapshot_fattura_lotto",
             "genera_scadenze_lotto": "vendite.fn_genera_scadenze_lotto",
             "popola_fatture_rettifiche": "vendite.fn_popola_fatture_rettifiche",
@@ -411,22 +410,6 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         )
 
         repo.close_lotto_operativo.assert_not_called()
-
-    # Scopo: Verifica il caso `test_execute_step_runs_reset_lotto_draft_task`.
-    def test_execute_step_runs_reset_lotto_draft_task(self):
-        processi = [{"task": "reset_lotto_draft", "fase": "Reset lotto", "params": {}}]
-        executor, repo, _, _ = self._build_executor(processi)
-        repo.get_task_handler_code.return_value = "reset_lotto_draft_default"
-
-        executor.execute_step(
-            lotto_id=12,
-            stato_doc_fiscale_id=2,
-            tipo_lotto="MASSIVO",
-            rollback=True,
-            dry_run=False,
-        )
-
-        repo.annulla_lotto_da_draft.assert_called_once_with(12)
 
     # Scopo: Verifica il caso `test_execute_step_numera_logs_fattura_error_on_single_failure`.
     def test_execute_step_numera_logs_fattura_error_on_single_failure(self):
@@ -786,6 +769,32 @@ class PipelineStepExecutorUnitTests(SimpleTestCase):
         fail_args = repo.fail_lotto_task_run.call_args.args
         self.assertEqual(fail_args[0], 777)
         repo.complete_lotto_task_run.assert_not_called()
+
+    # Scopo: il task di ROLLBACK che fallisce porta nelle coordinate
+    #        dell'eccezione il suo verso (`rollback: True`): e' cio' che il
+    #        runner rilegge per riscrivere la riga ERRORE fuori transazione.
+    def test_execute_step_fail_in_rollback_porta_il_verso(self):
+        processi = [{"task": "generate_fatture_righe", "fase": "Genera righe", "params": {}}]
+        executor, repo, fatture_righe_service, _ = self._build_executor(processi)
+        repo.task_policy_exists.return_value = True
+        run_mode = MagicMock()
+        run_mode.execution_mode = "RUN"
+        repo.resolve_lotto_task_execution_mode.return_value = run_mode
+        repo.start_lotto_task_run.return_value = MagicMock(task_run_id=778)
+        fatture_righe_service.generate_fatture_righe.side_effect = RuntimeError("boom-rb")
+
+        with self.assertRaises(RuntimeError) as ctx:
+            executor.execute_step(
+                lotto_id=1,
+                stato_doc_fiscale_id=2,
+                tipo_lotto="MASSIVO",
+                rollback=True,
+                dry_run=False,
+            )
+
+        coord = getattr(ctx.exception, "zeroerp_task_run_fallito", None)
+        self.assertIsInstance(coord, dict)
+        self.assertIs(coord["rollback"], True)
 
     # Scopo: Verifica che il tracing venga saltato quando pipeline_id è None.
     def test_execute_step_no_tracing_when_no_pipeline_id(self):

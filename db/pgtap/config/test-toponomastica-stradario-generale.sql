@@ -268,31 +268,26 @@ SELECT throws_ok(
 );
 
 -- =========================================================
--- 4) Manutenzione: bump toponomastica in uso
+-- 4) Manutenzione: la correzione di un toponimo in uso non e' dell'app
 -- =========================================================
-SELECT lives_ok(
-    $$
-    DO $proc$
-    DECLARE
-      v_topo_id integer;
-    BEGIN
-      SELECT id INTO v_topo_id FROM tmp_topo WHERE label = 't1';
-      CALL maintenance.proc_bump_toponomastica(v_topo_id, 'TOPO TEST 22 FIX');
-    END;
-    $proc$;
-    $$,
-    'Manutenzione toponomastica con GUC attiva'
+-- ⚠️ rev 2026-11-23 (brief-db-porte-aperte-dalla-sola-guc, giro 1, D-C b):
+--   la correzione la fa maintenance.proc_bump_toponomastica, riservata al
+--   proprietario (90_end/20261123-45), e la porta che apre chiede il
+--   proprietario (20_code/config/20261123-44). Questo file gira come app: qui
+--   si prova che l'app ne resta fuori. Che la correzione arrivi fino allo
+--   stradario generale e agli indirizzi lo prova, da owner,
+--   maintenance/test-bump-toponomastica-v1 (5-7).
+SELECT throws_ok(
+    format('CALL maintenance.proc_bump_toponomastica(%s, %L)',
+           (SELECT id FROM tmp_topo WHERE label = 't1'), 'TOPO TEST 22 FIX'),
+    '42501', NULL,
+    'La correzione di un toponimo in uso non e'' eseguibile dall''app'
 );
 
 SELECT ok(
-    EXISTS (
-        SELECT 1
-        FROM config.stradario_generale sg
-        JOIN config.toponomastica t ON t.id = sg.toponomastica_id
-        WHERE t.id = (SELECT id FROM tmp_topo WHERE label = 't1')
-          AND sg.indirizzo_normalizzato ILIKE '%' || t.descrizione || '%'
-    ),
-    'Rinormalizzazione stradario_generale dopo manutenzione toponomastica'
+    (SELECT t.descrizione::text FROM config.toponomastica t
+      WHERE t.id = (SELECT id FROM tmp_topo WHERE label = 't1')) IS DISTINCT FROM 'TOPO TEST 22 FIX',
+    'Il toponimo in uso resta con la descrizione di prima'
 );
 
 -- =========================================================

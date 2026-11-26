@@ -66,7 +66,19 @@ quale riga la riguarda:
 | introduce una regola che confronta una data con oggi | i pgTAP con date fisse che attraversano quel passaggio |
 | cambia un messaggio o un codice di errore | i consumatori, cercati dal nome di chi lo solleva e non dal testo |
 | cambia il significato di un oggetto | `COMMENT`, pagine `manual/`, guide e note dei presidi, nello stesso giro |
+| tocca un oggetto qualsiasi | le guide e le note di dominio di `scripts/guide_coinvolte.py` sul perimetro (vedi sotto) |
 | tocca trigger scritti a mano | i `CREATE TRIGGER` nei changelog, non `pg_trigger` del database di sviluppo |
+
+**Le guide del dominio** (regola in `.codex/AGENTS.md`). Lancia
+`scripts/guide_coinvolte.py` sul perimetro (senza argomenti legge il lavoro non
+committato; `--base <ref>` per un intervallo). Per ogni guida e nota trovata
+apri le sezioni che parlano degli oggetti in comune e dai l'esito: **coerente**,
+**guida indietro** (la correggi nello stesso giro, con la data in testa) oppure
+**il perimetro la contraddice**. Quest'ultimo è un cambio di modello: si dichiara
+a Tid con la decisione esistente, e non si «allinea» la guida al codice senza ok.
+Confronta l'elenco con la riga «Guide verificate» del brief: una guida che lo
+script trova e il brief non nomina è un censimento saltato. Un nome che nessuna
+guida cita, se è un concetto del dominio, si segnala.
 
 Le funzioni `BEGIN ATOMIC` non hanno il corpo in `prosrc`: per loro si cerca con
 `dbops.fn_find_function_usage` o nel viewdef (§5c).

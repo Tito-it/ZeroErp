@@ -18,7 +18,7 @@
 --   (80_data, contratto); la grammatica e le divergenze si provano su tabelle
 --   di prova create qui.
 --
--- Elenco test (plan 21):
+-- Elenco test (plan 22):
 --    1) mirror della composizione sotto un preset intatto: nessun errore
 --    2) … la riga segue il CSV
 --    3) mirror sotto il preset personalizzato: nessuna chiave duplicata
@@ -44,13 +44,16 @@
 --   20) … una derivata che non sta fra le colonne dell'installazione no
 --   21) controllo del seed: il montaggio su ui.lista_preset porta
 --       composizione_impronta come colonna derivata (riga 5 del registro)
+--   22) ⭐ … e il ritiro del caso 5 sposta la chiave colonne della data del
+--       contenuto: il banner del preset aggiornato si accende al ritiro (Q37;
+--       aggiunto dal /verifica-db del giro 7, 2026-11-23)
 -- ------------------------------------------------------------
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(21);
+SELECT plan(22);
 
 -- ============================================================
 -- 1-2 Sotto un preset intatto la composizione segue il CSV
@@ -98,6 +101,11 @@ SELECT is(
     111,
     '4) … la riga resta com''era');
 
+-- La chiave colonne della data del contenuto prima del ritiro (caso 22).
+CREATE TEMP TABLE _prima_del_ritiro ON COMMIT DROP AS
+SELECT lp.contenuto_aggiornato_il -> 'colonne' AS colonne
+  FROM ui.lista_preset lp WHERE lp.id = 1;
+
 SELECT is(
     dbops.fn_pgtap_codice_errore($$DELETE FROM ui.lista_preset_colonna WHERE preset_id = 1 AND colonna_id = 14$$),
     NULL,
@@ -135,6 +143,14 @@ SELECT is(
       WHERE s.schema_name = 'ui' AND s.table_name = 'lista_preset' AND s.riga_id = '1'),
     false,
     '18) … e l''impronta non e'' fra i valori scartati del registro');
+
+-- 22) Prima di Q54 il seed riportava l'impronta a OLD, e il trigger a20 non vedeva
+--   cambiare niente: la chiave restava ferma fino alla scrittura successiva.
+SELECT ok(
+    (SELECT (lp.contenuto_aggiornato_il -> 'colonne') IS DISTINCT FROM p.colonne
+       FROM ui.lista_preset lp, _prima_del_ritiro p
+      WHERE lp.id = 1),
+    '22) ⭐ il ritiro sposta la chiave colonne della data del contenuto: il banner si accende al ritiro');
 
 -- ============================================================
 -- 8-11 La grammatica

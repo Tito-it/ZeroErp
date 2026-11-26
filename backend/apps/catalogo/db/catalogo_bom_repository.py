@@ -66,23 +66,21 @@ _RICERCA_COMPONENTI = RicercaFull(
 
 # Whitelist di ordinamento della lista 101: le colonne `ordinabile = t` del
 # seed, chiavate sul `campo_sorgente` (lo manda `<ListaConfigurabile>`).
-# ⭐ `valido_al` si ordina con `COALESCE(…, 'infinity')`: una riga senza fine
-#    e' la piu' «lontana», non una data mancante (regola delle date di
-#    validita'). Costante di MODULO, come vuole il presidio
+# ⭐ `valido_al` vuota e' una riga senza fine, la piu' «lontana», non una data
+#    mancante: il vuoto va come il massimo, e lo dichiara il catalogo
+#    (`ui.lista_colonna.vuoto_ordinato_come_massimo`, dal 2026-11-24), non
+#    questa whitelist. Costante di MODULO, come vuole il presidio
 #    `test_liste_configurabili_seed` (mockare la classe non la svuota).
 COMPONENTI_SORT_COLUMNS: dict[str, str] = {
     "componente_codice": "v.componente_codice",
     "componente_descrizione": "v.componente_descrizione",
     "coeff_qta": "v.coeff_qta",
     "valido_dal": "v.valido_dal",
-    "valido_al": "COALESCE(v.valido_al, 'infinity'::date)",
+    "valido_al": "v.valido_al",
     # La colonna «In fattura» mostra il CODICE del modo, e si ordina su quello
     # (dal 2026-10-01 non e' piu' un booleano).
     "esposizione_in_fattura_codice": "v.esposizione_in_fattura_codice",
 }
-# Le date partono DESC quando nessuno chiede un verso (regola di Tid del
-# 2026-09-02).
-COMPONENTI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"valido_dal", "valido_al"})
 
 # I due bersagli delle note catalogo: codici di `config.tipi_entita` (FK del
 # padre `catalogo.note`) e confini delle due partizioni. Li scrive il service
@@ -117,7 +115,6 @@ class CatalogoBomRepository(RigheListaCompletaMixin):
     _righe_ordine_documento_desc = True
     _righe_ordinamento = COMPONENTI_SORT_COLUMNS
     _righe_ricerca = _RICERCA_COMPONENTI
-    _righe_colonne_desc = COMPONENTI_SORT_COLONNE_DATA
     _righe_solo_attive = False
 
     # Scopo: il filtro proprio della lista 101. `valido_al` = «in vigore al»:

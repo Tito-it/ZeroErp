@@ -53,6 +53,7 @@ def _riga(**override) -> dict:
 
 
 class ErrorLogApiTests(JwtMockedApiTest):
+    come_super_admin = True
     def setUp(self) -> None:
         super().setUp()
         self.client = Client()
@@ -95,8 +96,8 @@ class ErrorLogApiTests(JwtMockedApiTest):
             data_da="2026-09-01", data_a="2026-09-19",
             limit=10, offset=20, order_by="area", order_dir=None,
         )
-        # La pagina si deriva da offset/limit: la terza.
-        self.assertEqual(resp.json()["data"]["page"], 3)
+        # La forma unica dell'envelope (D-1, 2026-11-24): niente pagina.
+        self.assertEqual(set(resp.json()["data"]), {"count", "results"})
 
     # 4. `tx_id` che non e' un uuid -> 400, non un 500 dal cast SQL.
     @patch(_AUTH, return_value=(_mock_user(), None))
@@ -122,7 +123,7 @@ class ErrorLogApiTests(JwtMockedApiTest):
         resp = self.client.get(_URL)
         self.assertEqual(resp.status_code, 200, resp.content)
         data = resp.json()["data"]
-        self.assertEqual({"count", "page", "page_size", "total_pages", "results"}, set(data))
+        self.assertEqual({"count", "results"}, set(data))
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["results"][0]["context"], {"parametro": "p_lotto_id", "valore": -1})
         self.assertEqual(data["results"][0]["classe"], "DATO_ERRATO")

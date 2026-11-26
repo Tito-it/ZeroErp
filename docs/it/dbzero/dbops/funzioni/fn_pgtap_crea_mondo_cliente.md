@@ -48,7 +48,7 @@ BEGIN
     -- policy leggono davvero: non a script.fn_pgtap_emittente_operatore(),
     -- che ha un ripiego suo e risponderebbe un emittente anche
     -- senza contesto — qui servirebbe come discriminante, e non lo e'.
-    v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_user_id := script.fn_utente_di_sessione('dbops.fn_pgtap_crea_mondo_cliente');
 
     IF v_user_id IS NULL THEN
         -- ── RAMO A: nessun contesto (CI, installazione nuova, o

@@ -46,6 +46,7 @@ from unittest.mock import MagicMock, patch
 
 from unittest import TestCase
 
+from apps.core.services.request_context import imposta_vuoti_come_massimo
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.ricerca_catalogo_fakes import catalogo_ricerca_finto
 from apps.documenti.db.documenti_repository import DocumentiRepository
@@ -326,15 +327,22 @@ class DocumentiRepositoryVersioniTests(TestCase):
         self.assertEqual(totale, 1)
 
     # 6-bis. list_versioni ordina dalla whitelist chiavata sul campo_sorgente:
-    #        le DATE senza verso ripiegano DESC, `valido_al` vuota vale
-    #        «senza scadenza» (COALESCE infinity), cap 200 sul limite.
+    #        le DATE senza verso vanno ASC come ogni colonna (regola «le date
+    #        partono DESC» ritirata, Tid 2026-11-24), `valido_al` vuota vale
+    #        «senza scadenza» e va come il massimo (lo dichiara il catalogo,
+    #        brief-db-lista-colonna-vuoto-in-ordine: la dichiarazione la registra
+    #        la base view, qui la si registra a mano), cap 200 sul limite.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
     def test_list_versioni_ordina_dalla_whitelist(self, mocked_factory) -> None:
+        imposta_vuoti_come_massimo(lambda: frozenset({"valido_al"}))
+        self.addCleanup(imposta_vuoti_come_massimo, None)
         casi = [
             (("titolo", "asc"), "ORDER BY v.titolo ASC NULLS FIRST, v.id ASC"),
-            (("valido_dal", None), "ORDER BY v.valido_dal DESC NULLS LAST, v.id DESC"),
-            (("valido_al", None), "ORDER BY COALESCE(v.valido_al, 'infinity'::date) DESC NULLS LAST, v.id DESC"),
-            (("data_update", None), "ORDER BY v.data_update DESC NULLS LAST, v.id DESC"),
+            (("valido_dal", None), "ORDER BY v.valido_dal ASC NULLS FIRST, v.id ASC"),
+            (("valido_al", None), "ORDER BY v.valido_al ASC NULLS LAST, v.id ASC"),
+            (("data_update", None), "ORDER BY v.data_update ASC NULLS FIRST, v.id ASC"),
+            # La colonna di DEFAULT senza verso segue `default_desc` della lista.
+            (("versione", None), "ORDER BY v.versione DESC NULLS LAST, v.id DESC"),
             (("versione", "asc"), "ORDER BY v.versione ASC NULLS FIRST, v.id ASC"),
         ]
         for (order_by, order_dir), atteso in casi:

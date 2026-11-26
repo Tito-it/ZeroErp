@@ -235,6 +235,7 @@ function onUbicazioniChiuse() {
         <label>{{ t('magazzino.magazzini.field_codice') }} *</label>
         <InputText
           v-model="form.codice"
+          maxlength="32"
           class="app-codice-input"
           :disabled="isEdit || isReadonly"
           :invalid="campiErrati.includes('codice')"
@@ -246,6 +247,7 @@ function onUbicazioniChiuse() {
         <label>{{ t('magazzino.magazzini.field_descrizione') }} *</label>
         <InputText
           v-model="form.descrizione"
+          maxlength="120"
           :disabled="isReadonly"
           :invalid="campiErrati.includes('descrizione')"
         />

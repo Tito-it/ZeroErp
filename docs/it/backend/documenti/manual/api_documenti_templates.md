@@ -18,6 +18,12 @@ dal service applicativo; la pubblicazione di una versione delega al DB la
 chiusura atomica della versione pubblicata precedente tramite
 `documenti.fn_pubblica_template_documento_versione(...)`.
 
+Dal 2026-11-24 (giro 16 di `brief-db-porte-aperte-dalla-sola-guc` §9) quel verbo è `SECURITY DEFINER` e
+**ricontrolla da sé** l'azione dell'endpoint, `documenti_template_manage`: chi non ce l'ha riceve `403`
+`E_PERMESSO_NEGATO` anche se arriva al DB per un'altra strada. È l'unica strada per la pubblicazione: il guard
+della versione pubblicata apre solo dentro il verbo, e un `UPDATE` diretto dell'app verso `PUBBLICATA` si ferma
+anche con la GUC accesa. Il backend non accende niente.
+
 Gli endpoint template/versioni hanno `area_funzionale = "documenti"`
 (id area=11, schema_db=`documenti`). Il livello area si applica con la
 catena standard TUTTO/LETTURA/BLOCCATO; lo scope dati e' applicato in
@@ -94,8 +100,8 @@ stata verificata alla stampa. Brief:
     `tipo_documento_output_descrizione`, `sorgente_tipo_descrizione`,
     `emittente_ragione_sociale`, `standard` (dal 2026-10-21), `data_insert`,
     `data_update`. Fuori whitelist: `400` `E_DOCUMENTI_VALIDATION`
-  - `order_dir` (string) — `asc` o `desc`. Assente: `asc`, salvo
-    `data_insert`/`data_update` che partono `desc` (dal 2026-10-20)
+  - `order_dir` (string) — `asc` o `desc`. Assente: `asc` su ogni
+    colonna, date comprese (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata)
 
   ⚠️ Dal 2026-09-27 la paginazione è `limit`/`offset` con default 25: `page` e
   `page_size` in query sono un 400 `E_VALIDATION_INPUT` (dal 2026-10-20; prima
@@ -110,9 +116,6 @@ stata verificata alla stampa. Brief:
 {
   "data": {
     "count": 1,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 1,
@@ -250,7 +253,7 @@ dell'azienda che oggi possono stampare per la coppia.
   - `order_by` (string) — whitelist `TEMPLATE_VERSIONI_ORDER_COLUMNS`:
     `versione`, `titolo`, `stato`, `valido_dal`, `valido_al` (NULL = senza
     scadenza, in fondo in ASC), `attivo`, `data_update`; senza = `versione DESC`
-  - `order_dir` (string) — `asc` / `desc`; assente = DESC sulle date
+  - `order_dir` (string) — `asc` / `desc`. Assente: `asc` sulla colonna chiesta, date comprese; `desc` solo senza `order_by` o su `versione`, il default della lista (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata)
   - `emittente_fiscale_id` (int, PK) — `lista_emittente_param`: scioglie il
     cancello di perimetro per chi vede più emittenti (il super admin su
     «Tutti»). Vale anche sul **POST** di creazione versione (§7), che sta sulla
@@ -264,9 +267,6 @@ dell'azienda che oggi possono stampare per la coppia.
 {
   "data": {
     "count": 1,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 11,
@@ -889,7 +889,7 @@ cambia, e le ristampe di ieri devono continuare a mostrare quello di ieri.
 
 | | |
 |---|---|
-| **Lista** | `GET /api/v1/documenti/asset/` — `search`, `attivo`, `asset_tipo_id`, `emittente_fiscale_id`, `utilizzabili`, `limit` (default 25, max 200), `offset`, `order_by` (whitelist `ASSET_ORDER_COLUMNS`, default `codice`; fuori whitelist `400`), `order_dir` (assente: `asc`, le date `desc`). Ogni riga porta il tipo come `asset_tipo_codice`, `asset_tipo_descrizione` e, dal 2026-11-16, `asset_tipo_etichetta_key` (l'indirizzo i18n che la lista traduce). ⚠️ dal 2026-09-27 la paginazione è `limit`/`offset` (`page`/`page_size` non sono letti); lo schema OpenAPI dichiara `limit`/`offset` |
+| **Lista** | `GET /api/v1/documenti/asset/` — `search`, `attivo`, `asset_tipo_id`, `emittente_fiscale_id`, `utilizzabili`, `limit` (default 25, max 200), `offset`, `order_by` (whitelist `ASSET_ORDER_COLUMNS`, default `codice`; fuori whitelist `400`; ⛔ `valido_al` non ordina dal 2026-11-24, D-4 di brief-db-lista-colonna-vuoto-in-ordine: la lista di catalogo degli asset non ha la colonna, e `order_by=valido_al` è un `400`), `order_dir` (assente: `asc` su ogni colonna, date comprese: la regola «le date partono `desc`» è ritirata dal 2026-11-24). Ogni riga porta il tipo come `asset_tipo_codice`, `asset_tipo_descrizione` e, dal 2026-11-16, `asset_tipo_etichetta_key` (l'indirizzo i18n che la lista traduce). ⚠️ dal 2026-09-27 la paginazione è `limit`/`offset` (`page`/`page_size` non sono letti); lo schema OpenAPI dichiara `limit`/`offset` |
 | **Upload** | `POST /api/v1/documenti/asset/` — **multipart**: campo `file` piu' l'anagrafica (`codice`, `codice_interno`, `descrizione`, `asset_tipo_id`, `emittente_fiscale_id`, `valido_dal`, `valido_al`, `attivo`, `meta`). I metadati si possono passare come campi form singoli **oppure** come JSON nel campo `metadati`: la view accetta entrambe le forme. Il formato del file lo giudica il DB alla nascita della riga: un MIME che il tipo di asset non ammette (`documenti.tipi_asset_documento_formati`) è `400` `E_DOCUMENTI_FORMATO_NON_AMMESSO`, e il file non viene scritto. Dimensione massima dal parametro `documenti_asset_upload_max_mb` |
 | **Dettaglio / aggiorna** | `GET` `PATCH /api/v1/documenti/asset/{asset_id}/` — la `PATCH` tocca i soli **metadati** `descrizione`, `valido_dal`, `valido_al`, `attivo`, `meta`. Il file e l'azienda non cambiano: li proteggono il trigger A4 (`E_DOCUMENTI_ASSET_FILE_IMMUTABILE`) e il lucchetto di colonna (`E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE`). Per un file nuovo si carica un asset nuovo |
 | **Download** | `GET /api/v1/documenti/asset/{asset_id}/file/` — il file originale, come `attachment` |

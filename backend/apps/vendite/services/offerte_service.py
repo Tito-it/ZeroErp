@@ -471,7 +471,7 @@ class OfferteService:
         offset: int = 0,
         order_by: str = "data_insert",
         order_dir: str = "desc",
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
     ) -> tuple[list[dict[str, Any]], int]:
         self._v.validate_order_by(order_by, allowed=_ORDER_BY_OFFERTE, order_dir=order_dir)
         # ⭐ La soglia del termine (vuoto o sotto 3 caratteri → non filtra) la
@@ -494,8 +494,7 @@ class OfferteService:
             "validita_dal_max": validita_dal_max,
             "search": search,
             "solo_ultima_revisione": solo_ultima_revisione,
-            # Scope emittente: `None` = nessuna restrizione (superuser a
-            # livello API); entra nei filtri cosi' righe e conteggio hanno lo
+            # Scope emittente: `None` = nessuna restrizione; entra nei filtri cosi' righe e conteggio hanno lo
             # stesso perimetro.
             "auth_user_id": auth_user_id,
         }
@@ -1009,7 +1008,7 @@ class OfferteService:
 
     # Scopo: Ritorna una PAGINA della catena di revisioni che condivide la
     #        radice (rev.1) con l'offerta passata, col totale per
-    #        `paginated_envelope`. Lettura libera in ogni stato.
+    #        `pagina_con_totale`. Lettura libera in ogni stato.
     def list_revisioni(
         self, offerta_id: int, *,
         limit: int = DEFAULT_LIMIT, offset: int = 0,

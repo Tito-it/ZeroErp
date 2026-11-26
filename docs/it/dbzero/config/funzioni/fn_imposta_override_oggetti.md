@@ -19,7 +19,6 @@ AS $function$
 DECLARE
     v_lista    jsonb := COALESCE(p_oggetti, '[]'::jsonb);
     v_el       jsonb;
-    v_estranea text;
     v_n        integer := 0;   -- un conteggio: niente da ancorare
     c_ammesse  CONSTANT text[] := ARRAY[
         'app_label', 'model_name', 'livello', 'motivo', 'valido_dal', 'valido_al'];
@@ -50,14 +49,10 @@ BEGIN
     END IF;
 
     FOR v_el IN SELECT e FROM jsonb_array_elements(v_lista) AS e LOOP
-        v_estranea := script.fn_prima_chiave_estranea(v_el, c_ammesse);
-        IF v_estranea IS NOT NULL THEN
-            PERFORM script.fn_log_and_raise_error(
-                'config', 'config.fn_imposta_override_oggetti', 'E_CAMPO_NON_AMMESSO',
-                jsonb_build_object('campo', v_estranea, 'auth_user_id', p_auth_user_id),
-                NULL::uuid,
-                v_estranea);
-        END IF;
+        PERFORM script.fn_guard_campi_ammessi(
+            v_el, c_ammesse,
+            'config', 'config.fn_imposta_override_oggetti',
+            jsonb_build_object('auth_user_id', p_auth_user_id));
     END LOOP;
 
     DELETE FROM config.user_override_oggetti uoo WHERE uoo.auth_user_id = p_auth_user_id;

@@ -34,7 +34,7 @@
 --   13) testi vuoti e socio unico soltanto -> nessuna riga (la sezione non c'e')
 --   14) canale C senza codice SDI -> E_DATI_SOCIETARI_CODICE_SDI_MANCANTE
 --   15) ... e il soggetto non e' nato: una chiamata sola, atomica
---   16) la sezione senza forma -> NOT NULL della forma (23502), come in modifica
+--   16) la sezione senza forma -> E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA, come in modifica
 --   privato (fn_crea_soggetto_pf)
 --   17) con la sezione (la sola data) -> E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO, non scartata
 --   18) senza sezione -> nasce, senza riga
@@ -235,15 +235,16 @@ SELECT is(
     0,
     '15. ... e il soggetto non e'' nato: soggetto e sezione sono una chiamata sola, atomica');
 
-SELECT throws_ok(
-    format($$SELECT anagrafiche.fn_crea_soggetto_pf(
+-- Rev 2026-11-24 (S41-3, brief-db-revisione-anagrafiche §20): prima il 23502 della colonna.
+SELECT is(
+    dbops.fn_pgtap_codice_errore(format($$SELECT anagrafiche.fn_crea_soggetto_pf(
                p_cognome := 'Nascita', p_nome := 'Senza forma', p_codice_fiscale := %L,
                p_email := 'pgtap.nascita.ds.di.forma@example.com',
                p_tipo_soggetto_dettaglio_id := %s, p_partita_iva := %L,
                p_destinatario_fe := 'P', p_pec_fatturazione := 'senza.forma@pec.example.com')$$,
-           dbops.fn_pgtap_cf_libero(), (SELECT di FROM _ref), dbops.fn_pgtap_piva_libera(27)),
-    '23502', NULL,
-    '16. la sezione senza forma -> NOT NULL della forma (23502), come in modifica (C-2)');
+           dbops.fn_pgtap_cf_libero(), (SELECT di FROM _ref), dbops.fn_pgtap_piva_libera(27))),
+    'E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA',
+    '16. la sezione senza forma -> E_DATI_SOCIETARI_FORMA_GIURIDICA_OBBLIGATORIA, come in modifica (C-2)');
 
 -- ============================================================
 -- Privato: fn_crea_soggetto_pf

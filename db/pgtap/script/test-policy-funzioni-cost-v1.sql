@@ -116,7 +116,11 @@ INSERT INTO _economiche VALUES
   ('script', 'fn_scope_email_ambito_perimetro', '~0,0044 ms/chiamata, 20.000 righe in 92 ms (filtro vuoto 3 ms), scratch come owner, 2026-10-21 (non legge tabelle)'),
   -- ⭐ Pura e INCORPORATA: la regola della coda lavori, con chi guarda gia'
   --   calcolato dalla policy (20261107-52, giro 5 di brief-db-revisione-dbops).
-  ('script', 'fn_scope_coda_lavori_perimetro',  'incorporata: 20.000 righe in 4,8-5,1 ms (filtro vuoto 3 ms), scratch come owner, 2026-11-07 (non legge tabelle)');
+  ('script', 'fn_scope_coda_lavori_perimetro',  'incorporata: 20.000 righe in 4,8-5,1 ms (filtro vuoto 3 ms), scratch come owner, 2026-11-07 (non legge tabelle)'),
+  -- ⭐ L'utente di sessione (giro 8b di brief-db-revisione-ui, 20261123-28 ... -36):
+  --   legge solo la GUC, e ogni policy la chiama in una sottoquery non
+  --   correlata, una volta per istruzione.
+  ('script', 'fn_utente_di_sessione',           '~0,0013 ms/chiamata, 20.000 in 29,5 ms (filtro vuoto 2,9 ms, la conversione a mano di prima 7,9 ms), scratch come owner, 2026-11-23 (non legge tabelle)');
 
 SELECT is(
   (SELECT coalesce(string_agg(funzione || ' = ' || procost, ', ' ORDER BY funzione), '')

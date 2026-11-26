@@ -29,6 +29,7 @@ _PERM = "apps.anagrafiche.api.views_clienti.PermissionResolver"
 
 class TestClientiPatchApi(JwtMockedApiTest):
     """Test endpoint PATCH clienti."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

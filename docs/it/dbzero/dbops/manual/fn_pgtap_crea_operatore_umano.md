@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_operatore_umano`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,7 +11,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — la madre di produzione che costruisce l'operatore
+> * [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore) — la madre di produzione che costruisce l'operatore
 > * [anagrafiche.fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste) — il building block che accende la veste, come l'invito accettato
 > * [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — per legare l'operatore a un'azienda, dopo
 > * [dbops.fn_pgtap_cf_libero](/dbzero/dbops/funzioni/fn_pgtap_cf_libero) — il codice fiscale libero
@@ -35,7 +35,7 @@ credenziale, identità, risorsa umana, soggetto ruolo e soggetto.
 ### ⭐ Dal percorso di produzione
 
 L'operatore lo costruisce la madre di produzione
-[fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2), con la
+[fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore), con la
 qualifica di dipendente. La fixture aggiunge solo ciò che un test non sceglie bene da sé:
 
 * un codice fiscale libero adesso, chiesto una volta sola subito prima di scriverlo, e da lui
@@ -61,7 +61,9 @@ invece di tornare una riga con un vuoto dentro.
 
 Come in produzione, l'operatore non è legato a nessuna azienda. Per un super admin è il caso
 normale: lavora su più aziende, e toglierla dopo non si potrebbe. Per legarlo a un'azienda si
-usa [fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope).
+usa [fn_pgtap_sposta_scope_operatore](/dbzero/dbops/funzioni/fn_pgtap_sposta_scope_operatore), che
+passa dal verbo [fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope):
+il verbo chiede il SUPER_ADMIN, e il builder glielo dà.
 
 È la differenza con [fn_pgtap_crea_emittente_operatore](/dbzero/dbops/funzioni/fn_pgtap_crea_emittente_operatore),
 che costruisce un utente tecnico già legato alla sua azienda: quando il soggetto del test è

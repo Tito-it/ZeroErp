@@ -37,9 +37,6 @@ _CODICE_ROW = {"id": 1, "codice": "SDI_OK", "descrizione": "Consegnato"}
 
 _LIST_RESPONSE = {
     "count": 1,
-    "page": 1,
-    "page_size": 50,
-    "total_pages": 1,
     "results": [_CODICE_ROW],
 }
 
@@ -47,6 +44,7 @@ _URL = "/api/v1/core/lookup/codici/"
 
 
 class CoreLookupCodiciApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -128,7 +126,7 @@ class CoreLookupCodiciApiTests(JwtMockedApiTest):
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.core.api.views.fn_list_lookup_codici")
     def test_lookup_paginazione_parametri(self, mocked_list, _mock_auth):
-        mocked_list.return_value = {**_LIST_RESPONSE, "page": 2, "page_size": 10}
+        mocked_list.return_value = dict(_LIST_RESPONSE)
         self.client.get(_URL + "?rel=config.stati_sdi&limit=10&offset=10")
         kwargs = mocked_list.call_args.kwargs
         self.assertEqual(kwargs["limit"], 10)
@@ -174,9 +172,6 @@ class CoreLookupCodiciApiTests(JwtMockedApiTest):
     def test_lookup_lista_vuota_ok(self, mocked_list, _mock_auth):
         mocked_list.return_value = {
             "count": 0,
-            "page": 1,
-            "page_size": 50,
-            "total_pages": 0,
             "results": [],
         }
         response = self.client.get(_URL + "?rel=config.stati_sdi&search=xyz")

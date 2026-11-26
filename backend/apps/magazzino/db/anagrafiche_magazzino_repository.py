@@ -44,7 +44,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import date
 from typing import Any, cast
 
@@ -53,12 +52,13 @@ from django.db import connection
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
-    fetchone_scalar,
+    lista_paginata,
     rows_to_list,
     sql_order_clause,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
-from apps.magazzino.db._helpers import guard_canale_sistema, lista_paginata, meta_mai_null
+from apps.core.db.sql_write_helpers import campi_jsonb as _jsonb, esegui_verbo as _verbo
+from apps.magazzino.db._helpers import guard_canale_sistema
 from apps.magazzino.types import LottoRow, MagazzinoRow, UbicazioneRow
 
 _FN = "magazzino.anagrafiche_magazzino_repository"
@@ -84,7 +84,6 @@ MAGAZZINI_SORT_COLUMNS: dict[str, str] = {
     "data_insert": "data_insert",
     "id": "id",
 }
-MAGAZZINI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_insert"})
 
 UBICAZIONI_SORT_COLUMNS: dict[str, str] = {
     "codice": "codice",
@@ -100,7 +99,6 @@ UBICAZIONI_SORT_COLUMNS: dict[str, str] = {
     "data_insert": "data_insert",
     "id": "id",
 }
-UBICAZIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_insert"})
 
 LOTTI_SORT_COLUMNS: dict[str, str] = {
     "codice": "codice",
@@ -110,8 +108,6 @@ LOTTI_SORT_COLUMNS: dict[str, str] = {
     "data_insert": "data_insert",
     "id": "id",
 }
-# Le date: verso naturale DESC (regola di Tid del 2026-09-02).
-LOTTI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_arrivo", "data_scadenza", "data_insert"})
 
 # Cosa si PUO' cercare in ogni lista; cosa si cerca lo dice il catalogo
 # (`add_ricerca_full_condition`, brief-be-ricerca-full-liste-residue §2).
@@ -134,20 +130,6 @@ _FN_COLONNE_AMMESSE: dict[str, str] = {
     "lotti": "magazzino.fn_lotti_colonne_ammesse",
 }
 GESTI: frozenset[str] = frozenset({"crea", "modifica"})
-
-
-# Scopo: I campi di una scrittura come li riceve un verbo (`jsonb`): `meta`
-#        a `None` diventa `{}` (colonna NOT NULL), le date come ISO.
-def _jsonb(campi: dict[str, Any]) -> str:
-    return json.dumps(meta_mai_null(campi), default=str)
-
-
-# Scopo: Esegue un verbo e ne restituisce il valore scalare (la riga c'e'
-#        sempre: un verbo risponde o solleva — BB `fetchone_scalar`).
-def _verbo(sql: str, params: list[Any]) -> Any:
-    with connection.cursor() as cursor:
-        cursor.execute(sql, params)
-        return fetchone_scalar(cursor)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -241,7 +223,6 @@ class AnagraficheMagazzinoRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=MAGAZZINI_SORT_COLUMNS, default="codice", tiebreak="id",
-            colonne_desc=MAGAZZINI_SORT_COLONNE_DATA,
         )
         rows, total = lista_paginata(
             select_sql=f"{_MAGAZZINI_SELECT} {_where(conditions)}",
@@ -318,7 +299,6 @@ class AnagraficheMagazzinoRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=UBICAZIONI_SORT_COLUMNS, default="codice", tiebreak="id",
-            colonne_desc=UBICAZIONI_SORT_COLONNE_DATA,
         )
         rows, total = lista_paginata(
             select_sql=f"{_UBICAZIONI_SELECT} {_where(conditions)}",
@@ -389,7 +369,7 @@ class AnagraficheMagazzinoRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=LOTTI_SORT_COLUMNS, default="data_arrivo", tiebreak="id",
-            default_desc=True, colonne_desc=LOTTI_SORT_COLONNE_DATA,
+            default_desc=True,
         )
         rows, total = lista_paginata(
             select_sql=f"{_LOTTI_SELECT} {_where(conditions)}",

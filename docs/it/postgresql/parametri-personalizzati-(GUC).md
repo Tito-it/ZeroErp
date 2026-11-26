@@ -1,6 +1,6 @@
 # Parametri personalizzati (GUC) in PostgreSQL
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > **Destinatari**: chi scrive funzioni, trigger o verbi del database, e chi configura un'installazione
 >
@@ -71,6 +71,14 @@ I sei GUC d'identità (`app.current_identita_id`, `app.ruolo_applicativo`, `app.
 richiesta, **di connessione** (`is_local = false`), e li **azzera all'inizio** di ogni richiesta: è
 quel reset, non il commit, a impedire che una richiesta erediti l'identità della precedente. Le
 policy RLS, le funzioni di scope e i trigger di audit li leggono.
+
+⭐ **L'utente della connessione si legge con una funzione sola.** Chi nel database ha bisogno
+dell'utente della richiesta (una funzione, un trigger, una vista, una policy RLS) non legge
+`app.current_user_id` con `current_setting` e non lo converte da sé: chiama
+[`script.fn_utente_di_sessione('<chi legge>')`](/dbzero/script/funzioni/fn_utente_di_sessione). Risponde
+l'id dell'utente, `NULL` se la connessione non ne porta uno (un comando, un job), e
+`E_SCRIPT_CHIAMATA_NON_VALIDA` se porta un valore che non è l'id di un utente. Un test del catalogo
+diventa rosso se una funzione, una vista o una policy nuova legge la GUC a mano.
 
 Tutto il resto — da dove viene ogni valore, l'invariante «tutto o niente», che cosa succede quando
 mancano, come si diagnostica — sta in un posto solo: [Contratto GUC `app.*`](/guide/contratto-guc-app).
@@ -154,6 +162,8 @@ successiva. Significato, provenienza e regole in [Contratto GUC `app.*`](/guide/
 
 `app.current_identita_id` · `app.ruolo_applicativo` · `app.soggetto_ruolo_id` ·
 `app.current_emittente_id` · `app.current_user_id` · `app.jwt_user`
+
+`app.current_user_id` si legge solo con `script.fn_utente_di_sessione` (sopra).
 
 **Porte con il prefisso `app.*`** — non sono identità: sono porte, con lo stesso meccanismo delle
 `zeroerp.*` (le apre una funzione per la sola transazione, un guard le legge):

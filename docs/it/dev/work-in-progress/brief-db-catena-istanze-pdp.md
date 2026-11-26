@@ -45,6 +45,12 @@ Con un `UPDATE OF`, le colonne cambiate da un altro trigger `BEFORE` non contano
 mai. Li raggiunge solo un INSERT, e lo stesso vale per il pgTAP
 `anagrafiche/test-istanza-cliente-chain`, che prova l'`AN` solo in INSERT.
 
+> ⚠️ **Corretto dalla revisione di `anagrafiche` (giro 0a, 2026-11-22; riportato qui il 2026-11-23).** I due rami
+> sono irraggiungibili **anche in INSERT**: la `WHEN` di un trigger `BEFORE` si valuta subito prima della sua
+> funzione, quindi dopo `trgfn_clienti_set_periodo`, che al cliente annullato toglie le date. Ricavato dalla
+> semantica dei trigger, non provato con un caso: il pgTAP di questo brief deve costruirlo. Fonte:
+> [brief-db-revisione-anagrafiche](brief-db-revisione-anagrafiche.md) §12.2.
+
 Lo stesso buco c'è su `pdp_id`. Sul cliente è una **copia** della colonna dell'istanza, che
 `trgfn_clienti_sync_pdp` (`BEFORE`) riscrive a ogni INSERT/UPDATE: chi aggiorna un cliente non la
 mette mai nel `SET`. Ne soffre anche `trg_clienti_a20_sync_stato_pdp_aft_ins_upd`
@@ -162,6 +168,12 @@ istanza. (b) tiene viva una copia e fa del cambio di PDP un evento a catena su d
 ad `ATT` o `DISP` quando il cliente è `AT` o `CH`, e non fa niente su `AN`. Un cliente annullato
 lascia il PDP `ATT`. Ha anche lo stesso `OF pdp_id` di §2.1. Non è una questione di catena ma di
 stato del PDP, quindi propongo di non metterla qui: Tid decide se aprirle un brief (D-4).
+
+> ⚠️ **Superato (revisione di `anagrafiche`, giro 0a, 2026-11-22).** `trgfn_clienti_sync_stato_pdp` non segue più
+> `AT`/`CH`: ricalcola lo stato dall'**occupazione per periodo** (`anagrafiche.fn_check_pdp_occupato`), anche sul
+> PDP lasciato. Lo stato non si aggiorna col calendario: si ricalcola solo quando si scrive un cliente. Da rileggere
+> sul corpo prima di decidere D-4. Fonte: [brief-db-revisione-anagrafiche](brief-db-revisione-anagrafiche.md) §4.1 e
+> §12.2.
 
 ## 6. Decisioni aperte (Tid)
 

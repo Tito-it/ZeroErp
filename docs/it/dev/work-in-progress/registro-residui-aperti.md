@@ -125,6 +125,32 @@
     cancello (§7, decisione del team DB e di Tid);
   - la **postura in sola lettura** di `dbops.presidi` e `dbops.presidi_testi` per l'app (§8.1): oggi il loop
     dei grant di `ci_apply` dà anche la scrittura. Non chiesta, da decidere.
+- ⏭️ **La SQL dei contatti del ruolo scritta nella view** (BE `anagrafiche`, la **prossima attività** per decisione di Tid del 2026-11-25,
+  trovata nel passaggio al BE del giro 5 di `work-in-progress/brief-db-revisione-anagrafiche.md` §22.6):
+  `RuoloContattiView` (`backend/apps/anagrafiche/api/views_contatti_ruolo.py`) ha la SQL dentro la view, e va
+  ritirata:
+  - la **lista** (`get`) rifà in Python, con tre query, la cascata per tipo istanza → ruolo → soggetto che il BB
+    del DB `script.fn_get_contatti` fa già: due sedi della stessa regola (il DB ha cambiato la sua il
+    2026-11-25, D-T7b-4, e la view non l'ha seguita da sé). La strada: la lista dal repository, sopra il BB;
+  - la **cancellazione** (`delete`) scrive il suo `DELETE` a mano, copia di `SoggettiRepository.delete_contatto`
+    con l'ownership del ruolo al posto di quella del soggetto;
+  - da decidere col ritiro: la lista del ruolo mostra i contatti del soggetto solo per i **tipi** che il ruolo
+    non copre (la cascata). Tid, 2026-11-25: dal ruolo «sono visibili anche quelli del soggetto, e deve essere
+    identificata la provenienza» (la `fonte` c'è già); se debbano comparire tutti, anche quelli di un tipo che
+    il ruolo ridefinisce, lo decide Tid.
+- **Le colonne «predefinito» delle liste col `formato = predefinito`** (richiesta al team DB, 2026-11-26, nata
+  dall'estrazione del BB FE `PredefinitoSegno`, frontend-standards §«Predefinito — la voce scelta fra le altre»):
+  le quattro righe di `ui.lista_colonna` che dicono quale voce è la predefinita passano a `formato = predefinito`
+  (seed `80_data/sql/ui/lista_colonna.csv`):
+  - 269, lista 19, `is_default` (billing account dell'emittente), oggi `yesno`;
+  - 311, lista 24, `is_default` (modelli di documento), oggi senza formato;
+  - 665, lista 58, `is_default` (preset), oggi senza formato e spenta;
+  - 902, lista 80, `predefinito` (magazzini), oggi `yesno`.
+
+  Chi cambia per primo: il FE, già fatto (`CellaConfigurabile` rende il formato, e
+  `test_liste_configurabili_seed` 9 lo trova nel sorgente). Dopo il seed il FE toglie i tre slot
+  `#cell-is_default` / `#cell-predefinito` di `EmittenteFiscaleBillingAccountTab`, `TemplateDocumentiSearchTable`
+  e `MagazziniSearchTable`, che oggi rendono già il BB. L'export non cambia: il booleano resta «Sì»/«No».
 - **`HTML_MARKDOWN_BLOCKS` si sceglie ma non fa niente** (BE `documenti`, ereditato il 2026-10-04
   dalla chiusura di `work-done/2026/brief-db-vocabolari-versione-template.md` §5.6): il valore sta nel
   vocabolario `documenti.formati_template` (la Decisione 4, «markdown solo per blocchi controllati»),
@@ -434,6 +460,34 @@
   `forme_giuridiche*`, `stradario` e `magazzino.assets`. È un tema di famiglia: Tid ha scelto di deciderlo a parte
   (2026-11-12). Da decidere: `NOT NULL DEFAULT now()` su tutte, col censimento dalla doc auto-generata. Gemella
   della voce qui sopra su `user_update`
+- **La documentazione d'uso: decisa dominio per dominio, mai come insieme, e l'assistente AI non la legge**
+  (raccolta il 2026-11-23 in una sessione su `scripts/guide_coinvolte.py`; nessun brief d'origine, la decisione
+  d'insieme non è mai stata presa). Cosa c'è:
+  - **le guide sono «guide operative»** (PROJECT_CONTEXT, § «Struttura Repository»), e alcune scelte sono già
+    prese: il registro per l'operatore (R-2 di `work-done/2026/piano-residui-orchestrazione-e-cruscotti-vendite.md`:
+    «linguaggio non tecnico, destinatari operatori», dire ciò che dallo schermo non si deduce); guida operativa e
+    guida tecnica separate per i processi di fatturazione (Fase D di `work-done/2026/brief-be-fe-processi-fatturazione.md`);
+    una guida sola con gli esempi tecnici in coda, nell'«Area tecnica — esempi» (`standard-guide.md`). Le due forme
+    convivono senza una regola che dica quando si usa l'una o l'altra;
+  - **fatto datato (2026-11-23): 12 guide su 54 dichiarano gli operatori fra i destinatari** (cruscotti, DDT,
+    ordini, pagamenti, termini di pagamento, documenti e stampe, IVA di riga, configurazione di dashboard, liste e
+    installazione, operazioni che non si ripetono, riclassificazione vie); le altre sono per sviluppatori e analisti,
+    fra cui anagrafiche, indirizzi e magazzino. Alcuni documenti rimandano alla «documentazione utente» come a una
+    cosa che esiste (`work-in-progress/analisi-pratiche-domini-anello3.md` §3.4);
+  - **l'assistente AI è anche per gli operatori** (Tid, 2026-09-11, D5 di
+    `work-done/2026/migliorie-generali-BE-FE-da-test-valutazione.md`), ma della documentazione legge solo
+    `docs/it/ai/ai-context.md`, iniettato nel prompt (ultimo commit 2026-05-15). `AI_DOCS_PATH` e le impostazioni
+    degli embedding stanno in `settings.py` senza un consumatore; `backend/apps/ai_assistant/indexing/` è vuoto;
+  - **`ai-context.md` descrive il modello del dominio** (contratti, listini, stati della pratica) ma non è fra le fonti
+    di `scripts/guide_coinvolte.py`: uno sviluppo che lo smentisce non viene avvisato.
+
+  Da decidere (Tid): (1) se la documentazione d'uso diventa un obiettivo d'insieme, e in quale delle due forme;
+  (2) se e come l'assistente la legge. Strada valutata il 2026-11-23, non decisa: partire dall'oggetto o
+  dall'endpoint della schermata o dell'errore e risalire alle guide col nucleo di `guide_coinvolte.py` estratto in
+  un building block (regola del 2: lo script e l'endpoint gemello dello strumento AI lo usano insieme). Serve al
+  «perché questa schermata fa così», non alle domande a parole («come cambio l'indirizzo di fatturazione?»), che
+  vogliono una ricerca sul testo; e regge solo dove la guida per l'operatore c'è. (3) Se `docs/it/ai/` entra fra le
+  fonti di `guide_coinvolte.py` [script]
 
 **Residui della roadmap fatturazione** (archiviata il 2026-09-12 in
 `docs/it/dev/work-done/2026/fatturazione-roadmap.md`, dove sta il *perché* di

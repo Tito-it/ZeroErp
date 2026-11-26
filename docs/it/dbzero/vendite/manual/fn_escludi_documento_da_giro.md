@@ -1,24 +1,30 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_escludi_documento_da_giro`
 
+> **Ultimo aggiornamento**: 25 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [vendite.fatturazione_lotti_esiti](/dbzero/vendite/tabelle/fatturazione_lotti_esiti)
-> • [vendite.fatturazione_lotti_gruppi](/dbzero/vendite/tabelle/fatturazione_lotti_gruppi)
-> • [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)
+> * [vendite.fatturazione_lotti_esiti](/dbzero/vendite/tabelle/fatturazione_lotti_esiti) — l'esito del documento, che diventa `ESCLUSO`
+> * [vendite.fatturazione_lotti_gruppi](/dbzero/vendite/tabelle/fatturazione_lotti_gruppi) — il perimetro del giro, che non si tocca
+> * [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture) — le bozze del lotto
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-• [script.fn_check_documento_escludibile_da_giro](/dbzero/script/funzioni/fn_check_documento_escludibile_da_giro)
-> • [script.fn_gruppi_trascinati_da_uscita](/dbzero/script/funzioni/fn_gruppi_trascinati_da_uscita)
-> • [vendite.fn_elimina_fattura_da_lotto](/dbzero/vendite/funzioni/fn_elimina_fattura_da_lotto)
-> • [vendite.fn_get_lotto_segnalazioni_summary](/dbzero/vendite/funzioni/fn_get_lotto_segnalazioni_summary)
+> * [script.fn_check_documento_escludibile_da_giro](/dbzero/script/funzioni/fn_check_documento_escludibile_da_giro) — i motivi
+> * [script.fn_gruppi_trascinati_da_uscita](/dbzero/script/funzioni/fn_gruppi_trascinati_da_uscita) — i documenti trascinati
+> * [vendite.fn_elimina_fattura_da_lotto](/dbzero/vendite/funzioni/fn_elimina_fattura_da_lotto) — il verbo che toglie le bozze
+> * [vendite.fn_get_lotto_segnalazioni_summary](/dbzero/vendite/funzioni/fn_get_lotto_segnalazioni_summary) — chi conta per fermare il giro
+> * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) — il permesso: l'azione `reset_lotto_fattura_draft`
+>
+> Guide:
+>
+> * [Fatturazione](/guide/fatturazione) — le vie d'uscita da un lotto, e chi le può prendere
 
 ---
 
 ### 🎯 Scopo Principale
-(latest review 2026-09-08)
 
 **Un documento rotto non deve tenere in ostaggio tutto il giro.**
 
@@ -34,9 +40,27 @@ riparte con quelli che restano.
 
 ---
 
+### Chi la chiama, con quale permesso e su quale lotto
+
+È il verbo dell'endpoint «escludi dal giro». Gira come proprietario (`SECURITY DEFINER`), fuori
+dalla row security, quindi permesso e perimetro li controlla lei, all'ingresso:
+
+* **il permesso**, in prima riga: l'azione `reset_lotto_fattura_draft`
+  ([`script.fn_guard_azione`](/dbzero/script/funzioni/fn_guard_azione)), la stessa dell'endpoint.
+  Senza l'azione: `E_PERMESSO_NEGATO`;
+* **il perimetro**, sul lotto, prima dei motivi: un lotto di un'altra azienda risponde
+  `E_LOTTO_NON_TROVATO`, come un lotto che non esiste. Le fatture del documento le toglie
+  `fn_elimina_fattura_da_lotto`, che rimette il perimetro su ognuna. Chiede la stessa azione, quindi
+  il controllo ripetuto non nega niente di nuovo.
+
+**Le porte spente all'ingresso.** Il verbo spegne la GUC del reset del lotto e quella delle righe
+contabili prima di cominciare.
+
+---
+
 ### Che cosa fa, in ordine
 
-1. **Chiede il permesso**, e non se lo dà da sé: interroga
+1. **Chiede i motivi**, e non li decide da sé: interroga
    [`script.fn_check_documento_escludibile_da_giro`](/dbzero/script/funzioni/fn_check_documento_escludibile_da_giro)
    e, se c'è anche un solo motivo ostativo, solleva quello **in testa**.
 2. **Guarda chi viene via insieme**, *prima* di cancellare qualcosa: una bozza
@@ -113,30 +137,34 @@ raccontarlo all'operatore:
 
 ---
 
-### Esempio d'uso
-
-```sql
-SELECT vendite.fn_escludi_documento_da_giro(
-    p_lotto_id   => 11221,
-    p_gruppo_key => 'ORDINE_VENDITA:01a06ce4-b46a-7a49-a72f-c07c29de47bb',
-    p_motivo     => 'commessa senza sorgente ROOT: esce dal giro'
-);
-```
-
----
-
 ### Note per chi ci mette le mani
 
 * È una **funzione madre**: una sola `SELECT`, atomica per costruzione. Non va
   spezzata in più chiamate dal livello applicativo — sarebbe uno stato parziale
   in attesa di succedere.
-* Gira come il chiamante (`SECURITY INVOKER`): perimetro emittente e RLS restano
-  applicati identici.
+* Gira come proprietario (`SECURITY DEFINER`): il perimetro non lo dà la row security, lo
+  controlla il verbo all'ingresso (sezione «Chi la chiama»).
 * Il **timbro** dell'uscita (quando, chi) non lo scrive questa funzione: lo
   deriva il trigger
   [`vendite.trgfn_fatturazione_lotti_esiti_uscita`](/dbzero/vendite/funzioni/trgfn_fatturazione_lotti_esiti_uscita).
 
-> Piano e decisioni: `docs/it/dev/work-done/2026/brief-db-uscita-documento-dal-giro.md`.
+---
+
+### Test
+
+* `db/pgtap/vendite/test-porta-reset-lotto-e-fondo-v1.sql` — gira come l'applicazione: il verbo è
+  `SECURITY DEFINER`, e senza `reset_lotto_fattura_draft` risponde `E_PERMESSO_NEGATO`.
+* `db/pgtap/vendite/test-uscita-documento-dal-giro-v1.sql` — l'uscita del documento e i
+  trascinati.
+
+---
+
+### Note di migrazione
+
+* 2026-09-08 — nasce (brief-db-uscita-documento-dal-giro).
+* 2026-11-25 — `SECURITY DEFINER`: il permesso dell'endpoint in prima riga, il perimetro sul lotto
+  all'ingresso (prima lo dava la row security), le porte spente all'ingresso
+  (brief-db-porte-aperte-dalla-sola-guc, giro 1-7).
 
 ---
 

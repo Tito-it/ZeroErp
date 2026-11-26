@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/magazzino/manual/fn_aggiungi_asset.md" %}
 # ⚙️ Funzione `fn_aggiungi_asset`
 
 ```sql
@@ -23,7 +24,7 @@ BEGIN
     --   sessione; il perimetro lo dice il guard della tabella.
     --   Ritorna l'id.
     PERFORM script.fn_guard_livello(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer,
+        script.fn_utente_di_sessione('magazzino.fn_aggiungi_asset'),
         'magazzino', 'assets', 'TUTTO');
 
     RETURN magazzino.fn_crea_asset(p_articolo_id, p_seriale, p_stato_id,

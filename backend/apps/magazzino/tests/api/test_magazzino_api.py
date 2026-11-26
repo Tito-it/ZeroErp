@@ -110,6 +110,7 @@ class AuthTests(_Base):
 
 
 class ListaApiTests(_Base):
+    come_super_admin = True
     @_AUTH
     @patch(f"{_SVC}.list_documenti")
     def test_filtri_arrivano_tradotti(self, mocked, _auth):
@@ -168,6 +169,7 @@ class ListaApiTests(_Base):
 
 
 class DettaglioApiTests(_Base):
+    come_super_admin = True
     @_AUTH
     @patch(f"{_SVC}.aggiorna_documento")
     def test_patch_passa_il_payload(self, mocked, _auth):
@@ -204,6 +206,7 @@ class DettaglioApiTests(_Base):
 
 
 class RigheApiTests(_Base):
+    come_super_admin = True
     @_AUTH
     @patch(f"{_SVC}.elimina_riga")
     @patch(f"{_SVC}.aggiorna_riga")
@@ -236,6 +239,7 @@ class RigheApiTests(_Base):
 
 
 class ExportApiTests(_Base):
+    come_super_admin = True
     # Scopo: l'intestazione «filtri applicati» del file passa da `json.dumps`
     #        senza `default=`: una `date` la farebbe esplodere. Si passa in ISO,
     #        e i filtri vuoti non compaiono.
@@ -272,6 +276,7 @@ class ExportApiTests(_Base):
 
 
 class LookupApiTests(_Base):
+    come_super_admin = True
     # Scopo: `{"data": {"results": [...]}}`, MAI la lista nuda (api.md).
     @_AUTH
     @patch(f"{_SVC}.lookup_assets")
@@ -292,6 +297,7 @@ class LookupApiTests(_Base):
 
 
 class ConsultazioneApiTests(_Base):
+    come_super_admin = True
     @_AUTH
     @patch(f"{_CONS}.list_disponibilita")
     def test_disponibilita_filtri_tradotti(self, mocked, _auth):

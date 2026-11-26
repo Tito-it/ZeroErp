@@ -1,5 +1,7 @@
 ## Documentazione Concettuale – Funzione `script.fn_scope_ef_whitelist_via_commessa`
 
+> **Ultimo aggiornamento**: 23 novembre 2026
+>
 > **Vedi anche**
 >
 [Linee guida SQL — sezione 10 RLS](/linee-guida-sql#10-row-level-security-rls)
@@ -77,7 +79,7 @@ CREATE POLICY rls_commesse_attivita_ef_whitelist ON vendite.commesse_attivita
     USING (
         current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
         AND script.fn_scope_ef_whitelist_via_commessa(
-            NULLIF(current_setting('app.current_user_id', true), '')::integer,
+            (SELECT script.fn_utente_di_sessione('vendite.commesse_attivita.rls_commesse_attivita_ef_whitelist')),
             commessa_id
         )
     );

@@ -34,7 +34,9 @@ URL: `GET /api/v1/core/users/{user_id}/permessi-audit/`
 anche un valore fuori limiti (`limit` fuori da 1..200:
 `limit_fuori_limiti_1_200`; `offset` negativo: `offset_negativo`). ⛔ `page`/`page_size` in query sono un 400
 `E_VALIDATION_INPUT` dal 2026-10-21 (prima erano il contratto di questa lista);
-la risposta porta ancora `page` e `page_size`, ricavati dall'offset.
+dal 2026-11-24 la risposta è `{user_id, count, results}` ([api.md §Paginazione](../../../dev/api.md)):
+`page` e `page_size`, che fino a quel giorno ricavava dall'offset, sono usciti,
+e gli eventi stanno in `results` (prima `events`).
 
 `data_a` **include** il giorno indicato: intervallo
 `[data_da, data_a + 1 giorno)` (F-4, 2026-09-27), e i giorni sono giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09).
@@ -46,10 +48,7 @@ la risposta porta ancora `page` e `page_size`, ricavati dall'offset.
   "data": {
     "user_id": 5,
     "count": 42,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
-    "events": [
+    "results": [
       {
         "tabella": "user_override_aree",
         "timestamp": "2026-02-28T10:30:00+00:00",

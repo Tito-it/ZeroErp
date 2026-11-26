@@ -29,8 +29,8 @@ BEGIN ATOMIC
               CROSS JOIN LATERAL anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo(sr.id, fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli.p_tipo_soggetto_dettaglio_id, script.fn_data_operativa()) r(tipo_indirizzo_id, ripiego_tipo_indirizzo_id))
            WHERE (sr.soggetto_id = fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli.p_soggetto_id)
          UNION ALL
-          SELECT NULL::bigint AS int8,
-             NULL::integer AS int4,
+          SELECT NULL::bigint,
+             NULL::integer,
              s.tipo_indirizzo_id,
              s.ripiego_tipo_indirizzo_id
             FROM anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto(fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli.p_soggetto_id, fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli.p_tipo_soggetto_dettaglio_id, script.fn_data_operativa()) s(tipo_indirizzo_id, ripiego_tipo_indirizzo_id)) x

@@ -75,8 +75,11 @@ _ORDER_COLS_PREVENTIVI: dict[str, str] = {
     "totale_documento": "v.totale_documento",
     "totale_imponibile": "v.totale_imponibile",
     "totale_iva": "v.totale_iva",
-    "validita_al": "COALESCE(v.validita_al, 'infinity'::date)",
-    "validita_dal": "COALESCE(v.validita_dal, '-infinity'::date)",
+    # Il vuoto di `validita_al` («non scade mai») va come il massimo: lo
+    # dichiara il catalogo (`ui.lista_colonna.vuoto_ordinato_come_massimo`).
+    # Quello di `validita_dal` («da sempre») e' il minimo, la regola generale.
+    "validita_al": "v.validita_al",
+    "validita_dal": "v.validita_dal",
     "stato_descrizione": "v.stato_descrizione",
     # `stato_codice_interno` (tecnica, severity del Tag) ed
     # `emittente_fiscale_codice` (la colonna Emittente legge
@@ -112,11 +115,6 @@ PREVENTIVO_REVISIONI_ORDER_COLUMNS: dict[str, str] = {
     "stato_descrizione": "v.stato_descrizione",
     "totale_documento": "v.totale_documento",
 }
-
-# Colonne DATA della whitelist qui sopra: senza `order_dir` ordinano DESC
-# (`sql_order_clause(colonne_desc=…)`, regola di Tid del 2026-09-02),
-# confrontate col seed da `test_liste_configurabili_seed` (test 10).
-PREVENTIVO_REVISIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data"})
 
 # Risoluzione "rev attiva" del legame ROOT preventivo↔pratica/flusso
 # (pratiche_sorgenti, sorgente PREVENTIVO, ruolo ROOT). Il link memorizza l'uid
@@ -210,7 +208,6 @@ class PreventiviRepository(
     _righe_ordine_documento = "ordine"
     _righe_ordinamento = _ORDER_COLS_RIGHE
     _righe_ricerca = _RICERCA_RIGHE
-    _righe_colonne_desc = ("data_consegna_richiesta_cliente",)
     # Le date di consegna in blocco (BB `scrivi_data_consegna`): la sola
     # richiesta, che segue il lock delle righe (solo bozza).
     _righe_date_consegna = {"data_consegna_richiesta_cliente": None}
@@ -252,7 +249,7 @@ class PreventiviRepository(
         data_al: date | None = None,
         search: str | None = None,
         solo_ultima_revisione: bool = True,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
         limit: int,
         offset: int,
         order_by: str = "data",
@@ -742,7 +739,6 @@ class PreventiviRepository(
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=PREVENTIVO_REVISIONI_ORDER_COLUMNS, default="v.rev", tiebreak="v.id",
-            colonne_desc=PREVENTIVO_REVISIONI_SORT_COLONNE_DATA,
         )
         params: list[Any] = [preventivo_id]
         from_where = (

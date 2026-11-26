@@ -149,8 +149,7 @@ class DashBacklogDocumentiServiceTests(TestCase):
     def test_documenti_ok_envelope_paginato(self, mock_repo):
         data = fn_dash_backlog_documenti(classe="RECUPERABILE", area="PREVENTIVO")
         self.assertEqual(data["count"], 1)
-        self.assertEqual(data["page"], 1)
-        self.assertEqual(data["total_pages"], 1)
+        self.assertEqual(data["offset_effettivo"], 0)
         self.assertEqual(data["results"], [{"documento_id": 1}])
         kwargs = mock_repo.call_args.kwargs
         self.assertEqual(kwargs["classe"], "RECUPERABILE")

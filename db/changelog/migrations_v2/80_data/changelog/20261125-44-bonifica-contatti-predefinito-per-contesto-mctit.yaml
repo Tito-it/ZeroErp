@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.contatti: ogni riga di contesto con contatti ha un predefinito,
+#   uno solo, prima che l'indice unico lo scriva (90_end -45).
+#   D-T7b-1 di Tid (2026-11-25), brief-db-revisione-anagrafiche §22 (S8).
+#
+# -- PERCHE' SERVE, A PRESCINDERE DALLE RIGHE DI OGGI ---------------------------------
+#   Fino a 20_code -37 il predefinito era del soggetto piu' l'etichetta del
+#   livello: i ruoli dello stesso soggetto ne condividevano uno, e il contesto
+#   di ogni ruolo tranne il primo poteva restare senza. Nessun indice scriveva
+#   «al piu' uno»: due contatti nati insieme in un contesto vuoto potevano nascere
+#   predefiniti tutti e due. Il modello vale per ogni database.
+#
+# -- LA REGOLA ----------------------------------------------------------------------
+#   Per ogni riga di contesto (soggetto, ruolo, istanza) con contatti, il
+#   predefinito e' quello gia' marcato nato per primo; senza nessuno marcato, il
+#   primo nato. E' la regola della nascita applicata all'indietro. Gli altri
+#   perdono il segno; default_context si riallinea al livello (NULL su chi non
+#   e' predefinito). soggetti.default_contatto_id non si tocca: il predefinito
+#   del soggetto stava gia' in un contesto suo, e il puntatore e' di T6.
+#
+# -- LA FORMA ----------------------------------------------------------------------------
+#   Come 20261123-94: la correzione non e' un evento, quindi i trigger della
+#   tabella si sospendono (restano accesi audit e tx_id) e si riaccendono nel
+#   loro modo (O, A, R). Il guard del predefinito (-36) rifiuterebbe il segno
+#   tolto, che qui e' la correzione. Senza righe da toccare il blocco non
+#   sospende niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261125-44-bonifica-contatti-predefinito-per-contesto-mctit.yaml
+
+  - changeSet:
+      id: 20261125-44-bonifica-contatti-predefinito-per-contesto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.contatti: un predefinito per riga di contesto (soggetto, ruolo, istanza), il primo
+        marcato o il primo nato, coi trigger sospesi tranne audit e tx_id. D-T7b-1,
+        brief-db-revisione-anagrafiche §22.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $bonifica$
+              DECLARE
+                  r          record;
+                  v_sospesi  pg_catalog.pg_trigger.tgname%TYPE[] := '{}';
+                  v_modi     pg_catalog.pg_trigger.tgenabled%TYPE[] := '{}';
+              BEGIN
+                  CREATE TEMP TABLE _predefinito_atteso ON COMMIT DROP AS
+                  SELECT c.id,
+                         (row_number() OVER (
+                              PARTITION BY c.soggetto_id, c.soggetto_ruolo_id, c.istanza_utility_id
+                              ORDER BY c.is_default DESC, c.id) = 1) AS atteso
+                    FROM anagrafiche.contatti c;
+
+                  IF NOT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.contatti c
+                        JOIN _predefinito_atteso a ON a.id = c.id
+                       WHERE c.is_default IS DISTINCT FROM a.atteso
+                          OR c.default_context IS DISTINCT FROM CASE
+                                 WHEN NOT a.atteso                    THEN NULL
+                                 WHEN c.istanza_utility_id IS NOT NULL THEN 'istanza'
+                                 WHEN c.soggetto_ruolo_id  IS NOT NULL THEN 'ruolo'
+                                 ELSE 'soggetto'
+                             END)
+                  THEN
+                      DROP TABLE _predefinito_atteso;
+                      RETURN;
+                  END IF;
+
+                  FOR r IN
+                      SELECT t.tgname, t.tgenabled
+                        FROM pg_trigger t
+                       WHERE t.tgrelid = 'anagrafiche.contatti'::regclass
+                         AND NOT t.tgisinternal
+                         AND t.tgenabled <> 'D'
+                         AND t.tgfoid NOT IN ('script.trgfn_audit_data_user_generic'::regproc,
+                                              'dbops.trgfn_tx_id_managed'::regproc)
+                  LOOP
+                      EXECUTE format('ALTER TABLE anagrafiche.contatti DISABLE TRIGGER %I', r.tgname);
+                      v_sospesi := v_sospesi || r.tgname;
+                      v_modi    := v_modi || r.tgenabled;
+                  END LOOP;
+
+                  UPDATE anagrafiche.contatti c
+                     SET is_default      = a.atteso,
+                         default_context = CASE
+                             WHEN NOT a.atteso                    THEN NULL
+                             WHEN c.istanza_utility_id IS NOT NULL THEN 'istanza'
+                             WHEN c.soggetto_ruolo_id  IS NOT NULL THEN 'ruolo'
+                             ELSE 'soggetto'
+                         END
+                    FROM _predefinito_atteso a
+                   WHERE a.id = c.id
+                     AND (c.is_default IS DISTINCT FROM a.atteso
+                          OR c.default_context IS DISTINCT FROM CASE
+                                 WHEN NOT a.atteso                    THEN NULL
+                                 WHEN c.istanza_utility_id IS NOT NULL THEN 'istanza'
+                                 WHEN c.soggetto_ruolo_id  IS NOT NULL THEN 'ruolo'
+                                 ELSE 'soggetto'
+                             END);
+
+                  -- Si riaccende ogni trigger nel modo in cui era: O (origin), A (always), R (replica).
+                  FOR i IN 1 .. coalesce(array_length(v_sospesi, 1), 0) LOOP
+                      EXECUTE format('ALTER TABLE anagrafiche.contatti %s TRIGGER %I',
+                                     CASE v_modi[i]
+                                         WHEN 'A' THEN 'ENABLE ALWAYS'
+                                         WHEN 'R' THEN 'ENABLE REPLICA'
+                                         ELSE 'ENABLE'
+                                     END,
+                                     v_sospesi[i]);
+                  END LOOP;
+
+                  DROP TABLE _predefinito_atteso;
+              END
+              $bonifica$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: i segni di prima seguivano la chiave ritirata.
+              SELECT 1;

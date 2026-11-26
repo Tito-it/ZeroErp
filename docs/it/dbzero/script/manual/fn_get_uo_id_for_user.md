@@ -1,5 +1,7 @@
 ## Documentazione Concettuale – Funzione `script.fn_get_uo_id_for_user`
 
+> **Ultimo aggiornamento**: 23 novembre 2026
+>
 > **Vedi anche**
 >
 [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth)
@@ -96,7 +98,7 @@ LIMIT 1
 SELECT *
   FROM config.unita_organizzative
  WHERE id = script.fn_get_uo_id_for_user(
-         NULLIF(current_setting('app.current_user_id', true), '')::integer);
+         script.fn_utente_di_sessione('schema.fn_chiamante'));
 ```
 
 Può anche essere usata in policy RLS future per scope per UO (es.

@@ -54,6 +54,10 @@ _FIXTURE: tuple[str, ...] = (
     SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
     """,
     "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
+    # Dal giro 16 (brief-db-porte-aperte-dalla-sola-guc §9) pubblicare chiede
+    # l'azione dell'endpoint, `documenti_template_manage`: il test la da'
+    # al suo operatore, come la darebbe il pannello dei permessi.
+    "SELECT dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM _mondo), 'documenti_template_manage')",
 )
 
 # Il builder vero del template: la pubblicazione lo risolve dal registry.

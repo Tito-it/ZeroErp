@@ -40,7 +40,7 @@ from apps.core.services.coda_lavori.repository import (
 )
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.fan_out import run_fan_out
-from apps.core.services.list_helpers import validate_order_params
+from apps.core.services.list_helpers import validate_order_params, pagina_con_totale
 from apps.core.services.payload_helpers import translate_db_errors
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.processi import (
@@ -90,7 +90,7 @@ _SOGLIA_LIVENESS_RIPIEGO_MINUTI = 10
 
 
 # Scopo: CHI È il chiamante sui lavori di coda: il suo `auth_user.id` VERO
-#        (anche per un superuser, lo stesso che la cattura dello scope scrive in
+#        (lo stesso che la cattura dello scope scrive in
 #        `scope.auth_user_id` e «Esegui ora» in `payload.richiesto_da`), o None
 #        per un uso senza utente. È ciò con cui la coda dice «mio»: `is_mio`
 #        degli elenchi, il filtro «miei», le azioni di chi non ha
@@ -198,8 +198,8 @@ def _liveness_worker(corsie: list[tuple[str, str]]) -> dict[tuple[str, str], dic
 #        `{coda_lavori: {pending, in_corso}, coda_stampa: {pending, in_corso},
 #        worker: {coda_lavori: {...}, coda_stampa: {...}}}`. I conteggi sono
 #        SCOPED al chiamante (coda lavori: le sue aziende, dalla RLS; coda stampa
-#        per emittente via JOIN fatture — `auth_user_id` None = superuser, vede
-#        tutto). La liveness confronta l'ultimo run dei drainer col clock DB;
+#        per emittente via JOIN fatture; `auth_user_id` None solleva). La liveness
+#        confronta l'ultimo run dei drainer col clock DB;
 #        un worker mai girato → {last_run_at: None, attivo: False} (fail-visible:
 #        "worker giù", non un buco nel payload).
 def conteggi_code(user: Any, *, auth_user_id: int | None) -> dict[str, Any]:
@@ -310,8 +310,7 @@ def elenca_coda_lavori(
         sort_dir=sort_dir,
     )
     return {
-        "count": esito["total"],
-        "results": esito["items"],
+        **pagina_con_totale(esito["items"], esito["total"]),
         # Quante righe l'archiviazione lascia fuori dall'elenco. ⚠️ Non è un
         # accessorio: senza, «coda pulita» e «tre righe messe via» si leggono
         # uguali — stessa lezione di `ritirate_count` sul giornale della fattura.
@@ -375,8 +374,7 @@ def elenca_coda_stampa(
         sort_dir=sort_dir,
     )
     return {
-        "count": esito["total"],
-        "results": esito["items"],
+        **pagina_con_totale(esito["items"], esito["total"]),
         "archiviate_count": esito["archiviate"],
     }
 
@@ -690,11 +688,9 @@ def imposta_archiviazione_stampa(
     repo = VenditePipelineRepository()
     # ⭐ Il perimetro emittente si risolve UNA volta per la richiesta, non per
     #    riga: dentro una richiesta non cambia, e il giro puo' avere 200 righe.
-    #    `None` (superuser) resta `None` = nessuna restrizione.
-    emittenti_sr_ids = (
-        None if auth_user_id is None
-        else fetch_emittenti_scope_ids(auth_user_id, convention="sr")
-    )
+    #    ⛔ `auth_user_id=None` solleva (`fetch_emittenti_scope_ids`): fino al
+    #    2026-11-24 apriva la scrittura a tutti gli emittenti.
+    emittenti_sr_ids = fetch_emittenti_scope_ids(auth_user_id, convention="sr")
     return _esegui_archiviazione(
         ids,
         archiviato=archiviato,

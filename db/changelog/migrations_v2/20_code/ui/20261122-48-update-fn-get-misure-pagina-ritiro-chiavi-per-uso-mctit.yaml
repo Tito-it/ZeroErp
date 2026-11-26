@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.fn_get_misure_pagina: via le chiavi default_compatta e default_pagina.
+#   Brief: brief-db-revisione-ui (riga 8-sexies: la richiesta di BE33, dopo
+#   Q58 (a) e 20261122-35).
+#
+# Il perche': 20261122-35 ha dato alla lettura la chiave default_per_uso,
+#   costruita dall'enum ui.uso_misura_pagina, e ha tenuto le due chiavi scritte a
+#   mano finche' il backend non leggeva quella. Il team BE/FE ha censito i lettori
+#   (BE33, 2026-11-23): l'unico era il BB FE core/misurePagina.js, che ora legge
+#   default_per_uso; il backend passa la risposta com'e'. Lato DB nessuna funzione
+#   e nessuna vista legge le due chiavi (pg_proc e pg_views su dbdev, 2026-11-23).
+#   Con loro esce dalla funzione l'ultima sede dei due usi scritti a mano.
+# Corpo di partenza dal vivo (dbdev, 2026-11-23, quello di 20261122-35). Firma,
+#   volatilita' e sicurezza invariate: CREATE OR REPLACE. Attributi vivi letti il
+#   2026-11-23: sql STABLE, COST 100, nessun SET, PARALLEL UNSAFE, INVOKER,
+#   EXECUTE a zeroerp_app. La rollback riporta il corpo e il COMMENT di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261122-48-update-fn-get-misure-pagina-ritiro-chiavi-per-uso-mctit.yaml
+
+  - changeSet:
+      id: 20261122-48-update-fn-get-misure-pagina-ritiro-chiavi-per-uso
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_get_misure_pagina: via default_compatta e default_pagina, che nessuno legge piu'; resta
+        default_per_uso. Brief: brief-db-revisione-ui (BE33).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_get_misure_pagina'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.fn_get_misure_pagina()
+               RETURNS jsonb
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: le misure «righe per pagina» ammesse, in ordine, e il
+                  --   default di ogni uso: la lettura unica per l'applicazione.
+                  -- Gli usi dall'enum, non scritti qui: un uso nuovo ha il suo default
+                  --   senza toccare la funzione.
+                  SELECT jsonb_build_object(
+                             'misure',           (SELECT COALESCE(jsonb_agg(m.misura ORDER BY m.misura), jsonb_build_array())
+                                                    FROM ui.misure_pagina m),
+                             'default_per_uso',  (SELECT jsonb_object_agg(u.uso::text, ui.fn_misura_pagina_default(u.uso::text))
+                                                    FROM unnest(enum_range(NULL::ui.uso_misura_pagina)) AS u(uso)));
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION ui.fn_get_misure_pagina() IS
+                  'Le misure «righe per pagina» per tutta l''applicazione, in una lettura: {"misure": [...] in ordine crescente, "default_per_uso": {uso: misura} per ogni valore di ui.uso_misura_pagina}. Gli usi vengono dall''enum: un uso nuovo compare senza toccare la funzione. Dal catalogo ui.misure_pagina; i default da ui.fn_misura_pagina_default, che solleva E_UI_MISURA_PAGINA_DEFAULT_MANCANTE se ne manca uno: mai NULL. La serve il backend a ogni paginatore. STABLE, INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.fn_get_misure_pagina()
+               RETURNS jsonb
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: le misure «righe per pagina» ammesse, in ordine, e il
+                  --   default di ogni uso: la lettura unica per l'applicazione.
+                  -- Gli usi dall'enum, non scritti qui: un uso nuovo ha il suo default
+                  --   senza toccare la funzione.
+                  SELECT jsonb_build_object(
+                             'misure',           (SELECT COALESCE(jsonb_agg(m.misura ORDER BY m.misura), jsonb_build_array())
+                                                    FROM ui.misure_pagina m),
+                             'default_per_uso',  (SELECT jsonb_object_agg(u.uso::text, ui.fn_misura_pagina_default(u.uso::text))
+                                                    FROM unnest(enum_range(NULL::ui.uso_misura_pagina)) AS u(uso)),
+                             -- Le due chiavi di prima, finche' il backend non legge default_per_uso.
+                             'default_compatta', ui.fn_misura_pagina_default('COMPATTA'),
+                             'default_pagina',   ui.fn_misura_pagina_default('PAGINA'));
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION ui.fn_get_misure_pagina() IS
+                  'Le misure «righe per pagina» per tutta l''applicazione, in una lettura: {"misure": [...] in ordine crescente, "default_per_uso": {uso: misura} per ogni valore di ui.uso_misura_pagina (COMPATTA: drawer e dialog; PAGINA: pagine)}. Gli usi vengono dall''enum: un uso nuovo compare senza toccare la funzione. Dal catalogo ui.misure_pagina; i default da ui.fn_misura_pagina_default, che solleva E_UI_MISURA_PAGINA_DEFAULT_MANCANTE se ne manca uno: mai NULL. Le chiavi default_compatta e default_pagina ripetono i due default di default_per_uso e restano finché il backend non legge quella. La serve il backend a ogni paginatore. STABLE, INVOKER.';

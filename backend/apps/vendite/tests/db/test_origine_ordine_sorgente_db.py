@@ -108,7 +108,7 @@ class OrigineOrdineSorgenteDbTests(unittest.TestCase):
         self.assertEqual(con["documento_origine_etichetta"], attesa)
 
         origine = OrdineDocumentContextBuilder(repo=repo).build_context(
-            self.ordine_id,
+            self.ordine_id, auth_user_id=1,
         )["ordine"]["origine"]
         self.assertEqual(origine["tipo"], SORGENTE_PREVENTIVO)
         self.assertEqual(origine["etichetta"], attesa)

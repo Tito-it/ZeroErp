@@ -49,7 +49,7 @@ DECLARE
     v_tutto_reso        boolean;
     v_ord               RECORD;
 BEGIN
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('vendite.fn_conferma_reso');
     -- 1) Guard input + reso in uno stato da cui la matrice conferma + almeno
     --    una riga.
     IF p_reso_id IS NULL OR p_reso_id <= 0 THEN

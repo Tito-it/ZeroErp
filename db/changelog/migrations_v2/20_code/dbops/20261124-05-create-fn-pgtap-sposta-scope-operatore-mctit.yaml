@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BUILDER CHE SPOSTA L'OPERATORE DI UNA FIXTURE, DAL VERBO
+#   dbops.fn_pgtap_sposta_scope_operatore
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §10 (giro 10; D-Q a di Tid,
+#   2026-11-24).
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Molti pgTAP portano l'operatore di contesto su un'altra azienda, o gliela
+#   tolgono, in mezzo al test. Lo facevano a mano, ognuno per conto suo:
+#   accendere zeroerp.allow_user_emittente_delete_override, cancellare la riga
+#   di config.user_emittenti_fiscali, scriverne un'altra. Dal 20261124-04 la
+#   porta non si apre piu' all'app ne' al proprietario con 'on', e lo
+#   spostamento si fa solo col verbo script.fn_change_user_emittenti_scope, che
+#   chiede il SUPER_ADMIN. Regola del 2: la stessa operazione in molti file
+#   diventa un builder, e le copie si ritirano nello stesso giro.
+#
+# -- LA FORMA -------------------------------------------------------------
+#   Prova il verbo vero, non lo aggira: un SUPER_ADMIN di fixture
+#   (dbops.fn_pgtap_crea_operatore_umano, true) entra nel contesto, il verbo
+#   sposta, e il contesto di prima (app.current_user_id, app.ruolo_applicativo)
+#   si rimette, anche in errore. Le regole sono quelle del verbo: un errore del
+#   verbo arriva al test com'e'. INVOKER, come gli altri builder: gira da app e
+#   da owner.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261124-05-create-fn-pgtap-sposta-scope-operatore-mctit.yaml
+
+  - changeSet:
+      id: 20261124-05-create-fn-pgtap-sposta-scope-operatore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_sposta_scope_operatore: il builder dei pgTAP che porta un operatore su
+        un'azienda (o gliela toglie) dal verbo script.fn_change_user_emittenti_scope, con un
+        SUPER_ADMIN di fixture. Brief: brief-db-porte-aperte-dalla-sola-guc §10.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_sposta_scope_operatore(
+                  p_auth_user_id         config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_emittente_fiscale_id config.user_emittenti_fiscali.emittente_fiscale_id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $fn$
+              -- Scopo: in un pgTAP, portare l'operatore p_auth_user_id sull'azienda
+              --   p_emittente_fiscale_id, oppure togliergli l'azienda (NULL), dal verbo
+              --   script.fn_change_user_emittenti_scope. Restituisce il risultato del verbo.
+              -- Uso:
+              --   PERFORM dbops.fn_pgtap_sposta_scope_operatore(
+              --       (SELECT user_id FROM tmp_refs), (SELECT emittente_b FROM tmp_refs));
+              -- ⚠️ Il verbo chiede il SUPER_ADMIN: lo fa un SUPER_ADMIN di fixture,
+              --   creato a ogni chiamata, che entra nel contesto e ne esce. Il contesto di
+              --   prima (app.current_user_id, app.ruolo_applicativo) si rimette, anche
+              --   in errore. app.current_emittente_id non si tocca.
+              -- ⚠️ Le regole sono quelle del verbo: l'ultimo SUPER_ADMIN attivo non si
+              --   sposta, piu' di un'azienda no. Un rifiuto arriva al test com'e'.
+              DECLARE
+                  v_utente_prima config.user_emittenti_fiscali.auth_user_id%TYPE
+                      := script.fn_utente_di_sessione('dbops.fn_pgtap_sposta_scope_operatore');
+                  -- il valore della GUC di contesto com'era, anche vuoto
+                  v_ruolo_prima  text := current_setting('app.ruolo_applicativo', true);
+                  v_super_admin  config.user_emittenti_fiscali.auth_user_id%TYPE;
+                  v_esito        jsonb;
+              BEGIN
+                  SELECT o.auth_user_id
+                    INTO v_super_admin
+                    FROM dbops.fn_pgtap_crea_operatore_umano('sposta-scope', true) o;
+
+                  PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', false);
+                  PERFORM set_config('app.current_user_id', v_super_admin::text, false);
+
+                  BEGIN
+                      v_esito := script.fn_change_user_emittenti_scope(
+                                     p_auth_user_id,
+                                     CASE WHEN p_emittente_fiscale_id IS NULL
+                                          THEN ARRAY[]::bigint[]
+                                          ELSE ARRAY[p_emittente_fiscale_id] END);
+                  EXCEPTION
+                      WHEN OTHERS THEN
+                          PERFORM set_config('app.current_user_id', COALESCE(v_utente_prima::text, ''), false);
+                          PERFORM set_config('app.ruolo_applicativo', COALESCE(v_ruolo_prima, ''), false);
+                          RAISE;
+                  END;
+
+                  PERFORM set_config('app.current_user_id', COALESCE(v_utente_prima::text, ''), false);
+                  PERFORM set_config('app.ruolo_applicativo', COALESCE(v_ruolo_prima, ''), false);
+
+                  RETURN v_esito;
+              END;
+              $fn$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_sposta_scope_operatore(config.user_emittenti_fiscali.auth_user_id%TYPE, config.user_emittenti_fiscali.emittente_fiscale_id%TYPE)
+              IS 'Solo per i pgTAP: porta l''operatore sull''azienda indicata, o gli toglie l''azienda (NULL), dal verbo script.fn_change_user_emittenti_scope, e restituisce il suo risultato. Il verbo chiede il SUPER_ADMIN: lo fa un SUPER_ADMIN di fixture (dbops.fn_pgtap_crea_operatore_umano) che entra nel contesto e ne esce; app.current_user_id e app.ruolo_applicativo tornano com''erano, anche in errore. Le regole e i rifiuti sono quelli del verbo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_sposta_scope_operatore(config.user_emittenti_fiscali.auth_user_id%TYPE, config.user_emittenti_fiscali.emittente_fiscale_id%TYPE);

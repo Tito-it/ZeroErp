@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Collection, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from types import MappingProxyType
@@ -20,6 +20,7 @@ from apps.core.services.request_context import (
     OrdinamentoPropostoRifiutato,
     conferma_ordinamento_proposto,
     e_chiave_proposta,
+    vuoto_come_massimo,
 )
 
 
@@ -363,40 +364,21 @@ def soglia_ricerca(lista_codice: str) -> int:
 # ⭐ Regola del 2 (2026-09-24, brief-be-ricerca-full-liste-residue §12): la
 #    leggevano `pagamenti_repository.emittente_nel_perimetro` e la guardia di
 #    contesto di `ui_service.get_lista_config_per_video`.
-# ⭐ Un valore che non e' un id utente (non solo cifre, o oltre l'`integer` di
-#    `auth_user.id`) e' una chiamata fuori contesto, non un 22P02 del cast:
-#    `codice_errore` (TECNICO, frase chiusa) del dominio che chiede. E' il
-#    contratto di `ui.fn_lista_colonne_ricerca_full` sulla stessa GUC (U38 e
-#    BE31 di brief-db-revisione-ui, 2026-11-22): il cast si fa solo su un
-#    valore gia' riconosciuto, quindi il 22P02 non puo' nascere qui.
-# ⚠️ `codice_errore` e `function_name` sono obbligatori: il codice e' del
-#    dominio del chiamante (`E_UI_…`, `E_PAGAMENTI_…`), non di `core`.
-def utente_di_sessione(*, codice_errore: str, function_name: str) -> int | None:
+# ⭐ Una regola sola: la lettura la fa il BB DB `script.fn_utente_di_sessione`,
+#    lo stesso di funzioni, viste e policy RLS (giri 8 e 8b di
+#    brief-db-revisione-ui, BE34). Un valore che non e' l'id di un utente
+#    (non solo cifre, zero, zeri in testa, oltre il massimo di `integer`) e'
+#    `E_SCRIPT_CHIAMATA_NON_VALIDA` (TECNICO, 500) dal DB, col valore in
+#    `context.app_current_user_id`: mai il 22P02 del cast.
+# ⛔ Niente controllo di forma qui: la copia Python che c'era (regex di cifre e
+#    tetto) accettava `0` e `007`, che il DB rifiuta — due copie, gia' divergenti.
+# ⚠️ `function_name` e' obbligatorio: e' il `p_chi` del BB, cioe' chi leggeva,
+#    nella frase e nel log del rifiuto.
+def utente_di_sessione(*, function_name: str) -> int | None:
     with connection.cursor() as cursor:
-        cursor.execute("SELECT NULLIF(current_setting('app.current_user_id', true), '')")
+        cursor.execute("SELECT script.fn_utente_di_sessione(%s)", [function_name])
         row = cursor.fetchone()
-    valore = row[0] if row else None
-    if valore is None:
-        return None
-    ErrorManager.require(
-        _ID_UTENTE_DI_SESSIONE.fullmatch(valore) is not None
-        and int(valore) <= _ID_UTENTE_MASSIMO,
-        code=codice_errore,
-        message=(
-            "Chiamata non valida: il contesto della richiesta non e' quello "
-            "di un utente."
-        ),
-        context={"app_current_user_id": valore},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    return int(valore)
-
-
-# Le cifre di un id di `auth_user` (colonna `integer`): la stessa forma che
-# `ui.fn_lista_colonne_ricerca_full` riconosce prima del cast.
-_ID_UTENTE_DI_SESSIONE = re.compile(r"[0-9]{1,10}")
-_ID_UTENTE_MASSIMO = 2_147_483_647
+    return row[0] if row else None
 
 
 # Scopo: le colonne in cui si cerca ADESSO in una lista: quelle che la
@@ -661,11 +643,23 @@ def sql_order_direction(
     order_dir: str | None,
     *,
     default_desc: bool = False,
+    vuoto_massimo: bool = False,
 ) -> str:
     """Clausola di direzione ORDER BY con **NULL ordinato come valore MINIMO**.
 
     Ritorna `'ASC NULLS FIRST'` oppure `'DESC NULLS LAST'`, da interpolare al
     posto della sola direzione: `ORDER BY {col} {direction}, <tiebreak>`.
+
+    ⭐ **`vuoto_massimo=True`: il NULL come il valore MASSIMO** —
+    `'ASC NULLS LAST'` / `'DESC NULLS FIRST'` (decisioni di Tid del
+    2026-11-24, brief-db-lista-colonna-vuoto-in-ordine). E' la colonna il cui
+    vuoto vuol dire «senza fine» (una fine validita', una scadenza che non
+    c'e'), e lo dichiara il CATALOGO (`ui.lista_colonna.vuoto_ordinato_come_massimo`),
+    non il chiamante: lo passa `sql_order_direction_lista`, che sa quale
+    colonna sta ordinando. Vale per ogni tipo, senza un valore «infinito» per
+    tipo: fino a quel giorno l'eccezione era `COALESCE(col, 'infinity')`
+    scritta a mano nelle whitelist (decisione di Tid del 2026-08-01), e le
+    whitelist che se ne dimenticavano ordinavano il vuoto al contrario.
 
     **Perche' i NULLS espliciti** (decisione Tid 2026-07-19): i default
     PostgreSQL sono l'opposto (ASC -> NULLS LAST, DESC -> NULLS FIRST), quindi
@@ -700,6 +694,8 @@ def sql_order_direction(
         raise ValueError("order_dir_invalid")
     indicata = (order_dir or "").strip().lower()
     is_desc = (indicata or ("desc" if default_desc else "asc")) == "desc"
+    if vuoto_massimo:
+        return "DESC NULLS FIRST" if is_desc else "ASC NULLS LAST"
     return "DESC NULLS LAST" if is_desc else "ASC NULLS FIRST"
 
 
@@ -793,18 +789,6 @@ def colonne_identita(*colonne: str) -> dict[str, str]:
     return {c: c for c in colonne}
 
 
-# Le chiavi di ordinamento che per NOME sono date, per la convenzione del
-# progetto: `data`, `data_*`, `*_at`, `valido_dal/al`, `validita_dal/al`, ogni
-# `*_dal`/`*_al`, `competenza_mese`. La usa `sql_order_clause` per la regola
-# di Tid del 2026-09-02 («le date partono DESC»).
-_CHIAVE_DATA = re.compile(r"^(data|data_.+|.+_at|.+_dal|.+_al|competenza_mese)$")
-
-
-def e_chiave_data(chiave: str) -> bool:
-    """La chiave di ordinamento e' una data per nome (vedi `_CHIAVE_DATA`)."""
-    return bool(_CHIAVE_DATA.match(chiave))
-
-
 def colonna_ordinamento(order_by: str | None, colonne: Mapping[str, str]) -> str | None:
     """La COLONNA di una lista per la chiave `order_by` chiesta dal client.
 
@@ -859,7 +843,6 @@ def sql_order_direction_lista(
     colonne: Mapping[str, str],
     default: str | None = None,
     default_desc: bool = False,
-    colonne_desc: Collection[str] = (),
 ) -> str:
     """La DIREZIONE di una lista, risolta dalla chiave chiesta: la regola di
     `sql_order_clause`, per chi compone l'`ORDER BY` a mano.
@@ -873,33 +856,78 @@ def sql_order_direction_lista(
     - `order_by` che nomina la colonna di DEFAULT (per espressione o per
       chiave) → `default_desc`: la scelta della lista, che per una coda puo'
       essere crescente apposta;
-    - ogni altra colonna → DESC se e' una data (`colonne_desc`, o per NOME con
-      `e_chiave_data`), altrimenti ASC.
+    - ogni altra colonna → ASC, date comprese.
+
+    ⛔ **Nessuna colonna ha un verso di partenza proprio** (Tid, 2026-11-24).
+    Fino a quel giorno una data chiesta senza verso partiva DESC (regola del
+    2026-09-02, dichiarata per lista o riconosciuta dal nome della chiave).
+    E' uscita insieme al suo gemello del frontend, che girava a DESC il primo
+    click su una data e lasciava la freccia di PrimeVue su un verso diverso da
+    quello inviato: il giro di ogni intestazione e'
+    niente -> crescente -> decrescente -> niente, e il backend senza verso
+    dice lo stesso. Resta `default_desc`: e' l'ordinamento di partenza della
+    LISTA, non una proprieta' della colonna.
 
     ⛔ **Una chiave fuori `colonne` e' `ValueError` (400)**, da
     `colonna_ordinamento`: dal 2026-10-20 nessuna lista ripiega in silenzio sul
     default (decisione Tid, brief-be-verifica-documentazione-api §A1).
 
-    ⭐ **Regola del 2 (ok Tid 2026-10-20).** La riga
-    `sql_order_direction(order_dir, default_desc=e_chiave_data(order_by))` era
-    stata ricopiata in 13 `ORDER BY` composti a mano (vendite, magazzino,
+    ⭐ **Regola del 2 (ok Tid 2026-10-20).** La riga che sceglieva il verso
+    dalla chiave chiesta era stata ricopiata in 13 `ORDER BY` composti a mano (vendite, magazzino,
     amm-software, emittenti), e le copie divergevano gia' da `sql_order_clause`:
     guardavano la chiave chiesta e non la colonna risolta, e ignoravano la
     precedenza del default. `sql_order_clause` ora passa di qui.
+
+    ⭐ **Dove va il vuoto lo dice il catalogo della lista** (2026-11-24,
+    brief-db-lista-colonna-vuoto-in-ordine): sulla colonna che la lista della
+    richiesta dichiara `vuoto_ordinato_come_massimo` il vuoto va come il
+    massimo (`sql_order_direction(vuoto_massimo=True)`). La dichiarazione la
+    registra la base view (`applica_vuoti_come_massimo`); fuori da una view
+    con `lista_codice` vale la regola generale. La chiave e' quella chiesta,
+    o quella del `default` quando la richiesta non ordina: e' lo stesso
+    `campo_sorgente` del catalogo, su cui la whitelist e' chiavata.
     """
     colonna = colonna_ordinamento(order_by, colonne)
     if colonna is None:
-        return sql_order_direction(order_dir, default_desc=default_desc)
+        return sql_order_direction(
+            order_dir, default_desc=default_desc,
+            vuoto_massimo=_default_vuoto_massimo(default, colonne),
+        )
     assert order_by is not None
     order_by = order_by.strip()
     # Il default si riconosce dall'espressione O dalla chiave: un `default`
     # scritto come chiave (`"data_scadenza"`) con una colonna qualificata
     # (`"v.data_scadenza"`) perderebbe in silenzio il verso della coda.
-    if default is not None and default.strip() in (colonna.strip(), order_by):
-        verso_desc = default_desc
-    else:
-        verso_desc = order_by in colonne_desc or e_chiave_data(order_by)
-    return sql_order_direction(order_dir, default_desc=verso_desc)
+    verso_desc = default is not None and default.strip() in (colonna.strip(), order_by)
+    return sql_order_direction(
+        order_dir, default_desc=verso_desc and default_desc,
+        vuoto_massimo=vuoto_come_massimo(order_by),
+    )
+
+
+# Scopo: il `default` di una lista ordina il vuoto come il MASSIMO? Lo dice la
+#        dichiarazione della CHIAVE che il default nomina, per chiave o per
+#        espressione (la stessa regola con cui `sql_order_direction_lista` ne
+#        riconosce il verso); `False` se il default non e' una colonna offerta
+#        all'operatore (`s.id`).
+# ⚠️ Serve a dire dove va il vuoto anche quando la richiesta non ordina: il
+#    default di una lista puo' essere una colonna che il catalogo dichiara.
+# ⛔ Piu' chiavi con la stessa espressione del default, dichiarate in modo
+#    diverso, sono una whitelist ambigua: `RuntimeError` (errore di
+#    programmazione), non la prima chiave del dizionario. Fino alla `/verifica`
+#    del 2026-11-24 l'esito dipendeva dall'ordine delle chiavi.
+def _default_vuoto_massimo(default: str | None, colonne: Mapping[str, str]) -> bool:
+    if default is None:
+        return False
+    nome = default.strip()
+    chiavi = [nome] if nome in colonne else [k for k, v in colonne.items() if v.strip() == nome]
+    dichiarazioni = {vuoto_come_massimo(k) for k in chiavi}
+    if len(dichiarazioni) > 1:
+        raise RuntimeError(
+            f"default di lista ambiguo: {nome!r} e' l'espressione di {sorted(chiavi)}, "
+            "che il catalogo dichiara in modo diverso per il vuoto",
+        )
+    return True in dichiarazioni
 
 
 def sql_order_clause(
@@ -911,7 +939,6 @@ def sql_order_clause(
     default: str | None = None,
     default_clause: str | None = None,
     default_desc: bool = False,
-    colonne_desc: Collection[str] = (),
 ) -> str:
     """Il corpo di un `ORDER BY` di lista: colonna, direzione e spareggio.
 
@@ -939,30 +966,22 @@ def sql_order_clause(
       `default_clause`  **una CLAUSOLA GIA' COMPLETA**, con le sue direzioni
                  dentro, usata verbatim. Alternativa esclusiva a `default`.
       `default_desc`   verso del ramo `default` quando nessuno chiede niente.
-      `colonne_desc`   chiavi di `colonne` il cui verso NATURALE e' DESC.
 
     ⛔ **`default` e `default_clause` sono due parametri e non uno, e la prima
     stesura di questo BB ne aveva uno solo — sbagliando.** Un ordinamento di
     partenza a piu' criteri porta le direzioni dentro di se'
-    (`COALESCE(valido_al,'infinity') DESC, valido_dal DESC`): trattarlo come una
+    (`valido_al DESC NULLS FIRST, valido_dal DESC`): trattarlo come una
     colonna gli appiccica una seconda direzione in coda e produce
     `... DESC DESC NULLS LAST`. ⭐ Li' e' andata bene — PostgreSQL rifiuta la
     query con un errore di sintassi, quindi il difetto si e' visto subito. Ma la
     distinzione resta nell'API perche' il prossimo chiamante non debba
     scoprirla allo stesso modo.
 
-    ⭐ **`colonne_desc` e' la regola di Tid del 2026-09-02: «gli ordinamenti per
-    DATA hanno sempre default DESC».** Una data si legge dalla piu' recente —
-    chiedere «ordina per data» e ricevere il 2019 in cima e' il contrario di
-    cio' che si e' chiesto. ⚠️ Vale solo quando `order_dir` NON e' indicato: una
-    direzione esplicita vince sempre, altrimenti l'operatore non potrebbe
-    invertire l'ordine di una colonna data.
-    ⭐ **Dal 2026-10-20 le date si riconoscono anche dal NOME** (`e_chiave_data`,
-    decisione di Tid): circa venti liste in sette app non dichiaravano le loro
-    colonne data, e la regola per loro non valeva. `colonne_desc` resta per le
-    date con un nome fuori convenzione. ⚠️ La colonna di DEFAULT, quando
-    `order_by` la nomina (la riempie `parse_list_params`), segue `default_desc`
-    — la scelta della lista, che per una coda puo' essere crescente apposta.
+    ⭐ **Senza `order_dir` la colonna chiesta va ASC** (date comprese: la
+    regola «le date partono DESC» e' ritirata dal 2026-11-24, vedi
+    `sql_order_direction_lista`). ⚠️ La colonna di DEFAULT, quando `order_by`
+    la nomina (la riempie `parse_list_params`), segue `default_desc` — la
+    scelta della lista, che per una coda puo' essere crescente apposta.
 
     ⛔ **Se la colonna risolta E' il tiebreak, lo spareggio non si scrive.**
     Senza questo, il ramo di default di una lista che ordina per `id` produceva
@@ -985,10 +1004,10 @@ def sql_order_clause(
             "`default_clause` (una clausola completa), mai entrambi ne' nessuno"
         )
     # La direzione da UNA regola sola, la stessa degli `ORDER BY` composti a
-    # mano: precedenza del default, date DESC (vedi `sql_order_direction_lista`).
+    # mano: precedenza del default (vedi `sql_order_direction_lista`).
     direzione = sql_order_direction_lista(
         order_by, order_dir, colonne=colonne, default=default,
-        default_desc=default_desc, colonne_desc=colonne_desc,
+        default_desc=default_desc,
     )
     risolta = colonna_ordinamento(order_by, colonne)
     if risolta is None:
@@ -1212,6 +1231,51 @@ def fetch_paged_with_total(
                 row = cursor.fetchone()
                 total_count = row[0] if row else 0
     return results, total_count
+
+
+# Scopo: la pagina di una SELECT data intera — la SELECT si avvolge in una
+#        sottoquery con `COUNT(*) OVER ()`, l'ordine e la finestra si mettono
+#        sopra, e il conteggio di ripiego e' la stessa SELECT contata.
+#        `order_clause` e' il CORPO di un `ORDER BY`, senza la parola (la forma
+#        di `sql_order_clause`).
+# ⭐ Regola del 2 (2026-11-24, E-2 di brief-be-fe-BB-audit, ok Tid): era scritto
+#    in `magazzino/db/_helpers.lista_paginata` e in
+#    `PagamentiRepository._lista_paginata`, uguali salvo la parola `ORDER BY`.
+# ⭐ `dopo_pagina(data_sql, "ORDER BY …")`: cio' che si calcola sulle righe
+#    MOSTRATE e non su quelle filtrate (in pagamenti il blocco «elimina»). Avvolge
+#    la query della pagina e ne ripete l'ordine sopra: la query non finisce piu'
+#    con `LIMIT %s OFFSET %s`, ed e' il motivo per cui il conteggio di ripiego
+#    qui e' sempre esplicito. Il ripiego non paga `dopo_pagina`: conta le righe,
+#    non le giudica.
+# ⚠️ `select_sql` e `order_clause` si compongono da costanti e WHITELIST, MAI da
+#    input utente: finiscono in una stringa SQL.
+def lista_paginata(
+    *,
+    select_sql: str,
+    params: list[Any],
+    order_clause: str,
+    limit: int,
+    offset: int,
+    dopo_pagina: Callable[[str, str], str] | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    ordine = f"ORDER BY {order_clause}"
+    data_sql = f"""
+        SELECT *, COUNT(*) OVER () AS total_count FROM (
+            {select_sql}
+        ) q
+        {ordine}
+        LIMIT %s OFFSET %s
+    """  # noqa: S608 — select_sql e order_clause da costanti e whitelist del chiamante, valori come parametri
+    if dopo_pagina is not None:
+        data_sql = dopo_pagina(data_sql, ordine)
+    count_sql = f"SELECT COUNT(*) FROM ({select_sql}) q"  # noqa: S608 — select_sql da costanti del chiamante, valori come parametri
+    return fetch_paged_with_total(
+        data_sql,
+        [*params, limit, offset],
+        fallback_count_sql=count_sql,
+        fallback_params=list(params),
+        offset=offset,
+    )
 
 
 # Scopo: l'offset della pagina per `fetch_paged_with_total`: dalla coda

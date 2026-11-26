@@ -55,7 +55,8 @@ const emit = defineEmits(['toggle-menu'])
 // Scopo: il titolo al centro della topbar e' L'AREA (il dominio della rotta),
 //        con la sua icona — non la pagina.
 // ⭐ Decisione di Tid, 2026-09-19: fino a quel giorno qui stava
-//    `resolveTabLabel(route.meta)`, cioe' la stessa etichetta della scheda
+//    `resolveTabLabel(route.meta)` (alias di `resolveNavigationLabel`, ritirato
+//    il 2026-11-24), cioe' la stessa etichetta della scheda
 //    attiva e dell'ultimo segmento del breadcrumb — «Contratti» tre volte in
 //    verticale, e la topbar era l'unica delle tre che non aggiungeva niente.
 //    Il dominio invece risponde a «in quale area sono», che a sidebar chiusa

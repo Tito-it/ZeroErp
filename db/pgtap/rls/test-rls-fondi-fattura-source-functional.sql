@@ -170,8 +170,8 @@ CREATE TEMP TABLE _op (auth_user_id int, soggetto_id uuid, sr_id bigint, identit
 -- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile): l'operatore viene dalla
 --   MADRE (dbops.fn_pgtap_crea_operatore_umano: persona fisica completa,
 --   risorsa umana, veste OPERATORE accesa come all'invito accettato) e
---   l'emittente gli si da' con la funzione di dominio
---   script.fn_change_user_emittenti_scope. Prima la fixture costruiva
+--   l'emittente gli si da' dal verbo, col builder
+--   dbops.fn_pgtap_sposta_scope_operatore. Prima la fixture costruiva
 --   soggetto, soggetto_ruolo e veste a mano, senza risorsa umana: uno stato
 --   che la madre non produce, e che da D-2 (l'operatore umano vale finche'
 --   vale il suo rapporto, script.fn_veste_utilizzabile) non e' piu' un
@@ -181,35 +181,50 @@ INSERT INTO _op
 SELECT o.auth_user_id, o.soggetto_id, o.soggetto_ruolo_id, o.identita_id
   FROM dbops.fn_pgtap_crea_operatore_umano('rls fondi') o;
 
+-- ⛔ Rev 2026-11-26 (giro 10-ter, brief-db-porte-aperte-dalla-sola-guc §10-ter,
+--   D-AA a): la whitelist VUOTA e' quella di un secondo operatore, costruito
+--   senza azienda. Fino a oggi si toglieva l'azienda a _op col builder: dal
+--   20261125-74 l'azienda si toglie solo a un SUPER_ADMIN.
+CREATE TEMP TABLE _op_senza AS
+SELECT o.auth_user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('rls fondi senza azienda', false) o;
+
 
 CREATE TEMP TABLE _res (caso text, esito boolean, n bigint);
 
 -- Helper: imposta la sessione operatore con la whitelist indicata.
 -- ⚠️ Il DELETE sulla whitelist e' protetto da trgfn_user_emittenti_fiscali_guard_delete
---   (solo utente cessato o GUC di manutenzione). Lo si attraversa con la
---   funzione di dominio script.fn_change_user_emittenti_scope, che apre lei
---   l'override: senza, il file fallirebbe nel FIXTURE, cioe' copertura zero.
+--   (solo utente cessato, o la porta del verbo). Lo si attraversa col builder
+--   dbops.fn_pgtap_sposta_scope_operatore, che passa dal verbo
+--   script.fn_change_user_emittenti_scope: senza, il file fallirebbe nel
+--   FIXTURE, cioe' copertura zero.
 -- ⚠️ Il parametro e' un discriminante testuale e non la PK: PostgreSQL non
 --   ammette sottoquery negli argomenti di CALL.
 CREATE OR REPLACE PROCEDURE pg_temp.set_op(p_quale text)
 LANGUAGE plpgsql AS $sp$
 DECLARE
     v_emit bigint;
+    v_user int;
 BEGIN
-    v_emit := CASE p_quale
-                  WHEN 'own'   THEN (SELECT emit_pk  FROM _refs)
-                  WHEN 'other' THEN (SELECT other_pk FROM _refs)
-                  ELSE NULL
-              END;
+    IF p_quale = 'none' THEN
+        -- Nessuna azienda: l'operatore nato senza (sopra), non _op svuotato.
+        v_user := (SELECT auth_user_id FROM _op_senza);
+    ELSE
+        v_emit := CASE p_quale
+                      WHEN 'own'   THEN (SELECT emit_pk  FROM _refs)
+                      WHEN 'other' THEN (SELECT other_pk FROM _refs)
+                  END;
+        IF v_emit IS NULL THEN
+            RAISE EXCEPTION 'set_op: discriminante % non valido', p_quale;
+        END IF;
+        v_user := (SELECT auth_user_id FROM _op);
 
-    -- ⭐ Rev 2026-10-07: la whitelist si ripunta con la funzione di dominio,
-    --   che apre lei l'override del DELETE (un emittente o nessuno).
-    PERFORM script.fn_change_user_emittenti_scope(
-        (SELECT auth_user_id FROM _op),
-        CASE WHEN v_emit IS NULL THEN '{}'::bigint[] ELSE ARRAY[v_emit] END);
+        -- La whitelist si ripunta dal verbo, col builder (sempre un emittente).
+        PERFORM dbops.fn_pgtap_sposta_scope_operatore(v_user, v_emit);
+    END IF;
 
     PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', true);
-    PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op)::text, true);
+    PERFORM set_config('app.current_user_id', v_user::text, true);
 END
 $sp$;
 

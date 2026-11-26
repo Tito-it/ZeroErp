@@ -89,7 +89,7 @@ Fatta sul catalogo dello scratch `zeroerp_ruoli`.
 
 * **Il `codice` della colonna non si riscrive.** `ui.lista_colonna.codice` ha il lucchetto
   `trg_lista_colonna_a10_lock_columns_upd` (`E_UI_COLONNA_CODICE_IMMUTABILE`, U23 di
-  [brief-db-revisione-ui](../../work-in-progress/brief-db-revisione-ui.md)): il codice è la chiave con cui preferenze e preset
+  [brief-db-revisione-ui](brief-db-revisione-ui.md)): il codice è la chiave con cui preferenze e preset
   citano la colonna. Il punto 1 del §3, così come è scritto, si ferma su quel lucchetto.
 * **Il §3.3 aveva una premessa sbagliata.** `ui.lista_preset_colonna` cita la colonna per **id**
   (`66,722` in `lista_preset_colonna.csv`), non per codice. Per codice la citano solo le preferenze utente

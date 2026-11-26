@@ -43,7 +43,8 @@ _CODICE = "E_ATTIVO_BLOCK_CHILDREN_EXIST"
 class MagazzinoSpentoConTrasferimentiDbTests(unittest.TestCase):
 
     def setUp(self) -> None:
-        richiedi_db_provvisto("dbops.fn_pgtap_crea_magazzino(character varying, boolean, jsonb)")
+        # La sonda e' il builder piu' recente che il test usa (`20261123-11`).
+        richiedi_db_provvisto("dbops.fn_pgtap_crea_trasferimento(bigint, bigint, jsonb)")
 
     # Scopo: Esegue `azione` in un savepoint e ne ritorna il ServiceError.
     def _rifiuto(self, azione) -> ServiceError:
@@ -68,8 +69,11 @@ class MagazzinoSpentoConTrasferimentiDbTests(unittest.TestCase):
                     "       dbops.fn_pgtap_crea_magazzino('BE-ATT-LIBERO', false)"
                 )
                 da, a, libero = (int(x) for x in cur.fetchone())
+                # Il trasferimento dal BUILDER sul verbo (`20261123-11`): alla
+                # chiusura delle tabelle dei documenti interni (P-5c) l'app
+                # non le scrive piu'.
                 cur.execute(
-                    "INSERT INTO magazzino.trasferimenti (magazzino_id_from, magazzino_id_to) VALUES (%s, %s)",
+                    "SELECT dbops.fn_pgtap_crea_trasferimento(%s, %s, '{}'::jsonb)",
                     [da, a],
                 )
                 cur.execute(

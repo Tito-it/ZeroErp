@@ -91,7 +91,8 @@ Lista paginata dei record.
 `limit`/`offset` li legge `pagina_da_query`: non interi → 400
 `E_VALIDATION_INPUT`. ⛔ `page`/`page_size` in query sono un 400
 `E_VALIDATION_INPUT` dal 2026-10-21 (prima erano il contratto di questa
-lista); la risposta porta ancora `page`/`page_size`, ricavati dall'offset.
+lista). Dal 2026-11-24 la risposta è `{count, results}` ([api.md §Paginazione](../../../dev/api.md)):
+`page`/`page_size`, che fino a quel giorno ricavava dall'offset, sono usciti.
 
 ⚠️ Endpoint dichiarato `is_search_endpoint = True`: vale il throttling di
 ricerca. Un client che cicla su piu' tabelle prende 429 se non respira.

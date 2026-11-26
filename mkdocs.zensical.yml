@@ -150,6 +150,7 @@ nav:
         - Guide:
                   - Come funziona ZeroErp:
                             - Soggetti e ruoli anagrafici: it/guide/soggetti-e-ruoli-anagrafici.md
+                            - Gli emittenti fiscali: it/guide/emittenti-fiscali.md
                             - Generazione di un cliente: it/guide/generazione-cliente.md
                             - Gestione degli indirizzi: it/guide/gestione-degli-indirizzi.md
                             - Gestione dei contatti: it/guide/gestione-dei-contatti.md

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `maintenance.vw_job_run_da_guardare`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -14,6 +14,7 @@
 >
 > Approfondimento viste:
 >
+> * [maintenance.vw_job_run_corsie](/dbzero/maintenance/views/vw_job_run_corsie) — le corsie del giornale, da cui parte
 > * [maintenance.vw_job_run_da_superuser](/dbzero/maintenance/views/vw_job_run_da_superuser) — la sorella: chi si è collegato all'ultima corsa
 > * [dbops.vw_processi_programmazione](/dbzero/dbops/views/vw_processi_programmazione) — il panorama dei processi, sveglia compresa
 > * [dbops.vw_processi_programmazione_da_guardare](/dbzero/dbops/views/vw_processi_programmazione_da_guardare) — il presidio del lavoro che non parte o non registra
@@ -48,10 +49,17 @@ al giornale.
 
 ### ⭐ La domanda è «quale lavoro sta andando male», non «elenca i rossi»
 
-Si guarda l'**ultima corsa** di ogni lavoro, una riga per `jobname`. È la scelta che tiene la
+Si guarda l'**ultima corsa** di ogni lavoro, una riga per **corsia**. È la scelta che tiene la
 vista capace di **tornare vuota**: un lavoro che ricomincia a funzionare esce da solo. Niente
 colonna «visto», niente pulizia a mano. Un lavoro che fallisce molte volte in un giorno
 occupa una riga, non una per fallimento.
+
+⛔ **La corsia è la coppia `processo_codice` e `jobname`, non il solo nome.** Il modello non lega
+un `jobname` a un processo solo: due processi possono avere una corsia con lo stesso nome. Se la
+vista le unisse, il verde dell'uno nasconderebbe il rosso dell'altro, i rossi dell'uno
+conterebbero fra i falliti dell'altro, e la causa si leggerebbe dal rosso sbagliato, senza errore.
+Ogni lettura del giornale della vista filtra la coppia; le corsie vengono da
+`maintenance.vw_job_run_corsie`, la stessa sede che legge la potatura.
 
 ⛔ **L'ultima corsa è l'ultima corsa vera.** Le corse **saltate** (il lock della corsia era
 occupato, il lavoro non è partito) sono escluse. Una corsa appesa tiene il lock, e ogni sveglia
@@ -223,8 +231,10 @@ e il rimedio cambiano con la causa della riga.
   contro parziale, con la stessa storia di corse.
 * `db/pgtap/maintenance/test-vw-job-run-da-guardare-corse-distinte-v1.sql` — una corsa fallita con
   due righe rosse dello stesso `run_uuid` conta una volta in `falliti_ultimi_7_giorni`.
-* `db/pgtap/maintenance/test-job-run-log-per-chiave-v1.sql`, test 5-6 — la vista vede ogni job, e
-  l'ultima corsa vera salta la saltata che la segue, anche cercata una chiave alla volta.
+* `db/pgtap/maintenance/test-job-run-log-per-chiave-v1.sql`, test 9-10 — la vista vede ogni job, e
+  l'ultima corsa vera salta la saltata che la segue, anche cercata una chiave alla volta. Test 13-16
+  — due processi con una corsia dello stesso nome: il verde dell'uno non nasconde il rosso
+  dell'altro, e ultimo rosso e falliti restano nella corsia.
 
 ---
 
@@ -256,6 +266,10 @@ e il rimedio cambiano con la causa della riga.
   l'ultima corsa vera (aperta o conclusa), le corse aperte e l'ultima fallita di ogni job. Cambia un
   caso solo: per una corsa appesa da più di un anno, `falliti_ultimi_7_giorni` conta le corse dei
   sette giorni prima fra quelle che il giornale tiene (`brief-db-giornale-corse-indici` §8).
+* 2026-11-23 — una riga per corsia, la coppia processo e nome, e non più per nome: con due
+  processi che usano lo stesso nome, la vista ne faceva un lavoro solo. Le corsie vengono da
+  `maintenance.vw_job_run_corsie`. Senza nomi condivisi il risultato non cambia
+  (`brief-db-giornale-corse-indici` §11.5, la corsia in ogni lettore).
 
 ---
 

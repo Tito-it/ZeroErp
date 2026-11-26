@@ -174,6 +174,7 @@ class FamiglieCrudApiTests(JwtMockedApiTest):
 
 class FamiglieCancelloTests(JwtMockedApiTest):
     """⭐ Le due meta' della decisione D6, provate in ENTRAMBI i versi."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

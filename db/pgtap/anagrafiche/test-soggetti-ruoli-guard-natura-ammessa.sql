@@ -4,7 +4,7 @@
 --
 -- Test trigger guard natura ammessa su anagrafiche.soggetti_ruoli
 -- Funzione: anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa()
--- Trigger:  trg_soggetti_ruoli_a10_guard_natura_ammessa_ins_upd
+-- Trigger:  trg_soggetti_ruoli_a10_guard_natura_ammessa_ins (BEFORE INSERT dal 2026-11-24: il tipo del ruolo non si cambia)
 --
 -- Scenario:
 --   - Soggetto PG + ruolo GE: OK (PG ammesso)

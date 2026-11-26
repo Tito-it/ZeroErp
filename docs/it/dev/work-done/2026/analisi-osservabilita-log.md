@@ -133,7 +133,7 @@
 > in topbar, accanto al badge delle code (§5). ⚠️ E una voce di **B** era già
 > chiusa da una settimana senza che questo documento lo dicesse: la «UI sugli
 > endpoint orfani» è **decisa l'11-09** in
-> [piano-be-fe-endpoint-senza-porta.md](../../work-in-progress/piano-be-fe-endpoint-senza-porta.md)
+> [piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md)
 > — tre sono servizio, `job-summary` è candidato al ritiro. B6 chiude **per
 > decisione**, e B si riduce a due superfici (G ed E). Il **verdetto «lotto
 > fermo» ha oggi una sede sola, in Python**: il presidio di C non la copia a
@@ -473,7 +473,7 @@ nelle liste di amministrazione. Restano senza interfaccia **quattro**:
 | ~~B3~~ | ~~Identità non tracciata sugli eventi~~ ✅ **chiuso** (Passo 0 + decisione 9) | il «chi» sta in `user_insert` (trigger di audit generico) e in `auth_user_id`; `actor` non esiste più |
 | ~~B4~~ | ~~`correlation_id` assente sul ramo push~~ ✅ **chiuso** (D-7 del brief) | è **l'id del giro**: un `uuid` nuovo generato dal runner, su entrambi i rami (§5, #10) |
 | ~~B5~~ | ~~Log Python non correlabili~~ ✅ **chiuso** (Passo 2, BE-8) | `request_id` nel formatter di logging |
-| ~~B6~~ | ~~Endpoint senza UI~~ ✅ **chiuso per decisione** (⏱️ *18-09*, ma deciso l'**11-09**) | tre su sette hanno una schermata (`job-runs`, `audit-log`, `email/log`); per gli altri quattro [piano-be-fe-endpoint-senza-porta.md](../../work-in-progress/piano-be-fe-endpoint-senza-porta.md) ha risposto: `domini-task`, `task-registry`, `task-implementations` sono **servizio** (nessuna porta), `job-summary` è **candidato al ritiro**. Non resta niente da costruire |
+| ~~B6~~ | ~~Endpoint senza UI~~ ✅ **chiuso per decisione** (⏱️ *18-09*, ma deciso l'**11-09**) | tre su sette hanno una schermata (`job-runs`, `audit-log`, `email/log`); per gli altri quattro [piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md) ha risposto: `domini-task`, `task-registry`, `task-implementations` sono **servizio** (nessuna porta), `job-summary` è **candidato al ritiro**. Non resta niente da costruire |
 | B7 | Nessuna notifica — 🟡 **parziale** ⏱️ *12-09* → 🔵 **in brief** ⏱️ *18-09* | il **canale** esiste (digest dei presidi, email di SISTEMA) e le code ferme sono già presidi `ZERO` a catalogo; la **sorgente** «lotto fermo» è chiesta al team DB come **P-1** del [brief](brief-db-osservabilita-lotto-fermo-r6-indici.md) — e il verdetto che la alimenta **si sposta** a DB, non si copia; la faccia in-app è il pallino (#8) |
 | ~~B8~~ | ~~Retention assente sui log di dominio~~ ✅ **chiuso** (Passo D, ⏱️ *18-09*) | `event_log` (decisione 11) + i **quattro** registri di fatturazione e push — `fatturazione_lotti_log`, `fatture_log`, `fatturazione_lotti_task_runs`, `commesse_push_log` — a 750 giorni, scadenza scritta alla nascita da un BB unico (`20260918-29 → -33`, regole 16-19) |
 | ~~**B9**~~ | ~~**`event_log` non ha scope emittente né RLS**~~ ✅ **chiuso** (Passo 0) | `emittente_soggetto_ruolo_id NOT NULL`, derivata all'`INSERT` da `trgfn_event_log_deriva_scope`, più la policy `rls_event_log_ef_whitelist` (`20260822-46`) |
@@ -841,7 +841,7 @@ aggregato. Restano interi il primo punto (vista errori trasversale) e il terzo
 (`error_log` con filtri), più i quattro endpoint ancora orfani (§2).
 
 ⏱️ *2026-09-18*: **i quattro orfani non sono più una cosa da fare** — decisi
-l'11-09 in [piano-be-fe-endpoint-senza-porta.md](../../work-in-progress/piano-be-fe-endpoint-senza-porta.md)
+l'11-09 in [piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md)
 (tre servizio, uno candidato al ritiro); questa nota li dava ancora aperti per
 una settimana. Il primo e il terzo punto hanno il loro piano: **G** (il giornale
 degli errori, terzo lettore della stessa `vw_giornale_entita`, `DomainAPIView`

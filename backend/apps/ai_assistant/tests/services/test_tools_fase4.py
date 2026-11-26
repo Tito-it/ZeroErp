@@ -97,6 +97,15 @@ class TestConfirmationFlow(unittest.TestCase):
         self.user.username = "testuser"
         self.request = MagicMock()
         self.request.user = self.user
+        # Un operatore con UN emittente (32): il cancello del gemello passa
+        # (perimetro non multiplo) e `crea_pratica` scrive su 32. Dal
+        # 2026-11-25 (E1-2 di brief-be-fe-BB-audit) i tool passano dal cancello
+        # della lista e dall'emittente di chi agisce, non da un attributo
+        # dell'utente.
+        for nome, valore in (("get_emittenti_pk_ids", [32]), ("get_emittente_for_user", 32)):
+            p = patch.object(PermissionResolver, nome, return_value=valore)
+            p.start()
+            self.addCleanup(p.stop)
 
     def tearDown(self):
         ai_assistant_service.clear_conversations()

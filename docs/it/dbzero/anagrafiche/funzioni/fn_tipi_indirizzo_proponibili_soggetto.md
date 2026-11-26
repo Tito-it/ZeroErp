@@ -18,9 +18,7 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_soggetto(p_
  STABLE
 BEGIN ATOMIC
  SELECT ti.id,
-     (EXISTS ( SELECT 1
-            FROM config.tipi_soggetto_dettaglio_tipi_indirizzo mo
-           WHERE ((mo.tipo_soggetto_dettaglio_id = ctx.natura) AND (mo.tipo_indirizzo_id = ti.id) AND mo.obbligatorio AND anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(ctx.natura, ti.id, script.fn_data_operativa())))) AS "exists",
+     anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura(ctx.natura, ti.id, script.fn_data_operativa()) AS fn_tipo_indirizzo_obbligatorio_per_natura,
      (jsonb_array_length(c.motivi) = 0),
      ((c.motivi -> 0) ->> 'codice'::text),
      ((c.motivi -> 0) ->> 'reason'::text),
@@ -40,7 +38,7 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_soggetto(p_soggetto_id uuid)
-IS 'Il picker dei tipi di indirizzo per il soggetto salvato (Aggiungi, e i tipi di destinazione della copia): una riga per tipo di config.tipi_indirizzi, con obbligatorio (riga obbligatoria della matrice della natura che anagrafiche.fn_tipo_indirizzo_ammesso_per_natura ammette oggi), ammesso, il primo motivo (motivo_codice, reason, reason_key, reason_valori) e tutti i motivi. Contesto: la natura e i tipi che il soggetto ha gia'', letti una volta; i motivi sono quelli di anagrafiche.fn_check_tipo_indirizzo_soggetto_su_contesto, la check che la madre anagrafiche.fn_crea_indirizzo_soggetto solleva: il tipo gia'' presente (E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE), poi il tipo che la natura non ammette (E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO). Prima gli ammessi, poi gli altri, per codice interno. Soggetto inesistente: nessuna riga. SECURITY INVOKER.';
+IS 'Il picker dei tipi di indirizzo per il soggetto salvato (Aggiungi, e i tipi di destinazione della copia): una riga per tipo di config.tipi_indirizzi, con obbligatorio (anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura, oggi), ammesso, il primo motivo (motivo_codice, reason, reason_key, reason_valori) e tutti i motivi. Contesto: la natura e i tipi che il soggetto ha gia'', letti una volta; i motivi sono quelli di anagrafiche.fn_check_tipo_indirizzo_soggetto_su_contesto, la check che la madre anagrafiche.fn_crea_indirizzo_soggetto solleva: il tipo gia'' presente (E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE), poi il tipo che la natura non ammette (E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO). Prima gli ammessi, poi gli altri, per codice interno. Soggetto inesistente: nessuna riga. SECURITY INVOKER.';
 ```
 
 </div>

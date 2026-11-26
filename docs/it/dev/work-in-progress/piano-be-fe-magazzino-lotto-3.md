@@ -1,11 +1,14 @@
 # Piano BE/FE — magazzino, Lotti 3 e 3-bis (bolla e reso muovono la merce)
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-14
+## ⏭️ Chi riparte — aggiornato al 2026-11-25
 
 **Riparte: Tid**, col collaudo a video:
 [collaudo-in-app-magazzino-bolla-e-reso](collaudo-in-app-magazzino-bolla-e-reso.md). Il lato BE/FE e' fatto;
 i due brief DB del Lotto 3 e del 3-bis sono **chiusi e archiviati** (2026-10-14), e quel che restava
 loro sta qui, al §5. Questo piano e' l'unico documento aperto dei due lotti.
+Il 2026-11-25 il copione e' stato **riallineato** ai dati di `dbdev` e ai verbi cambiati dopo il 14-10
+(permesso su ogni emissione, `registra_magazzino` alla consegna del trasferimento, ri-consegna dalla
+sola porta del verbo): il dettaglio e' nel suo registro. Il collaudo **non** e' ancora stato eseguito.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -60,7 +63,9 @@ l'azione riceve `E_PERMESSO_NEGATO` dove prima passava.
 che l'azione dichiara — lo stesso confronto con cui il DB la applica (`script.fn_area_consente_azione`,
 il tetto d'area). Un profilo che non arriva al tetto non la userebbe comunque. ⛔ `blocca_merce` **non**
 si concede qui: e' una capacita' nuova (riservare merce a un cliente), non una che i profili hanno gia';
-si concede dall'editor quando serve. Il super admin (l'utente `smoke`) passa senza azioni.
+si concede dall'editor quando serve. Il super admin passa senza azioni: e' il binding `SUPER_ADMIN`,
+non il flag `is_superuser` di Django, che dal 2026-11-24 non concede piu' niente (D-J di
+`brief-db-porte-aperte-dalla-sola-guc`).
 Le righe gia' presenti non si toccano (`DO NOTHING`): un `false` scritto da qualcuno e' una decisione.
 
 ```sql
@@ -202,7 +207,7 @@ Non sono residui, e restano dove sono: la merce presso terzi (D-L3-g), gli event
 ricezione acquisti e il reso a fornitore (Lotto 4), le colonne impegnata / in arrivo (satellite D-17),
 i prelievi proposti alla ri-consegna e l'RMA (3-bis §7). Le scritture delle anagrafiche e dei
 documenti interni di magazzino dal verbo sono un brief a se':
-[brief-db-magazzino-tutte-le-scritture-dal-verbo](brief-db-magazzino-tutte-le-scritture-dal-verbo.md).
+[brief-db-magazzino-tutte-le-scritture-dal-verbo](../work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md).
 
 ## 6. Registro
 
@@ -218,3 +223,4 @@ documenti interni di magazzino dal verbo sono un brief a se':
 | 2026-10-13 | ✅ **B1**: endpoint dei prelievi (situazione della bolla + CRUD sotto la riga), vincoli tradotti; sezione «Prelievi» nel drawer della bolla. Prove: test DB (prelievo dal lotto e scarico di quel lotto; rifiuti con il loro codice), test del service (raggruppamento per voce del kit, coercizione, 404), spec FE `DdtPrelievoVoce`; Django 3988, vitest 845, build, mypy |
 | 2026-10-12 | ✅ **A2**: magazzino di bolla (partenza, arrivo) e reso (rientro) letti nel dettaglio con le etichette e scritti in creazione e modifica; lookup specializzati `magazzino.magazzini` (`emittente_fiscale_id`) e `config.causali_trasporto` (`causale_magazzino`); BB FE `MagazzinoDocumentoSelect` (regola del 2, catalogo FE), arco `vendite -> magazzino` nel guard dei confini; il form del reso spegne per campo. 3-bis R-5: commenti di `resi_service` corretti. Prove: Django 3985 verdi, DB e2e verdi, vitest 840, guard, build, mypy a cricchetto pulito |
 | 2026-10-14 | 📋 **Collaudo scritto e brief DB chiusi** (su richiesta di Tid). Il §4 diventa il copione [collaudo-in-app-magazzino-bolla-e-reso](collaudo-in-app-magazzino-bolla-e-reso.md); i brief DB del Lotto 3 e del 3-bis vanno in `work-done/`, coi residui raccolti al §5. Il brief tutte-le-scritture-dal-verbo resta aperto: e' un'altra materia, con cinque decisioni di Tid |
+| 2026-11-25 | 🔄 **Copione riallineato, non eseguito** (su richiesta di Tid). Dati di `dbdev` riletti (§0); casi nuovi o cambiati per i verbi successivi al 14-10: §2.6, §5.9, §5.10, §8.1, §8.5, §8.6; §9 «Bolle senza merce» superato. Qui: la testata e il super admin del §2 |

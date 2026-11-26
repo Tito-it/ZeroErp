@@ -87,7 +87,7 @@ pattern standard `{ "data": ..., "meta": { "request_id": "..." } }`.
 | 18 | `POST /admin/definizioni/{id}/colonne/` | admin | Crea colonna |
 | 19 | `GET /admin/colonne/{id}/` | admin | Dettaglio colonna |
 | 20 | `PATCH /admin/colonne/{id}/` | admin | Aggiorna campi mutabili |
-| 21 | `DELETE /admin/colonne/{id}/` | admin | Cancella (soft-block preferenze) |
+| 21 | `DELETE /admin/colonne/{id}/` | admin | Cancella (409 se un preset la compone) |
 
 Legenda Auth: `OR` = SUPER_ADMIN OR `ui_preset_manage` OR
 `ui_permesso_manage`; `preset` = SUPER_ADMIN OR `ui_preset_manage`;
@@ -661,7 +661,7 @@ mappa.
 | 18 | `POST /admin/definizioni/{id}/colonne/` | `CREATE_KEYS`: `codice`, `etichetta`, `etichetta_estesa`, `etichetta_i18n_key`, `campo_sorgente`, `origine_campo` (`VISTA` default / `LINEAGE`: la genealogia dei documenti, solo su una lista che dichiara `legge_lineage`), `tipo_colonna`, `tipo_dato`, `formato`, `larghezza_default`, `ordine_default`, `allineamento` (`left`/`right`/`center`), `gruppo`, `gruppo_ordine`, `filtrabile`, `ordinabile`, `esportabile`, `ricercabile_full`, `sensibile`, `attivo`; `lista_id` dal path. **Obbligatori**: `codice`, `etichetta`, `tipo_colonna` (`identificatore` / `informazione` / `azione`), `tipo_dato` (`string` / `numeric` / `date` / `datetime` / `boolean` / `enum`), `ordine_default`. Tetti: `larghezza_default` ≤ 4000, `ordine_default` e `gruppo_ordine` ≤ 100000. ⭐ I default dei flag seguono il modello, solo per il flag non mandato: senza `campo_sorgente` la colonna nasce non esportabile, una `LINEAGE` non filtrabile né ordinabile. ⛔ Un valore esplicito non si corregge: i vincoli fra campi li giudica il DB (un'azione non ha campo sorgente; senza campo sorgente non si esporta; la genealogia non si filtra, non si ordina, non si cerca) | `E_UI_COLONNA_VALIDAZIONE` sul campo che lo risolve (codice duplicato nella lista, i tre vincoli sopra, …), `E_UI_CAMPO_SORGENTE_NON_TROVATO`, `E_UI_LINEAGE_NON_DICHIARATA`, 404 definizione |
 | 19 | `GET /admin/colonne/{id}/` | la colonna completa | 404 `E_UI_COLONNA_NON_TROVATA` |
 | 20 | `PATCH /admin/colonne/{id}/` | `UPDATE_KEYS` = `CREATE_KEYS` **senza `codice`** (preferenze e preset cercano la colonna per codice: BE12; a DB `E_UI_COLONNA_CODICE_IMMUTABILE`); `lista_id` e `codice` nel corpo sono un `400` sul campo. Nessun valore derivato: i vincoli fra campi si giudicano sul valore finale della riga | come 18, più 404 |
-| 21 | `DELETE /admin/colonne/{id}/` | — | 404; 409 `E_UI_COLONNA_IN_USO` se una preferenza utente la nomina (soft-block applicativo: nessuna FK la protegge) e poi se un preset la compone (il messaggio nomina i preset per codice; le due FK della composizione, `fk_lista_preset_colonna_lista_colonna` e la composita `fk_ui_lista_preset_colonna_colonna_della_lista`, sono NO ACTION e, se scattano lo stesso, danno lo stesso codice). Solo i **permessi** della colonna vanno via in CASCADE. Una colonna nata dal seed salta i due controlli: risponde il guard del DB, `409 E_SEED_RIGA_NON_CANCELLABILE` (si spegne con `PATCH attivo=false`) |
+| 21 | `DELETE /admin/colonne/{id}/` | — | 404; 409 `E_UI_COLONNA_IN_USO` se un preset la compone (il messaggio nomina i preset per codice; le due FK della composizione, `fk_lista_preset_colonna_lista_colonna` e la composita `fk_ui_lista_preset_colonna_colonna_della_lista`, sono NO ACTION e, se scattano lo stesso, danno lo stesso codice). I **permessi** della colonna vanno via in CASCADE, e la voce esce dalle preferenze utente che la nominano (lo fa il DB, `ui.trgfn_voce_ritira_dalle_preferenze`: una preferenza non ferma la cancellazione, Q56 di brief-db-revisione-ui). Una colonna nata dal seed salta il controllo dei preset: risponde il guard del DB, `409 E_SEED_RIGA_NON_CANCELLABILE` (si spegne con `PATCH attivo=false`) |
 
 ---
 
@@ -777,9 +777,10 @@ Azioni di processo (seedate in `config.azioni_processo` 2026-05-08):
   `trgfn_ui_lista_definizione_a10_valida_vista_sql` skippa la
   validazione. Cancellazione bloccata da FK RESTRICT
   (`E_UI_DEFINIZIONE_IN_USO`; per le colonne FK NO ACTION della composizione
-  dei preset, `E_UI_COLONNA_IN_USO`) e da soft-block applicativi: le
-  preferenze utente (count JSONB `configurazione->colonne` per codice) e,
-  per la colonna, i preset che la compongono (§21). I vincoli fra campi della colonna
+  dei preset, `E_UI_COLONNA_IN_USO`, anticipata dal controllo dei preset
+  che la compongono, §21). Le preferenze utente che nominano la colonna non
+  fermano la cancellazione: la voce la toglie il DB (Q56 di
+  brief-db-revisione-ui). I vincoli fra campi della colonna
   (azione senza campo sorgente, senza campo non esportabile, genealogia solo
   mostrata) sono CHECK del DB dal giro 4 di brief-db-revisione-ui: il drawer
   spegne ciò che il DB rifiuterebbe, il service non li ricopia. Pagina FE:

@@ -6,7 +6,8 @@
 --   ui.fn_misura_pagina_risolta, la cascata della misura in una sede sola;
 --   ui.fn_misura_lista, la misura senza la risoluzione intera; il resolver che
 --   legge la stessa cascata; ui.fn_lista_colonne_ricerca_full davanti a un id
---   utente illeggibile; l'area con cui i guard di ui scrivono il giornale.
+--   utente illeggibile (dal BB script.fn_utente_di_sessione, giro 8 di
+--   brief-db-revisione-ui); l'area con cui i guard di ui scrivono il giornale.
 --
 -- ⭐ Gira come APPLICAZIONE (il runner di default): liste, colonne, preset e
 --   preferenze l'applicazione li scrive; il catalogo delle misure si legge
@@ -34,7 +35,7 @@
 --   10) ⭐ con la preferenza: la sua misura nei due, origine preferenza, standard il preset
 --   11) lista inesistente: E_UI_LISTA_NON_TROVATA
 --   U38: l'id utente della ricerca
---   12) ⭐ app.current_user_id non numerico: E_UI_CHIAMATA_NON_VALIDA, non il 22P02
+--   12) ⭐ app.current_user_id non numerico: E_SCRIPT_CHIAMATA_NON_VALIDA (dal BB), non il 22P02
 --   13) ... e cosi' un numero fuori dall'intero
 --   14) con l'utente valido la colonna ricercabile c'e'
 --   15) senza utente (GUC vuota) nessun errore, e la colonna non sensibile c'e'
@@ -176,13 +177,13 @@ SELECT is(dbops.fn_pgtap_codice_errore(
 SELECT set_config('app.current_user_id', 'non-un-id', true);
 SELECT is(dbops.fn_pgtap_codice_errore(format(
     $$ SELECT * FROM ui.fn_lista_colonne_ricerca_full(%L) $$, (SELECT lista_codice FROM _l WHERE n = 1))),
-    'E_UI_CHIAMATA_NON_VALIDA',
-    '12) ⭐ app.current_user_id non numerico: E_UI_CHIAMATA_NON_VALIDA, non il 22P02');
+    'E_SCRIPT_CHIAMATA_NON_VALIDA',
+    '12) ⭐ app.current_user_id non numerico: E_SCRIPT_CHIAMATA_NON_VALIDA (dal BB), non il 22P02');
 
 SELECT set_config('app.current_user_id', '2147483648', true);
 SELECT is(dbops.fn_pgtap_codice_errore(format(
     $$ SELECT * FROM ui.fn_lista_colonne_ricerca_full(%L) $$, (SELECT lista_codice FROM _l WHERE n = 1))),
-    'E_UI_CHIAMATA_NON_VALIDA',
+    'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '13) ... e cosi'' un numero fuori dall''intero');
 
 SELECT set_config('app.current_user_id', (SELECT auth_user_id FROM _u)::text, true);

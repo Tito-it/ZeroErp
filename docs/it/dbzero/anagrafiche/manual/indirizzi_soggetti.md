@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.indirizzi_soggetti`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -23,7 +23,6 @@
 > * [anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_obbligatori_soggetto) — gli indirizzi obbligatori del soggetto
 > * [anagrafiche.trgfn_indirizzi_base_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize) — mette in ordine la riga secondo la forma
 > * [anagrafiche.trgfn_indirizzi_guard_forma_libera](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_forma_libera) — giudica l'indirizzo libero
-> * [anagrafiche.trgfn_indirizzi_sync_geoloc](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_sync_geoloc) — la posizione copiata dal civico
 > * [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_soggetto) — il verbo che crea un indirizzo del soggetto
 >
 > Guide:
@@ -62,7 +61,9 @@ Le regole che seguono hanno ciascuna la sua scheda; qui se ne dice il significat
   devono essere attivi. Un soggetto spento non riceve indirizzi nuovi.
 * **Gli obbligatori restano**: alla conferma dell'operazione, togliere un indirizzo o cambiargli tipo non può
   lasciare il soggetto senza un tipo che la sua natura rende obbligatorio
-  (`anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto`).
+  (`anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto`). Si giudica solo ciò che l'indirizzo che
+  esce dava: un obbligatorio nato dopo, che il soggetto non ha mai avuto, non ferma la cancellazione di un altro
+  indirizzo.
 
 Le righe le scrive `anagrafiche.fn_crea_indirizzo_soggetto` (e, per più tipi insieme,
 `anagrafiche.fn_crea_indirizzi_soggetto`).
@@ -78,13 +79,18 @@ esplicitamente `storicizza = false`.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### Un comune, un CAP o uno stato in uso non si cancellano
 
-* **La posizione è una copia**: `geoloc` prende la posizione del civico quando la riga si scrive. Se poi cambia
-  la posizione del civico, la riga la riprende solo alla sua prossima scrittura.
-* **Le FK verso comune, CAP e stato non hanno azione alla cancellazione**, mentre le gemelle di
-  `anagrafiche.indirizzi` sono `ON DELETE SET NULL`: le due tabelle, che hanno le stesse colonne e le stesse
-  regole, rispondono in modo diverso alla stessa cancellazione nel catalogo.
+Le FK verso comune, CAP e stato non hanno azione alla cancellazione, come le gemelle di `anagrafiche.indirizzi`:
+finché un indirizzo li usa, la cancellazione si ferma sulla FK. Una voce del catalogo che non serve più si spegne.
+
+---
+
+### Col dettaglio, la posizione la dice il civico
+
+Un indirizzo col dettaglio non tiene una posizione sua: `geoloc` resta vuota, come comune e CAP, e chi legge
+prende quella del civico, che segue ogni correzione. Solo l'indirizzo libero tiene la posizione scritta da chi
+lo salva.
 
 ---
 
@@ -96,6 +102,11 @@ esplicitamente `storicizza = false`.
   dello stesso tipo rifiutato.
 * `db/pgtap/anagrafiche/test-indirizzo-libero-due-forme-v1.sql` — le due forme dell'indirizzo libero, sulle due
   tabelle.
+* `db/pgtap/anagrafiche/test-indirizzi-viste-forma-e-vincoli-v1.sql` (6, 15) — le FK di `anagrafiche.indirizzi`
+  allineate a queste; l'indirizzo col dettaglio che nasce senza una posizione sua.
+* `db/pgtap/anagrafiche/test-indirizzi-obbligatori-requisito-nuovo-v1.sql` (4, 5) — sul soggetto a cui un
+  obbligatorio nato dopo chiede un indirizzo che non ha, cancellare un indirizzo che nessuno chiede passa;
+  cancellare l'unico indirizzo di una riga obbligatoria si rifiuta.
 
 ---
 
@@ -103,6 +114,8 @@ esplicitamente `storicizza = false`.
 
 * 2026-10-18 — `postal_box` diventa `postal_code`, e l'indirizzo libero prende le due forme decise dallo stato,
   con il giudizio in un guard che dice il campo.
+* 2026-11-24 — si ritira la copia della posizione del civico nella riga (le righe col dettaglio la perdono una
+  volta); il guard degli obbligatori giudica solo ciò che l'indirizzo che esce dava.
 
 ---
 

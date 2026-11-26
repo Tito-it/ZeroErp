@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# storico.indirizzi PRENDE LA FORMA DELLE ALTRE OMBRE: change_type DEFAULT 'A',
+#   indirizzi_id bigint.
+#   Brief: brief-db-revisione-anagrafiche §18 (Q7, giro 1).
+#
+# ── IL FATTO ────────────────────────────────────────────────────
+#   storico.indirizzi e' un'ombra della prima generazione, nata prima di
+#   dbops.fn_ensure_storico_table. Le altre ombre hanno change_type char(1)
+#   DEFAULT 'A', nullable; questa lo ha NOT NULL e senza default.
+#   script.trgfn_storico_generic non scrive change_type: ogni versione di un
+#   indirizzo di ruolo fallisce con E_SNAPSHOT_INIT_INSERT_ERROR (23502), e
+#   con lei la modifica o la cancellazione che l'ha chiesta. Finche' il flag
+#   storicizza nasceva spento nessuno lo vedeva: nessuna scrittura lo
+#   accendeva, e l'ombra e' vuota. Con lo storico continuo (20261123-38) ogni
+#   modifica di un indirizzo di ruolo si fermerebbe qui. L'ha trovato il pgTAP
+#   del giro, test-storico-indirizzi-continuo-v1, nella prova prima
+#   dell'apply.
+#   Censimento su tutte le ombre, dal catalogo: e' l'unica con una colonna
+#   obbligatoria, senza default, che il trigger non scrive.
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   * change_type DEFAULT 'A', come le altre: la versione nasce «attiva». Il
+#     NOT NULL resta, perche' col default non ferma piu' nessuno.
+#   * indirizzi_id da integer a bigint: e' la copia di anagrafiche.indirizzi.id,
+#     che e' bigint (il trigger la passa col tipo della chiave della madre).
+#     L'ombra e' vuota su ogni database (l'INSERT non e' mai riuscito), quindi
+#     il cambio di tipo non riscrive niente.
+#   Il resto della forma (id integer, i NOT NULL piu' stretti) non ferma la
+#   scrittura e resta com'e'.
+#   Da zero l'ombra c'e' gia' (prima generazione, prima di 00_schema): la
+#   preCondition chiede che sia ancora nella forma di prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/storico/20261123-42-alter-storico-indirizzi-forma-delle-ombre-mctit.yaml
+
+  - changeSet:
+      id: 20261123-42-alter-storico-indirizzi-forma-delle-ombre
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        storico.indirizzi: change_type DEFAULT 'A' e indirizzi_id bigint, come le altre ombre.
+        Senza il default ogni versione di un indirizzo di ruolo falliva sul NOT NULL.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: |
+              SELECT count(*)
+                FROM pg_attribute a
+               WHERE a.attrelid = to_regclass('storico.indirizzi')
+                 AND a.attname = 'change_type'
+                 AND NOT a.attisdropped;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE storico.indirizzi
+                  ALTER COLUMN change_type SET DEFAULT 'A',
+                  ALTER COLUMN indirizzi_id TYPE bigint;
+
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE storico.indirizzi
+                  ALTER COLUMN change_type DROP DEFAULT,
+                  ALTER COLUMN indirizzi_id TYPE integer;

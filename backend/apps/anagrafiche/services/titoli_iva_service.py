@@ -28,9 +28,9 @@ from typing import Any
 from apps.anagrafiche.db.titoli_iva_repository import TitoliIvaRepository
 from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
 from apps.anagrafiche.services._validators import require_found
-from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
+from apps.core.services.list_helpers import pagina_con_totale
 
 _MESSAGE = "Payload titolo IVA non valido."
 # Validator del dominio per i campi del payload (`imponibile` della forzatura).
@@ -130,7 +130,7 @@ class TitoliIvaService:
         )
         for t in titoli:
             t["ambito_incompleto"] = self._ambito_incompleto(t)
-        return {"results": titoli, "count": totale}
+        return pagina_con_totale(titoli, totale)
 
     # Scopo: Dettaglio di un titolo, con ambiti e registro movimenti.
     def get_titolo(self, soggetto_id: str, titolo_id: int) -> dict[str, Any]:
@@ -161,7 +161,7 @@ class TitoliIvaService:
                 detail=f"{campo} obbligatorio.",
                 context={"field": campo},
             )
-        emittente_fiscale_id = optional_int(payload, "emittente_fiscale_id")
+        emittente_fiscale_id = _V.optional_int(payload, "emittente_fiscale_id")
         ErrorManager.require(
             emittente_fiscale_id is not None,
             code=E_ANAG_VALIDAZIONE,
@@ -240,7 +240,7 @@ class TitoliIvaService:
         risultati, totale = self._repo.list_titoli_sfondati(
             limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
         )
-        return {"results": risultati, "count": totale}
+        return pagina_con_totale(risultati, totale)
 
     # =================================================================
     # Ambiti
@@ -258,7 +258,7 @@ class TitoliIvaService:
         risultati, totale = self._repo.list_ambiti(
             titolo_id, limit=limit, offset=offset,
         )
-        return {"results": risultati, "count": totale}
+        return pagina_con_totale(risultati, totale)
 
     # Scopo: Aggiunge una riga di ambito.
     def create_ambito(
@@ -297,7 +297,7 @@ class TitoliIvaService:
             titolo_id, limit=limit, offset=offset,
             order_by=order_by, order_dir=order_dir,
         )
-        return {"results": risultati, "count": totale}
+        return pagina_con_totale(risultati, totale)
 
     # Scopo: Registra una forzatura manuale sul plafond.
     # ⛔ DALL'API SI SCRIVE SOLO `FORZATURA`, ed e' la decisione Q3 — la piu'

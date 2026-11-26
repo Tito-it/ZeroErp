@@ -4,7 +4,9 @@
 # Doc: Python
 # Scopo: LA PARTENZA di una lista configurabile — l'ordinamento e la misura —
 #        applicata dal backend in un punto solo. La misura (BE10, 2026-11-22)
-#        e' in fondo al file; qui sotto l'ordinamento.
+#        e' in fondo al file, con le colonne il cui vuoto si ordina come il
+#        massimo (brief-db-lista-colonna-vuoto-in-ordine, 2026-11-24); qui
+#        sotto l'ordinamento.
 #        L'ORDINAMENTO DI PARTENZA di una lista configurabile, applicato dal
 #        backend in un punto solo (BE25 (2) di brief-db-revisione-ui, Q37 (a)
 #        di Tid del 2026-11-20; la sede centrale approvata da Tid il
@@ -51,9 +53,17 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from apps.core.db.lista_catalogo_repository import fetch_misura_lista, fetch_ordinamento_lista
+from apps.core.db.lista_catalogo_repository import (
+    fetch_colonne_vuoto_massimo,
+    fetch_misura_lista,
+    fetch_ordinamento_lista,
+)
 from apps.core.services.permissions_resolver import PermissionResolver
-from apps.core.services.request_context import imposta_misura_di_partenza, proponi_ordinamento
+from apps.core.services.request_context import (
+    imposta_misura_di_partenza,
+    imposta_vuoti_come_massimo,
+    proponi_ordinamento,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -176,3 +186,39 @@ def applica_misura_di_partenza(request: Any, *, lista_codice: str) -> None:
         return
     user = request.user
     imposta_misura_di_partenza(lambda: misura_risolta(lista_codice, user=user))
+
+
+# Scopo: la LETTURA delle colonne della lista il cui vuoto si ordina come il
+#        massimo (`ui.lista_colonna.vuoto_ordinato_come_massimo`). E' un fatto
+#        del CATALOGO, uguale per ogni utente: non passa da `_per_chi`.
+# ⭐ Come `misura_risolta`, e' il punto che `JwtMockedApiTest` mocka.
+def vuoti_come_massimo_risolti(lista_codice: str) -> frozenset[str]:
+    return fetch_colonne_vuoto_massimo(lista_codice)
+
+
+# Scopo: DOVE VA IL VUOTO quando la lista ordina, dichiarato nel catalogo
+#        (brief-db-lista-colonna-vuoto-in-ordine, decisioni di Tid del
+#        2026-11-24): la base view registra la LETTURA delle colonne della sua
+#        lista il cui vuoto vuol dire «senza fine», e il BB dell'ordinamento
+#        (`sql_order_direction_lista`, la sede unica della direzione) la
+#        consulta quando risolve una colonna. Sulle colonne dichiarate il
+#        vuoto va in fondo nel crescente e in testa nel decrescente.
+# Note: ⭐ PERCHE' QUI E NON NELLE WHITELIST. Fino al 2026-11-24 l'eccezione
+#       era scritta a mano come `COALESCE(col, 'infinity')` in ogni whitelist
+#       che se ne ricordava; tre non se ne ricordavano. La view conosce la
+#       sua lista, e il repository ordina dal BB: la dichiarazione arriva a
+#       ogni lettore che compone la direzione con `sql_order_direction_lista`
+#       (o `sql_order_clause`), come l'ordinamento di partenza. ⛔ Una chiamata
+#       diretta a `sql_order_direction` non la riceve: cinque `ORDER BY`
+#       composti a mano lo facevano, portati sul BB dalla `/verifica` del
+#       2026-11-24 (presidio in `core/tests/test_vuoto_come_massimo_seed.py`).
+#       ⚠️ La dichiarazione vale per TUTTA la richiesta: un repository di
+#       un'altra lista chiamato dallo stesso handler, con una chiave dallo
+#       stesso nome, la riceverebbe. Limite dichiarato, nessun caso oggi.
+#       ⚠️ Su ogni metodo, non solo GET: e' una lettura pigra, la paga solo
+#       chi ordina davvero per una colonna (un export in POST compreso).
+#       ⚠️ Una lista che il backend ordina FUORI da una view con `lista_codice`
+#       (un servizio interno, un tool) non riceve la dichiarazione: vale la
+#       regola generale, il vuoto come il minimo.
+def applica_vuoti_come_massimo(request: Any, *, lista_codice: str) -> None:
+    imposta_vuoti_come_massimo(lambda: vuoti_come_massimo_risolti(lista_codice))

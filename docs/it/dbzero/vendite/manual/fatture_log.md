@@ -35,7 +35,9 @@ documenti di fattura. I log critici bloccano numerazione e invio finche` attivi.
     solo per lotti `IN_ESECUZIONE` o `APERTO`.
 * `DELETE` diretto bloccato: consentito solo con GUC
   `zeroerp.maintenance_allow_delete_logs = on`
-  (compatibile con GUC tecnica `zeroerp.maintenance_reset_lotto_draft = on`).
+  Il reset del lotto li cancella dalla sua porta: la GUC `zeroerp.maintenance_reset_lotto_draft`
+  accesa e il proprietario della tabella, dentro la pulizia
+  ([vendite.fn_porta_reset_lotto_aperta](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta)).
 
 ---
 

@@ -1,0 +1,131 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato su scratch e dbdev, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/anagrafiche/20261123-64.
+# anagrafiche.trgfn_soggetti_normalize: il DB normalizza CF e P.IVA, e lo
+#   stato proposto vale solo alla nascita. Il trigger passa in fase a01.
+#   Brief: brief-db-revisione-anagrafiche §20 (T5), D-T5-2 a e S43-1 (Tid,
+#   2026-11-23).
+#
+# -- I DUE DIFETTI ----------------------------------------------------------------
+#   S20/S43-5/S43-7: CF e P.IVA arrivavano come li scriveva il chiamante. La
+#   stringa vuota passava la presenza ('' IS NULL e' falso), una minuscola o
+#   uno spazio facevano un identificativo diverso per l'indice
+#   uq_soggetto_idstato_id_fiscale_univoco. La normalizzazione la facevano i
+#   verbi (UPPER(TRIM(...))) e il BE per il suo UPDATE (_NULLABLE): tre copie,
+#   e nessuna sulla scrittura diretta.
+#   S43-1: in modifica, uno stato_id portato a NULL riceveva in silenzio lo
+#   stato proposto, cioe' mezza chiave d'unicita' cambiata senza un errore.
+#
+# -- LA REGOLA ----------------------------------------------------------------------
+#   codice_fiscale, partita_iva, piva_gruppo_acquisto: maiuscole, nessuno
+#   spazio (nemmeno interno: nessun identificativo ne ha), vuoto -> NULL.
+#   piva_gruppo_acquisto e' una partita IVA come l'altra, e la valida lo
+#   stesso validatore: entra nella stessa regola.
+#   Lo stato proposto (script.fn_stato_proposto_id) solo all'INSERT. In
+#   modifica uno stato NULL lo rifiuta il guard dell'identificativo (-51), e
+#   dopo di lui il NOT NULL della colonna.
+#
+# -- LA FASE a01 (zona nuova, D-T5-2 a) ---------------------------------------------
+#   La normalizzazione che i guard leggono gira PRIMA di tutti i guard, anche
+#   di a05: l'immutabilita' confronta il valore normalizzato con quello scritto,
+#   e chi riscrive lo stesso CF in minuscolo non lo «cambia». Senza fase il
+#   trigger ordinava dopo tutti gli a… (linee-guida-trigger, «Chi legge una
+#   colonna gira dopo chi la risolve»). La zona e' scritta in
+#   docs/it/linee-guida-trigger.md §«La fase» nello stesso giro.
+#   Le righe gia' scritte si normalizzano una volta in 80_data (-63).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261123-48-update-trgfn-soggetti-normalize-id-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20261123-48-update-trgfn-soggetti-normalize-id-fiscale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_soggetti_normalize normalizza codice_fiscale, partita_iva e
+        piva_gruppo_acquisto (maiuscole, senza spazi, vuoto -> NULL) e propone lo stato solo
+        all'INSERT; il trigger diventa trg_soggetti_a01_normalize_ins_upd, prima di tutti i guard.
+        brief-db-revisione-anagrafiche §20, D-T5-2 a e S43-1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'trgfn_soggetti_normalize';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- 1) L'identificativo fiscale nella forma che l'indice d'unicita'
+                  --    e i guard confrontano (D-T5-2 a): maiuscole, nessuno spazio,
+                  --    vuoto -> NULL. Una regola sola per ogni strada di scrittura.
+                  NEW.codice_fiscale       := NULLIF(upper(regexp_replace(NEW.codice_fiscale, '\s', '', 'g')), '');
+                  NEW.partita_iva          := NULLIF(upper(regexp_replace(NEW.partita_iva, '\s', '', 'g')), '');
+                  NEW.piva_gruppo_acquisto := NULLIF(upper(regexp_replace(NEW.piva_gruppo_acquisto, '\s', '', 'g')), '');
+
+                  -- 2) Lo stato proposto, solo alla nascita (S43-1). In modifica uno
+                  --    stato NULL e' mezza chiave tolta: lo rifiuta il guard
+                  --    dell'identificativo, non lo sostituisce questo trigger.
+                  IF TG_OP = 'INSERT' AND NEW.stato_id IS NULL THEN
+                      NEW.stato_id := script.fn_stato_proposto_id(TG_NAME);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_normalize() IS
+                  'Normalize di anagrafiche.soggetti, fase a01 (prima di tutti i guard: la normalizzazione che i guard leggono). (1) codice_fiscale, partita_iva e piva_gruppo_acquisto in maiuscolo, senza spazi, vuoto -> NULL: e'' la forma che confrontano l''indice uq_soggetto_idstato_id_fiscale_univoco, il guard dell''identificativo e il validatore del formato, per ogni strada di scrittura (D-T5-2 a, brief-db-revisione-anagrafiche §20, 2026-11-23). (2) stato_id NULL all''INSERT: lo stato proposto (script.fn_stato_proposto_id). In modifica non si propone niente: uno stato NULL lo rifiuta il guard dell''identificativo (S43-1). La generazione del codice e'' del sistema codici.';
+
+              -- Il trigger cambia nome per la fase: a01 ordina prima di a05 e a10.
+              -- I trigger di trgfn_soggetti_normalize si tolgono per FUNZIONE, non per
+              --   nome: dbdev e un database costruito da zero li hanno con nomi diversi
+              --   (dbdev trg_soggetti_normalize_ins_upd, da zero trg_soggetti_ins_upd_clean_fields; 20251119-01 ha rinominato la funzione, non sempre il trigger).
+              DO $via$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN
+                      SELECT t.tgname
+                        FROM pg_trigger t
+                       WHERE t.tgrelid = 'anagrafiche.soggetti'::regclass
+                         AND t.tgfoid = 'anagrafiche.trgfn_soggetti_normalize'::regproc
+                         AND NOT t.tgisinternal
+                  LOOP
+                      EXECUTE format('DROP TRIGGER %I ON anagrafiche.soggetti', r.tgname);
+                  END LOOP;
+              END
+              $via$;
+              CREATE TRIGGER trg_soggetti_a01_normalize_ins_upd
+                  BEFORE INSERT OR UPDATE ON anagrafiche.soggetti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_normalize();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il nome di prima, senza fase; il corpo di prima e' quello di 20261018-85.
+              DROP TRIGGER IF EXISTS trg_soggetti_a01_normalize_ins_upd ON anagrafiche.soggetti;
+              CREATE TRIGGER trg_soggetti_normalize_ins_upd
+                  BEFORE INSERT OR UPDATE ON anagrafiche.soggetti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_normalize();

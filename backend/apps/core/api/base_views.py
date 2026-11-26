@@ -10,6 +10,8 @@
 #        Ref: docs/it/dev/api.md
 # ------------------------------------------------------------
 
+from typing import Any
+
 from rest_framework.views import APIView
 
 from apps.core.api.jwt_audit_authentication import JwtAuditAuthentication
@@ -26,6 +28,7 @@ from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.core.services.ordinamento_di_partenza import (
     applica_misura_di_partenza,
     applica_ordinamento_di_partenza,
+    applica_vuoti_come_massimo,
     ritira_ordinamento_di_partenza,
 )
 from apps.core.services.request_context import (
@@ -33,6 +36,12 @@ from apps.core.services.request_context import (
     get_idempotency_key,
 )
 from apps.core.services.service_errors import ServiceError
+
+# Il default di `_cancello_di_lista(emittente_esplicito=...)`: l'emittente
+# fissato si legge dalla query della richiesta (`lista_emittente_param`). Un
+# oggetto e non `None`, perche' `None` e' un valore legittimo: «nessun emittente
+# fissato», che non deve ricadere sulla query.
+EMITTENTE_DALLA_RICHIESTA: Any = object()
 
 
 class _ApiViewBase(APIView):
@@ -90,13 +99,24 @@ class _ApiViewBase(APIView):
             # E la misura di partenza, quando la richiesta non porta `limit`
             # (BE10): la legge `pagina_da_query` solo se pagina davvero.
             applica_misura_di_partenza(request, lista_codice=self.lista_codice)
+        if self.lista_codice:
+            # Dove va il vuoto quando la lista ordina, dichiarato nel catalogo
+            # (brief-db-lista-colonna-vuoto-in-ordine): la legge il BB
+            # dell'ordinamento solo se risolve una colonna.
+            # ⭐ FUORI dal gate dell'utente autenticato (Tid, 2026-11-24): e' un
+            #    fatto del CATALOGO, uguale per ogni utente, anonimo dello shop
+            #    compreso. Ordinamento e misura restano dentro: dipendono da chi
+            #    legge. Sta dopo il cancello: una lista che non si puo' leggere
+            #    non arriva qui.
+            applica_vuoti_come_massimo(request, lista_codice=self.lista_codice)
 
     # Codice stabile della lista di catalogo servita da questo endpoint, quando
     # ne serve UNA (`"vendite.dash_competenza_gruppi"`). `None` = l'endpoint non
     # alimenta una lista di catalogo.
     # ⭐ Su OGNI porta accende la PARTENZA della lista: l'ordinamento e la misura
     #    della sua configurazione quando la richiesta non li porta
-    #    (`apps.core.services.ordinamento_di_partenza`). Sta qui, e non in
+    #    (`apps.core.services.ordinamento_di_partenza`), e dove va il vuoto
+    #    delle colonne che lo dichiarano quando la lista ordina. Sta qui, e non in
     #    `DomainAPIView`, dal 2026-11-22 (residuo di BE25 (2) di
     #    brief-db-revisione-ui, ok Tid): le liste dell'amministrazione
     #    (`AdminAPIView`) non la ricevevano, e il FE ne teneva le copie.
@@ -109,7 +129,10 @@ class _ApiViewBase(APIView):
 
     # Scopo: il cancello della PORTA sulla lista, prima della partenza. Nessuno
     #        sulla base: lo ha `DomainAPIView` (perimetro emittente).
-    def _cancello_di_lista(self, request, *, lista_codice: str) -> None:
+    #        `emittente_esplicito`: vedi `DomainAPIView._cancello_di_lista`.
+    def _cancello_di_lista(
+        self, request, *, lista_codice: str, emittente_esplicito: Any = EMITTENTE_DALLA_RICHIESTA,
+    ) -> None:
         return None
 
     # Scopo: il repository ha rifiutato la chiave dell'ordinamento di partenza
@@ -226,11 +249,24 @@ class DomainAPIView(_ApiViewBase):
     #    eseguirebbe sullo stesso perimetro ambiguo che il cancello sta
     #    rifiutando di mostrare.
     # ⭐ Lo chiama `_ApiViewBase.initial()` prima della partenza della lista.
-    def _cancello_di_lista(self, request, *, lista_codice: str) -> None:
+    # ⭐ `emittente_esplicito`: l'emittente che il chiamante FISSA, al posto di
+    #    quello letto dalla query (`lista_emittente_param`). Lo passa chi chiama il
+    #    cancello fuori da una richiesta HTTP alla view: l'assistente AI
+    #    (`AITool.cancello_del_gemello`), che fissa l'emittente dal suo input e non
+    #    deve leggere la query della richiesta di chat, che non e' sua. Vale solo
+    #    se la view dichiara `lista_emittente_param`: dove la schermata non puo'
+    #    fissare un emittente, non lo fissa nemmeno il tool.
+    def _cancello_di_lista(
+        self, request, *, lista_codice: str, emittente_esplicito: Any = EMITTENTE_DALLA_RICHIESTA,
+    ) -> None:
+        if emittente_esplicito is EMITTENTE_DALLA_RICHIESTA:
+            emittente_esplicito = self._emittente_esplicito(request)
+        elif not self.lista_emittente_param:
+            emittente_esplicito = None
         perimetro_emittente.guard_lista_per_codice(
             user=request.user,
             lista_codice=lista_codice,
-            emittente_esplicito=self._emittente_esplicito(request),
+            emittente_esplicito=emittente_esplicito,
         )
 
     # Scopo: l'emittente che la richiesta FISSA, quando questo endpoint ne

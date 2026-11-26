@@ -32,6 +32,7 @@ import ContattoForm from './ContattoForm.vue'
 import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
 import DatiSocietariForm from './DatiSocietariForm.vue'
 import AppDrawer from '../../core/components/AppDrawer.vue'
+import PredefinitoSegno from '../../core/components/PredefinitoSegno.vue'
 import IndirizziSoggettoDrawer from './IndirizziSoggettoDrawer.vue'
 import IndirizziMancantiForm from './IndirizziMancantiForm.vue'
 import ContattiSoggettoDrawer from './ContattiSoggettoDrawer.vue'
@@ -348,8 +349,12 @@ function populateFromDetail(data) {
   comuneNascitaItem.value = data.comune_nascita_id
     ? { id: data.comune_nascita_id, descrizione: data.comune_nascita_descrizione || '', provincia_sigla: data.comune_nascita_provincia_sigla || '' }
     : null
+  // Il contatto del soggetto e' il suo PREDEFINITO, non il primo per id: dal
+  // 2026-11-25 il predefinito si cambia («Rendi predefinito»,
+  // brief-db-revisione-anagrafiche §22.6). Il primo resta solo se il
+  // predefinito manca.
   if (data.contatti?.length > 0) {
-    contatto.populate(data.contatti[0])
+    contatto.populate(data.contatti.find((c) => c.is_default) ?? data.contatti[0])
   }
   haDatiSocietari.value = !!data.dati_societari
   formaDelDettaglio.value = data.dati_societari?.forma_giuridica_id
@@ -749,6 +754,7 @@ async function handleSave() {
       <div class="app-riepilogo-section">
         <div v-if="contattiRiepilogo.length > 0" class="app-riepilogo-list">
           <div v-for="c in contattiRiepilogo" :key="c.id" class="app-riepilogo-item">
+            <PredefinitoSegno :value="c.is_default" />
             <strong>{{ c.nominativo }}</strong>
             <span v-if="c.email" class="app-riepilogo-detail">{{ c.email }}</span>
             <span v-if="c.telefono" class="app-riepilogo-detail">{{ c.telefono }}</span>

@@ -94,7 +94,7 @@ ed export dal factory, permesso `("vendite", "offerta_commerciale")`.
 
 | Metodo / Path | Scopo |
 |---|---|
-| `GET <base>` | Una pagina delle righe **attive**. Envelope paginato standard (`count`, `page`, `page_size`, `total_pages`, `results`) |
+| `GET <base>` | Una pagina delle righe **attive**. Envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)) |
 | `GET <base>export/?formato=csv\|xlsx` | Il file delle righe, con la ricerca e l'ordinamento della lista a video (fino a `EXPORT_MAX_ROWS`) |
 
 **Parametri di query** (tutti facoltativi):
@@ -110,8 +110,8 @@ ed export dal factory, permesso `("vendite", "offerta_commerciale")`.
   **Assente**, l'ordine del documento (tabella sopra), poi la chiave di riga
   (`id`; `riga_key` su fattura e contratto) — lo schema OpenAPI lo legge dal
   repository (`righe_ordine_di_partenza`). Una colonna
-  fuori whitelist è un **400** `E_VALIDATION_INPUT` (dal 2026-10-20). Le date di consegna
-  partono DESC quando la direzione manca;
+  fuori whitelist è un **400** `E_VALIDATION_INPUT` (dal 2026-10-20). Senza `order_dir`
+  la colonna chiesta va in crescente; il default della lista resta il suo;
 - `limit` / `offset` — pagina (tetto `MAX_LIMIT` di `apps.core.api.constants`).
 
 ## ⭐ Perché `…/righe/lista/` e non `…/righe/`

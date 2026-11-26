@@ -1,0 +1,401 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA NASCITA DELLE TESTATE DEI DOCUMENTI INTERNI, E I DUE GUARD COMUNI
+#   magazzino.fn_guard_magazzino_nel_perimetro(magazzino, utente, porta)
+#   magazzino.fn_documento_interno_blocca(famiglia, documento, utente, porta)
+#   magazzino.fn_aggiungi_inventario(magazzino, campi)
+#   magazzino.fn_aggiungi_rettifica(magazzino, campi)
+#   magazzino.fn_aggiungi_trasferimento(partenza, arrivo, campi)
+#   magazzino.fn_aggiungi_ubicazione: passa al guard del perimetro
+#   Brief: brief-db-magazzino-tutte-le-scritture-dal-verbo, P-5b
+#   (D-M10 = b, D-M11 = a).
+#
+# -- LA FORMA (D-M10 = b) ---------------------------------------------
+#   La nascita e' per famiglia: le testate non condividono gli obbligatori
+#   (il trasferimento ha partenza e arrivo). Obbligatori come argomenti,
+#   facoltativi in p_campi (la lista 'crea' di
+#   magazzino.fn_documento_interno_colonne_ammesse, tolti gli argomenti),
+#   le chiavi assenti e null al DEFAULT (la data alla data operativa, lo
+#   stato a DRAFT). Lo stampo e' quello delle anagrafiche (Lotto 1), senza
+#   il BB INVOKER sotto il verbo: un documento interno non ha un secondo
+#   scrittore della nascita (provisioning, builder) che salti il permesso,
+#   e un BB con un consumatore solo non centralizza niente.
+#
+# -- IL MODELLO DI OGNI VERBO -----------------------------------------
+#   1. script.fn_guard_livello(utente, 'magazzino', <tabella>, 'TUTTO'):
+#      il livello sull'oggetto della famiglia (D-2, D-5). Chi puo' fare
+#      cosa non cambia: oggi l'endpoint chiede TUTTO sull'area;
+#   2. il magazzino (per il trasferimento, i due) nel perimetro di chi
+#      agisce, altrimenti E_MAG_MAGAZZINO_NON_TROVATO senza dire se non
+#      esiste o non e' suo (no-leak): fn_guard_magazzino_nel_perimetro;
+#   3. i campi: script.fn_guard_campi_ammessi;
+#   4. la scrittura con script.fn_scrivi_riga_da_jsonb, coi trigger della
+#      tabella: provenienza (trgfn_guard_sorgente), perimetro
+#      (trgfn_guard_emittente_scope), magazzini attivi, stesso emittente
+#      per partenza e arrivo.
+#   SECURITY DEFINER del proprietario, search_path bloccato. RETURNS
+#   ancorato all'id della testata.
+#
+# -- I DUE GUARD COMUNI (regola del 2) ------------------------------------
+#   * fn_guard_magazzino_nel_perimetro: «il magazzino c'e' ed e' nel
+#     perimetro, o non c'e'» lo dicevano fn_aggiungi_ubicazione e lo
+#     direbbero i tre verbi qui (quattro magazzini). Una sede; la copia di
+#     fn_aggiungi_ubicazione si ritira qui, con il suo RETURNS ancorato
+#     (il debito %TYPE del P-3 su questa funzione);
+#   * fn_documento_interno_blocca: la testata di una famiglia, presa FOR
+#     UPDATE col predicato della policy sul suo magazzino
+#     (script.fn_scope_ef_whitelist_via_magazzino; da proprietario la RLS
+#     non filtra), altrimenti E_MAG_DOCUMENTO_NON_TROVATO (no-leak, il
+#     codice dei fn_posta_*). La usano i verbi delle righe (-08) e i verbi
+#     comuni (-09): otto verbi. Ritorna la riga del registro e lo stato
+#     letto sotto il lock (la modifica della testata lo guarda).
+#   Tutti e due INVOKER e senza permesso: girano dentro un verbo, che ha
+#   gia' chiamato il guard del livello. Dall'app (dopo la chiusura delle
+#   tabelle) il FOR UPDATE di fn_documento_interno_blocca non ha il
+#   privilegio: non e' una strada.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261123-07-create-verbi-nascita-testate-documenti-interni-mctit.yaml
+
+  - changeSet:
+      id: 20261123-07-create-verbi-nascita-testate-documenti-interni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea i verbi di nascita delle testate dei documenti interni di magazzino (inventario,
+        rettifica, trasferimento: livello TUTTO sull'oggetto, magazzino nel perimetro, campi
+        ammessi) e i due guard comuni: il magazzino nel perimetro (che fn_aggiungi_ubicazione
+        adotta) e la testata presa FOR UPDATE nel perimetro.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "4"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('magazzino', 'fn_documento_interno_famiglia'),
+                                                ('magazzino', 'fn_documento_interno_colonne_ammesse'),
+                                                ('script', 'fn_guard_campi_ammessi'),
+                                                ('magazzino', 'fn_aggiungi_ubicazione'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ============================================================
+              -- Il magazzino nel perimetro
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION magazzino.fn_guard_magazzino_nel_perimetro(
+                  p_magazzino_id magazzino.magazzini.id%TYPE,
+                  p_auth_user_id config.user_override_oggetti.auth_user_id%TYPE,
+                  p_porta        text)   -- la funzione che rifiuta: il log e' suo
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- Scopo: il magazzino c'e' ed e' nel perimetro di chi agisce
+                  --   (il predicato della policy), altrimenti
+                  --   E_MAG_MAGAZZINO_NON_TROVATO senza dire quale dei due.
+                  IF NOT EXISTS (SELECT 1
+                                   FROM magazzino.magazzini mg
+                                  WHERE mg.id = p_magazzino_id
+                                    AND script.fn_scope_ef_whitelist_via_magazzino(p_auth_user_id, mg.id)) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', p_porta, 'E_MAG_MAGAZZINO_NON_TROVATO',
+                          jsonb_build_object('magazzino_id', p_magazzino_id),
+                          NULL::uuid,
+                          COALESCE(p_magazzino_id::text, '(nessuno)'));
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_guard_magazzino_nel_perimetro(
+                  magazzino.magazzini.id%TYPE,
+                  config.user_override_oggetti.auth_user_id%TYPE,
+                  text) IS
+                  'Guard: il magazzino esiste ed e'' nel perimetro dell''utente (script.fn_scope_ef_whitelist_via_magazzino, il predicato della policy), altrimenti E_MAG_MAGAZZINO_NON_TROVATO, senza dire se non esiste o non e'' suo. p_porta e'' la funzione che rifiuta: il log e'' suo. Serve ai verbi SECURITY DEFINER che fanno nascere qualcosa dentro un magazzino (un''ubicazione, la testata di un documento interno), dove la RLS non filtra. Non controlla il permesso: lo ha gia'' controllato il verbo. INVOKER.';
+
+              -- ============================================================
+              -- La testata di un documento interno, presa nel perimetro
+              -- ============================================================
+              -- I nomi in uscita sono quelli del registro (text: nomi, non il
+              -- riflesso di una colonna); p_documento_id bigint e non %TYPE:
+              -- la funzione e' parametrica su tre tabelle.
+              CREATE OR REPLACE FUNCTION magazzino.fn_documento_interno_blocca(
+                  p_famiglia     text,
+                  p_documento_id bigint,  -- parametrico su tre tabelle: nessun %TYPE e' vero per tutte
+                  p_auth_user_id config.user_override_oggetti.auth_user_id%TYPE,
+                  p_porta        text)
+               RETURNS TABLE(famiglia          text,
+                             tabella           text,
+                             tabella_righe     text,
+                             colonna_fk        text,
+                             colonna_stato     text,
+                             colonna_magazzino text,
+                             guc_posting       text,
+                             stato             text)
+               LANGUAGE plpgsql
+               ROWS 1
+              AS $function$
+              DECLARE
+                  v_fam   record;
+                  v_stato text;   -- lo stato della famiglia: tre colonne, nessuna sola da ancorare
+              BEGIN
+                  -- Scopo: la testata del documento p_documento_id della famiglia
+                  --   p_famiglia, presa FOR UPDATE col predicato della policy sul
+                  --   suo magazzino. Ritorna la riga del registro e lo stato letto.
+                  SELECT f.* INTO v_fam FROM magazzino.fn_documento_interno_famiglia(p_famiglia) AS f;
+                  IF v_fam.famiglia IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', p_porta, 'E_MAG_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_famiglia', p_famiglia),
+                          NULL::uuid,
+                          p_porta,
+                          'p_famiglia (INVENTARIO | RETTIFICA | TRASFERIMENTO)');
+                  END IF;
+
+                  -- No-leak: inesistente e fuori perimetro rispondono uguale. Lo
+                  -- stato e' NOT NULL: NULL vuol dire che la riga non c'e'. Nomi
+                  -- dal registro, quotati: mai da un input.
+                  IF p_documento_id IS NOT NULL THEN
+                      EXECUTE format('SELECT t.%I FROM magazzino.%I t
+                                       WHERE t.id = $1
+                                         AND script.fn_scope_ef_whitelist_via_magazzino($2, t.%I)
+                                         FOR UPDATE',
+                                     v_fam.colonna_stato, v_fam.tabella, v_fam.colonna_magazzino)
+                         INTO v_stato
+                        USING p_documento_id, p_auth_user_id;
+                  END IF;
+                  IF v_stato IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', p_porta, 'E_MAG_DOCUMENTO_NON_TROVATO',
+                          jsonb_build_object('famiglia', v_fam.famiglia, 'documento_id', p_documento_id),
+                          NULL::uuid,
+                          COALESCE(p_documento_id::text, '(nessuno)'));
+                  END IF;
+
+                  RETURN QUERY SELECT v_fam.famiglia, v_fam.tabella, v_fam.tabella_righe,
+                                      v_fam.colonna_fk, v_fam.colonna_stato,
+                                      v_fam.colonna_magazzino, v_fam.guc_posting, v_stato;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_documento_interno_blocca(
+                  text, bigint, config.user_override_oggetti.auth_user_id%TYPE, text) IS
+                  'Guard: la testata del documento interno p_documento_id della famiglia p_famiglia (INVENTARIO, RETTIFICA, TRASFERIMENTO), presa FOR UPDATE col predicato della policy sul suo magazzino (script.fn_scope_ef_whitelist_via_magazzino; per il trasferimento quello di partenza). Inesistente o fuori perimetro: E_MAG_DOCUMENTO_NON_TROVATO, senza dire quale dei due. Una famiglia che il registro non conosce: E_MAG_CHIAMATA_NON_VALIDA. Ritorna la riga del registro magazzino.fn_documento_interno_famiglia e lo stato della testata, letto sotto il lock. p_porta e'' la funzione che rifiuta: il log e'' suo. La usano i verbi delle righe e i verbi comuni dei documenti interni, dentro i quali la RLS non filtra. Non controlla il permesso e non guarda lo stato: lo stato lo fanno rispettare i guard della tabella. INVOKER.';
+
+              -- ============================================================
+              -- La nascita delle tre testate
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_inventario(
+                  p_magazzino_id magazzino.inventari.magazzino_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.inventari.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+                  v_campi  jsonb := COALESCE(p_campi, '{}'::jsonb);
+              BEGIN
+                  -- Scopo: il gesto «nuovo inventario» dell'operatore nel
+                  --   magazzino p_magazzino_id. Ritorna l'id.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'inventari', 'TUTTO');
+                  PERFORM magazzino.fn_guard_magazzino_nel_perimetro(
+                      p_magazzino_id, v_utente, 'magazzino.fn_aggiungi_inventario');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, magazzino.fn_documento_interno_colonne_ammesse('INVENTARIO', 'testata', 'crea'),
+                      'magazzino', 'magazzino.fn_aggiungi_inventario',
+                      jsonb_build_object('magazzino_id', p_magazzino_id));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.inventari'::regclass,
+                              jsonb_strip_nulls(v_campi || jsonb_build_object('magazzino_id', p_magazzino_id)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_aggiungi_inventario(magazzino.inventari.magazzino_id%TYPE, jsonb) IS
+                  'VERBO: il gesto «nuovo inventario» dell''operatore nel magazzino p_magazzino_id. Prima riga script.fn_guard_livello(utente, magazzino, inventari, TUTTO): sotto il livello, o senza utente, E_PERMESSO_NEGATO. Il magazzino nel perimetro, altrimenti E_MAG_MAGAZZINO_NON_TROVATO (magazzino.fn_guard_magazzino_nel_perimetro). In p_campi le colonne della lista crea di magazzino.fn_documento_interno_colonne_ammesse(INVENTARIO, testata, crea): data, descrizione e la provenienza (sorgente_*); le assenti e le null al DEFAULT; una chiave fuori lista: E_CAMPO_NON_AMMESSO col suo nome (script.fn_guard_campi_ammessi). Nasce in DRAFT. Provenienza, perimetro e magazzino attivo li dicono i guard della tabella. SECURITY DEFINER del proprietario, search_path bloccato. Ritorna l''id.';
+
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_rettifica(
+                  p_magazzino_id magazzino.rettifiche.magazzino_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.rettifiche.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+                  v_campi  jsonb := COALESCE(p_campi, '{}'::jsonb);
+              BEGIN
+                  -- Scopo: il gesto «nuova rettifica» dell'operatore nel
+                  --   magazzino p_magazzino_id. Ritorna l'id.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'rettifiche', 'TUTTO');
+                  PERFORM magazzino.fn_guard_magazzino_nel_perimetro(
+                      p_magazzino_id, v_utente, 'magazzino.fn_aggiungi_rettifica');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, magazzino.fn_documento_interno_colonne_ammesse('RETTIFICA', 'testata', 'crea'),
+                      'magazzino', 'magazzino.fn_aggiungi_rettifica',
+                      jsonb_build_object('magazzino_id', p_magazzino_id));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.rettifiche'::regclass,
+                              jsonb_strip_nulls(v_campi || jsonb_build_object('magazzino_id', p_magazzino_id)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_aggiungi_rettifica(magazzino.rettifiche.magazzino_id%TYPE, jsonb) IS
+                  'VERBO: il gesto «nuova rettifica» dell''operatore nel magazzino p_magazzino_id. Prima riga script.fn_guard_livello(utente, magazzino, rettifiche, TUTTO): sotto il livello, o senza utente, E_PERMESSO_NEGATO. Il magazzino nel perimetro, altrimenti E_MAG_MAGAZZINO_NON_TROVATO (magazzino.fn_guard_magazzino_nel_perimetro). In p_campi le colonne della lista crea di magazzino.fn_documento_interno_colonne_ammesse(RETTIFICA, testata, crea): la data e la provenienza (sorgente_*); le assenti e le null al DEFAULT; una chiave fuori lista: E_CAMPO_NON_AMMESSO col suo nome (script.fn_guard_campi_ammessi). Nasce in DRAFT. Provenienza, perimetro e magazzino attivo li dicono i guard della tabella. SECURITY DEFINER del proprietario, search_path bloccato. Ritorna l''id.';
+
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_trasferimento(
+                  p_magazzino_id_from magazzino.trasferimenti.magazzino_id_from%TYPE,
+                  p_magazzino_id_to   magazzino.trasferimenti.magazzino_id_to%TYPE,
+                  p_campi             jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.trasferimenti.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente    config.user_override_oggetti.auth_user_id%TYPE;
+                  v_campi     jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  -- Le colonne che il verbo riceve come argomenti: non stanno in p_campi.
+                  c_argomenti CONSTANT text[] := ARRAY['magazzino_id_to'];
+              BEGIN
+                  -- Scopo: il gesto «nuovo trasferimento» dell'operatore dal
+                  --   magazzino p_magazzino_id_from a p_magazzino_id_to. Ritorna l'id.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'trasferimenti', 'TUTTO');
+                  -- Tutti e due nel perimetro: un arrivo fuori perimetro e' «non
+                  -- trovato» come la partenza, non un emittente diverso.
+                  PERFORM magazzino.fn_guard_magazzino_nel_perimetro(
+                      p_magazzino_id_from, v_utente, 'magazzino.fn_aggiungi_trasferimento');
+                  PERFORM magazzino.fn_guard_magazzino_nel_perimetro(
+                      p_magazzino_id_to, v_utente, 'magazzino.fn_aggiungi_trasferimento');
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi,
+                      ARRAY(SELECT c
+                              FROM unnest(magazzino.fn_documento_interno_colonne_ammesse(
+                                              'TRASFERIMENTO', 'testata', 'crea')) AS c
+                             WHERE c <> ALL (c_argomenti)),
+                      'magazzino', 'magazzino.fn_aggiungi_trasferimento',
+                      jsonb_build_object('magazzino_id_from', p_magazzino_id_from,
+                                         'magazzino_id_to',   p_magazzino_id_to));
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.trasferimenti'::regclass,
+                              jsonb_strip_nulls(v_campi || jsonb_build_object(
+                                                   'magazzino_id_from', p_magazzino_id_from,
+                                                   'magazzino_id_to',   p_magazzino_id_to)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_aggiungi_trasferimento(
+                  magazzino.trasferimenti.magazzino_id_from%TYPE,
+                  magazzino.trasferimenti.magazzino_id_to%TYPE,
+                  jsonb) IS
+                  'VERBO: il gesto «nuovo trasferimento» dell''operatore, dal magazzino p_magazzino_id_from a p_magazzino_id_to. Prima riga script.fn_guard_livello(utente, magazzino, trasferimenti, TUTTO): sotto il livello, o senza utente, E_PERMESSO_NEGATO. Partenza e arrivo nel perimetro, altrimenti E_MAG_MAGAZZINO_NON_TROVATO (magazzino.fn_guard_magazzino_nel_perimetro), senza dire se non esiste o non e'' suo. In p_campi le colonne della lista crea di magazzino.fn_documento_interno_colonne_ammesse(TRASFERIMENTO, testata, crea) tolto l''arrivo, che e'' un argomento: la data e la provenienza (sorgente_*); le assenti e le null al DEFAULT; una chiave fuori lista: E_CAMPO_NON_AMMESSO col suo nome (script.fn_guard_campi_ammessi). Nasce in DRAFT. Stesso emittente per partenza e arrivo, magazzini attivi, provenienza e perimetro li dicono i guard della tabella. Partenza e arrivo non cambiano dopo la nascita. SECURITY DEFINER del proprietario, search_path bloccato. Ritorna l''id.';
+
+              -- ============================================================
+              -- fn_aggiungi_ubicazione passa al guard del perimetro
+              -- ============================================================
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_ubicazione(
+                  p_magazzino_id magazzino.ubicazioni.magazzino_id%TYPE,
+                  p_codice       magazzino.ubicazioni.codice%TYPE,
+                  p_tipo_id      magazzino.ubicazioni.tipo_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.ubicazioni.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+              BEGIN
+                  -- Scopo: il gesto «nuova ubicazione» dell'operatore nel
+                  --   magazzino p_magazzino_id: livello TUTTO sull'oggetto, il
+                  --   magazzino nel perimetro (no-leak), poi il BB. Ritorna l'id.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'ubicazioni', 'TUTTO');
+                  PERFORM magazzino.fn_guard_magazzino_nel_perimetro(
+                      p_magazzino_id, v_utente, 'magazzino.fn_aggiungi_ubicazione');
+
+                  RETURN magazzino.fn_crea_ubicazione(p_magazzino_id, p_codice, p_tipo_id, p_campi);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_aggiungi_ubicazione(
+                  magazzino.ubicazioni.magazzino_id%TYPE,
+                  magazzino.ubicazioni.codice%TYPE,
+                  magazzino.ubicazioni.tipo_id%TYPE,
+                  jsonb) IS
+                  'VERBO: il gesto «nuova ubicazione» dell''operatore nel magazzino p_magazzino_id. Prima riga script.fn_guard_livello(utente, magazzino, ubicazioni, TUTTO): sotto il livello, o senza utente, E_PERMESSO_NEGATO. Un magazzino che non esiste o fuori dal perimetro dell''operatore risponde E_MAG_MAGAZZINO_NON_TROVATO, senza dire quale dei due (magazzino.fn_guard_magazzino_nel_perimetro). Poi magazzino.fn_crea_ubicazione: colonne ammesse, padre, tipo e vincoli sono del BB e della tabella. SECURITY DEFINER del proprietario, search_path bloccato. Ritorna l''id.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_ubicazione(
+                  p_magazzino_id magazzino.ubicazioni.magazzino_id%TYPE,
+                  p_codice       magazzino.ubicazioni.codice%TYPE,
+                  p_tipo_id      magazzino.ubicazioni.tipo_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS bigint
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+              BEGIN
+                  -- Scopo: il gesto «nuova ubicazione» dell'operatore nel
+                  --   magazzino p_magazzino_id: livello TUTTO sull'oggetto, il
+                  --   magazzino nel perimetro (no-leak), poi il BB. Ritorna l'id.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'ubicazioni', 'TUTTO');
+
+                  -- No-leak: un magazzino fuori perimetro e' come uno che non
+                  -- esiste. Lo stesso predicato di fn_libera_blocco.
+                  IF NOT EXISTS (SELECT 1
+                                   FROM magazzino.magazzini mg
+                                  WHERE mg.id = p_magazzino_id
+                                    AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, mg.id)) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_aggiungi_ubicazione', 'E_MAG_MAGAZZINO_NON_TROVATO',
+                          jsonb_build_object('magazzino_id', p_magazzino_id),
+                          NULL::uuid,
+                          COALESCE(p_magazzino_id::text, '(nessuno)'));
+                  END IF;
+
+                  RETURN magazzino.fn_crea_ubicazione(p_magazzino_id, p_codice, p_tipo_id, p_campi);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_aggiungi_ubicazione(
+                  magazzino.ubicazioni.magazzino_id%TYPE,
+                  magazzino.ubicazioni.codice%TYPE,
+                  magazzino.ubicazioni.tipo_id%TYPE,
+                  jsonb) IS
+                  'VERBO: il gesto «nuova ubicazione» dell''operatore nel magazzino p_magazzino_id. Prima riga script.fn_guard_livello(utente, magazzino, ubicazioni, TUTTO): sotto il livello, o senza utente, E_PERMESSO_NEGATO. Un magazzino che non esiste o fuori dal perimetro dell''operatore (script.fn_scope_ef_whitelist_via_magazzino) risponde E_MAG_MAGAZZINO_NON_TROVATO, senza dire quale dei due. Poi magazzino.fn_crea_ubicazione: colonne ammesse, padre, tipo e vincoli sono del BB e della tabella. SECURITY DEFINER del proprietario, search_path bloccato. Ritorna l''id.';
+
+              DROP FUNCTION IF EXISTS magazzino.fn_aggiungi_trasferimento(bigint, bigint, jsonb);
+              DROP FUNCTION IF EXISTS magazzino.fn_aggiungi_rettifica(bigint, jsonb);
+              DROP FUNCTION IF EXISTS magazzino.fn_aggiungi_inventario(bigint, jsonb);
+              DROP FUNCTION IF EXISTS magazzino.fn_documento_interno_blocca(text, bigint, integer, text);
+              DROP FUNCTION IF EXISTS magazzino.fn_guard_magazzino_nel_perimetro(bigint, integer, text);

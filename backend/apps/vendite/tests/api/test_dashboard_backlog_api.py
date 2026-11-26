@@ -41,9 +41,6 @@ _RIEPILOGO_RESPONSE = {
 
 _DOCUMENTI_RESPONSE = {
     "count": 1,
-    "page": 1,
-    "page_size": 50,
-    "total_pages": 1,
     "results": [
         {
             "area": "PREVENTIVO",
@@ -65,6 +62,7 @@ _DOCUMENTI_RESPONSE = {
 
 
 class DashboardBacklogApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -94,6 +92,7 @@ class DashboardBacklogApiTests(JwtMockedApiTest):
 
 
 class DashboardBacklogDocumentiApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()

@@ -1,6 +1,6 @@
 # Guida — Configurazione e Personalizzazione delle Dashboard
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > **Destinatari**: chi prepara il catalogo delle dashboard (il seed delle migrazioni), chi lavora sulla home
 > lato backend e frontend, l'operatore che personalizza la propria home.
@@ -97,7 +97,10 @@ Sopra la cascata valgono due regole:
 
 * una card **aggiunta al pool** dopo la scelta dell'utente entra in coda, nascosta, e la home la conta fra
   le novità; l'utente la accende dalla modale delle card;
-* una card **spenta** nel catalogo sparisce a tutti, anche a chi l'aveva nella preferenza.
+* una card **spenta** nel catalogo sparisce a tutti, anche a chi l'aveva nella preferenza, e torna
+  quando si riaccende;
+* una card **tolta dal pool** esce anche dalle preferenze che la nominavano: le altre card restano nel
+  loro ordine, e se la preferenza resta senza card torna a seguire il preset.
 
 Se l'amministratore cambia il preset da cui l'utente è partito, la home mostra il banner «preset
 aggiornato», con le parti cambiate; «Ignora» lo chiude finché il preset non cambia di nuovo. È lo stesso
@@ -139,7 +142,7 @@ nasconderebbe nella sostanza: per questo la card di benvenuto del seed è spenta
 | Che cosa | Chi lo scrive |
 | --- | --- |
 | Dashboard, widget, pool, preset e loro composizione | Solo il seed delle migrazioni (i CSV di `ui`): l'applicazione li legge e non li scrive |
-| La preferenza dell'utente | Il backend, quando l'utente salva, ripristina o ignora il banner |
+| La preferenza dell'utente | Il backend, quando l'utente salva, ripristina o ignora il banner; il database, quando una card che nomina esce dal pool |
 
 Non c'è una pagina di amministrazione delle dashboard: una card nuova, un preset di ruolo o un cambio di
 ordine si fanno nel CSV del seed. Quando una pagina admin servirà, riaprirà la scrittura sulle sole

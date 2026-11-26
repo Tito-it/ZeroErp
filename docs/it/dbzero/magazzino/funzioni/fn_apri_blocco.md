@@ -27,7 +27,7 @@ DECLARE
     v_id        magazzino.movimenti_attesi.id%TYPE;
 BEGIN
     -- 0. Il permesso, prima di ogni altra cosa.
-    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_utente := script.fn_utente_di_sessione('magazzino.fn_apri_blocco');
     PERFORM script.fn_guard_azione(v_utente, 'blocca_merce');
 
     IF p_magazzino_id IS NULL OR p_magazzino_id <= 0

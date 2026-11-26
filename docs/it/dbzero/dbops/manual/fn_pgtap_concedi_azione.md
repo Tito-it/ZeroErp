@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_concedi_azione`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -16,6 +16,7 @@
 > * [script.fn_area_consente_azione](/dbzero/script/funzioni/fn_area_consente_azione) — il tetto d'area
 > * [script.fn_resolve_livello_area](/dbzero/script/funzioni/fn_resolve_livello_area) — il livello d'area di oggi dell'utente
 > * [dbops.fn_pgtap_crea_emittente_operatore](/dbzero/dbops/funzioni/fn_pgtap_crea_emittente_operatore) — l'operatore di fixture, che nasce senza azioni né aree
+> * [dbops.fn_pgtap_concedi_livello_area](/dbzero/dbops/funzioni/fn_pgtap_concedi_livello_area) — il gemello, per i verbi che chiedono un livello d'area
 >
 > Guide:
 >
@@ -37,6 +38,9 @@ Serve ai test dei verbi che controllano un'azione con
 [fn_pgtap_crea_emittente_operatore](/dbzero/dbops/funzioni/fn_pgtap_crea_emittente_operatore)
 è tecnico, non super admin, e non ha né azioni né aree. Il permesso quindi non si cerca nei
 dati: si concede.
+
+Per i verbi che chiedono un **livello d'area** invece di un'azione c'è il gemello,
+[`dbops.fn_pgtap_concedi_livello_area`](/dbzero/dbops/funzioni/fn_pgtap_concedi_livello_area).
 
 La fixture scrive un'eccezione utente sull'azione abilitata, valida da oggi (il giorno
 operativo) e senza scadenza: la stessa forma che scrive il pannello di amministrazione. È

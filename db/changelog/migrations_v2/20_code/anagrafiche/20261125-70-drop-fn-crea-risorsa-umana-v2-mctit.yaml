@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.fn_crea_risorsa_umana_v2: si ritira (S22, D-G2-2 di Tid,
+# 2026-11-26).
+#
+#   Il nome nuovo e' anagrafiche.fn_crea_risorsa_umana (20261125-67), e il suo
+#   unico chiamante nel database, fn_crea_operatore, lo chiama dal 20261125-68.
+#   Censiti i chiamanti (2026-11-26): nessuno nel backend (lo nominano solo un
+#   commento di AmmSoftwareRepository e le policy generate), nessuna vista,
+#   nessun job; i pgTAP passano al nome nuovo nello stesso giro. Un _v2 accanto
+#   al nome nuovo sarebbe una seconda sede della stessa regola.
+#
+#   La precondition chiede che nessuna funzione chiami ancora il _v2 (sul
+#   testo vivo di pg_get_functiondef, che vede anche le BEGIN ATOMIC).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261125-70-drop-fn-crea-risorsa-umana-v2-mctit.yaml
+
+  - changeSet:
+      id: 20261125-70-drop-fn-crea-risorsa-umana-v2
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_crea_risorsa_umana_v2 si ritira: il nome e' anagrafiche.fn_crea_risorsa_umana.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+               WHERE p.prokind = 'f'
+                 AND p.proname <> 'fn_crea_risorsa_umana_v2'
+                 AND pg_catalog.pg_get_functiondef(p.oid) LIKE '%fn_crea_risorsa_umana_v2(%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_crea_risorsa_umana_v2(
+                  anagrafiche.soggetti_ruoli.soggetto_id%TYPE,
+                  anagrafiche.risorse_umane.qualifica_id%TYPE,
+                  anagrafiche.risorse_umane.unita_organizzativa_id%TYPE,
+                  anagrafiche.risorse_umane.valido_dal%TYPE,
+                  anagrafiche.risorse_umane.valido_al%TYPE,
+                  anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  boolean,  -- un interruttore del chiamante
+                  anagrafiche.risorse_umane.attivo%TYPE);  -- com'era dichiarata dal 20261019-17
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              SELECT 1;  -- forward-only: la definizione e' nel 20261019-17

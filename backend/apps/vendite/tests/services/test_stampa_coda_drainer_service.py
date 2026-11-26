@@ -20,23 +20,32 @@
 #   6. resilienza_per_riga_una_fallisce_le_altre_proseguono
 #   7. reaper_chiamato_con_stale_minuti
 #   8. reaper_disabilitato_con_stale_zero
+#   9. giro_passa_l_utente_tecnico_del_badge (D-K6 a)
+#  10. giro_badge_senza_utente_e_azienda_fallita (D-K6 a)
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
-from apps.vendite.services.stampa_coda_drainer_service import draina_coda_stampa
+from apps.vendite.services.stampa_coda_drainer_service import (
+    draina_coda_stampa,
+    draina_coda_stampa_per_roster,
+)
 
 
 # L'emittente per cui il giro sta lavorando: nei mock e' lo stesso della
 # fattura (11), perche' il caso normale e' che la coda mostri le proprie
 # righe — la RLS ci pensa a monte.
 _EMITTENTE = 11
+# L'utente tecnico del badge (D-K6 a, 2026-11-24): il render lo riceve come
+# `user`, non piu' `None`.
+_UTENTE = MagicMock(name="utente_tecnico", id=501, is_authenticated=True)
 
 
 def _item(
@@ -80,7 +89,7 @@ class DrainerHappyPathTests(SimpleTestCase):
     def test_claim_vuota_nessun_lavoro(self) -> None:
         repo, vr, ds = _mocks(claim=[])
         summary = draina_coda_stampa(
-            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            emittente_fiscale_id=_EMITTENTE, utente_tecnico=_UTENTE, repo=repo, vendite_repo=vr,
             doc_service=ds,
         )
         self.assertEqual(summary["claimate"], 0)
@@ -91,7 +100,7 @@ class DrainerHappyPathTests(SimpleTestCase):
     def test_happy_path_numera_genera_sistema_fatto(self) -> None:
         repo, vr, ds = _mocks(claim=[_item(1, 42)])
         summary = draina_coda_stampa(
-            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            emittente_fiscale_id=_EMITTENTE, utente_tecnico=_UTENTE, repo=repo, vendite_repo=vr,
             doc_service=ds,
         )
 
@@ -102,19 +111,19 @@ class DrainerHappyPathTests(SimpleTestCase):
         repo.marca_stampa_fatto.assert_called_once_with(1, 100)
         repo.marca_stampa_errore.assert_not_called()
 
-    # 2. ⭐ Il render riceve il PERIMETRO dell'utente tecnico, non piu' `None`
-    #    (2026-09-05): user=None resta — il worker non e' una richiesta web —
-    #    ma «per conto di chi» adesso c'e', ed e' quello che rende il guard
-    #    `guard_emittente_in_scope` capace di dire qualcosa.
+    # 2. ⭐ Il render riceve il PERIMETRO dell'utente tecnico (2026-09-05) e,
+    #    dal 2026-11-24 (D-K6 a), l'utente tecnico stesso come `user`: prima
+    #    era `None`, e il builder della fattura leggeva la testata senza il
+    #    filtro applicativo.
     def test_genera_con_perimetro_esplicito_kwargs(self) -> None:
         repo, vr, ds = _mocks(claim=[_item(1, 42, template_id=5)])
         draina_coda_stampa(
-            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            emittente_fiscale_id=_EMITTENTE, utente_tecnico=_UTENTE, repo=repo, vendite_repo=vr,
             doc_service=ds,
         )
 
         args, kwargs = ds.genera_documento.call_args
-        self.assertIsNone(args[0])  # user posizionale = None
+        self.assertIs(args[0], _UTENTE)  # user posizionale = utente tecnico
         self.assertEqual(kwargs["emittente_scope"], [_EMITTENTE])
         self.assertEqual(kwargs["emittente_fiscale_id"], 11)
         self.assertEqual(kwargs["sorgente_tipo_id"], 10)
@@ -130,7 +139,7 @@ class DrainerHappyPathTests(SimpleTestCase):
     def test_genera_riceve_il_tipo_della_riga(self) -> None:
         repo, vr, ds = _mocks(claim=[_item(1, 42, tipo_id=3)])
         draina_coda_stampa(
-            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            emittente_fiscale_id=_EMITTENTE, utente_tecnico=_UTENTE, repo=repo, vendite_repo=vr,
             doc_service=ds,
         )
         self.assertEqual(ds.genera_documento.call_args.kwargs["tipo_documento_output_id"], 3)
@@ -148,7 +157,7 @@ class DrainerErrorPathTests(SimpleTestCase):
         repo.marca_stampa_errore.return_value = "ERRORE"
 
         summary = draina_coda_stampa(
-            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            emittente_fiscale_id=_EMITTENTE, utente_tecnico=_UTENTE, repo=repo, vendite_repo=vr,
             doc_service=ds,
         )
 
@@ -165,7 +174,7 @@ class DrainerErrorPathTests(SimpleTestCase):
         repo.marca_stampa_errore.return_value = "PENDING"
 
         summary = draina_coda_stampa(
-            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            emittente_fiscale_id=_EMITTENTE, utente_tecnico=_UTENTE, repo=repo, vendite_repo=vr,
             doc_service=ds,
         )
 
@@ -178,7 +187,7 @@ class DrainerErrorPathTests(SimpleTestCase):
         vr.get_fattura_for_documento_generation.return_value = None
 
         summary = draina_coda_stampa(
-            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            emittente_fiscale_id=_EMITTENTE, utente_tecnico=_UTENTE, repo=repo, vendite_repo=vr,
             doc_service=ds,
         )
 
@@ -197,7 +206,7 @@ class DrainerErrorPathTests(SimpleTestCase):
         }
 
         summary = draina_coda_stampa(
-            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            emittente_fiscale_id=_EMITTENTE, utente_tecnico=_UTENTE, repo=repo, vendite_repo=vr,
             doc_service=ds,
         )
 
@@ -217,7 +226,7 @@ class DrainerErrorPathTests(SimpleTestCase):
         repo.marca_stampa_errore.return_value = "ERRORE"
 
         summary = draina_coda_stampa(
-            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            emittente_fiscale_id=_EMITTENTE, utente_tecnico=_UTENTE, repo=repo, vendite_repo=vr,
             doc_service=ds,
         )
 
@@ -236,7 +245,7 @@ class DrainerReaperTests(SimpleTestCase):
         repo.reset_stale_stampe_in_corso.return_value = 3
 
         summary = draina_coda_stampa(
-            emittente_fiscale_id=_EMITTENTE,
+            emittente_fiscale_id=_EMITTENTE, utente_tecnico=_UTENTE,
             repo=repo, vendite_repo=vr, doc_service=ds,
             stale_minuti=15, soglia_tentativi=4,
         )
@@ -250,8 +259,50 @@ class DrainerReaperTests(SimpleTestCase):
     def test_reaper_disabilitato_con_stale_zero(self) -> None:
         repo, vr, ds = _mocks(claim=[])
         summary = draina_coda_stampa(
-            emittente_fiscale_id=_EMITTENTE,
+            emittente_fiscale_id=_EMITTENTE, utente_tecnico=_UTENTE,
             repo=repo, vendite_repo=vr, doc_service=ds, stale_minuti=0,
         )
         repo.reset_stale_stampe_in_corso.assert_not_called()
         self.assertEqual(summary["recuperate"], 0)
+
+
+_DRAINER = "apps.vendite.services.stampa_coda_drainer_service"
+_BADGE = {
+    "auth_user_id": 501, "username": "tecnico-11", "identita_id": 9,
+    "emittente_fiscale_id": _EMITTENTE, "emittente_codice": "EF11",
+}
+
+
+# Scopo: il giro completo coi mock del roster, dell'identita' e del core.
+def _giro(utente: Any) -> tuple[MagicMock, MagicMock, dict[str, Any]]:
+    processi = MagicMock()
+    processi.roster_processo.return_value = [_BADGE]
+    processi.emittenti_non_serviti.return_value = []
+    core = MagicMock(return_value=dict.fromkeys(("recuperate", "claimate", "fatto", "errore", "riprovabili"), 0))
+    with patch(f"{_DRAINER}.draina_coda_stampa", core), \
+            patch(f"{_DRAINER}.utente_per_id", return_value=utente) as per_id, \
+            patch("apps.core.services.giro_per_azienda.operator_identity_context",
+                  return_value=nullcontext()):
+        esito = draina_coda_stampa_per_roster(processi_repo=processi)
+    return core, per_id, esito
+
+
+class DrainerGiroUtenteTecnicoTests(SimpleTestCase):
+
+    # 9. D-K6 a (2026-11-24): l'utente del render e' l'utente tecnico del
+    #    badge, letto una volta per badge dal suo `auth_user_id`.
+    def test_giro_passa_l_utente_tecnico_del_badge(self) -> None:
+        utente = MagicMock(name="utente", id=501)
+        core, per_id, esito = _giro(utente)
+        per_id.assert_called_once_with(501)
+        self.assertIs(core.call_args.kwargs["utente_tecnico"], utente)
+        self.assertEqual(core.call_args.kwargs["emittente_fiscale_id"], _EMITTENTE)
+        self.assertEqual(esito["emittenti_serviti"], 1)
+
+    # 10. Un badge il cui utente non c'e' e' un'azienda FALLITA del giro: niente
+    #     render senza utente.
+    def test_giro_badge_senza_utente_e_azienda_fallita(self) -> None:
+        core, _per_id, esito = _giro(None)
+        core.assert_not_called()
+        self.assertEqual(esito["emittenti_serviti"], 0)
+        self.assertEqual(len(esito["emittenti_falliti"]), 1)

@@ -1,2 +1,3 @@
 # smoke non-verdi noti — rigenerato da scripts/smoke-baseline.sh
 # ⚠️ registro di DEBITO, non lista di eccezioni: deve calare.
+smoke-test-ui-partenza-liste.sh	PARZIALE

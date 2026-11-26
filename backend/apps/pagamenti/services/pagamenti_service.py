@@ -27,13 +27,13 @@ from typing import Any
 
 from django.db import transaction
 
-from apps.core.api.payload_validators import envelope_da_offset
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.services.fan_out import run_fan_out
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.services.list_helpers import (
+    pagina_con_totale,
     validate_enum_param,
     validate_order_params,
 )
@@ -427,7 +427,7 @@ def list_distinte(
         limit=limit,
         offset=offset,
     )
-    return envelope_da_offset(results, total, limit=limit, offset=offset)
+    return pagina_con_totale(results, total)
 
 
 # Scopo: Le transizioni che una PERSONA puo' chiedere, stato per stato, lette
@@ -735,7 +735,7 @@ def list_righe(
     scartate_count = 0 if scartate else repository.count_righe_in_stato(
         contabile_id, STATO_RIGA_SCARTATA
     )
-    return {"count": total, "results": results, "scartate_count": scartate_count}
+    return {**pagina_con_totale(results, total), "scartate_count": scartate_count}
 
 
 # Scopo: Aggiunge una riga alla distinta — un importo arrivato, e di chi e'.
@@ -1257,7 +1257,7 @@ def list_coda_righe(
     #    registro lotti).
     _grafo_distinta, grafo_riga = repository.list_transizioni()
     return {
-        **envelope_da_offset(results, total, limit=limit, offset=offset),
+        **pagina_con_totale(results, total),
         "stati_riga": repository.list_stati_riga(),
         "transizioni_riga": _transizioni_richiedibili(grafo_riga, STATI_RIGA_RICHIEDIBILI),
     }
@@ -1306,7 +1306,7 @@ def list_rate_fuori_capienza(
         limit=limit,
         offset=offset,
     )
-    return envelope_da_offset(results, total, limit=limit, offset=offset)
+    return pagina_con_totale(results, total)
 
 
 # ══════════════════════════════════════════════════════════════════

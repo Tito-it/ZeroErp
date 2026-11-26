@@ -35,6 +35,12 @@ Indice test eseguiti:
 22) ArticoloUuidTests.test_un_articolo_che_non_e_un_uuid_e_un_400_col_campo — 2026-09-18: i lookup e i motivi, non un DataError
 23) ArticoloUuidTests.test_un_filtro_articolo_malformato_e_un_400_col_campo — idem sulle tre liste di consultazione
 24) ArticoloUuidTests.test_l_uuid_arriva_canonico_al_repository
+25) ContrattoDalDbTests.test_meta_non_e_piu_nel_contratto — R-2: le colonne dei verbi non lo portano
+26) ContrattoDalDbTests.test_la_provenienza_non_e_un_dato_dell_operatore — D-M11: ammessa dal DB, tolta per nome
+27) ContrattoDalDbTests.test_una_chiave_del_db_che_nessuno_legge_e_un_500 — mai uno scarto silenzioso
+28) ContrattoDalDbTests.test_la_descrizione_ha_la_lunghezza_della_colonna — varchar(255), non un 22001
+29) FamiglieTests.test_il_codice_della_famiglia_del_db_passa_dalla_regex
+30) ContrattoDalDbTests.test_il_motivo_ha_la_lunghezza_della_colonna — varchar(64)
 """
 
 from decimal import Decimal
@@ -58,6 +64,25 @@ _DOC = {
     "data_insert": "x", "user_insert": "u", "data_update": "x", "user_update": None,
 }
 _RIGA = {"id": 11, "inventario_id": 7, "articolo_id": _ART, "qta_contata": Decimal("10")}
+# Le liste del DB (`fn_documento_interno_colonne_ammesse`), lette il
+# 2026-11-23: qui sono un FINTO del repository. Che coincidano con il DB vero
+# lo prova `tests/db/test_documento_interno_db.py`.
+_AMMESSE = {
+    ("INVENTARIO", "testata", "crea"): {"data", "descrizione", "sorgente_tipo_id", "sorgente_id", "sorgente_uid", "sorgente_riga"},
+    ("INVENTARIO", "testata", "modifica"): {"data", "descrizione"},
+    ("INVENTARIO", "riga", "crea"): {"articolo_id", "qta_contata", "ubicazione_id", "lotto_id", "asset_id", "costo_unitario"},
+    ("INVENTARIO", "riga", "modifica"): {"articolo_id", "qta_contata", "ubicazione_id", "lotto_id", "asset_id", "costo_unitario"},
+    ("RETTIFICA", "testata", "crea"): {"data", "sorgente_tipo_id", "sorgente_id", "sorgente_uid", "sorgente_riga"},
+    ("RETTIFICA", "testata", "modifica"): {"data"},
+    ("RETTIFICA", "riga", "crea"): {"articolo_id", "qta_delta", "motivo", "ubicazione_id", "lotto_id", "asset_id", "costo_unitario"},
+    ("RETTIFICA", "riga", "modifica"): {"articolo_id", "qta_delta", "motivo", "ubicazione_id", "lotto_id", "asset_id", "costo_unitario"},
+}
+
+
+def _ammesse(f: FamigliaDocumentoInterno, parte: str, gesto: str) -> frozenset[str]:
+    return frozenset(_AMMESSE[(f.famiglia_db, parte, gesto)])
+
+
 _RIEPILOGO = {"n_righe": 1, "n_con_delta": 1, "n_invariate": 0, "n_non_contate": 0, "n_non_postabili": 0}
 
 
@@ -74,6 +99,10 @@ class _ConRepo(SimpleTestCase):
         self.repo.list_piano.return_value = ([], 0)
         self.repo.create_documento.return_value = 7
         self.repo.create_riga.return_value = 11
+        self.repo.colonne_ammesse.side_effect = _ammesse
+        self.repo.update_documento.return_value = {"id": 7}
+        self.repo.set_stato_documento.return_value = "CONFIRM"
+        self.repo.update_riga.return_value = {"id": 11}
         self.repo.posta_documento.return_value = [{"movimento_id": 1, "riga_id": 11, "qta": Decimal("10")}]
         patcher = patch.object(svc, "MagazzinoRepository", autospec=True, return_value=self.repo)
         patcher.start()
@@ -113,6 +142,29 @@ class FamiglieTests(SimpleTestCase):
                 codice="x", singolare="x", tabella="magazzino.inventari; DROP",
                 tabella_righe="magazzino.inventari_righe", fk_riga="inventario_id",
                 col_stato="stato_mag_inventario", fn_posta="magazzino.fn_posta_inventario",
+                famiglia_db="INVENTARIO", fn_aggiungi="magazzino.fn_aggiungi_inventario",
+                fn_aggiungi_riga="magazzino.fn_aggiungi_riga_inventario",
+                fn_capability="script.fn_available_actions_inventario",
+                sorgente_codice_interno="X", lista_codice="x", lista_righe_codice="x",
+                col_qta="qta_contata", ha_piano=True, ha_descrizione=True, con_motivo=False,
+                guard_riga_uniq=None,
+            )
+
+    # Scopo: R-2 — il codice della famiglia nel registro del DB viaggia come
+    #        valore; un refuso darebbe `E_PERMESSO_NEGATO` a ogni scrittura
+    #        (il registro e' fail-closed), e si ferma all'import.
+    def test_il_codice_della_famiglia_del_db_passa_dalla_regex(self):
+        self.assertEqual(
+            (FAMIGLIE["inventari"].famiglia_db, FAMIGLIE["rettifiche"].famiglia_db),
+            ("INVENTARIO", "RETTIFICA"),
+        )
+        with self.assertRaises(ValueError):
+            FamigliaDocumentoInterno(
+                codice="x", singolare="x", tabella="magazzino.inventari",
+                tabella_righe="magazzino.inventari_righe", fk_riga="inventario_id",
+                col_stato="stato_mag_inventario", fn_posta="magazzino.fn_posta_inventario",
+                famiglia_db="inventario", fn_aggiungi="magazzino.fn_aggiungi_inventario",
+                fn_aggiungi_riga="magazzino.fn_aggiungi_riga_inventario",
                 fn_capability="script.fn_available_actions_inventario",
                 sorgente_codice_interno="X", lista_codice="x", lista_righe_codice="x",
                 col_qta="qta_contata", ha_piano=True, ha_descrizione=True, con_motivo=False,
@@ -259,8 +311,11 @@ class RigheTests(_ConRepo):
         e = self._rifiuto(lambda: svc.crea_riga("inventari", 7, {"articolo_id": _ART, "qta_delta": 1}))
         self.assertEqual(e.code, svc.E_VALIDAZIONE)
         svc.crea_riga("rettifiche", 7, {"articolo_id": _ART, "qta_delta": "-2.5"})
-        campi = self.repo.create_riga.call_args.args[2]
-        self.assertEqual(campi["qta_delta"], Decimal("-2.5"))
+        # Articolo e quantita' sono ARGOMENTI del verbo, non campi.
+        kwargs = self.repo.create_riga.call_args.kwargs
+        self.assertEqual(kwargs["qta"], Decimal("-2.5"))
+        self.assertEqual(kwargs["articolo_id"], _ART)
+        self.assertEqual(kwargs["campi"], {})
 
     def test_la_quantita_rifiuta_bool_nan_e_testo(self):
         for raw in (True, "NaN", "dieci"):
@@ -279,7 +334,7 @@ class RigheTests(_ConRepo):
         e = self._rifiuto(lambda: svc.crea_riga("inventari", 7, {"articolo_id": _ART, "qta_contata": 1, "motivo": "x"}))
         self.assertEqual(e.code, svc.E_VALIDAZIONE)
         svc.crea_riga("rettifiche", 7, {"articolo_id": _ART, "qta_delta": 1, "motivo": "ROTTURA"})
-        self.assertEqual(self.repo.create_riga.call_args.args[2]["motivo"], "ROTTURA")
+        self.assertEqual(self.repo.create_riga.call_args.kwargs["campi"], {"motivo": "ROTTURA"})
 
     # ⭐ R-7: codice SUO dal 2026-09-23 — la risposta resta un 404 identico,
     #    ma dice QUALE delle due cose manca (il documento o la riga).
@@ -350,3 +405,56 @@ class ArticoloUuidTests(_ConRepo):
     def test_l_uuid_arriva_canonico_al_repository(self):
         svc.lookup_lotti(articolo_id=_ART.upper(), magazzino_id=3, search="L-")
         self.repo.lookup_lotti.assert_called_once_with(_ART, 3, "L-")
+
+
+# ⭐ R-2 di brief-db-magazzino-tutte-le-scritture-dal-verbo: le chiavi del
+#    payload le dice il DB (`fn_documento_interno_colonne_ammesse`), il
+#    trasporto di ognuna lo dice il service.
+class ContrattoDalDbTests(_ConRepo):
+    # Scopo: `meta` non e' fra le colonne dei verbi: un 400, non un campo
+    #        scartato o un `E_CAMPO_NON_AMMESSO` del DB.
+    def test_meta_non_e_piu_nel_contratto(self):
+        for fn in (
+            lambda: svc.crea_documento("inventari", {"magazzino_id": 3, "meta": {}}),
+            lambda: svc.aggiorna_documento("inventari", 7, {"meta": {}}),
+            lambda: svc.crea_riga("inventari", 7, {"articolo_id": _ART, "qta_contata": 1, "meta": {}}),
+            lambda: svc.aggiorna_riga("inventari", 7, 11, {"meta": {}}),
+        ):
+            e = self._rifiuto(fn)
+            self.assertEqual(e.code, svc.E_VALIDAZIONE)
+        self.repo.create_documento.assert_not_called()
+        self.repo.update_documento.assert_not_called()
+        self.repo.create_riga.assert_not_called()
+        self.repo.update_riga.assert_not_called()
+
+    # Scopo: D-M11 — il DB ammette la provenienza alla nascita, ma la scrive chi
+    #        fa nascere il documento da un altro, non l'operatore dal form.
+    def test_la_provenienza_non_e_un_dato_dell_operatore(self):
+        e = self._rifiuto(lambda: svc.crea_documento("inventari", {"magazzino_id": 3, "sorgente_id": 5}))
+        self.assertEqual(e.code, svc.E_VALIDAZIONE)
+        self.repo.create_documento.assert_not_called()
+        svc.crea_documento("inventari", {"magazzino_id": 3, "data": "2026-09-01", "descrizione": "Conta"})
+        kwargs = self.repo.create_documento.call_args.kwargs
+        self.assertEqual(kwargs["magazzino_id"], 3)
+        self.assertEqual(set(kwargs["campi"]), {"data", "descrizione"})
+
+    # Scopo: una colonna che il DB ammette e che qui nessuno sa leggere e' un
+    #        difetto del backend (500), non una chiave scartata in silenzio.
+    def test_una_chiave_del_db_che_nessuno_legge_e_un_500(self):
+        self.repo.colonne_ammesse.side_effect = lambda f, parte, gesto: _ammesse(f, parte, gesto) | {"nuova"}
+        with self.assertRaises(RuntimeError):
+            svc.aggiorna_documento("inventari", 7, {"data": "2026-09-01"})
+        self.repo.update_documento.assert_not_called()
+
+    def test_la_descrizione_ha_la_lunghezza_della_colonna(self):
+        e = self._rifiuto(lambda: svc.aggiorna_documento("inventari", 7, {"descrizione": "x" * 256}))
+        self.assertEqual((e.code, e.context.get("field")), (svc.E_VALIDAZIONE, "descrizione"))
+        svc.aggiorna_documento("inventari", 7, {"descrizione": "x" * 255})
+        self.repo.update_documento.assert_called_once()
+
+    # Scopo: `rettifiche_righe.motivo` e' varchar(64): oltre, un 400 col campo.
+    def test_il_motivo_ha_la_lunghezza_della_colonna(self):
+        e = self._rifiuto(lambda: svc.aggiorna_riga("rettifiche", 7, 11, {"motivo": "x" * 65}))
+        self.assertEqual((e.code, e.context.get("field")), (svc.E_VALIDAZIONE, "motivo"))
+        svc.aggiorna_riga("rettifiche", 7, 11, {"motivo": "x" * 64})
+        self.repo.update_riga.assert_called_once()

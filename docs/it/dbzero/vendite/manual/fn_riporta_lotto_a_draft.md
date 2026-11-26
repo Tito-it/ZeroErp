@@ -1,25 +1,30 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_riporta_lotto_a_draft`
 
+> **Ultimo aggiornamento**: 25 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti)  
-> • [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture)  
-> • [vendite.fatture](/dbzero/vendite/tabelle/fatture)  
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)  
-> • [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)  
+> * [vendite.fatturazione_lotti](/dbzero/vendite/tabelle/fatturazione_lotti) · [vendite.fatturazione_lotti_fatture](/dbzero/vendite/tabelle/fatturazione_lotti_fatture) — il lotto e le sue fatture
+> * [vendite.fatture](/dbzero/vendite/tabelle/fatture) — le fatture che si cancellano
+> * [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili) · [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — ciò che torna da emettere
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-• [vendite.fn_cleanup_fatture_by_ids](/dbzero/vendite/funzioni/fn_cleanup_fatture_by_ids)  
-> • [vendite.fn_annulla_lotto_da_draft](/dbzero/vendite/funzioni/fn_annulla_lotto_da_draft)  
-> • [vendite.fn_elimina_fattura_da_lotto](/dbzero/vendite/funzioni/fn_elimina_fattura_da_lotto)  
+> * [vendite.fn_guard_passaggio_lotto](/dbzero/vendite/funzioni/fn_guard_passaggio_lotto) — il permesso del passaggio verso la bozza
+> * [vendite.fn_cleanup_fatture_by_ids](/dbzero/vendite/funzioni/fn_cleanup_fatture_by_ids) — la pulizia, riservata
+> * [vendite.fn_cambia_stato_lotto](/dbzero/vendite/funzioni/fn_cambia_stato_lotto) — il verbo che scrive lo stato del lotto, dopo la pulizia
+> * [vendite.fn_annulla_lotto_da_draft](/dbzero/vendite/funzioni/fn_annulla_lotto_da_draft) — la sorella, che chiude il lotto
+> * [vendite.fn_elimina_fattura_da_lotto](/dbzero/vendite/funzioni/fn_elimina_fattura_da_lotto) — la stessa cosa, su una fattura sola
+>
+> Guide:
+>
+> * [Fatturazione](/guide/fatturazione) — le vie d'uscita da un lotto, e chi le può prendere
 
 ---
 
 ### 🎯 Scopo Principale
-(latest review 31-08-2026)  
 
 La funzione **`vendite.fn_riporta_lotto_a_draft()`** riporta **in bozza** un lotto
 già lavorato, perché l'operatore possa correggere qualcosa a monte e **rifare il
@@ -33,6 +38,35 @@ dati corretti. Il lotto invece **resta vivo** e riparte dal suo primo passo — 
 questa la differenza con la sorella
 [`fn_annulla_lotto_da_draft`](/dbzero/vendite/funzioni/fn_annulla_lotto_da_draft),
 che invece **chiude** il lotto portandolo ad ANNULLATA.
+
+---
+
+### Chi la chiama, con quale permesso e su quale lotto
+
+È il verbo dell'endpoint «riporta in lavorazione». Gira come proprietario (`SECURITY DEFINER`),
+fuori dalla row security, quindi perimetro e permesso li controlla lei, all'ingresso e in
+quest'ordine:
+
+1. **il perimetro**, sul lotto **e** su tutte le sue fatture, con una lettura sola: devono essere di
+   un'azienda di chi agisce. Il controllo è doppio perché il modello non lega la fattura all'azienda
+   del lotto. Fuori dal perimetro il lotto «non c'è» (`E_LOTTO_NON_TROVATO`, la stessa risposta di
+   un lotto inesistente), anche se fuori è una fattura sola;
+2. **il permesso** del passaggio verso la bozza
+   ([`vendite.fn_guard_passaggio_lotto`](/dbzero/vendite/funzioni/fn_guard_passaggio_lotto)), che
+   dipende dallo stato del lotto:
+
+| Il lotto è in | Che cosa chiede |
+| --- | --- |
+| `EMESSA` | l'azione della riga `EMESSA → DRAFT`, `numera_fatture_lotti`: chi può numerare può anche tornare indietro finché le fatture non hanno un numero |
+| `DRAFT` | non c'è passaggio, e si fa la sola pulizia: conta il livello `TUTTO` sull'area `vendite`, lo stesso controllo dell'endpoint |
+
+Il rifiuto è `E_PERMESSO_NEGATO`, e arriva **prima** della pulizia.
+
+**Le porte.** Il verbo spegne all'ingresso la GUC del reset del lotto e quella delle righe
+contabili. La porta del reset la riapre solo la pulizia, mentre lavora, e la richiude prima di
+uscire. Lo stato che il verbo scrive dopo, con
+[`vendite.fn_cambia_stato_lotto`](/dbzero/vendite/funzioni/fn_cambia_stato_lotto), lo giudica il
+guard di transizione del lotto.
 
 ---
 
@@ -215,14 +249,34 @@ indaga a mesi di distanza non ha altro modo di saperlo.
 
 ---
 
-### Esempio d'uso
+### Codici errore
 
-```sql
-SELECT *
-FROM vendite.fn_riporta_lotto_a_draft(
-  p_lotto_id => 1200
-);
-```
+* `E_LOTTO_NON_TROVATO` — il lotto non esiste, oppure il lotto o una sua fattura sono fuori dal
+  perimetro di chi agisce.
+* `E_PERMESSO_NEGATO` — da `EMESSA` manca `numera_fatture_lotti`; da `DRAFT` manca il livello
+  `TUTTO` sull'area `vendite`.
+* `E_LOTTO_FATTURE_NUMERATE` e gli altri motivi di `script.fn_check_lotto_riportabile_a_draft`, se
+  il lotto non si può riportare in bozza.
+
+---
+
+### Test
+
+* `db/pgtap/vendite/test-porta-reset-lotto-e-fondo-v1.sql` — gira come l'applicazione: il verbo è
+  `SECURITY DEFINER`; il lotto già in bozza con l'area a `LETTURA` rifiuta; da `EMESSA` con l'area a
+  `TUTTO` rifiuta senza `numera_fatture_lotti` e passa con l'azione.
+* `db/pgtap/vendite/test-riporta-lotto-a-draft-v1.sql` — che cosa fa il ritorno in bozza.
+
+---
+
+### Note di migrazione
+
+* 2026-08-03 — nasce; il 2026-08-31 entra nel giornale (`LOTTO_RIAPERTO`).
+* 2026-11-25 — `SECURITY DEFINER`: il perimetro su lotto e fatture all'ingresso (prima lo dava la
+  row security), il permesso del passaggio prima della pulizia e, sul lotto già in bozza, il
+  livello sull'area (prima il permesso arrivava dopo, da `fn_cambia_stato_lotto`, e sul lotto in
+  bozza non c'era), le porte spente all'ingresso (brief-db-porte-aperte-dalla-sola-guc, giro 1-7,
+  D-X a, D-Y a).
 
 ---
 

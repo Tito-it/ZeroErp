@@ -84,8 +84,8 @@ operatore disattivato resta in elenco col tipo `OPERATORE` e `veste_attiva = fal
 | `includi_di_prova` | bool | no | `true` mostra anche gli utenti di prova (etichetta del provisioning di sviluppo); assente o `false` li nasconde. Booleano rigoroso: un valore non booleano e' un 400 sul campo |
 | `limit` | int | no | Numero massimo risultati (default 25, max 200) |
 | `offset` | int | no | Offset per paginazione (default 0) |
-| `order_by` | string | no | Colonna di ordinamento: `last_name`, `soggetto_cognome`, `username`, `is_super_admin`, `ruolo_applicativo`, `is_active`, `unita_organizzativa_nome`, `override_count`, `valido_dal`, `valido_al` (NULL = senza scadenza, ordinata come infinito). Senza `order_by`: `soggetto_cognome`, poi `username`, ASC. Fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
-| `order_dir` | string | no | `ASC` o `DESC` (altro valore: 400). Senza `order_dir` le colonne data (`valido_dal`, `valido_al`) partono DESC, le altre ASC |
+| `order_by` | string | no | Colonna di ordinamento: `last_name`, `soggetto_cognome`, `username`, `is_super_admin`, `ruolo_applicativo`, `is_active`, `unita_organizzativa_nome`, `override_count`, `valido_dal`, `valido_al` (NULL = senza scadenza: il vuoto va come il massimo, lo dichiara il catalogo). Senza `order_by`: `soggetto_cognome`, poi `username`, ASC. Fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
+| `order_dir` | string | no | `ASC` o `DESC` (altro valore: 400). Senza `order_dir` la colonna chiesta va in crescente; il default della lista resta il suo |
 
 **Risposta:**
 
@@ -518,8 +518,7 @@ del rapporto. Il binding SUPER_ADMIN, come prima, non si ripristina da sé.
 Le credenziali di categoria `ALTRO`: clienti e fornitori del portale, clienti
 dello shop, e le credenziali **senza alcuna veste** (`nessun_accesso = true`).
 Legge `anagrafiche.vw_accessi_altri` (`v.*`: la vista e' il contratto), lista a
-catalogo `anagrafiche.accessi_altri` (104). Envelope paginato standard
-(`count`, `page`, `page_size`, `total_pages`, `results`).
+catalogo `anagrafiche.accessi_altri` (104). Envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)).
 
 | Parametro | Tipo | Descrizione |
 |---|---|---|
@@ -953,6 +952,12 @@ curl -H "Authorization: Bearer <token>" \
   l'unico attivo, il cambio scope -> SINGLE viene rifiutato con
   `E_PROFILO_ULTIMO_SUPER_ADMIN` (HTTP 409). Il preview `can_change_scope`
   lato detail e' fast-path UX, non garanzia (race tra sessioni).
+- **Chi puo' cambiarlo: solo un SUPER_ADMIN, e lo dice il DB.** Dal 2026-11-25 (giro 10 di
+  `brief-db-porte-aperte-dalla-sola-guc` §10) `fn_change_user_emittenti_scope` e' `SECURITY DEFINER` e in
+  prima riga chiama `script.fn_guard_super_admin`: chi non lo e' riceve `403` `E_PERMESSO_NEGATO`, anche
+  arrivando al DB per un'altra strada. E' la stessa regola di `AdminAPIView`, quindi dall'endpoint nessun
+  rifiuto nuovo. La riga di scope si toglie solo dal verbo: la porta
+  `zeroerp.allow_user_emittente_delete_override` accesa dall'app non apre piu' niente.
 - Invalida la cache permessi dell'utente.
 
 **Risposta:** stesso shape del GET §2.5 con i valori post-change (rilettura
@@ -1179,9 +1184,6 @@ Solo i reparti attivi (`attivo = true`).
 {
   "data": {
     "count": 1,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 2,

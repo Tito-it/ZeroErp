@@ -1,6 +1,6 @@
 # Guida — Generazione di un Cliente
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -278,7 +278,7 @@ I dati catastali (foglio, particella, subalterno, categoria, rendita) sono legat
 
 Tre regole fondamentali del catasto:
 
-* **Clone, mai condivisione**: nel subentro il catasto viene duplicato. Ogni istanza ha il proprio record indipendente; modificare il catasto di un'istanza non tocca le altre
+* **Clone, mai condivisione**: nel subentro il catasto viene duplicato. Ogni istanza ha il proprio record indipendente, e un indice unico impedisce che due istanze nominino la stessa unità; modificare il catasto di un'istanza non tocca le altre
 * **Sorgente unica**: la clonazione cerca il catasto solo nella parent istanza diretta (`parent_istanza_id`). Se il parent non ha catasto, il flusso prosegue senza errore
 * **Tabella ponte**: il legame catasto ↔ indirizzo e N:M e viene creato automaticamente. La stessa unita catastale puo essere associata a piu indirizzi e viceversa
 
@@ -415,8 +415,8 @@ cliente) e, in coda, lo storico di `billing_account` e `clienti`.
 | [`trgfn_istanze_utilities_gen_codice`](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_gen_codice) | BEFORE INSERT, UPDATE OF `codice` | Genera il codice automatico dell'istanza |
 | `script.trgfn_lock_columns` | BEFORE UPDATE OF `codice`, `soggetto_id` | Codice e soggetto non cambiano (`E_CODICE_NON_MODIFICABILE`, `E_ISTANZA_SOGGETTO_IMMUTABILE`) |
 | [`trgfn_istanze_utilities_normalize`](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_normalize) | BEFORE INSERT/UPDATE | Nessuna azione: restituisce la riga com'è |
-| [`trgfn_iu_sync_catasto_unita_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_iu_sync_catasto_unita_indirizzo) | AFTER INSERT, UPDATE OF catasto o indirizzo | Mantiene il legame catasto ↔ indirizzo |
-| [`trgfn_iu_clone_catasto_from_parent`](/dbzero/anagrafiche/funzioni/trgfn_iu_clone_catasto_from_parent) | AFTER UPDATE OF `parent_istanza_id` | Clona il catasto della parent, se l'istanza non ne ha |
+| [`trgfn_iu_sync_catasto_unita_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_iu_sync_catasto_unita_indirizzo) | AFTER INSERT, UPDATE che cambia catasto o indirizzo | Mantiene il legame catasto ↔ indirizzo: al cambio toglie la coppia di prima e cancella l'unità che nessuno nomina più |
+| [`trgfn_iu_clone_catasto_from_parent`](/dbzero/anagrafiche/funzioni/trgfn_iu_clone_catasto_from_parent) | AFTER INSERT con la parent, UPDATE che cambia `parent_istanza_id` | Clona il catasto della parent, se l'istanza non ne ha |
 | [`trgfn_istanze_utilities_require_utility_dichiarata`](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_require_utility_dichiarata) | AFTER INSERT, alla conferma | L'istanza ha almeno un billing account (`E_ISTANZA_SENZA_BA`) |
 
 #### Sul billing account (`anagrafiche.billing_account`)
@@ -511,8 +511,8 @@ Quando si crea un nuovo cliente sullo stesso PDP dopo la chiusura del precedente
 **Passo 1** — `trgfn_clienti_set_parent_istanza` (BEFORE INSERT su clienti, se c'e la data di attivazione)
 Cerca il cliente precedente sullo stesso PDP (non annullato, attivato non dopo il nuovo) e scrive la sua istanza in `parent_istanza_id` sulla nuova istanza. Su un'istanza fittizia, senza PDP, il predecessore e l'ultimo cliente con lo stesso soggetto, servizio e azienda. Questo mantiene la catena storica dei subentri.
 
-**Passo 2** — `trgfn_iu_clone_catasto_from_parent` (AFTER UPDATE OF `parent_istanza_id` su istanze)
-Quando `parent_istanza_id` viene impostato, la nuova istanza ha un indirizzo e non ha ancora un catasto, clona i dati catastali dall'istanza precedente. Il catasto non e mai condiviso: viene sempre duplicato.
+**Passo 2** — `trgfn_iu_clone_catasto_from_parent` (AFTER INSERT con la precedente, o UPDATE che cambia `parent_istanza_id`, su istanze)
+Quando nasce il legame con l'istanza precedente, la nuova istanza ha un indirizzo e non ha ancora un catasto, clona i dati catastali dall'istanza precedente. Il catasto non e mai condiviso: viene sempre duplicato.
 
 **Passo 3** — `trgfn_iu_sync_catasto_unita_indirizzo` (AFTER INSERT/UPDATE su istanze)
 Inserisce automaticamente il legame tra il catasto clonato e l'indirizzo nella tabella ponte `catasto_unita_immobiliari_indirizzi`.

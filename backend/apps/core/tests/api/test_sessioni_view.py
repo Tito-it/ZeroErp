@@ -258,8 +258,6 @@ class SessioniAttiveListViewTests(TestCase):
         call_args = mock_resp.call_args[0][0]
         self.assertEqual(call_args["count"], 1)
         self.assertEqual(call_args["totale_attive"], 1)
-        self.assertEqual(call_args["page"], 1)
-        self.assertEqual(call_args["page_size"], 25)
         self.assertEqual(call_args["results"][0]["jti"], "other-sid")
         kwargs = mock_repo.list_sessioni_attive_paginata.call_args.kwargs
         self.assertEqual(kwargs["escludi_jti"], "current-sid")
@@ -315,7 +313,6 @@ class SessioniAttiveListViewTests(TestCase):
         call_args = mock_resp.call_args[0][0]
         self.assertEqual(call_args["count"], 1)
         self.assertEqual(call_args["totale_attive"], 3)
-        self.assertEqual(call_args["page"], 2)
         kwargs = mock_repo.list_sessioni_attive_paginata.call_args.kwargs
         self.assertEqual(kwargs["search"], "firefox")
         self.assertEqual((kwargs["order_by"], kwargs["order_dir"]), ("ip_address", "asc"))
@@ -617,7 +614,7 @@ class SessionAuditRepositoryTests(TestCase):
         self.assertIn("ORDER BY r.data_insert DESC NULLS LAST, r.jti DESC", sql)
 
     # Scopo: le chiavi della whitelist sono i `campo_sorgente`; una data senza
-    #        verso ordina DESC (`colonne_desc`).
+    #        verso ordina ASC come ogni colonna (Tid, 2026-11-24).
     @patch("apps.core.db.session_audit_repository.fetch_paged_with_total")
     def test_paginata_ordina_sulla_whitelist(self, mock_fetch):
         from apps.core.db.session_audit_repository import SessionAuditRepository
@@ -627,7 +624,7 @@ class SessionAuditRepositoryTests(TestCase):
         repo.list_sessioni_attive_paginata(1, escludi_jti=None, order_by="ip_address", order_dir="asc")
         self.assertIn("ORDER BY r.ip_address ASC NULLS FIRST, r.jti ASC", mock_fetch.call_args.args[0])
         repo.list_sessioni_attive_paginata(1, escludi_jti=None, order_by="data_inizio")
-        self.assertIn("ORDER BY pl.data_inizio DESC NULLS LAST, r.jti DESC", mock_fetch.call_args.args[0])
+        self.assertIn("ORDER BY pl.data_inizio ASC NULLS FIRST, r.jti ASC", mock_fetch.call_args.args[0])
 
     # Scopo: un `order_by` fuori whitelist e' un 400 (`order_by_invalid`), mai
     #         SQL grezzo e mai il default in silenzio (dal 2026-10-20).

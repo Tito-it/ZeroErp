@@ -36,7 +36,6 @@ from apps.config.sorgenti import (
     SORGENTE_PREVENTIVO,
 )
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.parameter_service import ParameterService
 
 __all__ = [
     "TIPI_DOCUMENTO_AMMESSI",
@@ -156,8 +155,7 @@ def data_di_riferimento(
 
 # Scopo: Estrae dalla testata i quattro valori che il risolutore vuole —
 #        emittente (PK), billing account, utility e data di riferimento.
-# Perimetro: PURA, nessun I/O tranne il ripiego sull'operatore quando la
-#        testata l'emittente non ce l'ha.
+# Perimetro: PURA, nessun I/O.
 #
 # ⛔ `emittente_fiscale_id` E' LA PK di `anagrafiche.emittenti_fiscali`, non il
 #    `soggetto_ruolo_id` che il pricing usa. I due numeri si somigliano
@@ -165,19 +163,21 @@ def data_di_riferimento(
 #    non trova l'emittente, quindi non trova i suoi titoli, e risponde con
 #    l'aliquota ordinaria SENZA sollevare.
 #
-# ⚠️ L'emittente in DUE PASSI — prima quello del documento, poi quello
-#    dell'operatore — come gia' fa l'init dei componenti sui preventivi. Ma qui
-#    l'assenza NON e' uno skip silenzioso: `P3` dice che ci si ferma.
+# ⚠️ L'emittente e' SOLO quello del documento: `emittente_fiscale_id` e' NOT
+#    NULL su preventivi, ordini e DDT. Se manca, la testata e' rotta e `P3` dice
+#    che ci si ferma — non e' uno skip silenzioso.
+# ⛔ Fino al 2026-11-25 c'era un secondo passo, «poi quello dell'operatore»,
+#    per i preventivi: non scattava mai (la colonna e' NOT NULL) e, se fosse
+#    scattato, avrebbe preso l'emittente di CHI GUARDA tramite
+#    `get_emittente_fiscale_id_for_user`, cioe' il gestore globale per il super
+#    admin (E1-5 di brief-be-fe-BB-audit §6.1).
 def contesto_da_testata(
     testata: dict[str, Any],
     *,
-    auth_user_id: int | None = None,
     error_code: str,
     function_name: str,
 ) -> dict[str, Any]:
     fiscale_id = testata.get("emittente_fiscale_id")
-    if fiscale_id is None and auth_user_id is not None:
-        fiscale_id = ParameterService().get_emittente_fiscale_id_for_user(auth_user_id)
     ErrorManager.require(
         fiscale_id is not None,
         code=error_code,
@@ -239,10 +239,6 @@ def normalizza_iva_id(raw: Any, *, error_code: str, function_name: str) -> int |
 #    `payload_helpers.make_db_errors_translator`, che fissa una volta i
 #    parametri di dominio e restituisce il callable — cosi' i punti di chiamata
 #    restano leggibili e la regola sta in un posto solo.
-# ⚠️ `usa_auth_user` esiste perche' UN dominio si comporta diversamente e va
-#    detto: sui preventivi l'emittente puo' non stare in testata (admin globale
-#    che non l'ha scelto) e si ripiega su quello dell'operatore. Su DDT e ordini
-#    la testata ce l'ha sempre — il trigger normalize lo garantisce NOT NULL.
 # ⛔ `payload_iva_id` E' UN PARAMETRO CHE VALE SEMPRE `None`, dal 2026-08-31
 #    (`I6`): la casella IVA e' chiusa sui tre domini, quindi nessuna riga porta
 #    piu' un'aliquota scelta a mano. Il parametro RESTA, e resta guardato:
@@ -258,14 +254,12 @@ def make_risolvi_iva_riga(
     *,
     error_code: str,
     function_name: str,
-    usa_auth_user: bool = False,
 ) -> Callable[..., tuple[int | None, dict[str, Any]]]:
     def _risolvi(
         testata: dict[str, Any],
         *,
         articolo_id: str,
         payload_iva_id: Any = None,
-        auth_user_id: int | None = None,
     ) -> tuple[int | None, dict[str, Any]]:
         ErrorManager.require(
             payload_iva_id is None,
@@ -284,7 +278,6 @@ def make_risolvi_iva_riga(
 
         ctx = contesto_da_testata(
             testata,
-            auth_user_id=auth_user_id if usa_auth_user else None,
             error_code=error_code,
             function_name=function_name,
         )

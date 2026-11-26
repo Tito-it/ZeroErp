@@ -23,7 +23,7 @@ AS $function$
 BEGIN
     -- Prima riga: chi agisce dev'essere SUPER_ADMIN.
     PERFORM script.fn_guard_super_admin(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer);
+        script.fn_utente_di_sessione('script.fn_imposta_totp_obbligatorio'));
 
     IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 OR p_valore IS NULL THEN
         PERFORM script.fn_log_and_raise_error(

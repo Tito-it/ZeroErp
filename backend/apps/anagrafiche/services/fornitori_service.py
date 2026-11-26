@@ -25,9 +25,8 @@ from apps.anagrafiche.services._validators import (
     regime_nel_catalogo,
     require_found,
 )
-from apps.anagrafiche.services.contatti_service import VINCOLI_CONTATTO, contatto_inline_per_madre
+from apps.anagrafiche.services.contatti_service import contatto_inline_per_madre
 from apps.anagrafiche.services.soggetti_service import indirizzi_per_madre
-from apps.core.api.payload_validators import optional_uuid
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 
@@ -143,7 +142,7 @@ class FornitoriService:
         _V.validate_allowed_keys(
             payload, allowed=_CREA_FORNITORE_KEYS, message="Payload fornitore non valido.",
         )
-        soggetto_id = optional_uuid(payload, "soggetto_id")
+        soggetto_id = _V.optional_uuid(payload, "soggetto_id")
         ErrorManager.require(soggetto_id is not None, code=E_ANAG_VALIDAZIONE,
                              message="soggetto_id obbligatorio.")
         assert soggetto_id is not None
@@ -163,7 +162,6 @@ class FornitoriService:
                         "Esiste gia' un fornitore con questo codice.",
                         "codice",
                     ),
-                    **VINCOLI_CONTATTO,
                 },
             )
         return {

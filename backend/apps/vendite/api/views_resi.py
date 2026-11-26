@@ -27,7 +27,6 @@ from apps.core.api.permissions import PassaggioDocumento
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     optional_iso_date,
-    paginated_envelope,
     parse_list_params,
     qp_int_optional,
     qp_str_upper,
@@ -41,6 +40,7 @@ from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_list
 from apps.vendite.db.resi_repository import ResiRepository
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.vendite.api._schema_da_contratto import schema_da_contratto
+from apps.core.services.list_helpers import pagina_con_totale
 
 # Codici lista config (ui.lista_definizione) delle liste resi: guidano la
 # risoluzione colonne visibili/ordine/permessi dell'export (DEF-1).
@@ -195,7 +195,7 @@ class ApiResiList(DomainAPIView):
             order_dir=p["order_dir"],
             **f,
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=_RESO_CREATE_REQUEST,
@@ -320,7 +320,7 @@ class ApiResiDaAccreditare(DomainAPIView):
             order_dir=p["order_dir"],
             **_extract_accredito_filters(qp),
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
 
 class ApiResiDaAccreditareExport(DomainAPIView):
@@ -444,7 +444,7 @@ class ApiResiDaRiconsegnare(DomainAPIView):
             order_dir=p["order_dir"],
             **_extract_coda_filters(qp),
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
 
 class ApiResiDaRiconsegnareExport(DomainAPIView):

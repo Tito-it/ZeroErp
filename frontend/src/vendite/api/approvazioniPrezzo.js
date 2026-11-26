@@ -24,7 +24,7 @@ function _segmento(sorgente) {
 }
 
 // POST /vendite/<segmento>/<riga_id>/approva-prezzo/
-// Approva la riga PENDING. Richiede azione `approva_prezzo_override` (o superuser).
+// Approva la riga PENDING. Richiede azione `approva_prezzo_override` (SUPER_ADMIN compreso).
 // Body: { nota?: string }. `sorgente` = preventivo | contratto | offerta.
 export function approvaPrezzoRiga(rigaId, payload = {}, sorgente = 'preventivo') {
   return api.post(`/vendite/${_segmento(sorgente)}/${rigaId}/approva-prezzo/`, payload)

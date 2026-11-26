@@ -189,7 +189,7 @@ direbbe «fermo» e il digest «tutto a posto», o il contrario. La forma giusta
 
 Il §4 Passo B del brief madre elenca «UI sugli endpoint orfani (`job-runs`,
 `job-summary`)» e la nota ⏱️ 12-09 «più i quattro endpoint ancora orfani». Ma
-[piano-be-fe-endpoint-senza-porta.md](../../work-in-progress/piano-be-fe-endpoint-senza-porta.md)
+[piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md)
 (decisione di Tid, **2026-09-11**) ha già risposto per ciascuno: `domini-task`,
 `task-registry`, `task-implementations` sono **servizio** (configurazione del
 motore, nessuna porta); `job-summary` è **candidato al ritiro** — la stessa

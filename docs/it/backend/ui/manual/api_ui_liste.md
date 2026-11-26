@@ -233,6 +233,12 @@ Errori:
   coincidono per costruzione (`JwtAuditAuthentication`), quindi a video non
   compare mai: segnala un chiamante rotto. Contesto a diario: `lista_codice`,
   `auth_user_id`, `utente_di_sessione`. Brief-be-ricerca-full-liste-residue §12
+- `500` `E_SCRIPT_CHIAMATA_NON_VALIDA` (classe `TECNICO`) — la GUC
+  `app.current_user_id` porta qualcosa che non è l'id di un utente (lettere,
+  zero, zeri in testa, oltre il massimo di `integer`). Lo dà il BB DB
+  `script.fn_utente_di_sessione`, che legge l'utente per il backend, per le
+  funzioni e per le policy RLS: una regola sola, mai il 22P02 del cast. Come
+  sopra, a video non compare mai. Brief-db-revisione-ui, BE34
 
 #### Note
 
@@ -550,23 +556,27 @@ qualunque pagina dell'operatore (BB `core/misurePagina.js`).
 {
   "data": {
     "misure": [10, 25, 50, 100],
-    "default_compatta": 10,
-    "default_pagina": 25
+    "default_per_uso": {"COMPATTA": 10, "PAGINA": 25}
   },
   "meta": {"request_id": "..."}
 }
 ```
 
 - `misure` — in ordine crescente (l'ordine del selettore)
-- `default_compatta` — la misura di partenza delle liste in drawer e dialog
-- `default_pagina` — quella delle liste a pagina intera, e il ripiego del
-  resolver quando nessuno ha scelto
+- `default_per_uso` — la misura di partenza per ogni uso, una chiave per ogni
+  valore dell'enum `ui.uso_misura_pagina`: `COMPATTA` per le liste in drawer e
+  dialog, `PAGINA` per quelle a pagina intera (ed è il ripiego del resolver
+  quando nessuno ha scelto). Un uso nuovo nell'enum arriva come chiave nuova,
+  senza cambiare il contratto
+- ⚠️ La risposta porta ancora `default_compatta` e `default_pagina`, le due
+  chiavi di prima: sono in ritiro (BE33 di brief-db-revisione-ui), nessun
+  lettore le usa, e le toglie un changeSet del team DB
 
 Errori:
 
 - `401` — JWT mancante o non valido
 - `500` `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE` (`TECNICO`) — il catalogo non
-  ha la riga di uno dei due default: anomalia di seed, non un valore vuoto
+  ha il default di uno degli usi: anomalia di seed, non un valore vuoto
 
 ---
 

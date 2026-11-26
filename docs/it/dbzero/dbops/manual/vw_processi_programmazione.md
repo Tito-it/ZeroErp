@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_processi_programmazione`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -55,8 +55,9 @@ Due cose da sapere leggendo la vista:
 
 * il legame col job non è il nome: si legge da `dbops.processi.jobname_pgagent`, perché un job può
   chiamarsi diversamente dal processo;
-* il giornale si legge per codice del processo **oppure** per nome del job, perché le corse storiche
-  non hanno il processo valorizzato.
+* il giornale si legge per codice del processo, e solo così. Il nome di una corsa è testo libero e
+  non dice di quale processo è: una corsa di un altro processo che si chiama come questo non è sua,
+  e contarla potrebbe far sembrare vivo un processo fermo.
 
 ---
 
@@ -215,7 +216,8 @@ quanti sono i sani un guasto sembra la norma. La vista gira coi privilegi del pr
   giornale `GIRA_E_NON_REGISTRA`, rimessa una corsa dello scheduler `OK`, rimessa una corsa di un
   altro attore l'allarme resta; ogni canale e ogni origine del giornale hanno un verdetto
   dichiarato; i `COMMAND` con e senza contratto; la sessione viva, assente e di un altro utente
-  (questa costruita dove la connessione lo permette, dichiarata con `skip` dove no). Il lavoro su
+  (questa costruita dove la connessione lo permette, dichiarata con `skip` dove no); una corsa fresca
+  di un altro processo, col nome di un processo `MUTO`, non lo rianima (test 20). Il lavoro su
   cui costruire si sceglie sulla struttura, non sul verdetto di oggi.
 * `db/pgtap/dbops/test-presidio-processi-testo-per-causa-v1.sql` — l'elenco delle cause letto dalla
   definizione della vista; ogni causa costruita con lo stato giusto; i tre stati sani senza causa;
@@ -252,6 +254,11 @@ quanti sono i sani un guasto sembra la norma. La vista gira coi privilegi del pr
   conclusa), cioè le tre righe che le date e l'esito della vista leggono. Un processo fermo da più di
   un anno non diventa `MAI_PARTITO`. Il calcolo sulle corse del processo, che legge tutte le sue
   corse, ha ora il limite della ritenzione (`brief-db-giornale-corse-indici`).
+* 2026-11-23 — le corse di un processo sono quelle col suo `processo_codice`, e basta. Prima la vista
+  prendeva anche le corse col nome uguale al codice del processo: era la difesa per le corse storiche
+  senza processo, che il processo obbligatorio ha reso impossibili, e contava anche le corse di un
+  altro processo con quel nome. Senza nomi così il risultato non cambia
+  (`brief-db-giornale-corse-indici` §12.2).
 
 ---
 

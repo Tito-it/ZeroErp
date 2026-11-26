@@ -80,9 +80,7 @@ class ApiFondiFatturaDaDecidere(DomainAPIView):
                         name="VenditeFondiFatturaDaDecidereData",
                         fields={
                             "count": serializers.IntegerField(),
-                            "page": serializers.IntegerField(),
-                            "page_size": serializers.IntegerField(),
-                            "total_pages": serializers.IntegerField(),
+                            "offset_effettivo": serializers.IntegerField(),
                             "results": serializers.ListField(child=serializers.DictField()),
                         },
                     ),
@@ -104,8 +102,7 @@ class ApiFondiFatturaDaDecidere(DomainAPIView):
 
         data = fn_fondi_fattura_da_decidere(
             motivo=motivo,
-            # Defense-in-depth sopra la RLS invoker della vista: None per
-            # superuser (che la RLS gia' non filtra).
+            # Defense-in-depth sopra la RLS invoker della vista.
             auth_user_id=get_scope_user_id(request),
             order_by=order_by,
             order_dir=order_dir,

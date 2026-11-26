@@ -19,6 +19,8 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.services.error_manager import ErrorManager
+
 # Convenzione colonna -> funzione DB (guida soggetti-e-ruoli §5b, memoria
 # feedback_emittente_pk_vs_soggetto_ruolo):
 #  - "pk": colonne emittente_fiscale_id (PK reale emittenti_fiscali.id)
@@ -37,9 +39,34 @@ _IDENT_RE = re.compile(r"^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?$")
 #        (bigint[] della fn DB). Semantica invariata rispetto alla fn SQL:
 #        None = nessuna restrizione (super admin / bypass), [] = nessun
 #        accesso (fail-closed), lista = whitelist.
+# ⛔ `auth_user_id=None` SOLLEVA `E_SCOPE_SENZA_UTENTE` (2026-11-24, verifica
+#    critica di D-J). Fino a quel giorno i chiamanti lo leggevano come «nessun
+#    limite», la risposta voluta per il superuser Django. Ritirato il bypass,
+#    `None` vuol dire «nessun utente», e un perimetro senza utente non si
+#    apre: si rifiuta. E' la sede del rifiuto per ogni strada del filtro
+#    applicativo (`add_emittente_scope_condition` e chi risolve il perimetro
+#    una volta per un giro) e per `PermissionResolver.get_emittenti_sr_ids` /
+#    `get_emittenti_pk_ids`, che dal 2026-11-24 delegano qui tenendo la loro
+#    cache (D-K5 a, brief-db-porte-aperte-dalla-sola-guc §4.7): prima
+#    interrogavano le funzioni DB per conto loro, e con `user=None` davano un
+#    `AttributeError`. E' l'unica sede che le interroga (presidio in
+#    `core/tests/db/test_scope_senza_utente.py`, test 8).
+#    Il `None` della funzione DB in uscita e' un'altra cosa: lo decide il DB
+#    (admin globale) e resta «nessuna restrizione».
 def fetch_emittenti_scope_ids(
-    auth_user_id: int, *, convention: str = "pk",
+    auth_user_id: int | None, *, convention: str = "pk",
 ) -> list[int] | None:
+    ErrorManager.require(
+        auth_user_id is not None,
+        code="E_SCOPE_SENZA_UTENTE",
+        message="Perimetro emittente richiesto senza un utente.",
+        detail=(
+            "Una lettura con perimetro emittente e' arrivata senza auth_user_id: "
+            "il chiamante deve passare l'utente della richiesta "
+            "(get_scope_user_id)."
+        ),
+        function_name="core.emittente_scope_helpers.fetch_emittenti_scope_ids",
+    )
     fn = _SCOPE_FN_BY_CONVENTION[convention]
     with connection.cursor() as cursor:
         cursor.execute(f"SELECT {fn}(%s)", [auth_user_id])  # fn da whitelist
@@ -81,8 +108,8 @@ def add_emittente_scope_condition_risolta(
 
 # Scopo: Appende a conditions/params la condizione di scope emittente per la
 #        colonna indicata, risolvendo il perimetro con una query. No-op se
-#        auth_user_id e' None (superuser a livello API) o se la fn ritorna
-#        NULL (nessuna restrizione).
+#        la fn ritorna NULL (nessuna restrizione, deciso dal DB).
+#        `auth_user_id=None` solleva, da `fetch_emittenti_scope_ids`.
 # ⚠️ Dentro un giro su N righe usare `add_emittente_scope_condition_risolta`
 #    con il perimetro risolto una volta sola: qui ogni chiamata e' una query.
 def add_emittente_scope_condition(
@@ -93,8 +120,6 @@ def add_emittente_scope_condition(
     column: str,
     convention: str = "pk",
 ) -> None:
-    if auth_user_id is None:
-        return
     add_emittente_scope_condition_risolta(
         conditions, params,
         scope_ids=fetch_emittenti_scope_ids(auth_user_id, convention=convention),

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.ai_assistant.services.user_context import get_emittente_fiscale_id
+from apps.ai_assistant.services.user_context import emittente_di_lettura
 from apps.ai_assistant.tools.base import AITool, EndpointGemello
 from apps.pratiche.api.views import (
     ApiPraticaDetail,
@@ -21,6 +21,8 @@ from apps.pratiche.api.views import (
     ApiPraticheList,
 )
 from apps.core.db._helpers import RICERCA_MIN_CARATTERI
+from apps.core.services.perimetro_emittente import emittente_per_scrivere
+from apps.core.services.list_helpers import collezione_completa, pagina_con_totale
 
 
 class CercaPraticheTool(AITool):
@@ -92,7 +94,7 @@ class CercaPraticheTool(AITool):
         from apps.pratiche.services import pratiche_service
 
         items, total = pratiche_service.cerca_pratiche(
-            emittente_fiscale_id=get_emittente_fiscale_id(request),
+            emittente_fiscale_id=emittente_di_lettura(request),
             stato_codice_interno=params.get("stato"),
             search=self.termine_ricerca(params),
             data_da=params.get("data_da"),
@@ -103,10 +105,8 @@ class CercaPraticheTool(AITool):
             order_dir="desc",
         )
 
-        return {
-            "count": total,
-            "results": self.simplify_results(items, self._FIELD_MAP, str_fields={"data_insert"}),
-        }
+        risultati = self.simplify_results(items, self._FIELD_MAP, str_fields={"data_insert"})
+        return pagina_con_totale(risultati, total)
 
 
 class DettaglioPraticaTool(AITool):
@@ -183,6 +183,23 @@ class CercaFlussiPraticaTool(AITool):
             endpoint=EndpointGemello(ApiPraticaFlussiList, "GET"),
         )
 
+    # Scopo: l'emittente della pratica, come lo fissa il tab Flussi del drawer
+    #        (`ApiPraticaFlussiList.lista_emittente_param`): una pratica ha UN
+    #        emittente, e in «tutti gli emittenti» i suoi flussi si leggono.
+    #        Pratica non visibile (RLS) o inesistente → `None`: il cancello
+    #        decide sul solo perimetro, come la schermata senza il parametro.
+    # ⛔ Fino al 2026-11-25 (prima versione del cancello) il tool non lo fissava:
+    #    in «tutti» rifiutava (422) i flussi che la schermata mostra.
+    def emittente_fissato(self, params: dict[str, Any]) -> int | None:
+        from apps.pratiche.db.pratiche_repository import PraticheRepository
+
+        pratica_id = params.get("pratica_id")
+        if pratica_id is None:
+            return None
+        pratica = PraticheRepository().get_pratica(int(pratica_id))
+        emittente_id = pratica.get("emittente_fiscale_id") if pratica else None
+        return int(emittente_id) if emittente_id is not None else None
+
     # Scopo: Elenca i flussi di una pratica dal repository.
     def execute(self, params: dict[str, Any], request: Any) -> dict[str, Any]:
         from apps.pratiche.db.pratiche_repository import PraticheRepository
@@ -201,7 +218,7 @@ class CercaFlussiPraticaTool(AITool):
                 "data_scadenza": str(f.get("data_scadenza", "") or ""),
             })
 
-        return {"count": len(simplified), "results": simplified}
+        return collezione_completa(simplified)
 
 
 class CreaPraticaTool(AITool):
@@ -262,7 +279,9 @@ class CreaPraticaTool(AITool):
     def execute(self, params: dict[str, Any], request: Any) -> dict[str, Any]:
         from apps.pratiche.services import pratiche_service
 
-        emittente_id = get_emittente_fiscale_id(request)
+        emittente_id = emittente_per_scrivere(
+            request.user, function_name="ai_assistant.pratiche_tools.crea_pratica",
+        )
 
         pratica_id = pratiche_service.crea_pratica(
             emittente_fiscale_id=emittente_id,

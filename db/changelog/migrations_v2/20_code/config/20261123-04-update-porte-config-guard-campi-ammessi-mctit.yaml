@@ -1,0 +1,386 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE PORTE DI CONFIG PASSANO A script.fn_guard_campi_ammessi
+#   fn_scrivi_profilo_accesso, fn_imposta_override_oggetti (un controllo
+#   per elemento dell'elenco). Brief:
+#   brief-db-magazzino-tutte-le-scritture-dal-verbo, P-5a.
+#
+# -- CHE COSA CAMBIA ----------------------------------------------------
+#   Il sollevamento di E_CAMPO_NON_AMMESSO esce dal corpo: lo fa il guard
+#   (20261123-01), con lo stesso codice, la stessa frase, context.campo e
+#   il contesto della porta (codice, utente). Il controllo di forma dei
+#   due resta nel loro IF, che guarda piu' argomenti insieme.
+#   ⛔ config.fn_pannello_scrivi NON passa al guard: rifiuta con il suo
+#   codice, E_PANNELLO_CAMPO_NON_AMMESSO, che il frontend conosce.
+#
+#   Il corpo viene dal catalogo vivo (pg_get_functiondef su dbdev,
+#   2026-11-23), la testata ancorata dall'ultimo changeSet di ciascuna.
+#   Firme, attributi e COMMENT invariati. Il rollback rimette i corpi di oggi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261123-04-update-porte-config-guard-campi-ammessi-mctit.yaml
+
+  - changeSet:
+      id: 20261123-04-update-porte-config-guard-campi-ammessi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le porte di config che ricevono i campi in jsonb sollevano E_CAMPO_NON_AMMESSO
+        attraverso script.fn_guard_campi_ammessi, invece di ripetere il sollevamento nel corpo.
+        Codice, frase e contesto invariati.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_guard_campi_ammessi';
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'config' AND p.proname IN ('fn_scrivi_profilo_accesso', 'fn_imposta_override_oggetti');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_scrivi_profilo_accesso(
+                  p_tipo        config.profili_accesso.tipo%TYPE,
+                  p_codice      config.profili_accesso.codice%TYPE,
+                  p_descrizione config.profili_accesso.descrizione%TYPE,
+                  p_aree        jsonb DEFAULT NULL::jsonb,
+                  p_azioni      jsonb DEFAULT NULL::jsonb,
+                  p_campi       jsonb DEFAULT '{}'::jsonb)
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_id       config.profili_accesso.id%TYPE;
+                  v_tipo     config.profili_accesso.tipo%TYPE;
+                  c_ammesse  CONSTANT text[] := ARRAY['attivo', 'richiede_secondo_fattore'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Scrivere un profilo di accesso: crearlo o aggiornarlo
+                  --   per codice, e sostituirne le aree e le azioni se
+                  --   indicate. Ritorna l'id.
+                  --
+                  -- Regole:
+                  --   - campi assenti: il DEFAULT alla nascita, invariati dopo;
+                  --   - aree/azioni NULL = invariate, un elenco = sostituite;
+                  --   - un codice di un altro tipo, argomenti mancanti,
+                  --     elenchi malformati: E_SCRIPT_CHIAMATA_NON_VALIDA;
+                  --   - chiave estranea nei campi: E_CAMPO_NON_AMMESSO.
+                  -- =========================================================
+                  IF p_tipo IS NULL OR NULLIF(btrim(p_codice), '') IS NULL OR p_descrizione IS NULL
+                     OR jsonb_typeof(v_campi) <> 'object'
+                     OR (p_aree IS NOT NULL AND jsonb_typeof(p_aree) <> 'array')
+                     OR (p_azioni IS NOT NULL AND jsonb_typeof(p_azioni) <> 'array') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'config.fn_scrivi_profilo_accesso', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('tipo',        p_tipo,
+                                             'codice',      p_codice,
+                                             'tipo_campi',  jsonb_typeof(v_campi),
+                                             'tipo_aree',   jsonb_typeof(p_aree),
+                                             'tipo_azioni', jsonb_typeof(p_azioni)),
+                          NULL::uuid,
+                          'config.fn_scrivi_profilo_accesso',
+                          'tipo, codice o descrizione mancanti, o campi, aree, azioni malformati');
+                  END IF;
+
+                  PERFORM script.fn_guard_campi_ammessi(
+                      v_campi, c_ammesse,
+                      'config', 'config.fn_scrivi_profilo_accesso',
+                      jsonb_build_object('codice', p_codice));
+
+                  -- 1. Il profilo, per codice: un codice ha un tipo solo.
+                  --    ⛔ Si CERCA col codice normalizzato, si SCRIVE quello
+                  --    ricevuto: lo normalizza il trigger CODICE_MAIUSCOLO, che
+                  --    dice anche se in maiuscolo supera la colonna (rev 2026-11-04).
+                  SELECT pa.id, pa.tipo
+                    INTO v_id, v_tipo
+                    FROM config.profili_accesso pa
+                   WHERE pa.codice = script.fn_codice_normalizzato(p_codice);
+
+                  IF v_id IS NULL THEN
+                      INSERT INTO config.profili_accesso (tipo, codice, descrizione, attivo, richiede_secondo_fattore)
+                      VALUES (p_tipo, p_codice, p_descrizione,
+                              COALESCE((v_campi ->> 'attivo')::boolean, true),
+                              COALESCE((v_campi ->> 'richiede_secondo_fattore')::boolean, false))
+                      RETURNING id INTO v_id;
+                  ELSIF v_tipo IS DISTINCT FROM p_tipo THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'config.fn_scrivi_profilo_accesso', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('codice', p_codice, 'tipo_esistente', v_tipo, 'tipo_chiesto', p_tipo),
+                          NULL::uuid,
+                          'config.fn_scrivi_profilo_accesso',
+                          'il codice e'' di un profilo di un altro tipo');
+                  ELSE
+                      UPDATE config.profili_accesso pa
+                         SET descrizione              = p_descrizione,
+                             attivo                   = COALESCE((v_campi ->> 'attivo')::boolean, pa.attivo),
+                             richiede_secondo_fattore = COALESCE((v_campi ->> 'richiede_secondo_fattore')::boolean,
+                                                                 pa.richiede_secondo_fattore)
+                       WHERE pa.id = v_id;
+                  END IF;
+
+                  -- 2. Le aree, sostituite.
+                  IF p_aree IS NOT NULL THEN
+                      DELETE FROM config.profili_accesso_aree paa WHERE paa.profilo_accesso_id = v_id;
+                      INSERT INTO config.profili_accesso_aree (profilo_accesso_id, area_id, livello)
+                      SELECT v_id, (a ->> 'area_id')::integer, (a ->> 'livello')::config.livello_accesso
+                        FROM jsonb_array_elements(p_aree) AS a;
+                  END IF;
+
+                  -- 3. Le azioni, sostituite.
+                  IF p_azioni IS NOT NULL THEN
+                      DELETE FROM config.profili_accesso_azioni paz WHERE paz.profilo_accesso_id = v_id;
+                      INSERT INTO config.profili_accesso_azioni (profilo_accesso_id, azione_id, abilitata)
+                      SELECT v_id, (a ->> 'azione_id')::integer, (a ->> 'abilitata')::boolean
+                        FROM jsonb_array_elements(p_azioni) AS a;
+                  END IF;
+
+                  RETURN v_id;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION config.fn_imposta_override_oggetti(
+                  p_auth_user_id config.user_override_oggetti.auth_user_id%TYPE,
+                  p_oggetti      jsonb)
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_lista    jsonb := COALESCE(p_oggetti, '[]'::jsonb);
+                  v_el       jsonb;
+                  v_n        integer := 0;   -- un conteggio: niente da ancorare
+                  c_ammesse  CONSTANT text[] := ARRAY[
+                      'app_label', 'model_name', 'livello', 'motivo', 'valido_dal', 'valido_al'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Sostituire gli override di un utente sugli oggetti con
+                  --   l'elenco dato (vuoto = nessun override). Ritorna
+                  --   quanti ne scrive.
+                  --
+                  -- Regole:
+                  --   - utente NULL, elenco o elemento malformati:
+                  --     E_SCRIPT_CHIAMATA_NON_VALIDA;
+                  --   - chiave estranea in un elemento: E_CAMPO_NON_AMMESSO;
+                  --   - chiave assente = DEFAULT, chiave null = NULL;
+                  --   - catalogo, riservati e date: vincoli e guard.
+                  -- =========================================================
+                  IF p_auth_user_id IS NULL OR jsonb_typeof(v_lista) <> 'array'
+                     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_lista) AS e
+                                 WHERE jsonb_typeof(e) <> 'object') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'config.fn_imposta_override_oggetti', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                             'tipo_oggetti', jsonb_typeof(v_lista)),
+                          NULL::uuid,
+                          'config.fn_imposta_override_oggetti',
+                          'utente mancante, o elenco degli override malformato');
+                  END IF;
+
+                  FOR v_el IN SELECT e FROM jsonb_array_elements(v_lista) AS e LOOP
+                      PERFORM script.fn_guard_campi_ammessi(
+                          v_el, c_ammesse,
+                          'config', 'config.fn_imposta_override_oggetti',
+                          jsonb_build_object('auth_user_id', p_auth_user_id));
+                  END LOOP;
+
+                  DELETE FROM config.user_override_oggetti uoo WHERE uoo.auth_user_id = p_auth_user_id;
+
+                  FOR v_el IN SELECT e FROM jsonb_array_elements(v_lista) AS e LOOP
+                      PERFORM script.fn_scrivi_riga_da_jsonb(
+                          'config.user_override_oggetti'::regclass,
+                          v_el || jsonb_build_object('auth_user_id', p_auth_user_id));
+                      v_n := v_n + 1;
+                  END LOOP;
+
+                  RETURN v_n;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_scrivi_profilo_accesso(
+                  p_tipo        config.profili_accesso.tipo%TYPE,
+                  p_codice      config.profili_accesso.codice%TYPE,
+                  p_descrizione config.profili_accesso.descrizione%TYPE,
+                  p_aree        jsonb DEFAULT NULL::jsonb,
+                  p_azioni      jsonb DEFAULT NULL::jsonb,
+                  p_campi       jsonb DEFAULT '{}'::jsonb)
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_estranea text;
+                  v_id       config.profili_accesso.id%TYPE;
+                  v_tipo     config.profili_accesso.tipo%TYPE;
+                  c_ammesse  CONSTANT text[] := ARRAY['attivo', 'richiede_secondo_fattore'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Scrivere un profilo di accesso: crearlo o aggiornarlo
+                  --   per codice, e sostituirne le aree e le azioni se
+                  --   indicate. Ritorna l'id.
+                  --
+                  -- Regole:
+                  --   - campi assenti: il DEFAULT alla nascita, invariati dopo;
+                  --   - aree/azioni NULL = invariate, un elenco = sostituite;
+                  --   - un codice di un altro tipo, argomenti mancanti,
+                  --     elenchi malformati: E_SCRIPT_CHIAMATA_NON_VALIDA;
+                  --   - chiave estranea nei campi: E_CAMPO_NON_AMMESSO.
+                  -- =========================================================
+                  IF p_tipo IS NULL OR NULLIF(btrim(p_codice), '') IS NULL OR p_descrizione IS NULL
+                     OR jsonb_typeof(v_campi) <> 'object'
+                     OR (p_aree IS NOT NULL AND jsonb_typeof(p_aree) <> 'array')
+                     OR (p_azioni IS NOT NULL AND jsonb_typeof(p_azioni) <> 'array') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'config.fn_scrivi_profilo_accesso', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('tipo',        p_tipo,
+                                             'codice',      p_codice,
+                                             'tipo_campi',  jsonb_typeof(v_campi),
+                                             'tipo_aree',   jsonb_typeof(p_aree),
+                                             'tipo_azioni', jsonb_typeof(p_azioni)),
+                          NULL::uuid,
+                          'config.fn_scrivi_profilo_accesso',
+                          'tipo, codice o descrizione mancanti, o campi, aree, azioni malformati');
+                  END IF;
+
+                  v_estranea := script.fn_prima_chiave_estranea(v_campi, c_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'config.fn_scrivi_profilo_accesso', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'codice', p_codice),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  -- 1. Il profilo, per codice: un codice ha un tipo solo.
+                  --    ⛔ Si CERCA col codice normalizzato, si SCRIVE quello
+                  --    ricevuto: lo normalizza il trigger CODICE_MAIUSCOLO, che
+                  --    dice anche se in maiuscolo supera la colonna (rev 2026-11-04).
+                  SELECT pa.id, pa.tipo
+                    INTO v_id, v_tipo
+                    FROM config.profili_accesso pa
+                   WHERE pa.codice = script.fn_codice_normalizzato(p_codice);
+
+                  IF v_id IS NULL THEN
+                      INSERT INTO config.profili_accesso (tipo, codice, descrizione, attivo, richiede_secondo_fattore)
+                      VALUES (p_tipo, p_codice, p_descrizione,
+                              COALESCE((v_campi ->> 'attivo')::boolean, true),
+                              COALESCE((v_campi ->> 'richiede_secondo_fattore')::boolean, false))
+                      RETURNING id INTO v_id;
+                  ELSIF v_tipo IS DISTINCT FROM p_tipo THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'config.fn_scrivi_profilo_accesso', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('codice', p_codice, 'tipo_esistente', v_tipo, 'tipo_chiesto', p_tipo),
+                          NULL::uuid,
+                          'config.fn_scrivi_profilo_accesso',
+                          'il codice e'' di un profilo di un altro tipo');
+                  ELSE
+                      UPDATE config.profili_accesso pa
+                         SET descrizione              = p_descrizione,
+                             attivo                   = COALESCE((v_campi ->> 'attivo')::boolean, pa.attivo),
+                             richiede_secondo_fattore = COALESCE((v_campi ->> 'richiede_secondo_fattore')::boolean,
+                                                                 pa.richiede_secondo_fattore)
+                       WHERE pa.id = v_id;
+                  END IF;
+
+                  -- 2. Le aree, sostituite.
+                  IF p_aree IS NOT NULL THEN
+                      DELETE FROM config.profili_accesso_aree paa WHERE paa.profilo_accesso_id = v_id;
+                      INSERT INTO config.profili_accesso_aree (profilo_accesso_id, area_id, livello)
+                      SELECT v_id, (a ->> 'area_id')::integer, (a ->> 'livello')::config.livello_accesso
+                        FROM jsonb_array_elements(p_aree) AS a;
+                  END IF;
+
+                  -- 3. Le azioni, sostituite.
+                  IF p_azioni IS NOT NULL THEN
+                      DELETE FROM config.profili_accesso_azioni paz WHERE paz.profilo_accesso_id = v_id;
+                      INSERT INTO config.profili_accesso_azioni (profilo_accesso_id, azione_id, abilitata)
+                      SELECT v_id, (a ->> 'azione_id')::integer, (a ->> 'abilitata')::boolean
+                        FROM jsonb_array_elements(p_azioni) AS a;
+                  END IF;
+
+                  RETURN v_id;
+              END;
+              $function$;
+              CREATE OR REPLACE FUNCTION config.fn_imposta_override_oggetti(
+                  p_auth_user_id config.user_override_oggetti.auth_user_id%TYPE,
+                  p_oggetti      jsonb)
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_lista    jsonb := COALESCE(p_oggetti, '[]'::jsonb);
+                  v_el       jsonb;
+                  v_estranea text;
+                  v_n        integer := 0;   -- un conteggio: niente da ancorare
+                  c_ammesse  CONSTANT text[] := ARRAY[
+                      'app_label', 'model_name', 'livello', 'motivo', 'valido_dal', 'valido_al'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Sostituire gli override di un utente sugli oggetti con
+                  --   l'elenco dato (vuoto = nessun override). Ritorna
+                  --   quanti ne scrive.
+                  --
+                  -- Regole:
+                  --   - utente NULL, elenco o elemento malformati:
+                  --     E_SCRIPT_CHIAMATA_NON_VALIDA;
+                  --   - chiave estranea in un elemento: E_CAMPO_NON_AMMESSO;
+                  --   - chiave assente = DEFAULT, chiave null = NULL;
+                  --   - catalogo, riservati e date: vincoli e guard.
+                  -- =========================================================
+                  IF p_auth_user_id IS NULL OR jsonb_typeof(v_lista) <> 'array'
+                     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_lista) AS e
+                                 WHERE jsonb_typeof(e) <> 'object') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'config.fn_imposta_override_oggetti', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id,
+                                             'tipo_oggetti', jsonb_typeof(v_lista)),
+                          NULL::uuid,
+                          'config.fn_imposta_override_oggetti',
+                          'utente mancante, o elenco degli override malformato');
+                  END IF;
+
+                  FOR v_el IN SELECT e FROM jsonb_array_elements(v_lista) AS e LOOP
+                      v_estranea := script.fn_prima_chiave_estranea(v_el, c_ammesse);
+                      IF v_estranea IS NOT NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'config', 'config.fn_imposta_override_oggetti', 'E_CAMPO_NON_AMMESSO',
+                              jsonb_build_object('campo', v_estranea, 'auth_user_id', p_auth_user_id),
+                              NULL::uuid,
+                              v_estranea);
+                      END IF;
+                  END LOOP;
+
+                  DELETE FROM config.user_override_oggetti uoo WHERE uoo.auth_user_id = p_auth_user_id;
+
+                  FOR v_el IN SELECT e FROM jsonb_array_elements(v_lista) AS e LOOP
+                      PERFORM script.fn_scrivi_riga_da_jsonb(
+                          'config.user_override_oggetti'::regclass,
+                          v_el || jsonb_build_object('auth_user_id', p_auth_user_id));
+                      v_n := v_n + 1;
+                  END LOOP;
+
+                  RETURN v_n;
+              END;
+              $function$;

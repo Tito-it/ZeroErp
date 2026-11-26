@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# comment-al-presente: ammesso — file gia' applicato e mergiato, non si riscrive (checksum): i suoi COMMENT li riscrive al presente 20_code/vendite/20261125-29.
+# IL PERMESSO DEL PASSAGGIO DEL LOTTO, CON LA RICADUTA SULL'AREA
+#   vendite.fn_guard_passaggio_lotto (nuova)
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §13.5 (giro 1-7; D-X a di Tid, 2026-11-25).
+#
+# -- PERCHE' -----------------------------------------------------------------
+#   L'annullo e il ritorno in bozza del lotto diventano SECURITY DEFINER e
+#   chiedono il permesso che l'endpoint controlla: l'azione della riga del
+#   passaggio, oppure, se la riga non ne ha (DRAFT -> ANNULLATA, Q-F2) o non
+#   c'e' (il lotto gia' in bozza), il livello TUTTO sull'area vendite.
+#   script.fn_guard_passaggio in quel caso passa («il permesso lo controlla il
+#   backend»), e il verbo DEFINER non ha piu' la row security dietro. La
+#   stessa regola nei due verbi e' la seconda occorrenza: un BB, locale al
+#   lotto (D-X a: fn_guard_passaggio, comune a tutti i documenti, non cambia).
+#   Lo chiamano 20261125-19 e -20; la numerazione viene dopo di loro, ed e'
+#   indifferente: PL/pgSQL risolve la chiamata all'esecuzione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261125-21-create-fn-guard-passaggio-lotto-mctit.yaml
+
+  - changeSet:
+      id: 20261125-21-create-fn-guard-passaggio-lotto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_guard_passaggio_lotto: il permesso del passaggio del lotto, l'azione della
+        riga o il livello TUTTO sull'area vendite. Brief: brief-db-porte-aperte-dalla-sola-guc
+        §13.5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_guard_passaggio_lotto(
+                  p_auth_user_id config.user_override_azioni.auth_user_id%TYPE,
+                  p_stato_da_id  vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE,
+                  p_stato_a_id   config.stati_doc_fiscale.id%TYPE)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: il permesso del passaggio di stato fiscale di un lotto, nella
+              --   forma che l'endpoint controlla (risposta 3d, PassaggioDocumento.azione):
+              --   l'azione della riga del passaggio, se la riga c'e' e ne dichiara una;
+              --   altrimenti (riga senza azione, o nessuna riga: il lotto gia' nello
+              --   stato d'arrivo) il livello TUTTO sull'area vendite, «il permesso sul
+              --   documento» della guida del modello.
+              -- Uso, nella prima riga del verbo, dopo aver letto il lotto nel perimetro:
+              --   PERFORM vendite.fn_guard_passaggio_lotto(v_utente, v_stato_da_id, v_stato_a_id);
+              -- ⚠️ Non giudica la matrice ne' il passaggio di processo: lo fa
+              --   script.fn_guard_passaggio dentro vendite.fn_cambia_stato_lotto, e il
+              --   guard di transizione all'UPDATE. Qui c'e' solo il permesso.
+              -- ⚠️ La ricaduta sull'area vale per il lotto (D-X a di
+              --   brief-db-porte-aperte-dalla-sola-guc, 2026-11-25): fn_guard_passaggio,
+              --   comune a tutti i documenti, non la fa.
+              DECLARE
+                  v_azione config.azioni_processo.permission_codename%TYPE;
+              BEGIN
+                  SELECT p.azione_processo_codename
+                    INTO v_azione
+                    FROM script.fn_doc_passaggio('vendite.fatturazione_lotti'::regclass,
+                                                 p_stato_da_id, p_stato_a_id) p;
+
+                  IF v_azione IS NOT NULL THEN
+                      PERFORM script.fn_guard_azione(p_auth_user_id, v_azione);
+                  ELSE
+                      PERFORM script.fn_guard_livello_area(p_auth_user_id, 'vendite', 'TUTTO');
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_guard_passaggio_lotto(config.user_override_azioni.auth_user_id%TYPE, vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE, config.stati_doc_fiscale.id%TYPE) IS $c$Il permesso di un passaggio di stato fiscale del lotto, come lo controlla l'endpoint: l'azione della riga del passaggio (script.fn_doc_passaggio) se c'e' (script.fn_guard_azione), altrimenti, riga senza azione o nessuna riga, il livello TUTTO sull'area vendite (script.fn_guard_livello_area). Rifiuto: E_PERMESSO_NEGATO. Non giudica la matrice: lo fanno fn_guard_passaggio e il guard di transizione. La chiamano vendite.fn_annulla_lotto_da_draft e vendite.fn_riporta_lotto_a_draft, verbi DEFINER, dopo aver letto il lotto nel perimetro. brief-db-porte-aperte-dalla-sola-guc §13 (giro 1-7, D-X a).$c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_guard_passaggio_lotto(config.user_override_azioni.auth_user_id%TYPE, vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE, config.stati_doc_fiscale.id%TYPE);

@@ -266,7 +266,7 @@ sono le sue trappole. Le guide, raggruppate per area:
   Materiale di lavoro in `dev/work-in-progress/`:
   `analisi-simmetria-ordini-acquisto.md`, `sviluppo-preventivi-acquisti.md`.
 - **Anagrafiche e dati di base** — [soggetti e ruoli](guide/soggetti-e-ruoli-anagrafici.md) ·
-  [indirizzi](guide/gestione-degli-indirizzi.md) · [contatti](guide/gestione-dei-contatti.md) ·
+  [emittenti fiscali](guide/emittenti-fiscali.md) · [indirizzi](guide/gestione-degli-indirizzi.md) · [contatti](guide/gestione-dei-contatti.md) ·
   [conti bancari](guide/gestione-conti-bancari.md) ·
   [istanze utility](guide/gestione-delle-istanze-utility.md) ·
   [catasto delle istanze](guide/catasto-delle-istanze.md)

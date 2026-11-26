@@ -204,7 +204,7 @@ async function handleSave() {
     <div class="form-grid">
       <div class="form-field">
         <label>{{ t('magazzino.ubicazioni.field_codice') }} *</label>
-        <InputText v-model="form.codice" class="app-codice-input" :disabled="isReadonly" :invalid="campiErrati.includes('codice')" />
+        <InputText v-model="form.codice" maxlength="64" class="app-codice-input" :disabled="isReadonly" :invalid="campiErrati.includes('codice')" />
       </div>
 
       <div class="form-field">
@@ -239,13 +239,13 @@ async function handleSave() {
 
       <div class="form-field">
         <label>{{ t('magazzino.ubicazioni.field_descrizione') }}</label>
-        <InputText v-model="form.descrizione" :disabled="isReadonly" :invalid="campiErrati.includes('descrizione')" />
+        <InputText v-model="form.descrizione" maxlength="120" :disabled="isReadonly" :invalid="campiErrati.includes('descrizione')" />
       </div>
 
       <div class="app-drawer-section"><h4>{{ t('magazzino.ubicazioni.sezione_posizione') }}</h4></div>
       <div v-for="k in CAMPI_POSIZIONE" :key="k" class="form-field">
         <label>{{ t(`magazzino.ubicazioni.field_${k}`) }}</label>
-        <InputText v-model="form[k]" :disabled="isReadonly" :invalid="campiErrati.includes(k)" />
+        <InputText v-model="form[k]" maxlength="32" :disabled="isReadonly" :invalid="campiErrati.includes(k)" />
       </div>
 
       <div v-if="isEdit" class="form-field">

@@ -173,6 +173,12 @@
    * schede ereditate nei drawer di contatti, conti bancari e indirizzi. */
   --app-fonte-soggetto-color: var(--p-orange-300);
 
+  /* La voce PREDEFINITA fra le altre (contatto, conto, magazzino, modello di
+   * documento): la puntina del BB `PredefinitoSegno`. Il verde di prima, ma
+   * un token suo: il predefinito non e' un esito riuscito, e se uno dei due
+   * cambia l'altro resta. */
+  --app-predefinito-color: var(--p-green-500);
+
   /* Pannello FISSATO nello split: la tab pinnata e il badge di sola lettura
    * del pannello affiancato. Non e' un avviso: dice dove si sta guardando. */
   --app-split-color: var(--p-orange-400);

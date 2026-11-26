@@ -4,7 +4,8 @@
 # Doc: Python
 # Scopo: Test unit ListaColonnaAdminService — Blocco F Fase 2 (DEF-5b)
 #        CRUD su ui.lista_colonna coi default derivati dal modello (i vincoli
-#        fra campi li giudica il DB) e soft-block DELETE per preferenze e preset.
+#        fra campi li giudica il DB) e rifiuto parlante del DELETE per i preset
+#        (le preferenze non lo fermano: Q56 di brief-db-revisione-ui).
 #        CI senza DB reale (SimpleTestCase + repository mockato).
 #
 # Indice test (0..N):
@@ -36,8 +37,8 @@
 #    20. update_colonna_attivo_null_raises
 #   Delete
 #    21. delete_colonna_inesistente_raises
-#    22. delete_colonna_in_uso_da_preferenze_raises_409
-#    23. delete_colonna_happy_path_zero_preferenze
+#    22. delete_colonna_non_consulta_le_preferenze
+#    23. delete_colonna_happy_path_nessun_preset
 #    24. delete_colonna_in_un_preset_raises_409_e_nomina_i_preset
 #    25. delete_colonna_fk_preset_al_delete_raises_409
 #    26. delete_colonna_nata_dal_seed_salta_i_controlli
@@ -52,6 +53,7 @@ from django.db import IntegrityError
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
+from apps.ui.db.ui_admin_repository import UiAdminRepository
 from apps.ui.services.lista_colonna_admin_service import (
     E_COLONNA_IN_USE,
     E_COLONNA_NOT_FOUND,
@@ -416,23 +418,23 @@ class ListaColonnaDeleteTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, E_COLONNA_NOT_FOUND)
         repo.delete_colonna.assert_not_called()
 
-    def test_delete_colonna_in_uso_da_preferenze_raises_409(self) -> None:
-        repo = MagicMock()
+    # Q56 (a) di brief-db-revisione-ui: la voce della colonna esce dalle
+    # preferenze per mano del DB (Q55), quindi il service non le guarda.
+    # ⚠️ Il repository e' uno `spec` del vero: una chiamata a un metodo che
+    #    il repository non ha (il conteggio ritirato) e' un AttributeError,
+    #    non una chiamata muta al mock.
+    def test_delete_colonna_non_consulta_le_preferenze(self) -> None:
+        repo = MagicMock(spec=UiAdminRepository)
         repo.get_colonna_admin.return_value = _row_colonna()
-        repo.count_preferenze_referenced_by_colonna.return_value = 3
+        repo.preset_con_colonna.return_value = []
+        repo.delete_colonna.return_value = True
         svc = ListaColonnaAdminService(repo=repo)
-        with self.assertRaises(ServiceError) as ctx:
-            svc.delete_colonna(100)
-        self.assertEqual(ctx.exception.code, E_COLONNA_IN_USE)
-        repo.delete_colonna.assert_not_called()
-        repo.count_preferenze_referenced_by_colonna.assert_called_once_with(
-            lista_id=1, codice="ragione_sociale",
-        )
+        svc.delete_colonna(100)
+        repo.delete_colonna.assert_called_once_with(100)
 
-    def test_delete_colonna_happy_path_zero_preferenze(self) -> None:
+    def test_delete_colonna_happy_path_nessun_preset(self) -> None:
         repo = MagicMock()
         repo.get_colonna_admin.return_value = _row_colonna()
-        repo.count_preferenze_referenced_by_colonna.return_value = 0
         repo.preset_con_colonna.return_value = []
         repo.delete_colonna.return_value = True
         svc = ListaColonnaAdminService(repo=repo)
@@ -446,7 +448,6 @@ class ListaColonnaDeleteTests(SimpleTestCase):
     def test_delete_colonna_in_un_preset_raises_409_e_nomina_i_preset(self) -> None:
         repo = MagicMock()
         repo.get_colonna_admin.return_value = _row_colonna()
-        repo.count_preferenze_referenced_by_colonna.return_value = 0
         repo.preset_con_colonna.return_value = ["base_sistema", "commerciale"]
         svc = ListaColonnaAdminService(repo=repo)
         with self.assertRaises(ServiceError) as ctx:
@@ -460,7 +461,6 @@ class ListaColonnaDeleteTests(SimpleTestCase):
     def test_delete_colonna_fk_preset_al_delete_raises_409(self) -> None:
         repo = MagicMock()
         repo.get_colonna_admin.return_value = _row_colonna()
-        repo.count_preferenze_referenced_by_colonna.return_value = 0
         repo.preset_con_colonna.return_value = []
         repo.delete_colonna.side_effect = IntegrityError(
             'update or delete on table "lista_colonna" violates foreign key '
@@ -474,7 +474,7 @@ class ListaColonnaDeleteTests(SimpleTestCase):
         self.assertIn("preset", ctx.exception.message)
 
     # Una colonna del seed non si cancella comunque: il rifiuto vero e'
-    # quello del DB, e i due controlli non lo devono coprire con un
+    # quello del DB, e il controllo dei preset non lo deve coprire con un
     # rimedio («toglila dai preset») che non porta da nessuna parte.
     def test_delete_colonna_nata_dal_seed_salta_i_controlli(self) -> None:
         repo = MagicMock()
@@ -482,6 +482,5 @@ class ListaColonnaDeleteTests(SimpleTestCase):
         repo.delete_colonna.return_value = True
         svc = ListaColonnaAdminService(repo=repo)
         svc.delete_colonna(100)
-        repo.count_preferenze_referenced_by_colonna.assert_not_called()
         repo.preset_con_colonna.assert_not_called()
         repo.delete_colonna.assert_called_once_with(100)

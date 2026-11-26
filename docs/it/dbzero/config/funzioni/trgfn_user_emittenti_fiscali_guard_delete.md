@@ -16,11 +16,29 @@ CREATE OR REPLACE FUNCTION config.trgfn_user_emittenti_fiscali_guard_delete()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+-- Scopo:
+--   La riga di config.user_emittenti_fiscali e' l'azienda di un
+--   operatore: senza, l'operatore non vede niente. Cancellarla mentre
+--   l'utente e' acceso si fa solo dal verbo che lo sposta.
+--
+-- Regole:
+--   - la porta zeroerp.allow_user_emittente_delete_override apre solo se
+--     vale l'auth_user_id della riga E chi scrive e' il proprietario della
+--     tabella: cioe' dentro script.fn_change_user_emittenti_scope
+--     (SECURITY DEFINER), che la scrive con la primitiva
+--     script.fn_applica_user_emittenti_scope. L'applicazione non la apre,
+--     nemmeno accendendo la GUC;
+--   - utente Django spento: la riga si cancella (la cessazione);
+--   - utente Django che non esiste piu' (DELETE in cascata): si cancella;
+--   - utente acceso, fuori dalla porta: E_USER_EMITTENTE_DELETE_VIETATO.
 DECLARE
+    -- django.auth_user.is_active: le colonne di django non si ancorano
     v_is_active boolean;
 BEGIN
-    -- Override manutenzione (es. cleanup manuale autorizzato)
-    IF current_setting('zeroerp.allow_user_emittente_delete_override', true) = 'on' THEN
+    -- La porta, per la riga che il verbo sta spostando.
+    IF current_setting('zeroerp.allow_user_emittente_delete_override', true)
+           = OLD.auth_user_id::text
+       AND script.fn_is_proprietario_tabella(TG_RELID) THEN
         RETURN OLD;
     END IF;
 
@@ -57,7 +75,7 @@ END
 $function$
 
 COMMENT ON FUNCTION config.trgfn_user_emittenti_fiscali_guard_delete()
-IS 'Guard BEFORE DELETE su config.user_emittenti_fiscali: ammette la cancellazione solo se django.auth_user.is_active=false (cessazione utente). Override via GUC zeroerp.allow_user_emittente_delete_override=''on''. Solleva E_USER_EMITTENTE_DELETE_VIETATO.';
+IS 'Guard BEFORE DELETE di config.user_emittenti_fiscali, la riga che dà a un operatore la sua azienda. Mentre l''utente Django è acceso la riga si cancella solo dalla porta zeroerp.allow_user_emittente_delete_override, aperta se vale l''auth_user_id della riga e chi scrive è il proprietario della tabella (script.fn_is_proprietario_tabella): cioè solo dentro il verbo script.fn_change_user_emittenti_scope, SECURITY DEFINER, che sposta l''operatore con la primitiva script.fn_applica_user_emittenti_scope. L''applicazione non la apre, nemmeno accendendo la GUC. Senza porta passano l''utente spento (la cessazione) e quello che non esiste più (la cascata da django.auth_user); l''utente acceso è rifiutato con E_USER_EMITTENTE_DELETE_VIETATO.';
 ```
 
 </div>

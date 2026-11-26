@@ -132,6 +132,44 @@
 #   anche le due del registro); terza sede il blocco del provisioning; pgTAP
 #   `test-blocco-manuale-e-porta-lotto3-v1` e `test-reso-carico-v1`.
 #
+# ── ⭐ LA FUSIONE DELLE VIE E' DEL PROPRIETARIO (dal 2026-11-23) ────────────
+#   Brief: brief-db-porte-aperte-dalla-sola-guc, porta 14, giro 1 (D-C b)
+#   In `v_fn_riservate` lo strumento DBA `dbops.fn_admin_merge_stradario`: la
+#   porta degli indirizzi che apre si apre solo dal proprietario (20_code/
+#   anagrafiche/20261123-43), quindi l'app lo riceverebbe solo per fallire a
+#   meta'. Forward su dev `90_end/20261123-45`; terza sede il blocco del
+#   provisioning; pgTAP `db/pgtap/dbops/test-porte-manutenzione-solo-proprietario-v1.sql`.
+#   ⭐ Dal 2026-11-24 anche la gemella `dbops.fn_admin_merge_comune` (giro 1-bis,
+#   D-G a): non apre porte, ma le fusioni sono strumenti DBA. Forward
+#   `90_end/20261123-46`, stesse altre due sedi, stesso pgTAP.
+#
+# ── ⭐ LO SCOPE EMITTENTI SI SPOSTA SOLO DAL VERBO (dal 2026-11-24) ─────────
+#   Brief: brief-db-porte-aperte-dalla-sola-guc, porta 10, giro 10 (D-P a)
+#   In `v_fn_riservate` la primitiva `script.fn_applica_user_emittenti_scope`:
+#   sposta un operatore su un'azienda senza chiedere permessi, e l'app ci arriva
+#   solo dal verbo `script.fn_change_user_emittenti_scope` (DEFINER, SUPER_ADMIN).
+#   Forward su dev `90_end/20261124-06`; terza sede il blocco del provisioning;
+#   pgTAP `db/pgtap/config/test-porta-scope-emittenti-v1.sql`.
+#
+# ── ⭐ IL RESET DEL LOTTO E IL FONDO FATTURA DAI SOLI VERBI (dal 2026-11-25) ──
+#   Brief: brief-db-porte-aperte-dalla-sola-guc, porte 1-8, giro 8 + 1-7
+#   In `v_fn_riservate` le tre primitive: `vendite.fn_cleanup_fatture_by_ids`
+#   (accende la porta del reset), `vendite.fn_reset_fondi_fattura` e
+#   `vendite.fn_applica_cancellazione_fondo_fattura` (i tre DELETE del fondo).
+#   Il criterio `vendite.fn_check_fondo_cancellabile` resta eseguibile: legge
+#   soltanto, e senza il ramo della GUC non apre niente. L'app ci arriva solo dai
+#   verbi DEFINER, ognuno col suo permesso e il suo perimetro. Forward su dev
+#   `90_end/20261125-22`; terza sede il blocco del provisioning; pgTAP
+#   `db/pgtap/vendite/test-porta-reset-lotto-e-fondo-v1.sql`.
+#
+# ── ⭐ LE VISTE IN SOLA LETTURA (dal 2026-11-24) ─────────────────────────────
+#   Brief: brief-db-porte-aperte-dalla-sola-guc, §5 (D-V), giro 3
+#   Ogni vista e vista materializzata riceve solo SELECT: il ramo per tipo
+#   (`relkind` 'v', 'm') sta in testa, prima degli elenchi per nome. Forward su
+#   dev `90_end/20261123-47`; terza sede il blocco «POSTURA DICHIARATA: le viste»
+#   del provisioning, che arriva anche alle viste di public delle estensioni;
+#   pgTAP `db/pgtap/dbops/test-viste-app-solo-select-v1.sql`.
+#
 # ── ⭐ IL DEVICE DEL SECONDO FATTORE (dal 2026-09-29) ───────────────────────
 #   Brief: brief-db-secondo-fattore-totp, sezione 3
 #   `config.auth_totp_device` entra in `v_tabelle_sola_lettura_app`: anti-replay
@@ -262,7 +300,27 @@ databaseChangeLog:
                   --   DEFINER e riservate all'app; da sola scriverebbe un'edizione
                   --   intera senza i loro controlli. Era eseguibile da PUBLIC.
                   --   Brief: brief-db-sorgente-documento-e-riga §7.3 (giro finale).
-                  'pratiche.fn_copia_definizione'
+                  'pratiche.fn_copia_definizione',
+                  -- ⭐ Dal 2026-11-23 la fusione delle vie: strumento DBA, apre la porta
+                  --   degli indirizzi che si apre solo dal proprietario (20261123-43).
+                  --   Brief: brief-db-porte-aperte-dalla-sola-guc, giro 1.
+                  'dbops.fn_admin_merge_stradario',
+                  -- ⭐ Dal 2026-11-24 la gemella, la fusione dei comuni: strumento DBA,
+                  --   non apre porte ma non e' dell'app (20261123-46, giro 1-bis).
+                  'dbops.fn_admin_merge_comune',
+                  -- ⭐ Dal 2026-11-24 la primitiva dello scope emittenti: sposta un
+                  --   operatore su un'azienda senza permesso; l'app ci arriva solo dal
+                  --   verbo script.fn_change_user_emittenti_scope (SUPER_ADMIN, DEFINER).
+                  --   Brief: brief-db-porte-aperte-dalla-sola-guc, giro 10 (20261124-06).
+                  'script.fn_applica_user_emittenti_scope',
+                  -- ⭐ Dal 2026-11-25 le primitive del reset del lotto e del fondo fattura:
+                  --   la pulizia, il reset dei fondi, la cancellazione del fondo. Senza
+                  --   guard del permesso; l'app ci arriva solo dai verbi
+                  --   DEFINER del reset, del fondo e della sistemazione.
+                  --   Brief: brief-db-porte-aperte-dalla-sola-guc, giro 8 + 1-7 (20261125-22).
+                  'vendite.fn_cleanup_fatture_by_ids',
+                  'vendite.fn_reset_fondi_fattura',
+                  'vendite.fn_applica_cancellazione_fondo_fattura'
                 ];
                 -- ⭐ Schemi SENZA DELETE per l'applicazione: le shadow di storico le
                 --   scrive il trigger (INSERT della versione, UPDATE che chiude la
@@ -382,7 +440,18 @@ databaseChangeLog:
                   'magazzino.note_rettifica',
                   'magazzino.note_rettifica_riga',
                   'magazzino.note_trasferimento',
-                  'magazzino.note_trasferimento_riga'
+                  'magazzino.note_trasferimento_riga',
+                  -- ⭐ Dal 2026-11-23 i DOCUMENTI INTERNI DI MAGAZZINO: inventari,
+                  --   rettifiche, trasferimenti e le righe li scrivono i verbi DEFINER
+                  --   (nascita per famiglia, verbi comuni, registrazione fn_posta_*)
+                  --   (brief-db-magazzino-tutte-le-scritture-dal-verbo, Lotto 2, P-5c).
+                  --   Forward 90_end/20261123-12.
+                  'magazzino.inventari',
+                  'magazzino.inventari_righe',
+                  'magazzino.rettifiche',
+                  'magazzino.rettifiche_righe',
+                  'magazzino.trasferimenti',
+                  'magazzino.trasferimenti_righe'
                 ];
                 -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
                 --   di v_schemi_senza_delete): un blocco di magazzino si chiude
@@ -428,7 +497,8 @@ databaseChangeLog:
                   -- Tabelle: concedi solo sugli oggetti posseduti da current_user.
                   FOR v_rel IN
                     SELECT c.oid::regclass AS obj_sig,
-                           n.nspname || '.' || c.relname AS nome_qualificato
+                           n.nspname || '.' || c.relname AS nome_qualificato,
+                           c.relkind AS tipo
                     FROM pg_class c
                     JOIN pg_namespace n ON n.oid = c.relnamespace
                     WHERE n.nspname = v_schema
@@ -436,7 +506,16 @@ databaseChangeLog:
                       AND pg_get_userbyid(c.relowner) = current_user
                   LOOP
                     BEGIN
-                      IF v_rel.nome_qualificato = ANY (v_registri_append_only) THEN
+                      IF v_rel.tipo IN ('v', 'm') THEN
+                        -- ⭐ Dal 2026-11-24 le VISTE (e le materializzate): solo SELECT.
+                        --   Una vista aggiornabile senza security_invoker scrive la
+                        --   tabella sotto coi permessi del proprietario: col DML sulla
+                        --   vista l'app aggirerebbe la sola lettura della tabella.
+                        --   Per tipo, non per nome: vale anche per la vista di domani.
+                        --   Brief: brief-db-porte-aperte-dalla-sola-guc §5 (D-V), giro 3.
+                        EXECUTE format('GRANT SELECT ON TABLE %s TO %I', v_rel.obj_sig, v_app_role);
+                        EXECUTE format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', v_rel.obj_sig, v_app_role);
+                      ELSIF v_rel.nome_qualificato = ANY (v_registri_append_only) THEN
                         -- Registro append-only: la REVOKE è la postura, non un
                         -- rimedio. Senza questo ramo il GRANT sotto la annullerebbe.
                         EXECUTE format('GRANT SELECT, INSERT ON TABLE %s TO %I', v_rel.obj_sig, v_app_role);

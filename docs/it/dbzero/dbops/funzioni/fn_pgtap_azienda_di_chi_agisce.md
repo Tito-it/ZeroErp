@@ -30,7 +30,7 @@ DECLARE
 BEGIN
     -- La domanda e' «c'e' un contesto?», alla GUC che le policy
     -- leggono davvero.
-    v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_user_id := script.fn_utente_di_sessione('dbops.fn_pgtap_azienda_di_chi_agisce');
     IF v_user_id IS NULL THEN
         RAISE EXCEPTION
             '%: nessun contesto aperto (app.current_user_id): l''azienda di chi agisce non c''e''. Si costruisce prima il mondo (dbops.fn_pgtap_crea_mondo_cliente) o si apre il contesto (script.fn_pgtap_set_contesto_operatore)',

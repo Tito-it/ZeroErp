@@ -72,7 +72,7 @@ class LottoGiornaleServiceTests(TestCase):
     # Scopo: un id non positivo e' un chiamante rotto, non un dato dell'utente.
     def test_id_non_valido(self):
         with self.assertRaises(ServiceError) as ctx:
-            get_lotto_giornale(lotto_id=0)
+            get_lotto_giornale(auth_user_id=7, lotto_id=0)
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     # Scopo: lotto inesistente -> 404 di dominio.
@@ -80,7 +80,7 @@ class LottoGiornaleServiceTests(TestCase):
     def test_lotto_non_trovato_404(self, repo_cls):
         repo_cls.return_value.get_lotto.return_value = None
         with self.assertRaises(ServiceError) as ctx:
-            get_lotto_giornale(lotto_id=6260)
+            get_lotto_giornale(auth_user_id=7, lotto_id=6260)
         self.assertEqual(ctx.exception.code, "E_LOTTO_NON_TROVATO")
 
     # Scopo: fuori scope e inesistente devono dare la STESSA risposta — un
@@ -92,7 +92,7 @@ class LottoGiornaleServiceTests(TestCase):
         with self.assertRaises(ServiceError) as fuori:
             get_lotto_giornale(lotto_id=6260, auth_user_id=42)
         with self.assertRaises(ServiceError) as inesistente:
-            get_lotto_giornale(lotto_id=6260)
+            get_lotto_giornale(auth_user_id=7, lotto_id=6260)
         self.assertEqual(fuori.exception.code, inesistente.exception.code)
 
     # ⭐ IL CUORE. Il cancello non e' ridondante con la RLS: la vista non ha un
@@ -105,7 +105,7 @@ class LottoGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = None
         with self.assertRaises(ServiceError):
-            get_lotto_giornale(lotto_id=6260)
+            get_lotto_giornale(auth_user_id=7, lotto_id=6260)
         repo.list_giornale_lotto.assert_not_called()
 
     # Scopo: lo scope arriva al cancello — non applicarlo lo aprirebbe.
@@ -125,7 +125,7 @@ class LottoGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = _LOTTO
         repo.list_giornale_lotto.return_value = (_RIGHE, 286, 2, 173)
-        out = get_lotto_giornale(lotto_id=6260)
+        out = get_lotto_giornale(auth_user_id=7, lotto_id=6260)
         self.assertTrue(repo.list_giornale_lotto.call_args.kwargs["escludi_info"])
         self.assertEqual(out["count"], 113)
         self.assertEqual(out["info_count"], 173)
@@ -137,7 +137,7 @@ class LottoGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = _LOTTO
         repo.list_giornale_lotto.return_value = (_RIGHE, 286, 2, 173)
-        out = get_lotto_giornale(lotto_id=6260, includi_info=True)
+        out = get_lotto_giornale(auth_user_id=7, lotto_id=6260, includi_info=True)
         self.assertFalse(repo.list_giornale_lotto.call_args.kwargs["escludi_info"])
         self.assertEqual(out["count"], 286)
         self.assertEqual(out["info_count"], 0)
@@ -149,7 +149,7 @@ class LottoGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = _LOTTO
         repo.list_giornale_lotto.return_value = (_RIGHE, 286, 2, 173)
-        out = get_lotto_giornale(lotto_id=6260, includi_info=True, includi_ritirate=True)
+        out = get_lotto_giornale(auth_user_id=7, lotto_id=6260, includi_info=True, includi_ritirate=True)
         self.assertEqual(out["count"], 288)
         self.assertEqual(out["info_count"], 0)
         self.assertEqual(out["ritirate_count"], 0)
@@ -162,7 +162,7 @@ class LottoGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = _LOTTO
         repo.list_giornale_lotto.return_value = ([], 5, 0, 99)
-        out = get_lotto_giornale(lotto_id=6260)
+        out = get_lotto_giornale(auth_user_id=7, lotto_id=6260)
         self.assertEqual(out["count"], 0)
 
     # Scopo: il default dell'ordine ha UNA sede (`GIORNALE_ORDINE_DEFAULT`, il
@@ -174,7 +174,7 @@ class LottoGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = _LOTTO
         repo.list_giornale_lotto.return_value = (_RIGHE, 2, 0, 0)
-        get_lotto_giornale(lotto_id=6260)
+        get_lotto_giornale(auth_user_id=7, lotto_id=6260)
         self.assertIsNone(repo.list_giornale_lotto.call_args.kwargs["sort_by"])
 
     # Scopo: un lotto senza storia e' una risposta, non un errore.
@@ -183,7 +183,7 @@ class LottoGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = _LOTTO
         repo.list_giornale_lotto.return_value = ([], 0, 0, 0)
-        out = get_lotto_giornale(lotto_id=6260)
+        out = get_lotto_giornale(auth_user_id=7, lotto_id=6260)
         self.assertEqual(out["count"], 0)
         self.assertEqual(out["results"], [])
 
@@ -196,6 +196,6 @@ class LottoGiornaleServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_lotto.return_value = _LOTTO
         repo.list_giornale_lotto.return_value = (_RIGHE, 2, 0, 0)
-        out = get_lotto_giornale(lotto_id=6260)
+        out = get_lotto_giornale(auth_user_id=7, lotto_id=6260)
         entita = {(r["entity_type"], r["entity_id"]) for r in out["results"]}
         self.assertEqual(entita, {("LOTTO", 6260), ("FATTURA", 20024)})

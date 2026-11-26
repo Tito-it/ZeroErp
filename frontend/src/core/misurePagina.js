@@ -46,21 +46,30 @@ let inVolo = null
 
 // Scopo: registra la risposta di `GET /ui/misure-pagina/`, controllandone la
 //        forma. Esposta anche per i test, che le misure le fabbricano.
+// ⭐ I default si leggono da `default_per_uso` (`{uso: misura}`, una chiave
+//    per ogni valore di `ui.uso_misura_pagina`: Q58 di brief-db-revisione-ui,
+//    BE33). Fino al 2026-11-23 erano le due chiavi `default_compatta` e
+//    `default_pagina`, una per uso scritta a mano: un uso nuovo nell'enum
+//    voleva un giro sul BB. Ora un uso nuovo arriva da solo, e chi lo dichiara
+//    lo legge con `misuraDefault(uso)`.
+//    ⚠️ Gli usi di `USO_MISURA` devono esserci tutti: sono quelli che il codice
+//    chiede, e uno che manca si rifiuta qui, non alla prima lista che lo usa.
 export function registraMisurePagina(dati) {
   const opzioni = dati?.misure
+  const perUso = dati?.default_per_uso
   // ⚠️ Strettamente crescenti: e' l'ordine del selettore, e il DB lo promette.
   //    Una risposta in un altro ordine si RIFIUTA, non si riordina in silenzio.
   const ok = Array.isArray(opzioni) && opzioni.length > 0
     && opzioni.every((m, i) => Number.isInteger(m) && m > 0 && (i === 0 || m > opzioni[i - 1]))
-    && opzioni.includes(dati.default_compatta)
-    && opzioni.includes(dati.default_pagina)
+    && perUso !== null && typeof perUso === 'object' && !Array.isArray(perUso)
+    && Object.values(perUso).every((m) => opzioni.includes(m))
+    && Object.values(USO_MISURA).every((uso) => Object.hasOwn(perUso, uso))
   if (!ok) {
     throw new Error(`misure di pagina: risposta non valida (${JSON.stringify(dati)})`)
   }
   misure = Object.freeze({
     opzioni: Object.freeze([...opzioni]),
-    [USO_MISURA.COMPATTA]: dati.default_compatta,
-    [USO_MISURA.PAGINA]: dati.default_pagina,
+    perUso: Object.freeze({ ...perUso }),
   })
 }
 
@@ -94,16 +103,18 @@ export function misureOpzioni() {
 }
 
 // Scopo: la misura di partenza per un uso (default: una pagina intera).
+//        ⚠️ `Object.hasOwn`: un uso che si chiama come una proprieta' di
+//        `Object.prototype` (`toString`) non deve rispondere.
 export function misuraDefault(uso = USO_MISURA.PAGINA) {
-  const valore = leggi()[uso]
-  if (valore === undefined) throw new Error(`misure di pagina: uso sconosciuto «${uso}»`)
-  return valore
+  const { perUso } = leggi()
+  if (!Object.hasOwn(perUso, uso)) throw new Error(`misure di pagina: uso sconosciuto «${uso}»`)
+  return perUso[uso]
 }
 
 // Scopo: la misura di partenza di una lista STANDARD secondo lo schermo — la
 //        compatta sotto il tablet, quella di pagina sopra. Una sede sola:
 //        fino al 2026-09-30 la stessa regola era scritta due volte
-//        (`usePagination`, `useSearchTable`).
+//        (`usePagination`, ritirato il 2026-11-24, e `useSearchTable`).
 //        `width <` e non `max-width: TABLET - 1`: con lo zoom la larghezza e'
 //        frazionaria, e fra 1023 e 1024 il CSS e questa soglia non
 //        concorderebbero.

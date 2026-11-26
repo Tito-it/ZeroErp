@@ -15,9 +15,14 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import corpo_oggetto, optional_int, paginated_envelope, parse_list_params
+from apps.core.api.payload_validators import (
+    corpo_oggetto,
+    parse_list_params,
+    qp_int_optional,
+)
 from apps.core.api.success_responses import success_response
 from apps.anagrafiche.services.geo_service import GeoService
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 class ProvinceView(DomainAPIView):
@@ -40,14 +45,14 @@ class ProvinceView(DomainAPIView):
     )
     def get(self, request: Request) -> JsonResponse:
         p = parse_list_params(request.query_params, default_order="descrizione")
-        regione_id = optional_int({"v": request.query_params.get("regione_id")}, "v")
+        regione_id = qp_int_optional(request.query_params.get("regione_id"), "regione_id", min_val=0)
         svc = GeoService()
         results, total = svc.list_province(
             search=p["search"], regione_id=regione_id,
             limit=p["limit"], offset=p["offset"],
             order_by=p["order_by"], order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=inline_serializer(name="ProvinceCreateReq", fields={

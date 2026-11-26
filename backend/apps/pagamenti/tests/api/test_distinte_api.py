@@ -66,9 +66,6 @@ _AUTH = patch(
 
 _LISTA = {
     "count": 1,
-    "page": 1,
-    "page_size": 50,
-    "total_pages": 1,
     "results": [{"id": 7, "codice": "CNT-0001", "origine": "MANUALE"}],
 }
 
@@ -143,6 +140,7 @@ class PagamentiAuthTests(JwtMockedApiTest):
 
 
 class DistinteListApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -226,6 +224,7 @@ class DistinteListApiTests(JwtMockedApiTest):
 
 
 class DistintaDetailApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -257,6 +256,7 @@ class DistintaDetailApiTests(JwtMockedApiTest):
 
 
 class RegistrazioneApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -303,6 +303,7 @@ class RegistrazioneApiTests(JwtMockedApiTest):
 
 class CorrezioneApiTests(JwtMockedApiTest):
     """Q-7 — la rotta della correzione guidata."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()
@@ -411,6 +412,7 @@ class Slice3RotteTests(JwtMockedApiTest):
 
 
 class Slice3ApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -491,8 +493,7 @@ class Slice3ApiTests(JwtMockedApiTest):
     @_AUTH
     @patch("apps.pagamenti.api.views.pagamenti_service.list_coda_righe")
     def test_coda_filtri_tradotti(self, mocked, _auth):
-        mocked.return_value = {"count": 0, "page": 1, "page_size": 50,
-                               "total_pages": 0, "results": []}
+        mocked.return_value = {"count": 0, "results": []}
         self.client.get("/api/v1/pagamenti/righe/?coda=sospese&billing_account_id=41")
         kwargs = mocked.call_args.kwargs
         self.assertEqual(kwargs["coda"], "SOSPESE")
@@ -579,6 +580,7 @@ class Slice5RotteTests(JwtMockedApiTest):
 
 
 class Slice5ApiTests(JwtMockedApiTest):
+    come_super_admin = True
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
@@ -588,8 +590,7 @@ class Slice5ApiTests(JwtMockedApiTest):
     @_AUTH
     @patch("apps.pagamenti.api.views.sistemazioni_service.list_eccedenze")
     def test_eccedenze_filtri_tradotti(self, mocked, _auth):
-        mocked.return_value = {"count": 0, "page": 1, "page_size": 50,
-                               "total_pages": 0, "results": []}
+        mocked.return_value = {"count": 0, "results": []}
         self.client.get("/api/v1/pagamenti/eccedenze/?chi_e_in_credito=cliente")
         self.assertEqual(mocked.call_args.kwargs["chi_e_in_credito"], "CLIENTE")
 
@@ -640,6 +641,7 @@ class Slice5ApiTests(JwtMockedApiTest):
 
 class TardivaApiTests(JwtMockedApiTest):
     """D20-b — la rotta della registrazione TARDIVA di una riga."""
+    come_super_admin = True
 
     def setUp(self) -> None:
         super().setUp()

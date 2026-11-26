@@ -1,19 +1,22 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.trgfn_attivita_fatturabili_guard_quantita_immutabile()`
 
+> **Ultimo aggiornamento**: 25 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)
-> • [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:
-> • [vendite.trgfn_commesse_attivita_guard_quantita_immutabile](/dbzero/vendite/funzioni/trgfn_commesse_attivita_guard_quantita_immutabile)
-> • [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+> * [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili) — la tabella che protegge
+> * [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita) — la commessa madre, di cui la quantità è lo specchio
+>
+> Approfondimento funzioni:
+>
+> * [vendite.trgfn_commesse_attivita_guard_quantita_immutabile](/dbzero/vendite/funzioni/trgfn_commesse_attivita_guard_quantita_immutabile) — il gemello sulla commessa
+> * [vendite.fn_porta_reset_lotto_aperta](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta) — la porta del reset del lotto: la GUC e il proprietario
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 
 ---
 ### 🎯 Scopo Principale
-
-(rev 2026-08-21)
 
 **La quantità di un'attività fatturabile deve specchiare quella della commessa madre.**
 Il guard blocca l'`UPDATE` che la porterebbe a un valore *diverso* da quello della riga
@@ -36,8 +39,7 @@ Trigger `trg_attivita_fatturabili_a10_guard_quantita_immutabile_upd` — fase `_
 
 ### Regole applicate
 
-1. **Bypass**: se la GUC `zeroerp.maintenance_reset_lotto_draft` vale `1`/`true`/`on`/`yes`,
-   esce subito.
+1. **La porta del reset del lotto**: se è aperta, esce subito (sezione qui sotto).
 2. Se `commessa_attivita_id IS NULL` → **passa**: senza madre non c'è specchio da imporre.
 3. Se la quantità non cambia (`IS NOT DISTINCT FROM OLD`) → passa.
 4. Altrimenti legge `quantita` dalla commessa madre e blocca se
@@ -70,16 +72,20 @@ non è stata trovata». Nel diagnosticare, quel `null` va interpretato.
 
 ---
 
-### Il bypass di manutenzione
+### La porta del reset del lotto
 
-Stessa GUC del gemello sulle commesse:
+Il guard lascia passare la scrittura quando la **porta del reset del lotto** è aperta. La legge
+[`vendite.fn_porta_reset_lotto_aperta`](/dbzero/vendite/funzioni/fn_porta_reset_lotto_aperta), che
+risponde sì solo se la GUC `zeroerp.maintenance_reset_lotto_draft` è accesa **e** chi scrive è il
+proprietario della tabella.
 
-```sql
-SET LOCAL zeroerp.maintenance_reset_lotto_draft = 'on';
-```
+La GUC la accende solo la pulizia del lotto,
+[`vendite.fn_cleanup_fatture_by_ids`](/dbzero/vendite/funzioni/fn_cleanup_fatture_by_ids), riservata
+al proprietario, e la spegne prima di uscire: la porta è aperta solo mentre la pulizia lavora. ⛔ Per
+l'applicazione la porta è sempre chiusa: accendere la GUC da sé e scrivere diretta non apre niente.
 
-Serve al reset di un lotto a DRAFT. Vale la stessa avvertenza: aperta la porta, lo specchio
-non è più imposto per tutta la transazione. Sempre `SET LOCAL`, mai di sessione.
+La stessa porta la legge il gemello sulle commesse. Serve al reset di un lotto, che riporta
+indietro le attività.
 
 ---
 
@@ -94,9 +100,19 @@ Sollevato via `script.fn_log_and_raise_error`; context con `id`, `commessa_attiv
 
 ---
 
-### Riferimenti
+### Test
 
-Brief *immutabilità quantità* §4a — mirror-enforcement (2026-07-21).
+* `db/pgtap/vendite/test-porta-reset-lotto-e-fondo-v1.sql` — con la GUC accesa dall'applicazione
+  la porta resta chiusa.
+
+---
+
+### Note di migrazione
+
+* 2026-07-21 — nasce, col mirror-enforcement (brief immutabilità quantità §4a).
+* 2026-11-25 — la porta del reset si legge da `vendite.fn_porta_reset_lotto_aperta` e chiede anche
+  il proprietario; prima bastava la GUC, che l'applicazione poteva accendere da sé
+  (brief-db-porte-aperte-dalla-sola-guc, giro 1-7).
 
 ---
 

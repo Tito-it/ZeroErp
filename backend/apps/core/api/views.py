@@ -1,4 +1,3 @@
-from django.contrib.auth import get_user_model
 from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -8,12 +7,13 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.permissions import richiedi_se_stesso_o_amministratore
 
 from apps.core.api.error_responses import exception_to_error_response
-from apps.core.api.payload_validators import pagina_da_query, qp_bool_optional
+from apps.core.api.payload_validators import pagina_da_query, qp_bool_optional, qp_iso_date_optional
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import SearchBurstRateThrottle
 from apps.core.services.lookup_service import fn_list_lookup_codici
 from apps.core.services.permissions_resolver import LIVELLO_MAP, PermissionResolver
 from apps.core.services.service_errors import ServiceError
+from apps.core.services.utente_per_id import utente_per_id
 
 # Endpoint diagnostici core: utili per verificare contratto error envelope API.
 
@@ -92,9 +92,6 @@ class ApiLookupCodici(DomainAPIView):
                         name="CoreLookupCodiciData",
                         fields={
                             "count": serializers.IntegerField(),
-                            "page": serializers.IntegerField(),
-                            "page_size": serializers.IntegerField(),
-                            "total_pages": serializers.IntegerField(),
                             "results": serializers.ListField(child=serializers.DictField()),
                         },
                     ),
@@ -140,16 +137,15 @@ class ApiLookupCodici(DomainAPIView):
 #        2026-10-08 le due view lo scrivevano ciascuna per conto suo con
 #        `E_CORE_VALIDATION` (DATO_ERRATO), cioe' 400.
 def _utente_target(user_id: int):
-    User = get_user_model()
-    try:
-        return User.objects.get(pk=user_id)
-    except User.DoesNotExist:
+    utente = utente_per_id(user_id)
+    if utente is None:
         raise ServiceError(
             code="E_AMM_UTENTE_NOT_FOUND",
             message="Utente non trovato.",
             detail=f"Nessun utente con id={user_id}.",
             context={"user_id": user_id},
-        ) from None
+        )
+    return utente
 
 
 class ApiPermessiEffettivi(DomainAPIView):
@@ -180,11 +176,11 @@ class ApiPermessiEffettivi(DomainAPIView):
         },
     )
     # Scopo: Restituisce via GET i permessi effettivi risolti per un utente.
-    # Solo SUPER_ADMIN e superuser possono consultare altri utenti.
+    # Solo SUPER_ADMIN puo' consultare altri utenti.
     def get(self, request: Request, user_id: int) -> JsonResponse:
         richiedi_se_stesso_o_amministratore(
             request.user, user_id, cache={},
-            detail="Solo un amministratore (SUPER_ADMIN o superuser) puo' consultare i permessi di un altro utente.",
+            detail="Solo un amministratore (SUPER_ADMIN) puo' consultare i permessi di un altro utente.",
         )
 
         target_user = _utente_target(user_id)
@@ -284,10 +280,7 @@ class ApiPermessiAudit(DomainAPIView):
                         fields={
                             "user_id": serializers.IntegerField(),
                             "count": serializers.IntegerField(),
-                            "page": serializers.IntegerField(),
-                            "page_size": serializers.IntegerField(),
-                            "total_pages": serializers.IntegerField(),
-                            "events": serializers.ListField(child=serializers.DictField()),
+                            "results": serializers.ListField(child=serializers.DictField()),
                         },
                     ),
                     "meta": serializers.DictField(required=False),
@@ -298,26 +291,21 @@ class ApiPermessiAudit(DomainAPIView):
     # Scopo: Restituisce via GET la timeline audit delle modifiche ai permessi di un utente.
     # Interroga le 8 tabelle storico permessi (5 per utente + 3 per reparto) con
     # filtri opzionali e paginazione. L'elenco e' `PermissionsAuditRepository`.
-    # Solo SUPER_ADMIN e superuser possono consultare altri utenti.
+    # Solo SUPER_ADMIN puo' consultare altri utenti.
     def get(self, request: Request, user_id: int) -> JsonResponse:
-        from apps.core.api.payload_validators import optional_iso_date
         from apps.core.db.permissions_audit_repository import PermissionsAuditRepository
 
         # Stessa policy di permessi-effettivi: lo stesso BB.
         richiedi_se_stesso_o_amministratore(
             request.user, user_id, cache={},
-            detail="Solo un amministratore (SUPER_ADMIN o superuser) puo' consultare l'audit permessi di un altro utente.",
+            detail="Solo un amministratore (SUPER_ADMIN) puo' consultare l'audit permessi di un altro utente.",
         )
 
         target_user = _utente_target(user_id)
 
         # Scopo: Parse query params.
-        data_da = optional_iso_date(
-            {"data_da": request.query_params.get("data_da")}, "data_da"
-        )
-        data_a = optional_iso_date(
-            {"data_a": request.query_params.get("data_a")}, "data_a"
-        )
+        data_da = qp_iso_date_optional(request.query_params.get("data_da"), "data_da")
+        data_a = qp_iso_date_optional(request.query_params.get("data_a"), "data_a")
         tabella = request.query_params.get("tabella")
         if tabella:
             tabella = tabella.strip() or None

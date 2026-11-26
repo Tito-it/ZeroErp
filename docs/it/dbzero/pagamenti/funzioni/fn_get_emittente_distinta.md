@@ -137,7 +137,7 @@ BEGIN
     -- ── Livello 3: la riserva e' di chi agisce (D13) ─────────
     -- ⚠️ fn_resolve_emittente_for_user SOLLEVA su utente NULL:
     --   si chiama solo con un utente in sessione.
-    v_user_id := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    v_user_id := script.fn_utente_di_sessione('pagamenti.fn_get_emittente_distinta');
     IF v_user_id IS NOT NULL THEN
         v_ef_sessione := script.fn_resolve_emittente_for_user(v_user_id);
         IF v_ef_sessione IS NOT NULL THEN

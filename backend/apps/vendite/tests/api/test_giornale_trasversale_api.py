@@ -53,6 +53,7 @@ def _riga(**override) -> dict:
 
 
 class GiornaleTrasversaleApiTests(JwtMockedApiTest):
+    come_super_admin = True
     def setUp(self) -> None:
         super().setUp()
         self.client = Client()
@@ -96,7 +97,6 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
             # default per i tre lettori del giornale (2026-09-27).
             sort_by="quando", sort_dir=None,
         )
-        self.assertEqual(resp.json()["data"]["page"], 3)
         self.assertEqual(vocab.call_args.args, ("config.tipi_entita", "codice", "LOTTO"))
 
     @_AUTH
@@ -153,7 +153,7 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
     def test_envelope_e_ritirate_count(self, repo_cls, _auth) -> None:
         repo_cls.return_value.list_giornale_trasversale.return_value = ([_riga()], 5, 2, 0)
         data = self.client.get(_URL).json()["data"]
-        self.assertEqual({"count", "page", "page_size", "total_pages", "ritirate_count", "results"}, set(data))
+        self.assertEqual({"count", "ritirate_count", "results"}, set(data))
         self.assertEqual((data["count"], data["ritirate_count"]), (5, 2))
         self.assertEqual(data["results"][0]["entita_display"], "LTF-0000042")
         # ⛔ Niente context/payload nella lista trasversale (vincolo del Passo A).

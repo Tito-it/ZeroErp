@@ -26,7 +26,7 @@ Area funzionale `magazzino` (`DomainAPIView`, livello `TUTTO` per scrivere).
 non piu' dall'area `config`.
 
 ⭐ **Le scritture passano dai verbi del DB** (dal 2026-11-22,
-[brief](../../../dev/work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md) §7 R-1):
+[brief](../../../dev/work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md) §7 R-1):
 `magazzino.fn_aggiungi_{magazzino,ubicazione,lotto}` per la nascita (gli
 obbligatori come argomenti, i facoltativi in `jsonb`) e
 `magazzino.fn_modifica_{magazzino,ubicazione,lotto}` per il delta (una chiave a
@@ -39,6 +39,16 @@ non ha `INSERT`/`UPDATE` su queste tabelle. Le chiavi **ammesse** le dice il DB
 (`magazzino.fn_<tabella>_colonne_ammesse('crea' | 'modifica')`), lette a ogni
 scrittura; il backend valida il trasporto (tipo, obbligo, lunghezza) e una
 chiave che il DB non ammette e' **400** col suo nome.
+
+Le **lunghezze** dei testi sono quelle delle colonne: un testo piu' lungo e'
+**400** col campo, mai il `22001` del DB. Codice del magazzino 32, codice
+dell'ubicazione e del lotto 64, descrizione (magazzino e ubicazione) 120,
+area, corsia, scaffale, piano e posizione dell'ubicazione 32. Il presidio
+`tests/db/test_anagrafiche_magazzino_db.py` (11) le confronta col catalogo.
+⚠️ Fino al 2026-11-23 il backend aveva un tetto unico (codice 50, descrizione
+500, posizione 50), sbagliato nei due versi: oltre la colonna dava un 500, e
+rifiutava i codici di ubicazione e lotto fra 51 e 64 caratteri, che il modello
+ammette.
 
 🔴 Le tre tabelle hanno la **row security** accesa: il perimetro e'
 l'emittente del magazzino (per le ubicazioni, via il magazzino) e del lotto, e
@@ -158,8 +168,8 @@ com'era: sta con gli altri due lookup di riga in [api_magazzino.md](api_magazzin
 Lista `magazzino.lotti` (catalogo 82). **`articolo_id` obbligatorio** (400 col
 campo se manca o non e' un uuid): un elenco di tutti i lotti di tutti gli
 articoli non e' una domanda di nessuno. Filtri: `search` (sul codice),
-`attivo`. Ordinamento in `LOTTI_SORT_COLUMNS`; senza: `data_arrivo DESC` (le
-date partono DESC). Riga: `id`, `articolo_id`, `emittente_fiscale_id`,
+`attivo`. Ordinamento in `LOTTI_SORT_COLUMNS`; senza: `data_arrivo DESC`
+(senza `order_dir` la colonna chiesta va in crescente; il default della lista resta il suo). Su `data_scadenza` il vuoto (nessuna scadenza) va come il massimo: lo dichiara il catalogo (`ui.lista_colonna.vuoto_ordinato_come_massimo`, dal 2026-11-24; prima andava come il minimo). Riga: `id`, `articolo_id`, `emittente_fiscale_id`,
 `codice`, `data_arrivo`, `data_scadenza`, `attivo`, `meta`, audit.
 
 La lista e' a catalogo con `perimetro_emittente = true` (dal 2026-11-22): le

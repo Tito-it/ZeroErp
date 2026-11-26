@@ -96,7 +96,7 @@ class FatturaDettaglioServiceTests(TestCase):
         for bad in (0, -1, None):
             with self.subTest(fattura_id=bad):
                 with self.assertRaises(ServiceError) as ctx:
-                    get_fattura_dettaglio(fattura_id=bad)
+                    get_fattura_dettaglio(auth_user_id=7, fattura_id=bad)
                 self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         repo.get_fattura_testata.assert_not_called()
 
@@ -106,7 +106,7 @@ class FatturaDettaglioServiceTests(TestCase):
         self._repo(mock_repo_cls, testata=None)
 
         with self.assertRaises(ServiceError) as ctx:
-            get_fattura_dettaglio(fattura_id=7)
+            get_fattura_dettaglio(auth_user_id=7, fattura_id=7)
         self.assertEqual(ctx.exception.code, "E_FATTURA_NON_TROVATA")
 
     # Scopo: fuori scope emittente → la testata torna None (RLS + filtro
@@ -120,7 +120,7 @@ class FatturaDettaglioServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx_scope:
             get_fattura_dettaglio(fattura_id=7, auth_user_id=42)
         with self.assertRaises(ServiceError) as ctx_inesistente:
-            get_fattura_dettaglio(fattura_id=999999)
+            get_fattura_dettaglio(auth_user_id=7, fattura_id=999999)
 
         self.assertEqual(ctx_scope.exception.code, ctx_inesistente.exception.code)
         self.assertEqual(ctx_scope.exception.message, ctx_inesistente.exception.message)
@@ -172,7 +172,7 @@ class FatturaDettaglioServiceTests(TestCase):
     def test_shape_risposta(self, mock_repo_cls):
         self._repo(mock_repo_cls)
 
-        result = get_fattura_dettaglio(fattura_id=7)
+        result = get_fattura_dettaglio(auth_user_id=7, fattura_id=7)
 
         self.assertEqual(
             set(result.keys()),
@@ -196,7 +196,7 @@ class FatturaDettaglioServiceTests(TestCase):
         repo.list_fattura_riepilogo_iva.return_value = []
         repo.list_fattura_scadenze.return_value = []
 
-        result = get_fattura_dettaglio(fattura_id=7)
+        result = get_fattura_dettaglio(auth_user_id=7, fattura_id=7)
 
         self.assertEqual(result["righe"], [])
         self.assertEqual(result["scadenze"], [])
@@ -209,7 +209,7 @@ class FatturaDettaglioServiceTests(TestCase):
         self._repo(mock_repo_cls)
         self.note_svc.count_per_target.return_value = 3
 
-        result = get_fattura_dettaglio(fattura_id=7)
+        result = get_fattura_dettaglio(auth_user_id=7, fattura_id=7)
 
         self.assertEqual(result["contatori"], {"note": 3})
         self.note_svc.count_per_target.assert_called_once_with(target_id=7)
@@ -221,7 +221,7 @@ class FatturaDettaglioServiceTests(TestCase):
         self._repo(mock_repo_cls)
         self.note_svc.count_per_target.return_value = 0
 
-        result = get_fattura_dettaglio(fattura_id=7)
+        result = get_fattura_dettaglio(auth_user_id=7, fattura_id=7)
 
         self.assertEqual(result["contatori"]["note"], 0)
 
@@ -251,7 +251,7 @@ class FatturaDettaglioServiceTests(TestCase):
         riga = {"riga_key": "FATTURA_LOG:5", "gravita": "ERROR", "cosa": "Non numerabile"}
         repo.get_giornale_errore_vivo.return_value = riga
 
-        result = get_fattura_dettaglio(fattura_id=7)
+        result = get_fattura_dettaglio(auth_user_id=7, fattura_id=7)
 
         repo.get_giornale_errore_vivo.assert_called_once_with(
             entity_type="FATTURA", entity_id=7,

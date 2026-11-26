@@ -1,0 +1,402 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'OPERATORE NON E' MAI «GLOBALE»: L'AZIENDA SI TOGLIE SOLO A UN SUPER_ADMIN
+#   script.fn_applica_user_emittenti_scope
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §10-ter (giro 10-ter; Tid,
+#   2026-11-26; D-AA a, D-AB b).
+#
+# -- CHE COSA CAMBIA --------------------------------------------------------
+#   Un controllo in piu', dopo i parametri e prima del no-op: l'array vuoto (o
+#   NULL) per un utente che non e' SUPER_ADMIN si rifiuta con
+#   E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN. Dal fail-closed un operatore
+#   senza riga non vede niente: «Tutti gli emittenti» e' la modalita' del
+#   SUPER_ADMIN, e per un operatore era una scelta che lo spegneva.
+#   La domanda e' script.fn_is_super_admin_account sull'utente spostato, non
+#   fn_is_super_admin, che guarda la veste della sessione di chi chiama.
+#   Il verbo non cambia (chiama questa). Il resto del corpo, la firma ancorata
+#   e la porta del DELETE sono quelli del 20261124-01 (catalogo dello scratch,
+#   2026-11-26).
+#   D-AB b: il SUPER_ADMIN senza riga che perde il profilo resta un «non
+#   assegnato», come un operatore appena creato; nessun guard sui binding.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261125-74-update-fn-applica-user-emittenti-scope-globale-solo-super-admin-mctit.yaml
+
+  - changeSet:
+      id: 20261125-74-update-fn-applica-user-emittenti-scope-globale-solo-super-admin
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_applica_user_emittenti_scope: l'azienda si toglie solo a un SUPER_ADMIN
+        (E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN). Brief: brief-db-porte-aperte-dalla-sola-guc §10-ter.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc
+               WHERE oid IN (to_regprocedure('script.fn_applica_user_emittenti_scope(integer,bigint[])'),
+                             to_regprocedure('script.fn_is_super_admin_account(integer)'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_applica_user_emittenti_scope(
+                  p_auth_user_id  config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  -- id di anagrafiche.emittenti_fiscali: %TYPE[] non e' sintassi valida
+                  p_emittente_ids bigint[])
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $fn$
+              -- Scopo:
+              --   Portare l'operatore p_auth_user_id sull'azienda indicata (un solo
+              --   emittente), oppure togliergli l'azienda (array vuoto o NULL). La
+              --   riga di config.user_emittenti_fiscali e' una per operatore: lo
+              --   spostamento e' DELETE della riga di prima e INSERT della nuova.
+              --
+              -- Regole:
+              --   - parametri: auth_user_id positivo, emittente positivo
+              --     (E_OPERATORE_SCOPE_PARAM_NON_VALIDO); piu' di un emittente no
+              --     (E_OPERATORE_SCOPE_MULTI_NON_AMMESSO);
+              --   - un'azienda tolta (array vuoto o NULL) solo a un SUPER_ADMIN: un operatore
+              --     che non lo e' lavora sempre per un emittente
+              --     (E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN), anche se non ha gia' la
+              --     riga. La domanda e' sull'account dell'utente spostato
+              --     (script.fn_is_super_admin_account), non sulla veste di chi chiama;
+              --   - stessa azienda di prima: niente da fare (changed = false);
+              --   - l'ultimo SUPER_ADMIN attivo non si sposta (E_PROFILO_ULTIMO_SUPER_ADMIN);
+              --   - il DELETE passa dalla porta zeroerp.allow_user_emittente_delete_override,
+              --     scritta con l'auth_user_id dell'operatore: il guard
+              --     config.trgfn_user_emittenti_fiscali_guard_delete la apre solo con quel
+              --     valore e col proprietario. Una GUC accesa dal chiamante si spegne
+              --     all'ingresso; la porta si svuota dopo il DELETE, anche in errore.
+              --
+              -- ⛔ Nessun permesso qui: e' la primitiva. Il permesso lo chiede il verbo
+              --   script.fn_change_user_emittenti_scope (SUPER_ADMIN); l'app non la esegue.
+              DECLARE
+                  -- un conteggio: nessuna colonna di cui sia il riflesso
+                  v_count_input        integer
+                      := COALESCE(array_length(p_emittente_ids, 1), 0);
+                  v_current_emittente  config.user_emittenti_fiscali.emittente_fiscale_id%TYPE;
+                  v_target_emittente   config.user_emittenti_fiscali.emittente_fiscale_id%TYPE;
+                  -- 'SINGLE' o 'GLOBAL', la forma del risultato: nessuna colonna
+                  v_new_scope_mode     text;
+              BEGIN
+                  -- La porta la apre solo questa funzione: quella che il chiamante
+                  -- avesse acceso si spegne qui.
+                  PERFORM set_config('zeroerp.allow_user_emittente_delete_override', '', true);
+
+                  -- Guard parametri principali
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_applica_user_emittenti_scope',
+                          'E_OPERATORE_SCOPE_PARAM_NON_VALIDO',
+                          jsonb_build_object(
+                              'param', 'p_auth_user_id',
+                              'value', p_auth_user_id
+                          ),
+                          NULL::uuid,
+                          'p_auth_user_id',
+                          coalesce(p_auth_user_id::text, 'NULL')
+                      );
+                  END IF;
+
+                  -- Un'azienda sola per operatore
+                  IF v_count_input > 1 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_applica_user_emittenti_scope',
+                          'E_OPERATORE_SCOPE_MULTI_NON_AMMESSO',
+                          jsonb_build_object(
+                              'auth_user_id', p_auth_user_id,
+                              'emittente_ids', p_emittente_ids,
+                              'count', v_count_input
+                          ),
+                          NULL::uuid,
+                          v_count_input::text
+                      );
+                  END IF;
+
+                  -- Validazione singolo emittente
+                  IF v_count_input = 1 THEN
+                      IF p_emittente_ids[1] IS NULL OR p_emittente_ids[1] <= 0 THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'script.fn_applica_user_emittenti_scope',
+                              'E_OPERATORE_SCOPE_PARAM_NON_VALIDO',
+                              jsonb_build_object(
+                                  'param', 'p_emittente_ids[1]',
+                                  'value', p_emittente_ids[1]
+                              ),
+                              NULL::uuid,
+                              'p_emittente_ids[1]',
+                              coalesce(p_emittente_ids[1]::text, 'NULL')
+                          );
+                      END IF;
+                      v_target_emittente := p_emittente_ids[1];
+                      v_new_scope_mode   := 'SINGLE';
+                  ELSE
+                      v_target_emittente := NULL;
+                      v_new_scope_mode   := 'GLOBAL';
+                  END IF;
+
+                  -- «Tutti gli emittenti» e' del SUPER_ADMIN: a un operatore normale
+                  -- l'azienda non si toglie. Prima del no-op: chiederlo e' sbagliato
+                  -- anche per chi non ha ancora la riga.
+                  IF v_target_emittente IS NULL
+                     AND NOT script.fn_is_super_admin_account(p_auth_user_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_applica_user_emittenti_scope',
+                          'E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]
+                      );
+                  END IF;
+
+                  -- Stato corrente con FOR UPDATE
+                  SELECT uef.emittente_fiscale_id
+                    INTO v_current_emittente
+                    FROM config.user_emittenti_fiscali uef
+                   WHERE uef.auth_user_id = p_auth_user_id
+                     FOR UPDATE;
+
+                  -- No-op
+                  IF v_current_emittente IS NOT DISTINCT FROM v_target_emittente THEN
+                      RETURN jsonb_build_object(
+                          'changed',      false,
+                          'scope_mode',   v_new_scope_mode,
+                          'emittente_id', v_target_emittente
+                      );
+                  END IF;
+
+                  -- L'ultimo SUPER_ADMIN attivo non si sposta
+                  IF script.fn_check_ultimo_super_admin_attivo(p_auth_user_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_applica_user_emittenti_scope',
+                          'E_PROFILO_ULTIMO_SUPER_ADMIN',
+                          jsonb_build_object(
+                              'auth_user_id',          p_auth_user_id,
+                              'current_emittente_id',  v_current_emittente,
+                              'target_emittente_id',   v_target_emittente,
+                              'detail', 'Cambio scope vietato sull''ultimo SUPER_ADMIN attivo'
+                          ),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]
+                        );
+                  END IF;
+
+                  -- Il DELETE passa dalla porta, aperta per la riga di questo operatore.
+                  -- ⚠️ La si svuota anche in errore: il terzo argomento di set_config lega
+                  --   il valore alla transazione, non alla chiamata.
+                  IF v_current_emittente IS NOT NULL THEN
+                      BEGIN
+                          PERFORM set_config('zeroerp.allow_user_emittente_delete_override',
+                                             p_auth_user_id::text, true);
+                          DELETE FROM config.user_emittenti_fiscali
+                           WHERE auth_user_id = p_auth_user_id;
+                          PERFORM set_config('zeroerp.allow_user_emittente_delete_override', '', true);
+                      EXCEPTION
+                          WHEN OTHERS THEN
+                              PERFORM set_config('zeroerp.allow_user_emittente_delete_override', '', true);
+                              RAISE;
+                      END;
+                  END IF;
+
+                  IF v_target_emittente IS NOT NULL THEN
+                      INSERT INTO config.user_emittenti_fiscali
+                          (auth_user_id, emittente_fiscale_id)
+                      VALUES (p_auth_user_id, v_target_emittente);
+                  END IF;
+
+                  RETURN jsonb_build_object(
+                      'changed',      true,
+                      'scope_mode',   v_new_scope_mode,
+                      'emittente_id', v_target_emittente
+                  );
+              END;
+              $fn$;
+
+              COMMENT ON FUNCTION script.fn_applica_user_emittenti_scope(config.user_emittenti_fiscali.auth_user_id%TYPE, bigint[])
+              IS 'Porta l''operatore sull''azienda indicata (un solo emittente) o, solo a un SUPER_ADMIN, toglie l''azienda (array vuoto o NULL): la riga di config.user_emittenti_fiscali è una per operatore, e lo spostamento è DELETE della riga di prima e INSERT della nuova. Restituisce changed, scope_mode (SINGLE o GLOBAL) ed emittente_id; la stessa azienda di prima non cambia niente. Rifiuti: parametri non validi (E_OPERATORE_SCOPE_PARAM_NON_VALIDO), più di un emittente (E_OPERATORE_SCOPE_MULTI_NON_AMMESSO), nessuna azienda per un utente che non è SUPER_ADMIN (E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN: la domanda è script.fn_is_super_admin_account sull''utente spostato, prima del no-op), l''ultimo SUPER_ADMIN attivo (E_PROFILO_ULTIMO_SUPER_ADMIN). Il DELETE passa dalla porta zeroerp.allow_user_emittente_delete_override, che la funzione scrive con l''auth_user_id dell''operatore e svuota dopo, anche in errore; una GUC accesa dal chiamante si spegne all''ingresso. Il guard config.trgfn_user_emittenti_fiscali_guard_delete la apre solo con quel valore e col proprietario. È la primitiva, senza permesso: la chiamano il verbo script.fn_change_user_emittenti_scope, che chiede il SUPER_ADMIN, e anagrafiche.fn_provisiona_dati_di_sviluppo. L''applicazione non la esegue.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il corpo del 20261124-01, senza il controllo di «globale».
+              CREATE OR REPLACE FUNCTION script.fn_applica_user_emittenti_scope(
+                  p_auth_user_id  config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  -- id di anagrafiche.emittenti_fiscali: %TYPE[] non e' sintassi valida
+                  p_emittente_ids bigint[])
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $fn$
+              -- Scopo:
+              --   Portare l'operatore p_auth_user_id sull'azienda indicata (un solo
+              --   emittente), oppure togliergli l'azienda (array vuoto o NULL). La
+              --   riga di config.user_emittenti_fiscali e' una per operatore: lo
+              --   spostamento e' DELETE della riga di prima e INSERT della nuova.
+              --
+              -- Regole:
+              --   - parametri: auth_user_id positivo, emittente positivo
+              --     (E_OPERATORE_SCOPE_PARAM_NON_VALIDO); piu' di un emittente no
+              --     (E_OPERATORE_SCOPE_MULTI_NON_AMMESSO);
+              --   - stessa azienda di prima: niente da fare (changed = false);
+              --   - l'ultimo SUPER_ADMIN attivo non si sposta (E_PROFILO_ULTIMO_SUPER_ADMIN);
+              --   - il DELETE passa dalla porta zeroerp.allow_user_emittente_delete_override,
+              --     scritta con l'auth_user_id dell'operatore: il guard
+              --     config.trgfn_user_emittenti_fiscali_guard_delete la apre solo con quel
+              --     valore e col proprietario. Una GUC accesa dal chiamante si spegne
+              --     all'ingresso; la porta si svuota dopo il DELETE, anche in errore.
+              --
+              -- ⛔ Nessun permesso qui: e' la primitiva. Il permesso lo chiede il verbo
+              --   script.fn_change_user_emittenti_scope (SUPER_ADMIN); l'app non la esegue.
+              DECLARE
+                  -- un conteggio: nessuna colonna di cui sia il riflesso
+                  v_count_input        integer
+                      := COALESCE(array_length(p_emittente_ids, 1), 0);
+                  v_current_emittente  config.user_emittenti_fiscali.emittente_fiscale_id%TYPE;
+                  v_target_emittente   config.user_emittenti_fiscali.emittente_fiscale_id%TYPE;
+                  -- 'SINGLE' o 'GLOBAL', la forma del risultato: nessuna colonna
+                  v_new_scope_mode     text;
+              BEGIN
+                  -- La porta la apre solo questa funzione: quella che il chiamante
+                  -- avesse acceso si spegne qui.
+                  PERFORM set_config('zeroerp.allow_user_emittente_delete_override', '', true);
+
+                  -- Guard parametri principali
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_applica_user_emittenti_scope',
+                          'E_OPERATORE_SCOPE_PARAM_NON_VALIDO',
+                          jsonb_build_object(
+                              'param', 'p_auth_user_id',
+                              'value', p_auth_user_id
+                          ),
+                          NULL::uuid,
+                          'p_auth_user_id',
+                          coalesce(p_auth_user_id::text, 'NULL')
+                      );
+                  END IF;
+
+                  -- Un'azienda sola per operatore
+                  IF v_count_input > 1 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_applica_user_emittenti_scope',
+                          'E_OPERATORE_SCOPE_MULTI_NON_AMMESSO',
+                          jsonb_build_object(
+                              'auth_user_id', p_auth_user_id,
+                              'emittente_ids', p_emittente_ids,
+                              'count', v_count_input
+                          ),
+                          NULL::uuid,
+                          v_count_input::text
+                      );
+                  END IF;
+
+                  -- Validazione singolo emittente
+                  IF v_count_input = 1 THEN
+                      IF p_emittente_ids[1] IS NULL OR p_emittente_ids[1] <= 0 THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'script.fn_applica_user_emittenti_scope',
+                              'E_OPERATORE_SCOPE_PARAM_NON_VALIDO',
+                              jsonb_build_object(
+                                  'param', 'p_emittente_ids[1]',
+                                  'value', p_emittente_ids[1]
+                              ),
+                              NULL::uuid,
+                              'p_emittente_ids[1]',
+                              coalesce(p_emittente_ids[1]::text, 'NULL')
+                          );
+                      END IF;
+                      v_target_emittente := p_emittente_ids[1];
+                      v_new_scope_mode   := 'SINGLE';
+                  ELSE
+                      v_target_emittente := NULL;
+                      v_new_scope_mode   := 'GLOBAL';
+                  END IF;
+
+                  -- Stato corrente con FOR UPDATE
+                  SELECT uef.emittente_fiscale_id
+                    INTO v_current_emittente
+                    FROM config.user_emittenti_fiscali uef
+                   WHERE uef.auth_user_id = p_auth_user_id
+                     FOR UPDATE;
+
+                  -- No-op
+                  IF v_current_emittente IS NOT DISTINCT FROM v_target_emittente THEN
+                      RETURN jsonb_build_object(
+                          'changed',      false,
+                          'scope_mode',   v_new_scope_mode,
+                          'emittente_id', v_target_emittente
+                      );
+                  END IF;
+
+                  -- L'ultimo SUPER_ADMIN attivo non si sposta
+                  IF script.fn_check_ultimo_super_admin_attivo(p_auth_user_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_applica_user_emittenti_scope',
+                          'E_PROFILO_ULTIMO_SUPER_ADMIN',
+                          jsonb_build_object(
+                              'auth_user_id',          p_auth_user_id,
+                              'current_emittente_id',  v_current_emittente,
+                              'target_emittente_id',   v_target_emittente,
+                              'detail', 'Cambio scope vietato sull''ultimo SUPER_ADMIN attivo'
+                          ),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]
+                        );
+                  END IF;
+
+                  -- Il DELETE passa dalla porta, aperta per la riga di questo operatore.
+                  -- ⚠️ La si svuota anche in errore: il terzo argomento di set_config lega
+                  --   il valore alla transazione, non alla chiamata.
+                  IF v_current_emittente IS NOT NULL THEN
+                      BEGIN
+                          PERFORM set_config('zeroerp.allow_user_emittente_delete_override',
+                                             p_auth_user_id::text, true);
+                          DELETE FROM config.user_emittenti_fiscali
+                           WHERE auth_user_id = p_auth_user_id;
+                          PERFORM set_config('zeroerp.allow_user_emittente_delete_override', '', true);
+                      EXCEPTION
+                          WHEN OTHERS THEN
+                              PERFORM set_config('zeroerp.allow_user_emittente_delete_override', '', true);
+                              RAISE;
+                      END;
+                  END IF;
+
+                  IF v_target_emittente IS NOT NULL THEN
+                      INSERT INTO config.user_emittenti_fiscali
+                          (auth_user_id, emittente_fiscale_id)
+                      VALUES (p_auth_user_id, v_target_emittente);
+                  END IF;
+
+                  RETURN jsonb_build_object(
+                      'changed',      true,
+                      'scope_mode',   v_new_scope_mode,
+                      'emittente_id', v_target_emittente
+                  );
+              END;
+              $fn$;
+
+              COMMENT ON FUNCTION script.fn_applica_user_emittenti_scope(config.user_emittenti_fiscali.auth_user_id%TYPE, bigint[])
+              IS 'Porta l''operatore sull''azienda indicata (un solo emittente) o gli toglie l''azienda (array vuoto o NULL): la riga di config.user_emittenti_fiscali è una per operatore, e lo spostamento è DELETE della riga di prima e INSERT della nuova. Restituisce changed, scope_mode (SINGLE o GLOBAL) ed emittente_id; la stessa azienda di prima non cambia niente. Rifiuti: parametri non validi (E_OPERATORE_SCOPE_PARAM_NON_VALIDO), più di un emittente (E_OPERATORE_SCOPE_MULTI_NON_AMMESSO), l''ultimo SUPER_ADMIN attivo (E_PROFILO_ULTIMO_SUPER_ADMIN). Il DELETE passa dalla porta zeroerp.allow_user_emittente_delete_override, che la funzione scrive con l''auth_user_id dell''operatore e svuota dopo, anche in errore; una GUC accesa dal chiamante si spegne all''ingresso. Il guard config.trgfn_user_emittenti_fiscali_guard_delete la apre solo con quel valore e col proprietario. È la primitiva, senza permesso: la chiamano il verbo script.fn_change_user_emittenti_scope, che chiede il SUPER_ADMIN, e anagrafiche.fn_provisiona_dati_di_sviluppo. L''applicazione non la esegue.';

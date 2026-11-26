@@ -1,6 +1,6 @@
 # Guida — Gestione Pratiche e Workflow
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 24 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -188,7 +188,7 @@ Una **pratica** e' l'istanza concreta, la testata. Contiene:
 | `canale_origine_id`      | INTEGER | Sorgente esterna, informativo (NULL = creata internamente) |
 | `codice`                 | TEXT    | Generato da trigger                                        |
 | `descrizione`            | TEXT    | Descrizione libera                                         |
-| `data_scadenza`          | DATE    | Scadenza prevista                                          |
+| `data_scadenza`          | DATE    | Scadenza prevista (NULL = nessuna scadenza)                |
 
 ### 5. Il flusso: lo step operativo
 

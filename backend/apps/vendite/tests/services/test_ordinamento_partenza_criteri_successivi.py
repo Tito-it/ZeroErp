@@ -29,6 +29,7 @@ from unittest.mock import patch
 from django.test import SimpleTestCase
 
 from apps.vendite.db.resi_repository import ResiRepository
+from apps.core.tests._helpers.perimetro_admin_globale_di_prova import perimetro_admin_globale_di_prova
 
 _MOD = "apps.vendite.db.resi_repository"
 
@@ -38,12 +39,16 @@ def _order_by(sql: str) -> str:
     return sql.split("ORDER BY", 1)[1].split("LIMIT", 1)[0].strip()
 
 
+# ⭐ Legge la SQL della lista, non prova il perimetro: il risolutore risponde
+#    «nessuna restrizione» (admin globale). Dal 2026-11-24 `auth_user_id=None`
+#    solleva, quindi il test passa un utente e dichiara il perimetro qui.
+@perimetro_admin_globale_di_prova()
 class CriteriSuccessiviResiTests(SimpleTestCase):
     def _clausola(self, chiama: Callable[..., Any], **ordine: Any) -> str:
         with patch(f"{_MOD}.fetch_paged_with_total", return_value=([], 0)) as lettura:
             chiama(
                 billing_account_id=None, data_da=None, data_al=None,
-                auth_user_id=None, limit=10, offset=0, **ordine,
+                auth_user_id=7, limit=10, offset=0, **ordine,
             )
         return _order_by(str(lettura.call_args.args[0]))
 

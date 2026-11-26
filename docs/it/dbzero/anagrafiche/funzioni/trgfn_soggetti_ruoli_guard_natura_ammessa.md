@@ -16,65 +16,58 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
--- Guard: verifica che la natura (tipo_soggetto) del soggetto sia ammessa
--- per il ruolo che si sta assegnando, secondo la matrice
--- config.tipi_ruoli_nature_ammesse.
--- Logica "matrice assente = libero": se non esistono righe per il
--- tipo_ruolo, nessun vincolo viene applicato.
+-- Guard: la natura (macro-tipologia) del soggetto e' ammessa per il
+-- ruolo che nasce, secondo la matrice config.tipi_ruoli_nature_ammesse.
+-- «Matrice assente = libero»: senza righe per il tipo di ruolo, nessun
+-- vincolo. Solo all'INSERT: il tipo del ruolo non si cambia (lucchetto
+-- E_SOGGETTO_RUOLO_TIPO_IMMUTABILE), il soggetto nemmeno.
 DECLARE
     v_tipo_soggetto_dettaglio_id  config.tipi_soggetto_dettaglio.id%TYPE;
     v_tipo_soggetto_id            config.tipi_soggetto.id%TYPE;
-    v_has_matrix                  boolean;
-    v_today                       date := script.fn_data_operativa();
-    v_error_ctx                   jsonb;
+    v_ruolo                       config.tipi_ruoli.descrizione%TYPE;
+    v_natura                      config.tipi_soggetto.descrizione%TYPE;
+    v_today                       date := script.fn_data_operativa();  -- il giorno aziendale: nessuna colonna
 BEGIN
-    -- DELETE: nessun controllo
-    IF TG_OP = 'DELETE' THEN
-        RETURN OLD;
+    -- Caso A: nessuna matrice per il ruolo -> nature libere
+    IF NOT EXISTS (
+        SELECT 1
+          FROM config.tipi_ruoli_nature_ammesse m
+         WHERE m.tipo_ruolo_id = NEW.tipo_ruolo_id
+    ) THEN
+        RETURN NEW;
     END IF;
 
-    -- Recupero tipo_soggetto_dettaglio_id dal soggetto
     SELECT s.tipo_soggetto_dettaglio_id
       INTO v_tipo_soggetto_dettaglio_id
       FROM anagrafiche.soggetti s
      WHERE s.id = NEW.soggetto_id;
 
-    -- Verifico se esiste almeno una riga di matrice per questo tipo_ruolo
-    SELECT EXISTS (
-        SELECT 1
-          FROM config.tipi_ruoli_nature_ammesse m
-         WHERE m.tipo_ruolo_id = NEW.tipo_ruolo_id
-    ) INTO v_has_matrix;
+    SELECT COALESCE(tr.descrizione, tr.codice_interno)
+      INTO v_ruolo
+      FROM config.tipi_ruoli tr
+     WHERE tr.id = NEW.tipo_ruolo_id;
 
-    -- Caso A: nessuna matrice definita per il ruolo → nature libere
-    IF NOT v_has_matrix THEN
-        RETURN NEW;
-    END IF;
-
-    -- Caso B: matrice definita MA soggetto senza tipo_soggetto_dettaglio configurato
+    -- Caso B: matrice definita, soggetto senza natura
     IF v_tipo_soggetto_dettaglio_id IS NULL THEN
-        v_error_ctx := jsonb_build_object(
-            'soggetto_id', NEW.soggetto_id,
-            'tipo_ruolo_id', NEW.tipo_ruolo_id
-        );
         PERFORM script.fn_log_and_raise_error(
             'database',
             'trgfn_soggetti_ruoli_guard_natura_ammessa',
             'E_RUOLO_NATURA_TIPO_DET_NULL',
-            v_error_ctx,
+            jsonb_build_object(
+                'campo',         'tipo_soggetto_dettaglio_id',
+                'soggetto_id',   NEW.soggetto_id,
+                'tipo_ruolo_id', NEW.tipo_ruolo_id),
             NEW.tx_id,
-            NEW.tipo_ruolo_id::text,
-            NEW.soggetto_id::text
-        );
+            v_ruolo);
     END IF;
 
-    -- Risalgo a tipo_soggetto_id via tipi_soggetto_dettaglio
-    SELECT tsd.tipo_soggetto_id
-      INTO v_tipo_soggetto_id
+    SELECT tsd.tipo_soggetto_id, COALESCE(ts.descrizione, ts.id)
+      INTO v_tipo_soggetto_id, v_natura
       FROM config.tipi_soggetto_dettaglio tsd
+      LEFT JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
      WHERE tsd.id = v_tipo_soggetto_dettaglio_id;
 
-    -- Caso C: matrice definita → verifico che la natura sia ammessa, attiva e valida
+    -- Caso C: la natura e' ammessa, attiva e valida oggi
     IF NOT EXISTS (
         SELECT 1
           FROM config.tipi_ruoli_nature_ammesse m
@@ -84,21 +77,18 @@ BEGIN
            AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
            AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
     ) THEN
-        v_error_ctx := jsonb_build_object(
-            'soggetto_id', NEW.soggetto_id,
-            'tipo_ruolo_id', NEW.tipo_ruolo_id,
-            'tipo_soggetto_id', v_tipo_soggetto_id
-        );
         PERFORM script.fn_log_and_raise_error(
             'database',
             'trgfn_soggetti_ruoli_guard_natura_ammessa',
             'E_RUOLO_NATURA_NON_AMMESSA',
-            v_error_ctx,
+            jsonb_build_object(
+                'campo',            'tipo_ruolo_id',
+                'soggetto_id',      NEW.soggetto_id,
+                'tipo_ruolo_id',    NEW.tipo_ruolo_id,
+                'tipo_soggetto_id', v_tipo_soggetto_id),
             NEW.tx_id,
-            v_tipo_soggetto_id::text,
-            NEW.tipo_ruolo_id::text,
-            NEW.soggetto_id::text
-        );
+            v_ruolo,
+            v_natura);
     END IF;
 
     RETURN NEW;
@@ -106,10 +96,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa()
-IS 'Guard trigger: verifica che il tipo_soggetto (natura) del soggetto sia ammesso
-per il ruolo che si sta assegnando, secondo la matrice config.tipi_ruoli_nature_ammesse.
-Se la matrice non ha righe per il tipo_ruolo, nessun vincolo viene applicato (natura libera).
-Segue lo stesso pattern di trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo.';
+IS 'Guard di anagrafiche.soggetti_ruoli (BEFORE INSERT): la macro-tipologia del soggetto e'' ammessa per il ruolo che nasce, secondo config.tipi_ruoli_nature_ammesse (righe attive e valide alla data operativa); matrice assente per il ruolo = libero. Rifiuti: E_RUOLO_NATURA_NON_AMMESSA (campo tipo_ruolo_id) ed E_RUOLO_NATURA_TIPO_DET_NULL (soggetto senza natura, campo tipo_soggetto_dettaglio_id), con le descrizioni di ruolo e natura nella frase, senza id. Solo all''INSERT: il tipo del ruolo non si cambia (lucchetto E_SOGGETTO_RUOLO_TIPO_IMMUTABILE) e il soggetto nemmeno (E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE). Una riga di matrice spenta non tocca i ruoli che esistono: la configurazione vale alla scrittura.';
 ```
 
 </div>

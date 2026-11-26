@@ -15,10 +15,10 @@
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
-import Tag from 'primevue/tag'
 
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import AttivoTag from '../../core/components/AttivoTag.vue'
+import PredefinitoSegno from '../../core/components/PredefinitoSegno.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import FiltroToggle from '../../core/components/FiltroToggle.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
@@ -132,8 +132,10 @@ onMounted(() => store.fetchList())
         <template #cell-attivo="{ data }">
           <AttivoTag :active="data.attivo" />
         </template>
+        <!-- ⏭️ Lo slot si toglie quando la riga 902 di `ui.lista_colonna`
+             porta `formato=predefinito` (richiesta al team DB, 2026-11-26). -->
         <template #cell-predefinito="{ data }">
-          <Tag v-if="data.predefinito" :value="t('magazzino.magazzini.tag_predefinito')" severity="info" />
+          <PredefinitoSegno :value="data.predefinito" />
         </template>
 
         <template #actions="{ data }">

@@ -45,7 +45,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.endpoint_helpers import handle_post_json, utente_autenticato
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.payload_validators import (
     corpo_oggetto,
@@ -62,21 +62,19 @@ from apps.core.services.email_outbox_service import DRAFT_EDITABILI, EmailOutbox
 from apps.core.api.schema_da_contratto import schema_da_contratto
 from apps.core.api.schema_email import TIPI_EMAIL
 from apps.core.services.email_constants import AMBITI_EMAIL, elenco_stati_email_log
-from apps.core.services.auth_helpers import (
-    extract_emittente_attivo_from_request,
-)
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
+from apps.core.services.perimetro_emittente import emittente_per_scrivere
 from apps.core.services.testata_guard import o_not_found
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.services.list_helpers import pagina_con_totale
 
 # Codici dei «non trovato» degli allegati e del file perso sullo storage
 # (brief-db-codici-non-trovato-email-e-permessi §2): `E_EMAIL_OP` resta per i
 # soli dati errati della richiesta.
 E_EMAIL_ALLEGATO_NOT_FOUND = "E_EMAIL_ALLEGATO_NOT_FOUND"
 E_EMAIL_ALLEGATO_FILE_MANCANTE = "E_EMAIL_ALLEGATO_FILE_MANCANTE"
-E_EMITTENTE_NON_RISOLTO = "E_EMITTENTE_NON_RISOLTO"
 
 
 # ⭐ Il vocabolario vive in `services/email_constants.py`, non qui: lo usa anche
@@ -153,31 +151,27 @@ class EmailPrepareView(DomainAPIView):
                 context={"field": "ambito"},
             )
 
-            # ⭐ L'emittente della bozza e' quello ATTIVO di chi la crea, letto
-            #    dal claim del token — la stessa fonte che la RLS usa per
-            #    filtrare. ⛔ Non si deduce dal template ne' dall'unita'
+            # ⭐ L'emittente della bozza e' quello su cui SCRIVE chi la crea: il
+            #    BB `emittente_per_scrivere` (l'emittente attivo validato, poi
+            #    quello del permesso), la stessa risposta della GUC che la RLS usa
+            #    per filtrare. ⛔ Non si deduce dal template ne' dall'unita'
             #    organizzativa: sarebbe una seconda regola di perimetro accanto
-            #    a quella vera.
+            #    a quella vera. Senza emittente — la modalita' «Tutti gli
+            #    emittenti», di sola lettura — il BB solleva
+            #    `E_EMITTENTE_NON_RISOLTO` (brief-db-codici-non-trovato-email-e-
+            #    permessi §9.2; fino al 2026-10-09 usciva come `E_EMAIL_OP`).
+            #    Fino al 2026-11-25 lo leggeva qui dal claim del token
+            #    (E1-1/E1-2 di brief-be-fe-BB-audit, regola del 2).
             # ⚠️ Per `SISTEMA` resta `None`: quelle righe non appartengono a
             #    nessuna azienda, e il CHECK del database lo pretende
-            #    (`chk_email_outbox_ambito_emittente`). Sugli altri ambiti
-            #    l'emittente c'e' per forza — se manca, si ferma qui con una
-            #    frase, invece di sbattere sul vincolo.
+            #    (`chk_email_outbox_ambito_emittente`).
             emittente_fiscale_id = (
                 None if ambito == "SISTEMA"
-                else extract_emittente_attivo_from_request(request)
-            )
-            # ⭐ E' la condizione di `E_EMITTENTE_NON_RISOLTO` (la modalita'
-            #    «Tutti gli emittenti», di sola lettura): un codice solo per
-            #    tutte le tabelle che vogliono l'azienda di chi agisce, col suo
-            #    400 voluto — il rimedio e' scegliere l'azienda in alto
-            #    (brief-db-codici-non-trovato-email-e-permessi §9.2). Fino al
-            #    2026-10-09 usciva come `E_EMAIL_OP`.
-            ErrorManager.require(
-                ambito == "SISTEMA" or emittente_fiscale_id is not None,
-                code=E_EMITTENTE_NON_RISOLTO,
-                message=USER_MESSAGE_FALLBACK[E_EMITTENTE_NON_RISOLTO],
-                detail=f"ambito={ambito}",
+                else emittente_per_scrivere(
+                    utente_autenticato(request),
+                    function_name="core.email_views.prepare_draft",
+                    detail=f"ambito={ambito}",
+                )
             )
 
             # ⛔ `REPARTO` senza unita' organizzativa lo rifiuta il database
@@ -242,7 +236,7 @@ class EmailOutboxListView(DomainAPIView):
             limit=limit,
             offset=offset,
         )
-        return success_response({"count": total, "results": results})
+        return success_response(pagina_con_totale(results, total))
 
 
 class EmailOutboxDetailView(DomainAPIView):
@@ -458,7 +452,7 @@ class EmailLogOperatoreListView(DomainAPIView):
         results, total = repo.list_logs(
             search=p["search"],
             stato=qp.get("stato") or None,
-            pratica_id=optional_int({"v": qp.get("pratica_id")}, "v"),
+            pratica_id=qp_int_optional(qp.get("pratica_id"), "pratica_id", min_val=0),
             data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
             data_a=qp_iso_date_optional(qp.get("data_a"), "data_a"),
             limit=p["limit"],
@@ -468,7 +462,7 @@ class EmailLogOperatoreListView(DomainAPIView):
             # cima) lo applica `EmailRepository.list_logs`, in una sede sola.
             order_dir=p["order_dir"],
         )
-        return success_response({"count": total, "results": results})
+        return success_response(pagina_con_totale(results, total))
 
 
 # ⭐ Il vocabolario del filtro «stato» della lista qui sopra: stessa porta

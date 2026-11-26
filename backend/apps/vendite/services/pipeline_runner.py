@@ -357,7 +357,9 @@ class LottoPipelineRunner:
                 stato_doc_fiscale_id=coord["stato_doc_fiscale_id"],
                 task_code=coord["task_code"],
                 fase=coord["fase"],
-                meta={"rollback": False},
+                # Il verso viene dall'eccezione, come il filo: un rollback
+                # fallito resta un rollback anche nella riga riscritta.
+                meta={"rollback": bool(coord.get("rollback", False))},
                 # ⚠️ Il filo arriva dall'eccezione, non da qui: siamo fuori
                 #    dalla transazione dello step e il giro non e' piu' nello
                 #    scope. Senza, il tentativo FALLITO sarebbe l'unico del giro
@@ -492,7 +494,16 @@ class LottoPipelineRunner:
         # Lotto appena creato (lotto_id non passato): parti dal primo step del catalogo.
         return steps
 
-    # Scopo: Valuta se eseguire rollback automatico dello step in rerun, escludendo rollback distruttivi.
+    # Scopo: Valuta se eseguire il rollback automatico dello step in rerun: corsia MASSIVO
+    #        in errore, step DRAFT o EMESSA, e il DB che dice si'
+    #        (`is_rollback_step_automatico`: il flag della corsia, un rollback non
+    #        vuoto, nessun task distruttivo, sconosciuto o spento).
+    # ⛔ La decisione non si ricompone qui (R-DB-I3, passo 3n, 2026-11-25): fino
+    #    al 2026-11-24 il runner leggeva da se' il flag e la lista, e prima
+    #    ancora escludeva per NOME `reset_lotto_draft`. Un elenco di nomi non
+    #    protegge il task che verra'; «distruttivo, mai in auto-run» lo dichiara
+    #    il registro dei task, e la regola la applica una funzione sola.
+    #    Il flag non viene dal body della richiesta (D-I.4 a, 2026-11-24).
     def _should_execute_auto_step_rollback(
         self,
         *,
@@ -500,28 +511,18 @@ class LottoPipelineRunner:
         effective_tipo_lotto: str,
         lotto_context: Any,
         is_massivo_error_rerun: bool,
-        auto_step_rollback_enabled: bool,
         rerun_reset_step_ids: set[int],
     ) -> bool:
         if not (
             is_massivo_error_rerun
-            and auto_step_rollback_enabled
             and step.stato_doc_fiscale_id in rerun_reset_step_ids
         ):
             return False
-        rollback_processes = self.repository.get_step_processes(
+        return self.repository.is_rollback_step_automatico(
             step.stato_doc_fiscale_id,
             tipo_lotto=effective_tipo_lotto,
             utility_id=lotto_context.utility_id,
             tipo_doc_fiscale_id=lotto_context.tipo_doc_fiscale_id,
-            rollback=True,
-        )
-        if not rollback_processes:
-            return False
-        # Evita rollback distruttivi in auto-run.
-        return all(
-            str(process.get("task", "")).strip() != "reset_lotto_draft"
-            for process in rollback_processes
         )
 
     # Scopo: Gestisce un singolo step pipeline aggiornando stato lotto, log di fase e sincronizzazione esito fatture
@@ -772,8 +773,6 @@ class LottoPipelineRunner:
                 rerun_reset_step_ids = {
                     step_id for step_id in (draft_id, emessa_id) if step_id is not None
                 }
-                meta: dict[str, Any] = params.meta or {}
-                auto_step_rollback_enabled = bool(meta.get("auto_step_rollback"))
 
                 lotto_context = self.repository.get_lotto_context(lotto_id)
                 ErrorManager.require(
@@ -984,7 +983,6 @@ class LottoPipelineRunner:
                         effective_tipo_lotto=effective_tipo_lotto,
                         lotto_context=lotto_context,
                         is_massivo_error_rerun=is_massivo_error_rerun,
-                        auto_step_rollback_enabled=auto_step_rollback_enabled,
                         rerun_reset_step_ids=rerun_reset_step_ids,
                     ):
                         self.step_executor.execute_step(

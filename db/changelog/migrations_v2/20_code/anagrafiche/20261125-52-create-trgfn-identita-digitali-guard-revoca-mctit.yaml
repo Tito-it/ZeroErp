@@ -1,0 +1,179 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.trgfn_identita_digitali_guard_revoca: la revoca dell'admin tiene.
+#
+#   Il guard della tabella (D-R1): sta qui e non in un verbo perche' le strade
+#   che scrivono `attivo` sono piu' d'una (fn_accendi_veste, l'UPDATE del
+#   backend, script.fn_riattiva_utente_tecnico, le INSERT delle fabbriche) e
+#   una regola dentro un verbo sarebbe muta sulle altre (linee-guida-trigger,
+#   «Dove si mette un guard»).
+#
+#   Tre regole, nell'ordine in cui parlano:
+#   1. il segno si scrive e si toglie solo dal proprietario della tabella, cioe'
+#      dai verbi SECURITY DEFINER (-54, -55) e dal migrate. Vale per INSERT,
+#      UPDATE e per il DELETE di una veste revocata, che altrimenti portandosi
+#      via la riga porterebbe via il segno. Riconosce il proprietario con
+#      script.fn_is_proprietario_tabella(TG_RELID), senza GUC: l'app non puo'
+#      aprire questa porta da se' (a differenza delle porte «GUC + proprietario»);
+#   2. una veste revocata non cambia coppia (credenziale, ruolo anagrafico,
+#      veste) se non dal proprietario: spostarla lascerebbe la coppia di prima
+#      senza segno;
+#   3. una veste ACCESA non c'e' su una coppia revocata (D-R8): rifiuta
+#      l'accensione di una riga revocata, l'INSERT di una riga accesa e la
+#      riaccensione di una riga pulita quando un'altra riga della stessa coppia
+#      porta il segno. Vale anche per il proprietario: chi riapre toglie prima
+#      il segno, col verbo.
+#
+#   ⚠️ Rilegge la tabella per le altre righe della coppia (mai la riga che sta
+#   cambiando: i suoi valori sono NEW). La tabella non ha RLS, quindi la
+#   lettura da invocante vede tutte le righe; se un giorno la RLS arriva qui,
+#   la lettura passa a una DEFINER (linee-guida-trigger, «BEFORE e AFTER»).
+#
+#   Fase a10, fra i guard; nome trg_identita_digitali_a10_guard_revoca_ins_upd_dlt.
+#   UPDATE senza OF: il guard reagisce ai valori (attivo, coppia, segno), e
+#   nessun BEFORE della tabella li scrive per derivazione.
+#
+#   Codici nuovi (CSV di catalogo, stesso giro): E_VESTE_REVOCATA
+#   (CONFLITTO_STATO), E_VESTE_REVOCA_SOLO_DAL_VERBO (TECNICO).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261125-52-create-trgfn-identita-digitali-guard-revoca-mctit.yaml
+
+  - changeSet:
+      id: 20261125-52-create-trgfn-identita-digitali-guard-revoca
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_identita_digitali_guard_revoca e il suo trigger a10: il segno della revoca
+        si scrive solo dai verbi, e una coppia revocata non ha vesti accese.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            { schemaName: anagrafiche, tableName: identita_digitali, columnName: revocata_at }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_identita_digitali_guard_revoca()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_proprietario boolean;  -- risposta di una check, nessuna colonna di cui sia il riflesso
+                  v_revocata_id  anagrafiche.identita_digitali.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: la revoca dell'amministratore tiene. Il segno
+                  --   (revocata_at, revocata_da_user_id) lo scrivono solo i
+                  --   verbi; una coppia (credenziale, ruolo anagrafico,
+                  --   veste) che porta il segno non ha vesti accese.
+                  -- =========================================================
+                  v_proprietario := script.fn_is_proprietario_tabella(TG_RELID);
+
+                  IF TG_OP = 'DELETE' THEN
+                      -- 1) cancellare una veste revocata cancellerebbe il segno
+                      IF num_nulls(OLD.revocata_at) = 0 AND NOT v_proprietario THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', TG_NAME, 'E_VESTE_REVOCA_SOLO_DAL_VERBO',
+                              jsonb_build_object('table', TG_TABLE_NAME, 'operazione', TG_OP,
+                                                 'identita_id', OLD.id),
+                              NULL::uuid, TG_OP::text);
+                      END IF;
+                      RETURN OLD;
+                  END IF;
+
+                  -- 1) il segno si scrive solo dai verbi
+                  IF NOT v_proprietario
+                     AND ((TG_OP = 'INSERT'
+                           AND num_nulls(NEW.revocata_at, NEW.revocata_da_user_id) < 2)
+                       OR (TG_OP = 'UPDATE'
+                           AND (NEW.revocata_at, NEW.revocata_da_user_id)
+                               IS DISTINCT FROM (OLD.revocata_at, OLD.revocata_da_user_id)))
+                  THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'E_VESTE_REVOCA_SOLO_DAL_VERBO',
+                          jsonb_build_object('table', TG_TABLE_NAME, 'operazione', TG_OP,
+                                             'identita_id', NEW.id),
+                          NULL::uuid, TG_OP::text);
+                  END IF;
+
+                  -- 2) una veste revocata non cambia coppia
+                  IF TG_OP = 'UPDATE'
+                     AND num_nulls(OLD.revocata_at) = 0
+                     AND NOT v_proprietario
+                     AND (NEW.auth_user_id, NEW.soggetto_ruolo_id, NEW.ruolo_applicativo)
+                         IS DISTINCT FROM (OLD.auth_user_id, OLD.soggetto_ruolo_id, OLD.ruolo_applicativo)
+                  THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME, 'E_VESTE_REVOCA_SOLO_DAL_VERBO',
+                          jsonb_build_object('table', TG_TABLE_NAME, 'operazione', TG_OP,
+                                             'identita_id', NEW.id,
+                                             'detail', 'cambio di coppia di una veste revocata'),
+                          NULL::uuid, TG_OP::text);
+                  END IF;
+
+                  -- 3) nessuna veste accesa su una coppia revocata. Si giudica
+                  --    quando la veste diventa accesa o cambia coppia da accesa.
+                  IF NEW.attivo
+                     AND (TG_OP = 'INSERT'
+                          OR NOT OLD.attivo
+                          OR (NEW.auth_user_id, NEW.soggetto_ruolo_id, NEW.ruolo_applicativo)
+                             IS DISTINCT FROM (OLD.auth_user_id, OLD.soggetto_ruolo_id, OLD.ruolo_applicativo))
+                  THEN
+                      IF num_nulls(NEW.revocata_at) = 0 THEN
+                          v_revocata_id := NEW.id;
+                      ELSE
+                          SELECT idg.id
+                            INTO v_revocata_id
+                            FROM anagrafiche.identita_digitali idg
+                           WHERE idg.auth_user_id      = NEW.auth_user_id
+                             AND idg.soggetto_ruolo_id = NEW.soggetto_ruolo_id
+                             AND idg.ruolo_applicativo = NEW.ruolo_applicativo
+                             AND idg.id IS DISTINCT FROM NEW.id
+                             AND idg.revocata_at IS NOT NULL
+                           ORDER BY idg.id
+                           LIMIT 1;
+                      END IF;
+
+                      IF v_revocata_id IS NOT NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', TG_NAME, 'E_VESTE_REVOCATA',
+                              jsonb_build_object('table', TG_TABLE_NAME, 'operazione', TG_OP,
+                                                 'identita_id', NEW.id,
+                                                 'identita_revocata_id', v_revocata_id,
+                                                 'ruolo_applicativo', NEW.ruolo_applicativo),
+                              NULL::uuid, NEW.ruolo_applicativo::text);
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_guard_revoca() IS
+                  'Guard BEFORE INSERT/UPDATE/DELETE di anagrafiche.identita_digitali: la revoca dell''amministratore tiene. (1) Il segno (revocata_at, revocata_da_user_id) si scrive e si toglie solo dal proprietario della tabella, cioe'' dai verbi anagrafiche.fn_revoca_veste, anagrafiche.fn_togli_revoca_veste e dal migrate; vale anche per il DELETE di una veste revocata. (2) Una veste revocata non cambia credenziale, ruolo anagrafico o veste se non dal proprietario. (3) Sulla coppia (credenziale, ruolo anagrafico, veste) di una veste revocata non c''e'' una veste accesa: rifiuta l''accensione della riga revocata, l''INSERT di una riga accesa e la riaccensione di un''altra riga della coppia, anche al proprietario. Codici: E_VESTE_REVOCA_SOLO_DAL_VERBO (1, 2), E_VESTE_REVOCATA (3). Riconosce il proprietario con script.fn_is_proprietario_tabella, senza GUC. Rilegge la tabella solo per le altre righe della coppia; la tabella non ha RLS. INVOKER.';
+
+              DROP TRIGGER IF EXISTS trg_identita_digitali_a10_guard_revoca_ins_upd_dlt
+                  ON anagrafiche.identita_digitali;
+
+              CREATE TRIGGER trg_identita_digitali_a10_guard_revoca_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON anagrafiche.identita_digitali
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_revoca();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_identita_digitali_a10_guard_revoca_ins_upd_dlt
+                  ON anagrafiche.identita_digitali;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_identita_digitali_guard_revoca();

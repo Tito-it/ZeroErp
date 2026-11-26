@@ -39,7 +39,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping
+from collections.abc import Mapping
 from typing import Any
 
 from django.db import connection
@@ -76,8 +76,6 @@ class RigheListaMixin:
     - ``_righe_ordine_documento_desc``: l'ordine del padre parte dal fondo
       (default ``False``; ``True`` sulla distinta: la versione piu' recente in
       cima);
-    - ``_righe_colonne_desc``: chiavi della whitelist che partono DESC (le
-      date, regola di Tid del 2026-09-02). Default nessuna;
     - ``_righe_chiave``: la colonna che identifica la riga, spareggio di ogni
       ordinamento (default ``"id"``; ``"riga_key"`` su fattura e contratto);
     - ``_righe_solo_attive``: filtra ``attivo IS TRUE`` (default ``True``);
@@ -100,7 +98,6 @@ class RigheListaMixin:
     _righe_ordine_documento_desc: bool = False
     _righe_ordinamento: Mapping[str, str]
     _righe_ricerca: RicercaFull
-    _righe_colonne_desc: Collection[str] = ()
     _righe_chiave: str = "id"
     _righe_solo_attive: bool = True
     _righe_ordine_documento_extra: tuple[str, ...] = ()
@@ -203,7 +200,6 @@ class RigheListaMixin:
                 [f"v.{c}" for c in self._righe_ordine_documento_extra]
                 + [f"v.{self._righe_chiave}"]
             ),
-            colonne_desc=self._righe_colonne_desc,
         )
         safe_limit, safe_offset = limiti_pagina(limit, offset, tetto=max_limit)
         from_sql, conditions, params = self._righe_da(documento_id)

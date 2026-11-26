@@ -1,4 +1,4 @@
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 
 ### 🏗️ Lo stato del dominio `magazzino`
 
@@ -121,33 +121,12 @@ Il meccanismo è quello comune del progetto:
 
 ---
 
-### ⚠️ La porta: un dominio a metà
+### La porta
 
-Il modello dei permessi vuole che ogni scrittura passi da un **verbo**, cioè una funzione
-del database che prima controlla il permesso di chi agisce, e che l'applicazione non possa
-scrivere le tabelle da sola
+Tutte le tabelle di `magazzino` sono in sola lettura per l'applicazione: ogni scrittura passa da
+un **verbo**, come vuole il modello dei permessi
 ([guida dei permessi §7.4](/guide/architettura-permessi-e-autorizzazioni#74-il-permesso-nel-verbo-di-scrittura)).
-`magazzino` ci è arrivato **solo in parte**, e la regola chiede di dirlo qui, con l'elenco.
-
-**Chiuse all'applicazione** (le scrive solo un verbo):
-
-| Tabella | Chi la scrive |
-| --- | --- |
-| `movimenti`, `valore_giacenza` | la porta del registro, attraverso i verbi che registrano (inventario, rettifica, trasferimento, bolla, reso, storno) |
-| `movimenti_attesi` | i verbi del blocco manuale (`fn_apri_blocco`, `fn_libera_blocco`) |
-| `causali` | il verbo del pannello di configurazione (`config.fn_pannello_scrivi`) |
-
-**Ancora scrivibili dall'applicazione** (il permesso lo controlla solo il backend):
-
-| Tabella | Oggi la scrive |
-| --- | --- |
-| `magazzini`, `ubicazioni`, `lotti` | il backend, dalle anagrafiche di magazzino (il magazzino nasce con `fn_crea_magazzino`, che non controlla un permesso) |
-| `inventari`, `rettifiche` e le loro righe | il backend: la testata, le righe in bozza e i cambi di stato prima della registrazione. Già chiusi: il passaggio a «registrato» e le righe di un documento confermato, che tocca solo il verbo |
-| `trasferimenti` e le sue righe | nessuno dall'applicazione; il passaggio a «registrato» è già chiuso |
-| `assets`, `eventi_assets` e le tabelle delle note | nessuno dall'applicazione |
-
-Il lavoro che chiude il resto è aperto. Quando sarà fatto, questa sezione si riduce a una
-riga.
+I seriali, i loro eventi e le note non hanno ancora un verbo per ogni gesto (sezione seguente).
 
 ---
 
@@ -157,4 +136,4 @@ riga.
   (il carico del ciclo acquisti);
 * le colonne «impegnata» e «in arrivo» della disponibilità: arrivano con i satelliti che le
   sanno riempire (acquisti);
-* il verbo per le scritture che l'applicazione fa ancora da sola (sezione precedente).
+* il verbo di modifica del seriale, e un verbo per gli eventi dei seriali e per le note.

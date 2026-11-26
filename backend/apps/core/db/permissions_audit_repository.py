@@ -8,11 +8,10 @@
 
 from __future__ import annotations
 
-import math
 from datetime import date
 from typing import Any
 
-from apps.core.api.payload_validators import pagina_di
+from apps.core.services.list_helpers import pagina_con_totale
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import fetch_paged_with_total, predicato_giorno_operativo
 
@@ -133,7 +132,7 @@ class PermissionsAuditRepository:
                 params.append(uo_id)
 
         if not unions:
-            return self._empty_result(limit, offset)
+            return self._empty_result()
 
         # Wrapper con filtri data e paginazione
         sql = f"WITH events AS ({' UNION ALL '.join(unions)}) "
@@ -168,20 +167,8 @@ class PermissionsAuditRepository:
             for r in rows
         ]
 
-        return {
-            "count": total_count,
-            "page": pagina_di(offset, limit),
-            "page_size": limit,
-            "total_pages": math.ceil(total_count / limit),
-            "events": events,
-        }
+        return pagina_con_totale(events, total_count)
 
     @staticmethod
-    def _empty_result(limit: int, offset: int) -> dict[str, Any]:
-        return {
-            "count": 0,
-            "page": pagina_di(offset, limit),
-            "page_size": limit,
-            "total_pages": 0,
-            "events": [],
-        }
+    def _empty_result() -> dict[str, Any]:
+        return pagina_con_totale([], 0)

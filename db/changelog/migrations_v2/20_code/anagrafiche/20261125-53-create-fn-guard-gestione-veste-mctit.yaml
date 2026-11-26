@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.fn_guard_gestione_veste: chi puo' revocare una veste e
+# togliere la revoca.
+#
+#   Regola del 2: la usano anagrafiche.fn_revoca_veste (-54) e
+#   anagrafiche.fn_togli_revoca_veste (-55), che devono rispondere allo
+#   stesso modo. Nasce qui perche' quei due verbi controllano il permesso a DB:
+#   togliere il segno lo chiamera' anche l'iscrizione da se', e un verbo che
+#   non riconosce chi agisce la lascerebbe passare.
+#
+#   Il permesso e' quello che il backend chiede oggi alle stesse porte
+#   (letto sul codice il 2026-11-25), per tipo di veste:
+#   · OPERATORE                      -> SUPER_ADMIN (la gestione operatori e
+#                                       gli utenti tecnici stanno in
+#                                       amm_software, solo super admin);
+#   · CLIENTE_PORTALE, SHOP_CUSTOMER -> livello TUTTO su anagrafiche.cliente
+#                                       (le viste di invito e disattivazione
+#                                       del cliente);
+#   · FORNITORE_PORTALE              -> livello TUTTO su anagrafiche.fornitore;
+#   · ogni altro (API_CLIENT)        -> SUPER_ADMIN: nessuna porta di gestione,
+#                                       si chiude.
+#   La regola sta in script.fn_guard_super_admin e script.fn_guard_livello
+#   (gate di contesto compreso: fuori dalla veste OPERATORE rispondono no),
+#   qui solo la scelta. Utente NULL: E_PERMESSO_NEGATO dai due guard.
+#   INVOKER: decide su cataloghi di permesso, non scrive.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261125-53-create-fn-guard-gestione-veste-mctit.yaml
+
+  - changeSet:
+      id: 20261125-53-create-fn-guard-gestione-veste
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_guard_gestione_veste: il permesso di revocare una veste o di togliere la revoca,
+        per tipo di veste (super admin per l'operatore, livello su cliente o fornitore per le altre).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            { schemaName: anagrafiche, tableName: identita_digitali, columnName: revocata_da_user_id }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_gestione_veste(
+                  p_auth_user_id      anagrafiche.identita_digitali.revocata_da_user_id%TYPE,
+                  p_ruolo_applicativo anagrafiche.identita_digitali.ruolo_applicativo%TYPE
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: chi agisce (p_auth_user_id, letto dalla sessione
+                  --   dal chiamante) puo' gestire una veste di tipo
+                  --   p_ruolo_applicativo? No -> E_PERMESSO_NEGATO.
+                  -- =========================================================
+                  IF p_ruolo_applicativo IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_guard_gestione_veste', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          'anagrafiche.fn_guard_gestione_veste',
+                          'tipo di veste mancante');
+                  END IF;
+
+                  CASE p_ruolo_applicativo
+                      WHEN 'CLIENTE_PORTALE', 'SHOP_CUSTOMER' THEN
+                          PERFORM script.fn_guard_livello(p_auth_user_id, 'anagrafiche', 'cliente', 'TUTTO');
+                      WHEN 'FORNITORE_PORTALE' THEN
+                          PERFORM script.fn_guard_livello(p_auth_user_id, 'anagrafiche', 'fornitore', 'TUTTO');
+                      ELSE
+                          -- OPERATORE, e ogni veste senza una porta di gestione
+                          PERFORM script.fn_guard_super_admin(p_auth_user_id);
+                  END CASE;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_guard_gestione_veste(
+                  anagrafiche.identita_digitali.revocata_da_user_id%TYPE,
+                  anagrafiche.identita_digitali.ruolo_applicativo%TYPE) IS
+                  'Guard: l''utente p_auth_user_id puo'' revocare una veste di tipo p_ruolo_applicativo, o toglierne la revoca? CLIENTE_PORTALE e SHOP_CUSTOMER: livello TUTTO su anagrafiche.cliente (script.fn_guard_livello); FORNITORE_PORTALE: livello TUTTO su anagrafiche.fornitore; OPERATORE e ogni altro tipo: SUPER_ADMIN (script.fn_guard_super_admin). Sono i permessi delle porte di invito e disattivazione del backend. No, o utente NULL: E_PERMESSO_NEGATO. Tipo NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. La usano anagrafiche.fn_revoca_veste e anagrafiche.fn_togli_revoca_veste. INVOKER.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_guard_gestione_veste(integer, config.ruolo_applicativo);

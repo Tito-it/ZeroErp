@@ -30,10 +30,15 @@ from unittest.mock import patch
 from django.test import SimpleTestCase
 
 from apps.magazzino.db.magazzino_repository import MagazzinoRepository
+from apps.core.tests._helpers.perimetro_admin_globale_di_prova import perimetro_admin_globale_di_prova
 
 _MOD = "apps.magazzino.db.magazzino_repository"
 
 
+# ⭐ Legge la SQL della lista, non prova il perimetro: il risolutore risponde
+#    «nessuna restrizione» (admin globale). Dal 2026-11-24 `auth_user_id=None`
+#    solleva, quindi il test passa un utente e dichiara il perimetro qui.
+@perimetro_admin_globale_di_prova()
 class CriteriSuccessiviMagazzinoTests(SimpleTestCase):
     # La clausola che il repository passa a `lista_paginata`, per la chiamata data.
     def _clausola(self, chiama: Callable[..., Any], **ordine: Any) -> str:
@@ -57,7 +62,7 @@ class CriteriSuccessiviMagazzinoTests(SimpleTestCase):
     def test_disponibilita(self) -> None:
         repo = MagazzinoRepository()
         self._stessa(
-            lambda **kw: repo.list_disponibilita(auth_user_id=None, **kw), "articolo_codice", "asc",
+            lambda **kw: repo.list_disponibilita(auth_user_id=7, **kw), "articolo_codice", "asc",
             coda="articolo_id ASC, magazzino_id ASC",
         )
 

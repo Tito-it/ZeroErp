@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_genera_ddt_riconsegna`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -20,20 +20,49 @@
 > * [vendite.fn_conferma_reso](/dbzero/vendite/funzioni/fn_conferma_reso) — la conferma del reso
 > * [vendite.fn_ddt_trigger_ordine_testata](/dbzero/vendite/funzioni/fn_ddt_trigger_ordine_testata) — l'ordine e la sua corsia, ritrovati dal fulfillment
 > * [script.fn_sorgente_provenienza](/dbzero/script/funzioni/fn_sorgente_provenienza) — la provenienza da scrivere, dal reso
+> * [script.fn_guard_livello](/dbzero/script/funzioni/fn_guard_livello) — il permesso: il livello sull'oggetto `vendite.reso`
+> * [script.trgfn_righe_guard_articolo_ammesso](/dbzero/script/manual/trgfn_righe_guard_articolo_ammesso) — il guard che la porta della riconsegna apre
 >
 > Guide:
 >
 > * [Sorgente polimorfa](/guide/sorgente-polimorfa) — il modello della provenienza
+> * [Gestione DDT](/guide/gestione-ddt) — il reso e la riconsegna
+> * [Architettura permessi](/guide/architettura-permessi-e-autorizzazioni) §7.4 — il verbo e la porta
 
 ---
 
 ### 🎯 Scopo Principale
 
-**Funzione madre atomica** (`SECURITY INVOKER`) che genera il **DDT di ri-spedizione** per un reso
+**Funzione madre atomica** (`SECURITY DEFINER`) che genera il **DDT di ri-spedizione** per un reso
 emesso (confermato) e chiude l'aggancio duro con la coda di ri-consegna.
 
 Restituisce l'id della bolla. `p_righe` dice, per riga di reso, la quantità per una ri-spedizione
 **parziale**; vuoto = tutta la copertura residua. `p_data` vuota = la data operativa.
+
+---
+
+### Chi la chiama, e su quale reso
+
+È il verbo dell'endpoint «Genera DDT di ri-consegna». Gira come proprietario, fuori dalla row
+security, quindi il permesso e il perimetro li controlla lei, all'ingresso:
+
+* **il permesso**, in prima riga: il livello `TUTTO` sull'oggetto `vendite.reso`, con la ricaduta
+  sull'area `vendite` se l'oggetto non ha un livello suo
+  ([`script.fn_guard_livello`](/dbzero/script/funzioni/fn_guard_livello), la stessa risoluzione del
+  backend). È ciò che l'endpoint controlla già: chi arriva dall'interfaccia non riceve un rifiuto
+  nuovo. Sotto il livello: `E_PERMESSO_NEGATO`. Il SUPER_ADMIN passa;
+* **il perimetro**, una volta, sul reso: il reso dev'essere di un'azienda di chi agisce. Fuori dal
+  perimetro il reso «non c'è» (`E_RESO_NOT_FOUND`, la stessa risposta di un reso inesistente),
+  prima di dire il suo stato. Tutto il resto discende dal reso (le sue righe, le righe della bolla
+  d'origine, gli ordini); la bolla nuova prende l'azienda dalla bolla d'origine, e la giudica anche
+  il guard di scope di `vendite.ddt`, che legge l'utente di sessione.
+
+**La porta della riconsegna.** Mentre scrive le righe accende `zeroerp.ddt_riconsegna` con l'id
+del reso: il guard delle regole sull'articolo esenta così gli articoli del reso, anche se nel
+frattempo sono diventati «solo componente». La porta si apre solo al proprietario della tabella,
+cioè dentro questa funzione: l'applicazione che accende la GUC e scrive una riga di bolla diretta
+viene rifiutata. La funzione la spegne all'ingresso e la richiude subito dopo le righe; in errore
+la riporta indietro l'annullamento della transazione.
 
 ---
 
@@ -197,7 +226,7 @@ Il documento di partenza si legge con un `LEFT JOIN` sulla provenienza del reso:
 chiave `id`, e il reso la porta in `sorgente_id` (`chk_resi_sorgente_forma` vuole `sorgente_uid`
 vuota; il tipo `DDT_VENDITA` lo fa valere
 [vendite.trgfn_resi_guard_cliente_ddt](/dbzero/vendite/funzioni/trgfn_resi_guard_cliente_ddt)).
-Il join resta `LEFT`: una bolla invisibile a chi genera lascia le colonne di testata `NULL`, e i
+Il join resta `LEFT`: una bolla che manca lascia le colonne di testata `NULL`, e i
 guard dell'emissione fanno il loro mestiere. Sollevare lì romperebbe un percorso che funziona.
 
 ⭐ L'eredità di **riga** invece non ne è toccata: passa da `resi_righe.ddt_riga_id`, che è
@@ -237,6 +266,10 @@ quando la merce è uscita dal fatturato e ri-consegnarla è una vendita nuova.
   reso (brief-db-sorgente-documento-e-riga).
 * 2026-11-08 — la bolla d'origine si legge per `sorgente_id` soltanto: la provenienza del reso è
   solo la bolla (brief-db-sorgente-documento-e-riga, G-3).
+* 2026-11-25 — `SECURITY DEFINER`: il livello sul reso in prima riga, il perimetro del reso
+  all'ingresso (prima lo dava la row security), la porta della riconsegna aperta solo al
+  proprietario (brief-db-porte-aperte-dalla-sola-guc, giro 11). Prova:
+  `test-porta-ddt-riconsegna-v1.sql`.
 
 ---
 

@@ -12,12 +12,14 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 from decimal import Decimal, InvalidOperation
 
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db.parameter_repository import IMPOSTAZIONI_ORDER_COLUMNS, ParameterRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
+from apps.core.services.permissions_resolver import PermissionResolver
 
 
 # Scopo: L'esito di un upsert di override: l'id, oppure 404
@@ -34,6 +36,32 @@ def _parametro_esistente(override_id: int | None, parameter_code: str) -> int:
     )
     assert override_id is not None
     return override_id
+
+
+# Scopo: il CONTESTO della cascata dei parametri per chi agisce, in un posto
+#        solo: `{django_user_id, group_ids, emittente_fiscale_id}`, da passare
+#        com'e' (`**`) a `get_defaults` / `get_parameter*` /
+#        `list_parameters_for_user`. L'emittente e' quello di chi agisce
+#        (`PermissionResolver.get_emittente_for_user`: l'emittente attivo
+#        validato, poi quello del permesso), la stessa risposta della cascata
+#        dentro il DB (`script.fn_get_parameter_di_sessione`); in «tutti gli
+#        emittenti» e' None e il livello si salta. `user=None` (nessun utente,
+#        un processo) → `{}`: la cascata parte dal default.
+# ⭐ Regola del 2 (2026-11-25, E1-5 di brief-be-fe-BB-audit, ok Tid): lo
+#    costruiva solo `get_user_context` delle view dei parametri, e i default
+#    dei form di vendite e la config ruoli passavano livelli a pezzi — il solo
+#    utente, o il solo emittente — saltando gli override dei livelli mancanti
+#    senza errore.
+# ⚠️ Non e' la cascata di un DOCUMENTO: un gate su un documento esistente usa
+#    l'emittente della testata (vedi `_pricing_gate_helpers`), non questo.
+def contesto_cascata(user: Any) -> dict[str, Any]:
+    if user is None:
+        return {}
+    return {
+        "django_user_id": user.id,
+        "group_ids": list(user.groups.values_list("id", flat=True)),
+        "emittente_fiscale_id": PermissionResolver.get_emittente_for_user(user),
+    }
 
 
 class ParameterService:
@@ -339,7 +367,3 @@ class ParameterService:
             message="Override categoria cliente non trovato.",
         )
         return deleted
-
-    # Scopo: Risolve l'emittente_fiscale_id dell'utente dal bridge HR.
-    def get_emittente_fiscale_id_for_user(self, auth_user_id: int) -> int | None:
-        return self._repo.get_emittente_fiscale_id_for_user(auth_user_id)

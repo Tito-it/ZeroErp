@@ -20,9 +20,10 @@ from rest_framework.request import Request
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
-from apps.core.api.payload_validators import corpo_oggetto, paginated_envelope, parse_list_params, qp_int_optional
+from apps.core.api.payload_validators import corpo_oggetto, parse_list_params, qp_int_optional
 from apps.core.api.success_responses import success_response
 from apps.pratiche.services import definizioni_service
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 class ApiDefinizioniWorkflow(AdminAPIView):
@@ -67,7 +68,7 @@ class ApiDefinizioniWorkflow(AdminAPIView):
             limit=p["limit"],
             offset=p["offset"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
 
 class ApiDefinizioneDettaglio(AdminAPIView):

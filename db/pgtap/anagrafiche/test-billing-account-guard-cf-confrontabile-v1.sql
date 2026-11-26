@@ -180,21 +180,55 @@ $$, '%id fiscale diverso%',
 -- ⚠️ `id_fiscale_univoco_cf_piva` e' una colonna GENERATA
 --   (CASE su codice_fiscale/partita_iva): non si scrive. Si azzerano le due
 --   sorgenti, e il valore generato diventa NULL di conseguenza.
--- ⚠️ Va azzerato anche `tipo_soggetto_dettaglio_id`: il guard
+-- ⚠️ Serve una natura che li ammetta entrambi nulli: il guard
 --   trgfn_soggetti_guard_cf_piva_obbligatori legge da
 --   config.tipi_soggetto_dettaglio se CF/PIVA sono obbligatori, e NESSUN tipo
---   configurato oggi li ammette entrambi nulli — esce in testa solo se il tipo
---   non e' dichiarato. E' anche la configurazione dell'unico soggetto senza CF
---   presente nell'istanza.
+--   configurato oggi li ammette entrambi nulli. Fino al 2026-11-24 si azzerava
+--   la natura; ora si passa a una copia (sotto).
 -- ⚠️ Dal 2026-11-09 (brief-db-revisione-dbops, S-BE-3) un CF o una P.IVA gia' scritti li
 --   cambia o li svuota solo il SUPER_ADMIN (anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile):
 --   la preparazione la fa lui, poi si torna all'operatore del mondo.
 CREATE TEMP TABLE _t_sa ON COMMIT DROP AS
 SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('pgTAP-SA-P3', true);
+-- ⚠️ Dal 2026-11-24 una natura scritta non si svuota, per nessuno (E_CAMBIO_NATURA_VERSO_NESSUNA,
+--   D-T5-1 a, brief-db-revisione-anagrafiche §20): la natura NULL non e' piu' la strada per un
+--   soggetto senza CF. I due soggetti passano a una COPIA della loro natura che non pretende ne'
+--   CF ne' P.IVA (stessa famiglia, stessi formati, stesse forme giuridiche ammesse: il cambio non
+--   ha motivi), e poi si svuotano i due dati. La configurazione e' fixture: il file chiude in ROLLBACK.
 SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _t_sa));
 
+CREATE TEMP TABLE _t_nat ON COMMIT DROP AS
+SELECT n.da,
+       (SELECT max(id) FROM config.tipi_soggetto_dettaglio) + 100000 + row_number() OVER (ORDER BY n.da) AS a,
+       row_number() OVER (ORDER BY n.da) AS n  -- per il codice interno: varchar(10)
+  FROM (SELECT DISTINCT s.tipo_soggetto_dettaglio_id AS da
+          FROM anagrafiche.soggetti s
+         WHERE s.id IN ((SELECT sog_a FROM _t_ref), (SELECT sog_b FROM _t_ref))) n;
+
+INSERT INTO config.tipi_soggetto_dettaglio
+       (id, tipo_soggetto_id, stato_iso2, codice_interno, descrizione,
+        formato_cf, formato_piva, stato_id, dati_societari_policy,
+        piva_obbligatoria, cf_obbligatorio, sesso_policy,
+        cliente_pa_ammesso, split_payment_ammesso)
+SELECT n.a, d.tipo_soggetto_id, d.stato_iso2, 'PGTAPP3' || n.n, d.descrizione || ' (pgTAP P-3, senza CF)',
+       d.formato_cf, d.formato_piva, d.stato_id, d.dati_societari_policy,
+       false, false, d.sesso_policy,
+       d.cliente_pa_ammesso, d.split_payment_ammesso
+  FROM _t_nat n JOIN config.tipi_soggetto_dettaglio d ON d.id = n.da;
+
+INSERT INTO config.forme_giuridiche_tipi_soggetto_dettaglio
+       (forma_giuridica_id, tipo_soggetto_dettaglio_id, attivo, valido_dal, valido_al, meta)
+SELECT m.forma_giuridica_id, n.a, m.attivo, m.valido_dal, m.valido_al, m.meta
+  FROM _t_nat n JOIN config.forme_giuridiche_tipi_soggetto_dettaglio m ON m.tipo_soggetto_dettaglio_id = n.da;
+
+UPDATE anagrafiche.soggetti s
+   SET tipo_soggetto_dettaglio_id = n.a
+  FROM _t_nat n
+ WHERE n.da = s.tipo_soggetto_dettaglio_id
+   AND s.id IN ((SELECT sog_a FROM _t_ref), (SELECT sog_b FROM _t_ref));
+
 UPDATE anagrafiche.soggetti
-   SET tipo_soggetto_dettaglio_id = NULL, codice_fiscale = NULL, partita_iva = NULL
+   SET codice_fiscale = NULL, partita_iva = NULL
  WHERE id IN ((SELECT sog_a FROM _t_ref), (SELECT sog_b FROM _t_ref));
 
 SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _t_mondo));

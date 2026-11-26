@@ -290,13 +290,6 @@ CODA_STAMPA_SORT_SQL: dict[str, str] = {
     "archiviato_il": "c.archiviato_il",
 }
 
-# Le colonne DATA della whitelist: senza direzione indicata partono DESC (regola
-# Tid 2026-09-02, `colonne_desc` di `sql_order_clause`). Coincidono con le date
-# ordinabili del seed — lo verifica `test_liste_configurabili_seed`.
-CODA_STAMPA_SORT_COLONNE_DATA: frozenset[str] = frozenset(
-    {"data_insert", "data_update", "archiviato_il"}
-)
-
 
 # Proiezione e mapping di `GroupAttivitaInput`, in un posto solo.
 #
@@ -458,7 +451,10 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         "prepare_sdi_payload_lotto": "vendite.fn_prepare_sdi_payload",
         "numera_fatture": "vendite.fn_numera_fattura_opz_emessa",
         "close_lotto": None,
-        "reset_lotto_draft": "vendite.fn_annulla_lotto_da_draft",
+        # `reset_lotto_draft` non c'e' piu': era il rollback di EMESSA della
+        # corsia massiva e nessun percorso lo eseguiva. Ritirato il 2026-11-24
+        # (D-I, prima i CSV del DB, poi qui). L'annullo del lotto e' il verbo
+        # dell'operatore, `annulla_lotto_da_draft`, chiamato dall'endpoint.
         "pull_attivita_da_commessa": "vendite.fn_emit_attivita_fatturabili_da_commessa",
         # Il `task_code` resta `snapshot_indirizzi_lotto` (seed, handler, policy
         # e registry non si muovono); la funzione SQL e' stata rinominata dal
@@ -1679,6 +1675,41 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             )
             return cursor.rowcount
 
+    # Scopo: Il rollback dello step puo' partire da solo? Lo decide il DB,
+    #        per intero: `vendite.fn_check_rollback_step_automatico`, con gli
+    #        argomenti con cui `get_step_processes` legge il rollback dello step
+    #        (stessa risoluzione, stessa riga). Risponde `true` solo se la
+    #        corsia accende `fatturazione_pipeline.auto_step_rollback`, il
+    #        rollback ha almeno un task, e ogni task e' registrato, attivo nel
+    #        dominio `FATTURAZIONE` e non `distruttivo`. Fail-closed: uno step
+    #        che non si risolve, un task sconosciuto o spento danno False.
+    # ⭐ Dal 2026-11-25 (R-DB-I3, passo 3n di brief-db-porte-aperte-dalla-sola-guc
+    #    §4.8): prima il BE leggeva da se' la chiave `meta.auto_step_rollback`
+    #    della pipeline, e la lista non diceva se un task cancellava dati. La
+    #    chiave nel `meta` ora la rifiuta un CHECK: la regola ha una sede sola.
+    def is_rollback_step_automatico(
+        self,
+        stato_doc_fiscale_id: int,
+        *,
+        tipo_lotto: str,
+        utility_id: int | None,
+        tipo_doc_fiscale_id: int | None,
+    ) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT vendite.fn_check_rollback_step_automatico(
+                    p_tipo_lotto => %s,
+                    p_stato_doc_fiscale_id => %s,
+                    p_utility_id => %s,
+                    p_tipo_doc_fiscale_id => %s
+                )
+                """,
+                [tipo_lotto, stato_doc_fiscale_id, utility_id, tipo_doc_fiscale_id],
+            )
+            row = cursor.fetchone()
+        return bool(row and row[0])
+
     # Scopo: Recupera i task JSON dello step (processi o rollback) e normalizza il payload in lista Python.
     def get_step_processes(
         self,
@@ -2775,8 +2806,9 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     #        competenza. La coda NON ha colonna emittente (brief §5): per la
     #        lettura OPERATORE lo scope emittente si deriva via **JOIN a
     #        vendite.fatture** su `sorgente_id` + il BB
-    #        `add_emittente_scope_condition` (convenzione SR). Con
-    #        `auth_user_id=None` (worker/sistema) nessuno scope → conta tutto.
+    #        `add_emittente_scope_condition` (convenzione SR). ⛔ Dal
+    #        2026-11-24 `auth_user_id` e' obbligatorio e `None` solleva: prima
+    #        voleva dire «nessuno scope, conta tutto».
     #        Ritorna dict {stato: n} dei soli stati presenti.
     #
     # `competenza_mese` (2026-07-23): restringe al mese di competenza del LOTTO
@@ -2790,7 +2822,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         self,
         *,
         lotto_id: int | None = None,
-        auth_user_id: int | None = None,
+        auth_user_id: int | None,
         competenza_mese: date | None = None,
     ) -> dict[str, int]:
         conditions: list[str] = []
@@ -2801,16 +2833,17 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         if lotto_id is not None:
             conditions.append("c.lotto_id = %s")
             params.append(int(lotto_id))
-        if auth_user_id is not None:
-            # La coda è un satellite di fatture: lo scope emittente vive sulla
-            # fattura, non sulla coda → JOIN + scope applicativo (defense-in-depth).
-            joins.append("JOIN vendite.fatture f ON f.id = c.sorgente_id")
-            add_emittente_scope_condition(
-                conditions, params,
-                auth_user_id=auth_user_id,
-                column="f.emittente_soggetto_ruolo_id",
-                convention="sr",
-            )
+        # La coda è un satellite di fatture: lo scope emittente vive sulla
+        # fattura, non sulla coda → JOIN + scope applicativo (defense-in-depth).
+        # ⛔ Sempre: fino al 2026-11-24 `auth_user_id=None` saltava JOIN e
+        #    scope e contava tutto; ora `None` solleva dal BB.
+        joins.append("JOIN vendite.fatture f ON f.id = c.sorgente_id")
+        add_emittente_scope_condition(
+            conditions, params,
+            auth_user_id=auth_user_id,
+            column="f.emittente_soggetto_ruolo_id",
+            convention="sr",
+        )
         if competenza_mese is not None:
             joins.append(
                 "JOIN vendite.fatturazione_lotti l ON l.id = c.lotto_id"
@@ -2906,7 +2939,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         order_by = sql_order_clause(
             sort_by, sort_dir,
             colonne=CODA_STAMPA_SORT_SQL, default="c.data_insert",
-            default_desc=True, colonne_desc=CODA_STAMPA_SORT_COLONNE_DATA,
+            default_desc=True,
             tiebreak="c.id",
         )
         from_join = """
@@ -3139,9 +3172,9 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     #        ANNULLATA/CHIUSO, elimina le sue fatture pre-fiscali (non
     #        numerate) e libera le attivita'. Non «riporta a bozza»: il nome
     #        vecchio (`reset_lotto_draft`) diceva il contrario di cio' che fa,
-    #        ed e' la ragione di D-L. ⚠️ Il `task_code` di pipeline resta
-    #        `reset_lotto_draft` (seed CSV, immutabile) e cosi' il
-    #        `post_permission`: qui cambia solo il nome della funzione.
+    #        ed e' la ragione di D-L. Il task di pipeline con quel nome e'
+    #        ritirato (D-I, 2026-11-24): questo metodo lo chiama solo
+    #        l'endpoint `reset-draft`, verbo dell'operatore.
     def annulla_lotto_da_draft(self, lotto_id: int) -> AnnullaLottoDaDraftResult:
         with connection.cursor() as cursor:
             cursor.execute(

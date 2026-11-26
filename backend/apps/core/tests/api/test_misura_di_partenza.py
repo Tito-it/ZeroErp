@@ -132,6 +132,7 @@ _SVC_OFFERTE = "apps.vendite.api.views_offerte.OfferteService"
 
 
 class MisuraDiPartenzaViewVeraTests(JwtMockedApiTest):
+    come_super_admin = True
     def setUp(self) -> None:
         super().setUp()
         self.client = ClientApi()
@@ -148,7 +149,6 @@ class MisuraDiPartenzaViewVeraTests(JwtMockedApiTest):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(self.mock_misura_risolta.call_args.args[0], "vendite.offerte")
         self.assertEqual(self._limit(svc_cls), 50)
-        self.assertEqual(resp.json()["data"]["page_size"], 50)
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SVC_OFFERTE)

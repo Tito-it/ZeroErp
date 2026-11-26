@@ -16,7 +16,6 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError, transaction
 
@@ -77,6 +76,7 @@ from apps.vendite.services._indirizzi_documento_helpers import (
     upsert_indirizzo_documento,
 )
 from apps.core.services.partitioned_note_service import contatori_documento
+from apps.core.services.utente_per_id import utente_per_id
 from apps.vendite.db.note_repositories import NOTE_REPO_PREVENTIVO
 from apps.vendite.db.preventivi_repository import TESTATA_PREVENTIVI, PreventiviRepository
 from apps.vendite.types import PreventivoDetailRow
@@ -85,7 +85,7 @@ from apps.vendite.services._approvazioni_prezzo_constants import (
     STATO_APPROVAZIONE_PENDING,
     STATO_APPROVAZIONE_REJECTED,
 )
-from apps.core.api.payload_validators import envelope_da_offset
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 # ── Costanti di validazione ──
@@ -213,7 +213,7 @@ def list_preventivi_rows(
     data_al: date | None = None,
     search: str | None = None,
     solo_ultima_revisione: bool = True,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     limit: int,
     offset: int,
     order_by: str = "data",
@@ -254,7 +254,7 @@ def list_preventivi(
     data_al: date | None = None,
     search: str | None = None,
     solo_ultima_revisione: bool = True,
-    auth_user_id: int | None = None,
+    auth_user_id: int | None,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     order_by: str = "data",
@@ -282,7 +282,7 @@ def list_preventivi(
         order_by=order_by,
         order_dir=order_dir,
     )
-    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
+    return pagina_con_totale(results, total_count)
 
 
 # Scopo: Etichette leggibili dei filtri attivi, incluse come metadato nel file
@@ -859,7 +859,7 @@ def crea_revisione(preventivo_id: int) -> dict[str, Any]:
 #        `numero` non via `revisione_padre_id`.
 #        Legge prima la testata: fuori perimetro e' un 404 (e non una lista
 #        vuota, che direbbe «nessuna revisione» di un documento che non c'e').
-#        Paginata dal 2026-09-27: ritorna (righe, totale) per `paginated_envelope`.
+#        Paginata dal 2026-09-27: ritorna (righe, totale) per `pagina_con_totale`.
 def list_revisioni(
     preventivo_id: int, *,
     limit: int = DEFAULT_LIMIT, offset: int = 0,
@@ -952,7 +952,6 @@ def get_root_per_pratica(pratica_id: int) -> dict[str, Any]:
 _risolvi_iva_riga = make_risolvi_iva_riga(
     error_code=E_PREV_VALIDAZIONE,
     function_name=f"{_FN}._risolvi_iva_riga",
-    usa_auth_user=True,
 )
 
 
@@ -1101,7 +1100,6 @@ def gestisci_riga(
         testata,
         articolo_id=str(articolo_id),
         payload_iva_id=None,
-        auth_user_id=auth_user_id,
     )
     if iva_meta:
         merged_meta = {**(merged_meta or {}), **iva_meta}
@@ -1573,12 +1571,8 @@ def _resolve_or_check_override_prezzo(
 def _resolve_emittente_sr_id_or_raise(
     auth_user_id: int | None, *, function_name: str,
 ) -> int:
-    user_model = get_user_model()
-    try:
-        # `pk=None` e' ammesso da Django (diventa `IS NULL`, nessuna riga ->
-        # DoesNotExist, gestito sotto): e' lo stub a non accettare None.
-        user = user_model.objects.get(pk=auth_user_id)  # type: ignore[misc]  # pk=None -> DoesNotExist
-    except user_model.DoesNotExist:
+    user = utente_per_id(auth_user_id)
+    if user is None:
         ErrorManager.raise_error(
             code=E_PREV_VALIDAZIONE,
             message="Utente non trovato.",

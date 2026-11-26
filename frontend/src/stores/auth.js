@@ -287,9 +287,14 @@ export const useAuthStore = defineStore('auth', () => {
   const isAdminGlobale = computed(() => !!user.value?.is_admin_globale)
 
   // Refactor operatore-emittenti: emittente fiscale 1-a-1 dell'utente
-  // corrente. Per admin globale ritorna null perche' il blocco `emittente`
-  // del profilo riflette il "gestore globale" (cascata fallback di
-  // fn_get_user_profile) e NON l'emittente personale dell'utente.
+  // corrente, cioe' la sua riga in `config.user_emittenti_fiscali`. Senza
+  // riga il blocco `emittente` del profilo e' null — per l'admin globale e
+  // per l'operatore non configurato — e qui si ritorna null.
+  // ⛔ Fino al 2026-11-25 il blocco ripiegava sul «gestore globale», e qui un
+  //    `if (isAdminGlobale) return null` lo scartava per il solo admin:
+  //    all'operatore senza riga restava proposta come emittente di scrittura
+  //    un'azienda non sua. Il ripiego e' tolto a DB (`20261124-14`,
+  //    brief-db-emittente-del-super-admin R-DB-2), e con lui la riga.
   //
   // Esposte DUE chiavi FK distinte perche' il modello le differenzia:
   //   - id                → anagrafiche.emittenti_fiscali.id (PK reale, usato
@@ -299,7 +304,6 @@ export const useAuthStore = defineStore('auth', () => {
   // La differenza non e' ovvia dal nome e va rispettata. Vedi
   // feedback_emittente_pk_vs_soggetto_ruolo.md.
   const emittenteCorrente = computed(() => {
-    if (isAdminGlobale.value) return null
     const ef = user.value?.emittente
     if (!ef) return null
     return {

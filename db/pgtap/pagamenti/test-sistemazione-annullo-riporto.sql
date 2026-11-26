@@ -49,6 +49,15 @@ BEGIN;
 -- ⚠️ 2. CONTESTO APPLICATIVO: si gira come gira l'applicazione.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
+-- ⭐ rev 2026-11-25 (brief-db-porte-aperte-dalla-sola-guc, giro 8 + 1-7): l'annullo della sistemazione e il gesto sul fondo sono
+--   SECURITY DEFINER e chiede il permesso che l'endpoint controlla (il livello TUTTO sull'area pagamenti, governa_fondo_fattura). Chi
+--   agisce lo riceve qui; il caso senza permesso lo prova
+--   vendite/test-porta-reset-lotto-e-fondo-v1.
+DO $perm$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_livello_area(current_setting('app.current_user_id')::integer, 'pagamenti', 'TUTTO');
+  PERFORM dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'governa_fondo_fattura');
+END $perm$;
+
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 

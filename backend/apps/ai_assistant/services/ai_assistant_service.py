@@ -339,6 +339,7 @@ def _run_tool_loop(
                 #    gira in una transazione di sola lettura (§5.3 punto 3).
                 try:
                     with transazione_sola_lettura(chi=f"tool:{tool_name}"):
+                        tool_obj.cancello_del_gemello(request, tool_input)
                         preview_result = tool_obj.preview(tool_input, request)
                     confirmation_id = str(uuid.uuid4())
                     _store_pending_confirmation(
@@ -379,6 +380,7 @@ def _run_tool_loop(
                     #    ⛔ Restano FUORI l'INSERT in `dbops.ai_query_log` e
                     #    l'esecuzione confermata di una scrittura.
                     with transazione_sola_lettura(chi=f"tool:{tool_name}"):
+                        tool_obj.cancello_del_gemello(request, tool_input)
                         result = tool_obj.execute(tool_input, request)
                     # Prefisso centralizzato: istruisce l'LLM a non modificare i dati
                     result["_istruzione"] = (
@@ -498,6 +500,9 @@ def _execute_confirmation(
         )
 
     try:
+        # Il cancello si ripete alla conferma: fra anteprima e conferma
+        # l'emittente scelto in alto puo' essere cambiato (o tornato a «tutti»).
+        tool_obj.cancello_del_gemello(request, pending["params"])
         result = tool_obj.execute(pending["params"], request)
         response_text = result.get("message", "Operazione completata con successo.")
 

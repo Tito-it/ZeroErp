@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `pagamenti.trgfn_vendite_contabili_righe_guard_distinta_finale`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -122,11 +122,15 @@ la registra nello stesso gesto. Per farlo la porta ad `ABBINATA` (così girano t
 dell'abbinamento) e a **questo** guard si presenta con la GUC transazionale
 `app.registrazione_tardiva_riga_id`, valorizzata con l'id della riga: la quarta mossa lascia
 passare **solo** quella riga, **solo** in quella transazione, **solo** nel ramo del cambio di
-stato. Le altre tre mosse non leggono la GUC: la tardiva non fa nascere, non riattiva, non
-sposta.
+stato, e **solo se chi scrive è il proprietario** della tabella
+([script.fn_is_proprietario_tabella](/dbzero/script/funzioni/fn_is_proprietario_tabella)). Le
+due cose insieme si hanno solo dentro il verbo, che è `SECURITY DEFINER`: l'applicazione la
+GUC la può accendere da sé, e da sola non apre. Le altre tre mosse non leggono la GUC: la
+tardiva non fa nascere, non riattiva, non sposta.
 
-⛔ Un aggiornamento a mano di una sospesa verso uno stato pronto resta rifiutato; la GUC
-valorizzata con un **altro** id non apre; dopo la madre la porta è richiusa. La regola resta
+⛔ Un aggiornamento a mano di una sospesa verso uno stato pronto resta rifiutato, anche con la
+GUC valorizzata con l'id giusto; con un **altro** id non apre; dopo il verbo la porta è
+richiusa. La regola resta
 vera: sotto una chiusa nessuna riga *«pronta e mai registrata»*, perché non esiste più il
 momento in cui sta pronta ad aspettare. Il precedente della forma è `app.cessazione_automatica`.
 
@@ -176,6 +180,8 @@ chi non vede la distinta ne legge l'id, non il codice.
 * `db/pgtap/pagamenti/test-posta-riga-tardiva-v1.sql` — la porta della tardiva: fuori dalla
   madre la quarta mossa rifiuta (test 16), la GUC su un altro id non apre (17), dopo la madre la
   porta è richiusa (18).
+* `db/pgtap/pagamenti/test-porta-registrazione-tardiva-v1.sql` — la porta chiede il
+  proprietario: l'applicazione con la GUC sull'id giusto è rifiutata (test 6).
 * `db/pgtap/pagamenti/test-righe-contabili-eliminazione-v1.sql` — l'ordine col guard del
   contenuto sotto una distinta finale.
 * `db/pgtap/pagamenti/test-righe-guard-distinta-vista-dalla-fattura-v1.sql` — la riga mista
@@ -193,6 +199,7 @@ chi non vede la distinta ne legge l'id, non il codice.
 * 2026-09-30 — la quinta mossa e il codice `E_RIGA_CONTABILE_DISTINTA_ANNULLATA`.
 * 2026-11-03 — lo stato della distinta si legge fuori dalla row security. Prima il guard lo
   leggeva con i diritti di chi scrive, e la riga vista dalla fattura passava senza controllo.
+* 2026-11-25 — la porta della tardiva chiede anche il proprietario.
 
 ---
 

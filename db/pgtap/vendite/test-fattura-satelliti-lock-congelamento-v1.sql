@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: il test collauda il ramo della porta del reset del lotto (GUC accesa: la
+--   scrittura passa), che dal giro 8 + 1-7 si apre solo al proprietario
+--   (vendite.fn_porta_reset_lotto_aperta): nessun percorso dell'app lo raggiunge
+--   (brief-db-porte-aperte-dalla-sola-guc, giro 8 + 1-7, 2026-11-25: scelta di Tid). Il lato
+--   dell'app lo prova vendite/test-porta-reset-lotto-e-fondo-v1.
 -- pgTAP test per Zero ERP
 -- Test: vendite.trgfn_fattura_satellite_guard_congelamento (Fase 1.1)
 --       montata su fatture_indirizzi e fatture_scadenze (Fase 1.2)

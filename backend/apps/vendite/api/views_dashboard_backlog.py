@@ -121,9 +121,7 @@ class ApiDashboardBacklogDocumenti(DomainAPIView):
                         name="VenditeDashBacklogDocumentiData",
                         fields={
                             "count": serializers.IntegerField(),
-                            "page": serializers.IntegerField(),
-                            "page_size": serializers.IntegerField(),
-                            "total_pages": serializers.IntegerField(),
+                            "offset_effettivo": serializers.IntegerField(),
                             "results": serializers.ListField(child=serializers.DictField()),
                         },
                     ),

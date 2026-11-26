@@ -5,7 +5,7 @@
 CREATE FUNCTION fn_riporta_lotto_a_draft(p_lotto_id bigint)
 ```
 
-> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
 
 **Definizione completa:**
 
@@ -15,6 +15,8 @@ CREATE FUNCTION fn_riporta_lotto_a_draft(p_lotto_id bigint)
 CREATE OR REPLACE FUNCTION vendite.fn_riporta_lotto_a_draft(p_lotto_id bigint)
  RETURNS TABLE(updated_lotti integer, updated_attivita integer, deleted_fatture integer, deleted_righe integer, riemesse_attivita integer, annullati_task_run integer)
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 -- rev 2026-10-27 (20261027-14, brief-modello-documento-vendita §15): lo
 --   stato fiscale lo scrive il verbo del lotto, vendite.fn_cambia_stato_lotto,
@@ -42,6 +44,8 @@ AS $function$
 --        stessa che alimenta enabled/reasons di
 --        script.fn_available_actions_lotto.
 DECLARE
+    v_utente               config.user_override_azioni.auth_user_id%TYPE;
+    v_stato_da_id          vendite.fatturazione_lotti.stato_doc_fiscale_id%TYPE;
     v_lock_batch_id        vendite.fatturazione_lotti.lock_batch_id%TYPE;
     v_draft_id             config.stati_doc_fiscale.id%TYPE;
     v_draft_codice         config.stati_doc_fiscale.codice_interno%TYPE;
@@ -55,10 +59,59 @@ DECLARE
     v_riemesse_attivita    INTEGER := 0;
     v_annullati_task_run   INTEGER := 0;
 BEGIN
+    -- ⭐ rev 2026-11-25 (brief-db-porte-aperte-dalla-sola-guc, giro 1-7): SECURITY DEFINER.
+    --   L'ordine e' utente, parametri, lotto nel perimetro, permesso,
+    --   motivi. Il permesso dipende dallo stato del lotto (la riga del
+    --   passaggio verso lo stato iniziale), quindi prima si legge il lotto: e'
+    --   lo stesso ordine di vendite.fn_cambia_stato_lotto.
+    v_utente := script.fn_utente_di_sessione('vendite.fn_riporta_lotto_a_draft');
+
+    -- Le GUC che dentro un verbo DEFINER aprirebbero una porta si
+    -- spengono all'ingresso: quella del reset del lotto (la riaccende
+    -- solo la pulizia, e solo mentre lavora) e quella delle righe
+    -- contabili del fondo.
+    PERFORM set_config('zeroerp.maintenance_reset_lotto_draft', '', true);
+    PERFORM set_config('zeroerp.allow_contabile_riga_delete_override', '', true);
+
     IF p_lotto_id IS NULL OR p_lotto_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_riporta_lotto_a_draft', 'E_PARAMETRO_INVALIDO',
             jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id), NULL::uuid, 'p_lotto_id obbligatorio e > 0');
     END IF;
+
+    -- Il perimetro, una volta, all'ingresso, sul lotto: la regola della
+    -- policy di vendite.fatturazione_lotti, rimessa qui perche' il verbo
+    -- legge da proprietario. Fuori perimetro il lotto «non c'e'», come un
+    -- lotto che non esiste, e prima di dire qualunque cosa sul suo stato.
+    IF NOT COALESCE(script.fn_scope_ef_whitelist_via_lotto(v_utente, p_lotto_id), false) THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_riporta_lotto_a_draft', 'E_LOTTO_NON_TROVATO',
+            jsonb_build_object('detail', 'lotto inesistente o fuori perimetro', 'lotto_id', p_lotto_id),
+            NULL::uuid, p_lotto_id::text);
+    END IF;
+
+    -- ⭐ E sulle sue fatture (D-Y a): il modello non lega la fattura
+    -- all'azienda del lotto (nessun vincolo su fatturazione_lotti_fatture),
+    -- e la pulizia le cancella tutte. Una sola fuori perimetro e il lotto
+    -- «non c'e'»: fail-closed, senza dire che cosa contiene.
+    IF EXISTS (SELECT 1
+                 FROM vendite.fatturazione_lotti_fatture lf
+                WHERE lf.lotto_id = p_lotto_id
+                  AND NOT COALESCE(script.fn_scope_ef_whitelist_via_fattura(v_utente, lf.fattura_id), false)) THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', 'fn_riporta_lotto_a_draft', 'E_LOTTO_NON_TROVATO',
+            jsonb_build_object('detail', 'lotto con fatture fuori perimetro', 'lotto_id', p_lotto_id),
+            NULL::uuid, p_lotto_id::text);
+    END IF;
+
+    -- Il lotto, col lucchetto, e il suo stato: da qui il permesso.
+    SELECT l.stato_doc_fiscale_id INTO v_stato_da_id
+      FROM vendite.fatturazione_lotti l
+     WHERE l.id = p_lotto_id
+       FOR UPDATE;
+
+    -- Il permesso che l'endpoint controlla (D-X a): l'azione della riga del
+    -- passaggio, o il livello TUTTO sull'area vendite.
+    PERFORM vendite.fn_guard_passaggio_lotto(v_utente, v_stato_da_id, script.fn_doc_stato_iniziale_id('vendite.fatturazione_lotti'::regclass));
 
     -- PRECONDIZIONI — sede unica. Il check verifica anche
     -- l'esistenza del lotto (E_LOTTO_NON_TROVATO) e solleva il
@@ -211,7 +264,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_riporta_lotto_a_draft(p_lotto_id bigint)
-IS 'Rollback di un lotto PRE-FISCALE (DRAFT o EMESSA) verso DRAFT, per MASSIVO e GIORNALIERO. Delega TUTTA la pulizia delle tabelle a fn_cleanup_fatture_by_ids (RD-4) e si occupa dello stato del LOTTO: stato fiscale a DRAFT, stato_operativo APERTO, riaperto_il (RD-2) e stato di ESECUZIONE. 🔴 RD-6: chiude ad ANNULLATO tutti i task_run attivi del lotto, perche'' fn_resolve_lotto_task_execution_mode legge l''ultimo task_run e su COMPLETATO risponde SKIP — senza questo passo il lotto riaperto rilancia A VUOTO, senza errori e senza task_run nuovi. ⚠️ Non basterebbe attivo = false: quella SELECT non filtra su attivo. Le corse non si cancellano: si chiudono con esito, e il giro nuovo apre tentativo = MAX+1, quindi la storia resta leggibile per intero. 🔴 RD-7 (rev 2026-08-31): l''atto entra nel GIORNALE — LOTTO_RIAPERTO in vendite.event_log via fn_log_event, severity WARN, payload coi contatori e con lo stato fiscale di partenza. Prima la riapertura si leggeva solo DI RIMBALZO dai task_run passati ad ANNULLATO. Registro scelto per DUE proprieta'' strutturali che fatturazione_lotti_log non ha: append-only per trigger e codice a catalogo (li'' c''e'' disabilitato, e un atto che distrugge documenti non deve poter essere silenziato). WARN e non INFO perche'' vw_giornale_entita mappa gia'' TASK_RUN ANNULLATO -> WARN: la causa non puo'' stare piu'' in basso del proprio effetto. ⛔ Terza ragione della scelta, ed e'' di comportamento: le segnalazioni si compongono da fatture_log UNION fatturazione_lotti_log e da event_log si legge la sola ancora PIPELINE_STARTED, quindi questa riga NON entra nel conteggio su cui il runner decide l''avanzamento — un atto registrato non deve diventare un atto che blocca. ⚠️ La scrittura non introduce un ramo di fallimento: emittente_soggetto_ruolo_id e'' NOT NULL su fatturazione_lotti e l''esistenza del lotto e'' gia'' garantita dal check. RD-1: si torna indietro per QUALSIASI motivo; cio'' che resta vietato e'' numerare un documento incoerente (guard D-K). Sorella di fn_annulla_lotto_da_draft, che invece CHIUDE il lotto portandolo ad ANNULLATA. rev 2026-08-04: le precondizioni non sono piu'' scritte qui — arrivano da script.fn_check_lotto_riportabile_a_draft, la STESSA che alimenta enabled/reasons di script.fn_available_actions_lotto, cosi'' il pulsante e la funzione non possono divergere. ⚠️ Rifiuta ancora se una sola fattura e'' gia'' NUMERATA (ora E_LOTTO_FATTURE_NUMERATE): il controllo guarda il numero e non lo stato. Il pg_advisory_xact_lock resta DOPO le validazioni: una chiamata invalida non deve serializzare gli altri chiamanti. rev 2026-10-27 (20261027-14, brief-modello-documento-vendita §15): lo stato fiscale lo scrive il verbo del lotto, vendite.fn_cambia_stato_lotto, DOPO la pulizia (la porta non lascia passare l''UPDATE), col permesso della riga del passaggio (numera_fatture_lotti, Q-F1; prima solo il backend, con reset_lotto_draft, ritirata); su un lotto gia'' nello stato iniziale non c''e'' passaggio e si fa la sola pulizia. Lo stato iniziale dal vocabolario (config.stati_doc_fiscale.iniziale), non dal letterale DRAFT.';
+IS 'Verbo SECURITY DEFINER: legge il lotto nel perimetro, e con lui tutte le sue fatture (fuori: E_LOTTO_NON_TROVATO, come un lotto che non esiste), poi il permesso del passaggio verso lo stato iniziale con vendite.fn_guard_passaggio_lotto (l''azione della riga, o il livello TUTTO sull''area vendite: lo stesso controllo dell''endpoint). Sul lotto gia'' in bozza non c''e'' passaggio: conta il livello sull''area e si fa la sola pulizia. Spegne all''ingresso le GUC delle porte; la pulizia riservata gira da proprietario e apre la porta del reset solo mentre lavora. Rollback di un lotto PRE-FISCALE (DRAFT o EMESSA) verso DRAFT, per MASSIVO e GIORNALIERO: si torna indietro per QUALSIASI motivo, e cio'' che resta vietato e'' numerare un documento incoerente (lo ferma il guard della numerazione). Le precondizioni arrivano da script.fn_check_lotto_riportabile_a_draft, la STESSA che alimenta enabled/reasons di script.fn_available_actions_lotto, cosi'' il pulsante e la funzione non possono divergere. ⚠️ Rifiuta se una sola fattura e'' gia'' NUMERATA (E_LOTTO_FATTURE_NUMERATE): il controllo guarda il numero e non lo stato. Delega TUTTA la pulizia delle tabelle a fn_cleanup_fatture_by_ids e si occupa dello stato del LOTTO: stato fiscale a DRAFT, stato_operativo APERTO, riaperto_il e stato di ESECUZIONE. Lo stato fiscale lo scrive il verbo del lotto, vendite.fn_cambia_stato_lotto, DOPO la pulizia (la porta non lascia passare l''UPDATE), col permesso della riga del passaggio (numera_fatture_lotti). Lo stato iniziale viene dal vocabolario (config.stati_doc_fiscale.iniziale), non dal letterale DRAFT. 🔴 Chiude ad ANNULLATO tutti i task_run attivi del lotto, perche'' fn_resolve_lotto_task_execution_mode legge l''ultimo task_run e su COMPLETATO risponde SKIP — senza questo passo il lotto riaperto rilancerebbe A VUOTO, senza errori e senza task_run nuovi. ⚠️ Non basterebbe attivo = false: quella SELECT non filtra su attivo. Le corse non si cancellano: si chiudono con esito, e il giro nuovo apre tentativo = MAX+1, quindi la storia resta leggibile per intero. 🔴 L''atto entra nel GIORNALE: LOTTO_RIAPERTO in vendite.event_log via fn_log_event, severity WARN, payload coi contatori e con lo stato fiscale di partenza. Registro scelto per DUE proprieta'' strutturali che fatturazione_lotti_log non ha: append-only per trigger e codice a catalogo (li'' c''e'' disabilitato, e un atto che distrugge documenti non deve poter essere silenziato). WARN e non INFO perche'' vw_giornale_entita mappa TASK_RUN ANNULLATO -> WARN: la causa non puo'' stare piu'' in basso del proprio effetto. ⛔ Terza ragione della scelta, ed e'' di comportamento: le segnalazioni si compongono da fatture_log UNION fatturazione_lotti_log e da event_log si legge la sola ancora PIPELINE_STARTED, quindi questa riga NON entra nel conteggio su cui il runner decide l''avanzamento — un atto registrato non deve diventare un atto che blocca. ⚠️ La scrittura non introduce un ramo di fallimento: emittente_soggetto_ruolo_id e'' NOT NULL su fatturazione_lotti e l''esistenza del lotto e'' gia'' garantita dal check. Il pg_advisory_xact_lock resta DOPO le validazioni: una chiamata invalida non deve serializzare gli altri chiamanti. Sorella di fn_annulla_lotto_da_draft, che invece CHIUDE il lotto portandolo ad ANNULLATA.';
 ```
 
 </div>

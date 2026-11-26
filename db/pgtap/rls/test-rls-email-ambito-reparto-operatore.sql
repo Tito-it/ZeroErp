@@ -61,8 +61,8 @@ INSERT INTO _op SELECT 'SA', auth_user_id, risorsa_umana_id FROM dbops.fn_pgtap_
 INSERT INTO _op SELECT 'P',  auth_user_id, NULL FROM _e1;
 
 -- A, B e C lavorano per E1 (funzione di dominio: sede unica dello scope).
-SELECT script.fn_change_user_emittenti_scope(
-           o.auth_user_id, ARRAY[(SELECT emittente_fiscale_id FROM _e1)])
+SELECT dbops.fn_pgtap_sposta_scope_operatore(
+           o.auth_user_id, (SELECT emittente_fiscale_id FROM _e1))
   FROM _op o WHERE o.lato IN ('A', 'B', 'C');
 
 -- Due reparti: A nel primo, B nel secondo, C in nessuno.

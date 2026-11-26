@@ -37,7 +37,10 @@ SELECT plan(5);
 --    la sessione del migratore (script.fn_porta_manutenzione_aperta,
 --    brief-db-seed-primo-impianto-non-si-riscrive §16.9). Accesa «per sicurezza»
 --    rendeva verdi per sottrazione le asserzioni che toccano un lucchetto.
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
+-- ⛔ Tolta il 2026-11-25 la riga SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on':
+--    dal giro 10 (brief-db-porte-aperte-dalla-sola-guc §10) la porta del DELETE si
+--    apre solo dal verbo script.fn_change_user_emittenti_scope. La riga di scope si
+--    toglie col builder dbops.fn_pgtap_sposta_scope_operatore, che passa da li'.
 
 -- Dal 2026-08-04 il resolver guarda PRIMA l'emittente attivo di sessione
 -- (GUC app.current_emittente_id, impersonazione di scope). Questi cinque casi
@@ -57,22 +60,19 @@ WHERE ef.attivo = true
 ORDER BY ef.id
 LIMIT 1;
 
+-- ⛔ Rev 2026-11-26 (giro 10-ter, brief-db-porte-aperte-dalla-sola-guc §10-ter, D-AA a):
+--   l'operatore si COSTRUISCE, non si cerca fra gli esistenti, e nasce senza
+--   azienda (dbops.fn_pgtap_crea_operatore_umano). Fino a oggi il file prendeva il
+--   primo operatore attivo e gli toglieva l'azienda col builder: dal 20261125-74
+--   l'azienda si toglie solo a un SUPER_ADMIN. Il caso 5, «senza riga», e' il
+--   SUPER_ADMIN costruito: l'unico utente per cui la riga mancante e' legittima.
 CREATE TEMP TABLE tmp_resolve_user AS
--- Fixture rev 2026-08-04: la selezione passava da
--- risorse_umane_auth_user.ruolo_sistema, colonna rimossa dal changeSet
--- 20260429-19a. Da allora il file falliva nel setup e non eseguiva NESSUNA
--- asserzione (baseline: ERRORE_FIXTURE) — copertura zero su una funzione
--- comunque viva. L'equivalente attuale di "utente operativo" e' l'identita
--- digitale OPERATORE attiva, la stessa usata dagli altri test di scope.
-SELECT au.id AS user_id
-FROM django.auth_user au
-JOIN anagrafiche.identita_digitali idg
-  ON idg.auth_user_id      = au.id
- AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
- AND idg.attivo            = true
-WHERE au.is_active = true
-ORDER BY au.id
-LIMIT 1;
+SELECT o.auth_user_id AS user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('resolve-operatore', false) o;
+
+CREATE TEMP TABLE tmp_resolve_sa AS
+SELECT o.auth_user_id AS user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('resolve-super-admin', true) o;
 
 -- ============================================================
 -- 1) param NULL -> throws E_PARAMETRO_INVALIDO
@@ -104,12 +104,9 @@ SELECT is(
 -- ============================================================
 -- 4) user con 1 riga in user_emittenti_fiscali -> PK emittente
 -- ============================================================
-DELETE FROM config.user_emittenti_fiscali
-WHERE auth_user_id = (SELECT user_id FROM tmp_resolve_user);
-
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-SELECT (SELECT user_id FROM tmp_resolve_user),
-       (SELECT emittente_pk FROM tmp_resolve_ctx);
+-- L'operatore costruito nasce senza azienda: la riga la scrive il verbo.
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_resolve_user),
+                                             (SELECT emittente_pk FROM tmp_resolve_ctx));
 
 SELECT is(
     script.fn_resolve_emittente_for_user((SELECT user_id FROM tmp_resolve_user)),
@@ -118,13 +115,10 @@ SELECT is(
 );
 
 -- ============================================================
--- 5) user senza riga (admin globale) -> ritorna NULL
+-- 5) SUPER_ADMIN senza riga (admin globale) -> ritorna NULL
 -- ============================================================
-DELETE FROM config.user_emittenti_fiscali
-WHERE auth_user_id = (SELECT user_id FROM tmp_resolve_user);
-
 SELECT is(
-    script.fn_resolve_emittente_for_user((SELECT user_id FROM tmp_resolve_user)),
+    script.fn_resolve_emittente_for_user((SELECT user_id FROM tmp_resolve_sa)),
     NULL::bigint,
     'user senza riga (admin globale) -> NULL'
 );

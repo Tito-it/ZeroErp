@@ -13,6 +13,7 @@ from typing import Any, Callable, TypeVar
 
 from django.db import connection
 
+from apps.core.db import emittente_scope_helpers
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 
 T = TypeVar("T")
@@ -223,7 +224,8 @@ class PermissionResolver:
         cls, user: Any, *, cache: dict[str, Any] | None = None
     ) -> list[int] | None:
         """Scopo: Restituisce i soggetto_ruolo_id degli emittenti fiscali
-        autorizzati per l'utente. Wrapper su fn_get_emittenti_scope_sr_ids.
+        autorizzati per l'utente: fn_get_emittenti_scope_sr_ids, letta dal BB
+        dello scope (`_emittenti_dal_bb`).
 
         **Quando usare**: query che filtrano su colonne <ruolo>_soggetto_ruolo_id
         (BA scope via emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id,
@@ -235,27 +237,15 @@ class PermissionResolver:
         e memoria `feedback_emittente_pk_vs_soggetto_ruolo`.
 
         Semantica: None = nessuna restrizione, [] = nessun accesso."""
-        def _query() -> list[int] | None:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT script.fn_get_emittenti_scope_sr_ids(%s)",
-                    [user.id],
-                )
-                row = cursor.fetchone()
-            # fn_get_emittenti_scope_sr_ids ritorna bigint[] o NULL
-            if row and row[0] is not None:
-                return list(row[0])
-            return None
-
-        return _cached(cache, "emittenti_sr_ids", _query)
+        return cls._emittenti_dal_bb(user, "sr", cache)
 
     @classmethod
     def get_emittenti_pk_ids(
         cls, user: Any, *, cache: dict[str, Any] | None = None
     ) -> list[int] | None:
         """Scopo: Restituisce le PK reali (emittenti_fiscali.id) autorizzate
-        per l'utente. Wrapper su fn_get_emittenti_scope_pk_ids (canonica nuova,
-        2026-05-02).
+        per l'utente: fn_get_emittenti_scope_pk_ids (canonica nuova,
+        2026-05-02), letta dal BB dello scope (`_emittenti_dal_bb`).
 
         **Quando usare**: query che filtrano su colonne PK
         (vw_preventivi_list.emittente_fiscale_id, vendite.preventivi.emittente_fiscale_id
@@ -277,18 +267,34 @@ class PermissionResolver:
         e memoria `feedback_emittente_pk_vs_soggetto_ruolo`.
 
         Semantica: None = nessuna restrizione, [] = nessun accesso."""
-        def _query() -> list[int] | None:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT script.fn_get_emittenti_scope_pk_ids(%s)",
-                    [user.id],
-                )
-                row = cursor.fetchone()
-            if row and row[0] is not None:
-                return list(row[0])
-            return None
+        return cls._emittenti_dal_bb(user, "pk", cache)
 
-        return _cached(cache, "emittenti_pk_ids", _query)
+    @classmethod
+    def _emittenti_dal_bb(
+        cls, user: Any, convention: str, cache: dict[str, Any] | None
+    ) -> list[int] | None:
+        """Scopo: Sede unica dei due metodi emittenti: risolve il perimetro
+        col BB `emittente_scope_helpers.fetch_emittenti_scope_ids` e lo tiene
+        nella cache della richiesta.
+
+        ⛔ Fino al 2026-11-24 i due metodi interrogavano le funzioni DB per
+        conto loro: una seconda sede della stessa domanda (regola del 2), che
+        con `user=None` usciva come `AttributeError`, cioe' un 500 generico.
+        Ora un utente assente o anonimo (`id` None) e' il rifiuto dichiarato
+        `E_SCOPE_SENZA_UTENTE` del BB (D-K5 a, Tid,
+        brief-db-porte-aperte-dalla-sola-guc §4.7). Prima l'anonimo passava
+        NULL e il DB rispondeva chiuso (`'{}'`): chiuso era e chiuso resta, ma
+        ora lo dice. Un rifiuto non entra in cache.
+
+        Il BB si chiama attraverso il modulo, non importato per nome: cosi' il
+        patch del BB di test (`perimetro_admin_globale_di_prova`) arriva anche
+        qui."""
+        def _query() -> list[int] | None:
+            return emittente_scope_helpers.fetch_emittenti_scope_ids(
+                getattr(user, "id", None), convention=convention,
+            )
+
+        return _cached(cache, f"emittenti_{convention}_ids", _query)
 
     @classmethod
     def get_emittente_for_user(
@@ -297,11 +303,17 @@ class PermissionResolver:
         """Scopo: Risolve l'emittente fiscale 1-a-1 dell'utente (refactor
         operatore-emittenti). Wrapper Python su `script.fn_resolve_emittente_for_user`.
 
-        Ritorna `emittenti_fiscali.id` (PK reale) se l'utente ha esattamente
-        una riga in `config.user_emittenti_fiscali` (operatore o admin di
-        emittente), altrimenti `None`:
-          - admin globale (0 righe in `user_emittenti_fiscali`) → None
+        L'emittente DI CHI AGISCE, con la regola unica della funzione DB (rev
+        2026-08-04): l'emittente attivo (GUC `app.current_emittente_id`) se e'
+        valido per l'utente, altrimenti la sua riga in
+        `config.user_emittenti_fiscali`. Ritorna la PK `emittenti_fiscali.id`,
+        oppure `None`:
+          - super admin in «tutti gli emittenti» (GUC vuota, nessuna riga) → None
+          - operatore senza riga (non configurato) → None
           - istanza "0 emittenti" (gestore = emittente) → None
+        Il super admin con un emittente scelto riceve QUELLO: la scelta
+        restringe, e il controllo di validita' passa da
+        `fn_check_user_emittente_scope`. Nessun ripiego sul gestore globale.
 
         I chiamanti devono trattare il `None` in base al loro contesto.
         Per la creazione BA, il check di legittimità "admin globale +
@@ -313,11 +325,24 @@ class PermissionResolver:
         questa funzione ritorna **la PK reale `emittenti_fiscali.id`**,
         NON `soggetto_ruolo_id`.
         """
+        return cls.get_emittente_for_user_id(user.id, cache=cache)
+
+    # Scopo: la stessa risposta di `get_emittente_for_user`, dato l'id
+    #        dell'utente: per chi ha in mano `auth_user_id` e non l'utente (i
+    #        service). La funzione del DB vuole solo l'id: leggere prima l'utente
+    #        (`utente_per_id`) sarebbe una query in piu' per non usarlo.
+    # ⭐ Regola del 2 (2026-11-25, /verifica di brief-be-fe-BB-audit E1-3/E1-4,
+    #    ok Tid): `utente_per_id` + `get_emittente_for_user` stava in
+    #    `valuta_resolver` e nel gate L2 del contratto alla nascita.
+    @classmethod
+    def get_emittente_for_user_id(
+        cls, auth_user_id: int, *, cache: dict[str, Any] | None = None
+    ) -> int | None:
         def _query() -> int | None:
             with connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT script.fn_resolve_emittente_for_user(%s)",
-                    [user.id],
+                    [auth_user_id],
                 )
                 row = cursor.fetchone()
             return int(row[0]) if row and row[0] is not None else None

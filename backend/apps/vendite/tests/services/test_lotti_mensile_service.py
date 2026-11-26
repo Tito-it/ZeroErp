@@ -30,7 +30,7 @@ class LottiMensileServiceTests(TestCase):
         vendite_service.VenditeRepository, "count_lotti_per_mese", autospec=True, return_value={},
     )
     def test_dodici_mesi_zero_riempiti_in_ordine(self, _mock_repo):
-        out = fn_lotti_mensile(anno=2026)
+        out = fn_lotti_mensile(auth_user_id=7, anno=2026)
         self.assertEqual(out["anno"], 2026)
         mesi = out["mesi"]
         self.assertEqual(len(mesi), 12)
@@ -45,7 +45,7 @@ class LottiMensileServiceTests(TestCase):
         return_value={1: 3, 7: 5},
     )
     def test_conteggi_mappati_sul_mese_giusto(self, _mock_repo):
-        mesi = fn_lotti_mensile(anno=2026)["mesi"]
+        mesi = fn_lotti_mensile(auth_user_id=7, anno=2026)["mesi"]
         self.assertEqual(mesi[0]["n_lotti"], 3)   # gennaio
         self.assertEqual(mesi[6]["n_lotti"], 5)   # luglio
         self.assertEqual(mesi[1]["n_lotti"], 0)   # febbraio (assente → 0)
@@ -64,5 +64,5 @@ class LottiMensileServiceTests(TestCase):
     def test_anno_fuori_range(self):
         for anno in (1999, 2101):
             with self.assertRaises(ServiceError) as ctx:
-                fn_lotti_mensile(anno=anno)
+                fn_lotti_mensile(auth_user_id=7, anno=anno)
             self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")

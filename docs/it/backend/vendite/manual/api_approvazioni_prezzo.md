@@ -162,13 +162,12 @@ offerta sono speculari (cambiano tabella riga e codice not-found,
         "action_reason": null
       }
     ],
-    "count": 1,
-    "limit": 25,
-    "offset": 0
+    "count": 1
   }
 }
 ```
 
+- Envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)): dal 2026-11-24 la risposta non ripete più `limit`/`offset`.
 - Filtra automaticamente:
   - `tipo_prestazione_id = 9001` (codice `APPROVAZIONE_PREZZO`)
   - `stato_codice_interno = 'APERTA'`

@@ -74,9 +74,9 @@ Tutte le risposte usano l'envelope standard:
 | `limit` | int | No | Righe per pagina, default `25`, max `200` |
 | `offset` | int | No | Righe da saltare, default `0` |
 | `order_by` | string | No | `codice`, `descrizione` (default), `uom_codice`, `attivo`, `data_insert`, `data_update` |
-| `order_dir` | string | No | `asc` oppure `desc`. Assente: `asc`, salvo le colonne data (`data_insert`, `data_update`) che partono `desc` |
+| `order_dir` | string | No | `asc` oppure `desc`. Assente: `asc` su ogni colonna, date comprese (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata) |
 
-⚠️ La paginazione è `limit`/`offset`: `page`/`page_size` in query sono un 400 `E_VALIDATION_INPUT` (dal 2026-10-20; prima erano ignorati). In risposta `page` e `page_size` sono calcolati da `limit`/`offset`.
+⚠️ La paginazione è `limit`/`offset`: `page`/`page_size` in query sono un 400 `E_VALIDATION_INPUT` (dal 2026-10-20; prima erano ignorati). La risposta è `{count, results}` ([api.md §Paginazione](../../../dev/api.md)): dal 2026-11-24 non riporta più `page` e `page_size`.
 
 #### Risposta (200)
 
@@ -84,9 +84,6 @@ Tutte le risposte usano l'envelope standard:
 {
   "data": {
     "count": 1,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": "019bbee2-5f6a-704f-bbd0-34ed84db252d",
@@ -481,9 +478,6 @@ globale, `emittente_fiscale_id` non serve.
 {
   "data": {
     "count": 2,
-    "page": 1,
-    "page_size": 25,
-    "total_pages": 1,
     "results": [
       {
         "id": 1,
@@ -671,7 +665,7 @@ Envelope paginato standard. Parametri (facoltativi): `valido_al` (data
 fine da quel giorno; assente = tutte le versioni; malformata = `400`),
 `search` (codice e descrizione del componente, dal catalogo), `order_by` /
 `order_dir` (whitelist `COMPONENTI_SORT_COLUMNS`; assente: `valido_dal` DESC;
-`valido_al` vuoto si ordina come «infinito»; le date partono DESC), `limit` /
+`valido_al` vuoto si ordina come «infinito»; senza `order_dir` la colonna chiesta va in crescente; il default della lista resta il suo), `limit` /
 `offset`.
 
 ⭐ **Percorso suo** e non `…/componenti/`: il cancello di perimetro emittente
@@ -883,11 +877,10 @@ Prove: `apps/catalogo/tests/db/test_note_catalogo_db.py` (sul DB vero),
 | `uom_id` | int | No | Filtra le conversioni con `uom_id` come from o to |
 | `limit` | int | No | Default `25`, max `200` |
 | `offset` | int | No | Default `0` |
-| `order_by` | string | No | `uom_from_codice` (default), `uom_to_codice`, `fattore`, `valido_dal`, `valido_al` (vuoto = infinito), `attivo` |
-| `order_dir` | string | No | `asc`/`desc`. Assente: `asc`, salvo `valido_dal`/`valido_al` che partono `desc` |
+| `order_by` | string | No | `uom_from_codice` (default), `uom_to_codice`, `fattore`, `valido_dal`, `valido_al` (il vuoto va come il massimo, lo dichiara il catalogo), `attivo` |
+| `order_dir` | string | No | `asc`/`desc`. Assente: `asc` su ogni colonna, date comprese (dal 2026-11-24 nessuna colonna ha un verso di partenza proprio: la regola «le date partono `desc`» è ritirata) |
 
-Risposta: envelope paginato standard (`count`, `page`, `page_size`,
-`total_pages`, `results`): non è la lista completa. Dal 2026-11-11 la lista
+Risposta: envelope di lista `{count, results}` (`pagina_con_totale`, [api.md §Paginazione](../../../dev/api.md)): non è la lista completa. Dal 2026-11-11 la lista
 legge la vista `catalogo.vw_unita_misura_conversioni_dettaglio` (la `vista_sql`
 della lista 22) e ogni riga porta la stessa capability del §3.1
 (`puo_eliminarsi`, `motivo_non_eliminabile`, `puo_cambiare_attivo`,
@@ -1016,7 +1009,9 @@ permesso di **livello oggetto** sui rispettivi modelli.
   `E_SEARCH_VALIDATION` sotto 3 caratteri (`require_min_search_length`).
 - Liste paginate (articoli, UoM operative §3.1, tipologie UoM, unità di
   misura, conversioni, distinta §4.1-bis, note §5): `limit`/`offset`, default
-  `25`, max `200`; colonne data senza `order_dir` ordinano `desc`.
+  `25`, max `200`; senza `order_dir` la colonna chiesta va in crescente, date comprese
+  (la regola «le date partono `desc`» è ritirata dal 2026-11-24); il default
+  di ogni lista resta il suo.
 - `non_editable_fields: string[]` (Fase 5) sta su: dettaglio articolo,
   envelope lista/lookup UoM operative, riga di create/update UoM operativa,
   dettaglio conversione. **Non** c'è su dettaglio unità di misura, dettaglio

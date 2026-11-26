@@ -21,9 +21,10 @@ from apps.anagrafiche.services.emittenti_fiscali_service import (
 )
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import corpo_oggetto, paginated_envelope, parse_list_params, qp_bool_optional
+from apps.core.api.payload_validators import corpo_oggetto, parse_list_params, qp_bool_optional
 from apps.core.api.success_responses import success_response
 from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
+from apps.core.services.list_helpers import pagina_con_totale
 
 
 # =================================================================
@@ -64,7 +65,7 @@ class EmittentiFiscaliView(AdminAPIView):
             limit=p["limit"], offset=p["offset"],
             order_by=p["order_by"], order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=inline_serializer(name="EmittenteFiscaleCreateReq", fields={
@@ -183,7 +184,7 @@ class EmittentiFiscaliBillingAccountView(AdminAPIView):
             limit=p["limit"], offset=p["offset"],
             order_by=p["order_by"], order_dir=p["order_dir"],
         )
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
         request=inline_serializer(name="EmittenteFiscaleBACreateReq", fields={

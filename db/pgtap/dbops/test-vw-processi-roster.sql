@@ -185,14 +185,20 @@ BEGIN
     -- ⚠️ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): era DISABILITATO,
     --   che la tabella viva ora rifiuta (una veste si spegne con attivo = false).
     --   API_CLIENT e' un altro tipo di MACCHINA: passa il guard di coerenza
-    --   (early-exit) e quello sulla natura della credenziale (tecnica resta).
+    --   (early-exit) e quello sulla natura della credenziale.
+    -- ⚠️ Rev 2026-11-26 (D-G2-3, brief-db-accessi-area-clienti §5.1): tecnica
+    --   vale solo sulla veste OPERATORE (E_VESTE_TECNICA_SOLO_OPERATORE), quindi
+    --   cambia insieme al tipo, e torna insieme a lui sotto. API_CLIENT resta una
+    --   veste di macchina per il suo tipo (script.fn_veste_di_sistema).
     UPDATE anagrafiche.identita_digitali
-       SET ruolo_applicativo = 'API_CLIENT'::config.ruolo_applicativo
+       SET ruolo_applicativo = 'API_CLIENT'::config.ruolo_applicativo,
+           tecnica           = false
      WHERE id = v_idg;
     SELECT count(*) INTO v_resta FROM dbops.vw_processi_roster WHERE auth_user_id = v_user;
     PERFORM set_config('pgtap.senza_ruolo', v_resta::text, true);
     UPDATE anagrafiche.identita_digitali
-       SET ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+       SET ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo,
+           tecnica           = true
      WHERE id = v_idg;
 END
 $spegni$;

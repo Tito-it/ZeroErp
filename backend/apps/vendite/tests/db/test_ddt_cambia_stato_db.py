@@ -66,23 +66,22 @@ _FIXTURE: tuple[str, ...] = (
            dbops.fn_pgtap_crea_lotto_di_magazzino(art.art_l, 'BE-L3V-LB', script.fn_data_operativa() - 5)  AS lotto_b
       FROM art
     """,
+    # Il carico di giacenza dai BUILDER sui verbi del documento interno
+    # (`20261123-11`): alla chiusura delle sei tabelle (P-5c di
+    # brief-db-magazzino-tutte-le-scritture-dal-verbo) l'app non le scrive piu'.
+    "CREATE TEMP TABLE _inv AS SELECT dbops.fn_pgtap_crea_inventario(mag, '{}'::jsonb) AS id FROM _fix",
     """
-    CREATE TEMP TABLE _inv AS
-    WITH ins AS (INSERT INTO magazzino.inventari (magazzino_id) SELECT mag FROM _fix RETURNING id)
-    SELECT id FROM ins
-    """,
-    """
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, costo_unitario)
-    SELECT (SELECT id FROM _inv), art_g, 10, 5 FROM _fix
+    SELECT dbops.fn_pgtap_crea_riga_inventario(
+               (SELECT id FROM _inv), art_g, 10, '{"costo_unitario": 5}'::jsonb)
+      FROM _fix
     """,
     # L'articolo a lotti: 6 pezzi per lotto.
     """
-    INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, lotto_id, qta_contata, costo_unitario)
-    SELECT (SELECT id FROM _inv), art_l, lotto_a, 6, 3 FROM _lotti
-    UNION ALL
-    SELECT (SELECT id FROM _inv), art_l, lotto_b, 6, 3 FROM _lotti
+    SELECT dbops.fn_pgtap_crea_riga_inventario(
+               (SELECT id FROM _inv), art_l, 6, jsonb_build_object('lotto_id', lotto, 'costo_unitario', 3))
+      FROM _lotti, LATERAL (VALUES (lotto_a), (lotto_b)) v(lotto)
     """,
-    "UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = (SELECT id FROM _inv)",
+    "SELECT dbops.fn_pgtap_cambia_stato_documento_interno('INVENTARIO', (SELECT id FROM _inv), 'CONFIRM')",
     "SELECT magazzino.fn_posta_inventario((SELECT id FROM _inv))",
 )
 

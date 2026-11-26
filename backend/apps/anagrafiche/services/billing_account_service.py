@@ -74,7 +74,7 @@ class BillingAccountService:
         else:
             effective_limit = min(int(limit), _MAX_LIMIT)
 
-        # Scope emittente: None = nessuna restrizione (superuser), [] = nessun
+        # Scope emittente: None = nessuna restrizione (admin globale), [] = nessun
         # emittente autorizzato (nessun BA), altrimenti i soggetto_ruolo_id.
         emittente_ids = PermissionResolver.get_emittenti_sr_ids(user, cache={})
 
@@ -98,7 +98,6 @@ class BillingAccountService:
     #        (refactor operatore-emittenti, sez. 3 del WIP).
     #        Applica scope check sull'emittente fiscale del BA prima di
     #        delegare al lookup repository:
-    #          - superuser → bypass scope
     #          - user_emittente_id NULL (admin globale o "0 emittenti")
     #            → no check, vede tutto
     #          - operatore con emittente assegnato → BA deve appartenere
@@ -111,7 +110,6 @@ class BillingAccountService:
         billing_account_id: int,
         ruolo_codice_soggetto: str,
         user_emittente_id: int | None,
-        is_superuser: bool = False,
     ) -> dict[str, Any]:
         function_name = "anagrafiche.billing_account_service.list_utilities_for_ba"
 
@@ -142,9 +140,10 @@ class BillingAccountService:
                 detail=f"Nessun billing_account con id={billing_account_id}.",
             )
 
-        # Scope check sull'emittente del BA. Bypass per superuser e per
-        # admin globale / "0 emittenti" (user_emittente_id is None).
-        if not is_superuser and user_emittente_id is not None:
+        # Scope check sull'emittente del BA. Bypass per admin globale /
+        # "0 emittenti" (user_emittente_id is None). ⛔ Niente piu' bypass del
+        # superuser Django (D-J, 2026-11-24): l'amministratore e' SUPER_ADMIN.
+        if user_emittente_id is not None:
             ba_emittente_id = repository.get_emittente_fiscale_id(billing_account_id)
             if ba_emittente_id != user_emittente_id:
                 raise ServiceError(

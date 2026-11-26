@@ -34,10 +34,11 @@ Liste paginate:
   valori non interi → `limit_invalid`/`offset_invalid`, limiti da `limiti_pagina`
   (dal 2026-10-21 il solo dialetto delle liste)
 - `parse_list_params(qp, *, default_order="descrizione", default_limit=DEFAULT_LIMIT, max_limit=MAX_LIMIT)`
-- `envelope_da_offset(results, total_count, *, limit, offset)` — l'envelope
-  paginato da una finestra `limit`/`offset`
-- `pagina_di(offset, limit)` — la pagina (da 1) che la finestra mostra
-- `paginated_envelope(results, total_count, page, page_size)`
+  — dal 2026-11-24 non ritorna più `page`
+- ⛔ `envelope_da_offset`, `pagina_di` e `paginated_envelope` sono **ritirati**
+  dal 2026-11-24 (D-1 di brief-be-fe-BB-audit): l'envelope di ogni lista è
+  `{count, results}`, costruito da `pagina_con_totale(results, totale)` in
+  `apps/core/services/list_helpers.py` ([api.md §Paginazione](../../../dev/api.md))
 
 ## Output
 - valore coerente oppure `ValueError(f"{key}_invalid")` su input non valido
