@@ -76,17 +76,19 @@ BEGIN
       JOIN config.tipi_ruoli tr          ON tr.id = sr.tipo_ruolo_id
      WHERE ba.id = p_billing_account_id;
 
+    -- Un id ben formato senza billing account: la cosa indicata non
+    -- esiste (NON_TROVATO), non e' un parametro malformato.
     IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error(
             'anagrafiche',
             'fn_lookup_utilities_per_ba',
-            'E_PARAMETRO_INVALIDO',
+            'E_BILLING_ACCOUNT_NOT_FOUND',
             jsonb_build_object(
                 'detail', 'p_billing_account_id non e'' un billing account',
                 'billing_account_id', p_billing_account_id
             ),
             NULL::uuid,
-            'p_billing_account_id non e'' un billing account'
+            p_billing_account_id::text
         );
     END IF;
 
@@ -157,7 +159,7 @@ END
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_lookup_utilities_per_ba(p_billing_account_id bigint, p_ruolo_codice_soggetto text)
-IS 'Le utility ammesse per un billing account: quelle ammesse sia per il ruolo del soggetto del billing account (p_ruolo_codice_soggetto, per codice_interno: CL, FO, GE) sia per il ruolo dell''emittente (EF), con i parametri d''importo effettivi dell''azienda del billing account (anagrafiche.fn_parametri_importo_utility). Il billing account deve esistere ed essere nel perimetro di chi chiama, e il ruolo deve essere il suo: altrimenti E_PARAMETRO_INVALIDO, come per un parametro mancante. Ruoli e validita'' si leggono al giorno operativo. STABLE, SECURITY INVOKER.';
+IS 'Le utility ammesse per un billing account: quelle ammesse sia per il ruolo del soggetto del billing account (p_ruolo_codice_soggetto, per codice_interno: CL, FO, GE) sia per il ruolo dell''emittente (EF), con i parametri d''importo effettivi dell''azienda del billing account (anagrafiche.fn_parametri_importo_utility). Il billing account deve esistere ed essere nel perimetro di chi chiama, altrimenti E_BILLING_ACCOUNT_NOT_FOUND; il ruolo deve essere il suo, altrimenti E_PARAMETRO_INVALIDO, come per un parametro mancante. Ruoli e validita'' si leggono al giorno operativo. STABLE, SECURITY INVOKER.';
 ```
 
 </div>

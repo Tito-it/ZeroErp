@@ -1,8 +1,12 @@
 # Brief DB — Revisione dello schema `anagrafiche`: la documentazione, le segnalazioni di codice, i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-26
+## ⏭️ Chi riparte — aggiornato al 2026-11-27
 
-**Ripartono in due, senza aspettarsi.** La **sessione DB** con T8, il prossimo tema di §17.1: il giro 6 (T4, l'azienda
+**Ripartono in due, senza aspettarsi.** Il rosso del rubinetto degli accumulatori sul giro 6 è chiuso lato DB
+(§24.9: `20261126-42` applicato da Tid su scratch e dbdev, pgTAP verde, rubinetto senza accumuli, committato il
+2026-11-27); la sua richiesta va al **team BE/FE**. **Tid** con le decisioni di T8 (§25.5): l'analisi sul catalogo è scritta il
+2026-11-26 (§25), con la proposta di dividerlo in T8a conti, T8b emittente, T8c ruoli d'impresa; poi la **sessione
+DB** costruisce un giro alla volta, al via. Il giro 6 (T4, l'azienda
 del billing account) è chiuso lato DB, `20261126-26 … -41` applicati su scratch e dbdev, pgTAP verdi (Tid, 2026-11-26,
 §24.7), committato il 2026-11-26; il suo passaggio al BE (§24.5, §24.7) è del **team BE/FE**. Alla sessione DB resta
 anche da vagliare un rosso già presente su HEAD, la copia di `FATT` nella madre plurale (§21.7, esito). Il giro 5-bis (il
@@ -25,8 +29,8 @@ resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta d
 | 6 | sessione DB | Il giro dei metadati, per ciò che i giri di codice non hanno già riscritto | §8 | 4 |
 | 7 | sessione DB | Archiviazione in `work-done/`, col debito dei temi spostati scritto nei loro brief | §11 | 5, 6 |
 
-**Decisioni aperte di Tid:** nessuna del giro 6 (T4): D-T4-1 … -12 decise il 2026-11-26 (§24.5, §24.7.1, §24.7). Il giro 5-bis è ritirato (Tid, 2026-11-26, §23.4). Nessuna del giro 5 (D-T7b-1 … -7 prese come proposte, Tid 2026-11-25, §22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
-**Da committare:** niente: il giro 6 (T4) è committato (2026-11-26, «DB: anagrafiche giro 6 (T4)», insieme al giro 5-bis ritirato); i passaggi al BE dei giri 3 e 4 sono committati (2026-11-26, PR #257); il giro 5 è committato (DB `7f8d9506d`, BE 2026-11-26).
+**Decisioni aperte di Tid:** T8 (§25.5): D-T8-0 (la divisione e l'ordine), D-T8a-1 … -12, D-T8b-1 … -4, D-T8c-1 … -8. Nessuna del giro 6 (T4): D-T4-1 … -12 decise il 2026-11-26 (§24.5, §24.7.1, §24.7). Il giro 5-bis è ritirato (Tid, 2026-11-26, §23.4). Nessuna del giro 5 (D-T7b-1 … -7 prese come proposte, Tid 2026-11-25, §22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
+**Da committare:** `.codex/PROJECT_CONTEXT.md`; il rosso del rubinetto è committato (2026-11-27, «DB: anagrafiche giro 6, il billing account che non c'è ha il suo codice», insieme al brief con l'allineamento del §24 e l'analisi di T8, §25); il giro 6 (T4) è committato (2026-11-26, «DB: anagrafiche giro 6 (T4)», insieme al giro 5-bis ritirato); i passaggi al BE dei giri 3 e 4 sono committati (2026-11-26, PR #257); il giro 5 è committato (DB `7f8d9506d`, BE 2026-11-26).
 
 ## 0. Il piano da percorrere
 
@@ -112,7 +116,13 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] Giro 6: T4, apply su scratch e dbdev e pgTAP verdi col runner (Tid, 2026-11-26)
   * [x] Giro 6: T4, commit (2026-11-26, «DB: anagrafiche giro 6 (T4)»)
   * [ ] Giro 6: T4, il passaggio al BE (§24.5, §24.7): da girare
-  * [ ] Poi un giro per tema nell'ordine di §17.1: T8, T12, T3, T10, T11
+  * [x] Giro 6: il rosso del rubinetto sul `-39`, codice nuovo `E_BILLING_ACCOUNT_NOT_FOUND`: `-42`, CSV, pgTAP, baseline, doc, prova sullo scratch (2026-11-27, §24.9)
+  * [x] Giro 6: `-42`, apply su scratch e dbdev, pgTAP verde col runner, rubinetto senza accumuli (Tid, 2026-11-27)
+  * [x] Giro 6: `-42`, commit (2026-11-27)
+  * [ ] Giro 6: la richiesta al BE di §24.9: da girare
+  * [x] T8: analisi sul catalogo, guide verificate, ciò che esiste già; proposta di dividerlo in T8a, T8b, T8c (2026-11-26, §25)
+  * [ ] T8: le decisioni (Tid, §25.5)
+  * [ ] Poi un giro per tema nell'ordine di §17.1: T8 (uno o tre giri), T12, T3, T10, T11
 * **Fase 9 — Il giro dei metadati** (§8)
   * [ ] I COMMENT, i commenti nei corpi e le note di seed che i giri di codice non hanno già riscritto
 * **Fase 10 — L'archiviazione** (§11)
@@ -2415,7 +2425,7 @@ della persona. Una regola «nessun titolo su chi ha il solo CF» la renderebbe i
 prima che cosa del modello la diceva già (le colonne della natura, la matrice, il guard del titolo). Il giro è stato
 costruito e provato prima di accorgersene.
 
-## 24. Giro 6 — T4, l'azienda del billing account (2026-11-26: analisi letta sul catalogo, decisioni di Tid aperte)
+## 24. Giro 6 — T4, l'azienda del billing account (2026-11-26: decisioni prese, applicato, pgTAP verdi, committato; il passaggio al BE da girare)
 
 Il perimetro è S2, S24, S25, S26, S27, S28, S29, S31, S32, S33 (§17) e la FK di `emittenti_fiscali.valuta_id` portata da
 S53 (§17.1). Corpi letti sul catalogo dello scratch (`zeroerp_ruoli`) il 2026-11-26; sul backend si è guardato solo
@@ -2557,18 +2567,22 @@ cancellazione di un collegamento di un BA è rifiutata; la frase del blocco per 
 ### 24.6 Il piano del giro, dopo le decisioni
 
 * [x] Le decisioni (Tid, 2026-11-26, §24.5)
-* [ ] pgTAP rosso: un caso costruito per ogni regola (la nascita senza sessione collegata alla predefinita; il BA senza
+* [x] pgTAP rosso: un caso costruito per ogni regola (2026-11-26, §24.7) (la nascita senza sessione collegata alla predefinita; il BA senza
   collegamento rifiutato a fine transazione; la predefinita che si sposta senza toccare nessuno; la bozza che blocca;
   lo spostamento per modifica; il padre di un padre, il ciclo, il secondo padre per cliente e azienda, il cambio di
   padre con attività; la fattura con l'azienda sbagliata; la valuta inesistente; l'utente illeggibile; il lookup con
   BA o ruolo sbagliati; la creazione senza sessione con l'azienda chiesta)
-* [ ] changeSet (range da Tid), prova sullo scratch; i pgTAP che il ritiro dei guard della predefinita rompe,
+* [x] changeSet (range da Tid, `20261126-26 … -41`, 2026-11-26), prova sullo scratch; i pgTAP che il ritiro dei guard della predefinita rompe,
   riscritti nello stesso changeSet (`test-istanza-ba-gestore-globale-v1` e i gemelli)
-* [ ] la nota `_emittente-del-billing-account` riscritta (due livelli, tre movimenti, «Vedi anche» completo),
+* [x] (2026-11-26) la nota `_emittente-del-billing-account` riscritta (due livelli, tre movimenti, «Vedi anche» completo),
   `manual/billing_account`, le pagine delle funzioni ritirate, le guide indietro
-* [ ] apply e pgTAP (Tid); doc auto-generata rigenerata; commit; la richiesta al BE
+* [x] apply e pgTAP (Tid); commit (2026-11-26, «DB: anagrafiche giro 6 (T4)», PR #259)
+* [x] doc auto-generata rigenerata, nello stesso commit: la scheda di `fn_check_ba_padre` c'è, quelle degli oggetti
+  ritirati no, `index.ci.md` non linka più le pagine ritirate (verificato il 2026-11-26)
+* [ ] la richiesta al BE (§24.8): da girare; verificato il 2026-11-26 che il ramo BE non l'ha ancora presa
+  (`delete_mapping` e la riga 311 di `emittenti_fiscali_service.py` ci sono ancora)
 
-### 24.7 Che cosa è scritto (giro 6, in corso)
+### 24.7 Che cosa è scritto (giro 6: chiuso lato DB il 2026-11-26)
 
 Range dei changeSet: `20261126-26 … -40` (Tid, 2026-11-26: «il primo progressivo libero, altri cantieri fermi»),
 occupato per intero con segnaposto lo stesso giorno. Il giro si costruisce in due blocchi: **A** i difetti
@@ -2601,7 +2615,8 @@ indipendenti (S28, S31, S29, S32, S27), **B** il modello «ogni BA ha sempre il 
   `vendite/test-fatture-guard-emittente-ba-v1`: senza 0/3, con 3/3; invariati `test-chiave-fattura-tre-specchi-v1`,
   `test-lotto-rilancio-emittente-del-lotto-v1`, `test-registri-per-emittente-v1`,
   `test-ricalcola-totali-fattura-arrotondamento` (il motore scrive l'azienda del BA).
-* ⏳ **Blocco B**, il modello «ogni BA ha sempre il suo collegamento» (`-26`, `-27`, `-29 … -35`): da scrivere.
+* ⚠️ *Superato: il blocco B è scritto, provato e applicato più sotto («Blocco B scritto», «Blocco B provato»,
+  «Applicato»).* ⏳ **Blocco B**, il modello «ogni BA ha sempre il suo collegamento» (`-26`, `-27`, `-29 … -35`): da scrivere.
 
 #### 24.7.1 Il blocco B, letto prima di scrivere (2026-11-26): tre fatti che ne cambiano la portata
 
@@ -2662,7 +2677,8 @@ leggono. Il `-39` riprovato dopo il ritocco: invariato (3/3).
   `test-ba-cambio-emittente-storia-v1` invariato (14/14). ⚠️ Tre pagine `manual/` citano il nome vecchio e la regola
   vecchia (`fn_guard_ba_cambio_emittente`, `fn_ba_ha_storia_emittente`, `fn_get_storia_emittente_ba`): si correggono
   nel giro della documentazione.
-* ⏳ **Blocco B scritto** (2026-11-26): `-27` (la nascita sempre collegata: azienda di chi agisce, o predefinita senza
+* ✅ **Blocco B scritto** (2026-11-26; ⚠️ il «da adeguare» e il «fatto nuovo per Tid» qui sotto sono superati da
+  «Blocco B provato» e da D-T4-12, più sotto): `-27` (la nascita sempre collegata: azienda di chi agisce, o predefinita senza
   sessione; senza aziende `E_EMITTENTE_DEFAULT_MISSING`; senza il blocco `EXCEPTION`, la seconda metà di S31), `-29`
   (i BA scollegati collegati alla predefinita di oggi), `-30` e `-31` (il collegamento non si cancella e non passa a un
   altro conto: il building block «rifiuta sempre», `E_BA_COLLEGAMENTO_NON_SI_TOGLIE`, `E_BA_COLLEGAMENTO_NON_SI_SPOSTA`),
@@ -2697,7 +2713,8 @@ leggono. Il `-39` riprovato dopo il ritocco: invariato (3/3).
   quarantina, §24.7); i rossi che restano (`test-cliente-manuale-chiave-unica-v1` 1,
   `test-billing-account-guard-cf-confrontabile-v1` 1, `test-distinta-numerazione-registro-v1` 2,
   `test-rls-billing-account-returning-secondo-emittente` 1) ci sono uguali senza l'estratto: da owner, non del giro.
-* ⏳ **Resta del giro 6**: la documentazione (la nota `_emittente-del-billing-account` da riscrivere: due livelli,
+* ⚠️ *Superato: la documentazione, D-T4-12, apply e pgTAP sono fatti più sotto; resta solo il passaggio al BE (§24.8).*
+  **Restava del giro 6**: la documentazione (la nota `_emittente-del-billing-account` da riscrivere: due livelli,
   niente movimento 4, il collegamento che non si toglie; le pagine `manual/` dei sei oggetti toccati, delle due funzioni
   nuove e delle quattro ritirate; le guide `generazione-cliente`, `emittenti-fiscali`, `fatturazione`; le tre pagine col
   nome vecchio del test della storia, le sette che citano il test ritirato); la decisione di Tid su
@@ -2723,7 +2740,8 @@ leggono. Il `-39` riprovato dopo il ritocco: invariato (3/3).
   `script.fn_check_ba_cambio_emittente`, e il commento del ramo NULL nel corpo di `fn_ba_ha_storia_emittente`
   (rimandavano agli oggetti ritirati o alla regola del documento numerato).
 * **Debito residuo, letto dalla revisione della doc** (non del giro): `anagrafiche/index.ci.md` (generato) linka le
-  pagine `manual/` ritirate fino alla prossima rigenerazione; `script/manual/fn_check_user_can_create_ba.md` e
+  pagine `manual/` ritirate fino alla prossima rigenerazione (⚠️ chiuso: rigenerato nel commit del giro, verificato il
+  2026-11-26); `script/manual/fn_check_user_can_create_ba.md` e
   `fn_get_ba_emittente_sr_id.md` fuori standard di forma (titoli, cronaca), `famiglie_documento.md` col «Vedi anche»
   malformato: vanno con T11.
 * **Da girare al BE** (con §24.5): la lista dei collegamenti senza cestino (`script.fn_check_ba_cambio_emittente` col
@@ -2742,5 +2760,177 @@ leggono. Il `-39` riprovato dopo il ritocco: invariato (3/3).
 * ⏳ Il passaggio al BE: §24.5 («Richiesta al team BE/FE») e §24.7 («Da girare al BE»). Il censimento applicativo:
   «censisci chi scrive o cancella `anagrafiche.emittenti_fiscali_billing_account` e chi conta sul BA senza
   collegamento, o sulla cancellazione di un BA».
-* Debito residuo, non del giro: le pagine fuori forma e l'indice generato (§24.7), con T11; i casi 4-7 di
+* Debito residuo, non del giro: le pagine fuori forma (§24.7), con T11 (l'indice generato è già rigenerato); i casi 4-7 di
   `test-fn-lookup-utilities-per-ba` che dipendono dai dati della macchina.
+* ✅ Il rosso del rubinetto degli accumulatori sul `-39`: chiuso col `-42` (2026-11-27, §24.9); la sua richiesta al BE è da girare.
+
+### 24.9 Il rosso del rubinetto: il billing account che non c'è ha il suo codice (2026-11-27)
+
+**Il fatto.** In CI (`scripts/codici-errore-baseline.sh`, il passo B-7) il giro 6 è rosso:
+`E_PARAMETRO_INVALIDO` ha acquistato la famiglia `NOT_FOUND`. Il punto è il ramo `IF NOT FOUND` che il `-39` (S32) ha
+messo in `anagrafiche.fn_lookup_utilities_per_ba`: un id ben formato che non è un billing account, o che chi chiama
+non vede (la funzione è INVOKER), sollevava `E_PARAMETRO_INVALIDO`. Quel codice (`DATO_ERRATO`) copre la forma dei
+parametri (NULL, `<= 0`, vuoto, fuori elenco); «la cosa indicata non esiste» è la classe `NON_TROVATO` (api.md
+§Tassonomia errori). Nel catalogo non c'era un codice per il billing account non trovato. Il secondo ramo del `-39`
+(il ruolo che non è quello del BA) resta `E_PARAMETRO_INVALIDO`: è un valore sbagliato del chiamante.
+
+**Decisione di Tid** (2026-11-27): codice nuovo, non baseline allargata.
+
+**Guide verificate** (`guide_coinvolte.py` sul `-42` e sul pgTAP, 2026-11-27): 21 guide, raccolte dagli oggetti che il
+corpo nomina; nessuna descrive il lookup delle utility né i suoi rifiuti (`emittenti-fiscali`, `generazione-cliente`,
+`soggetti-e-ruoli-anagrafici`, `pgtap-come-si-scrive-un-test` lette sul punto): **coerenti**. La funzione resta orfana
+di guida, come al `-39`: è un dettaglio del lookup, non un concetto del dominio.
+
+**Che cosa è scritto** (2026-11-27; applicato da Tid su scratch e dbdev, pgTAP verde col runner, `codici-errore-baseline.sh`
+sullo scratch senza accumuli né rientrati, doc auto-generata rigenerata, lo stesso giorno):
+
+* `20261126-42-update-fn-lookup-utilities-per-ba-ba-non-trovato`: il corpo vivo del catalogo (uguale al `-39`), cambiano
+  il ramo `IF NOT FOUND` (`E_BILLING_ACCOUNT_NOT_FOUND`, l'id nel VARIADIC) e il COMMENT; attributi vivi invariati
+  (STABLE, INVOKER, `COST 100`, `ROWS 1000`, nessuna `SET`). Firma invariata.
+* `E_BILLING_ACCOUNT_NOT_FOUND` (`NON_TROVATO`) in `codici_errore.csv`, il messaggio in `messaggi_errore.csv` (id 1556).
+* pgTAP `test-fn-lookup-utilities-per-ba-legge-il-ba-v1`: i test 1 e 2 asseriscono il **codice** con
+  `dbops.fn_pgtap_codice_errore` (prima il testo). Prova sullo scratch (`prova_changeset.py`, con la riga del codice
+  seminata nella stessa transazione): senza 2/3, con 3/3; catalogo identico dopo il `ROLLBACK`. Gli altri due pgTAP che
+  nominano la funzione (`test-fn-lookup-utilities-per-ba`, `vendite/test-parametri-importo-utility-v1`) non asseriscono il
+  ramo cambiato.
+* `manual/fn_lookup_utilities_per_ba`: il codice nuovo nei rifiuti e nei codici errore.
+* Baseline B-7 (`db/baseline-codici-errore-famiglie.tsv`), solo le righe di questo giro: `E_PARAMETRO_INVALIDO` torna
+  a `ENUM,PARAMETRO,VALORE_ATTESO` (270 punti, misurati: 271 sullo scratch col `-39`, meno il ramo spostato);
+  `E_BILLING_ACCOUNT_NOT_FOUND NOT_FOUND 1` aggiunta; tolte `E_ALBERO_EMITTENTE_MISTO` ed `E_ISTANZA_EMITTENTI_DIVERSI`,
+  i due blu dello stesso rosso: il giro 6 ha riscritto `fn_guard_albero_ba_emittente` e `fn_guard_istanza_ba_emittente`,
+  e i loro punti stanno ora sotto guardie che la misura legge IGNOTO (escono dallo scatto). Le altre differenze fra la
+  baseline e lo scatto dello scratch (codici nuovi di altri cantieri, conteggi) non sono di questo giro e restano.
+  ⚠️ Il confronto torna verde solo con il `-42` applicato: finché non lo è, sullo scratch il rosso resta.
+
+**Richiesta al team BE/FE** (dopo l'apply del `-42`):
+
+* rigenerare `error_policies_generated.py` (`./manage-env.sh genera_error_policies`): il codice nuovo è `NON_TROVATO`;
+* il lookup delle utility di un BA (`GET` delle utility del billing account, `BillingAccountUtilitiesView`,
+  `backend/apps/core/db/lookup_repository.py`) su un BA inesistente o fuori perimetro risponde ora **404**
+  `E_BILLING_ACCOUNT_NOT_FOUND`, non più 400 `E_PARAMETRO_INVALIDO`. **Censisci chi chiama
+  `anagrafiche.fn_lookup_utilities_per_ba` e chi conta su quel 400** (test, mock, rami del frontend sull'esito); i due
+  file citati sono quelli noti, non l'elenco chiuso;
+* `docs/it/backend/anagrafiche/manual/api_emittenti_fiscali.md` (la sezione del lookup): il 404 fra le risposte.
+
+## 25. T8 — ruoli d'impresa, conti, emittente (2026-11-26: analisi letta sul catalogo, decisioni di Tid aperte)
+
+Il perimetro è S12, S13, S15 (la parte che serve), S18, S54, S55, S56, S57, R-BE3 e R-BE4 (§17). S53 resta a T12. Corpi,
+trigger, vincoli e COMMENT letti sul catalogo dello scratch (`zeroerp_ruoli`) il 2026-11-26, confrontati con dbdev dove
+serviva; sul backend solo chi chiama, in sola lettura. Nessuna misura sui dati entra come motivo.
+
+**Proposta di forma: T8 si divide in tre giri** (Tid decide, D-T8-0), come T7. Le tre famiglie non condividono oggetti e
+ognuna ha le sue decisioni: **T8a** i conti bancari (S18, S55, R-BE4), **T8b** l'emittente (S54, e il §15.2
+dell'emittente), **T8c** i ruoli d'impresa (S12, S13, S56, S57, R-BE3). Ordine proposto: T8c, che porta il fatto di
+§25.1 e tocca gli stessi ruoli di T12; poi T8b, il più piccolo; poi T8a, il più largo.
+
+**Guide verificate** (`scripts/guide_coinvolte.py --oggetti`, 20 oggetti, 2026-11-26):
+
+| Guida o nota | Esito |
+| --- | --- |
+| [gestione-conti-bancari](../../guide/gestione-conti-bancari.md) | **coerente** col codice di oggi: i limiti di §«Che cosa il database non tiene» sono la fotografia del giro 0d (2026-11-22), non decisioni. **Indietro** per ogni proposta accettata di T8a (§«Il registro degli IBAN», §«I due legami», §«Che cosa si spegne», §«I mandati SEPA»). Se D-T8a-7 è **b**, «la validità non conta» per il predefinito diventa una decisione da scrivere |
+| [emittenti-fiscali](../../guide/emittenti-fiscali.md) §1 | **sbagliata**: dice che `fn_get_emittente_fiscale_pk` e `_id` passano da una chiave all'altra dell'emittente; prendono tutte e due un `billing_account_id`. Si riscrive in T8b. §«Il codice» coerente |
+| [soggetti-e-ruoli-anagrafici](../../guide/soggetti-e-ruoli-anagrafici.md) | **coerente** (SR contro PK, conti, «ogni specializzazione controlla il tipo»). **Indietro** con S56a (il soggetto della specializzazione non si sposta, non lo dice) e §5b («punta alla specializzazione quando conta il tipo», con D-T8c-3). Il legame reseller–BA non è descritto: manca |
+| [gestione-dei-pagamenti](../../guide/gestione-dei-pagamenti.md) | **coerente** sul verso diretto di PSP e canali d'incasso; **indietro** dopo S13 (un PSP con enti attivi non si spegne né si cancella) e D-T8a-5 (il verso del legame) |
+| [risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md) §«Soggetto gestore» | **coerente** («singleton»): è il codice a tenerlo debole (S57a) |
+| [automazione-db](../../guide/automazione-db.md) | **coerente**: §4.8 (`CODICE_MAIUSCOLO`, base di S54c) e la riga della FK verso una UNIQUE non-PK che genera il `require_attivo` (base di D-T8c-3 e S56b) |
+| nota [_emittente-del-billing-account](../../dbzero/anagrafiche/_emittente-del-billing-account.md) | **coerente**; non dice cosa fa il risolutore con un id che non è un BA (con D-T8b-1 **a** si aggiunge). ⚠️ Indietro i **COMMENT** di `script.fn_get_ba_emittente_sr_id` e `fn_get_emittente_fiscale_id` («un BA che resta senza legame», «BA esistente ma non mappato»): il `-41` del giro 6 non li ha ripresi |
+| `configurazione-e-gestione-parametri`, `iva-risolutore-di-riga`, `contratto-guc-app`, `pgtap-come-si-scrive-un-test` | nessuna frase sul perimetro: **coerenti** per assenza |
+
+**Orfani**: `resellers_billing_account` è un concetto di dominio (il reseller di una fornitura nel tempo) senza guida:
+va in `soggetti-e-ruoli-anagrafici`. `vendite.fn_build_fattura_key` va nel «Vedi anche» di `fatturazione`.
+`gestori_utilities` e le due funzioni del fornitore dipendono da D-T8c-8 e D-T8c-6; `trgfn_resellers_guard_attivo` è
+un dettaglio interno, che si ritira se D-T8c-3 è la FK.
+
+### 25.1 Un fatto nuovo, fuori elenco: il guard di ruolo montato due volte su un database ricostruito
+
+Riletto sul catalogo il 2026-11-26. Sullo **scratch** sei specializzazioni (`clienti`, `emittenti_fiscali`, `fornitori`,
+`gestori`, `resellers`, `vettori`) hanno due trigger sulla stessa funzione di guard: `trg_<t>_guard_ruolo_<r>_ins_upd`
+e il vecchio `trg_<t>_ins_upd_check_ruolo_<r>`. Su **dbdev** solo il primo. Causa: `20251205-03` fa `DROP TRIGGER IF
+EXISTS trg_<t>_check_ruolo_<r>_ins_upd`, ma il nome nato dalla prima generazione è `trg_<t>_ins_upd_check_ruolo_<r>`.
+Effetto: in CI e su ogni installazione nuova il guard gira due volte (innocuo, ma è una divergenza fra dev e CI, e
+un pgTAP che conta i trigger di una tabella vede numeri diversi). Correzione: un changeSet in `20_code` con i sei `DROP
+TRIGGER IF EXISTS` del nome vero; nessuna decisione, ma tocca clienti ed emittenti, fuori da T8: si propone nel primo
+giro di T8 (T8c).
+
+### 25.2 T8a — i conti bancari (S18, S55, R-BE4)
+
+Esiste già: `trgfn_conti_bancari_normalize`, `uq_conti_bancari_iban`, i CHECK di IBAN, BIC e paese; su ognuno dei due
+legami il guard «conto attivo» (`E_CONTO_BANCARIO`, immediato) e il REQUIRE dell'automazione ATTIVO (differito).
+Nessuna delle quattro tabelle ha lock di colonna; nessuna è in `tabelle_gestibili`. pgTAP: `test-conto-incasso-un-solo-soggetto`,
+`test_fn_get_conto_bancario_predefinito`, `test-conti-bancari-istanza-cascata`, `test_vw_conti_bancari_per_ruolo_gestore`,
+`create-soggetto-bank-branches`; nessuno prova `E_CONTO_BANCARIO`, la normalizzazione, il guard SEPA, `uso`, il paese,
+il predefinito bloccato.
+
+| # | Il catalogo oggi | Natura | Proposta |
+| --- | --- | --- | --- |
+| S18a «conto attivo» in due sedi | regge: guard `BEFORE` e REQUIRE differito dicono la stessa cosa, il differito non parla mai | doppione | **D-T8a-1**: (a) una sede, l'automazione (errore al COMMIT), i due guard si ritirano; (b) restano i guard immediati e si toglie il REQUIRE. Proposta **a** |
+| S18b / R-BE4 predefinito bloccato | regge: a DB niente; nel BE `ContiBancariService._guard_predefinito_bloccato`, `E_ANAG_VALIDAZIONE` | regola di dominio fuori dal DB | **D-T8a-2**: CHECK `NOT (predefinito AND bloccato)` sui due legami, codice suo. Cambia prima il DB, poi il BE ritira il guard |
+| S18c `paese` | regge: il normalize lo ricava solo se NULL | difetto (derivato dell'IBAN) | **D-T8a-3**: (a) sempre ricalcolato dall'IBAN; (b) rifiutato se diverge. Proposta **a** |
+| S18d `utility_id` | regge: `emittenti_fiscali_utilities.utility_id` `bigint` contro `config.utilities.id` `integer` | difetto di tipo | `ALTER … TYPE integer`; stesso difetto su `pdp.utility_id` (T3) |
+| S55a IBAN sotto i legami | regge: nessun lock | difetto («un IBAN esiste una volta») | **D-T8a-4**: lock di `iban` (e `bank_branch_id`?), con quello di `conto_bancario_id` e del soggetto/ruolo sui legami |
+| S55b `uso` del legame del ruolo | regge: il guard guarda solo dal lato del canale; il BE ammette `uso` in modifica | difetto (garanzia di un solo verso) | **D-T8a-5**: (a) lock di `uso` sui due legami; (b) guard solo se il legame è citato. Proposta **a**; il BE toglie `uso` dalle colonne modificabili |
+| S55c soggetto del ruolo attivo | regge: il legame del soggetto ha REQUIRE e BLOCK, quello del ruolo no | asimmetria non scritta | **D-T8a-6**: righe ATTIVO REQUIRE e BLOCK fra `soggetti_ruoli` e `soggetti_ruoli_conti_bancari` (da leggere con T12) |
+| S55d predefinito a scadenza | regge: gli indici del predefinito ignorano la validità | difetto di modello | **D-T8a-7**: (a) EXCLUDE sul periodo dove `predefinito`, e il lettore prende il predefinito valido oggi; (b) voluto, e si scrive |
+| S55e normalize | regge: toglie solo gli spazi; il BE ricopia la normalizzazione | difetto + logica duplicata | **D-T8a-8**: via tutto ciò che non è alfanumerico da IBAN e BIC (anche delle filiali); il BE ritira la copia |
+| S55f BIC | non regge alla lettera (maiuscolo e senza spazi), resta come S55e | parziale | con D-T8a-8 |
+| S55g filiale e IBAN | regge: ABI e CAB di un IBAN `IT` non si confrontano con la filiale | difetto | **D-T8a-9**: guard per i paesi con la coppia nell'IBAN, oppure limite dichiarato |
+| S55h ABI/CAB su due banche | regge: UNIQUE per ruolo banca | da decidere (`bank_code` è generico) | **D-T8a-10**: UNIQUE `(bank_code, branch_code)` (per paese), oppure voluto |
+| S55i `iban_snapshot` del SEPA | regge: normalizzato, non confrontato col conto | voluto per lo storico, nascita non garantita | **D-T8a-11**: alla nascita e al cambio del legame vale l'IBAN del conto o NULL. Tocca `pagamenti` |
+| fuori elenco: il BLOCK dello spegnimento del conto | conta anche i legami chiusi: un conto con storia non si spegne | come S57e | **D-T8a-12**: il BLOCK guarda solo i legami validi oggi o dopo |
+
+Ricadute BE (chi cambia): `conti_bancari_service.py` (guard del predefinito, copia della normalizzazione, `uso`),
+`conti_bancari_repository.py` (colonne modificabili, normalizzazione), i codici d'errore; `pagamenti` per lo snapshot.
+
+### 25.3 T8b — l'emittente (S54, §15.2)
+
+| # | Il catalogo oggi | Natura | Proposta |
+| --- | --- | --- | --- |
+| S54a `fn_get_emittente_fiscale_id` e `_pk` su un id che non è un BA | regge **anche dopo il giro 6**, provato in una transazione in sola lettura: un id inesistente riceve la predefinita | difetto, più netto col «BA sempre collegato»: i livelli 2 e 3 servono solo nell'istante del RETURNING e per l'id sbagliato. Precedente: S32 nel giro 6 | **D-T8b-1**: (a) i due involucri rifiutano un id che non è un BA (`E_PARAMETRO_INVALIDO`), con una `fn_check_*` DEFINER perché sono INVOKER e `billing_account` ha la RLS; (b) com'è. ⛔ Non nel lettore `script.fn_get_ba_emittente_sr_id`, che le policy `ef_whitelist` chiamano |
+| S54b `fn_parametri_importo_utility` con un ruolo non `EF` | regge: LEFT JOIN, ripiego silenzioso sui valori di sistema | difetto | **D-T8b-2**: (a) rifiuto; (b) zero righe; (c) com'è. Proposta **a**. Chiamanti: `fn_ricalcola_totali_fattura`, `fn_lookup_utilities_per_ba`; nessuno nel BE |
+| S54c il maiuscolo due volte (`a05`, `a15`) | regge, ma tutti e due chiamano `script.fn_codice_normalizzato`; `a05` deve giudicare il valore normalizzato prima del CHECK, `a15` è l'automazione | **voluto** | **D-T8b-3**: si chiude come voluto, la ragione nel commento del corpo di `a05` |
+| §15.2 `varchar(10)` | regge: commento del corpo di `guard_codice_forma` e test 9 del suo pgTAP; la colonna è `varchar(32)`, il limite lo tiene il CHECK | metadato stantio | si correggono commento e ragione del test |
+| §15.2 `E_EMITTENTE_DEFAULT_SINGLETON` | il guard differito parla solo per «zero predefinite»; nessun pgTAP; frase e causa NULL nel catalogo | manca test e testo | **D-T8b-4**: pgTAP costruito + frase e causa |
+| §15.2 il ruolo non `EF` | nessun pgTAP del rifiuto `E_SOGGETTI_RUOLI` | manca test | con D-T8b-4 |
+| S15 `trgfn_emittenti_fiscali_normalize` | `RETURN NEW` | forma | resta a T11, o si anticipa il ritiro |
+
+Chiamanti BE di `_pk` (l'id può arrivare da una richiesta): `billing_account_repository.py`, `valuta_resolver.py`,
+`billing_account_service.py`, `pratiche_repository.py`, `pipeline_repository.py`, `preventivi_repository.py`,
+`contratti_repository.py`; di `_id`: `commesse_repository.py`. Con D-T8b-1 **a** cambia prima il DB.
+
+### 25.4 T8c — i ruoli d'impresa (S12, S13, S56, S57, R-BE3)
+
+Già chiuso dal giro 3: S52 (`soggetti_ruoli.tipo_ruolo_id` e `soggetto_id` bloccati). `create-soggetto-gestori.sql`
+non è più nelle baseline dei rossi: la nota di §15.2 è superata.
+
+| # | Il catalogo oggi | Natura | Proposta |
+| --- | --- | --- | --- |
+| S12a `resellers.codice` | regge: NOT NULL, nessuna riga in `config.sistema_codici`, nessun generatore | difetto (il COMMENT del normalize promette il generatore) | riga in `sistema_codici` + `trgfn_resellers_gen_codice`, come vettori e fornitori. **D-T8c-1**: il prefisso; lo stesso per `psp`? |
+| S12b legame reseller–BA sul periodo | regge: `validita` in nessun vincolo | difetto | `EXCLUDE USING gist (billing_account_id WITH =, validita WITH &&)` |
+| S12c `vendite.fn_build_fattura_key` | regge: `ORDER BY rb.id LIMIT 1` senza periodo | difetto | il legame valido alla data. **D-T8c-2**: quale data (competenza o data dell'attività) |
+| S12d / S57d il ruolo del legame e il verso opposto | regge: FK su `soggetti_ruoli`, nessun guard di ruolo, nessun rifiuto verso un reseller spento | difetto | **D-T8c-3**: FK verso `resellers(soggetto_ruolo_id)` (UNIQUE): tipo, esistenza e «attivo» dall'automazione, e `trgfn_resellers_guard_attivo` si ritira; oppure guard a mano. Proposta FK |
+| S57e lo spegnimento del reseller | regge: conta anche i legami chiusi | difetto | **D-T8c-4**: un legame chiuso ferma lo spegnimento? Proposta no |
+| S13 `psp` | regge: fuori da `automation_delete_block`, codice non bloccato, nessun generatore, nessun verso opposto verso gli enti d'incasso | difetto | delete block e lock del codice; **D-T8c-5**: guard su `psp.attivo` contro gli enti `PSP` attivi (la FK non si può: `enti_incasso.soggetto_ruolo_id` è polimorfica), oppure una colonna PSP dedicata con FK |
+| S56a `soggetto_ruolo_id` delle specializzazioni | regge, **più largo**: non bloccato in nessuna specializzazione | difetto | lock su tutte; il BE non lo scrive in modifica |
+| S56b `vendite.ddt.vettore_soggetto_ruolo_id` | regge: sola FK su `soggetti_ruoli` | difetto | FK verso `vettori(soggetto_ruolo_id)` (verificare prima che generi il `require_attivo`). Stesso disegno di T12 |
+| S56c / R-BE3 le due funzioni del fornitore | regge: nessuno le chiama, e sono le sole lettrici di `config.stati_fornitore.blocca_ordini` | regola senza verbo, non codice morto | **D-T8c-6**: (a) ritirarle e la regola passa al cantiere acquisti; (b) farle chiamare dal guard degli ordini d'acquisto, correggendo il segnaposto di `E_FORNITORE_BLOCCATO` |
+| S57a il gestore unico | regge: lettura con `LIMIT 1`, due inserimenti concorrenti passano; `v_existing_id integer` | difetto | indice UNIQUE su `((1))` |
+| S57b la P.IVA del gestore | regge ristretta: dal giro 3 la cambia solo il SUPER_ADMIN | residuo | **D-T8c-7**: guard sul soggetto, oppure limite dichiarato |
+| S57c `gestori_utilities` | regge: nessun lettore; COMMENT e nomi dei vincoli di un rinomino; `utility_id integer` | tabella senza consumatore | **D-T8c-8**: ritirarla, oppure scriverne il significato |
+| S15 `resellers_normalize`, `vettori_normalize` | `RETURN NEW` | forma | il primo cade col generatore di S12a; il secondo a T11 |
+| COMMENT di §15.2 | ancora stantii (`RES` contro `RE`, `rating`, i normalize) | metadati | changeSet di COMMENT al presente nel giro |
+
+Ricadute BE: `ddt_service.py`, `ddt_repository.py`, `_schema_da_contratto.py` (il vettore del DDT: codice d'errore
+nuovo); `invito_portale_service.py` (commento che nomina `fn_guard_fornitore_attivo`); i codici `E_FORNITORE_*`
+se D-T8c-6 è **a**. Reseller, PSP e i due legami: nessuno li scrive dal BE.
+
+### 25.5 Le decisioni per Tid
+
+D-T8-0 (la divisione in T8a, T8b, T8c e l'ordine); T8a: D-T8a-1 … -12; T8b: D-T8b-1 … -4; T8c: D-T8c-1 … -8. Le
+proposte sono nelle tabelle. Il fatto di §25.1 non chiede decisioni.
+
+### 25.6 Il piano di T8 (dopo le decisioni)
+
+* [x] Analisi sul catalogo, guide verificate, ciò che esiste già (2026-11-26, §25)
+* [ ] Le decisioni (Tid)
+* [ ] Per ogni giro: pgTAP rosso, changeSet (range da Tid), prova sullo scratch, documentazione, apply e pgTAP (Tid),
+  commit, la richiesta al BE
