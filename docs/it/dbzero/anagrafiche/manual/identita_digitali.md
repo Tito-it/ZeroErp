@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.identita_digitali`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -27,6 +27,9 @@
 > * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — crea l'operatore, con la sua veste spenta
 > * [anagrafiche.fn_crea_veste_portale](/dbzero/anagrafiche/funzioni/fn_crea_veste_portale) — crea la veste di un portale
 > * [anagrafiche.fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste) — accende la veste
+> * [anagrafiche.fn_revoca_veste](/dbzero/anagrafiche/funzioni/fn_revoca_veste) — l'amministratore revoca la veste
+> * [anagrafiche.fn_togli_revoca_veste](/dbzero/anagrafiche/funzioni/fn_togli_revoca_veste) — il nuovo invito toglie la revoca
+> * [anagrafiche.trgfn_identita_digitali_guard_revoca](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_revoca) — una veste revocata non si riaccende
 > * [script.fn_crea_utente_tecnico](/dbzero/script/funzioni/fn_crea_utente_tecnico) — crea l'identità tecnica di un processo
 >
 > Guide:
@@ -70,6 +73,20 @@ Spegnere una veste vuol dire `attivo = false`, qualunque sia il tipo, e il tipo 
 storica dell'enum, che lo spegnimento dell'operatore scriveva al posto di `OPERATORE`: la tabella la rifiuta (il
 CHECK `chk_identita_digitali_ruolo_non_ritirato`, e prima ancora il guard di coerenza), e resta nel tipo solo perché
 la porta lo storico.
+
+---
+
+### La veste revocata non si riaccende
+
+Quando la spegne l'amministratore, con `anagrafiche.fn_revoca_veste`, la veste porta il **segno della revoca**:
+`revocata_at` (quando) e `revocata_da_user_id` (chi, la credenziale della sessione). Il CHECK
+`chk_identita_digitali_revoca_coerente` vuole i due campi insieme, e una veste revocata spenta.
+
+Il guard `trgfn_identita_digitali_guard_revoca` fa valere il segno su tutta la coppia (credenziale, ruolo anagrafico,
+tipo di veste): la veste revocata non si accende, e sulla stessa coppia non nasce né si accende un'altra veste. Il
+segno lo scrivono e lo tolgono solo i verbi (la revoca, il nuovo invito con `anagrafiche.fn_togli_revoca_veste`, la
+riattivazione di un utente tecnico); una veste revocata non si cancella e non cambia coppia. Il perché e il percorso
+completo sono nella guida [Risorse umane e accessi](/guide/risorse-umane-e-accessi#la-revoca).
 
 ---
 
@@ -183,6 +200,9 @@ zero, dove Liquibase gira prima delle migrazioni Django, manca.
 * `E_SOGGETTI_RUOLI`, `E_AUTH_USER_SOGGETTO_CON_PIVA`, `E_AUTH_USER_SOGGETTO_SENZA_CF`,
   `E_RUOLO_APPLICATIVO_NON_GESTITO` — il tipo di veste incoerente col ruolo (la scheda del guard di coerenza).
 * `E_CREDENZIALE_PERSONA_E_SISTEMA` — una credenziale che mescolerebbe persona e macchina.
+* `E_VESTE_REVOCATA` — una veste accesa sulla coppia di una veste revocata.
+* `E_VESTE_REVOCA_SOLO_DAL_VERBO` — il segno della revoca scritto o tolto fuori dai verbi, o una veste revocata
+  cancellata o spostata.
 
 ---
 
@@ -194,6 +214,8 @@ zero, dove Liquibase gira prima delle migrazioni Django, manca.
   e tiene il tipo, `DISABILITATO` rifiutato.
 * `db/pgtap/anagrafiche/test-identita-tecnica.sql` — il flag `tecnica`, il suo default e i presidi dei processi.
 * `db/pgtap/anagrafiche/test-area-accessi-v1.sql` — la natura della credenziale e la categoria.
+* `db/pgtap/anagrafiche/test-veste-revocata-v1.sql` — il segno della revoca, il guard, i due verbi col loro permesso,
+  lo stato `REVOCATA`.
 
 ---
 

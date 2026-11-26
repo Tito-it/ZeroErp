@@ -24,11 +24,14 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tecnica | boolean | NO | false |
+| revocata_at | timestamp with time zone | YES |  |
+| revocata_da_user_id | integer | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_identita_digitali_date |  |
+| CHECK | chk_identita_digitali_revoca_coerente |  |
 | CHECK | chk_identita_digitali_ruolo_non_ritirato |  |
 | FOREIGN KEY | fk_identita_digitali_auth_user | auth_user_id |
 | FOREIGN KEY | fk_identita_digitali_soggetti_ruoli | soggetto_ruolo_id |
@@ -50,14 +53,17 @@
 | trg_identita_digitali_a10_guard_coerenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_coerenza()` |
 | trg_identita_digitali_a10_guard_natura_credenziale_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_natura_credenziale()` |
 | trg_identita_digitali_a10_guard_natura_credenziale_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_natura_credenziale()` |
+| trg_identita_digitali_a10_guard_revoca_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_revoca()` |
+| trg_identita_digitali_a10_guard_revoca_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_revoca()` |
+| trg_identita_digitali_a10_guard_revoca_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_revoca()` |
 | trg_identita_digitali_a10_guard_ultimo_super_admin_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin()` |
 | trg_identita_digitali_a10_identita_scope_bindings_block_ef3f5e | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'identita_scope_bindings', 'identita_digitale_id', 'id', 'attivo')` |
-| trg_identita_digitali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_identita_digitali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_identita_digitali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_identita_digitali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_identita_digitali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_identita_digitali_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('identita_digitali_id')` |
+| trg_identita_digitali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_identita_digitali_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('identita_digitali_id')` |
+| trg_identita_digitali_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('identita_digitali_id')` |
 | trg_identita_digitali_z90_sync_auth_user_active_ins | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_sync_auth_user_active()` |
 | trg_identita_digitali_z90_sync_auth_user_active_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_sync_auth_user_active()` |
 

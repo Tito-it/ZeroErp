@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_stato_veste: lo stato REVOCATA.
+#
+#   Il pannello degli accessi e la scheda di cliente e fornitore leggono lo
+#   stato della veste da qui: una veste revocata dall'amministratore si dice
+#   REVOCATA, non DISATTIVO o PENDING. Sta subito dopo ATTIVO e prima dei casi
+#   del token: una revocata non e' mai accesa (CHECK del 20261125-51), e un
+#   token in volo su una veste revocata non la apre (il guard del -52 rifiuta
+#   l'accensione), quindi dire PENDING sarebbe falso. Col nuovo invito il
+#   segno sparisce (anagrafiche.fn_togli_revoca_veste) e lo stato torna quello
+#   del token.
+#
+#   Forma: BEGIN ATOMIC come il 20261002-31, da sola nel primo sql: e il
+#   COMMENT nel secondo (linee-guida-sql §5c). Firma e RETURNS TABLE
+#   invariati, ri-ancorati dal 20261002-31: CREATE OR REPLACE, GRANT invariati;
+#   anagrafiche.vw_accessi_altri, che dipende dalla funzione, resta in piedi.
+#   Corpo = il 20261002-31 verificato uguale al vivo (zeroerp_ruoli,
+#   2026-11-25), piu' il ramo REVOCATA. Il COMMENT si riscrive al presente
+#   (§5d).
+#
+#   ⚠️ Un valore nuovo per chi legge lo stato: il backend lo riceve dalla vista
+#   e dallo stato accessi della scheda (richiesta al team BE/FE nel brief).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261125-57-update-fn-stato-veste-revocata-mctit.yaml
+
+  - changeSet:
+      id: 20261125-57-update-fn-stato-veste-revocata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_stato_veste: lo stato REVOCATA per la veste che porta il segno della revoca,
+        prima dei casi del token.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            { schemaName: anagrafiche, tableName: identita_digitali, columnName: revocata_at }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_stato_veste(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE)
+              RETURNS TABLE(
+                  stato          text,   -- codice calcolato: ATTIVO / REVOCATA / PENDING / NON_SPEDITO / DISATTIVO
+                  token_scade_at config.token_monouso.scadenza%TYPE)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT CASE
+                             WHEN idg.attivo
+                                 THEN 'ATTIVO'
+                             -- revocata dall'amministratore: un token in volo non la apre
+                             WHEN idg.revocata_at IS NOT NULL
+                                 THEN 'REVOCATA'
+                             WHEN tk.scade_at IS NULL
+                                 THEN 'DISATTIVO'
+                             -- ⭐ l'email di QUESTO token e' partita: >= perche'
+                             --   emissione e spedizione possono condividere now()
+                             WHEN idg.invito_inviato_at IS NOT NULL
+                                  AND idg.invito_inviato_at >= tk.emesso_at
+                                 THEN 'PENDING'
+                             ELSE 'NON_SPEDITO'
+                         END,
+                         tk.scade_at
+                    FROM anagrafiche.identita_digitali idg
+                    LEFT JOIN LATERAL (
+                        -- Il token della VESTE (identita_id nel meta), non della
+                        -- credenziale: cliente e fornitore portale della stessa
+                        -- persona condividono i tipi di token.
+                        SELECT max(t.scadenza)    AS scade_at,
+                               max(t.data_insert) AS emesso_at
+                          FROM config.token_monouso t
+                         WHERE t.auth_user_id = idg.auth_user_id
+                           AND t.meta ->> 'identita_id' = idg.id::text
+                           AND NOT t.utilizzato
+                           AND t.scadenza > now()
+                    ) tk ON true
+                   WHERE idg.id = p_identita_id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_stato_veste(anagrafiche.identita_digitali.id%TYPE) IS
+                  'Lo stato di UNA veste, calcolato solo a DB: ATTIVO (accesa), REVOCATA (spenta '
+                  'dall''amministratore, porta il segno revocata_at: non si riaccende finche'' un nuovo '
+                  'invito non toglie il segno, anche se un token e'' in volo), PENDING (spenta, invito '
+                  'pendente e la sua email partita: invito_inviato_at >= emissione del token), '
+                  'NON_SPEDITO (spenta, invito pendente, email di quel token non partita), DISATTIVO '
+                  '(spenta, nessun invito pendente). Invito pendente = token di config.token_monouso non '
+                  'usato e non scaduto con l''identita_id della veste nel meta (lo scrive solo l''emissione '
+                  'di un invito); con piu'' token vale il MAX di scadenza ed emissione. token_scade_at = '
+                  'scadenza del token pendente piu'' lontano, anche per una veste REVOCATA. Zero righe per '
+                  'un id assente; NESSUNO (nessuna veste) resta a chi cerca la veste. La leggono '
+                  'anagrafiche.vw_accessi_altri e lo stato accessi della scheda di cliente e fornitore.';

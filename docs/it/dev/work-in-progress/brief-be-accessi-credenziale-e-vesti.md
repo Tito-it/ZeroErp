@@ -1,17 +1,21 @@
 # Brief BE/FE — Accessi: la veste revocata e il collaudo delle sessioni per veste
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-25
+## ⏭️ Chi riparte — aggiornato al 2026-11-26
 
-**Riparte: la sessione DB**, col brief DB nuovo sugli accessi (§1.1). Il collaudo a video (§2) non aspetta nessuno.
+**Riparte: il team BE/FE**, con la richiesta del [brief DB unico](brief-db-accessi-area-clienti.md) §4: R-4 è
+applicato a DB il 2026-11-26. Il collaudo a video (§2) non aspetta nessuno.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | sessione DB | Il brief DB nuovo sugli accessi (T9 di [brief-db-revisione-anagrafiche](brief-db-revisione-anagrafiche.md) §17.1), che porta **R-4**: la veste ricorda di essere stata revocata, e la riattivazione self-service la rifiuta | §1.1 | — |
-| 2 | team BE/FE | D-4 e A-6 sulla regola consegnata dal DB | §1.2 | 1 |
+| 0 | Tid | ~~D-R1 … D-R5~~ decise il 2026-11-25 | §1.3 | — |
+| 1 | ~~sessione DB~~ | ~~R-4 a DB: il segno, il guard, i verbi~~ costruito il 2026-11-25, applicato il 2026-11-26 (brief DB §2) | brief DB §2 | 0 |
+| 2 | team BE/FE | D-4 e A-6 sulla regola consegnata dal DB: la richiesta per intero è nel brief DB §4 (al posto del §1.2, scritto sul pulsante) | brief DB §4 | — |
 | 3 | Tid | Il collaudo a video di D-5 | §2 | — |
 | 4 | team BE/FE | Archiviazione in `work-done/` | §3 | 2, 3 |
 
-**Decisioni aperte di Tid:** nessuna in questo brief. La forma della marca «revocata» la sceglie il DB nel suo brief.
+**Decisioni aperte di Tid:** nessuna in questo brief (D-R1, D-R2, D-R4, D-R5 decise il 2026-11-25, §1.3). La forma della marca
+«revocata» la sceglie il DB nel suo brief. La registrazione da sé (D-R3, D-R6 e le decisioni R-1 … R-3 del
+2026-11-25) non sta qui: sta in [sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md) §3.6.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-11-25. **A chi:** team BE/FE, Tid; la sessione DB per il
 > prerequisito di §1.1.
@@ -51,8 +55,103 @@ Dal piano, §4.3 riga «Revoca (D-4)»:
 - `ProfileActivateShopView` rifiuta una veste revocata, col codice del DB (policy generata e ripiego);
 - FE: [AttivaAccessoShopButton](../../../../frontend/src/portale/components/AttivaAccessoShopButton.vue) spento col
   motivo, [PortaleAccessoPanel](../../../../frontend/src/portale/components/PortaleAccessoPanel.vue) mostra «revocato»;
-- test sul DB vero: l'admin spegne la veste shop → l'attivazione self-service è rifiutata; la persona che se la
-  spegne da sé la riaccende.
+- test sul DB vero: l'admin spegne la veste shop → l'attivazione self-service è rifiutata; ~~la persona che se la
+  spegne da sé la riaccende~~ ⚠️ il caso non si costruisce: oggi nessuna strada lascia alla persona spegnere la sua
+  veste (§1.3). Al suo posto: revocata → nuovo invito dell'admin → il link accende; mai attivata → il pulsante accende.
+
+### 1.3 Analisi critica (sessione DB, 2026-11-25)
+
+Fatti verificati sul codice (lettura del backend fatta dalla sessione DB, solo per verificare il brief):
+
+- **Il pulsante e l'invito accendono con lo stesso verbo.** `ProfileActivateShopView` riaccende la veste esistente
+  con `AuthRepository.attiva_identita`, cioè `anagrafiche.fn_accendi_veste`: la stessa funzione del link
+  dell'invito. Il DB non sa chi la chiama, quindi «il self-service rifiuta» non si scrive a DB senza un parametro o
+  un secondo verbo.
+- **Il nuovo invito riusa la riga revocata** (`InvitoPortaleService._ensure_identita` la lascia spenta e la
+  accenderà il token).
+- **La persona oggi non spegne la sua veste da sola**: l'unica strada è `_disattiva_veste_common`, dell'admin.
+- **R-BE6, seconda domanda, confermata**: `PortaleRepository.disattiva_identita` spegne con un `UPDATE` scritto a
+  mano. Una veste spenta da un `UPDATE` diretto non porterebbe il segno, e il pulsante la riaccenderebbe.
+- **Più vesti spente per la stessa coppia** (ruolo anagrafico, veste) sono ammesse: l'indice unico vale per le
+  accese, e `find_identita_portale` prende l'id più alto. Il brief DB dice se il segno vale per la riga o per la
+  coppia.
+- Lo stato «revocata» va **letto** dal DB per il pulsante e per il pannello: il posto naturale è
+  `script.fn_stato_veste`, con uno stato `REVOCATA` (S64, che T9 decide).
+
+La proposta sul modello: un segno esplicito sulla riga (chi, quando) con un `CHECK` «revocata ⇒ spenta»; un guard
+della tabella che rifiuta l'accensione finché la veste è revocata (copre `fn_accendi_veste` e ogni `UPDATE`); il
+**nuovo invito dell'admin toglie il segno**, nella transazione dell'emissione, così nessun verbo deve riconoscere il
+chiamante; lo spegnimento dell'admin passa da un verbo DB, e le due strade BE lasciano l'`UPDATE` a mano.
+
+| # | Decisione | Esito |
+| --- | --- | --- |
+| D-R1 | Il segno lo toglie il nuovo invito, e il blocco sta in un guard della tabella | ✅ **Tid, 2026-11-25: sì** |
+| D-R2 | Vale per tutte le vesti, operatore compreso: porta a DB la D-3 («si riattiva col reinvio») | ✅ **Tid, 2026-11-25: sì** |
+| D-R4 | L'app perde la scrittura diretta di `identita_digitali.attivo` (solo dai verbi): senza, il segno ha un buco | ✅ **Tid, 2026-11-25: sì** (nello stesso giro o subito dopo: lo dice il brief DB; con la sezione «Garanzie ritirate» e il censimento dei lettori al BE) |
+| D-R5 | R-4 è il primo giro del brief DB, con S64, S67 e R-BE6; S59-S63 vengono dopo, così il BE non aspetta tutto T9 | ✅ **Tid, 2026-11-25: sì.** Il brief DB è unico con il modello dell'area clienti ([analisi-modello-area-clienti](analisi-modello-area-clienti.md) §8) |
+
+D-R3 (il pulsante accende subito o chiede l'email) e D-R6 (la veste shop sta sul ruolo privato della persona, non
+sull'azienda) sono della registrazione da sé: [sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md)
+§3.6. R-4 non le aspetta: la revoca regge in tutti e due i casi, e anche contro la reiscrizione.
+
+⚠️ **2026-11-25, dopo:** Tid ha deciso una sola porta clienti
+([analisi-modello-area-clienti](analisi-modello-area-clienti.md)). D-R3 e D-R6 sono assorbite: il pulsante «Attiva
+shop» si **ritira**, quindi **A-6 si chiude per ritiro** e non con un rifiuto in `ProfileActivateShopView`; il lavoro
+BE/FE del §1.2 sul pulsante e sul pannello va riletto su quel modello. **R-4 resta**, sulla veste cliente unica e
+sull'iscrizione da sé; D-R1, D-R2, D-R4, D-R5 decise da Tid lo stesso giorno (tabella sopra).
+
+### 1.4 Riverifica critica (sessione DB, 2026-11-25)
+
+Rilettura del §1.3 sul catalogo dello scratch e sul codice, a decisioni prese. Le decisioni reggono; cinque punti
+della proposta no, così come sono scritti, e il brief DB li deve chiudere.
+
+1. **Riga o coppia non è un dettaglio: decide se la revoca tiene.** Un guard che rifiuta solo l'*accensione* di una
+   riga revocata non ferma una **riga nuova**: `attivo` nasce `true` di default, più vesti spente per la stessa
+   coppia sono ammesse, e l'iscrizione da sé, l'invito (`_ensure_identita`) e `fn_crea_veste_portale` possono
+   inserirne una. Il guard deve coprire anche l'`INSERT`, e la revoca vale per la coppia (credenziale, ruolo
+   anagrafico, veste), che col modello nuovo è la chiave dell'indice «per credenziale e soggetto». Da dire anche:
+   la revoca è della **credenziale**; un'altra persona dello stesso cliente (D-M7) non ne è toccata.
+2. **«Nessun verbo deve riconoscere il chiamante» non regge.** Il token dell'invito lo scrive il BE
+   (`TokenRepository`, `INSERT` diretto su `config.token_monouso`): il segno lo toglie quindi un verbo DB che il BE
+   chiama nella stessa transazione. Quel verbo lo può chiamare `zeroerp_app` da qualunque strada, anche
+   dall'iscrizione da sé, che emette anch'essa un token. Deve controllare **il permesso di chi agisce**, dalle GUC
+   della sessione ([contratto-guc-app](../../guide/contratto-guc-app.md)), non da un parametro. D-R1 resta: cambia
+   il perché.
+3. **D-R4 ha tre buchi in più.** Oggi `zeroerp_app` ha `INSERT`, `UPDATE` su tutte le colonne e `DELETE` sulla
+   tabella. Oltre ad `attivo`, l'app non deve poter scrivere **le colonne del segno** (altrimenti lo toglie con un
+   `UPDATE`) né **cancellare** una veste revocata (la cancella, e l'iscrizione ne rifà una pulita). Il `DELETE` il BE
+   non lo usa (il model è `managed=False` e in sola lettura), ma il grant c'è. Il ritiro si fa dal loop dei grant
+   (linee-guida-sql §11.8), non con un `REVOKE` a parte.
+4. **Gli scrittori di `attivo` sono più di quelli citati.** BE: `AmmSoftwareRepository.disabilita_operatore`
+   (spegnimento dell'operatore, dentro D-R2), `PortaleRepository.disattiva_identita`. DB:
+   `anagrafiche.fn_accendi_veste` e `script.fn_riattiva_utente_tecnico`, che riaccende la veste di un utente
+   tecnico con un `UPDATE` suo. Con D-R2 («tutte le vesti») il brief DB dice se lo spegnimento di un utente tecnico
+   è una revoca e, se sì, se `fn_riattiva_utente_tecnico` è il verbo dell'amministratore che toglie il segno. Chi
+   inserisce: `fn_crea_veste_portale`, `fn_crea_risorsa_umana_v2`, `fn_crea_utente_tecnico`, le fabbriche pgTAP.
+5. **La revoca serve anche su una veste mai accesa.** L'admin che spegne una veste con l'invito pendente
+   (D-5 chiude l'invito) vuole revocare; senza segno, un'iscrizione da sé che ritrova quella riga la accende con la
+   conferma dell'email. Il segno lo mette quindi il **verbo** di spegnimento dell'admin, non solo il passaggio
+   accesa → spenta.
+
+Due punti minori: il «chi» della revoca non viene dallo storico (`user_update` è il ruolo del database, non la
+persona) e va preso dalla GUC dell'utente; in `script.fn_stato_veste` lo stato `REVOCATA` si legge subito dopo
+`ATTIVO` (con D-R1 non convive con un invito pendente). Il `CHECK` «revocata ⇒ spenta» si scrive con `num_nulls`
+(PG19).
+
+**Ricaduta sul §1.2**, ancora scritto sul pulsante: finché il pulsante non è ritirato il guard lo ferma comunque
+(chiama `fn_accendi_veste`), quindi A-6 si chiude **col guard di R-4** e poi sparisce col ritiro. Al BE resta: lo
+spegnimento dell'admin col verbo DB (operatore e portale), la policy del codice nuovo, il pannello con «revocato»,
+e i test revocata → nuovo invito → il link accende, revocata → l'iscrizione si ferma, invito pendente spento →
+l'iscrizione si ferma.
+
+**Guide verificate** (`scripts/guide_coinvolte.py` sugli oggetti del §1.3):
+[risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md) **coerente** (il rientro dell'operatore passa già
+dal reinvio, e l'interruttore «spegne soltanto»: R-4 porta a DB ciò che la guida descrive);
+[architettura-multi-face-auth](../../guide/architettura-multi-face-auth.md) **contraddetta** dal modello dell'area
+clienti, si riscrive lì (analisi §6); [contratto-guc-app](../../guide/contratto-guc-app.md) da leggere nel giro DB
+per il punto 2; [processi-automatici-classe-e-identita](../../guide/processi-automatici-classe-e-identita.md) da
+leggere nel giro DB per il punto 4; le altre (permessi, pgTAP, pgAgent, soggetti, `_sincronizzazione-accesso`,
+`_ultimo-super-admin`) hanno solo la tabella in comune, esito nel giro DB.
 
 ## 2. Il collaudo a video di D-5 — Sessioni per veste
 

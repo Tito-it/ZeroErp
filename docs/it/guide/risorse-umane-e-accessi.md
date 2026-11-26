@@ -30,8 +30,12 @@
 > * [anagrafiche.fn_crea_auth_user](/dbzero/anagrafiche/funzioni/fn_crea_auth_user) — crea la credenziale Django quando l'email non ne ha una
 > * [anagrafiche.fn_crea_veste_portale](/dbzero/anagrafiche/funzioni/fn_crea_veste_portale) — crea una veste di portale o di shop
 > * [anagrafiche.fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste) — accende una veste (l'attivazione dell'invito)
+> * [anagrafiche.fn_revoca_veste](/dbzero/anagrafiche/funzioni/fn_revoca_veste) — l'amministratore revoca una veste: la spegne e ci lascia il segno
+> * [anagrafiche.fn_togli_revoca_veste](/dbzero/anagrafiche/funzioni/fn_togli_revoca_veste) — il nuovo invito toglie il segno della revoca
+> * [anagrafiche.fn_guard_gestione_veste](/dbzero/anagrafiche/funzioni/fn_guard_gestione_veste) — chi può revocare una veste, per tipo di veste
+> * [anagrafiche.trgfn_identita_digitali_guard_revoca](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_revoca) — una veste revocata non si riaccende
 > * [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile) — quando una veste conta «oggi»
-> * [script.fn_stato_veste](/dbzero/script/funzioni/fn_stato_veste) — lo stato di una veste per le liste: accesa, invito pendente, invito non spedito, spenta
+> * [script.fn_stato_veste](/dbzero/script/funzioni/fn_stato_veste) — lo stato di una veste per le liste: accesa, revocata, invito pendente, invito non spedito, spenta
 > * [script.fn_categoria_accesso](/dbzero/script/funzioni/fn_categoria_accesso) — in quale lista degli accessi cade una credenziale
 > * [anagrafiche.fn_sync_auth_user_is_active](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active) — allinea `auth_user.is_active` alle vesti della credenziale
 > * [anagrafiche.fn_sync_auth_user_expired](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired) — il riallineamento periodico, per le date che arrivano
@@ -246,6 +250,7 @@ Sulla veste la sync guarda la credenziale che la veste ha **dopo** la scrittura;
 | Stato         | Quando                                                                      |
 | ------------- | --------------------------------------------------------------------------- |
 | `ATTIVO`      | la veste e accesa                                                           |
+| `REVOCATA`    | spenta dall'amministratore: non si riaccende fino a un nuovo invito ([La revoca](#la-revoca)) |
 | `PENDING`     | spenta, con un invito pendente la cui email e partita                       |
 | `NON_SPEDITO` | spenta, con un invito pendente la cui email non e partita                   |
 | `DISATTIVO`   | spenta, senza inviti pendenti                                               |
@@ -317,6 +322,8 @@ Una persona entra nell'organico attraverso le **funzioni di creazione** del DB, 
 | Credenziale nuova | [anagrafiche.fn_crea_auth_user](/dbzero/anagrafiche/funzioni/fn_crea_auth_user) | Crea l'utente Django; rifiuta uno username o un'email gia presenti. La chiama la funzione dell'operatore solo quando l'email non ha ancora una credenziale |
 | Veste di portale o di shop | [anagrafiche.fn_crea_veste_portale](/dbzero/anagrafiche/funzioni/fn_crea_veste_portale) | Crea una veste `CLIENTE_PORTALE`, `FORNITORE_PORTALE` o `SHOP_CUSTOMER` su una credenziale; chi la chiama dice sempre se nasce accesa o spenta |
 | Accensione di una veste | [anagrafiche.fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste) | Accende la veste di una credenziale: e il gesto dell'attivazione dell'invito |
+| Revoca di una veste | [anagrafiche.fn_revoca_veste](/dbzero/anagrafiche/funzioni/fn_revoca_veste) | L'amministratore spegne la veste e ci scrive quando e chi ([La revoca](#la-revoca)) |
+| Nuovo invito su una veste revocata | [anagrafiche.fn_togli_revoca_veste](/dbzero/anagrafiche/funzioni/fn_togli_revoca_veste) | Toglie il segno della revoca: la veste resta spenta e la accende il link |
 
 La creazione dell'operatore segue due strade sul soggetto: una persona nuova (nasce persona fisica privata, con codice fiscale e sesso obbligatori) o un soggetto persona fisica che esiste gia. Sulla credenziale vale «una persona, un accesso»: se l'email ha gia una credenziale si **riusa**, ma solo con il consenso esplicito di chi crea (`E_CREDENZIALE_DA_CONFERMARE` finche non lo dichiara), e mai se la credenziale e di un'altra persona fisica (`E_CREDENZIALE_ALTRA_PERSONA`) o porta gia una veste operatore (`E_CREDENZIALE_GIA_OPERATORE`, il rimedio e il reinvito). Una persona che e gia risorsa umana riceve `E_RISORSA_UMANA_GIA_PRESENTE` ([R5](#r5--unicita-per-persona)).
 
@@ -371,7 +378,7 @@ UPDATE di `risorse_umane.qualifica_id`.
 
 Quando una persona lascia l'organico, la sequenza e:
 
-1. Spegnere la veste `OPERATORE` (`attivo = false`, il tipo resta) — il trigger di sync porta `auth_user.is_active` a `false` se la credenziale non ha un'altra veste utilizzabile, e il login viene bloccato; se la persona e anche, per esempio, cliente del portale, entra ancora da quella porta
+1. Spegnere la veste `OPERATORE` (`attivo = false`, il tipo resta; con [fn_revoca_veste](/dbzero/anagrafiche/funzioni/fn_revoca_veste) resta anche il segno della [revoca](#la-revoca)) — il trigger di sync porta `auth_user.is_active` a `false` se la credenziale non ha un'altra veste utilizzabile, e il login viene bloccato; se la persona e anche, per esempio, cliente del portale, entra ancora da quella porta
 2. Spegnere la risorsa (`risorse_umane.attivo = false`)
 3. Il backend invalida la cache permessi dell'utente
 
@@ -397,10 +404,23 @@ Il vincolo di unicita ([R5](#r5--unicita-per-persona)) garantisce un solo record
 
 La sequenza e l'inversa della cessazione, e si fa in due tempi, da due persone diverse:
 
-1. **L'amministratore reinvia l'invito** (drawer dell'operatore, «Reinvia invito»). Nella stessa transazione del token la risorsa si riapre: `risorse_umane.attivo = true`, e `valido_al` si azzera se è già arrivata (una fine rapporto futura resta); `valido_dal` resta l'inizio del rapporto. La veste resta spenta.
+1. **L'amministratore reinvia l'invito** (drawer dell'operatore, «Reinvia invito»). Nella stessa transazione del token si toglie il segno della [revoca](#la-revoca) e la risorsa si riapre: `risorse_umane.attivo = true`, e `valido_al` si azzera se è già arrivata (una fine rapporto futura resta); `valido_dal` resta l'inizio del rapporto. La veste resta spenta.
 2. **La persona attiva il link**: la veste si accende ([fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste)), il trigger di sync imposta `auth_user.is_active = true` e il login torna possibile. Chi ha gia una password conferma con un clic.
 
 L'interruttore «Accesso attivo» del drawer spegne soltanto: da spento resta fermo, e non c'e un comando che riaccenda la veste direttamente.
+
+### La revoca
+<a id="la-revoca"></a>
+
+Una veste spenta dall'amministratore **ricorda di essere stata revocata**: [anagrafiche.fn_revoca_veste](/dbzero/anagrafiche/funzioni/fn_revoca_veste) la spegne e ci scrive quando (`revocata_at`) e chi (`revocata_da_user_id`, l'utente della sessione). Il segno lo mette anche su una veste mai accesa con l'invito ancora pendente. Vale per tutte le vesti: operatore, portale, shop, utente tecnico.
+
+Finché il segno c'è, la veste **non si riaccende** da nessuna strada: né dal link di un invito vecchio, né da una scrittura diretta, né creando un'altra veste accesa sulla stessa coppia di credenziale, ruolo anagrafico e tipo di veste. Lo impedisce il guard della tabella, [trgfn_identita_digitali_guard_revoca](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_revoca), con `E_VESTE_REVOCATA`. Lo stato della veste è `REVOCATA`.
+
+Si torna **solo con un nuovo invito dell'amministratore**: [anagrafiche.fn_togli_revoca_veste](/dbzero/anagrafiche/funzioni/fn_togli_revoca_veste), chiamata nella transazione del token, toglie il segno dalla coppia, e il link accende. Per un utente tecnico il gesto è la riattivazione, [script.fn_riattiva_utente_tecnico](/dbzero/script/funzioni/fn_riattiva_utente_tecnico), che toglie il segno con lo stesso verbo.
+
+I due verbi controllano il permesso dall'utente della sessione, con [anagrafiche.fn_guard_gestione_veste](/dbzero/anagrafiche/funzioni/fn_guard_gestione_veste): `SUPER_ADMIN` per una veste operatore o tecnica, il livello `TUTTO` su clienti o fornitori per le vesti dei portali e dello shop. Il segno non si scrive né si cancella in altro modo: chi prova a scriverlo direttamente, o a cancellare una veste revocata, riceve `E_VESTE_REVOCA_SOLO_DAL_VERBO`.
+
+⚠️ Il backend non passa ancora dai due verbi: lo spegnimento dell'operatore e della veste di portale scrive `attivo = false` direttamente, e quella veste resta spenta ma **senza segno**; il reinvito non chiama ancora `fn_togli_revoca_veste`. Fino ad allora la revoca la lascia solo chi chiama `fn_revoca_veste`.
 
 **Perche questo ordine?** E il verso inverso della cessazione, e la ragione e la stessa: la veste attiva e cio che tiene in piedi l'accesso, la risorsa attiva e cio che la rende sensata. Riaprendo prima la risorsa si evita la finestra in cui la veste risulta attiva su una persona non ancora in forza.
 
@@ -846,6 +866,7 @@ I contatti non sostituiscono le risorse umane, ma possono riferirle quando serve
 | `trgfn_risorse_umane_guard_ruolo`                  | BEFORE INSERT/UPDATE su `risorse_umane`                | Verifica che il ruolo sia RIS_UMANA e che il soggetto coincida con quello del ruolo ([R1](#r1--ruolo-corretto), [R2](#r2--coerenza-soggetto))               |
 | `trgfn_risorse_umane_guard_identita_attiva`        | BEFORE UPDATE di `attivo` su `risorse_umane`           | Rifiuta di spegnere una risorsa che ha ancora una veste `OPERATORE` accesa (`E_RISORSA_UMANA_IDENTITA_ATTIVA`)                                                |
 | `trgfn_identita_digitali_guard_coerenza`           | BEFORE INSERT/UPDATE su `identita_digitali`            | Rifiuta il tipo ritirato `DISABILITATO`, verifica la coerenza fra veste e tipo di soggetto-ruolo, e la persona fisica pura per `OPERATORE` persona ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura)) |
+| `trgfn_identita_digitali_guard_revoca`             | BEFORE INSERT/UPDATE/DELETE su `identita_digitali`     | Il segno della revoca si scrive solo dai verbi; una veste revocata non si cancella né cambia coppia; nessuna veste accesa sulla coppia di una veste revocata ([La revoca](#la-revoca)) |
 | `trgfn_identita_digitali_guard_natura_credenziale` | BEFORE INSERT/UPDATE di `auth_user_id`, `ruolo_applicativo`, `tecnica` su `identita_digitali` | Rifiuta di mescolare vesti di persona e di macchina sulla stessa credenziale ([R6](#r6--persona-o-macchina)) |
 | `trgfn_identita_digitali_guard_ultimo_super_admin` | AFTER UPDATE su `identita_digitali`, quando cambiano `attivo` o le date | Presidia l'ultimo `SUPER_ADMIN` **senza scadenza** ([sopra](#lultimo-amministratore-non-scade)) dal lato della veste |
 | `trgfn_risorse_umane_guard_ultimo_super_admin`     | AFTER UPDATE su `risorse_umane`, quando cambiano `attivo`, le date o il soggetto-ruolo | Lo stesso dal lato del **rapporto** |

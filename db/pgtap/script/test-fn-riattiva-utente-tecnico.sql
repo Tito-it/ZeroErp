@@ -11,13 +11,22 @@
 -- Test: la sostituzione di un utente tecnico e' percorribile (DB-6, DB-8)
 -- Brief: brief-db-processi-automatici-residui-be.md, DB-6 e DB-8
 --
--- Elenco test (plan 6):
+-- Elenco test (plan 10):
 --  1) i codici nuovi sono a catalogo, con la classe giusta
 --  2) ⭐ processo inesistente: dice «non trovato», non «non eleggibile» (DB-8)
 --  3) ⛔ IL CASO DEL BE: legame spento + rifare l'utente -> si ferma PARLANDO
 --  4) ✅ il verbo nuovo riattiva, e torna lo STESSO utente
 --  5) ⭐ e riaccende tutti e TRE i livelli, non uno solo
 --  6) ⛔ riattivare cio' che non esiste si ferma: il verbo non FABBRICA
+--  7) ⛔ senza SUPER_ADMIN non si riattiva (il permesso e' a DB dal 2026-11-25);
+--     7-bis) e il rifiuto non tocca l'utente
+--  8) un utente tecnico REVOCATO (fn_revoca_veste) porta il segno, con chi
+--  9) ✅ la riattivazione toglie il segno col suo verbo e riaccende la veste
+--
+-- ⭐ Il contesto e' un SUPER_ADMIN costruito dal test (rev 2026-11-25,
+--   brief-db-accessi-area-clienti giro 1): la riattivazione e' il gesto
+--   dell'amministratore e lo chiede a DB. Prima il test girava su un operatore
+--   qualunque, perche' il permesso lo chiedeva solo il backend.
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⛔ IL DIFETTO, trovato dal backend e riprodotto:
@@ -43,11 +52,23 @@
 
 BEGIN;
 
+-- L'utente tecnico dei casi 8-9 si costruisce PRIMA del contesto (stampo di
+-- anagrafiche/test-area-accessi-v1.sql): crea la sua azienda.
+CREATE TEMP TABLE _tec AS
+SELECT r.auth_user_id, r.emittente_codice, r.identita_id
+  FROM dbops.fn_pgtap_crea_roster_processo('send_pending_emails') r;
+
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(6);
+-- Chi agisce: un SUPER_ADMIN e un operatore senza privilegi, dal percorso di
+-- produzione.
+CREATE TEMP TABLE _sa AS SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('pgTAP-SA-riattiva', true);
+CREATE TEMP TABLE _op AS SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('pgTAP-OP-riattiva', false);
+SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _sa));
+
+SELECT plan(10);
 
 -- ============================================================
 -- 1. I codici, e la loro classe
@@ -219,6 +240,51 @@ SELECT throws_ok(
     'P0001',
     NULL,
     '6. riattivare un utente mai creato si ferma: il verbo non fabbrica niente'
+);
+
+-- ============================================================
+-- 7. ⛔ Il permesso: solo SUPER_ADMIN
+-- ============================================================
+SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _op));
+SELECT throws_ok(
+    format($$SELECT script.fn_riattiva_utente_tecnico('send_pending_emails', %L)$$,
+           (SELECT emittente_codice FROM _tec)),
+    'P0001',
+    'Non hai i permessi per questa operazione.',   -- E_PERMESSO_NEGATO
+    '7. un operatore senza SUPER_ADMIN non riattiva un utente tecnico'
+);
+SELECT is(
+    (SELECT idg.attivo FROM anagrafiche.identita_digitali idg WHERE idg.id = (SELECT identita_id FROM _tec)),
+    true,
+    '7-bis. (fixture) il rifiuto non ha toccato l''utente tecnico, ancora acceso'
+);
+
+-- ============================================================
+-- 8-9. La revoca dell'utente tecnico, e la riattivazione che la toglie
+-- ============================================================
+-- Lo spegnimento dell'amministratore e' il verbo della revoca (D-R7): spegne la
+-- veste e mette il segno. Il legame e l'utente si spengono come li spegnerebbe
+-- la sostituzione documentata.
+SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _sa));
+SELECT anagrafiche.fn_revoca_veste((SELECT identita_id FROM _tec));
+UPDATE dbops.processi_identita SET attivo = false WHERE auth_user_id = (SELECT auth_user_id FROM _tec);
+UPDATE django.auth_user        SET is_active = false WHERE id = (SELECT auth_user_id FROM _tec);
+
+SELECT is(
+    (SELECT format('%s|%s', idg.attivo, idg.revocata_da_user_id = (SELECT auth_user_id FROM _sa))
+       FROM anagrafiche.identita_digitali idg WHERE idg.id = (SELECT identita_id FROM _tec)),
+    'f|t',
+    '8. l''utente tecnico revocato e'' spento e porta il segno, col nome del super admin'
+);
+
+CREATE TEMP TABLE _riatt AS
+SELECT script.fn_riattiva_utente_tecnico('send_pending_emails', (SELECT emittente_codice FROM _tec)) AS auth_user_id;
+SELECT is(
+    (SELECT format('%s|%s|%s', r.auth_user_id = t.auth_user_id, idg.attivo, idg.revocata_at IS NULL)
+       FROM _riatt r, _tec t, anagrafiche.identita_digitali idg
+      WHERE idg.id = t.identita_id),
+    't|t|t',
+    '9. la riattivazione toglie il segno e riaccende la veste dello stesso utente'
 );
 
 SELECT * FROM finish();
