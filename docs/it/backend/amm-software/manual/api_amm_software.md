@@ -17,6 +17,21 @@ Post-cutover multi-face il check ADMIN delega a `PermissionResolver.is_super_adm
 (binding `SUPER_ADMIN` su `config.profili_accesso_bindings`, profilo seed id 9100).
 L'endpoint lista utenti ha throttling search attivo (`is_search_endpoint = True`).
 
+⛔ **I gesti che danno l'accesso li chiede anche il DB al SUPER_ADMIN** (giro 10-bis di
+`brief-db-porte-aperte-dalla-sola-guc` §14, 2026-11-26): creare un operatore
+(`anagrafiche.fn_crea_operatore`), dargli o togliergli il SUPER_ADMIN
+(`config.fn_lega_profilo_identita` / `fn_slega_profilo_identita`), scrivere il profilo di un
+reparto e legarlo (`config.fn_scrivi_profilo_accesso`, `config.fn_lega_profilo_reparto`), creare
+l'utente tecnico di un processo (`script.fn_crea_utente_tecnico`) e cambiare lo scope
+(`script.fn_change_user_emittenti_scope`). Sono verbi `SECURITY DEFINER` col guard del SUPER_ADMIN
+in prima riga: un contesto che non lo e' riceve `E_PERMESSO_NEGATO`, anche arrivando al DB per
+un'altra strada. E' la stessa regola di `AdminAPIView`, quindi dagli endpoint nessun rifiuto
+nuovo. Le tabelle dei profili, dei loro legami e dello scope (`config.profili_accesso`,
+`profili_accesso_aree`, `profili_accesso_azioni`, `profili_accesso_bindings`,
+`config.user_emittenti_fiscali`) sono in **sola lettura** per l'app: si scrivono solo dai verbi.
+Un test sul DB vero che ne ha bisogno come fixture usa i builder `dbops.fn_pgtap_*` o
+`apri_super_admin_costruito`, mai un `INSERT` diretto.
+
 Le risposte seguono l'envelope standard `{ "data": {...}, "meta": {...} }`.
 
 Base URL: `/api/v1/amm-software/`
@@ -142,7 +157,9 @@ curl -H "Authorization: Bearer <token>" \
 
 Crea un nuovo operatore completo: credenziale, soggetto persona fisica, risorsa
 umana e veste `OPERATORE`. La creazione e' orchestrata dalla funzione DB
-`anagrafiche.fn_crea_operatore_v2`.
+`anagrafiche.fn_crea_operatore`, che dal 2026-11-26 chiede il SUPER_ADMIN della
+sessione (vedi «Contesto»). Binding e permesso sono provati sul DB vero in
+`amm_software/tests/db/test_crea_operatore_db.py`.
 
 **Contract Fase 1 multi-face**: il payload accetta `is_super_admin` (booleano).
 Il campo legacy `ruolo_sistema` e' **rifiutato** con `E_AMM_VALIDAZIONE`.
@@ -388,6 +405,9 @@ flag sono ortogonali, e nessuno dei due si traduce in `ruolo_sistema`:
 - `is_super_admin: true` su un accesso che ha gia' un altro profilo legato
   (un'identita' ne lega uno solo) → 400 `E_AMM_VALIDAZIONE`, `field:
   is_super_admin`: va tolto prima quel profilo.
+- `is_super_admin` lega e slega con `config.fn_lega_profilo_identita` /
+  `fn_slega_profilo_identita`, che chiedono il SUPER_ADMIN della sessione
+  (vedi «Contesto»).
 - ⛔ `attivo: true` su una veste spenta (disabilitata, o mai attivata) viene
   rifiutato con `E_AMM_VALIDAZIONE` (HTTP 400, `field: attivo`), senza
   scrivere niente (D-3, 2026-10-04): l'accesso si riattiva col reinvio
@@ -425,8 +445,11 @@ curl -X PATCH -H "Authorization: Bearer <token>" \
 
 ### 1.5 POST /api/v1/amm-software/operatori/{id}/disabilita/ -- Disabilita utente
 
-Disabilita un utente: la veste OPERATORE di riferimento `attivo=false` (il tipo
-resta, R-DB-1), la sua risorsa umana `attivo=false`+`valido_al=oggi`. Sincronizza `auth_user.is_active`,
+Disabilita un utente: **revoca** la veste OPERATORE di riferimento col verbo
+del DB `anagrafiche.fn_revoca_veste` (dal 2026-11-26: `attivo=false` e il segno
+della revoca, che un invito vecchio non scavalca; il tipo resta, R-DB-1), poi la
+sua risorsa umana `attivo=false`+`valido_al=oggi`. La riapre solo un nuovo invito
+(«Reinvia invito»), che toglie il segno. Sincronizza `auth_user.is_active`,
 invalida la cache permessi a commit avvenuto, invalida gli **inviti operatore
 pendenti** di quella veste (A-5, 2026-10-02: prima un invito in volo poteva
 ancora riaccenderla) e mette in blacklist le sessioni della **sola veste
@@ -448,8 +471,11 @@ l'envelope errore (HTTP 409).
 
 **Regole:**
 
-- Ordine disattivazione: figlio (`identita_digitali`) prima del padre
-  (`risorse_umane`) per rispettare il framework ATTIVO del DB.
+- Ordine disattivazione: figlio (`identita_digitali`, dalla revoca) prima del
+  padre (`risorse_umane`) per rispettare il framework ATTIVO del DB.
+- La revoca la chiede il DB al SUPER_ADMIN della sessione
+  (`anagrafiche.fn_guard_gestione_veste`): un contesto senza SUPER_ADMIN riceve
+  `E_PERMESSO_NEGATO`, anche se la porta lo ha fatto passare.
 - Chiama `anagrafiche.fn_sync_auth_user_is_active` per sincronizzare
   `auth_user.is_active`.
 - Invalida la cache permessi dell'utente (a commit avvenuto).
@@ -524,7 +550,7 @@ catalogo `anagrafiche.accessi_altri` (104). Envelope di lista `{count, results}`
 |---|---|---|
 | `search` | string | Ricerca libera sulle colonne accese dal catalogo (nome, username, email, vesti, soggetti) |
 | `ruolo_applicativo` | string | Una veste di quel tipo fra le vesti della credenziale (`CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`, …). `DISABILITATO` → 400 |
-| `stato_accesso` | string | Il migliore fra le vesti: `ATTIVO`, `PENDING`, `NON_SPEDITO`, `DISATTIVO`, `NESSUNO`. Estraneo → 400 |
+| `stato_accesso` | string | Il migliore fra le vesti: `ATTIVO`, `PENDING`, `NON_SPEDITO`, `DISATTIVO`, `NESSUNO`. Estraneo → 400. ⚠️ `REVOCATA` (stato della veste dal 2026-11-26) e' ancora un 400: l'aggregato della vista non lo produce, ed entra nel filtro col changeSet di R-3b-1 (brief-db-accessi-area-clienti §4.2) |
 | `nessun_accesso` | bool | Nessuna veste |
 | `secondo_fattore_stato` | string | `ASSENTE`, `DA_CONFERMARE`, `ATTIVO` |
 | `secondo_fattore_obbligatorio` | bool | |
@@ -905,10 +931,10 @@ Sorgente: `script.fn_get_user_emittenti_scope(p_auth_user_id)`. Single-row.
 
 | Campo | Tipo | Descrizione |
 |---|---|---|
-| `scope_mode` | enum | `GLOBAL` (vede tutti gli emittenti) o `SINGLE` (vede solo `emittenti_ids[0]`). `MULTI` chiuso architetturalmente post Q2 (`UNIQUE(auth_user_id)` su `config.user_emittenti_fiscali`) |
-| `emittenti_ids` | array[int] | `[]` se GLOBAL, `[id]` se SINGLE. Array per simmetria payload (preparazione futura) |
-| `emittente_descrizione` | string \| null | Descrizione emittente quando SINGLE; NULL se GLOBAL |
-| `allowed_scope_modes` | array[string] | Sempre `["GLOBAL", "SINGLE"]` post Q2. Il FE mostra solo i radio ammessi |
+| `scope_mode` | enum | `GLOBAL` (vede tutti gli emittenti, **solo un SUPER_ADMIN**) o `SINGLE` (vede solo `emittenti_ids[0]`). Un operatore che non e' SUPER_ADMIN e non ha emittente risponde `SINGLE` con `emittenti_ids: []`: e' «non assegnato» e non vede nessun dato. `MULTI` chiuso architetturalmente post Q2 (`UNIQUE(auth_user_id)` su `config.user_emittenti_fiscali`) |
+| `emittenti_ids` | array[int] | `[]` se GLOBAL o non assegnato, `[id]` se SINGLE. Array per simmetria payload (preparazione futura) |
+| `emittente_descrizione` | string \| null | Descrizione emittente quando SINGLE; NULL se GLOBAL o non assegnato |
+| `allowed_scope_modes` | array[string] | `["GLOBAL", "SINGLE"]` per un SUPER_ADMIN, `["SINGLE"]` per ogni altro operatore (giro 10-ter, 2026-11-26). Il FE mostra solo i radio ammessi. Se la funzione non risponde, il service ripiega su `SINGLE` / `["SINGLE"]`: un ripiego non concede GLOBAL |
 | `can_change_scope` | bool | False sse l'operatore e' SUPER_ADMIN e l'unico attivo (delega a `fn_check_ultimo_super_admin_attivo`). Preview UX, non garanzia |
 | `change_scope_reason` | string \| null | Motivo it-IT free-form quando `can_change_scope=false` |
 
@@ -946,6 +972,11 @@ curl -H "Authorization: Bearer <token>" \
 **Regole:**
 
 - `GLOBAL`: `emittenti_ids` viene ignorato e normalizzato a `[]` lato service.
+  **Vale solo per un SUPER_ADMIN** (giro 10-ter di `brief-db-porte-aperte-dalla-sola-guc`, D-AA a,
+  2026-11-26): per ogni altro operatore il DB rifiuta con `E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`
+  (HTTP 409, `show_error_banner`), perche' senza emittente non vedrebbe nessun dato. Il codice risale
+  come errore del DB e lo traduce il middleware dalla policy generata: il service non lo rimappa.
+  Prova sul DB vero: `amm_software/tests/db/test_emittenti_scope_db.py`.
 - `SINGLE`: `emittenti_ids` deve contenere esattamente 1 int positivo.
 - **Guard ultimo super admin**: integrato nella fn DB
   `fn_change_user_emittenti_scope`. Se l'operatore e' SUPER_ADMIN globale e
@@ -963,7 +994,7 @@ curl -H "Authorization: Bearer <token>" \
 **Risposta:** stesso shape del GET §2.5 con i valori post-change (rilettura
 da `fn_get_user_emittenti_scope` per consistenza).
 
-**Esempio curl — cambio a GLOBAL:**
+**Esempio curl — cambio a GLOBAL** (l'utente 1 dev'essere un SUPER_ADMIN):
 
 ```bash
 curl -X PUT -H "Authorization: Bearer <token>" \
@@ -1305,7 +1336,9 @@ replace). Invalida la cache permessi di **tutti gli operatori** del reparto.
 - `uo_id` inesistente → 400 `E_AMM_VALIDAZIONE` («Reparto inesistente»).
 - Il profilo (tipo `REPARTO`, codice `REPARTO_<codice_interno>`) si scrive con
   `config.fn_scrivi_profilo_accesso` e si lega al reparto con
-  `config.fn_lega_profilo_reparto`; `attivo` del profilo segue il reparto.
+  `config.fn_lega_profilo_reparto`; `attivo` del profilo segue il reparto. Tutti e
+  due chiedono il SUPER_ADMIN della sessione (vedi «Contesto»): scrivere il contenuto
+  di un profilo e' dare poteri, come legarlo.
 - La modifica impatta tutti gli operatori che appartengono al reparto
 - La cache permessi viene invalidata per l'intero reparto (`invalidate_department`)
 
@@ -2149,7 +2182,7 @@ Un operatore conta se la sua veste e' utilizzabile oggi
 | `chk_emittenti_fiscali_rounding_policy` | `anagrafiche` | **Fase 3**. CHECK constraint sulla colonna `emittenti_fiscali.rounding_policy`: ammette **4 valori** (`UP`, `DOWN`, `HALF_UP`, `HALF_DOWN`). Niente `HALF_EVEN` (a differenza di catalogo UoM operativa). E' il riferimento per `_ROUNDING_MODE_VALIDI_EMITTENTE` lato Python |
 | `vw_audit_sources` | `script` | **Fase 5**. Vista `(code, label_key, area_funzionale)` filtrata `attivo=true` ordinata per `code`. 8 sorgenti audit (incluse `user_override_oggetti` permessi v2 + `identita_digitali` multi-face). Letta da `list_audit_sources` per il lookup e da `list_audit_log` per build dinamico delle UNION ALL |
 | `fn_audit_summary(text, bigint)` | `script` | **Fase 5**. Calcola `{summary, diff}` per uno snapshot audit. Param: `(audit_source_code, storico_id)` dove `storico_id` e' la PK riga in `storico.<code>`. Esclude le 5 colonne audit standard (`data_*`, `user_*`, `tx_id`). Solleva `E_AUDIT_SNAPSHOT_NON_TROVATO` con marker stabile |
-| `fn_crea_operatore_v2(...)` | `anagrafiche` | Orchestratore creazione operatore (credenziale + soggetto PF + risorsa umana + veste OPERATORE spenta) |
+| `fn_crea_operatore(...)` | `anagrafiche` | Orchestratore creazione operatore (credenziale + soggetto PF + risorsa umana + veste OPERATORE spenta) |
 | `fn_sync_auth_user_is_active(INTEGER)` | `anagrafiche` | Sincronizza `auth_user.is_active` con stato identita digitale + risorsa umana |
 | `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` | `config` | Trigger DB autorita' finale per anti-lockout: blocca DELETE/UPDATE binding SUPER_ADMIN se ultimo attivo. Solleva con marker `E_PROFILO_ULTIMO_SUPER_ADMIN` |
 | `auth_user` | Django | Tabella autenticazione utenti |

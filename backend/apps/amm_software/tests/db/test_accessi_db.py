@@ -53,7 +53,11 @@ from apps.amm_software.services.accessi_service import AccessiService
 from apps.amm_software.services.amm_software_service import AmmSoftwareService
 from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import (
+    apri_super_admin_costruito,
+    apri_transazione_annullata,
+    richiedi_db_provvisto,
+)
 from apps.core.tests._helpers.parametro_di_prova import crea_parametro_di_prova
 from apps.portale.db.portale_repository import PortaleRepository
 
@@ -71,8 +75,6 @@ class AccessiDbTests(unittest.TestCase):
         self.cur = connection.cursor()
         self.addCleanup(self.cur.close)
         cur = self.cur
-        cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano('accessi admin', true)")
-        self.admin = cur.fetchone()[0]
         cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano('accessi operatore')")
         self.operatore = cur.fetchone()[0]
         self.shop = self._credenziale("accessi_solo_shop")
@@ -88,10 +90,7 @@ class AccessiDbTests(unittest.TestCase):
         self.nuda = self._credenziale("accessi_senza_vesti")
         cur.execute("SELECT m.auth_user_id FROM dbops.fn_pgtap_crea_emittente_operatore() m")
         self.macchina = cur.fetchone()[0]
-        cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
-        cur.execute("SET LOCAL app.current_user_id = %s", [str(self.admin)])
-        cur.execute("SELECT script.fn_is_super_admin(%s)", [self.admin])
-        self.assertTrue(cur.fetchone()[0], "il contesto del test dev'essere un SUPER_ADMIN")
+        self.admin = apri_super_admin_costruito(cur, etichetta="accessi admin")
 
     # Scopo: Il mondo in cui gira il test: la FK di `identita_digitali` verso
     #        `django.auth_user` c'e'? E' la stessa domanda della check (D-4).
@@ -185,9 +184,15 @@ class AccessiDbTests(unittest.TestCase):
                 # Nessuna persona costruita qui e' una macchina.
                 self.assertFalse({self.operatore, self.shop, self.nuda} & {r["auth_user_id"] for r in righe})
 
-    # Scopo: Il vocabolario del filtro `stato_accesso` e' uno specchio del DB:
-    #        i quattro stati di `script.fn_stato_veste` piu' NESSUNO, che dichiara
-    #        la vista. Se il DB ne aggiunge uno, il filtro lo rifiuterebbe.
+    # Scopo: Il vocabolario del filtro `stato_accesso` e' uno specchio del DB,
+    #        letto dalle DUE sedi che lo producono: ogni stato e' uno stato di
+    #        `script.fn_stato_veste` (NESSUNO a parte: lo dichiara la vista) E
+    #        un valore che `vw_accessi_altri.stato_accesso` sa dare, perche' il
+    #        filtro legge quella colonna. Uno stato che la vista non produce e'
+    #        un filtro che risponde sempre la lista vuota, senza errore.
+    # ⚠️ Fino al 2026-11-26 si guardava solo il corpo della funzione, e il
+    #    presidio non vedeva che l'aggregato della vista non conosce
+    #    `REVOCATA` (brief-db-accessi-area-clienti §4.2, R-3b-1).
     def test_gli_stati_del_filtro_sono_quelli_del_db(self):
         # ⚠️ `pg_get_functiondef` e non `prosrc`: una funzione `BEGIN ATOMIC`
         #    ha il corpo gia' analizzato, e `prosrc` e' vuoto.
@@ -197,7 +202,25 @@ class AccessiDbTests(unittest.TestCase):
         vista = self.cur.fetchone()[0]
         for stato in STATI_ACCESSO:
             with self.subTest(stato=stato):
-                self.assertIn(f"'{stato}'", vista if stato == "NESSUNO" else corpo)
+                if stato != "NESSUNO":
+                    self.assertIn(f"'{stato}'", corpo)
+                self.assertIn(f"'{stato}'", vista)
+
+    # Scopo: Il verso opposto: uno stato della veste che la vista impara
+    #        dev'entrare nel filtro. ⏳ Oggi e' `REVOCATA`, fuori dal filtro
+    #        finche' R-3b-1 (brief-db-accessi-area-clienti §4.2) non lo porta
+    #        nell'aggregato `stato_accesso`. Quando arriva il changeSet questo
+    #        test diventa ROSSO: si aggiunge `REVOCATA` a `STATI_ACCESSO` e al
+    #        filtro di `AccessiAltriTab` (`STATI_FILTRO`), nella posizione che
+    #        il DB ha scelto, e si toglie il caso da qui.
+    def test_uno_stato_che_la_vista_impara_entra_nel_filtro(self):
+        self.cur.execute("SELECT pg_get_viewdef('anagrafiche.vw_accessi_altri'::regclass)")
+        vista = self.cur.fetchone()[0]
+        self.assertNotIn("REVOCATA", STATI_ACCESSO)
+        self.assertNotIn(
+            "'REVOCATA'", vista,
+            "R-3b-1 arrivato: aggiungere REVOCATA a STATI_ACCESSO e al filtro FE",
+        )
 
     def test_blocca_e_sblocca_coi_verbi_veri(self):
         servizio = AccessiService()

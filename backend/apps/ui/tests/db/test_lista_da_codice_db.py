@@ -180,13 +180,37 @@ class UtenteDiSessioneDbTests(unittest.TestCase):
     # protetta, da operatore con la GUC sporca, da' il codice invece del 22P02.
     # ⚠️ `app.ruolo_applicativo` = OPERATORE: e' il ramo della policy che legge
     #    l'utente. Solo SELECT, in transazione annullata.
+    # ⛔ Il cliente si FABBRICA: la policy si valuta riga per riga, e su una
+    #    tabella vuota (il DB della CI nasce dal solo seed) la SELECT non la
+    #    chiama mai e il rifiuto atteso non arriva. Il builder va PRIMA del
+    #    ruolo operatore, come nei pgTAP: senza contesto si sceglie l'azienda
+    #    da se'.
+    # ⛔ Il mondo da solo NON basta: porta billing account, istanza e ruolo, ma
+    #    nessuna riga di `anagrafiche.clienti` (rosso in CI il 2026-11-26,
+    #    verde su dbdev per i clienti che c'erano). La riga la scrive
+    #    `fn_pgtap_crea_cliente` sull'emittente del mondo, come in
+    #    `anagrafiche/tests/db/test_ricerca_liste_db`. E la lettura va sulla
+    #    riga COSTRUITA: le altre righe del DB non devono poter tenere in piedi
+    #    il test.
     def test_lettura_rls_con_guc_non_valida(self) -> None:
         with connection.cursor() as cur:
+            cur.execute(
+                "SELECT emittente_soggetto_ruolo_id"
+                "  FROM dbops.fn_pgtap_crea_mondo_cliente('GUC NON VALIDA', 'GNV')"
+            )
+            emittente_sr = cur.fetchone()[0]
+            cur.execute(
+                "SELECT cliente_id FROM dbops.fn_pgtap_crea_cliente('GUC NON VALIDA', NULL, %s)",
+                [emittente_sr],
+            )
+            riga = cur.fetchone()
+            self.assertIsNotNone(riga, "il builder non ha scritto il cliente")
+            cliente_id = riga[0]
             cur.execute("SELECT set_config('app.ruolo_applicativo', 'OPERATORE', true)")
 
         def leggi() -> None:
             with connection.cursor() as cur:
-                cur.execute("SELECT count(*) FROM anagrafiche.clienti")
+                cur.execute("SELECT count(*) FROM anagrafiche.clienti WHERE id = %s", [cliente_id])
                 cur.fetchone()
 
         self._assert_guc_rifiutata("abc", leggi)

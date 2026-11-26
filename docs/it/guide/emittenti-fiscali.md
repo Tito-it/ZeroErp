@@ -285,7 +285,8 @@ L'assegnazione si fa nel drawer dell'operatore (**Amm. Software → Operatori**)
 riquadro «Scope emittenti fiscali»:
 
 * «**Un solo emittente**» e la scelta dall'elenco: l'operatore lavora per quell'azienda;
-* «**Tutti gli emittenti (globale)**»: solo per un super admin, che non ha assegnazione e vede tutte le aziende.
+* «**Tutti gli emittenti (solo SUPER_ADMIN)**»: solo per un super admin, che non ha assegnazione e vede tutte le
+  aziende. A un operatore normale il riquadro la mostra spenta.
 
 Il salvataggio passa dal verbo [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope),
 che solo un super admin può chiamare (`E_PERMESSO_NEGATO`) e che **sposta** l'operatore: toglie l'assegnazione di

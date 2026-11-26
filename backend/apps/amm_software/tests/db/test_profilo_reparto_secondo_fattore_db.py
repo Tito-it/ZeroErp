@@ -9,7 +9,8 @@
 #        il repository e non vedono ne' il nome della colonna ne' l'upsert.
 #
 # ⚠️ CASI COSTRUITI in una transazione SEMPRE annullata: il reparto lo crea il
-#    test, nel contesto operatore (RLS).
+#    test, nel contesto di un SUPER_ADMIN costruito (RLS e
+#    verbi del profilo, giro 10-bis).
 #
 # Indice test (opt-in `ZEROERP_TEST_DB_E2E=1`):
 #   1. un reparto senza profilo legge false; acceso, si legge acceso; un PUT
@@ -23,7 +24,7 @@ from unittest import TestCase
 from django.db import connection, transaction
 
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
-from apps.core.tests.db_e2e import Annulla, apri_contesto_operatore, richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, apri_super_admin_costruito, richiedi_db_provvisto
 
 
 class ProfiloRepartoSecondoFattoreDbTests(TestCase):
@@ -35,7 +36,11 @@ class ProfiloRepartoSecondoFattoreDbTests(TestCase):
         repo = AmmSoftwareRepository()
         try:
             with transaction.atomic(), connection.cursor() as cur:
-                apri_contesto_operatore(cur)
+                # ⛔ Il profilo del reparto lo scrivono `fn_scrivi_profilo_accesso` e
+                #    `fn_lega_profilo_reparto`, che chiedono il SUPER_ADMIN della
+                #    sessione (giro 10-bis): un SUPER_ADMIN costruito, non il primo
+                #    operatore del DB.
+                apri_super_admin_costruito(cur, etichetta="profilo reparto secondo fattore")
                 cur.execute(
                     "INSERT INTO config.unita_organizzative (codice, codice_interno, descrizione) "
                     "VALUES ('T3SECFAT', 'T3SECFAT', 'Reparto secondo fattore') RETURNING id"

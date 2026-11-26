@@ -66,7 +66,11 @@ class SoggettiIdFiscaleImmutabileDbTests(unittest.TestCase):
 
     @staticmethod
     def _agisci(cur: Any, auth_user_id: int) -> None:
-        cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [auth_user_id])
+        # ⛔ `SET LOCAL` e non `script.fn_pgtap_set_contesto_operatore`
+        #    (2026-11-26): quella scrive le GUC per la SESSIONE, che sopravvive
+        #    al rollback del test (vedi `apri_super_admin_costruito`).
+        cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
+        cur.execute("SET LOCAL app.current_user_id = %s", [str(auth_user_id)])
 
     def _non_editabili(self) -> list[str]:
         return SoggettiService._compute_non_editable_fields({"id": self.soggetto})

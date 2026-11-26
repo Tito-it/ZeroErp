@@ -2,11 +2,9 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-26**
 >
-> **Riparte: Tid**, con due cose. **(1)** Il giro 10-bis è applicato su dbdev e sullo scratch (2026-11-26), e i
-> pgTAP rilanciati come app sono verdi: doc auto-generata rigenerata e commit fatti (§14.8). **(2)**
-> Girare al BE/FE la richiesta del giro 10-ter (§10-ter.5) e quella del 10-bis (§14.9), insieme. **Poi il team
-> BE/FE** con le due richieste, e **il team DB** col giro 10-quater (gli override utente, D-AG) e la voce «Le guide»
-> del piano. Le richieste precedenti al BE (3j, 3k-bis, 3n, 6a … 6e) sono evase e committate (`e4af0106a`,
+> **Riparte: Tid**, col commit del lavoro BE/FE dei giri 10-bis e 10-ter (§14.9, §10-ter.5: ✅ fatto il
+> 2026-11-26, da committare su `dev/backend-tid`) e una domanda aperta del BE (`apri_contesto_operatore`, §14.9).
+> **Poi il team DB** col giro 10-quater (gli override utente, D-AG) e la voce «Le guide» del piano. Le richieste precedenti al BE (3j, 3k-bis, 3n, 6a … 6e) sono evase e committate (`e4af0106a`,
 > 2026-11-25); il dettaglio di ogni risposta sta nella sezione della sua richiesta.
 > ✅ Il ritiro di `reset_lotto_draft` è fatto, DB e BE (2026-11-24, §4.8). Il superuser Django è deciso (D-J **a**) e
 > fatto nel BE (§4.7); il `None` del perimetro si rifiuta (§4.7, BE, 2026-11-24).
@@ -66,7 +64,7 @@
 > | 6b-septies | Tid | giro 10-ter: ✅ D-AA **a**, ✅ D-AB **b**, ✅ il via (2026-11-26) | §10-ter.4 | — |
 > | 6b-octies | team DB | giro 10-ter: ✅ `20261125-74` … `-76`, codice d'errore, pgTAP del giro e tredici adeguati, guide e `manual/`, provato sullo scratch (2026-11-26) | §10-ter.6 | — |
 > | 6b-nonies | Tid | giro 10-ter: ✅ apply `20261125-72` … `-76` (col `-73` dell'altra sessione), ✅ doc auto-generata rigenerata, ✅ suite pgTAP intera verde su dbdev e sullo scratch, ✅ commit `3d3d804b92` (PR #253) (2026-11-26) | §10-ter.6 | — |
-> | 6b-decies | Tid, poi team BE/FE | giro 10-ter: la richiesta, da girare al BE | §10-ter.5 | — |
+> | 6b-decies | Tid, poi team BE/FE | giro 10-ter: la richiesta · ✅ fatta dal BE/FE (2026-11-26): ripieghi SINGLE (service, drawer, store), testi, test sul DB vero, manuale; la traduzione del codice non serviva | §10-ter.5 | — |
 > | 6f | team DB | giro 10-bis: ✅ analisi (2026-11-26) | §14 | — |
 > | 6f-bis | Tid | giro 10-bis: ✅ D-AC **a**, D-AD **b**, D-AE **a** (2026-11-26); la richiesta di §14.5 al BE | §14.3, §14.5 | — |
 > | 6f-ter | team BE | giro 10-bis: ✅ il censimento integrativo (2026-11-26) | §14.5 | — |
@@ -74,7 +72,7 @@
 > | 6f-ter-ter | team DB | giro 10-bis: ✅ il contenuto del profilo censito sul ramo del BE, al posto della richiesta (2026-11-26) | §14.7 | — |
 > | 6f-quater | team DB | giro 10-bis: ✅ il via (Tid), ✅ `20261126-01` … `-25`, loop e provisioning, CSV, pgTAP nuovo e 57 adeguati, guide e `manual/`, provato sullo scratch (2026-11-26) | §14.8 | — |
 > | 6f-quinquies | Tid | giro 10-bis: ✅ apply su dbdev e scratch, ✅ pgTAP come app verdi, ✅ doc auto-generata rigenerata, ✅ commit (2026-11-26) | §14.8 | — |
-> | 6f-sexies | Tid, poi team BE/FE | giro 10-bis: la richiesta, da girare insieme a quella del 10-ter | §14.9 | — |
+> | 6f-sexies | Tid, poi team BE/FE | giro 10-bis: la richiesta · ✅ fatta dal BE (2026-11-26): test adeguati (quattro erano verdi solo per i dati di dbdev), policy rigenerate, codice morto ritirato, test sul DB vero di `crea_operatore`, manuale | §14.9 | — |
 > | 6g | team DB | giro 10-quater, gli override utente (D-AG **a**): analisi e censimento del BE | Il piano | 6f-quater |
 > | 6c | team DB | giro 9: ✅ analisi, D20-b riletta (2026-11-25) | §11 | — |
 > | 6c-bis | Tid | giro 9: ✅ D-S **a**, il via (2026-11-25) | §11.3 | — |
@@ -2411,6 +2409,26 @@ Chi cambia per primo: il DB. I valori del contratto dello scope non cambiano.
   e `tests/services/test_amm_software_service.py`. La ricerca va fatta sul nome, non è un elenco chiuso.
 * **BE, il manuale** `amm-software/manual/api_amm_software.md` §2.6: «globale» solo per il SUPER_ADMIN.
 
+**✅ La risposta del BE/FE (2026-11-26).**
+
+* ⚠️ **La traduzione di `E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN` non serviva**, e non è stata aggiunta. Provato
+  con una chiamata reale (PUT GLOBAL per un operatore costruito, da un SUPER_ADMIN costruito): `_run_or_raise_super_admin_guard`
+  rilancia la `DatabaseError` che non riconosce, e il middleware la traduce dal codice strutturato con la policy
+  generata, cioè 409 `show_error_banner` con messaggio e hint del catalogo. Una mappatura nel service sarebbe stata
+  una seconda traduzione dello stesso codice. Il commento del metodo lo dice.
+* BE: i ripieghi di `get_emittenti_scope` a `SINGLE` / `['SINGLE']`. Il DB già risponde così all'operatore senza
+  emittente.
+* FE: `OperatoreDrawer.vue` (valore iniziale, `allowedScopeModes`, `syncScope`, creazione) e lo store `operatori.js` a
+  SINGLE; `it.json` ed `en.json` (`banner_non_assegnati_detail`, `emittenti_scope_hint`, `scope_mode_global`).
+* Test: i dati finti di `test_override_permessi` e `test_amm_software_service` dichiarati come risposta di un
+  SUPER_ADMIN (provano il trasporto); un test del ripiego; nella spec del drawer l'operatore senza emittente e la
+  risposta vuota (rosso col ripiego di prima). Nuovo sul DB vero: `amm_software/tests/db/test_emittenti_scope_db.py`
+  (il GET SINGLE senza emittente, il 409, GLOBAL offerto al SUPER_ADMIN).
+* Manuale §2.5 e §2.6.
+* Verifica (`/verifica`, 2026-11-26): `emittenti-fiscali` «Un operatore, un emittente» citava ancora l'etichetta
+  «Tutti gli emittenti (globale)»; allineata a quella nuova del drawer. Per il resto la guida è **coerente** col BE/FE
+  (il riquadro di un operatore normale offre solo «Un solo emittente», Salva spento senza azienda).
+
 **Guide verificate** (`guide_coinvolte.py --oggetti` su primitiva, getter, verbo, tabella ed emittenti, 2026-11-26):
 * `emittenti-fiscali` e `risorse-umane-e-accessi` sono **coerenti** con la regola (la descrivono come avvertenza) e
   vanno aggiornate nel giro;
@@ -3403,6 +3421,27 @@ Chi cambia per primo: il DB. Nessuna firma e nessun endpoint cambiano; firme e c
 * **Il manuale** `amm-software/manual/api_amm_software.md`: creare un operatore, dare o togliere il SUPER_ADMIN e
   scrivere il profilo di un reparto lo chiede anche il DB, al SUPER_ADMIN; le tabelle dei profili e dello scope sono
   in sola lettura per l'app.
+
+**✅ La risposta del BE (2026-11-26).** Prima di cominciare, i moduli toccati sono stati fatti girare sul DB vero
+(`ZEROERP_TEST_DB_E2E=1`): due rossi attesi (l'`INSERT` dell'audit UI, la policy), e quattro **verdi per i dati di
+oggi**.
+
+* **I verdi per i dati di oggi.** Il 3 e il 3-bis di `test_operatore_altre_vesti_db` e i due test del profilo di
+  reparto aprivano il contesto con `apri_contesto_operatore`, che prende il primo operatore attivo per id: su dbdev è
+  `tid`, SUPER_ADMIN, e i verbi passavano. Con un altro primo operatore sarebbero stati `E_PERMESSO_NEGATO`. Ora tutti
+  e quattro da `apri_super_admin_costruito`. Gli altri usi di quel BB nel file (una lettura, un `UPDATE` di
+  `auth_user`) non passano dai verbi col guard.
+* `test_upsert_permesso_audit_dal_trigger`: il profilo da `dbops.fn_pgtap_scrivi_profilo_accesso`.
+* `genera_error_policies` rigenerato (la `note` di `E_DATI_DI_SVILUPPO_IN_PRODUZIONE`); nessun codice nuovo.
+* Codice morto: `RisorseUmaneCoreRepository.crea_risorsa_umana` e il suo file di test mockato, ritirati; la classe resta
+  per `riapri_risorsa_umana_della_veste`. `crea_auth_user` era già ritirato (passo 3b).
+* **Test nuovo sul DB vero**, `amm_software/tests/db/test_crea_operatore_db.py`: il binding per nome di
+  `fn_crea_operatore` dal repository (nessun test lo chiamava senza mock) e il rifiuto `E_PERMESSO_NEGATO` per un
+  operatore con livello TUTTO sulle anagrafiche.
+* Manuale: «Contesto» (i verbi che chiedono il SUPER_ADMIN, le tabelle in sola lettura), §1.2, §1.4, §3.3.
+* ⚠️ **Domanda aperta a Tid**: `apri_contesto_operatore` resta un contesto preso dai dati. Chi lo usa per un verbo col
+  guard del SUPER_ADMIN passa o no secondo chi è il primo operatore del DB. Proposta del BE: farlo fallire (o
+  dichiararlo) quando l'operatore trovato è SUPER_ADMIN e il test non lo chiede.
 
 ## Registro
 

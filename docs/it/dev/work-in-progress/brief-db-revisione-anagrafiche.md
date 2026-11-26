@@ -4,12 +4,13 @@
 
 **Ripartono in due, senza aspettarsi.** La **sessione DB** con T8, il prossimo tema di §17.1: il giro 6 (T4, l'azienda
 del billing account) è chiuso lato DB, `20261126-26 … -41` applicati su scratch e dbdev, pgTAP verdi (Tid, 2026-11-26,
-§24.7), committato il 2026-11-26; il suo passaggio al BE (§24.5, §24.7) è del **team BE/FE**. Il giro 5-bis (il titolo IVA che
-chiede la partita IVA) è ritirato da Tid il 2026-11-26: il controllo esiste già, §23.4. In coda il brief
-nuovo di T6 (che porta anche l'ultimo contatto del soggetto, §22.7). Il **team BE/FE** coi passaggi al BE ancora
-aperti dei giri 3 (§20.7: `_NULLABLE` di `update_soggetto` e i due codici obsoleti nel ripiego sono ancora lì,
-verificato il 2026-11-26) e 4 (§21.7), più la fase 7. Il giro 5 è chiuso: il DB committato (`7f8d9506d`, PR #249),
-il passaggio al BE fatto e committato su `dev/backend-tid` il 2026-11-26 (§22.6, esito in coda alla sezione). Tid ha da girare il passaggio al BE del giro 4 (§21.7); il giro 4 (T7a, `20261123-74 … -94`, §21.5) è applicato, verde e committato (`359c556da1`, 2026-11-24). Tid ha anche da girare il passaggio al BE (§20.7, sei voci). T7 è diviso in T7a, gli indirizzi, e T7b, i contatti e il catasto (Tid, 2026-11-24); l'analisi di T7a sul catalogo è scritta il 2026-11-24 (§21). Il giro 3-bis, D-T5-6 **b** (il tipo di contatto proposto, §20.8), è chiuso: `20261123-68 … -73` applicato, pgTAP verdi, doc auto-generata rigenerata, committato (`f9b1049de3`, 2026-11-24). Il giro 3, T5, è chiuso: `20261123-48 … -64` applicato su scratch e dbdev, pgTAP verdi come app, committato (2026-11-24). Poi T7, T4, T8, T12, T3, T10, T11. Il giro 2 (T2) è chiuso: dentro `anagrafiche` non c'è
+§24.7), committato il 2026-11-26; il suo passaggio al BE (§24.5, §24.7) è del **team BE/FE**. Alla sessione DB resta
+anche da vagliare un rosso già presente su HEAD, la copia di `FATT` nella madre plurale (§21.7, esito). Il giro 5-bis (il
+titolo IVA che chiede la partita IVA) è ritirato da Tid il 2026-11-26: il controllo esiste già, §23.4. In coda il brief
+nuovo di T6 (che porta anche l'ultimo contatto del soggetto, §22.7). Il **team BE/FE** con la fase 7 e il passaggio al
+BE del giro 6: i passaggi al BE dei giri 3 (§20.7) e 4 (§21.7) sono fatti e committati il 2026-11-26 (PR #257, esito in
+coda alle due sezioni). Il giro 5 è chiuso: il DB committato (`7f8d9506d`, PR #249),
+il passaggio al BE fatto e committato su `dev/backend-tid` il 2026-11-26 (§22.6, esito in coda alla sezione). Il giro 4 (T7a, `20261123-74 … -94`, §21.5) è applicato, verde e committato (`359c556da1`, 2026-11-24). T7 è diviso in T7a, gli indirizzi, e T7b, i contatti e il catasto (Tid, 2026-11-24); l'analisi di T7a sul catalogo è scritta il 2026-11-24 (§21). Il giro 3-bis, D-T5-6 **b** (il tipo di contatto proposto, §20.8), è chiuso: `20261123-68 … -73` applicato, pgTAP verdi, doc auto-generata rigenerata, committato (`f9b1049de3`, 2026-11-24). Il giro 3, T5, è chiuso: `20261123-48 … -64` applicato su scratch e dbdev, pgTAP verdi come app, committato (2026-11-24). Poi T7, T4, T8, T12, T3, T10, T11. Il giro 2 (T2) è chiuso: dentro `anagrafiche` non c'è
 niente da cambiare. La postura delle viste in tutto il database è decisa (Tid, 2026-11-23, §19.3) e il suo lavoro è
 di [brief-db-porte-aperte-dalla-sola-guc](brief-db-porte-aperte-dalla-sola-guc.md) §5, in un'altra sessione: qui non
 resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta di S50 (§17, riga T7). Il vaglio per temi è deciso (Tid, 2026-11-23, §17.1). Il piano da percorrere, con le fasi spuntate, è il §0.
@@ -25,7 +26,7 @@ resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta d
 | 7 | sessione DB | Archiviazione in `work-done/`, col debito dei temi spostati scritto nei loro brief | §11 | 5, 6 |
 
 **Decisioni aperte di Tid:** nessuna del giro 6 (T4): D-T4-1 … -12 decise il 2026-11-26 (§24.5, §24.7.1, §24.7). Il giro 5-bis è ritirato (Tid, 2026-11-26, §23.4). Nessuna del giro 5 (D-T7b-1 … -7 prese come proposte, Tid 2026-11-25, §22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
-**Da committare:** niente: il giro 6 (T4) è committato (2026-11-26, «DB: anagrafiche giro 6 (T4)», insieme al giro 5-bis ritirato); il giro 5 è committato (DB `7f8d9506d`, BE 2026-11-26).
+**Da committare:** niente: il giro 6 (T4) è committato (2026-11-26, «DB: anagrafiche giro 6 (T4)», insieme al giro 5-bis ritirato); i passaggi al BE dei giri 3 e 4 sono committati (2026-11-26, PR #257); il giro 5 è committato (DB `7f8d9506d`, BE 2026-11-26).
 
 ## 0. Il piano da percorrere
 
@@ -87,7 +88,7 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] Giro 3-bis: D-T5-6 b, il tipo di contatto proposto: analisi, changeSet `20261123-68 … -73`, pgTAP, manual e guide, provati sullo scratch (2026-11-24, §20.8)
   * [x] Giro 3-bis: applicato, pgTAP verdi (Tid, 2026-11-24); doc auto-generata rigenerata (2026-11-24)
   * [x] Giro 3-bis: committato (Tid, 2026-11-24, `f9b1049de3`)
-  * [ ] Giro 3: il passaggio al BE (§20.7)
+  * [x] Giro 3: il passaggio al BE (§20.7): fatto e committato il 2026-11-26 (PR #257)
   * [x] Giro 4: T7 diviso in T7a (indirizzi) e T7b (contatti e catasto) (Tid, 2026-11-24)
   * [x] Giro 4: T7a, analisi sul catalogo e guide verificate (2026-11-24, §21)
   * [x] Giro 4: T7a, D-T7a-3 … -7 decise come proposte (Tid, 2026-11-24, §21.2)
@@ -95,7 +96,7 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] Giro 4: T7a, pgTAP rosso: due file, 28 rossi sui loro motivi (2026-11-24, §21.4)
   * [x] Giro 4: T7a, changeSet `20261123-74 … -94`, CSV, pgTAP adeguati, guida e note, provati sullo scratch (2026-11-24, §21.5)
   * [x] Giro 4: T7a, apply e pgTAP verdi come app (Tid); doc auto-generata rigenerata (2026-11-24)
-  * [ ] Giro 4: T7a, il passaggio al BE (§21.7)
+  * [x] Giro 4: T7a, il passaggio al BE (§21.7): fatto e committato il 2026-11-26 (PR #257); un rosso DB già presente da vagliare
   * [x] Giro 5: T7b, il confine con T6 (Tid, 2026-11-25, §22) e l'analisi sul catalogo, guide verificate (2026-11-25, §22.1)
   * [x] Giro 5: T7b, le decisioni D-T7b-1 … -7 (Tid, 2026-11-25, §22.2: tutte come proposte)
   * [x] Giro 5: T7b, pgTAP rosso, changeSet `20261125-36 … -46`, guida e note, provati sullo scratch (2026-11-25, §22.4)
@@ -1668,6 +1669,22 @@ che il BE fa oggi. L'elenco è chiuso.
    `backend/apps/core/services/error_messages_fallback.py` (riga 384) ha la sua voce, che si può togliere.
    `error_policies_generated.py` lo segue da solo, alla rigenerazione.
 
+**Esito del passaggio (sessione BE/FE, `dev/backend-tid`, 2026-11-26; da committare).** Tutte le voci fatte o
+censite:
+
+* **1** fatta: `codice_fiscale` e `partita_iva` tolti da `_NULLABLE` di `update_soggetto`.
+* **2** fatta: la voce del vincolo tolta da `_create_pf` e `_create_pg`. ⚠️ **Correzione al testo sopra**:
+  `_MSG_PF_CF_DUPLICATO` e `_MSG_PG_CF_PIVA_DUPLICATA` non servivano alla modifica diretta (che ha il messaggio suo in
+  `update_with_dedup`), ma solo da ripiego della creazione, dove dicevano «CF duplicato» per ogni unicità non
+  riconosciuta. Sostituiti da un ripiego neutro, `_MSG_SOGGETTO_DUPLICATO` (ok Tid, 2026-11-26).
+  `E_ADMIN_PIVA_DUPLICATA` tolto dai ripieghi.
+* **3** e **4**: niente da cambiare (la chiave i18n era già fatta il 2026-11-24).
+* **5**: nessun override ricopia quelle frasi: i ripieghi non hanno id né segnaposto, gli override sono solo gesti.
+* **6** fatta: `E_DEFAULT_CONTATTO_MISSING` tolto dai ripieghi.
+* Presidio nuovo sul DB vero: `test_soggetti_identificativo_doppio_db`. Prova il doppione del privato sul CF, la PG
+  sulla P.IVA, la ditta individuale di chi è già privato che nasce, e la normalizzazione in modifica. Il test
+  simulato che accendeva `codice_fiscale` da un `23505` ora prova il ripiego neutro senza campo.
+
 ### 20.8 Giro 3-bis — D-T5-6 b, il tipo di contatto proposto (2026-11-24, al via di Tid)
 
 **La decisione** (Tid, 2026-11-24): quando chi crea un soggetto non dice il tipo del contatto di default, il database
@@ -2037,6 +2054,28 @@ fa oggi, salvo dove è detto.
 5. **`anagrafiche.fn_search_indirizzi_dettaglio` non c'è più**. Il BE non la chiama: niente da cambiare.
 6. **La colonna `geoloc`** di `indirizzi` e `indirizzi_soggetti` è `NULL` per un indirizzo col dettaglio. Il BE non la
    legge (nessun `geoloc` in `backend/` né in `frontend/src`): niente da cambiare.
+
+**Esito del passaggio (sessione BE/FE, `dev/backend-tid`, 2026-11-26; da committare).**
+
+* **1** censita: nel BE i mancanti li leggono solo `soggetti_repository` e `soggetti_service`, per il cambio di
+  natura. Nessun lettore dà per scontato che un titolare scritto abbia i suoi indirizzi obbligatori. Il
+  censimento è fatto per nome (`fn_indirizzi_obbligatori_mancanti*`, `indirizzi_obbligatori`).
+* **2** e **4**: i codici sono già dichiarati, con policy e ripiego; nessun pre-check del BE li anticipava.
+* **3** fatta: `richiedi_via` di `geo_service` era la seconda sede della via nuova, senza il campo. Decideva anche
+  «via nuova» dove il DB decide «indirizzo libero» (un elemento senza via e senza testo). Ora è
+  `richiedi_id_via_positivi` e tiene il solo contratto degli id: `stradario_id`, `toponomastica_id`, `comune_id` e
+  `codice_postale_id`, se ci sono, sono interi positivi, perché un id ≤ 0 arriverebbe al DB come FK violata (ok Tid,
+  2026-11-26). Lo chiamano `crea_dettaglio_indirizzo` e `indirizzo_per_madre`. Il catalogo BB è aggiornato, l'indice
+  rigenerato. Presidio nuovo sul DB vero: `test_indirizzo_via_nuova_db` (il campo che manca, uno per volta).
+* **5** e **6**: niente da cambiare.
+* Verifica (`/verifica`, 2026-11-26): erano rimasti alla regola di prima i manuali
+  `anagrafiche/manual/api_indirizzi.md` (errori del POST: la via nuova incompleta come `E_ANAG_VALIDAZIONE`) e
+  `api_indirizzi_ruolo.md` (errori e nota sulla forma: «senza libero né dettaglio vale la via da risolvere», dove il DB
+  decide «libero»), e il commento di `GeoService.create_indirizzo`. Allineati. **Guide verificate**:
+  `gestione-degli-indirizzi` R3 **coerente** col codice.
+* Rosso già presente, che il giro non tocca: `test_creazioni_dalle_madri_db.test_gli_obbligatori_copiati_dal_primo`
+  (`FATT` non copiato) è rosso anche su HEAD `7a61ed514`, provato in un worktree separato il 2026-11-26. Da
+  vagliare lato DB: la copia degli obbligatori della madre plurale.
 
 ## 22. Giro 5 — T7b, i contatti e il catasto (2026-11-25: decisioni prese, scritto e provato sullo scratch)
 

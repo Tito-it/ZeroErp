@@ -7,6 +7,10 @@
 #        ha piu' una, accende chi ne ha una diventata valida). Wrapper Django per
 #        anagrafiche.fn_sync_auth_user_expired() con invalidazione
 #        cache permessi per gli utenti coinvolti.
+#        ⚠️ Dal 2026-11-26 (`20261125-60`, D-G2-1 del brief-db-accessi-area-
+#        clienti) spegne anche la credenziale SENZA NESSUNA veste: il modello
+#        non la ammette accesa. Il riepilogo (anche in `--dry-run`) la conta
+#        fra le riallineate.
 # Note: ⛔ ATTREZZO A MANO, non un processo programmato — e dal 2026-09-07 non
 #       si registra piu' sul giornale dei run.
 #       Il lavoro schedulato lo fa il job pgAgent `sync_auth_user_expired_daily`

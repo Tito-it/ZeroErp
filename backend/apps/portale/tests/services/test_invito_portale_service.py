@@ -913,7 +913,7 @@ class DisattivaVesteTests(TestCase):
     @patch(_AUTH_REPO, autospec=True)
     @patch(_REPO, autospec=True)
     def test_disattiva_cliente_portale_attivo_invalida_token(
-        self, MockRepo, _MockAuth, MockToken
+        self, MockRepo, MockAuth, MockToken
     ):
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
@@ -926,7 +926,7 @@ class DisattivaVesteTests(TestCase):
             "identita_id": 500, "auth_user_id": 10, "attivo": True,
             "invito_inviato_at": None,
         }
-        repo.disattiva_identita.return_value = True
+        MockAuth.return_value.revoca_veste.return_value = True
 
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         result = InvitoPortaleService().disattiva_veste_cliente(
@@ -935,9 +935,10 @@ class DisattivaVesteTests(TestCase):
             disattivato_da_user_id=999,
         )
         self.assertTrue(result["disattivato"])
-        self.assertEqual(result["stato"], "DISATTIVO")
+        self.assertEqual(result["stato"], "REVOCATA")
         self.assertEqual(result["identita_id"], 500)
-        repo.disattiva_identita.assert_called_once_with(500)
+        # R2-a: la revoca dal verbo del DB, che lascia il segno.
+        MockAuth.return_value.revoca_veste.assert_called_once_with(500)
         # I token della veste (entrambi i tipi della porta) invalidati.
         MockToken.return_value.invalidate_for_identita.assert_called_once_with(
             ("INVITO_PORTALE", "ATTIVAZIONE_PORTALE_CROSS"), 10, 500,
@@ -964,14 +965,13 @@ class DisattivaVesteTests(TestCase):
         )
         self.assertFalse(result["disattivato"])
         self.assertEqual(result["stato"], "NESSUNO")
-        repo.disattiva_identita.assert_not_called()
         self.mock_blocca.assert_not_called()
 
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO, autospec=True)
     @patch(_REPO, autospec=True)
     def test_disattiva_fornitore_portale(
-        self, MockRepo, _MockAuth, MockToken
+        self, MockRepo, MockAuth, MockToken
     ):
         repo = MockRepo.return_value
         repo.get_fornitore_info.return_value = {
@@ -984,7 +984,7 @@ class DisattivaVesteTests(TestCase):
             "identita_id": 600, "auth_user_id": 20, "attivo": True,
             "invito_inviato_at": None,
         }
-        repo.disattiva_identita.return_value = True
+        MockAuth.return_value.revoca_veste.return_value = True
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         result = InvitoPortaleService().disattiva_veste_fornitore(
             fornitore_id=77, disattivato_da_user_id=999,
@@ -994,9 +994,10 @@ class DisattivaVesteTests(TestCase):
         self.mock_blocca.assert_called_once_with(20, identita_id=600)
 
     @patch(_TOKEN_SVC)
+    @patch(_AUTH_REPO, autospec=True)
     @patch(_REPO, autospec=True)
     def test_disattiva_cliente_identita_gia_disattiva_idempotente(
-        self, MockRepo, MockToken
+        self, MockRepo, MockAuth, MockToken
     ):
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
@@ -1005,23 +1006,25 @@ class DisattivaVesteTests(TestCase):
             "ragione_sociale": "X", "cognome": None, "nome": None,
             "codice_fiscale": None,
         }
-        # Identita gia' disattiva (attivo=false): no UPDATE fisico ma
-        # comunque invalida eventuali token residui (best-effort cleanup).
+        # Identita gia' spenta (attivo=false): la revoca si chiede lo stesso
+        # (il segno ferma l'invito in volo, R2-a) e i token residui si
+        # invalidano.
         repo.find_identita_portale.return_value = {
             "identita_id": 500, "auth_user_id": 10, "attivo": False,
             "invito_inviato_at": None,
         }
+        MockAuth.return_value.revoca_veste.return_value = False
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         result = InvitoPortaleService().disattiva_veste_cliente(
             cliente_id=1,
             ruolo_applicativo="CLIENTE_PORTALE",
             disattivato_da_user_id=999,
         )
-        # was_active=False -> disattivato=False (nessun UPDATE), ma stato
-        # finale DISATTIVO riportato coerentemente al caller.
+        # Il verbo dice «era spenta» -> disattivato=False; lo stato finale e'
+        # REVOCATA, come per la veste accesa.
         self.assertFalse(result["disattivato"])
-        self.assertEqual(result["stato"], "DISATTIVO")
-        repo.disattiva_identita.assert_not_called()
+        self.assertEqual(result["stato"], "REVOCATA")
+        MockAuth.return_value.revoca_veste.assert_called_once_with(500)
         # Best-effort cleanup: i token portale residui vengono comunque
         # invalidati (idempotente lato BE, no-op se non ce n'erano).
         MockToken.return_value.invalidate_for_identita.assert_called_once_with(

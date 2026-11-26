@@ -240,12 +240,18 @@ class TestIndirizziService(TestCase):
 
     @patch(GEO_REPO, autospec=True)
     @patch(IND_REPO, autospec=True)
-    def test_create_indirizzo_via_nuova_missing_fields(self, mock_ind, mock_geo):
-        """Via nuova senza toponomastica_id → E_ANAG_VALIDAZIONE."""
+    def test_create_indirizzo_id_della_via_non_positivo(self, mock_ind, mock_geo):
+        """Un id della via <= 0 → E_ANAG_VALIDAZIONE, prima del DB. La via nuova
+        incompleta NON si ferma qui: la rifiuta `fn_create_indirizzo` col campo
+        (`E_INDIRIZZO_VIA_NUOVA_INCOMPLETA`, §21.7; la strada vera in
+        `tests/db/test_indirizzo_via_nuova_db`)."""
         from apps.anagrafiche.services.geo_service import GeoService
         with self.assertRaises(ServiceError) as ctx:
-            GeoService().create_indirizzo({"descrizione_via": "Roma", "comune_id": 10, "codice_postale_id": 20})
+            GeoService().create_indirizzo({
+                "toponomastica_id": 0, "descrizione_via": "Roma", "comune_id": 10, "codice_postale_id": 20,
+            })
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        mock_ind.return_value.create_indirizzo_atomico.assert_not_called()
 
     @patch(GEO_REPO, autospec=True)
     @patch(IND_REPO, autospec=True)

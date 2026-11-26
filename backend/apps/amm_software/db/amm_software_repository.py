@@ -30,6 +30,7 @@ from apps.core.db._helpers import (
     sql_order_clause,
     sql_tiebreak_direction,
 )
+from apps.core.db.auth_repository import AuthRepository
 
 from apps.core.services.auth_constants import (
     CATEGORIA_ACCESSO_OPERATORE,
@@ -383,7 +384,7 @@ class AmmSoftwareRepository:
     #    §6.16) anche il profilo e lo slegare stanno nel DB: il profilo lo
     #    risolve il lettore `config.fn_profilo_super_admin_id` (per `tipo`,
     #    fra gli ATTIVI, esattamente uno, altrimenti `E_CONFIG_MANCANTE`
-    #    «trovati N»: la stessa sede di `fn_crea_risorsa_umana_v2`), lo
+    #    «trovati N»: la stessa sede di `fn_crea_risorsa_umana`), lo
     #    slegare la madre `config.fn_slega_profilo_identita`. Fino ad allora
     #    la regola del profilo era ricopiata qui e il DELETE toglieva i
     #    legami verso OGNI profilo di quel tipo, spenti compresi.
@@ -510,16 +511,16 @@ class AmmSoftwareRepository:
     # stato inconsistente se uno dei 3 step fallisce.
     def disabilita_operatore(self, auth_user_id: int) -> None:
         with transaction.atomic(), connection.cursor() as cursor:
-            # 1. Spegne la veste operatore (figlio), non le altre: una
+            # 1. Revoca la veste operatore (figlio), non le altre: una
             #    credenziale puo' avere anche vesti di portale o shop (D-6).
-            #    ⛔ Solo `attivo = false`, il tipo resta (R-DB-1, 2026-10-02):
-            #    la tabella rifiuta `DISABILITATO` con
-            #    `E_RUOLO_APPLICATIVO_RITIRATO`.
-            cursor.execute(
-                "UPDATE anagrafiche.identita_digitali SET attivo = false "  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
-                f"WHERE id = {_VESTE_OPERATORE.format(au='%s')}",
-                [auth_user_id],
-            )
+            #    ⭐ Dal verbo del DB, che lascia il segno della revoca
+            #    (`AuthRepository.revoca_veste`, R2-a del brief-db-accessi-
+            #    area-clienti, 2026-11-26): un link d'invito vecchio non la
+            #    riaccende. Fino a quel giorno era un `UPDATE … SET attivo =
+            #    false` diretto.
+            veste_id = self.get_veste_operatore_id(auth_user_id)
+            if veste_id is not None:
+                AuthRepository().revoca_veste(veste_id)
             # 2. Disattiva la risorsa umana di quella veste (padre) +
             #    valido_al = oggi
             cursor.execute(
@@ -538,9 +539,9 @@ class AmmSoftwareRepository:
             )
 
     # Scopo: Crea un operatore invocando la madre DB
-    # `anagrafiche.fn_crea_operatore_v2` (rev P-2, 20260925-42). Due flussi sul
-    # soggetto: soggetto_id NULL (crea il soggetto PF) o valorizzato (usa
-    # l'esistente). Due flussi sulla CREDENZIALE, decisi dal DB per email
+    # `anagrafiche.fn_crea_operatore` (rev P-2, 20260925-42; senza `_v2` dal
+    # 20261125-68). Due flussi sul soggetto: soggetto_id NULL (crea il
+    # soggetto PF) o valorizzato (usa l'esistente). Due flussi sulla CREDENZIALE, decisi dal DB per email
     # senza maiuscole (D-6: una persona, una credenziale):
     #   - nuova: nasce con `password_hash` e `username`;
     #   - RIUSATA: password, username e nome restano i suoi, e quelli passati
@@ -578,7 +579,7 @@ class AmmSoftwareRepository:
     ) -> dict[str, Any]:
         sql = """
             SELECT auth_user_id, username, credenziale_riusata
-              FROM anagrafiche.fn_crea_operatore_v2(
+              FROM anagrafiche.fn_crea_operatore(
                 p_soggetto_id                    := %s::uuid,
                 p_cognome                        := %s,
                 p_nome                           := %s,
@@ -628,7 +629,7 @@ class AmmSoftwareRepository:
     #        credenziale_riusata}, come `crea_operatore`.
     # ⭐ Tutto il resto e' del verbo: si apre solo se nessuna veste ha mai
     #    avuto un legame SUPER_ADMIN (`E_PRIMO_AMMINISTRATORE_GIA_PRESENTE`),
-    #    sceglie la qualifica `AMMINISTRATORE`, compone `fn_crea_operatore_v2`
+    #    sceglie la qualifica `AMMINISTRATORE`, compone `fn_crea_operatore`
     #    (i suoi rifiuti, compreso `E_CREDENZIALE_DA_CONFERMARE`, valgono qui),
     #    scrive gli indirizzi e accende la veste. Il backend calcola l'hash.
     # ⚠️ Gli indirizzi viaggiano come jsonb nella forma di

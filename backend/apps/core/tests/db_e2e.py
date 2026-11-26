@@ -197,12 +197,11 @@ def richiedi_ruolo_soggetto_a_rls(tabella: str) -> None:
 #    senza operatori e' una condizione d'AMBIENTE, non un difetto del codice
 #    sotto test. Il guard sulla transazione invece FALLISCE: quello e' un errore
 #    di chi scrive il test, e uno skip lo nasconderebbe.
-# ⭐ `super_admin=True` (2026-11-07, BE9 di brief-db-revisione-dbops): l'utente
-#    e' un SUPER_ADMIN per il DB (`script.fn_is_super_admin`), non solo un
-#    superuser Django — e' l'identita' a cui la policy della coda lavori mostra
-#    i lavori SISTEMA («Esegui ora» passa da `AdminAPIView`, cioe' da li').
-#    Un superuser Django senza il binding, per la policy, non lo e'.
-def apri_contesto_operatore(cur, *, super_admin: bool = False) -> int:
+# ⛔ Niente SUPER_ADMIN da qui: il parametro `super_admin` (2026-11-07) e'
+#    ritirato il 2026-11-26 (Tid). Prendeva il primo SUPER_ADMIN del DB, e su
+#    un DB senza saltava: un test verde senza aver provato niente. Chi vuole
+#    un SUPER_ADMIN lo costruisce con `apri_super_admin_costruito`.
+def apri_contesto_operatore(cur) -> int:
     from django.db import connection
 
     if not connection.in_atomic_block:
@@ -213,30 +212,62 @@ def apri_contesto_operatore(cur, *, super_admin: bool = False) -> int:
             "Avvolgi la chiamata in `with transaction.atomic():`."
         )
     cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
-    if super_admin:
-        cur.execute(
-            "SELECT u.id FROM auth_user u"
-            " WHERE u.is_active AND script.fn_is_super_admin(u.id) ORDER BY u.id LIMIT 1"
-        )
-    else:
-        # ⭐ Un OPERATORE con la veste attiva, cioe' cio' che il nome promette.
-        #    Fino al 2026-11-24 era «il primo `is_superuser`»: un flag che il
-        #    database non guarda e che dal D-J non concede niente nemmeno al
-        #    backend (brief-db-porte-aperte-dalla-sola-guc §4.7).
-        cur.execute(
-            "SELECT u.id FROM auth_user u"
-            " WHERE u.is_active"
-            "   AND script.fn_has_identita_attiva(u.id, 'OPERATORE'::config.ruolo_applicativo)"
-            " ORDER BY u.id LIMIT 1"
-        )
+    # ⭐ Un OPERATORE con la veste attiva, cioe' cio' che il nome promette.
+    #    Fino al 2026-11-24 era «il primo `is_superuser`»: un flag che il
+    #    database non guarda e che dal D-J non concede niente nemmeno al
+    #    backend (brief-db-porte-aperte-dalla-sola-guc §4.7).
+    cur.execute(
+        "SELECT u.id FROM auth_user u"
+        " WHERE u.is_active"
+        "   AND script.fn_has_identita_attiva(u.id, 'OPERATORE'::config.ruolo_applicativo)"
+        " ORDER BY u.id LIMIT 1"
+    )
     riga = cur.fetchone()
     if riga is None:
-        raise unittest.SkipTest(
-            "nessun utente su cui aprire il contesto "
-            + ("super admin" if super_admin else "operatore")
-        )
+        raise unittest.SkipTest("nessun utente su cui aprire il contesto operatore")
     cur.execute("SET LOCAL app.current_user_id = %s", [str(riga[0])])
     return int(riga[0])
+
+
+# Scopo: UN SUPER_ADMIN COSTRUITO, col contesto aperto su di lui:
+#        `apri_super_admin_costruito(cur, etichetta="...") -> auth_user_id`.
+#        Per i test che passano da un verbo del DB che chiede il SUPER_ADMIN
+#        all'utente della sessione (`script.fn_guard_super_admin`, per esempio
+#        `anagrafiche.fn_revoca_veste` su una veste operatore).
+# Note: estratto il 2026-11-26 (regola del 2, ok Tid) da `test_accessi_db`,
+#       `test_revoca_veste_db` e `test_token_veste_db`, che ricopiavano
+#       builder + due `SET LOCAL` + controllo; ha preso il posto di
+#       `apri_contesto_operatore(cur, super_admin=True)`, ritirato lo stesso
+#       giorno.
+#       ⭐ A differenza di quel parametro l'utente si COSTRUISCE (`dbops.fn_pgtap_crea_operatore_umano(…, true)`): niente
+#       dipende dai SUPER_ADMIN presenti, e non c'e' lo skip che su un database
+#       senza amministratori rendeva il test verde senza provare niente.
+#       ⚠️ Il contesto si apre per ULTIMO: chi costruisce altri casi lo fa
+#       PRIMA di chiamarla, come nei pgTAP (i builder scrivono una saga).
+#       Va chiamata dentro una transazione annullata.
+def apri_super_admin_costruito(cur, *, etichetta: str) -> int:
+    from django.db import connection
+
+    if not connection.in_atomic_block:
+        raise AssertionError(
+            "apri_super_admin_costruito chiamata FUORI da una transazione: "
+            "`SET LOCAL` sarebbe ignorato e il SUPER_ADMIN costruito resterebbe nel DB."
+        )
+    cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano(%s, true)", [etichetta])
+    utente = int(cur.fetchone()[0])
+    # ⛔ `SET LOCAL`, e NON `script.fn_pgtap_set_contesto_operatore`: quella
+    #    scrive le GUC per la SESSIONE (`set_config(…, false)`), che sopravvive
+    #    al rollback. Il test dopo eredita l'id di un SUPER_ADMIN annullato e i
+    #    verbi rispondono E_PERMESSO_NEGATO (successo il 2026-11-26 in
+    #    `test_operatore_altre_vesti_db`, all'estrazione).
+    cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
+    cur.execute("SET LOCAL app.current_user_id = %s", [str(utente)])
+    # ⛔ Un builder che non lega il profilo non deve passare in silenzio: il
+    #    test proverebbe E_PERMESSO_NEGATO invece della regola.
+    cur.execute("SELECT script.fn_is_super_admin(%s)", [utente])
+    if not cur.fetchone()[0]:
+        raise AssertionError(f"l'utente costruito {utente} non e' SUPER_ADMIN per il DB")
+    return utente
 
 
 # Scopo: UN OPERATORE COSTRUITO, col contesto aperto e livello TUTTO sulle
@@ -253,13 +284,27 @@ def apri_contesto_operatore(cur, *, super_admin: bool = False) -> int:
 #       ⚠️ L'override si scrive con `ON CONFLICT … DO UPDATE`: l'operatore
 #       costruito ha gia' la sua riga su alcune aree (le vendite), e il livello
 #       va alzato, non duplicato.
+#       ⛔ Le GUC con `SET LOCAL` (2026-11-26): fino ad allora per la
+#       sessione, e sopravvivevano al rollback del test.
 #       Va chiamata dentro una transazione annullata.
 def apri_operatore_con_aree(cur, *, aree: tuple[str, ...], motivo: str) -> int:
     if not aree:
         raise AssertionError("apri_operatore_con_aree senza aree: il livello non si alza su niente")
+    from django.db import connection
+
+    if not connection.in_atomic_block:
+        raise AssertionError(
+            "apri_operatore_con_aree chiamata FUORI da una transazione: "
+            "`SET LOCAL` sarebbe ignorato e l'operatore costruito resterebbe nel DB."
+        )
     cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_emittente_operatore()")
     utente = int(cur.fetchone()[0])
-    cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [utente])
+    # ⛔ `SET LOCAL` e non `script.fn_pgtap_set_contesto_operatore` (corretto il
+    #    2026-11-26): quella scrive le GUC per la SESSIONE, che sopravvive al
+    #    rollback, e il test dopo girava col contesto di un utente annullato.
+    #    Con l'argomento la funzione non fa altro che queste due GUC.
+    cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
+    cur.execute("SET LOCAL app.current_user_id = %s", [str(utente)])
     cur.execute(
         "INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)"
         " SELECT %s, af.id, 'TUTTO'::config.livello_accesso, %s"

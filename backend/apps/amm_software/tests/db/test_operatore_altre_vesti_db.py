@@ -44,7 +44,12 @@ from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.invito_veste import PORTA_OPERATORE, PORTA_SHOP
 from apps.core.services.token_service import TokenService
-from apps.core.tests.db_e2e import Annulla, apri_contesto_operatore, richiedi_db_provvisto
+from apps.core.tests.db_e2e import (
+    Annulla,
+    apri_contesto_operatore,
+    apri_super_admin_costruito,
+    richiedi_db_provvisto,
+)
 
 
 class OperatoreAltreVestiDbTests(TestCase):
@@ -120,7 +125,7 @@ class OperatoreAltreVestiDbTests(TestCase):
             with transaction.atomic(), connection.cursor() as cur:
                 # I builder PRIMA del contesto operatore, come nei pgTAP.
                 uid, operatore, shop = self._operatore_anche_cliente_shop(cur)
-                apri_contesto_operatore(cur)
+                apri_super_admin_costruito(cur, etichetta="altre vesti admin")
                 _, valido_dal, _ = self._rapporto(cur, operatore)
 
                 repo.disabilita_operatore(uid)
@@ -136,6 +141,16 @@ class OperatoreAltreVestiDbTests(TestCase):
                 self.assertEqual(self._veste(cur, operatore), ("OPERATORE", False))
                 # Un secondo invito non riscrive niente.
                 self.assertEqual(RisorseUmaneCoreRepository().riapri_risorsa_umana_della_veste(operatore), 0)
+
+                # ⭐ «Disabilita» e' una revoca (2026-11-26, R2-a del brief-db-
+                #    accessi-area-clienti): senza un nuovo invito l'attivazione
+                #    si ferma. Il nuovo invito toglie il segno (lo fa
+                #    `InvitoVeste.emetti`, qui il suo verbo).
+                with self.assertRaises(DatabaseError), transaction.atomic():
+                    AuthRepository().attiva_identita(
+                        operatore, auth_user_id=uid, ruoli_applicativi=PORTA_OPERATORE.ruoli,
+                    )
+                self.assertTrue(AuthRepository().togli_revoca_veste(operatore))
 
                 # L'attivazione della persona accende la veste.
                 self.assertTrue(AuthRepository().attiva_identita(
@@ -155,7 +170,7 @@ class OperatoreAltreVestiDbTests(TestCase):
         try:
             with transaction.atomic(), connection.cursor() as cur:
                 uid, operatore, _shop = self._operatore_anche_cliente_shop(cur)
-                apri_contesto_operatore(cur)
+                apri_super_admin_costruito(cur, etichetta="altre vesti admin")
 
                 AmmSoftwareRepository().disabilita_operatore(uid)
                 RisorseUmaneCoreRepository().riapri_risorsa_umana_della_veste(operatore)
@@ -179,7 +194,7 @@ class OperatoreAltreVestiDbTests(TestCase):
         try:
             with transaction.atomic(), connection.cursor() as cur:
                 uid, operatore, _shop = self._operatore_anche_cliente_shop(cur)
-                apri_contesto_operatore(cur)
+                apri_super_admin_costruito(cur, etichetta="altre vesti admin")
                 _, valido_dal, _ = self._rapporto(cur, operatore)
                 AmmSoftwareRepository().disabilita_operatore(uid)
                 cur.execute(
@@ -203,7 +218,11 @@ class OperatoreAltreVestiDbTests(TestCase):
             with transaction.atomic(), connection.cursor() as cur:
                 # I builder PRIMA del contesto operatore, come nei pgTAP.
                 uid, operatore, shop = self._operatore_anche_cliente_shop(cur)
-                apri_contesto_operatore(cur)
+                # ⛔ Legare il SUPER_ADMIN lo chiede il DB al SUPER_ADMIN della
+                #    sessione (giro 10-bis): un SUPER_ADMIN costruito. Con
+                #    `apri_contesto_operatore` era verde solo perche' il primo
+                #    operatore di dbdev e' SUPER_ADMIN.
+                apri_super_admin_costruito(cur, etichetta="altre vesti admin")
 
                 repo.update_operatore(uid, is_super_admin=True)
                 cur.execute(
@@ -226,7 +245,8 @@ class OperatoreAltreVestiDbTests(TestCase):
         try:
             with transaction.atomic(), connection.cursor() as cur:
                 uid, operatore, _shop = self._operatore_anche_cliente_shop(cur)
-                apri_contesto_operatore(cur)
+                # ⛔ Come il test 3: un SUPER_ADMIN costruito (giro 10-bis).
+                apri_super_admin_costruito(cur, etichetta="altre vesti admin")
 
                 repo.update_operatore(uid, is_super_admin=True)
                 repo.update_operatore(uid, is_super_admin=False)
@@ -251,12 +271,17 @@ class OperatoreAltreVestiDbTests(TestCase):
         try:
             with transaction.atomic(), connection.cursor() as cur:
                 uid, operatore, _shop = self._operatore_anche_cliente_shop(cur)
+                # ⛔ I verbi dei profili chiedono il SUPER_ADMIN alla sessione:
+                #    il contesto PRIMA di scriverli, su un SUPER_ADMIN costruito
+                #    (2026-11-26). Fino ad allora il profilo si scriveva senza
+                #    contesto e poi si apriva quello del «primo operatore
+                #    attivo» del DB: verde o rosso secondo i dati di oggi.
+                apri_super_admin_costruito(cur, etichetta="altre vesti admin")
                 cur.execute(
                     "SELECT config.fn_scrivi_profilo_accesso('SUPER_ADMIN'::config.tipo_profilo_accesso,"
                     " 'E2E_SECONDO_SA', 'Secondo SA e2e', NULL, NULL,"
                     " '{\"richiede_secondo_fattore\": true}'::jsonb)"
                 )
-                apri_contesto_operatore(cur)
 
                 with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
                     AmmSoftwareRepository().update_operatore(uid, is_super_admin=True)
@@ -278,13 +303,18 @@ class OperatoreAltreVestiDbTests(TestCase):
         try:
             with transaction.atomic(), connection.cursor() as cur:
                 uid, operatore, _shop = self._operatore_anche_cliente_shop(cur)
+                # ⛔ I verbi dei profili chiedono il SUPER_ADMIN alla sessione:
+                #    il contesto PRIMA di scriverli, su un SUPER_ADMIN costruito
+                #    (2026-11-26). Fino ad allora il profilo si scriveva senza
+                #    contesto e poi si apriva quello del «primo operatore
+                #    attivo» del DB: verde o rosso secondo i dati di oggi.
+                apri_super_admin_costruito(cur, etichetta="altre vesti admin")
                 cur.execute(
                     "SELECT config.fn_scrivi_profilo_accesso('AD_HOC'::config.tipo_profilo_accesso,"
                     " 'E2E_ALTRO_PROFILO', 'Profilo e2e', NULL, NULL, '{}'::jsonb)"
                 )
                 profilo = cur.fetchone()[0]
                 cur.execute("SELECT config.fn_lega_profilo_identita(%s, %s)", [profilo, operatore])
-                apri_contesto_operatore(cur)
 
                 with self.assertRaises(ServiceError) as ctx:
                     AmmSoftwareService().update_operatore(uid, {"is_super_admin": True})
@@ -306,7 +336,7 @@ class OperatoreAltreVestiDbTests(TestCase):
             with transaction.atomic(), connection.cursor() as cur:
                 # I builder PRIMA del contesto operatore, come nei pgTAP.
                 uid, _operatore, _shop = self._operatore_anche_cliente_shop(cur)
-                apri_contesto_operatore(cur)
+                apri_super_admin_costruito(cur, etichetta="altre vesti admin")
                 cur.execute("SELECT username FROM auth_user WHERE id = %s", [uid])
                 username = cur.fetchone()[0]
 
@@ -403,7 +433,7 @@ class OperatoreAltreVestiDbTests(TestCase):
                     with transaction.atomic(), connection.cursor() as cur:
                         # I builder PRIMA del contesto operatore, come nei pgTAP.
                         uid, operatore, shop = self._operatore_anche_cliente_shop(cur)
-                        apri_contesto_operatore(cur)
+                        apri_super_admin_costruito(cur, etichetta="altre vesti admin")
                         s_operatore = self._sessione(uid, operatore)
                         s_shop = self._sessione(uid, shop)
                         inviti = TokenService()

@@ -914,6 +914,7 @@
       "PENDING": "Invito inviato",
       "NON_SPEDITO": "Invito non spedito",
       "ATTIVO": "Attivo",
+      "REVOCATA": "Revocato",
       "DISATTIVO": "Disattivato"
     },
     "account": {
@@ -1275,7 +1276,7 @@
     },
     "select_rounding_policy": "Seleziona modo arrotondamento",
     "banner_non_assegnati_title": "{count} operatori non sono ancora assegnati a un emittente fiscale",
-    "banner_non_assegnati_detail": "Dopo l'introduzione del vincolo 1-a-1 operatore-emittente, gli operatori esistenti sono rimasti come admin globali. Aprire il drawer di ogni operatore e assegnarlo all'emittente corretto. Finché non assegnati, gli operatori non possono creare billing account quando esistono emittenti fiscali nel sistema.",
+    "banner_non_assegnati_detail": "Un operatore senza emittente non vede nessun dato. Aprire il drawer di ogni operatore e, nella scheda Dati, assegnarlo all'emittente per cui lavora.",
     "search_placeholder": "Cerca operatore...",
     "filter_ruolo": "Ruolo",
     "filter_super_admin": "Super Admin",
@@ -1384,8 +1385,8 @@
     "select_model": "Seleziona model...",
     "model_override_reason_riservato": "Model riservato al sistema permessi: override non ammesso.",
     "emittenti_scope_title": "Scope emittenti fiscali",
-    "emittenti_scope_hint": "Definisci lo scope dell'operatore: tutti gli emittenti (globale) o uno solo (locale).",
-    "scope_mode_global": "Tutti gli emittenti (globale)",
+    "emittenti_scope_hint": "L'emittente per cui l'operatore lavora. «Tutti gli emittenti» vale solo per un SUPER_ADMIN.",
+    "scope_mode_global": "Tutti gli emittenti (solo SUPER_ADMIN)",
     "scope_mode_single": "Un solo emittente",
     "add_override": "Aggiungi override",
     "profilo_reparto_title": "Profilo reparto: {nome}",

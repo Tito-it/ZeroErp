@@ -111,6 +111,8 @@ function operatore(sovrascritture = {}) {
   }
 }
 
+// ⚠️ La risposta per un SUPER_ADMIN: e' l'unico a cui il BE offre GLOBAL (giro
+//    10-ter, D-AA a, 2026-11-26). Quella di un operatore normale e' sotto.
 const SCOPE_GLOBALE = Object.freeze({
   scope_mode: 'GLOBAL', emittenti_ids: [], allowed_scope_modes: ['GLOBAL', 'SINGLE'],
   can_change_scope: true, change_scope_reason: null,
@@ -258,6 +260,27 @@ describe('OperatoreDrawer — scope emittenti fiscali nei Dati', () => {
     })
     expect(w.find('#scope-mode-GLOBAL').attributes('disabled')).toBeDefined()
     expect(w.find('#scope-mode-SINGLE').attributes('disabled')).toBeDefined()
+  })
+
+  // Giro 10-ter (D-AA a): un operatore che non e' SUPER_ADMIN lavora sempre
+  // per un emittente. Senza emittente arriva SINGLE e vuoto: GLOBAL spenta,
+  // e il Salva aspetta l'emittente.
+  it('operatore senza emittente: SINGLE, GLOBAL non si sceglie', async () => {
+    const w = await apri(operatore({ veste_attiva: true, can_invite: false }), {
+      scope_mode: 'SINGLE', emittenti_ids: [], allowed_scope_modes: ['SINGLE'],
+      can_change_scope: true, change_scope_reason: null,
+    })
+    expect(w.find('#scope-mode-SINGLE').element.checked).toBe(true)
+    expect(w.find('#scope-mode-GLOBAL').attributes('disabled')).toBeDefined()
+    expect(w.find('#scope-mode-SINGLE').attributes('disabled')).toBeUndefined()
+  })
+
+  it('risposta senza modalita\' ammesse: il ripiego non concede GLOBAL', async () => {
+    const w = await apri(operatore({ veste_attiva: true, can_invite: false }), {
+      emittenti_ids: [], can_change_scope: true, change_scope_reason: null,
+    })
+    expect(w.find('#scope-mode-SINGLE').element.checked).toBe(true)
+    expect(w.find('#scope-mode-GLOBAL').attributes('disabled')).toBeDefined()
   })
 })
 
