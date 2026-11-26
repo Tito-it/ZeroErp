@@ -346,12 +346,30 @@ class RicercaFullDbTests(unittest.TestCase):
                     " ORDER BY x.id LIMIT 1"
                 )
                 trti = cur.fetchone()
+                # ⛔ La riga della matrice utility × tipo ruolo si FABBRICA, su
+                #    una utility nuova: il seed non ne porta, e in CI (DB dal
+                #    solo seed) «la prima che c'e'» era None (rosso il
+                #    2026-11-26, verde su dbdev per le righe presenti).
+                cur.execute(
+                    "INSERT INTO config.utilities (codice, descrizione, codice_interno) "
+                    "VALUES ('RICUTRUO', 'Utility ricdescutruo', 'RICUTRUO') RETURNING id"
+                )
+                utr_utility = cur.fetchone()[0]
+                cur.execute(
+                    "INSERT INTO config.utilities_tipi_ruolo (utility_id, tipo_ruolo_id) "
+                    "SELECT %s, id FROM config.tipi_ruoli WHERE codice_interno = 'EF' "
+                    "RETURNING id",
+                    [utr_utility],
+                )
+                utr_riga = cur.fetchone()
+                self.assertIsNotNone(utr_riga, "tipo ruolo EF assente dal catalogo")
                 cur.execute(
                     "SELECT x.id, u.codice, u.descrizione, tr.codice, tr.descrizione "
                     "  FROM config.utilities_tipi_ruolo x "
                     "  JOIN config.utilities u ON u.id = x.utility_id "
                     "  JOIN config.tipi_ruoli tr ON tr.id = x.tipo_ruolo_id "
-                    " ORDER BY x.id LIMIT 1"
+                    " WHERE x.id = %s",
+                    [utr_riga[0]],
                 )
                 utr = cur.fetchone()
                 cur.execute(
