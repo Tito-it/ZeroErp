@@ -23,7 +23,7 @@ from apps.anagrafiche.error_codes import (
     E_BA_ADMIN_GLOBALE_VIETATO,
 )
 from apps.anagrafiche.services._validators import create_with_constraint_mapping, optional_str, require_found
-from apps.anagrafiche.services.contatti_service import VINCOLI_CONTATTO, contatto_inline_per_madre
+from apps.anagrafiche.services.contatti_service import contatto_inline_per_madre
 from apps.anagrafiche.services.soggetti_service import indirizzi_per_madre
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.error_manager import ErrorManager
@@ -351,7 +351,6 @@ class ClientiService:
                         "Esiste gia' un cliente per questo billing account.",
                         "billing_account_id",
                     ),
-                    **VINCOLI_CONTATTO,
                 },
             )
         )

@@ -45,7 +45,11 @@ from apps.anagrafiche.api.views_fornitori import (
     FornitoriExportView,
     FornitoriView,
 )
-from apps.anagrafiche.api.views_contatti_ruolo import RuoloContattiDetailView, RuoloContattiView
+from apps.anagrafiche.api.views_contatti_ruolo import (
+    RuoloContattiDetailView,
+    RuoloContattiView,
+    RuoloContattoPredefinitoView,
+)
 from apps.anagrafiche.api.views_indirizzi_ruolo import (
     RuoloIndirizziCopiaView, RuoloIndirizziDetailView, RuoloIndirizziSoggettoCopiaView,
     RuoloIndirizziTipiView, RuoloIndirizziView,
@@ -66,6 +70,7 @@ from apps.anagrafiche.api.views_soggetti import (
     ValidaCFPIVAView,
     SoggettiContattiDetailView,
     SoggettiContattiView,
+    SoggettiContattoPredefinitoView,
     SoggettiDetailView,
     SoggettiExportView,
     SoggettiIndirizziCopiaView,
@@ -175,6 +180,7 @@ urlpatterns = [
     # Contatti ruolo
     path("ruoli/<int:soggetto_ruolo_id>/contatti/", RuoloContattiView.as_view(), name="anagrafiche-ruoli-contatti"),
     path("ruoli/<int:soggetto_ruolo_id>/contatti/<int:contatto_id>/", RuoloContattiDetailView.as_view(), name="anagrafiche-ruoli-contatti-detail"),
+    path("ruoli/<int:soggetto_ruolo_id>/contatti/<int:contatto_id>/predefinito/", RuoloContattoPredefinitoView.as_view(), name="anagrafiche-ruoli-contatti-predefinito"),
     # Ruoli — config resolver (prima delle rotte parametriche)
     path("ruoli/<str:tipo_ruolo_codice>/config-resolver/", RuoliConfigResolverView.as_view(), name="anagrafiche-ruoli-config-resolver"),
     # Indirizzi ruolo
@@ -203,6 +209,7 @@ urlpatterns = [
     path("soggetti/<str:soggetto_id>/dati-societari/", SoggettoDatiSocietariView.as_view(), name="anagrafiche-soggetti-dati-societari"),
     path("soggetti/<str:soggetto_id>/contatti/", SoggettiContattiView.as_view(), name="anagrafiche-soggetti-contatti"),
     path("soggetti/<str:soggetto_id>/contatti/<int:contatto_id>/", SoggettiContattiDetailView.as_view(), name="anagrafiche-soggetti-contatti-detail"),
+    path("soggetti/<str:soggetto_id>/contatti/<int:contatto_id>/predefinito/", SoggettiContattoPredefinitoView.as_view(), name="anagrafiche-soggetti-contatti-predefinito"),
     path("soggetti/<str:soggetto_id>/indirizzi/", SoggettiIndirizziView.as_view(), name="anagrafiche-soggetti-indirizzi"),
     path("soggetti/<str:soggetto_id>/indirizzi/tipi/", SoggettiIndirizziTipiView.as_view(), name="anagrafiche-soggetti-indirizzi-tipi"),
     path("soggetti/<str:soggetto_id>/indirizzi/<int:indirizzo_soggetto_id>/", SoggettiIndirizziDetailView.as_view(), name="anagrafiche-soggetti-indirizzi-detail"),

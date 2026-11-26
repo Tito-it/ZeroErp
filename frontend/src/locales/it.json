@@ -44,7 +44,7 @@
     "new": "Nuovo",
     "create": "Crea",
     "add": "Aggiungi",
-    "default": "Default",
+    "predefinito": "Predefinito",
     "edit": "Modifica",
     "delete": "Elimina",
     "remove": "Rimuovi",
@@ -5403,7 +5403,6 @@
       "titolo_singolare": "Magazzino",
       "nuovo": "Nuovo magazzino",
       "search_placeholder": "Cerca per codice o descrizione…",
-      "tag_predefinito": "Predefinito",
       "conferma_disattiva_title": "Disattiva magazzino",
       "conferma_disattiva": "Disattivare il magazzino {codice}? Con ubicazioni, documenti o movimenti attivi il database lo rifiuta.",
       "conferma_riattiva_title": "Riattiva magazzino",
@@ -6501,6 +6500,8 @@
       "contatto_creato": "Contatto creato",
       "contatto_salvato": "Contatto salvato",
       "contatto_eliminato": "Contatto eliminato",
+      "rendi_predefinito": "Rendi predefinito",
+      "predefinito_cambiato": "Contatto predefinito cambiato",
       "gestisci_contatti": "Gestisci contatti"
     }
   },

@@ -3,13 +3,19 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: La creazione di un contatto (del soggetto e del ruolo) sul DATABASE
-#        VERO, attraverso il BB `crea_contatto_validato`: i rifiuti arrivano col
-#        codice parlante e il campo da accendere, non come `E_DATABASE`.
+#        VERO, attraverso il BB `crea_contatto_validato`, e la sua modifica: i
+#        rifiuti arrivano col codice parlante e il campo da accendere, non come
+#        `E_DATABASE`.
 # Note: ⛔ Fino al 2026-10-09 il contatto del soggetto senza tipo arrivava al
 #       NOT NULL, e un secondo contatto dello stesso tipo all'indice unico:
 #       tutti e due uscivano `400 E_DATABASE` generico (trovato dallo smoke
-#       soggetti). Qui si prova che i NOMI VERI degli indici
-#       (`uq_contatti_*`) arrivano fino al traduttore: i mock non lo vedono.
+#       soggetti).
+#       ⭐ Dal 2026-11-25 il doppione della CREAZIONE lo traduce il verbo del DB
+#       `fn_crea_contatto` (`E_CONTATTO_TIPO_DUPLICATO`, D-T7b-5,
+#       brief-db-revisione-anagrafiche §22.6 voce 3); quello della MODIFICA,
+#       un UPDATE diretto, resta del backend (`VINCOLI_CONTATTO`): qui si prova
+#       che i NOMI VERI degli indici (`uq_contatti_*`) arrivano al traduttore,
+#       i mock non lo vedono.
 #       ⚠️ Il mondo si COSTRUISCE (`fn_pgtap_crea_soggetto_pg`, che crea anche
 #       il contatto di default), in transazione ANNULLATA.
 #       Opt-in `ZEROERP_TEST_DB_E2E=1` (acceso in CI).
@@ -19,6 +25,7 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 1) ContattiCreazioneDbTests.test_soggetto_tipo_gia_usato_409_col_campo
 2) ContattiCreazioneDbTests.test_soggetto_senza_tipo_400_col_campo
 3) ContattiCreazioneDbTests.test_ruolo_tipo_gia_usato_409_col_campo
+4) ContattiCreazioneDbTests.test_modifica_tipo_gia_usato_409_col_campo
 """
 from __future__ import annotations
 
@@ -74,7 +81,7 @@ class ContattiCreazioneDbTests(unittest.TestCase):
         payload = {"nominativo": "Secondo", "tipo_contatto_id": self.tipo_usato}
         self._rifiuto(
             lambda: SoggettiService().create_contatto(self.soggetto_id, payload),
-            "E_ANAG_DUPLICATO", 409,
+            "E_CONTATTO_TIPO_DUPLICATO", 409,
         )
 
     # 2. Contatto senza tipo: 400 prima del DB, col campo.
@@ -98,5 +105,26 @@ class ContattiCreazioneDbTests(unittest.TestCase):
         self.assertEqual(creato["soggetto_ruolo_id"], ruolo_id)
         self._rifiuto(
             lambda: SoggettiService().create_contatto_ruolo(ruolo_id, payload),
+            "E_CONTATTO_TIPO_DUPLICATO", 409,
+        )
+
+    # 4. La modifica che porta il tipo di un altro contatto del contesto: 409
+    #    sul tipo, dal backend (l'UPDATE diretto non passa dal verbo).
+    def test_modifica_tipo_gia_usato_409_col_campo(self):
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM config.tipi_contatti WHERE id <> %s ORDER BY id LIMIT 1",
+                [self.tipo_usato],
+            )
+            altro_tipo = cur.fetchone()[0]
+        secondo = SoggettiService().create_contatto(
+            self.soggetto_id, {"nominativo": "Secondo", "tipo_contatto_id": altro_tipo},
+        )["id"]
+        self._rifiuto(
+            lambda: SoggettiService().update_contatto(
+                secondo, {"tipo_contatto_id": self.tipo_usato}, soggetto_id=self.soggetto_id,
+            ),
             "E_ANAG_DUPLICATO", 409,
         )

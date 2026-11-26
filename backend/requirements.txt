@@ -6,7 +6,7 @@
 #
 annotated-types==0.8.0
     # via pydantic
-anthropic==2.12.0
+anthropic==2.14.0
     # via -r ../requirements.in
 anyio==4.16.0
     # via
@@ -54,7 +54,7 @@ drf-spectacular==0.30.0
     # via -r ../requirements.in
 et-xmlfile==2.0.0
     # via openpyxl
-fonttools[woff]==4.68.0
+fonttools[woff]==4.69.1
     # via weasyprint
 gunicorn==27.0.1
     # via -r ../requirements.in
@@ -84,7 +84,7 @@ openpyxl==3.1.5
     # via -r ../requirements.in
 opentelemetry-api==1.45.2
     # via anthropic
-packaging==26.3
+packaging==26.4
     # via -r ../requirements.in
 pillow==13.0.0
     # via
@@ -114,7 +114,7 @@ pyphen==0.18.1
     # via weasyprint
 pyyaml==6.0.4
     # via drf-spectacular
-redis==8.1.0
+redis==8.2.0
     # via
     #   -r ../requirements.in
     #   django-redis

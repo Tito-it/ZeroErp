@@ -5,7 +5,8 @@
 # Scopo: L'email suggerita dell'invito al portale sul DATABASE VERO:
 #        `PortaleRepository.get_email_contatto_suggerita` sopra il BB
 #        `script.fn_get_contatti` (contatto del ruolo prima di quello del
-#        soggetto) e la scelta tra i tipi (PRINCIPALE, poi `is_default`).
+#        soggetto) e la scelta tra i tipi: il PRINCIPALE, poi il predefinito
+#        del BB `script.fn_get_contatto_default` (il contesto piu' specifico).
 #        I test di servizio mockano il repository e non vedono la SQL.
 # Note: ⚠️ Il mondo si COSTRUISCE (`dbops.fn_pgtap_crea_soggetto_pg`, che
 #       porta un contatto PRINCIPALE di default del soggetto, email
@@ -20,6 +21,13 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
    c) un PRINCIPALE del ruolo senza email prende il posto di quello del
       soggetto (regola del BB) e si scarta: resta il contatto di default;
    d) il PRINCIPALE del ruolo con email vince su tutto.
+2) EmailSuggeritaDbTests.test_predefinito_del_contesto_piu_specifico
+   ogni contesto ha il suo predefinito (brief-db-revisione-anagrafiche §22,
+   D-T7b-4): fra quello del ruolo e quello del soggetto vince il ruolo, anche
+   se il soggetto e' nato prima;
+   a) il predefinito del ruolo senza email: nessun suggerimento, non si
+      ripiega su quello del soggetto (Tid, 2026-11-26);
+   b) il predefinito del ruolo con email: la sua.
 """
 from __future__ import annotations
 
@@ -74,6 +82,52 @@ class EmailSuggeritaDbTests(unittest.TestCase):
                     "UPDATE anagrafiche.contatti SET email = 'ruolo@prova.test' WHERE id = %s",
                     [principale_ruolo],
                 )
+                self.assertEqual(repo.get_email_contatto_suggerita(soggetto_id, sr_id), "ruolo@prova.test")
+                raise Annulla
+        except Annulla:
+            pass
+
+    def test_predefinito_del_contesto_piu_specifico(self):
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        from apps.portale.db.portale_repository import PortaleRepository
+
+        repo = PortaleRepository()
+        svc = SoggettiService()
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                apri_contesto_operatore(cur)
+                cur.execute("SELECT dbops.fn_pgtap_crea_soggetto_pg('Fornitore predefinito specifico')")
+                soggetto_id = str(cur.fetchone()[0])
+                cur.execute("SET CONSTRAINTS ALL DEFERRED")
+                sr_id = FornitoriService().crea_fornitore({"soggetto_id": soggetto_id})["soggetto_ruolo_id"]
+
+                def tipo(codice: str) -> int:
+                    cur.execute("SELECT id FROM config.tipi_contatti WHERE codice = %s", [codice])
+                    return cur.fetchone()[0]
+
+                # Il soggetto: un REFERENTE con email, reso il suo predefinito.
+                referente = svc.create_contatto(soggetto_id, {
+                    "nominativo": "Referente soggetto", "tipo_contatto_id": tipo("REFERENTE"),
+                    "email": "soggetto@prova.test",
+                })["id"]
+                svc.rendi_predefinito_contatto(soggetto_id, referente)
+                # Il ruolo: il PRINCIPALE senza email copre quello del soggetto,
+                # ed e' il predefinito del ruolo (il primo del contesto).
+                svc.create_contatto_ruolo(sr_id, {
+                    "nominativo": "Principale ruolo", "tipo_contatto_id": tipo("PRINCIPALE"),
+                    "telefono": "0123456789",
+                })
+
+                # a) Il predefinito piu' specifico non ha email: niente.
+                self.assertIsNone(repo.get_email_contatto_suggerita(soggetto_id, sr_id))
+
+                # b) Un altro contatto del ruolo, con email, reso predefinito.
+                segreteria = svc.create_contatto_ruolo(sr_id, {
+                    "nominativo": "Segreteria ruolo", "tipo_contatto_id": tipo("SEGRETERIA"),
+                    "email": "ruolo@prova.test",
+                })["id"]
+                svc.rendi_predefinito_contatto_ruolo(sr_id, segreteria)
                 self.assertEqual(repo.get_email_contatto_suggerita(soggetto_id, sr_id), "ruolo@prova.test")
                 raise Annulla
         except Annulla:

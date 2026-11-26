@@ -2635,6 +2635,24 @@ e la gemella è presidiata: `test_lista_proiezione_campo_sorgente` pretende che
 ogni lista che dichiara il formato la proietti. La regola generale: *se una
 cella si rende allo stesso modo in due liste, è un `formato`, non uno slot.*
 
+### Predefinito — la voce scelta fra le altre
+
+Il predefinito (contatto, conto bancario, magazzino, modello di documento, billing
+account dell'emittente) ha **un segno solo**, ovunque: `<PredefinitoSegno :value="x" />`,
+la puntina `MANAGE_ICONS.PREDEFINITO` col tooltip «Predefinito», nel colore
+`--app-predefinito-color`. Sul falso e sul `null` non rende niente.
+
+- ⛔ **Non è un Sì/No**: `SiNoTag` scrive «No» su ogni altra riga, e il predefinito
+  è uno solo. Nemmeno un Tag o un Badge «Predefinito» / «Default».
+- ⛔ **La puntina non si usa per altro**: è il predefinito, e il pulsante «Rendi
+  predefinito» che la porta sulle voci che non lo sono. Non la stella
+  (`PREFERITI`), non il segnalibro (`IMPOSTA_CONTESTO`).
+- ⭐ **In una `<ListaConfigurabile>` è `formato = predefinito`** in `ui.lista_colonna`,
+  non uno slot.
+
+Fino al 2026-11-26 lo stesso fatto aveva quattro rese diverse: la puntina verde in due
+drawer (con due classi scoped), un Tag «Predefinito», un Tag «Sì» e un Badge «Default».
+
 ### Stati pratica
 
 | Stato | Severity | Colore |

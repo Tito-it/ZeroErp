@@ -25,7 +25,7 @@ from apps.anagrafiche.services._validators import (
     regime_nel_catalogo,
     require_found,
 )
-from apps.anagrafiche.services.contatti_service import VINCOLI_CONTATTO, contatto_inline_per_madre
+from apps.anagrafiche.services.contatti_service import contatto_inline_per_madre
 from apps.anagrafiche.services.soggetti_service import indirizzi_per_madre
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
@@ -162,7 +162,6 @@ class FornitoriService:
                         "Esiste gia' un fornitore con questo codice.",
                         "codice",
                     ),
-                    **VINCOLI_CONTATTO,
                 },
             )
         return {

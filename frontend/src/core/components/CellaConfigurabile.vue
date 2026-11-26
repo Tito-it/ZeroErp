@@ -12,6 +12,7 @@ import { h } from 'vue'
 import { displayDate, displayTimestamp } from '../utils/date'
 import { formatCurrency, formatNumber } from '../utils/format'
 import NaturaDocTag from './NaturaDocTag.vue'
+import PredefinitoSegno from './PredefinitoSegno.vue'
 import SiNoTag from './SiNoTag.vue'
 
 // ⭐ `natura_doc` (2026-09-18, ok Tid — regola del 2 alla QUARTA lista): la
@@ -42,7 +43,14 @@ const CAMPO_GEMELLO_NATURA_DOC = 'natura_doc_codice_interno'
 //    `is_scaduta` delle offerte lo faceva davvero). Il `formato=yesno` nel
 //    seed resta la dichiarazione; questo e' il ripiego per chi non l'ha scritta.
 // ⚠️ `data` (la riga) serve al solo `natura_doc`, che legge la gemella.
+// ⭐ `predefinito` (2026-11-26, ok Tid): la colonna che dice QUALE voce e' la
+//    predefinita (magazzino, modello di documento, billing account
+//    dell'emittente) e' il BB `PredefinitoSegno`, la puntina sulla sola riga
+//    scelta. Non e' `yesno`: quello scrive «No» su ogni altra riga.
 function formatValue(value, formato, tipoDato, data = null) {
+  if (formato === 'predefinito') {
+    return h(PredefinitoSegno, { value })
+  }
   if (formato === 'yesno' || (!formato && tipoDato === 'boolean')) {
     return h(SiNoTag, { value })
   }
@@ -88,8 +96,8 @@ function formatValue(value, formato, tipoDato, data = null) {
 export function testoCella(col, data, cellSlot = null) {
   if (cellSlot) return null
   if (col.formato === 'yesno' || (!col.formato && col.tipo_dato === 'boolean')) return null
-  // Un Tag, non testo: come `yesno`.
-  if (col.formato === 'natura_doc') return null
+  // Un Tag o un segno, non testo: come `yesno`.
+  if (col.formato === 'natura_doc' || col.formato === 'predefinito') return null
   const value = data?.[col.campo_sorgente]
   if (value == null) return null
   const testo = formatValue(value, col.formato, col.tipo_dato)

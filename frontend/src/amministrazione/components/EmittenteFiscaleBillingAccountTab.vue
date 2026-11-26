@@ -31,7 +31,7 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
-import Badge from 'primevue/badge'
+import PredefinitoSegno from '../../core/components/PredefinitoSegno.vue'
 
 const { t, te } = useI18n()
 const store = useEmittentiFiscaliBAStore()
@@ -277,9 +277,11 @@ function buildRowActions(data) {
     </template>
 
     <!-- `is_default` e' una colonna vera del catalogo (boolean, ordinabile):
-         lo slot serve solo a tenere il Badge al posto del "Si'/No". -->
+         il segno del predefinito al posto del "Si'/No". ⏭️ Lo slot si toglie
+         quando la riga 269 di `ui.lista_colonna` porta `formato=predefinito`
+         (richiesta al team DB, 2026-11-26): la resa e' gia' quella del BB. -->
     <template #cell-is_default="{ data }">
-      <Badge v-if="data.is_default" :value="t('common.default')" severity="info" />
+      <PredefinitoSegno :value="data.is_default" />
     </template>
     <template #cell-billing_account_codice="{ data }">
       {{ data.billing_account_codice || '—' }}
