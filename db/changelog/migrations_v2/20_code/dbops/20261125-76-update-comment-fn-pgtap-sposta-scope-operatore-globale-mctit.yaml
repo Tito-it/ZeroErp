@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BUILDER CHE SPOSTA L'OPERATORE: L'AZIENDA (NULL) SI TOGLIE SOLO A UN
+# SUPER_ADMIN
+#   dbops.fn_pgtap_sposta_scope_operatore
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §10-ter (D-AA a di Tid,
+#   2026-11-26).
+#
+#   Il builder passa dal verbo, e dal 20261125-74 il verbo toglie l'azienda
+#   solo a un SUPER_ADMIN (E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN). Il
+#   COMMENT diceva «o gli toglie l'azienda (NULL)» per chiunque. D-AA a: il
+#   builder non tiene una strada che aggira il verbo; l'operatore senza
+#   azienda di un pgTAP si costruisce (dbops.fn_pgtap_crea_operatore_umano,
+#   che nasce senza azienda), non si ottiene togliendogliela.
+#
+#   Solo COMMENT ON: il corpo non cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261125-76-update-comment-fn-pgtap-sposta-scope-operatore-globale-mctit.yaml
+
+  - changeSet:
+      id: 20261125-76-update-comment-fn-pgtap-sposta-scope-operatore-globale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_sposta_scope_operatore: il COMMENT dice che l'azienda si toglie solo a un SUPER_ADMIN,
+        e che l'operatore senza azienda si costruisce. Brief: brief-db-porte-aperte-dalla-sola-guc §10-ter.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc
+               WHERE oid IN (to_regprocedure('dbops.fn_pgtap_sposta_scope_operatore(integer,bigint)'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_pgtap_sposta_scope_operatore(config.user_emittenti_fiscali.auth_user_id%TYPE, config.user_emittenti_fiscali.emittente_fiscale_id%TYPE)
+              IS 'Solo per i pgTAP: porta l''operatore sull''azienda indicata dal verbo script.fn_change_user_emittenti_scope, e restituisce il suo risultato. Con NULL toglie l''azienda, e il verbo lo ammette solo per un SUPER_ADMIN (E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN): l''operatore senza azienda di un test si costruisce con dbops.fn_pgtap_crea_operatore_umano, che nasce senza, non si ottiene togliendogliela. Il verbo chiede il SUPER_ADMIN: lo fa un SUPER_ADMIN di fixture (dbops.fn_pgtap_crea_operatore_umano) che entra nel contesto e ne esce; app.current_user_id e app.ruolo_applicativo tornano com''erano, anche in errore. Le regole e i rifiuti sono quelli del verbo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_pgtap_sposta_scope_operatore(config.user_emittenti_fiscali.auth_user_id%TYPE, config.user_emittenti_fiscali.emittente_fiscale_id%TYPE)
+              IS 'Solo per i pgTAP: porta l''operatore sull''azienda indicata, o gli toglie l''azienda (NULL), dal verbo script.fn_change_user_emittenti_scope, e restituisce il suo risultato. Il verbo chiede il SUPER_ADMIN: lo fa un SUPER_ADMIN di fixture (dbops.fn_pgtap_crea_operatore_umano) che entra nel contesto e ne esce; app.current_user_id e app.ruolo_applicativo tornano com''erano, anche in errore. Le regole e i rifiuti sono quelli del verbo.';

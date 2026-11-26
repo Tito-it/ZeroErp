@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Ruoli che emettono fiscalmente (gestore/reseller/brand): preferenze di numerazione, IBAN predefinito, override fiscali e branding.
+> Le aziende per cui l'installazione emette documenti. Ogni riga è il ruolo di emittente fiscale (EF) di un soggetto: soggetto_ruolo_id, uno per ruolo e immutabile, è la sua identità, e le tabelle di vendita e di pagamento nominano l'azienda col ruolo o con id. La riga porta la sigla (codice: da 2 a 10 caratteri fra maiuscole e cifre, unica e immutabile, perché entra nei codici dei documenti), il regime fiscale (regime_fiscale_rf, con chi l'ha confermato e quando), le regole del bollo, l'arrotondamento, la valuta e il branding (brand_meta). Nasce da anagrafiche.fn_crea_emittente_fiscale. Non si cancella: si spegne, e lo spegnimento è fermato dalle righe figlie attive. Per quale azienda fattura un billing account lo dice anagrafiche.emittenti_fiscali_billing_account; per quale lavora un operatore, config.user_emittenti_fiscali.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

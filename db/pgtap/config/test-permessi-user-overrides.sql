@@ -358,17 +358,20 @@ SELECT throws_ok(
 --   che la FK potesse dire la sua, e il test aspettava 23503.
 --   ⚠️ Non e' un difetto del vincolo: e' l'ordine in cui i vincoli parlano. Per
 --   interrogare la FK bisogna prima liberare la chiave.
---   La riga si toglie dal verbo script.fn_change_user_emittenti_scope, col builder
---   dbops.fn_pgtap_sposta_scope_operatore: la porta del DELETE
---   (trgfn_user_emittenti_fiscali_guard_delete) si apre solo da li'.
-SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_refs_uo), NULL);
+--   ⛔ Rev 2026-11-26 (giro 10-ter, brief-db-porte-aperte-dalla-sola-guc §10-ter,
+--   D-AA a): la chiave libera e' quella di un secondo operatore, costruito senza
+--   azienda. Fino a oggi si toglieva la riga a questo col builder: dal 20261125-74
+--   l'azienda si toglie solo a un SUPER_ADMIN.
+CREATE TEMP TABLE tmp_uo_senza AS
+SELECT o.auth_user_id AS user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('user-overrides-senza-azienda', false) o;
 
 SELECT throws_ok(
     format(
         $$INSERT INTO config.user_emittenti_fiscali
               (auth_user_id, emittente_fiscale_id)
           VALUES (%s, 999999)$$,
-        (SELECT user_id FROM tmp_refs_uo)
+        (SELECT user_id FROM tmp_uo_senza)
     ),
     '23503',
     NULL,

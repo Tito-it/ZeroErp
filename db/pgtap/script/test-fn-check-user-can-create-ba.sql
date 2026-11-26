@@ -75,33 +75,25 @@ WHERE ef.attivo = true
 ORDER BY ef.id
 LIMIT 1;
 
+-- ⛔ Rev 2026-11-26 (giro 10-ter, brief-db-porte-aperte-dalla-sola-guc §10-ter, D-AA a):
+--   i due operatori si COSTRUISCONO e nascono senza azienda
+--   (dbops.fn_pgtap_crea_operatore_umano). Fino a oggi il file prendeva il primo
+--   operatore attivo e gli toglieva l'azienda col builder, prima del 3 e prima del
+--   4: dal 20261125-74 l'azienda si toglie solo a un SUPER_ADMIN. Il 3 assegna il
+--   primo dal verbo; il 4 prova il secondo, mai assegnato.
 CREATE TEMP TABLE tmp_check_user AS
-SELECT au.id AS user_id
--- 🔴 RIFERIMENTO MORTO rimosso il 2026-08-18: `rau.ruolo_sistema` non esiste
---   piu'. Il cutover multi-face-auth (90_end/20260429-19a e -20) ha eliminato
---   la colonna e l'enum `config.ruolo_sistema`, e ha sostituito la tabella con
---   una VISTA su identita_digitali. `au.is_active` + `rau.attivo` dicono gia'
---   «utente utilizzabile» nel modello nuovo: il predicato si TOGLIE, non si
---   sostituisce con un equivalente inventato.
-FROM django.auth_user au
-JOIN anagrafiche.identita_digitali i ON i.auth_user_id = au.id
-WHERE au.is_active = true
-  AND i.ruolo_applicativo = 'OPERATORE'
-  AND i.attivo = true
-ORDER BY au.id
-LIMIT 1;
--- (12-09-2026: la vista risorse_umane_auth_user e' stata ritirata; il JOIN e'
---  sulla madre, con il filtro OPERATORE che la vista applicava.)
+SELECT o.auth_user_id AS user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('can-create-ba-assegnato', false) o;
 
--- Pulizia preventiva
-SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_check_user), NULL);
+CREATE TEMP TABLE tmp_check_user_senza AS
+SELECT o.auth_user_id AS user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('can-create-ba-senza-azienda', false) o;
 
 -- ============================================================
 -- 3) user con riga -> true
 -- ============================================================
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-SELECT (SELECT user_id FROM tmp_check_user),
-       (SELECT emittente_pk FROM tmp_check_ctx);
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_check_user),
+                                             (SELECT emittente_pk FROM tmp_check_ctx));
 
 SELECT is(
     script.fn_check_user_can_create_ba((SELECT user_id FROM tmp_check_user)),
@@ -110,14 +102,12 @@ SELECT is(
 );
 
 -- ============================================================
--- 4) user senza riga, esistono emittenti attivi -> false
+-- 4) operatore senza riga, esistono emittenti attivi -> false
 -- ============================================================
-SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_check_user), NULL);
-
 SELECT is(
-    script.fn_check_user_can_create_ba((SELECT user_id FROM tmp_check_user)),
+    script.fn_check_user_can_create_ba((SELECT user_id FROM tmp_check_user_senza)),
     false,
-    'admin globale + esistono emittenti -> false (vietato creare BA)'
+    'operatore senza riga + esistono emittenti -> false (vietato creare BA)'
 );
 
 SELECT * FROM finish();

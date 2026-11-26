@@ -7,7 +7,7 @@ search:
 
 ## ⚙️ Funzioni (manuale)
 - [fn_ambiente_installazione](manual/fn_ambiente_installazione.md)
-- [fn_applica_user_emittenti_scope](manual/fn_applica_user_emittenti_scope.md) — Sposta un operatore da un'azienda all'altra, o gli toglie l'azienda. Ha le regole dello spostamento e la porta del `DELETE`, ma **non chiede permessi**: è la primitiva sotto il verbo [fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope), che chiede il SUPER_ADMIN.
+- [fn_applica_user_emittenti_scope](manual/fn_applica_user_emittenti_scope.md) — Sposta un operatore da un'azienda all'altra, o toglie l'azienda a un SUPER_ADMIN. Ha le regole dello spostamento e la porta del `DELETE`, ma **non chiede permessi**: è la primitiva sotto il verbo [fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope), che chiede il SUPER_ADMIN.
 - [fn_area_consente_azione](manual/fn_area_consente_azione.md) — (scritta il 04-10-2026)
 - [fn_area_di_oggetto](manual/fn_area_di_oggetto.md) — (scritta il 25-09-2026)
 - [fn_arrotonda_importo](manual/fn_arrotonda_importo.md) — Arrotondare un importo secondo i **decimali** e il **metodo** configurati, in **un punto solo** per tutto il database.
@@ -30,7 +30,7 @@ search:
 - [fn_canale_log_stringa](manual/fn_canale_log_stringa.md) — Dice se il **canale di log fuori transazione** (la connessione `dblink` dei registri) è acceso, e con quale stringa di connessione: restituisce la stringa se il canale è acceso, `NULL` se è spento o non configurato. È la regola unica per chi deve scrivere sul canale.
 - [fn_capability_promo_articolo](manual/fn_capability_promo_articolo.md)
 - [fn_categoria_accesso](manual/fn_categoria_accesso.md)
-- [fn_change_user_emittenti_scope](manual/fn_change_user_emittenti_scope.md) — È il **verbo** con cui il SUPER_ADMIN porta un operatore su un'azienda, o gliela toglie. Dietro c'è la sezione «Emittenti Scope» del drawer Operatore.
+- [fn_change_user_emittenti_scope](manual/fn_change_user_emittenti_scope.md) — È il **verbo** con cui il SUPER_ADMIN porta un operatore su un'azienda, o la toglie a un SUPER_ADMIN. Dietro c'è il riquadro «Scope emittenti fiscali» del drawer Operatore.
 - [fn_check_accredito_annullabile](manual/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](manual/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_annullo_movimento_titolo_iva](manual/fn_check_annullo_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
@@ -175,7 +175,7 @@ search:
 - [fn_get_totp_device](manual/fn_get_totp_device.md) — (scritta il 29-09-2026)
 - [fn_get_uo_id_for_user](manual/fn_get_uo_id_for_user.md) — (latest review 19-04-2026)
 - [fn_get_user_actions_map](manual/fn_get_user_actions_map.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
-- [fn_get_user_emittenti_scope](manual/fn_get_user_emittenti_scope.md)
+- [fn_get_user_emittenti_scope](manual/fn_get_user_emittenti_scope.md) — Dice al drawer dell'operatore **com'è assegnato un utente** e **che cosa gli si può scegliere**. Ritorna sempre una riga, anche per un utente senza assegnazione. Il drawer non deduce niente da sé: spegne le scelte e il Salva da questa risposta.
 - [fn_get_user_object_permissions_map](manual/fn_get_user_object_permissions_map.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
 - [fn_get_user_permissions_map](manual/fn_get_user_permissions_map.md)
 - [fn_get_user_profile](manual/fn_get_user_profile.md) — - **Profilo utente completo in una chiamata** - **Payload JSONB stabile ed estendibile** - **Riuso delle funzioni di dominio** per soggetto e mappe permessi - **Riduzione query interne**: dalla revisione `20260410-16` la lettura di   `auth_user + identita_digitali + risorse_umane + lookup qualifica/UO`   viene eseguita in una sola `SELECT`

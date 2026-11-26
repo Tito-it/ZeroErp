@@ -1,6 +1,6 @@
 # Guida — Risorse Umane e Accessi al Software
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -51,6 +51,7 @@
 > **Vedi anche** — guide correlate:
 >
 > * [Guida Soggetti & Ruoli](/guide/soggetti-e-ruoli-anagrafici)
+> * [Gli emittenti fiscali](/guide/emittenti-fiscali) — le aziende che emettono, e per quale lavora ogni operatore
 > * [Gestione dei contatti](/guide/gestione-dei-contatti)
 > * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
 > * [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth)
@@ -140,7 +141,7 @@ Il reparto o ufficio a cui la risorsa appartiene. E il perno del sistema permess
 
 ### Soggetto gestore
 
-L'azienda che usa il sistema (singleton). Il gestore e il soggetto PG con ruolo GESTORE — identifica il datore di lavoro. Il guard sull'accesso al software **non** verifica l'appartenenza al gestore (sarebbe impossibile: RIS_UMANA e solo PF, GESTORE e solo PG), ma verifica che il soggetto sia una **persona fisica pura** ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura)). Il vincolo emittente fiscale (su quali emittenti l'utente puo operare) e verificato al login lato Django.
+L'azienda che usa il sistema (singleton). Il gestore e il soggetto PG con ruolo GESTORE — identifica il datore di lavoro. Il guard sull'accesso al software **non** verifica l'appartenenza al gestore (sarebbe impossibile: RIS_UMANA e solo PF, GESTORE e solo PG), ma verifica che il soggetto sia una **persona fisica pura** ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura)). L'azienda su cui l'operatore lavora non dipende dal gestore: è la sua riga in `config.user_emittenti_fiscali` (vedi [Assegnazione emittente fiscale](#assegnazione-emittente-fiscale-scope-operativo)).
 
 ---
 
@@ -184,7 +185,7 @@ Il collegamento a `django.auth_user` e consentito **solo** per soggetti **person
 
 Il vincolo vale per la veste `OPERATORE` persona. Portale e shop **non** lo hanno: un cliente persona giuridica puo avere la sua identita digitale; il guard chiede solo che la veste stia sul ruolo giusto (cliente per `CLIENTE_PORTALE` e `SHOP_CUSTOMER`, fornitore per `FORNITORE_PORTALE`). La veste `API_CLIENT` non ha vincolo di coerenza col soggetto-ruolo, ma rispetta [R6](#r6--persona-o-macchina).
 
-Il vincolo emittente fiscale ("su quali emittenti l'utente puo operare?") **non** e verificato a livello DB ma al login lato Django (auth view), perche `config.user_emittenti_fiscali` richiede un `auth_user_id` che esiste solo dopo la creazione dell'identita. Per limitare l'operativita per emittente, esiste la whitelist `config.user_emittenti_fiscali` (vedi [Autorizzazioni e permessi](#autorizzazioni-e-permessi)).
+L'azienda dell'operatore ("per quale emittente lavora?") **non** fa parte di questo vincolo: la riga di `config.user_emittenti_fiscali` chiede un `auth_user_id`, che esiste solo dopo la creazione dell'identità, e si scrive dopo, dal `SUPER_ADMIN`. La fa valere il database, con le policy e i guard di scope: senza la riga l'operatore non vede nessun emittente (vedi [Assegnazione emittente fiscale](#assegnazione-emittente-fiscale-scope-operativo)).
 
 ### R5 — Unicita per persona
 <a id="r5--unicita-per-persona"></a>
@@ -428,31 +429,34 @@ I due verbi controllano il permesso dall'utente della sessione, con [anagrafiche
 
 ### Assegnazione emittente fiscale (scope operativo)
 
-Dopo aver creato l'operatore e collegato il suo account Django, e necessario definire **su quali emittenti fiscali** l'operatore puo lavorare. Questo vincolo determina il **perimetro dati** visibile: un operatore assegnato a un emittente vedra solo documenti, fatture, pratiche e movimenti di quell'emittente.
+Dopo aver creato l'operatore, il `SUPER_ADMIN` gli assegna **l'emittente fiscale** per cui lavora. L'assegnazione decide il **perimetro dei dati**: l'operatore vede solo documenti, fatture, pratiche e movimenti di quell'emittente.
 
-**Tabella coinvolta:** `config.user_emittenti_fiscali` — legame N:1 tra `auth_user` e `anagrafiche.emittenti_fiscali`.
+**Tabella coinvolta:** `config.user_emittenti_fiscali`. Ha **una riga per operatore** (`UNIQUE (auth_user_id)`): un operatore lavora per un emittente solo, e un emittente ha quanti operatori servono.
 
 **Come si configura (da interfaccia):**
 
 1. Andare in **Amm. Software → Operatori**
 2. Aprire l'operatore in modifica (click sulla riga)
-3. Passare al **tab Permessi**
-4. Nella sezione **Emittenti Scope** selezionare l'emittente fiscale dal dropdown
-5. Premere **Salva** nella sezione
+3. Nella scheda **Dati**, riquadro **Scope emittenti fiscali**, scegliere «Un solo emittente» e l'emittente dall'elenco
+4. Premere **Salva**
 
 **Regole:**
 
-* L'emittente lo assegna, lo cambia o lo toglie **solo il `SUPER_ADMIN`**. Il controllo lo fa l'endpoint, e lo rifà il database nel verbo `script.fn_change_user_emittenti_scope`: chi non e' `SUPER_ADMIN` riceve `E_PERMESSO_NEGATO`, e l'emittente non cambia
-* Se l'operatore non ha nessun emittente assegnato **e fail-closed**: non vede nessun emittente, e il vuoto e un errore di configurazione, non un permesso. Gli operatori rimasti senza assegnazione si contano in `dbops.vw_operatori_senza_emittente`, che deve restare a zero righe. L'unico attore legittimamente multi-emittente e il `SUPER_ADMIN`, che passa da `fn_is_super_admin` e non da questa tabella
-* L'emittente fiscale e un soggetto con ruolo EMITTENTE nel sistema anagrafico — il dropdown mostra la **ragione sociale** del soggetto associato
-* Il vincolo e verificato a runtime da `get_scope_user_id(request)` negli endpoint API: se l'utente ha emittenti assegnati, le query vengono filtrate automaticamente
-* La modifica dell'emittente ha effetto immediato — non richiede invalidazione cache perche il check avviene ad ogni richiesta API
+* L'emittente lo assegna o lo cambia **solo il `SUPER_ADMIN`**. Il controllo lo fa l'endpoint, e lo rifà il database nel verbo `script.fn_change_user_emittenti_scope`: chi non è `SUPER_ADMIN` riceve `E_PERMESSO_NEGATO`, e l'emittente non cambia.
+* Cambiare emittente è uno **spostamento**: il verbo toglie la riga di prima e scrive la nuova nello stesso momento. Fuori dal verbo l'assegnazione di un utente attivo non si cancella e l'emittente di una riga non si riscrive.
+* Un operatore **senza assegnazione non vede nessun emittente** (fail-closed): il vuoto è un errore di configurazione, non un permesso. Gli operatori rimasti senza assegnazione si contano in `dbops.vw_operatori_senza_emittente`, che deve restare a zero righe, e li segnala il banner della lista degli operatori.
+* Solo il `SUPER_ADMIN` lavora su più emittenti: passa da `fn_is_super_admin`, non da questa tabella, e sceglie l'emittente di lavoro dalla barra in alto. **Un operatore normale non è mai «globale»**: il riquadro gli offre solo «Un solo emittente», e il verbo rifiuta di togliergli l'azienda (`E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`). Per spostarlo si sceglie un'altra azienda; per fermarlo si spegne l'operatore.
+* L'ultimo `SUPER_ADMIN` attivo non si sposta (`E_PROFILO_ULTIMO_SUPER_ADMIN`).
+* L'emittente fiscale è il ruolo `EF` di un soggetto con partita IVA: l'elenco mostra la **ragione sociale** del soggetto.
+* Al salvataggio il backend invalida la cache dell'operatore: la nuova azienda vale dalla richiesta successiva.
 
 **Quando serve:**
 
-* **Azienda mono-emittente**: assegnare l'unico emittente a tutti gli operatori (il sistema lo pre-seleziona se ce n'e uno solo)
-* **Gruppo multi-emittente**: assegnare a ciascun operatore solo gli emittenti su cui opera
-* **Consulenti esterni**: limitare lo scope al singolo emittente del cliente che seguono
+* **Azienda con un solo emittente**: assegnare l'unico emittente a tutti gli operatori.
+* **Gruppo con più emittenti**: assegnare a ciascun operatore l'emittente su cui lavora. Chi deve vedere tutte le aziende è un `SUPER_ADMIN`.
+* **Consulenti esterni**: assegnarli al solo emittente del cliente che seguono.
+
+Il modello completo (gli emittenti, il super admin che sceglie l'emittente di lavoro, l'admin di un emittente) sta nella guida [Gli emittenti fiscali](/guide/emittenti-fiscali).
 
 ---
 

@@ -123,46 +123,29 @@ SELECT ok(
 --    (verifica che la catena trgfn → fn_check funziona)
 -- ============================================================
 
--- Prepara contesto: pesco un'identita OPERATORE attiva NON super-admin
--- (filtro NOT EXISTS binding SUPER_ADMIN, pattern §4.bis pgTAP).
--- Pre-Fase 7: il setup leggeva da rau e forzava ruolo_sistema='OPERATIVO'
--- via UPDATE (rotto post-cutover §13.3, vista non updatable).
--- Post-Fase 7: il filtro garantisce gia' lo stato "OPERATIVO" semantico
--- (identita OPERATORE attiva senza binding SA), nessun UPDATE forzato.
+-- Prepara contesto: un operatore NON super admin, ristretto a un emittente.
+-- ⛔ Rev 2026-11-26 (giro 10-ter, brief-db-porte-aperte-dalla-sola-guc §10-ter, D-AA a):
+--   l'operatore si COSTRUISCE (dbops.fn_pgtap_crea_operatore_umano), nasce senza
+--   azienda e la riceve dal verbo col builder. Fino a oggi il file pescava la prima
+--   identita' OPERATORE non super admin, le toglieva l'azienda col builder e
+--   scriveva la whitelist con un INSERT: dal 20261125-74 l'azienda si toglie solo a
+--   un SUPER_ADMIN.
 -- emittente_ko_id = -1 (fittizio): la funzione verifica solo la whitelist,
 -- non che l'emittente esista in anagrafiche.emittenti_fiscali.
 CREATE TEMP TABLE tmp_guard_ctx AS
 SELECT
-    id.auth_user_id  AS user_id,
+    o.auth_user_id   AS user_id,
     ef.id            AS emittente_ok_id,
     -1::bigint       AS emittente_ko_id
-FROM anagrafiche.identita_digitali id
+FROM dbops.fn_pgtap_crea_operatore_umano('trigger-guard-emittente', false) o
 CROSS JOIN (
     SELECT id FROM anagrafiche.emittenti_fiscali
     WHERE attivo = true ORDER BY id LIMIT 1
-) ef
-WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-  AND id.attivo = true
-  AND NOT EXISTS (
-      SELECT 1
-        FROM config.profili_accesso_bindings pab
-        JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
-       WHERE pab.identita_digitale_id = id.id
-         AND pab.attivo = true
-         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
-  )
-ORDER BY id.id
-LIMIT 1;
+) ef;
 
--- Pulisce whitelist preesistenti per l'utente di test, dal verbo (il builder).
-SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_guard_ctx), NULL);
-
--- Aggiungi whitelist solo per emittente_ok
-INSERT INTO config.user_emittenti_fiscali
-    (auth_user_id, emittente_fiscale_id, meta)
-SELECT ctx.user_id, ctx.emittente_ok_id,
-       '{"test_scope":"pgtap_trigger_guard_emittente"}'::jsonb
-FROM tmp_guard_ctx ctx;
+-- La whitelist solo per emittente_ok, dal verbo (il builder).
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_guard_ctx),
+                                             (SELECT emittente_ok_id FROM tmp_guard_ctx));
 
 -- Setta sessione come l'utente ristretto
 SELECT set_config('app.current_user_id',

@@ -377,13 +377,14 @@ SELECT is(
 -- cambia solo il perimetro, non l'identita'. Se i gruppi restassero
 -- visibili, vorrebbe dire che la vista non eredita davvero lo scope.
 -- ⚠️ Questa riscrittura RESTA (rev 2026-10-24, R-9): e' il caso del test.
-SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_vg_op), NULL);
-
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
+-- ⛔ Rev 2026-11-26 (giro 10-ter, brief-db-porte-aperte-dalla-sola-guc §10-ter, D-AA a):
+--   uno SPOSTAMENTO solo, dal verbo col builder. Fino a oggi il file toglieva
+--   l'azienda (NULL) e scriveva la nuova riga con un INSERT: dal 20261125-74 l'azienda
+--   si toglie solo a un SUPER_ADMIN, e spostare e' cio' che il verbo fa.
 -- L'emittente diverso e' B, costruito (rev 2026-10-24): prima «il primo
 -- emittente attivo diverso».
-SELECT (SELECT user_id FROM tmp_vg_op), b.emittente_fiscale_id
-  FROM tmp_vg_ef_b b;
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_vg_op),
+                                             (SELECT b.emittente_fiscale_id FROM tmp_vg_ef_b b));
 
 SELECT is(
   (SELECT count(*)::int FROM vendite.vw_dash_competenza_gruppi g

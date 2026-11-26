@@ -149,12 +149,12 @@ SELECT ok(
     '3) Fixture context completo (BA, emittente, listino/versione, 4 stati) + operatore non-super'
 );
 
-SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_rp_op), NULL);
-
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id, meta)
-SELECT o.user_id, ctx.emittente_fiscale_id,
-       '{"test_scope":"pgtap_rientro_padre"}'::jsonb
-  FROM tmp_rp_op o, tmp_rp_ctx ctx;
+-- ⛔ Rev 2026-11-26 (giro 10-ter, brief-db-porte-aperte-dalla-sola-guc §10-ter, D-AA a):
+--   uno SPOSTAMENTO solo, dal verbo col builder. Fino a oggi il file toglieva
+--   l'azienda (NULL) e scriveva la nuova riga con un INSERT: dal 20261125-74 l'azienda
+--   si toglie solo a un SUPER_ADMIN, e spostare e' cio' che il verbo fa.
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_rp_op),
+                                             (SELECT emittente_fiscale_id FROM tmp_rp_ctx));
 
 SELECT set_config('app.current_user_id',
     (SELECT user_id::text FROM tmp_rp_op), true);

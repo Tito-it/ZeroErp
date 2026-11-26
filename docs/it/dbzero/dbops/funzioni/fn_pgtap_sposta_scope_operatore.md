@@ -64,7 +64,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_sposta_scope_operatore(p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'Solo per i pgTAP: porta l''operatore sull''azienda indicata, o gli toglie l''azienda (NULL), dal verbo script.fn_change_user_emittenti_scope, e restituisce il suo risultato. Il verbo chiede il SUPER_ADMIN: lo fa un SUPER_ADMIN di fixture (dbops.fn_pgtap_crea_operatore_umano) che entra nel contesto e ne esce; app.current_user_id e app.ruolo_applicativo tornano com''erano, anche in errore. Le regole e i rifiuti sono quelli del verbo.';
+IS 'Solo per i pgTAP: porta l''operatore sull''azienda indicata dal verbo script.fn_change_user_emittenti_scope, e restituisce il suo risultato. Con NULL toglie l''azienda, e il verbo lo ammette solo per un SUPER_ADMIN (E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN): l''operatore senza azienda di un test si costruisce con dbops.fn_pgtap_crea_operatore_umano, che nasce senza, non si ottiene togliendogliela. Il verbo chiede il SUPER_ADMIN: lo fa un SUPER_ADMIN di fixture (dbops.fn_pgtap_crea_operatore_umano) che entra nel contesto e ne esce; app.current_user_id e app.ruolo_applicativo tornano com''erano, anche in errore. Le regole e i rifiuti sono quelli del verbo.';
 ```
 
 </div>

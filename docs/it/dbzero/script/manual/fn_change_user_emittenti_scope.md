@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_change_user_emittenti_scope`
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -19,13 +19,14 @@
 >
 > * [Architettura permessi e autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) — §4.9 l'ambito dell'operatore, §7.4 il permesso nel verbo
 > * [Risorse umane e accessi](/guide/risorse-umane-e-accessi) — l'assegnazione dell'emittente dall'interfaccia
+> * [Gli emittenti fiscali](/guide/emittenti-fiscali) — Parte 2, il super admin assegna gli operatori
 
 ---
 
 ### 🎯 Scopo Principale
 
-È il **verbo** con cui il SUPER_ADMIN porta un operatore su un'azienda, o gliela toglie. Dietro c'è
-la sezione «Emittenti Scope» del drawer Operatore.
+È il **verbo** con cui il SUPER_ADMIN porta un operatore su un'azienda, o la toglie a un SUPER_ADMIN.
+Dietro c'è il riquadro «Scope emittenti fiscali» del drawer Operatore.
 
 Un operatore ha **una** azienda (`UNIQUE (auth_user_id)` su `config.user_emittenti_fiscali`), e senza
 non vede niente: scrivere la riga è dare l'accesso a un'azienda, toglierla è toglierlo. Per questo il
@@ -49,7 +50,7 @@ che l'applicazione non esegue: chi volesse saltare il permesso chiamando lei ric
 
 * `p_auth_user_id`: l'utente Django dell'operatore da spostare.
 * `p_emittente_ids`: l'azienda di destinazione. Un elemento porta l'operatore su quell'azienda;
-  `NULL` o un array vuoto gliela toglie; più di un elemento si rifiuta. Il parametro resta un array
+  `NULL` o un array vuoto gliela toglie, ma solo a un SUPER_ADMIN; più di un elemento si rifiuta. Il parametro resta un array
   perché la firma lo è sempre stata: oggi l'azienda è una sola.
 
 Il risultato è un `jsonb` con tre chiavi: `changed` (se qualcosa è cambiato), `scope_mode`
@@ -60,7 +61,8 @@ Il risultato è un `jsonb` con tre chiavi: `changed` (se qualcosa è cambiato), 
 | senza azienda | un'azienda | la riga nasce |
 | un'azienda | la stessa | niente, `changed = false` |
 | un'azienda | un'altra | la riga di prima si toglie, nasce quella nuova |
-| un'azienda | nessuna | la riga si toglie |
+| un'azienda | nessuna | SUPER_ADMIN: la riga si toglie. Operatore: rifiuto, la riga resta |
+| senza azienda | nessuna | SUPER_ADMIN: niente, `changed = false`. Operatore: rifiuto |
 
 ---
 
@@ -71,6 +73,7 @@ Il risultato è un `jsonb` con tre chiavi: `changed` (se qualcosa è cambiato), 
 | `E_PERMESSO_NEGATO` | chi chiama non è SUPER_ADMIN, o non c'è un utente in sessione |
 | `E_OPERATORE_SCOPE_PARAM_NON_VALIDO` | l'utente o l'emittente mancano o non sono positivi |
 | `E_OPERATORE_SCOPE_MULTI_NON_AMMESSO` | più di un'azienda |
+| `E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN` | nessuna azienda per un utente che non è SUPER_ADMIN: un operatore non è mai «globale» |
 | `E_PROFILO_ULTIMO_SUPER_ADMIN` | lo spostamento toccherebbe l'ultimo SUPER_ADMIN attivo |
 
 Un'azienda spenta o inesistente la ferma il guard della tabella sull'`INSERT`.
