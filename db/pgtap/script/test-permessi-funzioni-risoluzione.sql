@@ -677,8 +677,14 @@ SELECT is(
 
 SELECT pg_temp.unset_admin((SELECT identita_id FROM tmp_ctx));
 
--- Rimuovi whitelist per test "senza whitelist"
-SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_ctx), NULL);
+-- Il caso "senza whitelist" e' un secondo operatore, costruito senza azienda.
+-- ⛔ Rev 2026-11-26 (giro 10-ter, brief-db-porte-aperte-dalla-sola-guc §10-ter, D-AA a):
+--   fino a oggi si toglieva l'azienda all'operatore di tmp_ctx col builder; dal
+--   20261125-74 l'azienda si toglie solo a un SUPER_ADMIN. Il 29 resta su tmp_ctx,
+--   che ha la whitelist: la veste spenta da' '{}' anche con la riga.
+CREATE TEMP TABLE tmp_op_senza AS
+SELECT o.auth_user_id AS user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('risoluzione-senza-azienda', false) o;
 
 -- 28) OPERATIVO senza whitelist → '{}' (fail-closed, P-2a 2026-08-18)
 --     ⚠️ Diceva `NULL`, cioe' «nessuna restrizione». Nella convenzione a tre
@@ -689,7 +695,7 @@ SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_ctx), NULL
 --     Brief perimetro-emittente §2.5.
 SELECT is(
     script.fn_get_emittenti_scope_sr_ids(
-        (SELECT user_id FROM tmp_ctx)
+        (SELECT user_id FROM tmp_op_senza)
     ),
     '{}'::bigint[],
     '28) fn_get_emittenti_scope_sr_ids: OPERATIVO senza whitelist → ''{}'' (P-2a)'

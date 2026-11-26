@@ -81,11 +81,13 @@ SELECT plan(11);
 -- Fixture: si costruisce il mondo, POI si apre il contesto
 -- ============================================================
 CREATE TEMP TABLE _mondi ON COMMIT DROP AS
+-- ⚠️ Rev 2026-11-26 (D-G2-3, brief-db-accessi-area-clienti §5.1): chi diventa SUPER_ADMIN
+--   nasce PERSONA (p_persona): un'identita' tecnica non ha mai il SUPER_ADMIN.
 SELECT 'CTX' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
 UNION ALL
 SELECT 'OP'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
 UNION ALL
-SELECT 'SA'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+SELECT 'SA'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore(p_persona := true);
 
 -- Il super admin: un'identita' OPERATORE attiva con binding SUPER_ADMIN attivo
 -- (e' la definizione di script.fn_is_super_admin).
@@ -132,14 +134,19 @@ SELECT is(
     '1. operatore CON riga: scope di cardinalita'' 1 (invariato)'
 );
 
--- Togli lo scope: da qui l'operatore e' «configurato a meta'».
--- Si usa la funzione di dominio, non un DELETE: e' la sede unica del modello 1-a-1.
-SELECT dbops.fn_pgtap_sposta_scope_operatore(
-           (SELECT auth_user_id FROM _t_op), NULL);
+-- L'operatore «configurato a meta'»: un secondo operatore, costruito senza azienda,
+-- davanti all'emittente e al BA che l'operatore di OP vede.
+-- ⛔ Rev 2026-11-26 (giro 10-ter, brief-db-porte-aperte-dalla-sola-guc §10-ter, D-AA a):
+--   fino a oggi si toglieva l'azienda all'operatore di OP col builder; dal
+--   20261125-74 l'azienda si toglie solo a un SUPER_ADMIN. Lo stato si costruisce:
+--   e' quello di un operatore appena creato e non ancora assegnato.
+CREATE TEMP TABLE _t_op_senza ON COMMIT DROP AS
+SELECT o.auth_user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('scope fail-closed senza azienda', false) o;
 
 -- 2) * LA correzione: senza riga NON significa piu' «nessuna restrizione».
 SELECT is(
-    script.fn_get_emittenti_scope_pk_ids((SELECT auth_user_id FROM _t_op)),
+    script.fn_get_emittenti_scope_pk_ids((SELECT auth_user_id FROM _t_op_senza)),
     '{}'::bigint[],
     '2. * operatore SENZA riga -> ''{}'' e non piu'' NULL (era: vede tutti gli emittenti)'
 );
@@ -147,7 +154,7 @@ SELECT is(
 -- 3) * La gemella puntuale.
 SELECT ok(
     NOT script.fn_check_user_emittente_scope(
-            (SELECT auth_user_id FROM _t_op),
+            (SELECT auth_user_id FROM _t_op_senza),
             (SELECT emittente_fiscale_id FROM _t_op)),
     '3. * operatore SENZA riga: fn_check_user_emittente_scope -> false (era true)'
 );
@@ -173,7 +180,7 @@ SELECT set_config('app.current_emittente_id', '', false);
 
 -- 6) * L'eredita' si misura, non si assume: il wrapper su soggetto_ruolo_id.
 SELECT is(
-    script.fn_get_emittenti_scope_sr_ids((SELECT auth_user_id FROM _t_op)),
+    script.fn_get_emittenti_scope_sr_ids((SELECT auth_user_id FROM _t_op_senza)),
     '{}'::bigint[],
     '6. * eredita'': fn_get_emittenti_scope_sr_ids -> ''{}'' senza modifiche proprie'
 );
@@ -181,7 +188,7 @@ SELECT is(
 -- 7) * ...e l'adapter usato dalle policy RLS.
 SELECT ok(
     NOT script.fn_scope_ef_whitelist_via_efba(
-            (SELECT auth_user_id FROM _t_op),
+            (SELECT auth_user_id FROM _t_op_senza),
             (SELECT ba_id FROM _t_ba)),
     '7. * eredita'': fn_scope_ef_whitelist_via_efba -> false (le policy chiudono)'
 );

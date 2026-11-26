@@ -1,6 +1,6 @@
 # Guida — I lavori automatici: che natura hanno e per conto di chi girano
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 25 novembre 2026
 >
 > Destinatari: chiunque debba capire, aggiungere o controllare un lavoro che il
 > sistema fa da solo — sviluppatori, analisti, e chi guarda se stanotte è andato
@@ -260,7 +260,10 @@ tutte le aziende che serve e con quale tesserino.
 il ruolo, l'utente). Basta che se ne spenga uno perché il lavoro si fermi —
 quindi guardarne uno solo basta a sbagliare diagnosi. Per questo esiste
 [fn_riattiva_utente_tecnico](/dbzero/script/funzioni/fn_riattiva_utente_tecnico),
-che li riaccende **tutti insieme**.
+che li riaccende **tutti insieme**. È un gesto dell'amministratore: la chiede
+al `SUPER_ADMIN`, e se il tesserino era stato revocato toglie anche il segno
+della [revoca](/guide/risorse-umane-e-accessi#la-revoca), che altrimenti ne
+impedirebbe la riaccensione.
 
 ⛔ E un tesserino **non è un permesso in più**: quegli utenti non hanno nessun
 profilo, nessuna capacità speciale. Il loro potere è soltanto l'elenco delle

@@ -28,15 +28,16 @@ BEGIN
     -- Regole:
     --   1. Short-circuit: solo le scritture che RIDUCONO la
     --      garanzia (spegnere, data di fine, inizio nel futuro,
-    --      spostamento su un altro soggetto_ruolo). Togliere una
-    --      data di fine o riaprire il rapporto passa sempre.
+    --      spostamento su un altro soggetto_ruolo, cancellazione).
+    --      Togliere una data di fine o riaprire il rapporto passa
+    --      sempre.
     --   2. Short-circuit 2: solo se sul soggetto_ruolo di PRIMA
     --      c'e' una veste OPERATORE con un binding SUPER_ADMIN
     --      attivo.
     --   3. Verifica post-stato via fn_check; se false, raise.
     -- =========================================================
 
-    IF NOT (   (OLD.attivo AND NOT NEW.attivo)
+    IF TG_OP = 'UPDATE' AND NOT (   (OLD.attivo AND NOT NEW.attivo)
             OR (OLD.valido_al IS NULL AND NEW.valido_al IS NOT NULL)
             OR (OLD.valido_dal <= (SELECT script.fn_data_operativa()) AND NEW.valido_dal > (SELECT script.fn_data_operativa()))
             OR (OLD.soggetto_ruolo_id IS DISTINCT FROM NEW.soggetto_ruolo_id))
@@ -75,9 +76,9 @@ BEGIN
                 'op', TG_OP,
                 'risorsa_umana_id', OLD.id,
                 'identita_digitale_id', v_identita_id,
-                'attivo', NEW.attivo,
-                'valido_dal', NEW.valido_dal,
-                'valido_al', NEW.valido_al
+                'attivo', CASE WHEN TG_OP = 'UPDATE' THEN NEW.attivo END,
+                'valido_dal', CASE WHEN TG_OP = 'UPDATE' THEN NEW.valido_dal END,
+                'valido_al', CASE WHEN TG_OP = 'UPDATE' THEN NEW.valido_al END
             ),
             NULL::uuid,
             VARIADIC ARRAY[]::text[]
@@ -89,7 +90,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin()
-IS 'Guard anti-lockout sul rapporto (AFTER UPDATE di attivo, valido_dal, valido_al, soggetto_ruolo_id su risorse_umane): rifiuta una scrittura che riduce la garanzia del rapporto di un SUPER_ADMIN (spegnerlo, dargli una data di fine, spostarne l''inizio nel futuro, spostarlo su un altro soggetto_ruolo) se dopo non resta nessun SUPER_ADMIN senza scadenza (script.fn_check_almeno_un_super_admin_attivo). Le scritture che migliorano non si fermano mai. Codice E_PROFILO_ULTIMO_SUPER_ADMIN. Gemello di trgfn_identita_digitali_guard_ultimo_super_admin. Nasce il 2026-10-07 (brief-db-veste-utilizzabile, decisione di Tid): con D-2 la fine del rapporto chiude l''accesso dell''operatore, e il calendario non scrive.';
+IS 'Guard anti-lockout sul rapporto (AFTER UPDATE di attivo, valido_dal, valido_al, soggetto_ruolo_id, e AFTER DELETE su anagrafiche.risorse_umane): rifiuta una scrittura che riduce la garanzia del rapporto di un SUPER_ADMIN (spegnerlo, dargli una data di fine, spostarne l''inizio nel futuro, spostarlo su un altro soggetto_ruolo, cancellarlo) se dopo non resta nessun SUPER_ADMIN senza scadenza (script.fn_check_almeno_un_super_admin_attivo). Le scritture che migliorano non si fermano mai. Codice E_PROFILO_ULTIMO_SUPER_ADMIN. Gemello di anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin.';
 ```
 
 </div>

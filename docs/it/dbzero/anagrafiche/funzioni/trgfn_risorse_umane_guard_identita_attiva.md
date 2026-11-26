@@ -29,7 +29,10 @@ BEGIN
     -- attiva non si disattiva («figli prima, padre poi»). Il legame
     -- risorsa umana -> identita' passa da soggetto_ruolo_id, non da
     -- una FK: per questo il guard e' scritto a mano e non generato.
-    -- Solo la transizione attivo true -> false.
+    -- Solo la transizione attivo true -> false. La veste si cerca
+    -- sul ruolo di prima E su quello nuovo: uno spegnimento che
+    -- nella stessa scrittura sposta il ruolo non la lascia accesa
+    -- su quello di prima.
     -- ------------------------------------------------------------
     IF TG_OP = 'UPDATE'
        AND COALESCE(OLD.attivo, false) IS TRUE
@@ -40,7 +43,7 @@ BEGIN
           FROM anagrafiche.identita_digitali id
           JOIN django.auth_user au
             ON au.id = id.auth_user_id
-         WHERE id.soggetto_ruolo_id = NEW.soggetto_ruolo_id
+         WHERE id.soggetto_ruolo_id IN (OLD.soggetto_ruolo_id, NEW.soggetto_ruolo_id)
            AND id.ruolo_applicativo = 'OPERATORE'
            AND id.attivo            = true
          ORDER BY id.id
@@ -56,7 +59,8 @@ BEGIN
                 jsonb_build_object(
                     'campo',             'attivo',
                     'risorsa_umana_id',  NEW.id,
-                    'soggetto_ruolo_id', NEW.soggetto_ruolo_id),
+                    'soggetto_ruolo_id', NEW.soggetto_ruolo_id,
+                    'soggetto_ruolo_id_prima', OLD.soggetto_ruolo_id),
                 NULL::uuid,
                 v_username);
         END IF;
@@ -67,7 +71,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_guard_identita_attiva()
-IS 'Guard (BEFORE UPDATE OF attivo su risorse_umane): rifiuta attivo true->false se esiste un''identita_digitali OPERATORE attiva sullo stesso soggetto_ruolo_id — E_RISORSA_UMANA_IDENTITA_ATTIVA (CONFLITTO_STATO), nel VARIADIC lo username. Scritto a mano perche'' il legame non e'' una FK e l''automazione ATTIVO non lo vede; sostituisce il guard che leggeva la vista risorse_umane_auth_user (ritirata il 12-09-2026).';
+IS 'Guard BEFORE UPDATE OF attivo su anagrafiche.risorse_umane: rifiuta attivo true -> false se c''e'' ancora una veste OPERATORE accesa sul soggetto_ruolo_id del rapporto, quello di prima o quello nuovo della stessa scrittura: E_RISORSA_UMANA_IDENTITA_ATTIVA (CONFLITTO_STATO), nel VARIADIC lo username. Si spegne prima la veste, poi il rapporto. Scritto a mano perche'' il legame fra rapporto e veste passa dal ruolo anagrafico e non da una FK, e l''automazione ATTIVO non lo vede.';
 ```
 
 </div>

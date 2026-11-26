@@ -11,7 +11,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — credenziale, persona, rapporto, veste e legame SUPER_ADMIN
+> * [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore) — credenziale, persona, rapporto, veste e legame SUPER_ADMIN
 > * [anagrafiche.fn_crea_indirizzi_operatore](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_operatore) — residenza e domicilio fiscale
 > * [anagrafiche.fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste) — accende la veste senza invito
 > * [script.fn_check_almeno_un_super_admin_attivo](/dbzero/script/funzioni/fn_check_almeno_un_super_admin_attivo) — la garanzia dell'ultimo SUPER_ADMIN, che il verbo non sostituisce
@@ -64,7 +64,7 @@ Per lo stesso motivo le colonne d'audit delle righe che nascono portano il propr
 
 ### Che cosa compone
 
-* `anagrafiche.fn_crea_operatore_v2`, col soggetto nuovo (flusso A) e il SUPER_ADMIN: la credenziale, la persona
+* `anagrafiche.fn_crea_operatore`, col soggetto nuovo (flusso A) e il SUPER_ADMIN: la credenziale, la persona
   privata, il rapporto, la veste spenta e il legame. Valgono tutti i suoi rifiuti; in particolare una credenziale che
   ha già quell'email si riusa solo col consenso (`p_riusa_auth_user_id` dev'essere la credenziale trovata), e la
   password passata allora è ignorata.
@@ -96,7 +96,7 @@ transazione, non nasce niente.
 | `E_PRIMO_AMMINISTRATORE_GIA_PRESENTE` | una veste ha già un legame verso un profilo SUPER_ADMIN, acceso o spento |
 | `E_CODICE` | la qualifica AMMINISTRATORE manca o è spenta |
 
-Più quelli di `fn_crea_operatore_v2` (fra gli altri `E_CREDENZIALE_DA_CONFERMARE`, `E_ADMIN_CF_DUPLICATO`,
+Più quelli di `fn_crea_operatore` (fra gli altri `E_CREDENZIALE_DA_CONFERMARE`, `E_ADMIN_CF_DUPLICATO`,
 `E_SESSO_OBBLIGATORIO`), di `fn_crea_indirizzi_operatore` e `fn_crea_indirizzo_soggetto`, e dei guard del soggetto
 sugli indirizzi obbligatori.
 

@@ -60,22 +60,19 @@ WHERE ef.attivo = true
 ORDER BY ef.id
 LIMIT 1;
 
+-- ⛔ Rev 2026-11-26 (giro 10-ter, brief-db-porte-aperte-dalla-sola-guc §10-ter, D-AA a):
+--   l'operatore si COSTRUISCE, non si cerca fra gli esistenti, e nasce senza
+--   azienda (dbops.fn_pgtap_crea_operatore_umano). Fino a oggi il file prendeva il
+--   primo operatore attivo e gli toglieva l'azienda col builder: dal 20261125-74
+--   l'azienda si toglie solo a un SUPER_ADMIN. Il caso 5, «senza riga», e' il
+--   SUPER_ADMIN costruito: l'unico utente per cui la riga mancante e' legittima.
 CREATE TEMP TABLE tmp_resolve_user AS
--- Fixture rev 2026-08-04: la selezione passava da
--- risorse_umane_auth_user.ruolo_sistema, colonna rimossa dal changeSet
--- 20260429-19a. Da allora il file falliva nel setup e non eseguiva NESSUNA
--- asserzione (baseline: ERRORE_FIXTURE) — copertura zero su una funzione
--- comunque viva. L'equivalente attuale di "utente operativo" e' l'identita
--- digitale OPERATORE attiva, la stessa usata dagli altri test di scope.
-SELECT au.id AS user_id
-FROM django.auth_user au
-JOIN anagrafiche.identita_digitali idg
-  ON idg.auth_user_id      = au.id
- AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
- AND idg.attivo            = true
-WHERE au.is_active = true
-ORDER BY au.id
-LIMIT 1;
+SELECT o.auth_user_id AS user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('resolve-operatore', false) o;
+
+CREATE TEMP TABLE tmp_resolve_sa AS
+SELECT o.auth_user_id AS user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('resolve-super-admin', true) o;
 
 -- ============================================================
 -- 1) param NULL -> throws E_PARAMETRO_INVALIDO
@@ -107,11 +104,9 @@ SELECT is(
 -- ============================================================
 -- 4) user con 1 riga in user_emittenti_fiscali -> PK emittente
 -- ============================================================
-SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_resolve_user), NULL);
-
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-SELECT (SELECT user_id FROM tmp_resolve_user),
-       (SELECT emittente_pk FROM tmp_resolve_ctx);
+-- L'operatore costruito nasce senza azienda: la riga la scrive il verbo.
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_resolve_user),
+                                             (SELECT emittente_pk FROM tmp_resolve_ctx));
 
 SELECT is(
     script.fn_resolve_emittente_for_user((SELECT user_id FROM tmp_resolve_user)),
@@ -120,12 +115,10 @@ SELECT is(
 );
 
 -- ============================================================
--- 5) user senza riga (admin globale) -> ritorna NULL
+-- 5) SUPER_ADMIN senza riga (admin globale) -> ritorna NULL
 -- ============================================================
-SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_resolve_user), NULL);
-
 SELECT is(
-    script.fn_resolve_emittente_for_user((SELECT user_id FROM tmp_resolve_user)),
+    script.fn_resolve_emittente_for_user((SELECT user_id FROM tmp_resolve_sa)),
     NULL::bigint,
     'user senza riga (admin globale) -> NULL'
 );

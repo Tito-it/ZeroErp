@@ -20,6 +20,7 @@ BEGIN ATOMIC
  SELECT
          CASE
              WHEN idg.attivo THEN 'ATTIVO'::text
+             WHEN (idg.revocata_at IS NOT NULL) THEN 'REVOCATA'::text
              WHEN (tk.scade_at IS NULL) THEN 'DISATTIVO'::text
              WHEN ((idg.invito_inviato_at IS NOT NULL) AND (idg.invito_inviato_at >= tk.emesso_at)) THEN 'PENDING'::text
              ELSE 'NON_SPEDITO'::text
@@ -34,7 +35,7 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION script.fn_stato_veste(p_identita_id bigint)
-IS 'Lo stato di UNA veste, calcolato solo a DB (A-7): ATTIVO (accesa), PENDING (spenta, invito pendente e la sua email partita: invito_inviato_at >= emissione del token), NON_SPEDITO (spenta, invito pendente, email di quel token non partita), DISATTIVO (spenta, nessun invito pendente). Invito pendente = token di config.token_monouso non usato e non scaduto con l''identita_id della veste nel meta (lo scrive solo l''emissione di un invito); con piu'' token vale il MAX di scadenza ed emissione. token_scade_at = scadenza del token pendente piu'' lontano. Zero righe per un id assente. La regola e'' quella che il backend calcolava in portale_repository.stato_veste, portata com''era; NESSUNO (nessuna veste) resta a chi cerca la veste. La leggono anagrafiche.vw_accessi_altri e lo stato accessi della scheda di cliente e fornitore. Brief: brief-db-be-fe-area-accessi (A-7, R-DB-A2).';
+IS 'Lo stato di UNA veste, calcolato solo a DB: ATTIVO (accesa), REVOCATA (spenta dall''amministratore, porta il segno revocata_at: non si riaccende finche'' un nuovo invito non toglie il segno, anche se un token e'' in volo), PENDING (spenta, invito pendente e la sua email partita: invito_inviato_at >= emissione del token), NON_SPEDITO (spenta, invito pendente, email di quel token non partita), DISATTIVO (spenta, nessun invito pendente). Invito pendente = token di config.token_monouso non usato e non scaduto con l''identita_id della veste nel meta (lo scrive solo l''emissione di un invito); con piu'' token vale il MAX di scadenza ed emissione. token_scade_at = scadenza del token pendente piu'' lontano, anche per una veste REVOCATA. Zero righe per un id assente; NESSUNO (nessuna veste) resta a chi cerca la veste. La leggono anagrafiche.vw_accessi_altri e lo stato accessi della scheda di cliente e fornitore.';
 ```
 
 </div>

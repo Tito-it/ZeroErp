@@ -54,7 +54,7 @@ che ha un predicato suo.
 ### Presidio
 
 `db/pgtap/anagrafiche/test-risorse-umane-guard-identita-attiva-v1.sql` (test 2):
-la fixture creata dalla madre `fn_crea_operatore_v2` è legata nel verso
+la fixture creata dalla madre `fn_crea_operatore` è legata nel verso
 RU → utente da questa funzione.
 
 ---

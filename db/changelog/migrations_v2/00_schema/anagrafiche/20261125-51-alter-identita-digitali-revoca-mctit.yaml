@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.identita_digitali: il segno della revoca (R-4).
+#
+#   Una veste spenta dall'amministratore ricorda di essere stata revocata,
+#   quando e da chi. Finche' il segno c'e' la veste non si riaccende, e la
+#   coppia (credenziale, ruolo anagrafico, veste) non ne accoglie una nuova
+#   accesa: lo fa valere il guard del 20261125-52. Il segno lo mettono e lo
+#   tolgono solo i verbi (-54 revoca, -55 nuovo invito, -56 utente tecnico).
+#
+#   · revocata_at          timestamptz NULL: quando.
+#   · revocata_da_user_id  integer NULL: la credenziale di chi ha revocato.
+#     Niente FK verso django.auth_user: lo schema django non esiste al
+#     momento di questo changeSet su un database nuovo (linee-guida-sql §11.9);
+#     tipo esplicito per la stessa ragione (nel DDL di tabella %TYPE non vale).
+#     Lo storico non basta per il «chi»: user_update porta il ruolo del
+#     database, non la persona.
+#   · chk_identita_digitali_revoca_coerente: i due campi insieme, e una veste
+#     revocata e' spenta. L'espressione non vale mai NULL (attivo e' NOT NULL,
+#     i due «IS NULL» danno sempre vero o falso), quindi non passa per assenza
+#     (linee-guida-sql §7f). Le righe di oggi hanno i due campi NULL.
+#
+# ⚠️ Lo storico di questa tabella salva uno snapshot JSONB (to_jsonb(OLD)):
+#   le colonne nuove non toccano la shadow. Nessun lucchetto di colonna sulla
+#   tabella. Nessun DDL sui trigger generati (linee-guida-sql §11.5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261125-51-alter-identita-digitali-revoca-mctit.yaml
+
+  - changeSet:
+      id: 20261125-51-alter-identita-digitali-revoca
+      author: mctit
+      failOnError: true
+      comment: >
+        anagrafiche.identita_digitali: revocata_at e revocata_da_user_id, il segno della veste revocata
+        dall'amministratore, con il CHECK di coerenza (insieme, e revocata implica spenta).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: anagrafiche, tableName: identita_digitali }
+            - not:
+                - columnExists:
+                    { schemaName: anagrafiche, tableName: identita_digitali, columnName: revocata_at }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.identita_digitali
+                  ADD COLUMN revocata_at         timestamptz NULL,
+                  ADD COLUMN revocata_da_user_id integer     NULL;
+
+              ALTER TABLE anagrafiche.identita_digitali
+                  ADD CONSTRAINT chk_identita_digitali_revoca_coerente
+                  CHECK ((revocata_at IS NULL) = (revocata_da_user_id IS NULL)
+                         AND (revocata_at IS NULL OR attivo = false));
+
+              COMMENT ON COLUMN anagrafiche.identita_digitali.revocata_at IS
+                  'Quando l''amministratore ha revocato la veste. Valorizzata: la veste e'' spenta e non si riaccende, e sulla stessa coppia (credenziale, ruolo anagrafico, veste) non nasce un''altra veste accesa (anagrafiche.trgfn_identita_digitali_guard_revoca, E_VESTE_REVOCATA). La mette anagrafiche.fn_revoca_veste; la tolgono anagrafiche.fn_togli_revoca_veste (il nuovo invito) e script.fn_riattiva_utente_tecnico. Nessun''altra strada la scrive. NULL: la veste non e'' revocata.';
+
+              COMMENT ON COLUMN anagrafiche.identita_digitali.revocata_da_user_id IS
+                  'La credenziale (django.auth_user.id) di chi ha revocato la veste, letta dalla sessione. Valorizzata se e solo se revocata_at lo e''. Senza FK: lo schema django e'' dell''applicazione e su un database nuovo nasce dopo questa colonna.';
+
+              COMMENT ON CONSTRAINT chk_identita_digitali_revoca_coerente ON anagrafiche.identita_digitali IS
+                  'Il segno della revoca ha i due campi insieme (quando e chi), e una veste revocata e'' spenta.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.identita_digitali
+                  DROP CONSTRAINT IF EXISTS chk_identita_digitali_revoca_coerente,
+                  DROP COLUMN IF EXISTS revocata_da_user_id,
+                  DROP COLUMN IF EXISTS revocata_at;

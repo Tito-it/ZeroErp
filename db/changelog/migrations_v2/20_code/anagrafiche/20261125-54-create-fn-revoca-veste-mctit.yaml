@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.fn_revoca_veste: lo spegnimento dell'amministratore.
+#
+#   Spegne la veste e mette il segno (quando, chi). Prende il posto dei due
+#   UPDATE scritti a mano nel backend (AmmSoftwareRepository.disabilita_operatore
+#   e PortaleRepository.disattiva_identita, passo 3b). Mette il segno anche su
+#   una veste gia' spenta, quella con l'invito ancora pendente: l'admin che la
+#   spegne vuole revocare, e senza segno un'iscrizione da se' che la ritrova
+#   la accenderebbe con la sola conferma dell'email.
+#
+#   · Chi agisce: script.fn_utente_di_sessione (contratto-guc-app §4.4); il
+#     permesso lo decide anagrafiche.fn_guard_gestione_veste, per tipo di veste.
+#   · Una veste gia' revocata tiene il segno di prima (la prima revoca, chi e
+#     quando): il verbo e' idempotente.
+#   · SECURITY DEFINER, search_path fissato: il segno lo scrive solo il
+#     proprietario (guard del -52). Dentro il verbo scattano gli stessi
+#     trigger dell'UPDATE del backend: l'ultimo super admin, i binding di
+#     scope ancora accesi, la sincronizzazione di auth_user.is_active.
+#   · Non chiude sessioni ne' token: lo fa il backend nella stessa
+#     transazione (InvitoVeste.chiudi_veste_spenta), come oggi.
+#   · Ritorna se la veste era accesa prima della chiamata: il backend lo usa
+#     per la sua risposta («disattivato»).
+#   · Il perimetro: il verbo riceve l'id che il backend ha risolto dal cliente
+#     o dall'operatore sotto il suo scope, come l'UPDATE di oggi; la tabella
+#     non ha RLS.
+#
+#   Codice nuovo: E_VESTE_NON_TROVATA (NON_TROVATO), anche per l'id assente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261125-54-create-fn-revoca-veste-mctit.yaml
+
+  - changeSet:
+      id: 20261125-54-create-fn-revoca-veste
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_revoca_veste: l'amministratore spegne la veste e mette il segno della revoca,
+        col permesso del tipo di veste. SECURITY DEFINER.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            { schemaName: anagrafiche, tableName: identita_digitali, columnName: revocata_at }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_revoca_veste(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE
+              )
+               RETURNS anagrafiche.identita_digitali.attivo%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente anagrafiche.identita_digitali.revocata_da_user_id%TYPE;
+                  v_ruolo  anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+                  v_attivo anagrafiche.identita_digitali.attivo%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: l'amministratore revoca la veste p_identita_id:
+                  --   la spegne e ci scrive quando e chi. Ritorna se era
+                  --   accesa prima della chiamata.
+                  -- =========================================================
+                  v_utente := script.fn_utente_di_sessione('anagrafiche.fn_revoca_veste');
+
+                  IF p_identita_id IS NULL OR p_identita_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_revoca_veste', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('identita_id', p_identita_id),
+                          NULL::uuid,
+                          'anagrafiche.fn_revoca_veste',
+                          'veste mancante');
+                  END IF;
+
+                  SELECT idg.ruolo_applicativo, idg.attivo
+                    INTO v_ruolo, v_attivo
+                    FROM anagrafiche.identita_digitali idg
+                   WHERE idg.id = p_identita_id
+                     FOR UPDATE;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_revoca_veste', 'E_VESTE_NON_TROVATA',
+                          jsonb_build_object('identita_id', p_identita_id),
+                          NULL::uuid,
+                          p_identita_id::text);
+                  END IF;
+
+                  PERFORM anagrafiche.fn_guard_gestione_veste(v_utente, v_ruolo);
+
+                  UPDATE anagrafiche.identita_digitali idg
+                     SET attivo              = false,
+                         revocata_at         = COALESCE(idg.revocata_at, now()),
+                         revocata_da_user_id = COALESCE(idg.revocata_da_user_id, v_utente)
+                   WHERE idg.id = p_identita_id
+                     AND (idg.attivo OR idg.revocata_at IS NULL);
+
+                  RETURN v_attivo;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_revoca_veste(anagrafiche.identita_digitali.id%TYPE) IS
+                  'Verbo: l''amministratore revoca la veste p_identita_id. La spegne (attivo = false) e ci scrive il segno della revoca: revocata_at e revocata_da_user_id, l''utente della sessione (script.fn_utente_di_sessione). Mette il segno anche su una veste gia'' spenta, per esempio con l''invito pendente; su una veste gia'' revocata tiene il segno di prima. Ritorna se la veste era accesa prima della chiamata. Permesso: anagrafiche.fn_guard_gestione_veste, per tipo di veste (E_PERMESSO_NEGATO). Veste assente: E_VESTE_NON_TROVATA; id NULL o non positivo: E_SCRIPT_CHIAMATA_NON_VALIDA. Una veste revocata non si riaccende finche'' anagrafiche.fn_togli_revoca_veste non toglie il segno (anagrafiche.trgfn_identita_digitali_guard_revoca). Non chiude sessioni ne'' token: lo fa il backend nella stessa transazione. SECURITY DEFINER, search_path fissato: il segno lo scrive solo il proprietario della tabella.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_revoca_veste(bigint);

@@ -1,6 +1,6 @@
 # Brief DB — le strade per cui l'app scrive senza il verbo: le porte della sola GUC e le viste aggiornabili
 
-> **⏭️ Chi riparte — aggiornato al 2026-11-25**
+> **⏭️ Chi riparte — aggiornato al 2026-11-26**
 >
 > **Riparte: Tid**, col via al team DB per il giro 10-bis: il lavoro BE è committato su `dev/backend-tid`
 > (`e4af0106a`, 2026-11-25), e tutte le richieste del DB al BE sono evase. Sono 3j (il comando `crea_primo_amministratore`, §4.9.7), 3k-bis (`genera_error_policies`, §4.7),
@@ -62,6 +62,11 @@
 > | 6b-ter | team DB | giro 10: ✅ `20261124-01` … `-06`, le altre due sedi di §11.8, pgTAP nuovo e ventiquattro adeguati, guide e `manual/`, provato sullo scratch (2026-11-25) | §10.5 | — |
 > | 6b-quater | Tid | giro 10: ✅ apply, pgTAP come app verdi, doc auto-generata rigenerata (2026-11-25) | §10.5 | — |
 > | 6b-quinquies | team BE | giro 10: i test che chiamano il verbo da SUPER_ADMIN; il censimento di chi scrive `config.user_emittenti_fiscali` (per il giro 10-bis) · ✅ test e censimento (2026-11-25): nessuno scrive la tabella senza il verbo; manuale | §10.6 | — |
+> | 6b-sexies | team DB | giro 10-ter, l'operatore non è mai «globale» (Tid, 2026-11-26): ✅ analisi (2026-11-26) | §10-ter | — |
+> | 6b-septies | Tid | giro 10-ter: ✅ D-AA **a**, ✅ D-AB **b**, ✅ il via (2026-11-26) | §10-ter.4 | — |
+> | 6b-octies | team DB | giro 10-ter: ✅ `20261125-74` … `-76`, codice d'errore, pgTAP del giro e tredici adeguati, guide e `manual/`, provato sullo scratch (2026-11-26) | §10-ter.6 | — |
+> | 6b-nonies | Tid | giro 10-ter: ✅ apply `20261125-72` … `-76` (col `-73` dell'altra sessione), ✅ doc auto-generata rigenerata (2026-11-26); pgTAP come app | §10-ter.6 | 6b-octies |
+> | 6b-decies | team BE/FE | giro 10-ter: la richiesta | §10-ter.5 | 6b-nonies |
 > | 6c | team DB | giro 9: ✅ analisi, D20-b riletta (2026-11-25) | §11 | — |
 > | 6c-bis | Tid | giro 9: ✅ D-S **a**, il via (2026-11-25) | §11.3 | — |
 > | 6c-ter | team DB | giro 9: ✅ `20261124-07` … `-09`, pgTAP nuovo e quattro adeguati, guida e `manual/`, provato sullo scratch (2026-11-25) | §11.5 | — |
@@ -80,7 +85,7 @@
 > | 6e-sexies | Tid | giro 8 + 1-7: ✅ apply, ✅ pgTAP come app verdi, ✅ doc auto-generata rigenerata dopo le pagine `manual/` (2026-11-25) | §13.9 | — |
 > | 6e-septies | team BE | giro 8 + 1-7: la richiesta · ✅ test, tre censimenti e manuali (2026-11-25) | §13.8 | — |
 >
-> Decisioni aperte di Tid: nessuna (le due della verifica del passo 3j, decise e fatte il 2026-11-25, §4.9.7; D-K7 **b** e D-K8 **a2** decise il 2026-11-25, §4.9; D-W … D-Z il 2026-11-25, §13.7). R-DB-K1 e R-DB-K4 sono applicati, verdi e committati (2026-11-25). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso. ✅ Il lavoro BE del 2026-11-25 (tutte le richieste evase) è committato su `dev/backend-tid` (`e4af0106a`). Restano due voci del piano, del team DB: il giro 10-bis e «Le guide».
+> Decisioni aperte di Tid: nessuna (D-AA **a** e D-AB **b** del giro 10-ter decise il 2026-11-26, §10-ter.4; le due della verifica del passo 3j, decise e fatte il 2026-11-25, §4.9.7; D-K7 **b** e D-K8 **a2** decise il 2026-11-25, §4.9; D-W … D-Z il 2026-11-25, §13.7). R-DB-K1 e R-DB-K4 sono applicati, verdi e committati (2026-11-25). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso. ✅ Il lavoro BE del 2026-11-25 (tutte le richieste evase) è committato su `dev/backend-tid` (`e4af0106a`). Restano due voci del piano, del team DB: il giro 10-bis e «Le guide».
 > Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
 > (`969ea14566`), dal BE §4.5-§4.7 con D-J (`4271a0dc69`, PR #232), e il 2026-11-24 il lato DB del ritiro di
 > `reset_lotto_draft` con la pulizia della testata (§4.8). Dal BE, il 2026-11-24 (`5fc466c729`): il `None` del perimetro
@@ -245,6 +250,13 @@
   - [x] commit su `dev/db-tid` (2026-11-25)
   - [x] doc auto-generata rigenerata (Tid, 2026-11-25)
   - [x] il BE: passo 3j, `genera_error_policies`, il censimento (§4.9.7, 2026-11-25)
+- [ ] Giro 10-ter (Tid, 2026-11-26): l'operatore non è mai «globale»; la primitiva rifiuta, il getter non lo offre (§10-ter)
+  - [x] analisi (2026-11-26, §10-ter)
+  - [x] D-AA **a**, D-AB **b**, il via (Tid, 2026-11-26)
+  - [x] changeSet (firme col `%TYPE`), codice d'errore, pgTAP del giro e tredici adeguati, guide e `manual/`; prova sullo scratch (2026-11-26, §10-ter.6)
+  - [x] apply e doc auto-generata rigenerata (Tid, 2026-11-26)
+  - [ ] pgTAP come app: verdi (Tid)
+  - [ ] il BE/FE: testi del banner e del riquadro, ripieghi, mappatura del codice, test, manuale (§10-ter.5)
 - [ ] Giro 10-bis (D-O **a**, Tid, 2026-11-24): `config.user_emittenti_fiscali` in sola lettura per l'app, con
   `script.fn_crea_utente_tecnico` a verbo e R-DB-K2 (`fn_crea_operatore_v2`); parte dalla risposta del BE al
   censimento di §10.6
@@ -2213,6 +2225,175 @@ Chi cambia per primo: il DB. Nessuna firma cambia, nessuna GUC da togliere (il B
 verbo e guard non più orfani. `anagrafiche.fn_provisiona_dati_di_sviluppo` resta orfano: è uno strumento dello
 sviluppo, non un concetto del dominio. Primitiva e builder non hanno ancora la pagina auto-generata: la porta la
 rigenerazione dopo l'apply.
+
+## 10-ter. Il giro 10-ter, l'operatore non è mai «globale» — analisi del 2026-11-26
+
+**Il punto di Tid (2026-11-26):** un operatore che non è SUPER_ADMIN non può essere globale. Nasce scrivendo la guida
+[emittenti-fiscali](../../guide/emittenti-fiscali.md): il drawer dell'operatore offre «Tutti gli emittenti (globale)»
+a chiunque. Sta qui perché tocca gli stessi oggetti del giro 10: il verbo, la primitiva e il builder dei pgTAP.
+
+### 10-ter.1 Che cosa c'è oggi (catalogo dello scratch, 2026-11-26)
+
+* `script.fn_get_user_emittenti_scope` dichiara a tutti `allowed_scope_modes = ['GLOBAL','SINGLE']` e chiama `GLOBAL`
+  ogni utente senza riga. Il drawer (`OperatoreDrawer.vue`) disabilita le scelte proprio da quel campo, quindi oggi
+  non disabilita niente. Per un operatore normale appena creato mostra «Tutti gli emittenti (globale)» come scelta già
+  fatta.
+* `script.fn_applica_user_emittenti_scope` accetta l'array vuoto per chiunque: toglie la riga anche a un operatore
+  normale. Il risultato non è un operatore globale, è un **operatore che non vede niente** (fail-closed del
+  2026-08-18), cioè una riga in `dbops.vw_operatori_senza_emittente`, che deve restare a zero.
+* Il BE passa tutto com'è (`AmmSoftwareService.put_emittenti_scope`, `get_emittenti_scope`), e traduce solo i
+  codici che conosce (`_run_or_raise_super_admin_guard`).
+* Il banner degli operatori non assegnati (`amministrazione.banner_non_assegnati_detail`, in `it.json` e `en.json`)
+  dice che gli operatori esistenti «sono rimasti come admin globali», cioè il modello di prima del 2026-08-18. Il
+  suggerimento del riquadro (`emittenti_scope_hint`) presenta «globale» come la scelta normale.
+
+**La storia.** «Globale» per un operatore normale era il modello di prima del fail-closed (P-2a, 2026-08-18). Da quel
+giorno l'unico attore che vede più emittenti è il SUPER_ADMIN (COMMENT di `config.user_emittenti_fiscali`, guida dei
+permessi §4.9). [brief-db-emittente-del-super-admin](../work-done/2026/brief-db-emittente-del-super-admin.md) R-DB-2
+ha confermato il caso: un operatore senza riga non riceve nessun emittente. Nessuna decisione vuole un operatore
+globale. La scelta nel drawer è un **residuo**, e la correzione è coerente con le guide: **non è un cambio di
+modello**.
+
+### 10-ter.2 Che cosa si cambia (proposta)
+
+1. **La primitiva** `script.fn_applica_user_emittenti_scope` rifiuta l'array vuoto (o NULL) quando l'utente sotto
+   spostamento non è SUPER_ADMIN, con un codice nuovo, `E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`
+   (`CONFLITTO_STATO`: la richiesta è leggibile, è lo stato dell'utente che non la ammette; rimedio: scegliere un
+   emittente). Il controllo viene dopo i parametri e **prima** del no-op: chiedere «globale» per un operatore è
+   sbagliato anche quando non ha già la riga.
+   * La domanda è sull'account dell'utente sotto spostamento, non sulla veste di chi chiama, quindi si usa
+     `script.fn_is_super_admin_account(p_auth_user_id)` e non `fn_is_super_admin`, che guarda la GUC della sessione.
+   * Il verbo non cambia: chiama la primitiva.
+2. **Il getter** `script.fn_get_user_emittenti_scope` restituisce `allowed_scope_modes = ['SINGLE']` a chi non è
+   SUPER_ADMIN, e `scope_mode = 'SINGLE'` con `emittente_id` NULL all'operatore senza riga. Il drawer allora mostra
+   «Un solo emittente» con l'elenco vuoto, e il Salva resta spento finché non si sceglie (`canSaveScope` lo fa già).
+   I valori del contratto non cambiano, quindi il FE funziona senza modifiche. Per il SUPER_ADMIN, con o senza
+   riga, la risposta non cambia.
+3. ⛔ **Le firme con il `%TYPE`** (linee-guida-sql §5g), sui tipi di oggi, quindi `CREATE OR REPLACE` senza cambio di
+   tipo:
+   * nel getter, `p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE` (oggi è `INTEGER` sciolto);
+   * nel `RETURNS TABLE`, `auth_user_id` con lo stesso ancoraggio ed `emittente_descrizione
+     anagrafiche.soggetti.ragione_sociale_completa%TYPE` (è `text`);
+   * `scope_mode`, `allowed_scope_modes`, `can_change_scope` e `change_scope_reason` non sono il riflesso di una
+     colonna e lo dichiarano;
+   * la primitiva è già ancorata, e `bigint[]` resta con la sua ragione.
+4. **Il codice d'errore** in `codici_errore.csv` e `messaggi_errore.csv`. ⚠️ I due file hanno righe non committate di
+   un'altra sessione (`1547`, `1548`): l'`id` si prende dopo le sue, e al commit si mettono solo le righe del giro.
+5. **I pgTAP del giro.**
+   * `test-fn-change-user-emittenti-scope`: i casi 4 e 5, che oggi portano un operatore normale a GLOBAL, si
+     rovesciano (rifiuto, e la riga resta). Si aggiunge il SUPER_ADMIN con riga che passa a GLOBAL, e l'operatore senza
+     riga a cui si chiede GLOBAL (rifiuto, non no-op).
+   * `test-fn-get-user-emittenti-scope`: i casi 1 e 3 si riscrivono (operatore senza riga → SINGLE con NULL, ammesso
+     solo SINGLE), e si aggiunge il SUPER_ADMIN senza riga → GLOBAL, con le due modalità. ⚠️ Il file ha righe non
+     committate dell'altra sessione (D-G2-3): si lavora sopra quelle.
+6. **Le guide e i `manual/`**:
+   * [emittenti-fiscali](../../guide/emittenti-fiscali.md) Parte 2: oggi avverte che «globale» ha senso solo per un
+     super admin; diventa la regola;
+   * [risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md) «Assegnazione emittente fiscale»;
+   * le pagine `manual/` di `fn_change_user_emittenti_scope`, `fn_applica_user_emittenti_scope`,
+     `fn_get_user_emittenti_scope` e `user_emittenti_fiscali`.
+
+### 10-ter.3 Il costo nascosto: i pgTAP che tolgono l'azienda all'operatore
+
+Tredici pgTAP chiamano `dbops.fn_pgtap_sposta_scope_operatore(<operatore>, NULL)` per **costruire** un operatore
+senza azienda:
+
+* fail-closed e perimetro: `test-fn-resolve-emittente-for-user`, `test-fn-check-user-can-create-ba`,
+  `test-permessi-fn-check-emittente-scope`, `test-permessi-trigger-guard-emittente`,
+  `test-permessi-funzioni-risoluzione`;
+* `config/`: `test-user-emittenti-fiscali-immutable`, `test-permessi-user-overrides`;
+* `vendite/`: `test-vw-dash-competenza-gruppi-v1`, `test-annulla-commessa-attivita-v1`,
+  `test-vw-offerte-lista-superata-vs-abortito`, `test-offerte-rientro-padre-revisione-annullata`;
+* `script/`: `test-fn-get-user-emittenti-scope`, `test-scope-emittenti-fail-closed-v1`.
+
+Gli altri file che usano il builder gli passano un emittente, e il giro non li tocca.
+
+Il builder chiama il verbo, quindi col punto 1 di §10-ter.2 sono tutti rossi. Lo stato «operatore senza azienda»
+resta legittimo (è quello di un operatore appena creato, ed è proprio ciò che i test del fail-closed provano). Quello
+che sparisce è la **strada** per arrivarci togliendo l'azienda.
+
+### 10-ter.4 Due scelte per Tid — ✅ decise il 2026-11-26: D-AA a, D-AB b
+
+* **D-AA, come i pgTAP costruiscono l'operatore senza azienda.**
+  * **a**: lo stato si costruisce, non si toglie. Il test prende un operatore che nasce senza azienda
+    (`dbops.fn_pgtap_crea_operatore_umano(…, false)`, come fa già `test-fn-change-user-emittenti-scope`) e ci
+    sposta il contesto. Il builder segue le regole del verbo, quindi con `NULL` su un operatore normale arriva il
+    rifiuto. Il costo è di tredici file circa, riletti caso per caso: alcuni usano lo stesso operatore prima con
+    l'azienda e poi senza.
+  * **b**: il builder tiene una strada per `NULL` che non passa dal verbo. Riaprirebbe la porta che il giro 10 ha
+    chiuso (D-Q **a**: «il builder prova il verbo vero, non lo aggira»).
+  * ⭐ **a**: è la regola dei builder del progetto («la precondizione si costruisce, non si cerca né si toglie»), e
+    non apre porte.
+* **D-AB, il SUPER_ADMIN senza azienda che perde il profilo.** Togliere il binding `SUPER_ADMIN` a un super admin
+  senza riga lo lascia operatore senza azienda, cioè un «non assegnato».
+  * **a**: si rifiuta finché non ha un'azienda. È un guard su `config.profili_accesso_bindings`, per prendere tutte
+    le strade.
+  * **b**: si ammette, e lo segnalano il banner e `dbops.vw_operatori_senza_emittente`, come per un operatore appena
+    creato.
+  * ⭐ **b**: lo stato è lo stesso di un operatore nuovo, il fail-closed non gli fa vedere niente, e il guard
+    obbligherebbe ad assegnare prima di togliere. Con **b** il giro non tocca i binding.
+
+### 10-ter.6 Il giro scritto — 2026-11-26
+
+Decise da Tid il 2026-11-26: **D-AA a**, **D-AB b**, e il via.
+
+| File | Che cosa |
+| --- | --- |
+| `20_code/script/20261125-74-update-fn-applica-user-emittenti-scope-globale-solo-super-admin` | la primitiva: l'array vuoto per chi non è SUPER_ADMIN si rifiuta (`E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`), dopo i parametri e prima del no-op; `fn_is_super_admin_account` sull'utente spostato; il resto del corpo dal `20261124-01`; `COMMENT` |
+| `20_code/script/20261125-75-update-fn-get-user-emittenti-scope-globale-solo-super-admin` | il getter: `['SINGLE']` a chi non è SUPER_ADMIN, l'operatore senza riga `SINGLE` con `emittente_id` NULL; firma e `RETURNS TABLE` col `%TYPE` (integer, bigint, text: nessun tipo cambia); `COMMENT` |
+| `20_code/dbops/20261125-76-update-comment-fn-pgtap-sposta-scope-operatore-globale` | solo `COMMENT` del builder: `NULL` solo per un SUPER_ADMIN, l'operatore senza azienda si costruisce |
+| `codici_errore.csv`, `messaggi_errore.csv` | `E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`, `CONFLITTO_STATO`, id `1549` (dopo i `1547`-`1548` dell'altra sessione) |
+| `20_code/anagrafiche/20261125-72-update-comment-emittenti-fiscali-al-presente` | fuori dal giro, dalla guida: il `COMMENT` di `anagrafiche.emittenti_fiscali` al presente (toglie IBAN e preferenze di numerazione) |
+| pgTAP del giro | `test-fn-change-user-emittenti-scope` (plan 7 → 10: 4 rovesciato, 5 la riga che resta, 6 l'operatore senza riga rifiutato, 7 il SUPER_ADMIN che passa a GLOBAL); `test-fn-get-user-emittenti-scope` (plan 6 → 7: 1 e 3 sul modello nuovo, 3.bis il SUPER_ADMIN senza riga) |
+| tredici pgTAP adeguati (D-AA a) | l'operatore senza azienda si costruisce con `fn_pgtap_crea_operatore_umano(…, false)`: `test-fn-resolve-emittente-for-user`, `test-fn-check-user-can-create-ba`, `test-permessi-fn-check-emittente-scope`, `test-permessi-trigger-guard-emittente`, `test-permessi-funzioni-risoluzione`, `test-scope-emittenti-fail-closed-v1`, `config/test-user-emittenti-fiscali-immutable`, `config/test-permessi-user-overrides`; dove si toglieva l'azienda per riscriverla (`vendite/test-vw-dash-competenza-gruppi-v1`, `vendite/test-annulla-commessa-attivita-v1`, le due `offerte_commerciali/`) uno spostamento solo, dal builder |
+| guide | `emittenti-fiscali` Parte 2 (la regola, il «non assegnato», il rifiuto, la buona pratica); `risorse-umane-e-accessi` (la regola) |
+| `manual/` | `fn_change_user_emittenti_scope`, `fn_applica_user_emittenti_scope`, `fn_pgtap_sposta_scope_operatore`, `user_emittenti_fiscali`; `fn_get_user_emittenti_scope` riscritta (descriveva il modello di aprile) |
+
+**Il 20261125-71 e il 20261125-73 dell'altra sessione** (`dbops.fn_pgtap_crea_emittente_operatore` con `p_persona`),
+verificati il 2026-11-26. Sono **coerenti** con D-AA a: il 73 lega la persona all'azienda dal verbo, col builder, e
+uno spostamento su un'azienda resta ammesso. Sullo scratch il 73 non è ancora applicato (c'è fino al 71, che chiama la
+primitiva e col runner app si ferma): va applicato insieme a questo giro.
+
+**La prova sullo scratch** (`prova_changeset.py`, owner, `ROLLBACK`; 73 … 76 insieme; 2026-11-26). Estratto eseguito per
+intero, catalogo identico dopo. Guardrail delle forme e del `COMMENT` al presente: verdi. pgTAP con l'estratto:
+* i tredici adeguati, `test-porta-scope-emittenti-v1`, `test-trgfn-default-emittente-fiscale-v1` e
+  `test-emittente-denominazione-da-soggetto-v1` sono verdi come senza;
+* `test-porta-scope-emittenti-v1` ha un rosso, il 9, uguale senza: si vede solo come app (§10.5);
+* `test-fn-get-user-emittenti-scope` è 7/7;
+* `test-fn-change-user-emittenti-scope` è 8/10: i due rifiuti (4 e 6) sollevano il codice giusto, ma la frase
+  «Tutti gli emittenti» sta nel CSV, che l'estratto non carica (`[MESSAGGIO NON DEFINITO: …]`). Si chiudono col CSV
+  all'apply.
+
+### 10-ter.5 La richiesta al team BE/FE (dopo l'apply)
+
+Chi cambia per primo: il DB. I valori del contratto dello scope non cambiano.
+
+* **FE, `frontend/src/locales/it.json` e `en.json`.**
+  * `amministrazione.banner_non_assegnati_detail`: il testo dice che gli operatori «sono rimasti come admin
+    globali». Proposta: «Un operatore senza emittente non vede nessun dato. Aprire il drawer di ogni operatore e, nella
+    scheda Dati, assegnarlo all'emittente per cui lavora.»
+  * `amministrazione.emittenti_scope_hint`. Proposta: «L'emittente per cui l'operatore lavora. "Tutti gli emittenti"
+    vale solo per un SUPER_ADMIN.»
+  * `amministrazione.scope_mode_global`, se serve: «Tutti gli emittenti (solo SUPER_ADMIN)».
+* **FE, `OperatoreDrawer.vue`.** I ripieghi `|| ['GLOBAL','SINGLE']` (`allowedScopeModes`) e `|| 'GLOBAL'`
+  (`syncScope`, e il valore iniziale `ref('GLOBAL')`) dicono «globale» quando la risposta manca: vanno a `['SINGLE']`
+  e `'SINGLE'`. Lo stesso per lo store `stores/operatori.js` (`allowed_scope_modes` iniziale) e per la spec del drawer.
+* **BE, `AmmSoftwareService`.**
+  * `_run_or_raise_super_admin_guard` traduce anche `E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`: oggi un codice non
+    mappato esce come errore generico.
+  * I ripieghi `_SCOPE_MODE_GLOBAL` di `get_emittenti_scope` vanno allineati come sopra.
+  * Dopo l'apply, `manage.py genera_error_policies`.
+* **BE, i test** che mettono GLOBAL a un operatore normale: almeno `amm_software/tests/api/test_override_permessi.py`
+  e `tests/services/test_amm_software_service.py`. La ricerca va fatta sul nome, non è un elenco chiuso.
+* **BE, il manuale** `amm-software/manual/api_amm_software.md` §2.6: «globale» solo per il SUPER_ADMIN.
+
+**Guide verificate** (`guide_coinvolte.py --oggetti` su primitiva, getter, verbo, tabella ed emittenti, 2026-11-26):
+* `emittenti-fiscali` e `risorse-umane-e-accessi` sono **coerenti** con la regola (la descrivono come avvertenza) e
+  vanno aggiornate nel giro;
+* `architettura-permessi-e-autorizzazioni`, `architettura-multi-face-auth` e `soggetti-e-ruoli-anagrafici` sono
+  **coerenti**;
+* le altre cinque nominano solo la tabella degli emittenti e non toccano lo scope;
+* resta orfana la primitiva `script.fn_applica_user_emittenti_scope`: è un dettaglio del verbo, che le guide nominano.
 
 ## 11. Il giro 9, la registrazione tardiva — analisi del 2026-11-25
 

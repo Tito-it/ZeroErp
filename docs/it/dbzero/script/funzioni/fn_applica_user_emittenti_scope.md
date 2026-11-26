@@ -26,6 +26,11 @@ AS $function$
 --   - parametri: auth_user_id positivo, emittente positivo
 --     (E_OPERATORE_SCOPE_PARAM_NON_VALIDO); piu' di un emittente no
 --     (E_OPERATORE_SCOPE_MULTI_NON_AMMESSO);
+--   - un'azienda tolta (array vuoto o NULL) solo a un SUPER_ADMIN: un operatore
+--     che non lo e' lavora sempre per un emittente
+--     (E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN), anche se non ha gia' la
+--     riga. La domanda e' sull'account dell'utente spostato
+--     (script.fn_is_super_admin_account), non sulla veste di chi chiama;
 --   - stessa azienda di prima: niente da fare (changed = false);
 --   - l'ultimo SUPER_ADMIN attivo non si sposta (E_PROFILO_ULTIMO_SUPER_ADMIN);
 --   - il DELETE passa dalla porta zeroerp.allow_user_emittente_delete_override,
@@ -104,6 +109,21 @@ BEGIN
         v_new_scope_mode   := 'GLOBAL';
     END IF;
 
+    -- «Tutti gli emittenti» e' del SUPER_ADMIN: a un operatore normale
+    -- l'azienda non si toglie. Prima del no-op: chiederlo e' sbagliato
+    -- anche per chi non ha ancora la riga.
+    IF v_target_emittente IS NULL
+       AND NOT script.fn_is_super_admin_account(p_auth_user_id) THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database',
+            'script.fn_applica_user_emittenti_scope',
+            'E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN',
+            jsonb_build_object('auth_user_id', p_auth_user_id),
+            NULL::uuid,
+            VARIADIC ARRAY[]::text[]
+        );
+    END IF;
+
     -- Stato corrente con FOR UPDATE
     SELECT uef.emittente_fiscale_id
       INTO v_current_emittente
@@ -169,7 +189,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_applica_user_emittenti_scope(p_auth_user_id integer, p_emittente_ids bigint[])
-IS 'Porta l''operatore sull''azienda indicata (un solo emittente) o gli toglie l''azienda (array vuoto o NULL): la riga di config.user_emittenti_fiscali è una per operatore, e lo spostamento è DELETE della riga di prima e INSERT della nuova. Restituisce changed, scope_mode (SINGLE o GLOBAL) ed emittente_id; la stessa azienda di prima non cambia niente. Rifiuti: parametri non validi (E_OPERATORE_SCOPE_PARAM_NON_VALIDO), più di un emittente (E_OPERATORE_SCOPE_MULTI_NON_AMMESSO), l''ultimo SUPER_ADMIN attivo (E_PROFILO_ULTIMO_SUPER_ADMIN). Il DELETE passa dalla porta zeroerp.allow_user_emittente_delete_override, che la funzione scrive con l''auth_user_id dell''operatore e svuota dopo, anche in errore; una GUC accesa dal chiamante si spegne all''ingresso. Il guard config.trgfn_user_emittenti_fiscali_guard_delete la apre solo con quel valore e col proprietario. È la primitiva, senza permesso: la chiamano il verbo script.fn_change_user_emittenti_scope, che chiede il SUPER_ADMIN, e anagrafiche.fn_provisiona_dati_di_sviluppo. L''applicazione non la esegue.';
+IS 'Porta l''operatore sull''azienda indicata (un solo emittente) o, solo a un SUPER_ADMIN, toglie l''azienda (array vuoto o NULL): la riga di config.user_emittenti_fiscali è una per operatore, e lo spostamento è DELETE della riga di prima e INSERT della nuova. Restituisce changed, scope_mode (SINGLE o GLOBAL) ed emittente_id; la stessa azienda di prima non cambia niente. Rifiuti: parametri non validi (E_OPERATORE_SCOPE_PARAM_NON_VALIDO), più di un emittente (E_OPERATORE_SCOPE_MULTI_NON_AMMESSO), nessuna azienda per un utente che non è SUPER_ADMIN (E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN: la domanda è script.fn_is_super_admin_account sull''utente spostato, prima del no-op), l''ultimo SUPER_ADMIN attivo (E_PROFILO_ULTIMO_SUPER_ADMIN). Il DELETE passa dalla porta zeroerp.allow_user_emittente_delete_override, che la funzione scrive con l''auth_user_id dell''operatore e svuota dopo, anche in errore; una GUC accesa dal chiamante si spegne all''ingresso. Il guard config.trgfn_user_emittenti_fiscali_guard_delete la apre solo con quel valore e col proprietario. È la primitiva, senza permesso: la chiamano il verbo script.fn_change_user_emittenti_scope, che chiede il SUPER_ADMIN, e anagrafiche.fn_provisiona_dati_di_sviluppo. L''applicazione non la esegue.';
 ```
 
 </div>

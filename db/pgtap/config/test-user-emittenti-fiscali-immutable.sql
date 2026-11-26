@@ -66,23 +66,19 @@ LIMIT 2;
 --   ha chiesto.
 -- Dalla madre identita_digitali (12-09-2026: la vista risorse_umane_auth_user
 -- e' stata ritirata; `rau.attivo` era `identita_digitali.attivo`).
+-- ⛔ Rev 2026-11-26 (giro 10-ter, brief-db-porte-aperte-dalla-sola-guc §10-ter, D-AA a):
+--   l'operatore si COSTRUISCE (dbops.fn_pgtap_crea_operatore_umano): nasce senza
+--   azienda, e la riga la scrive il verbo, col builder. Fino a oggi il file pescava
+--   il primo operatore attivo, gli toglieva l'azienda col builder e la riscriveva con
+--   un INSERT: dal 20261125-74 l'azienda si toglie solo a un SUPER_ADMIN.
 CREATE TEMP TABLE tmp_imm_user AS
-SELECT au.id AS user_id
-FROM django.auth_user au
-JOIN anagrafiche.identita_digitali i ON i.auth_user_id = au.id
-WHERE au.is_active = true
-  AND i.ruolo_applicativo = 'OPERATORE'
-  AND i.attivo = true
-ORDER BY au.id
-LIMIT 1;
+SELECT o.auth_user_id AS user_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('user-emittenti-immutable', false) o;
 
--- Pulizia preventiva, dal verbo (il builder): il guard del DELETE si apre solo da li'
-SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_imm_user), NULL);
-
--- Inserimento associazione iniziale (sul primo EF disponibile)
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-SELECT (SELECT user_id FROM tmp_imm_user),
-       (SELECT emittente_pk FROM tmp_imm_ctx ORDER BY emittente_pk LIMIT 1);
+-- L'associazione iniziale (sul primo EF disponibile), dal verbo.
+SELECT dbops.fn_pgtap_sposta_scope_operatore(
+           (SELECT user_id FROM tmp_imm_user),
+           (SELECT emittente_pk FROM tmp_imm_ctx ORDER BY emittente_pk LIMIT 1));
 
 -- ============================================================
 -- 1) UPDATE su emittente_fiscale_id -> bloccato

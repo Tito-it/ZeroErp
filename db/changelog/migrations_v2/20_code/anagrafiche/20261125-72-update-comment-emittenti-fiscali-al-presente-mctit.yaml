@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL COMMENT DI anagrafiche.emittenti_fiscali DICE LA TABELLA DI OGGI
+#
+#   Il COMMENT sul vivo («preferenze di numerazione, IBAN predefinito,
+#   override fiscali e branding») descrive colonne che la tabella non ha
+#   piu': l'IBAN e le preferenze di numerazione stanno altrove, e non dice
+#   niente di cio' che la riga e' (il ruolo EF di un soggetto), della sigla,
+#   del regime fiscale ne' del fatto che un emittente non si cancella.
+#   Trovato scrivendo la guida docs/it/guide/emittenti-fiscali.md
+#   (2026-11-26), che lo descrive per intero; la pagina manual/ della
+#   tabella era gia' allineata.
+#
+#   Solo COMMENT ON TABLE: nessuna colonna, nessun trigger cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261125-72-update-comment-emittenti-fiscali-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261125-72-update-comment-emittenti-fiscali-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il COMMENT di anagrafiche.emittenti_fiscali riscritto sulla tabella di oggi: il ruolo EF di un
+        soggetto, la sigla, il regime fiscale, le impostazioni dell'emissione, lo spegnimento al posto
+        della cancellazione. Toglie l'IBAN predefinito e le preferenze di numerazione, che non ci sono.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND c.relname = 'emittenti_fiscali'
+                 AND c.relkind IN ('r', 'p');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE anagrafiche.emittenti_fiscali IS
+                  'Le aziende per cui l''installazione emette documenti. Ogni riga è il ruolo di emittente fiscale (EF) di un soggetto: soggetto_ruolo_id, uno per ruolo e immutabile, è la sua identità, e le tabelle di vendita e di pagamento nominano l''azienda col ruolo o con id. La riga porta la sigla (codice: da 2 a 10 caratteri fra maiuscole e cifre, unica e immutabile, perché entra nei codici dei documenti), il regime fiscale (regime_fiscale_rf, con chi l''ha confermato e quando), le regole del bollo, l''arrotondamento, la valuta e il branding (brand_meta). Nasce da anagrafiche.fn_crea_emittente_fiscale. Non si cancella: si spegne, e lo spegnimento è fermato dalle righe figlie attive. Per quale azienda fattura un billing account lo dice anagrafiche.emittenti_fiscali_billing_account; per quale lavora un operatore, config.user_emittenti_fiscali.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE anagrafiche.emittenti_fiscali IS
+                  'Ruoli che emettono fiscalmente (gestore/reseller/brand): preferenze di numerazione, IBAN predefinito, override fiscali e branding.';

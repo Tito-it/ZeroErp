@@ -64,6 +64,56 @@ BEGIN
         );
     END IF;
 
+    -- 0-bis) ⛔ `tecnica` dice «e' l'identita' di un PROCESSO», e un
+    --    processo entra solo dalla porta dell'operatore (ogni policy
+    --    rls_*_ef_whitelist pretende OPERATORE). Su ogni altra veste il
+    --    flag farebbe della credenziale una credenziale di macchina senza
+    --    nessun requisito: si rifiuta per tutte, API_CLIENT compreso.
+    IF NEW.tecnica AND NEW.ruolo_applicativo <> 'OPERATORE' THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database',
+            TG_NAME,
+            'E_VESTE_TECNICA_SOLO_OPERATORE',
+            jsonb_build_object(
+                'table', TG_TABLE_NAME,
+                'identita_id', NEW.id,
+                'auth_user_id', NEW.auth_user_id,
+                'ruolo_applicativo', NEW.ruolo_applicativo
+            ),
+            NULL::uuid,
+            NEW.ruolo_applicativo::text
+        );
+    END IF;
+
+    -- 0-ter) ⛔ Un'identita' tecnica non ha il profilo SUPER_ADMIN: un
+    --    processo passerebbe sopra ogni permesso. Il binding nuovo lo
+    --    ferma config.trgfn_profili_accesso_bindings_guard_coerenza; qui
+    --    la veste che DIVENTA tecnica portandoselo dietro.
+    IF NEW.tecnica
+       AND TG_OP = 'UPDATE'
+       AND NOT OLD.tecnica
+       AND EXISTS (SELECT 1
+                     FROM config.profili_accesso_bindings pab
+                     JOIN config.profili_accesso          pa
+                       ON pa.id = pab.profilo_accesso_id
+                    WHERE pab.identita_digitale_id = NEW.id
+                      AND pab.attivo
+                      AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso)
+    THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database',
+            TG_NAME,
+            'E_SUPER_ADMIN_SU_VESTE_TECNICA',
+            jsonb_build_object(
+                'table', TG_TABLE_NAME,
+                'identita_id', NEW.id,
+                'auth_user_id', NEW.auth_user_id
+            ),
+            NULL::uuid,
+            NEW.id::text
+        );
+    END IF;
+
     -- 1) Early-exit per ruoli senza vincoli di coerenza.
     IF NEW.ruolo_applicativo = 'API_CLIENT' THEN
         RETURN NEW;
@@ -169,7 +219,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_guard_coerenza()
-IS 'Guard di coerenza ruolo_applicativo <-> soggetto_ruolo su anagrafiche.identita_digitali. Rev 2026-09-04: il ramo OPERATORE si sdoppia sul flag `tecnica` in DUE MONDI DISGIUNTI — una PERSONA vuole RIS_UMANA piu'' persona fisica pura (invariato), un PROCESSO vuole il ruolo dedicato PROC_AUTO e nessun controllo di persona fisica. ⛔ Il flag NON apre il ramo: scambia un requisito chiuso con un altro, quindi con tecnica=true non si puo'' appendere un''identita'' operatore a un soggetto qualsiasi. ⭐ Serve perche'' ogni policy rls_*_ef_whitelist pretende ruolo_applicativo = OPERATORE: senza questo sdoppiamento un processo automatico non potrebbe avere un perimetro emittente, e prima del 2026-09-04 il database dichiarava di fatto che solo un essere umano poteva averne uno. Brief: brief-db-processi-automatici-identita-e-perimetro §4. ⛔ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): DISABILITATO non e'' piu'' un tipo di veste e si rifiuta con E_RUOLO_APPLICATIVO_RITIRATO; una veste si spegne con attivo = false e il tipo resta, quindi l''operatore spento e'' controllato dal ramo OPERATORE come quello acceso (fino a quel giorno il guard usciva in anticipo su DISABILITATO e non controllava niente). Early-exit resta solo per API_CLIENT.';
+IS 'Guard di coerenza ruolo_applicativo <-> soggetto_ruolo su anagrafiche.identita_digitali (BEFORE INSERT/UPDATE, fase a10). Rifiuta il tipo ritirato DISABILITATO (E_RUOLO_APPLICATIVO_RITIRATO: una veste si spegne con attivo = false e tiene il tipo); il flag tecnica fuori dalla veste OPERATORE (E_VESTE_TECNICA_SOLO_OPERATORE); una veste che diventa tecnica con un binding SUPER_ADMIN attivo (E_SUPER_ADMIN_SU_VESTE_TECNICA). Poi, per tipo: API_CLIENT senza altri vincoli; OPERATORE in due mondi disgiunti secondo tecnica, una persona vuole RIS_UMANA e una persona fisica pura, un processo vuole il ruolo PROC_AUTO (il flag scambia un requisito chiuso con un altro, non apre il ramo); CLIENTE_PORTALE e SHOP_CUSTOMER vogliono un ruolo cliente, FORNITORE_PORTALE un ruolo fornitore (script.fn_guard_soggetto_ruolo). Serve perche'' ogni policy rls_*_ef_whitelist pretende ruolo_applicativo = OPERATORE: e'' l''unica porta di un processo automatico.';
 ```
 
 </div>

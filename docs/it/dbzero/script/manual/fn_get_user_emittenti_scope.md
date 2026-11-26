@@ -1,159 +1,107 @@
-# fn_get_user_emittenti_scope
+## 📘 Documentazione Concettuale – Funzione `script.fn_get_user_emittenti_scope`
 
-### Scopo
-
-Vista dichiarativa dello **scope emittenti** per un singolo `auth_user`.
-Risolve l'ambiguità single/multi/global che oggi nel drawer Operatore
-(`OperatorePermessiTab`) viene dedotta a runtime contando le righe in
-`config.user_emittenti_fiscali` (Fase 2 P1 2026-04-29).
-
-Espone in modo coerente:
-
-* lo **stato corrente** (`scope_mode`, `emittente_id`, `emittente_descrizione`)
-* il **dominio dei valori ammessi** (`allowed_scope_modes`)
-* la **capability di modifica** (`can_change_scope` + `change_scope_reason`)
-
-> **Vedi anche**
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
-> - [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth)
-> - [refactor operatore-emittenti — Fase 1](/dev/work-done/2026/refactor-operatore-emittenti) — vincolo `UNIQUE(auth_user_id)` di partenza
-> - [fn_check_ultimo_super_admin_attivo](/dbzero/script/funzioni/fn_check_ultimo_super_admin_attivo) — primitiva di `can_change_scope`
-> - [fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — orchestrazione del cambio scope
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali) — la riga che dà a un operatore la sua azienda
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — il verbo che cambia l'assegnazione
+> * [script.fn_applica_user_emittenti_scope](/dbzero/script/funzioni/fn_applica_user_emittenti_scope) — le regole dello spostamento
+> * [script.fn_is_super_admin_account](/dbzero/script/funzioni/fn_is_super_admin_account) — se l'utente è SUPER_ADMIN
+> * [script.fn_check_ultimo_super_admin_attivo](/dbzero/script/funzioni/fn_check_ultimo_super_admin_attivo) — il blocco dell'ultimo SUPER_ADMIN
+>
+> Guide:
+>
+> * [Gli emittenti fiscali](/guide/emittenti-fiscali) — Parte 2, il super admin assegna gli operatori
+> * [Risorse umane e accessi](/guide/risorse-umane-e-accessi) — l'assegnazione dal drawer dell'operatore
 
-## Schema
+---
 
-`script` (cross-dominio: legge `config.user_emittenti_fiscali` +
-`anagrafiche.emittenti_fiscali` + chiama `script.fn_check_ultimo_super_admin_attivo`).
+### 🎯 Scopo Principale
 
-## Firma
+Dice al drawer dell'operatore **com'è assegnato un utente** e **che cosa gli si può scegliere**. Ritorna sempre una
+riga, anche per un utente senza assegnazione. Il drawer non deduce niente da sé: spegne le scelte e il Salva da
+questa risposta.
+
+---
+
+### Firma
 
 ```sql
 script.fn_get_user_emittenti_scope(
-    p_auth_user_id INTEGER
+    p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE
 ) RETURNS TABLE (...)
 ```
 
-## Parametri
+| Colonna | Tipo | Che cosa dice |
+| --- | --- | --- |
+| `auth_user_id` | `config.user_emittenti_fiscali.auth_user_id%TYPE` | l'utente chiesto |
+| `scope_mode` | `text` | `SINGLE` o `GLOBAL` (vedi sotto) |
+| `emittente_id` | `config.user_emittenti_fiscali.emittente_fiscale_id%TYPE` | l'azienda della riga, `NULL` senza riga |
+| `emittente_descrizione` | `anagrafiche.soggetti.ragione_sociale_completa%TYPE` | la ragione sociale del soggetto dell'azienda |
+| `allowed_scope_modes` | `text[]` | le modalità che il drawer può offrire |
+| `can_change_scope` | `boolean` | se l'assegnazione si può cambiare |
+| `change_scope_reason` | `text` | perché no, in chiaro; `NULL` se si può |
 
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|---|---|:---:|---|
-| `p_auth_user_id` | `INTEGER` | Sì | ID utente Django (`django.auth_user.id`). Tipo esplicito per la regola anti-pattern Liquibase/Django ordering. |
+Le quattro colonne `text`/`boolean` non sono il riflesso di una colonna: sono la forma della risposta.
 
-## Output
+---
 
-Tabella **a riga singola** (sempre 1 riga, anche se l'utente non ha mai
-avuto associazioni emittente: in quel caso `scope_mode='GLOBAL'`).
+### ⭐ `scope_mode` e `allowed_scope_modes`
 
-| Colonna | Tipo | Significato |
-|---|---|---|
-| `auth_user_id` | `INTEGER` | Echo del parametro in input (utile per JOIN da query batch). |
-| `scope_mode` | `TEXT` | `'GLOBAL'` o `'SINGLE'`. Il valore `'MULTI'` è chiuso applicativamente (vedi sotto). |
-| `emittente_id` | `config.user_emittenti_fiscali.emittente_fiscale_id%TYPE` (`bigint`) | `NULL` se `scope_mode='GLOBAL'`, valorizzato se `'SINGLE'`. |
-| `emittente_descrizione` | `TEXT` | `anagrafiche.soggetti.ragione_sociale_completa` del soggetto emittente. Pre-aggregata per evitare N+1 al frontend. `NULL` se GLOBAL. |
-| `allowed_scope_modes` | `TEXT[]` | Sempre `['GLOBAL','SINGLE']`. Tipo array `TEXT` per non vincolare il futuro (es. reintroduzione di MULTI). |
-| `can_change_scope` | `BOOLEAN` | `false` sse l'utente è l'**ultimo** SUPER_ADMIN attivo del sistema. |
-| `change_scope_reason` | `TEXT` | Motivo del blocco in `it-IT`, `NULL` se concesso. |
+| Utente | Riga | `scope_mode` | `emittente_id` | `allowed_scope_modes` |
+| --- | --- | --- | --- | --- |
+| Operatore | sì | `SINGLE` | la sua azienda | `['SINGLE']` |
+| Operatore | no | `SINGLE` | `NULL` (da scegliere) | `['SINGLE']` |
+| SUPER_ADMIN | sì | `SINGLE` | la sua azienda | `['GLOBAL','SINGLE']` |
+| SUPER_ADMIN | no | `GLOBAL` | `NULL` | `['GLOBAL','SINGLE']` |
 
-## Mappatura `scope_mode`
+⛔ **Un operatore non è mai «globale».** Senza la riga non vede niente (fail-closed), e il verbo rifiuta di togliergli
+l'azienda (`E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`). Per questo un operatore appena creato è `SINGLE` con
+l'azienda da scegliere, e non `GLOBAL`: il drawer gli mostra «Un solo emittente» con l'elenco vuoto, e tiene spento il
+Salva finché non si sceglie.
 
-| Righe in `user_emittenti_fiscali` per `auth_user_id` | `scope_mode` |
-|:---:|:---:|
-| `0` | `GLOBAL` |
-| `1` | `SINGLE` |
-| `>1` | **impossibile** — `UNIQUE(auth_user_id)` introdotto in Fase 1 ([refactor 2026-04-08](/dev/work-done/2026/refactor-operatore-emittenti)) |
+La domanda «è SUPER_ADMIN?» è [script.fn_is_super_admin_account](/dbzero/script/funzioni/fn_is_super_admin_account)
+sull'utente chiesto, la stessa della primitiva: non dipende dalla veste di chi guarda.
 
-> **Perché non esporre `MULTI`** — il vincolo DB di Fase 1 garantisce
-> che la fn vede al massimo 1 riga. Esporre `MULTI` come valore
-> enumerato sarebbe codice morto. Il tipo `TEXT[]` di
-> `allowed_scope_modes` mantiene aperto il futuro: se domani il vincolo
-> cambia, la firma non cambia.
+La `UNIQUE (auth_user_id)` della tabella tiene al massimo una riga: un operatore su più aziende non esiste, e
+`allowed_scope_modes` resta un array perché la firma non lo vincola.
 
-## Capability `can_change_scope`
+---
 
-Regola unica, allineata a Fase 1 (single source of truth):
+### `can_change_scope`
 
-```text
-can_change_scope = NOT script.fn_check_ultimo_super_admin_attivo(p_auth_user_id)
-```
+`NOT script.fn_check_ultimo_super_admin_attivo(p_auth_user_id)`: l'ultimo SUPER_ADMIN attivo non si sposta, perché
+assegnarlo a un'azienda gli toglierebbe la vista sulle altre. `change_scope_reason` lo dice in chiaro.
 
-| Stato utente | `can_change_scope` |
-|---|:---:|
-| Non SUPER_ADMIN | `true` |
-| SUPER_ADMIN tra altri SA attivi | `true` |
-| **Ultimo** SUPER_ADMIN attivo | `false` |
+---
 
-> Nota di design: la capability **non implementa** la regola "i SUPER_ADMIN
-> globali devono restare GLOBAL" che era nel brief originale di Fase 2.
-> Quel vincolo è stato **rifiutato** in fase di analisi: l'unico
-> invariante che il sistema deve garantire è "esiste sempre un super-admin
-> raggiungibile" — già coperto dal lockout-guard. Bloccare per dogma il
-> cambio di scope di un SA non-ultimo non porta valore architetturale.
+### Caratteristiche
 
-> Non considera il guard `is_active=true` di
-> [`trgfn_user_emittenti_fiscali_guard_delete`](/dbzero/config/funzioni/trgfn_user_emittenti_fiscali_guard_delete):
-> [`fn_change_user_emittenti_scope`](/dbzero/script/funzioni/fn_change_user_emittenti_scope)
-> lo attraversa dalla sua porta, che si apre solo dentro il verbo.
+* `LANGUAGE sql STABLE`, `SECURITY INVOKER`: sola lettura.
+* La base `(VALUES (p_auth_user_id))` e i `LEFT JOIN` danno la riga anche senza assegnazione.
+* Nessun filtro sulla veste `OPERATORE`: il drawer chiede solo operatori, e un utente tecnico chiesto per diagnostica
+  riceve comunque la sua riga.
 
-## Caratteristiche
+Test: `db/pgtap/script/test-fn-get-user-emittenti-scope.sql`.
 
-* `LANGUAGE sql STABLE` — read-only, **inlineable**, cache-friendly.
-* Nessun riferimento a `django.*` → `LANGUAGE sql` ammesso.
-* `LEFT JOIN` da una `(VALUES (p_auth_user_id))` base assicura **1 riga
-  sempre**, anche in assenza di righe `user_emittenti_fiscali`.
-* `emittente_descrizione` viene dalla **sola** ragione sociale del soggetto
-  emittente (stesso pattern di
-  [`fn_get_operatore_detail`](/dbzero/script/funzioni/fn_get_operatore_detail)).
-  ⚠️ Fino al 02-08-2026 era un `COALESCE` con `emittenti_fiscali.descrizione`:
-  quella colonna **non esiste più** (duplicava la ragione sociale del soggetto e
-  ci divergeva, cfr. `brief-emittente-ragione-sociale-dal-soggetto.md`), e il
-  fallback è caduto con lei.
+---
 
-## Tipi nel `RETURNS TABLE`
-
-| Sorgente colonna | Tipo dichiarato | Ragione |
-|---|---|---|
-| `django.auth_user.id` (echo) | `INTEGER` esplicito | Anti-pattern Liquibase ordering |
-| `config.user_emittenti_fiscali.emittente_fiscale_id` | **`%TYPE`** | Coerenza automatica, schema non-django |
-| Tutto il resto | Esplicito | Computed (string_agg, capability) — nessuna colonna sorgente diretta |
-
-## Dipendenze
-
-### Tabelle
-
-* `config.user_emittenti_fiscali`
-* `anagrafiche.emittenti_fiscali`
-* `anagrafiche.soggetti_ruoli`, `soggetti`
-
-### Funzioni
-
-* `script.fn_check_ultimo_super_admin_attivo(integer)` — primitiva capability
-
-## Chi la chiama
-
-* Drawer Operatore (BE service: lookup scope per auth_user_id).
-* Lista operatori (potenziale colonna `scope_mode`).
-* Test pgTAP: `db/pgtap/script/test-fn-get-user-emittenti-scope.sql`.
-
-## Riferimenti
-
-* WIP: [refactor operatore-emittenti](/dev/work-done/2026/refactor-operatore-emittenti) — Fase 2 capability scope
-* Migration: `db/changelog/migrations_v2/20_code/script/20260429-03-create-fn-get-user-emittenti-scope-mctit.yaml`
-
-## Esempio
+### Esempio
 
 ```sql
--- Operatore non SA, senza assegnazione emittente
-SELECT * FROM script.fn_get_user_emittenti_scope(42);
--- auth_user_id=42, scope_mode='GLOBAL', emittente_id=NULL, emittente_descrizione=NULL,
--- allowed_scope_modes=['GLOBAL','SINGLE'], can_change_scope=true, change_scope_reason=NULL
+-- Operatore appena creato, senza azienda
+SELECT scope_mode, emittente_id, allowed_scope_modes
+  FROM script.fn_get_user_emittenti_scope(42);
+-- 'SINGLE', NULL, {SINGLE}
 
--- Operatore con emittente specifico
-SELECT scope_mode, emittente_id, emittente_descrizione
-  FROM script.fn_get_user_emittenti_scope(99);
--- 'SINGLE', 17, 'ACME S.R.L. - sede legale'
-
--- Ultimo SA attivo
-SELECT can_change_scope, change_scope_reason
+-- SUPER_ADMIN senza azienda
+SELECT scope_mode, allowed_scope_modes
   FROM script.fn_get_user_emittenti_scope(7);
--- false, 'Ultimo SUPER_ADMIN attivo: il cambio scope è bloccato per evitare il lockout del sistema'
+-- 'GLOBAL', {GLOBAL,SINGLE}
 ```

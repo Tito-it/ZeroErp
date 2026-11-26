@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_applica_user_emittenti_scope`
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -23,12 +23,17 @@
 
 ### 🎯 Scopo Principale
 
-Sposta un operatore da un'azienda all'altra, o gli toglie l'azienda. Ha le regole dello spostamento e
+Sposta un operatore da un'azienda all'altra, o toglie l'azienda a un SUPER_ADMIN. Ha le regole dello spostamento e
 la porta del `DELETE`, ma **non chiede permessi**: è la primitiva sotto il verbo
 [fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope), che chiede il
 SUPER_ADMIN.
 
 Firma, risultato e rifiuti sono quelli del verbo, tranne `E_PERMESSO_NEGATO`.
+
+⛔ **Un operatore non è mai «globale».** L'array vuoto (o `NULL`) per un utente che non è SUPER_ADMIN si rifiuta
+con `E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`, anche quando l'operatore non ha già la riga: il controllo viene
+prima del no-op. La domanda è [script.fn_is_super_admin_account](/dbzero/script/funzioni/fn_is_super_admin_account)
+sull'utente spostato, non `fn_is_super_admin`, che guarda la veste della sessione di chi chiama.
 
 ---
 

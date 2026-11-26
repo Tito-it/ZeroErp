@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.emittenti_fiscali`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -22,6 +22,7 @@
 > Guide:
 >
 > * [Soggetti e ruoli anagrafici](/guide/soggetti-e-ruoli-anagrafici) — il soggetto e i suoi ruoli
+> * [Gli emittenti fiscali](/guide/emittenti-fiscali) — come nasce un emittente, gli operatori assegnati, l'emittente di lavoro
 
 ---
 

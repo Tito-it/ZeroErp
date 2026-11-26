@@ -1,6 +1,6 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_risorsa_umana_v2`
+## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_risorsa_umana`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,7 +11,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — l'unica madre che la chiama
+> * [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore) — l'unica madre che la chiama
 > * [config.fn_profilo_super_admin_id](/dbzero/config/funzioni/fn_profilo_super_admin_id) — quale profilo è il SUPER_ADMIN
 > * [config.fn_lega_profilo_identita](/dbzero/config/funzioni/fn_lega_profilo_identita) — scrive il legame fra la veste e il profilo
 > * [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile) — quando una veste apre davvero la porta
@@ -25,13 +25,16 @@
 
 ### 🎯 Scopo Principale
 
-`anagrafiche.fn_crea_risorsa_umana_v2` crea il rapporto di lavoro di una persona (la risorsa umana) e, se le si
+`anagrafiche.fn_crea_risorsa_umana` crea il rapporto di lavoro di una persona (la risorsa umana) e, se le si
 passa una credenziale, la sua veste OPERATORE, con l'eventuale legame al profilo SUPER_ADMIN, tutto nella stessa
 istruzione.
 
 È il building block che sta sotto la creazione di un operatore: dentro il database la chiama solo
-`anagrafiche.fn_crea_operatore_v2`, che prima ha già trovato o creato la credenziale e il soggetto persona fisica.
-Il suffisso `_v2` è un nome rimasto: oggi non esiste una funzione con lo stesso nome senza suffisso.
+`anagrafiche.fn_crea_operatore`, che prima ha già trovato o creato la credenziale e il soggetto persona fisica.
+
+Una credenziale ha al più una veste OPERATORE, accesa o spenta: se quella passata ne ha già una, la funzione si ferma
+con `E_CREDENZIALE_GIA_OPERATORE`, come la madre (il rimedio è il reinvito). Il SUPER_ADMIN chiesto senza
+credenziale non si ignora: non c'è una veste a cui legarlo, ed è `E_ADMIN_VALIDAZIONE`.
 
 ---
 
@@ -51,7 +54,7 @@ facoltativa, ma se c'è dev'essere attiva.
 
 L'inizio e la fine passati alla funzione vanno sia sul rapporto sia sulla veste: un operatore nasce con la veste
 valida esattamente quanto il suo rapporto. Se l'inizio non si passa, è il giorno operativo
-(`script.fn_data_operativa`), non la data di sistema.
+(`script.fn_data_operativa`), non la data di sistema; lo stesso se lo si passa vuoto.
 
 ---
 
@@ -59,7 +62,7 @@ valida esattamente quanto il suo rapporto. Se l'inizio non si passa, è il giorn
 
 Senza credenziale la funzione crea il rapporto e basta: nessuna veste, nessun profilo. Con la credenziale (che
 deve esistere in `django.auth_user`) crea la veste OPERATORE sullo stesso ruolo del rapporto, accesa o spenta
-secondo il parametro `p_attivo`. La madre `fn_crea_operatore_v2` la chiede sempre spenta: la accende
+secondo il parametro `p_attivo`. La madre `fn_crea_operatore` la chiede sempre spenta: la accende
 l'attivazione dell'invito.
 
 Che la credenziale si accenda o resti spenta non lo decide questa funzione: lo decidono i trigger della veste,
@@ -126,16 +129,19 @@ Più quelli dei trigger delle tabelle scritte.
 * Il legame SUPER_ADMIN lo esercitano le fixture che creano un super admin con
   `dbops.fn_pgtap_crea_operatore_umano`; `db/pgtap/config/test-fn-profilo-super-admin-id-v1.sql` prova, chiamando
   questa funzione, che con due profili SUPER_ADMIN attivi si ferma con `E_CONFIG_MANCANTE`.
-* Nessun test prova il default di `p_attivo`, la qualifica spenta, la credenziale inesistente, il SUPER_ADMIN
-  chiesto senza credenziale, né che le date finiscano anche sulla veste.
+* `db/pgtap/anagrafiche/test-vesti-sync-e-guard-v1.sql` — il default spento, il SUPER_ADMIN senza credenziale, la
+  credenziale che ha già una veste OPERATORE.
+* Nessun test prova la qualifica spenta, la credenziale inesistente, né che le date finiscano anche sulla veste.
 
 ---
 
 ### Note di migrazione
 
 * 2026-04-29 — nasce col suffisso `_v2` e prende il posto di `fn_crea_risorsa_umana`, che chiedeva il ruolo con
-  l'enum `config.ruolo_sistema`; funzione ed enum sono stati ritirati. Il commento del corpo e quello della
-  funzione descrivono ancora la differenza da quella versione.
+  l'enum `config.ruolo_sistema`; funzione ed enum sono stati ritirati.
+* 2026-11-26 — torna al nome senza suffisso (`fn_crea_risorsa_umana_v2` ritirata). La veste nasce spenta per default
+  (`p_attivo` era `true`); il SUPER_ADMIN senza credenziale e la credenziale che ha già una veste OPERATORE si
+  rifiutano; l'inizio vuoto vale il giorno operativo anche per il rapporto.
 * 2026-09-12 — ritirata la tabella ponte `risorse_umane_auth_user`: il legame fra rapporto e credenziale è la veste
   OPERATORE sullo stesso ruolo.
 * 2026-09-23 — il profilo SUPER_ADMIN si risolve per tipo; prima era un id del seed scritto nel corpo.

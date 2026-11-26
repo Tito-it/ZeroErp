@@ -14,7 +14,7 @@
 >
 > * [dbops.fn_dati_di_sviluppo_ammessi_su_valori](/dbzero/dbops/funzioni/fn_dati_di_sviluppo_ammessi_su_valori) — la regola dell'ambiente
 > * [script.fn_ambiente_installazione](/dbzero/script/funzioni/fn_ambiente_installazione) — l'ambiente dichiarato dell'installazione
-> * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — crea gli operatori di prova
+> * [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore) — crea gli operatori di prova
 > * [anagrafiche.fn_crea_auth_user](/dbzero/anagrafiche/funzioni/fn_crea_auth_user) — crea le credenziali dei portali di prova
 > * [anagrafiche.fn_crea_veste_portale](/dbzero/anagrafiche/funzioni/fn_crea_veste_portale) — crea le vesti dei portali di prova
 > * [anagrafiche.fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste) — riaccende le vesti a ogni corsa

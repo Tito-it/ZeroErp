@@ -65,11 +65,13 @@ SET CONSTRAINTS ALL IMMEDIATE;
 --   admin con un binding — cosi' quando il test 7 toglie il proprio binding
 --   non e' l'ultimo, e il guard anti-lockout ha ragione a tacere.
 CREATE TEMP TABLE _mondi AS
+-- ⚠️ Rev 2026-11-26 (D-G2-3, brief-db-accessi-area-clienti §5.1): chi diventa SUPER_ADMIN
+--   nasce PERSONA (p_persona): un'identita' tecnica non ha mai il SUPER_ADMIN.
 SELECT 'CTX' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
 UNION ALL
-SELECT 'OP'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+SELECT 'OP'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore(p_persona := true)
 UNION ALL
-SELECT 'SA2' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+SELECT 'SA2' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore(p_persona := true);
 
 DO $lega$ BEGIN PERFORM config.fn_lega_profilo_identita(9100, (SELECT identita_id FROM _mondi WHERE lato = 'SA2')); END $lega$;
 
@@ -85,16 +87,15 @@ SELECT plan(13);
 -- 0. Setup: l'identita' OPERATORE costruita, senza binding SUPER_ADMIN
 -- ============================================================
 
+-- ⛔ Rev 2026-11-26 (giro 10-ter, brief-db-porte-aperte-dalla-sola-guc §10-ter, D-AA a):
+--   l'operatore sotto test nasce SENZA azienda (dbops.fn_pgtap_crea_operatore_umano),
+--   non riceve quella di OP per vedersela togliere col builder: dal 20261125-74
+--   l'azienda si toglie solo a un SUPER_ADMIN. Di OP resta l'emittente, che il test
+--   10 gli assegna.
 CREATE TEMP TABLE tmp_refs_scope AS
-SELECT m.auth_user_id AS user_id,
-       m.identita_id  AS identita_id
-  FROM _mondi m WHERE m.lato = 'OP';
-
--- Pulisce eventuali whitelist pre-esistenti per l'utente di test.
--- L'utente Django e' acceso, quindi il guard del DELETE
--- (trgfn_user_emittenti_fiscali_guard_delete) la lascia togliere solo dal
--- verbo: il builder dbops.fn_pgtap_sposta_scope_operatore passa da li'.
-SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT user_id FROM tmp_refs_scope), NULL);
+SELECT o.auth_user_id AS user_id,
+       o.identita_id  AS identita_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('check-emittente-scope', false) o;
 
 CREATE TEMP TABLE tmp_emittenti AS
 SELECT m.emittente_fiscale_id AS emittente_id_1,   -- l'azienda di OP, riassegnata al test 10

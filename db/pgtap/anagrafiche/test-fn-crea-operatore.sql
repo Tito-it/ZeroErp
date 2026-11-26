@@ -12,7 +12,7 @@
 -- pgTAP test per Zero ERP
 --
 -- Test anagrafiche.fn_crea_operatore_v2 (orchestratore) e i suoi building block
--- (fn_crea_auth_user, fn_crea_soggetto_pf, fn_crea_risorsa_umana_v2).
+-- (fn_crea_auth_user, fn_crea_soggetto_pf, fn_crea_risorsa_umana).
 --
 -- Elenco test (plan 12):
 --   1. Precondizione: esiste UO attiva e qualifica attiva

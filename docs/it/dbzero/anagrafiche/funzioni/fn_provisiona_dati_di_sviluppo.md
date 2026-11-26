@@ -313,7 +313,7 @@ BEGIN
             END IF;
 
             SELECT m.auth_user_id INTO v_au
-              FROM anagrafiche.fn_crea_operatore_v2(
+              FROM anagrafiche.fn_crea_operatore(
                        p_cognome                      := initcap(substr(v_el ->> 'username', 5)),
                        p_nome                         := 'Dev',
                        p_codice_fiscale               := dbops.fn_pgtap_cf_libero(),
@@ -344,17 +344,67 @@ BEGIN
             v_esito := 'riallineata';
         END IF;
 
-        -- Il riallineamento (anche alla nascita): veste accesa,
-        -- profilo, whitelist, override, emittente attivo.
+        -- Il riallineamento (anche alla nascita): persona, rapporto e
+        -- veste validi oggi, veste accesa, SUPER_ADMIN, profilo,
+        -- whitelist, override, emittente attivo.
         SELECT idg.id INTO v_idg
           FROM anagrafiche.identita_digitali idg
          WHERE idg.auth_user_id = v_au
            AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo;
+
+        -- ⭐ Al rilancio rimette anche cio' che il tempo o una prova hanno
+        --   tolto (S66): il soggetto spento, il rapporto spento o con una
+        --   fine, la veste con una fine, un inizio nel futuro o revocata.
+        --   Senza, un utente di prova scaduto restava senza accesso. Prima
+        --   il soggetto, poi il rapporto, poi la veste: l'ordine dei padri.
+        --   Il segno della revoca lo toglie il proprietario (questa e'
+        --   una DEFINER): e' il gesto del rilancio, non un invito.
+        UPDATE anagrafiche.soggetti s
+           SET attivo = true
+          FROM anagrafiche.identita_digitali idg
+          JOIN anagrafiche.soggetti_ruoli    sr ON sr.id = idg.soggetto_ruolo_id
+         WHERE idg.id = v_idg
+           AND s.id = sr.soggetto_id
+           AND NOT s.attivo;
+        UPDATE anagrafiche.risorse_umane ru
+           SET attivo     = true,
+               valido_dal = LEAST(ru.valido_dal, (SELECT script.fn_data_operativa())),
+               valido_al  = NULL
+          FROM anagrafiche.identita_digitali idg
+         WHERE idg.id = v_idg
+           AND ru.soggetto_ruolo_id = idg.soggetto_ruolo_id
+           AND (NOT ru.attivo
+                OR ru.valido_al IS NOT NULL
+                OR ru.valido_dal > (SELECT script.fn_data_operativa()));
+        UPDATE anagrafiche.identita_digitali idg
+           SET valido_dal          = LEAST(idg.valido_dal, (SELECT script.fn_data_operativa())),
+               valido_al           = NULL,
+               revocata_at         = NULL,
+               revocata_da_user_id = NULL
+         WHERE idg.id = v_idg
+           AND (idg.valido_al IS NOT NULL
+                OR idg.valido_dal > (SELECT script.fn_data_operativa())
+                OR idg.revocata_at IS NOT NULL);
+
         PERFORM anagrafiche.fn_accendi_veste(v_idg, v_au, ARRAY['OPERATORE']::config.ruolo_applicativo[]);
 
+        -- Il SUPER_ADMIN di chi lo ha nell'elenco, e il binding riacceso se
+        -- una prova lo aveva spento (fn_lega_profilo_identita trova quello
+        -- che c'e' e non lo riaccende).
+        IF (v_el ->> 'super_admin')::boolean THEN
+            PERFORM config.fn_lega_profilo_identita(config.fn_profilo_super_admin_id(), v_idg);
+        END IF;
         IF v_el ->> 'profilo' IS NOT NULL THEN
             PERFORM config.fn_lega_profilo_identita((v_profili ->> (v_el ->> 'profilo'))::integer, v_idg);
         END IF;
+        UPDATE config.profili_accesso_bindings pab
+           SET attivo = true
+         WHERE pab.identita_digitale_id = v_idg
+           AND NOT pab.attivo
+           AND pab.profilo_accesso_id IN (
+                   CASE WHEN (v_el ->> 'super_admin')::boolean
+                        THEN config.fn_profilo_super_admin_id() END,
+                   (v_profili ->> (v_el ->> 'profilo'))::integer);
         IF (v_el ->> 'whitelist')::boolean THEN
             -- L'azienda dell'utente di sviluppo dalla primitiva: qui non c'e' un
             -- utente in sessione, e il verbo chiederebbe il SUPER_ADMIN.

@@ -15,13 +15,19 @@
 --   verbo chiede il SUPER_ADMIN: lo chiama il SA costruito, nel contesto. I
 --   casi del permesso e della porta sono in config/test-porta-scope-emittenti-v1.
 --
--- Indice test (1..6):
+-- Indice test (1..8):
 --   1. MULTI (>1) -> raise E_OPERATORE_SCOPE_MULTI_NON_AMMESSO
---   2. GLOBAL -> SINGLE  (INSERT)            -> changed=true, riga creata
+--   2. senza riga -> SINGLE  (INSERT)        -> changed=true, riga creata
 --   3. SINGLE -> SINGLE stesso EF (no-op)    -> changed=false, riga invariata
---   4. SINGLE -> GLOBAL  (DELETE dalla porta del verbo) -> changed=true, riga rimossa
---   5. NULL/[] su utente senza riga (no-op)  -> changed=false
---   6. Ultimo SA cambia scope -> raise E_PROFILO_ULTIMO_SUPER_ADMIN
+--   4. operatore SINGLE -> GLOBAL            -> raise E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN,
+--                                               e la riga resta (5)
+--   6. operatore senza riga -> GLOBAL        -> raise anche li': non e' un no-op
+--   7. SUPER_ADMIN SINGLE -> GLOBAL          -> changed=true, riga rimossa (7.bis)
+--   8. Ultimo SA cambia scope -> raise E_PROFILO_ULTIMO_SUPER_ADMIN
+--   ⭐ Rev 2026-11-26 (giro 10-ter, brief-db-porte-aperte-dalla-sola-guc §10-ter):
+--   l'operatore non e' mai «globale». Fino a oggi il 4 portava l'operatore a GLOBAL
+--   e il 5 contava la riga tolta: ora il 4 e' il rifiuto e il 5 la riga che resta.
+--   GLOBAL si prova su un secondo SUPER_ADMIN (7), costruito.
 --
 -- Niente SAVEPOINT (azzera il counter pgTAP).
 -- ------------------------------------------------------------
@@ -59,6 +65,15 @@ CREATE TEMP TABLE _t_sa AS
 SELECT o.auth_user_id AS au_id, o.identita_id AS id_id
   FROM dbops.fn_pgtap_crea_operatore_umano('scope-super-admin', true) o;
 
+-- Il secondo operatore senza azienda (6) e il secondo SUPER_ADMIN (7): nascono
+-- senza azienda come gli altri.
+CREATE TEMP TABLE _t_user_senza AS
+SELECT o.auth_user_id AS au_id FROM dbops.fn_pgtap_crea_operatore_umano('scope-senza-azienda', false) o;
+
+CREATE TEMP TABLE _t_sa2 AS
+SELECT o.auth_user_id AS au_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('scope-super-admin-2', true) o;
+
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
@@ -82,7 +97,7 @@ END $sa$;
 --   formale: pgTAP lo segnala come «Bad plan» e rende ROSSO un file in cui
 --   tutte le asserzioni passano — cioe' nasconde il verde, dopo aver nascosto
 --   il rosso.
-SELECT plan(7);
+SELECT plan(10);
 
 CREATE OR REPLACE FUNCTION pg_temp.disable_other_sa(p_keep_bind_id bigint)
 RETURNS int LANGUAGE plpgsql AS $$
@@ -173,30 +188,64 @@ SELECT is(
 );
 
 -- =========================================================
--- 4) SINGLE -> GLOBAL: DELETE dalla porta del verbo, changed=true
---    Verifica che il guard_delete lasci passare il DELETE del verbo
---    (la porta sulla riga, da proprietario: auth_user e' attivo).
+-- 4) operatore SINGLE -> GLOBAL: rifiutato, la riga resta
+--    Un operatore che non e' SUPER_ADMIN lavora sempre per un emittente.
 -- =========================================================
-SELECT is(
-    (SELECT script.fn_change_user_emittenti_scope(
-                (SELECT au_id FROM _t_user),
-                NULL::bigint[]
-            )->>'changed')::boolean,
-    true,
-    '4. SINGLE -> GLOBAL: changed=true (la porta del guard_delete, dal verbo)'
+SELECT throws_like(
+    format(
+        $sql$ SELECT script.fn_change_user_emittenti_scope(%s, NULL::bigint[]) $sql$,
+        (SELECT au_id FROM _t_user)
+    ),
+    '%Tutti gli emittenti%',
+    '4. operatore SINGLE -> GLOBAL: raise E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN'
 );
 
--- Skip caso 5 perche' ridondante con caso 1 - rimpiazzato con verifica
--- residua riga assente:
 SELECT is(
     (SELECT count(*)::int FROM config.user_emittenti_fiscali
       WHERE auth_user_id = (SELECT au_id FROM _t_user)),
-    0,
-    '5. Riga rimossa dopo SINGLE -> GLOBAL'
+    1,
+    '5. dopo il rifiuto la riga dell''operatore resta'
 );
 
 -- =========================================================
--- 6) Ultimo SA: cambio scope vietato -> raise E_PROFILO_ULTIMO_SUPER_ADMIN
+-- 6) operatore senza riga -> GLOBAL: rifiutato anche li'
+--    Prima del no-op: chiederlo e' sbagliato anche se non cambierebbe niente.
+-- =========================================================
+SELECT throws_like(
+    format(
+        $sql$ SELECT script.fn_change_user_emittenti_scope(%s, '{}'::bigint[]) $sql$,
+        (SELECT au_id FROM _t_user_senza)
+    ),
+    '%Tutti gli emittenti%',
+    '6. operatore senza riga -> GLOBAL: raise, non no-op'
+);
+
+-- =========================================================
+-- 7) SUPER_ADMIN SINGLE -> GLOBAL: ammesso, la riga si toglie
+--    dalla porta del verbo (guard_delete, da proprietario).
+--    Il SA2 riceve prima un'azienda dal verbo.
+-- =========================================================
+SELECT script.fn_change_user_emittenti_scope(
+           (SELECT au_id FROM _t_sa2), ARRAY[(SELECT ef_id FROM _t_ef)]);
+
+SELECT is(
+    (SELECT script.fn_change_user_emittenti_scope(
+                (SELECT au_id FROM _t_sa2),
+                NULL::bigint[]
+            )->>'changed')::boolean,
+    true,
+    '7. SUPER_ADMIN SINGLE -> GLOBAL: changed=true (la porta del guard_delete, dal verbo)'
+);
+
+SELECT is(
+    (SELECT count(*)::int FROM config.user_emittenti_fiscali
+      WHERE auth_user_id = (SELECT au_id FROM _t_sa2)),
+    0,
+    '7.bis Riga del SUPER_ADMIN rimossa dopo SINGLE -> GLOBAL'
+);
+
+-- =========================================================
+-- 8) Ultimo SA: cambio scope vietato -> raise E_PROFILO_ULTIMO_SUPER_ADMIN
 --    Setup: il SA costruito in testa (nasce GLOBAL, quindi il target SINGLE
 --    e' un cambio reale) resta l'unico: gli altri SA si spengono. Chiama il
 --    verbo su se stesso: il guard del permesso passa, quello dell'ultimo SA no.
@@ -214,7 +263,7 @@ SELECT throws_like(
         (SELECT ef_id FROM _t_ef)
     ),
     '%SUPER_ADMIN%',
-    '6. Ultimo SA: cambio scope reale -> raise E_PROFILO_ULTIMO_SUPER_ADMIN'
+    '8. Ultimo SA: cambio scope reale -> raise E_PROFILO_ULTIMO_SUPER_ADMIN'
 );
 
 SELECT * FROM finish();

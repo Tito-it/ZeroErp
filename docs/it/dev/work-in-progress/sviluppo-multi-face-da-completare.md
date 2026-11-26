@@ -224,7 +224,11 @@ il 2026-09-11**.
       atomica), email unica sui 3 mondi, token `VERIFICA_EMAIL_SHOP` (24h),
       `register` (throttle 3/1h per IP) + `verifica-email`. Oggi esiste solo lo
       stub `ShopRegisterCheckEmailView` (il commento in `urls.py` lo dichiara).
-- [ ] `profile/activate-shop/` dal portale: stub **501** «finché PR-C».
+- [ ] ~~`profile/activate-shop/` dal portale: stub **501** «finché PR-C».~~
+      ⚠️ Superata, verificato sul codice il 2026-11-25: `ProfileActivateShopView` è costruita (B1 §13.7) e accende
+      la veste shop subito, sullo stesso ruolo cliente della veste portale. Che cosa ne resta lo dice il §3.6.
+- [ ] La registrazione da sé vale anche per il **portale** dei clienti con partita IVA, non solo per lo shop (Tid,
+      2026-11-25): le regole al §3.6.
 
 ### 2.4 BE — API di dominio (§5.7-5.9) — **il blocco reale, nulla iniziato**
 
@@ -337,6 +341,49 @@ Nessuna di queste risulta decisa al 2026-09-11.
       scope agenti di vendita, API pubbliche `API_CLIENT`, notifiche in-app,
       collegamento `identita_digitali → anagrafiche.contatti`.
 
+### 3.6 La registrazione da sé di privati e partite IVA (decise da Tid il 2026-11-25)
+
+⚠️ Lo stesso giorno Tid ha deciso anche il modello che contiene queste regole: **una sola porta clienti**, il
+documento scelto all'ordine, l'email come chiave d'ingresso. Sta in
+[analisi-modello-area-clienti](analisi-modello-area-clienti.md), che **assorbe D-R3 e D-R6** qui sotto (§3.3
+dell'analisi: il pulsante «Attiva shop» si ritira, la veste va sul soggetto che la persona dichiara).
+
+Il cliente che nessuno conosce non può essere invitato: deve potersi iscrivere da solo. Il rischio da
+chiudere: **l'email di conferma prova la casella, non il diritto ai dati**. Il portale B2B mostra fatture,
+scadenze e ordini, e partita IVA e codice fiscale sono pubblici. Un'iscrizione che si aggancia a un cliente
+esistente solo da quei due dati fa vedere i documenti di un'azienda a chiunque ne conosca la partita IVA.
+
+| # | Decisione |
+| --- | --- |
+| R-1 | **Iscrizione libera per il cliente nuovo**, privato (shop) o con partita IVA (portale): nascono soggetto, ruolo cliente, billing account del canale e veste **spenta**. L'email di conferma la accende al primo accesso. Nessun intervento dell'operatore |
+| R-2 | **Cliente già in anagrafica**: si aggancia da solo **solo se** l'email dell'iscrizione è già fra i contatti email di quel cliente, e allora basta la conferma. Altrimenti l'iscrizione diventa una **richiesta**, che l'operatore approva con l'invito di oggi |
+| R-3 | **La partita IVA iscritta da sé resta «da completare»** (dati per la fattura elettronica, sede, regime) e non si fattura finché un operatore non la verifica |
+
+Da decidere ancora (Tid):
+
+- **D-R6**: la veste shop di una persona sta sempre sul suo ruolo cliente **privato**, mai su quello
+  dell'azienda? Oggi `ProfileActivateShopView` la mette sul ruolo della veste portale: se il cliente del
+  portale è una società, gli acquisti «da privato» finiscono sull'azienda, contro la
+  [guida multi-face](../../guide/architettura-multi-face-auth.md) §2.1 (Mario Rossi è cliente B2B per la sua
+  società e consumatore dello shop come persona). Proposta: sì. Il pulsante del portale diventa allora un pezzo
+  della registrazione da sé (R-2), non un'eccezione.
+- **D-R3**: il pulsante dal portale accende subito (D-4 del 2026-09-24, analisi accessi archiviata) o manda
+  prima l'email di conferma (guida §8.2, S67 di `brief-db-revisione-anagrafiche`)? Con D-R6 a sì, l'email:
+  crea un ruolo nuovo.
+- Quale **emittente** riceve il cliente iscritto da sé, quando ce n'è più d'uno.
+
+Vincoli già scritti che la costruzione deve rispettare:
+
+- l'indice unico su CF e P.IVA (S4, 2026-11-23): «esiste già» passa a R-2, non va in errore;
+- **la revoca dell'amministratore tiene anche contro la reiscrizione**: un'iscrizione che ritrova una veste
+  revocata la lascia spenta (R-4 di
+  [brief-be-accessi-credenziale-e-vesti](brief-be-accessi-credenziale-e-vesti.md));
+- il freno contro l'abuso (le iscrizioni automatiche) e la pulizia delle iscrizioni mai confermate.
+
+⚠️ La [guida multi-face](../../guide/architettura-multi-face-auth.md) §8.2 e §12 è **indietro**: descrive
+`activate-shop` come stub `501` e la registrazione come solo shop. Si riscrive col giro che costruisce la
+registrazione.
+
 ---
 
 ## 4. Ordine consigliato (riscritto: la RLS non è più un passo)
@@ -366,5 +413,6 @@ Nessuna di queste risulta decisa al 2026-09-11.
 | Data | Che cosa |
 | --- | --- |
 | 2026-05-30 | Prima stesura: piano per accendere la RLS «dopo le API portale» |
+| 2026-11-25 | §3.6: le decisioni di Tid sulla registrazione da sé (privati e partite IVA, R-1 … R-3) e le due aperte (D-R6, D-R3); §2.3: `activate-shop` non è più uno stub |
 | 2026-09-12 | Integrato il merge DB #1563: benchmark RLS **ritirato** (§1.2, §2.9), storico-scope **applicato** (§1.4) |
 | 2026-09-11 | Riscritto sullo stato reale: RLS accesa dal 2026-06-01 (asse operatore) e cresciuta a 95 tabelle; branch portale/shop **armate** sulle tabelle accese; 3 `POLICY_INERTE` a debito dichiarato; §2 riverificato sul codice; §4 riordinato. Stato letto dal catalogo di `dbdev` e da `urls.py`, non dai changeSet |

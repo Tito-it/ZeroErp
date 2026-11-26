@@ -13,10 +13,11 @@
 --   esercitare il ramo SINGLE. Stato accumulato tra i casi
 --   (no SAVEPOINT) e rolled-back a fine file.
 --
--- Indice test (1..6):
---   1. Auth user senza righe -> scope_mode=GLOBAL, emittente_id=NULL
---   2. Auth user con riga    -> scope_mode=SINGLE, emittente_id valued
---   3. allowed_scope_modes   -> sempre ['GLOBAL','SINGLE']
+-- Indice test (1..7):
+--   1. Operatore senza riga  -> scope_mode=SINGLE, emittente_id=NULL (da scegliere)
+--   2. Operatore con riga    -> scope_mode=SINGLE, emittente_id valued
+--   3. allowed_scope_modes   -> ['SINGLE'] a chi non e' SUPER_ADMIN
+--   3.bis SUPER_ADMIN senza riga -> GLOBAL, allowed ['GLOBAL','SINGLE']
 --   4. emittente_descrizione -> valorizzata in SINGLE
 --   5. Multi super-admin     -> can_change_scope=true (target non e' ultimo)
 --   6. Single super-admin    -> can_change_scope=false + reason valorizzato
@@ -42,13 +43,15 @@ SET CONSTRAINTS ALL IMMEDIATE;
 --   nella fixture (auth_user_id NULL al test 2). Tre aziende con
 --   `dbops.fn_pgtap_crea_emittente_operatore()`, PRIMA di aprire il contesto.
 CREATE TEMP TABLE _mondi AS
+-- ⚠️ Rev 2026-11-26 (D-G2-3, brief-db-accessi-area-clienti §5.1): chi diventa SUPER_ADMIN
+--   nasce PERSONA (p_persona): un'identita' tecnica non ha mai il SUPER_ADMIN.
 SELECT 'CTX'    AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
 UNION ALL
 SELECT 'GLOBAL' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
 UNION ALL
-SELECT 'SA'     AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+SELECT 'SA'     AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore(p_persona := true)
 UNION ALL
-SELECT 'SA2'    AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+SELECT 'SA2'    AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore(p_persona := true);
 
 -- ⚠️ Il SECONDO super admin si costruisce anche lui: il test 5 dice «il target
 --   non e' l'ultimo SA», e su un database ricostruito dai changelog di super
@@ -66,7 +69,7 @@ BEGIN
         (SELECT auth_user_id FROM _mondi WHERE lato = 'CTX'));
 END $ctx$;
 
-SELECT plan(6);
+SELECT plan(7);
 
 -- =========================================================
 -- Helper: l'identita' OPERATORE costruita per il ruolo SA + binding SA
@@ -101,8 +104,7 @@ END
 $$;
 
 -- =========================================================
--- Setup: OPERATORE non-SA in stato GLOBAL — l'azienda GLOBAL, a cui si
--- toglie la riga in user_emittenti_fiscali
+-- Setup: OPERATORE non-SA senza riga in user_emittenti_fiscali, costruito
 -- =========================================================
 -- 🔴 FIXTURE RICOSTRUITA il 2026-08-18 — gemella di quella in
 --   test-fn-change-user-emittenti-scope, e rotta dalla stessa causa.
@@ -114,13 +116,19 @@ $$;
 --   ⚠️ La precondizione non si CERCA, si COSTRUISCE: la fixture ha smesso di
 --   funzionare il giorno in cui il progetto ha sistemato i dati, che e' il
 --   momento peggiore per scoprirlo.
---   La riga si toglie dal verbo, col builder dbops.fn_pgtap_sposta_scope_operatore
---   (la tabella ha un guard sul delete), e il file e' transazionale: lo scope
---   vero torna al ROLLBACK.
+-- ⛔ Rev 2026-11-26 (giro 10-ter, brief-db-porte-aperte-dalla-sola-guc §10-ter, D-AA a):
+--   l'operatore sotto test nasce SENZA azienda (dbops.fn_pgtap_crea_operatore_umano),
+--   non riceve quella di GLOBAL per vedersela togliere col builder: dal 20261125-74
+--   l'azienda si toglie solo a un SUPER_ADMIN. Di GLOBAL resta l'emittente, che il
+--   test 2 gli assegna. Il nome della tabella resta per non riscrivere i casi.
 CREATE TEMP TABLE _t_user_global AS
-SELECT m.auth_user_id AS au_id FROM _mondi m WHERE m.lato = 'GLOBAL';
+SELECT o.auth_user_id AS au_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('get-scope-operatore', false) o;
 
-SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT au_id FROM _t_user_global), NULL);
+-- Il SUPER_ADMIN senza azienda del 3.bis.
+CREATE TEMP TABLE _t_sa_senza AS
+SELECT o.auth_user_id AS au_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('get-scope-super-admin', true) o;
 
 -- Setup: l'emittente per il ramo SINGLE e' quello dell'azienda GLOBAL,
 -- che il test 2 gli riassegna.
@@ -128,43 +136,50 @@ CREATE TEMP TABLE _t_ef AS
 SELECT m.emittente_fiscale_id AS ef_id FROM _mondi m WHERE m.lato = 'GLOBAL';
 
 -- =========================================================
--- 1) Auth user senza righe -> scope_mode=GLOBAL, emittente_id=NULL
+-- 1) Operatore senza riga -> scope_mode=SINGLE, emittente_id=NULL
+--    Lavora per un emittente, ancora da scegliere: non e' «globale».
 -- =========================================================
 SELECT is(
     (SELECT (scope_mode, emittente_id::text)
        FROM script.fn_get_user_emittenti_scope((SELECT au_id FROM _t_user_global))),
-    -- 🔴 `'GLOBAL'::text` il 2026-08-18: senza il cast il letterale resta di tipo
-    --   `unknown`, e il confronto fra RECORD pretende colonne dello stesso tipo
-    --   («non e' possibile confrontare i tipi di colonne dissimili text e
-    --   unknown»). Il secondo elemento il cast ce l'aveva gia': mancava al primo.
-    --   ⚠️ Il file non falliva, MORIVA: 6 asserzioni su 6 mai eseguite.
-    --   ⭐ Verificato che NON e' una conseguenza di P-2a (20260818-11/-12): il
-    --   rosso e' storico e riguarda la forma del confronto, non il valore
-    --   restituito dalla funzione.
-    ROW('GLOBAL'::text, NULL::text)::record,
-    '1. Senza riga in user_emittenti_fiscali -> scope_mode=GLOBAL, emittente_id NULL'
+    -- `'SINGLE'::text`: senza il cast il letterale resta `unknown`, e il confronto
+    --   fra RECORD pretende colonne dello stesso tipo.
+    ROW('SINGLE'::text, NULL::text)::record,
+    '1. Operatore senza riga -> scope_mode=SINGLE, emittente_id NULL (da scegliere)'
 );
 
 -- =========================================================
--- 2) Auth user con riga -> scope_mode=SINGLE, emittente_id valued
+-- 2) Operatore con riga -> scope_mode=SINGLE, emittente_id valued
+--    La riga la scrive il verbo, col builder.
 -- =========================================================
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-VALUES ((SELECT au_id FROM _t_user_global), (SELECT ef_id FROM _t_ef));
+SELECT dbops.fn_pgtap_sposta_scope_operatore((SELECT au_id FROM _t_user_global),
+                                             (SELECT ef_id FROM _t_ef));
 
 SELECT is(
-    (SELECT scope_mode FROM script.fn_get_user_emittenti_scope((SELECT au_id FROM _t_user_global))),
-    'SINGLE',
-    '2. Con riga in user_emittenti_fiscali -> scope_mode=SINGLE'
+    (SELECT (scope_mode, emittente_id)
+       FROM script.fn_get_user_emittenti_scope((SELECT au_id FROM _t_user_global))),
+    ROW('SINGLE'::text, (SELECT ef_id FROM _t_ef))::record,
+    '2. Con riga in user_emittenti_fiscali -> scope_mode=SINGLE, il suo emittente'
 );
 
 -- =========================================================
--- 3) allowed_scope_modes -> sempre ['GLOBAL','SINGLE']
+-- 3) allowed_scope_modes -> ['SINGLE'] a chi non e' SUPER_ADMIN
 -- =========================================================
 SELECT is(
     (SELECT allowed_scope_modes
        FROM script.fn_get_user_emittenti_scope((SELECT au_id FROM _t_user_global))),
-    ARRAY['GLOBAL','SINGLE']::text[],
-    '3. allowed_scope_modes esposto sempre come [GLOBAL, SINGLE]'
+    ARRAY['SINGLE']::text[],
+    '3. allowed_scope_modes di un operatore: solo SINGLE'
+);
+
+-- =========================================================
+-- 3.bis) SUPER_ADMIN senza riga -> GLOBAL, con le due modalita'
+-- =========================================================
+SELECT is(
+    (SELECT (scope_mode, allowed_scope_modes)
+       FROM script.fn_get_user_emittenti_scope((SELECT au_id FROM _t_sa_senza))),
+    ROW('GLOBAL'::text, ARRAY['GLOBAL','SINGLE']::text[])::record,
+    '3.bis SUPER_ADMIN senza riga -> GLOBAL, allowed [GLOBAL, SINGLE]'
 );
 
 -- =========================================================

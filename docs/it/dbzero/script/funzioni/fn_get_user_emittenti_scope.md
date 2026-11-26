@@ -19,44 +19,42 @@ CREATE OR REPLACE FUNCTION script.fn_get_user_emittenti_scope(p_auth_user_id int
 AS $function$
     -- =========================================================
     -- Scopo:
-    --   Vista dichiarativa "scope emittenti" per un auth_user.
-    --   Ritorna sempre 1 riga (anche se l'utente non ha
-    --   associazioni emittente: scope_mode=GLOBAL).
+    --   Lo stato dell'assegnazione di un utente a un emittente, per il
+    --   drawer dell'operatore. Ritorna sempre una riga.
     --
-    -- Mappatura scope_mode (Fase 2):
-    --   - 0 righe in user_emittenti_fiscali  -> GLOBAL
-    --   - 1 riga                              -> SINGLE
-    --   - >1 righe                            -> impossibile per
-    --     UNIQUE(auth_user_id) introdotto in Fase 1 refactor
-    --     operatore-emittenti (20260408-11). Il vincolo DB
-    --     copre il caso MULTI: la fn vede al massimo 1 riga.
+    -- scope_mode:
+    --   - con la riga in config.user_emittenti_fiscali -> SINGLE,
+    --     con il suo emittente;
+    --   - senza riga, SUPER_ADMIN -> GLOBAL («Tutti gli emittenti»);
+    --   - senza riga, chi non e' SUPER_ADMIN -> SINGLE con emittente_id
+    --     NULL: lavora per un emittente, ancora da scegliere. Dal
+    --     fail-closed non vede niente finche' non e' assegnato.
+    --   La UNIQUE(auth_user_id) tiene al massimo una riga.
     --
-    -- Capability:
-    --   can_change_scope = NOT fn_check_ultimo_super_admin_attivo
-    --   (regola unica: se sei l'ultimo SUPER_ADMIN, lockout
-    --   guard - allineato a Fase 1).
+    -- allowed_scope_modes:
+    --   ['GLOBAL','SINGLE'] al SUPER_ADMIN, ['SINGLE'] agli altri: un
+    --   operatore non e' mai «globale» (script.fn_applica_user_emittenti_scope
+    --   lo rifiuta). La domanda e' script.fn_is_super_admin_account
+    --   sull'utente interrogato, non sulla veste della sessione.
+    --
+    -- can_change_scope:
+    --   NOT script.fn_check_ultimo_super_admin_attivo: l'ultimo
+    --   SUPER_ADMIN attivo non si sposta.
     --
     -- Note:
-    --   - VALUES base garantisce 1 riga anche se l'auth_user
-    --     non ha mai avuto associazioni (LEFT JOIN da base
-    --     verso user_emittenti_fiscali).
-    --   - Nessun filtro su esistenza identita OPERATORE: il
-    --     caller (drawer admin) gia' interroga la fn solo
-    --     per operatori esistenti. Mantenere la firma generica
-    --     evita falsi 0-rows quando un auth_user tecnico viene
-    --     comunque interrogato per diagnostica.
-    --   - emittente_descrizione viene dalla SOLA ragione sociale
-    --     del soggetto (Fase 1 cantiere emittente, 2026-08-02):
-    --     il COALESCE su ef.descrizione e' caduto, perche' la
-    --     colonna sparisce in Fase 4 e perche' un fallback su un
-    --     campo che diverge non e' una rete, e' un rinvio.
+    --   - la base VALUES da' la riga anche senza assegnazione;
+    --   - nessun filtro sulla veste OPERATORE: il drawer interroga solo
+    --     operatori, e la firma generica non da' zero righe a un utente
+    --     tecnico interrogato per diagnostica;
+    --   - emittente_descrizione e' la ragione sociale del soggetto.
     -- =========================================================
     WITH state AS (
         SELECT
             p_auth_user_id                                                   AS auth_user_id,
             uef.emittente_fiscale_id                                         AS emittente_id,
-            s_ef.ragione_sociale_completa::text                               AS emittente_descrizione,
-            script.fn_check_ultimo_super_admin_attivo(p_auth_user_id)        AS is_last_sa
+            s_ef.ragione_sociale_completa                                    AS emittente_descrizione,
+            script.fn_check_ultimo_super_admin_attivo(p_auth_user_id)        AS is_last_sa,
+            script.fn_is_super_admin_account(p_auth_user_id)                 AS is_sa
           FROM (VALUES (p_auth_user_id)) AS b(auth_user_id)
           LEFT JOIN config.user_emittenti_fiscali uef
             ON uef.auth_user_id = b.auth_user_id
@@ -69,20 +67,20 @@ AS $function$
     )
     SELECT
         s.auth_user_id,
-        CASE WHEN s.emittente_id IS NULL THEN 'GLOBAL' ELSE 'SINGLE' END  AS scope_mode,
+        CASE WHEN s.emittente_id IS NULL AND s.is_sa THEN 'GLOBAL' ELSE 'SINGLE' END,
         s.emittente_id,
         s.emittente_descrizione,
-        ARRAY['GLOBAL','SINGLE']::text[]                                     AS allowed_scope_modes,
-        NOT s.is_last_sa                                                     AS can_change_scope,
+        CASE WHEN s.is_sa THEN ARRAY['GLOBAL','SINGLE'] ELSE ARRAY['SINGLE'] END::text[],
+        NOT s.is_last_sa,
         CASE WHEN s.is_last_sa
              THEN 'Ultimo SUPER_ADMIN attivo: il cambio scope e'' bloccato per evitare il lockout del sistema'
              ELSE NULL
-        END                                                                  AS change_scope_reason
+        END
       FROM state s;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_emittenti_scope(p_auth_user_id integer)
-IS 'Vista dichiarativa dello scope emittenti per un auth_user (drawer Operatore Fase 2 P1 2026-04-29). Ritorna sempre 1 riga (GLOBAL se l''utente non ha associazioni). MULTI e'' impossibile per UNIQUE(auth_user_id) di Fase 1; allowed_scope_modes resta TEXT[] per non vincolare il futuro. Capability can_change_scope derivata da fn_check_ultimo_super_admin_attivo (regola unica: lockout-guard). emittente_descrizione = anagrafiche.soggetti.ragione_sociale_completa del soggetto associato (Fase 1 cantiere emittente 2026-08-02: caduto il fallback su emittenti_fiscali.descrizione). LANGUAGE sql STABLE.';
+IS 'Lo stato dell''assegnazione di un utente a un emittente, per il drawer dell''operatore; sempre una riga. scope_mode: SINGLE con l''emittente della riga di config.user_emittenti_fiscali; senza riga, GLOBAL al SUPER_ADMIN («Tutti gli emittenti») e SINGLE con emittente_id NULL a chi non lo è (un emittente da scegliere: dal fail-closed non vede niente finché non è assegnato). allowed_scope_modes: GLOBAL e SINGLE al SUPER_ADMIN, solo SINGLE agli altri, perché un operatore non è mai «globale» (lo rifiuta script.fn_applica_user_emittenti_scope); la domanda è script.fn_is_super_admin_account sull''utente interrogato. can_change_scope è falso per l''ultimo SUPER_ADMIN attivo (script.fn_check_ultimo_super_admin_attivo), con il motivo in change_scope_reason. emittente_descrizione è la ragione sociale del soggetto. LANGUAGE sql, STABLE.';
 ```
 
 </div>

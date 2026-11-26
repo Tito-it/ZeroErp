@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.trgfn_identita_digitali_sync_auth_user_active: la sync segue
+# anche la veste che se ne va (S59, S60).
+#
+#   Fino a oggi il trigger sincronizzava solo NEW.auth_user_id, all'INSERT e
+#   all'UPDATE di cinque colonne. Tre strade lasciavano la credenziale com'era:
+#   · la veste CANCELLATA: nessun trigger sul DELETE;
+#   · la veste SPOSTATA su un'altra credenziale: si sincronizzava la nuova, non
+#     quella di prima, che poteva restare accesa senza piu' vesti;
+#   · il cambio di soggetto_ruolo_id o di tecnica: script.fn_veste_utilizzabile
+#     li legge (il rapporto si cerca sul ruolo; la veste tecnica non lo chiede),
+#     ma non erano fra le colonne del trigger. Li riallineava il job entro l'ora.
+#
+#   Ora: sul DELETE e quando la credenziale cambia si sincronizza anche
+#   OLD.auth_user_id; le colonne dell'UPDATE sono le sette che la regola legge.
+#   La credenziale rimasta senza vesti si spegne: fn_sync_auth_user_is_active
+#   la spegne gia' (nessuna veste utilizzabile), mancava solo chi la chiamasse
+#   (D-G2-1, Tid 2026-11-26).
+#
+#   Rimontaggio per funzione (linee-guida-trigger): i montaggi della funzione
+#   sulla tabella sono stati sempre e solo _ins e _upd (letti dai changelog);
+#   si tolgono con IF EXISTS e si rifanno, col terzo _dlt. UPDATE OF resta
+#   giusto: nessun BEFORE della tabella scrive queste colonne per derivazione.
+#   Corpo nuovo; firma (nessun argomento) e RETURNS trigger invariati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261125-58-update-trgfn-identita-digitali-sync-auth-user-active-delete-e-spostamento-mctit.yaml
+
+  - changeSet:
+      id: 20261125-58-update-trgfn-identita-digitali-sync-auth-user-active-delete-e-spostamento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_identita_digitali_sync_auth_user_active: sincronizza anche la credenziale di prima
+        (DELETE, cambio di auth_user_id) e segue soggetto_ruolo_id e tecnica.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: anagrafiche, tableName: identita_digitali }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_identita_digitali_sync_auth_user_active()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: dopo una scrittura su una veste, allinea
+                  --   auth_user.is_active della credenziale (o delle due
+                  --   credenziali, se la veste ha cambiato credenziale o se
+                  --   n'e' andata) con anagrafiche.fn_sync_auth_user_is_active.
+                  -- =========================================================
+                  IF TG_OP = 'DELETE'
+                     OR (TG_OP = 'UPDATE' AND OLD.auth_user_id IS DISTINCT FROM NEW.auth_user_id)
+                  THEN
+                      PERFORM anagrafiche.fn_sync_auth_user_is_active(OLD.auth_user_id);
+                  END IF;
+
+                  IF TG_OP <> 'DELETE' THEN
+                      PERFORM anagrafiche.fn_sync_auth_user_is_active(NEW.auth_user_id);
+                  END IF;
+
+                  RETURN NULL;  -- AFTER: ritorno ignorato
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_sync_auth_user_active() IS
+                  'Trigger AFTER INSERT, UPDATE e DELETE su anagrafiche.identita_digitali: allinea django.auth_user.is_active con anagrafiche.fn_sync_auth_user_is_active (accesa se almeno una veste e'' utilizzabile oggi). All''INSERT e all''UPDATE sincronizza la credenziale della veste; al DELETE, e quando la veste passa a un''altra credenziale, anche quella di prima, che senza piu'' vesti utilizzabili si spegne. L''UPDATE scatta sulle colonne che script.fn_veste_utilizzabile legge: attivo, valido_dal, valido_al, ruolo_applicativo, auth_user_id, soggetto_ruolo_id, tecnica. Le date che arrivano senza scritture le riallinea anagrafiche.fn_sync_auth_user_expired.';
+
+              DROP TRIGGER IF EXISTS trg_identita_digitali_z90_sync_auth_user_active_ins ON anagrafiche.identita_digitali;
+              DROP TRIGGER IF EXISTS trg_identita_digitali_z90_sync_auth_user_active_upd ON anagrafiche.identita_digitali;
+              DROP TRIGGER IF EXISTS trg_identita_digitali_z90_sync_auth_user_active_dlt ON anagrafiche.identita_digitali;
+
+              CREATE TRIGGER trg_identita_digitali_z90_sync_auth_user_active_ins
+                  AFTER INSERT ON anagrafiche.identita_digitali
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_sync_auth_user_active();
+
+              CREATE TRIGGER trg_identita_digitali_z90_sync_auth_user_active_upd
+                  AFTER UPDATE OF attivo, valido_dal, valido_al, ruolo_applicativo, auth_user_id,
+                                  soggetto_ruolo_id, tecnica
+                  ON anagrafiche.identita_digitali
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_sync_auth_user_active();
+
+              CREATE TRIGGER trg_identita_digitali_z90_sync_auth_user_active_dlt
+                  AFTER DELETE ON anagrafiche.identita_digitali
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_sync_auth_user_active();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              SELECT 1;  -- forward-only: la versione precedente e' il 20260418-75

@@ -1,8 +1,8 @@
-{% include-markdown "it/dbzero/anagrafiche/manual/fn_crea_risorsa_umana_v2.md" %}
-# ⚙️ Funzione `fn_crea_risorsa_umana_v2`
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_crea_risorsa_umana.md" %}
+# ⚙️ Funzione `fn_crea_risorsa_umana`
 
 ```sql
-CREATE FUNCTION fn_crea_risorsa_umana_v2(p_soggetto_id uuid, p_qualifica_id integer, p_unita_organizzativa_id integer, p_valido_dal date, p_valido_al date, p_auth_user_id integer, p_is_super_admin boolean, p_attivo boolean)
+CREATE FUNCTION fn_crea_risorsa_umana(p_soggetto_id uuid, p_qualifica_id integer, p_unita_organizzativa_id integer, p_valido_dal date, p_valido_al date, p_auth_user_id integer, p_is_super_admin boolean, p_attivo boolean)
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,7 +12,7 @@ CREATE FUNCTION fn_crea_risorsa_umana_v2(p_soggetto_id uuid, p_qualifica_id inte
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_risorsa_umana_v2(p_soggetto_id uuid DEFAULT NULL::uuid, p_qualifica_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer, p_valido_dal date DEFAULT script.fn_data_operativa(), p_valido_al date DEFAULT NULL::date, p_auth_user_id integer DEFAULT NULL::integer, p_is_super_admin boolean DEFAULT false, p_attivo boolean DEFAULT true)
+CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_risorsa_umana(p_soggetto_id uuid DEFAULT NULL::uuid, p_qualifica_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer, p_valido_dal date DEFAULT script.fn_data_operativa(), p_valido_al date DEFAULT NULL::date, p_auth_user_id integer DEFAULT NULL::integer, p_is_super_admin boolean DEFAULT false, p_attivo boolean DEFAULT false)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
@@ -21,25 +21,21 @@ DECLARE
     v_ru_id        anagrafiche.risorse_umane.id%TYPE;
     v_identita_id  anagrafiche.identita_digitali.id%TYPE;
     v_profilo_sa   config.profili_accesso_bindings.profilo_accesso_id%TYPE;
+    v_valido_dal   anagrafiche.risorse_umane.valido_dal%TYPE;
 BEGIN
     -- =========================================================
-    -- Scopo (v2 multi-face native, Chunk A Fase 7 2026-04-29):
-    --   Crea risorsa_umana + identita_digitali OPERATORE
-    --   (+ binding SUPER_ADMIN se p_is_super_admin=true).
-    --   Niente piu' enum legacy ruolo_sistema; il chiamante
-    --   esprime direttamente "is super admin?" + "attiva?".
-    --
-    -- Body identico a v1 salvo:
-    --   Step 3: identita_digitali.attivo = p_attivo
-    --           (era hardcoded true in v1).
-    --   Step 4: IF p_is_super_admin invece di
-    --           IF p_ruolo_sistema='ADMIN'.
+    -- Scopo: crea il rapporto (risorsa umana) e, se arriva la
+    --   credenziale, la veste OPERATORE (+ il binding SUPER_ADMIN se
+    --   p_is_super_admin). La veste nasce SPENTA per default: la
+    --   accende l'attivazione dell'invito.
+    --   p_valido_dal NULL = il giorno operativo, per il rapporto e
+    --   per la veste.
     -- =========================================================
 
     -- Validazione parametri obbligatori
     IF p_soggetto_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
-            'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+            'database', 'anagrafiche.fn_crea_risorsa_umana',
             'E_ADMIN_VALIDAZIONE',
             jsonb_build_object('parametro', 'p_soggetto_id'),
             NULL::uuid, 'Soggetto obbligatorio.'
@@ -48,7 +44,7 @@ BEGIN
 
     IF p_qualifica_id IS NULL OR p_qualifica_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
-            'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+            'database', 'anagrafiche.fn_crea_risorsa_umana',
             'E_ADMIN_VALIDAZIONE',
             jsonb_build_object('parametro', 'p_qualifica_id'),
             NULL::uuid, 'Qualifica obbligatoria.'
@@ -61,7 +57,7 @@ BEGIN
          WHERE id = p_qualifica_id AND attivo = true
     ) THEN
         PERFORM script.fn_log_and_raise_error(
-            'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+            'database', 'anagrafiche.fn_crea_risorsa_umana',
             'E_ADMIN_VALIDAZIONE',
             jsonb_build_object('qualifica_id', p_qualifica_id),
             NULL::uuid, 'Qualifica non trovata o non attiva.'
@@ -74,7 +70,7 @@ BEGIN
              WHERE id = p_unita_organizzativa_id AND attivo = true
         ) THEN
             PERFORM script.fn_log_and_raise_error(
-                'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                'database', 'anagrafiche.fn_crea_risorsa_umana',
                 'E_ADMIN_UO_NON_TROVATA',
                 jsonb_build_object('campo', 'unita_organizzativa_id', 'unita_organizzativa_id', p_unita_organizzativa_id),
                 NULL::uuid,
@@ -83,12 +79,25 @@ BEGIN
         END IF;
     END IF;
 
+    -- ⛔ Il SUPER_ADMIN e' un privilegio della veste: senza credenziale non
+    --   c'e' una veste a cui legarlo, e chiederlo non si ignora in silenzio.
+    IF p_is_super_admin AND p_auth_user_id IS NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.fn_crea_risorsa_umana',
+            'E_ADMIN_VALIDAZIONE',
+            jsonb_build_object('parametro', 'p_is_super_admin'),
+            NULL::uuid, 'Il profilo SUPER_ADMIN si da'' solo a chi ha una credenziale.'
+        );
+    END IF;
+
+    v_valido_dal := COALESCE(p_valido_dal, (SELECT script.fn_data_operativa()));
+
     IF p_auth_user_id IS NOT NULL THEN
         IF NOT EXISTS (
             SELECT 1 FROM django.auth_user WHERE id = p_auth_user_id
         ) THEN
             PERFORM script.fn_log_and_raise_error(
-                'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                'database', 'anagrafiche.fn_crea_risorsa_umana',
                 'E_ADMIN_VALIDAZIONE',
                 jsonb_build_object('auth_user_id', p_auth_user_id),
                 NULL::uuid, 'auth_user non trovato.'
@@ -103,6 +112,23 @@ BEGIN
     --   qui e nel backend.
     IF p_is_super_admin AND p_auth_user_id IS NOT NULL THEN
         v_profilo_sa := config.fn_profilo_super_admin_id();
+    END IF;
+
+    -- ⛔ Una credenziale ha al piu' una veste OPERATORE, accesa O SPENTA:
+    --   l'indice unico vale solo per le accese, e la veste nasce spenta.
+    --   Il rimedio e' il (re)invito, come in anagrafiche.fn_crea_operatore.
+    IF p_auth_user_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM anagrafiche.identita_digitali idg
+         WHERE idg.auth_user_id = p_auth_user_id
+           AND idg.ruolo_applicativo = 'OPERATORE'
+    ) THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.fn_crea_risorsa_umana',
+            'E_CREDENZIALE_GIA_OPERATORE',
+            jsonb_build_object('campo', 'email', 'auth_user_id', p_auth_user_id),
+            NULL::uuid,
+            COALESCE((SELECT NULLIF(btrim(au.email), '') FROM django.auth_user au
+                       WHERE au.id = p_auth_user_id), '(senza email)'));
     END IF;
 
     -- Step 1: soggetto_ruolo RIS_UMANA
@@ -125,7 +151,7 @@ BEGIN
          WHERE ru.soggetto_ruolo_id = v_sr_id
     ) THEN
         PERFORM script.fn_log_and_raise_error(
-            'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+            'database', 'anagrafiche.fn_crea_risorsa_umana',
             'E_RISORSA_UMANA_GIA_PRESENTE',
             jsonb_build_object('campo',             'soggetto_id',
                                'soggetto_id',       p_soggetto_id,
@@ -147,12 +173,12 @@ BEGIN
     )
     VALUES (
         v_sr_id, p_soggetto_id, p_qualifica_id,
-        p_unita_organizzativa_id, p_valido_dal, p_valido_al, true
+        p_unita_organizzativa_id, v_valido_dal, p_valido_al, true
     )
     RETURNING id INTO v_ru_id;
 
-    -- Step 3: identita_digitali OPERATORE.
-    -- Differenza vs v1: attivo = p_attivo (default true).
+    -- Step 3: identita_digitali OPERATORE, accesa o spenta come dice
+    -- il chiamante (default spenta).
     IF p_auth_user_id IS NOT NULL THEN
         INSERT INTO anagrafiche.identita_digitali (
             soggetto_ruolo_id,
@@ -167,15 +193,13 @@ BEGIN
             p_auth_user_id,
             'OPERATORE'::config.ruolo_applicativo,
             p_attivo,
-            COALESCE(p_valido_dal, (SELECT script.fn_data_operativa())),
+            v_valido_dal,
             p_valido_al
         )
         RETURNING id INTO v_identita_id;
 
         -- Step 4: binding SUPER_ADMIN se richiesto, sul profilo
         -- risolto nei guard (rev 20260923-10: era l'id 9100 cablato).
-        -- Differenza vs v1: predicato boolean diretto invece
-        -- di confronto con enum legacy.
         IF p_is_super_admin THEN
             -- rev 2026-10-18: il BB del binding (regola del 2);
             -- attivo = true e' il DEFAULT della colonna.
@@ -187,8 +211,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION anagrafiche.fn_crea_risorsa_umana_v2(p_soggetto_id uuid, p_qualifica_id integer, p_unita_organizzativa_id integer, p_valido_dal date, p_valido_al date, p_auth_user_id integer, p_is_super_admin boolean, p_attivo boolean)
-IS 'Building block multi-face native (v2 Chunk A Fase 7 2026-04-29). Sostituisce v1 (firma con p_ruolo_sistema config.ruolo_sistema) con p_is_super_admin/p_attivo. Body invariato salvo: identita_digitali.attivo=p_attivo (era hardcoded true) e binding SUPER_ADMIN gated su p_is_super_admin invece di p_ruolo_sistema=ADMIN. v1 droppata in Chunk B post BE migrato. ⛔ Rev 20260923-10: il profilo del binding SUPER_ADMIN si RISOLVE per config.profili_accesso.tipo = SUPER_ADMIN fra i profili attivi (chiave stabile, linee-guida-sql §6d), non piu'' con l''id cablato 9100; se i profili attivi di quel tipo non sono esattamente uno solleva E_CONFIG_MANCANTE prima di ogni scrittura. ⛔ Rev 20261002-01: una persona e'' una risorsa umana sola (uq_risorse_umane_soggetto_ruolo, anche spenta): se il soggetto lo e'' gia'' solleva E_RISORSA_UMANA_GIA_PRESENTE (campo soggetto_id) invece di lasciar arrivare il 23505; vale per ogni chiamante, non solo per fn_crea_operatore_v2. Rev 2026-10-18: il binding SUPER_ADMIN lo scrive il BB config.fn_lega_profilo_identita (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 8); comportamento invariato. ⭐ Rev 2026-10-18 (20261019-17, R-BE-11, regola del 2): il profilo SUPER_ADMIN lo risolve config.fn_profilo_super_admin_id, sede unica della regola che era scritta qui e nel backend; la firma si ancora con %TYPE. Comportamento invariato.';
+COMMENT ON FUNCTION anagrafiche.fn_crea_risorsa_umana(p_soggetto_id uuid, p_qualifica_id integer, p_unita_organizzativa_id integer, p_valido_dal date, p_valido_al date, p_auth_user_id integer, p_is_super_admin boolean, p_attivo boolean)
+IS 'Verbo: crea il rapporto di lavoro (anagrafiche.risorse_umane, attivo, sul ruolo RIS_UMANA del soggetto) e, se riceve la credenziale, la veste OPERATORE, spenta per default (p_attivo): la accende l''attivazione dell''invito. Con p_is_super_admin lega alla veste il profilo SUPER_ADMIN (config.fn_profilo_super_admin_id, config.fn_lega_profilo_identita). p_valido_dal NULL vale il giorno operativo, per il rapporto e per la veste. Rifiuta: soggetto o qualifica mancanti, qualifica o reparto non attivi, credenziale inesistente, SUPER_ADMIN senza credenziale (E_ADMIN_VALIDAZIONE, E_ADMIN_UO_NON_TROVATA); un soggetto che e'' gia'' una risorsa umana (E_RISORSA_UMANA_GIA_PRESENTE); una credenziale che ha gia'' una veste OPERATORE, accesa o spenta (E_CREDENZIALE_GIA_OPERATORE). Il passo interno di anagrafiche.fn_crea_operatore. Ritorna l''id della risorsa umana.';
 ```
 
 </div>

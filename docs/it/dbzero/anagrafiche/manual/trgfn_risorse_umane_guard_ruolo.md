@@ -12,7 +12,7 @@
 > Approfondimento funzioni:
 >
 > * [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo) — il controllo del tipo di ruolo, a cui il guard delega
-> * [anagrafiche.fn_crea_risorsa_umana_v2](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana_v2) — la porta che scrive il rapporto
+> * [anagrafiche.fn_crea_risorsa_umana](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana) — la porta che scrive il rapporto
 >
 > Guide:
 >

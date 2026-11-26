@@ -10,7 +10,7 @@ portale o dello shop.
 È la sede unica di questa lettura (regola del 2, dal 2026-09-27,
 brief-db-blocco-login-per-credenziale §17). La leggono:
 
-- la madre [`fn_crea_operatore_v2`](/dbzero/anagrafiche/manual/fn_crea_operatore_v2),
+- la madre [`fn_crea_operatore`](/dbzero/anagrafiche/manual/fn_crea_operatore),
   quando rifiuta il riuso non confermato (`E_CREDENZIALE_DA_CONFERMARE`);
 - il backend, per il dialog di conferma che mostra all'amministratore la
   credenziale trovata.

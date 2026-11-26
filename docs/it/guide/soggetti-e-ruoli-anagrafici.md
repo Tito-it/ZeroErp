@@ -1,6 +1,6 @@
 # Guida — Soggetti e Ruoli Anagrafici
 
-> **Ultimo aggiornamento**: 24 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -46,6 +46,7 @@
 >
 > * [Glossario termini utility](/glossario/glossario-utility)
 > * [Guida Generazione di un Cliente](/guide/generazione-cliente) — il cliente, il billing account e il suo emittente
+> * [Gli emittenti fiscali](/guide/emittenti-fiscali) — come nasce un emittente, e per quale lavora ogni operatore
 > * [Guida Gestione Istanze Utility](/guide/gestione-delle-istanze-utility)
 > * [Guida Gestione dei Contatti](/guide/gestione-dei-contatti)
 > * [Guida Gestione degli Indirizzi](/guide/gestione-degli-indirizzi)
@@ -390,6 +391,9 @@ suo titolo IVA, che è presentato a un emittente preciso. Le altre tabelle di `a
 nominano un emittente parlano dell'emittente stesso, non del soggetto:
 `emittenti_fiscali_utilities` (le regole dell'emittente per utility) e
 `categorie_clienti_listini` (il listino di una categoria presso un emittente).
+
+Come nasce un emittente (il ruolo `EF` di un soggetto con partita IVA, la sigla, il regime
+fiscale) e come gli si assegnano gli operatori lo spiega [Gli emittenti fiscali](/guide/emittenti-fiscali).
 
 #### Cosa ne segue, in pratica
 

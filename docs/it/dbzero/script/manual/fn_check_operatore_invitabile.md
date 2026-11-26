@@ -8,7 +8,7 @@ i18n) e indirizzo email, e non solleva mai.
 
 ⭐ **La regola unica dell'invito** (dal 2026-09-25, `20260925-43`;
 brief-db-blocco-login-per-credenziale §12, D-8 dell'analisi accessi): la veste
-OPERATORE **nasce spenta** ([`fn_crea_operatore_v2`](/dbzero/anagrafiche/manual/fn_crea_operatore_v2))
+OPERATORE **nasce spenta** ([`fn_crea_operatore`](/dbzero/anagrafiche/manual/fn_crea_operatore))
 e la accende l'attivazione dell'invito; il reinvito riapre una veste spenta.
 Quindi si invita chi ha una veste **spenta**, e una veste gia' attiva si
 rifiuta: l'accesso c'e' gia', e per una password dimenticata c'e' il reset.

@@ -7,7 +7,7 @@
 > Approfondimento funzioni:
 >
 > * [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_soggetto) — scrive ogni indirizzo e ne giudica la forma
-> * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — la chiama coi dettagli già risolti
+> * [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore) — la chiama coi dettagli già risolti
 > * [anagrafiche.fn_crea_primo_amministratore](/dbzero/anagrafiche/funzioni/fn_crea_primo_amministratore) — la chiama con gli indirizzi scritti dal comando
 >
 > Guide:
@@ -54,13 +54,13 @@ Più quelli di `fn_crea_indirizzo_soggetto`.
 
 * `db/pgtap/anagrafiche/test-crea-primo-amministratore-v1.sql` — il domicilio fiscale che manca è la residenza; un
   indirizzo che porta il tipo si rifiuta.
-* Coi dettagli già risolti la provano i pgTAP di `fn_crea_operatore_v2` che passano gli indirizzi.
+* Coi dettagli già risolti la provano i pgTAP di `fn_crea_operatore` che passano gli indirizzi.
 
 ---
 
 ### Note di migrazione
 
-* 2026-11-25 — nasce, estratta da `fn_crea_operatore_v2` quando la stessa regola è servita al primo amministratore.
+* 2026-11-25 — nasce, estratta da `fn_crea_operatore` quando la stessa regola è servita al primo amministratore.
 
 ---
 

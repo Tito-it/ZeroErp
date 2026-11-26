@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.trgfn_risorse_umane_sync_auth_user_active: la sync segue il
+# rapporto che nasce, che cambia ruolo e che se ne va (S60, S5).
+#
+#   Per l'operatore umano script.fn_veste_utilizzabile chiede un rapporto
+#   valido sul ruolo della veste. Il trigger del rapporto scattava solo su
+#   UPDATE OF attivo, valido_dal, valido_al: un rapporto nato DOPO la veste, uno
+#   spostato su un altro ruolo, uno cancellato (dalla porta di manutenzione)
+#   cambiavano l'utilizzabilita' senza sincronizzare; li riallineava il job.
+#
+#   Ora il trigger scatta su INSERT, su UPDATE di attivo, date e
+#   soggetto_ruolo_id, e su DELETE, e sincronizza OGNI credenziale con una
+#   veste OPERATORE sul ruolo nuovo e su quello di prima. Prima ne
+#   sincronizzava una sola (script.fn_get_auth_user_id_for_risorsa_umana prende
+#   la prima veste): due credenziali con una veste OPERATORE spenta sullo stesso
+#   ruolo sono ammesse (l'indice unico vale per le accese).
+#
+#   Il terzo caso di S5 (lo spegnimento del soggetto) non si raggiunge per
+#   costruzione: lo spegnimento di anagrafiche.soggetti e' bloccato dalle sue
+#   righe di soggetti_ruoli, e una veste ha sempre un ruolo.
+#
+#   Rimontaggio per funzione: l'unico montaggio storico della funzione su
+#   risorse_umane e' _upd (letto dai changelog; il gemello sulla vista
+#   risorse_umane_auth_user e' sparito con la vista). Si toglie e si rifanno
+#   _ins, _upd, _dlt. L'UPDATE tiene il WHEN sul cambio di valore.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261125-59-update-trgfn-risorse-umane-sync-auth-user-active-insert-e-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20261125-59-update-trgfn-risorse-umane-sync-auth-user-active-insert-e-ruolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_risorse_umane_sync_auth_user_active: scatta anche su INSERT, DELETE e cambio di
+        soggetto_ruolo_id, e sincronizza ogni credenziale con una veste OPERATORE sul ruolo nuovo e di prima.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: anagrafiche, tableName: risorse_umane }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_sr_nuovo     anagrafiche.risorse_umane.soggetto_ruolo_id%TYPE;
+                  v_sr_prima     anagrafiche.risorse_umane.soggetto_ruolo_id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: dopo una scrittura sul rapporto, allinea
+                  --   auth_user.is_active di ogni credenziale con una veste
+                  --   OPERATORE sul ruolo del rapporto (e sul ruolo di prima,
+                  --   se e' cambiato o se il rapporto se n'e' andato).
+                  -- =========================================================
+                  IF TG_OP <> 'DELETE' THEN
+                      v_sr_nuovo := NEW.soggetto_ruolo_id;
+                  END IF;
+                  IF TG_OP <> 'INSERT' THEN
+                      v_sr_prima := OLD.soggetto_ruolo_id;
+                  END IF;
+
+                  FOR v_auth_user_id IN
+                      SELECT DISTINCT idg.auth_user_id
+                        FROM anagrafiche.identita_digitali idg
+                       WHERE idg.ruolo_applicativo = 'OPERATORE'
+                         AND idg.soggetto_ruolo_id IN (v_sr_nuovo, v_sr_prima)
+                       ORDER BY idg.auth_user_id
+                  LOOP
+                      PERFORM anagrafiche.fn_sync_auth_user_is_active(v_auth_user_id);
+                  END LOOP;
+
+                  RETURN NULL;  -- AFTER: ritorno ignorato
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active() IS
+                  'Trigger AFTER INSERT, UPDATE e DELETE su anagrafiche.risorse_umane: il rapporto decide se la veste OPERATORE di una persona e'' utilizzabile (script.fn_veste_utilizzabile), quindi a ogni nascita, cambio di attivo, date o ruolo, e cancellazione allinea django.auth_user.is_active di ogni credenziale con una veste OPERATORE sul ruolo del rapporto e sul ruolo di prima, con anagrafiche.fn_sync_auth_user_is_active. Le date che arrivano senza scritture le riallinea anagrafiche.fn_sync_auth_user_expired.';
+
+              DROP TRIGGER IF EXISTS trg_risorse_umane_z90_sync_auth_user_active_ins ON anagrafiche.risorse_umane;
+              DROP TRIGGER IF EXISTS trg_risorse_umane_z90_sync_auth_user_active_upd ON anagrafiche.risorse_umane;
+              DROP TRIGGER IF EXISTS trg_risorse_umane_z90_sync_auth_user_active_dlt ON anagrafiche.risorse_umane;
+
+              CREATE TRIGGER trg_risorse_umane_z90_sync_auth_user_active_ins
+                  AFTER INSERT ON anagrafiche.risorse_umane
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active();
+
+              CREATE TRIGGER trg_risorse_umane_z90_sync_auth_user_active_upd
+                  AFTER UPDATE ON anagrafiche.risorse_umane
+                  FOR EACH ROW
+                  WHEN (OLD.attivo            IS DISTINCT FROM NEW.attivo
+                     OR OLD.valido_dal        IS DISTINCT FROM NEW.valido_dal
+                     OR OLD.valido_al         IS DISTINCT FROM NEW.valido_al
+                     OR OLD.soggetto_ruolo_id IS DISTINCT FROM NEW.soggetto_ruolo_id)
+                  EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active();
+
+              CREATE TRIGGER trg_risorse_umane_z90_sync_auth_user_active_dlt
+                  AFTER DELETE ON anagrafiche.risorse_umane
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              SELECT 1;  -- forward-only: la versione precedente e' il 20260912-22
