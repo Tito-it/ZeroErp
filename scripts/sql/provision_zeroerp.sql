@@ -675,6 +675,20 @@ FROM (VALUES ('config.user_emittenti_fiscali'), ('config.profili_accesso_binding
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
+-- ⭐ GLI OVERRIDE E I CATALOGHI DEI PERMESSI (dal 2026-11-27): brief
+--   brief-db-porte-aperte-dalla-sola-guc, giro 10-quater. Gli override utente li
+--   scrivono i verbi DEFINER col guard del SUPER_ADMIN, il provisioning di
+--   sviluppo e i builder dei pgTAP dai verbi; i due cataloghi solo il seed.
+--   Stesso elenco di `v_tabelle_sola_lettura_app` nel loop 20260205-41 e del
+--   forward 90_end/20261126-62; `db/pgtap/config/test-porta-override-permessi-v1.sql`
+--   lo dice se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('config.user_override_aree'), ('config.user_override_azioni'),
+             ('config.user_override_oggetti'), ('config.azioni_processo'),
+             ('config.area_model_overrides')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
 -- ⭐ LA PORTA DEL PANNELLO DI CONFIGURAZIONE (dal 2026-09-25): brief
 --   brief-db-pannello-config-verbo-generico, sezione 3.5. `magazzino.causali` la
 --   scrive solo il verbo config.fn_pannello_scrivi; `config.tabelle_gestibili` e'
@@ -759,7 +773,11 @@ WHERE (n.nspname, p.proname) IN (
         ('config', 'fn_applica_lega_profilo_identita'), ('config', 'fn_applica_scrivi_profilo_accesso'),
         ('anagrafiche', 'fn_applica_crea_operatore'), ('script', 'fn_applica_crea_utente_tecnico'),
         ('anagrafiche', 'fn_crea_risorsa_umana'), ('anagrafiche', 'fn_crea_auth_user'),
-        ('anagrafiche', 'fn_crea_operatore_v2'))
+        ('anagrafiche', 'fn_crea_operatore_v2'),
+        -- ⭐ Dal 2026-11-27 la primitiva degli override di un utente: ci si arriva solo
+        --   dai tre verbi DEFINER col guard del SUPER_ADMIN. Forward 90_end/20261126-63;
+        --   presidio config/test-porta-override-permessi-v1.
+        ('config', 'fn_applica_imposta_override'))
   AND p.prokind = 'f'
 \gexec
 

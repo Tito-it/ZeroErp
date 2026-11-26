@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GLI OVERRIDE UTENTE E I CATALOGHI DEI PERMESSI, IN SOLA LETTURA PER L'APP
+#   config.user_override_aree, config.user_override_azioni, config.user_override_oggetti,
+#   config.azioni_processo, config.area_model_overrides
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §15 (giro 10-quater; D-AI a, D-AJ a, D-AK a di Tid, 2026-11-27).
+#
+# -- PERCHE' -------------------------------------------------------------
+#   Un override utente alza il livello di un operatore su un'area o un
+#   oggetto, o gli concede un'azione; il catalogo delle azioni dice quale
+#   livello d'area un'azione pretende, quello degli oggetti in quale area cade
+#   un oggetto e se e' riservato. Scritte come app, ognuna da' un accesso senza
+#   passare dal guard: un INSERT su user_override_aree (se stesso, l'area,
+#   TUTTO) alza l'operatore, un UPDATE di azioni_processo cambia il permesso di
+#   tutti. Gli override li scrivono i verbi DEFINER col guard del SUPER_ADMIN
+#   (20261126-51 … -53), il provisioning di sviluppo dalla primitiva
+#   (20261126-54) e i builder dei pgTAP dai verbi (20261126-55 … -59). I due
+#   cataloghi li scrive solo il seed (loadUpdateData, 20260228-18 e
+#   20260928-03), come config.aree_funzionali (D-AI a). Il backend non li
+#   scrive senza un verbo (censimento del 2026-11-26, brief §15.5).
+#
+# -- LE SEDI -------------------------------------------------------------
+#   Le TRE sedi di linee-guida-sql §11.8:
+#     1. questo forward, per dbdev;
+#     2. il loop 90_end/ci_apply/20260205-41, voci in v_tabelle_sola_lettura_app;
+#     3. scripts/sql/provision_zeroerp.sql, blocco «GLI OVERRIDE E I CATALOGHI DEI PERMESSI».
+#   Presidio: config/test-porta-override-permessi-v1 (gira come app).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261126-62-revoke-app-scrittura-override-e-cataloghi-permessi-mctit.yaml
+
+  - changeSet:
+      id: 20261126-62-revoke-app-scrittura-override-e-cataloghi-permessi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Gli override utente e i due cataloghi dei permessi: a zeroerp_app SELECT soltanto; gli override li scrivono i verbi del SUPER_ADMIN, i cataloghi il seed. Postura resa stabile dal loop 20260205-41 e dal provisioning. brief-db-porte-aperte-dalla-sola-guc §15.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              DECLARE
+                  v_tabella text;  -- un nome qualificato da format(): nessuna colonna
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip porta degli override e dei cataloghi dei permessi.';
+                      RETURN;
+                  END IF;
+
+                  FOREACH v_tabella IN ARRAY ARRAY[
+                      'config.user_override_aree',
+                      'config.user_override_azioni',
+                      'config.user_override_oggetti',
+                      'config.azioni_processo',
+                      'config.area_model_overrides']
+                  LOOP
+                      EXECUTE format('GRANT SELECT ON TABLE %s TO zeroerp_app', v_tabella);
+                      EXECUTE format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM zeroerp_app', v_tabella);
+                  END LOOP;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Senza togliere le voci dal loop 20260205-41 e dal provisioning la
+              -- passata ci_apply successiva richiude la porta.
+              DO $riapri$
+              DECLARE
+                  v_tabella text;  -- un nome qualificato da format(): nessuna colonna
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RETURN;
+                  END IF;
+
+                  FOREACH v_tabella IN ARRAY ARRAY[
+                      'config.user_override_aree',
+                      'config.user_override_azioni',
+                      'config.user_override_oggetti',
+                      'config.azioni_processo',
+                      'config.area_model_overrides']
+                  LOOP
+                      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %s TO zeroerp_app', v_tabella);
+                  END LOOP;
+              END
+              $riapri$;

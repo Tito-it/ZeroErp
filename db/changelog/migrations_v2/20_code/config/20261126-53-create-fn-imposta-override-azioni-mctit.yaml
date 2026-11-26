@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GLI OVERRIDE DI UN UTENTE SULLE AZIONI DI PROCESSO: IL VERBO DEL SUPER_ADMIN
+#   config.fn_imposta_override_azioni
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §15 (giro 10-quater; D-AI a, D-AJ a, D-AK a di Tid, 2026-11-27).
+#
+#   Il verbo che mancava (D-AK a): «sostituisci l'elenco di un utente», come
+#   config.fn_imposta_override_oggetti, con la stessa firma e le stesse regole.
+#   Prende il posto del DELETE e degli INSERT diretti di
+#   AmmSoftwareRepository.put_override_azioni (OverrideAzioniView.put, censimento
+#   §15.5). Chiavi di un elemento: quelle che il backend scrive oggi
+#   (azione_id, abilitata, motivo, valido_dal, valido_al).
+#   1. SECURITY DEFINER, search_path pg_catalog, public, pg_temp: con
+#      config.user_override_azioni in sola lettura per l'app (90_end/20261126-62)
+#      scrive il proprietario.
+#   2. Il permesso in prima riga: script.fn_guard_super_admin, lo stesso
+#      controllo dell'endpoint (AdminAPIView, D-AJ a).
+#   3. Il corpo e' la primitiva config.fn_applica_imposta_override (20261126-50).
+#      I vincoli che il service del backend traduce per nome
+#      (uq_user_override_azioni_user_azione, fk_user_override_azioni_azione) restano quelli della tabella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261126-53-create-fn-imposta-override-azioni-mctit.yaml
+
+  - changeSet:
+      id: 20261126-53-create-fn-imposta-override-azioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.fn_imposta_override_azioni: il verbo del SUPER_ADMIN che sostituisce gli override sulle azioni di processo di un utente con l'elenco dato. brief-db-porte-aperte-dalla-sola-guc §15.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_imposta_override_azioni(
+                  p_auth_user_id config.user_override_azioni.auth_user_id%TYPE,
+                  p_azioni      jsonb)
+               RETURNS integer  -- quanti override scrive: un conteggio, nessuna colonna
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo:
+              --   Il verbo con cui il SUPER_ADMIN sostituisce gli override di un utente
+              --   sulle azioni di processo con l'elenco dato (vuoto = nessun override). E' la strada
+              --   dell'endpoint di amministrazione.
+              --
+              -- Regole:
+              --   - SECURITY DEFINER: il permesso e' qui, in prima riga, e chiede lo stesso
+              --     controllo dell'endpoint, il SUPER_ADMIN (script.fn_guard_super_admin:
+              --     E_PERMESSO_NEGATO, anche senza utente);
+              --   - gli override li scrive la primitiva config.fn_applica_imposta_override,
+              --     che l'app non esegue.
+              DECLARE
+                  v_utente config.user_override_azioni.auth_user_id%TYPE;
+              BEGIN
+                  -- Il permesso, prima di ogni altra cosa.
+                  v_utente := script.fn_utente_di_sessione('config.fn_imposta_override_azioni');
+                  PERFORM script.fn_guard_super_admin(v_utente);
+
+                  RETURN config.fn_applica_imposta_override(
+                      'config.user_override_azioni'::regclass, p_auth_user_id, p_azioni);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_imposta_override_azioni(config.user_override_azioni.auth_user_id%TYPE, jsonb)
+              IS 'Il verbo con cui il SUPER_ADMIN sostituisce gli override di un utente sulle azioni di processo (config.user_override_azioni) con l''elenco p_azioni, anche vuoto (= nessun override); ritorna quanti ne scrive. SECURITY DEFINER: in prima riga chiede il SUPER_ADMIN all''utente di sessione (script.fn_guard_super_admin: E_PERMESSO_NEGATO, anche senza utente), lo stesso controllo dell''endpoint. Un elemento: azione_id e abilitata (obbligatori), motivo, valido_dal, valido_al; una chiave assente prende il DEFAULT (valido_dal = la data operativa), una chiave a null scrive NULL (valido_dal NULL = senza inizio). Chiave estranea: E_CAMPO_NON_AMMESSO; utente NULL, elenco o elemento malformati: E_SCRIPT_CHIAMATA_NON_VALIDA. Due righe sulla stessa azione: uq_user_override_azioni_user_azione; azione inesistente: fk_user_override_azioni_azione; date: trgfn_guard_date_validita. Scrive la primitiva config.fn_applica_imposta_override, che l''applicazione non esegue. Non invalida la cache dei permessi (backend). config.user_override_azioni è in sola lettura per l''applicazione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS config.fn_imposta_override_azioni(config.user_override_azioni.auth_user_id%TYPE, jsonb);

@@ -22,6 +22,8 @@ AS $function$
 --   dell'azione deve arrivare al suo livello_minimo_area. Solo per i pgTAP.
 -- Uso: PERFORM dbops.fn_pgtap_concedi_azione(
 --          (SELECT auth_user_id FROM _mondo), 'registra_magazzino');
+-- ⚠️ Le voci le scrivono i verbi del SUPER_ADMIN (dbops.fn_pgtap_scrivi_override):
+--   le altre voci dell'utente restano, i loro id cambiano.
 DECLARE
     v_azione_id   config.azioni_processo.id%TYPE;
     v_area_id     config.azioni_processo.area_id%TYPE;
@@ -39,14 +41,13 @@ BEGIN
         RAISE EXCEPTION 'fn_pgtap_concedi_azione: azione di processo % inesistente', p_permission_codename;
     END IF;
 
-    INSERT INTO config.user_override_azioni
-           (auth_user_id, azione_id, abilitata, motivo, valido_dal, valido_al)
-    VALUES (p_auth_user_id, v_azione_id, true, 'Fixture pgTAP', (SELECT script.fn_data_operativa()), NULL)
-    ON CONFLICT ON CONSTRAINT uq_user_override_azioni_user_azione
-    DO UPDATE SET abilitata  = true,
-                  valido_dal = (SELECT script.fn_data_operativa()),
-                  valido_al  = NULL
-    RETURNING id INTO v_override_id;
+    PERFORM dbops.fn_pgtap_scrivi_override(
+        'config.user_override_azioni'::regclass, p_auth_user_id,
+        jsonb_build_object('azione_id', v_azione_id),
+        jsonb_build_object('abilitata',  true,
+                           'motivo',     'Fixture pgTAP',
+                           'valido_dal', (SELECT script.fn_data_operativa()),
+                           'valido_al',  NULL));
 
     -- Il tetto d'area: se l'area non arriva al minimo dell'azione, la si apre
     -- AL MINIMO (non di piu'), con un override d'area come lo scrive il pannello.
@@ -63,23 +64,26 @@ BEGIN
                             v_schema_db, p_permission_codename;
         END IF;
 
-        INSERT INTO config.user_override_aree
-               (auth_user_id, area_id, livello, motivo, valido_dal, valido_al)
-        VALUES (p_auth_user_id, v_area_id, v_minimo,
-                'Fixture pgTAP: tetto d''area di ' || p_permission_codename,
-                (SELECT script.fn_data_operativa()), NULL)
-        ON CONFLICT ON CONSTRAINT uq_user_override_aree_user_area
-        DO UPDATE SET livello    = EXCLUDED.livello,
-                      valido_dal = (SELECT script.fn_data_operativa()),
-                      valido_al  = NULL;
+        PERFORM dbops.fn_pgtap_scrivi_override(
+            'config.user_override_aree'::regclass, p_auth_user_id,
+            jsonb_build_object('area_id', v_area_id),
+            jsonb_build_object('livello',    v_minimo,
+                               'motivo',     'Fixture pgTAP: tetto d''area di ' || p_permission_codename,
+                               'valido_dal', (SELECT script.fn_data_operativa()),
+                               'valido_al',  NULL));
     END IF;
+
+    SELECT uoz.id INTO v_override_id
+      FROM config.user_override_azioni uoz
+     WHERE uoz.auth_user_id = p_auth_user_id
+       AND uoz.azione_id    = v_azione_id;
 
     RETURN v_override_id;
 END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_concedi_azione(p_auth_user_id integer, p_permission_codename character varying)
-IS 'Fixture pgTAP: concede un''azione di processo a un utente con un override (config.user_override_azioni, abilitata, valido da oggi senza scadenza), idempotente sulla UNIQUE (utente, azione), e la fa VALERE: se l''area dell''azione non arriva al suo livello_minimo_area (script.fn_area_consente_azione, il tetto d''area) scrive un override d''area al minimo, valido da oggi. Un override d''area valido gia'' scritto dal test che chiude l''area -> RAISE: la fixture non scavalca la scelta del test. Serve ai pgTAP dei verbi che applicano un''azione con script.fn_guard_azione: l''operatore di dbops.fn_pgtap_crea_emittente_operatore non ha ne'' azioni ne'' aree. Azione inesistente -> RAISE. Solo per i pgTAP.';
+IS 'Fixture pgTAP: concede un''azione di processo a un utente con un override (config.user_override_azioni, abilitata, valido da oggi senza scadenza), idempotente sulla UNIQUE (utente, azione), e la fa VALERE: se l''area dell''azione non arriva al suo livello_minimo_area (script.fn_area_consente_azione, il tetto d''area) scrive un override d''area al minimo, valido da oggi. Un override d''area valido già scritto dal test che chiude l''area -> RAISE: la fixture non scavalca la scelta del test. Le voci le scrivono i verbi del SUPER_ADMIN config.fn_imposta_override_azioni e _aree, da dbops.fn_pgtap_scrivi_override: le altre voci dell''utente restano, i loro id cambiano. Ritorna l''id della riga. Il gemello che nega è dbops.fn_pgtap_nega_azione. Serve ai pgTAP dei verbi che applicano un''azione con script.fn_guard_azione: l''operatore di dbops.fn_pgtap_crea_emittente_operatore non ha né azioni né aree. Azione inesistente -> RAISE. Solo per i pgTAP.';
 ```
 
 </div>

@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-11-27 (brief-db-porte-aperte-dalla-sola-guc §15, giro 10-quater): gli override utente sono in sola lettura per l'app; l'azione negata e riconcessa del caso 8 la scrivono dbops.fn_pgtap_nega_azione e fn_pgtap_concedi_azione. Attese invariate.
 --
 -- Test: la merce rientra col reso — il verbo vendite.fn_conferma_reso fa
 --   rientrare cio' che era USCITO con la bolla: un carico per RIENTRO, che
@@ -229,16 +230,12 @@ SELECT throws_like(
     '7) UPDATE diretto a CONFERMATO di un reso che muove merce: E_DOC_STATO_SOLO_DAL_VERBO');
 
 -- 8) il permesso: tolto l'override, il verbo rifiuta
-UPDATE config.user_override_azioni SET abilitata = false
- WHERE auth_user_id = (SELECT auth_user_id FROM _m)
-   AND azione_id = (SELECT ap.id FROM config.azioni_processo ap WHERE ap.permission_codename = 'conferma_reso');
+SELECT dbops.fn_pgtap_nega_azione((SELECT auth_user_id FROM _m), 'conferma_reso');
 SELECT throws_like(
     format('SELECT vendite.fn_conferma_reso(%s)', (SELECT reso FROM _r1)),
     '%Non hai i permessi%',
     '8) senza l''azione conferma_reso il verbo rifiuta (E_PERMESSO_NEGATO)');
-UPDATE config.user_override_azioni SET abilitata = true
- WHERE auth_user_id = (SELECT auth_user_id FROM _m)
-   AND azione_id = (SELECT ap.id FROM config.azioni_processo ap WHERE ap.permission_codename = 'conferma_reso');
+SELECT dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM _m), 'conferma_reso');
 
 -- 9) il verbo conferma
 SELECT vendite.fn_conferma_reso((SELECT reso FROM _r1));

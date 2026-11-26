@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.user_override_oggetti`
 
+> **Ultimo aggiornamento**: 27 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Architettura di riferimento:
@@ -43,6 +45,15 @@ di [config.area_model_overrides](/dbzero/config/tabelle/area_model_overrides);
 qui `riservato` è una colonna **generata**, sempre `false`, che non si scrive.
 Un override su un oggetto fuori catalogo, o riservato, è rifiutato dal database
 qualunque sia il percorso di scrittura.
+
+---
+
+### ⛔ Chi la scrive
+
+Solo il **SUPER_ADMIN**, dal verbo [`config.fn_imposta_override_oggetti`](/dbzero/config/funzioni/fn_imposta_override_oggetti), che
+sostituisce l'elenco delle eccezioni di un utente. Per l'applicazione la tabella è in sola lettura:
+un'eccezione dà un potere che il profilo non dà, e un operatore che potesse scriverne una per sé si
+alzerebbe il livello da solo (brief-db-porte-aperte-dalla-sola-guc, giro 10-quater, 2026-11-27).
 
 ---
 

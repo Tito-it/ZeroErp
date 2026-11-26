@@ -410,7 +410,9 @@ BEGIN
             -- utente in sessione, e il verbo chiederebbe il SUPER_ADMIN.
             PERFORM script.fn_applica_user_emittenti_scope(v_au, ARRAY[v_ef_a]);
         END IF;
-        PERFORM config.fn_imposta_override_oggetti(v_au, v_el -> 'override');
+        -- Gli override dalla primitiva: il verbo chiede un SUPER_ADMIN in sessione.
+        PERFORM config.fn_applica_imposta_override(
+            'config.user_override_oggetti'::regclass, v_au, v_el -> 'override');
         PERFORM config.fn_imposta_emittente_attivo(v_au, v_ef_a);
 
         IF v_el ->> 'username' = 'dev.smoke' THEN

@@ -1,6 +1,6 @@
 # Guida — Architettura Permessi e Autorizzazioni
 
-> **Ultimo aggiornamento**: 26 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -30,6 +30,7 @@
 > * [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — il verbo che sposta un operatore su un'azienda, riservato al SUPER_ADMIN
 > * [config.fn_lega_profilo_identita](/dbzero/config/funzioni/fn_lega_profilo_identita) / [config.fn_slega_profilo_identita](/dbzero/config/funzioni/fn_slega_profilo_identita) / [config.fn_lega_profilo_reparto](/dbzero/config/funzioni/fn_lega_profilo_reparto) / [config.fn_slega_profilo_reparto](/dbzero/config/funzioni/fn_slega_profilo_reparto) — i verbi che danno e tolgono un profilo a un'identità o a un reparto, riservati al SUPER_ADMIN
 > * [config.fn_scrivi_profilo_accesso](/dbzero/config/funzioni/fn_scrivi_profilo_accesso) — il verbo che scrive un profilo con le sue aree e azioni, riservato al SUPER_ADMIN
+> * [config.fn_imposta_override_aree](/dbzero/config/funzioni/fn_imposta_override_aree) / [config.fn_imposta_override_azioni](/dbzero/config/funzioni/fn_imposta_override_azioni) / [config.fn_imposta_override_oggetti](/dbzero/config/funzioni/fn_imposta_override_oggetti) — i verbi che assegnano le eccezioni di un utente (aree, azioni, oggetti), riservati al SUPER_ADMIN
 > * [dbops.fn_pgtap_fixture_crea_operatore](/dbzero/dbops/funzioni/fn_pgtap_fixture_crea_operatore) / [dbops.fn_pgtap_fixture_crea_utente_tecnico](/dbzero/dbops/funzioni/fn_pgtap_fixture_crea_utente_tecnico) — le fixture dei pgTAP senza permesso, chiuse dall'ambiente
 > * [anagrafiche.fn_crea_primo_amministratore](/dbzero/anagrafiche/funzioni/fn_crea_primo_amministratore) — il solo verbo senza guard: il primo SUPER_ADMIN, chiuso dalla sua condizione
 > * [config.trgfn_user_emittenti_fiscali_guard_delete](/dbzero/config/funzioni/trgfn_user_emittenti_fiscali_guard_delete) — il guard del `DELETE` della riga di scope, e la porta del verbo
@@ -266,6 +267,12 @@ raggruppate per area, si interroga la tabella incrociata con
 di attivazione. Il risultato tipico e' una lista ordinata per area e poi
 per descrizione dell'azione.
 
+⛔ **Non si modifica dall'applicazione.** La possiede il CSV, come le aree
+(§4.1): un'azione nuova nasce nel seed insieme al codice che la applica, e
+l'area e il livello minimo d'area di un'azione si cambiano li'. Il livello
+minimo decide il permesso di tutti quelli che hanno l'azione: per questo la
+tabella e' in sola lettura per l'app (§7.4).
+
 ### 4.3 Tabella `config.area_model_overrides`
 
 > Struttura completa: [area_model_overrides](/dbzero/config/tabelle/area_model_overrides)
@@ -274,8 +281,8 @@ Il catalogo degli oggetti. Ogni riga e' un model (app label e nome) con due
 informazioni:
 
 * **l'area a cui appartiene**. Di norma coincide con lo schema; un model
-  si puo' assegnare a un'area diversa scegliendola dal catalogo delle aree
-  funzionali, e da quel momento la risoluzione dei permessi usa quella;
+  si assegna a un'area diversa nel CSV del catalogo, scegliendola fra le
+  aree funzionali, e da quel momento la risoluzione dei permessi usa quella;
 * **se e' riservato**. Un oggetto riservato e' a catalogo ma non si
   personalizza per operatore: sono le tabelle del kernel dei permessi
   (profili, binding, gli override stessi, le identita' digitali, lo scope
@@ -295,6 +302,11 @@ catalogo che una porta non chiede e' un override che mente: il pannello lo
 mostra, e quella porta risponde con il livello dell'area. Per la stessa
 ragione il **billing account non e' a catalogo**: si gestisce dentro la
 scheda cliente, e il suo permesso e' sempre quello del cliente.
+
+⛔ **Non si modifica dall'applicazione.** La possiede il CSV, come le aree
+(§4.1) e le azioni (§4.2). Spostare un oggetto in un'area dove un operatore ha
+`TUTTO`, o togliere il riservato a una tabella del kernel, cambierebbe i
+permessi di tutti: il catalogo e' in sola lettura per l'app (§7.4).
 
 **Esempio di uso:** l'amministratore vuole che un operatore del reparto
 Vendite, che ha `TUTTO` sull'area, veda le offerte in sola lettura. Sceglie
@@ -406,6 +418,17 @@ override individuale sull'azione (identificata dal suo codename Django),
 con abilitazione positiva e motivo (es. "Autorizzato dal responsabile
 vendite"). Il motivo e' obbligatorio per audit: consente di tracciare
 perche' e da chi l'eccezione e' stata concessa.
+
+**Chi scrive gli override.** Un override utente da' a una persona un potere
+che il suo profilo non le da': un operatore che potesse scriverne uno per se'
+si alzerebbe il livello da solo. Per questo le tre tabelle
+(`user_override_aree`, `user_override_oggetti`, `user_override_azioni`) sono in
+sola lettura per l'applicazione (§7.4), e le scrivono i verbi del SUPER_ADMIN:
+`config.fn_imposta_override_aree`, `config.fn_imposta_override_oggetti` e
+`config.fn_imposta_override_azioni`. Ognuno chiede il SUPER_ADMIN nella prima
+riga, come la schermata di amministrazione, e **sostituisce l'elenco** degli
+override di un utente con quello che riceve: l'elenco vuoto toglie tutte le
+eccezioni di quel tipo.
 
 ### 4.9 Tabella `config.user_emittenti_fiscali`
 

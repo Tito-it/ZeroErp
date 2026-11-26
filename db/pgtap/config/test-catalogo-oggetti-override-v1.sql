@@ -1,5 +1,13 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture fabbrica due oggetti nel catalogo degli oggetti e
+--   collauda col DML diretto la FK composita degli override e il riservato del catalogo,
+--   che nessun verbo offre:
+--   dal giro 10-quater gli override utente e i due cataloghi dei permessi
+--   (config.azioni_processo, config.area_model_overrides) sono in sola lettura per
+--   l'app: gli override li scrivono solo i verbi del SUPER_ADMIN, i cataloghi il seed
+--   (brief-db-porte-aperte-dalla-sola-guc §15, giro 10-quater, 2026-11-27).
 -- pgTAP test per Zero ERP
 --
 -- Test: un override per oggetto esiste solo per un oggetto A CATALOGO e NON
@@ -31,8 +39,10 @@
 --   12) ordine, ddt, contratto, reso a catalogo, personalizzabili (caso B,
 --       rev 2026-09-28: BE e FE li applicano su tutte le rotte, brief §3.5)
 --
--- ⚠️ Gira come l'APPLICAZIONE: override e catalogo si scrivono come li scrive il
---   pannello dei permessi. Operatore COSTRUITO (fn_pgtap_crea_emittente_operatore).
+-- ⚠️ Gira come runner owner dal giro 10-quater (2026-11-27): override e catalogo
+--   sono in sola lettura per l'app, e qui si fabbricano oggetti di catalogo e si
+--   collauda il DML diretto (testata). Operatore COSTRUITO
+--   (fn_pgtap_crea_emittente_operatore).
 -- ------------------------------------------------------------
 BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;

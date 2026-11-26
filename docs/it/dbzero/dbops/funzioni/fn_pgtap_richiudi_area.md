@@ -25,21 +25,17 @@ BEGIN
         RETURN;
     END IF;
 
-    IF (p_ricordo ->> 'nuovo')::boolean THEN
-        DELETE FROM config.user_override_aree uoa
-         WHERE uoa.id = (p_ricordo ->> 'override_id')::bigint;
-    ELSE
-        UPDATE config.user_override_aree uoa
-           SET livello    = (p_ricordo ->> 'livello')::config.livello_accesso,
-               valido_dal = (p_ricordo ->> 'valido_dal')::date,
-               valido_al  = (p_ricordo ->> 'valido_al')::date
-         WHERE uoa.id = (p_ricordo ->> 'override_id')::bigint;
-    END IF;
+    -- prima = NULL (voce che non c'era): la voce si toglie.
+    PERFORM dbops.fn_pgtap_scrivi_override(
+        'config.user_override_aree'::regclass,
+        (p_ricordo ->> 'utente')::integer,
+        jsonb_build_object('area_id', (p_ricordo -> 'area_id')),
+        NULLIF(p_ricordo -> 'prima', 'null'::jsonb));
 END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_richiudi_area(p_ricordo jsonb)
-IS 'Fixture pgTAP: rimette l''override d''area com''era prima di dbops.fn_pgtap_apri_area_per_nascita (tolto se l''aveva scritto, coi valori di prima se l''aveva alzato), cosi'' il test ritrova i livelli che aveva. NULL: niente da rimettere.';
+IS 'Fixture pgTAP: rimette l''override d''area com''era prima di dbops.fn_pgtap_apri_area_per_nascita (tolto se l''aveva scritto, coi valori di prima se l''aveva alzato), dal verbo del SUPER_ADMIN config.fn_imposta_override_aree (dbops.fn_pgtap_scrivi_override), così il test ritrova i livelli che aveva. NULL: niente da rimettere.';
 ```
 
 </div>

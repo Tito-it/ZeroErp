@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PRIMITIVA DEGLI OVERRIDE E' RISERVATA AL PROPRIETARIO
+#   REVOKE EXECUTE FROM PUBLIC, zeroerp_app su config.fn_applica_imposta_override
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §15 (giro 10-quater; D-AI a, D-AJ a, D-AK a di Tid, 2026-11-27).
+#
+# -- PERCHE' -------------------------------------------------------------
+#   La primitiva scrive gli override di un utente senza chiedere permessi: se
+#   l'app la eseguisse, il guard dei tre verbi del SUPER_ADMIN si aggirerebbe
+#   chiamando lei (guida dei permessi §7.4: l'app esegue solo i verbi). La
+#   chiamano i verbi e il provisioning di sviluppo, DEFINER del proprietario.
+#
+# -- LE SEDI -------------------------------------------------------------
+#   Le TRE sedi di linee-guida-sql §11.8:
+#     1. questo forward, per dbdev;
+#     2. il loop 90_end/ci_apply/20260205-41, voce in v_fn_riservate;
+#     3. scripts/sql/provision_zeroerp.sql, blocco «LA PORTA SULLE FUNZIONI».
+#   Presidio: config/test-porta-override-permessi-v1 (gira come app).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261126-63-postura-primitiva-override-riservata-mctit.yaml
+
+  - changeSet:
+      id: 20261126-63-postura-primitiva-override-riservata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La primitiva degli override config.fn_applica_imposta_override riservata al proprietario: EXECUTE revocato a PUBLIC e all'app. brief-db-porte-aperte-dalla-sola-guc §15.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'config' AND p.proname = 'fn_applica_imposta_override'
+                 AND p.prokind = 'f';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              DECLARE
+                  v_firma text;  -- una firma da format(): nessuna colonna
+              BEGIN
+                  FOR v_firma IN
+                      SELECT format('%I.%I(%s)', n.nspname, p.proname, pg_get_function_identity_arguments(p.oid))
+                        FROM pg_proc p
+                        JOIN pg_namespace n ON n.oid = p.pronamespace
+                       WHERE (n.nspname, p.proname) IN (('config', 'fn_applica_imposta_override'))
+                         AND p.prokind = 'f'
+                  LOOP
+                      EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC', v_firma);
+                      IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                          EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM zeroerp_app', v_firma);
+                      END IF;
+                  END LOOP;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Riapre la funzione all'app e a PUBLIC. Senza togliere la voce dal loop
+              -- 20260205-41 e dal provisioning, la passata ci_apply successiva la richiude.
+              DO $riapri$
+              DECLARE
+                  v_firma text;  -- una firma da format(): nessuna colonna
+              BEGIN
+                  FOR v_firma IN
+                      SELECT format('%I.%I(%s)', n.nspname, p.proname, pg_get_function_identity_arguments(p.oid))
+                        FROM pg_proc p
+                        JOIN pg_namespace n ON n.oid = p.pronamespace
+                       WHERE (n.nspname, p.proname) IN (('config', 'fn_applica_imposta_override'))
+                         AND p.prokind = 'f'
+                  LOOP
+                      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO PUBLIC', v_firma);
+                  END LOOP;
+              END
+              $riapri$;
