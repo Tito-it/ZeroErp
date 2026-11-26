@@ -231,13 +231,15 @@ class TestSoggettiCreate(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
 
     @patch(SOGG_REPO, autospec=True)
-    def test_create_soggetto_pf_cf_duplicato_accende_il_campo(self, mock_repo):
-        """Il duplicato sull'identificativo fiscale di una PF accende il campo
-        `codice_fiscale`, come il REA accende `iscrizione_rea`."""
+    def test_create_soggetto_pf_unicita_ignota_non_accende_il_cf(self, mock_repo):
+        """Un'unicita' che la mappa non riconosce e' il ripiego neutro, senza
+        campo: il doppione del CF non arriva piu' come `23505`, lo traduce la
+        porta in `E_ADMIN_CF_DUPLICATO` col campo (brief-db-revisione-anagrafiche
+        §20.7; la strada vera la prova `tests/db/test_soggetti_identificativo_doppio_db`)."""
         repo = mock_repo.return_value
         repo.get_natura_by_tipo_id.return_value = "PF"
         repo.crea_soggetto_pf.side_effect = make_integrity_error(
-            SQLSTATE_UNICITA, vincolo="uq_soggetto_idstato_id_fiscale_univoco",
+            SQLSTATE_UNICITA, vincolo="uq_vincolo_che_nessuno_mappa",
         )
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         with self.assertRaises(ServiceError) as ctx:
@@ -250,7 +252,7 @@ class TestSoggettiCreate(TestCase):
                 "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1},
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
-        self.assertEqual(ctx.exception.context, {"field": "codice_fiscale"})
+        self.assertFalse(ctx.exception.context)
 
     @patch(SOGG_REPO, autospec=True)
     def test_create_soggetto_pf_senza_sesso_non_lo_inventa(self, mock_repo):
@@ -771,13 +773,14 @@ class TestSoggettiRuoli(TestCase):
         )
 
     @patch(SOGG_REPO, autospec=True)
-    def test_indirizzi_ruolo_pre_check_della_via_nuova(self, mock_repo):
-        """Una via nuova senza comune si ferma prima di scrivere, col messaggio
-        per l'operatore; un elemento che non e' un oggetto pure, e un elenco
-        che non e' una lista (era un TypeError, cioe' un 500)."""
+    def test_indirizzi_ruolo_contratto_dell_elemento(self, mock_repo):
+        """Un id della via non positivo si ferma prima di scrivere; un elemento
+        che non e' un oggetto pure, e un elenco che non e' una lista (era un
+        TypeError, cioe' un 500). La via nuova senza comune non si ferma qui:
+        la rifiuta `fn_create_indirizzo` col campo (§21.7, 2026-11-26)."""
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         for indirizzi in (
-            [{"tipo_indirizzo_codice_interno": "FATT", "toponomastica_id": 1, "descrizione_via": "Roma", "codice_postale_id": 3}],
+            [{"tipo_indirizzo_codice_interno": "FATT", "toponomastica_id": -1, "descrizione_via": "Roma", "codice_postale_id": 3}],
             ["FATT"],
             5,
             {"tipo_indirizzo_codice_interno": "FATT"},
@@ -865,16 +868,19 @@ class TestAutoCloneIndirizzi(TestCase):
         repo.crea_indirizzi_soggetto.assert_not_called()
 
     @patch(SOGG_REPO, autospec=True)
-    def test_via_nuova_incompleta_e_un_400_prima_della_madre(self, mock_sogg):
-        """Il pre-check per l'operatore (`indirizzo_per_madre`) resta: una via
-        nuova senza i suoi campi non arriva al DB."""
+    def test_id_della_via_non_positivo_e_un_400_prima_della_madre(self, mock_sogg):
+        """Il contratto degli id della via (`indirizzo_per_madre`) resta: un id
+        <= 0 non arriva al DB. La completezza della via nuova invece la giudica
+        il DB, col campo (§21.7, 2026-11-26): un elemento senza i suoi campi
+        arriva alla madre."""
         repo = self._repo(mock_sogg)
         from apps.anagrafiche.services.soggetti_service import SoggettiService
-        with self.assertRaises(ServiceError):
+        with self.assertRaises(ServiceError) as ctx:
             SoggettiService().create_soggetto({
                 **self._PAYLOAD,
-                "indirizzi": [{"tipo_indirizzo_codice_interno": "RESID", "civico": 1}],
+                "indirizzi": [{"tipo_indirizzo_codice_interno": "RESID", "comune_id": 0, "civico": 1}],
             })
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         repo.crea_indirizzi_soggetto.assert_not_called()
 
     @patch(SOGG_REPO, autospec=True)

@@ -560,6 +560,10 @@ class AmmSoftwareService:
     # Scopo: Cambia lo scope emittenti dell'operatore (Fase 2 multi-face).
     # Contract pubblico:
     #   {scope_mode: 'GLOBAL'|'SINGLE', emittenti_ids: list[int]}
+    # ⭐ GLOBAL per chi non e' SUPER_ADMIN lo rifiuta il DB
+    #    (`E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`, 409, giro 10-ter): la
+    #    `DatabaseError` risale e la traduce il middleware dal codice
+    #    strutturato. Non si mappa qui una seconda volta.
     #
     # Validazione lato service:
     #   - scope_mode in {GLOBAL, SINGLE} (no MULTI: rejection esplicita).
@@ -700,16 +704,21 @@ class AmmSoftwareService:
     # se post Q2 puo' avere al massimo 1 elemento): GLOBAL -> [],
     # SINGLE -> [emittente_id]. Manteniamo l'array per non vincolare
     # l'eventuale futura riapertura di MULTI lato API.
+    # ⛔ I ripieghi, se la fn non risponde, dicono SINGLE e non GLOBAL
+    #    (giro 10-ter di brief-db-porte-aperte-dalla-sola-guc, D-AA a,
+    #    2026-11-26): «tutti gli emittenti» vale solo per un SUPER_ADMIN, e
+    #    una risposta mancante non lo puo' concedere. Il DB stesso risponde
+    #    SINGLE senza emittente all'operatore che non ne ha uno.
     def get_emittenti_scope(self, auth_user_id: int) -> dict[str, Any]:
         self.get_operatore(auth_user_id)  # verifica esistenza
         row = self._repo.get_user_emittenti_scope(auth_user_id) or {}
         emittente_id = row.get("emittente_id")
         emittenti_ids = [emittente_id] if emittente_id is not None else []
         return {
-            "scope_mode": row.get("scope_mode") or _SCOPE_MODE_GLOBAL,
+            "scope_mode": row.get("scope_mode") or _SCOPE_MODE_SINGLE,
             "emittenti_ids": emittenti_ids,
             "emittente_descrizione": row.get("emittente_descrizione"),
-            "allowed_scope_modes": list(row.get("allowed_scope_modes") or [_SCOPE_MODE_GLOBAL, _SCOPE_MODE_SINGLE]),
+            "allowed_scope_modes": list(row.get("allowed_scope_modes") or [_SCOPE_MODE_SINGLE]),
             "can_change_scope": bool(row.get("can_change_scope", True)),
             "change_scope_reason": row.get("change_scope_reason"),
         }

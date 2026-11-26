@@ -39,7 +39,7 @@ from apps.anagrafiche.services._validators import (
     update_with_dedup,
 )
 from apps.anagrafiche.services.cf_validator_it import genera_cf_it, valida_cf_congruenza_it
-from apps.anagrafiche.services.geo_service import richiedi_via
+from apps.anagrafiche.services.geo_service import richiedi_id_via_positivi
 from apps.anagrafiche.services.contatti_service import (
     VINCOLI_CONTATTO,
     crea_contatto_validato,
@@ -97,8 +97,11 @@ _UPDATE_SOGGETTO_KEYS: frozenset[str] = (
 # verbo non distingue «non toccare» da «svuota» (B-2, team DB).
 _DATI_SOCIETARI_KEYS: frozenset[str] = DATI_SOCIETARI_COLS
 _MSG_REA_DUPLICATA = "Iscrizione REA gia' presente per un altro soggetto."
-_MSG_PG_CF_PIVA_DUPLICATA = "Soggetto PG con CF/PIVA duplicata."
-_MSG_PF_CF_DUPLICATO = "Soggetto con questo codice fiscale gia' esistente."
+# Il ripiego delle due porte di creazione per un'unicita' che la mappa non
+# riconosce. ⚠️ Non dice «CF duplicato»: il doppione dell'identificativo NON
+# arriva piu' come `23505`, lo traducono le porte in `E_ADMIN_CF_DUPLICATO` col
+# campo (2026-11-26, brief-db-revisione-anagrafiche §20.7).
+_MSG_SOGGETTO_DUPLICATO = "Soggetto non creato: un dato e' gia' presente in anagrafica."
 # Il REA duplicato di un ALTRO soggetto (`uq_ds_prov_cea`), col campo da
 # accendere: lo stesso vincolo per le tre strade che scrivono la sezione — la
 # PATCH col verbo e le due porte di creazione.
@@ -125,11 +128,13 @@ _MOTIVI_CAMBIO_NATURA_KEYS: frozenset[str] = frozenset({
 # Scopo: UN indirizzo nella forma che le madri del DB ricevono
 #        (`fn_crea_indirizzo_soggetto`, `fn_crea_indirizzi_ruolo`, e attraverso
 #        lei `fn_crea_fornitore` e `fn_crea_cliente`: la stessa grammatica,
-#        `fn_indirizzo_elemento`), coi pre-check per l'operatore: un elemento
-#        che non e' un oggetto, i campi di una via nuova (`richiedi_via`). Le
-#        stringhe vuote e i null valgono assenti (null_vs_empty). La forma
-#        dell'indirizzo LIBERO non si ripete qui: la giudica il guard della
-#        tabella (`trgfn_indirizzi_guard_forma_libera`), col campo.
+#        `fn_indirizzo_elemento`), coi soli controlli di contratto: un elemento
+#        che non e' un oggetto, gli id della via non positivi
+#        (`richiedi_id_via_positivi`). Le stringhe vuote e i null valgono
+#        assenti (null_vs_empty). La FORMA dell'elemento e la completezza della
+#        via nuova non si ripetono qui (§21.7, 2026-11-26): le giudicano il
+#        guard della tabella (`trgfn_indirizzi_guard_forma_libera`) e
+#        `fn_create_indirizzo`, col campo.
 def indirizzo_per_madre(ind: Any) -> dict[str, Any]:
     ErrorManager.require(
         isinstance(ind, dict),
@@ -140,8 +145,7 @@ def indirizzo_per_madre(ind: Any) -> dict[str, Any]:
         k: v for k, v in ind.items()
         if v is not None and not (isinstance(v, str) and not v.strip())
     }
-    if not pulito.get("indirizzo_libero") and not pulito.get("indirizzo_dettaglio_id"):
-        richiedi_via(pulito)
+    richiedi_id_via_positivi(pulito)
     return pulito
 
 
@@ -1220,15 +1224,11 @@ class SoggettiService:
                 partita_iva=optional_str(payload, "partita_iva"),
                 dati_societari=dati_societari,
             ),
-            # Per una persona fisica l'identificativo fiscale univoco e' il
-            # codice fiscale: il duplicato accende quel campo.
-            {
-                "uq_soggetto_idstato_id_fiscale_univoco": (
-                    _MSG_PF_CF_DUPLICATO, "codice_fiscale",
-                ),
-                **_VINCOLO_REA_DUPLICATA,
-            },
-            default_message=_MSG_PF_CF_DUPLICATO,
+            # ⚠️ Il doppione del codice fiscale non e' qui: lo traduce
+            #    `fn_crea_soggetto_pf` in `E_ADMIN_CF_DUPLICATO`, campo
+            #    `codice_fiscale` (§20.7). Resta il REA dei dati societari.
+            _VINCOLO_REA_DUPLICATA,
+            default_message=_MSG_SOGGETTO_DUPLICATO,
         )
 
         self._update_contatto_default(soggetto_id, contatto,
@@ -1264,11 +1264,11 @@ class SoggettiService:
             #    duplicato (`uq_ds_prov_cea`, dentro `fn_scrivi_dati_societari`)
             #    fino al 2026-10-11 usciva come «CF/PIVA duplicata». Il DB dice
             #    quale vincolo e' violato: lo si legge, come in modifica.
-            {
-                "uq_soggetto_idstato_id_fiscale_univoco": _MSG_PG_CF_PIVA_DUPLICATA,
-                **_VINCOLO_REA_DUPLICATA,
-            },
-            default_message=_MSG_PG_CF_PIVA_DUPLICATA,
+            # ⚠️ Il doppione di CF e P.IVA non e' qui: lo traduce
+            #    `fn_crea_soggetto_pg` in `E_ADMIN_CF_DUPLICATO`, campo
+            #    `partita_iva` se passata, altrimenti `codice_fiscale` (§20.7).
+            _VINCOLO_REA_DUPLICATA,
+            default_message=_MSG_SOGGETTO_DUPLICATO,
         )
 
         self._update_contatto_default(soggetto_id, contatto,

@@ -17,6 +17,21 @@ Post-cutover multi-face il check ADMIN delega a `PermissionResolver.is_super_adm
 (binding `SUPER_ADMIN` su `config.profili_accesso_bindings`, profilo seed id 9100).
 L'endpoint lista utenti ha throttling search attivo (`is_search_endpoint = True`).
 
+⛔ **I gesti che danno l'accesso li chiede anche il DB al SUPER_ADMIN** (giro 10-bis di
+`brief-db-porte-aperte-dalla-sola-guc` §14, 2026-11-26): creare un operatore
+(`anagrafiche.fn_crea_operatore`), dargli o togliergli il SUPER_ADMIN
+(`config.fn_lega_profilo_identita` / `fn_slega_profilo_identita`), scrivere il profilo di un
+reparto e legarlo (`config.fn_scrivi_profilo_accesso`, `config.fn_lega_profilo_reparto`), creare
+l'utente tecnico di un processo (`script.fn_crea_utente_tecnico`) e cambiare lo scope
+(`script.fn_change_user_emittenti_scope`). Sono verbi `SECURITY DEFINER` col guard del SUPER_ADMIN
+in prima riga: un contesto che non lo e' riceve `E_PERMESSO_NEGATO`, anche arrivando al DB per
+un'altra strada. E' la stessa regola di `AdminAPIView`, quindi dagli endpoint nessun rifiuto
+nuovo. Le tabelle dei profili, dei loro legami e dello scope (`config.profili_accesso`,
+`profili_accesso_aree`, `profili_accesso_azioni`, `profili_accesso_bindings`,
+`config.user_emittenti_fiscali`) sono in **sola lettura** per l'app: si scrivono solo dai verbi.
+Un test sul DB vero che ne ha bisogno come fixture usa i builder `dbops.fn_pgtap_*` o
+`apri_super_admin_costruito`, mai un `INSERT` diretto.
+
 Le risposte seguono l'envelope standard `{ "data": {...}, "meta": {...} }`.
 
 Base URL: `/api/v1/amm-software/`
@@ -142,7 +157,9 @@ curl -H "Authorization: Bearer <token>" \
 
 Crea un nuovo operatore completo: credenziale, soggetto persona fisica, risorsa
 umana e veste `OPERATORE`. La creazione e' orchestrata dalla funzione DB
-`anagrafiche.fn_crea_operatore`.
+`anagrafiche.fn_crea_operatore`, che dal 2026-11-26 chiede il SUPER_ADMIN della
+sessione (vedi «Contesto»). Binding e permesso sono provati sul DB vero in
+`amm_software/tests/db/test_crea_operatore_db.py`.
 
 **Contract Fase 1 multi-face**: il payload accetta `is_super_admin` (booleano).
 Il campo legacy `ruolo_sistema` e' **rifiutato** con `E_AMM_VALIDAZIONE`.
@@ -388,6 +405,9 @@ flag sono ortogonali, e nessuno dei due si traduce in `ruolo_sistema`:
 - `is_super_admin: true` su un accesso che ha gia' un altro profilo legato
   (un'identita' ne lega uno solo) → 400 `E_AMM_VALIDAZIONE`, `field:
   is_super_admin`: va tolto prima quel profilo.
+- `is_super_admin` lega e slega con `config.fn_lega_profilo_identita` /
+  `fn_slega_profilo_identita`, che chiedono il SUPER_ADMIN della sessione
+  (vedi «Contesto»).
 - ⛔ `attivo: true` su una veste spenta (disabilitata, o mai attivata) viene
   rifiutato con `E_AMM_VALIDAZIONE` (HTTP 400, `field: attivo`), senza
   scrivere niente (D-3, 2026-10-04): l'accesso si riattiva col reinvio
@@ -911,10 +931,10 @@ Sorgente: `script.fn_get_user_emittenti_scope(p_auth_user_id)`. Single-row.
 
 | Campo | Tipo | Descrizione |
 |---|---|---|
-| `scope_mode` | enum | `GLOBAL` (vede tutti gli emittenti) o `SINGLE` (vede solo `emittenti_ids[0]`). `MULTI` chiuso architetturalmente post Q2 (`UNIQUE(auth_user_id)` su `config.user_emittenti_fiscali`) |
-| `emittenti_ids` | array[int] | `[]` se GLOBAL, `[id]` se SINGLE. Array per simmetria payload (preparazione futura) |
-| `emittente_descrizione` | string \| null | Descrizione emittente quando SINGLE; NULL se GLOBAL |
-| `allowed_scope_modes` | array[string] | Sempre `["GLOBAL", "SINGLE"]` post Q2. Il FE mostra solo i radio ammessi |
+| `scope_mode` | enum | `GLOBAL` (vede tutti gli emittenti, **solo un SUPER_ADMIN**) o `SINGLE` (vede solo `emittenti_ids[0]`). Un operatore che non e' SUPER_ADMIN e non ha emittente risponde `SINGLE` con `emittenti_ids: []`: e' «non assegnato» e non vede nessun dato. `MULTI` chiuso architetturalmente post Q2 (`UNIQUE(auth_user_id)` su `config.user_emittenti_fiscali`) |
+| `emittenti_ids` | array[int] | `[]` se GLOBAL o non assegnato, `[id]` se SINGLE. Array per simmetria payload (preparazione futura) |
+| `emittente_descrizione` | string \| null | Descrizione emittente quando SINGLE; NULL se GLOBAL o non assegnato |
+| `allowed_scope_modes` | array[string] | `["GLOBAL", "SINGLE"]` per un SUPER_ADMIN, `["SINGLE"]` per ogni altro operatore (giro 10-ter, 2026-11-26). Il FE mostra solo i radio ammessi. Se la funzione non risponde, il service ripiega su `SINGLE` / `["SINGLE"]`: un ripiego non concede GLOBAL |
 | `can_change_scope` | bool | False sse l'operatore e' SUPER_ADMIN e l'unico attivo (delega a `fn_check_ultimo_super_admin_attivo`). Preview UX, non garanzia |
 | `change_scope_reason` | string \| null | Motivo it-IT free-form quando `can_change_scope=false` |
 
@@ -952,6 +972,11 @@ curl -H "Authorization: Bearer <token>" \
 **Regole:**
 
 - `GLOBAL`: `emittenti_ids` viene ignorato e normalizzato a `[]` lato service.
+  **Vale solo per un SUPER_ADMIN** (giro 10-ter di `brief-db-porte-aperte-dalla-sola-guc`, D-AA a,
+  2026-11-26): per ogni altro operatore il DB rifiuta con `E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`
+  (HTTP 409, `show_error_banner`), perche' senza emittente non vedrebbe nessun dato. Il codice risale
+  come errore del DB e lo traduce il middleware dalla policy generata: il service non lo rimappa.
+  Prova sul DB vero: `amm_software/tests/db/test_emittenti_scope_db.py`.
 - `SINGLE`: `emittenti_ids` deve contenere esattamente 1 int positivo.
 - **Guard ultimo super admin**: integrato nella fn DB
   `fn_change_user_emittenti_scope`. Se l'operatore e' SUPER_ADMIN globale e
@@ -969,7 +994,7 @@ curl -H "Authorization: Bearer <token>" \
 **Risposta:** stesso shape del GET §2.5 con i valori post-change (rilettura
 da `fn_get_user_emittenti_scope` per consistenza).
 
-**Esempio curl — cambio a GLOBAL:**
+**Esempio curl — cambio a GLOBAL** (l'utente 1 dev'essere un SUPER_ADMIN):
 
 ```bash
 curl -X PUT -H "Authorization: Bearer <token>" \
@@ -1311,7 +1336,9 @@ replace). Invalida la cache permessi di **tutti gli operatori** del reparto.
 - `uo_id` inesistente → 400 `E_AMM_VALIDAZIONE` («Reparto inesistente»).
 - Il profilo (tipo `REPARTO`, codice `REPARTO_<codice_interno>`) si scrive con
   `config.fn_scrivi_profilo_accesso` e si lega al reparto con
-  `config.fn_lega_profilo_reparto`; `attivo` del profilo segue il reparto.
+  `config.fn_lega_profilo_reparto`; `attivo` del profilo segue il reparto. Tutti e
+  due chiedono il SUPER_ADMIN della sessione (vedi «Contesto»): scrivere il contenuto
+  di un profilo e' dare poteri, come legarlo.
 - La modifica impatta tutti gli operatori che appartengono al reparto
 - La cache permessi viene invalidata per l'intero reparto (`invalidate_department`)
 

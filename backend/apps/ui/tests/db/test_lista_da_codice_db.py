@@ -180,8 +180,15 @@ class UtenteDiSessioneDbTests(unittest.TestCase):
     # protetta, da operatore con la GUC sporca, da' il codice invece del 22P02.
     # ⚠️ `app.ruolo_applicativo` = OPERATORE: e' il ramo della policy che legge
     #    l'utente. Solo SELECT, in transazione annullata.
+    # ⛔ Il cliente si FABBRICA: la policy si valuta riga per riga, e su una
+    #    tabella vuota (il DB della CI nasce dal solo seed) la SELECT non la
+    #    chiama mai e il rifiuto atteso non arriva. Il builder del mondo va
+    #    PRIMA del ruolo operatore, come nei pgTAP: senza contesto si sceglie
+    #    l'azienda da se'.
     def test_lettura_rls_con_guc_non_valida(self) -> None:
         with connection.cursor() as cur:
+            cur.execute("SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('GUC NON VALIDA', 'GNV')")
+            self.assertIsNotNone(cur.fetchone())
             cur.execute("SELECT set_config('app.ruolo_applicativo', 'OPERATORE', true)")
 
         def leggi() -> None:

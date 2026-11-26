@@ -79,11 +79,13 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   const riepilogoAree = ref([])
   // Fase 2 multi-face: shape dichiarativo da fn DB
   // `script.fn_get_user_emittenti_scope`. Sostituisce la vecchia lista grezza.
+  // ⛔ Il valore di partenza non concede GLOBAL: vale solo per un SUPER_ADMIN,
+  //    e lo dice la risposta del BE (giro 10-ter, D-AA a, 2026-11-26).
   const emittentiScope = ref({
-    scope_mode: 'GLOBAL',
+    scope_mode: 'SINGLE',
     emittenti_ids: [],
     emittente_descrizione: null,
-    allowed_scope_modes: ['GLOBAL', 'SINGLE'],
+    allowed_scope_modes: ['SINGLE'],
     can_change_scope: true,
     change_scope_reason: null,
   })

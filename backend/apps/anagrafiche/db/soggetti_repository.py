@@ -554,7 +554,10 @@ class SoggettiRepository:
 
     # Scopo: Aggiorna campi modificabili di un soggetto.
     # Normalizza stringhe vuote a NULL per evitare conflitti con trigger
-    # che controllano IS NOT NULL (es. partita_iva, codice_fiscale).
+    # che controllano IS NOT NULL.
+    # ⛔ CF e P.IVA NON si normalizzano qui (2026-11-26, brief-db-revisione-
+    #    anagrafiche §20.7): maiuscole, spazi e vuoto → NULL li fa il DB da ogni
+    #    strada (`trgfn_soggetti_normalize`). Qui sarebbe una seconda sede.
     # ⛔ Dal 2026-09-26 la scrittura passa dal BB `execute_dynamic_update`, con
     #    whitelist RIGIDA: una chiave fuori `SOGGETTO_UPDATE_COLS` (dopo l'alias)
     #    e' `RuntimeError`, non piu' uno scarto silenzioso. Il contratto
@@ -568,7 +571,7 @@ class SoggettiRepository:
         #    il service prima di arrivare qui.
         # `sesso` (2026-10-09): il vuoto e' «non indicato», cioe' NULL — per la
         #    DI e' ammesso; `''` lo rifiuterebbe il CHECK `chk_soggetti_sesso`.
-        _NULLABLE = {"codice_fiscale", "partita_iva", "sesso", "data_nascita", "comune_id"}
+        _NULLABLE = {"sesso", "data_nascita", "comune_id"}
         # Copia con l'alias frontend → colonna DB applicato: `data` e' spesso
         # `request.data`, e non si muta l'input del chiamante.
         mapped = {SOGGETTO_UPDATE_ALIAS.get(k, k): v for k, v in data.items()}

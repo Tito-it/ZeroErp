@@ -358,11 +358,15 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
     def test_upsert_permesso_audit_dal_trigger(self) -> None:
         # Il profilo si FABBRICA: «il primo che c'e'» dipendeva dai seed e,
         # su un DB senza profili, saltava il test in silenzio.
+        # ⛔ Dal builder, non con un INSERT: le tabelle dei profili sono in sola
+        #    lettura per l'app (giro 10-bis, brief-db-porte-aperte-dalla-sola-guc
+        #    §14). Il builder chiama il verbo vero da un SUPER_ADMIN di fixture e
+        #    rimette il contesto di prima, quindi `app.jwt_user` resta l'attore.
         with connection.cursor() as cur:
             cur.execute(
-                "INSERT INTO config.profili_accesso (tipo, codice, descrizione) "
-                "VALUES ('AD_HOC', 'TEST_BE11_AUDIT', 'Profilo del test BE11') "
-                "RETURNING id",
+                "SELECT dbops.fn_pgtap_scrivi_profilo_accesso("
+                "'AD_HOC'::config.tipo_profilo_accesso, 'TEST_BE11_AUDIT', "
+                "'Profilo del test BE11', NULL, NULL, '{}'::jsonb)",
             )
             profilo_id = int(cur.fetchone()[0])
         permesso_id = self.repo.upsert_permesso(
