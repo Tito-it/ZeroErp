@@ -1,5 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: il test collauda il guard dell'ultimo SUPER_ADMIN spegnendo legami
+--   e vesti a mano, cosa che nessun verbo offre:
+--   dal giro 10-bis le tabelle che danno l'accesso (scope, legami e contenuto dei
+--   profili) sono in sola lettura per l'app, e le scrivono solo i verbi del SUPER_ADMIN
+--   (brief-db-porte-aperte-dalla-sola-guc §14, giro 10-bis, 2026-11-26).
+--   Il legame di fixture passa dalla primitiva config.fn_applica_lega_profilo_identita.
 -- pgTAP test per Zero ERP
 --
 -- Test: guard anti-lockout ultimo SUPER_ADMIN (13.3.6 WIP multi-face-auth)
@@ -72,7 +79,7 @@ BEGIN
                'pgTAP-SA-lockout-' || substring(md5(clock_timestamp()::text || random()::text) FROM 1 FOR 8),
                false) ou;
 
-    bind_id := config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), id_id);
+    bind_id := config.fn_applica_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), id_id);
 END
 $$;
 

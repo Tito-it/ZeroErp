@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_auth_user`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -57,6 +57,13 @@ poi se la credenziale apre la porta sono le sue vesti: quando nasce la prima ves
 `anagrafiche.identita_digitali` riallineano la credenziale alla regola «accesa se almeno una veste è utilizzabile».
 Così una credenziale creata per un operatore, che nasce con la veste spenta, è spenta prima della fine della
 stessa istruzione.
+
+---
+
+### ⛔ Chi la esegue
+
+Solo il proprietario: è un passo interno della creazione dell'operatore, e l'applicazione non ha `EXECUTE`, e
+nemmeno `PUBLIC`. La chiama la primitiva `anagrafiche.fn_applica_crea_operatore`, dietro il verbo del SUPER_ADMIN.
 
 ---
 

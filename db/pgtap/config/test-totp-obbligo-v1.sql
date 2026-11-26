@@ -98,9 +98,11 @@ SELECT is(pg_temp.obbligo((SELECT max(id) + 1000 FROM django.auth_user)), 'false
 -- ============================================================
 -- 7-8 Il profilo
 -- ============================================================
-INSERT INTO config.profili_accesso (tipo, codice, descrizione, richiede_secondo_fattore)
-VALUES ('AD_HOC', '_PGTAP_TOTP_' || substring(md5(clock_timestamp()::text) from 1 for 8),
-        'pgTAP: profilo privilegiato', true);
+-- ⚠️ Il contesto qui e' il SUPER_ADMIN (pg_temp.agisci del test 3): il profilo, il
+--   legame e il suo ritiro passano dai verbi, perche' dal giro 10-bis le tabelle dei
+--   profili sono in sola lettura per l'app.
+SELECT config.fn_scrivi_profilo_accesso('AD_HOC', '_PGTAP_TOTP_' || substring(md5(clock_timestamp()::text) from 1 for 8),
+        'pgTAP: profilo privilegiato', NULL, NULL, '{"richiede_secondo_fattore": true}'::jsonb);
 CREATE TEMP TABLE _p AS
 SELECT max(id) AS profilo_id FROM config.profili_accesso WHERE codice LIKE '\_PGTAP\_TOTP\_%';
 
@@ -109,11 +111,9 @@ DO $lega$ BEGIN PERFORM config.fn_lega_profilo_identita((SELECT profilo_id FROM 
 SELECT is(pg_temp.obbligo((SELECT auth_user_id FROM _u)), 'true|PROFILO',
     '7) un profilo col segno legato all''identita'': PROFILO');
 
-UPDATE config.profili_accesso_bindings
-   SET attivo = false
- WHERE identita_digitale_id = (SELECT identita_id FROM _u);
+SELECT config.fn_slega_profilo_identita((SELECT profilo_id FROM _p), (SELECT identita_id FROM _u));
 SELECT is(pg_temp.obbligo((SELECT auth_user_id FROM _u)), 'false|NULL',
-    '8) spento il binding, l''obbligo se ne va: segue i binding');
+    '8) tolto il binding, l''obbligo se ne va: segue i binding');
 
 -- ============================================================
 -- 9-14 Il SUPER_ADMIN
@@ -142,11 +142,16 @@ SELECT is(pg_temp.obbligo((SELECT auth_user_id FROM _sa)), 'true|CREDENZIALE',
 -- ============================================================
 -- 15 Il vincolo
 -- ============================================================
+-- ⚠️ Dal verbo, da SUPER_ADMIN (pg_temp.agisci del test 12): l'app non scrive piu' la
+--   tabella, e il vincolo parla dalla primitiva.
 SELECT throws_ok(
-    $$ UPDATE config.profili_accesso SET richiede_secondo_fattore = false
-        WHERE tipo = 'SUPER_ADMIN' $$,
+    $$ SELECT config.fn_scrivi_profilo_accesso(
+           'SUPER_ADMIN', pa.codice, pa.descrizione, NULL, NULL,
+           '{"richiede_secondo_fattore": false}'::jsonb)
+         FROM config.profili_accesso pa
+        WHERE pa.tipo = 'SUPER_ADMIN' AND pa.attivo $$,
     '23514', NULL,
-    '15) il segno sul profilo SUPER_ADMIN non si spegne (CHECK)');
+    '15) il segno sul profilo SUPER_ADMIN non si spegne (CHECK), nemmeno dal verbo');
 
 SELECT * FROM finish();
 ROLLBACK;

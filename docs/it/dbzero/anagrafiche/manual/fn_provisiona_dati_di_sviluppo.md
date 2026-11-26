@@ -76,7 +76,9 @@ etichetta, la funzione si ferma con `E_RADICE_DI_PROVA_SENZA_ETICHETTA`. L'etich
 fissato.
 
 Gli oggetti li scrive solo attraverso i building block e le madri dei rispettivi domini; suoi sono soltanto le
-etichette e la password di una credenziale rimessa a posto.
+etichette e la password di una credenziale rimessa a posto. Dove la madre è un verbo che chiede il SUPER_ADMIN
+(l'operatore, il profilo, il legame, lo scope), chiama la sua primitiva: il comando del backend la lancia senza un
+utente in sessione, e il verbo si fermerebbe.
 
 ---
 

@@ -147,6 +147,8 @@ search:
 
 ## ⚙️ Funzioni
 - [fn_accoda_email_sistema](funzioni/fn_accoda_email_sistema.md)
+- [fn_applica_lega_profilo_identita](funzioni/fn_applica_lega_profilo_identita.md) — Lega un'identità digitale a un profilo di accesso e ritorna l'id del legame. Ha le regole del legame, ma **non chiede permessi**: è la primitiva sotto il verbo [fn_lega_profilo_identita](/dbzero/config/funzioni/fn_lega_profilo_identita), che chiede il SUPER_ADMIN.
+- [fn_applica_scrivi_profilo_accesso](funzioni/fn_applica_scrivi_profilo_accesso.md) — Scrive un profilo di accesso per codice: lo crea, o ne aggiorna descrizione e campi; poi ne sostituisce le aree e le azioni se il chiamante le indica. Ritorna l'id. Ha le regole del profilo, ma **non chiede permessi**: è la primitiva sotto il verbo [fn_scrivi_profilo_accesso](/dbzero/config/funzioni/fn_scrivi_profilo_accesso), che chiede il SUPER_ADMIN.
 - [fn_chiudi_email_sistema](funzioni/fn_chiudi_email_sistema.md)
 - [fn_cleanup_token_scaduti](funzioni/fn_cleanup_token_scaduti.md) — Pulizia periodica dei token monouso scaduti o gia' utilizzati. Pensata per esecuzione automatica come job pgAgent notturno, elimina i record che non hanno piu' utilita' operativa.
 - [fn_get_aliquota_iva](funzioni/fn_get_aliquota_iva.md) — (latest review 10-02-2026)   La funzione **`config.fn_get_aliquota_iva()`** restituisce l’aliquota IVA applicando l’eventuale override definito in `config.iva_stati` per lo Stato specificato.

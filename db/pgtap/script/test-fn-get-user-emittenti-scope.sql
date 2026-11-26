@@ -1,5 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture spegne i legami SUPER_ADMIN che il database ha:
+--   dal giro 10-bis le tabelle che danno l'accesso (scope, legami e contenuto dei
+--   profili) sono in sola lettura per l'app, e le scrivono solo i verbi del SUPER_ADMIN
+--   (brief-db-porte-aperte-dalla-sola-guc §14, giro 10-bis, 2026-11-26).
+--   I soggetti del test sono funzioni di lettura delle tabelle di config, che
+--   non hanno RLS: il ruolo di connessione non cambia cio' che misurano.
 -- pgTAP test per Zero ERP
 --
 -- Test: script.fn_get_user_emittenti_scope(p_auth_user_id)
@@ -57,7 +64,7 @@ SELECT 'SA2'    AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore(p_person
 --   non e' l'ultimo SA», e su un database ricostruito dai changelog di super
 --   admin non ce n'e' nessuno — senza questa riga il caso «multi» non esiste e
 --   il test 5 misurerebbe il caso «single» con l'etichetta sbagliata.
-DO $lega$ BEGIN PERFORM config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), (SELECT identita_id FROM _mondi WHERE lato = 'SA2')); END $lega$;
+DO $lega$ BEGIN PERFORM config.fn_applica_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), (SELECT identita_id FROM _mondi WHERE lato = 'SA2')); END $lega$;
 
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
@@ -82,7 +89,7 @@ BEGIN
       FROM _mondi m
      WHERE m.lato = 'SA';
 
-    bind_id := config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), id_id);
+    bind_id := config.fn_applica_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), id_id);
 END
 $$;
 

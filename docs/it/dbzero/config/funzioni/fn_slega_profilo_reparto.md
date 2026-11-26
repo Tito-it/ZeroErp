@@ -4,7 +4,7 @@
 CREATE FUNCTION fn_slega_profilo_reparto(p_profilo_accesso_id integer, p_unita_organizzativa_id integer)
 ```
 
-> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
 
 **Definizione completa:**
 
@@ -14,10 +14,17 @@ CREATE FUNCTION fn_slega_profilo_reparto(p_profilo_accesso_id integer, p_unita_o
 CREATE OR REPLACE FUNCTION config.fn_slega_profilo_reparto(p_profilo_accesso_id integer, p_unita_organizzativa_id integer)
  RETURNS integer
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
+    v_utente config.user_emittenti_fiscali.auth_user_id%TYPE;
     v_tolti integer;  -- un conteggio: nessuna colonna di cui sia il riflesso
 BEGIN
+    -- Il permesso, prima di ogni altra cosa.
+    v_utente := script.fn_utente_di_sessione('config.fn_slega_profilo_reparto');
+    PERFORM script.fn_guard_super_admin(v_utente);
+
     -- =========================================================
     -- Scopo:
     --   Togliere il binding di un reparto da quel profilo di
@@ -48,7 +55,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION config.fn_slega_profilo_reparto(p_profilo_accesso_id integer, p_unita_organizzativa_id integer)
-IS 'MADRE (2026-10-19): toglie il binding di un reparto (unita'' organizzativa) da QUEL profilo di accesso; ritorna quanti binding ha tolto, 0 se non ce n''era (idempotente). Il contrario di config.fn_lega_profilo_reparto, gemella di config.fn_slega_profilo_identita. Nasce con la madre che lega, prima che qualcuno ne abbia bisogno: senza, il primo scrittore farebbe un DELETE suo. Argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Non controlla il permesso (backend). INVOKER. R-BE-7, D-16c di Tid, brief-db-processi-accensione-per-ambiente §6.16.';
+IS 'Il verbo con cui il SUPER_ADMIN toglie il legame di un reparto (unità organizzativa) da quel profilo di accesso; ritorna quanti legami ha tolto, 0 se non ce n''era. SECURITY DEFINER: in prima riga chiede il SUPER_ADMIN all''utente di sessione (script.fn_guard_super_admin: E_PERMESSO_NEGATO, anche senza utente). Argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Il contrario di config.fn_lega_profilo_reparto. config.profili_accesso_bindings è in sola lettura per l''applicazione.';
 ```
 
 </div>

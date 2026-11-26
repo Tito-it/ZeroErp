@@ -68,11 +68,17 @@ SELECT o.auth_user_id AS user_id, o.identita_id
   FROM dbops.fn_pgtap_crea_operatore_umano('invitabile', false) o;
 
 -- Una credenziale NUDA: nessuna identita'.
-CREATE TEMP TABLE tmp_nuda AS
-SELECT anagrafiche.fn_crea_auth_user(
-           p_username      := '_pgtap_inv_nuda_' || substring(md5(clock_timestamp()::text) from 1 for 8),
-           p_email         := '_pgtap_inv_nuda_' || substring(md5(clock_timestamp()::text) from 1 for 8) || '@example.com',
-           p_password_hash := '!') AS user_id;
+--   Diretta su django.auth_user: dal giro 10-bis anagrafiche.fn_crea_auth_user e'
+--   una primitiva chiusa all'app, e la credenziale nuda e' cio' che Django scrive.
+CREATE TEMP TABLE tmp_nuda (user_id integer);
+WITH n AS (
+    INSERT INTO django.auth_user (password, is_superuser, username, first_name, last_name,
+                                  email, is_staff, is_active, date_joined)
+    SELECT '!', false, '_pgtap_inv_nuda_' || s, '', '', '_pgtap_inv_nuda_' || s || '@example.com',
+           false, true, now()
+      FROM (SELECT substring(md5(clock_timestamp()::text) from 1 for 8) AS s) x
+    RETURNING id)
+INSERT INTO tmp_nuda (user_id) SELECT id FROM n;
 
 -- ============================================================
 -- 1-3) Chiamate che non arrivano a nessuna credenziale
@@ -173,7 +179,7 @@ SELECT is(
 SET CONSTRAINTS ALL DEFERRED;
 CREATE TEMP TABLE tmp_madre AS
 SELECT m.auth_user_id AS user_id
-  FROM anagrafiche.fn_crea_operatore_v2(
+  FROM dbops.fn_pgtap_fixture_crea_operatore(
            p_cognome                      := 'Invito',
            p_nome                         := 'pgTAP',
            p_codice_fiscale               := dbops.fn_pgtap_cf_libero(),

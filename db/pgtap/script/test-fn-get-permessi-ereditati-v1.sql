@@ -1,5 +1,13 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture scrive a mano profili, aree, azioni e legami di reparto
+--   e per ruolo, alcuni dei quali nessun verbo scrive:
+--   dal giro 10-bis le tabelle che danno l'accesso (scope, legami e contenuto dei
+--   profili) sono in sola lettura per l'app, e le scrivono solo i verbi del SUPER_ADMIN
+--   (brief-db-porte-aperte-dalla-sola-guc §14, giro 10-bis, 2026-11-26).
+--   I soggetti del test sono funzioni di lettura delle tabelle di config, che
+--   non hanno RLS: il ruolo di connessione non cambia cio' che misurano.
 -- pgTAP test per Zero ERP
 --
 -- Test: l'EREDITATO dei permessi coincide con i resolver, perche' e' la loro
@@ -208,7 +216,7 @@ SELECT pg_temp.prof('R_' || u.sigla), u.uo_id, true
 
 DO $lega$
 BEGIN
-    PERFORM config.fn_lega_profilo_identita(pg_temp.prof('H_B'), o.identita_id) FROM _t_op o
+    PERFORM config.fn_applica_lega_profilo_identita(pg_temp.prof('H_B'), o.identita_id) FROM _t_op o
  WHERE o.sigla = 'B';
 END
 $lega$;

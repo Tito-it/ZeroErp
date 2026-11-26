@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzioni `config.fn_lega_profilo_reparto()`, `fn_slega_profilo_reparto()`, `fn_slega_profilo_identita()`
 
+> **Ultimo aggiornamento**: 26 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > [config.fn_lega_profilo_identita](/dbzero/config/manual/fn_lega_profilo_identita) — la gemella che lega le identità
@@ -38,7 +40,10 @@ un legame.
   per ogni scrittore;
 * coerenza fra tipo di profilo e bersaglio (reparto, identità) e notifica dei permessi: i
   controlli della tabella;
-* il permesso di chi chiama lo controlla il backend.
+* ⛔ **il permesso**: sono verbi `SECURITY DEFINER` col `search_path` fissato, e nella prima riga chiedono il
+  SUPER_ADMIN all'utente di sessione (`script.fn_guard_super_admin`): un altro operatore, o nessun utente, riceve
+  `E_PERMESSO_NEGATO`. È lo stesso controllo dell'endpoint. La tabella dei legami è in sola lettura per
+  l'applicazione, quindi questi verbi sono l'unica strada per cui un legame cambia.
 
 ---
 

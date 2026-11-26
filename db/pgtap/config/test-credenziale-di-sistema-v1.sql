@@ -16,7 +16,7 @@
 --   (dbops.fn_pgtap_crea_operatore_umano); la credenziale qualunque nasce in
 --   django.auth_user senza vesti (categoria ALTRO).
 --
--- Elenco test (plan 16):
+-- Elenco test (plan 13):
 --   La check (R-DB-A5)
 --    1) credenziale di sistema -> un motivo, CREDENZIALE_DI_SISTEMA, con codice e chiave
 --    2) credenziale qualunque -> '[]'
@@ -33,10 +33,9 @@
 --   11) spegnere l'obbligo passa (l'uscita)
 --   12) su una credenziale qualunque accenderlo passa ancora
 --   13) cancellare il device di una credenziale di sistema passa (il rimedio)
---   L'ultimo SUPER_ADMIN (cambia i binding: in fondo)
---   14) la check sull'ultimo SUPER_ADMIN -> ULTIMO_SUPER_ADMIN, chiave di sempre
---   15) la madre solleva quel motivo -> E_PROFILO_ULTIMO_SUPER_ADMIN
---   16) un'altra credenziale resta bloccabile: '[]'
+--   L'ultimo SUPER_ADMIN: in test-credenziale-di-sistema-ultimo-super-admin-v1.sql,
+--   col runner owner (dal giro 10-bis spegnere a mano i legami SUPER_ADMIN e' un
+--   gesto del solo proprietario, brief-db-porte-aperte-dalla-sola-guc §14).
 --
 -- ⚠️ Gira come l'APPLICAZIONE: i verbi sono DEFINER e leggono chi agisce dalla
 --   GUC, come in esercizio. Il ramo della sessione del migratore (D-1) e' in
@@ -46,7 +45,7 @@ BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(16);
+SELECT plan(13);
 
 -- ============================================================
 -- Fixture
@@ -158,37 +157,6 @@ SELECT is(
     (SELECT stato FROM script.fn_get_totp_device((SELECT auth_user_id FROM _tec))),
     'ASSENTE',
     '13) cancellare il device di una credenziale di sistema passa (D-2: il rimedio)');
-
--- ============================================================
--- 14-16 L'ultimo SUPER_ADMIN (cambia i binding: in fondo)
--- ============================================================
--- Spegne tutti i binding SUPER_ADMIN tranne quello del SA del test.
-UPDATE config.profili_accesso_bindings pab
-   SET attivo = false
-  FROM config.profili_accesso pa
- WHERE pa.id = pab.profilo_accesso_id
-   AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
-   AND pab.attivo = true
-   AND pab.identita_digitale_id <> (SELECT identita_id FROM _sa);
-
-SELECT is(
-    (SELECT format('%s|%s|%s|%s', jsonb_array_length(m), m -> 0 ->> 'codice',
-                   m -> 0 ->> 'reason', m -> 0 ->> 'reason_key')
-       FROM (SELECT script.fn_check_credenziale_bloccabile((SELECT auth_user_id FROM _sa)) AS m) x),
-    '1|E_PROFILO_ULTIMO_SUPER_ADMIN|ULTIMO_SUPER_ADMIN|amministrazione.accessi.blocca_reason.ultimo_super_admin',
-    '14) l''ultimo SUPER_ADMIN: ULTIMO_SUPER_ADMIN, con la chiave che il backend usava gia''');
-
-
-SELECT is(
-    dbops.fn_pgtap_codice_errore(
-        $$ SELECT script.fn_blocca_credenziale((SELECT auth_user_id FROM _sa), 'prova su me stesso') $$),
-    'E_PROFILO_ULTIMO_SUPER_ADMIN',
-    '15) la madre solleva il primo motivo: E_PROFILO_ULTIMO_SUPER_ADMIN');
-
-SELECT is(
-    script.fn_check_credenziale_bloccabile((SELECT auth_user_id FROM _op)),
-    '[]'::jsonb,
-    '16) un operatore qualunque resta bloccabile anche con un solo SUPER_ADMIN');
 
 SELECT * FROM finish();
 ROLLBACK;

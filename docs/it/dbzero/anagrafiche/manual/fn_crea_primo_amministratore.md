@@ -64,7 +64,8 @@ Per lo stesso motivo le colonne d'audit delle righe che nascono portano il propr
 
 ### Che cosa compone
 
-* `anagrafiche.fn_crea_operatore`, col soggetto nuovo (flusso A) e il SUPER_ADMIN: la credenziale, la persona
+* la primitiva `anagrafiche.fn_applica_crea_operatore`, cioè le regole del verbo `anagrafiche.fn_crea_operatore`
+  senza il suo permesso (qui un SUPER_ADMIN non c'è ancora), col soggetto nuovo (flusso A) e il SUPER_ADMIN: la credenziale, la persona
   privata, il rapporto, la veste spenta e il legame. Valgono tutti i suoi rifiuti; in particolare una credenziale che
   ha già quell'email si riusa solo col consenso (`p_riusa_auth_user_id` dev'essere la credenziale trovata), e la
   password passata allora è ignorata.

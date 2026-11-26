@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture scrive a mano un secondo profilo SUPER_ADMIN, che
+--   nessun verbo crea, e chiama diretta anagrafiche.fn_crea_risorsa_umana (riservata):
+--   dal giro 10-bis le tabelle che danno l'accesso (scope, legami e contenuto dei
+--   profili) sono in sola lettura per l'app, e le scrivono solo i verbi del SUPER_ADMIN
+--   (brief-db-porte-aperte-dalla-sola-guc §14, giro 10-bis, 2026-11-26).
 -- pgTAP test per Zero ERP
 --
 -- Il profilo di accesso SUPER_ADMIN si risolve in una sede sola (2026-10-18).

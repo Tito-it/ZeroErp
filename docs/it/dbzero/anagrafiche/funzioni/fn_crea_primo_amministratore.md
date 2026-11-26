@@ -75,11 +75,13 @@ BEGIN
     END IF;
 
     -- 3. L'operatore: flusso A, legame SUPER_ADMIN, veste spenta.
-    --    Gli indirizzi non passano di qui: fn_crea_operatore_v2 li
-    --    vuole come dettagli gia' risolti.
+    --    Dalla primitiva: qui non c'e' un SUPER_ADMIN in sessione, e il
+    --    verbo anagrafiche.fn_crea_operatore lo chiederebbe. Gli indirizzi
+    --    non passano di qui: la primitiva li vuole come dettagli gia'
+    --    risolti.
     SELECT o.auth_user_id, o.username, o.credenziale_riusata
       INTO v_auth_user_id, v_username, v_riusata
-      FROM anagrafiche.fn_crea_operatore_v2(
+      FROM anagrafiche.fn_applica_crea_operatore(
                p_cognome            := p_cognome,
                p_nome               := p_nome,
                p_codice_fiscale     := p_codice_fiscale,
@@ -116,7 +118,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_primo_amministratore(p_cognome text, p_nome text, p_codice_fiscale text, p_sesso character, p_email text, p_username text, p_password_hash text, p_indirizzo_residenza jsonb, p_indirizzo_domicilio_fiscale jsonb, p_data_nascita date, p_comune_nascita_id integer, p_riusa_auth_user_id integer)
-IS 'Crea il primo SUPER_ADMIN di un''installazione nuova, che entra subito: un operatore con soggetto privato (PR) nuovo, la qualifica AMMINISTRATORE (per codice_interno; E_CODICE se manca), il legame al profilo SUPER_ADMIN e la veste OPERATORE accesa, senza invito. Si apre solo se nessuna veste ha un legame verso un profilo SUPER_ADMIN, acceso o spento: altrimenti E_PRIMO_AMMINISTRATORE_GIA_PRESENTE. Un sistema che ha avuto un amministratore e lo ha perso non si riapre da qui: il recupero passa dal proprietario del database, con le scritture che migliorano la garanzia di script.fn_check_almeno_un_super_admin_attivo. La condizione si legge sotto LOCK TABLE config.profili_accesso_bindings IN SHARE ROW EXCLUSIVE MODE, che serializza la nascita di un legame da qualunque strada. SECURITY DEFINER e senza guard di permesso, perche'' non c''e'' ancora nessuno che possa averlo: la condizione e'' l''unica cosa che lo chiude. Compone anagrafiche.fn_crea_operatore_v2 (credenziale nuova, o riuso col consenso di p_riusa_auth_user_id; i suoi rifiuti valgono qui), anagrafiche.fn_crea_indirizzi_operatore (residenza e domicilio fiscale in jsonb, nella forma di fn_crea_indirizzo_soggetto, senza tipo; il domicilio fiscale che manca e'' la residenza) e anagrafiche.fn_accendi_veste. Quali indirizzi sono obbligatori lo dice la configurazione dei tipi d''indirizzo, col suo guard differito al COMMIT. Riceve l''hash Django della password: il database non lo calcola. Le colonne d''audit portano il proprietario: nessuna persona e'' autenticata. Ritorna TABLE(auth_user_id, username effettivo, credenziale_riusata), come fn_crea_operatore_v2.';
+IS 'Crea il primo SUPER_ADMIN di un''installazione nuova, che entra subito: un operatore con soggetto privato (PR) nuovo, la qualifica AMMINISTRATORE (per codice_interno; E_CODICE se manca), il legame al profilo SUPER_ADMIN e la veste OPERATORE accesa, senza invito. Si apre solo se nessuna veste ha un legame verso un profilo SUPER_ADMIN, acceso o spento: altrimenti E_PRIMO_AMMINISTRATORE_GIA_PRESENTE. Un sistema che ha avuto un amministratore e lo ha perso non si riapre da qui: il recupero passa dal proprietario del database, con le scritture che migliorano la garanzia di script.fn_check_almeno_un_super_admin_attivo. La condizione si legge sotto LOCK TABLE config.profili_accesso_bindings IN SHARE ROW EXCLUSIVE MODE, che serializza la nascita di un legame da qualunque strada. SECURITY DEFINER e senza guard di permesso, perche'' non c''e'' ancora nessuno che possa averlo: la condizione e'' l''unica cosa che lo chiude. Compone la primitiva anagrafiche.fn_applica_crea_operatore (credenziale nuova, o riuso col consenso di p_riusa_auth_user_id; i suoi rifiuti valgono qui), anagrafiche.fn_crea_indirizzi_operatore (residenza e domicilio fiscale in jsonb, nella forma di fn_crea_indirizzo_soggetto, senza tipo; il domicilio fiscale che manca e'' la residenza) e anagrafiche.fn_accendi_veste. Quali indirizzi sono obbligatori lo dice la configurazione dei tipi d''indirizzo, col suo guard differito al COMMIT. Riceve l''hash Django della password: il database non lo calcola. Le colonne d''audit portano il proprietario: nessuna persona e'' autenticata. Ritorna TABLE(auth_user_id, username effettivo, credenziale_riusata), come anagrafiche.fn_crea_operatore.';
 ```
 
 </div>

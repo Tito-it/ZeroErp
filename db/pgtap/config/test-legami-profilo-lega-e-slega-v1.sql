@@ -40,7 +40,10 @@ CREATE TEMP TABLE _op ON COMMIT DROP AS
 SELECT o.identita_id
   FROM dbops.fn_pgtap_crea_operatore_umano('pgTAP legami di profilo', false) o;
 
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- Il contesto e' un SUPER_ADMIN costruito: dal giro 10-bis il verbo sotto prova lo
+-- chiede in prima riga (brief-db-porte-aperte-dalla-sola-guc §14, giro 10-bis, 2026-11-26).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT o.auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano('legami-profilo', true) o)); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(11);

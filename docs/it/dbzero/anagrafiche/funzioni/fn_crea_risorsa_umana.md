@@ -201,9 +201,10 @@ BEGIN
         -- Step 4: binding SUPER_ADMIN se richiesto, sul profilo
         -- risolto nei guard (rev 20260923-10: era l'id 9100 cablato).
         IF p_is_super_admin THEN
-            -- rev 2026-10-18: il BB del binding (regola del 2);
+            -- La primitiva del legame: il permesso lo ha chiesto il verbo
+            -- che arriva qui (o nessuno, sul primo impianto e nelle fixture).
             -- attivo = true e' il DEFAULT della colonna.
-            PERFORM config.fn_lega_profilo_identita(v_profilo_sa, v_identita_id);
+            PERFORM config.fn_applica_lega_profilo_identita(v_profilo_sa, v_identita_id);
         END IF;
     END IF;
 
@@ -212,7 +213,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_risorsa_umana(p_soggetto_id uuid, p_qualifica_id integer, p_unita_organizzativa_id integer, p_valido_dal date, p_valido_al date, p_auth_user_id integer, p_is_super_admin boolean, p_attivo boolean)
-IS 'Verbo: crea il rapporto di lavoro (anagrafiche.risorse_umane, attivo, sul ruolo RIS_UMANA del soggetto) e, se riceve la credenziale, la veste OPERATORE, spenta per default (p_attivo): la accende l''attivazione dell''invito. Con p_is_super_admin lega alla veste il profilo SUPER_ADMIN (config.fn_profilo_super_admin_id, config.fn_lega_profilo_identita). p_valido_dal NULL vale il giorno operativo, per il rapporto e per la veste. Rifiuta: soggetto o qualifica mancanti, qualifica o reparto non attivi, credenziale inesistente, SUPER_ADMIN senza credenziale (E_ADMIN_VALIDAZIONE, E_ADMIN_UO_NON_TROVATA); un soggetto che e'' gia'' una risorsa umana (E_RISORSA_UMANA_GIA_PRESENTE); una credenziale che ha gia'' una veste OPERATORE, accesa o spenta (E_CREDENZIALE_GIA_OPERATORE). Il passo interno di anagrafiche.fn_crea_operatore. Ritorna l''id della risorsa umana.';
+IS 'Primitiva: crea il rapporto di lavoro (anagrafiche.risorse_umane, attivo, sul ruolo RIS_UMANA del soggetto) e, se riceve la credenziale, la veste OPERATORE, spenta per default (p_attivo): la accende l''attivazione dell''invito. Con p_is_super_admin lega alla veste il profilo SUPER_ADMIN (config.fn_profilo_super_admin_id, config.fn_applica_lega_profilo_identita). p_valido_dal NULL vale il giorno operativo, per il rapporto e per la veste. Rifiuta: soggetto o qualifica mancanti, qualifica o reparto non attivi, credenziale inesistente, SUPER_ADMIN senza credenziale (E_ADMIN_VALIDAZIONE, E_ADMIN_UO_NON_TROVATA); un soggetto che è già una risorsa umana (E_RISORSA_UMANA_GIA_PRESENTE); una credenziale che ha già una veste OPERATORE, accesa o spenta (E_CREDENZIALE_GIA_OPERATORE). È il passo interno di anagrafiche.fn_applica_crea_operatore: non chiede permessi, e l''applicazione non la esegue. Ritorna l''id della risorsa umana.';
 ```
 
 </div>

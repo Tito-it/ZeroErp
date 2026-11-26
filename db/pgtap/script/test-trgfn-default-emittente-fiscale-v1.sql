@@ -183,7 +183,7 @@ INSERT INTO _m SELECT 'Z', m.* FROM dbops.fn_pgtap_crea_emittente_operatore(p_pe
 --   sarebbe l'ultimo SA e fn_change_user_emittenti_scope lo rifiuterebbe (vedi testa).
 DO $lega$
 BEGIN
-    PERFORM config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), m.identita_id) FROM _m m WHERE m.lato IN ('S', 'Z');
+    PERFORM dbops.fn_pgtap_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), m.identita_id) FROM _m m WHERE m.lato IN ('S', 'Z');
 END
 $lega$;
 

@@ -1,5 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture spegne i legami SUPER_ADMIN che il database ha:
+--   dal giro 10-bis le tabelle che danno l'accesso (scope, legami e contenuto dei
+--   profili) sono in sola lettura per l'app, e le scrivono solo i verbi del SUPER_ADMIN
+--   (brief-db-porte-aperte-dalla-sola-guc §14, giro 10-bis, 2026-11-26).
+--   I soggetti del test sono funzioni di lettura delle tabelle di config, che
+--   non hanno RLS: il ruolo di connessione non cambia cio' che misurano.
 -- pgTAP test per Zero ERP
 --
 -- Test: script.fn_get_operatore_detail(p_auth_user_id) — capability

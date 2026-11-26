@@ -231,7 +231,7 @@ SELECT throws_like(
     '18. fn_crea_soggetto_pg con un privato -> E_SOGGETTO_CREAZIONE_NATURA_ERRATA (la DI ha una porta sola)');
 
 SELECT throws_like(
-    format($$SELECT * FROM anagrafiche.fn_crea_operatore_v2(
+    format($$SELECT * FROM dbops.fn_pgtap_fixture_crea_operatore(
                p_cognome := 'Sesso', p_nome := 'Operatore', p_codice_fiscale := %L,
                p_username := %L, p_email := %L, p_password_hash := 'pgtap-nessun-login',
                p_qualifica_id := (SELECT id FROM config.qualifiche WHERE codice_interno = 'DIPENDENTE'))$$,

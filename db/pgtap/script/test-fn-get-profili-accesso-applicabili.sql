@@ -157,22 +157,16 @@ SELECT ok(
 -- 4) Aggiunta binding AD_HOC -> priorita 1 presente
 -- =========================================================
 -- Creo profilo AD_HOC temporaneo + binding sull'identita.
+-- Dai builder: dal giro 10-bis profili e legami li scrivono i verbi del SUPER_ADMIN.
 CREATE TEMP TABLE _t_ah AS
-WITH ins AS (
-    INSERT INTO config.profili_accesso (tipo, codice, descrizione, attivo)
-    VALUES (
-        'AD_HOC',
-        '_PGTAP_AH_' || upper(substring(md5(clock_timestamp()::text) from 1 for 8)),
-        'Profilo AD_HOC di test pgTAP fn_get_profili_accesso_applicabili',
-        true
-    )
-    RETURNING id
-)
-SELECT id AS profilo_id FROM ins;
+SELECT dbops.fn_pgtap_scrivi_profilo_accesso(
+           'AD_HOC',
+           '_PGTAP_AH_' || upper(substring(md5(clock_timestamp()::text) from 1 for 8)),
+           'Profilo AD_HOC di test pgTAP fn_get_profili_accesso_applicabili') AS profilo_id;
 
 DO $lega$
 BEGIN
-    PERFORM config.fn_lega_profilo_identita((SELECT profilo_id FROM _t_ah), (SELECT identita_id FROM _t_id));
+    PERFORM dbops.fn_pgtap_lega_profilo_identita((SELECT profilo_id FROM _t_ah), (SELECT identita_id FROM _t_id));
 END
 $lega$;
 

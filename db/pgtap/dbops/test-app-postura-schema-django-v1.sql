@@ -91,7 +91,7 @@ SELECT plan(11);
 SELECT ok(has_table_privilege('zeroerp_app', 'django.auth_user', 'SELECT'),
           '1. zeroerp_app ha SELECT su django.auth_user');
 SELECT ok(has_table_privilege('zeroerp_app', 'django.auth_user', 'INSERT'),
-          '2. zeroerp_app ha INSERT su django.auth_user (fn_crea_auth_user, fn_crea_utente_tecnico)');
+          '2. zeroerp_app ha INSERT su django.auth_user (le credenziali che scrive Django)');
 SELECT ok(has_table_privilege('zeroerp_app', 'django.auth_user', 'UPDATE'),
           '3. zeroerp_app ha UPDATE su django.auth_user (fn_sync_auth_user_is_active)');
 SELECT ok(has_sequence_privilege('zeroerp_app', 'django.auth_user_id_seq', 'USAGE'),
@@ -187,15 +187,15 @@ SELECT lives_ok(
 CREATE TEMP TABLE _t_postura_django ON COMMIT DROP AS
 SELECT 'pgtap_postura_django_' || substr(md5(random()::text), 1, 10) AS username;
 
+-- ⚠️ Dal giro 10-bis anagrafiche.fn_crea_auth_user e' una primitiva chiusa all'app:
+--   la postura si prova con l'INSERT diretto, che e' cio' che il privilegio concede.
 SELECT lives_ok(
-  $$SELECT anagrafiche.fn_crea_auth_user(
-        p_username      => t.username,
-        p_email         => t.username || '@pgtap.invalid',
-        p_password_hash => '!pgtap-postura-django',
-        p_first_name    => 'pgTAP',
-        p_last_name     => 'Postura django')
+  $$INSERT INTO django.auth_user (password, is_superuser, username, first_name, last_name,
+                                  email, is_staff, is_active, date_joined)
+    SELECT '!pgtap-postura-django', false, t.username, 'pgTAP', 'Postura django',
+           t.username || '@pgtap.invalid', false, true, now()
       FROM _t_postura_django t$$,
-  '10. anagrafiche.fn_crea_auth_user scrive come zeroerp_app (INSERT + nextval)'
+  '10. zeroerp_app scrive django.auth_user (INSERT + nextval)'
 );
 
 SELECT is(

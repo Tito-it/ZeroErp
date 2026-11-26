@@ -102,7 +102,7 @@ SELECT is(
 -- ============================================================
 CREATE TEMP TABLE tmp_guard_ctx AS
 SELECT m.auth_user_id
-  FROM anagrafiche.fn_crea_operatore_v2(
+  FROM dbops.fn_pgtap_fixture_crea_operatore(
         p_cognome                := 'Guard',
         p_nome                   := 'Prova',
         p_codice_fiscale         := 'LCCRLD80A01L736X',

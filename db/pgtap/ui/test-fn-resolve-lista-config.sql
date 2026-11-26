@@ -1,5 +1,13 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture scrive a mano profili e legami per ruolo, che nessun
+--   verbo scrive:
+--   dal giro 10-bis le tabelle che danno l'accesso (scope, legami e contenuto dei
+--   profili) sono in sola lettura per l'app, e le scrivono solo i verbi del SUPER_ADMIN
+--   (brief-db-porte-aperte-dalla-sola-guc §14, giro 10-bis, 2026-11-26).
+--   I soggetti del test sono funzioni di lettura delle tabelle di config, che
+--   non hanno RLS: il ruolo di connessione non cambia cio' che misurano.
 -- pgTAP test per Zero ERP
 --
 -- Test: ui.fn_resolve_lista_config
@@ -241,7 +249,7 @@ FROM ins;
 -- Binding del profilo AD_HOC all'identita di test
 DO $lega$
 BEGIN
-    PERFORM config.fn_lega_profilo_identita((
+    PERFORM config.fn_applica_lega_profilo_identita((
         SELECT profilo_id
         FROM _t_profilo
     ), (

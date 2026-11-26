@@ -4,7 +4,7 @@
 CREATE FUNCTION fn_slega_profilo_identita(p_profilo_accesso_id integer, p_identita_digitale_id bigint)
 ```
 
-> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
 
 **Definizione completa:**
 
@@ -14,10 +14,17 @@ CREATE FUNCTION fn_slega_profilo_identita(p_profilo_accesso_id integer, p_identi
 CREATE OR REPLACE FUNCTION config.fn_slega_profilo_identita(p_profilo_accesso_id integer, p_identita_digitale_id bigint)
  RETURNS integer
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
+    v_utente config.user_emittenti_fiscali.auth_user_id%TYPE;
     v_tolti integer;  -- un conteggio: nessuna colonna di cui sia il riflesso
 BEGIN
+    -- Il permesso, prima di ogni altra cosa.
+    v_utente := script.fn_utente_di_sessione('config.fn_slega_profilo_identita');
+    PERFORM script.fn_guard_super_admin(v_utente);
+
     -- =========================================================
     -- Scopo:
     --   Togliere il binding di un'identita' digitale da quel
@@ -50,7 +57,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION config.fn_slega_profilo_identita(p_profilo_accesso_id integer, p_identita_digitale_id bigint)
-IS 'MADRE (2026-10-19): toglie il binding di un''identita'' digitale da QUEL profilo di accesso (un''identita'' che ha un altro profilo non perde l''altro); ritorna quanti binding ha tolto, 0 se non ce n''era (idempotente). Il contrario di config.fn_lega_profilo_identita. L''ultimo super admin attivo lo protegge il trigger della tabella (trgfn_profili_accesso_bindings_guard_ultimo_super_admin, anche sul DELETE), per ogni scrittore. Argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Non controlla il permesso (backend). INVOKER. Sede unica del DELETE di AmmSoftwareRepository._set_super_admin_binding (ramo enabled = false). R-BE-7, D-16c di Tid, brief-db-processi-accensione-per-ambiente §6.16.';
+IS 'Il verbo con cui il SUPER_ADMIN toglie il legame di un''identità digitale da quel profilo di accesso (un altro profilo della stessa identità resta); ritorna quanti legami ha tolto, 0 se non ce n''era. SECURITY DEFINER: in prima riga chiede il SUPER_ADMIN all''utente di sessione (script.fn_guard_super_admin: E_PERMESSO_NEGATO, anche senza utente), lo stesso controllo dell''endpoint. Argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. L''ultimo SUPER_ADMIN attivo lo protegge il trigger della tabella (E_PROFILO_ULTIMO_SUPER_ADMIN). Il contrario di config.fn_lega_profilo_identita. config.profili_accesso_bindings è in sola lettura per l''applicazione.';
 ```
 
 </div>

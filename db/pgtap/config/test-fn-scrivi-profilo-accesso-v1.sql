@@ -15,8 +15,8 @@
 --
 -- Elenco test (plan 17):
 --   forma
---    1) fn_scrivi_profilo_accesso e' INVOKER
---    2) fn_lega_profilo_identita e' INVOKER
+--    1) fn_scrivi_profilo_accesso e' SECURITY DEFINER (il verbo del SUPER_ADMIN)
+--    2) fn_lega_profilo_identita e' SECURITY DEFINER (il verbo del SUPER_ADMIN)
 --   il profilo
 --    3) nasce AD_HOC, attivo, senza secondo fattore, con due aree e un'azione
 --    4) riscritto: descrizione nuova, aree sostituite, azioni NULL invariate
@@ -32,7 +32,9 @@
 --   le copie ritirate
 --   13) l'operatore super admin ha il binding SUPER_ADMIN (madre riscritta)
 --   14) nessuna delle due madri scrive piu' profili_accesso_bindings a mano
---   15) ... e tutte e due chiamano il BB
+--   15) ... e tutte e due chiamano la primitiva del legame
+--   Il contesto e' un SUPER_ADMIN costruito: dal giro 10-bis i verbi lo chiedono
+--   (brief-db-porte-aperte-dalla-sola-guc §14).
 --   Il codice in minuscolo (20261104-35, richiesta BE brief-be-codice-maiuscolo §6)
 --   16) ⭐ due chiamate col codice in minuscolo danno lo STESSO profilo: prima
 --       la seconda urtava uq_profili_accesso_codice
@@ -43,7 +45,10 @@ BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- Il contesto e' un SUPER_ADMIN costruito: dal giro 10-bis il verbo sotto prova lo
+-- chiede in prima riga (brief-db-porte-aperte-dalla-sola-guc §14, giro 10-bis, 2026-11-26).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT o.auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano('scrivi-profilo', true) o)); END $ctx$;
 
 SELECT plan(17);
 
@@ -76,11 +81,11 @@ SELECT (SELECT o.identita_id FROM dbops.fn_pgtap_crea_operatore_umano('Profilo p
 -- ============================================================
 SELECT is((SELECT p.prosecdef FROM pg_proc p
             WHERE p.oid = 'config.fn_scrivi_profilo_accesso(config.tipo_profilo_accesso, character varying, text, jsonb, jsonb, jsonb)'::regprocedure),
-          false, '1. fn_scrivi_profilo_accesso e'' INVOKER');
+          true, '1. fn_scrivi_profilo_accesso e'' SECURITY DEFINER (il verbo del SUPER_ADMIN)');
 
 SELECT is((SELECT p.prosecdef FROM pg_proc p
             WHERE p.oid = 'config.fn_lega_profilo_identita(integer, bigint)'::regprocedure),
-          false, '2. fn_lega_profilo_identita e'' INVOKER');
+          true, '2. fn_lega_profilo_identita e'' SECURITY DEFINER (il verbo del SUPER_ADMIN)');
 
 -- ============================================================
 -- Il profilo
@@ -169,7 +174,7 @@ SELECT is(
 CREATE TEMP TABLE t_madri AS
 SELECT p.oid::regprocedure AS f
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
- WHERE (n.nspname, p.proname) IN (('script', 'fn_crea_utente_tecnico'), ('anagrafiche', 'fn_crea_risorsa_umana'));
+ WHERE (n.nspname, p.proname) IN (('script', 'fn_applica_crea_utente_tecnico'), ('anagrafiche', 'fn_crea_risorsa_umana'));
 
 SELECT is(
     (SELECT count(*)::int FROM t_madri WHERE pg_temp.corpo(f) ~* 'INSERT\s+INTO\s+config\.profili_accesso_bindings'),
@@ -177,9 +182,9 @@ SELECT is(
     '14. nessuna delle due madri scrive piu'' profili_accesso_bindings a mano');
 
 SELECT is(
-    (SELECT count(*)::int FROM t_madri WHERE pg_temp.corpo(f) ~ 'config\.fn_lega_profilo_identita\('),
+    (SELECT count(*)::int FROM t_madri WHERE pg_temp.corpo(f) ~ 'config\.fn_applica_lega_profilo_identita\('),
     2,
-    '15. ... e tutte e due chiamano il BB');
+    '15. ... e tutte e due chiamano la primitiva del legame');
 
 -- ============================================================
 -- Il codice in minuscolo (20261104-35)

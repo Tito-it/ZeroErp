@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `config.fn_scrivi_profilo_accesso()`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 
 ### 🎯 Scopo
 (18-10-2026 — brief `brief-db-processi-accensione-per-ambiente`, 2b-1 lotto 8)
@@ -9,8 +9,10 @@
 codice), le aree con il loro livello e le azioni abilitate. Se il profilo
 esiste lo aggiorna; aree e azioni, se indicate, le sostituisce.
 
-La usano il backend (il profilo di un reparto) e il provisioning dei dati di
-sviluppo (i profili di prova `DEV_LETTURA` e `DEV_OPERATIVO`).
+È il verbo del SUPER_ADMIN: la usa il backend per il profilo di un reparto. Il provisioning dei dati di
+sviluppo (i profili di prova `DEV_LETTURA` e `DEV_OPERATIVO`) chiama direttamente la sua primitiva,
+[fn_applica_scrivi_profilo_accesso](/dbzero/config/manual/fn_applica_scrivi_profilo_accesso), perché gira senza
+un utente in sessione.
 
 ### Regole
 
@@ -30,7 +32,13 @@ sviluppo (i profili di prova `DEV_LETTURA` e `DEV_OPERATIVO`).
 
 Non lega il profilo a nessuno: per un'identità c'è
 [fn_lega_profilo_identita](/dbzero/config/manual/fn_lega_profilo_identita).
-Il permesso lo decide il backend.
+
+### ⛔ Il permesso
+
+È `SECURITY DEFINER` col `search_path` fissato, e nella prima riga chiede il SUPER_ADMIN all'utente di sessione
+(`script.fn_guard_super_admin`): un altro operatore, o nessun utente, riceve `E_PERMESSO_NEGATO`. È lo stesso
+controllo dell'endpoint. Le regole del profilo stanno nella primitiva, che l'applicazione non esegue; le tabelle
+dei profili sono in sola lettura per l'applicazione.
 
 ### Test
 

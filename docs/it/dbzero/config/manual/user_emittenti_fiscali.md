@@ -73,8 +73,12 @@ L'emittente deve essere attivo quando la riga nasce (`dbops.trgfn_child_requires
   (`E_PROFILO_ULTIMO_SUPER_ADMIN`). Le regole stanno nella primitiva
   [`script.fn_applica_user_emittenti_scope`](/dbzero/script/funzioni/fn_applica_user_emittenti_scope), che
   l'applicazione non esegue.
-* **La fabbrica degli utenti tecnici** (`script.fn_crea_utente_tecnico`) scrive la riga del processo automatico
-  insieme all'utente.
+* **La fabbrica degli utenti tecnici** (`script.fn_crea_utente_tecnico`, anch'essa riservata al SUPER_ADMIN) scrive
+  la riga del processo automatico insieme all'utente.
+
+⛔ **Per l'applicazione la tabella è in sola lettura**: un `INSERT` diretto, che a un operatore senza riga darebbe
+un'azienda, si ferma sul privilegio. La postura sta nelle tre sedi del loop dei grant (linee guida SQL §11.8,
+`v_tabelle_sola_lettura_app`). Scrivono la riga solo i verbi, il provisioning di sviluppo e le fixture dei pgTAP.
 
 ---
 
