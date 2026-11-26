@@ -2,25 +2,22 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-26
 
-**Riparte: il team BE/FE col passo 3b (§4)**: il giro 1 è applicato da Tid il 2026-11-26, pgTAP verdi. La sessione DB
-può aprire il giro 2 (§5) senza aspettare il BE, col via di Tid; il passo 3c aspetta il 3b.
+**Riparte: Tid**, con tre decisioni del giro 2 (D-G2-1 … D-G2-3, §5.1) e il range dei numeri; poi la sessione DB
+costruisce il giro 2. In parallelo il team BE/FE col passo 3b (§4). Giro 1 committato il 2026-11-26 (`6440e685d8`).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | team BE/FE | Il passo 3b: lo spegnimento e il reinvito dai verbi DB, i codici nuovi, lo stato `REVOCATA`, il censimento di chi scrive `attivo` | §4 | — |
-| 2 | Tid | Il via al giro 2 (le regole della veste e della sincronizzazione) | §5 | — |
-| 3 | sessione DB | Giro 2 | §5 | 2 |
+| 2 | Tid | ~~Il via al giro 2~~ dato il 2026-11-26; D-G2-1 … D-G2-3 e il range dei numeri | §5.1 | — |
+| 3 | sessione DB | Giro 2: la costruzione | §5.1 | 2 |
 | 4 | sessione DB | Il passo 3c: il ritiro delle scritture dell'app, con «Garanzie ritirate» | §2.4 | 1 |
 | 5 | sessione DB | Giri 3-6 (S64, la veste cliente unica, l'iscrizione da sé, il ritiro dei rami shop) | §5 | 4 |
 
-**Decisioni aperte di Tid:** nessuna per il giro 2 nella sua forma proposta (§5); per i giri successivi restano D-M6 e
+**Decisioni aperte di Tid:** D-G2-1 (la credenziale senza vesti), D-G2-2 (i nomi `_v2`), D-G2-3 (`tecnica` fuori
+dall'operatore), §5.1; per i giri successivi restano D-M6 e
 D-M9 ([analisi-modello-area-clienti](analisi-modello-area-clienti.md) §7) e l'emittente del cliente iscritto da sé
 ([sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md) §3.6).
-**Da committare:** il giro 1 (sette changeSet, i due CSV, il pgTAP nuovo e quello della riattivazione, le guide
-`risorse-umane-e-accessi` e dei processi automatici, `manual/identita_digitali`, la doc auto-generata rigenerata),
-questo brief e le modifiche del 2026-11-25 ad [analisi-modello-area-clienti](analisi-modello-area-clienti.md),
-[brief-be-accessi-credenziale-e-vesti](brief-be-accessi-credenziale-e-vesti.md) e
-[sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md).
+**Da committare:** questo brief (l'analisi del giro 2).
 
 ## 0. Il piano da percorrere
 
@@ -51,8 +48,13 @@ questo brief e le modifiche del 2026-11-25 ad [analisi-modello-area-clienti](ana
   - [x] Guida `risorse-umane-e-accessi` (§«La revoca»), guida dei processi automatici, `manual/identita_digitali` — 2026-11-25
   - [x] Doc auto-generata rigenerata dopo l'apply (le quattro funzioni nuove, la tabella, `fn_stato_veste`, `fn_riattiva_utente_tecnico`) — 2026-11-26
   - [ ] A-6 chiuso nel brief BE accessi; riga «Accessi» di `PROJECT_CONTEXT`
-- **Giro 2 — Le regole della veste e della sincronizzazione** (§5, T9: S5, S6, S22, S59-S63, S65, S66)
-  - [ ] Il via di Tid
+- **Giro 2 — Le regole della veste e della sincronizzazione** (§5.1, T9: S5, S6, S22, S59-S63, S65, S66)
+  - [x] Il via di Tid — 2026-11-26
+  - [x] L'analisi sui corpi vivi (dbdev) — 2026-11-26
+  - [ ] D-G2-1 … D-G2-3 e il range dei numeri (Tid)
+  - [ ] 2a la sincronizzazione (S59, S5, S60); 2b i guard (S61, S62, S63); 2c i verbi di creazione (S6, S65, S66)
+  - [ ] 2d i nomi `_v2` (S22), col passo BE
+  - [ ] pgTAP, apply e corsa (Tid)
 - **Giri 3-6** (§5)
   - [ ] S64; la veste cliente unica e l'indice per soggetto; l'iscrizione da sé; il ritiro dei rami shop
 
@@ -240,23 +242,46 @@ Il tema T9 di [brief-db-revisione-anagrafiche](brief-db-revisione-anagrafiche.md
 le segnalazioni S5, S6, S22, S59-S67 e R-BE6; il modello dei giri 3-6 sta in
 [analisi-modello-area-clienti](analisi-modello-area-clienti.md) §5.1 e §8. Ogni giro si dettaglia qui quando parte.
 
-### Giro 2 — Le regole della veste e della sincronizzazione (non aspetta il BE)
+### 5.1 Giro 2 — Le regole della veste e della sincronizzazione (analisi del 2026-11-26)
 
-Tutte del lato DB, senza decisioni di modello aperte; il dettaglio di ognuna è nel brief anagrafiche §16-§17.
+Letto sui corpi vivi di dbdev (`pg_get_functiondef`, `pg_trigger`). Il dettaglio di partenza di ogni voce è nel brief
+anagrafiche §16.2-§16.3. Non aspetta il BE, salvo 2d.
 
-| # | Che cosa | Proposta |
+**2a — La sincronizzazione di `is_active`**
+
+| # | Fatto sul vivo | Proposta |
 | --- | --- | --- |
-| S59 | La credenziale rimasta senza vesti (veste cancellata o spostata su un'altra credenziale) resta accesa per sempre | la sync segue anche il `DELETE` e il cambio di `auth_user_id`, e la credenziale di prima si spegne |
-| S5, S60 | Cambi che la sync non segue subito (`soggetto_ruolo_id`, `tecnica`, il rapporto nato dopo la veste, il soggetto spento) | il trigger li segue; il job resta la rete per le date che arrivano |
-| S61 | L'ultimo SUPER_ADMIN si sposta senza guard (cambio di credenziale, di ruolo, di tipo) | il guard dell'ultimo amministratore guarda anche questi cambi |
-| S62 | `trgfn_risorse_umane_guard_identita_attiva` guarda il ruolo nuovo, non quello di prima | guarda `OLD.soggetto_ruolo_id` |
-| S63 | `tecnica` letta solo per `OPERATORE`; SUPER_ADMIN ammesso su un'identità tecnica | il guard di coerenza rifiuta `tecnica` fuori da `OPERATORE`; il binding SUPER_ADMIN su una veste tecnica si rifiuta |
-| S6, S65 | `fn_crea_risorsa_umana_v2`: `p_attivo DEFAULT true`, `p_is_super_admin` ignorato senza credenziale, `p_valido_dal` nullo che muore su un 23502 | la veste nasce spenta per default, i due casi parlano con un codice |
-| S22 | I nomi `_v2` (`fn_crea_operatore_v2`, `fn_crea_risorsa_umana_v2`) | si rinominano, con la richiesta al BE (cambiano i call-site) |
-| S66 | `fn_provisiona_dati_di_sviluppo` al rilancio non rimette il SUPER_ADMIN di `dev.smoke` né le date | il rilancio riallinea anche questi |
+| S59 | Il trigger di sync della veste è `AFTER INSERT` e `AFTER UPDATE OF attivo, valido_dal, valido_al, ruolo_applicativo, auth_user_id`, e chiama la sync solo su `NEW.auth_user_id`: una veste cancellata, o spostata su un'altra credenziale, lascia la credenziale di prima com'era. `fn_sync_auth_user_is_active` su una credenziale senza vesti la spegne, ma nessuno la chiama; il job guarda solo le credenziali che hanno vesti | il trigger scatta anche sul `DELETE` e, quando la credenziale cambia, sincronizza **tutte e due**; per il job vedi D-G2-1 |
+| S60, S5 | Il cambio di `soggetto_ruolo_id` e di `tecnica` della veste non è fra le colonne del trigger; il trigger del rapporto scatta solo su `UPDATE OF attivo, valido_dal, valido_al`, non sull'`INSERT` né sul cambio di `soggetto_ruolo_id` | le colonne entrano; il rapporto sincronizza anche all'`INSERT` e al cambio di ruolo, su tutte e due le credenziali. Il terzo caso di S5 (il soggetto spento) non si raggiunge per costruzione: lo spegnimento del soggetto è bloccato dai suoi `soggetti_ruoli`, e una veste ha sempre un ruolo; si dichiara, non si costruisce |
 
-⚠️ S22 tocca i chiamanti del BE: il rinomino va in un passo a parte, con la richiesta al team e il DB che tiene i
-nomi vecchi finché il BE non passa. S59 si incrocia col passo 3c (il `DELETE` che l'app perde): si guardano insieme.
+Il pgTAP `test-sync-auth-user-is-active-multi-role`, rosso in baseline, ha il caso 3 scritto sulla scelta di oggi
+(«nessuna modifica» su una credenziale senza vesti): si riscrive con D-G2-1.
+
+**2b — I guard**
+
+| # | Fatto sul vivo | Proposta |
+| --- | --- | --- |
+| S61 | Il guard dell'ultimo SUPER_ADMIN sulla veste scatta `WHEN` cambiano `attivo` o le date, e dentro esce se non è uno spegnimento o una scadenza. L'invariante che rilegge (`fn_check_almeno_un_super_admin_attivo`, da `fn_identita_super_admin_senza_scadenza`) conosce già veste, rapporto e credenziale bloccata: è il cancello a essere stretto | il trigger scatta anche sul cambio di `auth_user_id`, `soggetto_ruolo_id`, `ruolo_applicativo`, `tecnica`; dentro, se la veste di prima era SUPER_ADMIN, rilegge l'invariante senza filtrare la forma del cambio. Il rapporto: il guard scatta anche sul `DELETE` (la porta di manutenzione) |
+| S62 | `trgfn_risorse_umane_guard_identita_attiva` cerca la veste accesa su `NEW.soggetto_ruolo_id` | cerca su `OLD` e `NEW` |
+| S63 | Il guard di coerenza legge `tecnica` solo nel ramo `OPERATORE`; nessun controllo sul SUPER_ADMIN di un'identità tecnica; `fn_is_super_admin_account` non esclude `tecnica`. Fatto datato: su dbdev zero vesti tecniche fuori dall'operatore e zero SUPER_ADMIN su una tecnica | D-G2-3 |
+
+**2c — I verbi di creazione**
+
+| # | Fatto sul vivo | Proposta |
+| --- | --- | --- |
+| S6 | `fn_crea_risorsa_umana_v2(…, p_is_super_admin boolean DEFAULT false, p_attivo boolean DEFAULT true)`: la veste nasce accesa per default, contro la regola «nasce spenta»; `p_is_super_admin` senza credenziale si ignora in silenzio | `p_attivo DEFAULT false` (cambio di default: `CREATE OR REPLACE`, firma invariata; il solo chiamante, `fn_crea_operatore_v2`, lo passa); super admin senza credenziale: un codice |
+| S65 | `p_valido_dal` passato `NULL` muore sul NOT NULL del rapporto (23502); chiamata da sola non controlla una veste `OPERATORE` spenta già sulla credenziale | `NULL` ripiega sul giorno operativo, come per la veste; la veste spenta esistente: un codice |
+| S66 | `fn_provisiona_dati_di_sviluppo` al rilancio riaccende le vesti ma non rimette il SUPER_ADMIN di `dev.smoke`, le date, il rapporto | il rilancio riallinea anche questi |
+
+**2d — I nomi `_v2` (S22)**: `fn_crea_operatore_v2` e `fn_crea_risorsa_umana_v2` non hanno una versione accanto.
+Chiamanti: nel BE `AmmSoftwareRepository` (una chiamata) e le policy generate; nel DB `fn_provisiona_dati_di_sviluppo`
+e la fixture `dbops.fn_pgtap_crea_operatore_umano`; i pgTAP (17 file fra BE e pgTAP nominano i due nomi). D-G2-2.
+
+| # | Decisione | Proposta |
+| --- | --- | --- |
+| D-G2-1 | Una credenziale **senza nessuna veste** resta accesa? Oggi il modello non la ammette (il presidio `vw_credenziali_da_sanare` la dice `NESSUNA_VESTE`) ma il job la lascia accesa | **sì, si spegne**: il trigger quando se ne va l'ultima veste, il job per quelle nate senza (`fn_crea_auth_user` senza veste). Da verificare prima: le credenziali senza veste che servono (un superuser Django, gli account di sviluppo) |
+| D-G2-2 | I nomi senza `_v2`, e come si passa | `fn_crea_operatore`, `fn_crea_risorsa_umana`. Il DB crea i nomi nuovi e tiene i `_v2` come involucro sottile finché il BE non passa (lo stesso schema in tre passi di D-R9), poi li ritira |
+| D-G2-3 | `tecnica = true` fuori dalla veste `OPERATORE`, e il SUPER_ADMIN su un'identità tecnica | **si rifiutano tutti e due**: il guard di coerenza per il primo, il guard dei binding per il secondo; `fn_is_super_admin_account` esclude `tecnica` |
 
 ### Giri 3-6 — Il modello dell'area clienti
 
