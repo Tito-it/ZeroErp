@@ -4,7 +4,7 @@
 >
 > [config.profili_accesso](/dbzero/config/manual/profili_accesso)
 > [config.fn_lega_profilo_identita](/dbzero/config/manual/fn_lega_profilo_identita) — chi scrive il legame
-> [anagrafiche.fn_crea_risorsa_umana_v2](/dbzero/anagrafiche/manual/fn_crea_risorsa_umana_v2) — il primo lettore
+> [anagrafiche.fn_crea_risorsa_umana](/dbzero/anagrafiche/manual/fn_crea_risorsa_umana) — il primo lettore
 
 ---
 
@@ -36,7 +36,7 @@ profilo **attivo** di tipo `SUPER_ADMIN`.
 
 ### Chi la usa
 
-* `anagrafiche.fn_crea_risorsa_umana_v2`, quando crea un operatore super admin;
+* `anagrafiche.fn_crea_risorsa_umana`, quando crea un operatore super admin;
 * il backend, quando un operatore diventa super admin dalla maschera degli operatori.
 
 ⭐ Prima di questa funzione la stessa regola era scritta in quei due posti, ciascuno con la sua

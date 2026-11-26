@@ -42,7 +42,7 @@ Risponde `false` per un id che non esiste e per `NULL`.
   non la crea). Si riconosce da `identita_digitali.tecnica` e per lei il rapporto non si
   chiede: pretenderlo spegnerebbe i processi.
 - **Un operatore umano senza rapporto non è utilizzabile.** Il modello lo ammette (non c'è
-  una chiave esterna fra veste e risorsa umana), la madre `fn_crea_operatore_v2` non lo
+  una chiave esterna fra veste e risorsa umana), la madre `fn_crea_operatore` non lo
   produce. Davanti a uno stato che non dovrebbe esistere, la risposta è «no».
 - **Il soggetto attivo** era la condizione in più del vecchio sync della credenziale (D-3):
   entra nella regola perché nessuna sede perda una condizione che applicava. ⚠️ Oggi non si

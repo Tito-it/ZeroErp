@@ -81,11 +81,13 @@ SELECT plan(11);
 -- Fixture: si costruisce il mondo, POI si apre il contesto
 -- ============================================================
 CREATE TEMP TABLE _mondi ON COMMIT DROP AS
+-- ⚠️ Rev 2026-11-26 (D-G2-3, brief-db-accessi-area-clienti §5.1): chi diventa SUPER_ADMIN
+--   nasce PERSONA (p_persona): un'identita' tecnica non ha mai il SUPER_ADMIN.
 SELECT 'CTX' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
 UNION ALL
 SELECT 'OP'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
 UNION ALL
-SELECT 'SA'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+SELECT 'SA'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore(p_persona := true);
 
 -- Il super admin: un'identita' OPERATORE attiva con binding SUPER_ADMIN attivo
 -- (e' la definizione di script.fn_is_super_admin).

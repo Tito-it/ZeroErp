@@ -18,7 +18,7 @@
 > * [anagrafiche.fn_scrivi_dati_societari_alla_nascita](/dbzero/anagrafiche/funzioni/fn_scrivi_dati_societari_alla_nascita) — quando scrivere i dati societari
 > * [script.fn_stato_id_da_iso2](/dbzero/script/funzioni/fn_stato_id_da_iso2) — lo stato detto dal chiamante
 > * [script.fn_stato_proposto_id](/dbzero/script/funzioni/fn_stato_proposto_id) — lo stato proposto, se il chiamante non lo dice
-> * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — chi la usa per il soggetto dell'operatore
+> * [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore) — chi la usa per il soggetto dell'operatore
 >
 > Guide:
 >

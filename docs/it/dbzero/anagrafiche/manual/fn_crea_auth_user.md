@@ -10,7 +10,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — la madre che la chiama quando l'email non ha una credenziale
+> * [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore) — la madre che la chiama quando l'email non ha una credenziale
 > * [anagrafiche.fn_provisiona_dati_di_sviluppo](/dbzero/anagrafiche/funzioni/fn_provisiona_dati_di_sviluppo) — crea così le credenziali dei portali di prova
 > * [script.fn_get_auth_user_id_for_email](/dbzero/script/funzioni/fn_get_auth_user_id_for_email) — la regola dell'email unica, senza maiuscole
 > * [anagrafiche.trgfn_identita_digitali_sync_auth_user_active](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_sync_auth_user_active) — la credenziale segue le vesti
@@ -27,7 +27,7 @@
 username ed email siano liberi, e ne restituisce l'id.
 
 È un building block: non crea il soggetto, la veste, il rapporto né i contatti. Dentro il database lo chiamano
-`anagrafiche.fn_crea_operatore_v2`, solo quando l'email non ha ancora una credenziale (altrimenti la riusa), e
+`anagrafiche.fn_crea_operatore`, solo quando l'email non ha ancora una credenziale (altrimenti la riusa), e
 `anagrafiche.fn_provisiona_dati_di_sviluppo`, per gli utenti di prova dei portali.
 
 ---

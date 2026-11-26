@@ -1,6 +1,6 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_operatore_v2`
+## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_operatore`
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,7 +13,7 @@
 >
 > * [anagrafiche.fn_crea_auth_user](/dbzero/anagrafiche/funzioni/fn_crea_auth_user) — crea la credenziale quando l'email non ne ha una
 > * [anagrafiche.fn_crea_soggetto_pf](/dbzero/anagrafiche/funzioni/fn_crea_soggetto_pf) — crea la persona fisica nel flusso A
-> * [anagrafiche.fn_crea_risorsa_umana_v2](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana_v2) — il rapporto, la veste e il legame SUPER_ADMIN
+> * [anagrafiche.fn_crea_risorsa_umana](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana) — il rapporto, la veste e il legame SUPER_ADMIN
 > * [anagrafiche.fn_crea_indirizzi_operatore](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_operatore) — residenza e domicilio fiscale, e il domicilio che manca
 > * [anagrafiche.fn_crea_primo_amministratore](/dbzero/anagrafiche/funzioni/fn_crea_primo_amministratore) — il primo SUPER_ADMIN, che la compone
 > * [script.fn_get_auth_user_id_for_email](/dbzero/script/funzioni/fn_get_auth_user_id_for_email) — quale credenziale ha questa email
@@ -30,15 +30,17 @@
 
 ### 🎯 Scopo Principale
 
-`anagrafiche.fn_crea_operatore_v2` crea un operatore: trova o crea la credenziale dell'email, trova o crea la
+`anagrafiche.fn_crea_operatore` crea un operatore: trova o crea la credenziale dell'email, trova o crea la
 persona fisica, le dà il rapporto di lavoro e la veste OPERATORE spenta, con l'eventuale profilo SUPER_ADMIN e gli
 indirizzi di residenza e domicilio fiscale. Restituisce la credenziale, il suo username effettivo e se è stata
 riusata.
 
 È la madre della creazione di un operatore umano: la chiama il backend dall'amministrazione degli utenti, e dentro
 il database il verbo del primo amministratore (`anagrafiche.fn_crea_primo_amministratore`), il provisioning dei dati
-di sviluppo e la fixture pgTAP `dbops.fn_pgtap_crea_operatore_umano`. Il
-suffisso `_v2` è un nome rimasto: non esiste una funzione con lo stesso nome senza suffisso.
+di sviluppo e la fixture pgTAP `dbops.fn_pgtap_crea_operatore_umano`.
+
+Il nome storico `anagrafiche.fn_crea_operatore_v2` è un involucro di questa funzione, con la stessa firma: lo
+chiamano ancora il backend, il verbo del primo amministratore e la fixture, finché non passano al nome nuovo.
 
 ---
 
@@ -149,7 +151,7 @@ consegnerebbe la riga intera in un campo solo.
 
 Più quelli propagati da `fn_crea_auth_user` (username o email già presi, dati della credenziale mancanti),
 `fn_crea_soggetto_pf` (fra gli altri `E_ADMIN_CF_DUPLICATO`), dal guard del sesso, da
-`fn_crea_risorsa_umana_v2` (`E_RISORSA_UMANA_GIA_PRESENTE`, `E_ADMIN_UO_NON_TROVATA`, `E_CONFIG_MANCANTE`) e da
+`fn_crea_risorsa_umana` (`E_RISORSA_UMANA_GIA_PRESENTE`, `E_ADMIN_UO_NON_TROVATA`, `E_CONFIG_MANCANTE`) e da
 `fn_crea_indirizzo_soggetto`.
 
 ---
@@ -178,6 +180,8 @@ Più quelli propagati da `fn_crea_auth_user` (username o email già presi, dati 
 
 * 2026-04-29 — nasce col suffisso `_v2`, col SUPER_ADMIN chiesto come sì o no; la funzione di prima, che chiedeva
   il ruolo con l'enum `config.ruolo_sistema`, è ritirata.
+* 2026-11-26 — torna al nome senza suffisso; `fn_crea_operatore_v2` resta come involucro finché i chiamanti non
+  passano al nome nuovo.
 * 2026-09-25 — una persona, una credenziale: il riuso, la veste che nasce spenta (il parametro dello stato è uscito
   dalla firma), il ritorno a tabella; poi il riuso non silenzioso (l'altra persona, il consenso dichiarato).
 * 2026-09-27 — nel rifiuto del consenso username e vesti vengono dalla stessa funzione del dialog.

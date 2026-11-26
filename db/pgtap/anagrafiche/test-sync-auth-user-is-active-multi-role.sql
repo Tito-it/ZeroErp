@@ -22,7 +22,7 @@
 --
 -- Semantica attesa:
 --   - NULL / <=0 p_auth_user_id -> raise E_PARAMETRO_INVALIDO
---   - Utente senza identita -> return false (no modifica auth_user)
+--   - Utente senza identita accesa -> spenta (nessuna veste utilizzabile)
 --   - veste attiva con finestra valida + soggetto attivo ->
 --     should_active = true
 --   - veste con attivo=false -> should_active = false
@@ -30,10 +30,10 @@
 --     should_active = false
 --   - DISABILITATO non si scrive: E_RUOLO_APPLICATIVO_RITIRATO
 --
--- Indice test (1..10):
+-- Indice test (1..10, il 3 in due: plan 11):
 --    1. Guard: p_auth_user_id NULL -> raise
 --    2. Guard: p_auth_user_id = 0 -> raise
---    3. Utente orfano (nessuna identita) -> return false
+--    3. Utente orfano (nessuna identita) acceso -> la sync lo spegne (3a, 3b)
 --    4. CLIENTE_PORTALE attiva + soggetto attivo -> auth_user.is_active=true
 --    5. CLIENTE_PORTALE con identita attivo=false -> auth_user.is_active=false
 --    6. CLIENTE_PORTALE fuori finestra temporale -> auth_user.is_active=false
@@ -63,7 +63,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(10);
+SELECT plan(11);
 
 -- =========================================================
 -- 1) Guard: p_auth_user_id NULL -> raise E_PARAMETRO_INVALIDO
@@ -105,11 +105,23 @@ BEGIN
 END
 $pgtap$;
 
-SELECT ok(
-    anagrafiche.fn_sync_auth_user_is_active(
-        (SELECT au_id FROM _t_au_orfano)
-    ) = false,
-    '3. Utente orfano (nessuna identita) -> return false (no-op)'
+-- ⚠️ Rev 2026-11-26 (D-G2-1 di Tid, brief-db-accessi-area-clienti §5.1):
+--   il caso chiedeva «nessuna modifica», ma la funzione SPEGNE una
+--   credenziale accesa senza vesti (nessuna veste utilizzabile): il test
+--   era rosso in baseline sulla scelta sbagliata. Il modello non ammette
+--   una credenziale senza vesti accesa, e ora la spengono anche il trigger
+--   e il job.
+SELECT is(
+    format('%s|%s',
+           anagrafiche.fn_sync_auth_user_is_active((SELECT au_id FROM _t_au_orfano)),
+           '-'),
+    'true|-',
+    '3a. Utente orfano (nessuna identita) acceso -> la sync lo spegne (true)'
+);
+SELECT is(
+    (SELECT is_active FROM django.auth_user WHERE id = (SELECT au_id FROM _t_au_orfano)),
+    false,
+    '3b. ... e la credenziale resta spenta'
 );
 
 -- =========================================================

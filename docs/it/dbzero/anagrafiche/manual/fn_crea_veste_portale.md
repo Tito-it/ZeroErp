@@ -11,7 +11,7 @@
 > Approfondimento funzioni:
 >
 > * [anagrafiche.fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste) — accende la veste nata spenta
-> * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — la madre della veste OPERATORE, che qui si rifiuta
+> * [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore) — la madre della veste OPERATORE, che qui si rifiuta
 > * [script.fn_scrivi_riga_da_jsonb](/dbzero/script/funzioni/fn_scrivi_riga_da_jsonb) — lo scrittore generico che la funzione usa
 > * [anagrafiche.trgfn_identita_digitali_guard_coerenza](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_coerenza) — la veste dev'essere coerente col ruolo
 > * [anagrafiche.trgfn_identita_digitali_sync_auth_user_active](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_sync_auth_user_active) — la credenziale segue le vesti
@@ -35,7 +35,7 @@ shop) e il provisioning dei dati di sviluppo. Nessun'altra funzione del database
 ### ⛔ Solo le tre vesti esterne
 
 Le vesti ammesse sono `CLIENTE_PORTALE`, `FORNITORE_PORTALE` e `SHOP_CUSTOMER`. La veste OPERATORE nasce dalle sue
-madri (`anagrafiche.fn_crea_operatore_v2` per una persona, `script.fn_crea_utente_tecnico` per un utente tecnico),
+madri (`anagrafiche.fn_crea_operatore` per una persona, `script.fn_crea_utente_tecnico` per un utente tecnico),
 che portano anche il rapporto e il perimetro; ogni altra veste si rifiuta con `E_SCRIPT_CHIAMATA_NON_VALIDA`.
 
 ---

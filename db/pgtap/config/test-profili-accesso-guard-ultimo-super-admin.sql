@@ -62,8 +62,15 @@ BEGIN
     --   contesto, e dopo il primo scenario non e' piu' vergine — il terzo
     --   moriva sul «Setup impossibile». Un'azienda nuova con il suo operatore
     --   e' vergine per costruzione, e ogni scenario ha la sua.
-    SELECT ceo.identita_id INTO id_id
-      FROM dbops.fn_pgtap_crea_emittente_operatore() ceo;
+    -- ⚠️ Rev 2026-11-26 (D-G2-3, brief-db-accessi-area-clienti §5.1): era
+    --   dbops.fn_pgtap_crea_emittente_operatore, che costruisce un utente
+    --   TECNICO, e il SUPER_ADMIN su un'identita' tecnica ora si rifiuta
+    --   (E_SUPER_ADMIN_SU_VESTE_TECNICA). L'amministratore e' una persona:
+    --   l'operatore umano, senza profilo, a cui il binding si lega qui.
+    SELECT ou.identita_id INTO id_id
+      FROM dbops.fn_pgtap_crea_operatore_umano(
+               'pgTAP-SA-lockout-' || substring(md5(clock_timestamp()::text || random()::text) FROM 1 FOR 8),
+               false) ou;
 
     bind_id := config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), id_id);
 END

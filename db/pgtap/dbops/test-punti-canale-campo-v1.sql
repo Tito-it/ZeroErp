@@ -430,7 +430,7 @@ SELECT is(
             ('vendite.trgfn_resi_rinunce_guard',                                  'E_QTA_NON_POSITIVA'),
             ('vendite.trgfn_preventivi_guard_utility_istanza_coerenza',           'E_PREV_UTILITY_ISTANZA_INCOERENTE'),
             -- i 9 A del §4-ter.2 (22-09, changeSet 20260922-11..13)
-            ('anagrafiche.fn_crea_risorsa_umana_v2',                              'E_ADMIN_UO_NON_TROVATA'),
+            ('anagrafiche.fn_crea_risorsa_umana',                              'E_ADMIN_UO_NON_TROVATA'),
             ('anagrafiche.trgfn_billing_account_guard_normalize',                 'E_PARENT_SELF'),
             -- ⭐ 2026-09-23: i tre controlli sulle date di validita' che stavano
             --   qui (billing_account e i due legami ai conti bancari) sono stati

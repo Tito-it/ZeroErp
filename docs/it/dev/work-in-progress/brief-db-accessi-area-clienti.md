@@ -2,22 +2,19 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-26
 
-**Riparte: Tid**, con tre decisioni del giro 2 (D-G2-1 … D-G2-3, §5.1) e il range dei numeri; poi la sessione DB
-costruisce il giro 2. In parallelo il team BE/FE col passo 3b (§4). Giro 1 committato il 2026-11-26 (`6440e685d8`).
+**Riparte: il team BE/FE col passo 3b** (§4, con i punti del giro 2); poi la sessione DB col passo 3c e il ritiro di
+`fn_crea_operatore_v2`. Giri 1 e 2 applicati, verdi e committati il 2026-11-26 (giro 1: `6440e685d8`).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | team BE/FE | Il passo 3b: lo spegnimento e il reinvito dai verbi DB, i codici nuovi, lo stato `REVOCATA`, il censimento di chi scrive `attivo` | §4 | — |
-| 2 | Tid | ~~Il via al giro 2~~ dato il 2026-11-26; D-G2-1 … D-G2-3 e il range dei numeri | §5.1 | — |
-| 3 | sessione DB | Giro 2: la costruzione | §5.1 | 2 |
-| 4 | sessione DB | Il passo 3c: il ritiro delle scritture dell'app, con «Garanzie ritirate» | §2.4 | 1 |
+| 2 | team BE/FE | Il passo 3b: i verbi della revoca, i codici nuovi, lo stato `REVOCATA`, `fn_crea_operatore`, il censimento di chi scrive `attivo` | §4 | — |
+| 4 | sessione DB | Il passo 3c (le scritture dell'app) e il ritiro di `fn_crea_operatore_v2` | §2.4, §5.2 | 2 |
 | 5 | sessione DB | Giri 3-6 (S64, la veste cliente unica, l'iscrizione da sé, il ritiro dei rami shop) | §5 | 4 |
 
-**Decisioni aperte di Tid:** D-G2-1 (la credenziale senza vesti), D-G2-2 (i nomi `_v2`), D-G2-3 (`tecnica` fuori
-dall'operatore), §5.1; per i giri successivi restano D-M6 e
-D-M9 ([analisi-modello-area-clienti](analisi-modello-area-clienti.md) §7) e l'emittente del cliente iscritto da sé
+**Decisioni aperte di Tid:** nessuna per i giri 1 e 2. Per i successivi restano D-M6 e D-M9
+([analisi-modello-area-clienti](analisi-modello-area-clienti.md) §7) e l'emittente del cliente iscritto da sé
 ([sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md) §3.6).
-**Da committare:** questo brief (l'analisi del giro 2).
+**Da committare:** niente.
 
 ## 0. Il piano da percorrere
 
@@ -51,10 +48,14 @@ D-M9 ([analisi-modello-area-clienti](analisi-modello-area-clienti.md) §7) e l'e
 - **Giro 2 — Le regole della veste e della sincronizzazione** (§5.1, T9: S5, S6, S22, S59-S63, S65, S66)
   - [x] Il via di Tid — 2026-11-26
   - [x] L'analisi sui corpi vivi (dbdev) — 2026-11-26
-  - [ ] D-G2-1 … D-G2-3 e il range dei numeri (Tid)
-  - [ ] 2a la sincronizzazione (S59, S5, S60); 2b i guard (S61, S62, S63); 2c i verbi di creazione (S6, S65, S66)
-  - [ ] 2d i nomi `_v2` (S22), col passo BE
-  - [ ] pgTAP, apply e corsa (Tid)
+  - [x] D-G2-1 … D-G2-3 (Tid: sì alle tre proposte) e il primo numero libero — 2026-11-26
+  - [x] 2a la sincronizzazione (S59, S5, S60): `-58`, `-59`, `-60` — 2026-11-26
+  - [x] 2b i guard (S61, S62, S63): `-61` … `-66` — 2026-11-26
+  - [x] 2c i verbi di creazione (S6, S65, S66) e 2d i nomi (S22): `-67` … `-70` — 2026-11-26
+  - [x] La fixture dell'operatore persona (`-71`) e i pgTAP adeguati (§5.2) — 2026-11-26
+  - [x] La correzione della fixture col runner app (`-73`) e i due test RLS del giro 10-ter (§5.2) — 2026-11-26
+  - [x] Apply e corsa dei pgTAP (Tid): verdi; doc auto-generata rigenerata — 2026-11-26
+  - [ ] Il ritiro di `fn_crea_operatore_v2`, quando il BE e i due chiamanti DB sono passati
 - **Giri 3-6** (§5)
   - [ ] S64; la veste cliente unica e l'indice per soggetto; l'iscrizione da sé; il ritiro dei rami shop
 
@@ -236,6 +237,20 @@ I verbi sono consegnati (`20261125-54`, `-55`) e aspettano l'apply. Lato BE:
 7. Nel [brief BE accessi](brief-be-accessi-credenziale-e-vesti.md) A-6 si chiude col guard (il pulsante passa da
    `fn_accendi_veste`, che ora rifiuta una veste revocata), e poi sparisce col ritiro del pulsante.
 
+Dal giro 2 (2026-11-26, dopo l'apply di `20261125-58` … `-71`):
+
+8. **`anagrafiche.fn_crea_operatore`** è il nome del verbo; `fn_crea_operatore_v2` resta un involucro con la stessa
+   firma finché `AmmSoftwareRepository` non passa al nome nuovo. Poi il DB lo ritira: dite quando.
+9. **Una credenziale senza nessuna veste si spegne**: il job e il trigger la portano a `is_active = false`. Il
+   management command `sync_auth_user_active` (anche in `--dry-run`) la conta fra le riallineate; la sua doc e i
+   test Django che si aspettano una credenziale senza vesti accesa vanno riletti. ⛔ Censite chi crea una
+   credenziale senza darle subito una veste (`PortaleRepository.create_auth_user_portale` è la domanda R-BE6): se la
+   veste arriva in un'altra transazione, la credenziale si spegne nel mezzo e la riaccende la veste.
+10. **I codici nuovi**: `E_VESTE_TECNICA_SOLO_OPERATORE` (TECNICO) e `E_SUPER_ADMIN_SU_VESTE_TECNICA`
+    (CONFLITTO_STATO: arriva se dall'amministrazione si dà il profilo SUPER_ADMIN all'utente di un processo).
+11. **Le policy generate** nominano ancora `fn_crea_operatore_v2` e `fn_crea_risorsa_umana_v2` nei commenti: si
+    rigenerano dal catalogo, che porta i nomi nuovi.
+
 ## 5. I giri successivi
 
 Il tema T9 di [brief-db-revisione-anagrafiche](brief-db-revisione-anagrafiche.md) (§17.1) porta qui, oltre a R-4,
@@ -282,6 +297,83 @@ e la fixture `dbops.fn_pgtap_crea_operatore_umano`; i pgTAP (17 file fra BE e pg
 | D-G2-1 | Una credenziale **senza nessuna veste** resta accesa? Oggi il modello non la ammette (il presidio `vw_credenziali_da_sanare` la dice `NESSUNA_VESTE`) ma il job la lascia accesa | **sì, si spegne**: il trigger quando se ne va l'ultima veste, il job per quelle nate senza (`fn_crea_auth_user` senza veste). Da verificare prima: le credenziali senza veste che servono (un superuser Django, gli account di sviluppo) |
 | D-G2-2 | I nomi senza `_v2`, e come si passa | `fn_crea_operatore`, `fn_crea_risorsa_umana`. Il DB crea i nomi nuovi e tiene i `_v2` come involucro sottile finché il BE non passa (lo stesso schema in tre passi di D-R9), poi li ritira |
 | D-G2-3 | `tecnica = true` fuori dalla veste `OPERATORE`, e il SUPER_ADMIN su un'identità tecnica | **si rifiutano tutti e due**: il guard di coerenza per il primo, il guard dei binding per il secondo; `fn_is_super_admin_account` esclude `tecnica` |
+
+### 5.2 Giro 2 costruito (2026-11-26)
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20261125-58` | sync della veste: anche sul `DELETE` e sulla credenziale di prima; colonne `soggetto_ruolo_id`, `tecnica` |
+| `-59` | sync del rapporto: `INSERT`, `DELETE`, cambio di ruolo, su ogni credenziale con una veste OPERATORE sul ruolo nuovo e di prima |
+| `-60` | `fn_sync_auth_user_expired`: anche la credenziale senza vesti (si spegne) |
+| `-61` | guard dell'ultimo SUPER_ADMIN sulla veste: anche credenziale, ruolo, tipo, `tecnica` |
+| `-62` | guard dell'ultimo SUPER_ADMIN sul rapporto: anche il `DELETE` |
+| `-63` | guard del rapporto acceso: anche il ruolo di prima |
+| `-64` | guard di coerenza della veste: `tecnica` solo sull'operatore; la veste che diventa tecnica col SUPER_ADMIN |
+| `-65` | guard dei binding: il SUPER_ADMIN non si lega a un'identità tecnica |
+| `-66` | `fn_is_super_admin_account` esclude `tecnica` |
+| `-67` | `fn_crea_risorsa_umana` (nuova): veste spenta per default, SUPER_ADMIN senza credenziale e veste OPERATORE già presente rifiutati, `valido_dal` vuoto ripiega |
+| `-68` | `fn_crea_operatore` (nuova, il corpo del `_v2`); `fn_crea_operatore_v2` diventa un involucro `LANGUAGE sql` |
+| `-69` | `fn_provisiona_dati_di_sviluppo`: il rilancio rimette soggetto, rapporto, date, revoca e SUPER_ADMIN; chiama `fn_crea_operatore` |
+| `-70` | `fn_crea_risorsa_umana_v2` ritirata (nessun chiamante dopo il `-69`) |
+| `-71` | `dbops.fn_pgtap_crea_emittente_operatore(…, p_persona)`: l'operatore dell'azienda può essere una persona |
+| `-73` | La stessa fixture: con `p_persona` l'azienda entra nel perimetro da `dbops.fn_pgtap_sposta_scope_operatore` (il verbo), non da `script.fn_applica_user_emittenti_scope`, che l'app non esegue. Il `-71` si fermava col runner app con «permesso negato» (corsa di Tid, 2026-11-26); la prova sullo scratch gira da owner e non lo vedeva |
+| CSV | `E_VESTE_TECNICA_SOLO_OPERATORE` (TECNICO), `E_SUPER_ADMIN_SU_VESTE_TECNICA` (CONFLITTO_STATO); le note del catalogo coi nomi nuovi |
+
+**Scostamenti dall'analisi.**
+
+- S6 e S65 non si scrivono sul `_v2` e poi si ricopiano: nascono direttamente in `fn_crea_risorsa_umana`, e il `_v2`
+  si ritira nello stesso giro, perché i suoi chiamanti sono solo nel database.
+- `fn_crea_operatore_v2` resta come involucro: lo chiamano il backend, `fn_crea_primo_amministratore` e la fixture
+  `dbops.fn_pgtap_crea_operatore_umano`. I due chiamanti DB passano al nome nuovo nel giro che ritira il `_v2`.
+- S61 sull'identità guarda anche `tecnica`: con D-G2-3 una veste SUPER_ADMIN non diventa tecnica, ma il guard
+  dell'ultimo amministratore resta la rete.
+- **D-G2-3 ha trovato nove pgTAP** che legavano il SUPER_ADMIN all'utente tecnico della fixture
+  `fn_pgtap_crea_emittente_operatore`, contro il COMMENT della fixture stessa («non usarlo dove il soggetto è
+  l'operatore umano»). La fixture si estende con `p_persona` (`-71`), e in quei test l'operatore che diventa
+  SUPER_ADMIN nasce persona. Due test costruivano a mano i casi che ora si rifiutano (un SUPER_ADMIN su un utente
+  tecnico, una veste tecnica trasformata in `API_CLIENT`): corretti tenendo il caso che provano.
+
+**La prova** (scratch `zeroerp_ruoli`, 2026-11-26):
+
+- estratto dei quattordici changeSet eseguito per intero; dopo l'estratto la precondition del `-70` vale, ogni nome
+  ha una sola firma e i trigger sono montati come previsto;
+- `anagrafiche/test-vesti-sync-e-guard-v1` (nuovo): 14/14. I casi 1-9 costruiscono il comportamento; 10-14 sono
+  **presidi di forma** (S61, S62, S60, l'esclusione di `tecnica`), perché il caso vero chiede di spegnere ogni altro
+  amministratore o di fabbricare una seconda persona col suo ruolo e senza rapporto;
+- adeguati: `test-sync-auth-user-is-active-multi-role` (il caso 3 era scritto sulla scelta di prima: era il rosso in
+  baseline), i sei test che chiamavano `fn_crea_risorsa_umana_v2`, `test-character-n-v1` (il nome nuovo nel
+  registro), `test-fn-get-credenziale-per-email-v1`, `test-profili-accesso-guard-ultimo-super-admin`,
+  `test-vw-processi-roster` e i nove della fixture;
+- regressione senza e con l'estratto su 52 pgTAP (i 37 del primo elenco, più i test che legano il SUPER_ADMIN o
+  usano la fixture): 49 verdi. I tre rossi sono gli stessi prima e dopo: `test-veste-revocata-v1` (il limite della
+  prova da owner, §2.6), `test-guard-attivo-occhi-del-proprietario-v1` e `test-rls-listini-ef-whitelist-write`
+  (i casi di perimetro, rossi da owner per costruzione: 4 e 2 rossi anche prima delle modifiche);
+- guardrail statici sui quattordici file: verdi.
+
+**Guide del giro 2** (`scripts/guide_coinvolte.py` sui quattordici changeSet): `risorse-umane-e-accessi` **guida
+indietro, aggiornata** (trigger di sync, job, la sync che non vede solo il tempo, R6 con `tecnica` e SUPER_ADMIN, i
+nomi nuovi); `pgtap-come-si-scrive-un-test` e `manual/fn_pgtap_crea_emittente_operatore` **aggiornate**
+(`p_persona`); `architettura-permessi-e-autorizzazioni` **aggiornata** (il SUPER_ADMIN è di una persona);
+`architettura-multi-face-auth` solo i nomi (resta contraddetta dal modello, si riscrive coi giri 3-6);
+`soggetti-e-ruoli-anagrafici`, `gestione-degli-indirizzi` coerenti (oggetti in comune col provisioning, regole
+invariate). Le pagine `manual/` di `fn_crea_risorsa_umana` e `fn_crea_operatore` prendono il nome nuovo.
+- ⚠️ Rischio dichiarato: su un database nato da zero `script.fn_pgtap_set_contesto_operatore()` costruisce un utente
+  tecnico come operatore di contesto. Un test che lo fa SUPER_ADMIN si ferma con `E_SUPER_ADMIN_SU_VESTE_TECNICA`. I
+  test che lo fanno li ho cercati per nome; la corsa intera di Tid è la prova.
+
+**L'apply** (Tid, dbdev, 2026-11-26): verde dopo due correzioni che la prova da owner non poteva vedere.
+
+- **L'ordine delle preCondition.** Il provisioning chiedeva `fn_crea_operatore`, che nasceva nel numero dopo:
+  l'apply si è fermato. I due file, non ancora applicati, si sono scambiati di numero (`-68` la funzione, `-69` il
+  provisioning).
+- **Il runner app.** Il ramo `p_persona` del `-71` chiamava `script.fn_applica_user_emittenti_scope`, che l'app non
+  esegue: ogni test con `p_persona` si fermava con «permesso negato». Il `-73` passa dal verbo, con
+  `dbops.fn_pgtap_sposta_scope_operatore`.
+- **Due test RLS del giro 10-ter** (`brief-db-porte-aperte-dalla-sola-guc` §10-ter, sessione parallela):
+  `rls/test-rls-fatture-satelliti-functional` e `rls/test-rls-fondi-fattura-source-functional` toglievano l'azienda
+  all'operatore per il caso «whitelist vuota», che dal `20261125-74` si rifiuta. Il caso ora è di un secondo operatore
+  nato senza azienda, come negli altri tredici file di quel giro.
+- Suite pgTAP di Tid: verde. Doc auto-generata rigenerata da Tid.
 
 ### Giri 3-6 — Il modello dell'area clienti
 

@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.trgfn_risorse_umane_guard_identita_attiva: la veste si cerca
+# anche sul ruolo di prima (S62).
+#
+#   Il guard («una persona che entra ancora non si spegne») cercava la veste
+#   OPERATORE accesa su NEW.soggetto_ruolo_id: un UPDATE che nella stessa
+#   istruzione spegne il rapporto e lo sposta su un altro ruolo passava, con la
+#   veste ancora accesa sul ruolo di prima. Ora cerca su OLD e NEW.
+#
+#   Corpo vivo (dbdev, 2026-11-26) con le tre sostituzioni; firma, RETURNS e
+#   trigger (BEFORE UPDATE OF attivo) invariati. Il tipo esplicito di
+#   v_username resta (colonna di django.*). COMMENT riscritto al presente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261125-63-update-trgfn-risorse-umane-guard-identita-attiva-ruolo-di-prima-mctit.yaml
+
+  - changeSet:
+      id: 20261125-63-update-trgfn-risorse-umane-guard-identita-attiva-ruolo-di-prima
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_risorse_umane_guard_identita_attiva: cerca la veste OPERATORE accesa anche sul
+        soggetto_ruolo_id di prima.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            { schemaName: anagrafiche, tableName: risorse_umane }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_guard_identita_attiva()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- ⛔ Tipo ESPLICITO e non %TYPE: la colonna e' di django.auth_user, e in CI
+                  --    Liquibase gira PRIMA delle migrazioni Django — al CREATE lo schema
+                  --    django non esiste, e un %TYPE si risolve proprio al CREATE. Il DB puo'
+                  --    CHIAMARE dentro django.* (il SELECT sotto e' late-bound, plpgsql), non
+                  --    DIPENDERNE. Provato in CI il 12-09: «lo schema "django" non esiste».
+                  v_username text;
+              BEGIN
+                  -- ------------------------------------------------------------
+                  -- Guard: una risorsa umana con un'identita' OPERATORE ancora
+                  -- attiva non si disattiva («figli prima, padre poi»). Il legame
+                  -- risorsa umana -> identita' passa da soggetto_ruolo_id, non da
+                  -- una FK: per questo il guard e' scritto a mano e non generato.
+                  -- Solo la transizione attivo true -> false. La veste si cerca
+                  -- sul ruolo di prima E su quello nuovo: uno spegnimento che
+                  -- nella stessa scrittura sposta il ruolo non la lascia accesa
+                  -- su quello di prima.
+                  -- ------------------------------------------------------------
+                  IF TG_OP = 'UPDATE'
+                     AND COALESCE(OLD.attivo, false) IS TRUE
+                     AND COALESCE(NEW.attivo, false) IS FALSE
+                  THEN
+                      SELECT au.username
+                        INTO v_username
+                        FROM anagrafiche.identita_digitali id
+                        JOIN django.auth_user au
+                          ON au.id = id.auth_user_id
+                       WHERE id.soggetto_ruolo_id IN (OLD.soggetto_ruolo_id, NEW.soggetto_ruolo_id)
+                         AND id.ruolo_applicativo = 'OPERATORE'
+                         AND id.attivo            = true
+                       ORDER BY id.id
+                       LIMIT 1;
+
+                      IF FOUND THEN
+                          -- campo -> il frontend (quale interruttore accendere);
+                          -- VARIADIC -> l'operatore (chi e' l'utente ancora attivo).
+                          PERFORM script.fn_log_and_raise_error(
+                              'anagrafiche',
+                              'trgfn_risorse_umane_guard_identita_attiva',
+                              'E_RISORSA_UMANA_IDENTITA_ATTIVA',
+                              jsonb_build_object(
+                                  'campo',             'attivo',
+                                  'risorsa_umana_id',  NEW.id,
+                                  'soggetto_ruolo_id', NEW.soggetto_ruolo_id,
+                                  'soggetto_ruolo_id_prima', OLD.soggetto_ruolo_id),
+                              NULL::uuid,
+                              v_username);
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_guard_identita_attiva() IS
+                  'Guard BEFORE UPDATE OF attivo su anagrafiche.risorse_umane: rifiuta attivo true -> false se c''e'' ancora una veste OPERATORE accesa sul soggetto_ruolo_id del rapporto, quello di prima o quello nuovo della stessa scrittura: E_RISORSA_UMANA_IDENTITA_ATTIVA (CONFLITTO_STATO), nel VARIADIC lo username. Si spegne prima la veste, poi il rapporto. Scritto a mano perche'' il legame fra rapporto e veste passa dal ruolo anagrafico e non da una FK, e l''automazione ATTIVO non lo vede.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              SELECT 1;  -- forward-only: la versione precedente e' il 20260912-18

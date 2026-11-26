@@ -11,7 +11,7 @@
 > Approfondimento funzioni:
 >
 > * [anagrafiche.fn_crea_veste_portale](/dbzero/anagrafiche/funzioni/fn_crea_veste_portale) — crea la veste esterna, spesso spenta
-> * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — crea la veste OPERATORE, sempre spenta
+> * [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore) — crea la veste OPERATORE, sempre spenta
 > * [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile) — accesa non vuol dire ancora utilizzabile
 > * [anagrafiche.trgfn_identita_digitali_sync_auth_user_active](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_sync_auth_user_active) — la credenziale segue le vesti
 >

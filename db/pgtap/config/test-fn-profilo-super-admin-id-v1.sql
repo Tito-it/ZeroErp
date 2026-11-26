@@ -92,7 +92,7 @@ SELECT throws_like(
 
 SELECT throws_like(
     (SELECT format(
-        'SELECT anagrafiche.fn_crea_risorsa_umana_v2(p_soggetto_id => %L::uuid, p_qualifica_id => %s, '
+        'SELECT anagrafiche.fn_crea_risorsa_umana(p_soggetto_id => %L::uuid, p_qualifica_id => %s, '
         'p_auth_user_id => %s, p_is_super_admin => true)',
         soggetto_id, qualifica_id, auth_user_id) FROM _f),
     '%trovati 2%',

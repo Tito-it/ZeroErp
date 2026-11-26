@@ -45,11 +45,13 @@ BEGIN;
 --   ⚠️ Niente BA: la famiglia listino porta l'emittente in testata, quindi il
 --   file resta sul runner APPLICATIVO.
 CREATE TEMP TABLE _mondi AS
+-- ⚠️ Rev 2026-11-26 (D-G2-3, brief-db-accessi-area-clienti §5.1): chi diventa SUPER_ADMIN
+--   nasce PERSONA (p_persona): un'identita' tecnica non ha mai il SUPER_ADMIN.
 SELECT 'MIA'    AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
 UNION ALL
 SELECT 'ALTRUI' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
 UNION ALL
-SELECT 'SA'     AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+SELECT 'SA'     AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore(p_persona := true);
 
 DO $lega$ BEGIN PERFORM config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), (SELECT identita_id FROM _mondi WHERE lato = 'SA')); END $lega$;
 

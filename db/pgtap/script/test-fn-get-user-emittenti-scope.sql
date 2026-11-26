@@ -43,13 +43,15 @@ SET CONSTRAINTS ALL IMMEDIATE;
 --   nella fixture (auth_user_id NULL al test 2). Tre aziende con
 --   `dbops.fn_pgtap_crea_emittente_operatore()`, PRIMA di aprire il contesto.
 CREATE TEMP TABLE _mondi AS
+-- ⚠️ Rev 2026-11-26 (D-G2-3, brief-db-accessi-area-clienti §5.1): chi diventa SUPER_ADMIN
+--   nasce PERSONA (p_persona): un'identita' tecnica non ha mai il SUPER_ADMIN.
 SELECT 'CTX'    AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
 UNION ALL
 SELECT 'GLOBAL' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
 UNION ALL
-SELECT 'SA'     AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
+SELECT 'SA'     AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore(p_persona := true)
 UNION ALL
-SELECT 'SA2'    AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
+SELECT 'SA2'    AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore(p_persona := true);
 
 -- ⚠️ Il SECONDO super admin si costruisce anche lui: il test 5 dice «il target
 --   non e' l'ultimo SA», e su un database ricostruito dai changelog di super

@@ -23,10 +23,10 @@
 >
 > **Vedi anche** — funzioni e trigger DB:
 >
-> * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — crea un operatore: credenziale, soggetto, risorsa umana e veste spenta
+> * [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore) — crea un operatore: credenziale, soggetto, risorsa umana e veste spenta
 > * [anagrafiche.fn_crea_primo_amministratore](/dbzero/anagrafiche/funzioni/fn_crea_primo_amministratore) — il primo SUPER_ADMIN di un'installazione nuova, con la veste accesa
 > * [anagrafiche.fn_crea_indirizzi_operatore](/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_operatore) — residenza e domicilio fiscale dell'operatore
-> * [anagrafiche.fn_crea_risorsa_umana_v2](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana_v2) — crea la risorsa umana e, se c'è la credenziale, la veste `OPERATORE`
+> * [anagrafiche.fn_crea_risorsa_umana](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana) — crea la risorsa umana e, se c'è la credenziale, la veste `OPERATORE`
 > * [anagrafiche.fn_crea_auth_user](/dbzero/anagrafiche/funzioni/fn_crea_auth_user) — crea la credenziale Django quando l'email non ne ha una
 > * [anagrafiche.fn_crea_veste_portale](/dbzero/anagrafiche/funzioni/fn_crea_veste_portale) — crea una veste di portale o di shop
 > * [anagrafiche.fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste) — accende una veste (l'attivazione dell'invito)
@@ -197,6 +197,8 @@ La catena `soggetti_ruoli(soggetto_id, tipo_ruolo_id)` UNIQUE + `risorse_umane(s
 
 Tutte le vesti di una credenziale hanno la **stessa natura**: o sono di una persona, o sono di una macchina. Una veste e «di macchina» quando e `API_CLIENT` oppure ha `tecnica = true` ([script.fn_veste_di_sistema](/dbzero/script/funzioni/fn_veste_di_sistema)). Contano anche le vesti spente: una veste spenta resta della sua credenziale, e riaccenderla non deve poter mescolare le due nature.
 
+`tecnica = true` si scrive solo su una veste `OPERATORE`: un processo automatico entra solo dalla porta dell'operatore, e su ogni altra veste il flag e rifiutato (`E_VESTE_TECNICA_SOLO_OPERATORE`). Un'identita tecnica non ha mai il profilo `SUPER_ADMIN`: il legame si rifiuta da tutti e due i lati, il binding e la veste che diventa tecnica (`E_SUPER_ADMIN_SU_VESTE_TECNICA`), e [script.fn_is_super_admin_account](/dbzero/script/funzioni/fn_is_super_admin_account) non la conta.
+
 Lo presidia [trgfn_identita_digitali_guard_natura_credenziale](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_natura_credenziale), alla nascita della veste e quando cambiano la credenziale, il tipo o il flag `tecnica`: chi prova a mescolare riceve `E_CREDENZIALE_PERSONA_E_SISTEMA`. La stessa natura decide in quale lista degli accessi cade la credenziale (vedi [Le liste degli accessi](#le-liste-degli-accessi)).
 
 ---
@@ -232,14 +234,19 @@ Il secondo livello decide **se l'utente puo entrare**. Una veste non utilizzabil
 | Evento               | Trigger                                               | Cosa succede                                                                                                   |
 | -------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | Nuova veste          | `trg_identita_digitali_z90_sync_auth_user_active_ins` | AFTER INSERT su `identita_digitali`                                                                            |
-| Cambio della veste   | `trg_identita_digitali_z90_sync_auth_user_active_upd` | AFTER UPDATE di `attivo`, `valido_dal`, `valido_al`, `ruolo_applicativo` o `auth_user_id` su `identita_digitali` |
-| Cambio del rapporto  | `trg_risorse_umane_z90_sync_auth_user_active_upd`     | AFTER UPDATE di `attivo`, `valido_dal` o `valido_al` su `risorse_umane`, solo se il valore cambia               |
+| Cambio della veste   | `trg_identita_digitali_z90_sync_auth_user_active_upd` | AFTER UPDATE di `attivo`, `valido_dal`, `valido_al`, `ruolo_applicativo`, `auth_user_id`, `soggetto_ruolo_id` o `tecnica` su `identita_digitali` |
+| Veste cancellata     | `trg_identita_digitali_z90_sync_auth_user_active_dlt` | AFTER DELETE su `identita_digitali`                                                                            |
+| Nuovo rapporto       | `trg_risorse_umane_z90_sync_auth_user_active_ins`     | AFTER INSERT su `risorse_umane`                                                                                |
+| Cambio del rapporto  | `trg_risorse_umane_z90_sync_auth_user_active_upd`     | AFTER UPDATE di `attivo`, `valido_dal`, `valido_al` o `soggetto_ruolo_id` su `risorse_umane`, solo se il valore cambia |
+| Rapporto cancellato  | `trg_risorse_umane_z90_sync_auth_user_active_dlt`     | AFTER DELETE su `risorse_umane`                                                                                |
 
-Sulla veste la sync guarda la credenziale che la veste ha **dopo** la scrittura; sul rapporto guarda la credenziale della veste `OPERATORE` della risorsa ([trgfn_risorse_umane_sync_auth_user_active](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_sync_auth_user_active)), e non fa niente se la risorsa non ha accesso.
+Sulla veste la sync guarda la credenziale che la veste ha **dopo** la scrittura e, quando la veste se ne va o cambia credenziale, anche quella di **prima**: una credenziale rimasta senza vesti utilizzabili si spegne. Sul rapporto guarda ogni credenziale con una veste `OPERATORE` sul ruolo del rapporto, e sul ruolo di prima se e cambiato ([trgfn_risorse_umane_sync_auth_user_active](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_sync_auth_user_active)).
 
-**Le date che arrivano.** I trigger reagiscono alle scritture: una data di fine che passa, o una data di inizio che arriva, non scrive niente e non fa partire nessun trigger. Se ne occupa la funzione [`anagrafiche.fn_sync_auth_user_expired`](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired), eseguita dal job pgAgent `sync_auth_user_expired_daily` **ogni ora, al minuto 10** (il nome dice «daily», ma il job e orario: la funzione e idempotente, e una scadenza si riallinea entro l'ora). Riallinea le credenziali che hanno delle vesti **nei due versi**, con la stessa regola della sync: spegne quelle che non ne hanno piu nessuna utilizzabile (veste scaduta, oppure rapporto scaduto) e **accende** quelle che ne hanno una diventata valida (data di inizio arrivata). Una credenziale senza nessuna veste resta fuori. Al posto del job si puo usare il management command Django `sync_auth_user_active`, che offre la stessa funzionalita — con un `--dry-run` per il solo report, senza modifiche — ed e la via da preferire quando si vuole far girare il controllo a mano.
+Lo spegnimento del soggetto non chiama la sync, ma non si raggiunge: un soggetto con dei ruoli non si spegne, e una veste ha sempre un ruolo.
 
-⚠️ **Che cosa la sincronizzazione non vede subito.** Quattro scritture non chiamano la sync, e la credenziale si riallinea solo al giro successivo del job: il cambio di `auth_user_id` di una veste (la credenziale di prima resta com'era), il cambio di `soggetto_ruolo_id` di una risorsa, lo spegnimento del soggetto (la regola legge `soggetti.attivo`, ma nessun trigger su `soggetti` chiama la sync) e la cancellazione di una veste. Per la cancellazione il job non basta: se la veste cancellata era l'ultima, la credenziale non ha piu vesti e il job la lascia com'era.
+**Le date che arrivano.** I trigger reagiscono alle scritture: una data di fine che passa, o una data di inizio che arriva, non scrive niente e non fa partire nessun trigger. Se ne occupa la funzione [`anagrafiche.fn_sync_auth_user_expired`](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired), eseguita dal job pgAgent `sync_auth_user_expired_daily` **ogni ora, al minuto 10** (il nome dice «daily», ma il job e orario: la funzione e idempotente, e una scadenza si riallinea entro l'ora). Riallinea le credenziali **nei due versi**, con la stessa regola della sync: spegne quelle che non hanno piu nessuna veste utilizzabile (veste scaduta, rapporto scaduto, o nessuna veste) e **accende** quelle che ne hanno una diventata valida (data di inizio arrivata). Una credenziale senza nessuna veste e spenta: senza una veste non c'e una porta da cui entrare. Al posto del job si puo usare il management command Django `sync_auth_user_active`, che offre la stessa funzionalita — con un `--dry-run` per il solo report, senza modifiche — ed e la via da preferire quando si vuole far girare il controllo a mano.
+
+⚠️ **Che cosa la sincronizzazione non vede subito.** Solo il tempo: una data che arriva non scrive niente, e la riallinea il job entro l'ora. Ogni scrittura che cambia l'utilizzabilita di una veste (sulla veste, sul rapporto, la cancellazione dell'una o dell'altro) chiama la sync nella stessa istruzione.
 
 **Invalidazione cache permessi.** Il management command `sync_auth_user_active` invalida automaticamente la cache permessi per ogni utente riallineato (spento o acceso), cosi il blocco e immediato e non deve attendere la scadenza naturale della cache (TTL 300s). Per le disattivazioni real-time dei trigger la cache si rinnova alla scadenza del TTL; il listener LISTEN/NOTIFY (vedi [Cambio reparto](#cambio-reparto)) e il pattern event-driven su cui estendere anche questi scenari.
 
@@ -318,8 +325,8 @@ Una persona entra nell'organico attraverso le **funzioni di creazione** del DB, 
 
 | Caso | Funzione | Cosa fa |
 | --- | --- | --- |
-| Operatore che accede al software | [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) | Tutto in una transazione: la credenziale, il soggetto, la risorsa umana, la veste `OPERATORE` **spenta**, il binding `SUPER_ADMIN` se richiesto, gli indirizzi |
-| Risorsa umana, con o senza credenziale | [anagrafiche.fn_crea_risorsa_umana_v2](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana_v2) | Il ruolo `RIS_UMANA` ([R1](#r1--ruolo-corretto)), la risorsa (che nasce attiva) e, se riceve la credenziale, la veste `OPERATORE` e l'eventuale binding `SUPER_ADMIN`. E il passo interno della funzione dell'operatore |
+| Operatore che accede al software | [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore) | Tutto in una transazione: la credenziale, il soggetto, la risorsa umana, la veste `OPERATORE` **spenta**, il binding `SUPER_ADMIN` se richiesto, gli indirizzi |
+| Risorsa umana, con o senza credenziale | [anagrafiche.fn_crea_risorsa_umana](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana) | Il ruolo `RIS_UMANA` ([R1](#r1--ruolo-corretto)), la risorsa (che nasce attiva) e, se riceve la credenziale, la veste `OPERATORE` e l'eventuale binding `SUPER_ADMIN`. E il passo interno della funzione dell'operatore |
 | Credenziale nuova | [anagrafiche.fn_crea_auth_user](/dbzero/anagrafiche/funzioni/fn_crea_auth_user) | Crea l'utente Django; rifiuta uno username o un'email gia presenti. La chiama la funzione dell'operatore solo quando l'email non ha ancora una credenziale |
 | Veste di portale o di shop | [anagrafiche.fn_crea_veste_portale](/dbzero/anagrafiche/funzioni/fn_crea_veste_portale) | Crea una veste `CLIENTE_PORTALE`, `FORNITORE_PORTALE` o `SHOP_CUSTOMER` su una credenziale; chi la chiama dice sempre se nasce accesa o spenta |
 | Accensione di una veste | [anagrafiche.fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste) | Accende la veste di una credenziale: e il gesto dell'attivazione dell'invito |

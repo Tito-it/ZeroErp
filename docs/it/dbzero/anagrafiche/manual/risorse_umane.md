@@ -18,8 +18,8 @@
 >
 > Approfondimento funzioni:
 >
-> * [anagrafiche.fn_crea_risorsa_umana_v2](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana_v2) — la porta che crea il rapporto
-> * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — crea insieme la persona, il rapporto, la credenziale e la veste operatore
+> * [anagrafiche.fn_crea_risorsa_umana](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana) — la porta che crea il rapporto
+> * [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore) — crea insieme la persona, il rapporto, la credenziale e la veste operatore
 > * [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile) — dove il rapporto decide se l'operatore entra
 > * [anagrafiche.trgfn_risorse_umane_sync_auth_user_active](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_sync_auth_user_active) — la sincronizzazione della credenziale al cambio del rapporto
 >

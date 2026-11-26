@@ -24,7 +24,7 @@
 > * [anagrafiche.trgfn_identita_digitali_guard_coerenza](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_coerenza) — il tipo di veste coerente col ruolo
 > * [anagrafiche.trgfn_identita_digitali_guard_natura_credenziale](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_natura_credenziale) — persona o macchina, non tutte e due
 > * [anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_ultimo_super_admin) — il sistema non resta senza amministratore
-> * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — crea l'operatore, con la sua veste spenta
+> * [anagrafiche.fn_crea_operatore](/dbzero/anagrafiche/funzioni/fn_crea_operatore) — crea l'operatore, con la sua veste spenta
 > * [anagrafiche.fn_crea_veste_portale](/dbzero/anagrafiche/funzioni/fn_crea_veste_portale) — crea la veste di un portale
 > * [anagrafiche.fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste) — accende la veste
 > * [anagrafiche.fn_revoca_veste](/dbzero/anagrafiche/funzioni/fn_revoca_veste) — l'amministratore revoca la veste
@@ -155,7 +155,7 @@ sola per tutte le porte: stanno in `config.credenziali`, non qui.
 Il passaggio oltre tutti i permessi non è una colonna della veste: è il **profilo** di tipo `SUPER_ADMIN`, legato a
 una veste dell'operatore con una riga di `config.profili_accesso_bindings`. Il profilo non ha un id scritto da
 nessuna parte: lo risolve `config.fn_profilo_super_admin_id`. Il legame lo scrive, alla creazione dell'operatore,
-`anagrafiche.fn_crea_risorsa_umana_v2` (che `fn_crea_operatore_v2` chiama); dopo, lo mettono e lo tolgono
+`anagrafiche.fn_crea_risorsa_umana` (che `fn_crea_operatore` chiama); dopo, lo mettono e lo tolgono
 `config.fn_lega_profilo_identita` e `config.fn_slega_profilo_identita`. Chi è amministratore lo dice
 `script.fn_is_super_admin`.
 

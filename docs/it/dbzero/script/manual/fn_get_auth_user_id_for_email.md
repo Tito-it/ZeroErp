@@ -8,7 +8,7 @@ distinguere maiuscole e minuscole**. `NULL` se nessuna.
 È la sede unica di questa regola (regola del 2, dal 2026-09-25,
 brief-db-blocco-login-per-credenziale §5): la chiedono il guard di unicità di
 [`fn_crea_auth_user`](/dbzero/anagrafiche/manual/fn_crea_auth_user), la madre
-[`fn_crea_operatore_v2`](/dbzero/anagrafiche/manual/fn_crea_operatore_v2) per
+[`fn_crea_operatore`](/dbzero/anagrafiche/manual/fn_crea_operatore) per
 riusare la credenziale di una persona (D-6), e il backend dell'invito
 portale/shop, che fino a quel giorno la riscriveva in Python. Dal 2026-09-27 la
 chiama anche

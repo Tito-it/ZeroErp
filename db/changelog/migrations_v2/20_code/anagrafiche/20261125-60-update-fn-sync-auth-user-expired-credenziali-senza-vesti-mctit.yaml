@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.fn_sync_auth_user_expired: anche la credenziale senza vesti
+# (S59, D-G2-1 di Tid, 2026-11-26).
+#
+#   Il job sceglieva i candidati fra le credenziali CHE HANNO vesti: una
+#   credenziale senza nessuna veste restava accesa per sempre. Il modello non
+#   la ammette (il presidio dbops.vw_credenziali_da_sanare la dice
+#   NESSUNA_VESTE): senza una veste non c'e' una porta da cui entrare, e
+#   anagrafiche.fn_sync_auth_user_is_active, chiamata su di lei, la spegne.
+#   Nasce cosi' da anagrafiche.fn_crea_auth_user senza veste, o resta cosi'
+#   quando la sua ultima veste se ne va (il trigger del 20261125-58 la spegne
+#   subito; il job e' la rete).
+#
+#   Ora il candidato e' ogni credenziale il cui is_active non coincide con
+#   «esiste una veste utilizzabile oggi»: cade il filtro «ha delle vesti».
+#   La regola resta una sola, quella di fn_sync_auth_user_is_active.
+#   Verificato prima (struttura, non conteggio): il progetto non crea utenti
+#   senza veste di proposito; crea_primo_amministratore sostituisce
+#   createsuperuser proprio per questo, e il pannello admin di Django non e'
+#   esposto.
+#
+#   Corpo dal vivo (dbdev, 2026-11-26), col solo filtro tolto e i commenti al
+#   presente; firma e RETURNS invariati (nessun argomento, integer: un
+#   conteggio). COMMENT riscritto al presente (linee-guida-sql §5d).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261125-60-update-fn-sync-auth-user-expired-credenziali-senza-vesti-mctit.yaml
+
+  - changeSet:
+      id: 20261125-60-update-fn-sync-auth-user-expired-credenziali-senza-vesti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_sync_auth_user_expired: il candidato e' ogni credenziale il cui is_active non coincide
+        con la regola, anche senza vesti (che si spegne).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc
+               WHERE oid = to_regprocedure('anagrafiche.fn_sync_auth_user_expired()')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_sync_auth_user_expired()
+               RETURNS integer  -- un conteggio
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_modified     boolean;        -- esito di fn_sync_auth_user_is_active: nessuna colonna dietro
+                  v_count        integer := 0;   -- un conteggio
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: riallinea auth_user.is_active alla data di oggi, nei
+                  --   due versi, per le scritture che non arrivano: una data
+                  --   che passa non fa scattare trigger. Spegne la credenziale
+                  --   che non ha piu' nessuna veste utilizzabile (veste o
+                  --   rapporto scaduti, o nessuna veste), accende quella che
+                  --   ne ha una diventata valida oggi. La regola e' una sola,
+                  --   quella di fn_sync_auth_user_is_active, che fa
+                  --   l'aggiornamento. Ritorna le credenziali riallineate.
+                  -- =========================================================
+
+                  -- Senza lo schema django (CI, Liquibase prima di Django): niente da fare.
+                  IF to_regclass('django.auth_user') IS NULL THEN
+                      RETURN 0;
+                  END IF;
+
+                  -- I candidati: ogni credenziale il cui is_active non dice
+                  -- «esiste una veste utilizzabile oggi», anche quella senza vesti.
+                  FOR v_auth_user_id IN
+                      EXECUTE '
+                          SELECT au.id
+                            FROM django.auth_user au
+                           WHERE au.is_active IS DISTINCT FROM EXISTS (
+                                     SELECT 1
+                                       FROM anagrafiche.identita_digitali id
+                                      WHERE id.auth_user_id = au.id
+                                        AND script.fn_veste_utilizzabile(id.id))
+                           ORDER BY au.id
+                      '
+                  LOOP
+                      SELECT anagrafiche.fn_sync_auth_user_is_active(v_auth_user_id)
+                        INTO v_modified;
+
+                      IF v_modified THEN
+                          v_count := v_count + 1;
+                      END IF;
+                  END LOOP;
+
+                  RETURN v_count;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_sync_auth_user_expired() IS
+                  'Riallinea django.auth_user.is_active alla data di oggi nei due versi, perche'' una data che arriva non scrive niente e non fa scattare trigger. Spegne le credenziali che non hanno piu'' nessuna veste utilizzabile (veste o rapporto scaduti, o nessuna veste) e accende quelle che ne hanno una diventata valida oggi; la regola e'' script.fn_veste_utilizzabile, la stessa di anagrafiche.fn_sync_auth_user_is_active, che fa l''aggiornamento. La chiamano il job pgAgent sync_auth_user_expired_daily (ogni ora) e il management command Django sync_auth_user_active. Ritorna il numero di credenziali riallineate (spente o accese). Senza lo schema django ritorna 0.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              SELECT 1;  -- forward-only: la versione precedente e' il 20261007-21

@@ -1,6 +1,6 @@
 # Guida — Architettura Permessi e Autorizzazioni
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -522,7 +522,9 @@ il resolver deve sapere per conto di **quale veste** si sta risolvendo.
   profilo `SUPER_ADMIN` (id 9100), la risoluzione restituisce `TUTTO`
   su ogni area e ogni azione senza consultare il resto della catena.
   L'helper `script.fn_is_super_admin(auth_user_id)` espone il check in
-  un'unica query STABLE.
+  un'unica query STABLE. Il profilo e' di una **persona**: non si lega mai
+  all'identita' tecnica di un processo (`E_SUPER_ADMIN_SU_VESTE_TECNICA`), e
+  il check non la conta.
 
 **Punti di attenzione:**
 
