@@ -133,11 +133,18 @@ class BillingAccountService:
         # 404 esplicito su BA inesistente per non leakare 403 sugli id
         # non validi (la fn_get_emittente_fiscale_pk farebbe fallback al
         # default globale e maschererebbe l'errore).
+        # Il codice e' quello che solleva la funzione SQL per lo stesso caso
+        # (anagrafiche.fn_lookup_utilities_per_ba, `20261126-42`): la stessa
+        # cosa ha lo stesso codice da qualunque lato arrivi (Tid, 2026-11-27,
+        # brief-db-revisione-anagrafiche §24.9). Inesistente e fuori perimetro
+        # (RLS) sono lo stesso caso. ⚠️ Il controllo resta finche'
+        # fn_get_emittente_fiscale_pk risponde con la predefinita per un id che
+        # non e' un BA (S54a, D-T8b-1).
         if not repository.exists(billing_account_id):
             raise ServiceError(
-                code="E_ANAG_NOT_FOUND",
-                message="Billing account non trovato.",
-                detail=f"Nessun billing_account con id={billing_account_id}.",
+                code="E_BILLING_ACCOUNT_NOT_FOUND",
+                message=f"Il billing account {billing_account_id} non esiste.",
+                detail=f"Nessun billing_account con id={billing_account_id} nel perimetro di chi chiama.",
             )
 
         # Scope check sull'emittente del BA. Bypass per admin globale /
@@ -162,7 +169,8 @@ class BillingAccountService:
 
     # Scopo: Recupera un singolo billing_account per restore dell'AutoComplete
     #        in modalita' edit (evita round-trip aggiuntivi nel frontend).
-    # Perimetro: sola lettura. Solleva E_ANAG_NOT_FOUND se inesistente.
+    # Perimetro: sola lettura. Solleva E_BILLING_ACCOUNT_NOT_FOUND se inesistente
+    #        o fuori perimetro (RLS): lo stesso codice della funzione SQL (§24.9).
     # Risultato: dict riga arricchita pronta per success_response.
     def get_lookup_by_id(self, billing_account_id: int) -> dict[str, Any]:
         function_name = "anagrafiche.billing_account_service.get_lookup_by_id"
@@ -185,9 +193,9 @@ class BillingAccountService:
         result = repository.get_lookup_by_id(billing_account_id)
         ErrorManager.require(
             result is not None,
-            code="E_ANAG_NOT_FOUND",
-            message="Billing account non trovato.",
-            detail=f"Nessun billing_account con id={billing_account_id}.",
+            code="E_BILLING_ACCOUNT_NOT_FOUND",
+            message=f"Il billing account {billing_account_id} non esiste.",
+            detail=f"Nessun billing_account visibile con id={billing_account_id}.",
             context={"billing_account_id": billing_account_id},
             function_name=function_name,
             log_to_db=False,
@@ -203,7 +211,8 @@ class BillingAccountService:
 #        `/vendite/pricing/limiti-utente/` (regola del 2, ok Tid 2026-10-08).
 # Perimetro: sola lettura. Assente o vuoto → None (livello categoria saltato).
 #        Non numerico o <= 0 → ValueError (400 E_VALIDATION_INPUT).
-#        BA che non risulta → 404 E_ANAG_NOT_FOUND.
+#        BA che non risulta → 404 E_BILLING_ACCOUNT_NOT_FOUND (dal 2026-11-27,
+#        il codice della funzione SQL per lo stesso caso, §24.9).
 # ⭐ «Non risulta» copre due casi, e di proposito non li distingue: il BA che
 #    non esiste e quello fuori dallo scope dell'operatore, che la RLS di
 #    `anagrafiche.billing_account` (policy `rls_billing_account_ef_whitelist`)
@@ -225,8 +234,8 @@ def categoria_cliente_da_query(raw: str | None) -> int | None:
     )
     ErrorManager.require(
         categoria_cliente_id is not None,
-        code="E_ANAG_NOT_FOUND",
-        message="Billing account non trovato.",
+        code="E_BILLING_ACCOUNT_NOT_FOUND",
+        message=f"Il billing account {billing_account_id} non esiste.",
         detail=f"Nessun billing_account visibile con id={billing_account_id}.",
         context={"billing_account_id": billing_account_id},
         function_name="anagrafiche.billing_account_service.categoria_cliente_da_query",

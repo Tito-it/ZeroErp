@@ -19,19 +19,19 @@ Indice test eseguiti:
  9) test_search_lookup_solo_validi_default — default true
 10) test_search_lookup_no_results — zero risultati
 11) test_get_lookup_by_id_ok — restore BA esistente
-12) test_get_lookup_by_id_not_found — BA inesistente solleva E_ANAG_NOT_FOUND
+12) test_get_lookup_by_id_not_found — BA inesistente solleva E_BILLING_ACCOUNT_NOT_FOUND
 13) test_get_lookup_by_id_invalid_id — id 0 o negativo rifiutato
 14) test_get_lookup_by_id_bool_rejected — bool rifiutato come id
 15) test_list_utilities_ok_operatore_in_scope — operatore con BA del proprio EF → utility ritornate
 16) test_list_utilities_admin_globale_bypass — user_emittente_id=None → no scope check
 17) test_list_utilities_scope_controllato_con_emittente — con user_emittente_id lo scope si controlla sempre (niente bypass del superuser, D-J)
 18) test_list_utilities_403_ba_di_altro_emittente — operatore + BA di altro EF → E_PERMESSO_NEGATO
-19) test_list_utilities_404_ba_inesistente — id BA non esistente → E_ANAG_NOT_FOUND prima dello scope
+19) test_list_utilities_404_ba_inesistente — id BA non esistente → E_BILLING_ACCOUNT_NOT_FOUND prima dello scope
 20) test_list_utilities_ruolo_invalido — ruolo non in whitelist → E_ANAG_VALIDAZIONE
 21) test_categoria_da_query_assente_none — parametro assente o vuoto → None, nessun lookup
 22) test_categoria_da_query_malformato — non numerico o <= 0 → ValueError, nessun lookup
 23) test_categoria_da_query_ok — BA visibile → la sua categoria
-24) test_categoria_da_query_non_risulta — BA inesistente o fuori scope → E_ANAG_NOT_FOUND (F-6)
+24) test_categoria_da_query_non_risulta — BA inesistente o fuori scope → E_BILLING_ACCOUNT_NOT_FOUND (F-6)
 25) test_istanza_del_ba_deriva — istanza assente → quella del BA
 26) test_istanza_del_ba_coincide — istanza indicata uguale a quella del BA → ammessa
 27) test_istanza_del_ba_altra_istanza — istanza diversa → errore del dominio sul campo del BA
@@ -200,13 +200,13 @@ class TestBillingAccountGetLookupById(TestCase):
 
     @patch(_REPO, autospec=True)
     def test_get_lookup_by_id_not_found(self, mock_repo):
-        """BA inesistente solleva E_ANAG_NOT_FOUND."""
+        """BA inesistente solleva E_BILLING_ACCOUNT_NOT_FOUND."""
         repo = mock_repo.return_value
         repo.get_lookup_by_id.return_value = None
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
         with self.assertRaises(ServiceError) as ctx:
             BillingAccountService().get_lookup_by_id(9999)
-        self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
+        self.assertEqual(ctx.exception.code, "E_BILLING_ACCOUNT_NOT_FOUND")
 
     @patch(_REPO, autospec=True)
     def test_get_lookup_by_id_invalid_id(self, mock_repo):
@@ -326,7 +326,10 @@ class TestBillingAccountListUtilitiesForBa(TestCase):
     @patch(_LOOKUP_REPO, autospec=True)
     @patch(_REPO, autospec=True)
     def test_list_utilities_404_ba_inesistente(self, mock_repo, mock_lookup):
-        """BA inesistente → E_ANAG_NOT_FOUND prima del check scope."""
+        """BA inesistente → E_BILLING_ACCOUNT_NOT_FOUND prima del check scope.
+
+        Lo stesso codice della funzione SQL per lo stesso caso (§24.9).
+        """
         mock_repo.return_value.exists.return_value = False
         from apps.anagrafiche.services.billing_account_service import BillingAccountService
         with self.assertRaises(ServiceError) as ctx:
@@ -335,7 +338,7 @@ class TestBillingAccountListUtilitiesForBa(TestCase):
                 ruolo_codice_soggetto="CL",
                 user_emittente_id=7,
             )
-        self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
+        self.assertEqual(ctx.exception.code, "E_BILLING_ACCOUNT_NOT_FOUND")
         mock_repo.return_value.get_emittente_fiscale_id.assert_not_called()
         mock_lookup.return_value.list_utilities_per_billing_account.assert_not_called()
 
@@ -388,7 +391,7 @@ class CategoriaClienteDaQueryTests(TestCase):
         mock_repo.return_value.get_categoria_cliente_id.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             categoria_cliente_da_query("77")
-        self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
+        self.assertEqual(ctx.exception.code, "E_BILLING_ACCOUNT_NOT_FOUND")
 
 
 class TestIstanzaDelBillingAccount(TestCase):

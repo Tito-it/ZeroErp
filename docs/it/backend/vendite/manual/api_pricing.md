@@ -76,7 +76,7 @@ Riferimento concettuale:
 
 - Metodo: `GET`
 - Path: `/api/v1/vendite/pricing/limiti-utente/`
-- Query param opzionale: `billing_account_id` (int) — se fornito, la cascata include il livello `categoria_cliente` del BA destinatario (vedi cascata estesa sotto). Senza, il livello viene saltato. Non numerico o ≤ 0 → 400 `E_VALIDATION_INPUT`; BA inesistente o fuori dallo scope dell'operatore → 404 `E_ANAG_NOT_FOUND` (BB `categoria_cliente_da_query`, dal 2026-10-08: prima un BA malformato o che non risultava faceva saltare il livello in silenzio).
+- Query param opzionale: `billing_account_id` (int) — se fornito, la cascata include il livello `categoria_cliente` del BA destinatario (vedi cascata estesa sotto). Senza, il livello viene saltato. Non numerico o ≤ 0 → 400 `E_VALIDATION_INPUT`; BA inesistente o fuori dallo scope dell'operatore → 404 `E_BILLING_ACCOUNT_NOT_FOUND` (dal 2026-11-27; prima `E_ANAG_NOT_FOUND`) (BB `categoria_cliente_da_query`, dal 2026-10-08: prima un BA malformato o che non risultava faceva saltare il livello in silenzio).
 - Auth: `vendite` livello LETTURA
 - Output `200`:
 
