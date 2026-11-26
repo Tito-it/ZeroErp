@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_get_contatto_default: la firma torna dichiarata col %TYPE.
+#
+#   Il 20260325-06 le dichiarava ancorate (parametri e colonne di RETURNS TABLE);
+#   il 20261125-39 (gia' applicato) le ha copiate sciolte dalla definizione al
+#   vivo, che mostra i %TYPE gia' risolti.
+#   Qui la dichiarazione torna quella del modello (linee-guida-sql §5g).
+#   I tipi risolti sono gli stessi (uuid, bigint, bigint, integer, integer): CREATE OR REPLACE
+#   ammesso, l'oggetto compilato e' identico; COMMENT e GRANT restano. Cambia la fonte
+#   che il prossimo changeSet della funzione ricopiera'.
+#   Corpo = quello del 20261125-39, invariato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261125-48-update-fn-get-contatto-default-firma-ancorata-mctit.yaml
+
+  - changeSet:
+      id: 20261125-48-update-fn-get-contatto-default-firma-ancorata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_contatto_default: la firma torna col %TYPE (il 20261125-39 l'aveva sciolta). Corpo invariato.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('script.fn_get_contatto_default(uuid,bigint,bigint,integer,integer)'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_contatto_default(
+                  p_soggetto_id            anagrafiche.soggetti.id%TYPE,
+                  p_soggetto_ruolo_id      anagrafiche.soggetti_ruoli.id%TYPE DEFAULT NULL,
+                  p_istanza_utility_id     anagrafiche.istanze_utilities.id%TYPE DEFAULT NULL,
+                  p_tipo_contatto_id       config.tipi_contatti.id%TYPE DEFAULT NULL,
+                  p_unita_organizzativa_id config.unita_organizzative.id%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  id                 anagrafiche.contatti.id%TYPE,
+                  tipo_contatto_id   anagrafiche.contatti.tipo_contatto_id%TYPE,
+                  soggetto_id        anagrafiche.contatti.soggetto_id%TYPE,
+                  soggetto_ruolo_id  anagrafiche.contatti.soggetto_ruolo_id%TYPE,
+                  istanza_utility_id anagrafiche.contatti.istanza_utility_id%TYPE,
+                  nominativo         anagrafiche.contatti.nominativo%TYPE,
+                  email              anagrafiche.contatti.email%TYPE,
+                  telefono           anagrafiche.contatti.telefono%TYPE,
+                  cellulare          anagrafiche.contatti.cellulare%TYPE,
+                  pec                anagrafiche.contatti.pec%TYPE,
+                  note               anagrafiche.contatti.note%TYPE,
+                  is_default         anagrafiche.contatti.is_default%TYPE,
+                  default_context    anagrafiche.contatti.default_context%TYPE
+              )
+              LANGUAGE sql
+              AS $function$
+              /*
+              fn_get_contatto_default
+
+              Il contatto predefinito per un soggetto (e opzionalmente ruolo,
+              istanza, tipo di contatto, reparto), fra i candidati di
+              fn_get_contatti: fra i predefiniti vince il contesto piu'
+              specifico (istanza, poi ruolo, poi soggetto), poi l'id.
+              Ritorna 0 o 1 record.
+              */
+              WITH all_candidates AS (
+                  SELECT *
+                  FROM script.fn_get_contatti(
+                      p_soggetto_id,
+                      p_soggetto_ruolo_id,
+                      p_istanza_utility_id,
+                      p_tipo_contatto_id,
+                      p_unita_organizzativa_id
+                  )
+              ),
+              only_default AS (
+                  SELECT a.*,
+                      ROW_NUMBER() OVER (
+                          ORDER BY
+                              CASE
+                                  WHEN a.istanza_utility_id IS NOT NULL THEN 1
+                                  WHEN a.soggetto_ruolo_id  IS NOT NULL THEN 2
+                                  ELSE 3
+                              END,
+                              a.id
+                      ) AS rn
+                  FROM all_candidates a
+                  WHERE a.is_default
+              )
+              SELECT
+                  d.id,
+                  d.tipo_contatto_id,
+                  d.soggetto_id,
+                  d.soggetto_ruolo_id,
+                  d.istanza_utility_id,
+                  d.nominativo,
+                  d.email,
+                  d.telefono,
+                  d.cellulare,
+                  d.pec,
+                  d.note,
+                  d.is_default,
+                  d.default_context
+              FROM only_default d
+              WHERE d.rn = 1;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: l'oggetto compilato e' lo stesso; la firma sciolta era il difetto.
+              SELECT 1;

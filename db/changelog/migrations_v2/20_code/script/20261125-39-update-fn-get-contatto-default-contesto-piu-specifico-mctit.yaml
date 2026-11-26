@@ -20,6 +20,8 @@
 #   Vince il piu' specifico, istanza, poi ruolo, poi soggetto: la stessa regola
 #   della cascata. A parita', l'id. Firma e colonne non cambiano; il corpo resta
 #   una funzione SQL a stringa, come prima.
+# type-perso: ammesso — debito chiuso: la firma e' stata copiata sciolta dalla definizione al vivo, e il changeSet era gia' applicato quando il guardrail l'ha visto (ancorarlo qui ne cambia il checksum). Il 20261125-48 la ri-ancora col corpo identico
+# id-senza-type: ammesso — debito chiuso: la firma e' stata copiata sciolta dalla definizione al vivo, e il changeSet era gia' applicato quando il guardrail l'ha visto (ancorarlo qui ne cambia il checksum). Il 20261125-48 la ri-ancora col corpo identico
 # ------------------------------------------------------------
 
 databaseChangeLog:
