@@ -660,6 +660,8 @@ class TestOverrideCache(TestCase):
     def test_put_emittenti_scope_invalidates_cache(self, mock_repo_cls, mock_invalidate):
         # Fase 2: signature cambiata da `(auth_user_id, list)` a
         # `(auth_user_id, payload)` con scope_mode + emittenti_ids.
+        # ⚠️ La risposta finta e' quella di un SUPER_ADMIN: e' l'unico a cui il
+        #    DB concede GLOBAL (giro 10-ter, D-AA a). Qui si prova la cache.
         mock_repo = mock_repo_cls.return_value
         mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}

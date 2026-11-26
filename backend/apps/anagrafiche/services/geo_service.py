@@ -24,30 +24,26 @@ from apps.anagrafiche.services._validators import (
 )
 
 
-# Scopo: Il pre-check della VIA di un indirizzo normalizzato: uno stradario
-#        esistente (id positivo), oppure i quattro campi di una via nuova (tipo
-#        strada, nome, comune, CAP) che `anagrafiche.fn_create_indirizzo` usa
-#        per l'upsert dello stradario. Messaggi per l'operatore, prima di
-#        scrivere: il DB li rifiuterebbe con un errore meno parlante.
-#        Lo chiamano la creazione del dettaglio (qui) e gli indirizzi di ruolo
-#        (`SoggettiService.create_indirizzi_ruolo`), che alla madre passano la
-#        via da risolvere.
-def richiedi_via(payload: dict) -> None:
-    stradario_id = _V.optional_int(payload, "stradario_id")
-    if stradario_id is not None:
-        ErrorManager.require(stradario_id > 0, code=E_ANAG_VALIDAZIONE, message="stradario_id non valido.")
-        return
-    toponomastica_id = _V.optional_int(payload, "toponomastica_id")
-    comune_id = _V.optional_int(payload, "comune_id")
-    codice_postale_id = _V.optional_int(payload, "codice_postale_id")
-    ErrorManager.require(toponomastica_id is not None and toponomastica_id > 0,
-                         code=E_ANAG_VALIDAZIONE, message="Tipo strada obbligatorio per via nuova.")
-    ErrorManager.require(bool((payload.get("descrizione_via") or "").strip()),
-                         code=E_ANAG_VALIDAZIONE, message="Nome via obbligatorio.")
-    ErrorManager.require(comune_id is not None and comune_id > 0,
-                         code=E_ANAG_VALIDAZIONE, message="Comune obbligatorio per via nuova.")
-    ErrorManager.require(codice_postale_id is not None and codice_postale_id > 0,
-                         code=E_ANAG_VALIDAZIONE, message="CAP obbligatorio per via nuova.")
+# Scopo: Il contratto degli id della VIA di un indirizzo: `stradario_id`,
+#        `toponomastica_id`, `comune_id` e `codice_postale_id`, quando ci sono,
+#        sono interi positivi (un id <= 0 arriverebbe al DB come FK violata,
+#        cioe' un errore tecnico). Lo chiamano la creazione del dettaglio (qui)
+#        e gli elementi degli indirizzi per le madri
+#        (`soggetti_service.indirizzo_per_madre`).
+# ⛔ La COMPLETEZZA della via nuova e la FORMA dell'elemento non si giudicano
+#    qui (2026-11-26, brief-db-revisione-anagrafiche §21.7, D-T7a-5): la via
+#    nuova la valida `anagrafiche.fn_create_indirizzo`
+#    (`E_INDIRIZZO_VIA_NUOVA_INCOMPLETA`, col campo che manca), l'elemento
+#    senza via e senza testo lo rifiuta il guard della forma libera
+#    (`E_INDIRIZZO_LIBERO_INCOMPLETO` su `indirizzo_libero`). Fino al 2026-11-26
+#    qui c'era una seconda sede della regola, senza il campo, che decideva
+#    «via nuova» dove il DB decide «indirizzo libero».
+_ID_DELLA_VIA = ("stradario_id", "toponomastica_id", "comune_id", "codice_postale_id")
+
+
+def richiedi_id_via_positivi(payload: dict) -> None:
+    for chiave in _ID_DELLA_VIA:
+        _V.optional_positive_int(payload, chiave, message=f"{chiave} non valido.")
 
 
 _V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
@@ -349,16 +345,18 @@ class GeoService:
         assert result is not None
         return result
 
-    # Scopo: Crea indirizzo. Le validazioni "via nuova" restano lato service; la
-    # composizione (upsert stradario ×2 + get_or_create dettaglio) vive in una
-    # sola funzione madre atomica anagrafiche.fn_create_indirizzo (fix #13).
+    # Scopo: Crea indirizzo. Lato service resta il solo contratto degli id
+    # della via (`richiedi_id_via_positivi`); la completezza della via nuova e
+    # la composizione (upsert stradario ×2 + get_or_create dettaglio) sono
+    # della funzione madre atomica anagrafiche.fn_create_indirizzo (fix #13,
+    # §21.7 di brief-db-revisione-anagrafiche).
     def create_indirizzo(self, payload: dict) -> dict[str, Any]:
         indirizzo_id = self.crea_dettaglio_indirizzo(payload)
         detail = self._ind.get_indirizzo_dettaglio(indirizzo_id)
         return detail or {"id": indirizzo_id}
 
     # Scopo: Il dettaglio (via + civico) di un indirizzo dal payload: il
-    #        pre-check della via, poi la madre atomica
+    #        contratto degli id della via, poi la madre atomica
     #        `anagrafiche.fn_create_indirizzo` (get_or_create: lo stesso
     #        payload ritrova lo stesso dettaglio). Ritorna l'id del dettaglio.
     # ⭐ Sede unica (2026-10-18, 2b-2 del brief-db-processi-accensione-per-
@@ -366,7 +364,7 @@ class GeoService:
     #    e di ruolo, che fino ad allora ne tenevano una copia non atomica
     #    (`_create_stradario_da_generale` + `create_indirizzo_dettaglio`).
     def crea_dettaglio_indirizzo(self, payload: dict) -> int:
-        richiedi_via(payload)
+        richiedi_id_via_positivi(payload)
         # Fix analisi-fix-transazioni #13 (Classe D): upsert stradario (×2, solo
         # via nuova) + get_or_create del dettaglio in UNA sola fn madre atomica.
         # Prima erano get_or_create_stradario + create_indirizzo_dettaglio

@@ -9,7 +9,8 @@
 #        vedono ne' la funzione ne' il LEFT JOIN sull'area.
 #
 # ⚠️ CASI COSTRUITI in una transazione SEMPRE annullata: il reparto lo crea il
-#    test, nel contesto operatore (RLS). ⭐ I casi NON dipendono dal minimo che
+#    test, nel contesto di un SUPER_ADMIN costruito (RLS e
+#    verbi del profilo, giro 10-bis). ⭐ I casi NON dipendono dal minimo che
 #    il catalogo assegna oggi all'azione: BLOCCATO non consente niente (il
 #    CHECK vieta un minimo BLOCCATO), TUTTO consente tutto, NULL vale no.
 #
@@ -25,7 +26,7 @@ from unittest import TestCase
 from django.db import connection, transaction
 
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
-from apps.core.tests.db_e2e import Annulla, apri_contesto_operatore, richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, apri_super_admin_costruito, richiedi_db_provvisto
 
 
 class ProfiloRepartoTettoAreaDbTests(TestCase):
@@ -37,7 +38,11 @@ class ProfiloRepartoTettoAreaDbTests(TestCase):
         repo = AmmSoftwareRepository()
         try:
             with transaction.atomic(), connection.cursor() as cur:
-                apri_contesto_operatore(cur)
+                # ⛔ Il profilo del reparto lo scrivono `fn_scrivi_profilo_accesso` e
+                #    `fn_lega_profilo_reparto`, che chiedono il SUPER_ADMIN della
+                #    sessione (giro 10-bis): un SUPER_ADMIN costruito, non il primo
+                #    operatore del DB.
+                apri_super_admin_costruito(cur, etichetta="profilo reparto tetto area")
                 cur.execute(
                     "INSERT INTO config.unita_organizzative (codice, codice_interno, descrizione) "
                     "VALUES ('T3TETTO', 'T3TETTO', 'Reparto tetto d''area') RETURNING id"

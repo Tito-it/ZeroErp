@@ -23,6 +23,7 @@ from django.core.cache.backends.locmem import LocMemCache
 from apps.ai_assistant.services import ai_assistant_service, tool_registry
 from apps.ai_assistant.providers.mock_provider import MockProvider
 from apps.ai_assistant.types import ToolCall
+from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 from apps.core.services.permissions_resolver import PermissionResolver
 
 
@@ -102,7 +103,18 @@ class TestConfirmationFlow(unittest.TestCase):
         # 2026-11-25 (E1-2 di brief-be-fe-BB-audit) i tool passano dal cancello
         # della lista e dall'emittente di chi agisce, non da un attributo
         # dell'utente.
-        for nome, valore in (("get_emittenti_pk_ids", [32]), ("get_emittente_for_user", 32)):
+        # ⛔ L'utente e' un operatore, NON un SUPER_ADMIN, e il livello sul
+        #    gemello lo dice il test: senza, `is_super_admin` e
+        #    `get_livello_oggetto` interrogavano il DB, e il test era verde solo
+        #    dove l'utente 1 e' SUPER_ADMIN (dbdev). Sul DB della CI il tool
+        #    veniva negato.
+        for nome, valore in (
+            ("get_emittenti_pk_ids", [32]),
+            ("get_emittente_for_user", 32),
+            ("get_ruolo_applicativo", RUOLO_APPLICATIVO_OPERATORE),
+            ("is_super_admin", False),
+            ("get_livello_oggetto", "TUTTO"),
+        ):
             p = patch.object(PermissionResolver, nome, return_value=valore)
             p.start()
             self.addCleanup(p.stop)

@@ -50,19 +50,23 @@ class MeEmittenteSenzaGestoreGlobaleDbTests(unittest.TestCase):
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
             # Il gestore globale: quello che c'e', o uno nuovo (come il pgTAP).
+            # ⛔ Il gestore nuovo lo lega il DB, non il test: il primo emittente
+            #    di un DB senza gestore lo diventa da se'
+            #    (anagrafiche.trgfn_emittenti_fiscali_default_bootstrap). Un
+            #    INSERT a mano dopo il builder collide su
+            #    uq_emittenti_fiscali_ba_default; in dbdev il ramo non girava.
             cur.execute(
                 "SELECT EXISTS (SELECT 1 FROM anagrafiche.emittenti_fiscali_billing_account g"
                 "                WHERE g.billing_account_id IS NULL AND g.is_default)"
             )
             if not cur.fetchone()[0]:
                 cur.execute("SELECT soggetto_ruolo_id FROM dbops.fn_pgtap_crea_emittente()")
-                ruolo = cur.fetchone()[0]
                 cur.execute(
-                    "INSERT INTO anagrafiche.emittenti_fiscali_billing_account"
-                    "       (emittente_soggetto_ruolo_id, billing_account_id, is_default)"
-                    " VALUES (%s, NULL, true)",
-                    [ruolo],
+                    "SELECT EXISTS (SELECT 1 FROM anagrafiche.emittenti_fiscali_billing_account g"
+                    "                WHERE g.billing_account_id IS NULL AND g.is_default)"
                 )
+                if not cur.fetchone()[0]:
+                    raise AssertionError("il primo emittente non e' diventato il gestore globale")
             # ⚠️ Ogni builder in un'istruzione sua: la lettura viene dopo.
             self.configurato = self._operatore(cur, "me con azienda", False)
             cur.execute("SELECT emittente_fiscale_id FROM dbops.fn_pgtap_crea_emittente()")

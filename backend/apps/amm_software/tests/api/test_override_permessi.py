@@ -15,6 +15,7 @@ Indice test eseguiti:
  5) test_put_override_azioni — PUT override azioni sostituisce e ritorna lista
  6) test_put_override_azioni_invalidates_cache — PUT invalida cache utente
  7) test_get_emittenti_scope — GET emittenti scope ritorna shape Fase 2 (scope_mode + capability)
+ 7a) test_get_emittenti_scope_senza_risposta_non_concede_global — ripiego SINGLE, mai GLOBAL (giro 10-ter)
  8) test_put_emittenti_scope_global — PUT GLOBAL azzera lo scope
  9) test_put_emittenti_scope_single — PUT SINGLE imposta 1 emittente
  9a) test_put_emittenti_scope_rifiuta_multi — MULTI rifiutato con E_AMM_SCOPE_NON_AMMESSO
@@ -67,6 +68,12 @@ SAMPLE_EMITTENTE = {
 
 # Fase 2: shape ritornato da `script.fn_get_user_emittenti_scope`.
 # Singolo row con scope_mode + capability + reason.
+# ⚠️ Sono le risposte per un SUPER_ADMIN: e' l'unico a cui il DB offre GLOBAL
+#    (giro 10-ter di brief-db-porte-aperte-dalla-sola-guc, D-AA a, 2026-11-26).
+#    A un operatore che non lo e' risponde `allowed_scope_modes = ['SINGLE']`,
+#    e un PUT GLOBAL lo rifiuta il DB (`E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`,
+#    provato sul DB vero in `tests/db/test_emittenti_scope_db.py`). Qui il
+#    repository e' finto: si prova il trasporto, non la regola.
 SAMPLE_SCOPE_GLOBAL = {
     "auth_user_id": 1, "scope_mode": "GLOBAL",
     "emittente_id": None, "emittente_descrizione": None,
@@ -246,6 +253,23 @@ class TestEmittentiScopeView(TestCase):
         self.assertEqual(data["allowed_scope_modes"], ["GLOBAL", "SINGLE"])
         self.assertTrue(data["can_change_scope"])
         self.assertIsNone(data["change_scope_reason"])
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
+    def test_get_emittenti_scope_senza_risposta_non_concede_global(self, mock_repo_cls):
+        """Senza risposta della fn il ripiego e' SINGLE, mai GLOBAL (giro 10-ter)."""
+        mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
+        mock_repo.get_user_emittenti_scope.return_value = None
+        mock_repo_cls.return_value = mock_repo
+
+        view = EmittentiScopeView()
+        response = view.get(_make_request(), auth_user_id=1)
+
+        data = json.loads(response.content)["data"]
+        self.assertEqual(data["scope_mode"], "SINGLE")
+        self.assertEqual(data["emittenti_ids"], [])
+        self.assertEqual(data["allowed_scope_modes"], ["SINGLE"])
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository", autospec=True)
     @patch("apps.amm_software.services.amm_software_service.invalidate_user")

@@ -144,9 +144,14 @@ in una di tre forme: libera, dettaglio gia' risolto, via da risolvere.
 | `toponomastica_id`, `descrizione_via`, `comune_id`, `codice_postale_id` | | * | Via nuova (tutti obbligatori se manca `stradario_id`) |
 | `civico`, `estensione_civico`, `palazzina`, `scala`, `piano`, `interno` | | No | Dati civico |
 
-*Senza `indirizzo_libero` ne' `indirizzo_dettaglio_id` vale la forma «via da
-risolvere»: serve `stradario_id` oppure i quattro campi della via nuova. La
-forma dell'indirizzo libero la giudica il trigger della tabella. Stringhe vuote e
+*La forma la decide il database da ciò che arriva (dal 2026-11-26 il service non
+la anticipa più, §21.7 di brief-db-revisione-anagrafiche): senza dettaglio,
+senza civico e senza una via (né `stradario_id`, né toponimo e nome di una via
+nuova) è un indirizzo libero, anche se il testo è vuoto, e lo giudica il
+trigger della tabella; una via nuova a cui manca il toponimo, il nome, il comune
+o il CAP la rifiuta `fn_create_indirizzo` sul campo che manca (guida
+[gestione-degli-indirizzi](../../../guide/gestione-degli-indirizzi.md), R3). Il service controlla solo che gli id della via,
+quando ci sono, siano interi positivi. Stringhe vuote e
 `null` valgono assenti; una chiave estranea la rifiuta il DB
 (`E_CAMPO_NON_AMMESSO`).
 
@@ -177,7 +182,9 @@ forma dell'indirizzo libero la giudica il trigger della tabella. Stringhe vuote 
 
 | Codice | HTTP | Causa |
 |---|---|---|
-| `E_ANAG_VALIDAZIONE` | 400 | `tipo_indirizzo_codice_interno` mancante; via da risolvere incompleta |
+| `E_ANAG_VALIDAZIONE` | 400 | `tipo_indirizzo_codice_interno` mancante; un id della via (`stradario_id`, `toponomastica_id`, `comune_id`, `codice_postale_id`) presente e non intero positivo |
+| `E_INDIRIZZO_VIA_NUOVA_INCOMPLETA` | 400 | Via nuova senza uno dei quattro campi: la rifiuta `anagrafiche.fn_create_indirizzo`, `error.fields` = il campo che manca (dal 2026-11-26 il service non la anticipa più) |
+| `E_INDIRIZZO_LIBERO_INCOMPLETO` | 400 | Elemento senza via, senza dettaglio e senza testo: per il DB è un indirizzo libero, e lo rifiuta il guard della forma libera sul campo `indirizzo_libero` |
 | `E_ANAG_DUPLICATO` | 409 | Indirizzo con questo tipo gia' presente per il ruolo/istanza |
 
 ### Regole

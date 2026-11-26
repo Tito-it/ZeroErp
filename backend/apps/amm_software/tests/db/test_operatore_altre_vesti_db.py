@@ -218,7 +218,11 @@ class OperatoreAltreVestiDbTests(TestCase):
             with transaction.atomic(), connection.cursor() as cur:
                 # I builder PRIMA del contesto operatore, come nei pgTAP.
                 uid, operatore, shop = self._operatore_anche_cliente_shop(cur)
-                apri_contesto_operatore(cur)
+                # ⛔ Legare il SUPER_ADMIN lo chiede il DB al SUPER_ADMIN della
+                #    sessione (giro 10-bis): un SUPER_ADMIN costruito. Con
+                #    `apri_contesto_operatore` era verde solo perche' il primo
+                #    operatore di dbdev e' SUPER_ADMIN.
+                apri_super_admin_costruito(cur, etichetta="altre vesti admin")
 
                 repo.update_operatore(uid, is_super_admin=True)
                 cur.execute(
@@ -241,7 +245,8 @@ class OperatoreAltreVestiDbTests(TestCase):
         try:
             with transaction.atomic(), connection.cursor() as cur:
                 uid, operatore, _shop = self._operatore_anche_cliente_shop(cur)
-                apri_contesto_operatore(cur)
+                # ⛔ Come il test 3: un SUPER_ADMIN costruito (giro 10-bis).
+                apri_super_admin_costruito(cur, etichetta="altre vesti admin")
 
                 repo.update_operatore(uid, is_super_admin=True)
                 repo.update_operatore(uid, is_super_admin=False)
