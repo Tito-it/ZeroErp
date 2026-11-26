@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_efba_guard_storia_emittente`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,7 +11,8 @@
 > Approfondimento funzioni:
 >
 > * [anagrafiche.fn_guard_ba_cambio_emittente](/dbzero/anagrafiche/funzioni/fn_guard_ba_cambio_emittente) — il controllo su un billing account
-> * [anagrafiche.fn_guard_ba_gestore_globale_storia](/dbzero/anagrafiche/funzioni/fn_guard_ba_gestore_globale_storia) — il controllo sullo spostamento della predefinita
+> * [anagrafiche.fn_ba_ha_storia_emittente](/dbzero/anagrafiche/funzioni/fn_ba_ha_storia_emittente) — che cosa è la storia: qualunque documento, anche in bozza
+> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic) — i trigger `a05` che rifiutano cancellazione e spostamento
 > * [anagrafiche.trgfn_efba_guard_albero_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_albero_emittente) — il cancello dell'albero sugli stessi movimenti
 
 ---
@@ -19,62 +20,43 @@
 ### 🎯 Scopo Principale
 
 `anagrafiche.trgfn_efba_guard_storia_emittente` è il cancello della storia sul collegamento fra billing account
-e azienda: a ogni movimento che cambia l'azienda di un billing account ricava l'azienda di prima e quella di
-dopo, e lascia decidere ai controlli della storia.
+e azienda: quando si modifica l'azienda sul collegamento di un billing account, lascia decidere al controllo
+della storia se il billing account può cambiare azienda.
 
 ---
 
-### ⚠️ Il movimento che si dimentica è la cancellazione
+### Un solo movimento cambia l'azienda di un cliente
 
-Spostare un cliente da un'azienda all'altra si fa togliendo il collegamento e creandone uno nuovo. Il primo
-passo, da solo, è già un cambio: il billing account ricade sulla predefinita. Un controllo sulla sola creazione
-lascerebbe passare tutto, perché il danno lo fa la cancellazione.
+Ogni billing account ha sempre il suo collegamento, e il collegamento non si cancella e non passa a un altro
+conto. Resta un solo movimento che cambia l'azienda di un cliente: la **modifica** dell'azienda sul suo
+collegamento. Il trigger la riconosce (un collegamento di un billing account, l'azienda di prima diversa da
+quella di dopo) e passa a `anagrafiche.fn_guard_ba_cambio_emittente` il billing account e le due aziende.
 
----
+Gli altri movimenti non hanno niente da giudicare:
 
-### Prima e dopo, movimento per movimento
-
-| Movimento | Prima | Dopo | Controllo |
-| --- | --- | --- | --- |
-| nasce un collegamento | la predefinita | l'azienda scelta | sul billing account |
-| il collegamento cambia azienda | quella di prima | quella nuova | sul billing account |
-| la riga passa a un altro billing account | il vecchio: la sua; il nuovo: la predefinita | il vecchio: la predefinita; il nuovo: quella della riga | sui due billing account |
-| si cancella un collegamento | quella che c'era | la predefinita | sul billing account |
-| nasce, cambia o sparisce la predefinita | la predefinita di prima | quella nuova, o nessuna | sui billing account senza collegamento |
+| Movimento | Perché la storia non si guarda |
+| --- | --- |
+| nasce il collegamento | nasce col billing account, che non ha ancora documenti |
+| si cancella il collegamento, o passa a un altro billing account | lo rifiutano prima i trigger `a05` della tabella (`E_BA_COLLEGAMENTO_NON_SI_TOGLIE`, `E_BA_COLLEGAMENTO_NON_SI_SPOSTA`) |
+| si sposta la riga della predefinita | decide solo l'azienda dei billing account che nasceranno: non cambia l'azienda di nessun cliente |
 
 ---
 
-### Due accorgimenti
+### ⛔ Su una cancellazione restituisce la riga vecchia
 
-**La predefinita si legge dalla sua riga, non dal risolutore.** Il cancello scatta prima della scrittura: in
-una cancellazione la riga che sta sparendo c'è ancora, e il risolutore risponderebbe proprio quella. «Prima» e
-«dopo» coinciderebbero e il controllo non scatterebbe mai. Per questo legge la riga predefinita, escludendo
-quella che si cancella.
+Il trigger è montato anche sulla cancellazione, che i trigger `a05` rifiutano prima. Lì non fa niente, ma
+restituisce la riga vecchia: restituire niente annullerebbe la cancellazione in silenzio, e un gesto rifiutato
+deve restare un errore, non sparire.
 
-**Su una cancellazione restituisce la riga vecchia.** Restituire niente annullerebbe la cancellazione in
-silenzio: la differenza fra un cancello che blocca dicendolo e uno che fa sparire il gesto senza errori.
-
-Scatta prima della scrittura, nella fase dei guard di blocco; i controlli dell'albero e dell'istanza scattano
-dopo, perché rileggono il collegamento. Rispondono a domande diverse e si sommano.
-
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **Una modifica che trasforma la predefinita in un collegamento, o un collegamento nella predefinita,**
-  controlla solo il billing account nominato: la storia dei billing account senza collegamento, che cambiano
-  azienda con la predefinita, non si guarda.
-* **Sostituire la predefinita cancellandola e reinserendola** è respinto alla cancellazione, anche se la nuova
-  riga riporterà la stessa azienda, quando un billing account senza collegamento ha storia: il «dopo» della
-  cancellazione è «nessuna azienda». Cambiare l'azienda sulla riga predefinita non ha questo limite.
-* Sui movimenti della predefinita vale il limite di `fn_guard_ba_gestore_globale_storia`, che sceglie il
-  billing account da guardare con un'altra definizione di storia.
+Scatta prima della scrittura, nella fase dei guard di blocco; i controlli dell'albero, dell'istanza e della
+chiave del cliente scattano dopo, perché rileggono il collegamento. Rispondono a domande diverse e si sommano.
 
 ---
 
 ### Codici errore
 
-* `E_BA_EMITTENTE_CON_STORIA` — dai due controlli che chiama.
+* `E_BA_EMITTENTE_CON_STORIA` — dal controllo che chiama: il billing account ha almeno un documento, anche in
+  bozza.
 
 ---
 
@@ -82,12 +64,18 @@ dopo, perché rileggono il collegamento. Rispondono a domande diverse e si somma
 
 * `db/pgtap/anagrafiche/test-ba-cambio-emittente-storia-v1.sql` — il trigger è montato su inserimento, modifica
   e cancellazione; il controllo che chiama passa sul cliente appena nato e respinge il cambio dopo una commessa.
+* `db/pgtap/anagrafiche/test-billing-account-sempre-collegato-v1.sql` — senza documenti l'azienda si cambia
+  modificando il collegamento, all'andata e al ritorno; con una fattura in bozza il cambio è respinto; lo
+  spostamento della predefinita passa e non cambia l'azienda di nessun billing account.
 
 ---
 
 ### Note di migrazione
 
 * 2026-08-26 — nasce: prima il collegamento di un cliente si toglieva e si ricreava senza condizioni.
+* 2026-11-26 — giudica solo la modifica dell'azienda sul collegamento di un billing account: la cancellazione
+  e lo spostamento del collegamento sono rifiutati a monte, e il ramo dello spostamento della predefinita è
+  ritirato con il suo controllo.
 
 ---
 

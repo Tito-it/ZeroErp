@@ -1,0 +1,148 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I GUARD DEL COLLEGAMENTO BA -> AZIENDA SENZA I RAMI DELLA PREDEFINITA
+#   anagrafiche.trgfn_efba_guard_storia_emittente()    (BEFORE, a10)
+#   anagrafiche.trgfn_efba_guard_albero_emittente()    (AFTER, z95)
+#   anagrafiche.trgfn_efba_guard_istanza_emittente()   (AFTER, z95)
+#   anagrafiche.trgfn_efba_guard_clienti_chiave()      (constraint trigger, z90)
+#   Brief: brief-db-revisione-anagrafiche §24.5 (D-T4-3), §24.7.1
+#
+# -- LA REGOLA --------------------------------------------------------
+#   Ogni billing account ha sempre il suo collegamento (20261126-27, -29), il
+#   collegamento non si cancella e non passa a un altro conto (-30, -31), il
+#   billing account non si cancella (-40). Dei quattro movimenti di prima ne
+#   resta uno che cambia l'azienda di un cliente: la MODIFICA dell'azienda sul
+#   collegamento (solo senza documenti). Gli altri:
+#     * la nascita del collegamento e' la nascita del BA: nessuna storia da
+#       spostare; albero, istanza e chiave del cliente si giudicano;
+#     * la cancellazione non avviene piu' (la rifiuta -30, a05);
+#     * lo spostamento della predefinita non cambia l'azienda di nessun BA:
+#       i rami «raggio N» non hanno piu' niente da cercare e si tolgono, coi
+#       quattro guard che chiamavano (ritirati in 20261126-33).
+#   S24 si chiude per costruzione: con ogni BA collegato il risolutore di
+#   sessione e quello d'installazione rispondono entrambi col collegamento.
+#
+# -- LA FORMA ---------------------------------------------------------
+#   * Montaggi invariati; cambiano i corpi.
+#   * La riga della predefinita (billing_account_id NULL) non si giudica:
+#     nessun cliente ne dipende.
+#   * DELETE: i corpi escono (la cancellazione la rifiuta prima -30); il BEFORE
+#     della storia ritorna OLD, o la cancellazione sparirebbe in silenzio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261126-32-update-trgfn-efba-guard-senza-predefinita-mctit.yaml
+
+  - changeSet:
+      id: 20261126-32-update-trgfn-efba-guard-senza-predefinita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I quattro guard di anagrafiche.emittenti_fiscali_billing_account (storia, albero, istanza,
+        chiave del cliente) senza i rami dell'azienda predefinita: con ogni billing account
+        collegato, spostare la predefinita non cambia l'azienda di nessun cliente.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_efba_guard_storia_emittente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- La sola modifica che cambia l'azienda di un cliente: l'azienda
+                  -- sul collegamento di un BA. Libera finche' il BA non ha
+                  -- documenti, vietata dopo (anagrafiche.fn_guard_ba_cambio_emittente).
+                  -- Lo spostamento del collegamento su un altro conto lo rifiuta
+                  -- prima trg_emittenti_fiscali_ba_a05_block_sposta_upd.
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.billing_account_id IS NOT NULL
+                     AND NEW.emittente_soggetto_ruolo_id IS DISTINCT FROM OLD.emittente_soggetto_ruolo_id THEN
+                      PERFORM anagrafiche.fn_guard_ba_cambio_emittente(
+                          NEW.billing_account_id,
+                          OLD.emittente_soggetto_ruolo_id,
+                          NEW.emittente_soggetto_ruolo_id);
+                  END IF;
+
+                  -- ⛔ In un BEFORE DELETE si ritorna OLD: un RETURN NEW (NULL)
+                  --    annullerebbe la cancellazione in silenzio.
+                  IF TG_OP = 'DELETE' THEN
+                      RETURN OLD;
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_efba_guard_storia_emittente() IS
+                'Guard BEFORE INSERT, UPDATE, DELETE di anagrafiche.emittenti_fiscali_billing_account: la modifica dell''azienda sul collegamento di un billing account e'' rifiutata quando il billing account ha documenti (anagrafiche.fn_guard_ba_cambio_emittente, E_BA_EMITTENTE_CON_STORIA). La nascita del collegamento e'' la nascita del billing account e non ha storia; la cancellazione e lo spostamento su un altro conto li rifiutano i trigger a05; la riga dell''azienda predefinita non si giudica, perche'' spostarla non cambia l''azienda di nessun cliente.';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- Il collegamento di un BA nasce o cambia azienda: padre e figli
+                  -- restano sulla stessa azienda. La riga della predefinita e la
+                  -- cancellazione (rifiutata a05) non toccano nessun albero.
+                  IF TG_OP <> 'DELETE' AND NEW.billing_account_id IS NOT NULL THEN
+                      PERFORM anagrafiche.fn_guard_albero_ba_emittente(NEW.billing_account_id);
+                  END IF;
+                  RETURN NULL;   -- trigger AFTER: il valore di ritorno e' ignorato
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente() IS
+                'Trigger AFTER INSERT, UPDATE di anagrafiche.emittenti_fiscali_billing_account: quando il collegamento di un billing account nasce o cambia azienda, padre e figli restano sulla stessa azienda (anagrafiche.fn_guard_albero_ba_emittente, E_ALBERO_EMITTENTE_MISTO). La riga dell''azienda predefinita non si giudica: spostarla non cambia l''azienda di nessun cliente.';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_efba_guard_istanza_emittente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- Il collegamento di un BA nasce o cambia azienda: i BA della
+                  -- stessa istanza restano su un'azienda sola. La riga della
+                  -- predefinita e la cancellazione (rifiutata a05) non toccano
+                  -- nessuna istanza.
+                  IF TG_OP <> 'DELETE' AND NEW.billing_account_id IS NOT NULL THEN
+                      PERFORM anagrafiche.fn_guard_istanza_ba_emittente(NEW.billing_account_id);
+                  END IF;
+                  RETURN NULL;   -- trigger AFTER: il valore di ritorno e' ignorato
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_efba_guard_istanza_emittente() IS
+                'Trigger AFTER INSERT, UPDATE di anagrafiche.emittenti_fiscali_billing_account: quando il collegamento di un billing account nasce o cambia azienda, i billing account della stessa istanza restano su un''azienda sola (anagrafiche.fn_guard_istanza_ba_emittente, E_ISTANZA_EMITTENTI_DIVERSI). La riga dell''azienda predefinita non si giudica: spostarla non cambia l''azienda di nessun cliente.';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_efba_guard_clienti_chiave()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- L'azienda di un BA e' nella chiave del cliente manuale: quando il
+                  -- collegamento nasce o cambia azienda, i clienti del BA si
+                  -- ricontrollano. La riga della predefinita e la cancellazione
+                  -- (rifiutata a05) non cambiano la chiave di nessun cliente.
+                  IF TG_OP <> 'DELETE' AND NEW.billing_account_id IS NOT NULL THEN
+                      PERFORM anagrafiche.fn_guard_clienti_chiave_unica_di(NEW.billing_account_id, NULL);
+                  END IF;
+                  RETURN NULL;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_efba_guard_clienti_chiave() IS
+                'Constraint trigger function (AFTER INSERT OR UPDATE OR DELETE, DEFERRABLE INITIALLY DEFERRED) di anagrafiche.emittenti_fiscali_billing_account: l''azienda di un billing account e'' nella chiave del cliente manuale; quando il collegamento nasce o cambia azienda si ricontrollano i clienti del billing account (anagrafiche.fn_guard_clienti_chiave_unica_di, E_CLIENTE_STESSA_CHIAVE). La riga dell''azienda predefinita non si giudica: spostarla non cambia la chiave di nessun cliente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- I corpi precedenti si ripristinano dai loro changeSet precedenti.
+              SELECT 1;

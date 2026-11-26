@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL COLLEGAMENTO DI UN BILLING ACCOUNT ALLA SUA AZIENDA NON SI TOGLIE
+#   trg_emittenti_fiscali_ba_a05_block_delete_dlt
+#     BEFORE DELETE ON anagrafiche.emittenti_fiscali_billing_account
+#     EXECUTE FUNCTION script.trgfn_prevent_modification_generic('E_BA_COLLEGAMENTO_NON_SI_TOGLIE')
+#   Brief: brief-db-revisione-anagrafiche §24.5 (D-T4-3), §24.7.1 (risposte di Tid)
+#
+# -- LA REGOLA --------------------------------------------------------
+#   Ogni billing account ha sempre il suo collegamento a un'azienda, e il
+#   billing account non si cancella (20261126-40: un cliente si chiude
+#   annullandolo, stato «annulla servizio»). Una riga del collegamento quindi
+#   non si cancella mai: per cambiare azienda si modifica il collegamento
+#   (ammesso solo senza documenti, script.fn_check_ba_cambio_emittente).
+#   Vale anche per la riga dell'azienda predefinita: la predefinita si cambia
+#   modificandola, e spostarla non sposta nessun cliente.
+#
+# -- LA FORMA ---------------------------------------------------------
+#   * Il building block «rifiuta sempre», senza porte e anche per il
+#     proprietario: nessuna scrittura legittima cancella un collegamento.
+#     Il backend cancellava un collegamento per «spostare» un cliente
+#     (emittenti_fiscali_repository.delete_mapping): la richiesta al BE sta nel
+#     brief (§24.5).
+#   * Fase a05: e' un'immutabilita', parla prima dei guard a10 della tabella.
+#   * Frase chiusa (nessuna colonna negli argomenti).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261126-30-create-trg-efba-block-delete-mctit.yaml
+
+  - changeSet:
+      id: 20261126-30-create-trg-efba-block-delete
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il collegamento di un billing account alla sua azienda non si cancella:
+        script.trgfn_prevent_modification_generic montato BEFORE DELETE su
+        anagrafiche.emittenti_fiscali_billing_account (E_BA_COLLEGAMENTO_NON_SI_TOGLIE).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_ba_a05_block_delete_dlt
+                  ON anagrafiche.emittenti_fiscali_billing_account;
+              CREATE TRIGGER trg_emittenti_fiscali_ba_a05_block_delete_dlt
+                  BEFORE DELETE ON anagrafiche.emittenti_fiscali_billing_account
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_prevent_modification_generic('E_BA_COLLEGAMENTO_NON_SI_TOGLIE');
+
+              COMMENT ON TRIGGER trg_emittenti_fiscali_ba_a05_block_delete_dlt
+                  ON anagrafiche.emittenti_fiscali_billing_account IS
+                'Il collegamento di un billing account alla sua azienda, e la riga dell''azienda predefinita, non si cancellano: ogni billing account ha sempre la sua azienda, e si cambia modificando il collegamento (E_BA_COLLEGAMENTO_NON_SI_TOGLIE).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_ba_a05_block_delete_dlt
+                  ON anagrafiche.emittenti_fiscali_billing_account;

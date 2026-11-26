@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_guard_ba_cambio_emittente`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,28 +12,32 @@
 >
 > * [script.fn_check_ba_cambio_emittente](/dbzero/script/funzioni/fn_check_ba_cambio_emittente) — dove sta la regola
 > * [script.fn_raise_primo_motivo_se_presente](/dbzero/script/funzioni/fn_raise_primo_motivo_se_presente) — solleva il primo motivo
-> * [anagrafiche.trgfn_efba_guard_storia_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_storia_emittente) — chiamante: i movimenti del collegamento
-> * [anagrafiche.fn_guard_ba_gestore_globale_storia](/dbzero/anagrafiche/funzioni/fn_guard_ba_gestore_globale_storia) — chiamante: lo spostamento della predefinita
+> * [anagrafiche.trgfn_efba_guard_storia_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_storia_emittente) — chiamante: la modifica dell'azienda sul collegamento
+> * [anagrafiche.fn_ba_ha_storia_emittente](/dbzero/anagrafiche/funzioni/fn_ba_ha_storia_emittente) — che cosa è la storia
 
 ---
 
 ### 🎯 Scopo Principale
 
 `anagrafiche.fn_guard_ba_cambio_emittente` impedisce di cambiare l'azienda di un billing account che ha già una
-storia, cioè almeno un documento numerato su un registro, e lo ferma con `E_BA_EMITTENTE_CON_STORIA`.
+storia, cioè almeno un documento di qualunque famiglia e in qualunque stato, anche in bozza, e lo ferma con
+`E_BA_EMITTENTE_CON_STORIA`.
 
 ---
 
 ### Libero finché non c'è storia, vietato dopo
 
-Un documento numerato porta il numero del registro di un'azienda, e non lo cambia: spostare il cliente su
-un'altra azienda lascerebbe quei documenti a chi non vede più il cliente a cui si riferiscono. Vietare ogni
-cambio, però, renderebbe definitivo un errore ordinario: il collegamento nasce con l'azienda di chi crea il
-cliente, e chi lavora sull'azienda sbagliata crea un cliente sbagliato. La regola tiene aperta la correzione
-finché sul cliente non è passato del lavoro numerato.
+Un documento, anche in bozza, è già un documento di un'azienda: ogni documento di vendita è emesso
+dall'azienda del suo billing account. Spostare il cliente su un'altra azienda lascerebbe quei documenti a chi
+non vede più il cliente a cui si riferiscono. Vietare ogni cambio, però, renderebbe definitivo un errore
+ordinario: il collegamento nasce con l'azienda di chi crea il cliente, e chi lavora sull'azienda sbagliata crea
+un cliente sbagliato. La regola tiene aperta la correzione finché il cliente non ha nessun documento; chi ha
+sbagliato e ha già scritto documenti li cancella prima.
 
-Riceve il billing account e le due aziende, prima e dopo: quando sono la stessa il cambio non sposta niente e
-passa, anche con la storia. È il caso di un collegamento tolto quando la predefinita è la stessa azienda.
+Lo chiama il trigger della storia sul collegamento, solo quando si modifica l'azienda del collegamento di un
+billing account: è l'unico movimento che cambia l'azienda di un cliente, perché il collegamento non si
+cancella e non passa a un altro conto. Riceve il billing account e le due aziende, prima e dopo: quando sono la
+stessa il cambio non sposta niente e passa, anche con la storia.
 
 ---
 
@@ -52,17 +56,10 @@ un messaggio più preciso. Nessuna eccezione per i dati preesistenti e nessun mo
 
 ---
 
-### ⚠️ Che cosa oggi non copre
-
-* **Quando lo chiama la predefinita**, il billing account da guardare lo sceglie
-  `fn_guard_ba_gestore_globale_storia` con un'altra definizione di storia: il guard decide bene sul billing
-  account che riceve, ma può non ricevere quello giusto.
-
----
-
 ### Codici errore
 
-* `E_BA_EMITTENTE_CON_STORIA` — l'azienda cambia davvero e il billing account ha almeno un documento numerato.
+* `E_BA_EMITTENTE_CON_STORIA` — l'azienda cambia davvero e il billing account ha almeno un documento, anche in
+  bozza.
 
 ---
 
@@ -71,7 +68,10 @@ un messaggio più preciso. Nessuna eccezione per i dati preesistenti e nessun mo
 * `db/pgtap/anagrafiche/test-ba-cambio-emittente-storia-v1.sql` — lo stesso cambio sullo stesso cliente passa
   appena nato ed è respinto dopo una commessa; passa se l'azienda non cambia davvero; la frase nomina la
   specie e l'azienda per codice; il guard chiama la check e non contiene il predicato.
-* `db/pgtap/anagrafiche/test-ba-storia-solo-numerati-v1.sql` — col DDT in bozza passa, col DDT emesso no.
+* `db/pgtap/anagrafiche/test-ba-storia-qualunque-documento-v1.sql` — il cambio è respinto già col DDT in bozza,
+  e col DDT emesso.
+* `db/pgtap/anagrafiche/test-billing-account-sempre-collegato-v1.sql` — senza documenti il cambio d'azienda per
+  modifica del collegamento passa, all'andata e al ritorno; con una fattura in bozza è respinto.
 
 ---
 
@@ -82,6 +82,8 @@ un messaggio più preciso. Nessuna eccezione per i dati preesistenti e nessun mo
 * 2026-08-31 — la storia diventa «documento numerato di qualunque famiglia»: prima erano fatture e commesse, e
   ordini e DDT restavano fuori perché un controllo ne riallinea l'azienda al cliente; il numero del registro,
   invece, non lo riallinea nessuno.
+* 2026-11-26 — la storia diventa «qualunque documento, anche in bozza», e il guard ha un chiamante solo: lo
+  spostamento della predefinita non cambia più l'azienda di nessun cliente.
 
 ---
 

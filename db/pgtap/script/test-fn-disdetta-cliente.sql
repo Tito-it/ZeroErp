@@ -23,47 +23,13 @@
 --       completo incluso PDP.
 -- ------------------------------------------------------------
 
--- =========================================================
--- Cleanup iniziale (idempotente)
--- =========================================================
-DO $$
-BEGIN
-    -- ⚠️ Rev 2026-11-18 (brief-db-seed-primo-impianto-non-si-riscrive §16.9): la
-    --   porta zeroerp.maintenance_ruoli_delete si apre solo per la sessione del
-    --   migratore, e il test gira come app. Questa pulizia toglie gli avanzi che le
-    --   versioni del test che committavano hanno lasciato su un database di
-    --   sviluppo: su un database nuovo (la CI) non trova righe e non tocca il
-    --   blocco. Se su dbdev ne trova, il DELETE e' rifiutato: gli avanzi si tolgono
-    --   una volta a mano, dal migratore, con la porta.
-
-    DELETE FROM anagrafiche.clienti c
-    WHERE c.codice_cliente_importato LIKE 'TST-DIS-%';
-
-    -- 🔴 Il mapping emittente PRIMA del billing account (2026-08-18).
-    --   Ogni BA nuovo riceve automaticamente una riga in
-    --   `emittenti_fiscali_billing_account`, e la sua FK impedisce di
-    --   cancellare il padre: la pulizia moriva sul figlio che non aveva
-    --   creato lei. ⚠️ Quarto strato di questo file — ogni difetto ne
-    --   nascondeva un altro.
-    DELETE FROM anagrafiche.emittenti_fiscali_billing_account efba
-    WHERE efba.billing_account_id IN (
-        SELECT ba.id FROM anagrafiche.billing_account ba
-        WHERE ba.istanza_utility_id IN (
-            SELECT iu.id FROM anagrafiche.istanze_utilities iu
-            WHERE iu.codice LIKE 'TST-DIS-%'
-        )
-    );
-
-    DELETE FROM anagrafiche.billing_account ba
-    WHERE ba.istanza_utility_id IN (
-        SELECT iu.id FROM anagrafiche.istanze_utilities iu
-        WHERE iu.codice LIKE 'TST-DIS-%'
-    );
-
-    DELETE FROM anagrafiche.istanze_utilities iu
-    WHERE iu.codice LIKE 'TST-DIS-%';
-END;
-$$;
+-- ⛔ Niente pulizia iniziale fuori dalla transazione (tolta il 2026-11-26,
+--   brief-db-revisione-anagrafiche §24.7.1): cancellava in autocommit clienti,
+--   collegamenti, billing account e istanze lasciati da versioni vecchie del
+--   test che committavano. Il billing account e il suo collegamento all'azienda
+--   non si cancellano piu' (20261126-30, -40), e col ROLLBACK in coda il file
+--   non lascia niente. La prima istruzione e' BEGIN, come vuole
+--   scripts/prova_changeset.py.
 
 -- ⚠️ Transazione, e non e' una formalita'. Il cleanup di questo file sta in
 --   coda: col runner vero (pg_prove gira con ON_ERROR_STOP) un fallimento a

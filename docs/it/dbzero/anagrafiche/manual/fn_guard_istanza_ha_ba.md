@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_guard_istanza_ha_ba`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,7 +12,7 @@
 > Approfondimento funzioni:
 >
 > * [anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_require_utility_dichiarata) — la chiama alla nascita dell'istanza
-> * [anagrafiche.trgfn_billing_account_require_istanza_ha_ba](/dbzero/anagrafiche/funzioni/trgfn_billing_account_require_istanza_ha_ba) — la chiama alla cancellazione di un billing account
+> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic) — il rifiuto della cancellazione di un billing account, che chiude l'altra strada
 >
 > Guide:
 >
@@ -29,19 +29,18 @@
 ### ⭐ La regola: istanza e billing account nascono insieme
 
 Un'istanza senza billing account non è una fase del ciclo di vita (non c'è una «fase prospect» con la sola
-istanza): è un dato fuori regola. La regola si può rompere in due momenti, e questa funzione è il controllo di
-tutti e due:
+istanza): è un dato fuori regola. Le strade per arrivarci sono tre, e ognuna ha il suo presidio:
 
-* nasce un'istanza senza billing account — la chiama, al commit, il trigger della nascita dell'istanza;
-* si cancella l'ultimo billing account di un'istanza che resta — la chiama, al commit, il trigger della
-  cancellazione del billing account.
+* **nasce un'istanza senza billing account** — è la strada di questa funzione: la chiama, al commit, il
+  trigger della nascita dell'istanza (`anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata`);
+* **si cancella l'ultimo billing account di un'istanza** — non può succedere: il billing account non si
+  cancella mai (`E_BA_NON_SI_CANCELLA`, il primo trigger sulla cancellazione), e un cliente che non si vuole
+  più si annulla;
+* **si sposta il billing account su un'altra istanza** — lo chiude il blocco di colonna
+  (`E_BA_ISTANZA_IMMUTABILE`).
 
-Un terzo modo, spostare il billing account su un'altra istanza, non passa da qui: lo chiude il blocco di
-colonna (`E_BA_ISTANZA_IMMUTABILE`).
-
-I due chiamanti sono differiti al commit: dentro la stessa transazione l'istanza può essere scritta prima del
-suo billing account, e un'istanza può andarsene insieme ai suoi billing account. Un'istanza che non esiste più,
-o un parametro vuoto, non hanno niente da presidiare.
+Il chiamante è differito al commit: dentro la stessa transazione l'istanza può essere scritta prima del suo
+billing account. Un'istanza che non esiste più, o un parametro vuoto, non hanno niente da presidiare.
 
 ---
 
@@ -62,14 +61,18 @@ Gira quindi coi privilegi del proprietario, con un `search_path` fissato.
 ### Test
 
 * `db/pgtap/anagrafiche/test-istanza-nasce-col-ba-v1.sql` — l'istanza senza billing account non arriva al
-  commit, l'ultimo billing account non si cancella, istanza e billing account se ne vanno insieme.
+  commit; il billing account non si cancella, né da solo né insieme alla sua istanza.
 * `db/pgtap/anagrafiche/test-trgfn-istanze-utilities-require-utility-dichiarata.sql` — la nascita dell'istanza.
 
 ---
 
 ### Note di migrazione
 
-* 2026-10-08 — nasce con la regola «istanza e billing account nascono insieme, sempre».
+* 2026-10-08 — nasce con la regola «istanza e billing account nascono insieme, sempre». La chiamava anche un
+  constraint trigger differito sulla cancellazione di un billing account, che rifiutava l'ultimo di un'istanza
+  rimasta e ammetteva istanza e billing account cancellati insieme.
+* 2026-11-26 — quel trigger e la sua funzione sono ritirati: il billing account non si cancella più, e la
+  strada della cancellazione è chiusa del tutto. La funzione resta per la nascita dell'istanza.
 
 ---
 

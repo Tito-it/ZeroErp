@@ -8,6 +8,8 @@
 >
 > * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali) — le aziende che emettono documenti: una riga per azienda, il ruolo `EF` di un soggetto
 > * [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — per quale azienda fattura ogni billing account, e il gestore globale
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — il conto che fattura: ha sempre il suo collegamento, e non si cancella
+> * [config.valute](/dbzero/config/tabelle/valute) — il catalogo delle valute
 > * [anagrafiche.emittenti_fiscali_utilities](/dbzero/anagrafiche/tabelle/emittenti_fiscali_utilities) — le eccezioni d'importo dell'azienda per una utility
 > * [config.regimi_fiscali](/dbzero/config/tabelle/regimi_fiscali) — il catalogo dei regimi fiscali (RF01…RF19)
 > * [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali) — l'azienda dell'operatore: una al massimo
@@ -26,6 +28,13 @@
 > * [anagrafiche.fn_get_emittente_fiscale_id](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_id) / [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk) — da una chiave dell'azienda all'altra
 > * [vendite.trgfn_emittenti_fiscali_provision_registri](/dbzero/vendite/funzioni/trgfn_emittenti_fiscali_provision_registri) — i registri delle famiglie non fiscali, alla nascita e alla riattivazione
 > * [script.fn_get_ba_emittente_sr_id](/dbzero/script/funzioni/fn_get_ba_emittente_sr_id) — l'azienda di un billing account
+> * [anagrafiche.trgfn_billing_account_link_ef](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef) — il billing account nasce collegato: all'azienda di chi lavora, o al gestore globale
+> * [anagrafiche.trgfn_efba_guard_storia_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_storia_emittente) / [anagrafiche.fn_guard_ba_cambio_emittente](/dbzero/anagrafiche/funzioni/fn_guard_ba_cambio_emittente) — il cambio d'azienda, solo senza documenti
+> * [anagrafiche.fn_ba_ha_storia_emittente](/dbzero/anagrafiche/funzioni/fn_ba_ha_storia_emittente) — la storia: qualunque documento, anche in bozza
+> * [anagrafiche.fn_guard_albero_ba_emittente](/dbzero/anagrafiche/funzioni/fn_guard_albero_ba_emittente) — padre e figli sulla stessa azienda
+> * [anagrafiche.fn_guard_istanza_ba_emittente](/dbzero/anagrafiche/funzioni/fn_guard_istanza_ba_emittente) — i billing account di un'istanza sulla stessa azienda
+> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic) — il collegamento non si cancella e non si sposta
+> * [script.trgfn_doc_guard_emittente_ba](/dbzero/script/funzioni/trgfn_doc_guard_emittente_ba) — ogni documento di vendita, fattura compresa, è dell'azienda del suo billing account
 > * [script.fn_check_user_can_create_ba](/dbzero/script/funzioni/fn_check_user_can_create_ba) — chi può creare un billing account
 > * [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — il verbo che assegna un operatore a un'azienda, riservato al super admin
 > * [script.fn_get_user_emittenti_scope](/dbzero/script/funzioni/fn_get_user_emittenti_scope) — l'azienda dell'operatore, come la mostra il drawer
@@ -185,7 +194,7 @@ aziende attive in questo stato stanno in `dbops.vw_emittenti_regime_non_conferma
 
 * **Bollo automatico**, con la sua **soglia**: la soglia si compila solo se il bollo automatico è acceso.
 * **Arrotondamento** degli importi: `UP`, `DOWN`, `HALF_UP`, `HALF_DOWN`.
-* **Valuta** predefinita dei documenti.
+* **Valuta** predefinita dei documenti: una valuta del catalogo (`config.valute`), come quella di un billing account.
 
 I valori proposti alla creazione vengono dai parametri `EMITTENTE_DEFAULT_BOLLO_AUTO`, `EMITTENTE_DEFAULT_BOLLO_SOGLIA`
 e `EMITTENTE_DEFAULT_ROUNDING_POLICY` ([Configurazione e Gestione Parametri](/guide/configurazione-e-gestione-parametri)).
@@ -208,32 +217,41 @@ configurano dal drawer «Registri di numerazione» dell'emittente.
 ### Il gestore globale
 
 Fra i collegamenti dei billing account c'è **una riga speciale, senza billing account**: il **gestore globale**
-(`is_default`). È l'azienda di riserva dell'installazione, quella che vale per un billing account che non ha un
-collegamento suo e quando non c'è un utente che lavora (un processo notturno, una migrazione).
+(`is_default`). È l'azienda con cui nasce un billing account quando non c'è un utente che lavora (un processo
+notturno, una migrazione) o quando chi lo crea non ha un'azienda sua. Decide solo i billing account che
+**nasceranno**: ogni billing account già nato ha il suo collegamento, e spostare il gestore globale non cambia
+l'azienda di nessun cliente.
 
 * Il primo emittente creato diventa gestore globale da solo.
 * Il gestore globale è **uno e uno solo** (`E_EMITTENTE_DEFAULT_SINGLETON`): si può spostare su un'altra azienda, ma
-  non può sparire. Nel drawer dei billing account la riga non si rimuove, e «Crea default globale» è spento quando
-  la riga c'è già.
+  non può sparire: si sposta modificando la sua riga, che non si cancella (`E_BA_COLLEGAMENTO_NON_SI_TOGLIE`) e non
+  diventa il collegamento di un billing account (`E_BA_COLLEGAMENTO_NON_SI_SPOSTA`). Nel drawer dei billing account
+  la riga non si rimuove, e «Crea default globale» è spento quando la riga c'è già.
+* Senza nessun emittente non nasce nessun billing account (`E_EMITTENTE_DEFAULT_MISSING`): un cliente fattura sempre
+  per un'azienda.
 * ⛔ **Il gestore globale non è l'azienda di chi lavora.** Un operatore senza assegnazione, o un super admin in
   «Tutti gli emittenti», non ricade sul gestore globale: non ha un'azienda su cui scrivere.
 
 ### I billing account: per quale azienda fattura un cliente
 
-Il cliente non ha un emittente: ce l'ha il suo **billing account**, uno solo. Il collegamento nasce quando nasce il
-billing account, con l'azienda in cui lavora chi lo crea; dal drawer «Gestisci billing account» il super admin vede
-i collegamenti, ne aggiunge e ne toglie. Come si decide l'azienda di un cliente, e quando non si può più cambiare, lo
-spiega [Generazione di un Cliente](/guide/generazione-cliente). In breve, ogni spostamento passa da tre cancelli:
+Il cliente non ha un emittente: ce l'ha il suo **billing account**, uno solo, e sempre. Il collegamento nasce quando
+nasce il billing account, con l'azienda in cui lavora chi lo crea o, senza, col gestore globale; dal drawer
+«Gestisci billing account» il super admin vede i collegamenti. Un collegamento **non si cancella** e **non passa a un
+altro billing account** (`E_BA_COLLEGAMENTO_NON_SI_TOGLIE`, `E_BA_COLLEGAMENTO_NON_SI_SPOSTA`), e il billing account
+stesso non si cancella (`E_BA_NON_SI_CANCELLA`): un cliente si chiude annullandolo. Un cliente cambia azienda solo
+**modificando l'azienda sul suo collegamento**. Come si decide l'azienda di un cliente, e quando non si può più
+cambiare, lo spiega [Generazione di un Cliente](/guide/generazione-cliente). In breve, ogni cambio passa da tre
+cancelli:
 
-* **la storia**: un billing account con almeno un documento numerato non cambia azienda
-  (`E_BA_EMITTENTE_CON_STORIA`). Le bozze non bloccano: sono la finestra per correggere. Nel drawer il pulsante di
-  rimozione è spento, e il suggerimento dice perché;
+* **la storia**: un billing account con almeno un documento, di qualunque famiglia e in qualunque stato, **anche in
+  bozza**, non cambia azienda (`E_BA_EMITTENTE_CON_STORIA`). La finestra per correggere c'è finché il billing account
+  non ha nessun documento; chi ha sbagliato azienda e ha già scritto documenti li cancella prima;
 * **l'albero**: un billing account padre e i suoi figli stanno sotto la stessa azienda (`E_ALBERO_EMITTENTE_MISTO`);
 * **l'istanza**: i billing account di una stessa istanza di servizio stanno sotto la stessa azienda
   (`E_ISTANZA_EMITTENTI_DIVERSI`).
 
-I tre cancelli valgono anche quando si sposta il gestore globale, perché spostarlo cambia l'azienda di tutti i
-billing account che non hanno un collegamento loro.
+I cancelli guardano solo il collegamento di un billing account che nasce o cambia azienda: lo spostamento del
+gestore globale non tocca nessun cliente, e non si giudica.
 
 ### Le utilities: le eccezioni d'importo
 
@@ -391,7 +409,12 @@ operatrice di BETA.
 | Spegnimento con righe collegate ancora vive | `E_ATTIVO_BLOCK_CHILDREN_ACTIVE`, `E_ATTIVO_BLOCK_CHILDREN_EXIST` |
 | Una riga nuova sotto un emittente spento | `E_ATTIVO_PADRE_NON_ATTIVO` |
 | Due gestori globali, o nessuno | `E_EMITTENTE_DEFAULT_SINGLETON` |
-| Un billing account con documenti numerati che cambia azienda | `E_BA_EMITTENTE_CON_STORIA` |
+| Un billing account con documenti, anche in bozza, che cambia azienda | `E_BA_EMITTENTE_CON_STORIA` |
+| Il collegamento di un billing account, o la riga del gestore globale, cancellato | `E_BA_COLLEGAMENTO_NON_SI_TOGLIE` |
+| Il collegamento passato a un altro billing account, o trasformato in gestore globale (o il contrario) | `E_BA_COLLEGAMENTO_NON_SI_SPOSTA` |
+| Un billing account cancellato | `E_BA_NON_SI_CANCELLA` |
+| Un billing account che nasce senza nessun emittente nell'installazione | `E_EMITTENTE_DEFAULT_MISSING` |
+| Una valuta che non è nel catalogo | violazione di chiave esterna verso `config.valute` |
 | Un albero di billing account su due aziende | `E_ALBERO_EMITTENTE_MISTO` |
 | I billing account di un'istanza su due aziende | `E_ISTANZA_EMITTENTI_DIVERSI` |
 | Un billing account creato in «Tutti gli emittenti» | `E_BA_ADMIN_GLOBALE_VIETATO` |
@@ -414,10 +437,6 @@ I testi dei messaggi stanno in `config.messaggi_errore`
 * **Fatture e commesse non fermano lo spegnimento.** I documenti che nominano l'azienda col ruolo `EF` (fatture,
   commesse, registri, listini, lotti di fatturazione) non sono fra le righe che il controllo dello spegnimento
   guarda: un emittente con fatture aperte si spegne, uno con un ordine no.
-* **La fattura in bozza non segue il billing account.** Ordini, DDT, commesse, contratti, offerte e preventivi
-  seguono l'azienda del loro billing account; una fattura in bozza resta all'azienda di prima, se il billing account
-  cambia azienda.
-* **La valuta non è verificata sul catalogo**: il campo accetta un identificativo che non è una valuta.
 
 ---
 
@@ -439,13 +458,17 @@ I testi dei messaggi stanno in `config.messaggi_errore`
 
 * `db/pgtap/anagrafiche/test-fn-crea-emittente-fiscale-v1.sql` — la creazione: il ruolo `EF`, i valori proposti, il
   regime RF01 non confermato, la conferma del regime dichiarato, i registri, le chiavi rifiutate, i doppioni.
-* `db/pgtap/anagrafiche/test-emittenti-fiscali.sql` — il primo emittente fa nascere il gestore globale, l'azienda di
-  un billing account con e senza collegamento, lo spegnimento respinto.
+* `db/pgtap/anagrafiche/test-emittenti-fiscali.sql` — il primo emittente fa nascere il gestore globale, il billing account
+  che nasce collegato, il cambio d'azienda fatto modificando il collegamento, lo spegnimento respinto.
 * `db/pgtap/anagrafiche/test-emittenti-fiscali-codice-forma.sql` — la forma della sigla.
 * `db/pgtap/anagrafiche/test-emittente-soggetto-immutabile-v1.sql` — l'emittente resta sul suo soggetto.
-* `db/pgtap/anagrafiche/test-ba-cambio-emittente-storia-v1.sql`, `test-guard-albero-ba-omogeneo-v1.sql`,
-  `test-istanza-ba-gestore-globale-v1.sql` — i tre cancelli dei billing account, anche allo spostamento del gestore
-  globale.
+* `db/pgtap/anagrafiche/test-ba-cambio-emittente-storia-v1.sql`, `test-ba-storia-qualunque-documento-v1.sql`,
+  `test-guard-albero-ba-omogeneo-v1.sql` — i cancelli dei billing account: la storia (anche una bozza), l'albero, e
+  lo spostamento del gestore globale che non tocca nessuno.
+* `db/pgtap/anagrafiche/test-billing-account-sempre-collegato-v1.sql` — il billing account nasce sempre collegato, il
+  collegamento non si cancella né si sposta, il billing account non si cancella.
+* `db/pgtap/anagrafiche/test-valuta-fk-billing-account-emittente-v1.sql` — la valuta dell'emittente e del billing
+  account esiste nel catalogo.
 * `db/pgtap/anagrafiche/test-billing-account-auto-link-ef.sql` — il collegamento alla nascita del billing account, e
   il divieto in «tutti».
 * `db/pgtap/script/test-fn-change-user-emittenti-scope.sql` — l'assegnazione: un emittente o nessuno, mai due,

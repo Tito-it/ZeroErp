@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_efba_guard_clienti_chiave`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,39 +11,39 @@
 > Approfondimento funzioni:
 >
 > * [anagrafiche.fn_guard_clienti_chiave_unica_di](/dbzero/anagrafiche/funzioni/fn_guard_clienti_chiave_unica_di) — il controllo dei clienti di un billing account
-> * [anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale](/dbzero/anagrafiche/funzioni/fn_guard_clienti_chiave_unica_gestore_globale) — il controllo dei clienti che seguono la predefinita
-> * [anagrafiche.trgfn_efba_guard_istanza_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_istanza_emittente) — un altro guard della stessa tabella, con la stessa scelta del raggio
+> * [anagrafiche.trgfn_efba_guard_istanza_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_istanza_emittente) — un altro guard della stessa tabella, con la stessa scelta della riga da giudicare
 
 ---
 
 ### 🎯 Scopo Principale
 
-`anagrafiche.trgfn_efba_guard_clienti_chiave` è la strada dell'azienda: quando cambia l'azienda di un
-billing account, o l'azienda predefinita, controlla alla conferma dell'operazione i clienti la cui chiave è
-cambiata con lei.
+`anagrafiche.trgfn_efba_guard_clienti_chiave` è la strada dell'azienda: quando il collegamento di un billing
+account nasce o cambia azienda, controlla alla conferma dell'operazione i clienti di quel billing account, la
+cui chiave contiene l'azienda.
 
 ---
 
-### Quattro movimenti, due raggi
+### Un movimento, un billing account
 
 Una riga della tabella è un collegamento fra un billing account e un'azienda, oppure, senza billing account,
-l'azienda predefinita. Il trigger guarda la riga e sceglie quali clienti controllare:
+l'azienda predefinita. Il trigger giudica solo il collegamento di un billing account, quando nasce o quando
+la sua azienda cambia, e controlla i clienti di quel billing account.
 
-| Movimento | Clienti controllati |
-| --- | --- |
-| un collegamento nasce, cambia azienda o sparisce | quelli del billing account |
-| un collegamento passa da un billing account a un altro | quelli di tutti e due |
-| la predefinita nasce, cambia azienda o sparisce | tutti i clienti fittizi dei billing account senza collegamento |
-| una riga passa da predefinita a collegamento, o il contrario | quelli del billing account e quelli che seguono la predefinita |
+Gli altri movimenti non cambiano la chiave di nessuno:
 
-Un collegamento che sparisce non libera i clienti dalla regola: il loro billing account passa alla
-predefinita, ed è contro quella che si controllano.
+* la riga della predefinita non si giudica: spostarla decide solo l'azienda dei billing account che
+  nasceranno, non quella di un cliente che c'è già;
+* il collegamento non si cancella e non passa a un altro billing account: lo rifiutano prima i trigger `a05`
+  della tabella (`E_BA_COLLEGAMENTO_NON_SI_TOGLIE`, `E_BA_COLLEGAMENTO_NON_SI_SPOSTA`), e sulla cancellazione
+  il trigger non fa niente.
 
 ---
 
 ### Note di migrazione
 
 * 2026-10-14 — nasce con la regola del cliente manuale.
+* 2026-11-26 — perde i rami dell'azienda predefinita e del collegamento che sparisce o si sposta: ogni
+  billing account ha sempre il suo collegamento, che non si toglie.
 
 ---
 

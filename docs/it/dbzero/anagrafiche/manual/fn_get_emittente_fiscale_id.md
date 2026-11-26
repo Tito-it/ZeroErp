@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_get_emittente_fiscale_id`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -38,15 +38,16 @@ stessa azienda.
 
 ### La regola non sta qui
 
-Quale azienda, sui tre livelli (collegamento, azienda di chi agisce in sessione, predefinita), lo decide
-`script.fn_get_ba_emittente_sr_id`, che è la sede unica: la regola è nel blocco qui sotto. Qui restano due cose
-sue:
+Quale azienda lo decide `script.fn_get_ba_emittente_sr_id`, che è la sede unica: la regola è nel blocco qui
+sotto. Ogni billing account ha sempre il suo collegamento, e la risposta è quella; gli altri livelli del
+lettore (l'azienda di chi agisce in sessione, la predefinita) contano solo nell'istante della nascita, prima
+che il collegamento sia scritto. Qui restano due cose sue:
 
 * **un'azienda non risolta è un errore di dominio.** Il lettore restituisce `NULL`; questa funzione lo
   trasforma in `E_EMITTENTE_DEFAULT_MISSING`, perché chi la usa sceglie il registro su cui numerare, e un `NULL`
-  vorrebbe dire numerare dove capita. Succede solo quando l'installazione non ha una predefinita;
+  vorrebbe dire numerare dove capita. Succede solo quando l'installazione non ha nessuna azienda;
 * **senza billing account, la predefinita.** Il lettore risponde `NULL` a un billing account nullo, perché
-  «nessun billing account» non è «billing account non ancora collegato». Questa funzione invece ripiega sulla
+  «nessun billing account» non è «billing account appena nato». Questa funzione invece ripiega sulla
   predefinita, anche in sessione: un lotto di fatturazione non ha un billing account (raccoglie fatture di
   clienti diversi), e `vendite.fn_get_or_create_lotto` la chiama così.
 
@@ -57,21 +58,23 @@ la gemella `_pk` tiene il filtro solo come difesa.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Un billing account che non esiste** non è rifiutato: senza collegamento, la funzione risponde l'azienda di
-  chi agisce o la predefinita, come per un billing account vero non ancora collegato.
+* **Un billing account che non esiste** non è rifiutato: non ha un collegamento, e la funzione risponde
+  l'azienda di chi agisce o la predefinita, come per un billing account nell'istante della sua nascita.
 
 ---
 
 ### Codici errore
 
-* `E_EMITTENTE_DEFAULT_MISSING` — nessun livello risponde: l'installazione non ha un'azienda predefinita.
+* `E_EMITTENTE_DEFAULT_MISSING` — nessun livello risponde: l'installazione non ha nessuna azienda, e quindi
+  nemmeno una predefinita.
 
 ---
 
 ### Test
 
-* `db/pgtap/anagrafiche/test-emittenti-fiscali.sql` — il billing account senza collegamento (test 9) e quello
-  col collegamento (test 13). I test saltano se il database non ha un billing account libero.
+* `db/pgtap/anagrafiche/test-emittenti-fiscali.sql` — il billing account nasce collegato e la funzione
+  risponde l'azienda del collegamento (test 8 e 9); dopo un cambio d'azienda per modifica del collegamento
+  risponde quella nuova (test 12 e 13).
 * `db/pgtap/anagrafiche/test-fn-get-emittente-fiscale-pk.sql` — i tre livelli del lettore comune, sulla gemella.
 
 ---
@@ -82,6 +85,8 @@ la gemella `_pk` tiene il filtro solo come difesa.
   la versione di prima ci arrivava per caso, e i lotti ne dipendevano.
 * 2026-09-13 — il lettore ha tre livelli: in sessione, un billing account non ancora collegato è dell'azienda di
   chi agisce.
+* 2026-11-26 — ogni billing account ha sempre il suo collegamento: i livelli dopo il primo riguardano solo la
+  nascita.
 
 ---
 

@@ -39,6 +39,7 @@
 | CHECK | chk_emittenti_fiscali_rounding_policy |  |
 | FOREIGN KEY | fk_emittenti_fiscali_regimi_fiscali | regime_fiscale_rf |
 | FOREIGN KEY | fk_emittenti_fiscali_ruolo | soggetto_ruolo_id |
+| FOREIGN KEY | fk_emittenti_fiscali_valute | valuta_id |
 | PRIMARY KEY | pk_emittf | id |
 | UNIQUE | uq:codice | codice |
 | UNIQUE | uq_emittenti_fiscali_ruolo | soggetto_ruolo_id |

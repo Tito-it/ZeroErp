@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.trgfn_famiglie_documento_guard_disattivazione`
 
+> **Ultimo aggiornamento**: 26 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > **Il predicato NON è qui, sta in:**
@@ -31,10 +33,10 @@ attivo`.
 
 ### ⛔ Non difende un catalogo: difende un presidio
 
-Le due funzioni che rispondono *«questo cliente ha già documenti numerati?»*
+Le due funzioni che rispondono *«questo cliente ha già documenti?»*
 scorrono le famiglie **attive**. Spegnere una famiglia la fa uscire dal giro, e i
 suoi documenti smettono di trattenere il cliente presso l'emittente che li ha
-numerati.
+scritti.
 
 ⚠️ Nessun errore e nessun diario: il controllo guarda in un posto in meno. È la
 ragione per cui questo guard esiste, e non è la coerenza di un elenco.

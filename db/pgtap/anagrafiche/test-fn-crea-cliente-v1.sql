@@ -31,7 +31,8 @@
 --    3) l'istanza nasce fittizia, del soggetto del ruolo
 --    4) il BA: codice generato, fatturazione_ordini al DEFAULT (CONFERMATO)
 --    5) il legame chiesto e' scritto, is_default = false
---    6) senza emittente chiesto e senza sessione: nessun legame
+--    6) senza emittente chiesto e senza sessione: il legame alla predefinita
+--       (dal 2026-11-26, 20261126-27: ogni BA nasce collegato)
 --    7) un'istanza esistente: un secondo BA, per un'altra utility, sulla stessa
 --    8) istanza esistente piu' i campi di una nuova: E_SCRIPT_CHIAMATA_NON_VALIDA
 --    9) chiave estranea fra i campi del BA: E_CAMPO_NON_AMMESSO
@@ -194,12 +195,16 @@ SELECT is(
     't|f',
     '5. il legame chiesto e'' scritto, is_default = false');
 
+-- ⭐ rev 2026-11-26 (brief-db-revisione-anagrafiche §24.5): ogni BA nasce
+--   collegato; senza sessione, all'azienda predefinita. Prima: nessun legame.
 SELECT is(
     (SELECT count(*)::int
        FROM t_ba1 b
-       JOIN anagrafiche.emittenti_fiscali_billing_account efba ON efba.billing_account_id = b.billing_account_id),
-    0,
-    '6. senza emittente chiesto e senza sessione: nessun legame');
+       JOIN anagrafiche.emittenti_fiscali_billing_account efba ON efba.billing_account_id = b.billing_account_id
+       JOIN anagrafiche.emittenti_fiscali_billing_account d    ON d.is_default
+      WHERE efba.emittente_soggetto_ruolo_id = d.emittente_soggetto_ruolo_id),
+    1,
+    '6. senza emittente chiesto e senza sessione: il legame alla predefinita');
 
 SELECT is(
     (SELECT format('%s|%s', b2.istanza_utility_id = b1.istanza_utility_id, ba.utility_id = m.u2)

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_guard_cliente_chiave_unica`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,7 +12,7 @@
 >
 > * [anagrafiche.fn_clienti_stessa_chiave](/dbzero/anagrafiche/funzioni/fn_clienti_stessa_chiave) — chi occupa la chiave, la lettura su cui decide
 > * [anagrafiche.fn_guard_clienti_chiave_unica_di](/dbzero/anagrafiche/funzioni/fn_guard_clienti_chiave_unica_di) — lo applica ai clienti di un billing account o di un'istanza
-> * [anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale](/dbzero/anagrafiche/funzioni/fn_guard_clienti_chiave_unica_gestore_globale) — lo applica ai clienti che seguono l'azienda predefinita
+> * [script.fn_get_ba_emittente_sr_id_installazione](/dbzero/script/funzioni/fn_get_ba_emittente_sr_id_installazione) — l'azienda del billing account, per l'installazione
 >
 > Guide:
 >
@@ -31,7 +31,7 @@ periodo che si sovrappone al suo.
 ### Un cliente alla volta, su una sola lettura
 
 Il controllo prende la chiave del cliente (soggetto, servizio e l'azienda del suo billing account per
-l'installazione) e chiede a `anagrafiche.fn_clienti_stessa_chiave` chi la occupa. Confronta il periodo del
+l'installazione, cioè quella del suo collegamento) e chiede a `anagrafiche.fn_clienti_stessa_chiave` chi la occupa. Confronta il periodo del
 cliente con quello degli altri: non ripete il criterio degli stati, che sta tutto nella lettura. Un cliente
 che non occupa la chiave (istanza non fittizia, annullato, pre-contrattuale, aggregante, senza periodo) non
 esce dalla lettura, quindi non si sovrappone a nessuno e passa.

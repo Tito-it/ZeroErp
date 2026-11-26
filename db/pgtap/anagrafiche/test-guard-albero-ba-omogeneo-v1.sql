@@ -13,13 +13,15 @@
 --   3) * MOVIMENTO 2: si cambia l'emittente del FIGLIO  -> E_ALBERO_EMITTENTE_MISTO
 --   4) * MOVIMENTO 2: si cambia l'emittente del PADRE   -> E_ALBERO_EMITTENTE_MISTO
 --        (il verso «verso i figli», quello che si dimentica)
---   5) * MOVIMENTO 3: si CANCELLA il mapping del figlio -> E_ALBERO_EMITTENTE_MISTO
+--   5) * si CANCELLA il collegamento del figlio -> E_BA_COLLEGAMENTO_NON_SI_TOGLIE
+--      (dal 2026-11-26 il collegamento non si cancella)
 --   8-9) * i DUE CANALI strutturati: CONSTRAINT = codice, COLUMN = campo (R-2)
 --        (ricade sul gestore globale, che e' un altro emittente)
 --   6) due alberi SEPARATI dello stesso soggetto        -> PASSA (§3.1, legittimo)
 --   7) il guard non e' cieco: vede un figlio FUORI dal perimetro di chi scrive
---  10) * MOVIMENTO 4: si sposta il GESTORE GLOBALE, coppia MISTA -> rifiutato
---  11)   MOVIMENTO 4: si sposta il GESTORE GLOBALE, coppia OMOGENEA -> PASSA
+--  10)   si sposta la predefinita con l'albero collegato -> PASSA
+--  11)   ... padre e figlio restano sulla stessa azienda (dal 2026-11-26 ogni
+--         BA ha il suo collegamento: la predefinita non porta via nessuno)
 --
 -- ⭐ IL MOVIMENTO 4 NON RICHIEDE UN TEST NON TRANSAZIONALE — 2026-08-18.
 --   L'intestazione diceva il contrario: «spostarlo richiede DELETE+INSERT della
@@ -207,7 +209,7 @@ SELECT throws_like($$
 $$, '%emittenti fiscali diversi%',
     '4. * MOVIMENTO 2 verso i FIGLI: spostare il PADRE -> rifiutato');
 
--- 5) * MOVIMENTO 3: si CANCELLA il mapping del figlio.
+-- 5) * si CANCELLA il collegamento del figlio.
 --    Il BA ricade sul gestore globale. Perche' il caso sia significativo
 --    l'albero deve stare su un emittente DIVERSO dal gestore globale: si
 --    spostano entrambi insieme (slegati) e poi si rilega.
@@ -224,11 +226,14 @@ UPDATE anagrafiche.billing_account
    SET parent_account_id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'padre')
  WHERE id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio');
 
+-- ⭐ rev 2026-11-26 (brief-db-revisione-anagrafiche §24.5, 20261126-30): il
+--   collegamento non si cancella piu'. Il «movimento 3» (il figlio ricade sulla
+--   predefinita) non puo' nascere: lo ferma il trigger a05, prima dell'albero.
 SELECT throws_like($$
     DELETE FROM anagrafiche.emittenti_fiscali_billing_account
      WHERE billing_account_id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio')
-$$, '%emittenti fiscali diversi%',
-    '5. * MOVIMENTO 3: cancellare il mapping fa ricadere sul gestore globale -> rifiutato');
+$$, '%non si cancella%',
+    '5. * cancellare il collegamento del figlio -> rifiutato (E_BA_COLLEGAMENTO_NON_SI_TOGLIE)');
 
 -- 6) Due alberi SEPARATI, stesso soggetto, emittenti diversi: LEGITTIMO (§3.1).
 --    E' la regola sbagliata che assomiglia a quella giusta: cio' che si vieta
@@ -344,31 +349,21 @@ UPDATE anagrafiche.billing_account
    SET parent_account_id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'padre2')
  WHERE id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio2');
 
--- Il figlio perde il mapping: ricade sul gestore globale, che in questo istante
--- e' lo STESSO emittente del padre. Lecito, e infatti non solleva.
-DELETE FROM anagrafiche.emittenti_fiscali_billing_account
- WHERE billing_account_id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio2');
-
--- 10) * Coppia MISTA: il figlio segue il gestore globale, il padre no.
-SELECT throws_like($$
-    UPDATE anagrafiche.emittenti_fiscali_billing_account
-       SET emittente_soggetto_ruolo_id = (SELECT gg_nuovo FROM _t_gg)
-     WHERE is_default
-$$, '%emittenti fiscali diversi%',
-    '10. * MOVIMENTO 4: spostare il GESTORE GLOBALE con una coppia mista -> rifiutato');
-
--- 11) Coppia OMOGENEA: tolto anche il mapping del padre, i due si spostano
---     insieme. Il guard deve LASCIAR PASSARE — e' il verso che dimostra che
---     la condizione e' la coppia mista e non la semplice esistenza di un
---     albero non mappato (decisione Q3).
-DELETE FROM anagrafiche.emittenti_fiscali_billing_account
- WHERE billing_account_id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'padre2');
-
+-- ⭐ rev 2026-11-26 (brief-db-revisione-anagrafiche §24.5, 20261126-27 … -33):
+--   ogni BA ha il suo collegamento, e spostare la predefinita non porta via
+--   nessun cliente. I due test del «movimento 4» provano il contratto nuovo.
+-- 10) Spostare la predefinita con l'albero collegato -> lecito.
 SELECT lives_ok($$
     UPDATE anagrafiche.emittenti_fiscali_billing_account
        SET emittente_soggetto_ruolo_id = (SELECT gg_nuovo FROM _t_gg)
      WHERE is_default
-$$, '11. MOVIMENTO 4: coppia non mista (entrambi non mappati) -> si sposta, lecito');
+$$, '10. spostare la predefinita con padre e figlio collegati -> lecito');
+
+-- 11) ... e padre e figlio restano sulla loro azienda, insieme.
+SELECT is(
+    script.fn_get_ba_emittente_sr_id_installazione((SELECT ba_id FROM _t_ba WHERE etichetta = 'figlio2')),
+    script.fn_get_ba_emittente_sr_id_installazione((SELECT ba_id FROM _t_ba WHERE etichetta = 'padre2')),
+    '11. dopo lo spostamento della predefinita padre e figlio restano sulla stessa azienda');
 
 -- ============================================================
 -- Chiusura

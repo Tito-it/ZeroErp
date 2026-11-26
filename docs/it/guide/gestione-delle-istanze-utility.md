@@ -1,6 +1,6 @@
 # Guida — Gestione delle Istanze Utility
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -22,6 +22,9 @@
 > * [script.fn_check_utility_istanza_coerenza](/dbzero/script/funzioni/fn_check_utility_istanza_coerenza) — il check riusabile sulla coppia istanza/utility
 > * [anagrafiche.fn_guard_istanza_ha_ba](/dbzero/anagrafiche/manual/fn_guard_istanza_ha_ba) — un'istanza non resta mai senza billing account
 > * [anagrafiche.fn_guard_istanza_ba_emittente](/dbzero/anagrafiche/manual/fn_guard_istanza_ba_emittente) — i billing account di un'istanza sono di una sola azienda
+> * [anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_require_utility_dichiarata) — alla nascita dell'istanza, il controllo che ci sia il billing account
+> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic) — il billing account non si cancella (`E_BA_NON_SI_CANCELLA`)
+> * [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — l'azienda di ogni billing account
 > * [anagrafiche.fn_clienti_stessa_chiave](/dbzero/anagrafiche/funzioni/fn_clienti_stessa_chiave) — chi occupa la fornitura soggetto + servizio + azienda
 > * [anagrafiche.fn_guard_cliente_chiave_unica](/dbzero/anagrafiche/funzioni/fn_guard_cliente_chiave_unica) — un cliente manuale per soggetto, servizio e azienda
 > * [anagrafiche.trgfn_clienti_guard_stato_date](/dbzero/anagrafiche/manual/trgfn_clienti_guard_stato_date) — gli stati del cliente e le loro date
@@ -343,7 +346,7 @@ erDiagram
 ## Errori comuni
 
 * Collegare all'istanza un PDP di una utility diversa da quella del billing account del cliente: il collegamento passa, il cliente viene rifiutato (`E_PDP_UTILITY_MISMATCH`)
-* Creare un'istanza senza il suo billing account, o cancellare l'ultimo billing account di un'istanza
+* Creare un'istanza senza il suo billing account, o cancellare un billing account: un billing account non si cancella, il suo cliente si annulla
 * Creare un cliente senza istanza
 * Spostare un PDP di indirizzo (vietato dal modello fisico)
 * Marcare `fittizia = TRUE` con un PDP associato
@@ -386,10 +389,9 @@ account del cliente che esiste già.
 | il cliente esistente è annullato | non conta |
 | un cliente pre-contrattuale | si prepara anche se un altro è attivo; il rifiuto arriva quando lo si attiva |
 
-L'azienda è quella **dell'installazione**: quella a cui il billing account è collegato o, se non
-è collegato, l'azienda predefinita. Non dipende da chi sta lavorando. Per questo la regola si
-controlla anche quando si cambia l'azienda di un billing account, quando si sposta l'azienda
-predefinita e quando un'istanza cambia `fittizia`, nei due versi (solo l'istanza che diventa
+L'azienda è quella a cui il billing account è **collegato**: ogni billing account ha il suo
+collegamento, e non dipende da chi sta lavorando. Per questo la regola si controlla anche quando
+si cambia l'azienda di un billing account e quando un'istanza cambia `fittizia`, nei due versi (solo l'istanza che diventa
 fittizia può essere rifiutata: i suoi clienti entrano nella regola). Il controllo avviene **alla conferma**
 dell'operazione: dentro la stessa operazione si può chiudere il cliente vecchio e aprire il
 nuovo in qualunque ordine.
@@ -447,7 +449,7 @@ billing account.
 | Cosa si prova a fare | Che cosa succede |
 | --- | --- |
 | creare un'istanza senza il suo billing account | rifiutato alla conferma dell'operazione (`E_ISTANZA_SENZA_BA`) |
-| cancellare l'ultimo billing account di un'istanza che resta | rifiutato alla conferma (`E_ISTANZA_SENZA_BA`); istanza e billing account si cancellano solo insieme |
+| cancellare un billing account | rifiutato (`E_BA_NON_SI_CANCELLA`): un billing account non si cancella mai, il suo cliente si chiude annullandolo (stato «AN annulla servizio») |
 | spostare un billing account su un'altra istanza o un'altra utility | rifiutato: la coppia istanza/utility è l'identità del billing account (`E_BA_ISTANZA_IMMUTABILE`) |
 | scrivere dati precontrattuali per una utility che sull'istanza non ha billing account | rifiutato |
 | collegare a un preventivo, un'offerta o un contratto il billing account di un'altra istanza o di un'altra utility | rifiutato |
@@ -457,6 +459,12 @@ Il controllo sull'istanza avviene **alla conferma** dell'operazione, non
 riga per riga: dentro la stessa operazione l'istanza può essere scritta prima
 del suo billing account.
 
+Dopo la nascita l'istanza non può perdere il suo billing account per nessuna
+strada: il billing account non si cancella, e non passa a un'altra istanza o a
+un'altra utility. Per questo la regola ha un solo controllo, alla nascita
+dell'istanza ([anagrafiche.fn_guard_istanza_ha_ba](/dbzero/anagrafiche/manual/fn_guard_istanza_ha_ba),
+chiamata da `anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata`).
+
 L'unica cosa che di un billing account si genera in automatico è il **codice**,
 e anche quello nasce con il billing account.
 
@@ -465,8 +473,9 @@ e anche quello nasce con il billing account.
 Tutti i billing account di un'istanza appartengono alla **stessa azienda
 emittente**. È ciò che rende univoca la domanda «di chi è questa istanza?»:
 la risposta è l'azienda del suo billing account. Il controllo vale quando nasce
-un billing account, quando si cambia l'azienda a cui è collegato e quando si
-sposta l'azienda predefinita del sistema.
+un billing account e quando si cambia l'azienda a cui è collegato. Spostare
+l'azienda predefinita del sistema non cambia l'azienda di nessun billing
+account, e non si controlla.
 
 ### Dove sta il dettaglio
 

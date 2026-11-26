@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SI RITIRA IL GUARD DELLA CANCELLAZIONE DI UN BA SULL'ISTANZA
+#   trg_billing_account_z90_require_istanza_ha_ba_dlt   (constraint trigger)
+#   anagrafiche.trgfn_billing_account_require_istanza_ha_ba()
+#   Brief: brief-db-revisione-anagrafiche §24.7.1 (Tid, 2026-11-26: «ritiralo»)
+#
+# -- LA REGOLA --------------------------------------------------------
+#   «Un'istanza non resta mai senza billing account» (Tid, 2026-10-08) aveva
+#   due porte: l'UPDATE della coppia (il lucchetto su istanza_utility_id e
+#   utility_id, E_BA_ISTANZA_IMMUTABILE) e la DELETE del BA (questo trigger,
+#   E_ISTANZA_SENZA_BA al COMMIT). Dal 20261126-40 il billing account non si
+#   cancella (E_BA_NON_SI_CANCELLA, a05, prima di questo): la porta DELETE e'
+#   chiusa del tutto, e il trigger non ha piu' un caso.
+#
+# -- LA FORMA ---------------------------------------------------------
+#   * Si toglie il trigger e la sua funzione, montata solo qui (letto il
+#     2026-11-26). Restano anagrafiche.fn_guard_istanza_ha_ba ed
+#     E_ISTANZA_SENZA_BA: li usa anche il guard alla nascita dell'istanza
+#     (trgfn_istanze_utilities_require_utility_dichiarata).
+#   * Il trigger nasce in 20_code (20261008-57), non da ci_apply: un changeSet
+#     ci fa DDL (linee-guida-sql §11.5).
+#   * DROP ... IF EXISTS, prima il trigger poi la funzione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261126-35-drop-trg-billing-account-require-istanza-ha-ba-mctit.yaml
+
+  - changeSet:
+      id: 20261126-35-drop-trg-billing-account-require-istanza-ha-ba
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritiro di trg_billing_account_z90_require_istanza_ha_ba_dlt e della sua funzione: il
+        billing account non si cancella piu', e il guard sulla sua cancellazione non ha un caso.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_billing_account_z90_require_istanza_ha_ba_dlt
+                  ON anagrafiche.billing_account;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_billing_account_require_istanza_ha_ba();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Trigger e funzione si ripristinano dal loro changeSet d'origine (20261008-57).
+              SELECT 1;

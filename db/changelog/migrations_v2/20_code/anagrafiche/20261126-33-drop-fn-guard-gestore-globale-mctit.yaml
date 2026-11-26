@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SI RITIRANO I QUATTRO GUARD DELLO SPOSTAMENTO DELLA PREDEFINITA
+#   anagrafiche.fn_guard_ba_gestore_globale_storia(prima, dopo)
+#   anagrafiche.fn_guard_albero_ba_gestore_globale()
+#   anagrafiche.fn_guard_istanza_ba_gestore_globale()
+#   anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale()
+#   Brief: brief-db-revisione-anagrafiche §24.5 (D-T4-3), §24.7.1
+#
+# -- LA REGOLA --------------------------------------------------------
+#   Cercavano, a ogni spostamento dell'azienda predefinita, i BA senza
+#   collegamento che lo spostamento avrebbe portato via («raggio N»): con la
+#   storia, in un albero misto, in un'istanza mista, con un cliente doppione.
+#   Con ogni BA collegato (20261126-27, -29) spostare la predefinita non porta
+#   via nessuno: non hanno piu' niente da cercare. Chiudono con loro S2 (la
+#   prima usava una seconda definizione di «storia») e S26 (guardavano lo stato
+#   dopo, non la differenza).
+#
+# -- LA FORMA ---------------------------------------------------------
+#   * L'ultimo chiamante (i quattro trigger del collegamento) lo toglie
+#     20261126-32, che viene prima.
+#   * Censiti il 2026-11-26: nessun altro chiamante nel catalogo; nel backend
+#     apps/anagrafiche/services/emittenti_fiscali_service.py nomina la prima in
+#     un commento (richiesta al BE nel brief). I pgTAP che le chiamavano si
+#     riscrivono nello stesso giro.
+#   * DROP ... IF EXISTS con la firma esatta, ancorata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261126-33-drop-fn-guard-gestore-globale-mctit.yaml
+
+  - changeSet:
+      id: 20261126-33-drop-fn-guard-gestore-globale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritiro dei quattro guard dello spostamento della predefinita (storia, albero, istanza,
+        chiave del cliente): con ogni billing account collegato non hanno piu' niente da cercare.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_guard_ba_gestore_globale_storia(
+                  anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE,
+                  anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_guard_albero_ba_gestore_globale();
+              DROP FUNCTION IF EXISTS anagrafiche.fn_guard_istanza_ba_gestore_globale();
+              DROP FUNCTION IF EXISTS anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le quattro funzioni si ripristinano dai loro changeSet di origine.
+              SELECT 1;

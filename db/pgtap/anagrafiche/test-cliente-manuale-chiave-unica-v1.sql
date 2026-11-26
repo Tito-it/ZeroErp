@@ -55,22 +55,18 @@
 --   24a) un cliente AT su un'istanza vera, stessa chiave -> vive
 --   24) * movimento 3: un'istanza vera con un cliente AT diventa fittizia
 --       -> E_CLIENTE_STESSA_CHIAVE
---   25a) il cliente del BA scollegato (sulla predefinita) -> vive
---   25) * movimento 4: un BA scollegato (sulla predefinita, la terza azienda)
---       ha un cliente AT; la predefinita va sull'azienda del mondo
---       -> E_CLIENTE_STESSA_CHIAVE
+--   25a) il cliente di un BA portato sulla terza azienda -> vive
+--   25) la predefinita va sull'azienda del mondo: nessun cliente cambia
+--       chiave -> vive (dal 2026-11-26 ogni BA ha il suo collegamento)
 --   26) la disdetta chiude un sospeso (C2) -> stato CH con la data
 --
 -- ⚠️ I constraint trigger sono DEFERRABLE INITIALLY DEFERRED: con il
 --   preambolo IMMEDIATE scattano a fine istruzione, cioe' dentro
---   pg_temp.esito. I casi che vogliono l'ordine libero (22, 25) aprono la
+--   pg_temp.esito. I casi che vogliono l'ordine libero (22, 25a) aprono la
 --   finestra differita e la richiudono con SET CONSTRAINTS ALL IMMEDIATE, che
 --   e' il punto in cui il guard parla.
--- ⚠️ Movimento 4: lo spostamento della predefinita passa anche dal cancello
---   della storia (fn_guard_ba_gestore_globale_storia) e dai guard
---   dell'istanza e dell'albero, che guardano TUTTI i BA scollegati: un dato
---   gia' presente fuori regola fermerebbe il test con un altro codice. Stesso
---   limite di test-istanza-ba-gestore-globale-v1.
+-- ⚠️ Lo spostamento della predefinita non ha piu' guard (20261126-33): con
+--   ogni BA collegato non cambia l'azienda di nessun cliente.
 -- ⚠️ Non provato qui: il riallineamento dello stato del PDP sul periodo
 --   (trgfn_clienti_sync_stato_pdp, C-8) — vuole una utility con PDP e il suo
 --   punto; dichiarato nel brief.
@@ -355,20 +351,35 @@ SELECT is(dbops.fn_pgtap_codice_errore(format(
     'E_CLIENTE_STESSA_CHIAVE', '24. Movimento 3: l''istanza vera diventa fittizia, doppione: E_CLIENTE_STESSA_CHIAVE');
 
 -- ============================================================
--- 25) Movimento 4: la predefinita
+-- 25) La predefinita non cambia la chiave di nessun cliente
+-- ⭐ rev 2026-11-26 (brief-db-revisione-anagrafiche §24.5, 20261126-27 … -33):
+--   ogni BA ha sempre il suo collegamento, e il collegamento non si cancella.
+--   Il «movimento 4» (un BA scollegato che, spostando la predefinita, porta
+--   il suo cliente sulla chiave di un altro) non puo' piu' nascere: il suo
+--   guard e' ritirato. I due test provano il contratto nuovo.
 -- ============================================================
+-- Il BA «scollegato» (il nome e' della fixture di prima) va sulla terza
+-- azienda, dove sta la predefinita, MODIFICANDO il suo collegamento: non ha
+-- documenti. Sulla terza azienda il suo cliente non e' il doppione di nessuno.
+-- ⚠️ L'ordine conta, e la finestra differita lo rende possibile: il cliente
+--   nasce PRIMA dello spostamento, quando il BA e' ancora dell'azienda
+--   dell'operatore e la RLS glielo fa vedere (trgfn_clienti_sync_utility_from_ba
+--   lo legge: dopo, sulla terza azienda, non lo troverebbe, E_CODICE). Il guard
+--   della chiave e' differito e parla al SET CONSTRAINTS ALL IMMEDIATE, quando
+--   il BA e' gia' sulla terza azienda.
 SET CONSTRAINTS ALL DEFERRED;
 SELECT dbops.fn_pgtap_codice_errore(pg_temp.cliente_sql('scollegato', 'AT', 'script.fn_data_operativa()'));
-DELETE FROM anagrafiche.emittenti_fiscali_billing_account
+UPDATE anagrafiche.emittenti_fiscali_billing_account
+   SET emittente_soggetto_ruolo_id = (SELECT ef_terzo FROM _t_ef)
  WHERE billing_account_id = (SELECT ba_id FROM _t_ba WHERE etichetta = 'scollegato');
 SELECT is(dbops.fn_pgtap_codice_errore('SET CONSTRAINTS ALL IMMEDIATE'),
-          NULL, '25a. Il cliente del BA scollegato e'' della predefinita (la terza azienda): vive');
+          NULL, '25a. Il cliente di un BA portato sulla terza azienda (collegato, come ogni BA): vive');
 SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE anagrafiche.emittenti_fiscali_billing_account SET emittente_soggetto_ruolo_id = %s WHERE is_default',
     (SELECT ef_mio FROM _t_ef))),
-    'E_CLIENTE_STESSA_CHIAVE', '25. Movimento 4: la predefinita va sull''azienda del mondo, il cliente scollegato diventa un doppione: E_CLIENTE_STESSA_CHIAVE');
+    NULL, '25. La predefinita va sull''azienda del mondo: il cliente sulla terza azienda non si muove e non diventa un doppione, vive');
 
 -- ============================================================
 -- 26) La disdetta chiude un sospeso

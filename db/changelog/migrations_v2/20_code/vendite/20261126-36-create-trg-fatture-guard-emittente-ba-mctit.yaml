@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FATTURA E' EMESSA DALL'AZIENDA DEL SUO CLIENTE
+#   trg_fatture_a10_guard_emittente_ba_ins_upd
+#     BEFORE INSERT OR UPDATE OF billing_account_id, emittente_soggetto_ruolo_id
+#     ON vendite.fatture
+#     EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba(
+#       'Fattura', 'numero', 'emittente_soggetto_ruolo_id', 'E_DOC_EMITTENTE_BA_INCOERENTE')
+#   Brief: brief-db-revisione-anagrafiche §24.5 (S27, deciso da Tid il 2026-11-23)
+#
+# -- LA REGOLA --------------------------------------------------------
+#   Il building block e' gia' montato su ordini, DDT, resi, commesse,
+#   contratti, offerte, preventivi e seriali: l'azienda che emette e' quella
+#   che il billing account risolve. La fattura era l'unico documento di
+#   vendita senza. Il fermo dei temi trasversali sui documenti di vendita lo
+#   ammette: poggia su un pezzo comune gia' fatto.
+#
+# -- LA FORMA ---------------------------------------------------------
+#   * La colonna dell'emittente e' emittente_soggetto_ruolo_id, come su
+#     vendite.commesse; il documento si nomina per numero (in bozza NULL: il
+#     building block ripiega su '#id').
+#   * E_DOC_EMITTENTE_BA_INCOERENTE (DATO_ERRATO, col campo), come ordini e
+#     DDT: la fattura la scrive il motore di fatturazione ma anche chi la
+#     corregge in bozza.
+#   * UPDATE OF: nessun altro trigger BEFORE di vendite.fatture scrive le due
+#     colonne (letto il 2026-11-26).
+#   * Fase a10: parla prima di a10_guard_emittente_scope e di
+#     a10_guard_registro_emittente, che giudicano la stessa colonna da un
+#     altro lato (il perimetro di chi scrive, il registro della numerazione).
+#   * Idempotente: DROP TRIGGER IF EXISTS e CREATE; nessun nome storico.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261126-36-create-trg-fatture-guard-emittente-ba-mctit.yaml
+
+  - changeSet:
+      id: 20261126-36-create-trg-fatture-guard-emittente-ba
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta script.trgfn_doc_guard_emittente_ba su vendite.fatture: la fattura e' emessa
+        dall'azienda del suo billing account, come gli altri documenti di vendita.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_a10_guard_emittente_ba_ins_upd ON vendite.fatture;
+              CREATE TRIGGER trg_fatture_a10_guard_emittente_ba_ins_upd
+                  BEFORE INSERT OR UPDATE OF billing_account_id, emittente_soggetto_ruolo_id
+                  ON vendite.fatture
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba(
+                      'Fattura', 'numero', 'emittente_soggetto_ruolo_id', 'E_DOC_EMITTENTE_BA_INCOERENTE');
+
+              COMMENT ON TRIGGER trg_fatture_a10_guard_emittente_ba_ins_upd ON vendite.fatture IS
+                'La fattura e'' emessa dall''azienda del suo cliente: emittente_soggetto_ruolo_id e'' quello che il billing account risolve (script.trgfn_doc_guard_emittente_ba, E_DOC_EMITTENTE_BA_INCOERENTE).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_fatture_a10_guard_emittente_ba_ins_upd ON vendite.fatture;

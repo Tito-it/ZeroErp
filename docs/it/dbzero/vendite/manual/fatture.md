@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.fatture`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -16,6 +16,11 @@
 > * [config.sorgenti](/dbzero/config/tabelle/sorgenti) — il catalogo dei tipi di documento d'origine
 > * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — il pagante
 > * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — emittente e reseller
+> * [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — l'azienda del billing account, che emette la fattura
+>
+> Approfondimento funzioni:
+>
+> * [script.trgfn_doc_guard_emittente_ba](/dbzero/script/funzioni/trgfn_doc_guard_emittente_ba) — la fattura è emessa dall'azienda del suo cliente
 >
 > Guide:
 >
@@ -92,6 +97,12 @@ Colonna `canale_origine` di tipo `config.canale_origine` (ENUM
 * **Natura fiscale**: `natura_doc_id` → `config.nature_doc_fiscale` (`FATTURA` / `NOTA_CREDITO` / `NOTA_DEBITO`). È l'asse che questa doc cercava sotto il nome sbagliato, ed è **ortogonale** al canale: il canale è una scelta dell'azienda, la natura è la legge. Vocabolario neutro per dichiarazione del modello; il `TipoDocumento` della FatturaPA (`TD01`/`TD04`/`TD05`) vive in `nature_doc_fiscale.meta.sdi_tipo_documento`, non in una colonna. ⛔ **Non si cambia dopo**: presidiata da `trg_fatture_a10_lock_natura_doc_upd`. Invariante verificato prima della numerazione (condizione 7 del guard D-K di `fn_assign_numero_fattura`): `natura = NOTA_CREDITO ⟺ totale_a_pagare ≤ 0`.
 * **Stato documento**: `stato_doc_fiscale_id` → `config.stati_doc_fiscale` (bozza, emessa, registrata, inviata, annullata, ecc.).
 * **Emittente fiscale**: `emittente_soggetto_ruolo_id` → `anagrafiche.soggetti_ruoli` (stabilisce chi emette).
+  È sempre l'azienda che il billing account risolve, cioè quella del suo collegamento: lo tiene
+  `script.trgfn_doc_guard_emittente_ba` (`trg_fatture_a10_guard_emittente_ba_ins_upd`), lo stesso guard degli
+  altri documenti di vendita, quando la fattura nasce o cambia billing account o emittente, anche in bozza.
+  Un'azienda diversa è rifiutata con `E_DOC_EMITTENTE_BA_INCOERENTE`, che nomina la fattura (per numero, o per
+  id finché è in bozza) e le due aziende. Il guard parla prima di quelli che giudicano la stessa colonna da
+  altri lati: il perimetro di chi scrive e il registro della numerazione.
 * **Billing Account**: `billing_account_id` (payer).
 * **Reseller** *(opzionale)*: `reseller_soggetto_ruolo_id` per branding e catene commerciali.
 * **Flag criticita`**: `critical = true` indica errori bloccanti (numerazione/invio sospesi).
@@ -211,6 +222,13 @@ data nuova con rate vecchie passerebbe quindi in silenzio.
 
 ---
 
+### Test
+
+* `db/pgtap/vendite/test-fatture-guard-emittente-ba-v1.sql` — il guard dell'azienda del cliente è montato, e una
+  fattura in bozza portata a un'altra azienda è rifiutata col campo della colonna.
+
+---
+
 ### Note di migrazione
 
 * 2026-04-20 — arriva `canale_origine`.
@@ -224,6 +242,8 @@ data nuova con rate vecchie passerebbe quindi in silenzio.
   diventa la coppia tipizzata `sorgente_id` / `sorgente_uid` (uuid) col guard unico; l'indice
   univoco `uq_fatture_v_sorgente_fk`, che la presentava come chiave d'idempotenza, non c'è più
   (brief-db-sorgente-documento-e-riga).
+* 2026-11-26 — la fattura monta il guard dell'azienda del billing account, come gli altri documenti di
+  vendita; prima era l'unico documento di vendita senza.
 
 ---
 

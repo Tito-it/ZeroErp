@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.istanze_utilities`
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -51,7 +51,8 @@ cliente è di un billing account (`uq_clienti_billing_account`), e un'istanza ha
 sono le sue utility attivate, nel tempo anche di più.
 
 * **L'istanza nasce col suo billing account.** Al COMMIT un'istanza appena nata deve averne almeno uno
-  (`E_ISTANZA_SENZA_BA`), e l'ultimo non si cancella se l'istanza resta; istanza e BA si cancellano insieme.
+  (`E_ISTANZA_SENZA_BA`). Dopo non lo perde: un billing account non si cancella (`E_BA_NON_SI_CANCELLA`, il
+  suo cliente si annulla) e non passa a un'altra istanza (`E_BA_ISTANZA_IMMUTABILE`).
 * **Un'istanza, un'azienda.** I billing account di un'istanza sono tutti della stessa azienda emittente.
 * **Sullo stesso PDP non si sovrappongono due clienti.** Lo dice l'esclusione per periodo
   `ex_clienti_no_overlap_stesso_pdp` su `clienti`, non un vincolo dell'istanza: due istanze possono puntare
@@ -165,8 +166,8 @@ lo passa, si salva nella forma normalizzata (maiuscolo) ed è unico (`uq_istanze
 
 ### Test
 
-* `db/pgtap/anagrafiche/test-istanza-nasce-col-ba-v1.sql` — l'istanza senza BA, l'ultimo BA che non si
-  cancella, istanza e BA cancellati insieme, un'istanza un'azienda.
+* `db/pgtap/anagrafiche/test-istanza-nasce-col-ba-v1.sql` — l'istanza senza BA, il BA che non si cancella
+  (né l'ultimo, né insieme all'istanza: `E_BA_NON_SI_CANCELLA`), un'istanza un'azienda, la coppia bloccata.
 * `db/pgtap/anagrafiche/test-create-istanza-from-pdp.sql` — l'istanza legata al PDP del suo indirizzo.
 * `db/pgtap/anagrafiche/test-istanza-cliente-chain.sql` — la catena delle istanze sullo stesso PDP.
 * `db/pgtap/anagrafiche/test-simula-subentro.sql` — il subentro: nuova istanza sullo stesso PDP, la catena e

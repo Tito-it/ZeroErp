@@ -62,7 +62,7 @@ END
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_guard_istanza_ha_ba(p_istanza_utility_id bigint)
-IS 'Guard fail-fast: un''istanza utility che esiste deve avere almeno un billing account (regola di Tid del 2026-10-08: istanza e BA nascono insieme, sempre). Solleva E_ISTANZA_SENZA_BA col codice dell''istanza. Istanza inesistente o parametro NULL: niente da presidiare. Lo chiamano al COMMIT due constraint trigger: trg_istanze_utilities_z90_require_utility_dichiarata_ins (nascita dell''istanza) e trg_billing_account_z90_require_istanza_ha_ba_dlt (cancellazione del BA); lo spostamento del BA lo chiude il lock di colonna E_BA_ISTANZA_IMMUTABILE. SECURITY DEFINER perche'' legge billing_account, che ha la RLS: da INVOKER un BA fuori perimetro sarebbe invisibile e il guard rifiuterebbe un''operazione legittima. Brief: brief-db-istanza-nasce-col-ba (R-1).';
+IS 'Guard fail-fast: un''istanza utility che esiste ha almeno un billing account (istanza e billing account nascono insieme). Solleva E_ISTANZA_SENZA_BA col codice dell''istanza. Istanza inesistente o parametro NULL: niente da presidiare. Lo chiama al COMMIT trg_istanze_utilities_z90_require_utility_dichiarata_ins, alla nascita dell''istanza. Dopo, l''istanza non perde il suo billing account: il billing account non si cancella (E_BA_NON_SI_CANCELLA) e non cambia istanza (lucchetto E_BA_ISTANZA_IMMUTABILE). SECURITY DEFINER perche'' legge billing_account, che ha la RLS: da INVOKER un billing account fuori perimetro sarebbe invisibile e il guard rifiuterebbe un''operazione legittima.';
 ```
 
 </div>

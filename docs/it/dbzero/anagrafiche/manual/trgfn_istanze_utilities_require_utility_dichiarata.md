@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,7 +12,7 @@
 > Approfondimento funzioni:
 >
 > * [anagrafiche.fn_guard_istanza_ha_ba](/dbzero/anagrafiche/funzioni/fn_guard_istanza_ha_ba) — il controllo a cui delega
-> * [anagrafiche.trgfn_billing_account_require_istanza_ha_ba](/dbzero/anagrafiche/funzioni/trgfn_billing_account_require_istanza_ha_ba) — lo stesso controllo sulla cancellazione del BA
+> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic) — il billing account non si cancella, e l'istanza non lo perde
 >
 > Guide:
 >
@@ -31,9 +31,9 @@ al COMMIT, almeno un billing account.
 
 Un'istanza senza billing account non è uno stato del suo ciclo di vita: è un dato fuori regola. Il trigger è
 differito al COMMIT, così nella stessa transazione l'istanza si scrive prima o dopo il suo BA, nell'ordine
-che serve. Il controllo lo fa `anagrafiche.fn_guard_istanza_ha_ba`, lo stesso che chiama il trigger della
-cancellazione del BA: la regola si rompe alla nascita dell'istanza o togliendole l'ultimo BA, e il controllo
-è uno. Un'istanza cancellata nella stessa transazione, insieme ai suoi BA, non ha più niente da presidiare.
+che serve. Il controllo lo fa `anagrafiche.fn_guard_istanza_ha_ba`. È l'unica strada da presidiare: dopo la
+nascita un'istanza non perde il suo billing account, perché il billing account non si cancella
+(`E_BA_NON_SI_CANCELLA`) e non si sposta su un'altra istanza (`E_BA_ISTANZA_IMMUTABILE`).
 
 Il nome dice «utility dichiarata» perché una utility è dichiarata sull'istanza dal billing account di quella
 utility.
@@ -50,8 +50,8 @@ utility.
 
 * `db/pgtap/anagrafiche/test-trgfn-istanze-utilities-require-utility-dichiarata.sql` — il trigger differito
   c'è, l'istanza col BA vive, l'istanza senza BA è rifiutata.
-* `db/pgtap/anagrafiche/test-istanza-nasce-col-ba-v1.sql` — la regola intera: l'ultimo BA che non si cancella,
-  istanza e BA cancellati insieme.
+* `db/pgtap/anagrafiche/test-istanza-nasce-col-ba-v1.sql` — la regola intera: l'istanza senza BA rifiutata,
+  il BA che non si cancella, nemmeno insieme alla sua istanza.
 
 ---
 
@@ -60,6 +60,8 @@ utility.
 * 2026-05-01 — nasce: bastava uno fra billing account, dati precontrattuali e cliente, col codice
   `E_ISTANZA_UTILITY_SENZA_UTILITY`.
 * 2026-10-08 — pretende il billing account, col codice `E_ISTANZA_SENZA_BA`; il codice di prima resta nel catalogo dei messaggi, ma nessuna funzione lo solleva più.
+* 2026-11-26 — il controllo gemello sulla cancellazione del billing account è ritirato: il billing account non
+  si cancella più.
 
 ---
 

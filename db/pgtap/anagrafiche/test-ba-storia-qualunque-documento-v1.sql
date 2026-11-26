@@ -2,22 +2,25 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test: P-6 — la «storia» del billing account conta i documenti NUMERATI,
---       e conta anche il DDT
+-- Test: la «storia» del billing account e' qualunque documento, anche in
+--       bozza, di qualunque famiglia (qui il DDT)
 -- Oggetti:
 --   anagrafiche.fn_ba_ha_storia_emittente()    (20260831-17)
 --   anagrafiche.fn_get_storia_emittente_ba()   (20260831-17)
 --   script.fn_check_ba_cambio_emittente()      (20260831-19)
 --   anagrafiche.fn_guard_ba_cambio_emittente()
---   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §3.6 e §3.7
+--   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §3.6 e §3.7;
+--   la bozza che fa storia: brief-db-revisione-anagrafiche §24.4-§24.5 (D-T4-4,
+--   Tid 2026-11-26, changeSet 20261126-26). Il file si chiamava
+--   test-ba-storia-solo-numerati-v1: il nome diceva la regola revocata.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): la famiglia della bolla e' DDT_VENDITA, il codice della sorgente.
 -- rev 2026-10-25 (brief-modello-documento-vendita §7, giro 5): l'emissione del DDT (test 4) con dbops.fn_pgtap_porta_a_stato, non piu' con l'UPDATE diretto dello stato che la porta ora rifiuta.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): la bolla in bozza dal builder dbops.fn_pgtap_crea_ddt_senza_ordine ('DRAFT', 5 a 10); l'emissione del test 4 resta col verbo, perche' e' il caso.
 -- ------------------------------------------------------------
 -- Elenco test (plan 7):
 -- 1) Fixture: un billing account NUOVO, quindi senza storia
--- 2) ⭐ IL GEMELLO CHE DISTINGUE: un DDT in BOZZA non fa storia
--- 3) ⭐ ...e infatti il cambio di emittente PASSA ancora
+-- 2) ⭐ un DDT in BOZZA fa gia' storia
+-- 3) ⭐ ...e infatti il cambio di emittente e' gia' respinto (P0001)
 -- 4) Il DDT emesso prende un numero dal registro del suo emittente
 -- 5) ⭐⭐ ORA la storia lo conta, e lo conta SOTTO LA SUA FAMIGLIA
 -- 6) ⛔ ...e il cambio di emittente e' respinto (P0001)
@@ -31,13 +34,12 @@
 --   prendere il NUMERO dal registro di quell'emittente: il numero, quello,
 --   nessuno lo riallinea.
 --
---   ⭐⭐ I TEST 2 E 5 SONO GEMELLI, E VANNO LETTI INSIEME. Senza il 2, il 5 non
---   distingue «blocca il documento NUMERATO» da «blocca qualunque documento» —
---   e la differenza e' esattamente la decisione presa il 2026-08-31: una bozza
---   non ha congelato niente, ed e' il caso per cui la finestra di correzione
---   esiste. Un test che provasse solo il blocco passerebbe anche su un
---   presidio troppo severo, che chiuderebbe la finestra al primo documento
---   aperto.
+--   ⭐⭐ I TEST 2 E 5 SONO GEMELLI, E VANNO LETTI INSIEME: la bozza (2) e il
+--   documento emesso (5) fanno storia tutti e due. Dal 2026-11-26 (D-T4-4) la
+--   regola e' «qualunque documento chiude il cambio d'azienda»: la finestra
+--   di correzione resta finche' il billing account non ha nessun documento, e
+--   chi ha sbagliato cancella i documenti. Fino a quel giorno il test 2
+--   asseriva il contrario (la bozza non contava, decisione del 2026-08-31).
 --
 --   ⚠️ Il caso si FABBRICA: un billing account nuovo, un DDT sopra, e la
 --   transizione a EMESSO. Cercarlo fra i dati esistenti passerebbe a vuoto in
@@ -106,19 +108,21 @@ SELECT b.ddt_id
 SELECT is(
     (SELECT anagrafiche.fn_ba_ha_storia_emittente(t.billing_account_id)
        FROM tmp_bsd_ids t),
-    false,
-    '2) Un DDT in BOZZA non fa storia: senza numero non ha congelato niente');
+    true,
+    '2) Un DDT in BOZZA fa gia'' storia: qualunque documento chiude il cambio d''azienda');
 
 -- =========================================================
--- 3) ⭐ E infatti la finestra di correzione e' ancora aperta
+-- 3) ⭐ E infatti la finestra di correzione e' gia' chiusa
 -- =========================================================
-SELECT lives_ok(
+SELECT throws_ok(
     format(
         $q$SELECT anagrafiche.fn_guard_ba_cambio_emittente(%s, %s, %s)$q$,
         (SELECT billing_account_id FROM tmp_bsd_ids),
         (SELECT emittente_sr_ok    FROM tmp_bsd_refs),
         (SELECT emittente_sr_altro FROM tmp_bsd_refs)),
-    '3) Con il solo DDT in bozza, il cambio di emittente passa ancora');
+    'P0001',
+    NULL,
+    '3) Con il solo DDT in bozza, il cambio di emittente e'' gia'' respinto');
 
 -- =========================================================
 -- 4) Il DDT emesso prende il numero dal registro

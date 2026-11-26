@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_check_ba_coppia_emittente_omogenea`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -34,10 +34,10 @@ la visibilità prendono l'azienda da lì. La domanda è quindi sulla coppia, non
 
 ### ⭐ L'azienda si risolve, con la regola della fatturazione
 
-Un billing account senza collegamento non è «senza azienda»: si risolve. Ciascuno dei due passa da
-`fn_get_emittente_fiscale_id`, la funzione con cui la fatturazione sceglie il registro, così «coppia
-omogenea» e «la fattura esce da una sola azienda» sono la stessa affermazione. La risoluzione è quella a tre
-livelli, compresa l'azienda di chi agisce in sessione.
+Ciascuno dei due passa da `anagrafiche.fn_get_emittente_fiscale_id`, la funzione con cui la fatturazione
+sceglie il registro, così «coppia omogenea» e «la fattura esce da una sola azienda» sono la stessa
+affermazione. Ogni billing account ha sempre il suo collegamento, e la risposta è l'azienda del collegamento:
+per chi agisce e per l'installazione è la stessa.
 
 I nomi dei parametri parlano di figlio e padre perché la check è nata per l'albero; il confronto non dipende
 dal verso, e per due billing account della stessa istanza vale identico.
@@ -50,22 +50,11 @@ dal verso, e per due billing account della stessa istanza vale identico.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
-
-* **Il livello di sessione nel confronto.** Quando un collegamento si toglie da un utente in sessione, il
-  billing account rimasto senza collegamento si confronta con l'azienda di chi agisce, non con la predefinita
-  su cui ricade per l'installazione e per i giri senza sessione. Se le due aziende sono diverse, il passo
-  passa quando l'albero, o l'istanza, per l'installazione diventa misto, ed è respinto quando resta omogeneo.
-  Nel primo caso la coppia mista la trova poi il primo spostamento della predefinita, che si ferma se non va
-  sull'azienda dell'altro billing account. Il test dell'istanza e della predefinita tratta il primo caso come
-  lecito.
-
----
-
 ### Test
 
 * `db/pgtap/anagrafiche/test-guard-albero-ba-omogeneo-v1.sql` — alberi omogenei che passano, coppie miste in
-  ogni verso rifiutate dai guard che la chiamano, due alberi separati dello stesso soggetto ammessi.
+  ogni verso rifiutate dai guard che la chiamano, due alberi separati dello stesso soggetto ammessi; lo
+  spostamento della predefinita lascia padre e figlio sulla loro azienda.
 
 ---
 
@@ -73,6 +62,8 @@ dal verso, e per due billing account della stessa istanza vale identico.
 
 * 2026-08-18 — nasce col controllo dell'albero omogeneo.
 * 2026-10-08 — diventa anche il confronto dei billing account della stessa istanza.
+* 2026-11-26 — con ogni billing account collegato il confronto risponde sempre col collegamento: il caso del
+  billing account scollegato confrontato con l'azienda di chi agisce non esiste più.
 
 ---
 

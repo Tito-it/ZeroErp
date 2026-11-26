@@ -380,10 +380,12 @@ i guard (nessuna identità operatore, super admin, lista degli emittenti) stanno
 L'emittente fiscale **non è un attributo del soggetto**. Non c'è su `soggetti`, né su
 `soggetti_ruoli`, né su `clienti`, né su `billing_account`, né su `istanze_utilities`.
 
-Chi porta l'emittente è il **billing account**: ne ha esattamente uno, il collegamento in
-[anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account)
-o, in sua assenza, quello che la regola di riserva gli attribuisce. Come si risolve, e quando
-un billing account non può cambiare emittente, lo spiega
+Chi porta l'emittente è il **billing account**: ne ha esattamente uno, sempre, il collegamento in
+[anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account).
+Il collegamento nasce col billing account, con l'emittente di chi lo crea o, senza, con
+l'emittente predefinito dell'installazione; l'emittente predefinito decide solo i billing account
+che nasceranno, e spostarlo non cambia l'emittente di nessun cliente. Come nasce il collegamento,
+e quando un billing account non può cambiare emittente, lo spiega
 [Generazione di un Cliente](/guide/generazione-cliente).
 
 Il soggetto tocca un emittente solo **attraverso qualcosa**: i suoi billing account, oppure un
