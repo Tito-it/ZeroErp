@@ -1018,6 +1018,15 @@ l'amministratore ragiona come sempre, per area, azione e oggetto.
   scritture che la porta vede sono quelle della pulizia.
   Il reset dei lotti e le righe contabili non hanno piu' porte che si aprono con la
   sola GUC.
+  ⚠️ **Due strade restano con la sola GUC, e sono scelte dichiarate** nella guida del
+  loro dominio: il legame di una riga di bolla **in bozza**, perche' la bozza la scrive
+  l'applicazione e niente e' ancora partito ([Gestione DDT](/guide/gestione-ddt),
+  «Chi toglie un legame»); e il bypass del `tx_id`, che non e' una porta: il trigger
+  non rifiuta mai una scrittura, decide solo quale `tx_id` timbrare
+  ([tx_id](/guide/tx_id_implementation_guide)). Le porte di **manutenzione** dei
+  trigger del framework (il lucchetto, il blocco `DELETE`, il seed di primo impianto)
+  si aprono solo alla sessione del migratore
+  ([Automazione DB](/guide/automazione-db), «Le porte di manutenzione»).
 
 **Il backend chiede, non decide due volte.** L'endpoint tiene il suo controllo:
 risponde 403 subito, con un messaggio utile, prima di aprire la transazione.

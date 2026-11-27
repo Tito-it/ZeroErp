@@ -3,8 +3,8 @@
 > **⏭️ Chi riparte — aggiornato al 2026-11-27**
 >
 > **Riparte: il team BE**, con la richiesta di §15.7: il giro 10-quater è applicato su dbdev e sullo scratch, coi
-> pgTAP come app verdi, la doc auto-generata rigenerata e committato su `dev/db-tid` (2026-11-27). Poi il team DB con
-> la voce «Le guide» del piano. In parallelo **il team BE**, con D-AH (§14.9): `apri_contesto_operatore` non consegna più un SUPER_ADMIN
+> pgTAP come app verdi, la doc auto-generata rigenerata e committato su `dev/db-tid` (2026-11-27). La voce «Le guide»
+> è fatta (§16, 2026-11-27, da committare). Chiuse le due richieste al BE (§15.7 e D-AH), il brief si archivia. In parallelo **il team BE**, con D-AH (§14.9): `apri_contesto_operatore` non consegna più un SUPER_ADMIN
 > che il test non ha chiesto. Il lavoro BE/FE dei giri 10-bis e 10-ter è fatto e committato (`16d095e72`, PR #257,
 > 2026-11-26). Lo schema `storico` scrivibile dall'app (D-AL **a**) è passato al brief nuovo
 > [brief-db-storico-scrivibile-dall-app](brief-db-storico-scrivibile-dall-app.md), aperto e non iniziato. Le richieste precedenti al BE (3j, 3k-bis, 3n, 6a … 6e) sono evase e committate (`e4af0106a`,
@@ -84,6 +84,7 @@
 > | 6g-quater | team DB | giro 10-quater: ✅ `20261126-50` … `-59`, `-62`, `-63`, loop e provisioning, pgTAP nuovo e diciotto adeguati, guide e `manual/`, provato sullo scratch (2026-11-27) | §15.7 | — |
 > | 6g-quinquies | Tid | giro 10-quater: ✅ apply su dbdev e scratch, ✅ pgTAP come app verdi, ✅ doc auto-generata, ✅ commit (2026-11-27) | §15.7 | — |
 > | 6g-sexies | team BE | giro 10-quater: la richiesta (repository sui verbi, i test ai builder, manuali) | §15.7 | — |
+> | 6h | team DB | «Le guide»: ✅ le porte rilette nelle guide del loro dominio, §7.4 dei permessi e §4.4 di `automazione-db` aggiornati (2026-11-27) | §16 | — |
 > | 6c | team DB | giro 9: ✅ analisi, D20-b riletta (2026-11-25) | §11 | — |
 > | 6c-bis | Tid | giro 9: ✅ D-S **a**, il via (2026-11-25) | §11.3 | — |
 > | 6c-ter | team DB | giro 9: ✅ `20261124-07` … `-09`, pgTAP nuovo e quattro adeguati, guida e `manual/`, provato sullo scratch (2026-11-25) | §11.5 | — |
@@ -102,7 +103,7 @@
 > | 6e-sexies | Tid | giro 8 + 1-7: ✅ apply, ✅ pgTAP come app verdi, ✅ doc auto-generata rigenerata dopo le pagine `manual/` (2026-11-25) | §13.9 | — |
 > | 6e-septies | team BE | giro 8 + 1-7: la richiesta · ✅ test, tre censimenti e manuali (2026-11-25) | §13.8 | — |
 >
-> Decisioni aperte di Tid: nessuna. Il giro 10-quater è applicato, verde e committato (2026-11-27, §15.7). Prese: (D-AI **a**, D-AJ **a**, D-AK **a**, D-AL **a** del giro 10-quater, il 2026-11-27, §15.4; D-AH **a**, `apri_contesto_operatore`, il 2026-11-26, §14.9; D-AF **a**, D-AG **a**, il codice morto del BE che si ritira, il 2026-11-26, §14.6; D-AC **a**, D-AD **b**, D-AE **a** del giro 10-bis il 2026-11-26, §14.3; D-AA **a** e D-AB **b** del giro 10-ter decise il 2026-11-26, §10-ter.4; le due della verifica del passo 3j, decise e fatte il 2026-11-25, §4.9.7; D-K7 **b** e D-K8 **a2** decise il 2026-11-25, §4.9; D-W … D-Z il 2026-11-25, §13.7). R-DB-K1 e R-DB-K4 sono applicati, verdi e committati (2026-11-25). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso. ✅ Il lavoro BE del 2026-11-25 (tutte le richieste evase) è committato su `dev/backend-tid` (`e4af0106a`). Restano tre voci del piano, del team DB: il giro 10-bis, il giro 10-quater e «Le guide».
+> Decisioni aperte di Tid: nessuna. Il giro 10-quater è applicato, verde e committato (2026-11-27, §15.7); «Le guide» (§16) è da committare. Prese: (D-AI **a**, D-AJ **a**, D-AK **a**, D-AL **a** del giro 10-quater, il 2026-11-27, §15.4; D-AH **a**, `apri_contesto_operatore`, il 2026-11-26, §14.9; D-AF **a**, D-AG **a**, il codice morto del BE che si ritira, il 2026-11-26, §14.6; D-AC **a**, D-AD **b**, D-AE **a** del giro 10-bis il 2026-11-26, §14.3; D-AA **a** e D-AB **b** del giro 10-ter decise il 2026-11-26, §10-ter.4; le due della verifica del passo 3j, decise e fatte il 2026-11-25, §4.9.7; D-K7 **b** e D-K8 **a2** decise il 2026-11-25, §4.9; D-W … D-Z il 2026-11-25, §13.7). R-DB-K1 e R-DB-K4 sono applicati, verdi e committati (2026-11-25). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso. ✅ Il lavoro BE del 2026-11-25 (tutte le richieste evase) è committato su `dev/backend-tid` (`e4af0106a`). Restano tre voci del piano, del team DB: il giro 10-bis, il giro 10-quater e «Le guide».
 > Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
 > (`969ea14566`), dal BE §4.5-§4.7 con D-J (`4271a0dc69`, PR #232), e il 2026-11-24 il lato DB del ritiro di
 > `reset_lotto_draft` con la pulizia della testata (§4.8). Dal BE, il 2026-11-24 (`5fc466c729`): il `None` del perimetro
@@ -298,7 +299,7 @@
   - [x] apply su dbdev e scratch, pgTAP come app verdi (Tid, 2026-11-27)
   - [x] doc auto-generata rigenerata (Tid) e commit su `dev/db-tid` (2026-11-27)
   - [ ] il BE: repository sui verbi nuovi, i sei test e `apri_operatore_con_aree` ai builder, manuali (§15.7)
-- [ ] Le guide: ogni porta scritta nella guida del suo dominio, di flusso o di manutenzione
+- [x] Le guide: ogni porta scritta nella guida del suo dominio, di flusso o di manutenzione (2026-11-27, §16)
 
 ## 1. Il problema, sul modello
 
@@ -3733,10 +3734,43 @@ in `-50`, nella stessa corsa. ⚠️ I privilegi si vedono solo come app: la cor
    il verbo da un SUPER_ADMIN (il secondo, con D-AH, lo chiede esplicitamente).
 5. Nessun codice d'errore nuovo: `genera_error_policies` non serve. I manuali delle tre rotte degli override.
 
+## 16. Le guide: il passaggio finale — 2026-11-27
+
+Ogni giro ha scritto la sua porta nella guida del suo dominio (§6 … §15). Qui si rilegge il risultato tutto
+insieme: per ogni porta di §2, e per le tabelle chiuse dai giri 3, 10-bis e 10-quater, la guida che la descrive e se
+dice ancora quello che il codice fa. Ricerca sui nomi delle GUC e sul testo, nelle guide e nelle note di dominio.
+
+| Porta | Guida | Esito |
+| --- | --- | --- |
+| 1-7, il reset dei lotti | `fatturazione` §«Chi può uscire da un lotto, e la porta del reset» | coerente: GUC e proprietario, la accende solo la pulizia del lotto |
+| 8, le righe contabili del fondo | `gestione-dei-pagamenti` (il guard del contenuto) | coerente: la GUC porta l'id dell'atto, e il proprietario |
+| 9, la registrazione tardiva | `gestione-dei-pagamenti` §«Chi resta indietro»; `contratto-guc-app` (la GUC di contesto) | coerente |
+| 10, lo scope degli emittenti | `architettura-permessi-e-autorizzazioni` §4.9, §7.4; `risorse-umane-e-accessi`; `emittenti-fiscali` | coerente |
+| 11, la bolla di riconsegna | `gestione-ddt` (l'esenzione per gli articoli del reso, chi la genera) | coerente |
+| 12-13, i legami della bolla | `gestione-ddt` §15.3 «Chi toglie un legame» | coerente: in bozza la sola GUC sulla riga, dichiarata (D-E a); fuori bozza anche il proprietario |
+| 14-15, la manutenzione delle vie | `riclassificazione-vie`, `gestione-degli-indirizzi` | coerente: strumenti DBA come `zeroerp_owner` |
+| 16, la pubblicazione del template | `documenti-e-stampe` | coerente: GUC sulla riga, il seed dalla sessione del migratore |
+| 17, il bypass del `tx_id` | `tx_id_implementation_guide` | coerente: «un interruttore di timbratura, non una porta» (D-F a) |
+| le viste (giro 3) | `architettura-permessi-e-autorizzazioni` §7.4 | coerente: sulle viste l'app ha solo `SELECT` |
+| scope, legami, profili (10-bis); override e cataloghi (10-quater) | `architettura-permessi-e-autorizzazioni` §4.1-§4.9, §7.4; `pgtap-come-si-scrive-un-test` | coerente (giri del 2026-11-26 e 2026-11-27) |
+
+**Due guide indietro, aggiornate qui:**
+
+* `architettura-permessi-e-autorizzazioni` §7.4 diceva quali porte non si aprono più con la sola GUC, ma non nominava
+  le due strade che lo fanno di proposito. Ora le dichiara, con il rimando alla loro guida: la bozza del legame della
+  bolla (`gestione-ddt`) e il bypass del `tx_id` (`tx_id_implementation_guide`). Rimanda anche alle porte di
+  manutenzione del framework (`automazione-db`).
+* `automazione-db` §4.4 diceva che il blocco `DELETE` si apre «a meno che la GUC non sia `on`». Dal 2026-11-17 si apre
+  solo se la GUC è accesa **e** la sessione è del migratore (`script.fn_porta_manutenzione_aperta`), come la guida
+  dice già in §«Le porte di manutenzione». Allineati §4.4, la riga della tabella e il «Vedi anche».
+
+Nessuna guida contraddetta, nessun orfano nuovo.
+
 ## Registro
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-27 | DB | «Le guide» (§16): le diciassette porte e le tabelle chiuse rilette nelle guide del loro dominio, tutte coerenti; aggiornate §7.4 della guida dei permessi (le due strade con la sola GUC dichiarate, coi rimandi) e §4.4 di `automazione-db` (il blocco `DELETE` si apre solo alla sessione del migratore) |
 | 2026-11-27 | DB | Commit del giro 10-quater su `dev/db-tid`, con la doc auto-generata rigenerata da Tid (`brief-db-revisione-anagrafiche` escluso: è dell'altra sessione). Al BE la richiesta di §15.7 |
 | 2026-11-27 | Tid | Giro 10-quater applicato su dbdev (00:33) e sullo scratch, pgTAP come app verdi. ⚠️ Una prima corsa delle 00:26-00:31 era rossa (funzioni nuove «non esiste»): era girata prima dell'apply, coi pgTAP nuovi del working tree su un database senza il giro (`databasechangelog` e `dbops.error_log`); rilanciata dopo, verde. Restano doc auto-generata e commit; poi la richiesta al BE |
 | 2026-11-27 | DB | Giro 10-quater scritto e provato (§15.7): `20261126-50` … `-59`, `-62`, `-63` (una primitiva per le tre tabelle degli override, i tre verbi del SUPER_ADMIN, il provisioning dalla primitiva, il builder `fn_pgtap_scrivi_override` sotto i quattro di oggi, il gemello `fn_pgtap_nega_azione`, le cinque tabelle in sola lettura e la primitiva riservata nelle tre sedi); pgTAP nuovo e diciotto adeguati (cinque a runner owner col motivo); due guide e sedici pagine `manual/`. Prova sullo scratch: 28 pgTAP, nessun rosso nuovo oltre a quelli dichiarati da proprietario. Da applicare; poi la richiesta al BE |
