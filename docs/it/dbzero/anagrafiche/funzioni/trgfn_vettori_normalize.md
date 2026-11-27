@@ -22,7 +22,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_vettori_normalize()
-IS 'Normalize: no-op; generazione codice demandata al sistema_codici.';
+IS 'Normalizzazione di anagrafiche.vettori: oggi non cambia niente. Il codice lo genera anagrafiche.trgfn_vettori_gen_codice.';
 ```
 
 </div>

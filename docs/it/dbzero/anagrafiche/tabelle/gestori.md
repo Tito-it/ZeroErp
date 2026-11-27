@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Società gestore del Sistema Informativo. Referenziata esclusivamente tramite soggetto_ruolo_id (legame soggetto↔ruolo gestito in anagrafiche.soggetti_ruoli).
+> Il gestore: l'azienda che usa il sistema, la specializzazione del ruolo GE di un soggetto con partita IVA. E' uno solo (anagrafiche.trgfn_gestori_guard e l'indice anagrafiche.uq_gestori_singleton).
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -33,6 +33,7 @@
 |------|-------------|
 | ix_anagrafiche_gestori_valuta_id | `CREATE INDEX ix_anagrafiche_gestori_valuta_id ON anagrafiche.gestori USING btree (valuta_id)` |
 | pk_gestori | `CREATE UNIQUE INDEX pk_gestori ON anagrafiche.gestori USING btree (id)` |
+| uq_gestori_singleton | `CREATE UNIQUE INDEX uq_gestori_singleton ON anagrafiche.gestori USING btree ((true))` |
 | uq_gestori_soggetto_ruolo | `CREATE UNIQUE INDEX uq_gestori_soggetto_ruolo ON anagrafiche.gestori USING btree (soggetto_ruolo_id)` |
 
 ## 🚨 Trigger
@@ -41,8 +42,9 @@
 | trg_gestori_a10_delete_block_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_delete_block_by_guc('zeroerp.maintenance_ruoli_delete')` |
 | trg_gestori_a10_guard_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_gestori_guard()` |
 | trg_gestori_a10_guard_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_gestori_guard()` |
-| trg_gestori_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_gestori_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('soggetto_ruolo_id', 'E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE')` |
 | trg_gestori_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_gestori_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_gestori_guard_ruolo_gestore_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_gestori_guard_ruolo_gestore()` |
 | trg_gestori_guard_ruolo_gestore_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_gestori_guard_ruolo_gestore()` |
 

@@ -17,57 +17,66 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_gestori_guard()
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_soggetto_id   uuid;
-    v_partita_iva   text;
-    v_existing_id   integer;
+    v_soggetto_id   anagrafiche.soggetti.id%TYPE;
+    v_partita_iva   anagrafiche.soggetti.partita_iva%TYPE;
+    v_existing_id   anagrafiche.gestori.id%TYPE;
 BEGIN
-
 -- =========================================================
--- anagrafiche.trgfn_gestori_guard_ins_upd()
--- Guard di dominio per anagrafiche.gestori
+-- Scopo: guard di dominio di anagrafiche.gestori, BEFORE
+--   INSERT OR UPDATE.
 --
 -- Regole:
---  1) Singleton: massimo 1 record in anagrafiche.gestori
---  2) Il soggetto collegato DEVE avere partita_iva valorizzata
+--  0) il ruolo esiste           -> E_GESTORE_SOGGETTO_RUOLO_MANCANTE
+--  1) il soggetto del gestore ha la partita IVA
+--                               -> E_RUOLO_RICHIEDE_PIVA
+--  2) il gestore e' uno solo    -> E_GESTORE_SINGLETON_VIOLATO
 --
--- rev 2026-08-04 (bonifica riferimenti morti, F4):
---   la prima chiamata di log usava dbops.fn_log_and_raise_error
---   (inesistente) e mescolava un argomento con nome
---   (`p_codice_errore`, per giunta non un parametro vero: e'
---   `p_error_code`) con argomenti posizionali, che PostgreSQL
---   non ammette. Resa identica alle due sorelle sotto.
+-- ⭐ Il singleton ha due sedi, e ognuna ha il suo mestiere: qui
+--   il caso normale, con la frase per l'operatore; l'indice
+--   anagrafiche.uq_gestori_singleton le scritture concorrenti,
+--   che questa lettura non vede (due transazioni aperte insieme
+--   non vedono l'una la riga dell'altra). Nessuna delle due si
+--   toglie.
+--
+-- ⚠️ La partita IVA si giudica quando si scrive il gestore. Se
+--   dopo la si toglie al soggetto, la ferma
+--   anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori solo
+--   quando il dettaglio del soggetto la vuole
+--   (config.tipi_soggetto_dettaglio.piva_obbligatoria); con un
+--   dettaglio che non la vuole il gestore resta senza. E' un
+--   limite dichiarato, non un guard sul soggetto.
 -- =========================================================
 
     ----------------------------------------------------------------
-    -- 0) Verifica che il soggetto_ruolo esista e risali al soggetto
+    -- 0) Il soggetto_ruolo esiste: si risale al soggetto
     ----------------------------------------------------------------
     SELECT s.id, s.partita_iva
-    INTO v_soggetto_id, v_partita_iva
-    FROM anagrafiche.soggetti_ruoli sr
-    JOIN anagrafiche.soggetti s
-    ON s.id = sr.soggetto_id
-    WHERE sr.id = NEW.soggetto_ruolo_id;
+      INTO v_soggetto_id, v_partita_iva
+      FROM anagrafiche.soggetti_ruoli sr
+      JOIN anagrafiche.soggetti s
+        ON s.id = sr.soggetto_id
+     WHERE sr.id = NEW.soggetto_ruolo_id;
 
     IF v_soggetto_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
-            'database' ,
+            'database',
             TG_NAME,
             'E_GESTORE_SOGGETTO_RUOLO_MANCANTE',
             jsonb_build_object(
-                    'table', TG_TABLE_NAME,
-                    'soggetto_ruolo_id', NEW.soggetto_ruolo_id
-                ),
+                'table', TG_TABLE_NAME,
+                'soggetto_ruolo_id', NEW.soggetto_ruolo_id
+            ),
             NULL::uuid,
             NEW.soggetto_ruolo_id::text
         );
     END IF;
 
     ----------------------------------------------------------------
-    -- 1) Regola: il soggetto del gestore deve avere PARTITA IVA
+    -- 1) Il soggetto del gestore ha la partita IVA
     ----------------------------------------------------------------
     IF v_partita_iva IS NULL OR btrim(v_partita_iva) = '' THEN
         PERFORM script.fn_log_and_raise_error(
-            'database' ,
+            'database',
             TG_NAME,
             'E_RUOLO_RICHIEDE_PIVA',
             jsonb_build_object(
@@ -83,26 +92,26 @@ BEGIN
     END IF;
 
     ----------------------------------------------------------------
-    -- 2) Regola singleton: massimo 1 record in anagrafiche.gestori
-    --
-    -- NB: id <> NEW.id per permettere UPDATE sulla stessa riga.
+    -- 2) Il gestore e' uno solo. id <> NEW.id: l'UPDATE della
+    --    stessa riga passa.
     ----------------------------------------------------------------
     SELECT g.id
-    INTO v_existing_id
-    FROM anagrafiche.gestori g
-    WHERE g.id <> COALESCE(NEW.id, -1)
-    LIMIT 1;
+      INTO v_existing_id
+      FROM anagrafiche.gestori g
+     WHERE g.id <> COALESCE(NEW.id, -1)
+     ORDER BY g.id
+     LIMIT 1;
 
     IF FOUND THEN
         PERFORM script.fn_log_and_raise_error(
-            'database' ,
+            'database',
             TG_NAME,
             'E_GESTORE_SINGLETON_VIOLATO',
-            jsonb_build_object
-                ('table', TG_TABLE_NAME,
+            jsonb_build_object(
+                'table', TG_TABLE_NAME,
                 'existing_gestore_id', v_existing_id,
                 'new_soggetto_ruolo_id', NEW.soggetto_ruolo_id
-                ),
+            ),
             NULL::uuid,
             NEW.soggetto_ruolo_id::text
         );
@@ -113,7 +122,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_gestori_guard()
-IS 'Guard di dominio per anagrafiche.gestori.';
+IS 'Guard BEFORE INSERT OR UPDATE di anagrafiche.gestori. Il ruolo esiste (E_GESTORE_SOGGETTO_RUOLO_MANCANTE), il soggetto ha la partita IVA (E_RUOLO_RICHIEDE_PIVA), il gestore e'' uno solo (E_GESTORE_SINGLETON_VIOLATO). Il singleton lo tiene anche l''indice anagrafiche.uq_gestori_singleton, per le scritture concorrenti che questo guard non vede. La partita IVA si giudica quando si scrive il gestore: toglierla dopo al soggetto la ferma anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori solo se il dettaglio del soggetto la vuole.';
 ```
 
 </div>
