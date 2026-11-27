@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_crea_utente_tecnico`
 
-> **Ultimo aggiornamento**: 24 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -25,6 +25,14 @@ Un lavoro notturno che emette fatture deve poter rispondere a *«per conto di ch
 stai scrivendo?»* esattamente come una persona che usa l'applicazione. Questa
 funzione gli dà quella risposta: un utente vero, con un perimetro vero, che
 **non può fare login**.
+
+⛔ **Il permesso.** È `SECURITY DEFINER` col `search_path` fissato, e nella prima riga chiede il SUPER_ADMIN
+all'utente di sessione (`script.fn_guard_super_admin`): un altro operatore, o nessun utente, riceve
+`E_PERMESSO_NEGATO`. È lo stesso controllo dell'endpoint dei processi. Fa eccezione la **sessione del
+migratore** (`dbops.fn_sessione_del_migratore`): i seed degli utenti tecnici li crea il software, senza un
+utente. Le regole che seguono le tiene la primitiva
+[fn_applica_crea_utente_tecnico](/dbzero/script/manual/fn_applica_crea_utente_tecnico), che l'applicazione non
+esegue.
 
 ---
 

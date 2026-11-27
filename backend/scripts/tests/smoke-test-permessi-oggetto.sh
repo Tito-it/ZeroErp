@@ -220,7 +220,12 @@ import sys, json
 d = json.load(sys.stdin)
 items = d.get('data', {}).get('results', [])
 out = [{'app_label': i['app_label'], 'model_name': i['model_name'],
-        'livello': i['livello'], 'motivo': i.get('motivo'),
+        'livello': i['livello'],
+        # Dal 2026-11-27 il verbo vuole un motivo su ogni voce: una voce
+        # scritta prima della regola senza motivo farebbe fallire il
+        # ripristino (passo 11). Lo dichiara, invece di inventarne uno.
+        'motivo': (i.get('motivo') or '').strip()
+                  or 'Ripristino dello smoke: la voce non aveva motivo',
         'valido_dal': i.get('valido_dal'), 'valido_al': i.get('valido_al')}
        for i in items]
 print(json.dumps(out))
@@ -250,7 +255,9 @@ fi
 # --- 6. PUT con model non registrato — atteso 4xx ---
 echo ""
 echo "-- 6. Validazione catalogo --"
-BAD_PAYLOAD='{"items":[{"app_label":"fantasma","model_name":"inesistente","livello":"BLOCCATO"}]}'
+# Col motivo: senza, un rifiuto del motivo farebbe passare il passo senza
+# provare il catalogo.
+BAD_PAYLOAD='{"items":[{"app_label":"fantasma","model_name":"inesistente","livello":"BLOCCATO","motivo":"smoke-test"}]}'
 do_curl PUT "/api/v1/amm-software/operatori/$TARGET_ID/override-oggetti/" "$BAD_PAYLOAD"
 if [[ "$LAST_STATUS" =~ ^4 ]]; then
     log_ok "PUT con model non registrato respinto (HTTP $LAST_STATUS)"

@@ -46,7 +46,9 @@ from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import (
+    apri_contesto_su,
     apri_operatore_con_aree,
+    esegui_fixture,
     richiedi_db_provvisto,
     richiedi_ruolo_soggetto_a_rls,
     verifica_ricerca_colonna_per_colonna,
@@ -59,7 +61,6 @@ from apps.magazzino.db.anagrafiche_magazzino_repository import (
 )
 from apps.magazzino.services import anagrafiche_magazzino_service as svc
 
-_MOTIVO = "test_anagrafiche_magazzino_db: i verbi chiedono TUTTO su magazzino"
 
 _FIXTURE: tuple[str, ...] = (
     """
@@ -78,9 +79,8 @@ class _Mondo:
     """Gli id del mondo costruito."""
 
     def __init__(self, cur) -> None:
-        self.uid = apri_operatore_con_aree(cur, aree=("magazzino",), motivo=_MOTIVO)
-        for passo in _FIXTURE:
-            cur.execute(passo)
+        self.uid = apri_operatore_con_aree(cur, aree=("magazzino",))
+        esegui_fixture(cur, _FIXTURE)
         cur.execute("SELECT mag_a, mag_u FROM _mag")
         self.mag_a, self.mag_u = (int(x) for x in cur.fetchone())
         cur.execute("SELECT art_l FROM _art")
@@ -238,9 +238,8 @@ class AnagraficheMagazzinoDbTests(unittest.TestCase):
         def _prova(cur, m):
             svc.crea_ubicazione(m.mag_u, {"codice": "A", "tipo_id": m.tipo_ubi})
             cur.execute("CREATE TEMP TABLE _mondo2 AS SELECT x.* FROM dbops.fn_pgtap_crea_emittente_operatore('B2') x")
-            cur.execute("SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo2))")
             cur.execute("SELECT auth_user_id FROM _mondo2")
-            uid2 = int(cur.fetchone()[0])
+            uid2 = apri_contesto_su(cur, int(cur.fetchone()[0]))
             self.assertEqual(self._rifiuto(lambda: svc.get_magazzino(m.mag_u)).code, "E_MAG_MAGAZZINO_NON_TROVATO")
             self.assertEqual(svc.list_magazzini(auth_user_id=uid2, search="BE-ANA", limit=10)["count"], 0)
             self.assertEqual(self._rifiuto(lambda: svc.list_ubicazioni(m.mag_u, limit=10)).code, "E_MAG_MAGAZZINO_NON_TROVATO")
@@ -321,13 +320,13 @@ class AnagraficheMagazzinoDbTests(unittest.TestCase):
     #    magazzino il service, chiamato senza view, riceve il rifiuto del DB.
     def test_senza_livello_sull_oggetto_il_verbo_rifiuta(self):
         def _prova(cur, m):
+            # Il livello si abbassa dal builder del DB: le eccezioni utente sono
+            # in sola lettura per l'app (giro 10-quater, 2026-11-27).
             cur.execute(
-                "UPDATE config.user_override_aree o SET livello = 'LETTURA'"
-                "  FROM config.aree_funzionali af"
-                " WHERE af.id = o.area_id AND af.schema_db = 'magazzino' AND o.auth_user_id = %s",
+                "SELECT dbops.fn_pgtap_concedi_livello_area(%s, 'magazzino', 'LETTURA'::config.livello_accesso)",
                 [m.uid],
             )
-            self.assertEqual(cur.rowcount, 1)
+            self.assertIsNotNone(cur.fetchone()[0])
             e = self._rifiuto(lambda: svc.crea_magazzino({
                 "codice": "BE-ANA-P", "descrizione": "x", "indirizzo_dettaglio_id": m.indirizzo_id,
             }))
@@ -349,7 +348,7 @@ class AnagraficheMagazzinoDbTests(unittest.TestCase):
         def _prova(cur, m):
             oggi = oggi_aziendale().isoformat()
             lotto_a = svc.crea_lotto({"articolo_id": m.art_l, "codice": "L-01", "data_arrivo": oggi})
-            uid_b = apri_operatore_con_aree(cur, aree=("magazzino",), motivo=_MOTIVO)
+            uid_b = apri_operatore_con_aree(cur, aree=("magazzino",))
             lotto_b = svc.crea_lotto({"articolo_id": m.art_l, "codice": "L-01", "data_arrivo": oggi})
             self.assertNotEqual(lotto_a["emittente_fiscale_id"], lotto_b["emittente_fiscale_id"])
             lista_b = svc.list_lotti(auth_user_id=uid_b, articolo_id=m.art_l, limit=10)
@@ -364,7 +363,7 @@ class AnagraficheMagazzinoDbTests(unittest.TestCase):
                 AnagraficheMagazzinoRepository().update_lotto(lotto_a["id"], {"attivo": False})
             self.assertEqual(structured_db_error_code(rifiuto.exception), "E_MAG_LOTTO_NON_TROVATO")
             # Torna l'azienda A: vede il suo e non quello di B.
-            cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [m.uid])
+            apri_contesto_su(cur, m.uid)
             lista_a = svc.list_lotti(auth_user_id=m.uid, articolo_id=m.art_l, limit=10)
             self.assertEqual([x["id"] for x in lista_a["results"]], [lotto_a["id"]])
         self._nel_mondo(_prova)

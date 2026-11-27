@@ -30,6 +30,8 @@ from apps.core.db._helpers import (
     sql_order_clause,
     sql_tiebreak_direction,
 )
+from apps.core.db.auth_repository import AuthRepository
+from apps.core.db.sql_write_helpers import esegui_verbo
 
 from apps.core.services.auth_constants import (
     CATEGORIA_ACCESSO_OPERATORE,
@@ -170,6 +172,14 @@ AUDIT_ORDER_COLUMNS: dict[str, str] = {
     "tipo_operazione": "tipo_operazione",
     "user_modifica": "user_insert",
 }
+
+
+# Le chiavi di un'eccezione utente, per tabella: quelle che i verbi
+# `config.fn_imposta_override_*` ammettono (giro 10-quater, §15.7). Le stesse
+# che il backend scriveva prima dei verbi.
+_CHIAVI_OVERRIDE_AREE = ("area_id", "livello", "motivo", "valido_dal", "valido_al")
+_CHIAVI_OVERRIDE_AZIONI = ("azione_id", "abilitata", "motivo", "valido_dal", "valido_al")
+_CHIAVI_OVERRIDE_OGGETTI = ("app_label", "model_name", "livello", "motivo", "valido_dal", "valido_al")
 
 
 class AmmSoftwareRepository:
@@ -383,7 +393,7 @@ class AmmSoftwareRepository:
     #    §6.16) anche il profilo e lo slegare stanno nel DB: il profilo lo
     #    risolve il lettore `config.fn_profilo_super_admin_id` (per `tipo`,
     #    fra gli ATTIVI, esattamente uno, altrimenti `E_CONFIG_MANCANTE`
-    #    «trovati N»: la stessa sede di `fn_crea_risorsa_umana_v2`), lo
+    #    «trovati N»: la stessa sede di `fn_crea_risorsa_umana`), lo
     #    slegare la madre `config.fn_slega_profilo_identita`. Fino ad allora
     #    la regola del profilo era ricopiata qui e il DELETE toglieva i
     #    legami verso OGNI profilo di quel tipo, spenti compresi.
@@ -510,16 +520,16 @@ class AmmSoftwareRepository:
     # stato inconsistente se uno dei 3 step fallisce.
     def disabilita_operatore(self, auth_user_id: int) -> None:
         with transaction.atomic(), connection.cursor() as cursor:
-            # 1. Spegne la veste operatore (figlio), non le altre: una
+            # 1. Revoca la veste operatore (figlio), non le altre: una
             #    credenziale puo' avere anche vesti di portale o shop (D-6).
-            #    ⛔ Solo `attivo = false`, il tipo resta (R-DB-1, 2026-10-02):
-            #    la tabella rifiuta `DISABILITATO` con
-            #    `E_RUOLO_APPLICATIVO_RITIRATO`.
-            cursor.execute(
-                "UPDATE anagrafiche.identita_digitali SET attivo = false "  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
-                f"WHERE id = {_VESTE_OPERATORE.format(au='%s')}",
-                [auth_user_id],
-            )
+            #    ⭐ Dal verbo del DB, che lascia il segno della revoca
+            #    (`AuthRepository.revoca_veste`, R2-a del brief-db-accessi-
+            #    area-clienti, 2026-11-26): un link d'invito vecchio non la
+            #    riaccende. Fino a quel giorno era un `UPDATE … SET attivo =
+            #    false` diretto.
+            veste_id = self.get_veste_operatore_id(auth_user_id)
+            if veste_id is not None:
+                AuthRepository().revoca_veste(veste_id)
             # 2. Disattiva la risorsa umana di quella veste (padre) +
             #    valido_al = oggi
             cursor.execute(
@@ -538,9 +548,9 @@ class AmmSoftwareRepository:
             )
 
     # Scopo: Crea un operatore invocando la madre DB
-    # `anagrafiche.fn_crea_operatore_v2` (rev P-2, 20260925-42). Due flussi sul
-    # soggetto: soggetto_id NULL (crea il soggetto PF) o valorizzato (usa
-    # l'esistente). Due flussi sulla CREDENZIALE, decisi dal DB per email
+    # `anagrafiche.fn_crea_operatore` (rev P-2, 20260925-42; senza `_v2` dal
+    # 20261125-68). Due flussi sul soggetto: soggetto_id NULL (crea il
+    # soggetto PF) o valorizzato (usa l'esistente). Due flussi sulla CREDENZIALE, decisi dal DB per email
     # senza maiuscole (D-6: una persona, una credenziale):
     #   - nuova: nasce con `password_hash` e `username`;
     #   - RIUSATA: password, username e nome restano i suoi, e quelli passati
@@ -578,7 +588,7 @@ class AmmSoftwareRepository:
     ) -> dict[str, Any]:
         sql = """
             SELECT auth_user_id, username, credenziale_riusata
-              FROM anagrafiche.fn_crea_operatore_v2(
+              FROM anagrafiche.fn_crea_operatore(
                 p_soggetto_id                    := %s::uuid,
                 p_cognome                        := %s,
                 p_nome                           := %s,
@@ -628,7 +638,7 @@ class AmmSoftwareRepository:
     #        credenziale_riusata}, come `crea_operatore`.
     # ⭐ Tutto il resto e' del verbo: si apre solo se nessuna veste ha mai
     #    avuto un legame SUPER_ADMIN (`E_PRIMO_AMMINISTRATORE_GIA_PRESENTE`),
-    #    sceglie la qualifica `AMMINISTRATORE`, compone `fn_crea_operatore_v2`
+    #    sceglie la qualifica `AMMINISTRATORE`, compone `fn_crea_operatore`
     #    (i suoi rifiuti, compreso `E_CREDENZIALE_DA_CONFERMARE`, valgono qui),
     #    scrive gli indirizzi e accende la veste. Il backend calcola l'hash.
     # ⚠️ Gli indirizzi viaggiano come jsonb nella forma di
@@ -734,28 +744,16 @@ class AmmSoftwareRepository:
             cursor.execute(sql, [auth_user_id])
             return rows_to_list(cursor)
 
-    # Scopo: Sostituisce gli override aree di un operatore (replace semantics).
-    # Cancella tutti gli override esistenti e inserisce i nuovi.
+    # Scopo: Sostituisce gli override aree di un operatore (replace semantics)
+    #        col verbo del SUPER_ADMIN `config.fn_imposta_override_aree`.
+    # ⛔ Fino al 2026-11-27 un `DELETE` e N `INSERT` diretti: dal giro 10-quater
+    #    (brief-db-porte-aperte-dalla-sola-guc §15.7) la tabella e' in sola
+    #    lettura per l'app, e l'eccezione la scrive solo il verbo.
     def put_override_aree(self, auth_user_id: int, items: list[dict[str, Any]]) -> None:
-        with transaction.atomic(), connection.cursor() as cursor:
-            cursor.execute(
-                "DELETE FROM config.user_override_aree WHERE auth_user_id = %s",
-                [auth_user_id],
-            )
-            for item in items:
-                cursor.execute(
-                    """INSERT INTO config.user_override_aree
-                       (auth_user_id, area_id, livello, motivo, valido_dal, valido_al)
-                       VALUES (%s, %s, %s::config.livello_accesso, %s, %s::date, %s::date)""",
-                    [
-                        auth_user_id,
-                        item["area_id"],
-                        item["livello"],
-                        item.get("motivo"),
-                        item.get("valido_dal"),
-                        item.get("valido_al"),
-                    ],
-                )
+        self._imposta_override(
+            "SELECT config.fn_imposta_override_aree(%s::integer, %s::jsonb)",
+            auth_user_id, items, _CHIAVI_OVERRIDE_AREE,
+        )
 
     # ================================================================== #
     # Override azioni per operatore                                         #
@@ -779,27 +777,14 @@ class AmmSoftwareRepository:
             cursor.execute(sql, [auth_user_id])
             return rows_to_list(cursor)
 
-    # Scopo: Sostituisce gli override azioni di un operatore (replace semantics).
+    # Scopo: Sostituisce gli override azioni di un operatore (replace semantics)
+    #        col verbo del SUPER_ADMIN `config.fn_imposta_override_azioni`
+    #        (dal 2026-11-27, come `put_override_aree`).
     def put_override_azioni(self, auth_user_id: int, items: list[dict[str, Any]]) -> None:
-        with transaction.atomic(), connection.cursor() as cursor:
-            cursor.execute(
-                "DELETE FROM config.user_override_azioni WHERE auth_user_id = %s",
-                [auth_user_id],
-            )
-            for item in items:
-                cursor.execute(
-                    """INSERT INTO config.user_override_azioni
-                       (auth_user_id, azione_id, abilitata, motivo, valido_dal, valido_al)
-                       VALUES (%s, %s, %s, %s, %s::date, %s::date)""",
-                    [
-                        auth_user_id,
-                        item["azione_id"],
-                        item["abilitata"],
-                        item.get("motivo"),
-                        item.get("valido_dal"),
-                        item.get("valido_al"),
-                    ],
-                )
+        self._imposta_override(
+            "SELECT config.fn_imposta_override_azioni(%s::integer, %s::jsonb)",
+            auth_user_id, items, _CHIAVI_OVERRIDE_AZIONI,
+        )
 
     # ================================================================== #
     # Override oggetti per operatore (v2 permessi)                         #
@@ -827,27 +812,28 @@ class AmmSoftwareRepository:
 
     # Scopo: Sostituisce gli override oggetto di un operatore (replace semantics)
     #        con la madre del DB `config.fn_imposta_override_oggetti`
-    #        (2026-10-18, 2b-2, lotto 9).
-    # ⚠️ Le sei chiavi viaggiano SEMPRE, anche a null: per la madre una chiave
-    #    assente prende il DEFAULT (`valido_dal` = la data operativa), una a null
-    #    scrive NULL. Il significato di prima e' «null = senza inizio».
+    #        (2026-10-18, 2b-2, lotto 9; verbo del SUPER_ADMIN dal 2026-11-27).
     def put_override_oggetti(self, auth_user_id: int, items: list[dict[str, Any]]) -> None:
-        oggetti = [
-            {
-                "app_label": item["app_label"],
-                "model_name": item["model_name"],
-                "livello": item["livello"],
-                "motivo": item.get("motivo"),
-                "valido_dal": item.get("valido_dal"),
-                "valido_al": item.get("valido_al"),
-            }
-            for item in items
-        ]
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT config.fn_imposta_override_oggetti(%s::integer, %s::jsonb)",
-                [auth_user_id, json.dumps(oggetti, default=str)],
-            )
+        self._imposta_override(
+            "SELECT config.fn_imposta_override_oggetti(%s::integer, %s::jsonb)",
+            auth_user_id, items, _CHIAVI_OVERRIDE_OGGETTI,
+        )
+
+    # Scopo: Il trasporto comune dei tre verbi «sostituisci l'elenco» delle
+    #        eccezioni utente: l'elenco con le chiavi della tabella, il verbo,
+    #        e la risposta del DB (`esegui_verbo`).
+    # ⚠️ Le chiavi viaggiano SEMPRE, anche a null: per il verbo una chiave
+    #    assente prende il DEFAULT (`valido_dal` = la data operativa), una a
+    #    null scrive NULL. Il significato di prima e' «null = senza inizio».
+    #    Una chiave che la tabella non ammette il verbo la rifiuta
+    #    (`E_CAMPO_NON_AMMESSO`): per questo si mandano solo quelle dell'elenco.
+    # ⚠️ `sql` e' un letterale di questo repository, mai input.
+    @staticmethod
+    def _imposta_override(
+        sql: str, auth_user_id: int, items: list[dict[str, Any]], chiavi: tuple[str, ...],
+    ) -> None:
+        voci = [{chiave: item.get(chiave) for chiave in chiavi} for item in items]
+        esegui_verbo(sql, [auth_user_id, json.dumps(voci, default=str)])
 
     # Scopo: Lista model registrati in area_model_overrides (lookup per dropdown admin).
     #        Ogni riga e' arricchita con capability `can_override` (bool) +

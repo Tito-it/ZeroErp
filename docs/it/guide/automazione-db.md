@@ -1,6 +1,6 @@
 # Guida — Framework di Automazione DB
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali; chi amministra un'installazione (§9)
 >
@@ -30,7 +30,7 @@
 > * [dbops.fn_apply_cleanup_at](/dbzero/dbops/funzioni/fn_apply_cleanup_at) — il motore della regola CLEANUP
 > * [dbops.fn_apply_automazione_overlap](/dbzero/dbops/funzioni/fn_apply_automazione_overlap) — crea i vincoli EXCLUDE di OVERLAP
 > * [dbops.fn_delete_block_divergenze](/dbzero/dbops/funzioni/fn_delete_block_divergenze) — i blocchi DELETE vivi confrontati con il registro
-> * [dbops.fn_apply_delete_block_trigger](/dbzero/dbops/funzioni/fn_apply_delete_block_trigger) — monta il blocco DELETE con bypass via GUC
+> * [dbops.fn_apply_delete_block_trigger](/dbzero/dbops/funzioni/fn_apply_delete_block_trigger) — monta il blocco DELETE, con la sua porta di manutenzione
 > * [dbops.fn_guard_utility_divergenze](/dbzero/dbops/funzioni/fn_guard_utility_divergenze) — i guard utility/tipo ruolo vivi confrontati con il registro
 > * [dbops.fn_run_automations_guard_utility](/dbzero/dbops/funzioni/fn_run_automations_guard_utility) — il runner del guard utility/tipo ruolo
 > * [dbops.fn_nome_oggetto_dichiarato](/dbzero/dbops/funzioni/fn_nome_oggetto_dichiarato) — il nome degli oggetti che un registro dichiara riga per riga
@@ -206,7 +206,7 @@ Sono regole per casi specifici. Non tutte le tabelle le richiedono.
 | **LOCK_COLUMNS**             | Blocca la modifica di colonne critiche (es. `codice_interno`) | Tabelle con codici che non devono cambiare             |
 | **ATTIVO**                   | Impedisce la disattivazione di un padre se ha figli FK attivi | Tabelle con soft-delete e relazioni padre/figlio       |
 | **OVERLAP**                  | Previene sovrapposizioni temporali con vincoli EXCLUDE GiST   | Tabelle versionate con `valido_dal`/`valido_al`        |
-| **DELETE_BLOCK**             | Blocca la DELETE su tabelle sensibili (bypass via GUC)        | Tabelle di configurazione critica (es. ruoli)          |
+| **DELETE_BLOCK**             | Blocca la DELETE su tabelle sensibili (porta di manutenzione) | Tabelle di configurazione critica (es. ruoli)          |
 | **CLEANUP**                  | Calcola `cleanup_at` e purge dei record scaduti               | Tabelle con dati temporanei (log, sessioni)            |
 | **GUARD utility/tipo_ruolo** | Verifica coerenza tra utility e tipo ruolo del soggetto       | Tabelle con colonne `utility_id` + `soggetto_ruolo_id` |
 | **DATE_VALIDITA**            | Impedisce che `valido_al` preceda `valido_dal`, con un errore che l'operatore capisce | Ogni tabella con `valido_dal` + `valido_al`: basta la presenza delle due colonne |
@@ -341,6 +341,7 @@ Il suffisso finale è un hash corto della FK, aggiunto di norma solo quando il n
 | `vendite.fatture_stampa_coda.tipo_documento_output_id` | la coda di stampa è un **outbox**: il worker aggiorna la riga a ogni passaggio, e il require scatterebbe su ogni aggiornamento; con un tipo di documento spento si fermerebbe il lotto intero, e il block impedirebbe di spegnere un tipo finché una riga storica lo nomina. Se un tipo può stampare lo decide la risoluzione del modello al drenaggio |
 | `catalogo.articoli_uom_operativa.articolo_id` e `.uom_id` | la mappatura di un'unità operativa è **storia**: si chiude con `valido_al` e dal primo giorno in vigore non si spegne più. Col block un articolo o un'unità che hanno avuto una mappatura non si spegnerebbero mai; l'articolo si spegne e si riaccende con le sue mappature intatte |
 | `catalogo.unita_misura_conversioni.uom_from_id` e `.uom_to_id` | la conversione generale è storia allo stesso modo: un'unità che ha avuto una conversione non si spegnerebbe mai |
+| `vendite.ddt.vettore_soggetto_ruolo_id` | la bolla è **storia**: nomina il vettore che ha portato la merce. Senza `attivo` sulla bolla il block conterebbe ogni bolla, e un vettore che ne ha portata una non si spegnerebbe mai. Che il vettore sia acceso quando la bolla lo sceglie lo dice un guard del documento |
 
 **Chi si lega lo dice una funzione sola.** [`dbops.fn_attivo_fk_esclusa`](/dbzero/dbops/funzioni/fn_attivo_fk_esclusa) risponde per il motore, che non genera le FK escluse, e per il ritiro, che ne toglie i trigger già generati: esclusa è una FK fra le eccezioni, o una FK che una partizione eredita dalla sua radice. Il ritiro non tocca le copie che PostgreSQL fa sulle partizioni del trigger della radice: le governa la radice. Ogni altra FK del perimetro si lega, qualunque sia il nome della colonna: un legame dimenticato non esiste, al più un'eccezione da scrivere. Lo presidia `db/pgtap/dbops/test-automazione-attivo-senza-filtro-nome-v1.sql`, che guarda tutte le FK del perimetro e prova la regola su tabelle costruite dal test.
 
@@ -409,7 +410,7 @@ Per tabelle sensibili (es. tabelle ruoli, configurazioni critiche) dove la DELET
 **Come funziona:**
 
 * Config in `dbops.automation_delete_block` con schema, tabella, chiave GUC e flag `enabled`
-* Trigger `BEFORE DELETE` per riga su `script.trgfn_delete_block_by_guc(guc_key)` — blocca la DELETE a meno che il GUC specificato non sia impostato a `'on'`. ⭐ `BEFORE` perché il rifiuto arrivi prima delle cascate delle FK e dei guard dei figli
+* Trigger `BEFORE DELETE` per riga su `script.trgfn_delete_block_by_guc(guc_key)` — blocca la DELETE a meno che la sua porta di manutenzione non sia aperta: la GUC specificata accesa **e** la sessione del migratore (§«Le porte di manutenzione»). Per l'applicazione il blocco resta chiuso anche con la GUC accesa. ⭐ `BEFORE` perché il rifiuto arrivi prima delle cascate delle FK e dei guard dei figli
 * Runner `dbops.fn_run_automations_delete_block()`, nella convergenza del rilascio e nel giro notturno `automations_delete_block` (§9). **Converge**: crea il blocco dove manca, lo rigenera se non è quello dichiarato (nome, momento, GUC), lo toglie se la riga è spenta
 * ⛔ Per togliere un blocco si **spegne** la riga (`enabled = false`), non la si cancella: un blocco vivo su una tabella che il registro non nomina ferma il runner, che lo nomina
 * ⛔ **Fuori dall'ambito non c'è eccezione**, a differenza dei lock di colonna (§4.1): il runner non ci arriva e il blocco non si monta a mano. Una tabella da proteggere entra nell'ambito; finché non c'entra, la sua riga resta spenta. Il presidio (`test-delete-block-convergenza-v1`) guarda le due metà: nessun blocco vivo e nessuna riga attiva su una tabella fuori dall'ambito

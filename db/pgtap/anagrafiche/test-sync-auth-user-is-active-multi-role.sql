@@ -292,7 +292,8 @@ END;
 -- =========================================================
 -- 5) CLIENTE_PORTALE con identita attivo=false -> auth_user.is_active=false
 -- =========================================================
-UPDATE anagrafiche.identita_digitali SET attivo = false
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', false))
+  FROM anagrafiche.identita_digitali idg
  WHERE id = (SELECT case_cli_id_id FROM _t_setup WHERE case_cli_ready);
 
 SELECT anagrafiche.fn_sync_auth_user_is_active(
@@ -315,10 +316,8 @@ END;
 -- =========================================================
 -- Sposto sia valido_dal sia valido_al nel passato per rispettare il
 -- vincolo chk_identita_digitali_date (valido_dal <= valido_al).
-UPDATE anagrafiche.identita_digitali
-   SET attivo = true,
-       valido_dal = script.fn_data_operativa() - INTERVAL '2 days',
-       valido_al  = script.fn_data_operativa() - INTERVAL '1 day'
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', true, 'valido_dal', script.fn_data_operativa() - INTERVAL '2 days', 'valido_al', script.fn_data_operativa() - INTERVAL '1 day'))
+  FROM anagrafiche.identita_digitali idg
  WHERE id = (SELECT case_cli_id_id FROM _t_setup WHERE case_cli_ready);
 
 UPDATE django.auth_user SET is_active = true
@@ -340,9 +339,8 @@ SELECT CASE
 END;
 
 -- Reset finestra per i test successivi (CLIENTE_PORTALE torna aperto).
-UPDATE anagrafiche.identita_digitali
-   SET valido_dal = script.fn_data_operativa(),
-       valido_al  = NULL
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_dal', script.fn_data_operativa(), 'valido_al', NULL))
+  FROM anagrafiche.identita_digitali idg
  WHERE id = (SELECT case_cli_id_id FROM _t_setup WHERE case_cli_ready);
 
 -- =========================================================
@@ -399,9 +397,7 @@ SELECT CASE
     WHEN (SELECT case_cli_ready FROM _t_setup)
     THEN is(
         dbops.fn_pgtap_codice_errore(format(
-            $$UPDATE anagrafiche.identita_digitali
-                 SET ruolo_applicativo = 'DISABILITATO'::config.ruolo_applicativo
-               WHERE id = %s$$,
+            $$SELECT dbops.fn_pgtap_imposta_veste(%s, '{"ruolo_applicativo": "DISABILITATO"}'::jsonb)$$,
             (SELECT case_cli_id_id FROM _t_setup))),
         'E_RUOLO_APPLICATIVO_RITIRATO',
         '9. ruolo_applicativo=DISABILITATO -> rifiutato (E_RUOLO_APPLICATIVO_RITIRATO)'
@@ -412,9 +408,8 @@ END;
 -- =========================================================
 -- 10) Riattivazione: ruolo -> CLIENTE_PORTALE + attivo=true -> is_active=true
 -- =========================================================
-UPDATE anagrafiche.identita_digitali
-   SET ruolo_applicativo = 'CLIENTE_PORTALE'::config.ruolo_applicativo,
-       attivo = true
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('ruolo_applicativo', 'CLIENTE_PORTALE'::config.ruolo_applicativo, 'attivo', true))
+  FROM anagrafiche.identita_digitali idg
  WHERE id = (SELECT case_cli_id_id FROM _t_setup WHERE case_cli_ready);
 
 UPDATE django.auth_user SET is_active = false

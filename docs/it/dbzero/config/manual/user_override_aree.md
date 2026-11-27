@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.user_override_aree`
 
+> **Ultimo aggiornamento**: 27 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Architettura di riferimento:
@@ -31,7 +33,7 @@ La tabella **`config.user_override_aree`** consente di **sovrascrivere il profil
 | `auth_user_id` | Utente Django (FK → `django.auth_user`) |
 | `area_id` | Area funzionale (FK → `config.aree_funzionali`) |
 | `livello` | `config.livello_accesso`: TUTTO / LETTURA / BLOCCATO |
-| `motivo` | Testo libero: perché è stato concesso l'override |
+| `motivo` | Il perché dell'eccezione. Obbligatorio a ogni scrittura, anche per l'eccezione che toglie (`E_OVERRIDE_MOTIVO_OBBLIGATORIO`, dalla primitiva dei verbi); una riga scritta prima della regola può non averlo, e la prossima riscrittura dell'elenco lo chiede |
 | `valido_dal` / `valido_al` | Finestra temporale di validità (NULL = indeterminato) |
 
 ---
@@ -41,6 +43,15 @@ La tabella **`config.user_override_aree`** consente di **sovrascrivere il profil
 * **Delega temporanea**: un operatore del reparto Tecnico ha bisogno di LETTURA su Vendite per 2 settimane → override con `valido_al`.
 * **Restrizione puntuale**: un operatore non deve vedere Contabilità nonostante il profilo del suo reparto lo consenta → override BLOCCATO.
 * **Promozione individuale**: un operatore senior ha TUTTO su un'area che per il reparto è LETTURA.
+
+---
+
+### ⛔ Chi la scrive
+
+Solo il **SUPER_ADMIN**, dal verbo [`config.fn_imposta_override_aree`](/dbzero/config/funzioni/fn_imposta_override_aree), che
+sostituisce l'elenco delle eccezioni di un utente. Per l'applicazione la tabella è in sola lettura:
+un'eccezione dà un potere che il profilo non dà, e un operatore che potesse scriverne una per sé si
+alzerebbe il livello da solo (brief-db-porte-aperte-dalla-sola-guc, giro 10-quater, 2026-11-27).
 
 ---
 

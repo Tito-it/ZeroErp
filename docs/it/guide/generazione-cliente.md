@@ -1,6 +1,6 @@
 # Guida — Generazione di un Cliente
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -11,6 +11,7 @@
 > * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — il ciclo di servizio su un indirizzo
 > * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — l'account di fatturazione
 > * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — il record cliente
+> * [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — il collegamento di ogni billing account alla sua azienda
 > * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp) — il punto di prelievo (contatore/allaccio)
 > * [anagrafiche.catasto_unita_immobiliari](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari) — i dati catastali
 > * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) — l'indirizzo civico
@@ -27,6 +28,12 @@
 > * [script.fn_cliente_dal_billing_account](/dbzero/script/funzioni/fn_cliente_dal_billing_account) — ruolo e utility del cliente vengono dal billing account
 > * [script.fn_subentro_cliente](/dbzero/script/funzioni/fn_subentro_cliente) — chiude il cliente precedente sul punto di prelievo
 > * [script.fn_disdetta_cliente](/dbzero/script/funzioni/fn_disdetta_cliente) — la cessazione senza subentro
+> * [anagrafiche.trgfn_billing_account_link_ef](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef) — il billing account nasce collegato a un'azienda
+> * [anagrafiche.trgfn_billing_account_guard_normalize](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_normalize) — il padre del billing account
+> * [anagrafiche.fn_check_ba_padre](/dbzero/anagrafiche/funzioni/fn_check_ba_padre) — l'albero a un livello, un padre per cliente e per azienda
+> * [anagrafiche.fn_guard_ba_cambio_emittente](/dbzero/anagrafiche/funzioni/fn_guard_ba_cambio_emittente) — il cambio d'azienda, solo senza documenti
+> * [anagrafiche.fn_guard_albero_ba_emittente](/dbzero/anagrafiche/funzioni/fn_guard_albero_ba_emittente) — padre e figli sulla stessa azienda
+> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic) — il billing account non si cancella
 >
 > **Vedi anche** — guide correlate:
 >
@@ -88,7 +95,9 @@ Un soggetto puo non acquisire mai il ruolo CLIENTE: per esempio un soggetto che 
 
 E l'account di fatturazione. Identifica **a chi fatturare**, **per quale utility** e **con quale codice**. Nasce **insieme all'istanza**, nella stessa operazione, e prima del cliente: esiste gia nella fase precontrattuale (preventivi, offerte) e viene "ereditato" dal cliente alla firma del contratto. Il suo codice si genera quando nasce.
 
-Il BA supporta una gerarchia padre/figlio per aggregare la fatturazione di piu utenze sullo stesso intestatario. Vedi la [documentazione dedicata](/dbzero/anagrafiche/manual/billing_account) per i dettagli.
+Il BA supporta una gerarchia padre/figlio per aggregare la fatturazione di piu utenze sullo stesso intestatario. L'albero ha **un livello solo**: chi ha un padre non fa da padre, e chi fa da padre non ha un padre. Un cliente (la stessa identita fiscale o, senza, lo stesso soggetto) ha **un solo padre per azienda**, e la fattura di un figlio va al suo padre diretto. Il padre non si toglie e non si cambia finche il figlio ha attivita non fatturate. Vedi la [documentazione dedicata](/dbzero/anagrafiche/tabelle/billing_account) per i dettagli.
+
+Un BA **non si cancella** (`E_BA_NON_SI_CANCELLA`): un cliente che non serve piu si chiude annullandolo (stato «AN annulla servizio») o, se e stato una fornitura, chiudendolo.
 
 > **Invariante BA ↔ istanza (1:1 per utility).** Per una data utility, un
 > billing account ha **una sola** istanza e un'istanza ha **un solo** BA
@@ -318,8 +327,12 @@ sceglie, ed è il motivo per cui vale la pena saperlo prima di creare il primo c
 ### Nasce da solo, e prende l'emittente di chi sta creando
 
 Nel momento in cui il billing account viene creato, un trigger lo aggancia
-all'**emittente dell'operatore corrente**. Non c'è un passaggio in cui il
-cliente esiste «senza emittente»: nasce già agganciato. Chi crea il cliente con
+all'**emittente dell'operatore corrente** o, senza un operatore in sessione
+(un import, un processo notturno) o se l'operatore non ha un emittente,
+all'**emittente predefinito**. Non c'è un passaggio in cui il cliente esiste
+«senza emittente»: nasce già agganciato, e il collegamento non si toglie più.
+Senza nessun emittente nell'installazione il billing account non nasce
+(`E_EMITTENTE_DEFAULT_MISSING`). Chi crea il cliente con
 `fn_crea_cliente` puo indicare l'emittente esplicitamente; se un operatore e in
 sessione, l'emittente indicato deve essere il suo.
 
@@ -334,12 +347,15 @@ Spostare il cliente su un altro emittente non riscrive quei documenti: li
 lascia dove sono. Da quel momento chi li ha emessi continua a vedere i documenti
 e **smette di vedere il cliente** a cui si riferiscono.
 
-⇒ Per questo il legame si può cambiare **finché sul cliente non è passato un
-documento numerato**, di qualunque famiglia, e non più dopo. Il controllo che
-lo impone è
-[`anagrafiche.fn_guard_ba_cambio_emittente`](/dbzero/anagrafiche/manual/fn_guard_ba_cambio_emittente),
+⇒ Per questo il legame si può cambiare, **modificando l'emittente sul
+collegamento**, finché sul cliente non è passato **nessun documento**, di
+qualunque famiglia e in qualunque stato, anche in bozza, e non più dopo. Chi ha
+sbagliato emittente e ha già scritto documenti li cancella prima. Il controllo
+che lo impone è
+[`anagrafiche.fn_guard_ba_cambio_emittente`](/dbzero/anagrafiche/funzioni/fn_guard_ba_cambio_emittente),
 e il messaggio che restituisce dice con quale emittente il cliente ha già
-documenti numerati.
+documenti, e quanti per famiglia. Spostare l'emittente predefinito non cambia
+l'emittente di nessun cliente già nato.
 
 ### E se il cliente è passato davvero all'altro emittente?
 
@@ -356,7 +372,7 @@ dimenticanza: un indice univoco lo vieta — per una istanza e una utility c'è
 Padre e figli devono stare sullo **stesso** emittente. Agganciare un cliente a un
 padre di un altro emittente, o spostare l'emittente di un solo nodo, viene
 respinto: vedi
-[`anagrafiche.fn_guard_albero_ba_emittente`](/dbzero/anagrafiche/manual/fn_guard_albero_ba_emittente).
+[`anagrafiche.fn_guard_albero_ba_emittente`](/dbzero/anagrafiche/funzioni/fn_guard_albero_ba_emittente).
 
 ---
 
@@ -384,8 +400,8 @@ INSERT billing_account
          ├─ codice_maiuscolo
          ├─ guard_soggetto_istanza → il ruolo e del soggetto dell'istanza, ed e un ruolo cliente
          ├─ audit + tx_id
-         └─ guard_normalize       → coerenza del billing account padre
-  AFTER  ├─ link_ef               → aggancia il BA all'emittente dell'operatore
+         └─ guard_normalize       → il padre: coerente, albero a un livello, un padre per cliente e azienda
+  AFTER  ├─ link_ef               → collega il BA all'emittente dell'operatore, o al predefinito
          ├─ guard_albero_emittente → padre e figli sullo stesso emittente
          ├─ guard_istanza_emittente → i BA dell'istanza sono di un solo emittente
          └─ alla conferma         → la categoria cliente e attiva
@@ -404,7 +420,8 @@ INSERT cliente
 
 Sulle modifiche si aggiungono, in testa ai BEFORE, i blocchi delle colonne che non cambiano
 (il codice e il soggetto dell'istanza; codice, istanza, ruolo e utility del BA; la fornitura del
-cliente) e, in coda, lo storico di `billing_account` e `clienti`.
+cliente) e, in coda, lo storico di `billing_account` e `clienti`. La cancellazione di un BA è
+rifiutata prima di ogni altro trigger (`E_BA_NON_SI_CANCELLA`).
 
 ### Dettaglio completo
 
@@ -425,13 +442,13 @@ cliente) e, in coda, lo storico di `billing_account` e `clienti`.
 | --- | --- | --- |
 | [`trgfn_billing_account_gen_codice`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_gen_codice) | BEFORE INSERT, UPDATE OF `codice` | Genera il codice dell'account |
 | `script.trgfn_lock_columns` | BEFORE UPDATE OF codice, istanza, ruolo, utility | Codice e coppia istanza/utility non cambiano (`E_BA_ISTANZA_IMMUTABILE`) |
+| [`script.trgfn_prevent_modification_generic`](/dbzero/script/funzioni/trgfn_prevent_modification_generic) (`trg_billing_account_a05_block_delete_dlt`) | BEFORE DELETE | Il BA non si cancella: il cliente si annulla (`E_BA_NON_SI_CANCELLA`) |
 | [`trgfn_billing_account_guard_admin_globale`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_admin_globale) | BEFORE INSERT | Rifiuta la creazione a chi non ha un emittente su cui scrivere |
 | [`trgfn_billing_account_guard_soggetto_coerenza_istanza`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_soggetto_coerenza_istanza) | BEFORE INSERT, UPDATE OF istanza o ruolo | Il ruolo è del soggetto dell'istanza, ed è un ruolo cliente |
-| [`trgfn_billing_account_guard_normalize`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_normalize) | BEFORE INSERT/UPDATE | Il padre: non sé stesso, raggiungibile, dello stesso soggetto; non si stacca con attività da fatturare |
-| [`trgfn_billing_account_link_ef`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef) | AFTER INSERT | Aggancia il BA all'emittente dell'operatore corrente |
+| [`trgfn_billing_account_guard_normalize`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_normalize) | BEFORE INSERT/UPDATE | Il padre: non sé stesso, raggiungibile, dello stesso cliente; un livello solo e un padre per cliente e azienda ([`fn_check_ba_padre`](/dbzero/anagrafiche/funzioni/fn_check_ba_padre): `E_PARENT_CON_PADRE`, `E_PARENT_HA_FIGLI`, `E_PARENT_SECONDO_PADRE`); non si stacca né si cambia con attività da fatturare (`E_DISSOCIAZIONE_PARENT_CON_ATTIVITA`) |
+| [`trgfn_billing_account_link_ef`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef) | AFTER INSERT | Collega il BA all'emittente dell'operatore corrente o, senza, al predefinito; senza nessun emittente il BA non nasce (`E_EMITTENTE_DEFAULT_MISSING`) |
 | [`trgfn_billing_account_guard_albero_emittente`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_albero_emittente) | AFTER INSERT, UPDATE OF `parent_account_id` | Padre e figli sullo stesso emittente |
 | [`trgfn_billing_account_guard_istanza_emittente`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_istanza_emittente) | AFTER INSERT | I BA di un'istanza sono di un solo emittente (`E_ISTANZA_EMITTENTI_DIVERSI`) |
-| [`trgfn_billing_account_require_istanza_ha_ba`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_require_istanza_ha_ba) | AFTER DELETE, alla conferma | L'istanza che resta ha ancora un BA (`E_ISTANZA_SENZA_BA`) |
 
 #### Sul cliente (`anagrafiche.clienti`)
 
@@ -562,7 +579,7 @@ libera il PDP alla prossima scrittura del cliente, non il giorno della cessazion
 
 ### Policy sul billing account dopo la disdetta
 
-Il billing account **non viene toccato** dalla disdetta. Resta attivo per consentire:
+Il billing account **non viene toccato** dalla disdetta, e non si cancella mai. Resta attivo per consentire:
 
 * Emissione di fatture finali
 * Conguagli e riconciliazioni

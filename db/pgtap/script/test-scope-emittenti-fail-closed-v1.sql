@@ -91,7 +91,7 @@ SELECT 'SA'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore(p_persona :
 
 -- Il super admin: un'identita' OPERATORE attiva con binding SUPER_ADMIN attivo
 -- (e' la definizione di script.fn_is_super_admin).
-DO $lega$ BEGIN PERFORM config.fn_lega_profilo_identita((SELECT pa.id FROM config.profili_accesso pa WHERE pa.codice = 'SUPER_ADMIN'), (SELECT m.identita_id FROM _mondi m WHERE m.lato = 'SA')); END $lega$;
+DO $lega$ BEGIN PERFORM config.fn_applica_lega_profilo_identita((SELECT pa.id FROM config.profili_accesso pa WHERE pa.codice = 'SUPER_ADMIN'), (SELECT m.identita_id FROM _mondi m WHERE m.lato = 'SA')); END $lega$;
 
 -- L'operatore a cui si togliera' lo scope, e il super admin.
 CREATE TEMP TABLE _t_op ON COMMIT DROP AS

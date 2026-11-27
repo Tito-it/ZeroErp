@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_billing_account_guard_albero_emittente`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -21,7 +21,7 @@
 
 `anagrafiche.trgfn_billing_account_guard_albero_emittente` fa scattare, quando un billing account nasce o
 cambia padre, il controllo che padre e figli siano della stessa azienda. Il controllo vero sta in
-`fn_guard_albero_ba_emittente`: il trigger dice solo quando.
+`anagrafiche.fn_guard_albero_ba_emittente`: il trigger dice solo quando.
 
 ---
 
@@ -32,7 +32,8 @@ il suo padre e contro tutti i suoi figli, anche quelli fuori dal perimetro di ch
 delega è privilegiata), e rifiuta un albero misto con `E_ALBERO_EMITTENTE_MISTO`.
 
 Lo stesso controllo lo chiama il trigger del collegamento all'azienda, quando l'azienda di un billing account
-cambia senza che cambi il padre.
+cambia senza che cambi il padre. Quanti livelli ha l'albero e quanti padri può avere un cliente è un'altra
+domanda, e la giudica `anagrafiche.fn_check_ba_padre` prima della scrittura.
 
 ---
 
@@ -40,11 +41,16 @@ cambia senza che cambi il padre.
 
 I controlli di casa stanno prima della scrittura; questo no, per una ragione concreta. L'azienda di un billing
 account nuovo esiste quando esiste il suo collegamento, e il collegamento lo scrive
-`trgfn_billing_account_link_ef` dopo l'inserimento, in fascia `z90`. Un controllo che girasse prima leggerebbe
+`anagrafiche.trgfn_billing_account_link_ef` dopo l'inserimento, in fascia `z90`. Un controllo che girasse prima leggerebbe
 un'azienda che non è ancora scritta; ricopiare qui la regola che la sceglie vorrebbe dire avere due regole
 destinate a divergere. A parità di momento i trigger girano per nome: `z95` viene dopo `z90`.
 
-L'identità fiscale fra padre e figlio è un'altra domanda, e la tiene `trgfn_billing_account_guard_normalize`.
+L'identità fiscale fra padre e figlio è un'altra domanda, e la tiene `anagrafiche.trgfn_billing_account_guard_normalize`.
+
+⚠️ Il controllo giudica il collegamento scritto alla nascita, cioè l'azienda di chi agisce o, senza sessione,
+la predefinita. Se poi `anagrafiche.fn_crea_billing_account`, senza sessione, modifica il collegamento verso
+un'azienda chiesta, quella modifica arriva dopo: un figlio creato così con un padre sull'azienda chiesta,
+diversa dalla predefinita, è rifiutato.
 
 ---
 
@@ -58,14 +64,16 @@ L'identità fiscale fra padre e figlio è un'altra domanda, e la tiene `trgfn_bi
 
 * `db/pgtap/anagrafiche/test-guard-albero-ba-omogeneo-v1.sql` — l'albero omogeneo passa, il padre di un'altra
   azienda è rifiutato, il controllo vede anche un figlio fuori perimetro.
-* `db/pgtap/anagrafiche/test-istanza-ba-gestore-globale-v1.sql` — l'ordine dei trigger quando si sposta
-  l'azienda predefinita.
+* `db/pgtap/anagrafiche/test-billing-account-albero-un-livello-v1.sql` — il padre di un padre, il ciclo, il
+  secondo padre dello stesso cliente sulla stessa azienda, rifiutati prima di questo controllo.
 
 ---
 
 ### Note di migrazione
 
 * 2026-08-18 — nasce, col controllo dell'albero omogeneo per azienda.
+* 2026-11-26 — il billing account nasce sempre collegato, anche senza sessione: il controllo trova sempre
+  l'azienda del collegamento.
 
 ---
 

@@ -3,8 +3,10 @@
 // cliente/fornitore. Gestisce ciclo di vita completo delle vesti
 // non-operatore:
 //   - Invia / Reinvia invito (email + branching INVITO/CROSS lato BE)
-//   - Visualizza stato (NESSUNO / PENDING / NON_SPEDITO / ATTIVO / DISATTIVO)
-//   - Disattiva (soft revoke, idempotente)
+//   - Visualizza stato (NESSUNO / PENDING / NON_SPEDITO / ATTIVO / REVOCATA /
+//     DISATTIVO)
+//   - Disattiva: la revoca, idempotente (la veste prende il segno e il link
+//     vecchio non la riapre; la riapre solo un nuovo invito)
 //
 // La sezione "Shop" e' visibile solo per clienti (`entitaTipo='cliente'`).
 // I fornitori non accedono allo shop B2C consumer.
@@ -76,6 +78,13 @@ function proponiEmail(suggerita) {
 // o con un invito in volo (spedito o no). Una regola per portale e shop.
 const STATI_DISATTIVABILI = [STATO_VESTE.ATTIVO, STATO_VESTE.PENDING, STATO_VESTE.NON_SPEDITO]
 const disattivabile = (stato) => STATI_DISATTIVABILI.includes(stato)
+
+// Scopo: Si propone «Invia invito» (e non «Reinvia») quando la veste non c'e'
+// o e' spenta senza un invito in volo: mai invitata, disattivata, o revocata
+// (il nuovo invito toglie il segno della revoca, a DB). Una regola per
+// portale e shop.
+const STATI_DA_INVITARE = [STATO_VESTE.NESSUNO, STATO_VESTE.DISATTIVO, STATO_VESTE.REVOCATA]
+const daInvitare = (stato) => STATI_DA_INVITARE.includes(stato)
 
 // ── Load stato all'apertura + dopo ogni mutazione ────────────────
 
@@ -225,9 +234,9 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
     </div>
 
     <div class="portale-accesso-actions">
-      <!-- Invia: NESSUNO / DISATTIVO. Reinvia: PENDING / NON_SPEDITO / ATTIVO. -->
+      <!-- Invia: NESSUNO / DISATTIVO / REVOCATA. Reinvia: PENDING / NON_SPEDITO / ATTIVO. -->
       <Button
-        v-if="statoPortale.stato === STATO_VESTE.NESSUNO || statoPortale.stato === STATO_VESTE.DISATTIVO"
+        v-if="daInvitare(statoPortale.stato)"
         :label="t('portale.btn_invia_invito')"
         :icon="MANAGE_ICONS.INVITA"
         :disabled="!canInvia"
@@ -298,7 +307,7 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
       </div>
       <div class="portale-accesso-actions">
         <Button
-          v-if="statoShop.stato === STATO_VESTE.NESSUNO || statoShop.stato === STATO_VESTE.DISATTIVO"
+          v-if="daInvitare(statoShop.stato)"
           :label="t('shop.btn_invia_invito')"
           :icon="MANAGE_ICONS.INVITA"
           :disabled="!canInvia"

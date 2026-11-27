@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-11-27 (brief-db-porte-aperte-dalla-sola-guc §15, giro 10-quater): gli override utente sono in sola lettura per l'app; i livelli d'area li da' dbops.fn_pgtap_concedi_livello_area, e l'override d'oggetto fuori catalogo del caso 11 passa dal verbo (dbops.fn_pgtap_scrivi_override), che lo rifiuta con la stessa FK. Attese invariate.
 --
 -- Test: il verbo del pannello di configurazione — config.fn_pannello_scrivi
 --   (20260925-33). Brief: brief-db-pannello-config-verbo-generico, sezione 3.3.
@@ -78,9 +79,7 @@ SELECT is(pg_temp.codice_di($q$ SELECT config.fn_pannello_scrivi('config.tipi_no
     '3) operatore senza livello su config: E_PERMESSO_NEGATO');
 
 -- TUTTO sull'area Configurazione, come lo concede il pannello dei permessi.
-INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)
-SELECT m.auth_user_id, af.id, 'TUTTO', 'Fixture pgTAP'
-  FROM _mondo m, config.aree_funzionali af WHERE af.schema_db = 'config';
+SELECT dbops.fn_pgtap_concedi_livello_area((SELECT auth_user_id FROM _mondo), 'config', 'TUTTO');
 
 -- ============================================================
 -- 4-5 Inserimento e modifica
@@ -137,15 +136,14 @@ SELECT is(pg_temp.codice_di($q$ SELECT config.fn_pannello_scrivi('magazzino.caus
 --   chiavi del pannello NON sono oggetti personalizzabili: valgono come la loro
 --   area. La D-4 lo rende un vincolo, e questi due test lo dichiarano.
 SELECT throws_ok(
-    format($$INSERT INTO config.user_override_oggetti (auth_user_id, app_label, model_name, livello, motivo)
-             VALUES (%s, 'magazzino', 'causali', 'TUTTO', 'Fixture pgTAP')$$,
+    format($$SELECT dbops.fn_pgtap_scrivi_override('config.user_override_oggetti', %s,
+                 '{"app_label": "magazzino", "model_name": "causali"}'::jsonb,
+                 '{"livello": "TUTTO", "motivo": "Fixture pgTAP"}'::jsonb)$$,
            (SELECT auth_user_id FROM _mondo)),
     '23503', NULL,
     '11) ⛔ (''magazzino'', ''causali'') non e'' a catalogo: nessun override per oggetto (D-4)');
 
-INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)
-SELECT m.auth_user_id, af.id, 'TUTTO', 'Fixture pgTAP'
-  FROM _mondo m, config.aree_funzionali af WHERE af.schema_db = 'magazzino';
+SELECT dbops.fn_pgtap_concedi_livello_area((SELECT auth_user_id FROM _mondo), 'magazzino', 'TUTTO');
 
 SELECT is(pg_temp.codice_di($q$ SELECT config.fn_pannello_scrivi('magazzino.causali',
                                    (SELECT id FROM magazzino.causali WHERE codice_interno = 'CARICO_ACQ'),

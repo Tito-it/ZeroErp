@@ -38,7 +38,7 @@ from django.db import connection, transaction
 
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, esegui_fixture, richiedi_db_provvisto
 from apps.vendite.db.offerte_repository import OfferteRepository
 from apps.vendite.services.contratti_service import ContrattiService
 from apps.vendite.services.offerte_service import OfferteService
@@ -141,8 +141,7 @@ class RigheErogazioneObbligatoriaDbTests(unittest.TestCase):
     def _errore(self, azione: Callable) -> ServiceError:
         try:
             with transaction.atomic(), connection.cursor() as cur:
-                for sql in _FIXTURE:
-                    cur.execute(sql)
+                esegui_fixture(cur, _FIXTURE)
                 with self.assertRaises(ServiceError) as ctx:
                     azione(cur)
                 raise Annulla
@@ -156,8 +155,7 @@ class RigheErogazioneObbligatoriaDbTests(unittest.TestCase):
     def _ereditata(self, azione: Callable, tabella: str) -> tuple:
         try:
             with transaction.atomic(), connection.cursor() as cur:
-                for sql in _FIXTURE:
-                    cur.execute(sql)
+                esegui_fixture(cur, _FIXTURE)
                 riga_id = azione(cur)
                 cur.execute(_EREDITATA.format(tabella=tabella), [riga_id])
                 esito = cur.fetchone()

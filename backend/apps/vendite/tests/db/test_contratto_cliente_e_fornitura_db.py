@@ -45,7 +45,7 @@ from django.db import connection
 from apps.core.db._helpers import row_to_dict
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_su, apri_transazione_annullata, richiedi_db_provvisto
 from apps.vendite.db._documento_eccezioni_repo import fornitura_da_anagrafica
 from apps.vendite.db.offerte_repository import OfferteRepository
 from apps.vendite.services.contratti_service import ContrattiService
@@ -66,7 +66,7 @@ class ContrattoClienteFornituraDbTests(unittest.TestCase):
             cur.execute("SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore()")
             mondo = row_to_dict(cur)
             assert mondo is not None
-            cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [mondo["auth_user_id"]])
+            apri_contesto_su(cur, mondo["auth_user_id"])
             # Una utility senza tipi d'uso: la scheda non chiede la classe.
             cur.execute(
                 """

@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.fn_segna_invito_inviato: la mail dell'invito e' partita
+# (passo 3c-1, D-3c-4).
+#
+#   Prende il posto dell'UPDATE scritto a mano nel backend
+#   (AuthRepository.set_invito_inviato_at, da InvitoVeste.spedisci): al passo
+#   3c-3 l'app perde l'UPDATE di anagrafiche.identita_digitali, e la tabella
+#   non si chiude per colonna (linee-guida-sql §11.8).
+#
+#   · Chi agisce: script.fn_utente_di_sessione; il permesso lo decide
+#     anagrafiche.fn_guard_gestione_veste per tipo di veste, come la revoca e
+#     il nuovo invito. Copre le quattro vesti che si invitano (operatore,
+#     cliente portale, fornitore portale, shop): il guard conosce gia'
+#     l'operatore (super admin). R-3c-1: in sessione c'e' sempre l'operatore
+#     che invia, anche se il backend scrive dopo il commit del token, in
+#     autocommit.
+#   · Scrive solo invito_inviato_at = now(): non tocca attivo ne' il segno.
+#     Lo legge script.fn_stato_veste (PENDING contro NON_SPEDITO).
+#   · SECURITY DEFINER, search_path fissato.
+#
+#   Nessun codice nuovo: E_SCRIPT_CHIAMATA_NON_VALIDA, E_VESTE_NON_TROVATA,
+#   E_PERMESSO_NEGATO (dal guard).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261127-03-create-fn-segna-invito-inviato-mctit.yaml
+
+  - changeSet:
+      id: 20261127-03-create-fn-segna-invito-inviato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_segna_invito_inviato: segna sulla veste che la mail dell'invito e' partita,
+        col permesso del tipo di veste. SECURITY DEFINER.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_segna_invito_inviato(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE
+              )
+               RETURNS anagrafiche.identita_digitali.invito_inviato_at%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente  anagrafiche.identita_digitali.revocata_da_user_id%TYPE;
+                  v_ruolo   anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+                  v_inviato anagrafiche.identita_digitali.invito_inviato_at%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: l'amministratore che ha spedito la mail dell'invito
+                  --   lo segna sulla veste p_identita_id (invito_inviato_at).
+                  --   Ritorna il momento scritto.
+                  -- =========================================================
+                  v_utente := script.fn_utente_di_sessione('anagrafiche.fn_segna_invito_inviato');
+
+                  IF p_identita_id IS NULL OR p_identita_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_segna_invito_inviato', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('identita_id', p_identita_id),
+                          NULL::uuid,
+                          'anagrafiche.fn_segna_invito_inviato',
+                          'veste mancante');
+                  END IF;
+
+                  SELECT idg.ruolo_applicativo
+                    INTO v_ruolo
+                    FROM anagrafiche.identita_digitali idg
+                   WHERE idg.id = p_identita_id
+                     FOR UPDATE;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_segna_invito_inviato', 'E_VESTE_NON_TROVATA',
+                          jsonb_build_object('identita_id', p_identita_id),
+                          NULL::uuid,
+                          p_identita_id::text);
+                  END IF;
+
+                  PERFORM anagrafiche.fn_guard_gestione_veste(v_utente, v_ruolo);
+
+                  UPDATE anagrafiche.identita_digitali idg
+                     SET invito_inviato_at = now()
+                   WHERE idg.id = p_identita_id
+                  RETURNING idg.invito_inviato_at INTO v_inviato;
+
+                  RETURN v_inviato;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_segna_invito_inviato(anagrafiche.identita_digitali.id%TYPE) IS
+                  'Verbo: segna sulla veste p_identita_id che la mail dell''invito e'' partita (invito_inviato_at = now()) e ritorna il momento scritto. Lo chiama chi ha spedito l''invito, dopo l''invio. Non tocca attivo ne'' il segno della revoca. Lo legge script.fn_stato_veste: un token pendente con la mail partita e'' PENDING, senza e'' NON_SPEDITO. Permesso: anagrafiche.fn_guard_gestione_veste, per tipo di veste, sull''utente della sessione (E_PERMESSO_NEGATO). Veste assente: E_VESTE_NON_TROVATA; id NULL o non positivo: E_SCRIPT_CHIAMATA_NON_VALIDA. SECURITY DEFINER, search_path fissato: l''applicazione non scrive identita_digitali direttamente.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_segna_invito_inviato(bigint);

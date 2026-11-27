@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE PRIMITIVE DELL'ACCESSO SONO RISERVATE AL PROPRIETARIO
+#   REVOKE EXECUTE FROM PUBLIC, zeroerp_app su:
+#     config.fn_applica_lega_profilo_identita, config.fn_applica_scrivi_profilo_accesso,
+#     anagrafiche.fn_applica_crea_operatore, script.fn_applica_crea_utente_tecnico,
+#     anagrafiche.fn_crea_risorsa_umana, anagrafiche.fn_crea_auth_user,
+#     anagrafiche.fn_crea_operatore_v2
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §14 (giro 10-bis; D-AC a, D-AD b, D-AE a, D-AF a di Tid, 2026-11-26).
+#
+# -- PERCHE' -------------------------------------------------------------
+#   Le primitive scrivono scope, legami, profili e operatori senza chiedere
+#   permessi: se l'app le eseguisse, il guard dei verbi si aggirerebbe
+#   chiamando loro (guida dei permessi §7.4: l'app esegue solo i verbi).
+#   fn_crea_risorsa_umana e fn_crea_auth_user sono passi interni della
+#   creazione dell'operatore, senza chiamanti di produzione nel backend.
+#   L'involucro fn_crea_operatore_v2 non ha chiamanti nel backend; il suo
+#   ritiro sta nel brief degli accessi (passo 3c).
+#
+# -- LE SEDI -------------------------------------------------------------
+#   Le TRE sedi di linee-guida-sql §11.8:
+#     1. questo forward, per dbdev;
+#     2. il loop 90_end/ci_apply/20260205-41, voci in v_fn_riservate;
+#     3. scripts/sql/provision_zeroerp.sql, blocco «LA PORTA SULLE FUNZIONI».
+#   Presidio: config/test-porta-tabelle-accesso-v1 (gira come app).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261126-25-postura-primitive-accesso-riservate-mctit.yaml
+
+  - changeSet:
+      id: 20261126-25-postura-primitive-accesso-riservate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le primitive dell'accesso (legame, profilo, operatore, utente tecnico) e i passi interni della creazione dell'operatore riservati al proprietario: EXECUTE revocato a PUBLIC e all'app. brief-db-porte-aperte-dalla-sola-guc §14.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "7"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('config', 'fn_applica_lega_profilo_identita'), ('config', 'fn_applica_scrivi_profilo_accesso'), ('anagrafiche', 'fn_applica_crea_operatore'), ('script', 'fn_applica_crea_utente_tecnico'), ('anagrafiche', 'fn_crea_risorsa_umana'), ('anagrafiche', 'fn_crea_auth_user'), ('anagrafiche', 'fn_crea_operatore_v2'))
+                 AND p.prokind = 'f';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              DECLARE
+                  v_firma text;  -- una firma da format(): nessuna colonna
+              BEGIN
+                  FOR v_firma IN
+                      SELECT format('%I.%I(%s)', n.nspname, p.proname, pg_get_function_identity_arguments(p.oid))
+                        FROM pg_proc p
+                        JOIN pg_namespace n ON n.oid = p.pronamespace
+                       WHERE (n.nspname, p.proname) IN (
+                         ('config', 'fn_applica_lega_profilo_identita'),
+                         ('config', 'fn_applica_scrivi_profilo_accesso'),
+                         ('anagrafiche', 'fn_applica_crea_operatore'),
+                         ('script', 'fn_applica_crea_utente_tecnico'),
+                         ('anagrafiche', 'fn_crea_risorsa_umana'),
+                         ('anagrafiche', 'fn_crea_auth_user'),
+                         ('anagrafiche', 'fn_crea_operatore_v2'))
+                         AND p.prokind = 'f'
+                  LOOP
+                      EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC', v_firma);
+                      IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                          EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM zeroerp_app', v_firma);
+                      END IF;
+                  END LOOP;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Riapre le funzioni all'app e a PUBLIC. Senza togliere le voci dal loop
+              -- 20260205-41 e dal provisioning, la passata ci_apply successiva le richiude.
+              DO $riapri$
+              DECLARE
+                  v_firma text;  -- una firma da format(): nessuna colonna
+              BEGIN
+                  FOR v_firma IN
+                      SELECT format('%I.%I(%s)', n.nspname, p.proname, pg_get_function_identity_arguments(p.oid))
+                        FROM pg_proc p
+                        JOIN pg_namespace n ON n.oid = p.pronamespace
+                       WHERE (n.nspname, p.proname) IN (
+                         ('config', 'fn_applica_lega_profilo_identita'),
+                         ('config', 'fn_applica_scrivi_profilo_accesso'),
+                         ('anagrafiche', 'fn_applica_crea_operatore'),
+                         ('script', 'fn_applica_crea_utente_tecnico'),
+                         ('anagrafiche', 'fn_crea_risorsa_umana'),
+                         ('anagrafiche', 'fn_crea_auth_user'),
+                         ('anagrafiche', 'fn_crea_operatore_v2'))
+                         AND p.prokind = 'f'
+                  LOOP
+                      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO PUBLIC', v_firma);
+                  END LOOP;
+              END
+              $riapri$;

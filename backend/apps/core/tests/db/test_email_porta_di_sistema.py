@@ -47,7 +47,7 @@ from django.db import connection, transaction
 
 from apps.core.db.email_repository import EmailRepository
 from apps.core.services.email_constants import AMBITO_OPERATORE, AMBITO_SISTEMA
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_su, richiedi_db_provvisto
 
 _INVIATO_AT = "2026-09-06T10:00:00+02:00"
 
@@ -176,10 +176,8 @@ class EmailPortaDiSistemaTests(TestCase):
             "CREATE TEMP TABLE _mondo AS "
             "SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m"
         )
-        cur.execute(
-            "SELECT script.fn_pgtap_set_contesto_operatore("
-            "(SELECT auth_user_id FROM _mondo))"
-        )
+        cur.execute("SELECT auth_user_id FROM _mondo")
+        apri_contesto_su(cur, int(cur.fetchone()[0]))
         spento = self.repo.create_account(
             codice="R5RILANCIO", descrizione="Account spento del test R5",
             smtp_host="smtp.invalid", smtp_port=587,

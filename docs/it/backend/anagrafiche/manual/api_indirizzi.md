@@ -110,7 +110,8 @@ Restituisce il dettaglio dell'indirizzo creato, con gli stessi campi del §3.
 
 | Codice | HTTP | Causa |
 | --- | --- | --- |
-| `E_ANAG_VALIDAZIONE` | 400 | `stradario_id` non positivo; via nuova senza tipo strada, nome via, comune o CAP |
+| `E_ANAG_VALIDAZIONE` | 400 | `stradario_id`, `toponomastica_id`, `comune_id` o `codice_postale_id` presente e non intero positivo |
+| `E_INDIRIZZO_VIA_NUOVA_INCOMPLETA` | 400 | Via nuova senza tipo strada, nome via, comune o CAP: la rifiuta `anagrafiche.fn_create_indirizzo`, `error.fields` = il campo che manca (dal 2026-11-26 il service non la anticipa più) |
 
 ### Esempio curl
 

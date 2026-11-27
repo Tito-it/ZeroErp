@@ -1,6 +1,6 @@
 # Guida — Contratto GUC `app.*`
 
-> **Ultimo aggiornamento**: 23 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > **Destinatari**: backend Django (authentication class, middleware), autori di funzioni DB e policy RLS
 >
@@ -16,6 +16,7 @@
 > * [Architettura Permessi e Autorizzazioni §6.4](/guide/architettura-permessi-e-autorizzazioni#64-propagazione-identita-al-db-jwt-guc) — la propagazione dell'identità al DB
 > * [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth) — le identità digitali, le vesti e il claim `identita_id`
 > * [Risorse umane e accessi](/guide/risorse-umane-e-accessi) — la sync di `auth_user.is_active`
+> * [Architettura Permessi e Autorizzazioni §7.4, «Le porte»](/guide/architettura-permessi-e-autorizzazioni#le-porte) — le GUC delle porte dei guard (di solito `zeroerp.*`; in `app.*` la registrazione tardiva, nota qui sopra), un'altra cosa: non dicono **chi** è l'utente ma **quale operazione su quale riga** passa un blocco, e valgono solo insieme al proprietario della tabella
 
 ---
 

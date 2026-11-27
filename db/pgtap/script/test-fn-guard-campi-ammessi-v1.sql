@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-11-27 (brief-db-porte-aperte-dalla-sola-guc §15, giro 10-quater): il corpo di config.fn_imposta_override_oggetti passa alla primitiva config.fn_applica_imposta_override, che il caso 11 legge al suo posto. Attese invariate.
 --
 -- script.fn_guard_campi_ammessi (20261123-01): la regola delle porte di
 -- scrittura che ricevono i campi in jsonb, e le porte che la usano al posto
@@ -177,7 +178,9 @@ SELECT is(
                 'anagrafiche.fn_crea_emittente_fiscale', 'anagrafiche.fn_crea_fornitore',
                 'anagrafiche.fn_crea_cliente', 'anagrafiche.fn_crea_billing_account',
                 'anagrafiche.fn_crea_contatto', 'anagrafiche.fn_indirizzo_elemento',
-                'config.fn_scrivi_profilo_accesso', 'config.fn_imposta_override_oggetti']) AS f
+                -- dal giro 10-bis il corpo del verbo del profilo sta nella primitiva, dal
+                -- 10-quater quello dei verbi degli override (aree, azioni, oggetti)
+                'config.fn_applica_scrivi_profilo_accesso', 'config.fn_applica_imposta_override']) AS f
       WHERE pg_temp.corpo(f::regproc::regprocedure) !~ 'script\.fn_guard_campi_ammessi\('),
     NULL,
     '11. le quindici porte chiamano il guard (nessuna lo salta)');

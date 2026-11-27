@@ -1,6 +1,6 @@
 # Guida — Soggetti e Ruoli Anagrafici
 
-> **Ultimo aggiornamento**: 26 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -14,6 +14,7 @@
 > * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — la specializzazione del ruolo CLIENTE, una per billing account
 > * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali) — la specializzazione del ruolo EMITTENTE FISCALE
 > * [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — il legame fra un billing account e il suo emittente
+> * [anagrafiche.fornitori](/dbzero/anagrafiche/tabelle/fornitori), [anagrafiche.vettori](/dbzero/anagrafiche/tabelle/vettori), [anagrafiche.gestori](/dbzero/anagrafiche/tabelle/gestori), [anagrafiche.psp](/dbzero/anagrafiche/tabelle/psp), [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane) — le altre specializzazioni, col ruolo che non si sposta
 > * [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari) — i conti legati al soggetto
 > * [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari) — i conti legati al ruolo
 > * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti) — i contatti del soggetto, col ruolo come contesto
@@ -298,6 +299,15 @@ Venditore (`VE`), Distributore (`DI`) e Processo automatico (`PROC_AUTO`) non ha
 specializzazione. Ogni specializzazione controlla che il ruolo a cui si aggancia sia del tipo
 giusto.
 
+**Il ruolo di una specializzazione non si sposta.** Cliente, emittente, fornitore, vettore, gestore,
+PSP e risorsa umana appartengono per sempre al ruolo, e quindi al soggetto, su cui sono nati: un
+fornitore creato sul soggetto sbagliato si spegne e se ne crea uno sul soggetto giusto. Spostarlo
+porterebbe sotto un altro soggetto la sua storia (bolle, canali d'incasso, ordini). Il cliente e
+l'emittente hanno il loro messaggio, le altre cinque uno comune.
+
+**Dove un documento nomina un ruolo, nomina la specializzazione quando conta il tipo.** Il vettore
+di una bolla è un vettore vero, non un ruolo qualunque: la bolla punta ad `anagrafiche.vettori`.
+
 ⚠️ **Il cliente è l'eccezione da ricordare.** Un cliente non è «la persona come cliente», ma
 **una sua fornitura**: un soggetto con un solo ruolo CLIENTE può avere il gas a casa e la luce
 in ufficio, cioè due billing account e due clienti, tutti sullo stesso ruolo. La regola è **un
@@ -380,10 +390,12 @@ i guard (nessuna identità operatore, super admin, lista degli emittenti) stanno
 L'emittente fiscale **non è un attributo del soggetto**. Non c'è su `soggetti`, né su
 `soggetti_ruoli`, né su `clienti`, né su `billing_account`, né su `istanze_utilities`.
 
-Chi porta l'emittente è il **billing account**: ne ha esattamente uno, il collegamento in
-[anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account)
-o, in sua assenza, quello che la regola di riserva gli attribuisce. Come si risolve, e quando
-un billing account non può cambiare emittente, lo spiega
+Chi porta l'emittente è il **billing account**: ne ha esattamente uno, sempre, il collegamento in
+[anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account).
+Il collegamento nasce col billing account, con l'emittente di chi lo crea o, senza, con
+l'emittente predefinito dell'installazione; l'emittente predefinito decide solo i billing account
+che nasceranno, e spostarlo non cambia l'emittente di nessun cliente. Come nasce il collegamento,
+e quando un billing account non può cambiare emittente, lo spiega
 [Generazione di un Cliente](/guide/generazione-cliente).
 
 Il soggetto tocca un emittente solo **attraverso qualcosa**: i suoi billing account, oppure un

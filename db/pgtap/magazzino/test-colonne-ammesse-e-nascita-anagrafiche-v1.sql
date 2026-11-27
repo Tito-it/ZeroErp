@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-11-27 (brief-db-porte-aperte-dalla-sola-guc §15, giro 10-quater): gli override utente sono in sola lettura per l'app; il livello d'area lo da' dbops.fn_pgtap_concedi_livello_area. Attese invariate.
 --
 -- Le colonne ammesse delle anagrafiche di magazzino e i BB di nascita che le
 -- leggono:
@@ -52,10 +53,7 @@ SELECT plan(22);
 
 CREATE TEMP TABLE t_op AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM t_op)); END $ctx$;
-INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)
-SELECT o.auth_user_id, af.id, 'TUTTO', 'pgTAP: nascita delle anagrafiche dai verbi'
-  FROM t_op o, config.aree_funzionali af
- WHERE af.schema_db = 'magazzino';
+SELECT dbops.fn_pgtap_concedi_livello_area((SELECT auth_user_id FROM t_op), 'magazzino', 'TUTTO');
 
 
 CREATE OR REPLACE FUNCTION pg_temp.corpo(p regprocedure) RETURNS text

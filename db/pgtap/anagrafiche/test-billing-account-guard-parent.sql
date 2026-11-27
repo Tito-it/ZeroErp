@@ -348,29 +348,10 @@ BEGIN
         )
     );
 
-    -- ⚠️ Prima il legame con l'emittente, poi il BA. Ogni billing account viene
-    --   agganciato a un emittente fiscale da
-    --   `trg_billing_account_z90_link_ef_ins`, e dal 2026-08-19 quel legame ha
-    --   una FK verso il BA (`fk_emittenti_fiscali_billing_account_ba`,
-    --   changeSet 20260819-04): senza questa DELETE la cancellazione del BA
-    --   viola la chiave esterna e il file muore prima di finish().
-    DELETE FROM anagrafiche.emittenti_fiscali_billing_account efba
-    WHERE efba.billing_account_id IN (
-        SELECT ba.id FROM anagrafiche.billing_account ba
-        WHERE ba.istanza_utility_id IN (
-            SELECT iu.id FROM anagrafiche.istanze_utilities iu
-            WHERE iu.codice LIKE 'TST-GUARD-PARENT-%'
-        )
-    );
-
-    DELETE FROM anagrafiche.billing_account ba
-    WHERE ba.istanza_utility_id IN (
-        SELECT iu.id FROM anagrafiche.istanze_utilities iu
-        WHERE iu.codice LIKE 'TST-GUARD-PARENT-%'
-    );
-
-    DELETE FROM anagrafiche.istanze_utilities iu
-    WHERE iu.codice LIKE 'TST-GUARD-PARENT-%';
+    -- ⭐ rev 2026-11-26 (brief-db-revisione-anagrafiche §24.7.1, 20261126-30,
+    --   -40): il billing account non si cancella (il cliente si annulla) e il
+    --   suo collegamento all'azienda nemmeno. BA, collegamenti e istanze della
+    --   fixture non si cancellano piu' qui: li toglie il ROLLBACK del file.
 
     SET CONSTRAINTS ALL IMMEDIATE;
 END;

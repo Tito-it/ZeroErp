@@ -27,7 +27,7 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import row_to_dict
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_su, apri_transazione_annullata, richiedi_db_provvisto
 from apps.vendite.services.contratti_service import ContrattiService
 
 
@@ -48,9 +48,7 @@ class ContrattiListaScadenzaMeseDbTests(unittest.TestCase):
             mondo = row_to_dict(cur)
             assert mondo is not None
             self.mondo: dict[str, Any] = mondo
-            cur.execute(
-                "SELECT script.fn_pgtap_set_contesto_operatore(%s)", [mondo["auth_user_id"]],
-            )
+            apri_contesto_su(cur, mondo["auth_user_id"])
             cur.execute("SELECT script.fn_data_operativa()")
             self.oggi: date = cur.fetchone()[0]
         self.servizio = ContrattiService()

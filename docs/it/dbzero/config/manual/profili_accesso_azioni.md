@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.profili_accesso_azioni`
 
+> **Ultimo aggiornamento**: 26 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Architettura di riferimento:
@@ -23,6 +25,15 @@ La tabella **`config.profili_accesso_azioni`** contiene il dettaglio delle
 Il padre e' `profili_accesso`, generalizzato a tre tipi di profilo
 (REPARTO / PORTALE / AD_HOC), legato all'utente tramite
 `profili_accesso_bindings`.
+
+---
+
+### ⛔ Chi la scrive
+
+Per l'applicazione la tabella è in **sola lettura**: le azioni sono ciò che un profilo concede: una riga in più è un permesso in più per chi ha il profilo. La postura sta nelle tre sedi del loop dei grant
+(linee guida SQL §11.8, `v_tabelle_sola_lettura_app`). La scrivono i verbi del SUPER_ADMIN, che lo chiedono nella
+prima riga: [`config.fn_scrivi_profilo_accesso`](/dbzero/config/funzioni/fn_scrivi_profilo_accesso), che scrive il profilo con le sue aree e azioni. Fuori dai verbi la scrivono il seed, il provisioning di sviluppo e le fixture dei pgTAP.
+Guida: [Architettura permessi e autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) §4.5.
 
 ---
 

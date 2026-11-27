@@ -1,0 +1,50 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL COMMENT DEL LETTORE «DI QUALE AZIENDA E' UN BILLING ACCOUNT», AL PRESENTE
+#   script.fn_get_ba_emittente_sr_id(bigint)                   (solo COMMENT)
+#   Brief: brief-db-revisione-anagrafiche §25 (guide verificate), §25.9 (D-T8b-1)
+#
+#   Il COMMENT diceva che un billing account puo' RESTARE senza collegamento
+#   («creato senza sessione»): dal giro 6 il collegamento nasce sempre col
+#   billing account (anagrafiche.trgfn_billing_account_link_ef, la predefinita
+#   senza sessione) e non si toglie. Il 20261126-41 ha riscritto la lettura per
+#   l'installazione e non questa. Portava anche la storia (revisioni, changeSet,
+#   sigle di decisione), che il COMMENT non porta (linee-guida-sql §5d).
+#   Il corpo non cambia. Nessuna fase tardiva scrive questo COMMENT.
+#   Il COMMENT dice anche il nuovo dei due involucri (20261126-84, -85): un id
+#   che non e' un billing account lo rifiutano loro, non il lettore, che le
+#   policy del billing account chiamano e non deve sollevare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261126-86-update-comment-fn-get-ba-emittente-sr-id-mctit.yaml
+
+  - changeSet:
+      id: 20261126-86-update-comment-fn-get-ba-emittente-sr-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT al presente di script.fn_get_ba_emittente_sr_id: il billing
+        account ha sempre il suo collegamento. brief-db-revisione-anagrafiche §25.9.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_get_ba_emittente_sr_id(anagrafiche.billing_account.id%TYPE) IS
+                'L''azienda (soggetto_ruolo_id dell''emittente) che fattura un billing account, per chi agisce; NULL se non e'' risolvibile. Tre livelli: 1) il collegamento del billing account in anagrafiche.emittenti_fiscali_billing_account (al massimo uno, uq_emittenti_fiscali_ba), che vince sempre; 2) in sessione, l''azienda di chi agisce, script.fn_resolve_emittente_for_user, la stessa con cui anagrafiche.trgfn_billing_account_link_ef scrive il collegamento; 3) senza sessione, l''azienda predefinita (is_default, al massimo una). Ogni billing account nasce collegato e il collegamento non si toglie: i livelli 2 e 3 rispondono nell''istante della nascita, fra l''INSERT e il trigger AFTER che scrive il collegamento (il RETURNING, che la policy del billing account giudica con questa funzione), e a un id che non e'' un billing account. Non solleva, perche'' la chiamano le policy ef_whitelist del billing account: un id sbagliato lo rifiutano gli involucri per chi scrive, anagrafiche.fn_get_emittente_fiscale_id e anagrafiche.fn_get_emittente_fiscale_pk (E_BILLING_ACCOUNT_NOT_FOUND). Input NULL: NULL, perche'' «nessun billing account» non e'' un billing account da collegare. Non risale l''albero dei billing account: l''omogeneita'' di padre e figli la tiene anagrafiche.fn_guard_albero_ba_emittente. Non applica il perimetro: dice chi fattura, non chi puo'' vedere. La risposta che non guarda chi agisce e'' script.fn_get_ba_emittente_sr_id_installazione. STABLE e non PARALLEL SAFE, perche'' la delegata del livello 2 non lo e''; COST 5000, perche'' legge tabelle ed e'' nominata dalle policy.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: solo un COMMENT.
+              SELECT 1;

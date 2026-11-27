@@ -23,7 +23,9 @@
 -- 7) ⭐ Sigla in MINUSCOLO: non respinta — alzata a maiuscolo
 -- 8) ⭐ Il catalogo vivo e' conforme, e non e' vuoto
 -- 9) ⛔ Sigla di dieci caratteri con una ß: in maiuscolo e' di undici, e la
---    respinge la FRASE del guard, non il 22001 di varchar(10) (20261104-34)
+--    respinge la FRASE del guard, non il CHECK di tabella (20261104-34;
+--    ragione riletta il 2026-11-27, brief-db-revisione-anagrafiche §25.9:
+--    la colonna e' varchar(32), non varchar(10))
 --
 -- Scopo:
 --   Dal 2026-08-31 la sigla dell'emittente sta DENTRO il codice commessa —
@@ -145,7 +147,9 @@ SELECT throws_ok(
 
 -- ⛔ 9) La forma si giudica sul valore normalizzato, PRIMA di assegnarlo:
 --   'straßeabc1' e' di dieci caratteri e diventa 'STRASSEABC1', undici.
---   Assegnato prima, varchar(10) avrebbe risposto 22001 senza frase.
+--   Assegnato prima, avrebbe parlato chk_emittenti_fiscali_codice_forma
+--   (23514), senza frase; e una sigla che in maiuscolo supera la colonna
+--   (varchar(32): 32 ß diventano 64 caratteri) avrebbe risposto 22001.
 PREPARE ecf_lunga_in_maiuscolo AS
 INSERT INTO anagrafiche.emittenti_fiscali (soggetto_ruolo_id, codice)
 SELECT r.soggetto_ruolo_id, 'straßeabc1' FROM tmp_ecf_ruoli r WHERE r.n = 1;

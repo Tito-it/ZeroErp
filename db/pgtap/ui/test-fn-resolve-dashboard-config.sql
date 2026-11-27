@@ -198,7 +198,7 @@ SELECT id AS profilo_id FROM ins;
 
 DO $lega$
 BEGIN
-    PERFORM config.fn_lega_profilo_identita((SELECT profilo_id FROM _t_profilo), (SELECT identita_id FROM _t_id));
+    PERFORM config.fn_applica_lega_profilo_identita((SELECT profilo_id FROM _t_profilo), (SELECT identita_id FROM _t_id));
 END
 $lega$;
 

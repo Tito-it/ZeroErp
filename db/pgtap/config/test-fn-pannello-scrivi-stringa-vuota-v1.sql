@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-11-27 (brief-db-porte-aperte-dalla-sola-guc §15, giro 10-quater): gli override utente sono in sola lettura per l'app; il livello d'area lo da' dbops.fn_pgtap_concedi_livello_area. Attese invariate.
 --
 -- Test: il verbo del pannello scrive l'assenza come NULL —
 --   config.fn_pannello_scrivi, passo 2-bis (20_code/config/20261112-57).
@@ -40,9 +41,7 @@ CREATE TEMP TABLE _mondo AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operator
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo)); END $ctx$;
 
 -- TUTTO sull'area Configurazione, come lo concede il pannello dei permessi.
-INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)
-SELECT m.auth_user_id, af.id, 'TUTTO', 'Fixture pgTAP'
-  FROM _mondo m, config.aree_funzionali af WHERE af.schema_db = 'config';
+SELECT dbops.fn_pgtap_concedi_livello_area((SELECT auth_user_id FROM _mondo), 'config', 'TUTTO');
 
 -- Il codice di un rifiuto (fn_log_and_raise_error lo mette in CONSTRAINT_NAME).
 CREATE FUNCTION pg_temp.codice_di(p_sql text) RETURNS text AS $$

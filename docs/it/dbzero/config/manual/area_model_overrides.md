@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.area_model_overrides`
 
+> **Ultimo aggiornamento**: 27 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Architettura di riferimento:
@@ -50,6 +52,9 @@ Conseguenze da sapere prima di toccare il catalogo:
 ### Dove si cambia
 
 Nel CSV `db/changelog/migrations_v2/80_data/sql/config/area_model_overrides.csv`,
-chiave naturale `(app_label, model_name)`. Il mirror non cancella: una riga tolta
+chiave naturale `(app_label, model_name)`, e solo lì: per l'applicazione la tabella è in sola
+lettura. Spostare un oggetto in un'area dove un operatore ha `TUTTO`, o togliere il riservato a
+una tabella del kernel, cambierebbe i permessi di tutti (brief-db-porte-aperte-dalla-sola-guc,
+giro 10-quater, 2026-11-27). Il mirror non cancella: una riga tolta
 dal CSV esce con un `DELETE` a parte, come è stato per `billing_account`
 (brief `brief-db-be-fe-catalogo-oggetti-permessi`, D-5).

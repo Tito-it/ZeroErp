@@ -21,7 +21,7 @@ Indice test eseguiti:
  6) ParameterOverrideViewTests.test_upsert_override_success
  7) ParameterOverrideDeleteViewTests.test_delete_override_success
  8) ParameterOverrideDeleteViewTests.test_delete_override_not_found
- 9) ParameterSettingsViewTests.test_list_settings_ba_non_risulta_404 — BA inesistente o fuori scope → E_ANAG_NOT_FOUND (F-6)
+ 9) ParameterSettingsViewTests.test_list_settings_ba_non_risulta_404 — BA inesistente o fuori scope → E_BILLING_ACCOUNT_NOT_FOUND (F-6)
 10) ParameterSettingsViewTests.test_list_settings_ba_zero_400 — billing_account_id <= 0 → ValueError (400 E_VALIDATION_INPUT)
 11) ParameterOverrideEmittenteTests — override per emittente sull'emittente scelto; in «tutti» 400 E_EMITTENTE_NON_RISOLTO (POST e DELETE); defaults in «tutti» senza livello emittente (E1-1)
 """
@@ -275,7 +275,7 @@ class ParameterSettingsViewTests(_ConEmittenteDiChiAgisce):
 
     # Scopo: F-6 — BA che non risulta (inesistente, o fuori scope: la RLS di
     #        anagrafiche.billing_account non lo restituisce) → 404
-    #        E_ANAG_NOT_FOUND. Prima la categoria restava NULL in silenzio.
+    #        E_BILLING_ACCOUNT_NOT_FOUND. Prima la categoria restava NULL in silenzio.
     @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
     @patch(SVC_PATH)
     def test_list_settings_ba_non_risulta_404(self, mock_svc_cls, mock_ba_repo_cls):
@@ -290,7 +290,7 @@ class ParameterSettingsViewTests(_ConEmittenteDiChiAgisce):
         request = _make_request(user_id=1, query_params={"billing_account_id": "777"})
         with self.assertRaises(ServiceError) as ctx:
             view.get(request)
-        self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
+        self.assertEqual(ctx.exception.code, "E_BILLING_ACCOUNT_NOT_FOUND")
         mock_svc.list_parameters_for_user.assert_not_called()
 
     # Scopo: billing_account_id <= 0 → ValueError (400 E_VALIDATION_INPUT),

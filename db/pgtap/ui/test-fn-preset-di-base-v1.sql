@@ -105,7 +105,7 @@ WITH ins AS (
 SELECT id AS profilo_id FROM ins;
 
 DO $lega$ BEGIN
-  PERFORM config.fn_lega_profilo_identita((SELECT profilo_id FROM _prof), (SELECT identita_id FROM _u));
+  PERFORM config.fn_applica_lega_profilo_identita((SELECT profilo_id FROM _prof), (SELECT identita_id FROM _u));
 END $lega$;
 
 -- Un preset per posto sulla lista: sistema con una colonna attiva, azienda

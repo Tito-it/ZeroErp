@@ -88,13 +88,14 @@ CREATE TEMP TABLE _registro_funzioni (funzione text PRIMARY KEY) ON COMMIT DROP;
 INSERT INTO _registro_funzioni VALUES
     ('anagrafiche.fn_check_cambio_natura_soggetto'),  -- p_cliente_pa, p_split_payment (20261114-66)
     ('anagrafiche.fn_crea_operatore'),         -- p_sesso
-    ('anagrafiche.fn_crea_operatore_v2'),      -- p_sesso (l'involucro del nome storico)
+    ('anagrafiche.fn_applica_crea_operatore'), -- p_sesso (la primitiva del verbo, giro 10-bis)
     ('anagrafiche.fn_crea_primo_amministratore'),  -- p_sesso (20261125-32)
     ('anagrafiche.fn_crea_soggetto_pf'),       -- p_sesso, p_stato_iso2
     ('anagrafiche.fn_crea_soggetto_pg'),       -- p_stato_iso2
     ('anagrafiche.fn_regime_pa_campo_non_ammesso'),   -- p_cliente_pa, p_split_payment (20261114-61)
     ('dbops.fn_admin_merge_comune'),           -- p_event_type
     ('dbops.fn_admin_merge_stradario'),        -- p_event_type
+    ('dbops.fn_pgtap_fixture_crea_operatore'), -- p_sesso (la fixture, con la firma del verbo, giro 10-bis)
     ('script.fn_esigibilita_iva'),             -- p_cliente_split_payment, esigibilita
     ('script.fn_esigibilita_iva_documento'),   -- esigibilita
     ('script.fn_get_indirizzi_by_ruolo'),      -- stato_iso2

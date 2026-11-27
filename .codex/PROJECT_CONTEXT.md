@@ -3,7 +3,7 @@
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
 >
-> Ultima revisione: 2026-11-25.
+> Ultima revisione: 2026-11-27.
 
 ## Identità del Progetto
 
@@ -32,7 +32,7 @@
 |---|---|---|
 | Python | da `.python-version` | Fonte unica di verità per la versione |
 | Django | da `backend/requirements.in` | DRF, SimpleJWT, drf-spectacular; versioni esatte nel lock `requirements.txt` |
-| PostgreSQL | 18 (CI) | PostGIS 3.6, pgTAP, pgAgent |
+| PostgreSQL | dall'immagine `postgres:` di `.github/workflows/ci-validate.yaml` | PostGIS, pgTAP, pgAgent; ⛔ la versione non si ricopia qui |
 | Liquibase | 5 Community | Migrazioni YAML in `db/changelog/migrations_v2/` |
 | Frontend Vue | da `frontend/package.json` | **Fonte unica di verità per le versioni** (Vue, Vite, PrimeVue, Pinia, Vue Router, vue-i18n, Axios; Node in `engines.node`): ⛔ non ricopiarle qui. Standard: `docs/it/dev/frontend/frontend-standards.md` + catalogo BB FE |
 
@@ -237,17 +237,12 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
-- 📝 **Le strade per cui l'app scrive senza il verbo: le porte della sola GUC e le viste aggiornabili** (`work-in-progress/brief-db-porte-aperte-dalla-sola-guc.md`; le viste dal 2026-11-23, D-V decisa: l'app solo `SELECT` sulle viste; una richiesta unica al BE per le due famiglie, §4.1: sulle viste il BE risponde «nessuno» il 2026-11-23, il giro delle viste non aspetta più il BE; sulle GUC il DB ha letto il ramo BE, §4.2: il BE non accende nessuna porta da sé; D-A, D-C e D-D decise; dalla verifica critica del 2026-11-23, §3-ter, anche D-E e D-F: tutte le decisioni prese; giro 1, le porte di manutenzione 14 e 15, con `20261123-43` … `-45`, applicato e verde il 2026-11-24; giro 1-bis il 2026-11-24, la fusione dei comuni riservata con `20261123-46`, applicato e verde; D-H a, in `maintenance` un presidio a criterio sulle DEFINER aperte all'app, §6.5; giro 3, le viste in sola lettura per l'app, `20261123-47` e la fase post del provisioning, applicato e verde il 2026-11-24, §7; giro 12-13 (i legami della bolla, pgTAP e guida) verde il 2026-11-24, §8; la richiesta al BE del passo 3d scritta il 2026-11-24, §4.4, da girare; poi le porte del flusso):
-  diciassette porte di trigger (analisi critica del 2026-11-23), in vendite, pagamenti, config, documenti, anagrafiche e dbops, si aprono con una GUC che l'app può
-  accendere da sé, senza chiedere il proprietario (la D-V1 del 2026-09-25). In corso: decise D-A … D-H (le porte del flusso al verbo DEFINER, quelle di manutenzione al
-  proprietario); fatti i giri 1, 1-bis, 3, 12-13 e 16; giro 10 (lo scope emittenti: il verbo DEFINER col guard del SUPER_ADMIN, la porta sulla riga, `20261124-01` … `-06`) applicato e verde il 2026-11-25, al BE la sua richiesta; giro 9 (la registrazione tardiva: il verbo DEFINER col perimetro all'ingresso, il guard di scope del movimento dopo il mirror, `20261124-07` … `-09`) applicato e verde il 2026-11-25, al BE la sua richiesta; giro 11 (la bolla di riconsegna: il verbo DEFINER col livello su `vendite.reso`, il perimetro del reso, la porta col proprietario, `20261124-10`, `-11`, col blocco `EXCEPTION` ridondante tolto dal verbo del giro 9, `-12`) applicato e verde il 2026-11-25, al BE la sua richiesta; il giro 8 + 1-7 (il fondo fattura e il reset del lotto: la primitiva del fondo e i quattro verbi del reset DEFINER col permesso dell'endpoint e il perimetro su lotto e fatture, la porta del reset col proprietario e viva solo nella pulizia, D-T … D-Z decise, `20261125-01` … `-22`, `-26`) applicato e verde il 2026-11-25, da committare, al BE la sua richiesta: con lui sono chiusi lato DB tutti i giri delle porte del flusso; R-DB-K1 con R-DB-K4 (il verbo di primo impianto `fn_crea_primo_amministratore`, D-K7 b; i due seed di `tid` tolti, D-K8 a2; `20261125-30` … `-32`) applicati e verdi il 2026-11-25, al BE la sua richiesta (§4.9.7); il 2026-11-25 il BE ha evaso tutte le richieste (3j, 3k-bis, 3n, 6a … 6e: comando `crea_primo_amministratore`, runner, test, censimenti, manuali; da committare); resta il giro 10-bis (la tabella dello scope in sola lettura) nel piano, che parte dal censimento del BE: nessuno scrive la tabella senza il verbo. Nasce dalla chiusura di `work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`
-  (2026-11-23: tutte le tabelle di `magazzino` in sola lettura per l'app; la R-4 del BE resta parte dello
-  sviluppo del catalogo).
-- **Accessi: una credenziale, più vesti** (`work-in-progress/brief-be-accessi-credenziale-e-vesti.md`; il piano
-  da cui nasce, `work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md`, è archiviato dal 2026-11-25 dopo la
-  riverifica sul codice): restano R-4 (la veste revocata: D-4, A-6), che aspetta il brief DB sugli accessi deciso
-  il 2026-11-23 (T9 di `brief-db-revisione-anagrafiche`, con S64 e S67) e non ancora scritto, e il collaudo a video
-  di D-5. ✅ L-6 (date della veste) fatto il 2026-10-07,
+- 📝 **Lo schema `storico` scrivibile dall'app** (`work-in-progress/brief-db-storico-scrivibile-dall-app.md`, aperto, non iniziato, 2026-11-27): il tema che D-AL **a** ha tenuto fuori dal giro 10-quater di `work-done/2026/brief-db-porte-aperte-dalla-sola-guc.md` (le porte della sola GUC e le viste aggiornabili, chiuso e archiviato il 2026-11-27). Parte quando Tid lo mette in coda.
+- **Accessi: una credenziale, più vesti** (`work-done/2026/brief-be-accessi-credenziale-e-vesti.md`, archiviato il
+  2026-11-27; il piano da cui nasce, `work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md`, dal 2026-11-25):
+  ✅ R-4 (la veste revocata: D-4, A-6) fatto lato DB e BE il 2026-11-26 nel `brief-db-accessi-area-clienti`, e il
+  3c (il verbo dell'invito spedito, `REVOCATA` nel filtro, il contesto dei test per la sola transazione) il
+  2026-11-27. ⚠️ Resta il collaudo a video di D-5: `work-in-progress/collaudo-in-app-accessi-sessioni-per-veste.md`. ✅ L-6 (date della veste) fatto il 2026-10-07,
   DB e BE/FE (`work-done/2026/brief-db-veste-utilizzabile.md`; giro 3 chiuso: «Valido al» del drawer operatore
   modificabile, spento col motivo per l'ultimo SUPER_ADMIN senza data di fine, `null` toglie la data): la regola «veste
   utilizzabile» sta in un BB a DB (`script.fn_veste_utilizzabile`), letto da tutte le sedi DB e dai
@@ -256,7 +251,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   l'email, il reset accetta nome utente o email. Chiuso il 2026-10-03
   `work-done/2026/brief-db-credenziale-verbi-amministratore.md` (motivo del blocco dal DB, verbi
   dell'amministratore che rifiutano le credenziali di sistema).
-- 📝 **L'area clienti: una porta sola, l'iscrizione da sé, il documento scelto all'ordine** (`work-in-progress/analisi-modello-area-clienti.md`, Tid 2026-11-25): portale e shop non sono più due porte; la visibilità la decide il soggetto, non il canale; privati e partite IVA si iscrivono da sé con la conferma dell'email; l'email resta la chiave, protegge il secondo fattore. Revoca le decisioni 1, 3, 4 del 2026-04-20 (`work-done/2026/pr-b-shop-b2c-cambio-modello.md`). D-M4, D-M5 (aziende), D-M7, D-M8 decise il 2026-11-25; aperta D-M9 (l'accesso dei privati: secondo fattore o provider, con `piano-autenticazione-provider-esterni-oauth`). Poi **un brief DB unico**, `work-in-progress/brief-db-accessi-area-clienti.md` (aperto il 2026-11-25), con T9 di `brief-db-revisione-anagrafiche` e R-4 come primo giro: **giro 1 applicato il 2026-11-26** (la veste revocata: segno, guard, `fn_revoca_veste`, `fn_togli_revoca_veste`, stato `REVOCATA`); aspetta il passo BE 3b.
+- 📝 **L'area clienti: una porta sola, l'iscrizione da sé, il documento scelto all'ordine** (`work-in-progress/analisi-modello-area-clienti.md`, Tid 2026-11-25): portale e shop non sono più due porte; la visibilità la decide il soggetto, non il canale; privati e partite IVA si iscrivono da sé con la conferma dell'email; l'email resta la chiave, protegge il secondo fattore. Revoca le decisioni 1, 3, 4 del 2026-04-20 (`work-done/2026/pr-b-shop-b2c-cambio-modello.md`). D-M4, D-M5 (aziende), D-M7, D-M8 decise il 2026-11-25; aperta D-M9 (l'accesso dei privati: secondo fattore o provider, con `piano-autenticazione-provider-esterni-oauth`). Poi **un brief DB unico**, `work-in-progress/brief-db-accessi-area-clienti.md` (aperto il 2026-11-25), con T9 di `brief-db-revisione-anagrafiche` e R-4 come primo giro: **giri 1 e 2 applicati il 2026-11-26** (la veste revocata: segno, guard, `fn_revoca_veste`, `fn_togli_revoca_veste`, stato `REVOCATA`; le regole della veste e della sync); **passo BE 3b fatto il 2026-11-26** (il BE revoca e reinvita dai verbi, A-6 chiuso dal guard; committato, PR #266); il passo 3c deciso il 2026-11-27 (D-3c-1 … D-3c-6): il 3c-1 DB (`20261127-01` … `-08`: accensione DEFINER, l'invito spedito da un verbo, la fixture delle vesti, `attivo DEFAULT false`, `REVOCATA` nell'aggregato, il ritiro di `fn_crea_operatore_v2`) è applicato; il 3c-3 (l'app perde `UPDATE` e `DELETE` sulle vesti, `-09`, con le fixture `-10`) è anticipato prima del BE (Tid, 2026-11-27); tutto applicato, pgTAP verdi e doc rigenerata il 2026-11-27. Riparte il BE con la richiesta unica (§5.3.8), poi i giri 3-6.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
@@ -266,23 +261,13 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - 📝 **Il collaudo a video della partenza delle liste dal preset** (`work-in-progress/brief-be-collaudo-partenza-liste-dal-preset.md`): il residuo di
   `work-done/2026/brief-db-revisione-ui.md`, chiuso il 2026-11-23 (BE29 e il residuo di BE25 (2)). Aperto, non
   iniziato: il copione lo scrive il team BE/FE, poi il collaudo di Tid.
-- 📝 **Revisione dello schema `anagrafiche`** (`work-in-progress/brief-db-revisione-anagrafiche.md`): censimento in
-  sola lettura fatto il 2026-11-22 (195 pagine `manual/`, nessuna allo standard; 56 oggetti senza pagina; il contenuto
-  falso e stantio per area; segnalazioni di codice da vagliare per ultime). Q1-Q8 decise da Tid lo stesso giorno. Giro
-  0a (area C: clienti, billing account, istanze, PDP; 63 pagine, due blocchi comuni, due guide) scritto e committato
-  il 2026-11-22, doc auto-generata rigenerata. Giro 0b (area A: soggetti, natura, dati societari, titoli IVA; 52
-  pagine, quattro blocchi, la guida) scritto e committato il 2026-11-22, doc auto-generata rigenerata. Giro 0c (area B: indirizzi, contatti,
-  catasto; 65 pagine, cinque blocchi, la guida nuova del catasto, due guide) scritto e committato il 2026-11-22, doc
-  auto-generata rigenerata. Giro 0d (area D: ruoli d'impresa e
-  banche; 46 pagine, il blocco dei guard di ruolo, la guida dei conti) scritto il 2026-11-22, con il pgTAP del catasto
-  ritirato, committato il 2026-11-22, doc auto-generata rigenerata. Q7 riaperta dalla risposta R-BE5 del BE: lo
-  storico di `indirizzi`, `indirizzi_dettaglio` e `config.stradario` diventa continuo (giro di codice, in coda). Giro 0e (area E: gli accessi; 23 pagine, i blocchi della
-  sincronizzazione e dell'ultimo SUPER_ADMIN, le due guide) scritto e committato il 2026-11-22, doc auto-generata rigenerata: il giro 0 è finito. Prossimo:
-  il vaglio delle segnalazioni S1-S68 (Tid), poi i giri di codice. Il 2026-11-23: il brief ha in testa il piano a spunta (§0)
-  e il vaglio per temi (§17, una decina di decisioni invece di 68); giro 1 (Q7, lo storico continuo di indirizzi, civici
-  e vie, `20261123-38` … `-42`) applicato coi pgTAP verdi e committato: la prova ha trovato `storico.indirizzi` che non
-  accettava nessuna versione. Il vaglio per temi è deciso da Tid il 2026-11-23 (§17.1: T6 e T9 in brief nuovi, S53
-  tema proprio T12, S4 la coppia CF e P.IVA). Giro 2 (T2) fatto il 2026-11-23: dentro `anagrafiche` niente da cambiare; deciso che l'app avrà solo `SELECT` sulle viste in tutto il database, lavoro e richiesta BE passati a `brief-db-porte-aperte-dalla-sola-guc` §5 e §4.1. Giro 3 (T5, il soggetto: natura, identificativo, ruoli; `20261123-48` … `-63`) scritto e provato il 2026-11-24, applicato da Tid su scratch e dbdev, pgTAP verdi, committato: normalizzazione di CF e P.IVA in fase `a01`, stato sotto la regola dell'identificativo (guard in `a05`), una natura scritta non si svuota, tipo del ruolo e soggetto dei dati societari bloccati, il doppione dall'indice. Giro 3-bis (D-T5-6 b, il tipo di contatto proposto, `20261123-68` … `-73`) applicato, verde e committato il 2026-11-24. T7 diviso in T7a (indirizzi) e T7b (contatti e catasto): giro 4, T7a (`20261123-74` … `-94`: requisito nuovo che non blocca chi esiste, via non risolta nel guard del civico, geoloc solo dal civico, sede unica di «obbligatorio per natura», forma dell'elemento decisa dal DB, `tipo_ruolo_id` integer) applicato, pgTAP verdi e doc rigenerata il 2026-11-24, da committare. Restano da girare i passaggi al BE (§20.7, §21.7); poi T7b.
+- 📝 **Revisione dello schema `anagrafiche`** (`work-in-progress/brief-db-revisione-anagrafiche.md`): la documentazione
+  (giro 0, 2026-11-22) e poi un giro di codice per tema. Chiusi lato DB i giri 1-6 e T8c (2026-11-27); T8b
+  applicato, pgTAP verdi (`20261126-83 … -89`, 2026-11-27), chiuso lato DB e committato; poi le decisioni di T8a, e T12,
+  T3, T10, T11; al team BE/FE le richieste dei giri 6, T8c e T8b. Stato e piano nel §0
+  del brief, chi riparte nella sua testata.
+- 📝 **Il reseller** (`work-in-progress/brief-db-reseller.md`, aperto, non iniziato, 2026-11-27): il codice senza generatore, il legame col billing account senza periodo né tipo di ruolo, il reseller della fattura preso dal legame più vecchio (ed è nella chiave che divide le fatture). Prima decisione di Tid, D-R-0: a che cosa serve oggi il reseller e chi scrive il legame.
+- 📝 **Le utility gestite da ciascun emittente** (`work-in-progress/brief-db-utility-gestite-dall-emittente.md`, 2026-11-27): analisi fatta e **cambio di modello deciso** da Tid il 2026-11-27, revoca la politica ibrida C (`work-done/2026/refactor-operatore-emittenti.md` §3.2): `emittenti_fiscali_utilities` diventa anche l'elenco delle utility gestite dall'azienda (riga accesa = attiva, senza righe nessuna, non si spegne se non con l'emittente, i parametri facoltativi), e la matrice `config.utilities_tipi_ruolo` diventa «senza righe = nessun ruolo». Decisioni tutte prese: riparte la sessione DB col piano dei giri.
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**
@@ -310,7 +295,6 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **La corsa appesa non è «in corso» nella liveness del BE** [BE/FE]
 - **La lista dei processi non dice se un processo gira adesso**
 - **Presidi, i residui del brief dei testi per chi agisce**: D-4, le quattro misure larghe per costruzione; la postura in sola lettura di `dbops.presidi` per l'app
-- ⏭️ **La SQL dei contatti del ruolo scritta nella view** [BE]
 - **Le colonne «predefinito» delle liste col `formato = predefinito`** [DB, poi FE]
 - **`HTML_MARKDOWN_BLOCKS` si sceglie ma non fa niente** [BE]
 - **Le versioni pubblicate stampano coi margini delle colonne (15 mm), non coi 18/16 mm del loro CSS**

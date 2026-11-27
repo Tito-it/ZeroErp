@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 from uuid import uuid4
+from apps.core.tests.db_e2e import esegui_fixture
 
 # ⚠️ Padre e figlio in istruzioni SEPARATE (mai nella stessa CTE): una policy
 #    che risolve il perimetro dal padre non vede le righe scritte dallo stesso
@@ -88,8 +89,7 @@ _PASSI: tuple[str, ...] = (
 #        `fino_a` (default CONSEGNATO): lo stato a cui il verbo porta la bolla.
 def crea_ddt_consegnato(cur: Any, *, etichetta: str, fino_a: str = "CONSEGNATO") -> dict[str, Any]:
     parametri = {"etichetta": etichetta, "sfx": uuid4().hex[:8].upper(), "fino_a": fino_a}
-    for passo in _PASSI:
-        cur.execute(passo, parametri)
+    esegui_fixture(cur, _PASSI, parametri)
     cur.execute(
         "SELECT d.id, d.uid::text, s.codice_interno"
         "  FROM vendite.ddt d JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id"

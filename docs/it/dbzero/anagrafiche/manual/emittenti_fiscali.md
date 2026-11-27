@@ -10,6 +10,7 @@
 > * [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — per quale azienda fattura ciascun billing account, e la predefinita
 > * [anagrafiche.emittenti_fiscali_utilities](/dbzero/anagrafiche/tabelle/emittenti_fiscali_utilities) — i parametri d'importo dell'azienda per una utility
 > * [config.regimi_fiscali](/dbzero/config/tabelle/regimi_fiscali) — il catalogo dei regimi fiscali
+> * [config.valute](/dbzero/config/tabelle/valute) — la valuta propria dell'azienda
 > * [dbops.automazione_attivo_eccezioni](/dbzero/dbops/tabelle/automazione_attivo_eccezioni) — le tabelle figlie che non fermano lo spegnimento, con il motivo
 >
 > Approfondimento funzioni:
@@ -32,8 +33,10 @@
 il ruolo di emittente fiscale (`EF`) di un soggetto, con la sigla, il regime fiscale e le impostazioni generali
 dell'emissione.
 
-La tabella non dice per quale azienda fattura un cliente: lo dice
-`anagrafiche.emittenti_fiscali_billing_account`, che tiene anche l'azienda predefinita.
+La tabella non dice per quale azienda fattura un cliente: lo dice il collegamento del suo billing account in
+`anagrafiche.emittenti_fiscali_billing_account`, che ogni billing account ha sempre. La stessa tabella tiene
+l'azienda predefinita, che decide soltanto l'azienda dei billing account che nasceranno senza un'azienda di
+chi agisce.
 
 ---
 
@@ -97,7 +100,8 @@ esigibilità differita, salvo le esclusioni di `script.fn_esigibilita_iva`).
 * `rounding_policy`: il metodo di arrotondamento generale dell'azienda (`UP`, `DOWN`, `HALF_UP`, `HALF_DOWN`).
   Vale quando la riga dell'azienda per una utility non c'è o non è accesa; i parametri per utility stanno in
   `anagrafiche.emittenti_fiscali_utilities`, e quelli effettivi li dice `anagrafiche.fn_parametri_importo_utility`.
-* `valuta_id`: la valuta dell'azienda, quando ne ha una propria.
+* `valuta_id`: la valuta dell'azienda, quando ne ha una propria; è una valuta che esiste in `config.valute`
+  (`fk_emittenti_fiscali_valute`).
 * `brand_meta`: i dati d'impaginazione dei documenti (logo, contatti, note).
 
 I dati societari e fiscali del soggetto (partita IVA, sede, forma giuridica) restano sul soggetto.
@@ -139,10 +143,6 @@ Il verso opposto: una riga che nasce o passa a un emittente spento è respinta a
   `soggetti_ruoli`, non su questa tabella, e l'automazione ATTIVO non li vede: un emittente con fatture o
   commesse aperte si spegne, uno con un ordine no. Lo stesso per `dbops.coda_lavori`, che punta all'`id` ma sta
   fuori dal perimetro dell'automazione.
-* **La fattura non segue l'azienda del billing account.** Ordini, DDT, commesse, resi, contratti, offerte,
-  preventivi e asset hanno `script.trgfn_doc_guard_emittente_ba`; `vendite.fatture` no: una fattura in bozza
-  resta all'azienda di prima quando il billing account cambia azienda.
-* **`valuta_id` non ha la FK** su `config.valute`: la colonna accetta un id che non è una valuta.
 * **I commenti del catalogo sono stantii**: quello della tabella parla di «preferenze di numerazione, IBAN
   predefinito», colonne che la tabella non ha.
 
@@ -150,8 +150,10 @@ Il verso opposto: una riga che nasce o passa a un emittente spento è respinta a
 
 ### Test
 
-* `db/pgtap/anagrafiche/test-emittenti-fiscali.sql` — il primo emittente fa nascere la predefinita, l'azienda di
-  un billing account con e senza collegamento, lo spegnimento respinto con un collegamento.
+* `db/pgtap/anagrafiche/test-emittenti-fiscali.sql` — il primo emittente fa nascere la predefinita, il billing
+  account che nasce collegato, il cambio d'azienda che si fa modificando il collegamento, lo spegnimento
+  respinto con un collegamento.
+* `db/pgtap/anagrafiche/test-valuta-fk-billing-account-emittente-v1.sql` — la valuta che non esiste è rifiutata.
 * `db/pgtap/anagrafiche/test-emittenti-fiscali-codice-forma.sql` — la forma della sigla.
 * `db/pgtap/anagrafiche/test-emittente-soggetto-immutabile-v1.sql` — il ruolo dell'emittente non cambia.
 * `db/pgtap/vendite/test-registri-per-emittente-v1.sql` — i registri per emittente e il trigger generato sui
@@ -170,6 +172,7 @@ Il verso opposto: una riga che nasce o passa a un emittente spento è respinta a
 * 2026-10-01 — `regime_fiscale_rf` diventa una FK sul catalogo dei regimi, `NOT NULL` col default `RF01`; dal
   giorno dopo la conferma la scrive il database. Dal 2026-11-21 un regime spento non si assegna a un emittente
   acceso.
+* 2026-11-26 — `valuta_id` prende la FK verso `config.valute`.
 
 ---
 

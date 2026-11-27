@@ -65,6 +65,7 @@ import unittest
 from django.db import DatabaseError, connection, transaction
 
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
+from apps.core.services.db_error_fields import diagnostica_db
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 
 
@@ -159,16 +160,23 @@ class OperatoriSenzaUtentiTecniciTests(unittest.TestCase):
         self.assertIn(self.persona, ids_riepilogo)
 
     # ⛔ Il presidio vero e' del DATABASE, e questo test lo FISSA: se un giorno
-    #    qualcuno rilassasse il guard, il difetto tornerebbe possibile a monte —
+    #    qualcuno rilassasse il presidio, il difetto tornerebbe possibile a monte —
     #    e l'esclusione applicativa non basterebbe piu' a descrivere il modello.
+    # ⭐ Dal 2026-11-27 (passo 3c di brief-db-accessi-area-clienti) il primo
+    #    presidio e' il PRIVILEGIO: l'app non aggiorna le vesti, e il rifiuto e'
+    #    `42501` prima ancora del guard. Si pretende quel codice: un
+    #    `DatabaseError` qualsiasi renderebbe il test verde per una ragione che
+    #    non e' la sua. Il guard di `tecnica` resta la rete del proprietario, e
+    #    lo prova il pgTAP `anagrafiche/test-identita-tecnica`.
     def test_il_flag_non_si_sposta_a_mano_fra_i_due_mondi(self):
         with transaction.atomic():
             try:
-                with connection.cursor() as cursor, self.assertRaises(DatabaseError):
+                with connection.cursor() as cursor, self.assertRaises(DatabaseError) as ctx:
                     cursor.execute(
                         "UPDATE anagrafiche.identita_digitali SET tecnica = true"
                         " WHERE auth_user_id = %s AND ruolo_applicativo = 'OPERATORE'",
                         [self.persona],
                     )
+                self.assertEqual(diagnostica_db(ctx.exception).sqlstate, "42501")
             finally:
                 transaction.set_rollback(True)

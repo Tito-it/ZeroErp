@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_provisiona_dati_di_sviluppo`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -76,7 +76,9 @@ etichetta, la funzione si ferma con `E_RADICE_DI_PROVA_SENZA_ETICHETTA`. L'etich
 fissato.
 
 Gli oggetti li scrive solo attraverso i building block e le madri dei rispettivi domini; suoi sono soltanto le
-etichette e la password di una credenziale rimessa a posto.
+etichette e la password di una credenziale rimessa a posto. Dove la madre è un verbo che chiede il SUPER_ADMIN
+(l'operatore, il profilo, il legame, lo scope), chiama la sua primitiva: il comando del backend la lancia senza un
+utente in sessione, e il verbo si fermerebbe.
 
 ---
 
@@ -146,6 +148,9 @@ Più quelli dei building block e delle madri che chiama.
 
 * 2026-10-18 — nasce insieme al comando del backend per gli utenti di sviluppo; gli indirizzi dei soggetti di prova
   passano a `fn_crea_indirizzo_soggetto` nel contratto nuovo della madre.
+* 2026-11-27 — le eccezioni sugli oggetti degli utenti di prova dalla primitiva
+  [`config.fn_applica_imposta_override`](/dbzero/config/funzioni/fn_applica_imposta_override): il verbo chiede un
+  SUPER_ADMIN, e il comando gira senza (brief-db-porte-aperte-dalla-sola-guc, giro 10-quater).
 
 ---
 

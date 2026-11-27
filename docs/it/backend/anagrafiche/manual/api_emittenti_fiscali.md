@@ -647,6 +647,11 @@ arrotondamento).
 
 ### 6.1 Lista matrice utility per emittente
 
+> ⚠️ **Cambio di modello deciso il 2026-11-27, non ancora costruito** ([brief-db-utility-gestite-dall-emittente](/dev/work-in-progress/brief-db-utility-gestite-dall-emittente)): la tabella diventa anche
+> l'**elenco delle utility gestite** dall'azienda (riga accesa = utility attiva; un'azienda senza righe non ne gestisce
+> nessuna), e i parametri d'importo restano facoltativi sulla riga. Questa sezione descrive il funzionamento di oggi,
+> vero finché il giro DB non è applicato: la riscrive il team BE/FE nel giro del drawer (§8 del brief).
+
 | | |
 | --- | --- |
 | **Metodo** | `GET` |
@@ -833,10 +838,10 @@ curl -X DELETE "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/u
 | **Metodo** | `GET` |
 | **URL** | `/api/v1/anagrafiche/billing-account/<billing_account_id>/utilities/` |
 | **View** | `BillingAccountUtilitiesView` (`views_billing_account.py`), `DomainAPIView` — **non** admin |
-| **Permesso** | oggetto `("anagrafiche", "cliente")`, area `anagrafiche`; in piu' scope emittente sul BA (superuser e operatori senza emittente di lavoro lo saltano) |
+| **Permesso** | oggetto `("anagrafiche", "cliente")`, area `anagrafiche`; in piu' scope emittente sul BA (lo saltano solo gli operatori senza emittente di lavoro: il superuser Django non ha bypass, D-J) |
 
-Query: `ruolo` **obbligatorio**, `CL` \| `FO` \| `GE` (ruolo del soggetto del BA;
-case-insensitive).
+Query: `ruolo` **obbligatorio**, `CL` \| `FO` \| `GE` (ruolo del soggetto del BA,
+confrontato esatto: e' il `codice_interno`, non si porta in maiuscolo).
 
 Le utility ammesse per il ruolo del soggetto, intersecate con quelle ammesse per
 il ruolo `EF` dell'emittente del BA (mapping specifico, altrimenti gestore
@@ -866,7 +871,8 @@ globale), con i parametri di `emittenti_fiscali_utilities` quando esistono
 | Codice | HTTP | Quando |
 | --- | --- | --- |
 | `E_ANAG_VALIDAZIONE` | 400 | `ruolo` assente o diverso da `CL`/`FO`/`GE` |
-| `E_ANAG_NOT_FOUND` | 404 | Billing account inesistente |
+| `E_PARAMETRO_INVALIDO` | 400 | `ruolo` ammesso ma diverso da quello del billing account (per esempio `FO` su un BA cliente): lo rifiuta `anagrafiche.fn_lookup_utilities_per_ba` |
+| `E_BILLING_ACCOUNT_NOT_FOUND` | 404 | Billing account inesistente o fuori dal perimetro di chi chiama (RLS): i due casi sono uno solo. Lo solleva il service prima del controllo di scope, e la funzione SQL per lo stesso caso (dal `20261126-42`; prima `E_ANAG_NOT_FOUND`) |
 | `E_PERMESSO_NEGATO` | 403 | Billing account di un emittente diverso da quello dell'operatore |
 
 ---

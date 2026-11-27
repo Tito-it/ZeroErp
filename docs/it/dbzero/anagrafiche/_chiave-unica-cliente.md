@@ -1,6 +1,6 @@
 ### 🔑 La chiave unica del cliente manuale
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 
 Fra i clienti delle **istanze fittizie** (quelle della creazione manuale, senza punto di fornitura), due
 clienti con lo stesso **soggetto**, lo stesso **servizio** (la utility) e la stessa **azienda**, con periodi
@@ -35,9 +35,10 @@ cose diverse.
 #### L'azienda è quella dell'installazione
 
 L'azienda di un billing account è quella del suo collegamento in
-`anagrafiche.emittenti_fiscali_billing_account` o, se non è collegato, l'**azienda predefinita** (la riga
-senza billing account). Non dipende da chi sta lavorando: due operatori di aziende diverse vedono la stessa
-chiave.
+`anagrafiche.emittenti_fiscali_billing_account`, che ogni billing account ha sempre, e si legge per
+l'installazione (`script.fn_get_ba_emittente_sr_id_installazione`). Non dipende da chi sta lavorando: due
+operatori di aziende diverse vedono la stessa chiave. L'azienda predefinita decide solo l'azienda dei billing
+account che nasceranno: spostarla non cambia la chiave di nessun cliente.
 
 #### Le strade che toccano la chiave
 
@@ -46,14 +47,16 @@ La chiave è fatta di dati di quattro tabelle, e ognuna delle strade che la camb
 | Che cosa cambia | Chi controlla | Quali clienti |
 | --- | --- | --- |
 | si scrive un cliente: nascita, stato, date | `anagrafiche.trgfn_clienti_guard_chiave_unica` | quello scritto |
-| un collegamento fra billing account e azienda nasce, cambia azienda, sparisce o passa a un altro billing account | `anagrafiche.trgfn_efba_guard_clienti_chiave` | quelli del billing account (dei due, se il collegamento si sposta) |
-| si sposta l'azienda predefinita | `anagrafiche.trgfn_efba_guard_clienti_chiave` | tutti i clienti fittizi dei billing account senza collegamento |
+| il collegamento di un billing account nasce o cambia azienda | `anagrafiche.trgfn_efba_guard_clienti_chiave` | quelli del billing account |
 | un'istanza diventa fittizia, o smette di esserlo | `anagrafiche.trgfn_istanze_utilities_guard_clienti_chiave` | quelli dell'istanza |
 
 Il controllo di un cliente è uno solo, `anagrafiche.fn_guard_cliente_chiave_unica`; le altre strade gli
 passano i clienti da guardare con `anagrafiche.fn_guard_clienti_chiave_unica_di` (i clienti di un billing
-account o di un'istanza) e `anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale` (i clienti che
-seguono l'azienda predefinita).
+account o di un'istanza).
+
+Un collegamento non si cancella e non passa a un altro billing account (`E_BA_COLLEGAMENTO_NON_SI_TOGLIE`,
+`E_BA_COLLEGAMENTO_NON_SI_SPOSTA`), e lo spostamento della predefinita non tocca l'azienda di nessun billing
+account: sono strade che la chiave non deve più guardare.
 
 Le altre parti della chiave non hanno una strada: soggetto, servizio, billing account e istanza di un
 cliente non si cambiano dopo la nascita (`E_CLIENTE_FORNITURA_IMMUTABILE`), e soggetto e servizio sono
@@ -69,7 +72,7 @@ può chiudere il cliente vecchio e attivare il nuovo in qualunque ordine, e cont
 
 Clienti e billing account sono visibili per azienda. Con i permessi di chi scrive, un cliente fuori dal suo
 perimetro sarebbe invisibile, e il controllo direbbe «a posto» proprio nel caso da rifiutare. La lettura e
-le tre funzioni del controllo girano quindi coi privilegi del proprietario; le trigger function non lo
+le due funzioni del controllo girano quindi coi privilegi del proprietario; le trigger function non lo
 sono, perché delegano soltanto.
 
 #### Il rifiuto
@@ -82,5 +85,6 @@ cliente non ha un codice suo. Se i clienti in conflitto sono più d'uno, nomina 
 `db/pgtap/anagrafiche/test-cliente-manuale-chiave-unica-v1.sql` prova la regola su tutte le strade: il
 doppione rifiutato col codice del billing account, un'altra utility e un'altra azienda ammesse, il sospeso
 che occupa, il pre-contrattuale e l'annullato che non occupano, il pre-contrattuale rifiutato quando si
-attiva, la catena nuova che parte dalla chiusura e si collega alla precedente, e i tre movimenti
-(l'azienda di un billing account, un'istanza che diventa fittizia, lo spostamento della predefinita).
+attiva, la catena nuova che parte dalla chiusura e si collega alla precedente, le strade che cambiano la
+chiave (l'azienda di un billing account, un'istanza che diventa fittizia), e lo spostamento della
+predefinita che non cambia la chiave di nessuno.

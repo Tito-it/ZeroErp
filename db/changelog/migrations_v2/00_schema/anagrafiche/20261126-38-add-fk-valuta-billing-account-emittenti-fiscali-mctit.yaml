@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA VALUTA DEL BILLING ACCOUNT E DELL'EMITTENTE ESISTE
+#   fk_billing_account_valute   anagrafiche.billing_account(valuta_id)   -> config.valute(id)
+#   fk_emittenti_fiscali_valute anagrafiche.emittenti_fiscali(valuta_id) -> config.valute(id)
+#   Brief: brief-db-revisione-anagrafiche §24.5 (S29; la valuta dell'emittente
+#   portata da S53, §17.1)
+#
+# -- LA FORMA ---------------------------------------------------------
+#   * Come le gemelle di anagrafiche.fornitori (fk_fornitori_valute) e
+#     anagrafiche.gestori (fk_valute_config): ON UPDATE CASCADE, nessuna
+#     azione sulla cancellazione (una valuta in uso non si cancella).
+#   * Le colonne restano nullable: la FK giudica solo un valore scritto.
+#   * Idempotente: il vincolo si aggiunge solo se non c'e', letto per nome su
+#     pg_constraint. Fatto del 2026-11-26: su scratch e dbdev nessuna riga con
+#     una valuta che non esiste, quindi nessuna bonifica.
+#   * L'indice: SENZA_INDICE in 80_data/sql/dbops/fk_index_policy.csv
+#     (linee-guida-sql §8.7), col perche'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261126-38-add-fk-valuta-billing-account-emittenti-fiscali-mctit.yaml
+
+  - changeSet:
+      id: 20261126-38-add-fk-valuta-billing-account-emittenti-fiscali
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        FK verso config.valute(id) su anagrafiche.billing_account.valuta_id e
+        anagrafiche.emittenti_fiscali.valuta_id, come le gemelle di fornitori e gestori.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $fk$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint
+                                  WHERE conrelid = 'anagrafiche.billing_account'::regclass
+                                    AND conname  = 'fk_billing_account_valute') THEN
+                      ALTER TABLE anagrafiche.billing_account
+                          ADD CONSTRAINT fk_billing_account_valute
+                          FOREIGN KEY (valuta_id) REFERENCES config.valute(id) ON UPDATE CASCADE;
+                  END IF;
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint
+                                  WHERE conrelid = 'anagrafiche.emittenti_fiscali'::regclass
+                                    AND conname  = 'fk_emittenti_fiscali_valute') THEN
+                      ALTER TABLE anagrafiche.emittenti_fiscali
+                          ADD CONSTRAINT fk_emittenti_fiscali_valute
+                          FOREIGN KEY (valuta_id) REFERENCES config.valute(id) ON UPDATE CASCADE;
+                  END IF;
+              END
+              $fk$;
+
+              COMMENT ON CONSTRAINT fk_billing_account_valute ON anagrafiche.billing_account IS
+                'La valuta del billing account esiste in config.valute.';
+              COMMENT ON CONSTRAINT fk_emittenti_fiscali_valute ON anagrafiche.emittenti_fiscali IS
+                'La valuta dell''emittente fiscale esiste in config.valute.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.emittenti_fiscali DROP CONSTRAINT IF EXISTS fk_emittenti_fiscali_valute;
+              ALTER TABLE anagrafiche.billing_account   DROP CONSTRAINT IF EXISTS fk_billing_account_valute;

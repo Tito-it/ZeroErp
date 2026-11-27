@@ -4,7 +4,7 @@
 > **Da dove viene**: tre giorni di lavoro nell'agosto 2026, e ogni regola qui
 > sotto è costata un difetto vero. Storia e misure:
 > `docs/it/dev/work-done/2026/brief-db-pgtap-runner-rls-baseline.md`.
-> **Ultimo aggiornamento**: 26 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 
 ## La cosa da sapere per prima
 
@@ -152,6 +152,12 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | un soggetto con un ruolo e basta (CL, FO, BANK_B…) | `dbops.fn_pgtap_crea_soggetto_pg(...)` + `fn_pgtap_crea_soggetto_ruolo(..., 'CL')` |
 | una **persona fisica** già valida — privato o ditta individuale, con i suoi indirizzi obbligatori — **senza** risorsa umana né identità | `dbops.fn_pgtap_crea_soggetto_pf('<cognome>'[, '<nome>'[, <natura_id>]])` |
 | un **super admin** (senza azienda, come in produzione) | `dbops.fn_pgtap_crea_operatore_umano('<etichetta>', p_super_admin := true)` — sotto, §«Un super admin non ha un'azienda» |
+| **un profilo di accesso**, con le sue aree e azioni, dal verbo vero chiamato da un super admin costruito | `dbops.fn_pgtap_scrivi_profilo_accesso('<tipo>', '<codice>', '<descrizione>'[, <aree>[, <azioni>[, <campi>]]])` — gli argomenti del verbo `config.fn_scrivi_profilo_accesso` |
+| **un profilo legato a un'identità**, dal verbo vero chiamato da un super admin costruito | `dbops.fn_pgtap_lega_profilo_identita(<profilo_id>, <identita_id>)` |
+| **l'azienda di un operatore**, o il passaggio a un'altra, dal verbo vero | `dbops.fn_pgtap_sposta_scope_operatore(<auth_user_id>, <emittente_id>)` |
+| **una veste nello stato o nella forma del caso** (spenta, accesa, scaduta, con l'invito spedito, su un altro tipo o ruolo), senza scriverla direttamente: l'app inserisce le vesti ma non le aggiorna. Solo le colonne nominate fra `attivo`, `valido_dal`, `valido_al`, `invito_inviato_at`, `ruolo_applicativo`, `soggetto_ruolo_id`; il segno della revoca passa dai suoi verbi, e una veste revocata non cambia forma. La usano anche i test Django sul database vero | `dbops.fn_pgtap_imposta_veste(<identita_id>, '{"attivo": false}'::jsonb)` |
+| **togliere una veste** per costruire il caso dopo: l'app non cancella le vesti, e una revocata non si toglie | `dbops.fn_pgtap_cancella_veste(<identita_id>)` |
+| **entrare come super admin** per chiamare un verbo che lo chiede, e rimettere il contesto | `v_prima := dbops.fn_pgtap_entra_come_super_admin('<etichetta>')`, poi `dbops.fn_pgtap_rimetti_contesto(v_prima)`, anche in errore |
 | **un articolo** del test, costruito intero con la struttura che il test sceglie: non gestito a magazzino se il test non misura il magazzino; kit, solo componente, lotto e seriale a richiesta | `dbops.fn_pgtap_crea_articolo('<codice>'[, <gestito>[, …]])` |
 | cambiare la **struttura di un articolo già usato**, dalla porta vera e come super admin costruito | `dbops.fn_pgtap_articolo_correggi_struttura(<articolo_id>, <campi>)` |
 | **articoli dentro una versione di listino**: una riga attiva per articolo, con prezzo e periodicità (va chiamato prima di usare l'articolo: ne allinea la tipologia) | `dbops.fn_pgtap_listino_aggiungi_articoli(<versione_id>, ARRAY[<articolo_id>, …][, <prezzo>[, '<periodicita>']])` |
@@ -165,6 +171,8 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | una **sorgente di prova**: un tipo di documento che il catalogo non ha (una famiglia di numerazione o un ambito di prova) | `dbops.fn_pgtap_crea_sorgente('<codice>'[, '<tabella>'::regclass])` |
 | **un'azione di processo concessa** a un utente, e fatta valere anche sull'area — sotto, §«I permessi dell'operatore del test» | `dbops.fn_pgtap_concedi_azione(<auth_user_id>, '<azione>')` |
 | **un livello su un'area** dato a un utente, anche più basso di quello che ha (è così che si costruisce il caso «senza il livello») — sotto, §«I permessi dell'operatore del test» | `dbops.fn_pgtap_concedi_livello_area(<auth_user_id>, '<area>', '<livello>')` |
+| **un'azione di processo negata** a un utente (il caso «azione negata», anche se il profilo la concede) | `dbops.fn_pgtap_nega_azione(<auth_user_id>, '<azione>')` |
+| **un'eccezione utente coi valori scelti dal test** (un oggetto a `LETTURA`, una validità precisa), o tolta, lasciando le altre — dal verbo vero del super admin | `dbops.fn_pgtap_scrivi_override('<tabella>', <auth_user_id>, <chiave jsonb>, <valori jsonb o NULL>)` |
 | lo **scope di un lavoro in coda** accodato da chi è in sessione | `dbops.fn_pgtap_scope_operatore([<emittente_id>])` |
 | ⚠️ valuta, forma dell'indirizzo e verifica del conto li risolvono i builder | `dbops.fn_pgtap_valuta` / `dbops.fn_pgtap_indirizzo_libero_forma` / `dbops.fn_pgtap_cliente_ba_del_mondo` (building block, non si chiamano dal test) |
 
@@ -217,7 +225,18 @@ un dettaglio: un billing account senza legame ricade sull'emittente di **chi
 agisce** prima che sul gestore globale, quindi un super admin costruito come
 utente tecnico (che un'azienda ce l'ha sempre) sposta il ripiego. E toglierla
 dopo non si può. Si costruisce con `fn_pgtap_crea_operatore_umano(…,
-p_super_admin := true)`, che passa dalla madre di produzione e nasce senza.
+p_super_admin := true)`, che passa dalle regole della madre di produzione e nasce senza.
+
+⚠️ **Operatori, profili, legami e scope non si scrivono a mano.** Le tabelle che danno
+l'accesso sono in sola lettura per l'applicazione, e i verbi che le scrivono chiedono il
+super admin. Un test che ne ha bisogno come fixture usa i builder della tabella sopra,
+che chiamano i verbi veri da un super admin costruito. Il primo super admin di un test
+non ha nessuno da cui farsi creare: lo fanno le fixture
+`dbops.fn_pgtap_fixture_crea_operatore` e `dbops.fn_pgtap_fixture_crea_utente_tecnico`,
+che usano le regole dei verbi senza il loro permesso e partono solo dove sono ammessi i
+dati di sviluppo (in PRODUZIONE rifiutano). Le chiamano i builder, non i test. Un test
+che collauda il guard di una di quelle tabelle, o un mondo che nessun verbo costruisce
+(legami spenti a mano, legami per ruolo), dichiara il runner owner col suo motivo.
 Un super admin **lavora** su un'azienda solo se la **sceglie**, come in alto:
 `app.current_emittente_id`. Con l'azienda scelta, il mondo e i builder che lo
 compongono (fattura, ordine, contratto…) costruiscono su quella, come il trigger
@@ -339,6 +358,14 @@ il test se li concede, come farebbe un amministratore, e non li dà per scontati
   `dbops.fn_pgtap_concedi_azione`. Si concede nel setup, **prima** della prima
   lettura di capability: una capability letta prima della concessione nasconde
   l'azione, e il test fallisce lontano dalla causa.
+* **Le eccezioni utente non si scrivono con un `INSERT`**: aree, azioni e oggetti
+  sono in sola lettura per l'applicazione, e le scrivono i verbi del super admin.
+  I builder passano dal verbo vero come super admin di fixture e rimettono il
+  contesto; un'eccezione coi valori scelti dal test (un oggetto a `LETTURA`, una
+  data precisa) la scrive `dbops.fn_pgtap_scrivi_override`, un'azione negata
+  `dbops.fn_pgtap_nega_azione`. Un test che fabbrica voci nei cataloghi dei
+  permessi, o ne collauda i vincoli col DML diretto, gira da proprietario col
+  motivo in testa.
 * ⛔ **Nessun helper `SECURITY DEFINER` per saltare la porta**: sarebbe una
   scorciatoia che anche l'applicazione può eseguire.
 * **Una `TEMP TABLE` è di chi la crea**, cioè del ruolo del runner, e una

@@ -5,7 +5,8 @@
 >
 > Data creazione: 2026-09-01 · revisione 2026-11-11 (§4.6-bis: la provenienza, passata qui da
 > brief-db-sorgente-documento-e-riga il 2026-11-08; il ritiro dell'articolo sulle righe d'acquisto, passato da
-> brief-db-articoli-obsoleto-dal il 2026-11-11)
+> brief-db-articoli-obsoleto-dal il 2026-11-11) · revisione 2026-11-27 (§4.10: il fornitore dell'ordine, passato da
+> brief-db-revisione-anagrafiche T8c)
 >
 > ⚠️ **Prima di diventare un brief** (Tid, 2026-11-08: «tutte le tabelle acquisti speculari a vendita devono essere
 > riallineate nelle logiche simili») questa analisi va **riscontrata con la vendita di oggi**, come al §4.1-ter: dal
@@ -394,6 +395,35 @@ rompe lo specchio esattamente dove si copierebbe il codice.
   valore», ma da confermare esplicitamente perché è ciò che rende il DDT di acquisto **non**
   una base di fatturazione.
 
+### 4.10 Il fornitore dell'ordine: chi è, se è acceso, se è bloccato (passato qui il 2026-11-27)
+
+Passato da [brief-db-revisione-anagrafiche](brief-db-revisione-anagrafiche.md) §25 (T8c, S56c e R-BE3): Tid,
+2026-11-27, «prematuro, non siamo allineati con le tabelle». Letto sul catalogo dello scratch lo stesso giorno.
+
+* `acquisti.ordini.soggetto_ruolo_id` è il fornitore, con la sola FK `fk_ordini_ao_fornitore_ruolo` verso
+  `anagrafiche.soggetti_ruoli`: nessun controllo che il ruolo sia un fornitore, che abbia la riga in
+  `anagrafiche.fornitori`, che sia acceso. Nessun trigger della testata guarda il fornitore, e `acquisti` non ha
+  verbi.
+* `config.stati_fornitore.blocca_ordini` (oggi vero per `VE`, `SO`, `CE`, `BL`; falso per `AT`) ha due sole
+  lettrici, che **nessuno chiama** (né DB, né pgTAP, né backend: R-BE3 del 2026-11-22):
+  `anagrafiche.fn_check_fornitore_attivo(p_fornitore_id)`, booleana, e `anagrafiche.fn_guard_fornitore_attivo(p_fornitore_id)`,
+  che solleva `E_FORNITORE_ID_INVALIDO`, `E_FORNITORE_NON_TROVATO`, `E_FORNITORE_NON_ATTIVO`, `E_FORNITORE_BLOCCATO`.
+  Tutte e due prendono l'**id del fornitore** (`fornitori.id`), mentre l'ordine porta il **ruolo**; e la chiamata
+  di `E_FORNITORE_BLOCCATO` passa come segnaposto la frase intera, non i valori.
+* Il gemello di vendita: `vendite.ddt.vettore_soggetto_ruolo_id` aveva lo stesso disegno, e T8c lo porta a una FK
+  verso `vettori(soggetto_ruolo_id)`, che dà tipo, esistenza e «acceso» dall'automazione ATTIVO
+  (`automazione-db` §4.2). Su `vendite.ordini` il cliente lo giudicano i guard del documento.
+  ⚠️ Corretto il 2026-11-27 (verifica critica, `brief-db-revisione-anagrafiche` §25.7): la FK fa nascere anche il
+  BLOCK sul padre, e un documento senza `attivo` renderebbe **impossibile spegnere** un vettore che ha portato una
+  bolla. Tid ha deciso per il vettore D-T8c-9 **a**: la FK, con la riga in `dbops.automazione_attivo_eccezioni` («il
+  documento è storia») e l'acceso alla scelta in un guard del documento. È la proposta anche per D-18 (a).
+
+Le domande che il cantiere chiude (**D-18**, §5): (a) dove il ruolo diventa «un fornitore vero»: FK verso
+`fornitori(soggetto_ruolo_id)` come per il vettore, o guard; (b) quando vale «blocca ordini»: alla nascita e al
+cambio di fornitore, oppure anche ai passaggi di stato di un ordine nato prima del blocco; (c) chi la applica: un
+trigger della testata, che vale per ogni strada, o il verbo di creazione quando nasce; (d) le due funzioni: si
+riprendono (con la firma sul ruolo e il segnaposto corretto) o si ritirano a favore del guard nuovo.
+
 ---
 
 ## 5. Le decisioni — stato al 2026-09-01
@@ -422,6 +452,7 @@ e una raccomandazione da confermare.
 | **D-13b** | **`acquisti.ddt.data`**: del fornitore o di ricezione? | ✅ **DECISO (Tid, 2026-09-02)**: `data_documento_fornitore` — **sua**, e **senza** il `DEFAULT CURRENT_DATE` che era il campanello; il momento della ricezione resta su `data_ora_consegna_eff`, che è nostro. ⭐ Completa la terna di D-13: tre colonne dello stesso documento, tutte e tre coerenti | **CHIUSA** |
 | **D-14** | **La chiusura del ramo CREDITO** dei resi a fornitore | ⭐ buco individuato in revisione: la coda «da accreditare» non ha porta d'uscita finché non c'è il ciclo passivo. Serve la **dichiarazione esplicita di accredito**, sul modello di `resi_righe_rinunce` → **§8** | **da progettare — è del Lotto 3** |
 | **D-15** | **I presidi della classe «esiste e non è armata»** (3 viste `dbops` che devono restare vuote) | ⭐ proposto in revisione: 4 istanze in 2 analisi, nessuna produce un rosso → **§9-bis**. ⚠️ **cantiere di `dbops`, non di questo** | **proposta, fuori perimetro** |
+| **D-18** | **Il fornitore dell'ordine**: tipo di ruolo, acceso, «blocca ordini» (`config.stati_fornitore`) — oggi nessuno lo giudica | passato da `brief-db-revisione-anagrafiche` T8c il 2026-11-27 → **§4.10** | **aperta** |
 
 ---
 
@@ -1200,3 +1231,4 @@ volte.
 | 2026-09-02 | ✅ **D-3 e D-2 chiuse — il Lotto 0 si svuota.** **D-3: satellite**, con tutte le conseguenze confermate (due cataloghi insieme, `ambito` come CHECK a due valori, `nessuna_azione_key` e `ordine` sul paio, `ambito` nella chiave delle transizioni, seed `VENDITE` completo, invariante in pgTAP). ⇒ **D-4 si sblocca**. **D-2: si arma la RLS** — ⛔ ma verificando il precedente è emerso che non è un interruttore: le due policy di acquisti sono `FOR SELECT`, e `vendite.ordini` ha già percorso quella strada (`20260601-37` crea la policy, `20260603-18` la estende a `FOR ALL` **due giorni dopo**). Nuovo **§4.1-bis** coi tre pezzi che devono atterrare insieme. 📌 Nessuna decisione bloccante resta aperta |
 | 2026-09-14 | ⭐ **Riscontro con le modifiche di vendite dal 02-09** (domanda di Tid: «vanno riportate anche su acquisto?»). Nove changeSet su `vendite.ordini*`, valutati uno per uno sul modello → nuovo **§4.1-ter**. ✅ Le date erano **già** su acquisti (`20260913-08`, nomi D-16). 🔴 **Buco trovato**: la RLS sui **satelliti** (`20260909-34…38`) mancava dal §4.1-bis, che armava solo le due testate → aggiunto il quarto pezzo. ⭐ Il guard di transizione **nasce** sull'helper unico, non si retrofitta. ⏳ Lista e `giorni_ritardo` arrivano coi rispettivi lotti, con la regola D-16 sulle derivate e il verso del ritardo **invertito**. ⛔ Preventivi-smistabili e `fn_push_preventivo_a_ordine` **non si riportano**: l'RFQ non esiste — nota lasciata al suo cantiere |
 | 2026-11-08 | ⭐ **§4.6-bis: la provenienza passa qui** da brief-db-sorgente-documento-e-riga (giro M.4, Tid: «tutte le tabelle acquisti speculari a vendita devono essere riallineate nelle logiche simili»). In testa la nota: prima di diventare brief l'analisi va riscontrata con la vendita di oggi |
+| 2026-11-27 | **§4.10 e D-18: il fornitore dell'ordine passa qui** da brief-db-revisione-anagrafiche (T8c, S56c, R-BE3; Tid: «prematuro, non siamo allineati con le tabelle»). Fatti letti sul catalogo: nessun controllo del ruolo né del blocco sull'ordine; le due funzioni del fornitore senza chiamanti, sull'id del fornitore e non sul ruolo |

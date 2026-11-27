@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.profili_accesso`
 
+> **Ultimo aggiornamento**: 26 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Architettura di riferimento:
@@ -29,6 +31,15 @@ solo a un reparto):
 * **Header** (questa tabella) → classifica e definisce il profilo
 * **Dettagli** ([`profili_accesso_aree`](/dbzero/config/tabelle/profili_accesso_aree), [`profili_accesso_azioni`](/dbzero/config/tabelle/profili_accesso_azioni)) → capability
 * **Binding** ([`profili_accesso_bindings`](/dbzero/config/tabelle/profili_accesso_bindings)) → chi riceve il profilo
+
+---
+
+### ⛔ Chi la scrive
+
+Per l'applicazione la tabella è in **sola lettura**: il profilo è ciò che un legame concede: cambiarlo è dare poteri a chi lo ha. La postura sta nelle tre sedi del loop dei grant
+(linee guida SQL §11.8, `v_tabelle_sola_lettura_app`). La scrivono i verbi del SUPER_ADMIN, che lo chiedono nella
+prima riga: [`config.fn_scrivi_profilo_accesso`](/dbzero/config/funzioni/fn_scrivi_profilo_accesso), che scrive il profilo con le sue aree e azioni. Fuori dai verbi la scrivono il seed, il provisioning di sviluppo e le fixture dei pgTAP.
+Guida: [Architettura permessi e autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) §4.5.
 
 ---
 

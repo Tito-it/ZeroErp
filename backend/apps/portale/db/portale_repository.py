@@ -199,27 +199,12 @@ class PortaleRepository:
         assert row is not None
         return int(row[0])
 
-    # Scopo: Disattiva un'identita senza eliminarla (soft revoke). Il verso
-    # opposto e' `AuthRepository.attiva_identita`, al consumo di un nuovo
-    # invito. Serve all'admin per revocare una veste portale o shop a un
-    # cliente/fornitore senza perdere lo storico.
-    # Ritorna True se ha effettivamente aggiornato una riga (identita esisteva
-    # e attivo era true o comunque la UPDATE e' passata).
-    def disattiva_identita(self, identita_id: int) -> bool:
-        sql = """
-            UPDATE anagrafiche.identita_digitali
-               SET attivo = false
-             WHERE id = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [identita_id])
-            return cursor.rowcount > 0
-
     # Scopo: Legge lo stato accessi di una veste (per una data coppia
     # soggetto_ruolo + ruolo_applicativo) per l'admin UI:
     #   NESSUNO     : la veste non esiste (mai invitato) — del BE, perche'
     #                 non e' uno stato di una veste ma l'assenza della riga
-    #   ATTIVO · PENDING · NON_SPEDITO · DISATTIVO : di `script.fn_stato_veste`
+    #   ATTIVO · REVOCATA · PENDING · NON_SPEDITO · DISATTIVO : di
+    #                 `script.fn_stato_veste`
     # ⛔ LO STATO DI UNA VESTE SI CALCOLA SOLO A DB (A-7, brief-db-be-fe-area-
     #    accessi): la stessa funzione serve questa scheda e la lista «Altri
     #    accessi» (`anagrafiche.vw_accessi_altri`). Fino al 2026-10-02 la

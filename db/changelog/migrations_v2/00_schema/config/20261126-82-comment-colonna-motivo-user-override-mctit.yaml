@@ -1,0 +1,52 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA COLONNA motivo DEGLI OVERRIDE UTENTE: CHE COSA CUSTODISCE
+#   config.user_override_aree.motivo, _azioni.motivo, _oggetti.motivo
+#   Brief: brief-db-motivo-override-obbligatorio §6.5 (D-1 a, D-2 b di Tid, 2026-11-27).
+#
+#   La colonna resta nullable (D-1 a: la regola sta nella primitiva,
+#   20_code/config/20261126-80; D-2 b: le righe di prima restano come sono).
+#   Chi legge la scheda della tabella vede «text, YES» e nessun COMMENT: il
+#   COMMENT dice che il motivo e' obbligatorio alla scrittura, e perche' una
+#   riga puo' non averlo. Nessuna fase tardiva scrive COMMENT su queste colonne.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261126-82-comment-colonna-motivo-user-override-mctit.yaml
+
+  - changeSet:
+      id: 20261126-82-comment-colonna-motivo-user-override
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT sulla colonna motivo delle tre tabelle degli override utente: obbligatorio alla scrittura. brief-db-motivo-override-obbligatorio §6.5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN config.user_override_aree.motivo
+              IS 'Il perché dell''eccezione al profilo: perché l''utente riceve, o perde, questo livello d''area. Obbligatorio a ogni scrittura, anche per la voce che toglie (BLOCCATO): lo chiede config.fn_imposta_override_aree, attraverso la primitiva config.fn_applica_imposta_override (E_OVERRIDE_MOTIVO_OBBLIGATORIO). Si scrive senza spazi in testa e in coda. Una riga scritta prima della regola può non averlo: la prossima riscrittura dell''elenco di quell''utente lo chiede.';
+
+              COMMENT ON COLUMN config.user_override_azioni.motivo
+              IS 'Il perché dell''eccezione al profilo: perché l''utente riceve, o perde, questa azione. Obbligatorio a ogni scrittura, anche per la voce che toglie (abilitata false): lo chiede config.fn_imposta_override_azioni, attraverso la primitiva config.fn_applica_imposta_override (E_OVERRIDE_MOTIVO_OBBLIGATORIO). Si scrive senza spazi in testa e in coda. Una riga scritta prima della regola può non averlo: la prossima riscrittura dell''elenco di quell''utente lo chiede.';
+
+              COMMENT ON COLUMN config.user_override_oggetti.motivo
+              IS 'Il perché dell''eccezione al profilo: perché l''utente riceve, o perde, questo livello sull''oggetto. Obbligatorio a ogni scrittura, anche per la voce che toglie (BLOCCATO): lo chiede config.fn_imposta_override_oggetti, attraverso la primitiva config.fn_applica_imposta_override (E_OVERRIDE_MOTIVO_OBBLIGATORIO). Si scrive senza spazi in testa e in coda. Una riga scritta prima della regola può non averlo: la prossima riscrittura dell''elenco di quell''utente lo chiede.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN config.user_override_aree.motivo IS NULL;
+              COMMENT ON COLUMN config.user_override_azioni.motivo IS NULL;
+              COMMENT ON COLUMN config.user_override_oggetti.motivo IS NULL;

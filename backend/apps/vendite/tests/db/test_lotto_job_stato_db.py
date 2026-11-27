@@ -25,7 +25,7 @@ import unittest
 from django.db import DatabaseError, connection, transaction
 
 from apps.core.services.db_error_fields import db_error_code
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_operatore_costruito, apri_transazione_annullata, richiedi_db_provvisto
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 
 
@@ -39,7 +39,11 @@ class LottoJobStatoDbTests(unittest.TestCase):
     def setUp(self) -> None:
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
-            cur.execute("SELECT script.fn_pgtap_set_contesto_operatore()")
+            # ⭐ L'operatore si COSTRUISCE (BB `apri_operatore_costruito`, 2026-11-27):
+            #    senza argomento `fn_pgtap_set_contesto_operatore` sceglieva il primo
+            #    operatore del DB, cioe' i dati della macchina, e scriveva le GUC per la
+            #    sessione.
+            apri_operatore_costruito(cur)
             cur.execute("SELECT lotto_id FROM dbops.fn_pgtap_crea_lotto('job stato be')")
             self.lotto_id = cur.fetchone()[0]
             cur.execute("SELECT stato_lotto FROM vendite.fatturazione_lotti WHERE id = %s", [self.lotto_id])

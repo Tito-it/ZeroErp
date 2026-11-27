@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.user_override_azioni`
 
-> **Ultimo aggiornamento**: 27 ottobre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -32,7 +32,7 @@ La tabella **`config.user_override_azioni`** consente di **sovrascrivere l'abili
 | `auth_user_id` | Utente Django (FK → `django.auth_user`) |
 | `azione_id` | Azione di processo (FK → `config.azioni_processo`) |
 | `abilitata` | `true` = concessa, `false` = negata (sovrascrive il reparto) |
-| `motivo` | Motivazione dell'override |
+| `motivo` | Il perché dell'eccezione. Obbligatorio a ogni scrittura, anche per l'eccezione che toglie (`E_OVERRIDE_MOTIVO_OBBLIGATORIO`, dalla primitiva dei verbi); una riga scritta prima della regola può non averlo, e la prossima riscrittura dell'elenco lo chiede |
 | `valido_dal` / `valido_al` | Finestra temporale di validità |
 
 ---
@@ -42,6 +42,15 @@ La tabella **`config.user_override_azioni`** consente di **sovrascrivere l'abili
 * **GRANT individuale**: il reparto Tecnico non ha `approva_attivita_commessa`, ma il responsabile sì → override `abilitata = true`.
 * **DENY individuale**: il reparto Amministrazione ha `genera_fatture_lotti`, ma un operatore junior no → override `abilitata = false`.
 * **Delega temporanea**: un operatore sostituisce un collega per 2 settimane e riceve temporaneamente `numera_fatture_lotti`.
+
+---
+
+### ⛔ Chi la scrive
+
+Solo il **SUPER_ADMIN**, dal verbo [`config.fn_imposta_override_azioni`](/dbzero/config/funzioni/fn_imposta_override_azioni), che
+sostituisce l'elenco delle eccezioni di un utente. Per l'applicazione la tabella è in sola lettura:
+un'eccezione dà un potere che il profilo non dà, e un operatore che potesse scriverne una per sé si
+alzerebbe il livello da solo (brief-db-porte-aperte-dalla-sola-guc, giro 10-quater, 2026-11-27).
 
 ---
 

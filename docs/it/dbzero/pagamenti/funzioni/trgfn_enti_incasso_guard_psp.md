@@ -17,22 +17,23 @@ CREATE OR REPLACE FUNCTION pagamenti.trgfn_enti_incasso_guard_psp()
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_is_ruolo_psp boolean := false;
-  v_exists_psp boolean := false;
+  v_is_ruolo_psp boolean := false;  -- l'esito di un EXISTS: nessuna colonna dietro
+  v_psp_attivo   anagrafiche.psp.attivo%TYPE;
+  v_psp_codice   anagrafiche.psp.codice%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
-  --   Validare la coerenza tra tipo ente incasso e ruolo PSP.
+  --   La coerenza fra un canale d'incasso di tipo PSP e il suo
+  --   prestatore.
   --
-  -- Regole:
-  --   - se tipo = 'PSP', soggetto_ruolo_id e' obbligatorio
-  --   - il soggetto_ruolo_id deve appartenere al tipo ruolo PSP
-  --   - deve esistere una riga attiva in anagrafiche.psp
-  --
-  -- Rev 2026-08-21 (passo P-7): i tre E_GENERICO passano a tre
-  -- codici distinti — i tre gradini hanno tre rimedi diversi — e il
-  -- terzo punto smette di loggare TG_NAME al posto del nome della
-  -- funzione. Nessun predicato e' cambiato.
+  -- Regole (tipo = 'PSP'):
+  --   - soggetto_ruolo_id e' obbligatorio;
+  --   - il ruolo e' un ruolo PSP;
+  --   - il PSP e' censito in anagrafiche.psp (acceso o spento);
+  --   - solo per un canale ACCESO: il PSP e' acceso. Un canale
+  --     spento si modifica anche col PSP spento.
+  --   Il verso opposto (un PSP con canali accesi non si spegne)
+  --   lo tiene anagrafiche.trgfn_psp_guard_enti_incasso_attivi.
   -- =========================================================
 
   IF NEW.tipo = 'PSP' THEN
@@ -76,17 +77,14 @@ BEGIN
       );
     END IF;
 
-    SELECT EXISTS (
-      SELECT 1
+    SELECT p.attivo, p.codice
+      INTO v_psp_attivo, v_psp_codice
       FROM anagrafiche.psp p
-      WHERE p.soggetto_ruolo_id = NEW.soggetto_ruolo_id
-        AND p.attivo IS TRUE
-    )
-    INTO v_exists_psp;
+     WHERE p.soggetto_ruolo_id = NEW.soggetto_ruolo_id;
 
     -- ⚠️ CONFLITTO_STATO e non NON_TROVATO: l'ente e il
     --    soggetto-ruolo esistono, manca un censimento a monte.
-    IF NOT v_exists_psp THEN
+    IF NOT FOUND THEN
       PERFORM script.fn_log_and_raise_error(
         'database', 'pagamenti.trgfn_enti_incasso_guard_psp', 'E_ENTE_INCASSO_PSP_NON_CENSITO',
         jsonb_build_object(
@@ -97,11 +95,30 @@ BEGIN
         NEW.soggetto_ruolo_id::text
       );
     END IF;
+
+    -- L'acceso del PSP conta solo per un canale che lavora.
+    IF NEW.attivo IS TRUE AND v_psp_attivo IS NOT TRUE THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database', 'pagamenti.trgfn_enti_incasso_guard_psp', 'E_ENTE_INCASSO_PSP_SPENTO',
+        jsonb_build_object(
+          'campo', 'attivo',
+          'codice', NEW.codice,
+          'soggetto_ruolo_id', NEW.soggetto_ruolo_id,
+          'psp_codice', v_psp_codice
+        ),
+        NULL::uuid,
+        v_psp_codice::text,
+        NEW.codice
+      );
+    END IF;
   END IF;
 
   RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION pagamenti.trgfn_enti_incasso_guard_psp()
+IS 'Guard BEFORE INSERT OR UPDATE di pagamenti.enti_incasso per i canali di tipo PSP. Su ogni scrittura il ruolo c''e'' (E_ENTE_INCASSO_PSP_SOGGETTO_RUOLO_OBBLIGATORIO), e'' un ruolo PSP (E_ENTE_INCASSO_PSP_RUOLO_NON_PSP) e il PSP e'' censito in anagrafiche.psp (E_ENTE_INCASSO_PSP_NON_CENSITO). Un canale acceso vuole il PSP acceso (E_ENTE_INCASSO_PSP_SPENTO); uno spento si modifica anche col PSP spento. Il verso opposto lo tiene anagrafiche.trgfn_psp_guard_enti_incasso_attivi.';
 ```
 
 </div>

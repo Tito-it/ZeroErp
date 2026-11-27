@@ -6,6 +6,7 @@
 -- Rilasciato sotto GNU AGPLv3 o versione successiva.
 -- Vedi LICENSE.md per il testo completo della licenza.
 -- ------------------------------------------------------------
+-- rev 2026-11-27 (brief-db-porte-aperte-dalla-sola-guc §15, giro 10-quater): gli override utente sono in sola lettura per l'app; l'override d'oggetto su vendite.reso lo scrive dbops.fn_pgtap_scrivi_override dal verbo. Attese invariate.
 --
 -- Test: la porta 11, la riconsegna di un reso, si apre solo dal verbo, col suo
 --   permesso e nel suo perimetro.
@@ -159,8 +160,10 @@ SELECT is(
 -- ============================================================
 -- 2-4 Senza il permesso, e senza il verbo
 -- ============================================================
-INSERT INTO config.user_override_oggetti (auth_user_id, app_label, model_name, livello, motivo)
-SELECT auth_user_id, 'vendite', 'reso', 'LETTURA', 'pgTAP porta riconsegna: oggetto in sola lettura'
+SELECT dbops.fn_pgtap_scrivi_override(
+           'config.user_override_oggetti', auth_user_id,
+           '{"app_label": "vendite", "model_name": "reso"}'::jsonb,
+           '{"livello": "LETTURA", "motivo": "pgTAP porta riconsegna: oggetto in sola lettura"}'::jsonb)
   FROM _mondi WHERE lato = 'A';
 
 SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.riconsegna('A')), 'E_PERMESSO_NEGATO',
@@ -185,10 +188,10 @@ SELECT is(dbops.fn_pgtap_codice_errore(format(
 -- resterebbe accesa sui casi che seguono.
 DO $gucvuota$ BEGIN PERFORM set_config('zeroerp.ddt_riconsegna', '', true); END $gucvuota$;
 
-UPDATE config.user_override_oggetti
-   SET livello = 'TUTTO'
- WHERE auth_user_id = (SELECT auth_user_id FROM _mondi WHERE lato = 'A')
-   AND app_label = 'vendite' AND model_name = 'reso';
+SELECT dbops.fn_pgtap_scrivi_override(
+           'config.user_override_oggetti', (SELECT auth_user_id FROM _mondi WHERE lato = 'A'),
+           '{"app_label": "vendite", "model_name": "reso"}'::jsonb,
+           '{"livello": "TUTTO", "motivo": "pgTAP porta riconsegna"}'::jsonb);
 
 -- ============================================================
 -- 5-6 Due emittenti

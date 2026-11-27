@@ -100,6 +100,11 @@ li fissano i `CHECK` della tabella), `attivo`. Ordine per descrizione.
 
 ## 4. Utility per emittente
 
+> ⚠️ **Cambio di modello deciso il 2026-11-27, non ancora costruito** ([brief-db-utility-gestite-dall-emittente](/dev/work-in-progress/brief-db-utility-gestite-dall-emittente)): la tabella diventa anche
+> l'**elenco delle utility gestite** dall'azienda (riga accesa = utility attiva; un'azienda senza righe non ne gestisce
+> nessuna), e i parametri d'importo restano facoltativi sulla riga. Questa sezione descrive il funzionamento di oggi,
+> vero finché il giro DB non è applicato: la riscrive il team BE/FE quando la tendina passa al BB unico (§8 del brief).
+
 `GET /api/v1/core/lookup/utilities-per-emittente/`
 
 | Parametro | Tipo | Obbligatorio | Descrizione |

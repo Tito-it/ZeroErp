@@ -16,13 +16,24 @@
 -- 5) Creato/recuperato ruolo EF per soggetto 1
 -- 6) Inserito emittente fiscale 1
 -- 7) Esiste esattamente un emittente di default nel mapping
--- 8) Predisposto un billing_account senza mapping emittente
--- 9) Fallback funzione emittente (default)
+-- 8) Il billing_account nasce collegato a un'azienda
+-- 9) L'azienda del billing_account e' quella del suo collegamento
 -- 10) Creato/recuperato ruolo EF per soggetto 2
 -- 11) Inserito emittente fiscale 2
--- 12) Inserito mapping BA -> emittente (override)
--- 13) Override funzione emittente (mapping BA)
+-- 12) Cambio d'azienda del BA senza documenti: si MODIFICA il collegamento
+-- 13) La funzione emittente risponde l'azienda nuova
+--
+-- ⭐ rev 2026-11-26 (brief-db-revisione-anagrafiche §24.5, 20261126-27 … -33):
+--   ogni BA ha sempre il suo collegamento, e il collegamento non si cancella.
+--   I test 8, 9, 12, 13 costruivano un BA scollegato (cancellandone il
+--   collegamento) e provavano il ripiego sulla predefinita: il caso non puo'
+--   piu' nascere, e provano il contratto nuovo.
 -- 14) Blocco disattivazione emittente con mapping
+-- 15) Un ruolo che non e' EF non diventa un emittente (E_SOGGETTI_RUOLI)
+--
+-- ⭐ rev 2026-11-27 (brief-db-revisione-anagrafiche §25.9, D-T8b-4): il 15. Il
+--   guard di ruolo dell'emittente (trgfn_emittenti_fiscali_guard_ruolo_emi_fis)
+--   non aveva un test del rifiuto.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -62,7 +73,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   La finestra la riapre il file, e dice da se' cosa vuole.
 SET CONSTRAINTS ALL DEFERRED;
 
-SELECT plan(14);
+SELECT plan(15);
 
 -- ============================================================
 -- 0) Costanti
@@ -446,19 +457,16 @@ BEGIN
 END;
 $ba$;
 
-DELETE FROM anagrafiche.emittenti_fiscali_billing_account m
- WHERE m.billing_account_id IN (SELECT billing_account_id FROM tmp_ba_no_map);
-
 SELECT CASE
     WHEN (SELECT count(*) FROM tmp_ba_no_map) = 0
     THEN skip('8) Nessun billing_account nel database — test saltato')
     ELSE ok(
-        NOT EXISTS (
+        EXISTS (
             SELECT 1
               FROM anagrafiche.emittenti_fiscali_billing_account m
               JOIN tmp_ba_no_map t ON t.billing_account_id = m.billing_account_id
         ),
-        'Predisposto un billing_account senza mapping emittente')
+        'Il billing_account nasce collegato a un''azienda')
 END;
 
 CREATE TEMP TABLE tmp_emittente_default AS
@@ -476,8 +484,10 @@ SELECT CASE
     THEN skip('9) Nessun billing_account nel database — test saltato')
     ELSE is(
         anagrafiche.fn_get_emittente_fiscale_id((SELECT billing_account_id FROM tmp_ba_no_map)),
-        (SELECT emittente_soggetto_ruolo_id::bigint FROM tmp_emittente_default),
-        'Fallback funzione emittente (default)')
+        (SELECT m.emittente_soggetto_ruolo_id::bigint
+           FROM anagrafiche.emittenti_fiscali_billing_account m
+           JOIN tmp_ba_no_map t ON t.billing_account_id = m.billing_account_id),
+        'L''azienda del billing_account e'' quella del suo collegamento')
 END;
 
 -- ============================================================
@@ -523,27 +533,20 @@ SELECT is(
 );
 
 -- ============================================================
--- 12) Inserimento mapping BA -> emittente (override)
+-- 12) Cambio d'azienda del BA senza documenti: si modifica il collegamento
 -- ============================================================
 CREATE TEMP TABLE tmp_map_ba AS
-WITH ins AS (
-    INSERT INTO anagrafiche.emittenti_fiscali_billing_account (
-        billing_account_id,
-        emittente_soggetto_ruolo_id,
-        is_default,
-        meta
-    )
-    SELECT
-        b.billing_account_id,
-        r.soggetto_ruolo_id,
-        false,
-        jsonb_build_object('test_scope', k.test_scope)
-    FROM tmp_ba_no_map b,
-         tmp_ef_role_2 r,
-         tmp_costanti_ef k
-    RETURNING id
+WITH upd AS (
+    UPDATE anagrafiche.emittenti_fiscali_billing_account m
+       SET emittente_soggetto_ruolo_id = r.soggetto_ruolo_id,
+           meta = jsonb_build_object('test_scope', k.test_scope)
+      FROM tmp_ba_no_map b,
+           tmp_ef_role_2 r,
+           tmp_costanti_ef k
+     WHERE m.billing_account_id = b.billing_account_id
+    RETURNING m.id
 )
-SELECT id FROM ins;
+SELECT id FROM upd;
 
 SELECT CASE
     WHEN (SELECT count(*) FROM tmp_ba_no_map) = 0
@@ -551,7 +554,7 @@ SELECT CASE
     ELSE is(
         (SELECT count(*)::int FROM tmp_map_ba),
         1,
-        'Inserito mapping BA -> emittente (override)')
+        'Cambio d''azienda del BA senza documenti: modificato il collegamento')
 END;
 
 -- ============================================================
@@ -563,7 +566,7 @@ SELECT CASE
     ELSE is(
         anagrafiche.fn_get_emittente_fiscale_id((SELECT billing_account_id FROM tmp_ba_no_map)),
         (SELECT soggetto_ruolo_id::bigint FROM tmp_ef_role_2),
-        'Override funzione emittente (mapping BA)')
+        'La funzione emittente risponde l''azienda nuova del collegamento')
 END;
 
 -- ============================================================
@@ -584,6 +587,26 @@ SELECT CASE
         NULL,
         'Blocco disattivazione emittente con mapping BA')
 END;
+
+-- ============================================================
+-- 15) Un ruolo che non e' EF non diventa un emittente
+-- ============================================================
+-- Il soggetto 2 prende un secondo ruolo, VENDITORE: e' un ruolo vero, ma non
+-- quello di un'azienda che fattura.
+CREATE TEMP TABLE tmp_ruolo_non_ef AS
+SELECT script.fn_get_or_create_soggetto_ruolo(
+           p_soggetto_id  := (SELECT soggetto_id FROM tmp_soggetto_2),
+           p_cd_int_ruolo := 'VE') AS soggetto_ruolo_id;
+
+SELECT is(
+    dbops.fn_pgtap_codice_errore(format(
+        $$INSERT INTO anagrafiche.emittenti_fiscali (soggetto_ruolo_id, codice, brand_meta)
+          VALUES (%s, %L, %L::jsonb)$$,
+        (SELECT soggetto_ruolo_id FROM tmp_ruolo_non_ef),
+        'EH' || right((SELECT codice_ef1 FROM tmp_costanti_ef), 8),
+        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_ef))::text)),
+    'E_SOGGETTI_RUOLI',
+    '15) un ruolo che non e'' EF non diventa un emittente: E_SOGGETTI_RUOLI');
 
 SELECT * FROM finish();
 ROLLBACK;

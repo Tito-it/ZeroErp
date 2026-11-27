@@ -23,6 +23,7 @@ from apps.anagrafiche.error_codes import (
     E_BA_ADMIN_GLOBALE_VIETATO,
 )
 from apps.anagrafiche.services._validators import create_with_constraint_mapping, optional_str, require_found
+from apps.anagrafiche.services.billing_account_service import richiedi_billing_account_trovato
 from apps.anagrafiche.services.contatti_service import contatto_inline_per_madre
 from apps.anagrafiche.services.soggetti_service import indirizzi_per_madre
 from apps.core.services.service_errors import ServiceError
@@ -385,10 +386,14 @@ class ClientiService:
     def _validate_billing_account(
         self, billing_account_id: int, istanza_utility_id: int | None, utility_id: int,
     ) -> int:
-        ba = self._repo.get_billing_account(billing_account_id)
-        ErrorManager.require(ba is not None, code=E_ANAG_NOT_FOUND,
-                             message="Billing account non trovato.")
-        assert ba is not None
+        # BB `richiedi_billing_account_trovato`: inesistente o fuori perimetro
+        # → 404 E_BILLING_ACCOUNT_NOT_FOUND (dal 2026-11-27, prima
+        # E_ANAG_NOT_FOUND; brief-db-revisione-anagrafiche §24.9).
+        ba = richiedi_billing_account_trovato(
+            self._repo.get_billing_account(billing_account_id),
+            billing_account_id,
+            function_name="anagrafiche.clienti_service._validate_billing_account",
+        )
         # Istanza non indicata: e' quella del BA (la legge la madre
         # `fn_crea_cliente`), non c'e' una coppia da confrontare.
         ErrorManager.require(

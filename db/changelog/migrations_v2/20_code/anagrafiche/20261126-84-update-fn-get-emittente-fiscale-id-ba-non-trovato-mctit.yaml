@@ -1,0 +1,171 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'AZIENDA DI UN BILLING ACCOUNT: UN ID CHE NON E' UN BA SI RIFIUTA
+#   anagrafiche.fn_get_emittente_fiscale_id(bigint)            (corpo, COMMENT)
+#   Brief: brief-db-revisione-anagrafiche §25.3 (S54a), §25.9 (D-T8b-1)
+#
+# -- IL DIFETTO -------------------------------------------------------
+#   La funzione delega a script.fn_get_ba_emittente_sr_id, che ha tre livelli:
+#   il collegamento del billing account; in sessione, l'azienda di chi agisce;
+#   senza sessione, la predefinita. Dal giro 6 ogni billing account nato ha il
+#   suo collegamento, e il collegamento non si toglie: fuori dall'istante della
+#   nascita i livelli 2 e 3 rispondono solo a un id che non e' un billing
+#   account. Un id sbagliato del chiamante diventava cosi' un'azienda, e da li'
+#   il registro su cui numerare (vendite.fn_build_fattura_key).
+#
+# -- LA CORREZIONE ----------------------------------------------------
+#   * un id <= 0: E_PARAMETRO_INVALIDO, la forma del parametro (§5 delle linee
+#     guida SQL), come in anagrafiche.fn_get_emittente_fiscale_pk;
+#   * un id che non e' un billing account: E_BILLING_ACCOUNT_NOT_FOUND
+#     (NON_TROVATO). Il codice e' quello deciso da Tid per «un id ben formato
+#     che non e' un billing account» (§24.9); la proposta di D-T8b-1 diceva
+#     E_PARAMETRO_INVALIDO, ed era piu' vecchia di quella decisione. Il
+#     controllo e' anagrafiche.fn_check_billing_account_esiste (20261126-83),
+#     SECURITY DEFINER: un BA fuori dal perimetro di chi chiama esiste, e
+#     risponde la sua azienda come prima.
+#   * ⛔ NULL RESTA la predefinita: e' il giro del lotto, che non ha un BA
+#     (vendite.fn_get_or_create_lotto -> vendite.fn_resolve_lotto_utility_emittente).
+#     Il ripiego proprio della funzione su NULL non cambia.
+#   Il controllo costa una lettura per indice: le funzioni di insieme che
+#   chiamano la funzione riga per riga (fn_list_*_da_pushare,
+#   fn_select_attivita_fatturabili, fn_contratti_addebiti_maturati_con_provenienza)
+#   ne pagano una per riga.
+#
+# -- IL CORPO ---------------------------------------------------------
+#   Dal vivo del catalogo (pg_get_functiondef dello scratch, 2026-11-27),
+#   uguale al 20260819-06; cambiano i due rami nuovi in testa e i commenti del
+#   ripiego, che nominavano un BA «esistente ma non mappato». Attributi vivi
+#   invariati: VOLATILE, INVOKER, COST 100, nessuna SET. Firma invariata.
+#   Presidio: db/pgtap/anagrafiche/test-fn-get-emittente-fiscale-id-v1.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261126-84-update-fn-get-emittente-fiscale-id-ba-non-trovato-mctit.yaml
+
+  - changeSet:
+      id: 20261126-84-update-fn-get-emittente-fiscale-id-ba-non-trovato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_get_emittente_fiscale_id: un id che non e' un billing account e'
+        E_BILLING_ACCOUNT_NOT_FOUND, un id <= 0 E_PARAMETRO_INVALIDO; NULL resta
+        la predefinita. brief-db-revisione-anagrafiche §25.9 (D-T8b-1).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_get_emittente_fiscale_id(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE)
+               RETURNS anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: «quale emittente fattura questo billing account»,
+              --   per lo SCRITTORE. Restituisce il soggetto_ruolo_id
+              --   dell'emittente e SOLLEVA se non e' risolvibile.
+              -- La regola «quale emittente» vive in
+              --   script.fn_get_ba_emittente_sr_id: qui restano il rifiuto
+              --   dell'id sbagliato e il punto in cui un NULL diventa un
+              --   errore di dominio, perche' questa e' la funzione che
+              --   vendite.fn_build_fattura_key usa per scegliere il REGISTRO
+              --   su cui numerare, e li' un NULL vorrebbe dire «numera dove
+              --   capita».
+              DECLARE
+                v_emittente_id anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                -- ⛔ UN ID CHE NON E' UN BILLING ACCOUNT SI RIFIUTA.
+                --   Ogni billing account ha il suo collegamento: i livelli di
+                --   riserva del lettore (l'azienda di chi agisce, la
+                --   predefinita) risponderebbero solo a un id sbagliato del
+                --   chiamante, e ne farebbero un'azienda. Il controllo e'
+                --   SECURITY DEFINER: un BA fuori dal perimetro di chi chiama
+                --   esiste, e risponde la sua azienda.
+                --   NULL non e' un id sbagliato: e' «nessun billing account»,
+                --   e scende al ripiego qui sotto.
+                IF p_billing_account_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'anagrafiche',
+                    'fn_get_emittente_fiscale_id',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object(
+                      'detail', 'p_billing_account_id deve essere > 0',
+                      'billing_account_id', p_billing_account_id
+                    ),
+                    NULL::uuid,
+                    'p_billing_account_id deve essere > 0'
+                  );
+                END IF;
+
+                IF NOT anagrafiche.fn_check_billing_account_esiste(p_billing_account_id) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'anagrafiche',
+                    'fn_get_emittente_fiscale_id',
+                    'E_BILLING_ACCOUNT_NOT_FOUND',
+                    jsonb_build_object(
+                      'detail', 'p_billing_account_id non e'' un billing account',
+                      'billing_account_id', p_billing_account_id
+                    ),
+                    NULL::uuid,
+                    p_billing_account_id::text
+                  );
+                END IF;
+
+                v_emittente_id := script.fn_get_ba_emittente_sr_id(p_billing_account_id);
+
+                -- ⚠️ IL RIPIEGO SENZA BILLING ACCOUNT, e perche' sta qui.
+                --   La delegata corto-circuita sull'input NULL
+                --   (`WHEN p_billing_account_id IS NULL THEN NULL`) e non
+                --   arriva mai al default.
+                --   ⭐ Il ripiego e' PORTANTE: vendite.fn_get_or_create_lotto,
+                --   attraverso vendite.fn_resolve_lotto_utility_emittente,
+                --   chiama senza billing account — un lotto non ne ha uno,
+                --   raccoglie fatture di BA diversi — e senza questo ripiego
+                --   prende E_EMITTENTE_DEFAULT_MISSING su un giro legittimo.
+                --   Con un billing account il ramo non scatta: il lettore
+                --   risponde col suo collegamento.
+                --   ⛔ NON si toglie il corto-circuito alla delegata: i suoi
+                --   lettori (le policy del billing account) si aspettano NULL
+                --   da un input nullo.
+                IF v_emittente_id IS NULL THEN
+                  SELECT m.emittente_soggetto_ruolo_id
+                    INTO v_emittente_id
+                    FROM anagrafiche.emittenti_fiscali_billing_account m
+                   WHERE m.is_default IS TRUE;
+                END IF;
+
+                IF v_emittente_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'anagrafiche',
+                    'fn_get_emittente_fiscale_id',
+                    'E_EMITTENTE_DEFAULT_MISSING',
+                    jsonb_build_object(
+                      'detail', 'Emittente fiscale di default mancante',
+                      'billing_account_id', p_billing_account_id
+                    ),
+                    NULL::uuid,
+                    concat('Emittente fiscale di default mancante ',
+                      'billing_account_id ', p_billing_account_id::text)
+                  );
+                END IF;
+
+                RETURN v_emittente_id;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_get_emittente_fiscale_id(anagrafiche.billing_account.id%TYPE) IS
+                'L''azienda che fattura un billing account, per chi SCRIVE: restituisce il soggetto_ruolo_id dell''emittente e solleva se non e'' risolvibile. La regola «quale emittente» e'' di script.fn_get_ba_emittente_sr_id, il collegamento del billing account in anagrafiche.emittenti_fiscali_billing_account; qui un''azienda non risolta diventa un errore di dominio, perche'' vendite.fn_build_fattura_key la usa per scegliere il registro su cui numerare. Rifiuta un id <= 0 (E_PARAMETRO_INVALIDO) e un id che non e'' un billing account (E_BILLING_ACCOUNT_NOT_FOUND, con anagrafiche.fn_check_billing_account_esiste, che vede anche i billing account fuori dal perimetro di chi chiama). Senza billing account (NULL) risponde l''azienda predefinita: e'' il giro del lotto, che non ha un billing account (vendite.fn_get_or_create_lotto, attraverso vendite.fn_resolve_lotto_utility_emittente), e il lettore su NULL risponde NULL. Senza un''azienda predefinita solleva E_EMITTENTE_DEFAULT_MISSING. SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: il corpo precedente e' il 20260819-06.
+              SELECT 1;

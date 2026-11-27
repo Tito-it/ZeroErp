@@ -61,7 +61,7 @@ class MagazzinoSpentoConTrasferimentiDbTests(unittest.TestCase):
                 # Lo spegnimento passa dal verbo, che chiede TUTTO sull'oggetto
                 # (R-1 di brief-db-magazzino-tutte-le-scritture-dal-verbo).
                 apri_operatore_con_aree(
-                    cur, aree=("magazzino",), motivo="test_magazzino_spento_con_trasferimenti_db",
+                    cur, aree=("magazzino",),
                 )
                 cur.execute(
                     "SELECT dbops.fn_pgtap_crea_magazzino('BE-ATT-DA', false),"

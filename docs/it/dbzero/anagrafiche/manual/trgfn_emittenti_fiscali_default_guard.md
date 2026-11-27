@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_emittenti_fiscali_default_guard`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -25,10 +25,13 @@ azienda, e solleva `E_EMITTENTE_DEFAULT_SINGLETON` col numero di predefinite tro
 
 ### ⭐ Perché al COMMIT
 
-Il modo naturale di spostare la predefinita è cambiare l'azienda della sua riga, e lì le predefinite restano una.
-Chi invece toglie la riga e ne scrive un'altra passa, a metà transazione, da zero predefinite: il trigger è un
-constraint trigger differito, e guarda solo lo stato finale. L'indice unico parziale
-`uq_emittenti_fiscali_ba_default` tiene «al massimo una» riga dopo riga; questo controllo aggiunge «almeno una».
+La predefinita si sposta cambiando l'azienda della sua riga, e lì le predefinite restano una. La riga non si
+cancella e non diventa il collegamento di un billing account (`E_BA_COLLEGAMENTO_NON_SI_TOGLIE`,
+`E_BA_COLLEGAMENTO_NON_SI_SPOSTA`), quindi una predefinita che c'è non sparisce. Il controllo guarda lo stato
+finale perché è un constraint trigger differito: dentro la transazione del primo emittente la predefinita
+arriva dopo l'emittente. L'indice unico parziale `uq_emittenti_fiscali_ba_default` tiene «al massimo una» riga
+dopo riga; questo controllo aggiunge «almeno una». Con la riga che non si cancella né si sposta, «nessuna
+predefinita» la raggiunge solo una via di servizio che spegne quei rifiuti: il controllo è la rete.
 
 ---
 
@@ -49,8 +52,9 @@ spento, la predefinita è obbligatoria.
 ### Test
 
 * `db/pgtap/anagrafiche/test-emittenti-fiscali.sql` — dopo il primo emittente esiste una sola predefinita.
-
-Il rifiuto al COMMIT non è provato da un test proprio.
+* `db/pgtap/anagrafiche/test-emittenti-fiscali-default-singleton-v1.sql` — la predefinita tolta dalla via di
+  servizio è rifiutata (`E_EMITTENTE_DEFAULT_SINGLETON`), la seconda la ferma l'indice. Gira col runner owner: la
+  via di servizio spegne un trigger, e solo il proprietario può farlo.
 
 ---
 

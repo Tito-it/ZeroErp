@@ -213,7 +213,10 @@ class InvitoVeste:
     # un token pendente E' un reinvio, comunque lo si chiami. Si spengono solo
     # i token di QUESTA veste: quelli di un'altra veste della stessa porta
     # (cliente e fornitore portale) restano validi.
-    # ⛔ Non tocca password ne' veste: la veste la accende solo l'attivazione.
+    # ⛔ Non tocca password ne' accende la veste: la accende solo
+    #    l'attivazione. Della veste toglie soltanto il segno della revoca
+    #    (`AuthRepository.togli_revoca_veste`): il nuovo invito
+    #    dell'amministratore e' il gesto che la riapre.
     # `meta` aggiunge chiavi al meta del token (es. l'entita' del portale).
     def emetti(
         self,
@@ -228,6 +231,11 @@ class InvitoVeste:
         if ruolo_applicativo not in porta.ruoli:
             raise ValueError(f"Veste {ruolo_applicativo!r} fuori dalla porta {porta.nome}")
         with transaction.atomic():
+            # ⭐ Il nuovo invito toglie il segno della revoca (R2-b, brief-db-
+            #    accessi-area-clienti §4.1, 2026-11-26): nella transazione del
+            #    token, per ogni porta. Senza, il link si fermerebbe
+            #    all'attivazione con `E_VESTE_REVOCATA`.
+            self._auth_repo.togli_revoca_veste(identita_id)
             self.invalida(porta, auth_user_id=auth_user_id, identita_id=identita_id)
             is_cross = self._auth_repo.auth_user_ha_password(auth_user_id)
             token = self._token_service.create(
@@ -307,14 +315,12 @@ class InvitoVeste:
             )
             return False
 
-        if not self._auth_repo.set_invito_inviato_at(auth_user_id, identita_id=identita_id):
-            # Non fatale (il token c'e'), ma la veste non e' piu' dove
-            # l'emissione l'aveva trovata: utile in diagnosi.
-            logger.warning(
-                "Timestamp invito non aggiornato porta=%s user_id=%s identita_id=%s "
-                "— riga non trovata o credenziale divergente",
-                porta.nome, auth_user_id, identita_id,
-            )
+        # ⭐ Il verbo scrive o solleva (2026-11-27, passo 3c). Fino ad allora un
+        #    `UPDATE` che non trovava la riga finiva in un warning; un rifiuto
+        #    qui ora e' un difetto vero (il permesso l'ha gia' chiesto
+        #    `emetti`, nella stessa richiesta), e non si ingoia: la mail e'
+        #    partita, ma la lista direbbe «invito non spedito».
+        self._auth_repo.segna_invito_inviato(identita_id)
         return True
 
 

@@ -89,6 +89,7 @@ from apps.core.db._helpers import add_ricerca_full_condition, soglia_ricerca
 from apps.core.tests.db_e2e import (
     Annulla,
     apri_contesto_operatore,
+    apri_super_admin_costruito,
     richiedi_db_provvisto,
     verifica_ricerca_colonna_per_colonna,
 )
@@ -272,7 +273,11 @@ class RicercaFullDbTests(unittest.TestCase):
                 cur.execute("SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('ricerca full BE', 'RFC')")
                 colonne = [c.name for c in cur.description]
                 mondo = dict(zip(colonne, cur.fetchone(), strict=True))
-                operatore = apri_contesto_operatore(cur)
+                # ⭐ Le liste attraversano piu' aziende (il mondo, l'emittente
+                #    del registro): serve chi le vede tutte, e si COSTRUISCE
+                #    (D-AH, 2026-11-27). Fino ad allora era il primo operatore
+                #    del DB, che le vedeva solo perche' SUPER_ADMIN su dbdev.
+                operatore = apri_super_admin_costruito(cur, etichetta="ricerca full admin")
                 # Il mondo si COSTRUISCE: una riga per lista, con un valore per
                 # colonna che sta solo li'.
                 cur.execute(
@@ -346,12 +351,30 @@ class RicercaFullDbTests(unittest.TestCase):
                     " ORDER BY x.id LIMIT 1"
                 )
                 trti = cur.fetchone()
+                # ⛔ La riga della matrice utility × tipo ruolo si FABBRICA, su
+                #    una utility nuova: il seed non ne porta, e in CI (DB dal
+                #    solo seed) «la prima che c'e'» era None (rosso il
+                #    2026-11-26, verde su dbdev per le righe presenti).
+                cur.execute(
+                    "INSERT INTO config.utilities (codice, descrizione, codice_interno) "
+                    "VALUES ('RICUTRUO', 'Utility ricdescutruo', 'RICUTRUO') RETURNING id"
+                )
+                utr_utility = cur.fetchone()[0]
+                cur.execute(
+                    "INSERT INTO config.utilities_tipi_ruolo (utility_id, tipo_ruolo_id) "
+                    "SELECT %s, id FROM config.tipi_ruoli WHERE codice_interno = 'EF' "
+                    "RETURNING id",
+                    [utr_utility],
+                )
+                utr_riga = cur.fetchone()
+                self.assertIsNotNone(utr_riga, "tipo ruolo EF assente dal catalogo")
                 cur.execute(
                     "SELECT x.id, u.codice, u.descrizione, tr.codice, tr.descrizione "
                     "  FROM config.utilities_tipi_ruolo x "
                     "  JOIN config.utilities u ON u.id = x.utility_id "
                     "  JOIN config.tipi_ruoli tr ON tr.id = x.tipo_ruolo_id "
-                    " ORDER BY x.id LIMIT 1"
+                    " WHERE x.id = %s",
+                    [utr_riga[0]],
                 )
                 utr = cur.fetchone()
                 cur.execute(
@@ -455,18 +478,27 @@ class RicercaFullDbTests(unittest.TestCase):
                     lambda t: PraticheRepository().list_flussi_pagina(pratica, search=t, limit=200)[0],
                 )
                 # L'utilizzo di una riga di matrice (2026-09-27, lista 86): una
-                # riga SEED del ruolo EF (contratto) e un override dell'emittente
-                # del mondo sulla sua utility. La riga della lista E'
-                # l'emittente: chiave `emittente_id`.
+                # riga del ruolo EF e un override dell'emittente del mondo sulla
+                # sua utility. La riga della lista E' l'emittente: chiave
+                # `emittente_id`.
+                # ⛔ La riga EF si FABBRICA, su una utility nuova: il seed della
+                #    matrice non ne porta (in CI il DB nasce dal solo seed), e
+                #    una utility nuova non collide con l'unicita'
+                #    (utility_id, tipo_ruolo_id) delle righe gia' presenti.
                 cur.execute(
-                    "SELECT x.id, x.utility_id FROM config.utilities_tipi_ruolo x "
-                    "  JOIN config.tipi_ruoli tr ON tr.id = x.tipo_ruolo_id "
-                    " WHERE tr.codice_interno = 'EF' AND x.attivo "
-                    " ORDER BY x.id LIMIT 1"
+                    "INSERT INTO config.utilities (codice, descrizione, codice_interno) "
+                    "VALUES ('RICUTREF', 'Utility ricdescutref', 'RICUTREF') RETURNING id"
+                )
+                utr_ef_utility = cur.fetchone()[0]
+                cur.execute(
+                    "INSERT INTO config.utilities_tipi_ruolo (utility_id, tipo_ruolo_id) "
+                    "SELECT %s, id FROM config.tipi_ruoli WHERE codice_interno = 'EF' "
+                    "RETURNING id",
+                    [utr_ef_utility],
                 )
                 riga_ef = cur.fetchone()
-                self.assertIsNotNone(riga_ef, "seed `config.utilities_tipi_ruolo` del ruolo EF assente")
-                utr_ef, utr_ef_utility = riga_ef
+                self.assertIsNotNone(riga_ef, "tipo ruolo EF assente dal catalogo")
+                utr_ef = riga_ef[0]
                 cur.execute(
                     "INSERT INTO anagrafiche.emittenti_fiscali_utilities "
                     "       (emittente_soggetto_ruolo_id, utility_id, arrotondamento_importi_dec, "
@@ -676,7 +708,10 @@ class RicercaFullDbTests(unittest.TestCase):
             with transaction.atomic(), connection.cursor() as cur:
                 cur.execute("SELECT preventivo_id FROM dbops.fn_pgtap_crea_preventivo('ricerca note')")
                 preventivo_id = cur.fetchone()[0]
-                apri_contesto_operatore(cur)
+                # ⭐ Il contesto resta quello che il builder apre sull'operatore
+                #    del mondo, che vede il suo preventivo (D-AH, 2026-11-27):
+                #    fino ad allora lo sostituiva il primo operatore del DB,
+                #    SUPER_ADMIN su dbdev.
                 cur.execute("SELECT dbops.fn_pgtap_crea_articolo('RICNOTEART')")
                 articolo_id = cur.fetchone()[0]
                 cur.execute("SELECT id FROM config.note_stili WHERE attivo ORDER BY id LIMIT 1")

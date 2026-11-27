@@ -19,8 +19,8 @@
 #        Il login RIUSCITO vuole una veste attiva: la costruisce il ciclo vero
 #        dell'operatore (madre del DB → invito → attivazione, L-3), che e'
 #        esso stesso sotto prova. Per scrivere il soggetto serve il contesto
-#        operatore (RLS): dove il DB non ha un superuser su cui aprirlo il
-#        test salta col motivo (`apri_contesto_operatore`).
+#        operatore (RLS): l'amministratore si costruisce
+#        (`apri_super_admin_costruito`, D-AH 2026-11-27).
 # ------------------------------------------------------------
 
 """
@@ -72,12 +72,13 @@ from django.db import DatabaseError, connection, transaction
 from django.test import override_settings
 from rest_framework.test import APIClient
 
+from apps.core.api.multi_veste_token_serializer import emetti_refresh_veste
 from apps.core.api.refresh_cookie import ANTI_CSRF_HEADER, ANTI_CSRF_VALORE, REFRESH_COOKIE_NAME
 from apps.core.api.throttling import ConfermaTokenRateThrottle, LoginRateThrottle, PasswordResetRateThrottle
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.nome_tentato import digest_nome_tentato
-from apps.core.tests.db_e2e import apri_contesto_operatore, apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_super_admin_costruito, apri_transazione_annullata, richiedi_db_provvisto
 
 _PASSWORD = "Giusta-Per-Il-Test-2026!"
 _URL_LOGIN = "/api/v1/admin/token/"
@@ -461,15 +462,64 @@ class CicloOperatoreDbTests(_ViewVere):
                 #    («Indirizzo obbligatorio mancante»). Si torna allo stato di
                 #    una transazione nuova, coi guard di completezza rimandati.
                 cur.execute("SET CONSTRAINTS ALL DEFERRED")
-            self.admin_id = apri_contesto_operatore(cur)
+            # ⭐ L'amministratore si COSTRUISCE (D-AH, 2026-11-27): fino ad
+            #    allora era il primo operatore del DB, SUPER_ADMIN su dbdev.
+            #    Il builder chiude la sua saga coi controlli IMMEDIATE: si torna
+            #    ai rimandati, come dopo i builder dei soggetti.
+            self.admin_id = apri_super_admin_costruito(cur, etichetta="ciclo operatore admin")
+            cur.execute("SET CONSTRAINTS ALL DEFERRED")
             cur.execute("SELECT id FROM config.qualifiche WHERE codice = 'DIPENDENTE'")
             self.qualifica_id = cur.fetchone()[0]
+        # ⭐ La SESSIONE vera dell'amministratore (2026-11-27): il token lo
+        #    emette la catena del login (`emetti_refresh_veste`, la veste nei
+        #    claim), senza passare da una password che il test non prova. Le
+        #    view lo validano davvero, e `JwtAuditAuthentication` apre le GUC
+        #    come in produzione.
+        # ⛔ PERCHE' NON `force_authenticate`. Salta l'autenticazione, e con
+        #    lei le GUC: il middleware le azzera a inizio richiesta e nessuno le
+        #    riscrive. Dal giro 10-bis i verbi chiedono il SUPER_ADMIN al DB,
+        #    dalla GUC, e rispondevano E_PERMESSO_NEGATO a un amministratore
+        #    vero (5 test rossi, fino al 2026-11-27).
+        # ⚠️ Un SUPER_ADMIN ha l'obbligo del secondo fattore, e il cancello
+        #    degli obblighi ferma il suo Bearer finche' non l'ha configurato
+        #    (`E_TOTP_CONFIGURAZIONE_RICHIESTA`): il device si scrive e si
+        #    conferma dai verbi veri, come in `test_login_a_due_passi_*`. Il
+        #    contesto e' ancora quello aperto sull'amministratore.
+        from apps.core.db.secondo_fattore_repository import SecondoFattoreRepository
+        from apps.core.services import crypto_service, totp_service
+
+        secondo_fattore = SecondoFattoreRepository()
+        secondo_fattore.registra_device(
+            self.admin_id,
+            secret_encrypted=crypto_service.encrypt(totp_service.nuovo_segreto()),
+            impronte_recupero=[totp_service.impronta_codice_recupero(c) for c in totp_service.nuovi_codici_recupero()],
+        )
+        secondo_fattore.conferma_device(self.admin_id, passo=totp_service.passo_corrente())
+        veste_admin = AuthRepository().find_veste_utilizzabile_per_ruoli(self.admin_id, ["OPERATORE"])
+        assert veste_admin is not None, f"l'amministratore costruito {self.admin_id} non ha una veste OPERATORE utilizzabile"
+        self.admin_access = str(emetti_refresh_veste(User.objects.get(id=self.admin_id), veste_admin).access_token)
         email_finta = self.enterContext(patch("apps.core.services.invito_veste.EmailDispatchService"))
         self.email = email_finta.return_value
         # La forma vera della risposta, `(log_id, spedita)`: un MagicMock
         # nudo non si spacchetta, e `spedisci` lo registrava come email
         # fallita (traceback nel log a ogni invito, test verde lo stesso).
         self.email.send_email.return_value = (1, True)
+
+    # Scopo: Il contesto dell'amministratore per le chiamate DIRETTE a service e
+    #        repository, che in produzione girano dentro la sua richiesta.
+    # ⛔ Si riapre a ogni chiamata: ogni view che il test chiama nel frattempo
+    #    (login, attivazione, quelle dell'amministratore) azzera le GUC a
+    #    inizio richiesta (`JwtAuditMiddleware`), e la transazione e' una sola.
+    def _come_admin(self) -> None:
+        with connection.cursor() as cur:
+            cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
+            cur.execute("SET LOCAL app.current_user_id = %s", [str(self.admin_id)])
+
+    # Scopo: Un client con la sessione vera dell'amministratore (il Bearer).
+    def _client_admin(self, **kwargs) -> APIClient:
+        client = APIClient(**kwargs)
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.admin_access}")
+        return client
 
     # Scopo: Crea l'operatore dal service vero (madre P-2).
     def _crea(self, *, email: str, username: str, codice_fiscale: str | None = None,
@@ -485,12 +535,14 @@ class CicloOperatoreDbTests(_ViewVere):
         }
         if riusa_auth_user_id is not None:
             payload["riusa_auth_user_id"] = riusa_auth_user_id
+        self._come_admin()
         return AmmSoftwareService().create_operatore(payload)
 
     # Scopo: Invita col service vero; ritorna il token letto dal link dell'email.
     def _invita(self, auth_user_id: int) -> str:
         from apps.anagrafiche.services.invito_operatore_service import InvitoOperatoreService
 
+        self._come_admin()
         InvitoOperatoreService().invia_invito(auth_user_id, invitato_da_user_id=self.admin_id)
         link = self.email.send_email.call_args.kwargs["variabili"]["link"]
         return link.rsplit("/", 1)[1]
@@ -499,15 +551,14 @@ class CicloOperatoreDbTests(_ViewVere):
     def _veste_attiva(self, auth_user_id: int) -> bool | None:
         from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
 
+        self._come_admin()
         dettaglio = AmmSoftwareRepository().get_operatore_detail(auth_user_id)
         assert dettaglio is not None
         return dettaglio["veste_attiva"]
 
     # Scopo: La lettura del dialog (B-20) attraverso la view vera, da SUPER_ADMIN.
     def _credenziale_per_email(self, email: str) -> dict | None:
-        client = APIClient()
-        client.force_authenticate(User.objects.get(id=self.admin_id))
-        r = client.get("/api/v1/amm-software/operatori/credenziale-per-email/", {"email": email})
+        r = self._client_admin().get("/api/v1/amm-software/operatori/credenziale-per-email/", {"email": email})
         self.assertEqual(r.status_code, 200, r.content)
         return r.json()["data"]["credenziale"]
 
@@ -543,8 +594,7 @@ class CicloOperatoreDbTests(_ViewVere):
     def _admin(self, metodo: str, url: str, dati: dict | None = None):
         # La key come dal frontend: ogni POST che scrive la porta (§A5 del
         # brief-be-verifica-documentazione-api, 2026-10-21).
-        client = APIClient(HTTP_IDEMPOTENCY_KEY=f"test-{uuid.uuid4()}")
-        client.force_authenticate(User.objects.get(id=self.admin_id))
+        client = self._client_admin(HTTP_IDEMPOTENCY_KEY=f"test-{uuid.uuid4()}")
         sid = transaction.savepoint_create()
         risposta = getattr(client, metodo)(url, dati or {}, format="json")
         if risposta.status_code == 200:
@@ -555,6 +605,7 @@ class CicloOperatoreDbTests(_ViewVere):
 
     # Scopo: Il rapporto della veste operatore: (attivo, valido_dal, valido_al).
     def _rapporto(self, auth_user_id: int) -> tuple:
+        self._come_admin()
         with connection.cursor() as cur:
             cur.execute(
                 "SELECT ru.attivo, ru.valido_dal, ru.valido_al "
@@ -707,10 +758,12 @@ class CicloOperatoreDbTests(_ViewVere):
 
         # La veste resta ACCESA: esce solo dalla sua finestra (scaduta ieri).
         with connection.cursor() as cur:
+            # ⚠️ Dalla fixture del DB: l'app non aggiorna le vesti (passo 3c).
             cur.execute(
-                "UPDATE anagrafiche.identita_digitali "
-                "   SET valido_dal = script.fn_data_operativa() - 10, valido_al = script.fn_data_operativa() - 1 "
-                " WHERE id = script.fn_veste_di_riferimento(%s, 'OPERATORE')",
+                "SELECT dbops.fn_pgtap_imposta_veste("
+                "  script.fn_veste_di_riferimento(%s, 'OPERATORE'),"
+                "  jsonb_build_object('valido_dal', script.fn_data_operativa() - 10,"
+                "                     'valido_al', script.fn_data_operativa() - 1))",
                 [uid],
             )
         self.assertIs(self._veste_attiva(uid), True)

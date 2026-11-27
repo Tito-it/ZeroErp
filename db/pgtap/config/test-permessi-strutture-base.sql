@@ -1,5 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: collauda unicita' e FK dei cataloghi dei permessi con INSERT
+--   diretti, che solo uno scrittore privilegiato puo' tentare:
+--   dal giro 10-quater gli override utente e i due cataloghi dei permessi
+--   (config.azioni_processo, config.area_model_overrides) sono in sola lettura per
+--   l'app: gli override li scrivono solo i verbi del SUPER_ADMIN, i cataloghi il seed
+--   (brief-db-porte-aperte-dalla-sola-guc §15, giro 10-quater, 2026-11-27).
 -- pgTAP test per Zero ERP
 --
 -- Test: strutture base permessi e autorizzazioni

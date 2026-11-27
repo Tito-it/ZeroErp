@@ -192,7 +192,12 @@ const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalva
 //    salvare (stessa regola del Salva unico dei permessi).
 // ⚠️ Si confronta COME LO MANDA il Salva: con GLOBAL l'emittente non viaggia,
 //    quindi un emittente scelto e poi abbandonato non e' una modifica.
-const scopeMode = ref('GLOBAL')
+// ⛔ I ripieghi dicono SINGLE, mai GLOBAL (giro 10-ter di
+//    brief-db-porte-aperte-dalla-sola-guc, D-AA a, 2026-11-26): «tutti gli
+//    emittenti» vale solo per un SUPER_ADMIN, e lo concede la risposta del
+//    BE, non un valore di partenza. Un operatore senza emittente arriva
+//    SINGLE senza emittente: a video «non assegnato».
+const scopeMode = ref('SINGLE')
 const scopeEmittenteId = ref(null)
 
 // Scopo: Payload dello scope: GLOBAL -> emittenti_ids: []; SINGLE -> [id].
@@ -209,7 +214,7 @@ const scopeLocale = computed(() => buildScopePayload())
 const scopeFoto = useDrawerFormPreserve(scopeLocale, { visibile: () => props.visible })
 
 // Capability esposte dal BE: modalita' ammesse e blocco col suo motivo.
-const allowedScopeModes = computed(() => store.emittentiScope.allowed_scope_modes || ['GLOBAL', 'SINGLE'])
+const allowedScopeModes = computed(() => store.emittentiScope.allowed_scope_modes || ['SINGLE'])
 const canChangeScope = computed(() => store.emittentiScope.can_change_scope !== false)
 const changeScopeReason = computed(() => store.emittentiScope.change_scope_reason || null)
 const scopeModeOptions = computed(() => [
@@ -224,7 +229,7 @@ const canSaveScope = computed(() =>
 
 // Scopo: Allinea lo scope a video a quello dello store e lo fotografa.
 function syncScope() {
-  scopeMode.value = store.emittentiScope.scope_mode || 'GLOBAL'
+  scopeMode.value = store.emittentiScope.scope_mode || 'SINGLE'
   scopeEmittenteId.value = (store.emittentiScope.emittenti_ids || [])[0] ?? null
   scopeFoto.fissa()
 }
@@ -290,7 +295,7 @@ watch(() => props.visible, async (val) => {
   } else {
     resetForm()
     fissa()
-    scopeMode.value = 'GLOBAL'
+    scopeMode.value = 'SINGLE'
     scopeEmittenteId.value = null
     scopeFoto.fissa()
   }

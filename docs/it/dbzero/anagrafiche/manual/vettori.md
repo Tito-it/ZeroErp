@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.vettori`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -15,6 +15,7 @@
 > * [anagrafiche.trgfn_vettori_guard_ruolo_vettore](/dbzero/anagrafiche/funzioni/trgfn_vettori_guard_ruolo_vettore) — il ruolo dev'essere `VT`
 > * [anagrafiche.trgfn_vettori_gen_codice](/dbzero/anagrafiche/funzioni/trgfn_vettori_gen_codice) — il codice, quando non è passato
 > * [anagrafiche.trgfn_vettori_normalize](/dbzero/anagrafiche/funzioni/trgfn_vettori_normalize) — agganciato, non fa niente
+> * [vendite.trgfn_ddt_guard_vettore_attivo](/dbzero/vendite/funzioni/trgfn_ddt_guard_vettore_attivo) — la bolla sceglie un vettore acceso
 >
 > Guide:
 >
@@ -35,6 +36,8 @@ vettore di un ruolo, col suo codice, la descrizione e lo stato di abilitazione.
 La riga punta al ruolo (`soggetto_ruolo_id`), non al soggetto, e un ruolo ha al più un vettore
 (`uq_vettori_ruolo`). Lo stesso soggetto può essere cliente, fornitore e vettore: tre ruoli, ognuno con la sua
 specializzazione. Che il ruolo sia proprio `VT` lo garantisce `anagrafiche.trgfn_vettori_guard_ruolo_vettore`.
+ Il ruolo **non si cambia** (`E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE`): un vettore creato sul
+soggetto sbagliato si spegne e se ne crea uno giusto.
 
 ---
 
@@ -57,18 +60,21 @@ precedente nello storico, quando `storicizza` è acceso.
 
 ### Il vettore del DDT
 
-Il documento di trasporto nomina il vettore col **ruolo** (`vendite.ddt.vettore_soggetto_ruolo_id`), non con la
-riga di questa tabella: la chiave esterna va a `anagrafiche.soggetti_ruoli`.
+Il documento di trasporto nomina il vettore col ruolo (`vendite.ddt.vettore_soggetto_ruolo_id`), con una chiave
+esterna verso questa tabella (`soggetto_ruolo_id`): il vettore di una bolla è un vettore, non un ruolo qualunque.
+Quando la bolla lo sceglie o lo cambia deve essere acceso (`E_DDT_VETTORE_NON_ATTIVO`,
+`vendite.trgfn_ddt_guard_vettore_attivo`). La bolla di riconsegna eredita il vettore della bolla d'origine solo se è
+acceso: spento, nasce in bozza col vettore vuoto (`vendite.fn_genera_ddt_riconsegna`).
+
+⭐ **La bolla è storia.** Un vettore spento dopo resta sulle bolle che lo hanno già, e quelle bolle si modificano
+come prima. Per questo la chiave esterna è un'eccezione dell'automazione dello spegnimento
+(`dbops.automazione_attivo_eccezioni`): senza, un vettore che ha portato anche una sola bolla non si spegnerebbe
+più.
 
 ---
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Il vettore del DDT non è controllato come vettore.** La colonna del DDT accetta qualunque ruolo: nessun
-  controllo chiede che sia di tipo `VT`, che abbia una riga in questa tabella o che quella riga sia attiva. Un
-  vettore spento resta indicabile su un DDT nuovo.
-* **Il COMMENT di `soggetto_ruolo_id` dice «ruolo atteso: RES».** Il ruolo atteso è `VT`, ed è quello che il guard
-  controlla.
 * **Un trigger che non fa niente.** `trg_vettori_norm_ins_upd` scatta a ogni scrittura e non cambia la riga.
 
 ---
@@ -77,6 +83,8 @@ riga di questa tabella: la chiave esterna va a `anagrafiche.soggetti_ruoli`.
 
 * `db/pgtap/anagrafiche/test-vettori-gen-codice.sql` — la riga di configurazione, la sequenza, la funzione e il
   trigger del codice; il codice generato nella forma attesa e poi non modificabile.
+* `db/pgtap/anagrafiche/test-ruoli-impresa-psp-vettore-gestore-v1.sql` — il ruolo bloccato, la chiave esterna della
+  bolla, il vettore spento che una bolla non sceglie e che si spegne anche se ha portato bolle.
 
 ---
 

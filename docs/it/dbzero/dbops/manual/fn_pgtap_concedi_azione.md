@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_concedi_azione`
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -61,11 +61,16 @@ l'azione non varrebbe.
 
 ---
 
-### ⚠️ Scrive come l'applicazione
+### ⚠️ Scrive dal verbo del SUPER_ADMIN
 
-La fixture gira coi privilegi di chi la chiama, quindi valgono i trigger delle due tabelle:
-un'azione disattivata la rifiuta il trigger che pretende il padre attivo, ed è giusto che il
-test lo veda.
+Le eccezioni utente sono in sola lettura per l'applicazione: la fixture le scrive da
+[`dbops.fn_pgtap_scrivi_override`](/dbzero/dbops/funzioni/fn_pgtap_scrivi_override), cioè dai verbi
+veri come SUPER_ADMIN di fixture, e il contesto del test torna com'era. Valgono quindi i controlli
+del verbo e i trigger delle due tabelle: un'azione disattivata la rifiuta il trigger che pretende il
+padre attivo, ed è giusto che il test lo veda. Le altre eccezioni dell'utente restano; i loro id
+cambiano.
+
+Il gemello che nega è [`dbops.fn_pgtap_nega_azione`](/dbzero/dbops/funzioni/fn_pgtap_nega_azione).
 
 ---
 
@@ -90,6 +95,8 @@ Nessun pgTAP dedicato: la usano i test dei verbi con permesso, per esempio
 * 2026-09-24 — nasce con i verbi di magazzino con permesso (`brief-db-magazzino-verbi-con-permesso`).
 * 2026-10-04 — apre anche l'area al minimo dell'azione (`brief-db-permessi-tetto-area`).
 * 2026-10-09 — «oggi» è il giorno operativo nel fuso dell'azienda.
+* 2026-11-27 — le eccezioni dai verbi del SUPER_ADMIN, con la stessa firma
+  (brief-db-porte-aperte-dalla-sola-guc, giro 10-quater).
 
 ---
 

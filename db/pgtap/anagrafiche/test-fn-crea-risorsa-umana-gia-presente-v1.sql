@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: il test chiama diretta anagrafiche.fn_crea_risorsa_umana, riservata al
+--   proprietario dal giro 10-bis (passo interno della creazione dell'operatore); il
+--   secondo operatore sullo stesso soggetto passa dalla primitiva
+--   anagrafiche.fn_applica_crea_operatore, le stesse regole del verbo senza il suo
+--   permesso (brief-db-porte-aperte-dalla-sola-guc §14, giro 10-bis, 2026-11-26).
 -- pgTAP test per Zero ERP
 --
 -- Test: anagrafiche.fn_crea_risorsa_umana — UNA PERSONA E' UNA RISORSA
@@ -77,7 +83,7 @@ SELECT q.id AS qualifica_id FROM config.qualifiche q WHERE q.codice_interno = 'D
 CREATE OR REPLACE FUNCTION pg_temp.secondo_operatore(p_tag text) RETURNS text
 LANGUAGE sql AS $$
     SELECT format(
-        $f$SELECT * FROM anagrafiche.fn_crea_operatore_v2(
+        $f$SELECT * FROM anagrafiche.fn_applica_crea_operatore(
                p_soggetto_id   := %L::uuid,
                p_username      := %L,
                p_email         := %L,

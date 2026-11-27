@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_indirizzi_con_obbligatori`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -42,10 +42,12 @@ Chi scrive le righe salta i tipi che il titolare ha già: la funzione guarda sol
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### Il ripiego lo toglie chi chiama
 
-* **Il ripiego non ferma la copia.** Si confronta l'elenco col solo tipo richiesto: un elenco che porta già il
-  ripiego, che al guard basterebbe, riceve lo stesso la copia del tipo, e il titolare nasce con tutti e due.
+La funzione confronta l'elenco col solo tipo che riceve. Un tipo il cui ripiego è già nell'elenco, o già sul
+titolare, non le arriva: le due plurali le passano solo gli obbligatori che mancano davvero, letti dai mancanti del
+titolare e senza quelli che l'elenco copre col tipo o col ripiego (D-T7a-4, 2026-11-23). Chi la chiama da un'altra
+strada deve fare lo stesso filtro, altrimenti il titolare nasce con il ripiego e con la copia del tipo.
 
 ---
 

@@ -181,7 +181,7 @@ class _MondoRuolo(_Mondo):
     def setUp(self) -> None:
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
-            apri_operatore_con_aree(cur, aree=("anagrafiche",), motivo="e2e copia indirizzo sul ruolo")
+            apri_operatore_con_aree(cur, aree=("anagrafiche",))
 
     # Un cliente col suo ruolo e la sua istanza (col billing account), dal
     # builder dei pgTAP: `(soggetto_ruolo_id, istanza_utility_id, soggetto_id)`.

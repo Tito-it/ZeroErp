@@ -88,7 +88,7 @@ class InvitoPortaleTests(TestCase):
 
         auth = MockAuth.return_value
         auth.set_deve_cambiare_password.return_value = True
-        auth.set_invito_inviato_at.return_value = True
+        auth.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
 
         token = MockToken.return_value
         token.create.return_value = "tk_abc"
@@ -123,7 +123,7 @@ class InvitoPortaleTests(TestCase):
         self.assertEqual(token_kwargs["meta"]["identita_id"], 500)
         MockEmail.return_value.send_email.assert_called_once()
         auth.set_deve_cambiare_password.assert_not_called()
-        auth.set_invito_inviato_at.assert_called_once_with(200, identita_id=500)
+        auth.segna_invito_inviato.assert_called_once_with(500)
 
     # Scopo: cliente inesistente -> 404 E_CLIENTE_NON_TROVATO (E-4: prima
     # E_INVITO_PORTALE, cioe' 400), nessun side-effect.
@@ -179,7 +179,7 @@ class InvitoPortaleTests(TestCase):
         repo.create_identita_portale.return_value = 501
 
         MockAuth.return_value.set_deve_cambiare_password.return_value = True
-        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
         MockToken.return_value.create.return_value = "tk_xyz"
         MockEmail.return_value.send_email.return_value = (1, True)
 
@@ -250,7 +250,7 @@ class InvitoPortaleTests(TestCase):
         }
         MockAuth.return_value.find_auth_user_id_per_email.return_value = 200
         MockAuth.return_value.set_deve_cambiare_password.return_value = True
-        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
         MockToken.return_value.create.return_value = "new_tk"
         MockEmail.return_value.send_email.return_value = (1, True)
 
@@ -302,7 +302,7 @@ class InvitoPortaleTests(TestCase):
             "attivo": False,
             "invito_inviato_at": None,
         }
-        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
         MockToken.return_value.create.return_value = "tk_re"
         MockEmail.return_value.send_email.return_value = (1, True)
 
@@ -360,7 +360,7 @@ class InvitoPortaleTests(TestCase):
         repo.find_identita_portale.return_value = None  # ma identita CLIENTE_PORTALE nuova
         repo.create_identita_portale.return_value = 501
 
-        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
         MockToken.return_value.create.return_value = "tk_cross"
         MockEmail.return_value.send_email.return_value = (1, True)
 
@@ -397,9 +397,7 @@ class InvitoPortaleTests(TestCase):
         MockAuth.return_value.set_deve_cambiare_password.assert_not_called()
 
         # Timestamp invito settato sulla nuova identita CROSS
-        MockAuth.return_value.set_invito_inviato_at.assert_called_once_with(
-            999, identita_id=501
-        )
+        MockAuth.return_value.segna_invito_inviato.assert_called_once_with(501)
 
     # Scopo: Flow CROSS + identita gia' esistente ma disattivata.
     # Il service NON deve riattivarla: l'attivazione della veste avviene
@@ -433,7 +431,7 @@ class InvitoPortaleTests(TestCase):
             "attivo": False,
             "invito_inviato_at": None,
         }
-        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
         MockToken.return_value.create.return_value = "tk_cross_reinv"
         MockEmail.return_value.send_email.return_value = (1, True)
 
@@ -588,7 +586,7 @@ class InvitoShopCustomerTests(TestCase):
         repo.create_identita_portale.return_value = 600
 
         MockAuth.return_value.set_deve_cambiare_password.return_value = True
-        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
         MockToken.return_value.create.return_value = "tk_shop_new"
         MockEmail.return_value.send_email.return_value = (1, True)
 
@@ -663,7 +661,7 @@ class InvitoShopCustomerTests(TestCase):
 
         self.assertIs(result["inviato"], False)
         self.assertEqual(result["identita_id"], 600)
-        MockAuth.return_value.set_invito_inviato_at.assert_not_called()
+        MockAuth.return_value.segna_invito_inviato.assert_not_called()
 
     # Scopo: Flow CROSS email esistente (operatore o altra veste) ->
     # identita SHOP_CUSTOMER disattivata + token ATTIVAZIONE_SHOP_CROSS.
@@ -691,7 +689,7 @@ class InvitoShopCustomerTests(TestCase):
         repo.find_identita_portale.return_value = None  # nessuna SHOP ancora
         repo.create_identita_portale.return_value = 700
 
-        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
         MockToken.return_value.create.return_value = "tk_shop_cross"
         MockEmail.return_value.send_email.return_value = (1, True)
 
@@ -749,7 +747,7 @@ class InvitoShopCustomerTests(TestCase):
         # Flow CROSS: la credenziale ha una password vera. Riprende l'identita
         # gia' presente e la lascia disattivata (la attiva il token).
         MockAuth.return_value.auth_user_ha_password.return_value = True
-        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
         MockToken.return_value.create.return_value = "tk_re"
         MockEmail.return_value.send_email.return_value = (1, True)
 
@@ -913,7 +911,7 @@ class DisattivaVesteTests(TestCase):
     @patch(_AUTH_REPO, autospec=True)
     @patch(_REPO, autospec=True)
     def test_disattiva_cliente_portale_attivo_invalida_token(
-        self, MockRepo, _MockAuth, MockToken
+        self, MockRepo, MockAuth, MockToken
     ):
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
@@ -926,7 +924,7 @@ class DisattivaVesteTests(TestCase):
             "identita_id": 500, "auth_user_id": 10, "attivo": True,
             "invito_inviato_at": None,
         }
-        repo.disattiva_identita.return_value = True
+        MockAuth.return_value.revoca_veste.return_value = True
 
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         result = InvitoPortaleService().disattiva_veste_cliente(
@@ -935,9 +933,10 @@ class DisattivaVesteTests(TestCase):
             disattivato_da_user_id=999,
         )
         self.assertTrue(result["disattivato"])
-        self.assertEqual(result["stato"], "DISATTIVO")
+        self.assertEqual(result["stato"], "REVOCATA")
         self.assertEqual(result["identita_id"], 500)
-        repo.disattiva_identita.assert_called_once_with(500)
+        # R2-a: la revoca dal verbo del DB, che lascia il segno.
+        MockAuth.return_value.revoca_veste.assert_called_once_with(500)
         # I token della veste (entrambi i tipi della porta) invalidati.
         MockToken.return_value.invalidate_for_identita.assert_called_once_with(
             ("INVITO_PORTALE", "ATTIVAZIONE_PORTALE_CROSS"), 10, 500,
@@ -964,14 +963,13 @@ class DisattivaVesteTests(TestCase):
         )
         self.assertFalse(result["disattivato"])
         self.assertEqual(result["stato"], "NESSUNO")
-        repo.disattiva_identita.assert_not_called()
         self.mock_blocca.assert_not_called()
 
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO, autospec=True)
     @patch(_REPO, autospec=True)
     def test_disattiva_fornitore_portale(
-        self, MockRepo, _MockAuth, MockToken
+        self, MockRepo, MockAuth, MockToken
     ):
         repo = MockRepo.return_value
         repo.get_fornitore_info.return_value = {
@@ -984,7 +982,7 @@ class DisattivaVesteTests(TestCase):
             "identita_id": 600, "auth_user_id": 20, "attivo": True,
             "invito_inviato_at": None,
         }
-        repo.disattiva_identita.return_value = True
+        MockAuth.return_value.revoca_veste.return_value = True
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         result = InvitoPortaleService().disattiva_veste_fornitore(
             fornitore_id=77, disattivato_da_user_id=999,
@@ -994,9 +992,10 @@ class DisattivaVesteTests(TestCase):
         self.mock_blocca.assert_called_once_with(20, identita_id=600)
 
     @patch(_TOKEN_SVC)
+    @patch(_AUTH_REPO, autospec=True)
     @patch(_REPO, autospec=True)
     def test_disattiva_cliente_identita_gia_disattiva_idempotente(
-        self, MockRepo, MockToken
+        self, MockRepo, MockAuth, MockToken
     ):
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
@@ -1005,23 +1004,25 @@ class DisattivaVesteTests(TestCase):
             "ragione_sociale": "X", "cognome": None, "nome": None,
             "codice_fiscale": None,
         }
-        # Identita gia' disattiva (attivo=false): no UPDATE fisico ma
-        # comunque invalida eventuali token residui (best-effort cleanup).
+        # Identita gia' spenta (attivo=false): la revoca si chiede lo stesso
+        # (il segno ferma l'invito in volo, R2-a) e i token residui si
+        # invalidano.
         repo.find_identita_portale.return_value = {
             "identita_id": 500, "auth_user_id": 10, "attivo": False,
             "invito_inviato_at": None,
         }
+        MockAuth.return_value.revoca_veste.return_value = False
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         result = InvitoPortaleService().disattiva_veste_cliente(
             cliente_id=1,
             ruolo_applicativo="CLIENTE_PORTALE",
             disattivato_da_user_id=999,
         )
-        # was_active=False -> disattivato=False (nessun UPDATE), ma stato
-        # finale DISATTIVO riportato coerentemente al caller.
+        # Il verbo dice «era spenta» -> disattivato=False; lo stato finale e'
+        # REVOCATA, come per la veste accesa.
         self.assertFalse(result["disattivato"])
-        self.assertEqual(result["stato"], "DISATTIVO")
-        repo.disattiva_identita.assert_not_called()
+        self.assertEqual(result["stato"], "REVOCATA")
+        MockAuth.return_value.revoca_veste.assert_called_once_with(500)
         # Best-effort cleanup: i token portale residui vengono comunque
         # invalidati (idempotente lato BE, no-op se non ce n'erano).
         MockToken.return_value.invalidate_for_identita.assert_called_once_with(

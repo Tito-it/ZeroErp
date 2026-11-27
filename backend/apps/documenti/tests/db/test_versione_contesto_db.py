@@ -46,14 +46,14 @@ from django.db import connection, transaction
 
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.error_translator import ErrorTranslator
-from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, ContestoSu, esegui_fixture, richiedi_db_provvisto
 
-_FIXTURE: tuple[str, ...] = (
+_FIXTURE: tuple[str | ContestoSu, ...] = (
     """
     CREATE TEMP TABLE _mondo AS
     SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
     """,
-    "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
+    ContestoSu("_mondo"),
     # Dal giro 16 (brief-db-porte-aperte-dalla-sola-guc §9) pubblicare chiede
     # l'azione dell'endpoint, `documenti_template_manage`: il test la da'
     # al suo operatore, come la darebbe il pannello dei permessi.
@@ -80,8 +80,7 @@ class VersioneContestoDbTests(unittest.TestCase):
             TemplateVersioniAdminService,
         )
 
-        for passo in _FIXTURE:
-            cur.execute(passo)
+        esegui_fixture(cur, _FIXTURE)
         cur.execute("SELECT emittente_fiscale_id, auth_user_id FROM _mondo")
         emittente, uid = cur.fetchone()
         cur.execute(

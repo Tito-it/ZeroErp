@@ -49,8 +49,10 @@ SELECT
 DELETE FROM pagamenti.enti_incasso
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_eip);
 
-DELETE FROM anagrafiche.psp
-WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_eip);
+-- ⚠️ Niente DELETE di anagrafiche.psp (2026-11-27, brief-db-revisione-anagrafiche
+--   §25.7): il PSP non si cancella (blocco DELETE del registro
+--   dbops.automation_delete_block). Il test chiude in ROLLBACK, e nessuna sua riga
+--   sopravvive: la pulizia in testa e in coda non serve.
 
 -- ============================================================
 -- 1) Presenza trigger function
@@ -453,8 +455,7 @@ SELECT throws_ok(
 DELETE FROM pagamenti.enti_incasso
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_eip);
 
-DELETE FROM anagrafiche.psp
-WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_eip);
+-- Il PSP non si cancella (vedi in testa): resta fino al ROLLBACK.
 
 DELETE FROM pagamenti.centri_riscossione
 WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_eip);

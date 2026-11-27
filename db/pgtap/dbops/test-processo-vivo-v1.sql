@@ -170,7 +170,8 @@ SELECT is_empty(
            WHERE p.oid IN ('dbops.fn_processo_acceso_su_valori'::regproc,
                            'dbops.trgfn_processi_accensione_guard'::regproc,
                            'maintenance.fn_sveglia_accesa'::regproc,
-                           'script.fn_crea_utente_tecnico'::regproc,
+                           -- dal giro 10-bis il corpo del verbo sta nella primitiva
+                           'script.fn_applica_crea_utente_tecnico'::regproc,
                            'script.fn_scope_identita_processo'::regproc)
           UNION ALL
           SELECT c.oid::regclass::text, pg_get_viewdef(c.oid)

@@ -17,17 +17,18 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_user_id integer;
+    v_user_id config.user_override_aree.auth_user_id%TYPE;
+    -- l'esito di script.fn_check_user_can_create_ba: nessuna colonna dietro
     v_can_create boolean;
 BEGIN
     -- Lettura GUC app.current_user_id (settato dal middleware Django).
     -- Il secondo parametro 'true' di current_setting evita errore se
     -- il GUC non e' definito (ritorna NULL).
-    BEGIN
-        v_user_id := script.fn_utente_di_sessione('anagrafiche.trgfn_billing_account_guard_admin_globale');
-    EXCEPTION WHEN OTHERS THEN
-        v_user_id := NULL;
-    END;
+    -- ⛔ Nessun blocco EXCEPTION: un app.current_user_id che non e' l'id di
+    --   un utente lo rifiuta script.fn_utente_di_sessione, e il rifiuto sale.
+    --   Ingoiato, l'utente illeggibile diventava «nessun utente» e la riga
+    --   passava senza il controllo.
+    v_user_id := script.fn_utente_di_sessione('anagrafiche.trgfn_billing_account_guard_admin_globale');
 
     -- Bootstrap / seed / job senza utente: non bloccare.
     -- Le INSERT applicative passano sempre da middleware quindi
@@ -63,7 +64,7 @@ END
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale()
-IS 'Guard BEFORE INSERT su billing_account: rifiuta la creazione quando l''utente non ha un emittente fiscale su cui scrivere, cioe'' ne'' una riga in config.user_emittenti_fiscali ne'' un app.current_emittente_id valido per lui (tipicamente il super admin in «Tutti gli emittenti»), ed esistono emittenti fiscali attivi. La regola e'' delegata a script.fn_check_user_can_create_ba (rev 2026-08-04). Skip se GUC app.current_user_id non impostato (seed/bootstrap). Solleva E_BA_ADMIN_GLOBALE_VIETATO (il nome del codice resta per compatibilita'').';
+IS 'Guard BEFORE INSERT di anagrafiche.billing_account: rifiuta la creazione quando l''utente di sessione non ha un''azienda su cui scrivere (ne'' una riga in config.user_emittenti_fiscali ne'' un app.current_emittente_id valido per lui, tipicamente il super admin in «Tutti gli emittenti») ed esistono emittenti fiscali attivi: E_BA_ADMIN_GLOBALE_VIETATO. La regola e'' script.fn_check_user_can_create_ba. Senza utente di sessione (seed, manutenzione) tace; un app.current_user_id che non e'' l''id di un utente lo rifiuta script.fn_utente_di_sessione (E_SCRIPT_CHIAMATA_NON_VALIDA), e il rifiuto sale.';
 ```
 
 </div>

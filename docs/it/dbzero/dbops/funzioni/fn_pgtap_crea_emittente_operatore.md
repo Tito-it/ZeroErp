@@ -37,7 +37,7 @@ BEGIN
     ELSE
         SET CONSTRAINTS ALL DEFERRED;
 
-        v_auth_user := script.fn_crea_utente_tecnico(
+        v_auth_user := dbops.fn_pgtap_fixture_crea_utente_tecnico(
                            p_processo_codice  := p_processo_codice,
                            p_emittente_codice := v_ef.emittente_codice);
 
@@ -63,7 +63,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_emittente_operatore(p_sigla character varying, p_processo_codice text, p_persona boolean)
-IS 'Helper di fixture pgTAP: un''azienda su cui lavorare PIU'' l''operatore che la ha nel perimetro. Senza operatore il contesto di sessione resta vuoto e il dominio solleva «Nessun emittente fiscale attivo». Di default l''operatore e'' un utente TECNICO (script.fn_crea_utente_tecnico, col processo p_processo_codice): per cio'' che i test attraversano e'' un operatore a tutti gli effetti (identita'' OPERATORE attiva, non super admin, un emittente nel perimetro). Con p_persona l''operatore e'' una PERSONA (dbops.fn_pgtap_crea_operatore_umano, non super admin), portata sull''azienda da dbops.fn_pgtap_sposta_scope_operatore (il verbo script.fn_change_user_emittenti_scope, con un SUPER_ADMIN di fixture) e con l''azienda come emittente attivo: serve dove il test fa dell''operatore un SUPER_ADMIN o gli lega un profilo, perche'' un''identita'' tecnica non ha mai il SUPER_ADMIN. Il chiamante deve poi puntarci il contesto: PERFORM script.fn_pgtap_set_contesto_operatore(auth_user_id). ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.';
+IS 'Helper di fixture pgTAP: un''azienda su cui lavorare PIU'' l''operatore che la ha nel perimetro. Senza operatore il contesto di sessione resta vuoto e il dominio solleva «Nessun emittente fiscale attivo». Di default l''operatore e'' un utente TECNICO (dbops.fn_pgtap_fixture_crea_utente_tecnico, con le regole del verbo script.fn_crea_utente_tecnico, col processo p_processo_codice): per cio'' che i test attraversano e'' un operatore a tutti gli effetti (identita'' OPERATORE attiva, non super admin, un emittente nel perimetro). Con p_persona l''operatore e'' una PERSONA (dbops.fn_pgtap_crea_operatore_umano, non super admin), portata sull''azienda da dbops.fn_pgtap_sposta_scope_operatore (il verbo script.fn_change_user_emittenti_scope, con un SUPER_ADMIN di fixture) e con l''azienda come emittente attivo: serve dove il test fa dell''operatore un SUPER_ADMIN o gli lega un profilo, perche'' un''identita'' tecnica non ha mai il SUPER_ADMIN. Il chiamante deve poi puntarci il contesto: PERFORM script.fn_pgtap_set_contesto_operatore(auth_user_id). ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.';
 ```
 
 </div>

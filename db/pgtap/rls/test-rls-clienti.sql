@@ -168,14 +168,19 @@ SELECT * FROM nuovo;
 -- ⚠️ La colonna e' `emittente_soggetto_ruolo_id`, non `emittente_fiscale_id`:
 --   il legame emittente-BA e' per SOGGETTO-RUOLO. E' la stessa trappola per cui
 --   `anagrafiche.fn_get_emittente_fiscale_id` restituisce un soggetto_ruolo_id.
-INSERT INTO anagrafiche.emittenti_fiscali_billing_account
-    (emittente_soggetto_ruolo_id, billing_account_id, is_default)
-SELECT efba.emittente_soggetto_ruolo_id, s.id, false
+-- ⭐ rev 2026-11-26 (brief-db-revisione-anagrafiche §24.5, 20261126-27): il BA
+--   nasce gia' collegato (all'azienda di chi agisce, o alla predefinita), e il
+--   collegamento non si cancella ne' si ricrea. Prima nasceva scollegato e qui
+--   si INSERIVA il collegamento (ON CONFLICT DO NOTHING): ora l'INSERT non
+--   farebbe niente. Si porta il BA all'azienda del mondo A modificandone il
+--   collegamento: il BA e' appena nato e non ha documenti.
+UPDATE anagrafiche.emittenti_fiscali_billing_account dst
+   SET emittente_soggetto_ruolo_id = efba.emittente_soggetto_ruolo_id
   FROM _ba_shop s
   JOIN _ba b ON b.lato = 'A'
   JOIN anagrafiche.emittenti_fiscali_billing_account efba
     ON efba.billing_account_id = b.billing_account_id
-ON CONFLICT DO NOTHING;
+ WHERE dst.billing_account_id = s.id;
 
 -- Le TRE schede cliente: A su canale ADMIN, A su canale SHOP, B.
 CREATE TEMP TABLE _schede AS

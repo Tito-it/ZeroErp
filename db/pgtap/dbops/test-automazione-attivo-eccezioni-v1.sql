@@ -124,7 +124,7 @@ SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('eccezione altro SA', true);
 SET CONSTRAINTS ALL DEFERRED;
 CREATE TEMP TABLE _sa AS
 SELECT m.auth_user_id
-  FROM anagrafiche.fn_crea_operatore_v2(
+  FROM dbops.fn_pgtap_fixture_crea_operatore(
            p_cognome                      := 'Eccezione',
            p_nome                         := 'pgTAP',
            p_codice_fiscale               := dbops.fn_pgtap_cf_libero(),
@@ -147,20 +147,18 @@ SELECT is(
     '6) veste spenta: non e'' super admin (la porta e'' chiusa, il binding non basta)');
 
 -- L'invito accettato.
-UPDATE anagrafiche.identita_digitali
-   SET attivo = true
- WHERE auth_user_id = (SELECT auth_user_id FROM _sa)
-   AND ruolo_applicativo = 'OPERATORE';
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', true))
+  FROM anagrafiche.identita_digitali idg
+ WHERE auth_user_id = (SELECT auth_user_id FROM _sa) AND ruolo_applicativo = 'OPERATORE';
 
 SELECT is(
     script.fn_is_super_admin((SELECT auth_user_id FROM _sa)),
     true,
     '7) veste accesa: e'' super admin');
 
-UPDATE anagrafiche.identita_digitali
-   SET attivo = false
- WHERE auth_user_id = (SELECT auth_user_id FROM _sa)
-   AND ruolo_applicativo = 'OPERATORE';
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', false))
+  FROM anagrafiche.identita_digitali idg
+ WHERE auth_user_id = (SELECT auth_user_id FROM _sa) AND ruolo_applicativo = 'OPERATORE';
 
 SELECT is(
     (SELECT string_agg(pab.attivo::text, ',')

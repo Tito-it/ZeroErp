@@ -147,13 +147,18 @@ search:
 
 ## ⚙️ Funzioni
 - [fn_accoda_email_sistema](funzioni/fn_accoda_email_sistema.md)
+- [fn_applica_imposta_override](funzioni/fn_applica_imposta_override.md) — **Sostituisce le eccezioni di un utente** su una delle tre tabelle (aree, azioni, oggetti) con l'elenco dato, e ritorna quante ne scrive. Ha le regole dei tre verbi, ma **non chiede permessi**: è la primitiva sotto di loro, che chiedono il SUPER_ADMIN.
+- [fn_applica_lega_profilo_identita](funzioni/fn_applica_lega_profilo_identita.md) — Lega un'identità digitale a un profilo di accesso e ritorna l'id del legame. Ha le regole del legame, ma **non chiede permessi**: è la primitiva sotto il verbo [fn_lega_profilo_identita](/dbzero/config/funzioni/fn_lega_profilo_identita), che chiede il SUPER_ADMIN.
+- [fn_applica_scrivi_profilo_accesso](funzioni/fn_applica_scrivi_profilo_accesso.md) — Scrive un profilo di accesso per codice: lo crea, o ne aggiorna descrizione e campi; poi ne sostituisce le aree e le azioni se il chiamante le indica. Ritorna l'id. Ha le regole del profilo, ma **non chiede permessi**: è la primitiva sotto il verbo [fn_scrivi_profilo_accesso](/dbzero/config/funzioni/fn_scrivi_profilo_accesso), che chiede il SUPER_ADMIN.
 - [fn_chiudi_email_sistema](funzioni/fn_chiudi_email_sistema.md)
 - [fn_cleanup_token_scaduti](funzioni/fn_cleanup_token_scaduti.md) — Pulizia periodica dei token monouso scaduti o gia' utilizzati. Pensata per esecuzione automatica come job pgAgent notturno, elimina i record che non hanno piu' utilita' operativa.
 - [fn_get_aliquota_iva](funzioni/fn_get_aliquota_iva.md) — (latest review 10-02-2026)   La funzione **`config.fn_get_aliquota_iva()`** restituisce l’aliquota IVA applicando l’eventuale override definito in `config.iva_stati` per lo Stato specificato.
 - [fn_get_natura_doc_fiscale_id](funzioni/fn_get_natura_doc_fiscale_id.md) — (rev 2026-08-18)
 - [fn_get_stati_doc_fiscale](funzioni/fn_get_stati_doc_fiscale.md) — (latest review 24-01-2026) La funzione **`config.fn_get_stati_doc_fiscale`** restituisce gli stati validi per **LOTTO** o **FATTURA**, con eventuale filtro sulle **transizioni ammesse**.
 - [fn_imposta_emittente_attivo](funzioni/fn_imposta_emittente_attivo.md)
-- [fn_imposta_override_oggetti](funzioni/fn_imposta_override_oggetti.md)
+- [fn_imposta_override_aree](funzioni/fn_imposta_override_aree.md) — **Impostare le eccezioni di un utente sulle aree funzionali.** L'elenco dato **sostituisce** tutte le eccezioni di quel tipo dell'utente; un elenco vuoto le toglie. Ritorna quante ne scrive. È la strada della schermata di amministrazione dei permessi.
+- [fn_imposta_override_azioni](funzioni/fn_imposta_override_azioni.md) — **Impostare le eccezioni di un utente sulle azioni di processo.** L'elenco dato **sostituisce** tutte le eccezioni di quel tipo dell'utente; un elenco vuoto le toglie. Ritorna quante ne scrive. È la strada della schermata di amministrazione dei permessi.
+- [fn_imposta_override_oggetti](funzioni/fn_imposta_override_oggetti.md) — **Impostare le eccezioni di un utente sui singoli oggetti (per esempio: nessun accesso ai contratti).** L'elenco dato **sostituisce** tutte le eccezioni di quel tipo dell'utente; un elenco vuoto le toglie. Ritorna quante ne scrive. È la strada della schermata di amministrazione dei permessi.
 - [fn_lega_profilo_identita](funzioni/fn_lega_profilo_identita.md)
 - [fn_lega_profilo_reparto](funzioni/fn_lega_profilo_reparto.md) — (19-10-2026 — R-BE-7 del backend, decisioni D-16b e D-16c di Tid, `brief-db-processi-accensione-per-ambiente` §6.16)
 - [fn_pannello_colonne_scrivibili](funzioni/fn_pannello_colonne_scrivibili.md) — (scritta il 27-09-2026)

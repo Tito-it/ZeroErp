@@ -36,7 +36,7 @@ from rest_framework.test import APIClient
 
 from apps.core.services.auth_constants import JWT_CLAIM_EMITTENTE_ATTIVO_ID
 from apps.core.services.emittente_attivo_service import EmittenteAttivoService
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_su, apri_transazione_annullata, richiedi_db_provvisto
 
 _URL = "/api/v1/core/me/"
 
@@ -50,19 +50,23 @@ class MeEmittenteSenzaGestoreGlobaleDbTests(unittest.TestCase):
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
             # Il gestore globale: quello che c'e', o uno nuovo (come il pgTAP).
+            # ⛔ Il gestore nuovo lo lega il DB, non il test: il primo emittente
+            #    di un DB senza gestore lo diventa da se'
+            #    (anagrafiche.trgfn_emittenti_fiscali_default_bootstrap). Un
+            #    INSERT a mano dopo il builder collide su
+            #    uq_emittenti_fiscali_ba_default; in dbdev il ramo non girava.
             cur.execute(
                 "SELECT EXISTS (SELECT 1 FROM anagrafiche.emittenti_fiscali_billing_account g"
                 "                WHERE g.billing_account_id IS NULL AND g.is_default)"
             )
             if not cur.fetchone()[0]:
                 cur.execute("SELECT soggetto_ruolo_id FROM dbops.fn_pgtap_crea_emittente()")
-                ruolo = cur.fetchone()[0]
                 cur.execute(
-                    "INSERT INTO anagrafiche.emittenti_fiscali_billing_account"
-                    "       (emittente_soggetto_ruolo_id, billing_account_id, is_default)"
-                    " VALUES (%s, NULL, true)",
-                    [ruolo],
+                    "SELECT EXISTS (SELECT 1 FROM anagrafiche.emittenti_fiscali_billing_account g"
+                    "                WHERE g.billing_account_id IS NULL AND g.is_default)"
                 )
+                if not cur.fetchone()[0]:
+                    raise AssertionError("il primo emittente non e' diventato il gestore globale")
             # ⚠️ Ogni builder in un'istruzione sua: la lettura viene dopo.
             self.configurato = self._operatore(cur, "me con azienda", False)
             cur.execute("SELECT emittente_fiscale_id FROM dbops.fn_pgtap_crea_emittente()")
@@ -90,7 +94,7 @@ class MeEmittenteSenzaGestoreGlobaleDbTests(unittest.TestCase):
     def _me(self, auth_user_id: int) -> tuple[dict, int | None]:
         attivo = EmittenteAttivoService().risolvi_per_login(auth_user_id)
         with connection.cursor() as cur:
-            cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [auth_user_id])
+            apri_contesto_su(cur, auth_user_id)
         client = APIClient()
         client.force_authenticate(
             User.objects.get(id=auth_user_id),

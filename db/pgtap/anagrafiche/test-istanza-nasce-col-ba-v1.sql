@@ -8,8 +8,8 @@
 --
 -- Semantica attesa (il contratto, non l'implementazione):
 --   - un'istanza senza billing account non arriva al COMMIT;
---   - l'ultimo billing account di un'istanza che resta non si cancella, ma
---     istanza e BA se ne vanno insieme;
+--   - un billing account non si cancella, ne' da solo ne' con la sua istanza
+--     (E_BA_NON_SI_CANCELLA, dal 2026-11-26): un'istanza non perde il suo BA;
 --   - i dati precontrattuali di una coppia esistono solo col BA della coppia;
 --   - il billing account di un preventivo, di un'offerta o di un contratto e'
 --     quello della sua coppia, e il preventivo lo ha sempre;
@@ -19,8 +19,8 @@
 -- Elenco test (plan 13):
 --    1) istanza senza BA -> E_ISTANZA_SENZA_BA al COMMIT
 --    2) istanza + BA nella stessa transazione -> vive
---    3) cancellare l'ultimo BA di un'istanza che resta -> E_ISTANZA_SENZA_BA
---    4) cancellare istanza e BA insieme -> vive
+--    3) cancellare l'ultimo BA di un'istanza -> E_BA_NON_SI_CANCELLA (dal 2026-11-26)
+--    4) cancellare istanza e BA insieme -> E_BA_NON_SI_CANCELLA (dal 2026-11-26)
 --    5) struttura: i dati precontrattuali hanno la FK composta verso la coppia
 --       del BA (fk_idp_billing_account_coppia). Sul catalogo e non per INSERT:
 --       sotto RLS il WITH CHECK della policy parla prima della FK (42501)
@@ -36,13 +36,11 @@
 --       a ci_apply o col job notturno: finche' non c'e', il test fa skip()
 --       dichiarato invece di passare a vuoto.
 --
--- ⚠️ Non provato qui: lo spostamento del gestore globale
---   (fn_guard_istanza_ba_gestore_globale). Con un operatore in sessione un BA
---   senza collegamento risolve all'emittente di chi agisce (livello 2 di
---   script.fn_get_ba_emittente_sr_id): il caso «uno collegato, uno no» si
---   costruisce nel contesto di un super admin senza azienda, e sta in
---   anagrafiche/test-istanza-ba-gestore-globale-v1.sql (dal 2026-10-10,
---   brief-db-istanza-nasce-col-ba-residui D-4).
+-- ⚠️ Dal 2026-11-26 ogni BA ha sempre il suo collegamento, e spostare la
+--   predefinita non cambia l'azienda di nessun BA: il caso «uno collegato,
+--   uno no» non puo' nascere, e il suo guard e il suo test sono ritirati.
+--   La predefinita che si sposta senza toccare nessuno la prova
+--   anagrafiche/test-billing-account-sempre-collegato-v1.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -117,38 +115,33 @@ SELECT lives_ok(
 );
 
 -- ============================================================
--- 3) Cancellare l'ultimo BA di un'istanza che resta -> E_ISTANZA_SENZA_BA
---    Prima il collegamento all'emittente (FK fk_emittenti_fiscali_billing_account_ba).
+-- 3) Cancellare l'ultimo BA di un'istanza che resta -> rifiutato
+-- ⭐ rev 2026-11-26 (brief-db-revisione-anagrafiche §24.7.1, 20261126-40): il
+--   billing account non si cancella piu' (il cliente si annulla). Il rifiuto
+--   arriva prima, E_BA_NON_SI_CANCELLA, e E_ISTANZA_SENZA_BA non ha piu' una
+--   strada (decisione aperta nel brief: ritirare il guard differito).
+-- ============================================================
+SELECT is(
+    dbops.fn_pgtap_codice_errore($sql$
+        DELETE FROM anagrafiche.billing_account WHERE id = (SELECT ba_b FROM t_v) $sql$),
+    'E_BA_NON_SI_CANCELLA',
+    '3. L''ultimo billing account di un''istanza non si cancella: E_BA_NON_SI_CANCELLA'
+);
+
+-- ============================================================
+-- 4) Nemmeno istanza e BA insieme: il BA non si cancella
+-- ⭐ rev 2026-11-26: prima viveva; ora il BA non si cancella mai.
 -- ============================================================
 SELECT is(
     dbops.fn_pgtap_codice_errore($sql$
         DO $c$ BEGIN
             SET CONSTRAINTS ALL DEFERRED;
-            DELETE FROM anagrafiche.emittenti_fiscali_billing_account
-             WHERE billing_account_id = (SELECT ba_b FROM t_v);
             DELETE FROM anagrafiche.billing_account WHERE id = (SELECT ba_b FROM t_v);
+            DELETE FROM anagrafiche.istanze_utilities WHERE id = (SELECT istanza_b FROM t_v);
             SET CONSTRAINTS ALL IMMEDIATE;
         END $c$ $sql$),
-    'E_ISTANZA_SENZA_BA',
-    '3. L''ultimo billing account di un''istanza che resta non si cancella: E_ISTANZA_SENZA_BA'
-);
-
--- ============================================================
--- 4) Istanza e BA se ne vanno insieme -> vive
---    ⚠️ E' l'ultimo uso dell'istanza B: dopo, nel file non c'e' piu'.
--- ============================================================
-SELECT lives_ok(
-    $sql$
-    DO $c$ BEGIN
-        SET CONSTRAINTS ALL DEFERRED;
-        DELETE FROM anagrafiche.emittenti_fiscali_billing_account
-         WHERE billing_account_id = (SELECT ba_b FROM t_v);
-        DELETE FROM anagrafiche.billing_account WHERE id = (SELECT ba_b FROM t_v);
-        DELETE FROM anagrafiche.istanze_utilities WHERE id = (SELECT istanza_b FROM t_v);
-        SET CONSTRAINTS ALL IMMEDIATE;
-    END $c$
-    $sql$,
-    '4. Istanza e billing account cancellati insieme: vive'
+    'E_BA_NON_SI_CANCELLA',
+    '4. Istanza e billing account insieme: il billing account non si cancella, E_BA_NON_SI_CANCELLA'
 );
 
 -- ============================================================

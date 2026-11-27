@@ -67,11 +67,23 @@ const vesteOptions = buildOptionsConTutti(t,
   [RUOLO_APPLICATIVO.CLIENTE_PORTALE, RUOLO_APPLICATIVO.FORNITORE_PORTALE, RUOLO_APPLICATIVO.SHOP_CUSTOMER]
     .map(r => ({ value: r, label: etichettaRuoloApplicativo(t, te, r) })),
 )
-// Gli stati del riassunto: il vocabolario intero (NESSUNO compreso), non le
-// chiavi della mappa dei colori.
+// Gli stati del riassunto (NESSUNO compreso), nell'ordine dell'aggregato
+// `stato_accesso` della vista, «il migliore fra le vesti»: REVOCATA dopo
+// DISATTIVO (D-3c-2 di brief-db-accessi-area-clienti, 2026-11-27), perche' una
+// credenziale e' revocata solo quando lo sono tutte le sue vesti. Non e'
+// l'ordine di `STATO_VESTE`, che segue la singola veste (REVOCATA subito dopo
+// ATTIVO). Lo specchio BE e' `STATI_ACCESSO`, che `test_accessi_db` confronta
+// col DB.
+const STATI_FILTRO = [
+  STATO_VESTE.ATTIVO,
+  STATO_VESTE.PENDING,
+  STATO_VESTE.NON_SPEDITO,
+  STATO_VESTE.DISATTIVO,
+  STATO_VESTE.REVOCATA,
+  STATO_VESTE.NESSUNO,
+]
 const statoOptions = buildOptionsConTutti(t,
-  Object.values(STATO_VESTE)
-    .map(s => ({ value: s, label: t(`auth.stato_veste.${s}`) })),
+  STATI_FILTRO.map(s => ({ value: s, label: t(`auth.stato_veste.${s}`) })),
 )
 const fattoreOptions = buildOptionsConTutti(t,
   Object.values(STATO_SECONDO_FATTORE)

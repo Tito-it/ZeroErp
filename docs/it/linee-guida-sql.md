@@ -67,7 +67,7 @@ Uniformità e chiarezza nel codice DDL:
 | Oggetto           | Convenzione                        | Esempio                               |
 | ----------------- | ---------------------------------- | ------------------------------------- |
 | **Schema**        | minuscolo, plurale                 | `anagrafiche`, `config`, `dbops`      |
-| **Tabella**       | nome plurale, snake_case           | `soggetti`, `gestori_utilities_ruoli` |
+| **Tabella**       | nome plurale, snake_case           | `soggetti`, `soggetti_ruoli_conti_bancari` |
 | **Colonna PK**    | `id`                               | `id UUID`, `id SERIAL`                |
 | **Colonna FK**    | `<cosa>_id` se porta un id (§2)    | `articolo_id`, `magazzino_da_id`      |
 | **Sequenza**      | `<table>_id_seq`                   | `storico.comuni_id_seq`               |

@@ -1,6 +1,6 @@
 # Guida — Architettura Multi-Face Auth
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, frontend e analisti funzionali
 >
@@ -136,10 +136,12 @@ corso. Una veste scaduta non entra e non vede più i suoi dati.
   ogni volta se la veste nasce spenta o accesa: l'invito la crea spenta, ma il modello ammette anche
   una veste esterna che nasce accesa. L'utente tecnico di un processo automatico nasce con la veste
   accesa. Anche il **primo amministratore** di un'installazione nuova entra con la veste accesa:
-  `anagrafiche.fn_crea_primo_amministratore` la crea spenta attraverso `fn_crea_operatore` e la
-  accende subito, perché non c'è nessuno che possa invitarlo.
+  `anagrafiche.fn_crea_primo_amministratore` la crea spenta con le regole di `fn_crea_operatore` e la
+  accende subito, perché non c'è nessuno che possa invitarlo. Creare un operatore è riservato al
+  SUPER_ADMIN, e il primo amministratore è l'unica strada che non lo chiede.
 * ⭐ **Porta e profili sono due domande.** La veste accesa dice se la porta è aperta; il binding in
-  `config.profili_accesso_bindings` dice cosa si può fare dentro. Un profilo (anche SUPER_ADMIN) si
+  `config.profili_accesso_bindings` dice cosa si può fare dentro: lo scrivono solo i verbi del
+  SUPER_ADMIN, e per l'applicazione la tabella è in sola lettura. Un profilo (anche SUPER_ADMIN) si
   assegna anche a una veste spenta, e spegnere una veste non chiede di togliere prima i profili: li
   ritrova alla riaccensione. Chi legge i permessi chiede entrambe le cose (`fn_is_super_admin`,
   `fn_get_profili_accesso_applicabili`); l'ultimo SUPER_ADMIN senza scadenza lo protegge

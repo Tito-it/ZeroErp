@@ -20,9 +20,11 @@
 --   - l'app non esegue la primitiva: il permesso del verbo non si aggira;
 --   - il verbo chiede il SUPER_ADMIN in prima riga: un operatore, o nessun utente,
 --     riceve E_PERMESSO_NEGATO e la riga non cambia;
---   - l'applicazione non apre la porta del DELETE, ne' con la GUC accesa ('on') ne'
---     col valore giusto (l'auth_user_id della riga): la cancellazione diretta della
---     riga di un utente acceso resta rifiutata;
+--   - l'applicazione non cancella la riga diretta, ne' con la GUC accesa ('on') ne'
+--     col valore giusto (l'auth_user_id della riga): dal giro 10-bis (§14) la tabella
+--     e' in sola lettura per l'app, e il DELETE si ferma sul privilegio (42501) prima
+--     del guard. La porta del guard («GUC sulla riga e proprietario») resta per gli
+--     scrittori privilegiati, e la attraversa il verbo;
 --   - dal verbo, chiamato da un SUPER_ADMIN, l'operatore passa all'altra azienda e
 --     la GUC resta vuota.
 --
@@ -32,8 +34,8 @@
 --   SUPER_ADMIN su nessun database. Il SUPER_ADMIN lo costruisce il builder
 --   dbops.fn_pgtap_sposta_scope_operatore, che chiama il verbo vero.
 -- Gira come l'applicazione (runner di default). ⚠️ Da proprietario chi scrive e' il
---   proprietario, e la porta col valore giusto gli si apre: 9 e' rosso per
---   costruzione, e 5 dice true (il proprietario esegue sempre).
+--   proprietario: 7 e 9 sono rossi per costruzione (il privilegio non lo ferma, e
+--   col valore giusto la porta gli si apre).
 --
 -- Elenco test (plan 12):
 --    1) il verbo: SECURITY DEFINER, search_path fissato
@@ -42,10 +44,10 @@
 --    4) un operatore chiama il verbo: E_PERMESSO_NEGATO
 --    5) … e la riga non cambia
 --    6) senza utente in sessione il verbo rifiuta: E_PERMESSO_NEGATO (fail-closed)
---    7) l'app accende la GUC ('on') e cancella la riga diretta: rifiutata
+--    7) l'app accende la GUC ('on') e cancella la riga diretta: rifiutata (42501)
 --    8) … e la riga c'e' ancora
 --    9) ⭐ l'app scrive la GUC con l'auth_user_id della riga e cancella diretta:
---       rifiutata, la porta chiede anche il proprietario
+--       rifiutata (42501, la sola lettura)
 --   10) dal verbo, da SUPER_ADMIN, l'operatore passa all'altra azienda
 --   11) la riga e' quella nuova, una sola
 --   12) dopo il verbo la GUC e' vuota, e il contesto e' di nuovo l'operatore
@@ -137,15 +139,19 @@ END $ctx2$;
 -- ============================================================
 -- 7-9 La porta del DELETE, senza il verbo
 -- ============================================================
-SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.diretta('on')), 'E_USER_EMITTENTE_DELETE_VIETATO',
-          '7) l''app accende la GUC e cancella la riga diretta: rifiutata');
+-- ⚠️ Dal giro 10-bis la tabella e' in sola lettura per l'app: il DELETE diretto si
+--   ferma sul privilegio (42501), prima del guard. La porta del guard («GUC sulla
+--   riga e proprietario») resta per gli scrittori privilegiati, e la attraversa il
+--   verbo (10-12).
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.diretta('on')), '42501',
+          '7) l''app accende la GUC e cancella la riga diretta: rifiutata (sola lettura)');
 
 SELECT is(pg_temp.azienda(), (SELECT emittente_fiscale_id FROM _e),
           '8) … e la riga c''e'' ancora');
 
 SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.diretta((SELECT auth_user_id FROM _e)::text)),
-          'E_USER_EMITTENTE_DELETE_VIETATO',
-          '9) l''app scrive la GUC con l''auth_user_id della riga e cancella diretta: rifiutata, la porta chiede anche il proprietario');
+          '42501',
+          '9) l''app scrive la GUC con l''auth_user_id della riga e cancella diretta: rifiutata (sola lettura)');
 
 -- ============================================================
 -- 10-12 Dal verbo, da SUPER_ADMIN

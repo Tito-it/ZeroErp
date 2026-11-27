@@ -145,7 +145,7 @@ SELECT is(
 SET CONSTRAINTS ALL DEFERRED;
 CREATE TEMP TABLE _err8 AS
 SELECT pg_temp.errore(format(
-    $$SELECT * FROM anagrafiche.fn_crea_operatore(
+    $$SELECT * FROM dbops.fn_pgtap_fixture_crea_operatore(
           p_cognome                      := 'Consenso',
           p_nome                         := 'pgTAP',
           p_codice_fiscale               := dbops.fn_pgtap_cf_libero(),
@@ -170,7 +170,7 @@ SELECT is(
             (p.prosrc !~ 'jsonb_agg')::text
        FROM pg_proc p
        JOIN pg_namespace n ON n.oid = p.pronamespace
-      WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_crea_operatore'),
+      WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_applica_crea_operatore'),
     'true|true',
     '9) la madre chiama script.fn_get_credenziale_per_email e non compone le vesti da se''');
 

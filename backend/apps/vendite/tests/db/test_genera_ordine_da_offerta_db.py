@@ -47,7 +47,7 @@ from django.db import connection, transaction
 
 from apps.config.sorgenti import SORGENTE_OFFERTA_COMMERCIALE, SORGENTE_ORDINE_VENDITA
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, esegui_fixture, richiedi_db_provvisto
 from apps.vendite.services import ordini_service
 from apps.vendite.services._annullo_con_legami import legami_del_documento
 from apps.vendite.services.offerte_service import OfferteService
@@ -97,8 +97,7 @@ class GeneraOrdineDaOffertaDbTests(unittest.TestCase):
         esito = None
         try:
             with transaction.atomic(), connection.cursor() as cur:
-                for sql in _FIXTURE:
-                    cur.execute(sql)
+                esegui_fixture(cur, _FIXTURE)
                 esito = azione(cur)
                 raise Annulla
         except Annulla:

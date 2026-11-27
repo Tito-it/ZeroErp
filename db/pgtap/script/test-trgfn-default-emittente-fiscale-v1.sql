@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-11-27 (brief-db-porte-aperte-dalla-sola-guc §15, giro 10-quater): gli override utente sono in sola lettura per l'app; il livello d'area lo da' dbops.fn_pgtap_concedi_livello_area. Attese invariate.
 --
 -- Test: script.trgfn_default_emittente_fiscale — l'emittente di default in un
 --   building block solo, e le copie di vendite ritirate.
@@ -183,7 +184,7 @@ INSERT INTO _m SELECT 'Z', m.* FROM dbops.fn_pgtap_crea_emittente_operatore(p_pe
 --   sarebbe l'ultimo SA e fn_change_user_emittenti_scope lo rifiuterebbe (vedi testa).
 DO $lega$
 BEGIN
-    PERFORM config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), m.identita_id) FROM _m m WHERE m.lato IN ('S', 'Z');
+    PERFORM dbops.fn_pgtap_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), m.identita_id) FROM _m m WHERE m.lato IN ('S', 'Z');
 END
 $lega$;
 
@@ -209,10 +210,7 @@ BEGIN
         (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA' AND s.attivo ORDER BY s.id LIMIT 1));
 END $fix$;
 -- L'operatore A crea magazzini dal verbo: TUTTO sull'area magazzino (scelta del test).
-INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)
-SELECT m.auth_user_id, af.id, 'TUTTO', 'pgTAP: default emittente, magazzini dal verbo'
-  FROM _m m, config.aree_funzionali af
- WHERE m.lato = 'A' AND af.schema_db = 'magazzino';
+SELECT dbops.fn_pgtap_concedi_livello_area(m.auth_user_id, 'magazzino', 'TUTTO') FROM _m m WHERE m.lato = 'A';
 -- ⛔ Tolta il 2026-11-18 la riga SET LOCAL zeroerp.allow_lock_columns_override = 'on':
 --    il file non scrive colonne bloccate, e dal 2026-11-18 la porta si apre solo per
 --    la sessione del migratore (script.fn_porta_manutenzione_aperta,

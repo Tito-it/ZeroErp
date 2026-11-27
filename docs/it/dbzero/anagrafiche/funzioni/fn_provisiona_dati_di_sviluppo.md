@@ -142,7 +142,7 @@ BEGIN
           FROM config.aree_funzionali af;
         v_profili := v_profili || jsonb_build_object(
             v_el ->> 'codice',
-            config.fn_scrivi_profilo_accesso('AD_HOC', v_el ->> 'codice', v_el ->> 'descrizione',
+            config.fn_applica_scrivi_profilo_accesso('AD_HOC', v_el ->> 'codice', v_el ->> 'descrizione',
                                              COALESCE(v_aree, '[]'::jsonb)));
     END LOOP;
 
@@ -313,7 +313,7 @@ BEGIN
             END IF;
 
             SELECT m.auth_user_id INTO v_au
-              FROM anagrafiche.fn_crea_operatore(
+              FROM anagrafiche.fn_applica_crea_operatore(
                        p_cognome                      := initcap(substr(v_el ->> 'username', 5)),
                        p_nome                         := 'Dev',
                        p_codice_fiscale               := dbops.fn_pgtap_cf_libero(),
@@ -389,13 +389,13 @@ BEGIN
         PERFORM anagrafiche.fn_accendi_veste(v_idg, v_au, ARRAY['OPERATORE']::config.ruolo_applicativo[]);
 
         -- Il SUPER_ADMIN di chi lo ha nell'elenco, e il binding riacceso se
-        -- una prova lo aveva spento (fn_lega_profilo_identita trova quello
+        -- una prova lo aveva spento (la primitiva del legame trova quello
         -- che c'e' e non lo riaccende).
         IF (v_el ->> 'super_admin')::boolean THEN
-            PERFORM config.fn_lega_profilo_identita(config.fn_profilo_super_admin_id(), v_idg);
+            PERFORM config.fn_applica_lega_profilo_identita(config.fn_profilo_super_admin_id(), v_idg);
         END IF;
         IF v_el ->> 'profilo' IS NOT NULL THEN
-            PERFORM config.fn_lega_profilo_identita((v_profili ->> (v_el ->> 'profilo'))::integer, v_idg);
+            PERFORM config.fn_applica_lega_profilo_identita((v_profili ->> (v_el ->> 'profilo'))::integer, v_idg);
         END IF;
         UPDATE config.profili_accesso_bindings pab
            SET attivo = true
@@ -410,7 +410,9 @@ BEGIN
             -- utente in sessione, e il verbo chiederebbe il SUPER_ADMIN.
             PERFORM script.fn_applica_user_emittenti_scope(v_au, ARRAY[v_ef_a]);
         END IF;
-        PERFORM config.fn_imposta_override_oggetti(v_au, v_el -> 'override');
+        -- Gli override dalla primitiva: il verbo chiede un SUPER_ADMIN in sessione.
+        PERFORM config.fn_applica_imposta_override(
+            'config.user_override_oggetti'::regclass, v_au, v_el -> 'override');
         PERFORM config.fn_imposta_emittente_attivo(v_au, v_ef_a);
 
         IF v_el ->> 'username' = 'dev.smoke' THEN

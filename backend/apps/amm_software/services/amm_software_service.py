@@ -100,6 +100,14 @@ _EMITTENTE_FORM_DEFAULTS_CODES: tuple[str, ...] = (
 # ⛔ Fino al 2026-10-20 la voce arrivava cruda al repository: una chiave
 #    mancante era un KeyError, una voce che non e' un oggetto un AttributeError
 #    — cioe' un 500 `E_GENERICO` per un errore di chi chiama.
+# ⭐ Il `motivo` e' obbligatorio (dal 2026-11-27, brief-db-motivo-override-
+#    obbligatorio) e la regola sta nel verbo, cioe' nella primitiva
+#    `config.fn_applica_imposta_override`: `E_OVERRIDE_MOTIVO_OBBLIGATORIO`,
+#    campo `motivo`, anche per una voce che toglie. Qui resta `optional_string`
+#    di proposito, come per `blocca_credenziale`: un `require_string` sarebbe la
+#    seconda sede della regola, e risponderebbe con `E_AMM_VALIDAZIONE` al posto
+#    del codice del dominio. Il rifiuto del DB attraversa `translate_db_errors`
+#    col suo codice e il suo campo (test_override_aree_azioni_db, caso 5).
 def _voci_override(
     items: Any, leggi: Callable[[dict[str, Any], int], dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -560,6 +568,10 @@ class AmmSoftwareService:
     # Scopo: Cambia lo scope emittenti dell'operatore (Fase 2 multi-face).
     # Contract pubblico:
     #   {scope_mode: 'GLOBAL'|'SINGLE', emittenti_ids: list[int]}
+    # ⭐ GLOBAL per chi non e' SUPER_ADMIN lo rifiuta il DB
+    #    (`E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`, 409, giro 10-ter): la
+    #    `DatabaseError` risale e la traduce il middleware dal codice
+    #    strutturato. Non si mappa qui una seconda volta.
     #
     # Validazione lato service:
     #   - scope_mode in {GLOBAL, SINGLE} (no MULTI: rejection esplicita).
@@ -700,16 +712,21 @@ class AmmSoftwareService:
     # se post Q2 puo' avere al massimo 1 elemento): GLOBAL -> [],
     # SINGLE -> [emittente_id]. Manteniamo l'array per non vincolare
     # l'eventuale futura riapertura di MULTI lato API.
+    # ⛔ I ripieghi, se la fn non risponde, dicono SINGLE e non GLOBAL
+    #    (giro 10-ter di brief-db-porte-aperte-dalla-sola-guc, D-AA a,
+    #    2026-11-26): «tutti gli emittenti» vale solo per un SUPER_ADMIN, e
+    #    una risposta mancante non lo puo' concedere. Il DB stesso risponde
+    #    SINGLE senza emittente all'operatore che non ne ha uno.
     def get_emittenti_scope(self, auth_user_id: int) -> dict[str, Any]:
         self.get_operatore(auth_user_id)  # verifica esistenza
         row = self._repo.get_user_emittenti_scope(auth_user_id) or {}
         emittente_id = row.get("emittente_id")
         emittenti_ids = [emittente_id] if emittente_id is not None else []
         return {
-            "scope_mode": row.get("scope_mode") or _SCOPE_MODE_GLOBAL,
+            "scope_mode": row.get("scope_mode") or _SCOPE_MODE_SINGLE,
             "emittenti_ids": emittenti_ids,
             "emittente_descrizione": row.get("emittente_descrizione"),
-            "allowed_scope_modes": list(row.get("allowed_scope_modes") or [_SCOPE_MODE_GLOBAL, _SCOPE_MODE_SINGLE]),
+            "allowed_scope_modes": list(row.get("allowed_scope_modes") or [_SCOPE_MODE_SINGLE]),
             "can_change_scope": bool(row.get("can_change_scope", True)),
             "change_scope_reason": row.get("change_scope_reason"),
         }

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.ddt`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -34,7 +34,7 @@
 
 La tabella **`vendite.ddt`** rappresenta la **testata** dei Documenti di Trasporto. È il fulcro del ciclo logistico tra **Ordini** (evasione/spedizione) e **Fatture** (conto vendita / accompagnatoria).
 
-* Traccia i **metadati di spedizione** (data, mittente/destinatario, causale, vettore).
+* Traccia i **metadati di spedizione** (data, mittente/destinatario, causale, vettore). Il vettore è un vettore vero (FK verso `anagrafiche.vettori`), acceso quando la bolla lo sceglie o lo cambia (`E_DDT_VETTORE_NON_ATTIVO`, `vendite.trgfn_ddt_guard_vettore_attivo`); spento dopo, resta sulla bolla, che è storia.
 * Collega le **righe** in `vendite.ddt_righe`.
 * Espone lo **stato** operativo tramite `config.stati_doc_ddt` (*DRAFT → EMESSO → SPEDITO → CONSEGNATO → RESO*, + *ANNULLATO*), con transizioni data-driven in `config.transizioni_stati_ddt`.
 * Partecipa alle ricostruzioni **ordine↔ddt** via fulfillment (riga↔riga); il legame **testata↔testata** è la provenienza della bolla.

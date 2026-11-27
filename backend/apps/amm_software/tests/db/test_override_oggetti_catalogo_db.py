@@ -28,6 +28,10 @@
 #      cambiato fra lettura e scrittura) lo ferma la FK, ed esce come
 #      `E_AMM_VALIDAZIONE`, non come 500
 #   5. ⛔ lo stesso per un oggetto riservato: la FK rifiuta anche quello
+#
+# ⚠️ Dal 2026-11-27 ogni voce porta un motivo (brief-db-motivo-override-
+#    obbligatorio): senza, il verbo la rifiuta PRIMA della FK, e i casi 4 e 5
+#    uscirebbero col codice del motivo smettendo di provare la FK.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -41,7 +45,7 @@ from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
 from apps.amm_software.services.amm_software_service import E_AMM_VALIDAZIONE, AmmSoftwareService
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_super_admin_costruito, apri_transazione_annullata, richiedi_db_provvisto
 
 
 class OverrideOggettiCatalogoDbTests(TestCase):
@@ -61,6 +65,11 @@ class OverrideOggettiCatalogoDbTests(TestCase):
             #    che un operatore non era — il difetto che la guardia chiude.
             cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano('override oggetti')")
             self.uid = int(cur.fetchone()[0])
+            # ⭐ Chi scrive le eccezioni e' il SUPER_ADMIN, come dalla schermata
+            #    di amministrazione: il verbo lo chiede (giro 10-quater,
+            #    2026-11-27). Fino ad allora il test chiamava il service col
+            #    contesto dell'operatore stesso.
+            apri_super_admin_costruito(cur, etichetta="override oggetti admin")
         self.svc = AmmSoftwareService()
         # La cache dei permessi non e' materia di questi test.
         patcher = patch("apps.amm_software.services.amm_software_service.invalidate_user")
@@ -111,7 +120,7 @@ class OverrideOggettiCatalogoDbTests(TestCase):
     # 3.
     def test_un_oggetto_a_catalogo_si_personalizza(self) -> None:
         esito = self.svc.put_override_oggetti(self.uid, [
-            {"app_label": "anagrafiche", "model_name": "cliente", "livello": "LETTURA"},
+            {"app_label": "anagrafiche", "model_name": "cliente", "livello": "LETTURA", "motivo": "e2e"},
         ])
         self.assertEqual(
             [(r["app_label"], r["model_name"], r["livello"]) for r in esito],
@@ -123,7 +132,7 @@ class OverrideOggettiCatalogoDbTests(TestCase):
         catalogo_finto = [{"app_label": "magazzino", "model_name": "causali", "can_override": True}]
         with patch.object(self.svc._repo, "list_model_overrides", return_value=catalogo_finto):
             codice = self._codice_put([
-                {"app_label": "magazzino", "model_name": "causali", "livello": "TUTTO"},
+                {"app_label": "magazzino", "model_name": "causali", "livello": "TUTTO", "motivo": "e2e"},
             ])
         self.assertEqual(codice, E_AMM_VALIDAZIONE)
 
@@ -134,6 +143,6 @@ class OverrideOggettiCatalogoDbTests(TestCase):
         ]
         with patch.object(self.svc._repo, "list_model_overrides", return_value=catalogo_finto):
             codice = self._codice_put([
-                {"app_label": "config", "model_name": "user_override_oggetti", "livello": "TUTTO"},
+                {"app_label": "config", "model_name": "user_override_oggetti", "livello": "TUTTO", "motivo": "e2e"},
             ])
         self.assertEqual(codice, E_AMM_VALIDAZIONE)

@@ -28,7 +28,7 @@ from django.contrib.auth.models import User
 from django.db import connection, transaction
 from rest_framework.test import APIClient
 
-from apps.core.tests.db_e2e import apri_contesto_operatore, apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_super_admin_costruito, apri_transazione_annullata, richiedi_db_provvisto
 
 _URL = "/api/v1/amm-software/operatori/{}/"
 _CHIAVE = "amministrazione.operatori.valido_al_reason.ultimo_super_admin"
@@ -47,15 +47,21 @@ class OperatoreValidoAlDbTests(unittest.TestCase):
             self.a = self._operatore(cur, "valido al SA A", True)
             self.b = self._operatore(cur, "valido al SA B", True)
             self.c = self._operatore(cur, "valido al non SA", False)
-            # Il builder esce coi vincoli IMMEDIATE: si torna a quelli di una
+            # ⭐ L'amministratore che chiama le view si COSTRUISCE (D-AH,
+            #    2026-11-27): fino ad allora era il primo operatore del DB, che
+            #    su dbdev e' SUPER_ADMIN. E' un terzo SUPER_ADMIN: l'UPDATE qui
+            #    sotto gli da' la data lontana come agli altri.
+            self.admin_id = apri_super_admin_costruito(cur, etichetta="valido al admin")
+            # I builder escono coi vincoli IMMEDIATE: si torna a quelli di una
             # transazione nuova.
             cur.execute("SET CONSTRAINTS ALL DEFERRED")
-            self.admin_id = apri_contesto_operatore(cur)
             # Gli altri SUPER_ADMIN: una data di fine lontana sulla veste
             # (permesso: A e B non scadono). «Senza scadenza» restano A e B.
+            # ⚠️ Dalla fixture del DB: l'app non aggiorna le vesti (passo 3c).
             cur.execute(
-                """UPDATE anagrafiche.identita_digitali idg
-                      SET valido_al = script.fn_data_operativa() + 3650
+                """SELECT dbops.fn_pgtap_imposta_veste(
+                          idg.id, jsonb_build_object('valido_al', script.fn_data_operativa() + 3650))
+                     FROM anagrafiche.identita_digitali idg
                     WHERE idg.valido_al IS NULL
                       AND idg.id NOT IN (%s, %s)
                       AND EXISTS (SELECT 1

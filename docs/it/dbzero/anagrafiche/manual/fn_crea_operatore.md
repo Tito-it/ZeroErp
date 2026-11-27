@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_operatore`
 
-> **Ultimo aggiornamento**: 26 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -35,12 +35,15 @@ persona fisica, le dà il rapporto di lavoro e la veste OPERATORE spenta, con l'
 indirizzi di residenza e domicilio fiscale. Restituisce la credenziale, il suo username effettivo e se è stata
 riusata.
 
-È la madre della creazione di un operatore umano: la chiama il backend dall'amministrazione degli utenti, e dentro
-il database il verbo del primo amministratore (`anagrafiche.fn_crea_primo_amministratore`), il provisioning dei dati
-di sviluppo e la fixture pgTAP `dbops.fn_pgtap_crea_operatore_umano`.
+È il verbo della creazione di un operatore umano: la chiama il backend dall'amministrazione degli utenti.
 
-Il nome storico `anagrafiche.fn_crea_operatore_v2` è un involucro di questa funzione, con la stessa firma: lo
-chiamano ancora il backend, il verbo del primo amministratore e la fixture, finché non passano al nome nuovo.
+⛔ **Il permesso.** È `SECURITY DEFINER` col `search_path` fissato, e nella prima riga chiede il SUPER_ADMIN
+all'utente di sessione (`script.fn_guard_super_admin`): un altro operatore, o nessun utente, riceve
+`E_PERMESSO_NEGATO`. È lo stesso controllo dell'endpoint. Le regole che seguono le tiene la primitiva
+[fn_applica_crea_operatore](/dbzero/anagrafiche/manual/fn_applica_crea_operatore), che l'applicazione non
+esegue. La chiamano direttamente le strade senza un SUPER_ADMIN in sessione: il verbo del primo amministratore
+(`anagrafiche.fn_crea_primo_amministratore`), il provisioning dei dati di sviluppo e la fixture dei pgTAP
+`dbops.fn_pgtap_fixture_crea_operatore`.
 
 ---
 
@@ -182,6 +185,7 @@ Più quelli propagati da `fn_crea_auth_user` (username o email già presi, dati 
   il ruolo con l'enum `config.ruolo_sistema`, è ritirata.
 * 2026-11-26 — torna al nome senza suffisso; `fn_crea_operatore_v2` resta come involucro finché i chiamanti non
   passano al nome nuovo.
+* 2026-11-27 — l'involucro `fn_crea_operatore_v2` è ritirato: non aveva più chiamanti.
 * 2026-09-25 — una persona, una credenziale: il riuso, la veste che nasce spenta (il parametro dello stato è uscito
   dalla firma), il ritorno a tabella; poi il riuso non silenzioso (l'altra persona, il consenso dichiarato).
 * 2026-09-27 — nel rifiuto del consenso username e vesti vengono dalla stessa funzione del dialog.

@@ -353,6 +353,7 @@ search:
 - [trgfn_ddt_guard_indirizzi_obbligatori](manual/trgfn_ddt_guard_indirizzi_obbligatori.md) — (rev 2026-07-11)
 - [trgfn_ddt_guard_transizione](manual/trgfn_ddt_guard_transizione.md) — (rev 2026-07-09)
 - [trgfn_ddt_guard_transizione_approvazione](manual/trgfn_ddt_guard_transizione_approvazione.md) — (rev 2026-07-09; rev 2026-09-24)
+- [trgfn_ddt_guard_vettore_attivo](manual/trgfn_ddt_guard_vettore_attivo.md) — La bolla che sceglie un vettore lo vuole acceso: quando nasce con un vettore, o quando il vettore cambia.
 - [trgfn_ddt_normalize](manual/trgfn_ddt_normalize.md) — Normalizza la testata della bolla di vendita, `BEFORE INSERT` e `BEFORE UPDATE` (`trg_ddt_normalize_ins_upd`): completa anno e data, eredita cliente, valuta ed emittente dall'ordine da cui la bolla nasce, e tiene destinatario e utility allineati al cliente.
 - [trgfn_ddt_righe_componenti_guard_pending](manual/trgfn_ddt_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente di una riga DDT ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta proposta. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura. Se `ddt_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
 - [trgfn_dlt_block_ordrig_ddtrig](manual/trgfn_dlt_block_ordrig_ddtrig.md) — **Traduce in una frase il rifiuto di togliere una riga di documento — di un DDT o di un ordine — che ha legami a valle.**

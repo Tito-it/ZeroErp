@@ -16,7 +16,7 @@ portale e shop: la regola è quella dell'analisi accessi §4.2
 sezione «Invito e attivazione di una veste»).
 
 - La **creazione** dell'operatore fa nascere la veste OPERATORE **spenta**
-  (madre `anagrafiche.fn_crea_operatore_v2`, P-2) e una credenziale nuova col
+  (madre `anagrafiche.fn_crea_operatore`, P-2) e una credenziale nuova col
   segnaposto non utilizzabile; se l'email è già di una credenziale, la si
   riusa (la risposta lo dice: `credenziale_riusata`, `username`).
 - L'**invito** non tocca mai la password della credenziale (fino al
@@ -258,7 +258,7 @@ con le tue credenziali esistenti.».
 | Oggetto | Scopo |
 | --- | --- |
 | `script.fn_check_operatore_invitabile(auth_user_id)` | Invitabilità (veste spenta, finestra, email) |
-| `anagrafiche.fn_crea_operatore_v2` | Creazione: credenziale riusata o nuova, veste spenta |
+| `anagrafiche.fn_crea_operatore` | Creazione: credenziale riusata o nuova, veste spenta |
 | `config.token_monouso` | Token invito con scadenza 72h |
 | `anagrafiche.identita_digitali.invito_inviato_at` | Timestamp ultimo invito |
 | `anagrafiche.identita_digitali.attivo` | La veste: spenta fino all'attivazione |
@@ -272,4 +272,4 @@ con le tue credenziali esistenti.».
 | `apps/anagrafiche/services/invito_operatore_service.py` | Parte dell'operatore: check del DB, veste da invitare |
 | `apps/amm_software/api/invito_views.py` | 2 endpoint admin (invita, reinvia) |
 | `apps/core/api/attivazione_view.py` | Le view pubbliche sulla porta OPERATORE |
-| `apps/core/db/auth_repository.py` | `find_identita_per_ruolo`, `auth_user_ha_password`, `attiva_identita`, `set_invito_inviato_at` |
+| `apps/core/db/auth_repository.py` | `find_identita_per_ruolo`, `auth_user_ha_password`, `attiva_identita`, `segna_invito_inviato` (verbo `anagrafiche.fn_segna_invito_inviato`) |

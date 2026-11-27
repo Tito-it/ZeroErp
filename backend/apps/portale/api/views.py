@@ -159,6 +159,10 @@ class ProfileActivateShopView(PortaleAPIView):
                 if existing is not None:
                     # Identita SHOP_CUSTOMER esisteva ma disattivata
                     # (es. precedente attivazione poi sospesa) — riattiva.
+                    # ⛔ Una veste REVOCATA dall'amministratore non si
+                    #    riaccende da qui: il guard del DB la ferma con
+                    #    `E_VESTE_REVOCATA` (409, A-6 chiuso il 2026-11-26).
+                    #    La riapre solo un nuovo invito.
                     identita_id = int(existing["identita_id"])
                     _auth_repo.attiva_identita(
                         identita_id,

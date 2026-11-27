@@ -12,6 +12,7 @@
 >
 > * [dbops.fn_pgtap_crea_emittente](/dbzero/dbops/funzioni/fn_pgtap_crea_emittente) — l'azienda nuova
 > * [script.fn_crea_utente_tecnico](/dbzero/script/funzioni/fn_crea_utente_tecnico) — il percorso di produzione che lega un utente a un'azienda
+> * [dbops.fn_pgtap_fixture_crea_utente_tecnico](/dbzero/dbops/funzioni/fn_pgtap_fixture_crea_utente_tecnico) — la fixture che lo usa senza il permesso
 > * [script.fn_pgtap_set_contesto_operatore](/dbzero/script/funzioni/fn_pgtap_set_contesto_operatore) — il contesto da aprire sull'operatore tornato
 > * [dbops.fn_pgtap_crea_mondo_cliente](/dbzero/dbops/funzioni/fn_pgtap_crea_mondo_cliente) — il mondo, che la usa quando nessun contesto è aperto
 > * [dbops.fn_pgtap_crea_operatore_umano](/dbzero/dbops/funzioni/fn_pgtap_crea_operatore_umano) — l'operatore umano, quando è lui il soggetto del test
@@ -36,8 +37,11 @@ chiamante lo punta sull'utente tornato, con
 
 ### ⚠️ L'operatore è un utente tecnico
 
-L'operatore nasce da [script.fn_crea_utente_tecnico](/dbzero/script/funzioni/fn_crea_utente_tecnico),
-che è l'unico percorso di produzione che lega un utente a un emittente. Il processo di cui è
+L'operatore nasce con le regole di [script.fn_crea_utente_tecnico](/dbzero/script/funzioni/fn_crea_utente_tecnico),
+che è l'unico percorso di produzione che lega un utente a un emittente. Il verbo chiede il SUPER_ADMIN: la
+chiamata passa dalla fixture
+[fn_pgtap_fixture_crea_utente_tecnico](/dbzero/dbops/funzioni/fn_pgtap_fixture_crea_utente_tecnico), che ha
+firma e regole del verbo senza il permesso, e parte solo dove sono ammessi i dati di sviluppo. Il processo di cui è
 l'utente tecnico è il secondo parametro (default `chiusura_scadenze_daily`). Per ciò che i
 test attraversano è un operatore a tutti gli effetti: identità OPERATORE attiva, non super
 admin, un emittente nel perimetro.

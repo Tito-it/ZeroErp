@@ -12,7 +12,7 @@
 | soggetto_ruolo_id | bigint | NO |  |
 | auth_user_id | integer | NO |  |
 | ruolo_applicativo | config.ruolo_applicativo | NO |  |
-| attivo | boolean | NO | true |
+| attivo | boolean | NO | false |
 | valido_dal | date | NO | script.fn_data_operativa() |
 | valido_al | date | YES |  |
 | invito_inviato_at | timestamp with time zone | YES |  |

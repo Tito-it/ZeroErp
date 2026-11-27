@@ -72,17 +72,13 @@ class CommessaCambiaStatoDbTests(unittest.TestCase):
     # ⚠️ L'operatore del builder ha gia' `cambia_stato_commessa` dal suo
     #    profilo (letto il 2026-10-27): il diniego lo scrive il test, con un
     #    override utente spento, che nella catena viene prima del profilo.
-    #    `dbops` non ha un builder del diniego: prima occorrenza, resta qui.
+    #    Lo scrive il builder del diniego, `dbops.fn_pgtap_nega_azione`
+    #    (giro 10-quater, 2026-11-27: le eccezioni utente sono in sola lettura
+    #    per l'app; fino ad allora un `INSERT` diretto qui).
     def _nega_cambia_stato(self) -> None:
         with connection.cursor() as cur:
             cur.execute(
-                "INSERT INTO config.user_override_azioni"
-                " (auth_user_id, azione_id, abilitata, motivo, valido_dal, valido_al)"
-                " SELECT %s, ap.id, false, 'Fixture test Django', script.fn_data_operativa(), NULL"
-                " FROM config.azioni_processo ap WHERE ap.permission_codename = 'cambia_stato_commessa'"
-                " ON CONFLICT ON CONSTRAINT uq_user_override_azioni_user_azione"
-                " DO UPDATE SET abilitata = false",
-                [self.auth_user_id],
+                "SELECT dbops.fn_pgtap_nega_azione(%s, 'cambia_stato_commessa')", [self.auth_user_id],
             )
 
     def _stato(self, commessa_id: int) -> str:

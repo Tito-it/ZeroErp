@@ -37,7 +37,7 @@ from decimal import Decimal
 from django.db import connection, transaction
 
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_operatore_con_aree
+from apps.core.tests.db_e2e import apri_contesto_su, apri_operatore_con_aree, apri_operatore_costruito
 from apps.magazzino.services import consultazione_service as cs
 from apps.magazzino.services import magazzino_service as ms
 
@@ -85,7 +85,7 @@ print("\n=== SMOKE magazzino — il primo carico dall'inventario (Lotto 2) ===\n
 
 with transaction.atomic():
     with connection.cursor() as cur:
-        uid = apri_operatore_con_aree(cur, aree=("magazzino",), motivo="smoke-magazzino-inventario-primo-carico")
+        uid = apri_operatore_con_aree(cur, aree=("magazzino",))
         cur.execute("CREATE TEMP TABLE _mondo AS SELECT %s::int AS auth_user_id", [uid])
         for passo in _MONDO:
             cur.execute(passo)
@@ -162,16 +162,15 @@ with transaction.atomic():
           and rifiuto(lambda: ms.cambia_stato_documento("inventari", d["id"], {"stato": "POSTED"})) == "E_MAGAZZINO_VALIDATION")
     # 11
     with connection.cursor() as cur:
-        cur.execute("CREATE TEMP TABLE _mondo2 AS SELECT x.* FROM dbops.fn_pgtap_crea_emittente_operatore('B2') x")
-        cur.execute("SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo2))")
-        cur.execute("SELECT auth_user_id FROM _mondo2")
-        uid2 = int(cur.fetchone()[0])
+        # Il secondo mondo, col contesto per la sola transazione (BB
+        # `apri_operatore_costruito`, 2026-11-27).
+        uid2 = apri_operatore_costruito(cur, sigla="B2")
     check("11) l'altro emittente: 404 e lista vuota",
           rifiuto(lambda: ms.get_documento("inventari", d["id"])) == "E_MAG_DOCUMENTO_NON_TROVATO"
           and ms.list_documenti("inventari", auth_user_id=uid2, limit=10)["count"] == 0)
     # 12 (di nuovo nel primo contesto)
     with connection.cursor() as cur:
-        cur.execute("SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))")
+        apri_contesto_su(cur, uid)
     check("12) lookup: ubicazioni del magazzino U, lotti dell'articolo per lotti",
           [u["codice"] for u in ms.lookup_ubicazioni(mag_u)["results"]] == ["UX"]
           and [x["codice"] for x in ms.lookup_lotti(articolo_id=art_l, magazzino_id=mag_a, search=None)["results"]] == ["L-SMK"])

@@ -345,7 +345,7 @@ class TestLimitiUtente(_BaseApiTest):
         ps_cls.return_value.get_defaults.assert_not_called()
 
     # Scopo: BA che non risulta (inesistente o fuori scope RLS) → 404
-    # E_ANAG_NOT_FOUND, non la soglia senza livello categoria (F-6).
+    # E_BILLING_ACCOUNT_NOT_FOUND, non la soglia senza livello categoria (F-6).
     @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository", autospec=True)
     @patch(_AUTH, return_value=(Mock(id=1), None))
     @patch(_LIMITI_PS)
@@ -355,5 +355,5 @@ class TestLimitiUtente(_BaseApiTest):
         resp = self.client.get(_LIMITI_BASE + "?billing_account_id=99")
 
         self.assertEqual(resp.status_code, 404)
-        self.assertEqual(resp.json()["error"]["code"], "E_ANAG_NOT_FOUND")
+        self.assertEqual(resp.json()["error"]["code"], "E_BILLING_ACCOUNT_NOT_FOUND")
         ps_cls.return_value.get_defaults.assert_not_called()

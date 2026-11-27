@@ -1,6 +1,6 @@
 # Guida — I lavori automatici: che natura hanno e per conto di chi girano
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > Destinatari: chiunque debba capire, aggiungere o controllare un lavoro che il
 > sistema fa da solo — sviluppatori, analisti, e chi guarda se stanotte è andato
@@ -247,7 +247,9 @@ lì non lo fermava nessuno.
 ⭐ **Oggi ogni lavoro di DOMINIO ha un suo tesserino**, uno per azienda: è un
 utente tecnico, creato da
 [fn_crea_utente_tecnico](/dbzero/script/funzioni/fn_crea_utente_tecnico), a cui è
-associato l'elenco delle aziende che quel lavoro può servire.
+associato l'elenco delle aziende che quel lavoro può servire. Crearlo è un gesto
+dell'amministratore: il database lo chiede al `SUPER_ADMIN`, salvo i tesserini che il
+software stesso installa con i suoi dati di partenza.
 
 ⇒ Il perimetro non è più una promessa scritta nella ricerca: è il database che
 lo garantisce, come per le persone.

@@ -1,20 +1,27 @@
 # Brief DB — Gli accessi e l'area clienti: la veste revocata, la veste cliente unica, l'iscrizione da sé
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-26
+## ⏭️ Chi riparte — aggiornato al 2026-11-27
 
-**Riparte: il team BE/FE col passo 3b** (§4, con i punti del giro 2); poi la sessione DB col passo 3c e il ritiro di
-`fn_crea_operatore_v2`. Giri 1 e 2 applicati, verdi e committati il 2026-11-26 (giro 1: `6440e685d8`).
+**Riparte: la sessione DB coi giri 3-6, al via di Tid.** Il passo 3c è chiuso: lato DB il 2026-11-27 (3c-1 e 3c-3
+applicati, pgTAP verdi col runner di Tid), lato BE/FE lo stesso giorno (§5.3.10, committato il 2026-11-27).
+⛔ **Numeri riservati al 3c: `20261127-01` … `-10`**, tutti usati. Il passo 3b è committato e in
+`Tito-dev` (`53420a057`, PR #266).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 2 | team BE/FE | Il passo 3b: i verbi della revoca, i codici nuovi, lo stato `REVOCATA`, `fn_crea_operatore`, il censimento di chi scrive `attivo` | §4 | — |
-| 4 | sessione DB | Il passo 3c (le scritture dell'app) e il ritiro di `fn_crea_operatore_v2` | §2.4, §5.2 | 2 |
-| 5 | sessione DB | Giri 3-6 (S64, la veste cliente unica, l'iscrizione da sé, il ritiro dei rami shop) | §5 | 4 |
+| 1 | ~~Tid~~ | ~~D-3c-1 … D-3c-6, e il via al 3c-1~~: decise come proposto, 2026-11-27 | §5.3.3 | — |
+| 2 | ~~team BE/FE~~ | ~~R-3c-1~~ risposta del 2026-11-27, letta dal DB: §5.3.4 | §5.3.4 | — |
+| 3 | ~~Tid~~ | ~~apply del 3c-1~~ (`-01` … `-08`), 2026-11-27 | §5.3.7 | — |
+| 4 | ~~Tid~~ | ~~apply di `-09`, `-10` e `ci_apply`, pgTAP col runner, doc auto-generata~~: fatto, verde, 2026-11-27 | §5.3.9 | — |
+| 5 | ~~Tid~~ | ~~Il commit del giro DB~~: `1405f8ce4` (PR #268) | — | — |
+| 6 | ~~team BE/FE~~ | ~~La richiesta unica: il verbo di `invito_inviato_at`, i test Django sulle fixture, `REVOCATA` nel filtro~~: fatta e committata il 2026-11-27 | §5.3.10 | — |
+| 7 | sessione DB | Giri 3-6, nell'ordine rivisto del §5.3.6, col via di Tid | §5 | — |
 
-**Decisioni aperte di Tid:** nessuna per i giri 1 e 2. Per i successivi restano D-M6 e D-M9
+**Decisioni aperte di Tid:** nessuna per il 3c. Per i giri successivi restano D-M6 e D-M9
 ([analisi-modello-area-clienti](analisi-modello-area-clienti.md) §7) e l'emittente del cliente iscritto da sé
 ([sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md) §3.6).
-**Da committare:** niente.
+⚠️ ~~Fino al passaggio del BE l'invito si fermava con `42501` dopo la mail~~: chiuso dal 3c-2 (§5.3.10).
+**Da committare:** niente: il 3c-2 lato BE/FE (§5.3.10) è committato il 2026-11-27, il lato DB del 3c è in `1405f8ce4`.
 
 ## 0. Il piano da percorrere
 
@@ -39,12 +46,19 @@
   - [x] Apply e corsa dei pgTAP (Tid): verdi — 2026-11-26
 - **Fase 3 — Il passaggio col BE**
   - [x] 3a — DB consegna i verbi e la richiesta al BE (§4) — 2026-11-25
-  - [ ] 3b — BE passa dai verbi
-  - [ ] 3c — DB ritira le scritture dell'app (§2.4), con la sezione «Garanzie ritirate» compilata
+  - [x] 3b — BE passa dai verbi (§4.1; committato in `53420a057`) — 2026-11-26
+  - [x] 3c — analisi critica sul catalogo vivo e piano (§5.3) — 2026-11-27
+  - [x] 3c — R-3c-1, la risposta del BE e la lettura del DB (§5.3.4) — 2026-11-27
+  - [x] 3c — D-3c-1 … D-3c-6 (Tid: come proposto) e il via al 3c-1 — 2026-11-27
+  - [x] 3c-1 — DB: le aggiunte, scritte e provate sullo scratch (§5.3.7) — 2026-11-27
+  - [x] 3c-1 — apply (Tid) — 2026-11-27
+  - [x] 3c-3 — DB: l'app perde `UPDATE` e `DELETE`, anticipato nel giro (Tid), scritto e provato sullo scratch (§5.3.9) — 2026-11-27
+  - [x] 3c-3 — apply di `-09`, `-10` (Tid), pgTAP verdi col runner — 2026-11-27
+  - [x] 3c-2 — BE: la richiesta unica del §5.3.8 (§5.3.10, committato) — 2026-11-27
 - **Fase 4 — Doc**
   - [x] Guida `risorse-umane-e-accessi` (§«La revoca»), guida dei processi automatici, `manual/identita_digitali` — 2026-11-25
   - [x] Doc auto-generata rigenerata dopo l'apply (le quattro funzioni nuove, la tabella, `fn_stato_veste`, `fn_riattiva_utente_tecnico`) — 2026-11-26
-  - [ ] A-6 chiuso nel brief BE accessi; riga «Accessi» di `PROJECT_CONTEXT`
+  - [x] A-6 chiuso nel brief BE accessi; riga «Accessi» di `PROJECT_CONTEXT` — 2026-11-26
 - **Giro 2 — Le regole della veste e della sincronizzazione** (§5.1, T9: S5, S6, S22, S59-S63, S65, S66)
   - [x] Il via di Tid — 2026-11-26
   - [x] L'analisi sui corpi vivi (dbdev) — 2026-11-26
@@ -55,13 +69,13 @@
   - [x] La fixture dell'operatore persona (`-71`) e i pgTAP adeguati (§5.2) — 2026-11-26
   - [x] La correzione della fixture col runner app (`-73`) e i due test RLS del giro 10-ter (§5.2) — 2026-11-26
   - [x] Apply e corsa dei pgTAP (Tid): verdi; doc auto-generata rigenerata — 2026-11-26
-  - [ ] Il ritiro di `fn_crea_operatore_v2`, quando il BE e i due chiamanti DB sono passati
+  - [x] Il ritiro di `fn_crea_operatore_v2` (`90_end/20261127-06`, §5.3.7) — 2026-11-27
 - **Giri 3-6** (§5)
   - [ ] S64; la veste cliente unica e l'indice per soggetto; l'iscrizione da sé; il ritiro dei rami shop
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-25. **A chi:** Tid; il team BE/FE per il §4.
 > **Origine:** T9 di [brief-db-revisione-anagrafiche](brief-db-revisione-anagrafiche.md) §17.1 e R-4 di
-> [brief-be-accessi-credenziale-e-vesti](brief-be-accessi-credenziale-e-vesti.md); il modello dei giri successivi
+> [brief-be-accessi-credenziale-e-vesti](../work-done/2026/brief-be-accessi-credenziale-e-vesti.md); il modello dei giri successivi
 > sta in [analisi-modello-area-clienti](analisi-modello-area-clienti.md). Un brief solo per decisione di Tid
 > (2026-11-25).
 > **Brief vicini verificati:** i tre dell'origine, che rimandano qui per il lavoro DB;
@@ -135,6 +149,13 @@ fare nello stesso giro, trovate costruendo il giro 1:
 - `attivo` ha `DEFAULT true`: un'`INSERT` dell'app che non lo nomina nasce accesa. Con l'`INSERT` lasciato all'app,
   il default va a `false`, oppure anche la nascita passa dai verbi (`fn_crea_veste_portale` e le fabbriche);
 - censire ogni scrittura diretta rimasta nel backend (la richiesta del §4).
+
+⚠️ **I verbi di creazione li porta a DEFINER il giro 10-bis** di
+[brief-db-porte-aperte-dalla-sola-guc](../work-done/2026/brief-db-porte-aperte-dalla-sola-guc.md) §14 (D-AD **b**, Tid, 2026-11-26):
+`fn_crea_operatore` (e l'involucro `_v2`), `fn_crea_risorsa_umana`, `fn_crea_utente_tecnico`, i verbi dei legami di
+profilo, con le fixture pgTAP. Una funzione si riscrive una volta sola: il 3c non li riscrive, li trova già DEFINER.
+Qui restano `identita_digitali` (il grant, il default di `attivo`), `fn_accendi_veste`, `fn_riattiva_utente_tecnico`,
+`fn_crea_veste_portale` e il ritiro del `_v2`. Se il 3c parte prima del 10-bis, l'ordine lo decide Tid.
 
 ### Garanzie ritirate
 
@@ -234,7 +255,7 @@ I verbi sono consegnati (`20261125-54`, `-55`) e aspettano l'apply. Lato BE:
 6. ⛔ **Censisci chi scrive `anagrafiche.identita_digitali.attivo` e chi cancella vesti**, a partire dal §3.1:
    l'elenco non è chiuso. Ogni scrittura diretta rimasta si porta su un verbo prima del passo 3c, quando l'app
    perde il privilegio; se ne serve uno che non c'è, la richiesta torna al DB tutta insieme.
-7. Nel [brief BE accessi](brief-be-accessi-credenziale-e-vesti.md) A-6 si chiude col guard (il pulsante passa da
+7. Nel [brief BE accessi](../work-done/2026/brief-be-accessi-credenziale-e-vesti.md) A-6 si chiude col guard (il pulsante passa da
    `fn_accendi_veste`, che ora rifiuta una veste revocata), e poi sparisce col ritiro del pulsante.
 
 Dal giro 2 (2026-11-26, dopo l'apply di `20261125-58` … `-71`):
@@ -250,6 +271,99 @@ Dal giro 2 (2026-11-26, dopo l'apply di `20261125-58` … `-71`):
     (CONFLITTO_STATO: arriva se dall'amministrazione si dà il profilo SUPER_ADMIN all'utente di un processo).
 11. **Le policy generate** nominano ancora `fn_crea_operatore_v2` e `fn_crea_risorsa_umana_v2` nei commenti: si
     rigenerano dal catalogo, che porta i nomi nuovi.
+
+### 4.1 Il piano del BE/FE per il passo 3b (sessione BE, 2026-11-26)
+
+**Regola del 2, ok di Tid il 2026-11-26:**
+
+- **R2-a**: lo spegnimento ha una sede sola, `AuthRepository.revoca_veste(identita_id) → bool` (accanto ad
+  `attiva_identita`), che chiama `fn_revoca_veste`; la usano `AmmSoftwareRepository.disabilita_operatore` e
+  `InvitoPortaleService._disattiva_veste_common`. `PortaleRepository.disattiva_identita` si ritira.
+- **R2-b**: il segno lo toglie `InvitoVeste.emetti`, nella transazione del token: è già il punto unico di ogni
+  invito e reinvito (operatore, cliente, fornitore, shop). Le attivazioni dal lato cliente (`ProfileActivateShopView`)
+  non lo toglono: è la chiusura di A-6.
+
+| Blocco | Punti §4 | Che cosa |
+| --- | --- | --- |
+| B0 | — | Indici BB backend e frontend per intero; api.md §Tassonomia errori |
+| B1 | 1 | La revoca da R2-a; `_disattiva_veste_common` revoca sempre, `was_active` dal ritorno. Il sync esplicito di `disabilita_operatore` si verifica sul corpo vivo prima di toccarlo |
+| B2 | 2 | R2-b |
+| B3 | 3, 10, 11 | Policy rigenerate dal catalogo (`genera_error_policies`), ripiego senza `%s` per i codici nuovi |
+| B4 | 4 | `REVOCATA`: `STATI_ACCESSO`, filtro e OpenAPI della lista «Altri accessi», mappa di `PortaleRepository`; FE `STATO_VESTE`, severity, i18n, `PortaleAccessoPanel` (su `REVOCATA` «Invia», non «Disattiva»); catalogo FE e indice |
+| B5 | 8 | `AmmSoftwareRepository` su `fn_crea_operatore`; poi il DB ritira il `_v2` |
+| B6 | 5 | Test Django di `fn_riattiva_utente_tecnico` con un super admin |
+| B7 | 9 | `sync_auth_user_active` (doc, test); `create_auth_user_portale` (R-BE6): la veste nasce nella stessa transazione? |
+| B8 | 6 | Il censimento di chi scrive `attivo` e cancella vesti, con gli `INSERT` (il `DEFAULT true`, §2.4); verbi mancanti tornano al DB tutti insieme |
+| B9 | 7 | A-6 nel brief BE accessi, con il test della veste revocata dal pulsante shop |
+| B10 | — | Guide: `risorse-umane-e-accessi` (il BE passa dai verbi); catalogo BB backend (L801, L811) |
+| B11 | — | Test dei soli moduli toccati |
+
+**Esiti (sessione BE, 2026-11-26, da committare):**
+
+| Blocco | Esito |
+| --- | --- |
+| B0 | Letti i due indici; aperte le voci BE L801, L804, L809, L811-L813, L861 e FE L338, L445 |
+| B1 | `AuthRepository.revoca_veste` / `togli_revoca_veste` (nuovi, accanto ad `attiva_identita`). `disabilita_operatore`: il passo 1 revoca la veste di `get_veste_operatore_id`; passi 2-3 (rapporto, sync esplicito) invariati. `_disattiva_veste_common` revoca sempre, `disattivato` dal ritorno del verbo, `stato: REVOCATA` in risposta. `PortaleRepository.disattiva_identita` ritirato |
+| B2 | `InvitoVeste.emetti` toglie il segno per primo, nella transazione del token. Gli altri inviti non chiamano il verbo da sé |
+| B3 | `error_policies_generated.py` rigenerato (DB allineato a git: i sei codici nuovi sono nei CSV committati; uno è `E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN` del giro 10-ter, entrato con la stessa rigenerazione); ripiego senza `%s` per i sei; i commenti portano i nomi senza `_v2` |
+| B4 | `REVOCATA` nella mappa di `PortaleRepository`, in `STATO_VESTE` (FE), rosso in `STATO_VESTE_MAP`, i18n it/en («Revocato»), `PortaleAccessoPanel`: su `REVOCATA` «Invia invito» e niente «Disattiva». ⛔ **Non** nel filtro di «Altri accessi» (Tid, 2026-11-26, dalla revisione): né in `STATI_ACCESSO` né in `STATI_FILTRO` di `AccessiAltriTab`, perché la vista non lo produce ancora (R-3b-1 qui sotto) e il filtro risponderebbe la lista vuota |
+| B5 | `AmmSoftwareRepository.crea_operatore` chiama `fn_crea_operatore`; i manuali BE coi nomi nuovi. Nel BE nessuno nomina più `fn_crea_operatore_v2`: il DB lo può ritirare |
+| B6 | Niente da adeguare: la porta è un'`AdminAPIView` (SUPER_ADMIN), e nessun test Django chiama la funzione sul DB vero |
+| B7 | `sync_auth_user_active`: la testata dice che spegne anche la credenziale senza vesti; i test sono a mock e non ne dipendono. R-BE6: `create_auth_user_portale` gira nella stessa transazione di `_ensure_identita` (`InvitoPortaleService._invia_invito_common`), quindi la credenziale non resta mai senza veste. `AuthRepository.crea_auth_user` non aveva chiamanti fuori dal suo test: ritirato col test (Tid, 2026-11-26) |
+| B8 | Il censimento qui sotto, R-3b-2 |
+| B9 | A-6 chiuso dal guard nel brief BE accessi; la view «Attiva shop» lo dice nel commento |
+| B10 | Guide e cataloghi: §4.3 |
+| B11 | Test dei moduli toccati: 380 Django (uno `skip`, R-3b-1; ritirato dalla revisione, vedi R-3b-1) col DB vero acceso, 211 vitest, ruff verde, mypy pulito sui file di codice (i 6 rilievi stanno nei test, che `mypy.ini` esclude, e c'erano già). Nuovo `apps/core/tests/db/test_revoca_veste_db.py` (6 casi costruiti). Adeguati: `test_token_veste_db` (l'emissione vuole una veste vera), `test_operatore_altre_vesti_db` (dopo «Disabilita» l'attivazione passa dal nuovo invito; il contesto dei gesti di spegnimento è un SUPER_ADMIN dichiarato, non «il primo operatore attivo»), `test_accessi_db` (il presidio degli stati legge anche la vista), `test_invito_portale_service`. Dalla revisione: `PortaleAccessoPanel.spec.js` prova i pulsanti su `REVOCATA` e `PENDING` |
+
+### 4.2 Le richieste del BE al DB per il passo 3c (2026-11-26)
+
+- **R-3b-1, `anagrafiche.vw_accessi_altri.stato_accesso` non conosce `REVOCATA`.** Le vesti nel jsonb `vesti` portano
+  lo stato giusto, ma l'aggregato «il migliore fra le vesti» ha `ATTIVO`, `PENDING`, `NON_SPEDITO` e poi `ELSE
+  'DISATTIVO'`: una credenziale con tutte le vesti revocate risulta `DISATTIVO`, e un filtro `stato_accesso=REVOCATA`
+  risponderebbe **la lista vuota, senza errore**. Il presidio BE non lo vedeva, perché leggeva il corpo di
+  `fn_stato_veste` e non la vista. Ora la legge. Fino al changeSet `REVOCATA` **resta fuori dal filtro** (Tid,
+  2026-11-26): il BE lo rifiuta con un 400, il FE non lo offre. `test_uno_stato_che_la_vista_impara_entra_nel_filtro`
+  diventa rosso quando la vista lo produce: allora si aggiunge a `STATI_ACCESSO` (BE) e a `STATI_FILTRO`
+  (`AccessiAltriTab`) nello stesso giro, nell'ordine scelto dal DB. La posizione nell'ordine la decide il DB. Proposta: dopo `NON_SPEDITO` e prima di `DISATTIVO`, perché
+  una veste spenta senza segno si riapre con un invito come una revocata, ma la revocata dice di più.
+- **R-3b-2, il censimento di chi scrive le vesti dal BE** (§4 punto 6). La ricerca copre SQL su più righe e ORM in
+  `backend/apps`, fuori dai test. Dopo il 3b:
+  - `attivo` e il segno si scrivono **solo dai verbi**: `fn_revoca_veste`, `fn_togli_revoca_veste`,
+    `fn_accendi_veste`, `fn_crea_veste_portale`, `fn_crea_operatore`, `fn_riattiva_utente_tecnico`;
+  - **nessun `DELETE`** e nessun `INSERT` diretto: la nascita passa da `fn_crea_veste_portale` (invito spento, shop
+    acceso) e da `fn_crea_operatore`. Il `DEFAULT true` di `attivo` non tocca il codice applicativo;
+  - **resta un `UPDATE` diretto**: `AuthRepository.set_invito_inviato_at`, `SET invito_inviato_at = now()`, che
+    filtra su `id` e `auth_user_id`. Non tocca `attivo` né il segno. Se il 3c toglie all'app l'`UPDATE` della
+    tabella intera e non per colonna, serve un verbo (`fn_segna_invito_inviato`?);
+  - fuori dalla tabella: `disabilita_operatore` scrive ancora `risorse_umane.attivo` e `valido_al` con un `UPDATE`
+    diretto, dopo la revoca;
+  - ⚠️ **I test Django sul DB vero scrivono `attivo` direttamente** per costruire i casi: `test_accessi_db`,
+    `test_operatore_valido_al_db`, `test_login_credenziale_db`, `test_revoca_veste_db`, `test_commessa_testata_db`
+    (e `tecnica` in `test_operatori_senza_utenti_tecnici`); con un `INSERT` diretto della veste, spenta,
+    `test_token_veste_db` e `test_operatore_altre_vesti_db` (revisione del 2026-11-26). Al 3c si rompono. La strada va decisa insieme: una
+    fixture `dbops.fn_pgtap_*` per spegnere e accendere una veste, come per i pgTAP, oppure i verbi.
+- **Il ritiro di `fn_crea_operatore_v2`**: il BE è passato (B5). Restano i due chiamanti DB del §5.2.
+
+### 4.3 Guide e cataloghi del passo 3b
+
+`scripts/guide_coinvolte.py` sui file del diff, senza i due file generati dal catalogo errori e senza le traduzioni,
+che nominano tutto:
+
+- [risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md): **guida indietro, aggiornata**. Il «⚠️ il
+  backend non passa ancora dai due verbi» del §«La revoca» ora descrive i punti che passano dai verbi e il pulsante
+  shop che si ferma;
+- `architettura-multi-face-auth`: resta contraddetta dal modello dell'area clienti, si riscrive coi giri 3-6. Le
+  sue righe sulla disattivazione (§8.1) restano vere;
+- `architettura-permessi-e-autorizzazioni`, `processi-automatici-classe-e-identita`, `contratto-guc-app`,
+  `_sincronizzazione-accesso`, `_ultimo-super-admin`: **coerenti** (i verbi col guard in testa, l'utente dalla
+  sessione, la sync dai trigger);
+- le altre trenta: oggetti in comune coi repository toccati, che nominano altri domini (clienti, fatturazione,
+  pratiche…). Regole invariate, **coerenti**;
+- manuali BE aggiornati: `api_invito_portale_shop` (stato `REVOCATA`, la risposta della disattivazione),
+  `api_amm_software` (§1.5 «Disabilita» è una revoca, il filtro `stato_accesso`), `api_invito_operatore` (il nome
+  nuovo);
+- cataloghi BB: BE L801 (`emetti` toglie il segno), L809 (`revoca_veste`, `togli_revoca_veste`), L811, L812
+  (`disattiva_identita` ritirato); FE L338, L445 (`REVOCATA`). Indici rigenerati.
 
 ## 5. I giri successivi
 
@@ -375,7 +489,325 @@ invariate). Le pagine `manual/` di `fn_crea_risorsa_umana` e `fn_crea_operatore`
   nato senza azienda, come negli altri tredici file di quel giro.
 - Suite pgTAP di Tid: verde. Doc auto-generata rigenerata da Tid.
 
+### 5.3 Il passo 3c — analisi critica del 2026-11-27
+
+Letto sul catalogo di dbdev il 2026-11-27 (`pg_proc`, `pg_trigger`, `information_schema`), dopo il giro 10-bis di
+[brief-db-porte-aperte-dalla-sola-guc](../work-done/2026/brief-db-porte-aperte-dalla-sola-guc.md) (archiviato il
+2026-11-27) e dopo il 3b.
+
+#### 5.3.1 Che cosa c'è oggi
+
+| Oggetto | Sul vivo | Che cosa vuol dire per il 3c |
+| --- | --- | --- |
+| `identita_digitali`, grant di `zeroerp_app` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` su ogni colonna; nessuna voce nel loop `20260205-41` | la postura è ancora tutta da scrivere |
+| `attivo` | `DEFAULT true` | contro «la veste nasce spenta» (S67, analisi §4) |
+| `fn_accendi_veste` | INVOKER, senza guard, `EXECUTE` all'app; `UPDATE` di `attivo` | senza l'`UPDATE` dell'app si ferma: deve diventare DEFINER |
+| `script.fn_riattiva_utente_tecnico` | INVOKER, guard del super admin già in testa (`-56`) | DEFINER, senza altro |
+| `fn_crea_veste_portale` | INVOKER, senza guard; scrive con `script.fn_scrivi_riga_da_jsonb` | senza l'`INSERT` dell'app si ferma |
+| `fn_crea_operatore`, `fn_crea_utente_tecnico`, `fn_revoca_veste`, `fn_togli_revoca_veste`, `fn_crea_primo_amministratore`, il provisioning | DEFINER | già a posto (10-bis, giro 1) |
+| `fn_crea_risorsa_umana`, `script.fn_applica_crea_utente_tecnico` | INVOKER, in `v_fn_riservate` | primitive chiamate solo da DEFINER: a posto |
+| `fn_crea_operatore_v2` | in `v_fn_riservate`; `pg_depend` senza dipendenti; ne parla solo un commento nel corpo di `fn_crea_auth_user` | si ritira: nessun chiamante, DB o BE (B5) |
+| `vw_accessi_altri.stato_accesso` | `ATTIVO` › `PENDING` › `NON_SPEDITO` › `ELSE 'DISATTIVO'` | R-3b-1 |
+| trigger della tabella | solo il guard della revoca legge il proprietario; audit e storico registrano `current_user` | coi verbi DEFINER, `user_update` e lo storico portano `zeroerp_owner` invece di `zeroerp_app` (§5.3.2) |
+| pgTAP che scrivono la tabella direttamente | 28 file con `UPDATE` (`attivo`, `valido_al`, `valido_dal`, `invito_inviato_at`, `auth_user_id`), 10 con `INSERT`, 4 con `DELETE` (conteggio del 2026-11-27: dà il costo, non decide la forma) | da separare: chi gira come app si rompe al 3c-3, chi gira da owner no |
+
+#### 5.3.2 Analisi critica
+
+1. **`fn_accendi_veste` è chiamata da una richiesta anonima.** Il link dell'invito arriva senza JWT, e lì le GUC
+   d'identità non si toccano ([contratto-guc-app](../../guide/contratto-guc-app.md), «Request anonime»). Un guard
+   di permesso come quello della revoca non si può mettere. Portata a DEFINER così com'è, la funzione accende
+   qualunque veste spenta e non revocata della credenziale che il BE le passa: è la stessa porta dell'`UPDATE` di
+   oggi, spostata dentro un verbo. Il controllo vero è il token, e il token oggi vive tutto nel BE: l'app scrive
+   `config.token_monouso` direttamente (`arwd`), e nessuna funzione DB lo consuma. Il modello giusto è un verbo che
+   **consuma il token e accende nella stessa riga**. Lo stesso verbo servirebbe alla conferma dell'iscrizione
+   (analisi §3.3, passo 5: «l'iscrizione e l'invito sono la stessa cosa vista da due lati»). → D-3c-1.
+2. **Il loop dei grant non sa «UPDATE solo di una colonna».** Le forme sono di tabella: sola lettura,
+   append-only (`SELECT, INSERT`), senza `DELETE` (§11.8). Togliere `attivo` e lasciare `invito_inviato_at` non si
+   scrive nel loop. Le strade sono due: tabella chiusa con un verbo per `invito_inviato_at`, oppure una regola nel
+   guard («`attivo` cambia solo dal proprietario»), come per il segno. → D-3c-3, D-3c-4.
+3. **Chiudere l'`INSERT` adesso fa riscrivere `fn_crea_veste_portale` due volte.** Il giro della veste cliente
+   unica la riscrive comunque (i tipi ammessi cambiano, `SHOP_CUSTOMER` sparisce). Portarla a DEFINER col guard
+   adesso, e poi di nuovo, contraddice «una funzione si riscrive una volta sola» (D-AD). C'è anche un dubbio da
+   sciogliere: la veste shop «nasce accesa» (R-3b-2) da un'iscrizione dello shop anonima? Se è così il guard di
+   gestione la ferma. → D-3c-3, R-3c-1.
+4. **R-3b-1: la posizione di `REVOCATA` cambia il significato dell'aggregato.** Il COMMENT della vista dice «il
+   migliore fra le vesti». Con la proposta del BE (prima di `DISATTIVO`), una credenziale con una veste revocata e
+   una spenta senza segno risulta `REVOCATA`, anche se la seconda si riapre con un invito qualunque: l'aggregato
+   smette di dire «il migliore». Messo per ultimo, `REVOCATA` vuol dire «tutte le vesti sono revocate», che è la
+   domanda utile al filtro: «chi è stato chiuso dall'amministratore». → D-3c-2.
+5. **I test, BE e pgTAP, scrivono la veste per costruire i casi.** Sono la stessa necessità due volte: una fixture
+   sola, `dbops`, DEFINER, dietro il cancello dei dati di sviluppo, come la primitiva di D-AE **a**. La usano pgTAP e
+   test Django (regola del 2). I test che provano proprio «l'app non scrive» (`test-veste-revocata-v1` 4, 5, 16)
+   restano diretti. → D-3c-5.
+6. **I verbi DEFINER cambiano chi risulta nell'audit.** `user_update` e lo storico della veste portano
+   `zeroerp_owner` dopo un'accensione o una riattivazione. È lo stesso effetto dei verbi del giro 1 e del 10-bis;
+   l'utente vero lo dice la GUC. Si censiscono i lettori DB di `identita_digitali.user_update` e dello storico della
+   veste nella sezione «Garanzie ritirate».
+7. **L'ordine in tre passi resta quello di D-R9**: il DB aggiunge (3c-1), il BE passa (3c-2), il DB chiude (3c-3).
+   Una chiusura prima del BE fa rossa la CI: i test Django sul DB vero scrivono `attivo` (R-3b-2).
+
+#### 5.3.3 Decisioni per Tid
+
+| # | Domanda | Proposta |
+| --- | --- | --- |
+| D-3c-1 | Come si protegge l'accensione dal link? (a) `fn_accendi_veste` DEFINER coi controlli di oggi, limite dichiarato, e il verbo che consuma il token nasce col giro dell'iscrizione; (b) DEFINER, e in più accende solo se la credenziale ha un token d'invito valido e non usato (chiede al BE di accendere prima di segnare il token come usato); (c) adesso il verbo `fn_accetta_invito_veste(token)`, che consuma il token e accende, col BE che riscrive l'accettazione | **(a)**. Il verbo del token si progetta una volta sola, con la conferma dell'iscrizione: il tipo di token, la credenziale che nasce alla conferma, il freno, D-M9 (con un provider la conferma via email non c'è). Il cambio di adesso è la sola testata della funzione |
+| D-3c-2 | Dove sta `REVOCATA` nell'aggregato di `vw_accessi_altri`? | **Per ultimo**, dopo `DISATTIVO`: «tutte le vesti sono revocate». La proposta del BE (prima di `DISATTIVO`) toglie all'aggregato il senso di «il migliore» |
+| D-3c-3 | La postura della tabella al 3c-3: (a) sola lettura, ogni scrittura da un verbo, `fn_crea_veste_portale` DEFINER col guard già adesso; (b) append-only (`SELECT, INSERT`): l'app perde `UPDATE` e `DELETE` adesso, l'`INSERT` si chiude col giro della veste cliente unica, che riscrive `fn_crea_veste_portale` una volta sola | **(b)**, con `attivo DEFAULT false` subito: un `INSERT` diretto che non lo nomina nasce spento, e uno acceso su una coppia revocata lo ferma già il guard. Resta, dichiarato, l'`INSERT` diretto di una veste accesa su una coppia non revocata, fino al giro della veste cliente |
+| D-3c-4 | `invito_inviato_at`: un verbo o una regola nel guard? | **Un verbo**, `anagrafiche.fn_segna_invito_inviato(identita_id)`, DEFINER, con `fn_guard_gestione_veste` sul tipo della veste. Una regola nel guard su `attivo` lascerebbe aperta ogni altra colonna. R-3c-1: copre le quattro vesti, operatore compreso, senza toccare il guard (§5.3.4) |
+| D-3c-5 | Come costruiscono le vesti i test, dopo il 3c-3? | **Una fixture `dbops`** (nome da fissare nel giro, per esempio `fn_pgtap_imposta_veste`), DEFINER, col cancello dei dati di sviluppo: stato, date, `invito_inviato_at`. La usano pgTAP e Django. In PRODUZIONE si rifiuta |
+
+#### 5.3.4 La domanda al team BE/FE prima del 3c-1
+
+**R-3c-1.** Per ogni chiamata di `AuthRepository.set_invito_inviato_at` e di `anagrafiche.fn_crea_veste_portale`:
+in quale richiesta gira (porta, endpoint), e se c'è un utente in sessione con il permesso di gestire quel tipo di
+veste. In particolare: la veste shop che «nasce accesa» (R-3b-2) nasce da un'iscrizione anonima? E il reinvio di un
+invito esiste anche dal lato del cliente, senza un amministratore? L'elenco di R-3b-2 è il punto di partenza, non il
+confine: se ci sono altri chiamanti, vanno nella risposta.
+
+**La risposta del BE (2026-11-27).** Il censimento copre `backend/apps`, i test sul DB vero, i management command e
+i task. Nessun command, task o job chiama i due nomi.
+
+| Chiamata | Da dove | Chi è in sessione | Transazione |
+| --- | --- | --- | --- |
+| `set_invito_inviato_at` (solo da `InvitoVeste.spedisci`, se la mail è partita) | le porte d'invito e reinvio: cliente portale, shop, fornitore, e **operatore** (`InvitaOperatoreView`, `ReinviaInvitoView`), che R-3b-2 non elencava | un operatore autenticato, con le GUC | dopo il commit del token e dopo la mail, in autocommit |
+| `fn_crea_veste_portale`, invito (`_ensure_identita`, `p_attivo = false`) | le tre porte d'invito esterne | un operatore | la stessa del token |
+| `fn_crea_veste_portale`, veste shop accesa (`p_attivo = true`) | `ProfileActivateShopView` | **la persona stessa**, con le GUC della sua veste `CLIENTE_PORTALE`; nessun token | — |
+| `fn_accendi_veste` dal link (`attiva_veste`) | `AttivazioneView`, `AttivazionePortaleView`, `AttivazioneShopView`, tutte `AllowAny` | nessuno | un solo atomic: prima il token si consuma, poi la password (solo l'invito), poi il verbo; se il verbo torna `false`, il rollback annulla tutto |
+| `fn_accendi_veste` senza token | `ProfileActivateShopView`, che riaccende una veste shop spenta | la persona stessa | — |
+
+- Il reinvio dal lato del cliente non esiste. L'iscrizione allo shop senza login (`shop/register/check-email/`) è oggi
+  uno stub che risponde 501, in attesa di PR-C. Il BE chiede di prevederla.
+- Test sul DB vero che R-3b-2 non elencava: `VestePortaleDbTests` (`test_creazioni_dalle_madri_db.py`) chiama
+  `fn_crea_veste_portale` senza contesto operatore. `test_revoca_veste_db` e `test_operatore_altre_vesti_db` chiamano
+  `attiva_identita`, con un contesto GUC non verificato.
+- Lato DB: `fn_provisiona_dati_di_sviluppo` chiama tutte e due le funzioni. È DEFINER, quindi non le serve niente.
+
+**La lettura del DB.**
+
+1. **Il guard copre già l'operatore.** Per il tipo `OPERATORE`, `fn_guard_gestione_veste` chiama
+   `fn_guard_super_admin` dal `-53` (§2.3). È lo stesso controllo dell'`AdminAPIView`. Il verbo di
+   `invito_inviato_at` copre le quattro vesti senza toccare il guard. L'autocommit non cambia niente: in sessione c'è
+   l'operatore. **D-3c-4 regge.**
+2. **D-3c-1 (a) è l'unica delle tre che non rompe niente.** Con la (b) e con la (c), `activate-shop` si fermerebbe,
+   perché riaccende senza token. La (a) tiene i due percorsi, il link anonimo e la persona stessa, e la revoca la
+   ferma già il guard. L'ordine dell'atomic (il token si consuma, poi si accende, e il `false` annulla tutto) è già la
+   forma del verbo che consuma il token: il giro dell'iscrizione lo porta a DB così.
+3. **Il ramo «la persona stessa» non si costruisce.** Servirebbe a `activate-shop`, che il modello ritira (analisi
+   §3.3: il pulsante lo sostituisce l'iscrizione). Con D-3c-3 (b), `fn_crea_veste_portale` resta INVOKER e l'`INSERT`
+   resta all'app fino al giro della veste cliente. `activate-shop` e `VestePortaleDbTests` continuano a funzionare, e
+   il `DEFAULT false` non li tocca: tutte e due passano `p_attivo`. **D-3c-3 (b) regge**, con un vincolo
+   sull'ordine: l'`INSERT` si chiude **dopo** il ritiro di `activate-shop`, cioè dopo l'iscrizione (D-3c-6).
+4. **L'iscrizione anonima la prevede il giro dell'iscrizione**, col verbo che consuma il token (D-3c-1). Il 3c non le
+   chiude nessuna strada: l'`INSERT` resta aperto, e `fn_accendi_veste` non chiede un utente.
+5. **`test_revoca_veste_db` e `test_operatore_altre_vesti_db`** non si rompono al 3c: con la (a)
+   `fn_accendi_veste` non legge il contesto. Si rompono al 3c-3 solo i test che scrivono la tabella direttamente
+   (R-3b-2), che passano alla fixture di D-3c-5.
+
+#### 5.3.5 Il piano del 3c, a decisioni prese
+
+**3c-1, DB (aggiunge, non toglie):**
+
+- [x] `vw_accessi_altri`: `REVOCATA` nell'aggregato (D-3c-2), e il COMMENT (`20261127-04`) — 2026-11-27
+- [x] `fn_accendi_veste` e `script.fn_riattiva_utente_tecnico` `SECURITY DEFINER`, col `search_path` fissato
+      (D-3c-1); `fn_accendi_veste` dichiara nel COMMENT il limite del link anonimo (`-01`, `-02`) — 2026-11-27
+- [x] `anagrafiche.fn_segna_invito_inviato` (D-3c-4), senza codici nuovi (`-03`) — 2026-11-27
+- [x] la fixture delle vesti, `dbops.fn_pgtap_imposta_veste` (D-3c-5, `-05`) — 2026-11-27
+- [x] `attivo DEFAULT false` (D-3c-3, `90_end/-08`), dopo il censimento: il solo scrittore senza `attivo` era
+      `script.fn_applica_crea_utente_tecnico`, che lo nomina (`-07`) — 2026-11-27
+- [x] il ritiro di `fn_crea_operatore_v2` (`90_end/-06`), la voce di `v_fn_riservate` e del provisioning; il
+      commento in `fn_crea_auth_user` resta (`test-riferimenti-morti-v1` non lo vede) — 2026-11-27
+- [x] i pgTAP (§5.3.7) — 2026-11-27
+- [x] guide e pagine `manual/` (§5.3.7) — 2026-11-27
+- [x] la richiesta al BE del 3c-2 (§5.3.8) — 2026-11-27
+- [x] apply (Tid) — 2026-11-27; pgTAP verdi col runner, insieme al 3c-3 (§5.3.9); doc auto-generata rigenerata — 2026-11-27
+
+**3c-2, BE/FE:** `set_invito_inviato_at` sul verbo; i test Django sul DB vero (§4.2, R-3b-2) sulla fixture;
+`REVOCATA` in `STATI_ACCESSO` e in `STATI_FILTRO` di `AccessiAltriTab`, nell'ordine di D-3c-2 (il presidio
+`test_uno_stato_che_la_vista_impara_entra_nel_filtro` diventa rosso all'apply del 3c-1, ed è voluto).
+
+**3c-3, DB (chiude)** — anticipato prima del BE (Tid, 2026-11-27), §5.3.9:
+
+- [x] `identita_digitali` nel loop dei grant, nelle tre sedi di §11.8, con la forma di D-3c-3, e il suo pgTAP di
+      postura — 2026-11-27
+- [x] i pgTAP che girano come app e scrivono la veste passano alle fixture; restano diretti quelli che provano il
+      rifiuto — 2026-11-27
+- [x] la sezione «Garanzie ritirate» (§5.3.7, §5.3.9) — 2026-11-27
+- [x] `scripts/guide_coinvolte.py` sul diff, con gli esiti — 2026-11-27
+
+#### 5.3.7 Il 3c-1 costruito (2026-11-27)
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20261127-01` (20_code) | `anagrafiche.fn_accendi_veste` SECURITY DEFINER, `search_path` fissato; corpo identico al vivo, COMMENT al presente col limite del link anonimo |
+| `-02` (20_code) | `script.fn_riattiva_utente_tecnico` SECURITY DEFINER; corpo identico al vivo |
+| `-03` (20_code) | `anagrafiche.fn_segna_invito_inviato(identita_id) → invito_inviato_at`: DEFINER, `fn_guard_gestione_veste` sul tipo |
+| `-04` (20_code) | `anagrafiche.vw_accessi_altri`: `… NON_SPEDITO, DISATTIVO, REVOCATA`, l'`ELSE` resta `DISATTIVO`; `security_invoker` ripetuto |
+| `-05` (20_code) | `dbops.fn_pgtap_imposta_veste(identita_id, campi jsonb)`: DEFINER col cancello dei dati di sviluppo; `attivo`, `valido_dal`, `valido_al`, `invito_inviato_at` |
+| `-06` (90_end) | `DROP` di `fn_crea_operatore_v2`, in 90_end perché il `20261126-25` (HALT) lo conta fra le sette riservate |
+| `-07` (20_code) | `script.fn_applica_crea_utente_tecnico`: la veste tecnica nomina `attivo = true` |
+| `-08` (90_end) | `identita_digitali.attivo SET DEFAULT false`, in 90_end: da zero i seed di 80_data nascono col default di prima |
+| loop `20260205-41`, `provision_zeroerp.sql` | la voce `fn_crea_operatore_v2` tolta da `v_fn_riservate` |
+
+**Scostamenti dal piano.**
+
+- Il censimento del default ha trovato `script.fn_applica_crea_utente_tecnico`, che inseriva la veste tecnica senza
+  nominare `attivo`: col solo `SET DEFAULT` gli utenti tecnici nuovi sarebbero nati spenti. Si riscrive (`-07`).
+- `p_vesti` di `fn_accendi_veste` resta `config.ruolo_applicativo[]`: `%TYPE[]` è sintassi nel `DECLARE`, non nella
+  firma (PG 19, provato il 2026-11-27).
+
+**Garanzie ritirate.**
+
+| Oggetto | Che cosa i lettori davano per scontato | Lettori lato DB |
+| --- | --- | --- |
+| `identita_digitali.attivo DEFAULT true` | una veste inserita senza nominare `attivo` nasce accesa | `fn_applica_crea_utente_tecnico`: adeguata (`-07`). `fn_crea_risorsa_umana`, `fn_crea_veste_portale`, il provisioning, il backfill `20260419-80` e gli `INSERT` dei pgTAP nominano `attivo`: non ne dipendono |
+| `fn_accendi_veste`, `fn_riattiva_utente_tecnico` INVOKER | `user_update` e lo storico della veste, dopo un'accensione, portano il ruolo dell'app | nessuna funzione né vista legge `identita_digitali.user_update` o `user_insert` (catalogo di dbdev, 2026-11-27) |
+
+**La prova** (scratch `zeroerp_ruoli`, 2026-11-27):
+
+- estratto degli otto changeSet eseguito per intero, catalogo identico dopo il `ROLLBACK`; i tre corpi riscritti
+  confrontati col `prosrc` vivo: identici, salvo la `INSERT` del `-07`;
+- `anagrafiche/test-veste-accensione-invito-fixture-v1` (nuovo): 20/20, da owner. Come per il giro 1, la corsa vera è
+  quella del runner di Tid, come app;
+- adeguati: `config/test-porta-tabelle-accesso-v1` (sei funzioni riservate, non più sette),
+  `anagrafiche/test-vesti-sync-e-guard-v1` (caso 9: i due `_v2` non ci sono più), `dbops/test-character-n-v1` (il
+  registro senza il `_v2`);
+- regressione senza e con l'estratto su 29 pgTAP (gli oggetti del giro per nome, più i presidi di forma): nessun
+  rosso nuovo. Rossi uguali prima e dopo, tutti della corsa da owner: `test-veste-revocata-v1`,
+  `test-elimina-credenziale-v1`, `test-porta-tabelle-accesso-v1`, `test-riferimenti-morti-v1`,
+  `test-viste-app-solo-select-v1`;
+- guardrail statici sui nove file: verdi.
+
+**Guide** (`scripts/guide_coinvolte.py` sui file del giro): `risorse-umane-e-accessi` **guida indietro,
+aggiornata** (la veste nasce spenta, l'invito spedito, l'accensione senza permesso, l'ordine dello stato
+aggregato); `pgtap-come-si-scrive-un-test` **aggiornata** (la fixture); `manual/identita_digitali`,
+`manual/vw_accessi_altri`, `manual/fn_crea_operatore` **aggiornate**; `architettura-multi-face-auth` resta
+contraddetta dal modello, si riscrive coi giri successivi; `contratto-guc-app` coerente (l'accensione anonima è
+il caso «Request anonime»); `architettura-permessi-e-autorizzazioni`, `processi-automatici-classe-e-identita` coerenti
+(verbi col guard, la riattivazione resta del super admin); le altre ventuno hanno in comune oggetti che i corpi
+attraversano (emittenti, contatti, processi), con regole invariate: **coerenti**.
+
+#### 5.3.8 La richiesta unica al team BE/FE (dopo l'apply di `-09` e `-10`)
+
+**Chi cambia per primo**: il DB, che aggiunge (3c-1) e chiude (3c-3, anticipato: Tid, 2026-11-27, non c'è produzione). Il BE passa una volta sola, dopo l'apply. ⚠️ Fino ad allora `set_invito_inviato_at` si ferma con `42501` (permesso negato) dopo l'invio della mail, e i test Django che aggiornano o cancellano una veste sono rossi.
+
+1. **`AuthRepository.set_invito_inviato_at` passa da `anagrafiche.fn_segna_invito_inviato(identita_id)`**, che
+   ritorna il momento scritto. Permesso per tipo di veste, dall'utente della sessione (`E_PERMESSO_NEGATO`); veste
+   assente `E_VESTE_NON_TROVATA`. Nessun codice nuovo.
+2. **I test Django sul DB vero che scrivono una veste** con `UPDATE` (lo stato, le date, `invito_inviato_at`)
+   passano a `dbops.fn_pgtap_imposta_veste(identita_id, '{"attivo": false}'::jsonb)`: solo le chiavi nominate, una
+   chiave a `null` porta la colonna a `NULL`. Colonne ammesse: `attivo`, `valido_dal`, `valido_al`,
+   `invito_inviato_at`, `ruolo_applicativo`, `soggetto_ruolo_id`. Per togliere una veste:
+   `dbops.fn_pgtap_cancella_veste(identita_id)`. Il segno della revoca passa dai suoi verbi, e una veste revocata le
+   fixture non la spostano né la cancellano. L'elenco di R-3b-2 è il punto di partenza: ⛔ **censisci ogni test che
+   scrive `anagrafiche.identita_digitali` con `UPDATE` o `DELETE`**: l'app li ha persi tutti e due (`-09`), e
+   l'`INSERT` resta. Se a un test serve un'altra colonna, la richiesta torna al DB tutta insieme.
+3. **`REVOCATA` in `STATI_ACCESSO` e in `STATI_FILTRO` di `AccessiAltriTab`**, dopo `DISATTIVO`: la vista lo
+   produce quando tutte le vesti della credenziale sono revocate. `test_uno_stato_che_la_vista_impara_entra_nel_filtro`
+   diventa rosso all'apply, ed è il segnale voluto.
+4. **`attivo` nasce `false`**: un `INSERT` di una veste che non nomina `attivo` nasce spento. Il codice BE non ne
+   fa (R-3b-2); censisci i test che contano su una veste nata accesa senza dirlo.
+5. **`fn_crea_operatore_v2` non c'è più.** Il BE non lo nomina (B5); se le policy generate lo citano ancora, si
+   rigenerano.
+6. **`user_update` della veste**, dopo un'accensione o una riattivazione, porta il proprietario della tabella e non
+   più il ruolo dell'app. ⛔ Censisci chi legge `identita_digitali.user_update` contando sul ruolo dell'app. Lato DB
+   non lo legge nessuno.
+
+#### 5.3.9 Il 3c-3 anticipato (2026-11-27)
+
+Tid, 2026-11-27: il 3c-3 non aspetta il BE, il sistema non è in produzione. Il BE passa una volta sola (§5.3.8).
+
+| ChangeSet / sede | Che cosa |
+| --- | --- |
+| `20261127-09` (90_end) | `zeroerp_app`: `SELECT, INSERT` su `identita_digitali`, `REVOKE UPDATE, DELETE` |
+| loop `20260205-41` (ci_apply) | lista nuova `v_tabelle_app_solo_insert`, con lo stesso ramo dei registri append-only: stessa postura, significato diverso (un registro non si cambia mai, le vesti dai verbi) |
+| `provision_zeroerp.sql` | blocco «LE VESTI SI CAMBIANO DAI VERBI», `REVOKE UPDATE, DELETE`: l'ultima parola in CI |
+| `-10` (20_code) | `dbops.fn_pgtap_imposta_veste` ammette anche `ruolo_applicativo` e `soggetto_ruolo_id`; nasce `dbops.fn_pgtap_cancella_veste`. Tutte e due rifiutano di spostare o cancellare una veste revocata (`E_VESTE_REVOCA_SOLO_DAL_VERBO`): il guard della tabella lo lascia al proprietario, e le fixture lo sono |
+
+**Scostamento da D-3c-5**: la fixture doveva cambiare solo lo stato. Il porting ha trovato quattro casi che
+provano i guard della coerenza cambiando la forma della veste (il tipo `DISABILITATO`, la veste `OPERATORE` su un
+ruolo non `RIS_UMANA`, il riuso di una credenziale con la veste spostata) e due che tolgono una veste per
+costruire il caso dopo. Si allarga la fixture invece di portare quei test al runner owner, che perderebbe le
+altre asserzioni fatte come app.
+
+**Garanzie ritirate.**
+
+| Oggetto | Che cosa i lettori davano per scontato | Lettori lato DB |
+| --- | --- | --- |
+| `UPDATE`, `DELETE` di `zeroerp_app` su `identita_digitali` | l'app scrive la veste direttamente | funzioni: nessuna INVOKER aggiorna o cancella la tabella (catalogo di dbdev, 2026-11-27: chi la aggiorna è DEFINER; le cascate delle FK girano col proprietario). pgTAP che girano come app: 15 file, adeguati (sotto). Lato BE: §5.3.8 |
+| la risposta di un `UPDATE` o `DELETE` diretto dell'app | arriva al guard col suo codice (`E_VESTE_REVOCA_SOLO_DAL_VERBO`, `E_VESTE_REVOCATA`) | ora è `42501`; il guard resta la rete del proprietario. `test-veste-revocata-v1` 4, 13, 16 adeguati |
+
+**I pgTAP adeguati** (girano come app): `test-crea-operatore-riusa-credenziale-v1`,
+`test-identita-digitali-unique-multi-veste`, `test-risorse-umane-guard-identita-attiva-v1`,
+`test-super-admin-senza-scadenza-v1`, `test-sync-auth-user-is-active-multi-role`, `test-veste-operatore-spenta-v1`,
+`test-veste-revocata-v1`, `config/test-elimina-credenziale-v1`, `dbops/test-automazione-attivo-eccezioni-v1`,
+`script/test-fn-check-operatore-invitabile`, `script/test-fn-get-user-profile-guc-aware`,
+`script/test-fn-scope-ef-whitelist`, `script/test-fn-scope-fornitore-ownership`, `script/test-fn-veste-utilizzabile-v1`,
+`script/test-trgfn-guard-date-validita-v1`. Le scritture dirette restano solo dove il test prova il rifiuto. Nuovo
+`anagrafiche/test-vesti-postura-app-v1` (le tre sedi); `test-veste-accensione-invito-fixture-v1` da 20 a 24 casi
+(le fixture del `-10`).
+
+**La prova** (scratch, da owner, i dieci changeSet nell'ordine di fase): estratto eseguito per intero, catalogo
+identico dopo il `ROLLBACK`. Su 21 pgTAP nessun rosso nuovo dovuto ai changeSet. Due differenze, della corsa da owner
+e attese: in `test-vesti-postura-app-v1` i casi 3 e 4 (da owner l'`UPDATE` passa), in `test-veste-revocata-v1` il
+caso 13 (da owner l'`UPDATE` arriva al guard e non al permesso). La corsa vera è quella del runner di Tid, come app.
+`test-veste-accensione-invito-fixture-v1` 24/24. Guardrail statici verdi.
+
+**L'apply** (Tid, dbdev, 2026-11-27): `-01` … `-10` e la passata `ci_apply`; l'app ha `SELECT, INSERT` sulle vesti
+e nient'altro. **pgTAP verdi col runner di Tid**, cioè come app: i casi che da owner erano rossi per costruzione
+(`test-vesti-postura-app-v1` 3-4, `test-veste-revocata-v1` 4, 13, 16) sono provati davvero. Doc auto-generata
+rigenerata: le pagine di `fn_segna_invito_inviato`, `fn_pgtap_imposta_veste`, `fn_pgtap_cancella_veste` ci sono, e i
+link delle guide risolvono.
+
+**Guide**: `architettura-permessi-e-autorizzazioni` **guida indietro, aggiornata** (`fn_accendi_veste` è un verbo
+senza guard dichiarato, le due fixture delle vesti, la lista `v_tabelle_app_solo_insert`); `risorse-umane-e-accessi`,
+`pgtap-come-si-scrive-un-test`, `manual/identita_digitali` **aggiornate**; le altre del loop dei grant (che nomina
+tutte le tabelle chiuse) hanno regole invariate: **coerenti**.
+
+#### 5.3.10 Il 3c-2 fatto dal BE/FE (sessione BE, 2026-11-27, committato)
+
+| # §5.3.8 | Esito |
+| --- | --- |
+| 1 | `AuthRepository.segna_invito_inviato(identita_id) → momento scritto`, sul verbo; `set_invito_inviato_at` ritirato. In `InvitoVeste.spedisci` il rifiuto del verbo **non si ingoia**: prima un `UPDATE` senza riga finiva in un warning, ora il verbo scrive o solleva, e il permesso l'ha già chiesto `emetti` (`fn_togli_revoca_veste`) nella stessa richiesta. Mock e test adeguati, uno nuovo («il rifiuto sale») |
+| 2 | Censimento in `backend/apps` (SQL su più righe e ORM): nessun `DELETE` di vesti, nessun ORM che scrive (`IdentitaDigitale` è in sola lettura). Sei test passano a `dbops.fn_pgtap_imposta_veste`: `test_login_credenziale_db` (le date), `test_revoca_veste_db` (due), `test_accessi_db`, `test_operatore_valido_al_db` (più righe, con `SELECT … FROM`), `test_commessa_testata_db`. Resta diretto `test_operatori_senza_utenti_tecnici`, che prova il rifiuto: ora pretende `42501`, perché un `DatabaseError` qualsiasi lo renderebbe verde per il privilegio e non per ciò che dice; il guard di `tecnica` lo prova `anagrafiche/test-identita-tecnica`. Nessuna colonna in più chiesta alla fixture |
+| 3 | `REVOCATA` in `STATI_ACCESSO` (BE) e in `STATI_FILTRO` di `AccessiAltriTab` (FE), dopo `DISATTIVO` e prima di `NESSUNO`. `STATI_FILTRO` è scritto nell'ordine dell'aggregato e non preso da `STATO_VESTE`, che segue la singola veste (`REVOCATA` subito dopo `ATTIVO`). Il presidio a tempo `test_uno_stato_che_la_vista_impara_entra_nel_filtro` è sostituito da `test_ogni_stato_della_veste_entra_nel_filtro`, che legge gli stati dai rami del `CASE` di `fn_stato_veste` e li confronta con l'elenco; il presidio nell'altro verso (ogni stato del filtro sta nella funzione e nella vista) resta |
+| 4 | Ogni `INSERT` diretto di una veste nei test nomina `attivo`: nessuno conta sul default |
+| 5 | Nessun nome `_v2` nel BE, nel FE o nelle policy generate |
+| 6 | Nessun lettore di `identita_digitali.user_update` nel BE: il campo è solo nel model ORM, che nessuno serializza |
+
+Doc BE: `api_amm_software` (il filtro `stato_accesso` con `REVOCATA`), `api_invito_portale_shop` (chi scrive
+`invito_inviato_at`), `api_invito_operatore`; catalogo BB L804 e L812, indice rigenerato.
+
+**Test** (2026-11-27): i moduli toccati, quelli che importano i BB di contesto e `test_token_veste_db`,
+`test_operatore_altre_vesti_db`, lanciati insieme col DB vero: 623, un rosso. Il rosso,
+`IndirizziSoggettoPluraleDbTests.test_gli_obbligatori_copiati_dal_primo` (manca `FATT`), è rosso anche sul codice
+di partenza (`git stash`, stessa corsa): non nasce da qui, e la causa non è indagata. Vitest di `amministrazione` e
+`PortaleAccessoPanel`: 109 verdi; ruff verde.
+
+**Guide** (`scripts/guide_coinvolte.py --base HEAD`): `risorse-umane-e-accessi` **coerente** (dice già che
+`invito_inviato_at` lo scrive il verbo, e l'ordine dell'aggregato con `REVOCATA` per ultimo);
+`architettura-permessi-e-autorizzazioni` e `pgtap-come-si-scrive-un-test` **coerenti** (le fixture delle vesti
+«le usano anche i test Django»); le altre 45 hanno in comune solo gli oggetti che i test toccati attraversano
+(documenti, magazzino, pagamenti, mail), con regole invariate: **coerenti**. mypy a cricchetto: nessun rilievo nuovo.
+
+#### 5.3.6 I giri 3-6, riletti
+
+- **S64** è piccolo e non aspetta niente: si può fare insieme al 3c-1, se Tid vuole.
+- ⚠️ **La veste cliente unica e il ritiro dei rami shop sono lo stesso lavoro.** Fondere `SHOP_CUSTOMER` in
+  `CLIENTE` toglie alle vesti shop il filtro del canale (`canale_origine = 'SHOP'` nelle policy, i perimetri
+  `fn_scope_note_shop_perimetro`, il modo `ordine_shop`): fatto prima del ritiro, il privato vedrebbe ciò che
+  vede il cliente del portale, cioè cambierebbe la visibilità senza volerlo. Il tipo si fonde **insieme** al
+  ritiro dei rami, oppure dopo. → **D-3c-6** (proposta: un giro solo, «la veste cliente», che fonde il tipo, ritira
+  i rami shop e riscrive `fn_crea_veste_portale` una volta; la ricevuta resta fuori finché D-M6 non è decisa).
+  ⚠️ Dalla risposta a R-3c-1: quel giro chiude anche l'`INSERT` dell'app, e lo può fare solo dopo il ritiro di
+  `activate-shop`, che scrive la veste dalla persona stessa. L'ordine è quindi: l'iscrizione, poi la veste cliente.
+- **L'indice per credenziale e soggetto** (D-M7, D-M8) non dipende dalla fusione: si può fare da solo, prima. Cambia
+  il login del BE, che oggi sceglie la veste dal solo tipo («per chi», analisi §9).
+- **L'iscrizione da sé** aspetta l'emittente del cliente iscritto da sé e, per la conferma, D-M9. Porta il verbo
+  che consuma il token (D-3c-1).
+
 ### Giri 3-6 — Il modello dell'area clienti
+
+⚠️ L'ordine qui sotto è quello dell'analisi del 2026-11-25; il §5.3.6 propone di unire i punti 2 e 4 (D-3c-6).
 
 1. **S64**: `fn_stato_veste`, che cosa vuol dire `ATTIVO` (proposta del brief anagrafiche: resta «accesa», e la
    lista mostra l'utilizzabilità a parte);

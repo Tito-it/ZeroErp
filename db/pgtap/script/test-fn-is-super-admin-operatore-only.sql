@@ -174,7 +174,7 @@ BEGIN
         -- non-OPERATORE. Tecnicamente ammesso dal modello (no guard
         -- esplicito) — serve a verificare che la fn lo ignori grazie
         -- al filtro ruolo_applicativo = 'OPERATORE'.
-        PERFORM config.fn_lega_profilo_identita(9100, v_id_digi);
+        PERFORM dbops.fn_pgtap_lega_profilo_identita(9100, v_id_digi);
     END IF;
 END
 $$;

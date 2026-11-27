@@ -40,7 +40,7 @@ from django.db import connection, transaction
 
 from apps.core.db._helpers import row_to_dict
 from apps.core.services.error_manager import ServiceError
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import esegui_fixture, richiedi_db_provvisto
 from apps.pagamenti.db.pagamenti_repository import PagamentiRepository
 
 _REGOLE = {"causale_contiene": ["FATT", "NR"], "tolleranza": 0.01, "annidato": {"k": True}}
@@ -87,8 +87,7 @@ class CreateEnteIncassoDbTests(unittest.TestCase):
         with transaction.atomic():
             try:
                 with connection.cursor() as cur:
-                    for passo in _FIXTURE:
-                        cur.execute(passo, {"sfx": sfx})
+                    esegui_fixture(cur, _FIXTURE, {"sfx": sfx})
                     cur.execute(
                         "SELECT b.bank_branch_id, l.legame_id FROM _banca b, _legame l"
                     )

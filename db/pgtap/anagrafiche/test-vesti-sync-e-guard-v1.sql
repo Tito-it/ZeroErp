@@ -27,7 +27,7 @@
 --    6) fn_crea_risorsa_umana: SUPER_ADMIN senza credenziale -> E_ADMIN_VALIDAZIONE
 --    7) fn_crea_risorsa_umana: credenziale con una veste OPERATORE -> E_CREDENZIALE_GIA_OPERATORE
 --    8) fn_crea_risorsa_umana: la veste nasce spenta per default
---    9) fn_crea_risorsa_umana_v2 non c'e' piu'; fn_crea_operatore_v2 e' l'involucro
+--    9) fn_crea_risorsa_umana_v2 e fn_crea_operatore_v2 non ci sono piu' (90_end/20261127-06)
 --   La forma (presidi: il caso vero chiede di spegnere ogni altro
 --   amministratore, o una seconda persona col suo ruolo e senza rapporto)
 --   10) S61: il guard dell'ultimo SUPER_ADMIN sulla veste scatta anche sul
@@ -132,7 +132,7 @@ SELECT is(
     '4) tecnica = true su una veste di portale si rifiuta');
 
 SELECT is(
-    pg_temp.codice(format('SELECT config.fn_lega_profilo_identita(config.fn_profilo_super_admin_id(), %s)',
+    pg_temp.codice(format('SELECT config.fn_applica_lega_profilo_identita(config.fn_profilo_super_admin_id(), %s)',
                           (SELECT identita_id FROM _tec))),
     'E_SUPER_ADMIN_SU_VESTE_TECNICA',
     '5) il SUPER_ADMIN non si lega a un''identita'' tecnica');
@@ -166,10 +166,9 @@ SELECT is(
 SELECT is(
     format('%s|%s',
            to_regproc('anagrafiche.fn_crea_risorsa_umana_v2') IS NULL,
-           (SELECT p.prosrc LIKE '%anagrafiche.fn_crea_operatore(%'
-              FROM pg_proc p WHERE p.oid = 'anagrafiche.fn_crea_operatore_v2'::regproc)),
+           to_regproc('anagrafiche.fn_crea_operatore_v2') IS NULL),
     't|t',
-    '9) il _v2 della risorsa umana non c''e'' piu''; quello dell''operatore chiama il nome nuovo');
+    '9) i due _v2 non ci sono piu'': i verbi sono fn_crea_risorsa_umana e fn_crea_operatore');
 
 -- ============================================================
 -- 10-14 La forma

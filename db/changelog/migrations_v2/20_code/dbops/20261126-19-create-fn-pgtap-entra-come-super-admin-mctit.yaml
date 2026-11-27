@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FIXTURE CHE ENTRA NEL CONTESTO DI UN SUPER_ADMIN
+#   dbops.fn_pgtap_entra_come_super_admin
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §14 (giro 10-bis; D-AC a, D-AD b, D-AE a, D-AF a di Tid, 2026-11-26).
+#
+#   Regola del 2: dbops.fn_pgtap_sposta_scope_operatore (20261124-05) entrava
+#   a mano nel contesto di un SUPER_ADMIN di fixture e lo rimetteva; i due
+#   builder nuovi del giro (20261126-22, -23) fanno lo stesso gesto. Il gesto si
+#   estrae qui e in dbops.fn_pgtap_rimetti_contesto (20261126-20), e i tre
+#   builder lo usano. Lo stampo e' la coppia
+#   dbops.fn_pgtap_apri_area_per_nascita / fn_pgtap_richiudi_area: si apre, si
+#   riceve lo stato di prima in jsonb, lo si restituisce per chiudere.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261126-19-create-fn-pgtap-entra-come-super-admin-mctit.yaml
+
+  - changeSet:
+      id: 20261126-19-create-fn-pgtap-entra-come-super-admin
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_entra_come_super_admin: entra nel contesto di un SUPER_ADMIN di fixture e restituisce quello di prima. brief-db-porte-aperte-dalla-sola-guc §14.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_entra_come_super_admin(
+                  p_etichetta text DEFAULT 'super-admin')  -- un'etichetta del cognome di fixture: nessuna colonna
+               -- il contesto di prima, {utente, ruolo}: nessuna colonna di cui sia il riflesso
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: in un pgTAP, entrare nel contesto di un SUPER_ADMIN di fixture per
+              --   chiamare un verbo che lo chiede. Restituisce il contesto di prima.
+              -- Uso:
+              --   v_prima := dbops.fn_pgtap_entra_come_super_admin('mio-test');
+              --   BEGIN
+              --       ... il verbo ...
+              --   EXCEPTION WHEN OTHERS THEN
+              --       PERFORM dbops.fn_pgtap_rimetti_contesto(v_prima);
+              --       RAISE;
+              --   END;
+              --   PERFORM dbops.fn_pgtap_rimetti_contesto(v_prima);
+              -- ⚠️ Il SUPER_ADMIN si crea a ogni chiamata: non dipende da un SUPER_ADMIN
+              --   gia' presente sul database, che su un database da zero non c'e'.
+              -- ⚠️ app.current_emittente_id non si tocca.
+              DECLARE
+                  v_prima       jsonb := jsonb_build_object(
+                      'utente', script.fn_utente_di_sessione('dbops.fn_pgtap_entra_come_super_admin'),
+                      'ruolo',  current_setting('app.ruolo_applicativo', true));
+                  v_super_admin anagrafiche.identita_digitali.auth_user_id%TYPE;
+              BEGIN
+                  SELECT o.auth_user_id
+                    INTO v_super_admin
+                    FROM dbops.fn_pgtap_crea_operatore_umano(COALESCE(p_etichetta, 'super-admin'), true) o;
+
+                  PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', false);
+                  PERFORM set_config('app.current_user_id', v_super_admin::text, false);
+
+                  RETURN v_prima;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_entra_come_super_admin(text)
+              IS 'Fixture dei pgTAP: entra nel contesto di un SUPER_ADMIN di fixture, creato a ogni chiamata con dbops.fn_pgtap_crea_operatore_umano(p_etichetta, true): scrive app.current_user_id e app.ruolo_applicativo per la sessione e restituisce il contesto di prima ({utente, ruolo}), da passare a dbops.fn_pgtap_rimetti_contesto. app.current_emittente_id non si tocca. La usano i builder che chiamano un verbo riservato al SUPER_ADMIN (dbops.fn_pgtap_sposta_scope_operatore, dbops.fn_pgtap_scrivi_profilo_accesso, dbops.fn_pgtap_lega_profilo_identita), che rimettono il contesto anche in errore.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_entra_come_super_admin(text);

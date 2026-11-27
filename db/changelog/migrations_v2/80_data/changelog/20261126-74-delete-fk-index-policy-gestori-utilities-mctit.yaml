@@ -1,0 +1,51 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA DI dbops.fk_index_policy DI gestori_utilities, RITIRATA CON LA TABELLA
+#   Brief: brief-db-revisione-anagrafiche §25.5 (D-T8c-8), §25.7
+#
+#   20261126-65 ritira anagrafiche.gestori_utilities, e con lei la FK
+#   fk_gestori_anagrafiche. La riga della policy che la nomina (SENZA_INDICE)
+#   esce dal CSV fk_index_policy.csv nello stesso giro: il suo mirror
+#   (20261110-51, runOnChange) e' vivo, e una riga lasciata nel file
+#   tornerebbe al primo risveglio. Il mirror pero' non cancella
+#   (linee-guida-sql §11.2): sul database la toglie questo DELETE.
+#   E' innocua (apply_fk_index_policy salta una riga la cui FK non e' piu'
+#   scoperta), ma un registro che nomina vincoli inesistenti e' sporco.
+#   Da zero la riga non nasce piu' (fuori dal CSV): il DELETE e' a vuoto.
+#   Forma: per coordinate complete, come la PK.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261126-74-delete-fk-index-policy-gestori-utilities-mctit.yaml
+
+  - changeSet:
+      id: 20261126-74-delete-fk-index-policy-gestori-utilities
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie da dbops.fk_index_policy la riga di
+        anagrafiche.gestori_utilities.fk_gestori_anagrafiche, ritirata con la
+        tabella. brief-db-revisione-anagrafiche §25.5 (D-T8c-8).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.fk_index_policy
+               WHERE schema_name     = 'anagrafiche'
+                 AND table_name      = 'gestori_utilities'
+                 AND constraint_name = 'fk_gestori_anagrafiche';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_efba_guard_istanza_emittente`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,7 +11,6 @@
 > Approfondimento funzioni:
 >
 > * [anagrafiche.fn_guard_istanza_ba_emittente](/dbzero/anagrafiche/funzioni/fn_guard_istanza_ba_emittente) — il controllo su un billing account
-> * [anagrafiche.fn_guard_istanza_ba_gestore_globale](/dbzero/anagrafiche/funzioni/fn_guard_istanza_ba_gestore_globale) — il controllo sullo spostamento della predefinita
 > * [anagrafiche.trgfn_efba_guard_albero_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_albero_emittente) — il gemello sull'albero
 >
 > Guide:
@@ -22,38 +21,31 @@
 
 ### 🎯 Scopo Principale
 
-`anagrafiche.trgfn_efba_guard_istanza_emittente` fa scattare il controllo «un'istanza, un'azienda» a ogni
-movimento del collegamento fra billing account e azienda, nascita compresa.
+`anagrafiche.trgfn_efba_guard_istanza_emittente` fa scattare il controllo «un'istanza, un'azienda» quando il
+collegamento di un billing account nasce o cambia azienda.
 
 ---
 
 ### Gli stessi movimenti del gemello sull'albero
 
-È montata dopo ogni inserimento, modifica e cancellazione di una riga, e smista:
+È montata dopo ogni inserimento, modifica e cancellazione di una riga, e giudica solo il collegamento di un
+billing account:
 
-* un collegamento che **nasce** (anche alla nascita del billing account), **cambia azienda** o **si
-  cancella**: controlla quel billing account contro gli altri della sua istanza;
-* una modifica che **sposta** la riga da un billing account a un altro: controlla tutti e due, e se uno dei due
-  lati è la predefinita (la riga diventa predefinita, o smette di esserlo) controlla anche lo spostamento della
-  predefinita;
-* la riga **senza billing account**, cioè la predefinita: controlla tutte le istanze con un billing account
-  senza collegamento.
+* un collegamento che **nasce** (alla nascita del billing account) o **cambia azienda**: controlla quel
+  billing account contro gli altri della sua istanza.
+
+Il resto non tocca nessuna istanza: la cancellazione del collegamento e il suo passaggio a un altro billing
+account li rifiutano prima i trigger `a05` della tabella, e la riga della predefinita non si giudica, perché
+spostarla non cambia l'azienda di nessun billing account.
 
 Scatta dopo la scrittura perché il controllo rilegge il collegamento per risolvere l'azienda, e parla dopo il
 controllo dell'albero. Il cancello della storia sugli stessi movimenti scatta prima: i controlli si sommano.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
-
-* **Lo scollegamento fatto in sessione** si giudica con l'azienda di chi agisce, non con la predefinita su cui
-  il billing account ricade (vedi `fn_check_ba_coppia_emittente_omogenea`).
-
----
-
 ### Codici errore
 
-* `E_ISTANZA_EMITTENTI_DIVERSI` — dai due controlli che chiama.
+* `E_ISTANZA_EMITTENTI_DIVERSI` — dal controllo che chiama.
 
 ---
 
@@ -61,14 +53,16 @@ controllo dell'albero. Il cancello della storia sugli stessi movimenti scatta pr
 
 * `db/pgtap/anagrafiche/test-istanza-nasce-col-ba-v1.sql` — il secondo billing account di un'istanza spostato
   su un'altra azienda: rifiutato.
-* `db/pgtap/anagrafiche/test-istanza-ba-gestore-globale-v1.sql` — la predefinita spostata sopra un'istanza
-  mista: rifiutata, chiunque la sposti.
+* `db/pgtap/anagrafiche/test-billing-account-sempre-collegato-v1.sql` — la predefinita spostata su un'altra
+  azienda passa, e il billing account resta all'azienda del suo collegamento (test 7 e 8).
 
 ---
 
 ### Note di migrazione
 
 * 2026-10-08 — nasce con la regola «un'istanza, un'azienda».
+* 2026-11-26 — giudica solo il collegamento di un billing account che nasce o cambia azienda: i rami della
+  cancellazione, dello spostamento e della predefinita sono ritirati.
 
 ---
 

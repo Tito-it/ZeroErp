@@ -1,6 +1,6 @@
 # Linee guida Trigger (PostgreSQL + Liquibase)
 
-> **Ultimo aggiornamento**: 24 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > **Destinatari**: chi scrive o modifica un trigger o una funzione trigger
 >
@@ -256,9 +256,26 @@ proposito. Un dato di dominio, invece, passa dai trigger.
 * ⛔ **Un predicato scritto per un verbo dell'operatore non si applica tale e quale a una porta
   fisica.** Da un `BEFORE DELETE` passano anche le funzioni madri di sistema, che hanno un criterio
   loro. Prima di chiudere la porta si cercano, nel corpo vivo delle funzioni e nel backend, i
-  `DELETE` e gli `UPDATE` su quella tabella. La madre legittima apre con
-  `SET LOCAL zeroerp.allow_<entità>_delete_override = 'on'` dopo aver verificato il suo criterio, e
-  richiude; il pgTAP asserisce «aperta passa» e «richiusa rifiuta».
+  `DELETE` e gli `UPDATE` su quella tabella. La scrittura legittima passa dalla porta del guard,
+  scritta come dice il punto qui sotto.
+* ⛔ **Una porta nel guard.** Una porta è la condizione con cui un guard lascia passare la scrittura
+  che altrimenti rifiuta. Chiede **due cose insieme**: una GUC (`zeroerp.*`) che dice quale
+  operazione su quale riga, e che a scrivere sia il proprietario della tabella (`script.fn_is_proprietario_tabella(TG_RELID)`). La sola GUC non chiude niente: le GUC
+  personalizzate le imposta anche l'applicazione, con un `set_config`.
+  * La GUC porta la **chiave della riga** (l'id, l'`auth_user_id`) e il guard la confronta con la riga
+    che giudica: `current_setting('zeroerp.<porta>', true) = OLD.<chiave>::text AND
+    script.fn_is_proprietario_tabella(TG_RELID)`. Il valore `on` apre tutte le righe della
+    transazione, ed è ammesso solo dove la guida del dominio lo dichiara, col suo limite.
+  * La accende un **verbo** `SECURITY DEFINER` con `set_config(…, true)`, dopo il suo guard di permesso
+    e di perimetro, o una primitiva che solo i verbi eseguono; l'applicazione non la esegue.
+  * Una porta di **manutenzione** (una correzione fuori dal flusso) non si scrive da capo: passa da
+    `script.fn_porta_manutenzione_aperta`, che la apre alla sola sessione del migratore e lascia una
+    riga in `dbops.porte_manutenzione_passaggi`.
+  * I pgTAP, come app: con la GUC accesa e una scrittura diretta si ferma; dal verbo passa; il verbo
+    sulla riga di un'altra azienda si ferma; l'utente senza il permesso riceve `E_PERMESSO_NEGATO`.
+  * Una strada che resta con la sola GUC è un'eccezione: la dichiara la guida del suo dominio, col
+    perché. Il modello e l'elenco delle eccezioni sono in
+    [Permessi e autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) §7.4, «Le porte».
 * ⛔ **Un guard che confronta con uno stato accumulato non rifiuta una riga: chiude una porta.**
   Prima di scriverlo ci si chiede quale percorso lecito diventa irraggiungibile una volta passata
   la soglia; prima di toglierlo, com'è lo stato dopo l'azione che il guard impedisce. Se quel

@@ -1,5 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture fabbrica oggetti nel catalogo degli oggetti, che
+--   nessun verbo offre, e i loro override:
+--   dal giro 10-quater gli override utente e i due cataloghi dei permessi
+--   (config.azioni_processo, config.area_model_overrides) sono in sola lettura per
+--   l'app: gli override li scrivono solo i verbi del SUPER_ADMIN, i cataloghi il seed
+--   (brief-db-porte-aperte-dalla-sola-guc §15, giro 10-quater, 2026-11-27).
 -- pgTAP test per Zero ERP
 --
 -- Test: il DB APPLICA un livello su un oggetto — script.fn_area_di_oggetto
@@ -35,9 +42,11 @@
 --   TUTTO su magazzino (era nel blocco 11) si scrive ora DOPO il test 5, che resta il
 --   caso «nessun livello concesso»; il test 11 lo trova gia' scritto.
 --
--- ⚠️ Gira come l'APPLICAZIONE: override e area si scrivono come li scrive il
---   pannello dei permessi. Operatore COSTRUITO (fn_pgtap_crea_emittente_operatore):
---   tecnico, non super admin, nessun livello — lo dà il test.
+-- ⚠️ Gira come runner owner dal giro 10-quater (2026-11-27): la fixture fabbrica
+--   oggetti di catalogo (testata). Il guard come app lo attraversano i pgTAP dei verbi
+--   che chiedono un livello, coi builder. Operatore COSTRUITO
+--   (fn_pgtap_crea_emittente_operatore): tecnico, non super admin, nessun livello —
+--   lo dà il test.
 -- ------------------------------------------------------------
 BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;

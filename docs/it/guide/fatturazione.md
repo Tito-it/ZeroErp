@@ -1,6 +1,6 @@
 # Guida — Fatturazione (processo end-to-end)
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend e database
 >
@@ -28,6 +28,8 @@
 > * [vendite.fn_guard_passaggio_lotto](/dbzero/vendite/funzioni/fn_guard_passaggio_lotto) — il permesso dell'annullo e del ritorno in bozza
 > * [script.fn_guard_livello_area](/dbzero/script/funzioni/fn_guard_livello_area) — il livello `TUTTO` sull'area `vendite`, quando il passaggio non ha azione
 > * [vendite.fn_check_fondo_cancellabile](/dbzero/vendite/funzioni/fn_check_fondo_cancellabile) — il criterio dei fondi che il reset non tocca
+> * [script.trgfn_doc_guard_emittente_ba](/dbzero/script/funzioni/trgfn_doc_guard_emittente_ba) — la fattura è emessa dall'azienda del suo cliente, come ogni documento di vendita
+> * [anagrafiche.fn_ba_ha_storia_emittente](/dbzero/anagrafiche/funzioni/fn_ba_ha_storia_emittente) — un cliente con documenti, anche in bozza, non cambia azienda
 >
 > **Vedi anche** — API e service backend:
 >
@@ -221,15 +223,22 @@ delle righe. Il controllo sta sul collegamento della sorgente.
 ⇒ Dettaglio completo, con i tre presidi:
 [gestione commesse § Di chi è una commessa](/guide/gestione-commesse).
 
-### ⚠️ E a monte: il cliente non cambia emittente dopo aver fatturato
+### ⚠️ E a monte: il cliente non cambia emittente dopo il primo documento
 
-La fattura **congela** chi l'ha emessa (`emittente_soggetto_ruolo_id` e
-`emittente_snapshot`) e non lo cambia mai. Spostare il cliente su un altro
-emittente non riscriverebbe i documenti già emessi: li lascerebbe **orfani** —
-visibili a chi li ha emessi, ma senza più il cliente a cui si riferiscono.
+La fattura è emessa dall'**azienda del suo cliente**: `emittente_soggetto_ruolo_id`
+è quello che il billing account risolve, e una fattura scritta o corretta con
+un'altra azienda è respinta (`script.trgfn_doc_guard_emittente_ba`,
+`E_DOC_EMITTENTE_BA_INCOERENTE`), come ordini, DDT, commesse e gli altri
+documenti di vendita. La fattura poi **congela** chi l'ha emessa
+(`emittente_soggetto_ruolo_id` e `emittente_snapshot`) e non lo cambia mai.
+Spostare il cliente su un altro emittente non riscriverebbe i documenti già
+scritti: li lascerebbe **orfani** — visibili a chi li ha emessi, ma senza più il
+cliente a cui si riferiscono.
 
-Per questo il legame cliente → emittente si corregge solo **finché non c'è
-storia**; dopo, la strada è una fornitura nuova presso l'altro emittente. Vedi
+Per questo il legame cliente → emittente si corregge solo **finché il cliente non
+ha nessun documento**, di qualunque famiglia e in qualunque stato, anche una
+fattura in bozza; dopo, la strada è una fornitura nuova presso l'altro
+emittente. Vedi
 [generazione cliente § L'emittente del cliente](/guide/generazione-cliente).
 
 ---

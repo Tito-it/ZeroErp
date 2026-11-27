@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-11-27 (brief-db-porte-aperte-dalla-sola-guc §15, giro 10-quater): gli override utente sono in sola lettura per l'app; il livello d'area lo da' dbops.fn_pgtap_concedi_livello_area. Attese invariate.
 --
 -- Test: il guard sul padre di un'ubicazione, magazzino.trgfn_ubicazioni_guard_parent
 --   (brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici, R-1 e sezione
@@ -86,10 +87,7 @@ BEGIN
 END $fix$;
 
 -- I casi passano dai verbi: l'operatore di A ha TUTTO sull'area magazzino (scelta del test).
-INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)
-SELECT m.auth_user_id, af.id, 'TUTTO', 'pgTAP: guard del padre, casi dai verbi'
-  FROM _mondo m, config.aree_funzionali af
- WHERE af.schema_db = 'magazzino';
+SELECT dbops.fn_pgtap_concedi_livello_area(m.auth_user_id, 'magazzino', 'TUTTO') FROM _mondo m;
 
 -- ============================================================
 -- 1-4 Il padre sta nello stesso magazzino

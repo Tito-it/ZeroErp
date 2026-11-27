@@ -17,12 +17,14 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_billing_account(p_soggetto_ruolo_
  LANGUAGE plpgsql
 AS $function$
 DECLARE
+    -- i due oggetti del chiamante, col vuoto al posto di NULL
     v_campi       jsonb := COALESCE(p_campi, '{}'::jsonb);
     v_istanza     jsonb := COALESCE(p_istanza, '{}'::jsonb);
     v_soggetto_id anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
     v_ist_id      anagrafiche.billing_account.istanza_utility_id%TYPE := p_istanza_utility_id;
     v_ba_id       anagrafiche.billing_account.id%TYPE;
     v_link_sr     anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+    -- gli elenchi dei campi ammessi: nomi di colonna, non valori
     c_ammesse_ba  CONSTANT text[] := ARRAY[
         'categoria_cliente_id', 'codice', 'fatturazione_ordini',
         'parent_account_id', 'valuta_id'];
@@ -105,21 +107,28 @@ BEGIN
                     ARRAY['istanza_utility_id', 'utility_id'])
                 ->> 'id')::bigint;
 
-    -- 3. Il legame all'emittente, se chiesto. is_default = false:
-    --    e' il legame di QUESTO BA, non il default dell'installazione.
+    -- 3. L'azienda chiesta. Il BA nasce gia' collegato
+    --    (trg_billing_account_z90_link_ef_ins): all'azienda di chi
+    --    agisce o, senza sessione, alla predefinita.
     IF p_emittente_soggetto_ruolo_id IS NOT NULL THEN
         SELECT efba.emittente_soggetto_ruolo_id
           INTO v_link_sr
           FROM anagrafiche.emittenti_fiscali_billing_account efba
          WHERE efba.billing_account_id = v_ba_id;
 
-        IF v_link_sr IS NULL THEN
-            INSERT INTO anagrafiche.emittenti_fiscali_billing_account
-                (emittente_soggetto_ruolo_id, billing_account_id, is_default)
-            VALUES (p_emittente_soggetto_ruolo_id, v_ba_id, false);
-        ELSIF v_link_sr <> p_emittente_soggetto_ruolo_id THEN
-            -- Con un operatore in sessione il trigger z90 l'ha gia'
-            -- legato all'emittente di chi agisce.
+        IF v_link_sr IS DISTINCT FROM p_emittente_soggetto_ruolo_id
+           AND script.fn_utente_di_sessione('anagrafiche.fn_crea_billing_account') IS NULL THEN
+            -- Senza sessione: il BA, appena nato e senza documenti, passa
+            -- all'azienda chiesta modificando il suo collegamento (il
+            -- collegamento non si cancella ne' si ricrea).
+            -- ⚠️ Alias obbligatorio: billing_account_id e' anche una
+            --   colonna del RETURNS TABLE, e il nome nudo e' ambiguo.
+            UPDATE anagrafiche.emittenti_fiscali_billing_account efba
+               SET emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+             WHERE efba.billing_account_id = v_ba_id;
+        ELSIF v_link_sr IS DISTINCT FROM p_emittente_soggetto_ruolo_id THEN
+            -- Con un operatore in sessione il BA e' dell'azienda di chi
+            -- agisce: un'azienda diversa e' una chiamata sbagliata.
             PERFORM script.fn_log_and_raise_error(
                 'anagrafiche', 'anagrafiche.fn_crea_billing_account', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
                 jsonb_build_object('billing_account_id',       v_ba_id,
@@ -136,7 +145,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_billing_account(p_soggetto_ruolo_id bigint, p_utility_id integer, p_campi jsonb, p_istanza_utility_id bigint, p_istanza jsonb, p_emittente_soggetto_ruolo_id bigint)
-IS 'BB (2026-10-18): crea il billing account di un ruolo per una utility, in una sola istruzione. Se p_istanza_utility_id e'' NULL nasce l''istanza utility fittizia del soggetto del ruolo, coi campi di p_istanza (codice, indirizzo_dettaglio_id); con un''istanza indicata p_istanza deve essere vuoto. Il BA coi campi di p_campi (categoria_cliente_id, codice, fatturazione_ordini, parent_account_id, valuta_id; le assenti e le null al DEFAULT, il codice lo genera il trigger; la categoria non ha default: risponde il NOT NULL), riletto a istruzione finita per (istanza_utility_id, utility_id) con script.fn_scrivi_riga_da_jsonb(..., p_rileggi_per): sotto la RLS il BA si vede solo dopo il legame scritto dal trigger AFTER z90_link_ef. Se p_emittente_soggetto_ruolo_id e'' indicato il BA si lega a quell''emittente (is_default = false); se z90 lo ha gia'' legato a un altro (operatore in sessione): E_SCRIPT_CHIAMATA_NON_VALIDA. Chiave estranea: E_CAMPO_NON_AMMESSO; ruolo inesistente: E_SOGGETTO_RUOLO_NON_TROVATO; chiamata malformata: E_SCRIPT_CHIAMATA_NON_VALIDA. Il resto (amministratore globale, coerenza soggetto/istanza, albero, unicita'') lo dicono i guard e i vincoli. Non cambia il modo dei vincoli: l''istanza vuole un satellite al commit (vincolo differito), e la finestra e'' di chi chiama. Limite: il guard z95 (un''istanza ha i BA di una sola azienda) scatta all''INSERT, prima del legame chiesto; senza sessione un secondo BA con un emittente esplicito su un''istanza esistente non passa (con la sessione il legame lo scrive z90, prima di z95). INVOKER. Ritorna (billing_account_id, istanza_utility_id). Prende il posto dei passi 2 e 3 di ClientiService._execute_creazione (2b-2, via anagrafiche.fn_crea_cliente) e degli INSERT di dbops.fn_pgtap_crea_cliente_ba. Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 5).';
+IS 'Crea il billing account di un ruolo per una utility, in una sola istruzione. Se p_istanza_utility_id e'' NULL nasce l''istanza utility fittizia del soggetto del ruolo, coi campi di p_istanza (codice, indirizzo_dettaglio_id); con un''istanza indicata p_istanza deve essere vuoto. Il BA coi campi di p_campi (categoria_cliente_id, codice, fatturazione_ordini, parent_account_id, valuta_id; le assenti e le null al DEFAULT, il codice lo genera il trigger), riletto a istruzione finita per (istanza_utility_id, utility_id) con script.fn_scrivi_riga_da_jsonb. Il BA nasce collegato a un''azienda (anagrafiche.trgfn_billing_account_link_ef): quella di chi agisce, o la predefinita senza sessione. Con p_emittente_soggetto_ruolo_id, senza sessione, il collegamento si modifica verso l''azienda chiesta; con un operatore in sessione un''azienda diversa dalla sua e'' E_SCRIPT_CHIAMATA_NON_VALIDA. Chiave estranea: E_CAMPO_NON_AMMESSO; ruolo inesistente: E_SOGGETTO_RUOLO_NON_TROVATO; chiamata malformata: E_SCRIPT_CHIAMATA_NON_VALIDA. Il resto lo dicono i guard e i vincoli. Limite: i guard di nascita (albero e istanza su un''azienda sola) giudicano il BA all''INSERT, prima della modifica: senza sessione un BA con un''azienda chiesta diversa dalla predefinita e un padre, o un''istanza, su quell''azienda non passa. INVOKER.';
 ```
 
 </div>

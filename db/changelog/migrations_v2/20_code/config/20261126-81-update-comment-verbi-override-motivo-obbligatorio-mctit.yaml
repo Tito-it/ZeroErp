@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL MOTIVO OBBLIGATORIO NEI COMMENT DEI TRE VERBI DEGLI OVERRIDE
+#   config.fn_imposta_override_aree, _azioni, _oggetti
+#   Brief: brief-db-motivo-override-obbligatorio §6.5.
+#
+#   La regola la fa valere la primitiva (20261126-80); i COMMENT dei verbi la
+#   dicevano facoltativa. Solo i COMMENT: i corpi non cambiano. Testo preso dal
+#   catalogo (ultimi changeSet 20261126-51 … -53), riscritto in due punti: il
+#   motivo fra le chiavi obbligatorie, e il suo rifiuto prima di quello delle
+#   chiavi estranee. Nessuna fase tardiva riscrive questi COMMENT.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261126-81-update-comment-verbi-override-motivo-obbligatorio-mctit.yaml
+
+  - changeSet:
+      id: 20261126-81-update-comment-verbi-override-motivo-obbligatorio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I COMMENT di config.fn_imposta_override_aree, _azioni e _oggetti: il motivo e' obbligatorio (E_OVERRIDE_MOTIVO_OBBLIGATORIO). brief-db-motivo-override-obbligatorio §6.5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION config.fn_imposta_override_aree(config.user_override_aree.auth_user_id%TYPE, jsonb)
+              IS 'Il verbo con cui il SUPER_ADMIN sostituisce gli override di un utente sulle aree (config.user_override_aree) con l''elenco p_aree, anche vuoto (= nessun override); ritorna quanti ne scrive. SECURITY DEFINER: in prima riga chiede il SUPER_ADMIN all''utente di sessione (script.fn_guard_super_admin: E_PERMESSO_NEGATO, anche senza utente), lo stesso controllo dell''endpoint. Un elemento: area_id, livello e motivo (obbligatori), valido_dal, valido_al; una chiave assente prende il DEFAULT (valido_dal = la data operativa), una chiave a null scrive NULL (valido_dal NULL = senza inizio). Il motivo è il perché dell''eccezione al profilo e vale anche per la voce che toglie un permesso; si scrive ripulito dagli spazi. Motivo assente, null, non di testo, vuoto o di soli spazi: E_OVERRIDE_MOTIVO_OBBLIGATORIO (campo motivo, con la posizione e la chiave della voce), e l''elenco di prima resta. Togliere una voce non chiede motivo. Chiave estranea: E_CAMPO_NON_AMMESSO; utente NULL, elenco o elemento malformati: E_SCRIPT_CHIAMATA_NON_VALIDA. Due righe sulla stessa area: uq_user_override_aree_user_area; area inesistente: fk_user_override_aree_area; date: trgfn_guard_date_validita. Scrive la primitiva config.fn_applica_imposta_override, che l''applicazione non esegue. Non invalida la cache dei permessi (backend). config.user_override_aree è in sola lettura per l''applicazione.';
+              COMMENT ON FUNCTION config.fn_imposta_override_azioni(config.user_override_azioni.auth_user_id%TYPE, jsonb)
+              IS 'Il verbo con cui il SUPER_ADMIN sostituisce gli override di un utente sulle azioni di processo (config.user_override_azioni) con l''elenco p_azioni, anche vuoto (= nessun override); ritorna quanti ne scrive. SECURITY DEFINER: in prima riga chiede il SUPER_ADMIN all''utente di sessione (script.fn_guard_super_admin: E_PERMESSO_NEGATO, anche senza utente), lo stesso controllo dell''endpoint. Un elemento: azione_id, abilitata e motivo (obbligatori), valido_dal, valido_al; una chiave assente prende il DEFAULT (valido_dal = la data operativa), una chiave a null scrive NULL (valido_dal NULL = senza inizio). Il motivo è il perché dell''eccezione al profilo e vale anche per la voce che toglie un permesso; si scrive ripulito dagli spazi. Motivo assente, null, non di testo, vuoto o di soli spazi: E_OVERRIDE_MOTIVO_OBBLIGATORIO (campo motivo, con la posizione e la chiave della voce), e l''elenco di prima resta. Togliere una voce non chiede motivo. Chiave estranea: E_CAMPO_NON_AMMESSO; utente NULL, elenco o elemento malformati: E_SCRIPT_CHIAMATA_NON_VALIDA. Due righe sulla stessa azione: uq_user_override_azioni_user_azione; azione inesistente: fk_user_override_azioni_azione; date: trgfn_guard_date_validita. Scrive la primitiva config.fn_applica_imposta_override, che l''applicazione non esegue. Non invalida la cache dei permessi (backend). config.user_override_azioni è in sola lettura per l''applicazione.';
+              COMMENT ON FUNCTION config.fn_imposta_override_oggetti(config.user_override_oggetti.auth_user_id%TYPE, jsonb)
+              IS 'Il verbo con cui il SUPER_ADMIN sostituisce gli override di un utente sugli oggetti (config.user_override_oggetti) con l''elenco p_oggetti, anche vuoto (= nessun override); ritorna quanti ne scrive. SECURITY DEFINER: in prima riga chiede il SUPER_ADMIN all''utente di sessione (script.fn_guard_super_admin: E_PERMESSO_NEGATO, anche senza utente), lo stesso controllo dell''endpoint. Un elemento: app_label, model_name, livello e motivo (obbligatori), valido_dal, valido_al; una chiave assente prende il DEFAULT (valido_dal = la data operativa), una chiave a null scrive NULL (valido_dal NULL = senza inizio). Il motivo è il perché dell''eccezione al profilo e vale anche per la voce che toglie un permesso; si scrive ripulito dagli spazi. Motivo assente, null, non di testo, vuoto o di soli spazi: E_OVERRIDE_MOTIVO_OBBLIGATORIO (campo motivo, con la posizione e la chiave della voce), e l''elenco di prima resta. Togliere una voce non chiede motivo. Chiave estranea: E_CAMPO_NON_AMMESSO; utente NULL, elenco o elemento malformati: E_SCRIPT_CHIAMATA_NON_VALIDA. Oggetto fuori catalogo o riservato: fk_user_override_oggetti_catalogo; date: trgfn_guard_date_validita. Scrive la primitiva config.fn_applica_imposta_override, che l''applicazione non esegue. Non invalida la cache dei permessi (backend). config.user_override_oggetti è in sola lettura per l''applicazione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION config.fn_imposta_override_aree(config.user_override_aree.auth_user_id%TYPE, jsonb)
+              IS 'Il verbo con cui il SUPER_ADMIN sostituisce gli override di un utente sulle aree (config.user_override_aree) con l''elenco p_aree, anche vuoto (= nessun override); ritorna quanti ne scrive. SECURITY DEFINER: in prima riga chiede il SUPER_ADMIN all''utente di sessione (script.fn_guard_super_admin: E_PERMESSO_NEGATO, anche senza utente), lo stesso controllo dell''endpoint. Un elemento: area_id e livello (obbligatori), motivo, valido_dal, valido_al; una chiave assente prende il DEFAULT (valido_dal = la data operativa), una chiave a null scrive NULL (valido_dal NULL = senza inizio). Chiave estranea: E_CAMPO_NON_AMMESSO; utente NULL, elenco o elemento malformati: E_SCRIPT_CHIAMATA_NON_VALIDA. Due righe sulla stessa area: uq_user_override_aree_user_area; area inesistente: fk_user_override_aree_area; date: trgfn_guard_date_validita. Scrive la primitiva config.fn_applica_imposta_override, che l''applicazione non esegue. Non invalida la cache dei permessi (backend). config.user_override_aree è in sola lettura per l''applicazione.';
+              COMMENT ON FUNCTION config.fn_imposta_override_azioni(config.user_override_azioni.auth_user_id%TYPE, jsonb)
+              IS 'Il verbo con cui il SUPER_ADMIN sostituisce gli override di un utente sulle azioni di processo (config.user_override_azioni) con l''elenco p_azioni, anche vuoto (= nessun override); ritorna quanti ne scrive. SECURITY DEFINER: in prima riga chiede il SUPER_ADMIN all''utente di sessione (script.fn_guard_super_admin: E_PERMESSO_NEGATO, anche senza utente), lo stesso controllo dell''endpoint. Un elemento: azione_id e abilitata (obbligatori), motivo, valido_dal, valido_al; una chiave assente prende il DEFAULT (valido_dal = la data operativa), una chiave a null scrive NULL (valido_dal NULL = senza inizio). Chiave estranea: E_CAMPO_NON_AMMESSO; utente NULL, elenco o elemento malformati: E_SCRIPT_CHIAMATA_NON_VALIDA. Due righe sulla stessa azione: uq_user_override_azioni_user_azione; azione inesistente: fk_user_override_azioni_azione; date: trgfn_guard_date_validita. Scrive la primitiva config.fn_applica_imposta_override, che l''applicazione non esegue. Non invalida la cache dei permessi (backend). config.user_override_azioni è in sola lettura per l''applicazione.';
+              COMMENT ON FUNCTION config.fn_imposta_override_oggetti(config.user_override_oggetti.auth_user_id%TYPE, jsonb)
+              IS 'Il verbo con cui il SUPER_ADMIN sostituisce gli override di un utente sugli oggetti (config.user_override_oggetti) con l''elenco p_oggetti, anche vuoto (= nessun override); ritorna quanti ne scrive. SECURITY DEFINER: in prima riga chiede il SUPER_ADMIN all''utente di sessione (script.fn_guard_super_admin: E_PERMESSO_NEGATO, anche senza utente), lo stesso controllo dell''endpoint. Un elemento: app_label, model_name, livello (obbligatori), motivo, valido_dal, valido_al; una chiave assente prende il DEFAULT (valido_dal = la data operativa), una chiave a null scrive NULL (valido_dal NULL = senza inizio). Chiave estranea: E_CAMPO_NON_AMMESSO; utente NULL, elenco o elemento malformati: E_SCRIPT_CHIAMATA_NON_VALIDA. Oggetto fuori catalogo o riservato: fk_user_override_oggetti_catalogo; date: trgfn_guard_date_validita. Scrive la primitiva config.fn_applica_imposta_override, che l''applicazione non esegue. Non invalida la cache dei permessi (backend). config.user_override_oggetti è in sola lettura per l''applicazione.';

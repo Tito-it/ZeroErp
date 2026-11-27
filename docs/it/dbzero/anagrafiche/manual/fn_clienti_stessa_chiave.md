@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_clienti_stessa_chiave`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -45,9 +45,9 @@ Il soggetto e il servizio sono colonne del cliente; l'azienda no: la lettura la 
 suo billing account, per l'installazione, e la confronta con quella chiesta. Chi chiama passa l'azienda
 che vuole controllare (il rifiuto, quella del cliente che sta scrivendo), mai quella di chi sta lavorando.
 
-Se l'installazione non ha ancora un'azienda predefinita, un billing account senza collegamento non ha
-azienda, e i suoi clienti non escono da nessuna domanda. È lo stato di un'installazione appena nata: da
-quando esiste la prima azienda, la predefinita è obbligatoria (`E_EMITTENTE_DEFAULT_SINGLETON`).
+Ogni billing account ha sempre il suo collegamento a un'azienda, e la risposta è quella del collegamento.
+Un billing account non nasce finché l'installazione non ha un'azienda (`E_EMITTENTE_DEFAULT_MISSING`):
+un cliente senza azienda non esiste, e la domanda ha sempre un'azienda da confrontare.
 
 ---
 

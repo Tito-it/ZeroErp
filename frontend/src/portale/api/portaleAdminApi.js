@@ -36,7 +36,7 @@ export function invitaClienteShop(clienteId, { email, reinvio = false } = {}) {
 
 // Scopo: Legge lo stato aggregato delle vesti non-operatore del cliente
 // (portale + shop). Ritorna `{ portale: {...stato}, shop: {...stato} }`
-// con `stato ∈ {NESSUNO, PENDING, NON_SPEDITO, DISATTIVO, ATTIVO}`. Usato dal
+// con `stato ∈ {NESSUNO, PENDING, NON_SPEDITO, DISATTIVO, REVOCATA, ATTIVO}`. Usato dal
 // PortaleAccessoPanel per renderizzare stato corrente + abilitare/
 // nascondere i pulsanti azione.
 export function getStatoAccessiCliente(clienteId) {
@@ -48,10 +48,10 @@ export function getStatoAccessiFornitore(fornitoreId) {
   return api.get(`/anagrafiche/fornitori/${fornitoreId}/stato-accessi/`)
 }
 
-// Scopo: Soft-revoke veste portale cliente. Idempotente: se gia'
-// disattivata ritorna `{disattivato: false, stato: "DISATTIVO"}`.
-// Invalida i token pendenti — se un invito era in volo, il link smette
-// di funzionare.
+// Scopo: Revoca la veste portale cliente. Idempotente: se gia' spenta
+// ritorna `{disattivato: false, stato: "REVOCATA"}` e mette comunque il segno
+// della revoca. Invalida i token pendenti — se un invito era in volo, il link
+// smette di funzionare; la riapre solo un nuovo invito.
 export function disattivaPortaleCliente(clienteId) {
   return api.post(`/anagrafiche/clienti/${clienteId}/disattiva-portale/`)
 }

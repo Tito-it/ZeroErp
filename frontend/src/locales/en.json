@@ -914,6 +914,7 @@
       "PENDING": "Invitation sent",
       "NON_SPEDITO": "Invitation not sent",
       "ATTIVO": "Active",
+      "REVOCATA": "Revoked",
       "DISATTIVO": "Disabled"
     },
     "account": {
@@ -1275,7 +1276,7 @@
     },
     "select_rounding_policy": "Select rounding mode",
     "banner_non_assegnati_title": "{count} operators are not yet assigned to a fiscal issuer",
-    "banner_non_assegnati_detail": "After the introduction of the 1-to-1 operator-issuer constraint, existing operators remained as global admins. Open each operator's drawer and assign them to the correct issuer. Until assigned, operators cannot create billing accounts when fiscal issuers exist in the system.",
+    "banner_non_assegnati_detail": "An operator without an issuer sees no data. Open each operator's drawer and, in the Data tab, assign them to the issuer they work for.",
     "search_placeholder": "Search operator...",
     "filter_ruolo": "Role",
     "filter_super_admin": "Super Admin",
@@ -1384,8 +1385,8 @@
     "select_model": "Select model...",
     "model_override_reason_riservato": "Model reserved for the permissions system: override not allowed.",
     "emittenti_scope_title": "Fiscal issuer scope",
-    "emittenti_scope_hint": "Define the operator scope: all issuers (global) or only one (local).",
-    "scope_mode_global": "All issuers (global)",
+    "emittenti_scope_hint": "The issuer the operator works for. «All issuers» is for a SUPER_ADMIN only.",
+    "scope_mode_global": "All issuers (SUPER_ADMIN only)",
     "scope_mode_single": "Single issuer",
     "add_override": "Add override",
     "profilo_reparto_title": "Department profile: {nome}",
@@ -1696,6 +1697,10 @@
     "di_prova_tooltip": "Test user, created by the development provisioning: it exists only in development installations.",
     "permessi_nessuna_area": "No area matches the filters.",
     "permessi_area_senza_voci": "This area has no objects or process actions to configure: only the area level applies.",
+    "permessi_motivo_titolo": "Reason for the permission exception",
+    "permessi_motivo_label": "Reason",
+    "permessi_motivo_spiegazione": "A permission exception must always be explained: write why the user gains, or loses, these permissions. The reason goes on the entry that changed or still has no reason; the others keep their own. | A permission exception must always be explained: write why the user gains, or loses, these permissions. The reason goes on the {n} entries that changed or still have no reason; the others keep their own.",
+    "permessi_motivo_aiuto": "Removing an exception needs no reason: only the entries that remain do.",
     "azione_abilitata": "Enabled",
     "azione_negata": "Denied",
     "processi": {

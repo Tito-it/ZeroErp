@@ -1,6 +1,6 @@
 # Guida — Architettura Permessi e Autorizzazioni
 
-> **Ultimo aggiornamento**: 26 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -28,6 +28,10 @@
 > * [script.trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope) — il write-guard di difesa in profondita'
 > * [config.trgfn_parameter_overrides_guard_emittente_scope](/dbzero/config/funzioni/trgfn_parameter_overrides_guard_emittente_scope) — lo stesso perimetro sugli override dei parametri, una tabella senza RLS: guarda la riga prima e dopo, anche nel `DELETE`
 > * [script.fn_change_user_emittenti_scope](/dbzero/script/funzioni/fn_change_user_emittenti_scope) — il verbo che sposta un operatore su un'azienda, riservato al SUPER_ADMIN
+> * [config.fn_lega_profilo_identita](/dbzero/config/funzioni/fn_lega_profilo_identita) / [config.fn_slega_profilo_identita](/dbzero/config/funzioni/fn_slega_profilo_identita) / [config.fn_lega_profilo_reparto](/dbzero/config/funzioni/fn_lega_profilo_reparto) / [config.fn_slega_profilo_reparto](/dbzero/config/funzioni/fn_slega_profilo_reparto) — i verbi che danno e tolgono un profilo a un'identità o a un reparto, riservati al SUPER_ADMIN
+> * [config.fn_scrivi_profilo_accesso](/dbzero/config/funzioni/fn_scrivi_profilo_accesso) — il verbo che scrive un profilo con le sue aree e azioni, riservato al SUPER_ADMIN
+> * [config.fn_imposta_override_aree](/dbzero/config/funzioni/fn_imposta_override_aree) / [config.fn_imposta_override_azioni](/dbzero/config/funzioni/fn_imposta_override_azioni) / [config.fn_imposta_override_oggetti](/dbzero/config/funzioni/fn_imposta_override_oggetti) — i verbi che assegnano le eccezioni di un utente (aree, azioni, oggetti), riservati al SUPER_ADMIN
+> * [dbops.fn_pgtap_fixture_crea_operatore](/dbzero/dbops/funzioni/fn_pgtap_fixture_crea_operatore) / [dbops.fn_pgtap_fixture_crea_utente_tecnico](/dbzero/dbops/funzioni/fn_pgtap_fixture_crea_utente_tecnico) — le fixture dei pgTAP senza permesso, chiuse dall'ambiente
 > * [anagrafiche.fn_crea_primo_amministratore](/dbzero/anagrafiche/funzioni/fn_crea_primo_amministratore) — il solo verbo senza guard: il primo SUPER_ADMIN, chiuso dalla sua condizione
 > * [config.trgfn_user_emittenti_fiscali_guard_delete](/dbzero/config/funzioni/trgfn_user_emittenti_fiscali_guard_delete) — il guard del `DELETE` della riga di scope, e la porta del verbo
 > * [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) / [script.fn_guard_livello](/dbzero/script/funzioni/fn_guard_livello) / [script.fn_guard_livello_area](/dbzero/script/funzioni/fn_guard_livello_area) / [script.fn_guard_super_admin](/dbzero/script/funzioni/fn_guard_super_admin) / [script.fn_guard_utente_stesso](/dbzero/script/funzioni/fn_guard_utente_stesso) — il permesso nella prima riga di un verbo di scrittura
@@ -263,6 +267,12 @@ raggruppate per area, si interroga la tabella incrociata con
 di attivazione. Il risultato tipico e' una lista ordinata per area e poi
 per descrizione dell'azione.
 
+⛔ **Non si modifica dall'applicazione.** La possiede il CSV, come le aree
+(§4.1): un'azione nuova nasce nel seed insieme al codice che la applica, e
+l'area e il livello minimo d'area di un'azione si cambiano li'. Il livello
+minimo decide il permesso di tutti quelli che hanno l'azione: per questo la
+tabella e' in sola lettura per l'app (§7.4).
+
 ### 4.3 Tabella `config.area_model_overrides`
 
 > Struttura completa: [area_model_overrides](/dbzero/config/tabelle/area_model_overrides)
@@ -271,8 +281,8 @@ Il catalogo degli oggetti. Ogni riga e' un model (app label e nome) con due
 informazioni:
 
 * **l'area a cui appartiene**. Di norma coincide con lo schema; un model
-  si puo' assegnare a un'area diversa scegliendola dal catalogo delle aree
-  funzionali, e da quel momento la risoluzione dei permessi usa quella;
+  si assegna a un'area diversa nel CSV del catalogo, scegliendola fra le
+  aree funzionali, e da quel momento la risoluzione dei permessi usa quella;
 * **se e' riservato**. Un oggetto riservato e' a catalogo ma non si
   personalizza per operatore: sono le tabelle del kernel dei permessi
   (profili, binding, gli override stessi, le identita' digitali, lo scope
@@ -292,6 +302,11 @@ catalogo che una porta non chiede e' un override che mente: il pannello lo
 mostra, e quella porta risponde con il livello dell'area. Per la stessa
 ragione il **billing account non e' a catalogo**: si gestisce dentro la
 scheda cliente, e il suo permesso e' sempre quello del cliente.
+
+⛔ **Non si modifica dall'applicazione.** La possiede il CSV, come le aree
+(§4.1) e le azioni (§4.2). Spostare un oggetto in un'area dove un operatore ha
+`TUTTO`, o togliere il riservato a una tabella del kernel, cambierebbe i
+permessi di tutti: il catalogo e' in sola lettura per l'app (§7.4).
 
 **Esempio di uso:** l'amministratore vuole che un operatore del reparto
 Vendite, che ha `TUTTO` sull'area, veda le offerte in sola lettura. Sceglie
@@ -340,6 +355,20 @@ codename Django (es. `genera_fattura`) e al flag di abilitazione. Da
 quel momento tutti gli operatori del reparto vedranno il pulsante di
 generazione attivo senza ulteriori override individuali.
 
+**Chi scrive i profili e i loro legami.** Il legame dice chi ha un profilo, il
+contenuto del profilo (le sue aree e azioni) dice che cosa concede: scrivere l'uno o
+l'altro e' dare poteri. Per questo `config.profili_accesso`, `profili_accesso_aree`,
+`profili_accesso_azioni` e `profili_accesso_bindings` sono in sola lettura per
+l'applicazione (§7.4), e li scrivono i verbi del SUPER_ADMIN:
+`config.fn_scrivi_profilo_accesso` il profilo con aree e azioni,
+`config.fn_lega_profilo_identita` / `fn_slega_profilo_identita` il legame di
+un'identita', `config.fn_lega_profilo_reparto` / `fn_slega_profilo_reparto` quello di
+un reparto. Ognuno chiede il SUPER_ADMIN nella prima riga. La creazione di un
+operatore lega il profilo SUPER_ADMIN dentro lo stesso verbo
+(`anagrafiche.fn_crea_operatore`), che chiede anche lui il SUPER_ADMIN. Un legame
+verso il profilo SUPER_ADMIN scritto direttamente, che farebbe un amministratore,
+si ferma sul privilegio.
+
 ### 4.6 Tabella `config.user_override_aree`
 
 > Struttura completa: [user_override_aree](/dbzero/config/tabelle/user_override_aree)
@@ -387,8 +416,38 @@ resta scritto e dormiente.
 stata abilitata deve comunque poter approvare fatture, si registra un
 override individuale sull'azione (identificata dal suo codename Django),
 con abilitazione positiva e motivo (es. "Autorizzato dal responsabile
-vendite"). Il motivo e' obbligatorio per audit: consente di tracciare
-perche' e da chi l'eccezione e' stata concessa.
+vendite"). Il motivo e' obbligatorio, come per ogni override: vedi qui sotto.
+
+**Chi scrive gli override.** Un override utente da' a una persona un potere
+che il suo profilo non le da': un operatore che potesse scriverne uno per se'
+si alzerebbe il livello da solo. Per questo le tre tabelle
+(`user_override_aree`, `user_override_oggetti`, `user_override_azioni`) sono in
+sola lettura per l'applicazione (§7.4), e le scrivono i verbi del SUPER_ADMIN:
+`config.fn_imposta_override_aree`, `config.fn_imposta_override_oggetti` e
+`config.fn_imposta_override_azioni`. Ognuno chiede il SUPER_ADMIN nella prima
+riga, come la schermata di amministrazione, e **sostituisce l'elenco** degli
+override di un utente con quello che riceve: l'elenco vuoto toglie tutte le
+eccezioni di quel tipo. I tre verbi scrivono attraverso una primitiva sola,
+`config.fn_applica_imposta_override`, che l'applicazione non esegue: le regole
+di una voce stanno li', una volta per le tre tabelle.
+
+**Ogni override ha un motivo.** L'audit dice chi ha scritto l'eccezione e
+quando; *perche'* lo dice solo il motivo, e un'eccezione ai permessi che
+nessuno sa piu' spiegare e' un'eccezione che nessuno osa togliere. Per questo
+la primitiva rifiuta una voce senza un motivo di testo non vuoto
+(`E_OVERRIDE_MOTIVO_OBBLIGATORIO`, sul campo `motivo`) e lo scrive ripulito
+dagli spazi. Vale per le tre tabelle e anche per la voce che **toglie**
+(`BLOCCATO`, `abilitata = false`): una restrizione e' un'eccezione al profilo
+quanto una concessione. Togliere una voce, invece, non chiede motivo: tolta
+l'eccezione resta il profilo, che non ha niente da spiegare, e chi l'ha tolta
+lo dice lo storico.
+
+La regola sta nella primitiva e non sulle colonne, che restano facoltative: le
+righe scritte prima della regola possono non avere il motivo. La riscrittura
+dell'elenco di quell'utente, che le rimanda tutte, lo chiede anche per loro: la
+schermata dei permessi chiede un motivo al salvataggio e lo scrive sulle voci
+cambiate e su quelle che non l'hanno. Lo stesso vale per i builder dei pgTAP,
+che riscrivono le voci che l'utente ha gia'.
 
 ### 4.9 Tabella `config.user_emittenti_fiscali`
 
@@ -410,11 +469,10 @@ letture, e per difesa in profondita' dai trigger DB sulle scritture.
 toglierlo: per questo il verbo chiede il SUPER_ADMIN nella prima riga (§7.4). La
 riga di un utente acceso si toglie solo dalla porta del verbo; l'emittente di una
 riga non si cambia (lucchetto di colonna), si sposta togliendo la riga e
-scrivendone un'altra. ⚠️ La tabella non e' ancora in sola lettura per
-l'applicazione: un `INSERT` diretto, per un operatore che non ha la riga, gli da'
-un'azienda senza passare dal verbo. E' una delle tabelle ancora aperte del
-modello; anche gli utenti tecnici dei processi ricevono l'azienda cosi'
-(`script.fn_crea_utente_tecnico`).
+scrivendone un'altra. La tabella e' in sola lettura per l'applicazione: un `INSERT`
+diretto, che a un operatore senza riga darebbe un'azienda, si ferma sul privilegio.
+L'utente tecnico di un processo riceve la sua azienda alla nascita, dal verbo
+`script.fn_crea_utente_tecnico`, che chiede anch'esso il SUPER_ADMIN.
 
 Chi resta senza assegnazione si conta in `dbops.vw_operatori_senza_emittente`, che
 **deve restare a zero righe**.
@@ -919,16 +977,42 @@ condizione: si apre solo se nessuna veste ha mai avuto un legame SUPER_ADMIN, e 
 chiude da sola alla nascita del primo. Un verbo nuovo senza guard non si appoggia a
 questo: e' l'unico caso in cui chi agisce, per costruzione, non esiste.
 
+⚠️ **Un verbo senza guard, dichiarato: l'accensione di una veste.**
+[`anagrafiche.fn_accendi_veste`](/dbzero/anagrafiche/funzioni/fn_accendi_veste)
+gira come proprietario e non chiama nessun guard, perche' la chiamano richieste senza
+un amministratore: il link dell'invito, che e' anonimo (nessuna GUC d'identita') e
+porta il token che il backend consuma nella stessa transazione, e la persona che
+accende una propria veste. Il limite e' dichiarato: la funzione accende la veste
+spenta che il backend le passa, purche' sia di quella credenziale. Una veste revocata
+la ferma il guard della tabella. Il verbo che consumera' il token a DB nasce con
+l'iscrizione da se'.
+
+⚠️ **Funzioni senza guard per i test, dichiarate: le fixture dei pgTAP.**
+[`dbops.fn_pgtap_fixture_crea_operatore`](/dbzero/dbops/funzioni/fn_pgtap_fixture_crea_operatore)
+e [`dbops.fn_pgtap_fixture_crea_utente_tecnico`](/dbzero/dbops/funzioni/fn_pgtap_fixture_crea_utente_tecnico)
+creano un operatore (anche SUPER_ADMIN) o un utente tecnico con le regole dei loro
+verbi, senza il loro permesso: il primo SUPER_ADMIN di un test non ha nessuno da cui
+farsi creare. [`dbops.fn_pgtap_imposta_veste`](/dbzero/dbops/funzioni/fn_pgtap_imposta_veste)
+e [`dbops.fn_pgtap_cancella_veste`](/dbzero/dbops/funzioni/fn_pgtap_cancella_veste)
+mettono una veste nello stato del caso, o la tolgono, dove l'applicazione non aggiorna
+e non cancella le vesti; una veste revocata non la toccano. Girano come proprietario e l'applicazione le esegue. Al posto del guard
+le chiude l'**ambiente**: partono solo dove sono ammessi i dati di sviluppo, come il
+provisioning, e in PRODUZIONE rifiutano (`E_DATI_DI_SVILUPPO_IN_PRODUZIONE`).
+L'ambiente l'applicazione non lo cambia. Il limite e' quello del provisioning: su
+un'installazione di sviluppo l'applicazione puo' crearsi un SUPER_ADMIN di fixture.
+
 Una forma sola per le operazioni di processo, una per quelle semplici:
 `azioni_processo` non si riempie di azioni che ripetono il livello, e
 l'amministratore ragiona come sempre, per area, azione e oggetto.
 
-**La porta.** Il verbo protegge solo se non si puo' aggirare:
+**Il verbo non si aggira.** Il verbo protegge solo se non si puo' aggirare:
 
 * l'applicazione perde `INSERT`/`UPDATE`/`DELETE` sulle tabelle che il verbo
   protegge. La postura si dichiara nel loop dei grant, non con un `REVOKE`
   sparso: l'elenco delle tabelle in sola lettura per l'app e' la lista
-  `v_tabelle_sola_lettura_app` del loop;
+  `v_tabelle_sola_lettura_app` del loop. Una tabella in cui l'app inserisce ancora,
+  ma non aggiorna e non cancella, sta in `v_tabelle_app_solo_insert` (le vesti, finche'
+  nascono anche da un `INSERT` dell'app);
 * sulle **viste** l'applicazione ha solo `SELECT`, in tutto il database: una
   vista aggiornabile che gira coi permessi del suo proprietario scriverebbe la
   tabella sotto, e aggirerebbe la sola lettura. Una vista non e' una strada per
@@ -943,31 +1027,8 @@ l'amministratore ragiona come sempre, per area, azione e oggetto.
   reset del lotto col suo permesso), e nessuno dei tre pretende il permesso degli
   altri. Un guard che deve sapere se e' attraversato da un verbo lo chiede a
   `script.fn_is_proprietario_tabella`;
-* un guard che lascia passare una scrittura quando una GUC e' accesa (una
-  **porta**) chiede due cose insieme: la GUC, e che a scrivere sia il
-  proprietario. La sola GUC non chiude niente, perche' l'applicazione la puo'
-  accendere da se'. Vale anche per le porte di **manutenzione**, che si aprono
-  dagli strumenti DBA lanciati come `zeroerp_owner`: l'applicazione non esegue
-  quegli strumenti. Una porta che si apre per **una riga** porta nella GUC la
-  chiave di quella riga (la pubblicazione dei template: l'id del modello), e il
-  guard la confronta con la riga che giudica. Se il guard ha anche un'eccezione
-  per il seed, la riconosce dalla **sessione del migratore**
-  (`dbops.fn_sessione_del_migratore`), non dal proprietario: dentro un verbo
-  `SECURITY DEFINER` il proprietario e' chiunque lo chiami. Lo scope emittenti
-  apre cosi': la GUC porta l'`auth_user_id` dell'operatore che il verbo sposta;
-  la riconsegna di un reso porta l'id del reso, e l'esenzione vale per i soli
-  articoli di quel reso.
-  Le righe contabili del giro dei fondi aprono cosi': la GUC porta l'id dell'atto che
-  la primitiva sta cancellando, e il guard la onora solo sulle righe di quell'atto.
-  ⚠️ **Un'eccezione dichiarata: la porta del reset dei lotti.** Lì la GUC resta un
-  **interruttore**, perche' i guard che la leggono stanno su molte tabelle e ognuno
-  dovrebbe risalire dalla sua riga al lotto per una strada diversa. Il limite lo
-  danno il proprietario e la durata: i guard la onorano solo se a scrivere e' il
-  proprietario (`vendite.fn_porta_reset_lotto_aperta`), e la accende solo la pulizia
-  del lotto, una primitiva riservata, che la spegne prima di uscire. Le sole
-  scritture che la porta vede sono quelle della pulizia.
-  Il reset dei lotti e le righe contabili non hanno piu' porte che si aprono con la
-  sola GUC.
+* un guard che lascia passare una scrittura quando una GUC e' accesa e' una
+  **porta**, e si scrive come dice «Le porte», in fondo a questa sezione.
 
 **Il backend chiede, non decide due volte.** L'endpoint tiene il suo controllo:
 risponde 403 subito, con un messaggio utile, prima di aprire la transazione.
@@ -991,6 +1052,64 @@ vede solo «UPDATE su questa tabella». Un'area non e' uno schema: un'operazione
 scrive anche in altri schemi. E le funzioni `SECURITY DEFINER` la
 scavalcherebbero. Il permesso appartiene all'**operazione**, e a DB
 l'operazione ha un nome solo: la funzione che la esegue.
+
+#### Le porte
+
+Un guard che protegge una regola («una riga d'ordine evasa non si cancella»)
+ha spesso una **porta**: la condizione con cui lascia passare l'operazione
+legittima che la regola altrimenti ferma. Una porta chiede **due cose
+insieme**: una GUC che dice **quale operazione su quale riga**, e
+che a scrivere sia il **proprietario** della tabella
+(`script.fn_is_proprietario_tabella`). La sola GUC non chiude niente, perche'
+l'applicazione la puo' accendere da se', con un `set_config`, e poi scrivere
+la tabella direttamente. Le GUC delle porte stanno di solito in `zeroerp.*`
+(la registrazione tardiva usa `app.registrazione_tardiva_riga_id`), e non sono
+quelle d'identita' ([Contratto GUC](/guide/contratto-guc-app)): non dicono chi
+e' l'utente.
+
+| Porta | Chi la apre | Come la riconosce il guard | Dove |
+| --- | --- | --- | --- |
+| **Del flusso, sulla riga** | un verbo `SECURITY DEFINER`, dopo il suo permesso e il suo perimetro | la GUC porta la **chiave della riga** e il guard la confronta con la riga che giudica; e chi scrive e' il proprietario | la pubblicazione dei template, lo scope emittenti, la riconsegna di un reso, le righe contabili del fondo, la registrazione tardiva |
+| **Interruttore del proprietario** (eccezione dichiarata) | una primitiva riservata, che la spegne prima di uscire | la GUC accesa, e chi scrive e' il proprietario | il reset dei lotti |
+| **Di manutenzione**, dagli strumenti DBA | uno strumento lanciato come `zeroerp_owner`; l'applicazione non lo esegue | la GUC, e il proprietario | la toponomastica e gli indirizzi di una via ([Riclassificazione vie](/guide/riclassificazione-vie)) |
+| **Di manutenzione del framework** | la sessione del migratore | `script.fn_porta_manutenzione_aperta`, che lascia una riga in `dbops.porte_manutenzione_passaggi` | il lucchetto di colonna, il blocco `DELETE`, il seed di primo impianto, l'append-only dei log di vendita ([Automazione DB](/guide/automazione-db), «Le porte di manutenzione») |
+| **Sola GUC** (scelta dichiarata) | l'applicazione | la sola GUC | il legame di una riga di bolla in bozza; il bypass del `tx_id`, che non e' una porta |
+
+**La porta sulla riga.** E' la forma di regola. Se il guard ha anche
+un'eccezione per il seed, la riconosce dalla **sessione del migratore**
+(`dbops.fn_sessione_del_migratore`), non dal proprietario: dentro un verbo
+`SECURITY DEFINER` il proprietario e' chiunque lo chiami. Le chiavi che le
+porte portano: la pubblicazione dei template, l'id del modello; lo scope
+emittenti, l'`auth_user_id` dell'operatore che il verbo sposta; la riconsegna
+di un reso, l'id del reso, e l'esenzione vale per i soli articoli di quel
+reso; le righe contabili del giro dei fondi, l'id dell'atto che la primitiva
+sta cancellando, e il guard la onora solo sulle righe di quell'atto.
+
+⚠️ **Un'eccezione dichiarata: la porta del reset dei lotti.** Li' la GUC resta un
+**interruttore**, perche' i guard che la leggono stanno su molte tabelle e ognuno
+dovrebbe risalire dalla sua riga al lotto per una strada diversa. Il limite lo
+danno il proprietario e la durata: i guard la onorano solo se a scrivere e' il
+proprietario (`vendite.fn_porta_reset_lotto_aperta`), e la accende solo la pulizia
+del lotto, una primitiva riservata, che la spegne prima di uscire. Le sole
+scritture che la porta vede sono quelle della pulizia.
+
+**Le porte di manutenzione** servono a una correzione fuori dal flusso. Quelle
+degli strumenti DBA si aprono come le altre, con la GUC e il proprietario: la
+manutenzione la fa chi si collega come `zeroerp_owner`. Quelle dei trigger del
+framework (il lucchetto, il blocco `DELETE`, il seed di primo impianto) si
+aprono solo alla sessione del migratore, e lasciano traccia di ogni passaggio.
+
+⚠️ **Due strade restano con la sola GUC, e sono scelte dichiarate** nella guida del
+loro dominio: il legame di una riga di bolla **in bozza**, perche' la bozza la scrive
+l'applicazione e niente e' ancora partito ([Gestione DDT](/guide/gestione-ddt),
+«Chi toglie un legame»); e il bypass del `tx_id`, che non e' una porta: il trigger
+non rifiuta mai una scrittura, decide solo quale `tx_id` timbrare
+([tx_id](/guide/tx_id_implementation_guide)). Nessun'altra porta si apre con la
+sola GUC (dal 2026-11-27); una strada nuova che lo fa e' un'eccezione, e la
+dichiara la guida del suo dominio, col perche'.
+
+Come si scrive una porta nuova, coi suoi pgTAP: [Linee guida
+trigger](/linee-guida-trigger), «Una porta nel guard».
 
 ### 7.5 Il pannello di configurazione: un verbo generico
 
@@ -1468,7 +1587,9 @@ la voce come «limitata dall'area».
 ### 13.2 L'audit degli override
 
 `/permessi-audit/` traccia la timeline degli override. La storia vive nelle tabelle
-dello schema `storico`, fra cui `storico.user_override_oggetti`.
+dello schema `storico`, fra cui `storico.user_override_oggetti`. Il chi e il quando li
+scrive l'audit; il perche' e' il `motivo` della voce, obbligatorio (§4.8, «Ogni
+override ha un motivo»): una voce tolta tiene il suo ultimo motivo nella storia.
 
 ### 13.3 Due difese che non si vedono a schermo
 

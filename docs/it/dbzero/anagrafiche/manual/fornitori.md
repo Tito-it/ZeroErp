@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.fornitori`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -45,7 +45,8 @@ qualifica.
 ### Una riga per ruolo, non per soggetto
 
 La riga punta al ruolo (`soggetto_ruolo_id`), non al soggetto, e un ruolo ha al più un fornitore
-(`uq_fornitori_soggetto_ruolo_id`). L'identità sta sul soggetto, i dati del rapporto qui: lo stesso soggetto può
+(`uq_fornitori_soggetto_ruolo_id`), che **non si cambia** (`E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE`): un
+fornitore creato sul soggetto sbagliato si spegne e se ne crea uno giusto. L'identità sta sul soggetto, i dati del rapporto qui: lo stesso soggetto può
 essere cliente e fornitore senza che niente si scriva due volte. Che il ruolo sia proprio `FO` lo garantisce
 `anagrafiche.trgfn_fornitori_guard_ruolo_fornitore`.
 
@@ -109,9 +110,8 @@ acceso.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Il ruolo del fornitore si può cambiare.** `soggetto_ruolo_id` non è bloccato: una riga si può spostare sul
-  ruolo `FO` di un altro soggetto, e porta con sé codice, stato e storia.
-* **Il COMMENT di `rating` dice «0-100 o 1-5».** La scala è una sola, da 0 a 100, ed è quella del vincolo.
+* **Il fornitore dell'ordine d'acquisto non è giudicato.** Lo stato che «blocca gli ordini» non ha ancora un
+  lettore: la regola si decide col cantiere degli acquisti.
 
 ---
 

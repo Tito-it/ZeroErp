@@ -17,6 +17,21 @@ Post-cutover multi-face il check ADMIN delega a `PermissionResolver.is_super_adm
 (binding `SUPER_ADMIN` su `config.profili_accesso_bindings`, profilo seed id 9100).
 L'endpoint lista utenti ha throttling search attivo (`is_search_endpoint = True`).
 
+⛔ **I gesti che danno l'accesso li chiede anche il DB al SUPER_ADMIN** (giro 10-bis di
+`brief-db-porte-aperte-dalla-sola-guc` §14, 2026-11-26): creare un operatore
+(`anagrafiche.fn_crea_operatore`), dargli o togliergli il SUPER_ADMIN
+(`config.fn_lega_profilo_identita` / `fn_slega_profilo_identita`), scrivere il profilo di un
+reparto e legarlo (`config.fn_scrivi_profilo_accesso`, `config.fn_lega_profilo_reparto`), creare
+l'utente tecnico di un processo (`script.fn_crea_utente_tecnico`) e cambiare lo scope
+(`script.fn_change_user_emittenti_scope`). Sono verbi `SECURITY DEFINER` col guard del SUPER_ADMIN
+in prima riga: un contesto che non lo e' riceve `E_PERMESSO_NEGATO`, anche arrivando al DB per
+un'altra strada. E' la stessa regola di `AdminAPIView`, quindi dagli endpoint nessun rifiuto
+nuovo. Le tabelle dei profili, dei loro legami e dello scope (`config.profili_accesso`,
+`profili_accesso_aree`, `profili_accesso_azioni`, `profili_accesso_bindings`,
+`config.user_emittenti_fiscali`) sono in **sola lettura** per l'app: si scrivono solo dai verbi.
+Un test sul DB vero che ne ha bisogno come fixture usa i builder `dbops.fn_pgtap_*` o
+`apri_super_admin_costruito`, mai un `INSERT` diretto.
+
 Le risposte seguono l'envelope standard `{ "data": {...}, "meta": {...} }`.
 
 Base URL: `/api/v1/amm-software/`
@@ -142,7 +157,9 @@ curl -H "Authorization: Bearer <token>" \
 
 Crea un nuovo operatore completo: credenziale, soggetto persona fisica, risorsa
 umana e veste `OPERATORE`. La creazione e' orchestrata dalla funzione DB
-`anagrafiche.fn_crea_operatore_v2`.
+`anagrafiche.fn_crea_operatore`, che dal 2026-11-26 chiede il SUPER_ADMIN della
+sessione (vedi «Contesto»). Binding e permesso sono provati sul DB vero in
+`amm_software/tests/db/test_crea_operatore_db.py`.
 
 **Contract Fase 1 multi-face**: il payload accetta `is_super_admin` (booleano).
 Il campo legacy `ruolo_sistema` e' **rifiutato** con `E_AMM_VALIDAZIONE`.
@@ -388,6 +405,9 @@ flag sono ortogonali, e nessuno dei due si traduce in `ruolo_sistema`:
 - `is_super_admin: true` su un accesso che ha gia' un altro profilo legato
   (un'identita' ne lega uno solo) → 400 `E_AMM_VALIDAZIONE`, `field:
   is_super_admin`: va tolto prima quel profilo.
+- `is_super_admin` lega e slega con `config.fn_lega_profilo_identita` /
+  `fn_slega_profilo_identita`, che chiedono il SUPER_ADMIN della sessione
+  (vedi «Contesto»).
 - ⛔ `attivo: true` su una veste spenta (disabilitata, o mai attivata) viene
   rifiutato con `E_AMM_VALIDAZIONE` (HTTP 400, `field: attivo`), senza
   scrivere niente (D-3, 2026-10-04): l'accesso si riattiva col reinvio
@@ -425,8 +445,11 @@ curl -X PATCH -H "Authorization: Bearer <token>" \
 
 ### 1.5 POST /api/v1/amm-software/operatori/{id}/disabilita/ -- Disabilita utente
 
-Disabilita un utente: la veste OPERATORE di riferimento `attivo=false` (il tipo
-resta, R-DB-1), la sua risorsa umana `attivo=false`+`valido_al=oggi`. Sincronizza `auth_user.is_active`,
+Disabilita un utente: **revoca** la veste OPERATORE di riferimento col verbo
+del DB `anagrafiche.fn_revoca_veste` (dal 2026-11-26: `attivo=false` e il segno
+della revoca, che un invito vecchio non scavalca; il tipo resta, R-DB-1), poi la
+sua risorsa umana `attivo=false`+`valido_al=oggi`. La riapre solo un nuovo invito
+(«Reinvia invito»), che toglie il segno. Sincronizza `auth_user.is_active`,
 invalida la cache permessi a commit avvenuto, invalida gli **inviti operatore
 pendenti** di quella veste (A-5, 2026-10-02: prima un invito in volo poteva
 ancora riaccenderla) e mette in blacklist le sessioni della **sola veste
@@ -448,8 +471,11 @@ l'envelope errore (HTTP 409).
 
 **Regole:**
 
-- Ordine disattivazione: figlio (`identita_digitali`) prima del padre
-  (`risorse_umane`) per rispettare il framework ATTIVO del DB.
+- Ordine disattivazione: figlio (`identita_digitali`, dalla revoca) prima del
+  padre (`risorse_umane`) per rispettare il framework ATTIVO del DB.
+- La revoca la chiede il DB al SUPER_ADMIN della sessione
+  (`anagrafiche.fn_guard_gestione_veste`): un contesto senza SUPER_ADMIN riceve
+  `E_PERMESSO_NEGATO`, anche se la porta lo ha fatto passare.
 - Chiama `anagrafiche.fn_sync_auth_user_is_active` per sincronizzare
   `auth_user.is_active`.
 - Invalida la cache permessi dell'utente (a commit avvenuto).
@@ -524,7 +550,7 @@ catalogo `anagrafiche.accessi_altri` (104). Envelope di lista `{count, results}`
 |---|---|---|
 | `search` | string | Ricerca libera sulle colonne accese dal catalogo (nome, username, email, vesti, soggetti) |
 | `ruolo_applicativo` | string | Una veste di quel tipo fra le vesti della credenziale (`CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`, …). `DISABILITATO` → 400 |
-| `stato_accesso` | string | Il migliore fra le vesti: `ATTIVO`, `PENDING`, `NON_SPEDITO`, `DISATTIVO`, `NESSUNO`. Estraneo → 400 |
+| `stato_accesso` | string | Il migliore fra le vesti, in quest'ordine: `ATTIVO`, `PENDING`, `NON_SPEDITO`, `DISATTIVO`, `REVOCATA`, `NESSUNO`. `REVOCATA` vuol dire che **tutte** le vesti della credenziale sono revocate: basta una spenta senza segno perche' risulti `DISATTIVO` (D-3c-2, brief-db-accessi-area-clienti, 2026-11-27). Estraneo → 400 |
 | `nessun_accesso` | bool | Nessuna veste |
 | `secondo_fattore_stato` | string | `ASSENTE`, `DA_CONFERMARE`, `ATTIVO` |
 | `secondo_fattore_obbligatorio` | bool | |
@@ -705,8 +731,9 @@ curl -H "Authorization: Bearer <token>" \
 
 ### 2.2 PUT /api/v1/amm-software/operatori/{id}/override-aree/ -- Salva override aree
 
-Sostituisce completamente gli override aree di un utente (semantica replace: cancella
-tutti gli esistenti e inserisce i nuovi). Invalida la cache permessi.
+Sostituisce completamente gli override aree di un utente (semantica replace: un elenco
+vuoto li toglie tutti) col verbo `config.fn_imposta_override_aree`, che chiede il
+SUPER_ADMIN anche al DB. Invalida la cache permessi.
 
 **Parametri path:** `id` (int) -- auth_user_id dell'utente.
 
@@ -730,13 +757,33 @@ tutti gli esistenti e inserisce i nuovi). Invalida la cache permessi.
 |---|---|---|---|
 | `area_id` | int | si | ID area funzionale |
 | `livello` | string | si | Livello accesso (enum `config.livello_accesso`: `TUTTO`, `LETTURA`, `BLOCCATO`) |
-| `motivo` | string | no | Motivazione dell'override |
+| `motivo` | string | **si** | Perché l'utente riceve, o perde, questo permesso (§2.2, «Il motivo») |
 | `valido_dal` | string | no | Data inizio validita' |
 | `valido_al` | string | no | Data fine validita' |
 
 `items` dev'essere una lista di oggetti; `area_id` (intero positivo) e
 `livello` sono obbligatori. Altrimenti 400 `E_AMM_VALIDAZIONE` col campo
-(2026-10-20: prima una voce malformata era un 500).
+(2026-10-20: prima una voce malformata era un 500). Al verbo arrivano le cinque
+chiavi della tabella, sempre (una a `null` scrive NULL: `valido_dal` `null` = senza
+inizio); le altre chiavi della voce, come quelle che il GET restituisce, non gli
+arrivano. La stessa area due volte o un'area inesistente: 400 `E_AMM_VALIDAZIONE`.
+
+**Dal 2026-11-27** (giro 10-quater, brief-db-porte-aperte-dalla-sola-guc §15.7) la
+tabella `config.user_override_aree` è in sola lettura per l'applicazione: prima il
+repository la riscriveva con un `DELETE` e N `INSERT`.
+
+**Il motivo** (dal 2026-11-27, brief-db-motivo-override-obbligatorio). Ogni voce ne
+porta uno, di testo non vuoto, anche quella che toglie (`BLOCCATO`, `abilitata =
+false`): un'eccezione ai permessi va spiegata in tutti e due i versi. Lo giudica il
+verbo, cioè la primitiva `config.fn_applica_imposta_override`, per le tre rotte
+(§2.2, §2.4, §2.4-bis): una voce col motivo assente, `null`, non di testo, vuoto o
+di soli spazi è un **400 `E_OVERRIDE_MOTIVO_OBBLIGATORIO`** col campo `motivo`
+(`error.fields`), e l'elenco si giudica tutto prima di scrivere: niente cambia. Il
+motivo si scrive ripulito dagli spazi. ⭐ Il backend non ripete la regola (il motivo
+lo legge `optional_string`): il codice arriva com'è, e il pannello lo mostra nel
+dialog del motivo. Togliere una voce dall'elenco, o mandarlo vuoto, non chiede
+motivo. Le righe scritte prima della regola senza motivo restano: la prossima
+riscrittura dell'elenco le rifiuta finché non ne ricevono uno.
 
 **Risposta:** lista aggiornata degli override aree (stesso formato del GET).
 
@@ -793,7 +840,8 @@ curl -H "Authorization: Bearer <token>" \
 
 ### 2.4 PUT /api/v1/amm-software/operatori/{id}/override-azioni/ -- Salva override azioni
 
-Sostituisce completamente gli override azioni di un utente (semantica replace).
+Sostituisce completamente gli override azioni di un utente (semantica replace) col
+verbo `config.fn_imposta_override_azioni` (SUPER_ADMIN, dal 2026-11-27, come §2.2).
 Invalida la cache permessi.
 
 **Parametri path:** `id` (int) -- auth_user_id dell'utente.
@@ -818,13 +866,14 @@ Invalida la cache permessi.
 |---|---|---|---|
 | `azione_id` | int | si | ID azione processo |
 | `abilitata` | bool | si | `true` per abilitare, `false` per disabilitare (solo booleano JSON) |
-| `motivo` | string | no | Motivazione dell'override |
+| `motivo` | string | **si** | Perché l'utente riceve, o perde, questo permesso (§2.2, «Il motivo») |
 | `valido_dal` | string | no | Data inizio validita' |
 | `valido_al` | string | no | Data fine validita' |
 
 `items` dev'essere una lista di oggetti; `azione_id` (intero positivo) e
 `abilitata` (booleano) sono obbligatori. Altrimenti 400 `E_AMM_VALIDAZIONE`
-col campo (2026-10-20: prima una voce malformata era un 500).
+col campo (2026-10-20: prima una voce malformata era un 500). Le chiavi che
+arrivano al verbo e i vincoli come in §2.2.
 
 **Risposta:** lista aggiornata degli override azioni (stesso formato del GET).
 
@@ -851,7 +900,8 @@ operatore).
 `area_descrizione` (ordine: area, `app_label`, `model_name`).
 
 **PUT** → sostituisce tutti gli override oggetto dell'operatore (semantica
-replace, `config.fn_imposta_override_oggetti`) e invalida la cache permessi.
+replace, `config.fn_imposta_override_oggetti`, verbo del SUPER_ADMIN dal 2026-11-27)
+e invalida la cache permessi.
 Risposta: la lista aggiornata (forma del GET).
 
 ```json
@@ -864,7 +914,7 @@ Risposta: la lista aggiornata (forma del GET).
 |---|---|---|---|
 | `app_label` / `model_name` | string | si | Oggetto registrato nel catalogo (lookup §4.8) |
 | `livello` | string | si | `TUTTO`, `LETTURA`, `BLOCCATO` |
-| `motivo` | string | no | |
+| `motivo` | string | **si** | Come in §2.2, «Il motivo» |
 | `valido_dal` / `valido_al` | string \| null | no | `null` = senza inizio / senza fine |
 
 **Errori** (tutti 400 `E_AMM_VALIDAZIONE`): `items` non lista o voce non
@@ -905,10 +955,10 @@ Sorgente: `script.fn_get_user_emittenti_scope(p_auth_user_id)`. Single-row.
 
 | Campo | Tipo | Descrizione |
 |---|---|---|
-| `scope_mode` | enum | `GLOBAL` (vede tutti gli emittenti) o `SINGLE` (vede solo `emittenti_ids[0]`). `MULTI` chiuso architetturalmente post Q2 (`UNIQUE(auth_user_id)` su `config.user_emittenti_fiscali`) |
-| `emittenti_ids` | array[int] | `[]` se GLOBAL, `[id]` se SINGLE. Array per simmetria payload (preparazione futura) |
-| `emittente_descrizione` | string \| null | Descrizione emittente quando SINGLE; NULL se GLOBAL |
-| `allowed_scope_modes` | array[string] | Sempre `["GLOBAL", "SINGLE"]` post Q2. Il FE mostra solo i radio ammessi |
+| `scope_mode` | enum | `GLOBAL` (vede tutti gli emittenti, **solo un SUPER_ADMIN**) o `SINGLE` (vede solo `emittenti_ids[0]`). Un operatore che non e' SUPER_ADMIN e non ha emittente risponde `SINGLE` con `emittenti_ids: []`: e' «non assegnato» e non vede nessun dato. `MULTI` chiuso architetturalmente post Q2 (`UNIQUE(auth_user_id)` su `config.user_emittenti_fiscali`) |
+| `emittenti_ids` | array[int] | `[]` se GLOBAL o non assegnato, `[id]` se SINGLE. Array per simmetria payload (preparazione futura) |
+| `emittente_descrizione` | string \| null | Descrizione emittente quando SINGLE; NULL se GLOBAL o non assegnato |
+| `allowed_scope_modes` | array[string] | `["GLOBAL", "SINGLE"]` per un SUPER_ADMIN, `["SINGLE"]` per ogni altro operatore (giro 10-ter, 2026-11-26). Il FE mostra solo i radio ammessi. Se la funzione non risponde, il service ripiega su `SINGLE` / `["SINGLE"]`: un ripiego non concede GLOBAL |
 | `can_change_scope` | bool | False sse l'operatore e' SUPER_ADMIN e l'unico attivo (delega a `fn_check_ultimo_super_admin_attivo`). Preview UX, non garanzia |
 | `change_scope_reason` | string \| null | Motivo it-IT free-form quando `can_change_scope=false` |
 
@@ -946,6 +996,11 @@ curl -H "Authorization: Bearer <token>" \
 **Regole:**
 
 - `GLOBAL`: `emittenti_ids` viene ignorato e normalizzato a `[]` lato service.
+  **Vale solo per un SUPER_ADMIN** (giro 10-ter di `brief-db-porte-aperte-dalla-sola-guc`, D-AA a,
+  2026-11-26): per ogni altro operatore il DB rifiuta con `E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`
+  (HTTP 409, `show_error_banner`), perche' senza emittente non vedrebbe nessun dato. Il codice risale
+  come errore del DB e lo traduce il middleware dalla policy generata: il service non lo rimappa.
+  Prova sul DB vero: `amm_software/tests/db/test_emittenti_scope_db.py`.
 - `SINGLE`: `emittenti_ids` deve contenere esattamente 1 int positivo.
 - **Guard ultimo super admin**: integrato nella fn DB
   `fn_change_user_emittenti_scope`. Se l'operatore e' SUPER_ADMIN globale e
@@ -963,7 +1018,7 @@ curl -H "Authorization: Bearer <token>" \
 **Risposta:** stesso shape del GET §2.5 con i valori post-change (rilettura
 da `fn_get_user_emittenti_scope` per consistenza).
 
-**Esempio curl — cambio a GLOBAL:**
+**Esempio curl — cambio a GLOBAL** (l'utente 1 dev'essere un SUPER_ADMIN):
 
 ```bash
 curl -X PUT -H "Authorization: Bearer <token>" \
@@ -1305,7 +1360,9 @@ replace). Invalida la cache permessi di **tutti gli operatori** del reparto.
 - `uo_id` inesistente → 400 `E_AMM_VALIDAZIONE` («Reparto inesistente»).
 - Il profilo (tipo `REPARTO`, codice `REPARTO_<codice_interno>`) si scrive con
   `config.fn_scrivi_profilo_accesso` e si lega al reparto con
-  `config.fn_lega_profilo_reparto`; `attivo` del profilo segue il reparto.
+  `config.fn_lega_profilo_reparto`; `attivo` del profilo segue il reparto. Tutti e
+  due chiedono il SUPER_ADMIN della sessione (vedi «Contesto»): scrivere il contenuto
+  di un profilo e' dare poteri, come legarlo.
 - La modifica impatta tutti gli operatori che appartengono al reparto
 - La cache permessi viene invalidata per l'intero reparto (`invalidate_department`)
 
@@ -2149,7 +2206,7 @@ Un operatore conta se la sua veste e' utilizzabile oggi
 | `chk_emittenti_fiscali_rounding_policy` | `anagrafiche` | **Fase 3**. CHECK constraint sulla colonna `emittenti_fiscali.rounding_policy`: ammette **4 valori** (`UP`, `DOWN`, `HALF_UP`, `HALF_DOWN`). Niente `HALF_EVEN` (a differenza di catalogo UoM operativa). E' il riferimento per `_ROUNDING_MODE_VALIDI_EMITTENTE` lato Python |
 | `vw_audit_sources` | `script` | **Fase 5**. Vista `(code, label_key, area_funzionale)` filtrata `attivo=true` ordinata per `code`. 8 sorgenti audit (incluse `user_override_oggetti` permessi v2 + `identita_digitali` multi-face). Letta da `list_audit_sources` per il lookup e da `list_audit_log` per build dinamico delle UNION ALL |
 | `fn_audit_summary(text, bigint)` | `script` | **Fase 5**. Calcola `{summary, diff}` per uno snapshot audit. Param: `(audit_source_code, storico_id)` dove `storico_id` e' la PK riga in `storico.<code>`. Esclude le 5 colonne audit standard (`data_*`, `user_*`, `tx_id`). Solleva `E_AUDIT_SNAPSHOT_NON_TROVATO` con marker stabile |
-| `fn_crea_operatore_v2(...)` | `anagrafiche` | Orchestratore creazione operatore (credenziale + soggetto PF + risorsa umana + veste OPERATORE spenta) |
+| `fn_crea_operatore(...)` | `anagrafiche` | Orchestratore creazione operatore (credenziale + soggetto PF + risorsa umana + veste OPERATORE spenta) |
 | `fn_sync_auth_user_is_active(INTEGER)` | `anagrafiche` | Sincronizza `auth_user.is_active` con stato identita digitale + risorsa umana |
 | `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` | `config` | Trigger DB autorita' finale per anti-lockout: blocca DELETE/UPDATE binding SUPER_ADMIN se ultimo attivo. Solleva con marker `E_PROFILO_ULTIMO_SUPER_ADMIN` |
 | `auth_user` | Django | Tabella autenticazione utenti |

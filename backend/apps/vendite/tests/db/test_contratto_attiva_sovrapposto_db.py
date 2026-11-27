@@ -25,7 +25,7 @@ from django.db import connection, transaction
 
 from apps.core.db._helpers import row_to_dict
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_su, apri_transazione_annullata, richiedi_db_provvisto
 from apps.vendite.services.contratti_service import ContrattiService
 
 _REASON_KEY = "vendite.contratti.azione_reason.contratto_sovrapposto"
@@ -43,7 +43,7 @@ class ContrattoAttivaSovrappostoDbTests(unittest.TestCase):
             cur.execute("SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore()")
             mondo = row_to_dict(cur)
             assert mondo is not None
-            cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [mondo["auth_user_id"]])
+            apri_contesto_su(cur, mondo["auth_user_id"])
             # «Attiva» chiede `emetti_contratto` dalla riga del passaggio, e la
             # capability la nasconde a chi non ce l'ha (§11.6).
             cur.execute(

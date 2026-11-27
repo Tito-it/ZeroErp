@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_get_ba_emittente_sr_id`
 
+> **Ultimo aggiornamento**: 27 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimenti funzioni:
@@ -10,7 +12,7 @@ Approfondimenti funzioni:
 >
 [script.fn_resolve_emittente_for_user](/dbzero/script/manual/fn_resolve_emittente_for_user) — la delegata del livello 2, la stessa del trigger z90
 >
-[script.fn_get_ba_emittente_sr_id_installazione](/dbzero/script/manual/fn_get_ba_emittente_sr_id_installazione) — la stessa domanda senza il livello 2 («per l'installazione»), per i guard dello spostamento della predefinita
+[script.fn_get_ba_emittente_sr_id_installazione](/dbzero/script/manual/fn_get_ba_emittente_sr_id_installazione) — la stessa domanda senza il livello 2 («per l'installazione»), per le regole che non devono dipendere da chi agisce
 >
 [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/manual/fn_get_emittente_fiscale_pk) e [anagrafiche.fn_get_emittente_fiscale_id](/dbzero/anagrafiche/manual/fn_get_emittente_fiscale_id) — gli involucri che sollevano (PK e SR)
 >
@@ -20,7 +22,6 @@ Approfondimenti tabelle:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 13-09-26)
 
 Risponde a una domanda sola, e la mette per la prima volta in forma di **nome**
 invece che di sì/no:
@@ -58,9 +59,10 @@ Quindi: estratta qui, e il check delega.
 
 ### Logica Operativa
 
-Sono **tre livelli** dal 2026-09-13 (changeSet `20260913-01`, D13 — decisione
-di Tid del 2026-09-12); fino a quel giorno erano due, e la differenza è tutta
-nel secondo:
+Sono **tre livelli**. Ogni billing account ha sempre il suo collegamento, e la
+risposta è il primo; il secondo e il terzo riguardano solo l'istante della
+nascita, prima che il trigger di nascita scriva il collegamento, e ripetono la
+scelta che il trigger sta per fare:
 
 1. **Mapping specifico.** Se quel billing account ha la sua riga in
    `emittenti_fiscali_billing_account`, l'emittente è quello. Al massimo una:
@@ -71,14 +73,14 @@ nel secondo:
    l'emittente è il suo, risolto con
    [`script.fn_resolve_emittente_for_user`](/dbzero/script/manual/fn_resolve_emittente_for_user)
    — **la stessa funzione con cui il trigger
-   [`trgfn_billing_account_link_ef`](/dbzero/anagrafiche/manual/trgfn_billing_account_link_ef)
-   scrive il legame**. *Un BA non ancora collegato appartiene a chi lo sta
-   creando.*
+   [`anagrafiche.trgfn_billing_account_link_ef`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef)
+   scrive il legame**. *Un BA appena nato appartiene a chi lo sta creando.*
 3. **Riserva senza sessione — il default dell'installazione.** Nessuna GUC
-   (batch, manutenzione), oppure un utente che il resolver non sa collocare
-   (admin globale senza emittente attivo, istanza «0 emittenti»): vale
-   l'emittente marcato `is_default = true`. Anche quello è al massimo uno:
-   `uq_emittenti_fiscali_ba_default`.
+   (batch, manutenzione), oppure un utente che il resolver non sa collocare:
+   vale l'emittente marcato `is_default = true`, lo stesso con cui il trigger di
+   nascita collega il billing account. Anche quello è al massimo uno:
+   `uq_emittenti_fiscali_ba_default`. Senza nessuna azienda il billing account
+   non nasce (`E_EMITTENTE_DEFAULT_MISSING`), e il livello non ha un caso.
 
 > Sono i **due indici univoci** a rendere i livelli 1 e 3 ben definiti, e il
 > modello «un operatore, un emittente» a rendere tale il livello 2. Senza di
@@ -96,37 +98,36 @@ con due soli livelli la risposta era **il default**, cioè un'altra azienda, e
 la rilettura negava — *«la nuova riga viola la regola di sicurezza per riga»*
 (42501). L'`INSERT` in sé passava; era il `RETURNING` a morire.
 
-Sull'emittente di default passava, ed è il motivo per cui nessuno l'ha visto
-fino al 2026-09-12: riprodotto su dbdev con un operatore dell'emittente 44
-(`EMITEST`). Il backend fa lo stesso `RETURNING`
-(`clienti_repository.create_billing_account`) ⇒ **con due emittenti in
-esercizio, gli operatori del secondo non aprivano clienti.**
+Sull'emittente di default passava; con due emittenti in esercizio, invece, gli
+operatori del secondo non avrebbero aperto clienti, perché il backend fa lo
+stesso `RETURNING` (`clienti_repository.create_billing_account`).
 
 Con il livello 2 la riserva dice in anticipo ciò che il trigger sta per
-scrivere, e il `RETURNING` vede la riga. Le tre risposte possibili alla domanda
-*«un BA appena scritto, ancora senza legame, di chi è?»* — e perché è stata
-scelta questa — sono nel brief
-[brief-db-ba-riserva-emittente-operatore-d13](/dev/work-done/2026/brief-db-ba-riserva-emittente-operatore-d13).
+scrivere, e il `RETURNING` vede la riga.
 
-⚠️ **Il prezzo, dichiarato.** Un BA che *resta* senza legame — creato senza
-sessione: un seed, una migrazione, un'installazione «0 emittenti» — era «del
-default» e ora è, in sessione, di chiunque lo guardi, ciascuno sotto il proprio
-emittente. È un dato anomalo che il modello ammette (il trigger lega sempre
-quando c'è una sessione), non un caso d'uso. La forma che lo chiuderebbe del
-tutto — l'emittente come **colonna** del BA — resta una decisione di modello in
-coda, non un lavoro.
+Un BA che *resta* senza legame non esiste: il trigger di nascita lo collega
+sempre (all'azienda di chi agisce o, senza sessione, alla predefinita), e il
+collegamento non si cancella. Per questo, fuori dall'istante della nascita,
+questa funzione e la sua gemella «per l'installazione» danno la stessa
+risposta.
+
+⚠️ I livelli 2 e 3 rispondono anche a un id che **non è un billing account**:
+un id inventato riceve l'azienda di chi agisce o la predefinita. Questa
+funzione non lo rifiuta, perché la chiamano le policy del billing account e
+una policy non solleva. Lo rifiutano i due involucri per chi scrive,
+[`anagrafiche.fn_get_emittente_fiscale_id`](/dbzero/anagrafiche/manual/fn_get_emittente_fiscale_id)
+e [`anagrafiche.fn_get_emittente_fiscale_pk`](/dbzero/anagrafiche/manual/fn_get_emittente_fiscale_pk),
+con `E_BILLING_ACCOUNT_NOT_FOUND`: chi ha bisogno di un'azienda per scrivere
+passa da loro, non da qui.
 
 ---
 
 ### ⚠️ Due cose che questa funzione **non** fa
 
-**Non risale l'albero dei billing account.** Un figlio senza mapping proprio
-*non* eredita quello del padre: ricade sulla riserva (chi agisce, o il default). Non è una svista —
-è esattamente il comportamento che c'era prima, e cambiarlo qui sarebbe stato un
-cambio di semantica travestito da riordino. Se un giorno si deciderà che
-l'albero eredita, si deciderà una volta e si cambierà **questa** funzione: da
-oggi c'è un posto solo dove farlo. L'omogeneità dell'albero è un'altra cosa e
-vive altrove ([anagrafiche.fn_guard_albero_ba_emittente](/dbzero/anagrafiche/manual/fn_guard_albero_ba_emittente)).
+**Non risale l'albero dei billing account.** Un figlio ha il suo collegamento,
+come ogni billing account, e la risposta è quello: non eredita quello del
+padre. Che padre e figlio siano della stessa azienda lo garantisce un'altra
+regola ([anagrafiche.fn_guard_albero_ba_emittente](/dbzero/anagrafiche/funzioni/fn_guard_albero_ba_emittente)).
 
 **Non applica lo scope di chi legge.** Dice *chi fattura*, non *chi può vedere*.
 Il filtro di perimetro è responsabilità del chiamante — ed è una separazione
@@ -159,14 +160,11 @@ contesto sulla seconda.
 
 * la regola «quale emittente fattura questo BA» ha **un posto solo**: il filtro
   della ricerca e l'etichetta a video non possono più divergere;
-* `STABLE`, e **non più `PARALLEL SAFE`** dal `20260913-01`. Fino a quel giorno
-  la seconda metà «non era decorativa»: la chiamante
-  `fn_check_ba_visible_for_emittenti` era `PARALLEL SAFE` e girava dentro la
-  query dinamica della ricerca universale. Ora questa funzione legge la GUC di
-  sessione e chiama `fn_resolve_emittente_for_user` (plpgsql, senza marcatura,
-  con il log via `dblink` sul ramo d'errore): tenere il `SAFE` sarebbe stata la
-  stessa *dichiarazione falsa al planner* che il progetto ha già rifiutato il
-  18-08 su `fn_search_soggetti_universale`. Il `SAFE` è caduto anche sulla
-  chiamante (`20260913-02`); costo reale ~zero, la ricerca è paginata;
+* `STABLE`, e **non `PARALLEL SAFE`**: legge la GUC di sessione e chiama
+  `fn_resolve_emittente_for_user` (plpgsql, senza marcatura, con il log via
+  `dblink` sul ramo d'errore), e marcarla `SAFE` sarebbe una dichiarazione
+  falsa al planner. Non lo è nemmeno la chiamante
+  `fn_check_ba_visible_for_emittenti`; il costo è trascurabile, la ricerca è
+  paginata;
 * diventa disponibile per chiunque debba **mostrare** l'emittente di un rapporto
   cliente, non solo filtrarci sopra.

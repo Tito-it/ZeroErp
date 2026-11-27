@@ -1,5 +1,13 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture spegne e cancella a mano legami SUPER_ADMIN e scrive
+--   profili e legami di reparto:
+--   dal giro 10-bis le tabelle che danno l'accesso (scope, legami e contenuto dei
+--   profili) sono in sola lettura per l'app, e le scrivono solo i verbi del SUPER_ADMIN
+--   (brief-db-porte-aperte-dalla-sola-guc §14, giro 10-bis, 2026-11-26).
+--   I soggetti del test sono funzioni di lettura delle tabelle di config, che
+--   non hanno RLS: il ruolo di connessione non cambia cio' che misurano.
 -- pgTAP test per Zero ERP
 --
 -- Test regression end-to-end §4.8.4 WIP multi-face-auth:
@@ -139,7 +147,7 @@ SELECT id.id AS identita_id
 
 DO $lega$
 BEGIN
-    PERFORM config.fn_lega_profilo_identita(9100, sp.identita_id) FROM _t_spare_id sp;
+    PERFORM config.fn_applica_lega_profilo_identita(9100, sp.identita_id) FROM _t_spare_id sp;
 END
 $lega$;
 

@@ -26,13 +26,18 @@ import unittest
 from django.db import connection, transaction
 
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import (
+    ContestoSu,
+    apri_transazione_annullata,
+    esegui_fixture,
+    richiedi_db_provvisto,
+)
 from apps.magazzino.services import consultazione_service, magazzino_service
 from apps.magazzino.services._helpers import E_VALIDAZIONE
 
-_FIXTURE: tuple[str, ...] = (
+_FIXTURE: tuple[str | ContestoSu, ...] = (
     "CREATE TEMP TABLE _mondo AS SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m",
-    "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
+    ContestoSu("_mondo"),
     "SELECT dbops.fn_pgtap_concedi_azione((SELECT auth_user_id FROM _mondo), 'blocca_merce')",
     """
     CREATE TEMP TABLE _fix AS
@@ -52,8 +57,7 @@ class BlocchiDbTests(unittest.TestCase):
     def setUp(self) -> None:
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
-            for passo in _FIXTURE:
-                cur.execute(passo)
+            esegui_fixture(cur, _FIXTURE)
             cur.execute("SELECT mag, art::text FROM _fix")
             self.mag, self.art = cur.fetchone()
 

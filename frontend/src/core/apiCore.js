@@ -127,7 +127,7 @@ export function fetchParameterDefaults(codes) {
 //     cascata visualizzata (post brief DB 2026-05-19, migration 20260519-01).
 //   - billing_account_id (number): alternativa al precedente; il BE risolve la
 //     categoria dal BA (BB `categoria_cliente_da_query`): BA inesistente o
-//     fuori scope → 404 E_ANAG_NOT_FOUND. Ignorato se categoria_cliente_id
+//     fuori scope → 404 E_BILLING_ACCOUNT_NOT_FOUND. Ignorato se categoria_cliente_id
 //     e' valorizzato.
 export function fetchParameterSettings(options = {}) {
   const { categoria_cliente_id, billing_account_id, ...params } = options

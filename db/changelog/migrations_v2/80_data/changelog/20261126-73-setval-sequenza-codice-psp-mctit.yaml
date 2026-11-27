@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Allineamento della sequenza dei codici PSP, subito dopo la sua nascita.
+#   Brief: brief-db-revisione-anagrafiche §25.5 (D-T8c-1), §25.7
+#
+# -- DA DOVE VIENE ----------------------------------------------------
+#   anagrafiche.psp.codice e' NOT NULL e UNIQUE (uq_psp_codice), ma nessuno
+#   lo generava: il codice arrivava dal chiamante.
+#
+# -- COSA FA IL SEED, E PERCHE' QUI NON C'E' DDL --------------------------
+#   La riga 20 aggiunta a 80_data/sql/config/sistema_codici.csv (stesso
+#   giro) passa dal trigger trg_sistema_codici_z90_sync_gen_codice_ins_upd_dlt
+#   (script.trgfn_config_sistema_codici_sync_gen_codice), che crea da solo
+#   la sequenza anagrafiche.psp_codice_seq, la funzione
+#   anagrafiche.trgfn_psp_gen_codice() e il trigger
+#   trg_psp_a10_gen_codice_ins_upd. Scrivere quel DDL qui sarebbe una seconda
+#   sorgente accanto al CSV. Stesso disegno dei vettori (20260821-06).
+#
+# -- PERCHE' SERVE COMUNQUE QUESTO CHANGESET ------------------------------
+#   La sequenza nasce a 1, e i PSP esistenti hanno codici scritti a mano: se
+#   uno fosse nella forma PSP-<numero>, il primo nextval produrrebbe un
+#   codice preso e la scrittura morirebbe su uq_psp_codice. Il setval porta
+#   la sequenza oltre il massimo; da zero la tabella e' vuota e la sequenza
+#   resta a 1. is_called = false: il prossimo nextval da' il valore
+#   impostato. anagrafiche.psp non ha row level security: il MAX vede tutto.
+#
+# -- ORDINE ------------------------------------------------------------
+#   Gira dopo il loader di sistema_codici (20250813-05, runOnChange): la
+#   preCondition lo verifica e ferma il migrate se la sequenza non c'e'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261126-73-setval-sequenza-codice-psp-mctit.yaml
+
+  - changeSet:
+      id: 20261126-73-setval-sequenza-codice-psp
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Porta anagrafiche.psp_codice_seq oltre il massimo dei codici PSP-<numero>
+        gia' presenti. Sequenza, funzione e trigger gen_codice li crea il sync di
+        config.sistema_codici alla riga 20 del CSV.
+        brief-db-revisione-anagrafiche §25.5 (D-T8c-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: anagrafiche
+                tableName: psp
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT COUNT(*)::text
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE c.relkind = 'S'
+                     AND n.nspname = 'anagrafiche'
+                     AND c.relname = 'psp_codice_seq';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT setval(
+                  'anagrafiche.psp_codice_seq',
+                  COALESCE((
+                      SELECT MAX(substring(p.codice FROM '^PSP-([0-9]{1,18})$')::bigint)
+                        FROM anagrafiche.psp p
+                       WHERE p.codice ~ '^PSP-[0-9]{1,18}$'
+                  ), 0) + 1,
+                  false
+              );
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

@@ -194,7 +194,25 @@ class SpedisciTests(TestCase):
         variabili = email.send_email.call_args.kwargs["variabili"]
         self.assertEqual(variabili["link"], "https://erp.example/attivazione-portale/abc")
         self.assertEqual(variabili["nome"], "Mario")
-        repo.set_invito_inviato_at.assert_called_once_with(42, identita_id=500)
+        repo.segna_invito_inviato.assert_called_once_with(500)
+
+    # Scopo: ⭐ Il rifiuto del verbo che segna l'invito NON si ingoia
+    # (2026-11-27, passo 3c): fino ad allora un `UPDATE` senza riga finiva in
+    # un warning. Il permesso l'ha gia' chiesto `emetti`, nella stessa
+    # richiesta: un rifiuto qui e' un difetto, e la lista direbbe «invito non
+    # spedito» per una mail partita.
+    @patch(f"{_BB}.nome_visualizzato", return_value="Admin")
+    def test_il_rifiuto_del_verbo_che_segna_l_invito_sale(self, _nome):
+        from apps.core.services.invito_veste import EmissioneInvito
+
+        invito, repo, _, _email = _invito(ha_password=False)
+        repo.segna_invito_inviato.side_effect = RuntimeError("E_PERMESSO_NEGATO")
+        with self.assertRaises(RuntimeError):
+            invito.spedisci(
+                PORTA_PORTALE, EmissioneInvito(token="abc", is_cross=True),
+                auth_user_id=42, identita_id=500, destinatario="m@x.it",
+                invitato_da_user_id=1, variabili={"nome": "Mario"},
+            )
 
     # Scopo: ⭐ F-3 — l'email che NON parte senza eccezione (SMTP fallito,
     # canale non configurato: `send_email` torna `False`) non e' un invito
@@ -213,7 +231,7 @@ class SpedisciTests(TestCase):
                 invitato_da_user_id=1, variabili={},
             )
         self.assertFalse(partita)
-        repo.set_invito_inviato_at.assert_not_called()
+        repo.segna_invito_inviato.assert_not_called()
 
     # Scopo: L'eccezione (template o account che mancano) e' la stessa cosa:
     # non solleva, torna `False`, non segna l'invito.
@@ -230,7 +248,7 @@ class SpedisciTests(TestCase):
                 invitato_da_user_id=1, variabili={"nome": "Mario"},
             )
         self.assertFalse(partita)
-        repo.set_invito_inviato_at.assert_not_called()
+        repo.segna_invito_inviato.assert_not_called()
 
     # Scopo: B-16 — il flusso sceglie il TESTO, non una variabile: nuovo →
     # template della porta, un clic → il suo `_CROSS`. `is_cross` non viaggia

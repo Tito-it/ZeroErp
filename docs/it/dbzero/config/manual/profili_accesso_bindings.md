@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.profili_accesso_bindings`
 
+> **Ultimo aggiornamento**: 26 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Architettura di riferimento:
@@ -30,6 +32,15 @@ a una specifica entità di dominio. Ogni riga assegna **un solo profilo** a
 | Reparto | `unita_organizzativa_id` | Profilo valido per tutti gli operatori di quel reparto (pattern storico). |
 | Ruolo applicativo | `ruolo_applicativo` | Profilo fallback per tutti gli utenti di quel ruolo (es. tutti i `CLIENTE_PORTALE`). |
 | Identità specifica | `identita_digitale_id` | Profilo ad-hoc assegnato a una singola identità (override organico). |
+
+---
+
+### ⛔ Chi la scrive
+
+Per l'applicazione la tabella è in **sola lettura**: un legame verso il profilo SUPER_ADMIN scritto direttamente farebbe un amministratore, e si ferma sul privilegio. La postura sta nelle tre sedi del loop dei grant
+(linee guida SQL §11.8, `v_tabelle_sola_lettura_app`). La scrivono i verbi del SUPER_ADMIN, che lo chiedono nella
+prima riga: [`config.fn_lega_profilo_identita`](/dbzero/config/funzioni/fn_lega_profilo_identita), `fn_slega_profilo_identita`, [`config.fn_lega_profilo_reparto`](/dbzero/config/funzioni/fn_lega_profilo_reparto), `fn_slega_profilo_reparto` e la creazione dell'operatore ([`anagrafiche.fn_crea_operatore`](/dbzero/anagrafiche/funzioni/fn_crea_operatore)), che lega il SUPER_ADMIN. Fuori dai verbi la scrivono il seed, il provisioning di sviluppo e le fixture dei pgTAP.
+Guida: [Architettura permessi e autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) §4.5.
 
 ---
 

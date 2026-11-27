@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_billing_account_guard_admin_globale`
 
-> **Ultimo aggiornamento**: 23 novembre 2026
+> **Ultimo aggiornamento**: 26 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -35,8 +35,10 @@ chi ha almeno una di queste:
   super admin, che sceglie l'azienda in alto; un'azienda fuori perimetro non conta;
 * un'**appartenenza** a un'azienda (`config.user_emittenti_fiscali`): è la strada dell'operatore.
 
-Senza nessuna delle due si crea solo in un'installazione che non ha aziende attive. Il caso tipico del rifiuto
-è il super admin in «Tutti gli emittenti».
+Senza nessuna delle due il guard lascia passare solo in un'installazione che non ha aziende attive: il billing
+account nasce collegato all'azienda predefinita se ne esiste una, altrimenti lo rifiuta il trigger del
+collegamento (`E_EMITTENTE_DEFAULT_MISSING`). Il caso tipico del rifiuto di questo guard è il super admin in
+«Tutti gli emittenti».
 
 Il nome dice «admin globale» perché la regola, alla nascita, vietava la creazione a chiunque non avesse
 un'appartenenza; nome e codice sono rimasti.
@@ -46,16 +48,16 @@ un'appartenenza; nome e codice sono rimasti.
 ### Senza utente in sessione non giudica
 
 Se `app.current_user_id` manca, il trigger lascia passare: seed, migrazioni, job e manutenzioni non hanno un
-utente, e il loro billing account non riceve il collegamento automatico. È la stessa condizione con cui tace
-il collegamento.
+utente, e il loro billing account nasce collegato all'azienda predefinita
+(`anagrafiche.trgfn_billing_account_link_ef`).
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### L'utente illeggibile è rifiutato
 
-* **Un utente in sessione illeggibile vale come assente.** Il trigger legge l'utente da
-  `script.fn_utente_di_sessione`, che rifiuta un `app.current_user_id` che non è l'id di un utente; ma la chiamata
-  sta in un blocco che ingoia ogni errore, e il trigger tratta il valore come «nessun utente» e lascia passare.
+L'utente si legge da `script.fn_utente_di_sessione`, che rifiuta un `app.current_user_id` che non è l'id di
+un utente (`E_SCRIPT_CHIAMATA_NON_VALIDA`), e il rifiuto sale fino a chi scrive. Un valore guasto non vale
+come «nessun utente»: sarebbe la strada dei seed, che non controlla niente.
 
 ---
 
@@ -63,6 +65,8 @@ il collegamento.
 
 * `E_BA_ADMIN_GLOBALE_VIETATO` — chi crea non ha un'azienda di lavoro valida né un'appartenenza, ed esistono
   aziende attive.
+* `E_SCRIPT_CHIAMATA_NON_VALIDA` — da `script.fn_utente_di_sessione`: `app.current_user_id` non è l'id di un
+  utente.
 
 ---
 
@@ -70,6 +74,8 @@ il collegamento.
 
 * `db/pgtap/anagrafiche/test-billing-account-auto-link-ef.sql` — senza utente in sessione passa; il super admin
   senza azienda di lavoro, con aziende attive, è rifiutato.
+* `db/pgtap/anagrafiche/test-billing-account-utente-illeggibile-v1.sql` — un `app.current_user_id` illeggibile
+  non fa nascere il billing account, e la lettura dell'utente non sta in un blocco che ingoia gli errori.
 
 ---
 
@@ -78,6 +84,7 @@ il collegamento.
 * 2026-04-08 — nasce col collegamento automatico all'azienda di chi crea: «chi non appartiene a un'azienda non
   crea billing account».
 * 2026-08-04 — conta anche l'azienda di lavoro in sessione: il super admin dentro un'azienda crea.
+* 2026-11-26 — l'utente illeggibile non è più trattato come assente.
 
 ---
 

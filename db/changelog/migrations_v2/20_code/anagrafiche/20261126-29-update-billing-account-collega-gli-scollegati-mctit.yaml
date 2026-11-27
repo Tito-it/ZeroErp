@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I BILLING ACCOUNT SENZA COLLEGAMENTO SI COLLEGANO ALLA PREDEFINITA DI OGGI
+#   Brief: brief-db-revisione-anagrafiche §24.5 (D-T4-3)
+#
+# -- LA REGOLA --------------------------------------------------------
+#   Ogni billing account ha sempre il suo collegamento a un'azienda. I BA
+#   nati scollegati prima di 20261126-27 (senza sessione, o prima che il
+#   collegamento alla nascita esistesse) «seguivano la predefinita»: qui si
+#   collegano una volta all'azienda predefinita di oggi, cioe' a quella a cui
+#   gia' appartenevano per l'installazione. Nessun cliente cambia azienda.
+#
+# -- LA FORMA ---------------------------------------------------------
+#   * Un INSERT dei collegamenti mancanti, idempotente: tocca zero righe dove
+#     ogni BA e' gia' collegato, e su un database nuovo (zero BA).
+#   * Passa dai trigger di emittenti_fiscali_billing_account: e' un dato di
+#     dominio. Per il guard della storia e' un collegamento che nasce con
+#     l'azienda predefinita, cioe' nessun cambio d'azienda; per albero,
+#     istanza e chiave del cliente l'azienda di ogni BA resta quella di prima.
+#   * Senza una predefinita (nessuna azienda) non c'e' niente a cui collegare,
+#     e l'INSERT non tocca niente.
+#   * In 20_code, dopo 20261126-27 e prima dei guard che vietano di togliere
+#     un collegamento (20261126-30/-31): e' il passo che porta i dati alla
+#     regola, nello stesso giro della regola.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261126-29-update-billing-account-collega-gli-scollegati-mctit.yaml
+
+  - changeSet:
+      id: 20261126-29-update-billing-account-collega-gli-scollegati
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Collega all'azienda predefinita di oggi ogni billing account che non ha un collegamento:
+        e' l'azienda a cui apparteneva gia' per l'installazione, nessun cliente cambia azienda.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              INSERT INTO anagrafiche.emittenti_fiscali_billing_account
+                     (billing_account_id, emittente_soggetto_ruolo_id, is_default)
+              SELECT ba.id, d.emittente_soggetto_ruolo_id, false
+                FROM anagrafiche.billing_account ba
+                JOIN anagrafiche.emittenti_fiscali_billing_account d ON d.is_default
+               WHERE NOT EXISTS (
+                         SELECT 1
+                           FROM anagrafiche.emittenti_fiscali_billing_account e
+                          WHERE e.billing_account_id = ba.id)
+               ORDER BY ba.id;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il collegamento di un BA non si toglie (20261126-30/-31): nessun rollback.
+              SELECT 1;
