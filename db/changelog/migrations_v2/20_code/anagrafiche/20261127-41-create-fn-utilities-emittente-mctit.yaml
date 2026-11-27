@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE UTILITY DI UN'AZIENDA: AMMESSE, GESTITE, COI PARAMETRI
+#   anagrafiche.fn_utilities_emittente(bigint, varchar)   (nuova, building block)
+#   Brief: brief-db-utility-gestite-dall-emittente §4-bis (C2), §6 (D-U-1, D-U-2, D-U-11), §8-bis (U4)
+#
+# -- PERCHE' UN BUILDING BLOCK -------------------------------------------------
+#   La regola «utility ammesse per EF e per il ruolo del soggetto» stava in tre
+#   sedi: anagrafiche.fn_lookup_utilities_per_ba (la tendina di un billing
+#   account) e due copie nel backend (il lookup utilities-per-emittente e la
+#   matrice del drawer «Gestisci utilities»). Regola del 2: una sede sola, qui;
+#   la tendina del BA la usa da subito (20261127-42), il backend ritira le sue
+#   copie (richiesta nel brief).
+#
+# -- CHE COSA RISPONDE -----------------------------------------------------------
+#   Una riga per ogni utility ammessa oggi per l'emittente fiscale nella matrice
+#   config.utilities_tipi_ruolo e, se il ruolo del soggetto e' dato, anche per
+#   quel ruolo. Per ciascuna:
+#   * gestita: l'azienda la gestisce (la sua riga in emittenti_fiscali_utilities)
+#     ed e' accesa. La tendina tiene solo queste; il drawer dell'azienda le
+#     vede tutte, per attivarle (D-U-5, D-U-8);
+#   * riga_id: la riga dell'azienda, NULL se non c'e';
+#   * i parametri d'importo effettivi (anagrafiche.fn_parametri_importo_utility)
+#     e personalizzata.
+#   Un'utility gestita e' sempre ammessa per EF (config.trgfn_utilities_tipi_
+#   ruolo_guard_uscita_ef): la base EF non nasconde nessuna utility gestita.
+#
+# -- I RIFIUTI ------------------------------------------------------------------
+#   Un ruolo che non e' un emittente, o NULL: E_PARAMETRO_INVALIDO, come il BB
+#   dei parametri (la prima istruzione). Un ruolo del soggetto che non esiste:
+#   zero righe, perche' nessuna utility e' ammessa per lui.
+#
+# -- LA FORMA ----------------------------------------------------------------
+#   LANGUAGE sql BEGIN ATOMIC, STABLE, SECURITY INVOKER: nessuna delle tabelle
+#   lette ha row level security. Il giorno e' quello operativo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261127-41-create-fn-utilities-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20261127-41-create-fn-utilities-emittente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_utilities_emittente: le utility ammesse per un'azienda
+        (EF e, se dato, il ruolo del soggetto), se le gestisce, coi parametri
+        effettivi. Sede unica della regola. brief-db-utility-gestite-
+        dall-emittente §4-bis (C2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_utilities_emittente(
+                  p_emittente_soggetto_ruolo_id  anagrafiche.emittenti_fiscali_utilities.emittente_soggetto_ruolo_id%TYPE,
+                  p_ruolo_codice_soggetto        config.tipi_ruoli.codice_interno%TYPE DEFAULT NULL
+              )
+               RETURNS TABLE(
+                  utility_id                     config.utilities.id%TYPE,
+                  codice                         config.utilities.codice%TYPE,
+                  descrizione                    config.utilities.descrizione%TYPE,
+                  -- tipo esplicito: non e' una colonna, dice se l'azienda la gestisce
+                  gestita                        boolean,
+                  riga_id                        anagrafiche.emittenti_fiscali_utilities.id%TYPE,
+                  arrotondamento_importi_dec     config.utilities.arrotondamento_importi_dec%TYPE,
+                  metodo_arrotondamento_importi  config.utilities.metodo_arrotondamento_importi%TYPE,
+                  minimo_soglia_min              anagrafiche.emittenti_fiscali_utilities.minimo_soglia_min%TYPE,
+                  minimo_soglia_max              anagrafiche.emittenti_fiscali_utilities.minimo_soglia_max%TYPE,
+                  -- tipo esplicito: dal BB dei parametri, non e' una colonna
+                  personalizzata                 boolean
+              )
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT script.fn_log_and_raise_error(
+                             'anagrafiche',
+                             'fn_utilities_emittente',
+                             'E_PARAMETRO_INVALIDO',
+                             jsonb_build_object(
+                                 'detail', 'p_emittente_soggetto_ruolo_id non e'' un emittente',
+                                 'emittente_soggetto_ruolo_id', p_emittente_soggetto_ruolo_id),
+                             NULL::uuid,
+                             'p_emittente_soggetto_ruolo_id non e'' un emittente')
+                   WHERE NOT EXISTS (SELECT 1
+                                       FROM anagrafiche.emittenti_fiscali ef
+                                      WHERE ef.soggetto_ruolo_id = p_emittente_soggetto_ruolo_id);
+
+                  SELECT u.id,
+                         u.codice,
+                         u.descrizione,
+                         (e.id IS NOT NULL AND ef.attivo IS TRUE),
+                         e.id,
+                         par.arrotondamento_importi_dec,
+                         par.metodo_arrotondamento_importi,
+                         par.minimo_soglia_min,
+                         par.minimo_soglia_max,
+                         par.personalizzata
+                    FROM config.utilities u
+                    JOIN anagrafiche.emittenti_fiscali ef
+                      ON ef.soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                    LEFT JOIN anagrafiche.emittenti_fiscali_utilities e
+                      ON e.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                     AND e.utility_id = u.id
+                   CROSS JOIN LATERAL anagrafiche.fn_parametri_importo_utility(
+                           p_emittente_soggetto_ruolo_id, u.id) par
+                   WHERE EXISTS (SELECT 1
+                                   FROM config.utilities_tipi_ruolo m
+                                   JOIN config.tipi_ruoli t ON t.id = m.tipo_ruolo_id
+                                  WHERE m.utility_id = u.id
+                                    AND t.codice_interno = 'EF'
+                                    AND m.attivo IS TRUE
+                                    AND (m.valido_dal IS NULL OR m.valido_dal <= script.fn_data_operativa())
+                                    AND (m.valido_al  IS NULL OR m.valido_al  >= script.fn_data_operativa()))
+                     AND (p_ruolo_codice_soggetto IS NULL
+                          OR EXISTS (SELECT 1
+                                       FROM config.utilities_tipi_ruolo m
+                                       JOIN config.tipi_ruoli t ON t.id = m.tipo_ruolo_id
+                                      WHERE m.utility_id = u.id
+                                        AND t.codice_interno = p_ruolo_codice_soggetto
+                                        AND m.attivo IS TRUE
+                                        AND (m.valido_dal IS NULL OR m.valido_dal <= script.fn_data_operativa())
+                                        AND (m.valido_al  IS NULL OR m.valido_al  >= script.fn_data_operativa())))
+                   ORDER BY u.codice;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_utilities_emittente(
+                  anagrafiche.emittenti_fiscali_utilities.emittente_soggetto_ruolo_id%TYPE,
+                  config.tipi_ruoli.codice_interno%TYPE) IS
+                'Le utility di un''azienda (emittente fiscale): una riga per ogni utility che la matrice config.utilities_tipi_ruolo ammette oggi (giorno operativo) per l''emittente fiscale e, se p_ruolo_codice_soggetto e'' dato (codice_interno: CL, FO, GE), anche per quel ruolo. gestita = l''azienda ha la sua riga in anagrafiche.emittenti_fiscali_utilities ed e'' accesa; riga_id e'' quella riga, NULL se non c''e''; i parametri d''importo e personalizzata vengono da anagrafiche.fn_parametri_importo_utility. Un ruolo che non e'' un emittente, o NULL, solleva E_PARAMETRO_INVALIDO. Sede unica della regola delle utility ammesse: la leggono anagrafiche.fn_lookup_utilities_per_ba (le sole gestite) e il drawer dell''azienda (tutte, per attivarle). STABLE, SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_utilities_emittente(bigint, character varying);

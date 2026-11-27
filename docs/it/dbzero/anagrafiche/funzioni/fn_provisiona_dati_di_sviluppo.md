@@ -200,6 +200,14 @@ BEGIN
             v_esito := 'riallineata';
         END IF;
 
+        -- L'azienda gestisce l'utility dei suoi clienti di sviluppo
+        -- (brief-db-utility-gestite-dall-emittente D-U-2, 20261127-36):
+        -- senza la riga il billing account non nasce.
+        INSERT INTO anagrafiche.emittenti_fiscali_utilities
+               (emittente_soggetto_ruolo_id, utility_id)
+        VALUES (v_sr, v_utility)
+        ON CONFLICT (emittente_soggetto_ruolo_id, utility_id) DO NOTHING;
+
         v_emittenti := v_emittenti || jsonb_build_object(v_el ->> 'codice',
                            jsonb_build_object('ef', v_ef, 'sr', v_sr));
         tipo := 'SOGGETTO'; chiave := v_el ->> 'chiave'; radice_id := v_sog::text;

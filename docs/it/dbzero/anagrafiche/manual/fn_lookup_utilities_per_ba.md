@@ -9,35 +9,37 @@
 > * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — il billing account di cui si cercano le utility
 > * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il ruolo del billing account, da cui si legge il tipo
 > * [config.utilities_tipi_ruolo](/dbzero/config/tabelle/utilities_tipi_ruolo) — quali utility sono ammesse per quale tipo di ruolo
-> * [anagrafiche.emittenti_fiscali_utilities](/dbzero/anagrafiche/tabelle/emittenti_fiscali_utilities) — i parametri d'importo propri di un'azienda
+> * [anagrafiche.emittenti_fiscali_utilities](/dbzero/anagrafiche/tabelle/emittenti_fiscali_utilities) — le utility che un'azienda gestisce, coi suoi parametri
 >
 > Approfondimento funzioni:
 >
 > * [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk) — l'azienda del billing account
 > * [script.fn_get_ba_emittente_sr_id](/dbzero/script/funzioni/fn_get_ba_emittente_sr_id) — la regola dietro quella risposta: il collegamento del billing account
+> * [anagrafiche.fn_utilities_emittente](/dbzero/anagrafiche/funzioni/fn_utilities_emittente) — le utility di un'azienda: ammesse, gestite, coi parametri
 > * [anagrafiche.fn_parametri_importo_utility](/dbzero/anagrafiche/funzioni/fn_parametri_importo_utility) — i parametri d'importo effettivi
 
 ---
 
 ### 🎯 Scopo Principale
 
-`anagrafiche.fn_lookup_utilities_per_ba` restituisce le utility proponibili per un billing account: quelle
-ammesse sia per il tipo di ruolo indicato sia per l'azienda che fattura il billing account, ciascuna coi suoi
-parametri d'importo effettivi.
+`anagrafiche.fn_lookup_utilities_per_ba` restituisce le utility proponibili per un billing account: quelle che
+l'azienda del billing account **gestisce**, ammesse per il tipo di ruolo indicato, ciascuna coi suoi parametri
+d'importo effettivi. La regola non sta qui: è di `anagrafiche.fn_utilities_emittente`, di cui la funzione tiene
+le righe gestite.
 
 ---
 
-### Due ammissioni, nello stesso giorno
+### Che cosa esce
 
-Una utility esce se in `config.utilities_tipi_ruolo` è ammessa, con una riga attiva e valida nel giorno
-operativo:
+Una utility esce se:
 
-* per il **tipo di ruolo** del billing account, che chi chiama passa (`p_ruolo_codice_soggetto`, un codice
-  interno come `CL`, `FO`, `GE`);
-* per il tipo di ruolo **emittente** (`EF`).
+* l'azienda del billing account la **gestisce**: ha la sua riga in `anagrafiche.emittenti_fiscali_utilities` ed
+  è accesa. Un'utility che l'azienda non gestisce non si propone, perché il billing account non nascerebbe;
+* in `config.utilities_tipi_ruolo` è ammessa, con una riga attiva e valida nel giorno operativo, per il **tipo di
+  ruolo** del billing account (`p_ruolo_codice_soggetto`, un codice interno come `CL`, `FO`, `GE`) e per il tipo
+  di ruolo **emittente** (`EF`).
 
-Tutti e due i tipi si cercano per codice interno, che non cambia. Un tipo di ruolo ammesso che non ha utility
-dà zero righe e non un errore.
+Un tipo di ruolo che non ha utility dà zero righe e non un errore.
 
 ---
 
@@ -59,8 +61,8 @@ resta nella firma, che il backend chiama per posizione.
 ### L'azienda del billing account
 
 L'azienda si risolve con `anagrafiche.fn_get_emittente_fiscale_pk`: è quella del collegamento del billing
-account, che ogni billing account ha. L'azienda decide i parametri, non l'elenco: l'elenco lo fa la matrice dei
-tipi di ruolo.
+account, che ogni billing account ha. L'azienda decide l'elenco (le utility che gestisce) e i parametri; la
+matrice dei tipi di ruolo restringe l'elenco al ruolo del billing account.
 
 ---
 
@@ -72,9 +74,9 @@ Per ogni utility i parametri vengono da `fn_parametri_importo_utility`:
 * il **metodo di arrotondamento** dalla riga dell'azienda, poi dalla politica generale dell'azienda, poi
   dall'utility;
 * le **soglie minime** solo dalla riga dell'azienda: senza riga sono vuote;
-* `is_personalizzata_per_ef` dice se la riga dell'azienda c'è.
+* `is_personalizzata_per_ef` dice se la riga dell'azienda porta almeno un parametro.
 
-Una utility ammessa senza la riga dell'azienda resta nell'elenco, coi valori di sistema.
+Una utility gestita senza parametri resta nell'elenco, coi valori di sistema.
 
 ---
 

@@ -38,6 +38,7 @@
 | FOREIGN KEY | fk_categ_cli_listini_emittente | emittente_soggetto_ruolo_id |
 | FOREIGN KEY | fk_categ_cli_listini_listino | listino_id |
 | FOREIGN KEY | fk_categ_cli_listini_utility | utility_id |
+| FOREIGN KEY | fk_categorie_clienti_listini_utility_gestita | emittente_soggetto_ruolo_id, utility_id |
 | PRIMARY KEY | pk_categorie_clienti_listini | id |
 
 ## 📑 Indici

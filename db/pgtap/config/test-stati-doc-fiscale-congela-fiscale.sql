@@ -83,10 +83,16 @@ SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('congela fiscale');
 --   NOT NULL senza default: la configurazione di una coppia non ha una forma
 --   «minima» implicita, la si dichiara. Due decimali HALF_UP e' cio' che
 --   portano le righe vive.
+-- ⭐ Rev 2026-11-27 (brief-db-utility-gestite-dall-emittente U3, 20261127-39): l'azienda
+--   di prova nasce gia' con la riga di ogni utility ammessa (senza parametri):
+--   qui la riga si completa, non si crea.
 INSERT INTO anagrafiche.emittenti_fiscali_utilities
     (emittente_soggetto_ruolo_id, utility_id,
      arrotondamento_importi_dec, metodo_arrotondamento_importi, attivo)
-SELECT emittente_soggetto_ruolo_id, utility_id, 2, 'HALF_UP', TRUE FROM tmp_cf_mondo;
+SELECT emittente_soggetto_ruolo_id, utility_id, 2, 'HALF_UP', TRUE FROM tmp_cf_mondo
+ON CONFLICT (emittente_soggetto_ruolo_id, utility_id) DO UPDATE
+   SET arrotondamento_importi_dec    = EXCLUDED.arrotondamento_importi_dec,
+       metodo_arrotondamento_importi = EXCLUDED.metodo_arrotondamento_importi;
 
 CREATE TEMP TABLE tmp_cf_refs AS
 SELECT m.emittente_soggetto_ruolo_id,

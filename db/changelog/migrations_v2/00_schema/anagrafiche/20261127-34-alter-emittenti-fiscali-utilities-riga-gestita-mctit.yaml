@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA DELL'EMITTENTE DICE CHE L'AZIENDA GESTISCE L'UTILITY
+#   anagrafiche.emittenti_fiscali_utilities
+#     arrotondamento_importi_dec, metodo_arrotondamento_importi   DROP NOT NULL
+#     chk_emittenti_fiscali_utilities_attivo                       CHECK nuovo
+#     COMMENT della tabella e delle tre colonne                    riscritti
+#   Brief: brief-db-utility-gestite-dall-emittente §6 (D-U-1, D-U-11), §7-bis, §8-bis (U2)
+#
+# -- IL MODELLO --------------------------------------------------------------
+#   La riga presente vuol dire che l'azienda gestisce l'utility (D-U-1). I
+#   parametri d'importo restano sulla stessa riga e diventano facoltativi: una
+#   riga senza parametri dice solo «gestita», e i lettori ricadono sui valori
+#   della policy dell'emittente e di sistema (anagrafiche.fn_parametri_importo_
+#   utility, che fa gia' COALESCE).
+#   La riga non ha uno stato suo (D-U-11): «gestita» = riga presente. attivo
+#   resta, fisso a true (CHECK): la colonna porta l'automazione ATTIVO della
+#   FK verso l'emittente, nei due versi, e i trigger generati non si toccano
+#   (linee-guida-sql §11.5):
+#   * una riga nuova su un emittente spento si rifiuta
+#     (trgfn_child_requires_active_parent);
+#   * un emittente con righe non si spegne (trgfn_prevent_deactivate_if_children,
+#     E_ATTIVO_BLOCK_CHILDREN_ACTIVE): con attivo sempre true, un'azienda che
+#     gestisce un'utility non si spegne. Si spegne dopo aver cancellato le sue
+#     righe, ammesso solo senza billing account ne' documenti (D-U-9). Deciso da
+#     Tid il 2026-11-27 (D-U-13): il blocco resta. Un'azienda con billing
+#     account non si spegneva gia' (il collegamento del BA non ha attivo).
+#
+# -- GARANZIE RITIRATE (brief §7-bis) --------------------------------------------
+#   * «la riga decide decimali e metodo»: i due NOT NULL cadono. Lettori lato
+#     DB: anagrafiche.fn_parametri_importo_utility (COALESCE con policy e
+#     sistema: regge, provato con la riga senza parametri nel pgTAP);
+#     vendite.fn_ricalcola_totali_fattura e vendite.fn_parametri_importo_riga
+#     leggono i valori dal BB, non dalla tabella; le altre funzioni non la
+#     leggono (censimento sul catalogo, pg_get_functiondef).
+#   * «la riga c'e' = l'azienda ha personalizzato i parametri»: la riscrive
+#     20261127-35 (personalizzata = almeno un parametro valorizzato).
+#   * «attivo spento = eccezione tolta»: non c'e' piu' una riga spenta. Nessun
+#     lettore DB filtra la tabella su attivo, tranne il BB qui sopra, la cui
+#     condizione cade in 20261127-35.
+#   * I default: nessuno dei due parametri ha un DEFAULT, quindi una riga
+#     scritta senza parametri nasce davvero senza.
+#
+# -- CHI SCRIVE LA TABELLA ---------------------------------------------------
+#   Nessun seed di 80_data, nessuna funzione del database. Il backend (drawer
+#   «Gestisci utilities» dell'emittente) inserisce, modifica e cancella: la
+#   ricaduta e' nella richiesta al BE/FE del brief. Le righe esistenti hanno
+#   attivo = true (scratch e dbdev, 2026-11-27): il CHECK nasce valido.
+#   La chiave (emittente, utility) si ferma col lucchetto di colonna
+#   (80_data/sql/dbops/automation_lock_columns.csv, stesso giro).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261127-34-alter-emittenti-fiscali-utilities-riga-gestita-mctit.yaml
+
+  - changeSet:
+      id: 20261127-34-alter-emittenti-fiscali-utilities-riga-gestita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.emittenti_fiscali_utilities: la riga dice che l'azienda
+        gestisce l'utility; decimali e metodo facoltativi, attivo fisso a true.
+        brief-db-utility-gestite-dall-emittente §6 (D-U-1, D-U-11).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.emittenti_fiscali_utilities
+                ALTER COLUMN arrotondamento_importi_dec DROP NOT NULL,
+                ALTER COLUMN metodo_arrotondamento_importi DROP NOT NULL;
+
+              ALTER TABLE anagrafiche.emittenti_fiscali_utilities
+                DROP CONSTRAINT IF EXISTS chk_emittenti_fiscali_utilities_attivo;
+              ALTER TABLE anagrafiche.emittenti_fiscali_utilities
+                ADD CONSTRAINT chk_emittenti_fiscali_utilities_attivo CHECK (attivo IS TRUE);
+
+              COMMENT ON TABLE anagrafiche.emittenti_fiscali_utilities IS
+                'Le utility che ciascuna azienda (emittente fiscale) gestisce: una riga per coppia azienda e utility, e la riga presente vuol dire che l''azienda la gestisce. L''utility dev''essere ammessa per l''emittente fiscale nella matrice config.utilities_tipi_ruolo, e finche'' un''azienda la gestisce non ne esce (config.trgfn_utilities_tipi_ruolo_guard_uscita_ef). La riga non ha uno stato suo: attivo e'' sempre true, e un''azienda che gestisce un''utility non si spegne finche'' ha la sua riga. Sulla stessa riga i parametri d''importo dell''azienda per l''utility, tutti facoltativi: senza valore valgono la policy dell''emittente e quelli di sistema (anagrafiche.fn_parametri_importo_utility). Azienda e utility non si spostano.';
+              COMMENT ON COLUMN anagrafiche.emittenti_fiscali_utilities.arrotondamento_importi_dec IS
+                'I decimali a cui l''azienda arrotonda gli importi di questa utility (da 0 a 2). NULL: quelli di sistema dell''utility (config.utilities.arrotondamento_importi_dec).';
+              COMMENT ON COLUMN anagrafiche.emittenti_fiscali_utilities.metodo_arrotondamento_importi IS
+                'Il metodo con cui l''azienda arrotonda gli importi di questa utility (UP, DOWN, HALF_UP, HALF_DOWN). NULL: la policy generale dell''emittente (emittenti_fiscali.rounding_policy), poi quello di sistema dell''utility.';
+              COMMENT ON COLUMN anagrafiche.emittenti_fiscali_utilities.attivo IS
+                'Sempre true (chk_emittenti_fiscali_utilities_attivo): la riga non ha uno stato suo. Porta l''automazione ATTIVO verso l''emittente: una riga nuova su un emittente spento si rifiuta, e un emittente con righe non si spegne (E_ATTIVO_BLOCK_CHILDREN_ACTIVE).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.emittenti_fiscali_utilities
+                DROP CONSTRAINT IF EXISTS chk_emittenti_fiscali_utilities_attivo;

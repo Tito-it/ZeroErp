@@ -20,8 +20,6 @@ AS $function$
 DECLARE
     v_emittente_pk        anagrafiche.emittenti_fiscali.id%TYPE;
     v_emittente_sr_id     anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
-    -- il giorno operativo: nessuna colonna dietro
-    v_today               date := script.fn_data_operativa();
     v_ruolo_ba            config.tipi_ruoli.codice_interno%TYPE;
 BEGIN
     -- rev 2026-10-21 (brief-db-modelli-documento-standard §10.3 K-7):
@@ -119,47 +117,28 @@ BEGIN
       FROM anagrafiche.emittenti_fiscali ef
      WHERE ef.id = v_emittente_pk;
 
-    -- Query principale: intersezione (ruolo_soggetto AND ruolo EF) +
-    -- LEFT JOIN override per i parametri personalizzati per emittente.
+    -- Le utility che l'azienda del BA gestisce, ammesse per il ruolo
+    -- del soggetto: la regola sta nel building block
+    -- anagrafiche.fn_utilities_emittente (D-U-2: un'utility che
+    -- l'azienda non gestisce non si propone).
     RETURN QUERY
     SELECT
-        u.id::bigint                                AS utility_id,
-        u.codice::text                              AS codice,
-        u.descrizione::text                         AS descrizione,
-        par.personalizzata                          AS is_personalizzata_per_ef,
-        par.minimo_soglia_min                       AS minimo_soglia_min,
-        par.minimo_soglia_max                       AS minimo_soglia_max,
-        par.arrotondamento_importi_dec              AS arrotondamento_importi_dec,
-        par.metodo_arrotondamento_importi::text     AS metodo_arrotondamento_importi
-    FROM config.utilities u
-    -- ammessa per il ruolo del soggetto del BA
-    JOIN config.utilities_tipi_ruolo utr_sogg
-      ON utr_sogg.utility_id = u.id
-     AND utr_sogg.attivo = true
-     AND (utr_sogg.valido_dal IS NULL OR utr_sogg.valido_dal <= v_today)
-     AND (utr_sogg.valido_al  IS NULL OR utr_sogg.valido_al  >= v_today)
-    JOIN config.tipi_ruoli tr_sogg
-      ON tr_sogg.id = utr_sogg.tipo_ruolo_id
-     AND tr_sogg.codice_interno = p_ruolo_codice_soggetto
-    -- ammessa per il ruolo EF (emittente fiscale)
-    JOIN config.utilities_tipi_ruolo utr_ef
-      ON utr_ef.utility_id = u.id
-     AND utr_ef.attivo = true
-     AND (utr_ef.valido_dal IS NULL OR utr_ef.valido_dal <= v_today)
-     AND (utr_ef.valido_al  IS NULL OR utr_ef.valido_al  >= v_today)
-    JOIN config.tipi_ruoli tr_ef
-      ON tr_ef.id = utr_ef.tipo_ruolo_id
-     AND tr_ef.codice_interno = 'EF'
-    -- i parametri effettivi (K-7, 20261021-03): la riga dell'emittente
-    -- se c'e', se no il valore di sistema dell'utility. Prima un LEFT
-    -- JOIN sulla riga dell'emittente: senza riga uscivano NULL.
-    CROSS JOIN LATERAL anagrafiche.fn_parametri_importo_utility(v_emittente_sr_id, u.id) par
-    ORDER BY u.codice;
+        a.utility_id::bigint                        AS utility_id,
+        a.codice::text                              AS codice,
+        a.descrizione::text                         AS descrizione,
+        a.personalizzata                            AS is_personalizzata_per_ef,
+        a.minimo_soglia_min                         AS minimo_soglia_min,
+        a.minimo_soglia_max                         AS minimo_soglia_max,
+        a.arrotondamento_importi_dec                AS arrotondamento_importi_dec,
+        a.metodo_arrotondamento_importi::text       AS metodo_arrotondamento_importi
+      FROM anagrafiche.fn_utilities_emittente(v_emittente_sr_id, p_ruolo_codice_soggetto) a
+     WHERE a.gestita
+     ORDER BY a.codice;
 END
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_lookup_utilities_per_ba(p_billing_account_id bigint, p_ruolo_codice_soggetto text)
-IS 'Le utility ammesse per un billing account: quelle ammesse sia per il ruolo del soggetto del billing account (p_ruolo_codice_soggetto, per codice_interno: CL, FO, GE) sia per il ruolo dell''emittente (EF), con i parametri d''importo effettivi dell''azienda del billing account (anagrafiche.fn_parametri_importo_utility). Il billing account deve esistere ed essere nel perimetro di chi chiama, altrimenti E_BILLING_ACCOUNT_NOT_FOUND; il ruolo deve essere il suo, altrimenti E_PARAMETRO_INVALIDO, come per un parametro mancante. Ruoli e validita'' si leggono al giorno operativo. STABLE, SECURITY INVOKER.';
+IS 'Le utility proponibili per un billing account: quelle che l''azienda del billing account gestisce, ammesse per il ruolo del soggetto (p_ruolo_codice_soggetto, per codice_interno: CL, FO, GE), coi parametri d''importo effettivi dell''azienda. La regola e'' di anagrafiche.fn_utilities_emittente (le righe gestite). Il billing account deve esistere ed essere nel perimetro di chi chiama, altrimenti E_BILLING_ACCOUNT_NOT_FOUND; il ruolo deve essere il suo, altrimenti E_PARAMETRO_INVALIDO, come per un parametro mancante. Ruoli e validita'' si leggono al giorno operativo. STABLE, SECURITY INVOKER.';
 ```
 
 </div>

@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I DOCUMENTI CON L'AZIENDA DIRETTA STANNO SU UN'UTILITY CHE L'AZIENDA GESTISCE
+#   FK composte (emittente_soggetto_ruolo_id, utility_id) ->
+#   anagrafiche.emittenti_fiscali_utilities, differite, su:
+#     vendite.listini                 fk_listini_utility_gestita
+#     vendite.commesse                fk_commesse_utility_gestita
+#     vendite.fatture                 fk_fatture_utility_gestita
+#     vendite.registri_fatturazione   fk_registri_fatturazione_utility_gestita
+#     vendite.fatturazione_lotti      fk_fatturazione_lotti_utility_gestita
+#   Brief: brief-db-utility-gestite-dall-emittente §4-bis, §6 (D-U-4, D-U-9, D-U-12), §8-bis (U3)
+#
+# -- LA REGOLA --------------------------------------------------------------
+#   Le tabelle che hanno azienda e utility senza passare dal billing account
+#   (§4-bis): la coppia punta alla riga dell'azienda, come il collegamento del
+#   BA e il listino per categoria (20261127-36). Gli altri documenti di vendita
+#   ereditano l'utility dal BA con una FK composta: li copre il collegamento.
+#   La stessa FK ferma la cancellazione della riga dell'azienda finche' un
+#   documento la usa (D-U-9).
+#
+# -- L'UTILITY FACOLTATIVA ---------------------------------------------------------
+#   Su fatture, registri_fatturazione e fatturazione_lotti utility_id e'
+#   nullable: un registro «per tutte le utility» (come quelli che
+#   vendite.fn_provision_registri crea alla nascita dell'azienda), un lotto o
+#   una fattura senza utility. MATCH SIMPLE non giudica la riga con una colonna
+#   NULL: e' cio' che D-U-4 chiede, perche' non c'e' una coppia da giudicare.
+#
+# -- DIFFERITE, E L'ALLINEAMENTO ---------------------------------------------------
+#   Differite come le altre due: un'azienda e la sua riga possono nascere nella
+#   stessa transazione del documento. Si convalidano alla nascita: sul database
+#   di sviluppo ogni azienda deve avere la riga di ogni utility dei suoi
+#   documenti (lo corregge a mano Tid, brief §8-bis U3). Nessun seed di 80_data
+#   scrive queste tabelle con un'utility (il seed dei registri del secondo
+#   emittente clona registri esistenti, e da zero non trova niente).
+#
+# -- GLI INDICI -------------------------------------------------------------------
+#   Nessun indice dedicato (fk_index_policy.csv, SENZA_INDICE): il padre si
+#   cancella solo per correggere un'attivazione sbagliata (D-U-9), e la ricerca
+#   dei figli parte dagli indici sull'azienda che le tabelle hanno gia'.
+#   Le FK composte restano fuori dall'automazione ATTIVO.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261127-38-add-fk-documenti-utility-gestita-mctit.yaml
+
+  - changeSet:
+      id: 20261127-38-add-fk-documenti-utility-gestita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Listini, commesse, fatture, registri e lotti di fatturazione puntano
+        alla riga dell'azienda in emittenti_fiscali_utilities (FK composte,
+        differite). brief-db-utility-gestite-dall-emittente §6 (D-U-4, D-U-12).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $fk$
+              DECLARE
+                  -- tabella e nome della FK: nessuna colonna dietro
+                  r record;
+              BEGIN
+                  FOR r IN
+                      SELECT * FROM (VALUES
+                          ('listini',               'fk_listini_utility_gestita'),
+                          ('commesse',              'fk_commesse_utility_gestita'),
+                          ('fatture',               'fk_fatture_utility_gestita'),
+                          ('registri_fatturazione', 'fk_registri_fatturazione_utility_gestita'),
+                          ('fatturazione_lotti',    'fk_fatturazione_lotti_utility_gestita')
+                      ) v(tabella, vincolo)
+                  LOOP
+                      EXECUTE format('ALTER TABLE vendite.%I DROP CONSTRAINT IF EXISTS %I',
+                                     r.tabella, r.vincolo);
+                      EXECUTE format(
+                          'ALTER TABLE vendite.%I ADD CONSTRAINT %I '
+                          'FOREIGN KEY (emittente_soggetto_ruolo_id, utility_id) '
+                          'REFERENCES anagrafiche.emittenti_fiscali_utilities (emittente_soggetto_ruolo_id, utility_id) '
+                          'DEFERRABLE INITIALLY DEFERRED',
+                          r.tabella, r.vincolo);
+                      EXECUTE format(
+                          'COMMENT ON CONSTRAINT %I ON vendite.%I IS %L',
+                          r.vincolo, r.tabella,
+                          'Azienda e utility puntano alla riga dell''azienda in anagrafiche.emittenti_fiscali_utilities: '
+                          'l''azienda tratta solo le utility che gestisce. Senza utility la riga non si giudica. '
+                          'Differita. Ferma anche la cancellazione della riga dell''azienda finche'' un documento la usa.');
+                  END LOOP;
+              END
+              $fk$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.listini DROP CONSTRAINT IF EXISTS fk_listini_utility_gestita;
+              ALTER TABLE vendite.commesse DROP CONSTRAINT IF EXISTS fk_commesse_utility_gestita;
+              ALTER TABLE vendite.fatture DROP CONSTRAINT IF EXISTS fk_fatture_utility_gestita;
+              ALTER TABLE vendite.registri_fatturazione DROP CONSTRAINT IF EXISTS fk_registri_fatturazione_utility_gestita;
+              ALTER TABLE vendite.fatturazione_lotti DROP CONSTRAINT IF EXISTS fk_fatturazione_lotti_utility_gestita;

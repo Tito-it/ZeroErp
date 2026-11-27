@@ -237,7 +237,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
-- 📝 **Lo schema `storico` scrivibile dall'app** (`work-in-progress/brief-db-storico-scrivibile-dall-app.md`, aperto, non iniziato, 2026-11-27): il tema che D-AL **a** ha tenuto fuori dal giro 10-quater di `work-done/2026/brief-db-porte-aperte-dalla-sola-guc.md` (le porte della sola GUC e le viste aggiornabili, chiuso e archiviato il 2026-11-27). Parte quando Tid lo mette in coda.
+- 📝 **Lo schema `storico` scrivibile dall'app** (`work-in-progress/brief-db-storico-scrivibile-dall-app.md`, 2026-11-27): nato da D-AL **a** di `work-done/2026/brief-db-porte-aperte-dalla-sola-guc.md`. Analisi chiusa il 2026-11-27, con un cambio di modello deciso (D-S-1 … D-S-13): la classe dello storico la decide il significato del dato (deciso → continuo; documento → dall'emissione; calcolato, di lavoro, già registro o solo di seed → nessuna colonna); niente più «one-shot»; l'app non spegne mai il flag e sullo storico legge soltanto, lo scrive il trigger come proprietario, con `user_insert` = l'operatore (come nella madre) e `ruolo_sessione` = la porta del DB; si ritira `fn_grant_storico_shadows`; le colonne di processo hanno un registro; le 55 tabelle del pannello senza storico lo prendono. Piano in cinque giri (§5); riparte Tid col via del giro 1.
 - **Accessi: una credenziale, più vesti** (`work-done/2026/brief-be-accessi-credenziale-e-vesti.md`, archiviato il
   2026-11-27; il piano da cui nasce, `work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md`, dal 2026-11-25):
   ✅ R-4 (la veste revocata: D-4, A-6) fatto lato DB e BE il 2026-11-26 nel `brief-db-accessi-area-clienti`, e il

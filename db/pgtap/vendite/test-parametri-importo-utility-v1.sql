@@ -10,11 +10,19 @@
 --   silenzio: E_PARAMETRO_INVALIDO (13, 14). L'utility che manca resta zero
 --   righe (6, 12): e' il segnale che i lettori traducono in E_CONFIG_MANCANTE.
 --
--- Elenco test (plan 14):
+-- ⭐ Rev 2026-11-27 (brief-db-utility-gestite-dall-emittente §6 D-U-1, D-U-11, §7-bis;
+--   20261127-34, -35): la riga dell'emittente dice che l'azienda gestisce
+--   l'utility, e i parametri sono facoltativi. personalizzata = almeno un
+--   parametro (16, 17); attivo sempre true (18); azienda e utility ferme (19, 20).
+--   U3 (20261127-36, -39): l'azienda di prova nasce con la riga di ogni utility
+--   ammessa, senza parametri; i test la completano con UPDATE invece di crearla, e
+--   non la cancellano (la ferma la FK del collegamento del BA).
+--
+-- Elenco test (plan 20):
 --  Struttura
 --   1) config.utilities ha i due parametri di sistema, NOT NULL
 --  Il BB (anagrafiche.fn_parametri_importo_utility)
---   2) emittente nuovo, nessuna riga: il valore di sistema dell'utility, non personalizzata
+--   2) emittente nuovo, riga senza parametri: il valore di sistema dell'utility, non personalizzata
 --   3) le soglie senza la riga sono NULL («nessun minimo», Q-7)
 --   4) la policy generale dell'emittente (rounding_policy) vale per il metodo
 --   5) la riga dell'emittente vince su tutto, ed e' personalizzata
@@ -31,6 +39,13 @@
 --  Il ruolo che non e' un emittente (D-T8b-2)
 --  13) il ruolo del cliente: E_PARAMETRO_INVALIDO, non i valori di sistema
 --  14) nessun ruolo (NULL): E_PARAMETRO_INVALIDO
+--  La riga dice che l'azienda gestisce l'utility (D-U-1, D-U-11)
+--  15) decimali e metodo della riga sono facoltativi
+--  16) la riga senza parametri: i valori di sistema, non personalizzata
+--  17) la riga con le sole soglie: personalizzata, decimali di sistema
+--  18) la riga non si spegne: chk_emittenti_fiscali_utilities_attivo
+--  19) la riga non cambia utility (lucchetto di colonna)
+--  20) il lucchetto e' dichiarato su azienda e utility
 --
 -- Scopo:
 --  - provare sui casi COSTRUITI la regola di D-7: sistema, poi policy generale
@@ -52,7 +67,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(14);
+SELECT plan(20);
 
 CREATE TEMP TABLE _cli AS
 SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('parametri importo') c;
@@ -93,7 +108,7 @@ SELECT is(
   (SELECT row(p.arrotondamento_importi_dec, p.metodo_arrotondamento_importi, p.personalizzata)::text
      FROM _rif r, anagrafiche.fn_parametri_importo_utility(r.emittente_sr_id, r.utility_id) p),
   (SELECT row(dec_sistema, metodo_sistema, false)::text FROM _rif),
-  '2) emittente nuovo, nessuna riga: il valore di sistema dell''utility');
+  '2) emittente nuovo, riga senza parametri: il valore di sistema dell''utility');
 
 SELECT is(
   (SELECT row(p.minimo_soglia_min, p.minimo_soglia_max)::text
@@ -113,10 +128,12 @@ SELECT is(
   (SELECT CASE WHEN metodo_sistema = 'UP' THEN 'DOWN' ELSE 'UP' END FROM _rif),
   '4) la policy generale dell''emittente vale per il metodo');
 
-INSERT INTO anagrafiche.emittenti_fiscali_utilities
-    (emittente_soggetto_ruolo_id, utility_id, arrotondamento_importi_dec,
-     metodo_arrotondamento_importi, minimo_soglia_min, minimo_soglia_max, attivo)
-SELECT r.emittente_sr_id, r.utility_id, 0, 'HALF_DOWN', 10, 100, true FROM _rif r;
+-- L'azienda di prova ha gia' la riga, senza parametri (20261127-39): la si completa.
+UPDATE anagrafiche.emittenti_fiscali_utilities e
+   SET arrotondamento_importi_dec = 0, metodo_arrotondamento_importi = 'HALF_DOWN',
+       minimo_soglia_min = 10, minimo_soglia_max = 100
+  FROM _rif r
+ WHERE e.emittente_soggetto_ruolo_id = r.emittente_sr_id AND e.utility_id = r.utility_id;
 
 SELECT is(
   (SELECT row(p.arrotondamento_importi_dec, p.metodo_arrotondamento_importi,
@@ -132,8 +149,12 @@ SELECT is(
   '6) un''utility che non esiste: zero righe');
 
 -- Si torna allo stato «emittente nuovo»: senza riga, senza policy generale.
-DELETE FROM anagrafiche.emittenti_fiscali_utilities e
- USING _rif r
+-- La riga resta: l'azienda gestisce l'utility del BA, e la FK del collegamento
+-- (20261127-36) ne ferma la cancellazione. Si tolgono i parametri.
+UPDATE anagrafiche.emittenti_fiscali_utilities e
+   SET arrotondamento_importi_dec = NULL, metodo_arrotondamento_importi = NULL,
+       minimo_soglia_min = NULL, minimo_soglia_max = NULL
+  FROM _rif r
  WHERE e.emittente_soggetto_ruolo_id = r.emittente_sr_id AND e.utility_id = r.utility_id;
 UPDATE anagrafiche.emittenti_fiscali ef SET rounding_policy = NULL
   FROM _rif r WHERE ef.id = r.emittente_fiscale_id;
@@ -205,10 +226,10 @@ SELECT is(
 -- ============================================================
 -- L'emittente arrotonda a 0 decimali per questa utility; la riga non ha
 -- articolo, quindi nessuna regola dell'articolo: vale la sua.
-INSERT INTO anagrafiche.emittenti_fiscali_utilities
-    (emittente_soggetto_ruolo_id, utility_id, arrotondamento_importi_dec,
-     metodo_arrotondamento_importi, attivo)
-SELECT r.emittente_sr_id, r.utility_id, 0, 'HALF_UP', true FROM _rif r;
+UPDATE anagrafiche.emittenti_fiscali_utilities e
+   SET arrotondamento_importi_dec = 0, metodo_arrotondamento_importi = 'HALF_UP'
+  FROM _rif r
+ WHERE e.emittente_soggetto_ruolo_id = r.emittente_sr_id AND e.utility_id = r.utility_id;
 
 CREATE TEMP TABLE _riga AS
 WITH ins AS (
@@ -248,6 +269,70 @@ SELECT is(
     (SELECT utility_id FROM _rif))),
   'E_PARAMETRO_INVALIDO',
   '14) nessun ruolo: E_PARAMETRO_INVALIDO');
+
+-- ============================================================
+-- La riga dice che l'azienda gestisce l'utility
+-- ============================================================
+SELECT is(
+  (SELECT count(*)::int FROM information_schema.columns
+    WHERE table_schema = 'anagrafiche' AND table_name = 'emittenti_fiscali_utilities'
+      AND column_name IN ('arrotondamento_importi_dec', 'metodo_arrotondamento_importi')
+      AND is_nullable = 'YES'),
+  2,
+  '15) decimali e metodo della riga sono facoltativi');
+
+-- La riga resta, senza nessun parametro. La policy
+-- generale dell'emittente e' gia' tornata NULL (dopo il test 6).
+UPDATE anagrafiche.emittenti_fiscali_utilities e
+   SET arrotondamento_importi_dec = NULL, metodo_arrotondamento_importi = NULL,
+       minimo_soglia_min = NULL, minimo_soglia_max = NULL
+  FROM _rif r
+ WHERE e.emittente_soggetto_ruolo_id = r.emittente_sr_id AND e.utility_id = r.utility_id;
+
+SELECT is(
+  (SELECT row(p.arrotondamento_importi_dec, p.metodo_arrotondamento_importi,
+              p.minimo_soglia_min, p.minimo_soglia_max, p.personalizzata)::text
+     FROM _rif r, anagrafiche.fn_parametri_importo_utility(r.emittente_sr_id, r.utility_id) p),
+  (SELECT row(dec_sistema, metodo_sistema, NULL::numeric, NULL::numeric, false)::text FROM _rif),
+  '16) la riga senza parametri: i valori di sistema, e non e'' personalizzata');
+
+UPDATE anagrafiche.emittenti_fiscali_utilities e
+   SET minimo_soglia_min = 10, minimo_soglia_max = 100
+  FROM _rif r
+ WHERE e.emittente_soggetto_ruolo_id = r.emittente_sr_id AND e.utility_id = r.utility_id;
+
+SELECT is(
+  (SELECT row(p.arrotondamento_importi_dec, p.personalizzata)::text
+     FROM _rif r, anagrafiche.fn_parametri_importo_utility(r.emittente_sr_id, r.utility_id) p),
+  (SELECT row(dec_sistema, true)::text FROM _rif),
+  '17) la riga con le sole soglie: personalizzata, coi decimali di sistema');
+
+SELECT throws_ok(
+  format($$UPDATE anagrafiche.emittenti_fiscali_utilities SET attivo = false
+            WHERE emittente_soggetto_ruolo_id = %s AND utility_id = %s$$,
+         (SELECT emittente_sr_id FROM _rif), (SELECT utility_id FROM _rif)),
+  '23514',
+  NULL,
+  '18) la riga non si spegne: chk_emittenti_fiscali_utilities_attivo');
+
+-- Un'utility diversa, ammessa per EF dal seed: senza il lucchetto passerebbe.
+SELECT throws_ok(
+  format($$UPDATE anagrafiche.emittenti_fiscali_utilities
+              SET utility_id = (SELECT min(u.id) FROM config.utilities u WHERE u.id <> %2$s)
+            WHERE emittente_soggetto_ruolo_id = %1$s AND utility_id = %2$s$$,
+         (SELECT emittente_sr_id FROM _rif), (SELECT utility_id FROM _rif)),
+  'P0001',
+  NULL,
+  '19) la riga non cambia utility');
+
+SELECT is(
+  (SELECT array_agg(l.column_name ORDER BY l.column_name)
+     FROM dbops.automation_lock_columns l
+    WHERE l.target_schema = 'anagrafiche'
+      AND l.target_table = 'emittenti_fiscali_utilities'
+      AND l.enabled IS TRUE),
+  ARRAY['emittente_soggetto_ruolo_id', 'utility_id']::text[],
+  '20) il lucchetto e'' dichiarato su azienda e utility');
 
 SELECT * FROM finish();
 ROLLBACK;

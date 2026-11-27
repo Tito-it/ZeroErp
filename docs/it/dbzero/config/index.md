@@ -142,7 +142,7 @@ search:
 - [user_override_azioni](tabelle/user_override_azioni.md) — * Concedere un'azione negata a livello reparto (**GRANT** individuale). * Revocare un'azione concessa a livello reparto (**DENY** individuale). * Supportare **validità temporale** e **motivazione** per governance.
 - [user_override_oggetti](tabelle/user_override_oggetti.md) — * Consentire **granularità a livello di singola entità** (model Django). * Esempio: un utente ha TUTTO su Anagrafiche ma solo LETTURA su `anagrafiche.clienti`.
 - [utilities](tabelle/utilities.md) — (latest review 15-02-2026) * **Definizione del settore**   Tabella dove si definiscono i tipi di "utilities" a cui l’azienda è rivolta. Ogni record identifica un settore di business specifico: per esempio manifatturiero, gas o telecom. * **Componente standard e specifica**   Per ogni tipo di utility è prevista una parte core (funzionalità standard comuni a tutti i settori) e un modulo verticale specifico, progettato per risolvere le problematiche tipiche del settore.
-- [utilities_tipi_ruolo](tabelle/utilities_tipi_ruolo.md) — (latest review 16-02-2026) La tabella `config.utilities_tipi_ruolo` definisce una **whitelist opzionale** dei `tipo_ruolo` ammessi per ciascuna `utility`.
+- [utilities_tipi_ruolo](tabelle/utilities_tipi_ruolo.md) — (latest review 27-11-2026) La tabella `config.utilities_tipi_ruolo` dice quali `tipo_ruolo` possono trattare ciascuna `utility`.
 - [valute](tabelle/valute.md) — * **Definizione delle valute**   Elenco centralizzato di tutte le valute supportate, con codici interni e standard ISO 4217. * **Supporto ai moduli finanziari**   Garantisce alle aree di fatturazione, contabilità e reporting uniformità nella rappresentazione e conversione delle valute. * **Tracciabilità e auditing**   Memorizza informazioni di inserimento e aggiornamento per mantenere la storicità delle modifiche.
 
 ## ⚙️ Funzioni
@@ -200,6 +200,7 @@ search:
 - [trgfn_toponomastica_normalize](funzioni/trgfn_toponomastica_normalize.md) — (latest review 02-01-26)
 - [trgfn_toponomastica_protect_update](funzioni/trgfn_toponomastica_protect_update.md) — (latest review 02-01-26) * **Protezione semantica**: garantire coerenza tra topografia e stradario evitando rinominazioni dirette di toponomastiche già in uso. * **Manutenzione controllata**: consentire correzioni solo tramite GUC di manutenzione e procedura dedicata. * **Centralizzazione**: concentrare la logica di blocco in una sola funzione trigger per ridurre complessità applicativa.
 - [trgfn_user_emittenti_fiscali_guard_delete](funzioni/trgfn_user_emittenti_fiscali_guard_delete.md) — Guard `BEFORE DELETE` (fase `a10`) di `config.user_emittenti_fiscali`. La riga è l'azienda di un operatore: senza, l'operatore non vede niente. Il guard decide quando la si può togliere.
+- [trgfn_utilities_tipi_ruolo_guard_uscita_ef](funzioni/trgfn_utilities_tipi_ruolo_guard_uscita_ef.md)
 
 ## 🔍 Views
 - [vw_codici_errore](views/vw_codici_errore.md) — (rev 2026-08-21)

@@ -97,6 +97,15 @@ SELECT r.emittente_soggetto_ruolo_id AS emittente_sr,
  ORDER BY r.id
  LIMIT 1;
 
+-- ⭐ Rev 2026-11-27 (brief-db-utility-gestite-dall-emittente U3, 20261127-38): un
+--   registro con utility sta su un'utility che l'azienda gestisce. L'azienda qui
+--   e' cercata, non costruita: le si danno le due utility del test.
+INSERT INTO anagrafiche.emittenti_fiscali_utilities (emittente_soggetto_ruolo_id, utility_id)
+SELECT p.emittente_sr, u.id
+  FROM tmp_pfx p
+  CROSS JOIN LATERAL (VALUES (p.ut_1), (p.ut_2)) u(id)
+ON CONFLICT (emittente_soggetto_ruolo_id, utility_id) DO NOTHING;
+
 INSERT INTO vendite.registri_fatturazione (
     codice, descrizione, emittente_soggetto_ruolo_id,
     famiglia_documento, reset_policy, attivo, utility_id, prefisso, suffisso)
