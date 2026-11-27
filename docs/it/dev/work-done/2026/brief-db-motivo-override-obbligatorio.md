@@ -2,12 +2,13 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-27**
 >
-> **Riparte: il team BE/FE, col passaggio (§5, §7.5); Tid col commit.** Il giro DB è chiuso: applicato su scratch e
+> **✅ Chiuso e archiviato il 2026-11-27: non riparte nessuno.** Il passaggio BE/FE è scritto, provato, collaudato a
+> video da Tid e committato (§5-bis). Il giro DB è chiuso e committato (`b1b61a7ca`): applicato su scratch e
 > dbdev, pgTAP verdi col runner (Tid, 2026-11-27), baseline B-7 confrontata senza accumuli (§7.4). `20261126-80`
 > (la primitiva), `-81` (i `COMMENT` dei tre verbi), `-82` (il `COMMENT` della colonna `motivo`), il codice
 > `E_OVERRIDE_MOTIVO_OBBLIGATORIO` nei due CSV del catalogo, un pgTAP nuovo e due adeguati, la guida e i `manual/`.
 > Nasce dalla verifica del giro 10-quater di
-> [brief-db-porte-aperte-dalla-sola-guc](../work-done/2026/brief-db-porte-aperte-dalla-sola-guc.md): la guida dei
+> [brief-db-porte-aperte-dalla-sola-guc](brief-db-porte-aperte-dalla-sola-guc.md): la guida dei
 > permessi dice che il motivo è obbligatorio, il codice lo lasciava vuoto, e Tid ha scelto di correggere il codice.
 >
 > | # | Chi | Che cosa | Dove | Aspetta |
@@ -16,8 +17,10 @@
 > | 2 | ✅ team DB | il giro scritto e provato sullo scratch (2026-11-27) | §7 | — |
 > | 3 | ✅ Tid | l'apply su scratch e dbdev, i pgTAP del §7.3 col runner (2026-11-27) | §7.3 | — |
 > | 4 | ✅ team DB | la baseline B-7: nessuna riga da scrivere, confronto verde su scratch e dbdev (2026-11-27) | §7.4 | — |
-> | 5 | Tid | la doc auto-generata, il commit | §7.3 | — |
-> | 6 | team BE/FE | il passaggio: il dialog del motivo, la validazione, la policy del codice, i test | §5, §7.5 | — |
+> | 5 | ✅ Tid | il commit del giro DB (`b1b61a7ca`); la doc auto-generata | §7.3 | — |
+> | 6 | ✅ team BE/FE | il passaggio: il dialog del motivo, la policy del codice, i test, il manuale (2026-11-27) | §5-bis | — |
+> | 7 | ✅ Tid | il collaudo a video del dialog (2026-11-27), il commit del passaggio BE/FE | §5-bis | — |
+> | 8 | ✅ team BE/FE | l'archiviazione in `work-done/` (2026-11-27); la suite intera non lanciata, per scelta di Tid («dai tutto per fatto»): la fa girare la CI | — | — |
 >
 > Decisioni di Tid, tutte prese il 2026-11-27: D-1 **a**, la regola nella primitiva; D-2 **b**, le righe di oggi senza
 > motivo restano; D-3 **b**, il pannello chiede un motivo al salvataggio; D-4 **no**, togliere un override non chiede
@@ -29,12 +32,12 @@
 >
 > **Guide verificate** (`scripts/guide_coinvolte.py --oggetti` sulle tre tabelle, i tre verbi e i builder pgTAP,
 > 2026-11-27):
-> * [architettura-permessi-e-autorizzazioni](../../guide/architettura-permessi-e-autorizzazioni.md) §4.8: «Il
+> * [architettura-permessi-e-autorizzazioni](../../../guide/architettura-permessi-e-autorizzazioni.md) §4.8: «Il
 >   motivo è obbligatorio per audit: consente di tracciare perché e da chi l'eccezione è stata concessa».
 >   **Contraddetta** dal codice di oggi; decisione di Tid del 2026-11-27: vale la guida, si allinea il codice.
 >   «Da chi» lo dice già l'audit; il motivo porta il «perché». Il giro rilegge §4.1-§4.8 (le tre tabelle) e «Chi
 >   scrive gli override».
-> * [pgtap-come-si-scrive-un-test](../../guide/pgtap-come-si-scrive-un-test.md): i builder scrivono già un motivo
+> * [pgtap-come-si-scrive-un-test](../../../guide/pgtap-come-si-scrive-un-test.md): i builder scrivono già un motivo
 >   (§2). **Coerente**.
 > * `risorse-umane-e-accessi`, `architettura-multi-face-auth`: nominano le tabelle, non il motivo. **Coerenti**.
 
@@ -108,6 +111,35 @@ passa, e dopo l'apply la rifiuta il DB col codice nuovo.
    la ricerca trova al momento (`grep -rn "put_override_" backend/apps --include=*.py`).
 5. Manuale `api_amm_software` §2.2, §2.4, §2.4-bis: il motivo è obbligatorio.
 
+## 5-bis. Il passaggio BE/FE, fatto (2026-11-27)
+
+| Punto del §5 | Esito |
+| --- | --- |
+| 1. `require_string` nel service | ⚠️ **non fatto, di proposito**: il motivo resta `optional_string`. La regola sta nel verbo (D-1 **a**) e un `require_string` ne sarebbe la seconda sede, che risponderebbe `E_AMM_VALIDAZIONE` al posto del codice del dominio. È la forma già usata da `blocca_credenziale`, dalla disattivazione del TOTP e dalla rettifica di listino. Il rifiuto del DB attraversa `translate_db_errors` col suo codice e il campo `motivo` (`error.fields`): lo prova il caso 5 di `test_override_aree_azioni_db`. Commento in `_voci_override`. ✅ Confermato da Tid (2026-11-27) |
+| 2. Policy e ripiego | `genera_error_policies` rigenerato (`--check` pulito, zero classi cambiate). Il rigenero porta anche i quattro codici di T8c di `brief-db-revisione-anagrafiche` (`E_DDT_VETTORE_NON_ATTIVO`, `E_ENTE_INCASSO_PSP_SPENTO`, `E_PSP_ENTI_INCASSO_ATTIVI`, `E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE`), già nel CSV in git: il modulo è uno solo. Ripiego senza `%s` per tutti e cinque |
+| 3. FE | `OperatorePermessiTab.vue`: il Salva apre `MotivoDialog` (BB, obbligatorio) se almeno una voce delle sezioni da salvare è nuova, cambiata o senza motivo; il motivo va su quelle, le altre ripartono col loro. Dopo ogni sezione salvata la mappa a video si riallinea alla risposta (col motivo appena scritto). Un rifiuto lascia il dialog aperto, col campo in errore (`campiErrati`; la rilettura dei derivati ha un handler suo per non azzerarlo). Commento sul `DELETE` + reinsert corretto. i18n it/en |
+| 4. Test sul DB vero | `test_override_aree_azioni_db`: motivo nei casi 3 e 4, caso 5 nuovo (assente, soli spazi su una voce che toglie, `null` su un'azione negata → `E_OVERRIDE_MOTIVO_OBBLIGATORIO`, campo `motivo`, niente scritto). `test_override_oggetti_catalogo_db`: motivo nei casi 3, 4, 5, che senza sarebbero usciti col codice del motivo smettendo di provare la FK (come il caso 9 del pgTAP). `test_creazioni_dalle_madri_db` lo aveva già. `smoke-test-permessi-oggetto.sh` (revisione del 2026-11-27): il passo 6 manda un motivo, perché il rifiuto del motivo non faccia passare il passo senza provare il catalogo; il ripristino del passo 11 rimanda le voci di partenza, e a una voce scritta prima della regola senza motivo dà «Ripristino dello smoke: la voce non aveva motivo», perché senza il verbo la rifiuterebbe e il ripristino fallirebbe |
+| 5. Manuale | `api_amm_software` §2.2 («Il motivo»), §2.4, §2.4-bis: obbligatorio, codice, campo, `btrim`, D-4, D-2 **b** |
+
+⚠️ **D-4 e il §7.5, letti insieme.** Il §7.5 dice che il dialog si apre anche se l'unico cambio è una voce tolta;
+D-4 dice che togliere non chiede motivo, e il testo va solo sulle voci che restano. Se si sono solo tolte voci e
+quelle che restano hanno già il loro motivo, un motivo chiesto non andrebbe su nessuna riga: sarebbe una traccia
+che non resta. Il pannello quindi **non apre il dialog** in quel caso (caso 11 dello spec); lo apre se una voce che
+resta è senza motivo. ✅ Confermato da Tid (2026-11-27): niente dialog quando si sono solo tolte voci già motivate.
+
+Prove (2026-11-27): `OperatorePermessiTab.spec.js` 13 verdi (casi 10-13 nuovi; il 10 provato per mutazione sulle due
+regole, il motivo solo dove serve e la voce senza motivo che lo chiede), `OperatoreDrawer.spec.js` e
+`MotivoDialog.spec.js` verdi; Django sul DB vero (`ZEROERP_TEST_DB_E2E=1`) i due test DB, i cancelli dei codici
+(`test_error_policies_classi`, `test_error_policies_divergenza_db`, `test_error_codes_db_policy_guardrail`), i test
+del service e dell'API degli override. Guide: `architettura-permessi-e-autorizzazioni` §4.8 **coerente** (descrive
+già il dialog); `risorse-umane-e-accessi`, `architettura-multi-face-auth` **coerenti**.
+
+**Collaudo a video (Tid).** Drawer di un operatore, scheda Permessi: (a) cambiare un livello e salvare → il dialog
+chiede il motivo, il Salva è spento finché è vuoto; (b) dopo il salvataggio, riaprire: la voce porta il motivo;
+(c) togliere un override di un utente le cui voci hanno tutte un motivo → salva senza dialog; (d) un utente con
+voci vecchie senza motivo (su dbdev il 6, il 9, il 48890, fatto del 2026-11-27): cambiare una voce qualsiasi della
+stessa sezione → il dialog si apre e il motivo va anche sulle vecchie.
+
 ## 6. L'analisi del giro (2026-11-27)
 
 Letta sulla doc auto-generata e sui pgTAP del checkout, senza prove. Le misure che seguono sono fatti datati: dicono
@@ -176,7 +208,7 @@ perde, questo permesso.» Sedi: `codici_errore.csv`, `messaggi_errore.csv`, la r
 
 ### 6.5 Guide e `manual/`
 
-* [architettura-permessi-e-autorizzazioni](../../guide/architettura-permessi-e-autorizzazioni.md): la regola sta oggi
+* [architettura-permessi-e-autorizzazioni](../../../guide/architettura-permessi-e-autorizzazioni.md): la regola sta oggi
   nell'esempio di §4.8 (azioni), mentre vale per le tre tabelle. Va scritta una volta in «Chi scrive gli override», con
   la primitiva per nome (`guide_coinvolte.py` la trova orfana), anche per gli override che tolgono; §4.8 rimanda lì.
   §13.2, l'audit: il motivo è il «perché», l'audit il «chi» e il «quando».
@@ -275,9 +307,10 @@ Il §5, con due aggiunte:
 - [x] Il giro DB: primitiva, codice d'errore, pgTAP, guida e `manual/`; prova sullo scratch (2026-11-27, §7)
 - [x] L'apply su scratch e dbdev, i pgTAP del §7.3 col runner (Tid, 2026-11-27)
 - [x] La baseline B-7: nessuna riga, confronto verde su scratch e dbdev (2026-11-27, §7.4)
-- [ ] La doc auto-generata (Tid)
-- [ ] Il commit
-- [ ] Il passaggio BE/FE (§5)
+- [x] La doc auto-generata, il commit del giro DB (Tid, `b1b61a7ca`)
+- [x] Il passaggio BE/FE (§5-bis, 2026-11-27)
+- [x] Il collaudo a video del dialog (Tid, 2026-11-27), il commit del passaggio BE/FE
+- [x] L'archiviazione (2026-11-27; suite intera lasciata alla CI, Tid)
 
 ---
 {% include-markdown "signature-core.md" %}

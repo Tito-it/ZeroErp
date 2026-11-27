@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1292, di cui 135 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1297, di cui 135 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -642,6 +642,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Motivo 3-quater di script.fn_check_ddt_emittibile (20261103-47, T-3 bis di Tid, 2026-11-03, brief-db-addebito-trasporto-ordine §10.2), sollevato da vendite.trgfn_ddt_guard_causale_emissione all'emissione (-48) e mostrato dalla capability (reason TRASPORTO_NON_DOVUTO): una riga attiva il cui articolo ha la causale onere TRASPORTO su una bolla con modalita' di addebito ASSEGNATO o TERZI (config.modalita_addebito_trasporto, per codice_interno). FRANCO o modalita' assente: nessun motivo. CONFLITTO_STATO come i fratelli: nessun campo; dettaglio {riga_id, riga_nr, modalita, modalita_descrizione}. I VALORI: numero del DDT, numero di riga, descrizione della modalita'.
     "E_DDT_TRASPORTO_NON_DOVUTO": "CONFLITTO_STATO",
     "E_DDT_VALIDAZIONE": "DATO_ERRATO",
+    # vendite.trgfn_ddt_guard_vettore_attivo (BEFORE INSERT OR UPDATE OF vettore_soggetto_ruolo_id su vendite.ddt): la bolla che sceglie o cambia vettore lo vuole acceso; il vettore gia' scritto non si rigiudica. CONFLITTO_STATO. VARIADIC: codice del vettore. Brief: brief-db-revisione-anagrafiche §25.7 (D-T8c-9 a).
+    "E_DDT_VETTORE_NON_ATTIVO": "CONFLITTO_STATO",
     # Ritirato il 2026-11-24 (D-T5-6 b, brief-db-revisione-anagrafiche §20.8): lo sollevava solo script.fn_get_tipo_contatto_id, che nessuno chiamava ed e' ritirata. Il tipo di contatto che si usa quando chi scrive non lo dice e' il tipo proposto (script.fn_tipo_contatto_proposto_id, parametro TIPO_CONTATTO_PROPOSTO), che fallisce con E_CONFIG_MANCANTE o E_DEFAULT_ERRATO.
     # ⚠️ RITIRATO il 2026-11-24
     "E_DEFAULT_CONTATTO_MISSING": "DATO_ERRATO",
@@ -885,6 +887,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_ENTE_INCASSO_PSP_RUOLO_NON_PSP": "DATO_ERRATO",
     # pagamenti.trgfn_enti_incasso_guard_psp: un ente di incasso di tipo PSP e' arrivato senza soggetto_ruolo_id. Il prestatore di servizi di pagamento e' un soggetto dell'anagrafica, non un'etichetta: senza di lui l'ente non identifica nessuno. Primo dei tre gradini del guard PSP, e i tre hanno rimedi diversi - qui si compila il campo, in E_ENTE_INCASSO_PSP_RUOLO_NON_PSP (950) si sceglie un altro soggetto, in E_ENTE_INCASSO_PSP_NON_CENSITO (951) si censisce il PSP.
     "E_ENTE_INCASSO_PSP_SOGGETTO_RUOLO_OBBLIGATORIO": "DATO_ERRATO",
+    # pagamenti.trgfn_enti_incasso_guard_psp: un canale d'incasso PSP acceso vuole il suo PSP acceso; un canale spento si modifica anche col PSP spento. Distinto da E_ENTE_INCASSO_PSP_NON_CENSITO (la riga del PSP non c'e'). CONFLITTO_STATO. VARIADIC: codice del PSP, codice del canale. Brief: brief-db-revisione-anagrafiche §25.7 (D-T8c-12).
+    "E_ENTE_INCASSO_PSP_SPENTO": "CONFLITTO_STATO",
     # pagamenti.trgfn_vendite_contabili_guard_ente_centro: l'ente di incasso indicato sulla testata non esiste, oppure esiste e non ha centro_riscossione_id (la colonna e' nullable). Le due cause portano allo stesso posto - si va a guardare l'ente - quindi un codice solo: distinguerle produrrebbe due messaggi con lo stesso rimedio. Il messaggio le nomina entrambe apposta, per non mandare a cercare la cosa sbagliata.
     "E_ENTE_INCASSO_SENZA_CENTRO": "DATO_ERRATO",
     # <- ERRORE_PARAMETRI  (vivo)
@@ -1393,6 +1397,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_ORD_STATO_TRANSIZIONE": "CONFLITTO_STATO",
     "E_ORD_VALIDAZIONE": "DATO_ERRATO",
     "E_OUTBOX": "DATO_ERRATO",
+    # config.fn_applica_imposta_override, la primitiva dei tre verbi del SUPER_ADMIN config.fn_imposta_override_aree, _azioni, _oggetti: una voce senza motivo di testo non vuoto (assente, null, non di testo, vuoto o di soli spazi), anche quella che toglie un permesso. campo = motivo nel contesto, con tabella, auth_user_id, indice (la posizione della voce, da 0) e voce (la sua chiave). Togliere una voce dall'elenco non chiede motivo. Gemello di E_CREDENZIALE_MOTIVO_OBBLIGATORIO. Brief: brief-db-motivo-override-obbligatorio §6 (D-1 a).
+    "E_OVERRIDE_MOTIVO_OBBLIGATORIO": "DATO_ERRATO",
     # Le due require ATTIVO, dbops.trgfn_child_requires_active_parent e dbops.trgfn_child_requires_non_obsolete_parent: la figlia nomina una chiave che nessuna riga del padre ha. Con una FK dichiarata non succede (la FK parla prima); succede dove il collegamento e' una chiave polimorfa, montata a mano senza FK. DATO_ERRATO: e' il valore scritto nella colonna FK a non riferire niente; campo = quella colonna. Stessi valori dei gemelli: padre, colonna referenziata, valore, figlia. Prima il ramo non scattava mai (IF NOT FOUND dopo un EXECUTE): brief-db-revisione-dbops D5.
     "E_PADRE_INESISTENTE": "DATO_ERRATO",
     # Guard di parametro delle funzioni di pagamenti su valori che NESSUNA interfaccia puo' produrre: un id <= 0 dove il NULL e' AMMESSO (p_ente_incasso_id, p_compensazione_id, p_lotto_id), un codice_interno di stato vuoto, un p_fattura_id <= 0. Se arrivano, e' rotto il chiamante: l'operatore non ha niente da correggere, ed e' per questo che la classe e' TECNICO e non DATO_ERRATO. Nasce il 2026-08-21 (cantiere incassi, lotto 1) su segnalazione di Tid: la prima stesura li mandava su E_PARAMETRO_INVALIDO, ma quel codice e' uno SPLIT RIMANDATO - decisione D11 di brief-db-be-classe-codici-errore, «denominatore sicuro + note, e cantiere suo» - e sopravvive perche' il BE deve ancora poter gestire le funzioni vecchie, non perche' sia la sede del nuovo. §9.1 dello stesso brief: «rincorrere gli esistenti senza chiudere il rubinetto e' la forma in cui questi registri non calano mai». Precedente identico e recente: E_VENDITE_PRICING_ESITO_ASSENTE (2026-08-19), nato perche' il rubinetto B-7 respinse E_PARAMETRO_INVALIDO su un'invariante rotta. ⚠️ Il messaggio nomina il parametro DI PROPOSITO: il suo lettore e' chi ha scritto la chiamata, non chi compila un form - e' l'eccezione dichiarata nella guida Messaggi-di-Errore, non una violazione della regola sul VARIADIC.
@@ -1605,6 +1611,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PROMO_SCADUTA_IMMUTABILE": "CONFLITTO_STATO",
     # La sigla di una provincia non ha la forma ammessa (config.fn_sigla_provincia_ammessa): per una provincia italiana (regione di uno stato con codice_iso2 = IT) due lettere maiuscole, per ogni altra maiuscole e cifre da 1 a 10. Lo sollevano config.trgfn_province_guard_sigla (scrittura della provincia, campo sigla) e config.trgfn_regioni_guard_sigla_province (una regione che cambia stato, campo stato_id, nomina la prima provincia fuori regola). DATO_ERRATO: la sigla la scrive una persona nel form. Il CHECK chk_province_sigla_forma resta la rete. VARIADIC: sigla, nome della provincia. Brief: brief-db-character-n-spazi-di-riempimento (D-2, Tid 2026-10-10).
     "E_PROVINCIA_SIGLA_NON_VALIDA": "DATO_ERRATO",
+    # anagrafiche.trgfn_psp_guard_enti_incasso_attivi (BEFORE UPDATE OF attivo su anagrafiche.psp): un PSP con canali d'incasso attivi (pagamenti.enti_incasso che nominano il suo ruolo) non si spegne. CONFLITTO_STATO. VARIADIC: codice del PSP. Brief: brief-db-revisione-anagrafiche §25.5 (D-T8c-5), §25.7 (D-T8c-11).
+    "E_PSP_ENTI_INCASSO_ATTIVI": "CONFLITTO_STATO",
     "E_PULL_COMMESSA": "DATO_ERRATO",
     # Ritirato il 2026-09-07. Fermava lo step quando fallivano TUTTE le commesse di un giro di fatturazione, ma il rollback che si portava dietro cancellava anche le marcature d'esito appena scritte: il documento fallito spariva dal lotto e tornava a sembrare fatturabile in competenza, ed e' il difetto che ha aperto il cantiere (caso LTF-0009578 / ORD0036005, 2026-09-06). Dal 2026-09-07 il ramo «tutte fallite» si comporta come il parziale: l'esito si scrive in vendite.fatturazione_lotti_esiti e lo step si ferma SENZA sollevare, cosi' la contraddizione «lotto COMPLETATO con documenti in ERRORE» resta visibile al presidio vendite.vw_lotti_chiusi_con_gruppi_in_errore invece di sparire dentro un rollback. Non ha un codice sostituto, e non e' una dimenticanza: il caso non e' piu' un errore da sollevare, e' un esito da registrare. Non si cancella perche' dbops.error_log ha una FK NOT NULL verso config.messaggi_errore(id) e le righe gia' scritte sotto questo codice devono restare leggibili — e' il pattern obsoleto_dal, non attivo=false. Brief: brief-db-esito-gruppo-lotto P-6.
     # ⚠️ RITIRATO il 2026-09-07
@@ -1903,6 +1911,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Sospensioni con data manuale (catalogo DB id 498/499): · EXCLUDE ex_sospensioni_no_overlap (23P01) e guard a10 data non futura.
     "E_SOSPENSIONE_OVERLAP": "CONFLITTO_STATO",
     "E_SOSPENSIONI_FLUSSO_NON_COERENTE": "DATO_ERRATO",
+    # Lock di colonna (dbops.automation_lock_columns) su soggetto_ruolo_id di anagrafiche.fornitori, vettori, gestori, psp, risorse_umane - D-T8c-10 di Tid (2026-11-27): il soggetto di una specializzazione d'impresa non si cambia; il ruolo creato sul soggetto sbagliato si spegne e se ne crea uno giusto. Un codice per le cinque. Clienti ed emittenti hanno i loro (E_CLIENTE_FORNITURA_IMMUTABILE, E_EMITTENTE_SOGGETTO_IMMUTABILE). CONFLITTO_STATO come gli altri lock; VARIADIC il nome della colonna, come nella famiglia. Brief: brief-db-revisione-anagrafiche §25.7.
+    "E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE": "CONFLITTO_STATO",
     # Guard anagrafiche.trgfn_soggetti_guard_regime_pa (20261010-86): split_payment = 'S' su una natura di dettaglio con split_payment_ammesso = false. Gemello di E_CLIENTE_PA_NON_AMMESSO. DATO_ERRATO, campo split_payment nel contesto; il VARIADIC porta la descrizione della natura. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (A-3).
     "E_SPLIT_PAYMENT_NON_AMMESSO": "DATO_ERRATO",
     # dbops.trgfn_tx_id_managed, `EXCEPTION WHEN OTHERS` sulla lettura.

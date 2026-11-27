@@ -1697,6 +1697,10 @@
     "di_prova_tooltip": "Test user, created by the development provisioning: it exists only in development installations.",
     "permessi_nessuna_area": "No area matches the filters.",
     "permessi_area_senza_voci": "This area has no objects or process actions to configure: only the area level applies.",
+    "permessi_motivo_titolo": "Reason for the permission exception",
+    "permessi_motivo_label": "Reason",
+    "permessi_motivo_spiegazione": "A permission exception must always be explained: write why the user gains, or loses, these permissions. The reason goes on the entry that changed or still has no reason; the others keep their own. | A permission exception must always be explained: write why the user gains, or loses, these permissions. The reason goes on the {n} entries that changed or still have no reason; the others keep their own.",
+    "permessi_motivo_aiuto": "Removing an exception needs no reason: only the entries that remain do.",
     "azione_abilitata": "Enabled",
     "azione_negata": "Denied",
     "processi": {

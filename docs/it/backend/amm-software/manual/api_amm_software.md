@@ -757,7 +757,7 @@ SUPER_ADMIN anche al DB. Invalida la cache permessi.
 |---|---|---|---|
 | `area_id` | int | si | ID area funzionale |
 | `livello` | string | si | Livello accesso (enum `config.livello_accesso`: `TUTTO`, `LETTURA`, `BLOCCATO`) |
-| `motivo` | string | no | Motivazione dell'override |
+| `motivo` | string | **si** | Perché l'utente riceve, o perde, questo permesso (§2.2, «Il motivo») |
 | `valido_dal` | string | no | Data inizio validita' |
 | `valido_al` | string | no | Data fine validita' |
 
@@ -771,6 +771,19 @@ arrivano. La stessa area due volte o un'area inesistente: 400 `E_AMM_VALIDAZIONE
 **Dal 2026-11-27** (giro 10-quater, brief-db-porte-aperte-dalla-sola-guc §15.7) la
 tabella `config.user_override_aree` è in sola lettura per l'applicazione: prima il
 repository la riscriveva con un `DELETE` e N `INSERT`.
+
+**Il motivo** (dal 2026-11-27, brief-db-motivo-override-obbligatorio). Ogni voce ne
+porta uno, di testo non vuoto, anche quella che toglie (`BLOCCATO`, `abilitata =
+false`): un'eccezione ai permessi va spiegata in tutti e due i versi. Lo giudica il
+verbo, cioè la primitiva `config.fn_applica_imposta_override`, per le tre rotte
+(§2.2, §2.4, §2.4-bis): una voce col motivo assente, `null`, non di testo, vuoto o
+di soli spazi è un **400 `E_OVERRIDE_MOTIVO_OBBLIGATORIO`** col campo `motivo`
+(`error.fields`), e l'elenco si giudica tutto prima di scrivere: niente cambia. Il
+motivo si scrive ripulito dagli spazi. ⭐ Il backend non ripete la regola (il motivo
+lo legge `optional_string`): il codice arriva com'è, e il pannello lo mostra nel
+dialog del motivo. Togliere una voce dall'elenco, o mandarlo vuoto, non chiede
+motivo. Le righe scritte prima della regola senza motivo restano: la prossima
+riscrittura dell'elenco le rifiuta finché non ne ricevono uno.
 
 **Risposta:** lista aggiornata degli override aree (stesso formato del GET).
 
@@ -853,7 +866,7 @@ Invalida la cache permessi.
 |---|---|---|---|
 | `azione_id` | int | si | ID azione processo |
 | `abilitata` | bool | si | `true` per abilitare, `false` per disabilitare (solo booleano JSON) |
-| `motivo` | string | no | Motivazione dell'override |
+| `motivo` | string | **si** | Perché l'utente riceve, o perde, questo permesso (§2.2, «Il motivo») |
 | `valido_dal` | string | no | Data inizio validita' |
 | `valido_al` | string | no | Data fine validita' |
 
@@ -901,7 +914,7 @@ Risposta: la lista aggiornata (forma del GET).
 |---|---|---|---|
 | `app_label` / `model_name` | string | si | Oggetto registrato nel catalogo (lookup §4.8) |
 | `livello` | string | si | `TUTTO`, `LETTURA`, `BLOCCATO` |
-| `motivo` | string | no | |
+| `motivo` | string | **si** | Come in §2.2, «Il motivo» |
 | `valido_dal` / `valido_al` | string \| null | no | `null` = senza inizio / senza fine |
 
 **Errori** (tutti 400 `E_AMM_VALIDAZIONE`): `items` non lista o voce non
