@@ -26,14 +26,13 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 from __future__ import annotations
 
 import unittest
-from typing import Any
 
 from django.db import connection, transaction
 
 from apps.anagrafiche.services.soggetti_service import SoggettiService
 from apps.core.db.lock_columns_repository import LockColumnsRepository
 from apps.core.services.error_translator import ErrorTranslator
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_su, apri_transazione_annullata, richiedi_db_provvisto
 
 _COLONNE = ("codice_fiscale", "partita_iva")
 
@@ -52,7 +51,7 @@ class SoggettiIdFiscaleImmutabileDbTests(unittest.TestCase):
             self.super_admin = cur.fetchone()[0]
             cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano('BE-idfisc-OP', false)")
             self.operatore = cur.fetchone()[0]
-            self._agisci(cur, self.operatore)
+            apri_contesto_su(cur, self.operatore)
             cur.execute("SELECT dbops.fn_pgtap_crea_soggetto_pg('BE id fiscale immutabile')::text")
             self.soggetto = cur.fetchone()[0]
             cur.execute(
@@ -63,14 +62,6 @@ class SoggettiIdFiscaleImmutabileDbTests(unittest.TestCase):
         # Il builder scrive almeno uno dei due: e' quello che si prova.
         self.scritte = [c for c in _COLONNE if (valori[c] or "").strip()]
         self.assertTrue(self.scritte, "il builder della PG non ha scritto ne' CF ne' P.IVA")
-
-    @staticmethod
-    def _agisci(cur: Any, auth_user_id: int) -> None:
-        # ⭐ `SET LOCAL`: il contesto vive quanto la transazione del test (il
-        #    perché, e la correzione del 2026-11-27 sulle GUC di sessione, in
-        #    `apri_super_admin_costruito`).
-        cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
-        cur.execute("SET LOCAL app.current_user_id = %s", [str(auth_user_id)])
 
     def _non_editabili(self) -> list[str]:
         return SoggettiService._compute_non_editable_fields({"id": self.soggetto})
@@ -85,7 +76,7 @@ class SoggettiIdFiscaleImmutabileDbTests(unittest.TestCase):
     # 2. Il SUPER_ADMIN li corregge: la lista non li spegne.
     def test_super_admin_li_puo_correggere(self) -> None:
         with connection.cursor() as cur:
-            self._agisci(cur, self.super_admin)
+            apri_contesto_su(cur, self.super_admin)
         campi = self._non_editabili()
         for colonna in self.scritte:
             self.assertNotIn(colonna, campi)

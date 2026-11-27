@@ -425,8 +425,8 @@ class InvitoPortaleService:
     # Scopo: Garantisce che esista un'identita digitale portale per la
     # coppia (soggetto_ruolo_id, ruolo_applicativo). Ritorna l'`identita_id`
     # (nuova o esistente) per consentire al caller di puntare la riga
-    # giusta negli UPDATE successivi (pattern richiesto dal modello 1:N
-    # §8.4.1, vedi `set_invito_inviato_at`).
+    # giusta nei verbi successivi (pattern richiesto dal modello 1:N
+    # §8.4.1, vedi `segna_invito_inviato`).
     #
     # Comportamento per stato identita:
     # - Non esiste: la crea `attivo=false`, in entrambi i flussi. Si attiva

@@ -36,7 +36,7 @@ from rest_framework.test import APIClient
 
 from apps.core.services.auth_constants import JWT_CLAIM_EMITTENTE_ATTIVO_ID
 from apps.core.services.emittente_attivo_service import EmittenteAttivoService
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_su, apri_transazione_annullata, richiedi_db_provvisto
 
 _URL = "/api/v1/core/me/"
 
@@ -94,7 +94,7 @@ class MeEmittenteSenzaGestoreGlobaleDbTests(unittest.TestCase):
     def _me(self, auth_user_id: int) -> tuple[dict, int | None]:
         attivo = EmittenteAttivoService().risolvi_per_login(auth_user_id)
         with connection.cursor() as cur:
-            cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [auth_user_id])
+            apri_contesto_su(cur, auth_user_id)
         client = APIClient()
         client.force_authenticate(
             User.objects.get(id=auth_user_id),

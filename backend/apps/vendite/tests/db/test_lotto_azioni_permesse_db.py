@@ -28,7 +28,7 @@ import unittest
 
 from django.db import connection
 
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_operatore_costruito, apri_transazione_annullata, richiedi_db_provvisto
 from apps.vendite.db.vendite_repository import STATO_DEFINITIVA, VenditeRepository
 from apps.core.db._helpers import utente_di_sessione
 
@@ -46,7 +46,11 @@ class LottoAzioniPermesseDbTests(unittest.TestCase):
         with connection.cursor() as cur:
             # Lo stesso contesto del pgTAP: un operatore NON superuser, senza
             # concessioni di processo. Con un superuser il permesso non si vede.
-            cur.execute("SELECT script.fn_pgtap_set_contesto_operatore()")
+            # ⭐ L'operatore si COSTRUISCE (BB `apri_operatore_costruito`, 2026-11-27):
+            #    senza argomento `fn_pgtap_set_contesto_operatore` sceglieva il primo
+            #    operatore del DB, cioe' i dati della macchina, e scriveva le GUC per la
+            #    sessione.
+            apri_operatore_costruito(cur)
             cur.execute("SELECT current_setting('app.current_user_id')::integer")
             self.user_id = cur.fetchone()[0]
             cur.execute("SELECT lotto_id FROM dbops.fn_pgtap_crea_lotto('azioni permesse be bozza')")

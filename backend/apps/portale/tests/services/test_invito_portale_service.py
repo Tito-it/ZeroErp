@@ -88,7 +88,7 @@ class InvitoPortaleTests(TestCase):
 
         auth = MockAuth.return_value
         auth.set_deve_cambiare_password.return_value = True
-        auth.set_invito_inviato_at.return_value = True
+        auth.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
 
         token = MockToken.return_value
         token.create.return_value = "tk_abc"
@@ -123,7 +123,7 @@ class InvitoPortaleTests(TestCase):
         self.assertEqual(token_kwargs["meta"]["identita_id"], 500)
         MockEmail.return_value.send_email.assert_called_once()
         auth.set_deve_cambiare_password.assert_not_called()
-        auth.set_invito_inviato_at.assert_called_once_with(200, identita_id=500)
+        auth.segna_invito_inviato.assert_called_once_with(500)
 
     # Scopo: cliente inesistente -> 404 E_CLIENTE_NON_TROVATO (E-4: prima
     # E_INVITO_PORTALE, cioe' 400), nessun side-effect.
@@ -179,7 +179,7 @@ class InvitoPortaleTests(TestCase):
         repo.create_identita_portale.return_value = 501
 
         MockAuth.return_value.set_deve_cambiare_password.return_value = True
-        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
         MockToken.return_value.create.return_value = "tk_xyz"
         MockEmail.return_value.send_email.return_value = (1, True)
 
@@ -250,7 +250,7 @@ class InvitoPortaleTests(TestCase):
         }
         MockAuth.return_value.find_auth_user_id_per_email.return_value = 200
         MockAuth.return_value.set_deve_cambiare_password.return_value = True
-        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
         MockToken.return_value.create.return_value = "new_tk"
         MockEmail.return_value.send_email.return_value = (1, True)
 
@@ -302,7 +302,7 @@ class InvitoPortaleTests(TestCase):
             "attivo": False,
             "invito_inviato_at": None,
         }
-        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
         MockToken.return_value.create.return_value = "tk_re"
         MockEmail.return_value.send_email.return_value = (1, True)
 
@@ -360,7 +360,7 @@ class InvitoPortaleTests(TestCase):
         repo.find_identita_portale.return_value = None  # ma identita CLIENTE_PORTALE nuova
         repo.create_identita_portale.return_value = 501
 
-        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
         MockToken.return_value.create.return_value = "tk_cross"
         MockEmail.return_value.send_email.return_value = (1, True)
 
@@ -397,9 +397,7 @@ class InvitoPortaleTests(TestCase):
         MockAuth.return_value.set_deve_cambiare_password.assert_not_called()
 
         # Timestamp invito settato sulla nuova identita CROSS
-        MockAuth.return_value.set_invito_inviato_at.assert_called_once_with(
-            999, identita_id=501
-        )
+        MockAuth.return_value.segna_invito_inviato.assert_called_once_with(501)
 
     # Scopo: Flow CROSS + identita gia' esistente ma disattivata.
     # Il service NON deve riattivarla: l'attivazione della veste avviene
@@ -433,7 +431,7 @@ class InvitoPortaleTests(TestCase):
             "attivo": False,
             "invito_inviato_at": None,
         }
-        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
         MockToken.return_value.create.return_value = "tk_cross_reinv"
         MockEmail.return_value.send_email.return_value = (1, True)
 
@@ -588,7 +586,7 @@ class InvitoShopCustomerTests(TestCase):
         repo.create_identita_portale.return_value = 600
 
         MockAuth.return_value.set_deve_cambiare_password.return_value = True
-        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
         MockToken.return_value.create.return_value = "tk_shop_new"
         MockEmail.return_value.send_email.return_value = (1, True)
 
@@ -663,7 +661,7 @@ class InvitoShopCustomerTests(TestCase):
 
         self.assertIs(result["inviato"], False)
         self.assertEqual(result["identita_id"], 600)
-        MockAuth.return_value.set_invito_inviato_at.assert_not_called()
+        MockAuth.return_value.segna_invito_inviato.assert_not_called()
 
     # Scopo: Flow CROSS email esistente (operatore o altra veste) ->
     # identita SHOP_CUSTOMER disattivata + token ATTIVAZIONE_SHOP_CROSS.
@@ -691,7 +689,7 @@ class InvitoShopCustomerTests(TestCase):
         repo.find_identita_portale.return_value = None  # nessuna SHOP ancora
         repo.create_identita_portale.return_value = 700
 
-        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
         MockToken.return_value.create.return_value = "tk_shop_cross"
         MockEmail.return_value.send_email.return_value = (1, True)
 
@@ -749,7 +747,7 @@ class InvitoShopCustomerTests(TestCase):
         # Flow CROSS: la credenziale ha una password vera. Riprende l'identita
         # gia' presente e la lascia disattivata (la attiva il token).
         MockAuth.return_value.auth_user_ha_password.return_value = True
-        MockAuth.return_value.set_invito_inviato_at.return_value = True
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
         MockToken.return_value.create.return_value = "tk_re"
         MockEmail.return_value.send_email.return_value = (1, True)
 

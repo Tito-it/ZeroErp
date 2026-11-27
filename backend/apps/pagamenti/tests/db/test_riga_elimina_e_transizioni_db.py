@@ -63,7 +63,7 @@ from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.error_manager import ServiceError
 from apps.core.services.error_policies import ErrorPolicyRegistry
-from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
+from apps.core.tests.db_e2e import ContestoSu, apri_contesto_operatore, esegui_fixture, richiedi_db_provvisto
 from apps.pagamenti.db import pagamenti_repository as repo_mod
 from apps.pagamenti.db.pagamenti_repository import (
     DISTINTA_RIGHE_SORT_COLUMNS,
@@ -453,17 +453,15 @@ class MatriciTests(_DbTestCase):
 # di TEMP TABLE. ⚠️ Il contesto lo apre la funzione pgTAP, non
 # `apri_contesto_operatore`: l'operatore deve essere QUELLO dell'azienda
 # costruita, o la RLS non gli farebbe vedere cio' che nasce dopo.
-_FIXTURE_MONDO: tuple[str, ...] = (
+_FIXTURE_MONDO: tuple[str | ContestoSu, ...] = (
     """
     CREATE TEMP TABLE _mondo AS
     SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
     """,
-    """
-    SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))
-    """,
+    ContestoSu("_mondo"),
 )
 
-_FIXTURE_PASSI: tuple[str, ...] = _FIXTURE_MONDO + (
+_FIXTURE_PASSI: tuple[str | ContestoSu, ...] = _FIXTURE_MONDO + (
     """
     CREATE TEMP TABLE _cli_bst AS
     SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('secondo tempo') c
@@ -524,8 +522,7 @@ _FIXTURE_PASSI: tuple[str, ...] = _FIXTURE_MONDO + (
 #        col rollback. ⭐ Una sede per le due classi che la usano: la seconda
 #        l'aveva ricopiata per leggere gli altri due id.
 def _monta_riga_piena(cur) -> tuple[int, int, int]:
-    for passo in _FIXTURE_PASSI:
-        cur.execute(passo)
+    esegui_fixture(cur, _FIXTURE_PASSI)
     row = cur.fetchone()
     assert row is not None
     riga_id = int(row[0])
@@ -586,8 +583,7 @@ _DISTINTA_IN_STATO = """
 #        veri (transizioni, «ogni riga guardata»). Consegna
 #        `{(ramo, motivo atteso): riga_id}`. Tutto muore col rollback.
 def _monta_righe_per_ramo(cur) -> dict[tuple[str, str | None], int]:
-    for passo in _FIXTURE_MONDO:
-        cur.execute(passo)
+    esegui_fixture(cur, _FIXTURE_MONDO)
     righe: dict[tuple[str, str | None], int] = {}
     for ramo, origine, percorso, atteso in _RAMI_ELIMINA:
         cur.execute(_DISTINTA_IN_BOZZA, [origine])
@@ -659,8 +655,7 @@ class NumerazioneSulRegistroTests(_DbTestCase):
     #        com'e' in esercizio: il mondo basta, senza cliente ne' fattura.
     #        Le TEMP TABLE muoiono col rollback.
     def _mondo(self, cur) -> tuple[str, int]:
-        for passo in _FIXTURE_MONDO:
-            cur.execute(passo)
+        esegui_fixture(cur, _FIXTURE_MONDO)
         cur.execute("SELECT emittente_codice, emittente_fiscale_id FROM _mondo")
         row = cur.fetchone()
         assert row is not None

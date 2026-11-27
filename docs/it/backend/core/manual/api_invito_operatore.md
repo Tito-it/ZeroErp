@@ -272,4 +272,4 @@ con le tue credenziali esistenti.».
 | `apps/anagrafiche/services/invito_operatore_service.py` | Parte dell'operatore: check del DB, veste da invitare |
 | `apps/amm_software/api/invito_views.py` | 2 endpoint admin (invita, reinvia) |
 | `apps/core/api/attivazione_view.py` | Le view pubbliche sulla porta OPERATORE |
-| `apps/core/db/auth_repository.py` | `find_identita_per_ruolo`, `auth_user_ha_password`, `attiva_identita`, `set_invito_inviato_at` |
+| `apps/core/db/auth_repository.py` | `find_identita_per_ruolo`, `auth_user_ha_password`, `attiva_identita`, `segna_invito_inviato` (verbo `anagrafiche.fn_segna_invito_inviato`) |

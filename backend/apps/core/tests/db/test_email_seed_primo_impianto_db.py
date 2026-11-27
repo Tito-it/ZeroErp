@@ -39,14 +39,14 @@ import unittest
 from django.db import DatabaseError, connection, transaction
 
 from apps.core.services.db_error_fields import db_error_code
-from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, ContestoSu, esegui_fixture, richiedi_db_provvisto
 
-_FIXTURE_OPERATORE: tuple[str, ...] = (
+_FIXTURE_OPERATORE: tuple[str | ContestoSu, ...] = (
     """
     CREATE TEMP TABLE _mondo AS
     SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
     """,
-    "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
+    ContestoSu("_mondo"),
 )
 
 
@@ -58,8 +58,7 @@ class EmailSeedPrimoImpiantoDbTests(unittest.TestCase):
 
     # Scopo: il mondo dell'operatore, nella transazione del test.
     def _costruisci(self, cur) -> None:
-        for passo in _FIXTURE_OPERATORE:
-            cur.execute(passo)
+        esegui_fixture(cur, _FIXTURE_OPERATORE)
 
     # Scopo: l'id di una riga nata dal seed, letto dalla vista; il test salta
     #        se l'installazione non ne ha.

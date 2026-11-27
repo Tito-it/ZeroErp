@@ -29,7 +29,7 @@ import unittest
 from django.db import connection, transaction
 
 from apps.anagrafiche.tests.db.test_ricerca_liste_db import _mondo_cliente
-from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, apri_contesto_su, richiedi_db_provvisto
 
 
 # Scopo: il mondo del cliente (un BA, con la riga cliente) piu' un SECONDO BA
@@ -43,7 +43,7 @@ def _mondo_due_ba(cur) -> tuple[dict, int, int]:
     # z90 lo lega a quella di chi agisce, la stessa del primo BA (R-7, un'istanza
     # un emittente). `_mondo_cliente` chiude col superuser, che e' admin
     # globale e non puo' creare un BA (E_BA_ADMIN_GLOBALE_VIETATO).
-    cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [mondo["auth_user_id"]])
+    apri_contesto_su(cur, mondo["auth_user_id"])
     cur.execute(
         "SELECT u.id FROM config.utilities u WHERE u.id <> %s ORDER BY u.id LIMIT 1",
         [cli["utility_id"]],

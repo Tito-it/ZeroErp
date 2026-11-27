@@ -315,14 +315,12 @@ class InvitoVeste:
             )
             return False
 
-        if not self._auth_repo.set_invito_inviato_at(auth_user_id, identita_id=identita_id):
-            # Non fatale (il token c'e'), ma la veste non e' piu' dove
-            # l'emissione l'aveva trovata: utile in diagnosi.
-            logger.warning(
-                "Timestamp invito non aggiornato porta=%s user_id=%s identita_id=%s "
-                "— riga non trovata o credenziale divergente",
-                porta.nome, auth_user_id, identita_id,
-            )
+        # ⭐ Il verbo scrive o solleva (2026-11-27, passo 3c). Fino ad allora un
+        #    `UPDATE` che non trovava la riga finiva in un warning; un rifiuto
+        #    qui ora e' un difetto vero (il permesso l'ha gia' chiesto
+        #    `emetti`, nella stessa richiesta), e non si ingoia: la mail e'
+        #    partita, ma la lista direbbe «invito non spedito».
+        self._auth_repo.segna_invito_inviato(identita_id)
         return True
 
 

@@ -40,7 +40,12 @@ from decimal import Decimal
 from django.db import connection, transaction
 
 from apps.core.services.error_policies import ErrorPolicyRegistry
-from apps.core.tests.db_e2e import richiedi_db_provvisto, verifica_ricerca_colonna_per_colonna
+from apps.core.tests.db_e2e import (
+    ContestoSu,
+    esegui_fixture,
+    richiedi_db_provvisto,
+    verifica_ricerca_colonna_per_colonna,
+)
 from apps.pagamenti.db.pagamenti_repository import RATE_SORT_COLUMNS, PagamentiRepository
 from apps.pagamenti.services import pagamenti_service, saldi_service, sistemazioni_service
 from apps.core.db._helpers import utente_di_sessione
@@ -49,14 +54,12 @@ from apps.core.db._helpers import utente_di_sessione
 # un cliente fatturabile e due fatture numerate nella stessa serie — 101 e
 # 1010 — con una rata ciascuna. La seconda rata e' gia' SALDATA da un
 # movimento registrato: e' la rata «esaurita» che «solo aperte» deve togliere.
-_FIXTURE: tuple[str, ...] = (
+_FIXTURE: tuple[str | ContestoSu, ...] = (
     """
     CREATE TEMP TABLE _mondo AS
     SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
     """,
-    """
-    SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))
-    """,
+    ContestoSu("_mondo"),
     """
     CREATE TEMP TABLE _cli AS
     SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('lista rate') c
@@ -162,8 +165,7 @@ class _MondoRateDbTests(unittest.TestCase):
     #    (`fn_pgtap_set_contesto_operatore` nella fixture), non un utente
     #    pescato: su `zeroerp_ci` non ce n'e' nessuno da pescare.
     def _mondo(self, cur) -> tuple[dict[int, int], int]:
-        for passo in _FIXTURE:
-            cur.execute(passo)
+        esegui_fixture(cur, _FIXTURE)
         cur.execute("SELECT n, scadenza_id FROM _rate ORDER BY n")
         rate = {int(n): int(sid) for n, sid in cur.fetchall()}
         cur.execute("SELECT billing_account_id FROM _cli")
@@ -461,7 +463,7 @@ class RigheDaRateDbTests(_MondoRateDbTests):
 # motivo e registrato. La rata esce dalla banda (fuori capienza, SOVRA_INCASSATA)
 # e la fattura resta in credito (eccedenza). Piu' una riga SOSPESA in una
 # distinta in bozza, per la coda.
-_FIXTURE_RICERCA: tuple[str, ...] = (
+_FIXTURE_RICERCA: tuple[str | ContestoSu, ...] = (
     """
     CREATE TEMP TABLE _dist_extra AS
     SELECT pagamenti.fn_get_or_create_vendite_contabile(
@@ -532,8 +534,7 @@ class RicercaListeDbTests(_MondoRateDbTests):
 
     def test_la_ricerca_trova_ogni_colonna_accesa(self):
         def _prova(cur, rate, ba_id):
-            for passo in _FIXTURE_RICERCA:
-                cur.execute(passo)
+            esegui_fixture(cur, _FIXTURE_RICERCA)
             cur.execute("SELECT contabile_id FROM _dist")
             dist = int(cur.fetchone()[0])
             cur.execute("SELECT codice FROM pagamenti.vendite_contabili WHERE id = %s", [dist])

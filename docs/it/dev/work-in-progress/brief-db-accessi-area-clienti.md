@@ -2,10 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-27
 
-**Riparte: il team BE/FE con la richiesta unica del §5.3.8.** Il passo 3c lato DB è chiuso il 2026-11-27: 3c-1
-(`-01` … `-08`) e 3c-3 anticipato (`-09`, `-10`; Tid: non c'è produzione) applicati su dbdev, pgTAP verdi col
-runner di Tid, doc auto-generata rigenerata.
-⛔ **Numeri riservati a questo giro: `20261127-01` … `-10`**, tutti usati. Il passo 3b è committato e in
+**Riparte: la sessione DB coi giri 3-6, al via di Tid.** Il passo 3c è chiuso: lato DB il 2026-11-27 (3c-1 e 3c-3
+applicati, pgTAP verdi col runner di Tid), lato BE/FE lo stesso giorno (§5.3.10, committato il 2026-11-27).
+⛔ **Numeri riservati al 3c: `20261127-01` … `-10`**, tutti usati. Il passo 3b è committato e in
 `Tito-dev` (`53420a057`, PR #266).
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -14,17 +13,15 @@ runner di Tid, doc auto-generata rigenerata.
 | 2 | ~~team BE/FE~~ | ~~R-3c-1~~ risposta del 2026-11-27, letta dal DB: §5.3.4 | §5.3.4 | — |
 | 3 | ~~Tid~~ | ~~apply del 3c-1~~ (`-01` … `-08`), 2026-11-27 | §5.3.7 | — |
 | 4 | ~~Tid~~ | ~~apply di `-09`, `-10` e `ci_apply`, pgTAP col runner, doc auto-generata~~: fatto, verde, 2026-11-27 | §5.3.9 | — |
-| 5 | Tid | Il commit del giro (solo i suoi file: un'altra sessione DB ha file aperti nello stesso albero) | — | — |
-| 6 | team BE/FE | La richiesta unica: il verbo di `invito_inviato_at`, i test Django sulle fixture, `REVOCATA` nel filtro | §5.3.8 | — |
-| 7 | sessione DB | Giri 3-6, nell'ordine rivisto del §5.3.6, col via di Tid | §5 | 6 |
+| 5 | ~~Tid~~ | ~~Il commit del giro DB~~: `1405f8ce4` (PR #268) | — | — |
+| 6 | ~~team BE/FE~~ | ~~La richiesta unica: il verbo di `invito_inviato_at`, i test Django sulle fixture, `REVOCATA` nel filtro~~: fatta e committata il 2026-11-27 | §5.3.10 | — |
+| 7 | sessione DB | Giri 3-6, nell'ordine rivisto del §5.3.6, col via di Tid | §5 | — |
 
 **Decisioni aperte di Tid:** nessuna per il 3c. Per i giri successivi restano D-M6 e D-M9
 ([analisi-modello-area-clienti](analisi-modello-area-clienti.md) §7) e l'emittente del cliente iscritto da sé
 ([sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md) §3.6).
-⚠️ **Da oggi fino al passaggio del BE** l'invito parte ma `set_invito_inviato_at` si ferma con `42501`
-dopo la mail, e i test Django che scrivono una veste sono rossi: accettato (Tid, 2026-11-27).
-**Da committare:** i dieci changeSet, il loop dei grant, il provisioning, i pgTAP (due nuovi, diciotto adeguati),
-guide e manuali, questo brief.
+⚠️ ~~Fino al passaggio del BE l'invito si fermava con `42501` dopo la mail~~: chiuso dal 3c-2 (§5.3.10).
+**Da committare:** niente: il 3c-2 lato BE/FE (§5.3.10) è committato il 2026-11-27, il lato DB del 3c è in `1405f8ce4`.
 
 ## 0. Il piano da percorrere
 
@@ -57,7 +54,7 @@ guide e manuali, questo brief.
   - [x] 3c-1 — apply (Tid) — 2026-11-27
   - [x] 3c-3 — DB: l'app perde `UPDATE` e `DELETE`, anticipato nel giro (Tid), scritto e provato sullo scratch (§5.3.9) — 2026-11-27
   - [x] 3c-3 — apply di `-09`, `-10` (Tid), pgTAP verdi col runner — 2026-11-27
-  - [ ] 3c-2 — BE: la richiesta unica del §5.3.8
+  - [x] 3c-2 — BE: la richiesta unica del §5.3.8 (§5.3.10, committato) — 2026-11-27
 - **Fase 4 — Doc**
   - [x] Guida `risorse-umane-e-accessi` (§«La revoca»), guida dei processi automatici, `manual/identita_digitali` — 2026-11-25
   - [x] Doc auto-generata rigenerata dopo l'apply (le quattro funzioni nuove, la tabella, `fn_stato_veste`, `fn_riattiva_utente_tecnico`) — 2026-11-26
@@ -78,7 +75,7 @@ guide e manuali, questo brief.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-25. **A chi:** Tid; il team BE/FE per il §4.
 > **Origine:** T9 di [brief-db-revisione-anagrafiche](brief-db-revisione-anagrafiche.md) §17.1 e R-4 di
-> [brief-be-accessi-credenziale-e-vesti](brief-be-accessi-credenziale-e-vesti.md); il modello dei giri successivi
+> [brief-be-accessi-credenziale-e-vesti](../work-done/2026/brief-be-accessi-credenziale-e-vesti.md); il modello dei giri successivi
 > sta in [analisi-modello-area-clienti](analisi-modello-area-clienti.md). Un brief solo per decisione di Tid
 > (2026-11-25).
 > **Brief vicini verificati:** i tre dell'origine, che rimandano qui per il lavoro DB;
@@ -258,7 +255,7 @@ I verbi sono consegnati (`20261125-54`, `-55`) e aspettano l'apply. Lato BE:
 6. ⛔ **Censisci chi scrive `anagrafiche.identita_digitali.attivo` e chi cancella vesti**, a partire dal §3.1:
    l'elenco non è chiuso. Ogni scrittura diretta rimasta si porta su un verbo prima del passo 3c, quando l'app
    perde il privilegio; se ne serve uno che non c'è, la richiesta torna al DB tutta insieme.
-7. Nel [brief BE accessi](brief-be-accessi-credenziale-e-vesti.md) A-6 si chiude col guard (il pulsante passa da
+7. Nel [brief BE accessi](../work-done/2026/brief-be-accessi-credenziale-e-vesti.md) A-6 si chiude col guard (il pulsante passa da
    `fn_accendi_veste`, che ora rifiuta una veste revocata), e poi sparisce col ritiro del pulsante.
 
 Dal giro 2 (2026-11-26, dopo l'apply di `20261125-58` … `-71`):
@@ -765,6 +762,32 @@ link delle guide risolvono.
 senza guard dichiarato, le due fixture delle vesti, la lista `v_tabelle_app_solo_insert`); `risorse-umane-e-accessi`,
 `pgtap-come-si-scrive-un-test`, `manual/identita_digitali` **aggiornate**; le altre del loop dei grant (che nomina
 tutte le tabelle chiuse) hanno regole invariate: **coerenti**.
+
+#### 5.3.10 Il 3c-2 fatto dal BE/FE (sessione BE, 2026-11-27, committato)
+
+| # §5.3.8 | Esito |
+| --- | --- |
+| 1 | `AuthRepository.segna_invito_inviato(identita_id) → momento scritto`, sul verbo; `set_invito_inviato_at` ritirato. In `InvitoVeste.spedisci` il rifiuto del verbo **non si ingoia**: prima un `UPDATE` senza riga finiva in un warning, ora il verbo scrive o solleva, e il permesso l'ha già chiesto `emetti` (`fn_togli_revoca_veste`) nella stessa richiesta. Mock e test adeguati, uno nuovo («il rifiuto sale») |
+| 2 | Censimento in `backend/apps` (SQL su più righe e ORM): nessun `DELETE` di vesti, nessun ORM che scrive (`IdentitaDigitale` è in sola lettura). Sei test passano a `dbops.fn_pgtap_imposta_veste`: `test_login_credenziale_db` (le date), `test_revoca_veste_db` (due), `test_accessi_db`, `test_operatore_valido_al_db` (più righe, con `SELECT … FROM`), `test_commessa_testata_db`. Resta diretto `test_operatori_senza_utenti_tecnici`, che prova il rifiuto: ora pretende `42501`, perché un `DatabaseError` qualsiasi lo renderebbe verde per il privilegio e non per ciò che dice; il guard di `tecnica` lo prova `anagrafiche/test-identita-tecnica`. Nessuna colonna in più chiesta alla fixture |
+| 3 | `REVOCATA` in `STATI_ACCESSO` (BE) e in `STATI_FILTRO` di `AccessiAltriTab` (FE), dopo `DISATTIVO` e prima di `NESSUNO`. `STATI_FILTRO` è scritto nell'ordine dell'aggregato e non preso da `STATO_VESTE`, che segue la singola veste (`REVOCATA` subito dopo `ATTIVO`). Il presidio a tempo `test_uno_stato_che_la_vista_impara_entra_nel_filtro` è sostituito da `test_ogni_stato_della_veste_entra_nel_filtro`, che legge gli stati dai rami del `CASE` di `fn_stato_veste` e li confronta con l'elenco; il presidio nell'altro verso (ogni stato del filtro sta nella funzione e nella vista) resta |
+| 4 | Ogni `INSERT` diretto di una veste nei test nomina `attivo`: nessuno conta sul default |
+| 5 | Nessun nome `_v2` nel BE, nel FE o nelle policy generate |
+| 6 | Nessun lettore di `identita_digitali.user_update` nel BE: il campo è solo nel model ORM, che nessuno serializza |
+
+Doc BE: `api_amm_software` (il filtro `stato_accesso` con `REVOCATA`), `api_invito_portale_shop` (chi scrive
+`invito_inviato_at`), `api_invito_operatore`; catalogo BB L804 e L812, indice rigenerato.
+
+**Test** (2026-11-27): i moduli toccati, quelli che importano i BB di contesto e `test_token_veste_db`,
+`test_operatore_altre_vesti_db`, lanciati insieme col DB vero: 623, un rosso. Il rosso,
+`IndirizziSoggettoPluraleDbTests.test_gli_obbligatori_copiati_dal_primo` (manca `FATT`), è rosso anche sul codice
+di partenza (`git stash`, stessa corsa): non nasce da qui, e la causa non è indagata. Vitest di `amministrazione` e
+`PortaleAccessoPanel`: 109 verdi; ruff verde.
+
+**Guide** (`scripts/guide_coinvolte.py --base HEAD`): `risorse-umane-e-accessi` **coerente** (dice già che
+`invito_inviato_at` lo scrive il verbo, e l'ordine dell'aggregato con `REVOCATA` per ultimo);
+`architettura-permessi-e-autorizzazioni` e `pgtap-come-si-scrive-un-test` **coerenti** (le fixture delle vesti
+«le usano anche i test Django»); le altre 45 hanno in comune solo gli oggetti che i test toccati attraversano
+(documenti, magazzino, pagamenti, mail), con regole invariate: **coerenti**. mypy a cricchetto: nessun rilievo nuovo.
 
 #### 5.3.6 I giri 3-6, riletti
 

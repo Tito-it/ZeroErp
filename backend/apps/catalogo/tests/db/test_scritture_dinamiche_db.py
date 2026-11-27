@@ -51,21 +51,20 @@ from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.catalogo.db.catalogo_bom_repository import CatalogoBomRepository
 from apps.catalogo.db.catalogo_repository import CatalogoRepository
 from apps.catalogo.db.catalogo_uom_repository import CatalogoUomRepository
-from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, ContestoSu, esegui_fixture, richiedi_db_provvisto
 
-_FIXTURE: tuple[str, ...] = (
+_FIXTURE: tuple[str | ContestoSu, ...] = (
     """
     CREATE TEMP TABLE _mondo AS
     SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
     """,
-    "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
+    ContestoSu("_mondo"),
 )
 
 
 # Scopo: costruisce il mondo (azienda, operatore, contesto) sul cursore.
 def _apri_mondo(cur) -> None:
-    for passo in _FIXTURE:
-        cur.execute(passo)
+    esegui_fixture(cur, _FIXTURE)
 
 
 # Scopo: una riga come dict, per le verifiche.

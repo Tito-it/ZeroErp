@@ -238,11 +238,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 ### 🟡 Altri cantieri aperti
 
 - 📝 **Lo schema `storico` scrivibile dall'app** (`work-in-progress/brief-db-storico-scrivibile-dall-app.md`, aperto, non iniziato, 2026-11-27): il tema che D-AL **a** ha tenuto fuori dal giro 10-quater di `work-done/2026/brief-db-porte-aperte-dalla-sola-guc.md` (le porte della sola GUC e le viste aggiornabili, chiuso e archiviato il 2026-11-27). Parte quando Tid lo mette in coda.
-- **Accessi: una credenziale, più vesti** (`work-in-progress/brief-be-accessi-credenziale-e-vesti.md`; il piano
-  da cui nasce, `work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md`, è archiviato dal 2026-11-25 dopo la
-  riverifica sul codice): restano R-4 (la veste revocata: D-4, A-6), che aspetta il brief DB sugli accessi deciso
-  il 2026-11-23 (T9 di `brief-db-revisione-anagrafiche`, con S64 e S67): ✅ fatto lato DB e BE il 2026-11-26 nel
-  `brief-db-accessi-area-clienti` (D-4, A-6). Resta il collaudo a video di D-5. ✅ L-6 (date della veste) fatto il 2026-10-07,
+- **Accessi: una credenziale, più vesti** (`work-done/2026/brief-be-accessi-credenziale-e-vesti.md`, archiviato il
+  2026-11-27; il piano da cui nasce, `work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md`, dal 2026-11-25):
+  ✅ R-4 (la veste revocata: D-4, A-6) fatto lato DB e BE il 2026-11-26 nel `brief-db-accessi-area-clienti`, e il
+  3c (il verbo dell'invito spedito, `REVOCATA` nel filtro, il contesto dei test per la sola transazione) il
+  2026-11-27. ⚠️ Resta il collaudo a video di D-5: `work-in-progress/collaudo-in-app-accessi-sessioni-per-veste.md`. ✅ L-6 (date della veste) fatto il 2026-10-07,
   DB e BE/FE (`work-done/2026/brief-db-veste-utilizzabile.md`; giro 3 chiuso: «Valido al» del drawer operatore
   modificabile, spento col motivo per l'ultimo SUPER_ADMIN senza data di fine, `null` toglie la data): la regola «veste
   utilizzabile» sta in un BB a DB (`script.fn_veste_utilizzabile`), letto da tutte le sedi DB e dai
