@@ -64,6 +64,8 @@ Riferimento concettuale:
   `articolo_padre_contesto` escluso dal servizio.
 - Non chiama il resolver: ispeziona la configurazione dei tre stadi per quella
   combinazione e suggerisce come sbloccarla (`PricingDiagnoseService`).
+- `404` `E_BILLING_ACCOUNT_NOT_FOUND`: il `ba_id` non esiste o è fuori dal perimetro di chi
+  chiama (dal 2026-11-27, il codice del DB per lo stesso caso; prima `E_VENDITE_NOT_FOUND`).
 - Output `200`: `{ "ba": {trovato, categoria_id, categoria_codice,
   categoria_descrizione, categoria_partecipa_promo}, "stadio_0_promo": {...},
   "stadio_1_contratto": {...}, "stadio_2_categoria": {...}, "esito_atteso":
@@ -76,7 +78,7 @@ Riferimento concettuale:
 
 - Metodo: `GET`
 - Path: `/api/v1/vendite/pricing/limiti-utente/`
-- Query param opzionale: `billing_account_id` (int) — se fornito, la cascata include il livello `categoria_cliente` del BA destinatario (vedi cascata estesa sotto). Senza, il livello viene saltato. Non numerico o ≤ 0 → 400 `E_VALIDATION_INPUT`; BA inesistente o fuori dallo scope dell'operatore → 404 `E_ANAG_NOT_FOUND` (BB `categoria_cliente_da_query`, dal 2026-10-08: prima un BA malformato o che non risultava faceva saltare il livello in silenzio).
+- Query param opzionale: `billing_account_id` (int) — se fornito, la cascata include il livello `categoria_cliente` del BA destinatario (vedi cascata estesa sotto). Senza, il livello viene saltato. Non numerico o ≤ 0 → 400 `E_VALIDATION_INPUT`; BA inesistente o fuori dallo scope dell'operatore → 404 `E_BILLING_ACCOUNT_NOT_FOUND` (dal 2026-11-27; prima `E_ANAG_NOT_FOUND`) (BB `categoria_cliente_da_query`, dal 2026-10-08: prima un BA malformato o che non risultava faceva saltare il livello in silenzio).
 - Auth: `vendite` livello LETTURA
 - Output `200`:
 

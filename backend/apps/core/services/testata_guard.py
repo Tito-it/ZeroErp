@@ -53,17 +53,21 @@ def o_not_found(
     message: str,
     detail: str | None = None,
     function_name: str | None = None,
+    context: dict[str, Any] | None = None,
 ) -> T:
     # Senza `function_name` resta il default di ErrorManager: non si
     # inventa un nome per un chiamante che non lo dichiara.
     nome_funzione: dict[str, Any] = (
         {"function_name": function_name} if function_name else {}
     )
+    # `context` (2026-11-27, per `richiedi_billing_account_trovato`): le
+    # chiavi che il client legge accanto al codice, come nel contesto del DB.
     ErrorManager.require(
         entita is not None,
         code=code,
         message=message,
         detail=detail,
+        context=context,
         **nome_funzione,
     )
     assert entita is not None

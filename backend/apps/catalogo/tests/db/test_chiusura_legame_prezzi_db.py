@@ -57,7 +57,7 @@ class ChiusuraLegamePrezziDbTests(unittest.TestCase):
             # I due diritti del verbo (Q21): TUTTO sul catalogo e sui listini,
             # come li scrive il pannello dei permessi.
             apri_operatore_con_aree(
-                cur, aree=("catalogo", "vendite"), motivo="test BE19: chiusura del legame",
+                cur, aree=("catalogo", "vendite"),
             )
             cur.execute("SELECT script.fn_data_operativa()")
             self.oggi: date = cur.fetchone()[0]

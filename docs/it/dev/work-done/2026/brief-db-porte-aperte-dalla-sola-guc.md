@@ -1,152 +1,56 @@
 # Brief DB — le strade per cui l'app scrive senza il verbo: le porte della sola GUC e le viste aggiornabili
 
-> **⏭️ Chi riparte — aggiornato al 2026-11-27**
+> **✅ Chiuso il 2026-11-27, archiviato.** Le diciassette porte della sola GUC e le viste aggiornabili sono chiuse:
+> ogni strada per cui l'app scriveva senza il verbo passa ora da un verbo col suo permesso, oppure è una porta di
+> manutenzione del solo proprietario. Il lavoro si è fatto a giri, tutti applicati, verdi e committati, DB e BE/FE. L'elenco, con gli esiti, è nel **piano** qui sotto: è l'unica sede dello stato. Le analisi, le decisioni e le
+> richieste di ogni giro stanno nella sua sezione.
 >
-> **Riparte: il team BE**, con la richiesta di §15.7: il giro 10-quater è applicato su dbdev e sullo scratch, coi
-> pgTAP come app verdi, la doc auto-generata rigenerata e committato su `dev/db-tid` (2026-11-27). La voce «Le guide»
-> è fatta (§16, 2026-11-27, da committare). Chiuse le due richieste al BE (§15.7 e D-AH), il brief si archivia. In parallelo **il team BE**, con D-AH (§14.9): `apri_contesto_operatore` non consegna più un SUPER_ADMIN
-> che il test non ha chiesto. Il lavoro BE/FE dei giri 10-bis e 10-ter è fatto e committato (`16d095e72`, PR #257,
-> 2026-11-26). Lo schema `storico` scrivibile dall'app (D-AL **a**) è passato al brief nuovo
-> [brief-db-storico-scrivibile-dall-app](brief-db-storico-scrivibile-dall-app.md), aperto e non iniziato. Le richieste precedenti al BE (3j, 3k-bis, 3n, 6a … 6e) sono evase e committate (`e4af0106a`,
-> 2026-11-25); il dettaglio di ogni risposta sta nella sezione della sua richiesta.
-> ✅ Il ritiro di `reset_lotto_draft` è fatto, DB e BE (2026-11-24, §4.8). Il superuser Django è deciso (D-J **a**) e
-> fatto nel BE (§4.7); il `None` del perimetro si rifiuta (§4.7, BE, 2026-11-24).
-> ✅ Fatti e verdi (Tid, 2026-11-24): giro 1 (porte di manutenzione 14 e 15, la 17 dichiarata), giro 1-bis (la
-> fusione dei comuni, il presidio di `maintenance`), giro 3 (le viste in sola lettura per l'app, con la fase `post`
-> del provisioning su dbdev), giro 12-13 (i legami della bolla, §8). Tutto applicato e committato.
-> Decise: D-A **a**, D-C **b** per 14 e 15, D-D **a** (2026-11-23); dalla verifica critica (§3-ter) D-E **a** e D-F
-> **a** (2026-11-23); D-G **a**, D-H **a** (2026-11-24); D-B decaduta. Il brief ospita anche la seconda famiglia di
-> strade, **le viste aggiornabili** (§5, D-V), nata dal giro 2 di `brief-db-revisione-anagrafiche` (§19).
+> Le decisioni di Tid, tutte prese: D-A … D-AL (D-B decaduta), D-I.1 … D-I.4, D-K5 … D-K8. Ognuna sta nella sezione
+> del suo giro.
 >
-> | # | Chi | Che cosa | Dove | Aspetta |
-> | --- | --- | --- | --- | --- |
-> | 1 | team DB | ✅ censimento delle porte sul catalogo di dbdev (2026-11-23), ✅ corretto dall'analisi critica: diciassette porte | §2, §3-bis | — |
-> | 1b | team DB | ✅ la seconda famiglia, le viste aggiornabili: censite e decise da Tid (D-V, 2026-11-23) | §5 | — |
-> | 2 | Tid | ✅ D-A (**a**) · ✅ D-C (**b**) · ✅ D-D (**a**), 2026-11-23 | §3-bis.4, §4.3 | — |
-> | 3 | team DB | ✅ la richiesta unica al BE: chi accende le GUC, chi chiama gli aprenti, chi scrive su una vista (2026-11-23) | §4.1 | — |
-> | 3b | Tid | ✅ superato: la Parte B l'ha risposta il BE, la Parte A l'ha letta il DB (2026-11-23) | §4.1 | — |
-> | 3c | Tid | ✅ D-E (**a**) · ✅ D-F (**a**), 2026-11-23 | §3-ter | — |
-> | 3d | team BE | la richiesta 3d: ✅ scritta e precompilata dal DB (2026-11-24); ✅ risposta del BE (2026-11-24) | §4.4, §4.5 | — |
-> | 3e | team DB | ✅ letta la risposta 3d (2026-11-24): §4.3 corretta, il guard di ogni porta coi BB che ci sono, i builder per i test della Parte C, due punti per i giri 8 e 1-7 | §4.5-bis | — |
-> | 3e-bis | Tid | ✅ D-L **a** (2026-11-24): `dbops.fn_pgtap_concedi_livello_area` nasce nel primo giro che lo usa (8 o 1-7), le quattro copie `pg_temp.livello_area` si ritirano nello stesso giro | §4.5-bis | — |
-> | 3f | Tid | ✅ D-I: il task `reset_lotto_draft` si ritira · ✅ D-J: il superuser Django non concede più niente, strada **a** (2026-11-24) | §4.6 | — |
-> | 3h | team BE | D-J: ✅ bypass tolti, test adeguati, suite verde · ✅ rivisto con `/verifica` (2026-11-24) | §4.7 | — |
-> | 3i | team DB | D-K: il verbo `fn_crea_primo_amministratore` e la sua prova (R-DB-K1); la porta di `fn_crea_operatore_v2` nel piano dei giri (R-DB-K2) · ✅ analisi con R-DB-K4, ✅ scritto e provato (2026-11-25) | §4.7, §4.9 | — |
-> | 3i-bis | Tid | R-DB-K1 e R-DB-K4: ✅ D-K7 **b**, ✅ D-K8 **a2**, ✅ il via (2026-11-25) | §4.9.3, §4.9.4 | — |
-> | 3i-ter | team DB | R-DB-K1 e R-DB-K4: ✅ `20261125-30` … `-32`, CSV, seed tolti, pgTAP, guide e `manual/`; prova sullo scratch (2026-11-25) | §4.9.6 | — |
-> | 3i-quater | Tid | R-DB-K1 e R-DB-K4: ✅ apply, ✅ pgTAP come app e `test-crea-primo-amministratore-v1` su dbdev verdi, ✅ doc auto-generata rigenerata (2026-11-25) | §4.9.6 | 3i-ter |
-> | 3j | team BE | il comando, `genera_error_policies`, il censimento dei lettori: la richiesta · ✅ fatto il 2026-11-25: il comando, i test (anche sul DB vero), playbook, `configurazione-django.md` e `installazione.md`, `genera_error_policies`, il censimento | §4.9.7 | 3i-quater |
-> | 3k | team DB | R-DB-K3: la descrizione di `E_SCOPE_SENZA_UTENTE` allargata alle letture · ✅ scritta, ✅ applicata da Tid, `test-catalogo-messaggi-errore-completo` verde (2026-11-24) | §4.7 | — |
-> | 3k-bis | team BE | R-DB-K3: dopo l'apply, `manage.py genera_error_policies` (le `note` di `E_SCOPE_SENZA_UTENTE` e `E_UI_CHIAMATA_NON_VALIDA` sono cambiate: `test_il_file_generato_e_allineato_al_catalogo` è rosso fino alla rigenerazione) · ✅ rigenerato il 2026-11-25 insieme al codice di R-DB-K1 (`E_PRIMO_AMMINISTRATORE_GIA_PRESENTE`) e ai codici dei giri T5/T7a di `brief-db-revisione-anagrafiche`, sette ripieghi nuovi in `error_messages_fallback.py`, nessuna classe cambiata, `--check` pulito | §4.7 | 3k |
-> | 3l | team DB | R-DB-K4: i due changeSet del SUPER_ADMIN di sviluppo (`20260309-01`, `20260419-95`): ritirarli o farli passare dal verbo di R-DB-K1 · ✅ analisi: la (b) non si può fare; ✅ D-K8 **a2**, i due file tolti (2026-11-25) | §4.7, §4.9.4 | — |
-> | 3g | team DB, poi team BE | il ritiro del task `reset_lotto_draft`: ✅ analisi, ✅ D-I.1 **a** e D-I.2 **a** (Tid), ✅ scritto, applicato, pgTAP 9/9, pushato · ✅ il BE: whitelist, handler, esclusione del runner, test e manuali (2026-11-24) | §4.6, §4.8 | — |
-> | 3m | team DB | R-DB-I3 (D-I.3 **a**, Tid): ✅ `distruttivo` sul registro, `auto_step_rollback` colonna della pipeline col `CHECK` sul `meta`, `vendite.fn_check_rollback_step_automatico`, pgTAP 14/14 sullo scratch, guide (2026-11-24) | §4.8 | — |
-> | 3m-bis | Tid | R-DB-I3: ✅ apply (`20261123-95`, `-96`, `-97` e i due mirror), pgTAP `test-rollback-step-automatico-v1` come app verde, doc auto-generata rigenerata (2026-11-24) | §4.8 | — |
-> | 3n | team BE | R-DB-I3: il runner chiede `vendite.fn_check_rollback_step_automatico` al posto di `is_auto_step_rollback_attivo`, i test che scrivono la chiave nel `meta` passano alla colonna, manuale `api_pipeline_task` (⚠️ dall'apply `test_auto_step_rollback_dalla_pipeline_db` è rosso: atteso) · ✅ fatto il 2026-11-25: `is_rollback_step_automatico` al posto di `is_auto_step_rollback_attivo`, test DB riscritto sui casi costruiti (`test_rollback_step_automatico_db`), manuale | §4.8 | — |
-> | 3o | Tid, poi team BE | dalla `/verifica` del 2026-11-24: ✅ D-K5 **a** (il resolver delega al BB), ✅ D-K6 **a** (il motore documentale riceve l'utente tecnico), ✅ D-I.4 **a** (`auto_step_rollback` dalla pipeline) · ✅ il BE, coi test (2026-11-24) | §4.7, §4.8 | — |
-> | 4 | team BE / DB | ✅ Parte B, le viste: «nessuno», dal BE (2026-11-23) · ✅ Parte A, le GUC e gli aprenti: letta dal DB sul ramo del BE (2026-11-23) | §4.2, §5.1 | — |
-> | 4a | Tid | ✅ il giro 1: applicato, pgTAP verdi (2026-11-24) | §6 | — |
-> | 4c | Tid | ✅ D-G (**a**) · ✅ D-H (**a**), 2026-11-24 | §6.4, §6.5 | — |
-> | 4d | Tid | ✅ l'apply di `20261123-46`, pgTAP verdi · ✅ il pgTAP di D-H come app, verde (2026-11-24) | §6.5 | — |
-> | 4b | team DB | ✅ il giro 3, le viste: scritto e provato sullo scratch (2026-11-24) | §7 | — |
-> | 4e | Tid | ✅ il giro 3: apply, `ci_apply`, fase `post` del provisioning su dbdev, pgTAP verde (2026-11-24) | §7.4 | — |
-> | 5 | Tid / team BE | ✅ la richiesta 3d girata al BE, e la risposta (2026-11-24) | §4.5 | — |
-> | 5b | team DB | ✅ il giro 12-13, verde come app (2026-11-24) | §8 | — |
-> | 6 | team DB | i giri delle porte del flusso 16, 10, 9, 11, 8, 1-7 | Il piano | — |
-> | 6a | team DB | giro 16: ✅ analisi (2026-11-24) | §9 | — |
-> | 6a-bis | Tid | giro 16: ✅ D-M **a**, ✅ D-N **a**, il via (2026-11-24) | §9.3 | — |
-> | 6a-ter | team DB | giro 16: ✅ `20261123-98`, `-99`, pgTAP nuovo e quattordici adeguati, guide e `manual/`, provato sullo scratch (2026-11-24) | §9.4 | — |
-> | 6a-quater | Tid | giro 16: ✅ apply, pgTAP come app verdi, doc auto-generata rigenerata (2026-11-24) | §9.4 | — |
-> | 6a-quinquies | team BE | giro 16: i test Django che pubblicano danno `documenti_template_manage` (§9.5) · ✅ test e manuale (2026-11-25) | §9.5 | — |
-> | 6b | team DB | giro 10: ✅ analisi (2026-11-24) | §10 | — |
-> | 6b-bis | Tid | giro 10: ✅ D-O **a**, ✅ D-P **a**, ✅ D-Q **a**, il via (2026-11-24) | §10.3 | — |
-> | 6b-ter | team DB | giro 10: ✅ `20261124-01` … `-06`, le altre due sedi di §11.8, pgTAP nuovo e ventiquattro adeguati, guide e `manual/`, provato sullo scratch (2026-11-25) | §10.5 | — |
-> | 6b-quater | Tid | giro 10: ✅ apply, pgTAP come app verdi, doc auto-generata rigenerata (2026-11-25) | §10.5 | — |
-> | 6b-quinquies | team BE | giro 10: i test che chiamano il verbo da SUPER_ADMIN; il censimento di chi scrive `config.user_emittenti_fiscali` (per il giro 10-bis) · ✅ test e censimento (2026-11-25): nessuno scrive la tabella senza il verbo; manuale | §10.6 | — |
-> | 6b-sexies | team DB | giro 10-ter, l'operatore non è mai «globale» (Tid, 2026-11-26): ✅ analisi (2026-11-26) | §10-ter | — |
-> | 6b-septies | Tid | giro 10-ter: ✅ D-AA **a**, ✅ D-AB **b**, ✅ il via (2026-11-26) | §10-ter.4 | — |
-> | 6b-octies | team DB | giro 10-ter: ✅ `20261125-74` … `-76`, codice d'errore, pgTAP del giro e tredici adeguati, guide e `manual/`, provato sullo scratch (2026-11-26) | §10-ter.6 | — |
-> | 6b-nonies | Tid | giro 10-ter: ✅ apply `20261125-72` … `-76` (col `-73` dell'altra sessione), ✅ doc auto-generata rigenerata, ✅ suite pgTAP intera verde su dbdev e sullo scratch, ✅ commit `3d3d804b92` (PR #253) (2026-11-26) | §10-ter.6 | — |
-> | 6b-decies | Tid, poi team BE/FE | giro 10-ter: la richiesta · ✅ fatta dal BE/FE (2026-11-26): ripieghi SINGLE (service, drawer, store), testi, test sul DB vero, manuale; la traduzione del codice non serviva | §10-ter.5 | — |
-> | 6f | team DB | giro 10-bis: ✅ analisi (2026-11-26) | §14 | — |
-> | 6f-bis | Tid | giro 10-bis: ✅ D-AC **a**, D-AD **b**, D-AE **a** (2026-11-26); la richiesta di §14.5 al BE | §14.3, §14.5 | — |
-> | 6f-ter | team BE | giro 10-bis: ✅ il censimento integrativo (2026-11-26) | §14.5 | — |
-> | 6f-ter-bis | Tid | giro 10-bis: ✅ D-AF **a**, ✅ D-AG **a**, ✅ l'ok sul codice morto del BE (2026-11-26); il via | §14.6, §14.7 | — |
-> | 6f-ter-ter | team DB | giro 10-bis: ✅ il contenuto del profilo censito sul ramo del BE, al posto della richiesta (2026-11-26) | §14.7 | — |
-> | 6f-quater | team DB | giro 10-bis: ✅ il via (Tid), ✅ `20261126-01` … `-25`, loop e provisioning, CSV, pgTAP nuovo e 57 adeguati, guide e `manual/`, provato sullo scratch (2026-11-26) | §14.8 | — |
-> | 6f-quinquies | Tid | giro 10-bis: ✅ apply su dbdev e scratch, ✅ pgTAP come app verdi, ✅ doc auto-generata rigenerata, ✅ commit (2026-11-26) | §14.8 | — |
-> | 6f-sexies | Tid, poi team BE/FE | giro 10-bis: la richiesta · ✅ fatta dal BE (2026-11-26): test adeguati (quattro erano verdi solo per i dati di dbdev), policy rigenerate, codice morto ritirato, test sul DB vero di `crea_operatore`, manuale | §14.9 | — |
-> | 6f-septies | Tid | giro 10-bis: ✅ D-AH **a**, la proposta del BE su `apri_contesto_operatore` (2026-11-26) | §14.9 | — |
-> | 6f-octies | team BE | giro 10-bis, D-AH: `apri_contesto_operatore` senza `super_admin=True` non consegna mai un SUPER_ADMIN | §14.9 | 6f-septies |
-> | 6g | team DB | giro 10-quater, gli override utente e i due cataloghi (D-AG **a**): ✅ analisi (2026-11-26) | §15 | — |
-> | 6g-bis | team DB | giro 10-quater: ✅ il censimento letto sul ramo del BE, al posto della richiesta (Tid, 2026-11-26) | §15.5 | — |
-> | 6g-ter | Tid | giro 10-quater: ✅ D-AI **a**, D-AJ **a**, D-AK **a**, D-AL **a**, ✅ il via, numeri `20261126-50` … `-64` (2026-11-27) | §15.4 | — |
-> | 6g-quater | team DB | giro 10-quater: ✅ `20261126-50` … `-59`, `-62`, `-63`, loop e provisioning, pgTAP nuovo e diciotto adeguati, guide e `manual/`, provato sullo scratch (2026-11-27) | §15.7 | — |
-> | 6g-quinquies | Tid | giro 10-quater: ✅ apply su dbdev e scratch, ✅ pgTAP come app verdi, ✅ doc auto-generata, ✅ commit (2026-11-27) | §15.7 | — |
-> | 6g-sexies | team BE | giro 10-quater: la richiesta (repository sui verbi, i test ai builder, manuali) | §15.7 | — |
-> | 6h | team DB | «Le guide»: ✅ le porte rilette nelle guide del loro dominio, §7.4 dei permessi e §4.4 di `automazione-db` aggiornati (2026-11-27) | §16 | — |
-> | 6c | team DB | giro 9: ✅ analisi, D20-b riletta (2026-11-25) | §11 | — |
-> | 6c-bis | Tid | giro 9: ✅ D-S **a**, il via (2026-11-25) | §11.3 | — |
-> | 6c-ter | team DB | giro 9: ✅ `20261124-07` … `-09`, pgTAP nuovo e quattro adeguati, guida e `manual/`, provato sullo scratch (2026-11-25) | §11.5 | — |
-> | 6c-quater | Tid | giro 9: ✅ apply, pgTAP come app verdi, doc auto-generata rigenerata (2026-11-25) | §11.5 | — |
-> | 6c-quinquies | team BE | giro 9: i test che chiamano il verbo danno `registra_distinta`; la mappatura di `E_SCOPE_EMITTENTE` dal verbo · ✅ test, mappatura e manuale (2026-11-25) | §11.6 | — |
-> | 6d | team DB | giro 11: ✅ analisi, nessuna decisione nuova (2026-11-25) | §12 | — |
-> | 6d-ter | team DB | giro 11: ✅ `20261124-10`, `-11`, pgTAP nuovo (i ventuno esistenti invariati), guide e `manual/`, provato sullo scratch (2026-11-25) | §12.5 | — |
-> | 6d-bis | team DB | il blocco `EXCEPTION` del giro 9 tolto (decisione di Tid, 2026-11-25): ✅ `20261124-12` scritto e provato | §12.7 | — |
-> | 6d-quater | Tid | giro 11 e `20261124-12`: ✅ apply, pgTAP come app verdi, doc auto-generata rigenerata (2026-11-25) | §12.5, §12.7 | — |
-> | 6d-quinquies | team BE | giro 11: i test che chiamano il verbo con un operatore senza il livello su `vendite.reso` · ✅ nessuno da adeguare, manuale (2026-11-25) | §12.6 | — |
-> | 6e | team DB | giro 8: ✅ analisi, D10-D11 rilette (2026-11-25) | §13 | — |
-> | 6e-bis | Tid | giro 8: ✅ D-T **b** (i giri 8 e 1-7 insieme), D-U **a** (2026-11-25) | §13.3 | — |
-> | 6e-ter | team DB | giro 8 + 1-7: ✅ l'analisi della parte 1-7, col passaggio senza azione (2026-11-25) | §13.5-§13.8 | — |
-> | 6e-quater | Tid | giro 8 + 1-7: ✅ D-W **a**, D-X **a**, D-Y **a**, D-Z **a**, ✅ il via, ✅ runner owner per i pgTAP delle strade chiuse (2026-11-25) | §13.7, §13.9 | — |
-> | 6e-quinquies | team DB | giro 8 + 1-7: ✅ changeSet, pgTAP, builder, guide e `manual/`, prova sullo scratch (2026-11-25) | §13.9 | — |
-> | 6e-sexies | Tid | giro 8 + 1-7: ✅ apply, ✅ pgTAP come app verdi, ✅ doc auto-generata rigenerata dopo le pagine `manual/` (2026-11-25) | §13.9 | — |
-> | 6e-septies | team BE | giro 8 + 1-7: la richiesta · ✅ test, tre censimenti e manuali (2026-11-25) | §13.8 | — |
+> Restano fuori, con un brief loro: lo schema `storico` scrivibile dall'app (D-AL **a**,
+> [brief-db-storico-scrivibile-dall-app](../../work-in-progress/brief-db-storico-scrivibile-dall-app.md), aperto e non iniziato).
 >
-> Decisioni aperte di Tid: nessuna. Il giro 10-quater è applicato, verde e committato (2026-11-27, §15.7); «Le guide» (§16) è da committare. Prese: (D-AI **a**, D-AJ **a**, D-AK **a**, D-AL **a** del giro 10-quater, il 2026-11-27, §15.4; D-AH **a**, `apri_contesto_operatore`, il 2026-11-26, §14.9; D-AF **a**, D-AG **a**, il codice morto del BE che si ritira, il 2026-11-26, §14.6; D-AC **a**, D-AD **b**, D-AE **a** del giro 10-bis il 2026-11-26, §14.3; D-AA **a** e D-AB **b** del giro 10-ter decise il 2026-11-26, §10-ter.4; le due della verifica del passo 3j, decise e fatte il 2026-11-25, §4.9.7; D-K7 **b** e D-K8 **a2** decise il 2026-11-25, §4.9; D-W … D-Z il 2026-11-25, §13.7). R-DB-K1 e R-DB-K4 sono applicati, verdi e committati (2026-11-25). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso. ✅ Il lavoro BE del 2026-11-25 (tutte le richieste evase) è committato su `dev/backend-tid` (`e4af0106a`). Restano tre voci del piano, del team DB: il giro 10-bis, il giro 10-quater e «Le guide».
-> Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
-> (`969ea14566`), dal BE §4.5-§4.7 con D-J (`4271a0dc69`, PR #232), e il 2026-11-24 il lato DB del ritiro di
-> `reset_lotto_draft` con la pulizia della testata (§4.8). Dal BE, il 2026-11-24 (`5fc466c729`): il `None` del perimetro
-> che si rifiuta, il lato BE del ritiro di `reset_lotto_draft`, D-K5, D-K6 e D-I.4, e le richieste R-DB-K3, R-DB-K4 e
-> R-DB-I3. Dal DB, il 2026-11-24 su `dev/db-tid`: R-DB-K3 (§4.7) e R-DB-I3 (§4.8), applicate e verdi; il giro 16
-> (`3045e11677`) e il 2026-11-25 il giro 10 (§10.5), pushati. Il 2026-11-25 anche il giro 9 (§11.5), pushato. Il 2026-11-25 anche il giro 11 (§12.5) con `20261124-12` (§12.7), `8f29eee1cb`, PR #241. Il 2026-11-25 anche il giro 8 + 1-7 (§13.9), `e4bf00af69`, pushato.
+> ⭐ **Pulizia del 2026-11-27** (Tid): tolte la tabella «chi fa cosa» della testata (116 righe) e il registro in fondo
+> (114 righe), e nel piano le voci di processo ripetute per ogni giro (apply, doc rigenerata, commit, il via).
+> Ripetevano, passo per passo, ciò che il piano e le sezioni dei giri già dicono.
 >
 > **Brief vicini verificati (2026-11-23):**
-> [brief-db-magazzino-tutte-le-scritture-dal-verbo](../work-done/2026/brief-db-magazzino-tutte-le-scritture-dal-verbo.md)
+> [brief-db-magazzino-tutte-le-scritture-dal-verbo](brief-db-magazzino-tutte-le-scritture-dal-verbo.md)
 > (archiviato), da cui nasce: la sua §5.8 ha ricercato la classe vicina, la porta «GUC + proprietario» attraversata
 > da un verbo DEFINER, senza trovare altri casi; questa è un'altra classe. `brief-db-revisione-anagrafiche`,
 > segnalazione **S50**, nomina la porta `zeroerp.maintenance_indirizzi_dettaglio` («un parametro di sessione che
 > chiunque scriva accende»): è una delle diciassette. Se Tid la decide lì, qui si toglie; nel dubbio, decide Tid
 > dove la si tratta. ✅ Decisa qui (D-D, 2026-11-23): S50 la rimanda a questo brief. `brief-db-revisione-ui`: nomina `fn_is_proprietario_tabella` per altro, nessuna sovrapposizione.
-> [brief-incassi-riconciliazione-rate-promemoria](brief-incassi-riconciliazione-rate-promemoria.md) (il cantiere
+> [brief-incassi-riconciliazione-rate-promemoria](../../work-in-progress/brief-incassi-riconciliazione-rate-promemoria.md) (il cantiere
 > «contabili di pagamento», aperto; ⚠️ trovato il 2026-11-23, dopo la D-A): possiede le decisioni sulle funzioni delle
 > porte 8 e 9 (D10-D11 sul fondo, D20-b la registrazione tardiva con `fn_posta_riga_tardiva`). Non cambia la D-A, che
 > non tocca **cosa** fanno quelle funzioni ma **come girano**; i giri delle porte 8 e 9 rileggono quelle decisioni
 > prima di scrivere il verbo, e le portano nei pgTAP.
-> [brief-db-revisione-anagrafiche](brief-db-revisione-anagrafiche.md) §19 (giro 2, T2): ha trovato la seconda famiglia
+> [brief-db-revisione-anagrafiche](../../work-in-progress/brief-db-revisione-anagrafiche.md) §19 (giro 2, T2): ha trovato la seconda famiglia
 > (§5) e l'ha portata qui il 2026-11-23, con la decisione di Tid; lì resta l'analisi sul catalogo di `anagrafiche`.
 >
 > **Guide verificate** (`scripts/guide_coinvolte.py --oggetti` sui quindici trigger, 2026-11-23):
-> [gestione-dei-pagamenti](../../guide/gestione-dei-pagamenti.md) (i due guard delle righe del contabile),
-> [gestione-degli-indirizzi](../../guide/gestione-degli-indirizzi.md) e
-> [riclassificazione-vie](../../guide/riclassificazione-vie.md) (il guard di `stradario_id`, «flag di
-> manutenzione»), [gestione-listini](../../guide/gestione-listini.md) (il guard degli articoli ammessi): oggi
+> [gestione-dei-pagamenti](../../../guide/gestione-dei-pagamenti.md) (i due guard delle righe del contabile),
+> [gestione-degli-indirizzi](../../../guide/gestione-degli-indirizzi.md) e
+> [riclassificazione-vie](../../../guide/riclassificazione-vie.md) (il guard di `stradario_id`, «flag di
+> manutenzione»), [gestione-listini](../../../guide/gestione-listini.md) (il guard degli articoli ammessi): oggi
 > **coerenti**, descrivono le porte come sono. Una strada che aggiunge il proprietario a una porta le
 > **contraddice**: è un cambio di modello, e decide Tid (§3). Orfani: dieci trigger che nessuna guida cita
 > (`config.trgfn_toponomastica_protect_update`, `config.trgfn_user_emittenti_fiscali_guard_delete`, gli otto di
 > `vendite` del reset del lotto e dei legami della bolla); sono dettagli interni dei guard, segnalati qui.
-> Rilancio del 2026-11-23 sulle porte 16-17 e sugli aprenti: [documenti-e-stampe](../../guide/documenti-e-stampe.md)
-> (la pubblicazione), [tx_id_implementation_guide](../../guide/tx_id_implementation_guide.md),
-> [audit-e-tracciabilita](../../guide/audit-e-tracciabilita.md), [automazione-db](../../guide/automazione-db.md),
-> [generazione-cliente](../../guide/generazione-cliente.md) (il trigger del `tx_id`): **coerenti** oggi;
-> [riclassificazione-vie](../../guide/riclassificazione-vie.md) **indietro** su un punto (§3-bis.3). Orfani: gli
+> Rilancio del 2026-11-23 sulle porte 16-17 e sugli aprenti: [documenti-e-stampe](../../../guide/documenti-e-stampe.md)
+> (la pubblicazione), [tx_id_implementation_guide](../../../guide/tx_id_implementation_guide.md),
+> [audit-e-tracciabilita](../../../guide/audit-e-tracciabilita.md), [automazione-db](../../../guide/automazione-db.md),
+> [generazione-cliente](../../../guide/generazione-cliente.md) (il trigger del `tx_id`): **coerenti** oggi;
+> [riclassificazione-vie](../../../guide/riclassificazione-vie.md) **indietro** su un punto (§3-bis.3). Orfani: gli
 > aprenti `fn_cleanup_fatture_by_ids`, `fn_cancella_fondo_fattura`, `fn_change_user_emittenti_scope`,
 > `fn_genera_ddt_riconsegna`, `proc_bump_toponomastica` e il trigger della porta 16.
 > Rilancio del 2026-11-23 sulle sei viste di §5:
-> [configurazione-liste](../../guide/configurazione-liste.md) (`vw_liste_multi_emittente_non_certificate`) e
-> [processi-automatici-classe-e-identita](../../guide/processi-automatici-classe-e-identita.md)
+> [configurazione-liste](../../../guide/configurazione-liste.md) (`vw_liste_multi_emittente_non_certificate`) e
+> [processi-automatici-classe-e-identita](../../../guide/processi-automatici-classe-e-identita.md)
 > (`vw_processi_dominio_su_pgagent`) le descrivono come controlli in lettura: **coerenti**.
-> [architettura-permessi-e-autorizzazioni](../../guide/architettura-permessi-e-autorizzazioni.md) §7.4 «La porta» non
+> [architettura-permessi-e-autorizzazioni](../../../guide/architettura-permessi-e-autorizzazioni.md) §7.4 «La porta» non
 > nomina le viste: **indietro** quando la D-V entra nel codice, si completa in quel giro. Orfani:
 > `catalogo.vw_causali_onere_assegnabili`, `dbops.vw_emittenti_regime_non_confermato`, `script.vw_audit_sources`,
 > `script.vw_stati_estesi` (proiezioni interne, nessuna guida da scrivere).
@@ -206,43 +110,27 @@
     - [x] analisi (2026-11-24, §9)
     - [x] D-M **a** e D-N **a** (Tid, 2026-11-24)
     - [x] changeSet, pgTAP, guide; prova sullo scratch (2026-11-24, §9.4)
-    - [x] apply e pgTAP come app: verdi (Tid, 2026-11-24)
-    - [x] la doc auto-generata rigenerata (Tid, 2026-11-24)
-    - [x] commit su `dev/db-tid` (2026-11-24)
     - [x] il BE: i test Django che pubblicano, il manuale (§9.5, 2026-11-25)
   - [x] 10, lo scope emittenti: il verbo con `fn_guard_super_admin` (nessuna RLS) (§10)
     - [x] analisi (2026-11-24, §10)
     - [x] D-O **a**, D-P **a**, D-Q **a** (Tid, 2026-11-24)
     - [x] changeSet, pgTAP nuovo e ventiquattro adeguati, builder, guide e `manual/`; prova sullo scratch (2026-11-25, §10.5)
-    - [x] apply e pgTAP come app: verdi (Tid, 2026-11-25)
-    - [x] la doc auto-generata rigenerata (Tid, 2026-11-25)
-    - [x] commit e push su `dev/db-tid` (2026-11-25)
     - [x] il BE: i test che chiamano il verbo da SUPER_ADMIN, e il censimento di chi scrive la tabella (§10.6, 2026-11-25)
   - [x] 9, la registrazione tardiva: da qui si prova il perimetro; prima si rilegge la D20-b di `brief-incassi-riconciliazione-rate-promemoria` (§11)
     - [x] analisi, D20-b riletta (2026-11-25, §11)
     - [x] D-S **a** (Tid, 2026-11-25)
     - [x] changeSet, pgTAP nuovo e quattro adeguati, guida e `manual/`; prova sullo scratch (2026-11-25, §11.5)
-    - [x] apply e pgTAP come app: verdi (Tid, 2026-11-25)
-    - [x] la doc auto-generata rigenerata (Tid, 2026-11-25)
-    - [x] commit e push su `dev/db-tid` (2026-11-25)
     - [x] il BE: i test che chiamano il verbo danno `registra_distinta` (§11.6, 2026-11-25)
   - [x] 11, la bolla di riconsegna: il verbo col livello su `vendite.reso`, il perimetro del reso (§12)
     - [x] analisi, nessuna decisione nuova (2026-11-25, §12)
     - [x] changeSet, pgTAP nuovo, guide e `manual/`; prova sullo scratch (2026-11-25, §12.5)
-    - [x] apply e pgTAP come app: verdi, con `20261124-12` (Tid, 2026-11-25)
-    - [x] la doc auto-generata rigenerata (Tid, 2026-11-25)
-    - [x] commit e push su `dev/db-tid` (`8f29eee1cb`, 2026-11-25)
     - [x] il BE: i test che chiamano il verbo senza il livello: nessuno (§12.6, 2026-11-25)
   - [x] 8 + 1-7, un giro solo (D-T **b**, Tid, 2026-11-25): il fondo fattura (verbo pubblico e primitiva separati) e il reset del lotto (quattro verbi d'ingresso, tre primitive chiuse). Qui nasce `dbops.fn_pgtap_concedi_livello_area` (D-L a) e si ritirano le quattro copie (§13)
     - [x] analisi della parte 8, D10-D11 rilette (2026-11-25, §13.1-13.4)
     - [x] D-T **b**, D-U **a** (Tid, 2026-11-25, §13.3)
     - [x] analisi della parte 1-7, col passaggio senza azione (2026-11-25, §13.5-§13.8)
     - [x] D-W **a**, D-X **a**, D-Y **a**, D-Z **a** (Tid, 2026-11-25, §13.7)
-    - [x] il via (Tid, 2026-11-25)
     - [x] changeSet, pgTAP, builder, guide e `manual/`; prova sullo scratch (2026-11-25, §13.9)
-    - [x] apply e pgTAP come app: verdi (Tid, 2026-11-25)
-    - [x] la doc auto-generata rigenerata, anche dopo le pagine `manual/` (Tid, 2026-11-25)
-    - [x] commit e push su `dev/db-tid` (`e4bf00af69`, 2026-11-25)
     - [x] il BE: i test della Parte C del giro, i censimenti, i manuali (§13.8, 2026-11-25)
 - [x] Giro 3 (2026-11-24, applicato da Tid con la fase `post` del provisioning, pgTAP verde; §7): le viste (§5): ~~prima i verbi delle scritture che il BE trova~~ (nessuna, §5.1), l'app con solo `SELECT` sulle viste,
   nelle tre sedi di `linee-guida-sql.md` §11.8, col pgTAP di postura a criterio e la guida dei permessi §7.4;
@@ -251,31 +139,21 @@
   - [x] analisi (2026-11-24)
   - [x] D-I.1 **a** e D-I.2 **a**, decise da Tid (2026-11-24)
   - [x] CSV, `DELETE` `20261123-67`, pgTAP del `rollback`, guide: scritto e provato sullo scratch (2026-11-24)
-  - [x] apply su dbdev e pgTAP dell'invariante 9/9 (Tid, 2026-11-24)
-  - [x] commit e push su `dev/db-tid` (2026-11-24)
   - [x] il BE: whitelist, handler, esclusione del runner, test e manuali (2026-11-24)
 - [x] Il rollback distruttivo non parte da solo (R-DB-I3, D-I.3 **a**, §4.8)
   - [x] scelte di Tid: decisione intera nella funzione, `auto_step_rollback` colonna (2026-11-24)
   - [x] `20261123-95`, `-96`, `-97`, i due CSV coi mirror, pgTAP, guide: scritto e provato sullo scratch (2026-11-24)
-  - [x] apply su dbdev e pgTAP `test-rollback-step-automatico-v1` come app: verde (Tid, 2026-11-24)
-  - [x] la doc auto-generata rigenerata (Tid, 2026-11-24)
   - [x] il BE: il runner sulla funzione, i test, il manuale (passo 3n, 2026-11-25)
 - [x] R-DB-K1 e R-DB-K4 insieme (Tid, 2026-11-25): il verbo di primo impianto e il ritiro dei due seed di `tid` (§4.9)
   - [x] analisi, guide verificate (2026-11-25, §4.9)
   - [x] D-K7 **b** e D-K8 **a2** (Tid), il via (2026-11-25)
   - [x] changeSet, codice d'errore, pgTAP, guide e nota `_ultimo-super-admin`; prova sullo scratch (2026-11-25, §4.9.6)
-  - [x] apply e pgTAP come app e su dbdev verdi (Tid, 2026-11-25)
-  - [x] commit su `dev/db-tid` (2026-11-25)
-  - [x] doc auto-generata rigenerata (Tid, 2026-11-25)
   - [x] il BE: passo 3j, `genera_error_policies`, il censimento (§4.9.7, 2026-11-25)
 - [x] Giro 10-ter (Tid, 2026-11-26): l'operatore non è mai «globale»; la primitiva rifiuta, il getter non lo offre (§10-ter)
   - [x] analisi (2026-11-26, §10-ter)
   - [x] D-AA **a**, D-AB **b**, il via (Tid, 2026-11-26)
-  - [x] changeSet (firme col `%TYPE`), codice d'errore, pgTAP del giro e tredici adeguati, guide e `manual/`; prova sullo scratch (2026-11-26, §10-ter.6)
-  - [x] apply e doc auto-generata rigenerata (Tid, 2026-11-26)
-  - [x] pgTAP come app: verdi, suite intera su dbdev e sullo scratch `zeroerp_ruoli` (Tid, 2026-11-26)
-  - [x] commit su `dev/db-tid` (`3d3d804b92`, PR #253, 2026-11-26)
-  - [x] il BE/FE: testi del banner e del riquadro, ripieghi, mappatura del codice, test, manuale (§10-ter.5; `16d095e72`, PR #257, 2026-11-26)
+  - [x] changeSet (firme col `%TYPE`), codice d'errore, pgTAP del giro e tredici adeguati, guide e `manual/`; prova sullo scratch (2026-11-26, §10-ter.5)
+  - [x] il BE/FE: testi del banner e del riquadro, ripieghi, mappatura del codice, test, manuale (§10-ter.6; `16d095e72`, PR #257, 2026-11-26)
 - [x] Giro 10-bis (D-O **a**, Tid, 2026-11-24): le tabelle che danno l'accesso in sola lettura per l'app, coi verbi che le scrivono a DEFINER (§14)
   - [x] analisi (2026-11-26, §14): R-DB-K2 è la tabella dei legami di profilo, non solo `fn_crea_operatore_v2`
   - [x] D-AC **a**, D-AD **b**, D-AE **a** (Tid, 2026-11-26)
@@ -283,22 +161,15 @@
   - [x] l'ok sul codice morto del BE: si ritira (Tid, 2026-11-26)
   - [x] D-AF **a**, D-AG **a** (Tid, 2026-11-26)
   - [x] il contenuto del profilo censito dal DB sul ramo del BE (2026-11-26, §14.7)
-  - [x] il via, numeri da `20261126-01` (Tid, 2026-11-26)
   - [x] changeSet, pgTAP, builder, guide e `manual/`; prova sullo scratch (2026-11-26, §14.8)
-  - [x] apply su dbdev e scratch, pgTAP come app: verdi, con i due file della credenziale di sistema separati (Tid, 2026-11-26)
-  - [x] la doc auto-generata rigenerata (Tid, 2026-11-26)
-  - [x] commit su `dev/db-tid` (2026-11-26)
-  - [x] il BE: i test e i manuali del giro (`16d095e72`, PR #257, 2026-11-26); resta D-AH (§14.9), passo 6f-octies
-- [ ] Giro 10-quater (D-AG **a**, Tid, 2026-11-26): il resto del catalogo dei permessi in sola lettura per l'app, cioè gli override utente (`config.user_override_aree`, `_azioni`, `_oggetti`), `config.azioni_processo` e `config.area_model_overrides`, coi verbi che li scrivono e i builder pgTAP (`fn_pgtap_concedi_azione`, `fn_pgtap_concedi_livello_area`). Aperto, non iniziato: parte dopo il 10-bis (§14.6)
+  - [x] il BE: i test e i manuali del giro (`16d095e72`, PR #257, 2026-11-26); D-AH (§14.9) fatta in `27700103c` (PR #262, 2026-11-27)
+- [x] Giro 10-quater (D-AG **a**, Tid, 2026-11-26): il resto del catalogo dei permessi in sola lettura per l'app, cioè gli override utente (`config.user_override_aree`, `_azioni`, `_oggetti`), `config.azioni_processo` e `config.area_model_overrides`, coi verbi che li scrivono e i builder pgTAP (`fn_pgtap_concedi_azione`, `fn_pgtap_concedi_livello_area`). Partito dopo il 10-bis (§14.6)
   - [x] analisi sul catalogo, guide (2026-11-26, §15)
   - [x] il censimento del BE: chi scrive le tabelle senza un verbo, chi chiama i verbi (letto dal DB sul ramo del BE, 2026-11-26, §15.5)
   - [x] D-AI **a**, D-AJ **a**, D-AK **a**, D-AL **a** (Tid, 2026-11-27, §15.4)
   - [x] D-AL **a**: il brief nuovo `brief-db-storico-scrivibile-dall-app`, aperto e non iniziato (2026-11-27)
-  - [x] il via, numeri `20261126-50` … `-64` (Tid, 2026-11-27)
   - [x] changeSet, verbi, builder, pgTAP, guide e `manual/`; prova sullo scratch (2026-11-27, §15.7)
-  - [x] apply su dbdev e scratch, pgTAP come app verdi (Tid, 2026-11-27)
-  - [x] doc auto-generata rigenerata (Tid) e commit su `dev/db-tid` (2026-11-27)
-  - [ ] il BE: repository sui verbi nuovi, i sei test e `apri_operatore_con_aree` ai builder, manuali (§15.7)
+  - [x] il BE: repository sui verbi nuovi, i test e `apri_operatore_con_aree` ai builder, manuale (§15.7, 2026-11-27)
 - [x] Le guide: ogni porta scritta nella guida del suo dominio, di flusso o di manutenzione (2026-11-27, §16)
 
 ## 1. Il problema, sul modello
@@ -491,7 +362,7 @@ questa GUC non ce l'ha e non può darsela»): è falso dal momento in cui l'app 
 
 Nessuna decisione nuova: è un lettore della porta 1-7 e la D-A **a** lo copre. Entra nei giri 8 e 1-7 come voce
 obbligatoria (la GUC sulla riga **e** il proprietario anche qui, o la funzione chiamata solo dal verbo). La guida
-[fatturazione](../../guide/fatturazione.md) nomina la funzione come predicato: **coerente** oggi, da completare in
+[fatturazione](../../../guide/fatturazione.md) nomina la funzione come predicato: **coerente** oggi, da completare in
 quei giri.
 
 ### 3-ter.4 Il pgTAP di postura delle viste, così scritto, non prova la regola
@@ -1243,15 +1114,15 @@ dal giro: la GUC `zeroerp.maintenance_reset_lotto_draft`, che è la porta 1 e ha
 
 **Le guide** (`scripts/guide_coinvolte.py` sui quattro CSV e sulle quattro tabelle):
 
-* [fatturazione](../../guide/fatturazione.md): **indietro**. Le righe 458, 548-560 e 637-639 danno il task come
+* [fatturazione](../../../guide/fatturazione.md): **indietro**. Le righe 458, 548-560 e 637-639 danno il task come
   rollback di EMESSA. Il seed diventa `[]`. La demolizione che la guida descrive resta vera, ma la fa il verbo
   `fn_annulla_lotto_da_draft` dall'endpoint, non un task della pipeline;
 * il manuale di `vendite.fatturazione_pipeline` (righe 105-110: la whitelist e «il reset tecnico in pipeline»):
   **indietro**;
 * il manuale di `dbops.pipeline_task_registry`: va aggiunta una nota di migrazione;
-* [analisi-tracciamento-processi-e-job](../../guide/analisi-tracciamento-processi-e-job.md),
-  [gestione-pratiche](../../guide/gestione-pratiche.md), il manuale di `config.azioni_processo` e
-  [modello-documento-di-vendita](../../guide/modello-documento-di-vendita.md) (l'azione ritirata): **coerenti**.
+* [analisi-tracciamento-processi-e-job](../../../guide/analisi-tracciamento-processi-e-job.md),
+  [gestione-pratiche](../../../guide/gestione-pratiche.md), il manuale di `config.azioni_processo` e
+  [modello-documento-di-vendita](../../../guide/modello-documento-di-vendita.md) (l'azione ritirata): **coerenti**.
 
 **Le due scelte di forma** (decide Tid):
 
@@ -1460,9 +1331,9 @@ Si fanno insieme (Tid, 2026-11-25). Lettura in sola lettura sul catalogo di dbde
 | Guida o nota | Esito |
 | --- | --- |
 | nota `anagrafiche/_ultimo-super-admin` | **coerente**, ed è la fonte della D-K7 qui sotto: «le scritture che migliorano la garanzia passano sempre… è così che si esce da un sistema scoperto», e §«Che cosa oggi non vede» elenca stati scoperti raggiungibili. **Indietro** col giro: non nomina il verbo di primo impianto fra le strade che fanno nascere un SUPER_ADMIN |
-| [risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md) | **indietro** col giro: §«Primo accesso e gestione credenziali» descrive solo l'invito, che presuppone un amministratore. Il primo amministratore di un'installazione nuova va scritto lì |
-| [architettura-multi-face-auth](../../guide/architettura-multi-face-auth.md) | **coerente**: la veste OPERATORE nasce spenta (R-2); il verbo la accende nella stessa transazione, ed è un'eccezione da dichiarare nella guida, non una contraddizione: R-2 dice chi accende la veste di un operatore invitato |
-| [architettura-permessi-e-autorizzazioni](../../guide/architettura-permessi-e-autorizzazioni.md) | **coerente**: il SUPER_ADMIN ha lo scope `NULL` (tutto) da `fn_get_emittenti_scope_pk_ids`, quindi il primo amministratore non ha bisogno di nessun emittente, e su un'installazione vuota non ce n'è nessuno. §7.4: il verbo è DEFINER **senza** guard di permesso, perché non c'è ancora nessuno che possa averlo: lo si dichiara come la sola eccezione, chiusa dalla sua condizione |
+| [risorse-umane-e-accessi](../../../guide/risorse-umane-e-accessi.md) | **indietro** col giro: §«Primo accesso e gestione credenziali» descrive solo l'invito, che presuppone un amministratore. Il primo amministratore di un'installazione nuova va scritto lì |
+| [architettura-multi-face-auth](../../../guide/architettura-multi-face-auth.md) | **coerente**: la veste OPERATORE nasce spenta (R-2); il verbo la accende nella stessa transazione, ed è un'eccezione da dichiarare nella guida, non una contraddizione: R-2 dice chi accende la veste di un operatore invitato |
+| [architettura-permessi-e-autorizzazioni](../../../guide/architettura-permessi-e-autorizzazioni.md) | **coerente**: il SUPER_ADMIN ha lo scope `NULL` (tutto) da `fn_get_emittenti_scope_pk_ids`, quindi il primo amministratore non ha bisogno di nessun emittente, e su un'installazione vuota non ce n'è nessuno. §7.4: il verbo è DEFINER **senza** guard di permesso, perché non c'è ancora nessuno che possa averlo: lo si dichiara come la sola eccezione, chiusa dalla sua condizione |
 | altre dodici (soggetti, contatti, commesse, iva…) | nominano solo le tabelle (`soggetti`, `emittenti_fiscali`): il giro non ne cambia il comportamento |
 
 Orfano: `config.fn_profilo_super_admin_id`, dettaglio interno di `fn_crea_risorsa_umana_v2`.
@@ -2268,7 +2139,7 @@ rigenerazione dopo l'apply.
 ## 10-ter. Il giro 10-ter, l'operatore non è mai «globale» — analisi del 2026-11-26
 
 **Il punto di Tid (2026-11-26):** un operatore che non è SUPER_ADMIN non può essere globale. Nasce scrivendo la guida
-[emittenti-fiscali](../../guide/emittenti-fiscali.md): il drawer dell'operatore offre «Tutti gli emittenti (globale)»
+[emittenti-fiscali](../../../guide/emittenti-fiscali.md): il drawer dell'operatore offre «Tutti gli emittenti (globale)»
 a chiunque. Sta qui perché tocca gli stessi oggetti del giro 10: il verbo, la primitiva e il builder dei pgTAP.
 
 ### 10-ter.1 Che cosa c'è oggi (catalogo dello scratch, 2026-11-26)
@@ -2288,7 +2159,7 @@ a chiunque. Sta qui perché tocca gli stessi oggetti del giro 10: il verbo, la p
 
 **La storia.** «Globale» per un operatore normale era il modello di prima del fail-closed (P-2a, 2026-08-18). Da quel
 giorno l'unico attore che vede più emittenti è il SUPER_ADMIN (COMMENT di `config.user_emittenti_fiscali`, guida dei
-permessi §4.9). [brief-db-emittente-del-super-admin](../work-done/2026/brief-db-emittente-del-super-admin.md) R-DB-2
+permessi §4.9). [brief-db-emittente-del-super-admin](brief-db-emittente-del-super-admin.md) R-DB-2
 ha confermato il caso: un operatore senza riga non riceve nessun emittente. Nessuna decisione vuole un operatore
 globale. La scelta nel drawer è un **residuo**, e la correzione è coerente con le guide: **non è un cambio di
 modello**.
@@ -2326,9 +2197,9 @@ modello**.
      solo SINGLE), e si aggiunge il SUPER_ADMIN senza riga → GLOBAL, con le due modalità. ⚠️ Il file ha righe non
      committate dell'altra sessione (D-G2-3): si lavora sopra quelle.
 6. **Le guide e i `manual/`**:
-   * [emittenti-fiscali](../../guide/emittenti-fiscali.md) Parte 2: oggi avverte che «globale» ha senso solo per un
+   * [emittenti-fiscali](../../../guide/emittenti-fiscali.md) Parte 2: oggi avverte che «globale» ha senso solo per un
      super admin; diventa la regola;
-   * [risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md) «Assegnazione emittente fiscale»;
+   * [risorse-umane-e-accessi](../../../guide/risorse-umane-e-accessi.md) «Assegnazione emittente fiscale»;
    * le pagine `manual/` di `fn_change_user_emittenti_scope`, `fn_applica_user_emittenti_scope`,
      `fn_get_user_emittenti_scope` e `user_emittenti_fiscali`.
 
@@ -2372,7 +2243,7 @@ che sparisce è la **strada** per arrivarci togliendo l'azienda.
   * ⭐ **b**: lo stato è lo stesso di un operatore nuovo, il fail-closed non gli fa vedere niente, e il guard
     obbligherebbe ad assegnare prima di togliere. Con **b** il giro non tocca i binding.
 
-### 10-ter.6 Il giro scritto — 2026-11-26
+### 10-ter.5 Il giro scritto — 2026-11-26
 
 Decise da Tid il 2026-11-26: **D-AA a**, **D-AB b**, e il via.
 
@@ -2403,7 +2274,7 @@ intero, catalogo identico dopo. Guardrail delle forme e del `COMMENT` al present
   «Tutti gli emittenti» sta nel CSV, che l'estratto non carica (`[MESSAGGIO NON DEFINITO: …]`). Si chiudono col CSV
   all'apply.
 
-### 10-ter.5 La richiesta al team BE/FE (dopo l'apply)
+### 10-ter.6 La richiesta al team BE/FE (dopo l'apply)
 
 Chi cambia per primo: il DB. I valori del contratto dello scope non cambiano.
 
@@ -3143,7 +3014,7 @@ funzione: è una **tabella**, quella dei legami di profilo.
 * **Il cancello dell'ambiente è vero.** `fn_provisiona_dati_di_sviluppo` parte solo se
   `dbops.fn_dati_di_sviluppo_ammessi_su_valori(script.fn_ambiente_installazione())` lo ammette, e l'app ha solo `r` su
   `dbops.installazione`.
-* **Il brief vicino.** [brief-db-accessi-area-clienti](brief-db-accessi-area-clienti.md) §2.4, passo 3c (aspetta il
+* **Il brief vicino.** [brief-db-accessi-area-clienti](../../work-in-progress/brief-db-accessi-area-clienti.md) §2.4, passo 3c (aspetta il
   passo 3b del BE): l'app perde l'`UPDATE` di `attivo` e il `DELETE` su `anagrafiche.identita_digitali`;
   `fn_accendi_veste` e `fn_riattiva_utente_tecnico` diventano DEFINER; si ritira `fn_crea_operatore_v2`. I **verbi di
   creazione** sono gli stessi del 10-bis: scrivono la veste e, insieme, i legami e lo scope.
@@ -3475,6 +3346,20 @@ oggi**.
 * La voce del BB nel catalogo backend, con l'indice rigenerato.
 * Nessun lavoro DB: la regola sta tutta nel BB di test.
 
+**Risposta del BE (D-AH, 2026-11-27).** ✅ Fatta e committata (`27700103c`, PR #262).
+
+* Il BB prende il **primo operatore attivo che non è SUPER_ADMIN** (`script.fn_is_super_admin`). Se gli operatori
+  attivi sono tutti SUPER_ADMIN **fallisce** col motivo; se non c'è nessun operatore resta lo skip d'ambiente. Il
+  SUPER_ADMIN si chiede con `apri_super_admin_costruito`. Presidio a cursore finto: `test_db_e2e_contesto_operatore`.
+* Il caso era reale: su dbdev il primo operatore (utente 1) è SUPER_ADMIN. Sono caduti **23 test in 7 file**, tutti
+  adeguati: ad `apri_super_admin_costruito` i test d'amministrazione e la ricerca su più aziende, ad
+  `apri_operatore_con_aree` quelli che vogliono un livello, al contesto del builder del mondo quelli in cui il BB lo
+  sovrascriveva.
+* `CicloOperatoreDbTests` chiama le view con la sessione vera dell'amministratore (`emetti_refresh_veste`, device
+  TOTP confermato) al posto di `force_authenticate`, che saltava l'autenticazione e con lei le GUC: i suoi 5 rossi
+  sono tornati verdi. Resta rosso `test_gli_obbligatori_copiati_dal_primo`, che è del DB (`brief-db-revisione-anagrafiche`
+  §21.7).
+
 ## 15. Il giro 10-quater, il resto del catalogo dei permessi — analisi del 2026-11-26
 
 Il 10-bis ha chiuso **chi ha** un profilo e **che cosa** il profilo concede. Restano aperte le due strade che danno
@@ -3592,7 +3477,7 @@ frontend quale controllo e quale verbo legge un pulsante, e il verbo tiene il su
 ✅ **Deciso (Tid, 2026-11-27): D-AI a, D-AJ a, D-AK a, D-AL a.** I due cataloghi restano del seed, senza verbo; gli
 override li scrive solo il SUPER_ADMIN, dai verbi «sostituisci l'elenco» `config.fn_imposta_override_aree`,
 `config.fn_imposta_override_azioni` e `config.fn_imposta_override_oggetti`; lo storico va nel brief nuovo
-[brief-db-storico-scrivibile-dall-app](brief-db-storico-scrivibile-dall-app.md). Lo sviluppo aspetta il via.
+[brief-db-storico-scrivibile-dall-app](../../work-in-progress/brief-db-storico-scrivibile-dall-app.md). Lo sviluppo aspetta il via.
 
 ### 15.5 Il censimento, letto dal DB sul ramo del BE — 2026-11-26
 
@@ -3734,6 +3619,25 @@ in `-50`, nella stessa corsa. ⚠️ I privilegi si vedono solo come app: la cor
    il verbo da un SUPER_ADMIN (il secondo, con D-AH, lo chiede esplicitamente).
 5. Nessun codice d'errore nuovo: `genera_error_policies` non serve. I manuali delle tre rotte degli override.
 
+**Risposta del BE** (2026-11-27). ✅ Fatta.
+
+* `AmmSoftwareRepository.put_override_aree`, `put_override_azioni` e `put_override_oggetti` passano dai tre verbi, con
+  un trasporto solo (`_imposta_override`, sul BB `esegui_verbo`). Le chiavi della tabella viaggiano sempre (`null` =
+  senza inizio). Le altre chiavi della voce, quelle che il pannello rimanda dalla GET (`id`, `area_codice`…), non
+  arrivano al verbo, che le rifiuterebbe. I vincoli tradotti per nome restano quelli.
+* `apri_operatore_con_aree` concede il livello con `dbops.fn_pgtap_concedi_livello_area`. Il parametro `motivo` è
+  ritirato: il builder scrive il suo. Adeguati gli undici punti che lo chiamano, smoke del magazzino compreso.
+* Ai builder anche i due di magazzino (livello `LETTURA`), `test_pannello_verbo_db` e `test_commessa_cambia_stato_db`
+  (`fn_pgtap_nega_azione`). Da un SUPER_ADMIN costruito `test_override_oggetti_catalogo_db` e
+  `test_override_valido_dal_null_resta_null`.
+* Test nuovo sul DB vero, `test_override_aree_azioni_db`: la sostituzione dell'elenco da SUPER_ADMIN, le chiavi in più
+  che non passano, il rifiuto all'operatore, la stessa area due volte come `E_AMM_VALIDAZIONE`. Col repository di
+  prima: 3 rossi su 4.
+* Corsa sul DB vero dei 13 moduli che toccano gli override (343 test): verdi, salvo
+  `test_gli_obbligatori_copiati_dal_primo` (§21.7 anagrafiche). Prima della modifica erano 64 errori e 3 fallimenti,
+  quasi tutti `42501`. Smoke `smoke-magazzino-inventario-primo-carico` verde.
+* Manuale `api_amm_software` §2.2, §2.4 e §2.4-bis; voce del BB nel catalogo backend.
+
 ## 16. Le guide: il passaggio finale — 2026-11-27
 
 Ogni giro ha scritto la sua porta nella guida del suo dominio (§6 … §15). Qui si rilegge il risultato tutto
@@ -3765,121 +3669,3 @@ dice ancora quello che il codice fa. Ricerca sui nomi delle GUC e sul testo, nel
   dice già in §«Le porte di manutenzione». Allineati §4.4, la riga della tabella e il «Vedi anche».
 
 Nessuna guida contraddetta, nessun orfano nuovo.
-
-## Registro
-
-| Data | Chi | Che cosa |
-| --- | --- | --- |
-| 2026-11-27 | DB | «Le guide» (§16): le diciassette porte e le tabelle chiuse rilette nelle guide del loro dominio, tutte coerenti; aggiornate §7.4 della guida dei permessi (le due strade con la sola GUC dichiarate, coi rimandi) e §4.4 di `automazione-db` (il blocco `DELETE` si apre solo alla sessione del migratore) |
-| 2026-11-27 | DB | Commit del giro 10-quater su `dev/db-tid`, con la doc auto-generata rigenerata da Tid (`brief-db-revisione-anagrafiche` escluso: è dell'altra sessione). Al BE la richiesta di §15.7 |
-| 2026-11-27 | Tid | Giro 10-quater applicato su dbdev (00:33) e sullo scratch, pgTAP come app verdi. ⚠️ Una prima corsa delle 00:26-00:31 era rossa (funzioni nuove «non esiste»): era girata prima dell'apply, coi pgTAP nuovi del working tree su un database senza il giro (`databasechangelog` e `dbops.error_log`); rilanciata dopo, verde. Restano doc auto-generata e commit; poi la richiesta al BE |
-| 2026-11-27 | DB | Giro 10-quater scritto e provato (§15.7): `20261126-50` … `-59`, `-62`, `-63` (una primitiva per le tre tabelle degli override, i tre verbi del SUPER_ADMIN, il provisioning dalla primitiva, il builder `fn_pgtap_scrivi_override` sotto i quattro di oggi, il gemello `fn_pgtap_nega_azione`, le cinque tabelle in sola lettura e la primitiva riservata nelle tre sedi); pgTAP nuovo e diciotto adeguati (cinque a runner owner col motivo); due guide e sedici pagine `manual/`. Prova sullo scratch: 28 pgTAP, nessun rosso nuovo oltre a quelli dichiarati da proprietario. Da applicare; poi la richiesta al BE |
-| 2026-11-27 | Tid | Il via al giro 10-quater, numeri `20261126-50` … `-64` |
-| 2026-11-27 | Tid | Giro 10-quater: **D-AI a**, **D-AJ a**, **D-AK a**, **D-AL a** (§15.4). Il DB ha scritto nel brief il giro da fare (§15.6) e aperto `brief-db-storico-scrivibile-dall-app`, non iniziato. Lo sviluppo aspetta il via |
-| 2026-11-26 | DB | Giro 10-quater, analisi (§15): cinque tabelle scrivibili dall'app, un solo verbo senza guard (`fn_imposta_override_oggetti`), i builder che scrivono come app; D-AI, D-AJ, D-AK e D-AL a Tid. Il censimento l'ha letto il DB sul ramo del BE (Tid, §15.5): tre endpoint del SUPER_ADMIN che sostituiscono l'elenco, nessuno scrive i cataloghi, sei test e un BB del BE da portare ai builder. Segnalato lo schema `storico` scrivibile dall'app (D-AL) |
-| 2026-11-26 | Tid | D-AH **a**: accolta la proposta del BE su `apri_contesto_operatore`, che senza `super_admin=True` non consegna più un SUPER_ADMIN. Richiesta al BE in §14.9 |
-| 2026-11-26 | DB | Commit su `dev/db-tid` del giro 10-bis, con la doc auto-generata rigenerata da Tid (`brief-db-revisione-anagrafiche` escluso: è dell'altra sessione) |
-| 2026-11-26 | Tid | Giro 10-bis applicato su dbdev e sullo scratch; i pgTAP come app verdi, compresi i due file della credenziale di sistema dopo la divisione. Restano doc auto-generata e commit; al BE la richiesta di §14.9 |
-| 2026-11-26 | DB | Giro 10-bis, dalla corsa di Tid: `test-credenziale-di-sistema-v1` torna come app (6-7 rossi da owner: la sessione del proprietario è quella del migratore, che `fn_blocca_credenziale` lascia passare); i casi dell'ultimo SUPER_ADMIN nel file nuovo `test-credenziale-di-sistema-ultimo-super-admin-v1` (owner). Ricontrollati gli altri ventiquattro file a owner: verdi da owner con l'estratto (§14.8) |
-| 2026-11-26 | DB | Giro 10-bis scritto e provato (§14.8): venticinque changeSet (`20261126-01` … `-25`: i verbi dei legami e del profilo, dell'operatore e dell'utente tecnico DEFINER col guard del SUPER_ADMIN, quattro primitive, le due fixture col cancello dei dati di sviluppo, quattro builder, le cinque tabelle in sola lettura e sette funzioni chiuse), loop e provisioning, la `note` di `E_DATI_DI_SVILUPPO_IN_PRODUZIONE`; pgTAP nuovo e 57 adeguati (25 a runner owner col motivo); sei guide e ventisette pagine `manual/`. Prova sullo scratch: 322 pgTAP senza e con l'estratto, lo stesso esito; i privilegi si vedono solo come app. Richiesta al BE (§14.9). Da applicare |
-| 2026-11-26 | Tid | Il via al giro 10-bis, numeri da `20261126-01` |
-| 2026-11-26 | DB | §14.7: la richiesta al BE ritirata; il ramo del BE letto dal DB (Tid): l'unico scrittore del profilo è il verbo; tre test BE e una cinquantina di pgTAP da portare a due builder nuovi |
-| 2026-11-26 | Tid | **D-AF a** (il contenuto del profilo entra nel 10-bis), **D-AG a** (gli override utente e il resto del catalogo dei permessi nel giro 10-quater, in questo brief); Lo sviluppo non parte: aspetta il via |
-| 2026-11-26 | Tid | Il codice morto del BE si ritira: `crea_risorsa_umana`, `crea_auth_user` e i loro test mockati, nel giro BE del 10-bis (§14.6) |
-| 2026-11-26 | DB | Giro 10-bis: la risposta del BE letta (§14.6). La forma di ogni verbo coi chiamanti veri; il builder del legame per il test 3a; trovato che anche il contenuto del profilo (`fn_scrivi_profilo_accesso`, tre tabelle) e gli override utente sono scrivibili dall'app. D-AF, D-AG e l'ok sul codice morto a Tid |
-| 2026-11-26 | BE | Censimento integrativo del giro 10-bis (§14.5): nessuno scrive i legami senza un verbo; i chiamanti dei verbi, tutti da `AdminAPIView`; `fn_crea_risorsa_umana` e `fn_crea_auth_user` senza chiamanti di produzione; quattro file di test da adeguare dopo l'apply; segnalato `fn_scrivi_profilo_accesso` |
-| 2026-11-26 | Tid | **D-AC a** (il giro chiude scope e legami di profilo), **D-AD b** (i verbi di creazione a DEFINER qui, il 3c di `brief-db-accessi-area-clienti` si riduce a `identita_digitali`), **D-AE a** (le fixture pgTAP da una primitiva DEFINER col cancello dei dati di sviluppo) (§14.3). Lo sviluppo non parte: aspetta il censimento del BE e il via |
-| 2026-11-26 | DB | Giro 10-bis, analisi (§14): anche `config.profili_accesso_bindings` è scrivibile dall'app, e i verbi che legano un profilo (SUPER_ADMIN compreso) sono INVOKER senza guard: R-DB-K2 è la tabella. I builder pgTAP poggiano sulle strade aperte. Il passo 3c di `brief-db-accessi-area-clienti` tocca gli stessi verbi di creazione. D-AC, D-AD, D-AE a Tid; censimento integrativo al BE (§14.5). Nessun changeSet |
-| 2026-11-26 | DB | Testata e piano riallineati al 10-ter (suite verde, commit) |
-| 2026-11-26 | Tid | Giro 10-ter: suite pgTAP intera verde su dbdev e sullo scratch `zeroerp_ruoli`; commit `3d3d804b92` (PR #253). La richiesta di §10-ter.5 resta da girare al BE |
-| 2026-11-26 | Tid | Giro 10-ter applicato (`20261125-72` … `-76`, col `-73` dell'altra sessione), doc auto-generata rigenerata |
-| 2026-11-26 | DB | Giro 10-ter scritto e provato (§10-ter.6): la primitiva rifiuta «globale» per chi non è SUPER_ADMIN (`E_OPERATORE_SCOPE_GLOBALE_SOLO_SUPER_ADMIN`, id 1549), il getter offre solo `SINGLE`, firme col `%TYPE`; pgTAP del giro e tredici adeguati; guide `emittenti-fiscali` e `risorse-umane-e-accessi`, `manual/`; richiesta al BE/FE (§10-ter.5) |
-| 2026-11-26 | Tid | **D-AA a** (l'operatore senza azienda si costruisce, non si toglie), **D-AB b** (il SUPER_ADMIN senza azienda può perdere il profilo, lo segnala il banner) e il via al giro 10-ter |
-| 2026-11-26 | DB | Giro 10-ter, analisi (§10-ter): «globale» offerto a ogni operatore dal getter e accettato dalla primitiva, residuo del modello di prima del fail-closed; non è un cambio di modello. D-AA e D-AB a Tid |
-| 2026-11-25 | BE | Evase tutte le richieste al BE, da committare su `dev/backend-tid`: 3k-bis (`genera_error_policies`, sette ripieghi), 3n (il runner su `fn_check_rollback_step_automatico`, test DB sui casi costruiti), 6a … 6e (test sul DB vero adeguati: 13 rossi di permesso, tutti attesi; censimenti: nessuno scrive lo scope senza il verbo, `fn_riporta_attivita_da_emettere` chiamata dal BE e verde come app, nessun lettore di `user_update`/`user_insert`; manuali), 3j (il comando `crea_primo_amministratore`, i test, play-book, `configurazione-django`, `installazione`). Fuori brief: il patch rotto di `test_riga_elimina_e_transizioni_db` dall'E-2 dell'audit BB |
-| 2026-11-25 | DB | Commit su `dev/db-tid`: R-DB-K1 e R-DB-K4 (§4.9.6); al BE il passo 3j (§4.9.7) |
-| 2026-11-25 | Tid | R-DB-K1 e R-DB-K4 applicati, pgTAP come app e `test-crea-primo-amministratore-v1` su dbdev verdi, doc auto-generata rigenerata (§4.9.6) |
-| 2026-11-25 | DB | R-DB-K1 e R-DB-K4 scritti (§4.9.6): `20261125-30` (il BB degli indirizzi dell'operatore, regola del 2), `-31` (la madre dal BB), `-32` (il verbo), `E_PRIMO_AMMINISTRATORE_GIA_PRESENTE` (CONFLITTO_STATO, id 1539), i due seed di `tid` tolti, pgTAP nuovo 18/18 e `test-character-n` adeguato, guide e `manual/`. Trovati dalla prova: il PR pretende residenza e domicilio fiscale (il verbo li riceve in jsonb); lo scratch ha zero legami SUPER_ADMIN. La postcondizione di §4.9.2 non entra. Da applicare |
-| 2026-11-25 | Tid | **D-K7 decisa: b** (il verbo si apre solo senza nessun legame SUPER_ADMIN) · **D-K8 decisa: a2** (i due seed di `tid` si tolgono) · il via, numeri `-30` … `-32` e id 1539 |
-| 2026-11-25 | DB | R-DB-K1 e R-DB-K4, analisi (§4.9): il verbo DEFINER senza guard, chiuso dalla condizione e serializzato col lock sui legami; D-K7 (la condizione: proposta **b**, nessun legame SUPER_ADMIN, perché «nessuno senza scadenza» si riapre all'app sugli stati scoperti della nota `_ultimo-super-admin`); D-K8 (il ritiro dei due seed: proposta **a2**). Trovati: `20260309-01` non registrato da zero (la sua `preCondition` legge una tabella ritirata, `failOnError: false`), l'euristica di `20260419-95` che appoggia il SUPER_ADMIN sul soggetto di un altro dipendente. Nessun changeSet: si aspetta il via |
-| 2026-11-25 | DB | Commit `e4bf00af69` e push su `dev/db-tid`: il giro 8 + 1-7 (i changeSet `-23` … `-25` e le modifiche anagrafiche dell'altra sessione esclusi) |
-| 2026-11-25 | Tid | Giro 8 + 1-7: pgTAP come app verdi, doc auto-generata rigenerata dopo le pagine `manual/` (§13.9); al BE il 6e-septies (§13.8). Sul lato DB i giri delle porte del flusso sono chiusi tutti |
-| 2026-11-25 | DB | Giro 8 + 1-7: guide e `manual/` (cinque nuove, ventisette aggiornate, cinque guide); trovato l'apply di Tid (17:14) sul `databasechangelog`; §13.9 chiusa con la copertura della porta dichiarata |
-| 2026-11-25 | DB | Giro 8 + 1-7 scritto e provato (§13.9): `20261125-01` … `-22` e `-26`; pgTAP nuovo, tredici adeguati, dodici a runner owner (scelta di Tid), quattro copie `pg_temp.livello_area` ritirate; il criterio del fondo resta eseguibile (§13.5.2 punto 6 corretto); range: `-23` … `-25` presi dall'altra sessione |
-| 2026-11-25 | Tid | Il via al giro 8 + 1-7; i pgTAP che usano le strade chiuse all'app vanno a runner owner |
-| 2026-11-25 | Tid | Giro 8 + 1-7: **D-W a** (interruttore col proprietario, vivo solo nella pulizia), **D-X a** (la ricaduta sul livello d'area nei due verbi del lotto), **D-Y a** (il perimetro sul lotto e su ogni fattura toccata), **D-Z a** (il ramo della GUC nel criterio del fondo si toglie) (§13.7). Lo sviluppo non parte: aspetta il via |
-| 2026-11-25 | DB | Giro 8 + 1-7, analisi della parte 1-7 (§13.5-§13.8): quattro verbi DEFINER col lotto nel perimetro prima del guard; trovato che la GUC del reset resta accesa fino alla fine della transazione (il guard di transizione del lotto oggi non giudica gli stati del reset), che le sette letture della porta divergono (`yes`), che lotto e fatture non sono legati per struttura alla stessa azienda e che il ramo della GUC nel criterio del fondo non serve al reset; il BB `fn_guard_livello_area` nasce qui (seconda occorrenza di D-U); D-W, D-X, D-Y, D-Z a Tid |
-| 2026-11-25 | Tid | Giro 8: D-T **b** (i giri 8 e 1-7 in un giro solo, la primitiva del fondo nasce chiusa) e D-U **a** (il guard del livello d'area sul posto). Brief aggiornato: piano fuso, §13.3 chiusa, §13.5 l'analisi della parte 1-7 da fare; lo sviluppo non parte |
-| 2026-11-25 | DB | Giro 8, analisi (§13): D10-D11 rilette; primitiva DEFINER dei tre DELETE col perimetro sull'atto e la porta sulla riga, verbo pubblico col guard di `governa_fondo_fattura`, `fn_annulla_sistemazione` DEFINER col livello d'area, la GUC del reset spenta dai verbi pubblici; D-T e D-U a Tid. Ordine deciso da Tid: giro 8, poi K1 e K4 insieme |
-| 2026-11-25 | Tid | Giro 11 e `20261124-12` applicati, pgTAP come app verdi, doc auto-generata rigenerata (§12.5, §12.7); al BE il 6d-quinquies |
-| 2026-11-25 | DB | `20261124-12` scritto e provato (§12.7): il blocco `EXCEPTION` ridondante tolto da `fn_posta_riga_tardiva`, decisione di Tid; manuale allineato |
-| 2026-11-25 | DB | Giro 11 analizzato e scritto (§12): `20261124-10` (la porta col proprietario), `-11` (il verbo DEFINER col livello `TUTTO` su `vendite.reso` e il perimetro del reso all'ingresso); pgTAP nuovo, i ventuno esistenti invariati; guide `gestione-ddt` e §7.4 dei permessi, `manual/`; provato sullo scratch; richiesta al BE (§12.6). Trovato che il blocco `EXCEPTION` del giro 9 è ridondante (a Tid) |
-| 2026-11-25 | DB | Commit e push su `dev/db-tid`: giro 9 (§11.5) |
-| 2026-11-25 | Tid | Giro 9 applicato, pgTAP come app verdi dopo la correzione del test 9 (la riga di B letta nel contesto di B), doc auto-generata rigenerata (§11.5); al BE il 6c-quinquies |
-| 2026-11-25 | DB | Giro 9 scritto e provato (§11.5): `20261124-07` (la porta col proprietario), `-08` (il verbo DEFINER col guard di `registra_distinta` e il perimetro all'ingresso), `-09` (D-S a, il guard di scope del movimento dopo il mirror); pgTAP nuovo, quattro adeguati, guida `gestione-dei-pagamenti` e `manual/`; richiesta al BE (§11.6) |
-| 2026-11-25 | Tid | **D-S a** (§11.3) e il via al giro 9 |
-| 2026-11-25 | DB | Giro 9, analisi (§11): D20-b riletta; verbo DEFINER col guard di `registra_distinta`, il perimetro della distinta all'ingresso (oggi lo dava la RLS), la fattura controllata; trovato il guard di scope del movimento che gira prima del mirror (muto dentro una DEFINER); D-S a Tid |
-| 2026-11-25 | DB | Commit e push su `dev/db-tid`: giro 10 (§10.5), col giro 16 già committato |
-| 2026-11-25 | Tid | Giro 10 applicato, pgTAP come app verdi, doc auto-generata rigenerata (§10.5); al BE il 6b-quinquies |
-| 2026-11-25 | DB | Giro 10 scritto e provato (§10.5): `20261124-01` (la primitiva, GUC sull'`auth_user_id`), `-02` (il verbo DEFINER col guard del SUPER_ADMIN), `-03` (il provisioning dalla primitiva), `-04` (la porta: GUC sulla riga e proprietario), `-05` (il builder dei pgTAP), `-06` e le altre due sedi (la primitiva riservata); pgTAP nuovo, ventiquattro adeguati, guide e `manual/`; richiesta al BE (§10.6); giro 10-bis nel piano |
-| 2026-11-24 | Tid | **D-O a, D-P a, D-Q a** (§10.3) e il via al giro 10 |
-| 2026-11-24 | DB | Giro 10, analisi (§10): verbo DEFINER con `fn_guard_super_admin`, GUC sull'`auth_user_id`, nessun perimetro; l'`INSERT` diretto dell'app dà un'azienda senza guard; il provisioning chiama il verbo senza utente; dodici pgTAP aprono la porta da sé. D-O, D-P e D-Q a Tid |
-| 2026-11-24 | Tid | Giro 16 applicato, pgTAP come app verdi (§9.4); al BE il 6a-quinquies |
-| 2026-11-24 | DB | Giro 16 scritto e provato (§9.4): `20261123-98` (la porta: GUC sull'id del modello e proprietario; il seed dalla sessione del migratore), `-99` (il verbo DEFINER col guard), pgTAP nuovo, quattordici adeguati, guide e `manual/`; richiesta al BE (§9.5) |
-| 2026-11-24 | Tid | **D-M a, D-N a** (§9.3) e il via al giro 16 |
-| 2026-11-24 | DB | Giro 16, analisi (§9): verbo DEFINER col guard di `documenti_template_manage`, GUC sull'id del modello, il seed riconosciuto dalla sessione del migratore; undici pgTAP da dare l'azione; D-M e D-N a Tid |
-| 2026-11-24 | Tid | **D-L decisa: a** (§4.5-bis): il builder del livello d'area nasce nel primo giro che lo usa, le quattro copie si ritirano lì |
-| 2026-11-24 | DB | Passo 3e: la risposta 3d letta (§4.5-bis). Guard di ogni porta coi BB che ci sono, §4.3 corretta (porta 11 sul livello di `vendite.reso`, non `conferma_reso`), Parte B chiusa, builder dei test della Parte C; D-L a Tid; due punti per i giri 8 e 1-7 |
-| 2026-11-24 | Tid | R-DB-I3 applicata, pgTAP come app verde (§4.8); al BE il passo 3n |
-| 2026-11-24 | DB | R-DB-I3 scritta (§4.8, scelte di Tid: decisione intera, colonna): `distruttivo` sul registro, `auto_step_rollback` colonna con il `CHECK` sul `meta`, `fn_check_rollback_step_automatico`, pgTAP 14/14 sullo scratch, guida `fatturazione` e `manual/`; garanzia ritirata e richiesta al BE (3n) |
-| 2026-11-24 | DB | ⚠️ R-DB-K3 ripristinata: il commit `359c556da1` della sessione anagrafiche aveva riscritto `codici_errore.csv` e `messaggi_errore.csv` dalla sua copia, senza le righe di K3 (il DB applicato le aveva già). Riapplicate le stesse sostituzioni, CSV controllati |
-| 2026-11-24 | Tid | R-DB-K3 applicata, pgTAP verde (§4.7); al BE il passo 3k-bis |
-| 2026-11-24 | DB | R-DB-K3 scritta (§4.7): `note`, causa e soluzione di `E_SCOPE_SENZA_UTENTE` coi due casi, il `messaggio` resta del trigger; corretta la `note` di `E_UI_CHIAMATA_NON_VALIDA`; al BE la rigenerazione di `error_policies_generated.py` (passo 3k-bis) |
-| 2026-11-24 | DB (sessione anagrafiche) | §2: le porte che passano da `fn_porta_manutenzione_aperta`, lucchetti di colonna compresi, dichiarate fuori dal censimento a ragione (chiuse per l'app dal 2026-11-17); nessuna porta nuova |
-| 2026-11-24 | BE | BB `utente_per_id` estratto (regola del 2, ok Tid, §4.7): sette sedi, il rifiuto resta del chiamante; presidio di sede unica |
-| 2026-11-24 | BE | D-K5 **a**, D-K6 **a**, D-I.4 **a** (Tid) fatte (§4.7, §4.8): resolver sul BB dello scope, utente tecnico al motore documentale (ramo senza filtro di `get_fattura_testata` ritirato, `build_context` senza default), `auto_step_rollback` dalla pipeline; test provati a rovescio, uno sul DB vero; nota per R-DB-I3 sul patto del `jsonb` |
-| 2026-11-24 | `/verifica` | §4.7: copia importata di `fetch_emittenti_scope_ids` in pagamenti (presidio nuovo), commenti e ripiego di `E_SCOPE_SENZA_UTENTE` allineati, gate dei prezzi fra i dichiarati; D-K5 e D-K6 a Tid · §4.8: verso del rollback nel diario riscritto (due test), manuali BE; D-I.4 a Tid |
-| 2026-11-24 | Tid | **D-I.3 decisa: a** (§4.8): il flag «distruttivo, mai in auto-run» lo dichiara il DB; R-DB-I3 al DB (passo 3m), poi il runner (passo 3n) |
-| 2026-11-24 | BE | Lato BE del ritiro di `reset_lotto_draft` fatto (§4.8): whitelist, handler, esclusione del runner tolta (ok Tid), test (il test 8 del runner provato a rovescio), manuali BE; 138 verdi con il guardrail sul DB vero. D-I.3 al DB (passo 3m) |
-| 2026-11-24 | BE | `/arrivi-db` del ritiro di `reset_lotto_draft`: merge di `origin/dev/db-tid` sul ramo del BE, Registro fuso, testata riallineata (R-DB-K3/K4 nel «Riparte», «Da committare»); guardrail `test_pipeline_task_handler_guardrail` verde su dbdev |
-| 2026-11-24 | `/verifica` | §4.7: R-DB-K4 al DB, i due changeSet che danno il SUPER_ADMIN a `auth_user id=1` (seconda strada rispetto a R-DB-K1, id cablati) |
-| 2026-11-24 | `/verifica` | §4.7: tolto il default `None` da tre letture della fattura (arrivavano al ramo senza filtro di `get_fattura_testata`), da `fn_lotti_mensile` e dalle code dei resi; presidio sulle firme; guida dei permessi §6.3 allineata |
-| 2026-11-24 | BE | Il `None` del perimetro si rifiuta (§4.7, ok Tid): tool AI contratti corretto, `E_SCOPE_SENZA_UTENTE` dal BB `fetch_emittenti_scope_ids`, liste di vendite senza default `None`; un solo `None` dichiarato (`get_fattura_testata`, motore documentale); R-DB-K3 al DB |
-| 2026-11-24 | DB | Commit e push su `dev/db-tid`: il lato DB del ritiro di `reset_lotto_draft` e la pulizia della testata; al BE il suo lato (§4.8) |
-| 2026-11-24 | Tid | `20261123-67` applicato su dbdev, `test-pipeline-processi-invariante-v1` verde 9/9 |
-| 2026-11-24 | DB | Ritiro di `reset_lotto_draft` scritto (§4.8): quattro CSV, `DELETE` `20261123-67`, invariante test 8-9 sul `rollback`, guida `fatturazione` e manuali di `fatturazione_pipeline`, `pipeline_task_registry` e `azioni_processo`; provato sullo scratch (controesempio 7/9, stato finale 9/9). Da applicare |
-| 2026-11-24 | Tid | **D-I.1 a** (il task si cancella) · **D-I.2 a** (l'azione spenta non si tocca); via allo sviluppo |
-| 2026-11-24 | DB | Richiesta del BE sul ritiro di `reset_lotto_draft` analizzata (§4.8): righe e FK verificate su dbdev, nessuna corsa né figlia dell'azione; il presidio dell'invariante non guarda il `rollback`; D-I.1 e D-I.2 proposte a Tid; guida `fatturazione` e manuale di `fatturazione_pipeline` indietro |
-| 2026-11-24 | DB | Testata e Registro ripuliti dopo il merge del BE (`4271a0dc69`): tolte le righe 5 e 6 doppie della tabella «Chi riparte», rimesse le quattro righe del Registro sul giro 12-13 e sui commit DB, «Riparte» riallineato |
-| 2026-11-24 | Tid | **D-K decisa** (§4.7): il primo amministratore nasce da un verbo DB di primo impianto che si chiude alla nascita del primo SUPER_ADMIN (R-DB-K1), poi un comando BE; la porta di `fn_crea_operatore_v2` al piano dei giri (R-DB-K2) |
-| 2026-11-24 | BE | D-J fatta (§4.7): bypass di `is_superuser` tolti nel BE, BB `super_admin_di_prova` (ok Tid), 129 classi di test dichiarate, test del bypass rovesciati; suite verde come la base |
-| 2026-11-24 | Tid | **D-J decisa: a**, `is_superuser` non concede più niente; il lavoro BE parte subito (§4.7) |
-| 2026-11-24 | Tid | **D-I decisa: il task `reset_lotto_draft` si ritira**, dopo la riverifica (nessun esecutore, né nel BE né a DB); prima il DB, poi il BE (§4.6). D-J proposta (§4.6) |
-| 2026-11-24 | BE | Risposta alla richiesta 3d (§4.5): la tabella dei dieci verbi con le funzioni di decisione; due correzioni a §4.3 (`reset_lotto_draft` spenta, la riconsegna chiede il livello su `vendite.reso` e non `conferma_reso`); il superuser Django passa l'endpoint (decisione a Tid); nessun processo headless raggiunge i verbi, il task `reset_lotto_draft` non lo esegue nessun percorso; i test della Parte C che girano senza contesto o con l'utente tecnico senza profilo; le quattro primitive mai chiamate dal BE |
-| 2026-11-24 | DB | Commit `969ea14566`: giro 12-13 (pgTAP, guida `gestione-ddt`, §8); merge di `origin/Tito-dev` (PR #228) e push su `dev/db-tid` |
-| 2026-11-24 | Tid | Giro 12-13: `test-ddt-righe-evase-dall-ordine-v1` verde come app (§8) |
-| 2026-11-24 | DB | Giro 12-13 scritto (§8): test 44-45 in `test-ddt-righe-evase-dall-ordine-v1`, guida `gestione-ddt` §15.3; nessun changeSet |
-| 2026-11-24 | DB | Commit `64f00b35b1` e push su `dev/db-tid`: giri 1, 1-bis e 3 (`brief-db-revisione-anagrafiche` escluso: ha il lavoro in corso dell'altra sessione, e le due righe di qui ci restano) |
-| 2026-11-24 | DB | Richiesta 3d al BE scritta (§4.4): dieci verbi da portare a DEFINER, precompilati dal ramo del BE (chiamanti, view, meccanismo del permesso); parti B (utente tecnico della pipeline) e C (test che chiamano i verbi, primitive da chiudere) |
-| 2026-11-24 | Tid | Giro 3 applicato; fase `post` del provisioning su dbdev; `test-viste-app-solo-select-v1` verde 5/5 (prima della fase `post` rosso solo sulle quattro viste di `public`, come previsto, §7.4) |
-| 2026-11-24 | DB | Giro 3 scritto (§7): le viste in sola lettura per l'app nelle tre sedi (`20261123-47`, il ramo per tipo del loop, la fase `post`), pgTAP a criterio, §6 e §11.8 delle linee guida, guida dei permessi §7.4; `geometry_columns` deciso (regole `DO INSTEAD NOTHING`, chiusa dal provisioning); provato sullo scratch |
-| 2026-11-24 | Tid | Giro 3 al via; `test-app-definer-dichiarate-v1` verde |
-| 2026-11-24 | DB | D-H a scritta (§6.5): commento del provisioning corretto, pgTAP a criterio `test-app-definer-dichiarate-v1`; nessun changeSet |
-| 2026-11-24 | Tid | **D-H decisa: a** · `20261123-46` applicato, pgTAP verdi |
-| 2026-11-24 | DB | Giro 1-bis (§6.5): `e_dovuto` gira come `zeroerp_app`; la metà di D-G su `maintenance` smentita sul modello (le INVOKER non danno all'app più dei suoi permessi), D-H a Tid; la fusione dei comuni riservata (`20261123-46`), provata sullo scratch |
-| 2026-11-24 | Tid | **D-G decisa: a** |
-| 2026-11-24 | Tid | Giro 1 applicato, pgTAP verdi (§6.3) |
-| 2026-11-24 | DB | D-G proposta (§6.4): `fn_admin_merge_comune` e le sette routine di `maintenance` eseguibili dall'app; chiamanti letti a DB e sul ramo del BE |
-| 2026-11-23 | DB | Brief aperto su richiesta di Tid, dalla ricognizione §5.8 di `brief-db-magazzino-tutte-le-scritture-dal-verbo`: quindici porte censite sul catalogo, tre decisioni |
-| 2026-11-23 | DB | Analisi critica (§3-bis): aprenti delle porte 8 e 10 trovati (`SET LOCAL`), porte 16 e 17 aggiunte, D-2 superata; la strada D-1 a riletta come passaggio al modello del verbo; D-A … D-D proposte |
-| 2026-11-23 | DB | Su decisione di Tid il brief ospita la seconda famiglia, le viste aggiornabili (§5, D-V), da `brief-db-revisione-anagrafiche` §19; la richiesta al BE diventa una sola per le due famiglie (§4.1) |
-| 2026-11-23 | DB | La risposta del BE alla Parte B: «nessuno»; i due limiti verificati sul catalogo (§5.1). Il giro 3 non aspetta più il BE |
-| 2026-11-23 | DB | La Parte A letta sul ramo del BE, su indicazione di Tid (§4.2): nessuna porta accesa dal BE; i percorsi dei nove aprenti; le porte 14, 15 e 17 senza chiamanti |
-| 2026-11-23 | DB | Riverifica della D-A dopo le modifiche al documento: nessun changeSet di codice applicato dopo le 17:30, aprenti e annulli come in §4.3, la rete di scope c'è; trovato un brief vicino non dichiarato (`brief-incassi-riconciliazione-rate-promemoria`, porte 8 e 9); §3 e un punto di §4.2 marcati superati |
-| 2026-11-23 | Tid | **D-D decisa: a**, la porta 14 nel giro 1 con la 15; S50 di `brief-db-revisione-anagrafiche` rimanda qui. Tutte le decisioni prese |
-| 2026-11-23 | Tid | **D-C decisa: b** per 14, 15 e 17; la 17 si chiude con tutte e due le chiavi (la GUC e la riga di `config.parameters`, trovata scrivibile dall'app) |
-| 2026-11-23 | Tid | **D-A decisa: a**; D-B decaduta. Le soluzioni ai due rischi (perimetro, permesso) entrano nel piano come voci obbligatorie di ogni giro |
-| 2026-11-23 | DB | Giro 1 scritto (§6): porte 14 e 15 a «GUC + proprietario» (`20261123-43`, `-44`), i due aprenti riservati (`-45`, loop, provisioning), un pgTAP nuovo e tre adeguati, quattro guide; provato sullo scratch. Da applicare |
-| 2026-11-23 | Tid | **D-E decisa: a** (la bozza delle 12-13 resta con la GUC sulla riga, dichiarata) · **D-F decisa: a** (la 17 esce dalla D-C, interruttore di timbratura dichiarato). Tutte le decisioni prese |
-| 2026-11-23 | DB | Verifica critica a decisioni prese (§3-ter): la porta 17 non ferma nessuna scrittura (D-F a Tid); il ramo fuori bozza delle 12-13 chiede già il proprietario (D-E a Tid); una porta fuori dai trigger, `fn_check_fondo_cancellabile`; il pgTAP delle viste e le primitive passano da `v_fn_riservate` e dal criterio del loop |
-| 2026-11-23 | DB | La strada D-A a riletta porta per porta (§4.3): gli annulli sono già DEFINER, quindi le porte 12-13 chiedono solo il trigger e il fermo non entra; la porta 16 chiede di separare il seed dal verbo |

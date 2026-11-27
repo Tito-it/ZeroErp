@@ -12,8 +12,9 @@
 #    E la porta chiusa su `magazzino.causali` si prova solo come app.
 #
 # ⚠️ CASI COSTRUITI in una transazione SEMPRE annullata: la causale il test se
-#    la fabbrica. Il contesto e' quello di un superuser (`apri_contesto_operatore`);
-#    dove il DB non concede il livello a quel contesto il test lo dichiara.
+#    la fabbrica. Il contesto e' quello di un operatore COSTRUITO col livello
+#    sulle aree delle tabelle (`apri_operatore_con_aree`, D-AH 2026-11-27):
+#    fino ad allora il primo operatore del DB, SUPER_ADMIN su dbdev.
 # ------------------------------------------------------------
 
 """Indice test (opt-in `ZEROERP_TEST_DB_E2E=1`).
@@ -47,7 +48,7 @@ from apps.core.api.permissions import MotivoDiniego, ZeroERPPermission
 from apps.core.api.views_config_crud import ConfigTableRecordsView
 from apps.core.services.config_crud_service import ConfigCrudService
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_contesto_operatore, apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_operatore_con_aree, apri_transazione_annullata, richiedi_db_provvisto
 
 _REL = "magazzino.causali"
 
@@ -62,7 +63,7 @@ class PannelloVerboDbTests(TestCase):
     def setUp(self) -> None:
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
-            apri_contesto_operatore(cur)
+            apri_operatore_con_aree(cur, aree=("config", "magazzino"))
         self.svc = ConfigCrudService()
 
     # Scopo: Esegue `azione` in un savepoint e ne ritorna il codice del ServiceError.
@@ -197,13 +198,12 @@ class PannelloDuePuntiDiApplicazioneDbTests(TestCase):
     #        (`fn_area_di_oggetto('magazzino', 'causali')` = `magazzino`).
     def _livello_sull_area_magazzino(self, livello: str) -> None:
         with connection.cursor() as cur:
+            # Dal builder del DB: le eccezioni utente sono in sola lettura per
+            # l'app (giro 10-quater, 2026-11-27); un'area assente la rifiuta lui.
             cur.execute(
-                "INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)"
-                " SELECT %s, af.id, %s, 'Fixture test pannello'"
-                "   FROM config.aree_funzionali af WHERE af.schema_db = 'magazzino'",
+                "SELECT dbops.fn_pgtap_concedi_livello_area(%s, 'magazzino', %s::config.livello_accesso)",
                 [self.uid, livello],
             )
-            self.assertEqual(cur.rowcount, 1, "area `magazzino` assente dal catalogo aree")
 
     def _catena(self, metodo: str):
         view = ConfigTableRecordsView()

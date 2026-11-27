@@ -145,9 +145,13 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     #    QUALI documenti bloccano lo dice il messaggio del catalogo, che li elenca;
     #    questo e' il ripiego di quando quegli argomenti non sono arrivati, quindi
     #    dice la regola e non l'elenco.
+    "E_BA_COLLEGAMENTO_NON_SI_SPOSTA": "Il collegamento di un cliente alla sua azienda non passa a un altro cliente: si modifica soltanto l'azienda.",
+    "E_BA_COLLEGAMENTO_NON_SI_TOGLIE": "Il collegamento di un cliente alla sua azienda non si cancella: per cambiare azienda si modifica il collegamento, per chiudere il cliente lo si annulla.",
     "E_BA_EMITTENTE_CON_STORIA": "Il cliente ha gia' documenti numerati con l'emittente attuale: non si puo' spostare su un altro emittente. Se il cliente e' passato davvero all'altro emittente, si apre presso di lui una fornitura nuova; i documenti gia' emessi restano con chi li ha emessi.",
     "E_BA_ISTANZA_IMMUTABILE": "Un billing account appartiene per sempre alla sua fornitura e al suo cliente: per un'altra istanza, utility o cliente se ne crea uno nuovo.",
+    "E_BA_NON_SI_CANCELLA": "Un billing account non si cancella: per chiudere il cliente lo si annulla (stato «annulla servizio»).",
     "E_BA_SOGGETTO_INCOERENTE_ISTANZA": "Soggetto del billing account diverso da quello dell'istanza utility.",
+    "E_BILLING_ACCOUNT_NOT_FOUND": "Il billing account indicato non esiste, oppure e' fuori dal tuo perimetro.",
     "E_BILLING_ACCOUNT_UTILITY_NULL": "Billing account senza utility associata.",
     "E_BOM_COMPONENTE_COMPOSITO": "Il componente e' a sua volta un articolo composito: una distinta contiene solo articoli semplici.",
     "E_BOM_COMPONENTE_DIVENTA_COMPOSITO": "L'articolo e' un componente di una distinta: non puo' diventare composito.",
@@ -1122,8 +1126,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PARAMETER_VALORE_NON_CONFORME": "Il valore del parametro non ha la forma richiesta (un numero intero, un si'/no, una data...).",
     "E_PARAMETRI_TABELLA": "Il valore indicato non corrisponde a nessun record.",
     "E_PARAMETRO_INVALIDO": "Parametro obbligatorio mancante o non valido.",
+    "E_PARENT_CON_PADRE": "Il conto padre indicato ha gia' a sua volta un padre: l'albero dei billing account ha un livello solo.",
+    "E_PARENT_HA_FIGLI": "Questo billing account fa gia' da padre ad altri conti: non puo' avere a sua volta un padre.",
     "E_PARENT_NON_RAGGIUNGIBILE": "Il parent account indicato non e' utilizzabile: non esiste, oppure non rientra nel tuo perimetro.",
     "E_PARENT_SELF": "Il parent account non puo' essere il record stesso.",
+    "E_PARENT_SECONDO_PADRE": "Il cliente ha gia' un conto padre per questa azienda: non ne puo' avere un secondo.",
     "E_PARENT_SOGGETTO_DIVERSO": "Il parent account appartiene a un soggetto diverso e manca il codice fiscale per verificarlo.",
     "E_PDP_OBBLIGATORIO": "Piano dati precontrattuali obbligatorio.",
     "E_PDP_UTILITY_MISMATCH": "Utility non coerente con il piano dati precontrattuali.",

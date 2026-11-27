@@ -127,7 +127,7 @@ Risoluzione `valuta_id` (BB `resolve_valuta_default`, allineato a
 catena 5-livelli (BA → EF-BA → EF-utente → gestore → null).
 `default_valido_dal` / `default_data` calcolati con lead_gg da parameter.
 
-Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
+Errori: `E_BILLING_ACCOUNT_NOT_FOUND` (404) se `billing_account_id` non esiste o è fuori dal perimetro di chi chiama (dal 2026-11-27, il codice del DB per lo stesso caso; prima `E_VENDITE_NOT_FOUND`).
 
 ### Lista contratti `GET /api/v1/vendite/contratti/`
 

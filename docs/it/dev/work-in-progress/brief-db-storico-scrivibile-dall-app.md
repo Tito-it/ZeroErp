@@ -3,7 +3,7 @@
 > **⏭️ Chi riparte — aggiornato al 2026-11-27**
 >
 > **Riparte: nessuno, per ora.** Il brief è **aperto e non iniziato**: l'ha aperto D-AL **a** (Tid, 2026-11-27) del
-> giro 10-quater di [brief-db-porte-aperte-dalla-sola-guc](brief-db-porte-aperte-dalla-sola-guc.md) §15.4, che ha
+> giro 10-quater di [brief-db-porte-aperte-dalla-sola-guc](../work-done/2026/brief-db-porte-aperte-dalla-sola-guc.md) §15.4, che ha
 > tenuto il tema fuori da quel giro. Parte quando Tid lo mette in coda.
 >
 > | # | Chi | Che cosa | Dove | Aspetta |

@@ -211,7 +211,7 @@ Risoluzione `valuta_id` (BB `resolve_valuta_default`, allineato a
 Senza `billing_account_id` i campi BA-derived restano `null` ma la
 catena valuta parte comunque dal livello 3.
 
-Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
+Errori: `E_BILLING_ACCOUNT_NOT_FOUND` (404) se `billing_account_id` non esiste o è fuori dal perimetro di chi chiama (dal 2026-11-27, il codice del DB per lo stesso caso; prima `E_VENDITE_NOT_FOUND`).
 
 ### Lista offerte `GET /api/v1/vendite/offerte/`
 

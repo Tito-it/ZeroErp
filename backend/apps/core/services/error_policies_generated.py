@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1285, di cui 135 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1292, di cui 135 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -212,13 +212,21 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_AUTH_USER_SOGGETTO_SENZA_CF": "DATO_ERRATO",
     "E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA": "TECNICO",
     "E_BA_ADMIN_GLOBALE_VIETATO": "NON_PERMESSO",
+    # script.trgfn_prevent_modification_generic montato BEFORE UPDATE su anagrafiche.emittenti_fiscali_billing_account quando billing_account_id cambia (trg_emittenti_fiscali_ba_a05_block_sposta_upd): il collegamento appartiene al suo billing account, e non diventa la riga predefinita ne' il contrario. CONFLITTO_STATO, frase chiusa. Brief: brief-db-revisione-anagrafiche §24.5, §24.7.1.
+    "E_BA_COLLEGAMENTO_NON_SI_SPOSTA": "CONFLITTO_STATO",
+    # script.trgfn_prevent_modification_generic montato BEFORE DELETE su anagrafiche.emittenti_fiscali_billing_account (trg_emittenti_fiscali_ba_a05_block_delete_dlt): ogni billing account ha sempre il suo collegamento a un'azienda, e il billing account non si cancella; vale anche per la riga dell'azienda predefinita, che si cambia modificandola. CONFLITTO_STATO, frase chiusa. Brief: brief-db-revisione-anagrafiche §24.5, §24.7.1.
+    "E_BA_COLLEGAMENTO_NON_SI_TOGLIE": "CONFLITTO_STATO",
     # Un billing account che ha gia' un documento NUMERATO su un registro non cambia emittente fiscale. ⭐ CONFLITTO_STATO e non DATO_ERRATO, e lo decide la descrizione della classe: «non c'e' un campo da correggere, e' la situazione che non lo consente» - l'emittente scelto non e' sbagliato, e' la storia gia' scritta che non lo ammette. Stesso ragionamento con cui E_EMITTENTE_NON_MODIFICABILE e' passato da 400 a 409 il 2026-08-06. Ne discende che nel contesto non va la chiave `campo`. ⏸️ Niente `bersaglio`: in testa andrebbe il billing account, che non e' a catalogo in config.tipi_entita - metterci una FATTURA violerebbe l'ordine, che e' portante. ⭐ rev 2026-08-31: la definizione di «storia» non e' piu' «fatture e commesse» ma si DERIVA da vendite.famiglie_documento - ogni famiglia che si numera su un registro blocca, perche' il numero e' una copia dell'emittente che nessuno riscrivera' piu'. ⚠️ Il messaggio e' passato da quattro segnaposto a TRE (cliente, emittente, elenco): con cinque famiglie una frase che ne nomina due manderebbe a cercare fatture a un cliente bloccato da un DDT. Piano: brief-db-billing-account-cambio-emittente, M4; e brief-db-registri-di-numerazione-emittente-e-trasloco, C2-17.
     "E_BA_EMITTENTE_CON_STORIA": "CONFLITTO_STATO",
     # Lock di colonna (dbops.automation_lock_columns, script.trgfn_lock_columns) su anagrafiche.billing_account.istanza_utility_id e .utility_id - decisione di Tid del 2026-10-08: la coppia (istanza, utility) e' l'IDENTITA' del billing account. Spostarlo su un'altra istanza lascerebbe quella di partenza senza billing account (la regola E_ISTANZA_SENZA_BA) e i documenti che lo nominano con la coppia vecchia. CONFLITTO_STATO come gli altri lock (E_ORD_CLIENTE_IMMUTABILE, E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE). Il VARIADIC porta il nome della colonna, come nella famiglia dei lock. Non si e' riusato CODICE_NON_MODIFICABILE: e' obsoleto_dal 2026-08-05. Brief: brief-db-istanza-nasce-col-ba (R-1).
     "E_BA_ISTANZA_IMMUTABILE": "CONFLITTO_STATO",
+    # script.trgfn_prevent_modification_generic montato BEFORE DELETE su anagrafiche.billing_account (trg_billing_account_a05_block_delete_dlt): un cliente non si cancella, si annulla (anagrafiche.clienti, stato «annulla servizio»). CONFLITTO_STATO. VARIADIC: codice del billing account. Brief: brief-db-revisione-anagrafiche §24.5, §24.7.1.
+    "E_BA_NON_SI_CANCELLA": "CONFLITTO_STATO",
     "E_BA_SOGGETTO_INCOERENTE_ISTANZA": "DATO_ERRATO",
     # Difetto di programmazione, non condizione di dominio: 500.
     "E_BATCH_ARRAY_DISALLINEATI": "TECNICO",
+    # anagrafiche.fn_lookup_utilities_per_ba: l'id passato non e' un billing account, oppure e' fuori dal perimetro di chi chiama (la funzione e' INVOKER, la tabella e' sotto RLS). Prima del 20261126-42 il ramo sollevava E_PARAMETRO_INVALIDO, che copre la forma dei parametri e non l'esistenza della cosa indicata. NON_TROVATO. VARIADIC: id del billing account. Brief: brief-db-revisione-anagrafiche §24.9.
+    "E_BILLING_ACCOUNT_NOT_FOUND": "NON_TROVATO",
     "E_BILLING_ACCOUNT_UTILITY_NULL": "DATO_ERRATO",
     # Si sta chiudendo un legame di distinta (catalogo.articoli_componenti.valido_al) che ha prezzi bundle oltre la nuova fine (vendite.listini_righe_componenti, lettore vendite.fn_prezzi_legame_oltre_la_fine): un prezzo sta dentro il periodo del suo legame (FK temporale), e chiudendo il legame quei prezzi si chiudono alla stessa data, o si tolgono se cominciano dopo in una bozza. Il prezzo del kit, che e' la somma dei componenti, da quella data non comprende piu' il componente. Per decisione di Tid non succede in silenzio. Lo sollevano il guard catalogo.trgfn_articoli_componenti_block_modifica_struttura (l'AVVISO, su ogni UPDATE di valido_al) e il verbo catalogo.fn_chiudi_legame_distinta (la conferma che non corrisponde: chi conferma dichiara quanti prezzi ha visto, stampo di E_DOC_ANNULLO_CON_LEGAMI). CONFLITTO_STATO: il rimedio e' confermare col verbo. Campo valido_al. VALORI: componente, kit, numero di prezzi, numero di versioni. CONTESTO: legame_id, valido_al, prezzi, versioni, bersaglio il kit (ARTICOLO); la finestra elenca i prezzi da vendite.fn_prezzi_legame_oltre_la_fine. Nasce il 2026-11-09 (brief-db-revisione-catalogo, Q19-Q22 di Tid).
     "E_BOM_CHIUSURA_CON_PREZZI": "CONFLITTO_STATO",
@@ -1417,8 +1425,14 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PARAMETRI_TABELLA": "NON_TROVATO",
     # 177 punti in 114 funzioni: 160 sono guard di parametro (NULL, <= 0, btrim vuoto), 17 altro. DATO_ERRATO copre il 90%. I 17 restanti vanno guardati con la lente messaggio-vs-condizione, non spezzati a priori.
     "E_PARAMETRO_INVALIDO": "DATO_ERRATO",
+    # anagrafiche.fn_check_ba_padre, sollevato da anagrafiche.trgfn_billing_account_guard_normalize: il padre proposto per un billing account ha gia' un padre. L'albero dei billing account ha un livello solo: la fattura va al padre diretto. DATO_ERRATO, campo parent_account_id. VARIADIC: codice del padre proposto. Brief: brief-db-revisione-anagrafiche §24.5 (S28).
+    "E_PARENT_CON_PADRE": "DATO_ERRATO",
+    # anagrafiche.fn_check_ba_padre, sollevato da anagrafiche.trgfn_billing_account_guard_normalize: un billing account che fa gia' da padre prende un padre. L'albero ha un livello solo; la regola chiude anche i cicli. DATO_ERRATO, campo parent_account_id. VARIADIC: codice del billing account. Brief: brief-db-revisione-anagrafiche §24.5 (S28).
+    "E_PARENT_HA_FIGLI": "DATO_ERRATO",
     # Guard trgfn_billing_account_guard_normalize §2.2: il parent_account_id indicato non ha restituito nessuna riga. Due cause che il guard NON puo' distinguere e non finge di distinguere: il BA non esiste, oppure esiste ma e' fuori dal perimetro di chi scrive (la SELECT del guard passa dalle policy RLS di anagrafiche.billing_account, perche' la trigger function e' SECURITY INVOKER). Prima di questo codice il caso cadeva su E_ID_FISCALI_DIVERSI, che diceva una cosa falsa: i codici fiscali erano identici, semplicemente il padre era invisibile. Campo da dichiarare al client: parent_account_id. Piano: brief-db-perimetro-emittente-liste-e-gerarchia-ba §11.1, passo 3 (P-3).
     "E_PARENT_NON_RAGGIUNGIBILE": "DATO_ERRATO",
+    # anagrafiche.fn_check_ba_padre, sollevato da anagrafiche.trgfn_billing_account_guard_normalize: il cliente (la stessa identita' fiscale, o lo stesso soggetto) ha gia' un altro billing account che fa da padre sulla stessa azienda. Un padre per cliente e per azienda. DATO_ERRATO, campo parent_account_id. VARIADIC: codice del padre che c'e', codice del padre proposto. Brief: brief-db-revisione-anagrafiche §24.5 (S28).
+    "E_PARENT_SECONDO_PADRE": "DATO_ERRATO",
     "E_PARENT_SELF": "DATO_ERRATO",
     # Guard trgfn_billing_account_guard_normalize §2.2: padre e figlio appartengono a soggetti DIVERSI e almeno uno dei due non ha id_fiscale_univoco_cf_piva, quindi il confronto sul codice fiscale non e' utilizzabile come prova di identita'. Chiude il fail-open del NULL: `NULL IS DISTINCT FROM NULL` e' falso, quindi due BA entrambi senza CF passavano anche se di soggetti diversi. Il confronto ripiega sul soggetto, che e' sempre disponibile: due BA dello STESSO soggetto senza CF restano legittimi. Campo da dichiarare al client: parent_account_id. Piano: brief-db-perimetro-emittente-liste-e-gerarchia-ba §4, passo 3 (P-3).
     "E_PARENT_SOGGETTO_DIVERSO": "DATO_ERRATO",

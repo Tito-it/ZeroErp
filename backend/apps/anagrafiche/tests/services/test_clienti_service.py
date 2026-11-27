@@ -43,6 +43,7 @@ Indice test eseguiti:
 26) test_update_cliente_categoria_e_campi — F2-BE-04: PATCH misto BA + cliente
 27) test_update_cliente_categoria_invalida_zero — F2-BE-04: ba_categoria_cliente_id=0 -> VALIDAZIONE
 28) test_update_cliente_categoria_invalida_bool — F2-BE-04: ba_categoria_cliente_id=True -> VALIDAZIONE
+29) test_crea_cliente_ba_non_risulta — BA indicato che non risulta → E_BILLING_ACCOUNT_NOT_FOUND (2026-11-27)
 """
 
 from unittest import TestCase
@@ -377,6 +378,22 @@ class TestCreaClienteValidazione(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         self.assertIn("billing account", ctx.exception.message)
 
+
+    @patch(CLI_REPO, autospec=True)
+    def test_crea_cliente_ba_non_risulta(self, mock_repo):
+        """BA indicato che non risulta (inesistente o fuori perimetro) → 404
+        E_BILLING_ACCOUNT_NOT_FOUND, il codice del DB per lo stesso caso
+        (2026-11-27, brief-db-revisione-anagrafiche §24.9; prima E_ANAG_NOT_FOUND)."""
+        repo = mock_repo.return_value
+        repo.get_utility.return_value = _utility_gas()
+        repo.get_billing_account.return_value = None
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        with self.assertRaises(ServiceError) as ctx:
+            ClientiService().crea_cliente(
+                _base_payload(utility_id=1, billing_account_id=200))
+        self.assertEqual(ctx.exception.code, "E_BILLING_ACCOUNT_NOT_FOUND")
+        self.assertEqual(ctx.exception.context, {"billing_account_id": 200})
+        repo.crea_cliente.assert_not_called()
 
     @patch(CLI_REPO, autospec=True)
     def test_crea_cliente_ba_altra_utility(self, mock_repo):

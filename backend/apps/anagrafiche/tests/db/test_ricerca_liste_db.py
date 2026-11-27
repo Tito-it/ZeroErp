@@ -50,7 +50,11 @@ from apps.core.tests.db_e2e import (
 #    scegliersi l'azienda (ramo «nessun contesto»), come in `test_ricerca_full_db`.
 #    E anche il cliente: il builder apre il contesto sul SUO operatore, e il BA
 #    lo crea solo un operatore d'azienda (`E_BA_ADMIN_GLOBALE_VIETATO` per
-#    l'amministratore globale su cui si apre poi la prova).
+#    l'amministratore globale).
+# ⭐ La prova gira sul contesto del builder, l'operatore del mondo, che vede il
+#    suo cliente (D-AH, 2026-11-27). Fino ad allora si riapriva con
+#    `apri_contesto_operatore`, il primo operatore del DB: il cliente si
+#    trovava solo perche' su dbdev quello e' SUPER_ADMIN e vede ogni azienda.
 # ⚠️ Utility SENZA PDP (`richiede_pdp = false`): un cliente su un'utility a PDP
 #    ne pretenderebbe uno, e il PDP non e' il soggetto di questa prova.
 def _mondo_cliente(cur) -> tuple[dict, int]:
@@ -67,7 +71,6 @@ def _mondo_cliente(cur) -> tuple[dict, int]:
     )
     cli = dict(zip([c.name for c in cur.description], cur.fetchone(), strict=True))
     cliente_id = cli["cliente_id"]
-    apri_contesto_operatore(cur)
     return {**mondo, "cliente": cli}, cliente_id
 
 
@@ -162,7 +165,9 @@ class RicercaListeAnagraficheDbTests(unittest.TestCase):
                 listino = cur.fetchone()[0]
                 cur.execute("SELECT codice FROM vendite.listini WHERE id = %s", [listino])
                 listino_codice = cur.fetchone()[0]
-                apri_contesto_operatore(cur)
+                # ⭐ La riga si scrive sul contesto del mondo, il suo operatore
+                #    (D-AH, 2026-11-27): fino ad allora sul primo operatore del
+                #    DB, che la scriveva solo perche' SUPER_ADMIN su dbdev.
                 cur.execute(
                     "INSERT INTO anagrafiche.categorie_clienti (codice, descrizione, codice_interno) "
                     "VALUES ('RICCATLST', 'Categoria ricdesccatl', 'RICCATLST') RETURNING id"
