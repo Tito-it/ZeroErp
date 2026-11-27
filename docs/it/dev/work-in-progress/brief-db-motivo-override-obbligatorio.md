@@ -2,19 +2,26 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-27**
 >
-> **Riparte: nessuno, per ora.** Il brief è **aperto e non iniziato**. Nasce dalla verifica del giro 10-quater di
-> [brief-db-porte-aperte-dalla-sola-guc](../work-done/2026/brief-db-porte-aperte-dalla-sola-guc.md) (Tid,
-> 2026-11-27): la guida dei permessi dice che il motivo di un override è obbligatorio, il codice lo lascia vuoto.
-> Tid ha scelto di correggere il codice, non la guida.
+> **Riparte: il team BE/FE, col passaggio (§5, §7.5); Tid col commit.** Il giro DB è chiuso: applicato su scratch e
+> dbdev, pgTAP verdi col runner (Tid, 2026-11-27), baseline B-7 confrontata senza accumuli (§7.4). `20261126-80`
+> (la primitiva), `-81` (i `COMMENT` dei tre verbi), `-82` (il `COMMENT` della colonna `motivo`), il codice
+> `E_OVERRIDE_MOTIVO_OBBLIGATORIO` nei due CSV del catalogo, un pgTAP nuovo e due adeguati, la guida e i `manual/`.
+> Nasce dalla verifica del giro 10-quater di
+> [brief-db-porte-aperte-dalla-sola-guc](../work-done/2026/brief-db-porte-aperte-dalla-sola-guc.md): la guida dei
+> permessi dice che il motivo è obbligatorio, il codice lo lasciava vuoto, e Tid ha scelto di correggere il codice.
 >
 > | # | Chi | Che cosa | Dove | Aspetta |
 > | --- | --- | --- | --- | --- |
-> | 1 | Tid | il via (D-1 **a**, D-2 **b**, D-3 **b** decise il 2026-11-27) | §4 | — |
-> | 2 | team DB | il giro: la regola nella primitiva, il codice d'errore, i pgTAP, la guida | §3 | 1 |
-> | 3 | team BE/FE | il passaggio dopo l'apply: il campo nel pannello, la validazione, il ripiego | §5 | 2 |
+> | 1 | ✅ Tid | il via e le decisioni D-1 … D-4 (2026-11-27) | §4, §6.7 | — |
+> | 2 | ✅ team DB | il giro scritto e provato sullo scratch (2026-11-27) | §7 | — |
+> | 3 | ✅ Tid | l'apply su scratch e dbdev, i pgTAP del §7.3 col runner (2026-11-27) | §7.3 | — |
+> | 4 | ✅ team DB | la baseline B-7: nessuna riga da scrivere, confronto verde su scratch e dbdev (2026-11-27) | §7.4 | — |
+> | 5 | Tid | la doc auto-generata, il commit | §7.3 | — |
+> | 6 | team BE/FE | il passaggio: il dialog del motivo, la validazione, la policy del codice, i test | §5, §7.5 | — |
 >
-> Decisioni di Tid, tutte prese il 2026-11-27 (§4): D-1 **a**, la regola nella primitiva; D-2 **b**, le righe di oggi
-> senza motivo restano; D-3 **b**, il pannello chiede un motivo al salvataggio. Manca solo il via. Niente da committare oltre a questo file.
+> Decisioni di Tid, tutte prese il 2026-11-27: D-1 **a**, la regola nella primitiva; D-2 **b**, le righe di oggi senza
+> motivo restano; D-3 **b**, il pannello chiede un motivo al salvataggio; D-4 **no**, togliere un override non chiede
+> motivo (§6.7).
 >
 > **Brief vicini verificati** (2026-11-27, ricerca di `user_override` e `motivo` in `work-in-progress/`): nessuno
 > tratta il motivo degli override. `permessi-e-autorizzazioni-v3` (dormiente) non lo nomina;
@@ -101,13 +108,175 @@ passa, e dopo l'apply la rifiuta il DB col codice nuovo.
    la ricerca trova al momento (`grep -rn "put_override_" backend/apps --include=*.py`).
 5. Manuale `api_amm_software` §2.2, §2.4, §2.4-bis: il motivo è obbligatorio.
 
+## 6. L'analisi del giro (2026-11-27)
+
+Letta sulla doc auto-generata e sui pgTAP del checkout, senza prove. Le misure che seguono sono fatti datati: dicono
+che cosa si deve adeguare, non che forma ha la regola.
+
+### 6.1 La regola, nella primitiva
+
+In `config.fn_applica_imposta_override`, nel **primo** ciclo sugli elementi, **dopo** `script.fn_guard_campi_ammessi` e
+prima del `DELETE`. Il controllo segue il guard dei campi, così una chiave estranea resta `E_CAMPO_NON_AMMESSO` anche
+senza motivo, e precede il `DELETE`, così l'elenco si giudica tutto prima di toccare una riga:
+
+* `jsonb_typeof(v_el -> 'motivo') IS DISTINCT FROM 'string' OR btrim(v_el ->> 'motivo') = ''` →
+  `E_OVERRIDE_MOTIVO_OBBLIGATORIO`. Un motivo assente, `null`, non di testo (un numero, un oggetto), vuoto o di soli
+  spazi è la stessa mancanza: un codice solo.
+* Contesto: `campo = 'motivo'` (il canale `COLUMN`), `auth_user_id`, `tabella`, `indice` (la posizione nell'elenco, da
+  0) e la **chiave della voce** (`area_id`, `azione_id`, oppure `app_label` + `model_name`). Il dialog di D-3 **b** ha un
+  campo solo, ma chi diagnostica deve sapere quale voce. Niente `bersaglio`: la voce non è un'entità di
+  `config.tipi_entita`.
+* La scrittura riceve il motivo ripulito: `v_el || jsonb_build_object('motivo', btrim(v_el ->> 'motivo'))`.
+* Il letterale si solleva con `script.fn_log_and_raise_error` (linee-guida-sql §5, «Due funzioni per sollevare»).
+
+**Regola del 2.** I verbi col motivo obbligatorio (`fn_blocca_credenziale`, `fn_totp_disabilita_device`, il guard
+di `processi_accensione`, quelli di vendite e pagamenti) scrivono la stessa riga, `IS NULL OR btrim(…) = ''`, ognuno
+col codice del suo dominio. Non c'è un BB, e non ne nasce uno qui: la riga è un predicato di una riga, e ciò che
+cambia fra le sedi è il codice. Lo si dice per chi rifà la ricerca.
+
+Il verbo resta la porta: i tre `fn_imposta_override_*` chiedono il SUPER_ADMIN prima di chiamare la primitiva, quindi
+un operatore riceve sempre `E_PERMESSO_NEGATO` per primo, con o senza motivo (casi 7-11 di
+`test-porta-override-permessi-v1`).
+
+### 6.2 Il codice d'errore
+
+`E_OVERRIDE_MOTIVO_OBBLIGATORIO`, classe `DATO_ERRATO`, come gli altri `*_MOTIVO_OBBLIGATORIO` del catalogo (sette).
+Il messaggio e l'hint seguono quelli di `E_CREDENZIALE_MOTIVO_OBBLIGATORIO`: «Indicare il motivo dell'eccezione ai
+permessi.» / «Un'eccezione ai permessi di un utente richiede sempre un motivo.» / «Scrivere perché l'utente riceve, o
+perde, questo permesso.» Sedi: `codici_errore.csv`, `messaggi_errore.csv`, la riga della baseline B-7 (solo questa,
+`ref_baseline_b7_per_righe_del_cantiere`).
+
+### 6.3 Chi scrive oggi, e che cosa si adegua
+
+| Scrittore | Motivo oggi | Esito |
+| --- | --- | --- |
+| I tre verbi del SUPER_ADMIN, dal BE | facoltativo (`optional_string`) | rifiutati senza motivo dopo l'apply: è la regola. Il BE e il pannello si adeguano (§5) |
+| Il provisioning di sviluppo (`20261126-54`, le due chiamate) | sempre | nessuno |
+| I builder `fn_pgtap_concedi_livello_area`, `_concedi_azione`, `_nega_azione` | sempre («Fixture pgTAP…») | nessuno |
+| `fn_pgtap_scrivi_override`, chiamato a mano (`test-fn-pannello-scrivi-v1`, `test-porta-ddt-riconsegna-v1`, `test-anagrafiche-magazzino-sola-lettura-v1`) | sempre | nessuno. Riscrive anche le voci che trova, ma i pgTAP che scrivono le tabelle con un `INSERT` diretto e usano poi un builder sullo stesso utente (`test-fn-guard-azione-v1`, `test-permessi-tetto-area-v1`) lo scrivono già |
+| `test-porta-override-permessi-v1`, caso 12 | **no**: le due voci della prima chiamata | si aggiunge il motivo |
+| `test-fn-imposta-override-emittente-attivo-v1`, casi 3, 6 e 9 | **no** | si aggiunge il motivo. Il 9 è il più delicato: senza motivo darebbe il codice nuovo al posto del `23503` della FK, e smetterebbe di provare ciò che dice |
+| Gli `INSERT` diretti dei pgTAP da proprietario (sette file) | quasi sempre | nessuno: D-1 **a** mette la regola nella primitiva, non sulle colonne |
+
+### 6.4 Il pgTAP nuovo
+
+`db/pgtap/config/test-override-motivo-obbligatorio-v1.sql`, da un SUPER_ADMIN di fixture
+(`dbops.fn_pgtap_entra_come_super_admin`):
+
+1. Sulle tre tabelle: motivo assente, `null`, `''`, `'   '`, `123` → `E_OVERRIDE_MOTIVO_OBBLIGATORIO`.
+2. Il rifiuto non tocca l'elenco di prima: le voci dell'utente restano quelle di prima (il controllo precede il
+   `DELETE`).
+3. La seconda voce senza motivo, la prima con il motivo: rifiutata tutta, col contesto `indice = 1`.
+4. Un override che toglie (`BLOCCATO`, `abilitata = false`) senza motivo: rifiutato.
+5. `'  Delega temporanea  '` → scritto `'Delega temporanea'`.
+6. Chiave estranea e motivo assente insieme: `E_CAMPO_NON_AMMESSO` (l'ordine dei due controlli).
+7. L'elenco vuoto non chiede niente: toglie le voci.
+8. Il canale `COLUMN` porta `motivo` (`dbops.fn_pgtap_codice_errore` per il codice, il canale col pattern già in uso
+   nei pgTAP del catalogo errori).
+
+### 6.5 Guide e `manual/`
+
+* [architettura-permessi-e-autorizzazioni](../../guide/architettura-permessi-e-autorizzazioni.md): la regola sta oggi
+  nell'esempio di §4.8 (azioni), mentre vale per le tre tabelle. Va scritta una volta in «Chi scrive gli override», con
+  la primitiva per nome (`guide_coinvolte.py` la trova orfana), anche per gli override che tolgono; §4.8 rimanda lì.
+  §13.2, l'audit: il motivo è il «perché», l'audit il «chi» e il «quando».
+* `manual/` di `fn_applica_imposta_override`, dei tre `fn_imposta_override_*` e delle tre tabelle: il rifiuto, il codice,
+  il `btrim`.
+* Il `COMMENT` della primitiva e dei tre verbi: il codice nuovo fra i rifiuti.
+
+### 6.6 I changeSet
+
+Uno in `20_code/config` (la primitiva, col `COMMENT`) e uno per i `COMMENT` dei tre verbi, se si vuole il codice nuovo
+anche lì; le righe dei due CSV del catalogo errori nel loro seed. I numeri si prendono con
+`scripts/prossimo_changeset.py` subito prima di scrivere, sul range che dà Tid.
+
+### 6.7 Una domanda nuova, per Tid
+
+**D-4 ✅ no (Tid, 2026-11-27): togliere un override chiede un motivo?** Il verbo sostituisce l'elenco, quindi una voce tolta semplicemente non
+c'è più, e non ha dove portare un motivo. ⭐ Proposta: **no**. Il motivo spiega un'eccezione al profilo; tolta
+l'eccezione resta il profilo, che non ha niente da spiegare. Chi l'ha tolta e quando lo dice `storico`, e il motivo
+della voce tolta resta lì, nella sua ultima versione. Il dialog di D-3 **b** si apre anche per una voce tolta (è un
+cambio), ma il testo va solo sulle voci che restano.
+
+## 7. Il giro scritto (2026-11-27)
+
+### 7.1 I file
+
+| File | Che cosa |
+| --- | --- |
+| `20_code/config/20261126-80-update-fn-applica-imposta-override-motivo-obbligatorio` | la primitiva: la regola nel primo ciclo, dopo il guard delle chiavi e prima del `DELETE`; il motivo scritto con `btrim`; il `COMMENT`. Firma invariata (`%TYPE` sull'utente), rollback al corpo del `-50` |
+| `20_code/config/20261126-81-update-comment-verbi-override-motivo-obbligatorio` | i `COMMENT` dei tre verbi, presi dal catalogo e riscritti in due punti: il motivo fra le chiavi obbligatorie, il suo rifiuto. Firme col `%TYPE` |
+| `00_schema/config/20261126-82-comment-colonna-motivo-user-override` | il `COMMENT` della colonna `motivo` sulle tre tabelle: obbligatorio alla scrittura, e perché una riga può non averlo |
+| `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` | `E_OVERRIDE_MOTIVO_OBBLIGATORIO`, `DATO_ERRATO`, messaggio senza segnaposto (id 1561). Campi contati dopo l'ultima scrittura, niente `CR` |
+| `db/pgtap/config/test-override-motivo-obbligatorio-v1.sql` | nuovo, 16 casi (§6.4) |
+| `db/pgtap/config/test-porta-override-permessi-v1.sql` (caso 12), `test-fn-imposta-override-emittente-attivo-v1.sql` (casi 3, 6, 9) | il motivo nelle voci |
+| guida `architettura-permessi-e-autorizzazioni` («Chi scrive gli override», «Ogni override ha un motivo», §4.8, §13.2) | **indietro**, aggiornata nel giro: la regola per le tre tabelle, la primitiva per nome (non più orfana), la voce che toglie, D-4 |
+| `manual/` della primitiva, dei tre verbi e delle tre tabelle | il rifiuto, il `btrim`, la colonna |
+
+Rispetto al §6.4 il pgTAP non asserisce `indice` e `voce`: viaggiano nel contesto del log, non in un canale
+dell'eccezione. Il caso 10 prova invece che l'elenco si giudica tutto prima di scrivere (la prima voce cadrebbe sulla
+FK, vince il motivo della seconda).
+
+### 7.2 La prova (scratch, da proprietario, in `ROLLBACK`)
+
+* `-82`, `-80`, `-81` col pgTAP nuovo: senza l'estratto 5 ok / 11 rossi (la regola che non c'è), con l'estratto **16 ok**.
+* `-80` con `test-fn-imposta-override-emittente-attivo-v1`: 13 ok senza e con.
+* `-80` con `test-porta-override-permessi-v1`: senza 14 ok / 4 rossi, i rossi di perimetro che da proprietario lo sono
+  per costruzione. Con l'estratto la corsa **si ferma al caso 16**, ed è un effetto della prova da proprietario: il caso 4
+  (un `INSERT` diretto, che come app è `42501`) da proprietario riesce, e lascia all'operatore una voce senza motivo;
+  `fn_pgtap_apri_area_per_nascita` riscrive le sue voci e la regola la rifiuta. Con quella riga tolta in una copia, la
+  corsa con l'estratto torna 14 ok / 4 rossi come senza. Il test non è `pgtap-runner: owner`: col runner il caso 4 è
+  rifiutato e la riga non nasce. ✅ Confermato: col runner il test è verde (Tid, 2026-11-27).
+* Guardrail `forme`, `comment-al-presente`, `runOnChange`, `letterali`, `preCondition/seed`, `preambolo`: verdi.
+
+⚠️ **L'effetto di D-2 b sui builder** (fatto del modello, non di oggi): `fn_pgtap_scrivi_override` riscrive tutte le
+voci dell'utente, quindi un utente che ha una voce senza motivo non riceve più un livello dai builder, finché la voce
+non riceve un motivo. I builder creano utenti nuovi; lo usa sull'utente di sessione solo
+`fn_pgtap_apri_area_per_nascita`; i test BE che prendono il primo operatore dai dati usano i builder su di lui
+(`apri_operatore_con_aree`). Una riga così si sistema dal pannello (D-3 **b**), non con un changeSet (D-2 **b**).
+
+Fatti datati al 2026-11-27, letti come app in sola lettura: sullo scratch nessuna voce senza motivo; su dbdev 40 voci
+senza motivo (aree 8 su 8, azioni 27 su 28, oggetti 5 su 6) di tre utenti, nessuno SUPER_ADMIN: 6 (30 voci), 9 (5),
+48890 (5). Il primo operatore che i test BE prendono su dbdev è il 5 (`db_e2e.py`, «il primo attivo che non è
+SUPER_ADMIN»), che non ne ha: oggi nessun test BE ne risente. Se il 5 cambia, o se un test sceglie il 6, il 9 o il
+48890, il builder rifiuta col codice nuovo, ed è la regola.
+
+### 7.3 Per Tid: l'apply e i pgTAP
+
+`liquibase update`, poi col runner: `config/test-override-motivo-obbligatorio-v1`,
+`config/test-porta-override-permessi-v1`, `config/test-fn-imposta-override-emittente-attivo-v1`,
+`config/test-fn-pannello-scrivi-v1`, `vendite/test-porta-ddt-riconsegna-v1`,
+`magazzino/test-anagrafiche-magazzino-sola-lettura-v1`, `script/test-fn-guard-campi-ammessi-v1` (legge il corpo della
+primitiva), `script/test-catalogo-messaggi-errore-completo`. Poi la doc auto-generata.
+
+### 7.4 Dopo l'apply: la baseline B-7 (2026-11-27)
+
+Misurata come app in sola lettura (`scripts/sql/codici_errore_famiglie_snapshot.sql`) su scratch e dbdev, coi tre
+changeSet applicati su tutti e due. **`E_OVERRIDE_MOTIVO_OBBLIGATORIO` non entra nello scatto**: la misura legge la
+sua condizione (`jsonb_typeof(…) IS DISTINCT FROM 'string' OR btrim(…) = ''`) come `IGNOTO`, e un codice con sole
+famiglie ignote non è presidiato (il limite dichiarato in testa a `scripts/codici-errore-baseline.sh`). Quindi
+**nessuna riga da scrivere**, e la baseline non cambia. Il confronto (`scripts/codici-errore-baseline.sh`, come app):
+213 codici presidiati, 0 accumuli, 0 ristretti, 0 rientrati, su scratch e su dbdev.
+
+### 7.5 La richiesta al team BE/FE
+
+Il §5, con due aggiunte:
+
+* **la CI**: il guardrail «codice senza policy» è rosso dal merge del giro finché `genera_error_policies` non gira (§5.2);
+* **D-4**: il dialog si apre anche se l'unico cambio è una voce tolta, ma il motivo va solo sulle voci che restano;
+  togliere tutte le voci (elenco vuoto) non chiede motivo.
+
 ## Il piano
 
 - [x] D-1 **a**, la regola nella primitiva (Tid, 2026-11-27)
 - [x] D-2 **b**, D-3 **b** (Tid, 2026-11-27)
-- [ ] Il via (Tid)
-- [ ] Il giro DB: primitiva, codice d'errore, pgTAP, guida e `manual/`; prova sullo scratch
-- [ ] L'apply, la doc auto-generata
+- [x] D-4 **no**, togliere un override non chiede motivo (Tid, 2026-11-27)
+- [x] Il via, col range da `20261126-80` (Tid, 2026-11-27)
+- [x] Il giro DB: primitiva, codice d'errore, pgTAP, guida e `manual/`; prova sullo scratch (2026-11-27, §7)
+- [x] L'apply su scratch e dbdev, i pgTAP del §7.3 col runner (Tid, 2026-11-27)
+- [x] La baseline B-7: nessuna riga, confronto verde su scratch e dbdev (2026-11-27, §7.4)
+- [ ] La doc auto-generata (Tid)
+- [ ] Il commit
 - [ ] Il passaggio BE/FE (§5)
 
 ---

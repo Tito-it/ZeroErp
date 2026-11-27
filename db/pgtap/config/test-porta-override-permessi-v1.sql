@@ -14,6 +14,9 @@
 --   primitiva), -51 … -53 (i tre verbi), 20_code/anagrafiche/20261126-54 (il
 --   provisioning), 20_code/dbops/20261126-55 … -59 (i builder), 90_end/20261126-62
 --   (le tabelle in sola lettura), -63 (la primitiva riservata).
+-- rev 2026-11-27 (brief-db-motivo-override-obbligatorio §6.3): il motivo di un
+--   override e' obbligatorio (20261126-80): le due voci della prima chiamata del
+--   caso 12 lo scrivono. La regola la collauda config/test-override-motivo-obbligatorio-v1.
 --
 -- Semantica attesa (il contratto, non l'implementazione):
 --   - gli override utente (aree, azioni, oggetti) e i due cataloghi
@@ -196,8 +199,8 @@ DECLARE
 BEGIN
   v_prima := dbops.fn_pgtap_entra_come_super_admin('porta-override');
   PERFORM config.fn_imposta_override_aree((SELECT auth_user_id FROM _p), jsonb_build_array(
-      jsonb_build_object('area_id', (SELECT area_1 FROM _cat), 'livello', 'TUTTO'),
-      jsonb_build_object('area_id', (SELECT area_2 FROM _cat), 'livello', 'LETTURA')));
+      jsonb_build_object('area_id', (SELECT area_1 FROM _cat), 'livello', 'TUTTO', 'motivo', 'pgTAP'),
+      jsonb_build_object('area_id', (SELECT area_2 FROM _cat), 'livello', 'LETTURA', 'motivo', 'pgTAP')));
   v_n := config.fn_imposta_override_aree((SELECT auth_user_id FROM _p), jsonb_build_array(
       jsonb_build_object('area_id', (SELECT area_2 FROM _cat), 'livello', 'TUTTO', 'motivo', 'pgTAP')));
   INSERT INTO _sost (n, err)

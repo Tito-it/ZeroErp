@@ -32,7 +32,7 @@ La tabella **`config.user_override_azioni`** consente di **sovrascrivere l'abili
 | `auth_user_id` | Utente Django (FK → `django.auth_user`) |
 | `azione_id` | Azione di processo (FK → `config.azioni_processo`) |
 | `abilitata` | `true` = concessa, `false` = negata (sovrascrive il reparto) |
-| `motivo` | Motivazione dell'override |
+| `motivo` | Il perché dell'eccezione. Obbligatorio a ogni scrittura, anche per l'eccezione che toglie (`E_OVERRIDE_MOTIVO_OBBLIGATORIO`, dalla primitiva dei verbi); una riga scritta prima della regola può non averlo, e la prossima riscrittura dell'elenco lo chiede |
 | `valido_dal` / `valido_al` | Finestra temporale di validità |
 
 ---

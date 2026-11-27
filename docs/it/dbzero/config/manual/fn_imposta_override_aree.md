@@ -42,7 +42,10 @@ l'applicazione non esegue.
 
 ### Regole
 
-* Ogni eccezione porta l'area e il livello, e se serve il motivo e il periodo di validità.
+* Ogni eccezione porta l'area, il livello e il motivo e, se serve, il periodo di validità.
+* **Il motivo è obbligatorio**, anche per l'eccezione che toglie: assente, vuoto o di soli spazi,
+  `E_OVERRIDE_MOTIVO_OBBLIGATORIO` sul campo `motivo`, e le eccezioni di prima restano. Si scrive senza
+  spazi in testa e in coda. Togliere un'eccezione dall'elenco non lo chiede. La regola sta nella primitiva [`config.fn_applica_imposta_override`](/dbzero/config/funzioni/fn_applica_imposta_override).
 * Una chiave assente prende il valore di partenza della colonna (senza data di inizio vale da oggi);
   una chiave scritta vuota scrive vuoto (inizio vuoto = senza inizio).
 * Una chiave che la tabella non ammette: `E_CAMPO_NON_AMMESSO`. Utente mancante, elenco o elemento
@@ -56,7 +59,7 @@ Non aggiorna la cache dei permessi del backend: lo fa il backend dopo la chiamat
 
 ### Test
 
-`db/pgtap/config/test-porta-override-permessi-v1.sql`.
+`db/pgtap/config/test-override-motivo-obbligatorio-v1.sql` (il motivo), `db/pgtap/config/test-porta-override-permessi-v1.sql`.
 
 ---
 

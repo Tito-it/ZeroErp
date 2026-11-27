@@ -33,7 +33,7 @@ La tabella **`config.user_override_aree`** consente di **sovrascrivere il profil
 | `auth_user_id` | Utente Django (FK → `django.auth_user`) |
 | `area_id` | Area funzionale (FK → `config.aree_funzionali`) |
 | `livello` | `config.livello_accesso`: TUTTO / LETTURA / BLOCCATO |
-| `motivo` | Testo libero: perché è stato concesso l'override |
+| `motivo` | Il perché dell'eccezione. Obbligatorio a ogni scrittura, anche per l'eccezione che toglie (`E_OVERRIDE_MOTIVO_OBBLIGATORIO`, dalla primitiva dei verbi); una riga scritta prima della regola può non averlo, e la prossima riscrittura dell'elenco lo chiede |
 | `valido_dal` / `valido_al` | Finestra temporale di validità (NULL = indeterminato) |
 
 ---
