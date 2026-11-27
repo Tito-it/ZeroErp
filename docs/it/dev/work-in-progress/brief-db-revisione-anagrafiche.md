@@ -2820,6 +2820,25 @@ sullo scratch senza accumuli né rientrati, doc auto-generata rigenerata, lo ste
 * `docs/it/backend/anagrafiche/manual/api_emittenti_fiscali.md` (la sezione del lookup): il 404 fra le risposte.
 
 ## 25. T8 — ruoli d'impresa, conti, emittente (2026-11-26: analisi letta sul catalogo; 2026-11-27: tre giri, decisioni dei giri aperte)
+**Risposta del BE** (2026-11-27). ✅ Policy rigenerate, ripiego senza `%s`, manuale del lookup: commit `8e0ced5b2`. Per
+decisione di Tid lo stesso codice vale per **ogni** punto del BE che risponde «il billing account non risulta»
+(inesistente o fuori perimetro, che la RLS non distingue):
+
+* `BillingAccountService.list_utilities_for_ba`, `get_lookup_by_id` e il BB `categoria_cliente_da_query`
+  (`/parameters/settings/`, `/pricing/limiti-utente/`): prima `E_ANAG_NOT_FOUND` (`8e0ced5b2`);
+* i cinque form-defaults di `vendite_form_defaults_service` (contratto, offerta, ordine, DDT, preventivo): prima
+  `E_VENDITE_NOT_FOUND`, ognuno con la sua copia del controllo; ora passano dal BB `get_lookup_by_id`;
+* `PricingDiagnoseService.diagnose` (prima `E_VENDITE_NOT_FOUND`) e il BA indicato nella creazione di un cliente
+  (`ClientiService._validate_billing_account`, prima `E_ANAG_NOT_FOUND`).
+
+Il controllo sta in un posto solo, il BB `richiedi_billing_account_trovato` (`billing_account_service.py`, regola del
+2, ok Tid 2026-11-27): i cinque punti erano cinque copie con tre codici.
+
+Restano col loro codice, perché sono un altro caso: il BA **scritto in un payload** di pratica, commessa e preventivo
+(BB `istanza_del_billing_account`, 400 sul campo col codice di validazione del dominio) e la FK
+`fk_offerte_commerciali_billing_account` tradotta in `E_VENDITE_FK`. Nessun ramo del frontend legge i codici vecchi.
+
+## 25. T8 — ruoli d'impresa, conti, emittente (2026-11-26: analisi letta sul catalogo, decisioni di Tid aperte)
 
 Il perimetro è S12, S13, S15 (la parte che serve), S18, S54, S55, S56, S57, R-BE3 e R-BE4 (§17). S53 resta a T12. Corpi,
 trigger, vincoli e COMMENT letti sul catalogo dello scratch (`zeroerp_ruoli`) il 2026-11-26, confrontati con dbdev dove

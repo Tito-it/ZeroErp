@@ -89,6 +89,7 @@ from apps.core.db._helpers import add_ricerca_full_condition, soglia_ricerca
 from apps.core.tests.db_e2e import (
     Annulla,
     apri_contesto_operatore,
+    apri_super_admin_costruito,
     richiedi_db_provvisto,
     verifica_ricerca_colonna_per_colonna,
 )
@@ -272,7 +273,11 @@ class RicercaFullDbTests(unittest.TestCase):
                 cur.execute("SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('ricerca full BE', 'RFC')")
                 colonne = [c.name for c in cur.description]
                 mondo = dict(zip(colonne, cur.fetchone(), strict=True))
-                operatore = apri_contesto_operatore(cur)
+                # ⭐ Le liste attraversano piu' aziende (il mondo, l'emittente
+                #    del registro): serve chi le vede tutte, e si COSTRUISCE
+                #    (D-AH, 2026-11-27). Fino ad allora era il primo operatore
+                #    del DB, che le vedeva solo perche' SUPER_ADMIN su dbdev.
+                operatore = apri_super_admin_costruito(cur, etichetta="ricerca full admin")
                 # Il mondo si COSTRUISCE: una riga per lista, con un valore per
                 # colonna che sta solo li'.
                 cur.execute(
@@ -703,7 +708,10 @@ class RicercaFullDbTests(unittest.TestCase):
             with transaction.atomic(), connection.cursor() as cur:
                 cur.execute("SELECT preventivo_id FROM dbops.fn_pgtap_crea_preventivo('ricerca note')")
                 preventivo_id = cur.fetchone()[0]
-                apri_contesto_operatore(cur)
+                # ⭐ Il contesto resta quello che il builder apre sull'operatore
+                #    del mondo, che vede il suo preventivo (D-AH, 2026-11-27):
+                #    fino ad allora lo sostituiva il primo operatore del DB,
+                #    SUPER_ADMIN su dbdev.
                 cur.execute("SELECT dbops.fn_pgtap_crea_articolo('RICNOTEART')")
                 articolo_id = cur.fetchone()[0]
                 cur.execute("SELECT id FROM config.note_stili WHERE attivo ORDER BY id LIMIT 1")

@@ -26,7 +26,6 @@ import unittest
 from django.db import connection
 
 from apps.core.tests.db_e2e import (
-    apri_contesto_operatore,
     apri_transazione_annullata,
     richiedi_db_provvisto,
 )
@@ -46,7 +45,11 @@ class NoteOrdineDbTests(unittest.TestCase):
         with connection.cursor() as cur:
             cur.execute("SELECT preventivo_id FROM dbops.fn_pgtap_crea_preventivo('ordine note')")
             self.preventivo_id = cur.fetchone()[0]
-            apri_contesto_operatore(cur)
+            # ⭐ Il contesto e' quello che il builder apre sull'operatore del
+            #    mondo che costruisce, che vede il preventivo (D-AH,
+            #    2026-11-27). Fino ad allora `apri_contesto_operatore` lo
+            #    sostituiva col primo operatore del DB: le note si scrivevano
+            #    solo perche' su dbdev quello e' SUPER_ADMIN.
             cur.execute("SELECT id FROM config.note_stili WHERE attivo ORDER BY id LIMIT 1")
             stile = cur.fetchone()[0]
 

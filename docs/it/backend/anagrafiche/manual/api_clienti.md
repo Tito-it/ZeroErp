@@ -107,7 +107,8 @@ una scelta che non aveva effetto.
 | Codice | HTTP | Quando |
 | --- | --- | --- |
 | `E_ANAG_VALIDAZIONE` | 400 | Chiave fuori contratto; `soggetto_id`/`utility_id`/`ba_categoria_cliente_id` mancanti; `servizio_da_fatturare` non booleano; utility con PDP in creazione manuale |
-| `E_ANAG_NOT_FOUND` | 404 | `istanza_utility_id`/`billing_account_id` pre-esistenti non trovati |
+| `E_ANAG_NOT_FOUND` | 404 | `istanza_utility_id` pre-esistente non trovato |
+| `E_BILLING_ACCOUNT_NOT_FOUND` | 404 | `billing_account_id` pre-esistente inesistente o fuori perimetro (dal 2026-11-27, il codice del DB per lo stesso caso; prima `E_ANAG_NOT_FOUND`) |
 | `E_BA_ADMIN_GLOBALE_VIETATO` | 403 | Creazione BA senza un emittente fiscale di lavoro (super admin in «Tutti gli emittenti») con emittenti presenti: scegliere l'emittente in alto |
 | `E_ANAG_DUPLICATO` | 409 | Esiste già un cliente per il billing account (`uq_clienti_billing_account`, dal 2026-10-08: un cliente per BA, un'istanza ha tanti clienti quanti BA) |
 | `E_ANAG_DUPLICATO` | 409 | Istanza pre-esistente la cui utility ha già il suo billing account, senza indicarlo (`uq_billing_instance_utility`): il cliente si aggancia a quel BA, passandone l'id |

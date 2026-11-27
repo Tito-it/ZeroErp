@@ -60,7 +60,7 @@ class PricingDiagnoseServiceTests(TestCase):
         repo.get_ba_categoria.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             _make_service(repo).diagnose(**_common_args())
-        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+        self.assertEqual(ctx.exception.code, "E_BILLING_ACCOUNT_NOT_FOUND")
 
     def test_solo_matrice_applicabile(self):
         repo = MagicMock()

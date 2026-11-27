@@ -49,7 +49,7 @@ from django.db import DatabaseError, connection, transaction
 
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_contesto_operatore, apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_operatore_con_aree, apri_transazione_annullata, richiedi_db_provvisto
 
 _PADRE = "magazzino.causali"
 _FIGLIA = "config.causali_trasporto"
@@ -67,7 +67,10 @@ class AttivoFkSenzaSuffissoDbTests(TestCase):
 
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
-            apri_contesto_operatore(cur)
+            # ⭐ Un operatore COSTRUITO col livello sulle due aree delle tabelle
+            #    (D-AH, 2026-11-27): fino ad allora il primo operatore del DB, che
+            #    su dbdev e' SUPER_ADMIN, e il verde dipendeva da lui.
+            apri_operatore_con_aree(cur, aree=("config", "magazzino"), motivo="attivo fk senza suffisso")
             cur.execute("SET CONSTRAINTS ALL IMMEDIATE")
         self.svc = ConfigCrudService()
 
