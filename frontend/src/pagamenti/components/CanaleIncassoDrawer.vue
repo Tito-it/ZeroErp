@@ -413,7 +413,8 @@ async function onSave() {
 
       <div class="form-field">
         <div style="display: flex; align-items: center; gap: 0.5rem;">
-          <Checkbox v-model="form.attivo" binary :disabled="isReadonly" input-id="canale-attivo" />
+          <Checkbox v-model="form.attivo" binary :disabled="isReadonly" input-id="canale-attivo"
+            :invalid="campiErrati.includes('attivo')" />
           <label for="canale-attivo">{{ t('pagamenti.canali.col_attivo') }}</label>
         </div>
       </div>

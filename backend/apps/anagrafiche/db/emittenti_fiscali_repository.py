@@ -22,7 +22,6 @@ from apps.core.db._helpers import (
     sql_order_direction_lista,
     RicercaFull,
     add_ricerca_full_condition,
-    sql_lateral_primo_motivo,
     sql_order_clause,
     sql_tiebreak_direction,
     fetch_paged_with_total,
@@ -345,8 +344,12 @@ class EmittentiFiscaliBillingAccountRepository:
         "data_insert": "m.data_insert",
     }
 
-    # Scopo: Lista paginata mapping BA per un emittente, con search su
+    # Scopo: Lista paginata dei collegamenti BA di un emittente, con search su
     #        ragione_sociale_completa, codice BA e id_fiscale_univoco_cf_piva.
+    #        IN CONSULTAZIONE dal 2026-11-27 (D-T4-3, Tid §26.2): niente piu'
+    #        motivo di rimozione per riga (la LATERAL su
+    #        `script.fn_check_ba_cambio_emittente`), perche' nessuna riga si
+    #        toglie.
     def list_by_emittente(
         self,
         emittente_soggetto_ruolo_id: int,
@@ -374,21 +377,6 @@ class EmittentiFiscaliBillingAccountRepository:
         conditions: list[str] = ["m.emittente_soggetto_ruolo_id = %s"]
         params: list[Any] = [emittente_soggetto_ruolo_id]
         add_ricerca_full_condition(conditions, params, search, _RICERCA_EMITTENTE_BA)
-        # ⭐ Il frammento e' il BB `sql_lateral_primo_motivo` (core/db): il
-        #    «dopo» passato alla check e' l'emittente della riga `is_default`
-        #    ESCLUSA questa — lo specchio esatto di
-        #    `trgfn_efba_guard_storia_emittente`. Qui si legge il `dettaglio`
-        #    intero e la proiezione ne estrae `storia`.
-        lateral_blocco = sql_lateral_primo_motivo(
-            """script.fn_check_ba_cambio_emittente(
-                                 m.billing_account_id,
-                                 m.emittente_soggetto_ruolo_id,
-                                 (SELECT d.emittente_soggetto_ruolo_id
-                                    FROM anagrafiche.emittenti_fiscali_billing_account d
-                                   WHERE d.is_default IS TRUE
-                                     AND d.id <> m.id))""",
-            "blocco",
-        )
         sql = f"""
             SELECT m.id,
                    m.billing_account_id,
@@ -398,116 +386,44 @@ class EmittentiFiscaliBillingAccountRepository:
                    s.id_fiscale_univoco_cf_piva AS id_fiscale_univoco,
                    m.data_insert,
                    m.data_update,
-                   blocco.reason               AS rimozione_blocco_reason,
-                   blocco.reason_key           AS rimozione_blocco_reason_key,
-                   -- ⭐ L'ELENCO PER FAMIGLIA, cioe' lo stesso grado di
-                   --    dettaglio del RIFIUTO: il tooltip diceva «ha documenti
-                   --    numerati» e il 409 diceva «Fattura: 3, DDT: 1», e chi
-                   --    si fermava al tooltip non sapeva DOVE guardare.
-                   -- ⛔ Viaggia il DATO, non la frase: la compone il frontend
-                   --    dai `locales` (api.md §12.5.4). La `descrizione` di
-                   --    catalogo viaggia con l'elemento perche' e' il RIPIEGO
-                   --    del client su una famiglia che non ha ancora la sua
-                   --    chiave i18n: il vocabolario e' aperto.
-                   -- ⭐ Non costa niente: la LATERAL gia' gira e il `dettaglio`
-                   --    e' gia' composto (i conteggi si pagano solo nel ramo
-                   --    d'errore). Qui si smette di buttarlo via.
-                   -- ⚠️ NULL sulla riga del gestore globale, bloccata dal
-                   --    SINGLETON e non dalla storia: li' il `dettaglio` non ha
-                   --    questa chiave e il client ricade sulla frase secca.
-                   -- ⚠️ Niente graffe nei commenti di questo SQL: e' un
-                   --    f-string, e una parentesi graffa viene valutata come
-                   --    espressione Python.
-                   blocco.dettaglio -> 'storia' AS rimozione_blocco_storia,
                    COUNT(*) OVER ()            AS total_count
               FROM anagrafiche.emittenti_fiscali_billing_account m
               LEFT JOIN anagrafiche.billing_account ba ON ba.id = m.billing_account_id
               LEFT JOIN anagrafiche.soggetti_ruoli sr  ON sr.id = ba.soggetto_ruolo_id
               LEFT JOIN anagrafiche.soggetti s         ON s.id  = sr.soggetto_id
-              -- Il motivo per cui QUESTA riga non si puo' togliere, chiesto al
-              -- database e non ricalcolato qui (linee-guida-sql 12.5).
-              -- ⛔ Il «dopo» e' l'emittente della riga is_default ESCLUSA
-              --    QUESTA: e' lo specchio esatto di come lo calcola
-              --    trgfn_efba_guard_storia_emittente, e i due non possono
-              --    divergere senza che il tooltip dica una cosa e il rifiuto
-              --    un'altra. Con script.fn_get_ba_emittente_sr_id direbbe
-              --    sempre «togliabile»: il mapping che si sta guardando c'e'
-              --    ancora, quindi «prima» e «dopo» coinciderebbero.
-              -- ⛔ LEFT JOIN LATERAL ... ON TRUE e non un CROSS JOIN: se il
-              --    gestore globale non esistesse, un CROSS JOIN svuoterebbe
-              --    la LISTA — cioe' «non c'e' nessun mapping», la risposta
-              --    piu' rassicurante possibile e la piu' falsa.
-              -- ⚠️ COSTO, letto sul piano e non sul cronometro: il
-              --    `COUNT(*) OVER ()` obbliga a materializzare TUTTE le righe
-              --    dell'emittente prima del LIMIT, quindi questa LATERAL gira
-              --    una volta per riga dell'emittente, non per riga di pagina.
-              --    E la lista cresce col parco clienti: ogni billing account
-              --    nasce con un mapping suo (trgfn_billing_account_link_ef),
-              --    quindi non c'e' un tetto. ⭐ Non e' pero' QUI il collo di
-              --    bottiglia, ed e' il motivo per cui non si e' riscritta la
-              --    query: la funzione esce in corto circuito senza toccare
-              --    nessuna tabella nei due casi normali (riga del gestore
-              --    globale, emittente che non cambia davvero), mentre i JOIN
-              --    che c'erano gia' pagano lo stesso numero di giri con una
-              --    ricerca su indice sotto RLS ciascuno — ed e' un ordine di
-              --    grandezza piu' caro. Se un giorno questa pagina rallenta,
-              --    la risposta e' impaginare PRIMA di arricchire, e riguarda
-              --    tutta la query: non questo pezzo.
-              {lateral_blocco}
              WHERE {" AND ".join(conditions)}
              ORDER BY {order_prefix}{order_col} {direction}, m.id {tiebreak_dir}
              LIMIT %s OFFSET %s
         """  # noqa: S608
         params.extend([limit, offset])
         rows, total = fetch_paged_with_total(sql, params, offset=offset)
-        # ⭐ `rimozione_blocco_storia` arriva decodificata dal lettore comune
-        #    (`fetch_paged_with_total`), e il NULL resta NULL: sulla riga del
-        #    gestore globale non c'e' storia, e `[]` direbbe «nessun documento»
-        #    invece di «questa domanda non si applica».
         return rows, total
 
-    # Scopo: Inserisce un mapping BA per l'emittente.
-    #        Se billing_account_id e' None, crea il default globale (is_default=true).
-    #        Il CHECK constraint chk_emittenti_fiscali_ba_default garantisce coerenza.
-    def create_mapping(
-        self,
-        emittente_soggetto_ruolo_id: int,
-        billing_account_id: int | None,
-    ) -> int:
-        is_default = billing_account_id is None
-        sql = """
-            INSERT INTO anagrafiche.emittenti_fiscali_billing_account
-                   (emittente_soggetto_ruolo_id, billing_account_id, is_default)
-            VALUES (%s, %s, %s)
-            RETURNING id
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [emittente_soggetto_ruolo_id, billing_account_id, is_default])
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
-
-    # Scopo: Elimina un mapping per id.
-    #        I trigger DB (default_guard) impediscono di rimuovere il default se necessario.
-    def delete_mapping(self, mapping_id: int) -> bool:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "DELETE FROM anagrafiche.emittenti_fiscali_billing_account WHERE id = %s",
-                [mapping_id],
-            )
-            return cursor.rowcount > 0
-
-    # Scopo: Verifica che un mapping appartenga all'emittente atteso (sicurezza sub-resource).
-    def belongs_to_emittente(self, mapping_id: int, emittente_soggetto_ruolo_id: int) -> bool:
+    # Scopo: Rende l'emittente l'azienda PREDEFINITA (la riga
+    #        `billing_account_id` NULL, `is_default`): l'azienda in cui nascono i
+    #        billing account creati senza sessione. La riga si SPOSTA, non si
+    #        cancella e ricrea: il DB rifiuta la cancellazione di ogni
+    #        collegamento, anche questo (`E_BA_COLLEGAMENTO_NON_SI_TOGLIE`: «la
+    #        predefinita si cambia modificandola», giro 6). Ritorna l'id della
+    #        riga, None se la predefinita non c'e'.
+    # ⛔ Niente INSERT di ripiego: appena esiste un emittente la predefinita e'
+    #    obbligatoria (la porta il bootstrap del primo emittente, e
+    #    `trgfn_emittenti_fiscali_default_guard` la esige al COMMIT), quindi
+    #    «non c'e'» e' uno stato che il modello esclude. Crearla qui rifarebbe
+    #    in silenzio il lavoro del bootstrap; il None lo fa dire al service.
+    def imposta_predefinita(self, emittente_soggetto_ruolo_id: int) -> int | None:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT 1 FROM anagrafiche.emittenti_fiscali_billing_account
-                 WHERE id = %s AND emittente_soggetto_ruolo_id = %s
+                UPDATE anagrafiche.emittenti_fiscali_billing_account
+                   SET emittente_soggetto_ruolo_id = %s
+                 WHERE is_default
+                RETURNING id
                 """,
-                [mapping_id, emittente_soggetto_ruolo_id],
+                [emittente_soggetto_ruolo_id],
             )
-            return cursor.fetchone() is not None
+            row = cursor.fetchone()
+        return None if row is None else int(row[0])
 
     # Scopo: Riepilogo dei mapping per un emittente, indipendente da paginazione/search.
     #        Usato dal FE per disabilitare il pulsante "default" senza dipendere dalla

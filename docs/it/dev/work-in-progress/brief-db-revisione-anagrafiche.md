@@ -9,13 +9,14 @@ sezione: qui solo chi e dove.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | team BE/FE | La richiesta del giro T8b | §25.9.2 | — |
-| 2 | team BE/FE | La richiesta del giro T8a. Tid: i residui di dbdev | §25.11.3; §25.11.2 | — |
+| 1 | ✅ team BE/FE | La richiesta del giro T8b: censita (2026-11-27) | §26.1 | — |
+| 2 | team BE/FE | ✅ La richiesta del giro T8a, committata (`e3b39de2b`). Tid: i residui di dbdev | §26.1; §25.11.2 | — |
 | 2-bis | sessione DB | Un giro per tema: T12, T3, T10, T11 | §0 fase 8; §17.1 | 2; il via di Tid per ogni giro |
-| 3 | team BE/FE | La richiesta del giro T8c | §25.8.3 | — |
-| 4 | team BE/FE | Il censimento applicativo del giro 6 (chi scrive o cancella `emittenti_fiscali_billing_account`, chi conta sul BA senza collegamento o sulla sua cancellazione) | §24.8 | — |
-| 5 | team BE/FE | `test_gli_obbligatori_copiati_dal_primo`, da adeguare a D-T7a-4 | §21.7 | — |
-| 6 | team BE/FE | Fase 7: R-BE6 e due correzioni della documentazione del backend | §0 fase 7 | — |
+| 3 | team BE/FE | La richiesta del giro T8c: censita; resta il picker di vettore e PSP (D-BE-1) e la riconsegna senza vettore (D-BE-2) | §26.1, §26.2 | il picker: Q-BE-1 |
+| 4 | ✅ team BE/FE | Il giro 6: censito, e la scheda «Billing account» in consultazione, del solo SUPER_ADMIN (2026-11-27) | §26.2 D-BE-3 | — |
+| 5 | ✅ team BE/FE | `test_gli_obbligatori_copiati_dal_primo`, adeguato a D-T7a-4 (2026-11-27) | §26.1 | — |
+| 6 | team BE/FE | Fase 7: le due correzioni erano già fatte; R-BE6 aspetta il DB | §26.1 | Q-BE-3 |
+| 6-bis | sessione DB | Le cinque domande del team BE/FE | §26.3 | — |
 | 7 | sessione DB | Il brief nuovo di T6 (con l'ultimo contatto del soggetto, §22.7); S1 in `sviluppo-gestione-clienti-v2` | §0 fase 6; §17.1 | — |
 | 8 | sessione DB | Il giro dei metadati, per ciò che i giri di codice non hanno già riscritto | §8 | 2 |
 | 9 | sessione DB | L'archiviazione in `work-done/`, col debito dei temi spostati nei loro brief | §11 | 2 … 8 |
@@ -61,11 +62,12 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] Il brief nuovo di T9: [brief-db-accessi-area-clienti](brief-db-accessi-area-clienti.md), aperto il 2026-11-25
   * [ ] Il brief nuovo di T6; S1 scritta in `sviluppo-gestione-clienti-v2`
 * **Fase 7 — Le ricadute sul backend** (team BE/FE)
-  * [ ] R-BE6: le due scritture del portale su credenziale e veste (§16.3)
-  * [ ] `docs/it/backend/anagrafiche/manual/api_emittenti_fiscali.md`, riga 90: nomina
+  * [ ] R-BE6: le due scritture del portale su credenziale e veste (§16.3). La veste è chiusa (accessi 3c); la
+    credenziale aspetta Q-BE-3 (§26.3, 2026-11-27)
+  * [x] `docs/it/backend/anagrafiche/manual/api_emittenti_fiscali.md`, riga 90: nomina
     `trgfn_emittenti_fiscali_guard_attivo`, che non esiste (§15.2)
-  * [ ] `docs/it/backend/core/manual/api_tracciamento.md`: la data va dopo lo Scopo, o l'indice la prende come
-    descrizione (§12.4)
+  * [x] `docs/it/backend/core/manual/api_tracciamento.md`: la data va dopo lo Scopo, o l'indice la prende come
+    descrizione (§12.4). Entrambe già a posto (team BE/FE, 2026-11-27, §26.1)
 * **Fase 8 — I giri di codice dei temi che restano qui** (uno per tema, nell'ordine deciso in fase 6)
   * [x] Giro 2: T2, i permessi delle viste: analisi sul catalogo (2026-11-23, §19). Dentro `anagrafiche` niente da
     cambiare; S40 e `security_invoker` voluti
@@ -3722,3 +3724,74 @@ mandati), **ogni chiamante** che conta sul comportamento di prima:
    scritto con gli spazi oltre la lunghezza vecchia ora passa e si normalizza. Censisci chi limita la lunghezza nel
    form o nei serializer sulla lunghezza del tipo (il limite vero è il formato).
 9. **Codici nuovi** (sette): `error_policies_generated.py` da rigenerare; conferma.
+
+## 26. Il ritorno del team BE/FE (2026-11-27)
+
+Le richieste dei giri T7a, 6, T8a, T8b, T8c e della fase 7 girate dal team BE/FE su `dev/backend-tid`. Qui l'esito
+di ognuna, le decisioni prese da Tid sul ritorno e le domande al team DB. T8a è committato (`e3b39de2b`); il resto
+è nel working tree, da committare.
+
+### 26.1 L'esito, richiesta per richiesta
+
+| Richiesta | Esito |
+| --- | --- |
+| §21.7, `test_gli_obbligatori_copiati_dal_primo` | **Fatto.** L'atteso del test leggeva la matrice a mano (`attivo AND obbligatorio`, senza finestra né ripiego): è una delle copie che D-T7a-4 ha ritirato. Ora la legge dalle sedi del DB: `fn_tipo_indirizzo_obbligatorio_per_natura` e `_ammesso_per_natura` per il soggetto, `fn_indirizzi_obbligatori_ruolo` per il ruolo. Nuovo il caso col ripiego nell'elenco (il tipo coperto non si copia). Adeguati anche i tre test del ruolo, che avevano lo stesso oracolo ed erano verdi solo per il seed di FO. 17 verdi sul DB vero, nessuno saltato |
+| §25.11.3, T8a | **Fatto e committato** (`e3b39de2b`). |
+| §25.9.2, T8b | **Censito.** Nessun chiamante BE conta su «un id qualunque riceve un'azienda»: passano il BA di una riga con FK (pratiche, pipeline, preventivi) o un BA già trovato da `BillingAccountService.get_lookup_by_id` (i cinque form-defaults). Corretti sei commenti che descrivevano il ripiego sulla predefinita. ⚠️ Il controllo di esistenza in `BillingAccountService.list_utilities_for_ba` **resta**: `fn_check_billing_account_esiste` è DEFINER e vede i BA fuori perimetro, e senza il controllo (che passa dalla RLS) un BA di un'altra azienda risponderebbe 403, cioè «esiste». Policy invariate: confermato. Punto 2 (la FK di DDT e resi): vedi D-BE-4. Punto 3: vedi la domanda Q-BE-2 |
+| §25.8.3, T8c | **Censito**, punto 1 aperto. Nessuno scrive dal BE il soggetto di una specializzazione (fornitori lo esclude dalle chiavi, le UPDATE di `risorse_umane` toccano unità, date e `attivo`), né il PSP; `gestori_utilities` non ha lettori. `E_DDT_VETTORE_NON_ATTIVO` ed `E_ENTE_INCASSO_PSP_SPENTO` accendono il campo che il DB nomina (`highlight_form_fields`; il vettore nel form della bolla, `attivo` nel canale). Il picker del vettore propone **qualunque ruolo**, e quello del PSP anche i PSP spenti: vedi Q-BE-1. La riconsegna col vettore vuoto: vedi D-BE-2 |
+| §24.8, giro 6 | **Censito.** Lo scrive solo `EmittentiFiscaliBillingAccountRepository` (`create_mapping`, `delete_mapping`), dalla scheda «Billing account» dell'emittente (`EmittenteFiscaleBillingAccountTab.vue`). Con D-T4-3 l'aggiunta di un BA urta il vincolo unico (il BA ha già il collegamento) e la rimozione la rifiuta il DB: la scheda va ridisegnata, in attesa di Tid (D-BE-3) |
+| Fase 7, R-BE6 | `disattiva_identita` non esiste più (le vesti si cambiano dai verbi, accessi 3c). `PortaleRepository.create_auth_user_portale` scrive ancora `django.auth_user` a mano; l'email già usata la controlla prima il service senza distinguere maiuscole (`script.fn_get_auth_user_id_for_email`), ma l'INSERT è una copia della madre senza i suoi guard. Il passaggio alla madre è stato provato e **non si può**: vedi Q-BE-3 |
+| Fase 7, `api_emittenti_fiscali.md` riga 90 | **Già a posto**: la riga nomina `dbops.trgfn_prevent_deactivate_if_children` e cita `trgfn_emittenti_fiscali_guard_attivo` solo come droppato il 2026-08-20 |
+| Fase 7, `api_tracciamento.md` | **Già a posto**: `scripts/gen_bk_docs.py` legge prima la sezione Scopo, e l'indice committato ha la descrizione giusta (la data in testa è la forma di tutte e 31 le pagine `core`). La descrizione sbagliata vista al §12.4 era del 2026-11-22, corretta il 2026-11-24 (`b179d1bce`) |
+
+### 26.2 Le decisioni di Tid sul ritorno (2026-11-27)
+
+| # | Decisione |
+| --- | --- |
+| D-BE-1 | Il picker del vettore e del PSP propone **solo i ruoli con la specializzazione accesa**, letti da una sede del DB (non da una mappa «tipo di ruolo → tabella» scritta nel BE). Il BE la legge dal lookup che c'è (`SoggettoRuoloLookup`, un parametro). Prerequisito: Q-BE-1 |
+| D-BE-2 | La bolla di riconsegna col vettore vuoto (D-T8c-14 b): all'emissione, se il vettore manca, una conferma chiede «spedisci col mezzo proprio?». Lavoro BE/FE, niente dal DB. ✅ Fatto il 2026-11-27: l'avviso nel dialog di emissione (`DdtEmissioneDialog`), per ogni bolla senza vettore; Annulla riporta alla bozza |
+| D-BE-3 | La scheda «Billing account» dell'emittente **in sola consultazione**. L'unico gesto è «rendi predefinita»: la riga della predefinita si **sposta** sull'emittente (`UPDATE`), perché il DB rifiuta la cancellazione di ogni collegamento (`E_BA_COLLEGAMENTO_NON_SI_TOGLIE`). Ritirati il `POST` con `billing_account_id`, il `DELETE` del collegamento, `can_remove` e il motivo per riga (la `LATERAL` su `fn_check_ba_cambio_emittente`, che resta viva nei guard). Fatto il 2026-11-27, provato sul DB vero (`test_emittente_predefinita_db`). Senza INSERT di ripiego: la predefinita c'è appena esiste un emittente (bootstrap e guard al COMMIT), e se mancasse il BE risponde `E_EMITTENTE_DEFAULT_MISSING` invece di ricrearla (revisione, 2026-11-27). La scheda **resta del SUPER_ADMIN**, che vede tutti gli emittenti (Tid, 2026-11-27): l'operatore vede i clienti delle sue aziende, nel perimetro dell'emittente in uso, da Anagrafiche → Clienti (`ClientiView`), e una seconda lista degli stessi clienti sarebbe un doppione |
+| D-BE-4 | Un BA inesistente su contratto, offerta, ordine, DDT o reso risponde `E_BILLING_ACCOUNT_NOT_FOUND` (404, senza campo) dal guard e dai normalizzatori, prima della FK: **si accetta**. Il BA arriva da un picker; le traduzioni della FK nei service restano per la cancellazione concorrente. Niente dal DB |
+
+**Guide verificate** (`scripts/guide_coinvolte.py --oggetti`, 5 oggetti, revisione del 2026-11-27): `emittenti-fiscali` (guida indietro: nominava «Crea default globale», aggiornata), `generazione-cliente`, `gestione-delle-istanze-utility`, `soggetti-e-ruoli-anagrafici`, le note `_emittente-del-billing-account` e `_chiave-unica-cliente`: coerenti. `vendite.trgfn_ddt_guard_vettore_attivo` e `pagamenti.trgfn_enti_incasso_guard_psp` non hanno guida.
+
+### 26.3 Le domande al team DB
+
+* **Q-BE-1 — Una sede per «il ruolo si può scegliere: la sua specializzazione è accesa»** (D-BE-1). La bolla
+  nomina il vettore col ruolo (`vendite.ddt.vettore_soggetto_ruolo_id`) e il guard legge `anagrafiche.vettori.attivo`;
+  il canale PSP nomina il prestatore col ruolo e il guard legge `anagrafiche.psp.attivo`. Il lookup del BE
+  (`SoggettiRepository.search_ruoli_lookup`) filtra oggi solo per tipo di ruolo, e propone ruoli che il DB poi
+  rifiuta. Serve, dal DB, una funzione o una vista che risponda per un `soggetto_ruolo_id` (o elenchi, per tipo di
+  ruolo) se la sua specializzazione è accesa, per **tutte** le specializzazioni con `attivo` (fornitori, vettori,
+  gestori, PSP, risorse umane, e le altre del guard di ruolo dove ha senso), non solo le due di oggi. La forma la
+  sceglie il DB; il BE la legge in un punto. Chi cambia per primo: il DB.
+* **Q-BE-2 — `vendite.fn_parametri_importo_riga` con l'emittente NULL.** Il gruppo delle attività fatturabili
+  (`pipeline_repository.py`, `_GROUP_ATTIVITA_SELECT`) la chiama con l'emittente di
+  `fn_resolve_registro_documento`, che è NULL quando il BA della riga non è visibile sotto RLS (lo dice il suo
+  COMMENT). Dal giro T8b (`20261126-87`) `fn_parametri_importo_utility(NULL, …)` solleva `E_PARAMETRO_INVALIDO`, e
+  la riga la chiama nel `LEFT JOIN LATERAL` senza guardare: l'intera lettura batch del gruppo si ferma, **anche
+  quando l'articolo ha regole sue**, che prima bastavano (`COALESCE` sulle regole). Prima il BE riceveva NULL e
+  rispondeva `E_CONFIG_MANCANTE` per la sola attività. È voluto? Se no: la riga non chiama i parametri
+  dell'emittente quando l'emittente è NULL. §25.9.1 censiva il lettore senza questo caso.
+* **Q-BE-3 — La credenziale dell'invito del portale (R-BE6).** `PortaleRepository.create_auth_user_portale` fa
+  un `INSERT INTO django.auth_user` scritto a mano: copia di `anagrafiche.fn_crea_auth_user` senza il TRIM e senza i
+  suoi guard (`E_ADMIN_USERNAME_DUPLICATO`, `E_ADMIN_EMAIL_DUPLICATA` senza distinguere maiuscole; oggi una corsa
+  fra due inviti arriva come `23505` anonimo). Il BE ha provato a chiamare la madre: il ruolo dell'app **non ha
+  `EXECUTE`** («permesso negato per la funzione fn_crea_auth_user»), dopo il ritiro del wrapper BE del
+  2026-11-26. Serve il permesso, oppure una madre del portale. Il BE resta com'è finché il DB non risponde. Va con
+  S59 (la veste spenta decide se la credenziale resta accesa).
+* **Q-BE-4 — Il requisito della natura, gemello di quello del ruolo.** Il ruolo ha
+  `anagrafiche.fn_indirizzi_obbligatori_ruolo(tipo_ruolo, natura, giorno)`, che dà gli obbligatori **col ripiego
+  ammesso**. Il soggetto no: il ripiego ammesso è scritto dentro `fn_indirizzi_obbligatori_mancanti_soggetto` (il
+  `CASE` sul `fallback_tipo_indirizzo_id`), e il test BE di §21.7 ha dovuto ricomporlo dalle due sedi
+  (`_obbligatorio_per_natura`, `_ammesso_per_natura`). È la seconda occorrenza: una
+  `fn_indirizzi_obbligatori_natura(natura, giorno)` gemella, letta dai mancanti e dal test, la toglierebbe.
+* **Q-BE-5 — Le due `reason_key` di `script.fn_check_ba_cambio_emittente` non hanno più lettori** (revisione BE/FE,
+  2026-11-27; Tid: ritirarle). `amministrazione.emittenti_fiscali.ba_blocco.con_storia` e `.default_singleton`
+  servivano al tooltip del cestino della scheda «Billing account», che legge la check riga per riga: con D-BE-3 la
+  scheda è in consultazione e la lettura per riga è ritirata. Il rifiuto (`fn_guard_ba_cambio_emittente` →
+  `fn_raise_primo_motivo_se_presente`) porta la frase a catalogo del codice, e nessuno legge le chiavi in
+  `context.motivi`. Si chiede di togliere la `reason_key` dai due motivi (e di valutare il ramo della riga
+  predefinita, che il COMMENT dice esistere «per chi legge la check riga per riga»). Chi cambia per primo: il DB,
+  perché il controllo i18n esige che ogni chiave emessa dal DB si risolva; il team BE/FE toglie le due chiavi dai
+  `locales` nel giro successivo. Nell'attesa il testo è corretto (non parla più di «togliere il mapping»).

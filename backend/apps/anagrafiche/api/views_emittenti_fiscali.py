@@ -158,7 +158,7 @@ class EmittentiFiscaliDetailView(AdminAPIView):
 
 
 class EmittentiFiscaliBillingAccountView(AdminAPIView):
-    """GET lista mapping BA, POST crea mapping (admin only)."""
+    """GET lista dei BA dell'emittente (consultazione), POST la rende predefinita (admin only)."""
 
     lista_codice = "anagrafiche.emittente_billing_account"
 
@@ -187,37 +187,20 @@ class EmittentiFiscaliBillingAccountView(AdminAPIView):
         return success_response(pagina_con_totale(results, total))
 
     @extend_schema(
-        request=inline_serializer(name="EmittenteFiscaleBACreateReq", fields={
-            "billing_account_id": serializers.IntegerField(
-                required=False,
-                help_text="Se omesso/null crea il default globale (one-shot, unico).",
-            ),
-        }),
+        request=inline_serializer(name="EmittenteFiscaleBACreateReq", fields={}),
         responses={200: inline_serializer(
             name="EmittenteFiscaleBACreateResp",
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Crea un nuovo mapping BA->emittente. Senza billing_account_id crea il default globale.
+    # Scopo: Rende l'emittente l'azienda predefinita (corpo vuoto). Un BA nasce
+    #        gia' collegato alla sua azienda: `billing_account_id` e' un 400.
+    #        ⛔ Il DELETE del collegamento e' ritirato il 2026-11-27: il DB
+    #        rifiuta la cancellazione di ogni collegamento
+    #        (`E_BA_COLLEGAMENTO_NON_SI_TOGLIE`, giro 6).
     def post(self, request: Request, emittente_id: int) -> JsonResponse:
         svc = EmittentiFiscaliBillingAccountService()
-        result = svc.crea_mapping(emittente_id, corpo_oggetto(request))
-        return success_response(result)
-
-
-class EmittentiFiscaliBillingAccountDetailView(AdminAPIView):
-    """DELETE mapping BA->emittente (admin only)."""
-
-    @extend_schema(
-        responses={200: inline_serializer(
-            name="EmittenteFiscaleBADeleteResp",
-            fields={"data": serializers.DictField()},
-        )},
-    )
-    # Scopo: Elimina un mapping per id, verificando appartenenza all'emittente padre.
-    def delete(self, request: Request, emittente_id: int, mapping_id: int) -> JsonResponse:
-        svc = EmittentiFiscaliBillingAccountService()
-        result = svc.elimina_mapping(emittente_id, mapping_id)
+        result = svc.imposta_predefinita(emittente_id, corpo_oggetto(request))
         return success_response(result)
 
 

@@ -23,7 +23,6 @@ from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
 from apps.anagrafiche.services._validators import (
     CAMPO_REGIME_FISCALE,
     create_with_constraint_mapping,
-    create_with_dedup,
     extract_optional_fields,
     optional_str,
     require_found,
@@ -255,7 +254,7 @@ class EmittentiFiscaliService:
 # Scopo: Helper condiviso per i sub-resource service. Risolve il soggetto_ruolo_id
 #        del padre e verifica che il record figlio appartenga effettivamente al padre.
 #        Solleva ServiceError E_ANAG_NOT_FOUND in entrambi i casi mancanti.
-#        Estratto per evitare duplicazione in elimina_mapping/aggiorna_record/elimina_record.
+#        Estratto per evitare duplicazione in aggiorna_record/elimina_record.
 def _verify_record_ownership(parent_service, repo, emittente_id, record_id, not_found_message):
     soggetto_ruolo_id = parent_service._resolve_soggetto_ruolo_id(emittente_id)
     ErrorManager.require(
@@ -283,42 +282,13 @@ class EmittentiFiscaliBillingAccountService:
         self._repo = EmittentiFiscaliBillingAccountRepository()
         self._parent = EmittentiFiscaliService()
 
-    # Scopo: Lista paginata mapping BA per un emittente con search.
-    #        Ogni riga arricchita con `can_remove` (Fase 4 — A7).
-    #        Il BA mapping non ha PATCH (solo CREATE/DELETE), quindi
-    #        `can_update`/`can_configure` non sono applicabili: il pattern
-    #        slot/override si limita a "esiste/non esiste". Espongo
-    #        `can_remove` come capability esplicita per allineare la UI col
-    #        pattern utility (delega gating al BE invece di derivarlo dalla
-    #        presenza del record).
-    #
-    #        ⭐ E DAL 2026-08-27 QUELLA PROMESSA E' MANTENUTA. Fino a ieri
-    #        `can_remove` era scritto `True` a mano su ogni riga: da quando
-    #        un billing account con storia non cambia piu' emittente
-    #        (`20260826-49`) era diventata una promessa falsa, e l'operatore
-    #        scopriva il divieto premendo — dopo aver confermato un dialog.
-    #        Ora l'esito arriva da `script.fn_check_ba_cambio_emittente`,
-    #        cioe' dallo STESSO predicato che il database usa per rifiutare
-    #        (`linee-guida-sql` §12.5.2): tooltip e rifiuto non «coincidono
-    #        oggi», non possono divergere.
-    #        ⛔ La regola NON si ricalcola qui: il backend legge il motivo e
-    #        lo trasporta, non lo deduce.
-    #        ⭐ COPERTA ANCHE LA RIGA DEL GESTORE GLOBALE (`is_default`,
-    #        senza billing account), che fino al `20260827-03` cadeva su un
-    #        «non e' il mio caso» e restava accesa — ed e' la PRIMA della
-    #        lista, perche' il repository ordina `is_default DESC`.
-    #        ⛔ E la causa non era quella che il backend aveva ipotizzato
-    #        (il guard raggio N, `fn_guard_ba_gestore_globale_storia`): a
-    #        rifiutare la cancellazione e' prima di tutto il SINGLETON
-    #        (`trgfn_emittenti_fiscali_default_guard`), quindi quella riga
-    #        non si toglie MAI — con o senza storia. La gemella `fn_check_*`
-    #        del raggio N avrebbe dato un motivo CONDIZIONALE dove la
-    #        risposta e' secca, cioe' un tooltip che manda a cercare come
-    #        soddisfare una condizione che non esiste.
-    #        ⭐ Una sola `fn_check_*` per entrambe le specie di riga, e non
-    #        per pigrizia: con due, a dedurre «che tipo di riga e' questa»
-    #        sarebbe questo servizio — la regola ricalcolata fuori sede.
-    #        `brief-db-motivo-rimozione-mapping-ba`, N7.
+    # Scopo: Lista paginata dei collegamenti BA di un emittente, con search,
+    #        IN CONSULTAZIONE (D-T4-3; Tid, brief-db-revisione-anagrafiche §26.2,
+    #        2026-11-27). ⛔ Niente piu' `can_remove` e motivo per riga: fino a
+    #        quel giorno la riga portava l'esito di
+    #        `script.fn_check_ba_cambio_emittente` per il cestino; dal giro 6
+    #        nessun collegamento si toglie (`E_BA_COLLEGAMENTO_NON_SI_TOGLIE`),
+    #        e il cestino non c'e' piu'.
     def list_mapping(
         self,
         emittente_id: int,
@@ -338,61 +308,34 @@ class EmittentiFiscaliBillingAccountService:
             order_by=order_by,
             order_dir=order_dir,
         )
-        for row in rows:
-            # `rimozione_blocco_reason` NULL = nessun motivo ostativo. Il
-            # motivo e la sua chiave i18n restano nel payload: li rende il
-            # frontend come tooltip del pulsante spento.
-            # ⛔ Accesso con `[...]` e non con `.get()`, ed e' deliberato: se
-            #    un domani la colonna sparisse dal SELECT, un `.get()`
-            #    risponderebbe `None` e riaccenderebbe OGNI pulsante — senza
-            #    che niente fallisca, che e' esattamente il difetto che questo
-            #    cantiere ha chiuso. Meglio una `KeyError` rumorosa: la
-            #    colonna e la sua lettura vivono nella stessa app e cambiano
-            #    insieme. ⚠️ Non e' il caso dei fratelli `utilities`, dove le
-            #    chiavi sono davvero opzionali (slot/override) e `.get()` e'
-            #    la lettura giusta.
-            row["can_remove"] = row["rimozione_blocco_reason"] is None
-            # ⭐ `rimozione_blocco_storia` NON si tocca: il repository lo legge
-            #    dal `dettaglio` che `fn_check_ba_cambio_emittente` compone, e
-            #    viaggia fino al client com'e'. Comporre qui la frase
-            #    «Fattura: 3, DDT: 1» sarebbe una traduzione scritta in Python,
-            #    cioe' fuori dai `locales` e non cambiabile da chi traduce.
-            # ⛔ E non si filtrano gli zeri: non ce ne sono. La funzione DB
-            #    emette una riga solo per le famiglie con almeno un documento —
-            #    «nessuna riga» E' la risposta «nessuna storia», ed e' scritto
-            #    nel suo COMMENT.
         return rows, total
 
-    # Scopo: Crea un nuovo mapping BA->emittente.
-    #        Se billing_account_id e' None nel payload, viene creato il default globale
-    #        (is_default=true). Il CHECK constraint DB garantisce coerenza.
-    #        I trigger DB (default_guard) impediscono piu' di un default.
-    def crea_mapping(self, emittente_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    # Scopo: Rende l'emittente l'azienda PREDEFINITA, in cui nascono i clienti
+    #        creati senza sessione (la riga `billing_account_id` NULL si sposta
+    #        qui). Payload VUOTO: un `billing_account_id` e' un 400 che lo nomina,
+    #        perche' ogni BA nasce col suo collegamento a un'azienda e non lo
+    #        perde (D-T4-3, giro 6 di brief-db-revisione-anagrafiche; la scheda
+    #        dei BA e' in sola consultazione, Tid §26.2, 2026-11-27).
+    def imposta_predefinita(self, emittente_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        _V.validate_allowed_keys(
+            payload, allowed=frozenset(),
+            message="Da qui si sceglie solo l'azienda predefinita: un cliente nasce gia' collegato alla sua.",
+        )
         soggetto_ruolo_id = self._parent._resolve_soggetto_ruolo_id(emittente_id)
-        billing_account_id = _V.optional_int(payload, "billing_account_id")
-        result = create_with_dedup(
-            lambda: {"id": self._repo.create_mapping(soggetto_ruolo_id, billing_account_id)},
-            duplicate_message=(
-                "Mapping gia' presente: questo billing account e' gia' associato "
-                "a un emittente, oppure il default globale esiste gia'."
-            ),
+        riga_id = self._repo.imposta_predefinita(soggetto_ruolo_id)
+        # La predefinita manca solo se una via di servizio ha spento i rifiuti
+        # del DB: si dice, non si ricrea (vedi il repository).
+        ErrorManager.require(
+            riga_id is not None,
+            code="E_EMITTENTE_DEFAULT_MISSING",
+            message="Emittente fiscale default non configurato.",
         )
         return {
-            "id": result["id"],
+            "id": riga_id,
             "emittente_id": emittente_id,
-            "billing_account_id": billing_account_id,
-            "is_default": billing_account_id is None,
+            "billing_account_id": None,
+            "is_default": True,
         }
-
-    # Scopo: Elimina un mapping. Verifica che appartenga all'emittente padre.
-    def elimina_mapping(self, emittente_id: int, mapping_id: int) -> dict[str, Any]:
-        _verify_record_ownership(
-            self._parent, self._repo, emittente_id, mapping_id,
-            "Mapping non trovato per l'emittente indicato.",
-        )
-        deleted = self._repo.delete_mapping(mapping_id)
-        ErrorManager.require(deleted, code=E_ANAG_NOT_FOUND, message="Mapping non trovato.")
-        return {"deleted": True}
 
     # Scopo: Riepilogo mapping BA dell'emittente (has_default + count_specifici).
     #        Esposto al FE come bypass della dipendenza dalla pagina corrente:

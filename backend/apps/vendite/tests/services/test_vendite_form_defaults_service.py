@@ -168,8 +168,9 @@ class TestContrattoFormDefaults(TestCase):
         # Resolver valuta mockato: con valuta_id=None nel lookup il livello 2
         # istanzierebbe un BillingAccountRepository REALE dentro valuta_resolver
         # (il patch _BA_REPO copre solo il modulo service) -> query DB su
-        # fn_get_emittente_fiscale_pk(10), che in CI fallisce (nessun EF
-        # default seedato per BA 10). La catena valuta e' gia' coperta da
+        # fn_get_emittente_fiscale_pk(10), che fallisce: il BA 10 non esiste,
+        # e dal giro T8b la funzione risponde E_BILLING_ACCOUNT_NOT_FOUND
+        # invece di ripiegare. La catena valuta e' gia' coperta da
         # test_valuta_resolver (single source of truth).
         mock_param_cls.return_value.get_defaults.return_value = {
             "VENDITE_CONTRATTO_DEFAULT_VALIDO_DAL_LEAD_GG": "0",

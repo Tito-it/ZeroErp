@@ -1276,7 +1276,7 @@ class PreventiviRepository(
     # Restituisce emittente_fiscale_id (PK numerica anagrafiche.emittenti_fiscali.id),
     # soggetto_id e soggetto_ruolo_id ricavati dal billing_account del preventivo.
     # L'emittente fiscale viene risolto via anagrafiche.fn_get_emittente_fiscale_pk
-    # (mapping specifico BA -> fallback gestore globale, errore esplicito se manca).
+    # (il collegamento del BA, che c'e' sempre; errore esplicito se manca).
     # Scopo: Risolve il contesto pricing applicato al preventivo: contratto
     # attivo (se presente) o listino categoria fallback. Mostrato in header
     # del drawer preventivo per audit visivo del path resolver. Non chiama

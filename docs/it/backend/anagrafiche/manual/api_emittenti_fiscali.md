@@ -44,9 +44,8 @@ riceve `403 E_ACCESSO_RISERVATO_ADMIN`.
 | 2 | `GET` | `/emittenti-fiscali/<id>/` | Dettaglio emittente |
 | 3 | `POST` | `/emittenti-fiscali/` | Crea emittente |
 | 4 | `PATCH` | `/emittenti-fiscali/<id>/` | Aggiorna emittente |
-| 5.1 | `GET` | `/emittenti-fiscali/<id>/billing-account/` | Lista mapping BA |
-| 5.2 | `POST` | `/emittenti-fiscali/<id>/billing-account/` | Crea mapping BA o default globale |
-| 5.3 | `DELETE` | `/emittenti-fiscali/<id>/billing-account/<mapping_id>/` | Elimina mapping BA |
+| 5.1 | `GET` | `/emittenti-fiscali/<id>/billing-account/` | Lista dei clienti (BA) dell'emittente, in consultazione |
+| 5.2 | `POST` | `/emittenti-fiscali/<id>/billing-account/` | Rende l'emittente l'azienda predefinita |
 | 5.4 | `GET` | `/emittenti-fiscali/<id>/billing-account/summary/` | Summary mapping (has_default + count_specifici) |
 | 6.1 | `GET` | `/emittenti-fiscali/<id>/utilities/` | Lista record utility per emittente |
 | 6.2 | `POST` | `/emittenti-fiscali/<id>/utilities/` | Crea record utility |
@@ -343,30 +342,31 @@ curl -X PATCH "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/" 
 
 ## 5. Sub-resource: mapping Billing Account → Emittente
 
-Gestione del mapping `emittenti_fiscali_billing_account` per associare uno o piu'
-billing account a un emittente fiscale, oppure definire il **default globale**
-(record con `billing_account_id IS NULL` e `is_default = true`).
+La scheda dei clienti di un emittente (`emittenti_fiscali_billing_account`) e la
+riga della **predefinita** (`billing_account_id IS NULL`, `is_default = true`):
+l'azienda in cui nascono i billing account creati senza sessione.
+
+⛔ **Dal 2026-11-27 la lista e' in sola consultazione** (giro 6 di
+`brief-db-revisione-anagrafiche`, D-T4-3; Tid, §26.2). Ogni billing account nasce
+col suo collegamento a un'azienda (`trgfn_billing_account_link_ef`) e non lo perde
+mai: un collegamento **non si crea** da qui (urterebbe il vincolo unico) e **non si
+toglie** (`E_BA_COLLEGAMENTO_NON_SI_TOGLIE`, anche sulla predefinita). Prima
+c'erano il `POST` col `billing_account_id` e il `DELETE` del mapping, con
+`can_remove` e il motivo del blocco per riga: ritirati lo stesso giorno. L'unico
+gesto rimasto e' **«rendi predefinita»** (§5.2), che **sposta** la riga della
+predefinita su questo emittente.
 
 ### 5.0 Regole DB
 
 - CHECK constraint `chk_emittenti_fiscali_ba_default`:
   `(is_default = true AND billing_account_id IS NULL) OR (is_default = false AND billing_account_id IS NOT NULL)`
-- UNIQUE su `billing_account_id`: un BA puo' essere mappato a un solo emittente.
-- UNIQUE WHERE `is_default = true`: un solo default globale in tutto il sistema.
-- Trigger `default_guard` su INSERT/UPDATE/DELETE per rispetto invarianti.
-- ⭐ Trigger `trg_emittenti_fiscali_ba_a10_guard_storia_emittente_ins_upd_dlt`
-  (dal `20260826-49`): un billing account che ha gia' **fatture o commesse** non
-  cambia piu' emittente. ⛔ E il movimento da presidiare non e' solo l'`INSERT`:
-  il backend non espone nessun `UPDATE` sul mapping, quindi «spostare un cliente
-  da un emittente all'altro» si fa con `DELETE` + `INSERT` — ed e' la
-  **cancellazione** a fare il danno.
-- Tutte le richieste sono validate dal service tramite `_resolve_soggetto_ruolo_id`
-  (l'emittente padre deve esistere) e, su DELETE, da `belongs_to_emittente`
-  (il mapping deve appartenere all'emittente atteso, fail safe).
-
-Il backend non espone `is_default` come campo modificabile: viene **derivato**
-automaticamente da `billing_account_id` (NULL → default globale, valorizzato →
-mapping specifico).
+- UNIQUE su `billing_account_id`: un BA ha un collegamento solo.
+- UNIQUE WHERE `is_default = true`: una sola predefinita in tutto il sistema.
+- Nessun collegamento si cancella (`E_BA_COLLEGAMENTO_NON_SI_TOGLIE`) e nessuno
+  cambia `billing_account_id` (`E_BA_COLLEGAMENTO_NON_SI_SPOSTA`); il cliente cambia
+  azienda solo senza documenti (`E_BA_EMITTENTE_CON_STORIA`).
+- Le richieste passano da `_resolve_soggetto_ruolo_id` (l'emittente padre deve
+  esistere).
 
 ### 5.1 Lista mapping
 
@@ -409,11 +409,7 @@ Envelope paginato standard:
         "billing_account_ragione_sociale": null,
         "id_fiscale_univoco": null,
         "data_insert": "2026-04-07T10:00:00Z",
-        "data_update": "2026-04-07T10:00:00Z",
-        "can_remove": false,
-        "rimozione_blocco_reason": "DEFAULT_SINGLETON",
-        "rimozione_blocco_reason_key": "amministrazione.emittenti_fiscali.ba_blocco.default_singleton",
-        "rimozione_blocco_storia": null
+        "data_update": "2026-04-07T10:00:00Z"
       },
       {
         "id": 11,
@@ -423,11 +419,7 @@ Envelope paginato standard:
         "billing_account_ragione_sociale": "Acme Energia Srl",
         "id_fiscale_univoco": "01234567890",
         "data_insert": "2026-04-07T10:05:00Z",
-        "data_update": "2026-04-07T10:05:00Z",
-        "can_remove": true,
-        "rimozione_blocco_reason": null,
-        "rimozione_blocco_reason_key": null,
-        "rimozione_blocco_storia": null
+        "data_update": "2026-04-07T10:05:00Z"
       }
     ]
   },
@@ -440,78 +432,23 @@ codice BA crescente). Con `order_by=is_default` conta solo quella colonna, col
 suo verso.
 
 `id_fiscale_univoco` = `soggetti.id_fiscale_univoco_cf_piva` del soggetto del BA.
-`rimozione_blocco_storia` = l'elenco per famiglia dei documenti che bloccano la
-rimozione (dal `dettaglio` di `fn_check_ba_cambio_emittente`), solo col motivo
-`BA_CON_STORIA`; `null` altrimenti. Il testo lo compone il client.
-
-#### Capability di riga — `can_remove` e il motivo del blocco
-
-Ogni riga porta **quattro** campi che riguardano la sola azione «rimuovi»:
-
-| Campo | Tipo | Significato |
-| --- | --- | --- |
-| `can_remove` | bool | `false` quando la riga **non** si puo' togliere |
-| `rimozione_blocco_reason` | string \| null | codice macchina del **primo** motivo. `null` = ammesso |
-| `rimozione_blocco_reason_key` | string \| null | chiave i18n del tooltip. Il testo **non** viaggia mai nel payload |
-| `rimozione_blocco_storia` | json \| null | conteggi per famiglia documentale (solo `BA_CON_STORIA`) |
-
-⚠️ **`can_remove` NON e' piu' `true` per costruzione**, ed e' il cambiamento del
-2026-08-27: prima era scritto a mano nel service, e da quando un billing account
-con storia non cambia piu' emittente era diventato una **promessa falsa** —
-l'operatore scopriva il divieto premendo, dopo aver confermato un dialog. Chi
-consuma questa lista non deve piu' presumerlo.
-
-⭐ **I campi del motivo vengono dalla stessa funzione che il database usa per
-rifiutare** — `script.fn_check_ba_cambio_emittente`, chiamata in `LATERAL` sulla
-riga e chiamata dalla madre `fn_guard_ba_cambio_emittente` per sollevare
-l'errore. ⇒ Tooltip e rifiuto non «coincidono oggi»: **non possono divergere**,
-perche' la regola sta scritta in un posto solo (`linee-guida-sql` §12.5.2).
-
-**I due motivi oggi a contratto** — l'elenco lo decide il database, non questa
-pagina, e puo' crescere senza che il backend cambi:
-
-| `reason` | `codice` sollevato | Quando |
-| --- | --- | --- |
-| `BA_CON_STORIA` | `E_BA_EMITTENTE_CON_STORIA` | il cliente ha fatture o commesse **e** l'emittente cambierebbe davvero |
-| `DEFAULT_SINGLETON` | `E_EMITTENTE_DEFAULT_SINGLETON` | riga del **gestore globale**: deve sempre esistercene una, quindi non si toglie **mai** |
-
-⛔ **Il predicato di un mapping specifico e' una COPPIA**, e la meta' che si
-dimentica e' la prima: togliere l'aggancio fa ricadere il billing account sul
-gestore globale, quindi il cambio di emittente esiste **solo se** l'emittente
-della riga e' **diverso** da quello del default. Se coincidono non si sposta
-nessun documento e la rimozione resta ammessa — e' manutenzione ordinaria.
-⚠️ Su un'installazione con un solo emittente questo e' il caso **normale**: chi
-consumasse un `can_remove` derivato dalla sola presenza di storia spegnerebbe il
-gesto su quasi tutte le righe, tutte a torto.
-
-⛔ **Il client non ricalcola il motivo e non compone il testo**: rende
-`reason_key` (con ripiego su `reason` se la chiave manca) e disabilita l'azione.
-Il BA mapping non ha `PATCH`, quindi `can_update`/`can_configure` non sono
-applicabili.
-
-### 5.2 Crea mapping
+### 5.2 Rendi predefinita
 
 | | |
 | --- | --- |
 | **Metodo** | `POST` |
 | **URL** | `/api/v1/anagrafiche/emittenti-fiscali/<emittente_id>/billing-account/` |
 
-#### Body — Crea mapping BA
+Corpo **vuoto**. La riga della predefinita si **sposta** su questo emittente
+(`UPDATE` di `emittente_soggetto_ruolo_id`), con lo stesso `id`. La predefinita c'è
+sempre, appena esiste un emittente (la porta il bootstrap del primo, e il DB la esige
+al COMMIT): il backend non la crea, e se mancasse risponde `E_EMITTENTE_DEFAULT_MISSING`
+invece di rifarla. Da quel
+momento i billing account creati senza un'azienda in sessione nascono qui; quelli
+che esistono non cambiano azienda. Sullo stesso emittente due volte: nessun
+cambio.
 
-| Campo | Tipo | Obbligatorio | Note |
-| --- | --- | --- | --- |
-| `billing_account_id` | int | No | Se omesso/null crea il **default globale** (uno solo nel sistema) |
-
-#### Esempio cURL — mapping specifico
-
-```bash
-curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/billing-account/" \
-     -H "Authorization: Bearer $TOKEN" \
-     -H "Content-Type: application/json" \
-     -d '{ "billing_account_id": 5 }'
-```
-
-#### Esempio cURL — default globale
+#### Esempio cURL
 
 ```bash
 curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/billing-account/" \
@@ -520,69 +457,27 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/bil
      -d '{}'
 ```
 
-#### Risposta — POST mapping BA
+#### Risposta
 
 ```json
 {
   "data": {
-    "id": 11,
+    "id": 10,
     "emittente_id": 1,
-    "billing_account_id": 5,
-    "is_default": false
+    "billing_account_id": null,
+    "is_default": true
   }
 }
 ```
 
-#### Errori specifici BA
+#### Errori
 
 | Codice | HTTP | Descrizione |
 | --- | --- | --- |
 | `E_ANAG_NOT_FOUND` | 404 | Emittente padre non trovato |
-| `E_ANAG_DUPLICATO` | 409 | Il BA e' gia' associato a un emittente o il default globale esiste gia' |
-| `E_BA_EMITTENTE_CON_STORIA` | 409 | Il billing account ha gia' fatture o commesse presso un **altro** emittente: agganciarlo qui lo sposterebbe |
-
-⚠️ **Su questo verbo non c'e' capability che lo anticipi**, ed e' deliberato: il
-billing account si sceglie da un lookup, quindi finche' non e' scelto non c'e'
-niente da spegnere. Il 409 resta il canale, e qui **non fa perdere lavoro** —
-davanti non c'e' nessun form da compilare, solo un click. La questione e'
-tracciata come **Q-2** nel brief `brief-db-motivo-rimozione-mapping-ba`, aperta
-d'accordo col team DB.
-
-### 5.3 Elimina mapping
-
-| | |
-| --- | --- |
-| **Metodo** | `DELETE` |
-| **URL** | `/api/v1/anagrafiche/emittenti-fiscali/<emittente_id>/billing-account/<mapping_id>/` |
-
-Verifica che il mapping appartenga all'emittente padre prima di eliminare.
-
-#### Esempio cURL — DELETE mapping
-
-```bash
-curl -X DELETE "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/billing-account/11/" \
-     -H "Authorization: Bearer $TOKEN"
-```
-
-#### Risposta — DELETE mapping BA
-
-```json
-{ "data": { "deleted": true } }
-```
-
-#### Errori specifici DELETE BA
-
-| Codice | HTTP | Descrizione |
-| --- | --- | --- |
-| `E_ANAG_NOT_FOUND` | 404 | Mapping non esiste o non appartiene all'emittente indicato |
-| `E_BA_EMITTENTE_CON_STORIA` | 409 | Il cliente ha gia' fatture o commesse e la rimozione lo sposterebbe su un altro emittente |
-| `E_EMITTENTE_DEFAULT_SINGLETON` | 409 | Si sta cancellando il gestore globale |
-
-⭐ **Questi due 409 sono gli stessi che `can_remove` anticipa** (§5.1): l'errore
-resta la rete, non il canale — un client che legge la capability non ci arriva.
-⚠️ Nessuno dei due e' sollevato da codice Python: nascono nel database e
-attraversano il backend senza essere catturati (`create_with_dedup` intercetta
-il solo `IntegrityError`, e un `RAISE` PL/pgSQL e' `P0001`).
+| `E_ANAG_VALIDAZIONE` | 400 | Il corpo porta una chiave (per esempio `billing_account_id`): un cliente nasce gia' collegato alla sua azienda. `context.unknown_keys` la nomina |
+| `E_ATTIVO_PADRE_NON_ATTIVO` | 409 | L'emittente è spento: la predefinita va su un'azienda attiva (trigger del genitore attivo, dal DB) |
+| `E_EMITTENTE_DEFAULT_MISSING` | 500 | Non c'è la riga della predefinita: stato che il modello esclude (vedi sopra), detto e non riparato |
 
 ### 5.4 Summary mapping BA
 

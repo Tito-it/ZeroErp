@@ -234,6 +234,12 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # Il form del legame: predefinito e bloccato insieme (D-T8a-2). Stessa
     # ragione: e' una scelta del form in corso.
     "E_CONTO_PREDEFINITO_BLOCCATO": "highlight_form_fields",  # classe DATO_ERRATO
+    # Giro T8c: il vettore della bolla spento (campo
+    # `vettore_soggetto_ruolo_id`) e il canale riacceso col PSP spento (campo
+    # `attivo`). Il campo arriva dal DB, e il rimedio e' li': un altro vettore,
+    # il canale lasciato spento.
+    "E_DDT_VETTORE_NON_ATTIVO": "highlight_form_fields",  # classe CONFLITTO_STATO
+    "E_ENTE_INCASSO_PSP_SPENTO": "highlight_form_fields",  # classe CONFLITTO_STATO
     "E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO": "highlight_form_fields",  # classe NON_ESEGUIBILE
     "E_CONTRATTO_CLASSE_TIPO_INCOERENTE": "highlight_form_fields",  # classe DATO_ERRATO
     #   Stessa forma dei due sopra, trovati dalla lente

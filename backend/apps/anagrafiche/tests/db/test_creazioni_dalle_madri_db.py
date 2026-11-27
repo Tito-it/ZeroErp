@@ -15,15 +15,17 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 1) EmittenteDbTests.test_crea_emittente_dalla_madre — ruolo EF, riga, campi
 2) EmittenteDbTests.test_duplicati_tradotti_per_nome — codice e soggetto gia' emittenti
 3) IndirizziRuoloDbTests.test_un_indirizzo_e_gli_obbligatori_clonati — uno dal payload, gli
-   obbligatori della matrice del ruolo clonati; una seconda corsa non scrive niente; il
-   guard differito passa
+   obbligatori del requisito del ruolo clonati, salvo quelli coperti dal ripiego; una seconda
+   corsa non scrive niente; il guard differito passa
 3b) IndirizziRuoloDbTests.test_un_indirizzo_singolo_dalla_madre — `fn_crea_indirizzo_ruolo`: forma estera,
    la riga al client, lo stesso tipo due volte 400 `E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE` sul campo del
    tipo (R-DB-16b, 2026-10-19; il codice dal 2026-11-15, R-6 di brief-db-copia-indirizzo-soggetto)
 3b-bis) IndirizziRuoloDbTests.test_la_lista_del_ruolo_porta_il_codice_interno — la GET del ruolo:
    `tipo_indirizzo_codice_interno` uguale al catalogo, livello soggetto e livello ruolo (2026-11-01)
 3c) IndirizziSoggettoPluraleDbTests.test_gli_obbligatori_copiati_dal_primo — `fn_crea_indirizzi_soggetto`
-   dalla creazione del soggetto; il guard differito passa
+   dalla creazione del soggetto, con un primo che non e' il ripiego di nessuno; il guard differito passa
+3c-bis) IndirizziSoggettoPluraleDbTests.test_il_ripiego_nell_elenco_ferma_la_copia — il primo e' il
+   ripiego di un obbligatorio: quello non si copia, e il guard differito passa (D-T7a-4)
 3d) IndirizziSoggettoPluraleDbTests.test_senza_auto_clone_solo_quello_dato — `auto_clone: false`
 3e) IstanzaDelloStessoSoggettoDbTests.test_creare_con_l_istanza_di_un_altro_soggetto — 400
    `E_ISTANZA_ALTRO_SOGGETTO` sul campo `istanza_utility_id`; l'istanza dello stesso soggetto passa (R-DB-17a)
@@ -152,6 +154,16 @@ class EmittenteDbTests(_MondoCostruito):
         self.assertIn("soggetto", stesso_soggetto.message)
 
 
+# Scopo: Gli indirizzi che la madre plurale scrive da un elenco di UN solo
+#        indirizzo (`primo`) su un titolare che non ne ha: quello, piu' la copia
+#        di ogni obbligatorio che l'elenco non porta ne' col tipo ne' col
+#        ripiego (D-T7a-4, `20261123-80` e `-81`: la stessa regola sui due
+#        livelli). `requisito`: codice obbligatorio -> codice del ripiego
+#        ammesso, o None.
+def _attesi_dal_primo(requisito: dict[str, str | None], primo: str) -> set[str]:
+    return {primo} | {tipo for tipo, ripiego in requisito.items() if primo not in (tipo, ripiego)}
+
+
 class IndirizziRuoloDbTests(_MondoCostruito):
 
     # Scopo: Un ruolo FO nuovo, senza indirizzi. La finestra differita: il
@@ -168,22 +180,31 @@ class IndirizziRuoloDbTests(_MondoCostruito):
             )
             return int(cur.fetchone()[0])
 
-    # Scopo: I codici dei tipi obbligatori della matrice del ruolo (seed:
-    #        contratto, non popolazione) e quelli presenti sul ruolo.
+    # Scopo: Il requisito del ruolo (codice obbligatorio -> codice del ripiego,
+    #        o None) e i codici presenti sul ruolo. Il requisito lo dice la sede
+    #        del DB, `fn_indirizzi_obbligatori_ruolo` sul tipo di ruolo e sulla
+    #        natura, il giorno operativo: lo stesso giudizio della madre e del
+    #        guard (seed: contratto, non popolazione).
+    #        ⚠️ Fino al 2026-11-27 la matrice si leggeva qui a mano
+    #        (`attivo AND obbligatorio`), senza finestra e senza ripiego.
     @staticmethod
-    def _tipi(soggetto_ruolo_id: int) -> tuple[set[str], set[str]]:
+    def _tipi(soggetto_ruolo_id: int) -> tuple[dict[str, str | None], set[str]]:
         with connection.cursor() as cur:
             cur.execute(
                 """
-                SELECT ti.codice_interno
-                  FROM config.tipi_ruolo_tipi_indirizzo m
-                  JOIN config.tipi_indirizzi ti ON ti.id = m.tipo_indirizzo_id
-                  JOIN anagrafiche.soggetti_ruoli sr ON sr.tipo_ruolo_id = m.tipo_ruolo_id
-                 WHERE sr.id = %s AND m.attivo AND m.obbligatorio
+                SELECT ti.codice_interno, rp.codice_interno
+                  FROM anagrafiche.soggetti_ruoli sr
+                  JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                 CROSS JOIN LATERAL anagrafiche.fn_indirizzi_obbligatori_ruolo(
+                           sr.tipo_ruolo_id, s.tipo_soggetto_dettaglio_id,
+                           script.fn_data_operativa()) o
+                  JOIN config.tipi_indirizzi ti ON ti.id = o.tipo_indirizzo_id
+                  LEFT JOIN config.tipi_indirizzi rp ON rp.id = o.ripiego_tipo_indirizzo_id
+                 WHERE sr.id = %s
                 """,
                 [soggetto_ruolo_id],
             )
-            obbligatori = {r[0] for r in cur.fetchall()}
+            obbligatori = {r[0]: r[1] for r in cur.fetchall()}
             cur.execute(
                 """
                 SELECT ti.codice_interno
@@ -210,9 +231,10 @@ class IndirizziRuoloDbTests(_MondoCostruito):
             "stato_id": stato_id, "locality": "Prova", "postal_code": "PB1",
             "administrative_area": "Area", "scala": "  ",
         }])
-        obbligatori, presenti = self._tipi(sr_id)
-        self.assertEqual(len(obbligatori), scritti)
-        self.assertEqual(obbligatori, presenti)
+        attesi = _attesi_dal_primo(obbligatori, primo)
+        _, presenti = self._tipi(sr_id)
+        self.assertEqual(len(attesi), scritti)
+        self.assertEqual(attesi, presenti)
         self.assertEqual(0, SoggettiService().create_indirizzi_ruolo(sr_id, [{
             "tipo_indirizzo_codice_interno": primo, "indirizzo_libero": "Via di prova 2",
             "stato_id": stato_id, "locality": "Prova", "postal_code": "PB2", "sublocality": "Sub",
@@ -320,7 +342,10 @@ class IndirizziRuoloDbTests(_MondoCostruito):
             "stato_id": stato_id, "locality": "Prova", "postal_code": "PL1",
         }])
         del_ruolo = _lista()["indirizzi_ruolo"]
-        self.assertEqual(obbligatori, {r["tipo_indirizzo_codice_interno"] for r in del_ruolo})
+        self.assertEqual(
+            _attesi_dal_primo(obbligatori, sorted(obbligatori)[0]),
+            {r["tipo_indirizzo_codice_interno"] for r in del_ruolo},
+        )
         self.assertEqual(
             _attesi(del_ruolo),
             {r["tipo_indirizzo_id"]: r["tipo_indirizzo_codice_interno"] for r in del_ruolo},
@@ -332,29 +357,50 @@ class IndirizziSoggettoPluraleDbTests(_MondoCostruito):
     `fn_crea_indirizzi_soggetto` (R-DB-16b, 2026-10-19): fino ad allora la copia
     degli obbligatori e il ciclo delle righe erano una saga del backend."""
 
-    # Scopo: Un tipo di soggetto PF con almeno un tipo d'indirizzo obbligatorio
-    #        (seed: contratto) e i suoi obbligatori. PF: la PG vorrebbe anche i
-    #        dati societari, che qui non c'entrano.
-    def _tipo_pf_con_obbligatori(self) -> tuple[int, set[str]]:
+    # Scopo: Il requisito di ogni tipo di soggetto PF che chiede indirizzi
+    #        (codice obbligatorio -> codice del ripiego ammesso, o None), come lo
+    #        giudica il DB il giorno operativo: obbligatorio dalla sede
+    #        `fn_tipo_indirizzo_obbligatorio_per_natura`, il ripiego solo se la
+    #        natura lo ammette, come fa `fn_indirizzi_obbligatori_mancanti_soggetto`.
+    #        Seed: contratto. PF: la PG vorrebbe anche i dati societari, che qui
+    #        non c'entrano. In ordine: piu' obbligatori prima, poi id.
+    #        ⚠️ Fino al 2026-11-27 la matrice si leggeva a mano
+    #        (`attivo AND obbligatorio`), senza finestra e senza ripiego: dopo
+    #        D-T7a-4 l'atteso era sbagliato e il test rosso.
+    @staticmethod
+    def _requisiti_pf() -> list[tuple[int, dict[str, str | None]]]:
         with connection.cursor() as cur:
             cur.execute(
                 """
-                SELECT tsd.id, array_agg(ti.codice_interno ORDER BY ti.codice_interno)
+                SELECT tsd.id, ti.codice_interno, rp.codice_interno
                   FROM config.tipi_soggetto_dettaglio tsd
                   JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
                   JOIN config.tipi_soggetto_dettaglio_tipi_indirizzo m
-                    ON m.tipo_soggetto_dettaglio_id = tsd.id AND m.attivo AND m.obbligatorio
+                    ON m.tipo_soggetto_dettaglio_id = tsd.id
                   JOIN config.tipi_indirizzi ti ON ti.id = m.tipo_indirizzo_id
+                  LEFT JOIN config.tipi_indirizzi rp
+                    ON rp.id = m.fallback_tipo_indirizzo_id
+                   AND rp.id <> m.tipo_indirizzo_id
+                   AND anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                           tsd.id, rp.id, script.fn_data_operativa())
                  WHERE ts.natura_soggetto::text = 'PF'
-                 GROUP BY tsd.id
-                 ORDER BY count(*) DESC, tsd.id
-                 LIMIT 1
+                   AND anagrafiche.fn_tipo_indirizzo_obbligatorio_per_natura(
+                           tsd.id, m.tipo_indirizzo_id, script.fn_data_operativa())
                 """
             )
-            riga = cur.fetchone()
-        if riga is None:
-            self.skipTest("Nessun tipo di soggetto PF con indirizzi obbligatori.")
-        return int(riga[0]), set(riga[1])
+            requisiti: dict[int, dict[str, str | None]] = {}
+            for tipo_id, codice, ripiego in cur.fetchall():
+                requisiti.setdefault(int(tipo_id), {})[codice] = ripiego
+        return sorted(requisiti.items(), key=lambda r: (-len(r[1]), r[0]))
+
+    # Scopo: Il primo tipo PF (e il suo requisito) per cui `scegli` trova il
+    #        primo indirizzo da scrivere; altrimenti il test non ha di che girare.
+    def _tipo_pf(self, scegli, motivo: str) -> tuple[int, dict[str, str | None], str]:
+        for tipo_id, requisito in self._requisiti_pf():
+            primo = scegli(requisito)
+            if primo is not None:
+                return tipo_id, requisito, primo
+        self.skipTest(f"Nessun tipo di soggetto PF {motivo}.")
 
     def _crea(self, tipo_id: int, primo: str, **extra) -> str:
         from apps.anagrafiche.services.soggetti_service import SoggettiService
@@ -392,17 +438,42 @@ class IndirizziSoggettoPluraleDbTests(_MondoCostruito):
             )
             return {r[0] for r in cur.fetchall()}
 
+    # Un primo che non e' il ripiego di nessuno: ogni altro obbligatorio
+    # riceve la sua copia.
     def test_gli_obbligatori_copiati_dal_primo(self):
-        tipo_id, obbligatori = self._tipo_pf_con_obbligatori()
-        soggetto_id = self._crea(tipo_id, sorted(obbligatori)[0])
-        self.assertEqual(obbligatori, self._presenti(soggetto_id))
+        def scegli(requisito):
+            ripieghi = set(requisito.values())
+            liberi = sorted(t for t in requisito if t not in ripieghi)
+            return liberi[0] if liberi and len(requisito) > 1 else None
+
+        tipo_id, requisito, primo = self._tipo_pf(
+            scegli, "con un obbligatorio da copiare dal primo")
+        soggetto_id = self._crea(tipo_id, primo)
+        self.assertEqual(set(requisito), self._presenti(soggetto_id))
         # Il COMMIT: il guard differito trova gli obbligatori.
         with connection.cursor() as cur:
             cur.execute("SET CONSTRAINTS ALL IMMEDIATE")
 
+    # ⭐ D-T7a-4: il primo e' il ripiego di un obbligatorio, che quindi non si
+    #    copia. Prima del giro il soggetto nasceva col ripiego E con la copia.
+    def test_il_ripiego_nell_elenco_ferma_la_copia(self):
+        def scegli(requisito):
+            ripieghi = sorted(r for r in requisito.values() if r is not None)
+            return ripieghi[0] if ripieghi else None
+
+        tipo_id, requisito, primo = self._tipo_pf(scegli, "con un ripiego ammesso")
+        soggetto_id = self._crea(tipo_id, primo)
+        coperti = {t for t, r in requisito.items() if r == primo and t != primo}
+        presenti = self._presenti(soggetto_id)
+        self.assertEqual(_attesi_dal_primo(requisito, primo), presenti)
+        self.assertFalse(coperti & presenti, coperti)
+        # Il COMMIT: il ripiego basta al guard differito.
+        with connection.cursor() as cur:
+            cur.execute("SET CONSTRAINTS ALL IMMEDIATE")
+
     def test_senza_auto_clone_solo_quello_dato(self):
-        tipo_id, obbligatori = self._tipo_pf_con_obbligatori()
-        primo = sorted(obbligatori)[0]
+        tipo_id, _, primo = self._tipo_pf(
+            lambda requisito: sorted(requisito)[0], "con indirizzi obbligatori")
         soggetto_id = self._crea(tipo_id, primo, auto_clone=False)
         self.assertEqual({primo}, self._presenti(soggetto_id))
 

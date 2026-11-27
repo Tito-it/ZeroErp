@@ -311,6 +311,7 @@ function onDestinatarioClear() {
         <SoggettoRuoloLookup
           solo-con-ruolo
           :model-value="form.vettore_obj"
+          :invalid="campiErrati.includes('vettore_soggetto_ruolo_id')"
           :disabled="isLocked('vettore_soggetto_ruolo_id')"
           :placeholder="t('vendite.ddt.field_vettore_placeholder')"
           @select="onVettoreSelected"
