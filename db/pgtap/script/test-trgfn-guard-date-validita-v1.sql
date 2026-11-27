@@ -201,9 +201,9 @@ SELECT lives_ok(
 -- 10) identita_digitali: niente validita, solo CHECK
 -- ============================================================
 SELECT throws_like(
-    format($q$UPDATE anagrafiche.identita_digitali
-                 SET valido_al = valido_dal - 1
-               WHERE id = %s$q$, (SELECT identita_id FROM tmp_gdv_op)),
+    format($q$SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_al', idg.valido_dal - 1))
+                FROM anagrafiche.identita_digitali idg
+               WHERE idg.id = %s$q$, (SELECT identita_id FROM tmp_gdv_op)),
     '%è inferiore alla data dal%',
     '10) identita_digitali (solo CHECK), date invertite: parla il guard, non il CHECK'
 );

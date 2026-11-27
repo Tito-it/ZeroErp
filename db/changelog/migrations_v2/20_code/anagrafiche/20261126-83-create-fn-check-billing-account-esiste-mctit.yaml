@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN ID E' UN BILLING ACCOUNT? — IL CONTROLLO, VISTO DA TUTTI
+#   anagrafiche.fn_check_billing_account_esiste(bigint)        (nuova)
+#   Brief: brief-db-revisione-anagrafiche §25.3 (S54a), §25.9 (D-T8b-1)
+#
+# -- A CHE COSA SERVE --------------------------------------------------
+#   I due risolutori dell'azienda di un billing account,
+#   anagrafiche.fn_get_emittente_fiscale_id e _pk (20261126-84, -85), su un id
+#   che non e' un billing account rispondevano con i livelli di riserva del
+#   lettore script.fn_get_ba_emittente_sr_id: l'azienda di chi agisce, o la
+#   predefinita. Dal giro 6 ogni billing account ha il suo collegamento, e quei
+#   livelli rispondono solo a un id sbagliato del chiamante. I due risolutori
+#   lo rifiutano, e chiedono qui se l'id e' un billing account.
+#
+# -- ⚠️ SECURITY DEFINER ---------------------------------------------
+#   anagrafiche.billing_account ha la row level security, i due risolutori
+#   sono INVOKER e li chiamano guard di documento, normalizzatori, funzioni di
+#   insieme e job senza sessione. Da invocante un billing account fuori dal
+#   perimetro di chi chiama risulterebbe inesistente, e il risolutore
+#   rifiuterebbe un id giusto: la domanda e' «esiste?», non «lo vedo?». La
+#   risposta e' un booleano, nessuna colonna esce. search_path fissato
+#   (linee-guida-sql §5). Proprietario zeroerp_owner, che non e' soggetto alla
+#   RLS (la tabella non ha FORCE).
+#
+# -- LA FORMA ---------------------------------------------------------
+#   fn_check_*: pura, booleana, non solleva (linee-guida-sql §5). NULL -> NULL:
+#   il chiamante decide che cosa vuol dire «nessun billing account» (per
+#   fn_get_emittente_fiscale_id e' la predefinita, il giro del lotto).
+#   LANGUAGE sql BEGIN ATOMIC (§5c): la dipendenza dalla tabella sta in
+#   pg_depend. pgjdbc la esegue solo da sola nel suo sql:, il COMMENT sta nel
+#   secondo. L'EXECUTE all'app lo danno i privilegi di default dello schema.
+#   Presidi: db/pgtap/anagrafiche/test-fn-get-emittente-fiscale-pk.sql (6, 7,
+#   11), test-fn-get-emittente-fiscale-id-v1.sql (4, 5, 7).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261126-83-create-fn-check-billing-account-esiste-mctit.yaml
+
+  - changeSet:
+      id: 20261126-83-create-fn-check-billing-account-esiste
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il controllo «l'id e' un billing account», SECURITY DEFINER, per i due
+        risolutori dell'azienda del billing account. brief-db-revisione-anagrafiche
+        §25.9 (D-T8b-1).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_check_billing_account_esiste(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE)
+               -- tipo esplicito: la risposta «esiste?», nessuna colonna dietro
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              BEGIN ATOMIC
+                SELECT CASE
+                         WHEN p_billing_account_id IS NULL THEN NULL
+                         ELSE EXISTS (SELECT 1
+                                        FROM anagrafiche.billing_account ba
+                                       WHERE ba.id = p_billing_account_id)
+                       END;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_check_billing_account_esiste(anagrafiche.billing_account.id%TYPE) IS
+                'L''id indicato e'' un billing account? true o false, NULL su un id NULL: che cosa vuol dire «nessun billing account» lo decide il chiamante. Pura, non solleva. SECURITY DEFINER: guarda tutti i billing account, anche quelli fuori dal perimetro di chi chiama, perche'' la domanda e'' se l''id esiste, non se chi chiama lo vede; restituisce solo il booleano. La usano anagrafiche.fn_get_emittente_fiscale_id e anagrafiche.fn_get_emittente_fiscale_pk, che su un id che non e'' un billing account sollevano E_BILLING_ACCOUNT_NOT_FOUND.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_check_billing_account_esiste(anagrafiche.billing_account.id%TYPE);

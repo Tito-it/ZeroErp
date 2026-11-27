@@ -32,6 +32,8 @@
 > * [anagrafiche.fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste) — accende una veste (l'attivazione dell'invito)
 > * [anagrafiche.fn_revoca_veste](/dbzero/anagrafiche/funzioni/fn_revoca_veste) — l'amministratore revoca una veste: la spegne e ci lascia il segno
 > * [anagrafiche.fn_togli_revoca_veste](/dbzero/anagrafiche/funzioni/fn_togli_revoca_veste) — il nuovo invito toglie il segno della revoca
+> * [anagrafiche.fn_segna_invito_inviato](/dbzero/anagrafiche/funzioni/fn_segna_invito_inviato) — la mail dell'invito è partita
+> * [dbops.fn_pgtap_imposta_veste](/dbzero/dbops/funzioni/fn_pgtap_imposta_veste) — la fixture dei test che mette una veste nello stato del caso
 > * [anagrafiche.fn_guard_gestione_veste](/dbzero/anagrafiche/funzioni/fn_guard_gestione_veste) — chi può revocare una veste, per tipo di veste
 > * [anagrafiche.trgfn_identita_digitali_guard_revoca](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_revoca) — una veste revocata non si riaccende
 > * [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile) — quando una veste conta «oggi»
@@ -125,8 +127,8 @@ Campi chiave:
 * `soggetto_ruolo_id`: il ruolo del soggetto a cui la veste appartiene — per un operatore e il ruolo RIS_UMANA della risorsa umana
 * `auth_user_id`: l'account Django (`django.auth_user`, tabella creata e gestita dal migratore Django, non documentata in `dbzero`)
 * `ruolo_applicativo`: la veste (tabella sopra)
-* `attivo`, `valido_dal`, `valido_al`: se la veste e accesa, e da quando a quando vale (l'inizio, se non lo si dice, e il giorno operativo)
-* `invito_inviato_at`: quando è partito l'ultimo invito della veste (vedi [Primo accesso e gestione credenziali](#primo-accesso-e-gestione-credenziali)). Tentativi falliti, blocco e cambio password obbligatorio **non** sono della veste: sono della credenziale (`config.credenziali`), perché la password è una sola
+* `attivo`, `valido_dal`, `valido_al`: se la veste e accesa, e da quando a quando vale (l'inizio, se non lo si dice, e il giorno operativo). Una veste **nasce spenta** se chi la crea non dice altro: la accendono l'invito, la conferma o un verbo che lo dichiara, come quello dell'utente tecnico
+* `invito_inviato_at`: quando è partito l'ultimo invito della veste (vedi [Primo accesso e gestione credenziali](#primo-accesso-e-gestione-credenziali)); lo scrive [anagrafiche.fn_segna_invito_inviato](/dbzero/anagrafiche/funzioni/fn_segna_invito_inviato), dopo l'invio, col permesso di chi ha invitato. Tentativi falliti, blocco e cambio password obbligatorio **non** sono della veste: sono della credenziale (`config.credenziali`), perché la password è una sola
 * `tecnica`: `false` per una persona, `true` per un **processo automatico** che opera nel sistema come utente ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura), [R6](#r6--persona-o-macchina))
 
 **«Admin» non e un ruolo: e un binding.** Non esiste un `ruolo_applicativo = 'ADMIN'` — l'accesso completo si esprime con il profilo `SUPER_ADMIN` legato all'identita su `config.profili_accesso_bindings`. La funzione [`script.fn_is_super_admin`](/dbzero/script/funzioni/fn_is_super_admin) e il punto unico che risponde alla domanda «questo utente e un super admin?».
@@ -282,7 +284,7 @@ L'area Accessi divide le credenziali in tre liste, secondo [script.fn_categoria_
 | Operatori      | le persone con almeno una veste `OPERATORE`                                                  | la lista degli operatori del backend                                           |
 | Altri accessi  | le persone senza veste operatore (portale, shop) e le credenziali senza nessuna veste        | [anagrafiche.vw_accessi_altri](/dbzero/anagrafiche/views/vw_accessi_altri)     |
 
-Ogni credenziale cade in una lista sola: la natura di macchina vince, poi la veste operatore. In «Altri accessi» ogni veste porta il suo stato ([sopra](#lo-stato-della-veste)), anche se spenta, e la credenziale ha lo stato migliore fra le sue vesti.
+Ogni credenziale cade in una lista sola: la natura di macchina vince, poi la veste operatore. In «Altri accessi» ogni veste porta il suo stato ([sopra](#lo-stato-della-veste)), anche se spenta, e la credenziale ha lo stato migliore fra le sue vesti, in quest'ordine: accesa, invito pendente, invito non spedito, spenta, revocata. Una credenziale è quindi «revocata» solo quando tutte le sue vesti lo sono: basta una veste spenta senza segno, che un invito qualunque riapre, perché risulti «spenta».
 
 ---
 
@@ -334,7 +336,8 @@ Una persona entra nell'organico attraverso le **funzioni di creazione** del DB, 
 | Credenziale nuova | [anagrafiche.fn_crea_auth_user](/dbzero/anagrafiche/funzioni/fn_crea_auth_user) | Crea l'utente Django; rifiuta uno username o un'email gia presenti. È un passo interno: la chiama la funzione dell'operatore solo quando l'email non ha ancora una credenziale |
 | Profilo di un'identità o di un reparto | [config.fn_lega_profilo_identita](/dbzero/config/funzioni/fn_lega_profilo_identita) / [config.fn_lega_profilo_reparto](/dbzero/config/funzioni/fn_lega_profilo_reparto) e i loro contrari | Solo dal `SUPER_ADMIN`. Il contenuto del profilo (aree e azioni) lo scrive [config.fn_scrivi_profilo_accesso](/dbzero/config/funzioni/fn_scrivi_profilo_accesso), anch'esso solo dal `SUPER_ADMIN` |
 | Veste di portale o di shop | [anagrafiche.fn_crea_veste_portale](/dbzero/anagrafiche/funzioni/fn_crea_veste_portale) | Crea una veste `CLIENTE_PORTALE`, `FORNITORE_PORTALE` o `SHOP_CUSTOMER` su una credenziale; chi la chiama dice sempre se nasce accesa o spenta |
-| Accensione di una veste | [anagrafiche.fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste) | Accende la veste di una credenziale: e il gesto dell'attivazione dell'invito |
+| Accensione di una veste | [anagrafiche.fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste) | Accende la veste di una credenziale: e il gesto dell'attivazione dell'invito. Non chiede permessi, perché la chiamano richieste senza un amministratore: il link dell'invito, che è anonimo e porta il token, e la persona che accende una propria veste. Una veste revocata la ferma il guard della tabella |
+| Invito spedito | [anagrafiche.fn_segna_invito_inviato](/dbzero/anagrafiche/funzioni/fn_segna_invito_inviato) | Segna sulla veste che la mail dell'invito è partita, col permesso del tipo di veste, come la revoca |
 | Revoca di una veste | [anagrafiche.fn_revoca_veste](/dbzero/anagrafiche/funzioni/fn_revoca_veste) | L'amministratore spegne la veste e ci scrive quando e chi ([La revoca](#la-revoca)) |
 | Nuovo invito su una veste revocata | [anagrafiche.fn_togli_revoca_veste](/dbzero/anagrafiche/funzioni/fn_togli_revoca_veste) | Toglie il segno della revoca: la veste resta spenta e la accende il link |
 
@@ -342,7 +345,7 @@ La creazione dell'operatore segue due strade sul soggetto: una persona nuova (na
 
 La veste dell'operatore nasce spenta: la accende la persona, attivando l'invito ([Invito operatore](#invito-operatore)). Alla nascita della veste spenta il trigger di sync porta `auth_user.is_active` a `false`, se la credenziale non ha un'altra veste utilizzabile. L'utente tecnico di un processo automatico nasce invece da [script.fn_crea_utente_tecnico](/dbzero/script/funzioni/fn_crea_utente_tecnico), con la veste gia accesa: anche lui solo dal `SUPER_ADMIN`, salvo gli utenti tecnici che il software installa da sé.
 
-Le tabelle che danno l'accesso (l'azienda dell'operatore, i legami e il contenuto dei profili) sono in sola lettura per l'applicazione: si scrivono solo da questi verbi.
+Le tabelle che danno l'accesso (l'azienda dell'operatore, i legami e il contenuto dei profili) sono in sola lettura per l'applicazione: si scrivono solo da questi verbi. Le vesti l'applicazione le legge e le inserisce, ma non le aggiorna e non le cancella: accensione, revoca, nuovo invito, invito spedito e riattivazione sono verbi.
 
 ### Cambio reparto
 

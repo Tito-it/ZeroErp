@@ -5,7 +5,12 @@
 --   dell'emittente per l'utility e' un override (brief-db-modelli-documento-
 --   standard §10.3 K-7, D-7; §2 Q-6 … Q-8; changeSet 20261020-99, 20261021-01 … -03)
 -- ------------------------------------------------------------
--- Elenco test (plan 12):
+-- ⭐ Rev 2026-11-27 (brief-db-revisione-anagrafiche §25.9, D-T8b-2, 20261126-87):
+--   un ruolo che non e' un emittente non riceve piu' i valori di sistema in
+--   silenzio: E_PARAMETRO_INVALIDO (13, 14). L'utility che manca resta zero
+--   righe (6, 12): e' il segnale che i lettori traducono in E_CONFIG_MANCANTE.
+--
+-- Elenco test (plan 14):
 --  Struttura
 --   1) config.utilities ha i due parametri di sistema, NOT NULL
 --  Il BB (anagrafiche.fn_parametri_importo_utility)
@@ -23,6 +28,9 @@
 --  R-3: la riga si arrotonda con la stessa catena (vendite.fn_parametri_importo_riga)
 --  11) riga senza regole dell'articolo: i parametri dell'emittente (0 decimali), non il 2 fisso
 --  12) riga senza regole su una fattura senza utility: E_CONFIG_MANCANTE
+--  Il ruolo che non e' un emittente (D-T8b-2)
+--  13) il ruolo del cliente: E_PARAMETRO_INVALIDO, non i valori di sistema
+--  14) nessun ruolo (NULL): E_PARAMETRO_INVALIDO
 --
 -- Scopo:
 --  - provare sui casi COSTRUITI la regola di D-7: sistema, poi policy generale
@@ -44,7 +52,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(12);
+SELECT plan(14);
 
 CREATE TEMP TABLE _cli AS
 SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('parametri importo') c;
@@ -223,6 +231,23 @@ SELECT throws_like(
       FROM _fatture WHERE caso = 'SENZA_UTILITY'$$,
   '%Configurazione mancante%',
   '12) riga senza regole su una fattura senza utility: E_CONFIG_MANCANTE');
+
+-- ============================================================
+-- Il ruolo che non e' un emittente
+-- ============================================================
+SELECT is(
+  dbops.fn_pgtap_codice_errore(format(
+    $$SELECT * FROM anagrafiche.fn_parametri_importo_utility(%s, %s)$$,
+    (SELECT soggetto_ruolo_id FROM _cli), (SELECT utility_id FROM _rif))),
+  'E_PARAMETRO_INVALIDO',
+  '13) il ruolo del cliente non e'' un emittente: E_PARAMETRO_INVALIDO, non i valori di sistema');
+
+SELECT is(
+  dbops.fn_pgtap_codice_errore(format(
+    $$SELECT * FROM anagrafiche.fn_parametri_importo_utility(NULL, %s)$$,
+    (SELECT utility_id FROM _rif))),
+  'E_PARAMETRO_INVALIDO',
+  '14) nessun ruolo: E_PARAMETRO_INVALIDO');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -1,0 +1,134 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FIXTURE DEI TEST CHE METTE UNA VESTE NELLO STATO DEL CASO
+#   dbops.fn_pgtap_imposta_veste (passo 3c-1, D-3c-5).
+#
+#   Al passo 3c-3 l'app perde l'UPDATE di anagrafiche.identita_digitali. I
+#   pgTAP che girano come app e i test Django sul DB vero (R-3b-2) la
+#   scrivono oggi direttamente per costruire i casi: una veste spenta,
+#   scaduta, con l'invito spedito. E' la stessa necessita' in due sedi: una
+#   fixture sola, che usano tutti e due (regola del 2).
+#
+#   · Colonne ammesse: attivo, valido_dal, valido_al, invito_inviato_at, le
+#     colonne di stato. p_campi nomina solo quelle da cambiare (una chiave
+#     col valore null porta la colonna a NULL); una chiave fuori elenco:
+#     E_SCRIPT_CHIAMATA_NON_VALIDA. Il segno della revoca no: lo scrivono i
+#     suoi verbi, e i test li usano. Una veste revocata non si accende
+#     nemmeno da qui: il guard della tabella vale anche per il proprietario.
+#   · Scrive con script.fn_scrivi_riga_da_jsonb (UPDATE per id): i trigger
+#     della tabella scattano come per ogni altra scrittura.
+#   · SECURITY DEFINER, col cancello dei dati di sviluppo come
+#     dbops.fn_pgtap_fixture_crea_operatore (D-AE a): in PRODUZIONE
+#     E_DATI_DI_SVILUPPO_IN_PRODUZIONE, prima di ogni scrittura.
+#     ⚠️ Il limite, dichiarato: in SVILUPPO l'app puo' accendere e spegnere
+#     una veste non revocata da qui, come puo' farlo oggi con l'UPDATE.
+#
+#   Nessun codice nuovo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261127-05-create-fn-pgtap-imposta-veste-mctit.yaml
+
+  - changeSet:
+      id: 20261127-05-create-fn-pgtap-imposta-veste
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_imposta_veste: la fixture dei test che mette una veste nello stato del caso
+        (attivo, date, invito spedito), col cancello dei dati di sviluppo. SECURITY DEFINER.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_imposta_veste(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE,
+                  p_campi       jsonb  -- le colonne da cambiare, per nome: un elenco, non una colonna
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- Scopo:
+              --   Fixture dei test: mettere la veste p_identita_id nello stato del caso
+              --   (attivo, valido_dal, valido_al, invito_inviato_at), senza chiedere
+              --   permessi, solo dove sono ammessi i dati di sviluppo.
+              --
+              -- Regole:
+              --   - in PRODUZIONE: E_DATI_DI_SVILUPPO_IN_PRODUZIONE, prima di ogni scrittura;
+              --   - id NULL o non positivo, p_campi non oggetto o vuoto, una chiave fuori
+              --     elenco: E_SCRIPT_CHIAMATA_NON_VALIDA;
+              --   - veste assente: E_VESTE_NON_TROVATA;
+              --   - le regole della tabella: i suoi trigger.
+              DECLARE
+                  c_ammesse  CONSTANT text[] := ARRAY['attivo', 'valido_dal', 'valido_al', 'invito_inviato_at'];
+                  v_ambiente dbops.installazione.ambiente%TYPE;
+                  v_fuori    text[];  -- chiavi di p_campi: nomi, non una colonna
+              BEGIN
+                  -- Il cancello: solo dove sono ammessi i dati di sviluppo.
+                  v_ambiente := script.fn_ambiente_installazione();
+                  IF NOT dbops.fn_dati_di_sviluppo_ammessi_su_valori(v_ambiente) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'dbops', 'dbops.fn_pgtap_imposta_veste',
+                          'E_DATI_DI_SVILUPPO_IN_PRODUZIONE',
+                          jsonb_build_object('ambiente', v_ambiente),
+                          NULL::uuid,
+                          v_ambiente);
+                  END IF;
+
+                  IF p_identita_id IS NULL OR p_identita_id <= 0
+                     OR p_campi IS NULL OR jsonb_typeof(p_campi) <> 'object'
+                     OR p_campi = '{}'::jsonb THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'dbops', 'dbops.fn_pgtap_imposta_veste', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('identita_id', p_identita_id, 'campi', p_campi),
+                          NULL::uuid,
+                          'dbops.fn_pgtap_imposta_veste',
+                          'veste o colonne da cambiare mancanti');
+                  END IF;
+
+                  SELECT array_agg(k ORDER BY k)
+                    INTO v_fuori
+                    FROM jsonb_object_keys(p_campi) k
+                   WHERE k <> ALL (c_ammesse);
+
+                  IF v_fuori IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'dbops', 'dbops.fn_pgtap_imposta_veste', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('identita_id', p_identita_id,
+                                             'fuori_elenco', to_jsonb(v_fuori),
+                                             'ammesse', to_jsonb(c_ammesse)),
+                          NULL::uuid,
+                          'dbops.fn_pgtap_imposta_veste',
+                          'colonne non ammesse: ' || array_to_string(v_fuori, ', '));
+                  END IF;
+
+                  IF script.fn_scrivi_riga_da_jsonb(
+                         'anagrafiche.identita_digitali'::regclass,
+                         p_campi,
+                         jsonb_build_object('id', p_identita_id)) IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'dbops', 'dbops.fn_pgtap_imposta_veste', 'E_VESTE_NON_TROVATA',
+                          jsonb_build_object('identita_id', p_identita_id),
+                          NULL::uuid,
+                          p_identita_id::text);
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_imposta_veste(anagrafiche.identita_digitali.id%TYPE, jsonb) IS
+                  'Fixture dei test (pgTAP e test Django sul database vero): mette la veste p_identita_id nello stato del caso, con le sole colonne nominate in p_campi fra attivo, valido_dal, valido_al e invito_inviato_at (una chiave col valore null porta la colonna a NULL). Scrive con script.fn_scrivi_riga_da_jsonb, e i trigger della tabella scattano come per ogni scrittura: una veste revocata non si accende nemmeno da qui. Il segno della revoca non si scrive da qui: lo scrivono anagrafiche.fn_revoca_veste e anagrafiche.fn_togli_revoca_veste. SECURITY DEFINER ed eseguibile dall''applicazione, che non scrive identita_digitali direttamente: per questo parte solo dove sono ammessi i dati di sviluppo (dbops.fn_dati_di_sviluppo_ammessi_su_valori sull''ambiente dell''installazione), e in PRODUZIONE solleva E_DATI_DI_SVILUPPO_IN_PRODUZIONE. id NULL o non positivo, p_campi vuoto o con una chiave fuori elenco: E_SCRIPT_CHIAMATA_NON_VALIDA; veste assente: E_VESTE_NON_TROVATA.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_imposta_veste(bigint, jsonb);

@@ -101,7 +101,9 @@ SELECT min(p.id), 'pgtap', (SELECT storia FROM _t) FROM config.parameters p
    AND p.tipo_valore = 'TESTO';
 
 -- La veste spenta: l'operatore senza privilegi, con la sua veste disattivata.
-UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = (SELECT identita_id FROM _op);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', false))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _op);
 
 -- Il mondo in cui gira il test: le FK del ponte django ci sono?
 CREATE TEMP TABLE _ponte AS

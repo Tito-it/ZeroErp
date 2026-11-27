@@ -13,7 +13,8 @@
 --   … -07 (legami e profili), 20_code/anagrafiche/20261126-08 … -12 (operatore,
 --   primo amministratore, provisioning), 20_code/script/20261126-13, -14 (utente
 --   tecnico), 20_code/dbops/20261126-15 … -23 (fixture e builder), 90_end/20261126-24
---   (le tabelle in sola lettura), -25 (le primitive riservate).
+--   (le tabelle in sola lettura), -25 (le primitive riservate); 90_end/20261127-06
+--   ritira l'involucro anagrafiche.fn_crea_operatore_v2, che era la settima.
 --
 -- Semantica attesa (il contratto, non l'implementazione):
 --   - lo scope, i legami e il contenuto dei profili sono in sola lettura per
@@ -44,7 +45,7 @@
 --   forma
 --    1) i sette verbi: SECURITY DEFINER, search_path fissato
 --    2) le fixture: SECURITY DEFINER, eseguibili dall'app
---    3) l'app non esegue le sette funzioni riservate, e PUBLIC nemmeno
+--    3) l'app non esegue le sei funzioni riservate, e PUBLIC nemmeno
 --   la sola lettura
 --    4) sulle cinque tabelle l'app ha SELECT e nessuna scrittura
 --    5) un INSERT diretto di un legame verso il profilo SUPER_ADMIN: 42501
@@ -120,12 +121,11 @@ SELECT is(
                     'anagrafiche.fn_applica_crea_operatore'::regproc,
                     'script.fn_applica_crea_utente_tecnico'::regproc,
                     'anagrafiche.fn_crea_risorsa_umana'::regproc,
-                    'anagrafiche.fn_crea_auth_user'::regproc,
-                    'anagrafiche.fn_crea_operatore_v2'::regproc)
+                    'anagrafiche.fn_crea_auth_user'::regproc)
       AND (has_function_privilege('zeroerp_app', p.oid, 'EXECUTE')
            OR has_function_privilege('public', p.oid, 'EXECUTE'))),
   ARRAY[]::text[],
-  '3) l''app non esegue le sette funzioni riservate, e PUBLIC nemmeno');
+  '3) l''app non esegue le sei funzioni riservate, e PUBLIC nemmeno');
 
 -- ============================================================
 -- 4-7 La sola lettura

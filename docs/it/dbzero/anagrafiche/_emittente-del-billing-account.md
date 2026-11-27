@@ -1,6 +1,6 @@
 ### 🏢 L'azienda di un billing account
 
-> **Ultimo aggiornamento**: 26 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > **Vedi anche**
 >
@@ -13,7 +13,8 @@
 > * [script.fn_resolve_emittente_for_user](/dbzero/script/funzioni/fn_resolve_emittente_for_user) — l'azienda di chi agisce
 > * [script.fn_get_ba_emittente_sr_id](/dbzero/script/funzioni/fn_get_ba_emittente_sr_id) — l'azienda di un billing account, per chi agisce
 > * [script.fn_get_ba_emittente_sr_id_installazione](/dbzero/script/funzioni/fn_get_ba_emittente_sr_id_installazione) — l'azienda di un billing account, per l'installazione
-> * [anagrafiche.fn_get_emittente_fiscale_id](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_id) e [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk) — i risolutori che sollevano `E_EMITTENTE_DEFAULT_MISSING`
+> * [anagrafiche.fn_get_emittente_fiscale_id](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_id) e [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk) — i risolutori per chi scrive: rifiutano un id che non è un billing account, sollevano `E_EMITTENTE_DEFAULT_MISSING`
+> * [anagrafiche.fn_check_billing_account_esiste](/dbzero/anagrafiche/funzioni/fn_check_billing_account_esiste) — l'id è un billing account? Guarda anche quelli fuori dal perimetro di chi chiama
 > * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic) — il rifiuto della cancellazione e dello spostamento
 > * [anagrafiche.trgfn_efba_guard_storia_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_storia_emittente), [anagrafiche.fn_guard_ba_cambio_emittente](/dbzero/anagrafiche/funzioni/fn_guard_ba_cambio_emittente), [script.fn_check_ba_cambio_emittente](/dbzero/script/funzioni/fn_check_ba_cambio_emittente) — il cambio d'azienda e la storia
 > * [anagrafiche.fn_ba_ha_storia_emittente](/dbzero/anagrafiche/funzioni/fn_ba_ha_storia_emittente) e [anagrafiche.fn_get_storia_emittente_ba](/dbzero/anagrafiche/funzioni/fn_get_storia_emittente_ba) — che cosa è la storia, e la frase del rifiuto
@@ -57,9 +58,20 @@ Del suo collegamento. Le due letture, `script.fn_get_ba_emittente_sr_id` (per ch
 `script.fn_get_ba_emittente_sr_id_installazione` (per l'installazione), rispondono col collegamento, e con
 ogni billing account collegato danno sempre la stessa risposta. I loro livelli successivi (l'azienda di chi
 agisce, poi la predefinita, oppure soltanto la predefinita) riguardano solo l'istante della nascita, prima che
-il collegamento sia scritto, e ripetono la scelta del trigger di nascita. `anagrafiche.fn_get_emittente_fiscale_id`
-e `anagrafiche.fn_get_emittente_fiscale_pk` usano la prima lettura e trasformano un'azienda non risolta in
-`E_EMITTENTE_DEFAULT_MISSING`.
+il collegamento sia scritto, e ripetono la scelta del trigger di nascita. Rispondono anche a un id che non è un
+billing account, e non sollevano: le chiamano le policy del billing account.
+
+`anagrafiche.fn_get_emittente_fiscale_id` e `anagrafiche.fn_get_emittente_fiscale_pk`, i risolutori per chi
+scrive, usano la prima lettura con due regole loro:
+
+* un id che non è un billing account è rifiutato (`E_BILLING_ACCOUNT_NOT_FOUND`): i livelli di riserva gli
+  darebbero l'azienda di chi agisce o la predefinita, e un id sbagliato diventerebbe un'azienda. Il controllo,
+  `anagrafiche.fn_check_billing_account_esiste`, vede anche i billing account fuori dal perimetro di chi chiama,
+  che rispondono la loro azienda;
+* un'azienda non risolta è `E_EMITTENTE_DEFAULT_MISSING`.
+
+Senza billing account (`NULL`) `anagrafiche.fn_get_emittente_fiscale_id` risponde la predefinita: è il giro del
+lotto di fatturazione, che non ha un billing account. `anagrafiche.fn_get_emittente_fiscale_pk` lo rifiuta.
 
 #### L'azienda predefinita decide solo i billing account che nasceranno
 

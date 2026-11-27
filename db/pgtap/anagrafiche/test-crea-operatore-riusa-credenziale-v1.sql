@@ -191,10 +191,9 @@ SELECT is(
     '7) la stessa email, veste OPERATORE spenta (invito pendente) -> E_CREDENZIALE_GIA_OPERATORE');
 
 -- L'invito accettato.
-UPDATE anagrafiche.identita_digitali
-   SET attivo = true
- WHERE auth_user_id = (SELECT id FROM _cli)
-   AND ruolo_applicativo = 'OPERATORE';
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', true))
+  FROM anagrafiche.identita_digitali idg
+ WHERE auth_user_id = (SELECT id FROM _cli) AND ruolo_applicativo = 'OPERATORE';
 
 SELECT is(
     dbops.fn_pgtap_codice_errore(format(
@@ -301,11 +300,11 @@ SELECT o.auth_user_id, o.soggetto_id, o.identita_id
 CREATE TEMP TABLE _altro AS
 SELECT o.soggetto_id FROM dbops.fn_pgtap_crea_operatore_umano('riuso altra persona', false) o;
 
-UPDATE anagrafiche.identita_digitali
-   SET attivo            = false,
-       ruolo_applicativo = 'SHOP_CUSTOMER'::config.ruolo_applicativo,
-       soggetto_ruolo_id = dbops.fn_pgtap_crea_soggetto_ruolo((SELECT soggetto_id FROM _pf), 'CL')
- WHERE id = (SELECT identita_id FROM _pf);
+SELECT dbops.fn_pgtap_imposta_veste(
+    (SELECT identita_id FROM _pf),
+    jsonb_build_object('attivo',            false,
+                       'ruolo_applicativo', 'SHOP_CUSTOMER'::config.ruolo_applicativo,
+                       'soggetto_ruolo_id', dbops.fn_pgtap_crea_soggetto_ruolo((SELECT soggetto_id FROM _pf), 'CL')));
 SET CONSTRAINTS ALL IMMEDIATE;
 
 ALTER TABLE _pf ADD COLUMN email text, ADD COLUMN cf text;

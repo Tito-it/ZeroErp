@@ -22,11 +22,9 @@ AS $function$
 --   e' risolvibile. E' l'involucro PK del lettore
 --   script.fn_get_ba_emittente_sr_id, come
 --   anagrafiche.fn_get_emittente_fiscale_id ne e' l'involucro SR.
--- ⛔ La regola «quale emittente» NON e' scritta qui (rev 20260913-03,
---   D13): fino a quel giorno questa funzione ne teneva una copia a
---   due livelli, e con il terzo livello del lettore (in sessione,
---   l'emittente di chi agisce) le due copie avrebbero risposto cose
---   diverse sullo stesso BA senza legame.
+-- ⛔ La regola «quale emittente» NON e' scritta qui: una copia
+--   accanto al lettore risponderebbe cose diverse sullo stesso
+--   billing account alla prima modifica di uno dei due.
 DECLARE
     v_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE;
 BEGIN
@@ -45,6 +43,27 @@ BEGIN
         );
     END IF;
 
+    -- ⛔ UN ID CHE NON E' UN BILLING ACCOUNT SI RIFIUTA.
+    --   Ogni billing account ha il suo collegamento: i livelli di
+    --   riserva del lettore (l'azienda di chi agisce, la
+    --   predefinita) risponderebbero solo a un id sbagliato del
+    --   chiamante. Il controllo e' SECURITY DEFINER: un BA fuori
+    --   dal perimetro di chi chiama esiste, e risponde la sua
+    --   azienda.
+    IF NOT anagrafiche.fn_check_billing_account_esiste(p_billing_account_id) THEN
+        PERFORM script.fn_log_and_raise_error(
+            'anagrafiche',
+            'fn_get_emittente_fiscale_pk',
+            'E_BILLING_ACCOUNT_NOT_FOUND',
+            jsonb_build_object(
+                'detail', 'p_billing_account_id non e'' un billing account',
+                'billing_account_id', p_billing_account_id
+            ),
+            NULL::uuid,
+            p_billing_account_id::text
+        );
+    END IF;
+
     -- Traduzione soggetto_ruolo -> PK reale. Il filtro ef.attivo
     -- c'era gia' e resta come DIFESA: sul modello un emittente con
     -- una riga di mapping non si puo' disattivare
@@ -58,8 +77,8 @@ BEGIN
                = script.fn_get_ba_emittente_sr_id(p_billing_account_id)
        AND ef.attivo = true;
 
-    -- Niente da nessuno dei tre livelli: e' l'installazione che
-    -- manca di un emittente, non il chiamante. Invariato.
+    -- Nessuna azienda: e' l'installazione che manca di un
+    -- emittente, non il chiamante. Invariato.
     IF v_emittente_fiscale_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'anagrafiche',
@@ -80,7 +99,7 @@ END
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_get_emittente_fiscale_pk(p_billing_account_id bigint)
-IS 'Restituisce anagrafiche.emittenti_fiscali.id (PK numerica reale) per un billing_account, e SOLLEVA se non e'' risolvibile. ⭐ Dal 20260913-03 (D13) non riscrive piu'' la regola: e'' l''involucro PK di script.fn_get_ba_emittente_sr_id — la stessa coppia lettore/involucro di anagrafiche.fn_get_emittente_fiscale_id, che ne e'' l''involucro SR. La regola ha TRE livelli: mapping specifico; altrimenti, in sessione, l''emittente dell''operatore che sta agendo; altrimenti il default. Qui restano il guard sul parametro (E_PARAMETRO_INVALIDO su NULL o <= 0), la traduzione soggetto_ruolo -> PK con il filtro ef.attivo (difesa: sul modello un emittente con una riga di mapping non si disattiva) e E_EMITTENTE_DEFAULT_MISSING quando nessun livello risponde. Fino a quel changeSet teneva una copia a due livelli della regola, e con il terzo livello del lettore le due copie avrebbero risposto cose diverse sullo stesso BA senza legame — la RLS lo mostra, il guard del documento lo rifiuta. Consumatori: trgfn_<doc>_guard_emittente_ba (preventivi, ordini, ddt, resi, contratti, offerte), trgfn_ddt_normalize, trgfn_resi_normalize, fn_lookup_utilities_per_ba, fn_genera_pratica_da_preventivo, il backend. Brief: brief-db-ba-riserva-emittente-operatore-d13.';
+IS 'La PK reale (anagrafiche.emittenti_fiscali.id) dell''azienda che fattura un billing account, per chi SCRIVE: solleva se non e'' risolvibile. E'' l''involucro PK di script.fn_get_ba_emittente_sr_id, come anagrafiche.fn_get_emittente_fiscale_id ne e'' l''involucro SR: la regola «quale emittente» e'' del lettore, il collegamento del billing account, e qui non si riscrive. Rifiuta NULL e un id <= 0 (E_PARAMETRO_INVALIDO) e un id che non e'' un billing account (E_BILLING_ACCOUNT_NOT_FOUND, con anagrafiche.fn_check_billing_account_esiste, che vede anche i billing account fuori dal perimetro di chi chiama). Traduce il ruolo dell''azienda nella PK con il filtro ef.attivo, una difesa: un''azienda collegata a un billing account non si spegne. Senza azienda solleva E_EMITTENTE_DEFAULT_MISSING. Consumatori: script.trgfn_doc_guard_emittente_ba (i documenti di vendita), vendite.trgfn_ddt_normalize, vendite.trgfn_resi_normalize, anagrafiche.fn_lookup_utilities_per_ba, vendite.fn_genera_pratica_da_preventivo, il backend. SECURITY INVOKER.';
 ```
 
 </div>

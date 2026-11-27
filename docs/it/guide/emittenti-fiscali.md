@@ -1,6 +1,6 @@
 # Guida — Gli Emittenti Fiscali
 
-> **Ultimo aggiornamento**: 26 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > **Destinatari**: amministratori dell'installazione (super admin), analisti funzionali, sviluppatori database, backend e frontend
 >
@@ -25,7 +25,7 @@
 > * [anagrafiche.trgfn_emittenti_fiscali_default_bootstrap](/dbzero/anagrafiche/funzioni/trgfn_emittenti_fiscali_default_bootstrap) — il primo emittente diventa il gestore globale
 > * [anagrafiche.trgfn_emittenti_fiscali_default_guard](/dbzero/anagrafiche/funzioni/trgfn_emittenti_fiscali_default_guard) — il gestore globale è uno e uno solo
 > * [anagrafiche.fn_parametri_importo_utility](/dbzero/anagrafiche/funzioni/fn_parametri_importo_utility) — i parametri d'importo effettivi, con l'eccezione dell'azienda
-> * [anagrafiche.fn_get_emittente_fiscale_id](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_id) / [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk) — da una chiave dell'azienda all'altra
+> * [anagrafiche.fn_get_emittente_fiscale_id](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_id) / [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk) — l'azienda che fattura un billing account, col suo ruolo o col suo `id`
 > * [vendite.trgfn_emittenti_fiscali_provision_registri](/dbzero/vendite/funzioni/trgfn_emittenti_fiscali_provision_registri) — i registri delle famiglie non fiscali, alla nascita e alla riattivazione
 > * [script.fn_get_ba_emittente_sr_id](/dbzero/script/funzioni/fn_get_ba_emittente_sr_id) — l'azienda di un billing account
 > * [anagrafiche.trgfn_billing_account_link_ef](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef) — il billing account nasce collegato: all'azienda di chi lavora, o al gestore globale
@@ -120,9 +120,14 @@ soggetto con partita IVA (chi è)
 
 L'emittente ha due identificativi: l'`id` della riga di `emittenti_fiscali` e il `soggetto_ruolo_id` del suo ruolo
 `EF`. Alcune tabelle puntano al primo (ordini, contratti, l'assegnazione degli operatori), altre al secondo
-(fatture, commesse, registri, listini, il collegamento dei billing account). Si passa dall'una all'altra con
-`fn_get_emittente_fiscale_pk` e `fn_get_emittente_fiscale_id`. Quale tabella usa quale chiave, e perché, lo spiega
-[Soggetti e Ruoli Anagrafici](/guide/soggetti-e-ruoli-anagrafici), §5b.
+(fatture, commesse, registri, listini, il collegamento dei billing account). Quale tabella usa quale chiave, e
+perché, lo spiega [Soggetti e Ruoli Anagrafici](/guide/soggetti-e-ruoli-anagrafici), §5b.
+
+L'azienda che fattura un billing account si chiede con una chiave o con l'altra: `fn_get_emittente_fiscale_id`
+risponde il ruolo, `fn_get_emittente_fiscale_pk` l'`id`. Tutte e due partono dal **billing account**, non da una
+delle due chiavi, e rispondono con il suo collegamento. Un id che non è un billing account è rifiutato: un id
+sbagliato non diventa un'azienda, né quella di chi agisce né il gestore globale. Senza billing account (un lotto
+di fatturazione, che raccoglie clienti diversi) `fn_get_emittente_fiscale_id` risponde il gestore globale.
 
 ---
 
@@ -408,7 +413,10 @@ operatrice di BETA.
 | Cancellazione dell'emittente | `E_DELETE_NOT_ALLOWED` |
 | Spegnimento con righe collegate ancora vive | `E_ATTIVO_BLOCK_CHILDREN_ACTIVE`, `E_ATTIVO_BLOCK_CHILDREN_EXIST` |
 | Una riga nuova sotto un emittente spento | `E_ATTIVO_PADRE_NON_ATTIVO` |
-| Due gestori globali, o nessuno | `E_EMITTENTE_DEFAULT_SINGLETON` |
+| Nessun gestore globale, con almeno un emittente (solo da una via di servizio: la sua riga non si toglie) | `E_EMITTENTE_DEFAULT_SINGLETON` |
+| Un secondo gestore globale | violazione dell'indice unico `uq_emittenti_fiscali_ba_default` |
+| L'azienda chiesta per un id che non è un billing account | `E_BILLING_ACCOUNT_NOT_FOUND` |
+| I parametri d'importo chiesti per un ruolo che non è un emittente | `E_PARAMETRO_INVALIDO` |
 | Un billing account con documenti, anche in bozza, che cambia azienda | `E_BA_EMITTENTE_CON_STORIA` |
 | Il collegamento di un billing account, o la riga del gestore globale, cancellato | `E_BA_COLLEGAMENTO_NON_SI_TOGLIE` |
 | Il collegamento passato a un altro billing account, o trasformato in gestore globale (o il contrario) | `E_BA_COLLEGAMENTO_NON_SI_SPOSTA` |

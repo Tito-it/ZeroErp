@@ -689,6 +689,20 @@ FROM (VALUES ('config.user_override_aree'), ('config.user_override_azioni'),
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
+-- ⭐ LE VESTI SI CAMBIANO DAI VERBI (dal 2026-11-27): brief
+--   brief-db-accessi-area-clienti, passo 3c. Su `anagrafiche.identita_digitali`
+--   l'applicazione legge e inserisce, ma non aggiorna e non cancella: accensione,
+--   revoca, nuovo invito, invito spedito e riattivazione sono verbi DEFINER, e la
+--   fixture dei test e' dbops.fn_pgtap_imposta_veste. L'INSERT resta finche' la
+--   veste non nasce solo dai verbi (il giro della veste cliente). Stesso elenco di
+--   `v_tabelle_app_solo_insert` nel loop 20260205-41 e del forward
+--   90_end/20261127-09; `db/pgtap/anagrafiche/test-vesti-postura-app-v1.sql` lo dice
+--   se non lo fa.
+SELECT format('REVOKE UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('anagrafiche.identita_digitali')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
 -- ⭐ LA PORTA DEL PANNELLO DI CONFIGURAZIONE (dal 2026-09-25): brief
 --   brief-db-pannello-config-verbo-generico, sezione 3.5. `magazzino.causali` la
 --   scrive solo il verbo config.fn_pannello_scrivi; `config.tabelle_gestibili` e'
@@ -773,7 +787,6 @@ WHERE (n.nspname, p.proname) IN (
         ('config', 'fn_applica_lega_profilo_identita'), ('config', 'fn_applica_scrivi_profilo_accesso'),
         ('anagrafiche', 'fn_applica_crea_operatore'), ('script', 'fn_applica_crea_utente_tecnico'),
         ('anagrafiche', 'fn_crea_risorsa_umana'), ('anagrafiche', 'fn_crea_auth_user'),
-        ('anagrafiche', 'fn_crea_operatore_v2'),
         -- ⭐ Dal 2026-11-27 la primitiva degli override di un utente: ci si arriva solo
         --   dai tre verbi DEFINER col guard del SUPER_ADMIN. Forward 90_end/20261126-63;
         --   presidio config/test-porta-override-permessi-v1.

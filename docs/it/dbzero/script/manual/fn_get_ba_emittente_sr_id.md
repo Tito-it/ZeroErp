@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_get_ba_emittente_sr_id`
 
-> **Ultimo aggiornamento**: 26 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -110,6 +110,15 @@ sempre (all'azienda di chi agisce o, senza sessione, alla predefinita), e il
 collegamento non si cancella. Per questo, fuori dall'istante della nascita,
 questa funzione e la sua gemella «per l'installazione» danno la stessa
 risposta.
+
+⚠️ I livelli 2 e 3 rispondono anche a un id che **non è un billing account**:
+un id inventato riceve l'azienda di chi agisce o la predefinita. Questa
+funzione non lo rifiuta, perché la chiamano le policy del billing account e
+una policy non solleva. Lo rifiutano i due involucri per chi scrive,
+[`anagrafiche.fn_get_emittente_fiscale_id`](/dbzero/anagrafiche/manual/fn_get_emittente_fiscale_id)
+e [`anagrafiche.fn_get_emittente_fiscale_pk`](/dbzero/anagrafiche/manual/fn_get_emittente_fiscale_pk),
+con `E_BILLING_ACCOUNT_NOT_FOUND`: chi ha bisogno di un'azienda per scrivere
+passa da loro, non da qui.
 
 ---
 

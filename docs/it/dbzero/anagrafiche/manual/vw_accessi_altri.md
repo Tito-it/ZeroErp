@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_accessi_altri`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -59,7 +59,7 @@ senza perimetro per azienda: una credenziale non appartiene a un'azienda.
 | `vesti → fornitore_id` | uno solo: il fornitore è unico sul suo ruolo |
 | `vesti_elenco`, `soggetti_elenco` | i tipi di veste e i soggetti in un testo: le colonne su cui la lista filtra e cerca |
 | `nessun_accesso` | la credenziale non ha nessuna veste, nemmeno spenta |
-| `stato_accesso` | un **riassunto per il filtro**: il migliore stato fra le vesti (`ATTIVO`, poi `PENDING`, poi `NON_SPEDITO`, poi `DISATTIVO`), `NESSUNO` senza vesti. Lo stato vero sta su ogni veste |
+| `stato_accesso` | un **riassunto per il filtro**: il migliore stato fra le vesti (`ATTIVO`, poi `PENDING`, poi `NON_SPEDITO`, poi `DISATTIVO`, poi `REVOCATA`), `NESSUNO` senza vesti. `REVOCATA` vuol dire che tutte le vesti sono revocate: una sola veste spenta senza segno fa `DISATTIVO`. Lo stato vero sta su ogni veste |
 | `secondo_fattore_stato` | solo lo stato del secondo fattore: il segreto non esce |
 | `bloccata`, `bloccata_dal`, `motivo_blocco` | il blocco dell'amministratore sulla credenziale |
 
@@ -90,6 +90,9 @@ vede vuoti. Un elenco vuoto non vuol dire «nessun cliente».
   contano tutte; la credenziale senza vesti c'è, con `nessun_accesso`, stato `NESSUNO` e vesti vuote; la voce di una
   veste porta il suo stato e il riassunto, coi `cliente_ids` come elenco; operatori e utenti tecnici non ci sono; la
   vista è `security_invoker`.
+* `db/pgtap/anagrafiche/test-veste-accensione-invito-fixture-v1.sql` — `REVOCATA` quando tutte le vesti sono
+  revocate, `DISATTIVO` con una revocata e una spenta; ogni stato di `script.fn_stato_veste` è nominato
+  nell'aggregato.
 
 Nessun test prova gli elenchi dei clienti letti da un operatore col suo perimetro.
 

@@ -105,9 +105,9 @@ UPDATE _cl SET identita_id = idg.id
 
 -- Le finestre partono indietro di dieci giorni, cosi' «ieri» e «oggi» sono
 -- fini ammesse da chk_identita_digitali_date (valido_al >= valido_dal).
-UPDATE anagrafiche.identita_digitali SET valido_dal = script.fn_data_operativa() - 10
- WHERE id IN ((SELECT identita_id FROM _op), (SELECT identita_id FROM _tec),
-              (SELECT identita_id FROM _cl));
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_dal', script.fn_data_operativa() - 10))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id IN ((SELECT identita_id FROM _op), (SELECT identita_id FROM _tec), (SELECT identita_id FROM _cl));
 UPDATE anagrafiche.risorse_umane SET valido_dal = script.fn_data_operativa() - 10
  WHERE id = (SELECT risorsa_umana_id FROM _op);
 
@@ -117,8 +117,8 @@ LANGUAGE sql AS $$ SELECT script.fn_veste_utilizzabile(p_id) $$;
 -- Ripristina l'operatore: veste e rapporto accesi, senza fine.
 CREATE OR REPLACE FUNCTION pg_temp.ripristina_op() RETURNS void
 LANGUAGE sql AS $$
-    UPDATE anagrafiche.identita_digitali
-       SET attivo = true, valido_dal = script.fn_data_operativa() - 10, valido_al = NULL
+    SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', true, 'valido_dal', script.fn_data_operativa() - 10, 'valido_al', NULL))
+      FROM anagrafiche.identita_digitali idg
      WHERE id = (SELECT identita_id FROM _op);
     UPDATE anagrafiche.risorse_umane
        SET attivo = true, valido_dal = script.fn_data_operativa() - 10, valido_al = NULL
@@ -140,20 +140,28 @@ SELECT volatility_is('script', 'fn_veste_utilizzabile', ARRAY['bigint'], 'stable
 SELECT is(pg_temp.vu((SELECT identita_id FROM _op)), true,
     '3) operatore acceso e senza fine: utilizzabile');
 
-UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = (SELECT identita_id FROM _op);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', false))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _op);
 SELECT is(pg_temp.vu((SELECT identita_id FROM _op)), false, '4) veste spenta: no');
 SELECT pg_temp.ripristina_op();
 
-UPDATE anagrafiche.identita_digitali SET valido_dal = script.fn_data_operativa() + 1 WHERE id = (SELECT identita_id FROM _op);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_dal', script.fn_data_operativa() + 1))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _op);
 SELECT is(pg_temp.vu((SELECT identita_id FROM _op)), false, '5) veste con valido_dal domani: no');
 SELECT pg_temp.ripristina_op();
 
-UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() - 1 WHERE id = (SELECT identita_id FROM _op);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_al', script.fn_data_operativa() - 1))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _op);
 SELECT is(pg_temp.vu((SELECT identita_id FROM _op)), false,
     '6) veste con valido_al ieri e rapporto valido: no');
 SELECT pg_temp.ripristina_op();
 
-UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() WHERE id = (SELECT identita_id FROM _op);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_al', script.fn_data_operativa()))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _op);
 SELECT is(pg_temp.vu((SELECT identita_id FROM _op)), true,
     '7) veste con valido_al OGGI: si'' (estremo compreso)');
 SELECT pg_temp.ripristina_op();
@@ -168,9 +176,13 @@ SELECT is(pg_temp.vu((SELECT identita_id FROM _op)), false,
     '9) D-2: rapporto con valido_dal domani: no');
 SELECT pg_temp.ripristina_op();
 
-UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = (SELECT identita_id FROM _op);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', false))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _op);
 UPDATE anagrafiche.risorse_umane     SET attivo = false WHERE id = (SELECT risorsa_umana_id FROM _op);
-UPDATE anagrafiche.identita_digitali SET attivo = true  WHERE id = (SELECT identita_id FROM _op);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', true))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _op);
 SELECT is(pg_temp.vu((SELECT identita_id FROM _op)), false,
     '10) D-2: veste accesa e rapporto spento: no');
 SELECT pg_temp.ripristina_op();
@@ -181,10 +193,14 @@ SELECT pg_temp.ripristina_op();
 SELECT is(pg_temp.vu((SELECT identita_id FROM _tec)), true,
     '11) identita'' tecnica senza risorsa umana: utilizzabile');
 
-UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() - 1 WHERE id = (SELECT identita_id FROM _tec);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_al', script.fn_data_operativa() - 1))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _tec);
 SELECT is(pg_temp.vu((SELECT identita_id FROM _tec)), false,
     '12) identita'' tecnica scaduta: no');
-UPDATE anagrafiche.identita_digitali SET valido_al = NULL WHERE id = (SELECT identita_id FROM _tec);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_al', NULL))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _tec);
 
 SELECT is(pg_temp.vu((SELECT identita_id FROM _cl)), true,
     '13) veste CLIENTE_PORTALE: utilizzabile senza rapporto');
@@ -211,12 +227,16 @@ SELECT is((SELECT is_active FROM django.auth_user WHERE id = (SELECT auth_user_i
     true,
     '17) sync col rapporto chiuso: credenziale accesa per la veste cliente (OR)');
 
-UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = (SELECT identita_id FROM _cl);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', false))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _cl);
 SELECT anagrafiche.fn_sync_auth_user_is_active((SELECT auth_user_id FROM _op));
 SELECT is((SELECT is_active FROM django.auth_user WHERE id = (SELECT auth_user_id FROM _op)),
     false,
     '18) ...spenta anche la cliente: la credenziale si spegne');
-UPDATE anagrafiche.identita_digitali SET attivo = true WHERE id = (SELECT identita_id FROM _cl);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', true))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _cl);
 
 SELECT is(
     dbops.fn_pgtap_codice_errore(format('SELECT script.fn_get_user_profile(%s)',
@@ -225,7 +245,9 @@ SELECT is(
     '19) profilo col rapporto chiuso: E_UTENTE_DISABILITATO');
 SELECT pg_temp.ripristina_op();
 
-UPDATE anagrafiche.identita_digitali SET valido_dal = script.fn_data_operativa() + 1 WHERE id = (SELECT identita_id FROM _op);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_dal', script.fn_data_operativa() + 1))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _op);
 SELECT is(
     dbops.fn_pgtap_codice_errore(format('SELECT script.fn_get_user_profile(%s)',
                                  (SELECT auth_user_id FROM _op))),
@@ -237,19 +259,27 @@ SELECT is(script.fn_get_identita_sr_perimetro((SELECT identita_id FROM _cl),
                                               ARRAY['CLIENTE_PORTALE', 'SHOP_CUSTOMER']::config.ruolo_applicativo[]),
     (SELECT soggetto_ruolo_id FROM _cl),
     '21a) il perimetro del cliente: il suo soggetto, sulla veste valida');
-UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() - 1 WHERE id = (SELECT identita_id FROM _cl);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_al', script.fn_data_operativa() - 1))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _cl);
 SELECT is(script.fn_get_identita_sr_perimetro((SELECT identita_id FROM _cl),
                                               ARRAY['CLIENTE_PORTALE', 'SHOP_CUSTOMER']::config.ruolo_applicativo[]),
     NULL::bigint,
     '21b) ...NULL, cioe'' nessuna riga, quando la veste scade');
-UPDATE anagrafiche.identita_digitali SET valido_al = NULL WHERE id = (SELECT identita_id FROM _cl);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_al', NULL))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _cl);
 
 SELECT is(script.fn_scope_identita_processo((SELECT auth_user_id FROM _tec), 'chiusura_scadenze_daily'),
     true, '22a) fn_scope_identita_processo: vera sull''identita'' tecnica valida');
-UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() - 1 WHERE id = (SELECT identita_id FROM _tec);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_al', script.fn_data_operativa() - 1))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _tec);
 SELECT is(script.fn_scope_identita_processo((SELECT auth_user_id FROM _tec), 'chiusura_scadenze_daily'),
     false, '22b) ...falsa quando scade');
-UPDATE anagrafiche.identita_digitali SET valido_al = NULL WHERE id = (SELECT identita_id FROM _tec);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_al', NULL))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _tec);
 
 -- ⚠️ Rev 2026-10-07 (-20, decisione di Tid): chiudere il rapporto di un
 --   SUPER_ADMIN si ferma se non resta nessun SUPER_ADMIN senza scadenza. Su un
@@ -262,7 +292,8 @@ CREATE TEMP TABLE _sa AS
 SELECT o.* FROM dbops.fn_pgtap_crea_operatore_umano('veste utilizzabile SA', true) o;
 UPDATE anagrafiche.risorse_umane SET valido_dal = script.fn_data_operativa() - 10, valido_al = script.fn_data_operativa() - 1
  WHERE id = (SELECT risorsa_umana_id FROM _sa);
-UPDATE anagrafiche.identita_digitali SET valido_dal = script.fn_data_operativa() - 10
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_dal', script.fn_data_operativa() - 10))
+  FROM anagrafiche.identita_digitali idg
  WHERE id = (SELECT identita_id FROM _sa);
 SELECT is(script.fn_is_super_admin_account((SELECT auth_user_id FROM _sa)), false,
     '23) fn_is_super_admin_account: col rapporto chiuso non e'' piu'' SUPER_ADMIN');
@@ -271,7 +302,9 @@ SELECT is(script.fn_is_super_admin_account((SELECT auth_user_id FROM _sa)), fals
 -- accesa, ma non ha piu' vesti utilizzabili. Lo stato si simula riaccendendo
 -- is_active a mano dopo aver chiuso tutto.
 UPDATE anagrafiche.risorse_umane SET valido_al = script.fn_data_operativa() - 1 WHERE id = (SELECT risorsa_umana_id FROM _op);
-UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = (SELECT identita_id FROM _cl);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', false))
+  FROM anagrafiche.identita_digitali idg
+ WHERE id = (SELECT identita_id FROM _cl);
 UPDATE django.auth_user SET is_active = true WHERE id = (SELECT auth_user_id FROM _op);
 SELECT anagrafiche.fn_sync_auth_user_expired();
 SELECT is((SELECT is_active FROM django.auth_user WHERE id = (SELECT auth_user_id FROM _op)),

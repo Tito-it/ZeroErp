@@ -6,7 +6,8 @@
 --       tabella, i due verbi col loro permesso, lo stato REVOCATA
 -- ChangeSet: 20261125-51 (colonne e CHECK), -52 (guard), -53 (permesso),
 --            -54 (fn_revoca_veste), -55 (fn_togli_revoca_veste),
---            -57 (fn_stato_veste)
+--            -57 (fn_stato_veste); 90_end/20261127-09 (l'app non aggiorna e non
+--            cancella le vesti: 4, 13, 16)
 -- Brief: brief-db-accessi-area-clienti, giro 1
 --
 -- Gira come l'applicazione (runner di default): ogni caso passa dalle porte
@@ -20,7 +21,9 @@
 --       montato su INSERT, UPDATE e DELETE
 --    3) i tre codici nuovi sono a catalogo con la classe giusta
 --   Il segno si scrive solo dai verbi
---    4) l'app che scrive revocata_at da se' -> E_VESTE_REVOCA_SOLO_DAL_VERBO
+--    4) l'app che scrive revocata_at da se' -> permesso negato (42501): dal
+--       90_end/20261127-09 l'app non aggiorna le vesti; il guard resta la rete
+--       per il proprietario
 --    5) l'app che inserisce una veste col segno -> idem
 --   Il permesso
 --    6) un operatore senza permessi non revoca una veste cliente
@@ -32,10 +35,11 @@
 --       con chi
 --   11) fn_stato_veste dice REVOCATA
 --   12) la riaccensione col verbo dell'invito e' rifiutata (E_VESTE_REVOCATA)
---   13) e anche con un UPDATE diretto
+--   13) e anche con un UPDATE diretto: permesso negato (42501); il guard sulla
+--       stessa accensione lo prova anagrafiche/test-veste-accensione-invito-fixture-v1 (19)
 --   14) una riga nuova accesa sulla stessa coppia e' rifiutata
 --   15) una riga nuova spenta nasce, ma non si accende
---   16) la veste revocata non si cancella dall'app
+--   16) la veste revocata non si cancella dall'app: permesso negato (42501)
 --   17) revocare di nuovo: ritorna false e tiene il segno di prima
 --   18) una veste con l'invito pendente, mai accesa, si revoca: ritorna false,
 --       e lo stato e' REVOCATA anche col token in volo
@@ -189,8 +193,8 @@ SELECT is(
              SET attivo = false, revocata_at = now(), revocata_da_user_id = %s
            WHERE id = %s$$,
         (SELECT auth_user_id FROM _sa), pg_temp.id('c3'))),
-    'E_VESTE_REVOCA_SOLO_DAL_VERBO',
-    '4) l''app che scrive il segno da se'' e'' rifiutata');
+    '42501',
+    '4) l''app che scrive il segno da se'' e'' rifiutata: non aggiorna le vesti (permesso negato)');
 
 SELECT is(
     pg_temp.codice(format(
@@ -256,8 +260,8 @@ SELECT is(
 SELECT is(
     pg_temp.codice(format('UPDATE anagrafiche.identita_digitali SET attivo = true WHERE id = %s',
                           pg_temp.id('c1'))),
-    'E_VESTE_REVOCATA',
-    '13) nemmeno un UPDATE diretto');
+    '42501',
+    '13) nemmeno un UPDATE diretto: l''app non aggiorna le vesti (permesso negato)');
 
 SELECT is(
     pg_temp.codice(format(
@@ -280,8 +284,8 @@ SELECT is(
 
 SELECT is(
     pg_temp.codice(format('DELETE FROM anagrafiche.identita_digitali WHERE id = %s', pg_temp.id('c1'))),
-    'E_VESTE_REVOCA_SOLO_DAL_VERBO',
-    '16) la veste revocata non si cancella dall''app');
+    '42501',
+    '16) la veste revocata non si cancella dall''app: non cancella vesti (permesso negato)');
 
 CREATE TEMP TABLE _prima AS
 SELECT revocata_at, revocata_da_user_id FROM anagrafiche.identita_digitali WHERE id = pg_temp.id('c1');

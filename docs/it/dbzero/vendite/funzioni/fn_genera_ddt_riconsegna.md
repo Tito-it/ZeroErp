@@ -18,6 +18,8 @@ CREATE OR REPLACE FUNCTION vendite.fn_genera_ddt_riconsegna(p_reso_id bigint, p_
  SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
+-- rev 2026-11-27 (brief-db-revisione-anagrafiche §25.8.2, D-T8c-14 b): il vettore si
+--   eredita solo se e' acceso, come causale, aspetto e modalita' di addebito.
 -- rev 2026-11-25 (brief-db-porte-aperte-dalla-sola-guc §12, giro 11): SECURITY DEFINER,
 --   il livello TUTTO sull'oggetto vendite.reso in prima riga (lo stesso dell'endpoint),
 --   il perimetro del reso all'ingresso (prima lo dava la row security), la porta della
@@ -78,9 +80,11 @@ BEGIN
     --    andata e per la ri-consegna, perche' e' la stessa
     --    relazione commerciale eseguita una seconda volta.
     --
-    -- ⚠️ I tre LEFT JOIN di catalogo NON sono decorativi: le
-    --    colonne corrispondenti su vendite.ddt hanno un trigger
-    --    dbops.trgfn_child_requires_active_parent. Ereditare un
+    -- ⚠️ I quattro LEFT JOIN filtrati su attivo NON sono decorativi:
+    --    le colonne corrispondenti su vendite.ddt hanno un trigger
+    --    dbops.trgfn_child_requires_active_parent (causale, aspetto,
+    --    modalita' di addebito) o il guard del vettore acceso
+    --    (vendite.trgfn_ddt_guard_vettore_attivo). Ereditare un
     --    elemento RITIRATO DOPO farebbe FALLIRE la generazione
     --    della ri-consegna. Filtrando su `attivo` la colonna
     --    resta NULL — cioe' lo stato di prima di questa rev — e
@@ -105,7 +109,7 @@ BEGIN
            ab.id AS aspetto_bene_id,
            ma.id AS modalita_addebito_trasporto_id,
            d.mittente_soggetto_ruolo_id,
-           d.vettore_soggetto_ruolo_id,
+           vt.soggetto_ruolo_id AS vettore_soggetto_ruolo_id,
            d.fatturazione_immediata
       INTO v_orig
       FROM vendite.resi r
@@ -117,6 +121,10 @@ BEGIN
              ON ab.id = d.aspetto_bene_id AND ab.attivo IS TRUE
       LEFT JOIN config.modalita_addebito_trasporto ma
              ON ma.id = d.modalita_addebito_trasporto_id AND ma.attivo IS TRUE
+      -- Il vettore spento non si eredita: la riconsegna nasce in bozza
+      -- col vettore vuoto, e l'operatore lo sceglie li'.
+      LEFT JOIN anagrafiche.vettori vt
+             ON vt.soggetto_ruolo_id = d.vettore_soggetto_ruolo_id AND vt.attivo IS TRUE
      WHERE r.id = p_reso_id;
 
     IF NOT FOUND THEN
@@ -441,7 +449,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_ddt_riconsegna(p_reso_id bigint, p_righe jsonb, p_data date)
-IS 'Madre della ri-spedizione di un reso emesso (lo stato del reso ha la colonna emissione di config.stati_doc_reso; altrimenti E_RESO_NON_CONFERMATO, la porta di vendite.fn_chiudi_riconsegna_reso, vendite.fn_riapri_riconsegna_reso e di can_riconsegna nella capability): una bolla nuova, nello stato iniziale del suo vocabolario, legata all''ordine (order-backed) o senza ordine (standalone). La provenienza e'' il reso, per la testata e per ogni riga: RESO_VENDITA con la chiave del reso da script.fn_sorgente_provenienza, e sulla riga in sorgente_riga la riga del reso. Il legame con l''ordine resta nel fulfillment, e la corsia di fatturazione dell''ordine la trova vendite.fn_ddt_trigger_ordine_testata. Per ogni riga del reso con un residuo da riconsegnare (vendite.fn_resi_riga_residuo_riconsegna, al netto di riconsegne e rinunce; p_righe [{resi_riga_id, qta}], NULL = tutto il residuo) scrive la riga di bolla, il ponte vendite.resi_righe_riconsegne e, se order-backed, il fulfillment che richiude il residuo dell''ordine. La bolla d''origine del reso si legge da resi.sorgente_id (la bolla ha chiave id). Eredita dalla bolla d''origine le scelte (causale, aspetto, modalita'' di addebito, mittente, vettore, fatturazione_immediata) e gli indirizzi di ambito DDT_VENDITA, non le misure del viaggio (colli, pesi, volume, targa, autista, date, tracking). Ogni eredita'' di catalogo passa da un LEFT JOIN filtrato su attivo: un elemento ritirato lascia il campo vuoto invece di far fallire la generazione. Nel solo ramo standalone copia prezzo, sconto e aliquota dalla riga della bolla d''origine; nell''order-backed il valore lo risale vendite.fn_list_ddt_da_pushare dal fulfillment. La riga porta la natura della riga resa. Mentre scrive le righe accende la porta zeroerp.ddt_riconsegna (l''id del reso), con cui il guard delle regole sull''articolo esenta gli articoli del reso, e che apre solo al proprietario della tabella; la spegne all''ingresso e la richiude subito dopo le righe. Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. SECURITY DEFINER: in prima riga chiede all''utente di sessione il livello TUTTO sull''oggetto vendite.reso, con la ricaduta sull''area vendite se l''oggetto non ha un livello suo (script.fn_guard_livello: E_PERMESSO_NEGATO), lo stesso che l''endpoint controlla. Gira fuori dalla row security e rimette il perimetro all''ingresso, sul reso: un reso di un emittente fuori dal perimetro di chi agisce non c''e'' (E_RESO_NOT_FOUND, la stessa risposta di un reso inesistente), prima di dire il suo stato. Il resto discende dal reso; la bolla nuova la giudica anche il guard di scope di vendite.ddt.';
+IS 'Madre della ri-spedizione di un reso emesso (lo stato del reso ha la colonna emissione di config.stati_doc_reso; altrimenti E_RESO_NON_CONFERMATO, la porta di vendite.fn_chiudi_riconsegna_reso, vendite.fn_riapri_riconsegna_reso e di can_riconsegna nella capability): una bolla nuova, nello stato iniziale del suo vocabolario, legata all''ordine (order-backed) o senza ordine (standalone). La provenienza e'' il reso, per la testata e per ogni riga: RESO_VENDITA con la chiave del reso da script.fn_sorgente_provenienza, e sulla riga in sorgente_riga la riga del reso. Il legame con l''ordine resta nel fulfillment, e la corsia di fatturazione dell''ordine la trova vendite.fn_ddt_trigger_ordine_testata. Per ogni riga del reso con un residuo da riconsegnare (vendite.fn_resi_riga_residuo_riconsegna, al netto di riconsegne e rinunce; p_righe [{resi_riga_id, qta}], NULL = tutto il residuo) scrive la riga di bolla, il ponte vendite.resi_righe_riconsegne e, se order-backed, il fulfillment che richiude il residuo dell''ordine. La bolla d''origine del reso si legge da resi.sorgente_id (la bolla ha chiave id). Eredita dalla bolla d''origine le scelte (causale, aspetto, modalita'' di addebito, mittente, vettore, fatturazione_immediata) e gli indirizzi di ambito DDT_VENDITA, non le misure del viaggio (colli, pesi, volume, targa, autista, date, tracking). Ogni eredita'' di catalogo, e il vettore, passa da un LEFT JOIN filtrato su attivo: un elemento ritirato o un vettore spento lascia il campo vuoto invece di far fallire la generazione, e il vettore lo si sceglie sulla bozza. Nel solo ramo standalone copia prezzo, sconto e aliquota dalla riga della bolla d''origine; nell''order-backed il valore lo risale vendite.fn_list_ddt_da_pushare dal fulfillment. La riga porta la natura della riga resa. Mentre scrive le righe accende la porta zeroerp.ddt_riconsegna (l''id del reso), con cui il guard delle regole sull''articolo esenta gli articoli del reso, e che apre solo al proprietario della tabella; la spegne all''ingresso e la richiude subito dopo le righe. Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. SECURITY DEFINER: in prima riga chiede all''utente di sessione il livello TUTTO sull''oggetto vendite.reso, con la ricaduta sull''area vendite se l''oggetto non ha un livello suo (script.fn_guard_livello: E_PERMESSO_NEGATO), lo stesso che l''endpoint controlla. Gira fuori dalla row security e rimette il perimetro all''ingresso, sul reso: un reso di un emittente fuori dal perimetro di chi agisce non c''e'' (E_RESO_NOT_FOUND, la stessa risposta di un reso inesistente), prima di dire il suo stato. Il resto discende dal reso; la bolla nuova la giudica anche il guard di scope di vendite.ddt.';
 ```
 
 </div>

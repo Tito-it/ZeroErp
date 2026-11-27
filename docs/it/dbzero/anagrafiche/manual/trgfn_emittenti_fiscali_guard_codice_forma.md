@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_emittenti_fiscali_guard_codice_forma`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -42,8 +42,9 @@ sigla non cambia.
   persona non ha scritto: un identificatore è una scelta, e il guard la rifiuta con
   `E_EMITTENTE_CODICE_FORMA_NON_VALIDA`, col campo `codice` nel contesto per il form.
 * **Si giudica la sigla già normalizzata.** In maiuscolo una sigla può allungarsi (`ß` diventa `SS`): dieci
-  caratteri scritti possono diventarne undici, e il rifiuto è la frase del guard, non un errore di lunghezza della
-  colonna. Una sigla vuota o assente è rifiutata dallo stesso codice.
+  caratteri scritti possono diventarne undici, e il rifiuto è la frase del guard, non il CHECK; una sigla che in
+  maiuscolo supera la colonna (`varchar(32)`) darebbe un errore di lunghezza. Una sigla vuota o assente è
+  rifiutata dallo stesso codice.
 
 Scatta alla creazione e a ogni modifica che nomina la sigla, nella fascia `a05`, prima del lock di colonna:
 riscrivere `acme` su un emittente `ACME` arriva al lock come lo stesso valore, e passa. Il CHECK
@@ -51,10 +52,12 @@ riscrivere `acme` su un emittente `ACME` arriva al lock come lo stesso valore, e
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### Il maiuscolo si fa due volte, ed è voluto
 
-* **Il maiuscolo si fa due volte**: dopo questo guard, `script.trgfn_codice_maiuscolo` (fascia `a15`, montato
-  dall'automazione su ogni tabella con un codice) rinormalizza la sigla, che trova già nella forma canonica.
+Dopo questo guard, `script.trgfn_codice_maiuscolo` (fascia `a15`, montato dall'automazione su ogni tabella con un
+codice) rinormalizza la sigla, che trova già nella forma canonica. Non è una regola in due copie: tutti e due
+usano `script.fn_codice_normalizzato`. Questo guard deve giudicare il valore già normalizzato, prima del CHECK;
+l'`a15` copre ogni colonna codice della tabella, e su un valore canonico non cambia niente.
 
 ---
 

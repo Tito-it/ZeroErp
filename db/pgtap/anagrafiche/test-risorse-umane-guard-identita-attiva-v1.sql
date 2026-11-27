@@ -116,11 +116,9 @@ SELECT m.auth_user_id
     ) m;
 
 -- L'invito accettato: la veste OPERATORE si accende.
-UPDATE anagrafiche.identita_digitali i
-   SET attivo = true
-  FROM tmp_guard_ctx c
- WHERE i.auth_user_id = c.auth_user_id
-   AND i.ruolo_applicativo = 'OPERATORE';
+SELECT dbops.fn_pgtap_imposta_veste(i.id, jsonb_build_object('attivo', true))
+  FROM anagrafiche.identita_digitali i, tmp_guard_ctx c
+ WHERE i.auth_user_id = c.auth_user_id AND i.ruolo_applicativo = 'OPERATORE';
 
 ALTER TABLE tmp_guard_ctx ADD COLUMN risorsa_umana_id bigint;
 UPDATE tmp_guard_ctx c
@@ -182,10 +180,9 @@ SELECT ok(
 -- ============================================================
 -- 6) Identita' spenta PRIMA: la stessa RU si disattiva («figli prima, padre poi»)
 -- ============================================================
-UPDATE anagrafiche.identita_digitali
-   SET attivo = false
- WHERE auth_user_id = (SELECT auth_user_id FROM tmp_guard_ctx)
-   AND ruolo_applicativo = 'OPERATORE';
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', false))
+  FROM anagrafiche.identita_digitali idg
+ WHERE auth_user_id = (SELECT auth_user_id FROM tmp_guard_ctx) AND ruolo_applicativo = 'OPERATORE';
 
 SELECT lives_ok(
     $$UPDATE anagrafiche.risorse_umane SET attivo = false
