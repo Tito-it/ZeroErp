@@ -85,7 +85,7 @@ print("\n=== SMOKE magazzino — il primo carico dall'inventario (Lotto 2) ===\n
 
 with transaction.atomic():
     with connection.cursor() as cur:
-        uid = apri_operatore_con_aree(cur, aree=("magazzino",), motivo="smoke-magazzino-inventario-primo-carico")
+        uid = apri_operatore_con_aree(cur, aree=("magazzino",))
         cur.execute("CREATE TEMP TABLE _mondo AS SELECT %s::int AS auth_user_id", [uid])
         for passo in _MONDO:
             cur.execute(passo)

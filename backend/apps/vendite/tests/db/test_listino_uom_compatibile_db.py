@@ -65,7 +65,7 @@ class ListinoUomCompatibileDbTests(unittest.TestCase):
         self.sfx = uuid4().hex[:6].upper()
         with connection.cursor() as cur:
             apri_operatore_con_aree(
-                cur, aree=("catalogo", "vendite"), motivo="test BE22: unita del listino",
+                cur, aree=("catalogo", "vendite"),
             )
             cur.execute("SELECT script.fn_data_operativa()")
             self.oggi: date = cur.fetchone()[0]

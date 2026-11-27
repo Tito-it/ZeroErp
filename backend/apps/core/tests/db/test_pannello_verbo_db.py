@@ -63,7 +63,7 @@ class PannelloVerboDbTests(TestCase):
     def setUp(self) -> None:
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
-            apri_operatore_con_aree(cur, aree=("config", "magazzino"), motivo="pannello verbo")
+            apri_operatore_con_aree(cur, aree=("config", "magazzino"))
         self.svc = ConfigCrudService()
 
     # Scopo: Esegue `azione` in un savepoint e ne ritorna il codice del ServiceError.
@@ -198,13 +198,12 @@ class PannelloDuePuntiDiApplicazioneDbTests(TestCase):
     #        (`fn_area_di_oggetto('magazzino', 'causali')` = `magazzino`).
     def _livello_sull_area_magazzino(self, livello: str) -> None:
         with connection.cursor() as cur:
+            # Dal builder del DB: le eccezioni utente sono in sola lettura per
+            # l'app (giro 10-quater, 2026-11-27); un'area assente la rifiuta lui.
             cur.execute(
-                "INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)"
-                " SELECT %s, af.id, %s, 'Fixture test pannello'"
-                "   FROM config.aree_funzionali af WHERE af.schema_db = 'magazzino'",
+                "SELECT dbops.fn_pgtap_concedi_livello_area(%s, 'magazzino', %s::config.livello_accesso)",
                 [self.uid, livello],
             )
-            self.assertEqual(cur.rowcount, 1, "area `magazzino` assente dal catalogo aree")
 
     def _catena(self, metodo: str):
         view = ConfigTableRecordsView()

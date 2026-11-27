@@ -187,6 +187,14 @@ dopo gira col contesto di un utente annullato. Un test può essere verde, o ross
 test prima. Trovato estraendo `apri_super_admin_costruito`, la cui prima versione passava da quella funzione e
 faceva cadere i test successivi su `E_PERMESSO_NEGATO`.
 
+> ⚠️ **Premessa corretta il 2026-11-27** (verifica del giro 10-quater). «Le GUC sopravvivono al rollback» è
+> **falso**: provato sul DB di sviluppo, una GUC scritta con `set_config(…, false)` dentro un `atomic` annullato, o
+> dentro un savepoint annullato, torna vuota. Sopravvive solo se scritta **fuori** da una transazione (autocommit),
+> o in una transazione che si conferma. Il rosso del 2026-11-26 ha quindi un'altra causa, non accertata.
+> `SET LOCAL` resta giusto, per la ragione vera: lega il contesto alla transazione e, col controllo sul blocco
+> atomico, non si apre fuori. Prima dei passi 2 e 3 qui sotto si rilegge il motivo: il rischio da presidiare è la
+> chiamata **fuori transazione**, non il rollback. Il passo 1 (il BB) vale com'è, per la regola del 2.
+
 **Già corretto il 2026-11-26** (da committare col passo 3b): `apri_super_admin_costruito` (nuovo) e
 `apri_operatore_con_aree` in `apps/core/tests/db_e2e.py`, e `_agisci` di `test_soggetti_id_fiscale_immutabile_db`,
 scrivono le due GUC con `SET LOCAL`.

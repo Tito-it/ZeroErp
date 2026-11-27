@@ -731,8 +731,9 @@ curl -H "Authorization: Bearer <token>" \
 
 ### 2.2 PUT /api/v1/amm-software/operatori/{id}/override-aree/ -- Salva override aree
 
-Sostituisce completamente gli override aree di un utente (semantica replace: cancella
-tutti gli esistenti e inserisce i nuovi). Invalida la cache permessi.
+Sostituisce completamente gli override aree di un utente (semantica replace: un elenco
+vuoto li toglie tutti) col verbo `config.fn_imposta_override_aree`, che chiede il
+SUPER_ADMIN anche al DB. Invalida la cache permessi.
 
 **Parametri path:** `id` (int) -- auth_user_id dell'utente.
 
@@ -762,7 +763,14 @@ tutti gli esistenti e inserisce i nuovi). Invalida la cache permessi.
 
 `items` dev'essere una lista di oggetti; `area_id` (intero positivo) e
 `livello` sono obbligatori. Altrimenti 400 `E_AMM_VALIDAZIONE` col campo
-(2026-10-20: prima una voce malformata era un 500).
+(2026-10-20: prima una voce malformata era un 500). Al verbo arrivano le cinque
+chiavi della tabella, sempre (una a `null` scrive NULL: `valido_dal` `null` = senza
+inizio); le altre chiavi della voce, come quelle che il GET restituisce, non gli
+arrivano. La stessa area due volte o un'area inesistente: 400 `E_AMM_VALIDAZIONE`.
+
+**Dal 2026-11-27** (giro 10-quater, brief-db-porte-aperte-dalla-sola-guc §15.7) la
+tabella `config.user_override_aree` è in sola lettura per l'applicazione: prima il
+repository la riscriveva con un `DELETE` e N `INSERT`.
 
 **Risposta:** lista aggiornata degli override aree (stesso formato del GET).
 
@@ -819,7 +827,8 @@ curl -H "Authorization: Bearer <token>" \
 
 ### 2.4 PUT /api/v1/amm-software/operatori/{id}/override-azioni/ -- Salva override azioni
 
-Sostituisce completamente gli override azioni di un utente (semantica replace).
+Sostituisce completamente gli override azioni di un utente (semantica replace) col
+verbo `config.fn_imposta_override_azioni` (SUPER_ADMIN, dal 2026-11-27, come §2.2).
 Invalida la cache permessi.
 
 **Parametri path:** `id` (int) -- auth_user_id dell'utente.
@@ -850,7 +859,8 @@ Invalida la cache permessi.
 
 `items` dev'essere una lista di oggetti; `azione_id` (intero positivo) e
 `abilitata` (booleano) sono obbligatori. Altrimenti 400 `E_AMM_VALIDAZIONE`
-col campo (2026-10-20: prima una voce malformata era un 500).
+col campo (2026-10-20: prima una voce malformata era un 500). Le chiavi che
+arrivano al verbo e i vincoli come in §2.2.
 
 **Risposta:** lista aggiornata degli override azioni (stesso formato del GET).
 
@@ -877,7 +887,8 @@ operatore).
 `area_descrizione` (ordine: area, `app_label`, `model_name`).
 
 **PUT** → sostituisce tutti gli override oggetto dell'operatore (semantica
-replace, `config.fn_imposta_override_oggetti`) e invalida la cache permessi.
+replace, `config.fn_imposta_override_oggetti`, verbo del SUPER_ADMIN dal 2026-11-27)
+e invalida la cache permessi.
 Risposta: la lista aggiornata (forma del GET).
 
 ```json
