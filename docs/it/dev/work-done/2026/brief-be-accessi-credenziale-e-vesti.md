@@ -2,8 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-27
 
-**Riparte: Tid**, col collaudo a video (§2). D-4 e A-6 sono committati (`53420a057`, il passo 3b del
-[brief DB unico](brief-db-accessi-area-clienti.md) §4.1). Il §4 è fatto e committato il 2026-11-27, con la verifica (`/verifica`) e i suoi due seguiti (§4.1).
+✅ **Chiuso e archiviato il 2026-11-27** (decisione di Tid). Riparte **Tid** col collaudo a video di D-5, che vive
+nel copione [collaudo-in-app-accessi-sessioni-per-veste](../../work-in-progress/collaudo-in-app-accessi-sessioni-per-veste.md): è l'unica cosa che resta, e non riapre questo brief. D-4 e A-6 sono committati (`53420a057`, il passo 3b del
+[brief DB unico](../../work-in-progress/brief-db-accessi-area-clienti.md) §4.1). Il §4 è fatto e committato il 2026-11-27, con la verifica (`/verifica`) e i suoi due seguiti (§4.1).
 Smoke Python e suite Django lanciati da Tid il 2026-11-27: verdi.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -11,22 +12,22 @@ Smoke Python e suite Django lanciati da Tid il 2026-11-27: verdi.
 | 0 | Tid | ~~D-R1 … D-R5~~ decise il 2026-11-25 | §1.3 | — |
 | 1 | ~~sessione DB~~ | ~~R-4 a DB: il segno, il guard, i verbi~~ costruito il 2026-11-25, applicato il 2026-11-26 (brief DB §2) | brief DB §2 | 0 |
 | 2 | ~~team BE/FE~~ | ~~D-4 e A-6 sulla regola consegnata dal DB~~ fatti il 2026-11-26, committati in `53420a057`: «Disabilita» e «Disattiva» revocano, il nuovo invito toglie il segno, il pulsante «Attiva shop» su una veste revocata si ferma con `E_VESTE_REVOCATA` (brief DB §4.1) | brief DB §4.1 | — |
-| 3 | Tid | Il collaudo a video di D-5 | §2 | — |
-| 4 | team BE/FE | Archiviazione in `work-done/` | §3 | 2, 3 |
+| 3 | Tid | Il collaudo a video di D-5, spostato nel copione il 2026-11-27 | [collaudo-in-app-accessi-sessioni-per-veste](../../work-in-progress/collaudo-in-app-accessi-sessioni-per-veste.md) | — |
+| 4 | ~~team BE/FE~~ | ~~Archiviazione in `work-done/`~~: fatta il 2026-11-27, col collaudo nel copione (Tid) | §3 | — |
 | 5 | ~~team BE/FE~~ | ~~Il contesto dei test sul DB vero per la sola transazione~~: fatto il 2026-11-27 (`apri_contesto_su`, `esegui_fixture`, `apri_operatore_costruito`, il presidio esteso agli smoke), committato | §4.1 | — |
 
 **Decisioni aperte di Tid:** nessuna in questo brief (D-C1 decisa il 2026-11-27, §4.1; D-R1, D-R2, D-R4, D-R5 il 2026-11-25, §1.3). La forma della marca
 «revocata» la sceglie il DB nel suo brief. La registrazione da sé (D-R3, D-R6 e le decisioni R-1 … R-3 del
-2026-11-25) non sta qui: sta in [sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md) §3.6.
+2026-11-25) non sta qui: sta in [sviluppo-multi-face-da-completare](../../work-in-progress/sviluppo-multi-face-da-completare.md) §3.6.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-11-25. **A chi:** team BE/FE, Tid; la sessione DB per il
 > prerequisito di §1.1.
 > **Origine:** il residuo del
-> [piano BE/FE accessi](../work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md), archiviato lo stesso giorno
+> [piano BE/FE accessi](piano-be-fe-accessi-credenziale-e-vesti.md), archiviato lo stesso giorno
 > dopo la riverifica sul codice: L-0, L-1, L-2, L-3, L-4, L-6, D-3 e D-5 lato codice sono chiusi; restano R-4 (cioè
 > D-4 e A-6) e il collaudo a video di D-5. Il **perché** di ogni sigla sta nel piano e
-> nell'[analisi](../work-done/2026/analisi-accessi-credenziale-e-vesti.md): qui solo cosa resta.
-> **Brief vicini verificati:** [brief-db-revisione-anagrafiche](brief-db-revisione-anagrafiche.md) §17.1 (Tid,
+> nell'[analisi](analisi-accessi-credenziale-e-vesti.md): qui solo cosa resta.
+> **Brief vicini verificati:** [brief-db-revisione-anagrafiche](../../work-in-progress/brief-db-revisione-anagrafiche.md) §17.1 (Tid,
 > 2026-11-23) manda il tema T9, gli accessi, in un brief DB nuovo «con R-4 del piano accessi», insieme a S64
 > (`fn_stato_veste`: `ATTIVO` vuol dire «accesa» o «utilizzabile») e S67 (la veste dello shop nasce accesa o spenta),
 > che è la stessa materia di R-4. Al 2026-11-25 quel brief non è ancora scritto.
@@ -45,7 +46,7 @@ veste dello shop nasce spenta e si accende da sé, «spenta dalla persona» e «
 
 - `anagrafiche.identita_digitali` ha `attivo`, `valido_dal`, `valido_al`, `invito_inviato_at`, `meta`: nessuna
   colonna dice che la veste è stata revocata, da chi e quando;
-- [ProfileActivateShopView](../../../../backend/apps/portale/api/views.py#L69) (`POST portale/profile/activate-shop/`)
+- [ProfileActivateShopView](../../../../../backend/apps/portale/api/views.py#L69) (`POST portale/profile/activate-shop/`)
   controlla solo che chi chiama sia `CLIENTE_PORTALE`: un cliente a cui l'admin ha spento la veste shop se la
   riaccende con un clic. È il difetto **A-6**.
 
@@ -55,8 +56,8 @@ Dal piano, §4.3 riga «Revoca (D-4)»:
 
 - disattivare **dall'admin** marca la veste come revocata, con la funzione che il DB consegna;
 - `ProfileActivateShopView` rifiuta una veste revocata, col codice del DB (policy generata e ripiego);
-- FE: [AttivaAccessoShopButton](../../../../frontend/src/portale/components/AttivaAccessoShopButton.vue) spento col
-  motivo, [PortaleAccessoPanel](../../../../frontend/src/portale/components/PortaleAccessoPanel.vue) mostra «revocato»;
+- FE: [AttivaAccessoShopButton](../../../../../frontend/src/portale/components/AttivaAccessoShopButton.vue) spento col
+  motivo, [PortaleAccessoPanel](../../../../../frontend/src/portale/components/PortaleAccessoPanel.vue) mostra «revocato»;
 - test sul DB vero: l'admin spegne la veste shop → l'attivazione self-service è rifiutata; ~~la persona che se la
   spegne da sé la riaccende~~ ⚠️ il caso non si costruisce: oggi nessuna strada lascia alla persona spegnere la sua
   veste (§1.3). Al suo posto: revocata → nuovo invito dell'admin → il link accende; mai attivata → il pulsante accende.
@@ -90,14 +91,14 @@ chiamante; lo spegnimento dell'admin passa da un verbo DB, e le due strade BE la
 | D-R1 | Il segno lo toglie il nuovo invito, e il blocco sta in un guard della tabella | ✅ **Tid, 2026-11-25: sì** |
 | D-R2 | Vale per tutte le vesti, operatore compreso: porta a DB la D-3 («si riattiva col reinvio») | ✅ **Tid, 2026-11-25: sì** |
 | D-R4 | L'app perde la scrittura diretta di `identita_digitali.attivo` (solo dai verbi): senza, il segno ha un buco | ✅ **Tid, 2026-11-25: sì** (nello stesso giro o subito dopo: lo dice il brief DB; con la sezione «Garanzie ritirate» e il censimento dei lettori al BE) |
-| D-R5 | R-4 è il primo giro del brief DB, con S64, S67 e R-BE6; S59-S63 vengono dopo, così il BE non aspetta tutto T9 | ✅ **Tid, 2026-11-25: sì.** Il brief DB è unico con il modello dell'area clienti ([analisi-modello-area-clienti](analisi-modello-area-clienti.md) §8) |
+| D-R5 | R-4 è il primo giro del brief DB, con S64, S67 e R-BE6; S59-S63 vengono dopo, così il BE non aspetta tutto T9 | ✅ **Tid, 2026-11-25: sì.** Il brief DB è unico con il modello dell'area clienti ([analisi-modello-area-clienti](../../work-in-progress/analisi-modello-area-clienti.md) §8) |
 
 D-R3 (il pulsante accende subito o chiede l'email) e D-R6 (la veste shop sta sul ruolo privato della persona, non
-sull'azienda) sono della registrazione da sé: [sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md)
+sull'azienda) sono della registrazione da sé: [sviluppo-multi-face-da-completare](../../work-in-progress/sviluppo-multi-face-da-completare.md)
 §3.6. R-4 non le aspetta: la revoca regge in tutti e due i casi, e anche contro la reiscrizione.
 
 ⚠️ **2026-11-25, dopo:** Tid ha deciso una sola porta clienti
-([analisi-modello-area-clienti](analisi-modello-area-clienti.md)). D-R3 e D-R6 sono assorbite: il pulsante «Attiva
+([analisi-modello-area-clienti](../../work-in-progress/analisi-modello-area-clienti.md)). D-R3 e D-R6 sono assorbite: il pulsante «Attiva
 shop» si **ritira**, quindi **A-6 si chiude per ritiro** e non con un rifiuto in `ProfileActivateShopView`; il lavoro
 BE/FE del §1.2 sul pulsante e sul pannello va riletto su quel modello. **R-4 resta**, sulla veste cliente unica e
 sull'iscrizione da sé; D-R1, D-R2, D-R4, D-R5 decise da Tid lo stesso giorno (tabella sopra).
@@ -117,7 +118,7 @@ della proposta no, così come sono scritti, e il brief DB li deve chiudere.
    (`TokenRepository`, `INSERT` diretto su `config.token_monouso`): il segno lo toglie quindi un verbo DB che il BE
    chiama nella stessa transazione. Quel verbo lo può chiamare `zeroerp_app` da qualunque strada, anche
    dall'iscrizione da sé, che emette anch'essa un token. Deve controllare **il permesso di chi agisce**, dalle GUC
-   della sessione ([contratto-guc-app](../../guide/contratto-guc-app.md)), non da un parametro. D-R1 resta: cambia
+   della sessione ([contratto-guc-app](../../../guide/contratto-guc-app.md)), non da un parametro. D-R1 resta: cambia
    il perché.
 3. **D-R4 ha tre buchi in più.** Oggi `zeroerp_app` ha `INSERT`, `UPDATE` su tutte le colonne e `DELETE` sulla
    tabella. Oltre ad `attivo`, l'app non deve poter scrivere **le colonne del segno** (altrimenti lo toglie con un
@@ -151,15 +152,18 @@ e i test revocata → nuovo invito → il link accende, revocata → l'iscrizion
 l'iscrizione si ferma.
 
 **Guide verificate** (`scripts/guide_coinvolte.py` sugli oggetti del §1.3):
-[risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md) **coerente** (il rientro dell'operatore passa già
+[risorse-umane-e-accessi](../../../guide/risorse-umane-e-accessi.md) **coerente** (il rientro dell'operatore passa già
 dal reinvio, e l'interruttore «spegne soltanto»: R-4 porta a DB ciò che la guida descrive);
-[architettura-multi-face-auth](../../guide/architettura-multi-face-auth.md) **contraddetta** dal modello dell'area
-clienti, si riscrive lì (analisi §6); [contratto-guc-app](../../guide/contratto-guc-app.md) da leggere nel giro DB
-per il punto 2; [processi-automatici-classe-e-identita](../../guide/processi-automatici-classe-e-identita.md) da
+[architettura-multi-face-auth](../../../guide/architettura-multi-face-auth.md) **contraddetta** dal modello dell'area
+clienti, si riscrive lì (analisi §6); [contratto-guc-app](../../../guide/contratto-guc-app.md) da leggere nel giro DB
+per il punto 2; [processi-automatici-classe-e-identita](../../../guide/processi-automatici-classe-e-identita.md) da
 leggere nel giro DB per il punto 4; le altre (permessi, pgTAP, pgAgent, soggetti, `_sincronizzazione-accesso`,
 `_ultimo-super-admin`) hanno solo la tabella in comune, esito nel giro DB.
 
 ## 2. Il collaudo a video di D-5 — Sessioni per veste
+
+> ⚠️ **Spostato il 2026-11-27** nel copione [collaudo-in-app-accessi-sessioni-per-veste](../../work-in-progress/collaudo-in-app-accessi-sessioni-per-veste.md), che lo esegue e lo registra. La tabella qui sotto resta
+> come storia: il caso c è scritto prima della revoca, e nel copione si fa con «Reinvia invito».
 
 Il codice è chiuso dal 2026-10-02 (piano §4.3-bis, parti 1 e 2): il refresh di una veste spenta è un 401 e chiude
 la sessione; «Disabilita» e l'interruttore chiudono le sessioni e gli inviti della **sola** veste spenta. Manca la
@@ -174,6 +178,10 @@ prova a video:
 Non blocca nulla.
 
 ## 3. Alla chiusura
+
+✅ **Fatto il 2026-11-27.** Tid ha deciso di archiviare con il collaudo ancora da eseguire: vive nel copione, come
+per gli altri cantieri (`collaudo-in-app-*`). La riga «Accessi» di `.codex/PROJECT_CONTEXT.md` è aggiornata; nessuna
+doc `manual/` porta ancora un «⚠️ Difetto noto» su A-6 (verificato lo stesso giorno).
 
 Il brief va in `work-done/` quando D-4 e A-6 sono fatti e il collaudo è eseguito. Il §4 non lo trattiene: se è
 ancora aperto, passa come voce in `.codex/PROJECT_CONTEXT.md` § «Aperto». Si aggiornano la riga «Accessi»

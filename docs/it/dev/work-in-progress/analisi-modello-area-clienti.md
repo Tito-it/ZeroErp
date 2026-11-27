@@ -4,7 +4,7 @@
 
 **Riparte: la sessione DB**, col via di Tid, nel [brief DB unico](brief-db-accessi-area-clienti.md) (aperto il
 2026-11-25), R-4 come primo giro: le decisioni della revoca (D-R1, D-R2, D-R4, D-R5 di
-[brief-be-accessi-credenziale-e-vesti](brief-be-accessi-credenziale-e-vesti.md) §1.3; D-R7, D-R8, D-R9 del brief
+[brief-be-accessi-credenziale-e-vesti](../work-done/2026/brief-be-accessi-credenziale-e-vesti.md) §1.3; D-R7, D-R8, D-R9 del brief
 DB) sono prese il 2026-11-25. Resta aperta D-M9 (§7), che non blocca il primo giro.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -19,7 +19,7 @@ DB) sono prese il 2026-11-25. Resta aperta D-M9 (§7), che non blocca il primo g
 prese il 2026-11-25 sono al §2 e al §7.
 **Da committare:** questo documento, e le modifiche dello stesso giorno a
 [sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md) §2.3, §3.6 e a
-[brief-be-accessi-credenziale-e-vesti](brief-be-accessi-credenziale-e-vesti.md) §1.3.
+[brief-be-accessi-credenziale-e-vesti](../work-done/2026/brief-be-accessi-credenziale-e-vesti.md) §1.3.
 
 ## 0. Il piano da percorrere
 
@@ -49,7 +49,7 @@ prese il 2026-11-25 sono al §2 e al §7.
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-25, su richiesta di Tid. **A chi:** Tid; poi la sessione DB e
 > il team BE/FE.
 > **Origine:** l'analisi critica di R-4 (la veste revocata) in
-> [brief-be-accessi-credenziale-e-vesti](brief-be-accessi-credenziale-e-vesti.md) §1.3. Discutendo come un cliente
+> [brief-be-accessi-credenziale-e-vesti](../work-done/2026/brief-be-accessi-credenziale-e-vesti.md) §1.3. Discutendo come un cliente
 > sconosciuto entra nello shop, Tid ha deciso che l'iscrizione è da sé, che il documento lo sceglie il cliente e
 > che portale e shop non sono più due porte.
 > **Brief vicini verificati:**
@@ -59,7 +59,7 @@ prese il 2026-11-25 sono al §2 e al §7.
 >   rimanda. Il resto del documento (API di dominio, RLS del fornitore) resta lì;
 > - [sviluppo-portale-shop](sviluppo-portale-shop.md) §1.4 (registrazione dello shop) e §3.2 (checkout): superati
 >   da §3.3 e §3.4 di questa analisi, da marcare al primo giro che li riprende;
-> - [brief-be-accessi-credenziale-e-vesti](brief-be-accessi-credenziale-e-vesti.md): R-4 resta valida; A-6 si chiude
+> - [brief-be-accessi-credenziale-e-vesti](../work-done/2026/brief-be-accessi-credenziale-e-vesti.md): R-4 resta valida; A-6 si chiude
 >   per ritiro del pulsante (§8);
 > - [brief-db-revisione-anagrafiche](brief-db-revisione-anagrafiche.md) §17.1, T9: S67 è superata da questa analisi
 >   (§8); S64 no;
@@ -283,7 +283,7 @@ dei tentativi, che sono della credenziale; la porta dei fornitori; la porta degl
 
 ## 8. Ricadute sugli altri documenti
 
-- [brief-be-accessi-credenziale-e-vesti](brief-be-accessi-credenziale-e-vesti.md): **R-4 resta**, e vale per la
+- [brief-be-accessi-credenziale-e-vesti](../work-done/2026/brief-be-accessi-credenziale-e-vesti.md): **R-4 resta**, e vale per la
   veste cliente unica e per l'iscrizione. **A-6 si chiude per ritiro**: il pulsante che riaccendeva lo shop non
   esisterà più. Le decisioni D-R1, D-R2, D-R4, D-R5 restano; D-R3 e D-R6 sono assorbite dal §3.3.
 - [brief-db-revisione-anagrafiche](brief-db-revisione-anagrafiche.md) §17.1, T9: S67 chiusa da questa analisi

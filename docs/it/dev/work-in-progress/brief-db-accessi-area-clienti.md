@@ -75,7 +75,7 @@ applicati, pgTAP verdi col runner di Tid), lato BE/FE lo stesso giorno (§5.3.10
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-25. **A chi:** Tid; il team BE/FE per il §4.
 > **Origine:** T9 di [brief-db-revisione-anagrafiche](brief-db-revisione-anagrafiche.md) §17.1 e R-4 di
-> [brief-be-accessi-credenziale-e-vesti](brief-be-accessi-credenziale-e-vesti.md); il modello dei giri successivi
+> [brief-be-accessi-credenziale-e-vesti](../work-done/2026/brief-be-accessi-credenziale-e-vesti.md); il modello dei giri successivi
 > sta in [analisi-modello-area-clienti](analisi-modello-area-clienti.md). Un brief solo per decisione di Tid
 > (2026-11-25).
 > **Brief vicini verificati:** i tre dell'origine, che rimandano qui per il lavoro DB;
@@ -255,7 +255,7 @@ I verbi sono consegnati (`20261125-54`, `-55`) e aspettano l'apply. Lato BE:
 6. ⛔ **Censisci chi scrive `anagrafiche.identita_digitali.attivo` e chi cancella vesti**, a partire dal §3.1:
    l'elenco non è chiuso. Ogni scrittura diretta rimasta si porta su un verbo prima del passo 3c, quando l'app
    perde il privilegio; se ne serve uno che non c'è, la richiesta torna al DB tutta insieme.
-7. Nel [brief BE accessi](brief-be-accessi-credenziale-e-vesti.md) A-6 si chiude col guard (il pulsante passa da
+7. Nel [brief BE accessi](../work-done/2026/brief-be-accessi-credenziale-e-vesti.md) A-6 si chiude col guard (il pulsante passa da
    `fn_accendi_veste`, che ora rifiuta una veste revocata), e poi sparisce col ritiro del pulsante.
 
 Dal giro 2 (2026-11-26, dopo l'apply di `20261125-58` … `-71`):

@@ -377,7 +377,7 @@ Vincoli già scritti che la costruzione deve rispettare:
 - l'indice unico su CF e P.IVA (S4, 2026-11-23): «esiste già» passa a R-2, non va in errore;
 - **la revoca dell'amministratore tiene anche contro la reiscrizione**: un'iscrizione che ritrova una veste
   revocata la lascia spenta (R-4 di
-  [brief-be-accessi-credenziale-e-vesti](brief-be-accessi-credenziale-e-vesti.md));
+  [brief-be-accessi-credenziale-e-vesti](../work-done/2026/brief-be-accessi-credenziale-e-vesti.md));
 - il freno contro l'abuso (le iscrizioni automatiche) e la pulizia delle iscrizioni mai confermate.
 
 ⚠️ La [guida multi-face](../../guide/architettura-multi-face-auth.md) §8.2 e §12 è **indietro**: descrive
