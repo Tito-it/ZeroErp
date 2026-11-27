@@ -252,7 +252,9 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
         def _prova(cur, m):
             cur.execute("SELECT bank_branch_id FROM dbops.fn_pgtap_crea_filiale_bancaria('date')")
             filiale = int(cur.fetchone()[0])
-            iban = "IT" + uuid.uuid4().hex[:25].upper()
+            # L'IBAN porta ABI e CAB della filiale (guard IBAN-filiale, T8a).
+            cur.execute("SELECT dbops.fn_pgtap_iban(%s, %s)", [filiale, uuid.uuid4().hex[:12]])
+            iban = cur.fetchone()[0]
             svc = ContiBancariService()
             payload = {
                 "iban": iban, "bank_branch_id": filiale, "uso": "GENERICO",

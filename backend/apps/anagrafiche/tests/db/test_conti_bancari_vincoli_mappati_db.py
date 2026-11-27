@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Le mappe vincolo -> codice dei legami conto bancario
-#        (`conti_bancari_service._VINCOLI_LEGAME_*`) e la struttura vera delle
-#        due tabelle dicono la stessa cosa, nei due versi (E-7 di
-#        analisi-be-difetti-emersi-verifica-doc-api-core, 2026-10-07).
+# Scopo: Le mappe vincolo -> codice dei conti bancari
+#        (`conti_bancari_service._VINCOLI_LEGAME_*` e `_VINCOLI_CONTO`) e la
+#        struttura vera delle tre tabelle dicono la stessa cosa, nei due versi
+#        (E-7 di analisi-be-difetti-emersi-verifica-doc-api-core, 2026-10-07;
+#        il registro degli IBAN dal giro T8a, 2026-11-27, quando la regex del
+#        backend e' stata ritirata e il formato lo giudicano i CHECK del DB).
 #
 # ⛔ PERCHE' ESISTE. Una voce col nome sbagliato non da' errore: la violazione
 #    cade sul ripiego generico, e il campo non si accende. Le unicita' del
@@ -31,12 +33,14 @@ from unittest import TestCase
 from django.db import connection
 
 from apps.anagrafiche.services.conti_bancari_service import (
+    _VINCOLI_CONTO,
     _VINCOLI_LEGAME_RUOLO,
     _VINCOLI_LEGAME_SOGGETTO,
 )
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 
 _TABELLE = {
+    "anagrafiche.conti_bancari": _VINCOLI_CONTO,
     "anagrafiche.soggetti_conti_bancari": _VINCOLI_LEGAME_SOGGETTO,
     "anagrafiche.soggetti_ruoli_conti_bancari": _VINCOLI_LEGAME_RUOLO,
 }
@@ -62,7 +66,7 @@ def _nomi(tabella: str) -> set[str]:
         return {r[0] for r in cur.fetchall()}
 
 
-# Scopo: i nomi di una mappa `_VINCOLI_LEGAME_*`, tutte le categorie.
+# Scopo: i nomi di una mappa `_VINCOLI_*`, tutte le categorie.
 def _mappati(vincoli: dict[str, dict[str, tuple]]) -> set[str]:
     return {nome for mappa in vincoli.values() for nome in mappa}
 

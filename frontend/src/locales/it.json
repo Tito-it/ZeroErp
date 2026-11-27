@@ -6307,8 +6307,7 @@
       "bloccato": "Bloccato",
       "bloccato_predefinito_hint": "Rimuovi il flag predefinito prima di bloccare",
       "ereditato": "Ereditato",
-      "conferma_elimina": "Eliminare il conto {iban} dall'uso {uso}?",
-      "iban_formato_errore": "IBAN non valido: deve contenere da 15 a 34 caratteri alfanumerici"
+      "conferma_elimina": "Eliminare il conto {iban} dall'uso {uso}?"
     },
     "indirizzo_soggetto": {
       "usa": "Usa",

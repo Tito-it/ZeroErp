@@ -221,7 +221,19 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # disattivato e conto inesistente (SELECT INTO -> NULL). Il 400 con
     # il campo evidenziato e' corretto in entrambi; un 404 sarebbe
     # giusto solo nel secondo e svuoterebbe la pagina nel primo.
+    # ⚠️ RITIRATO il 2026-11-27 (giro T8a di brief-db-revisione-anagrafiche,
+    #    D-T8a-1 a): i due guard immediati che lo sollevavano sono tolti, e
+    #    «il conto del legame e' attivo» lo dice al COMMIT il REQUIRE
+    #    dell'automazione (`E_ATTIVO_PADRE_NON_ATTIVO`). La voce resta perche'
+    #    un codice ritirato continua a risolvere per il diario.
     "E_CONTO_BANCARIO": "highlight_form_fields",  # classe DATO_ERRATO
+    # Il form del conto: l'IBAN e la filiale scelta non si corrispondono
+    # (giro T8a, D-T8a-9). Il dato manca nel form in corso, e il campo
+    # `bank_branch_id` arriva dal DB: si accende quello, non un banner.
+    "E_CONTO_IBAN_FILIALE_INCOERENTE": "highlight_form_fields",  # classe DATO_ERRATO
+    # Il form del legame: predefinito e bloccato insieme (D-T8a-2). Stessa
+    # ragione: e' una scelta del form in corso.
+    "E_CONTO_PREDEFINITO_BLOCCATO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO": "highlight_form_fields",  # classe NON_ESEGUIBILE
     "E_CONTRATTO_CLASSE_TIPO_INCOERENTE": "highlight_form_fields",  # classe DATO_ERRATO
     #   Stessa forma dei due sopra, trovati dalla lente

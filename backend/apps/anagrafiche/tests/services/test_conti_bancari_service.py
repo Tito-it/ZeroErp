@@ -32,19 +32,24 @@ Indice test eseguiti:
 22) test_list_conti_ruolo_cascata_istanza — cascata 3 livelli con istanza_utility_id
 23) test_list_conti_ruolo_no_istanza — senza istanza = comportamento retrocompatibile
 24) test_create_conto_ruolo_with_istanza — crea legame con istanza_utility_id
-25) test_guard_predefinito_bloccato_create — crea con predefinito+bloccato rifiutato
-26) test_guard_predefinito_bloccato_update — blocca un predefinito rifiutato
+25) TestPredefinitoBloccato (giro T8a, D-T8a-2) — la regola la tiene il DB:
+    il service non la ricopia (il payload arriva al repository) e il CHECK di
+    rete risponde col codice del guard, campo `bloccato`
 27) TestVincoliLegame (E-7, 2026-10-07) — ogni IntegrityError col SUO codice:
     a) uso fuori elenco → E_ANAG_VALIDAZIONE, campo `uso`
     b) date invertite → E_ANAG_VALIDAZIONE, campo `valido_al`
-    c) FK istanza (ruolo) → E_ANAG_FK, campo `istanza_utility_id`
-    d) secondo predefinito (indice parziale del ruolo) → E_ANAG_DUPLICATO, campo `predefinito`
+    c) FK istanza (ruolo, alla nascita) → E_ANAG_FK, campo `istanza_utility_id`
+    d) predefiniti sovrapposti (EXCLUDE del ruolo, 23P01) →
+       E_CONTO_PREDEFINITO_SOVRAPPOSTO, campo `predefinito`
     e) duplicato vero → E_ANAG_DUPLICATO, senza campo
     f) vincolo non mappato → E_ANAG_VALIDAZIONE generico, mai «duplicato»
 28) TestPatchLegame (E-7) — PATCH `{}` → 400 E_ANAG_VALIDAZIONE (soggetto e
-    ruolo, senza toccare il repository); chiave fuori elenco → 400
-    uso minuscolo in PATCH → normalizzato come in create; uso ignoto → 400
-    campo `uso`, senza toccare il repository
+    ruolo, senza toccare il repository); chiave fuori elenco → 400; `uso` e
+    `istanza_utility_id` (lucchetto del DB, giro T8a) → 400 che le nomina,
+    senza toccare il repository
+29) TestRegistroIban (giro T8a, D-T8a-8) — l'IBAN arriva al repository come
+    e' stato scritto (la forma la da' il DB); il CHECK del formato si traduce
+    sul campo `iban`, quello del BIC su `bic_swift`
 """
 
 from unittest import TestCase
@@ -57,6 +62,8 @@ from apps.core.services.service_errors import ServiceError
 
 _CB_REPO = "apps.anagrafiche.services.conti_bancari_service.ContiBancariRepository"
 _SOG_REPO = "apps.anagrafiche.services.conti_bancari_service.SoggettiRepository"
+# I campi fermi delle liste vengono dal lucchetto vivo del DB: qui si fissano.
+_FERMI = "apps.anagrafiche.services.conti_bancari_service.compute_non_editable_fields"
 
 _FAKE_UUID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 _FAKE_IBAN = "IT60X0542811101000000123456"
@@ -103,9 +110,10 @@ class TestContiBancariSearch(TestCase):
 class TestContiBancariSoggetto(TestCase):
     """Test CRUD legame soggetto ↔ conto."""
 
+    @patch(_FERMI, return_value=["uso"])
     @patch(_CB_REPO, autospec=True)
     @patch(_SOG_REPO, autospec=True)
-    def test_list_conti_soggetto_ok(self, mock_sog, mock_cb):
+    def test_list_conti_soggetto_ok(self, mock_sog, mock_cb, _fermi):
         """Lista conti di un soggetto."""
         mock_sog.return_value.exists_soggetto.return_value = True
         mock_cb.return_value.list_conti_soggetto.return_value = [
@@ -114,10 +122,14 @@ class TestContiBancariSoggetto(TestCase):
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
         result = ContiBancariService().list_conti_soggetto(_FAKE_UUID)
         self.assertEqual(len(result), 1)
+        # Ogni riga porta i suoi campi fermi (lucchetto del DB, giro T8a).
+        self.assertEqual(result[0]["non_editable_fields"], ["uso"])
+        _fermi.assert_called_once_with("anagrafiche", "soggetti_conti_bancari")
 
+    @patch(_FERMI, return_value=["uso"])
     @patch(_CB_REPO, autospec=True)
     @patch(_SOG_REPO, autospec=True)
-    def test_list_conti_soggetto_not_found(self, mock_sog, _cb):
+    def test_list_conti_soggetto_not_found(self, mock_sog, _cb, _fermi):
         """Soggetto inesistente → E_ANAG_NOT_FOUND."""
         mock_sog.return_value.exists_soggetto.return_value = False
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
@@ -235,11 +247,10 @@ class TestContiBancariSoggetto(TestCase):
         """Aggiorna legame soggetto — happy path."""
         mock_sog.return_value.exists_soggetto.return_value = True
         repo = mock_cb.return_value
-        repo.get_legame_flags_soggetto.return_value = {"predefinito": False, "bloccato": False}
         repo.update_conto_soggetto.return_value = True
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
         result = ContiBancariService().update_conto_soggetto(
-            _FAKE_UUID, 10, {"uso": "PAGAMENTO"},
+            _FAKE_UUID, 10, {"verificato": True},
         )
         self.assertTrue(result["updated"])
 
@@ -249,12 +260,11 @@ class TestContiBancariSoggetto(TestCase):
         """Legame inesistente → E_ANAG_NOT_FOUND."""
         mock_sog.return_value.exists_soggetto.return_value = True
         repo = mock_cb.return_value
-        repo.get_legame_flags_soggetto.return_value = {"predefinito": False, "bloccato": False}
         repo.update_conto_soggetto.return_value = False
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
         with self.assertRaises(ServiceError) as ctx:
             ContiBancariService().update_conto_soggetto(
-                _FAKE_UUID, 999, {"uso": "INCASSO"},
+                _FAKE_UUID, 999, {"verificato": True},
             )
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
 
@@ -285,9 +295,10 @@ class TestContiBancariSoggetto(TestCase):
 class TestContiBancariRuolo(TestCase):
     """Test CRUD legame ruolo ↔ conto."""
 
+    @patch(_FERMI, return_value=["uso"])
     @patch(_CB_REPO, autospec=True)
     @patch(_SOG_REPO, autospec=True)
-    def test_list_conti_ruolo_ok(self, _sog, mock_cb):
+    def test_list_conti_ruolo_ok(self, _sog, mock_cb, _fermi):
         """Lista conti ruolo + ereditati."""
         repo = mock_cb.return_value
         repo.list_conti_ruolo.return_value = [
@@ -321,7 +332,6 @@ class TestContiBancariRuolo(TestCase):
     def test_update_conto_ruolo_ok(self, _sog, mock_cb):
         """Aggiorna legame ruolo — happy path."""
         repo = mock_cb.return_value
-        repo.get_legame_flags_ruolo.return_value = {"predefinito": False, "bloccato": False}
         repo.update_conto_ruolo.return_value = True
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
         result = ContiBancariService().update_conto_ruolo(10, 20, {"predefinito": True})
@@ -340,9 +350,10 @@ class TestContiBancariRuolo(TestCase):
 class TestContiBancariRuoloCascataIstanza(TestCase):
     """Test cascata 3 livelli con istanza_utility_id."""
 
+    @patch(_FERMI, return_value=["uso"])
     @patch(_CB_REPO, autospec=True)
     @patch(_SOG_REPO, autospec=True)
-    def test_list_conti_ruolo_cascata_istanza(self, _sog, mock_cb):
+    def test_list_conti_ruolo_cascata_istanza(self, _sog, mock_cb, _fermi):
         """Con istanza_utility_id: L1 istanza vince, L2 generico solo se uso non coperto,
         L3 soggetto solo se uso non coperto da L1+L2."""
         repo = mock_cb.return_value
@@ -375,9 +386,10 @@ class TestContiBancariRuoloCascataIstanza(TestCase):
         self.assertEqual(readonly[0]["id"], 11)
         self.assertEqual(readonly[0]["fonte"], "soggetto")
 
+    @patch(_FERMI, return_value=["uso"])
     @patch(_CB_REPO, autospec=True)
     @patch(_SOG_REPO, autospec=True)
-    def test_list_conti_ruolo_no_istanza(self, _sog, mock_cb):
+    def test_list_conti_ruolo_no_istanza(self, _sog, mock_cb, _fermi):
         """Senza istanza_utility_id: tutti i ruolo mostrati + soggetto fallback."""
         repo = mock_cb.return_value
         repo.list_conti_ruolo.return_value = [
@@ -417,38 +429,37 @@ class TestContiBancariRuoloCascataIstanza(TestCase):
         self.assertEqual(call_kwargs[1].get("istanza_utility_id"), 5)
 
 
-class TestGuardPredefinitBloccato(TestCase):
-    """Test regola: un conto predefinito non puo' essere bloccato."""
+class TestPredefinitoBloccato(TestCase):
+    """Un predefinito non si blocca: la regola e' del DB (giro T8a, D-T8a-2)."""
 
     @patch(_CB_REPO, autospec=True)
     @patch(_SOG_REPO, autospec=True)
-    def test_guard_predefinito_bloccato_create(self, mock_sog, mock_cb):
-        """Crea con predefinito=true + bloccato=true → E_ANAG_VALIDAZIONE."""
-        mock_sog.return_value.exists_soggetto.return_value = True
-        mock_cb.return_value.get_or_create_conto_bancario.return_value = (1, True)
-        from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
-        with self.assertRaises(ServiceError) as ctx:
-            ContiBancariService().create_conto_soggetto(_FAKE_UUID, {
-                "iban": _FAKE_IBAN, "bank_branch_id": 1,
-                "predefinito": True, "bloccato": True,
-            })
-        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
-        self.assertIn("predefinito", ctx.exception.message)
-
-    @patch(_CB_REPO, autospec=True)
-    @patch(_SOG_REPO, autospec=True)
-    def test_guard_predefinito_bloccato_update(self, mock_sog, mock_cb):
-        """Blocca un conto gia' predefinito → E_ANAG_VALIDAZIONE."""
+    def test_il_service_non_ricopia_la_regola(self, mock_sog, mock_cb):
+        """predefinito+bloccato arriva al repository: decide il guard del DB."""
         mock_sog.return_value.exists_soggetto.return_value = True
         repo = mock_cb.return_value
-        # Il record corrente e' predefinito
-        repo.get_legame_flags_soggetto.return_value = {"predefinito": True, "bloccato": False}
+        repo.update_conto_soggetto.return_value = True
+        from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
+        ContiBancariService().update_conto_soggetto(
+            _FAKE_UUID, 10, {"predefinito": True, "bloccato": True},
+        )
+        repo.update_conto_soggetto.assert_called_once_with(
+            10, _FAKE_UUID, {"predefinito": True, "bloccato": True},
+        )
+
+    @patch(_CB_REPO, autospec=True)
+    @patch(_SOG_REPO, autospec=True)
+    def test_il_check_di_rete_parla_col_codice_del_guard(self, mock_sog, mock_cb):
+        mock_sog.return_value.exists_soggetto.return_value = True
+        repo = mock_cb.return_value
+        repo.update_conto_soggetto.side_effect = _violazione(
+            "chk_soggetti_conti_bancari_predefinito_non_bloccato",
+        )
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
         with self.assertRaises(ServiceError) as ctx:
-            ContiBancariService().update_conto_soggetto(
-                _FAKE_UUID, 10, {"bloccato": True},
-            )
-        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+            ContiBancariService().update_conto_soggetto(_FAKE_UUID, 10, {"bloccato": True})
+        self.assertEqual(ctx.exception.code, "E_CONTO_PREDEFINITO_BLOCCATO")
+        self.assertEqual(ctx.exception.context.get("field"), "bloccato")
 
 
 class TestExtractLegamePayload(TestCase):
@@ -488,9 +499,19 @@ class TestVincoliLegame(TestCase):
             )
         return ctx.exception
 
+    def _crea_ruolo_con_istanza(self, mock_cb, nome: str) -> ServiceError:
+        repo = mock_cb.return_value
+        repo.get_conto_bancario.return_value = {"id": 1}
+        repo.create_conto_ruolo.side_effect = _violazione(nome)
+        from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
+        with self.assertRaises(ServiceError) as ctx:
+            ContiBancariService().create_conto_ruolo(
+                10, {"conto_bancario_id": 1, "uso": "INCASSO", "istanza_utility_id": 5},
+            )
+        return ctx.exception
+
     def _aggiorna_ruolo(self, mock_cb, nome: str) -> ServiceError:
         repo = mock_cb.return_value
-        repo.get_legame_flags_ruolo.return_value = {"predefinito": False, "bloccato": False}
         repo.update_conto_ruolo.side_effect = _violazione(nome)
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
         with self.assertRaises(ServiceError) as ctx:
@@ -514,15 +535,15 @@ class TestVincoliLegame(TestCase):
     @patch(_CB_REPO, autospec=True)
     @patch(_SOG_REPO, autospec=True)
     def test_fk_istanza_ruolo(self, _sog, mock_cb):
-        err = self._aggiorna_ruolo(mock_cb, "fk_src_bancari_istanze_utilities")
+        err = self._crea_ruolo_con_istanza(mock_cb, "fk_src_bancari_istanze_utilities")
         self.assertEqual(err.code, "E_ANAG_FK")
         self.assertEqual(err.context.get("field"), "istanza_utility_id")
 
     @patch(_CB_REPO, autospec=True)
     @patch(_SOG_REPO, autospec=True)
     def test_secondo_predefinito_ruolo(self, _sog, mock_cb):
-        err = self._aggiorna_ruolo(mock_cb, "uq_src_bancari_predefinito_no_istanza")
-        self.assertEqual(err.code, "E_ANAG_DUPLICATO")
+        err = self._aggiorna_ruolo(mock_cb, "ex_src_bancari_predefinito_no_istanza_periodo")
+        self.assertEqual(err.code, "E_CONTO_PREDEFINITO_SOVRAPPOSTO")
         self.assertEqual(err.context.get("field"), "predefinito")
 
     @patch(_CB_REPO, autospec=True)
@@ -574,26 +595,68 @@ class TestPatchLegame(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_cb.return_value.update_conto_soggetto.assert_not_called()
 
+    # ⛔ L'identita' del legame ha il lucchetto del DB (giro T8a): la PATCH
+    #    che la porta e' un 400 che nomina la chiave, prima del viaggio.
     @patch(_CB_REPO, autospec=True)
     @patch(_SOG_REPO, autospec=True)
-    def test_patch_uso_normalizzato_come_in_create(self, _sog, mock_cb):
-        repo = mock_cb.return_value
-        repo.get_legame_flags_ruolo.return_value = {"predefinito": False, "bloccato": False}
-        repo.update_conto_ruolo.return_value = True
+    def test_patch_uso_rifiutato(self, mock_sog, mock_cb):
+        mock_sog.return_value.exists_soggetto.return_value = True
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
-        payload = {"uso": " incasso "}
-        ContiBancariService().update_conto_ruolo(10, 20, payload)
-        repo.update_conto_ruolo.assert_called_once_with(20, 10, {"uso": "INCASSO"})
-        self.assertEqual(payload, {"uso": " incasso "})  # l'input non si muta
+        for chiamata in (
+            lambda svc: svc.update_conto_soggetto(_FAKE_UUID, 10, {"uso": "INCASSO"}),
+            lambda svc: svc.update_conto_ruolo(10, 20, {"uso": "INCASSO"}),
+        ):
+            with self.assertRaises(ServiceError) as ctx:
+                chiamata(ContiBancariService())
+            self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+            self.assertIn("uso", ctx.exception.context["unknown_keys"])
+        mock_cb.return_value.update_conto_soggetto.assert_not_called()
+        mock_cb.return_value.update_conto_ruolo.assert_not_called()
 
     @patch(_CB_REPO, autospec=True)
     @patch(_SOG_REPO, autospec=True)
-    def test_patch_uso_ignoto(self, mock_sog, mock_cb):
-        mock_sog.return_value.exists_soggetto.return_value = True
-        mock_cb.return_value.get_legame_flags_soggetto.return_value = None
+    def test_patch_istanza_del_ruolo_rifiutata(self, _sog, mock_cb):
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
         with self.assertRaises(ServiceError) as ctx:
-            ContiBancariService().update_conto_soggetto(_FAKE_UUID, 10, {"uso": "BOH"})
+            ContiBancariService().update_conto_ruolo(10, 20, {"istanza_utility_id": 5})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
-        self.assertEqual(ctx.exception.context.get("field"), "uso")
-        mock_cb.return_value.update_conto_soggetto.assert_not_called()
+        self.assertIn("istanza_utility_id", ctx.exception.context["unknown_keys"])
+        mock_cb.return_value.update_conto_ruolo.assert_not_called()
+
+
+class TestRegistroIban(TestCase):
+    """La forma dell'IBAN la da' il DB (giro T8a, D-T8a-8)."""
+
+    @patch(_CB_REPO, autospec=True)
+    @patch(_SOG_REPO, autospec=True)
+    def test_iban_passato_com_e_scritto(self, mock_sog, mock_cb):
+        mock_sog.return_value.exists_soggetto.return_value = True
+        repo = mock_cb.return_value
+        repo.get_or_create_conto_bancario.return_value = (1, True)
+        repo.create_conto_soggetto.return_value = {"id": 1}
+        from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
+        ContiBancariService().create_conto_soggetto(_FAKE_UUID, {
+            "iban": "it60-x054 2811 1010 0000 0123 456", "bank_branch_id": 1,
+        })
+        self.assertEqual(
+            repo.get_or_create_conto_bancario.call_args.kwargs["iban"],
+            "it60-x054 2811 1010 0000 0123 456",
+        )
+
+    @patch(_CB_REPO, autospec=True)
+    @patch(_SOG_REPO, autospec=True)
+    def test_formato_tradotto_sul_campo(self, mock_sog, mock_cb):
+        mock_sog.return_value.exists_soggetto.return_value = True
+        from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
+        for vincolo, campo in (
+            ("chk_conti_bancari_iban_fmt", "iban"),
+            ("chk_conti_bancari_bic_fmt", "bic_swift"),
+        ):
+            mock_cb.return_value.get_or_create_conto_bancario.side_effect = _violazione(vincolo)
+            with self.assertRaises(ServiceError) as ctx:
+                ContiBancariService().create_conto_soggetto(_FAKE_UUID, {
+                    "iban": "IT00", "bank_branch_id": 1,
+                })
+            self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+            self.assertEqual(ctx.exception.context.get("field"), campo)
+        mock_cb.return_value.create_conto_soggetto.assert_not_called()

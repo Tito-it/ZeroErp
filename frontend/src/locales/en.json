@@ -6307,8 +6307,7 @@
       "bloccato": "Blocked",
       "bloccato_predefinito_hint": "Remove the default flag before blocking",
       "ereditato": "Inherited",
-      "conferma_elimina": "Remove account {iban} from usage {uso}?",
-      "iban_formato_errore": "Invalid IBAN: must contain 15 to 34 alphanumeric characters"
+      "conferma_elimina": "Remove account {iban} from usage {uso}?"
     },
     "indirizzo_soggetto": {
       "usa": "Use",

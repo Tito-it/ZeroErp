@@ -18,7 +18,9 @@
 # Note: ⚠️ Il mondo si COSTRUISCE (regola zero): azienda e operatore da
 #       `dbops.fn_pgtap_crea_mondo_cliente` (apre il contesto: enti_incasso e'
 #       sotto RLS e senza GUC la rilettura trova zero righe), la filiale da
-#       `dbops.fn_pgtap_crea_filiale_bancaria`, poi conto e legame INCASSO
+#       `dbops.fn_pgtap_crea_filiale_bancaria`, poi conto (IBAN coerente con
+#       la filiale, da `dbops.fn_pgtap_iban`: il guard IBAN-filiale lo
+#       pretende) e legame INCASSO
 #       all'emittente — in DUE istruzioni, come in
 #       `db/pgtap/pagamenti/test-sistemazioni-giro-completo.sql`: la policy
 #       di `enti_incasso` chiede «esiste un conto TUO con questo id?», e nella
@@ -53,7 +55,8 @@ _FIXTURE: tuple[str, ...] = (
     CREATE TEMP TABLE _conto AS
     WITH ins AS (
         INSERT INTO anagrafiche.conti_bancari (iban, bank_branch_id, attivo, storicizza, meta)
-        SELECT 'IT00BEENTEINC' || %(sfx)s, b.bank_branch_id, true, false,
+        SELECT dbops.fn_pgtap_iban(b.bank_branch_id, 'be ente incasso ' || %(sfx)s),
+               b.bank_branch_id, true, false,
                '{"test_scope": "be_create_ente_incasso_db"}'::jsonb
           FROM _banca b
         RETURNING id

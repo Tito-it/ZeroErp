@@ -1,9 +1,18 @@
 // Scopo: Composable per form conto bancario associabile a soggetto o ruolo.
 // Gestisce stato reattivo, validazione, reset, populate e toPayload.
 // IBAN e filiale salvati come _obj per restore autocomplete server-side.
+// Note: ⭐ Dal giro T8a di brief-db-revisione-anagrafiche (2026-11-27) forma
+//       e formato di IBAN e BIC li giudica il DB (normalizzazione `a01`, poi i
+//       CHECK): qui non c'e' piu' la regex, l'IBAN parte com'e' scritto.
+//       ⭐ L'identita' del legame (conto, `uso`, possessore) ha il lucchetto
+//       del DB: la riga in modifica porta `non_editable_fields`, e `campoFermo`
+//       / `senzaCampiFermi` la spengono e la tolgono dal PATCH, senza nomi
+//       di campo scritti qui.
 
 import { reactive, ref } from 'vue'
 import { toDateString, oggiAziendale, parseIsoDate } from '../../core/utils/date'
+import { campoFermo } from '../../core/utils/campoFermo'
+import { senzaCampiFermi } from '../../core/utils/senzaCampiFermi'
 
 const _USI = ['INCASSO', 'PAGAMENTO', 'RIMBORSO', 'GENERICO']
 
@@ -27,18 +36,23 @@ export function useContoBancarioForm() {
   // ID conto bancario gia' esistente nel registro (set da autocomplete select)
   const contoRegistroId = ref(null)
 
+  // La riga in modifica (null in creazione): porta i campi fermi del DB.
+  const riga = ref(null)
+
+  // Scopo: in modifica, il campo del legame e' fermo? In creazione niente lo e'.
+  function fermo(campo) {
+    return riga.value !== null && campoFermo(riga.value, campo)
+  }
+
   // Lista usi disponibili (per dropdown)
   const usiDisponibili = _USI
 
   // Scopo: Validazione campi obbligatori e formato.
   function validate() {
     const errors = []
-    const iban = (form.iban || '').trim()
-    if (!iban) {
-      errors.push('iban')
-    } else if (!/^[A-Z0-9]{15,34}$/.test(iban)) {
-      errors.push('iban_format')
-    }
+    // Solo la presenza: il formato lo giudica il DB, che lo rifiuta sul
+    // campo `iban` (o `bic_swift`) e lo accende in `campiErrati`.
+    if (!(form.iban || '').trim()) errors.push('iban')
     if (!form.bank_branch_id) errors.push('bank_branch_id')
     if (!form.uso) errors.push('uso')
     // ⚠️ L'ordine delle date NON si giudica qui: lo giudica il guard comune del
@@ -63,6 +77,7 @@ export function useContoBancarioForm() {
     form.verificato = false
     form.bloccato = false
     contoRegistroId.value = null
+    riga.value = null
   }
 
   // Scopo: Popola il form con dati API (per edit mode).
@@ -85,6 +100,7 @@ export function useContoBancarioForm() {
     form.verificato = data.verificato ?? false
     form.bloccato = data.bloccato ?? false
     contoRegistroId.value = data.conto_bancario_id ?? null
+    riga.value = data
   }
 
   // Scopo: Costruisce payload per POST (create).
@@ -110,9 +126,10 @@ export function useContoBancarioForm() {
     return p
   }
 
-  // Scopo: Costruisce payload per PATCH (update) — solo campi legame.
+  // Scopo: Costruisce payload per PATCH (update) — solo campi legame, senza
+  //        quelli fermi (il backend rifiuta una PATCH che li porta).
   function toUpdatePayload() {
-    return {
+    return senzaCampiFermi({
       uso: form.uso,
       predefinito: form.predefinito,
       intestazione_dichiarata: form.intestazione_dichiarata.trim() || null,
@@ -120,7 +137,7 @@ export function useContoBancarioForm() {
       bloccato: form.bloccato,
       valido_dal: toDateString(form.valido_dal),
       valido_al: toDateString(form.valido_al)
-    }
+    }, fermo)
   }
 
   // Scopo: Callback quando l'utente seleziona un IBAN dall'autocomplete.
@@ -162,6 +179,7 @@ export function useContoBancarioForm() {
     form,
     contoRegistroId,
     usiDisponibili,
+    fermo,
     validate,
     reset,
     populate,
