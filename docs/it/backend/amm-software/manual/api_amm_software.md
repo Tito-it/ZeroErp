@@ -550,7 +550,7 @@ catalogo `anagrafiche.accessi_altri` (104). Envelope di lista `{count, results}`
 |---|---|---|
 | `search` | string | Ricerca libera sulle colonne accese dal catalogo (nome, username, email, vesti, soggetti) |
 | `ruolo_applicativo` | string | Una veste di quel tipo fra le vesti della credenziale (`CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`, …). `DISABILITATO` → 400 |
-| `stato_accesso` | string | Il migliore fra le vesti: `ATTIVO`, `PENDING`, `NON_SPEDITO`, `DISATTIVO`, `NESSUNO`. Estraneo → 400. ⚠️ `REVOCATA` (stato della veste dal 2026-11-26) e' ancora un 400: l'aggregato della vista non lo produce, ed entra nel filtro col changeSet di R-3b-1 (brief-db-accessi-area-clienti §4.2) |
+| `stato_accesso` | string | Il migliore fra le vesti, in quest'ordine: `ATTIVO`, `PENDING`, `NON_SPEDITO`, `DISATTIVO`, `REVOCATA`, `NESSUNO`. `REVOCATA` vuol dire che **tutte** le vesti della credenziale sono revocate: basta una spenta senza segno perche' risulti `DISATTIVO` (D-3c-2, brief-db-accessi-area-clienti, 2026-11-27). Estraneo → 400 |
 | `nessun_accesso` | bool | Nessuna veste |
 | `secondo_fattore_stato` | string | `ASSENTE`, `DA_CONFERMARE`, `ATTIVO` |
 | `secondo_fattore_obbligatorio` | bool | |

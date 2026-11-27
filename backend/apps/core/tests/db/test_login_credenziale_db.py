@@ -758,10 +758,12 @@ class CicloOperatoreDbTests(_ViewVere):
 
         # La veste resta ACCESA: esce solo dalla sua finestra (scaduta ieri).
         with connection.cursor() as cur:
+            # ⚠️ Dalla fixture del DB: l'app non aggiorna le vesti (passo 3c).
             cur.execute(
-                "UPDATE anagrafiche.identita_digitali "
-                "   SET valido_dal = script.fn_data_operativa() - 10, valido_al = script.fn_data_operativa() - 1 "
-                " WHERE id = script.fn_veste_di_riferimento(%s, 'OPERATORE')",
+                "SELECT dbops.fn_pgtap_imposta_veste("
+                "  script.fn_veste_di_riferimento(%s, 'OPERATORE'),"
+                "  jsonb_build_object('valido_dal', script.fn_data_operativa() - 10,"
+                "                     'valido_al', script.fn_data_operativa() - 1))",
                 [uid],
             )
         self.assertIs(self._veste_attiva(uid), True)

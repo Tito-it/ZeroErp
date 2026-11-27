@@ -114,6 +114,9 @@ lo shop aveva ancora l'invalidazione fuori-atomic).
 [analisi difetti](../../../dev/work-done/2026/analisi-be-difetti-emersi-verifica-doc-api-core.md)):
 `false` se non e' partita. La chiamata non fallisce — veste e token ci sono, l'invito si
 recupera col reinvio — ma `invito_inviato_at` non si aggiorna e il fallimento si logga.
+Partita la mail, `invito_inviato_at` lo scrive il verbo del DB `anagrafiche.fn_segna_invito_inviato`, col
+permesso di chi invita (dal 2026-11-27: l'app non aggiorna piu' le vesti). Un suo rifiuto arriva come errore
+della chiamata e non si ingoia: il permesso l'ha gia' chiesto l'emissione, nella stessa richiesta.
 Stesso contratto per le tre vesti (la strada e' una: `InvitoVeste.spedisci`).
 
 `is_cross=true` quando l'`auth_user` ha gia' una password vera: viene aggiunta

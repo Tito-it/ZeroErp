@@ -41,7 +41,7 @@ from django.db import connection, transaction
 
 from apps.core.services.error_manager import ServiceError
 from apps.core.services.error_policies import ErrorPolicyRegistry
-from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
+from apps.core.tests.db_e2e import ContestoSu, apri_contesto_operatore, esegui_fixture, richiedi_db_provvisto
 from apps.pagamenti.db import pagamenti_repository as repo_mod
 from apps.pagamenti.db.pagamenti_repository import PagamentiRepository
 from apps.pagamenti.services import pagamenti_service
@@ -55,14 +55,12 @@ _COLONNE_TESTATA_CODA = (
 
 # Il MONDO: un'azienda col suo operatore, e il contesto aperto su di lui —
 # PRIMA che nasca il cliente, perche' il guard del billing account lo pretende.
-_FIXTURE_MONDO: tuple[str, ...] = (
+_FIXTURE_MONDO: tuple[str | ContestoSu, ...] = (
     """
     CREATE TEMP TABLE _mondo AS
     SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
     """,
-    """
-    SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))
-    """,
+    ContestoSu("_mondo"),
     # Dal giro 9 (brief-db-porte-aperte-dalla-sola-guc §11) la registrazione
     # tardiva chiede l'azione dell'endpoint, `registra_distinta`: il test la
     # da' al suo operatore, come la darebbe il pannello dei permessi.
@@ -141,8 +139,7 @@ _RIGA_DA_LAVORARE = ("D", Decimal("30.00"), "DA_ABBINARE")
 # Scopo: monta il mondo e le righe; consegna `{contabile_id, fattura_id,
 #        r1, r2, righe: {et: id}}`.
 def _monta(cur, *, con_riga_da_lavorare: bool) -> dict:
-    for passo in _FIXTURE_MONDO:
-        cur.execute(passo)
+    esegui_fixture(cur, _FIXTURE_MONDO)
     righe: dict[str, int] = {}
     elenco = _RIGHE_BASE + ((_RIGA_DA_LAVORARE,) if con_riga_da_lavorare else ())
     for et, importo, stato in elenco:

@@ -97,7 +97,7 @@ class RevocaVesteDbTests(unittest.TestCase):
 
     def test_la_revoca_di_una_veste_spenta_mette_il_segno(self):
         self.cur.execute(
-            "UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = %s",
+            "SELECT dbops.fn_pgtap_imposta_veste(%s, '{\"attivo\": false}'::jsonb)",
             [self.veste_shop],
         )
         self.assertEqual(self._veste(self.veste_shop)[0], "DISATTIVO")
@@ -157,7 +157,7 @@ class RevocaVesteDbTests(unittest.TestCase):
         self.assertIsNotNone(veste)
         assert veste is not None
         self.cur.execute(
-            "UPDATE anagrafiche.identita_digitali SET attivo = true WHERE id = %s", [veste],
+            "SELECT dbops.fn_pgtap_imposta_veste(%s, '{\"attivo\": true}'::jsonb)", [veste],
         )
         repo.disabilita_operatore(self.operatore)
         self.assertEqual(self._veste(veste), ("REVOCATA", False, self.admin))

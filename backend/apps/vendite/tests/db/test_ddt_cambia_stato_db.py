@@ -36,14 +36,19 @@ from typing import Any
 from django.db import connection, transaction
 
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import (
+    ContestoSu,
+    apri_transazione_annullata,
+    esegui_fixture,
+    richiedi_db_provvisto,
+)
 from apps.vendite.services import ddt_service, resi_service
 
 # Il mondo di `magazzino/test-ddt-scarico-v1`, ridotto a un articolo gestito
 # (10 pezzi a giacenza) e uno non gestito.
-_FIXTURE: tuple[str, ...] = (
+_FIXTURE: tuple[str | ContestoSu, ...] = (
     "CREATE TEMP TABLE _az AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore()",
-    "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _az))",
+    ContestoSu("_az"),
     "CREATE TEMP TABLE _m AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('BE-L3-VERBO')",
     # Il verbo chiede `emetti_ddt` nella prima riga; il carico di giacenza
     # (inventario postato) chiede `registra_magazzino`.
@@ -96,8 +101,7 @@ class DdtCambiaStatoDbTests(unittest.TestCase):
     def setUp(self) -> None:
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
-            for passo in _FIXTURE:
-                cur.execute(passo)
+            esegui_fixture(cur, _FIXTURE)
             cur.execute("SELECT mag, art_g::text, art_n::text, iva FROM _fix")
             self.mag, self.art_g, self.art_n, self.iva = cur.fetchone()
             cur.execute("SELECT art_l::text, lotto_a, lotto_b FROM _lotti")

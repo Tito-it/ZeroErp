@@ -48,7 +48,12 @@ from apps.core.api.permissions import MotivoDiniego, ZeroERPPermission
 from apps.core.api.views_config_crud import ConfigTableRecordsView
 from apps.core.services.config_crud_service import ConfigCrudService
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_operatore_con_aree, apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import (
+    apri_operatore_con_aree,
+    apri_operatore_costruito,
+    apri_transazione_annullata,
+    richiedi_db_provvisto,
+)
 
 _REL = "magazzino.causali"
 
@@ -189,9 +194,7 @@ class PannelloDuePuntiDiApplicazioneDbTests(TestCase):
     def setUp(self) -> None:
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
-            cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_emittente_operatore()")
-            self.uid = int(cur.fetchone()[0])
-            cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [self.uid])
+            self.uid = apri_operatore_costruito(cur)
         self.svc = ConfigCrudService()
 
     # Scopo: Da' all'operatore costruito `livello` sull'area della riga

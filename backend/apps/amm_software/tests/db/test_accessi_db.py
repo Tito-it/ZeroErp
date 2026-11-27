@@ -38,6 +38,7 @@ rifiuta con `E_CREDENZIALE_STORIA_NON_VERIFICABILE`. Nessun ramo e' saltato.
 
 from __future__ import annotations
 
+import re
 import unittest
 
 from django.db import DatabaseError, connection, transaction
@@ -206,21 +207,21 @@ class AccessiDbTests(unittest.TestCase):
                     self.assertIn(f"'{stato}'", corpo)
                 self.assertIn(f"'{stato}'", vista)
 
-    # Scopo: Il verso opposto: uno stato della veste che la vista impara
-    #        dev'entrare nel filtro. ⏳ Oggi e' `REVOCATA`, fuori dal filtro
-    #        finche' R-3b-1 (brief-db-accessi-area-clienti §4.2) non lo porta
-    #        nell'aggregato `stato_accesso`. Quando arriva il changeSet questo
-    #        test diventa ROSSO: si aggiunge `REVOCATA` a `STATI_ACCESSO` e al
-    #        filtro di `AccessiAltriTab` (`STATI_FILTRO`), nella posizione che
-    #        il DB ha scelto, e si toglie il caso da qui.
-    def test_uno_stato_che_la_vista_impara_entra_nel_filtro(self):
-        self.cur.execute("SELECT pg_get_viewdef('anagrafiche.vw_accessi_altri'::regclass)")
-        vista = self.cur.fetchone()[0]
-        self.assertNotIn("REVOCATA", STATI_ACCESSO)
-        self.assertNotIn(
-            "'REVOCATA'", vista,
-            "R-3b-1 arrivato: aggiungere REVOCATA a STATI_ACCESSO e al filtro FE",
-        )
+    # Scopo: Il verso opposto: ogni stato che `script.fn_stato_veste` sa dare
+    #        sta nel filtro. L'aggregato della vista li porta tutti (dal
+    #        2026-11-27 anche `REVOCATA`, D-3c-2 di brief-db-accessi-area-clienti
+    #        §5.3), quindi uno stato nuovo della funzione fuori dal filtro e' un
+    #        400 su una lista che quello stato lo mostra.
+    # ⚠️ Gli stati si leggono dai rami del `CASE` della funzione (`THEN` /
+    #    `ELSE '<stato>'::text`), non da un elenco scritto qui: un elenco nel
+    #    test proverebbe se stesso. Un corpo senza rami e' un rosso, non un
+    #    insieme vuoto che rende verde il confronto.
+    def test_ogni_stato_della_veste_entra_nel_filtro(self):
+        self.cur.execute("SELECT pg_get_functiondef('script.fn_stato_veste(bigint)'::regprocedure)")
+        corpo = self.cur.fetchone()[0]
+        stati_veste = set(re.findall(r"(?:THEN|ELSE)\s+'([A-Z_]+)'::text", corpo))
+        self.assertTrue(stati_veste, "nessun ramo letto dal corpo di script.fn_stato_veste")
+        self.assertEqual(stati_veste | {"NESSUNO"}, set(STATI_ACCESSO))
 
     def test_blocca_e_sblocca_coi_verbi_veri(self):
         servizio = AccessiService()
@@ -314,7 +315,9 @@ class AccessiDbTests(unittest.TestCase):
     #        primo motivo, in ogni mondo (le vesti si guardano per prime).
     def test_la_credenziale_con_vesti_non_si_elimina(self):
         self.cur.execute(
-            "UPDATE anagrafiche.identita_digitali SET attivo = false WHERE auth_user_id = %s", [self.shop],
+            "SELECT dbops.fn_pgtap_imposta_veste(id, '{\"attivo\": false}'::jsonb)"
+            "  FROM anagrafiche.identita_digitali WHERE auth_user_id = %s",
+            [self.shop],
         )
         with self.assertRaises(DatabaseError) as ctx:
             AccessiService().elimina_credenziale(self.shop)

@@ -40,7 +40,7 @@ from collections.abc import Callable
 from django.db import connection, transaction
 
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, esegui_fixture, richiedi_db_provvisto
 from apps.vendite.services.contratti_service import ContrattiService
 from apps.vendite.services.offerte_service import OfferteService
 # ⚠️ Il MODULO, non la classe: una classe di test importata qui verrebbe
@@ -78,8 +78,7 @@ class EsclusioneSoloNonSiVendeDbTests(unittest.TestCase):
         esito = None
         try:
             with transaction.atomic(), connection.cursor() as cur:
-                for sql in _FIXTURE:
-                    cur.execute(sql)
+                esegui_fixture(cur, _FIXTURE)
                 esito = azione(cur)
                 raise Annulla
         except Annulla:

@@ -6,7 +6,7 @@
 > superato, ma è quasi tutto fatto: L-0, L-1, L-2, L-3, L-4, L-6, D-3 e D-5 lato
 > codice sono chiusi e coerenti col codice di quella data. Restano due punti, che
 > continuano in
-> [brief-be-accessi-credenziale-e-vesti.md](../../work-in-progress/brief-be-accessi-credenziale-e-vesti.md):
+> [brief-be-accessi-credenziale-e-vesti.md](brief-be-accessi-credenziale-e-vesti.md):
 >
 > - **R-4 → D-4, A-6** (la revoca dell'admin che tiene): il brief DB non esiste
 >   ancora, e `anagrafiche.identita_digitali` non ha dove ricordare la revoca.

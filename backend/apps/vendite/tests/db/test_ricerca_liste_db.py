@@ -35,6 +35,7 @@ from django.db import connection, transaction
 
 from apps.core.tests.db_e2e import (
     Annulla,
+    esegui_fixture,
     richiedi_db_provvisto,
     verifica_ricerca_colonna_per_colonna,
 )
@@ -298,8 +299,7 @@ class RicercaListeVenditeDbTests(unittest.TestCase):
         sfx = uuid4().hex[:8].upper()
         try:
             with transaction.atomic(), connection.cursor() as cur:
-                for passo in _FIXTURE:
-                    cur.execute(passo, {"sfx": sfx})
+                esegui_fixture(cur, _FIXTURE, {"sfx": sfx})
                 cur.execute("SELECT listino_id, listino_versione_id FROM _lst")
                 listino, versione = cur.fetchone()
                 cur.execute("SELECT riga_id FROM _riga")

@@ -45,7 +45,7 @@ from unittest import TestCase
 from django.db import DatabaseError, connection, transaction
 
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_transazione_annullata, esegui_fixture, richiedi_db_provvisto
 from apps.vendite.db.commesse_repository import CommessaAttivitaInput, CommesseRepository
 from apps.vendite.services.commesse_service import (
     fn_riallinea_prezzo,
@@ -141,8 +141,7 @@ class PrezzoRigaCommessaDbTests(TestCase):
         richiedi_db_provvisto("dbops.fn_pgtap_crea_commessa(text,character varying,bigint,boolean,boolean)")
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
-            for sql in _FIXTURE:
-                cur.execute(sql)
+            esegui_fixture(cur, _FIXTURE)
             cur.execute(
                 "SELECT c.commessa_id, a.attivita_id, l.listino_id, l.listino_versione_id, v.id,"
                 " r.id"
