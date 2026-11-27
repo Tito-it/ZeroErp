@@ -973,7 +973,7 @@ Una forma sola per le operazioni di processo, una per quelle semplici:
 `azioni_processo` non si riempie di azioni che ripetono il livello, e
 l'amministratore ragiona come sempre, per area, azione e oggetto.
 
-**La porta.** Il verbo protegge solo se non si puo' aggirare:
+**Il verbo non si aggira.** Il verbo protegge solo se non si puo' aggirare:
 
 * l'applicazione perde `INSERT`/`UPDATE`/`DELETE` sulle tabelle che il verbo
   protegge. La postura si dichiara nel loop dei grant, non con un `REVOKE`
@@ -993,40 +993,8 @@ l'amministratore ragiona come sempre, per area, azione e oggetto.
   reset del lotto col suo permesso), e nessuno dei tre pretende il permesso degli
   altri. Un guard che deve sapere se e' attraversato da un verbo lo chiede a
   `script.fn_is_proprietario_tabella`;
-* un guard che lascia passare una scrittura quando una GUC e' accesa (una
-  **porta**) chiede due cose insieme: la GUC, e che a scrivere sia il
-  proprietario. La sola GUC non chiude niente, perche' l'applicazione la puo'
-  accendere da se'. Vale anche per le porte di **manutenzione**, che si aprono
-  dagli strumenti DBA lanciati come `zeroerp_owner`: l'applicazione non esegue
-  quegli strumenti. Una porta che si apre per **una riga** porta nella GUC la
-  chiave di quella riga (la pubblicazione dei template: l'id del modello), e il
-  guard la confronta con la riga che giudica. Se il guard ha anche un'eccezione
-  per il seed, la riconosce dalla **sessione del migratore**
-  (`dbops.fn_sessione_del_migratore`), non dal proprietario: dentro un verbo
-  `SECURITY DEFINER` il proprietario e' chiunque lo chiami. Lo scope emittenti
-  apre cosi': la GUC porta l'`auth_user_id` dell'operatore che il verbo sposta;
-  la riconsegna di un reso porta l'id del reso, e l'esenzione vale per i soli
-  articoli di quel reso.
-  Le righe contabili del giro dei fondi aprono cosi': la GUC porta l'id dell'atto che
-  la primitiva sta cancellando, e il guard la onora solo sulle righe di quell'atto.
-  ⚠️ **Un'eccezione dichiarata: la porta del reset dei lotti.** Lì la GUC resta un
-  **interruttore**, perche' i guard che la leggono stanno su molte tabelle e ognuno
-  dovrebbe risalire dalla sua riga al lotto per una strada diversa. Il limite lo
-  danno il proprietario e la durata: i guard la onorano solo se a scrivere e' il
-  proprietario (`vendite.fn_porta_reset_lotto_aperta`), e la accende solo la pulizia
-  del lotto, una primitiva riservata, che la spegne prima di uscire. Le sole
-  scritture che la porta vede sono quelle della pulizia.
-  Il reset dei lotti e le righe contabili non hanno piu' porte che si aprono con la
-  sola GUC.
-  ⚠️ **Due strade restano con la sola GUC, e sono scelte dichiarate** nella guida del
-  loro dominio: il legame di una riga di bolla **in bozza**, perche' la bozza la scrive
-  l'applicazione e niente e' ancora partito ([Gestione DDT](/guide/gestione-ddt),
-  «Chi toglie un legame»); e il bypass del `tx_id`, che non e' una porta: il trigger
-  non rifiuta mai una scrittura, decide solo quale `tx_id` timbrare
-  ([tx_id](/guide/tx_id_implementation_guide)). Le porte di **manutenzione** dei
-  trigger del framework (il lucchetto, il blocco `DELETE`, il seed di primo impianto)
-  si aprono solo alla sessione del migratore
-  ([Automazione DB](/guide/automazione-db), «Le porte di manutenzione»).
+* un guard che lascia passare una scrittura quando una GUC e' accesa e' una
+  **porta**, e si scrive come dice «Le porte», in fondo a questa sezione.
 
 **Il backend chiede, non decide due volte.** L'endpoint tiene il suo controllo:
 risponde 403 subito, con un messaggio utile, prima di aprire la transazione.
@@ -1050,6 +1018,64 @@ vede solo «UPDATE su questa tabella». Un'area non e' uno schema: un'operazione
 scrive anche in altri schemi. E le funzioni `SECURITY DEFINER` la
 scavalcherebbero. Il permesso appartiene all'**operazione**, e a DB
 l'operazione ha un nome solo: la funzione che la esegue.
+
+#### Le porte
+
+Un guard che protegge una regola («una riga d'ordine evasa non si cancella»)
+ha spesso una **porta**: la condizione con cui lascia passare l'operazione
+legittima che la regola altrimenti ferma. Una porta chiede **due cose
+insieme**: una GUC che dice **quale operazione su quale riga**, e
+che a scrivere sia il **proprietario** della tabella
+(`script.fn_is_proprietario_tabella`). La sola GUC non chiude niente, perche'
+l'applicazione la puo' accendere da se', con un `set_config`, e poi scrivere
+la tabella direttamente. Le GUC delle porte stanno di solito in `zeroerp.*`
+(la registrazione tardiva usa `app.registrazione_tardiva_riga_id`), e non sono
+quelle d'identita' ([Contratto GUC](/guide/contratto-guc-app)): non dicono chi
+e' l'utente.
+
+| Porta | Chi la apre | Come la riconosce il guard | Dove |
+| --- | --- | --- | --- |
+| **Del flusso, sulla riga** | un verbo `SECURITY DEFINER`, dopo il suo permesso e il suo perimetro | la GUC porta la **chiave della riga** e il guard la confronta con la riga che giudica; e chi scrive e' il proprietario | la pubblicazione dei template, lo scope emittenti, la riconsegna di un reso, le righe contabili del fondo, la registrazione tardiva |
+| **Interruttore del proprietario** (eccezione dichiarata) | una primitiva riservata, che la spegne prima di uscire | la GUC accesa, e chi scrive e' il proprietario | il reset dei lotti |
+| **Di manutenzione**, dagli strumenti DBA | uno strumento lanciato come `zeroerp_owner`; l'applicazione non lo esegue | la GUC, e il proprietario | la toponomastica e gli indirizzi di una via ([Riclassificazione vie](/guide/riclassificazione-vie)) |
+| **Di manutenzione del framework** | la sessione del migratore | `script.fn_porta_manutenzione_aperta`, che lascia una riga in `dbops.porte_manutenzione_passaggi` | il lucchetto di colonna, il blocco `DELETE`, il seed di primo impianto, l'append-only dei log di vendita ([Automazione DB](/guide/automazione-db), «Le porte di manutenzione») |
+| **Sola GUC** (scelta dichiarata) | l'applicazione | la sola GUC | il legame di una riga di bolla in bozza; il bypass del `tx_id`, che non e' una porta |
+
+**La porta sulla riga.** E' la forma di regola. Se il guard ha anche
+un'eccezione per il seed, la riconosce dalla **sessione del migratore**
+(`dbops.fn_sessione_del_migratore`), non dal proprietario: dentro un verbo
+`SECURITY DEFINER` il proprietario e' chiunque lo chiami. Le chiavi che le
+porte portano: la pubblicazione dei template, l'id del modello; lo scope
+emittenti, l'`auth_user_id` dell'operatore che il verbo sposta; la riconsegna
+di un reso, l'id del reso, e l'esenzione vale per i soli articoli di quel
+reso; le righe contabili del giro dei fondi, l'id dell'atto che la primitiva
+sta cancellando, e il guard la onora solo sulle righe di quell'atto.
+
+⚠️ **Un'eccezione dichiarata: la porta del reset dei lotti.** Li' la GUC resta un
+**interruttore**, perche' i guard che la leggono stanno su molte tabelle e ognuno
+dovrebbe risalire dalla sua riga al lotto per una strada diversa. Il limite lo
+danno il proprietario e la durata: i guard la onorano solo se a scrivere e' il
+proprietario (`vendite.fn_porta_reset_lotto_aperta`), e la accende solo la pulizia
+del lotto, una primitiva riservata, che la spegne prima di uscire. Le sole
+scritture che la porta vede sono quelle della pulizia.
+
+**Le porte di manutenzione** servono a una correzione fuori dal flusso. Quelle
+degli strumenti DBA si aprono come le altre, con la GUC e il proprietario: la
+manutenzione la fa chi si collega come `zeroerp_owner`. Quelle dei trigger del
+framework (il lucchetto, il blocco `DELETE`, il seed di primo impianto) si
+aprono solo alla sessione del migratore, e lasciano traccia di ogni passaggio.
+
+⚠️ **Due strade restano con la sola GUC, e sono scelte dichiarate** nella guida del
+loro dominio: il legame di una riga di bolla **in bozza**, perche' la bozza la scrive
+l'applicazione e niente e' ancora partito ([Gestione DDT](/guide/gestione-ddt),
+«Chi toglie un legame»); e il bypass del `tx_id`, che non e' una porta: il trigger
+non rifiuta mai una scrittura, decide solo quale `tx_id` timbrare
+([tx_id](/guide/tx_id_implementation_guide)). Nessun'altra porta si apre con la
+sola GUC (dal 2026-11-27); una strada nuova che lo fa e' un'eccezione, e la
+dichiara la guida del suo dominio, col perche'.
+
+Come si scrive una porta nuova, coi suoi pgTAP: [Linee guida
+trigger](/linee-guida-trigger), «Una porta nel guard».
 
 ### 7.5 Il pannello di configurazione: un verbo generico
 
