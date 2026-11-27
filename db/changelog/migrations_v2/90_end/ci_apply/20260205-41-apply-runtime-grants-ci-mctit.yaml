@@ -333,7 +333,12 @@ databaseChangeLog:
                   'script.fn_applica_crea_utente_tecnico',
                   'anagrafiche.fn_crea_risorsa_umana',
                   'anagrafiche.fn_crea_auth_user',
-                  'anagrafiche.fn_crea_operatore_v2'
+                  'anagrafiche.fn_crea_operatore_v2',
+                  -- ⭐ Dal 2026-11-27 la primitiva degli override di un utente: li scrive
+                  --   senza permesso; l'app ci arriva solo dai tre verbi DEFINER col
+                  --   guard del SUPER_ADMIN.
+                  --   Brief: brief-db-porte-aperte-dalla-sola-guc, giro 10-quater (20261126-63).
+                  'config.fn_applica_imposta_override'
                 ];
                 -- ⭐ Schemi SENZA DELETE per l'applicazione: le shadow di storico le
                 --   scrive il trigger (INSERT della versione, UPDATE che chiude la
@@ -474,7 +479,17 @@ databaseChangeLog:
                   'config.profili_accesso_bindings',
                   'config.profili_accesso',
                   'config.profili_accesso_aree',
-                  'config.profili_accesso_azioni'
+                  'config.profili_accesso_azioni',
+                  -- ⭐ Dal 2026-11-27 GLI OVERRIDE E I CATALOGHI DEI PERMESSI: gli override
+                  --   utente li scrivono i verbi DEFINER col guard del SUPER_ADMIN, il
+                  --   provisioning e i builder dei pgTAP dai verbi; i due cataloghi solo
+                  --   il seed (brief-db-porte-aperte-dalla-sola-guc, giro 10-quater).
+                  --   Forward 90_end/20261126-62.
+                  'config.user_override_aree',
+                  'config.user_override_azioni',
+                  'config.user_override_oggetti',
+                  'config.azioni_processo',
+                  'config.area_model_overrides'
                 ];
                 -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
                 --   di v_schemi_senza_delete): un blocco di magazzino si chiude

@@ -5,7 +5,7 @@
 CREATE FUNCTION fn_imposta_override_oggetti(p_auth_user_id integer, p_oggetti jsonb)
 ```
 
-> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
 
 **Definizione completa:**
 
@@ -15,61 +15,34 @@ CREATE FUNCTION fn_imposta_override_oggetti(p_auth_user_id integer, p_oggetti js
 CREATE OR REPLACE FUNCTION config.fn_imposta_override_oggetti(p_auth_user_id integer, p_oggetti jsonb)
  RETURNS integer
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
+-- Scopo:
+--   Il verbo con cui il SUPER_ADMIN sostituisce gli override di un utente
+--   sugli oggetti con l'elenco dato. E' la strada dell'endpoint di
+--   amministrazione.
+--
+-- Regole:
+--   - SECURITY DEFINER: il permesso e' qui, in prima riga, e chiede lo stesso
+--     controllo dell'endpoint, il SUPER_ADMIN (script.fn_guard_super_admin:
+--     E_PERMESSO_NEGATO, anche senza utente);
+--   - gli override li scrive la primitiva config.fn_applica_imposta_override,
+--     che l'app non esegue.
 DECLARE
-    v_lista    jsonb := COALESCE(p_oggetti, '[]'::jsonb);
-    v_el       jsonb;
-    v_n        integer := 0;   -- un conteggio: niente da ancorare
-    c_ammesse  CONSTANT text[] := ARRAY[
-        'app_label', 'model_name', 'livello', 'motivo', 'valido_dal', 'valido_al'];
+    v_utente config.user_override_oggetti.auth_user_id%TYPE;
 BEGIN
-    -- =========================================================
-    -- Scopo:
-    --   Sostituire gli override di un utente sugli oggetti con
-    --   l'elenco dato (vuoto = nessun override). Ritorna
-    --   quanti ne scrive.
-    --
-    -- Regole:
-    --   - utente NULL, elenco o elemento malformati:
-    --     E_SCRIPT_CHIAMATA_NON_VALIDA;
-    --   - chiave estranea in un elemento: E_CAMPO_NON_AMMESSO;
-    --   - chiave assente = DEFAULT, chiave null = NULL;
-    --   - catalogo, riservati e date: vincoli e guard.
-    -- =========================================================
-    IF p_auth_user_id IS NULL OR jsonb_typeof(v_lista) <> 'array'
-       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_lista) AS e
-                   WHERE jsonb_typeof(e) <> 'object') THEN
-        PERFORM script.fn_log_and_raise_error(
-            'config', 'config.fn_imposta_override_oggetti', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
-            jsonb_build_object('auth_user_id', p_auth_user_id,
-                               'tipo_oggetti', jsonb_typeof(v_lista)),
-            NULL::uuid,
-            'config.fn_imposta_override_oggetti',
-            'utente mancante, o elenco degli override malformato');
-    END IF;
+    -- Il permesso, prima di ogni altra cosa.
+    v_utente := script.fn_utente_di_sessione('config.fn_imposta_override_oggetti');
+    PERFORM script.fn_guard_super_admin(v_utente);
 
-    FOR v_el IN SELECT e FROM jsonb_array_elements(v_lista) AS e LOOP
-        PERFORM script.fn_guard_campi_ammessi(
-            v_el, c_ammesse,
-            'config', 'config.fn_imposta_override_oggetti',
-            jsonb_build_object('auth_user_id', p_auth_user_id));
-    END LOOP;
-
-    DELETE FROM config.user_override_oggetti uoo WHERE uoo.auth_user_id = p_auth_user_id;
-
-    FOR v_el IN SELECT e FROM jsonb_array_elements(v_lista) AS e LOOP
-        PERFORM script.fn_scrivi_riga_da_jsonb(
-            'config.user_override_oggetti'::regclass,
-            v_el || jsonb_build_object('auth_user_id', p_auth_user_id));
-        v_n := v_n + 1;
-    END LOOP;
-
-    RETURN v_n;
+    RETURN config.fn_applica_imposta_override(
+        'config.user_override_oggetti'::regclass, p_auth_user_id, p_oggetti);
 END;
 $function$
 
 COMMENT ON FUNCTION config.fn_imposta_override_oggetti(p_auth_user_id integer, p_oggetti jsonb)
-IS 'BB (2026-10-18): sostituisce gli override di un utente sugli oggetti (config.user_override_oggetti) con l''elenco p_oggetti, anche vuoto (= nessun override). Un elemento: app_label, model_name, livello (obbligatori), motivo, valido_dal, valido_al; una chiave assente prende il DEFAULT (valido_dal = la data operativa), una chiave a null scrive NULL (valido_dal NULL = senza inizio). Chiave estranea: E_CAMPO_NON_AMMESSO; utente NULL, elenco o elemento malformati: E_SCRIPT_CHIAMATA_NON_VALIDA. Oggetto fuori catalogo o riservato: fk_user_override_oggetti_catalogo; date: trgfn_guard_date_validita. Scrive con script.fn_scrivi_riga_da_jsonb. Non controlla il permesso ne'' invalida la cache dei permessi (backend). INVOKER. Ritorna quanti override scrive. Prende il posto di AmmSoftwareRepository.put_override_oggetti (2b-2) ed e'' la sede degli override del verbo dei dati di sviluppo (2b-3). Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 9).';
+IS 'Il verbo con cui il SUPER_ADMIN sostituisce gli override di un utente sugli oggetti (config.user_override_oggetti) con l''elenco p_oggetti, anche vuoto (= nessun override); ritorna quanti ne scrive. SECURITY DEFINER: in prima riga chiede il SUPER_ADMIN all''utente di sessione (script.fn_guard_super_admin: E_PERMESSO_NEGATO, anche senza utente), lo stesso controllo dell''endpoint. Un elemento: app_label, model_name, livello (obbligatori), motivo, valido_dal, valido_al; una chiave assente prende il DEFAULT (valido_dal = la data operativa), una chiave a null scrive NULL (valido_dal NULL = senza inizio). Chiave estranea: E_CAMPO_NON_AMMESSO; utente NULL, elenco o elemento malformati: E_SCRIPT_CHIAMATA_NON_VALIDA. Oggetto fuori catalogo o riservato: fk_user_override_oggetti_catalogo; date: trgfn_guard_date_validita. Scrive la primitiva config.fn_applica_imposta_override, che l''applicazione non esegue. Non invalida la cache dei permessi (backend). config.user_override_oggetti è in sola lettura per l''applicazione.';
 ```
 
 </div>

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_apri_area_per_nascita`
 
-> **Ultimo aggiornamento**: 23 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -46,6 +46,7 @@ Non ha un test suo: la usano tutti i builder sui verbi di magazzino.
 ### Note di migrazione
 
 * 2026-11-22 — nasce quando le anagrafiche di magazzino si chiudono all'applicazione e i pgTAP passano dai verbi (`brief-db-magazzino-tutte-le-scritture-dal-verbo`).
+* 2026-11-27 — l'apertura passa dal verbo del SUPER_ADMIN ([`dbops.fn_pgtap_scrivi_override`](/dbzero/dbops/funzioni/fn_pgtap_scrivi_override)), e il contesto dell'operatore torna com'era. Il ricordo cambia forma (l'utente, l'area, l'eccezione di prima); i builder lo passano senza aprirlo (brief-db-porte-aperte-dalla-sola-guc, giro 10-quater).
 
 ---
 

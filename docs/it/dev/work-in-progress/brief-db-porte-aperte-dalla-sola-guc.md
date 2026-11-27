@@ -2,6 +2,10 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-27**
 >
+> **Riparte: il team BE**, con la richiesta di §15.7: il giro 10-quater è applicato su dbdev e sullo scratch, coi
+> pgTAP come app verdi, la doc auto-generata rigenerata e committato su `dev/db-tid` (2026-11-27). La voce «Le guide»
+> è fatta (§16, 2026-11-27, da committare). Chiuse le due richieste al BE (§15.7 e D-AH), il brief si archivia. In parallelo **il team BE**, con D-AH (§14.9): `apri_contesto_operatore` non consegna più un SUPER_ADMIN
+> che il test non ha chiesto. Il lavoro BE/FE dei giri 10-bis e 10-ter è fatto e committato (`16d095e72`, PR #257,
 > **Riparte: Tid**, col via al giro 10-quater: D-AI, D-AJ, D-AK e D-AL sono decise (**a**, 2026-11-27, §15.4), e
 > analisi e censimento del BE sono fatti (§15.5). Poi il team DB scrive il giro (§15.6), e infine la voce «Le guide»
 > del piano. ✅ D-AH è fatta dal team BE (2026-11-27, §14.9, da committare su `dev/backend-tid`):
@@ -80,9 +84,11 @@
 > | 6f-octies | team BE | giro 10-bis, D-AH: ✅ `apri_contesto_operatore` non consegna mai un SUPER_ADMIN preso dai dati (2026-11-27) | §14.9 | 6f-septies |
 > | 6g | team DB | giro 10-quater, gli override utente e i due cataloghi (D-AG **a**): ✅ analisi (2026-11-26) | §15 | — |
 > | 6g-bis | team DB | giro 10-quater: ✅ il censimento letto sul ramo del BE, al posto della richiesta (Tid, 2026-11-26) | §15.5 | — |
-> | 6g-ter | Tid | giro 10-quater: ✅ D-AI **a**, D-AJ **a**, D-AK **a**, D-AL **a** (2026-11-27); il via | §15.4 | — |
-> | 6g-quater | team DB | giro 10-quater: changeSet, verbi, builder, pgTAP, guide e `manual/`; prova sullo scratch | §15.6 | 6g-ter |
-> | 6g-quinquies | Tid, poi team BE | giro 10-quater: apply, pgTAP, doc auto-generata, commit; poi la richiesta al BE | §15.6 | 6g-quater |
+> | 6g-ter | Tid | giro 10-quater: ✅ D-AI **a**, D-AJ **a**, D-AK **a**, D-AL **a**, ✅ il via, numeri `20261126-50` … `-64` (2026-11-27) | §15.4 | — |
+> | 6g-quater | team DB | giro 10-quater: ✅ `20261126-50` … `-59`, `-62`, `-63`, loop e provisioning, pgTAP nuovo e diciotto adeguati, guide e `manual/`, provato sullo scratch (2026-11-27) | §15.7 | — |
+> | 6g-quinquies | Tid | giro 10-quater: ✅ apply su dbdev e scratch, ✅ pgTAP come app verdi, ✅ doc auto-generata, ✅ commit (2026-11-27) | §15.7 | — |
+> | 6g-sexies | team BE | giro 10-quater: la richiesta (repository sui verbi, i test ai builder, manuali) | §15.7 | — |
+> | 6h | team DB | «Le guide»: ✅ le porte rilette nelle guide del loro dominio, §7.4 dei permessi e §4.4 di `automazione-db` aggiornati (2026-11-27) | §16 | — |
 > | 6c | team DB | giro 9: ✅ analisi, D20-b riletta (2026-11-25) | §11 | — |
 > | 6c-bis | Tid | giro 9: ✅ D-S **a**, il via (2026-11-25) | §11.3 | — |
 > | 6c-ter | team DB | giro 9: ✅ `20261124-07` … `-09`, pgTAP nuovo e quattro adeguati, guida e `manual/`, provato sullo scratch (2026-11-25) | §11.5 | — |
@@ -101,7 +107,7 @@
 > | 6e-sexies | Tid | giro 8 + 1-7: ✅ apply, ✅ pgTAP come app verdi, ✅ doc auto-generata rigenerata dopo le pagine `manual/` (2026-11-25) | §13.9 | — |
 > | 6e-septies | team BE | giro 8 + 1-7: la richiesta · ✅ test, tre censimenti e manuali (2026-11-25) | §13.8 | — |
 >
-> Decisioni aperte di Tid: nessuna; manca il via al giro 10-quater. Prese: (D-AI **a**, D-AJ **a**, D-AK **a**, D-AL **a** del giro 10-quater, il 2026-11-27, §15.4; D-AH **a**, `apri_contesto_operatore`, il 2026-11-26, §14.9; D-AF **a**, D-AG **a**, il codice morto del BE che si ritira, il 2026-11-26, §14.6; D-AC **a**, D-AD **b**, D-AE **a** del giro 10-bis il 2026-11-26, §14.3; D-AA **a** e D-AB **b** del giro 10-ter decise il 2026-11-26, §10-ter.4; le due della verifica del passo 3j, decise e fatte il 2026-11-25, §4.9.7; D-K7 **b** e D-K8 **a2** decise il 2026-11-25, §4.9; D-W … D-Z il 2026-11-25, §13.7). R-DB-K1 e R-DB-K4 sono applicati, verdi e committati (2026-11-25). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso. ✅ Il lavoro BE del 2026-11-25 (tutte le richieste evase) è committato su `dev/backend-tid` (`e4af0106a`). Restano tre voci del piano, del team DB: il giro 10-bis, il giro 10-quater e «Le guide».
+> Decisioni aperte di Tid: nessuna. Il giro 10-quater è applicato, verde e committato (2026-11-27, §15.7); «Le guide» (§16) è da committare. Prese: (D-AI **a**, D-AJ **a**, D-AK **a**, D-AL **a** del giro 10-quater, il 2026-11-27, §15.4; D-AH **a**, `apri_contesto_operatore`, il 2026-11-26, §14.9; D-AF **a**, D-AG **a**, il codice morto del BE che si ritira, il 2026-11-26, §14.6; D-AC **a**, D-AD **b**, D-AE **a** del giro 10-bis il 2026-11-26, §14.3; D-AA **a** e D-AB **b** del giro 10-ter decise il 2026-11-26, §10-ter.4; le due della verifica del passo 3j, decise e fatte il 2026-11-25, §4.9.7; D-K7 **b** e D-K8 **a2** decise il 2026-11-25, §4.9; D-W … D-Z il 2026-11-25, §13.7). R-DB-K1 e R-DB-K4 sono applicati, verdi e committati (2026-11-25). Il blocco `EXCEPTION` del giro 9 si toglie (Tid, 2026-11-25: `20261124-12`, §12.7): è deciso. ✅ Il lavoro BE del 2026-11-25 (tutte le richieste evase) è committato su `dev/backend-tid` (`e4af0106a`). Restano tre voci del piano, del team DB: il giro 10-bis, il giro 10-quater e «Le guide».
 > Committati il 2026-11-24 i giri 1, 1-bis e 3 (`64f00b35b1`), il giro 12-13
 > (`969ea14566`), dal BE §4.5-§4.7 con D-J (`4271a0dc69`, PR #232), e il 2026-11-24 il lato DB del ritiro di
 > `reset_lotto_draft` con la pulizia della testata (§4.8). Dal BE, il 2026-11-24 (`5fc466c729`): il `None` del perimetro
@@ -266,15 +272,15 @@
   - [x] commit su `dev/db-tid` (2026-11-25)
   - [x] doc auto-generata rigenerata (Tid, 2026-11-25)
   - [x] il BE: passo 3j, `genera_error_policies`, il censimento (§4.9.7, 2026-11-25)
-- [ ] Giro 10-ter (Tid, 2026-11-26): l'operatore non è mai «globale»; la primitiva rifiuta, il getter non lo offre (§10-ter)
+- [x] Giro 10-ter (Tid, 2026-11-26): l'operatore non è mai «globale»; la primitiva rifiuta, il getter non lo offre (§10-ter)
   - [x] analisi (2026-11-26, §10-ter)
   - [x] D-AA **a**, D-AB **b**, il via (Tid, 2026-11-26)
   - [x] changeSet (firme col `%TYPE`), codice d'errore, pgTAP del giro e tredici adeguati, guide e `manual/`; prova sullo scratch (2026-11-26, §10-ter.6)
   - [x] apply e doc auto-generata rigenerata (Tid, 2026-11-26)
   - [x] pgTAP come app: verdi, suite intera su dbdev e sullo scratch `zeroerp_ruoli` (Tid, 2026-11-26)
   - [x] commit su `dev/db-tid` (`3d3d804b92`, PR #253, 2026-11-26)
-  - [ ] il BE/FE: testi del banner e del riquadro, ripieghi, mappatura del codice, test, manuale (§10-ter.5)
-- [ ] Giro 10-bis (D-O **a**, Tid, 2026-11-24): le tabelle che danno l'accesso in sola lettura per l'app, coi verbi che le scrivono a DEFINER (§14)
+  - [x] il BE/FE: testi del banner e del riquadro, ripieghi, mappatura del codice, test, manuale (§10-ter.5; `16d095e72`, PR #257, 2026-11-26)
+- [x] Giro 10-bis (D-O **a**, Tid, 2026-11-24): le tabelle che danno l'accesso in sola lettura per l'app, coi verbi che le scrivono a DEFINER (§14)
   - [x] analisi (2026-11-26, §14): R-DB-K2 è la tabella dei legami di profilo, non solo `fn_crea_operatore_v2`
   - [x] D-AC **a**, D-AD **b**, D-AE **a** (Tid, 2026-11-26)
   - [x] il censimento integrativo del BE (2026-11-26, §14.5), letto dal DB (§14.6)
@@ -286,17 +292,18 @@
   - [x] apply su dbdev e scratch, pgTAP come app: verdi, con i due file della credenziale di sistema separati (Tid, 2026-11-26)
   - [x] la doc auto-generata rigenerata (Tid, 2026-11-26)
   - [x] commit su `dev/db-tid` (2026-11-26)
-  - [ ] il BE: i test e i manuali del giro
+  - [x] il BE: i test e i manuali del giro (`16d095e72`, PR #257, 2026-11-26); resta D-AH (§14.9), passo 6f-octies
 - [ ] Giro 10-quater (D-AG **a**, Tid, 2026-11-26): il resto del catalogo dei permessi in sola lettura per l'app, cioè gli override utente (`config.user_override_aree`, `_azioni`, `_oggetti`), `config.azioni_processo` e `config.area_model_overrides`, coi verbi che li scrivono e i builder pgTAP (`fn_pgtap_concedi_azione`, `fn_pgtap_concedi_livello_area`). Aperto, non iniziato: parte dopo il 10-bis (§14.6)
   - [x] analisi sul catalogo, guide (2026-11-26, §15)
   - [x] il censimento del BE: chi scrive le tabelle senza un verbo, chi chiama i verbi (letto dal DB sul ramo del BE, 2026-11-26, §15.5)
   - [x] D-AI **a**, D-AJ **a**, D-AK **a**, D-AL **a** (Tid, 2026-11-27, §15.4)
   - [x] D-AL **a**: il brief nuovo `brief-db-storico-scrivibile-dall-app`, aperto e non iniziato (2026-11-27)
-  - [ ] il via (Tid)
-  - [ ] changeSet, verbi, builder, pgTAP, guide e `manual/`; prova sullo scratch (§15.6)
-  - [ ] apply, pgTAP come app, doc auto-generata, commit (Tid)
-  - [ ] il BE: repository sui verbi nuovi, i sei test e `apri_operatore_con_aree` ai builder, manuali (§15.6)
-- [ ] Le guide: ogni porta scritta nella guida del suo dominio, di flusso o di manutenzione
+  - [x] il via, numeri `20261126-50` … `-64` (Tid, 2026-11-27)
+  - [x] changeSet, verbi, builder, pgTAP, guide e `manual/`; prova sullo scratch (2026-11-27, §15.7)
+  - [x] apply su dbdev e scratch, pgTAP come app verdi (Tid, 2026-11-27)
+  - [x] doc auto-generata rigenerata (Tid) e commit su `dev/db-tid` (2026-11-27)
+  - [ ] il BE: repository sui verbi nuovi, i sei test e `apri_operatore_con_aree` ai builder, manuali (§15.7)
+- [x] Le guide: ogni porta scritta nella guida del suo dominio, di flusso o di manutenzione (2026-11-27, §16)
 
 ## 1. Il problema, sul modello
 
@@ -3669,6 +3676,10 @@ dell'interfaccia assegna un oggetto a un'area. I modelli ORM delle cinque tabell
 
 ### 15.6 Il giro, con le decisioni prese (D-AI … D-AL **a**, 2026-11-27) — da scrivere dopo il via
 
+⚠️ Superata in tre punti da §15.7, che dice come il giro è stato scritto: **una** primitiva per le tre tabelle, non
+una per gli oggetti; **un** builder che cambia una voce dell'elenco, sotto i quattro di oggi; il rifiuto d'azione con
+un builder gemello, non con un parametro. Il resto vale.
+
 È §15.2 con le scelte fatte. I numeri dei changeSet si prendono al via (`scripts/prossimo_changeset.py`).
 
 **DB**
@@ -3695,10 +3706,108 @@ dell'interfaccia assegna un oggetto a un'area. I modelli ORM delle cinque tabell
   D-AH il secondo lo chiede esplicitamente);
 * `genera_error_policies` se il giro aggiunge un codice; i manuali.
 
+### 15.7 Il giro scritto e provato — 2026-11-27
+
+Via di Tid il 2026-11-27, numeri `20261126-50` … `-64` (l'altra sessione DB era attiva sul `-42`). Usati `-50` …
+`-59`, `-62`, `-63`; `-60`, `-61`, `-64` tolti a giro scritto.
+
+**Tre scelte fatte scrivendo** (regola del 2, nessuna cambia una decisione):
+
+* **Una primitiva, non tre corpi.** I tre verbi «sostituisci l'elenco» avrebbero avuto lo stesso corpo tre volte. Il
+  corpo sta in `config.fn_applica_imposta_override(tabella, utente, elenco)`: le tre tabelle e le chiavi ammesse di
+  ognuna in un elenco chiuso, una tabella fuori elenco rifiutata. Le chiavi sono quelle che il backend scrive oggi
+  (§15.5). Gli errori portano il nome del verbo della tabella.
+* **Un builder sotto i quattro.** Il verbo sostituisce l'elenco, un test vuole cambiare una voce:
+  `dbops.fn_pgtap_scrivi_override(tabella, utente, chiave, valori)` legge l'elenco, cambia o toglie la voce, lo
+  riscrive dal verbo vero come SUPER_ADMIN di fixture e rimette il contesto anche in errore. Ritorna la voce di prima
+  (il ricordo di `fn_pgtap_apri_area_per_nascita`). ⚠️ Gli id delle righe dell'utente cambiano a ogni giro, e `meta`
+  si perde: nessun test conserva quegli id (ricerca del 2026-11-27).
+* **Il rifiuto d'azione** (§15.6, `test_commessa_cambia_stato_db.py`): il gemello `dbops.fn_pgtap_nega_azione`, con la
+  firma di `fn_pgtap_concedi_azione`. Un parametro avrebbe cambiato la firma che il BE ha chiesto identica.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/config/20261126-50` | la primitiva `config.fn_applica_imposta_override`, dal corpo di `fn_imposta_override_oggetti` (ultimo `20261123-04`) |
+| `20_code/config/20261126-51` | `config.fn_imposta_override_oggetti`: DEFINER, `fn_guard_super_admin` in prima riga, poi la primitiva; firma e regole invariate |
+| `20_code/config/20261126-52`, `-53` | i verbi nuovi `config.fn_imposta_override_aree`, `config.fn_imposta_override_azioni`: stessa forma, firme col `%TYPE` |
+| `20_code/anagrafiche/20261126-54` | il provisioning di sviluppo: gli override degli utenti di prova dalla primitiva |
+| `20_code/dbops/20261126-55` | il builder `dbops.fn_pgtap_scrivi_override` |
+| `20_code/dbops/20261126-56` … `-59` | `fn_pgtap_concedi_livello_area`, `fn_pgtap_concedi_azione` (col tetto d'area), il gemello nuovo `fn_pgtap_nega_azione`, `fn_pgtap_apri_area_per_nascita` e `fn_pgtap_richiudi_area` (il ricordo diventa `{utente, area_id, prima}`): firme e ritorni identici |
+| `90_end/20261126-62` | le cinque tabelle in sola lettura per l'app; con le altre due sedi (il loop `20260205-41`, `provision_zeroerp.sql`) |
+| `90_end/20261126-63` | la primitiva riservata (`v_fn_riservate`); con le altre due sedi |
+| `db/pgtap/config/test-porta-override-permessi-v1` | nuovo, come app, plan 18: la forma, la sola lettura (l'`INSERT` di un override d'area a `TUTTO` per sé: 42501), il permesso dei tre verbi, la sostituzione dell'elenco, i builder dal SUPER_ADMIN |
+| 18 pgTAP adeguati | **ai builder** (undici, come app): i tre del pannello, quattro di magazzino, `test-trgfn-default-emittente-fiscale-v1`, `test-porta-ddt-riconsegna-v1` (`fn_pgtap_scrivi_override` per l'oggetto a `LETTURA`), `test-reso-carico-v1` (`fn_pgtap_nega_azione`), `test-fn-imposta-override-emittente-attivo-v1` (da un SUPER_ADMIN; il caso 1 dice DEFINER). **A runner owner col motivo** (cinque): `test-catalogo-oggetti-override-v1`, `test-fn-guard-azione-v1`, `test-fn-guard-livello-v1` fabbricano oggetti di catalogo che nessun verbo offre; `test-permessi-strutture-base`, `test-seed-documenti-permessi` collaudano unicità e FK dei cataloghi col DML diretto. Il guard come app resta provato dai 116 file dei verbi coi builder. `test-notify-permessi-catalogo-v1`: per l'app nessuna delle sette tabelle è più scrivibile, il 12 va in `skip` col motivo (il trigger lo prova il 13, col DSN del proprietario). `test-fn-guard-campi-ammessi-v1`: il caso 11 legge il corpo nella primitiva. I sette già a runner owner non cambiano |
+| guide | `architettura-permessi-e-autorizzazioni` (§4.2 e §4.3 «non si modifica dall'applicazione», la frase dell'area di un oggetto riscritta, §4.8 «Chi scrive gli override», «Vedi anche» coi tre verbi); `pgtap-come-si-scrive-un-test` (i due builder nuovi, le eccezioni non si scrivono con un `INSERT`). `risorse-umane-e-accessi`, `architettura-multi-face-auth`, `modello-documento-di-vendita`: rilette, coerenti |
+| `manual/` | cinque pagine nuove (la primitiva, i due verbi, i due builder); riscritta `fn_imposta_override_oggetti`; corrette dieci (le cinque tabelle, i quattro builder, il provisioning) |
+
+**La prova** (`scripts/prova_changeset.py`, scratch `zeroerp_ruoli` come `zeroerp_owner`, 2026-11-27): estratto eseguito
+per intero, catalogo identico dopo. 28 pgTAP corsi senza e con l'estratto: i diciotto adeguati, il nuovo e un
+campione dei builder (`test-permessi-tetto-area-v1`, i tre dei verbi di magazzino, `test-permessi-user-overrides`,
+`test-permessi-funzioni-risoluzione`, `test-permessi-riepilogo-aree-v1`, `test-porta-reset-lotto-e-fondo-v1`,
+`test-fn-provisiona-dati-di-sviluppo-v1`). Nessun rosso nuovo, salvo quelli che le testate dichiarano rossi da
+proprietario: nel nuovo 4, 5, 6 (i privilegi dell'app non si vedono) e 8 (da proprietario l'`INSERT` del 4 riesce);
+in `test-porta-ddt-riconsegna-v1` il 4, come prima. La `preCondition` di `-63` sullo scratch dà 0: la primitiva nasce
+in `-50`, nella stessa corsa. ⚠️ I privilegi si vedono solo come app: la corsa di Tid è quella che conta.
+
+**La richiesta al BE** (dopo l'apply; ricerca di riga sul ramo del 2026-11-26, §15.5):
+
+1. `AmmSoftwareRepository.put_override_aree` e `put_override_azioni`: `SELECT config.fn_imposta_override_aree(%s,
+   %s::jsonb)` e `config.fn_imposta_override_azioni`, al posto del `DELETE` e degli `INSERT`. Le chiavi di un elemento
+   sono quelle di oggi (aree: `area_id`, `livello`, `motivo`, `valido_dal`, `valido_al`; azioni: `azione_id`,
+   `abilitata`, `motivo`, `valido_dal`, `valido_al`). ⚠️ Come per gli oggetti, una chiave assente prende il DEFAULT
+   (`valido_dal` = la data operativa): per tenere «null = senza inizio» le cinque chiavi viaggiano sempre. I vincoli
+   che il service traduce per nome restano quelli; una chiave estranea dà `E_CAMPO_NON_AMMESSO`.
+2. `core/tests/db_e2e.py`, `apri_operatore_con_aree`: `dbops.fn_pgtap_concedi_livello_area` al posto
+   dell'`INSERT … ON CONFLICT` (regola del 2); con lui gli otto file e lo smoke che lo usano.
+3. `core/tests/db/test_pannello_verbo_db.py:201`: `fn_pgtap_concedi_livello_area`.
+   `magazzino/tests/db/test_anagrafiche_magazzino_db.py:325` e `test_documento_interno_db.py:715`: lo stesso builder
+   col livello `LETTURA`. `vendite/tests/db/test_commessa_cambia_stato_db.py:79`: `dbops.fn_pgtap_nega_azione`.
+   Un'eccezione con valori scelti (date, oggetto): `dbops.fn_pgtap_scrivi_override`.
+4. `amm_software/tests/db/test_override_oggetti_catalogo_db.py` e `anagrafiche/tests/db/test_creazioni_dalle_madri_db.py:560`:
+   il verbo da un SUPER_ADMIN (il secondo, con D-AH, lo chiede esplicitamente).
+5. Nessun codice d'errore nuovo: `genera_error_policies` non serve. I manuali delle tre rotte degli override.
+
+## 16. Le guide: il passaggio finale — 2026-11-27
+
+Ogni giro ha scritto la sua porta nella guida del suo dominio (§6 … §15). Qui si rilegge il risultato tutto
+insieme: per ogni porta di §2, e per le tabelle chiuse dai giri 3, 10-bis e 10-quater, la guida che la descrive e se
+dice ancora quello che il codice fa. Ricerca sui nomi delle GUC e sul testo, nelle guide e nelle note di dominio.
+
+| Porta | Guida | Esito |
+| --- | --- | --- |
+| 1-7, il reset dei lotti | `fatturazione` §«Chi può uscire da un lotto, e la porta del reset» | coerente: GUC e proprietario, la accende solo la pulizia del lotto |
+| 8, le righe contabili del fondo | `gestione-dei-pagamenti` (il guard del contenuto) | coerente: la GUC porta l'id dell'atto, e il proprietario |
+| 9, la registrazione tardiva | `gestione-dei-pagamenti` §«Chi resta indietro»; `contratto-guc-app` (la GUC di contesto) | coerente |
+| 10, lo scope degli emittenti | `architettura-permessi-e-autorizzazioni` §4.9, §7.4; `risorse-umane-e-accessi`; `emittenti-fiscali` | coerente |
+| 11, la bolla di riconsegna | `gestione-ddt` (l'esenzione per gli articoli del reso, chi la genera) | coerente |
+| 12-13, i legami della bolla | `gestione-ddt` §15.3 «Chi toglie un legame» | coerente: in bozza la sola GUC sulla riga, dichiarata (D-E a); fuori bozza anche il proprietario |
+| 14-15, la manutenzione delle vie | `riclassificazione-vie`, `gestione-degli-indirizzi` | coerente: strumenti DBA come `zeroerp_owner` |
+| 16, la pubblicazione del template | `documenti-e-stampe` | coerente: GUC sulla riga, il seed dalla sessione del migratore |
+| 17, il bypass del `tx_id` | `tx_id_implementation_guide` | coerente: «un interruttore di timbratura, non una porta» (D-F a) |
+| le viste (giro 3) | `architettura-permessi-e-autorizzazioni` §7.4 | coerente: sulle viste l'app ha solo `SELECT` |
+| scope, legami, profili (10-bis); override e cataloghi (10-quater) | `architettura-permessi-e-autorizzazioni` §4.1-§4.9, §7.4; `pgtap-come-si-scrive-un-test` | coerente (giri del 2026-11-26 e 2026-11-27) |
+
+**Due guide indietro, aggiornate qui:**
+
+* `architettura-permessi-e-autorizzazioni` §7.4 diceva quali porte non si aprono più con la sola GUC, ma non nominava
+  le due strade che lo fanno di proposito. Ora le dichiara, con il rimando alla loro guida: la bozza del legame della
+  bolla (`gestione-ddt`) e il bypass del `tx_id` (`tx_id_implementation_guide`). Rimanda anche alle porte di
+  manutenzione del framework (`automazione-db`).
+* `automazione-db` §4.4 diceva che il blocco `DELETE` si apre «a meno che la GUC non sia `on`». Dal 2026-11-17 si apre
+  solo se la GUC è accesa **e** la sessione è del migratore (`script.fn_porta_manutenzione_aperta`), come la guida
+  dice già in §«Le porte di manutenzione». Allineati §4.4, la riga della tabella e il «Vedi anche».
+
+Nessuna guida contraddetta, nessun orfano nuovo.
+
 ## Registro
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-27 | DB | «Le guide» (§16): le diciassette porte e le tabelle chiuse rilette nelle guide del loro dominio, tutte coerenti; aggiornate §7.4 della guida dei permessi (le due strade con la sola GUC dichiarate, coi rimandi) e §4.4 di `automazione-db` (il blocco `DELETE` si apre solo alla sessione del migratore) |
+| 2026-11-27 | DB | Commit del giro 10-quater su `dev/db-tid`, con la doc auto-generata rigenerata da Tid (`brief-db-revisione-anagrafiche` escluso: è dell'altra sessione). Al BE la richiesta di §15.7 |
+| 2026-11-27 | Tid | Giro 10-quater applicato su dbdev (00:33) e sullo scratch, pgTAP come app verdi. ⚠️ Una prima corsa delle 00:26-00:31 era rossa (funzioni nuove «non esiste»): era girata prima dell'apply, coi pgTAP nuovi del working tree su un database senza il giro (`databasechangelog` e `dbops.error_log`); rilanciata dopo, verde. Restano doc auto-generata e commit; poi la richiesta al BE |
+| 2026-11-27 | DB | Giro 10-quater scritto e provato (§15.7): `20261126-50` … `-59`, `-62`, `-63` (una primitiva per le tre tabelle degli override, i tre verbi del SUPER_ADMIN, il provisioning dalla primitiva, il builder `fn_pgtap_scrivi_override` sotto i quattro di oggi, il gemello `fn_pgtap_nega_azione`, le cinque tabelle in sola lettura e la primitiva riservata nelle tre sedi); pgTAP nuovo e diciotto adeguati (cinque a runner owner col motivo); due guide e sedici pagine `manual/`. Prova sullo scratch: 28 pgTAP, nessun rosso nuovo oltre a quelli dichiarati da proprietario. Da applicare; poi la richiesta al BE |
+| 2026-11-27 | Tid | Il via al giro 10-quater, numeri `20261126-50` … `-64` |
 | 2026-11-27 | BE | D-AH fatta (§14.9): `apri_contesto_operatore` prende il primo operatore che non è SUPER_ADMIN, e fallisce se lo sono tutti; 23 test e2e in 7 file adeguati; i 5 di `CicloOperatoreDbTests` verdi con la sessione vera, resta `test_gli_obbligatori_copiati_dal_primo` (§21.7 anagrafiche); i consumatori di `apri_operatore_con_aree` rossi per il 10-quater già su dbdev |
 | 2026-11-27 | Tid | Giro 10-quater: **D-AI a**, **D-AJ a**, **D-AK a**, **D-AL a** (§15.4). Il DB ha scritto nel brief il giro da fare (§15.6) e aperto `brief-db-storico-scrivibile-dall-app`, non iniziato. Lo sviluppo aspetta il via |
 | 2026-11-26 | DB | Giro 10-quater, analisi (§15): cinque tabelle scrivibili dall'app, un solo verbo senza guard (`fn_imposta_override_oggetti`), i builder che scrivono come app; D-AI, D-AJ, D-AK e D-AL a Tid. Il censimento l'ha letto il DB sul ramo del BE (Tid, §15.5): tre endpoint del SUPER_ADMIN che sostituiscono l'elenco, nessuno scrive i cataloghi, sei test e un BB del BE da portare ai builder. Segnalato lo schema `storico` scrivibile dall'app (D-AL) |

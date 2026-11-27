@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_concedi_livello_area`
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -77,6 +77,10 @@ Nessun pgTAP dedicato: la usano i test dei verbi con un livello d'area, per esem
 * 2026-11-25 — nasce e ritira quattro copie dello stesso aiuto scritte dentro i test
   (`pg_temp.livello_area`), nel giro dei verbi del reset del lotto e della sistemazione
   (brief-db-porte-aperte-dalla-sola-guc, D-L a).
+* 2026-11-27 — l'eccezione dal verbo del SUPER_ADMIN
+  ([`dbops.fn_pgtap_scrivi_override`](/dbzero/dbops/funzioni/fn_pgtap_scrivi_override)), con la
+  stessa firma: le altre eccezioni dell'utente restano, i loro id cambiano
+  (brief-db-porte-aperte-dalla-sola-guc, giro 10-quater).
 
 ---
 

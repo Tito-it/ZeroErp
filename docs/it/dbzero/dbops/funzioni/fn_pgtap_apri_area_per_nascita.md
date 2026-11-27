@@ -23,12 +23,13 @@ AS $function$
 -- Uso: v_ricordo := dbops.fn_pgtap_apri_area_per_nascita('magazzino', 'magazzini');
 --      ... il verbo ...
 --      PERFORM dbops.fn_pgtap_richiudi_area(v_ricordo);
+-- ⚠️ La voce la scrive il verbo del SUPER_ADMIN (dbops.fn_pgtap_scrivi_override):
+--   il contesto dell'operatore torna com'era prima di uscire.
 DECLARE
     v_utente  config.user_override_aree.auth_user_id%TYPE;
     v_area    config.aree_funzionali.schema_db%TYPE;
     v_area_id config.aree_funzionali.id%TYPE;
-    v_prima   config.user_override_aree%ROWTYPE;
-    v_ov      config.user_override_aree.id%TYPE;
+    v_prima   jsonb;  -- la voce d'area di prima, NULL se non c'era: nessuna colonna
 BEGIN
     v_utente := script.fn_utente_di_sessione('dbops.fn_pgtap_apri_area_per_nascita');
     IF v_utente IS NULL THEN
@@ -50,26 +51,13 @@ BEGIN
 
     -- Un override d'area che c'e' (del test, o del database) si alza per
     -- il tempo della nascita e si rimette com'era: se ne tiene il ricordo.
-    SELECT * INTO v_prima
-      FROM config.user_override_aree uoa
-     WHERE uoa.auth_user_id = v_utente
-       AND uoa.area_id      = v_area_id;
-
-    IF v_prima.id IS NULL THEN
-        INSERT INTO config.user_override_aree
-               (auth_user_id, area_id, livello, motivo, valido_dal, valido_al)
-        VALUES (v_utente, v_area_id, 'TUTTO',
-                'Fixture pgTAP: nascita di ' || p_app_label || '.' || p_model_name,
-                (SELECT script.fn_data_operativa()), NULL)
-        RETURNING id INTO v_ov;
-    ELSE
-        UPDATE config.user_override_aree uoa
-           SET livello    = 'TUTTO',
-               valido_dal = (SELECT script.fn_data_operativa()),
-               valido_al  = NULL
-         WHERE uoa.id = v_prima.id;
-        v_ov := v_prima.id;
-    END IF;
+    v_prima := dbops.fn_pgtap_scrivi_override(
+        'config.user_override_aree'::regclass, v_utente,
+        jsonb_build_object('area_id', v_area_id),
+        jsonb_build_object('livello',    'TUTTO',
+                           'motivo',     'Fixture pgTAP: nascita di ' || p_app_label || '.' || p_model_name,
+                           'valido_dal', (SELECT script.fn_data_operativa()),
+                           'valido_al',  NULL));
 
     -- Un override sull'OGGETTO resta sotto il tetto: lo si dice.
     IF script.fn_resolve_livello_oggetto(v_utente, p_app_label, p_model_name, v_area)
@@ -79,16 +67,14 @@ BEGIN
     END IF;
 
     RETURN jsonb_build_object(
-        'override_id', v_ov,
-        'nuovo',       v_prima.id IS NULL,
-        'livello',     v_prima.livello,
-        'valido_dal',  v_prima.valido_dal,
-        'valido_al',   v_prima.valido_al);
+        'utente',  v_utente,
+        'area_id', v_area_id,
+        'prima',   v_prima);
 END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_apri_area_per_nascita(p_app_label character varying, p_model_name character varying)
-IS 'Fixture pgTAP: apre a TUTTO l''area dell''oggetto per l''operatore in sessione, per il tempo di una nascita fatta da un builder sul verbo: scrive un override d''area, o alza quello che c''e''. Ritorna il ricordo di cio'' che c''era (NULL se il livello c''era gia''), da passare a dbops.fn_pgtap_richiudi_area.';
+IS 'Fixture pgTAP: apre a TUTTO l''area dell''oggetto per l''operatore in sessione, per il tempo di una nascita fatta da un builder sul verbo: scrive un override d''area, o alza quello che c''è, dal verbo del SUPER_ADMIN config.fn_imposta_override_aree (dbops.fn_pgtap_scrivi_override), e il contesto dell''operatore torna com''era. Ritorna il ricordo di ciò che c''era ({utente, area_id, prima}; NULL se il livello c''era già), da passare a dbops.fn_pgtap_richiudi_area.';
 ```
 
 </div>

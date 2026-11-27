@@ -4,7 +4,7 @@
 > **Da dove viene**: tre giorni di lavoro nell'agosto 2026, e ogni regola qui
 > sotto è costata un difetto vero. Storia e misure:
 > `docs/it/dev/work-done/2026/brief-db-pgtap-runner-rls-baseline.md`.
-> **Ultimo aggiornamento**: 26 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 
 ## La cosa da sapere per prima
 
@@ -169,6 +169,8 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | una **sorgente di prova**: un tipo di documento che il catalogo non ha (una famiglia di numerazione o un ambito di prova) | `dbops.fn_pgtap_crea_sorgente('<codice>'[, '<tabella>'::regclass])` |
 | **un'azione di processo concessa** a un utente, e fatta valere anche sull'area — sotto, §«I permessi dell'operatore del test» | `dbops.fn_pgtap_concedi_azione(<auth_user_id>, '<azione>')` |
 | **un livello su un'area** dato a un utente, anche più basso di quello che ha (è così che si costruisce il caso «senza il livello») — sotto, §«I permessi dell'operatore del test» | `dbops.fn_pgtap_concedi_livello_area(<auth_user_id>, '<area>', '<livello>')` |
+| **un'azione di processo negata** a un utente (il caso «azione negata», anche se il profilo la concede) | `dbops.fn_pgtap_nega_azione(<auth_user_id>, '<azione>')` |
+| **un'eccezione utente coi valori scelti dal test** (un oggetto a `LETTURA`, una validità precisa), o tolta, lasciando le altre — dal verbo vero del super admin | `dbops.fn_pgtap_scrivi_override('<tabella>', <auth_user_id>, <chiave jsonb>, <valori jsonb o NULL>)` |
 | lo **scope di un lavoro in coda** accodato da chi è in sessione | `dbops.fn_pgtap_scope_operatore([<emittente_id>])` |
 | ⚠️ valuta, forma dell'indirizzo e verifica del conto li risolvono i builder | `dbops.fn_pgtap_valuta` / `dbops.fn_pgtap_indirizzo_libero_forma` / `dbops.fn_pgtap_cliente_ba_del_mondo` (building block, non si chiamano dal test) |
 
@@ -354,6 +356,14 @@ il test se li concede, come farebbe un amministratore, e non li dà per scontati
   `dbops.fn_pgtap_concedi_azione`. Si concede nel setup, **prima** della prima
   lettura di capability: una capability letta prima della concessione nasconde
   l'azione, e il test fallisce lontano dalla causa.
+* **Le eccezioni utente non si scrivono con un `INSERT`**: aree, azioni e oggetti
+  sono in sola lettura per l'applicazione, e le scrivono i verbi del super admin.
+  I builder passano dal verbo vero come super admin di fixture e rimettono il
+  contesto; un'eccezione coi valori scelti dal test (un oggetto a `LETTURA`, una
+  data precisa) la scrive `dbops.fn_pgtap_scrivi_override`, un'azione negata
+  `dbops.fn_pgtap_nega_azione`. Un test che fabbrica voci nei cataloghi dei
+  permessi, o ne collauda i vincoli col DML diretto, gira da proprietario col
+  motivo in testa.
 * ⛔ **Nessun helper `SECURITY DEFINER` per saltare la porta**: sarebbe una
   scorciatoia che anche l'applicazione può eseguire.
 * **Una `TEMP TABLE` è di chi la crea**, cioè del ruolo del runner, e una

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.azioni_processo`
 
-> **Ultimo aggiornamento**: 24 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -81,6 +81,15 @@ Un'azione non cambia area finché un widget la cita insieme all'area: lo tiene l
 | processo_avvia | Avvio manuale di un processo dall'interfaccia («Esegui ora» su una sveglia di deploy). ⛔ **Non** è `code_manage`: chi può riaccodare un lavoro non è per questo chi può avviare un giro. ⚠️ Conta solo se la view che la dichiara **non** è `AdminAPIView` (`IsAdminZeroERP` non legge `post_permission`) — brief `brief-db-avvio-manuale-di-un-processo` §8.2.2 | SI | strumenti | 2026-09-14 |
 | emetti_preventivo | Emette un preventivo, o annulla un preventivo emesso o accettato. ⭐ L'azione sta sulla **riga del passaggio** della matrice (`config.transizioni_stati_preventivi.azione_processo_codename`): la chiedono il verbo `vendite.fn_cambia_stato_preventivo` e il backend, con la domanda intera `script.fn_doc_azione_passaggio`. Stessa forma di `emetti_ddt` (giro 5) — guida [Il modello del documento di vendita](/guide/modello-documento-di-vendita) | NO | vendite | 2026-10-25 |
 | emetti_ordine | Emette (conferma) un ordine, o annulla un ordine confermato. Sulla **riga del passaggio** della matrice (`config.transizioni_stati_ordini.azione_processo_codename`), come `emetti_preventivo` e `emetti_ddt`; la chiede il verbo `vendite.fn_cambia_stato_ordine` — brief `brief-modello-documento-vendita` §9 | NO | vendite | 2026-10-25 |
+
+---
+
+### ⛔ Chi la scrive
+
+Solo il seed: il CSV `80_data/sql/config/azioni_processo.csv`. Un'azione nuova nasce insieme al codice
+che la applica, e l'area e il livello minimo d'area si cambiano lì. Per l'applicazione la tabella è
+in sola lettura: abbassare il livello minimo di un'azione cambierebbe il permesso di tutti quelli che
+l'hanno (brief-db-porte-aperte-dalla-sola-guc, giro 10-quater, 2026-11-27).
 
 ---
 

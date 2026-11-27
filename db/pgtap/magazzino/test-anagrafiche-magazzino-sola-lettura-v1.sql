@@ -6,6 +6,7 @@
 -- Rilasciato sotto GNU AGPLv3 o versione successiva.
 -- Vedi LICENSE.md per il testo completo della licenza.
 -- ------------------------------------------------------------
+-- rev 2026-11-27 (brief-db-porte-aperte-dalla-sola-guc §15, giro 10-quater): gli override utente sono in sola lettura per l'app; l'override LETTURA del caso 12, con la sua validita', lo scrive dbops.fn_pgtap_scrivi_override dal verbo. Attese invariate.
 -- Test: le anagrafiche di magazzino sono in SOLA LETTURA per l'applicazione
 --   (Lotto 1, brief-db-magazzino-tutte-le-scritture-dal-verbo, D-M1 = C,
 --   D-M7 = b): magazzini, ubicazioni, lotti, seriali li scrivono i verbi
@@ -117,8 +118,11 @@ SELECT is(
   '11) ... e l''operatore torna senza override d''area');
 
 -- 12
-INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo, valido_dal, valido_al)
-SELECT o.auth_user_id, af.id, 'LETTURA', 'pgTAP: livello del test', DATE '2026-01-01', DATE '2099-12-31'
+SELECT dbops.fn_pgtap_scrivi_override(
+           'config.user_override_aree', o.auth_user_id,
+           jsonb_build_object('area_id', af.id),
+           jsonb_build_object('livello', 'LETTURA', 'motivo', 'pgTAP: livello del test',
+                              'valido_dal', DATE '2026-01-01', 'valido_al', DATE '2099-12-31'))
   FROM _op o, config.aree_funzionali af
  WHERE af.schema_db = 'magazzino';
 

@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- rev 2026-11-27 (brief-db-porte-aperte-dalla-sola-guc §15, giro 10-quater): le sette tabelle sono tutte in sola lettura per l'app; il 12 va in skip col motivo quando chi esegue non ne scrive nessuna. Attese invariate.
 --
 -- Il catalogo dei permessi avvisa il backend al commit
 --   Brief: brief-db-permessi-catalogo-notify-cache (R1-R5, §6.5)
@@ -13,8 +14,9 @@
 --  4) p_tabella vuota -> E_PARAMETRO_INVALIDO
 --  5-11) ognuna delle sette tabelle ha UN trigger su trgfn_notify_permessi_catalogo,
 --        AFTER, per istruzione, su INSERT/UPDATE/DELETE/TRUNCATE, abilitato
---  12) un'istruzione a zero righe su ogni tabella che il GRANT da' in scrittura a chi esegue
---      (per l'app: sei su sette, aree_funzionali e' in sola lettura): il trigger scatta senza errore
+--  12) un'istruzione a zero righe su ogni tabella che il GRANT da' in scrittura a chi esegue:
+--      il trigger scatta senza errore. Per l'app, dal giro 10-quater, nessuna delle sette:
+--      skip col motivo, e il trigger lo prova il 13
 --  13) CONSEGNA: un'istruzione committata per tabella -> esattamente una notifica per tabella,
 --      sul canale permessi_catalogo, col nome della tabella nel payload
 --  14) un'istruzione ANNULLATA (ROLLBACK) non produce notifiche
@@ -132,8 +134,10 @@ SELECT CASE WHEN EXISTS (SELECT 1 FROM _t_scrivibili) THEN
         || '): il trigger scatta senza errore'
     )
 ELSE
-    -- nessuna tabella scrivibile: il test non ha niente da provare, e lo dice in rosso
-    fail('12. Chi esegue non puo'' scrivere nessuna delle sette tabelle: il trigger non e'' provato')
+    -- ⭐ Dal giro 10-quater (brief-db-porte-aperte-dalla-sola-guc §15, 2026-11-27) l'app non
+    --   scrive nessuna delle sette: e' il contratto dei privilegi, non un difetto. Il
+    --   trigger lo prova il 13, dove B scrive col DSN del proprietario.
+    skip('12. Chi esegue non puo'' scrivere nessuna delle sette tabelle (sola lettura per l''app): il trigger lo prova il 13', 1)
 END;
 
 -- ============================================================

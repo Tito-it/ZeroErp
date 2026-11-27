@@ -4,9 +4,11 @@
 
 **Ripartono in due, senza aspettarsi.** Il rosso del rubinetto degli accumulatori sul giro 6 è chiuso lato DB
 (§24.9: `20261126-42` applicato da Tid su scratch e dbdev, pgTAP verde, rubinetto senza accumuli, committato il
-2026-11-27); la sua richiesta va al **team BE/FE**. **Tid** con le decisioni di T8 (§25.5): l'analisi sul catalogo è scritta il
-2026-11-26 (§25), con la proposta di dividerlo in T8a conti, T8b emittente, T8c ruoli d'impresa; poi la **sessione
-DB** costruisce un giro alla volta, al via. Il giro 6 (T4, l'azienda
+2026-11-27); la sua richiesta va al **team BE/FE**. **Tid** con il via a T8c e il suo range di changeSet: le
+decisioni di T8c sono prese (Tid, 2026-11-27, §25.5), poi la **sessione DB** costruisce il giro; lo sviluppo non è
+iniziato. T8 si fa in **tre giri** (D-T8-0, 2026-11-27), nell'ordine T8c (ruoli d'impresa), T8b (emittente), T8a
+(conti): le decisioni di T8b e T8a restano aperte. Il reseller è uscito da T8c in
+[brief-db-reseller](brief-db-reseller.md) (Tid, 2026-11-27), aperto, non iniziato. Il giro 6 (T4, l'azienda
 del billing account) è chiuso lato DB, `20261126-26 … -41` applicati su scratch e dbdev, pgTAP verdi (Tid, 2026-11-26,
 §24.7), committato il 2026-11-26; il suo passaggio al BE (§24.5, §24.7) è del **team BE/FE**. Alla sessione DB resta
 anche da vagliare un rosso già presente su HEAD, la copia di `FATT` nella madre plurale (§21.7, esito). Il giro 5-bis (il
@@ -29,8 +31,8 @@ resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta d
 | 6 | sessione DB | Il giro dei metadati, per ciò che i giri di codice non hanno già riscritto | §8 | 4 |
 | 7 | sessione DB | Archiviazione in `work-done/`, col debito dei temi spostati scritto nei loro brief | §11 | 5, 6 |
 
-**Decisioni aperte di Tid:** T8 (§25.5): D-T8-0 (la divisione e l'ordine), D-T8a-1 … -12, D-T8b-1 … -4, D-T8c-1 … -8. Nessuna del giro 6 (T4): D-T4-1 … -12 decise il 2026-11-26 (§24.5, §24.7.1, §24.7). Il giro 5-bis è ritirato (Tid, 2026-11-26, §23.4). Nessuna del giro 5 (D-T7b-1 … -7 prese come proposte, Tid 2026-11-25, §22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
-**Da committare:** `.codex/PROJECT_CONTEXT.md`; il rosso del rubinetto è committato (2026-11-27, «DB: anagrafiche giro 6, il billing account che non c'è ha il suo codice», insieme al brief con l'allineamento del §24 e l'analisi di T8, §25); il giro 6 (T4) è committato (2026-11-26, «DB: anagrafiche giro 6 (T4)», insieme al giro 5-bis ritirato); i passaggi al BE dei giri 3 e 4 sono committati (2026-11-26, PR #257); il giro 5 è committato (DB `7f8d9506d`, BE 2026-11-26).
+**Decisioni aperte di Tid:** T8 (§25.5): quelle di T8c sono prese (2026-11-27; -2, -3, -4 passate a `brief-db-reseller`); restano D-T8b-1 … -4 e D-T8a-1 … -12 (D-T8-0 decisa: tre giri, Tid 2026-11-27). Nessuna del giro 6 (T4): D-T4-1 … -12 decise il 2026-11-26 (§24.5, §24.7.1, §24.7). Il giro 5-bis è ritirato (Tid, 2026-11-26, §23.4). Nessuna del giro 5 (D-T7b-1 … -7 prese come proposte, Tid 2026-11-25, §22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
+**Da committare:** `.codex/PROJECT_CONTEXT.md`; il §25 riverificato e il reseller spostato col brief nuovo `brief-db-reseller` (2026-11-27); il rosso del rubinetto è committato (2026-11-27, «DB: anagrafiche giro 6, il billing account che non c'è ha il suo codice», insieme al brief con l'allineamento del §24 e l'analisi di T8, §25); il giro 6 (T4) è committato (2026-11-26, «DB: anagrafiche giro 6 (T4)», insieme al giro 5-bis ritirato); i passaggi al BE dei giri 3 e 4 sono committati (2026-11-26, PR #257); il giro 5 è committato (DB `7f8d9506d`, BE 2026-11-26).
 
 ## 0. Il piano da percorrere
 
@@ -121,8 +123,13 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] Giro 6: `-42`, commit (2026-11-27)
   * [ ] Giro 6: la richiesta al BE di §24.9: da girare
   * [x] T8: analisi sul catalogo, guide verificate, ciò che esiste già; proposta di dividerlo in T8a, T8b, T8c (2026-11-26, §25)
-  * [ ] T8: le decisioni (Tid, §25.5)
-  * [ ] Poi un giro per tema nell'ordine di §17.1: T8 (uno o tre giri), T12, T3, T10, T11
+  * [x] T8: D-T8-0, tre giri, nell'ordine T8c, T8b, T8a (Tid, 2026-11-27, §25.5)
+  * [x] T8c: il reseller tolto e portato in [brief-db-reseller](brief-db-reseller.md) (Tid, 2026-11-27)
+  * [x] T8c: le decisioni D-T8c-1 (solo PSP), -5 … -8, tutte come proposte (Tid, 2026-11-27, §25.5)
+  * [ ] T8c: il giro, al via di Tid e col suo range
+  * [ ] T8b: le decisioni D-T8b-1 … -4 (Tid, §25.3); poi il giro
+  * [ ] T8a: le decisioni D-T8a-1 … -12 (Tid, §25.2); poi il giro
+  * [ ] Poi un giro per tema nell'ordine di §17.1: T12, T3, T10, T11
 * **Fase 9 — Il giro dei metadati** (§8)
   * [ ] I COMMENT, i commenti nei corpi e le note di seed che i giri di codice non hanno già riscritto
 * **Fase 10 — L'archiviazione** (§11)
@@ -2812,6 +2819,7 @@ sullo scratch senza accumuli né rientrati, doc auto-generata rigenerata, lo ste
   file citati sono quelli noti, non l'elenco chiuso;
 * `docs/it/backend/anagrafiche/manual/api_emittenti_fiscali.md` (la sezione del lookup): il 404 fra le risposte.
 
+## 25. T8 — ruoli d'impresa, conti, emittente (2026-11-26: analisi letta sul catalogo; 2026-11-27: tre giri, decisioni dei giri aperte)
 **Risposta del BE** (2026-11-27). ✅ Policy rigenerate, ripiego senza `%s`, manuale del lookup: commit `8e0ced5b2`. Per
 decisione di Tid lo stesso codice vale per **ogni** punto del BE che risponde «il billing account non risulta»
 (inesistente o fuori perimetro, che la RLS non distingue):
@@ -2836,7 +2844,7 @@ Il perimetro è S12, S13, S15 (la parte che serve), S18, S54, S55, S56, S57, R-B
 trigger, vincoli e COMMENT letti sul catalogo dello scratch (`zeroerp_ruoli`) il 2026-11-26, confrontati con dbdev dove
 serviva; sul backend solo chi chiama, in sola lettura. Nessuna misura sui dati entra come motivo.
 
-**Proposta di forma: T8 si divide in tre giri** (Tid decide, D-T8-0), come T7. Le tre famiglie non condividono oggetti e
+**La forma: T8 si divide in tre giri** (D-T8-0, ✅ decisa da Tid il 2026-11-27 come proposta, ordine compreso), come T7. Le tre famiglie non condividono oggetti e
 ognuna ha le sue decisioni: **T8a** i conti bancari (S18, S55, R-BE4), **T8b** l'emittente (S54, e il §15.2
 dell'emittente), **T8c** i ruoli d'impresa (S12, S13, S56, S57, R-BE3). Ordine proposto: T8c, che porta il fatto di
 §25.1 e tocca gli stessi ruoli di T12; poi T8b, il più piccolo; poi T8a, il più largo.
@@ -2857,7 +2865,8 @@ dell'emittente), **T8c** i ruoli d'impresa (S12, S13, S56, S57, R-BE3). Ordine p
 **Orfani**: `resellers_billing_account` è un concetto di dominio (il reseller di una fornitura nel tempo) senza guida:
 va in `soggetti-e-ruoli-anagrafici`. `vendite.fn_build_fattura_key` va nel «Vedi anche» di `fatturazione`.
 `gestori_utilities` e le due funzioni del fornitore dipendono da D-T8c-8 e D-T8c-6; `trgfn_resellers_guard_attivo` è
-un dettaglio interno, che si ritira se D-T8c-3 è la FK.
+un dettaglio interno, che si ritira se D-T8c-3 è la FK. ⚠️ Il reseller, i suoi orfani e la riga di
+`soggetti-e-ruoli-anagrafici` sul legame reseller–BA sono passati a [brief-db-reseller](brief-db-reseller.md) (Tid, 2026-11-27).
 
 ### 25.1 Un fatto nuovo, fuori elenco: il guard di ruolo montato due volte su un database ricostruito
 
@@ -2915,18 +2924,22 @@ Chiamanti BE di `_pk` (l'id può arrivare da una richiesta): `billing_account_re
 `billing_account_service.py`, `pratiche_repository.py`, `pipeline_repository.py`, `preventivi_repository.py`,
 `contratti_repository.py`; di `_id`: `commesse_repository.py`. Con D-T8b-1 **a** cambia prima il DB.
 
-### 25.4 T8c — i ruoli d'impresa (S12, S13, S56, S57, R-BE3)
+### 25.4 T8c — i ruoli d'impresa (S13, S56, S57, R-BE3; S12 spostata)
+
+⚠️ **Il reseller esce da T8c** (Tid, 2026-11-27): S12a-S12d, S57d, S57e, `trgfn_resellers_normalize` e il COMMENT della
+tabella vanno in [brief-db-reseller](brief-db-reseller.md), aperto, non iniziato. D-T8c-2, -3, -4 si spostano lì
+(D-R-2, -3, -4); D-T8c-1 resta per il solo PSP. Il guard di ruolo doppio di `resellers` (§25.1) resta qui.
 
 Già chiuso dal giro 3: S52 (`soggetti_ruoli.tipo_ruolo_id` e `soggetto_id` bloccati). `create-soggetto-gestori.sql`
 non è più nelle baseline dei rossi: la nota di §15.2 è superata.
 
 | # | Il catalogo oggi | Natura | Proposta |
 | --- | --- | --- | --- |
-| S12a `resellers.codice` | regge: NOT NULL, nessuna riga in `config.sistema_codici`, nessun generatore | difetto (il COMMENT del normalize promette il generatore) | riga in `sistema_codici` + `trgfn_resellers_gen_codice`, come vettori e fornitori. **D-T8c-1**: il prefisso; lo stesso per `psp`? |
-| S12b legame reseller–BA sul periodo | regge: `validita` in nessun vincolo | difetto | `EXCLUDE USING gist (billing_account_id WITH =, validita WITH &&)` |
-| S12c `vendite.fn_build_fattura_key` | regge: `ORDER BY rb.id LIMIT 1` senza periodo | difetto | il legame valido alla data. **D-T8c-2**: quale data (competenza o data dell'attività) |
-| S12d / S57d il ruolo del legame e il verso opposto | regge: FK su `soggetti_ruoli`, nessun guard di ruolo, nessun rifiuto verso un reseller spento | difetto | **D-T8c-3**: FK verso `resellers(soggetto_ruolo_id)` (UNIQUE): tipo, esistenza e «attivo» dall'automazione, e `trgfn_resellers_guard_attivo` si ritira; oppure guard a mano. Proposta FK |
-| S57e lo spegnimento del reseller | regge: conta anche i legami chiusi | difetto | **D-T8c-4**: un legame chiuso ferma lo spegnimento? Proposta no |
+| ~~S12a `resellers.codice`~~ | ~~regge: NOT NULL, nessuna riga in `config.sistema_codici`, nessun generatore~~ | spostata | → [brief-db-reseller](brief-db-reseller.md) (Tid, 2026-11-27). Resta qui la metà del PSP: **D-T8c-1**, il generatore del codice del PSP e il suo prefisso |
+| ~~S12b legame reseller–BA sul periodo~~ | ~~regge: `validita` in nessun vincolo~~ | spostata | → [brief-db-reseller](brief-db-reseller.md) (Tid, 2026-11-27) |
+| ~~S12c `vendite.fn_build_fattura_key`~~ | ~~regge: `ORDER BY rb.id LIMIT 1` senza periodo~~ | spostata | ~~D-T8c-2~~ → [brief-db-reseller](brief-db-reseller.md) (Tid, 2026-11-27) |
+| ~~S12d / S57d il ruolo del legame e il verso opposto~~ | ~~regge: FK su `soggetti_ruoli`, nessun guard di ruolo~~ | spostata | ~~D-T8c-3~~ → [brief-db-reseller](brief-db-reseller.md) (Tid, 2026-11-27) |
+| ~~S57e lo spegnimento del reseller~~ | ~~regge: conta anche i legami chiusi~~ | spostata | ~~D-T8c-4~~ → [brief-db-reseller](brief-db-reseller.md) (Tid, 2026-11-27) |
 | S13 `psp` | regge: fuori da `automation_delete_block`, codice non bloccato, nessun generatore, nessun verso opposto verso gli enti d'incasso | difetto | delete block e lock del codice; **D-T8c-5**: guard su `psp.attivo` contro gli enti `PSP` attivi (la FK non si può: `enti_incasso.soggetto_ruolo_id` è polimorfica), oppure una colonna PSP dedicata con FK |
 | S56a `soggetto_ruolo_id` delle specializzazioni | regge, **più largo**: non bloccato in nessuna specializzazione | difetto | lock su tutte; il BE non lo scrive in modifica |
 | S56b `vendite.ddt.vettore_soggetto_ruolo_id` | regge: sola FK su `soggetti_ruoli` | difetto | FK verso `vettori(soggetto_ruolo_id)` (verificare prima che generi il `require_attivo`). Stesso disegno di T12 |
@@ -2934,8 +2947,15 @@ non è più nelle baseline dei rossi: la nota di §15.2 è superata.
 | S57a il gestore unico | regge: lettura con `LIMIT 1`, due inserimenti concorrenti passano; `v_existing_id integer` | difetto | indice UNIQUE su `((1))` |
 | S57b la P.IVA del gestore | regge ristretta: dal giro 3 la cambia solo il SUPER_ADMIN | residuo | **D-T8c-7**: guard sul soggetto, oppure limite dichiarato |
 | S57c `gestori_utilities` | regge: nessun lettore; COMMENT e nomi dei vincoli di un rinomino; `utility_id integer` | tabella senza consumatore | **D-T8c-8**: ritirarla, oppure scriverne il significato |
-| S15 `resellers_normalize`, `vettori_normalize` | `RETURN NEW` | forma | il primo cade col generatore di S12a; il secondo a T11 |
-| COMMENT di §15.2 | ancora stantii (`RES` contro `RE`, `rating`, i normalize) | metadati | changeSet di COMMENT al presente nel giro |
+| S15 `vettori_normalize` | `RETURN NEW` | forma | a T11; `resellers_normalize` → [brief-db-reseller](brief-db-reseller.md) (Tid, 2026-11-27) |
+| COMMENT di §15.2 | ancora stantii (`RES` contro `RE` sui vettori, `rating`, i normalize) | metadati | changeSet di COMMENT al presente nel giro; quello della tabella `resellers` → [brief-db-reseller](brief-db-reseller.md) (Tid, 2026-11-27) |
+
+**Riverificato sullo scratch il 2026-11-27**, prima delle decisioni: la tabella regge. Due fatti in più. Per D-T8c-1, in
+`config.sistema_codici` le righe di `anagrafiche` non hanno una forma comune: `SGT-`, `VET-`, `IFO-` con il trattino,
+`BAC/` con la barra, `FORN` senza separatore, tutte a 7 cifre; il COMMENT della tabella nomina il ruolo «RES». Per
+D-T8c-3 il precedente c'è ed è montato: `emittenti_fiscali_billing_account` punta a `emittenti_fiscali(soggetto_ruolo_id)`
+e ha il require differito e il block sul padre (nomi con l'hash), come dice §4.2 di `automazione-db`. `psp` è la sola
+specializzazione senza il guard di ruolo doppio di §25.1.
 
 Ricadute BE: `ddt_service.py`, `ddt_repository.py`, `_schema_da_contratto.py` (il vettore del DDT: codice d'errore
 nuovo); `invito_portale_service.py` (commento che nomina `fn_guard_fornitore_attivo`); i codici `E_FORNITORE_*`
@@ -2943,12 +2963,50 @@ se D-T8c-6 è **a**. Reseller, PSP e i due legami: nessuno li scrive dal BE.
 
 ### 25.5 Le decisioni per Tid
 
-D-T8-0 (la divisione in T8a, T8b, T8c e l'ordine); T8a: D-T8a-1 … -12; T8b: D-T8b-1 … -4; T8c: D-T8c-1 … -8. Le
-proposte sono nelle tabelle. Il fatto di §25.1 non chiede decisioni.
+* ✅ **D-T8-0** (Tid, 2026-11-27): tre giri, nell'ordine **T8c** (ruoli d'impresa, con il fatto di §25.1), **T8b**
+  (emittente), **T8a** (conti bancari). Ogni giro ha le sue decisioni e il suo range di changeSet, e parte al via di Tid.
+* ✅ Il reseller esce da T8c in [brief-db-reseller](brief-db-reseller.md) (Tid, 2026-11-27).
+* ✅ **T8c, tutte come proposte** (Tid, 2026-11-27):
+  * **D-T8c-1**: il codice del PSP lo genera il database, riga in `config.sistema_codici` e trigger `gen_codice`
+    come vettori e fornitori, forma `PSP-` + 7 cifre;
+  * **D-T8c-5**: un guard su `psp.attivo` rifiuta lo spegnimento finché un ente d'incasso `PSP` attivo lo nomina
+    (la FK non si può: `enti_incasso.soggetto_ruolo_id` è polimorfica);
+  * **D-T8c-6 b**: `fn_check_fornitore_attivo` e `fn_guard_fornitore_attivo` le chiama il guard degli ordini
+    d'acquisto, e `blocca_ordini` di `config.stati_fornitore` ha un lettore; si corregge il segnaposto di
+    `E_FORNITORE_BLOCCATO`. R-BE3 (il ritiro chiesto dal BE) non si fa;
+  * **D-T8c-7**: la P.IVA del soggetto del gestore resta giudicata solo alla scrittura del gestore; il limite si
+    scrive (pagina di `gestori`, guida `risorse-umane-e-accessi` §«Soggetto gestore»), nessun guard sul soggetto;
+  * **D-T8c-8**: `gestori_utilities` si ritira. **Verificato prima, come chiesto da Tid** (2026-11-27): nessuna guida,
+    nessun brief, nessuna decisione ne scrive lo scopo. La sola frase è quella della pagina `manual/` riscritta dal
+    giro 0d (2026-11-22), che descrive le colonne («quali servizi il gestore gestisce») e dice che nessun oggetto la
+    legge. Nessuna funzione, vista, pgTAP, file del backend o del frontend la nomina (catalogo dello scratch e
+    `grep`, 2026-11-27). La storia: nasce nella prima generazione (2025-05) come `gestori_utilities_ruoli`,
+    scritta dalla factory `dbops.fn_create_gestore` insieme a un «ruolo funzionale»; il 2025-08-01 (`20250801-11`)
+    perde il ruolo e prende il nome di oggi; la factory non esiste più, e la tabella resta senza chi la scrive. Il
+    servizio per azienda oggi lo porta `emittenti_fiscali_utilities`. Il ritiro toglie anche la pagina `manual/`, le
+    righe dei CSV di `dbops` che la nominano (`fk_index_policy.csv`, `_defaults_backup_usercols.csv`: da vagliare nel
+    giro, sono seed) e il rimando dalla pagina di `gestori`.
+    ⚠️ **Il ricordo di Tid** (2026-11-27): in origine il gestore era l'azienda che gestiva il software, e la tabella
+    diceva quali utility erano attive, cioè funzionanti, sul sistema. Oggi quella domanda ha una risposta a livello di
+    sistema: `config.utilities_tipi_ruolo`, la matrice delle utility ammesse per tipo di ruolo (aperta se un'utility
+    non ha righe), letta dal guard `script.fn_guard_utility_tipo_ruolo` e dal lookup `fn_lookup_utilities_per_ba`.
+    **Per emittente non esiste**, e per decisione: `emittenti_fiscali_utilities` porta solo i parametri d'importo
+    che un'azienda vuole diversi dal sistema, non dice quali utility l'azienda gestisce («politica ibrida C»,
+    [refactor-operatore-emittenti](../work-done/2026/refactor-operatore-emittenti.md) §3.2, che ne scrive anche il
+    limite: l'admin di un emittente non può togliere un'utility se non dalla matrice globale). Il ritiro di
+    `gestori_utilities` non tocca questa decisione. Un elenco delle utility gestite da ciascun emittente sarebbe un
+    cambio di modello che la revoca: tema a parte, non di T8c. ✅ Tid, 2026-11-27: `gestori_utilities` si ritira, e
+    l'analisi va in [brief-db-utility-gestite-dall-emittente](brief-db-utility-gestite-dall-emittente.md), aperto, non iniziato.
+* Aperte, nell'ordine dei giri: T8b D-T8b-1 … -4 (§25.3); T8a D-T8a-1 … -12 (§25.2). Le
+  proposte sono nelle tabelle. Il fatto di §25.1 non chiede decisioni.
 
 ### 25.6 Il piano di T8 (dopo le decisioni)
 
 * [x] Analisi sul catalogo, guide verificate, ciò che esiste già (2026-11-26, §25)
-* [ ] Le decisioni (Tid)
-* [ ] Per ogni giro: pgTAP rosso, changeSet (range da Tid), prova sullo scratch, documentazione, apply e pgTAP (Tid),
+* [x] D-T8-0: tre giri, T8c, T8b, T8a (Tid, 2026-11-27)
+* [x] T8c: le decisioni (Tid, 2026-11-27)
+* [ ] T8c: il giro
+* [ ] T8b: le decisioni, poi il giro
+* [ ] T8a: le decisioni, poi il giro
+* Per ogni giro: pgTAP rosso, changeSet (range da Tid), prova sullo scratch, documentazione, apply e pgTAP (Tid),
   commit, la richiesta al BE

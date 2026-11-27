@@ -1,0 +1,128 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BUILDER CHE CAMBIA UN OVERRIDE DI UN UTENTE DAL VERBO VERO
+#   dbops.fn_pgtap_scrivi_override(tabella, utente, chiave, valori)
+#   Brief: brief-db-porte-aperte-dalla-sola-guc §15 (giro 10-quater; D-AI a, D-AJ a, D-AK a di Tid, 2026-11-27).
+#
+#   Con le tre tabelle degli override in sola lettura per l'app
+#   (90_end/20261126-62) un pgTAP non scrive piu' un override con un INSERT:
+#   lo scrive il verbo del SUPER_ADMIN, che sostituisce l'ELENCO dell'utente
+#   (D-AK a). Un test, e i builder dei permessi, vogliono invece cambiare UNA
+#   voce e lasciare le altre. Questo builder fa il gesto una volta sola
+#   (regola del 2: lo usano dbops.fn_pgtap_concedi_livello_area,
+#   fn_pgtap_concedi_azione, fn_pgtap_nega_azione,
+#   fn_pgtap_apri_area_per_nascita, fn_pgtap_richiudi_area e i pgTAP che
+#   scrivevano a mano):
+#     1. legge l'elenco dell'utente com'e', una voce per riga, con le colonne
+#        che il verbo ammette (tolte quelle di sistema);
+#     2. toglie la voce che contiene p_chiave e, se p_valori non e' NULL,
+#        mette p_chiave || p_valori al suo posto;
+#     3. entra come SUPER_ADMIN di fixture (dbops.fn_pgtap_entra_come_super_admin),
+#        chiama il verbo della tabella, rimette il contesto anche in errore.
+#   Ritorna la voce di prima (NULL se non c'era): e' il ricordo che serve a
+#   rimetterla.
+#   ⚠️ L'elenco si riscrive intero: gli id delle righe dell'utente cambiano.
+#   ⚠️ La colonna meta non passa dal verbo: rileggendo l'elenco si perde.
+#   INVOKER, come i builder che lo usano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261126-55-create-fn-pgtap-scrivi-override-mctit.yaml
+
+  - changeSet:
+      id: 20261126-55-create-fn-pgtap-scrivi-override
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_scrivi_override: il builder che cambia o toglie un override di un utente (aree, azioni, oggetti) dal verbo del SUPER_ADMIN, lasciando le altre voci. brief-db-porte-aperte-dalla-sola-guc §15.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_scrivi_override(
+                  p_tabella      regclass,  -- una delle tre tabelle degli override: un nome di tabella, nessuna colonna
+                  p_auth_user_id config.user_override_aree.auth_user_id%TYPE,
+                  p_chiave       jsonb,     -- la chiave della voce ({area_id}, {azione_id}, {app_label, model_name}): colonne di tabelle diverse
+                  p_valori       jsonb)     -- le altre colonne della voce; NULL = la voce si toglie
+               RETURNS jsonb  -- la voce di prima, NULL se non c'era: un elemento dell'elenco, nessuna colonna
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: in un pgTAP, cambiare (o togliere) UN override di un utente su una
+              --   delle tre tabelle, dal verbo vero e lasciando le altre voci.
+              -- Uso:
+              --   PERFORM dbops.fn_pgtap_scrivi_override('config.user_override_aree',
+              --       v_utente, jsonb_build_object('area_id', v_area),
+              --       jsonb_build_object('livello', 'LETTURA'));
+              --   PERFORM dbops.fn_pgtap_scrivi_override('config.user_override_azioni',
+              --       v_utente, jsonb_build_object('azione_id', v_azione), NULL);  -- la toglie
+              DECLARE
+                  v_verbo  text;   -- il nome del verbo della tabella: nessuna colonna
+                  v_righe  jsonb;  -- l'elenco dell'utente com'e': nessuna colonna
+                  v_prima  jsonb;  -- la voce di prima: nessuna colonna
+                  v_elenco jsonb;  -- l'elenco da riscrivere: nessuna colonna
+                  v_ctx    jsonb;  -- il contesto di prima, {utente, ruolo}: nessuna colonna
+                  c_sistema CONSTANT text[] := ARRAY[  -- le colonne che il verbo non ammette: nomi, nessuna colonna da ancorare
+                      'id', 'auth_user_id', 'meta', 'data_insert', 'user_insert', 'data_update',
+                      'user_update', 'storicizza', 'tx_id', 'validita', 'riservato'];
+              BEGIN
+                  v_verbo := CASE p_tabella
+                      WHEN 'config.user_override_aree'::regclass    THEN 'config.fn_imposta_override_aree'
+                      WHEN 'config.user_override_azioni'::regclass  THEN 'config.fn_imposta_override_azioni'
+                      WHEN 'config.user_override_oggetti'::regclass THEN 'config.fn_imposta_override_oggetti'
+                  END;
+                  IF v_verbo IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_scrivi_override: % non e'' una tabella degli override', p_tabella;
+                  END IF;
+                  IF p_auth_user_id IS NULL OR p_chiave IS NULL OR jsonb_typeof(p_chiave) <> 'object' THEN
+                      RAISE EXCEPTION 'fn_pgtap_scrivi_override: utente e chiave obbligatori';
+                  END IF;
+
+                  EXECUTE format(
+                      'SELECT COALESCE(jsonb_agg(to_jsonb(o) - $2 ORDER BY o.id), ''[]''::jsonb)
+                         FROM %s o WHERE o.auth_user_id = $1', p_tabella)
+                    INTO v_righe
+                    USING p_auth_user_id, c_sistema;
+
+                  SELECT e INTO v_prima
+                    FROM jsonb_array_elements(v_righe) AS e
+                   WHERE e @> p_chiave;
+
+                  SELECT COALESCE(jsonb_agg(e), '[]'::jsonb) INTO v_elenco
+                    FROM jsonb_array_elements(v_righe) AS e
+                   WHERE NOT e @> p_chiave;
+
+                  IF p_valori IS NOT NULL THEN
+                      v_elenco := v_elenco || jsonb_build_array(p_valori || p_chiave);
+                  END IF;
+
+                  v_ctx := dbops.fn_pgtap_entra_come_super_admin('override');
+                  BEGIN
+                      EXECUTE format('SELECT %s($1, $2)', v_verbo) USING p_auth_user_id, v_elenco;
+                  EXCEPTION WHEN OTHERS THEN
+                      PERFORM dbops.fn_pgtap_rimetti_contesto(v_ctx);
+                      RAISE;
+                  END;
+                  PERFORM dbops.fn_pgtap_rimetti_contesto(v_ctx);
+
+                  RETURN v_prima;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_scrivi_override(regclass, config.user_override_aree.auth_user_id%TYPE, jsonb, jsonb)
+              IS $c$Fixture pgTAP: cambia o toglie UN override di un utente su una delle tre tabelle (config.user_override_aree, config.user_override_azioni, config.user_override_oggetti) lasciando le altre voci. Legge l'elenco dell'utente (le colonne che il verbo ammette), toglie la voce che contiene p_chiave e, se p_valori non è NULL, mette p_chiave || p_valori al suo posto; poi lo riscrive dal verbo vero della tabella (config.fn_imposta_override_aree, _azioni, _oggetti) come SUPER_ADMIN di fixture (dbops.fn_pgtap_entra_come_super_admin), e rimette il contesto anche in errore. Ritorna la voce di prima (NULL se non c'era), da ripassare come p_valori per rimetterla. L'elenco si riscrive intero: gli id delle righe cambiano, e meta si perde. Tabella fuori elenco, utente o chiave nulli -> RAISE; il resto lo rifiuta il verbo. Solo per i pgTAP.$c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_scrivi_override(regclass, config.user_override_aree.auth_user_id%TYPE, jsonb, jsonb);
