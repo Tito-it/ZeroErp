@@ -13,7 +13,9 @@
 #
 #        Pattern: niente classe, funzioni `fn_*` allineate al modello
 #        di `vendite_lookups_service`. Errori applicativi via
-#        ErrorManager (codici E_VENDITE_NOT_FOUND/VALIDATION).
+#        ErrorManager (codici E_VENDITE_NOT_FOUND/VALIDATION); il BA che
+#        non risulta e' E_BILLING_ACCOUNT_NOT_FOUND, dal BB
+#        `BillingAccountService.get_lookup_by_id` (2026-11-27, §24.9).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from typing import Any
 
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
+from apps.anagrafiche.services.billing_account_service import BillingAccountService
 from apps.anagrafiche.services.valuta_resolver import resolve_valuta_default
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService, contesto_cascata
@@ -210,15 +213,10 @@ def fn_get_contratto_form_defaults(
         ba_id = _require_positive_int(
             billing_account_id, field="billing_account_id", function_name=function_name,
         )
-        ba = BillingAccountRepository().get_lookup_by_id(ba_id)
-        ErrorManager.require(
-            ba is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Billing account non trovato.",
-            detail=f"billing_account_id={ba_id}",
-            function_name=function_name,
-        )
-        assert ba is not None
+        # BB `BillingAccountService.get_lookup_by_id`: inesistente o fuori
+        # perimetro (RLS) -> 404 E_BILLING_ACCOUNT_NOT_FOUND, il codice del DB
+        # per lo stesso caso (brief-db-revisione-anagrafiche §24.9).
+        ba = BillingAccountService().get_lookup_by_id(ba_id)
         _apply_ba_categoria_utility(payload, ba, ba_id)
         _apply_fornitura(payload)
 
@@ -269,15 +267,10 @@ def fn_get_offerta_form_defaults(
         ba_id = _require_positive_int(
             billing_account_id, field="billing_account_id", function_name=function_name,
         )
-        ba = BillingAccountRepository().get_lookup_by_id(ba_id)
-        ErrorManager.require(
-            ba is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Billing account non trovato.",
-            detail=f"billing_account_id={ba_id}",
-            function_name=function_name,
-        )
-        assert ba is not None
+        # BB `BillingAccountService.get_lookup_by_id`: inesistente o fuori
+        # perimetro (RLS) -> 404 E_BILLING_ACCOUNT_NOT_FOUND, il codice del DB
+        # per lo stesso caso (brief-db-revisione-anagrafiche §24.9).
+        ba = BillingAccountService().get_lookup_by_id(ba_id)
         _apply_ba_categoria_utility(payload, ba, ba_id)
         _apply_fornitura(payload)
 
@@ -333,16 +326,11 @@ def fn_get_ordine_form_defaults(
         ba_id = _require_positive_int(
             billing_account_id, field="billing_account_id", function_name=function_name,
         )
+        # BB `BillingAccountService.get_lookup_by_id`: inesistente o fuori
+        # perimetro (RLS) -> 404 E_BILLING_ACCOUNT_NOT_FOUND, il codice del DB
+        # per lo stesso caso (brief-db-revisione-anagrafiche §24.9).
         ba_repo = BillingAccountRepository()
-        ba = ba_repo.get_lookup_by_id(ba_id)
-        ErrorManager.require(
-            ba is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Billing account non trovato.",
-            detail=f"billing_account_id={ba_id}",
-            function_name=function_name,
-        )
-        assert ba is not None
+        ba = BillingAccountService().get_lookup_by_id(ba_id)
         payload.update({
             "billing_account_id": ba_id,
             "utility_id": ba.get("utility_id"),
@@ -418,15 +406,10 @@ def fn_get_ddt_form_defaults(
         ba_id = _require_positive_int(
             billing_account_id, field="billing_account_id", function_name=function_name,
         )
-        ba = BillingAccountRepository().get_lookup_by_id(ba_id)
-        ErrorManager.require(
-            ba is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Billing account non trovato.",
-            detail=f"billing_account_id={ba_id}",
-            function_name=function_name,
-        )
-        assert ba is not None
+        # BB `BillingAccountService.get_lookup_by_id`: inesistente o fuori
+        # perimetro (RLS) -> 404 E_BILLING_ACCOUNT_NOT_FOUND, il codice del DB
+        # per lo stesso caso (brief-db-revisione-anagrafiche §24.9).
+        ba = BillingAccountService().get_lookup_by_id(ba_id)
         payload.update({
             "billing_account_id": ba_id,
             "utility_id": ba.get("utility_id"),
@@ -504,16 +487,10 @@ def fn_get_preventivo_form_defaults(
         ba_id = _require_positive_int(
             billing_account_id, field="billing_account_id", function_name=function_name,
         )
-        ba_repo = BillingAccountRepository()
-        ba = ba_repo.get_lookup_by_id(ba_id)
-        ErrorManager.require(
-            ba is not None,
-            code=E_VENDITE_NOT_FOUND,
-            message="Billing account non trovato.",
-            detail=f"billing_account_id={ba_id}",
-            function_name=function_name,
-        )
-        assert ba is not None
+        # BB `BillingAccountService.get_lookup_by_id`: inesistente o fuori
+        # perimetro (RLS) -> 404 E_BILLING_ACCOUNT_NOT_FOUND, il codice del DB
+        # per lo stesso caso (brief-db-revisione-anagrafiche §24.9).
+        ba = BillingAccountService().get_lookup_by_id(ba_id)
 
     # Risoluzione valuta con catena standard (BB cross-dominio):
     # 1) ba.valuta_id  2) EF-del-BA  3) EF di chi agisce  4) anagrafiche.gestori.

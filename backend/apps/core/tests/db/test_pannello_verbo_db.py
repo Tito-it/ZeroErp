@@ -12,8 +12,9 @@
 #    E la porta chiusa su `magazzino.causali` si prova solo come app.
 #
 # ⚠️ CASI COSTRUITI in una transazione SEMPRE annullata: la causale il test se
-#    la fabbrica. Il contesto e' quello di un superuser (`apri_contesto_operatore`);
-#    dove il DB non concede il livello a quel contesto il test lo dichiara.
+#    la fabbrica. Il contesto e' quello di un operatore COSTRUITO col livello
+#    sulle aree delle tabelle (`apri_operatore_con_aree`, D-AH 2026-11-27):
+#    fino ad allora il primo operatore del DB, SUPER_ADMIN su dbdev.
 # ------------------------------------------------------------
 
 """Indice test (opt-in `ZEROERP_TEST_DB_E2E=1`).
@@ -47,7 +48,7 @@ from apps.core.api.permissions import MotivoDiniego, ZeroERPPermission
 from apps.core.api.views_config_crud import ConfigTableRecordsView
 from apps.core.services.config_crud_service import ConfigCrudService
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_contesto_operatore, apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_operatore_con_aree, apri_transazione_annullata, richiedi_db_provvisto
 
 _REL = "magazzino.causali"
 
@@ -62,7 +63,7 @@ class PannelloVerboDbTests(TestCase):
     def setUp(self) -> None:
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
-            apri_contesto_operatore(cur)
+            apri_operatore_con_aree(cur, aree=("config", "magazzino"), motivo="pannello verbo")
         self.svc = ConfigCrudService()
 
     # Scopo: Esegue `azione` in un savepoint e ne ritorna il codice del ServiceError.

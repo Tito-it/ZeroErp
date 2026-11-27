@@ -90,7 +90,7 @@ alla nascita del contratto, prima di applicarci la scheda dell'operatore (D-7).
 Il drawer la precompila in creazione: l'operatore vede quello che verrà scritto
 e lo corregge.
 
-Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
+Errori: `E_BILLING_ACCOUNT_NOT_FOUND` (404) se `billing_account_id` non esiste o è fuori dal perimetro di chi chiama (dal 2026-11-27, il codice del DB per lo stesso caso; prima `E_VENDITE_NOT_FOUND`).
 
 Consumer FE: `ContrattoDrawer.vue`.
 
@@ -135,7 +135,7 @@ Risposta `200`:
 Risoluzione `valuta_id`: vedi sezione preventivi sotto (stesso BB).
 `fornitura`: come per il contratto, dalla stessa lettura.
 
-Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
+Errori: `E_BILLING_ACCOUNT_NOT_FOUND` (404) se `billing_account_id` non esiste o è fuori dal perimetro di chi chiama (dal 2026-11-27, il codice del DB per lo stesso caso; prima `E_VENDITE_NOT_FOUND`).
 
 Consumer FE: `OffertaDrawer.vue`.
 
@@ -195,7 +195,7 @@ dal cliente associato al BA via tripletta UNIQUE
 `(istanza_utility_id, soggetto_ruolo_id, utility_id)`. Se nessun cliente
 combacia (BA fornitore o anagrafica gestita altrove): tutti `null`.
 
-Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
+Errori: `E_BILLING_ACCOUNT_NOT_FOUND` (404) se `billing_account_id` non esiste o è fuori dal perimetro di chi chiama (dal 2026-11-27, il codice del DB per lo stesso caso; prima `E_VENDITE_NOT_FOUND`).
 
 Consumer FE: `PreventiviDrawer.vue` (watch su `form.billing_account_id`,
 sovrascrittura solo dei campi vuoti per non distruggere scelte utente).
@@ -347,7 +347,8 @@ user e' presente nel JWT.
 | 400 | `E_VENDITE_VALIDATION` | Query param non intero positivo (es. `?billing_account_id=abc`) |
 | 401 | — | JWT mancante o invalido |
 | 403 | `E_PERMESSO_NEGATO` | Utente con `vendite = BLOCCATO` |
-| 404 | `E_VENDITE_NOT_FOUND` | BA, listino o versione inesistente |
+| 404 | `E_BILLING_ACCOUNT_NOT_FOUND` | BA inesistente o fuori perimetro (dal 2026-11-27, dal BB `BillingAccountService.get_lookup_by_id`) |
+| 404 | `E_VENDITE_NOT_FOUND` | Listino o versione inesistente |
 
 ## Test
 

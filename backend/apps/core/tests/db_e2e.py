@@ -201,6 +201,9 @@ def richiedi_ruolo_soggetto_a_rls(tabella: str) -> None:
 #    ritirato il 2026-11-26 (Tid). Prendeva il primo SUPER_ADMIN del DB, e su
 #    un DB senza saltava: un test verde senza aver provato niente. Chi vuole
 #    un SUPER_ADMIN lo costruisce con `apri_super_admin_costruito`.
+# ⛔ E nemmeno per caso (D-AH, 2026-11-26): l'operatore scelto e' il primo che
+#    NON e' SUPER_ADMIN. Se gli operatori attivi sono tutti SUPER_ADMIN la
+#    funzione FALLISCE col motivo, non salta e non ne consegna uno.
 def apri_contesto_operatore(cur) -> int:
     from django.db import connection
 
@@ -216,17 +219,38 @@ def apri_contesto_operatore(cur) -> int:
     #    Fino al 2026-11-24 era «il primo `is_superuser`»: un flag che il
     #    database non guarda e che dal D-J non concede niente nemmeno al
     #    backend (brief-db-porte-aperte-dalla-sola-guc §4.7).
+    # ⛔ MAI UN SUPER_ADMIN PRESO DAI DATI (D-AH, Tid 2026-11-26,
+    #    brief-db-porte-aperte-dalla-sola-guc §14.9). Fino ad allora era «il
+    #    primo operatore», e se il primo operatore di dbdev era SUPER_ADMIN un
+    #    verbo col guard del SUPER_ADMIN passava: verde per i dati della
+    #    macchina, non per la regola. Si prende il primo operatore che NON lo e'
+    #    (l'ORDER BY mette in testa i `false`); chi vuole un SUPER_ADMIN lo
+    #    costruisce con `apri_super_admin_costruito`.
+    #    `fn_is_super_admin` guarda la GUC del ruolo, gia' aperta qui sopra.
     cur.execute(
-        "SELECT u.id FROM auth_user u"
+        "SELECT u.id, script.fn_is_super_admin(u.id) AS sa FROM auth_user u"
         " WHERE u.is_active"
         "   AND script.fn_has_identita_attiva(u.id, 'OPERATORE'::config.ruolo_applicativo)"
-        " ORDER BY u.id LIMIT 1"
+        " ORDER BY sa, u.id LIMIT 1"
     )
     riga = cur.fetchone()
     if riga is None:
         raise unittest.SkipTest("nessun utente su cui aprire il contesto operatore")
-    cur.execute("SET LOCAL app.current_user_id = %s", [str(riga[0])])
-    return int(riga[0])
+    utente, super_admin = int(riga[0]), bool(riga[1])
+    # ⛔ Operatori ci sono, ma sono tutti SUPER_ADMIN: e' un caso diverso dal DB
+    #    vuoto, e non si salta. Consegnarne uno rifarebbe il verde per i dati;
+    #    saltare nasconderebbe che il test non ha un operatore adatto.
+    if super_admin:
+        raise AssertionError(
+            "apri_contesto_operatore: tutti gli operatori attivi del DB sono "
+            f"SUPER_ADMIN (il primo e' {utente}), e un SUPER_ADMIN preso dai dati "
+            "non si consegna (D-AH): il test passerebbe per chi e' l'operatore, "
+            "non per la regola. Se il test vuole un SUPER_ADMIN usi "
+            "`apri_super_admin_costruito`; se vuole dei permessi, "
+            "`apri_operatore_con_aree`."
+        )
+    cur.execute("SET LOCAL app.current_user_id = %s", [str(utente)])
+    return utente
 
 
 # Scopo: UN SUPER_ADMIN COSTRUITO, col contesto aperto su di lui:

@@ -12,6 +12,7 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
+from apps.anagrafiche.services.billing_account_service import richiedi_billing_account_trovato
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.vendite.db.pricing_diagnose_repository import (
@@ -20,7 +21,6 @@ from apps.vendite.db.pricing_diagnose_repository import (
 
 
 _E_VALIDATION = "E_VENDITE_VALIDATION"
-_E_NOT_FOUND = "E_VENDITE_NOT_FOUND"
 
 
 class PricingDiagnoseService:
@@ -71,14 +71,14 @@ class PricingDiagnoseService:
 
         # Step radice: BA + categoria. Se BA non trovato il diagnose ferma
         # con codice 404 (l'admin deve creare prima il BA).
-        ba_row = self._repo.get_ba_categoria(int(ba_id))
-        ErrorManager.require(
-            ba_row is not None,
-            code=_E_NOT_FOUND,
-            message="Billing account non trovato.",
-            detail=f"ba_id={ba_id}",
+        # BB `richiedi_billing_account_trovato`: inesistente o fuori perimetro
+        # → E_BILLING_ACCOUNT_NOT_FOUND, il codice del DB per lo stesso caso
+        # (dal 2026-11-27, prima E_VENDITE_NOT_FOUND; §24.9).
+        ba_row = richiedi_billing_account_trovato(
+            self._repo.get_ba_categoria(int(ba_id)),
+            int(ba_id),
+            function_name="vendite.pricing_diagnose_service.diagnose",
         )
-        assert ba_row is not None
 
         ba_block = {
             "trovato": True,

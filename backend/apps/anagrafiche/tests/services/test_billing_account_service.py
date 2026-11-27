@@ -37,6 +37,7 @@ Indice test eseguiti:
 27) test_istanza_del_ba_altra_istanza — istanza diversa → errore del dominio sul campo del BA
 28) test_istanza_del_ba_non_risulta — BA inesistente o fuori RLS → errore del dominio sul campo del BA
 29) test_istanza_del_ba_campo_istanza — col BA gia' scritto (onere della commessa) l'errore cade sull'istanza
+30) RichiediBillingAccountTrovatoTests — il BB del BA che non risulta: la riga torna com'e', None → 404 col codice, la frase e il contesto (2026-11-27)
 """
 
 from unittest import TestCase
@@ -442,3 +443,24 @@ class TestIstanzaDelBillingAccount(TestCase):
                 campo="istanza_utility_id",
             )
         self.assertEqual(ctx.exception.context.get("field"), "istanza_utility_id")
+
+
+# Scopo: il BB `richiedi_billing_account_trovato` (regola del 2, ok Tid
+#        2026-11-27): una sede per «il billing account non risulta».
+class RichiediBillingAccountTrovatoTests(TestCase):
+    def test_la_riga_torna_com_e(self):
+        from apps.anagrafiche.services.billing_account_service import richiedi_billing_account_trovato
+
+        riga = {"id": 5}
+        self.assertIs(richiedi_billing_account_trovato(riga, 5, function_name="test"), riga)
+        # Un `exists()` vero passa come `True`: il chiamante lo scrive `or None`.
+        self.assertIs(richiedi_billing_account_trovato(True, 5, function_name="test"), True)
+
+    def test_none_e_il_404_col_codice_del_db(self):
+        from apps.anagrafiche.services.billing_account_service import richiedi_billing_account_trovato
+
+        with self.assertRaises(ServiceError) as ctx:
+            richiedi_billing_account_trovato(None, 5, function_name="test")
+        self.assertEqual(ctx.exception.code, "E_BILLING_ACCOUNT_NOT_FOUND")
+        self.assertEqual(ctx.exception.message, "Il billing account 5 non esiste.")
+        self.assertEqual(ctx.exception.context, {"billing_account_id": 5})

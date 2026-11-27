@@ -115,3 +115,10 @@ class ONotFoundTests(SimpleTestCase):
             o_not_found(None, code="E_X_NOT_FOUND", message="X non trovato.")
         self.assertEqual(cm.exception.code, "E_X_NOT_FOUND")
         self.assertIsNone(cm.exception.detail)
+
+    # Scopo: il `context` (2026-11-27, per `richiedi_billing_account_trovato`)
+    #        arriva all'errore com'e'; senza, resta quello di ErrorManager.
+    def test_o_not_found_porta_il_context(self) -> None:
+        with self.assertRaises(ServiceError) as cm:
+            o_not_found(None, code="E_X_NOT_FOUND", message="m", context={"x_id": 9})
+        self.assertEqual(cm.exception.context, {"x_id": 9})

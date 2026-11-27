@@ -64,6 +64,8 @@ Riferimento concettuale:
   `articolo_padre_contesto` escluso dal servizio.
 - Non chiama il resolver: ispeziona la configurazione dei tre stadi per quella
   combinazione e suggerisce come sbloccarla (`PricingDiagnoseService`).
+- `404` `E_BILLING_ACCOUNT_NOT_FOUND`: il `ba_id` non esiste o è fuori dal perimetro di chi
+  chiama (dal 2026-11-27, il codice del DB per lo stesso caso; prima `E_VENDITE_NOT_FOUND`).
 - Output `200`: `{ "ba": {trovato, categoria_id, categoria_codice,
   categoria_descrizione, categoria_partecipa_promo}, "stadio_0_promo": {...},
   "stadio_1_contratto": {...}, "stadio_2_categoria": {...}, "esito_atteso":
