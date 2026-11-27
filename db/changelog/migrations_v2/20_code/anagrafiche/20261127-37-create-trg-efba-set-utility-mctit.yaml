@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL COLLEGAMENTO DEL BILLING ACCOUNT NASCE CON L'UTILITY DEL SUO BA
+#   anagrafiche.fn_utility_del_billing_account(bigint)         (nuova, DEFINER)
+#   anagrafiche.trgfn_emittenti_fiscali_ba_set_utility()       (nuova)
+#   trg_emittenti_fiscali_ba_a20_set_utility_ins                (nuovo)
+#   Brief: brief-db-utility-gestite-dall-emittente §6 (D-U-12), §8-bis (U3)
+#
+# -- PERCHE' UNA DERIVAZIONE ------------------------------------------------------
+#   La colonna utility_id del collegamento (20261127-36) e' l'utility del suo
+#   billing account: la deriva il database, cosi' ogni strada che scrive il
+#   collegamento (il trigger di nascita del BA, la riga predefinita, i fixture)
+#   non la ricopia. Il collegamento non cambia mai BA
+#   (trg_emittenti_fiscali_ba_a05_block_sposta_upd): si deriva solo
+#   all'INSERT, e il cambio diretto della colonna lo ferma il lucchetto di
+#   colonna (automation_lock_columns). Un valore scritto da chi inserisce si
+#   sostituisce con quello del BA: la colonna non e' dell'operatore.
+#
+# -- PERCHE' DEFINER ------------------------------------------------------------
+#   billing_account e' sotto row level security, e il perimetro di un BA passa
+#   dalla sua azienda, cioe' dal collegamento che sta nascendo: chi scrive puo'
+#   non vedere il BA appena nato (linee-guida-trigger, «Un guard che decide su
+#   una riga correlata non la legge sotto la row level security di chi
+#   scrive»). anagrafiche.fn_utility_del_billing_account legge da proprietario
+#   e risponde solo l'utility, con search_path fissato.
+#
+# -- IL MONTAGGIO --------------------------------------------------------------
+#   BEFORE INSERT, fase a20 (derivazione dopo i guard). Nessun guard BEFORE
+#   del collegamento legge utility_id; lo leggono le due FK composte e il CHECK,
+#   che vengono dopo tutti i BEFORE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261127-37-create-trg-efba-set-utility-mctit.yaml
+
+  - changeSet:
+      id: 20261127-37-create-trg-efba-set-utility
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il collegamento del billing account nasce con l'utility del suo BA,
+        letta da proprietario (anagrafiche.fn_utility_del_billing_account).
+        brief-db-utility-gestite-dall-emittente §6 (D-U-12).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_utility_del_billing_account(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE)
+               RETURNS anagrafiche.billing_account.utility_id%TYPE
+               LANGUAGE sql
+               STABLE
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              BEGIN ATOMIC
+                SELECT ba.utility_id
+                  FROM anagrafiche.billing_account ba
+                 WHERE ba.id = p_billing_account_id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_utility_del_billing_account(anagrafiche.billing_account.id%TYPE) IS
+                'L''utility di un billing account (billing_account.utility_id); NULL se l''id e'' NULL o non e'' un billing account. Pura, non solleva. SECURITY DEFINER: legge anche un BA fuori dal perimetro di chi chiama, o appena nato e non ancora nel suo perimetro, e risponde solo l''utility. La usa anagrafiche.trgfn_emittenti_fiscali_ba_set_utility.';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_ba_set_utility()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: il collegamento nasce con l'utility del suo
+                  --   billing account; la riga predefinita, senza BA, senza.
+                  --   Montata BEFORE INSERT, fase a20.
+                  -- =========================================================
+                  NEW.utility_id := anagrafiche.fn_utility_del_billing_account(NEW.billing_account_id);
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_emittenti_fiscali_ba_set_utility() IS
+                'BEFORE INSERT su anagrafiche.emittenti_fiscali_billing_account, fase a20: utility_id e'' l''utility del billing account del collegamento (anagrafiche.fn_utility_del_billing_account), NULL sulla riga predefinita. Un valore scritto da chi inserisce si sostituisce. Il collegamento non cambia BA, e il cambio diretto di utility_id lo ferma il lucchetto di colonna.';
+
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_ba_a20_set_utility_ins
+                ON anagrafiche.emittenti_fiscali_billing_account;
+              CREATE TRIGGER trg_emittenti_fiscali_ba_a20_set_utility_ins
+                BEFORE INSERT ON anagrafiche.emittenti_fiscali_billing_account
+                FOR EACH ROW EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_ba_set_utility();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_ba_a20_set_utility_ins ON anagrafiche.emittenti_fiscali_billing_account;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_emittenti_fiscali_ba_set_utility();
+              DROP FUNCTION IF EXISTS anagrafiche.fn_utility_del_billing_account(bigint);

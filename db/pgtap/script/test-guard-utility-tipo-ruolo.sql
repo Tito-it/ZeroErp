@@ -5,8 +5,15 @@
 -- Elenco test:
 -- 1) Esiste almeno una utility in config.utilities
 -- 2) Esistono almeno due tipi ruolo in config.tipi_ruoli
--- 3) Esiste una utility senza matrice attiva/valida (precondizione fail-open)
--- 4) Con utility senza matrice, il guard passa (fail-open)
+-- 3) Un'utility nuova non ha righe nella matrice (precondizione costruita)
+-- 4) Con utility senza matrice, il guard rifiuta (fail-closed)
+-- ------------------------------------------------------------
+-- ⭐ Rev 2026-11-27 (brief-db-utility-gestite-dall-emittente §6 D-U-7,
+--   changeSet 20261127-31): la matrice e' chiusa. Un'utility senza righe non e'
+--   ammessa per nessun tipo di ruolo: il test 4 asseriva il fail-open e ora
+--   asserisce il rifiuto. L'utility senza righe si costruisce nuova invece di
+--   togliere la matrice alla prima: la riga EF di un'utility che un'azienda
+--   gestisce non si cancella piu' (20261127-32).
 -- 5) Inserita regola utility->ruolo ammesso
 -- 6) Con matrice presente, il ruolo ammesso passa
 -- 7) Con matrice presente, ruolo non ammesso viene bloccato
@@ -63,42 +70,24 @@ SELECT ok(
   'Esistono almeno due tipi ruolo in config.tipi_ruoli'
 );
 
--- 3) Utility senza matrice attiva/valida
--- 🔴 PRECONDIZIONE COSTRUITA, non cercata — 2026-08-18.
---   Questa fixture cercava «una utility senza matrice attiva/valida» e si
---   affidava al fatto che in sviluppo ce ne fosse una. Non ce n'e' piu':
---   la ricerca tornava vuota, `utility_id` usciva NULL e l'INSERT sotto moriva
---   sul NOT NULL — 4 asserzioni su 12.
---
---   ⚠️ Terza occorrenza dello stesso difetto in questo giro (con
---   test-fn-change-user-emittenti-scope e test-fn-get-user-emittenti-scope):
---   una fixture che CERCA la propria precondizione invece di costruirla smette
---   di funzionare il giorno in cui qualcuno sistema i dati — cioe' viene punita
---   da un miglioramento.
---
---   Qui la si costruisce: si prende la prima utility e le si toglie la matrice.
---   Il file e' transazionale, la matrice vera torna al ROLLBACK.
-DELETE FROM config.utilities_tipi_ruolo m
- WHERE m.utility_id = (SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1);
-
+-- 3) Utility senza matrice: COSTRUITA, nuova, senza righe nella matrice
+--   (prima si toglieva la matrice alla prima utility: vedi la testata).
+--   config.utilities.id non ha default: il numero dopo il massimo.
 CREATE TEMP TABLE tmp_utility_no_matrix AS
-SELECT u.id AS utility_id
-FROM config.utilities u
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM config.utilities_tipi_ruolo m
-  WHERE m.utility_id = u.id
-    AND m.attivo = true
-    AND (m.valido_dal IS NULL OR m.valido_dal <= script.fn_data_operativa())
-    AND (m.valido_al IS NULL OR m.valido_al >= script.fn_data_operativa())
+WITH ins AS (
+  INSERT INTO config.utilities (id, codice, codice_interno, descrizione)
+  SELECT max(u.id) + 1, 'PGTAP_GU', 'PGTAP_GU', 'pgTAP guard utility tipo ruolo'
+    FROM config.utilities u
+  RETURNING id AS utility_id
 )
-ORDER BY u.id
-LIMIT 1;
+SELECT * FROM ins;
 
 SELECT is(
-  (SELECT count(*)::int FROM tmp_utility_no_matrix),
-  1,
-  'Esiste una utility senza matrice attiva/valida (precondizione fail-open)'
+  (SELECT count(*)::int
+     FROM config.utilities_tipi_ruolo m
+    WHERE m.utility_id = (SELECT utility_id FROM tmp_utility_no_matrix)),
+  0,
+  'Un''utility nuova non ha righe nella matrice'
 );
 
 -- Ruoli per test: uno ammesso e uno negato
@@ -111,14 +100,20 @@ SELECT
   (SELECT id FROM r WHERE rn = 1) AS tipo_ruolo_allow_id,
   (SELECT id FROM r WHERE rn = 2) AS tipo_ruolo_deny_id;
 
--- 4) Fail-open: nessuna matrice -> consentito
-SELECT lives_ok(
+-- 4) Fail-closed: nessuna riga nella matrice -> rifiutato
+SELECT throws_ok(
   format(
-    $$SELECT script.fn_guard_utility_tipo_ruolo(%s, %s, 'pgtap_fail_open');$$,
+    $$SELECT script.fn_guard_utility_tipo_ruolo(%s, %s, 'pgtap_fail_closed');$$,
     (SELECT utility_id FROM tmp_utility_no_matrix),
     (SELECT tipo_ruolo_allow_id FROM tmp_ruoli_ctx)
   ),
-  'Con utility senza matrice, il guard passa (fail-open)'
+  'P0001',
+  format(
+    'Tipo ruolo %2$s non ammesso per utility %1$s in base alla matrice configurata.',
+    (SELECT utility_id FROM tmp_utility_no_matrix),
+    (SELECT tipo_ruolo_allow_id FROM tmp_ruoli_ctx)
+  ),
+  'Con utility senza matrice, il guard rifiuta (fail-closed)'
 );
 
 -- 5) Inserimento regola utility->ruolo ammesso

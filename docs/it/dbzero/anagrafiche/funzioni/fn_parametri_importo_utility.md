@@ -25,15 +25,15 @@ BEGIN ATOMIC
      COALESCE(e.metodo_arrotondamento_importi, ef.rounding_policy, u.metodo_arrotondamento_importi) AS "coalesce",
      e.minimo_soglia_min,
      e.minimo_soglia_max,
-     (e.id IS NOT NULL)
+     (num_nonnulls(e.arrotondamento_importi_dec, e.metodo_arrotondamento_importi, e.minimo_soglia_min, e.minimo_soglia_max) > 0)
     FROM ((config.utilities u
-      LEFT JOIN anagrafiche.emittenti_fiscali_utilities e ON (((e.utility_id = u.id) AND (e.emittente_soggetto_ruolo_id = fn_parametri_importo_utility.p_emittente_soggetto_ruolo_id) AND (e.attivo IS TRUE))))
+      LEFT JOIN anagrafiche.emittenti_fiscali_utilities e ON (((e.utility_id = u.id) AND (e.emittente_soggetto_ruolo_id = fn_parametri_importo_utility.p_emittente_soggetto_ruolo_id))))
       LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.soggetto_ruolo_id = fn_parametri_importo_utility.p_emittente_soggetto_ruolo_id)))
    WHERE (u.id = fn_parametri_importo_utility.p_utility_id);
 END
 
 COMMENT ON FUNCTION anagrafiche.fn_parametri_importo_utility(p_emittente_soggetto_ruolo_id bigint, p_utility_id integer)
-IS 'I parametri d''importo effettivi di un emittente per una utility: decimali e metodo d''arrotondamento della riga attiva di anagrafiche.emittenti_fiscali_utilities se c''e'', altrimenti (per il solo metodo) la policy generale emittenti_fiscali.rounding_policy, altrimenti il valore di sistema di config.utilities; le soglie del minimo solo dall''emittente (NULL = nessun minimo); personalizzata = la riga dell''emittente c''e''. Un ruolo che non e'' un emittente, o NULL, solleva E_PARAMETRO_INVALIDO: i valori di sistema sono quelli di un''azienda senza personalizzazioni, non la risposta per chi azienda non e''. Una riga se l''utility esiste, zero se non esiste o e'' NULL: e'' il segnale che i lettori traducono in E_CONFIG_MANCANTE. Sede unica: la leggono vendite.fn_ricalcola_totali_fattura, vendite.fn_parametri_importo_riga e anagrafiche.fn_lookup_utilities_per_ba.';
+IS 'I parametri d''importo effettivi di un emittente per una utility: decimali e metodo d''arrotondamento della riga di anagrafiche.emittenti_fiscali_utilities quando li porta, altrimenti (per il solo metodo) la policy generale emittenti_fiscali.rounding_policy, altrimenti il valore di sistema di config.utilities; le soglie del minimo solo dall''emittente (NULL = nessun minimo); personalizzata = la riga dell''azienda porta almeno un parametro (una riga senza parametri dice solo che l''azienda gestisce l''utility). Un ruolo che non e'' un emittente, o NULL, solleva E_PARAMETRO_INVALIDO: i valori di sistema sono quelli di un''azienda senza personalizzazioni, non la risposta per chi azienda non e''. Una riga se l''utility esiste, zero se non esiste o e'' NULL: e'' il segnale che i lettori traducono in E_CONFIG_MANCANTE. Sede unica: la leggono vendite.fn_ricalcola_totali_fattura, vendite.fn_parametri_importo_riga e anagrafiche.fn_lookup_utilities_per_ba.';
 ```
 
 </div>

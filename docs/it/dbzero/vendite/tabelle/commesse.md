@@ -50,6 +50,7 @@
 | FOREIGN KEY | fk_commesse_stato_commessa | stato_commessa_id |
 | FOREIGN KEY | fk_commesse_termine_pagamento | termine_pagamento_id |
 | FOREIGN KEY | fk_commesse_utility | utility_id |
+| FOREIGN KEY | fk_commesse_utility_gestita | emittente_soggetto_ruolo_id, utility_id |
 | PRIMARY KEY | pk_commesse | id |
 | UNIQUE | uq_commesse_codice | codice |
 

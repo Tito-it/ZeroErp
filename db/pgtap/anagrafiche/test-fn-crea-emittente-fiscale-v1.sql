@@ -190,7 +190,9 @@ SELECT ok(
     AND (SELECT regexp_replace(p.prosrc, '--[^\n]*', '', 'g')
            FROM pg_proc p
           WHERE p.oid = 'dbops.fn_pgtap_crea_emittente(character varying)'::regprocedure)
-        !~* 'INSERT INTO anagrafiche\.emittenti_fiscali',
+        -- \M: la tabella dell'azienda, non emittenti_fiscali_utilities, che il
+        --   builder scrive per attivare le utility (20261127-39)
+        !~* 'INSERT INTO anagrafiche\.emittenti_fiscali\M',
     '14. il builder chiama il verbo e non scrive piu'' la tabella (regola del 2)');
 
 SELECT * FROM finish();

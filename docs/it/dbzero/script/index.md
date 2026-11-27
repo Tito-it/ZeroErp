@@ -219,7 +219,7 @@ search:
 - [fn_guard_soggetto_ruolo](funzioni/fn_guard_soggetto_ruolo.md) — (latest review 05-12-25) - **Verifica esistenza**     Controlla se esiste già un’associazione tra il soggetto e il codice interno del ruolo in `anagrafiche.soggetti_ruoli`.
 - [fn_guard_super_admin](funzioni/fn_guard_super_admin.md) — (scritta il 25-09-2026)
 - [fn_guard_utente_stesso](funzioni/fn_guard_utente_stesso.md) — (scritta il 29-09-2026)
-- [fn_guard_utility_tipo_ruolo](funzioni/fn_guard_utility_tipo_ruolo.md) — (latest review 16-02-2026) `script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id` con semantica:
+- [fn_guard_utility_tipo_ruolo](funzioni/fn_guard_utility_tipo_ruolo.md) — (latest review 27-11-2026) `script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id`: passa solo se `config.utilities_tipi_ruolo` ha la coppia con una riga accesa e valida oggi. Un'utility **senza righe** non è ammessa per **nessun** tipo di ruolo: la matrice è chiusa, come nella tendina `anagrafiche.fn_lookup_utilities_per_ba`.
 - [fn_has_identita_attiva](funzioni/fn_has_identita_attiva.md) — (latest review 19-04-2026)
 - [fn_identita_super_admin_senza_scadenza](funzioni/fn_identita_super_admin_senza_scadenza.md)
 - [fn_imponibile_riga](funzioni/fn_imponibile_riga.md) — (funzione nata il 2026-09-28, `20260928-16`)

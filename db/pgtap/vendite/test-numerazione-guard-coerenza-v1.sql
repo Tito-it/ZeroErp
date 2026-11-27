@@ -92,12 +92,19 @@ SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('guard coerenza numerazione') c;
 -- La terna si sceglie INSIEME: il ricalcolo totali pretende una riga in
 -- anagrafiche.emittenti_fiscali_utilities per la coppia (emittente, utility).
 -- Qui la coppia la SCRIVE il test, coerente col cliente appena costruito.
+-- ⭐ Rev 2026-11-27 (brief-db-utility-gestite-dall-emittente U3, 20261127-39): l'azienda
+--   di prova nasce gia' con la riga di ogni utility ammessa (senza parametri):
+--   qui la riga si completa, non si crea.
 INSERT INTO anagrafiche.emittenti_fiscali_utilities
     (emittente_soggetto_ruolo_id, utility_id, arrotondamento_importi_dec,
      metodo_arrotondamento_importi, meta)
 SELECT m.soggetto_ruolo_id, c.utility_id, 2, 'HALF_UP',
        jsonb_build_object('test_scope', 'pgtap_guard_dk')
-  FROM _mondo m, tmp_cli_dk c;
+  FROM _mondo m, tmp_cli_dk c
+ON CONFLICT (emittente_soggetto_ruolo_id, utility_id) DO UPDATE
+   SET arrotondamento_importi_dec    = EXCLUDED.arrotondamento_importi_dec,
+       metodo_arrotondamento_importi = EXCLUDED.metodo_arrotondamento_importi,
+       meta                          = EXCLUDED.meta;
 
 CREATE TEMP TABLE tmp_refs_dk AS
 SELECT m.soggetto_ruolo_id                        AS emittente_soggetto_ruolo_id,

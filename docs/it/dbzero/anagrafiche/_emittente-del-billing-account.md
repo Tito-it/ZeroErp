@@ -52,6 +52,17 @@ sbagliata. ⚠️ I controlli di albero e istanza giudicano il billing account q
 alla predefinita, prima della modifica: senza sessione un billing account con un'azienda chiesta diversa
 dalla predefinita, e un padre o un'istanza su quell'azienda, non passa.
 
+#### L'utility del collegamento
+
+Il collegamento porta l'utility del suo billing account (`utility_id`): la scrive
+`anagrafiche.trgfn_emittenti_fiscali_ba_set_utility` alla nascita, leggendola da proprietario
+(`anagrafiche.fn_utility_del_billing_account`, perché il billing account appena nato può non essere ancora nel
+perimetro di chi scrive), e una FK composta la lega al billing account; non si cambia. Con l'azienda forma la
+coppia che punta alla riga dell'azienda in `anagrafiche.emittenti_fiscali_utilities`: un billing account sta solo
+su un'utility che la sua azienda gestisce. La FK si giudica alla conferma, sull'azienda finale: la nascita sulla
+predefinita seguita dalla modifica verso l'azienda chiesta non si ferma a metà. La riga predefinita non ha
+billing account né utility.
+
 #### Di quale azienda è un billing account
 
 Del suo collegamento. Le due letture, `script.fn_get_ba_emittente_sr_id` (per chi agisce) e
@@ -93,7 +104,7 @@ I due rifiuti del collegamento e quello del billing account non hanno porte, nem
 nessuna scrittura legittima li attraversa. Il collegamento appartiene al suo billing account per sempre, e
 spostare un cliente vuol dire **modificare** l'azienda sul suo collegamento.
 
-Il cambio d'azienda passa da quattro cancelli, che giudicano solo il collegamento di un billing account che
+Il cambio d'azienda passa da cinque cancelli, che giudicano solo il collegamento di un billing account che
 nasce o cambia azienda:
 
 | Domanda | Controllo | Trigger |
@@ -102,6 +113,7 @@ nasce o cambia azienda:
 | L'albero padre/figli diventa misto? | `anagrafiche.fn_guard_albero_ba_emittente` | `anagrafiche.trgfn_efba_guard_albero_emittente`, dopo |
 | L'istanza finisce su due aziende? | `anagrafiche.fn_guard_istanza_ba_emittente` | `anagrafiche.trgfn_efba_guard_istanza_emittente`, dopo |
 | Un cliente manuale trova un doppione nella nuova azienda? | `anagrafiche.fn_guard_clienti_chiave_unica_di` | `anagrafiche.trgfn_efba_guard_clienti_chiave`, alla conferma |
+| La nuova azienda gestisce l'utility del billing account? | la FK `fk_emittenti_fiscali_ba_utility_gestita` verso `anagrafiche.emittenti_fiscali_utilities` | nessun trigger: la FK, alla conferma |
 
 Albero e istanza si giudicano anche dal lato del billing account, quando prende un padre o nasce su
 un'istanza (`anagrafiche.trgfn_billing_account_guard_albero_emittente`,

@@ -1,0 +1,357 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA TENDINA DEL BILLING ACCOUNT PROPONE LE UTILITY CHE L'AZIENDA GESTISCE
+#   anagrafiche.fn_lookup_utilities_per_ba(bigint, text)   (riscritta)
+#   Brief: brief-db-utility-gestite-dall-emittente §4-bis (C2), §6 (D-U-2), §8-bis (U4)
+#
+#   La query passa al building block anagrafiche.fn_utilities_emittente
+#   (20261127-41), e tiene le utility gestite dall'azienda del BA: prima
+#   mostrava tutte quelle ammesse per EF e per il ruolo. Firma, guard
+#   d'ingresso e risoluzione dell'azienda invariati, dal forward di
+#   20261126-42 uguale al vivo; tolta la variabile del giorno, che ora legge
+#   il BB. Il verso di ritiro e' quel forward.
+#   ⚠️ Comportamento nuovo per il chiamante: un'utility che l'azienda non
+#   gestisce non compare (prima compariva, e il BA poi non sarebbe nato).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261127-42-update-fn-lookup-utilities-per-ba-dal-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261127-42-update-fn-lookup-utilities-per-ba-dal-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_lookup_utilities_per_ba: le utility che l'azienda del BA
+        gestisce, dal building block anagrafiche.fn_utilities_emittente.
+        brief-db-utility-gestite-dall-emittente §4-bis (C2).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_lookup_utilities_per_ba(
+                  p_billing_account_id    anagrafiche.billing_account.id%TYPE,
+                  -- text e non %TYPE: config.tipi_ruoli.codice_interno e' varchar, e
+                  -- ancorarlo cambierebbe la firma che il backend chiama (§5f)
+                  p_ruolo_codice_soggetto text)
+               RETURNS TABLE(
+                  -- ⛔ Tipi espliciti, non %TYPE: e' la firma che il backend legge
+                  --   (§5f), e i valori sono cast o uscite di funzione, non il
+                  --   riflesso di una colonna. utility_id e' u.id::bigint
+                  --   (config.utilities.id e' integer), codice e descrizione
+                  --   sono ::text; i quattro parametri escono da
+                  --   anagrafiche.fn_parametri_importo_utility.
+                  utility_id bigint,
+                  codice text,
+                  descrizione text,
+                  is_personalizzata_per_ef boolean,
+                  minimo_soglia_min numeric,
+                  minimo_soglia_max numeric,
+                  arrotondamento_importi_dec smallint,
+                  metodo_arrotondamento_importi text)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_emittente_pk        anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_emittente_sr_id     anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_ruolo_ba            config.tipi_ruoli.codice_interno%TYPE;
+              BEGIN
+                  -- rev 2026-10-21 (brief-db-modelli-documento-standard §10.3 K-7):
+                  --   i parametri d'importo sono quelli effettivi, dal BB
+                  --   anagrafiche.fn_parametri_importo_utility. Prima la riga
+                  --   dell'emittente in LEFT JOIN: senza riga NULL, e nessun valore di
+                  --   sistema da cui partire.
+                  -- rev 2026-06-29 (analisi-hardcoded-codice §3a #15 / §9.5):
+                  --   ruoli soggetto/EF risolti per codice_interno (immutabile).
+                  --   In tipi_ruoli codice_interno != codice -> col vecchio `codice`
+                  --   la funzione ritornava 0 righe.
+
+                  -- Guard input
+                  IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          'fn_lookup_utilities_per_ba',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'detail', 'p_billing_account_id obbligatorio e > 0',
+                              'billing_account_id', p_billing_account_id
+                          ),
+                          NULL::uuid,
+                          'p_billing_account_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  IF p_ruolo_codice_soggetto IS NULL
+                     OR length(btrim(p_ruolo_codice_soggetto)) = 0
+                  THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          'fn_lookup_utilities_per_ba',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'detail', 'p_ruolo_codice_soggetto obbligatorio',
+                              'ruolo_codice_soggetto', p_ruolo_codice_soggetto
+                          ),
+                          NULL::uuid,
+                          'p_ruolo_codice_soggetto obbligatorio'
+                      );
+                  END IF;
+
+                  -- Il BA esiste (ed e' nel perimetro di chi chiama: la funzione e'
+                  -- INVOKER), e il ruolo chiesto e' il suo. Un id che non e' un BA
+                  -- ricadeva sulla predefinita e rispondeva; un ruolo diverso dava le
+                  -- utility di un altro ruolo.
+                  SELECT tr.codice_interno
+                    INTO v_ruolo_ba
+                    FROM anagrafiche.billing_account ba
+                    JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                    JOIN config.tipi_ruoli tr          ON tr.id = sr.tipo_ruolo_id
+                   WHERE ba.id = p_billing_account_id;
+
+                  -- Un id ben formato senza billing account: la cosa indicata non
+                  -- esiste (NON_TROVATO), non e' un parametro malformato.
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          'fn_lookup_utilities_per_ba',
+                          'E_BILLING_ACCOUNT_NOT_FOUND',
+                          jsonb_build_object(
+                              'detail', 'p_billing_account_id non e'' un billing account',
+                              'billing_account_id', p_billing_account_id
+                          ),
+                          NULL::uuid,
+                          p_billing_account_id::text
+                      );
+                  END IF;
+
+                  IF v_ruolo_ba IS DISTINCT FROM p_ruolo_codice_soggetto THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          'fn_lookup_utilities_per_ba',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'detail', 'p_ruolo_codice_soggetto non e'' il ruolo del billing account',
+                              'billing_account_id', p_billing_account_id,
+                              'ruolo_codice_soggetto', p_ruolo_codice_soggetto,
+                              'ruolo_del_billing_account', v_ruolo_ba
+                          ),
+                          NULL::uuid,
+                          'p_ruolo_codice_soggetto non e'' il ruolo del billing account'
+                      );
+                  END IF;
+
+                  -- Risoluzione emittente del BA: catena specifico -> default globale.
+                  -- Riusa fn_get_emittente_fiscale_pk (solleva E_EMITTENTE_DEFAULT_MISSING
+                  -- se nessun emittente risolvibile, comportamento desiderato).
+                  v_emittente_pk := anagrafiche.fn_get_emittente_fiscale_pk(p_billing_account_id);
+
+                  -- Conversione PK -> soggetto_ruolo_id (la matrice utility usa SR_ID).
+                  SELECT ef.soggetto_ruolo_id
+                    INTO v_emittente_sr_id
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.id = v_emittente_pk;
+
+                  -- Le utility che l'azienda del BA gestisce, ammesse per il ruolo
+                  -- del soggetto: la regola sta nel building block
+                  -- anagrafiche.fn_utilities_emittente (D-U-2: un'utility che
+                  -- l'azienda non gestisce non si propone).
+                  RETURN QUERY
+                  SELECT
+                      a.utility_id::bigint                        AS utility_id,
+                      a.codice::text                              AS codice,
+                      a.descrizione::text                         AS descrizione,
+                      a.personalizzata                            AS is_personalizzata_per_ef,
+                      a.minimo_soglia_min                         AS minimo_soglia_min,
+                      a.minimo_soglia_max                         AS minimo_soglia_max,
+                      a.arrotondamento_importi_dec                AS arrotondamento_importi_dec,
+                      a.metodo_arrotondamento_importi::text       AS metodo_arrotondamento_importi
+                    FROM anagrafiche.fn_utilities_emittente(v_emittente_sr_id, p_ruolo_codice_soggetto) a
+                   WHERE a.gestita
+                   ORDER BY a.codice;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_lookup_utilities_per_ba(
+                  anagrafiche.billing_account.id%TYPE, text) IS
+                'Le utility proponibili per un billing account: quelle che l''azienda del billing account gestisce, ammesse per il ruolo del soggetto (p_ruolo_codice_soggetto, per codice_interno: CL, FO, GE), coi parametri d''importo effettivi dell''azienda. La regola e'' di anagrafiche.fn_utilities_emittente (le righe gestite). Il billing account deve esistere ed essere nel perimetro di chi chiama, altrimenti E_BILLING_ACCOUNT_NOT_FOUND; il ruolo deve essere il suo, altrimenti E_PARAMETRO_INVALIDO, come per un parametro mancante. Ruoli e validita'' si leggono al giorno operativo. STABLE, SECURITY INVOKER.';
+      rollback:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_lookup_utilities_per_ba(
+                  p_billing_account_id    anagrafiche.billing_account.id%TYPE,
+                  -- text e non %TYPE: config.tipi_ruoli.codice_interno e' varchar, e
+                  -- ancorarlo cambierebbe la firma che il backend chiama (§5f)
+                  p_ruolo_codice_soggetto text)
+               RETURNS TABLE(
+                  -- ⛔ Tipi espliciti, non %TYPE: e' la firma che il backend legge
+                  --   (§5f), e i valori sono cast o uscite di funzione, non il
+                  --   riflesso di una colonna. utility_id e' u.id::bigint
+                  --   (config.utilities.id e' integer), codice e descrizione
+                  --   sono ::text; i quattro parametri escono da
+                  --   anagrafiche.fn_parametri_importo_utility.
+                  utility_id bigint,
+                  codice text,
+                  descrizione text,
+                  is_personalizzata_per_ef boolean,
+                  minimo_soglia_min numeric,
+                  minimo_soglia_max numeric,
+                  arrotondamento_importi_dec smallint,
+                  metodo_arrotondamento_importi text)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_emittente_pk        anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_emittente_sr_id     anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  -- il giorno operativo: nessuna colonna dietro
+                  v_today               date := script.fn_data_operativa();
+                  v_ruolo_ba            config.tipi_ruoli.codice_interno%TYPE;
+              BEGIN
+                  -- rev 2026-10-21 (brief-db-modelli-documento-standard §10.3 K-7):
+                  --   i parametri d'importo sono quelli effettivi, dal BB
+                  --   anagrafiche.fn_parametri_importo_utility. Prima la riga
+                  --   dell'emittente in LEFT JOIN: senza riga NULL, e nessun valore di
+                  --   sistema da cui partire.
+                  -- rev 2026-06-29 (analisi-hardcoded-codice §3a #15 / §9.5):
+                  --   ruoli soggetto/EF risolti per codice_interno (immutabile).
+                  --   In tipi_ruoli codice_interno != codice -> col vecchio `codice`
+                  --   la funzione ritornava 0 righe.
+
+                  -- Guard input
+                  IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          'fn_lookup_utilities_per_ba',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'detail', 'p_billing_account_id obbligatorio e > 0',
+                              'billing_account_id', p_billing_account_id
+                          ),
+                          NULL::uuid,
+                          'p_billing_account_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  IF p_ruolo_codice_soggetto IS NULL
+                     OR length(btrim(p_ruolo_codice_soggetto)) = 0
+                  THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          'fn_lookup_utilities_per_ba',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'detail', 'p_ruolo_codice_soggetto obbligatorio',
+                              'ruolo_codice_soggetto', p_ruolo_codice_soggetto
+                          ),
+                          NULL::uuid,
+                          'p_ruolo_codice_soggetto obbligatorio'
+                      );
+                  END IF;
+
+                  -- Il BA esiste (ed e' nel perimetro di chi chiama: la funzione e'
+                  -- INVOKER), e il ruolo chiesto e' il suo. Un id che non e' un BA
+                  -- ricadeva sulla predefinita e rispondeva; un ruolo diverso dava le
+                  -- utility di un altro ruolo.
+                  SELECT tr.codice_interno
+                    INTO v_ruolo_ba
+                    FROM anagrafiche.billing_account ba
+                    JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                    JOIN config.tipi_ruoli tr          ON tr.id = sr.tipo_ruolo_id
+                   WHERE ba.id = p_billing_account_id;
+
+                  -- Un id ben formato senza billing account: la cosa indicata non
+                  -- esiste (NON_TROVATO), non e' un parametro malformato.
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          'fn_lookup_utilities_per_ba',
+                          'E_BILLING_ACCOUNT_NOT_FOUND',
+                          jsonb_build_object(
+                              'detail', 'p_billing_account_id non e'' un billing account',
+                              'billing_account_id', p_billing_account_id
+                          ),
+                          NULL::uuid,
+                          p_billing_account_id::text
+                      );
+                  END IF;
+
+                  IF v_ruolo_ba IS DISTINCT FROM p_ruolo_codice_soggetto THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          'fn_lookup_utilities_per_ba',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'detail', 'p_ruolo_codice_soggetto non e'' il ruolo del billing account',
+                              'billing_account_id', p_billing_account_id,
+                              'ruolo_codice_soggetto', p_ruolo_codice_soggetto,
+                              'ruolo_del_billing_account', v_ruolo_ba
+                          ),
+                          NULL::uuid,
+                          'p_ruolo_codice_soggetto non e'' il ruolo del billing account'
+                      );
+                  END IF;
+
+                  -- Risoluzione emittente del BA: catena specifico -> default globale.
+                  -- Riusa fn_get_emittente_fiscale_pk (solleva E_EMITTENTE_DEFAULT_MISSING
+                  -- se nessun emittente risolvibile, comportamento desiderato).
+                  v_emittente_pk := anagrafiche.fn_get_emittente_fiscale_pk(p_billing_account_id);
+
+                  -- Conversione PK -> soggetto_ruolo_id (la matrice utility usa SR_ID).
+                  SELECT ef.soggetto_ruolo_id
+                    INTO v_emittente_sr_id
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.id = v_emittente_pk;
+
+                  -- Query principale: intersezione (ruolo_soggetto AND ruolo EF) +
+                  -- LEFT JOIN override per i parametri personalizzati per emittente.
+                  RETURN QUERY
+                  SELECT
+                      u.id::bigint                                AS utility_id,
+                      u.codice::text                              AS codice,
+                      u.descrizione::text                         AS descrizione,
+                      par.personalizzata                          AS is_personalizzata_per_ef,
+                      par.minimo_soglia_min                       AS minimo_soglia_min,
+                      par.minimo_soglia_max                       AS minimo_soglia_max,
+                      par.arrotondamento_importi_dec              AS arrotondamento_importi_dec,
+                      par.metodo_arrotondamento_importi::text     AS metodo_arrotondamento_importi
+                  FROM config.utilities u
+                  -- ammessa per il ruolo del soggetto del BA
+                  JOIN config.utilities_tipi_ruolo utr_sogg
+                    ON utr_sogg.utility_id = u.id
+                   AND utr_sogg.attivo = true
+                   AND (utr_sogg.valido_dal IS NULL OR utr_sogg.valido_dal <= v_today)
+                   AND (utr_sogg.valido_al  IS NULL OR utr_sogg.valido_al  >= v_today)
+                  JOIN config.tipi_ruoli tr_sogg
+                    ON tr_sogg.id = utr_sogg.tipo_ruolo_id
+                   AND tr_sogg.codice_interno = p_ruolo_codice_soggetto
+                  -- ammessa per il ruolo EF (emittente fiscale)
+                  JOIN config.utilities_tipi_ruolo utr_ef
+                    ON utr_ef.utility_id = u.id
+                   AND utr_ef.attivo = true
+                   AND (utr_ef.valido_dal IS NULL OR utr_ef.valido_dal <= v_today)
+                   AND (utr_ef.valido_al  IS NULL OR utr_ef.valido_al  >= v_today)
+                  JOIN config.tipi_ruoli tr_ef
+                    ON tr_ef.id = utr_ef.tipo_ruolo_id
+                   AND tr_ef.codice_interno = 'EF'
+                  -- i parametri effettivi (K-7, 20261021-03): la riga dell'emittente
+                  -- se c'e', se no il valore di sistema dell'utility. Prima un LEFT
+                  -- JOIN sulla riga dell'emittente: senza riga uscivano NULL.
+                  CROSS JOIN LATERAL anagrafiche.fn_parametri_importo_utility(v_emittente_sr_id, u.id) par
+                  ORDER BY u.codice;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_lookup_utilities_per_ba(
+                  anagrafiche.billing_account.id%TYPE, text) IS
+                'Le utility ammesse per un billing account: quelle ammesse sia per il ruolo del soggetto del billing account (p_ruolo_codice_soggetto, per codice_interno: CL, FO, GE) sia per il ruolo dell''emittente (EF), con i parametri d''importo effettivi dell''azienda del billing account (anagrafiche.fn_parametri_importo_utility). Il billing account deve esistere ed essere nel perimetro di chi chiama, altrimenti E_BILLING_ACCOUNT_NOT_FOUND; il ruolo deve essere il suo, altrimenti E_PARAMETRO_INVALIDO, come per un parametro mancante. Ruoli e validita'' si leggono al giorno operativo. STABLE, SECURITY INVOKER.';

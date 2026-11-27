@@ -45,6 +45,7 @@
 | FOREIGN KEY | fk_registri_fatturazione_emitt | emittente_soggetto_ruolo_id |
 | FOREIGN KEY | fk_registri_fatturazione_famiglia | famiglia_documento |
 | FOREIGN KEY | fk_registri_fatturazione_utility | utility_id |
+| FOREIGN KEY | fk_registri_fatturazione_utility_gestita | emittente_soggetto_ruolo_id, utility_id |
 | PRIMARY KEY | pk_regfatt | id |
 | UNIQUE | uq_registri_fatturazione_codice | codice |
 | UNIQUE | uq_registri_fatturazione_uid | uid |

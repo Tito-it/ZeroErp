@@ -75,12 +75,19 @@ SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('NC rata unica') c;
 -- La coppia (emittente, utility) che fn_ricalcola_totali_fattura pretende
 -- (E_CONFIG_MANCANTE senza): la terna emittente/utility/BA e' COSTRUITA
 -- coerente, non scelta insieme fra i dati della macchina.
+-- ⭐ Rev 2026-11-27 (brief-db-utility-gestite-dall-emittente U3, 20261127-39): l'azienda
+--   di prova nasce gia' con la riga di ogni utility ammessa (senza parametri):
+--   qui la riga si completa, non si crea.
 INSERT INTO anagrafiche.emittenti_fiscali_utilities
     (emittente_soggetto_ruolo_id, utility_id, arrotondamento_importi_dec,
      metodo_arrotondamento_importi, meta)
 SELECT m.soggetto_ruolo_id, c.utility_id, 2, 'HALF_UP',
        jsonb_build_object('test_scope', 'pgtap_nc_rata_unica')
-  FROM _mondo m, tmp_cli_nc c;
+  FROM _mondo m, tmp_cli_nc c
+ON CONFLICT (emittente_soggetto_ruolo_id, utility_id) DO UPDATE
+   SET arrotondamento_importi_dec    = EXCLUDED.arrotondamento_importi_dec,
+       metodo_arrotondamento_importi = EXCLUDED.metodo_arrotondamento_importi,
+       meta                          = EXCLUDED.meta;
 
 CREATE TEMP TABLE tmp_refs_nc AS
 SELECT m.soggetto_ruolo_id                                                                AS emittente_soggetto_ruolo_id,

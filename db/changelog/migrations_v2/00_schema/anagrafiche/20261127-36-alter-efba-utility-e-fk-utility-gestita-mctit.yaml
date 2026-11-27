@@ -1,0 +1,179 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN BILLING ACCOUNT E UN LISTINO PER CATEGORIA STANNO SU UN'UTILITY CHE L'AZIENDA GESTISCE
+#   anagrafiche.billing_account
+#     uq_billing_account_id_utility (id, utility_id)                       nuovo
+#   anagrafiche.emittenti_fiscali_billing_account
+#     utility_id integer                                                   nuova colonna
+#     chk_emittenti_fiscali_ba_utility (NULL solo sulla riga predefinita)   nuovo
+#     fk_emittenti_fiscali_ba_billing_account_utility -> billing_account   nuova
+#     fk_emittenti_fiscali_ba_utility_gestita -> emittenti_fiscali_utilities, differita
+#   anagrafiche.categorie_clienti_listini
+#     fk_categorie_clienti_listini_utility_gestita -> emittenti_fiscali_utilities, differita
+#   Brief: brief-db-utility-gestite-dall-emittente §6 (D-U-4, D-U-9, D-U-12), §9 (V4, V5), §8-bis (U3)
+#
+# -- LA REGOLA --------------------------------------------------------------
+#   Un'azienda tratta solo le utility che gestisce (D-U-2: un'azienda senza
+#   righe non ne gestisce nessuna). La coppia azienda e utility si giudica con
+#   una FK composta verso la chiave unica di anagrafiche.emittenti_fiscali_
+#   utilities (emittente_soggetto_ruolo_id, utility_id), D-U-12:
+#   * sul collegamento del billing account con l'azienda: la nascita del BA e il
+#     cambio d'azienda (il quinto cancello, accanto a storia, albero, istanza e
+#     chiave del cliente). Il collegamento porta l'utility del suo BA, legata
+#     al BA da un'altra FK composta: l'utility del BA e' immutabile, e la colonna
+#     non puo' divergere;
+#   * sul listino per categoria di cliente, che ha azienda e utility sue.
+#   La stessa FK fa D-U-9: la riga dell'azienda non si cancella finche' un
+#   billing account o un listino la nominano (e i documenti del BA vengono con
+#   lui). I documenti con l'azienda diretta sono nel changeSet di vendite
+#   20261127-38.
+#
+# -- PERCHE' DIFFERITA ---------------------------------------------------------
+#   Il collegamento nasce col BA (anagrafiche.trgfn_billing_account_link_ef)
+#   sull'azienda di chi agisce o sulla predefinita, e fn_crea_billing_account
+#   senza sessione lo sposta subito sull'azienda chiesta (V4,
+#   _emittente-del-billing-account.md). Un controllo immediato giudicherebbe la
+#   predefinita: si giudica al COMMIT, sull'azienda finale.
+#
+# -- LA RIGA PREDEFINITA ---------------------------------------------------------
+#   La riga is_default non ha BA: utility_id NULL, e MATCH SIMPLE non la
+#   giudica. Il CHECK lega le due cose: utility_id e' NULL se e solo se la riga
+#   e' la predefinita (e allora billing_account_id e' NULL,
+#   chk_emittenti_fiscali_ba_default).
+#
+# -- IL RIEMPIMENTO ---------------------------------------------------------------
+#   Le righe che ci sono prendono l'utility del loro BA. E' un riempimento di una
+#   colonna derivata, non un dato di dominio: i trigger del collegamento si
+#   sospendono per nome (linee-guida-trigger, «Il backfill di una colonna
+#   derivata non passa dai trigger») e si riaccendono ciascuno nel suo modo.
+#   Le righe nuove le riempie anagrafiche.trgfn_emittenti_fiscali_ba_set_utility
+#   (20261127-37); il lucchetto di colonna ferma il cambio.
+#
+# -- L'ALLINEAMENTO ---------------------------------------------------------------
+#   Le FK verso emittenti_fiscali_utilities si convalidano alla nascita: sul
+#   database di sviluppo ogni azienda deve avere gia' la riga di ogni utility
+#   dei suoi BA e dei suoi listini per categoria (lo corregge a mano Tid,
+#   brief §8-bis U3). Altrimenti il changeSet si ferma, e la riga che manca la
+#   dice l'errore. Su un database nuovo le tabelle sono vuote.
+#
+# -- GLI INDICI -------------------------------------------------------------------
+#   Nessun indice dedicato alle due FK verso emittenti_fiscali_utilities
+#   (fk_index_policy.csv, SENZA_INDICE): il padre si cancella solo per
+#   correggere un'attivazione sbagliata (D-U-9). La FK verso billing_account e'
+#   coperta dall'indice unico su billing_account_id (uq_emittenti_fiscali_ba).
+#   Le FK composte restano fuori dall'automazione ATTIVO (automazione-db §4.2).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261127-36-alter-efba-utility-e-fk-utility-gestita-mctit.yaml
+
+  - changeSet:
+      id: 20261127-36-alter-efba-utility-e-fk-utility-gestita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il collegamento del billing account porta l'utility del BA, e con il
+        listino per categoria punta alla riga dell'azienda in
+        emittenti_fiscali_utilities (FK composte, differite).
+        brief-db-utility-gestite-dall-emittente §6 (D-U-4, D-U-12).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.billing_account
+                DROP CONSTRAINT IF EXISTS uq_billing_account_id_utility;
+              ALTER TABLE anagrafiche.billing_account
+                ADD CONSTRAINT uq_billing_account_id_utility UNIQUE (id, utility_id);
+
+              ALTER TABLE anagrafiche.emittenti_fiscali_billing_account
+                ADD COLUMN IF NOT EXISTS utility_id integer;
+
+              DO $riempi$
+              DECLARE
+                  -- nome e modo dei trigger accesi: nessuna colonna dietro
+                  v_nomi  text[];
+                  v_modi  text[];
+                  i       integer;
+              BEGIN
+                  SELECT array_agg(t.tgname::text ORDER BY t.tgname),
+                         array_agg(t.tgenabled::text ORDER BY t.tgname)
+                    INTO v_nomi, v_modi
+                    FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'anagrafiche.emittenti_fiscali_billing_account'::regclass
+                     AND NOT t.tgisinternal
+                     AND t.tgenabled <> 'D';
+
+                  FOR i IN 1 .. COALESCE(array_length(v_nomi, 1), 0) LOOP
+                      EXECUTE format('ALTER TABLE anagrafiche.emittenti_fiscali_billing_account DISABLE TRIGGER %I',
+                                     v_nomi[i]);
+                  END LOOP;
+
+                  UPDATE anagrafiche.emittenti_fiscali_billing_account l
+                     SET utility_id = ba.utility_id
+                    FROM anagrafiche.billing_account ba
+                   WHERE ba.id = l.billing_account_id
+                     AND l.utility_id IS DISTINCT FROM ba.utility_id;
+
+                  FOR i IN 1 .. COALESCE(array_length(v_nomi, 1), 0) LOOP
+                      EXECUTE format('ALTER TABLE anagrafiche.emittenti_fiscali_billing_account ENABLE %s TRIGGER %I',
+                                     CASE v_modi[i] WHEN 'A' THEN 'ALWAYS' WHEN 'R' THEN 'REPLICA' ELSE '' END,
+                                     v_nomi[i]);
+                  END LOOP;
+              END
+              $riempi$;
+
+              ALTER TABLE anagrafiche.emittenti_fiscali_billing_account
+                DROP CONSTRAINT IF EXISTS chk_emittenti_fiscali_ba_utility;
+              ALTER TABLE anagrafiche.emittenti_fiscali_billing_account
+                ADD CONSTRAINT chk_emittenti_fiscali_ba_utility
+                CHECK ((utility_id IS NULL) = (is_default IS TRUE));
+
+              ALTER TABLE anagrafiche.emittenti_fiscali_billing_account
+                DROP CONSTRAINT IF EXISTS fk_emittenti_fiscali_ba_billing_account_utility;
+              ALTER TABLE anagrafiche.emittenti_fiscali_billing_account
+                ADD CONSTRAINT fk_emittenti_fiscali_ba_billing_account_utility
+                FOREIGN KEY (billing_account_id, utility_id)
+                REFERENCES anagrafiche.billing_account (id, utility_id);
+
+              ALTER TABLE anagrafiche.emittenti_fiscali_billing_account
+                DROP CONSTRAINT IF EXISTS fk_emittenti_fiscali_ba_utility_gestita;
+              ALTER TABLE anagrafiche.emittenti_fiscali_billing_account
+                ADD CONSTRAINT fk_emittenti_fiscali_ba_utility_gestita
+                FOREIGN KEY (emittente_soggetto_ruolo_id, utility_id)
+                REFERENCES anagrafiche.emittenti_fiscali_utilities (emittente_soggetto_ruolo_id, utility_id)
+                DEFERRABLE INITIALLY DEFERRED;
+
+              ALTER TABLE anagrafiche.categorie_clienti_listini
+                DROP CONSTRAINT IF EXISTS fk_categorie_clienti_listini_utility_gestita;
+              ALTER TABLE anagrafiche.categorie_clienti_listini
+                ADD CONSTRAINT fk_categorie_clienti_listini_utility_gestita
+                FOREIGN KEY (emittente_soggetto_ruolo_id, utility_id)
+                REFERENCES anagrafiche.emittenti_fiscali_utilities (emittente_soggetto_ruolo_id, utility_id)
+                DEFERRABLE INITIALLY DEFERRED;
+
+              COMMENT ON COLUMN anagrafiche.emittenti_fiscali_billing_account.utility_id IS
+                'L''utility del billing account (billing_account.utility_id), ripetuta qui perche'' la coppia azienda e utility punti alla riga dell''azienda in anagrafiche.emittenti_fiscali_utilities. La scrive anagrafiche.trgfn_emittenti_fiscali_ba_set_utility alla nascita, la lega al BA fk_emittenti_fiscali_ba_billing_account_utility, e non si cambia. NULL solo sulla riga predefinita, che non ha billing account.';
+              COMMENT ON CONSTRAINT fk_emittenti_fiscali_ba_utility_gestita ON anagrafiche.emittenti_fiscali_billing_account IS
+                'Il billing account sta su un''utility che la sua azienda gestisce: alla nascita e al cambio d''azienda. Differita: il collegamento nasce sulla predefinita e si sposta nella stessa transazione. Ferma anche la cancellazione della riga dell''azienda finche'' un BA la usa.';
+              COMMENT ON CONSTRAINT fk_categorie_clienti_listini_utility_gestita ON anagrafiche.categorie_clienti_listini IS
+                'Il listino per categoria sta su un''utility che la sua azienda gestisce. Differita. Ferma anche la cancellazione della riga dell''azienda finche'' un listino per categoria la usa.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.categorie_clienti_listini DROP CONSTRAINT IF EXISTS fk_categorie_clienti_listini_utility_gestita;
+              ALTER TABLE anagrafiche.emittenti_fiscali_billing_account DROP CONSTRAINT IF EXISTS fk_emittenti_fiscali_ba_utility_gestita;
+              ALTER TABLE anagrafiche.emittenti_fiscali_billing_account DROP CONSTRAINT IF EXISTS fk_emittenti_fiscali_ba_billing_account_utility;
+              ALTER TABLE anagrafiche.emittenti_fiscali_billing_account DROP CONSTRAINT IF EXISTS chk_emittenti_fiscali_ba_utility;
+              ALTER TABLE anagrafiche.emittenti_fiscali_billing_account DROP COLUMN IF EXISTS utility_id;
+              ALTER TABLE anagrafiche.billing_account DROP CONSTRAINT IF EXISTS uq_billing_account_id_utility;

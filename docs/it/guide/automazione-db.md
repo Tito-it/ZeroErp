@@ -492,7 +492,7 @@ Per tabelle che espongono sia una colonna utility (`utility_id`) sia una colonna
 * Porta storica: `dbops.fn_apply_automazione_guard_utility_tipo_ruolo()` — chiama il runner; resta perché la chiama il primo giro di `ci_apply`
 * Trigger function: `script.trgfn_guard_utility_tipo_ruolo_by_cols()`, montata `BEFORE INSERT OR UPDATE OF` le due colonne
 
-**Comportamento:** se la matrice non è configurata per la utility in questione, il trigger adotta un comportamento fail-open (non blocca).
+**Comportamento:** il tipo di ruolo tratta l'utility solo se la matrice lo ammette con una riga accesa e valida oggi. Un'utility senza righe non è ammessa per nessuno (`E_UTILITY_RUOLO_NON_AMMESSO`): è la stessa lettura della tendina delle utility di un billing account. La matrice ha un seed di primo impianto per ogni utility del catalogo (§4.9).
 
 ### 4.7 DATE_VALIDITA (la regola del periodo)
 
