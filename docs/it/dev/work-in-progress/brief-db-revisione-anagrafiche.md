@@ -31,7 +31,7 @@ resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta d
 | 6 | sessione DB | Il giro dei metadati, per ciò che i giri di codice non hanno già riscritto | §8 | 4 |
 | 7 | sessione DB | Archiviazione in `work-done/`, col debito dei temi spostati scritto nei loro brief | §11 | 5, 6 |
 
-**Decisioni aperte di Tid:** T8 (§25.5): quelle di T8c sono prese (2026-11-27; -2, -3, -4 passate a `brief-db-reseller`); restano D-T8b-1 … -4 e D-T8a-1 … -12 (D-T8-0 decisa: tre giri, Tid 2026-11-27). Nessuna del giro 6 (T4): D-T4-1 … -12 decise il 2026-11-26 (§24.5, §24.7.1, §24.7). Il giro 5-bis è ritirato (Tid, 2026-11-26, §23.4). Nessuna del giro 5 (D-T7b-1 … -7 prese come proposte, Tid 2026-11-25, §22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
+**Decisioni aperte di Tid:** T8 (§25.5): quelle di T8c sono prese (2026-11-27; -2, -3, -4 passate a `brief-db-reseller`, -6 a `analisi-simmetria-ordini-acquisto` D-18), e anche le cinque nate dalla verifica critica del 2026-11-27 (§25.7, decise da Tid lo stesso giorno: D-T8c-9 a, D-T8c-10 … -13); T8c aspetta solo il via e il range; restano D-T8b-1 … -4 e D-T8a-1 … -12 (D-T8-0 decisa: tre giri, Tid 2026-11-27). Nessuna del giro 6 (T4): D-T4-1 … -12 decise il 2026-11-26 (§24.5, §24.7.1, §24.7). Il giro 5-bis è ritirato (Tid, 2026-11-26, §23.4). Nessuna del giro 5 (D-T7b-1 … -7 prese come proposte, Tid 2026-11-25, §22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
 **Da committare:** `.codex/PROJECT_CONTEXT.md`; il §25 riverificato e il reseller spostato col brief nuovo `brief-db-reseller` (2026-11-27); il rosso del rubinetto è committato (2026-11-27, «DB: anagrafiche giro 6, il billing account che non c'è ha il suo codice», insieme al brief con l'allineamento del §24 e l'analisi di T8, §25); il giro 6 (T4) è committato (2026-11-26, «DB: anagrafiche giro 6 (T4)», insieme al giro 5-bis ritirato); i passaggi al BE dei giri 3 e 4 sono committati (2026-11-26, PR #257); il giro 5 è committato (DB `7f8d9506d`, BE 2026-11-26).
 
 ## 0. Il piano da percorrere
@@ -125,8 +125,12 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] T8: analisi sul catalogo, guide verificate, ciò che esiste già; proposta di dividerlo in T8a, T8b, T8c (2026-11-26, §25)
   * [x] T8: D-T8-0, tre giri, nell'ordine T8c, T8b, T8a (Tid, 2026-11-27, §25.5)
   * [x] T8c: il reseller tolto e portato in [brief-db-reseller](brief-db-reseller.md) (Tid, 2026-11-27)
-  * [x] T8c: le decisioni D-T8c-1 (solo PSP), -5 … -8, tutte come proposte (Tid, 2026-11-27, §25.5)
-  * [ ] T8c: il giro, al via di Tid e col suo range
+  * [x] T8c: le decisioni D-T8c-1 (solo PSP), -5, -7, -8, come proposte; -6 spostata nell'analisi degli ordini d'acquisto (Tid, 2026-11-27, §25.5)
+  * [x] T8c: verifica critica dell'analisi sul catalogo e sulle guide, prima del giro (2026-11-27, §25.7)
+  * [x] T8c: le cinque decisioni nuove di §25.7, D-T8c-9 … -13 (Tid, 2026-11-27)
+  * [x] T8c: via di Tid (2026-11-27); range occupato `20261126-64 … -76` (il prossimo libero, da
+    `scripts/prossimo_changeset.py`)
+  * [ ] T8c: il giro (§25.8)
   * [ ] T8b: le decisioni D-T8b-1 … -4 (Tid, §25.3); poi il giro
   * [ ] T8a: le decisioni D-T8a-1 … -12 (Tid, §25.2); poi il giro
   * [ ] Poi un giro per tema nell'ordine di §17.1: T12, T3, T10, T11
@@ -621,7 +625,9 @@ anagrafiche.pdp` nei repository di istanze utility, billing account e pagamenti)
 **R-BE3 — Chi chiama `fn_check_fornitore_attivo` e `fn_guard_fornitore_attivo`?** Nessuno: né il
 backend, né il frontend, né il DB, né i pgTAP. In `backend/` c'è solo un commento in
 `portale/services/invito_portale_service.py`, il cui codice fa un controllo suo (`E_FORNITORE_NON_TROVATO`)
-senza chiamarle. `E_FORNITORE_NON_ATTIVO` vive solo nei cataloghi errori. Candidate al ritiro.
+senza chiamarle. `E_FORNITORE_NON_ATTIVO` vive solo nei cataloghi errori. Candidate al ritiro. ⚠️ Il 2026-11-27 la
+questione passa a [analisi-simmetria-ordini-acquisto](analisi-simmetria-ordini-acquisto.md) §4.10 (D-18): la regola
+«il fornitore bloccato non riceve ordini» si decide col cantiere acquisti.
 
 **R-BE4 — «Un conto predefinito non si blocca».** Nel BE sta **solo** in
 `ContiBancariService._guard_predefinito_bloccato`. Sullo stato risultante (in update, il payload sopra
@@ -2836,7 +2842,7 @@ dell'emittente), **T8c** i ruoli d'impresa (S12, S13, S56, S57, R-BE3). Ordine p
 | --- | --- |
 | [gestione-conti-bancari](../../guide/gestione-conti-bancari.md) | **coerente** col codice di oggi: i limiti di §«Che cosa il database non tiene» sono la fotografia del giro 0d (2026-11-22), non decisioni. **Indietro** per ogni proposta accettata di T8a (§«Il registro degli IBAN», §«I due legami», §«Che cosa si spegne», §«I mandati SEPA»). Se D-T8a-7 è **b**, «la validità non conta» per il predefinito diventa una decisione da scrivere |
 | [emittenti-fiscali](../../guide/emittenti-fiscali.md) §1 | **sbagliata**: dice che `fn_get_emittente_fiscale_pk` e `_id` passano da una chiave all'altra dell'emittente; prendono tutte e due un `billing_account_id`. Si riscrive in T8b. §«Il codice» coerente |
-| [soggetti-e-ruoli-anagrafici](../../guide/soggetti-e-ruoli-anagrafici.md) | **coerente** (SR contro PK, conti, «ogni specializzazione controlla il tipo»). **Indietro** con S56a (il soggetto della specializzazione non si sposta, non lo dice) e §5b («punta alla specializzazione quando conta il tipo», con D-T8c-3). Il legame reseller–BA non è descritto: manca |
+| [soggetti-e-ruoli-anagrafici](../../guide/soggetti-e-ruoli-anagrafici.md) | **coerente** (SR contro PK, conti, «ogni specializzazione controlla il tipo»). **Indietro** con S56a (il soggetto della specializzazione non si sposta, non lo dice) e §5b («punta alla specializzazione quando conta il tipo», con D-T8c-3). Il legame reseller–BA non è descritto: manca. ⚠️ D-T8c-3 e il legame reseller–BA sono passati a [brief-db-reseller](brief-db-reseller.md); per T8c §5b va letto con D-T8c-9 (§25.7) |
 | [gestione-dei-pagamenti](../../guide/gestione-dei-pagamenti.md) | **coerente** sul verso diretto di PSP e canali d'incasso; **indietro** dopo S13 (un PSP con enti attivi non si spegne né si cancella) e D-T8a-5 (il verso del legame) |
 | [risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md) §«Soggetto gestore» | **coerente** («singleton»): è il codice a tenerlo debole (S57a) |
 | [automazione-db](../../guide/automazione-db.md) | **coerente**: §4.8 (`CODICE_MAIUSCOLO`, base di S54c) e la riga della FK verso una UNIQUE non-PK che genera il `require_attivo` (base di D-T8c-3 e S56b) |
@@ -2845,7 +2851,8 @@ dell'emittente), **T8c** i ruoli d'impresa (S12, S13, S56, S57, R-BE3). Ordine p
 
 **Orfani**: `resellers_billing_account` è un concetto di dominio (il reseller di una fornitura nel tempo) senza guida:
 va in `soggetti-e-ruoli-anagrafici`. `vendite.fn_build_fattura_key` va nel «Vedi anche» di `fatturazione`.
-`gestori_utilities` e le due funzioni del fornitore dipendono da D-T8c-8 e D-T8c-6; `trgfn_resellers_guard_attivo` è
+`gestori_utilities` e le due funzioni del fornitore dipendono da D-T8c-8 e D-T8c-6 (⚠️ le due funzioni ora da D-18 di
+[analisi-simmetria-ordini-acquisto](analisi-simmetria-ordini-acquisto.md), §25.5); `trgfn_resellers_guard_attivo` è
 un dettaglio interno, che si ritira se D-T8c-3 è la FK. ⚠️ Il reseller, i suoi orfani e la riga di
 `soggetti-e-ruoli-anagrafici` sul legame reseller–BA sono passati a [brief-db-reseller](brief-db-reseller.md) (Tid, 2026-11-27).
 
@@ -2924,7 +2931,7 @@ non è più nelle baseline dei rossi: la nota di §15.2 è superata.
 | S13 `psp` | regge: fuori da `automation_delete_block`, codice non bloccato, nessun generatore, nessun verso opposto verso gli enti d'incasso | difetto | delete block e lock del codice; **D-T8c-5**: guard su `psp.attivo` contro gli enti `PSP` attivi (la FK non si può: `enti_incasso.soggetto_ruolo_id` è polimorfica), oppure una colonna PSP dedicata con FK |
 | S56a `soggetto_ruolo_id` delle specializzazioni | regge, **più largo**: non bloccato in nessuna specializzazione | difetto | lock su tutte; il BE non lo scrive in modifica |
 | S56b `vendite.ddt.vettore_soggetto_ruolo_id` | regge: sola FK su `soggetti_ruoli` | difetto | FK verso `vettori(soggetto_ruolo_id)` (verificare prima che generi il `require_attivo`). Stesso disegno di T12 |
-| S56c / R-BE3 le due funzioni del fornitore | regge: nessuno le chiama, e sono le sole lettrici di `config.stati_fornitore.blocca_ordini` | regola senza verbo, non codice morto | **D-T8c-6**: (a) ritirarle e la regola passa al cantiere acquisti; (b) farle chiamare dal guard degli ordini d'acquisto, correggendo il segnaposto di `E_FORNITORE_BLOCCATO` |
+| ~~S56c / R-BE3 le due funzioni del fornitore~~ → [analisi-simmetria-ordini-acquisto](analisi-simmetria-ordini-acquisto.md) §4.10 (Tid, 2026-11-27) | regge: nessuno le chiama, e sono le sole lettrici di `config.stati_fornitore.blocca_ordini` | regola senza verbo, non codice morto | **D-T8c-6**: (a) ritirarle e la regola passa al cantiere acquisti; (b) farle chiamare dal guard degli ordini d'acquisto, correggendo il segnaposto di `E_FORNITORE_BLOCCATO` |
 | S57a il gestore unico | regge: lettura con `LIMIT 1`, due inserimenti concorrenti passano; `v_existing_id integer` | difetto | indice UNIQUE su `((1))` |
 | S57b la P.IVA del gestore | regge ristretta: dal giro 3 la cambia solo il SUPER_ADMIN | residuo | **D-T8c-7**: guard sul soggetto, oppure limite dichiarato |
 | S57c `gestori_utilities` | regge: nessun lettore; COMMENT e nomi dei vincoli di un rinomino; `utility_id integer` | tabella senza consumatore | **D-T8c-8**: ritirarla, oppure scriverne il significato |
@@ -2940,7 +2947,8 @@ specializzazione senza il guard di ruolo doppio di §25.1.
 
 Ricadute BE: `ddt_service.py`, `ddt_repository.py`, `_schema_da_contratto.py` (il vettore del DDT: codice d'errore
 nuovo); `invito_portale_service.py` (commento che nomina `fn_guard_fornitore_attivo`); i codici `E_FORNITORE_*`
-se D-T8c-6 è **a**. Reseller, PSP e i due legami: nessuno li scrive dal BE.
+se D-T8c-6 è **a**. Reseller, PSP e i due legami: nessuno li scrive dal BE. ⚠️ Superato da §25.7: il portale e i
+codici `E_FORNITORE_*` escono da T8c con D-18; si aggiungono le colonne modificabili delle specializzazioni (S56a).
 
 ### 25.5 Le decisioni per Tid
 
@@ -2952,9 +2960,12 @@ se D-T8c-6 è **a**. Reseller, PSP e i due legami: nessuno li scrive dal BE.
     come vettori e fornitori, forma `PSP-` + 7 cifre;
   * **D-T8c-5**: un guard su `psp.attivo` rifiuta lo spegnimento finché un ente d'incasso `PSP` attivo lo nomina
     (la FK non si può: `enti_incasso.soggetto_ruolo_id` è polimorfica);
-  * **D-T8c-6 b**: `fn_check_fornitore_attivo` e `fn_guard_fornitore_attivo` le chiama il guard degli ordini
-    d'acquisto, e `blocca_ordini` di `config.stati_fornitore` ha un lettore; si corregge il segnaposto di
-    `E_FORNITORE_BLOCCATO`. R-BE3 (il ritiro chiesto dal BE) non si fa;
+  * ~~**D-T8c-6 b**: le due funzioni del fornitore le chiama il guard degli ordini d'acquisto~~. ⚠️ **Riaperta e
+    spostata** (Tid, 2026-11-27): il guard degli ordini d'acquisto non esiste. `acquisti.ordini.soggetto_ruolo_id`
+    ha la sola FK su `soggetti_ruoli`, nessun trigger guarda il fornitore, `acquisti` non ha verbi, e le due
+    funzioni prendono `fornitori.id`, non il ruolo. Tid: «prematuro, non siamo allineati con le tabelle». Va in
+    [analisi-simmetria-ordini-acquisto](analisi-simmetria-ordini-acquisto.md) §4.10, D-18, con il segnaposto di
+    `E_FORNITORE_BLOCCATO`. In T8c le due funzioni non si toccano, e R-BE3 (il ritiro) aspetta D-18;
   * **D-T8c-7**: la P.IVA del soggetto del gestore resta giudicata solo alla scrittura del gestore; il limite si
     scrive (pagina di `gestori`, guida `risorse-umane-e-accessi` §«Soggetto gestore»), nessun guard sul soggetto;
   * **D-T8c-8**: `gestori_utilities` si ritira. **Verificato prima, come chiesto da Tid** (2026-11-27): nessuna guida,
@@ -2986,8 +2997,115 @@ se D-T8c-6 è **a**. Reseller, PSP e i due legami: nessuno li scrive dal BE.
 * [x] Analisi sul catalogo, guide verificate, ciò che esiste già (2026-11-26, §25)
 * [x] D-T8-0: tre giri, T8c, T8b, T8a (Tid, 2026-11-27)
 * [x] T8c: le decisioni (Tid, 2026-11-27)
+* [x] T8c: verifica critica prima del giro (2026-11-27, §25.7)
+* [x] T8c: le decisioni nuove di §25.7 (Tid, 2026-11-27)
 * [ ] T8c: il giro
 * [ ] T8b: le decisioni, poi il giro
 * [ ] T8a: le decisioni, poi il giro
 * Per ogni giro: pgTAP rosso, changeSet (range da Tid), prova sullo scratch, documentazione, apply e pgTAP (Tid),
   commit, la richiesta al BE
+
+### 25.7 Verifica critica di T8c prima del giro (2026-11-27)
+
+Riletta sul catalogo dello scratch (`zeroerp_ruoli`) e sulle guide, prima del via di Tid. Nessuna misura sui dati
+entra come motivo: tutto ciò che segue è struttura (trigger, vincoli, corpi, seed).
+
+**Correzioni dell'analisi di §25.4.**
+
+* **S56a è più stretta di come è scritta.** `soggetto_ruolo_id` è già bloccato in `clienti`
+  (`E_CLIENTE_FORNITURA_IMMUTABILE`) e in `emittenti_fiscali` (`E_EMITTENTE_SOGGETTO_IMMUTABILE`), righe di
+  `dbops.automation_lock_columns`. Manca nelle specializzazioni con `UNIQUE (soggetto_ruolo_id)` `fornitori`,
+  `vettori`, `gestori`, `psp`, `risorse_umane` (e `resellers`, che va col suo brief). Il lavoro è una riga per tabella
+  in `automation_lock_columns`, generata da `LOCK_COLUMNS`; va deciso il codice (uno per tabella, come i due
+  precedenti, o uno comune) e se `risorse_umane`, dell'area E, sta in T8c.
+* **S56b ha una conseguenza che l'analisi non dice, e chiede una decisione** (proposta **D-T8c-9**). La FK di
+  `vendite.ddt.vettore_soggetto_ruolo_id` verso `vettori(soggetto_ruolo_id)` fa nascere dall'automazione ATTIVO
+  anche il BLOCK sul padre; `vendite.ddt` non ha `attivo`, quindi il BLOCK parla con `E_ATTIVO_BLOCK_CHILDREN_EXIST`:
+  **un vettore che ha portato una bolla non si spegne più**. È lo stesso difetto che §25.2 (D-T8a-12) e il brief del
+  reseller (S57e) chiamano difetto. Strade: (a) la FK con una riga in `dbops.automazione_attivo_eccezioni` («la bolla
+  è storia», come le note e le stampe), e il «vettore acceso alla scelta» in un guard del DDT; (b) la FK e il BLOCK
+  voluti, e si scrive; (c) niente FK, un guard sul tipo e sull'acceso. Prima dell'`ALTER` serve anche sapere che le
+  bolle esistenti lo reggono (è il controesempio che la FK troverebbe; `NOT VALID` se no). ⚠️ È la stessa domanda
+  di D-18 (a) di [analisi-simmetria-ordini-acquisto](analisi-simmetria-ordini-acquisto.md) §4.10 per il fornitore
+  dell'ordine: una decisione per i due domini, non due. Quel §4.10 scrive che la FK «dà tipo, esistenza e acceso»:
+  il BLOCK manca anche lì.
+* **D-T8c-1: il generatore non si scrive a mano.** `config.sistema_codici` ha il trigger
+  `script.trgfn_config_sistema_codici_sync_gen_codice`: una riga con `schema_tabella`, `nome_tabella`,
+  `nome_colonna` crea da sé `anagrafiche.trgfn_psp_gen_codice` e `trg_psp_a10_gen_codice_ins_upd` (è come sono nati
+  quelli di vettori e fornitori). Il giro è una riga del seed; un trigger scritto nel changeSet sarebbe un doppione.
+* **D-T8c-5: il BLOCK c'è già come building block.** `dbops.trgfn_prevent_deactivate_if_children('pagamenti',
+  'enti_incasso', 'soggetto_ruolo_id', 'soggetto_ruolo_id', 'attivo')`, scritto a mano su `psp` `BEFORE UPDATE OF
+  attivo`, dice la regola senza una funzione nuova (precedente della colonna non-PK: il BLOCK di
+  `emittenti_fiscali_billing_account` su `emittenti_fiscali`). Non serve filtrare `tipo = 'PSP'`: il ruolo è PSP, e
+  ogni ente che lo nomina è un ente di quel PSP. Letto che sopravvive a `ci_apply`: il riconciliatore toglie solo i
+  trigger delle FK che percorre, e `fn_trigger_attivo_orfani` guarda solo tabelle e colonne mancanti. Resta da
+  decidere il codice: quello generico (`E_ATTIVO_BLOCK_CHILDREN_ACTIVE`) o uno di dominio.
+* **Il verso opposto di D-T8c-5 è difettoso, fuori elenco** (in `pagamenti`). `trgfn_enti_incasso_guard_psp` gira su
+  ogni `UPDATE` dell'ente, anche spento, e su un PSP spento risponde `E_ENTE_INCASSO_PSP_NON_CENSITO` («non
+  censito»). Con D-T8c-5 un PSP si spegne solo dopo i suoi enti, e da quel momento quegli enti spenti non si possono
+  più modificare, con un messaggio che non dice la causa. Proposta: il controllo dell'acceso solo quando l'ente è
+  acceso o cambia ruolo, con un codice per «spento» distinto da «non censito»; dentro T8c o in coda, decide Tid.
+* **S57a: con l'indice, la regola del singleton ha due sedi.** Il passo 2 di `trgfn_gestori_guard` (`LIMIT 1`,
+  `E_GESTORE_SINGLETON_VIOLATO`) e l'indice UNIQUE su `((1))` dicono la stessa cosa: va scritto quale parla (il
+  guard per il codice di dominio, l'indice per la concorrenza) o se il passo si ritira. `v_existing_id integer`
+  contro `gestori.id bigint`: `%TYPE`.
+* **D-T8c-7: il limite da scrivere è più piccolo.** `trgfn_soggetti_guard_cf_piva_obbligatori` già impedisce di
+  togliere la P.IVA ai soggetti il cui dettaglio ha `piva_obbligatoria` (nel seed SP e SC). Il buco resta solo per un
+  gestore con un dettaglio PG che non la chiede: la frase della pagina e della guida va scritta così.
+* **D-T8c-8: per le righe dei CSV c'è il precedente.** `fk_index_policy.csv` è un mirror dormiente
+  (linee-guida-sql §11.2): la riga resta nel file e la toglie un `DELETE` per coordinate in `80_data`, come
+  `20260915-12`. `apply_fk_index_policy` non si rompe su una FK sparita (salta la riga), quindi è pulizia e non
+  urgenza. `gestori_utilities` non ha trigger ATTIVO (non ha `attivo`) né storico: il `DROP TABLE` porta via
+  sequenza e FK.
+* **§25.1, la causa precisa.** `20251205-01` rinomina le sette funzioni (il trigger vecchio resta agganciato alla
+  funzione nuova); `20251205-03` fa cinque `DROP` del nome sbagliato (clienti, emittenti, fornitori, resellers,
+  vettori) e **nessuno** per `gestori`. Il rimedio non cambia (sei `DROP TRIGGER IF EXISTS` del nome
+  `trg_<t>_ins_upd_check_ruolo_<r>`); perché dbdev ne abbia uno solo non è scritto in nessun changeSet: una
+  correzione a mano su una sola macchina (§11.9), da dire nell'intestazione.
+
+**Guide che §25 non ha censito** (`scripts/guide_coinvolte.py`, 11 oggetti, 2026-11-27):
+
+| Guida | Esito |
+| --- | --- |
+| [numerazione-documenti-e-codici](../../guide/numerazione-documenti-e-codici.md) §2.1 e la tabella di §3 | **indietro** con D-T8c-1: «Chi lo usa, oggi … Dieci voci» e la riga «Cliente, soggetto, fornitore, vettore…» non hanno il PSP. Si aggiorna nel giro |
+| [gestione-ddt](../../guide/gestione-ddt.md) | **coerente** oggi («vettore opzionale»); **indietro** con D-T8c-9 se il vettore deve essere un vettore acceso |
+| [linee-guida-sql](../../linee-guida-sql.md) §naming, riga dell'esempio `gestori_utilities_ruoli` | **indietro**: l'esempio nomina una tabella rinominata nel 2025 e che D-T8c-8 ritira |
+| `iva-risolutore-di-riga`, `architettura-permessi`, `catasto-delle-istanze`, `configurazione-liste`, `generazione-cliente`, `gestione-delle-istanze-utility`, `database-che-resta-veloce`, `fatturazione`, `statistiche-del-planner`, `storicizzazione-tabelle` | nominano `clienti` o `vendite.ddt` per altro: nessuna frase sul perimetro di T8c, **coerenti** per assenza |
+
+**Il brief rimasto indietro dopo lo spostamento di D-T8c-6 e del reseller** (righe di §25 da leggere così):
+
+* la riga di `soggetti-e-ruoli-anagrafici` nella tabella delle guide cita D-T8c-3 e il legame reseller–BA: passati a
+  [brief-db-reseller](brief-db-reseller.md);
+* gli «Orfani» legano le due funzioni del fornitore a D-T8c-6: ora D-18;
+* le «Ricadute BE» di §25.4 nominano `invito_portale_service.py` e i codici `E_FORNITORE_*` «se D-T8c-6 è a»: escono
+  da T8c con D-18. Restano `ddt_service.py`, `ddt_repository.py`, `_schema_da_contratto.py` (con D-T8c-9) e, nuovi,
+  le colonne modificabili delle specializzazioni con S56a.
+
+**Decisioni nuove per Tid, prima del giro**: D-T8c-9 (il vettore del DDT, insieme a D-18 a); il codice di S56a e il
+perimetro (`risorse_umane`); il codice del BLOCK di D-T8c-5; il verso degli enti d'incasso (dentro T8c o no); la
+sede del singleton di S57a.
+
+**✅ Decise da Tid il 2026-11-27, tutte come proposte:**
+
+* **D-T8c-9 a**: la FK di `vendite.ddt.vettore_soggetto_ruolo_id` verso `vettori(soggetto_ruolo_id)`, con la riga in
+  `dbops.automazione_attivo_eccezioni` («la bolla è storia»): il vettore usato si spegne. «Una bolla nuova o un
+  vettore cambiato vuole un vettore acceso» lo dice un guard del DDT. Prima dell'`ALTER` il giro verifica che le bolle
+  esistenti reggano la FK. La stessa strada è la proposta per D-18 (a) del fornitore dell'ordine, che resta da
+  decidere nel suo cantiere;
+* **D-T8c-10**: S56a con **un codice comune** per «il soggetto di una specializzazione non si cambia», su `fornitori`,
+  `vettori`, `gestori`, `psp` e **`risorse_umane`** (dentro T8c). Clienti ed emittenti tengono i loro codici;
+* **D-T8c-11**: il BLOCK di D-T8c-5 parla con un **codice di dominio** («il PSP ha canali d'incasso attivi»);
+* **D-T8c-12**: il verso degli enti d'incasso si corregge **in T8c**: `trgfn_enti_incasso_guard_psp` controlla
+  l'acceso del PSP solo quando l'ente è acceso o cambia ruolo, e un PSP spento ha un codice suo, distinto da «non
+  censito». Tocca `pagamenti`;
+* **D-T8c-13 a**: per il gestore unico restano **le due sedi**, ciascuna col suo mestiere: il guard per il codice di
+  dominio, l'indice UNIQUE per i due inserimenti concorrenti. Lo dice il commento del corpo; `v_existing_id` prende
+  il `%TYPE`.
+
+**La documentazione si allinea in due tempi.** Subito (2026-11-27), ciò che era già falso: le righe superate di §25
+(marcate ⚠️), l'esempio di `linee-guida-sql` §naming, la riga di T8 e la versione di PostgreSQL di
+`PROJECT_CONTEXT.md`, il §4.10 dell'analisi degli ordini d'acquisto. **Nel giro**, insieme al codice, perché una
+guida descrive lo stato attuale: `numerazione-documenti-e-codici` (il PSP), `gestione-ddt` (il vettore acceso),
+`soggetti-e-ruoli-anagrafici` (il soggetto della specializzazione non si sposta), `gestione-dei-pagamenti` (il PSP
+che non si spegne, il verso degli enti), `risorse-umane-e-accessi` §«Soggetto gestore» (il limite della P.IVA, nella
+forma di §25.7), le pagine `manual/` toccate, i COMMENT di §15.2.
