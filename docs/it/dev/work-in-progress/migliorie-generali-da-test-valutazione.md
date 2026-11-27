@@ -1,9 +1,8 @@
 # Migliorie generali da test valutazione
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-21
+## ⏭️ Chi riparte — aggiornato al 2026-11-27
 
-**Riparte: Tid** col rientrato da togliere (riga 1); poi **il team DB** sui 21 rossi noti della CI e
-sul brief di Q-2. **Tid** ha le decisioni che tengono ferme D18, D7 e D31. Il cancello pgTAP di
+**Riparte: Tid** col rientrato da togliere (riga 1); poi **il team DB** sui 21 rossi noti della CI. **Tid** ha le decisioni che tengono ferme D18, D7 e D31. Il cancello pgTAP di
 `Tito-dev` è di nuovo **verde**: la corsa `44780756701` (20-11, `cab3b88d6`) dà 21 rossi su 1.101,
 tutti noti, nessuna regressione (§3 D7).
 
@@ -12,7 +11,7 @@ tutti noti, nessuna regressione (§3 D7).
 | 1 | Tid | `pgtap-baseline-ci-rientrati.sh 44780756701`: toglie il rientrato `vendite/test-documento-trattenuto-da-lotto-v1` (22 → 21). Letto in `--dry-run` il 21-11; la corsa `43577800656` citata prima va sostituita con questa, il cui log è recente | §3 D7 | — |
 | 2 | team DB | D7: i 21 rossi noti della CI (16 `ASSERZIONE`, 5 `ERRORE_FIXTURE`), uno per uno | §3 D7 | la riga 1 |
 | 3 | Tid | D18: le cinque decisioni della catena delle istanze (ferma dal 2026-10-05) | `brief-db-catena-istanze-pdp.md` §6 | — |
-| 4 | team DB | D17 Q-2: le GUC di bypass legate al proprietario — via di Tid il 2026-11-03; serve un brief suo (decisioni aperte, ~45 pgTAP). Non aperto al 21-11 | §3 D17 | — |
+| 4 | ~~team DB~~ | ~~D17 Q-2: le GUC di bypass legate al proprietario~~ ✅ **chiusa il 2026-11-27** (§3 D17) | §3 D17 | — |
 | 5 | Tid | D7: i test legati a dati di macchina; il ramo «ultimo SUPER_ADMIN» | §3 D7 | — |
 | 6 | Tid | D31: le sorgenti di orario e consumo (le domande le prepara il team DB) | §3 D31 | le sorgenti |
 
@@ -90,7 +89,26 @@ vista). Non sono valutati.
 > D6-bis, D16 e D24, chiuse il 2026-11-03, ci sono state spostate il 2026-11-14. Quando una voce ha
 > ancora una parte aperta, il numero compare in tutti e due i posti.
 
-### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
+### ✅ D17 — Q-2: le GUC di bypass che chiunque poteva accendere
+
+✅ **Q-2 chiusa il 2026-11-27.** Le dieci GUC censite il 2026-10-04
+([brief-db-esclusioni-implicite](../work-done/2026/brief-db-esclusioni-implicite.md) §4.2) non spengono più
+un blocco per l'applicazione. Due lavori:
+
+* le porte di **manutenzione** del framework (il lucchetto di colonna, il blocco `DELETE` di clienti,
+  emittenti e banche, l'append-only dei log di vendita, il guard commessa delle attività fatturabili):
+  dal 2026-11-17 si aprono solo alla sessione del migratore, da `script.fn_porta_manutenzione_aperta`,
+  e lasciano una riga in `dbops.porte_manutenzione_passaggi`;
+* le altre cinque (righe contabili, scope degli emittenti, indirizzi, toponomastica, reset del lotto),
+  con cinque GUC che quel censimento non aveva (registrazione tardiva, riconsegna, legami della bolla,
+  pubblicazione del template, `tx_id`): [brief-db-porte-aperte-dalla-sola-guc](../work-done/2026/brief-db-porte-aperte-dalla-sola-guc.md) (chiuso il 2026-11-27). Ogni porta del flusso chiede la GUC sulla riga **e** il
+  proprietario, e la accende un verbo `SECURITY DEFINER` col suo permesso; le porte della toponomastica e
+  degli indirizzi sono strumenti DBA; il reset del lotto resta un interruttore, ma solo del proprietario
+  e solo nella pulizia.
+
+Restano con la sola GUC due strade **dichiarate**: la bozza del legame della bolla e il bypass del
+`tx_id`, che non è una porta. Il modello è in `architettura-permessi-e-autorizzazioni` §7.4, la ricetta
+in `linee-guida-trigger`. Il testo qui sotto è la storia della voce.
 
 ✅ **Il resto di D17 è chiuso il 2026-10-04** (§7): Q-4, Q-1, Q-3, `UPDATE OF`, v1.
 Resta la parte che Tid ha **rimandato** lo stesso giorno: dieci blocchi del DB si
@@ -584,6 +602,9 @@ sono quelli della testata, letti il 14-11.
 | **Error handling / codici errore** | 🟡 basso | 8,5 | **9/10** | Sale: D24 è chiusa da tutti e due i lati, e la misura e il presidio C2 leggono anche i codici negli argomenti dei trigger (una sede, `vw_codici_errore_argomenti_trigger`). Codici senza policy a zero, 824 codici nominabili tutti dichiarati. Restano i sei `W_` senza messaggio (D11-bis) |
 | **Disciplina Liquibase** | 🟡 basso | 9 | **9/10** | 6.911 changeSet in `migrations_v2`, cancelli nati da incidenti reali (11 guardrail, 10 in CI). ⚠️ 36 file senza `logicalFilePath`, una regola di AGENTS.md senza presidio |
 | **Documentazione** | 🟡 basso | 8,5 | **8,5/10** | Copertura piena (1.863 pagine `manual/` su 2.106 auto-generate); sottile dove il dominio è sottile |
+
+⚠️ **2026-11-27**: i voti sono quelli del 14-11. Da allora Q-2 è chiusa (§3 D17), e le righe che la citano
+(Perimetro dei dati, Postura di sicurezza, Gestione del debito) si rivotano al prossimo giro di valutazione.
 | **Naming** | 🟡 basso | 8 | **8/10** | 94-99% sui vincoli; 71% sulla fase dei trigger, che è la voce con conseguenze; un vocabolario solo per i tipi di documento |
 
 ### Il giudizio, in una frase
@@ -638,7 +659,7 @@ rossi noti.
       catena intera da un trigger `AFTER` senza `OF`; brief
       `work-in-progress/brief-db-catena-istanze-pdp.md`, da analizzare con Tid
       (fermo dal 05-10; il ramo delle istanze fittizie del 14-10 eredita i difetti).
-* [ ] **D17** — Q-2: legare le GUC di bypass al proprietario delle tabelle (proposta in
+* [x] **D17** — ✅ chiusa il 2026-11-27 (§3 D17). Q-2: legare le GUC di bypass al proprietario delle tabelle (proposta in
       `work-done/2026/brief-db-esclusioni-implicite.md` §4). Via di Tid il 2026-11-03; il brief suo non è
       ancora aperto (14-11). Il resto di D17 è chiuso (§7), R-1 del BE compresa.
 

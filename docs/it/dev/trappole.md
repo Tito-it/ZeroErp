@@ -1,6 +1,6 @@
 # Trappole: cosa non fare
 
-> **Ultimo aggiornamento**: 24 ottobre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > Questa pagina raccoglie gli errori che fanno male — le "mine" già pestate almeno una volta.
 > Ogni voce dice **cosa non fare**, **perché** e **cosa fare invece**. Leggerla all'inizio
@@ -68,11 +68,14 @@ lo attraversano.
 
 Un blocco che si spegne con `SET zeroerp.qualcosa = on` non è un cancello: le GUC personalizzate
 le imposta anche il ruolo applicativo, quindi l'immutabilità diventa una disciplina del backend.
-Un bypass, quando serve, si lega al **ruolo** (`fn_is_proprietario_tabella`, come fa
-`zeroerp.ddt_cambio_stato`). ⚠️ Le GUC di bypass esistenti sono ancora slegate: la decisione
-è aperta (D17 Q-2 della
-[valutazione DB](/dev/work-in-progress/migliorie-generali-da-test-valutazione)). Non se ne
-aggiungono di nuove.
+Una porta, quando serve, chiede la GUC **e** il proprietario della tabella
+(`fn_is_proprietario_tabella`), e la GUC porta la chiave della riga; una porta di manutenzione passa
+da `script.fn_porta_manutenzione_aperta`. La ricetta è in
+[Linee guida trigger](/linee-guida-trigger), «Una porta nel guard»; il modello in
+[Permessi e autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) §7.4, «Le porte».
+✅ Dal 2026-11-27 nessuna porta si apre più con la sola GUC, salvo le due eccezioni che §7.4
+dichiara (D17 Q-2 della
+[valutazione DB](/dev/work-in-progress/migliorie-generali-da-test-valutazione), chiusa).
 
 ### Non contare su `UPDATE OF colonna` per dire «quando la colonna cambia»
 
