@@ -101,7 +101,7 @@ CREATE TEMP TABLE _filiali AS
 WITH b AS (
     INSERT INTO anagrafiche.bank_branches
         (soggetto_ruolo_id, bank_code, branch_code, name)
-    SELECT bb.banca_sr_id, 'PGTAP', 'CL' || bb.banca_sr_id,
+    SELECT bb.banca_sr_id, '09999', lpad((bb.banca_sr_id % 100000)::text, 5, '0'),
            'Filiale pgTAP ' || bb.lato
       FROM _banche bb
     RETURNING id, soggetto_ruolo_id
@@ -113,7 +113,7 @@ SELECT bb.lato, b.id AS branch_id
 CREATE TEMP TABLE _legami AS
 WITH c AS (
     INSERT INTO anagrafiche.conti_bancari (iban, bank_branch_id)
-    SELECT 'IT00PGTAPCTBLOTTI' || lpad(f.branch_id::text, 12, '0'), f.branch_id
+    SELECT dbops.fn_pgtap_iban(f.branch_id, 'CTBLOTTI' || f.branch_id), f.branch_id
       FROM _filiali f
     RETURNING id, bank_branch_id
 ), l AS (

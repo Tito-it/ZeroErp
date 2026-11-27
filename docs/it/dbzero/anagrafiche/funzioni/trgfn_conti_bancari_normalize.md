@@ -17,27 +17,25 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_conti_bancari_normalize()
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-  IF NEW.iban IS NOT NULL THEN
-    NEW.iban := upper(regexp_replace(NEW.iban, '\s+', '', 'g'));
-    IF NEW.paese IS NULL AND length(NEW.iban) >= 2 THEN
-      NEW.paese := substr(NEW.iban, 1, 2);
-    END IF;
-  END IF;
-
-  IF NEW.bic_swift IS NOT NULL THEN
-    NEW.bic_swift := upper(regexp_replace(NEW.bic_swift, '\s+', '', 'g'));
-  END IF;
-
-  
-  RETURN NEW;
+    -- =========================================================
+    -- Scopo: la forma del conto, prima di chiunque lo giudichi
+    --   (fase a01: lucchetto dell'IBAN, guard IBAN-filiale,
+    --   CHECK e unicita' leggono il valore normalizzato).
+    --   * IBAN e BIC: script.fn_normalizza_codice_bancario
+    --     (senza separatori, maiuscolo, il vuoto NULL);
+    --   * paese: sempre le prime due lettere dell'IBAN. E' un
+    --     derivato: un valore scritto da fuori si sovrascrive.
+    -- Non solleva: i rifiuti li danno i CHECK di formato e i guard.
+    -- =========================================================
+    NEW.iban      := script.fn_normalizza_codice_bancario(NEW.iban);
+    NEW.bic_swift := script.fn_normalizza_codice_bancario(NEW.bic_swift);
+    NEW.paese     := left(NEW.iban, 2);
+    RETURN NEW;
 END
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_conti_bancari_normalize()
-IS 'Trigger function BEFORE INSERT/UPDATE su anagrafiche.conti_bancari:
- - Normalizza IBAN/BIC (uppercase, no spazi)
- - Deriva paese da IBAN se mancante
- - Aggiorna audit (data_update, user_insert/user_update).';
+IS 'BEFORE INSERT OR UPDATE su anagrafiche.conti_bancari, fase a01: IBAN e BIC nella forma di confronto (script.fn_normalizza_codice_bancario: senza separatori, maiuscolo, il vuoto NULL) e il paese sempre ricavato dalle prime due lettere dell''IBAN, anche se chi scrive ne manda un altro. Gira prima del lucchetto dell''IBAN, del guard IBAN-filiale, dei CHECK di formato e dell''unicita'', che leggono il valore normalizzato. Non solleva.';
 ```
 
 </div>

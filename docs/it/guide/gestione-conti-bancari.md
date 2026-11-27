@@ -1,6 +1,6 @@
 # Guida — Gestione dei Conti Bancari
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -17,11 +17,19 @@
 > **Vedi anche** — funzioni e trigger DB:
 >
 > * [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito) — zero o un conto: quello da usare
-> * [anagrafiche.trgfn_conti_bancari_normalize](/dbzero/anagrafiche/funzioni/trgfn_conti_bancari_normalize) — IBAN e BIC normalizzati, il paese dall'IBAN
-> * [anagrafiche.trgfn_soggetti_conti_bancari_guard](/dbzero/anagrafiche/funzioni/trgfn_soggetti_conti_bancari_guard) — il conto di un legame del soggetto è attivo
-> * [anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ruoli_conti_bancari_guard) — il conto di un legame del ruolo è attivo
+> * [script.fn_normalizza_codice_bancario](/dbzero/script/funzioni/fn_normalizza_codice_bancario) — la forma di confronto di IBAN, BIC e codici di banca e filiale
+> * [anagrafiche.trgfn_conti_bancari_normalize](/dbzero/anagrafiche/funzioni/trgfn_conti_bancari_normalize) — il conto normalizzato, il paese sempre dall'IBAN
+> * [anagrafiche.trgfn_bank_branches_normalize](/dbzero/anagrafiche/funzioni/trgfn_bank_branches_normalize) — la filiale normalizzata
+> * [anagrafiche.fn_iban_coerente_con_filiale](/dbzero/anagrafiche/funzioni/fn_iban_coerente_con_filiale) — l'IBAN porta banca e filiale della filiale del conto
+> * [anagrafiche.trgfn_conti_bancari_guard_iban_filiale](/dbzero/anagrafiche/funzioni/trgfn_conti_bancari_guard_iban_filiale) e [anagrafiche.trgfn_bank_branches_guard_iban_conti](/dbzero/anagrafiche/funzioni/trgfn_bank_branches_guard_iban_conti) — la stessa regola, dal conto e dalla filiale
+> * [anagrafiche.fn_filiale_stessi_codici](/dbzero/anagrafiche/funzioni/fn_filiale_stessi_codici) — lo sportello esiste una volta per paese
+> * [anagrafiche.trgfn_bank_branches_guard_unica_per_paese](/dbzero/anagrafiche/funzioni/trgfn_bank_branches_guard_unica_per_paese) e [anagrafiche.trgfn_soggetti_guard_filiali_unica_per_paese](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_filiali_unica_per_paese) — la stessa regola, dalla filiale e dal soggetto della banca
+> * [anagrafiche.trgfn_conti_legami_guard_predefinito](/dbzero/anagrafiche/funzioni/trgfn_conti_legami_guard_predefinito) — il predefinito: uno per periodo, mai bloccato
 > * [anagrafiche.trgfn_bank_guard_ruolo_bank_branches](/dbzero/anagrafiche/funzioni/trgfn_bank_guard_ruolo_bank_branches) — la filiale è di una banca
+> * [anagrafiche.trgfn_sepa_mandati_guard](/dbzero/anagrafiche/funzioni/trgfn_sepa_mandati_guard) — l'IBAN del mandato è quello del conto
 > * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — un conto o una filiale usati non si spengono
+> * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — il conto di un legame è attivo, al COMMIT
+> * [config.stati](/dbzero/config/tabelle/stati) — dove l'IBAN di uno stato porta banca e filiale
 > * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — il giorno operativo su cui si misura la validità
 >
 > **Vedi anche** — guide correlate:
@@ -75,9 +83,9 @@ fn_get_conto_bancario_predefinito    zero o un conto: ruolo con istanza → ruol
                                      poi lo stesso sull'uso GENERICO
 ```
 
-* **Registro** = l'IBAN esiste una volta sola, normalizzato.
+* **Registro** = l'IBAN esiste una volta sola, normalizzato, e non cambia.
 * **Legame** = chi usa il conto e per che cosa: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
-* **Predefinito** = al più uno per soggetto e uso, e per ruolo, istanza e uso.
+* **Predefinito** = al più uno per soggetto e uso, e per ruolo, istanza e uso, in ogni giorno; mai bloccato.
 * **Candidata** = un legame valido nel giorno operativo, non bloccato, su un conto attivo.
 
 ---
@@ -87,10 +95,17 @@ fn_get_conto_bancario_predefinito    zero o un conto: ruolo con istanza → ruol
 [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari) dice che cos'è il conto, non di chi è: l'IBAN,
 il BIC, l'intestatario da mostrare, il paese e la filiale che lo tiene. Chi lo usa lo dicono i legami.
 
-* **Unico e normalizzato.** Prima della scrittura un trigger toglie gli spazi e porta in maiuscolo IBAN e BIC, e
-  ricava il paese dall'IBAN quando manca; poi l'unicità e i formati giudicano il valore normalizzato. L'IBAN si scrive
-  come lo si legge dal documento. La cifra di controllo non è verificata.
-* **Su una filiale.** Ogni conto nomina la sua filiale, obbligatoriamente.
+* **Unico e normalizzato.** Prima di ogni altro controllo un trigger toglie spazi, trattini e ogni altro separatore
+  da IBAN e BIC e li porta in maiuscolo; poi lucchetto, unicità e formati giudicano il valore normalizzato, lunghezza
+  compresa. L'IBAN si scrive come lo si legge dal documento, spazi compresi. La cifra di controllo non è verificata.
+* **Il paese è quello dell'IBAN**, sempre: le sue prime due lettere. Un paese diverso scritto da fuori si sovrascrive.
+* **L'IBAN non si modifica** (`E_CONTO_BANCARIO_IBAN_IMMUTABILE`). Un IBAN sbagliato è un altro conto: si registra
+  quello giusto, lo si lega, e si chiudono i legami del conto sbagliato. Riscrivere lo stesso IBAN con gli spazi non
+  è un cambio.
+* **Su una filiale.** Ogni conto nomina la sua filiale, obbligatoriamente, e la filiale si corregge. Dove l'IBAN porta
+  il codice della banca e quello dello sportello (in Italia e a San Marino l'ABI e il CAB), sono quelli della filiale
+  del conto (`E_CONTO_IBAN_FILIALE_INCOERENTE`). Dove stanno lo dichiara lo stato, in
+  [config.stati](/dbzero/config/tabelle/stati), trovato dalle prime due lettere dell'IBAN.
 * **`verificato`** è l'esito di una verifica che il database non fa: lo scrive chi l'ha fatta.
 
 ### Le banche e le filiali
@@ -98,8 +113,16 @@ il BIC, l'intestatario da mostrare, il paese e la filiale che lo tiene. Chi lo u
 Una banca è un soggetto col ruolo `BANK_B` («istituti di credito»). Le sue filiali stanno in
 [anagrafiche.bank_branches](/dbzero/anagrafiche/tabelle/bank_branches), una riga per sportello sotto il ruolo della
 banca, identificata dal codice banca e dal codice filiale (in Italia l'ABI e il CAB). Un guard rifiuta una filiale
-su un ruolo che non è una banca. Una filiale non si cancella: si spegne, e solo quando nessun conto attivo e nessun
-canale di incasso attivo la nomina.
+su un ruolo che non è una banca.
+
+* **I codici si normalizzano** come l'IBAN: senza separatori, in maiuscolo; gli zeri restano, sono parte del codice.
+* **Lo sportello esiste una volta per paese**: due filiali con lo stesso codice banca e lo stesso codice filiale nel
+  paese del soggetto della banca sono rifiutate (`E_FILIALE_DUPLICATA`), dalla filiale e dal soggetto, quando cambia
+  il suo stato. In due paesi diversi gli stessi codici sono due sportelli.
+* **I codici di una filiale con conti** cambiano solo se gli IBAN dei suoi conti continuano a portarli
+  (`E_FILIALE_CODICI_CONTI_INCOERENTI`).
+* Una filiale non si cancella: si spegne, e solo quando nessun conto attivo e nessun canale di incasso attivo la
+  nomina.
 
 ---
 
@@ -110,13 +133,18 @@ canale di incasso attivo la nomina.
 se serve a un'istanza di servizio di quel ruolo: due forniture dello stesso cliente possono incassare su conti
 diversi. Le due tabelle hanno la stessa forma; il legame del ruolo ha la precedenza.
 
+* **L'identità del legame non si sposta.** Il conto, l'uso e il possessore (il soggetto; il ruolo e la sua istanza)
+  non si modificano (`E_CONTO_LEGAME_IMMUTABILE`): canali d'incasso e mandati nominano il legame per quello che è. Un
+  legame sbagliato si chiude con la sua data di fine e se ne apre uno nuovo.
 * **L'uso.** Lo stesso conto sta sullo stesso soggetto (o ruolo) con usi diversi, una riga per uso.
-* **Il predefinito.** Al più uno per soggetto e uso, e per ruolo, istanza e uso. La validità non conta: un predefinito
-  scaduto o futuro occupa il posto. Il database non sposta il segno da solo: lo si toglie al vecchio, poi lo si mette
-  al nuovo.
+* **Il predefinito.** Al più uno per soggetto e uso, e per ruolo, istanza e uso, **in ogni giorno**
+  (`E_CONTO_PREDEFINITO_SOVRAPPOSTO`): due predefiniti dello stesso possessore e uso non hanno periodi che si
+  sovrappongono, date comprese. Un cambio di conto programmato marca il nuovo legame dal suo primo giorno. Il legame
+  di tutto il ruolo e quello di un'istanza stanno in gradini diversi e non si incontrano.
 * **La validità.** `valido_dal` e `valido_al` sono facoltativi; la fine non precede l'inizio
   (`E_DATA_AL_MINORE_DAL`, dal controllo comune delle date, non dai guard dei legami).
-* **Il blocco.** `bloccato` toglie il legame dalla scelta senza cancellarlo.
+* **Il blocco.** `bloccato` toglie il legame dalla scelta senza cancellarlo. Un predefinito non si blocca
+  (`E_CONTO_PREDEFINITO_BLOCCATO`): prima si toglie il segno.
 * **L'istanza** di un legame del ruolo è del soggetto del ruolo (`E_ISTANZA_ALTRO_SOGGETTO`).
 
 ---
@@ -143,8 +171,7 @@ ruolo, e il suo guard pretende che sia d'incasso: è lì che l'esclusione divent
 
 * **Un conto legato non si spegne.** I legami non hanno un loro `attivo`: basta che **esistano**, di qualunque
   validità, e lo spegnimento è rifiutato (`E_ATTIVO_BLOCK_CHILDREN_EXIST`). Prima si tolgono i legami.
-* **Un legame non si scrive su un conto spento** (`E_CONTO_BANCARIO`): è tutto quello che fanno i guard dei due
-  legami.
+* **Il conto di un legame è attivo**, controllato al COMMIT (`E_ATTIVO_PADRE_NON_ATTIVO`).
 * **Un conto attivo sta su una filiale attiva**, controllato al COMMIT; una filiale con conti attivi non si spegne.
 * **Il soggetto di un legame del soggetto è attivo**, controllato al COMMIT; un soggetto con legami non si spegne.
 
@@ -181,19 +208,20 @@ quando serve «il» conto; la vista serve a vedere il ventaglio e a capire perch
 ## I mandati SEPA
 
 I mandati vivono in `pagamenti` e nominano il **legame del ruolo** del conto addebitato, con il perimetro (un billing
-account o un'istanza) e una copia dell'IBAN, che resta anche se il conto cambia. Un mandato attivo ha la sua data di
-attivazione, e c'è al più un mandato attivo per perimetro e schema. Vedi
+account o un'istanza). L'IBAN del mandato è sempre quello del conto del legame: lo scrive il database a ogni
+scrittura, e un valore mandato da fuori si sovrascrive. Poiché l'IBAN del conto e il conto del legame non cambiano,
+resta quello con cui il mandato è nato. L'intestatario del mandato resta il dato scritto da chi lo crea. Un mandato
+attivo ha la sua data di attivazione, e c'è al più un mandato attivo per perimetro e schema. Vedi
 [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati).
 
 ---
 
 ## ⚠️ Che cosa il database non tiene
 
-* **Un predefinito bloccato.** Il database non vieta di bloccare il legame predefinito: la scelta lo salta e ricade
-  sugli altri. La regola «un predefinito non si blocca» sta nell'applicazione.
-* **Un predefinito a scadenza.** Il predefinito è uno solo, valido o no: un cambio di conto programmato non marca il
-  nuovo legame come predefinito finché il vecchio porta il segno. Si programma con le date, come nell'esempio in coda.
-* **Il paese che segue l'IBAN.** Il paese si ricava solo quando manca: cambiato l'IBAN, resta quello di prima.
+* **L'IBAN di un paese che non dichiara dove stanno banca e filiale** non si confronta con la filiale. Oggi lo
+  dichiarano l'Italia e San Marino; un paese si aggiunge con una riga di [config.stati](/dbzero/config/tabelle/stati).
+* **Un conto con legami chiusi non si spegne**, e così un soggetto con un conto storico: lo spegnimento conta i legami
+  di qualunque validità.
 
 ---
 
@@ -202,6 +230,7 @@ attivazione, e c'è al più un mandato attivo per perimetro e schema. Vedi
 * Scrivere l'IBAN come lo si legge: lo normalizza il database. Mai duplicarlo, anche se lo usano soggetti diversi.
 * Tenere **un solo conto in uso per ogni uso**: gli altri legami sono storici (`valido_al` passato), programmati
   (`valido_dal` futuro) o bloccati.
+* Per cambiare conto, uso o possessore di un legame, chiuderlo e aprirne uno nuovo: non si modifica.
 * Leggere il conto con `fn_get_conto_bancario_predefinito`, non con query sui legami.
 * Per gli incassi, legare il conto al **ruolo**: è il legame che i canali di incasso leggono.
 * Non cancellare un legame scaduto: resta con la sua data di fine, e lo storico lo conserva.
@@ -322,9 +351,8 @@ VALUES (10,  -- il ruolo fornitore
         'PAGAMENTO', TRUE);
 ```
 
-**Una sostituzione programmata** — il predefinito è uno solo, valido o no: il cambio si programma con le date. Il
-vecchio legame finisce il giorno prima, il nuovo comincia quel giorno senza segno; dal primo aprile è l'unica
-candidata e vince:
+**Una sostituzione programmata** — il predefinito è uno per periodo: il vecchio legame finisce il giorno prima, il
+nuovo comincia quel giorno già col segno, e dal primo aprile è lui a vincere:
 
 ```sql
 UPDATE anagrafiche.soggetti_conti_bancari
@@ -334,7 +362,7 @@ UPDATE anagrafiche.soggetti_conti_bancari
 INSERT INTO anagrafiche.soggetti_conti_bancari (soggetto_id, conto_bancario_id, uso, predefinito, valido_dal)
 VALUES ('UUID-SOGGETTO',
         (SELECT id FROM anagrafiche.conti_bancari WHERE iban = 'IT60X0542811101000000999888'),
-        'INCASSO', FALSE, DATE '2026-04-01');
+        'INCASSO', TRUE, DATE '2026-04-01');
 ```
 
 **Le due letture** — la vista per vedere le candidate e da dove vengono, la funzione per avere il conto:

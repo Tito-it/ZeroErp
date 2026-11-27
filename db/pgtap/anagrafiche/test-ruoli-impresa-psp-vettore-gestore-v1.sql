@@ -196,7 +196,7 @@ SELECT id FROM c;
 CREATE TEMP TABLE _conto AS
 WITH conto AS (
   INSERT INTO anagrafiche.conti_bancari (iban, bank_branch_id, attivo, storicizza)
-  SELECT 'IT00PGTAPT8CPSPCONTO00000001', b.bank_branch_id, true, false FROM _banca b
+  SELECT dbops.fn_pgtap_iban(b.bank_branch_id, 'T8CPSPCONTO1'), b.bank_branch_id, true, false FROM _banca b
   RETURNING id
 ), legame AS (
   INSERT INTO anagrafiche.soggetti_ruoli_conti_bancari

@@ -44,7 +44,7 @@ SELECT plan(10);
 --  5) Conto INCASSO a livello ruolo per istanza specifica creato
 --  6) fn_get_conto con istanza: restituisce conto ruolo+istanza (livello 1)
 --  7) fn_get_conto senza istanza: restituisce conto ruolo generico (livello 2)
---  8) Partial unique: blocco duplicato predefinito per (ruolo, istanza, uso)
+--  8) Due predefiniti sovrapposti per (ruolo, istanza, uso) -> E_CONTO_PREDEFINITO_SOVRAPPOSTO
 --  9) Vista flat: istanza_utility_id valorizzato per riga istanza
 -- 10) fn_get_conto PAGAMENTO con istanza: NULL (nessun PAGAMENTO ne GENERICO)
 
@@ -85,6 +85,14 @@ SELECT ok((SELECT count(*) FROM tmp_g) = 1, '1) Cliente con istanza costruito');
 CREATE TEMP TABLE tmp_bb AS
 SELECT bank_branch_id AS id
   FROM dbops.fn_pgtap_crea_filiale_bancaria('conti istanza cascata');
+
+-- ⚠️ T8a (2026-11-27): l'IBAN italiano porta ABI e CAB della sua filiale
+--   (E_CONTO_IBAN_FILIALE_INCOERENTE). La costante si riscrive con l'IBAN
+--   coerente con la filiale appena costruita (dbops.fn_pgtap_iban).
+UPDATE tmp_costanti_cb_ut
+   SET iban_soggetto  = dbops.fn_pgtap_iban((SELECT id FROM tmp_bb), 'CASCATASOGG'),
+       iban_ruolo_gen = dbops.fn_pgtap_iban((SELECT id FROM tmp_bb), 'CASCATAGEN'),
+       iban_ruolo_ist = dbops.fn_pgtap_iban((SELECT id FROM tmp_bb), 'CASCATAIST');
 
 SELECT ok(
     (SELECT count(*) FROM tmp_bb) = 1,
@@ -200,9 +208,12 @@ SELECT is(
 );
 
 -- =========================================================
--- 8) Partial unique: blocco duplicato predefinito per (ruolo, istanza, uso)
+-- 8) Due predefiniti sovrapposti per (ruolo, istanza, uso)
 -- =========================================================
-SELECT throws_ok(
+-- ⚠️ T8a (2026-11-27): l'indice unico del predefinito e' diventato un EXCLUDE
+--   sul periodo, e davanti c'e' il guard trgfn_conti_legami_guard_predefinito,
+--   che parla col codice di dominio (P0001) invece del 23505 dell'indice.
+SELECT throws_like(
     $$
     INSERT INTO anagrafiche.soggetti_ruoli_conti_bancari (
         soggetto_ruolo_id, conto_bancario_id, uso, predefinito, istanza_utility_id,
@@ -213,9 +224,8 @@ SELECT throws_ok(
            'INCASSO', TRUE, g.istanza_utility_id, script.fn_data_operativa(), FALSE, FALSE, '{}'::jsonb
     FROM tmp_g g;
     $$,
-    '23505',
-    NULL,
-    '8) Partial unique blocca 2 predefiniti per (ruolo, istanza, INCASSO)'
+    '%periodo che si sovrappone%',
+    '8) due predefiniti sovrapposti per (ruolo, istanza, INCASSO) -> E_CONTO_PREDEFINITO_SOVRAPPOSTO'
 );
 
 -- =========================================================

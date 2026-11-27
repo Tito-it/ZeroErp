@@ -1,0 +1,227 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNO SPORTELLO ESISTE UNA VOLTA PER PAESE
+#   anagrafiche.fn_filiale_stessi_codici(bigint, text, text, integer)  (nuova)
+#   anagrafiche.trgfn_bank_branches_guard_unica_per_paese()           (nuova)
+#   anagrafiche.trgfn_soggetti_guard_filiali_unica_per_paese()        (nuova)
+#   trg_bank_branches_a12_guard_unica_per_paese_ins_upd               (nuovo)
+#   trg_soggetti_a12_guard_filiali_unica_per_paese_upd                (nuovo)
+#   Brief: brief-db-revisione-anagrafiche §25.2 (S55h, D-T8a-10), §25.10
+#
+# -- LA REGOLA --------------------------------------------------------------
+#   La coppia (codice della banca, codice della filiale) identifica uno
+#   sportello nel suo paese: in Italia ABI e CAB. L'unicita' era per ruolo
+#   banca (uq_bank_branches_soggetto_ruolo_bank_branch_code), e lo stesso
+#   sportello poteva stare sotto due banche. Il paese e' quello del soggetto
+#   della banca, soggetti.stato_id (D-T8a-10): bank_branches non ha una
+#   colonna sua, e non la prende.
+#
+# -- PERCHE' UN GUARD, E I SUOI TRE OBBLIGHI ------------------------------------
+#   Il paese sta due tabelle piu' in la' (filiale -> ruolo -> soggetto):
+#   nessun vincolo UNIQUE lo vede. Il guard ha tre obblighi:
+#   * il verso della filiale: alla nascita e quando cambiano i codici o il
+#     ruolo della banca;
+#   * il verso del soggetto: soggetti.stato_id si modifica finche'
+#     l'identificativo fiscale non e' bloccato, e cambiarlo sposta tutte le
+#     filiali della banca in un altro paese;
+#   * la concorrenza: due filiali uguali scritte da due transazioni non si
+#     vedono. Un pg_advisory_xact_lock sulla terna (stato, banca, filiale)
+#     le mette in fila; il secondo vede il primo dopo il suo COMMIT.
+#   soggetti_ruoli.soggetto_id ha il lucchetto: il ruolo non cambia soggetto.
+#   Il confronto e' uno, anagrafiche.fn_filiale_stessi_codici, che usano i
+#   due guard.
+#
+# -- IL MONTAGGIO --------------------------------------------------------------
+#   I codici li scrive la normalizzazione a01 (20261127-18): BEFORE INSERT OR
+#   UPDATE senza OF, il corpo confronta OLD e NEW. Fase a12.
+#   ⚠️ soggetto_ruolo_id lo riscrive trg_bank_guard_ruolo_bank_branches_ins_upd,
+#   che ordina dopo (il suo nome non comincia con il nome della tabella).
+#   Con un id gia' dato restituisce lo stesso id o rifiuta (non BANK_B): il
+#   guard legge il ruolo scritto, e se non trova il soggetto tace, e il rifiuto
+#   arriva da quel guard.
+#   Su soggetti: BEFORE UPDATE OF stato_id (nessun trigger BEFORE di soggetti
+#   scrive stato_id), il corpo confronta OLD e NEW. Fase a12.
+#   Nessuna row level security su filiali, ruoli e soggetti: nessun DEFINER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261127-22-create-trg-bank-branches-guard-unica-per-paese-mctit.yaml
+
+  - changeSet:
+      id: 20261127-22-create-trg-bank-branches-guard-unica-per-paese
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Una filiale bancaria (codice della banca, codice della filiale) esiste
+        una volta per paese, il paese del soggetto della banca
+        (E_FILIALE_DUPLICATA): guard sulla filiale e sul soggetto.
+        brief-db-revisione-anagrafiche §25.10 (D-T8a-10).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_filiale_stessi_codici(
+                  p_escludi_id  anagrafiche.bank_branches.id%TYPE,
+                  p_bank_code   anagrafiche.bank_branches.bank_code%TYPE,
+                  p_branch_code anagrafiche.bank_branches.branch_code%TYPE,
+                  p_stato_id    anagrafiche.soggetti.stato_id%TYPE)
+               RETURNS anagrafiche.bank_branches.id%TYPE
+               LANGUAGE sql
+               STABLE PARALLEL SAFE
+              BEGIN ATOMIC
+                  SELECT b.id
+                    FROM anagrafiche.bank_branches b
+                    JOIN anagrafiche.soggetti_ruoli r ON r.id = b.soggetto_ruolo_id
+                    JOIN anagrafiche.soggetti s       ON s.id = r.soggetto_id
+                   WHERE b.bank_code   = p_bank_code
+                     AND b.branch_code = p_branch_code
+                     AND s.stato_id    = p_stato_id
+                     AND b.id IS DISTINCT FROM p_escludi_id
+                   ORDER BY b.id
+                   LIMIT 1;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_filiale_stessi_codici(
+                  anagrafiche.bank_branches.id%TYPE, anagrafiche.bank_branches.bank_code%TYPE, anagrafiche.bank_branches.branch_code%TYPE,
+                  anagrafiche.soggetti.stato_id%TYPE) IS
+                'La filiale (anagrafiche.bank_branches.id, la minore) che ha gia'' codice della banca e codice della filiale dati nel paese dato (soggetti.stato_id del soggetto della banca), esclusa quella indicata; NULL se non ce n''e''. Riceve i codici nella forma di confronto (script.fn_normalizza_codice_bancario). La usano i due guard dell''unicita'' per paese, anagrafiche.trgfn_bank_branches_guard_unica_per_paese e anagrafiche.trgfn_soggetti_guard_filiali_unica_per_paese.';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_bank_branches_guard_unica_per_paese()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_chi    CONSTANT dbops.error_log.function_name%TYPE := 'anagrafiche.trgfn_bank_branches_guard_unica_per_paese';
+                  v_stato  anagrafiche.soggetti.stato_id%TYPE;
+                  v_altra  anagrafiche.bank_branches.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: lo sportello (codice della banca, codice della
+                  --   filiale) esiste una volta nel paese del soggetto della
+                  --   banca. Montata BEFORE INSERT OR UPDATE, fase a12: i codici
+                  --   nella forma della normalizzazione a01. In modifica giudica
+                  --   solo se cambiano i codici o il ruolo della banca.
+                  --   Il lock consultivo mette in fila due scritture della
+                  --   stessa terna: la seconda vede la prima dopo il COMMIT.
+                  -- =========================================================
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.bank_code IS NOT DISTINCT FROM OLD.bank_code
+                     AND NEW.branch_code IS NOT DISTINCT FROM OLD.branch_code
+                     AND NEW.soggetto_ruolo_id IS NOT DISTINCT FROM OLD.soggetto_ruolo_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT s.stato_id INTO v_stato
+                    FROM anagrafiche.soggetti_ruoli r
+                    JOIN anagrafiche.soggetti s ON s.id = r.soggetto_id
+                   WHERE r.id = NEW.soggetto_ruolo_id;
+                  -- Un ruolo che non c'e' lo rifiutano la FK e il guard del ruolo.
+                  IF NOT FOUND THEN
+                      RETURN NEW;
+                  END IF;
+
+                  PERFORM pg_catalog.pg_advisory_xact_lock(
+                      pg_catalog.hashtext('anagrafiche.bank_branches'),
+                      pg_catalog.hashtext(concat_ws('|', v_stato, NEW.bank_code, NEW.branch_code)));
+
+                  v_altra := anagrafiche.fn_filiale_stessi_codici(
+                                 NEW.id, NEW.bank_code, NEW.branch_code, v_stato);
+                  IF v_altra IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_FILIALE_DUPLICATA',
+                          jsonb_build_object('campo', 'branch_code',
+                                             'tabella', 'anagrafiche.bank_branches',
+                                             'bank_branch_id', NEW.id,
+                                             'altra_filiale_id', v_altra,
+                                             'stato_id', v_stato),
+                          NEW.tx_id,
+                          NEW.bank_code::text, NEW.branch_code::text);
+                  END IF;
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_bank_branches_guard_unica_per_paese() IS
+                'BEFORE INSERT OR UPDATE su anagrafiche.bank_branches, fase a12: lo sportello (codice della banca, codice della filiale) esiste una volta nel paese del soggetto della banca (soggetti.stato_id). In modifica giudica solo un cambio dei codici o del ruolo. Due scritture della stessa terna paese-banca-filiale si mettono in fila con un lock consultivo di transazione. Rifiuto: E_FILIALE_DUPLICATA, campo branch_code. Il verso del soggetto lo tiene anagrafiche.trgfn_soggetti_guard_filiali_unica_per_paese.';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_filiali_unica_per_paese()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_chi CONSTANT dbops.error_log.function_name%TYPE := 'anagrafiche.trgfn_soggetti_guard_filiali_unica_per_paese';
+                  r     record;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: il verso del soggetto dell'unicita' per paese delle
+                  --   filiali. Cambiato lo stato di un soggetto, ogni filiale
+                  --   dei suoi ruoli banca resta unica nel paese nuovo.
+                  --   Montata BEFORE UPDATE OF stato_id, fase a12.
+                  -- =========================================================
+                  IF NEW.stato_id IS NOT DISTINCT FROM OLD.stato_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  FOR r IN
+                      SELECT b.id, b.bank_code, b.branch_code
+                        FROM anagrafiche.bank_branches b
+                        JOIN anagrafiche.soggetti_ruoli sr ON sr.id = b.soggetto_ruolo_id
+                       WHERE sr.soggetto_id = NEW.id
+                       ORDER BY b.id
+                  LOOP
+                      PERFORM pg_catalog.pg_advisory_xact_lock(
+                          pg_catalog.hashtext('anagrafiche.bank_branches'),
+                          pg_catalog.hashtext(concat_ws('|', NEW.stato_id, r.bank_code, r.branch_code)));
+                      IF anagrafiche.fn_filiale_stessi_codici(
+                             r.id, r.bank_code, r.branch_code, NEW.stato_id) IS NOT NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', v_chi, 'E_FILIALE_DUPLICATA',
+                              jsonb_build_object('campo', 'stato_id',
+                                                 'tabella', 'anagrafiche.soggetti',
+                                                 'soggetto_id', NEW.id,
+                                                 'bank_branch_id', r.id),
+                              NEW.tx_id,
+                              r.bank_code::text, r.branch_code::text);
+                      END IF;
+                  END LOOP;
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_filiali_unica_per_paese() IS
+                'BEFORE UPDATE OF stato_id su anagrafiche.soggetti, fase a12: cambiato lo stato di un soggetto, ogni filiale dei suoi ruoli banca resta unica nel paese nuovo (codice della banca, codice della filiale). Rifiuto: E_FILIALE_DUPLICATA, campo stato_id. Il verso della filiale lo tiene anagrafiche.trgfn_bank_branches_guard_unica_per_paese.';
+
+              DROP TRIGGER IF EXISTS trg_bank_branches_a12_guard_unica_per_paese_ins_upd
+                ON anagrafiche.bank_branches;
+              CREATE TRIGGER trg_bank_branches_a12_guard_unica_per_paese_ins_upd
+                BEFORE INSERT OR UPDATE ON anagrafiche.bank_branches
+                FOR EACH ROW EXECUTE FUNCTION anagrafiche.trgfn_bank_branches_guard_unica_per_paese();
+
+              DROP TRIGGER IF EXISTS trg_soggetti_a12_guard_filiali_unica_per_paese_upd
+                ON anagrafiche.soggetti;
+              CREATE TRIGGER trg_soggetti_a12_guard_filiali_unica_per_paese_upd
+                BEFORE UPDATE OF stato_id ON anagrafiche.soggetti
+                FOR EACH ROW EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_filiali_unica_per_paese();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_bank_branches_a12_guard_unica_per_paese_ins_upd ON anagrafiche.bank_branches;
+              DROP TRIGGER IF EXISTS trg_soggetti_a12_guard_filiali_unica_per_paese_upd ON anagrafiche.soggetti;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_bank_branches_guard_unica_per_paese();
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_guard_filiali_unica_per_paese();
+              DROP FUNCTION IF EXISTS anagrafiche.fn_filiale_stessi_codici(bigint, text, text, integer);

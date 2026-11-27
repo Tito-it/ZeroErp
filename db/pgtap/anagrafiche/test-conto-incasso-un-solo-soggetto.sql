@@ -109,7 +109,7 @@ SELECT ok(
 CREATE TEMP TABLE tmp_conto AS
 WITH ins AS (
   INSERT INTO anagrafiche.conti_bancari (iban, bank_branch_id, attivo, storicizza, meta)
-  SELECT 'IT00PGTAPINCASSOUNICO0000001', r.bank_branch_id, true, false,
+  SELECT dbops.fn_pgtap_iban(r.bank_branch_id, 'INCASSOUNICO'), r.bank_branch_id, true, false,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_refs r
   RETURNING id

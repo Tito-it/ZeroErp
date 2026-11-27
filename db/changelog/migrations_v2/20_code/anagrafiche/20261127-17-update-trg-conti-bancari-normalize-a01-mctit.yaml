@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CONTO SI NORMALIZZA PRIMA DI CHIUNQUE LO GIUDICHI
+#   anagrafiche.trgfn_conti_bancari_normalize()                (riscritta)
+#   trg_conti_bancari_a01_normalize_ins_upd                    (rimontato)
+#   Brief: brief-db-revisione-anagrafiche §25.2 (S18c, S55e, S55f,
+#          D-T8a-3 a, D-T8a-8), §25.10
+#
+# -- CHE COSA CAMBIA ----------------------------------------------------
+#   * IBAN e BIC passano da script.fn_normalizza_codice_bancario: via ogni
+#     separatore, non solo gli spazi (un trattino arrivava al CHECK e la
+#     riga era rifiutata con un messaggio di formato);
+#   * il paese si ricava SEMPRE dall'IBAN (D-T8a-3 a): e' un derivato. Prima
+#     solo se mancava, e un paese scritto da fuori restava anche se diverso.
+#
+# -- LA FASE: a01 --------------------------------------------------------
+#   Il trigger si chiamava trg_conti_bancari_ins_upd_normalize (o
+#   trg_conti_bancari_normalize_ins_upd, dove la rinomina di 20251119-01 e'
+#   avvenuta): senza fase, ordinava DOPO tutti gli «_a…_». Con il lucchetto
+#   di iban (20261127-26, trg_conti_bancari_a10_lock_columns_upd) e il guard
+#   IBAN-filiale (a10) lo ordinerebbe dopo chi confronta: un UPDATE che
+#   riscrive lo stesso IBAN nella forma stampata sarebbe un cambio per il
+#   lucchetto. a01 = «la normalizzazione che i guard leggono»
+#   (linee-guida-trigger, «La fase»).
+#   Si rimonta PER FUNZIONE: si tolgono tutti i montaggi della funzione
+#   sulla tabella, qualunque sia il nome (linee-guida-trigger, «Un trigger si
+#   rimonta per funzione»).
+#
+# -- LE RIGHE DI OGGI -----------------------------------------------------
+#   Le righe scritte prima si riallineano in 20261127-25, coi trigger
+#   sospesi: IBAN e BIC passavano gia' dal CHECK ^[A-Z0-9], quindi non
+#   cambiano; il paese e' gia' quello dell'IBAN dove l'IBAN lo ha dato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261127-17-update-trg-conti-bancari-normalize-a01-mctit.yaml
+
+  - changeSet:
+      id: 20261127-17-update-trg-conti-bancari-normalize-a01
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        trgfn_conti_bancari_normalize: IBAN e BIC dal building block di
+        normalizzazione, il paese sempre dall'IBAN; il trigger rimontato in fase
+        a01. brief-db-revisione-anagrafiche §25.10 (D-T8a-3 a, D-T8a-8).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_conti_bancari_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: la forma del conto, prima di chiunque lo giudichi
+                  --   (fase a01: lucchetto dell'IBAN, guard IBAN-filiale,
+                  --   CHECK e unicita' leggono il valore normalizzato).
+                  --   * IBAN e BIC: script.fn_normalizza_codice_bancario
+                  --     (senza separatori, maiuscolo, il vuoto NULL);
+                  --   * paese: sempre le prime due lettere dell'IBAN. E' un
+                  --     derivato: un valore scritto da fuori si sovrascrive.
+                  -- Non solleva: i rifiuti li danno i CHECK di formato e i guard.
+                  -- =========================================================
+                  NEW.iban      := script.fn_normalizza_codice_bancario(NEW.iban);
+                  NEW.bic_swift := script.fn_normalizza_codice_bancario(NEW.bic_swift);
+                  NEW.paese     := left(NEW.iban, 2);
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_conti_bancari_normalize() IS
+                'BEFORE INSERT OR UPDATE su anagrafiche.conti_bancari, fase a01: IBAN e BIC nella forma di confronto (script.fn_normalizza_codice_bancario: senza separatori, maiuscolo, il vuoto NULL) e il paese sempre ricavato dalle prime due lettere dell''IBAN, anche se chi scrive ne manda un altro. Gira prima del lucchetto dell''IBAN, del guard IBAN-filiale, dei CHECK di formato e dell''unicita'', che leggono il valore normalizzato. Non solleva.';
+
+              DO $do$
+              DECLARE
+                  v_nome name;
+              BEGIN
+                  FOR v_nome IN
+                      SELECT t.tgname
+                        FROM pg_catalog.pg_trigger t
+                       WHERE t.tgrelid = 'anagrafiche.conti_bancari'::regclass
+                         AND t.tgfoid  = 'anagrafiche.trgfn_conti_bancari_normalize()'::regprocedure
+                         AND NOT t.tgisinternal
+                  LOOP
+                      EXECUTE format('DROP TRIGGER %I ON anagrafiche.conti_bancari', v_nome);
+                  END LOOP;
+              END
+              $do$;
+
+              CREATE TRIGGER trg_conti_bancari_a01_normalize_ins_upd
+                BEFORE INSERT OR UPDATE ON anagrafiche.conti_bancari
+                FOR EACH ROW EXECUTE FUNCTION anagrafiche.trgfn_conti_bancari_normalize();
+
+              COMMENT ON TRIGGER trg_conti_bancari_a01_normalize_ins_upd ON anagrafiche.conti_bancari IS
+                'La forma del conto (IBAN, BIC, paese dall''IBAN) prima di ogni guard: vedi anagrafiche.trgfn_conti_bancari_normalize.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_conti_bancari_a01_normalize_ins_upd ON anagrafiche.conti_bancari;
+              CREATE TRIGGER trg_conti_bancari_normalize_ins_upd
+                BEFORE INSERT OR UPDATE ON anagrafiche.conti_bancari
+                FOR EACH ROW EXECUTE FUNCTION anagrafiche.trgfn_conti_bancari_normalize();

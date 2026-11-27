@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | emittente_soggetto_ruolo_id | bigint | NO |  |
-| utility_id | bigint | NO |  |
+| utility_id | integer | NO |  |
 | minimo_soglia_min | numeric(20,8) | YES |  |
 | minimo_soglia_max | numeric(20,8) | YES |  |
 | arrotondamento_importi_dec | smallint | NO |  |

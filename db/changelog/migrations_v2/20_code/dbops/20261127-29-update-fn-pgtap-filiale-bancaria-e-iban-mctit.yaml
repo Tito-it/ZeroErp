@@ -1,0 +1,158 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE FIXTURE DEI CONTI: UNA FILIALE NUOVA A OGNI CHIAMATA, UN IBAN COERENTE
+#   dbops.fn_pgtap_crea_filiale_bancaria(text)                 (riscritta)
+#   dbops.fn_pgtap_iban(bigint, text)                          (nuova)
+#   Brief: brief-db-revisione-anagrafiche §25.10 (D-T8a-9, D-T8a-10)
+#
+# -- PERCHE' ----------------------------------------------------------------------
+#   * D-T8a-10: lo sportello (codice della banca, codice della filiale) e'
+#     unico nel paese del soggetto della banca. Il builder scriveva codici
+#     fissi (01234 / 56789), e due chiamate nello stesso test davano due
+#     filiali uguali nello stesso paese: oggi E_FILIALE_DUPLICATA. Il codice
+#     della filiale ora e' uno libero nel paese, cercato con la stessa
+#     funzione dei guard (anagrafiche.fn_filiale_stessi_codici).
+#   * D-T8a-9: dove lo stato dichiara le posizioni (Italia), l'IBAN porta ABI e
+#     CAB della filiale del conto. Le fixture scrivevano IBAN letterali
+#     («IT00PGTAP…») che non portano i codici della loro filiale. Ogni test
+#     che li ricostruisse a mano ricopierebbe la struttura dell'IBAN italiano:
+#     dbops.fn_pgtap_iban la scrive una volta (regola del 2).
+#
+# -- LA FORMA ------------------------------------------------------------------
+#   fn_pgtap_iban: IT + «00» (cifre di controllo, che il database non verifica)
+#   + «X» (CIN) + codice della banca + codice della filiale + 12 caratteri dal
+#   seme (normalizzato, con zeri a sinistra, gli ultimi 12). 27 caratteri.
+#   Rifiuta una filiale con codici che non sono di 5 caratteri: l'IBAN non li
+#   porterebbe nelle posizioni italiane, e il test costruirebbe un caso che
+#   il modello rifiuta.
+#   Firma del builder invariata, coi %TYPE dello YAML di nascita
+#   (20260923-05: pg_get_functiondef li scioglie, e il corpo vivo non li porta);
+#   nessun GRANT nuovo (quelli di default, come alla nascita).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261127-29-update-fn-pgtap-filiale-bancaria-e-iban-mctit.yaml
+
+  - changeSet:
+      id: 20261127-29-update-fn-pgtap-filiale-bancaria-e-iban
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Fixture pgTAP dei conti: il builder della filiale da' un codice filiale
+        libero nel paese; dbops.fn_pgtap_iban costruisce un IBAN italiano
+        coerente con la filiale. brief-db-revisione-anagrafiche §25.10.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_filiale_bancaria(p_etichetta text DEFAULT 'pgTAP'::text)
+               RETURNS TABLE (
+                  bank_branch_id          anagrafiche.bank_branches.id%TYPE,
+                  banca_soggetto_ruolo_id anagrafiche.bank_branches.soggetto_ruolo_id%TYPE,
+                  banca_soggetto_id       anagrafiche.soggetti.id%TYPE
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP una filiale bancaria su cui
+              --   agganciare un conto. `anagrafiche.bank_branches` e' dato di
+              --   MACCHINA: su un database ricostruito e' vuota, e pescarne una
+              --   e' copertura zero.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_banca AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_filiale_bancaria('enti incasso');
+              --   e l'IBAN del conto con dbops.fn_pgtap_iban(bank_branch_id, '<seme>').
+              -- ⛔ Il CONTO non lo scrive: IBAN e titolare sono il caso del test.
+              -- ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_sog     anagrafiche.soggetti.id%TYPE;
+                  v_sr      anagrafiche.bank_branches.soggetto_ruolo_id%TYPE;
+                  v_br      anagrafiche.bank_branches.id%TYPE;
+                  v_stato   anagrafiche.soggetti.stato_id%TYPE;
+                  v_banca   CONSTANT anagrafiche.bank_branches.bank_code%TYPE := '01234';
+                  v_filiale anagrafiche.bank_branches.branch_code%TYPE;
+                  v_n       integer;  -- un contatore, non una colonna
+              BEGIN
+                  -- ⛔ LA FINESTRA DIFFERITA: il ruolo BANK_B ha i suoi indirizzi
+                  --   obbligatori e un guard differito, e il preambolo dei pgTAP
+                  --   mette i vincoli IMMEDIATE. Senza queste righe la catena
+                  --   muore a meta', e l'errore parla di indirizzi a chi voleva
+                  --   una banca.
+                  SET CONSTRAINTS ALL DEFERRED;
+                  v_sog := dbops.fn_pgtap_crea_soggetto_pg('Banca ' || p_etichetta);
+                  v_sr  := dbops.fn_pgtap_crea_soggetto_ruolo(
+                               v_sog, 'BANK_B'::character varying);
+                  SELECT s.stato_id INTO v_stato FROM anagrafiche.soggetti s WHERE s.id = v_sog;
+                  -- Lo sportello e' unico nel paese (E_FILIALE_DUPLICATA): il
+                  --   codice della filiale e' il primo libero a partire dal
+                  --   ruolo nuovo, nella stessa ricerca dei guard.
+                  v_n := (v_sr % 100000)::integer;
+                  LOOP
+                      v_filiale := lpad(v_n::text, 5, '0');
+                      EXIT WHEN anagrafiche.fn_filiale_stessi_codici(
+                                    NULL, v_banca, v_filiale, v_stato) IS NULL;
+                      v_n := (v_n + 1) % 100000;
+                  END LOOP;
+                  INSERT INTO anagrafiche.bank_branches
+                      (soggetto_ruolo_id, bank_code, branch_code, name, attivo)
+                  VALUES (v_sr, v_banca, v_filiale,
+                          'Filiale pgTAP ' || p_etichetta, TRUE)
+                  RETURNING id INTO v_br;
+                  -- Saga completa: i guard differiti scattano QUI, su un mondo
+                  -- finito. Senza la richiusura il ROLLBACK del test se li
+                  -- porterebbe via NON verificati.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+                  RETURN QUERY SELECT v_br, v_sr, v_sog;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_filiale_bancaria(text) IS
+                'Fixture pgTAP: una filiale bancaria costruita (soggetto della banca, ruolo BANK_B coi suoi indirizzi obbligatori, e la filiale) dentro la finestra dei vincoli differiti, che e'' la trappola per cui questo builder esiste. Codice della banca 01234, codice della filiale il primo libero nel paese del soggetto (lo sportello e'' unico nel paese): due chiamate danno due filiali diverse. ⚠️ anagrafiche.bank_branches e'' dato di MACCHINA, non seed di 80_data: su un database ricostruito e'' vuota, e un test che la pescasse morirebbe sul NOT NULL di bank_branch_id. ⛔ Il conto bancario non lo scrive: IBAN e titolare sono il caso del test; l''IBAN coerente con la filiale lo da'' dbops.fn_pgtap_iban. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.';
+
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_iban(
+                  p_bank_branch_id anagrafiche.bank_branches.id%TYPE,
+                  p_seme           text)   -- testo libero, non una colonna: ne esce la coda dell'IBAN
+               RETURNS anagrafiche.conti_bancari.iban%TYPE
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: un IBAN italiano coerente con la filiale, per le fixture
+              --   pgTAP (ABI e CAB della filiale nelle posizioni 6-10 e 11-15).
+              -- Uso: dbops.fn_pgtap_iban(b.bank_branch_id, 'incasso unico 1')
+              DECLARE
+                  v_banca   anagrafiche.bank_branches.bank_code%TYPE;
+                  v_filiale anagrafiche.bank_branches.branch_code%TYPE;
+              BEGIN
+                  SELECT b.bank_code, b.branch_code INTO v_banca, v_filiale
+                    FROM anagrafiche.bank_branches b
+                   WHERE b.id = p_bank_branch_id;
+                  IF NOT FOUND OR length(v_banca) <> 5 OR length(v_filiale) <> 5 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'dbops.fn_pgtap_iban', 'E_DBOPS_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('campo', 'p_bank_branch_id',
+                                             'bank_branch_id', p_bank_branch_id),
+                          NULL::uuid,
+                          'dbops.fn_pgtap_iban',
+                          format('la filiale %s non c''e'' o non ha codici di 5 caratteri', p_bank_branch_id));
+                  END IF;
+                  RETURN 'IT00X' || v_banca || v_filiale
+                         || right(lpad(coalesce(script.fn_normalizza_codice_bancario(p_seme), ''), 12, '0'), 12);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_iban(bigint, text) IS
+                'Fixture pgTAP: un IBAN italiano di 27 caratteri coerente con la filiale data (IT, cifre di controllo 00, CIN X, ABI e CAB della filiale, poi gli ultimi 12 caratteri del seme normalizzato, con zeri a sinistra). Semi diversi danno IBAN diversi. La cifra di controllo non e'' calcolata: il database non la verifica. Una filiale che non c''e'', o con codici che non sono di 5 caratteri, solleva E_DBOPS_CHIAMATA_NON_VALIDA.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_iban(bigint, text);

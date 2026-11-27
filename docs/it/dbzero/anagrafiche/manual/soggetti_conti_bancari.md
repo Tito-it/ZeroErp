@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.soggetti_conti_bancari`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -16,7 +16,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [anagrafiche.trgfn_soggetti_conti_bancari_guard](/dbzero/anagrafiche/funzioni/trgfn_soggetti_conti_bancari_guard) — il conto del legame è attivo
+> * [anagrafiche.trgfn_conti_legami_guard_predefinito](/dbzero/anagrafiche/funzioni/trgfn_conti_legami_guard_predefinito) — il predefinito: uno per periodo, mai bloccato
 > * [script.trgfn_guard_date_validita](/dbzero/script/funzioni/trgfn_guard_date_validita) — la fine della validità non precede l'inizio
 > * [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito) — la scelta del conto, che ricade qui quando il ruolo non ne ha
 >
@@ -40,12 +40,16 @@ La riga dice che il soggetto usa quel conto per quell'uso (`INCASSO`, `PAGAMENTO
 default). Lo stesso conto può stare sullo stesso soggetto con usi diversi, una riga per uso: la terna soggetto,
 conto e uso è unica (`uq_soggetti_conti_bancari_soggetto_id_conto_id_uso`).
 
-* **Il predefinito.** Per ogni soggetto e uso c'è al più un legame predefinito
-  (`ix_soggetti_conti_bancari_predef_per_uso`). Il database non lo sposta da solo: per cambiarlo si toglie il segno
-  al vecchio e lo si mette al nuovo, in quest'ordine.
-* **La validità.** `valido_dal` e `valido_al` sono facoltativi, e la fine non precede l'inizio. La validità non
-  entra nell'unicità del predefinito: un predefinito già scaduto, o non ancora in vigore, occupa comunque il posto.
-* **Il blocco.** `bloccato` toglie il legame dalla scelta del conto senza cancellarlo (un blocco per compliance).
+* **L'identità non si sposta.** Soggetto, conto e uso non si modificano (`E_CONTO_LEGAME_IMMUTABILE`, lucchetto di
+  colonna): un legame sbagliato si chiude con la sua data di fine e se ne apre uno nuovo.
+* **Il predefinito.** Per ogni soggetto e uso c'è al più un legame predefinito **in ogni giorno**: due predefiniti
+  non hanno periodi che si sovrappongono, date comprese (`ex_scb_predefinito_per_periodo`; il rifiuto parlante è
+  `E_CONTO_PREDEFINITO_SOVRAPPOSTO`, da `anagrafiche.trgfn_conti_legami_guard_predefinito`). Un cambio di conto
+  programmato marca il nuovo legame dal suo primo giorno.
+* **La validità.** `valido_dal` e `valido_al` sono facoltativi, e la fine non precede l'inizio.
+* **Il blocco.** `bloccato` toglie il legame dalla scelta del conto senza cancellarlo (un blocco per compliance). Un
+  predefinito non si blocca (`E_CONTO_PREDEFINITO_BLOCCATO`; `chk_soggetti_conti_bancari_predefinito_non_bloccato`
+  come rete).
 * **`intestazione_dichiarata`** è l'intestazione che il soggetto dichiara, quando diversa da quella del conto;
   **`verificato`** è l'esito di una verifica del legame, che il database non fa.
 
@@ -72,7 +76,7 @@ leggono solo il legame del ruolo, e una riga a livello soggetto non può confond
 
 ### Il soggetto e il conto sono attivi
 
-* Il conto del legame è attivo, prima della scrittura (`E_CONTO_BANCARIO`, dal guard) e di nuovo al COMMIT.
+* Il conto del legame è attivo, al COMMIT, quando il legame nasce (`E_ATTIVO_PADRE_NON_ATTIVO`).
 * Il soggetto è attivo, al COMMIT, quando il legame nasce o cambia soggetto (`E_ATTIVO_PADRE_NON_ATTIVO`).
 * Dall'altro verso: finché un legame esiste, né il conto né il soggetto si spengono. Il legame non ha un suo
   `attivo`, quindi conta che esista, non che sia valido oggi.
@@ -90,16 +94,15 @@ sull'uso `GENERICO`.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Un predefinito bloccato.** Niente nel database impedisce di bloccare il legame predefinito: la scelta del conto
-  lo salta, e ricade sugli altri legami o sull'uso generico.
-* **Il predefinito a scadenza.** Il predefinito è uno solo per uso, valido o no: un cambio di conto programmato a
-  una data futura non può marcare il nuovo legame come predefinito finché il vecchio porta il segno.
+* **Un soggetto con un conto storico non si spegne**: lo spegnimento conta i legami di qualunque validità.
 
 ---
 
 ### Codici errore
 
-* `E_CONTO_BANCARIO` — il conto è spento o non esiste.
+* `E_CONTO_LEGAME_IMMUTABILE` — soggetto, conto o uso del legame non si cambiano.
+* `E_CONTO_PREDEFINITO_BLOCCATO` — un predefinito bloccato.
+* `E_CONTO_PREDEFINITO_SOVRAPPOSTO` — due predefiniti dello stesso soggetto e uso in periodi che si sovrappongono.
 * `E_DATA_AL_MINORE_DAL` — la fine della validità precede l'inizio.
 * `E_ATTIVO_PADRE_NON_ATTIVO` — al COMMIT, il soggetto o il conto è spento.
 
@@ -112,6 +115,8 @@ sull'uso `GENERICO`.
 * `db/pgtap/anagrafiche/create-gestore-conto-soggetto.sql` — un legame d'incasso sul soggetto di un gestore.
 * `db/pgtap/anagrafiche/test_vw_conti_bancari_per_ruolo_gestore.sql` — il legame del soggetto che esce, nella vista,
   come candidata del ruolo.
+* `db/pgtap/anagrafiche/test-conti-bancari-forma-e-legami-v1.sql` — l'uso che non si cambia, i due predefiniti
+  sovrapposti.
 
 ---
 
@@ -123,6 +128,8 @@ sull'uso `GENERICO`.
   sede comune per le tabelle con validità.
 * 2026-11-14 — l'indice dedicato a `soggetto_id` è tolto: lo serve il vincolo unico, che comincia con quella
   colonna.
+* 2026-11-27 — il predefinito diventa uno per periodo (EXCLUDE al posto dell'indice unico), mai bloccato; soggetto,
+  conto e uso prendono il lucchetto; il guard immediato «conto attivo» si ritira, e resta il controllo al COMMIT.
 
 ---
 

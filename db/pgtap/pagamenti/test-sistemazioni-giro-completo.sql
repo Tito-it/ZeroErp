@@ -176,7 +176,7 @@ SELECT throws_ok(
 CREATE TEMP TABLE tmp_legame_sis AS
 WITH conto AS (
   INSERT INTO anagrafiche.conti_bancari (iban, bank_branch_id, attivo, storicizza, meta)
-  SELECT 'IT00PGTAPSISTEMAZIONI0000001', r.bank_branch, true, false,
+  SELECT dbops.fn_pgtap_iban(r.bank_branch, 'SISTEMAZIONI'), r.bank_branch, true, false,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_ref r RETURNING id
 ), legame AS (

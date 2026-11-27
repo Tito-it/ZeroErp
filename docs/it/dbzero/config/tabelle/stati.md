@@ -21,10 +21,15 @@
 | user_update | text | NO | CURRENT_USER |
 | extra_country | jsonb | YES |  |
 | catalogo_comuni_completo | boolean | NO | false |
+| iban_pos_banca | smallint | YES |  |
+| iban_len_banca | smallint | YES |  |
+| iban_pos_filiale | smallint | YES |  |
+| iban_len_filiale | smallint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_iban_posizioni |  |
 | PRIMARY KEY | pk_stati | id |
 
 ## 📑 Indici

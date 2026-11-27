@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FILIALE SI NORMALIZZA COME IL CONTO
+#   anagrafiche.trgfn_bank_branches_normalize()                (nuova)
+#   trg_bank_branches_a01_normalize_ins_upd                    (nuovo)
+#   Brief: brief-db-revisione-anagrafiche §25.2 (S55e, S55f, D-T8a-8), §25.10
+#
+#   Il BIC della filiale non si normalizzava affatto (c'era solo il CHECK di
+#   formato), e i codici di banca e filiale si salvavano come scritti. Con
+#   D-T8a-9 (l'ABI e il CAB dell'IBAN confrontati con la filiale) e D-T8a-10
+#   (la coppia unica per paese) «03069 » e «03069» sarebbero due codici.
+#   Stessa regola del conto: script.fn_normalizza_codice_bancario, fase a01,
+#   prima dei guard che confrontano (20261127-21, -22).
+#   Le righe di oggi si riallineano in 20261127-25, coi trigger sospesi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261127-18-create-trg-bank-branches-normalize-a01-mctit.yaml
+
+  - changeSet:
+      id: 20261127-18-create-trg-bank-branches-normalize-a01
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.bank_branches: BIC, codice della banca e codice della
+        filiale nella forma di confronto, in fase a01.
+        brief-db-revisione-anagrafiche §25.10 (D-T8a-8).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_bank_branches_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: la forma della filiale, prima di chiunque la giudichi
+                  --   (fase a01: il guard IBAN-filiale, l'unicita' della coppia
+                  --   per paese e il CHECK del BIC leggono il valore
+                  --   normalizzato). script.fn_normalizza_codice_bancario:
+                  --   senza separatori, maiuscolo, il vuoto NULL; gli zeri
+                  --   restano. Non solleva.
+                  -- =========================================================
+                  NEW.bank_code   := script.fn_normalizza_codice_bancario(NEW.bank_code);
+                  NEW.branch_code := script.fn_normalizza_codice_bancario(NEW.branch_code);
+                  NEW.bic_swift   := script.fn_normalizza_codice_bancario(NEW.bic_swift);
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_bank_branches_normalize() IS
+                'BEFORE INSERT OR UPDATE su anagrafiche.bank_branches, fase a01: codice della banca, codice della filiale e BIC nella forma di confronto (script.fn_normalizza_codice_bancario: senza separatori, maiuscolo, il vuoto NULL; gli zeri restano). Gira prima del guard IBAN-filiale e dell''unicita'' della coppia per paese, che confrontano i valori normalizzati. Non solleva.';
+
+              DROP TRIGGER IF EXISTS trg_bank_branches_a01_normalize_ins_upd ON anagrafiche.bank_branches;
+              CREATE TRIGGER trg_bank_branches_a01_normalize_ins_upd
+                BEFORE INSERT OR UPDATE ON anagrafiche.bank_branches
+                FOR EACH ROW EXECUTE FUNCTION anagrafiche.trgfn_bank_branches_normalize();
+
+              COMMENT ON TRIGGER trg_bank_branches_a01_normalize_ins_upd ON anagrafiche.bank_branches IS
+                'La forma della filiale (codici e BIC) prima di ogni guard: vedi anagrafiche.trgfn_bank_branches_normalize.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_bank_branches_a01_normalize_ins_upd ON anagrafiche.bank_branches;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_bank_branches_normalize();

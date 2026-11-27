@@ -143,7 +143,9 @@ SELECT is(
                          'anagrafiche.trgfn_contatti_guard_contesto_soggetto()'::regprocedure)),
     'contatti:trg_contatti_a10_guard_contesto_soggetto_ins_upd '
     'indirizzi:trg_indirizzi_a10_guard_istanza_ins_upd '
-    'soggetti_ruoli_conti_bancari:trg_soggetti_ruoli_conti_bancari_a10_guard_istanza_ins_upd',
+    -- ⚠️ T8a (2026-11-27): sul legame del ruolo il guard e' in a12, dopo il
+    --   lucchetto dell'istanza (20261127-30).
+    'soggetti_ruoli_conti_bancari:trg_soggetti_ruoli_conti_bancari_a12_guard_istanza_ins_upd',
     '3) i guard montati su contatti, indirizzi e conti del ruolo');
 
 -- ============================================================
@@ -209,7 +211,7 @@ CREATE TEMP TABLE _cb ON COMMIT DROP AS
 WITH ins AS (
     INSERT INTO anagrafiche.conti_bancari (iban, bic_swift, intestatario_predefinito, paese,
                                            attivo, verificato, meta, bank_branch_id)
-    SELECT 'IT77Z0000000000000000000077', 'BGFNOIT2XXX', 'pgTAP istanza stesso soggetto', 'IT',
+    SELECT dbops.fn_pgtap_iban(_bb.id, 'ISTSTESSO77'), 'BGFNOIT2XXX', 'pgTAP istanza stesso soggetto', 'IT',
            TRUE, FALSE, '{}'::jsonb, _bb.id
       FROM _bb
     RETURNING id
@@ -244,8 +246,12 @@ SELECT is(
          'UPDATE anagrafiche.soggetti_ruoli_conti_bancari SET istanza_utility_id = %s WHERE id = %s',
          f.ist_b, _srcb.id))
        FROM _f f, _srcb),
-    'E_ISTANZA_ALTRO_SOGGETTO/istanza_utility_id',
-    '12) UPDATE: il conto di A passa all''istanza di B: rifiutato');
+    -- ⚠️ T8a (2026-11-27, D-T8a-4 bis): l'istanza del legame del ruolo ha il
+    --   lucchetto, e fra due rifiuti parla prima l'immutabilita'. Il guard
+    --   dell'istanza resta il solo giudice all'INSERT (test 11 e i rifiuti
+    --   all'INSERT sopra).
+    'E_CONTO_LEGAME_IMMUTABILE/istanza_utility_id',
+    '12) UPDATE: il conto di A passa all''istanza di B: rifiutato dal lucchetto (E_CONTO_LEGAME_IMMUTABILE)');
 
 -- ============================================================
 -- 13-16) Contatti

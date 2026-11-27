@@ -998,6 +998,12 @@ diversi — il sistema lo rifiuta. Finche' quel legame serviva solo a stampare u
 IBAN in fattura l'ambiguita' era un fastidio; appoggiandoci il riconoscimento del
 denaro, sarebbe diventata un varco che **non produce nessun errore visibile**.
 
+⭐ **E il legame non si sposta sotto il canale.** Il conto, l'uso e il possessore del
+legame d'incasso non si modificano, e l'IBAN del conto nemmeno: un canale nato su
+un legame `INCASSO` resta su un legame `INCASSO`, dello stesso ruolo e sullo stesso
+IBAN. Un conto sbagliato si corregge chiudendo il legame e aprendone uno nuovo
+(vedi [Gestione Conti Bancari](/guide/gestione-conti-bancari)).
+
 ### Che cosa si vede, in concreto
 
 | Che cosa                                                           | Chi la vede                                                                                                          |

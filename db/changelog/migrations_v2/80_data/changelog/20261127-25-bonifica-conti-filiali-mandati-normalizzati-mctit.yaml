@@ -1,0 +1,166 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CONTI, FILIALI E MANDATI GIA' SCRITTI, UNA VOLTA, NELLA FORMA DI OGGI
+#   anagrafiche.conti_bancari: iban, bic_swift, paese
+#   anagrafiche.bank_branches: bank_code, branch_code, bic_swift
+#   pagamenti.sepa_mandati:    iban_snapshot
+#   Brief: brief-db-revisione-anagrafiche §25.10 (D-T8a-3 a, D-T8a-8, D-T8a-11 a)
+#
+# -- PERCHE' SERVE, A PRESCINDERE DALLE RIGHE DI OGGI -------------------------
+#   Da 20261127-17/-18 la normalizzazione a01 di conti e filiali toglie ogni
+#   separatore, e il paese segue sempre l'IBAN; da -23 lo snapshot del mandato
+#   e' l'IBAN del conto. Una riga scritta prima nella forma vecchia sarebbe
+#   un cambio per il lucchetto dell'IBAN e per i guard della filiale alla
+#   prima scrittura che la tocca. Il modello vale per ogni database (letto il
+#   2026-11-27: su scratch e dbdev nessuna riga da toccare).
+#
+# -- LA FORMA ------------------------------------------------------------------
+#   Come 20261123-63 (linee-guida-trigger, «Il backfill di una colonna
+#   derivata non passa dai trigger»): per ogni tabella con righe da toccare si
+#   sospendono i trigger accesi (tranne audit e tx_id, per funzione), si fa
+#   l'UPDATE, si riaccendono nel loro modo (O, A, R). Gli indici d'unicita'
+#   restano: due IBAN o due sportelli che differivano solo per un separatore
+#   sono lo stesso, e il changeSet fallisce con 23505 invece di fonderli. E'
+#   un doppione da risolvere a mano.
+#   Senza righe da toccare una tabella non si sospende.
+#   In coda si convalida chk_bank_branches_codici_fmt (nato NOT VALID in
+#   20261127-12): e' la bonifica a portare le righe vecchie nella forma che il
+#   CHECK chiede.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261127-25-bonifica-conti-filiali-mandati-normalizzati-mctit.yaml
+
+  - changeSet:
+      id: 20261127-25-bonifica-conti-filiali-mandati-normalizzati
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Conti, filiali e mandati SEPA esistenti nella forma della
+        normalizzazione a01 e con lo snapshot dell'IBAN dal conto, coi trigger
+        sospesi (tranne audit e tx_id). brief-db-revisione-anagrafiche §25.10.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_trigger t
+               WHERE (t.tgrelid, t.tgname) IN (
+                       ('anagrafiche.conti_bancari'::regclass, 'trg_conti_bancari_a01_normalize_ins_upd'),
+                       ('anagrafiche.bank_branches'::regclass, 'trg_bank_branches_a01_normalize_ins_upd'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $bonifica$
+              DECLARE
+                  v_tab      regclass;
+                  v_serve    boolean;
+                  r          record;
+                  v_sospesi  pg_catalog.pg_trigger.tgname%TYPE[];
+                  v_modi     pg_catalog.pg_trigger.tgenabled%TYPE[];
+              BEGIN
+                  FOREACH v_tab IN ARRAY ARRAY['anagrafiche.bank_branches'::regclass,
+                                               'anagrafiche.conti_bancari'::regclass,
+                                               'pagamenti.sepa_mandati'::regclass]
+                  LOOP
+                      IF v_tab = 'anagrafiche.bank_branches'::regclass THEN
+                          SELECT EXISTS (
+                              SELECT 1 FROM anagrafiche.bank_branches b
+                               WHERE b.bank_code   IS DISTINCT FROM script.fn_normalizza_codice_bancario(b.bank_code)
+                                  OR b.branch_code IS DISTINCT FROM script.fn_normalizza_codice_bancario(b.branch_code)
+                                  OR b.bic_swift   IS DISTINCT FROM script.fn_normalizza_codice_bancario(b.bic_swift))
+                            INTO v_serve;
+                      ELSIF v_tab = 'anagrafiche.conti_bancari'::regclass THEN
+                          SELECT EXISTS (
+                              SELECT 1 FROM anagrafiche.conti_bancari c
+                               WHERE c.iban      IS DISTINCT FROM script.fn_normalizza_codice_bancario(c.iban)
+                                  OR c.bic_swift IS DISTINCT FROM script.fn_normalizza_codice_bancario(c.bic_swift)
+                                  OR c.paese     IS DISTINCT FROM left(script.fn_normalizza_codice_bancario(c.iban), 2))
+                            INTO v_serve;
+                      ELSE
+                          SELECT EXISTS (
+                              SELECT 1
+                                FROM pagamenti.sepa_mandati m
+                                LEFT JOIN anagrafiche.soggetti_ruoli_conti_bancari l ON l.id = m.soggetto_ruolo_conto_id
+                                LEFT JOIN anagrafiche.conti_bancari c ON c.id = l.conto_bancario_id
+                               WHERE m.iban_snapshot IS DISTINCT FROM c.iban)
+                            INTO v_serve;
+                      END IF;
+                      CONTINUE WHEN NOT v_serve;
+
+                      v_sospesi := '{}';
+                      v_modi    := '{}';
+                      FOR r IN
+                          SELECT t.tgname, t.tgenabled
+                            FROM pg_catalog.pg_trigger t
+                           WHERE t.tgrelid = v_tab
+                             AND NOT t.tgisinternal
+                             AND t.tgenabled <> 'D'
+                             AND t.tgfoid NOT IN ('script.trgfn_audit_data_user_generic'::regproc,
+                                                  'dbops.trgfn_tx_id_managed'::regproc)
+                      LOOP
+                          EXECUTE format('ALTER TABLE %s DISABLE TRIGGER %I', v_tab, r.tgname);
+                          v_sospesi := v_sospesi || r.tgname;
+                          v_modi    := v_modi || r.tgenabled;
+                      END LOOP;
+
+                      IF v_tab = 'anagrafiche.bank_branches'::regclass THEN
+                          UPDATE anagrafiche.bank_branches b
+                             SET bank_code   = script.fn_normalizza_codice_bancario(b.bank_code),
+                                 branch_code = script.fn_normalizza_codice_bancario(b.branch_code),
+                                 bic_swift   = script.fn_normalizza_codice_bancario(b.bic_swift)
+                           WHERE b.bank_code   IS DISTINCT FROM script.fn_normalizza_codice_bancario(b.bank_code)
+                              OR b.branch_code IS DISTINCT FROM script.fn_normalizza_codice_bancario(b.branch_code)
+                              OR b.bic_swift   IS DISTINCT FROM script.fn_normalizza_codice_bancario(b.bic_swift);
+                      ELSIF v_tab = 'anagrafiche.conti_bancari'::regclass THEN
+                          UPDATE anagrafiche.conti_bancari c
+                             SET iban      = script.fn_normalizza_codice_bancario(c.iban),
+                                 bic_swift = script.fn_normalizza_codice_bancario(c.bic_swift),
+                                 paese     = left(script.fn_normalizza_codice_bancario(c.iban), 2)
+                           WHERE c.iban      IS DISTINCT FROM script.fn_normalizza_codice_bancario(c.iban)
+                              OR c.bic_swift IS DISTINCT FROM script.fn_normalizza_codice_bancario(c.bic_swift)
+                              OR c.paese     IS DISTINCT FROM left(script.fn_normalizza_codice_bancario(c.iban), 2);
+                      ELSE
+                          UPDATE pagamenti.sepa_mandati m
+                             SET iban_snapshot = c.iban
+                            FROM anagrafiche.soggetti_ruoli_conti_bancari l
+                            JOIN anagrafiche.conti_bancari c ON c.id = l.conto_bancario_id
+                           WHERE l.id = m.soggetto_ruolo_conto_id
+                             AND m.iban_snapshot IS DISTINCT FROM c.iban;
+                      END IF;
+
+                      -- Si riaccende ogni trigger nel modo in cui era: O, A, R.
+                      FOR i IN 1 .. coalesce(array_length(v_sospesi, 1), 0) LOOP
+                          EXECUTE format('ALTER TABLE %s %s TRIGGER %I',
+                                         v_tab,
+                                         CASE v_modi[i]
+                                             WHEN 'A' THEN 'ENABLE ALWAYS'
+                                             WHEN 'R' THEN 'ENABLE REPLICA'
+                                             ELSE 'ENABLE'
+                                         END,
+                                         v_sospesi[i]);
+                      END LOOP;
+                  END LOOP;
+              END
+              $bonifica$;
+
+              -- Le righe sono ora nella forma: il CHECK nato NOT VALID in
+              -- 20261127-12 si convalida.
+              ALTER TABLE anagrafiche.bank_branches VALIDATE CONSTRAINT chk_bank_branches_codici_fmt;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la forma di prima non si ricostruisce, e non serve.
+              SELECT 1;

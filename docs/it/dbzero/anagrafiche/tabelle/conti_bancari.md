@@ -3,14 +3,14 @@
 
 > 📝 **Descrizione**
 >
-> Anagrafe unica dei conti_bancari (IBAN), deduplicata a livello globale.
+> Il registro unico degli IBAN: che cos'e' il conto (IBAN, BIC, intestatario da mostrare, paese, filiale), non di chi e'; chi lo usa lo dicono i legami anagrafiche.soggetti_conti_bancari e anagrafiche.soggetti_ruoli_conti_bancari. Un IBAN esiste una volta (uq_conti_bancari_iban) e non si modifica (lucchetto, E_CONTO_BANCARIO_IBAN_IMMUTABILE): un IBAN sbagliato e' un altro conto. Dove lo stato dell'IBAN lo dichiara, l'IBAN porta banca e filiale della sua filiale (anagrafiche.trgfn_conti_bancari_guard_iban_filiale). Un conto legato non si spegne.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| iban | character varying(34) | NO |  |
-| bic_swift | character varying(11) | YES |  |
+| iban | text | NO |  |
+| bic_swift | text | YES |  |
 | intestatario_predefinito | character varying(140) | YES |  |
 | paese | character(2) | YES |  |
 | attivo | boolean | NO | true |
@@ -44,18 +44,21 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_conti_bancari_a10_bank_branches_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'bank_branches', 'attivo', 'bank_branch_id', 'id')` |
+| trg_conti_bancari_a01_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_conti_bancari_normalize()` |
+| trg_conti_bancari_a01_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_conti_bancari_normalize()` |
 | trg_conti_bancari_a10_bank_branches_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'bank_branches', 'attivo', 'bank_branch_id', 'id')` |
+| trg_conti_bancari_a10_bank_branches_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'bank_branches', 'attivo', 'bank_branch_id', 'id')` |
+| trg_conti_bancari_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('iban', 'E_CONTO_BANCARIO_IBAN_IMMUTABILE')` |
 | trg_conti_bancari_a10_soggetti_conti_bancari_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'soggetti_conti_bancari', 'conto_bancario_id', 'id', 'attivo')` |
 | trg_conti_bancari_a10_soggetti_ruoli_conti_bancari_block_b38964 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'soggetti_ruoli_conti_bancari', 'conto_bancario_id', 'id', 'attivo')` |
+| trg_conti_bancari_a12_guard_iban_filiale_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_conti_bancari_guard_iban_filiale()` |
+| trg_conti_bancari_a12_guard_iban_filiale_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_conti_bancari_guard_iban_filiale()` |
 | trg_conti_bancari_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_conti_bancari_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_conti_bancari_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_conti_bancari_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_conti_bancari_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_conti_bancari_normalize()` |
-| trg_conti_bancari_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_conti_bancari_normalize()` |
-| trg_conti_bancari_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('conti_bancari_id')` |
+| trg_conti_bancari_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_conti_bancari_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('conti_bancari_id')` |
+| trg_conti_bancari_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('conti_bancari_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -84,11 +84,11 @@ SELECT ok(
 CREATE TEMP TABLE tmp_conti AS
 WITH ins AS (
   INSERT INTO anagrafiche.conti_bancari (iban, bank_branch_id, attivo, storicizza, meta)
-  SELECT v.iban, r.bank_branch_id, true, false,
+  SELECT dbops.fn_pgtap_iban(r.bank_branch_id, v.iban), r.bank_branch_id, true, false,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_refs r
-    CROSS JOIN (VALUES ('IT00PGTAPENTEINCASSO00000001', 1),
-                       ('IT00PGTAPENTEPAGAMENT0000002', 2)) AS v(iban, ord)
+    CROSS JOIN (VALUES ('INCASSO1', 1),
+                       ('PAGAMENT2', 2)) AS v(iban, ord)
   RETURNING id, iban
 )
 SELECT max(id) FILTER (WHERE iban LIKE '%INCASSO%')  AS conto_incasso_id,

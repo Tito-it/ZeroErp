@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I CODICI BANCARI IN text: LA LUNGHEZZA LA DICE IL CHECK, DOPO LA NORMALIZZAZIONE
+#   anagrafiche.conti_bancari.iban, bic_swift                    varchar -> text
+#   anagrafiche.bank_branches.bic_swift, bank_code, branch_code  varchar -> text
+#   pagamenti.sepa_mandati.iban_snapshot                         varchar -> text
+#   chk_bank_branches_codici_fmt                                 (nuovo, NOT VALID)
+#   Brief: brief-db-revisione-anagrafiche §25.11.2 (D-T8a-14 a)
+#
+# -- IL DIFETTO --------------------------------------------------------------
+#   PostgreSQL giudica varchar(n) PRIMA dei trigger BEFORE: un BIC di 11
+#   caratteri scritto a gruppi («BPPI IT RR XXX», 14) o un IBAN di 34 scritto a
+#   gruppi muoiono sulla lunghezza del tipo, prima che la normalizzazione a01
+#   (20261127-17, -18) tolga gli spazi. «Si scrive come lo si legge» reggeva
+#   solo dentro la lunghezza.
+#
+# -- LA FORMA ----------------------------------------------------------------
+#   text, e la lunghezza vera la dice il CHECK di formato, che giudica il
+#   valore gia' normalizzato:
+#   * IBAN: chk_conti_bancari_iban_fmt (15-34), gia' presente;
+#   * BIC del conto e della filiale: chk_conti_bancari_bic_fmt,
+#     check_bank_branches_bic_swift_fmt (8 o 11), gia' presenti;
+#   * snapshot del mandato: chk_sepa_mandati_iban_snap_fmt, gia' presente; il
+#     tipo segue quello dell'IBAN del conto da cui il trigger lo copia;
+#   * codici di banca e filiale: non avevano un CHECK, il limite era il tipo
+#     (varchar(16)). Lo prende chk_bank_branches_codici_fmt, nella forma
+#     normalizzata (lettere maiuscole e cifre, da 1 a 16).
+#   Il CHECK nuovo nasce NOT VALID: le righe scritte prima della
+#   normalizzazione a01 possono non essere nella forma, e le riallinea la
+#   bonifica 20261127-25, che poi lo convalida. Le scritture nuove le giudica
+#   da subito.
+#
+# -- CHE COSA SI TRASCINA ---------------------------------------------------------
+#   Nessuna vista ne' funzione dipende da queste colonne (pg_depend, letto sul
+#   catalogo il 2026-11-27): solo l'indice trigram ix_bank_branches_bank_code_trgm,
+#   che ALTER TYPE ricostruisce (gin_trgm_ops vale su text). Le tabelle di
+#   storico non hanno colonne gemelle di questi campi. Viene prima di tutte le
+#   funzioni del giro che le ancorano con %TYPE (linee-guida-sql §11.14).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261127-12-alter-conti-filiali-codici-bancari-text-mctit.yaml
+
+  - changeSet:
+      id: 20261127-12-alter-conti-filiali-codici-bancari-text
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        IBAN, BIC, codici di banca e filiale e snapshot dell'IBAN del mandato in
+        text: la lunghezza la giudicano i CHECK sul valore normalizzato, non il tipo
+        prima dei trigger. brief-db-revisione-anagrafiche §25.11.2 (D-T8a-14 a).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conname = 'chk_bank_branches_codici_fmt';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.conti_bancari
+                ALTER COLUMN iban      TYPE text,
+                ALTER COLUMN bic_swift TYPE text;
+
+              ALTER TABLE anagrafiche.bank_branches
+                ALTER COLUMN bic_swift   TYPE text,
+                ALTER COLUMN bank_code   TYPE text,
+                ALTER COLUMN branch_code TYPE text,
+                ADD CONSTRAINT chk_bank_branches_codici_fmt CHECK (
+                      bank_code   ~ '^[A-Z0-9]{1,16}$'
+                  AND branch_code ~ '^[A-Z0-9]{1,16}$') NOT VALID;
+
+              ALTER TABLE pagamenti.sepa_mandati
+                ALTER COLUMN iban_snapshot TYPE text;
+
+              COMMENT ON CONSTRAINT chk_bank_branches_codici_fmt ON anagrafiche.bank_branches IS
+                'Codice della banca e codice della filiale nella forma di confronto: lettere maiuscole e cifre, da 1 a 16. Lo giudica il valore gia'' normalizzato da anagrafiche.trgfn_bank_branches_normalize: chi scrive puo'' mandare il codice con spazi e separatori.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.bank_branches DROP CONSTRAINT IF EXISTS chk_bank_branches_codici_fmt;
+              ALTER TABLE anagrafiche.conti_bancari
+                ALTER COLUMN iban TYPE varchar(34), ALTER COLUMN bic_swift TYPE varchar(11);
+              ALTER TABLE anagrafiche.bank_branches
+                ALTER COLUMN bic_swift TYPE varchar(11),
+                ALTER COLUMN bank_code TYPE varchar(16), ALTER COLUMN branch_code TYPE varchar(16);
+              ALTER TABLE pagamenti.sepa_mandati ALTER COLUMN iban_snapshot TYPE varchar(34);

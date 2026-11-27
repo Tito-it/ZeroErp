@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-27
 
-**Riparte: Tid**, con le decisioni di T8a (§25.2); il giro T8b è chiuso lato DB (applicato, pgTAP verdi, B-7,
+**Riparte: team BE/FE**, con la richiesta del giro T8a (§25.11.3); il giro T8a è chiuso lato DB (applicato, pgTAP verdi, B-7, doc, commit: 2026-11-27, §25.11); il giro T8b è chiuso lato DB (applicato, pgTAP verdi, B-7,
 doc, commit: 2026-11-27, §25.9); intanto il **team BE/FE** con le richieste aperte
 dei giri precedenti. Il giro T8c è chiuso lato DB (§25.8). Lo stato di ogni giro sta nel piano a spunta del §0 e nella sua
 sezione: qui solo chi e dove.
@@ -10,8 +10,8 @@ sezione: qui solo chi e dove.
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | team BE/FE | La richiesta del giro T8b | §25.9.2 | — |
-| 2 | Tid | Le decisioni di T8a (D-T8a-1 … -12) | §25.2 | — |
-| 2-bis | sessione DB | Il giro T8a, poi un giro per tema: T12, T3, T10, T11 | §0 fase 8; §17.1 | 2; il via di Tid per ogni giro |
+| 2 | team BE/FE | La richiesta del giro T8a. Tid: i residui di dbdev | §25.11.3; §25.11.2 | — |
+| 2-bis | sessione DB | Un giro per tema: T12, T3, T10, T11 | §0 fase 8; §17.1 | 2; il via di Tid per ogni giro |
 | 3 | team BE/FE | La richiesta del giro T8c | §25.8.3 | — |
 | 4 | team BE/FE | Il censimento applicativo del giro 6 (chi scrive o cancella `emittenti_fiscali_billing_account`, chi conta sul BA senza collegamento o sulla sua cancellazione) | §24.8 | — |
 | 5 | team BE/FE | `test_gli_obbligatori_copiati_dal_primo`, da adeguare a D-T7a-4 | §21.7 | — |
@@ -20,8 +20,9 @@ sezione: qui solo chi e dove.
 | 8 | sessione DB | Il giro dei metadati, per ciò che i giri di codice non hanno già riscritto | §8 | 2 |
 | 9 | sessione DB | L'archiviazione in `work-done/`, col debito dei temi spostati nei loro brief | §11 | 2 … 8 |
 
-**Decisioni aperte di Tid:** D-T8a-1 … -12 (§25.2).
-**Da committare:** niente.
+**Decisioni aperte di Tid:** nessuna. D-T8a-12 è passata a
+[brief-db-block-attivo-e-validita](brief-db-block-attivo-e-validita.md), D-T8a-6 a T12.
+**Da committare:** niente (giro T8a committato il 2026-11-27).
 
 ## 0. Il piano da percorrere
 
@@ -137,7 +138,20 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] T8b: doc auto-generata rigenerata (Tid, 2026-11-27)
   * [x] T8b: commit (2026-11-27, «DB: anagrafiche giro T8b, l'emittente»)
   * [ ] T8b: la richiesta al BE (§25.9.2), da girare
-  * [ ] T8a: le decisioni D-T8a-1 … -12 (Tid, §25.2); poi il giro
+  * [x] T8a: le decisioni D-T8a-1 … -12, tutte come proposte; D-T8a-4 senza lock della filiale, D-T8a-10 col paese
+    del soggetto della banca (Tid, 2026-11-27, §25.5)
+  * [x] T8a: l'analisi riverificata sul catalogo dopo T8c e T8b (2026-11-27, §25.10)
+  * [x] T8a: le decisioni di §25.10 come proposte: D-T8a-6 a T12, D-T8a-12 nel brief del BLOCK, D-T8a-11 a, D-T8a-13
+    (Tid, 2026-11-27)
+  * [x] T8a: D-T8a-4 bis, `istanza_utility_id` bloccata; via di Tid (2026-11-27)
+  * [x] T8a: range `20261127-11 … -30` (da `scripts/prossimo_changeset.py`, occupato coi segnaposto)
+  * [x] T8a: pgTAP nuovo, changeSet, CSV, pgTAP adeguati, guide e pagine, provati sullo scratch (2026-11-27, §25.11)
+  * [x] T8a: apply di `20261127-11 … -30` su scratch e dbdev, pgTAP verdi, i due test di RLS compresi (Tid, 2026-11-27)
+  * [x] T8a: doc auto-generata rigenerata (Tid, 2026-11-27)
+  * [x] T8a: baseline B-7 sulle righe del giro, confronto verde su scratch e dbdev (2026-11-27, §25.11)
+  * [x] T8a: commit (2026-11-27, «DB: anagrafiche giro T8a, i conti bancari»)
+  * [ ] T8a: la richiesta al BE (§25.11.3), da girare
+  * [x] T8a: D-T8a-14 a, colonne `text`, in questo giro (Tid, 2026-11-27): `-12`, e i file `-12 … -29` rinumerati `-13 … -30`
   * [ ] Poi un giro per tema nell'ordine di §17.1: T12, T3, T10, T11
 * **Fase 9 — Il giro dei metadati** (§8)
   * [ ] I COMMENT, i commenti nei corpi e le note di seed che i giri di codice non hanno già riscritto
@@ -1261,6 +1275,8 @@ T3, T10, T11. ⚠️ Deciso con T12 dopo T8: §17.1.
   le tabelle che puntano all'emittente (direttamente o attraverso `soggetti_ruoli`). Viene dopo T8 (Tid, 2026-11-23),
   che tocca gli stessi ruoli d'impresa. Il resto di S53 si divide così: il primo emittente nato spento va con T12; la
   FK mancante di `emittenti_fiscali.valuta_id` va con S29, in T4.
+  ⚠️ **T12 prende anche D-T8a-6** (Tid, 2026-11-27, §25.10): `soggetti_ruoli` non ha `attivo`, e «il legame del
+  ruolo vuole un ruolo acceso» si decide insieme a che cosa vuol dire un ruolo acceso.
 
 ## 18. Giro 1 — Q7, lo storico continuo di indirizzi, civici e vie (2026-11-23, applicato, pgTAP verdi, committato)
 
@@ -3091,7 +3107,21 @@ codici `E_FORNITORE_*` escono da T8c con D-18; si aggiungono le colonne modifica
   di §24.9 (Tid, 2026-11-27), per cui «un id ben formato che non è un billing account» è `E_BILLING_ACCOUNT_NOT_FOUND`
   (`NON_TROVATO`). Il giro applica quella decisione. `E_PARAMETRO_INVALIDO` resta a D-T8b-2 (il ruolo che non è un
   emittente), come §24.9 lo tiene per «il ruolo che non è quello del BA».
-* Aperte: T8a D-T8a-1 … -12 (§25.2). Le proposte sono nella tabella. Il fatto di §25.1 non chiede decisioni.
+* ✅ **T8a, tutte come proposte** (Tid, 2026-11-27), le proposte della tabella di §25.2, con le scelte aperte chiuse così:
+  * **D-T8a-1 a**: «conto attivo» in una sede, l'automazione (errore al COMMIT); i due guard immediati si ritirano;
+  * **D-T8a-3 a**: `paese` sempre ricalcolato dall'IBAN;
+  * **D-T8a-4**: lock di `iban` sul conto, di `conto_bancario_id` e del soggetto/ruolo sui due legami;
+    **`bank_branch_id` resta modificabile** (una filiale sbagliata si corregge; la coerenza con l'IBAN la tiene D-T8a-9);
+  * **D-T8a-5 a**: lock di `uso` sui due legami; il BE lo toglie dalle colonne modificabili;
+  * **D-T8a-7 a**: un solo predefinito per periodo (EXCLUDE sulla validità dove `predefinito`); il lettore prende il
+    predefinito valido oggi;
+  * **D-T8a-9**: guard per i paesi in cui l'IBAN porta banca e filiale, per ora `IT` e `SM` (stessa struttura: CIN,
+    ABI, CAB); per gli altri paesi un limite dichiarato nella guida `gestione-conti-bancari`;
+  * **D-T8a-10**: unicità di `(bank_code, branch_code)` per paese, e **il paese si legge dal soggetto della banca**
+    (`bank_branches` non ha una colonna sua, e non la prende). Da verificare nel giro: quale attributo del soggetto
+    porta il paese, e la forma — con il paese in un'altra tabella non è un vincolo UNIQUE ma un guard;
+  * D-T8a-2, -6 (da leggere con T12), -8 (con S55f), -11, -12 come scritte; S18d (`utility_id` a `integer`) non chiede decisioni.
+  Prima del giro l'analisi si riverifica sul catalogo, come per T8b (§25.3). Il fatto di §25.1 non chiede decisioni.
 
 ### 25.6 Il piano di T8 (dopo le decisioni)
 
@@ -3422,3 +3452,273 @@ Censisci, oltre ai file noti, **ogni chiamante** delle funzioni qui sotto che co
 3. **`anagrafiche.fn_parametri_importo_utility`**: un ruolo che non è un emittente, o NULL, risponde
    `E_PARAMETRO_INVALIDO`. File noto: `apps/vendite/tests/db/test_group_attivita_parametri_importo_db.py`.
 4. Nessun codice nuovo: `error_policies_generated.py` non cambia. Conferma.
+
+### 25.10 Verifica critica di T8a prima del giro (2026-11-27)
+
+Riletta sul catalogo dello scratch (`zeroerp_ruoli`) e sulle guide dopo T8c e T8b, prima del via di Tid. Nessuna
+misura sui dati entra come motivo: tutto ciò che segue è struttura (colonne, vincoli, trigger, corpi, registri).
+Le decisioni di §25.5 restano; qui ciò che il catalogo dice di diverso, e quattro scelte nuove.
+
+**Due decisioni non si scrivono come sono scritte.**
+
+* **D-T8a-6 non ha dove poggiare: `soggetti_ruoli` non ha `attivo`.** Le sue colonne sono `id`, `soggetto_id`,
+  `tipo_ruolo_id`, `meta` e l'audit: nessuna riga ATTIVO può legare il ruolo al suo legame, perché il motore lega un
+  `attivo` del padre a quello del figlio, e qui il padre non ne ha. L'«acceso» di un ruolo sta nelle
+  specializzazioni (`clienti.attivo`, `fornitori.attivo`…), cioè in una tabella diversa per ogni tipo. L'asimmetria
+  di S55c resta vera, ma il rimedio è un'altra cosa. Strade: (a) un guard sul legame del ruolo, «il **soggetto** del
+  ruolo è acceso», scritto a mano (due passi: il BB `trgfn_child_requires_active_parent` vuole una FK diretta), più
+  il verso opposto su `soggetti`; (b) **D-T8a-6 esce da T8a e va a T12**, che decide che cosa vuol dire «un ruolo
+  acceso»; (c) l'asimmetria è voluta e si scrive. Proposta **b**: è la domanda di T12, e un guard scritto ora sul
+  soggetto andrebbe rifatto quando T12 dà l'acceso al ruolo.
+* **D-T8a-12 si scontra con D-T8a-1 a, e il BLOCK non si riscrive.** Il BLOCK dello spegnimento del conto è un
+  trigger dell'automazione ATTIVO (`dbops.trgfn_prevent_deactivate_if_children`, montato da `ci_apply`): un DDL su di
+  lui è vietato (linee-guida-sql §11.5), e il BB non conosce la validità (conta le figlie, o le figlie attive se la
+  figlia ha `attivo`; i legami non l'hanno). Le strade sono due, e nessuna è quella scritta:
+  * una riga in `dbops.automazione_attivo_eccezioni` per `conto_bancario_id` dei due legami, e un BLOCK scritto a
+    mano che conta i legami validi oggi o dopo. Ma l'eccezione è **per FK** e toglie anche il REQUIRE: «conto
+    attivo» perde la sede che D-T8a-1 **a** gli dà, e torna ai guard immediati, cioè D-T8a-1 **b**;
+  * il BB impara la validità: «se la figlia ha `valido_al`, contano solo le figlie valide nel giorno operativo o
+    dopo». È un cambio di **modello dell'automazione**: le coppie BLOCK con una figlia che ha `valido_al` sono una
+    trentina (letto sul catalogo il 2026-11-27: billing account, contratti, listini, titoli IVA, risorse umane,
+    override degli utenti…), e per ognuna il comportamento cambia. È anche la sola strada che corregge il gemello
+    che D-T8a-12 non nomina: `trg_soggetti_a10_soggetti_conti_bancari_block_deact_upd`, per cui **un soggetto con un
+    conto storico non si spegne**. Ed è lo stesso difetto di S57e (brief del reseller) e di D-T8c-9: tre casi, una
+    regola, che per la regola del 2 vuole una sede sola.
+  Proposta: la seconda, come **tema a sé** fuori da T8a (tocca la guida `automazione-db` §4.2 e tutte le coppie);
+  in T8a D-T8a-12 resta in attesa, e D-T8a-1 **a** regge com'è.
+* **Con D-T8a-12 e D-T8a-1 a insieme si apre un buco, qualunque strada si prenda.** Oggi un conto spento non ha
+  legami (il BLOCK lo impedisce) e il guard immediato rifiuta ogni `UPDATE` di un legame su un conto spento. Se un
+  conto con soli legami chiusi si può spegnere, e i guard immediati si ritirano, un legame chiuso su un conto spento
+  si **riapre** allungando `valido_al`: il REQUIRE scatta solo su `INSERT` o `UPDATE OF conto_bancario_id`, e non
+  parla. Chi fa D-T8a-12 deve anche far guardare «legame valido ⇒ conto attivo» al cambio delle date. La vista e la
+  funzione del predefinito filtrano `cb.attivo`, quindi la scelta del conto non sbaglia; sbaglia la proprietà.
+
+**Correzioni dell'analisi di §25.2.**
+
+* **D-T8a-2 e D-T8a-7: un vincolo non porta un codice di dominio.** Un CHECK risponde `23514`, un EXCLUDE `23P01`,
+  col nome del vincolo nel campo `CONSTRAINT`: il contratto dei codici vale solo su `P0001`
+  (Messaggi-di-Errore §«Cosa esce dall'eccezione, oltre al testo»). «CHECK, codice suo» si scrive come il precedente di
+  `E_DATA_CHIUSURA`: un guard `BEFORE ROW` che parla col codice, e il vincolo dietro, come rete. Per D-T8a-7 vale lo
+  stesso: oggi il doppio predefinito risponde `23505` dall'indice, e il BE non ha un codice da mostrare.
+* **D-T8a-7: il lettore c'è già.** `vw_conti_bancari_per_ruolo` tiene solo i legami validi nel giorno operativo, e
+  `fn_get_conto_bancario_predefinito` legge la vista: «il lettore prende il predefinito valido oggi» è già vero, e il
+  giro non tocca né vista né funzione. Il lavoro è sostituire i tre indici unici del predefinito
+  (`ix_soggetti_conti_bancari_predef_per_uso`, `uq_src_bancari_predefinito_istanza`, `…_no_istanza`) con tre
+  EXCLUDE sul periodo `daterange(valido_dal, valido_al, '[]')`: l'istanza NULL vuole il suo EXCLUDE con `WHERE`, come
+  oggi l'indice, perché `NULL = NULL` non esclude. L'EXCLUDE è più largo dell'indice unico che sostituisce: le righe
+  di oggi lo reggono per costruzione, senza `NOT VALID`. Indietro l'esempio «sostituzione programmata» della guida.
+* **D-T8a-4: il lock dell'IBAN vede l'IBAN prima della normalizzazione.** I trigger `BEFORE` girano in ordine di
+  nome: `trg_conti_bancari_a10_lock_columns_upd` precede `trg_conti_bancari_ins_upd_normalize`. Un `UPDATE` che
+  riscrive lo stesso IBAN nella forma stampata («IT60 X054…») è rifiutato come un cambio. Il normalize, riscritto da
+  D-T8a-8, prende un nome che lo mette prima (`a05_`, come `trg_soggetti_a05_guard_id_fiscale_immutabile_upd`), e il
+  BE toglie `iban` dalle colonne modificabili.
+* **D-T8a-4: `istanza_utility_id` del legame del ruolo non è nominata.** Il lock prende conto, soggetto o ruolo e
+  (D-T8a-5) `uso`; l'istanza resta modificabile, e spostare un legame da «tutto il ruolo» a «una fornitura» cambia
+  il gradino della cascata e il perimetro dei mandati che lo nominano. Va detto se si blocca anche lei.
+* **D-T8a-11 con D-T8a-4: lo snapshot diventa una copia.** Con l'IBAN bloccato sul conto e il conto bloccato sul
+  legame, «l'IBAN del conto alla nascita e al cambio del legame» vale sempre l'IBAN del conto del legame di oggi:
+  `iban_snapshot` è un derivato, e la sua ragione nella guida («resta anche se il conto cambia») non c'è più, perché
+  il conto non cambia. Strade: (a) lo scrive il trigger, sempre, e il BE non lo manda; (b) la colonna si ritira e si
+  legge dal conto. `intestatario_snapshot` non è toccato da D-T8a-11: resta un dato libero, e va detto.
+* **D-T8a-8: tre copie della normalizzazione, una mancante.** IBAN e BIC si normalizzano in
+  `trgfn_conti_bancari_normalize`, l'IBAN anche in `trgfn_sepa_mandati_guard` (`iban_snapshot`); `bank_branches.bic_swift`
+  non si normalizza affatto (nessun trigger, solo il CHECK). Con D-T8a-8 le regole hanno due consumatori: per la
+  regola del 2 vanno in una funzione `IMMUTABLE` di `script` (una per l'IBAN, una per il BIC), registrata nel
+  catalogo, e i trigger la chiamano. Se D-T8a-11 è **a**, l'IBAN del mandato non si normalizza più (lo copia dal
+  conto) e la copia del guard SEPA si ritira. Nella stessa funzione delle filiali vanno `bank_code` e `branch_code`
+  (via spazi e separatori, maiuscolo, gli zeri restano): D-T8a-9 li confronta con l'IBAN e D-T8a-10 li rende unici,
+  e «03069» con uno spazio sarebbe un'altra filiale.
+* **D-T8a-9: due versi, e la lista dei paesi è un dato.** Il guard sul conto (`INSERT OR UPDATE OF iban,
+  bank_branch_id`) non basta: `bank_code` e `branch_code` della filiale non hanno lock, e correggerli rende
+  incoerenti i conti che ci stanno. Serve il verso della filiale. «Per ora `IT` e `SM`» scritto nel corpo è un
+  elenco a codice; la sede naturale è `config.stati` (ha `codice_iso2`), con le posizioni di banca e filiale
+  nell'IBAN: IT e SM entrano dal seed, e un paese nuovo (FR, ES hanno la loro struttura) è una riga, non un
+  changeSet. Proposta da decidere: **D-T8a-13**.
+* **D-T8a-10: il paese è `soggetti.stato_id`, a due passi, e cambia.** Il soggetto della banca porta lo stato in
+  `stato_id` (NOT NULL, FK su `config.stati`); la filiale ci arriva da `soggetto_ruolo_id` → `soggetti_ruoli.soggetto_id`
+  (bloccato) → `soggetti.stato_id`, modificabile finché l'identificativo fiscale non è bloccato
+  (`trgfn_soggetti_guard_id_fiscale_immutabile`). Quindi è un guard, come §25.5 prevedeva, con **tre** obblighi: il
+  verso della filiale (`INSERT OR UPDATE OF bank_code, branch_code, soggetto_ruolo_id`), il verso del soggetto
+  (`UPDATE OF stato_id` di un soggetto che ha filiali), e la concorrenza (due filiali nate insieme non si vedono:
+  un `pg_advisory_xact_lock` sulla coppia normalizzata).
+* **D-T8a-1 a: il codice si ritira.** `E_CONTO_BANCARIO` lo sollevano solo i due guard che si ritirano: va
+  `obsoleto_dal` nel catalogo dei codici, e via le due righe di `db/pgtap/dbops/test-punti-canale-campo-v1.sql`.
+  Il BE riceve, al COMMIT, `E_ATTIVO_PADRE_NON_ATTIVO`.
+* **D-T8a-3 a con il lock: resta un caso solo.** Con l'IBAN bloccato il paese si ricalcola uguale a ogni `UPDATE`;
+  il ricalcolo conta all'`INSERT` e quando qualcuno scrive un paese diverso, che il normalize sovrascrive in
+  silenzio. Il BE smette di mandarlo.
+* **S18d regge.** `emittenti_fiscali_utilities.utility_id` è `bigint` contro `config.utilities.id` `integer`, con FK;
+  nessuna vista dipende dalla colonna: l'`ALTER … TYPE integer` passa.
+
+**Guide** (`scripts/guide_coinvolte.py`, 7 oggetti, 2026-11-27): le cinque di §25 più nessuna nuova.
+
+| Guida | Esito |
+| --- | --- |
+| [gestione-conti-bancari](../../guide/gestione-conti-bancari.md) | **coerente** oggi; **indietro** nel giro: §«Il registro degli IBAN» (normalizzazione, paese, IBAN bloccato), §«Le banche e le filiali» (unicità per paese, coerenza con l'IBAN), §«I due legami» (predefinito per periodo, non bloccato, colonne bloccate), §«Che cosa si spegne» (un solo `E_*`, al COMMIT), §«I mandati SEPA» (D-T8a-11), §«Che cosa il database non tiene» (svuotata), l'esempio della sostituzione programmata |
+| [gestione-dei-pagamenti](../../guide/gestione-dei-pagamenti.md) | **indietro** con D-T8a-5 (l'`uso` del legame d'incasso non cambia) e D-T8a-11 |
+| [soggetti-e-ruoli-anagrafici](../../guide/soggetti-e-ruoli-anagrafici.md) | **coerente**; se D-T8a-6 va a T12, nessuna frase in T8a |
+| [emittenti-fiscali](../../guide/emittenti-fiscali.md), [pgtap-come-si-scrive-un-test](../../guide/pgtap-come-si-scrive-un-test.md) | nominano `emittenti_fiscali_utilities` e `bank_branches` per altro: **coerenti** per assenza |
+
+**Decisioni nuove per Tid, prima del giro:**
+
+* **D-T8a-6**: (b) a T12, proposta; (a) guard sul soggetto del ruolo ora; (c) voluta;
+* **D-T8a-12**: il BB dell'automazione che impara la validità, come tema a sé, proposta; oppure eccezione per FK e
+  BLOCK a mano, con D-T8a-1 che passa a **b**. In tutti e due i casi, il guard sulle date del legame;
+* **D-T8a-4 bis**: `istanza_utility_id` del legame del ruolo bloccata o no;
+* **D-T8a-11**: (a) snapshot scritto sempre dal trigger, proposta; (b) colonna ritirata;
+* **D-T8a-13**: le posizioni di banca e filiale nell'IBAN su `config.stati`, al posto dell'elenco nel corpo.
+
+Le altre correzioni (il guard davanti al CHECK e all'EXCLUDE, il nome del normalize, la funzione di normalizzazione,
+i versi di D-T8a-9 e D-T8a-10, il codice ritirato) seguono dalle decisioni prese e non ne chiedono di nuove.
+
+**✅ Decise da Tid il 2026-11-27, tutte come proposte:**
+
+* **D-T8a-6 b**: esce da T8a e va a **T12**, che decide che cosa vuol dire «un ruolo acceso». In T8a l'asimmetria di
+  S55c non si tocca;
+* **D-T8a-12**: tema a sé, in [brief-db-block-attivo-e-validita](brief-db-block-attivo-e-validita.md) (aperto, non
+  iniziato): il BB dell'automazione che impara la validità, per tutte le coppie, con S57e (D-R-4 del reseller) e il
+  gemello del soggetto. **In T8a il BLOCK del conto resta com'è**, e D-T8a-1 **a** regge: senza D-T8a-12 un conto
+  spento non ha legami, e il buco delle date non si apre. Il guard sulle date del legame va in quel brief;
+* **D-T8a-11 a**: `iban_snapshot` lo scrive sempre il trigger, dall'IBAN del conto del legame, alla nascita e al
+  cambio del legame; il BE non lo manda. La normalizzazione dell'IBAN nel guard SEPA si ritira;
+  `intestatario_snapshot` resta un dato libero, e la guida lo dice;
+* **D-T8a-13**: le posizioni di banca e filiale nell'IBAN stanno su `config.stati`; IT e SM entrano dal seed, e il
+  guard di D-T8a-9 le legge da lì.
+* **D-T8a-4 bis**: `istanza_utility_id` del legame del ruolo **si blocca** (Tid, 2026-11-27, sulla proposta scritta in
+  chat): spostare un legame fra «tutto il ruolo» e una fornitura ne cambia il gradino nella cascata e il perimetro dei
+  mandati; una correzione chiude il legame e ne apre uno nuovo.
+
+### 25.11 Giro T8a — che cosa è scritto (2026-11-27: applicato, pgTAP verdi, doc rigenerata)
+
+**Applicato** da Tid su scratch e dbdev il 2026-11-27 (16:54-16:55, tutti e venti `EXECUTED` nel `databasechangelog`), pgTAP verdi, doc auto-generata rigenerata.
+
+Al via di Tid (2026-11-27), range da `scripts/prossimo_changeset.py`, occupato subito con i segnaposto: `20261127-11 …
+-30` (gli ultimi presi uno alla volta quando la prova li ha resi necessari). Tutti usati. ⚠️ Con D-T8a-14 (Tid,
+2026-11-27, prima di ogni apply) i file `-12 … -29` sono stati **rinumerati** `-13 … -30`: il cambio di tipo delle
+colonne doveva venire prima delle funzioni che le ancorano con `%TYPE` (00_schema e 20_code girano mescolati per
+numero, linee-guida-sql §11.14), e niente era applicato né committato.
+Gli `id` dei messaggi `1562 … 1568` (`messaggi_errore.csv`) sono di questo giro.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `00_schema/config/20261127-11` | `config.stati.iban_pos_banca`, `iban_len_banca`, `iban_pos_filiale`, `iban_len_filiale`, tutte o nessuna (D-T8a-13) |
+| `00_schema/anagrafiche/20261127-12` | IBAN, BIC e codici di banca e filiale in `text` (D-T8a-14); i codici prendono il CHECK di forma che il tipo dava come lunghezza |
+| `00_schema/anagrafiche/20261127-13` | `emittenti_fiscali_utilities.utility_id` a `integer` (S18d); toglie prima le due `BEGIN ATOMIC` che la leggono e il guard generato `…_guard_utility_tipo_r_cd07ac` (`DROP TRIGGER IF EXISTS`, §11.5) |
+| `00_schema/anagrafiche/20261127-14` | i tre indici unici del predefinito diventano tre EXCLUDE sul periodo (D-T8a-7 a) |
+| `00_schema/anagrafiche/20261127-15` | `CHECK NOT (predefinito AND bloccato)` sui due legami (D-T8a-2) |
+| `20_code/script/20261127-16` | `script.fn_normalizza_codice_bancario`, il BB della forma di IBAN, BIC e codici (D-T8a-8) |
+| `20_code/anagrafiche/20261127-17` | `trgfn_conti_bancari_normalize` col BB e il paese sempre dall'IBAN; rimontato **per funzione** in `a01` (D-T8a-3 a) |
+| `20_code/anagrafiche/20261127-18` | `trgfn_bank_branches_normalize`, nuovo, in `a01` |
+| `20_code/anagrafiche/20261127-19` | ritirati i due guard immediati «conto attivo» e i loro montaggi (D-T8a-1 a) |
+| `20_code/anagrafiche/20261127-20` | `trgfn_conti_legami_guard_predefinito`, una funzione per i due legami, in `a12`: `E_CONTO_PREDEFINITO_BLOCCATO`, `E_CONTO_PREDEFINITO_SOVRAPPOSTO` |
+| `20_code/anagrafiche/20261127-21` | `fn_iban_coerente_con_filiale` (`BEGIN ATOMIC`) e i due guard, conto e filiale, in `a12`: `E_CONTO_IBAN_FILIALE_INCOERENTE`, `E_FILIALE_CODICI_CONTI_INCOERENTI` (D-T8a-9) |
+| `20_code/anagrafiche/20261127-22` | `fn_filiale_stessi_codici` (`BEGIN ATOMIC`) e i due guard, filiale e soggetto, in `a12`, col lock consultivo: `E_FILIALE_DUPLICATA` (D-T8a-10) |
+| `20_code/anagrafiche/20261127-23` | `trgfn_sepa_mandati_guard`: `iban_snapshot` sempre dall'IBAN del conto del legame (D-T8a-11 a) |
+| `20_code/anagrafiche/20261127-24` | i COMMENT al presente di conti, filiali, legami e mandati |
+| `80_data/changelog/20261127-25` | la bonifica delle righe di oggi (forma, paese, snapshot), coi trigger sospesi |
+| `90_end/20261127-26` | il runner dei lock su `anagrafiche` (D-T8a-4, -4 bis, -5): su dbdev il job dei lock è serale |
+| `20_code/anagrafiche/20261127-27` | ricreate `fn_parametri_importo_utility` e `fn_parametri_importo_riga`, corpo invariato (dagli ultimi YAML, verificati col vivo); COMMENT della seconda riscritto al presente |
+| `90_end/20261127-28` | il runner GUARD_UTILITY rimonta il guard tolto da `-13` |
+| `20_code/dbops/20261127-29` | `dbops.fn_pgtap_crea_filiale_bancaria` dà un codice filiale libero nel paese; nuovo `dbops.fn_pgtap_iban` |
+| `20_code/anagrafiche/20261127-30` | sul legame del ruolo il guard dell'istanza passa in `a12`, dopo il lucchetto dell'istanza |
+
+CSV (append, i mirror sono `runOnChange`): `config/stati.csv` (le quattro colonne in coda; Italia e San Marino `6,5,11,5`;
+⚠️ San Marino aveva `codice_iso2` vuoto: ora `SM`/`SMR`, perché il guard trova lo stato dall'IBAN), il mirror
+`20250716-03` con le quattro colonne `NUMERIC`; `dbops/automation_lock_columns.csv` (8 righe);
+`config/codici_errore.csv` e `config/messaggi_errore.csv` (sette codici nuovi; `E_CONTO_BANCARIO` con `obsoleto_dal`
+2026-11-27). Campi contati dopo l'ultima scrittura: nessuna riga storta.
+
+**Due regole delle fasi, applicate nel giro.** La normalizzazione va in `a01` e non in `a05`: la fase dei valori che
+guard e lucchetti confrontano (linee-guida-trigger). I guard che possono rifiutare la stessa riga del lucchetto
+generato (`a10_lock_columns`) stanno in `a12`, un numero libero della zona dei guard, perché fra due rifiuti parli
+prima l'immutabilità. Per lo stesso motivo il guard dell'istanza del legame del ruolo, che era `a10_guard_istanza`
+e ordinava prima del lucchetto, è passato in `a12` (`-30`).
+
+**`%TYPE`.** Parametri, ritorni e variabili delle funzioni nuove sono ancorati alle colonne (IBAN, codici, id,
+`function_name`). Il BB `fn_normalizza_codice_bancario` resta in `text` di proposito, e lo dice: serve quattro
+colonne di lunghezze diverse. Il builder della filiale riprende i `%TYPE` dello YAML di nascita, che il corpo vivo
+non porta.
+
+pgTAP: nuovo `db/pgtap/anagrafiche/test-conti-bancari-forma-e-legami-v1.sql` (26), interrotto senza il giro, 26 su 26
+con. Adeguati, perché costruivano casi che il modello ora rifiuta: tredici fixture con IBAN letterali o filiali dai
+codici di lunghezza variabile (`dbops.fn_pgtap_iban`, codici di 5 cifre), `test-conti-bancari-istanza-cascata` (test
+8: il codice di dominio al posto del `23505`), `test-istanza-dello-stesso-soggetto-v1` (test 3, il nome `a12`; test
+12, l'`UPDATE` dell'istanza lo ferma il lucchetto), `test-punti-canale-campo-v1` (tolti i due guard ritirati).
+
+**Prova sullo scratch** (`scripts/prova_changeset.py`, 2026-11-27, con un estratto in più nello scratchpad che simula
+i CSV): l'estratto gira per intero, catalogo identico prima e dopo. Dei 59 pgTAP che nominano gli oggetti del giro,
+54 verdi col giro. ⚠️ Due rossi **da proprietario**: `rls/test-rls-pagamenti-perimetro` (9) e
+`pagamenti/test-distinta-numerazione-registro-v1` (2) sono asserzioni di visibilità sotto RLS, e la prova gira da
+proprietario. La versione di `HEAD`, senza il giro, lanciata da proprietario dà gli stessi rossi uno per uno; come
+applicazione è verde. Non è una regressione, ma la prova non lo dimostra: vanno guardati **dopo l'apply**, come app.
+✅ Dopo l'apply (Tid, 2026-11-27) i pgTAP sono verdi, questi due compresi.
+Tre test la prova non li lancia (non transazionali o con più `BEGIN`): `test-soggetti-indirizzi-required`,
+`test-soggetti-ruoli-indirizzi-required`, `test-toponomastica-stradario-generale`. Guardrail dei changeSet, `COMMENT` al
+presente, `%TYPE` (`guardrail_forme_changeset`), letterali, timestamp: puliti.
+⚠️ Non provati: le `preCondition` di `-25` e `-26` (la prova le legge sul database di prima: lì sono rosse per
+costruzione); il caricamento vero dei CSV e il risveglio dei mirror (simulati); il verso del soggetto di D-T8a-10 come
+caso costruito (nessuna natura del seed costruisce una banca PG estera: il test 16 è un presidio di forma, dichiarato).
+
+**Documentazione allineata nel giro**: guide `gestione-conti-bancari` (registro, filiali, legami, che cosa si spegne,
+mandati, i limiti rimasti, l'esempio della sostituzione programmata, «Vedi anche»), `gestione-dei-pagamenti` (il legame
+d'incasso non si sposta), `pgtap-come-si-scrive-un-test` (`fn_pgtap_iban`); pagine `manual/` di `conti_bancari`,
+`soggetti_conti_bancari`, `soggetti_ruoli_conti_bancari`, `trgfn_sepa_mandati_guard`; tolte le pagine dei due guard
+ritirati. `guide_coinvolte.py` sugli oggetti del giro: in più `soggetti-e-ruoli-anagrafici`, `emittenti-fiscali`,
+`gestione-degli-indirizzi`, `configurazione-e-gestione-parametri`, `generazione-cliente`, `gestione-dei-contatti`,
+`gestione-delle-istanze-utility`, `gestione-pratiche`, `messaggi-audit`, `risorse-umane-e-accessi`: **coerenti** per
+assenza (nominano soggetti, stati o istanze per altro). ✅ Doc auto-generata rigenerata dopo l'apply (Tid, 2026-11-27).
+
+**Baseline B-7** (2026-11-27): fotografia come app in sola lettura su scratch e dbdev, uguali. Un solo accumulo, del
+giro: `E_DBOPS_CHIAMATA_NON_VALIDA` prende `NOT_FOUND` da `dbops.fn_pgtap_iban` (una filiale che non c'è). È un
+uso legittimo: la nota del catalogo definisce il codice anche per «un id assente». Aggiornata la sola sua riga, al
+valore misurato (`NOT_FOUND,PARAMETRO`, 18 punti, che può contare punti di altri cantieri), senza riordinare il
+file; le altre righe che la fotografia vede diverse sono di altri cantieri e restano. Confronto: zero accumuli su
+entrambi.
+
+#### 25.11.1 Garanzie ritirate
+
+* **«Un legame su un conto spento è rifiutato subito»** (D-T8a-1 a): ora al COMMIT. Lettori lato DB: nessuno conta
+  sul momento del rifiuto; la vista e la funzione del predefinito filtrano `cb.attivo`.
+* **«Un predefinito per soggetto (o ruolo, istanza) e uso, per sempre»** (D-T8a-7 a): ora per giorno. Lettori lato DB:
+  `vw_conti_bancari_per_ruolo` e `fn_get_conto_bancario_predefinito` filtrano la validità e prendono il primo del
+  gradino; `pagamenti.trgfn_enti_incasso_guard_conto_incasso` legge solo `uso`; `script.fn_resolve_emittente_*`
+  seguono il legame per id. Nessuno conta su un predefinito unico fuori dalla data (catalogo dello scratch,
+  2026-11-27).
+* **«`iban_snapshot` è quello che scrive chi crea il mandato»** (D-T8a-11 a): ora derivato. Nessun lettore lato DB.
+
+#### 25.11.2 Da decidere (Tid)
+
+* ✅ **D-T8a-14 a** (Tid, 2026-11-27: colonne `text`, **in questo giro**, `20261127-12`). La domanda era:
+  **la lunghezza si giudica prima della normalizzazione.** PostgreSQL controlla `varchar(n)` prima dei
+  trigger: un BIC di 11 caratteri scritto a gruppi («BPPI IT RR XXX», 14) e un IBAN di 34 scritto a gruppi sono
+  rifiutati prima che la normalizzazione li veda. «Si scrive come lo si legge» regge solo dentro la lunghezza. Strade:
+  (a) colonne in `text` (il CHECK di formato tiene già la lunghezza vera), con le colonne gemelle di `storico`; (b)
+  limite dichiarato. Proposta **a**, in un giro suo; Tid l'ha voluta qui, prima dell'apply.
+* **Un dato di dbdev, non un difetto del codice** (controesempio letto il 2026-11-27): su dbdev 466 conti stanno tutti
+  sulla filiale 6 «Banca Zero - Filiale Test pgTAP» (03069/01234), con IBAN sintetici di 28 caratteri che non portano
+  quei codici. Il guard giudica solo le scritture nuove, quindi l'apply passa; ma la filiale non potrà cambiare
+  codici, né quei conti filiale. Sono residui di test: da togliere a mano, se Tid vuole.
+
+#### 25.11.3 La richiesta al team BE/FE (da girare: il giro è applicato, 2026-11-27)
+
+Censisci, oltre ai file noti (`conti_bancari_service.py`, `conti_bancari_repository.py`, il lato `pagamenti` dei
+mandati), **ogni chiamante** che conta sul comportamento di prima:
+
+1. **Normalizzazione**: IBAN, BIC, codici di banca e filiale li normalizza il database (ogni separatore, maiuscolo).
+   Ritira la copia della normalizzazione nel BE; censisci chi confronta un IBAN digitato con quello salvato.
+2. **`paese` del conto** è sempre derivato dall'IBAN: il BE non lo manda.
+3. **Colonne non modificabili**: `conti_bancari.iban`; dei legami `conto_bancario_id`, `uso`, `soggetto_id` /
+   `soggetto_ruolo_id`, `istanza_utility_id`. Toglile dalle colonne modificabili; censisci chi le aggiorna (un
+   «correggi IBAN», un cambio d'uso). `dbops.vw_non_editable_fields` le espone dopo il runner.
+4. **Predefinito bloccato**: `E_CONTO_PREDEFINITO_BLOCCATO` dal DB; ritira `ContiBancariService._guard_predefinito_bloccato`
+   (`E_ANAG_VALIDAZIONE`).
+5. **Predefinito per periodo**: `E_CONTO_PREDEFINITO_SOVRAPPOSTO` (era `23505` dall'indice). Un cambio programmato
+   ora marca il nuovo legame dal suo primo giorno: censisci chi «toglie il segno al vecchio, poi lo mette al nuovo».
+6. **Conto spento**: `E_CONTO_BANCARIO` è ritirato; il rifiuto arriva al COMMIT con `E_ATTIVO_PADRE_NON_ATTIVO`.
+7. **Filiali**: `E_CONTO_IBAN_FILIALE_INCOERENTE`, `E_FILIALE_CODICI_CONTI_INCOERENTI`, `E_FILIALE_DUPLICATA` (anche
+   su un cambio di stato del soggetto della banca).
+8. **Mandati SEPA**: `iban_snapshot` lo scrive il DB; il BE non lo manda.
+8-bis. **Tipi**: IBAN, BIC, `bank_code`, `branch_code` e `iban_snapshot` sono `text` (erano `varchar`): un valore
+   scritto con gli spazi oltre la lunghezza vecchia ora passa e si normalizza. Censisci chi limita la lunghezza nel
+   form o nei serializer sulla lunghezza del tipo (il limite vero è il formato).
+9. **Codici nuovi** (sette): `error_policies_generated.py` da rigenerare; conferma.
