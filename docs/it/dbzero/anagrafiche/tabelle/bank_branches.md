@@ -3,16 +3,16 @@
 
 > 📝 **Descrizione**
 >
-> Filiali di istituti di credito / bank branches collegate a soggetti_ruoli (ISTITUTO_CREDITO).
+> Le filiali delle banche: una riga per sportello sotto il ruolo della banca (BANK_B). Lo sportello, codice della banca e codice della filiale, esiste una volta nel paese del soggetto della banca (E_FILIALE_DUPLICATA); i codici nella forma di confronto. Un cambio dei codici lascia coerenti gli IBAN dei conti che ci stanno (E_FILIALE_CODICI_CONTI_INCOERENTI). Una filiale con conti o canali d'incasso attivi non si spegne.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | soggetto_ruolo_id | bigint | NO |  |
-| bank_code | character varying(16) | NO |  |
-| branch_code | character varying(16) | NO |  |
-| bic_swift | character varying(11) | YES |  |
+| bank_code | text | NO |  |
+| branch_code | text | NO |  |
+| bic_swift | text | YES |  |
 | name | character varying(255) | NO |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | attivo | boolean | NO | true |
@@ -27,6 +27,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | check_bank_branches_bic_swift_fmt |  |
+| CHECK | chk_bank_branches_codici_fmt |  |
 | FOREIGN KEY | fk_bank_branches_soggetti_ruoli | soggetto_ruolo_id |
 | PRIMARY KEY | pk_bank_branches | id |
 | UNIQUE | uq_bank_branches_soggetto_ruolo_bank_branch_code | soggetto_ruolo_id, bank_code, branch_code |
@@ -42,9 +43,14 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_bank_branches_a01_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_bank_branches_normalize()` |
+| trg_bank_branches_a01_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_bank_branches_normalize()` |
 | trg_bank_branches_a10_conti_bancari_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'conti_bancari', 'bank_branch_id', 'id', 'attivo')` |
 | trg_bank_branches_a10_delete_block_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_delete_block_by_guc('zeroerp.maintenance_ruoli_delete')` |
 | trg_bank_branches_a10_enti_incasso_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pagamenti', 'enti_incasso', 'bank_branch_id', 'id', 'attivo')` |
+| trg_bank_branches_a12_guard_iban_conti_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_bank_branches_guard_iban_conti()` |
+| trg_bank_branches_a12_guard_unica_per_paese_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_bank_branches_guard_unica_per_paese()` |
+| trg_bank_branches_a12_guard_unica_per_paese_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_bank_branches_guard_unica_per_paese()` |
 | trg_bank_branches_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_bank_branches_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_bank_branches_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN PREDEFINITO NON SI BLOCCA
+#   chk_soggetti_conti_bancari_predefinito_non_bloccato          (nuovo)
+#   chk_soggetti_ruoli_conti_bancari_predefinito_non_bloccato    (nuovo)
+#   Brief: brief-db-revisione-anagrafiche §25.2 (S18b, R-BE4, D-T8a-2), §25.10
+#
+#   La regola stava solo nel backend (ContiBancariService
+#   ._guard_predefinito_bloccato, E_ANAG_VALIDAZIONE): una scrittura diretta
+#   la saltava, e la scelta del conto ricadeva in silenzio su un altro
+#   legame. Il CHECK la tiene per ogni strada; il rifiuto con il codice di
+#   dominio (E_CONTO_PREDEFINITO_BLOCCATO) lo da' il guard
+#   trgfn_conti_legami_guard_predefinito (20261127-20), che gira prima del
+#   vincolo (linee-guida-trigger, «Un BEFORE ROW parla prima dei vincoli»).
+#   Il BE ritira il suo guard dopo l'apply (§25.11, richiesta al BE).
+#   Righe di oggi: nessuna e' predefinita e bloccata insieme, su scratch e
+#   dbdev (letto il 2026-11-27, la verifica del controesempio prima
+#   dell'ALTER): nessun NOT VALID.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261127-15-alter-conti-legami-check-predefinito-non-bloccato-mctit.yaml
+
+  - changeSet:
+      id: 20261127-15-alter-conti-legami-check-predefinito-non-bloccato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I due legami dei conti: un legame predefinito non e' bloccato (CHECK).
+        brief-db-revisione-anagrafiche §25.2 (D-T8a-2).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conname = 'chk_soggetti_conti_bancari_predefinito_non_bloccato';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.soggetti_conti_bancari
+                ADD CONSTRAINT chk_soggetti_conti_bancari_predefinito_non_bloccato
+                CHECK (NOT (predefinito AND bloccato));
+              ALTER TABLE anagrafiche.soggetti_ruoli_conti_bancari
+                ADD CONSTRAINT chk_soggetti_ruoli_conti_bancari_predefinito_non_bloccato
+                CHECK (NOT (predefinito AND bloccato));
+
+              COMMENT ON CONSTRAINT chk_soggetti_conti_bancari_predefinito_non_bloccato
+                ON anagrafiche.soggetti_conti_bancari IS
+                'Un legame predefinito non e'' bloccato: il blocco toglie il legame dalla scelta, e il predefinito e'' la scelta. Per bloccarlo si toglie prima il segno. Il rifiuto parlante lo da'' trgfn_conti_legami_guard_predefinito (E_CONTO_PREDEFINITO_BLOCCATO); il vincolo copre le strade che il trigger non percorre.';
+              COMMENT ON CONSTRAINT chk_soggetti_ruoli_conti_bancari_predefinito_non_bloccato
+                ON anagrafiche.soggetti_ruoli_conti_bancari IS
+                'Un legame predefinito non e'' bloccato: il blocco toglie il legame dalla scelta, e il predefinito e'' la scelta. Per bloccarlo si toglie prima il segno. Il rifiuto parlante lo da'' trgfn_conti_legami_guard_predefinito (E_CONTO_PREDEFINITO_BLOCCATO); il vincolo copre le strade che il trigger non percorre.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.soggetti_conti_bancari
+                DROP CONSTRAINT IF EXISTS chk_soggetti_conti_bancari_predefinito_non_bloccato;
+              ALTER TABLE anagrafiche.soggetti_ruoli_conti_bancari
+                DROP CONSTRAINT IF EXISTS chk_soggetti_ruoli_conti_bancari_predefinito_non_bloccato;

@@ -1,0 +1,146 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE DUE FUNZIONI DEI PARAMETRI D'IMPORTO, RICREATE DOPO IL TIPO NUOVO
+#   anagrafiche.fn_parametri_importo_utility(bigint, integer)       (ricreata)
+#   vendite.fn_parametri_importo_riga(uuid, bigint, integer)        (ricreata)
+#   Brief: brief-db-revisione-anagrafiche §25.2 (S18d), §25.10
+#
+#   20261127-13 le toglie per portare
+#   anagrafiche.emittenti_fiscali_utilities.utility_id a integer: sono BEGIN
+#   ATOMIC, e ALTER TYPE rifiuta una colonna che una di loro legge
+#   (linee-guida-sql §5c). Qui si ricreano, BEGIN ATOMIC, nell'ordine delle
+#   dipendenze: prima la funzione dell'emittente, poi quella della riga che la
+#   chiama.
+#   Il corpo e' quello dell'ultimo changeSet di ciascuna, verificato uguale al
+#   vivo il 2026-11-27: 20261126-87 per fn_parametri_importo_utility,
+#   20261021-14 (unico scrittore) per fn_parametri_importo_riga. Nessun
+#   predicato cambia. Ogni BEGIN ATOMIC sta da sola nel suo sql:, il COMMENT nel
+#   successivo. Il COMMENT di fn_parametri_importo_riga si riscrive al presente
+#   (linee-guida-sql §5d): il DROP l'ha portato via, e il testo di prima
+#   portava la data e il brief.
+#   I privilegi: quelli di default del proprietario, come alla nascita (gli
+#   YAML di origine non avevano GRANT).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261127-27-create-fn-parametri-importo-dopo-utility-id-integer-mctit.yaml
+
+  - changeSet:
+      id: 20261127-27-create-fn-parametri-importo-dopo-utility-id-integer
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ricreate fn_parametri_importo_utility e fn_parametri_importo_riga, tolte
+        da 20261127-13 per il tipo di utility_id; corpo invariato.
+        brief-db-revisione-anagrafiche §25.2 (S18d).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_parametri_importo_utility(
+                  p_emittente_soggetto_ruolo_id  anagrafiche.emittenti_fiscali_utilities.emittente_soggetto_ruolo_id%TYPE,
+                  p_utility_id                   config.utilities.id%TYPE
+              )
+               RETURNS TABLE(
+                  arrotondamento_importi_dec     config.utilities.arrotondamento_importi_dec%TYPE,
+                  metodo_arrotondamento_importi  config.utilities.metodo_arrotondamento_importi%TYPE,
+                  minimo_soglia_min              anagrafiche.emittenti_fiscali_utilities.minimo_soglia_min%TYPE,
+                  minimo_soglia_max              anagrafiche.emittenti_fiscali_utilities.minimo_soglia_max%TYPE,
+                  -- tipo esplicito: non e' una colonna, dice se la riga
+                  -- dell'emittente c'e'
+                  personalizzata                 boolean
+              )
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT script.fn_log_and_raise_error(
+                             'anagrafiche',
+                             'fn_parametri_importo_utility',
+                             'E_PARAMETRO_INVALIDO',
+                             jsonb_build_object(
+                                 'detail', 'p_emittente_soggetto_ruolo_id non e'' un emittente',
+                                 'emittente_soggetto_ruolo_id', p_emittente_soggetto_ruolo_id,
+                                 'utility_id', p_utility_id),
+                             NULL::uuid,
+                             'p_emittente_soggetto_ruolo_id non e'' un emittente')
+                   WHERE NOT EXISTS (SELECT 1
+                                       FROM anagrafiche.emittenti_fiscali ef
+                                      WHERE ef.soggetto_ruolo_id = p_emittente_soggetto_ruolo_id);
+
+                  SELECT COALESCE(e.arrotondamento_importi_dec, u.arrotondamento_importi_dec),
+                         COALESCE(e.metodo_arrotondamento_importi, ef.rounding_policy,
+                                  u.metodo_arrotondamento_importi),
+                         e.minimo_soglia_min,
+                         e.minimo_soglia_max,
+                         (e.id IS NOT NULL)
+                    FROM config.utilities u
+                    LEFT JOIN anagrafiche.emittenti_fiscali_utilities e
+                      ON e.utility_id = u.id
+                     AND e.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                     AND e.attivo IS TRUE
+                    LEFT JOIN anagrafiche.emittenti_fiscali ef
+                      ON ef.soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                   WHERE u.id = p_utility_id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_parametri_importo_utility(
+                  anagrafiche.emittenti_fiscali_utilities.emittente_soggetto_ruolo_id%TYPE,
+                  config.utilities.id%TYPE) IS
+                  'I parametri d''importo effettivi di un emittente per una utility: decimali e metodo d''arrotondamento della riga attiva di anagrafiche.emittenti_fiscali_utilities se c''e'', altrimenti (per il solo metodo) la policy generale emittenti_fiscali.rounding_policy, altrimenti il valore di sistema di config.utilities; le soglie del minimo solo dall''emittente (NULL = nessun minimo); personalizzata = la riga dell''emittente c''e''. Un ruolo che non e'' un emittente, o NULL, solleva E_PARAMETRO_INVALIDO: i valori di sistema sono quelli di un''azienda senza personalizzazioni, non la risposta per chi azienda non e''. Una riga se l''utility esiste, zero se non esiste o e'' NULL: e'' il segnale che i lettori traducono in E_CONFIG_MANCANTE. Sede unica: la leggono vendite.fn_ricalcola_totali_fattura, vendite.fn_parametri_importo_riga e anagrafiche.fn_lookup_utilities_per_ba.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_parametri_importo_riga(
+                  p_articolo_id                  vendite.articolo_regole_fatturazione.articolo_id%TYPE,
+                  p_emittente_soggetto_ruolo_id  vendite.fatture.emittente_soggetto_ruolo_id%TYPE,
+                  p_utility_id                   vendite.fatture.utility_id%TYPE
+              )
+               RETURNS TABLE(
+                  arrotondamento_importi_dec     vendite.articolo_regole_fatturazione.arrotondamento_importi_dec%TYPE,
+                  metodo_arrotondamento_importi  vendite.articolo_regole_fatturazione.metodo_arrotondamento_importi%TYPE
+              )
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT COALESCE(r.arrotondamento_importi_dec, p.arrotondamento_importi_dec),
+                         COALESCE(r.metodo_arrotondamento_importi, p.metodo_arrotondamento_importi)
+                    FROM (SELECT 1) base
+                    LEFT JOIN vendite.articolo_regole_fatturazione r
+                      ON r.articolo_id = p_articolo_id
+                    LEFT JOIN LATERAL anagrafiche.fn_parametri_importo_utility(
+                           p_emittente_soggetto_ruolo_id, p_utility_id) p ON true;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_parametri_importo_riga(
+                  vendite.articolo_regole_fatturazione.articolo_id%TYPE,
+                  vendite.fatture.emittente_soggetto_ruolo_id%TYPE,
+                  vendite.fatture.utility_id%TYPE) IS
+                  'Decimali e metodo con cui si arrotonda l''importo di una riga di fattura: la regola dell''articolo (vendite.articolo_regole_fatturazione) se c''e'', altrimenti i parametri effettivi dell''emittente per l''utility della fattura (anagrafiche.fn_parametri_importo_utility). Sempre una riga; NULL solo senza regole dell''articolo e senza utility. Sede unica: la leggono vendite.trgfn_fatture_righe_importo e il backend (gruppo delle attivita'' fatturabili), che non ricopiano un valore di riserva.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: le due funzioni restano, col corpo di sempre.
+              SELECT 1;

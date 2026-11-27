@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DOVE STANNO BANCA E FILIALE NELL'IBAN DI UNO STATO
+#   config.stati.iban_pos_banca, iban_len_banca,
+#                iban_pos_filiale, iban_len_filiale             (nuove)
+#   Brief: brief-db-revisione-anagrafiche §25.10 (D-T8a-9, D-T8a-13)
+#
+# -- PERCHE' -----------------------------------------------------------
+#   In alcuni paesi l'IBAN porta il codice della banca e quello della
+#   filiale (in Italia e a San Marino l'ABI e il CAB, dopo il CIN). Il
+#   guard anagrafiche.trgfn_conti_bancari_guard_iban_filiale (20261127-21)
+#   confronta quei due pezzi con la filiale del conto. Dove stanno lo dice
+#   lo stato, non un elenco nel corpo del guard: un paese nuovo e' una riga
+#   del seed, non un changeSet (D-T8a-13).
+#
+# -- LA FORMA ----------------------------------------------------------
+#   Quattro smallint, posizioni a partire da 1 come substr(): tutte e
+#   quattro o nessuna. Nessuna = l'IBAN dello stato non porta banca e
+#   filiale, o non e' censito, e il guard tace (limite dichiarato nella
+#   guida gestione-conti-bancari). Nessun DEFAULT: la riga che nasce fuori
+#   dal CSV non dichiara niente.
+#   Seed: stati.csv (colonne in coda, mirror 20250716-03), Italia e San
+#   Marino.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261127-11-alter-stati-add-iban-posizioni-banca-filiale-mctit.yaml
+
+  - changeSet:
+      id: 20261127-11-alter-stati-add-iban-posizioni-banca-filiale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.stati: le posizioni del codice banca e del codice filiale
+        nell'IBAN dello stato, lette dal guard che confronta l'IBAN con la
+        filiale del conto. brief-db-revisione-anagrafiche §25.10 (D-T8a-13).
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: config
+                tableName: stati
+                columnName: iban_pos_banca
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati
+                ADD COLUMN iban_pos_banca   smallint,
+                ADD COLUMN iban_len_banca   smallint,
+                ADD COLUMN iban_pos_filiale smallint,
+                ADD COLUMN iban_len_filiale smallint,
+                ADD CONSTRAINT chk_stati_iban_posizioni CHECK (
+                      num_nulls(iban_pos_banca, iban_len_banca,
+                                iban_pos_filiale, iban_len_filiale) IN (0, 4)
+                  AND (iban_pos_banca   IS NULL OR iban_pos_banca   >= 5)
+                  AND (iban_len_banca   IS NULL OR iban_len_banca   >= 1)
+                  AND (iban_pos_filiale IS NULL OR iban_pos_filiale >= 5)
+                  AND (iban_len_filiale IS NULL OR iban_len_filiale >= 1));
+
+              COMMENT ON COLUMN config.stati.iban_pos_banca IS
+                'Posizione (da 1, come substr) del codice della banca nell''IBAN dello stato: in Italia e a San Marino l''ABI, dalla posizione 6. Con iban_len_banca, iban_pos_filiale e iban_len_filiale: tutte e quattro o nessuna (chk_stati_iban_posizioni). Nessuna: l''IBAN dello stato non porta banca e filiale, o non e'' censito, e anagrafiche.trgfn_conti_bancari_guard_iban_filiale non confronta. Lo stato si trova dalle prime due lettere dell''IBAN (codice_iso2). Seed: stati.csv.';
+              COMMENT ON COLUMN config.stati.iban_len_banca IS
+                'Lunghezza del codice della banca nell''IBAN dello stato (l''ABI: 5). Vedi iban_pos_banca.';
+              COMMENT ON COLUMN config.stati.iban_pos_filiale IS
+                'Posizione (da 1, come substr) del codice della filiale nell''IBAN dello stato: in Italia e a San Marino il CAB, dalla posizione 11. Vedi iban_pos_banca.';
+              COMMENT ON COLUMN config.stati.iban_len_filiale IS
+                'Lunghezza del codice della filiale nell''IBAN dello stato (il CAB: 5). Vedi iban_pos_banca.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati
+                DROP CONSTRAINT IF EXISTS chk_stati_iban_posizioni,
+                DROP COLUMN IF EXISTS iban_pos_banca,
+                DROP COLUMN IF EXISTS iban_len_banca,
+                DROP COLUMN IF EXISTS iban_pos_filiale,
+                DROP COLUMN IF EXISTS iban_len_filiale;

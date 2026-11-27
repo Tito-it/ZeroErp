@@ -89,6 +89,11 @@ SELECT bb.id, bb.bank_code, bb.branch_code
   FROM anagrafiche.bank_branches bb
   JOIN tmp_bank_branch_id f ON f.bank_branch_id = bb.id;
 
+-- ⚠️ T8a (2026-11-27): l'IBAN italiano porta ABI e CAB della sua filiale
+--   (E_CONTO_IBAN_FILIALE_INCOERENTE). La costante si riscrive con l'IBAN
+--   coerente con la filiale appena costruita (dbops.fn_pgtap_iban).
+UPDATE tmp_costanti_gestore_banca SET iban_test = dbops.fn_pgtap_iban((SELECT id FROM tmp_bank_branch), 'GESTOREBANCA');
+
 -- Test 2: esiste almeno una bank_branch
 SELECT ok(
     (SELECT count(*) FROM tmp_bank_branch) = 1,

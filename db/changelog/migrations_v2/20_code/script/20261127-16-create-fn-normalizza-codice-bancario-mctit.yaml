@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FORMA DI UN CODICE BANCARIO: UNA REGOLA, UNA SEDE
+#   script.fn_normalizza_codice_bancario(text)                 (nuova)
+#   Brief: brief-db-revisione-anagrafiche §25.2 (S55e, S55f, D-T8a-8), §25.10
+#
+# -- PERCHE' UN BUILDING BLOCK ------------------------------------------
+#   IBAN, BIC, codice banca e codice filiale si scrivono come si leggono da
+#   un documento («IT60 X054-2811…», «bppi itrr xxx»), e si confrontano
+#   senza separatori e in maiuscolo. La regola serve a due trigger:
+#   anagrafiche.trgfn_conti_bancari_normalize (IBAN, BIC) e
+#   anagrafiche.trgfn_bank_branches_normalize (BIC, codici della filiale);
+#   i guard che confrontano leggono i valori gia' normalizzati. Prima la ricopiavano il
+#   normalize dei conti e il guard dei mandati SEPA, ciascuno togliendo solo
+#   gli spazi; il backend ne aveva una terza copia. Regola del 2: una sede.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   Toglie tutto cio' che non e' una lettera ASCII o una cifra, porta in
+#   maiuscolo, e il vuoto diventa NULL (linee-guida-trigger, «a01»). Non
+#   toglie gli zeri: «03069» e «3069» sono due codici. IMMUTABLE e pura:
+#   nessuna tabella, quindi corpo a stringa (linee-guida-sql §5c riguarda le
+#   funzioni che leggono tabelle). Non STRICT: NULL entra e NULL esce dal
+#   corpo, senza una scorciatoia di sola igiene.
+#   Firma in text, senza %TYPE di proposito: serve quattro colonne di due
+#   tabelle e lunghezze diverse (iban varchar(34), bic varchar(11), codici
+#   varchar(16)), e il chiamante assegna il risultato alla sua colonna.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261127-16-create-fn-normalizza-codice-bancario-mctit.yaml
+
+  - changeSet:
+      id: 20261127-16-create-fn-normalizza-codice-bancario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_normalizza_codice_bancario: IBAN, BIC e codici di banca e
+        filiale senza separatori e in maiuscolo, il vuoto NULL.
+        brief-db-revisione-anagrafiche §25.10 (D-T8a-8).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_normalizza_codice_bancario(p_valore text)
+               RETURNS text
+               LANGUAGE sql
+               IMMUTABLE PARALLEL SAFE
+              AS $function$
+                  SELECT NULLIF(upper(regexp_replace(p_valore, '[^A-Za-z0-9]', '', 'g')), '');
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_normalizza_codice_bancario(text) IS
+                'La forma di confronto di un codice bancario (IBAN, BIC, codice della banca, codice della filiale): senza spazi, trattini, punti o altri separatori, in maiuscolo; il vuoto e'' NULL, NULL resta NULL. Gli zeri restano: sono parte del codice. La usano anagrafiche.trgfn_conti_bancari_normalize e anagrafiche.trgfn_bank_branches_normalize, in fase a01, prima di guard, lucchetti e indici: chi scrive passa il valore come lo legge, e il backend non ricopia la regola.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_normalizza_codice_bancario(text);

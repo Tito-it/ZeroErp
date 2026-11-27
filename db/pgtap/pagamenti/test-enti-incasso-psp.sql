@@ -227,7 +227,7 @@ SELECT * FROM dbops.fn_pgtap_crea_filiale_bancaria('enti incasso psp');
 CREATE TEMP TABLE tmp_conto_eip AS
 WITH conto AS (
   INSERT INTO anagrafiche.conti_bancari (iban, bank_branch_id, attivo, storicizza, meta)
-  SELECT 'IT00PGTAPENTIPSPCONTO0000001',
+  SELECT dbops.fn_pgtap_iban((SELECT bank_branch_id FROM tmp_banca_eip), 'ENTIPSPCONTO'),
          (SELECT bank_branch_id FROM tmp_banca_eip),
          true, false,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_eip))

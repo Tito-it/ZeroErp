@@ -118,7 +118,7 @@ CREATE TEMP TABLE tmp_filiale AS
 WITH b AS (
     INSERT INTO anagrafiche.bank_branches
         (soggetto_ruolo_id, bank_code, branch_code, name)
-    SELECT banca_sr_id, 'PGTAP', 'PI' || banca_sr_id, 'Filiale pgTAP perimetro incassi'
+    SELECT banca_sr_id, '09999', lpad((banca_sr_id % 100000)::text, 5, '0'), 'Filiale pgTAP perimetro incassi'
       FROM tmp_banca
     RETURNING id
 )
@@ -170,11 +170,11 @@ SELECT ok(
 CREATE TEMP TABLE tmp_legami AS
 WITH conti AS (
   INSERT INTO anagrafiche.conti_bancari (iban, bank_branch_id, attivo, storicizza, meta)
-  SELECT v.iban, ab.bank_branch, true, false,
+  SELECT dbops.fn_pgtap_iban(ab.bank_branch, v.iban), ab.bank_branch, true, false,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_ab ab
-    CROSS JOIN (VALUES ('IT00PGTAPPERIMETROLATOA00001', 'A'),
-                       ('IT00PGTAPPERIMETROLATOB00002', 'B')) AS v(iban, lato)
+    CROSS JOIN (VALUES ('PILATOA1', 'A'),
+                       ('PILATOB2', 'B')) AS v(iban, lato)
   RETURNING id, iban
 ), legami AS (
   INSERT INTO anagrafiche.soggetti_ruoli_conti_bancari

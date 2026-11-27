@@ -99,7 +99,9 @@ facoltativo e serve «come filtro e metadato commerciale (report, provvigioni, s
 * **D-R-3 — la FK verso `resellers(soggetto_ruolo_id)`.** Proposta: sì; tipo, esistenza e «attivo» dall'automazione.
   `vendite.fatture.reseller_soggetto_ruolo_id` punta anch'essa a `soggetti_ruoli`: va con lo stesso disegno di T12
   del brief di revisione, che lo decide per tutte le colonne di documento.
-* **D-R-4 — un legame chiuso ferma lo spegnimento?** Proposta: no, contano i legami validi oggi o dopo. Con la FK di
+* **D-R-4 — un legame chiuso ferma lo spegnimento?** ⚠️ La domanda è di tutte le coppie dell'automazione ATTIVO: si
+  decide in [brief-db-block-attivo-e-validita](brief-db-block-attivo-e-validita.md) (Tid, 2026-11-27), e qui se ne
+  prende l'esito. Proposta: no, contano i legami validi oggi o dopo. Con la FK di
   D-R-3 il block dell'automazione conta **tutti** i figli: o si accetta, o resta un guard a mano che guarda il periodo.
 * **D-R-5 — il perimetro del legame per emittente** (la domanda aperta di `sviluppo-multi-face-da-completare`):
   entra qui solo se D-R-0 è (a).

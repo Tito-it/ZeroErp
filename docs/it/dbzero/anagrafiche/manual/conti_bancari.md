@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.conti_bancari`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -17,7 +17,8 @@
 >
 > Approfondimento funzioni:
 >
-> * [anagrafiche.trgfn_conti_bancari_normalize](/dbzero/anagrafiche/funzioni/trgfn_conti_bancari_normalize) — IBAN e BIC normalizzati, il paese dall'IBAN
+> * [anagrafiche.trgfn_conti_bancari_normalize](/dbzero/anagrafiche/funzioni/trgfn_conti_bancari_normalize) — IBAN e BIC normalizzati, il paese sempre dall'IBAN
+> * [anagrafiche.trgfn_conti_bancari_guard_iban_filiale](/dbzero/anagrafiche/funzioni/trgfn_conti_bancari_guard_iban_filiale) — l'IBAN porta banca e filiale della sua filiale
 > * [script.fn_get_conto_bancario_predefinito](/dbzero/script/funzioni/fn_get_conto_bancario_predefinito) — il conto da usare per un ruolo, un uso e un'istanza
 > * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — un conto legato non si spegne
 > * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — un conto attivo sta su una filiale attiva
@@ -49,18 +50,27 @@ stesso IBAN, se lo usano due soggetti per pagare, è una riga sola con due legam
 
 ---
 
-### L'IBAN è unico e normalizzato
+### L'IBAN è unico, normalizzato, e non cambia
 
-Prima di ogni scrittura `anagrafiche.trgfn_conti_bancari_normalize` toglie gli spazi e porta in maiuscolo IBAN e
-BIC, e ricava il paese dalle prime due lettere dell'IBAN quando chi scrive non lo passa. Poi i vincoli giudicano il
-valore normalizzato:
+Prima di ogni altro controllo (fase `a01`) `anagrafiche.trgfn_conti_bancari_normalize` porta IBAN e BIC nella forma
+di confronto di `script.fn_normalizza_codice_bancario`: senza spazi, trattini o altri separatori, in maiuscolo, il
+vuoto `NULL`. Il paese è sempre le prime due lettere dell'IBAN: un paese diverso mandato da chi scrive si
+sovrascrive. Poi i vincoli giudicano il valore normalizzato:
 
 * l'IBAN è unico nel registro (`uq_conti_bancari_iban`), da 15 a 34 caratteri alfanumerici
   (`chk_conti_bancari_iban_fmt`);
 * il BIC, se c'è, ha 8 o 11 caratteri (`chk_conti_bancari_bic_fmt`);
-* il paese, se c'è, ha due lettere (`chk_conti_bancari_paese_fmt`).
+* il paese ha due lettere (`chk_conti_bancari_paese_fmt`).
 
-Il formato è tutto quello che si controlla: né la cifra di controllo dell'IBAN né l'esistenza del paese.
+L'IBAN non si modifica (`E_CONTO_BANCARIO_IBAN_IMMUTABILE`, lucchetto di colonna): un IBAN sbagliato è un altro
+conto. Il lucchetto confronta il valore già normalizzato, quindi riscrivere lo stesso IBAN con gli spazi passa.
+
+Dove l'IBAN porta il codice della banca e quello della filiale, sono quelli della filiale del conto
+(`E_CONTO_IBAN_FILIALE_INCOERENTE`, `anagrafiche.trgfn_conti_bancari_guard_iban_filiale`), alla nascita e quando
+cambia la filiale. Dove stanno lo dichiara lo stato dell'IBAN (`config.stati.iban_pos_*`, oggi Italia e San Marino);
+uno stato che non lo dichiara non si confronta.
+
+Non si controlla la cifra di controllo dell'IBAN, né che il paese esista.
 
 ---
 
@@ -71,7 +81,8 @@ Il formato è tutto quello che si controlla: né la cifra di controllo dell'IBAN
 * **Un conto legato non si spegne.** Basta che un legame col soggetto o col ruolo esista, di qualunque validità:
   i legami non hanno un loro `attivo`, e lo spegnimento è rifiutato (`E_ATTIVO_BLOCK_CHILDREN_EXIST`) finché non
   sono tolti.
-* **Un legame non si scrive su un conto spento** (`E_CONTO_BANCARIO`): lo dicono i guard dei due legami.
+* **Un legame vuole un conto attivo**, controllato al COMMIT (`E_ATTIVO_PADRE_NON_ATTIVO`, l'automazione ATTIVO
+  sui due legami).
 * **Un conto attivo sta su una filiale attiva**: il controllo è al COMMIT, quando il conto nasce attivo, si
   riaccende o cambia filiale (`E_ATTIVO_PADRE_NON_ATTIVO`). Dal lato della filiale, una filiale con conti attivi
   non si spegne.
@@ -85,22 +96,17 @@ lascia la versione precedente nello storico, quando `storicizza` è acceso.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Il paese non segue l'IBAN.** Si ricava solo quando manca: cambiato l'IBAN, il paese resta quello di prima, e un
-  paese passato da chi scrive non è confrontato con le prime due lettere dell'IBAN.
-* **«Il conto è attivo» sta in due sedi.** Il legame su un conto spento lo rifiuta il suo guard, prima della
-  scrittura; il controllo differito montato sugli stessi legami dice la stessa cosa al COMMIT, e così non parla
-  mai per primo.
-* **L'IBAN si modifica sotto i legami.** Nessun blocco protegge l'IBAN di un conto già legato: cambiarlo cambia il
-  conto di tutti i soggetti e i ruoli che lo usano.
-* **La filiale e l'IBAN non si confrontano.** Il codice banca e il codice filiale della filiale non sono
-  confrontati con i caratteri dell'IBAN che li portano.
+* **Un conto con legami chiusi non si spegne**: lo spegnimento conta i legami di qualunque validità.
+* **L'IBAN di uno stato che non dichiara banca e filiale** non si confronta con la filiale.
 
 ---
 
 ### Codici errore
 
 * `E_ATTIVO_BLOCK_CHILDREN_EXIST` — lo spegnimento di un conto che ha legami.
-* `E_ATTIVO_PADRE_NON_ATTIVO` — al COMMIT, un conto attivo su una filiale spenta.
+* `E_ATTIVO_PADRE_NON_ATTIVO` — al COMMIT, un conto attivo su una filiale spenta, o un legame su un conto spento.
+* `E_CONTO_BANCARIO_IBAN_IMMUTABILE` — l'IBAN di un conto non si cambia.
+* `E_CONTO_IBAN_FILIALE_INCOERENTE` — l'IBAN non porta banca e filiale della filiale del conto.
 
 ---
 
@@ -109,7 +115,10 @@ lascia la versione precedente nello storico, quando `storicizza` è acceso.
 * `db/pgtap/anagrafiche/create-gestore-conto-bancario.sql` — un conto sulla sua filiale, legato al ruolo di un
   gestore: attivo, non verificato, con l'IBAN atteso.
 * `db/pgtap/anagrafiche/create-gestore-conto-soggetto.sql` — lo stesso, legato al soggetto.
-* Nessun test prova la normalizzazione, il rifiuto dello spegnimento o il controllo della filiale.
+* `db/pgtap/anagrafiche/test-conti-bancari-forma-e-legami-v1.sql` — la normalizzazione e il paese, il lucchetto
+  dell'IBAN (e lo stesso IBAN riscritto con gli spazi), l'IBAN contro la filiale nei due versi, un IBAN estero non
+  confrontato, il legame su un conto spento.
+* Nessun test prova il rifiuto dello spegnimento.
 
 ---
 

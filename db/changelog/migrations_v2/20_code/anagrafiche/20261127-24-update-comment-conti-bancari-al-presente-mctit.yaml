@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DEI CONTI, AL PRESENTE
+#   anagrafiche.conti_bancari, bank_branches, soggetti_conti_bancari,
+#   soggetti_ruoli_conti_bancari, pagamenti.sepa_mandati: tabelle e colonne
+#   che il giro T8a ha reso false o incomplete
+#   Brief: brief-db-revisione-anagrafiche §25.10 (giro T8a); linee-guida-sql §5d
+#
+#   Riscritti solo i COMMENT che il giro tocca: la normalizzazione (ogni
+#   separatore, non solo gli spazi), il paese sempre dall'IBAN, i lucchetti
+#   (IBAN del conto; conto, possessore, uso e istanza dei legami), il
+#   predefinito per periodo e mai bloccato, l'IBAN della filiale, lo
+#   sportello unico per paese, lo snapshot dell'IBAN del mandato. Nessuna
+#   fase tardiva scrive questi COMMENT (cercato in 70_dati_sistema, 80_data,
+#   85_pgagent e 90_end il 2026-11-27).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261127-24-update-comment-conti-bancari-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261127-24-update-comment-conti-bancari-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT al presente di conti, filiali, legami e mandati SEPA dopo il
+        giro T8a. brief-db-revisione-anagrafiche §25.10.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE anagrafiche.conti_bancari IS
+                'Il registro unico degli IBAN: che cos''e'' il conto (IBAN, BIC, intestatario da mostrare, paese, filiale), non di chi e''; chi lo usa lo dicono i legami anagrafiche.soggetti_conti_bancari e anagrafiche.soggetti_ruoli_conti_bancari. Un IBAN esiste una volta (uq_conti_bancari_iban) e non si modifica (lucchetto, E_CONTO_BANCARIO_IBAN_IMMUTABILE): un IBAN sbagliato e'' un altro conto. Dove lo stato dell''IBAN lo dichiara, l''IBAN porta banca e filiale della sua filiale (anagrafiche.trgfn_conti_bancari_guard_iban_filiale). Un conto legato non si spegne.';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.iban IS
+                'L''IBAN nella forma di confronto (anagrafiche.trgfn_conti_bancari_normalize: senza separatori, maiuscolo). Si scrive come lo si legge. Unico, e non si modifica (E_CONTO_BANCARIO_IBAN_IMMUTABILE). La cifra di controllo non e'' verificata.';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.paese IS
+                'Il codice ISO 3166 alpha-2 del paese dell''IBAN: sempre le sue prime due lettere, scritte dalla normalizzazione; un valore mandato da fuori si sovrascrive.';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.bic_swift IS
+                'Il BIC del conto nella forma di confronto (senza separatori, maiuscolo, il vuoto NULL), 8 o 11 caratteri.';
+              COMMENT ON COLUMN anagrafiche.conti_bancari.bank_branch_id IS
+                'La filiale che tiene il conto. Si corregge; dove lo stato dell''IBAN dichiara le posizioni di banca e filiale, la filiale ha i codici che l''IBAN porta (E_CONTO_IBAN_FILIALE_INCOERENTE).';
+
+              COMMENT ON TABLE anagrafiche.bank_branches IS
+                'Le filiali delle banche: una riga per sportello sotto il ruolo della banca (BANK_B). Lo sportello, codice della banca e codice della filiale, esiste una volta nel paese del soggetto della banca (E_FILIALE_DUPLICATA); i codici nella forma di confronto. Un cambio dei codici lascia coerenti gli IBAN dei conti che ci stanno (E_FILIALE_CODICI_CONTI_INCOERENTI). Una filiale con conti o canali d''incasso attivi non si spegne.';
+              COMMENT ON COLUMN anagrafiche.bank_branches.bank_code IS
+                'Il codice nazionale della banca (in Italia l''ABI), nella forma di confronto: senza separatori, maiuscolo, gli zeri restano.';
+              COMMENT ON COLUMN anagrafiche.bank_branches.branch_code IS
+                'Il codice dello sportello (in Italia il CAB), nella forma di confronto: senza separatori, maiuscolo, gli zeri restano. Con bank_code e il paese del soggetto della banca identifica lo sportello.';
+              COMMENT ON COLUMN anagrafiche.bank_branches.bic_swift IS
+                'Il BIC della filiale nella forma di confronto (senza separatori, maiuscolo, il vuoto NULL), 8 o 11 caratteri.';
+              COMMENT ON COLUMN anagrafiche.bank_branches.soggetto_ruolo_id IS
+                'Il ruolo BANK_B della banca che tiene la filiale (anagrafiche.trgfn_bank_guard_ruolo_bank_branches).';
+
+              COMMENT ON TABLE anagrafiche.soggetti_conti_bancari IS
+                'Il conto di un soggetto per un uso: vale per tutti i suoi ruoli, che il legame del ruolo scavalca. Conto, soggetto e uso non si modificano (E_CONTO_LEGAME_IMMUTABILE): un legame sbagliato si chiude e se ne apre uno nuovo. Un predefinito per soggetto e uso in ogni giorno, mai bloccato. Il conto e'' attivo, controllato al COMMIT.';
+              COMMENT ON COLUMN anagrafiche.soggetti_conti_bancari.uso IS
+                'Per che cosa il conto si usa: INCASSO, PAGAMENTO, RIMBORSO, GENERICO. Non si modifica (E_CONTO_LEGAME_IMMUTABILE).';
+              COMMENT ON COLUMN anagrafiche.soggetti_conti_bancari.predefinito IS
+                'Il legame che la scelta preferisce, nel suo gradino. Al piu'' uno per soggetto e uso in ogni giorno (E_CONTO_PREDEFINITO_SOVRAPPOSTO), mai bloccato (E_CONTO_PREDEFINITO_BLOCCATO): un cambio di conto programmato marca il nuovo legame dal suo primo giorno.';
+              COMMENT ON COLUMN anagrafiche.soggetti_conti_bancari.bloccato IS
+                'Toglie il legame dalla scelta del conto senza cancellarlo. Un legame predefinito non si blocca: prima si toglie il segno.';
+
+              COMMENT ON TABLE anagrafiche.soggetti_ruoli_conti_bancari IS
+                'Il conto di un ruolo per un uso, per tutto il ruolo o per un''istanza: ha la precedenza sul legame del soggetto. Conto, ruolo, uso e istanza non si modificano (E_CONTO_LEGAME_IMMUTABILE): un legame sbagliato si chiude e se ne apre uno nuovo. Un predefinito per ruolo, istanza e uso in ogni giorno, mai bloccato. Lo nominano i canali d''incasso (solo legami INCASSO) e i mandati SEPA. Il conto e'' attivo, controllato al COMMIT.';
+              COMMENT ON COLUMN anagrafiche.soggetti_ruoli_conti_bancari.uso IS
+                'Per che cosa il conto si usa: INCASSO, PAGAMENTO, RIMBORSO, GENERICO. Non si modifica (E_CONTO_LEGAME_IMMUTABILE): un canale d''incasso resta su un legame d''incasso.';
+              COMMENT ON COLUMN anagrafiche.soggetti_ruoli_conti_bancari.predefinito IS
+                'Il legame che la scelta preferisce, nel suo gradino. Al piu'' uno per ruolo, istanza (NULL = tutto il ruolo) e uso in ogni giorno (E_CONTO_PREDEFINITO_SOVRAPPOSTO), mai bloccato (E_CONTO_PREDEFINITO_BLOCCATO).';
+              COMMENT ON COLUMN anagrafiche.soggetti_ruoli_conti_bancari.bloccato IS
+                'Toglie il legame dalla scelta del conto senza cancellarlo. Un legame predefinito non si blocca: prima si toglie il segno.';
+              COMMENT ON COLUMN anagrafiche.soggetti_ruoli_conti_bancari.istanza_utility_id IS
+                'L''istanza di servizio del ruolo a cui il legame vale; NULL = tutto il ruolo. E'' del soggetto del ruolo (E_ISTANZA_ALTRO_SOGGETTO) e non si modifica (E_CONTO_LEGAME_IMMUTABILE): cambia il gradino della scelta e il perimetro dei mandati.';
+
+              COMMENT ON COLUMN pagamenti.sepa_mandati.iban_snapshot IS
+                'L''IBAN del conto del legame addebitato, scritto dal trigger a ogni scrittura (anagrafiche.trgfn_sepa_mandati_guard): un valore mandato da fuori si sovrascrive. IBAN del conto e conto del legame non si modificano, quindi resta quello con cui il mandato e'' nato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- I COMMENT precedenti stanno nella doc auto-generata anteriore.
+              SELECT 1;

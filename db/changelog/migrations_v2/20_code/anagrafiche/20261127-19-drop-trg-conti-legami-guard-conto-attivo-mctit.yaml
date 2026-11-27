@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «IL CONTO DEL LEGAME E' ATTIVO» HA UNA SEDE SOLA: L'AUTOMAZIONE
+#   anagrafiche.trgfn_soggetti_conti_bancari_guard()           (tolta)
+#   anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()     (tolta)
+#   e i loro montaggi, qualunque nome portino
+#   Brief: brief-db-revisione-anagrafiche §25.2 (S18a, D-T8a-1 a), §25.10
+#
+# -- IL DOPPIONE ----------------------------------------------------------
+#   Su ognuno dei due legami la stessa regola stava in due sedi: il guard
+#   BEFORE immediato (E_CONTO_BANCARIO) e il REQUIRE differito
+#   dell'automazione ATTIVO (dbops.trgfn_child_requires_active_parent,
+#   E_ATTIVO_PADRE_NON_ATTIVO), che non parlava mai perche' il guard
+#   rifiutava prima. Resta il REQUIRE (D-T8a-1 a): l'errore arriva al
+#   COMMIT. Il codice E_CONTO_BANCARIO non ha altri scrittori e si ritira
+#   (obsoleto_dal in codici_errore.csv).
+#
+# -- CHE COSA NON SI PERDE ------------------------------------------------
+#   Il guard rifiutava anche ogni UPDATE di un legame su un conto spento.
+#   Il caso non esiste: un conto con legami non si spegne (il BLOCK
+#   dell'automazione conta i legami di qualunque validita'). Se il BLOCK
+#   impara la validita' (brief-db-block-attivo-e-validita), il REQUIRE deve
+#   guardare anche le date: e' scritto li'.
+#   Le date le giudica gia' script.trgfn_guard_date_validita (automazione
+#   DATE_VALIDITA): i guard non le guardavano piu'.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261127-19-drop-trg-conti-legami-guard-conto-attivo-mctit.yaml
+
+  - changeSet:
+      id: 20261127-19-drop-trg-conti-legami-guard-conto-attivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Tolti i due guard immediati «conto attivo» dei legami dei conti: resta
+        il REQUIRE differito dell'automazione ATTIVO.
+        brief-db-revisione-anagrafiche §25.2 (D-T8a-1 a).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $do$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN
+                      SELECT t.tgname, t.tgrelid::regclass AS tabella
+                        FROM pg_catalog.pg_trigger t
+                       WHERE NOT t.tgisinternal
+                         AND t.tgfoid IN (
+                               'anagrafiche.trgfn_soggetti_conti_bancari_guard()'::regprocedure,
+                               'anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()'::regprocedure)
+                  LOOP
+                      EXECUTE format('DROP TRIGGER %I ON %s', r.tgname, r.tabella);
+                  END LOOP;
+              END
+              $do$;
+
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_conti_bancari_guard();
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le due funzioni si ricreano dal corpo della doc auto-generata
+              -- precedente a questo changeSet: non si ricostruiscono da qui.
+              SELECT 1;

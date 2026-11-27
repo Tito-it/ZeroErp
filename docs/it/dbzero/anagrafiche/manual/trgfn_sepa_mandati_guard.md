@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_sepa_mandati_guard`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,7 +11,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [anagrafiche.trgfn_conti_bancari_normalize](/dbzero/anagrafiche/funzioni/trgfn_conti_bancari_normalize) — la stessa normalizzazione sull'IBAN del registro
+> * [anagrafiche.trgfn_conti_bancari_normalize](/dbzero/anagrafiche/funzioni/trgfn_conti_bancari_normalize) — la forma dell'IBAN del registro, da cui la copia del mandato viene
 >
 > Guide:
 >
@@ -21,8 +21,8 @@
 
 ### 🎯 Scopo Principale
 
-`anagrafiche.trgfn_sepa_mandati_guard` pretende la data di attivazione su un mandato SEPA attivo, e normalizza il
-codice del mandato (UMR) e la copia dell'IBAN prima che i vincoli li giudichino.
+`anagrafiche.trgfn_sepa_mandati_guard` pretende la data di attivazione su un mandato SEPA attivo, normalizza il
+codice del mandato (UMR), e scrive la copia dell'IBAN dal conto del legame addebitato.
 
 ---
 
@@ -37,19 +37,15 @@ Il trigger scatta prima di ogni nascita e di ogni modifica, sulla tabella dei ma
 
 ---
 
-### UMR e IBAN nella forma canonica
+### L'UMR nella forma canonica, l'IBAN dal conto
 
 * **L'UMR** perde tutti gli spazi; le maiuscole e le minuscole restano come sono.
-* **La copia dell'IBAN** (`iban_snapshot`) perde gli spazi e passa in maiuscolo, come l'IBAN del registro.
+* **La copia dell'IBAN** (`iban_snapshot`) è l'IBAN del conto del legame che il mandato nomina
+  (`soggetto_ruolo_conto_id`), scritto a ogni nascita e a ogni modifica: un valore mandato da fuori si sovrascrive.
+  L'IBAN del conto e il conto del legame hanno il lucchetto, quindi la copia resta quella con cui il mandato è nato.
+* **L'intestatario** (`intestatario_snapshot`) resta il dato scritto da chi crea il mandato.
 
-Il formato di tutti e due lo giudicano poi i vincoli della tabella, sul valore normalizzato.
-
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **La copia dell'IBAN non si confronta col conto.** Niente lega `iban_snapshot` all'IBAN del conto che il legame
-  nomina: la copia può dire un conto diverso.
+Il formato li giudicano poi i vincoli della tabella.
 
 ---
 
@@ -61,8 +57,9 @@ Il formato di tutti e due lo giudicano poi i vincoli della tabella, sul valore n
 
 ### Test
 
-* `db/pgtap/dbops/test-punti-canale-campo-v1.sql` — il rifiuto dichiara il campo `data_attivazione`. Nessun test prova
-  il rifiuto o la normalizzazione su un mandato.
+* `db/pgtap/dbops/test-punti-canale-campo-v1.sql` — il rifiuto dichiara il campo `data_attivazione`.
+* `db/pgtap/anagrafiche/test-conti-bancari-forma-e-legami-v1.sql` — la copia dell'IBAN è quella del conto, qualunque
+  cosa si mandi. Nessun test prova il rifiuto della data.
 
 ---
 
@@ -70,6 +67,7 @@ Il formato di tutti e due lo giudicano poi i vincoli della tabella, sul valore n
 
 * 2026-08-04 — il rifiuto passa per il registro degli errori di `script` e porta nel contesto la data vera, non uno
   zero.
+* 2026-11-27 — la copia dell'IBAN la scrive il trigger dal conto del legame, invece di normalizzare quella mandata.
 
 ---
 

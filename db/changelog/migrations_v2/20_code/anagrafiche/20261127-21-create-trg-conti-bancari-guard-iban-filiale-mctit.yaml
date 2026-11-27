@@ -1,0 +1,198 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'IBAN E' DELLA FILIALE DEL CONTO, NEI DUE VERSI
+#   anagrafiche.fn_iban_coerente_con_filiale(text, text, text)      (nuova)
+#   anagrafiche.trgfn_conti_bancari_guard_iban_filiale()            (nuova)
+#   anagrafiche.trgfn_bank_branches_guard_iban_conti()              (nuova)
+#   trg_conti_bancari_a12_guard_iban_filiale_ins_upd                (nuovo)
+#   trg_bank_branches_a12_guard_iban_conti_upd                      (nuovo)
+#   Brief: brief-db-revisione-anagrafiche §25.2 (S55g, D-T8a-9, D-T8a-13), §25.10
+#
+# -- LA REGOLA ----------------------------------------------------------------
+#   Dove l'IBAN porta il codice della banca e quello della filiale (in Italia e
+#   a San Marino l'ABI e il CAB), sono quelli della filiale su cui il conto sta.
+#   Dove stanno lo dichiara lo stato (config.stati.iban_pos_*, 20261127-11),
+#   trovato dalle prime due lettere dell'IBAN (codice_iso2). Uno stato che non
+#   le dichiara non si confronta: e' il limite scritto nella guida
+#   gestione-conti-bancari.
+#
+# -- I DUE VERSI ----------------------------------------------------------------
+#   * il conto: alla nascita e quando cambia la filiale (l'IBAN ha il
+#     lucchetto, 20261127-26; il guard lo guarda comunque, il lucchetto parla
+#     prima);
+#   * la filiale: quando cambiano il suo codice banca o il suo codice filiale,
+#     i conti che ci stanno devono restare coerenti.
+#   Il confronto e' uno solo, anagrafiche.fn_iban_coerente_con_filiale, che
+#   usano i due guard: una sede.
+#
+# -- IL MONTAGGIO ----------------------------------------------------------------
+#   IBAN e codici li scrive la normalizzazione a01 della stessa tabella: un
+#   UPDATE OF non vedrebbe il cambio fatto da lei (linee-guida-trigger,
+#   «UPDATE OF colonna»). Si monta BEFORE INSERT OR UPDATE e il corpo confronta
+#   OLD e NEW. Fase a12: dopo il lucchetto generato (a10_lock_columns), perche'
+#   fra due rifiuti parli prima l'immutabilita'.
+#   Nessuna row level security su conti, filiali e stati: nessun DEFINER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261127-21-create-trg-conti-bancari-guard-iban-filiale-mctit.yaml
+
+  - changeSet:
+      id: 20261127-21-create-trg-conti-bancari-guard-iban-filiale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        L'IBAN di un conto porta banca e filiale della sua filiale, dove lo
+        stato dell'IBAN dichiara dove stanno: guard sul conto
+        (E_CONTO_IBAN_FILIALE_INCOERENTE) e sulla filiale
+        (E_FILIALE_CODICI_CONTI_INCOERENTI). brief-db-revisione-anagrafiche
+        §25.10 (D-T8a-9, D-T8a-13).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_iban_coerente_con_filiale(
+                  p_iban        anagrafiche.conti_bancari.iban%TYPE,
+                  p_bank_code   anagrafiche.bank_branches.bank_code%TYPE,
+                  p_branch_code anagrafiche.bank_branches.branch_code%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE PARALLEL SAFE
+              BEGIN ATOMIC
+                  SELECT NOT EXISTS (
+                      SELECT 1
+                        FROM config.stati s
+                       WHERE s.codice_iso2 = left(p_iban, 2)
+                         AND s.iban_pos_banca IS NOT NULL
+                         AND (   substr(p_iban, s.iban_pos_banca, s.iban_len_banca)
+                                   IS DISTINCT FROM p_bank_code
+                              OR substr(p_iban, s.iban_pos_filiale, s.iban_len_filiale)
+                                   IS DISTINCT FROM p_branch_code));
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_iban_coerente_con_filiale(
+                  anagrafiche.conti_bancari.iban%TYPE, anagrafiche.bank_branches.bank_code%TYPE, anagrafiche.bank_branches.branch_code%TYPE) IS
+                'Vero se l''IBAN porta il codice della banca e quello della filiale dati, nelle posizioni che lo stato dell''IBAN dichiara (config.stati.iban_pos_banca, iban_len_banca, iban_pos_filiale, iban_len_filiale; lo stato si trova dalle prime due lettere, codice_iso2). Vero anche quando lo stato non dichiara le posizioni, o non e'' censito: il confronto non si fa. Riceve i valori gia'' nella forma di confronto (script.fn_normalizza_codice_bancario). La usano i due guard anagrafiche.trgfn_conti_bancari_guard_iban_filiale e anagrafiche.trgfn_bank_branches_guard_iban_conti.';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_conti_bancari_guard_iban_filiale()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_chi     CONSTANT dbops.error_log.function_name%TYPE := 'anagrafiche.trgfn_conti_bancari_guard_iban_filiale';
+                  v_banca   anagrafiche.bank_branches.bank_code%TYPE;
+                  v_filiale anagrafiche.bank_branches.branch_code%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: l'IBAN del conto porta banca e filiale della sua
+                  --   filiale, dove lo stato dell'IBAN dichiara dove stanno
+                  --   (anagrafiche.fn_iban_coerente_con_filiale).
+                  --   Montata BEFORE INSERT OR UPDATE, fase a12: IBAN e filiale
+                  --   nella forma della normalizzazione a01. In modifica giudica
+                  --   solo se cambia l'IBAN o la filiale.
+                  -- =========================================================
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.iban IS NOT DISTINCT FROM OLD.iban
+                     AND NEW.bank_branch_id IS NOT DISTINCT FROM OLD.bank_branch_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT b.bank_code, b.branch_code
+                    INTO v_banca, v_filiale
+                    FROM anagrafiche.bank_branches b
+                   WHERE b.id = NEW.bank_branch_id;
+
+                  -- Una filiale che non c'e' la rifiuta la FK: qui si tace.
+                  IF FOUND
+                     AND NOT anagrafiche.fn_iban_coerente_con_filiale(NEW.iban, v_banca, v_filiale) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_CONTO_IBAN_FILIALE_INCOERENTE',
+                          jsonb_build_object('campo', 'bank_branch_id',
+                                             'tabella', 'anagrafiche.conti_bancari',
+                                             'conto_bancario_id', NEW.id,
+                                             'bank_branch_id', NEW.bank_branch_id),
+                          NEW.tx_id,
+                          v_banca::text, v_filiale::text);
+                  END IF;
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_conti_bancari_guard_iban_filiale() IS
+                'BEFORE INSERT OR UPDATE su anagrafiche.conti_bancari, fase a12: l''IBAN porta il codice della banca e quello della filiale del conto, dove lo stato dell''IBAN dichiara dove stanno (anagrafiche.fn_iban_coerente_con_filiale). In modifica giudica solo un cambio di IBAN o di filiale. Rifiuto: E_CONTO_IBAN_FILIALE_INCOERENTE, campo bank_branch_id. Il verso della filiale lo tiene anagrafiche.trgfn_bank_branches_guard_iban_conti.';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_bank_branches_guard_iban_conti()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_chi CONSTANT dbops.error_log.function_name%TYPE := 'anagrafiche.trgfn_bank_branches_guard_iban_conti';
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: il verso della filiale della regola «l'IBAN del
+                  --   conto porta banca e filiale della sua filiale». Quando
+                  --   cambiano il codice della banca o quello della filiale,
+                  --   ogni conto che ci sta resta coerente.
+                  --   Montata BEFORE UPDATE, fase a12: i codici nella forma
+                  --   della normalizzazione a01.
+                  -- =========================================================
+                  IF NEW.bank_code IS NOT DISTINCT FROM OLD.bank_code
+                     AND NEW.branch_code IS NOT DISTINCT FROM OLD.branch_code THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.conti_bancari c
+                       WHERE c.bank_branch_id = NEW.id
+                         AND NOT anagrafiche.fn_iban_coerente_con_filiale(
+                                     c.iban, NEW.bank_code, NEW.branch_code)) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', v_chi, 'E_FILIALE_CODICI_CONTI_INCOERENTI',
+                          jsonb_build_object('campo', 'bank_code',
+                                             'tabella', 'anagrafiche.bank_branches',
+                                             'bank_branch_id', NEW.id),
+                          NEW.tx_id,
+                          NEW.bank_code::text, NEW.branch_code::text);
+                  END IF;
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_bank_branches_guard_iban_conti() IS
+                'BEFORE UPDATE su anagrafiche.bank_branches, fase a12: un cambio del codice della banca o di quello della filiale lascia coerenti i conti che ci stanno (anagrafiche.fn_iban_coerente_con_filiale). Rifiuto: E_FILIALE_CODICI_CONTI_INCOERENTI, campo bank_code. Il verso del conto lo tiene anagrafiche.trgfn_conti_bancari_guard_iban_filiale.';
+
+              DROP TRIGGER IF EXISTS trg_conti_bancari_a12_guard_iban_filiale_ins_upd
+                ON anagrafiche.conti_bancari;
+              CREATE TRIGGER trg_conti_bancari_a12_guard_iban_filiale_ins_upd
+                BEFORE INSERT OR UPDATE ON anagrafiche.conti_bancari
+                FOR EACH ROW EXECUTE FUNCTION anagrafiche.trgfn_conti_bancari_guard_iban_filiale();
+
+              DROP TRIGGER IF EXISTS trg_bank_branches_a12_guard_iban_conti_upd
+                ON anagrafiche.bank_branches;
+              CREATE TRIGGER trg_bank_branches_a12_guard_iban_conti_upd
+                BEFORE UPDATE ON anagrafiche.bank_branches
+                FOR EACH ROW EXECUTE FUNCTION anagrafiche.trgfn_bank_branches_guard_iban_conti();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_conti_bancari_a12_guard_iban_filiale_ins_upd ON anagrafiche.conti_bancari;
+              DROP TRIGGER IF EXISTS trg_bank_branches_a12_guard_iban_conti_upd ON anagrafiche.bank_branches;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_conti_bancari_guard_iban_filiale();
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_bank_branches_guard_iban_conti();
+              DROP FUNCTION IF EXISTS anagrafiche.fn_iban_coerente_con_filiale(text, text, text);

@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.emittenti_fiscali_utilities.utility_id: bigint -> integer
+#   Brief: brief-db-revisione-anagrafiche §25.2 (S18d), §25.10
+#
+#   La colonna punta a config.utilities.id, che e' integer: la FK lega due
+#   tipi diversi. La tabella non ha mirror in storico e nessuna vista la
+#   legge, ma due funzioni BEGIN ATOMIC dipendono dalla colonna (pg_depend,
+#   letto sul catalogo il 2026-11-27):
+#     anagrafiche.fn_parametri_importo_utility(bigint, integer), che la legge;
+#     vendite.fn_parametri_importo_riga(uuid, bigint, integer), che chiama la
+#       prima.
+#   ALTER TYPE le rifiuta (linee-guida-sql §5c): si tolgono qui e si ricreano,
+#   sempre BEGIN ATOMIC e con lo stesso corpo, in 20_code 20261127-27, nella
+#   stessa corsa. La firma non cambia (p_utility_id e' gia'
+#   config.utilities.id%TYPE). Lo stesso difetto su pdp.utility_id resta a T3.
+#
+# -- IL TRIGGER GENERATO SULLA COLONNA ------------------------------------------
+#   trg_emittenti_fiscali_utilities_a10_guard_utility_tipo_r_cd07ac (BEFORE
+#   INSERT OR UPDATE OF utility_id, …) lo monta l'automazione GUARD_UTILITY a
+#   ci_apply, e ALTER TYPE rifiuta anche lui. Si toglie con DROP TRIGGER IF
+#   EXISTS, la sola forma ammessa su un trigger generato (linee-guida-sql §11.5):
+#   da zero, a questa fase, non c'e' ancora. Lo rimonta il suo runner in
+#   90_end 20261127-28, nella stessa corsa; da zero lo monta il ci_apply. Il
+#   nome e' quello letto su pg_trigger di scratch e dbdev il 2026-11-27.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261127-13-alter-emittenti-fiscali-utilities-utility-id-integer-mctit.yaml
+
+  - changeSet:
+      id: 20261127-13-alter-emittenti-fiscali-utilities-utility-id-integer
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        emittenti_fiscali_utilities.utility_id prende il tipo di
+        config.utilities.id (integer). brief-db-revisione-anagrafiche §25.2 (S18d).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid = 'anagrafiche.emittenti_fiscali_utilities'::regclass
+                 AND attname = 'utility_id'
+                 AND atttypid = 'bigint'::regtype;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_parametri_importo_riga(uuid, bigint, integer);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_parametri_importo_utility(bigint, integer);
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_utilities_a10_guard_utility_tipo_r_cd07ac
+                ON anagrafiche.emittenti_fiscali_utilities;
+
+              ALTER TABLE anagrafiche.emittenti_fiscali_utilities
+                ALTER COLUMN utility_id TYPE integer;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.emittenti_fiscali_utilities
+                ALTER COLUMN utility_id TYPE bigint;

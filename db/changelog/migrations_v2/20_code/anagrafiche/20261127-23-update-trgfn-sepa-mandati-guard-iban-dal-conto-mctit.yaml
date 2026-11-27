@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'IBAN DEL MANDATO E' QUELLO DEL CONTO ADDEBITATO
+#   anagrafiche.trgfn_sepa_mandati_guard()                     (riscritta)
+#   Brief: brief-db-revisione-anagrafiche §25.2 (S55i, D-T8a-11 a), §25.10
+#
+# -- CHE COSA CAMBIA ----------------------------------------------------------
+#   pagamenti.sepa_mandati.iban_snapshot lo scriveva chi creava il mandato,
+#   normalizzato ma mai confrontato col conto: poteva nascere con un IBAN che
+#   non era quello del legame. Con l'IBAN bloccato sul conto e il conto
+#   bloccato sul legame (D-T8a-4), l'IBAN del conto del legame non cambia
+#   piu': lo snapshot e' un derivato. Lo scrive il trigger a ogni INSERT e
+#   UPDATE, dall'IBAN del conto del legame (soggetto_ruolo_conto_id), e un
+#   valore mandato da fuori si sovrascrive. La normalizzazione dell'IBAN che
+#   il guard faceva si ritira: l'IBAN del conto e' gia' normalizzato.
+#   Restano: il controllo «ATTIVO vuole data_attivazione» (E_DATA_ERRATA) e
+#   la normalizzazione dell'UMR. intestatario_snapshot resta un dato libero.
+#
+# -- IL MONTAGGIO ---------------------------------------------------------------
+#   Invariato: trg_sepa_mandati_guard_ins_upd, BEFORE INSERT OR UPDATE.
+#   Nessuno legge iban_snapshot dentro gli altri trigger BEFORE del mandato.
+#   pagamenti.sepa_mandati e' sotto row level security? No (letto sul
+#   catalogo il 2026-11-27), e neppure i legami e i conti: nessun DEFINER.
+#   Le righe di oggi si riallineano in 20261127-25, coi trigger sospesi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261127-23-update-trgfn-sepa-mandati-guard-iban-dal-conto-mctit.yaml
+
+  - changeSet:
+      id: 20261127-23-update-trgfn-sepa-mandati-guard-iban-dal-conto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        trgfn_sepa_mandati_guard: iban_snapshot sempre dall'IBAN del conto del
+        legame addebitato. brief-db-revisione-anagrafiche §25.2 (D-T8a-11 a).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_sepa_mandati_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: il mandato SEPA (pagamenti.sepa_mandati), BEFORE
+                  --   INSERT OR UPDATE.
+                  --   1) stato ATTIVO vuole data_attivazione (E_DATA_ERRATA);
+                  --   2) l'UMR senza spazi, per il confronto e l'unicita';
+                  --   3) iban_snapshot e' l'IBAN del conto del legame addebitato
+                  --      (soggetto_ruolo_conto_id): un derivato, scritto qui a
+                  --      ogni scrittura. IBAN del conto e conto del legame non
+                  --      cambiano (lucchetti), quindi lo snapshot resta quello
+                  --      della firma. Un legame che non c'e' lo rifiuta la FK.
+                  -- =========================================================
+                  IF NEW.stato = 'ATTIVO' AND NEW.data_attivazione IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'trgfn_sepa_mandati_guard',
+                          'E_DATA_ERRATA',
+                          jsonb_build_object(
+                            'campo', 'data_attivazione',
+                            'tabella','pagamenti.sepa_mandati',
+                            'stato', NEW.stato,
+                            'data_attivazione', NEW.data_attivazione
+                          ), NULL::uuid, 'data attivazione per stato ATTIVO');
+                  END IF;
+
+                  IF NEW.umr IS NOT NULL THEN
+                      NEW.umr := regexp_replace(NEW.umr, '\s+', '', 'g');
+                  END IF;
+
+                  SELECT c.iban
+                    INTO NEW.iban_snapshot
+                    FROM anagrafiche.soggetti_ruoli_conti_bancari l
+                    JOIN anagrafiche.conti_bancari c ON c.id = l.conto_bancario_id
+                   WHERE l.id = NEW.soggetto_ruolo_conto_id;
+
+                  RETURN NEW;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_sepa_mandati_guard() IS
+                'BEFORE INSERT OR UPDATE su pagamenti.sepa_mandati. Un mandato ATTIVO ha la data di attivazione (E_DATA_ERRATA, campo data_attivazione); l''UMR si salva senza spazi; iban_snapshot e'' sempre l''IBAN del conto del legame addebitato (soggetto_ruolo_conto_id), scritto qui a ogni scrittura: un valore mandato da fuori si sovrascrive. IBAN del conto e conto del legame hanno il lucchetto, quindi lo snapshot resta quello con cui il mandato e'' nato. intestatario_snapshot resta il dato scritto da chi crea il mandato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente sta nella doc auto-generata anteriore a
+              -- questo changeSet: non si ricostruisce da qui.
+              SELECT 1;

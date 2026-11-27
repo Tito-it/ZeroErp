@@ -140,7 +140,7 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | **una commessa** del mondo, aperta dalla madre del dominio (codice ed emittente dal dominio, competenza nel mese corrente) — nello stato chiesto, sul cliente di un'altra fixture; fuori bozza con l'attività approvata che l'uscita pretende; a richiesta con la **sorgente ROOT** | `dbops.fn_pgtap_crea_commessa('<etichetta>'[, '<stato>'[, <ba_id>[, <con_attivita>[, <con_sorgente_root>]]]])` |
 | **un lotto di fatturazione** dell'azienda, nato dalla madre e portato allo stato chiesto (vuoto); a richiesta l'esito che trattiene un gruppo | `dbops.fn_pgtap_crea_lotto('<etichetta>'[, '<stato>'[, <ba_id>[, <tipo_doc_id>[, <mese>[, '<gruppo_key>'[, <del_cliente>]]]]]])` |
 | **un'attività** approvata su una commessa costruita, scritta dalla madre (articolo costruito, pronta per l'emissione; articolo e listino del chiamante se li dà); con la **sorgente** l'attività che la push di una riga avrebbe scritto — la chiave la compone `script.fn_segment_key`, mai a mano — con quantità, stati e periodo dichiarati | `dbops.fn_pgtap_crea_commessa_attivita(<commessa_id>[, …], p_sorgente_codice => …, p_sorgente_chiave => …, p_sorgente_riga_id => …, p_stato_emissione => …)` (per nome) |
-| una **filiale bancaria** su cui agganciare un conto | `dbops.fn_pgtap_crea_filiale_bancaria('<etichetta>')` |
+| una **filiale bancaria** su cui agganciare un conto | `dbops.fn_pgtap_crea_filiale_bancaria('<etichetta>')`, e l'IBAN con `dbops.fn_pgtap_iban(<filiale>, '<seme>')` |
 | il **gestore** dell'installazione (lo prende se c'è, lo costruisce se non c'è) | `dbops.fn_pgtap_crea_gestore('<etichetta>')` |
 | un'azienda con il suo operatore (e identità): un utente tecnico | `dbops.fn_pgtap_crea_emittente_operatore()` |
 | un'azienda con un operatore **persona** nel perimetro, da promuovere SUPER_ADMIN o a cui legare un profilo (un'identità tecnica non ha mai il SUPER_ADMIN) | `dbops.fn_pgtap_crea_emittente_operatore(p_persona := true)` |
@@ -250,7 +250,9 @@ nasce vuota, o il super admin risulta non esserlo.
 
 ⚠️ E `anagrafiche.bank_branches` e' **dato di macchina**, non seed: da zero e'
 vuota, e un conto bancario ci sbatte sul NOT NULL. La filiale si costruisce con
-`dbops.fn_pgtap_crea_filiale_bancaria()`.
+`dbops.fn_pgtap_crea_filiale_bancaria()`, e l'IBAN del conto con
+`dbops.fn_pgtap_iban(<filiale>, '<seme>')`: un IBAN italiano porta ABI e CAB della sua
+filiale, e un letterale inventato è rifiutato (`E_CONTO_IBAN_FILIALE_INCOERENTE`).
 
 ⚠️ Gli helper escono con i vincoli **IMMEDIATE**: un file che li vuole
 differiti fino a un punto suo (`pgtap-differiti`, «fattura + atto») li riapre

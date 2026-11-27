@@ -1,0 +1,122 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN SOLO PREDEFINITO PER PERIODO, NON UNO SOLO PER SEMPRE
+#   anagrafiche.soggetti_conti_bancari:
+#     ix_soggetti_conti_bancari_predef_per_uso        (tolto)
+#     ex_scb_predefinito_per_periodo                  (nuovo)
+#   anagrafiche.soggetti_ruoli_conti_bancari:
+#     uq_src_bancari_predefinito_istanza              (tolto)
+#     uq_src_bancari_predefinito_no_istanza           (tolto)
+#     ex_src_bancari_predefinito_istanza_periodo      (nuovo)
+#     ex_src_bancari_predefinito_no_istanza_periodo   (nuovo)
+#   Brief: brief-db-revisione-anagrafiche §25.2 (S55d, D-T8a-7 a), §25.10
+#
+# -- IL DIFETTO --------------------------------------------------------
+#   Gli indici unici del predefinito ignoravano la validita': un predefinito
+#   scaduto o futuro occupava il posto, e un cambio di conto programmato non
+#   poteva marcare il nuovo legame finche' il vecchio portava il segno.
+#
+# -- LA FORMA ----------------------------------------------------------
+#   Tre EXCLUDE sul periodo daterange(valido_dal, valido_al, '[]') (le due
+#   date comprese; NULL = senza limite), dove predefinito. L'istanza NULL ha
+#   il suo vincolo, come aveva il suo indice: NULL = NULL non esclude, e due
+#   predefiniti «di tutto il ruolo» non si incontrerebbero mai.
+#   Il lettore non cambia: vw_conti_bancari_per_ruolo tiene gia' solo i
+#   legami validi nel giorno operativo, e fn_get_conto_bancario_predefinito
+#   la legge.
+#   Il rifiuto con il codice di dominio lo da' il guard
+#   trgfn_conti_legami_guard_predefinito (20261127-20), che gira prima;
+#   l'EXCLUDE resta come rete per le scritture concorrenti (23P01).
+#
+# -- LE RIGHE DI OGGI ----------------------------------------------------
+#   Ogni EXCLUDE e' piu' largo dell'indice unico che sostituisce (vieta solo
+#   i predefiniti che si sovrappongono nel tempo, l'indice li vietava
+#   tutti): le righe esistenti lo reggono per costruzione. btree_gist e'
+#   installata (public), come per ex_scb_conto_incasso_un_solo_soggetto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261127-14-alter-conti-legami-predefinito-per-periodo-mctit.yaml
+
+  - changeSet:
+      id: 20261127-14-alter-conti-legami-predefinito-per-periodo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I due legami dei conti: un solo predefinito per periodo (EXCLUDE sulla
+        validita'), al posto di uno solo per sempre. brief-db-revisione-anagrafiche
+        §25.2 (D-T8a-7 a).
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conname = 'ex_scb_predefinito_per_periodo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP INDEX IF EXISTS anagrafiche.ix_soggetti_conti_bancari_predef_per_uso;
+              DROP INDEX IF EXISTS anagrafiche.uq_src_bancari_predefinito_istanza;
+              DROP INDEX IF EXISTS anagrafiche.uq_src_bancari_predefinito_no_istanza;
+
+              ALTER TABLE anagrafiche.soggetti_conti_bancari
+                ADD CONSTRAINT ex_scb_predefinito_per_periodo
+                EXCLUDE USING gist (
+                  soggetto_id WITH =,
+                  uso WITH =,
+                  daterange(valido_dal, valido_al, '[]') WITH &&)
+                WHERE (predefinito);
+
+              ALTER TABLE anagrafiche.soggetti_ruoli_conti_bancari
+                ADD CONSTRAINT ex_src_bancari_predefinito_istanza_periodo
+                EXCLUDE USING gist (
+                  soggetto_ruolo_id WITH =,
+                  istanza_utility_id WITH =,
+                  uso WITH =,
+                  daterange(valido_dal, valido_al, '[]') WITH &&)
+                WHERE (predefinito AND istanza_utility_id IS NOT NULL),
+                ADD CONSTRAINT ex_src_bancari_predefinito_no_istanza_periodo
+                EXCLUDE USING gist (
+                  soggetto_ruolo_id WITH =,
+                  uso WITH =,
+                  daterange(valido_dal, valido_al, '[]') WITH &&)
+                WHERE (predefinito AND istanza_utility_id IS NULL);
+
+              COMMENT ON CONSTRAINT ex_scb_predefinito_per_periodo
+                ON anagrafiche.soggetti_conti_bancari IS
+                'Al piu'' un predefinito per soggetto e uso in ogni giorno: due predefiniti dello stesso soggetto e uso non hanno periodi che si sovrappongono (date comprese, NULL = senza limite). Un cambio di conto programmato marca il nuovo legame dal suo primo giorno. Il rifiuto parlante lo da'' trgfn_conti_legami_guard_predefinito (E_CONTO_PREDEFINITO_SOVRAPPOSTO); il vincolo e'' la rete per le scritture concorrenti.';
+              COMMENT ON CONSTRAINT ex_src_bancari_predefinito_istanza_periodo
+                ON anagrafiche.soggetti_ruoli_conti_bancari IS
+                'Al piu'' un predefinito per ruolo, istanza e uso in ogni giorno (date comprese, NULL = senza limite). Gemello di ex_src_bancari_predefinito_no_istanza_periodo per i legami di tutto il ruolo. Il rifiuto parlante lo da'' trgfn_conti_legami_guard_predefinito (E_CONTO_PREDEFINITO_SOVRAPPOSTO).';
+              COMMENT ON CONSTRAINT ex_src_bancari_predefinito_no_istanza_periodo
+                ON anagrafiche.soggetti_ruoli_conti_bancari IS
+                'Al piu'' un predefinito per ruolo e uso, fra i legami di tutto il ruolo (istanza NULL), in ogni giorno (date comprese, NULL = senza limite). Vincolo a parte perche'' NULL = NULL non esclude. Il rifiuto parlante lo da'' trgfn_conti_legami_guard_predefinito (E_CONTO_PREDEFINITO_SOVRAPPOSTO).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.soggetti_conti_bancari
+                DROP CONSTRAINT IF EXISTS ex_scb_predefinito_per_periodo;
+              ALTER TABLE anagrafiche.soggetti_ruoli_conti_bancari
+                DROP CONSTRAINT IF EXISTS ex_src_bancari_predefinito_istanza_periodo,
+                DROP CONSTRAINT IF EXISTS ex_src_bancari_predefinito_no_istanza_periodo;
+              CREATE UNIQUE INDEX IF NOT EXISTS ix_soggetti_conti_bancari_predef_per_uso
+                ON anagrafiche.soggetti_conti_bancari (soggetto_id, uso) WHERE (predefinito = true);
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_src_bancari_predefinito_istanza
+                ON anagrafiche.soggetti_ruoli_conti_bancari (soggetto_ruolo_id, istanza_utility_id, uso)
+                WHERE ((predefinito = true) AND (istanza_utility_id IS NOT NULL));
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_src_bancari_predefinito_no_istanza
+                ON anagrafiche.soggetti_ruoli_conti_bancari (soggetto_ruolo_id, uso)
+                WHERE ((predefinito = true) AND (istanza_utility_id IS NULL));

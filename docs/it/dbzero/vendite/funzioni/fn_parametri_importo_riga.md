@@ -25,7 +25,7 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION vendite.fn_parametri_importo_riga(p_articolo_id uuid, p_emittente_soggetto_ruolo_id bigint, p_utility_id integer)
-IS 'Decimali e metodo con cui si arrotonda l''importo di una riga di fattura (2026-10-21, brief-db-modelli-documento-standard §10.7 R-3): la regola dell''articolo (vendite.articolo_regole_fatturazione) se c''e'', altrimenti i parametri effettivi dell''emittente per l''utility della fattura (anagrafiche.fn_parametri_importo_utility). Sempre una riga; NULL solo senza regole dell''articolo e senza utility. Sede unica: la leggono vendite.trgfn_fatture_righe_importo e il BE (gruppo delle attivita'' fatturabili). Prima il default 2 / HALF_UP era un letterale nel trigger e nel BE.';
+IS 'Decimali e metodo con cui si arrotonda l''importo di una riga di fattura: la regola dell''articolo (vendite.articolo_regole_fatturazione) se c''e'', altrimenti i parametri effettivi dell''emittente per l''utility della fattura (anagrafiche.fn_parametri_importo_utility). Sempre una riga; NULL solo senza regole dell''articolo e senza utility. Sede unica: la leggono vendite.trgfn_fatture_righe_importo e il backend (gruppo delle attivita'' fatturabili), che non ricopiano un valore di riserva.';
 ```
 
 </div>

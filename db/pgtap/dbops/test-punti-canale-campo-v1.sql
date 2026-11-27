@@ -389,8 +389,6 @@ SELECT is(
                        ', ' ORDER BY a.funzione, a.codice)
        FROM (VALUES
             ('anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza', 'E_BA_SOGGETTO_INCOERENTE_ISTANZA'),
-            ('anagrafiche.trgfn_soggetti_conti_bancari_guard',                    'E_CONTO_BANCARIO'),
-            ('anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard',              'E_CONTO_BANCARIO'),
             ('anagrafiche.trgfn_sepa_mandati_guard',                              'E_DATA_ERRATA'),
             ('anagrafiche.trgfn_dati_societari_guard_forma_giuridica',            'E_FORMA_GIURIDICA_PAESE'),
             ('anagrafiche.trgfn_risorse_umane_guard_ruolo',                       'E_RISORSA_UMANA_SOGGETTO_MISMATCH'),

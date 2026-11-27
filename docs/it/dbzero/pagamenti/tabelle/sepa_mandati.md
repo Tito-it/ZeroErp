@@ -19,7 +19,7 @@
 | data_attivazione | date | YES |  |
 | data_revoca | date | YES |  |
 | stato | character varying(16) | NO | 'IN_VALIDAZIONE'::character varying |
-| iban_snapshot | character varying(34) | YES |  |
+| iban_snapshot | text | YES |  |
 | intestatario_snapshot | character varying(140) | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |

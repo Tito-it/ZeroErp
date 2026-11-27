@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SUL LEGAME DEL RUOLO, IL LUCCHETTO DELL'ISTANZA PARLA PRIMA DEL SUO GUARD
+#   trg_soggetti_ruoli_conti_bancari_a12_guard_istanza_ins_upd   (rimontato)
+#   funzione invariata: anagrafiche.trgfn_guard_istanza_del_ruolo()
+#   Brief: brief-db-revisione-anagrafiche §25.10 (D-T8a-4 bis), §25.11
+#
+#   Con D-T8a-4 bis istanza_utility_id del legame del ruolo ha il lucchetto
+#   (trg_soggetti_ruoli_conti_bancari_a10_lock_columns_upd, generato). Il
+#   guard «l'istanza e' del soggetto del ruolo» era montato in a10 col nome
+#   a10_guard_istanza, che in alfabeto precede a10_lock_columns: su un UPDATE
+#   dell'istanza verso quella di un altro soggetto avrebbe parlato lui, e
+#   l'operatore avrebbe cercato un'istanza giusta per un legame che non si
+#   sposta comunque. Fra due rifiuti parla prima l'immutabilita'
+#   (linee-guida-trigger, «La fase»): il guard passa in a12, dopo il
+#   lucchetto. All'INSERT resta l'unico a giudicare l'istanza.
+#   Solo su questa tabella: su anagrafiche.indirizzi l'istanza non ha
+#   lucchetto, e il montaggio resta.
+#   Si rimonta PER FUNZIONE sulla tabella (linee-guida-trigger, «Un trigger si
+#   rimonta per funzione»).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261127-30-update-trg-src-bancari-guard-istanza-a12-mctit.yaml
+
+  - changeSet:
+      id: 20261127-30-update-trg-src-bancari-guard-istanza-a12
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il guard dell'istanza del legame del ruolo rimontato in fase a12, dopo il
+        lucchetto dell'istanza. brief-db-revisione-anagrafiche §25.10 (D-T8a-4 bis).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $do$
+              DECLARE
+                  v_nome name;
+              BEGIN
+                  FOR v_nome IN
+                      SELECT t.tgname
+                        FROM pg_catalog.pg_trigger t
+                       WHERE t.tgrelid = 'anagrafiche.soggetti_ruoli_conti_bancari'::regclass
+                         AND t.tgfoid  = 'anagrafiche.trgfn_guard_istanza_del_ruolo()'::regprocedure
+                         AND NOT t.tgisinternal
+                  LOOP
+                      EXECUTE format('DROP TRIGGER %I ON anagrafiche.soggetti_ruoli_conti_bancari', v_nome);
+                  END LOOP;
+              END
+              $do$;
+
+              CREATE TRIGGER trg_soggetti_ruoli_conti_bancari_a12_guard_istanza_ins_upd
+                BEFORE INSERT OR UPDATE ON anagrafiche.soggetti_ruoli_conti_bancari
+                FOR EACH ROW EXECUTE FUNCTION anagrafiche.trgfn_guard_istanza_del_ruolo();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_soggetti_ruoli_conti_bancari_a12_guard_istanza_ins_upd
+                ON anagrafiche.soggetti_ruoli_conti_bancari;
+              CREATE TRIGGER trg_soggetti_ruoli_conti_bancari_a10_guard_istanza_ins_upd
+                BEFORE INSERT OR UPDATE ON anagrafiche.soggetti_ruoli_conti_bancari
+                FOR EACH ROW EXECUTE FUNCTION anagrafiche.trgfn_guard_istanza_del_ruolo();

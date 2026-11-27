@@ -81,7 +81,7 @@ CREATE TEMP TABLE tmp_filiale AS
 WITH b AS (
     INSERT INTO anagrafiche.bank_branches
         (soggetto_ruolo_id, bank_code, branch_code, name)
-    SELECT banca_sr_id, 'PGTAP', 'EC' || banca_sr_id, 'Filiale pgTAP guard ente centro'
+    SELECT banca_sr_id, '09999', lpad((banca_sr_id % 100000)::text, 5, '0'), 'Filiale pgTAP guard ente centro'
       FROM tmp_banca
     RETURNING id
 )
@@ -91,7 +91,7 @@ SELECT id AS bank_branch FROM b;
 CREATE TEMP TABLE tmp_legame AS
 WITH conto AS (
   INSERT INTO anagrafiche.conti_bancari (iban, bank_branch_id, attivo, storicizza, meta)
-  SELECT 'IT00PGTAPGUARDENTECENTRO0001', f.bank_branch, true, false,
+  SELECT dbops.fn_pgtap_iban(f.bank_branch, 'GUARDENTE1'), f.bank_branch, true, false,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_filiale f
   RETURNING id
