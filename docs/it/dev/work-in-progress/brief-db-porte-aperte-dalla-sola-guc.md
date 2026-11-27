@@ -4,8 +4,8 @@
 >
 > **Riparte: Tid**, col via al giro 10-quater: D-AI, D-AJ, D-AK e D-AL sono decise (**a**, 2026-11-27, §15.4), e
 > analisi e censimento del BE sono fatti (§15.5). Poi il team DB scrive il giro (§15.6), e infine la voce «Le guide»
-> del piano. In parallelo **il team BE**, con D-AH (§14.9): `apri_contesto_operatore` non consegna più un SUPER_ADMIN
-> che il test non ha chiesto. Il lavoro BE/FE dei giri 10-bis e 10-ter è fatto e committato (`16d095e72`, PR #257,
+> del piano. ✅ D-AH è fatta dal team BE (2026-11-27, §14.9, da committare su `dev/backend-tid`):
+> `apri_contesto_operatore` non consegna più un SUPER_ADMIN che il test non ha chiesto. Il lavoro BE/FE dei giri 10-bis e 10-ter è fatto e committato (`16d095e72`, PR #257,
 > 2026-11-26). Lo schema `storico` scrivibile dall'app (D-AL **a**) è passato al brief nuovo
 > [brief-db-storico-scrivibile-dall-app](brief-db-storico-scrivibile-dall-app.md), aperto e non iniziato. Le richieste precedenti al BE (3j, 3k-bis, 3n, 6a … 6e) sono evase e committate (`e4af0106a`,
 > 2026-11-25); il dettaglio di ogni risposta sta nella sezione della sua richiesta.
@@ -77,7 +77,7 @@
 > | 6f-quinquies | Tid | giro 10-bis: ✅ apply su dbdev e scratch, ✅ pgTAP come app verdi, ✅ doc auto-generata rigenerata, ✅ commit (2026-11-26) | §14.8 | — |
 > | 6f-sexies | Tid, poi team BE/FE | giro 10-bis: la richiesta · ✅ fatta dal BE (2026-11-26): test adeguati (quattro erano verdi solo per i dati di dbdev), policy rigenerate, codice morto ritirato, test sul DB vero di `crea_operatore`, manuale | §14.9 | — |
 > | 6f-septies | Tid | giro 10-bis: ✅ D-AH **a**, la proposta del BE su `apri_contesto_operatore` (2026-11-26) | §14.9 | — |
-> | 6f-octies | team BE | giro 10-bis, D-AH: `apri_contesto_operatore` senza `super_admin=True` non consegna mai un SUPER_ADMIN | §14.9 | 6f-septies |
+> | 6f-octies | team BE | giro 10-bis, D-AH: ✅ `apri_contesto_operatore` non consegna mai un SUPER_ADMIN preso dai dati (2026-11-27) | §14.9 | 6f-septies |
 > | 6g | team DB | giro 10-quater, gli override utente e i due cataloghi (D-AG **a**): ✅ analisi (2026-11-26) | §15 | — |
 > | 6g-bis | team DB | giro 10-quater: ✅ il censimento letto sul ramo del BE, al posto della richiesta (Tid, 2026-11-26) | §15.5 | — |
 > | 6g-ter | Tid | giro 10-quater: ✅ D-AI **a**, D-AJ **a**, D-AK **a**, D-AL **a** (2026-11-27); il via | §15.4 | — |
@@ -3472,6 +3472,35 @@ oggi**.
 * La voce del BB nel catalogo backend, con l'indice rigenerato.
 * Nessun lavoro DB: la regola sta tutta nel BB di test.
 
+**Risposta del BE (D-AH, 2026-11-27).** ✅ Fatta, da committare su `dev/backend-tid`.
+
+* Il BB prende il **primo operatore attivo che non è SUPER_ADMIN** (`script.fn_is_super_admin`, a GUC del ruolo già
+  aperta). Se gli operatori attivi sono tutti SUPER_ADMIN **fallisce** col motivo e i due BB da usare al suo posto; se
+  non c'è nessun operatore resta lo skip d'ambiente. Il parametro `super_admin=True` non c'è più dal 2026-11-26: il
+  SUPER_ADMIN si chiede con `apri_super_admin_costruito`.
+* Il caso era reale: su dbdev il primo operatore (utente 1) è SUPER_ADMIN, e ogni test e2e che usava il BB girava come
+  lui. Dopo la modifica sono caduti **23 test in 7 file**, tutti adeguati: `test_login_credenziale_db` e
+  `test_operatore_valido_al_db` ad `apri_super_admin_costruito` (sono test d'amministrazione); `test_pannello_verbo_db`
+  e `test_attivo_fk_senza_suffisso_db` ad `apri_operatore_con_aree(("config", "magazzino"))`; `test_note_ordine_db`,
+  `test_ricerca_liste_db` e le note di `test_ricerca_full_db` al contesto che il builder del mondo apre sul suo
+  operatore (il BB lo sovrascriveva); la ricerca su più aziende di `test_ricerca_full_db` ad
+  `apri_super_admin_costruito`.
+* Corsa sul DB vero (`ZEROERP_TEST_DB_E2E=1`, 60 file, 388 test): restano i **6 rossi che c'erano prima** della
+  modifica, con lo stesso errore (provato col BB di HEAD): 5 di `CicloOperatoreDbTests` (`E_PERMESSO_NEGATO` anche al
+  SUPER_ADMIN costruito: non dipendono dall'operatore) e `test_gli_obbligatori_copiati_dal_primo` (la madre plurale,
+  `brief-db-revisione-anagrafiche` §21.7).
+* ⭐ Rettifica dello stesso giorno (revisione, 2026-11-27). I 5 di `CicloOperatoreDbTests` **non restano**: il test ora
+  chiama le view con la sessione vera dell'amministratore (`emetti_refresh_veste`, device TOTP confermato) invece di
+  `force_authenticate`, che saltava l'autenticazione e con lei le GUC. Rilanciati sul DB vero: verdi. Il presidio del
+  BB è `apps/core/tests/test_db_e2e_contesto_operatore.py` (cursore finto: nessun operatore → skip, tutti SUPER_ADMIN
+  → rosso senza aprire il contesto, l'operatore non SUPER_ADMIN → contesto aperto su di lui).
+* ⚠️ Rossi **nuovi**, non di D-AH: su dbdev è applicato il giro 10-quater (`20261126-62`, commit `6ed61ac3b` su
+  `dev/db-tid`, non ancora in `dev/backend-tid`), che toglie all'app l'`INSERT` su `config.user_override_aree`. Il BB
+  `apri_operatore_con_aree` lo fa ancora, e cadono tutti i suoi consumatori (`42501`), compresi i due di questo giro
+  (`test_pannello_verbo_db`, `test_attivo_fk_senza_suffisso_db`) e `test_chiusura_legame_prezzi_db`. Il passaggio del
+  BB a `dbops.fn_pgtap_concedi_livello_area` è il lavoro BE del 10-quater (§15.5), all'arrivo del DB.
+* Voce del BB nel catalogo backend aggiornata; l'indice rigenerato non cambia.
+
 ## 15. Il giro 10-quater, il resto del catalogo dei permessi — analisi del 2026-11-26
 
 Il 10-bis ha chiuso **chi ha** un profilo e **che cosa** il profilo concede. Restano aperte le due strade che danno
@@ -3670,6 +3699,7 @@ dell'interfaccia assegna un oggetto a un'area. I modelli ORM delle cinque tabell
 
 | Data | Chi | Che cosa |
 | --- | --- | --- |
+| 2026-11-27 | BE | D-AH fatta (§14.9): `apri_contesto_operatore` prende il primo operatore che non è SUPER_ADMIN, e fallisce se lo sono tutti; 23 test e2e in 7 file adeguati; i 5 di `CicloOperatoreDbTests` verdi con la sessione vera, resta `test_gli_obbligatori_copiati_dal_primo` (§21.7 anagrafiche); i consumatori di `apri_operatore_con_aree` rossi per il 10-quater già su dbdev |
 | 2026-11-27 | Tid | Giro 10-quater: **D-AI a**, **D-AJ a**, **D-AK a**, **D-AL a** (§15.4). Il DB ha scritto nel brief il giro da fare (§15.6) e aperto `brief-db-storico-scrivibile-dall-app`, non iniziato. Lo sviluppo aspetta il via |
 | 2026-11-26 | DB | Giro 10-quater, analisi (§15): cinque tabelle scrivibili dall'app, un solo verbo senza guard (`fn_imposta_override_oggetti`), i builder che scrivono come app; D-AI, D-AJ, D-AK e D-AL a Tid. Il censimento l'ha letto il DB sul ramo del BE (Tid, §15.5): tre endpoint del SUPER_ADMIN che sostituiscono l'elenco, nessuno scrive i cataloghi, sei test e un BB del BE da portare ai builder. Segnalato lo schema `storico` scrivibile dall'app (D-AL) |
 | 2026-11-26 | Tid | D-AH **a**: accolta la proposta del BE su `apri_contesto_operatore`, che senza `super_admin=True` non consegna più un SUPER_ADMIN. Richiesta al BE in §14.9 |

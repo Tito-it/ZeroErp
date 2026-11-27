@@ -10,7 +10,7 @@
 Indice test eseguiti:
  1) test_contratto_no_ba_solo_parameters     — payload minimo con default_data/valido_dal
  2) test_contratto_con_ba_popola_categoria   — categoria_cliente_id_snapshot dal BA lookup
- 3) test_contratto_ba_inesistente_404        — E_VENDITE_NOT_FOUND
+ 3) test_contratto_ba_inesistente_404        — E_BILLING_ACCOUNT_NOT_FOUND
  4) test_contratto_param_int_fallback        — parameter mancante -> fallback (0)
  5) test_preventivo_no_ba_solo_parameters    — default_validita_al = oggi + N
  6) test_preventivo_con_ba_termini_da_cliente — termine_pagamento_id da clienti
@@ -20,7 +20,7 @@ Indice test eseguiti:
         dell'anagrafica della coppia del BA; senza BA niente lettura
  8a) test_ddt_no_ba_no_user_payload_vuoto     — utility/valuta None (no BA/user)
  8b) test_ddt_con_ba_popola_utility_e_valuta  — utility+valuta dal BA, no pagamento
- 8c) test_ddt_ba_inesistente_404              — E_VENDITE_NOT_FOUND
+ 8c) test_ddt_ba_inesistente_404              — E_BILLING_ACCOUNT_NOT_FOUND
  9) test_versione_new_defaults                — payload + existing_drafts
  9) test_versione_clone_codice_con_suffisso   — suffisso da parameter
 10) test_versione_close_default_oggi_se_no_chiusura — default oggi+lead_gg
@@ -53,6 +53,9 @@ from apps.vendite.services.vendite_form_defaults_service import (
 _MOD = "apps.vendite.services.vendite_form_defaults_service"
 _PARAM = f"{_MOD}.ParameterService"
 _BA_REPO = f"{_MOD}.BillingAccountRepository"
+# Il BB `BillingAccountService.get_lookup_by_id` istanzia il repository nel SUO
+# modulo: `_ba_repo_unico` lo fa rispondere con quello finto di qui.
+_BA_REPO_BB = "apps.anagrafiche.services.billing_account_service.BillingAccountRepository"
 # Il BB resolve_valuta_default ha un livello 4 (fallback gestore) che fa
 # una query diretta su anagrafiche.gestori. Va mockata la `connection` nei
 # test che esercitano il path "no BA / no EF utente", altrimenti il
@@ -74,6 +77,19 @@ def _finge_fornitura(test: TestCase) -> MagicMock:
     mock = patcher.start()
     test.addCleanup(patcher.stop)
     return mock
+
+
+# Scopo: il BA si legge dal BB `BillingAccountService.get_lookup_by_id`, che
+#        istanzia il repository nel suo modulo; i test fingono quello di
+#        questo (`_BA_REPO`). Il repository del BB si risolve AL MOMENTO della
+#        chiamata nel nome di questo modulo: un test che finge il BA lo finge
+#        per tutti e due, e uno che non lo finge non lo chiama.
+def _ba_repo_unico(test: TestCase) -> None:
+    import apps.vendite.services.vendite_form_defaults_service as modulo
+
+    patcher = patch(_BA_REPO_BB, side_effect=lambda: modulo.BillingAccountRepository())
+    patcher.start()
+    test.addCleanup(patcher.stop)
 
 
 def _ba_lookup_row(*, ba_id=10, categoria_id=7, valuta_id=None):
@@ -102,6 +118,7 @@ class TestContrattoFormDefaults(TestCase):
 
     def setUp(self):
         self.fornitura = _finge_fornitura(self)
+        _ba_repo_unico(self)
 
     @patch(f"{_MOD}.resolve_valuta_default", return_value={})
     @patch(_BA_REPO, autospec=True)
@@ -171,12 +188,13 @@ class TestContrattoFormDefaults(TestCase):
     @patch(_BA_REPO, autospec=True)
     @patch(_PARAM)
     def test_contratto_ba_inesistente_404(self, mock_param_cls, mock_ba_repo_cls):
-        # Scopo: BA non trovato -> E_VENDITE_NOT_FOUND.
+        # Scopo: BA non trovato -> E_BILLING_ACCOUNT_NOT_FOUND (dal 2026-11-27,
+        #        il codice del DB per lo stesso caso, §24.9; prima E_VENDITE_NOT_FOUND).
         mock_param_cls.return_value.get_defaults.return_value = {}
         mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             fn_get_contratto_form_defaults(billing_account_id=999)
-        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+        self.assertEqual(ctx.exception.code, "E_BILLING_ACCOUNT_NOT_FOUND")
 
     @patch(_RESOLVER_CONN)
     @patch(_PARAM)
@@ -215,6 +233,7 @@ class TestOffertaFormDefaults(TestCase):
 
     def setUp(self):
         self.fornitura = _finge_fornitura(self)
+        _ba_repo_unico(self)
 
     @patch(_BA_REPO, autospec=True)
     def test_offerta_scheda_fornitura_dal_cliente(self, mock_ba_repo_cls):
@@ -260,14 +279,18 @@ class TestOffertaFormDefaults(TestCase):
 
     @patch(_BA_REPO, autospec=True)
     def test_offerta_ba_inesistente_404(self, mock_ba_repo_cls):
-        # Scopo: BA non trovato -> E_VENDITE_NOT_FOUND.
+        # Scopo: BA non trovato -> E_BILLING_ACCOUNT_NOT_FOUND (dal 2026-11-27,
+        #        il codice del DB per lo stesso caso, §24.9; prima E_VENDITE_NOT_FOUND).
         mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             fn_get_offerta_form_defaults(billing_account_id=999)
-        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+        self.assertEqual(ctx.exception.code, "E_BILLING_ACCOUNT_NOT_FOUND")
 
 
 class TestOrdineFormDefaults(TestCase):
+
+    def setUp(self):
+        _ba_repo_unico(self)
 
     @patch(_RESOLVER_CONN)
     def test_ordine_no_ba_no_user_payload_vuoto(self, mock_resolver_conn):
@@ -308,11 +331,12 @@ class TestOrdineFormDefaults(TestCase):
 
     @patch(_BA_REPO, autospec=True)
     def test_ordine_ba_inesistente_404(self, mock_ba_repo_cls):
-        # Scopo: BA non trovato -> E_VENDITE_NOT_FOUND.
+        # Scopo: BA non trovato -> E_BILLING_ACCOUNT_NOT_FOUND (dal 2026-11-27,
+        #        il codice del DB per lo stesso caso, §24.9; prima E_VENDITE_NOT_FOUND).
         mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             fn_get_ordine_form_defaults(billing_account_id=999)
-        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+        self.assertEqual(ctx.exception.code, "E_BILLING_ACCOUNT_NOT_FOUND")
 
 
 # ──────────────────────────────────────────────────────────
@@ -321,6 +345,9 @@ class TestOrdineFormDefaults(TestCase):
 
 
 class TestDdtFormDefaults(TestCase):
+
+    def setUp(self):
+        _ba_repo_unico(self)
 
     @patch(_RESOLVER_CONN)
     def test_ddt_no_ba_no_user_payload_vuoto(self, mock_resolver_conn):
@@ -355,11 +382,12 @@ class TestDdtFormDefaults(TestCase):
 
     @patch(_BA_REPO, autospec=True)
     def test_ddt_ba_inesistente_404(self, mock_ba_repo_cls):
-        # Scopo: BA non trovato -> E_VENDITE_NOT_FOUND.
+        # Scopo: BA non trovato -> E_BILLING_ACCOUNT_NOT_FOUND (dal 2026-11-27,
+        #        il codice del DB per lo stesso caso, §24.9; prima E_VENDITE_NOT_FOUND).
         mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             fn_get_ddt_form_defaults(billing_account_id=999)
-        self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+        self.assertEqual(ctx.exception.code, "E_BILLING_ACCOUNT_NOT_FOUND")
 
 
 # ──────────────────────────────────────────────────────────
@@ -368,6 +396,21 @@ class TestDdtFormDefaults(TestCase):
 
 
 class TestPreventivoFormDefaults(TestCase):
+
+    def setUp(self):
+        _ba_repo_unico(self)
+
+    @patch(_BA_REPO, autospec=True)
+    @patch(_PARAM)
+    def test_preventivo_ba_inesistente_404(self, mock_param_cls, mock_ba_repo_cls):
+        # Scopo: BA non trovato -> E_BILLING_ACCOUNT_NOT_FOUND, come gli altri
+        #        quattro form (fino al 2026-11-27 l'unico dei cinque senza test).
+        mock_param_cls.return_value.get_defaults.return_value = {}
+        mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            fn_get_preventivo_form_defaults(billing_account_id=999)
+        self.assertEqual(ctx.exception.code, "E_BILLING_ACCOUNT_NOT_FOUND")
+        mock_ba_repo_cls.return_value.get_cliente_defaults.assert_not_called()
 
     @patch(_RESOLVER_CONN)
     @patch(_PARAM)
