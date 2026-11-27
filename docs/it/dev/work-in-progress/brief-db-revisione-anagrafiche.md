@@ -2,37 +2,24 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-27
 
-**Ripartono in due, senza aspettarsi.** Il rosso del rubinetto degli accumulatori sul giro 6 è chiuso lato DB
-(§24.9: `20261126-42` applicato da Tid su scratch e dbdev, pgTAP verde, rubinetto senza accumuli, committato il
-2026-11-27); la sua richiesta è evasa dal BE (`8e0ced5b2`, 2026-11-27, esito in coda a §24.9). Il giro **T8c** è chiuso lato DB
-(`20261126-64 … -75` applicati su scratch e dbdev, pgTAP verdi, doc rigenerata, committato il 2026-11-27, §25.8); la sua
-richiesta (§25.8.3) va al **team BE/FE**. Poi T8b, con le sue decisioni (Tid). T8 si fa in **tre giri** (D-T8-0, 2026-11-27), nell'ordine T8c (ruoli d'impresa), T8b (emittente), T8a
-(conti): le decisioni di T8b e T8a restano aperte. Il reseller è uscito da T8c in
-[brief-db-reseller](brief-db-reseller.md) (Tid, 2026-11-27), aperto, non iniziato. Il giro 6 (T4, l'azienda
-del billing account) è chiuso lato DB, `20261126-26 … -41` applicati su scratch e dbdev, pgTAP verdi (Tid, 2026-11-26,
-§24.7), committato il 2026-11-26; del suo passaggio al BE (§24.5, §24.7) le policy dei sette codici sono fatte (`8e0ced5b2`, 2026-11-27), resta al **team BE/FE** il censimento applicativo di §24.8. Il rosso già presente su HEAD,
-la copia di `FATT` nella madre plurale, è vagliato (2026-11-27, §21.7): il DB segue D-T7a-4, il test va adeguato dal **team BE/FE**. Il giro 5-bis (il
-titolo IVA che chiede la partita IVA) è ritirato da Tid il 2026-11-26: il controllo esiste già, §23.4. In coda il brief
-nuovo di T6 (che porta anche l'ultimo contatto del soggetto, §22.7). Il **team BE/FE** con la fase 7 e il censimento del
-giro 6: i passaggi al BE dei giri 3 (§20.7) e 4 (§21.7) sono fatti e committati il 2026-11-26 (PR #257, esito in
-coda alle due sezioni). Il giro 5 è chiuso: il DB committato (`7f8d9506d`, PR #249),
-il passaggio al BE fatto e committato su `dev/backend-tid` il 2026-11-26 (§22.6, esito in coda alla sezione). Il giro 4 (T7a, `20261123-74 … -94`, §21.5) è applicato, verde e committato (`359c556da1`, 2026-11-24). T7 è diviso in T7a, gli indirizzi, e T7b, i contatti e il catasto (Tid, 2026-11-24); l'analisi di T7a sul catalogo è scritta il 2026-11-24 (§21). Il giro 3-bis, D-T5-6 **b** (il tipo di contatto proposto, §20.8), è chiuso: `20261123-68 … -73` applicato, pgTAP verdi, doc auto-generata rigenerata, committato (`f9b1049de3`, 2026-11-24). Il giro 3, T5, è chiuso: `20261123-48 … -64` applicato su scratch e dbdev, pgTAP verdi come app, committato (2026-11-24). Poi T7, T4, T8, T12, T3, T10, T11. Il giro 2 (T2) è chiuso: dentro `anagrafiche` non c'è
-niente da cambiare. La postura delle viste in tutto il database è decisa (Tid, 2026-11-23, §19.3) e il suo lavoro è
-di [brief-db-porte-aperte-dalla-sola-guc](../work-done/2026/brief-db-porte-aperte-dalla-sola-guc.md) §5, in un'altra sessione: qui non
-resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta di S50 (§17, riga T7). Il vaglio per temi è deciso (Tid, 2026-11-23, §17.1). Il piano da percorrere, con le fasi spuntate, è il §0.
+**Riparte: Tid**, con le decisioni di T8b (§25.3); intanto il **team BE/FE** con le richieste aperte dei giri
+precedenti. Il giro T8c è chiuso lato DB (§25.8). Lo stato di ogni giro sta nel piano a spunta del §0 e nella sua
+sezione: qui solo chi e dove.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | ✅ Tid | Apply e pgTAP del giro 1 (Q7): applicato, test verdi (2026-11-23) | §18 | — |
-| 2 | ✅ Tid | Il vaglio per temi, con S4 e S53 (2026-11-23) | §17.1 | — |
-| 3 | team BE/FE | R-BE6 e due correzioni di documentazione del backend | §0, fase 7 | — |
-| 4 | sessione DB | I giri di codice dei temi che restano qui, uno per tema, nell'ordine di §17.1 | §0, fase 8; §17.1 | via di Tid per ogni giro |
-| 5 | sessione DB | I brief nuovi di T6 (spegnimento del soggetto) e T9 (accessi, con R-4, S64, S67); S1 portata in `sviluppo-gestione-clienti-v2` | §17.1 | — |
-| 6 | sessione DB | Il giro dei metadati, per ciò che i giri di codice non hanno già riscritto | §8 | 4 |
-| 7 | sessione DB | Archiviazione in `work-done/`, col debito dei temi spostati scritto nei loro brief | §11 | 5, 6 |
+| 1 | Tid | Le decisioni di T8b (D-T8b-1 … -4), poi quelle di T8a (D-T8a-1 … -12) | §25.3, §25.2 | — |
+| 2 | sessione DB | I giri T8b e T8a, poi un giro per tema: T12, T3, T10, T11 | §0 fase 8; §17.1 | 1; il via di Tid per ogni giro |
+| 3 | team BE/FE | La richiesta del giro T8c | §25.8.3 | — |
+| 4 | team BE/FE | Il censimento applicativo del giro 6 (chi scrive o cancella `emittenti_fiscali_billing_account`, chi conta sul BA senza collegamento o sulla sua cancellazione) | §24.8 | — |
+| 5 | team BE/FE | `test_gli_obbligatori_copiati_dal_primo`, da adeguare a D-T7a-4 | §21.7 | — |
+| 6 | team BE/FE | Fase 7: R-BE6 e due correzioni della documentazione del backend | §0 fase 7 | — |
+| 7 | sessione DB | Il brief nuovo di T6 (con l'ultimo contatto del soggetto, §22.7); S1 in `sviluppo-gestione-clienti-v2` | §0 fase 6; §17.1 | — |
+| 8 | sessione DB | Il giro dei metadati, per ciò che i giri di codice non hanno già riscritto | §8 | 2 |
+| 9 | sessione DB | L'archiviazione in `work-done/`, col debito dei temi spostati nei loro brief | §11 | 2 … 8 |
 
-**Decisioni aperte di Tid:** T8 (§25.5): quelle di T8c sono prese (2026-11-27; -2, -3, -4 passate a `brief-db-reseller`, -6 a `analisi-simmetria-ordini-acquisto` D-18), e anche le cinque nate dalla verifica critica del 2026-11-27 (§25.7, decise da Tid lo stesso giorno: D-T8c-9 a, D-T8c-10 … -13); il giro T8c è applicato e committato (`-64 … -75`, Tid 2026-11-27; D-T8c-14 decisa **b**, §25.8.2); restano D-T8b-1 … -4 e D-T8a-1 … -12 (D-T8-0 decisa: tre giri, Tid 2026-11-27). Nessuna del giro 6 (T4): D-T4-1 … -12 decise il 2026-11-26 (§24.5, §24.7.1, §24.7). Il giro 5-bis è ritirato (Tid, 2026-11-26, §23.4). Nessuna del giro 5 (D-T7b-1 … -7 prese come proposte, Tid 2026-11-25, §22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
-**Da committare:** niente del giro T8c, committato il 2026-11-27 («DB: anagrafiche giro T8c, i ruoli d'impresa», più la doc rigenerata); `.codex/PROJECT_CONTEXT.md` va con lui; il §25 riverificato e il reseller spostato col brief nuovo `brief-db-reseller` (2026-11-27); il rosso del rubinetto è committato (2026-11-27, «DB: anagrafiche giro 6, il billing account che non c'è ha il suo codice», insieme al brief con l'allineamento del §24 e l'analisi di T8, §25); il giro 6 (T4) è committato (2026-11-26, «DB: anagrafiche giro 6 (T4)», insieme al giro 5-bis ritirato); i passaggi al BE dei giri 3 e 4 sono committati (2026-11-26, PR #257); il giro 5 è committato (DB `7f8d9506d`, BE 2026-11-26).
+**Decisioni aperte di Tid:** D-T8b-1 … -4 (§25.3); D-T8a-1 … -12 (§25.2).
+**Da committare:** niente.
 
 ## 0. Il piano da percorrere
 
@@ -68,7 +55,8 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] Per ogni tema: qui, nel brief vicino o in un brief nuovo; l'ordine dei giri (Tid, 2026-11-23, §17.1)
   * [x] S4: la chiave è la coppia CF e P.IVA. S53: tema proprio (T12). S64 e S67 vanno nel brief degli accessi (T9)
     (Tid, 2026-11-23)
-  * [ ] Il brief nuovo di T6 e quello di T9; S1 scritta in `sviluppo-gestione-clienti-v2`
+  * [x] Il brief nuovo di T9: [brief-db-accessi-area-clienti](brief-db-accessi-area-clienti.md), aperto il 2026-11-25
+  * [ ] Il brief nuovo di T6; S1 scritta in `sviluppo-gestione-clienti-v2`
 * **Fase 7 — Le ricadute sul backend** (team BE/FE)
   * [ ] R-BE6: le due scritture del portale su credenziale e veste (§16.3)
   * [ ] `docs/it/backend/anagrafiche/manual/api_emittenti_fiscali.md`, riga 90: nomina
@@ -117,11 +105,11 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] Giro 6: T4, pgTAP rosso, changeSet `20261126-26 … -41`, doc, prova sullo scratch (2026-11-26, §24.7)
   * [x] Giro 6: T4, apply su scratch e dbdev e pgTAP verdi col runner (Tid, 2026-11-26)
   * [x] Giro 6: T4, commit (2026-11-26, «DB: anagrafiche giro 6 (T4)»)
-  * [ ] Giro 6: T4, il passaggio al BE (§24.5, §24.7): da girare
+  * [ ] Giro 6: T4, il passaggio al BE (§24.5, §24.7): le policy dei sette codici fatte (`8e0ced5b2`, 2026-11-27); resta il censimento applicativo (§24.8)
   * [x] Giro 6: il rosso del rubinetto sul `-39`, codice nuovo `E_BILLING_ACCOUNT_NOT_FOUND`: `-42`, CSV, pgTAP, baseline, doc, prova sullo scratch (2026-11-27, §24.9)
   * [x] Giro 6: `-42`, apply su scratch e dbdev, pgTAP verde col runner, rubinetto senza accumuli (Tid, 2026-11-27)
   * [x] Giro 6: `-42`, commit (2026-11-27)
-  * [ ] Giro 6: la richiesta al BE di §24.9: da girare
+  * [x] Giro 6: la richiesta al BE di §24.9: evasa (`8e0ced5b2`, 2026-11-27)
   * [x] T8: analisi sul catalogo, guide verificate, ciò che esiste già; proposta di dividerlo in T8a, T8b, T8c (2026-11-26, §25)
   * [x] T8: D-T8-0, tre giri, nell'ordine T8c, T8b, T8a (Tid, 2026-11-27, §25.5)
   * [x] T8c: il reseller tolto e portato in [brief-db-reseller](brief-db-reseller.md) (Tid, 2026-11-27)
@@ -220,6 +208,9 @@ auto-generata (Tid). Il giro 0 **non scrive changeSet**: un COMMENT falso si ann
 metadati.
 
 ## 3. La forma: nessuna pagina è allo standard
+
+> ⚠️ **Censimento di partenza (2026-11-22), superato dal giro 0.** Le pagine sono portate nella cornice nei giri
+> 0a-0e (§12-§16); i numeri qui sono la fotografia di quel giorno, e non si aggiornano.
 
 Censimento meccanico del 2026-11-22 sulle 195 pagine. Nessuna passa tutti e sei i controlli dello standard.
 
@@ -446,6 +437,9 @@ Reggono: `trgfn_identita_digitali_guard_natura_credenziale`, `trgfn_risorse_uman
 
 ## 5. Gli oggetti senza pagina
 
+> ⚠️ **Censimento di partenza (2026-11-22), superato dal giro 0.** Le pagine mancanti le hanno scritte i giri
+> 0a-0e (§12-§16); l'elenco qui è la fotografia di quel giorno.
+
 56 oggetti del catalogo non hanno una pagina `manual/` (uno è una vista, gli altri funzioni). Si raccolgono in
 famiglie: la forma della pagina la decide Q2.
 
@@ -468,6 +462,9 @@ contraddetta, in più pagine: nell'area E «la sincronizzazione dell'accesso» (
 «l'ultimo SUPER_ADMIN» (quattro guard e la check); nell'area D i sette guard di ruolo.
 
 ## 6. Le guide
+
+> ⚠️ **Censimento di partenza (2026-11-22), superato dal giro 0.** Le guide le hanno riscritte i giri 0a-0e
+> (§12-§16) e i giri di codice, ciascuno nella sua riga «Guide verificate».
 
 | Guida | Data | Che cosa non è vero o manca |
 | --- | --- | --- |
@@ -2408,6 +2405,8 @@ Nasce dentro T10 (i titoli IVA, §17.1) e Tid lo **anticipa prima di T4**. Il re
 
 ### 23.3 Il piano del giro (⚠️ superato: §23.4)
 
+> Lo stato di questi passi lo tiene il piano a spunta del §0, fase 8: qui resta il contenuto del piano.
+
 Le strade che possono rompere la coerenza «titolo che chiede la P.IVA ⇒ natura con P.IVA obbligatoria» sono tre, e
 ognuna ha il suo guard; la domanda «c'è una coppia incoerente?» ha una sede sola, letta dai tre:
 
@@ -2415,12 +2414,12 @@ ognuna ha il suo guard; la domanda «c'è una coppia incoerente?» ha una sede s
 2. una natura spegne `piva_obbligatoria` con titoli in matrice che la chiedono;
 3. un tipo di titolo accende `richiede_partita_iva` con righe di matrice attive su nature senza P.IVA obbligatoria.
 
-* [ ] pgTAP rosso che costruisce le tre strade
-* [ ] changeSet: la colonna, il CSV, la funzione-sede, i tre guard, i codici d'errore
-* [ ] provati sullo scratch con `scripts/prova_changeset.py`
-* [ ] pagine `manual/`, la nota `_titolo-iva-per-natura`, la guida
-* [ ] apply e pgTAP (Tid); doc auto-generata rigenerata
-* [ ] commit (Tid)
+* pgTAP rosso che costruisce le tre strade
+* changeSet: la colonna, il CSV, la funzione-sede, i tre guard, i codici d'errore
+* provati sullo scratch con `scripts/prova_changeset.py`
+* pagine `manual/`, la nota `_titolo-iva-per-natura`, la guida
+* apply e pgTAP (Tid); doc auto-generata rigenerata
+* commit (Tid)
 
 ### 23.4 Il ritiro, e che cosa esiste già (2026-11-26)
 
@@ -2526,14 +2525,16 @@ bozza di ogni famiglia nel registro dei residui, D-T4-4; il codice con la sequen
 | D-T4-9 | S33: come si giudica l'albero e l'istanza di un BA nato senza sessione con l'azienda chiesta | **a**: i due guard sulla nascita del BA (`z95` albero e istanza) diventano differiti a fine transazione, quando il collegamento c'è. ⚠️ I pgTAP girano `IMMEDIATE`: il caso si prova con `SET CONSTRAINTS … DEFERRED` nel test. **b**: la funzione scrive il BA e il collegamento in un'istruzione sola (non si può: la FK va dal collegamento al BA) |
 | D-T4-10 | S33: il codice mancante con la sequenza spenta | **In T11**: il caso è del generatore e dei suoi 12 chiamanti, non del BA |
 
-### 24.3 Il piano del giro (dopo le decisioni)
+### 24.3 Il piano del giro (⚠️ superato da §24.6, dopo le decisioni del 2026-11-26)
 
-* [x] Analisi sul catalogo, guide verificate, ciò che esiste già (2026-11-26, §24.1)
-* [ ] Le due scelte D-T4-5 e D-T4-3 (b), e i due rinvii (Tid); il resto segue la proposta
-* [ ] pgTAP rosso, un caso costruito per segnalazione
-* [ ] changeSet (il range lo dà Tid), prova sullo scratch con `scripts/prova_changeset.py`
-* [ ] la nota `_emittente-del-billing-account` (con il «Vedi anche» completo), `manual/billing_account`, le guide indietro
-* [ ] apply e pgTAP (Tid); doc auto-generata rigenerata; commit
+> Lo stato di questi passi lo tiene il piano a spunta del §0, fase 8: qui resta il contenuto del piano.
+
+* Analisi sul catalogo, guide verificate, ciò che esiste già (2026-11-26, §24.1)
+* Le due scelte D-T4-5 e D-T4-3 (b), e i due rinvii (Tid); il resto segue la proposta
+* pgTAP rosso, un caso costruito per segnalazione
+* changeSet (il range lo dà Tid), prova sullo scratch con `scripts/prova_changeset.py`
+* la nota `_emittente-del-billing-account` (con il «Vedi anche» completo), `manual/billing_account`, le guide indietro
+* apply e pgTAP (Tid); doc auto-generata rigenerata; commit
 
 ### 24.4 Le risposte di Tid (2026-11-26) e la storia che toccano
 
@@ -2603,20 +2604,22 @@ cancellazione di un collegamento di un BA è rifiutata; la frase del blocco per 
 
 ### 24.6 Il piano del giro, dopo le decisioni
 
-* [x] Le decisioni (Tid, 2026-11-26, §24.5)
-* [x] pgTAP rosso: un caso costruito per ogni regola (2026-11-26, §24.7) (la nascita senza sessione collegata alla predefinita; il BA senza
+> Lo stato di questi passi lo tiene il piano a spunta del §0, fase 8: qui resta il contenuto del piano.
+
+* Le decisioni (Tid, 2026-11-26, §24.5)
+* pgTAP rosso: un caso costruito per ogni regola (2026-11-26, §24.7) (la nascita senza sessione collegata alla predefinita; il BA senza
   collegamento rifiutato a fine transazione; la predefinita che si sposta senza toccare nessuno; la bozza che blocca;
   lo spostamento per modifica; il padre di un padre, il ciclo, il secondo padre per cliente e azienda, il cambio di
   padre con attività; la fattura con l'azienda sbagliata; la valuta inesistente; l'utente illeggibile; il lookup con
   BA o ruolo sbagliati; la creazione senza sessione con l'azienda chiesta)
-* [x] changeSet (range da Tid, `20261126-26 … -41`, 2026-11-26), prova sullo scratch; i pgTAP che il ritiro dei guard della predefinita rompe,
+* changeSet (range da Tid, `20261126-26 … -41`, 2026-11-26), prova sullo scratch; i pgTAP che il ritiro dei guard della predefinita rompe,
   riscritti nello stesso changeSet (`test-istanza-ba-gestore-globale-v1` e i gemelli)
-* [x] (2026-11-26) la nota `_emittente-del-billing-account` riscritta (due livelli, tre movimenti, «Vedi anche» completo),
+* (2026-11-26) la nota `_emittente-del-billing-account` riscritta (due livelli, tre movimenti, «Vedi anche» completo),
   `manual/billing_account`, le pagine delle funzioni ritirate, le guide indietro
-* [x] apply e pgTAP (Tid); commit (2026-11-26, «DB: anagrafiche giro 6 (T4)», PR #259)
-* [x] doc auto-generata rigenerata, nello stesso commit: la scheda di `fn_check_ba_padre` c'è, quelle degli oggetti
+* apply e pgTAP (Tid); commit (2026-11-26, «DB: anagrafiche giro 6 (T4)», PR #259)
+* doc auto-generata rigenerata, nello stesso commit: la scheda di `fn_check_ba_padre` c'è, quelle degli oggetti
   ritirati no, `index.ci.md` non linka più le pagine ritirate (verificato il 2026-11-26)
-* [ ] la richiesta al BE (§24.8): da girare; verificato il 2026-11-26 che il ramo BE non l'ha ancora presa
+* la richiesta al BE (§24.8): le policy dei sette codici fatte (`8e0ced5b2`, 2026-11-27); resta il censimento applicativo. Il 2026-11-26 il ramo BE non l'aveva ancora presa
   (`delete_mapping` e la riga 311 di `emittenti_fiscali_service.py` ci sono ancora)
 
 ### 24.7 Che cosa è scritto (giro 6: chiuso lato DB il 2026-11-26)
@@ -3036,18 +3039,8 @@ codici `E_FORNITORE_*` escono da T8c con D-18; si aggiungono le colonne modifica
 
 ### 25.6 Il piano di T8 (dopo le decisioni)
 
-* [x] Analisi sul catalogo, guide verificate, ciò che esiste già (2026-11-26, §25)
-* [x] D-T8-0: tre giri, T8c, T8b, T8a (Tid, 2026-11-27)
-* [x] T8c: le decisioni (Tid, 2026-11-27)
-* [x] T8c: verifica critica prima del giro (2026-11-27, §25.7)
-* [x] T8c: le decisioni nuove di §25.7 (Tid, 2026-11-27)
-* [x] T8c: il giro scritto e provato sullo scratch (2026-11-27, §25.8)
-* [x] T8c: apply, pgTAP, commit (2026-11-27)
-* [ ] T8c: la richiesta al BE (§25.8.3)
-* [ ] T8b: le decisioni, poi il giro
-* [ ] T8a: le decisioni, poi il giro
-* Per ogni giro: pgTAP rosso, changeSet (range da Tid), prova sullo scratch, documentazione, apply e pgTAP (Tid),
-  commit, la richiesta al BE
+> ⚠️ Il piano a spunta di T8 sta nel §0, fase 8: una seconda copia qui divergeva. Per ogni giro: pgTAP rosso,
+> changeSet (range da Tid), prova sullo scratch, documentazione, apply e pgTAP (Tid), commit, la richiesta al BE.
 
 ### 25.7 Verifica critica di T8c prima del giro (2026-11-27)
 
