@@ -32,15 +32,20 @@ import unittest
 
 from django.db import connection
 
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import (
+    ContestoSu,
+    apri_transazione_annullata,
+    esegui_fixture,
+    richiedi_db_provvisto,
+)
 from apps.documenti.tests.db._stampa import tipo_asset_che_ammette
 
-_FIXTURE: tuple[str, ...] = (
+_FIXTURE: tuple[str | ContestoSu, ...] = (
     """
     CREATE TEMP TABLE _mondo AS
     SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
     """,
-    "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
+    ContestoSu("_mondo"),
 )
 
 
@@ -76,8 +81,7 @@ class AssetPerRenderDbTests(unittest.TestCase):
     def _asset(self, cur):
         from apps.documenti.db.documenti_repository import DocumentiRepository
 
-        for passo in _FIXTURE:
-            cur.execute(passo)
+        esegui_fixture(cur, _FIXTURE)
         cur.execute("SELECT emittente_fiscale_id FROM _mondo")
         emittente = cur.fetchone()[0]
         repo = DocumentiRepository()

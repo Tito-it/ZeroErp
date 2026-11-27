@@ -40,6 +40,7 @@ from __future__ import annotations
 import os
 import re
 import unittest
+from dataclasses import dataclass
 
 # Interruttore unico: i test che hanno bisogno del DB vero sono spenti di
 # default (in CI e' `ci-validate.yaml` ad accenderlo, sullo step «Django tests»,
@@ -167,6 +168,109 @@ def richiedi_ruolo_soggetto_a_rls(tabella: str) -> None:
         )
 
 
+# Scopo: il controllo comune dei BB di contesto: fuori da un blocco atomico
+#        FALLISCONO col motivo, prima di scrivere o leggere qualcosa.
+#        `SET LOCAL` fuori da una transazione PostgreSQL lo ignora con un
+#        avviso, e la RLS risponderebbe zero righe; un builder chiamato fuori
+#        lascerebbe nel DB l'utente costruito. Privato: lo chiamano i quattro BB
+#        di contesto qui sotto (estratto il 2026-11-27 con `apri_contesto_su`:
+#        erano quattro copie del controllo, con quattro messaggi).
+def _richiedi_transazione(chi: str) -> None:
+    from django.db import connection
+
+    if not connection.in_atomic_block:
+        raise AssertionError(
+            f"{chi} chiamata FUORI da una transazione: `SET LOCAL` sarebbe "
+            "ignorato da PostgreSQL, la RLS risponderebbe zero righe, e cio' che "
+            "il test costruisce resterebbe nel DB. Avvolgi la chiamata in "
+            "`with transaction.atomic():` o apri la transazione del test con "
+            "`apri_transazione_annullata`."
+        )
+
+
+# Scopo: apre il contesto di un utente GIA' SCELTO su un cursore — le due GUC
+#        che le policy RLS e i guard dei verbi leggono — per la sola
+#        transazione: `apri_contesto_su(cur, auth_user_id) -> auth_user_id`.
+#        Per i test che costruiscono il loro operatore (un builder `dbops`,
+#        un secondo mondo) o che cambiano operatore a meta' test.
+#
+# ⭐ ESTRATTO IL 2026-11-27 (regola del 2, ok di Tid il 2026-11-26, brief-be-
+#    accessi-credenziale-e-vesti §4): le due righe `SET LOCAL` erano ricopiate
+#    in `apri_contesto_operatore`, `apri_super_admin_costruito`,
+#    `apri_operatore_con_aree` e in `_agisci` di
+#    `test_soggetti_id_fiscale_immutabile_db`, e una trentina di file chiamava
+#    al loro posto `script.fn_pgtap_set_contesto_operatore(<id>)`.
+#
+# 🔴 PERCHE' NON `fn_pgtap_set_contesto_operatore` dai test Django. Quella
+#    funzione scrive le GUC per la SESSIONE (`set_config(…, false)`), che nei
+#    pgTAP e' giusto: ogni file ha la sua. Dentro un `atomic` annullato una GUC
+#    di sessione si annulla anch'essa (provato il 2026-11-27); il rischio vero
+#    e' la chiamata FUORI da una transazione: in autocommit il contesto resta
+#    sulla connessione, che Django condivide fra i test, e il test dopo gira
+#    con l'utente del test prima. Qui `SET LOCAL` lega il contesto alla
+#    transazione, e il controllo qui sotto rifiuta di aprirlo fuori — dove
+#    PostgreSQL ignorerebbe `SET LOCAL` con un avviso, e la RLS
+#    risponderebbe zero righe. Il presidio sui sorgenti sta in
+#    `apps/core/tests/test_contesto_test_db_transazionale.py`.
+def apri_contesto_su(cur, auth_user_id: int) -> int:
+    _richiedi_transazione("apri_contesto_su")
+    cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
+    cur.execute("SET LOCAL app.current_user_id = %s", [str(auth_user_id)])
+    return auth_user_id
+
+
+# Scopo: il passo di CONTESTO dentro una fixture di `esegui_fixture`: apre il
+#        contesto (BB `apri_contesto_su`) sull'`auth_user_id` della tabella
+#        temporanea `tabella`, costruita dai passi prima — di solito il mondo
+#        di un builder `dbops` (`CREATE TEMP TABLE _mondo AS …`).
+#        `ContestoSu("_mondo")` sta nella tupla dove nei pgTAP sta
+#        `SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id
+#        FROM _mondo))`: i passi dopo girano gia' col contesto.
+@dataclass(frozen=True)
+class ContestoSu:
+    tabella: str = "_mondo"
+
+
+# Il nome della tabella del mondo finisce nel testo della query: si ammette
+# solo un identificatore semplice, non una espressione.
+_IDENTIFICATORE_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+# Scopo: esegue in fila i PASSI di una fixture sul DB vero:
+#        `esegui_fixture(cur, passi, params=None)`. Un passo e' una stringa
+#        SQL (eseguita con `params`, se dati: le fixture col suffisso
+#        `%(sfx)s`) oppure un `ContestoSu`, che apre il contesto sull'utente
+#        del mondo costruito fin li'.
+#
+# ⭐ ESTRATTO IL 2026-11-27 (regola del 2, ok di Tid lo stesso giorno, D-C1 di
+#    brief-be-accessi-credenziale-e-vesti §4.1): il ciclo `for passo in
+#    _FIXTURE: cur.execute(passo)` stava in 38 punti, e diciannove tuple
+#    aprivano il contesto con `script.fn_pgtap_set_contesto_operatore`, che
+#    scrive le GUC per la SESSIONE. Il passo di contesto e' proprio quello che
+#    non deve dipendere da chi scrive il test: qui passa sempre da
+#    `apri_contesto_su` (`SET LOCAL`, e il rifiuto fuori da una transazione).
+#
+# ⛔ La tabella del contesto deve avere UNA riga: zero o piu' righe sono un
+#    mondo costruito male, e il test fallisce col motivo invece di aprire il
+#    contesto su un utente a caso.
+def esegui_fixture(cur, passi, params=None) -> None:
+    for passo in passi:
+        if isinstance(passo, ContestoSu):
+            if not _IDENTIFICATORE_RE.fullmatch(passo.tabella):
+                raise AssertionError(f"ContestoSu: tabella non valida {passo.tabella!r}")
+            cur.execute(f"SELECT auth_user_id FROM {passo.tabella}")
+            righe = cur.fetchall()
+            if len(righe) != 1:
+                raise AssertionError(
+                    f"ContestoSu({passo.tabella!r}): attesa una riga, trovate {len(righe)}"
+                )
+            apri_contesto_su(cur, int(righe[0][0]))
+        elif params is None:
+            cur.execute(passo)
+        else:
+            cur.execute(passo, params)
+
+
 # Scopo: apre il CONTESTO OPERATORE su un cursore, cioe' le due GUC senza le
 #        quali ogni tabella sotto RLS risponde ZERO RIGHE. Torna l'id
 #        dell'utente su cui il contesto e' stato aperto.
@@ -205,16 +309,7 @@ def richiedi_ruolo_soggetto_a_rls(tabella: str) -> None:
 #    NON e' SUPER_ADMIN. Se gli operatori attivi sono tutti SUPER_ADMIN la
 #    funzione FALLISCE col motivo, non salta e non ne consegna uno.
 def apri_contesto_operatore(cur) -> int:
-    from django.db import connection
-
-    if not connection.in_atomic_block:
-        raise AssertionError(
-            "apri_contesto_operatore chiamata FUORI da una transazione: "
-            "`SET LOCAL` sarebbe ignorato da PostgreSQL, RLS risponderebbe "
-            "zero righe e il test misurerebbe il vuoto credendolo un dato. "
-            "Avvolgi la chiamata in `with transaction.atomic():`."
-        )
-    cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
+    _richiedi_transazione("apri_contesto_operatore")
     # ⭐ Un OPERATORE con la veste attiva, cioe' cio' che il nome promette.
     #    Fino al 2026-11-24 era «il primo `is_superuser`»: un flag che il
     #    database non guarda e che dal D-J non concede niente nemmeno al
@@ -226,7 +321,9 @@ def apri_contesto_operatore(cur) -> int:
     #    macchina, non per la regola. Si prende il primo operatore che NON lo e'
     #    (l'ORDER BY mette in testa i `false`); chi vuole un SUPER_ADMIN lo
     #    costruisce con `apri_super_admin_costruito`.
-    #    `fn_is_super_admin` guarda la GUC del ruolo, gia' aperta qui sopra.
+    #    `fn_is_super_admin` con la GUC del ruolo vuota guarda la credenziale
+    #    (`fn_is_super_admin_account`): il contesto si apre DOPO la scelta, col
+    #    BB `apri_contesto_su`, che e' anche il controllo sulla transazione.
     cur.execute(
         "SELECT u.id, script.fn_is_super_admin(u.id) AS sa FROM auth_user u"
         " WHERE u.is_active"
@@ -249,8 +346,7 @@ def apri_contesto_operatore(cur) -> int:
             "`apri_super_admin_costruito`; se vuole dei permessi, "
             "`apri_operatore_con_aree`."
         )
-    cur.execute("SET LOCAL app.current_user_id = %s", [str(utente)])
-    return utente
+    return apri_contesto_su(cur, utente)
 
 
 # Scopo: UN SUPER_ADMIN COSTRUITO, col contesto aperto su di lui:
@@ -270,17 +366,11 @@ def apri_contesto_operatore(cur) -> int:
 #       PRIMA di chiamarla, come nei pgTAP (i builder scrivono una saga).
 #       Va chiamata dentro una transazione annullata.
 def apri_super_admin_costruito(cur, *, etichetta: str) -> int:
-    from django.db import connection
-
-    if not connection.in_atomic_block:
-        raise AssertionError(
-            "apri_super_admin_costruito chiamata FUORI da una transazione: "
-            "`SET LOCAL` sarebbe ignorato e il SUPER_ADMIN costruito resterebbe nel DB."
-        )
+    _richiedi_transazione("apri_super_admin_costruito")
     cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano(%s, true)", [etichetta])
     utente = int(cur.fetchone()[0])
-    # ⭐ `SET LOCAL`: il contesto vive quanto la transazione del test, e fuori
-    #    da una transazione non si apre (il guard qui sopra lo rifiuta).
+    # ⭐ Il contesto per la sola transazione, dal BB `apri_contesto_su` (il
+    #    perche' sta li').
     # ⚠️ Corretto il 2026-11-27: qui c'era scritto che le GUC di SESSIONE
     #    (`set_config(…, false)`, come in `script.fn_pgtap_set_contesto_operatore`)
     #    «sopravvivono al rollback». Provato sul DB di sviluppo: scritte dentro
@@ -288,14 +378,34 @@ def apri_super_admin_costruito(cur, *, etichetta: str) -> int:
     #    2026-11-26 in `test_operatore_altre_vesti_db` (un test che eredita l'id
     #    di un SUPER_ADMIN annullato) ha un'altra causa, non accertata:
     #    probabilmente un `set_config` fuori transazione.
-    cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
-    cur.execute("SET LOCAL app.current_user_id = %s", [str(utente)])
+    apri_contesto_su(cur, utente)
     # ⛔ Un builder che non lega il profilo non deve passare in silenzio: il
     #    test proverebbe E_PERMESSO_NEGATO invece della regola.
     cur.execute("SELECT script.fn_is_super_admin(%s)", [utente])
     if not cur.fetchone()[0]:
         raise AssertionError(f"l'utente costruito {utente} non e' SUPER_ADMIN per il DB")
     return utente
+
+
+# Scopo: UN OPERATORE COSTRUITO, col contesto aperto su di lui, senza
+#        concessioni: `apri_operatore_costruito(cur, *, sigla=None) ->
+#        auth_user_id`. `dbops.fn_pgtap_crea_emittente_operatore(sigla)`
+#        (azienda + operatore NON SUPER_ADMIN, legato al suo emittente) e
+#        `apri_contesto_su`. `sigla` serve a un secondo mondo nella stessa
+#        transazione (l'altro emittente di un test no-leak).
+# ⭐ ESTRATTO IL 2026-11-27 (regola del 2, ok di Tid lo stesso giorno): la
+#    coppia «builder + contesto» stava in `apri_operatore_con_aree`, in
+#    `test_pannello_verbo_db`, nei tre test che chiamavano
+#    `fn_pgtap_set_contesto_operatore()` senza argomento e nello smoke
+#    `smoke-magazzino-inventario-primo-carico.py`.
+# ⚠️ Non e' `apri_contesto_operatore`: quello SCEGLIE un operatore fra quelli
+#    della macchina, questo lo COSTRUISCE, e non dipende dai dati presenti.
+#    Fallisce fuori da un blocco atomico (prima di costruire: l'operatore
+#    resterebbe nel DB).
+def apri_operatore_costruito(cur, *, sigla: str | None = None) -> int:
+    _richiedi_transazione("apri_operatore_costruito")
+    cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_emittente_operatore(%s::varchar)", [sigla])
+    return apri_contesto_su(cur, int(cur.fetchone()[0]))
 
 
 # Scopo: UN OPERATORE COSTRUITO, col contesto aperto e livello TUTTO sulle
@@ -322,17 +432,7 @@ def apri_super_admin_costruito(cur, *, etichetta: str) -> int:
 def apri_operatore_con_aree(cur, *, aree: tuple[str, ...]) -> int:
     if not aree:
         raise AssertionError("apri_operatore_con_aree senza aree: il livello non si alza su niente")
-    from django.db import connection
-
-    if not connection.in_atomic_block:
-        raise AssertionError(
-            "apri_operatore_con_aree chiamata FUORI da una transazione: "
-            "`SET LOCAL` sarebbe ignorato e l'operatore costruito resterebbe nel DB."
-        )
-    cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_emittente_operatore()")
-    utente = int(cur.fetchone()[0])
-    cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
-    cur.execute("SET LOCAL app.current_user_id = %s", [str(utente)])
+    utente = apri_operatore_costruito(cur)
     for area in aree:
         cur.execute(
             "SELECT dbops.fn_pgtap_concedi_livello_area(%s, %s, 'TUTTO'::config.livello_accesso)",

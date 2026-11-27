@@ -75,8 +75,9 @@ class CommessaTestataDbTests(unittest.TestCase):
     # prima della risorsa umana (`E_RISORSA_UMANA_IDENTITA_ATTIVA`).
     def _disattiva_persona(self) -> None:
         with connection.cursor() as cur:
+            # La veste dalla fixture del DB: l'app non aggiorna le vesti (passo 3c).
             cur.execute(
-                "UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = %s",
+                "SELECT dbops.fn_pgtap_imposta_veste(%s, '{\"attivo\": false}'::jsonb)",
                 [self.identita_id],
             )
             cur.execute(

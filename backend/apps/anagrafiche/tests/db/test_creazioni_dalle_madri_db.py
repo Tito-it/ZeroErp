@@ -56,6 +56,7 @@ from apps.core.services.db_error_fields import diagnostica_db, structured_db_err
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import (
     apri_contesto_operatore,
+    apri_contesto_su,
     apri_super_admin_costruito,
     apri_transazione_annullata,
     richiedi_db_provvisto,
@@ -421,10 +422,8 @@ class IstanzaDelloStessoSoggettoDbTests(_MondoCostruito):
                 "CREATE TEMP TABLE _mondo_istanza AS"
                 " SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m"
             )
-            cur.execute(
-                "SELECT script.fn_pgtap_set_contesto_operatore("
-                "(SELECT auth_user_id FROM _mondo_istanza))"
-            )
+            cur.execute("SELECT auth_user_id FROM _mondo_istanza")
+            apri_contesto_su(cur, int(cur.fetchone()[0]))
             cur.execute(
                 "SELECT soggetto_ruolo_id, istanza_utility_id"
                 "  FROM dbops.fn_pgtap_crea_cliente_ba('e2e istanza stesso soggetto A')"

@@ -52,7 +52,9 @@ from apps.core.services.db_error_fields import db_error_code
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import (
+    apri_contesto_su,
     apri_operatore_con_aree,
+    esegui_fixture,
     richiedi_db_provvisto,
     richiedi_ruolo_soggetto_a_rls,
     verifica_ricerca_colonna_per_colonna,
@@ -109,8 +111,7 @@ class _Mondo:
         # verbo). L'operatore costruito e' BLOCCATO ovunque.
         self.uid = apri_operatore_con_aree(cur, aree=("magazzino",))
         cur.execute("CREATE TEMP TABLE _mondo AS SELECT %s::int AS auth_user_id", [self.uid])
-        for passo in _FIXTURE:
-            cur.execute(passo)
+        esegui_fixture(cur, _FIXTURE)
         cur.execute("SELECT mag_a, mag_u FROM _mag")
         self.mag_a, self.mag_u = (int(x) for x in cur.fetchone())
         cur.execute("SELECT art, art_ng, art_l FROM _art")
@@ -342,9 +343,8 @@ class DocumentoInternoDbTests(unittest.TestCase):
         def _prova(cur, m):
             d = self._inventario_confermato(m)
             cur.execute("CREATE TEMP TABLE _mondo2 AS SELECT x.* FROM dbops.fn_pgtap_crea_emittente_operatore('B2') x")
-            cur.execute("SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo2))")
             cur.execute("SELECT auth_user_id FROM _mondo2")
-            uid2 = int(cur.fetchone()[0])
+            uid2 = apri_contesto_su(cur, int(cur.fetchone()[0]))
             self.assertEqual(self._rifiuto(lambda: magazzino_service.get_documento("inventari", d["id"])).code,
                              "E_MAG_DOCUMENTO_NON_TROVATO")
             self.assertEqual(magazzino_service.list_documenti("inventari", auth_user_id=uid2, limit=10)["count"], 0)

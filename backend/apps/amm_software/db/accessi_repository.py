@@ -35,13 +35,12 @@ from apps.core.db._helpers import (
 #    con un 400 invece di rispondere una lista vuota: un valore sbagliato che
 #    non trova niente e' un difetto che non da' errore. Presidio sul DB vero:
 #    `test_accessi_db` legge i valori dal corpo della funzione.
-# ⛔ Sono gli stati che la VISTA produce, non tutti quelli della veste: il
-#    filtro legge `vw_accessi_altri.stato_accesso`. `REVOCATA` (giro 1 del
-#    brief-db-accessi-area-clienti, 2026-11-26) e' uno stato della veste che
-#    l'aggregato della vista non conosce ancora (R-3b-1, la porta nell'ELSE
-#    'DISATTIVO'): qui entra col changeSet, e `test_accessi_db` lo dice da
-#    solo. Fino ad allora un filtro `REVOCATA` e' un 400, non la lista vuota.
-STATI_ACCESSO: tuple[str, ...] = ("ATTIVO", "PENDING", "NON_SPEDITO", "DISATTIVO", "NESSUNO")
+# ⛔ Sono gli stati che la VISTA produce, nell'ordine del suo aggregato
+#    «il migliore fra le vesti»: `REVOCATA` per ultimo (D-3c-2,
+#    brief-db-accessi-area-clienti, 2026-11-27): una credenziale e' revocata
+#    solo quando lo sono tutte le sue vesti. `test_accessi_db` confronta
+#    l'elenco con gli stati della funzione e con la vista.
+STATI_ACCESSO: tuple[str, ...] = ("ATTIVO", "PENDING", "NON_SPEDITO", "DISATTIVO", "REVOCATA", "NESSUNO")
 
 # Il TIPO di una credenziale di sistema (`vw_accessi_sistema.tipo`): l'utente
 # tecnico di un processo automatico o un sistema esterno.

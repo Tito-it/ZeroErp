@@ -35,6 +35,8 @@ from django.db import connection, transaction
 
 from apps.core.tests.db_e2e import (
     Annulla,
+    ContestoSu,
+    esegui_fixture,
     richiedi_db_provvisto,
     verifica_ricerca_colonna_per_colonna,
 )
@@ -43,7 +45,7 @@ from apps.documenti.tests.db._stampa import giudica_la_stampa_al_commit, pubblic
 # ⭐ Il mondo è un PREVENTIVO vero (giro D.1 di brief-db-sorgente-documento-e-riga,
 #    2026-11-07): una stampa cita un documento che esiste, e il guard unico
 #    rifiuta una chiave inventata. Il preventivo porta azienda e operatore.
-_FIXTURE: tuple[str, ...] = (
+_FIXTURE: tuple[str | ContestoSu, ...] = (
     """
     CREATE TEMP TABLE _mondo AS
     SELECT p.preventivo_id, p.preventivo_uid, p.emittente_fiscale_id, p.auth_user_id,
@@ -51,7 +53,7 @@ _FIXTURE: tuple[str, ...] = (
                AS sorgente_tipo_id
       FROM dbops.fn_pgtap_crea_preventivo('ricerca liste documenti') p
     """,
-    "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
+    ContestoSu("_mondo"),
     # Dal giro 16 (brief-db-porte-aperte-dalla-sola-guc §9) pubblicare chiede
     # l'azione dell'endpoint, `documenti_template_manage`: il test la da'
     # al suo operatore, come la darebbe il pannello dei permessi.
@@ -75,8 +77,7 @@ class RicercaListeDocumentiDbTests(unittest.TestCase):
         }
         try:
             with transaction.atomic(), connection.cursor() as cur:
-                for passo in _FIXTURE:
-                    cur.execute(passo)
+                esegui_fixture(cur, _FIXTURE)
                 cur.execute("SELECT emittente_fiscale_id FROM _mondo")
                 emittente = cur.fetchone()[0]
                 cur.execute(
@@ -146,8 +147,7 @@ class RicercaListeDocumentiDbTests(unittest.TestCase):
 
         try:
             with transaction.atomic(), connection.cursor() as cur:
-                for passo in _FIXTURE:
-                    cur.execute(passo)
+                esegui_fixture(cur, _FIXTURE)
                 # La stampa qui sotto nasce senza PDF: la transazione si
                 # annulla, il controllo del commit non arriva mai.
                 giudica_la_stampa_al_commit(cur)

@@ -46,7 +46,9 @@ from django.db import connection, transaction
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.tests.db_e2e import (
+    ContestoSu,
     apri_super_admin_costruito,
+    esegui_fixture,
     richiedi_db_provvisto,
 )
 
@@ -55,12 +57,12 @@ _DAL = _OGGI + timedelta(days=30)
 _AL_PRIMA = _OGGI + timedelta(days=10)  # futura, ma prima di _DAL
 _AL_DOPO = _OGGI + timedelta(days=60)
 
-_FIXTURE: tuple[str, ...] = (
+_FIXTURE: tuple[str | ContestoSu, ...] = (
     """
     CREATE TEMP TABLE _mondo AS
     SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
     """,
-    "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
+    ContestoSu("_mondo"),
     """
     CREATE TEMP TABLE _cliente AS
     SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba(
@@ -73,8 +75,7 @@ class _Mondo:
     """Gli id del mondo costruito."""
 
     def __init__(self, cur) -> None:
-        for passo in _FIXTURE:
-            cur.execute(passo)
+        esegui_fixture(cur, _FIXTURE)
         cur.execute("SELECT emittente_fiscale_id, soggetto_ruolo_id, auth_user_id FROM _mondo")
         self.emittente_id, self.emittente_sr, self.uid = (int(x) for x in cur.fetchone())
         cur.execute(

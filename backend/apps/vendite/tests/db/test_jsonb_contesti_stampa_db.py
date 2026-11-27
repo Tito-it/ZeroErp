@@ -31,7 +31,7 @@ from django.db import connection, transaction
 from apps.core.tests._helpers.perimetro_admin_globale_di_prova import (
     perimetro_admin_globale_di_prova,
 )
-from apps.core.tests.db_e2e import Annulla, apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, apri_transazione_annullata, esegui_fixture, richiedi_db_provvisto
 
 # Il documento di ciascun builder: SQL che torna il suo id (e apre il
 # contesto del suo operatore, come ogni fixture).
@@ -94,8 +94,7 @@ class JsonbContestiStampaDbTests(unittest.TestCase):
             with self.subTest(builder=codice):
                 try:
                     with transaction.atomic(), connection.cursor() as cur:
-                        for passo in passi:
-                            cur.execute(passo)
+                        esegui_fixture(cur, passi)
                         documento_id = cur.fetchone()[0]
                         # Il builder della fattura legge col filtro
                         # applicativo (D-K6 a): il perimetro «nessuna

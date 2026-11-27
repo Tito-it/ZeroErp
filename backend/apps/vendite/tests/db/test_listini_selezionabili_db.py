@@ -37,7 +37,7 @@ from django.db import connection, transaction
 
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import ContestoSu, esegui_fixture, richiedi_db_provvisto
 from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.db.offerte_repository import OfferteRepository
 from apps.vendite.services.contratti_service import ContrattiService
@@ -45,9 +45,9 @@ from apps.vendite.services.offerte_service import OfferteService
 
 _CODICE_UTILITY = "E_DOC_LISTINO_UTILITY_DIVERSA"
 
-_FIXTURE: tuple[str, ...] = (
+_FIXTURE: tuple[str | ContestoSu, ...] = (
     "CREATE TEMP TABLE _mondo AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore()",
-    "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
+    ContestoSu("_mondo"),
     # Due utility che ammettono una tipologia di listino (il builder la pretende).
     """
     CREATE TEMP TABLE _u AS
@@ -88,8 +88,7 @@ class ListiniSelezionabiliDbTests(unittest.TestCase):
         with transaction.atomic():
             try:
                 with connection.cursor() as cur:
-                    for passo in _FIXTURE:
-                        cur.execute(passo)
+                    esegui_fixture(cur, _FIXTURE)
                     cur.execute(
                         "SELECT u.u1, u.u2, m.emittente_fiscale_id, l1.listino_id, l2.listino_id"
                         " FROM _u u, _mondo m, _l1 l1, _l2 l2"

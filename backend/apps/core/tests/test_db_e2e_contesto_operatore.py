@@ -10,6 +10,11 @@
 # Note: ⛔ Il secondo caso e' quello che prima consegnava un SUPER_ADMIN preso
 #       dai dati: su dbdev il primo operatore lo e', e i test passavano per
 #       chi era l'operatore, non per la regola.
+#       Dal 2026-11-27 anche `apri_contesto_su`, la sede unica delle due
+#       `SET LOCAL` (brief-be-accessi-credenziale-e-vesti §4): le apre per la
+#       sola transazione, e fuori da una transazione fallisce senza scrivere.
+#       E `apri_operatore_costruito` (regola del 2, ok Tid 2026-11-27): il
+#       builder con la sigla, poi il contesto; fuori transazione non costruisce.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -19,7 +24,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
-from apps.core.tests.db_e2e import apri_contesto_operatore
+from apps.core.tests.db_e2e import apri_contesto_operatore, apri_contesto_su, apri_operatore_costruito
 
 
 # Scopo: un cursore finto la cui SELECT dell'operatore risponde `riga`.
@@ -74,4 +79,51 @@ class ApriContestoOperatoreTests(SimpleTestCase):
         with patch("django.db.connection", MagicMock(in_atomic_block=False)), \
                 self.assertRaises(AssertionError):
             apri_contesto_operatore(cur)
+        cur.execute.assert_not_called()
+
+
+@patch("django.db.connection", MagicMock(in_atomic_block=True))
+class ApriContestoSuTests(SimpleTestCase):
+    # 6. Le due GUC per la sola transazione (`SET LOCAL`, mai `set_config` di
+    #    sessione), sull'utente dato; torna l'utente.
+    def test_apre_le_due_guc_per_la_transazione(self) -> None:
+        cur = MagicMock()
+        self.assertEqual(apri_contesto_su(cur, 42), 42)
+        sql = [c.args[0] for c in cur.execute.call_args_list]
+        self.assertEqual(len(sql), 2)
+        self.assertTrue(all(s.startswith("SET LOCAL app.") for s in sql), sql)
+        self.assertEqual(_utenti_impostati(cur), [["42"]])
+
+    # 7. Fuori da una transazione fallisce prima di scrivere.
+    def test_fuori_transazione_fallisce_senza_scrivere(self) -> None:
+        cur = MagicMock()
+        with patch("django.db.connection", MagicMock(in_atomic_block=False)), \
+                self.assertRaises(AssertionError) as ctx:
+            apri_contesto_su(cur, 42)
+        self.assertIn("apri_contesto_su", str(ctx.exception))
+        cur.execute.assert_not_called()
+
+
+@patch("django.db.connection", MagicMock(in_atomic_block=True))
+class ApriOperatoreCostruitoTests(SimpleTestCase):
+    # 8. Il builder riceve la sigla (NULL senza), e il contesto si apre
+    #    sull'utente che ha costruito.
+    def test_costruisce_e_apre_il_contesto_sul_costruito(self) -> None:
+        for sigla in (None, "B2"):
+            with self.subTest(sigla=sigla):
+                cur = _cursore((77,))
+                self.assertEqual(apri_operatore_costruito(cur, sigla=sigla), 77)
+                primo = cur.execute.call_args_list[0]
+                self.assertIn("dbops.fn_pgtap_crea_emittente_operatore(", primo.args[0])
+                self.assertEqual(primo.args[1], [sigla])
+                self.assertEqual(_utenti_impostati(cur), [["77"]])
+
+    # 9. Fuori da una transazione non costruisce niente: l'operatore
+    #    resterebbe nel DB.
+    def test_fuori_transazione_non_costruisce(self) -> None:
+        cur = _cursore((77,))
+        with patch("django.db.connection", MagicMock(in_atomic_block=False)), \
+                self.assertRaises(AssertionError) as ctx:
+            apri_operatore_costruito(cur)
+        self.assertIn("apri_operatore_costruito", str(ctx.exception))
         cur.execute.assert_not_called()

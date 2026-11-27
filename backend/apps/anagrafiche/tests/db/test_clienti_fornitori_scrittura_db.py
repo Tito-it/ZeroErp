@@ -36,7 +36,7 @@ import unittest
 
 from django.db import connection, transaction
 
-from apps.core.tests.db_e2e import Annulla, apri_contesto_operatore, richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, apri_contesto_operatore, apri_operatore_costruito, richiedi_db_provvisto
 
 
 class ScritturaClientiFornitoriDbTests(unittest.TestCase):
@@ -53,7 +53,11 @@ class ScritturaClientiFornitoriDbTests(unittest.TestCase):
                 # Il contesto dell'operatore pgTAP (con un emittente): la madre
                 # rilegge BA e cliente sotto la RLS, e il legame BA → emittente
                 # lo scrive il trigger da chi agisce.
-                cur.execute("SELECT script.fn_pgtap_set_contesto_operatore()")
+                # ⭐ L'operatore si COSTRUISCE (BB `apri_operatore_costruito`, 2026-11-27):
+                #    senza argomento `fn_pgtap_set_contesto_operatore` sceglieva il primo
+                #    operatore del DB, cioe' i dati della macchina, e scriveva le GUC per la
+                #    sessione.
+                apri_operatore_costruito(cur)
                 cur.execute(
                     "CREATE TEMP TABLE _mondo AS "
                     "SELECT m.* FROM dbops.fn_pgtap_crea_mondo_cliente('SCRCLI') m"

@@ -36,7 +36,7 @@ from uuid import uuid4
 from django.db import connection, transaction
 
 from apps.core.db._helpers import row_to_dict
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import esegui_fixture, richiedi_db_provvisto
 from apps.vendite.db.listini_repository import ListiniRepository
 
 _META_L = {"test_scope": "be_create_listini_db", "livello": "listino"}
@@ -64,8 +64,7 @@ class CreateListiniDbTests(unittest.TestCase):
         with transaction.atomic():
             try:
                 with connection.cursor() as cur:
-                    for passo in _FIXTURE:
-                        cur.execute(passo, {"sfx": sfx})
+                    esegui_fixture(cur, _FIXTURE, {"sfx": sfx})
                     cur.execute(
                         "SELECT m.utility_id, m.emittente_soggetto_ruolo_id, l.tipologia_id,"
                         "       a.articolo_id::text AS articolo_id, ar.uom_id"

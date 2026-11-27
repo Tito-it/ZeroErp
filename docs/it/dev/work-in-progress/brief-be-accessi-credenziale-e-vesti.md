@@ -1,20 +1,21 @@
 # Brief BE/FE — Accessi: la veste revocata e il collaudo delle sessioni per veste
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-26
+## ⏭️ Chi riparte — aggiornato al 2026-11-27
 
-**Riparte: Tid**, col collaudo a video (§2). D-4 e A-6 sono fatti lato BE/FE il 2026-11-26 (il passo 3b del
-[brief DB unico](brief-db-accessi-area-clienti.md) §4.1), da committare.
+**Riparte: Tid**, col collaudo a video (§2). D-4 e A-6 sono committati (`53420a057`, il passo 3b del
+[brief DB unico](brief-db-accessi-area-clienti.md) §4.1). Il §4 è fatto e committato il 2026-11-27, con la verifica (`/verifica`) e i suoi due seguiti (§4.1).
+Smoke Python e suite Django lanciati da Tid il 2026-11-27: verdi.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 0 | Tid | ~~D-R1 … D-R5~~ decise il 2026-11-25 | §1.3 | — |
 | 1 | ~~sessione DB~~ | ~~R-4 a DB: il segno, il guard, i verbi~~ costruito il 2026-11-25, applicato il 2026-11-26 (brief DB §2) | brief DB §2 | 0 |
-| 2 | ~~team BE/FE~~ | ~~D-4 e A-6 sulla regola consegnata dal DB~~ fatti il 2026-11-26, da committare: «Disabilita» e «Disattiva» revocano, il nuovo invito toglie il segno, il pulsante «Attiva shop» su una veste revocata si ferma con `E_VESTE_REVOCATA` (brief DB §4.1) | brief DB §4.1 | — |
+| 2 | ~~team BE/FE~~ | ~~D-4 e A-6 sulla regola consegnata dal DB~~ fatti il 2026-11-26, committati in `53420a057`: «Disabilita» e «Disattiva» revocano, il nuovo invito toglie il segno, il pulsante «Attiva shop» su una veste revocata si ferma con `E_VESTE_REVOCATA` (brief DB §4.1) | brief DB §4.1 | — |
 | 3 | Tid | Il collaudo a video di D-5 | §2 | — |
 | 4 | team BE/FE | Archiviazione in `work-done/` | §3 | 2, 3 |
-| 5 | team BE/FE | Il contesto dei test sul DB vero per la sola transazione: il BB `apri_contesto_su` e i ~30 file che chiamano `script.fn_pgtap_set_contesto_operatore` | §4 | `/arrivi-db` del giro 10-bis |
+| 5 | ~~team BE/FE~~ | ~~Il contesto dei test sul DB vero per la sola transazione~~: fatto il 2026-11-27 (`apri_contesto_su`, `esegui_fixture`, `apri_operatore_costruito`, il presidio esteso agli smoke), committato | §4.1 | — |
 
-**Decisioni aperte di Tid:** nessuna in questo brief (D-R1, D-R2, D-R4, D-R5 decise il 2026-11-25, §1.3). La forma della marca
+**Decisioni aperte di Tid:** nessuna in questo brief (D-C1 decisa il 2026-11-27, §4.1; D-R1, D-R2, D-R4, D-R5 il 2026-11-25, §1.3). La forma della marca
 «revocata» la sceglie il DB nel suo brief. La registrazione da sé (D-R3, D-R6 e le decisioni R-1 … R-3 del
 2026-11-25) non sta qui: sta in [sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md) §3.6.
 
@@ -215,11 +216,67 @@ scrivono le due GUC con `SET LOCAL`.
 4. Test di tutti i moduli toccati col DB vero, **lanciati insieme**: un contesto che perde si vede solo fra test
    diversi della stessa corsa.
 
-**Aspetta** l'allineamento del push DB del giro 10-bis (`8d349d36b`, «le tabelle che danno l'accesso si scrivono
+⚠️ **Sbloccato il 2026-11-27**: il push del giro 10-bis (`8d349d36b`) e quello del 3c (`1405f8ce4`) sono in
+`dev/backend-tid`. Il paragrafo qui sotto resta come storia.
+
+**Aspettava** l'allineamento del push DB del giro 10-bis (`8d349d36b`, «le tabelle che danno l'accesso si scrivono
 solo dai verbi del SUPER_ADMIN»), già applicato al DB di sviluppo: tocca proprio i contesti dei test. Con quel
 push sono rossi `test_login_credenziale_db` (contesto preso da «il primo operatore attivo», che non è SUPER_ADMIN)
 e `test_error_policies_divergenza_db` (DB avanti rispetto a git: non si rigenera prima dell'allineamento). Si
 riparte da `/arrivi-db`.
+
+### 4.1 Il giro del 2026-11-27 (sessione BE, committato il 2026-11-27)
+
+**Il motivo, riletto** come chiede la premessa corretta: dentro un `atomic` annullato le GUC di sessione si
+annullano, quindi un `fn_pgtap_set_contesto_operatore` in un test con la sua transazione non lascia niente. Il
+rischio è la chiamata **fuori** transazione, in autocommit: lì il contesto resta sulla connessione che Django
+condivide fra i test. Il BB serve per questo: `SET LOCAL` e il rifiuto fuori da un blocco atomico. Il passo 1
+regge com'è. I passi 2 e 3 reggono per lo stesso motivo, non per il rollback.
+
+| Passo | Esito |
+| --- | --- |
+| 1 | `apri_contesto_su(cur, auth_user_id)` in `db_e2e.py`, con il controllo privato `_richiedi_transazione`, che i quattro BB di contesto condividono (prima: quattro copie del controllo, con quattro messaggi). `apri_contesto_operatore`, `apri_super_admin_costruito` e `apri_operatore_con_aree` lo chiamano; `_agisci` di `test_soggetti_id_fiscale_immutabile_db` è ritirato. In `apri_contesto_operatore` il contesto si apre **dopo** la scelta: `fn_is_super_admin` con la GUC del ruolo vuota guarda la credenziale. Test senza DB in `test_db_e2e_contesto_operatore` (casi 6, 7). Voce nel catalogo BB e indice rigenerato |
+| 2 | Portati al BB **24 punti su 43**: le 19 chiamate `cur.execute("…(%s)", [id])`, le due di magazzino col secondo mondo, le due su più righe (`test_creazioni_dalle_madri_db`, `test_email_porta_di_sistema`). Le **tre senza argomento** (`test_clienti_fornitori_scrittura_db`, `test_lotto_azioni_permesse_db`, `test_lotto_job_stato_db`) ora **costruiscono** l'operatore con `dbops.fn_pgtap_crea_emittente_operatore()`, come faceva la funzione su un DB vuoto: prima sceglievano il primo operatore della macchina. I 19 punti dentro le tuple `_FIXTURE` (18 file) passano a `ContestoSu`, con D-C1 (b), sotto |
+| 3 | `apps/core/tests/test_contesto_test_db_transazionale.py`: nessun test Django chiama `fn_pgtap_set_contesto_operatore` (sorgenti senza commenti, con la controprova sul numero di file letti). Lo stesso file prova `esegui_fixture` senza DB |
+| 4 | I moduli toccati e quelli che importano i BB, lanciati insieme col DB vero: vedi §5.3.10 del brief DB |
+
+**D-C1 — il passo di contesto dentro una tupla `_FIXTURE`.** Le tuple sono SQL eseguito in fila
+(`for passo in _FIXTURE: cur.execute(passo)`), e in 12 dei 18 file dopo il contesto vengono altri passi che ne
+hanno bisogno (builder sotto RLS, concessioni). Il contesto quindi non si sposta in fondo al loop. Le strade:
+
+- **(a)** si spezza ogni tupla al passo del contesto (`_FIXTURE_MONDO`, `_FIXTURE_DOPO`) e, fra i due loop,
+  `apri_contesto_su(cur, <id letto dalla tabella del mondo>)`. Nessun BB nuovo; 18 file, ognuno col suo taglio;
+- **(b)** un BB nuovo, `esegui_fixture(cur, passi)`, dove un passo può essere `ContestoSu("_mondo")`: legge
+  `auth_user_id` dalla tabella temporanea e chiama `apri_contesto_su`. Prende il posto dei ~25 loop
+  `for passo in _FIXTURE` (regola del 2: il loop è ricopiato, e questo è il punto in cui le copie cominciano a
+  divergere). Le tuple restano leggibili come i pgTAP. ⚠️ BB nuovo: serve il tuo ok.
+
+Proposta: **(b)**. Il taglio di (a) separa il mondo dalla fixture in 18 modi diversi, e il passo di contesto è
+proprio quello che non deve dipendere da chi scrive il test.
+
+✅ **Tid, 2026-11-27: (b).** Fatto lo stesso giorno: `esegui_fixture(cur, passi, params=None)` e `ContestoSu(tabella)`
+in `db_e2e.py`. `ContestoSu` legge `auth_user_id` dalla tabella del mondo, ne pretende una riga e un nome che sia
+un identificatore, e apre il contesto con `apri_contesto_su`. I 38 cicli `for passo in …: cur.execute(passo)`
+(32 file, anche `crea_ddt_consegnato` e `test_jsonb_contesti_stampa_db`) sono ritirati nello stesso giro, e le
+tuple col contesto sono `tuple[str | ContestoSu, ...]`. Voce nel catalogo BB, indice rigenerato.
+
+**Test** (2026-11-27, passo 4): 115 moduli lanciati insieme col DB vero, cioè quelli toccati, quelli che importano
+i BB di contesto e quelli con una fixture: 765 test, un rosso. È `IndirizziSoggettoPluraleDbTests.test_gli_obbligatori_copiati_dal_primo`,
+rosso anche sul codice di partenza (brief DB §5.3.10). ruff verde.
+
+**Verifica del 2026-11-27 (`/verifica`), due ok di Tid:**
+
+- **Regola del 2, `apri_operatore_costruito(cur, *, sigla=None)`** in `db_e2e.py`: builder
+  `fn_pgtap_crea_emittente_operatore(sigla)` + `apri_contesto_su`. La coppia stava in `apri_operatore_con_aree` (che
+  ora lo chiama), `test_pannello_verbo_db`, i tre test ex «senza argomento» del passo 2 e lo smoke magazzino. Test
+  senza DB in `test_db_e2e_contesto_operatore` (casi 8, 9). Voce nel catalogo BB, indice rigenerato.
+- **Gli smoke con la stessa regola**: `smoke-magazzino-inventario-primo-carico.py` chiamava ancora
+  `fn_pgtap_set_contesto_operatore` (secondo mondo e ritorno al primo): ora `apri_operatore_costruito(sigla="B2")` e
+  `apri_contesto_su`. Il presidio di `test_contesto_test_db_transazionale` legge anche `backend/scripts/tests/`, con
+  la sua controprova sul numero di file.
+  ⚠️ Fuori da questa regola resta `apri_contesto_smoke` (`scripts/tests/_smoke_contesto.py`, ok Tid 2026-10-18):
+  scrive GUC di sessione **per scelta dichiarata**, per gli smoke che lavorano fuori da una transazione, in un
+  processo che finisce con lo smoke. Non chiama la funzione pgTAP e il presidio non lo tocca.
 
 ---
 {% include-markdown "signature-core.md" %}

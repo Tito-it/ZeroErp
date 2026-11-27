@@ -50,7 +50,7 @@ from django.db import DatabaseError, connection, transaction
 from apps.core.db.search_repository import SearchRepository
 from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.error_policies import ErrorPolicyRegistry
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_su, apri_transazione_annullata, richiedi_db_provvisto
 
 
 class SearchDetailNonTrovatoDbTests(unittest.TestCase):
@@ -80,7 +80,7 @@ class SearchDetailNonTrovatoDbTests(unittest.TestCase):
             # Il test gira come l'applicazione (`zeroerp_app`, soggetto alla RLS):
             # il billing account lo puo' creare solo un operatore d'azienda in
             # sessione, e il legame all'azienda lo scrive il trigger z90.
-            cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [operatore])
+            apri_contesto_su(cur, operatore)
             cur.execute(
                 "SELECT * FROM dbops.fn_pgtap_crea_cliente("
                 "  'ricerca dettaglio',"

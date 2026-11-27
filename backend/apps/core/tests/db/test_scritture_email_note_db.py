@@ -32,22 +32,22 @@ import unittest
 
 from django.db import connection, transaction
 
-from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, ContestoSu, esegui_fixture, richiedi_db_provvisto
 
-_FIXTURE_OPERATORE: tuple[str, ...] = (
+_FIXTURE_OPERATORE: tuple[str | ContestoSu, ...] = (
     """
     CREATE TEMP TABLE _mondo AS
     SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
     """,
-    "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
+    ContestoSu("_mondo"),
 )
 
-_FIXTURE_FATTURA: tuple[str, ...] = (
+_FIXTURE_FATTURA: tuple[str | ContestoSu, ...] = (
     """
     CREATE TEMP TABLE _fattura AS
     SELECT f.* FROM dbops.fn_pgtap_crea_fattura('scritture note') f
     """,
-    "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _fattura))",
+    ContestoSu("_fattura"),
 )
 
 
@@ -62,8 +62,7 @@ class ScrittureEmailAccountDbTests(unittest.TestCase):
 
         try:
             with transaction.atomic(), connection.cursor() as cur:
-                for passo in _FIXTURE_OPERATORE:
-                    cur.execute(passo)
+                esegui_fixture(cur, _FIXTURE_OPERATORE)
                 repo = EmailRepository()
                 account_id = repo.create_account(
                     codice="SCRDINACC", descrizione="Account scritture",
@@ -114,8 +113,7 @@ class ScrittureNotePartizionateDbTests(unittest.TestCase):
 
         try:
             with transaction.atomic(), connection.cursor() as cur:
-                for passo in _FIXTURE_FATTURA:
-                    cur.execute(passo)
+                esegui_fixture(cur, _FIXTURE_FATTURA)
                 cur.execute("SELECT fattura_id FROM _fattura")
                 fattura_id = cur.fetchone()[0]
                 cur.execute("SELECT id FROM config.note_stili WHERE attivo ORDER BY id LIMIT 1")

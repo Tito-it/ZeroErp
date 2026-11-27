@@ -67,14 +67,21 @@ const vesteOptions = buildOptionsConTutti(t,
   [RUOLO_APPLICATIVO.CLIENTE_PORTALE, RUOLO_APPLICATIVO.FORNITORE_PORTALE, RUOLO_APPLICATIVO.SHOP_CUSTOMER]
     .map(r => ({ value: r, label: etichettaRuoloApplicativo(t, te, r) })),
 )
-// Gli stati del riassunto: il vocabolario intero (NESSUNO compreso), non le
-// chiavi della mappa dei colori.
-// ⛔ Tranne REVOCATA (2026-11-26): e' uno stato della veste, e le singole vesti
-//    della riga lo mostrano, ma l'aggregato `stato_accesso` della vista non lo
-//    produce ancora (R-3b-1 del brief-db-accessi-area-clienti). Nel filtro
-//    risponderebbe sempre la lista vuota; il BE lo rifiuta con un 400. Entra
-//    col changeSet, insieme a `STATI_ACCESSO` del BE (`test_accessi_db`).
-const STATI_FILTRO = Object.values(STATO_VESTE).filter(s => s !== STATO_VESTE.REVOCATA)
+// Gli stati del riassunto (NESSUNO compreso), nell'ordine dell'aggregato
+// `stato_accesso` della vista, «il migliore fra le vesti»: REVOCATA dopo
+// DISATTIVO (D-3c-2 di brief-db-accessi-area-clienti, 2026-11-27), perche' una
+// credenziale e' revocata solo quando lo sono tutte le sue vesti. Non e'
+// l'ordine di `STATO_VESTE`, che segue la singola veste (REVOCATA subito dopo
+// ATTIVO). Lo specchio BE e' `STATI_ACCESSO`, che `test_accessi_db` confronta
+// col DB.
+const STATI_FILTRO = [
+  STATO_VESTE.ATTIVO,
+  STATO_VESTE.PENDING,
+  STATO_VESTE.NON_SPEDITO,
+  STATO_VESTE.DISATTIVO,
+  STATO_VESTE.REVOCATA,
+  STATO_VESTE.NESSUNO,
+]
 const statoOptions = buildOptionsConTutti(t,
   STATI_FILTRO.map(s => ({ value: s, label: t(`auth.stato_veste.${s}`) })),
 )

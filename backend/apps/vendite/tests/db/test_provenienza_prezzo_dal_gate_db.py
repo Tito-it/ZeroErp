@@ -53,7 +53,7 @@ from django.db import connection, transaction
 
 from apps.core.db._helpers import jsonb_out, row_to_dict
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_transazione_annullata, esegui_fixture, richiedi_db_provvisto
 from apps.vendite.services import ordini_service
 
 _PREZZO = Decimal("50.00")
@@ -115,8 +115,7 @@ class ProvenienzaPrezzoDalGateDbTests(TestCase):
             gate.start()
             self.addCleanup(gate.stop)
         with connection.cursor() as cur:
-            for sql in _FIXTURE:
-                cur.execute(sql)
+            esegui_fixture(cur, _FIXTURE)
             cur.execute("SELECT ordine_id, auth_user_id FROM _o")
             self.ordine_id, self.utente = cur.fetchone()
             cur.execute("SELECT listino_versione_id FROM _l")

@@ -38,7 +38,7 @@ from django.db import DatabaseError
 
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.error_policies import ErrorPolicyRegistry
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_contesto_su, apri_transazione_annullata, richiedi_db_provvisto
 from apps.vendite.db.vendite_repository import FONDI_DA_DECIDERE_MOTIVI
 from apps.vendite.services import vendite_service
 from apps.vendite.services.vendite_service import fn_fondi_fattura_da_decidere
@@ -450,7 +450,7 @@ class CancellaFondoFatturaBindingTests(TestCase):
             row = cur.fetchone()
             assert row is not None
             utente = int(row[0])
-            cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [utente])
+            apri_contesto_su(cur, utente)
             if con_azione:
                 cur.execute(
                     "SELECT dbops.fn_pgtap_concedi_azione(%s, 'governa_fondo_fattura')", [utente],

@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Any
 
 from django.contrib.auth.hashers import is_password_usable
@@ -165,27 +166,24 @@ class AuthRepository:
             row = cursor.fetchone()
             return row[0] if row and row[0] is not None else None
 
-    # Scopo: Aggiorna invito_inviato_at sull'identita digitale specifica
-    # del flusso corrente (post modello 1:N §8.4.1).
-    # `identita_id` obbligatorio: con modello 1:N lo stesso auth_user puo'
-    # essere stato invitato a piu' "vesti" in momenti diversi; il timestamp
-    # di invito va scritto sulla riga che si sta effettivamente invitando,
-    # non su una qualunque. Il filtro auth_user_id resta come guard
-    # anti-tampering. Non filtra piu' su `attivo=true`: durante il flusso
-    # cross-veste (§8.4.1) l'identita e' creata `attivo=false` e il
-    # timestamp va comunque scritto per audit.
-    def set_invito_inviato_at(
-        self, auth_user_id: int, *, identita_id: int
-    ) -> bool:
-        sql = """
-            UPDATE anagrafiche.identita_digitali
-               SET invito_inviato_at = now()
-             WHERE id = %s
-               AND auth_user_id = %s
-        """
+    # Scopo: Segna sulla veste `identita_id` che la mail dell'invito e'
+    # partita (`invito_inviato_at`), col verbo del DB
+    # `anagrafiche.fn_segna_invito_inviato`. Ritorna il momento scritto.
+    # ⭐ Dal 2026-11-27 (passo 3c di brief-db-accessi-area-clienti §5.3.8)
+    #    l'app non aggiorna piu' le vesti: era l'ultimo `UPDATE` diretto della
+    #    tabella nel backend. Il permesso lo controlla il verbo, per tipo di
+    #    veste, dall'utente della sessione (`E_PERMESSO_NEGATO`); una veste
+    #    che non c'e' e' `E_VESTE_NON_TROVATA`. Il verbo scrive o solleva: non
+    #    c'e' un «non scritto» da ritornare.
+    # ⚠️ Il filtro sulla credenziale che stava nell'`UPDATE` non serve piu':
+    #    `identita_id` viene dall'emissione dell'invito, lato server, e non
+    #    dalla richiesta.
+    def segna_invito_inviato(self, identita_id: int) -> datetime:
         with connection.cursor() as cursor:
-            cursor.execute(sql, [identita_id, auth_user_id])
-            return cursor.rowcount > 0
+            cursor.execute(
+                "SELECT anagrafiche.fn_segna_invito_inviato(%s::bigint)", [identita_id]
+            )
+            return fetchone_scalar(cursor)
 
     # Scopo: Risolve la prima veste UTILIZZABILE dell'utente il cui
     # ruolo_applicativo rientra nei ruoli ammessi dal namespace chiamante

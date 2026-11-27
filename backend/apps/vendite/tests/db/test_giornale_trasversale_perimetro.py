@@ -35,7 +35,7 @@ from django.db import connection, transaction
 
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import richiedi_db_provvisto, richiedi_ruolo_soggetto_a_rls
+from apps.core.tests.db_e2e import apri_contesto_su, richiedi_db_provvisto, richiedi_ruolo_soggetto_a_rls
 from apps.vendite.db.vendite_repository import VenditeRepository
 from apps.vendite.services.vendite_service import get_giornale_trasversale
 
@@ -54,7 +54,7 @@ class _Mondo:
     # Scopo: il lotto e la riga di diario, scritti COL CONTESTO del proprio
     #        operatore (le tabelle hanno la RLS anche in scrittura).
     def scrivi(self, cur) -> None:
-        cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [self.auth_user_id])
+        apri_contesto_su(cur, self.auth_user_id)
         cur.execute(
             """
             INSERT INTO vendite.fatturazione_lotti
@@ -107,7 +107,7 @@ class GiornaleTrasversalePerimetroTests(TestCase):
         with transaction.atomic():
             with connection.cursor() as cur:
                 a, b = self._due_mondi(cur)
-                cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [a.auth_user_id])
+                apri_contesto_su(cur, a.auth_user_id)
             # Il giorno della riga appena scritta e' quello dell'AZIENDA: il
             # filtro lo calcola cosi' (BB), e cosi' lo chiede il test.
             oggi = oggi_aziendale()
@@ -131,7 +131,7 @@ class GiornaleTrasversalePerimetroTests(TestCase):
         with transaction.atomic():
             with connection.cursor() as cur:
                 a, _b = self._due_mondi(cur)
-                cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [a.auth_user_id])
+                apri_contesto_su(cur, a.auth_user_id)
             data = get_giornale_trasversale(gravita=["ERROR", "WARN", "INFO"], filo=a.correlation_id, limit=50)
             transaction.set_rollback(True)
         self.assertEqual(data["count"], 1)
@@ -151,7 +151,7 @@ class GiornaleTrasversalePerimetroTests(TestCase):
         with transaction.atomic():
             with connection.cursor() as cur:
                 a, _b = self._due_mondi(cur)
-                cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [a.auth_user_id])
+                apri_contesto_su(cur, a.auth_user_id)
             for filtro in (
                 {"gravita": ["ERROR"]},
                 {"gravita": ["WARN", "INFO"], "registri": ["LOTTO_LOG", "FATTURA_LOG"]},
@@ -191,7 +191,7 @@ class GiornaleTrasversalePerimetroTests(TestCase):
         with transaction.atomic():
             with connection.cursor() as cur:
                 a, _b = self._due_mondi(cur)
-                cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [a.auth_user_id])
+                apri_contesto_su(cur, a.auth_user_id)
                 cur.execute("SELECT codice_interno FROM config.registri_giornale")
                 catalogo = {r[0] for r in cur.fetchall()}
             ammessi = repo.registri_giornale_ammessi()

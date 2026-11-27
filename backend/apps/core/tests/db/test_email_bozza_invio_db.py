@@ -45,14 +45,20 @@ from unittest.mock import patch
 
 from django.db import DatabaseError, connection, transaction
 
-from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
+from apps.core.tests.db_e2e import (
+    Annulla,
+    ContestoSu,
+    apri_contesto_su,
+    esegui_fixture,
+    richiedi_db_provvisto,
+)
 
-_FIXTURE: tuple[str, ...] = (
+_FIXTURE: tuple[str | ContestoSu, ...] = (
     """
     CREATE TEMP TABLE _mondo AS
     SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
     """,
-    "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
+    ContestoSu("_mondo"),
 )
 
 
@@ -66,8 +72,7 @@ class EmailBozzaInvioDbTests(unittest.TestCase):
 
     # Scopo: costruisce mondo, account e template; torna (emittente, operatore).
     def _costruisci(self, cur) -> tuple[int, int]:
-        for passo in _FIXTURE:
-            cur.execute(passo)
+        esegui_fixture(cur, _FIXTURE)
         cur.execute("SELECT emittente_fiscale_id, auth_user_id FROM _mondo")
         emittente, operatore = cur.fetchone()
         cur.execute(
@@ -228,7 +233,7 @@ class EmailLogDelCollegaDbTests(unittest.TestCase):
 
     # Scopo: scrive una mail OPERATORE come `autore`, attraverso la policy.
     def _mail_di(self, cur, autore: int, emittente: int, oggetto: str) -> int:
-        cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [autore])
+        apri_contesto_su(cur, autore)
         cur.execute(
             """
             INSERT INTO config.email_log
@@ -264,7 +269,7 @@ class EmailLogDelCollegaDbTests(unittest.TestCase):
                 mia = self._mail_di(cur, io, emittente, "mail mia")
                 sua = self._mail_di(cur, collega, emittente, "mail del collega")
 
-                cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [io])
+                apri_contesto_su(cur, io)
                 visti = {r["id"] for r in EmailRepository().list_logs(limit=200)[0]}
 
                 self.assertIn(mia, visti)
