@@ -54,7 +54,12 @@ from django.db import DatabaseError, connection, transaction
 
 from apps.core.services.db_error_fields import diagnostica_db, structured_db_error_code
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_contesto_operatore, apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import (
+    apri_contesto_operatore,
+    apri_super_admin_costruito,
+    apri_transazione_annullata,
+    richiedi_db_provvisto,
+)
 
 
 class _MondoCostruito(unittest.TestCase):
@@ -557,6 +562,10 @@ class PreferenzeDbTests(unittest.TestCase):
         if riga is None:
             self.skipTest("Nessun oggetto non riservato a catalogo.")
         app_label, model_name = riga
+        # ⭐ Il verbo degli override e' del SUPER_ADMIN (giro 10-quater,
+        #    2026-11-27): lo si chiede, costruito, non lo si trova nei dati.
+        with connection.cursor() as cur:
+            apri_super_admin_costruito(cur, etichetta="override valido dal null")
         AmmSoftwareRepository().put_override_oggetti(self.utente.id, [{
             "app_label": app_label, "model_name": model_name, "livello": "BLOCCATO",
             "motivo": "e2e", "valido_dal": None, "valido_al": None,

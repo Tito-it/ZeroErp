@@ -279,11 +279,15 @@ def apri_super_admin_costruito(cur, *, etichetta: str) -> int:
         )
     cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano(%s, true)", [etichetta])
     utente = int(cur.fetchone()[0])
-    # ⛔ `SET LOCAL`, e NON `script.fn_pgtap_set_contesto_operatore`: quella
-    #    scrive le GUC per la SESSIONE (`set_config(…, false)`), che sopravvive
-    #    al rollback. Il test dopo eredita l'id di un SUPER_ADMIN annullato e i
-    #    verbi rispondono E_PERMESSO_NEGATO (successo il 2026-11-26 in
-    #    `test_operatore_altre_vesti_db`, all'estrazione).
+    # ⭐ `SET LOCAL`: il contesto vive quanto la transazione del test, e fuori
+    #    da una transazione non si apre (il guard qui sopra lo rifiuta).
+    # ⚠️ Corretto il 2026-11-27: qui c'era scritto che le GUC di SESSIONE
+    #    (`set_config(…, false)`, come in `script.fn_pgtap_set_contesto_operatore`)
+    #    «sopravvivono al rollback». Provato sul DB di sviluppo: scritte dentro
+    #    un `atomic` o un savepoint annullati tornano vuote. Il rosso del
+    #    2026-11-26 in `test_operatore_altre_vesti_db` (un test che eredita l'id
+    #    di un SUPER_ADMIN annullato) ha un'altra causa, non accertata:
+    #    probabilmente un `set_config` fuori transazione.
     cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
     cur.execute("SET LOCAL app.current_user_id = %s", [str(utente)])
     # ⛔ Un builder che non lega il profilo non deve passare in silenzio: il
@@ -296,22 +300,26 @@ def apri_super_admin_costruito(cur, *, etichetta: str) -> int:
 
 # Scopo: UN OPERATORE COSTRUITO, col contesto aperto e livello TUTTO sulle
 #        aree indicate (per `schema_db`): `apri_operatore_con_aree(cur, aree=
-#        ("catalogo", "vendite"), motivo="...") -> auth_user_id`. Per i test
-#        che passano dai verbi del DB che chiedono un livello
-#        (`script.fn_guard_livello`), come li scrive il pannello dei permessi.
+#        ("catalogo", "vendite")) -> auth_user_id`. Per i test che passano dai
+#        verbi del DB che chiedono un livello (`script.fn_guard_livello`).
 # Note: estratto il 2026-11-11 (regola del 2, ok Tid) da
 #       `catalogo/.../test_chiusura_legame_prezzi_db` e
 #       `vendite/.../test_listino_uom_compatibile_db`.
 #       ⭐ A differenza di `apri_contesto_operatore` l'utente si COSTRUISCE
 #       (`dbops.fn_pgtap_crea_emittente_operatore`): niente dipende dagli
 #       utenti presenti, e non c'e' nessuno skip possibile.
-#       ⚠️ L'override si scrive con `ON CONFLICT … DO UPDATE`: l'operatore
-#       costruito ha gia' la sua riga su alcune aree (le vendite), e il livello
-#       va alzato, non duplicato.
-#       ⛔ Le GUC con `SET LOCAL` (2026-11-26): fino ad allora per la
-#       sessione, e sopravvivevano al rollback del test.
+#       ⭐ Il livello lo concede il builder del DB,
+#       `dbops.fn_pgtap_concedi_livello_area` (2026-11-27, giro 10-quater di
+#       brief-db-porte-aperte-dalla-sola-guc §15.7): le eccezioni utente sono
+#       in sola lettura per l'app, e si scrivono dal verbo del SUPER_ADMIN.
+#       Fino ad allora qui c'era un `INSERT … ON CONFLICT` diretto, la copia
+#       del builder (regola del 2), e il parametro `motivo`: il builder scrive
+#       il suo («Fixture pgTAP»). Un'area che non esiste la rifiuta il builder.
+#       ⚠️ Il builder entra come SUPER_ADMIN di fixture e rimette il contesto
+#       con `set_config` di sessione: dentro una transazione annullata si
+#       annulla anche quello.
 #       Va chiamata dentro una transazione annullata.
-def apri_operatore_con_aree(cur, *, aree: tuple[str, ...], motivo: str) -> int:
+def apri_operatore_con_aree(cur, *, aree: tuple[str, ...]) -> int:
     if not aree:
         raise AssertionError("apri_operatore_con_aree senza aree: il livello non si alza su niente")
     from django.db import connection
@@ -323,23 +331,13 @@ def apri_operatore_con_aree(cur, *, aree: tuple[str, ...], motivo: str) -> int:
         )
     cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_emittente_operatore()")
     utente = int(cur.fetchone()[0])
-    # ⛔ `SET LOCAL` e non `script.fn_pgtap_set_contesto_operatore` (corretto il
-    #    2026-11-26): quella scrive le GUC per la SESSIONE, che sopravvive al
-    #    rollback, e il test dopo girava col contesto di un utente annullato.
-    #    Con l'argomento la funzione non fa altro che queste due GUC.
     cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
     cur.execute("SET LOCAL app.current_user_id = %s", [str(utente)])
-    cur.execute(
-        "INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)"
-        " SELECT %s, af.id, 'TUTTO'::config.livello_accesso, %s"
-        "   FROM config.aree_funzionali af WHERE af.schema_db = ANY(%s)"
-        " ON CONFLICT (auth_user_id, area_id) DO UPDATE SET livello = EXCLUDED.livello",
-        [utente, motivo, list(aree)],
-    )
-    # ⛔ Un'area scritta male non deve passare in silenzio: il test girerebbe
-    #    senza il livello e proverebbe E_PERMESSO_NEGATO invece della regola.
-    if cur.rowcount != len(aree):
-        raise AssertionError(f"aree non trovate in config.aree_funzionali: {aree} (righe {cur.rowcount})")
+    for area in aree:
+        cur.execute(
+            "SELECT dbops.fn_pgtap_concedi_livello_area(%s, %s, 'TUTTO'::config.livello_accesso)",
+            [utente, area],
+        )
     return utente
 
 

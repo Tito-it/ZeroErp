@@ -41,7 +41,7 @@ from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
 from apps.amm_software.services.amm_software_service import E_AMM_VALIDAZIONE, AmmSoftwareService
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import apri_super_admin_costruito, apri_transazione_annullata, richiedi_db_provvisto
 
 
 class OverrideOggettiCatalogoDbTests(TestCase):
@@ -61,6 +61,11 @@ class OverrideOggettiCatalogoDbTests(TestCase):
             #    che un operatore non era — il difetto che la guardia chiude.
             cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano('override oggetti')")
             self.uid = int(cur.fetchone()[0])
+            # ⭐ Chi scrive le eccezioni e' il SUPER_ADMIN, come dalla schermata
+            #    di amministrazione: il verbo lo chiede (giro 10-quater,
+            #    2026-11-27). Fino ad allora il test chiamava il service col
+            #    contesto dell'operatore stesso.
+            apri_super_admin_costruito(cur, etichetta="override oggetti admin")
         self.svc = AmmSoftwareService()
         # La cache dei permessi non e' materia di questi test.
         patcher = patch("apps.amm_software.services.amm_software_service.invalidate_user")

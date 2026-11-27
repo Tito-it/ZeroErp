@@ -87,7 +87,7 @@ def _finge_fornitura(test: TestCase) -> MagicMock:
 def _ba_repo_unico(test: TestCase) -> None:
     import apps.vendite.services.vendite_form_defaults_service as modulo
 
-    patcher = patch(_BA_REPO_BB, side_effect=lambda: modulo.BillingAccountRepository())
+    patcher = patch(_BA_REPO_BB, autospec=True, side_effect=lambda: modulo.BillingAccountRepository())
     patcher.start()
     test.addCleanup(patcher.stop)
 

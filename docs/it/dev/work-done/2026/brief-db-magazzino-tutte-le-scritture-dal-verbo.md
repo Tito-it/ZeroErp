@@ -4,7 +4,7 @@
 >
 > **✅ Archiviato il 2026-11-23.** Nessuno riparte da qui. La R-4 del BE resta, parte dello sviluppo del catalogo
 > degli oggetti di magazzino (§7). La classe vicina emersa dalla ricognizione (§5.8) ha il suo brief:
-> [brief-db-porte-aperte-dalla-sola-guc](../../work-in-progress/brief-db-porte-aperte-dalla-sola-guc.md). Il P-5c è
+> [brief-db-porte-aperte-dalla-sola-guc](brief-db-porte-aperte-dalla-sola-guc.md). Il P-5c è
 > applicato coi pgTAP verdi col runner (Tid, 2026-11-23); il P-6 è fatto (§5.7): «La porta» a una riga e la sezione
 > «Chi scrive» nelle pagine `manual/` delle dieci tabelle chiuse.
 > La R-2 e la R-3 le ha fatte la sessione BE il 2026-11-23 (§7): nessuno scrittore BE resta sulle sei tabelle, e il BE
@@ -816,7 +816,7 @@ scrivono le loro tabelle:
 | `zeroerp.ddt_riga_ritira_legame` (solo `DELETE`) | `ordini_righe_fulfillment`, `resi_righe_riconsegne` | `fn_ddt_riga_ritira_legami` | `fn_ddt_riga_correggi_qta_evasa` | sicura: quel verbo fa solo `UPDATE` |
 | `zeroerp.articolo_correggi_struttura` | `catalogo.articoli` | `fn_articolo_correggi_struttura` | nessuno | sicura |
 | `zeroerp.legame_distinta_chiudi` | `vendite.listini_righe_componenti` | `catalogo.fn_chiudi_legame_distinta` | nessuno | sicura |
-| `zeroerp.allow_template_versione_pubblicazione_override` | `documenti.template_documenti_versioni` | `fn_pubblica_template_documento_versione` (INVOKER) | nessuno | ~~sicura~~ ⚠️ **non è una porta «GUC + proprietario»** (corretto il 2026-11-23): il trigger chiede la GUC **o** il proprietario, e il proprietario è l'eccezione del seed; per l'app la GUC apre da sola. Va nell'altra classe: porta 16 di [brief-db-porte-aperte-dalla-sola-guc](../../work-in-progress/brief-db-porte-aperte-dalla-sola-guc.md) |
+| `zeroerp.allow_template_versione_pubblicazione_override` | `documenti.template_documenti_versioni` | `fn_pubblica_template_documento_versione` (INVOKER) | nessuno | ~~sicura~~ ⚠️ **non è una porta «GUC + proprietario»** (corretto il 2026-11-23): il trigger chiede la GUC **o** il proprietario, e il proprietario è l'eccezione del seed; per l'app la GUC apre da sola. Va nell'altra classe: porta 16 di [brief-db-porte-aperte-dalla-sola-guc](brief-db-porte-aperte-dalla-sola-guc.md) |
 
 ⚠️ **Correzione del 2026-11-23.** La tabella qui sopra elencava i trigger il cui corpo nomina
 `fn_is_proprietario_tabella`, senza guardare se le due condizioni stessero in AND su ogni ramo. Riletta così, la sola
@@ -837,7 +837,7 @@ su cinque tabelle di fatturazione, `allow_contabile_riga_delete_override` e `app
 sulle righe del contabile, `allow_user_emittente_delete_override`, `ddt_riconsegna`, `ddt_riga_ritira_legame`
 sul `DELETE` dei legami, `maintenance_indirizzi_dettaglio`, `maintenance_toponomastica`). È il modello di prima
 della D-V1: il backend può aprirle da sé, e per alcune lo fa per scelta. ⏭️ Brief nuovo, su richiesta di Tid:
-[brief-db-porte-aperte-dalla-sola-guc](../../work-in-progress/brief-db-porte-aperte-dalla-sola-guc.md).
+[brief-db-porte-aperte-dalla-sola-guc](brief-db-porte-aperte-dalla-sola-guc.md).
 
 ## 6. I pgTAP — i casi si fabbricano
 

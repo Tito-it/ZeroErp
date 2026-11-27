@@ -67,7 +67,6 @@ from apps.magazzino.db.magazzino_repository import (
 )
 from apps.magazzino.services import consultazione_service, magazzino_service
 
-_MOTIVO = "test_documento_interno_db"
 
 # Il mondo, dopo l'operatore (`_Mondo`): l'azione di registrazione, due
 # magazzini (senza e con ubicazioni) e tre articoli.
@@ -108,7 +107,7 @@ class _Mondo:
         # righe e stati passano dai VERBI, che chiedono il livello sull'oggetto
         # della famiglia (R-2 di brief-db-magazzino-tutte-le-scritture-dal-
         # verbo). L'operatore costruito e' BLOCCATO ovunque.
-        self.uid = apri_operatore_con_aree(cur, aree=("magazzino",), motivo=_MOTIVO)
+        self.uid = apri_operatore_con_aree(cur, aree=("magazzino",))
         cur.execute("CREATE TEMP TABLE _mondo AS SELECT %s::int AS auth_user_id", [self.uid])
         for passo in _FIXTURE:
             cur.execute(passo)
@@ -711,13 +710,13 @@ class DocumentoInternoDbTests(unittest.TestCase):
         def _prova(cur, m):
             d = magazzino_service.crea_documento("inventari", {"magazzino_id": m.mag_a})
             r = magazzino_service.crea_riga("inventari", d["id"], {"articolo_id": m.art, "qta_contata": 1})
+            # Il livello si abbassa dal builder del DB: le eccezioni utente sono
+            # in sola lettura per l'app (giro 10-quater, 2026-11-27).
             cur.execute(
-                "UPDATE config.user_override_aree o SET livello = 'LETTURA'"
-                "  FROM config.aree_funzionali af"
-                " WHERE af.id = o.area_id AND af.schema_db = 'magazzino' AND o.auth_user_id = %s",
+                "SELECT dbops.fn_pgtap_concedi_livello_area(%s, 'magazzino', 'LETTURA'::config.livello_accesso)",
                 [m.uid],
             )
-            self.assertEqual(cur.rowcount, 1)
+            self.assertIsNotNone(cur.fetchone()[0])
             gesti = {
                 "crea": lambda: magazzino_service.crea_documento("rettifiche", {"magazzino_id": m.mag_a}),
                 "modifica": lambda: magazzino_service.aggiorna_documento("inventari", d["id"], {"descrizione": "x"}),

@@ -70,7 +70,7 @@ class AttivoFkSenzaSuffissoDbTests(TestCase):
             # ⭐ Un operatore COSTRUITO col livello sulle due aree delle tabelle
             #    (D-AH, 2026-11-27): fino ad allora il primo operatore del DB, che
             #    su dbdev e' SUPER_ADMIN, e il verde dipendeva da lui.
-            apri_operatore_con_aree(cur, aree=("config", "magazzino"), motivo="attivo fk senza suffisso")
+            apri_operatore_con_aree(cur, aree=("config", "magazzino"))
             cur.execute("SET CONSTRAINTS ALL IMMEDIATE")
         self.svc = ConfigCrudService()
 

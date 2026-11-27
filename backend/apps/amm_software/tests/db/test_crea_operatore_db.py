@@ -107,7 +107,7 @@ class CreaOperatoreDbTests(TestCase):
         try:
             with transaction.atomic(), connection.cursor() as cur:
                 apri_operatore_con_aree(
-                    cur, aree=("anagrafiche",), motivo="crea operatore senza SUPER_ADMIN",
+                    cur, aree=("anagrafiche",),
                 )
                 argomenti = self._argomenti(cur)
                 with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
