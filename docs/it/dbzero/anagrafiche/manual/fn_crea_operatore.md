@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_operatore`
 
-> **Ultimo aggiornamento**: 26 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -44,9 +44,6 @@ all'utente di sessione (`script.fn_guard_super_admin`): un altro operatore, o ne
 esegue. La chiamano direttamente le strade senza un SUPER_ADMIN in sessione: il verbo del primo amministratore
 (`anagrafiche.fn_crea_primo_amministratore`), il provisioning dei dati di sviluppo e la fixture dei pgTAP
 `dbops.fn_pgtap_fixture_crea_operatore`.
-
-Il nome storico `anagrafiche.fn_crea_operatore_v2` è un involucro di questa funzione, con la stessa firma. Non ha
-più chiamanti, e l'applicazione non lo esegue.
 
 ---
 
@@ -188,6 +185,7 @@ Più quelli propagati da `fn_crea_auth_user` (username o email già presi, dati 
   il ruolo con l'enum `config.ruolo_sistema`, è ritirata.
 * 2026-11-26 — torna al nome senza suffisso; `fn_crea_operatore_v2` resta come involucro finché i chiamanti non
   passano al nome nuovo.
+* 2026-11-27 — l'involucro `fn_crea_operatore_v2` è ritirato: non aveva più chiamanti.
 * 2026-09-25 — una persona, una credenziale: il riuso, la veste che nasce spenta (il parametro dello stato è uscito
   dalla firma), il ritorno a tabella; poi il riuso non silenzioso (l'altra persona, il consenso dichiarato).
 * 2026-09-27 — nel rifiuto del consenso username e vesti vengono dalla stessa funzione del dialog.

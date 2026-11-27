@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Le vesti si cambiano dai verbi: zeroerp_app perde UPDATE e DELETE su
+# anagrafiche.identita_digitali (passo 3c, anticipato nel giro del 3c-1;
+# Tid, 2026-11-27: il sistema non e' in produzione).
+#
+#   Dopo il 20261127-01 … -08 ogni scrittura dello stato della veste ha un
+#   verbo SECURITY DEFINER: l'accensione (fn_accendi_veste), la revoca e il
+#   nuovo invito (fn_revoca_veste, fn_togli_revoca_veste), l'invito spedito
+#   (fn_segna_invito_inviato), la riattivazione (script.fn_riattiva_utente_tecnico);
+#   i test hanno dbops.fn_pgtap_imposta_veste. Le funzioni che fanno UPDATE
+#   della tabella sono tutte DEFINER (catalogo di dbdev, 2026-11-27). Nessuna
+#   funzione INVOKER la cancella; le cascate delle FK girano col proprietario.
+#
+#   L'INSERT resta all'app (D-3c-3 b): fn_crea_veste_portale e' INVOKER e la
+#   chiama «Attiva shop», che si ritira con l'iscrizione da se'. Si chiude col
+#   giro della veste cliente.
+#
+#   ⚠️ Il backend: AuthRepository.set_invito_inviato_at fa ancora l'UPDATE
+#   diretto; fino al passaggio al verbo (richiesta 3c-2) quella scrittura,
+#   dopo l'invio della mail, si ferma con 42501. Accettato da Tid: non c'e'
+#   produzione. Lo stesso per i test Django che scrivono la veste.
+#
+#   Le tre sedi (linee-guida-sql §11.8): questo forward (su dev la postura
+#   arriva subito), la lista v_tabelle_app_solo_insert del loop
+#   90_end/ci_apply/20260205-41, il blocco «LE VESTI SI CAMBIANO DAI VERBI» di
+#   scripts/sql/provision_zeroerp.sql. Presidio:
+#   db/pgtap/anagrafiche/test-vesti-postura-app-v1.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261127-09-revoke-app-update-delete-identita-digitali-mctit.yaml
+
+  - changeSet:
+      id: 20261127-09-revoke-app-update-delete-identita-digitali
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.identita_digitali: zeroerp_app legge e inserisce, non aggiorna e non cancella;
+        lo stato della veste lo cambiano i verbi DEFINER.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip porta delle vesti.';
+                      RETURN;
+                  END IF;
+
+                  GRANT SELECT, INSERT ON TABLE anagrafiche.identita_digitali TO zeroerp_app;
+                  REVOKE UPDATE, DELETE ON TABLE anagrafiche.identita_digitali FROM zeroerp_app;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Senza togliere la voce dal loop 20260205-41 e dal provisioning la
+              -- passata ci_apply successiva richiude la porta.
+              DO $riapri$
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RETURN;
+                  END IF;
+
+                  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE anagrafiche.identita_digitali TO zeroerp_app;
+              END
+              $riapri$;

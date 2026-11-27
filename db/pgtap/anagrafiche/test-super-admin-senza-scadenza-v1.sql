@@ -69,20 +69,14 @@ SELECT o.* FROM dbops.fn_pgtap_crea_operatore_umano('Operatore non SA', false) o
 
 -- Gli altri SUPER_ADMIN del database: una data di fine lontana sulla veste.
 -- Permesso: A e B non scadono.
-UPDATE anagrafiche.identita_digitali idg
-   SET valido_al = script.fn_data_operativa() + 3650
- WHERE idg.valido_al IS NULL
-   AND idg.id NOT IN ((SELECT identita_id FROM _a), (SELECT identita_id FROM _b))
-   AND EXISTS (SELECT 1
-                 FROM config.profili_accesso_bindings pab
-                 JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
-                WHERE pab.identita_digitale_id = idg.id
-                  AND pab.attivo AND pa.attivo
-                  AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso);
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_al', script.fn_data_operativa() + 3650))
+  FROM anagrafiche.identita_digitali idg
+ WHERE idg.valido_al IS NULL AND idg.id NOT IN ((SELECT identita_id FROM _a), (SELECT identita_id FROM _b)) AND EXISTS (SELECT 1 FROM config.profili_accesso_bindings pab JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id WHERE pab.identita_digitale_id = idg.id AND pab.attivo AND pa.attivo AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso);
 
 -- Le finestre partono indietro di dieci giorni, cosi' «domani» e le date di
 -- fine sono ammesse dai CHECK (valido_al >= valido_dal).
-UPDATE anagrafiche.identita_digitali SET valido_dal = script.fn_data_operativa() - 10
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_dal', script.fn_data_operativa() - 10))
+  FROM anagrafiche.identita_digitali idg
  WHERE id IN ((SELECT identita_id FROM _a), (SELECT identita_id FROM _b), (SELECT identita_id FROM _c));
 UPDATE anagrafiche.risorse_umane SET valido_dal = script.fn_data_operativa() - 10
  WHERE id IN ((SELECT risorsa_umana_id FROM _a), (SELECT risorsa_umana_id FROM _b), (SELECT risorsa_umana_id FROM _c));
@@ -101,7 +95,7 @@ SELECT is(script.fn_identita_super_admin_senza_scadenza((SELECT identita_id FROM
 -- ============================================================
 SELECT is(
     dbops.fn_pgtap_codice_errore(format(
-        'UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() + 30 WHERE id = %s',
+        'SELECT dbops.fn_pgtap_imposta_veste(%s, jsonb_build_object(''valido_al'', script.fn_data_operativa() + 30))',
         (SELECT identita_id FROM _a))),
     NULL,
     '3) data di fine sulla veste di A: permesso, B non scade');
@@ -120,14 +114,14 @@ SELECT is(
 -- ============================================================
 SELECT is(
     dbops.fn_pgtap_codice_errore(format(
-        'UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() + 30 WHERE id = %s',
+        'SELECT dbops.fn_pgtap_imposta_veste(%s, jsonb_build_object(''valido_al'', script.fn_data_operativa() + 30))',
         (SELECT identita_id FROM _b))),
     'E_PROFILO_ULTIMO_SUPER_ADMIN',
     '6) data di fine sulla veste dell''ultimo: rifiutata');
 
 SELECT is(
     dbops.fn_pgtap_codice_errore(format(
-        'UPDATE anagrafiche.identita_digitali SET valido_dal = script.fn_data_operativa() + 1 WHERE id = %s',
+        'SELECT dbops.fn_pgtap_imposta_veste(%s, jsonb_build_object(''valido_dal'', script.fn_data_operativa() + 1))',
         (SELECT identita_id FROM _b))),
     'E_PROFILO_ULTIMO_SUPER_ADMIN',
     '7) inizio della veste dell''ultimo spostato a domani: rifiutato');
@@ -148,7 +142,7 @@ SELECT is(
 
 SELECT is(
     dbops.fn_pgtap_codice_errore(format(
-        'UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = %s',
+        'SELECT dbops.fn_pgtap_imposta_veste(%s, jsonb_build_object(''attivo'', false))',
         (SELECT identita_id FROM _b))),
     'E_PROFILO_ULTIMO_SUPER_ADMIN',
     '10) veste dell''ultimo spenta: rifiutata');
@@ -160,7 +154,7 @@ SELECT is(
 --   istruzione vede la fotografia di PRIMA dell'UPDATE.
 CREATE TEMP TABLE _esito11 AS
 SELECT COALESCE(dbops.fn_pgtap_codice_errore(format(
-           'UPDATE anagrafiche.identita_digitali SET valido_al = NULL WHERE id = %s',
+           'SELECT dbops.fn_pgtap_imposta_veste(%s, jsonb_build_object(''valido_al'', NULL))',
            (SELECT identita_id FROM _a))), 'nessun errore') AS esito;
 
 SELECT is(
@@ -171,7 +165,7 @@ SELECT is(
 
 SELECT is(
     dbops.fn_pgtap_codice_errore(format(
-        'UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() + 30 WHERE id = %s',
+        'SELECT dbops.fn_pgtap_imposta_veste(%s, jsonb_build_object(''valido_al'', script.fn_data_operativa() + 30))',
         (SELECT identita_id FROM _b))),
     NULL,
     '12) ora la data di fine a B passa: A non scade');

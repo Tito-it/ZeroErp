@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.identita_digitali.attivo: DEFAULT false (passo 3c-1, D-3c-3).
+#
+#   La veste nasce spenta: la accendono l'invito, la conferma o un verbo che
+#   lo dice (S67, chiusa dall'analisi dell'area clienti). Il DEFAULT true
+#   faceva nascere accesa una veste inserita senza nominare attivo. Al passo
+#   3c-3 l'app tiene l'INSERT della tabella fino al giro della veste cliente
+#   (D-3c-3 b): con DEFAULT false un suo INSERT che non nomina attivo nasce
+#   spento, e uno acceso su una coppia revocata lo ferma gia' il guard della
+#   revoca.
+#
+#   Il censimento degli scrittori che non nominano attivo (2026-11-27, corpi
+#   vivi su dbdev, 80_data, INSERT dei pgTAP): solo
+#   script.fn_applica_crea_utente_tecnico, che dal 20261127-07 lo nomina.
+#   fn_crea_risorsa_umana, fn_crea_veste_portale, il provisioning e il
+#   backfill di 80_data (20260419-80) lo nominano; i pgTAP pure.
+#
+#   ⛔ La fase: 90_end (linee-guida-sql §11.14). Da zero tutto 80_data gira
+#   prima: i seed degli utenti tecnici (20260904-27, -39) e il backfill
+#   nascono col default di prima, come sono nati su dbdev. Un SET DEFAULT non
+#   tocca le righe esistenti e non valuta niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261127-08-alter-identita-digitali-attivo-default-false-mctit.yaml
+
+  - changeSet:
+      id: 20261127-08-alter-identita-digitali-attivo-default-false
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.identita_digitali.attivo DEFAULT false: la veste nasce spenta, e la accende
+        chi lo dice.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.identita_digitali
+                  ALTER COLUMN attivo SET DEFAULT false;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.identita_digitali
+                  ALTER COLUMN attivo SET DEFAULT true;

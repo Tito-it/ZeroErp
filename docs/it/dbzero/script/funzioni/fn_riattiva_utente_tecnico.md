@@ -4,7 +4,7 @@
 CREATE FUNCTION fn_riattiva_utente_tecnico(p_processo_codice text, p_emittente_codice character varying)
 ```
 
-> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
 
 **Definizione completa:**
 
@@ -14,6 +14,8 @@ CREATE FUNCTION fn_riattiva_utente_tecnico(p_processo_codice text, p_emittente_c
 CREATE OR REPLACE FUNCTION script.fn_riattiva_utente_tecnico(p_processo_codice text, p_emittente_codice character varying)
  RETURNS integer
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
     v_username     text;
@@ -148,7 +150,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_riattiva_utente_tecnico(p_processo_codice text, p_emittente_codice character varying)
-IS 'Riaccende un utente tecnico che ESISTE ed e'' spento, per la coppia (processo, emittente): il legame in dbops.processi_identita, l''identita'' in anagrafiche.identita_digitali e l''utente in django.auth_user. Ritorna l''auth_user_id. E'' un gesto dell''amministratore: chiede SUPER_ADMIN all''utente della sessione (script.fn_guard_super_admin, E_PERMESSO_NEGATO) e toglie il segno della revoca dalle vesti tecniche con anagrafiche.fn_togli_revoca_veste prima di riaccenderle. Esiste perche'' lo username degli utenti tecnici e'' deterministico (processo@emittente) e il suo UNIQUE non ha condizioni: disattivare il legame non libera lo username, quindi la fabbrica non puo'' rifare l''utente. Non ricostruisce niente: non crea soggetti, non tocca il perimetro, non assegna profili; se manca un pezzo la coppia e'' rotta (E_UTENTE_TECNICO_NON_TROVATO). Il perimetro non si sposta: se l''utente aveva un''altra azienda si ferma invece di riaccenderlo. L''emittente si cerca con script.fn_codice_normalizzato, e lo username si compone col codice salvato dell''emittente, come in script.fn_crea_utente_tecnico, la sua compagna: quella crea cio'' che non c''e'', questa riaccende cio'' che c''e''.';
+IS 'Riaccende un utente tecnico che ESISTE ed e'' spento, per la coppia (processo, emittente): il legame in dbops.processi_identita, l''identita'' in anagrafiche.identita_digitali e l''utente in django.auth_user. Ritorna l''auth_user_id. E'' un gesto dell''amministratore: chiede SUPER_ADMIN all''utente della sessione (script.fn_guard_super_admin, E_PERMESSO_NEGATO) e toglie il segno della revoca dalle vesti tecniche con anagrafiche.fn_togli_revoca_veste prima di riaccenderle. Esiste perche'' lo username degli utenti tecnici e'' deterministico (processo@emittente) e il suo UNIQUE non ha condizioni: disattivare il legame non libera lo username, quindi la fabbrica non puo'' rifare l''utente. Non ricostruisce niente: non crea soggetti, non tocca il perimetro, non assegna profili; se manca un pezzo la coppia e'' rotta (E_UTENTE_TECNICO_NON_TROVATO). Il perimetro non si sposta: se l''utente aveva un''altra azienda si ferma invece di riaccenderlo. L''emittente si cerca con script.fn_codice_normalizzato, e lo username si compone col codice salvato dell''emittente, come in script.fn_crea_utente_tecnico, la sua compagna: quella crea cio'' che non c''e'', questa riaccende cio'' che c''e''. SECURITY DEFINER, search_path fissato: l''applicazione non scrive identita_digitali direttamente.';
 ```
 
 </div>

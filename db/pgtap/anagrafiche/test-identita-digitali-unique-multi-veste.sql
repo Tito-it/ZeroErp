@@ -240,11 +240,9 @@ END;
 -- 8) Dopo disattivazione identita punto 2, nuova CLIENTE_PORTALE
 --    su SR_CL_1 e' ammessa (solo una attiva alla volta).
 -- =========================================================
-UPDATE anagrafiche.identita_digitali
-   SET attivo = false
- WHERE auth_user_id = (SELECT auth_user_id FROM _t_au_pool WHERE idx = 1)
-   AND ruolo_applicativo = 'CLIENTE_PORTALE'::config.ruolo_applicativo
-   AND (SELECT count(*) FROM _t_sr_cl) = 2;
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', false))
+  FROM anagrafiche.identita_digitali idg
+ WHERE auth_user_id = (SELECT auth_user_id FROM _t_au_pool WHERE idx = 1) AND ruolo_applicativo = 'CLIENTE_PORTALE'::config.ruolo_applicativo AND (SELECT count(*) FROM _t_sr_cl) = 2;
 
 SELECT CASE
     WHEN (SELECT count(*) FROM _t_sr_cl) = 2 THEN

@@ -977,12 +977,25 @@ condizione: si apre solo se nessuna veste ha mai avuto un legame SUPER_ADMIN, e 
 chiude da sola alla nascita del primo. Un verbo nuovo senza guard non si appoggia a
 questo: e' l'unico caso in cui chi agisce, per costruzione, non esiste.
 
-⚠️ **Due funzioni senza guard per i test, dichiarate: le fixture dei pgTAP.**
+⚠️ **Un verbo senza guard, dichiarato: l'accensione di una veste.**
+[`anagrafiche.fn_accendi_veste`](/dbzero/anagrafiche/funzioni/fn_accendi_veste)
+gira come proprietario e non chiama nessun guard, perche' la chiamano richieste senza
+un amministratore: il link dell'invito, che e' anonimo (nessuna GUC d'identita') e
+porta il token che il backend consuma nella stessa transazione, e la persona che
+accende una propria veste. Il limite e' dichiarato: la funzione accende la veste
+spenta che il backend le passa, purche' sia di quella credenziale. Una veste revocata
+la ferma il guard della tabella. Il verbo che consumera' il token a DB nasce con
+l'iscrizione da se'.
+
+⚠️ **Funzioni senza guard per i test, dichiarate: le fixture dei pgTAP.**
 [`dbops.fn_pgtap_fixture_crea_operatore`](/dbzero/dbops/funzioni/fn_pgtap_fixture_crea_operatore)
 e [`dbops.fn_pgtap_fixture_crea_utente_tecnico`](/dbzero/dbops/funzioni/fn_pgtap_fixture_crea_utente_tecnico)
 creano un operatore (anche SUPER_ADMIN) o un utente tecnico con le regole dei loro
 verbi, senza il loro permesso: il primo SUPER_ADMIN di un test non ha nessuno da cui
-farsi creare. Girano come proprietario e l'applicazione le esegue. Al posto del guard
+farsi creare. [`dbops.fn_pgtap_imposta_veste`](/dbzero/dbops/funzioni/fn_pgtap_imposta_veste)
+e [`dbops.fn_pgtap_cancella_veste`](/dbzero/dbops/funzioni/fn_pgtap_cancella_veste)
+mettono una veste nello stato del caso, o la tolgono, dove l'applicazione non aggiorna
+e non cancella le vesti; una veste revocata non la toccano. Girano come proprietario e l'applicazione le esegue. Al posto del guard
 le chiude l'**ambiente**: partono solo dove sono ammessi i dati di sviluppo, come il
 provisioning, e in PRODUZIONE rifiutano (`E_DATI_DI_SVILUPPO_IN_PRODUZIONE`).
 L'ambiente l'applicazione non lo cambia. Il limite e' quello del provisioning: su
@@ -997,7 +1010,9 @@ l'amministratore ragiona come sempre, per area, azione e oggetto.
 * l'applicazione perde `INSERT`/`UPDATE`/`DELETE` sulle tabelle che il verbo
   protegge. La postura si dichiara nel loop dei grant, non con un `REVOKE`
   sparso: l'elenco delle tabelle in sola lettura per l'app e' la lista
-  `v_tabelle_sola_lettura_app` del loop;
+  `v_tabelle_sola_lettura_app` del loop. Una tabella in cui l'app inserisce ancora,
+  ma non aggiorna e non cancella, sta in `v_tabelle_app_solo_insert` (le vesti, finche'
+  nascono anche da un `INSERT` dell'app);
 * sulle **viste** l'applicazione ha solo `SELECT`, in tutto il database: una
   vista aggiornabile che gira coi permessi del suo proprietario scriverebbe la
   tabella sotto, e aggirerebbe la sola lettura. Una vista non e' una strada per

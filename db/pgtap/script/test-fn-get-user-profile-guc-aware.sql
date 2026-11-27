@@ -125,9 +125,10 @@ SELECT is(
 -- single-veste (solo OPERATORE). DELETE perche' UPDATE attivo=false
 -- scatenerebbe altro trigger; in transazione BEGIN il DELETE e'
 -- rollbackato.
-DELETE FROM anagrafiche.identita_digitali
- WHERE auth_user_id = (SELECT auth_user_id FROM _t_tid)
-   AND ruolo_applicativo = 'CLIENTE_PORTALE'::config.ruolo_applicativo;
+SELECT dbops.fn_pgtap_cancella_veste(idg.id)
+  FROM anagrafiche.identita_digitali idg
+ WHERE idg.auth_user_id = (SELECT auth_user_id FROM _t_tid)
+   AND idg.ruolo_applicativo = 'CLIENTE_PORTALE'::config.ruolo_applicativo;
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Il tab «Altri accessi» dell'area Accessi: una riga per credenziale di categoria ALTRO (script.fn_categoria_accesso), cioe' le persone senza veste operatore (portale clienti e fornitori, shop) e le credenziali senza alcuna veste (nessun_accesso, da script.fn_credenziale_ha_vesti: la regola unica, la stessa che rifiuta l'eliminazione in script.fn_check_credenziale_eliminabile). vesti = una voce per veste, anche spenta, con lo stato di script.fn_stato_veste e il soggetto collegato (cliente_ids e' un ARRAY: un soggetto_ruolo puo' avere piu' clienti; fornitore_id e' unico). vesti_elenco e stato_accesso (il migliore fra le vesti, NESSUNO senza vesti) servono a filtrare. Secondo fattore da fn_get_totp_device (solo lo stato) e fn_totp_obbligatorio; blocco da config.credenziali. Le credenziali vengono da script.fn_credenziali (una vista non nomina django.*). security_invoker: attraversa anagrafiche.clienti, che ha la RLS. Brief: brief-db-be-fe-area-accessi (R-DB-A2), brief-db-elimina-credenziale-senza-veste (D-1).
+> Il tab «Altri accessi» dell'area Accessi: una riga per credenziale di categoria ALTRO (script.fn_categoria_accesso), cioe' le persone senza veste operatore (portale clienti e fornitori, shop) e le credenziali senza alcuna veste (nessun_accesso, da script.fn_credenziale_ha_vesti: la regola unica, la stessa che rifiuta l'eliminazione in script.fn_check_credenziale_eliminabile). vesti = una voce per veste, anche spenta, con lo stato di script.fn_stato_veste e il soggetto collegato (cliente_ids e' un ARRAY: un soggetto_ruolo puo' avere piu' clienti; fornitore_id e' unico). vesti_elenco e stato_accesso servono a filtrare. stato_accesso e' il migliore fra gli stati delle vesti, in quest'ordine: ATTIVO, PENDING, NON_SPEDITO, DISATTIVO, REVOCATA; REVOCATA vuol dire quindi che tutte le vesti della credenziale sono revocate, e una sola veste spenta senza segno basta a dire DISATTIVO. NESSUNO senza vesti. Secondo fattore da fn_get_totp_device (solo lo stato) e fn_totp_obbligatorio; blocco da config.credenziali. Le credenziali vengono da script.fn_credenziali (una vista non nomina django.*). security_invoker: attraversa anagrafiche.clienti, che ha la RLS.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -45,6 +45,8 @@ SELECT c.auth_user_id,
                     WHEN bool_or((sv.stato = 'ATTIVO'::text)) THEN 'ATTIVO'::text
                     WHEN bool_or((sv.stato = 'PENDING'::text)) THEN 'PENDING'::text
                     WHEN bool_or((sv.stato = 'NON_SPEDITO'::text)) THEN 'NON_SPEDITO'::text
+                    WHEN bool_or((sv.stato = 'DISATTIVO'::text)) THEN 'DISATTIVO'::text
+                    WHEN bool_or((sv.stato = 'REVOCATA'::text)) THEN 'REVOCATA'::text
                     ELSE 'DISATTIVO'::text
                 END AS stato_accesso
            FROM (((anagrafiche.identita_digitali idg

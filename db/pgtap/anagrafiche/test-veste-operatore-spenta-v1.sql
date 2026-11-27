@@ -98,10 +98,7 @@ SELECT is(
 
 SELECT is(
     dbops.fn_pgtap_codice_errore(format(
-        $$UPDATE anagrafiche.identita_digitali
-             SET ruolo_applicativo = 'DISABILITATO'::config.ruolo_applicativo,
-                 attivo = false
-           WHERE id = %s$$,
+        $$SELECT dbops.fn_pgtap_imposta_veste(%s, '{"ruolo_applicativo": "DISABILITATO", "attivo": false}'::jsonb)$$,
         (SELECT identita_id FROM _op))),
     'E_RUOLO_APPLICATIVO_RITIRATO',
     '3) spegnere cambiando il tipo in DISABILITATO: E_RUOLO_APPLICATIVO_RITIRATO');
@@ -109,7 +106,8 @@ SELECT is(
 -- ============================================================
 -- 4-7. L'operatore spento
 -- ============================================================
-UPDATE anagrafiche.identita_digitali SET attivo = false
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', false))
+  FROM anagrafiche.identita_digitali idg
  WHERE id = (SELECT identita_id FROM _op);
 
 SELECT is(
@@ -132,7 +130,8 @@ SELECT ok(
         LIKE '%' || (SELECT username FROM _op) || '%',
     '6) ...e la frase nomina lo username');
 
-UPDATE anagrafiche.identita_digitali SET attivo = true
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', true))
+  FROM anagrafiche.identita_digitali idg
  WHERE id = (SELECT identita_id FROM _op);
 
 SELECT is(
@@ -152,15 +151,14 @@ CREATE TEMP TABLE _sr_cl AS
 SELECT dbops.fn_pgtap_crea_soggetto_ruolo((SELECT soggetto_id FROM _op), 'CL') AS sr_id;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-UPDATE anagrafiche.identita_digitali SET attivo = false
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', false))
+  FROM anagrafiche.identita_digitali idg
  WHERE id = (SELECT identita_id FROM _op);
 
 SELECT is(
     dbops.fn_pgtap_codice_errore(format(
-        $$UPDATE anagrafiche.identita_digitali
-             SET soggetto_ruolo_id = %s
-           WHERE id = %s$$,
-        (SELECT sr_id FROM _sr_cl), (SELECT identita_id FROM _op))),
+        $$SELECT dbops.fn_pgtap_imposta_veste(%s, jsonb_build_object('soggetto_ruolo_id', %s))$$,
+        (SELECT identita_id FROM _op), (SELECT sr_id FROM _sr_cl))),
     'E_SOGGETTI_RUOLI',
     '8) la veste OPERATORE spenta e'' controllata: su un ruolo che non e'' RIS_UMANA, E_SOGGETTI_RUOLI');
 
@@ -170,7 +168,8 @@ SELECT is(
 -- La veste A torna accesa; B e' una seconda veste OPERATORE della stessa
 -- credenziale, spenta e piu' recente (id maggiore: nella stessa transazione
 -- data_insert e' lo stesso now(), e lo spareggio e' l'id).
-UPDATE anagrafiche.identita_digitali SET attivo = true
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', true))
+  FROM anagrafiche.identita_digitali idg
  WHERE id = (SELECT identita_id FROM _op);
 
 CREATE TEMP TABLE _b AS
@@ -191,7 +190,8 @@ SELECT is(
     'true|OPERATORE',
     '9) accesa + spenta piu'' recente: la veste di riferimento e'' l''accesa, e il profilo si legge');
 
-UPDATE anagrafiche.identita_digitali SET attivo = false
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', false))
+  FROM anagrafiche.identita_digitali idg
  WHERE id = (SELECT identita_id FROM _op);
 
 SELECT is(
@@ -207,7 +207,7 @@ SELECT is(
 -- ============================================================
 -- Si toglie la seconda veste per avere UNA veste spenta: con due l'invito
 -- non sa quale riaccendere (PIU_VESTI_SPENTE, rev 20260925-53).
-DELETE FROM anagrafiche.identita_digitali WHERE id = (SELECT id FROM _b);
+SELECT dbops.fn_pgtap_cancella_veste((SELECT id FROM _b));
 
 SELECT is(
     (SELECT (script.fn_check_operatore_invitabile(o.auth_user_id) ->> 'invitabile')

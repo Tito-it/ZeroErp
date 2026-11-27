@@ -100,8 +100,8 @@ SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('scope ef spento');
 
 -- Lo spegnimento e' un UPDATE dopo l'accensione: il percorso con cui una veste
 -- viene dismessa davvero.
-UPDATE anagrafiche.identita_digitali
-   SET attivo = false
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', false))
+  FROM anagrafiche.identita_digitali idg
  WHERE id = (SELECT identita_id FROM _t_op_spento);
 
 -- Le tabelle che le asserzioni leggono: idx 1 = acceso, idx 2 = spento.

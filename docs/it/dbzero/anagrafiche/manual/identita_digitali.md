@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.identita_digitali`
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -87,6 +87,19 @@ tipo di veste): la veste revocata non si accende, e sulla stessa coppia non nasc
 segno lo scrivono e lo tolgono solo i verbi (la revoca, il nuovo invito con `anagrafiche.fn_togli_revoca_veste`, la
 riattivazione di un utente tecnico); una veste revocata non si cancella e non cambia coppia. Il perché e il percorso
 completo sono nella guida [Risorse umane e accessi](/guide/risorse-umane-e-accessi#la-revoca).
+
+---
+
+### Una veste nasce spenta, e si scrive dai verbi
+
+`attivo` ha `DEFAULT false`: una veste inserita senza dire altro nasce spenta, e la accendono l'invito, la conferma
+o un verbo che lo dichiara (`script.fn_crea_utente_tecnico` fa nascere accesa la veste tecnica). Le scritture dello
+stato passano dai verbi: l'accensione (`anagrafiche.fn_accendi_veste`, senza permesso: la chiamano il link anonimo
+dell'invito e la persona stessa), la revoca e il nuovo invito, l'invito spedito
+(`anagrafiche.fn_segna_invito_inviato`, col permesso del tipo di veste), la riattivazione di un utente tecnico.
+L'applicazione legge e inserisce le vesti, ma non le aggiorna e non le cancella (lista `v_tabelle_app_solo_insert`
+del loop dei grant). I test mettono una veste nello stato del caso con `dbops.fn_pgtap_imposta_veste`, e la tolgono
+con `dbops.fn_pgtap_cancella_veste`: partono solo dove sono ammessi i dati di sviluppo.
 
 ---
 
@@ -216,6 +229,11 @@ zero, dove Liquibase gira prima delle migrazioni Django, manca.
 * `db/pgtap/anagrafiche/test-area-accessi-v1.sql` — la natura della credenziale e la categoria.
 * `db/pgtap/anagrafiche/test-veste-revocata-v1.sql` — il segno della revoca, il guard, i due verbi col loro permesso,
   lo stato `REVOCATA`.
+* `db/pgtap/anagrafiche/test-veste-accensione-invito-fixture-v1.sql` — la veste che nasce spenta, l'accensione senza
+  utente in sessione, l'invito spedito col suo permesso, la fixture dei test, lo stato `REVOCATA` nell'aggregato di
+  `anagrafiche.vw_accessi_altri`.
+* `db/pgtap/anagrafiche/test-vesti-postura-app-v1.sql` — la postura dell'applicazione: legge e inserisce, non
+  aggiorna e non cancella.
 
 ---
 

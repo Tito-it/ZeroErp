@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il ritiro di anagrafiche.fn_crea_operatore_v2 (S22, D-G2-2; passo 3c-1).
+#
+#   L'involucro del nome storico (20261125-68) non ha piu' chiamanti:
+#   · il backend chiama anagrafiche.fn_crea_operatore dal passo 3b (B5);
+#   · nel database fn_crea_primo_amministratore e
+#     dbops.fn_pgtap_crea_operatore_umano passano dalla primitiva
+#     anagrafiche.fn_applica_crea_operatore (giro 10-bis); pg_depend non ha
+#     dipendenti (dbdev, 2026-11-27). Ne parla solo un commento nel corpo di
+#     anagrafiche.fn_crea_auth_user, che si corregge quando la funzione si
+#     riscrive.
+#
+#   ⛔ La fase: 90_end, dopo il 20261126-25. Quel changeSet ha una
+#   preCondition HALT che conta sette funzioni riservate, fn_crea_operatore_v2
+#   compresa (linee-guida-sql §11.14: un oggetto si ritira nella fase
+#   dell'ultimo changeSet che lo pretende). Da zero un DROP in 20_code girerebbe
+#   prima e fermerebbe il migrate.
+#
+#   DROP senza CASCADE: un dipendente che non si vede fermerebbe il changeSet
+#   invece di sparire con la funzione. IF EXISTS: idempotente, senza
+#   preCondition (§11.13). La voce nell'elenco v_fn_riservate del loop dei
+#   grant e in provision_zeroerp.sql si toglie nello stesso giro: un nome che
+#   non c'e' non fa niente, ma l'elenco dice cosa e' riservato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261127-06-drop-fn-crea-operatore-v2-mctit.yaml
+
+  - changeSet:
+      id: 20261127-06-drop-fn-crea-operatore-v2
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritiro di anagrafiche.fn_crea_operatore_v2: l'involucro del nome storico non ha piu' chiamanti,
+        il verbo e' anagrafiche.fn_crea_operatore.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_crea_operatore_v2(
+                  anagrafiche.soggetti.id%TYPE,
+                  anagrafiche.soggetti.cognome%TYPE,
+                  anagrafiche.soggetti.nome%TYPE,
+                  anagrafiche.soggetti.codice_fiscale%TYPE,
+                  text,     -- colonna di django.auth_user: niente %TYPE
+                  text,     -- colonna di django.auth_user: niente %TYPE
+                  text,     -- colonna di django.auth_user: niente %TYPE
+                  anagrafiche.risorse_umane.qualifica_id%TYPE,
+                  anagrafiche.risorse_umane.unita_organizzativa_id%TYPE,
+                  anagrafiche.soggetti.data_nascita%TYPE,
+                  anagrafiche.soggetti.sesso%TYPE,
+                  boolean,  -- un interruttore del chiamante
+                  anagrafiche.risorse_umane.valido_dal%TYPE,
+                  anagrafiche.risorse_umane.valido_al%TYPE,
+                  anagrafiche.soggetti.comune_id%TYPE,
+                  anagrafiche.indirizzi_dettaglio.id%TYPE,
+                  anagrafiche.indirizzi_dettaglio.id%TYPE,
+                  integer); -- id di django.auth_user: niente %TYPE
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              SELECT 1;  -- forward-only: l'involucro e' nel 20261125-68

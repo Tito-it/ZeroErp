@@ -5,7 +5,7 @@
 CREATE FUNCTION fn_accendi_veste(p_identita_id bigint, p_auth_user_id integer, p_vesti config.ruolo_applicativo[])
 ```
 
-> 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
+> 🔐 **Sicurezza**: `SECURITY DEFINER` — gira con i privilegi dell'owner `zeroerp_owner`: GRANT e RLS sono i suoi, non quelli di chi la chiama.
 
 **Definizione completa:**
 
@@ -15,6 +15,8 @@ CREATE FUNCTION fn_accendi_veste(p_identita_id bigint, p_auth_user_id integer, p
 CREATE OR REPLACE FUNCTION anagrafiche.fn_accendi_veste(p_identita_id bigint, p_auth_user_id integer, p_vesti config.ruolo_applicativo[] DEFAULT NULL::config.ruolo_applicativo[])
  RETURNS boolean
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
     v_attivo anagrafiche.identita_digitali.attivo%TYPE;
@@ -63,7 +65,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_accendi_veste(p_identita_id bigint, p_auth_user_id integer, p_vesti config.ruolo_applicativo[])
-IS 'BB (2026-10-18): accende la veste p_identita_id (anagrafiche.identita_digitali.attivo = true) della credenziale p_auth_user_id, se e'' fra le vesti p_vesti (NULL = qualunque). Ritorna true se la veste c''e'' (accesa adesso o gia'' accesa: in quel caso nessuna scrittura), false se non c''e'', non e'' di quella credenziale o non e'' fra le vesti ammesse. Argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Coerenza, natura della credenziale, unicita'' della veste attiva e sincronizzazione di auth_user.is_active: i trigger della tabella. Non controlla il token dell''invito ne'' il permesso (backend). INVOKER. Regola del 2: sede unica dell''UPDATE che era in AuthRepository.attiva_identita (2b-2) e in dbops.fn_pgtap_crea_operatore_umano; la usa il verbo dei dati di sviluppo (le vesti nascono accese). Brief: brief-db-processi-accensione-per-ambiente (2b-3).';
+IS 'Accende la veste p_identita_id (anagrafiche.identita_digitali.attivo = true) della credenziale p_auth_user_id, se e'' fra le vesti p_vesti (NULL = qualunque). Ritorna true se la veste c''e'' (accesa adesso, o gia'' accesa e allora senza scrivere), false se non c''e'', non e'' di quella credenziale o non e'' fra le vesti ammesse. Argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Una veste revocata non si accende: la ferma anagrafiche.trgfn_identita_digitali_guard_revoca (E_VESTE_REVOCATA). Coerenza, natura della credenziale, unicita'' della veste accesa e sincronizzazione di auth_user.is_active: i trigger della tabella. SECURITY DEFINER, search_path fissato, senza guard di permesso: la chiamano richieste senza un amministratore, il link dell''invito (anonimo: il controllo e'' il token, che il backend consuma nella stessa transazione) e la persona che accende una propria veste. E'' la sede unica dell''accensione: la usano anche il verbo dei dati di sviluppo, anagrafiche.fn_crea_primo_amministratore e dbops.fn_pgtap_crea_operatore_umano.';
 ```
 
 </div>

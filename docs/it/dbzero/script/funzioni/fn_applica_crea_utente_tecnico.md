@@ -191,10 +191,13 @@ BEGIN
     -- 4. L'identita': OPERATORE (ogni policy RLS lo pretende in
     --    AND) + flag tecnica, che sceglie il ramo PROC_AUTO del
     --    guard di coerenza.
+    --    ⭐ Nasce ACCESA, e lo dice: la tabella fa nascere una
+    --    veste spenta (DEFAULT false), un utente tecnico lavora
+    --    da subito.
     INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, tecnica)
+        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, tecnica, attivo)
     VALUES (v_sog_ruolo_id, v_auth_user_id,
-            'OPERATORE'::config.ruolo_applicativo, true)
+            'OPERATORE'::config.ruolo_applicativo, true, true)
     RETURNING id INTO v_identita_id;
 
     -- 5. ⭐ IL PERIMETRO. Una riga sola, perche' la tabella e'
@@ -221,7 +224,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_applica_crea_utente_tecnico(p_processo_codice text, p_emittente_codice character varying, p_profilo_codice character varying)
-IS 'Primitiva: Crea l''utente tecnico di un processo automatico PER UN EMITTENTE: utente Django con password inutilizzabile e username processo@emittente, soggetto dedicato col suo contatto, soggetto_ruolo PROC_AUTO, identita'' OPERATORE col flag tecnica, la riga di perimetro in config.user_emittenti_fiscali e il legame in dbops.processi_identita. Ritorna l''auth_user_id. ⭐ L''emittente e'' OBBLIGATORIO e costitutivo: config.user_emittenti_fiscali e'' 1-a-1 sull''utente, quindi un processo che serve N emittenti ha N utenti tecnici. ⚠️ La funzione non SCEGLIE l''emittente (D-9), lo riceve da chi scrive la chiamata; lo cerca, come il profilo, con script.fn_codice_normalizzato, e compone lo username col codice SALVATO dell''emittente. Il codice del processo resta com''e'' (dbops.processi e'' in eccezione a CODICE_MAIUSCOLO). Il profilo e'' facoltativo e di norma non si passa; se indicato dev''essere AD_HOC, e il binding lo scrive config.fn_applica_lega_profilo_identita. ⛔ Mai SUPER_ADMIN. Accetta i canali eleggibili all''identita'' tecnica, CODA_AUTOMATICA compresa; il canale CODA «umano» si rifiuta, perche'' li'' l''identita'' la porta l''operatore che accoda. Processo inesistente: E_PROCESSO_NON_TROVATO; username gia'' presente: E_UTENTE_TECNICO_DA_RIATTIVARE, che indica il verbo giusto, script.fn_riattiva_utente_tecnico. Il contatto lo scrive anagrafiche.fn_crea_contatto, col tipo proposto (script.fn_tipo_contatto_proposto_id); lo stato del soggetto e'' lo stato proposto (script.fn_stato_proposto_id). Tutti e due li chiede col proprio nome, il livello «function» della cascata degli override. Non chiede permessi, e l''applicazione non la esegue: la chiamano il verbo script.fn_crea_utente_tecnico e la fixture dei pgTAP dbops.fn_pgtap_fixture_crea_utente_tecnico. Testi d''errore e chiavi della configurazione proposta portano il nome del verbo.';
+IS 'Primitiva: Crea l''utente tecnico di un processo automatico PER UN EMITTENTE: utente Django con password inutilizzabile e username processo@emittente, soggetto dedicato col suo contatto, soggetto_ruolo PROC_AUTO, identita'' OPERATORE col flag tecnica, accesa (la tabella la farebbe nascere spenta), la riga di perimetro in config.user_emittenti_fiscali e il legame in dbops.processi_identita. Ritorna l''auth_user_id. ⭐ L''emittente e'' OBBLIGATORIO e costitutivo: config.user_emittenti_fiscali e'' 1-a-1 sull''utente, quindi un processo che serve N emittenti ha N utenti tecnici. ⚠️ La funzione non SCEGLIE l''emittente (D-9), lo riceve da chi scrive la chiamata; lo cerca, come il profilo, con script.fn_codice_normalizzato, e compone lo username col codice SALVATO dell''emittente. Il codice del processo resta com''e'' (dbops.processi e'' in eccezione a CODICE_MAIUSCOLO). Il profilo e'' facoltativo e di norma non si passa; se indicato dev''essere AD_HOC, e il binding lo scrive config.fn_applica_lega_profilo_identita. ⛔ Mai SUPER_ADMIN. Accetta i canali eleggibili all''identita'' tecnica, CODA_AUTOMATICA compresa; il canale CODA «umano» si rifiuta, perche'' li'' l''identita'' la porta l''operatore che accoda. Processo inesistente: E_PROCESSO_NON_TROVATO; username gia'' presente: E_UTENTE_TECNICO_DA_RIATTIVARE, che indica il verbo giusto, script.fn_riattiva_utente_tecnico. Il contatto lo scrive anagrafiche.fn_crea_contatto, col tipo proposto (script.fn_tipo_contatto_proposto_id); lo stato del soggetto e'' lo stato proposto (script.fn_stato_proposto_id). Tutti e due li chiede col proprio nome, il livello «function» della cascata degli override. Non chiede permessi, e l''applicazione non la esegue: la chiamano il verbo script.fn_crea_utente_tecnico e la fixture dei pgTAP dbops.fn_pgtap_fixture_crea_utente_tecnico. Testi d''errore e chiavi della configurazione proposta portano il nome del verbo.';
 ```
 
 </div>

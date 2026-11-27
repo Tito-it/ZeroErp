@@ -159,8 +159,8 @@ SELECT ok(
 -- =========================================================
 -- 7) Disattivo identita FORNITORE -> match precedente ora false
 -- =========================================================
-UPDATE anagrafiche.identita_digitali
-   SET attivo = false
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', false))
+  FROM anagrafiche.identita_digitali idg
  WHERE id = (SELECT identita_id FROM _t_id WHERE idx = 1);
 
 SELECT ok(

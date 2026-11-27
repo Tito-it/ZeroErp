@@ -118,8 +118,8 @@ SELECT is(
 -- ============================================================
 -- 6-8) ⭐ Veste SPENTA: invitabile — e is_active, last_login non contano
 -- ============================================================
-UPDATE anagrafiche.identita_digitali
-   SET attivo = false
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('attivo', false))
+  FROM anagrafiche.identita_digitali idg
  WHERE id = (SELECT identita_id FROM tmp_inv);
 
 UPDATE django.auth_user
@@ -146,8 +146,8 @@ SELECT isnt(
 -- ============================================================
 -- 9) Veste spenta FUORI dalla sua finestra (comincia fra dieci giorni)
 -- ============================================================
-UPDATE anagrafiche.identita_digitali
-   SET valido_dal = script.fn_data_operativa() + 10
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_dal', script.fn_data_operativa() + 10))
+  FROM anagrafiche.identita_digitali idg
  WHERE id = (SELECT identita_id FROM tmp_inv);
 
 SELECT is(
@@ -156,8 +156,8 @@ SELECT is(
     'false|VESTE_FUORI_FINESTRA|amministrazione.operatori.invito_reason.veste_fuori_finestra',
     '9) veste spenta fuori finestra -> invitabile=false, VESTE_FUORI_FINESTRA');
 
-UPDATE anagrafiche.identita_digitali
-   SET valido_dal = script.fn_data_operativa()
+SELECT dbops.fn_pgtap_imposta_veste(idg.id, jsonb_build_object('valido_dal', script.fn_data_operativa()))
+  FROM anagrafiche.identita_digitali idg
  WHERE id = (SELECT identita_id FROM tmp_inv);
 
 -- ============================================================
