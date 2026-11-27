@@ -255,6 +255,9 @@ Quando l'operatore costruisce o seleziona la utility di un BA, la combo deve mos
 Le righe non personalizzate **rimangono visibili** (politica ibrida): l'app applicherà
 i default di sistema. Le utility che mancano in (1) o in (2) sono **escluse**.
 
+> ⚠️ **Revocata il 2026-11-27** da Tid: `emittenti_fiscali_utilities` diventa anche l'elenco delle utility gestite
+> dall'azienda ([brief-db-utility-gestite-dall-emittente](../../work-in-progress/brief-db-utility-gestite-dall-emittente.md) §6). Resta qui come storia.
+>
 > **Decisione (politica filtro)**: politica ibrida (C). Confermata anche dopo verifica
 > che la matrice `emittenti_fiscali_utilities` rimane come "override parametri", non
 > come "whitelist abilitazione" — coerente con la memoria `feedback_slot_override_matrix`

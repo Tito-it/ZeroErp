@@ -647,6 +647,11 @@ arrotondamento).
 
 ### 6.1 Lista matrice utility per emittente
 
+> ⚠️ **Cambio di modello deciso il 2026-11-27, non ancora costruito** ([brief-db-utility-gestite-dall-emittente](/dev/work-in-progress/brief-db-utility-gestite-dall-emittente)): la tabella diventa anche
+> l'**elenco delle utility gestite** dall'azienda (riga accesa = utility attiva; un'azienda senza righe non ne gestisce
+> nessuna), e i parametri d'importo restano facoltativi sulla riga. Questa sezione descrive il funzionamento di oggi,
+> vero finché il giro DB non è applicato: la riscrive il team BE/FE nel giro del drawer (§8 del brief).
+
 | | |
 | --- | --- |
 | **Metodo** | `GET` |

@@ -27,6 +27,11 @@ minima. La riga è facoltativa: senza, valgono i parametri di sistema.
 
 ### ⭐ Una riga è un'eccezione, non una configurazione obbligatoria
 
+> ⚠️ **Cambio di modello deciso il 2026-11-27, non ancora costruito** ([brief-db-utility-gestite-dall-emittente](/dev/work-in-progress/brief-db-utility-gestite-dall-emittente)): la tabella diventa anche
+> l'**elenco delle utility gestite** dall'azienda (riga accesa = utility attiva; un'azienda senza righe non ne gestisce
+> nessuna), e i parametri d'importo restano facoltativi sulla riga. Questa sezione descrive il funzionamento di oggi,
+> vero finché il giro DB non è applicato: si riscrive in quel giro.
+
 Una riga per coppia azienda-utility (`uq_emittenti_fiscali_utilities_emittente_utility`). Nessuno la crea da sé:
 un'azienda nuova fattura con i parametri di sistema dell'utility (`config.utilities`) e, per il solo metodo, con
 la sua policy generale (`emittenti_fiscali.rounding_policy`).

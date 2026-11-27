@@ -260,6 +260,11 @@ gestore globale non tocca nessun cliente, e non si giudica.
 
 ### Le utilities: le eccezioni d'importo
 
+> ⚠️ **Cambio di modello deciso il 2026-11-27, non ancora costruito** ([brief-db-utility-gestite-dall-emittente](/dev/work-in-progress/brief-db-utility-gestite-dall-emittente)): la tabella diventa anche
+> l'**elenco delle utility gestite** dall'azienda (riga accesa = utility attiva; un'azienda senza righe non ne gestisce
+> nessuna), e i parametri d'importo restano facoltativi sulla riga. Questa sezione descrive il funzionamento di oggi,
+> vero finché il giro DB non è applicato: si riscrive in quel giro.
+
 Dal drawer «Gestisci utilities» il super admin vede la matrice delle utilities ammesse per il ruolo `EF` e, per
 ciascuna, può configurare un'**eccezione** dell'azienda: i decimali degli importi (da 0 a 2), il metodo di
 arrotondamento, le soglie minima e massima di fatturazione (tutte e due o nessuna). Senza una riga valgono i
