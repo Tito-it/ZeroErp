@@ -2,14 +2,16 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-27
 
-**Riparte: Tid**, con le decisioni di T8b (§25.3); intanto il **team BE/FE** con le richieste aperte dei giri
-precedenti. Il giro T8c è chiuso lato DB (§25.8). Lo stato di ogni giro sta nel piano a spunta del §0 e nella sua
+**Riparte: Tid**, con le decisioni di T8a (§25.2); il giro T8b è chiuso lato DB (applicato, pgTAP verdi, B-7,
+doc, commit: 2026-11-27, §25.9); intanto il **team BE/FE** con le richieste aperte
+dei giri precedenti. Il giro T8c è chiuso lato DB (§25.8). Lo stato di ogni giro sta nel piano a spunta del §0 e nella sua
 sezione: qui solo chi e dove.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | Tid | Le decisioni di T8b (D-T8b-1 … -4), poi quelle di T8a (D-T8a-1 … -12) | §25.3, §25.2 | — |
-| 2 | sessione DB | I giri T8b e T8a, poi un giro per tema: T12, T3, T10, T11 | §0 fase 8; §17.1 | 1; il via di Tid per ogni giro |
+| 1 | team BE/FE | La richiesta del giro T8b | §25.9.2 | — |
+| 2 | Tid | Le decisioni di T8a (D-T8a-1 … -12) | §25.2 | — |
+| 2-bis | sessione DB | Il giro T8a, poi un giro per tema: T12, T3, T10, T11 | §0 fase 8; §17.1 | 2; il via di Tid per ogni giro |
 | 3 | team BE/FE | La richiesta del giro T8c | §25.8.3 | — |
 | 4 | team BE/FE | Il censimento applicativo del giro 6 (chi scrive o cancella `emittenti_fiscali_billing_account`, chi conta sul BA senza collegamento o sulla sua cancellazione) | §24.8 | — |
 | 5 | team BE/FE | `test_gli_obbligatori_copiati_dal_primo`, da adeguare a D-T7a-4 | §21.7 | — |
@@ -18,7 +20,7 @@ sezione: qui solo chi e dove.
 | 8 | sessione DB | Il giro dei metadati, per ciò che i giri di codice non hanno già riscritto | §8 | 2 |
 | 9 | sessione DB | L'archiviazione in `work-done/`, col debito dei temi spostati nei loro brief | §11 | 2 … 8 |
 
-**Decisioni aperte di Tid:** D-T8b-1 … -4 (§25.3); D-T8a-1 … -12 (§25.2).
+**Decisioni aperte di Tid:** D-T8a-1 … -12 (§25.2).
 **Da committare:** niente.
 
 ## 0. Il piano da percorrere
@@ -124,7 +126,17 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] T8c: apply di `-75` su dbdev e scratch, pgTAP verdi (Tid, 2026-11-27); doc auto-generata rigenerata
   * [x] T8c: commit (2026-11-27, «DB: anagrafiche giro T8c, i ruoli d'impresa»)
   * [ ] T8c: la richiesta al BE (§25.8.3), da girare
-  * [ ] T8b: le decisioni D-T8b-1 … -4 (Tid, §25.3); poi il giro
+  * [x] T8b: l'analisi riverificata sul catalogo dopo il giro 6 e T8c: regge, quattro precisazioni (2026-11-27, §25.3)
+  * [x] T8b: le decisioni D-T8b-1 … -4, tutte come proposte; S15 (`trgfn_emittenti_fiscali_normalize`) resta a T11
+    (Tid, 2026-11-27, §25.5)
+  * [x] T8b: via di Tid (2026-11-27); range occupato `20261126-83 … -90` (da `scripts/prossimo_changeset.py`)
+  * [x] T8b: pgTAP rosso, changeSet `20261126-83 … -89`, CSV, pgTAP adeguati, guide e note, provati sullo scratch
+    (2026-11-27, §25.9)
+  * [x] T8b: apply di `20261126-83 … -89`, pgTAP verdi (Tid, 2026-11-27)
+  * [x] T8b: baseline B-7 sulle righe del giro, confronto verde (2026-11-27, §25.9)
+  * [x] T8b: doc auto-generata rigenerata (Tid, 2026-11-27)
+  * [x] T8b: commit (2026-11-27, «DB: anagrafiche giro T8b, l'emittente»)
+  * [ ] T8b: la richiesta al BE (§25.9.2), da girare
   * [ ] T8a: le decisioni D-T8a-1 … -12 (Tid, §25.2); poi il giro
   * [ ] Poi un giro per tema nell'ordine di §17.1: T12, T3, T10, T11
 * **Fase 9 — Il giro dei metadati** (§8)
@@ -2957,6 +2969,46 @@ Chiamanti BE di `_pk` (l'id può arrivare da una richiesta): `billing_account_re
 `billing_account_service.py`, `pratiche_repository.py`, `pipeline_repository.py`, `preventivi_repository.py`,
 `contratti_repository.py`; di `_id`: `commesse_repository.py`. Con D-T8b-1 **a** cambia prima il DB.
 
+**Riverificato sullo scratch il 2026-11-27, prima delle decisioni** (dopo il `-42` del giro 6 e T8c): la tabella regge.
+Corpi, vincoli, seed e chiamanti letti sul catalogo; nessuna misura sui dati. Quattro precisazioni.
+
+* **D-T8b-1: il NULL di `_id` resta il default, ed è portante.** `vendite.fn_get_or_create_lotto` →
+  `fn_resolve_lotto_utility_emittente` chiama `_id` con un BA che può essere NULL (un lotto non ne ha uno): il ripiego
+  sul default di `_id` è la sola strada di quel giro. La strada **a** rifiuta quindi un id **non NULL** che non è un BA;
+  `_pk` rifiuta già NULL e `<= 0`. I chiamanti DB sono una ventina, non solo quelli del BE: fra loro quattro funzioni di
+  insieme (`fn_list_{consumi,ddt,ordini,preventivi}_da_pushare`, `fn_select_attivita_fatturabili`,
+  `fn_contratti_addebiti_maturati_con_provenienza`) che chiamano `_id` riga per riga con un BA preso da una FK: il
+  controllo costa una lettura per indice per riga, e non deve fare altro. Dal giro 6 un BA nato ha sempre il suo
+  collegamento (nota `_emittente-del-billing-account`): fuori dal RETURNING dell'INSERT, i livelli 2 e 3 del lettore
+  rispondono **solo** a un id che non è un BA, cioè a un errore del chiamante.
+* **D-T8b-2: un chiamante in più, e la ragione per cui il caso è raggiungibile.** Oltre a `fn_ricalcola_totali_fattura`
+  e `fn_lookup_utilities_per_ba` c'è `vendite.fn_parametri_importo_riga`, chiamata dal trigger
+  `trgfn_fatture_righe_importo`; nel BE un test (`apps/vendite/tests/db/test_group_attivita_parametri_importo_db.py`).
+  Il ruolo non `EF` arriva perché `vendite.fatture.emittente_soggetto_ruolo_id` (e altre dieci colonne di `vendite`)
+  ha la FK su `soggetti_ruoli`, non su `emittenti_fiscali`: è il disegno di T12. Con T12 le fatture non lo porteranno
+  più, ma la funzione resta chiamabile con qualunque `bigint`, e il rifiuto è il contratto del lettore. **b** non
+  regge: con zero righe `fn_ricalcola_totali_fattura` risponde `E_CONFIG_MANCANTE` «utility mancante o sconosciuta»,
+  cioè la causa sbagliata. Resta **a**. La funzione è `BEGIN ATOMIC`: il rifiuto passa da una funzione che solleva, e
+  le zero righe sull'utility che manca restano (è il segnale che `fn_ricalcola_totali_fattura` legge).
+* **D-T8b-3: la ragione di `a05` regge anche a `varchar(32)`.** In maiuscolo la sigla si allunga (ß → SS): 32 `ß`
+  danno 64 caratteri, quindi giudicare prima di assegnare serve ancora. Cambia solo il numero, nel corpo, nel COMMENT
+  («oltre varchar(10)») e nel pgTAP `test-emittenti-fiscali-codice-forma.sql` (righe 26 e 148).
+* **D-T8b-4: frase, causa e soluzione ci sono, mancano `note` e `causa_fallimento`.** In `config.messaggi_errore` il
+  codice ha `messaggio`, `causa`, `soluzione` (scritte per chi sviluppa: «Verificare che un solo emittente abbia
+  is_default=true…»); in `config.codici_errore` sono vuote `note` e `causa_fallimento`. Il guard differito sta su
+  `emittenti_fiscali_billing_account` (`trg_emittenti_fiscali_ba_a10_default_guard_ins_upd_dlt`); la riga del
+  default non si cancella (`a05_block_delete`) e non si sposta (`a05_block_sposta`), e `uq_emittenti_fiscali_ba_default`
+  ferma il secondo: le zero predefinite si raggiungono solo dalla via di servizio, e il pgTAP costruito passa da lì.
+  Il corpo non ha lo `Scopo` e passa `TG_NAME` come nome della funzione. Nessun pgTAP prova il rifiuto di un ruolo non
+  `EF` (`E_SOGGETTI_RUOLI`) su `emittenti_fiscali`.
+
+Guide (`scripts/guide_coinvolte.py`, 8 oggetti, 2026-11-27): `emittenti-fiscali` §«Due chiavi per la stessa azienda»
+resta **sbagliata** (dice che i due involucri passano da una chiave all'altra: prendono tutti e due un BA), e il
+«Vedi anche» di riga 28 lo ripete; si riscrive nel giro. `soggetti-e-ruoli-anagrafici` e `pgtap-come-si-scrive-un-test`
+li nominano per altro: **coerenti**. Nota `_emittente-del-billing-account`: **coerente**, **indietro** con D-T8b-1 **a**.
+Orfani: `trgfn_emittenti_fiscali_normalize` (dettaglio interno, va con S15) e `vendite.fn_parametri_importo_riga`
+(dettaglio interno della fattura).
+
 ### 25.4 T8c — i ruoli d'impresa (S13, S56, S57, R-BE3; S12 spostata)
 
 ⚠️ **Il reseller esce da T8c** (Tid, 2026-11-27): S12a-S12d, S57d, S57e, `trgfn_resellers_normalize` e il COMMENT della
@@ -3034,8 +3086,12 @@ codici `E_FORNITORE_*` escono da T8c con D-18; si aggiungono le colonne modifica
     `gestori_utilities` non tocca questa decisione. Un elenco delle utility gestite da ciascun emittente sarebbe un
     cambio di modello che la revoca: tema a parte, non di T8c. ✅ Tid, 2026-11-27: `gestori_utilities` si ritira, e
     l'analisi va in [brief-db-utility-gestite-dall-emittente](brief-db-utility-gestite-dall-emittente.md), aperto, non iniziato.
-* Aperte, nell'ordine dei giri: T8b D-T8b-1 … -4 (§25.3); T8a D-T8a-1 … -12 (§25.2). Le
-  proposte sono nelle tabelle. Il fatto di §25.1 non chiede decisioni.
+* ✅ **T8b, tutte come proposte** (Tid, 2026-11-27), con le precisazioni della riverifica di §25.3; S15 resta a T11.
+  ⚠️ **Il codice di D-T8b-1 non è `E_PARAMETRO_INVALIDO`**: la proposta (2026-11-26) è più vecchia della decisione
+  di §24.9 (Tid, 2026-11-27), per cui «un id ben formato che non è un billing account» è `E_BILLING_ACCOUNT_NOT_FOUND`
+  (`NON_TROVATO`). Il giro applica quella decisione. `E_PARAMETRO_INVALIDO` resta a D-T8b-2 (il ruolo che non è un
+  emittente), come §24.9 lo tiene per «il ruolo che non è quello del BA».
+* Aperte: T8a D-T8a-1 … -12 (§25.2). Le proposte sono nella tabella. Il fatto di §25.1 non chiede decisioni.
 
 ### 25.6 Il piano di T8 (dopo le decisioni)
 
@@ -3263,3 +3319,106 @@ prima:
    acceso» anche per i canali spenti.
 5. I quattro codici nuovi nella tassonomia degli errori del BE e nelle chiavi i18n, se il BE li mappa.
 6. Conferma che `anagrafiche.gestori_utilities` non ha lettori nel backend (il `grep` del 2026-11-27 dice di no).
+
+### 25.9 Giro T8b — l'emittente: che cosa è scritto (2026-11-27: applicato, pgTAP verdi, committato)
+
+Al via di Tid (2026-11-27), decisioni tutte come proposte (§25.5), con le precisazioni della riverifica di §25.3 e
+il codice di D-T8b-1 preso dalla decisione di §24.9. Range `20261126-83 … -90`: usati `-83 … -89`, **il `-90` resta
+libero**. Il `-76` del giro T8c resta libero anche lui: `scripts/prossimo_changeset.py` dà il primo numero dopo il
+massimo. S15 (`trgfn_emittenti_fiscali_normalize`) resta a T11. **`-83 … -89` applicati da Tid, pgTAP verdi col
+runner (2026-11-27)**: compresi i casi che la prova da owner non poteva dire (il BA fuori dal perimetro, test 11 di
+`_pk` e 7 di `_id`). Doc auto-generata rigenerata da Tid, committato lo stesso giorno.
+
+**Baseline B-7** (2026-11-27): fotografia come app in sola lettura (`scripts/sql/codici_errore_famiglie_snapshot.sql`),
+uguale su scratch e dbdev. Toccate le **sole due righe del giro**, senza riordinare: `E_BILLING_ACCOUNT_NOT_FOUND`
+`NOT_FOUND` 1 → 3 (i due risolutori), `E_PARAMETRO_INVALIDO` 270 → 271 (il ramo `<= 0` di `_id`); famiglie invariate.
+⚠️ Il rifiuto di `fn_parametri_importo_utility` non è nella misura, per costruzione: `dbops.vw_codici_errore_forme_condizione`
+legge solo le funzioni plpgsql, e quella è `sql` `BEGIN ATOMIC`. Previsti +2 e misurato +1: si scrive il misurato.
+Confronto (`codici-errore-baseline.sh` sullo scratch): 213 codici, zero accumuli, zero ristretti, zero rientrati.
+Le altre differenze fra la baseline e la fotografia (una cinquantina di righe, codici nuovi e conteggi di altri
+cantieri, fra cui `E_SCRIPT_CHIAMATA_NON_VALIDA`, `E_TRIGGER_ARGOMENTI_INVALIDI`, `E_LOTTO_NON_TROVATO`, i codici
+della veste e della sorgente) non sono di questo giro e restano.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/anagrafiche/20261126-83` | `anagrafiche.fn_check_billing_account_esiste`, nuova: «l'id è un billing account?», `SECURITY DEFINER`, `BEGIN ATOMIC`, NULL → NULL (D-T8b-1) |
+| `20_code/anagrafiche/20261126-84` | `fn_get_emittente_fiscale_id`: `<= 0` → `E_PARAMETRO_INVALIDO`, un id che non è un BA → `E_BILLING_ACCOUNT_NOT_FOUND`; NULL resta la predefinita (il lotto); COMMENT al presente |
+| `20_code/anagrafiche/20261126-85` | `fn_get_emittente_fiscale_pk`: un id che non è un BA → `E_BILLING_ACCOUNT_NOT_FOUND`; COMMENT al presente |
+| `20_code/script/20261126-86` | solo il COMMENT di `script.fn_get_ba_emittente_sr_id`, al presente (il BA ha sempre il collegamento; il lettore non solleva, rifiutano gli involucri) |
+| `20_code/anagrafiche/20261126-87` | `fn_parametri_importo_utility`: un ruolo che non è un emittente, o NULL, → `E_PARAMETRO_INVALIDO`; resta `BEGIN ATOMIC`, il rifiuto è la prima istruzione (D-T8b-2) |
+| `20_code/anagrafiche/20261126-88` | `trgfn_emittenti_fiscali_guard_codice_forma`: solo commenti e COMMENT (la colonna è `varchar(32)`; il maiuscolo due volte è voluto, con la ragione) (D-T8b-3, §15.2) |
+| `20_code/anagrafiche/20261126-89` | `trgfn_emittenti_fiscali_default_guard`: Scopo, nome della funzione nel log al posto di `TG_NAME`, conteggi `bigint`, COMMENT; nessun predicato (D-T8b-4) |
+
+Attributi vivi invariati su ogni funzione toccata (`_id` resta `VOLATILE`, `_pk` e i parametri `STABLE`, nessuna
+`SET`); firme invariate, ri-ancorate con `%TYPE`. L'`EXECUTE` della funzione nuova lo danno i privilegi di default.
+
+CSV (i mirror sono `runOnChange`): `codici_errore.csv`, la nota di `E_EMITTENTE_DEFAULT_SINGLETON` (era `NULL`) e
+quella di `E_BILLING_ACCOUNT_NOT_FOUND` (nominava il solo lookup); `messaggi_errore.csv`, frase, causa e soluzione
+di `E_EMITTENTE_DEFAULT_SINGLETON` riscritte per chi usa il programma. ⚠️ **Correzione di D-T8b-4**:
+`causa_fallimento` resta `NULL` **di proposito** (il suo COMMENT: «decide il processo»; un valore solo su 1297
+codici): non era un vuoto da riempire.
+
+pgTAP: nuovi `anagrafiche/test-fn-get-emittente-fiscale-id-v1.sql` (7) e
+`anagrafiche/test-emittenti-fiscali-default-singleton-v1.sql` (4, **runner owner**: la via di servizio spegne il
+rifiuto della cancellazione, con `lock_timeout`). Adeguati `anagrafiche/test-fn-get-emittente-fiscale-pk.sql` (i
+test 6-9 provavano proprio i livelli di riserva su un id inventato: ora è `E_BILLING_ACCOUNT_NOT_FOUND`; nuovo 11, il
+BA fuori perimetro; plan 11), `vendite/test-parametri-importo-utility-v1.sql` (13, 14; plan 14),
+`anagrafiche/test-emittenti-fiscali.sql` (15, `E_SOGGETTI_RUOLI`; plan 15), `anagrafiche/test-emittenti-fiscali-codice-forma.sql`
+(solo la ragione del 9).
+
+**Prova sullo scratch** (`scripts/prova_changeset.py`, i sette changeSet, 2026-11-27; gira da owner):
+
+| pgTAP | senza | con |
+| --- | --- | --- |
+| `test-fn-get-emittente-fiscale-id-v1` | 4/7 (rossi 4, 5, 6: il contratto nuovo) | 7/7 |
+| `test-fn-get-emittente-fiscale-pk` | 9/11 (rossi 6, 7) | 11/11 |
+| `test-parametri-importo-utility-v1` | 12/14 (rossi 13, 14) | 14/14 |
+| `test-emittenti-fiscali`, `-default-singleton-v1`, `-codice-forma` | verdi (provano guard che c'erano) | verdi |
+| `test-fn-lookup-utilities-per-ba`, `-legge-il-ba-v1`, `script/test-ba-emittente-risoluzione-v1`, `test-guard-albero-ba-omogeneo-v1`, `test-ba-cambio-emittente-storia-v1`, `vendite/test-fn-list-ddt-da-pushare-v1`, `-genera-pratica-da-preventivo-v1`, `-commesse-core-functions-v1`, `-fn-create-contratto-v1`, `dbops/test-fn-pgtap-crea-fattura-v1` | verdi | verdi, uguali |
+| `rls/test-rls-billing-account-returning-secondo-emittente` | 9/10 | 9/10, lo stesso rosso: da owner il test di perimetro lo è per costruzione |
+
+Catalogo identico prima e dopo ogni prova. Guardrail dei changeSet (forme, `COMMENT` al presente, `runOnChange`):
+puliti. ⚠️ **Non provato**: `vendite/test-documenti-numerazione-trasloco-v1.sql` (non comincia con `BEGIN`, lo
+script non lo lancia); col runner dell'app il test 11 di `_pk` e il 7 di `_id` (il BA fuori dal perimetro: da owner
+la RLS non c'è, ed è quello il caso che prova la DEFINER); il risveglio dei mirror sui due CSV. I backfill di
+`80_data` che chiamano `_pk` (`20260501-17`, `20260526-07`, `20260601-24`) passano il BA di un documento, che ha la
+FK: non dipendono dal ramo nuovo. ⚠️ Baseline B-7 da riallineare dopo l'apply, sulle sole righe del giro: punti
+nuovi per `E_BILLING_ACCOUNT_NOT_FOUND` (+2) ed `E_PARAMETRO_INVALIDO` (+2, `_id` e i parametri), da misurare.
+⚠️ Superato: misurata e riallineata dopo l'apply, in testa a questa sezione.
+
+**Documentazione allineata nel giro**: guida `emittenti-fiscali` (§«Due chiavi per la stessa azienda» riscritta, la
+riga del «Vedi anche», la tabella dei rifiuti: il secondo gestore globale lo ferma l'indice, più i due rifiuti
+nuovi); nota `_emittente-del-billing-account` (i risolutori per chi scrive, il «Vedi anche»); pagine `manual/` di
+`fn_get_emittente_fiscale_id`, `fn_get_emittente_fiscale_pk`, `fn_parametri_importo_utility`,
+`trgfn_emittenti_fiscali_guard_codice_forma`, `trgfn_emittenti_fiscali_default_guard`, `script/fn_get_ba_emittente_sr_id`,
+e nuova `fn_check_billing_account_esiste`. `soggetti-e-ruoli-anagrafici` e `pgtap-come-si-scrive-un-test`:
+**coerenti**. ⚠️ Doc auto-generata da rigenerare dopo l'apply.
+
+#### 25.9.1 Garanzie ritirate
+
+* **«`fn_get_emittente_fiscale_id` e `_pk` rispondono sempre un'azienda a un id positivo»**: un id che non è un BA
+  ora solleva. Lettori lato DB (§25.3, una ventina): passano tutti il BA di una riga con la FK (documenti, commesse,
+  attività, contratti), o di un parametro già validato dal chiamante, o NULL (il lotto, che resta com'era). ⚠️ I
+  normalizzatori `BEFORE` di DDT e reso: su un BA inesistente prima parlava la FK (`23503`) dopo di loro, ora parla
+  `E_BILLING_ACCOUNT_NOT_FOUND`. Nessun lettore DB conta sulla risposta di riserva (provato sui pgTAP vicini).
+* **«`fn_parametri_importo_utility` risponde sempre qualcosa per un'utility che esiste»**: per un ruolo non `EF` ora
+  solleva. Lettori: `fn_ricalcola_totali_fattura` e `fn_parametri_importo_riga` (l'emittente della fattura),
+  `fn_lookup_utilities_per_ba` (da `_pk`, sempre un emittente): non ne dipendono finché le fatture portano un
+  emittente vero; la FK della fattura su `emittenti_fiscali` è T12.
+
+#### 25.9.2 La richiesta al team BE/FE (da girare: il giro è applicato, 2026-11-27)
+
+Censisci, oltre ai file noti, **ogni chiamante** delle funzioni qui sotto che conta sul comportamento di prima:
+
+1. **`anagrafiche.fn_get_emittente_fiscale_pk` e `fn_get_emittente_fiscale_id`**, file noti:
+   `billing_account_repository.py`, `valuta_resolver.py`, `billing_account_service.py`, `pratiche_repository.py`,
+   `pipeline_repository.py`, `preventivi_repository.py`, `contratti_repository.py`, `commesse_repository.py`. Un id
+   che non è un billing account risponde ora **`E_BILLING_ACCOUNT_NOT_FOUND`** (`NON_TROVATO`, 404 come per il
+   lookup di §24.9), non più l'azienda di chi agisce o la predefinita; `_id` con un id `<= 0` risponde
+   `E_PARAMETRO_INVALIDO`. Censisci chi conta su «un id qualunque riceve un'azienda» (test, mock, rami con un id
+   inventato) e chi dovrebbe passare dal BB `richiedi_billing_account_trovato` prima di chiamare.
+2. **DDT e resi con un billing account inesistente**: il rifiuto arriva ora da `E_BILLING_ACCOUNT_NOT_FOUND`, prima
+   dalla FK della testata (`23503`). Censisci chi traduce quella FK in un errore di campo.
+3. **`anagrafiche.fn_parametri_importo_utility`**: un ruolo che non è un emittente, o NULL, risponde
+   `E_PARAMETRO_INVALIDO`. File noto: `apps/vendite/tests/db/test_group_attivita_parametri_importo_db.py`.
+4. Nessun codice nuovo: `error_policies_generated.py` non cambia. Conferma.

@@ -29,6 +29,11 @@
 --   collegamento) e provavano il ripiego sulla predefinita: il caso non puo'
 --   piu' nascere, e provano il contratto nuovo.
 -- 14) Blocco disattivazione emittente con mapping
+-- 15) Un ruolo che non e' EF non diventa un emittente (E_SOGGETTI_RUOLI)
+--
+-- ⭐ rev 2026-11-27 (brief-db-revisione-anagrafiche §25.9, D-T8b-4): il 15. Il
+--   guard di ruolo dell'emittente (trgfn_emittenti_fiscali_guard_ruolo_emi_fis)
+--   non aveva un test del rifiuto.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -68,7 +73,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   La finestra la riapre il file, e dice da se' cosa vuole.
 SET CONSTRAINTS ALL DEFERRED;
 
-SELECT plan(14);
+SELECT plan(15);
 
 -- ============================================================
 -- 0) Costanti
@@ -582,6 +587,26 @@ SELECT CASE
         NULL,
         'Blocco disattivazione emittente con mapping BA')
 END;
+
+-- ============================================================
+-- 15) Un ruolo che non e' EF non diventa un emittente
+-- ============================================================
+-- Il soggetto 2 prende un secondo ruolo, VENDITORE: e' un ruolo vero, ma non
+-- quello di un'azienda che fattura.
+CREATE TEMP TABLE tmp_ruolo_non_ef AS
+SELECT script.fn_get_or_create_soggetto_ruolo(
+           p_soggetto_id  := (SELECT soggetto_id FROM tmp_soggetto_2),
+           p_cd_int_ruolo := 'VE') AS soggetto_ruolo_id;
+
+SELECT is(
+    dbops.fn_pgtap_codice_errore(format(
+        $$INSERT INTO anagrafiche.emittenti_fiscali (soggetto_ruolo_id, codice, brand_meta)
+          VALUES (%s, %L, %L::jsonb)$$,
+        (SELECT soggetto_ruolo_id FROM tmp_ruolo_non_ef),
+        'EH' || right((SELECT codice_ef1 FROM tmp_costanti_ef), 8),
+        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_ef))::text)),
+    'E_SOGGETTI_RUOLI',
+    '15) un ruolo che non e'' EF non diventa un emittente: E_SOGGETTI_RUOLI');
 
 SELECT * FROM finish();
 ROLLBACK;

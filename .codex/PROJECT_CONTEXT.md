@@ -263,8 +263,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `work-done/2026/brief-db-revisione-ui.md`, chiuso il 2026-11-23 (BE29 e il residuo di BE25 (2)). Aperto, non
   iniziato: il copione lo scrive il team BE/FE, poi il collaudo di Tid.
 - 📝 **Revisione dello schema `anagrafiche`** (`work-in-progress/brief-db-revisione-anagrafiche.md`): la documentazione
-  (giro 0, 2026-11-22) e poi un giro di codice per tema. Chiusi lato DB i giri 1-6 e T8c (2026-11-27); riparte Tid con
-  le decisioni di T8b, poi T8a, T12, T3, T10, T11; al team BE/FE le richieste dei giri 6 e T8c. Stato e piano nel §0
+  (giro 0, 2026-11-22) e poi un giro di codice per tema. Chiusi lato DB i giri 1-6 e T8c (2026-11-27); T8b
+  applicato, pgTAP verdi (`20261126-83 … -89`, 2026-11-27), chiuso lato DB e committato; poi le decisioni di T8a, e T12,
+  T3, T10, T11; al team BE/FE le richieste dei giri 6, T8c e T8b. Stato e piano nel §0
   del brief, chi riparte nella sua testata.
 - 📝 **Il reseller** (`work-in-progress/brief-db-reseller.md`, aperto, non iniziato, 2026-11-27): il codice senza generatore, il legame col billing account senza periodo né tipo di ruolo, il reseller della fattura preso dal legame più vecchio (ed è nella chiave che divide le fatture). Prima decisione di Tid, D-R-0: a che cosa serve oggi il reseller e chi scrive il legame.
 - 📝 **Le utility gestite da ciascun emittente** (`work-in-progress/brief-db-utility-gestite-dall-emittente.md`, aperto, non iniziato, 2026-11-27): un'analisi, se all'emittente serve l'elenco delle utility che gestisce. Oggi `emittenti_fiscali_utilities` è solo l'override dei parametri d'importo (politica ibrida C, `work-done/2026/refactor-operatore-emittenti.md` §3.2) e le utility ammesse le dice la matrice di sistema `config.utilities_tipi_ruolo`: un elenco per azienda revoca quella decisione. Nasce dal ritiro di `gestori_utilities` (T8c).

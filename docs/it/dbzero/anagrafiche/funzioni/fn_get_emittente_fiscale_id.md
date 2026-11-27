@@ -19,38 +19,69 @@ AS $function$
 -- Scopo: «quale emittente fattura questo billing account»,
 --   per lo SCRITTORE. Restituisce il soggetto_ruolo_id
 --   dell'emittente e SOLLEVA se non e' risolvibile.
--- La regola «mapping specifico, poi is_default» vive in
---   script.fn_get_ba_emittente_sr_id dal 2026-08-19 (P-6/5b):
---   qui resta il punto in cui un NULL diventa un errore di
---   dominio, perche' questa e' la funzione che
+-- La regola «quale emittente» vive in
+--   script.fn_get_ba_emittente_sr_id: qui restano il rifiuto
+--   dell'id sbagliato e il punto in cui un NULL diventa un
+--   errore di dominio, perche' questa e' la funzione che
 --   vendite.fn_build_fattura_key usa per scegliere il REGISTRO
 --   su cui numerare, e li' un NULL vorrebbe dire «numera dove
 --   capita».
 DECLARE
   v_emittente_id anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
 BEGIN
+  -- ⛔ UN ID CHE NON E' UN BILLING ACCOUNT SI RIFIUTA.
+  --   Ogni billing account ha il suo collegamento: i livelli di
+  --   riserva del lettore (l'azienda di chi agisce, la
+  --   predefinita) risponderebbero solo a un id sbagliato del
+  --   chiamante, e ne farebbero un'azienda. Il controllo e'
+  --   SECURITY DEFINER: un BA fuori dal perimetro di chi chiama
+  --   esiste, e risponde la sua azienda.
+  --   NULL non e' un id sbagliato: e' «nessun billing account»,
+  --   e scende al ripiego qui sotto.
+  IF p_billing_account_id <= 0 THEN
+    PERFORM script.fn_log_and_raise_error(
+      'anagrafiche',
+      'fn_get_emittente_fiscale_id',
+      'E_PARAMETRO_INVALIDO',
+      jsonb_build_object(
+        'detail', 'p_billing_account_id deve essere > 0',
+        'billing_account_id', p_billing_account_id
+      ),
+      NULL::uuid,
+      'p_billing_account_id deve essere > 0'
+    );
+  END IF;
+
+  IF NOT anagrafiche.fn_check_billing_account_esiste(p_billing_account_id) THEN
+    PERFORM script.fn_log_and_raise_error(
+      'anagrafiche',
+      'fn_get_emittente_fiscale_id',
+      'E_BILLING_ACCOUNT_NOT_FOUND',
+      jsonb_build_object(
+        'detail', 'p_billing_account_id non e'' un billing account',
+        'billing_account_id', p_billing_account_id
+      ),
+      NULL::uuid,
+      p_billing_account_id::text
+    );
+  END IF;
+
   v_emittente_id := script.fn_get_ba_emittente_sr_id(p_billing_account_id);
 
   -- ⚠️ IL RIPIEGO SENZA BILLING ACCOUNT, e perche' sta qui.
   --   La delegata corto-circuita sull'input NULL
   --   (`WHEN p_billing_account_id IS NULL THEN NULL`) e non
-  --   arriva mai al default. La versione storica di questa
-  --   funzione invece ci arrivava, e non per disegno: il suo
-  --   `WHERE billing_account_id = NULL` non trovava nulla e la
-  --   SELECT sul default rispondeva lo stesso.
-  --   ⭐ Comportamento nato per caso, ma PORTANTE:
-  --   vendite.fn_get_or_create_lotto chiama senza billing
-  --   account — un lotto non ne ha uno, raccoglie fatture di BA
-  --   diversi — e senza questo ripiego prende
-  --   E_EMITTENTE_DEFAULT_MISSING su un giro legittimo.
-  --   (Regressione del 20260819-03, vista il 2026-08-19.)
-  --   ⚠️ Il ramo NON scatta quando il BA c'e' ed e' solo non
-  --   mappato: li' la delegata ha gia' fatto COALESCE con il
-  --   default. Costa una query in piu' SOLO senza BA.
-  --   ⛔ NON si toglie il corto-circuito alla delegata: e' una
-  --   scelta esplicita di un altro cantiere e i suoi lettori si
-  --   aspettano NULL da un input nullo. Toglierlo sarebbe una
-  --   decisione di dominio, non la riparazione di un difetto.
+  --   arriva mai al default.
+  --   ⭐ Il ripiego e' PORTANTE: vendite.fn_get_or_create_lotto,
+  --   attraverso vendite.fn_resolve_lotto_utility_emittente,
+  --   chiama senza billing account — un lotto non ne ha uno,
+  --   raccoglie fatture di BA diversi — e senza questo ripiego
+  --   prende E_EMITTENTE_DEFAULT_MISSING su un giro legittimo.
+  --   Con un billing account il ramo non scatta: il lettore
+  --   risponde col suo collegamento.
+  --   ⛔ NON si toglie il corto-circuito alla delegata: i suoi
+  --   lettori (le policy del billing account) si aspettano NULL
+  --   da un input nullo.
   IF v_emittente_id IS NULL THEN
     SELECT m.emittente_soggetto_ruolo_id
       INTO v_emittente_id
@@ -78,7 +109,7 @@ END
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id bigint)
-IS 'Risolve «quale emittente fattura questo billing account» PER LO SCRITTORE: restituisce il soggetto_ruolo_id dell''emittente e SOLLEVA E_EMITTENTE_DEFAULT_MISSING se non e'' risolvibile. La regola «mapping specifico, poi is_default» vive in script.fn_get_ba_emittente_sr_id dal 2026-08-19 (P-6/5b); qui resta il punto in cui un NULL diventa un errore di dominio, perche'' e'' questa la funzione che vendite.fn_build_fattura_key usa per scegliere il REGISTRO su cui numerare — e li'' un NULL significherebbe «numera dove capita». ⚠️ CONSERVA UN RIPIEGO PROPRIO sul default per il caso SENZA billing account: la delegata corto-circuita sull''input NULL e non ci arriva, mentre la versione storica ci arrivava — non per disegno, ma perche'' il suo WHERE su NULL non trovava nulla e la SELECT sul default rispondeva lo stesso. E'' un comportamento nato per caso e diventato portante: vendite.fn_get_or_create_lotto chiama senza BA (un lotto non ne ha uno) e senza il ripiego prende E_EMITTENTE_DEFAULT_MISSING su un giro legittimo — regressione introdotta dal 20260819-03 e riparata qui. ⛔ Non si e'' tolto il corto-circuito alla delegata: e'' una scelta esplicita del cantiere perimetro emittente (§11.11) e i suoi lettori si aspettano NULL da un input nullo; cambiarlo e'' una decisione di dominio da prendere a parte. Il ramo non scatta per un BA esistente ma non mappato, dove la delegata ha gia'' fatto COALESCE. SECURITY INVOKER. rev 2026-08-19.';
+IS 'L''azienda che fattura un billing account, per chi SCRIVE: restituisce il soggetto_ruolo_id dell''emittente e solleva se non e'' risolvibile. La regola «quale emittente» e'' di script.fn_get_ba_emittente_sr_id, il collegamento del billing account in anagrafiche.emittenti_fiscali_billing_account; qui un''azienda non risolta diventa un errore di dominio, perche'' vendite.fn_build_fattura_key la usa per scegliere il registro su cui numerare. Rifiuta un id <= 0 (E_PARAMETRO_INVALIDO) e un id che non e'' un billing account (E_BILLING_ACCOUNT_NOT_FOUND, con anagrafiche.fn_check_billing_account_esiste, che vede anche i billing account fuori dal perimetro di chi chiama). Senza billing account (NULL) risponde l''azienda predefinita: e'' il giro del lotto, che non ha un billing account (vendite.fn_get_or_create_lotto, attraverso vendite.fn_resolve_lotto_utility_emittente), e il lettore su NULL risponde NULL. Senza un''azienda predefinita solleva E_EMITTENTE_DEFAULT_MISSING. SECURITY INVOKER.';
 ```
 
 </div>

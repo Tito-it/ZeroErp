@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_get_emittente_fiscale_pk`
 
-> **Ultimo aggiornamento**: 26 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,6 +13,7 @@
 >
 > * [script.fn_get_ba_emittente_sr_id](/dbzero/script/funzioni/fn_get_ba_emittente_sr_id) — la regola dei tre livelli, che questa funzione usa
 > * [anagrafiche.fn_get_emittente_fiscale_id](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_id) — la gemella che restituisce il ruolo dell'emittente
+> * [anagrafiche.fn_check_billing_account_esiste](/dbzero/anagrafiche/funzioni/fn_check_billing_account_esiste) — il controllo che l'id sia un billing account
 > * [script.trgfn_doc_guard_emittente_ba](/dbzero/script/funzioni/trgfn_doc_guard_emittente_ba) — il guard dei documenti, che confronta l'azienda del documento con questa
 
 ---
@@ -43,6 +44,12 @@ preventivi, ordini, DDT, resi e asset tengono l'`id`, commesse e fatture il ruol
 
 * **Il billing account è obbligatorio.** Un valore nullo o non positivo è rifiutato (`E_PARAMETRO_INVALIDO`): a
   differenza della gemella, qui non c'è il ripiego sulla predefinita senza billing account.
+* **L'id deve essere un billing account.** Un id positivo che non lo è è rifiutato
+  (`E_BILLING_ACCOUNT_NOT_FOUND`), in sessione e senza: i livelli di riserva del lettore (l'azienda di chi
+  agisce, la predefinita) gli darebbero un'azienda, e da lì un registro. Il controllo,
+  `anagrafiche.fn_check_billing_account_esiste`, vede tutti i billing account, anche quelli fuori dal perimetro
+  di chi chiama: un billing account di un'altra azienda risponde la sua azienda, come prima. La funzione dice
+  chi fattura, non chi vede.
 * **L'azienda risolta deve essere accesa.** Un'azienda spenta conta come non risolta. Il filtro è una difesa:
   un collegamento o la predefinita non possono puntare a un'azienda spenta, e un'azienda collegata non si
   spegne. Se il caso si presentasse, «non risolto» è la risposta giusta, non il ripiego su un'altra azienda.
@@ -51,25 +58,20 @@ preventivi, ordini, DDT, resi e asset tengono l'`id`, commesse e fatture il ruol
 
 ---
 
-### ⚠️ Che cosa oggi non copre
-
-* **Un billing account che non esiste** non è rifiutato: un id positivo senza collegamento riceve l'azienda di
-  chi agisce o la predefinita, come un billing account nell'istante della sua nascita.
-
----
-
 ### Codici errore
 
 * `E_PARAMETRO_INVALIDO` — il billing account manca o non è positivo.
+* `E_BILLING_ACCOUNT_NOT_FOUND` — l'id non è un billing account.
 * `E_EMITTENTE_DEFAULT_MISSING` — nessun livello risponde, o l'azienda risolta è spenta.
 
 ---
 
 ### Test
 
-* `db/pgtap/anagrafiche/test-fn-get-emittente-fiscale-pk.sql` — il guard sul parametro; i tre livelli, con la
-  coppia in sessione e senza sessione (test 6 e 7); il valore che è davvero l'`id` dell'emittente; la delega
-  esatta al lettore e l'assenza di una copia della regola nel corpo (test 9 e 10).
+* `db/pgtap/anagrafiche/test-fn-get-emittente-fiscale-pk.sql` — il guard sul parametro; l'id che non è un
+  billing account, in sessione e senza (test 6 e 7); il valore che è davvero l'`id` dell'emittente; la delega
+  esatta al lettore e l'assenza di una copia della regola nel corpo (test 9 e 10); il billing account fuori dal
+  perimetro di chi chiama (test 11).
 
 ---
 
@@ -81,6 +83,8 @@ preventivi, ordini, DDT, resi e asset tengono l'`id`, commesse e fatture il ruol
   guard di un documento.
 * 2026-11-26 — ogni billing account ha sempre il suo collegamento: i livelli dopo il primo riguardano solo la
   nascita.
+* 2026-11-27 — un id che non è un billing account è rifiutato (`E_BILLING_ACCOUNT_NOT_FOUND`): prima riceveva
+  l'azienda di chi agisce o la predefinita.
 
 ---
 
