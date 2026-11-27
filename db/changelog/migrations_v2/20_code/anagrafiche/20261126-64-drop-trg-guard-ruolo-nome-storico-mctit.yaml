@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DI RUOLO DELLE SPECIALIZZAZIONI GIRA UNA VOLTA SOLA
+#   Brief: brief-db-revisione-anagrafiche §25.1, §25.7 (T8c)
+#
+# -- IL DIFETTO -------------------------------------------------------
+#   Su un database ricostruito da zero sei specializzazioni hanno DUE
+#   trigger sulla stessa funzione di guard: trg_<t>_guard_ruolo_<r>_ins_upd
+#   e il montaggio della prima generazione, trg_<t>_ins_upd_check_ruolo_<r>.
+#   20251205-01 ha rinominato le funzioni (il trigger vecchio resta agganciato
+#   alla funzione col nome nuovo); 20251205-03 ha tolto con IF EXISTS un nome
+#   che da zero non e' mai esistito (trg_<t>_check_ruolo_<r>_ins_upd), e per
+#   gestori nessun nome. Il database di sviluppo ha un trigger solo: i doppi
+#   li ha tolti una correzione a mano, che nessun changeSet scrive.
+#   Effetto: il guard gira due volte (stessa frase, nessun danno), ma dev e
+#   CI divergono, e un test che conta i trigger di una tabella vede due numeri.
+#
+# -- LA CORREZIONE ----------------------------------------------------
+#   I sei DROP del nome storico, con IF EXISTS: sul database di sviluppo non
+#   ci sono e il comando non fa niente. Nessuna preCondition: l'idempotenza
+#   la da' il comando (linee-guida-sql §11.13). Il montaggio buono
+#   (trg_<t>_guard_ruolo_<r>_ins_upd) resta com'e'.
+#   bank_branches non c'entra: la sua funzione e' stata rinominata, ma il
+#   montaggio della prima generazione non c'e' su nessun database.
+#   Presidio: db/pgtap/anagrafiche/test-ruoli-impresa-psp-vettore-gestore-v1.sql
+#   (1, 2).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261126-64-drop-trg-guard-ruolo-nome-storico-mctit.yaml
+
+  - changeSet:
+      id: 20261126-64-drop-trg-guard-ruolo-nome-storico
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Toglie il secondo montaggio del guard di ruolo (nome della prima
+        generazione) da clienti, emittenti_fiscali, fornitori, gestori,
+        resellers e vettori. brief-db-revisione-anagrafiche §25.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_clienti_ins_upd_check_ruolo_cliente
+                  ON anagrafiche.clienti;
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_ins_upd_check_ruolo_emi_fis
+                  ON anagrafiche.emittenti_fiscali;
+              DROP TRIGGER IF EXISTS trg_fornitori_ins_upd_check_ruolo_fornitore
+                  ON anagrafiche.fornitori;
+              DROP TRIGGER IF EXISTS trg_gestori_ins_upd_check_ruolo_gestore
+                  ON anagrafiche.gestori;
+              DROP TRIGGER IF EXISTS trg_resellers_ins_upd_check_ruolo_reseller
+                  ON anagrafiche.resellers;
+              DROP TRIGGER IF EXISTS trg_vettori_ins_upd_check_ruolo_vettore
+                  ON anagrafiche.vettori;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il doppio montaggio era un difetto: non si rimette.
+              SELECT 1;

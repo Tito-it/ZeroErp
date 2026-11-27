@@ -1,6 +1,6 @@
 # Guida – Numerazione dei documenti e codici automatici
 
-> **Ultimo aggiornamento:** 14 settembre 2026
+> **Ultimo aggiornamento:** 27 novembre 2026
 >
 > **Destinatari:** chiunque debba capire come nasce un numero o un codice in ZeroErp — sviluppatori database, backend, frontend e analisti funzionali
 >
@@ -41,9 +41,9 @@ codice **nel momento in cui la riga viene creata**.
 prefisso = BAC     separatore = /     cifre = 7      →     BAC/0001234
 ```
 
-**Chi lo usa, oggi** — clienti, soggetti, fornitori, vettori, istanze di utility,
+**Chi lo usa, oggi** — clienti, soggetti, fornitori, vettori, PSP, istanze di utility,
 pratiche, preventivi, contratti, offerte commerciali, lotti di fatturazione.
-Dieci voci, e nessun documento di vendita.
+Undici voci, e nessun documento di vendita.
 
 ⭐ **Questa tabella descrive solo cose che genera davvero**: nessuna riga per i
 documenti che si numerano sui registri. Una riga che non conta più niente
@@ -118,7 +118,7 @@ momento vive di vita propria. Nessuno deve ricordarsi di riempirlo.
 | **Distinta contabile** *(dal 2026-09-15)* | **registro** | **registro** | alla creazione |
 | Preventivo, contratto, offerta | catalogo formati | catalogo formati | alla creazione |
 | Lotto di fatturazione | catalogo formati | catalogo formati | alla creazione |
-| Cliente, soggetto, fornitore, vettore, istanza, pratica | catalogo formati | catalogo formati | alla creazione |
+| Cliente, soggetto, fornitore, vettore, PSP, istanza, pratica | catalogo formati | catalogo formati | alla creazione |
 
 ### ⚠️ Tre modi diversi di *scrivere* l'identità, e conviene saperlo
 

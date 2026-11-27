@@ -75,8 +75,8 @@
 | trg_soggetti_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_gen_codice()` |
 | trg_soggetti_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_gen_codice()` |
 | trg_soggetti_a10_guard_cambio_natura_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_cambio_natura()` |
-| trg_soggetti_a10_guard_cf_piva_obbligatori_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori()` |
 | trg_soggetti_a10_guard_cf_piva_obbligatori_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori()` |
+| trg_soggetti_a10_guard_cf_piva_obbligatori_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori()` |
 | trg_soggetti_a10_guard_indirizzi_required_ins | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required()` |
 | trg_soggetti_a10_guard_indirizzi_required_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required()` |
 | trg_soggetti_a10_guard_obbligatori_ruoli_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_obbligatori_ruoli()` |
@@ -101,12 +101,12 @@
 | trg_soggetti_def_guard_dati_societari_required_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_dati_societari_required()` |
 | trg_soggetti_def_guard_dati_societari_required_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_dati_societari_required()` |
 | trg_soggetti_def_guard_forma_giuridica_natura_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_forma_giuridica_natura()` |
-| trg_soggetti_def_guard_soggetto_contatti_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_soggetto_contatti()` |
 | trg_soggetti_def_guard_soggetto_contatti_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_soggetto_contatti()` |
-| trg_soggetti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_soggetti_def_guard_soggetto_contatti_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_soggetto_contatti()` |
 | trg_soggetti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_soggetti_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('soggetto_id')` |
+| trg_soggetti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_soggetti_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('soggetto_id')` |
+| trg_soggetti_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('soggetto_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

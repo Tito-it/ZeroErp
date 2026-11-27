@@ -416,8 +416,7 @@ resta scritto e dormiente.
 stata abilitata deve comunque poter approvare fatture, si registra un
 override individuale sull'azione (identificata dal suo codename Django),
 con abilitazione positiva e motivo (es. "Autorizzato dal responsabile
-vendite"). Il motivo e' obbligatorio per audit: consente di tracciare
-perche' e da chi l'eccezione e' stata concessa.
+vendite"). Il motivo e' obbligatorio, come per ogni override: vedi qui sotto.
 
 **Chi scrive gli override.** Un override utente da' a una persona un potere
 che il suo profilo non le da': un operatore che potesse scriverne uno per se'
@@ -428,7 +427,27 @@ sola lettura per l'applicazione (§7.4), e le scrivono i verbi del SUPER_ADMIN:
 `config.fn_imposta_override_azioni`. Ognuno chiede il SUPER_ADMIN nella prima
 riga, come la schermata di amministrazione, e **sostituisce l'elenco** degli
 override di un utente con quello che riceve: l'elenco vuoto toglie tutte le
-eccezioni di quel tipo.
+eccezioni di quel tipo. I tre verbi scrivono attraverso una primitiva sola,
+`config.fn_applica_imposta_override`, che l'applicazione non esegue: le regole
+di una voce stanno li', una volta per le tre tabelle.
+
+**Ogni override ha un motivo.** L'audit dice chi ha scritto l'eccezione e
+quando; *perche'* lo dice solo il motivo, e un'eccezione ai permessi che
+nessuno sa piu' spiegare e' un'eccezione che nessuno osa togliere. Per questo
+la primitiva rifiuta una voce senza un motivo di testo non vuoto
+(`E_OVERRIDE_MOTIVO_OBBLIGATORIO`, sul campo `motivo`) e lo scrive ripulito
+dagli spazi. Vale per le tre tabelle e anche per la voce che **toglie**
+(`BLOCCATO`, `abilitata = false`): una restrizione e' un'eccezione al profilo
+quanto una concessione. Togliere una voce, invece, non chiede motivo: tolta
+l'eccezione resta il profilo, che non ha niente da spiegare, e chi l'ha tolta
+lo dice lo storico.
+
+La regola sta nella primitiva e non sulle colonne, che restano facoltative: le
+righe scritte prima della regola possono non avere il motivo. La riscrittura
+dell'elenco di quell'utente, che le rimanda tutte, lo chiede anche per loro: la
+schermata dei permessi chiede un motivo al salvataggio e lo scrive sulle voci
+cambiate e su quelle che non l'hanno. Lo stesso vale per i builder dei pgTAP,
+che riscrivono le voci che l'utente ha gia'.
 
 ### 4.9 Tabella `config.user_emittenti_fiscali`
 
@@ -1553,7 +1572,9 @@ la voce come «limitata dall'area».
 ### 13.2 L'audit degli override
 
 `/permessi-audit/` traccia la timeline degli override. La storia vive nelle tabelle
-dello schema `storico`, fra cui `storico.user_override_oggetti`.
+dello schema `storico`, fra cui `storico.user_override_oggetti`. Il chi e il quando li
+scrive l'audit; il perche' e' il `motivo` della voce, obbligatorio (§4.8, «Ogni
+override ha un motivo»): una voce tolta tiene il suo ultimo motivo nella storia.
 
 ### 13.3 Due difese che non si vedono a schermo
 

@@ -408,6 +408,7 @@ search:
 - [trgfn_ddt_guard_magazzino](funzioni/trgfn_ddt_guard_magazzino.md)
 - [trgfn_ddt_guard_transizione](funzioni/trgfn_ddt_guard_transizione.md) — (rev 2026-07-09)
 - [trgfn_ddt_guard_transizione_approvazione](funzioni/trgfn_ddt_guard_transizione_approvazione.md) — (rev 2026-07-09; rev 2026-09-24)
+- [trgfn_ddt_guard_vettore_attivo](funzioni/trgfn_ddt_guard_vettore_attivo.md) — La bolla che sceglie un vettore lo vuole acceso: quando nasce con un vettore, o quando il vettore cambia.
 - [trgfn_ddt_normalize](funzioni/trgfn_ddt_normalize.md) — Normalizza la testata della bolla di vendita, `BEFORE INSERT` e `BEFORE UPDATE` (`trg_ddt_normalize_ins_upd`): completa anno e data, eredita cliente, valuta ed emittente dall'ordine da cui la bolla nasce, e tiene destinatario e utility allineati al cliente.
 - [trgfn_ddt_riga_legame_guard](funzioni/trgfn_ddt_riga_legame_guard.md)
 - [trgfn_ddt_righe_componenti_guard_pending](funzioni/trgfn_ddt_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente di una riga DDT ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta proposta. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura. Se `ddt_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.

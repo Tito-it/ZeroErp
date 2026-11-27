@@ -32,7 +32,7 @@
 |---|---|---|
 | Python | da `.python-version` | Fonte unica di verità per la versione |
 | Django | da `backend/requirements.in` | DRF, SimpleJWT, drf-spectacular; versioni esatte nel lock `requirements.txt` |
-| PostgreSQL | 18 (CI) | PostGIS 3.6, pgTAP, pgAgent |
+| PostgreSQL | dall'immagine `postgres:` di `.github/workflows/ci-validate.yaml` | PostGIS, pgTAP, pgAgent; ⛔ la versione non si ricopia qui |
 | Liquibase | 5 Community | Migrazioni YAML in `db/changelog/migrations_v2/` |
 | Frontend Vue | da `frontend/package.json` | **Fonte unica di verità per le versioni** (Vue, Vite, PrimeVue, Pinia, Vue Router, vue-i18n, Axios; Node in `engines.node`): ⛔ non ricopiarle qui. Standard: `docs/it/dev/frontend/frontend-standards.md` + catalogo BB FE |
 
@@ -238,7 +238,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 ### 🟡 Altri cantieri aperti
 
 - 📝 **Lo schema `storico` scrivibile dall'app** (`work-in-progress/brief-db-storico-scrivibile-dall-app.md`, aperto, non iniziato, 2026-11-27): il tema che D-AL **a** ha tenuto fuori dal giro 10-quater di `work-done/2026/brief-db-porte-aperte-dalla-sola-guc.md` (le porte della sola GUC e le viste aggiornabili, chiuso e archiviato il 2026-11-27). Parte quando Tid lo mette in coda.
-- 📝 **Il motivo di un override utente è obbligatorio** (`work-in-progress/brief-db-motivo-override-obbligatorio.md`, aperto, non iniziato, 2026-11-27): la guida dei permessi §4.8 lo dice, ma le tre tabelle `user_override_*`, la primitiva, il BE e il pannello (che non ha il campo) lo lasciano vuoto. Tid ha scelto di correggere il codice; la regola va nella primitiva, poi BE/FE. Decise D-1 a, D-2 b, D-3 b (2026-11-27): manca il via.
+- 📝 **Il motivo di un override utente è obbligatorio** (`work-in-progress/brief-db-motivo-override-obbligatorio.md`, aperto, non iniziato, 2026-11-27): la guida dei permessi §4.8 lo dice, ma le tre tabelle `user_override_*`, la primitiva, il BE e il pannello (che non ha il campo) lo lasciano vuoto. Tid ha scelto di correggere il codice; la regola va nella primitiva, poi BE/FE. Decise D-1 a, D-2 b, D-3 b, D-4 no (2026-11-27); giro DB (`20261126-80` … `-82`, il codice `E_OVERRIDE_MOTIVO_OBBLIGATORIO`, §7) applicato su scratch e dbdev, pgTAP verdi col runner, B-7 verde il 2026-11-27: da committare; poi il passaggio BE/FE (§5, §7.5).
 - **Accessi: una credenziale, più vesti** (`work-in-progress/brief-be-accessi-credenziale-e-vesti.md`; il piano
   da cui nasce, `work-done/2026/piano-be-fe-accessi-credenziale-e-vesti.md`, è archiviato dal 2026-11-25 dopo la
   riverifica sul codice): restano R-4 (la veste revocata: D-4, A-6), che aspetta il brief DB sugli accessi deciso
@@ -262,23 +262,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - 📝 **Il collaudo a video della partenza delle liste dal preset** (`work-in-progress/brief-be-collaudo-partenza-liste-dal-preset.md`): il residuo di
   `work-done/2026/brief-db-revisione-ui.md`, chiuso il 2026-11-23 (BE29 e il residuo di BE25 (2)). Aperto, non
   iniziato: il copione lo scrive il team BE/FE, poi il collaudo di Tid.
-- 📝 **Revisione dello schema `anagrafiche`** (`work-in-progress/brief-db-revisione-anagrafiche.md`): censimento in
-  sola lettura fatto il 2026-11-22 (195 pagine `manual/`, nessuna allo standard; 56 oggetti senza pagina; il contenuto
-  falso e stantio per area; segnalazioni di codice da vagliare per ultime). Q1-Q8 decise da Tid lo stesso giorno. Giro
-  0a (area C: clienti, billing account, istanze, PDP; 63 pagine, due blocchi comuni, due guide) scritto e committato
-  il 2026-11-22, doc auto-generata rigenerata. Giro 0b (area A: soggetti, natura, dati societari, titoli IVA; 52
-  pagine, quattro blocchi, la guida) scritto e committato il 2026-11-22, doc auto-generata rigenerata. Giro 0c (area B: indirizzi, contatti,
-  catasto; 65 pagine, cinque blocchi, la guida nuova del catasto, due guide) scritto e committato il 2026-11-22, doc
-  auto-generata rigenerata. Giro 0d (area D: ruoli d'impresa e
-  banche; 46 pagine, il blocco dei guard di ruolo, la guida dei conti) scritto il 2026-11-22, con il pgTAP del catasto
-  ritirato, committato il 2026-11-22, doc auto-generata rigenerata. Q7 riaperta dalla risposta R-BE5 del BE: lo
-  storico di `indirizzi`, `indirizzi_dettaglio` e `config.stradario` diventa continuo (giro di codice, in coda). Giro 0e (area E: gli accessi; 23 pagine, i blocchi della
-  sincronizzazione e dell'ultimo SUPER_ADMIN, le due guide) scritto e committato il 2026-11-22, doc auto-generata rigenerata: il giro 0 è finito. Prossimo:
-  il vaglio delle segnalazioni S1-S68 (Tid), poi i giri di codice. Il 2026-11-23: il brief ha in testa il piano a spunta (§0)
-  e il vaglio per temi (§17, una decina di decisioni invece di 68); giro 1 (Q7, lo storico continuo di indirizzi, civici
-  e vie, `20261123-38` … `-42`) applicato coi pgTAP verdi e committato: la prova ha trovato `storico.indirizzi` che non
-  accettava nessuna versione. Il vaglio per temi è deciso da Tid il 2026-11-23 (§17.1: T6 e T9 in brief nuovi, S53
-  tema proprio T12, S4 la coppia CF e P.IVA). Giro 2 (T2) fatto il 2026-11-23: dentro `anagrafiche` niente da cambiare; deciso che l'app avrà solo `SELECT` sulle viste in tutto il database, lavoro e richiesta BE passati a `brief-db-porte-aperte-dalla-sola-guc` §5 e §4.1. Giro 3 (T5, il soggetto: natura, identificativo, ruoli; `20261123-48` … `-63`) scritto e provato il 2026-11-24, applicato da Tid su scratch e dbdev, pgTAP verdi, committato: normalizzazione di CF e P.IVA in fase `a01`, stato sotto la regola dell'identificativo (guard in `a05`), una natura scritta non si svuota, tipo del ruolo e soggetto dei dati societari bloccati, il doppione dall'indice. Giro 3-bis (D-T5-6 b, il tipo di contatto proposto, `20261123-68` … `-73`) applicato, verde e committato il 2026-11-24. T7 diviso in T7a (indirizzi) e T7b (contatti e catasto): giro 4, T7a (`20261123-74` … `-94`: requisito nuovo che non blocca chi esiste, via non risolta nel guard del civico, geoloc solo dal civico, sede unica di «obbligatorio per natura», forma dell'elemento decisa dal DB, `tipo_ruolo_id` integer) applicato, pgTAP verdi e doc rigenerata il 2026-11-24, committato; i passaggi al BE dei giri 3 e 4 fatti e committati il 2026-11-26 (PR #257). Giro 5, T7b (contatti e catasto, `20261125-36` … `-46`) applicato, verde, committato (PR #249), passaggio al BE fatto il 2026-11-26. Giro 5-bis (il titolo IVA che chiede la partita IVA) ritirato da Tid il 2026-11-26: il controllo esiste già. Giro 6, T4 (l'azienda del billing account: ogni BA sempre collegato, il BA non si cancella, l'albero a un livello, `20261126-26` … `-41`) applicato su scratch e dbdev, pgTAP verdi, doc rigenerata, committato il 2026-11-26 (PR #259); il suo passaggio al BE è da girare. Prossimo: T8 (ruoli d'impresa, conti, emittente), analizzato sul catalogo il 2026-11-26 (§25: proposta di tre giri T8a conti, T8b emittente, T8c ruoli d'impresa; decisioni di Tid aperte), poi T12, T3, T10, T11; in parallelo il rosso già presente della madre plurale (`FATT` non copiato, §21.7). Il 2026-11-27 Tid ha tolto il reseller da T8c: va nel brief suo.
+- 📝 **Revisione dello schema `anagrafiche`** (`work-in-progress/brief-db-revisione-anagrafiche.md`): la documentazione
+  (giro 0, 2026-11-22) e poi un giro di codice per tema. Chiusi lato DB i giri 1-6 e T8c (2026-11-27); riparte Tid con
+  le decisioni di T8b, poi T8a, T12, T3, T10, T11; al team BE/FE le richieste dei giri 6 e T8c. Stato e piano nel §0
+  del brief, chi riparte nella sua testata.
 - 📝 **Il reseller** (`work-in-progress/brief-db-reseller.md`, aperto, non iniziato, 2026-11-27): il codice senza generatore, il legame col billing account senza periodo né tipo di ruolo, il reseller della fattura preso dal legame più vecchio (ed è nella chiave che divide le fatture). Prima decisione di Tid, D-R-0: a che cosa serve oggi il reseller e chi scrive il legame.
 - 📝 **Le utility gestite da ciascun emittente** (`work-in-progress/brief-db-utility-gestite-dall-emittente.md`, aperto, non iniziato, 2026-11-27): un'analisi, se all'emittente serve l'elenco delle utility che gestisce. Oggi `emittenti_fiscali_utilities` è solo l'override dei parametri d'importo (politica ibrida C, `work-done/2026/refactor-operatore-emittenti.md` §3.2) e le utility ammesse le dice la matrice di sistema `config.utilities_tipi_ruolo`: un elenco per azienda revoca quella decisione. Nasce dal ritiro di `gestori_utilities` (T8c).
 

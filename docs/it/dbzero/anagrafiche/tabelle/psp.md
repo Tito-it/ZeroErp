@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Anagrafica PSP (Payment Service Provider)
+> Il payment service provider: la specializzazione del ruolo PSP di un soggetto, una per ruolo. I canali d'incasso di tipo PSP (pagamenti.enti_incasso) lo nominano col ruolo. Non si cancella; non si spegne finche' un suo canale e' acceso (E_PSP_ENTI_INCASSO_ATTIVI).
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -44,14 +44,19 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_psp_a10_delete_block_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_delete_block_by_guc('zeroerp.maintenance_ruoli_delete')` |
+| trg_psp_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_psp_gen_codice()` |
+| trg_psp_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_psp_gen_codice()` |
+| trg_psp_a10_guard_enti_incasso_attivi_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_psp_guard_enti_incasso_attivi()` |
+| trg_psp_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'E_CODICE_NON_MODIFICABILE', 'soggetto_ruolo_id', 'E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE')` |
 | trg_psp_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_psp_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
-| trg_psp_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_psp_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_psp_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_psp_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_psp_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_psp_guard_ruolo_psp_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_psp_guard_ruolo_psp()` |
+| trg_psp_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_psp_guard_ruolo_psp_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_psp_guard_ruolo_psp()` |
+| trg_psp_guard_ruolo_psp_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_psp_guard_ruolo_psp()` |
 | trg_psp_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('psp_id')` |
 | trg_psp_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('psp_id')` |
 

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Ruolo RES (rivenditori/vettore). Metadati generici, FK 1:1 al soggetto_ruolo.
+> Il vettore: la specializzazione del ruolo VT (vettore) di un soggetto, una per ruolo. La bolla di vendita lo nomina col ruolo (vendite.ddt.vettore_soggetto_ruolo_id). Un vettore spento resta sulle bolle che lo hanno gia' scelto, e non si sceglie su una bolla nuova.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -48,19 +48,19 @@
 | trg_vettori_a10_delete_block_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_delete_block_by_guc('zeroerp.maintenance_ruoli_delete')` |
 | trg_vettori_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_gen_codice()` |
 | trg_vettori_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_gen_codice()` |
-| trg_vettori_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'E_CODICE_NON_MODIFICABILE')` |
-| trg_vettori_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_vettori_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'E_CODICE_NON_MODIFICABILE', 'soggetto_ruolo_id', 'E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE')` |
 | trg_vettori_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
-| trg_vettori_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_vettori_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_vettori_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_vettori_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_vettori_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_vettori_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_vettori_guard_ruolo_vettore_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_guard_ruolo_vettore()` |
 | trg_vettori_guard_ruolo_vettore_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_guard_ruolo_vettore()` |
-| trg_vettori_norm_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_normalize()` |
+| trg_vettori_guard_ruolo_vettore_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_guard_ruolo_vettore()` |
 | trg_vettori_norm_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_normalize()` |
-| trg_vettori_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('vettori_id')` |
+| trg_vettori_norm_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_vettori_normalize()` |
 | trg_vettori_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('vettori_id')` |
+| trg_vettori_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('vettori_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

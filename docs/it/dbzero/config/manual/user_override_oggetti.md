@@ -34,7 +34,7 @@ La tabella **`config.user_override_oggetti`** consente di sovrascrivere il livel
 | `app_label` | Label app Django (es. `anagrafiche`) |
 | `model_name` | Nome model Django (es. `clienti`) |
 | `livello` | `config.livello_accesso`: TUTTO / LETTURA / BLOCCATO |
-| `motivo` | Motivazione dell'override |
+| `motivo` | Il perché dell'eccezione. Obbligatorio a ogni scrittura, anche per l'eccezione che toglie (`E_OVERRIDE_MOTIVO_OBBLIGATORIO`, dalla primitiva dei verbi); una riga scritta prima della regola può non averlo, e la prossima riscrittura dell'elenco lo chiede |
 | `valido_dal` / `valido_al` | Finestra temporale di validità |
 
 Il vincolo UNIQUE su `(auth_user_id, app_label, model_name)` garantisce un solo override per utente/model.

@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GESTORE E' UNO SOLO ANCHE FRA DUE SCRITTURE CONCORRENTI
+#   Brief: brief-db-revisione-anagrafiche §25.4 (S57a), §25.7 (D-T8c-13 a)
+#
+# -- IL DIFETTO -------------------------------------------------------
+#   Il singleton lo tiene solo anagrafiche.trgfn_gestori_guard, che cerca
+#   «un altro gestore» con LIMIT 1. Due INSERT in due transazioni aperte
+#   insieme non si vedono, passano tutti e due, e il sistema ha due
+#   gestori.
+#
+# -- LA CORREZIONE ----------------------------------------------------
+#   Un indice UNIQUE su un'espressione costante: ogni riga ha la stessa
+#   chiave, quindi ne entra una sola, e la seconda transazione aspetta la
+#   prima e poi fallisce (23505).
+#   ⭐ Le due sedi hanno due mestieri (D-T8c-13 a): il guard parla per primo,
+#   con E_GESTORE_SINGLETON_VIOLATO e la frase per l'operatore, nel caso
+#   normale; l'indice copre solo la concorrenza, dove il guard non puo'
+#   vedere. Lo dice il commento del corpo del guard (20261126-67).
+#   La tabella oggi ha al massimo una riga: l'indice nasce su ogni database.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261126-66-create-index-gestori-singleton-mctit.yaml
+
+  - changeSet:
+      id: 20261126-66-create-index-gestori-singleton
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Indice unico del singleton su anagrafiche.gestori: un gestore solo
+        anche fra due scritture concorrenti. brief-db-revisione-anagrafiche
+        §25.7 (D-T8c-13 a).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_gestori_singleton
+                  ON anagrafiche.gestori ((true));
+
+              COMMENT ON INDEX anagrafiche.uq_gestori_singleton IS
+                'Il gestore e'' uno solo: la chiave e'' la stessa per ogni riga, quindi ne entra una. Copre le scritture concorrenti; il caso normale lo rifiuta prima anagrafiche.trgfn_gestori_guard con E_GESTORE_SINGLETON_VIOLATO.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS anagrafiche.uq_gestori_singleton;

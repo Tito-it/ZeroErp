@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.gestori_utilities SI RITIRA
+#   Brief: brief-db-revisione-anagrafiche §25.5 (D-T8c-8, Tid 2026-11-27)
+#
+# -- PERCHE' ----------------------------------------------------------
+#   La tabella non ha lettori ne' scrittori: nessuna funzione, vista,
+#   trigger, pgTAP, file del backend o del frontend la nomina. Nasce nella
+#   prima generazione come gestori_utilities_ruoli, scritta da una factory
+#   del gestore che non esiste piu'. Quali utility sono attive sul sistema
+#   lo dice la matrice config.utilities_tipi_ruolo; i parametri d'importo
+#   di un'azienda stanno in anagrafiche.emittenti_fiscali_utilities. Se a
+#   un emittente serva l'elenco delle utility che gestisce e' un tema a
+#   parte: brief-db-utility-gestite-dall-emittente.
+#
+# -- CHE COSA PORTA VIA ------------------------------------------------
+#   La tabella, la sua sequenza (di proprieta' della colonna id), le due FK
+#   verso gestori e config.utilities, l'indice ix_gur_utility e il trigger
+#   di audit (generato: dal giro successivo il runner non lo cerca piu').
+#   Nessun trigger ATTIVO (la tabella non ha attivo) e nessuno storico.
+#   La riga di dbops.fk_index_policy che la nomina la toglie
+#   20261126-74 in 80_data.
+#
+# -- ORDINE ----------------------------------------------------------
+#   Nessun changeSet di 80_data o 90_end pretende la tabella: la nomina
+#   solo il CSV della policy degli indici, che e' testo (linee-guida-sql
+#   §11.14). IF EXISTS: su ogni database la tabella c'e', ma il DROP e'
+#   idempotente da se', senza preCondition (§11.13).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261126-65-drop-table-gestori-utilities-mctit.yaml
+
+  - changeSet:
+      id: 20261126-65-drop-table-gestori-utilities
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira anagrafiche.gestori_utilities, tabella senza lettori ne'
+        scrittori. brief-db-revisione-anagrafiche §25.5 (D-T8c-8).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TABLE IF EXISTS anagrafiche.gestori_utilities;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Una tabella senza lettori ne' scrittori non si ricrea.
+              SELECT 1;

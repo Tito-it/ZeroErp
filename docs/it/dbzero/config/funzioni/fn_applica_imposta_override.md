@@ -26,25 +26,34 @@ AS $function$
 --   - tabella fuori elenco, utente NULL, elenco o elemento malformati:
 --     E_SCRIPT_CHIAMATA_NON_VALIDA;
 --   - chiave estranea in un elemento: E_CAMPO_NON_AMMESSO;
+--   - ogni elemento porta un motivo di testo non vuoto, anche quello che
+--     toglie un permesso: E_OVERRIDE_MOTIVO_OBBLIGATORIO; si scrive
+--     ripulito (btrim);
+--   - l'elenco si giudica tutto prima di toccare una riga;
 --   - chiave assente = DEFAULT, chiave null = NULL;
 --   - catalogo, riservati e date: vincoli e guard della tabella.
 DECLARE
     v_lista   jsonb := COALESCE(p_elenco, '[]'::jsonb);
     v_el      jsonb;
+    v_indice  integer;       -- la posizione di un elemento nell'elenco, da 0: nessuna colonna
     v_n       integer := 0;  -- un conteggio: niente da ancorare
     v_verbo   text;          -- il nome del verbo, per il contesto degli errori: nessuna colonna
     v_ammesse text[];        -- le chiavi di un elemento: nomi di colonna, nessuna colonna da ancorare
+    v_chiave  text[];        -- le chiavi che identificano una voce: nomi di colonna, nessuna colonna da ancorare
 BEGIN
     CASE p_tabella
         WHEN 'config.user_override_aree'::regclass THEN
             v_verbo   := 'config.fn_imposta_override_aree';
             v_ammesse := ARRAY['area_id', 'livello', 'motivo', 'valido_dal', 'valido_al'];
+            v_chiave  := ARRAY['area_id'];
         WHEN 'config.user_override_azioni'::regclass THEN
             v_verbo   := 'config.fn_imposta_override_azioni';
             v_ammesse := ARRAY['azione_id', 'abilitata', 'motivo', 'valido_dal', 'valido_al'];
+            v_chiave  := ARRAY['azione_id'];
         WHEN 'config.user_override_oggetti'::regclass THEN
             v_verbo   := 'config.fn_imposta_override_oggetti';
             v_ammesse := ARRAY['app_label', 'model_name', 'livello', 'motivo', 'valido_dal', 'valido_al'];
+            v_chiave  := ARRAY['app_label', 'model_name'];
         ELSE
             v_verbo   := NULL;
     END CASE;
@@ -62,11 +71,30 @@ BEGIN
             'tabella fuori elenco, utente mancante, o elenco degli override malformato');
     END IF;
 
-    FOR v_el IN SELECT e FROM jsonb_array_elements(v_lista) AS e LOOP
+    -- Il giudizio dell'elenco, voce per voce, prima del DELETE: prima le
+    -- chiavi ammesse, poi il motivo.
+    FOR v_el, v_indice IN
+        SELECT x.e, (x.o - 1)::integer
+          FROM jsonb_array_elements(v_lista) WITH ORDINALITY AS x(e, o)
+    LOOP
         PERFORM script.fn_guard_campi_ammessi(
             v_el, v_ammesse,
             'config', v_verbo,
             jsonb_build_object('auth_user_id', p_auth_user_id));
+
+        IF jsonb_typeof(v_el -> 'motivo') IS DISTINCT FROM 'string'
+           OR btrim(v_el ->> 'motivo') = '' THEN
+            PERFORM script.fn_log_and_raise_error(
+                'config', v_verbo, 'E_OVERRIDE_MOTIVO_OBBLIGATORIO',
+                jsonb_build_object('campo',        'motivo',
+                                   'tabella',      p_tabella::text,
+                                   'auth_user_id', p_auth_user_id,
+                                   'indice',       v_indice,
+                                   'voce',         (SELECT jsonb_object_agg(k.chiave, v_el -> k.chiave)
+                                                      FROM unnest(v_chiave) AS k(chiave))),
+                NULL::uuid,
+                VARIADIC ARRAY[]::text[]);
+        END IF;
     END LOOP;
 
     EXECUTE format('DELETE FROM %s o WHERE o.auth_user_id = $1', p_tabella)
@@ -75,7 +103,8 @@ BEGIN
     FOR v_el IN SELECT e FROM jsonb_array_elements(v_lista) AS e LOOP
         PERFORM script.fn_scrivi_riga_da_jsonb(
             p_tabella,
-            v_el || jsonb_build_object('auth_user_id', p_auth_user_id));
+            v_el || jsonb_build_object('auth_user_id', p_auth_user_id,
+                                       'motivo',       btrim(v_el ->> 'motivo')));
         v_n := v_n + 1;
     END LOOP;
 
@@ -84,7 +113,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION config.fn_applica_imposta_override(p_tabella regclass, p_auth_user_id integer, p_elenco jsonb)
-IS 'Primitiva degli override di un utente: sostituisce le sue righe di una delle tre tabelle (config.user_override_aree, config.user_override_azioni, config.user_override_oggetti) con l''elenco p_elenco, anche vuoto (= nessun override); ritorna quanti ne scrive. Le chiavi ammesse di un elemento sono per tabella: aree area_id, livello, motivo, valido_dal, valido_al; azioni azione_id, abilitata, motivo, valido_dal, valido_al; oggetti app_label, model_name, livello, motivo, valido_dal, valido_al. Una chiave assente prende il DEFAULT (valido_dal = la data operativa), una chiave a null scrive NULL. Chiave estranea: E_CAMPO_NON_AMMESSO; tabella fuori elenco, utente NULL, elenco o elemento malformati: E_SCRIPT_CHIAMATA_NON_VALIDA, col nome del verbo della tabella. Catalogo, riservati e date: i vincoli e i guard della tabella. Non chiede permessi: la chiamano i verbi del SUPER_ADMIN config.fn_imposta_override_aree, config.fn_imposta_override_azioni, config.fn_imposta_override_oggetti e il provisioning di sviluppo; l''applicazione non la esegue.';
+IS 'Primitiva degli override di un utente: sostituisce le sue righe di una delle tre tabelle (config.user_override_aree, config.user_override_azioni, config.user_override_oggetti) con l''elenco p_elenco, anche vuoto (= nessun override); ritorna quanti ne scrive. Le chiavi ammesse di un elemento sono per tabella: aree area_id, livello, motivo, valido_dal, valido_al; azioni azione_id, abilitata, motivo, valido_dal, valido_al; oggetti app_label, model_name, livello, motivo, valido_dal, valido_al. Ogni elemento porta un motivo, anche quello che toglie un permesso (BLOCCATO, abilitata false): il motivo è il perché dell''eccezione al profilo, e si scrive ripulito dagli spazi in testa e in coda. Motivo assente, null, non di testo, vuoto o di soli spazi: E_OVERRIDE_MOTIVO_OBBLIGATORIO, col campo motivo, la posizione della voce (indice, da 0) e la sua chiave nel contesto. Togliere una voce, cioè lasciarla fuori dall''elenco, non chiede motivo. L''elenco si giudica tutto prima di toccare una riga: un rifiuto lascia gli override di prima. Una chiave assente prende il DEFAULT (valido_dal = la data operativa), una chiave a null scrive NULL. Chiave estranea: E_CAMPO_NON_AMMESSO, giudicata prima del motivo; tabella fuori elenco, utente NULL, elenco o elemento malformati: E_SCRIPT_CHIAMATA_NON_VALIDA, col nome del verbo della tabella. Catalogo, riservati e date: i vincoli e i guard della tabella. Non chiede permessi: la chiamano i verbi del SUPER_ADMIN config.fn_imposta_override_aree, config.fn_imposta_override_azioni, config.fn_imposta_override_oggetti e il provisioning di sviluppo; l''applicazione non la esegue.';
 ```
 
 </div>

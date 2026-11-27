@@ -55,20 +55,21 @@
 | trg_risorse_umane_a10_guard_ruolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_guard_ruolo()` |
 | trg_risorse_umane_a10_guard_ultimo_super_admin_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin()` |
 | trg_risorse_umane_a10_guard_ultimo_super_admin_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin()` |
+| trg_risorse_umane_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('soggetto_ruolo_id', 'E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE')` |
 | trg_risorse_umane_a10_pratiche_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'pratiche', 'risorsa_umana_id', 'id', 'attivo')` |
 | trg_risorse_umane_a10_qualifiche_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'qualifiche', 'attivo', 'qualifica_id', 'id')` |
 | trg_risorse_umane_a10_qualifiche_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'qualifiche', 'attivo', 'qualifica_id', 'id')` |
 | trg_risorse_umane_a10_soggetti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti', 'attivo', 'soggetto_id', 'id')` |
 | trg_risorse_umane_a10_soggetti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti', 'attivo', 'soggetto_id', 'id')` |
-| trg_risorse_umane_a10_unita_organizzative_require_attivo_c6ba90 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
 | trg_risorse_umane_a10_unita_organizzative_require_attivo_c6ba90 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
-| trg_risorse_umane_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_risorse_umane_a10_unita_organizzative_require_attivo_c6ba90 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
 | trg_risorse_umane_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_risorse_umane_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_risorse_umane_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_risorse_umane_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_risorse_umane_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_risorse_umane_z90_notify_cambio_reparto_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_notify_cambio_reparto()` |
-| trg_risorse_umane_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('risorse_umane_id')` |
 | trg_risorse_umane_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('risorse_umane_id')` |
+| trg_risorse_umane_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('risorse_umane_id')` |
 | trg_risorse_umane_z90_sync_auth_user_active_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active()` |
 | trg_risorse_umane_z90_sync_auth_user_active_ins | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active()` |
 | trg_risorse_umane_z90_sync_auth_user_active_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_sync_auth_user_active()` |

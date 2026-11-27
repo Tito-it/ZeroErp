@@ -1,6 +1,6 @@
 # Guida — Risorse Umane e Accessi al Software
 
-> **Ultimo aggiornamento**: 26 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -142,6 +142,10 @@ Il reparto o ufficio a cui la risorsa appartiene. E il perno del sistema permess
 ### Soggetto gestore
 
 L'azienda che usa il sistema (singleton). Il gestore e il soggetto PG con ruolo GESTORE — identifica il datore di lavoro. Il guard sull'accesso al software **non** verifica l'appartenenza al gestore (sarebbe impossibile: RIS_UMANA e solo PF, GESTORE e solo PG), ma verifica che il soggetto sia una **persona fisica pura** ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura)). L'azienda su cui l'operatore lavora non dipende dal gestore: è la sua riga in `config.user_emittenti_fiscali` (vedi [Assegnazione emittente fiscale](#assegnazione-emittente-fiscale-scope-operativo)).
+
+Il gestore è **uno solo** anche quando due persone lo creano nello stesso istante: il caso normale lo rifiuta il guard del gestore, con il suo messaggio, e quello di due scritture contemporanee un indice unico. Il ruolo del gestore, come quello di una risorsa umana, non si sposta su un altro soggetto.
+
+⚠️ **La partita IVA del gestore si controlla quando si scrive il gestore.** Se dopo la si toglie al soggetto, la ferma il controllo del soggetto solo quando il suo tipo la rende obbligatoria (per esempio società di persone e di capitali); con un tipo che non la chiede il gestore resta senza partita IVA, e nessuno lo ferma. È un limite dichiarato.
 
 ---
 

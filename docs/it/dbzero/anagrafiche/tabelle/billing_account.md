@@ -66,10 +66,10 @@
 |------|--------|--------|--------|
 | trg_billing_account_a05_block_delete_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_prevent_modification_generic('E_BA_NON_SI_CANCELLA', 'codice')` |
 | trg_billing_account_a10_canale_origine_immutable_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_canale_origine_immutable()` |
-| trg_billing_account_a10_categorie_clienti_require_attivo_566444 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'categorie_clienti', 'attivo', 'categoria_cliente_id', 'id')` |
 | trg_billing_account_a10_categorie_clienti_require_attivo_566444 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'categorie_clienti', 'attivo', 'categoria_cliente_id', 'id')` |
-| trg_billing_account_a10_date_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
+| trg_billing_account_a10_categorie_clienti_require_attivo_566444 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'categorie_clienti', 'attivo', 'categoria_cliente_id', 'id')` |
 | trg_billing_account_a10_date_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
+| trg_billing_account_a10_date_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_billing_account_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_gen_codice()` |
 | trg_billing_account_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_gen_codice()` |
 | trg_billing_account_a10_guard_admin_globale_ins | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale()` |
