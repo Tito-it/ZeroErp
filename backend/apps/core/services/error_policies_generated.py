@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1297, di cui 135 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1304, di cui 136 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -454,7 +454,19 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CONTATTO_PREDEFINITO_OBBLIGATORIO": "CONFLITTO_STATO",
     # anagrafiche.fn_crea_contatto: il contesto ha gia' un contatto di quel tipo. E' la violazione di uno dei tre indici uq_contatti_soggetto_tipo, uq_contatti_ruolo_tipo_no_istanza, uq_contatti_ruolo_istanza_tipo, riconosciuta per nome e tradotta dal verbo (D-T7b-5 di Tid, 2026-11-25, brief-db-revisione-anagrafiche §22 (T7b); il precedente e' E_ADMIN_CF_DUPLICATO, S4): prima era un 23505 grezzo, tradotto solo dal backend (VINCOLI_CONTATTO). La modifica diretta di un contatto resta tradotta dal backend. · CAMPO: tipo_contatto_id. · VALORI: la descrizione del tipo e il livello (per questo soggetto, per questo ruolo, per questo ruolo su questa istanza).
     "E_CONTATTO_TIPO_DUPLICATO": "CONFLITTO_STATO",
+    # Ritirato: lo sollevavano solo i guard immediati dei due legami dei conti (trgfn_soggetti_conti_bancari_guard, trgfn_soggetti_ruoli_conti_bancari_guard), tolti da D-T8a-1 a (Tid, 2026-11-27). «Il conto del legame e' attivo» lo tiene il REQUIRE differito dell'automazione ATTIVO (E_ATTIVO_PADRE_NON_ATTIVO). Brief: brief-db-revisione-anagrafiche §25.10.
+    # ⚠️ RITIRATO il 2026-11-27
     "E_CONTO_BANCARIO": "DATO_ERRATO",
+    # Lock di colonna (dbops.automation_lock_columns) su anagrafiche.conti_bancari.iban - D-T8a-4 di Tid (2026-11-27): un IBAN esiste una volta e non si modifica sotto i legami; un IBAN sbagliato e' un altro conto. CONFLITTO_STATO come gli altri lock; VARIADIC il nome della colonna. Brief: brief-db-revisione-anagrafiche §25.10 (giro T8a).
+    "E_CONTO_BANCARIO_IBAN_IMMUTABILE": "CONFLITTO_STATO",
+    # anagrafiche.trgfn_conti_bancari_guard_iban_filiale: dove lo stato dell'IBAN dichiara le posizioni di banca e filiale (config.stati.iban_pos_*), l'IBAN del conto porta i codici della sua filiale. Campo bank_branch_id. VARIADIC: codice della banca e codice della filiale della filiale scelta. Brief: brief-db-revisione-anagrafiche §25.10 (giro T8a) (D-T8a-9, D-T8a-13).
+    "E_CONTO_IBAN_FILIALE_INCOERENTE": "DATO_ERRATO",
+    # Lock di colonna (dbops.automation_lock_columns) sui due legami dei conti: conto_bancario_id, uso e il possessore (soggetto_id; soggetto_ruolo_id e istanza_utility_id) - D-T8a-4, D-T8a-4 bis, D-T8a-5 di Tid (2026-11-27). Un legame sbagliato si chiude e se ne apre uno nuovo: spostarlo porterebbe sotto un altro conto, uso o possessore i canali d'incasso e i mandati che lo nominano. Un codice per le colonne dei due legami. VARIADIC il nome della colonna. Brief: brief-db-revisione-anagrafiche §25.10 (giro T8a).
+    "E_CONTO_LEGAME_IMMUTABILE": "CONFLITTO_STATO",
+    # anagrafiche.trgfn_conti_legami_guard_predefinito (BEFORE INSERT OR UPDATE, WHEN predefinito, sui due legami dei conti): un legame predefinito non e' bloccato. Davanti ai CHECK chk_*_predefinito_non_bloccato, che restano come rete. Prende il posto del guard del backend (E_ANAG_VALIDAZIONE). VARIADIC: l'uso. Brief: brief-db-revisione-anagrafiche §25.10 (giro T8a) (D-T8a-2).
+    "E_CONTO_PREDEFINITO_BLOCCATO": "DATO_ERRATO",
+    # anagrafiche.trgfn_conti_legami_guard_predefinito: un legame predefinito non si sovrappone nel tempo a un altro predefinito dello stesso possessore e uso (date comprese, NULL = senza limite). Davanti agli EXCLUDE ex_*_predefinito_*periodo, che restano per le scritture concorrenti (23P01). VARIADIC: l'uso. Brief: brief-db-revisione-anagrafiche §25.10 (giro T8a) (D-T8a-7 a).
+    "E_CONTO_PREDEFINITO_SOVRAPPOSTO": "CONFLITTO_STATO",
     # script.trgfn_righe_guard_aggiunta_fuori_listino (trigger _a10_ BEFORE INSERT OR UPDATE WHEN AGGIUNTA su vendite.contratti_righe e vendite.offerte_commerciali_eccezioni): un'AGGIUNTA e' un articolo fuori dal listino, e l'articolo sta nella versione operativa del listino del documento. Il nome dice CONTRATTO per storia: dal 2026-10-04 vale anche sull'offerta (brief-db-righe-esclusione-solo-non-si-vende R5b, R8: si riusano i codici in servizio), e il messaggio nomina il documento con la sua etichetta (secondo valore) invece dell'id del contratto. Prima: vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino, ritirata.
     "E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO": "NON_ESEGUIBILE",
     # Refactor 2026-05-20: annullamento logico contratto (soft-delete via · stato ANNULLATO). Transizione DRAFT → ANNULLATO sempre ammessa; · ATTIVO → ANNULLATO bloccata se esistono attivita_fatturabili gia' · fatturate (fattura_riga_id IS NOT NULL) — la traccia contabile e' · immutabile, in quel caso l'unica via e' CESSATO con valido_al · opportuna. Sollevato dal trigger DB (id errore DB 457) e · intercettato lato BE via marker in `_KNOWN_DB_ERROR_MARKERS`.
@@ -963,6 +975,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_FATTURE_RIGHE_RETTIFICATE": "CONFLITTO_STATO",
     # Lo solleva il trigger del DELETE di documenti.documenti_generati_file, sul building block script.trgfn_prevent_modification_generic: senza il PDF principale la stampa non si scarica e non si ristampa, e l'hash conservato non verifica piu' niente.
     "E_FILE_DOCUMENTO_DELETE_VIETATA": "CONFLITTO_STATO",
+    # anagrafiche.trgfn_bank_branches_guard_iban_conti: il verso della filiale di E_CONTO_IBAN_FILIALE_INCOERENTE. Un cambio del codice della banca o della filiale lascerebbe conti il cui IBAN porta altri codici. Campo bank_code. VARIADIC: i codici nuovi. Brief: brief-db-revisione-anagrafiche §25.10 (giro T8a) (D-T8a-9).
+    "E_FILIALE_CODICI_CONTI_INCOERENTI": "CONFLITTO_STATO",
+    # anagrafiche.trgfn_bank_branches_guard_unica_per_paese e anagrafiche.trgfn_soggetti_guard_filiali_unica_per_paese: lo sportello (codice della banca, codice della filiale) esiste una volta nel paese del soggetto della banca (soggetti.stato_id). Campo branch_code dalla filiale, stato_id dal soggetto. VARIADIC: i due codici. Brief: brief-db-revisione-anagrafiche §25.10 (giro T8a) (D-T8a-10).
+    "E_FILIALE_DUPLICATA": "CONFLITTO_STATO",
     # <- FLUSSI_COMPETENZA_MANCANTE  (vivo)
     "E_FLUSSI_COMPETENZA_MANCANTE": "NON_PERMESSO",
     "E_FLUSSI_ESITO_NON_AMMESSO": "DATO_ERRATO",
@@ -2350,6 +2366,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_CONTABILE_COMPENSAZIONE_CON_LOTTO",
         "E_CONTABILE_COMPENSAZIONE_GIA_PRESENTE",
         "E_CONTABILE_COMPENSAZIONE_LOTTO_ESCLUSIVI",
+        "E_CONTO_BANCARIO",
         "E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE",
         "E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE",
         "E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE",

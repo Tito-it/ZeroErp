@@ -23,10 +23,10 @@ Indice test eseguiti:
  9b) test_ba_admin_required — utente non admin → 403 su sub-resource BA
  9c) test_utilities_admin_required — utente non admin → 403 su sub-resource Utilities
 10) test_ba_list — GET lista mapping BA per emittente
-11) test_ba_post_with_ba — POST crea mapping con billing_account_id specifico
-12) test_ba_post_default — POST crea mapping default globale (senza ba_id)
-13) test_ba_delete_ok — DELETE mapping
-14) test_ba_delete_not_found — DELETE mapping inesistente
+11) test_ba_post_with_ba — POST con billing_account_id: 400 (un BA nasce gia' collegato, 2026-11-27)
+12) test_ba_post_default — POST senza corpo: l'emittente diventa la predefinita
+(13-14, i DELETE del mapping, ritirati il 2026-11-27 col DELETE: il DB rifiuta
+ la cancellazione di ogni collegamento)
 14b) test_ba_summary_ok — GET summary mapping (has_default + count_specifici)
 14c) test_ba_summary_empty — GET summary su emittente senza mapping
 15) test_utilities_list — GET record utility per emittente
@@ -308,25 +308,24 @@ class TestEmittentiFiscaliBillingAccountApi(JwtMockedApiTest):
     @patch(_PERM, return_value=True)
     @patch(_BA_SVC)
     def test_ba_post_with_ba(self, mock_svc_cls, _perm, _auth):
-        """POST mapping con billing_account_id specifico."""
-        mock_svc_cls.return_value.crea_mapping.return_value = {
-            "id": 10, "emittente_id": 1, "billing_account_id": 5, "is_default": False,
-        }
+        """POST con billing_account_id: dal 2026-11-27 un BA nasce collegato
+        alla sua azienda (D-T4-3), e il service lo rifiuta con un 400."""
+        mock_svc_cls.return_value.imposta_predefinita.side_effect = ServiceError(
+            code="E_ANAG_VALIDAZIONE", message="Da qui si crea solo il default globale.",
+        )
         resp = self.client.post(
             "/api/v1/anagrafiche/emittenti-fiscali/1/billing-account/",
             data=json.dumps({"billing_account_id": 5}),
             content_type="application/json",
         )
-        self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertFalse(body["data"]["is_default"])
+        self.assertEqual(resp.status_code, 400)
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM, return_value=True)
     @patch(_BA_SVC)
     def test_ba_post_default(self, mock_svc_cls, _perm, _auth):
-        """POST mapping default globale (senza billing_account_id)."""
-        mock_svc_cls.return_value.crea_mapping.return_value = {
+        """POST senza corpo: l'emittente diventa l'azienda predefinita."""
+        mock_svc_cls.return_value.imposta_predefinita.return_value = {
             "id": 10, "emittente_id": 1, "billing_account_id": None, "is_default": True,
         }
         resp = self.client.post(
@@ -337,28 +336,6 @@ class TestEmittentiFiscaliBillingAccountApi(JwtMockedApiTest):
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertTrue(body["data"]["is_default"])
-
-    @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_PERM, return_value=True)
-    @patch(_BA_SVC)
-    def test_ba_delete_ok(self, mock_svc_cls, _perm, _auth):
-        """DELETE mapping."""
-        mock_svc_cls.return_value.elimina_mapping.return_value = {"deleted": True}
-        resp = self.client.delete("/api/v1/anagrafiche/emittenti-fiscali/1/billing-account/10/")
-        self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertTrue(body["data"]["deleted"])
-
-    @patch(_AUTH, return_value=(Mock(), None))
-    @patch(_PERM, return_value=True)
-    @patch(_BA_SVC)
-    def test_ba_delete_not_found(self, mock_svc_cls, _perm, _auth):
-        """DELETE mapping inesistente → errore."""
-        mock_svc_cls.return_value.elimina_mapping.side_effect = ServiceError(
-            code="E_ANAG_NOT_FOUND", message="Mapping non trovato.",
-        )
-        resp = self.client.delete("/api/v1/anagrafiche/emittenti-fiscali/1/billing-account/999/")
-        self.assertIn(resp.status_code, (400, 404, 422))
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM, return_value=True)

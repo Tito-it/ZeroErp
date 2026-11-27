@@ -72,8 +72,11 @@ export const TIPI_CANALE = Object.freeze(['BANCA', 'POSTE', 'PSP', 'ALTRO'])
 export const TIPO_CANALE_CON_FILIALE = 'BANCA'
 
 // ⛔ Il tipo che pretende il SOGGETTO PSP (`trgfn_enti_incasso_guard_psp`): il
-//    soggetto_ruolo dev'esserci, essere di ruolo PSP e avere una riga attiva in
-//    `anagrafiche.psp`. Le altre due condizioni le verifica il database.
+//    soggetto_ruolo dev'esserci ed essere di ruolo PSP; un canale ACCESO vuole
+//    anche il PSP acceso in `anagrafiche.psp` (dal giro T8c, D-T8c-12: un
+//    canale spento si modifica anche col PSP spento, riaccenderlo e'
+//    `E_ENTE_INCASSO_PSP_SPENTO` sul campo `attivo`). Le condizioni oltre la
+//    prima le verifica il database.
 export const TIPO_CANALE_PSP = 'PSP'
 
 // ⛔ Il tipo RUOLO del soggetto PSP non sta qui: e' `TIPO_RUOLO.PSP` di

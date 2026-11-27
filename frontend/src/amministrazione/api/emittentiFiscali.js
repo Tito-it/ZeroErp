@@ -30,12 +30,12 @@ export function listEmittenteBillingAccount(emittenteId, params = {}) {
   return api.get(`${BASE}/${emittenteId}/billing-account/`, { params })
 }
 
-export function createEmittenteBillingAccount(emittenteId, payload) {
-  return api.post(`${BASE}/${emittenteId}/billing-account/`, payload)
-}
-
-export function deleteEmittenteBillingAccount(emittenteId, mappingId) {
-  return api.delete(`${BASE}/${emittenteId}/billing-account/${mappingId}/`)
+// Scopo: Rende l'emittente l'azienda predefinita (in cui nascono i clienti
+//        creati senza sessione). Corpo vuoto: un cliente nasce gia' collegato
+//        alla sua azienda, e il collegamento non si crea ne' si toglie da qui
+//        (dal 2026-11-27; il DELETE e' ritirato, il DB lo rifiuta sempre).
+export function impostaEmittentePredefinito(emittenteId) {
+  return api.post(`${BASE}/${emittenteId}/billing-account/`, {})
 }
 
 // Scopo: Riepilogo mapping BA (has_default + count_specifici) indipendente dalla

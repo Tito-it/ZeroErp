@@ -22,7 +22,7 @@ Indice test eseguiti:
  5) SoggettiPatchChiaviTests.test_update_contatto_ruolo_ok_passa_ownership_ruolo
  6) SoggettiPatchChiaviTests.test_update_indirizzo_ruolo_chiave_ignota
  7) ContiBancariPatchChiaviTests.test_legame_soggetto_rifiuta_istanza_utility
- 8) ContiBancariPatchChiaviTests.test_legame_ruolo_ammette_istanza_utility
+ 8) ContiBancariPatchChiaviTests.test_legame_ruolo_rifiuta_istanza_utility
  9) EmittentiPatchChiaviTests.test_update_emittente_rifiuta_codice
 10) EmittentiPatchChiaviTests.test_aggiorna_record_utility_chiave_ignota
 11) FornitoriPatchChiaviTests.test_update_fornitore_chiave_ignota
@@ -124,15 +124,16 @@ class ContiBancariPatchChiaviTests(_Asserzioni):
         self.assert_chiave_rifiutata(ctx, "istanza_utility_id")
         mock_cb.return_value.update_conto_soggetto.assert_not_called()
 
+    # ⛔ Dal giro T8a (D-T8a-4 bis) nemmeno il legame RUOLO sposta
+    #    l'istanza: ha il lucchetto del DB, e la PATCH la rifiuta prima.
     @patch(_CB_SOGG_REPO, autospec=True)
     @patch(_CB_REPO, autospec=True)
-    def test_legame_ruolo_ammette_istanza_utility(self, mock_cb, _sogg):
-        repo = mock_cb.return_value
-        repo.get_legame_flags_ruolo.return_value = {"predefinito": False, "bloccato": False}
-        repo.update_conto_ruolo.return_value = True
+    def test_legame_ruolo_rifiuta_istanza_utility(self, mock_cb, _sogg):
         from apps.anagrafiche.services.conti_bancari_service import ContiBancariService
-        ContiBancariService().update_conto_ruolo(10, 1, {"istanza_utility_id": 5})
-        repo.update_conto_ruolo.assert_called_once()
+        with self.assertRaises(ServiceError) as ctx:
+            ContiBancariService().update_conto_ruolo(10, 1, {"istanza_utility_id": 5})
+        self.assert_chiave_rifiutata(ctx, "istanza_utility_id")
+        mock_cb.return_value.update_conto_ruolo.assert_not_called()
 
 
 class EmittentiPatchChiaviTests(_Asserzioni):

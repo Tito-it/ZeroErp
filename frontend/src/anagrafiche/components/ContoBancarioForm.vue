@@ -2,11 +2,17 @@
 // Scopo: Building block form conto bancario riutilizzabile.
 // Associabile a soggetto o ruolo. IBAN con autocomplete server-side.
 // Filiale con autocomplete server-side. Uso con dropdown fisso.
+// ⭐ Forma e formato dell'IBAN li decide il DB (giro T8a): maiuscolo e
+//    niente spazi mentre si digita sono un aiuto (`riscriviDigitato`), non
+//    una regola, e non c'e' un `maxlength` da tipo di colonna.
+// ⭐ In modifica: `fermo(campo)` spegne i campi del legame che il DB blocca
+//    (`uso`), e `registroFermo` spegne quelli del registro degli IBAN (IBAN,
+//    BIC, filiale, intestatario), che il PATCH del legame non porta.
 
 import { useI18n } from 'vue-i18n'
 import { useServerAutocomplete } from '../../core/composables/useServerAutocomplete'
 import { lookupContiBancari, lookupBankBranches } from '../api/anagrafiche'
-import { DATE_FORMAT, FIELD_LENGTH } from '../../core/constants'
+import { DATE_FORMAT } from '../../core/constants'
 import { blockNonAlphanumeric } from '../../core/utils/string'
 import { riscriviDigitato } from '../../core/utils/maiuscolo'
 import AutoComplete from 'primevue/autocomplete'
@@ -24,7 +30,9 @@ const form = defineModel('form', { type: Object, required: true })
 const props = defineProps({
   usiDisponibili: { type: Array, required: true },
   disabled: { type: Boolean, default: false },
-  errors: { type: Array, default: () => [] }
+  errors: { type: Array, default: () => [] },
+  fermo: { type: Function, default: () => false },
+  registroFermo: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['iban-select', 'iban-clear', 'branch-select'])
@@ -93,7 +101,7 @@ function ibanOptionLabel(item) {
           :options="usiOptions"
           option-label="label"
           option-value="value"
-          :disabled="disabled"
+          :disabled="disabled || fermo('uso')"
           :invalid="errors.includes('uso')"
         />
       </div>
@@ -110,7 +118,7 @@ function ibanOptionLabel(item) {
     <!-- Riga 2: Intestatario predefinito -->
     <div class="form-field">
       <label>{{ t('anagrafiche.conti_bancari.intestatario') }}</label>
-      <InputText v-model="form.intestatario_predefinito" :disabled="disabled" />
+      <InputText v-model="form.intestatario_predefinito" :disabled="disabled || registroFermo" />
     </div>
 
     <!-- Riga 3: Intestazione dichiarata -->
@@ -128,7 +136,7 @@ function ibanOptionLabel(item) {
         :loading="branchAc.loading.value"
         :option-label="branchOptionLabel"
         :placeholder="t('anagrafiche.conti_bancari.banca_filiale')"
-        :disabled="disabled"
+        :disabled="disabled || registroFermo"
         :invalid="errors.includes('bank_branch_id')"
         :min-length="2"
         force-selection
@@ -148,10 +156,9 @@ function ibanOptionLabel(item) {
           :loading="ibanAc.loading.value"
           :option-label="ibanOptionLabel"
           :placeholder="t('anagrafiche.conti_bancari.iban')"
-          :disabled="disabled"
-          :invalid="errors.includes('iban') || errors.includes('iban_format')"
+          :disabled="disabled || registroFermo"
+          :invalid="errors.includes('iban')"
           :min-length="4"
-          :inputProps="{ maxlength: FIELD_LENGTH.IBAN_MAX }"
           fluid
           @complete="ibanAc.onSearch"
           @item-select="onIbanItemSelect"
@@ -159,13 +166,11 @@ function ibanOptionLabel(item) {
           @keypress="blockNonAlphanumeric"
           @input="e => { form.iban = riscriviDigitato(e.target, e.target.value, { senzaSpazi: true }) }"
         />
-        <small v-if="errors.includes('iban_format')" class="app-field-error">
-          {{ t('anagrafiche.conti_bancari.iban_formato_errore') }}
-        </small>
       </div>
       <div class="form-field">
         <label>{{ t('anagrafiche.conti_bancari.bic_swift') }}</label>
-        <InputText v-model="form.bic_swift" :disabled="disabled" />
+        <InputText v-model="form.bic_swift" :disabled="disabled || registroFermo"
+          :invalid="errors.includes('bic_swift')" />
       </div>
     </div>
 

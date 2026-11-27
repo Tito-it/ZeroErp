@@ -10,12 +10,10 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
-_IBAN_RE = re.compile(r'^[A-Z0-9]{15,34}$')
-
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.non_editable_fields_helper import compute_non_editable_fields
 from apps.anagrafiche.db.conti_bancari_repository import (
     LEGAME_RUOLO_UPDATE_COLS,
     LEGAME_SOGGETTO_UPDATE_COLS,
@@ -44,8 +42,9 @@ from apps.core.services.payload_helpers import (
 # (2026-09-26): dal passaggio al BB `sql_set_clause` il repository rifiuta con
 # `RuntimeError` (500) ogni colonna fuori whitelist — fino a quel giorno la
 # scartava in silenzio. Partono dalle colonne scrivibili del repository.
-# ⛔ `istanza_utility_id` solo sul legame RUOLO: il legame soggetto non ha la
-#    colonna (prima arrivava a PostgreSQL e usciva come 500).
+# ⛔ Conto, `uso` e possessore (`istanza_utility_id` compresa) non ci sono:
+#    hanno il lucchetto del DB (giro T8a) e una PATCH che li porta e' un 400
+#    che li nomina, non un `E_CONTO_LEGAME_IMMUTABILE` dopo il viaggio.
 _UPDATE_LEGAME_SOGGETTO_KEYS: frozenset[str] = LEGAME_SOGGETTO_UPDATE_COLS
 _UPDATE_LEGAME_RUOLO_KEYS: frozenset[str] = LEGAME_RUOLO_UPDATE_COLS
 _MESSAGE_LEGAME = "Payload conto bancario non valido."
@@ -57,11 +56,20 @@ _V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 # analisi-be-difetti-emersi-verifica-doc-api-core, 2026-10-07). Prima ogni
 # `IntegrityError` usciva `E_ANAG_DUPLICATO` «gia' associato», anche per un
 # `uso` fuori elenco, date invertite o una FK violata. I nomi vengono dalla doc
-# auto-gen `dbzero/anagrafiche/tabelle/soggetti{,_ruoli}_conti_bancari.md`; le
-# unicita' del legame RUOLO sono indici parziali (con e senza istanza), non
+# auto-gen `dbzero/anagrafiche/tabelle/{conti_bancari,soggetti{,_ruoli}_conti_bancari}.md`;
+# le unicita' del legame RUOLO sono indici parziali (con e senza istanza), non
 # vincoli, e il nome che PostgreSQL riporta e' quello dell'indice.
 # Terzo elemento = il campo del payload, solo dove la violazione ne ha UNO.
-_MSG_PREDEFINITO = "Esiste gia' un conto predefinito per questo uso."
+# ⭐ Predefinito per periodo e predefinito non bloccato (giro T8a, D-T8a-7 a e
+#    D-T8a-2): li dice il guard `a12` del DB col suo codice; EXCLUDE e CHECK
+#    restano come rete (le scritture concorrenti, 23P01) e qui rispondono con
+#    LO STESSO codice del guard, perche' per chi scrive e' la stessa regola.
+_E_PREDEFINITO_SOVRAPPOSTO = "E_CONTO_PREDEFINITO_SOVRAPPOSTO"
+_E_PREDEFINITO_BLOCCATO = "E_CONTO_PREDEFINITO_BLOCCATO"
+_MSG_PREDEFINITO = (
+    "C'e' gia' un conto predefinito per questo uso in un periodo che si sovrappone."
+)
+_MSG_PREDEFINITO_BLOCCATO = "Un conto predefinito non si puo' bloccare."
 _MSG_INCASSO = (
     "Il conto e' gia' il conto di incasso di un altro soggetto: "
     "un conto di incasso appartiene a un soggetto solo."
@@ -81,13 +89,16 @@ _VINCOLI_LEGAME_SOGGETTO: dict[str, dict[str, tuple]] = {
             E_ANAG_DUPLICATO,
             "Conto bancario gia' associato a questo soggetto per lo stesso uso.",
         ),
-        "ix_soggetti_conti_bancari_predef_per_uso": (
-            E_ANAG_DUPLICATO, _MSG_PREDEFINITO, "predefinito",
+        "ex_scb_predefinito_per_periodo": (
+            _E_PREDEFINITO_SOVRAPPOSTO, _MSG_PREDEFINITO, "predefinito",
         ),
         "ex_scb_conto_incasso_un_solo_soggetto": (E_ANAG_DUPLICATO, _MSG_INCASSO),
     },
     "check_constraints": {
         "chk_soggetti_conti_bancari_uso": (E_ANAG_VALIDAZIONE, _MSG_USO, "uso"),
+        "chk_soggetti_conti_bancari_predefinito_non_bloccato": (
+            _E_PREDEFINITO_BLOCCATO, _MSG_PREDEFINITO_BLOCCATO, "bloccato",
+        ),
         "chk_soggetti_conti_bancari_validita": (
             E_ANAG_VALIDAZIONE, _MSG_VALIDITA, "valido_al",
         ),
@@ -108,16 +119,19 @@ _VINCOLI_LEGAME_RUOLO: dict[str, dict[str, tuple]] = {
             E_ANAG_DUPLICATO,
             "Conto bancario gia' associato a questa istanza per lo stesso uso.",
         ),
-        "uq_src_bancari_predefinito_no_istanza": (
-            E_ANAG_DUPLICATO, _MSG_PREDEFINITO, "predefinito",
+        "ex_src_bancari_predefinito_no_istanza_periodo": (
+            _E_PREDEFINITO_SOVRAPPOSTO, _MSG_PREDEFINITO, "predefinito",
         ),
-        "uq_src_bancari_predefinito_istanza": (
-            E_ANAG_DUPLICATO, _MSG_PREDEFINITO, "predefinito",
+        "ex_src_bancari_predefinito_istanza_periodo": (
+            _E_PREDEFINITO_SOVRAPPOSTO, _MSG_PREDEFINITO, "predefinito",
         ),
         "ex_src_bancari_conto_incasso_un_solo_soggetto": (E_ANAG_DUPLICATO, _MSG_INCASSO),
     },
     "check_constraints": {
         "chk_soggetti_ruoli_conti_bancari_uso": (E_ANAG_VALIDAZIONE, _MSG_USO, "uso"),
+        "chk_soggetti_ruoli_conti_bancari_predefinito_non_bloccato": (
+            _E_PREDEFINITO_BLOCCATO, _MSG_PREDEFINITO_BLOCCATO, "bloccato",
+        ),
         "chk_soggetti_ruoli_conti_bancari_validita": (
             E_ANAG_VALIDAZIONE, _MSG_VALIDITA, "valido_al",
         ),
@@ -129,6 +143,45 @@ _VINCOLI_LEGAME_RUOLO: dict[str, dict[str, tuple]] = {
         ),
         "fk_src_bancari_istanze_utilities": (
             E_ANAG_FK, "Istanza utility non trovata.", "istanza_utility_id",
+        ),
+    },
+}
+
+# Il registro degli IBAN (`anagrafiche.conti_bancari`), scritto dal
+# get_or_create della nascita di un legame. ⭐ La FORMA la tiene il DB
+# (giro T8a, D-T8a-8 e -14): il trigger `a01` normalizza IBAN e BIC, poi i
+# CHECK giudicano il valore normalizzato, lunghezza compresa. Qui non c'e'
+# piu' la regex del backend: la violazione del formato si traduce sul campo.
+# `uq_conti_bancari_iban` e' la gara fra due nascite dello stesso IBAN (il
+# get_or_create legge prima di scrivere).
+_VINCOLI_CONTO: dict[str, dict[str, tuple]] = {
+    "unique_constraints": {
+        "uq_conti_bancari_iban": (
+            E_ANAG_DUPLICATO,
+            "Il conto con questo IBAN e' stato appena registrato: riprova.",
+            "iban",
+        ),
+    },
+    "check_constraints": {
+        "chk_conti_bancari_iban_fmt": (
+            E_ANAG_VALIDAZIONE,
+            "IBAN non valido: da 15 a 34 lettere e cifre, separatori esclusi.",
+            "iban",
+        ),
+        "chk_conti_bancari_bic_fmt": (
+            E_ANAG_VALIDAZIONE,
+            "BIC non valido: 8 o 11 lettere e cifre, separatori esclusi.",
+            "bic_swift",
+        ),
+        "chk_conti_bancari_paese_fmt": (
+            E_ANAG_VALIDAZIONE,
+            "L'IBAN non comincia con il codice di un paese.",
+            "iban",
+        ),
+    },
+    "fk_constraints": {
+        "fk_conti_bancari_bank_branches": (
+            E_ANAG_FK, "Filiale bancaria non trovata.", "bank_branch_id",
         ),
     },
 }
@@ -148,6 +201,12 @@ _db_errors_legame_ruolo = make_db_errors_translator(
     fallback_code=E_ANAG_VALIDAZIONE,
     fallback_message="Associazione conto bancario non valida.",
     **_VINCOLI_LEGAME_RUOLO,
+)
+_db_errors_conto = make_db_errors_translator(
+    fn_prefix="anagrafiche.conto_bancario",
+    fallback_code=E_ANAG_VALIDAZIONE,
+    fallback_message="Conto bancario non valido.",
+    **_VINCOLI_CONTO,
 )
 
 
@@ -169,24 +228,31 @@ def _normalizza_uso(payload: dict[str, Any]) -> str | None:
     return uso_upper
 
 
-# Scopo: il payload di una PATCH di legame con l'`uso` normalizzato e i flag
-#        presenti letti come booleani JSON (copia: `payload` e' spesso
-#        `request.data`, non si muta l'input).
-# ⛔ I flag passavano crudi al guard e al repository: `"false"` valeva vero per
-#    `_guard_predefinito_bloccato` (400 falso «conto predefinito bloccato»), e
-#    `"abc"` era un errore di cast del DB. Un flag presente vuole un booleano.
+# Scopo: il payload di una PATCH di legame con i flag presenti letti come
+#        booleani JSON (copia: `payload` e' spesso `request.data`, non si muta
+#        l'input).
+# ⛔ I flag passavano crudi al repository: `"abc"` era un errore di cast del
+#    DB. Un flag presente vuole un booleano.
 _FLAG_LEGAME: tuple[str, ...] = ("predefinito", "verificato", "bloccato")
 
 
 def _payload_patch(payload: dict[str, Any]) -> dict[str, Any]:
     normalizzato = {**payload}
-    uso = _normalizza_uso(payload)
-    if uso is not None:
-        normalizzato["uso"] = uso
     for flag in _FLAG_LEGAME:
         if flag in payload:
             normalizzato[flag] = _V.require_bool(payload, flag)
     return normalizzato
+
+
+# Scopo: le righe di una lista di legami, ognuna con i suoi campi fermi.
+# ⭐ Trasporta, non deduce (BB `compute_non_editable_fields`): sono i
+#    lucchetti di colonna vivi del DB sulla tabella del legame (conto, `uso`,
+#    possessore: giro T8a). Il form li spegne in modifica col BB FE
+#    `campoFermo` e li toglie dal PATCH con `senzaCampiFermi`, senza scrivere
+#    nomi di campo. Statici per tabella: si leggono una volta per lista.
+def _con_campi_fermi(righe: list[dict[str, Any]], tabella: str) -> list[dict[str, Any]]:
+    fermi = compute_non_editable_fields("anagrafiche", tabella)
+    return [{**r, "non_editable_fields": fermi} for r in righe]
 
 
 class ContiBancariService:
@@ -221,7 +287,9 @@ class ContiBancariService:
     # Scopo: Lista conti bancari associati a un soggetto.
     def list_conti_soggetto(self, soggetto_id: str) -> list[dict[str, Any]]:
         self._require_soggetto_exists(soggetto_id)
-        return self._repo.list_conti_soggetto(soggetto_id)
+        return _con_campi_fermi(
+            self._repo.list_conti_soggetto(soggetto_id), "soggetti_conti_bancari",
+        )
 
     # Scopo: Crea legame soggetto ↔ conto bancario.
     #        Obiettivo: riceve IBAN + dati dal frontend, risolve (get_or_create)
@@ -234,21 +302,23 @@ class ContiBancariService:
 
         self._require_soggetto_exists(soggetto_id)
         legame_payload = self._extract_legame_payload(payload)
-        self._guard_predefinito_bloccato(legame_payload)
 
         # Fix analisi-fix-transazioni #14 (Classe D): il get_or_create del registro
         # IBAN (_resolve_conto_bancario, una scrittura) e la create del legame in UN
         # solo transaction.atomic(). Prima il resolve era FUORI dall'atomic → una
         # riga IBAN di registro restava orfana se la create del legame falliva
         # (dedup riutilizzabile, non corruzione, ma comunque scrittura sospesa).
-        with transaction.atomic():
+        # ⭐ Il traduttore del legame sta FUORI dall'atomic (giro T8a, D-T8a-1 a):
+        #    «il conto del legame e' attivo» lo controlla il REQUIRE differito
+        #    del DB alla chiusura della transazione, e il suo
+        #    `E_ATTIVO_PADRE_NON_ATTIVO` deve passare di qui col contesto.
+        with _db_errors_legame_soggetto("crea"), transaction.atomic():
             conto_bancario_id = self._resolve_conto_bancario(payload)
-            with _db_errors_legame_soggetto("crea"):
-                result: dict[str, Any] = self._repo.create_conto_soggetto(
-                    soggetto_id,
-                    conto_bancario_id=conto_bancario_id,
-                    **legame_payload,
-                )
+            result: dict[str, Any] = self._repo.create_conto_soggetto(
+                soggetto_id,
+                conto_bancario_id=conto_bancario_id,
+                **legame_payload,
+            )
         return result
 
     # Scopo: Aggiorna legame soggetto ↔ conto con ownership check.
@@ -262,9 +332,6 @@ class ContiBancariService:
         _V.require_campi_da_aggiornare(payload)
         payload = _payload_patch(payload)
         self._require_soggetto_exists(soggetto_id)
-        # Guard predefinito/bloccato: legge stato corrente per merge con payload
-        current = self._repo.get_legame_flags_soggetto(conto_soggetto_id)
-        self._guard_predefinito_bloccato(payload, current)
         with _db_errors_legame_soggetto("aggiorna"):
             updated = self._repo.update_conto_soggetto(
                 conto_soggetto_id, soggetto_id, payload,
@@ -297,7 +364,9 @@ class ContiBancariService:
     def list_conti_ruolo(
         self, soggetto_ruolo_id: int, istanza_utility_id: int | None = None,
     ) -> dict[str, Any]:
-        conti_ruolo = self._repo.list_conti_ruolo(soggetto_ruolo_id)
+        conti_ruolo = _con_campi_fermi(
+            self._repo.list_conti_ruolo(soggetto_ruolo_id), "soggetti_ruoli_conti_bancari",
+        )
         conti_ereditati = self._repo.list_conti_ereditati_ruolo(soggetto_ruolo_id)
 
         editabili: list[dict[str, Any]] = []
@@ -339,7 +408,6 @@ class ContiBancariService:
         from django.db import transaction
 
         legame_payload = self._extract_legame_payload(payload)
-        self._guard_predefinito_bloccato(legame_payload)
         # istanza_utility_id opzionale (NULL = generico ruolo)
         istanza_utility_id = _V.optional_int(payload, "istanza_utility_id")
         if istanza_utility_id is not None:
@@ -348,14 +416,15 @@ class ContiBancariService:
         # Fix analisi-fix-transazioni #15 (Classe D): get_or_create IBAN + create
         # legame in UN solo transaction.atomic() (vedi #14). Prima il resolve era
         # fuori → riga IBAN registro orfana se la create legame falliva.
-        with transaction.atomic():
+        # ⭐ Traduttore fuori dall'atomic: il rifiuto differito al COMMIT (vedi
+        #    create_conto_soggetto).
+        with _db_errors_legame_ruolo("crea"), transaction.atomic():
             conto_bancario_id = self._resolve_conto_bancario(payload)
-            with _db_errors_legame_ruolo("crea"):
-                result: dict[str, Any] = self._repo.create_conto_ruolo(
-                    soggetto_ruolo_id,
-                    conto_bancario_id=conto_bancario_id,
-                    **legame_payload,
-                )
+            result: dict[str, Any] = self._repo.create_conto_ruolo(
+                soggetto_ruolo_id,
+                conto_bancario_id=conto_bancario_id,
+                **legame_payload,
+            )
         return result
 
     # Scopo: Aggiorna legame ruolo ↔ conto con ownership check.
@@ -368,9 +437,6 @@ class ContiBancariService:
         )
         _V.require_campi_da_aggiornare(payload)
         payload = _payload_patch(payload)
-        # Guard predefinito/bloccato: legge stato corrente per merge con payload
-        current = self._repo.get_legame_flags_ruolo(conto_ruolo_id)
-        self._guard_predefinito_bloccato(payload, current)
         with _db_errors_legame_ruolo("aggiorna"):
             updated = self._repo.update_conto_ruolo(
                 conto_ruolo_id, soggetto_ruolo_id, payload,
@@ -409,14 +475,10 @@ class ContiBancariService:
             )
             return conto_id
 
-        # Risolve da IBAN — valida formato prima dell'INSERT
+        # Risolve da IBAN, scritto come lo si legge: forma e formato li
+        # giudica il DB (vedi `_VINCOLI_CONTO`), anche la coerenza con la
+        # filiale (`E_CONTO_IBAN_FILIALE_INCOERENTE`, D-T8a-9).
         iban = require_str(payload, "iban", "IBAN obbligatorio.")
-        iban_norm = iban.upper().replace(" ", "")
-        ErrorManager.require(
-            bool(_IBAN_RE.match(iban_norm)),
-            code=E_ANAG_VALIDAZIONE,
-            message="IBAN non valido: deve contenere da 15 a 34 caratteri alfanumerici.",
-        )
         bank_branch_id = _V.optional_int(payload, "bank_branch_id")
         ErrorManager.require(
             bank_branch_id is not None and bank_branch_id > 0,
@@ -425,35 +487,14 @@ class ContiBancariService:
         )
         assert bank_branch_id is not None
 
-        conto_id, _created = self._repo.get_or_create_conto_bancario(
-            iban=iban,
-            bic_swift=optional_str(payload, "bic_swift"),
-            bank_branch_id=bank_branch_id,
-            intestatario_predefinito=optional_str(payload, "intestatario_predefinito"),
-        )
-        return conto_id
-
-    # Scopo: Valida coerenza predefinito/bloccato.
-    #        Regola: un conto predefinito non puo' essere bloccato.
-    #        Se il payload imposta bloccato=true, verifica che predefinito non sia true
-    #        (nel payload stesso o, per update, nel record corrente).
-    def _guard_predefinito_bloccato(
-        self, payload: dict[str, Any], current: dict[str, Any] | None = None,
-    ) -> None:
-        predefinito = payload.get("predefinito")
-        bloccato = payload.get("bloccato")
-        # Per update: il campo non nel payload resta al valore corrente
-        if current is not None:
-            if predefinito is None:
-                predefinito = current.get("predefinito")
-            if bloccato is None:
-                bloccato = current.get("bloccato")
-        if predefinito and bloccato:
-            ErrorManager.require(
-                False, code=E_ANAG_VALIDAZIONE,
-                message="Non e' possibile bloccare un conto predefinito. "
-                        "Rimuovi il flag predefinito prima di bloccare.",
+        with _db_errors_conto("registra"):
+            conto_id, _created = self._repo.get_or_create_conto_bancario(
+                iban=iban,
+                bic_swift=optional_str(payload, "bic_swift"),
+                bank_branch_id=bank_branch_id,
+                intestatario_predefinito=optional_str(payload, "intestatario_predefinito"),
             )
+        return conto_id
 
     # Scopo: Estrae i campi del legame (soggetto o ruolo) dal payload.
     #        Separa i dati registro (iban, bic, banca) dai dati legame (uso, predefinito, ecc.).

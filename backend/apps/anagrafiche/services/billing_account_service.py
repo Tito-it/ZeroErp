@@ -131,16 +131,18 @@ class BillingAccountService:
 
         repository = BillingAccountRepository()
 
-        # 404 esplicito su BA inesistente per non leakare 403 sugli id
-        # non validi (la fn_get_emittente_fiscale_pk farebbe fallback al
-        # default globale e maschererebbe l'errore).
+        # 404 esplicito su BA inesistente O FUORI PERIMETRO, prima dello scope.
         # Il codice e' quello che solleva la funzione SQL per lo stesso caso
         # (anagrafiche.fn_lookup_utilities_per_ba, `20261126-42`): la stessa
         # cosa ha lo stesso codice da qualunque lato arrivi (Tid, 2026-11-27,
         # brief-db-revisione-anagrafiche §24.9). Inesistente e fuori perimetro
-        # (RLS) sono lo stesso caso. ⚠️ Il controllo resta finche'
-        # fn_get_emittente_fiscale_pk risponde con la predefinita per un id che
-        # non e' un BA (S54a, D-T8b-1).
+        # (RLS) sono lo stesso caso.
+        # ⛔ Il controllo NON si toglie col giro T8b (D-T8b-1, `20261126-85`):
+        #    da li' fn_get_emittente_fiscale_pk rifiuta da se' un id che non e'
+        #    un BA, ma il suo controllo (`fn_check_billing_account_esiste`) e'
+        #    SECURITY DEFINER e vede anche i BA fuori dal perimetro, a cui
+        #    risponde la loro azienda: senza `exists` (che passa dalla RLS) un BA
+        #    di un'altra azienda tornerebbe 403 qui sotto, cioe' «esiste».
         richiedi_billing_account_trovato(
             repository.exists(billing_account_id) or None,
             billing_account_id,

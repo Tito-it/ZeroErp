@@ -165,7 +165,11 @@ class BillingAccountRepository:
 
     # Scopo: Wrapper anagrafiche.fn_get_emittente_fiscale_pk. Ritorna la PK
     #        reale (NON soggetto_ruolo_id, vedi memoria progetto
-    #        feedback_emittente_pk_vs_soggetto_ruolo). None se "0 emittenti".
+    #        feedback_emittente_pk_vs_soggetto_ruolo): l'azienda del
+    #        collegamento del BA. La funzione solleva, non risponde NULL: un id
+    #        che non e' un BA E_BILLING_ACCOUNT_NOT_FOUND (dal giro T8b,
+    #        2026-11-27; vede anche i BA fuori perimetro), nessuna azienda
+    #        E_EMITTENTE_DEFAULT_MISSING.
     def get_emittente_fiscale_id(self, billing_account_id: int) -> int | None:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -283,8 +287,10 @@ class BillingAccountRepository:
         return rows[0] if rows else None
 
     # Scopo: Risolve la valuta dell'emittente fiscale associato al BA via
-    #        anagrafiche.fn_get_emittente_fiscale_pk (catena specifico ->
-    #        default globale). Usato come fallback quando ba.valuta_id e' NULL.
+    #        anagrafiche.fn_get_emittente_fiscale_pk (il collegamento del BA;
+    #        un id che non e' un BA solleva E_BILLING_ACCOUNT_NOT_FOUND, dal
+    #        giro T8b). Usato come fallback quando ba.valuta_id e' NULL: i
+    #        chiamanti passano un BA gia' trovato (`get_lookup_by_id`).
     # Perimetro: sola lettura.
     # Risultato: dict {valuta_id, valuta_codice, valuta_descrizione} oppure
     #        dict vuoto se nessun emittente o emittente senza valuta.

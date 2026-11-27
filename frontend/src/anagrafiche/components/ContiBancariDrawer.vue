@@ -215,6 +215,8 @@ function usoSeverity(uso) {
           :usi-disponibili="conto.usiDisponibili"
           :errors="[...formErrors, ...campiErrati]"
           :disabled="false"
+          :fermo="conto.fermo"
+          :registro-fermo="formMode === 'edit'"
           @iban-select="conto.onIbanSelect"
           @iban-clear="conto.onIbanClear"
           @branch-select="conto.onBranchSelect"

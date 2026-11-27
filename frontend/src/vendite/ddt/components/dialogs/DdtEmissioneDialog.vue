@@ -45,6 +45,15 @@ const { t } = useI18n()
       <Message v-if="props.indirizzoMancante" severity="warn" :closable="false">
         {{ t('vendite.indirizzi.mancante_obbligatorio') }}
       </Message>
+      <!-- ⭐ Senza vettore la stampa scrive «Mezzo proprio»: la bolla afferma
+           che la merce viaggia col mezzo del venditore. Una riconsegna nasce
+           senza vettore quando quello d'origine e' spento (D-T8c-14 b, Tid
+           2026-11-27, brief-db-revisione-anagrafiche §26.2): la Conferma
+           qui e' la risposta alla domanda, e Annulla riporta alla bozza per
+           sceglierlo. Non blocca: il mezzo proprio e' un trasporto lecito. -->
+      <Message v-if="props.ddt && !props.ddt.vettore_soggetto_ruolo_id" severity="warn" :closable="false">
+        {{ t('vendite.ddt.emissione_senza_vettore') }}
+      </Message>
       <p>{{ t('vendite.ddt.emissione_messaggio') }}</p>
 
       <div

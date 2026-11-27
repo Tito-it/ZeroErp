@@ -40,12 +40,18 @@ _LEGAME_CONTO_JOIN = """
 #    una colonna che non c'e', cioe' un 500 da PostgreSQL.
 # ⚠️ Sono il perimetro del REPOSITORY; il contratto del payload lo valida
 #    `ContiBancariService` (400), partendo da qui.
+# ⛔ L'IDENTITA' del legame non si modifica (D-T8a-4, -4 bis, -5 di Tid,
+#    2026-11-27, giro T8a di brief-db-revisione-anagrafiche): conto, `uso` e
+#    possessore (soggetto; ruolo e `istanza_utility_id`) hanno il lucchetto
+#    del DB (`E_CONTO_LEGAME_IMMUTABILE`). Un legame sbagliato si chiude e se
+#    ne apre uno nuovo. Le due liste sono quindi uguali: `istanza_utility_id`
+#    il legame del ruolo la riceve solo alla nascita.
 LEGAME_SOGGETTO_UPDATE_COLS: frozenset[str] = frozenset({
-    "uso", "predefinito", "valido_dal", "valido_al",
+    "predefinito", "valido_dal", "valido_al",
     "intestazione_dichiarata", "verificato", "bloccato",
 })
-LEGAME_RUOLO_UPDATE_COLS: frozenset[str] = LEGAME_SOGGETTO_UPDATE_COLS | {"istanza_utility_id"}
-_LEGAME_NULLABLE = {"valido_dal", "valido_al", "intestazione_dichiarata", "istanza_utility_id"}
+LEGAME_RUOLO_UPDATE_COLS: frozenset[str] = LEGAME_SOGGETTO_UPDATE_COLS
+_LEGAME_NULLABLE = {"valido_dal", "valido_al", "intestazione_dichiarata"}
 
 
 # Scopo: Normalizza stringhe vuote a None sui campi nullable. Ritorna una
@@ -91,10 +97,14 @@ class ContiBancariRepository:
 
     # Scopo: Ricerca IBAN nel registro per autocomplete frontend.
     #        Restituisce conti attivi con dati filiale e banca.
+    # ⭐ Il termine si porta nella forma del registro col BB del DB
+    #    `script.fn_normalizza_codice_bancario` (giro T8a, D-T8a-8): «IT60 X054»
+    #    e «it60-x054» trovano lo stesso conto. Il risultato ha solo lettere e
+    #    cifre, quindi non porta metacaratteri di `LIKE`; un termine fatto di
+    #    soli separatori e' NULL e non trova niente.
     def search_conti_bancari(
         self, search: str, limit: int = 10,
     ) -> list[dict[str, Any]]:
-        search_pattern = pattern_contiene(search)
         sql = """
             SELECT cb.id, cb.iban, cb.bic_swift,
                    cb.intestatario_predefinito, cb.paese,
@@ -105,12 +115,12 @@ class ContiBancariRepository:
               LEFT JOIN anagrafiche.bank_branches bb
                 ON bb.id = cb.bank_branch_id
              WHERE cb.attivo = true
-               AND REPLACE(cb.iban, ' ', '') ILIKE REPLACE(%s, ' ', '')
+               AND cb.iban LIKE '%%' || script.fn_normalizza_codice_bancario(%s) || '%%'
              ORDER BY cb.iban
              LIMIT %s
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [search_pattern, limit])
+            cursor.execute(sql, [search, limit])
             return rows_to_list(cursor)
 
     # Scopo: Dettaglio singolo conto bancario con dati filiale.
@@ -130,22 +140,24 @@ class ContiBancariRepository:
             cursor.execute(sql, [conto_id])
             return row_to_dict(cursor)
 
-    # Scopo: Cerca un conto per IBAN normalizzato. Se non esiste lo crea.
-    #        Il trigger DB normalizza IBAN (uppercase, strip spazi) e deriva paese.
+    # Scopo: Cerca un conto per IBAN. Se non esiste lo crea.
     #        Restituisce (id, created).
+    # ⭐ La forma la da' il DB (giro T8a, D-T8a-8): il trigger `a01` normalizza
+    #    IBAN e BIC (ogni separatore, maiuscolo) e scrive il paese dall'IBAN;
+    #    la ricerca usa lo stesso BB `script.fn_normalizza_codice_bancario`.
+    #    L'IBAN si passa com'e' stato scritto: qui non si ricopia la regola.
     def get_or_create_conto_bancario(
         self, *, iban: str,
         bic_swift: str | None = None,
         bank_branch_id: int,
         intestatario_predefinito: str | None = None,
     ) -> tuple[int, bool]:
-        iban_norm = iban.upper().replace(" ", "")
         sql_find = """
             SELECT id FROM anagrafiche.conti_bancari
-             WHERE iban = %s
+             WHERE iban = script.fn_normalizza_codice_bancario(%s)
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql_find, [iban_norm])
+            cursor.execute(sql_find, [iban])
             row = cursor.fetchone()
             if row is not None:
                 return int(row[0]), False
@@ -348,24 +360,6 @@ class ContiBancariRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [conto_ruolo_id, soggetto_ruolo_id])
             return cursor.rowcount > 0
-
-    # =================================================================
-    # Lettura flag legame (soggetto o ruolo)
-    # =================================================================
-
-    # Scopo: Legge predefinito e bloccato di un legame conto (soggetto o ruolo).
-    #        Usato dal service per validare coerenza predefinito/bloccato su update.
-    def get_legame_flags_soggetto(self, record_id: int) -> dict[str, Any] | None:
-        sql = "SELECT predefinito, bloccato FROM anagrafiche.soggetti_conti_bancari WHERE id = %s"
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [record_id])
-            return row_to_dict(cursor)
-
-    def get_legame_flags_ruolo(self, record_id: int) -> dict[str, Any] | None:
-        sql = "SELECT predefinito, bloccato FROM anagrafiche.soggetti_ruoli_conti_bancari WHERE id = %s"
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [record_id])
-            return row_to_dict(cursor)
 
     # =================================================================
     # Lookup filiali bancarie (anagrafiche.bank_branches)

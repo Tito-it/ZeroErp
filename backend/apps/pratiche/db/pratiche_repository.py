@@ -1597,8 +1597,8 @@ class PraticheRepository:
     #    attivo» gia' oggi, e un'attivazione con data futura valeva «attivo».
     def ha_ba_attivo(self, soggetto_id: str, emittente_fiscale_id: int) -> bool:
         # Scope emittente via fn ufficiale sul BA: l'istanza NON ha un
-        # emittente (la relazione vive su billing_account -> efba, fallback
-        # gestore default incapsulato nella fn, che ritorna la PK reale
+        # emittente (la relazione vive su billing_account -> efba, il
+        # collegamento che ogni BA ha; la fn ritorna la PK reale
         # dell'EF — feedback_emittente_pk_vs_soggetto_ruolo).
         sql = """
             SELECT EXISTS (

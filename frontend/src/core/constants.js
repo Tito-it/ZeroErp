@@ -137,7 +137,9 @@ export const BREAKPOINTS = {
 
 // Lunghezze campo standard
 export const FIELD_LENGTH = {
-  IBAN_MAX: 34,  // ISO 13616: max 34 caratteri alfanumerici
+  // ⛔ Niente IBAN: dal giro T8a (brief-db-revisione-anagrafiche, 2026-11-27)
+  //    la colonna e' `text` e il DB normalizza prima di giudicare, quindi un
+  //    IBAN scritto a gruppi supera i 34 caratteri ed e' giusto.
   // Sigla dell'emittente fiscale: specchio del CHECK DB
   // `chk_emittenti_fiscali_codice_forma` (`^[A-Z0-9]{2,10}$`, 2026-08-31).
   // ⚠️ I due numeri stanno QUI e non nel drawer perche' servono in tre punti —

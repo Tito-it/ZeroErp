@@ -14,12 +14,11 @@ Indice test eseguiti:
  3) test_list_records_capability_slot_vuoto_emittente_disattivo — can_configure=false
  4) test_list_records_capability_record_configurato — can_update + can_remove
  5) test_list_records_capability_utility_disattiva_blocca_configure — can_configure=false
- 6) test_list_mapping_can_remove_senza_motivo — nessun motivo => gesto ammesso
- 6b) test_list_mapping_can_remove_con_motivo — motivo dal DB => gesto spento + chiave i18n
- 6c) test_list_mapping_storia_arriva_intatta — l'elenco per famiglia passa senza
-     essere toccato (il servizio trasporta, non compone la frase)
- 6d) test_list_mapping_storia_assente_resta_none — riga senza storia (gestore
-     globale): NULL non diventa `[]`
+ 6) test_imposta_predefinita_rifiuta_il_billing_account — un BA nel payload e' un 400 che lo nomina
+ 7) test_imposta_predefinita_vuoto — il payload vuoto sposta la predefinita sull'emittente
+ 8) test_imposta_predefinita_senza_riga — la predefinita assente e' E_EMITTENTE_DEFAULT_MISSING, non si ricrea
+(I 6-6d di prima, `can_remove` e motivo per riga dei collegamenti, ritirati il
+ 2026-11-27: la scheda e' in consultazione e nessun collegamento si toglie.)
 """
 
 from unittest import TestCase
@@ -162,159 +161,56 @@ class TestUtilitiesCapability(TestCase):
         self.assertFalse(rows[0]["can_configure"])
 
 
-class TestBillingAccountMappingCapability(TestCase):
-    """BA mapping: `can_remove` deriva dal motivo che arriva dalla riga.
+class TestImpostaPredefinita(TestCase):
+    """Dal 2026-11-27 (D-T4-3, giro 6 di brief-db-revisione-anagrafiche §26.2)
+    il POST del collegamento rende l'emittente l'azienda predefinita: un BA ha
+    gia' il suo collegamento, e da qui non se ne crea uno."""
 
-    ⚠️ Le righe del fixture portano `rimozione_blocco_reason` perche' e' cio'
-    che il repository produce dal 2026-08-27 (`LEFT JOIN LATERAL` su
-    `script.fn_check_ba_cambio_emittente`).
-
-    ⛔ E LA RIGA `is_default` NON PUO' AVERE MOTIVO NULLO, dal `20260827-03`:
-    il gestore globale deve sempre esistere, quindi quella riga porta SEMPRE
-    `DEFAULT_SINGLETON`. Un fixture che la costruisce senza motivo riproduce
-    una forma che il repository non produce piu' — passa, e conferma un
-    comportamento che non esiste. E' lo stesso difetto che questi test sono
-    nati per chiudere, un livello piu' in su.
-    """
-
-    # Scopo: motivo assente (`NULL` dal database) => il gesto resta ammesso.
+    # Scopo: un `billing_account_id` nel payload e' un 400 che lo nomina, prima
+    #        di toccare il repository.
     @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository", autospec=True)
     @patch(f"{SVC_MOD}.EmittentiFiscaliService")
-    def test_list_mapping_can_remove_senza_motivo(self, mock_parent_cls, mock_repo_cls):
+    def test_imposta_predefinita_rifiuta_il_billing_account(self, _parent, mock_repo_cls):
+        from apps.anagrafiche.services.emittenti_fiscali_service import (
+            EmittentiFiscaliBillingAccountService,
+        )
+        from apps.core.services.service_errors import ServiceError
+
+        with self.assertRaises(ServiceError) as ctx:
+            EmittentiFiscaliBillingAccountService().imposta_predefinita(7, {"billing_account_id": 5})
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        self.assertIn("billing_account_id", ctx.exception.context["unknown_keys"])
+        mock_repo_cls.return_value.imposta_predefinita.assert_not_called()
+
+    # Scopo: il payload vuoto sposta la predefinita sull'emittente.
+    @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository", autospec=True)
+    @patch(f"{SVC_MOD}.EmittentiFiscaliService")
+    def test_imposta_predefinita_vuoto(self, mock_parent_cls, mock_repo_cls):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliBillingAccountService,
         )
 
         mock_parent_cls.return_value._resolve_soggetto_ruolo_id.return_value = 50
-        mock_repo_cls.return_value.list_by_emittente.return_value = (
-            [
-                {"id": 1, "billing_account_id": 100, "is_default": False,
-                 "rimozione_blocco_reason": None, "rimozione_blocco_reason_key": None,
-                 "rimozione_blocco_storia": None},
-                {"id": 2, "billing_account_id": 101, "is_default": False,
-                 "rimozione_blocco_reason": None, "rimozione_blocco_reason_key": None,
-                 "rimozione_blocco_storia": None},
-            ],
-            2,
-        )
-
-        rows, total = EmittentiFiscaliBillingAccountService().list_mapping(7)
-
-        self.assertEqual(total, 2)
-        self.assertTrue(rows[0]["can_remove"])
-        self.assertTrue(rows[1]["can_remove"])
-
-    # Scopo: ⭐ IL RAMO CHE CONTA — con un motivo il gesto si spegne, e il
-    #        motivo con la sua chiave i18n RESTANO nel payload: senza quelli
-    #        il frontend avrebbe un pulsante grigio che non dice perche',
-    #        che e' la stessa cosa di un'azione sparita.
-    @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository", autospec=True)
-    @patch(f"{SVC_MOD}.EmittentiFiscaliService")
-    def test_list_mapping_can_remove_con_motivo(self, mock_parent_cls, mock_repo_cls):
-        from apps.anagrafiche.services.emittenti_fiscali_service import (
-            EmittentiFiscaliBillingAccountService,
-        )
-
-        mock_parent_cls.return_value._resolve_soggetto_ruolo_id.return_value = 50
-        mock_repo_cls.return_value.list_by_emittente.return_value = (
-            [
-                {"id": 1, "billing_account_id": 100, "is_default": False,
-                 "rimozione_blocco_reason": "BA_CON_STORIA",
-                 "rimozione_blocco_reason_key":
-                     "amministrazione.emittenti_fiscali.ba_blocco.con_storia",
-                 "rimozione_blocco_storia": [
-                     {"famiglia": "FATTURA", "descrizione": "Fattura di vendita", "n": 3},
-                 ]},
-                # ⛔ Il gestore globale e' bloccato dal SINGLETON, non dalla
-                #    storia: il suo `dettaglio` non porta la chiave `storia`.
-                #    Un fixture che gliela desse riprodurrebbe una forma che il
-                #    database non produce.
-                {"id": 2, "billing_account_id": None, "is_default": True,
-                 "rimozione_blocco_reason": "DEFAULT_SINGLETON",
-                 "rimozione_blocco_reason_key":
-                     "amministrazione.emittenti_fiscali.ba_blocco.default_singleton",
-                 "rimozione_blocco_storia": None},
-            ],
-            2,
-        )
-
-        rows, _ = EmittentiFiscaliBillingAccountService().list_mapping(7)
-
-        # Entrambi i motivi a contratto spengono il gesto, e il servizio non
-        # guarda QUALE sia: trasporta, non deduce.
-        self.assertEqual([r["can_remove"] for r in rows], [False, False])
+        mock_repo_cls.return_value.imposta_predefinita.return_value = 11
+        esito = EmittentiFiscaliBillingAccountService().imposta_predefinita(7, {})
         self.assertEqual(
-            [(r["rimozione_blocco_reason"], r["rimozione_blocco_reason_key"]) for r in rows],
-            [
-                ("BA_CON_STORIA",
-                 "amministrazione.emittenti_fiscali.ba_blocco.con_storia"),
-                ("DEFAULT_SINGLETON",
-                 "amministrazione.emittenti_fiscali.ba_blocco.default_singleton"),
-            ],
+            {"id": 11, "emittente_id": 7, "billing_account_id": None, "is_default": True}, esito,
         )
+        mock_repo_cls.return_value.imposta_predefinita.assert_called_once_with(50)
 
-    # Scopo: ⭐ L'ELENCO PER FAMIGLIA ARRIVA INTATTO — e' cio' che permette al
-    #        tooltip di dire quanto dice il rifiuto. Il servizio TRASPORTA: non
-    #        compone la frase (che vive nei `locales`), non riordina, non
-    #        somma. Se un giorno qualcuno ci mettesse una `join()` qui, la
-    #        traduzione uscirebbe dai `locales` senza che niente fallisca.
+    # Scopo: senza la riga della predefinita il service lo DICE
+    #        (`E_EMITTENTE_DEFAULT_MISSING`) e non la ricrea: e' uno stato che il
+    #        modello esclude, e un ripiego lo nasconderebbe.
     @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository", autospec=True)
     @patch(f"{SVC_MOD}.EmittentiFiscaliService")
-    def test_list_mapping_storia_arriva_intatta(self, mock_parent_cls, mock_repo_cls):
+    def test_imposta_predefinita_senza_riga(self, mock_parent_cls, mock_repo_cls):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliBillingAccountService,
         )
-
-        storia = [
-            {"famiglia": "FATTURA", "descrizione": "Fattura di vendita", "n": 3},
-            {"famiglia": "DDT", "descrizione": "Documento di trasporto", "n": 1},
-        ]
-        mock_parent_cls.return_value._resolve_soggetto_ruolo_id.return_value = 50
-        mock_repo_cls.return_value.list_by_emittente.return_value = (
-            [
-                {"id": 1, "billing_account_id": 100, "is_default": False,
-                 "rimozione_blocco_reason": "BA_CON_STORIA",
-                 "rimozione_blocco_reason_key":
-                     "amministrazione.emittenti_fiscali.ba_blocco.con_storia",
-                 "rimozione_blocco_storia": storia},
-            ],
-            1,
-        )
-
-        rows, _ = EmittentiFiscaliBillingAccountService().list_mapping(7)
-
-        self.assertFalse(rows[0]["can_remove"])
-        # ⚠️ L'ORDINE E' IL CONTRATTO: la funzione DB usa `WITH ORDINALITY` per
-        #    tenere l'ordine del catalogo (la fattura per prima). Un riordino
-        #    qui farebbe leggere all'operatore un elenco diverso da quello del
-        #    messaggio d'errore, sulla stessa condizione.
-        self.assertEqual(rows[0]["rimozione_blocco_storia"], storia)
-
-    # Scopo: ⛔ IL GEMELLO NEGATIVO — senza il quale il test sopra non
-    #        distingue «trasporta la storia» da «inventa una lista». La riga del
-    #        gestore globale non ha storia: `None` deve restare `None`, perche'
-    #        `[]` direbbe «nessun documento» dove la risposta e' «questa
-    #        domanda non si applica» (li' blocca il singleton).
-    @patch(f"{SVC_MOD}.EmittentiFiscaliBillingAccountRepository", autospec=True)
-    @patch(f"{SVC_MOD}.EmittentiFiscaliService")
-    def test_list_mapping_storia_assente_resta_none(self, mock_parent_cls, mock_repo_cls):
-        from apps.anagrafiche.services.emittenti_fiscali_service import (
-            EmittentiFiscaliBillingAccountService,
-        )
+        from apps.core.services.service_errors import ServiceError
 
         mock_parent_cls.return_value._resolve_soggetto_ruolo_id.return_value = 50
-        mock_repo_cls.return_value.list_by_emittente.return_value = (
-            [
-                {"id": 2, "billing_account_id": None, "is_default": True,
-                 "rimozione_blocco_reason": "DEFAULT_SINGLETON",
-                 "rimozione_blocco_reason_key":
-                     "amministrazione.emittenti_fiscali.ba_blocco.default_singleton",
-                 "rimozione_blocco_storia": None},
-            ],
-            1,
-        )
-
-        rows, _ = EmittentiFiscaliBillingAccountService().list_mapping(7)
-
-        self.assertFalse(rows[0]["can_remove"])
-        self.assertIsNone(rows[0]["rimozione_blocco_storia"])
+        mock_repo_cls.return_value.imposta_predefinita.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            EmittentiFiscaliBillingAccountService().imposta_predefinita(7, {})
+        self.assertEqual(ctx.exception.code, "E_EMITTENTE_DEFAULT_MISSING")

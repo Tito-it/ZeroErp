@@ -236,7 +236,8 @@ l'azienda di nessun cliente.
 * Il gestore globale è **uno e uno solo** (`E_EMITTENTE_DEFAULT_SINGLETON`): si può spostare su un'altra azienda, ma
   non può sparire: si sposta modificando la sua riga, che non si cancella (`E_BA_COLLEGAMENTO_NON_SI_TOGLIE`) e non
   diventa il collegamento di un billing account (`E_BA_COLLEGAMENTO_NON_SI_SPOSTA`). Nel drawer dei billing account
-  la riga non si rimuove, e «Crea default globale» è spento quando la riga c'è già.
+  di un emittente l'unico gesto è «Rendi predefinita», che **sposta** la riga su quell'emittente (`POST` a corpo
+  vuoto); è spento quando l'emittente lo è già.
 * Senza nessun emittente non nasce nessun billing account (`E_EMITTENTE_DEFAULT_MISSING`): un cliente fattura sempre
   per un'azienda.
 * ⛔ **Il gestore globale non è l'azienda di chi lavora.** Un operatore senza assegnazione, o un super admin in
@@ -246,7 +247,7 @@ l'azienda di nessun cliente.
 
 Il cliente non ha un emittente: ce l'ha il suo **billing account**, uno solo, e sempre. Il collegamento nasce quando
 nasce il billing account, con l'azienda in cui lavora chi lo crea o, senza, col gestore globale; dal drawer
-«Gestisci billing account» il super admin vede i collegamenti. Un collegamento **non si cancella** e **non passa a un
+«Vedi billing account» il super admin vede i collegamenti, in consultazione. Un collegamento **non si cancella** e **non passa a un
 altro billing account** (`E_BA_COLLEGAMENTO_NON_SI_TOGLIE`, `E_BA_COLLEGAMENTO_NON_SI_SPOSTA`), e il billing account
 stesso non si cancella (`E_BA_NON_SI_CANCELLA`): un cliente si chiude annullandolo. Un cliente cambia azienda solo
 **modificando l'azienda sul suo collegamento**. Come si decide l'azienda di un cliente, e quando non si può più

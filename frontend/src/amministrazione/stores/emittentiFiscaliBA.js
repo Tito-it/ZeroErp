@@ -1,4 +1,5 @@
-// Pinia store per lista paginata mapping BA -> emittente fiscale.
+// Pinia store per la lista paginata dei clienti (BA) di un emittente fiscale,
+// in consultazione, e per il solo gesto «rendi predefinita».
 // Separato dallo store principale emittentiFiscali perche' la lista BA
 // usa useSearchTable (contratto: filters, items, totalRecords, loading, fetchList).
 //
@@ -13,8 +14,7 @@ import { ref } from 'vue'
 import { createListaStore } from '../../core/stores/createListaStore'
 import {
   listEmittenteBillingAccount,
-  createEmittenteBillingAccount,
-  deleteEmittenteBillingAccount,
+  impostaEmittentePredefinito,
   getEmittenteBillingAccountSummary,
 } from '../api/emittentiFiscali'
 import { storePerIstanza } from '../../core/stores/storePerIstanza'
@@ -59,18 +59,12 @@ export const useEmittentiFiscaliBAStore = storePerIstanza('amm-emittenti-fiscali
       countSpecifici.value = data.count_specifici || 0
     }
 
-    // Scopo: Aggiunge mapping e ricarica la lista (il summary lo rilegge il
-    //        chiamante: vedi `fetchSummary`).
-    async function addMapping(payload) {
-      const res = await createEmittenteBillingAccount(emittenteId.value, payload)
+    // Scopo: Rende l'emittente l'azienda predefinita e ricarica la lista (il
+    //        summary lo rilegge il chiamante: vedi `fetchSummary`).
+    async function impostaPredefinito() {
+      const res = await impostaEmittentePredefinito(emittenteId.value)
       await fetchList()
       return res.data.data
-    }
-
-    // Scopo: Elimina mapping e ricarica la lista (il summary: vedi sopra).
-    async function removeMapping(mappingId) {
-      await deleteEmittenteBillingAccount(emittenteId.value, mappingId)
-      await fetchList()
     }
 
     // Scopo: il reset del core (lista, padre, filtri) piu' il summary, che il
@@ -81,6 +75,6 @@ export const useEmittentiFiscaliBAStore = storePerIstanza('amm-emittenti-fiscali
       countSpecifici.value = 0
     }
 
-    return { hasDefaultMapping, countSpecifici, fetchSummary, addMapping, removeMapping, reset }
+    return { hasDefaultMapping, countSpecifici, fetchSummary, impostaPredefinito, reset }
   },
 }))
