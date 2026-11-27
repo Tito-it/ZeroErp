@@ -26,6 +26,15 @@
 #      (`E_PERMESSO_NEGATO`), e niente si scrive
 #   4. ⛔ la stessa area due volte: il vincolo `uq_user_override_aree_user_area`
 #      attraversa il verbo ed esce `E_AMM_VALIDAZIONE`, non come 500
+#   5. ⛔ una voce senza motivo (anche una che toglie): la rifiuta il verbo
+#      (`E_OVERRIDE_MOTIVO_OBBLIGATORIO`, campo `motivo`) e niente si scrive.
+#      ⭐ La regola sta SOLO nel DB (brief-db-motivo-override-obbligatorio,
+#      D-1 a): il service non la ripete, e il codice arriva al client cosi'
+#      com'e', col campo che accende il dialog
+#
+# ⚠️ Dal 2026-11-27 ogni voce porta un motivo: senza, il verbo la rifiuta
+#    PRIMA del vincolo che il caso vuole provare (il 4 uscirebbe col codice del
+#    motivo, e smetterebbe di provare ciò che dice).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -111,7 +120,7 @@ class OverrideAreeAzioniDbTests(TestCase):
     def test_un_operatore_non_scrive_le_eccezioni(self) -> None:
         with connection.cursor() as cur:
             apri_contesto_operatore(cur)
-        voce = {"area_id": self.area_id, "livello": "TUTTO"}
+        voce = {"area_id": self.area_id, "livello": "TUTTO", "motivo": "e2e"}
         self.assertEqual(self._codice(lambda: self.svc.put_override_aree(self.uid, [voce])), "E_PERMESSO_NEGATO")
         with connection.cursor() as cur:
             cur.execute("SELECT count(*) FROM config.user_override_aree WHERE auth_user_id = %s", [self.uid])
@@ -120,5 +129,33 @@ class OverrideAreeAzioniDbTests(TestCase):
     # 4.
     def test_la_stessa_area_due_volte_e_una_validazione(self) -> None:
         self._come_super_admin()
-        voce = {"area_id": self.area_id, "livello": "TUTTO"}
+        voce = {"area_id": self.area_id, "livello": "TUTTO", "motivo": "e2e"}
         self.assertEqual(self._codice(lambda: self.svc.put_override_aree(self.uid, [voce, voce])), E_AMM_VALIDAZIONE)
+
+    # 5.
+    def test_una_voce_senza_motivo_la_rifiuta_il_verbo(self) -> None:
+        self._come_super_admin()
+        casi = {
+            "area assente": lambda: self.svc.put_override_aree(
+                self.uid, [{"area_id": self.area_id, "livello": "LETTURA"}]),
+            "area che toglie, vuoto": lambda: self.svc.put_override_aree(
+                self.uid, [{"area_id": self.area_id, "livello": "BLOCCATO", "motivo": "   "}]),
+            "azione che toglie, null": lambda: self.svc.put_override_azioni(
+                self.uid, [{"azione_id": self.azione_id, "abilitata": False, "motivo": None}]),
+        }
+        for nome, azione in casi.items():
+            with self.subTest(caso=nome):
+                try:
+                    with transaction.atomic():
+                        azione()
+                    self.fail("la voce senza motivo e' passata")
+                except ServiceError as exc:
+                    self.assertEqual(exc.code, "E_OVERRIDE_MOTIVO_OBBLIGATORIO")
+                    self.assertEqual(exc.fields, ("motivo",))
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT (SELECT count(*) FROM config.user_override_aree WHERE auth_user_id = %s)"
+                "     + (SELECT count(*) FROM config.user_override_azioni WHERE auth_user_id = %s)",
+                [self.uid, self.uid],
+            )
+            self.assertEqual(cur.fetchone()[0], 0)

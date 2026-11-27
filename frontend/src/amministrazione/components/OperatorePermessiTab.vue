@@ -49,6 +49,7 @@ import { areaConsenteAzione, livelloConTettoArea } from '../tettoArea'
 import { oggiAziendaleString } from '../../core/utils/date'
 import MatriceOverride from '../../core/components/MatriceOverride.vue'
 import FiltroToggle from '../../core/components/FiltroToggle.vue'
+import MotivoDialog from '../../core/components/MotivoDialog.vue'
 import ElencoDettaglio from '../../core/components/ElencoDettaglio.vue'
 import Select from 'primevue/select'
 import Message from 'primevue/message'
@@ -59,7 +60,12 @@ import Badge from 'primevue/badge'
 const { t } = useI18n()
 const store = useOperatoriStore()
 const notify = useNotify()
-const { execute } = useApiHandler()
+// `campiErrati`: il rifiuto del motivo dal DB (canale `COLUMN` = `motivo`)
+// accende il bordo d'errore del campo nel dialog.
+const { execute, campiErrati } = useApiHandler()
+// La rilettura dei derivati ha un handler suo: con lo stesso, il suo `execute`
+// azzererebbe i `campiErrati` del rifiuto appena arrivato.
+const { execute: executeDerivati } = useApiHandler()
 // Readonly: i controlli di riga e il Salva si spengono con la sola lettura del
 // drawer che ospita la scheda.
 // ⛔ CUMULATIVA con la prop, e non solo iniettata: il drawer ospite espone una
@@ -171,16 +177,22 @@ watch(() => props.authUserId, loadAll, { immediate: true })
 // salvataggio la lascia dov'è.
 const chiaveOggetto = (o) => `${o.app_label}.${o.model_name}`
 
+// Scopo: riallinea la mappa a video di UNA sezione agli override dello store.
+//        Sede unica: la usano il caricamento e il Salva (dopo ogni PUT).
+const syncAree = () => {
+  overrideAree.value = Object.fromEntries(store.overrideAree.map(a => [a.area_id, { ...a }]))
+}
+const syncAzioni = () => {
+  overrideAzioni.value = Object.fromEntries(store.overrideAzioni.map(a => [a.azione_id, { ...a }]))
+}
+const syncOggetti = () => {
+  overrideOggetti.value = Object.fromEntries(store.overrideOggetti.map(o => [chiaveOggetto(o), { ...o }]))
+}
+
 function syncLocal() {
-  overrideAree.value = Object.fromEntries(
-    store.overrideAree.map(a => [a.area_id, { ...a }])
-  )
-  overrideAzioni.value = Object.fromEntries(
-    store.overrideAzioni.map(a => [a.azione_id, { ...a }])
-  )
-  overrideOggetti.value = Object.fromEntries(
-    store.overrideOggetti.map(o => [chiaveOggetto(o), { ...o }])
-  )
+  syncAree()
+  syncAzioni()
+  syncOggetti()
 }
 
 // ═══ L'EREDITATO — cosa l'operatore ha GIA' dal profilo ════════════════════
@@ -338,35 +350,94 @@ const tettoOggetto = (voce) => {
 
 // ⛔ IL SALVATAGGIO MANDA SOLO LE RIGHE CON OVERRIDE VERO, e i mapper partono
 //    dai VALORI delle mappe — mai dalle voci del catalogo.
-//    Il `PUT` sostituisce l'intera collezione (`DELETE WHERE auth_user_id` +
-//    reinsert): mandare tutte le voci a video materializzerebbe 59 override
-//    reali e cambierebbe il comportamento di ogni utente con un profilo, cioe'
-//    farebbe per sbaglio il cambio di funzionalita' che questa ristrutturazione
-//    esclude. Un BLOCCATO scritto non e' «nessun override»: batte il profilo.
-const _toAreaItem = (a) => ({
+//    Il `PUT` sostituisce l'intera collezione (dal 2026-11-27 col verbo del
+//    SUPER_ADMIN, `config.fn_imposta_override_*`): mandare tutte le voci a
+//    video materializzerebbe 59 override reali e cambierebbe il comportamento
+//    di ogni utente con un profilo, cioe' farebbe per sbaglio il cambio di
+//    funzionalita' che questa ristrutturazione esclude. Un BLOCCATO scritto non
+//    e' «nessun override»: batte il profilo.
+// ⭐ IL MOTIVO (brief-db-motivo-override-obbligatorio, D-3 b di Tid): ogni voce
+//    scritta ne porta uno, e lo pretende il DB (`E_OVERRIDE_MOTIVO_OBBLIGATORIO`,
+//    anche per una voce che toglie). Uno solo per Salva, chiesto dal dialog:
+//    va sulle voci CAMBIATE e su quelle vecchie ancora SENZA (D-2 b: le righe
+//    nate prima della regola restano finche' qualcuno le riscrive); le altre
+//    ripartono col loro. `motivo` null = nessuna voce lo chiedeva.
+const _conMotivo = (voce, richiede, motivo) =>
+  (richiede(voce) ? motivo : voce.motivo) || null
+
+const _toAreaItem = (a, richiede, motivo) => ({
   area_id: a.area_id,
   livello: a.livello,
-  motivo: a.motivo || null,
+  motivo: _conMotivo(a, richiede, motivo),
   valido_dal: a.valido_dal || null,
   valido_al: a.valido_al || null,
 })
 
-const _toAzioneItem = (a) => ({
+const _toAzioneItem = (a, richiede, motivo) => ({
   azione_id: a.azione_id,
   abilitata: a.abilitata,
-  motivo: a.motivo || null,
+  motivo: _conMotivo(a, richiede, motivo),
   valido_dal: a.valido_dal || null,
   valido_al: a.valido_al || null,
 })
 
-const _toOggettoItem = (o) => ({
+const _toOggettoItem = (o, richiede, motivo) => ({
   app_label: o.app_label,
   model_name: o.model_name,
   livello: o.livello,
-  motivo: o.motivo || null,
+  motivo: _conMotivo(o, richiede, motivo),
   valido_dal: o.valido_dal || null,
   valido_al: o.valido_al || null,
 })
+
+// Le tre sezioni del Salva, nell'ordine in cui partono: per ognuna la mappa a
+// video, gli override salvati, il campo che dice «la voce e' cambiata», il
+// mapper, il PUT, e come la mappa si riallinea alla risposta.
+// ⭐ Il riallineamento dopo il PUT riuscito non e' un di piu': la mappa a video
+//    tiene ancora le voci SENZA il motivo appena scritto, e al Salva dopo le
+//    direbbe «senza motivo» chiedendolo di nuovo.
+const _sezioniSalva = [
+  {
+    nome: 'aree', mappa: overrideAree, salvati: salvatiAree, campo: 'livello',
+    chiave: (v) => v.area_id, toItem: _toAreaItem,
+    scrivi: (id, items) => store.saveOverrideAree(id, items),
+    riallinea: syncAree,
+  },
+  {
+    nome: 'azioni', mappa: overrideAzioni, salvati: salvateAzioni, campo: 'abilitata',
+    chiave: (v) => v.azione_id, toItem: _toAzioneItem,
+    scrivi: (id, items) => store.saveOverrideAzioni(id, items),
+    riallinea: syncAzioni,
+  },
+  {
+    nome: 'oggetti', mappa: overrideOggetti, salvati: salvatiOggetti, campo: 'livello',
+    chiave: chiaveOggetto, toItem: _toOggettoItem,
+    scrivi: (id, items) => store.saveOverrideOggetti(id, items),
+    riallinea: syncOggetti,
+  },
+]
+
+// Scopo: la voce di una sezione chiede il motivo del Salva? Si' se e' nuova o
+//        cambiata rispetto al salvato, oppure se non ne ha uno.
+// ⚠️ Una voce TOLTA non e' nella mappa e non chiede niente (D-4 di Tid): tolta
+//    l'eccezione resta il profilo, che non ha niente da spiegare; chi l'ha tolta
+//    e quando lo dice lo storico.
+function _richiedeMotivo(sz) {
+  return (voce) => {
+    const salvata = sz.salvati.value[sz.chiave(voce)]
+    return !salvata || salvata[sz.campo] !== voce[sz.campo] || !voce.motivo?.trim()
+  }
+}
+
+const _sezioniDaSalvare = () => _sezioniSalva.filter(sz => sezioni[sz.nome].modificato.value)
+
+// Quante voci ricevono il motivo del Salva: zero = il dialog non si apre (si
+// sono solo tolte voci, e quelle che restano hanno gia' il loro).
+const vociDaMotivare = computed(() =>
+  _sezioniDaSalvare().reduce(
+    (n, sz) => n + Object.values(sz.mappa.value).filter(_richiedeMotivo(sz)).length, 0,
+  )
+)
 
 // ═══ IL SALVA UNICO ═══════════════════════════════════════════════════════
 // Una modifica in un'area tocca spesso piu' di un endpoint (livello, oggetti,
@@ -385,7 +456,7 @@ const _toOggettoItem = (o) => ({
 const salvando = ref(false)
 
 function aggiornaDerivati(userId) {
-  return execute(() => Promise.all([
+  return executeDerivati(() => Promise.all([
     store.fetchPermessiEffettivi(userId),
     store.fetchRiepilogoAree(userId),
   ]))
@@ -393,27 +464,19 @@ function aggiornaDerivati(userId) {
 
 const puoSalvare = computed(() => !isReadonly.value && modificato.value)
 
-// Scopo: Salva le sezioni modificate; `true` se tutte riescono.
-async function salva() {
-  if (!puoSalvare.value || salvando.value) return false
+// Scopo: Scrive le sezioni modificate, col motivo del Salva sulle voci che lo
+//        chiedono; `true` se tutte riescono.
+async function _scrivi(motivo) {
   salvando.value = true
   const id = props.authUserId
   let salvate = 0
   try {
     const esito = await execute(async () => {
-      if (sezioni.aree.modificato.value) {
-        await store.saveOverrideAree(id, Object.values(overrideAree.value).map(_toAreaItem))
-        sezioni.aree.fissa()
-        salvate++
-      }
-      if (sezioni.azioni.modificato.value) {
-        await store.saveOverrideAzioni(id, Object.values(overrideAzioni.value).map(_toAzioneItem))
-        sezioni.azioni.fissa()
-        salvate++
-      }
-      if (sezioni.oggetti.modificato.value) {
-        await store.saveOverrideOggetti(id, Object.values(overrideOggetti.value).map(_toOggettoItem))
-        sezioni.oggetti.fissa()
+      for (const sz of _sezioniDaSalvare()) {
+        const richiede = _richiedeMotivo(sz)
+        await sz.scrivi(id, Object.values(sz.mappa.value).map(v => sz.toItem(v, richiede, motivo)))
+        sz.riallinea()
+        sezioni[sz.nome].fissa()
         salvate++
       }
       return true
@@ -427,6 +490,39 @@ async function salva() {
   } finally {
     salvando.value = false
   }
+}
+
+// ═══ IL DIALOG DEL MOTIVO (D-3 b) ═════════════════════════════════════════
+// Il Salva del drawer chiama `salva`: se qualche voce chiede il motivo si apre
+// il dialog, e la scrittura parte dalla sua conferma. `salva` risponde quando
+// il giro finisce: `true` scritto, `false` se il dialog si chiude senza.
+// ⚠️ Un rifiuto del backend lascia il dialog aperto col motivo (la chiusura
+//    dopo il successo e' del chiamante, regola di `MotivoDialog`): le sezioni
+//    gia' scritte restano fissate, e la conferma successiva manda le altre.
+const dialogMotivo = ref(false)
+let _attesaMotivo = null
+
+function _rispondi(esito) {
+  const r = _attesaMotivo
+  _attesaMotivo = null
+  r?.(esito)
+}
+
+watch(dialogMotivo, (aperto) => { if (!aperto) _rispondi(false) })
+
+// Scopo: Salva le sezioni modificate; `true` se tutte riescono.
+async function salva() {
+  if (!puoSalvare.value || salvando.value) return false
+  if (vociDaMotivare.value === 0) return _scrivi(null)
+  _rispondi(false)
+  dialogMotivo.value = true
+  return new Promise(r => { _attesaMotivo = r })
+}
+
+async function confermaMotivo(motivo) {
+  if (!await _scrivi(motivo)) return
+  _rispondi(true)
+  dialogMotivo.value = false
 }
 
 // ═══ I DUE VERBI ══════════════════════════════════════════════════════════
@@ -816,6 +912,19 @@ defineExpose({ modificato, chiudiConConferma, salva, puoSalvare, salvando })
           </p>
       </template>
     </ElencoDettaglio>
+
+    <MotivoDialog
+      v-model:visible="dialogMotivo"
+      :header="t('amministrazione.permessi_motivo_titolo')"
+      :label="t('amministrazione.permessi_motivo_label')"
+      :aiuto="t('amministrazione.permessi_motivo_aiuto')"
+      obbligatorio
+      :loading="salvando"
+      :invalid="campiErrati.includes('motivo')"
+      @conferma="confermaMotivo"
+    >
+      <p>{{ t('amministrazione.permessi_motivo_spiegazione', { n: vociDaMotivare }) }}</p>
+    </MotivoDialog>
   </div>
 </template>
 

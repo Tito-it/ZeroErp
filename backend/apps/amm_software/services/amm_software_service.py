@@ -100,6 +100,14 @@ _EMITTENTE_FORM_DEFAULTS_CODES: tuple[str, ...] = (
 # ⛔ Fino al 2026-10-20 la voce arrivava cruda al repository: una chiave
 #    mancante era un KeyError, una voce che non e' un oggetto un AttributeError
 #    — cioe' un 500 `E_GENERICO` per un errore di chi chiama.
+# ⭐ Il `motivo` e' obbligatorio (dal 2026-11-27, brief-db-motivo-override-
+#    obbligatorio) e la regola sta nel verbo, cioe' nella primitiva
+#    `config.fn_applica_imposta_override`: `E_OVERRIDE_MOTIVO_OBBLIGATORIO`,
+#    campo `motivo`, anche per una voce che toglie. Qui resta `optional_string`
+#    di proposito, come per `blocca_credenziale`: un `require_string` sarebbe la
+#    seconda sede della regola, e risponderebbe con `E_AMM_VALIDAZIONE` al posto
+#    del codice del dominio. Il rifiuto del DB attraversa `translate_db_errors`
+#    col suo codice e il suo campo (test_override_aree_azioni_db, caso 5).
 def _voci_override(
     items: Any, leggi: Callable[[dict[str, Any], int], dict[str, Any]],
 ) -> list[dict[str, Any]]:

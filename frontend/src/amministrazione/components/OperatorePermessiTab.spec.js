@@ -24,6 +24,12 @@
 //      reset, niente Salva — ma l'elenco delle aree resta navigabile
 //   9) il numero di override di un'area viene dal DB (sede unica); un'area con
 //      modifiche non salvate lo conta a video, come anteprima
+//  10) il motivo (D-3 b): una voce cambiata apre il dialog; il motivo va sulle
+//      voci cambiate e su quelle vecchie senza (D-2 b), le altre tengono il loro
+//  11) togliere voci non chiede motivo (D-4): se quelle che restano ce l'hanno,
+//      il Salva scrive senza dialog
+//  12) chiudere il dialog non scrive niente, e `salva` risponde `false`
+//  13) un rifiuto del backend lascia il dialog aperto, col campo in errore
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -57,6 +63,7 @@ const { monta } = await import('../../../test/montaggio')
 const { default: OperatorePermessiTab } = await import('./OperatorePermessiTab.vue')
 const { default: Select } = await import('primevue/select')
 const { default: Badge } = await import('primevue/badge')
+const { default: MotivoDialog } = await import('../../core/components/MotivoDialog.vue')
 
 const ID = 42
 function comeAxios(data) { return { data: { data } } }
@@ -108,8 +115,8 @@ function preparaApi({ limitata = false, superAdmin = false } = {}) {
   api.getModelOverridesLookup.mockResolvedValue(comeAxios({ results: OGGETTI }))
 }
 
-async function montaScheda() {
-  const w = monta(OperatorePermessiTab, { authUserId: ID, visible: true })
+async function montaScheda(opts = {}) {
+  const w = monta(OperatorePermessiTab, { authUserId: ID, visible: true }, opts)
   await flushPromises()
   return w
 }
@@ -186,7 +193,10 @@ describe('OperatorePermessiTab — il pannello per area', () => {
     expect(vociElenco(w)[0].classes()).toContain('app-elenco-dettaglio-voce--modificata')
 
     api.getPermessiEffettivi.mockClear()
-    expect(await w.vm.salva()).toBe(true)
+    const esito = w.vm.salva()
+    await flushPromises()
+    w.findComponent(MotivoDialog).vm.$emit('conferma', 'Delega')
+    expect(await esito).toBe(true)
 
     expect(api.putOverrideAzioni).toHaveBeenCalledTimes(1)
     const [, items] = api.putOverrideAzioni.mock.calls[0]
@@ -227,5 +237,86 @@ describe('OperatorePermessiTab — il pannello per area', () => {
     tendine[tendine.length - 1].vm.$emit('update:modelValue', true)
     await flushPromises()
     expect(vociElenco(w)[0].findComponent(Badge).props('value')).toBe(1)
+  })
+
+  // Scopo: cambia l'azione di Vendite (la 10, nuova) e ritorna la scheda.
+  async function cambiaAzioneVendite(w) {
+    const tendine = w.find('.app-elenco-dettaglio-dettaglio').findAllComponents(Select)
+    tendine[tendine.length - 1].vm.$emit('update:modelValue', true)
+    await flushPromises()
+  }
+
+  it('10) una voce cambiata chiede il motivo: va sulle cambiate e sulle senza', async () => {
+    // L'azione 30 ha gia' il suo motivo e non cambia: lo tiene. La 20 e' vecchia
+    // e senza motivo: lo riceve (D-2 b). La 10 e' nuova: lo riceve.
+    api.getOverrideAzioni.mockResolvedValue(comeAxios({ results: [
+      { azione_id: 20, abilitata: true },
+      { azione_id: 30, abilitata: false, motivo: 'Audit 2026' },
+    ] }))
+    const w = await montaScheda()
+    await cambiaAzioneVendite(w)
+
+    const esito = w.vm.salva()
+    await flushPromises()
+    const dialog = w.findComponent(MotivoDialog)
+    expect(dialog.props('visible')).toBe(true)
+    expect(api.putOverrideAzioni).not.toHaveBeenCalled()
+
+    dialog.vm.$emit('conferma', 'Delega temporanea')
+    expect(await esito).toBe(true)
+    const [, items] = api.putOverrideAzioni.mock.calls[0]
+    expect(Object.fromEntries(items.map(i => [i.azione_id, i.motivo]))).toEqual({
+      10: 'Delega temporanea', 20: 'Delega temporanea', 30: 'Audit 2026',
+    })
+    expect(w.findComponent(MotivoDialog).props('visible')).toBe(false)
+  })
+
+  it('11) togliere voci non chiede motivo, se quelle che restano ce l\'hanno', async () => {
+    api.getOverrideAzioni.mockResolvedValue(comeAxios({ results: [
+      { azione_id: 20, abilitata: true, motivo: 'Inventario' },
+      { azione_id: 10, abilitata: true, motivo: 'Chiusura mese' },
+    ] }))
+    const w = await montaScheda()
+    w.vm.$.setupState.resetAzione(10)
+    await flushPromises()
+
+    expect(await w.vm.salva()).toBe(true)
+    expect(w.findComponent(MotivoDialog).props('visible')).toBe(false)
+    const [, items] = api.putOverrideAzioni.mock.calls[0]
+    expect(items.map(i => [i.azione_id, i.motivo])).toEqual([[20, 'Inventario']])
+  })
+
+  it('12) chiudere il dialog non scrive niente', async () => {
+    // Una voce sola (nessun'altra azione salvata): la spiegazione parla al
+    // singolare (plurale i18n, non «sulle 1 voci»).
+    api.getOverrideAzioni.mockResolvedValue(comeAxios({ results: [] }))
+    const w = await montaScheda({ messages: { amministrazione: {
+      permessi_motivo_spiegazione: 'una voce | {n} voci',
+    } } })
+    await cambiaAzioneVendite(w)
+    const esito = w.vm.salva()
+    await flushPromises()
+    expect(document.body.textContent).toContain('una voce')
+    expect(document.body.textContent).not.toContain('voci')
+    w.findComponent(MotivoDialog).vm.$emit('update:visible', false)
+    expect(await esito).toBe(false)
+    expect(api.putOverrideAzioni).not.toHaveBeenCalled()
+    expect(w.vm.modificato).toBe(true)
+  })
+
+  it('13) un rifiuto del backend lascia il dialog aperto, col campo in errore', async () => {
+    api.putOverrideAzioni.mockRejectedValue({ response: { status: 400, data: { error: {
+      code: 'E_OVERRIDE_MOTIVO_OBBLIGATORIO', message: 'Indicare il motivo.', fields: ['motivo'],
+    } } } })
+    const w = await montaScheda()
+    await cambiaAzioneVendite(w)
+    w.vm.salva()
+    await flushPromises()
+    w.findComponent(MotivoDialog).vm.$emit('conferma', 'x')
+    await flushPromises()
+    const dialog = w.findComponent(MotivoDialog)
+    expect(dialog.props('visible')).toBe(true)
+    expect(dialog.props('invalid')).toBe(true)
+    expect(w.vm.modificato).toBe(true)
   })
 })
