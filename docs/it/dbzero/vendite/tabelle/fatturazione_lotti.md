@@ -43,6 +43,7 @@
 | FOREIGN KEY | fk_fatturazione_lotti_stato_lotto | stato_lotto |
 | FOREIGN KEY | fk_fatturazione_lotti_tipo_doc_fiscale | tipo_doc_fiscale_id |
 | FOREIGN KEY | fk_fatturazione_lotti_utility | utility_id |
+| FOREIGN KEY | fk_fatturazione_lotti_utility_gestita | emittente_soggetto_ruolo_id, utility_id |
 | PRIMARY KEY | pk_fatturazione_lotti | id |
 | UNIQUE | uq_fatturazione_lotti_codice | codice |
 | UNIQUE | uq_fatturazione_lotti_lock_batch_id | lock_batch_id |

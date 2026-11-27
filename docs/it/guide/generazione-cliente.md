@@ -97,6 +97,10 @@ E l'account di fatturazione. Identifica **a chi fatturare**, **per quale utility
 
 Il BA supporta una gerarchia padre/figlio per aggregare la fatturazione di piu utenze sullo stesso intestatario. L'albero ha **un livello solo**: chi ha un padre non fa da padre, e chi fa da padre non ha un padre. Un cliente (la stessa identita fiscale o, senza, lo stesso soggetto) ha **un solo padre per azienda**, e la fattura di un figlio va al suo padre diretto. Il padre non si toglie e non si cambia finche il figlio ha attivita non fatturate. Vedi la [documentazione dedicata](/dbzero/anagrafiche/tabelle/billing_account) per i dettagli.
 
+Il BA fattura per un'azienda, e nasce solo su un'utility che **quell'azienda gestisce** (le utilities attivate per
+lei dal super admin, vedi [Emittenti fiscali](/guide/emittenti-fiscali)): un cliente del gas presso un'azienda che il
+gas non lo tratta non nasce.
+
 Un BA **non si cancella** (`E_BA_NON_SI_CANCELLA`): un cliente che non serve piu si chiude annullandolo (stato «AN annulla servizio») o, se e stato una fornitura, chiudendolo.
 
 > **Invariante BA ↔ istanza (1:1 per utility).** Per una data utility, un

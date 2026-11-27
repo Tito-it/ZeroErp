@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL SEED DELLA MATRICE UTILITY -> TIPO DI RUOLO
+#   config.utilities_tipi_ruolo, dal CSV ../sql/config/utilities_tipi_ruolo.csv
+#   Brief: brief-db-utility-gestite-dall-emittente §6 (D-U-10), §9 (V1), §8-bis (U1)
+#
+# -- PERCHE' --------------------------------------------------------------
+#   La matrice e' chiusa (20261127-31): un'utility senza righe non e' ammessa
+#   per nessuno. Il CSV esisteva ma nessun changeSet lo caricava, e su un
+#   database nuovo la matrice nasceva vuota: nessuna azienda avrebbe potuto
+#   attivare un'utility. Da qui ogni utility del catalogo e' ammessa per
+#   l'emittente fiscale (EF) e per il cliente (CL); per il fornitore (FO)
+#   l'energia, il gas e l'acqua dal 2026-02-17.
+#
+# -- LA SPECIE ---------------------------------------------------------------
+#   Primo impianto, per riga (Tid, 2026-11-27): la riga dbops.automazione_seed_
+#   primo_impianto (id 7) monta script.trgfn_seed_primo_impianto. Il CSV crea
+#   le righe e le aggiorna finche' l'installazione non le modifica; una riga
+#   toccata dal SUPER_ADMIN non riceve piu' niente dal CSV. Il runner, quando
+#   crea il trigger, segna come nate dal seed le righe con user_insert SEED.
+#   La chiave (utility_id, tipo_ruolo_id) e' ferma per conto suo: lucchetto di
+#   colonna (dbops.automation_lock_columns).
+#
+# -- LA CHIAVE DEL CARICAMENTO --------------------------------------------------
+#   La chiave naturale (utility_id, tipo_ruolo_id), UNIQUE sulla tabella; il CSV
+#   non porta l'id. Sul database di sviluppo le righe esistono gia' con id
+#   diversi da quelli che un CSV chiavato sull'id avrebbe dato: il caricamento
+#   le aggiorna per chiave, e le righe che mancano nascono con l'identity.
+#   ⚠️ Sul database di sviluppo la prima corsa riscrive anche le righe gia'
+#   configurate (le tre EF e GAS-FO): i valori coincidono, tranne GAS-FO che si
+#   riaccende (Tid, 2026-11-27); user_insert diventa SEED.
+#   Il guard della riga EF (20261127-32) vale anche qui: nessuna riga EF del CSV
+#   ha data di fine, e nessuna si spegne.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261127-33-upsert-config-utilities-tipi-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20261127-33-upsert-config-utilities-tipi-ruolo
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: utilities_tipi_ruolo
+      comment: >
+        Mirror di config.utilities_tipi_ruolo dal CSV, chiave (utility_id,
+        tipo_ruolo_id): ogni utility ammessa per EF e CL, ENE/GAS/ACQ per FO.
+        Seed di primo impianto per riga. brief-db-utility-gestite-dall-emittente
+        §6 (D-U-10).
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/utilities_tipi_ruolo.csv
+            tableName: utilities_tipi_ruolo
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            primaryKey: "utility_id,tipo_ruolo_id"
+            columns:
+              - column: { name: utility_id, type: NUMERIC }
+              - column: { name: tipo_ruolo_id, type: NUMERIC }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: valido_dal, type: DATE }
+              - column: { name: valido_al, type: DATE }
+              - column:
+                  name: meta
+                  type: JSON
+                  defaultValue: "{}"
+              - column: { name: storicizza, type: BOOLEAN }
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_update, type: STRING }
+              - column: { name: user_update, type: STRING }

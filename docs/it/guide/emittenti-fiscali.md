@@ -10,7 +10,8 @@
 > * [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — per quale azienda fattura ogni billing account, e il gestore globale
 > * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — il conto che fattura: ha sempre il suo collegamento, e non si cancella
 > * [config.valute](/dbzero/config/tabelle/valute) — il catalogo delle valute
-> * [anagrafiche.emittenti_fiscali_utilities](/dbzero/anagrafiche/tabelle/emittenti_fiscali_utilities) — le eccezioni d'importo dell'azienda per una utility
+> * [anagrafiche.emittenti_fiscali_utilities](/dbzero/anagrafiche/tabelle/emittenti_fiscali_utilities) — le utilities che l'azienda gestisce, coi suoi parametri d'importo facoltativi
+> * [config.utilities_tipi_ruolo](/dbzero/config/tabelle/utilities_tipi_ruolo) — la matrice delle utilities ammesse per tipo di ruolo
 > * [config.regimi_fiscali](/dbzero/config/tabelle/regimi_fiscali) — il catalogo dei regimi fiscali (RF01…RF19)
 > * [config.user_emittenti_fiscali](/dbzero/config/tabelle/user_emittenti_fiscali) — l'azienda dell'operatore: una al massimo
 > * [config.user_emittente_attivo](/dbzero/config/tabelle/user_emittente_attivo) — l'azienda di lavoro scelta dal super admin, riproposta al login
@@ -24,7 +25,11 @@
 > * [anagrafiche.trgfn_emittenti_fiscali_regime_conferma](/dbzero/anagrafiche/funzioni/trgfn_emittenti_fiscali_regime_conferma) — chi ha dichiarato il regime, e quando
 > * [anagrafiche.trgfn_emittenti_fiscali_default_bootstrap](/dbzero/anagrafiche/funzioni/trgfn_emittenti_fiscali_default_bootstrap) — il primo emittente diventa il gestore globale
 > * [anagrafiche.trgfn_emittenti_fiscali_default_guard](/dbzero/anagrafiche/funzioni/trgfn_emittenti_fiscali_default_guard) — il gestore globale è uno e uno solo
-> * [anagrafiche.fn_parametri_importo_utility](/dbzero/anagrafiche/funzioni/fn_parametri_importo_utility) — i parametri d'importo effettivi, con l'eccezione dell'azienda
+> * [anagrafiche.fn_parametri_importo_utility](/dbzero/anagrafiche/funzioni/fn_parametri_importo_utility) — i parametri d'importo effettivi, con quelli dell'azienda
+> * [anagrafiche.fn_utilities_emittente](/dbzero/anagrafiche/funzioni/fn_utilities_emittente) — le utilities di un'azienda: ammesse, gestite, coi parametri effettivi
+> * [script.fn_guard_utility_tipo_ruolo](/dbzero/script/funzioni/fn_guard_utility_tipo_ruolo) e [anagrafiche.fn_lookup_utilities_per_ba](/dbzero/anagrafiche/funzioni/fn_lookup_utilities_per_ba) — le utilities ammesse per un ruolo nella scrittura, e quelle proponibili per un billing account
+> * [config.trgfn_utilities_tipi_ruolo_guard_uscita_ef](/dbzero/config/funzioni/trgfn_utilities_tipi_ruolo_guard_uscita_ef) — un'utility gestita resta ammessa per `EF`
+> * [anagrafiche.trgfn_emittenti_fiscali_ba_set_utility](/dbzero/anagrafiche/funzioni/trgfn_emittenti_fiscali_ba_set_utility) — il collegamento del billing account porta la sua utility
 > * [anagrafiche.fn_get_emittente_fiscale_id](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_id) / [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk) — l'azienda che fattura un billing account, col suo ruolo o col suo `id`
 > * [vendite.trgfn_emittenti_fiscali_provision_registri](/dbzero/vendite/funzioni/trgfn_emittenti_fiscali_provision_registri) — i registri delle famiglie non fiscali, alla nascita e alla riattivazione
 > * [script.fn_get_ba_emittente_sr_id](/dbzero/script/funzioni/fn_get_ba_emittente_sr_id) — l'azienda di un billing account
@@ -258,19 +263,38 @@ cancelli:
 I cancelli guardano solo il collegamento di un billing account che nasce o cambia azienda: lo spostamento del
 gestore globale non tocca nessun cliente, e non si giudica.
 
-### Le utilities: le eccezioni d'importo
+### Le utilities che l'azienda gestisce
 
-> ⚠️ **Cambio di modello deciso il 2026-11-27, non ancora costruito** ([brief-db-utility-gestite-dall-emittente](/dev/work-in-progress/brief-db-utility-gestite-dall-emittente)): la tabella diventa anche
-> l'**elenco delle utility gestite** dall'azienda (riga accesa = utility attiva; un'azienda senza righe non ne gestisce
-> nessuna), e i parametri d'importo restano facoltativi sulla riga. Questa sezione descrive il funzionamento di oggi,
-> vero finché il giro DB non è applicato: si riscrive in quel giro.
-
-Dal drawer «Gestisci utilities» il super admin vede la matrice delle utilities ammesse per il ruolo `EF` e, per
-ciascuna, può configurare un'**eccezione** dell'azienda: i decimali degli importi (da 0 a 2), il metodo di
-arrotondamento, le soglie minima e massima di fatturazione (tutte e due o nessuna). Senza una riga valgono i
-parametri di sistema ([anagrafiche.fn_parametri_importo_utility](/dbzero/anagrafiche/funzioni/fn_parametri_importo_utility)).
-Le utilities che la matrice offre sono quelle della matrice Utilities/Ruoli
+Ogni azienda **gestisce** un elenco di utilities, e tratta solo quelle: una riga in
+[anagrafiche.emittenti_fiscali_utilities](/dbzero/anagrafiche/tabelle/emittenti_fiscali_utilities) per
+utility. Un'azienda senza righe non ne gestisce nessuna. L'elenco lo scrive il super admin, e un'utility si può
+attivare solo se la matrice Utilities/Ruoli la ammette per il ruolo `EF`
 ([Configurazione Liste](/guide/configurazione-liste), §11.1).
+
+Quali utilities un'azienda può attivare, quali gestisce e con quali parametri lo dice una funzione sola,
+[anagrafiche.fn_utilities_emittente](/dbzero/anagrafiche/funzioni/fn_utilities_emittente); la tendina delle
+utilities di un billing account propone solo quelle gestite.
+
+Il database lo fa valere dove la coppia azienda e utility nasce:
+
+* un **billing account** nasce solo su un'utility che la sua azienda gestisce, e passa a un'altra azienda solo se
+  anche quella la gestisce (accanto agli altri cancelli del cambio d'azienda, sopra). Il controllo si fa alla
+  conferma, sull'azienda finale: un cliente che nasce sull'azienda predefinita e si sposta subito non si ferma a
+  metà;
+* i documenti che portano l'azienda senza passare dal billing account (listini, listini per categoria di cliente,
+  commesse, fatture, registri e lotti di fatturazione) stanno su un'utility gestita. Un registro o una fattura
+  **senza utility** non si giudica;
+* gli altri documenti di vendita prendono l'utility dal loro billing account.
+
+Un'utility attivata non si spegne: la riga resta finché l'azienda la gestisce. Un'attivazione sbagliata si
+**cancella**, finché nessun billing account e nessun documento la usano; dopo, la cancellazione è respinta. Finché
+un'azienda gestisce un'utility, l'utility resta ammessa per il ruolo `EF` nella matrice
+(`E_UTILITY_EF_GESTITA`).
+
+Sulla stessa riga il super admin può configurare i **parametri d'importo** dell'azienda per l'utility, tutti
+facoltativi: i decimali degli importi (da 0 a 2), il metodo di arrotondamento, le soglie minima e massima di
+fatturazione (tutte e due o nessuna). Senza un valore valgono la policy dell'azienda e i parametri di sistema
+([anagrafiche.fn_parametri_importo_utility](/dbzero/anagrafiche/funzioni/fn_parametri_importo_utility)).
 
 ### Spegnere un emittente, non cancellarlo
 
@@ -281,8 +305,9 @@ assegnati, documenti come ordini, contratti, preventivi e DDT, il magazzino, i p
 tolte). L'elenco completo, e le eccezioni volute, stanno nella scheda
 [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali).
 
-Il verso opposto: niente di nuovo nasce sotto un emittente spento (`E_ATTIVO_PADRE_NON_ATTIVO`), e un'utility può
-essere salvata solo come inattiva.
+Il verso opposto: niente di nuovo nasce sotto un emittente spento (`E_ATTIVO_PADRE_NON_ATTIVO`), nemmeno
+un'utility. Un'azienda che gestisce utilities si spegne solo dopo aver cancellato le loro righe, possibile senza
+billing account né documenti.
 
 ---
 

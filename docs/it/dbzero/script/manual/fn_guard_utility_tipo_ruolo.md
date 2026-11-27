@@ -10,13 +10,13 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 16-02-2026)
-`script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id` con semantica:
+(latest review 27-11-2026)
+`script.fn_guard_utility_tipo_ruolo` valida la coerenza tra `utility_id` e `tipo_ruolo_id`: passa solo
+se `config.utilities_tipi_ruolo` ha la coppia con una riga accesa e valida oggi. Un'utility **senza righe**
+non è ammessa per **nessun** tipo di ruolo: la matrice è chiusa, come nella tendina
+`anagrafiche.fn_lookup_utilities_per_ba`.
 
-1. se non esiste una matrice attiva/valida per utility -> **passa** (fail-open);
-2. se la matrice esiste -> passa solo se `tipo_ruolo_id` e` tra quelli ammessi.
-
-In caso di mismatch, solleva errore applicativo bloccante.
+In caso di mismatch solleva `E_UTILITY_RUOLO_NON_AMMESSO`.
 
 ---
 
@@ -48,20 +48,19 @@ Validazione parametri:
 
 ### Logica
 
-1. verifica esistenza di almeno una riga attiva/valida in `config.utilities_tipi_ruolo` per `p_utility_id`;
-2. se non esiste -> `RETURN` (fail-open);
-3. se esiste, verifica che esista anche la coppia (`p_utility_id`, `p_tipo_ruolo_id`) attiva/valida;
-4. in assenza di match -> errore `"Tipo ruolo non ammesso per utility"`.
+1. verifica che la coppia (`p_utility_id`, `p_tipo_ruolo_id`) abbia una riga accesa e valida alla data
+   operativa (`script.fn_data_operativa`);
+2. in assenza -> `E_UTILITY_RUOLO_NON_AMMESSO`, anche quando l'utility non ha nessuna riga.
 
 ---
 
 ### Esempi
 
 ```sql
--- Caso consentito (nessuna matrice o ruolo ammesso)
+-- Caso consentito (il ruolo ha la sua riga per l'utility)
 SELECT script.fn_guard_utility_tipo_ruolo(2, 1, 'billing_account_insert');
 
--- Caso bloccato (matrice presente ma ruolo non ammesso)
+-- Caso bloccato (nessuna riga per la coppia, anche se l'utility non ne ha nessuna)
 SELECT script.fn_guard_utility_tipo_ruolo(2, 9, 'billing_account_insert');
 ```
 

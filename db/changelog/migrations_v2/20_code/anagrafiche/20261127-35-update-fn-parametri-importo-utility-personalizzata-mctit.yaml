@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PERSONALIZZATA = ALMENO UN PARAMETRO DELL'AZIENDA
+#   anagrafiche.fn_parametri_importo_utility(bigint, integer)   (riscritta)
+#   Brief: brief-db-utility-gestite-dall-emittente §6 (D-U-1, D-U-11), §7-bis, §8-bis (U2)
+#
+# -- COSA CAMBIA ---------------------------------------------------------------
+#   Con 20261127-34 la riga di anagrafiche.emittenti_fiscali_utilities dice che
+#   l'azienda gestisce l'utility, e i parametri sono facoltativi. Due righe del
+#   corpo cambiano:
+#   * personalizzata non e' piu' «la riga c'e'» ma «la riga porta almeno un
+#     parametro» (num_nonnulls dei quattro). Senza riga: zero, quindi false;
+#   * la condizione «e.attivo IS TRUE» cade: attivo e' sempre true
+#     (chk_emittenti_fiscali_utilities_attivo).
+#   I valori effettivi non cambiano: COALESCE con policy e sistema c'era gia'.
+#
+# -- I LETTORI ---------------------------------------------------------------
+#   vendite.fn_ricalcola_totali_fattura e vendite.fn_parametri_importo_riga
+#   leggono i valori, non personalizzata. anagrafiche.fn_lookup_utilities_per_ba
+#   espone personalizzata come is_personalizzata_per_ef: segue il significato
+#   nuovo (lo legge il backend: richiesta nel brief).
+#
+# -- LA FORMA ----------------------------------------------------------------
+#   Firma invariata, CREATE OR REPLACE; resta BEGIN ATOMIC, da sola nel suo
+#   sql: (il COMMENT nel secondo). Corpo ripreso da 20261127-27, uguale al vivo
+#   tranne le due righe; testata coi %TYPE di quella revisione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261127-35-update-fn-parametri-importo-utility-personalizzata-mctit.yaml
+
+  - changeSet:
+      id: 20261127-35-update-fn-parametri-importo-utility-personalizzata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_parametri_importo_utility: personalizzata = almeno un parametro
+        valorizzato sulla riga dell'azienda; cade il filtro su attivo, sempre
+        true. brief-db-utility-gestite-dall-emittente §7-bis (U2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_parametri_importo_utility(
+                  p_emittente_soggetto_ruolo_id  anagrafiche.emittenti_fiscali_utilities.emittente_soggetto_ruolo_id%TYPE,
+                  p_utility_id                   config.utilities.id%TYPE
+              )
+               RETURNS TABLE(
+                  arrotondamento_importi_dec     config.utilities.arrotondamento_importi_dec%TYPE,
+                  metodo_arrotondamento_importi  config.utilities.metodo_arrotondamento_importi%TYPE,
+                  minimo_soglia_min              anagrafiche.emittenti_fiscali_utilities.minimo_soglia_min%TYPE,
+                  minimo_soglia_max              anagrafiche.emittenti_fiscali_utilities.minimo_soglia_max%TYPE,
+                  -- tipo esplicito: non e' una colonna, dice se la riga
+                  -- dell'azienda porta almeno un parametro
+                  personalizzata                 boolean
+              )
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT script.fn_log_and_raise_error(
+                             'anagrafiche',
+                             'fn_parametri_importo_utility',
+                             'E_PARAMETRO_INVALIDO',
+                             jsonb_build_object(
+                                 'detail', 'p_emittente_soggetto_ruolo_id non e'' un emittente',
+                                 'emittente_soggetto_ruolo_id', p_emittente_soggetto_ruolo_id,
+                                 'utility_id', p_utility_id),
+                             NULL::uuid,
+                             'p_emittente_soggetto_ruolo_id non e'' un emittente')
+                   WHERE NOT EXISTS (SELECT 1
+                                       FROM anagrafiche.emittenti_fiscali ef
+                                      WHERE ef.soggetto_ruolo_id = p_emittente_soggetto_ruolo_id);
+
+                  SELECT COALESCE(e.arrotondamento_importi_dec, u.arrotondamento_importi_dec),
+                         COALESCE(e.metodo_arrotondamento_importi, ef.rounding_policy,
+                                  u.metodo_arrotondamento_importi),
+                         e.minimo_soglia_min,
+                         e.minimo_soglia_max,
+                         num_nonnulls(e.arrotondamento_importi_dec, e.metodo_arrotondamento_importi,
+                                      e.minimo_soglia_min, e.minimo_soglia_max) > 0
+                    FROM config.utilities u
+                    LEFT JOIN anagrafiche.emittenti_fiscali_utilities e
+                      ON e.utility_id = u.id
+                     AND e.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                    LEFT JOIN anagrafiche.emittenti_fiscali ef
+                      ON ef.soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                   WHERE u.id = p_utility_id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_parametri_importo_utility(
+                  anagrafiche.emittenti_fiscali_utilities.emittente_soggetto_ruolo_id%TYPE,
+                  config.utilities.id%TYPE) IS
+                  'I parametri d''importo effettivi di un emittente per una utility: decimali e metodo d''arrotondamento della riga di anagrafiche.emittenti_fiscali_utilities quando li porta, altrimenti (per il solo metodo) la policy generale emittenti_fiscali.rounding_policy, altrimenti il valore di sistema di config.utilities; le soglie del minimo solo dall''emittente (NULL = nessun minimo); personalizzata = la riga dell''azienda porta almeno un parametro (una riga senza parametri dice solo che l''azienda gestisce l''utility). Un ruolo che non e'' un emittente, o NULL, solleva E_PARAMETRO_INVALIDO: i valori di sistema sono quelli di un''azienda senza personalizzazioni, non la risposta per chi azienda non e''. Una riga se l''utility esiste, zero se non esiste o e'' NULL: e'' il segnale che i lettori traducono in E_CONFIG_MANCANTE. Sede unica: la leggono vendite.fn_ricalcola_totali_fattura, vendite.fn_parametri_importo_riga e anagrafiche.fn_lookup_utilities_per_ba.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Forward-only: la funzione resta, col corpo di questa revisione.
+              SELECT 1;

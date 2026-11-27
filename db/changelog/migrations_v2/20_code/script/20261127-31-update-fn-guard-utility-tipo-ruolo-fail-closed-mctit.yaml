@@ -1,0 +1,139 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA MATRICE UTILITY -> TIPO DI RUOLO E' CHIUSA
+#   script.fn_guard_utility_tipo_ruolo(integer, integer, text)   (riscritta)
+#   COMMENT ON TABLE config.utilities_tipi_ruolo                  (riscritto)
+#   Brief: brief-db-utility-gestite-dall-emittente §6 (D-U-7), §9 (V1), §8-bis (U1)
+#
+# -- LA REGOLA --------------------------------------------------------------
+#   Un tipo di ruolo tratta un'utility solo se la matrice lo ammette con una
+#   riga accesa e valida oggi. Un'utility senza righe non e' ammessa per
+#   nessuno: prima era aperta a tutti (fail-open), mentre la tendina delle
+#   utility di un billing account (anagrafiche.fn_lookup_utilities_per_ba),
+#   con un JOIN interno sulla matrice, la nascondeva. La stessa matrice letta
+#   in due modi opposti: un'utility senza righe si scriveva ma non si vedeva.
+#   Ora le due letture dicono la stessa cosa.
+#
+# -- CHI NE DIPENDE ----------------------------------------------------------
+#   I trigger del registro dbops.automazione_guard_utility_tipo_ruolo
+#   (script.trgfn_guard_utility_tipo_ruolo_by_cols), accesi su
+#   anagrafiche.emittenti_fiscali_utilities e categorie_clienti_listini.
+#   Su un database nuovo la matrice ha il seed di primo impianto
+#   (80_data, 20261127-33): ogni utility del catalogo e' ammessa per
+#   l'emittente fiscale e per il cliente.
+#
+# -- LA FIRMA ----------------------------------------------------------------
+#   Invariata: CREATE OR REPLACE. Parametri ri-ancorati con %TYPE. Il rifiuto
+#   resta E_UTILITY_RUOLO_NON_AMMESSO, con gli stessi valori.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261127-31-update-fn-guard-utility-tipo-ruolo-fail-closed-mctit.yaml
+
+  - changeSet:
+      id: 20261127-31-update-fn-guard-utility-tipo-ruolo-fail-closed
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_guard_utility_tipo_ruolo fail-closed: un'utility senza righe
+        nella matrice config.utilities_tipi_ruolo non e' ammessa per nessun tipo
+        di ruolo, come gia' nella tendina delle utility di un billing account.
+        brief-db-utility-gestite-dall-emittente §6 (D-U-7).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_guard_utility_tipo_ruolo(
+                  p_utility_id    config.utilities.id%TYPE,
+                  p_tipo_ruolo_id config.tipi_ruoli.id%TYPE,
+                  -- testo libero del chiamante, per il log: nessuna colonna dietro
+                  p_context       text DEFAULT NULL)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_oggi config.utilities_tipi_ruolo.valido_dal%TYPE := script.fn_data_operativa();
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: il tipo di ruolo tratta l'utility solo se la
+                  --   matrice config.utilities_tipi_ruolo lo ammette con una
+                  --   riga accesa e valida oggi. Senza righe per l'utility
+                  --   nessun tipo di ruolo e' ammesso.
+                  -- =========================================================
+                  IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_guard_utility_tipo_ruolo',
+                          'E_ERRORE_PARAMETRI',
+                          jsonb_build_object(
+                              'detail', 'p_utility_id obbligatorio e > 0',
+                              'p_utility_id', p_utility_id,
+                              'context', p_context
+                          ),
+                          NULL::uuid,
+                          concat('p_utility_id non valido: ', p_utility_id::text, ' context: ', p_context)
+                      );
+                  END IF;
+
+                  IF p_tipo_ruolo_id IS NULL OR p_tipo_ruolo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_guard_utility_tipo_ruolo',
+                          'E_ERRORE_PARAMETRI',
+                          jsonb_build_object(
+                              'detail', 'p_tipo_ruolo_id obbligatorio e > 0',
+                              'p_tipo_ruolo_id', p_tipo_ruolo_id,
+                              'context', p_context
+                          ),
+                          NULL::uuid,
+                          concat('p_tipo_ruolo_id non valido: ', p_tipo_ruolo_id::text, ' context: ', p_context)
+                      );
+                  END IF;
+
+                  IF NOT EXISTS (
+                      SELECT 1
+                        FROM config.utilities_tipi_ruolo m
+                       WHERE m.utility_id = p_utility_id
+                         AND m.tipo_ruolo_id = p_tipo_ruolo_id
+                         AND m.attivo = true
+                         AND (m.valido_dal IS NULL OR m.valido_dal <= v_oggi)
+                         AND (m.valido_al  IS NULL OR m.valido_al  >= v_oggi)
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_guard_utility_tipo_ruolo',
+                          'E_UTILITY_RUOLO_NON_AMMESSO',
+                          jsonb_build_object(
+                              'utility_id', p_utility_id,
+                              'tipo_ruolo_id', p_tipo_ruolo_id,
+                              'context', p_context
+                          ),
+                          NULL::uuid,
+                          p_tipo_ruolo_id::text,
+                          p_utility_id::text
+                      );
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_guard_utility_tipo_ruolo(
+                  config.utilities.id%TYPE, config.tipi_ruoli.id%TYPE, text) IS
+                'Guard: il tipo di ruolo tratta l''utility solo se config.utilities_tipi_ruolo lo ammette con una riga accesa e valida oggi (script.fn_data_operativa). Un''utility senza righe non e'' ammessa per nessuno, come nella tendina anagrafiche.fn_lookup_utilities_per_ba. Rifiuto: E_UTILITY_RUOLO_NON_AMMESSO; parametri nulli o non positivi: E_ERRORE_PARAMETRI. La chiamano i trigger del registro dbops.automazione_guard_utility_tipo_ruolo, attraverso script.trgfn_guard_utility_tipo_ruolo_by_cols.';
+
+              COMMENT ON TABLE config.utilities_tipi_ruolo IS
+                'La matrice delle utility ammesse per tipo di ruolo: una riga accesa e valida oggi ammette il tipo di ruolo per l''utility, e senza riga il tipo di ruolo non la tratta. La leggono script.fn_guard_utility_tipo_ruolo (le scritture delle tabelle del registro dbops.automazione_guard_utility_tipo_ruolo) e anagrafiche.fn_lookup_utilities_per_ba (la tendina delle utility di un billing account). Per l''emittente fiscale la riga non ha data di fine, e non esce dalla matrice finche'' un''azienda gestisce l''utility (config.trgfn_utilities_tipi_ruolo_guard_uscita_ef). Seed di primo impianto per riga: il CSV crea le righe e le aggiorna finche'' l''installazione non le modifica.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

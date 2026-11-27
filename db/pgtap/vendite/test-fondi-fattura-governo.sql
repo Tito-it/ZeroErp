@@ -138,6 +138,9 @@ SELECT throws_ok(
               arrotondamento_importi_dec, metodo_arrotondamento_importi)
           SELECT m.emittente_soggetto_ruolo_id, m.utility_id, 2, 'HALF_UP'
             FROM tmp_mondo_ffg m
+          -- la riga c'e' gia' (fixture, 20261127-39): si completa
+          ON CONFLICT (emittente_soggetto_ruolo_id, utility_id) DO UPDATE
+             SET arrotondamento_importi_dec = EXCLUDED.arrotondamento_importi_dec
           RETURNING id INTO v_id;
 
           UPDATE anagrafiche.emittenti_fiscali_utilities

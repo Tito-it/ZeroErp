@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Matrice opzionale utility-&gt;tipo_ruolo: se assente per utility resta fail-open; se presente limita ai ruoli configurati.
+> La matrice delle utility ammesse per tipo di ruolo: una riga accesa e valida oggi ammette il tipo di ruolo per l'utility, e senza riga il tipo di ruolo non la tratta. La leggono script.fn_guard_utility_tipo_ruolo (le scritture delle tabelle del registro dbops.automazione_guard_utility_tipo_ruolo) e anagrafiche.fn_lookup_utilities_per_ba (la tendina delle utility di un billing account). Per l'emittente fiscale la riga non ha data di fine, e non esce dalla matrice finche' un'azienda gestisce l'utility (config.trgfn_utilities_tipi_ruolo_guard_uscita_ef). Seed di primo impianto per riga: il CSV crea le righe e le aggiorna finche' l'installazione non le modifica.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -41,12 +41,19 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_utilities_tipi_ruolo_a10_date_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
+| trg_utilities_tipi_ruolo_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('RIGA')` |
+| trg_utilities_tipi_ruolo_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('RIGA')` |
+| trg_utilities_tipi_ruolo_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('RIGA')` |
 | trg_utilities_tipi_ruolo_a10_date_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
-| trg_utilities_tipi_ruolo_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_utilities_tipi_ruolo_a10_date_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
+| trg_utilities_tipi_ruolo_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('tipo_ruolo_id', 'E_CODICE_NON_MODIFICABILE', 'utility_id', 'E_CODICE_NON_MODIFICABILE')` |
+| trg_utilities_tipi_ruolo_a12_guard_uscita_ef_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_utilities_tipi_ruolo_guard_uscita_ef()` |
+| trg_utilities_tipi_ruolo_a12_guard_uscita_ef_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_utilities_tipi_ruolo_guard_uscita_ef()` |
+| trg_utilities_tipi_ruolo_a12_guard_uscita_ef_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION config.trgfn_utilities_tipi_ruolo_guard_uscita_ef()` |
 | trg_utilities_tipi_ruolo_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_utilities_tipi_ruolo_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('utilities_tipi_ruolo_id')` |
+| trg_utilities_tipi_ruolo_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_utilities_tipi_ruolo_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('utilities_tipi_ruolo_id')` |
+| trg_utilities_tipi_ruolo_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('utilities_tipi_ruolo_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

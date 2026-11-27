@@ -13,13 +13,29 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 16-02-2026)
-La tabella `config.utilities_tipi_ruolo` definisce una **whitelist opzionale** dei `tipo_ruolo` ammessi per ciascuna `utility`.
+(latest review 27-11-2026)
+La tabella `config.utilities_tipi_ruolo` dice quali `tipo_ruolo` possono trattare ciascuna `utility`.
 
 Regola di dominio:
 
-1. se per una utility **non esistono righe attive/valide**, il comportamento e` **fail-open** (nessun vincolo);
-2. se per una utility **esistono righe attive/valide**, sono ammessi **solo** i `tipo_ruolo` presenti.
+1. un tipo di ruolo tratta l'utility solo se ha la sua riga, accesa e valida oggi;
+2. un'utility **senza righe** non è ammessa per **nessuno** (la matrice è chiusa).
+
+La riga dell'**emittente fiscale** (`EF`) ha due regole in più, di
+`config.trgfn_utilities_tipi_ruolo_guard_uscita_ef`:
+
+* non ha **data di fine** (`E_UTILITY_EF_SENZA_SCADENZA`): l'uscita di un'utility dall'emittente fiscale
+  è un gesto, non una data che passa;
+* finché un'azienda **gestisce** l'utility (ha la sua riga in `anagrafiche.emittenti_fiscali_utilities`),
+  la riga `EF` non si spegne, non prende una data d'inizio futura, non si cancella e non si sposta
+  (`E_UTILITY_EF_GESTITA`).
+
+### Il seed
+
+La matrice ha un seed di **primo impianto, per riga**: ogni utility del catalogo è ammessa per l'emittente
+fiscale e per il cliente, e energia, gas e acqua per il fornitore. Il CSV crea le righe e le aggiorna finché
+l'installazione non le modifica; una riga toccata dal SUPER_ADMIN resta com'è. Utility e tipo di ruolo sono la
+chiave della riga, ferma col lucchetto di colonna: una riga sbagliata si spegne e se ne scrive un'altra.
 
 ---
 
@@ -42,14 +58,10 @@ Vincoli principali:
 
 ### Semantica operativa
 
-La tabella **non** impone da sola i blocchi: e` la funzione guard a leggerla.
-
-Comportamento previsto:
-
-1. nessuna riga attiva/valida per utility -> nessun blocco;
-2. righe attive/valide presenti -> blocco dei ruoli non configurati.
-
-Questo consente rollout graduale senza rompere utilities non ancora configurate.
+La tabella **non** impone da sola i blocchi: la leggono il guard `script.fn_guard_utility_tipo_ruolo`
+(sulle tabelle del registro `dbops.automazione_guard_utility_tipo_ruolo`) e la tendina
+`anagrafiche.fn_lookup_utilities_per_ba`, con la stessa regola: senza la riga della coppia, il ruolo non
+tratta l'utility.
 
 ---
 
@@ -63,7 +75,7 @@ Utility `GAS`:
 
 Utility `MANIFATTURIERO` senza righe:
 
-* qualsiasi ruolo -> consentito (fail-open)
+* qualsiasi ruolo -> bloccato
 
 ---
 

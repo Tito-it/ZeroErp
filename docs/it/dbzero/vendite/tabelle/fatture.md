@@ -76,6 +76,7 @@
 | FOREIGN KEY | fk_fatture_termini_pagamento | termine_pagamento_id |
 | FOREIGN KEY | fk_fatture_tipo_doc_fiscale | tipo_doc_fiscale_id |
 | FOREIGN KEY | fk_fatture_utility | utility_id |
+| FOREIGN KEY | fk_fatture_utility_gestita | emittente_soggetto_ruolo_id, utility_id |
 | FOREIGN KEY | fk_fatture_valuta | valuta_id |
 | PRIMARY KEY | pk_fatture | id |
 

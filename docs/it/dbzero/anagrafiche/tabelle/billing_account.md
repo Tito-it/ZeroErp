@@ -44,6 +44,7 @@
 | UNIQUE | uq_billing_account_id_cliente | id, soggetto_ruolo_id, utility_id |
 | UNIQUE | uq_billing_account_id_coppia | id, istanza_utility_id, utility_id |
 | UNIQUE | uq_billing_account_id_istanza_utility | id, istanza_utility_id |
+| UNIQUE | uq_billing_account_id_utility | id, utility_id |
 | UNIQUE | uq_billing_instance_utility | istanza_utility_id, utility_id |
 
 ## 📑 Indici
@@ -59,6 +60,7 @@
 | uq_billing_account_id_cliente | `CREATE UNIQUE INDEX uq_billing_account_id_cliente ON anagrafiche.billing_account USING btree (id, soggetto_ruolo_id, utility_id)` |
 | uq_billing_account_id_coppia | `CREATE UNIQUE INDEX uq_billing_account_id_coppia ON anagrafiche.billing_account USING btree (id, istanza_utility_id, utility_id)` |
 | uq_billing_account_id_istanza_utility | `CREATE UNIQUE INDEX uq_billing_account_id_istanza_utility ON anagrafiche.billing_account USING btree (id, istanza_utility_id)` |
+| uq_billing_account_id_utility | `CREATE UNIQUE INDEX uq_billing_account_id_utility ON anagrafiche.billing_account USING btree (id, utility_id)` |
 | uq_billing_instance_utility | `CREATE UNIQUE INDEX uq_billing_instance_utility ON anagrafiche.billing_account USING btree (istanza_utility_id, utility_id)` |
 
 ## 🚨 Trigger

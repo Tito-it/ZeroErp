@@ -26,6 +26,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_listini_emittente_soggetto_ruolo | emittente_soggetto_ruolo_id |
+| FOREIGN KEY | fk_listini_utility_gestita | emittente_soggetto_ruolo_id, utility_id |
 | FOREIGN KEY | listini_tipologia_id_fkey | tipologia_id |
 | FOREIGN KEY | listini_utility_id_fkey | utility_id |
 | PRIMARY KEY | pk_listini | id |
