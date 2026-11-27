@@ -830,6 +830,11 @@ all'utente o configurazioni stale silenziose.
 
 ### 11.1 Combo "Utility" — le utility ammesse per il ruolo emittente
 
+> ⚠️ **Cambio di modello deciso il 2026-11-27, non ancora costruito** ([brief-db-utility-gestite-dall-emittente](/dev/work-in-progress/brief-db-utility-gestite-dall-emittente)): la tabella diventa anche
+> l'**elenco delle utility gestite** dall'azienda (riga accesa = utility attiva; un'azienda senza righe non ne gestisce
+> nessuna), e i parametri d'importo restano facoltativi sulla riga. Questa sezione descrive il funzionamento di oggi,
+> vero finché il giro DB non è applicato: si riscrive in quel giro.
+
 La combo "Utility" presente nei drawer (clienti, contratti, preventivi,
 filtri lista) è popolata da `/api/v1/core/lookup/utilities-per-emittente/`:
 mostra le utility **ammesse per il ruolo emittente fiscale** nella matrice
