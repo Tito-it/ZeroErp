@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DEI RUOLI D'IMPRESA, AL PRESENTE
+#   Brief: brief-db-revisione-anagrafiche §15.2 (metadati), §25.4, §25.7 (T8c)
+#
+#   Riscrive i COMMENT stantii o muti di PSP, vettori, gestore, fornitori e
+#   risorse umane toccati dal giro (linee-guida-sql §5d):
+#   * vettori: il ruolo e' VT (vettore), non «RES»; la tabella non e' «dei
+#     rivenditori»;
+#   * trgfn_vettori_normalize: il codice lo genera il trigger gen_codice,
+#     la normalizzazione non fa niente;
+#   * fornitori.rating: il CHECK tiene 0..100, non «1-5»;
+#   * il soggetto delle specializzazioni non si cambia (lock col codice
+#     E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE, nel registro dei lock);
+#   * psp: il codice generato e bloccato, la cancellazione bloccata, lo
+#     spegnimento coi canali attivi rifiutato;
+#   * gestori: uno solo.
+#   Nessuna fase tardiva scrive questi COMMENT (cercato in 70_dati_sistema,
+#   80_data, 90_end): la riscrittura in 20_code vince anche da zero.
+#   Il COMMENT della tabella resellers va col suo brief (brief-db-reseller).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261126-72-update-comment-ruoli-impresa-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261126-72-update-comment-ruoli-impresa-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I COMMENT di PSP, vettori, gestore, fornitori e risorse umane al
+        presente. brief-db-revisione-anagrafiche §25.7 (T8c).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE anagrafiche.vettori IS
+                'Il vettore: la specializzazione del ruolo VT (vettore) di un soggetto, una per ruolo. La bolla di vendita lo nomina col ruolo (vendite.ddt.vettore_soggetto_ruolo_id). Un vettore spento resta sulle bolle che lo hanno gia'' scelto, e non si sceglie su una bolla nuova.';
+              COMMENT ON COLUMN anagrafiche.vettori.soggetto_ruolo_id IS
+                'Il ruolo VT del soggetto, uno per vettore (uq_vettori_ruolo). Non si cambia: E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE.';
+              COMMENT ON COLUMN anagrafiche.vettori.codice IS
+                'Codice del vettore, VET- e sette cifre: lo genera il database dal catalogo config.sistema_codici quando manca. Non si cambia.';
+              COMMENT ON FUNCTION anagrafiche.trgfn_vettori_normalize() IS
+                'Normalizzazione di anagrafiche.vettori: oggi non cambia niente. Il codice lo genera anagrafiche.trgfn_vettori_gen_codice.';
+
+              COMMENT ON TABLE anagrafiche.psp IS
+                'Il payment service provider: la specializzazione del ruolo PSP di un soggetto, una per ruolo. I canali d''incasso di tipo PSP (pagamenti.enti_incasso) lo nominano col ruolo. Non si cancella; non si spegne finche'' un suo canale e'' acceso (E_PSP_ENTI_INCASSO_ATTIVI).';
+              COMMENT ON COLUMN anagrafiche.psp.soggetto_ruolo_id IS
+                'Il ruolo PSP del soggetto, uno per PSP (uq_psp_ruolo). Non si cambia: E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE.';
+              COMMENT ON COLUMN anagrafiche.psp.codice IS
+                'Codice del PSP, PSP- e sette cifre: lo genera il database dal catalogo config.sistema_codici quando manca. Non si cambia.';
+              COMMENT ON COLUMN anagrafiche.psp.attivo IS
+                'Il PSP e'' in uso. Si spegne solo dopo i suoi canali d''incasso; un canale acceso vuole il PSP acceso.';
+
+              COMMENT ON TABLE anagrafiche.gestori IS
+                'Il gestore: l''azienda che usa il sistema, la specializzazione del ruolo GE di un soggetto con partita IVA. E'' uno solo (anagrafiche.trgfn_gestori_guard e l''indice anagrafiche.uq_gestori_singleton).';
+              COMMENT ON COLUMN anagrafiche.gestori.soggetto_ruolo_id IS
+                'Il ruolo GE del soggetto. Non si cambia: E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE.';
+
+              COMMENT ON COLUMN anagrafiche.fornitori.soggetto_ruolo_id IS
+                'Il ruolo FO del soggetto, uno per fornitore. Non si cambia: E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE.';
+              COMMENT ON COLUMN anagrafiche.fornitori.rating IS
+                'Valutazione della qualita'' del fornitore, da 0 a 100; vuota se non valutata.';
+
+              COMMENT ON COLUMN anagrafiche.risorse_umane.soggetto_ruolo_id IS
+                'Il ruolo RIS_UMANA della persona, uno per risorsa. Non si cambia: E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- I COMMENT precedenti erano stantii: non si rimettono.
+              SELECT 1;

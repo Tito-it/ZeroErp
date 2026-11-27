@@ -1,6 +1,6 @@
 ### 🧩 Resta sempre almeno un SUPER_ADMIN che non scade
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 
 Il sistema deve avere in ogni momento almeno un amministratore che entra **oggi e domani**: se l'ultimo si
 spegnesse, nessuno potrebbe più accendere gli altri. La regola non conta gli amministratori «attivi», ma quelli
@@ -46,7 +46,7 @@ sistema dopo; se non resta nessun amministratore senza scadenza, rifiutano con `
 | Scrittura | Che cosa la rende a rischio | Guard |
 | --- | --- | --- |
 | Modifica di una veste (`anagrafiche.identita_digitali`) | spegnerla, darle una data di fine, spostarne l'inizio oltre oggi; e solo se la veste ha un legame `SUPER_ADMIN` attivo | `anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin` |
-| Modifica di un rapporto di lavoro (`anagrafiche.risorse_umane`) | spegnerlo, dargli una data di fine, spostarne l'inizio oltre oggi, spostarlo su un altro `soggetto_ruolo_id`; e solo se sul ruolo di prima c'è una veste `OPERATORE` con un legame `SUPER_ADMIN` attivo | `anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin` |
+| Modifica di un rapporto di lavoro (`anagrafiche.risorse_umane`) | spegnerlo, dargli una data di fine, spostarne l'inizio oltre oggi (spostarlo su un altro `soggetto_ruolo_id` non si può mai, `E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE`: per l'ultimo amministratore parla prima questo guard, che viene prima del lucchetto in ordine di nome); e solo se sul ruolo di prima c'è una veste `OPERATORE` con un legame `SUPER_ADMIN` attivo | `anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin` |
 | Modifica o cancellazione di un legame (`config.profili_accesso_bindings`) | cancellarlo, spegnerlo, cambiarne il profilo o la veste; e solo se prima era attivo e puntava a un profilo `SUPER_ADMIN` | `config.trgfn_profili_accesso_bindings_guard_ultimo_super_admin` |
 | Blocco di una credenziale (`config.credenziali`) | il passaggio da non bloccata a bloccata, anche una riga che nasce già bloccata; e solo se la credenziale porta una veste accesa con un legame `SUPER_ADMIN` attivo | `config.trgfn_credenziali_guard_ultimo_super_admin` |
 

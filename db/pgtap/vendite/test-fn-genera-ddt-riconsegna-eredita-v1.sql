@@ -11,7 +11,7 @@
 -- Test: vendite.fn_genera_ddt_riconsegna — eredita' di testata e di riga
 -- Brief: brief-db-ddt-riconsegna-eredita-testata, Fase B (+ Fase C, C-1)
 -- ------------------------------------------------------------
--- Indice test (plan 18):
+-- Indice test (plan 19):
 --  0) oggetti presenti (madre, gemello, check di emittibilita')
 --  1) ORDER-BACKED, testata: causale/aspetto/addebito/mittente/vettore/
 --     fatturazione_immediata uguali al DDT d'origine
@@ -38,6 +38,9 @@
 -- 17) STANDALONE, riga: la natura di vendita e' quella della riga di DDT
 --     d'origine, anche se l'articolo nel frattempo ha cambiato natura
 --     (brief-db-articoli-ammessi-per-documento A-4 e A-6, 20261013-13)
+-- 18) il vettore spento non si eredita: la riconsegna nasce col vettore
+--     vuoto, il resto della testata (il mittente) si eredita come prima
+--     (brief-db-revisione-anagrafiche §25.8.2, D-T8c-14 b)
 --
 -- Scopo:
 --  - il documento generato dal database non nasce piu' nudo: eredita cio' che
@@ -68,7 +71,7 @@ CREATE TEMP TABLE _m AS
 SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP riconsegna eredita');
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m)); END $ctx$;
 
-SELECT plan(18);
+SELECT plan(19);
 
 -- ============================================================
 -- 0) Oggetti presenti
@@ -128,6 +131,13 @@ SELECT
   (SELECT ab.id FROM config.aspetti_beni ab WHERE ab.attivo IS TRUE ORDER BY ab.id LIMIT 1)   AS aspetto_id,
   (SELECT ma.id FROM config.modalita_addebito_trasporto ma
      WHERE ma.attivo IS TRUE ORDER BY ma.id LIMIT 1)                        AS modalita_addebito_id;
+
+-- ⛔ Il vettore della bolla e' un vettore (2026-11-27, FK verso anagrafiche.vettori,
+--   brief-db-revisione-anagrafiche §25.7): il ruolo VT da solo non basta, serve la
+--   sua riga in anagrafiche.vettori, acceso. Prima la fixture costruiva un caso che
+--   il modello non ammette.
+INSERT INTO anagrafiche.vettori (soggetto_ruolo_id, descrizione)
+SELECT vettore_sr_id, 'Vettore pgTAP riconsegna' FROM tmp_ref;
 
 -- ============================================================
 -- FIXTURE ORD — ordine -> DDT (gemello, dal builder) -> CONSEGNATO -> reso order-backed
@@ -505,6 +515,30 @@ SELECT ok(
        FROM tmp_ric_std_riga r, tmp_nat_orig o, catalogo.articoli a
       WHERE a.id = r.articolo_id),
     '17) STANDALONE, riga: natura della riga d''origine, non quella che l''articolo ha oggi');
+
+-- ============================================================
+-- 18) Il vettore spento non si eredita (D-T8c-14 b, 2026-11-27)
+-- ============================================================
+-- Il vettore della bolla d'origine ORD si spegne; un secondo reso per
+-- riconsegna sulla stessa riga (il residuo c'e': 10 spediti, 4 gia' resi)
+-- genera una riconsegna. Senza la correzione il guard del vettore acceso
+-- (vendite.trgfn_ddt_guard_vettore_attivo) rifiutava la generazione.
+UPDATE anagrafiche.vettori SET attivo = false
+ WHERE soggetto_ruolo_id = (SELECT vettore_sr_id FROM tmp_ref);
+
+CREATE TEMP TABLE tmp_reso_ord2 AS
+SELECT reso_id AS id FROM dbops.fn_pgtap_crea_reso('riconsegna eredita ORD vettore spento',
+    (SELECT ddt_id FROM tmp_ddt_ord), 2, 'RESO_PER_RICONSEGNA',
+    p_ordine_riga_id => (SELECT id FROM tmp_ord_riga));
+
+CREATE TEMP TABLE tmp_ric_ord2 AS
+SELECT vendite.fn_genera_ddt_riconsegna((SELECT id FROM tmp_reso_ord2)) AS ddt_id;
+
+SELECT results_eq(
+    $$SELECT d.vettore_soggetto_ruolo_id, d.mittente_soggetto_ruolo_id
+        FROM vendite.ddt d WHERE d.id = (SELECT ddt_id FROM tmp_ric_ord2)$$,
+    $$SELECT NULL::bigint, r.mittente_sr_id FROM tmp_ref r$$,
+    '18) il vettore spento non si eredita: vettore vuoto, mittente ereditato');
 
 SELECT * FROM finish();
 ROLLBACK;

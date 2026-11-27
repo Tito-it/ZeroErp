@@ -4,17 +4,17 @@
 
 **Ripartono in due, senza aspettarsi.** Il rosso del rubinetto degli accumulatori sul giro 6 è chiuso lato DB
 (§24.9: `20261126-42` applicato da Tid su scratch e dbdev, pgTAP verde, rubinetto senza accumuli, committato il
-2026-11-27); la sua richiesta va al **team BE/FE**. **Tid** con il via a T8c e il suo range di changeSet: le
-decisioni di T8c sono prese (Tid, 2026-11-27, §25.5), poi la **sessione DB** costruisce il giro; lo sviluppo non è
-iniziato. T8 si fa in **tre giri** (D-T8-0, 2026-11-27), nell'ordine T8c (ruoli d'impresa), T8b (emittente), T8a
+2026-11-27); la sua richiesta è evasa dal BE (`8e0ced5b2`, 2026-11-27, esito in coda a §24.9). Il giro **T8c** è chiuso lato DB
+(`20261126-64 … -75` applicati su scratch e dbdev, pgTAP verdi, doc rigenerata, committato il 2026-11-27, §25.8); la sua
+richiesta (§25.8.3) va al **team BE/FE**. Poi T8b, con le sue decisioni (Tid). T8 si fa in **tre giri** (D-T8-0, 2026-11-27), nell'ordine T8c (ruoli d'impresa), T8b (emittente), T8a
 (conti): le decisioni di T8b e T8a restano aperte. Il reseller è uscito da T8c in
 [brief-db-reseller](brief-db-reseller.md) (Tid, 2026-11-27), aperto, non iniziato. Il giro 6 (T4, l'azienda
 del billing account) è chiuso lato DB, `20261126-26 … -41` applicati su scratch e dbdev, pgTAP verdi (Tid, 2026-11-26,
-§24.7), committato il 2026-11-26; il suo passaggio al BE (§24.5, §24.7) è del **team BE/FE**. Alla sessione DB resta
-anche da vagliare un rosso già presente su HEAD, la copia di `FATT` nella madre plurale (§21.7, esito). Il giro 5-bis (il
+§24.7), committato il 2026-11-26; del suo passaggio al BE (§24.5, §24.7) le policy dei sette codici sono fatte (`8e0ced5b2`, 2026-11-27), resta al **team BE/FE** il censimento applicativo di §24.8. Il rosso già presente su HEAD,
+la copia di `FATT` nella madre plurale, è vagliato (2026-11-27, §21.7): il DB segue D-T7a-4, il test va adeguato dal **team BE/FE**. Il giro 5-bis (il
 titolo IVA che chiede la partita IVA) è ritirato da Tid il 2026-11-26: il controllo esiste già, §23.4. In coda il brief
-nuovo di T6 (che porta anche l'ultimo contatto del soggetto, §22.7). Il **team BE/FE** con la fase 7 e il passaggio al
-BE del giro 6: i passaggi al BE dei giri 3 (§20.7) e 4 (§21.7) sono fatti e committati il 2026-11-26 (PR #257, esito in
+nuovo di T6 (che porta anche l'ultimo contatto del soggetto, §22.7). Il **team BE/FE** con la fase 7 e il censimento del
+giro 6: i passaggi al BE dei giri 3 (§20.7) e 4 (§21.7) sono fatti e committati il 2026-11-26 (PR #257, esito in
 coda alle due sezioni). Il giro 5 è chiuso: il DB committato (`7f8d9506d`, PR #249),
 il passaggio al BE fatto e committato su `dev/backend-tid` il 2026-11-26 (§22.6, esito in coda alla sezione). Il giro 4 (T7a, `20261123-74 … -94`, §21.5) è applicato, verde e committato (`359c556da1`, 2026-11-24). T7 è diviso in T7a, gli indirizzi, e T7b, i contatti e il catasto (Tid, 2026-11-24); l'analisi di T7a sul catalogo è scritta il 2026-11-24 (§21). Il giro 3-bis, D-T5-6 **b** (il tipo di contatto proposto, §20.8), è chiuso: `20261123-68 … -73` applicato, pgTAP verdi, doc auto-generata rigenerata, committato (`f9b1049de3`, 2026-11-24). Il giro 3, T5, è chiuso: `20261123-48 … -64` applicato su scratch e dbdev, pgTAP verdi come app, committato (2026-11-24). Poi T7, T4, T8, T12, T3, T10, T11. Il giro 2 (T2) è chiuso: dentro `anagrafiche` non c'è
 niente da cambiare. La postura delle viste in tutto il database è decisa (Tid, 2026-11-23, §19.3) e il suo lavoro è
@@ -31,8 +31,8 @@ resta niente da fare, né da aspettare. Per T7 c'è un fatto nuovo sulla porta d
 | 6 | sessione DB | Il giro dei metadati, per ciò che i giri di codice non hanno già riscritto | §8 | 4 |
 | 7 | sessione DB | Archiviazione in `work-done/`, col debito dei temi spostati scritto nei loro brief | §11 | 5, 6 |
 
-**Decisioni aperte di Tid:** T8 (§25.5): quelle di T8c sono prese (2026-11-27; -2, -3, -4 passate a `brief-db-reseller`, -6 a `analisi-simmetria-ordini-acquisto` D-18), e anche le cinque nate dalla verifica critica del 2026-11-27 (§25.7, decise da Tid lo stesso giorno: D-T8c-9 a, D-T8c-10 … -13); T8c aspetta solo il via e il range; restano D-T8b-1 … -4 e D-T8a-1 … -12 (D-T8-0 decisa: tre giri, Tid 2026-11-27). Nessuna del giro 6 (T4): D-T4-1 … -12 decise il 2026-11-26 (§24.5, §24.7.1, §24.7). Il giro 5-bis è ritirato (Tid, 2026-11-26, §23.4). Nessuna del giro 5 (D-T7b-1 … -7 prese come proposte, Tid 2026-11-25, §22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
-**Da committare:** `.codex/PROJECT_CONTEXT.md`; il §25 riverificato e il reseller spostato col brief nuovo `brief-db-reseller` (2026-11-27); il rosso del rubinetto è committato (2026-11-27, «DB: anagrafiche giro 6, il billing account che non c'è ha il suo codice», insieme al brief con l'allineamento del §24 e l'analisi di T8, §25); il giro 6 (T4) è committato (2026-11-26, «DB: anagrafiche giro 6 (T4)», insieme al giro 5-bis ritirato); i passaggi al BE dei giri 3 e 4 sono committati (2026-11-26, PR #257); il giro 5 è committato (DB `7f8d9506d`, BE 2026-11-26).
+**Decisioni aperte di Tid:** T8 (§25.5): quelle di T8c sono prese (2026-11-27; -2, -3, -4 passate a `brief-db-reseller`, -6 a `analisi-simmetria-ordini-acquisto` D-18), e anche le cinque nate dalla verifica critica del 2026-11-27 (§25.7, decise da Tid lo stesso giorno: D-T8c-9 a, D-T8c-10 … -13); il giro T8c è applicato e committato (`-64 … -75`, Tid 2026-11-27; D-T8c-14 decisa **b**, §25.8.2); restano D-T8b-1 … -4 e D-T8a-1 … -12 (D-T8-0 decisa: tre giri, Tid 2026-11-27). Nessuna del giro 6 (T4): D-T4-1 … -12 decise il 2026-11-26 (§24.5, §24.7.1, §24.7). Il giro 5-bis è ritirato (Tid, 2026-11-26, §23.4). Nessuna del giro 5 (D-T7b-1 … -7 prese come proposte, Tid 2026-11-25, §22.2). D-T7a-1 … -7 decise (Tid, 2026-11-24, §21.2; D-T7a-2 nella forma nuova, il controllo nel guard del civico). D-T5-6 decisa **b** (Tid, 2026-11-24, §20.6). La porta di S50 è uscita da T7 (D-D **a**, 2026-11-23): la chiude il giro 1 del brief delle porte.
+**Da committare:** niente del giro T8c, committato il 2026-11-27 («DB: anagrafiche giro T8c, i ruoli d'impresa», più la doc rigenerata); `.codex/PROJECT_CONTEXT.md` va con lui; il §25 riverificato e il reseller spostato col brief nuovo `brief-db-reseller` (2026-11-27); il rosso del rubinetto è committato (2026-11-27, «DB: anagrafiche giro 6, il billing account che non c'è ha il suo codice», insieme al brief con l'allineamento del §24 e l'analisi di T8, §25); il giro 6 (T4) è committato (2026-11-26, «DB: anagrafiche giro 6 (T4)», insieme al giro 5-bis ritirato); i passaggi al BE dei giri 3 e 4 sono committati (2026-11-26, PR #257); il giro 5 è committato (DB `7f8d9506d`, BE 2026-11-26).
 
 ## 0. Il piano da percorrere
 
@@ -130,7 +130,12 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] T8c: le cinque decisioni nuove di §25.7, D-T8c-9 … -13 (Tid, 2026-11-27)
   * [x] T8c: via di Tid (2026-11-27); range occupato `20261126-64 … -76` (il prossimo libero, da
     `scripts/prossimo_changeset.py`)
-  * [ ] T8c: il giro (§25.8)
+  * [x] T8c: pgTAP rosso, changeSet `20261126-64 … -74`, CSV, pgTAP adeguati, guide e note, provati sullo scratch (2026-11-27, §25.8)
+  * [x] T8c: apply di `-64 … -74` su scratch e dbdev (Tid, 2026-11-27); il pgTAP nuovo verde sul giro applicato
+  * [x] T8c: D-T8c-14 decisa **b** (Tid, 2026-11-27); `20261126-75` scritto e provato sullo scratch (§25.8.2)
+  * [x] T8c: apply di `-75` su dbdev e scratch, pgTAP verdi (Tid, 2026-11-27); doc auto-generata rigenerata
+  * [x] T8c: commit (2026-11-27, «DB: anagrafiche giro T8c, i ruoli d'impresa»)
+  * [ ] T8c: la richiesta al BE (§25.8.3), da girare
   * [ ] T8b: le decisioni D-T8b-1 … -4 (Tid, §25.3); poi il giro
   * [ ] T8a: le decisioni D-T8a-1 … -12 (Tid, §25.2); poi il giro
   * [ ] Poi un giro per tema nell'ordine di §17.1: T12, T3, T10, T11
@@ -2100,6 +2105,25 @@ fa oggi, salvo dove è detto.
   (`FATT` non copiato) è rosso anche su HEAD `7a61ed514`, provato in un worktree separato il 2026-11-26. Da
   vagliare lato DB: la copia degli obbligatori della madre plurale.
 
+  **Vaglio del DB (2026-11-27): il DB è giusto, il test è rimasto indietro rispetto a D-T7a-4.** La natura PF
+  privato (`tipo_soggetto_dettaglio` 1) chiede `RES`, `DOMFISC` e `FATT`, e `FATT` ha come ripiego `DOMFISC` (seed
+  `tipi_soggetto_dettaglio_tipi_indirizzo`). Il test scrive il primo obbligatorio in ordine di codice, cioè `DOMFISC`, e
+  si aspetta tutti e tre. Dal giro 4 (`20261123-80`, D-T7a-4) `fn_crea_indirizzi_soggetto` non copia un obbligatorio
+  il cui ripiego è già nell'elenco: nascono `DOMFISC` e `RES`, e il guard differito è soddisfatto perché `DOMFISC`
+  copre `FATT`. [gestione-degli-indirizzi](../../guide/gestione-degli-indirizzi.md) §R9 («la copia degli
+  obbligatori … non un tipo di cui il titolare, o l'elenco che si sta salvando, ha già il ripiego»): **coerente** col
+  codice. Corretto nello stesso giro il `manual/` di `fn_indirizzi_con_obbligatori`, che diceva ancora «il ripiego non
+  ferma la copia».
+
+  **Richiesta al team BE/FE** (non aspetta niente dal DB): `test_gli_obbligatori_copiati_dal_primo` in
+  `backend/apps/anagrafiche/tests/db/test_creazioni_dalle_madri_db.py` si aspetta gli obbligatori **meno quelli
+  coperti dal ripiego dell'elenco**. Il ripiego si legge dalla matrice (`fallback_tipo_indirizzo_id` di
+  `config.tipi_soggetto_dettaglio_tipi_indirizzo`, insieme a `obbligatorio` nella query di `_tipo_pf_con_obbligatori`),
+  non si scrive a mano: un seed diverso cambierebbe il primo e il ripiego. Un secondo caso utile, con un primo che non è
+  il ripiego di nessuno, prova che la copia c'è ancora. Gli altri test della classe che costruiscono l'atteso dagli
+  obbligatori senza il ripiego li trova la ricerca (`grep -rn "_tipo_pf_con_obbligatori\|obbligatorio" backend/apps/anagrafiche/tests`),
+  non questo elenco.
+
 ## 22. Giro 5 — T7b, i contatti e il catasto (2026-11-25: decisioni prese, scritto e provato sullo scratch)
 
 Il perimetro è S8, S46, S11, S47 e il pgTAP `create-soggetto-gestori.sql` (§21, testa). **Il confine con T6** è
@@ -2770,12 +2794,12 @@ leggono. Il `-39` riprovato dopo il ritocco: invariato (3/3).
 * ✅ DB: `20261126-26 … -41` applicati su scratch e dbdev, pgTAP verdi col runner (Tid). Il range si chiude a `-41`
   (`-40` e `-41` usati: il guard della cancellazione del BA e i COMMENT al presente); nessun segnaposto avanzato.
 * ✅ Commit (2026-11-26, «DB: anagrafiche giro 6 (T4)»).
-* ⏳ Il passaggio al BE: §24.5 («Richiesta al team BE/FE») e §24.7 («Da girare al BE»). Il censimento applicativo:
+* ⏳ Il passaggio al BE: §24.5 («Richiesta al team BE/FE») e §24.7 («Da girare al BE»). ✅ Le policy dei sette codici (`8e0ced5b2`, 2026-11-27). ⏳ Resta il censimento applicativo:
   «censisci chi scrive o cancella `anagrafiche.emittenti_fiscali_billing_account` e chi conta sul BA senza
   collegamento, o sulla cancellazione di un BA».
 * Debito residuo, non del giro: le pagine fuori forma (§24.7), con T11 (l'indice generato è già rigenerato); i casi 4-7 di
   `test-fn-lookup-utilities-per-ba` che dipendono dai dati della macchina.
-* ✅ Il rosso del rubinetto degli accumulatori sul `-39`: chiuso col `-42` (2026-11-27, §24.9); la sua richiesta al BE è da girare.
+* ✅ Il rosso del rubinetto degli accumulatori sul `-39`: chiuso col `-42` (2026-11-27, §24.9); la sua richiesta al BE è evasa (`8e0ced5b2`, 2026-11-27, esito in coda a §24.9).
 
 ### 24.9 Il rosso del rubinetto: il billing account che non c'è ha il suo codice (2026-11-27)
 
@@ -2825,7 +2849,6 @@ sullo scratch senza accumuli né rientrati, doc auto-generata rigenerata, lo ste
   file citati sono quelli noti, non l'elenco chiuso;
 * `docs/it/backend/anagrafiche/manual/api_emittenti_fiscali.md` (la sezione del lookup): il 404 fra le risposte.
 
-## 25. T8 — ruoli d'impresa, conti, emittente (2026-11-26: analisi letta sul catalogo; 2026-11-27: tre giri, decisioni dei giri aperte)
 **Risposta del BE** (2026-11-27). ✅ Policy rigenerate, ripiego senza `%s`, manuale del lookup: commit `8e0ced5b2`. Per
 decisione di Tid lo stesso codice vale per **ogni** punto del BE che risponde «il billing account non risulta»
 (inesistente o fuori perimetro, che la RLS non distingue):
@@ -2844,7 +2867,7 @@ Restano col loro codice, perché sono un altro caso: il BA **scritto in un paylo
 (BB `istanza_del_billing_account`, 400 sul campo col codice di validazione del dominio) e la FK
 `fk_offerte_commerciali_billing_account` tradotta in `E_VENDITE_FK`. Nessun ramo del frontend legge i codici vecchi.
 
-## 25. T8 — ruoli d'impresa, conti, emittente (2026-11-26: analisi letta sul catalogo, decisioni di Tid aperte)
+## 25. T8 — ruoli d'impresa, conti, emittente (2026-11-26: analisi letta sul catalogo; 2026-11-27: tre giri, decisioni dei giri aperte)
 
 Il perimetro è S12, S13, S15 (la parte che serve), S18, S54, S55, S56, S57, R-BE3 e R-BE4 (§17). S53 resta a T12. Corpi,
 trigger, vincoli e COMMENT letti sul catalogo dello scratch (`zeroerp_ruoli`) il 2026-11-26, confrontati con dbdev dove
@@ -3018,7 +3041,9 @@ codici `E_FORNITORE_*` escono da T8c con D-18; si aggiungono le colonne modifica
 * [x] T8c: le decisioni (Tid, 2026-11-27)
 * [x] T8c: verifica critica prima del giro (2026-11-27, §25.7)
 * [x] T8c: le decisioni nuove di §25.7 (Tid, 2026-11-27)
-* [ ] T8c: il giro
+* [x] T8c: il giro scritto e provato sullo scratch (2026-11-27, §25.8)
+* [x] T8c: apply, pgTAP, commit (2026-11-27)
+* [ ] T8c: la richiesta al BE (§25.8.3)
 * [ ] T8b: le decisioni, poi il giro
 * [ ] T8a: le decisioni, poi il giro
 * Per ogni giro: pgTAP rosso, changeSet (range da Tid), prova sullo scratch, documentazione, apply e pgTAP (Tid),
@@ -3128,3 +3153,120 @@ guida descrive lo stato attuale: `numerazione-documenti-e-codici` (il PSP), `ges
 `soggetti-e-ruoli-anagrafici` (il soggetto della specializzazione non si sposta), `gestione-dei-pagamenti` (il PSP
 che non si spegne, il verso degli enti), `risorse-umane-e-accessi` §«Soggetto gestore» (il limite della P.IVA, nella
 forma di §25.7), le pagine `manual/` toccate, i COMMENT di §15.2.
+
+### 25.8 Giro T8c — che cosa è scritto (2026-11-27: provato sullo scratch, da applicare)
+
+Al via di Tid (2026-11-27), range `20261126-64 … -76`: usati `-64 … -75` (il `-75` con D-T8c-14 b, §25.8.2), **il
+`-76` resta libero**. `-64 … -75` applicati da Tid su scratch e dbdev il 2026-11-27, pgTAP verdi, doc auto-generata
+rigenerata, committato lo stesso giorno. ⚠️ Un rosso solo apparente, da non ripetere: la baseline sullo scratch
+(`PGTAP_ENV_FILE=db/internal.ruoli.env`) dava `test-fn-genera-ddt-riconsegna-eredita-v1` rosso mentre
+`testpgtap.sh` era verde. I due giravano su due database: il `-75` era applicato su dbdev e non ancora sullo
+scratch, e il caso 18 si fermava sul rifiuto del corpo vecchio. Dopo l'apply sullo scratch, verde. La baseline non
+si tocca. Gli `id`
+dei messaggi `1557 … 1560` (`messaggi_errore.csv`) e quelli dei CSV `sistema_codici` (20) e
+`automation_delete_block_ruoli` (11) sono di questo giro: un'altra sessione che appende ai due CSV parte dopo.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/anagrafiche/20261126-64` | i sei `DROP TRIGGER IF EXISTS` del guard di ruolo col nome storico (§25.1) |
+| `00_schema/anagrafiche/20261126-65` | `DROP TABLE anagrafiche.gestori_utilities` (D-T8c-8) |
+| `00_schema/anagrafiche/20261126-66` | `uq_gestori_singleton` su `((true))` (D-T8c-13 a) |
+| `20_code/anagrafiche/20261126-67` | `trgfn_gestori_guard`: tipi ancorati, le due sedi del singleton e il limite della P.IVA nel commento (D-T8c-7); nessun predicato cambia |
+| `20_code/anagrafiche/20261126-68` | `anagrafiche.trgfn_psp_guard_enti_incasso_attivi`, `SECURITY DEFINER` (i canali sono sotto RLS), e `trg_psp_a10_guard_enti_incasso_attivi_upd`: `E_PSP_ENTI_INCASSO_ATTIVI` (D-T8c-5, -11) |
+| `20_code/pagamenti/20261126-69` | `pagamenti.trgfn_enti_incasso_guard_psp`: l'acceso del PSP solo per un canale acceso, `E_ENTE_INCASSO_PSP_SPENTO` (D-T8c-12) |
+| `00_schema/vendite/20261126-70` | la FK `fk_ddt_vendita_vettore_ruolo` verso `anagrafiche.vettori(soggetto_ruolo_id)`, stesso nome (D-T8c-9 a) |
+| `20_code/vendite/20261126-71` | `vendite.trgfn_ddt_guard_vettore_attivo` e `trg_ddt_a10_guard_vettore_attivo_ins_upd`: `E_DDT_VETTORE_NON_ATTIVO` |
+| `20_code/anagrafiche/20261126-72` | i COMMENT al presente di vettori, PSP, gestore, fornitori, risorse umane (M di §15.2 per questi oggetti) |
+| `80_data/changelog/20261126-73` | `setval` della sequenza dei codici PSP, come i vettori (`20260821-06`) |
+| `80_data/changelog/20261126-74` | `DELETE` della riga di `gestori_utilities` in `dbops.fk_index_policy` |
+
+CSV (append, i loro mirror sono `runOnChange`): `config/sistema_codici.csv` (riga 20, `PSP-` + 7 cifre: sequenza,
+funzione e trigger li crea il sync del catalogo, D-T8c-1), `dbops/automation_lock_columns.csv` (codice del PSP;
+`soggetto_ruolo_id` di psp, fornitori, vettori, gestori, risorse_umane con `E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE`,
+D-T8c-10), `dbops/automation_delete_block_ruoli.csv` (psp), `dbops/automazione_attivo_eccezioni.csv` (`vendite.ddt.
+vettore_soggetto_ruolo_id`), `config/codici_errore.csv` e `config/messaggi_errore.csv` (i quattro codici nuovi). Tolta
+da `dbops/fk_index_policy.csv` la riga di `gestori_utilities`: ⚠️ correzione di §25.7, quel CSV **non** è dormiente,
+lo carica il mirror vivo `20261110-51`, e la riga lasciata nel file tornerebbe al primo risveglio.
+
+pgTAP: nuovo `db/pgtap/anagrafiche/test-ruoli-impresa-psp-vettore-gestore-v1.sql` (22). Adeguati
+`pagamenti/test-enti-incasso-psp.sql` (cancellava il PSP della fixture: il PSP non si cancella più) e
+`vendite/test-fn-genera-ddt-riconsegna-eredita-v1.sql` (il vettore era un ruolo VT senza riga in `vettori`: la FK
+nuova lo rifiuta, la fixture costruiva un caso che il modello non ammette).
+
+**Prova sullo scratch** (`scripts/prova_changeset.py`, 2026-11-27, con un estratto in più che simula i CSV e la
+convergenza di lock, delete block e ATTIVO): il test nuovo 18 rossi su 22 senza, 22 su 22 con; verdi senza e con i
+due adeguati, `create-soggetto-gestori`, `test-risorse-umane`, `test-vettori-gen-codice`,
+`test-automazione-attivo-eccezioni-v1`. Catalogo identico prima e dopo. La `preCondition` del `-73` è rossa sullo
+scratch di oggi perché la sequenza nasce dal CSV, che la prova non carica: sul database la crea il mirror
+`20250813-05`, che gira prima. Guardrail dei changeSet, `COMMENT` al presente, licenze: puliti.
+⚠️ Non provato: il risveglio dei mirror sui CSV toccati con l'upsert di tutte le righe (§11.2, «la verifica che le
+prende entrambe»); i quattro mirror di registro non hanno guard sulle righe, quello di `sistema_codici` ripassa dal
+sync come col vettore il 2026-08-21.
+
+**Documentazione allineata nel giro**: guide `soggetti-e-ruoli-anagrafici` (il ruolo della specializzazione non si
+sposta, la bolla punta al vettore, «Vedi anche»), `numerazione-documenti-e-codici` (il PSP), `gestione-dei-pagamenti`
+(i due versi PSP–canale), `gestione-ddt` (il vettore acceso, la bolla è storia), `risorse-umane-e-accessi` (il gestore
+uno solo, il limite della P.IVA), `automazione-db` §4.2 (la riga dell'eccezione); nota `_ultimo-super-admin`; pagine
+`manual/` di `psp`, `vettori`, `gestori`, `fornitori`, `risorse_umane`, `enti_incasso`,
+`trgfn_enti_incasso_guard_psp`, `ddt`, e le due nuove `trgfn_psp_guard_enti_incasso_attivi`,
+`trgfn_ddt_guard_vettore_attivo`; tolta `manual/gestori_utilities.md`. ⚠️ **Doc auto-generata da rigenerare** dopo
+l'apply: fino ad allora `tabelle/gestori_utilities.md` include una pagina che non c'è più, e gli indici la nominano.
+`guide_coinvolte.py` sugli oggetti del giro: in più `gestione-commesse`, `processi-pgagent-funzionali`,
+`presidi-e-registri-del-debito`, nota `_note-partizioni`, **coerenti** per assenza (non parlano del ruolo della
+risorsa né delle eccezioni toccate); `_ultimo-super-admin` **indietro**, aggiornata. Orfani:
+`trgfn_gestori_guard`, `trgfn_enti_incasso_guard_psp`, dettagli interni.
+
+⚠️ **Un ordine da sapere.** Su `risorse_umane` i guard si chiamano `a10_guard_*` e vengono prima del lucchetto
+generato (`a10_lock_columns`): un ruolo d'altro tipo parla con `E_SOGGETTI_RUOLI`, e per l'ultimo SUPER_ADMIN parla
+il suo guard, prima di `E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE`. Sulle altre quattro il lucchetto parla per primo.
+Lo dicono la nota del registro e la pagina dell'ultimo SUPER_ADMIN.
+
+#### 25.8.1 Garanzie ritirate
+
+* **«Un canale d'incasso PSP, anche spento, ha il suo PSP acceso»** (`pagamenti.enti_incasso`, D-T8c-12): vale ora
+  per i soli canali accesi. Lettori lato DB: la distinta (`pagamenti.vendite_contabili.ente_incasso_id`) nasce su un
+  canale acceso, per il suo require ATTIVO: non ne dipende; nessuna funzione né vista legge `anagrafiche.psp`
+  passando da un canale (letto sul catalogo, 2026-11-27).
+* `anagrafiche.gestori_utilities`: nessun lettore, né DB né `backend/`/`frontend/` (§25.5).
+
+#### 25.8.2 Da decidere (Tid)
+
+* **D-T8c-14 — la riconsegna col vettore spento.** `vendite.fn_genera_ddt_riconsegna` copia il vettore della bolla
+  d'origine nella bolla di riconsegna. Se quel vettore è stato spento, la riconsegna **è rifiutata** con
+  `E_DDT_VETTORE_NON_ATTIVO`, e l'operatore non ha modo di scegliere prima un altro vettore. Strade: (a) com'è
+  scritto, il rifiuto; (b) il verbo eredita il vettore solo se è acceso, altrimenti lo lascia vuoto, e l'operatore
+  lo sceglie sulla bozza. Proposta **b**: la riconsegna nasce in bozza, e il vettore lo si sceglie lì.
+* ✅ **Decisa b** (Tid, 2026-11-27). `20_code/vendite/20261126-75`: il vettore passa da un `LEFT JOIN` su
+  `anagrafiche.vettori` filtrato su `attivo`, come causale, aspetto e modalità di addebito già facevano (la regola era
+  scritta nel COMMENT della funzione: il vettore era la sola eredità senza filtro). Corpo dal `20261124-11`,
+  verificato identico al catalogo. pgTAP `vendite/test-fn-genera-ddt-riconsegna-eredita-v1.sql`, caso 18 (plan 19):
+  senza il changeSet il file si ferma sul rifiuto, con il changeSet 19 su 19. Pagine `manual/` di
+  `fn_genera_ddt_riconsegna`, `vettori`, `trgfn_ddt_guard_vettore_attivo` allineate; in
+  `fn_genera_ddt_riconsegna` corretta anche una frase superata (il vettore «modificabile in qualunque stato»: dopo
+  l'emissione lo blocca il lucchetto della testata).
+  ⚠️ **Da sapere**: la stampa rende il vettore vuoto come «Mezzo proprio» (`template-ddt-vendita.html`). Una
+  riconsegna emessa senza scegliere il vettore afferma quindi che la merce viaggia col mezzo del venditore. Il
+  passo al BE: la bozza col vettore vuoto lo chiede all'operatore prima di emettere (§25.8.3, punto 1).
+
+#### 25.8.3 La richiesta al team BE/FE (da girare dopo l'apply)
+
+Censisci, oltre ai file noti, **ogni lettore e scrittore** delle colonne qui sotto che conta sul comportamento di
+prima:
+
+1. **Il vettore della bolla** (`vendite.ddt.vettore_soggetto_ruolo_id`), file noti: `ddt_service.py`,
+   `ddt_repository.py`, `_schema_da_contratto.py`. Il picker propone solo i vettori accesi di `anagrafiche.vettori`
+   (il ruolo, `soggetto_ruolo_id`); due rifiuti nuovi: `E_DDT_VETTORE_NON_ATTIVO`, e `23503` su
+   `fk_ddt_vendita_vettore_ruolo` quando il ruolo non è un vettore. Censisci chi conta su «il vettore è un ruolo
+   qualunque». La bolla di riconsegna può nascere col vettore vuoto (il vettore d'origine è spento, D-T8c-14 b):
+   la bozza lo chiede prima di emettere, perché la stampa rende il vuoto «Mezzo proprio».
+2. **Il soggetto delle specializzazioni** (`soggetto_ruolo_id` di `fornitori`, `vettori`, `gestori`, `psp`,
+   `risorse_umane`): non si cambia, `E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE`; `dbops.vw_non_editable_fields` lo
+   elenca. Censisci gli scrittori in modifica (form, repository, servizi) e togli la colonna da quelle modificabili.
+3. **Il PSP** (`anagrafiche.psp`): il codice lo genera il database e non si cambia; il PSP non si cancella; lo
+   spegnimento coi canali accesi risponde `E_PSP_ENTI_INCASSO_ATTIVI`. Secondo §25.4 nessuno lo scrive dal BE:
+   conferma.
+4. **I canali d'incasso** (`pagamenti.enti_incasso`): codice nuovo `E_ENTE_INCASSO_PSP_SPENTO` (riaccendere un canale
+   col PSP spento); un canale spento si modifica anche col PSP spento. Censisci chi conta su «canale PSP ⇒ PSP
+   acceso» anche per i canali spenti.
+5. I quattro codici nuovi nella tassonomia degli errori del BE e nelle chiavi i18n, se il BE li mappa.
+6. Conferma che `anagrafiche.gestori_utilities` non ha lettori nel backend (il `grep` del 2026-11-27 dice di no).

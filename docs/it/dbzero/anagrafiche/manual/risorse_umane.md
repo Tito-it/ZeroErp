@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.risorse_umane`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -41,7 +41,8 @@ di un soggetto.
 ### Un rapporto per ruolo
 
 Ogni riga nomina con `soggetto_ruolo_id` un ruolo `RIS_UMANA`, e ne è l'unica: il vincolo unico sul ruolo non è
-parziale, e vale anche quando il rapporto che c'è è spento. La porta di creazione rifiuta una seconda risorsa umana
+parziale, e vale anche quando il rapporto che c'è è spento. Il ruolo **non si cambia**
+(`E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE`). La porta di creazione rifiuta una seconda risorsa umana
 sulla stessa persona con un codice suo, invece di lasciarla arrivare al vincolo.
 
 La riga porta anche `soggetto_id`, una copia del soggetto del ruolo, che i lettori usano senza passare dal ruolo. Il
@@ -94,11 +95,10 @@ I trigger della tabella, elencati nella scheda, reggono questi temi:
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Il rapporto che cambia ruolo.** La sincronizzazione scatta sullo stato e sulle date, non su
-  `soggetto_ruolo_id`: spostare il rapporto su un altro ruolo lascia la credenziale com'era, finché non passa il
-  riallineamento orario. Lo spegnimento del soggetto, che pure cambia l'utilizzabilità della veste, è fermato prima
-  dal rapporto acceso.
-* **Il commento.** La tabella non ha un commento nel database, e quasi nessuna colonna ne ha uno.
+* **Lo spegnimento del soggetto**, che pure cambia l'utilizzabilità della veste, è fermato prima dal rapporto
+  acceso.
+* **Il commento.** La tabella non ha un commento nel database, e quasi nessuna colonna ne ha uno (ce l'ha
+  `soggetto_ruolo_id`).
 
 ---
 

@@ -1,6 +1,6 @@
 # Guida — Gestione DDT di vendita
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali/logistici,
 > sviluppatori backend/frontend, DBA.
@@ -61,7 +61,9 @@ Caratteristiche di base:
 
 * è intestato a un **cliente** (billing account, con il relativo soggetto) e ha
   un **destinatario** (chi riceve fisicamente la merce), oltre a **mittente** e
-  **vettore** opzionali;
+  **vettore** opzionali. Il vettore è un vettore vero (`anagrafiche.vettori`), acceso quando la
+  bolla lo sceglie o lo cambia; spento dopo, resta sulle bolle che lo hanno già: la bolla è
+  storia, e un vettore che ne ha portate si può spegnere;
 * raccoglie **righe** (articolo, quantità, ed eventualmente prezzo/IVA) e
   **componenti BoM** per gli articoli compositi;
 * porta i **dati di trasporto** (causale, aspetto dei beni, modalità di addebito,

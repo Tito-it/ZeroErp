@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_genera_ddt_riconsegna`
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -156,9 +156,15 @@ per la ri-consegna: è la stessa relazione commerciale eseguita una seconda volt
 >
 > Il confronto vero non era «campo pieno contro campo vuoto», era **«corriere dell'andata
 > contro Mezzo proprio»**: fra due affermazioni non verificate vince quella che nel caso
-> ordinario è vera. ⚠️ E il campo resta modificabile in qualunque stato — a differenza della
-> causale, sul vettore non c'è nessun guard di immutabilità: un corriere ereditato e sbagliato
-> si corregge.
+> ordinario è vera. ⚠️ E il campo si corregge finché la bolla è in bozza: un corriere ereditato
+> e sbagliato si cambia lì; dall'emissione in poi lo blocca il lucchetto della testata.
+>
+> ⚠️ **Il vettore spento non si eredita.** Il vettore passa, come causale, aspetto e modalità di
+> addebito, da un `LEFT JOIN` filtrato su `attivo` (`anagrafiche.vettori`): se il corriere
+> dell'andata è stato spento, la riconsegna nasce in bozza col vettore vuoto, e l'operatore lo
+> sceglie lì. Senza, la generazione sarebbe rifiutata (`E_DDT_VETTORE_NON_ATTIVO`: una bolla non
+> sceglie un vettore spento). Il vuoto, qui, torna a stampare «Mezzo proprio» se l'operatore
+> emette senza sceglierlo.
 
 #### ⛔ NON eredita — «il viaggio»
 

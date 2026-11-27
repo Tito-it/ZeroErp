@@ -1,0 +1,127 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN PSP CON CANALI D'INCASSO ATTIVI NON SI SPEGNE
+#   anagrafiche.trgfn_psp_guard_enti_incasso_attivi()          (nuova)
+#   trg_psp_a10_guard_enti_incasso_attivi_upd                  (nuovo)
+#   Brief: brief-db-revisione-anagrafiche §25.5 (D-T8c-5), §25.7 (D-T8c-11)
+#
+# -- IL DIFETTO -------------------------------------------------------
+#   Un canale d'incasso di tipo PSP (pagamenti.enti_incasso) nasce e si
+#   modifica solo con il suo PSP acceso: lo giudica
+#   pagamenti.trgfn_enti_incasso_guard_psp. Il verso opposto mancava: un PSP
+#   si spegneva con i suoi canali ancora attivi.
+#
+# -- PERCHE' UN TRIGGER SCRITTO A MANO, E NON L'AUTOMAZIONE ATTIVO ----
+#   Il legame non e' una FK: enti_incasso.soggetto_ruolo_id punta a
+#   soggetti_ruoli, ed e' polimorfo (il ruolo di un canale non PSP e' un altro
+#   ruolo). Non serve filtrare tipo = 'PSP': il ruolo del PSP e' un ruolo PSP,
+#   e ogni canale che lo nomina e' un canale di quel PSP.
+#   Il blocco generico dell'automazione (dbops.trgfn_prevent_deactivate_if_children)
+#   leggerebbe la stessa cosa, ma parla con E_ATTIVO_BLOCK_CHILDREN_ACTIVE;
+#   Tid ha scelto il codice di dominio (D-T8c-11), che dice che cosa spegnere.
+#
+# -- ⚠️ SECURITY DEFINER ---------------------------------------------
+#   pagamenti.enti_incasso ha la row level security (il perimetro dei soldi
+#   dell'operatore): da invocante i canali di un'altra azienda sarebbero
+#   invisibili, e il guard lascerebbe spegnere un PSP che un'altra azienda usa
+#   (linee-guida-trigger, «Un guard che decide su una riga correlata»). La
+#   funzione e' una funzione trigger: si esegue solo da un trigger, e risponde
+#   solo il rifiuto. search_path fissato.
+#
+# -- IL MONTAGGIO ----------------------------------------------------
+#   BEFORE UPDATE OF attivo, WHEN acceso -> spento: nessun trigger BEFORE di
+#   psp scrive attivo, quindi OF e' la forma giusta. Fase a10, fra i guard.
+#   Presidio: db/pgtap/anagrafiche/test-ruoli-impresa-psp-vettore-gestore-v1.sql
+#   (14, 15).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261126-68-create-trg-psp-guard-enti-incasso-attivi-mctit.yaml
+
+  - changeSet:
+      id: 20261126-68-create-trg-psp-guard-enti-incasso-attivi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Un PSP con canali d'incasso attivi non si spegne
+        (E_PSP_ENTI_INCASSO_ATTIVI). brief-db-revisione-anagrafiche §25.5
+        (D-T8c-5), §25.7 (D-T8c-11).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_psp_guard_enti_incasso_attivi()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_quanti  bigint;  -- un conteggio (count(*)): nessuna colonna dietro
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: un PSP con canali d'incasso attivi non si spegne.
+                  --   Montata BEFORE UPDATE OF attivo, WHEN acceso -> spento.
+                  --
+                  -- Il legame e' il ruolo: pagamenti.enti_incasso.soggetto_ruolo_id
+                  --   e' il ruolo del PSP (anagrafiche.psp.soggetto_ruolo_id, che
+                  --   non si cambia). Ogni canale che nomina un ruolo PSP e' un
+                  --   canale di quel PSP: non si filtra il tipo.
+                  --
+                  -- ⚠️ SECURITY DEFINER: i canali hanno la row level security, e
+                  --   da invocante quelli di un'altra azienda non si vedrebbero.
+                  -- =========================================================
+                  SELECT count(*)
+                    INTO v_quanti
+                    FROM pagamenti.enti_incasso e
+                   WHERE e.soggetto_ruolo_id = NEW.soggetto_ruolo_id
+                     AND e.attivo IS TRUE;
+
+                  IF v_quanti > 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'anagrafiche.trgfn_psp_guard_enti_incasso_attivi',
+                          'E_PSP_ENTI_INCASSO_ATTIVI',
+                          jsonb_build_object(
+                              'campo', 'attivo',
+                              'psp_id', NEW.id,
+                              'soggetto_ruolo_id', NEW.soggetto_ruolo_id,
+                              'enti_attivi', v_quanti
+                          ),
+                          NULL::uuid,
+                          NEW.codice::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_psp_guard_enti_incasso_attivi() IS
+                'Guard BEFORE UPDATE OF attivo di anagrafiche.psp: un PSP con canali d''incasso attivi (pagamenti.enti_incasso che nominano il suo ruolo) non si spegne, E_PSP_ENTI_INCASSO_ATTIVI. Si spengono prima i canali. SECURITY DEFINER: i canali sono sotto row level security, e il guard li conta tutti, di ogni azienda. Il verso opposto, il canale acceso che vuole il PSP acceso, lo tiene pagamenti.trgfn_enti_incasso_guard_psp.';
+
+              DROP TRIGGER IF EXISTS trg_psp_a10_guard_enti_incasso_attivi_upd
+                  ON anagrafiche.psp;
+
+              CREATE TRIGGER trg_psp_a10_guard_enti_incasso_attivi_upd
+                  BEFORE UPDATE OF attivo ON anagrafiche.psp
+                  FOR EACH ROW
+                  WHEN (OLD.attivo IS TRUE AND NEW.attivo IS FALSE)
+                  EXECUTE FUNCTION anagrafiche.trgfn_psp_guard_enti_incasso_attivi();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_psp_a10_guard_enti_incasso_attivi_upd
+                  ON anagrafiche.psp;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_psp_guard_enti_incasso_attivi();

@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA BOLLA SCEGLIE UN VETTORE ACCESO
+#   vendite.trgfn_ddt_guard_vettore_attivo()                   (nuova)
+#   trg_ddt_a10_guard_vettore_attivo_ins_upd                   (nuovo)
+#   Brief: brief-db-revisione-anagrafiche §25.7 (D-T8c-9 a)
+#
+# -- LA REGOLA --------------------------------------------------------
+#   Quando la bolla nasce con un vettore, o il vettore cambia, il vettore e'
+#   acceso: E_DDT_VETTORE_NON_ATTIVO. Una bolla che ha gia' il suo vettore si
+#   modifica anche se il vettore, dopo, e' stato spento: la bolla e' storia
+#   (per questo la FK 20261126-70 e' un'eccezione dell'automazione ATTIVO, e
+#   questo guard sta al posto del suo require).
+#   Che il vettore sia un vettore lo dice la FK; un id che non e' in
+#   anagrafiche.vettori il guard lo lascia alla FK, che parla a fine
+#   istruzione.
+#
+# -- IL MONTAGGIO ----------------------------------------------------
+#   BEFORE INSERT OR UPDATE OF vettore_soggetto_ruolo_id: nessun trigger
+#   BEFORE della bolla scrive la colonna (letto sui corpi vivi), quindi OF e'
+#   la forma giusta; il corpo confronta OLD e NEW, perche' OF scatta anche a
+#   valore uguale. Fase a10. Dopo l'emissione il vettore non si cambia, e
+#   parla prima trg_ddt_a05_lock_fuori_bozza_upd.
+#   anagrafiche.vettori non ha la row level security: il guard legge da
+#   invocante.
+#
+# -- ⚠️ CHI SCRIVE LA COLONNA ----------------------------------------
+#   vendite.fn_genera_ddt_riconsegna copia il vettore della bolla d'origine
+#   nella bolla di riconsegna: se quel vettore e' stato spento, la
+#   riconsegna e' rifiutata con questo codice (brief §25.8, da vedere con
+#   Tid). Il backend scrive la colonna dal form e dal contratto (richiesta al
+#   team BE/FE).
+#   Presidio: db/pgtap/anagrafiche/test-ruoli-impresa-psp-vettore-gestore-v1.sql
+#   (18-21).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261126-71-create-trg-ddt-guard-vettore-attivo-mctit.yaml
+
+  - changeSet:
+      id: 20261126-71-create-trg-ddt-guard-vettore-attivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Una bolla che sceglie o cambia vettore lo vuole acceso
+        (E_DDT_VETTORE_NON_ATTIVO). brief-db-revisione-anagrafiche §25.7
+        (D-T8c-9 a).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_vettore_attivo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_attivo  anagrafiche.vettori.attivo%TYPE;
+                  v_codice  anagrafiche.vettori.codice%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: la bolla che sceglie un vettore, nascendo o
+                  --   cambiandolo, lo vuole acceso.
+                  --   Montata BEFORE INSERT OR UPDATE OF vettore_soggetto_ruolo_id.
+                  --
+                  -- ⭐ Il vettore gia' scritto non si rigiudica: la bolla e'
+                  --   storia, e un vettore spento dopo resta su di lei.
+                  -- ⚠️ Un id che non e' un vettore lo rifiuta la FK: qui si
+                  --   esce, e la FK parla a fine istruzione.
+                  -- =========================================================
+                  IF NEW.vettore_soggetto_ruolo_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF TG_OP = 'UPDATE'
+                     AND OLD.vettore_soggetto_ruolo_id IS NOT DISTINCT FROM NEW.vettore_soggetto_ruolo_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT v.attivo, v.codice
+                    INTO v_attivo, v_codice
+                    FROM anagrafiche.vettori v
+                   WHERE v.soggetto_ruolo_id = NEW.vettore_soggetto_ruolo_id;
+
+                  IF FOUND AND v_attivo IS NOT TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'vendite.trgfn_ddt_guard_vettore_attivo',
+                          'E_DDT_VETTORE_NON_ATTIVO',
+                          jsonb_build_object(
+                              'campo', 'vettore_soggetto_ruolo_id',
+                              'ddt_id', NEW.id,
+                              'vettore_soggetto_ruolo_id', NEW.vettore_soggetto_ruolo_id
+                          ),
+                          NULL::uuid,
+                          v_codice::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_guard_vettore_attivo() IS
+                'Guard BEFORE INSERT OR UPDATE OF vettore_soggetto_ruolo_id di vendite.ddt: la bolla che nasce con un vettore, o lo cambia, lo vuole acceso (E_DDT_VETTORE_NON_ATTIVO). Il vettore gia'' scritto non si rigiudica: la bolla e'' storia, e un vettore spento dopo resta su di lei. Che sia un vettore lo dice la FK verso anagrafiche.vettori.';
+
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_vettore_attivo_ins_upd
+                  ON vendite.ddt;
+
+              CREATE TRIGGER trg_ddt_a10_guard_vettore_attivo_ins_upd
+                  BEFORE INSERT OR UPDATE OF vettore_soggetto_ruolo_id ON vendite.ddt
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_ddt_guard_vettore_attivo();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_vettore_attivo_ins_upd
+                  ON vendite.ddt;
+              DROP FUNCTION IF EXISTS vendite.trgfn_ddt_guard_vettore_attivo();

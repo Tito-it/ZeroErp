@@ -1,6 +1,6 @@
 # Guida — Gestione dei Pagamenti Vendite
 
-> **Ultimo aggiornamento**: 25 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend, analisti funzionali, operatori dell'area incassi
 >
@@ -282,7 +282,9 @@ Da un punto di vista tecnico:
 * `chk_enti_incasso_tipo` — valida i valori ammessi per `tipo`
 * `chk_enti_incasso_bank_branch_tipo` — `bank_branch_id` obbligatorio se e solo se `tipo = BANCA`
 
-**Trigger di guardia PSP:** il trigger `trgfn_enti_incasso_guard_psp` (BEFORE INSERT/UPDATE) verifica che per `tipo = PSP` il `soggetto_ruolo_id` appartenga a un ruolo con `codice_interno = 'PSP'` e che esista un record attivo in `anagrafiche.psp`.
+**Trigger di guardia PSP:** il trigger `trgfn_enti_incasso_guard_psp` (BEFORE INSERT/UPDATE) verifica che per `tipo = PSP` il `soggetto_ruolo_id` appartenga a un ruolo con `codice_interno = 'PSP'` e che il PSP sia censito in `anagrafiche.psp`. Un canale **acceso** vuole il PSP acceso; un canale spento si modifica anche col PSP spento.
+
+**Il PSP non si spegne finché ha canali accesi.** Il verso opposto lo tiene `anagrafiche.trgfn_psp_guard_enti_incasso_attivi`, che conta i canali di ogni azienda, anche quelli fuori dal perimetro di chi agisce: prima si spengono i canali, poi il PSP. Il PSP non si cancella, e il suo codice (`PSP-` e sette cifre) lo genera il database.
 
 **Trigger di guardia sul conto:** `trgfn_enti_incasso_guard_conto_incasso` verifica
 che il conto agganciato sia registrato **per gli incassi** e non per altro (i
@@ -1293,7 +1295,7 @@ giusta, resta rifiutato.
 
 8. **Protezione disattivazione**: centri, enti, stati e righe non possono essere disattivati se referenziati da record figli attivi. ⭐ Per le **righe** la regola dal 14-09-2026 e' piu' precisa: si eliminano (`attivo = false`, e `DELETE`) solo su una distinta **manuale in bozza**; sotto una manuale **validata** il contenuto (righe nuove, importi, date, eliminazioni) e' fermo finche' non torna in bozza, mentre le decisioni restano libere (guard: `trgfn_vendite_contabili_righe_guard_contenuto`).
 
-9. **Validazione PSP**: gli enti di incasso con `tipo = PSP` richiedono un `soggetto_ruolo_id` con ruolo `PSP` e un record attivo in `anagrafiche.psp`.
+9. **Validazione PSP**: gli enti di incasso con `tipo = PSP` richiedono un `soggetto_ruolo_id` con ruolo `PSP` censito in `anagrafiche.psp`; un ente acceso lo vuole acceso, e un PSP con enti accesi non si spegne.
 
 ---
 

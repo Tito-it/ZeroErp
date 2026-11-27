@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `pagamenti.enti_incasso`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 27 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -68,7 +68,8 @@ dove se ne accorge chi può rimediare, e non in esercizio, dove non se ne accorg
 ### Un canale `PSP` nomina un PSP censito
 
 Per `tipo = PSP` il `soggetto_ruolo_id` è obbligatorio, deve avere il ruolo `PSP` e deve
-esistere una riga attiva in `anagrafiche.psp` per lo stesso soggetto-ruolo. Lo verifica
+esistere una riga in `anagrafiche.psp` per lo stesso soggetto-ruolo, accesa se il canale è acceso.
+Un PSP non si spegne finché ha canali accesi. Lo verifica
 [trgfn_enti_incasso_guard_psp](/dbzero/pagamenti/funzioni/trgfn_enti_incasso_guard_psp).
 
 ---

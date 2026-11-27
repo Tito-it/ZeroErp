@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VETTORE DELLA BOLLA E' UN VETTORE
+#   vendite.ddt.vettore_soggetto_ruolo_id -> anagrafiche.vettori(soggetto_ruolo_id)
+#   Brief: brief-db-revisione-anagrafiche §25.4 (S56b), §25.7 (D-T8c-9 a)
+#
+# -- IL DIFETTO -------------------------------------------------------
+#   La FK puntava a anagrafiche.soggetti_ruoli: il vettore di una bolla
+#   poteva essere un cliente, un fornitore, un ruolo qualunque, anche senza
+#   la riga in anagrafiche.vettori.
+#
+# -- LA CORREZIONE ----------------------------------------------------
+#   La FK punta alla specializzazione, sulla sua UNIQUE (uq_vettori_ruolo):
+#   tipo ed esistenza li dice il vincolo. Stesso nome del vincolo di prima,
+#   cosi' la riga di dbops.fk_index_policy che lo nomina resta valida.
+#   Senza ON UPDATE CASCADE: vettori.soggetto_ruolo_id non si cambia (lock
+#   E_SPECIALIZZAZIONE_SOGGETTO_IMMUTABILE).
+#
+# -- ⚠️ L'AUTOMAZIONE ATTIVO NON LA LEGA (D-T8c-9 a) ------------------
+#   Una FK verso un padre con attivo farebbe nascere il block sul vettore e
+#   il require sulla bolla. vendite.ddt non ha attivo, quindi il block
+#   conterebbe ogni bolla: un vettore che ne ha portata una non si
+#   spegnerebbe piu'. La bolla e' storia: la FK e' un'eccezione in
+#   dbops.automazione_attivo_eccezioni (CSV dello stesso giro), e il
+#   «vettore acceso quando la bolla lo sceglie» lo dice un guard del
+#   documento (20261126-71). L'eccezione la legge il runner ATTIVO alla
+#   convergenza, dopo 80_data: il block non nasce mai, nemmeno da zero.
+#
+# -- I DATI --------------------------------------------------------------
+#   Il vincolo nasce convalidato. Letto il 2026-11-27 su scratch e su dbdev:
+#   nessuna bolla ha un vettore che non sia in anagrafiche.vettori (e' il
+#   controesempio che il vincolo avrebbe trovato). Da zero la tabella e'
+#   vuota.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261126-70-alter-fk-ddt-vettore-verso-vettori-mctit.yaml
+
+  - changeSet:
+      id: 20261126-70-alter-fk-ddt-vettore-verso-vettori
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La FK del vettore della bolla punta ad anagrafiche.vettori invece che a
+        soggetti_ruoli. brief-db-revisione-anagrafiche §25.7 (D-T8c-9 a).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ddt
+                  DROP CONSTRAINT fk_ddt_vendita_vettore_ruolo,
+                  ADD CONSTRAINT fk_ddt_vendita_vettore_ruolo
+                      FOREIGN KEY (vettore_soggetto_ruolo_id)
+                      REFERENCES anagrafiche.vettori (soggetto_ruolo_id);
+
+              COMMENT ON COLUMN vendite.ddt.vettore_soggetto_ruolo_id IS
+                'Il vettore che porta la merce, facoltativo: il ruolo di un vettore (anagrafiche.vettori). Quando la bolla lo sceglie o lo cambia deve essere acceso (E_DDT_VETTORE_NON_ATTIVO); spento dopo, resta sulla bolla, che e'' storia. Dopo l''emissione non si cambia.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ddt
+                  DROP CONSTRAINT fk_ddt_vendita_vettore_ruolo,
+                  ADD CONSTRAINT fk_ddt_vendita_vettore_ruolo
+                      FOREIGN KEY (vettore_soggetto_ruolo_id)
+                      REFERENCES anagrafiche.soggetti_ruoli (id) ON UPDATE CASCADE;
