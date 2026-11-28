@@ -82,6 +82,23 @@ except Exception:
 " 2>/dev/null
 }
 
+# Scopo: un IBAN italiano BEN FORMATO (27 caratteri, cifre di controllo
+#        mod-97 vere) che porta la banca e la filiale date.
+# ⛔ Dal 2026-11-27 (`trgfn_conti_bancari_guard_iban_filiale`) l'IBAN di un
+#    conto deve portare `bank_code` e `branch_code` della sua filiale, nelle
+#    posizioni che `config.stati` dichiara per il paese: un IBAN inventato
+#    (`IT00X<timestamp>`, fino a quel giorno) e' E_CONTO_IBAN_FILIALE_INCOERENTE.
+# Uso: iban_it <CIN> <ABI> <CAB> <numero conto, fino a 12 cifre>
+iban_it() {
+    python3 - "$1" "$2" "$3" "$4" <<'PY'
+import sys
+cin, abi, cab, conto = sys.argv[1:5]
+bban = f"{cin}{abi}{cab}{int(conto):012d}"
+num = "".join(str(int(c, 36)) for c in bban + "IT00")
+print(f"IT{98 - int(num) % 97:02d}{bban}")
+PY
+}
+
 do_curl() {
     local method="$1" url="$2" data="${3:-}"
     if [[ "$method" == "GET" ]]; then
@@ -180,6 +197,14 @@ if [[ -z "$BRANCH_ID" || "$BRANCH_ID" == "" ]]; then
     exit 1
 fi
 log_info "Filiale id=$BRANCH_ID"
+# Banca e filiale della filiale scelta: gli IBAN dello smoke le devono portare.
+BRANCH_ABI=$(json_get "$LAST_BODY" ".data.results.0.bank_code")
+BRANCH_CAB=$(json_get "$LAST_BODY" ".data.results.0.branch_code")
+if [[ -z "$BRANCH_ABI" || -z "$BRANCH_CAB" ]]; then
+    echo -e "${RED}ERRORE: il lookup filiali non restituisce bank_code/branch_code${NC}"
+    exit 1
+fi
+log_info "Filiale ABI=$BRANCH_ABI CAB=$BRANCH_CAB"
 
 # --- 3. Lookup conti bancari (registro IBAN) ---
 echo ""
@@ -202,8 +227,7 @@ echo ""
 echo "-- 5. Crea conto bancario (INCASSO, predefinito) --"
 # IBAN unico per ogni run
 SMOKE_TS=$(date +%s)
-SMOKE_IBAN_NUM=$(printf '%023d' "$SMOKE_TS")
-SMOKE_IBAN="IT00X${SMOKE_IBAN_NUM}"
+SMOKE_IBAN=$(iban_it X "$BRANCH_ABI" "$BRANCH_CAB" "$((SMOKE_TS * 10))")
 
 do_curl POST "/api/v1/anagrafiche/soggetti/${SOGG_ID}/conti-bancari/" \
     "{
@@ -237,7 +261,7 @@ fi
 # --- 7. Crea secondo conto (uso PAGAMENTO) ---
 echo ""
 echo "-- 7. Crea secondo conto (PAGAMENTO) --"
-SMOKE_IBAN_2="IT00Y$(printf '%023d' $((SMOKE_TS + 1)))"
+SMOKE_IBAN_2=$(iban_it Y "$BRANCH_ABI" "$BRANCH_CAB" "$((SMOKE_TS * 10 + 1))")
 do_curl POST "/api/v1/anagrafiche/soggetti/${SOGG_ID}/conti-bancari/" \
     "{
         \"iban\": \"${SMOKE_IBAN_2}\",
@@ -341,7 +365,7 @@ if [[ -n "$RUOLO_ID" && "$RUOLO_ID" != "" ]]; then
     echo ""
     echo "-- 14. Crea conto ruolo con istanza --"
 
-    SMOKE_IBAN_RUOLO="IT00Z$(printf '%023d' $((SMOKE_TS + 2)))"
+    SMOKE_IBAN_RUOLO=$(iban_it Z "$BRANCH_ABI" "$BRANCH_CAB" "$((SMOKE_TS * 10 + 2))")
 
     PAYLOAD="{\"iban\": \"${SMOKE_IBAN_RUOLO}\", \"bank_branch_id\": ${BRANCH_ID}, \"uso\": \"INCASSO\""
     if [[ -n "$ISTANZA_UTILITY_ID" && "$ISTANZA_UTILITY_ID" != "" && "$ISTANZA_UTILITY_ID" != "None" ]]; then
