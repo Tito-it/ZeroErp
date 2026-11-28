@@ -27,14 +27,14 @@ applicati, pgTAP verdi col runner di Tid), lato BE/FE lo stesso giorno (§5.3.10
 | 17 | ~~Tid~~ | ~~Il commit dei giri 3 e 4~~: `9be82d42c` | — | — |
 | 18 | ~~Tid~~ | ~~D-BE4-1 (il login «per chi»), D-BE4-2 (l'ordine)~~: come proposto, 2026-11-28 | §5.5.7 | — |
 | 19 | ~~team BE/FE~~ | ~~B1-B4, B6, B7: lista, policy, scheda dei referenti, invito, doc, test~~: 2026-11-28 | §5.5.7 | — |
-| 20 | ~~Tid~~ | ~~Il commit di B1-B4~~: 2026-11-28 | — | — |
+| 20 | ~~Tid~~ | ~~Il commit di B1-B4~~: `529e4d05d`, 2026-11-28 | — | — |
 | 15 | team BE/FE | B5: il login «per chi» (D-BE4-1), con la sua doc e i suoi test | §5.5.5 punto 2, §5.5.7 | 20 |
 
 **Decisioni aperte di Tid:** nessuna per i giri 3 e 4 (D-BE4-1, D-BE4-2 decise il 2026-11-28). D-M9 è decisa come proposto (Tid, 2026-11-28). Per i giri successivi restano D-M6
 ([analisi-modello-area-clienti](analisi-modello-area-clienti.md) §7) e l'emittente del cliente iscritto da sé
 ([sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md) §3.6).
 ⚠️ ~~Fino al passaggio del BE l'invito si fermava con `42501` dopo la mail~~: chiuso dal 3c-2 (§5.3.10).
-**Da committare:** niente. B1-B4 del §5.5.7 sono committati il 2026-11-28 (commit «BE/FE: area clienti, giri 3 e 4»); i giri 3 e 4 del DB in `9be82d42c`, il 3c in `1405f8ce4`.
+**Da committare:** niente. B1-B4 del §5.5.7 sono committati il 2026-11-28 (`529e4d05d`); i giri 3 e 4 del DB in `9be82d42c`, il 3c in `1405f8ce4`.
 
 ## 0. Il piano da percorrere
 
