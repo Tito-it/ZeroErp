@@ -195,8 +195,8 @@ class UtilitiesTipiRuoloService:
     # Utilizzo (emittenti fiscali)
     # =================================================================
 
-    # Scopo: Restituisce conteggio + lista paginata degli emittenti che
-    #        hanno gia' un override per la stessa coppia (utility, EF) della
+    # Scopo: Restituisce conteggio + lista paginata delle aziende che
+    #        gestiscono l'utility (una riga in emittenti_fiscali_utilities) della
     #        riga matrice indicata (lista `config.utilities_tipi_ruolo_usage`).
     #        Solo letture. Ricerca e ordinamento li risolve il repository sulla
     #        sua whitelist; la direzione estranea la rifiuta il BB SQL (400).

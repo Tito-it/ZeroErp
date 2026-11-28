@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from apps.core.db._helpers import fetch_paged_with_total, pattern_contiene, row_to_dict, rows_to_list
+from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 
 from typing import Any, ClassVar
 
@@ -192,79 +193,6 @@ class LookupRepository:
             return []
         return self.list_tipi_indirizzo_proponibili("tipo_ruolo", row[0], soggetto_id)
 
-    # Scopo: Matrice utility ammesse per un tipo ruolo + override specifici di
-    #        un'entita' figlia (es. emittente fiscale, fornitore, cliente). LEFT JOIN
-    #        tra config.utilities_tipi_ruolo (matrice base) e una tabella di override
-    #        del dominio chiamante. Ritorna SEMPRE tutte le utility ammesse per il
-    #        ruolo: per quelle non personalizzate dall'entita', i campi override sono
-    #        NULL.
-    #
-    #        Pattern slot/override generico cross-dominio. Whitelist statica delle
-    #        coppie (table, fk_col) ammesse per impedire SQL injection sui due
-    #        identificatori interpolati con f-string.
-    #
-    #        Esempio uso:
-    #          repo.list_entity_utility_matrix(
-    #              entity_soggetto_ruolo_id=50,
-    #              tipo_ruolo_codice='EF',
-    #              overrides_table='anagrafiche.emittenti_fiscali_utilities',
-    #              overrides_fk_column='emittente_soggetto_ruolo_id',
-    #          )
-    _ALLOWED_UTILITY_OVERRIDES: ClassVar[set[tuple[str, str]]] = {
-        ("anagrafiche.emittenti_fiscali_utilities", "emittente_soggetto_ruolo_id"),
-    }
-
-    def list_entity_utility_matrix(
-        self,
-        *,
-        entity_soggetto_ruolo_id: int,
-        tipo_ruolo_codice: str,
-        overrides_table: str,
-        overrides_fk_column: str,
-    ) -> list[dict[str, Any]]:
-        # Whitelist statica: protegge dall'iniezione SQL sui due identificatori
-        # (table + colonna FK) che vengono interpolati con f-string. Solo le coppie
-        # registrate qui sono ammesse.
-        if (overrides_table, overrides_fk_column) not in self._ALLOWED_UTILITY_OVERRIDES:
-            raise ValueError(
-                f"Coppia (table={overrides_table}, fk_col={overrides_fk_column}) "
-                "non ammessa per list_entity_utility_matrix."
-            )
-
-        # NB: `config.utilities` NON ha colonna `attivo` (catalogo
-        # statico, codice_interno immutabile via lock_columns). Esponiamo
-        # `utility_attiva = TRUE` literal per mantenere il contratto col
-        # service che usa il campo per calcolare `can_configure` (Fase 4
-        # capability data-driven). Se in futuro la tabella aggiunge un
-        # campo `attivo`, sostituire con `u.attivo`.
-        sql = f"""
-            SELECT u.id                              AS utility_id,
-                   u.codice                          AS utility_codice,
-                   u.descrizione                     AS utility_descrizione,
-                   TRUE                              AS utility_attiva,
-                   o.id                              AS record_id,
-                   o.minimo_soglia_min,
-                   o.minimo_soglia_max,
-                   o.arrotondamento_importi_dec,
-                   o.metodo_arrotondamento_importi,
-                   o.attivo                          AS record_attivo,
-                   o.data_insert                     AS record_data_insert,
-                   o.data_update                     AS record_data_update
-              FROM config.utilities u
-              JOIN config.utilities_tipi_ruolo utr ON utr.utility_id = u.id
-              JOIN config.tipi_ruoli tr            ON tr.id = utr.tipo_ruolo_id
-              LEFT JOIN {overrides_table} o
-                     ON o.utility_id = u.id
-                    AND o.{overrides_fk_column} = %s
-             WHERE tr.codice_interno = %s
-               AND utr.attivo = true
-               AND (utr.validita IS NULL OR utr.validita @> (SELECT script.fn_data_operativa()))
-             ORDER BY u.descrizione
-        """  # noqa: S608
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [entity_soggetto_ruolo_id, tipo_ruolo_codice])
-            return rows_to_list(cursor)
-
     # Scopo: Lista utility per un billing account "guidata da emittente"
     #        (refactor operatore-emittenti, sez. 3 del WIP).
     #        Wrapper Python su anagrafiche.fn_lookup_utilities_per_ba.
@@ -322,60 +250,48 @@ class LookupRepository:
             cursor.execute(sql, [tipo_ruolo_codice])
             return rows_to_list(cursor)
 
-    # Scopo: Lista utility per popolare la combo "Utility" nei drawer e
-    #        nei filtri lista: le utility AMMESSE per il ruolo emittente
-    #        fiscale (`EF`) in `config.utilities_tipi_ruolo` (riga attiva e
-    #        valida alla data operativa), intersecate — se
-    #        `ruolo_codice_soggetto` e' dato (es. 'CL'/'FO') — con quelle
-    #        ammesse anche per il ruolo del soggetto.
-    # ⛔ NON legge `anagrafiche.emittenti_fiscali_utilities`. Quella tabella e'
-    #    OPZIONALE e porta i PARAMETRI di fatturazione di una coppia
-    #    (emittente, utility) — soglie della fattura minima, arrotondamento del
-    #    totale — non l'elenco delle utility dell'emittente: la sola
-    #    ammissibilita' del modello e' `utilities_tipi_ruolo` (changeSet
-    #    `20260408-01`, che tolse la guard «almeno una riga per emittente»), e la
-    #    funzione DB gemella `fn_lookup_utilities_per_ba` la legge in LEFT JOIN,
-    #    come override. Fino al 2026-10-14 questo lookup la usava come filtro:
-    #    un emittente con i parametri della sola luce si vedeva sparire il gas
-    #    dalla combo (analisi-be-difetti-emersi-verifica-doc-api-core §6).
-    #
-    #        Ritorna id/codice/codice_interno/descrizione (per combo filtro,
-    #        non editing). codice_interno serve al FE per risolvere
-    #        DEFAULT_UTILITY (che stocca codice_interno stabile, non id) -> id.
+    # Scopo: Le utility della combo «Utility» nei drawer, nei form e nei filtri
+    #        lista: quelle che le aziende GESTISCONO (brief-db-utility-gestite-
+    #        dall-emittente §10 R-2, decisioni di Tid del 2026-11-27).
+    #          - con `emittente_fiscale_id` (PK): le utility gestite da quella
+    #            azienda — drawer e form passano l'azienda del documento;
+    #          - senza: quelle gestite da ALMENO UN'azienda del perimetro di chi
+    #            chiede — i filtri di lista, che non hanno un'azienda loro.
+    #        Con `ruolo_codice_soggetto` (es. 'CL'/'FO') anche ammesse per quel
+    #        ruolo. ⭐ La regola e' del BB del DB `anagrafiche.fn_utilities_emittente`
+    #        (ammesse per EF e per il ruolo, gestita): fino al 2026-11-27 qui
+    #        c'era una copia che leggeva la sola matrice e proponeva anche le
+    #        utility che l'azienda non gestisce, rifiutate poi al salvataggio
+    #        dalle FK `*_utility_gestita`.
+    #        Il perimetro: scope applicativo sulla PK dell'emittente (BB
+    #        `add_emittente_scope_condition`) sopra la RLS. Un `emittente_fiscale_id`
+    #        fuori perimetro da' la lista vuota, come la RLS di ogni lookup.
+    #        Ritorna id/codice/codice_interno/descrizione: codice_interno serve
+    #        al FE per risolvere DEFAULT_UTILITY (che stocca codice_interno).
     def list_utilities_per_emittente(
         self,
+        *,
+        auth_user_id: int | None,
         ruolo_codice_soggetto: str | None = None,
+        emittente_fiscale_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        sql = """
-            SELECT u.id, u.codice, u.codice_interno, u.descrizione
-              FROM config.utilities u
-              -- ammessa per il ruolo EF (emittente fiscale)
-              JOIN config.utilities_tipi_ruolo utr_ef
-                ON utr_ef.utility_id = u.id
-               AND utr_ef.attivo = true
-               AND (utr_ef.validita IS NULL OR utr_ef.validita @> (SELECT script.fn_data_operativa()))
-              JOIN config.tipi_ruoli tr_ef
-                ON tr_ef.id = utr_ef.tipo_ruolo_id
-               AND tr_ef.codice_interno = 'EF'
-        """
-        params: list = []
-
-        # Intersezione opzionale con ruolo soggetto (es. CL, FO).
-        if ruolo_codice_soggetto:
-            sql += """
-              -- ammessa anche per il ruolo del soggetto (es. CL)
-              JOIN config.utilities_tipi_ruolo utr_sogg
-                ON utr_sogg.utility_id = u.id
-               AND utr_sogg.attivo = true
-               AND (utr_sogg.validita IS NULL OR utr_sogg.validita @> (SELECT script.fn_data_operativa()))
-              JOIN config.tipi_ruoli tr_sogg
-                ON tr_sogg.id = utr_sogg.tipo_ruolo_id
-               AND tr_sogg.codice_interno = %s
-            """
-            params.append(ruolo_codice_soggetto)
-
-        sql += " ORDER BY u.descrizione"
-
+        conditions: list[str] = ["b.gestita"]
+        params: list[Any] = [ruolo_codice_soggetto]
+        add_emittente_scope_condition(
+            conditions, params, auth_user_id=auth_user_id, column="ef.id",
+        )
+        if emittente_fiscale_id is not None:
+            conditions.append("ef.id = %s")
+            params.append(emittente_fiscale_id)
+        sql = f"""
+            SELECT DISTINCT u.id, u.codice, u.codice_interno, u.descrizione
+              FROM anagrafiche.emittenti_fiscali ef
+             CROSS JOIN LATERAL anagrafiche.fn_utilities_emittente(
+                       ef.soggetto_ruolo_id, %s::varchar) b
+              JOIN config.utilities u ON u.id = b.utility_id
+             WHERE {" AND ".join(conditions)}
+             ORDER BY u.descrizione
+        """  # noqa: S608 — condizioni da BB e letterali, valori parametrizzati
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return rows_to_list(cursor)

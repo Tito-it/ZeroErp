@@ -385,27 +385,27 @@ class TestEmittentiFiscaliUtilitiesApi(JwtMockedApiTest):
     @patch(_PERM, return_value=True)
     @patch(_UT_SVC)
     def test_utilities_list(self, mock_svc_cls, _perm, _auth):
-        """GET /emittenti-fiscali/<id>/utilities/ — matrice slot/override.
+        """GET /emittenti-fiscali/<id>/utilities/ — le utility dell'azienda.
 
-        Ritorna sempre tutte le utility ammesse per ruolo EF: alcune configurate
-        (record_id valorizzato), altre no (record_id null, campi override null).
+        Tutte quelle ammesse per EF: alcune gestite (record_id valorizzato, i
+        parametri scritti accanto agli effettivi), altre no (record_id null).
         """
         mock_svc_cls.return_value.list_records.return_value = [
             {
                 "utility_id": 1, "utility_codice": "EE", "utility_descrizione": "Energia",
-                "record_id": 100,
-                "minimo_soglia_min": 0.5, "minimo_soglia_max": None,
+                "gestita": True, "record_id": 100, "personalizzata": True,
+                "minimo_soglia_min": None, "minimo_soglia_max": None,
                 "arrotondamento_importi_dec": 2, "metodo_arrotondamento_importi": "HALF_UP",
-                "record_attivo": True,
-                "record_data_insert": None, "record_data_update": None,
+                "effettivo_arrotondamento_importi_dec": 2,
+                "effettivo_metodo_arrotondamento_importi": "HALF_UP",
             },
             {
                 "utility_id": 2, "utility_codice": "GAS", "utility_descrizione": "Gas",
-                "record_id": None,
+                "gestita": False, "record_id": None, "personalizzata": False,
                 "minimo_soglia_min": None, "minimo_soglia_max": None,
                 "arrotondamento_importi_dec": None, "metodo_arrotondamento_importi": None,
-                "record_attivo": None,
-                "record_data_insert": None, "record_data_update": None,
+                "effettivo_arrotondamento_importi_dec": 2,
+                "effettivo_metodo_arrotondamento_importi": "HALF_UP",
             },
         ]
         resp = self.client.get("/api/v1/anagrafiche/emittenti-fiscali/1/utilities/")
@@ -413,26 +413,24 @@ class TestEmittentiFiscaliUtilitiesApi(JwtMockedApiTest):
         body = resp.json()
         results = body["data"]["results"]
         self.assertEqual(len(results), 2)
-        # Riga configurata
+        # Utility gestita
         self.assertEqual(results[0]["record_id"], 100)
+        self.assertTrue(results[0]["gestita"])
         self.assertEqual(results[0]["metodo_arrotondamento_importi"], "HALF_UP")
-        # Riga non configurata (slot vuoto)
+        # Utility non gestita: nessuna riga, i valori effettivi restano
         self.assertIsNone(results[1]["record_id"])
         self.assertIsNone(results[1]["metodo_arrotondamento_importi"])
+        self.assertEqual(results[1]["effettivo_metodo_arrotondamento_importi"], "HALF_UP")
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM, return_value=True)
     @patch(_UT_SVC)
     def test_utilities_post_ok(self, mock_svc_cls, _perm, _auth):
-        """POST crea record utility con campi obbligatori."""
+        """POST attiva l'utility: basta `utility_id`, i parametri sono facoltativi."""
         mock_svc_cls.return_value.crea_record.return_value = {"id": 10}
         resp = self.client.post(
             "/api/v1/anagrafiche/emittenti-fiscali/1/utilities/",
-            data=json.dumps({
-                "utility_id": 1,
-                "arrotondamento_importi_dec": 2,
-                "metodo_arrotondamento_importi": "HALF_UP",
-            }),
+            data=json.dumps({"utility_id": 1}),
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 200)
@@ -458,11 +456,11 @@ class TestEmittentiFiscaliUtilitiesApi(JwtMockedApiTest):
     @patch(_PERM, return_value=True)
     @patch(_UT_SVC)
     def test_utilities_patch_ok(self, mock_svc_cls, _perm, _auth):
-        """PATCH aggiorna record."""
+        """PATCH aggiorna i parametri (a NULL = tornano quelli di sistema)."""
         mock_svc_cls.return_value.aggiorna_record.return_value = {"updated": True}
         resp = self.client.patch(
             "/api/v1/anagrafiche/emittenti-fiscali/1/utilities/5/",
-            data=json.dumps({"attivo": False}),
+            data=json.dumps({"arrotondamento_importi_dec": None}),
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 200)

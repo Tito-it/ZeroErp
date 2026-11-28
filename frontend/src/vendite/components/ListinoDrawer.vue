@@ -35,7 +35,12 @@ const auth = useAuthStore()
 // Default utility globale: il parametro DEFAULT_UTILITY stocca un codice_interno
 // (framework FK-surrogata, DB 2026-05-02). Il composable risolve a id locale
 // via lookup utilities-per-emittente.
-const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
+// Il default fra le utility che GESTISCE l'azienda su cui nasce il listino
+// (quella su cui la sessione scrive); se non gestisce quella di default, il
+// campo parte vuoto (brief-db-utility-gestite-dall-emittente).
+const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId({
+  emittenteFiscaleId: () => auth.emittenteScritturaId,
+})
 
 const props = defineProps({
   visible: Boolean,
@@ -281,7 +286,11 @@ function chiudiDopoSalvataggio() {
             </div>
             <div class="form-field">
               <label>{{ t('vendite.listini.field_utility') }} *</label>
+              <!-- In creazione le utility dell'azienda su cui nasce il listino; in
+                   modifica il form non porta la PK dell'azienda, e la voce del
+                   listino sta comunque fra quelle gestite nel perimetro. -->
               <UtilityPerRuoloSelect v-model="form.utility_id"
+                :emittente-fiscale-id="isEdit ? null : auth.emittenteScritturaId"
                 :placeholder="t('vendite.listini.field_utility')" />
             </div>
           </div>

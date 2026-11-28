@@ -349,17 +349,30 @@ with transaction.atomic():
         #    riga di casa cambiando il solo emittente, con il BA a NULL: il vincolo
         #    nuovo lo rifiuta, ed e' giusto. L'incoerenza che il test prova resta
         #    la stessa — una pratica che punta a un documento di UN ALTRO emittente.
+        # ⛔ L'emittente estraneo deve GESTIRE quell'utility: dal 2026-11-27
+        #    (brief-db-utility-gestite-dall-emittente, U2) la riga di
+        #    `emittenti_fiscali_utilities` e' l'elenco delle utility attive per
+        #    l'azienda, e un BA su un'utility che l'azienda non gestisce lo
+        #    rifiuta `fk_emittenti_fiscali_ba_utility_gestita`. Scegliere «il primo
+        #    attivo diverso» funzionava solo se per caso la gestiva.
         cur.execute(
             """
-            SELECT id FROM anagrafiche.emittenti_fiscali
-             WHERE attivo AND id <> %s ORDER BY id LIMIT 1
+            SELECT ef.id
+              FROM anagrafiche.emittenti_fiscali ef
+             WHERE ef.attivo AND ef.id <> %s
+               AND EXISTS (SELECT 1
+                             FROM anagrafiche.emittenti_fiscali_utilities efu
+                            WHERE efu.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
+                              AND efu.utility_id = %s)
+             ORDER BY ef.id LIMIT 1
             """,
-            [emittente_casa],
+            [emittente_casa, utility_id],
         )
         emittente_estraneo = riga_obbligatoria(
             cur,
-            "un solo emittente fiscale attivo — su un'installazione "
-            "mono-emittente il caso non e' costruibile.",
+            f"nessun altro emittente fiscale attivo gestisce l'utility {utility_id} "
+            "del preventivo di casa — su un'installazione mono-emittente il caso "
+            "non e' costruibile.",
         )[0]
 
         uid_estraneo, _ = crea_preventivo(

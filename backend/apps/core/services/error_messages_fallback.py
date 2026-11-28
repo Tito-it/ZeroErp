@@ -1614,6 +1614,12 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UTENTE_TECNICO_PROFILO_VIETATO": (
         "Profilo di accesso non utilizzabile per un utente tecnico."
     ),
+    "E_UTILITY_EF_GESTITA": (
+        "Un'azienda gestisce questa utility: resta ammessa per l'emittente fiscale."
+    ),
+    "E_UTILITY_EF_SENZA_SCADENZA": (
+        "Per l'emittente fiscale un'utility non ha una data di fine."
+    ),
     "E_UTILITY_RUOLO_NON_AMMESSO": "Tipo ruolo non ammesso per questa utility.",
     "E_VALIDATION_INPUT": "Parametro di input non valido.",
     "E_VALIDAZIONE": "Validazione fallita.",

@@ -10,10 +10,12 @@
 """
 Indice test eseguiti:
  1) test_get_emittente_include_non_editable_fields — testata arricchita
- 2) test_list_records_capability_slot_vuoto_emittente_attivo — can_configure=true
- 3) test_list_records_capability_slot_vuoto_emittente_disattivo — can_configure=false
- 4) test_list_records_capability_record_configurato — can_update + can_remove
- 5) test_list_records_capability_utility_disattiva_blocca_configure — can_configure=false
+ 2) test_list_records_capability_non_gestita_emittente_attivo — can_attivare=true
+ 3) test_list_records_capability_non_gestita_emittente_disattivo — can_attivare=false
+ 4) test_list_records_capability_gestita_senza_parametri — can_update + can_remove, niente reset
+ 5) test_list_records_capability_gestita_personalizzata — can_reset
+ 5b) test_crea_record_senza_parametri — l'attivazione porta solo l'utility
+ 5c) test_crea_record_rifiuta_attivo — `attivo` nel payload e' un 400 che lo nomina
  6) test_imposta_predefinita_rifiuta_il_billing_account — un BA nel payload e' un 400 che lo nomina
  7) test_imposta_predefinita_vuoto — il payload vuoto sposta la predefinita sull'emittente
  8) test_imposta_predefinita_senza_riga — la predefinita assente e' E_EMITTENTE_DEFAULT_MISSING, non si ricrea
@@ -59,106 +61,135 @@ class TestGetEmittenteNonEditable(TestCase):
 
 
 class TestUtilitiesCapability(TestCase):
-    """Capability di riga matrice utility (slot/override pattern)."""
+    """Capability di riga delle utility dell'azienda (brief-db-utility-gestite-
+    dall-emittente §10 R-3): la riga presente e' l'utility gestita."""
 
-    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
-    @patch(f"{SVC_MOD}.EmittentiFiscaliService")
-    def test_list_records_capability_slot_vuoto_emittente_attivo(
-        self, mock_parent_cls, mock_repo_cls,
-    ):
-        # Slot vuoto (record_id=None) + emittente attivo + utility attiva
-        # -> can_configure=True, can_update/remove=False.
+    # Scopo: list_records sulle righe date, con l'emittente acceso o spento.
+    def _righe(self, righe, *, attivo=True):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliUtilitiesService,
         )
+        with patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True) as repo, \
+                patch(f"{SVC_MOD}.EmittentiFiscaliService") as parent:
+            parent.return_value._resolve_soggetto_ruolo_id.return_value = 50
+            parent.return_value._repo.get_emittente.return_value = {"id": 7, "attivo": attivo}
+            repo.return_value.list_by_emittente.return_value = righe
+            return EmittentiFiscaliUtilitiesService().list_records(7)
 
-        mock_parent_cls.return_value._resolve_soggetto_ruolo_id.return_value = 50
-        mock_parent_cls.return_value._repo.get_emittente.return_value = {
-            "id": 7, "attivo": True,
-        }
-        mock_repo_cls.return_value.list_by_emittente.return_value = [
-            {"utility_id": 1, "utility_codice": "GAS", "record_id": None, "utility_attiva": True},
-        ]
-
-        rows = EmittentiFiscaliUtilitiesService().list_records(7)
-
-        self.assertEqual(len(rows), 1)
-        row = rows[0]
-        self.assertTrue(row["can_configure"])
+    def test_list_records_capability_non_gestita_emittente_attivo(self):
+        row = self._righe([{"utility_id": 1, "record_id": None, "personalizzata": False}])[0]
+        self.assertTrue(row["can_attivare"])
         self.assertFalse(row["can_update"])
+        self.assertFalse(row["can_reset"])
         self.assertFalse(row["can_remove"])
 
-    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
-    @patch(f"{SVC_MOD}.EmittentiFiscaliService")
-    def test_list_records_capability_slot_vuoto_emittente_disattivo(
-        self, mock_parent_cls, mock_repo_cls,
-    ):
-        # Slot vuoto + emittente disattivo -> can_configure=False (trigger DB
-        # bloccherebbe child_requires_active_parent).
-        from apps.anagrafiche.services.emittenti_fiscali_service import (
-            EmittentiFiscaliUtilitiesService,
-        )
+    def test_list_records_capability_non_gestita_emittente_disattivo(self):
+        # Sotto un emittente spento non nasce niente (child_requires_active_parent).
+        row = self._righe(
+            [{"utility_id": 1, "record_id": None, "personalizzata": False}], attivo=False,
+        )[0]
+        self.assertFalse(row["can_attivare"])
 
-        mock_parent_cls.return_value._resolve_soggetto_ruolo_id.return_value = 50
-        mock_parent_cls.return_value._repo.get_emittente.return_value = {
-            "id": 7, "attivo": False,
-        }
-        mock_repo_cls.return_value.list_by_emittente.return_value = [
-            {"utility_id": 1, "utility_codice": "GAS", "record_id": None, "utility_attiva": True},
-        ]
-
-        rows = EmittentiFiscaliUtilitiesService().list_records(7)
-
-        self.assertFalse(rows[0]["can_configure"])
-
-    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
-    @patch(f"{SVC_MOD}.EmittentiFiscaliService")
-    def test_list_records_capability_record_configurato(
-        self, mock_parent_cls, mock_repo_cls,
-    ):
-        # Record configurato (record_id valorizzato) -> can_update + can_remove,
-        # can_configure=False (lo slot non e' piu' vuoto).
-        from apps.anagrafiche.services.emittenti_fiscali_service import (
-            EmittentiFiscaliUtilitiesService,
-        )
-
-        mock_parent_cls.return_value._resolve_soggetto_ruolo_id.return_value = 50
-        mock_parent_cls.return_value._repo.get_emittente.return_value = {
-            "id": 7, "attivo": True,
-        }
-        mock_repo_cls.return_value.list_by_emittente.return_value = [
-            {"utility_id": 1, "utility_codice": "GAS", "record_id": 99, "utility_attiva": True},
-        ]
-
-        rows = EmittentiFiscaliUtilitiesService().list_records(7)
-
-        row = rows[0]
-        self.assertFalse(row["can_configure"])
+    def test_list_records_capability_gestita_senza_parametri(self):
+        row = self._righe([{"utility_id": 1, "record_id": 99, "personalizzata": False}])[0]
+        self.assertFalse(row["can_attivare"])
         self.assertTrue(row["can_update"])
+        self.assertFalse(row["can_reset"])
         self.assertTrue(row["can_remove"])
 
+    def test_list_records_capability_gestita_personalizzata(self):
+        row = self._righe([{"utility_id": 1, "record_id": 99, "personalizzata": True}])[0]
+        self.assertTrue(row["can_reset"])
+        self.assertTrue(row["can_remove"])
+
+
+class TestCreaRecordUtility(TestCase):
+    """L'attivazione: `utility_id` obbligatorio, i parametri facoltativi,
+    `attivo` rifiutato (D-U-1, D-U-11)."""
+
     @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
     @patch(f"{SVC_MOD}.EmittentiFiscaliService")
-    def test_list_records_capability_utility_disattiva_blocca_configure(
-        self, mock_parent_cls, mock_repo_cls,
-    ):
-        # Slot vuoto + emittente attivo ma utility globalmente disattivata
-        # -> can_configure=False.
+    def test_crea_record_senza_parametri(self, mock_parent_cls, mock_repo_cls):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliUtilitiesService,
         )
 
         mock_parent_cls.return_value._resolve_soggetto_ruolo_id.return_value = 50
-        mock_parent_cls.return_value._repo.get_emittente.return_value = {
-            "id": 7, "attivo": True,
-        }
-        mock_repo_cls.return_value.list_by_emittente.return_value = [
-            {"utility_id": 1, "utility_codice": "GAS", "record_id": None, "utility_attiva": False},
-        ]
+        mock_repo_cls.return_value.create_record.return_value = 99
+        esito = EmittentiFiscaliUtilitiesService().crea_record(7, {"utility_id": 3})
+        self.assertEqual({"id": 99}, esito)
+        mock_repo_cls.return_value.create_record.assert_called_once_with(
+            emittente_soggetto_ruolo_id=50, utility_id=3, parametri={},
+        )
 
-        rows = EmittentiFiscaliUtilitiesService().list_records(7)
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
+    @patch(f"{SVC_MOD}.EmittentiFiscaliService")
+    def test_crea_record_rifiuta_attivo(self, _parent, mock_repo_cls):
+        from apps.anagrafiche.services.emittenti_fiscali_service import (
+            EmittentiFiscaliUtilitiesService,
+        )
+        from apps.core.services.service_errors import ServiceError
 
-        self.assertFalse(rows[0]["can_configure"])
+        with self.assertRaises(ServiceError) as ctx:
+            EmittentiFiscaliUtilitiesService().crea_record(7, {"utility_id": 3, "attivo": True})
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        self.assertIn("attivo", ctx.exception.context["unknown_keys"])
+        mock_repo_cls.return_value.create_record.assert_not_called()
+
+    # 2026-11-28 (/verifica): i parametri facoltativi arrivavano grezzi al DB,
+    # e un valore non numerico usciva col testo di PostgreSQL, senza il campo.
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
+    @patch(f"{SVC_MOD}.EmittentiFiscaliService")
+    def test_crea_record_parametri_tipizzati(self, mock_parent_cls, mock_repo_cls):
+        from decimal import Decimal
+
+        from apps.anagrafiche.services.emittenti_fiscali_service import (
+            EmittentiFiscaliUtilitiesService,
+        )
+        from apps.core.services.service_errors import ServiceError
+
+        mock_parent_cls.return_value._resolve_soggetto_ruolo_id.return_value = 50
+        mock_repo_cls.return_value.create_record.return_value = 99
+        svc = EmittentiFiscaliUtilitiesService()
+        svc.crea_record(7, {
+            "utility_id": 3, "arrotondamento_importi_dec": "2",
+            "metodo_arrotondamento_importi": " HALF_UP ", "minimo_soglia_min": "",
+            "minimo_soglia_max": "1.5",
+        })
+        mock_repo_cls.return_value.create_record.assert_called_once_with(
+            emittente_soggetto_ruolo_id=50, utility_id=3, parametri={
+                "arrotondamento_importi_dec": 2,
+                "metodo_arrotondamento_importi": "HALF_UP",
+                "minimo_soglia_min": None,
+                "minimo_soglia_max": Decimal("1.5"),
+            },
+        )
+        for campo in ("arrotondamento_importi_dec", "minimo_soglia_min"):
+            with self.subTest(campo=campo), self.assertRaises(ServiceError) as ctx:
+                svc.crea_record(7, {"utility_id": 3, campo: "abc"})
+            self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+            self.assertEqual(ctx.exception.context.get("field"), campo)
+
+    @patch(f"{SVC_MOD}._verify_record_ownership")
+    @patch(f"{SVC_MOD}.EmittentiFiscaliUtilitiesRepository", autospec=True)
+    @patch(f"{SVC_MOD}.EmittentiFiscaliService")
+    def test_aggiorna_record_parametri_tipizzati(self, _parent, mock_repo_cls, _own):
+        from apps.anagrafiche.services.emittenti_fiscali_service import (
+            EmittentiFiscaliUtilitiesService,
+        )
+        from apps.core.services.service_errors import ServiceError
+
+        mock_repo_cls.return_value.update_record.return_value = True
+        svc = EmittentiFiscaliUtilitiesService()
+        with self.assertRaises(ServiceError) as ctx:
+            svc.aggiorna_record(7, 5, {"arrotondamento_importi_dec": "due"})
+        self.assertEqual(ctx.exception.context.get("field"), "arrotondamento_importi_dec")
+        mock_repo_cls.return_value.update_record.assert_not_called()
+
+        svc.aggiorna_record(7, 5, {"arrotondamento_importi_dec": None})
+        mock_repo_cls.return_value.update_record.assert_called_once_with(
+            5, {"arrotondamento_importi_dec": None},
+        )
 
 
 class TestImpostaPredefinita(TestCase):

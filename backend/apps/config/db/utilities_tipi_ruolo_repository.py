@@ -265,14 +265,18 @@ class UtilitiesTipiRuoloRepository:
             return cursor.rowcount > 0
 
     # =================================================================
-    # Utilizzo: emittenti fiscali con override per la stessa coppia
+    # Utilizzo: le aziende che gestiscono l'utility della riga
     # =================================================================
 
     # Scopo: la lista `config.utilities_tipi_ruolo_usage` (lista 86, tab
-    #        «Utilizzo» del drawer della matrice): gli emittenti fiscali che
-    #        hanno gia' configurato un override
-    #        (anagrafiche.emittenti_fiscali_utilities) per la stessa utility
-    #        della riga matrice indicata. Significativa solo se la riga e' del
+    #        «Utilizzo» del drawer della matrice): le aziende che GESTISCONO
+    #        l'utility della riga matrice indicata (una riga in
+    #        anagrafiche.emittenti_fiscali_utilities: dal 2026-11-27 e' l'elenco
+    #        delle utility dell'azienda, non piu' un override di parametri —
+    #        brief-db-utility-gestite-dall-emittente). Sono loro a tenere la
+    #        riga EF accesa (E_UTILITY_EF_GESTITA). ⚠️ `override_attivo` e'
+    #        sempre vero (la riga non ha uno stato suo, D-U-11): la colonna
+    #        della lista va ritirata a DB. Significativa solo se la riga e' del
     #        ruolo EF (codice_interno o codice del tipo_ruolo); per altri ruoli
     #        la lista e' vuota. Restituisce (results, total_count).
     #        Riferimento: feedback_slot_override_matrix.md (pattern slot/override).

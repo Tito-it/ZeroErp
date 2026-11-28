@@ -47,10 +47,10 @@ riceve `403 E_ACCESSO_RISERVATO_ADMIN`.
 | 5.1 | `GET` | `/emittenti-fiscali/<id>/billing-account/` | Lista dei clienti (BA) dell'emittente, in consultazione |
 | 5.2 | `POST` | `/emittenti-fiscali/<id>/billing-account/` | Rende l'emittente l'azienda predefinita |
 | 5.4 | `GET` | `/emittenti-fiscali/<id>/billing-account/summary/` | Summary mapping (has_default + count_specifici) |
-| 6.1 | `GET` | `/emittenti-fiscali/<id>/utilities/` | Lista record utility per emittente |
-| 6.2 | `POST` | `/emittenti-fiscali/<id>/utilities/` | Crea record utility |
-| 6.3 | `PATCH` | `/emittenti-fiscali/<id>/utilities/<record_id>/` | Aggiorna record utility |
-| 6.4 | `DELETE` | `/emittenti-fiscali/<id>/utilities/<record_id>/` | Elimina record utility |
+| 6.1 | `GET` | `/emittenti-fiscali/<id>/utilities/` | Le utility dell'azienda, gestite o no |
+| 6.2 | `POST` | `/emittenti-fiscali/<id>/utilities/` | Attiva un'utility per l'azienda |
+| 6.3 | `PATCH` | `/emittenti-fiscali/<id>/utilities/<record_id>/` | I parametri d'importo |
+| 6.4 | `DELETE` | `/emittenti-fiscali/<id>/utilities/<record_id>/` | Toglie l'utility all'azienda (se non in uso) |
 | 7 | `GET` | `/api/v1/anagrafiche/billing-account/<id>/utilities/` | Utility guidate dall'emittente per un billing account (non admin, vedi §7) |
 
 ## Codici errore (envelope `{"error": {"code", "message"}}`)
@@ -76,11 +76,12 @@ riceve `403 E_ACCESSO_RISERVATO_ADMIN`.
 | --- | --- | --- |
 | `anagrafiche.emittenti_fiscali` | Tabella | Master emittente |
 | `anagrafiche.emittenti_fiscali_billing_account` | Tabella | Mapping BA -> emittente (sub-resource sezione 5) |
-| `anagrafiche.emittenti_fiscali_utilities` | Tabella | Parametri fatturazione per coppia emittente x utility (sezione 6) |
+| `anagrafiche.emittenti_fiscali_utilities` | Tabella | Le utility che l'azienda gestisce, coi parametri d'importo facoltativi (sezione 6) |
 | `anagrafiche.soggetti_ruoli` | Tabella | Legame ruolo soggetto (codice `EF`) |
 | `anagrafiche.soggetti` | Tabella | Display fields (ragione sociale, CF, P.IVA) |
 | `config.utilities` | Tabella | Lookup utility (sezione 6) |
-| `config.utilities_tipi_ruolo` | Tabella | Matrice utility ammesse per ruolo (fail-open) |
+| `config.utilities_tipi_ruolo` | Tabella | Matrice utility ammesse per ruolo (fail-closed: senza righe, nessuno) |
+| `anagrafiche.fn_utilities_emittente` | Funzione | Le utility di un'azienda: ammesse, gestite, coi parametri effettivi (sezione 6.1) |
 | `config.valute` | Tabella | Lookup valuta (display ISO) |
 | `script.fn_get_or_create_soggetto_ruolo` | Funzione | Crea ruolo `EF` se non esiste |
 | `anagrafiche.trgfn_emittenti_fiscali_default_bootstrap` | Trigger | Inserisce default mapping `is_default=true, billing_account_id=NULL` alla creazione del primo emittente |
@@ -516,49 +517,57 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/bill
 
 ---
 
-## 6. Sub-resource: utilities per emittente fiscale
+## 6. Sub-resource: le utility che l'azienda gestisce
 
-Gestione della matrice `emittenti_fiscali_utilities` (parametri di fatturazione
-per ogni coppia emittente x utility: soglie minime, decimali e metodo di
-arrotondamento).
+`anagrafiche.emittenti_fiscali_utilities` e' l'**elenco delle utility che l'azienda
+gestisce** ([brief-db-utility-gestite-dall-emittente](/dev/work-in-progress/brief-db-utility-gestite-dall-emittente),
+2026-11-27): una riga = l'azienda gestisce l'utility, e tratta solo quelle; un'azienda
+senza righe non ne gestisce nessuna. Sulla stessa riga stanno i **parametri d'importo**,
+tutti facoltativi (soglie del minimo, decimali e metodo di arrotondamento): un campo
+`null` vale la policy dell'azienda e il valore di sistema. Lo scrive solo il
+SUPER_ADMIN (`AdminAPIView`).
 
 ### 6.0 Regole DB
 
-- UNIQUE `(emittente_soggetto_ruolo_id, utility_id)`: una sola riga per coppia.
-- Trigger `child_requires_active_parent`: l'emittente padre deve essere attivo.
-- Trigger `guard_utility_tipo_ruolo`: la utility deve essere ammessa per il
-  ruolo `EF` (matrice `config.utilities_tipi_ruolo`, fail-open se la utility
-  non ha alcuna configurazione di matrice).
+- UNIQUE `(emittente_soggetto_ruolo_id, utility_id)`: una sola riga per coppia; le
+  due colonne sono ferme (`E_CODICE_NON_MODIFICABILE`).
+- La riga nasce solo sotto un emittente acceso (`child_requires_active_parent`) e su
+  un'utility che la matrice `config.utilities_tipi_ruolo` ammette per il ruolo `EF`
+  (`script.fn_guard_utility_tipo_ruolo`, **fail-closed**: un'utility senza righe
+  nella matrice non e' ammessa per nessuno, `E_UTILITY_RUOLO_NON_AMMESSO`).
+- La riga **non ha uno stato suo**: `attivo` e' sempre `true`
+  (`chk_emittenti_fiscali_utilities_attivo`). «Gestita» = riga presente ed emittente
+  acceso.
+- La cancellazione toglie l'utility all'azienda, ed e' rifiutata (`23503`) finche' un
+  billing account o un documento usa la coppia: le FK composte e differite
+  `fk_<tabella>_utility_gestita` di `emittenti_fiscali_billing_account`,
+  `categorie_clienti_listini`, `listini`, `commesse`, `fatture`,
+  `registri_fatturazione`, `fatturazione_lotti`.
 - Validazione di proprieta' (record figlio appartiene all'emittente padre)
   applicata su PATCH e DELETE tramite `_verify_record_ownership`.
 
 > **Nota lookup utility (UI)**: la combo di scelta utility nel frontend usa il
-> componente core riusabile `UtilityPerRuoloSelect`, che chiama l'endpoint
-> `GET /api/v1/core/lookup/utilities-per-emittente/?ruolo=<codice>`: le utility
-> ammesse per il ruolo `EF` nella matrice `config.utilities_tipi_ruolo`,
-> intersecate con quelle del ruolo indicato in `ruolo` (se presente). Coerente
-> con il trigger DB `script.fn_guard_utility_tipo_ruolo`, evitando errori
-> `E_UTILITY_RUOLO_NON_AMMESSO` lato UI.
+> componente core riusabile `UtilityPerRuoloSelect`, che chiama
+> `GET /api/v1/core/lookup/utilities-per-emittente/?ruolo=<codice>&emittente_fiscale_id=<pk>`:
+> le utility che l'azienda **gestisce** (senza `emittente_fiscale_id`, quelle gestite
+> da almeno un'azienda del perimetro), dal BB del DB `anagrafiche.fn_utilities_emittente`
+> ([api_lookup_dedicati.md §4](../../core/manual/api_lookup_dedicati.md)).
 
-### 6.1 Lista matrice utility per emittente
-
-> ⚠️ **Cambio di modello deciso il 2026-11-27, non ancora costruito** ([brief-db-utility-gestite-dall-emittente](/dev/work-in-progress/brief-db-utility-gestite-dall-emittente)): la tabella diventa anche
-> l'**elenco delle utility gestite** dall'azienda (riga accesa = utility attiva; un'azienda senza righe non ne gestisce
-> nessuna), e i parametri d'importo restano facoltativi sulla riga. Questa sezione descrive il funzionamento di oggi,
-> vero finché il giro DB non è applicato: la riscrive il team BE/FE nel giro del drawer (§8 del brief).
+### 6.1 Le utility dell'azienda
 
 | | |
 | --- | --- |
 | **Metodo** | `GET` |
 | **URL** | `/api/v1/anagrafiche/emittenti-fiscali/<emittente_id>/utilities/` |
 
-Pattern **slot/override**: ritorna SEMPRE tutte le utility ammesse per il ruolo `EF`
-(da `config.utilities_tipi_ruolo`), con sovrapposti i parametri specifici dell'emittente
-(da `anagrafiche.emittenti_fiscali_utilities`) **solo dove esistono**. Per le righe non
-configurate, i campi override sono `null` e `record_id` e' `null`. Implementato con
-LEFT JOIN dal building block `LookupRepository.list_entity_utility_matrix`.
+Ritorna **tutte** le utility che la matrice ammette oggi per il ruolo `EF`, gestite o
+no, lette dal BB del DB `anagrafiche.fn_utilities_emittente` (sede unica della regola:
+ammesse, `gestita`, parametri effettivi). Della riga si leggono in piu' i valori
+**scritti**, che il form modifica: `null` = non scritto. I valori `effettivo_*` sono
+quelli che valgono (riga, poi policy dell'azienda, poi sistema). Ordinate per
+descrizione dell'utility (l'ordine lo fissa il repository, non il BB).
 
-#### Risposta — matrice utility
+#### Risposta — le utility dell'azienda
 
 ```json
 {
@@ -568,34 +577,40 @@ LEFT JOIN dal building block `LookupRepository.list_entity_utility_matrix`.
         "utility_id": 1,
         "utility_codice": "EE",
         "utility_descrizione": "Energia Elettrica",
-        "utility_attiva": true,
+        "gestita": true,
         "record_id": 100,
-        "minimo_soglia_min": 0.50,
+        "personalizzata": true,
+        "minimo_soglia_min": null,
         "minimo_soglia_max": null,
-        "arrotondamento_importi_dec": 2,
-        "metodo_arrotondamento_importi": "HALF_UP",
-        "record_attivo": true,
-        "record_data_insert": "2026-04-07T10:00:00Z",
-        "record_data_update": "2026-04-07T10:00:00Z",
-        "can_configure": false,
+        "arrotondamento_importi_dec": 0,
+        "metodo_arrotondamento_importi": null,
+        "effettivo_minimo_soglia_min": null,
+        "effettivo_minimo_soglia_max": null,
+        "effettivo_arrotondamento_importi_dec": 0,
+        "effettivo_metodo_arrotondamento_importi": "HALF_UP",
+        "can_attivare": false,
         "can_update": true,
+        "can_reset": true,
         "can_remove": true
       },
       {
         "utility_id": 2,
         "utility_codice": "GAS",
         "utility_descrizione": "Gas Naturale",
-        "utility_attiva": true,
+        "gestita": false,
         "record_id": null,
+        "personalizzata": false,
         "minimo_soglia_min": null,
         "minimo_soglia_max": null,
         "arrotondamento_importi_dec": null,
         "metodo_arrotondamento_importi": null,
-        "record_attivo": null,
-        "record_data_insert": null,
-        "record_data_update": null,
-        "can_configure": true,
+        "effettivo_minimo_soglia_min": null,
+        "effettivo_minimo_soglia_max": null,
+        "effettivo_arrotondamento_importi_dec": 2,
+        "effettivo_metodo_arrotondamento_importi": "HALF_UP",
+        "can_attivare": true,
         "can_update": false,
+        "can_reset": false,
         "can_remove": false
       }
     ]
@@ -603,43 +618,42 @@ LEFT JOIN dal building block `LookupRepository.list_entity_utility_matrix`.
 }
 ```
 
-> **Stato della riga**: `record_id != null` -> riga configurata (esiste override);
-> `record_id == null` -> riga ammessa ma non personalizzata (l'emittente usa i default
-> di sistema).
-
-**Fase 4 — capability di riga data-driven**:
-
-| Campo | Tipo | Quando `true` |
+| Campo | Tipo | Significato |
 | --- | --- | --- |
-| `can_configure` | bool | Slot vuoto (`record_id == null`) + `emittente.attivo == true` + `utility_attiva == true`. L'admin puo' creare la configurazione |
-| `can_update` | bool | Record configurato (`record_id != null`). L'admin puo' modificare i parametri |
-| `can_remove` | bool | Record configurato (`record_id != null`). L'admin puo' rimuovere |
+| `gestita` | bool | L'azienda ha la riga ed e' accesa |
+| `record_id` | int \| null | La riga dell'azienda, `null` se non c'e' |
+| `personalizzata` | bool | Almeno un parametro scritto sulla riga |
+| `can_attivare` | bool | Nessuna riga ed emittente acceso: si puo' attivare |
+| `can_update` | bool | La riga c'e': si scrivono i parametri |
+| `can_reset` | bool | La riga ha parametri suoi: si riportano a `null` |
+| `can_remove` | bool | La riga c'e': si puo' togliere (il DB rifiuta se e' in uso) |
 
-Il FE consuma le capability per gating UI (mostra/nasconde "Configura"/"Modifica"/"Rimuovi"
-nel `RowActionsMenu`) invece di derivare da `record_id`. **L'autorita' resta il
-trigger DB** (`child_requires_active_parent`, `guard_utility_tipo_ruolo`): le
-capability sono preview UX, non garanzia (race tra sessioni).
+Le capability sono preview UX, non garanzia: **l'autorita' resta il DB**. `can_remove`
+non anticipa il «in uso»: lo decide la FK alla cancellazione.
 
-Il campo `utility_attiva` e' oggi la costante `TRUE`: `config.utilities` non ha
-una colonna `attivo`. Resta nel contratto per il calcolo di `can_configure`.
-
-### 6.2 Crea record
+### 6.2 Attiva un'utility
 
 | | |
 | --- | --- |
 | **Metodo** | `POST` |
 | **URL** | `/api/v1/anagrafiche/emittenti-fiscali/<emittente_id>/utilities/` |
 
-#### Body — Crea record utility
+#### Body — attivazione
 
 | Campo | Tipo | Obbligatorio | Note |
 | --- | --- | --- | --- |
-| `utility_id` | int | Si | FK `config.utilities` (deve essere ammessa per ruolo `EF`) |
-| `arrotondamento_importi_dec` | int | Si | Decimali per arrotondamento (0..6, vincolo CHECK DB) |
-| `metodo_arrotondamento_importi` | string | Si | Uno tra: `HALF_UP`, `HALF_DOWN`, `UP`, `DOWN` (CHECK constraint DB) |
-| `minimo_soglia_min` | numeric | No | Soglia minima |
-| `minimo_soglia_max` | numeric | No | Soglia massima (`>= minimo_soglia_min`) |
-| `attivo` | bool | No | Default `true` |
+| `utility_id` | int | Si | FK `config.utilities` (ammessa per il ruolo `EF`) |
+| `arrotondamento_importi_dec` | int \| null | No | Decimali degli importi (0..2, CHECK DB) |
+| `metodo_arrotondamento_importi` | string \| null | No | `HALF_UP`, `HALF_DOWN`, `UP`, `DOWN` (CHECK DB) |
+| `minimo_soglia_min` | numeric \| null | No | Soglia minima |
+| `minimo_soglia_max` | numeric \| null | No | Soglia massima (`>= minimo_soglia_min`) |
+
+⛔ `attivo` non e' nel contratto: una chiave fuori contratto e' un `400
+E_ANAG_VALIDAZIONE` che la nomina.
+
+I parametri hanno il tipo verificato prima del DB, in POST come in PATCH: un valore
+non numerico nei decimali o nelle soglie e' un `400 E_ANAG_VALIDAZIONE` col campo;
+`null` o la stringa vuota = nessun valore (vale la policy dell'azienda o il sistema).
 
 Le due soglie si dichiarano **insieme**: entrambe valorizzate (fondo fattura
 attivo sulla banda) o entrambe vuote (non attivo). Una sola →
@@ -652,13 +666,7 @@ la regola vale anche in PATCH, sull'unione di payload e riga a database.
 curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/utilities/" \
      -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
-     -d '{
-       "utility_id": 1,
-       "arrotondamento_importi_dec": 2,
-       "metodo_arrotondamento_importi": "HALF_UP",
-       "minimo_soglia_min": 0.50,
-       "minimo_soglia_max": 5.00
-     }'
+     -d '{ "utility_id": 1 }'
 ```
 
 #### Risposta — POST record utility
@@ -671,21 +679,24 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/uti
 
 | Codice | HTTP | Descrizione |
 | --- | --- | --- |
-| `E_ANAG_VALIDAZIONE` | 400 | `utility_id`, `arrotondamento_importi_dec` o `metodo_arrotondamento_importi` mancanti; soglia minima > massima |
+| `E_ANAG_VALIDAZIONE` | 400 | `utility_id` mancante, chiave fuori contratto, parametro di tipo sbagliato, decimali o metodo fuori dominio, soglia minima > massima |
 | `E_FONDO_SOGLIE_INCOMPLETE` | 400 | Una sola delle due soglie valorizzata |
-| `E_ANAG_DUPLICATO` | 409 | Coppia (emittente, utility) gia' presente |
+| `E_UTILITY_RUOLO_NON_AMMESSO` | 400 | L'utility non e' ammessa per il ruolo `EF` (matrice fail-closed) |
+| `E_ATTIVO_PADRE_NON_ATTIVO` | 409 | L'emittente e' spento |
+| `E_ANAG_DUPLICATO` | 409 | L'azienda gestisce gia' l'utility |
 | `E_ANAG_NOT_FOUND` | 404 | Emittente padre non trovato |
 
-### 6.3 Aggiorna record
+### 6.3 I parametri
 
 | | |
 | --- | --- |
 | **Metodo** | `PATCH` |
 | **URL** | `/api/v1/anagrafiche/emittenti-fiscali/<emittente_id>/utilities/<record_id>/` |
 
-`utility_id` non e' modificabile (esce dal whitelist `_UTILITIES_UPDATE_ALLOWED`).
-Campi editabili: `minimo_soglia_min`, `minimo_soglia_max`,
-`arrotondamento_importi_dec`, `metodo_arrotondamento_importi`, `attivo`.
+Campi editabili, tutti facoltativi e annullabili: `minimo_soglia_min`,
+`minimo_soglia_max`, `arrotondamento_importi_dec`, `metodo_arrotondamento_importi`.
+«Togli i parametri» = i quattro a `null`: l'utility resta gestita. `utility_id` e
+`attivo` fuori contratto (`400`).
 
 #### Esempio cURL — PATCH utility
 
@@ -693,7 +704,7 @@ Campi editabili: `minimo_soglia_min`, `minimo_soglia_max`,
 curl -X PATCH "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/utilities/100/" \
      -H "Authorization: Bearer $TOKEN" \
      -H "Content-Type: application/json" \
-     -d '{ "attivo": false }'
+     -d '{ "arrotondamento_importi_dec": null, "metodo_arrotondamento_importi": null }'
 ```
 
 #### Risposta — PATCH utility
@@ -702,14 +713,20 @@ curl -X PATCH "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/ut
 { "data": { "updated": true } }
 ```
 
-### 6.4 Elimina record
+### 6.4 Togli l'utility all'azienda
 
 | | |
 | --- | --- |
 | **Metodo** | `DELETE` |
 | **URL** | `/api/v1/anagrafiche/emittenti-fiscali/<emittente_id>/utilities/<record_id>/` |
 
-Verifica appartenenza al padre prima di eliminare.
+Verifica appartenenza al padre prima di cancellare. Correzione di un'attivazione
+sbagliata (D-U-9): ammessa solo se nessun billing account e nessun documento usa la
+coppia; altrimenti `E_ANAG_FK` col messaggio «L'utility e' usata da billing account
+o documenti di questa azienda: non si puo' togliere.» (le FK `*_utility_gestita`,
+mappate in `_UTILITY_FK_CONSTRAINTS`). Le FK sono differite: il rifiuto arriva a fine
+istruzione perche' il backend gira in autocommit; dentro un `transaction.atomic()`
+arriverebbe al COMMIT, fuori dalla traduzione.
 
 #### Esempio cURL — DELETE utility
 

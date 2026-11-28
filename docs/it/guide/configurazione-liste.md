@@ -1,6 +1,6 @@
 # Guida — Configurazione, Personalizzazione e Responsività delle Liste
 
-> **Ultimo aggiornamento**: 24 novembre 2026
+> **Ultimo aggiornamento**: 28 novembre 2026
 >
 > **Destinatari**: amministratori del sistema (SUPER_ADMIN), tenant admin
 > con azioni `ui_preset_manage` / `ui_permesso_manage`, operatori finali
@@ -828,27 +828,36 @@ contratto è in [API export liste](/backend/ui/manual/api_export_liste).
 Alcune scelte di design pensate per evitare situazioni di blocco
 all'utente o configurazioni stale silenziose.
 
-### 11.1 Combo "Utility" — le utility ammesse per il ruolo emittente
+### 11.1 Combo "Utility" — le utility che l'azienda gestisce
 
-> ⚠️ **Cambio di modello deciso il 2026-11-27, non ancora costruito** ([brief-db-utility-gestite-dall-emittente](/dev/work-in-progress/brief-db-utility-gestite-dall-emittente)): la tabella diventa anche
-> l'**elenco delle utility gestite** dall'azienda (riga accesa = utility attiva; un'azienda senza righe non ne gestisce
-> nessuna), e i parametri d'importo restano facoltativi sulla riga. Questa sezione descrive il funzionamento di oggi,
-> vero finché il giro DB non è applicato: si riscrive in quel giro.
+La combo "Utility" presente nei drawer (clienti, contratti, offerte, preventivi,
+ordini, bolle, listini) e nei filtri lista è popolata da
+`/api/v1/core/lookup/utilities-per-emittente/`, e mostra le utility che le aziende
+**gestiscono** (l'elenco di ciascuna azienda, [emittenti-fiscali](emittenti-fiscali.md)):
 
-La combo "Utility" presente nei drawer (clienti, contratti, preventivi,
-filtri lista) è popolata da `/api/v1/core/lookup/utilities-per-emittente/`:
-mostra le utility **ammesse per il ruolo emittente fiscale** nella matrice
-utility/ruoli (`config.utilities_tipi_ruolo`), le stesse per ogni operatore.
+* in un **drawer** o in un **form**, quelle dell'azienda del documento — in
+  creazione, quella su cui la sessione scrive. Un cliente o un documento su
+  un'utility che l'azienda non gestisce il database lo rifiuta, e la combo non la
+  propone;
+* in un **filtro di lista**, quelle gestite da almeno un'azienda che l'operatore
+  vede.
+
 Dove il drawer lavora per un ruolo preciso (per esempio il cliente), restano
-quelle ammesse anche per quel ruolo.
+quelle ammesse anche per quel ruolo nella matrice utility/ruoli.
 
-⚠️ I **parametri di fatturazione** che l'amministratore imposta per un
-emittente e una utility (fattura minima, arrotondamento del totale) **non**
-decidono quali utility compaiono: sono facoltativi, e un'utility senza
-parametri dedicati usa quelli di sistema.
+⚠️ I **parametri d'importo** dell'azienda per un'utility (fattura minima,
+arrotondamento) **non** decidono quali utility compaiono: sono facoltativi, e
+un'utility senza parametri suoi usa quelli dell'azienda e di sistema.
 
 L'eventuale parametro `DEFAULT_UTILITY` (catena
-user → group → emittente → sistema) viene risolto su questo stesso insieme.
+user → group → emittente → sistema) viene risolto su questo stesso insieme: se
+l'azienda non gestisce l'utility di default, il campo parte vuoto.
+
+Se nel form si **cambia l'azienda** del documento, la combo propone le utility della
+nuova azienda; se quella già scelta non è fra queste, il campo si svuota e va
+scelta di nuovo. Aprendo un documento già salvato, invece, l'utility resta quella
+scritta, e non si tocca nemmeno un campo bloccato (per esempio l'utility che viene
+dal cliente).
 
 ### 11.2 Cancellazioni protette dal sistema
 

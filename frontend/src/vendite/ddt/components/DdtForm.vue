@@ -167,6 +167,7 @@ function onDestinatarioClear() {
       <div class="form-field">
         <label>{{ conCliente ? t('vendite.ddt.field_utility') : t('vendite.ddt.field_utility_filtro') }}</label>
         <UtilityPerRuoloSelect v-model="form.utility_id"
+          :emittente-fiscale-id="form.emittente_fiscale_id ?? null"
           :placeholder="conCliente ? t('vendite.ddt.field_utility') : t('vendite.ddt.field_utility_filtro')"
           :disabled="isLocked('billing_account_id') || conCliente" />
         <small class="app-text-muted">{{ t('vendite.ddt.utility_dal_cliente_hint') }}</small>

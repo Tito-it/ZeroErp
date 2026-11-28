@@ -100,33 +100,37 @@ li fissano i `CHECK` della tabella), `attivo`. Ordine per descrizione.
 
 ## 4. Utility per emittente
 
-> ⚠️ **Cambio di modello deciso il 2026-11-27, non ancora costruito** ([brief-db-utility-gestite-dall-emittente](/dev/work-in-progress/brief-db-utility-gestite-dall-emittente)): la tabella diventa anche
-> l'**elenco delle utility gestite** dall'azienda (riga accesa = utility attiva; un'azienda senza righe non ne gestisce
-> nessuna), e i parametri d'importo restano facoltativi sulla riga. Questa sezione descrive il funzionamento di oggi,
-> vero finché il giro DB non è applicato: la riscrive il team BE/FE quando la tendina passa al BB unico (§8 del brief).
-
 `GET /api/v1/core/lookup/utilities-per-emittente/`
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `ruolo` | string | No | Codice del tipo ruolo del soggetto (es. `CL`, `FO`), maiuscole indifferenti |
+| `emittente_fiscale_id` | int | No | PK dell'azienda (emittente fiscale): le utility che **gestisce** |
+| `ruolo` | string | No | `codice_interno` del tipo ruolo del soggetto (es. `CL`, `FO`), confrontato esatto |
 
-Alimenta la combo «Utility»: le utility ammesse per il ruolo emittente
-fiscale (`EF`) in `config.utilities_tipi_ruolo` (riga attiva e valida alla data
-operativa), **uguali per ogni operatore**. Con `ruolo`, l'intersezione con le
-utility ammesse anche per quel ruolo. «Per emittente», nel nome della rotta, è
-il **ruolo** EF, non l'emittente attivo.
+Alimenta la combo «Utility»: le utility che le aziende **gestiscono**
+([brief-db-utility-gestite-dall-emittente](/dev/work-in-progress/brief-db-utility-gestite-dall-emittente)
+§10 R-2, 2026-11-27). La regola è del BB del DB `anagrafiche.fn_utilities_emittente`:
+ammesse oggi per il ruolo `EF` nella matrice `config.utilities_tipi_ruolo`, con la
+riga dell'azienda in `anagrafiche.emittenti_fiscali_utilities` ed emittente acceso.
 
-⛔ La tabella `anagrafiche.emittenti_fiscali_utilities` **non** filtra: è
-opzionale e porta i parametri di fatturazione di una coppia emittente-utility
-(fattura minima, arrotondamento del totale), non l'elenco delle utility
-dell'emittente — la sola ammissibilità del modello è `utilities_tipi_ruolo`
-(changeSet `20260408-01`). Fino al 2026-10-14 la usava come filtro: un
-emittente con i parametri della sola luce si vedeva sparire il gas.
+- con `emittente_fiscale_id`: le utility di quell'azienda. Lo passano drawer e form,
+  con l'azienda del documento (in creazione quella su cui scrive la sessione): un
+  billing account o un documento su un'utility che l'azienda non gestisce il database
+  lo rifiuta (`23503` sulle FK `*_utility_gestita`);
+- senza: le utility gestite da **almeno un'azienda del perimetro** di chi chiede
+  (scope applicativo sulla PK dell'emittente, sopra la RLS). Lo usano i filtri di lista;
+- con `ruolo`: in più, ammesse per il ruolo del soggetto.
+
+Un `emittente_fiscale_id` fuori perimetro dà la lista vuota, come la RLS di ogni
+lookup; non numerico è un `400`.
+
+⛔ Fino al 2026-11-27 la combo leggeva la sola matrice: proponeva utility che
+l'azienda non gestisce, rifiutate poi al salvataggio.
 
 Righe: `id`, `codice`, `codice_interno`, `descrizione`; ordine per
 descrizione. Il default lato FE (`useUtilityDefaultId`, parametro
-`DEFAULT_UTILITY`) si sceglie dentro questo insieme.
+`DEFAULT_UTILITY`) si sceglie dentro questo insieme: se l'azienda non gestisce
+l'utility di default, il campo parte vuoto.
 
 ---
 

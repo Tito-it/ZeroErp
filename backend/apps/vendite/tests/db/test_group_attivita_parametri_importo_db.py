@@ -21,8 +21,8 @@
 Indice test (opt-in `ZEROERP_TEST_DB_E2E=1`):
 1) GroupAttivitaParametriImportoDbTests.test_override_dell_emittente_arriva_al_gruppo
    senza regole dell'articolo, l'attivita' prende 0 decimali e HALF_DOWN
-   dall'override dell'emittente per l'utility; tolto l'override, i parametri
-   di sistema — in entrambi i casi quelli del BB del DB, non un letterale.
+   dall'override dell'emittente per l'utility; con la riga senza parametri, i
+   parametri di sistema — in entrambi i casi quelli del BB del DB, non un letterale.
 """
 from __future__ import annotations
 
@@ -93,13 +93,25 @@ class GroupAttivitaParametriImportoDbTests(unittest.TestCase):
                     """,
                     [utility_id, utility_id],
                 )
+                # L'azienda di prova gestisce l'utility (la riga c'e', e il
+                # cliente la usa): «senza override» = la riga senza parametri,
+                # non la riga tolta, che il DB rifiuta finche' un billing
+                # account la usa (brief-db-utility-gestite-dall-emittente D-U-9).
                 cur.execute(
-                    "DELETE FROM anagrafiche.emittenti_fiscali_utilities"
-                    " WHERE emittente_soggetto_ruolo_id = %s AND utility_id = %s",
+                    """
+                    INSERT INTO anagrafiche.emittenti_fiscali_utilities
+                        (emittente_soggetto_ruolo_id, utility_id)
+                    VALUES (%s, %s)
+                    ON CONFLICT (emittente_soggetto_ruolo_id, utility_id) DO UPDATE
+                       SET arrotondamento_importi_dec = NULL,
+                           metodo_arrotondamento_importi = NULL,
+                           minimo_soglia_min = NULL,
+                           minimo_soglia_max = NULL
+                    """,
                     [emittente_sr_id, utility_id],
                 )
 
-                # a) senza override: i parametri di sistema, letti dal BB.
+                # a) la riga senza parametri: quelli di sistema, letti dal BB.
                 cur.execute(
                     "SELECT arrotondamento_importi_dec, metodo_arrotondamento_importi"
                     "  FROM vendite.fn_parametri_importo_riga(%s::uuid, %s, %s)",
@@ -116,10 +128,10 @@ class GroupAttivitaParametriImportoDbTests(unittest.TestCase):
                 #    vede (col letterale di prima sarebbe stato 2 / HALF_UP).
                 cur.execute(
                     """
-                    INSERT INTO anagrafiche.emittenti_fiscali_utilities
-                        (emittente_soggetto_ruolo_id, utility_id, arrotondamento_importi_dec,
-                         metodo_arrotondamento_importi, attivo)
-                    VALUES (%s, %s, 0, 'HALF_DOWN', true)
+                    UPDATE anagrafiche.emittenti_fiscali_utilities
+                       SET arrotondamento_importi_dec = 0,
+                           metodo_arrotondamento_importi = 'HALF_DOWN'
+                     WHERE emittente_soggetto_ruolo_id = %s AND utility_id = %s
                     """,
                     [emittente_sr_id, utility_id],
                 )

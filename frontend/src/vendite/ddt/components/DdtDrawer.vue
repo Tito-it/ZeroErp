@@ -273,7 +273,12 @@ const testata = useTestataDocumento({
 const { defaultEmittenteId } = useEmittenteFiscaleField()
 
 // Default utility globale (parameter DEFAULT_UTILITY): proposto in CREATE.
-const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
+// Il default fra le utility che GESTISCE l'azienda su cui nasce il documento
+// (`defaultEmittenteId`, la stessa del form in creazione); se non gestisce
+// quella di default, il campo parte vuoto (brief-db-utility-gestite-dall-emittente).
+const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId({
+  emittenteFiscaleId: () => defaultEmittenteId.value,
+})
 
 // Deferimento contenuto: i LookupSelect/AutoComplete montano dopo l'animazione
 // di apertura (pattern feedback_content_ready_after_show).

@@ -1,11 +1,18 @@
 <script setup>
-// Scopo: Tab autonomo riusabile per la matrice utility -> emittente fiscale.
-// Pattern slot/override: la lista mostra TUTTE le utility ammesse per il ruolo EF
-// (LEFT JOIN con config.utilities_tipi_ruolo). Per ogni riga l'operatore puo':
-//   - Configurare (POST): crea il record in emittenti_fiscali_utilities
-//   - Modificare (PATCH): aggiorna parametri esistenti
-//   - Rimuovere configurazione (DELETE): elimina il record, la riga torna "non configurata"
-// Editing inline multi-riga: piu' righe possono essere in modifica contemporaneamente.
+// Scopo: Tab autonomo riusabile: le utility che un'azienda (emittente fiscale)
+// GESTISCE (brief-db-utility-gestite-dall-emittente §10 R-3, D-U-5, D-U-8, B-8).
+// La lista mostra TUTTE le utility che la matrice ammette per il ruolo EF
+// (dal BB del DB `anagrafiche.fn_utilities_emittente`). Per ogni riga il
+// SUPER_ADMIN puo':
+//   - Attivare (POST col solo `utility_id`): l'azienda gestisce l'utility, e da
+//     li' puo' averne clienti e documenti
+//   - Modificare i parametri (PATCH): tutti facoltativi, un campo vuoto = vale
+//     la policy dell'azienda o il valore di sistema (si vede l'effettivo)
+//   - Togliere i parametri (PATCH a NULL): l'utility resta gestita
+//   - Disattivare (DELETE): il DB lo rifiuta se un billing account o un
+//     documento usa l'utility
+// ⛔ Non c'e' un interruttore `attivo`: la riga non ha uno stato suo (D-U-11).
+// Editing inline multi-riga: piu' righe possono essere in modifica insieme.
 // Reagisce automaticamente al cambio di emittenteId.
 import { reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -20,7 +27,6 @@ import { ROUNDING_DECIMALI_RANGE } from '../constants'
 import Column from 'primevue/column'
 import MatriceCatalogo from '../../core/components/MatriceCatalogo.vue'
 import InputNumber from 'primevue/inputnumber'
-import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
@@ -38,18 +44,25 @@ const isReadonly = useInjectReadonly()
 // Scopo: Naviga alla pagina admin matrice utilities/ruoli da empty
 //        state. La matrice e' prerequisito di questo drawer: senza
 //        righe per ruolo EF lato `config.utilities_tipi_ruolo` qui non
-//        si vedono utility da configurare.
+//        si vedono utility da attivare.
 function goToMatriceUtilitiesRuoli() {
   router.push({ name: 'amm-software-matrice-utilities-ruoli' })
 }
 
 const props = defineProps({
   emittenteId: { type: Number, required: true },
-  // Stato attivo del padre: serve per il vincolo DB ATTIVO_require (figlio non puo'
-  // essere attivo se il padre e' disattivato). Se false, blocchiamo l'attivazione
-  // delle righe lato UI per evitare l'errore di trigger.
+  // Sotto un emittente spento non nasce niente: niente attivazioni (lo dice
+  // anche la capability `can_attivare` del BE, che resta l'autorita').
   emittenteAttivo: { type: Boolean, default: true }
 })
+
+// I quattro parametri d'importo della riga, tutti facoltativi.
+const PARAMETRI = [
+  'minimo_soglia_min',
+  'minimo_soglia_max',
+  'arrotondamento_importi_dec',
+  'metodo_arrotondamento_importi',
+]
 
 // `metodo_arrotondamento_importi`: Select riusabile EmittenteRoundingModeSelect
 // (Fase 3 — A6). 4 codici allineati al CHECK constraint DB
@@ -60,147 +73,143 @@ const props = defineProps({
 // ⚠️ I tre `InputNumber` della riga hanno anche `@input`, oltre al v-model:
 //    PrimeVue aggiorna il v-model SOLO all'uscita dal campo (blur) o con le
 //    frecce, mentre il «Salva riga» si accende da `isRowValid`, che legge il
-//    modello. Senza, scelto il metodo e scritti i decimali, il Salva restava
-//    spento finche' il cursore stava nel campo — e cliccare un pulsante
-//    disabilitato non toglie il fuoco, quindi non si accendeva mai
+//    modello. Senza, il Salva restava fermo finche' il cursore stava nel campo
 //    (segnalazione di Tid, 2026-10-31; presidio: lo spec di questo file).
-// Stato editing per riga: chiave = utility_id, valore = oggetto editabile.
-// Permette multi-riga: piu' righe possono essere in editing contemporaneamente.
-// Niente default: i campi sono vuoti finche' l'utente non li compila.
+// Stato editing per riga: chiave = utility_id, valore = i parametri scritti.
 const editing = reactive({})
 
 function isEditing(row) {
   return editing[row.utility_id] !== undefined
 }
 
-function isConfigured(row) {
+function isGestita(row) {
   return row.record_id != null
 }
 
-// Inizializza il form di editing per una riga.
-// Se la riga e' configurata copia i valori esistenti, altrimenti parte vuoto.
-// Se il padre e' disattivo, forziamo attivo=false (vincolo DB ATTIVO_require).
+// Il valore che vale per la riga: quello scritto, altrimenti l'effettivo che
+// il BB del DB risolve (policy dell'azienda, poi sistema). `scritto` dice se
+// viene dalla riga: l'effettivo si mostra sottotono (B-8: fino al 2026-11-27
+// la matrice mostrava solo il valore grezzo, e un vuoto non diceva cosa valeva).
+function valore(row, campo) {
+  const scritto = row[campo]
+  if (scritto != null) return { testo: scritto, scritto: true }
+  const effettivo = row[`effettivo_${campo}`]
+  return { testo: effettivo ?? '—', scritto: false }
+}
+
 function startEdit(row) {
-  const defaultAttivo = props.emittenteAttivo
-  editing[row.utility_id] = isConfigured(row)
-    ? {
-        minimo_soglia_min: row.minimo_soglia_min,
-        minimo_soglia_max: row.minimo_soglia_max,
-        arrotondamento_importi_dec: row.arrotondamento_importi_dec,
-        metodo_arrotondamento_importi: row.metodo_arrotondamento_importi,
-        attivo: props.emittenteAttivo ? (row.record_attivo ?? true) : false
-      }
-    : {
-        minimo_soglia_min: null,
-        minimo_soglia_max: null,
-        arrotondamento_importi_dec: null,
-        metodo_arrotondamento_importi: null,
-        attivo: defaultAttivo
-      }
+  editing[row.utility_id] = Object.fromEntries(PARAMETRI.map(k => [k, row[k] ?? null]))
 }
 
 function cancelEdit(row) {
   delete editing[row.utility_id]
 }
 
-// Validazione: per salvare la riga servono ALMENO i due campi obbligatori
-// (decimali + metodo arrotondamento). Le soglie sono opzionali.
+// Validazione: ogni parametro e' facoltativo; i decimali, se scritti, stanno
+// nell'intervallo del vincolo. La coppia delle soglie la giudica il DB (CHECK
+// `chk_emittenti_fiscali_utilities_soglie_coppia`, tradotto dal BE).
 function isRowValid(row) {
   const e = editing[row.utility_id]
   if (!e) return false
-  const hasDec = e.arrotondamento_importi_dec != null
-                 && e.arrotondamento_importi_dec >= ROUNDING_DECIMALI_RANGE.MIN
-                 && e.arrotondamento_importi_dec <= ROUNDING_DECIMALI_RANGE.MAX
-  const hasMetodo = !!e.metodo_arrotondamento_importi
-  return hasDec && hasMetodo
+  const dec = e.arrotondamento_importi_dec
+  return dec == null
+    || (dec >= ROUNDING_DECIMALI_RANGE.MIN && dec <= ROUNDING_DECIMALI_RANGE.MAX)
 }
 
-// Salva la riga: POST se non configurata, PATCH se gia' configurata.
-// ⛔ Fino al 2026-10-23 qui non c'era `execute`, «errori gestiti
-//    dall'interceptor axios globale»: ma l'interceptor di `core/api.js` non
-//    mostra toast, e un rifiuto restava muto. `execute` accetta anche l'azione
-//    di uno store (il dato gia' estratto): il «doppio unwrap» che si temeva
-//    tocca solo un payload con una chiave `data`, e la riga utility non ce l'ha.
-async function saveRow(row) {
-  if (!isRowValid(row)) {
-    notify.warn(t('amministrazione.emittenti_fiscali.ut_validation_required'))
-    return
-  }
-  const e = editing[row.utility_id]
-  const payload = {
-    minimo_soglia_min: e.minimo_soglia_min,
-    minimo_soglia_max: e.minimo_soglia_max,
-    arrotondamento_importi_dec: e.arrotondamento_importi_dec,
-    metodo_arrotondamento_importi: e.metodo_arrotondamento_importi,
-    attivo: e.attivo
-  }
-  const configurata = isConfigured(row)
-  if (!configurata) payload.utility_id = row.utility_id
-  const esito = await execute(() => (configurata
-    ? store.patchUtilityRecord(props.emittenteId, row.record_id, payload)
-    : store.addUtilityRecord(props.emittenteId, payload)))
-  if (esito === null) return
-  notify.success(configurata
-    ? t('amministrazione.emittenti_fiscali.ut_saved')
-    : t('amministrazione.emittenti_fiscali.ut_added'))
-  cancelEdit(row)
+// Scopo: (ri)legge la matrice dopo una scrittura riuscita.
+async function dopoScrittura(row, messaggio) {
+  notify.success(messaggio)
+  if (row) cancelEdit(row)
   await caricaMatrice(props.emittenteId)
 }
 
-function removeConfig(row) {
+// Attiva l'utility per l'azienda: la riga nasce senza parametri.
+// ⛔ `execute` sempre: l'interceptor di `core/api.js` non mostra toast, e un
+//    rifiuto (utility non ammessa, emittente spento) resterebbe muto.
+async function attiva(row) {
+  const esito = await execute(() => store.addUtilityRecord(props.emittenteId, { utility_id: row.utility_id }))
+  if (esito === null) return
+  await dopoScrittura(null, t('amministrazione.emittenti_fiscali.ut_attivata', { codice: row.utility_codice }))
+}
+
+async function saveRow(row) {
+  if (!isRowValid(row)) return
+  const payload = { ...editing[row.utility_id] }
+  const esito = await execute(() => store.patchUtilityRecord(props.emittenteId, row.record_id, payload))
+  if (esito === null) return
+  await dopoScrittura(row, t('amministrazione.emittenti_fiscali.ut_saved'))
+}
+
+// Toglie i parametri propri: tornano quelli dell'azienda e di sistema, e
+// l'utility resta gestita. NON cancella la riga: quella e' la disattivazione.
+function resetParametri(row) {
   confirmAction({
     header: t('common.confirm'),
-    message: t('amministrazione.emittenti_fiscali.ut_remove_config_confirm', { codice: row.utility_codice }),
+    message: t('amministrazione.emittenti_fiscali.ut_reset_confirm', { codice: row.utility_codice }),
+    onAccept: async () => {
+      const payload = Object.fromEntries(PARAMETRI.map(k => [k, null]))
+      const esito = await execute(() => store.patchUtilityRecord(props.emittenteId, row.record_id, payload))
+      if (esito === null) return
+      await dopoScrittura(null, t('amministrazione.emittenti_fiscali.ut_reset_done'))
+    }
+  })
+}
+
+// Disattiva: toglie l'utility all'azienda. Il DB la rifiuta se un billing
+// account o un documento la usa (messaggio tradotto dal BE, D-U-9).
+function disattiva(row) {
+  confirmAction({
+    header: t('common.confirm'),
+    message: t('amministrazione.emittenti_fiscali.ut_disattiva_confirm', { codice: row.utility_codice }),
     danger: true,
     onAccept: async () => {
       // ⚠️ L'azione non restituisce niente (`undefined`): l'errore e' `null`.
       const esito = await execute(() => store.removeUtilityRecord(props.emittenteId, row.record_id))
       if (esito === null) return
-      notify.success(t('amministrazione.emittenti_fiscali.ut_removed'))
-      await caricaMatrice(props.emittenteId)
+      await dopoScrittura(null, t('amministrazione.emittenti_fiscali.ut_disattivata', { codice: row.utility_codice }))
     }
   })
 }
 
-// Scopo: azioni di riga matrice utility — non in modalita' edit (che usa
-// pulsanti inline form Salva/Annulla). Azioni differenti per stato:
-//   - riga configurata: Modifica + Rimuovi (danger)
-//   - riga non configurata: Configura (primary)
-//
-// Fase 4 — capability data-driven dal BE (`can_update`, `can_remove`,
-// `can_configure`). Fallback alla derivazione locale `isConfigured(row)`
-// se il BE non ha ancora popolato i campi (mock obsoleti, transizione,
-// retrocompat). L'autorita' resta il trigger DB
-// (`child_requires_active_parent`, `guard_utility_tipo_ruolo`).
+// Scopo: azioni di riga — non in modifica (che usa Salva/Annulla inline).
+//   - non gestita: Attiva
+//   - gestita: Modifica parametri, Togli i parametri (se ne ha), Disattiva
+// Le capability (`can_attivare`, `can_update`, `can_reset`, `can_remove`)
+// vengono dal BE; l'autorita' resta il DB.
 function buildRowActions(row) {
-  const configured = isConfigured(row)
-  const canUpdate = row.can_update ?? configured
-  const canRemove = row.can_remove ?? configured
-  const canConfigure = row.can_configure ?? !configured
   return [
+    {
+      key: 'attiva',
+      label: t('amministrazione.emittenti_fiscali.ut_action_attiva'),
+      icon: MANAGE_ICONS.ADD,
+      severity: 'primary',
+      visible: !!row.can_attivare,
+      command: () => attiva(row),
+    },
     {
       key: 'modifica',
       label: t('amministrazione.emittenti_fiscali.ut_action_modifica'),
       icon: MANAGE_ICONS.EDIT,
-      visible: canUpdate,
+      visible: !!row.can_update,
       allowWhenInactive: true,
       command: () => startEdit(row),
     },
     {
-      key: 'rimuovi',
-      label: t('amministrazione.emittenti_fiscali.ut_action_rimuovi_config'),
-      icon: MANAGE_ICONS.DELETE,
-      severity: 'danger',
-      visible: canRemove,
-      command: () => removeConfig(row),
+      key: 'reset',
+      label: t('amministrazione.emittenti_fiscali.ut_action_reset'),
+      icon: MANAGE_ICONS.RIPRISTINA_DEFAULT,
+      visible: !!row.can_reset,
+      allowWhenInactive: true,
+      command: () => resetParametri(row),
     },
     {
-      key: 'configura',
-      label: t('amministrazione.emittenti_fiscali.ut_action_configura'),
-      icon: MANAGE_ICONS.ADD,
-      severity: 'primary',
-      visible: canConfigure,
-      command: () => startEdit(row),
+      key: 'disattiva',
+      label: t('amministrazione.emittenti_fiscali.ut_action_disattiva'),
+      icon: MANAGE_ICONS.DELETE,
+      severity: 'danger',
+      visible: !!row.can_remove,
+      allowWhenInactive: true,
+      command: () => disattiva(row),
     },
   ]
 }
@@ -208,15 +217,11 @@ function buildRowActions(row) {
 // Scopo: (ri)legge la matrice e, se non arriva, lo DICE (`execute`) e la svuota.
 //        ⭐ Separata dalle scritture: una rilettura che fallisce dopo un POST
 //        riuscito non fa sembrare fallito il POST.
-// ⛔ Fino al 2026-10-23 l'errore finiva in un `catch` che svuotava e basta:
-//    l'operatore vedeva una matrice vuota che sembrava una risposta.
 async function caricaMatrice(id) {
   const esito = await execute(() => store.fetchUtilitiesRecords(id))
   if (esito === null) store.clearUtilitiesRecords()
 }
 
-// Carica matrice quando l'id dell'emittente cambia.
-// La store action delega al backend che fa LEFT JOIN matrice + override.
 watch(() => props.emittenteId, async (id) => {
   if (!id) {
     store.clearUtilitiesRecords()
@@ -238,10 +243,10 @@ watch(() => props.emittenteId, async (id) => {
       {{ t('amministrazione.emittenti_fiscali.ut_parent_inactive_warn') }}
     </Message>
 
-    <!-- Matrice limitata dal catalogo (`MatriceCatalogo`, dal 2026-10-31): tutte
-         le utility ammesse per il ruolo, configurate o no. NON `MatriceOverride`:
-         una utility non configurata non eredita un valore da nessuno — e' solo
-         da configurare. Modifica e salvataggio sono PER RIGA, nello slot azioni. -->
+    <!-- Matrice limitata dal catalogo (`MatriceCatalogo`): tutte le utility
+         ammesse per il ruolo EF, gestite o no. NON `MatriceOverride`: una
+         utility non gestita non eredita niente, si attiva. Modifica e
+         salvataggio sono PER RIGA, nello slot azioni. -->
     <MatriceCatalogo
       :voci="store.utilitiesRecords"
       :chiave="r => r.utility_id"
@@ -255,13 +260,13 @@ watch(() => props.emittenteId, async (id) => {
         <Column :header="t('amministrazione.emittenti_fiscali.ut_col_stato')" style="width: 140px; min-width: 140px;">
           <template #body="{ data }">
             <Tag
-              v-if="isConfigured(data)"
-              :value="t('amministrazione.emittenti_fiscali.ut_stato_configurata')"
+              v-if="isGestita(data)"
+              :value="t('amministrazione.emittenti_fiscali.ut_stato_gestita')"
               severity="success"
             />
             <Tag
               v-else
-              :value="t('amministrazione.emittenti_fiscali.ut_stato_non_configurata')"
+              :value="t('amministrazione.emittenti_fiscali.ut_stato_non_gestita')"
               severity="secondary"
             />
           </template>
@@ -276,7 +281,9 @@ watch(() => props.emittenteId, async (id) => {
               class="ut-cell-input"
               :input-class="'ut-cell-input-el'"
             />
-            <span v-else>{{ data.minimo_soglia_min ?? '—' }}</span>
+            <span v-else :class="{ 'app-text-muted': !valore(data, 'minimo_soglia_min').scritto }">
+              {{ valore(data, 'minimo_soglia_min').testo }}
+            </span>
           </template>
         </Column>
 
@@ -290,7 +297,9 @@ watch(() => props.emittenteId, async (id) => {
               class="ut-cell-input"
               :input-class="'ut-cell-input-el'"
             />
-            <span v-else>{{ data.minimo_soglia_max ?? '—' }}</span>
+            <span v-else :class="{ 'app-text-muted': !valore(data, 'minimo_soglia_max').scritto }">
+              {{ valore(data, 'minimo_soglia_max').testo }}
+            </span>
           </template>
         </Column>
 
@@ -306,7 +315,9 @@ watch(() => props.emittenteId, async (id) => {
               class="ut-cell-input ut-cell-input--dec"
               :input-class="'ut-cell-input-el'"
             />
-            <span v-else>{{ data.arrotondamento_importi_dec ?? '—' }}</span>
+            <span v-else :class="{ 'app-text-muted': !valore(data, 'arrotondamento_importi_dec').scritto }">
+              {{ valore(data, 'arrotondamento_importi_dec').testo }}
+            </span>
           </template>
         </Column>
 
@@ -315,31 +326,12 @@ watch(() => props.emittenteId, async (id) => {
             <EmittenteRoundingModeSelect
               v-if="isEditing(data)"
               v-model="editing[data.utility_id].metodo_arrotondamento_importi"
+              show-clear
               class="ut-cell-input"
             />
-            <span v-else>{{ data.metodo_arrotondamento_importi ?? '—' }}</span>
-          </template>
-        </Column>
-
-        <Column :header="t('amministrazione.emittenti_fiscali.ut_col_attivo')" style="width: 90px; min-width: 90px;">
-          <template #body="{ data }">
-            <ToggleSwitch
-              v-if="isEditing(data)"
-              v-model="editing[data.utility_id].attivo"
-              :disabled="!emittenteAttivo"
-              v-tooltip.bottom="!emittenteAttivo ? t('amministrazione.emittenti_fiscali.ut_parent_inactive_tooltip') : null"
-            />
-            <Tag
-              v-else-if="data.record_attivo === true"
-              :value="t('amministrazione.stato_attivo')"
-              severity="success"
-            />
-            <Tag
-              v-else-if="data.record_attivo === false"
-              :value="t('amministrazione.stato_inattivo')"
-              severity="danger"
-            />
-            <span v-else>—</span>
+            <span v-else :class="{ 'app-text-muted': !valore(data, 'metodo_arrotondamento_importi').scritto }">
+              {{ valore(data, 'metodo_arrotondamento_importi').testo }}
+            </span>
           </template>
         </Column>
       </template>

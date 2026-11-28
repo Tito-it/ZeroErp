@@ -12,7 +12,9 @@ fornitori/clienti) per i parametri di fatturazione utility-specifici.
 - App Django: `apps.config` (precedentemente scaffold vuoto, attivata con questa
   funzionalita')
 - Riferimento BB cross-dominio:
-  - Repository slot/override: `apps.core.db.lookup_repository.LookupRepository.list_entity_utility_matrix`
+  - Le utility di un'azienda (ammesse per `EF`, gestite): il BB del DB
+    `anagrafiche.fn_utilities_emittente` (dal 2026-11-27; fino ad allora la copia
+    applicativa `LookupRepository.list_entity_utility_matrix`, ritirata)
   - Trigger guard DB: `script.fn_guard_utility_tipo_ruolo`
 - Pattern: amministrazione admin-only, CRUD modellato su `unita_misura`
   (catalogo) — vedi `docs/it/dev/api.md` e
@@ -141,10 +143,16 @@ emittenti per ruoli diversi da Emittente Fiscale).
 
 - Le coppie `(utility_id, tipo_ruolo_id)` sono **immutabili** in update. Per
   modificarle disattivare la riga e crearne una nuova.
-- Il flag `attivo` non e' soggetto a guard DB sulla coppia: e' un disable
-  logico che influenza la lettura via
-  `LookupRepository.list_entity_utility_matrix` e
-  `LookupRepository.list_utilities_per_ruolo` (filtro `utr.attivo = true`).
+- Il flag `attivo` e' un disable logico che influenza la lettura del BB del DB
+  `anagrafiche.fn_utilities_emittente` (e da li' la combo «Utility» e il drawer
+  delle utility dell'azienda) e di `LookupRepository.list_utilities_per_ruolo`
+  (filtro `utr.attivo = true`). ⚠️ Sulla riga del ruolo `EF` c'e' un guard DB
+  (`config.trgfn_utilities_tipi_ruolo_guard_uscita_ef`, 2026-11-27): finche'
+  un'azienda gestisce l'utility la riga non si spegne, non si sposta, non si
+  cancella e non prende una data d'inizio futura (`E_UTILITY_EF_GESTITA`), e
+  non ha mai una data di fine (`E_UTILITY_EF_SENZA_SCADENZA`).
+- Un'utility **senza righe** nella matrice non e' ammessa per nessuno (guard
+  `script.fn_guard_utility_tipo_ruolo` fail-closed, dal 2026-11-27).
 - Validita' temporale (`valido_dal/al`): non gestita da questo CRUD (fuori
   scope per la prima iterazione, default DB applicato).
 - Permessi: binding `SUPER_ADMIN` o superuser (`403` `E_ACCESSO_RISERVATO_ADMIN`).
