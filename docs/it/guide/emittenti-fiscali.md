@@ -1,6 +1,6 @@
 # Guida — Gli Emittenti Fiscali
 
-> **Ultimo aggiornamento**: 27 novembre 2026
+> **Ultimo aggiornamento**: 28 novembre 2026
 >
 > **Destinatari**: amministratori dell'installazione (super admin), analisti funzionali, sviluppatori database, backend e frontend
 >
@@ -108,7 +108,7 @@ soggetto con partita IVA (chi è)
                     │
                     ├── emittenti_fiscali_billing_account   per quale azienda fattura ogni cliente
                     │       └── una riga «gestore globale» (is_default): l'azienda di riserva
-                    ├── emittenti_fiscali_utilities          eccezioni d'importo per utility
+                    ├── emittenti_fiscali_utilities          le utilities che l'azienda gestisce
                     ├── registri di numerazione              uno per famiglia di documento
                     │
                     ├── user_emittenti_fiscali               l'operatore che lavora per quest'azienda (una per operatore)
@@ -285,7 +285,8 @@ Il database lo fa valere dove la coppia azienda e utility nasce:
 * i documenti che portano l'azienda senza passare dal billing account (listini, listini per categoria di cliente,
   commesse, fatture, registri e lotti di fatturazione) stanno su un'utility gestita. Un registro o una fattura
   **senza utility** non si giudica;
-* gli altri documenti di vendita prendono l'utility dal loro billing account.
+* gli altri documenti di vendita prendono l'utility dal loro billing account. ⚠️ Un DDT senza cliente, e il reso
+  che ne discende, non ne hanno uno: la loro utility oggi non si giudica (§«Che cosa oggi non copre»).
 
 Un'utility attivata non si spegne: la riga resta finché l'azienda la gestisce. Un'attivazione sbagliata si
 **cancella**, finché nessun billing account e nessun documento la usano; dopo, la cancellazione è respinta. Finché
@@ -300,7 +301,7 @@ fatturazione (tutte e due o nessuna). Senza un valore valgono la policy dell'azi
 ### Spegnere un emittente, non cancellarlo
 
 ⛔ **Un emittente non si cancella** (`E_DELETE_NOT_ALLOWED`): si spegne togliendo «Attivo». Lo spegnimento è
-respinto finché l'emittente ha ancora qualcosa di vivo collegato: billing account, utilities attive, operatori
+respinto finché l'emittente ha ancora qualcosa di vivo collegato: billing account, utilities gestite, operatori
 assegnati, documenti come ordini, contratti, preventivi e DDT, il magazzino, i parametri per azienda
 (`E_ATTIVO_BLOCK_CHILDREN_ACTIVE` quando le righe collegate vanno spente, `E_ATTIVO_BLOCK_CHILDREN_EXIST` quando vanno
 tolte). L'elenco completo, e le eccezioni volute, stanno nella scheda
@@ -476,6 +477,10 @@ I testi dei messaggi stanno in `config.messaggi_errore`
 * **Fatture e commesse non fermano lo spegnimento.** I documenti che nominano l'azienda col ruolo `EF` (fatture,
   commesse, registri, listini, lotti di fatturazione) non sono fra le righe che il controllo dello spegnimento
   guarda: un emittente con fatture aperte si spegne, uno con un ordine no.
+* **L'utility di un DDT o di un reso senza cliente non si giudica.** DDT e resi hanno billing account e utility
+  facoltativi: senza billing account nessun vincolo controlla che la loro azienda gestisca l'utility. Dall'interfaccia
+  la combo propone solo le utility dell'azienda del documento; se la regola debba valere anche nel database è una
+  decisione aperta del team DB (2026-11-28).
 
 ---
 

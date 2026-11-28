@@ -245,7 +245,12 @@ const { defaults: paramDefaults, load: loadParamDefaults } = useParameterDefault
 
 // Default utility globale: il parametro DEFAULT_UTILITY stocca un codice_interno
 // (framework FK-surrogata, DB 2026-05-02). Composable risolve a id locale.
-const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
+// Il default fra le utility che GESTISCE l'azienda su cui nasce il documento
+// (`defaultEmittenteId`, la stessa del form in creazione); se non gestisce
+// quella di default, il campo parte vuoto (brief-db-utility-gestite-dall-emittente).
+const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId({
+  emittenteFiscaleId: () => defaultEmittenteId.value,
+})
 
 // Emittente fiscale default dal profilo operatore (modello 1-a-1 salvo admin
 // globale multi-EF). Pattern allineato a OffertaDrawer/PreventiviForm post
@@ -1056,6 +1061,7 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
       <UtilityPerRuoloSelect
         v-model="form.utility_id"
         :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
+        :emittente-fiscale-id="form.emittente_fiscale_id ?? null"
         :placeholder="t('vendite.contratti.field_utility')"
         :disabled="isEdit || isReadonly"
       />

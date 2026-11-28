@@ -317,7 +317,12 @@ const { defaults: paramDefaults, load: loadParamDefaults } = useParameterDefault
 
 // Default utility globale: il parametro DEFAULT_UTILITY stocca un codice_interno
 // (framework FK-surrogata, DB 2026-05-02). Composable risolve a id locale.
-const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
+// Il default fra le utility che GESTISCE l'azienda su cui nasce il documento
+// (`defaultEmittenteId`, la stessa del form in creazione); se non gestisce
+// quella di default, il campo parte vuoto (brief-db-utility-gestite-dall-emittente).
+const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId({
+  emittenteFiscaleId: () => defaultEmittenteId.value,
+})
 
 // Default emittente fiscale: per operatore con EF assegnato ritorna l'id;
 // per admin globale (multi-EF) ritorna null e l'utente sceglie via

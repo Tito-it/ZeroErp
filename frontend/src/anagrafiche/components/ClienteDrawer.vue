@@ -53,16 +53,22 @@ const legameIndirizzo = collegaIndirizzoSoggettoForm(indirizzo)
 //    del soggetto passa da un titolo documentato (D10), mai da un default.
 
 // Default utility globale: il parametro DEFAULT_UTILITY stocca un codice_interno
-// (framework FK-surrogata, DB 2026-05-02). Composable risolve a id locale,
-// filtrato per ruolo CL (intersezione ruolo + emittente).
+// (framework FK-surrogata, DB 2026-05-02). Composable risolve a id locale fra
+// le utility che l'azienda del cliente GESTISCE, ammesse per il ruolo CL.
+// Se l'azienda non gestisce quella di default, il campo parte vuoto.
 const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId({
   ruolo: TIPO_RUOLO.CLIENTE,
+  emittenteFiscaleId: () => auth.emittenteScritturaId,
 })
 
-// Lookup utility per creazione: filtrate per emittente dell'operatore + ruolo CL.
-// In modalita' edit usiamo il nuovo endpoint BA-driven (vedi sotto).
+// Lookup utility per creazione: le utility che GESTISCE l'azienda su cui nasce
+// il cliente (quella su cui la sessione scrive), ammesse per il ruolo CL
+// (brief-db-utility-gestite-dall-emittente R-2: il billing account su
+// un'utility non gestita il DB lo rifiuta). In edit l'endpoint BA-driven.
 // Lazy: load() viene chiamato in watch(visible) solo quando il drawer apre in create.
-const utilities = useLookup(() => lookupUtilitiesPerEmittente(TIPO_RUOLO.CLIENTE))
+const utilities = useLookup(
+  () => lookupUtilitiesPerEmittente(TIPO_RUOLO.CLIENTE, auth.emittenteScritturaId)
+)
 
 // Opzioni statiche (label tramite i18n)
 // ⛔ `paOptions` (S/N per PA e split payment) spostato in `SoggettoDrawer.vue`
@@ -227,8 +233,11 @@ watch(() => props.visible, async (val) => {
   // non al mount del parent. Cache interna (loaded flag) evita rifetch.
   // loadUtilityDefault e' awaitato sotto (branch CREATE) per garantire
   // utility_id risolto al primo render.
+  // ⚠️ `reload`, non `load`: le utility sono quelle dell'azienda su cui la
+  //    sessione scrive, che cambia col cambio d'azienda in topbar fra
+  //    un'apertura e l'altra; la cache del primo giro proporrebbe le vecchie.
   if (!isEdit.value) {
-    utilities.load()
+    utilities.reload()
   }
   if (isEdit.value && props.clienteId) {
     const d = await store.fetchDetail(props.clienteId)

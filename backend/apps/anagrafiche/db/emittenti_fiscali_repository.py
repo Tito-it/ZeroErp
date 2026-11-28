@@ -26,6 +26,7 @@ from apps.core.db._helpers import (
     sql_tiebreak_direction,
     fetch_paged_with_total,
     row_to_dict,
+    rows_to_list,
 )
 
 
@@ -450,81 +451,94 @@ class EmittentiFiscaliBillingAccountRepository:
 
 
 # =================================================================
-# Sotto-tabella: emittenti_fiscali_utilities (parametri per emittente+utility)
+# Sotto-tabella: emittenti_fiscali_utilities (le utility che l'azienda gestisce)
 # =================================================================
 
 
-UTILITIES_UPDATE_ALLOWED: frozenset[str] = frozenset({
+# I parametri d'importo della riga, tutti facoltativi: NULL = valgono la policy
+# dell'azienda e i valori di sistema (`anagrafiche.fn_parametri_importo_utility`).
+# ⛔ `attivo` non c'e' (2026-11-27, brief-db-utility-gestite-dall-emittente
+#    D-U-11): la riga non ha uno stato suo, il CHECK
+#    `chk_emittenti_fiscali_utilities_attivo` la vuole sempre accesa. L'utility
+#    si toglie all'azienda cancellando la riga (D-U-9).
+UTILITIES_PARAMETRI: frozenset[str] = frozenset({
     "minimo_soglia_min",
     "minimo_soglia_max",
     "arrotondamento_importi_dec",
     "metodo_arrotondamento_importi",
-    "attivo",
 })
-_UTILITIES_UPDATE_NULLABLE = {
-    "minimo_soglia_min",
-    "minimo_soglia_max",
-}
-
-# Identificatori della tabella override per il pattern slot/override.
-# Costanti modulo: usate sia da list_by_emittente (delega a LookupRepository) sia
-# implicitamente registrate nella whitelist di LookupRepository._ALLOWED_UTILITY_OVERRIDES.
-# Allinearle se la tabella o la colonna FK cambia nome.
-_UTILITIES_OVERRIDES_TABLE = "anagrafiche.emittenti_fiscali_utilities"
-_UTILITIES_OVERRIDES_FK_COLUMN = "emittente_soggetto_ruolo_id"
+UTILITIES_UPDATE_ALLOWED: frozenset[str] = UTILITIES_PARAMETRI
 
 
 class EmittentiFiscaliUtilitiesRepository:
-    """Accesso DB per la matrice emittente_fiscale x utility (parametri fatturazione).
+    """Accesso DB alle utility che un'azienda (emittente fiscale) gestisce.
 
-    Vincoli:
-      - UNIQUE (emittente_soggetto_ruolo_id, utility_id)
-      - Trigger child_requires_active_parent: emittente padre deve essere attivo
-      - Trigger guard_utility_tipo_ruolo: la utility deve essere ammessa per il ruolo EF
-        (vedi config.utilities_tipi_ruolo, fail-open se la utility non ha matrice)
+    Modello (brief-db-utility-gestite-dall-emittente, 2026-11-27): una riga =
+    l'azienda GESTISCE l'utility e tratta solo quelle; i parametri d'importo
+    sulla stessa riga sono facoltativi. Vincoli, tutti del DB:
+      - UNIQUE (emittente_soggetto_ruolo_id, utility_id); le due colonne sono
+        ferme (`E_CODICE_NON_MODIFICABILE`)
+      - la riga nasce solo sotto un emittente acceso e su un'utility che la
+        matrice `config.utilities_tipi_ruolo` ammette per `EF` (fail-closed)
+      - la cancellazione e' rifiutata (`23503`, FK `*_utility_gestita`) finche'
+        un billing account o un documento usa la coppia
     """
 
-    # Scopo: Matrice utility ammesse per ruolo EF + override specifici dell'emittente.
-    #        Delega al metodo generico LookupRepository.list_entity_utility_matrix
-    #        (pattern slot/override). Ritorna SEMPRE tutte le utility ammesse: per
-    #        quelle non personalizzate, i campi override sono NULL e record_id e' NULL.
+    # Scopo: Le utility dell'azienda come le vede il drawer «Gestisci utilities»:
+    #        TUTTE quelle che la matrice ammette oggi per l'emittente fiscale,
+    #        gestite o no. ⭐ La regola (ammesse, gestita, parametri effettivi)
+    #        e' del BB del DB `anagrafiche.fn_utilities_emittente`, sede unica
+    #        (R-2 del brief): fino al 2026-11-27 la riscriveva qui una copia
+    #        applicativa (`LookupRepository.list_entity_utility_matrix`, ritirata).
+    #        Della riga si leggono in piu' i valori SCRITTI, che il form modifica:
+    #        il BB da' gli effettivi, e un NULL scritto («vale il sistema») e un
+    #        valore uguale a quello di sistema non sono la stessa cosa.
     def list_by_emittente(self, emittente_soggetto_ruolo_id: int) -> list[dict[str, Any]]:
-        from apps.core.db.lookup_repository import LookupRepository
-        return LookupRepository().list_entity_utility_matrix(
-            entity_soggetto_ruolo_id=emittente_soggetto_ruolo_id,
-            tipo_ruolo_codice="EF",
-            overrides_table=_UTILITIES_OVERRIDES_TABLE,
-            overrides_fk_column=_UTILITIES_OVERRIDES_FK_COLUMN,
-        )
+        sql = """
+            SELECT b.utility_id,
+                   b.codice                          AS utility_codice,
+                   b.descrizione                     AS utility_descrizione,
+                   b.gestita,
+                   b.riga_id                         AS record_id,
+                   b.personalizzata,
+                   e.minimo_soglia_min,
+                   e.minimo_soglia_max,
+                   e.arrotondamento_importi_dec,
+                   e.metodo_arrotondamento_importi,
+                   b.minimo_soglia_min               AS effettivo_minimo_soglia_min,
+                   b.minimo_soglia_max               AS effettivo_minimo_soglia_max,
+                   b.arrotondamento_importi_dec      AS effettivo_arrotondamento_importi_dec,
+                   b.metodo_arrotondamento_importi   AS effettivo_metodo_arrotondamento_importi
+              FROM anagrafiche.fn_utilities_emittente(%s) b
+              LEFT JOIN anagrafiche.emittenti_fiscali_utilities e ON e.id = b.riga_id
+             ORDER BY b.descrizione, b.utility_id
+        """
+        # ⚠️ L'ORDER BY sta QUI: quello interno al BB non vale per la query che
+        #    lo legge (il JOIN puo' riordinare). Per descrizione, come la combo
+        #    e come la matrice ritirata (2026-11-28, /verifica).
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [emittente_soggetto_ruolo_id])
+            return rows_to_list(cursor)
 
-    # Scopo: Inserisce un record utility per l'emittente.
-    #        Tutti i campi NOT NULL devono essere forniti (arrotondamento_dec, metodo).
+    # Scopo: Attiva l'utility per l'azienda (inserisce la riga). I parametri
+    #        sono facoltativi: quelli a None si omettono e restano NULL.
     def create_record(
         self,
         *,
         emittente_soggetto_ruolo_id: int,
         utility_id: int,
-        arrotondamento_importi_dec: int,
-        metodo_arrotondamento_importi: str,
-        minimo_soglia_min: Any = None,
-        minimo_soglia_max: Any = None,
-        attivo: bool | None = None,
+        parametri: dict[str, Any] | None = None,
     ) -> int:
-        # BB `execute_dynamic_insert` (2026-09-26). `allowed=None`: le chiavi
-        # sono i nomi letterali qui sotto. `skip_none=True`: gli opzionali a
-        # None si omettono e resta il DEFAULT del DB, come prima.
+        # BB `execute_dynamic_insert`: `skip_none=True` omette i parametri vuoti.
         riga = execute_dynamic_insert(
             "anagrafiche.emittenti_fiscali_utilities",
             {
                 "emittente_soggetto_ruolo_id": emittente_soggetto_ruolo_id,
                 "utility_id": utility_id,
-                "arrotondamento_importi_dec": arrotondamento_importi_dec,
-                "metodo_arrotondamento_importi": metodo_arrotondamento_importi,
-                "minimo_soglia_min": minimo_soglia_min,
-                "minimo_soglia_max": minimo_soglia_max,
-                "attivo": attivo,
+                **(parametri or {}),
             },
-            allowed=None, skip_none=True,
+            allowed=UTILITIES_PARAMETRI | {"emittente_soggetto_ruolo_id", "utility_id"},
+            skip_none=True,
         )
         return riga["id"]
 
@@ -532,16 +546,18 @@ class EmittentiFiscaliUtilitiesRepository:
     #        BB `execute_dynamic_update` (2026-09-26): whitelist RIGIDA
     #        `UTILITIES_UPDATE_ALLOWED`, le chiavi le valida prima il service.
     def update_record(self, record_id: int, data: dict[str, Any]) -> bool:
-        clean = dict(data)
-        for k in _UTILITIES_UPDATE_NULLABLE:
-            if k in clean and isinstance(clean[k], str) and not clean[k].strip():
-                clean[k] = None
+        # Ogni parametro e' facoltativo: la stringa vuota e' «nessun valore».
+        clean = {
+            k: (None if isinstance(v, str) and not v.strip() else v)
+            for k, v in data.items()
+        }
         return execute_dynamic_update(
             "anagrafiche.emittenti_fiscali_utilities", record_id, clean,
             allowed=UTILITIES_UPDATE_ALLOWED,
         )
 
-    # Scopo: Elimina un record utility per id.
+    # Scopo: Toglie l'utility all'azienda (cancella la riga). Il DB la rifiuta
+    #        (`23503`) finche' un billing account o un documento la usa (D-U-9).
     def delete_record(self, record_id: int) -> bool:
         with connection.cursor() as cursor:
             cursor.execute(

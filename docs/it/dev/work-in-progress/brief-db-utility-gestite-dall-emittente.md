@@ -1,6 +1,6 @@
 # Brief DB — Le utility gestite da ciascun emittente: serve un elenco per azienda?
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-27 (sera)
+## ⏭️ Chi riparte — aggiornato al 2026-11-28
 
 **Riparte: il team BE/FE**, con la richiesta di §10. Il lato DB è finito: U1 … U4 applicati e committati (2026-11-27); alla fine, l'archiviazione. La richiesta resta qui, §10: nessun brief nuovo. Le decisioni sono in §6 (D-U-0 … D-U-13).
 ⚠️ Il resto di questo paragrafo è del mattino. L'analisi è fatta (§4), e Tid ha
@@ -25,10 +25,13 @@ revoca la politica ibrida C del 2026-04-08 (§2). Nasce il 2026-11-27 dalla deci
 | 3-octies | ✅ Tid | L'apply di U4, i pgTAP, la doc rigenerata; B-7 (sessione DB) (2026-11-27) | §8-bis U4 | — |
 | 3-nonies | ✅ sessione DB | Il commit dei quattro giri, su richiesta di Tid (2026-11-27); `/verifica-db` non lanciato | — | — |
 | 4 | ✅ sessione DB | Le pagine marcate ⚠️ riscritte nei giri U2 … U4; restano al BE `configurazione-liste` §11.1 e le due pagine `manual/` del BE | §7, §10 R-5 | — |
-| 5 | team BE/FE | La richiesta: censimento dei lettori, tendina e drawer sul BB, traduzione dei vincoli | §10 | 3-nonies |
-| 6 | sessione DB | Archiviazione | — | 5 |
+| 5 | team BE/FE | La richiesta: censimento dei lettori, tendina e drawer sul BB, traduzione dei vincoli | §10, esito §11 | 3-nonies |
+| 5-bis | ✅ team BE/FE | R-1 … R-3, R-5 fatti; R-4 sul drawer e sul pannello della matrice (2026-11-28, da committare) | §11 | — |
+| 5-ter | team DB | Q-DB-1 … Q-DB-2, Q-DB-3, Q-DB-4 (builder `fn_pgtap_crea_cliente_ba`, 2026-11-28) | §11.2, §11.5, §11.6 | — |
+| 5-quater | Tid | D-BE-1: la voce di mappa condivisa per le FK `*_utility_gestita` lato figli (regola del 2) | §11.3 | — |
+| 6 | sessione DB | Archiviazione | — | 5-ter, 5-quater |
 
-**Decisioni aperte di Tid:** nessuna.
+**Decisioni aperte di Tid:** D-BE-1 (§11.3).
 **Da committare:** niente (commit locale del 2026-11-27, non ancora pushato).
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-27. **A chi:** Tid, team DB e (§10) team BE/FE.
@@ -609,3 +612,133 @@ mappa, con il campo dove c'è.
 * `docs/it/guide/configurazione-liste.md` §11.1 (la combo «Utility»), marcata ⚠️: si riscrive quando la tendina
   passa al BB, togliendo il rimando a questo brief (una guida non rimanda ai brief).
 
+## 11. L'esito del team BE/FE (2026-11-28)
+
+> **Da:** sessione BE/FE (`dev/backend-tid`). **A:** Tid e team DB. Lavoro non committato al 2026-11-28.
+
+### 11.1 Fatto
+
+* **R-1, il censimento.** Lettori adeguati: il drawer dell'azienda (`EmittentiFiscaliUtilitiesRepository`, service e
+  view, `EmittenteFiscaleUtilitiesTab`), la combo «Utility» (`LookupRepository.list_utilities_per_emittente`,
+  `UtilityPerRuoloSelect`, `useUtilityDefaultId`, i 5 drawer e i 3 form dei documenti, i 9 filtri di lista), la lista
+  «Utilizzo» della matrice (testi), il test `test_group_attivita_parametri_importo_db` (cancellava la riga per
+  «togliere l'override»: ora la riporta senza parametri). Non dipendono dalla proprieta': `list_utilities_per_ruolo`
+  (gia' strict) e il service della matrice (utility e ruolo gia' fermi).
+* **R-2.** Il drawer legge `fn_utilities_emittente` (piu' i valori scritti della riga, che il form modifica);
+  `LookupRepository.list_entity_utility_matrix` ritirato. La combo legge lo stesso BB: con `emittente_fiscale_id`
+  le gestite dall'azienda (drawer e form, azienda del documento), senza le gestite nel perimetro (filtri di lista);
+  decisioni di Tid del 2026-11-27. Se l'azienda non gestisce `DEFAULT_UTILITY`, il campo parte vuoto.
+* **R-3.** Attiva = POST col solo `utility_id`; parametri facoltativi e annullabili; «togli i parametri» = PATCH a
+  NULL; disattiva = DELETE, `23503` tradotto in `E_ANAG_FK` col messaggio parlante; `attivo` fuori contratto (400);
+  solo SUPER_ADMIN (`AdminAPIView`). Alla nascita di un'azienda si apre il drawer delle sue utility (D-U-8). Il
+  parametro non scritto mostra l'effettivo, sottotono (chiude B-8).
+* **R-4, in parte.** Drawer: le 7 FK lato padre, il CHECK `attivo`, `E_CODICE_NON_MODIFICABILE` (dal DB).
+  Pannello della matrice: `E_UTILITY_EF_GESTITA` arriva col messaggio del catalogo e il campo `attivo` (provato sul
+  DB vero). Policy generate rigenerate (DB allineato a git) e ripieghi aggiunti per i due codici nuovi.
+* **R-5.** `api_emittenti_fiscali.md` §6, `api_lookup_dedicati.md` §4, `api_utilities_tipi_ruolo.md`,
+  `configurazione-liste.md` §11.1 (senza rimando al brief), cataloghi BB e indice.
+* Presidi sul DB vero: `test_emittente_utility_gestita_db` (5), `test_lookup_utilities_per_emittente_api` (3 sul DB).
+
+### 11.2 Domande al team DB
+
+* **Q-DB-1 — lo spegnimento di un'azienda che gestisce utility (D-U-13).** Il rifiuto arriva come
+  `E_ATTIVO_BLOCK_CHILDREN_ACTIVE`, il cui hint dice di **disattivare** le righe collegate: per
+  `emittenti_fiscali_utilities` e' falso, la riga non si spegne (CHECK `attivo`) e il rimedio e' cancellarla. E il BE
+  non puo' dire quale figlia blocca: `child_table` sta solo in `dbops.error_log`. Proposta: per questa figlia il
+  guard risponda `E_ATTIVO_BLOCK_CHILDREN_EXIST` (la colonna `attivo` c'e' ma non e' uno stato), oppure un codice
+  dedicato; in piu', la figlia come bersaglio dell'eccezione. Senza, il drawer dell'azienda mostra il messaggio
+  generico e un rimedio sbagliato.
+* **Q-DB-2 — la colonna `override_attivo` della lista `config.utilities_tipi_ruolo_usage`.** Con D-U-11 e' sempre
+  vera: va ritirata dal seed della lista (e la proiezione del repository con lei, lato BE nello stesso giro).
+
+### 11.3 Decisione per Tid
+
+* **D-BE-1 — le FK `*_utility_gestita` lato figli.** Creazione del cliente, cambio d'azienda del BA, listini,
+  listini per categoria, commesse, fatture, registri e lotti: oggi il `23503` cade sul ripiego generico di ogni
+  service. La combo ora non propone utility non gestite, quindi il caso nasce solo da un chiamante che la salta. Per
+  tradurlo bene serve la stessa voce in 6-7 service: e' un BB nuovo, `FK_UTILITY_NON_GESTITA` sul modello di
+  `FK_CLIENTE_DIVERSO_DA_BA`, e chiede un codice a catalogo (`E_UTILITY_NON_GESTITA`, lavoro DB). Da decidere se
+  farlo e con quale codice.
+
+
+### 11.4 La verifica critica del lavoro BE/FE (2026-11-28, `/verifica`)
+
+* **Corretto.** I parametri d'importo arrivavano grezzi al DB, in POST e in PATCH: un valore non numerico usciva col
+  testo di PostgreSQL, senza il campo (la POST li validava finche' erano obbligatori). Ora li legge
+  `_parametri_utility` del service, col tipo e col campo. La lista del drawer non aveva un `ORDER BY` suo (quello del
+  BB non vale per la query che lo legge): ora per descrizione. Presidi: `test_emittenti_fiscali_capability` (2) e
+  `test_emittente_utility_gestita_db.test_lista_dal_bb`, rossi col codice di prima.
+* **D-BE-2 — la combo al cambio d'azienda: ✅ fatto (decisione di Tid, 2026-11-28).** `UtilityPerRuoloSelect`
+  rileggeva le voci quando cambia l'azienda del form, ma teneva il valore gia' scelto anche se la nuova azienda non
+  lo gestisce: il campo sembrava vuoto e il valore partiva (il super admin multi-azienda, col default calcolato sul
+  perimetro prima di scegliere l'azienda). Ora il valore si ritira quando cambia la chiave (azienda o ruolo) e il
+  valore no, cioe' per un cambio dell'utente; non si tocca all'apertura di un documento (i drawer caricano il form
+  intero, azienda e utility insieme), su un campo disabilitato, ne' dopo una lettura fallita. Presidio:
+  `UtilityPerRuoloSelect.spec.js` (5 casi; quello del ritiro e' rosso senza la correzione).
+* **Q-DB-3 — un DDT o un reso con utility e senza billing account:** la richiesta al team DB e' in §11.5.
+* **Q-DB-4 — il builder `fn_pgtap_crea_cliente_ba` sceglie un'utility che l'azienda non gestisce:** la richiesta
+  al team DB e' in §11.6 (dal giro degli smoke del 2026-11-28).
+
+### 11.5 Richiesta al team DB: Q-DB-3 (2026-11-28)
+
+> **Da:** sessione BE/FE (`dev/backend-tid`). **A:** team DB. Nato dalla verifica critica di §11.4.
+
+**Il caso.** `vendite.ddt` e `vendite.resi` hanno `billing_account_id` e `utility_id` **facoltativi** e
+`emittente_fiscale_id` obbligatorio (doc auto-generata, 2026-11-28). La coppia azienda e utility di un documento si
+garantisce oggi solo passando dal billing account (FK composta col BA, §4-bis): con il BA a NULL la FK composta non
+scatta (`MATCH SIMPLE`), e un DDT senza cliente (il form lo ammette: l'utility come **filtro** degli articoli) o un
+reso che ne discende possono portare un'utility che la loro azienda **non gestisce**, senza nessun rifiuto. E' un
+ramo che il modello ammette, contro D-U-1 («un'azienda tratta solo le utility che gestisce»).
+
+Preventivi, offerte e ordini **non** sono nel caso: lì `billing_account_id` e' `NOT NULL`, e la coppia arriva dal BA.
+
+**Da decidere e fare lato DB:**
+
+1. Se la regola vale anche per l'utility di un documento senza cliente (la proposta: sì, perche' D-U-1 non distingue
+   l'uso dell'utility). Se no, il limite va scritto nella guida
+   [emittenti-fiscali](../../guide/emittenti-fiscali.md) §«Le utilities che l'azienda gestisce», che oggi dice
+   «gli altri documenti di vendita prendono l'utility dal loro billing account».
+2. Se sì: la stessa forma delle altre sette, una FK composta differita verso
+   `anagrafiche.emittenti_fiscali_utilities (emittente_soggetto_ruolo_id, utility_id)` (nomi proposti
+   `fk_ddt_utility_gestita`, `fk_resi_utility_gestita`), con la colonna dell'azienda nella forma che la FK chiede
+   (le testate portano `emittente_fiscale_id`, la PK, come i listini prima di V5); censimento dei fixture pgTAP e dei
+   seed che scrivono DDT e resi con utility e senza BA (V6).
+3. Ricaduta BE/FE, che torna come richiesta: le due FK nuove entrano nella mappa
+   `_UTILITY_FK_CONSTRAINTS` del service dell'emittente (lato padre, la cancellazione della riga) e, lato figli, nella
+   stessa decisione D-BE-1 (§11.3). La combo del DDT passa gia' l'azienda del documento (R-2): non propone utility
+   non gestite.
+
+### 11.6 Richiesta al team DB: Q-DB-4, l'utility di default del builder `fn_pgtap_crea_cliente_ba` (2026-11-28)
+
+> **Da:** sessione BE/FE (`dev/backend-tid`). **A:** team DB. Nato dal giro degli smoke del 2026-11-28.
+
+**Il caso.** `dbops.fn_pgtap_crea_cliente_ba(p_etichetta, p_utility_id, p_emittente_soggetto_ruolo_id)`, senza
+utility, prende la **prima utility a catalogo** (`SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1`, dal
+catalogo, 2026-11-28). Dopo U2 quella scelta vale solo per un'azienda che gestisce **tutte** le utility. Quando il BA
+si lega a un'azienda che non gestisce quell'utility, che sia il terzo parametro oppure l'azienda dell'operatore per
+il trigger z90, la chiusura dei vincoli del builder (`SET CONSTRAINTS ALL IMMEDIATE`) la rifiuta con
+`fk_emittenti_fiscali_ba_utility_gestita`. Il builder fallisce su un input che il suo contratto dichiara ammesso
+(utility facoltativa, emittente qualsiasi).
+
+I pgTAP non lo vedono perché le loro aziende nascono da `dbops.fn_pgtap_crea_emittente`, che le fa gestire ogni
+utility ammessa per `EF` (`20261127-39`). Gli smoke sì: scelgono l'emittente di prova come lo sceglie l'operatore
+(`seleziona_emittente_di_prova`), e le aziende di sviluppo gestiscono solo `BASE` (`20261127-40`).
+**Fatto datato** (dbdev, 2026-11-28): sono in errore `smoke-indirizzi-documento-catena.py` e
+`smoke-pratica-doc-sorgente-cross-emittente.py`, sull'emittente DEVA. Una copia dei due con l'utility gestita
+passata a mano è verde: il rosso viene solo dal builder.
+
+**Da fare lato DB:**
+
+1. Senza `p_utility_id`, il builder sceglie l'utility fra quelle che **l'azienda del BA** gestisce in
+   `anagrafiche.emittenti_fiscali_utilities`. L'azienda va risolta come la risolve il legame: il terzo parametro, se
+   c'è; altrimenti l'azienda dell'operatore in sessione (z90); altrimenti l'emittente di default. Se l'azienda non
+   gestisce nessuna utility, il builder dà un errore esplicito, come oggi fa con «nessuna utility a catalogo», e non
+   lascia arrivare la FK.
+2. Con `p_utility_id` passato non cambia niente: decide il chiamante, e la FK resta il giudice.
+3. Il `COMMENT` del builder e la sua doc dicono la regola nuova.
+4. pgTAP: un caso con un'azienda che gestisce una sola utility, **diversa** dalla prima a catalogo, costruito dal
+   test e non preso dai dati.
+
+**Ricaduta BE/FE:** nessuna. I due smoke chiamano il builder senza utility e tornano verdi senza modifiche. Lo
+smoke cross-emittente ha già la sua parte (2026-11-28, da committare): l'emittente «estraneo» si sceglie fra quelli
+che gestiscono l'utility del preventivo di casa, e non più come «il primo attivo diverso».

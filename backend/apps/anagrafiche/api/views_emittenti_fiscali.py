@@ -238,7 +238,7 @@ class EmittentiFiscaliBillingAccountSummaryView(AdminAPIView):
 
 
 class EmittentiFiscaliUtilitiesView(AdminAPIView):
-    """GET lista record utility, POST crea record (admin only)."""
+    """GET le utility dell'azienda, POST attiva un'utility (solo SUPER_ADMIN)."""
 
     @extend_schema(
         responses={200: inline_serializer(
@@ -255,18 +255,17 @@ class EmittentiFiscaliUtilitiesView(AdminAPIView):
     @extend_schema(
         request=inline_serializer(name="EmittenteFiscaleUtilityCreateReq", fields={
             "utility_id": serializers.IntegerField(),
-            "arrotondamento_importi_dec": serializers.IntegerField(),
-            "metodo_arrotondamento_importi": serializers.CharField(),
-            "minimo_soglia_min": serializers.FloatField(required=False),
-            "minimo_soglia_max": serializers.FloatField(required=False),
-            "attivo": serializers.BooleanField(required=False),
+            "arrotondamento_importi_dec": serializers.IntegerField(required=False, allow_null=True),
+            "metodo_arrotondamento_importi": serializers.CharField(required=False, allow_null=True),
+            "minimo_soglia_min": serializers.FloatField(required=False, allow_null=True),
+            "minimo_soglia_max": serializers.FloatField(required=False, allow_null=True),
         }),
         responses={200: inline_serializer(
             name="EmittenteFiscaleUtilityCreateResp",
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Crea un record utility per l'emittente.
+    # Scopo: Attiva un'utility per l'azienda (i parametri sono facoltativi).
     def post(self, request: Request, emittente_id: int) -> JsonResponse:
         svc = EmittentiFiscaliUtilitiesService()
         result = svc.crea_record(emittente_id, corpo_oggetto(request))
@@ -274,15 +273,14 @@ class EmittentiFiscaliUtilitiesView(AdminAPIView):
 
 
 class EmittentiFiscaliUtilitiesDetailView(AdminAPIView):
-    """PATCH aggiorna, DELETE elimina record utility (admin only)."""
+    """PATCH i parametri, DELETE toglie l'utility all'azienda (solo SUPER_ADMIN)."""
 
     @extend_schema(
         request=inline_serializer(name="EmittenteFiscaleUtilityUpdateReq", fields={
-            "minimo_soglia_min": serializers.FloatField(required=False),
-            "minimo_soglia_max": serializers.FloatField(required=False),
-            "arrotondamento_importi_dec": serializers.IntegerField(required=False),
-            "metodo_arrotondamento_importi": serializers.CharField(required=False),
-            "attivo": serializers.BooleanField(required=False),
+            "minimo_soglia_min": serializers.FloatField(required=False, allow_null=True),
+            "minimo_soglia_max": serializers.FloatField(required=False, allow_null=True),
+            "arrotondamento_importi_dec": serializers.IntegerField(required=False, allow_null=True),
+            "metodo_arrotondamento_importi": serializers.CharField(required=False, allow_null=True),
         }),
         responses={200: inline_serializer(
             name="EmittenteFiscaleUtilityUpdateResp",
@@ -301,7 +299,8 @@ class EmittentiFiscaliUtilitiesDetailView(AdminAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Elimina un record utility per id, verificando appartenenza all'emittente padre.
+    # Scopo: Toglie l'utility all'azienda, verificando l'appartenenza all'emittente
+    #        padre. Rifiutata se un billing account o un documento la usa.
     def delete(self, request: Request, emittente_id: int, record_id: int) -> JsonResponse:
         svc = EmittentiFiscaliUtilitiesService()
         result = svc.elimina_record(emittente_id, record_id)

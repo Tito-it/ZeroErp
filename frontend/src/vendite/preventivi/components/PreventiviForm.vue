@@ -121,6 +121,7 @@ function onIstanzaClear() {
       <div class="form-field">
         <label>{{ t('vendite.preventivi.field_utility') }} <span v-if="!isEdit">*</span></label>
         <UtilityPerRuoloSelect v-model="form.utility_id"
+          :emittente-fiscale-id="form.emittente_fiscale_id ?? null"
           :placeholder="t('vendite.preventivi.field_utility')"
           :disabled="isLocked('utility_id')" />
       </div>
