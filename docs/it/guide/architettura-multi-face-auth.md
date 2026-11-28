@@ -450,7 +450,13 @@ Ogni porta ha due tipi di token (`apps/core/services/invito_veste.py`): l'**invi
 l'**attivazione cross** (`ATTIVAZIONE_PORTALE_CROSS`, `…_SHOP_CROSS`, `…_OPERATORE_CROSS`), quando la
 credenziale ha già una password e attivare è un clic. Ogni tipo ha il suo template email.
 
-La disattivazione passa da `…/disattiva-portale/` e `…/disattiva-shop/`. Il cambio password obbligato lo
+Un cliente o un fornitore ha **più referenti**, ognuno con la sua veste: l'invito cerca la veste della
+credenziale dell'email su quel soggetto, quindi un'email nuova aggiunge un referente e quella di un referente
+già invitato è il suo reinvio. La scheda li mostra in elenco, ciascuno col suo stato e con l'utilizzabilità di
+oggi (`script.fn_veste_utilizzabile`).
+
+La disattivazione passa da `…/disattiva-portale/` e `…/disattiva-shop/`, e spegne la veste di **un**
+referente, indicata da `identita_id`. Il cambio password obbligato lo
 gestisce il cancello degli obblighi (`apps/core/api/cancello_obblighi.py`).
 
 ### 8.2 Self-service dello shop: non ancora costruito

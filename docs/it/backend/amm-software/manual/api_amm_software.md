@@ -560,7 +560,7 @@ catalogo `anagrafiche.accessi_altri` (104). Envelope di lista `{count, results}`
 Riga: `auth_user_id`, `username`, `email`, `nome`, `cognome`,
 `nome_visualizzato`, **`vesti`** (lista, una voce per veste anche spenta:
 `identita_id`, `ruolo_applicativo`, `stato` di `script.fn_stato_veste`,
-`attivo`, validita', `invito_inviato_at`, `token_scade_at`, `soggetto_id`,
+**`utilizzabile`** di `script.fn_veste_utilizzabile`, `attivo`, validita', `invito_inviato_at`, `token_scade_at`, `soggetto_id`,
 `soggetto_ruolo_id`, `soggetto`, **`cliente_ids` (array)**, `fornitore_id`),
 `vesti_elenco`, `soggetti_elenco`, `nessun_accesso`, `stato_accesso`,
 `is_active`, `secondo_fattore_stato`, `secondo_fattore_obbligatorio`,
@@ -569,6 +569,13 @@ dell'eliminazione **`can_delete`**, `delete_reason`, `delete_reason_key`,
 `delete_dettaglio` (§1-bis.3: il kebab della riga la legge). ⚠️ La check gira
 per riga filtrata; con una veste esce subito, quindi la ricerca della storia
 tocca le sole credenziali senza vesti.
+
+⚠️ **Lo stato e `utilizzabile` rispondono a due domande** (D-G3-1,
+brief-db-accessi-area-clienti, 2026-11-27): lo stato e' il ciclo di vita
+dell'invito e della revoca, `utilizzabile` dice se la veste oggi apre la porta.
+Una veste `ATTIVO` fuori dalle sue date, o col soggetto spento, ha
+`utilizzabile = false`: la lista la mostra col colore del suo stato e l'icona
+del fermo. `stato_accesso` e il suo filtro non la guardano.
 
 ⚠️ `cliente_ids` e' un array perche' un soggetto_ruolo puo' avere piu' schede
 cliente (una per istanza utility): il FE con una apre quella scheda, con piu'

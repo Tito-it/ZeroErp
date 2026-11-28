@@ -123,26 +123,20 @@ class ProfileActivateShopView(PortaleAPIView):
             )
             assert soggetto_ruolo_id is not None
 
-            # Idempotente: se la veste SHOP_CUSTOMER esiste gia' attiva
-            # sullo stesso soggetto_ruolo, ritorna conferma senza modifiche.
-            existing = _portale_repo.find_identita_portale(
-                soggetto_ruolo_id, RUOLO_APPLICATIVO_SHOP_CUSTOMER
+            # Idempotente: se la veste SHOP_CUSTOMER di QUESTA persona esiste
+            # gia' accesa sullo stesso soggetto_ruolo, ritorna conferma senza
+            # modifiche.
+            # ⭐ Dal 2026-11-28 (giro 4 del brief-db-accessi-area-clienti,
+            #    D-M7) si cerca per (credenziale, ruolo, tipo): un cliente ha
+            #    piu' referenti, e la veste shop di un altro referente non e'
+            #    quella di chi chiede. Prima si cercava per (ruolo, tipo) e la
+            #    veste di un'altra persona fermava il gesto («gia' collegata a
+            #    un altro utente»): ora non si trova per costruzione.
+            existing = _portale_repo.find_veste_credenziale(
+                utente_autenticato_id(request),
+                soggetto_ruolo_id,
+                RUOLO_APPLICATIVO_SHOP_CUSTOMER,
             )
-
-            # Guard anti-tampering: se l'identita SHOP esistente e' collegata
-            # a un auth_user diverso dal corrente, blocchiamo. Stato anomalo
-            # (soggetto_ruolo riassegnato manualmente o migrazione incoerente)
-            # che richiede intervento admin, non auto-resolve.
-            if existing is not None:
-                existing_auth = existing.get("auth_user_id")
-                ErrorManager.require(
-                    existing_auth is None or int(existing_auth) == request.user.id,
-                    code=E_ATTIVAZIONE_SHOP_CROSS,
-                    message=(
-                        "Veste shop gia' collegata a un altro utente. "
-                        "Contattare l'amministratore."
-                    ),
-                )
 
             if existing is not None and existing.get("attivo"):
                 return {

@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1306, di cui 136 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1307, di cui 136 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1619,6 +1619,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PROFILO_ACCESSO_NON_TROVATO": "NON_TROVATO",
     # Gemello esatto di E_RUOLO_APPLICATIVO_NON_GESTITO: ramo ELSE per un · valore nuovo dell'enum senza regola. Il guard non apre per omissione.
     "E_PROFILO_ACCESSO_TIPO_NON_GESTITO": "TECNICO",
+    # config.trgfn_profili_accesso_bindings_guard_coerenza (un profilo AD_HOC o SUPER_ADMIN legato a una veste che non e' OPERATORE, anche spento) e anagrafiche.trgfn_identita_digitali_guard_coerenza (la veste OPERATORE che cambia tipo con un profilo personale legato). I profili si raccolgono per credenziale e tipo di veste, e sui portali una persona ha una veste per soggetto: un profilo personale su una di loro varrebbe per tutte. CONFLITTO_STATO: la richiesta e' leggibile, il tipo della veste non la ammette.
+    "E_PROFILO_PERSONALE_SOLO_OPERATORE": "CONFLITTO_STATO",
     # Multi-face: code sollevato dal trigger DB · `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` quando · un'operazione (disabilita identita, demote SUPER_ADMIN, delete · binding) lascerebbe il sistema senza alcun super admin attivo. · Sostituisce E_ADMIN_ULTIMO post-cutover (Fase 1 multi-face); il · service preserva il code originale del DB anche quando il preview · `can_disable` lato detail aveva valutato true (race tra sessioni).
     "E_PROFILO_ULTIMO_SUPER_ADMIN": "CONFLITTO_STATO",
     # Motivo 1 di script.fn_check_articolo_riga_su_contesto per PROMO_ARTICOLO (D-6 di Tid, 2026-10-13; Lotto 4 di brief-db-articoli-ammessi-per-documento, 2026-10-14): una promo su un articolo solo componente. Una promo si crea solo se il calcolo del prezzo la puo' applicare: un solo componente non ha mai un prezzo a se' (D-3), e in contesto bundle il resolver salta la promo (vendite.fn_resolve_prezzo_listino_v2_esito, stadio promo). Sollevato dal guard script.trgfn_righe_guard_articolo_ammesso montato su vendite.promo_articoli (20261014-05); lo stesso motivo lo da' il picker catalogo.fn_articoli_ammessi. Non si e' riusato E_ARTICOLO_SOLO_COMPONENTE: il suo messaggio parla di una riga di documento. I VALORI: codice dell'articolo; campo articolo_id.

@@ -80,8 +80,10 @@ class AccessiAltriListView(AdminAPIView):
             "Una riga per credenziale di categoria ALTRO (`script.fn_categoria_accesso`): "
             "clienti e fornitori del portale, clienti dello shop, e le credenziali senza "
             "alcuna veste (`nessun_accesso`). `vesti` porta una voce per veste, anche spenta, "
-            "con lo stato di `script.fn_stato_veste` e il soggetto collegato (`cliente_ids` "
-            "e' un array). Legge `anagrafiche.vw_accessi_altri`."
+            "con lo stato di `script.fn_stato_veste`, `utilizzabile` (se oggi apre la porta, "
+            "`script.fn_veste_utilizzabile`: una veste `ATTIVO` fuori dalle sue date non entra) "
+            "e il soggetto collegato (`cliente_ids` e' un array). Legge "
+            "`anagrafiche.vw_accessi_altri`."
         ),
         parameters=[
             param_ricerca_full(),

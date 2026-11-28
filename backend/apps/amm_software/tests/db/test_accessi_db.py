@@ -23,7 +23,7 @@
 5. test_blocca_e_sblocca_coi_verbi_veri
 6. test_il_blocco_vuole_il_motivo
 7. test_la_porta_operatori_non_apre_altre_categorie
-8. test_lo_stato_della_veste_della_scheda_cliente_viene_dal_db
+8. test_lo_stato_della_veste_della_scheda_cliente_viene_dal_db — due referenti, uno fuori porta
 9. test_la_credenziale_di_sistema_non_si_blocca
 10. test_la_capability_dell_eliminazione_viene_dalla_check
 11. test_elimina_la_credenziale_senza_vesti
@@ -372,9 +372,38 @@ class AccessiDbTests(unittest.TestCase):
         )
         self.assertEqual(self.cur.fetchall(), [(True,)])
 
+    # Scopo: La scheda del cliente legge i REFERENTI dal DB (giro 4 del
+    #        brief-db-accessi-area-clienti, D-M7): due vesti accese dello stesso
+    #        tipo sullo stesso cliente, una per persona, ognuna col suo stato e
+    #        con `utilizzabile`. Il secondo referente e' accesa ma valida da
+    #        domani: `ATTIVO` e fuori porta (D-G3-1). Il caso si costruisce.
     def test_lo_stato_della_veste_della_scheda_cliente_viene_dal_db(self):
-        stato = PortaleRepository().get_stato_identita(self.ruolo_cliente, "SHOP_CUSTOMER")
-        self.assertEqual(stato["stato"], "ATTIVO")
-        self.assertEqual(stato["auth_user_id"], self.shop)
-        nessuna = PortaleRepository().get_stato_identita(self.ruolo_cliente, "CLIENTE_PORTALE")
-        self.assertEqual(nessuna["stato"], "NESSUNO")
+        secondo = self._credenziale("accessi_secondo_referente")
+        self.cur.execute(
+            "INSERT INTO anagrafiche.identita_digitali (soggetto_ruolo_id, auth_user_id, "
+            "ruolo_applicativo, attivo, valido_dal) "
+            "VALUES (%s, %s, 'SHOP_CUSTOMER', true, script.fn_data_operativa() + 1) RETURNING id",
+            [self.ruolo_cliente, secondo],
+        )
+        veste_secondo = self.cur.fetchone()[0]
+        repo = PortaleRepository()
+
+        referenti = repo.list_referenti(self.ruolo_cliente, "SHOP_CUSTOMER")
+        self.assertEqual([v["auth_user_id"] for v in referenti], [self.shop, secondo])
+        self.assertEqual([v["stato"] for v in referenti], ["ATTIVO", "ATTIVO"])
+        self.assertEqual([v["utilizzabile"] for v in referenti], [True, False])
+        self.assertEqual(repo.list_referenti(self.ruolo_cliente, "CLIENTE_PORTALE"), [])
+
+        # Una veste sola, se e' di questo soggetto e di questo tipo.
+        sola = repo.list_referenti(self.ruolo_cliente, "SHOP_CUSTOMER", identita_id=veste_secondo)
+        self.assertEqual([v["identita_id"] for v in sola], [veste_secondo])
+        self.assertEqual(
+            repo.list_referenti(self.ruolo_cliente, "CLIENTE_PORTALE", identita_id=veste_secondo), [],
+        )
+
+        # La veste di una persona: quella dell'altro referente non si trova.
+        self.assertEqual(
+            repo.find_veste_credenziale(secondo, self.ruolo_cliente, "SHOP_CUSTOMER")["identita_id"],
+            veste_secondo,
+        )
+        self.assertIsNone(repo.find_veste_credenziale(self.nuda, self.ruolo_cliente, "SHOP_CUSTOMER"))

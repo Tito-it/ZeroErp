@@ -131,22 +131,24 @@ class InvitoPortaleService:
 
     # ── Stato + disattivazione veste (§6.2.4 + §6.2.6) ────────────────
 
-    # Scopo: Stato aggregato delle vesti non-operatore di un cliente
-    # (CLIENTE_PORTALE + SHOP_CUSTOMER). Un admin lo usa dal drawer per
-    # decidere se "invita" (stato NESSUNO), "reinvia" (PENDING), "disattiva"
-    # (ATTIVO) o "reinvia per riattivare" (DISATTIVO).
+    # Scopo: I referenti di un cliente, per tipo di veste (CLIENTE_PORTALE in
+    # `portale`, SHOP_CUSTOMER in `shop`): due elenchi, una voce per veste col
+    # suo stato e `utilizzabile` (`PortaleRepository.list_referenti`). Un
+    # elenco vuoto vuol dire che nessuno e' stato invitato. L'admin lo usa dal
+    # drawer per invitare un referente, reinvitarne uno o spegnerne la veste.
     # `email_suggerita`: l'email con cui il pannello precompila l'invito
     # (`_email_suggerita`).
+    # ⭐ Elenchi dal 2026-11-28 (giro 4 del brief-db-accessi-area-clienti,
+    #    D-M7): un cliente ha piu' referenti. Prima era una veste per tipo, con
+    #    lo stato `NESSUNO` scritto qui.
     def get_stato_accessi_cliente(self, cliente_id: int) -> dict[str, Any]:
         info = self._cliente_info(cliente_id)
         soggetto_ruolo_id = int(info["soggetto_ruolo_id"])
-        portale = self._repo.get_stato_identita(
-            soggetto_ruolo_id,
-            RUOLO_APPLICATIVO_CLIENTE_PORTALE,
+        portale = self._repo.list_referenti(
+            soggetto_ruolo_id, RUOLO_APPLICATIVO_CLIENTE_PORTALE,
         )
-        shop = self._repo.get_stato_identita(
-            soggetto_ruolo_id,
-            RUOLO_APPLICATIVO_SHOP_CUSTOMER,
+        shop = self._repo.list_referenti(
+            soggetto_ruolo_id, RUOLO_APPLICATIVO_SHOP_CUSTOMER,
         )
         return {
             "portale": portale,
@@ -154,11 +156,11 @@ class InvitoPortaleService:
             "email_suggerita": self._email_suggerita(info, portale, shop),
         }
 
-    # Scopo: Stato aggregato delle vesti non-operatore di un fornitore
-    # (solo FORNITORE_PORTALE; i fornitori non accedono allo shop B2C).
+    # Scopo: I referenti di un fornitore (solo FORNITORE_PORTALE: i fornitori
+    # non accedono allo shop B2C). Stessa forma del cliente.
     def get_stato_accessi_fornitore(self, fornitore_id: int) -> dict[str, Any]:
         info = self._fornitore_info(fornitore_id)
-        portale = self._repo.get_stato_identita(
+        portale = self._repo.list_referenti(
             int(info["soggetto_ruolo_id"]),
             RUOLO_APPLICATIVO_FORNITORE_PORTALE,
         )
@@ -168,41 +170,49 @@ class InvitoPortaleService:
         }
 
     # Scopo: L'email da proporre nell'invito, una regola per cliente e
-    #        fornitore: (1) quella dell'identita' che esiste gia' (il reinvio
-    #        la riusa; per il cliente prima la veste portale, poi lo shop);
-    #        (2) quella dei contatti del ruolo, PRINCIPALE poi il predefinito
-    #        del contesto piu' specifico
-    #        (`PortaleRepository.get_email_contatto_suggerita`); (3) None, e
-    #        l'operatore la scrive. Nata il 2026-11-21: fino ad allora il
-    #        drawer passava un'email iniziale che sul cliente non esisteva
+    #        fornitore: (1) quella del primo referente che ne ha una (per il
+    #        cliente prima i referenti del portale, poi dello shop: la stessa
+    #        persona ha spesso tutte e due le vesti); (2) quella dei contatti
+    #        del ruolo, PRINCIPALE poi il predefinito del contesto piu'
+    #        specifico (`PortaleRepository.get_email_contatto_suggerita`); (3)
+    #        None, e l'operatore la scrive. Nata il 2026-11-21: fino ad allora
+    #        il drawer passava un'email iniziale che sul cliente non esisteva
     #        (`soggetto_email`) e sul fornitore era la PEC ritirata.
+    # ⚠️ E' una proposta, non una scelta: per invitare un referente in piu'
+    #    l'operatore scrive l'email della persona nuova.
     def _email_suggerita(
-        self, info: dict[str, Any], *stati_vesti: dict[str, Any],
+        self, info: dict[str, Any], *referenti: list[dict[str, Any]],
     ) -> str | None:
-        for stato in stati_vesti:
-            email = (stato.get("email") or "").strip()
-            if email:
-                return email
+        for elenco in referenti:
+            for voce in elenco:
+                email = (voce.get("email") or "").strip()
+                if email:
+                    return email
         return self._repo.get_email_contatto_suggerita(
             str(info["soggetto_id"]), int(info["soggetto_ruolo_id"]),
         )
 
-    # Scopo: Disattiva (soft-revoke) una veste di un cliente/fornitore.
-    # Invalida anche i token ancora pendenti per quella veste: se un invito
-    # era in volo e l'admin disattiva, il link email smette di funzionare.
-    # Idempotente: se l'identita e' gia' DISATTIVO o NESSUNO ritorna
-    # `{disattivato: False, stato: ...}` senza errore.
+    # Scopo: Disattiva (revoca) la veste di UN referente di un cliente o di un
+    # fornitore, indicata da `identita_id`. Invalida anche i token ancora
+    # pendenti per quella veste: se un invito era in volo e l'admin
+    # disattiva, il link email smette di funzionare. Idempotente su una veste
+    # gia' spenta (`disattivato: False`, stato `REVOCATA`). Una veste che non
+    # e' di questo soggetto e di questo tipo e' un 404 `E_VESTE_NON_TROVATA`.
+    # ⭐ Per `identita_id` dal 2026-11-28 (giro 4, D-M7): con piu' referenti
+    #    «la veste del cliente» non dice quale.
     def disattiva_veste_cliente(
         self,
         *,
         cliente_id: int,
         ruolo_applicativo: str,
+        identita_id: int,
         disattivato_da_user_id: int,
     ) -> dict[str, Any]:
         info = self._cliente_info(cliente_id)
         return self._disattiva_veste_common(
             soggetto_ruolo_id=int(info["soggetto_ruolo_id"]),
             ruolo_applicativo=ruolo_applicativo,
+            identita_id=identita_id,
             disattivato_da_user_id=disattivato_da_user_id,
         )
 
@@ -210,34 +220,44 @@ class InvitoPortaleService:
         self,
         *,
         fornitore_id: int,
+        identita_id: int,
         disattivato_da_user_id: int,
     ) -> dict[str, Any]:
         info = self._fornitore_info(fornitore_id)
         return self._disattiva_veste_common(
             soggetto_ruolo_id=int(info["soggetto_ruolo_id"]),
             ruolo_applicativo=RUOLO_APPLICATIVO_FORNITORE_PORTALE,
+            identita_id=identita_id,
             disattivato_da_user_id=disattivato_da_user_id,
         )
 
-    # Scopo: core comune della disattivazione — risolve l'identita, la
-    # revoca (anche se gia' spenta), invalida i token pendenti, chiude le
-    # sessioni della veste e la cache dei permessi. Tutto in una transazione:
-    # una chiusura fallita annulla anche la revoca. Lo stato che ne esce e'
-    # sempre `REVOCATA` (`script.fn_stato_veste`).
+    # Scopo: core comune della disattivazione — verifica che la veste sia del
+    # soggetto e del tipo, la revoca (anche se gia' spenta), invalida i token
+    # pendenti, chiude le sessioni della veste e la cache dei permessi. Tutto
+    # in una transazione: una chiusura fallita annulla anche la revoca. Lo
+    # stato che ne esce e' sempre `REVOCATA` (`script.fn_stato_veste`).
+    # ⛔ Il perimetro: l'id arriva dal client, e si accetta solo se e' una
+    #    veste del soggetto della scheda (che la view ha gia' aperto col
+    #    permesso sull'oggetto) e del tipo dell'endpoint. Il verbo del DB
+    #    controlla il permesso, non il perimetro (§2.3).
     def _disattiva_veste_common(
         self,
         *,
         soggetto_ruolo_id: int,
         ruolo_applicativo: str,
+        identita_id: int,
         disattivato_da_user_id: int,
     ) -> dict[str, Any]:
-        existing = self._repo.find_identita_portale(
-            soggetto_ruolo_id, ruolo_applicativo
+        trovate = self._repo.list_referenti(
+            soggetto_ruolo_id, ruolo_applicativo, identita_id=identita_id,
         )
-        if existing is None:
-            return {"disattivato": False, "stato": "NESSUNO"}
-
-        identita_id = int(existing["identita_id"])
+        ErrorManager.require(
+            bool(trovate),
+            code="E_VESTE_NON_TROVATA",
+            message="La veste indicata non e' un accesso di questa scheda.",
+            context={"identita_id": identita_id, "ruolo_applicativo": ruolo_applicativo},
+        )
+        existing = trovate[0]
         auth_user_id = (
             int(existing["auth_user_id"])
             if existing.get("auth_user_id") is not None
@@ -422,25 +442,28 @@ class InvitoPortaleService:
         )
         return new_id, True
 
-    # Scopo: Garantisce che esista un'identita digitale portale per la
-    # coppia (soggetto_ruolo_id, ruolo_applicativo). Ritorna l'`identita_id`
-    # (nuova o esistente) per consentire al caller di puntare la riga
-    # giusta nei verbi successivi (pattern richiesto dal modello 1:N
-    # §8.4.1, vedi `segna_invito_inviato`).
+    # Scopo: Garantisce che esista la veste della credenziale sul soggetto
+    # per il tipo: la terna (credenziale, ruolo anagrafico, tipo). Ritorna
+    # l'`identita_id` (nuova o esistente) per consentire al caller di
+    # puntare la riga giusta nei verbi successivi (pattern richiesto dal
+    # modello 1:N §8.4.1, vedi `segna_invito_inviato`).
     #
-    # Comportamento per stato identita:
+    # Comportamento per stato della veste di QUESTA credenziale:
     # - Non esiste: la crea `attivo=false`, in entrambi i flussi. Si attiva
-    #   al consumo del token.
-    # - Esiste gia' ATTIVA: ERRORE — l'utente ha gia' accesso al portale con
-    #   quella veste; un nuovo invito non ha senso (se serve reset
-    #   credenziali, il self-service password reset copre il caso).
-    # - Esiste collegata ad un auth_user DIVERSO: ERRORE (stato incoerente
-    #   del modello — soggetto_ruolo con holder diverso dall'auth_user
-    #   risolto via email). Richiede intervento manuale, NON risolviamo
-    #   automaticamente (§8.4.1 FRAG4).
-    # - Esiste disattivata con auth_user coerente: e' il caso legittimo del
-    #   reinvio (invito scaduto, mai attivato, o veste revocata): la si
-    #   lascia disattivata, la attivera' il consumo del token nuovo.
+    #   al consumo del token. Su un soggetto che ha gia' un referente e' un
+    #   referente in piu' (D-M7, giro 4 del brief-db-accessi-area-clienti,
+    #   2026-11-28).
+    # - Esiste gia' ATTIVA: ERRORE — la persona ha gia' accesso con quella
+    #   veste; un nuovo invito non ha senso (se serve reset credenziali, il
+    #   self-service password reset copre il caso).
+    # - Esiste spenta: e' il caso legittimo del reinvio (invito scaduto, mai
+    #   attivato, o veste revocata): la si lascia spenta, la accendera' il
+    #   consumo del token nuovo.
+    # ⭐ Fino al 2026-11-28 la veste si cercava per (ruolo anagrafico, tipo), e
+    #    quella di un'altra credenziale era un errore («gia' collegata a un
+    #    altro utente»): era il divieto «un referente per cliente» che D-M7 ha
+    #    ritirato. Cercando per credenziale, la veste di un'altra persona non
+    #    si trova per costruzione.
     def _ensure_identita(
         self,
         *,
@@ -448,8 +471,8 @@ class InvitoPortaleService:
         soggetto_ruolo_id: int,
         ruolo_applicativo: str,
     ) -> int:
-        existing = self._repo.find_identita_portale(
-            soggetto_ruolo_id, ruolo_applicativo
+        existing = self._repo.find_veste_credenziale(
+            auth_user_id, soggetto_ruolo_id, ruolo_applicativo,
         )
         if existing is None:
             return self._repo.create_identita_portale(
@@ -460,22 +483,6 @@ class InvitoPortaleService:
             )
 
         identita_id = int(existing["identita_id"])
-        existing_auth_user_raw = existing.get("auth_user_id")
-
-        # Guard coerenza: l'identita trovata deve appartenere allo stesso
-        # auth_user risolto via email. Divergenza = stato manipolato
-        # (soggetto_ruolo riassegnato, migrazione manuale incoerente).
-        if existing_auth_user_raw is not None and int(
-            existing_auth_user_raw
-        ) != auth_user_id:
-            ErrorManager.require(
-                False,
-                code=E_INVITO_PORTALE,
-                message=(
-                    "Identita portale gia' collegata a un altro utente. "
-                    "Richiede intervento manuale."
-                ),
-            )
 
         # Guard logico: identita gia' attiva = utente gia' ha accesso al
         # portale con quella veste. Nuovo invito non ha senso: se serve

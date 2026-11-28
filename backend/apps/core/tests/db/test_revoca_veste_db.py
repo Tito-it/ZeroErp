@@ -139,6 +139,7 @@ class RevocaVesteDbTests(unittest.TestCase):
         esito = InvitoPortaleService()._disattiva_veste_common(
             soggetto_ruolo_id=self.ruolo_cliente,
             ruolo_applicativo="SHOP_CUSTOMER",
+            identita_id=self.veste_shop,
             disattivato_da_user_id=self.admin,
         )
         self.assertEqual(esito["stato"], "REVOCATA")
@@ -147,6 +148,7 @@ class RevocaVesteDbTests(unittest.TestCase):
         di_nuovo = InvitoPortaleService()._disattiva_veste_common(
             soggetto_ruolo_id=self.ruolo_cliente,
             ruolo_applicativo="SHOP_CUSTOMER",
+            identita_id=self.veste_shop,
             disattivato_da_user_id=self.admin,
         )
         self.assertIs(di_nuovo["disattivato"], False)

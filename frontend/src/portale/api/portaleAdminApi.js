@@ -34,34 +34,36 @@ export function invitaClienteShop(clienteId, { email, reinvio = false } = {}) {
 
 // ── Stato + disattivazione veste (§6.2.4 + §6.2.6) ────────────────────
 
-// Scopo: Legge lo stato aggregato delle vesti non-operatore del cliente
-// (portale + shop). Ritorna `{ portale: {...stato}, shop: {...stato} }`
-// con `stato ∈ {NESSUNO, PENDING, NON_SPEDITO, DISATTIVO, REVOCATA, ATTIVO}`. Usato dal
-// PortaleAccessoPanel per renderizzare stato corrente + abilitare/
-// nascondere i pulsanti azione.
+// Scopo: I referenti del cliente per veste: `{ portale: [voce], shop: [voce],
+// email_suggerita }`, una voce per veste (anche spenta) con `identita_id`,
+// `username`, `email`, `stato` (di `script.fn_stato_veste`), `utilizzabile`
+// (di `script.fn_veste_utilizzabile`), `valido_dal`/`valido_al`,
+// `token_scade_at`. Elenco vuoto: nessuno invitato. Dal 2026-11-28 (giro 4 del
+// brief-db-accessi-area-clienti, D-M7) un cliente ha piu' referenti.
 export function getStatoAccessiCliente(clienteId) {
   return api.get(`/anagrafiche/clienti/${clienteId}/stato-accessi/`)
 }
 
-// Scopo: Stato veste portale del fornitore (niente shop B2C).
+// Scopo: I referenti del fornitore (solo `portale`: niente shop B2C).
 export function getStatoAccessiFornitore(fornitoreId) {
   return api.get(`/anagrafiche/fornitori/${fornitoreId}/stato-accessi/`)
 }
 
-// Scopo: Revoca la veste portale cliente. Idempotente: se gia' spenta
-// ritorna `{disattivato: false, stato: "REVOCATA"}` e mette comunque il segno
-// della revoca. Invalida i token pendenti — se un invito era in volo, il link
-// smette di funzionare; la riapre solo un nuovo invito.
-export function disattivaPortaleCliente(clienteId) {
-  return api.post(`/anagrafiche/clienti/${clienteId}/disattiva-portale/`)
+// Scopo: Revoca la veste portale di UN referente del cliente (`identitaId`,
+// dalla voce dell'elenco). Idempotente: se gia' spenta ritorna
+// `{disattivato: false, stato: "REVOCATA"}` e mette comunque il segno della
+// revoca. Invalida i token pendenti — se un invito era in volo, il link smette
+// di funzionare; la riapre solo un nuovo invito.
+export function disattivaPortaleCliente(clienteId, identitaId) {
+  return api.post(`/anagrafiche/clienti/${clienteId}/disattiva-portale/`, { identita_id: identitaId })
 }
 
-// Scopo: Soft-revoke veste shop cliente. Idempotente.
-export function disattivaShopCliente(clienteId) {
-  return api.post(`/anagrafiche/clienti/${clienteId}/disattiva-shop/`)
+// Scopo: Revoca la veste shop di un referente del cliente. Idempotente.
+export function disattivaShopCliente(clienteId, identitaId) {
+  return api.post(`/anagrafiche/clienti/${clienteId}/disattiva-shop/`, { identita_id: identitaId })
 }
 
-// Scopo: Soft-revoke veste portale fornitore. Idempotente.
-export function disattivaPortaleFornitore(fornitoreId) {
-  return api.post(`/anagrafiche/fornitori/${fornitoreId}/disattiva-portale/`)
+// Scopo: Revoca la veste portale di un referente del fornitore. Idempotente.
+export function disattivaPortaleFornitore(fornitoreId, identitaId) {
+  return api.post(`/anagrafiche/fornitori/${fornitoreId}/disattiva-portale/`, { identita_id: identitaId })
 }

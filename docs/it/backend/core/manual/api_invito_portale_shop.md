@@ -71,6 +71,16 @@ accettavano anche stringhe).
 }
 ```
 
+**Chi e' invitato** lo dice l'email: la veste si cerca per (credenziale
+dell'email, ruolo anagrafico, tipo), dal 2026-11-28 (giro 4 del
+brief-db-accessi-area-clienti, D-M7). Un'email nuova sullo stesso cliente
+aggiunge un **referente**, con la sua veste spenta; l'email di un referente gia'
+invitato e' il suo reinvio; una veste gia' **accesa** di quella credenziale e'
+`E_INVITO_PORTALE` («ha gia' accesso»). ⚠️ Fino a quel giorno la veste si
+cercava per (ruolo, tipo), e la veste di un'altra persona sullo stesso cliente
+era un errore («gia' collegata a un altro utente»): era il divieto «un referente
+per cliente» che D-M7 ha ritirato.
+
 Ogni invito, con `reinvio` `true` o `false`, invalida i token pendenti **della
 veste** (i due tipi della porta, con quell'`identita_id` nel meta) nella stessa
 transazione del nuovo: vale un link solo. ⭐ Per veste e non per credenziale:
@@ -151,43 +161,69 @@ consumer per design, non di pertinenza dei fornitori.
 
 ### GET `/api/v1/anagrafiche/clienti/{cliente_id}/stato-accessi/`
 
-Restituisce lo stato aggregato delle vesti non-operatore del cliente
-(portale + shop). Usato dall'admin UI per decidere quale azione
-proporre (invia / reinvia / disattiva). Auth: JWT operatore area
-anagrafiche ≥ LETTURA.
+I **referenti** del cliente, per tipo di veste: `portale` (`CLIENTE_PORTALE`) e
+`shop` (`SHOP_CUSTOMER`), ciascuno un elenco con una voce per veste, anche spenta,
+in ordine di nascita. Elenco vuoto: nessuno invitato. Usato dall'admin UI per
+proporre, per referente, invia / reinvia / disattiva, e l'invito di un referente
+in piu'. Auth: JWT operatore area anagrafiche ≥ LETTURA.
+
+⭐ Elenchi dal 2026-11-28 (giro 4 del brief-db-accessi-area-clienti, D-M7): un
+cliente o un fornitore ha piu' referenti, ognuno con la sua veste. Prima era una
+veste per tipo, e lo stato `NESSUNO` lo scriveva il BE.
 
 **Response**:
 
 ```json
 {
   "data": {
-    "portale": {
-      "stato": "ATTIVO",
-      "identita_id": 500,
-      "auth_user_id": 10,
-      "username": "mario.rossi",
-      "email": "mario.rossi@example.com",
-      "invito_inviato_at": "2026-04-20T14:30:00Z",
-      "token_scade_at": null
-    },
-    "shop": {
-      "stato": "NESSUNO",
-      "identita_id": null,
-      "auth_user_id": null,
-      "username": null,
-      "email": null,
-      "invito_inviato_at": null,
-      "token_scade_at": null
-    }
+    "portale": [
+      {
+        "identita_id": 500,
+        "auth_user_id": 10,
+        "username": "mario.rossi",
+        "email": "mario.rossi@example.com",
+        "stato": "ATTIVO",
+        "utilizzabile": true,
+        "attivo": true,
+        "valido_dal": "2026-04-20",
+        "valido_al": null,
+        "invito_inviato_at": "2026-04-20T14:30:00Z",
+        "token_scade_at": null
+      },
+      {
+        "identita_id": 512,
+        "auth_user_id": 14,
+        "username": "anna.bianchi",
+        "email": "anna.bianchi@example.com",
+        "stato": "PENDING",
+        "utilizzabile": false,
+        "attivo": false,
+        "valido_dal": "2026-11-28",
+        "valido_al": null,
+        "invito_inviato_at": "2026-11-28T09:00:00Z",
+        "token_scade_at": "2026-12-01T09:00:00Z"
+      }
+    ],
+    "shop": [],
+    "email_suggerita": "mario.rossi@example.com"
   }
 }
 ```
 
-`stato` ∈ `{NESSUNO, PENDING, NON_SPEDITO, ATTIVO, REVOCATA, DISATTIVO}`:
+`utilizzabile` viene da `script.fn_veste_utilizzabile`: dice se la veste **oggi**
+apre la porta. Lo stato e `utilizzabile` rispondono a due domande (D-G3-1,
+2026-11-27): una veste `ATTIVO` fuori dalle sue date, o col soggetto spento, ha
+`utilizzabile = false`, e il pannello lo dice sotto il referente.
+
+`email_suggerita`: l'email con cui il pannello precompila l'invito — il primo
+referente che ne ha una (per il cliente prima il portale, poi lo shop), poi il
+contatto PRINCIPALE del ruolo, poi il predefinito; o `null`.
+
+`stato` ∈ `{PENDING, NON_SPEDITO, ATTIVO, REVOCATA, DISATTIVO}`, di
+`script.fn_stato_veste`:
 
 | Stato | Significato |
 | --- | --- |
-| `NESSUNO` | identita non esiste (mai invitato) |
 | `PENDING` | identita `attivo=false` + token non consumato non scaduto, **e** l'email d'invito e' partita dopo la sua emissione (`invito_inviato_at >= data_insert` del token) |
 | `NON_SPEDITO` | come `PENDING`, ma l'email di quel token **non e' partita** (`invito_inviato_at` nullo o precedente al token): la persona non ha il link, si reinvia |
 | `ATTIVO` | identita `attivo=true` |
@@ -210,13 +246,14 @@ gia' attiva, e quel cliente risultava `ATTIVO` prima di aver scelto la password
 
 ### GET `/api/v1/anagrafiche/fornitori/{fornitore_id}/stato-accessi/`
 
-Simmetrico al precedente ma per fornitori: restituisce solo il blocco
-`portale` (niente shop).
+Simmetrico al precedente ma per fornitori: restituisce solo l'elenco
+`portale` (niente shop), con la stessa forma delle voci.
 
 ```json
 {
   "data": {
-    "portale": { "stato": "PENDING", "identita_id": 600, ... }
+    "portale": [{ "identita_id": 600, "stato": "PENDING", "utilizzabile": false, ... }],
+    "email_suggerita": null
   }
 }
 ```
@@ -229,14 +266,25 @@ Simmetrico al precedente ma per fornitori: restituisce solo il blocco
 - `POST /api/v1/anagrafiche/clienti/{cliente_id}/disattiva-shop/`
 - `POST /api/v1/anagrafiche/fornitori/{fornitore_id}/disattiva-portale/`
 
-Revoca della veste non-operatore, dal verbo del DB `anagrafiche.fn_revoca_veste`
+Revoca della veste di **un referente**, dal verbo del DB `anagrafiche.fn_revoca_veste`
 (dal 2026-11-26): la spegne e ci scrive il segno della revoca, **anche se era
 gia' spenta** con l'invito pendente, e invalida i token pendenti (invito +
 cross) **della veste**. Una veste revocata si riapre solo con un nuovo invito
 dell'amministratore, che toglie il segno. **Idempotente**: se la veste e' gia'
-revocata o non esiste, la chiamata succede senza errore (`disattivato=false`).
+revocata, la chiamata succede senza errore (`disattivato=false`).
 
-**Body**: nessuno (POST vuoto).
+**Body**: la veste da spegnere, una voce dell'elenco dello stato accessi (dal
+2026-11-28, D-M7: con piu' referenti «la veste del cliente» non dice quale).
+
+```json
+{ "identita_id": 500 }
+```
+
+`identita_id` assente o non intero positivo → 400 `E_VALIDATION_INPUT`. Una veste
+che non e' **di questo soggetto e di questo tipo** (l'id di un altro cliente, la
+veste shop sull'endpoint del portale) → 404 `E_VESTE_NON_TROVATA`, e non si
+revoca niente: il verbo del DB controlla il permesso, il perimetro lo controlla
+la scheda.
 
 **Response**:
 
@@ -252,7 +300,6 @@ revocata o non esiste, la chiamata succede senza errore (`disattivato=false`).
 
 - `disattivato: true` se la veste era accesa
 - `disattivato: false` + `stato="REVOCATA"` se era gia' spenta (il segno si mette lo stesso)
-- `disattivato: false` + `stato="NESSUNO"` se la veste non esiste affatto
 
 **Effetti collaterali**:
 
@@ -380,9 +427,10 @@ Auth: `PortaleAPIView` (`PortaleBasePermission`). Nessun body richiesto.
    `FORNITORE_PORTALE` o altro: 400 `E_ATTIVAZIONE_SHOP_CROSS`
 2. GUC `app.soggetto_ruolo_id` popolata (settata da
    `JwtAuditAuthentication`) — se vuota: 400
-3. **Anti-tampering**: se esiste gia' una identita `SHOP_CUSTOMER` per
-   quel `soggetto_ruolo` ma legata ad altro `auth_user`: 400 con
-   messaggio "Veste shop gia' collegata a un altro utente"
+3. La veste `SHOP_CUSTOMER` si cerca per (credenziale della sessione,
+   `soggetto_ruolo`, tipo): quella di un altro referente dello stesso cliente
+   non e' di chi chiede, e non si trova (dal 2026-11-28, D-M7; prima era un
+   400 «Veste shop gia' collegata a un altro utente»)
 
 **Response (idempotente)**:
 
@@ -417,10 +465,11 @@ credenziali del portale (stesso `auth_user`).
 | --- | --- | --- |
 | `E_CLIENTE_NON_TROVATO` | 404 | `cliente_id` (PK di `anagrafiche.clienti`) inesistente: invito, reinvio, stato accessi, disattivazione (dal 2026-10-08; prima 400 `E_INVITO_PORTALE`) |
 | `E_FORNITORE_NON_TROVATO` | 404 | `fornitore_id` (PK di `anagrafiche.fornitori`) inesistente, stessi endpoint |
-| `E_INVITO_PORTALE` | 400 | Validazione lato admin (email assente, identita gia' attiva, identita gia' su altro auth_user, veste non supportata) |
+| `E_INVITO_PORTALE` | 400 | Validazione lato admin (email assente, veste della stessa credenziale gia' accesa, veste non supportata). Un altro auth_user sullo stesso cliente non e' piu' un errore: e' un referente in piu' (D-M7, 2026-11-28) |
+| `E_VESTE_NON_TROVATA` | 404 | Disattivazione: l'`identita_id` del corpo non e' una veste di questo soggetto e di questo tipo |
 | `E_ATTIVAZIONE_PORTALE` | 400 | Token portale assente/invalido/scaduto, password mismatch, meta senza identita_id, riga identita rimossa tra invio e conferma |
 | `E_ATTIVAZIONE_SHOP` | 400 | Stesso perimetro di `E_ATTIVAZIONE_PORTALE` per i 2 endpoint shop |
-| `E_ATTIVAZIONE_SHOP_CROSS` | 400 | Cross-veste self-service: ruolo non CLIENTE_PORTALE, GUC vuota, identita su altro auth_user |
+| `E_ATTIVAZIONE_SHOP_CROSS` | 400 | Cross-veste self-service: ruolo non CLIENTE_PORTALE, GUC vuota |
 
 ---
 

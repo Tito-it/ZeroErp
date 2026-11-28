@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from django.db import connection
-from apps.core.db._helpers import row_to_dict
+from apps.core.db._helpers import row_to_dict, rows_to_list
 
 
 # Il tipo di contatto che vince nell'email suggerita dell'invito: per codice
@@ -115,27 +115,35 @@ class PortaleRepository:
             cursor.execute(sql, [fornitore_id])
             return row_to_dict(cursor)
 
-    # Scopo: Verifica se esiste gia' un'identita attiva con un certo
-    # ruolo_applicativo legata a un dato soggetto_ruolo_id. Usato dal service
-    # invito per evitare duplicazioni e per lo stato "portale attivo" mostrato
-    # dalla UI admin. Ritorna dict con auth_user_id + stato se trovata, None
-    # altrimenti.
-    def find_identita_portale(
-        self, soggetto_ruolo_id: int, ruolo_applicativo: str
+    # Scopo: La veste di UNA credenziale su un soggetto, per tipo: la terna
+    #        (credenziale, ruolo anagrafico, tipo) che il DB rende unica sulle
+    #        vesti accese (`uq_identita_digitali_credenziale_sr_ruolo_attivo`,
+    #        giro 4 del brief-db-accessi-area-clienti, D-M7 e D-M8). La usano
+    #        l'invito (la veste da creare o da reinvitare) e l'attivazione
+    #        dello shop dal portale (la veste della persona della sessione).
+    #        Ritorna `{identita_id, auth_user_id, attivo}` o None.
+    # ⭐ Fino al 2026-11-28 si cercava per (ruolo anagrafico, tipo), e la veste
+    #    di un altro referente dello stesso cliente era un errore («collegata a
+    #    un altro utente»): era il divieto che D-M7 ha ritirato. Cercando per
+    #    credenziale, la veste di un'altra persona non si trova per costruzione.
+    # ⚠️ Accese ce n'e' al piu' una (l'indice); spente il modello ne ammette
+    #    piu' d'una sulla stessa terna: vince l'accesa, poi la piu' recente.
+    def find_veste_credenziale(
+        self, auth_user_id: int, soggetto_ruolo_id: int, ruolo_applicativo: str,
     ) -> dict[str, Any] | None:
         sql = """
             SELECT id               AS identita_id,
                    auth_user_id,
-                   attivo,
-                   invito_inviato_at
+                   attivo
               FROM anagrafiche.identita_digitali
-             WHERE soggetto_ruolo_id = %s
+             WHERE auth_user_id = %s
+               AND soggetto_ruolo_id = %s
                AND ruolo_applicativo = %s::config.ruolo_applicativo
              ORDER BY attivo DESC, id DESC
              LIMIT 1
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_ruolo_id, ruolo_applicativo])
+            cursor.execute(sql, [auth_user_id, soggetto_ruolo_id, ruolo_applicativo])
             return row_to_dict(cursor)
 
     # Scopo: Crea una nuova riga auth_user per un portale user.
@@ -199,75 +207,59 @@ class PortaleRepository:
         assert row is not None
         return int(row[0])
 
-    # Scopo: Legge lo stato accessi di una veste (per una data coppia
-    # soggetto_ruolo + ruolo_applicativo) per l'admin UI:
-    #   NESSUNO     : la veste non esiste (mai invitato) — del BE, perche'
-    #                 non e' uno stato di una veste ma l'assenza della riga
-    #   ATTIVO · REVOCATA · PENDING · NON_SPEDITO · DISATTIVO : di
-    #                 `script.fn_stato_veste`
-    # ⛔ LO STATO DI UNA VESTE SI CALCOLA SOLO A DB (A-7, brief-db-be-fe-area-
-    #    accessi): la stessa funzione serve questa scheda e la lista «Altri
-    #    accessi» (`anagrafiche.vw_accessi_altri`). Fino al 2026-10-02 la
-    #    regola stava qui (`stato_veste`, con la CTE del token pendente), e la
-    #    lista l'avrebbe riscritta: due copie che rispondono in due modi.
-    # ⚠️ Una differenza col calcolo di prima, dichiarata dal team DB (§7.4):
-    #    il token della veste si riconosce dall'`identita_id` nel meta, senza
-    #    filtrare il TIPO del token sulle due della porta. Lo scrive solo
-    #    l'emissione di un invito (`InvitoVeste.emetti`); il reset password
-    #    no. Il punto da guardare: un token non d'invito che porti
-    #    `identita_id`.
-    # Ritorna dict con chiavi:
-    #   stato (str), identita_id (int|None), auth_user_id (int|None),
-    #   username, email, invito_inviato_at (datetime|None),
-    #   token_scade_at (datetime|None: scadenza del token pendente piu'
-    #   lontano, per «scade tra N ore»).
-    def get_stato_identita(
-        self, soggetto_ruolo_id: int, ruolo_applicativo: str,
-    ) -> dict[str, Any]:
+    # Scopo: I REFERENTI di un soggetto per un tipo di veste, per la scheda
+    #        accessi del cliente e del fornitore: una voce per veste, anche
+    #        spenta, in ordine di nascita. Con `identita_id` la voce di quella
+    #        veste sola, se e' di questo soggetto e di questo tipo (la
+    #        disattivazione di un referente): lista vuota altrimenti.
+    #        Ogni voce: `identita_id`, `auth_user_id`, `username`, `email`,
+    #        `stato` e `token_scade_at` (`script.fn_stato_veste`),
+    #        `utilizzabile` (`script.fn_veste_utilizzabile`), `attivo`,
+    #        `valido_dal`, `valido_al`, `invito_inviato_at`.
+    # ⭐ Un elenco dal 2026-11-28 (giro 4, D-M7): un cliente o un fornitore ha
+    #    piu' referenti, ognuno con la sua veste. Fino ad allora la lettura
+    #    prendeva «la veste del ruolo e tipo» con `LIMIT 1`, e lo stato
+    #    `NESSUNO` era del BE: ora la veste che non c'e' e' l'elenco vuoto.
+    # ⛔ LO STATO E LA PORTA SI CALCOLANO SOLO A DB (A-7; D-G3-1 del giro 3):
+    #    le stesse due funzioni servono la lista «Altri accessi»
+    #    (`anagrafiche.vw_accessi_altri`). Sono due domande: lo stato e' il
+    #    ciclo di vita dell'invito e della revoca, `utilizzabile` dice se la
+    #    veste apre la porta oggi (una veste `ATTIVO` fuori dalle sue date no).
+    # ⚠️ Il token della veste lo riconosce `fn_stato_veste` dall'`identita_id`
+    #    nel meta (§7.4 del brief area accessi): lo scrive solo l'emissione di
+    #    un invito (`InvitoVeste.emetti`).
+    def list_referenti(
+        self,
+        soggetto_ruolo_id: int,
+        ruolo_applicativo: str,
+        *,
+        identita_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         sql = """
-            WITH id_row AS (
-                SELECT id, auth_user_id, invito_inviato_at
-                  FROM anagrafiche.identita_digitali
-                 WHERE soggetto_ruolo_id = %s
-                   AND ruolo_applicativo = %s::config.ruolo_applicativo
-                 ORDER BY attivo DESC, id DESC
-                 LIMIT 1
-            )
-            SELECT r.id, r.auth_user_id, r.invito_inviato_at,
-                   sv.stato, sv.token_scade_at,
-                   u.username, u.email
-              FROM id_row r
-              CROSS JOIN LATERAL script.fn_stato_veste(r.id) sv
-              LEFT JOIN django.auth_user u ON u.id = r.auth_user_id
+            SELECT idg.id               AS identita_id,
+                   idg.auth_user_id,
+                   u.username,
+                   u.email,
+                   sv.stato,
+                   sv.token_scade_at,
+                   script.fn_veste_utilizzabile(idg.id) AS utilizzabile,
+                   idg.attivo,
+                   idg.valido_dal,
+                   idg.valido_al,
+                   idg.invito_inviato_at
+              FROM anagrafiche.identita_digitali idg
+              CROSS JOIN LATERAL script.fn_stato_veste(idg.id) sv
+              LEFT JOIN django.auth_user u ON u.id = idg.auth_user_id
+             WHERE idg.soggetto_ruolo_id = %s
+               AND idg.ruolo_applicativo = %s::config.ruolo_applicativo
+               AND (%s::bigint IS NULL OR idg.id = %s::bigint)
+             ORDER BY idg.id
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_ruolo_id, ruolo_applicativo])
-            row = cursor.fetchone()
-
-        if not row:
-            return {
-                "stato": "NESSUNO",
-                "identita_id": None,
-                "auth_user_id": None,
-                "username": None,
-                "email": None,
-                "invito_inviato_at": None,
-                "token_scade_at": None,
-            }
-
-        (
-            identita_id, auth_user_id, invito_at,
-            stato, token_scade_at, username, email,
-        ) = row
-        return {
-            "stato": stato,
-            "identita_id": int(identita_id),
-            "auth_user_id": int(auth_user_id) if auth_user_id is not None else None,
-            "username": username,
-            "email": email,
-            "invito_inviato_at": invito_at,
-            "token_scade_at": token_scade_at,
-        }
+            cursor.execute(
+                sql, [soggetto_ruolo_id, ruolo_applicativo, identita_id, identita_id],
+            )
+            return rows_to_list(cursor)
 
     # Scopo: Genera uno username unico a partire dall'email.
     # Strategia: prefisso email + suffisso _2/_3... se il base esiste.

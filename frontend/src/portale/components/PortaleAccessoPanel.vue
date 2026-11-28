@@ -1,12 +1,19 @@
 <script setup>
 // Scopo: Pannello admin "Accesso Portale + Shop" inserito nei drawer
-// cliente/fornitore. Gestisce ciclo di vita completo delle vesti
-// non-operatore:
-//   - Invia / Reinvia invito (email + branching INVITO/CROSS lato BE)
-//   - Visualizza stato (NESSUNO / PENDING / NON_SPEDITO / ATTIVO / REVOCATA /
-//     DISATTIVO)
-//   - Disattiva: la revoca, idempotente (la veste prende il segno e il link
-//     vecchio non la riapre; la riapre solo un nuovo invito)
+// cliente/fornitore. Gestisce i REFERENTI di ogni veste non-operatore:
+//   - l'elenco dei referenti per tipo (portale, shop), ognuno col suo stato
+//     (`script.fn_stato_veste`) e, se accesa ma oggi fuori porta, il fermo
+//     (`utilizzabile`, BB `vesteFermaOggi`)
+//   - Invita un referente: l'email scritta sopra, un referente in piu' se e'
+//     una persona nuova, il reinvio se e' gia' fra i referenti
+//   - per referente: Reinvia (invito in volo), Invia di nuovo (spenta o
+//     revocata: il nuovo invito toglie il segno, a DB), Disattiva (la revoca,
+//     idempotente)
+//
+// ⭐ Un elenco dal 2026-11-28 (giro 4 del brief-db-accessi-area-clienti, D-M7):
+//    un cliente o un fornitore ha piu' referenti, ognuno con la sua veste.
+//    Fino ad allora il pannello mostrava una veste per tipo, e le due sezioni
+//    erano scritte due volte nel template: ora sono una, ripetuta sui tipi.
 //
 // La sezione "Shop" e' visibile solo per clienti (`entitaTipo='cliente'`).
 // I fornitori non accedono allo shop B2C consumer.
@@ -26,8 +33,10 @@ import { useEsitoInvito } from '../../core/composables/useEsitoInvito'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { isEmailValid } from '../../core/utils/validators'
 import { extractApiError } from '../../core/utils/apiError'
-import { MANAGE_ICONS, STATO_VESTE } from '../../core/constants'
+import { displayDate } from '../../core/utils/date'
+import { MANAGE_ICONS, STATO_VESTE, STATUS_ICONS } from '../../core/constants'
 import { statoVesteSeverity } from '../../core/utils/severity'
+import { vesteFermaOggi } from '../../core/utils/veste'
 import {
   disattivaPortaleCliente,
   disattivaPortaleFornitore,
@@ -54,37 +63,59 @@ const props = defineProps({
 const emit = defineEmits(['stato-cambiato'])
 
 const email = ref('')
-const statoPortale = ref({ stato: STATO_VESTE.NESSUNO, invito_inviato_at: null, token_scade_at: null, username: null, email: null })
-const statoShop = ref({ stato: STATO_VESTE.NESSUNO, invito_inviato_at: null, token_scade_at: null, username: null, email: null })
+const referenti = ref({ portale: [], shop: [] })
 
-const showShopActions = computed(() => props.entitaTipo === 'cliente')
 const canInvia = computed(
   () => !props.readonly && isEmailValid(email.value) && !loading.value,
 )
 
+// Scopo: le sezioni del pannello, una per tipo di veste: `namespace` e' il
+//        prefisso delle chiavi i18n (`portale.*`, `shop.*`) e la chiave
+//        dell'elenco nella risposta; le due funzioni API sono quelle della
+//        veste e dell'entita'. Lo shop solo per i clienti.
+const sezioni = computed(() => {
+  const cliente = props.entitaTipo === 'cliente'
+  const elenco = [{
+    namespace: 'portale',
+    titleKey: 'portale.accesso_portale_title',
+    helpKey: 'portale.accesso_portale_help',
+    apiInvito: cliente ? invitaClientePortale : invitaFornitorePortale,
+    apiDisattiva: cliente ? disattivaPortaleCliente : disattivaPortaleFornitore,
+  }]
+  if (cliente) {
+    elenco.push({
+      namespace: 'shop',
+      titleKey: 'shop.accesso_shop_title',
+      helpKey: 'shop.accesso_shop_help',
+      apiInvito: invitaClienteShop,
+      apiDisattiva: disattivaShopCliente,
+    })
+  }
+  return elenco
+})
+
 // Scopo: l'email dell'invito parte da quella che propone il BE con lo stato
-//        (`email_suggerita`: l'identita' che esiste gia', poi il contatto
-//        PRINCIPALE del ruolo, poi quello di default). Non scavalca cio' che
-//        l'operatore ha gia' scritto. Dal 2026-11-21: prima la passava il
-//        drawer padre (`emailIniziale`), e non arrivava mai.
+//        (`email_suggerita`: il primo referente, poi il contatto PRINCIPALE
+//        del ruolo, poi quello di default). Non scavalca cio' che l'operatore
+//        ha gia' scritto. Dal 2026-11-21: prima la passava il drawer padre
+//        (`emailIniziale`), e non arrivava mai.
 function proponiEmail(suggerita) {
   if (suggerita && !email.value.trim()) email.value = suggerita
 }
 
-// Il colore dello stato di una veste: BB `statoVesteSeverity` (sede unica,
-// la usa anche la lista «Altri accessi» dell'amministrazione).
-
-// Scopo: Una veste si disattiva quando esiste e non e' gia' spenta: accesa,
-// o con un invito in volo (spedito o no). Una regola per portale e shop.
+// Scopo: Una veste si disattiva quando non e' gia' spenta: accesa, o con un
+// invito in volo (spedito o no). Una regola per portale e shop.
 const STATI_DISATTIVABILI = [STATO_VESTE.ATTIVO, STATO_VESTE.PENDING, STATO_VESTE.NON_SPEDITO]
 const disattivabile = (stato) => STATI_DISATTIVABILI.includes(stato)
 
-// Scopo: Si propone «Invia invito» (e non «Reinvia») quando la veste non c'e'
-// o e' spenta senza un invito in volo: mai invitata, disattivata, o revocata
-// (il nuovo invito toglie il segno della revoca, a DB). Una regola per
-// portale e shop.
-const STATI_DA_INVITARE = [STATO_VESTE.NESSUNO, STATO_VESTE.DISATTIVO, STATO_VESTE.REVOCATA]
+// Scopo: Il gesto d'invito sulla veste di un referente. Spenta senza un invito
+// in volo (disattivata o revocata) → «Invia invito» (il nuovo invito toglie il
+// segno della revoca, a DB); invito in volo → «Reinvia invito»; accesa →
+// niente: la persona entra gia'.
+const STATI_DA_INVITARE = [STATO_VESTE.DISATTIVO, STATO_VESTE.REVOCATA]
+const STATI_DA_REINVIARE = [STATO_VESTE.PENDING, STATO_VESTE.NON_SPEDITO]
 const daInvitare = (stato) => STATI_DA_INVITARE.includes(stato)
+const daReinviare = (stato) => STATI_DA_REINVIARE.includes(stato)
 
 // ── Load stato all'apertura + dopo ogni mutazione ────────────────
 
@@ -94,12 +125,11 @@ async function loadStato() {
       ? await getStatoAccessiCliente(props.entitaId)
       : await getStatoAccessiFornitore(props.entitaId)
     const data = res?.data?.data || {}
-    statoPortale.value = data.portale || { stato: STATO_VESTE.NESSUNO }
-    statoShop.value = data.shop || { stato: STATO_VESTE.NESSUNO }
+    referenti.value = { portale: data.portale || [], shop: data.shop || [] }
     proponiEmail(data.email_suggerita)
   } catch (err) {
-    // Load stato non blocca l'UI: se fallisce mostriamo stato ignoto,
-    // i pulsanti azione restano comunque usabili.
+    // Load stato non blocca l'UI: se fallisce l'elenco resta vuoto, e
+    // l'invito di un referente resta usabile.
     notify.warn(extractApiError(err, t('portale.stato_load_error')))
   }
 }
@@ -117,7 +147,7 @@ watch(() => props.entitaId, (newId) => {
 // ── Helper unificato: esegue una API mutante, mostra toast, ricarica
 // stato e notifica il parent. `successKey`/`errorKey` sono chiavi i18n;
 // `apiCall` e' un thunk che chiama la funzione API con gli argomenti
-// gia' legati. Unifica la vecchia coppia _doInvio / _doDisattiva.
+// gia' legati.
 // `invito`: la risposta porta `inviato` (l'email e' partita?), e il toast lo
 // sceglie `notificaEsitoInvito` invece del successo fisso (F-3).
 async function _runAction({ apiCall, successKey, errorKey, invito = false }) {
@@ -134,8 +164,8 @@ async function _runAction({ apiCall, successKey, errorKey, invito = false }) {
   }
 }
 
-// Scopo: Dialog conferma + esecuzione azione generica. `dangerKey` se
-// valorizzato, il dialog e' rosso (usato per reinvio e disattivazione).
+// Scopo: Dialog conferma + esecuzione azione generica. `danger` per il
+// reinvio e la disattivazione.
 function _confirmAndRun({ titleKey, msgKey, msgParams = {}, danger = false, apiCall, successKey, errorKey, invito = false }) {
   confirmAction({
     header: t(titleKey),
@@ -145,84 +175,54 @@ function _confirmAndRun({ titleKey, msgKey, msgParams = {}, danger = false, apiC
   })
 }
 
-// Scopo: Conferma invio/reinvio invito per un namespace (portale|shop).
-// Pre-valida email, poi delega al helper generico. Le chiavi i18n
-// seguono convenzione `<namespace>.{invio|reinvio}_confirm_title/msg`.
-function _confirmInvio({ reinvio, namespace, apiFn }) {
-  if (!isEmailValid(email.value)) {
+// Scopo: Conferma invio/reinvio invito a un indirizzo, per una sezione. Le
+// chiavi i18n seguono la convenzione `<namespace>.{invio|reinvio}_confirm_*`.
+// L'email e' quella scritta sopra (un referente da invitare) o quella del
+// referente della riga (il suo invito di nuovo).
+function _confirmInvio(sezione, destinatario, { reinvio }) {
+  if (!isEmailValid(destinatario)) {
     notify.error(t('portale.email_non_valida'))
     return
   }
   const action = reinvio ? 'reinvio' : 'invio'
+  const ns = sezione.namespace
   _confirmAndRun({
-    titleKey: `${namespace}.${action}_confirm_title`,
-    msgKey: `${namespace}.${action}_confirm_msg`,
-    msgParams: { email: email.value },
+    titleKey: `${ns}.${action}_confirm_title`,
+    msgKey: `${ns}.${action}_confirm_msg`,
+    msgParams: { email: destinatario },
     danger: reinvio,
-    apiCall: () => apiFn(props.entitaId, { email: email.value.trim(), reinvio }),
-    successKey: reinvio ? `${namespace}.invito_reinviato` : `${namespace}.invito_inviato`,
-    errorKey: `${namespace}.invito_errore`,
+    apiCall: () => sezione.apiInvito(props.entitaId, { email: destinatario.trim(), reinvio }),
+    successKey: reinvio ? `${ns}.invito_reinviato` : `${ns}.invito_inviato`,
+    errorKey: `${ns}.invito_errore`,
     invito: true,
   })
 }
 
-// Scopo: Conferma disattivazione veste per un namespace. Dialog sempre
-// danger (operazione irreversibile lato email: i token pendenti vengono
-// invalidati). Riattivazione = nuovo invito (flow implicito lato BE).
-function _confirmDisattiva({ namespace, apiFn }) {
+// Scopo: «Invita un referente»: l'email scritta nel campo. Se e' gia' di un
+//        referente di quel tipo, il BE la tratta come il suo reinvio.
+const onInvitaReferente = (sezione) => _confirmInvio(sezione, email.value, { reinvio: false })
+
+// Scopo: l'invito di nuovo a un referente della riga, con la sua email.
+const onInvitaDiNuovo = (sezione, voce) => _confirmInvio(sezione, voce.email || '', { reinvio: daReinviare(voce.stato) })
+
+// Scopo: Conferma disattivazione della veste di un referente. Dialog sempre
+// danger (i token pendenti vengono invalidati). Riattivazione = nuovo invito.
+function onDisattiva(sezione, voce) {
+  const ns = sezione.namespace
   _confirmAndRun({
-    titleKey: `${namespace}.disattiva_confirm_title`,
-    msgKey: `${namespace}.disattiva_confirm_msg`,
+    titleKey: `${ns}.disattiva_confirm_title`,
+    msgKey: `${ns}.disattiva_confirm_msg`,
+    msgParams: { email: voce.email || voce.username || '' },
     danger: true,
-    apiCall: () => apiFn(props.entitaId),
-    successKey: `${namespace}.disattivato_ok`,
-    errorKey: `${namespace}.disattivato_errore`,
+    apiCall: () => sezione.apiDisattiva(props.entitaId, voce.identita_id),
+    successKey: `${ns}.disattivato_ok`,
+    errorKey: `${ns}.disattivato_errore`,
   })
 }
-
-// Wrapper specifici — risolvono la fn API corretta in base a entitaTipo.
-const _apiInvitoPortale = () => props.entitaTipo === 'cliente'
-  ? invitaClientePortale
-  : invitaFornitorePortale
-const _apiDisattivaPortale = () => props.entitaTipo === 'cliente'
-  ? disattivaPortaleCliente
-  : disattivaPortaleFornitore
-
-const onInvia = () => _confirmInvio({ reinvio: false, namespace: 'portale', apiFn: _apiInvitoPortale() })
-const onReinvia = () => _confirmInvio({ reinvio: true, namespace: 'portale', apiFn: _apiInvitoPortale() })
-const onInviaShop = () => _confirmInvio({ reinvio: false, namespace: 'shop', apiFn: invitaClienteShop })
-const onReinviaShop = () => _confirmInvio({ reinvio: true, namespace: 'shop', apiFn: invitaClienteShop })
-
-const onDisattivaPortale = () => _confirmDisattiva({ namespace: 'portale', apiFn: _apiDisattivaPortale() })
-const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disattivaShopCliente })
 </script>
 
 <template>
   <section class="portale-accesso-panel">
-    <h4>
-      {{ t('portale.accesso_portale_title') }}
-      <Tag
-        :value="t(`auth.stato_veste.${statoPortale.stato}`)"
-        :severity="statoVesteSeverity(statoPortale.stato)"
-        class="portale-accesso-stato-tag"
-      />
-    </h4>
-    <p class="portale-accesso-help">
-      {{ t('portale.accesso_portale_help') }}
-    </p>
-
-    <!-- Utente collegato: visibile quando esiste un auth_user collegato
-         (stato != NESSUNO). Mostra username + email per il troubleshooting. -->
-    <div v-if="statoPortale.username" class="portale-accesso-user-info">
-      <span class="portale-accesso-user-label">{{ t('portale.accessi_web.user') }}</span>
-      <span class="portale-accesso-user-value">
-        {{ statoPortale.username }}
-        <span v-if="statoPortale.email" class="portale-accesso-user-email">
-          ({{ statoPortale.email }})
-        </span>
-      </span>
-    </div>
-
     <div class="form-field">
       <label for="portale-email">{{ t('portale.email_destinatario') }}</label>
       <InputText
@@ -233,124 +233,84 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
       />
     </div>
 
-    <div class="portale-accesso-actions">
-      <!-- Invia: NESSUNO / DISATTIVO / REVOCATA. Reinvia: PENDING / NON_SPEDITO / ATTIVO. -->
-      <Button
-        v-if="daInvitare(statoPortale.stato)"
-        :label="t('portale.btn_invia_invito')"
-        :icon="MANAGE_ICONS.INVITA"
-        :disabled="!canInvia"
-        :loading="loading"
-        @click="onInvia"
-      />
-      <Button
-        v-else
-        :label="t('portale.btn_reinvia_invito')"
-        :icon="MANAGE_ICONS.INVITA"
-        severity="warn"
-        outlined
-        :disabled="!canInvia"
-        :loading="loading"
-        @click="onReinvia"
-      />
-      <!-- Disattiva: visibile per ATTIVO, PENDING o NON_SPEDITO. -->
-      <Button
-        v-if="disattivabile(statoPortale.stato)"
-        :label="t('portale.btn_disattiva')"
-        :icon="MANAGE_ICONS.DISATTIVA"
-        severity="danger"
-        outlined
-        :disabled="readonly || loading"
-        :loading="loading"
-        @click="onDisattivaPortale"
-      />
-    </div>
-
-    <Message
-      v-if="statoPortale.stato === STATO_VESTE.PENDING && statoPortale.token_scade_at"
-      severity="info"
-      :closable="false"
-      class="mt-1"
+    <div
+      v-for="sezione in sezioni" :key="sezione.namespace"
+      class="portale-accesso-sezione"
     >
-      {{ t('portale.invito_pending_info') }}
-    </Message>
-    <Message
-      v-else-if="statoPortale.stato === STATO_VESTE.NON_SPEDITO"
-      severity="error"
-      :closable="false"
-      class="mt-1"
-    >
-      {{ t('common.invito_non_spedito_info') }}
-    </Message>
+      <h4>{{ t(sezione.titleKey) }}</h4>
+      <p class="portale-accesso-help">{{ t(sezione.helpKey) }}</p>
 
-    <!-- Sezione Shop Customer (§13.7): solo per clienti. -->
-    <div v-if="showShopActions" class="portale-accesso-shop">
-      <h4>
-        {{ t('shop.accesso_shop_title') }}
-        <Tag
-          :value="t(`auth.stato_veste.${statoShop.stato}`)"
-          :severity="statoVesteSeverity(statoShop.stato)"
-          class="portale-accesso-stato-tag"
-        />
-      </h4>
-      <p class="portale-accesso-help">
-        {{ t('shop.accesso_shop_help') }}
+      <p v-if="!referenti[sezione.namespace].length" class="app-text-muted">
+        {{ t('portale.referenti_nessuno') }}
       </p>
-      <div v-if="statoShop.username" class="portale-accesso-user-info">
-        <span class="portale-accesso-user-label">{{ t('portale.accessi_web.user') }}</span>
-        <span class="portale-accesso-user-value">
-          {{ statoShop.username }}
-          <span v-if="statoShop.email" class="portale-accesso-user-email">
-            ({{ statoShop.email }})
-          </span>
-        </span>
-      </div>
-      <div class="portale-accesso-actions">
+      <ul v-else class="portale-accesso-referenti">
+        <li v-for="voce in referenti[sezione.namespace]" :key="voce.identita_id">
+          <div class="portale-accesso-referente-testa">
+            <Tag
+              :value="t(`auth.stato_veste.${voce.stato}`)"
+              :severity="statoVesteSeverity(voce.stato)"
+              :icon="vesteFermaOggi(voce) ? STATUS_ICONS.BLOCCATO : undefined"
+            />
+            <span class="portale-accesso-user-value">
+              {{ voce.username }}
+              <span v-if="voce.email" class="portale-accesso-user-email">({{ voce.email }})</span>
+            </span>
+          </div>
+          <small v-if="vesteFermaOggi(voce)" class="app-field-hint">
+            {{ t('amministrazione.accessi.veste_ferma_oggi') }}
+            <template v-if="voce.valido_dal">
+              {{ t('amministrazione.accessi.veste_valida_dal', { quando: displayDate(voce.valido_dal) }) }}
+            </template>
+            <template v-if="voce.valido_al">
+              {{ t('amministrazione.accessi.veste_valida_al', { quando: displayDate(voce.valido_al) }) }}
+            </template>
+          </small>
+          <Message
+            v-if="voce.stato === STATO_VESTE.PENDING && voce.token_scade_at"
+            severity="info" :closable="false"
+          >
+            {{ t(`${sezione.namespace}.invito_pending_info`) }}
+          </Message>
+          <Message
+            v-else-if="voce.stato === STATO_VESTE.NON_SPEDITO"
+            severity="error" :closable="false"
+          >
+            {{ t('common.invito_non_spedito_info') }}
+          </Message>
+          <div v-if="!readonly" class="portale-accesso-actions">
+            <Button
+              v-if="daInvitare(voce.stato) || daReinviare(voce.stato)"
+              :label="t(daReinviare(voce.stato) ? `${sezione.namespace}.btn_reinvia_invito` : `${sezione.namespace}.btn_invia_invito`)"
+              :icon="MANAGE_ICONS.INVITA"
+              :severity="daReinviare(voce.stato) ? 'warn' : undefined"
+              outlined size="small"
+              :disabled="loading || !isEmailValid(voce.email || '')"
+              :loading="loading"
+              @click="onInvitaDiNuovo(sezione, voce)"
+            />
+            <Button
+              v-if="disattivabile(voce.stato)"
+              :label="t(`${sezione.namespace}.btn_disattiva`)"
+              :icon="MANAGE_ICONS.DISATTIVA"
+              severity="danger"
+              outlined size="small"
+              :disabled="loading"
+              :loading="loading"
+              @click="onDisattiva(sezione, voce)"
+            />
+          </div>
+        </li>
+      </ul>
+
+      <div v-if="!readonly" class="portale-accesso-actions">
         <Button
-          v-if="daInvitare(statoShop.stato)"
-          :label="t('shop.btn_invia_invito')"
+          :label="t(`${sezione.namespace}.btn_invita_referente`)"
           :icon="MANAGE_ICONS.INVITA"
           :disabled="!canInvia"
           :loading="loading"
-          @click="onInviaShop"
-        />
-        <Button
-          v-else
-          :label="t('shop.btn_reinvia_invito')"
-          :icon="MANAGE_ICONS.INVITA"
-          severity="warn"
-          outlined
-          :disabled="!canInvia"
-          :loading="loading"
-          @click="onReinviaShop"
-        />
-        <Button
-          v-if="disattivabile(statoShop.stato)"
-          :label="t('shop.btn_disattiva')"
-          :icon="MANAGE_ICONS.DISATTIVA"
-          severity="danger"
-          outlined
-          :disabled="readonly || loading"
-          :loading="loading"
-          @click="onDisattivaShop"
+          @click="onInvitaReferente(sezione)"
         />
       </div>
-      <Message
-        v-if="statoShop.stato === STATO_VESTE.PENDING && statoShop.token_scade_at"
-        severity="info"
-        :closable="false"
-        class="mt-1"
-      >
-        {{ t('shop.invito_pending_info') }}
-      </Message>
-      <Message
-        v-else-if="statoShop.stato === STATO_VESTE.NON_SPEDITO"
-        severity="error"
-        :closable="false"
-        class="mt-1"
-      >
-        {{ t('common.invito_non_spedito_info') }}
-      </Message>
     </div>
   </section>
 </template>
@@ -363,37 +323,45 @@ const onDisattivaShop = () => _confirmDisattiva({ namespace: 'shop', apiFn: disa
   padding-top: 0.5rem;
   border-top: 1px solid var(--app-drawer-section-border);
 }
+.portale-accesso-sezione {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.portale-accesso-sezione + .portale-accesso-sezione {
+  padding-top: 1rem;
+  margin-top: 0.5rem;
+  border-top: 1px dashed var(--app-drawer-section-border);
+}
 .portale-accesso-help {
   font-size: 0.85rem;
   color: var(--app-text-muted);
   margin: 0;
 }
+.portale-accesso-referenti {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.portale-accesso-referenti > li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.portale-accesso-referente-testa {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
 .portale-accesso-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-}
-.portale-accesso-shop {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding-top: 1rem;
-  margin-top: 0.5rem;
-  border-top: 1px dashed var(--app-drawer-section-border);
-}
-.portale-accesso-stato-tag {
-  margin-left: 0.5rem;
-  vertical-align: middle;
-  font-size: 0.75rem;
-}
-.portale-accesso-user-info {
-  font-size: 0.85rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-.portale-accesso-user-label {
-  color: var(--app-text-muted);
 }
 .portale-accesso-user-value {
   font-weight: 600;
