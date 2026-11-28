@@ -1,9 +1,11 @@
 # Brief DB — Le utility gestite da ciascun emittente: serve un elenco per azienda?
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-28
+## ⏭️ Chi riparte — aggiornato al 2026-11-28 (pomeriggio)
 
-**Riparte: il team BE/FE**, con la richiesta di §10. Il lato DB è finito: U1 … U4 applicati e committati (2026-11-27); alla fine, l'archiviazione. La richiesta resta qui, §10: nessun brief nuovo. Le decisioni sono in §6 (D-U-0 … D-U-13).
-⚠️ Il resto di questo paragrafo è del mattino. L'analisi è fatta (§4), e Tid ha
+**Ripartono: Tid**, con D-BE-1 (§11.3), **e il team DB**, con Q-DB-1 … Q-DB-4 (§11.2, §11.5, §11.6). Il lato BE/FE
+di §10 è fatto e su `origin` (commit `4a868905e` e `503480ffd`, entrati in `Tito-dev` con la PR #276): torna in
+gioco solo quando arrivano le risposte (§11.7). Alla fine, l'archiviazione. Le decisioni sono in §6 (D-U-0 … D-U-13).
+⚠️ Il resto di questo paragrafo è del 2026-11-27. L'analisi è fatta (§4), e Tid ha
 deciso il 2026-11-27: **sì, l'elenco per azienda serve, e sta nella stessa tabella** `emittenti_fiscali_utilities`
 (la riga accesa = l'utility è attiva per l'azienda; i parametri restano facoltativi). È un **cambio di modello**:
 revoca la politica ibrida C del 2026-04-08 (§2). Nasce il 2026-11-27 dalla decisione D-T8c-8 di
@@ -25,14 +27,15 @@ revoca la politica ibrida C del 2026-04-08 (§2). Nasce il 2026-11-27 dalla deci
 | 3-octies | ✅ Tid | L'apply di U4, i pgTAP, la doc rigenerata; B-7 (sessione DB) (2026-11-27) | §8-bis U4 | — |
 | 3-nonies | ✅ sessione DB | Il commit dei quattro giri, su richiesta di Tid (2026-11-27); `/verifica-db` non lanciato | — | — |
 | 4 | ✅ sessione DB | Le pagine marcate ⚠️ riscritte nei giri U2 … U4; restano al BE `configurazione-liste` §11.1 e le due pagine `manual/` del BE | §7, §10 R-5 | — |
-| 5 | team BE/FE | La richiesta: censimento dei lettori, tendina e drawer sul BB, traduzione dei vincoli | §10, esito §11 | 3-nonies |
-| 5-bis | ✅ team BE/FE | R-1 … R-3, R-5 fatti; R-4 sul drawer e sul pannello della matrice (2026-11-28, da committare) | §11 | — |
-| 5-ter | team DB | Q-DB-1 … Q-DB-2, Q-DB-3, Q-DB-4 (builder `fn_pgtap_crea_cliente_ba`, 2026-11-28) | §11.2, §11.5, §11.6 | — |
-| 5-quater | Tid | D-BE-1: la voce di mappa condivisa per le FK `*_utility_gestita` lato figli (regola del 2) | §11.3 | — |
-| 6 | sessione DB | Archiviazione | — | 5-ter, 5-quater |
+| 5 | ✅ team BE/FE | La richiesta: censimento dei lettori, tendina e drawer sul BB, traduzione dei vincoli | §10, esito §11 | — |
+| 5-bis | ✅ team BE/FE | R-1 … R-3, R-5 fatti; R-4 sul drawer e sul pannello della matrice; D-BE-2. Committati e pushati (`4a868905e`, `503480ffd`, PR #276, 2026-11-28) | §11 | — |
+| 5-ter | team DB | Q-DB-1 (spegnimento dell'azienda), Q-DB-2 (`override_attivo`), Q-DB-3 (DDT e resi senza BA), Q-DB-4 (builder `fn_pgtap_crea_cliente_ba`). Al 2026-11-28 nessuna risposta su `origin/dev/db-tid` | §11.2, §11.5, §11.6 | — |
+| 5-quater | Tid | D-BE-1: la voce di mappa condivisa per le FK `*_utility_gestita` lato figli (regola del 2), e se sì il codice | §11.3 | — |
+| 5-quinquies | team BE/FE | I seguiti delle risposte: R-4 lato figli, `override_attivo`, le FK di DDT e resi, il messaggio dello spegnimento | §11.7 | 5-ter, 5-quater |
+| 6 | sessione DB | Archiviazione | — | 5-ter, 5-quater, 5-quinquies |
 
 **Decisioni aperte di Tid:** D-BE-1 (§11.3).
-**Da committare:** niente (commit locale del 2026-11-27, non ancora pushato).
+**Da committare:** niente; tutto pushato (2026-11-28).
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-27. **A chi:** Tid, team DB e (§10) team BE/FE.
 > **Brief vicini verificati:**
@@ -588,7 +591,7 @@ ruolo_codice_soggetto DEFAULT NULL)`. Colonne: `utility_id`, `codice`, `descrizi
 * un'azienda che gestisce utility non si spegne (`E_ATTIVO_BLOCK_CHILDREN_ACTIVE`): prima si cancellano le sue
   righe (D-U-13). Il messaggio va reso comprensibile nel drawer dell'azienda.
 
-Chiude B-8 del [registro dei residui](registro-residui-aperti.md).
+Chiude B-8 del [registro dei residui](registro-residui-aperti.md): ✅ tolta dal registro e da PROJECT_CONTEXT il 2026-11-28.
 
 ### R-4 — I rifiuti nuovi da tradurre
 
@@ -742,3 +745,18 @@ passata a mano è verde: il rosso viene solo dal builder.
 **Ricaduta BE/FE:** nessuna. I due smoke chiamano il builder senza utility e tornano verdi senza modifiche. Lo
 smoke cross-emittente ha già la sua parte (2026-11-28, da committare): l'emittente «estraneo» si sceglie fra quelli
 che gestiscono l'utility del preventivo di casa, e non più come «il primo attivo diverso».
+
+### 11.7 Che cosa resta al team BE/FE, dopo le risposte (2026-11-28)
+
+> **Da:** sessione BE/FE (`dev/backend-tid`). Verificato sul repo e su `origin` il 2026-11-28: nessun lavoro BE/FE
+> aperto che non aspetti una risposta.
+
+| Aspetta | Che cosa fa il BE/FE |
+| --- | --- |
+| D-BE-1 «sì» (Tid), poi il codice a catalogo (team DB) | Il BB `FK_UTILITY_NON_GESTITA` e la sua voce nei service dei figli: creazione cliente, cambio d'azienda del BA, listini, listini per categoria, commesse, fatture, registri, lotti. Chiude R-4 |
+| Q-DB-2 | La proiezione `override_attivo` esce dal repository della matrice, nello stesso giro del seed |
+| Q-DB-3 «sì» | `fk_ddt_utility_gestita` e `fk_resi_utility_gestita` entrano in `_UTILITY_FK_CONSTRAINTS` (lato padre) e, lato figli, nella decisione D-BE-1 |
+| Q-DB-1 | Il rifiuto dello spegnimento di un'azienda che gestisce utility, reso nel drawer dell'azienda col rimedio giusto (cancellare le righe) |
+| Q-DB-4 | Niente: i due smoke tornano verdi senza modifiche (§11.6) |
+
+Se D-BE-1 è «no», R-4 lato figli resta sul ripiego generico e il limite si scrive in §11.3 prima dell'archiviazione.
