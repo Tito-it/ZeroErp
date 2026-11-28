@@ -36,15 +36,16 @@ const conteggio = ref(0)
 const loading = ref(false)
 const drawerVisible = ref(false)
 
-// Scopo: quante vesti sono ATTIVE. Un invito in volo (PENDING) non conta:
-//        l'utente non ha ancora completato l'attivazione.
+// Scopo: quante vesti sono ATTIVE, contando ogni referente (D-M7: un cliente
+//        ne ha piu' d'uno). Un invito in volo (PENDING) non conta: l'utente
+//        non ha ancora completato l'attivazione.
 async function caricaConteggio() {
   if (!attivo.value) return
   loading.value = true
   try {
     const fn = props.entitaTipoWeb === 'cliente' ? getStatoAccessiCliente : getStatoAccessiFornitore
     const data = (await fn(props.entitaIdWeb))?.data?.data || {}
-    conteggio.value = (data.portale?.stato === STATO_VESTE.ATTIVO ? 1 : 0) + (data.shop?.stato === STATO_VESTE.ATTIVO ? 1 : 0)
+    conteggio.value = [...(data.portale || []), ...(data.shop || [])].filter(v => v.stato === STATO_VESTE.ATTIVO).length
   } catch {
     conteggio.value = 0
   } finally {

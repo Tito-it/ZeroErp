@@ -254,8 +254,10 @@ export const STATO_SECONDO_FATTORE = {
 }
 
 // Lo stato di una VESTE d'accesso: i quattro di `script.fn_stato_veste` (A-7,
-// calcolati SOLO a DB) piu' NESSUNO, la veste che non esiste — lo dichiarano
-// la scheda accessi del soggetto e `vw_accessi_altri.stato_accesso`. ⭐ Il
+// calcolati SOLO a DB) piu' NESSUNO, la credenziale senza alcuna veste — lo
+// dichiara `vw_accessi_altri.stato_accesso`. La scheda accessi del soggetto non
+// lo usa piu' dal 2026-11-28 (D-M7): la veste che non c'e' e' l'elenco vuoto
+// dei referenti. ⭐ Il
 // vocabolario sta qui, non nelle chiavi della mappa dei colori (`STATO_VESTE_MAP`):
 // un filtro costruito dai colori perderebbe in silenzio uno stato senza colore.
 // Regola del 2 (ok Tid 2026-10-02): `PortaleAccessoPanel`, `WebAccessiBadge`,

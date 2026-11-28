@@ -18,6 +18,9 @@
 //  5) un'altra entita' riparte dalla sua email, non da quella precedente
 //  6) veste REVOCATA: «Invia invito» e niente «Disattiva», portale e shop
 //  7) veste PENDING: «Reinvia» e «Disattiva» (il ramo opposto, per contrasto)
+//  8) due referenti: una riga ciascuno, e «Disattiva» spegne quello della riga
+//  9) la veste accesa che oggi non apre la porta lo dice sotto il referente
+// 10) nessun referente: la frase, e «Invita un referente» resta
 // ------------------------------------------------------------
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
@@ -27,19 +30,25 @@ import { monta } from '../../../test/montaggio'
 
 const risposte = { cliente: {}, fornitore: {}, vesti: null }
 const chiamate = []
+const disattivaPortaleCliente = vi.fn(() => Promise.resolve({ data: { data: { disattivato: true } } }))
 function stato(email_suggerita) {
-  const vesti = risposte.vesti || { portale: { stato: 'NESSUNO' }, shop: { stato: 'NESSUNO' } }
+  const vesti = risposte.vesti || { portale: [], shop: [] }
   return Promise.resolve({ data: { data: { ...vesti, email_suggerita } } })
 }
 vi.mock('../api/portaleAdminApi', () => ({
   getStatoAccessiCliente: (id) => { chiamate.push(['cliente', id]); return stato(risposte.cliente[id]) },
   getStatoAccessiFornitore: (id) => { chiamate.push(['fornitore', id]); return stato(risposte.fornitore[id]) },
-  disattivaPortaleCliente: vi.fn(),
+  disattivaPortaleCliente: (...args) => disattivaPortaleCliente(...args),
   disattivaPortaleFornitore: vi.fn(),
   disattivaShopCliente: vi.fn(),
   invitaClientePortale: vi.fn(),
   invitaClienteShop: vi.fn(),
   invitaFornitorePortale: vi.fn(),
+}))
+
+// La conferma e' un contorno: accetta subito, cosi' il gesto arriva all'API.
+vi.mock('../../core/composables/useConfirmAction', () => ({
+  useConfirmAction: () => ({ confirmAction: ({ onAccept }) => onAccept() }),
 }))
 
 async function montaPanel(props) {
@@ -99,16 +108,21 @@ describe('PortaleAccessoPanel — email suggerita', () => {
 
 // I pulsanti del pannello sullo stato della veste (2026-11-26, passo 3b del
 // brief-db-accessi-area-clienti): una veste revocata si riapre solo con un
-// nuovo invito, e non si «disattiva» di nuovo.
+// nuovo invito, e non si «disattiva» di nuovo. Dal 2026-11-28 (giro 4, D-M7)
+// i pulsanti stanno sulla riga di ogni referente.
 describe('PortaleAccessoPanel — pulsanti per stato della veste', () => {
   beforeEach(() => {
     risposte.cliente = {}
     risposte.vesti = null
+    disattivaPortaleCliente.mockClear()
   })
   const etichette = (w) => w.findAll('button').map(b => b.text())
 
   it('veste REVOCATA: «Invia invito» e niente «Disattiva», portale e shop', async () => {
-    risposte.vesti = { portale: { stato: 'REVOCATA' }, shop: { stato: 'REVOCATA' } }
+    risposte.vesti = {
+      portale: [{ identita_id: 1, stato: 'REVOCATA', email: 'a@x.test' }],
+      shop: [{ identita_id: 2, stato: 'REVOCATA', email: 'a@x.test' }],
+    }
     const w = await montaPanel({ entitaTipo: 'cliente', entitaId: 1 })
     const b = etichette(w)
     expect(b).toContain('portale.btn_invia_invito')
@@ -120,11 +134,50 @@ describe('PortaleAccessoPanel — pulsanti per stato della veste', () => {
   })
 
   it('veste PENDING: «Reinvia» e «Disattiva» (il ramo opposto, per contrasto)', async () => {
-    risposte.vesti = { portale: { stato: 'PENDING' }, shop: { stato: 'PENDING' } }
+    risposte.vesti = {
+      portale: [{ identita_id: 1, stato: 'PENDING', email: 'a@x.test' }],
+      shop: [{ identita_id: 2, stato: 'PENDING', email: 'a@x.test' }],
+    }
     const w = await montaPanel({ entitaTipo: 'cliente', entitaId: 1 })
     const b = etichette(w)
     expect(b).toContain('portale.btn_reinvia_invito')
     expect(b).toContain('portale.btn_disattiva')
     expect(b).not.toContain('portale.btn_invia_invito')
+  })
+
+  it('due referenti: una riga ciascuno, e «Disattiva» spegne quello della riga', async () => {
+    risposte.vesti = {
+      portale: [
+        { identita_id: 10, stato: 'ATTIVO', utilizzabile: true, username: 'anna', email: 'anna@x.test' },
+        { identita_id: 11, stato: 'ATTIVO', utilizzabile: true, username: 'bruno', email: 'bruno@x.test' },
+      ],
+      shop: [],
+    }
+    const w = await montaPanel({ entitaTipo: 'cliente', entitaId: 1 })
+    const righe = w.findAll('.portale-accesso-referenti > li')
+    expect(righe).toHaveLength(2)
+    expect(righe[1].text()).toContain('bruno')
+    // Il pulsante della seconda riga: la conferma e' finta e accetta subito.
+    const btn = righe[1].findAll('button').find(b => b.text() === 'portale.btn_disattiva')
+    await btn.trigger('click')
+    await flushPromises()
+    expect(disattivaPortaleCliente).toHaveBeenCalledTimes(1)
+    expect(disattivaPortaleCliente).toHaveBeenCalledWith(1, 11)
+  })
+
+  it('la veste accesa che oggi non apre la porta lo dice sotto il referente', async () => {
+    risposte.vesti = {
+      portale: [{ identita_id: 10, stato: 'ATTIVO', utilizzabile: false, valido_dal: '2099-01-01', username: 'anna' }],
+      shop: [],
+    }
+    const w = await montaPanel({ entitaTipo: 'cliente', entitaId: 1 })
+    expect(w.find('.portale-accesso-referenti').text()).toContain('amministrazione.accessi.veste_ferma_oggi')
+  })
+
+  it('nessun referente: la frase, e «Invita un referente» resta', async () => {
+    const w = await montaPanel({ entitaTipo: 'fornitore', entitaId: 7 })
+    expect(w.text()).toContain('portale.referenti_nessuno')
+    expect(etichette(w)).toContain('portale.btn_invita_referente')
+    expect(etichette(w)).not.toContain('shop.btn_invita_referente')
   })
 })

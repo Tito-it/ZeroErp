@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-28
 
-**Riparte: il team BE/FE, con la richiesta del giro 4 (§5.5.5).** Il giro 4 è applicato, coi pgTAP verdi col runner di Tid e la doc auto-generata rigenerata (2026-11-28); manca il commit, insieme a quello del giro 3 (applicato e verde il 2026-11-28). Resta in parallelo la richiesta del §5.4.2 al team BE/FE. Poi, col via di Tid, l'iscrizione da sé, che aspetta la proposta sull'emittente. Il passo 3c è chiuso: lato DB il 2026-11-27 (3c-1 e 3c-3
+**Riparte: il team BE/FE con B5, il login «per chi» dopo il secondo fattore (§5.5.7, D-BE4-1).** B1-B4 sono fatti, verdi e committati (2026-11-28). D-BE4-1 e D-BE4-2 decise come proposto (Tid, 2026-11-28). I giri 3 e 4 sono applicati, verdi e committati (`9be82d42c`, 2026-11-28). Il piano BE/FE (§5.5.7, 2026-11-28) mette insieme le richieste del §5.4.2 e del §5.5.5, perché riscrivono la stessa lettura della scheda. Poi, col via di Tid, l'iscrizione da sé, che aspetta la proposta sull'emittente. Il passo 3c è chiuso: lato DB il 2026-11-27 (3c-1 e 3c-3
 applicati, pgTAP verdi col runner di Tid), lato BE/FE lo stesso giorno (§5.3.10, committato il 2026-11-27).
 ⛔ **Numeri riservati al 3c: `20261127-01` … `-10`**, tutti usati; il giro 3 usa `-43` e `-44`. Il passo 3b è committato e in
 `Tito-dev` (`53420a057`, PR #266).
@@ -18,20 +18,23 @@ applicati, pgTAP verdi col runner di Tid), lato BE/FE lo stesso giorno (§5.3.10
 | 7 | ~~Tid~~ | ~~D-G3-1 e il via al giro 3~~: (a), 2026-11-27 | §5.4 | — |
 | 8 | ~~sessione DB~~ | ~~Giro 3 (S64): i due changeSet, il pgTAP, la doc, provati sullo scratch~~: 2026-11-27 | §5.4.1 | — |
 | 9 | ~~Tid~~ | ~~Apply di `20261127-43`, `-44`; `anagrafiche/test-accessi-altri-veste-utilizzabile-v1` col runner; doc auto-generata~~: fatto, verde, 2026-11-28 | §5.4.1 | — |
-| 10 | Tid | Il commit del giro 3, col cancello del testo di catalogo | — | — |
-| 11 | team BE/FE | La richiesta del giro 3: `utilizzabile` nella lista e nella scheda | §5.4.2 | — |
+| 10 | ~~Tid~~ | ~~Il commit del giro 3, col cancello del testo di catalogo~~: `9be82d42c` | — | — |
+| 11 | ~~team BE/FE~~ | ~~La richiesta del giro 3: `utilizzabile` nella lista e nella scheda~~: B1, B3, 2026-11-28 | §5.4.2, §5.5.7 | — |
 | 12 | ~~Tid~~ | ~~Il via al giro 4, l'indice per credenziale e soggetto~~: 2026-11-28 | §5.5 | — |
 | 13 | ~~Tid~~ | ~~D-G4-1, D-G4-2~~: sì, 2026-11-28 | §5.5.4 | — |
 | 14 | ~~sessione DB~~ | ~~Giro 4: changeSet, pgTAP, doc, prova sullo scratch~~: 2026-11-28 | §5.5.6 | — |
 | 16 | ~~Tid~~ | ~~Apply di `20261127-48` … `-50` e dei CSV; i pgTAP del §5.5.6 col runner app; doc auto-generata~~: 2026-11-28 | §5.5.6 | — |
-| 17 | Tid | Il commit dei giri 3 e 4 | «Da committare» | — |
-| 15 | team BE/FE | La richiesta del giro 4: i referenti nella scheda, il login «per chi», il codice nuovo | §5.5.5 | 16 |
+| 17 | ~~Tid~~ | ~~Il commit dei giri 3 e 4~~: `9be82d42c` | — | — |
+| 18 | ~~Tid~~ | ~~D-BE4-1 (il login «per chi»), D-BE4-2 (l'ordine)~~: come proposto, 2026-11-28 | §5.5.7 | — |
+| 19 | ~~team BE/FE~~ | ~~B1-B4, B6, B7: lista, policy, scheda dei referenti, invito, doc, test~~: 2026-11-28 | §5.5.7 | — |
+| 20 | ~~Tid~~ | ~~Il commit di B1-B4~~: `529e4d05d`, 2026-11-28 | — | — |
+| 15 | team BE/FE | B5: il login «per chi» (D-BE4-1), con la sua doc e i suoi test | §5.5.5 punto 2, §5.5.7 | 20 |
 
-**Decisioni aperte di Tid:** nessuna per il giro 4. D-M9 è decisa come proposto (Tid, 2026-11-28). Per i giri successivi restano D-M6
+**Decisioni aperte di Tid:** nessuna per i giri 3 e 4 (D-BE4-1, D-BE4-2 decise il 2026-11-28). D-M9 è decisa come proposto (Tid, 2026-11-28). Per i giri successivi restano D-M6
 ([analisi-modello-area-clienti](analisi-modello-area-clienti.md) §7) e l'emittente del cliente iscritto da sé
 ([sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md) §3.6).
 ⚠️ ~~Fino al passaggio del BE l'invito si fermava con `42501` dopo la mail~~: chiuso dal 3c-2 (§5.3.10).
-**Da committare:** il giro 4 (§5.5.6, applicato e verde il 2026-11-28): tre changeSet, i due CSV degli errori, sette pgTAP, due guide, tre pagine `manual/`, l'analisi del modello (D-M9), questo brief. Poi il giro 3 (§5.4.1): due changeSet, un pgTAP, la guida `risorse-umane-e-accessi`, le pagine `manual/` di `vw_accessi_altri` e `fn_veste_utilizzabile`, questo brief. Con lui, nato dal rosso del caso 1 (§5.4.1): il cancello `scripts/guardrail_pgtap_testo_catalogo.py` e il suo passo in `ci-validate.yaml`, la guida `pgtap-come-si-scrive-un-test` e il test 21 di `config/test-credenziale-login-v1`, che il cancello ha trovato verde per sottrazione. Il 3c è committato (`1405f8ce4`, e il 3c-2 il 2026-11-27).
+**Da committare:** niente. B1-B4 del §5.5.7 sono committati il 2026-11-28 (`529e4d05d`); i giri 3 e 4 del DB in `9be82d42c`, il 3c in `1405f8ce4`.
 
 ## 0. Il piano da percorrere
 
@@ -85,13 +88,17 @@ applicati, pgTAP verdi col runner di Tid), lato BE/FE lo stesso giorno (§5.3.10
   - [x] Giro 3, S64: D-G3-1 (a) e il via (Tid) — 2026-11-27
   - [x] Giro 3: `-43` la vista, `-44` il COMMENT, il pgTAP, la doc, la prova sullo scratch (§5.4.1) — 2026-11-27
   - [x] Giro 3: apply, pgTAP col runner (Tid), doc auto-generata — 2026-11-28
-  - [ ] Giro 3: la richiesta al BE/FE (§5.4.2)
+  - [x] Giro 3: la richiesta al BE/FE (§5.4.2, B1 e B3 del §5.5.7) — 2026-11-28
   - [x] Giro 4, l'indice per credenziale e soggetto: il via (Tid) — 2026-11-28
   - [x] Giro 4: il censimento e la proposta (§5.5) — 2026-11-28
   - [x] Giro 4: D-G4-1, D-G4-2 (Tid: sì) — 2026-11-28
   - [x] Giro 4: `-48` gli indici, `-49` e `-50` i due guard, il codice, i pgTAP (due nuovi o riscritti, quattro riportati sull'operatore), la doc, la prova sullo scratch (§5.5.6) — 2026-11-28
   - [x] Giro 4: apply, pgTAP verdi col runner app, doc auto-generata (Tid) — 2026-11-28
-  - [ ] Giro 4: la richiesta al BE/FE (§5.5.5)
+  - [x] Giri 3 e 4: il commit del DB (`9be82d42c`) — 2026-11-28
+  - [x] Giri 3 e 4, lato BE/FE: il censimento e il piano unico (§5.5.7) — 2026-11-28
+  - [x] Giri 3 e 4, lato BE/FE: D-BE4-1, D-BE4-2 (Tid: come proposto) — 2026-11-28
+  - [x] Giro 4, BE/FE: B1-B4, B6, B7 (§5.5.7) — 2026-11-28
+  - [ ] Giro 4, BE/FE: B5, il login «per chi» (§5.5.5 punto 2)
   - [ ] l'iscrizione da sé (aspetta l'emittente); la veste cliente unica col ritiro dei rami shop
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-25. **A chi:** Tid; il team BE/FE per il §4.
@@ -1139,6 +1146,68 @@ e `trgfn_profili_accesso_bindings_guard_coerenza`. Quest'ultima era indietro anc
 5. **Il pannello dei profili** (amministrazione software): un profilo `AD_HOC` o `SUPER_ADMIN` si propone solo per
    le vesti `OPERATORE`. Il DB rifiuta le altre con il codice del punto 4.
 6. La doc BE dei percorsi toccati.
+
+#### 5.5.7 Il piano del BE/FE per i giri 3 e 4 (sessione BE, 2026-11-28)
+
+Letti gli indici BB backend e frontend per intero; `scripts/guide_coinvolte.py` sui file del piano. Le richieste del
+§5.4.2 e del §5.5.5 si fanno in un piano solo, perché il punto 2 del §5.4.2 (l'utilizzabilità nella scheda) e il
+punto 1 del §5.5.5 (la scheda con i referenti) riscrivono la stessa lettura, `PortaleRepository.get_stato_identita`:
+scritta una volta sola, nasce già come elenco con `utilizzabile` per voce.
+
+**Il censimento (§5.5.5 punto 3, §5.4.2 punto 3), sul codice del 2026-11-28.** La ricerca copre SQL e ORM in
+`backend/apps` fuori dai test, e il FE.
+
+| Punto | Che cosa cerca | Esito |
+| --- | --- | --- |
+| `PortaleRepository.find_identita_portale` | (ruolo anagrafico, tipo), `LIMIT 1` | **cambia**: la usano `_ensure_identita`, `_disattiva_veste_common`, `ProfileActivateShopView` |
+| `PortaleRepository.get_stato_identita` | (ruolo anagrafico, tipo), `LIMIT 1` | **cambia**: diventa l'elenco dei referenti (B4) |
+| `InvitoPortaleService._ensure_identita` | la veste del ruolo; una veste di un'altra credenziale è un errore («collegata a un altro utente») | **cambia**: è il divieto che D-M7 ritira. Si cerca per (credenziale, ruolo anagrafico, tipo) |
+| `InvitoPortaleService._disattiva_veste_common` | la veste del ruolo e tipo | **cambia**: si spegne la veste di **un** referente, per `identita_id` |
+| `ProfileActivateShopView` | la veste shop del ruolo della sessione | **cambia**: con due referenti, il secondo troverebbe la veste del primo e si fermerebbe. Si cerca per (credenziale della sessione, ruolo, tipo). Si ritira col giro della veste cliente |
+| `AuthRepository.find_veste_utilizzabile_per_ruoli` | (credenziale, tipi della porta), `ORDER BY id LIMIT 1` | **cambia**: il login «per chi» (B5) |
+| `AuthRepository.find_identita_per_ruolo` | (credenziale, tipo) | non ne dipende: è già un elenco, e la chiama solo l'invito dell'operatore col tipo `OPERATORE` |
+| `PermissionResolver.get_ruolo_applicativo`, ripiego senza GUC | (credenziale), `ORDER BY id LIMIT 1` | non ne dipende: ritorna il **tipo**, che fra due vesti dello stesso tipo è lo stesso |
+| `AuthRepository.get_nomi_credenziale` (saluto delle email, firma «invitato da») | (credenziale), l'operatore prima, poi la veste accesa più vecchia | non ne dipende: è il nome della credenziale, non della veste. Il saluto di un referente col nome di un'azienda c'era già con una veste sola |
+| `endpoint_helpers`, `amm_software_repository` (`_VESTE_OPERATORE`), `permissions_cache` | la veste `OPERATORE` | non ne dipendono: l'operatore resta uno per credenziale (D-G4-1) |
+| FE `PortaleAccessoPanel`, `WebAccessiBadge`, `portaleAdminApi` | una veste per tipo (`portale`, `shop`) | **cambiano** con B4 |
+| La voce di `vesti` in `vw_accessi_altri` | BE: `v.*` passato com'è; OpenAPI: un `DictField`; test: nessuno confronta la voce intera; FE: nessun tipo della voce | nessun elenco chiuso di chiavi. `utilizzabile` arriva al FE senza toccare il BE |
+
+**Il punto 5 del §5.5.5 non chiede codice.** Nessun pannello dell'applicazione lega un `AD_HOC`; il `SUPER_ADMIN` lo
+lega solo `AmmSoftwareRepository._set_super_admin_binding`, sulla veste `OPERATORE` (`_VESTE_OPERATORE`).
+
+**Regola del 2.** La veste per (credenziale, ruolo anagrafico, tipo) serve a tre punti (`_ensure_identita`,
+`ProfileActivateShopView`, e il riuso al reinvio): nasce come metodo unico di `PortaleRepository`, al posto di
+`find_identita_portale`, che si ritira. Non c'è una prima copia da estrarre: è la stessa lettura detta una volta.
+
+| Blocco | Punti | Che cosa |
+| --- | --- | --- |
+| B1 | §5.4.2 1, 4 | «Altri accessi»: la veste accesa con `utilizzabile = false` porta nel badge l'icona e il tooltip «accesa, oggi non lascia entrare»; il drawer lo dice sotto la veste, con le date. OpenAPI e `api_amm_software` nominano `utilizzabile` |
+| B2 | §5.5.5 4 | Policy rigenerate dal catalogo, ripiego senza `%s` per `E_PROFILO_PERSONALE_SOLO_OPERATORE` |
+| B3 | §5.5.5 1, §5.4.2 2 | `PortaleRepository`: l'elenco dei referenti per (ruolo, tipo), ogni voce con stato (`fn_stato_veste`), `utilizzabile` (`fn_veste_utilizzabile`), credenziale ed email; la veste per (credenziale, ruolo, tipo); `find_identita_portale` ritirato |
+| B4 | §5.5.5 1 | `InvitoPortaleService`: `get_stato_accessi_*` rende per tipo l'elenco dei referenti; l'invito di un'email nuova sullo stesso cliente è un referente in più, la stessa credenziale è un reinvio, la veste accesa della stessa credenziale resta l'errore di oggi; la disattivazione prende `identita_id`. FE: `PortaleAccessoPanel` con l'elenco per tipo, le azioni per referente, «Invita un referente»; `WebAccessiBadge`. `ProfileActivateShopView` sulla veste della sessione |
+| B5 | §5.5.5 2 | Il login «per chi»: D-BE4-1 |
+| B6 | §5.5.5 6 | Guide: `architettura-multi-face-auth` §7.3 («la veste la sceglie l'endpoint» è **indietro**: con D-M8 la sceglie anche la persona) e §8.1 (i referenti, la disattivazione per veste); `risorse-umane-e-accessi` §«Lo stato della veste». Manuali BE: `api_invito_portale_shop`, `api_multi_veste_token`, `api_amm_software`. Catalogo BB BE L326, L814, L816, L817, L818; FE L338 se serve; indici rigenerati |
+| B7 | — | Test dei soli moduli toccati, col DB vero per i casi costruiti: due referenti sullo stesso cliente, una persona su due clienti, la veste accesa ma scaduta nella scheda |
+
+**Le decisioni di Tid per il piano:**
+
+| # | Decisione | Proposta |
+| --- | --- | --- |
+| D-BE4-1 | Come si sceglie «per chi» al login | **dopo la password e dopo il secondo fattore**: se le vesti utilizzabili della porta sono più d'una, la risposta non porta i token ma la scelta, con una sfida firmata (lo stesso BB del secondo fattore) e l'elenco dei soggetti; un secondo passo con la sfida e l'`identita_id` apre la sessione. L'elenco dei soggetti non si mostra a chi ha solo la password. In sessione, «Entra per un altro soggetto» apre una sessione nuova (`sid` nuovo), come il cambio di emittente dell'operatore |
+| D-BE4-2 | L'ordine | due commit: **prima B1-B4** (lista, policy, scheda, invito), **poi B5** (il login), che tocca l'ingresso di tutte e due le porte esterne |
+
+✅ **Tid, 2026-11-28: D-BE4-1 e D-BE4-2 come proposto.**
+
+**Esiti di B1-B4, B6, B7 (sessione BE, 2026-11-28, committati).** B5, il login «per chi», è il secondo commit.
+
+| Blocco | Esito |
+| --- | --- |
+| B1 | `vesteFermaOggi` (FE, `core/utils/veste.js`, nuovo, con lo spec): vero solo per una veste `ATTIVO` con `utilizzabile = false`, e una chiave assente non è un rifiuto. Nato con tre consumatori (il badge di «Altri accessi», `AccessoAltroDrawer`, il pannello della scheda): la veste ferma tiene il colore del suo stato e prende `STATUS_ICONS.BLOCCATO`, il tooltip e la frase `amministrazione.accessi.veste_ferma_oggi`, con le date. OpenAPI della lista e `api_amm_software` nominano `utilizzabile`. Il BE non cambia: passa `v.*` com'è |
+| B2 | `error_policies_generated.py` rigenerato: il diff è il solo `E_PROFILO_PERSONALE_SOLO_OPERATORE`, già nel CSV committato (DB allineato a git); ripiego senza `%s` |
+| B3 | `PortaleRepository.list_referenti` (l'elenco, con `identita_id` facoltativo per il perimetro) e `find_veste_credenziale` (la terna); `find_identita_portale` e `get_stato_identita` ritirati |
+| B4 | `get_stato_accessi_*` rende `{portale: [voce], shop: [voce], email_suggerita}`: elenco vuoto al posto di `NESSUNO`. `_ensure_identita` cerca per credenziale: il guard «collegata a un altro utente» si ritira, perché era il divieto di D-M7. Le tre disattivazioni vogliono `identita_id` nel corpo (`require_positive_int`, 400 `E_VALIDATION_INPUT`); una veste di un altro soggetto o tipo è 404 `E_VESTE_NON_TROVATA` (codice del giro 1). `ProfileActivateShopView` cerca la veste della credenziale della sessione: il suo guard anti-tampering si ritira per la stessa ragione. FE: `PortaleAccessoPanel` riscritto, una sezione ripetuta sui tipi al posto delle due copiate nel template; per referente lo stato, il fermo, «Invia invito» (spenta o revocata), «Reinvia» (invito in volo), «Disattiva»; sotto, «Invita un referente» con l'email del campo. `WebAccessiBadge` conta i referenti accesi. Chiavi i18n nuove (`portale.referenti_nessuno`, `*.btn_invita_referente`); la conferma della disattivazione nomina il referente |
+| B6 | Manuale `api_invito_portale_shop` (elenco, corpo della disattivazione, secondo referente, errori); guida `architettura-multi-face-auth` §8.1 (**indietro, aggiornata**: i referenti, la disattivazione per veste); `risorse-umane-e-accessi` §«Lo stato della veste» (**indietro, aggiornata**: la scheda mostra `utilizzabile` per referente); cataloghi BB BE (`PortaleRepository`, `InvitoPortaleService`, `ProfileActivateShopView`) e FE (`vesteFermaOggi`), indici rigenerati. Il §7.3 della multi-face («la veste la sceglie l'endpoint») resta **indietro** fino a B5. Le altre guide di `guide_coinvolte.py` sui file del piano: coerenti (citano gli stessi oggetti con regole che il giro non cambia) |
+| B7 | 67 test Django dei moduli toccati, col DB vero (`ZEROERP_TEST_DB_E2E=1`): `test_invito_portale_service` (nuovo: il secondo referente nasce con la sua veste; la disattivazione fuori perimetro è 404), `test_attivazione_portale_view` (la veste shop della persona della sessione; il falso utente diventa un `User` non salvato, perché il BB `utente_autenticato` vuole il tipo vero), `test_accessi_db` (costruiti due referenti accesi sullo stesso cliente, uno valido da domani: `ATTIVO` e `utilizzabile = false`), `test_revoca_veste_db`, `test_accessi_views`, `test_invito_portale_views` (nuovo, dalla `/verifica` del 2026-11-28: le tre view di disattivazione passano `identita_id` dal corpo al service col tipo dell'endpoint, e senza la chiave rispondono 400 senza toccarlo; rosso con la chiave sbagliata in una view); i presidi delle policy (`test_error_policies_classi`, `test_error_policies_divergenza_db`). Vitest: 117 su `amministrazione`, `veste.spec`, e `PortaleAccessoPanel.spec` 10/10 (nuovi: due referenti e «Disattiva» su quello della riga, la veste ferma, l'elenco vuoto). ruff, eslint, mypy (cricchetto: 0 rilievi nuovi) puliti |
 
 ### Giri 3-6 — Il modello dell'area clienti
 

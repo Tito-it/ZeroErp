@@ -29,10 +29,11 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
-import { MANAGE_ICONS, RUOLO_APPLICATIVO, STATO_SECONDO_FATTORE, STATO_VESTE } from '../../core/constants'
+import { MANAGE_ICONS, RUOLO_APPLICATIVO, STATO_SECONDO_FATTORE, STATO_VESTE, STATUS_ICONS } from '../../core/constants'
 import { etichettaRuoloApplicativo } from '../../core/utils/i18nLabel'
 import { buildBoolOptions, buildOptionsConTutti } from '../../core/utils/options'
 import { statoVesteSeverity } from '../../core/utils/severity'
+import { vesteFermaOggi } from '../../core/utils/veste'
 import { useAccessiAltriStore } from '../stores/accessiAltri'
 import { useEliminaCredenziale } from '../composables/useEliminaCredenziale'
 import { destinazioneVeste, useSchedaVeste } from '../composables/useSchedaVeste'
@@ -130,6 +131,13 @@ function buildRowActions(data) {
   ]
 }
 
+// Scopo: il tooltip del badge di una veste: lo stato, e per la veste accesa
+//        che oggi non apre la porta anche il perche' (`utilizzabile` del DB).
+function tooltipVeste(v) {
+  const stato = t(`auth.stato_veste.${v.stato}`)
+  return vesteFermaOggi(v) ? `${stato} · ${t('amministrazione.accessi.veste_ferma_oggi')}` : stato
+}
+
 function onDrawerChanged() {
   store.fetchList()
 }
@@ -204,11 +212,15 @@ function onDrawerChanged() {
            vesti sono badge, una per veste, col colore del suo stato. -->
       <template #cell-vesti="{ data }">
         <div class="app-accessi-badges">
+          <!-- La veste accesa che oggi non apre la porta tiene il colore del
+               suo stato e prende l'icona del fermo: lo stato e la porta sono
+               due domande (D-G3-1). -->
           <Tag
             v-for="v in data.vesti" :key="v.identita_id"
             :value="etichettaRuoloApplicativo(t, te, v.ruolo_applicativo)"
             :severity="statoVesteSeverity(v.stato)"
-            v-tooltip.top="t(`auth.stato_veste.${v.stato}`)"
+            :icon="vesteFermaOggi(v) ? STATUS_ICONS.BLOCCATO : undefined"
+            v-tooltip.top="tooltipVeste(v)"
           />
           <Tag v-if="data.nessun_accesso" :value="t('amministrazione.accessi.col_nessun_accesso')" severity="warn" />
         </div>

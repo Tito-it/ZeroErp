@@ -1,10 +1,11 @@
 # Brief DB — Revisione dello schema `anagrafiche`: la documentazione, le segnalazioni di codice, i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-27
+## ⏭️ Chi riparte — aggiornato al 2026-11-28
 
-**Riparte: team BE/FE**, con la richiesta del giro T8a (§25.11.3); il giro T8a è chiuso lato DB (applicato, pgTAP verdi, B-7, doc, commit: 2026-11-27, §25.11); il giro T8b è chiuso lato DB (applicato, pgTAP verdi, B-7,
-doc, commit: 2026-11-27, §25.9); intanto il **team BE/FE** con le richieste aperte
-dei giri precedenti. Il giro T8c è chiuso lato DB (§25.8). Lo stato di ogni giro sta nel piano a spunta del §0 e nella sua
+**Riparte: sessione DB**, con le cinque domande del team BE/FE (§26.3), poi un giro per tema (T12, T3, T10, T11) al
+via di Tid. Il team BE/FE non ha lavoro libero su questo brief: il picker (D-BE-1) aspetta Q-BE-1, R-BE6 aspetta
+Q-BE-3. Il giro T8a è chiuso lato DB (2026-11-27, §25.11) e lato BE/FE (`e3b39de2b`, §26.1); T8b (§25.9) e T8c
+(§25.8) sono chiusi lato DB e censiti dal BE/FE. Lo stato di ogni giro sta nel piano a spunta del §0 e nella sua
 sezione: qui solo chi e dove.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -152,7 +153,7 @@ Si spunta una voce quando è fatta, nello stesso turno, con la data. Il dettagli
   * [x] T8a: doc auto-generata rigenerata (Tid, 2026-11-27)
   * [x] T8a: baseline B-7 sulle righe del giro, confronto verde su scratch e dbdev (2026-11-27, §25.11)
   * [x] T8a: commit (2026-11-27, «DB: anagrafiche giro T8a, i conti bancari»)
-  * [ ] T8a: la richiesta al BE (§25.11.3), da girare
+  * [x] T8a: la richiesta al BE (§25.11.3), fatta e committata dal team BE/FE (`e3b39de2b`, 2026-11-27, §26.1)
   * [x] T8a: D-T8a-14 a, colonne `text`, in questo giro (Tid, 2026-11-27): `-12`, e i file `-12 … -29` rinumerati `-13 … -30`
   * [ ] Poi un giro per tema nell'ordine di §17.1: T12, T3, T10, T11
 * **Fase 9 — Il giro dei metadati** (§8)

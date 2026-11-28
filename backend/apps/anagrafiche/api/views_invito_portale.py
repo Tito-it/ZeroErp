@@ -24,12 +24,26 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json, utente_autenticato_id
 from apps.core.api.payload_validators import optional_bool
+from apps.core.services.service_errors import E_VALIDATION_INPUT
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.api.success_responses import success_response
 from apps.core.services.auth_constants import (
     RUOLO_APPLICATIVO_CLIENTE_PORTALE,
     RUOLO_APPLICATIVO_SHOP_CUSTOMER,
 )
 from apps.portale.services.invito_portale_service import InvitoPortaleService
+
+# Il corpo delle disattivazioni: la veste del referente da spegnere.
+_CORPO = PayloadValidator(validation_code=E_VALIDATION_INPUT)
+
+# Lo schema del corpo delle tre disattivazioni (una veste per referente, D-M7).
+_DISATTIVA_REQ_FIELDS: dict[str, serializers.Field] = {
+    "identita_id": serializers.IntegerField(
+        help_text="La veste del referente da spegnere: una voce dell'elenco "
+        "dello stato accessi. Una veste di un altro soggetto o di un altro "
+        "tipo e' un 404 `E_VESTE_NON_TROVATA`."
+    ),
+}
 
 
 class ClientiInvitaPortaleView(DomainAPIView):
@@ -184,7 +198,7 @@ class FornitoriInvitaPortaleView(DomainAPIView):
 
 
 class ClientiStatoAccessiView(DomainAPIView):
-    """GET admin: stato vesti non-operatore (portale + shop) del cliente."""
+    """GET admin: i referenti del cliente, per veste (portale + shop)."""
 
     area_funzionale = "anagrafiche"
     model_permission = ("anagrafiche", "cliente")
@@ -192,9 +206,13 @@ class ClientiStatoAccessiView(DomainAPIView):
     @extend_schema(
         summary="Stato accessi portale + shop del cliente",
         description=(
-            "`portale` e `shop`: lo stato di ciascuna veste. `email_suggerita`: "
-            "l'email da proporre nell'invito (l'identita' esistente, poi il "
-            "contatto PRINCIPALE del ruolo, poi quello di default), o null."
+            "`portale` e `shop`: i referenti per tipo di veste, una voce per "
+            "veste (anche spenta) con `identita_id`, `username`, `email`, "
+            "`stato` (`script.fn_stato_veste`), `utilizzabile` "
+            "(`script.fn_veste_utilizzabile`), date e invito. Elenco vuoto: "
+            "nessuno invitato. `email_suggerita`: l'email da proporre "
+            "nell'invito (il primo referente, poi il contatto PRINCIPALE del "
+            "ruolo, poi quello di default), o null."
         ),
         responses={200: inline_serializer(
             name="ClienteStatoAccessiResp",
@@ -207,7 +225,7 @@ class ClientiStatoAccessiView(DomainAPIView):
 
 
 class FornitoriStatoAccessiView(DomainAPIView):
-    """GET admin: stato veste FORNITORE_PORTALE del fornitore."""
+    """GET admin: i referenti del fornitore (veste FORNITORE_PORTALE)."""
 
     area_funzionale = "anagrafiche"
     model_permission = ("anagrafiche", "fornitore")
@@ -215,9 +233,10 @@ class FornitoriStatoAccessiView(DomainAPIView):
     @extend_schema(
         summary="Stato accesso portale del fornitore",
         description=(
-            "`portale`: lo stato della veste. `email_suggerita`: l'email da "
-            "proporre nell'invito (l'identita' esistente, poi il contatto "
-            "PRINCIPALE del ruolo, poi quello di default), o null."
+            "`portale`: i referenti, una voce per veste (stessa forma del "
+            "cliente). `email_suggerita`: l'email da proporre nell'invito (il "
+            "primo referente, poi il contatto PRINCIPALE del ruolo, poi quello "
+            "di default), o null."
         ),
         responses={200: inline_serializer(
             name="FornitoreStatoAccessiResp",
@@ -230,14 +249,14 @@ class FornitoriStatoAccessiView(DomainAPIView):
 
 
 class ClientiDisattivaPortaleView(DomainAPIView):
-    """POST admin: disattiva la veste CLIENTE_PORTALE del cliente (soft revoke)."""
+    """POST admin: revoca la veste CLIENTE_PORTALE di un referente del cliente."""
 
     area_funzionale = "anagrafiche"
     model_permission = ("anagrafiche", "cliente")
 
     @extend_schema(
-        request=None,
-        summary="Disattiva accesso portale del cliente",
+        request=inline_serializer(name="ClienteDisattivaPortaleReq", fields=_DISATTIVA_REQ_FIELDS),
+        summary="Disattiva l'accesso portale di un referente del cliente",
         responses={200: inline_serializer(
             name="ClienteDisattivaPortaleResp",
             fields={"data": serializers.DictField()},
@@ -246,10 +265,11 @@ class ClientiDisattivaPortaleView(DomainAPIView):
     def post(self, request: Request, cliente_id: int) -> JsonResponse:
         service = InvitoPortaleService()
 
-        def _handler(_payload: dict[str, Any]) -> dict[str, Any]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return service.disattiva_veste_cliente(
                 cliente_id=cliente_id,
                 ruolo_applicativo=RUOLO_APPLICATIVO_CLIENTE_PORTALE,
+                identita_id=_CORPO.require_positive_int(payload, "identita_id"),
                 disattivato_da_user_id=utente_autenticato_id(request),
             )
 
@@ -257,14 +277,14 @@ class ClientiDisattivaPortaleView(DomainAPIView):
 
 
 class ClientiDisattivaShopView(DomainAPIView):
-    """POST admin: disattiva la veste SHOP_CUSTOMER del cliente (soft revoke)."""
+    """POST admin: revoca la veste SHOP_CUSTOMER di un referente del cliente."""
 
     area_funzionale = "anagrafiche"
     model_permission = ("anagrafiche", "cliente")
 
     @extend_schema(
-        request=None,
-        summary="Disattiva accesso shop del cliente",
+        request=inline_serializer(name="ClienteDisattivaShopReq", fields=_DISATTIVA_REQ_FIELDS),
+        summary="Disattiva l'accesso shop di un referente del cliente",
         responses={200: inline_serializer(
             name="ClienteDisattivaShopResp",
             fields={"data": serializers.DictField()},
@@ -273,10 +293,11 @@ class ClientiDisattivaShopView(DomainAPIView):
     def post(self, request: Request, cliente_id: int) -> JsonResponse:
         service = InvitoPortaleService()
 
-        def _handler(_payload: dict[str, Any]) -> dict[str, Any]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return service.disattiva_veste_cliente(
                 cliente_id=cliente_id,
                 ruolo_applicativo=RUOLO_APPLICATIVO_SHOP_CUSTOMER,
+                identita_id=_CORPO.require_positive_int(payload, "identita_id"),
                 disattivato_da_user_id=utente_autenticato_id(request),
             )
 
@@ -284,14 +305,14 @@ class ClientiDisattivaShopView(DomainAPIView):
 
 
 class FornitoriDisattivaPortaleView(DomainAPIView):
-    """POST admin: disattiva la veste FORNITORE_PORTALE del fornitore."""
+    """POST admin: revoca la veste FORNITORE_PORTALE di un referente del fornitore."""
 
     area_funzionale = "anagrafiche"
     model_permission = ("anagrafiche", "fornitore")
 
     @extend_schema(
-        request=None,
-        summary="Disattiva accesso portale del fornitore",
+        request=inline_serializer(name="FornitoreDisattivaPortaleReq", fields=_DISATTIVA_REQ_FIELDS),
+        summary="Disattiva l'accesso portale di un referente del fornitore",
         responses={200: inline_serializer(
             name="FornitoreDisattivaPortaleResp",
             fields={"data": serializers.DictField()},
@@ -300,9 +321,10 @@ class FornitoriDisattivaPortaleView(DomainAPIView):
     def post(self, request: Request, fornitore_id: int) -> JsonResponse:
         service = InvitoPortaleService()
 
-        def _handler(_payload: dict[str, Any]) -> dict[str, Any]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return service.disattiva_veste_fornitore(
                 fornitore_id=fornitore_id,
+                identita_id=_CORPO.require_positive_int(payload, "identita_id"),
                 disattivato_da_user_id=utente_autenticato_id(request),
             )
 

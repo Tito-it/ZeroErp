@@ -1263,6 +1263,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PROFILO_ACCESSO_BINDING_INCOERENTE": "Binding non coerente con il tipo del profilo di accesso.",
     "E_PROFILO_ACCESSO_NON_TROVATO": "Profilo di accesso non trovato.",
     "E_PROFILO_ACCESSO_TIPO_NON_GESTITO": "Tipo profilo non gestito dal guard di coerenza bindings: regola mancante.",
+    "E_PROFILO_PERSONALE_SOLO_OPERATORE": "Un profilo personale (AD_HOC o SUPER_ADMIN) si assegna solo a un operatore.",
     "E_PROFILO_ULTIMO_SUPER_ADMIN": "Operazione vietata: non resterebbe nessun amministratore (SUPER_ADMIN) attivo e senza data di fine.",
     "E_PROMO_ARTICOLO_SOLO_COMPONENTE": "L'articolo si vende solo dentro un kit: una promo su di lui non si applicherebbe mai. Mettere la promo sul kit.",
     "E_PROMO_INIZIATA_CAMPI_RISTRETTI": "Promo gia' iniziata: solo descrizione e data fine sono modificabili. Per cambiare prezzo o periodo, chiudere questa promo (data fine = oggi) e crearne una nuova.",

@@ -24,11 +24,12 @@ import Tag from 'primevue/tag'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { etichettaRuoloApplicativo } from '../../core/utils/i18nLabel'
 import { statoVesteSeverity } from '../../core/utils/severity'
+import { vesteFermaOggi } from '../../core/utils/veste'
 import { useEliminaCredenziale } from '../composables/useEliminaCredenziale'
 import { destinazioneVeste, useSchedaVeste } from '../composables/useSchedaVeste'
 import CredenzialeAzioni from './CredenzialeAzioni.vue'
@@ -112,6 +113,15 @@ function elimina() {
           </small>
           <small v-if="veste.valido_al" class="app-field-hint">
             {{ t('amministrazione.accessi.veste_valida_al', { quando: displayDate(veste.valido_al) }) }}
+          </small>
+          <!-- Accesa ma fuori porta oggi (`utilizzabile` del DB, D-G3-1): il
+               perche' sta nelle date, o nel soggetto spento. -->
+          <small v-if="vesteFermaOggi(veste)" class="app-field-hint">
+            <i :class="STATUS_ICONS.BLOCCATO" />
+            {{ t('amministrazione.accessi.veste_ferma_oggi') }}
+            <template v-if="veste.valido_dal">
+              {{ t('amministrazione.accessi.veste_valida_dal', { quando: displayDate(veste.valido_dal) }) }}
+            </template>
           </small>
           <div v-if="destinazioneVeste(veste)">
             <Button

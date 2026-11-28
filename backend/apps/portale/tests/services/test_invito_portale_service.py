@@ -18,21 +18,21 @@ Indice test eseguiti:
 6)  InvitoPortaleTests.test_invia_invito_riusa_auth_user_esistente_flow_cross
 7)  InvitoPortaleTests.test_cross_non_riattiva_identita_disattivata
 8)  InvitoPortaleTests.test_identita_gia_attiva_solleva
-9)  InvitoPortaleTests.test_identita_collegata_altro_auth_user_solleva
+9)  InvitoPortaleTests.test_secondo_referente_nasce_con_la_sua_veste — D-M7: la veste si cerca per credenziale
 11) InvitoPortaleTests.test_build_display_name_pg_e_pf
 12) InvitoShopCustomerTests.test_invia_invito_shop_happy_path_invito
 12b) InvitoShopCustomerTests.test_email_non_partita_risponde_inviato_false (F-3)
 13) InvitoShopCustomerTests.test_invia_invito_shop_cross_path
 14) InvitoShopCustomerTests.test_reinvia_invito_shop_invalida_entrambi_token
-15) GetStatoAccessiTests.test_cliente_include_portale_e_shop
+15) GetStatoAccessiTests.test_cliente_include_portale_e_shop — due elenchi di referenti
 16) GetStatoAccessiTests.test_fornitore_solo_portale
 17) GetStatoAccessiTests.test_cliente_not_found_solleva
-17b) GetStatoAccessiTests.test_email_suggerita_dall_identita_esistente — l'identita' vince sui contatti
+17b) GetStatoAccessiTests.test_email_suggerita_dall_identita_esistente — il primo referente vince sui contatti
 17c) GetStatoAccessiTests.test_email_suggerita_cliente_shop_se_portale_senza_email
 17d) GetStatoAccessiTests.test_email_suggerita_dai_contatti_del_ruolo — senza identita', i contatti del ruolo
 17e) GetStatoAccessiTests.test_email_suggerita_nessuna — niente identita' ne' contatto: None
 18) DisattivaVesteTests.test_disattiva_cliente_portale_attivo_invalida_token — anche sessioni della veste e cache
-19) DisattivaVesteTests.test_disattiva_cliente_nessuna_identita_noop
+19) DisattivaVesteTests.test_disattiva_veste_di_un_altro_soggetto_404 — E_VESTE_NON_TROVATA
 20) DisattivaVesteTests.test_disattiva_fornitore_portale
 21) DisattivaVesteTests.test_disattiva_cliente_identita_gia_disattiva_idempotente
 """
@@ -83,7 +83,7 @@ class InvitoPortaleTests(TestCase):
         MockAuth.return_value.find_auth_user_id_per_email.return_value = None  # utente nuovo
         repo.create_auth_user_portale.return_value = 200
         MockAuth.return_value.auth_user_ha_password.return_value = False  # segnaposto `!`
-        repo.find_identita_portale.return_value = None  # identita nuova
+        repo.find_veste_credenziale.return_value = None  # identita nuova
         repo.create_identita_portale.return_value = 500
 
         auth = MockAuth.return_value
@@ -175,7 +175,7 @@ class InvitoPortaleTests(TestCase):
         MockAuth.return_value.find_auth_user_id_per_email.return_value = None
         repo.create_auth_user_portale.return_value = 201
         MockAuth.return_value.auth_user_ha_password.return_value = False
-        repo.find_identita_portale.return_value = None
+        repo.find_veste_credenziale.return_value = None
         repo.create_identita_portale.return_value = 501
 
         MockAuth.return_value.set_deve_cambiare_password.return_value = True
@@ -242,7 +242,7 @@ class InvitoPortaleTests(TestCase):
         # Identita gia' esistente ma disattivata (invito scaduto o revoca
         # — caso legittimo di reinvio). Post §8.4.1 guard: il reinvio su
         # identita attiva e' vietato (l'utente ha gia' accesso).
-        repo.find_identita_portale.return_value = {
+        repo.find_veste_credenziale.return_value = {
             "identita_id": 500,
             "auth_user_id": 200,
             "attivo": False,
@@ -296,7 +296,7 @@ class InvitoPortaleTests(TestCase):
         }
         MockAuth.return_value.find_auth_user_id_per_email.return_value = 200  # creato dal primo invito
         MockAuth.return_value.auth_user_ha_password.return_value = False  # mai attivato
-        repo.find_identita_portale.return_value = {
+        repo.find_veste_credenziale.return_value = {
             "identita_id": 500,
             "auth_user_id": 200,
             "attivo": False,
@@ -357,7 +357,7 @@ class InvitoPortaleTests(TestCase):
         }
         MockAuth.return_value.find_auth_user_id_per_email.return_value = 999  # auth_user gia' esistente
         MockAuth.return_value.auth_user_ha_password.return_value = True  # ... con una password vera
-        repo.find_identita_portale.return_value = None  # ma identita CLIENTE_PORTALE nuova
+        repo.find_veste_credenziale.return_value = None  # ma identita CLIENTE_PORTALE nuova
         repo.create_identita_portale.return_value = 501
 
         MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
@@ -425,7 +425,7 @@ class InvitoPortaleTests(TestCase):
         # Identita CROSS gia' creata in passato ma disattivata (invito
         # scaduto o revoca admin): riattivazione deve avvenire SOLO con
         # consumo del token CROSS.
-        repo.find_identita_portale.return_value = {
+        repo.find_veste_credenziale.return_value = {
             "identita_id": 501,
             "auth_user_id": 999,
             "attivo": False,
@@ -472,7 +472,7 @@ class InvitoPortaleTests(TestCase):
             "ragione_sociale": "ACME",
         }
         MockAuth.return_value.find_auth_user_id_per_email.return_value = 999  # email esistente → CROSS
-        repo.find_identita_portale.return_value = {
+        repo.find_veste_credenziale.return_value = {
             "identita_id": 500,
             "auth_user_id": 999,
             "attivo": True,  # ← gia' attiva
@@ -493,17 +493,18 @@ class InvitoPortaleTests(TestCase):
         repo.create_identita_portale.assert_not_called()
         MockToken.return_value.create.assert_not_called()
 
-    # Scopo: Guard §8.4.1 FRAG4. Se l'identita portale per quel
-    # soggetto_ruolo e' collegata a un auth_user DIVERSO da quello
-    # risolto via email (stato incoerente: soggetto_ruolo riassegnato a
-    # altro holder o bug di migrazione), il service NON deve ignorare la
-    # divergenza — richiede intervento manuale.
+    # Scopo: Un secondo referente sullo stesso cliente (D-M7, giro 4 del
+    # brief-db-accessi-area-clienti, 2026-11-28): la veste si cerca per
+    # (credenziale, ruolo, tipo), quindi la persona nuova non trova la veste
+    # del primo referente e ne nasce una sua, spenta. Fino ad allora la veste
+    # di un altro auth_user sul ruolo era un errore («collegata a un altro
+    # utente»).
     @patch(_SETTINGS)
     @patch(_EMAIL_SVC)
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO, autospec=True)
     @patch(_REPO, autospec=True)
-    def test_identita_collegata_altro_auth_user_solleva(
+    def test_secondo_referente_nasce_con_la_sua_veste(
         self, MockRepo, MockAuth, MockToken, MockEmail, mock_settings
     ):
         mock_settings.FRONTEND_URL = "https://localhost"
@@ -515,27 +516,30 @@ class InvitoPortaleTests(TestCase):
             "soggetto_id": "u",
             "ragione_sociale": "ACME",
         }
-        # auth_user risolto via email = 999 ma identita esistente punta
-        # ad auth_user = 888 (incoerenza).
+        # La persona nuova (999) non ha vesti su questo cliente: quella del
+        # primo referente (888) non la riguarda.
         MockAuth.return_value.find_auth_user_id_per_email.return_value = 999
-        repo.find_identita_portale.return_value = {
-            "identita_id": 500,
-            "auth_user_id": 888,
-            "attivo": False,
-            "invito_inviato_at": None,
-        }
+        MockAuth.return_value.auth_user_ha_password.return_value = True
+        repo.find_veste_credenziale.return_value = None
+        repo.create_identita_portale.return_value = 501
+        MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-28T10:00:00+00:00"
+        MockToken.return_value.create.return_value = "tok"
+        MockEmail.return_value.send_email.return_value = (1, True)
 
         from apps.portale.services.invito_portale_service import InvitoPortaleService
-        svc = InvitoPortaleService()
-
-        with self.assertRaises(ServiceError) as ctx:
-            svc.invia_invito_cliente(
-                cliente_id=42,
-                email="existing@acme.test",
-                invitato_da_user_id=1,
-            )
-        self.assertEqual(ctx.exception.code, "E_INVITO_PORTALE")
-        repo.create_identita_portale.assert_not_called()
+        result = InvitoPortaleService().invia_invito_cliente(
+            cliente_id=42,
+            email="seconda@acme.test",
+            invitato_da_user_id=1,
+        )
+        repo.find_veste_credenziale.assert_called_once_with(999, 100, "CLIENTE_PORTALE")
+        repo.create_identita_portale.assert_called_once_with(
+            auth_user_id=999,
+            soggetto_ruolo_id=100,
+            ruolo_applicativo="CLIENTE_PORTALE",
+            attivo=False,
+        )
+        self.assertEqual(result["identita_id"], 501)
 
     # Scopo: Display name preferisce ragione_sociale; fallback PF cognome+nome.
     def test_build_display_name_pg_e_pf(self) -> None:
@@ -582,7 +586,7 @@ class InvitoShopCustomerTests(TestCase):
         MockAuth.return_value.find_auth_user_id_per_email.return_value = None
         repo.create_auth_user_portale.return_value = 300
         MockAuth.return_value.auth_user_ha_password.return_value = False
-        repo.find_identita_portale.return_value = None
+        repo.find_veste_credenziale.return_value = None
         repo.create_identita_portale.return_value = 600
 
         MockAuth.return_value.set_deve_cambiare_password.return_value = True
@@ -646,7 +650,7 @@ class InvitoShopCustomerTests(TestCase):
         MockAuth.return_value.find_auth_user_id_per_email.return_value = None
         repo.create_auth_user_portale.return_value = 300
         MockAuth.return_value.auth_user_ha_password.return_value = False
-        repo.find_identita_portale.return_value = None
+        repo.find_veste_credenziale.return_value = None
         repo.create_identita_portale.return_value = 600
         MockToken.return_value.create.return_value = "tk_shop_new"
         MockEmail.return_value.send_email.return_value = (1, False)
@@ -686,7 +690,7 @@ class InvitoShopCustomerTests(TestCase):
         # Email gia' nota: l'auth_user esiste come operatore o altra veste.
         MockAuth.return_value.find_auth_user_id_per_email.return_value = 999
         MockAuth.return_value.auth_user_ha_password.return_value = True
-        repo.find_identita_portale.return_value = None  # nessuna SHOP ancora
+        repo.find_veste_credenziale.return_value = None  # nessuna SHOP ancora
         repo.create_identita_portale.return_value = 700
 
         MockAuth.return_value.segna_invito_inviato.return_value = "2026-11-27T10:00:00+00:00"
@@ -739,7 +743,7 @@ class InvitoShopCustomerTests(TestCase):
         }
         repo.get_cliente_info.return_value = info
         # Identita SHOP_CUSTOMER disattivata (caso reinvio dopo token scaduto).
-        repo.find_identita_portale.return_value = {
+        repo.find_veste_credenziale.return_value = {
             "identita_id": 700, "auth_user_id": 999,
             "attivo": False, "invito_inviato_at": None,
         }
@@ -781,18 +785,18 @@ class GetStatoAccessiTests(TestCase):
             "ragione_sociale": "X", "cognome": None, "nome": None,
             "codice_fiscale": None,
         }
-        repo.get_stato_identita.side_effect = [
-            {"stato": "ATTIVO", "identita_id": 500, "auth_user_id": 10,
-             "invito_inviato_at": None, "token_scade_at": None},
-            {"stato": "NESSUNO", "identita_id": None, "auth_user_id": None,
-             "invito_inviato_at": None, "token_scade_at": None},
+        # Due referenti sul portale (D-M7), nessuno sullo shop.
+        repo.list_referenti.side_effect = [
+            [{"stato": "ATTIVO", "identita_id": 500, "auth_user_id": 10, "utilizzabile": True},
+             {"stato": "PENDING", "identita_id": 502, "auth_user_id": 11, "utilizzabile": False}],
+            [],
         ]
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         result = InvitoPortaleService().get_stato_accessi_cliente(1)
-        self.assertEqual(result["portale"]["stato"], "ATTIVO")
-        self.assertEqual(result["shop"]["stato"], "NESSUNO")
+        self.assertEqual([v["identita_id"] for v in result["portale"]], [500, 502])
+        self.assertEqual(result["shop"], [])
         # Due chiamate: una per CLIENTE_PORTALE, una per SHOP_CUSTOMER.
-        calls = repo.get_stato_identita.call_args_list
+        calls = repo.list_referenti.call_args_list
         self.assertEqual(len(calls), 2)
         self.assertEqual(calls[0].args[1], "CLIENTE_PORTALE")
         self.assertEqual(calls[1].args[1], "SHOP_CUSTOMER")
@@ -806,13 +810,13 @@ class GetStatoAccessiTests(TestCase):
             "cognome": None, "nome": None,
             "codice_fiscale": None,
         }
-        repo.get_stato_identita.return_value = {
+        repo.list_referenti.return_value = [{
             "stato": "PENDING", "identita_id": 501, "auth_user_id": 20,
             "invito_inviato_at": "2026-04-21", "token_scade_at": "2026-04-24",
-        }
+        }]
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         result = InvitoPortaleService().get_stato_accessi_fornitore(77)
-        self.assertEqual(result["portale"]["stato"], "PENDING")
+        self.assertEqual(result["portale"][0]["stato"], "PENDING")
         self.assertNotIn("shop", result)  # fornitori no shop
 
     @patch(_REPO, autospec=True)
@@ -836,20 +840,20 @@ class GetStatoAccessiTests(TestCase):
         "ragione_sociale": "X", "cognome": None, "nome": None,
         "codice_fiscale": None,
     }
-    _NESSUNA_VESTE = {"stato": "NESSUNO", "identita_id": None, "auth_user_id": None,
-                      "username": None, "email": None,
-                      "invito_inviato_at": None, "token_scade_at": None}
+    _REFERENTE = {"stato": "PENDING", "identita_id": 501, "auth_user_id": 20,
+                  "username": "u", "email": None,
+                  "invito_inviato_at": None, "token_scade_at": None}
 
     @patch(_REPO, autospec=True)
     def test_email_suggerita_dall_identita_esistente(self, MockRepo):
-        """L'identita' che esiste gia' vince: il reinvio riusa la sua email,
-        e i contatti non si leggono."""
+        """Il primo referente con un'email vince, e i contatti non si leggono."""
         repo = MockRepo.return_value
         repo.get_fornitore_info.return_value = self._FORNITORE_INFO
-        repo.get_stato_identita.return_value = {
-            **self._NESSUNA_VESTE, "stato": "PENDING", "identita_id": 501,
-            "email": " gia@fornitore.test ",
-        }
+        repo.list_referenti.return_value = [
+            self._REFERENTE,
+            {**self._REFERENTE, "identita_id": 502, "email": " gia@fornitore.test "},
+            {**self._REFERENTE, "identita_id": 503, "email": "secondo@fornitore.test"},
+        ]
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         result = InvitoPortaleService().get_stato_accessi_fornitore(77)
         self.assertEqual(result["email_suggerita"], "gia@fornitore.test")
@@ -857,12 +861,12 @@ class GetStatoAccessiTests(TestCase):
 
     @patch(_REPO, autospec=True)
     def test_email_suggerita_cliente_shop_se_portale_senza_email(self, MockRepo):
-        """Cliente: la veste portale senza email lascia il posto allo shop."""
+        """Cliente: nessun referente del portale con un'email lascia il posto allo shop."""
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = self._CLIENTE_INFO
-        repo.get_stato_identita.side_effect = [
-            self._NESSUNA_VESTE,
-            {**self._NESSUNA_VESTE, "stato": "ATTIVO", "email": "shop@cliente.test"},
+        repo.list_referenti.side_effect = [
+            [self._REFERENTE],
+            [{**self._REFERENTE, "stato": "ATTIVO", "email": "shop@cliente.test"}],
         ]
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         result = InvitoPortaleService().get_stato_accessi_cliente(1)
@@ -871,12 +875,12 @@ class GetStatoAccessiTests(TestCase):
 
     @patch(_REPO, autospec=True)
     def test_email_suggerita_dai_contatti_del_ruolo(self, MockRepo):
-        """Nessuna identita': l'email viene dai contatti del ruolo, chiesti
+        """Nessun referente: l'email viene dai contatti del ruolo, chiesti
         col soggetto e col soggetto_ruolo dell'entita' (cliente e fornitore)."""
         repo = MockRepo.return_value
         repo.get_fornitore_info.return_value = self._FORNITORE_INFO
         repo.get_cliente_info.return_value = self._CLIENTE_INFO
-        repo.get_stato_identita.return_value = self._NESSUNA_VESTE
+        repo.list_referenti.return_value = []
         repo.get_email_contatto_suggerita.return_value = "principale@x.test"
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         svc = InvitoPortaleService()
@@ -889,7 +893,7 @@ class GetStatoAccessiTests(TestCase):
     def test_email_suggerita_nessuna(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_fornitore_info.return_value = self._FORNITORE_INFO
-        repo.get_stato_identita.return_value = self._NESSUNA_VESTE
+        repo.list_referenti.return_value = []
         repo.get_email_contatto_suggerita.return_value = None
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         self.assertIsNone(
@@ -920,18 +924,22 @@ class DisattivaVesteTests(TestCase):
             "ragione_sociale": "X", "cognome": None, "nome": None,
             "codice_fiscale": None,
         }
-        repo.find_identita_portale.return_value = {
+        repo.list_referenti.return_value = [{
             "identita_id": 500, "auth_user_id": 10, "attivo": True,
             "invito_inviato_at": None,
-        }
+        }]
         MockAuth.return_value.revoca_veste.return_value = True
 
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         result = InvitoPortaleService().disattiva_veste_cliente(
             cliente_id=1,
             ruolo_applicativo="CLIENTE_PORTALE",
+            identita_id=500,
             disattivato_da_user_id=999,
         )
+        # Il perimetro: la veste chiesta, cercata fra quelle di QUESTO
+        # soggetto e di questo tipo.
+        repo.list_referenti.assert_called_once_with(100, "CLIENTE_PORTALE", identita_id=500)
         self.assertTrue(result["disattivato"])
         self.assertEqual(result["stato"], "REVOCATA")
         self.assertEqual(result["identita_id"], 500)
@@ -945,8 +953,12 @@ class DisattivaVesteTests(TestCase):
         self.mock_blocca.assert_called_once_with(10, identita_id=500)
         self.mock_invalidate.assert_called_once_with(10)
 
+    # Scopo: una veste che non e' di questo soggetto e di questo tipo (un id
+    # di un altro cliente, o la veste shop sull'endpoint del portale) e' un
+    # 404, e non si revoca niente.
+    @patch(_AUTH_REPO, autospec=True)
     @patch(_REPO, autospec=True)
-    def test_disattiva_cliente_nessuna_identita_noop(self, MockRepo):
+    def test_disattiva_veste_di_un_altro_soggetto_404(self, MockRepo, MockAuth):
         repo = MockRepo.return_value
         repo.get_cliente_info.return_value = {
             "billing_account_id": 1, "ba_codice": "X",
@@ -954,15 +966,17 @@ class DisattivaVesteTests(TestCase):
             "ragione_sociale": "X", "cognome": None, "nome": None,
             "codice_fiscale": None,
         }
-        repo.find_identita_portale.return_value = None
+        repo.list_referenti.return_value = []
         from apps.portale.services.invito_portale_service import InvitoPortaleService
-        result = InvitoPortaleService().disattiva_veste_cliente(
-            cliente_id=1,
-            ruolo_applicativo="CLIENTE_PORTALE",
-            disattivato_da_user_id=999,
-        )
-        self.assertFalse(result["disattivato"])
-        self.assertEqual(result["stato"], "NESSUNO")
+        with self.assertRaises(ServiceError) as ctx:
+            InvitoPortaleService().disattiva_veste_cliente(
+                cliente_id=1,
+                ruolo_applicativo="CLIENTE_PORTALE",
+                identita_id=777,
+                disattivato_da_user_id=999,
+            )
+        self.assertEqual(ctx.exception.code, "E_VESTE_NON_TROVATA")
+        MockAuth.return_value.revoca_veste.assert_not_called()
         self.mock_blocca.assert_not_called()
 
     @patch(_TOKEN_SVC)
@@ -978,15 +992,16 @@ class DisattivaVesteTests(TestCase):
             "cognome": None, "nome": None,
             "codice_fiscale": None,
         }
-        repo.find_identita_portale.return_value = {
+        repo.list_referenti.return_value = [{
             "identita_id": 600, "auth_user_id": 20, "attivo": True,
             "invito_inviato_at": None,
-        }
+        }]
         MockAuth.return_value.revoca_veste.return_value = True
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         result = InvitoPortaleService().disattiva_veste_fornitore(
-            fornitore_id=77, disattivato_da_user_id=999,
+            fornitore_id=77, identita_id=600, disattivato_da_user_id=999,
         )
+        repo.list_referenti.assert_called_once_with(101, "FORNITORE_PORTALE", identita_id=600)
         self.assertTrue(result["disattivato"])
         self.assertEqual(result["identita_id"], 600)
         self.mock_blocca.assert_called_once_with(20, identita_id=600)
@@ -1007,15 +1022,16 @@ class DisattivaVesteTests(TestCase):
         # Identita gia' spenta (attivo=false): la revoca si chiede lo stesso
         # (il segno ferma l'invito in volo, R2-a) e i token residui si
         # invalidano.
-        repo.find_identita_portale.return_value = {
+        repo.list_referenti.return_value = [{
             "identita_id": 500, "auth_user_id": 10, "attivo": False,
             "invito_inviato_at": None,
-        }
+        }]
         MockAuth.return_value.revoca_veste.return_value = False
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         result = InvitoPortaleService().disattiva_veste_cliente(
             cliente_id=1,
             ruolo_applicativo="CLIENTE_PORTALE",
+            identita_id=500,
             disattivato_da_user_id=999,
         )
         # Il verbo dice «era spenta» -> disattivato=False; lo stato finale e'

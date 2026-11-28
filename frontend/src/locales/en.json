@@ -722,7 +722,7 @@
     "reinvio_confirm_title": "Confirm invitation resend",
     "reinvio_confirm_msg": "The previous token will be invalidated. A new email will be sent to {email}.",
     "disattiva_confirm_title": "Confirm portal access disable",
-    "disattiva_confirm_msg": "The user will no longer be able to access the portal. Pending activation tokens will be invalidated. Access can be restored with a new invitation.",
+    "disattiva_confirm_msg": "{email} will no longer be able to access the portal for this party. Pending activation tokens will be invalidated. Access can be restored with a new invitation.",
     "invito_inviato": "Portal invitation sent",
     "invito_reinviato": "Portal invitation resent",
     "invito_errore": "Error while sending invitation",
@@ -734,8 +734,7 @@
     "accessi_web": {
       "title": "Web access",
       "drawer_action": "Manage",
-      "badge_label": "Web",
-      "user": "User:"
+      "badge_label": "Web"
     },
     "nuovo_utente_creato": "new account created",
     "activation_title": "Portal account activation",
@@ -762,7 +761,9 @@
       "activate_shop_hint": "With the same account you will also be able to access the online shop.",
       "activate_shop_success": "Shop access activated. Log in from the shop channel with the same credentials.",
       "activate_shop_error": "Unable to activate shop access. Please try again later."
-    }
+    },
+    "referenti_nessuno": "No contact person invited.",
+    "btn_invita_referente": "Invite a contact person to the portal"
   },
   "shop": {
     "accesso_shop_title": "Shop access",
@@ -775,7 +776,7 @@
     "reinvio_confirm_title": "Confirm shop invite resend",
     "reinvio_confirm_msg": "The previous shop token will be invalidated. A new email will be sent to {email}.",
     "disattiva_confirm_title": "Confirm shop access disable",
-    "disattiva_confirm_msg": "The user will no longer be able to access the shop. Pending activation tokens will be invalidated. Access can be restored with a new invite.",
+    "disattiva_confirm_msg": "{email} will no longer be able to access the shop for this customer. Pending activation tokens will be invalidated. Access can be restored with a new invitation.",
     "invito_inviato": "Shop invite sent",
     "invito_reinviato": "Shop invite resent",
     "invito_errore": "Error sending shop invite",
@@ -790,7 +791,8 @@
     "activate_btn": "Activate shop account",
     "activation_cross_welcome": "You're about to activate shop access with your existing credentials. No new password required.",
     "activate_cross_btn": "Activate shop access",
-    "activation_cross_success": "Shop access activated: log in to the shop with your email and the password you already have."
+    "activation_cross_success": "Shop access activated: log in to the shop with your email and the password you already have.",
+    "btn_invita_referente": "Invite a contact person to the shop"
   },
   "auth": {
     "username": "Username",
@@ -1884,6 +1886,8 @@
       "nessun_accesso_spiegazione": "This access has no role: it cannot sign in anywhere. It needs fixing, and the check of credentials to fix reports it too: if the person must sign in, invite them from their record with the same email (the invitation reuses this access); otherwise delete it.",
       "invito_scade": "Invitation valid until {quando}",
       "veste_valida_al": "Valid until {quando}",
+      "veste_valida_dal": "Valid from {quando}.",
+      "veste_ferma_oggi": "Switched on, but it does not let anyone in today: it is outside its dates, or the party is not active.",
       "apri_scheda": "Open the record",
       "apri_scheda_di": "Open the record: {veste} of {soggetto}",
       "search_altri": "Search by name, username, email, party",

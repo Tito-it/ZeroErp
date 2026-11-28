@@ -13,13 +13,14 @@ Indice test eseguiti:
 1)  CablaggioTests.test_view_sulla_porta_portale
 2)  ProfileActivateShopTests.test_fornitore_portale_rifiutato
 3)  ProfileActivateShopTests.test_idempotente_se_gia_attiva
-4)  ProfileActivateShopTests.test_guard_auth_user_divergente_blocca
+4)  ProfileActivateShopTests.test_cerca_la_veste_shop_della_persona_della_sessione — D-M7: per credenziale
 """
 
 import json
 from unittest import TestCase
 from unittest.mock import patch
 
+from django.contrib.auth.models import User
 from django.test import RequestFactory
 
 
@@ -52,9 +53,9 @@ class ProfileActivateShopTests(TestCase):
             content_type="application/json",
         )
 
-        class _U:
-            id = user_id
-        request.user = _U()
+        # Un `User` vero, non salvato: la view legge chi agisce dal BB
+        # `utente_autenticato`, che vuole l'utente autenticato col suo tipo.
+        request.user = User(id=user_id)
         return request
 
     @patch("apps.portale.api.views.PermissionResolver.get_ruolo_applicativo")
@@ -69,7 +70,7 @@ class ProfileActivateShopTests(TestCase):
         self.assertIn("clienti portale", body["error"]["message"])
 
     @patch(
-        "apps.portale.api.views.PortaleRepository.find_identita_portale", autospec=True
+        "apps.portale.api.views.PortaleRepository.find_veste_credenziale", autospec=True
     )
     @patch(
         "apps.portale.api.views.ProfileActivateShopView._read_soggetto_ruolo_from_guc"
@@ -93,27 +94,27 @@ class ProfileActivateShopTests(TestCase):
         self.assertEqual(body["data"]["identita_id"], 555)
 
     @patch(
-        "apps.portale.api.views.PortaleRepository.find_identita_portale", autospec=True
+        "apps.portale.api.views.PortaleRepository.find_veste_credenziale", autospec=True
     )
     @patch(
         "apps.portale.api.views.ProfileActivateShopView._read_soggetto_ruolo_from_guc"
     )
     @patch("apps.portale.api.views.PermissionResolver.get_ruolo_applicativo")
-    def test_guard_auth_user_divergente_blocca(
+    def test_cerca_la_veste_shop_della_persona_della_sessione(
         self, mock_ruolo, mock_guc, mock_find
     ):
-        # Identita SHOP_CUSTOMER esistente ma collegata ad altro auth_user
-        # (stato anomalo: soggetto_ruolo riassegnato manualmente) -> 400
-        # senza side-effect. Anti-tampering / fail-fast su stato incoerente.
+        # Un cliente ha piu' referenti (D-M7, giro 4 del brief-db-accessi-area-
+        # clienti): la veste shop si cerca per (credenziale della sessione,
+        # ruolo, tipo). Quella di un altro referente non e' di chi chiede, e
+        # non si trova per costruzione. Fino al 2026-11-28 si cercava per
+        # (ruolo, tipo), e la veste di un'altra persona fermava il gesto.
         from apps.portale.api.views import ProfileActivateShopView
         mock_ruolo.return_value = "CLIENTE_PORTALE"
         mock_guc.return_value = 999
-        # auth_user_id=99 != request.user.id=42 (default _post)
         mock_find.return_value = {
-            "identita_id": 555, "auth_user_id": 99, "attivo": False,
+            "identita_id": 555, "auth_user_id": 42, "attivo": True,
         }
         response = ProfileActivateShopView().post(self._post({}))
-        self.assertEqual(response.status_code, 400)
-        body = json.loads(response.content)
-        self.assertEqual(body["error"]["code"], "E_ATTIVAZIONE_SHOP_CROSS")
-        self.assertIn("altro utente", body["error"]["message"])
+        self.assertEqual(response.status_code, 200)
+        _repo, auth_user_id, soggetto_ruolo_id, ruolo = mock_find.call_args.args
+        self.assertEqual((auth_user_id, soggetto_ruolo_id, ruolo), (42, 999, "SHOP_CUSTOMER"))
