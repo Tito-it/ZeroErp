@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1304, di cui 136 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1306, di cui 136 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -2169,6 +2169,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UTENTE_TECNICO_NON_TROVATO": "NON_TROVATO",
     # script.fn_crea_utente_tecnico: il profilo di accesso chiesto per un utente tecnico non e' utilizzabile - non esiste, non e' attivo, oppure non e' di tipo AD_HOC (l'unico legabile a una singola identita'; SUPER_ADMIN vi rientra ed e' escluso). ⛔ Il divieto su SUPER_ADMIN e' il punto: e' la scorciatoia ovvia per «deve servire tutti gli emittenti», e bypasserebbe lo scope PRIMA della whitelist in script.fn_check_user_emittente_scope - riaprendo con un nome rassicurante la porta che tutto il cantiere esiste per chiudere. Il perimetro di un processo si scrive riga per riga in config.user_emittenti_fiscali. ⚠️ Su un TECNICO la chiave campo esce dal contesto. Brief: brief-db-processi-automatici-identita-e-perimetro §4.
     "E_UTENTE_TECNICO_PROFILO_VIETATO": "TECNICO",
+    # config.trgfn_utilities_tipi_ruolo_guard_uscita_ef: finche' un'azienda gestisce l'utility (una riga in anagrafiche.emittenti_fiscali_utilities), la riga dell'emittente fiscale (EF) della matrice config.utilities_tipi_ruolo che oggi la ammette non si spegne, non prende una data d'inizio futura, non si cancella e non si sposta. Campo: la colonna che cambia (nessuno sulla cancellazione). VARIADIC: il codice dell'utility, il numero delle aziende. Brief: brief-db-utility-gestite-dall-emittente (D-U-7).
+    "E_UTILITY_EF_GESTITA": "CONFLITTO_STATO",
+    # config.trgfn_utilities_tipi_ruolo_guard_uscita_ef: la riga dell'emittente fiscale (EF) della matrice config.utilities_tipi_ruolo non ha valido_al. Con una data di fine l'utility uscirebbe da EF senza nessuna scrittura da rifiutare. Campo valido_al. VARIADIC: il codice dell'utility. Brief: brief-db-utility-gestite-dall-emittente (V2).
+    "E_UTILITY_EF_SENZA_SCADENZA": "DATO_ERRATO",
     "E_UTILITY_RUOLO_NON_AMMESSO": "DATO_ERRATO",
     "E_VALIDATION_INPUT": "DATO_ERRATO",
     # 13 punti di sollevamento, tutti la stessa condizione: parametro obbligatorio mancante o non valido (la guard prescritta da AGENTS.md). Non e un accumulatore, misurato il 2026-08-07.

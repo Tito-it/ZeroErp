@@ -87,6 +87,7 @@ function onBaClear() {
       <div class="form-field">
         <label>{{ t('vendite.ordini.field_utility') }}</label>
         <UtilityPerRuoloSelect v-model="form.utility_id"
+          :emittente-fiscale-id="form.emittente_fiscale_id ?? null"
           :placeholder="t('vendite.ordini.field_utility')"
           :disabled="isLocked('utility_id')" />
       </div>

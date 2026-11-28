@@ -14,17 +14,17 @@ from typing import Any
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.anagrafiche.db.emittenti_fiscali_repository import (
     EMITTENTE_UPDATE_ALLOWED,
+    UTILITIES_PARAMETRI,
     UTILITIES_UPDATE_ALLOWED,
     EmittentiFiscaliBillingAccountRepository,
     EmittentiFiscaliRepository,
     EmittentiFiscaliUtilitiesRepository,
 )
-from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
+from apps.anagrafiche.error_codes import E_ANAG_FK, E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
 from apps.anagrafiche.services._validators import (
     CAMPO_REGIME_FISCALE,
     create_with_constraint_mapping,
     extract_optional_fields,
-    optional_str,
     require_found,
     regime_nel_catalogo,
     require_str,
@@ -54,6 +54,9 @@ _CREA_EMITTENTE_KEYS: frozenset[str] = frozenset({
     "regime_fiscale_rf", "rounding_policy", "bollo_soglia",
 })
 _UPDATE_UTILITY_KEYS: frozenset[str] = UTILITIES_UPDATE_ALLOWED
+# L'attivazione: l'utility e, facoltativi, i parametri. ⛔ `attivo` non c'e'
+# piu' (D-U-11): una POST o una PATCH che lo porta e' un 400 che lo nomina.
+_CREA_UTILITY_KEYS: frozenset[str] = UTILITIES_PARAMETRI | {"utility_id"}
 
 # Validator stateless del dominio (solo il codice errore): condivisibile.
 _V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
@@ -402,29 +405,90 @@ _UTILITY_CHECK_CONSTRAINTS: dict[str, tuple] = {
         "Metodo di arrotondamento degli importi non ammesso.",
         "metodo_arrotondamento_importi",
     ),
+    # D-U-11 (2026-11-27): la riga non ha uno stato suo, e' sempre accesa. Il
+    # BE non scrive piu' `attivo`: la voce copre un chiamante che lo scrivesse.
+    "chk_emittenti_fiscali_utilities_attivo": (
+        E_ANAG_VALIDAZIONE,
+        "Un'utility dell'azienda non si spegne: si toglie all'azienda, "
+        "se nessun billing account e nessun documento la usa.",
+    ),
 }
+
+# ⭐ La riga tolta mentre qualcuno la usa (D-U-9, D-U-12). Le FK composte
+# verso (emittente_soggetto_ruolo_id, utility_id) stanno sui FIGLI: il nome
+# che il DB riporta alla cancellazione e' quello della FK del figlio. Sono
+# DIFFERITE, e il rifiuto arriva alla fine dell'istruzione perche' il backend
+# gira in autocommit (`ATOMIC_REQUESTS` spento, api.md §Atomicita'): dentro un
+# `transaction.atomic()` arriverebbe al COMMIT, fuori da questa traduzione.
+# Presidio sul DB vero: test_emittente_utility_gestita_db.
+_MSG_UTILITY_IN_USO = (
+    "L'utility e' usata da billing account o documenti di questa azienda: "
+    "non si puo' togliere."
+)
+_UTILITY_FK_CONSTRAINTS: dict[str, tuple] = dict.fromkeys(
+    (
+        "fk_emittenti_fiscali_ba_utility_gestita",
+        "fk_categorie_clienti_listini_utility_gestita",
+        "fk_listini_utility_gestita",
+        "fk_commesse_utility_gestita",
+        "fk_fatture_utility_gestita",
+        "fk_registri_fatturazione_utility_gestita",
+        "fk_fatturazione_lotti_utility_gestita",
+    ),
+    (E_ANAG_FK, _MSG_UTILITY_IN_USO),
+)
+
+
+# Scopo: I parametri d'importo PRESENTI nel payload, col tipo verificato, per
+#        l'attivazione (POST) e per la modifica (PATCH, delta): un campo
+#        assente non si scrive; null o la stringa vuota = NULL («vale la
+#        policy dell'azienda o il sistema»). L'intervallo dei decimali, il
+#        metodo ammesso e la coppia delle soglie li giudicano i CHECK del DB,
+#        tradotti col campo da `_UTILITY_CHECK_CONSTRAINTS`.
+# ⭐ 2026-11-28 (/verifica): fino a quel giorno i valori passavano grezzi al
+#    DB, e un `"abc"` nei decimali usciva col testo di PostgreSQL
+#    («invalid input syntax…») senza il campo; la POST li validava prima che i
+#    parametri diventassero facoltativi, la PATCH mai.
+def _parametri_utility(payload: dict[str, Any]) -> dict[str, Any]:
+    letti: dict[str, Any] = {}
+    for campo in UTILITIES_PARAMETRI & payload.keys():
+        valore = payload[campo]
+        if isinstance(valore, str) and not valore.strip():
+            valore = None
+        uno = {campo: valore}
+        if campo == "arrotondamento_importi_dec":
+            letti[campo] = _V.optional_smallint(uno, campo)
+        elif campo == "metodo_arrotondamento_importi":
+            letti[campo] = _V.optional_string(uno, campo)
+        else:
+            letti[campo] = _V.optional_decimal(uno, campo)
+    return letti
 
 
 class EmittentiFiscaliUtilitiesService:
-    """Service per la matrice emittente_fiscale x utility (parametri fatturazione).
+    """Le utility che un'azienda (emittente fiscale) gestisce, coi parametri.
 
-    Sub-resource montato sotto un emittente padre. Espone CRUD sui record utility
-    e una lista di utility ammesse per il ruolo EF (lookup combo).
+    Sub-resource montato sotto un emittente padre, solo SUPER_ADMIN
+    (`AdminAPIView`, D-U-5). Attivare = inserire la riga; i parametri si
+    modificano sulla riga, e «togliere i parametri» li riporta a NULL;
+    disattivare = cancellare la riga, ammesso solo senza billing account ne'
+    documenti (brief-db-utility-gestite-dall-emittente §10 R-3).
     """
 
     def __init__(self) -> None:
         self._repo = EmittentiFiscaliUtilitiesRepository()
         self._parent = EmittentiFiscaliService()
 
-    # Scopo: Lista record utility per un emittente.
-    #        Ogni riga arricchita con capability data-driven (Fase 4 — A7):
-    #          - `can_configure`: slot vuoto + emittente attivo + utility attiva
-    #            (l'admin puo' creare la configurazione)
-    #          - `can_update`: record configurato (l'admin puo' modificare i parametri)
-    #          - `can_remove`: record configurato (l'admin puo' rimuovere)
-    #        Il FE usa queste capability per gating UI invece di derivare da
-    #        `record_id`. L'autorita' resta il trigger DB
-    #        (`child_requires_active_parent`, `guard_utility_tipo_ruolo`).
+    # Scopo: Le utility dell'azienda (tutte quelle attivabili), con le
+    #        capability della riga:
+    #          - `can_attivare`: l'azienda non la gestisce e l'emittente e'
+    #            acceso (sotto un emittente spento non nasce niente)
+    #          - `can_update`: la riga c'e' (si scrivono i parametri)
+    #          - `can_reset`: la riga ha parametri suoi (si riportano a NULL)
+    #          - `can_remove`: la riga c'e'. Se un billing account o un
+    #            documento la usa, il DB rifiuta: la capability non lo
+    #            anticipa, una copia della regola divergerebbe (regola del 2)
+    #        L'autorita' resta il DB.
     def list_records(self, emittente_id: int) -> list[dict[str, Any]]:
         soggetto_ruolo_id = self._parent._resolve_soggetto_ruolo_id(emittente_id)
         emittente = self._parent._repo.get_emittente(emittente_id)
@@ -432,18 +496,21 @@ class EmittentiFiscaliUtilitiesService:
 
         rows = self._repo.list_by_emittente(soggetto_ruolo_id)
         for row in rows:
-            is_configured = row.get("record_id") is not None
-            utility_attiva = bool(row.get("utility_attiva", False))
-            row["can_configure"] = (
-                (not is_configured) and emittente_attivo and utility_attiva
-            )
-            row["can_update"] = is_configured
-            row["can_remove"] = is_configured
+            ha_riga = row.get("record_id") is not None
+            row["can_attivare"] = (not ha_riga) and emittente_attivo
+            row["can_update"] = ha_riga
+            row["can_reset"] = ha_riga and bool(row.get("personalizzata"))
+            row["can_remove"] = ha_riga
         return rows
 
-    # Scopo: Crea un record utility per l'emittente.
-    #        Campi obbligatori: utility_id, arrotondamento_importi_dec, metodo_arrotondamento_importi.
+    # Scopo: Attiva l'utility per l'azienda: `utility_id` obbligatorio, i
+    #        parametri facoltativi (D-U-1: la riga presente e' l'elenco, i
+    #        parametri restano opzionali).
     def crea_record(self, emittente_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        _V.validate_allowed_keys(
+            payload, allowed=_CREA_UTILITY_KEYS,
+            message="Payload record utility non valido.",
+        )
         soggetto_ruolo_id = self._parent._resolve_soggetto_ruolo_id(emittente_id)
         utility_id = _V.optional_int(payload, "utility_id")
         ErrorManager.require(
@@ -452,36 +519,15 @@ class EmittentiFiscaliUtilitiesService:
             message="utility_id obbligatorio.",
         )
         assert utility_id is not None
+        parametri = _parametri_utility(payload)
 
-        arrot_dec = _V.optional_int(payload, "arrotondamento_importi_dec")
-        ErrorManager.require(
-            arrot_dec is not None,
-            code=E_ANAG_VALIDAZIONE,
-            message="arrotondamento_importi_dec obbligatorio.",
-        )
-        assert arrot_dec is not None
-
-        metodo = optional_str(payload, "metodo_arrotondamento_importi")
-        ErrorManager.require(
-            bool(metodo),
-            code=E_ANAG_VALIDAZIONE,
-            message="metodo_arrotondamento_importi obbligatorio.",
-        )
-        assert metodo is not None
-
-        attivo = _V.optional_bool(payload, "attivo")
-
-        # Non `create_with_dedup`: la tabella ha quattro CHECK oltre alla UNIQUE,
+        # Non `create_with_dedup`: la tabella ha piu' CHECK oltre alla UNIQUE,
         # e ricondurli tutti a «duplicato» diceva una cosa falsa (vedi la mappa).
         with self._vincoli_tradotti(utility_id=utility_id):
             record_id = self._repo.create_record(
                 emittente_soggetto_ruolo_id=soggetto_ruolo_id,
                 utility_id=utility_id,
-                arrotondamento_importi_dec=arrot_dec,
-                metodo_arrotondamento_importi=metodo,
-                minimo_soglia_min=payload.get("minimo_soglia_min"),
-                minimo_soglia_max=payload.get("minimo_soglia_max"),
-                attivo=attivo,
+                parametri=parametri,
             )
         return {"id": record_id}
 
@@ -499,6 +545,7 @@ class EmittentiFiscaliUtilitiesService:
             fallback_code=E_ANAG_VALIDAZIONE,
             fallback_message="Dati del record utility non validi.",
             unique_constraints=_UTILITY_UNIQUE_CONSTRAINTS,
+            fk_constraints=_UTILITY_FK_CONSTRAINTS,
             check_constraints=_UTILITY_CHECK_CONSTRAINTS,
         )
 
@@ -515,7 +562,7 @@ class EmittentiFiscaliUtilitiesService:
         # Un PATCH vuoto e' un 400, non il 404 che dava il rowcount (2026-10-14).
         _V.require_campi_da_aggiornare(payload)
         with self._vincoli_tradotti(record_id=record_id):
-            updated = self._repo.update_record(record_id, dict(payload))
+            updated = self._repo.update_record(record_id, _parametri_utility(payload))
         ErrorManager.require(
             updated,
             code=E_ANAG_NOT_FOUND,
@@ -523,12 +570,14 @@ class EmittentiFiscaliUtilitiesService:
         )
         return {"updated": True}
 
-    # Scopo: Elimina un record utility per id.
+    # Scopo: Toglie l'utility all'azienda (D-U-9): rifiutato, col messaggio
+    #        della mappa FK, se un billing account o un documento la usa.
     def elimina_record(self, emittente_id: int, record_id: int) -> dict[str, Any]:
         _verify_record_ownership(
             self._parent, self._repo, emittente_id, record_id,
             "Record utility non trovato per l'emittente indicato.",
         )
-        deleted = self._repo.delete_record(record_id)
+        with self._vincoli_tradotti(record_id=record_id):
+            deleted = self._repo.delete_record(record_id)
         ErrorManager.require(deleted, code=E_ANAG_NOT_FOUND, message="Record utility non trovato.")
         return {"deleted": True}

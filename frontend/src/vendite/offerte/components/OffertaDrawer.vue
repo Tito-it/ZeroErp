@@ -240,7 +240,12 @@ const isStatoTerminale = computed(() => caps.flag('stato_terminale'))
 //   dell'operatore (UX: l'operatore vede subito solo i BA della sua
 //   utility tipica).
 const { defaultEmittenteId } = useEmittenteFiscaleField()
-const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
+// Il default fra le utility che GESTISCE l'azienda su cui nasce il documento
+// (`defaultEmittenteId`, la stessa del form in creazione); se non gestisce
+// quella di default, il campo parte vuoto (brief-db-utility-gestite-dall-emittente).
+const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId({
+  emittenteFiscaleId: () => defaultEmittenteId.value,
+})
 
 // Sub-drawer + dialogs.
 const eccezioniDrawerVisible = ref(false)
@@ -1084,6 +1089,7 @@ const footerDrawer = useFooterDocumento({
                 <UtilityPerRuoloSelect
                   v-model="form.utility_id"
                   :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
+                  :emittente-fiscale-id="form.emittente_fiscale_id ?? null"
                   :placeholder="t('vendite.offerte.field_utility')"
                   :disabled="testata.bloccato('billing_account_id') || form.billing_account_id != null"
                 />

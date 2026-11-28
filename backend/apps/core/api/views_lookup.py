@@ -15,6 +15,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.endpoint_helpers import get_scope_user_id
 
 from apps.core.api.payload_validators import (
     parse_list_params,
@@ -146,28 +147,21 @@ class LookupUtilitiesPerRuoloView(DomainAPIView):
 
 
 class LookupUtilitiesPerEmittenteView(DomainAPIView):
-    """Utility per popolare la combo "Utility" del FE.
+    """Utility per popolare la combo "Utility" del FE: quelle che le aziende
+    GESTISCONO (brief-db-utility-gestite-dall-emittente §10 R-2).
 
-    Regola: le utility **ammesse per il ruolo emittente fiscale** (`EF`) in
-    `config.utilities_tipi_ruolo`, uguali per ogni operatore. «Per emittente»
-    nel nome della rotta vuol dire il **ruolo** EF, non l'emittente attivo.
+    - `?emittente_fiscale_id=<pk>`: le utility gestite da quell'azienda. Lo
+      passano drawer e form, con l'azienda del documento.
+    - senza: le utility gestite da almeno un'azienda del perimetro di chi
+      chiede. Lo usano i filtri di lista.
+    - `?ruolo=CL|FO|...`: in piu', ammesse per il ruolo del soggetto.
 
-    ⛔ Non filtra con `anagrafiche.emittenti_fiscali_utilities`: quella e' la
-    tabella opzionale dei PARAMETRI di fatturazione per (emittente, utility),
-    non l'elenco delle utility dell'emittente (dettaglio nel repository,
-    `list_utilities_per_emittente`). Fino al 2026-10-14 la usava come filtro.
-
-    Filtro orthogonale `?ruolo=CL|FO|...`:
-
-    - se fornito, applica intersezione con `config.utilities_tipi_ruolo`
-      per il ruolo del soggetto target (utile sul drawer cliente per
-      mostrare solo utility ammesse per i CLIENTI).
-    - se omesso, nessuna intersezione (preventivi, listini, ecc. dove
-      non c'e' un ruolo soggetto specifico).
+    La regola sta nel BB del DB `anagrafiche.fn_utilities_emittente`
+    (dettaglio nel repository, `list_utilities_per_emittente`).
 
     Default lato FE: `useUtilityDefaultId` legge il parametro
-    `DEFAULT_UTILITY` (catena user/group/emittente/sistema) e fa match
-    `codice_interno -> id` sul set ritornato qui.
+    `DEFAULT_UTILITY` e fa match `codice_interno -> id` sul set ritornato
+    qui; se l'azienda non gestisce l'utility di default, il default non c'e'.
     """
     skip_area_check = True
 
@@ -177,18 +171,35 @@ class LookupUtilitiesPerEmittenteView(DomainAPIView):
                 name="ruolo",
                 type=str,
                 location=OpenApiParameter.QUERY,
-                description="Codice ruolo soggetto (es. CL, FO). Se omesso, ritorna tutte le utility ammesse per il ruolo EF.",
+                description="Codice ruolo soggetto (es. CL, FO): le utility anche ammesse per quel ruolo.",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="emittente_fiscale_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "PK dell'azienda (emittente fiscale): le utility che gestisce. "
+                    "Se omesso, quelle gestite da almeno un'azienda del perimetro."
+                ),
                 required=False,
             ),
         ],
         responses={200: risposta_lookup("UtilitiesPerEmittenteResponse")},
     )
-    # Scopo: Restituisce le utility ammesse per il ruolo EF; se `ruolo` e'
-    #        fornito, intersecate con quelle ammesse per il ruolo del soggetto.
+    # Scopo: Le utility gestite dall'azienda data, o dalle aziende del
+    #        perimetro; con `ruolo`, anche ammesse per il ruolo del soggetto.
     def get(self, request: Request) -> JsonResponse:
         # `ruolo` e' il `codice_interno` del tipo ruolo, chiave tecnica: si confronta ESATTA, niente maiuscolo (Tid, 2026-11-04, brief-be-codice-maiuscolo §7.2).
         ruolo = (request.query_params.get("ruolo") or "").strip() or None
-        results = LookupRepository().list_utilities_per_emittente(ruolo)
+        emittente_fiscale_id = qp_int_optional(
+            request.query_params.get("emittente_fiscale_id"), "emittente_fiscale_id", min_val=1,
+        )
+        results = LookupRepository().list_utilities_per_emittente(
+            auth_user_id=get_scope_user_id(request),
+            ruolo_codice_soggetto=ruolo,
+            emittente_fiscale_id=emittente_fiscale_id,
+        )
         return success_response({"results": results})
 
 

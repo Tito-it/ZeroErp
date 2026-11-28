@@ -68,9 +68,18 @@ const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
 const attivoOptions = buildAttivoOptions(t)
 onMounted(() => { store.fetchList() })
 
-function onDrawerSaved() {
+// Scopo: dopo il salvataggio dell'anagrafica. ⭐ Alla NASCITA di un'azienda
+//        si apre subito il drawer delle sue utility (D-U-8 di
+//        brief-db-utility-gestite-dall-emittente): un'azienda senza righe non
+//        gestisce niente, e il drawer le propone tutte da attivare. Attivarle
+//        resta un gesto esplicito del SUPER_ADMIN. Della riga nuova si conosce
+//        solo l'id: ragione sociale e `attivo` il drawer non li riceve, e
+//        l'«Attiva» lo accende comunque la capability del BE.
+function onDrawerSaved(result) {
+  const creata = drawer.state.mode === 'create' && result?.id != null
   drawer.close()
   store.fetchList()
+  if (creata) utDrawer.editRow({ id: result.id }, 'id')
 }
 
 function openCreate() {

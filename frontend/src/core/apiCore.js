@@ -59,11 +59,15 @@ export function lookupTipiIndirizzoTipoRuolo(tipoRuoloCodice, soggettoId = null)
   )
 }
 
-// Scopo: Lookup utility ammesse per un ruolo soggetto (es. CL), filtrate
-// per l'emittente dell'utente corrente (intersezione ruolo + EF + configurazione).
-// Usata dalle combo filtro nelle liste (clienti, fornitori, ecc.).
-export function lookupUtilitiesPerEmittente(ruolo) {
-  return api.get(`${BASE}/lookup/utilities-per-emittente/`, { params: { ruolo } })
+// Scopo: Le utility che le aziende GESTISCONO (brief-db-utility-gestite-
+// dall-emittente §10 R-2). Con `emittenteFiscaleId` (PK) quelle dell'azienda:
+// lo passano drawer e form, con l'azienda del documento. Senza, quelle gestite
+// da almeno un'azienda del perimetro: i filtri di lista. Con `ruolo` (es. CL)
+// anche ammesse per il ruolo del soggetto.
+export function lookupUtilitiesPerEmittente(ruolo, emittenteFiscaleId = null) {
+  const params = { ruolo }
+  if (emittenteFiscaleId != null) params.emittente_fiscale_id = emittenteFiscaleId
+  return api.get(`${BASE}/lookup/utilities-per-emittente/`, { params })
 }
 
 // Scopo: Lookup dedicato conti contabili con filtro tipo (A=Acquisto, V=Vendita).
