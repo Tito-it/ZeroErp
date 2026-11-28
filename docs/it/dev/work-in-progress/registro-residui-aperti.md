@@ -59,10 +59,6 @@
   chiusura, §11.5.4 e riga 10):
   - **il giro degli smoke su `dev.smoke`** (§7, B-11): DEVA emette con lo standard e chiude una
     fattura. Non fatto: il brief si è chiuso col collaudo a video. BE;
-  - **B-8, la matrice utility dell'emittente**: mostra solo l'override grezzo. Mettere nei suoi campi
-    i parametri di sistema li farebbe leggere come override; la forma proposta sono due campi
-    «effettivo» da `anagrafiche.fn_parametri_importo_utility` e una colonna FE accanto. Da decidere,
-    di Tid;
   - **`vendite.fatture.utility_id NOT NULL`** (§10.9, facoltativa): l'unico creatore applicativo la
     pretende già, molte fixture pgTAP inseriscono fatture senza. Di Tid.
 - **Residui di `work-done/2026/brief-db-presidio-job-run-a-chi-tocca.md`** (ereditati il 2026-10-18 dalla chiusura),
