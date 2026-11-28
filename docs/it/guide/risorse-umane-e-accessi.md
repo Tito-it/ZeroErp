@@ -271,7 +271,7 @@ Lo spegnimento del soggetto non chiama la sync, ma non si raggiunge: un soggetto
 
 Un invito e pendente quando un token di `config.token_monouso` della veste non e usato e non e scaduto. Insieme allo stato la funzione da la scadenza del token pendente.
 
-⚠️ `ATTIVO` legge solo `attivo`: una veste accesa ma fuori dalle sue date, o con il rapporto chiuso, compare `ATTIVO` nelle liste anche se non apre la porta. La porta la decide sempre `fn_veste_utilizzabile`.
+`ATTIVO` legge solo `attivo`: una veste accesa ma fuori dalle sue date, o con il rapporto chiuso, è `ATTIVO` anche se non apre la porta. Lo stato racconta il ciclo di vita della veste (l'invito, l'accensione, la revoca), non la porta: le due domande restano separate. Per questo la lista «Altri accessi» ([anagrafiche.vw_accessi_altri](/dbzero/anagrafiche/views/vw_accessi_altri)) mette accanto allo stato di ogni veste anche `utilizzabile`, letto da `fn_veste_utilizzabile`. Una veste `ATTIVO` con `utilizzabile` falso è accesa ma oggi non lascia entrare. La porta la decide sempre `fn_veste_utilizzabile`.
 
 ### Le liste degli accessi
 <a id="le-liste-degli-accessi"></a>

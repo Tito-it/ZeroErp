@@ -4,7 +4,7 @@
 > **Da dove viene**: tre giorni di lavoro nell'agosto 2026, e ogni regola qui
 > sotto è costata un difetto vero. Storia e misure:
 > `docs/it/dev/work-done/2026/brief-db-pgtap-runner-rls-baseline.md`.
-> **Ultimo aggiornamento**: 27 novembre 2026
+> **Ultimo aggiornamento**: 28 novembre 2026
 
 ## La cosa da sapere per prima
 
@@ -230,7 +230,9 @@ p_super_admin := true)`, che passa dalle regole della madre di produzione e nasc
 ⚠️ **Operatori, profili, legami e scope non si scrivono a mano.** Le tabelle che danno
 l'accesso sono in sola lettura per l'applicazione, e i verbi che le scrivono chiedono il
 super admin. Un test che ne ha bisogno come fixture usa i builder della tabella sopra,
-che chiamano i verbi veri da un super admin costruito. Il primo super admin di un test
+che chiamano i verbi veri da un super admin costruito. Quel super admin è **uno per
+transazione** (`dbops.fn_pgtap_entra_come_super_admin`): i builder lo riusano, e un test
+che gli revoca il profilo ne riceve uno nuovo al builder seguente. Il primo super admin di un test
 non ha nessuno da cui farsi creare: lo fanno le fixture
 `dbops.fn_pgtap_fixture_crea_operatore` e `dbops.fn_pgtap_fixture_crea_utente_tecnico`,
 che usano le regole dei verbi senza il loro permesso e partono solo dove sono ammessi i
@@ -760,16 +762,36 @@ c'è?** Le forme che restano verdi su una configurazione monca:
 
 ### Il testo di un oggetto di catalogo dipende da chi legge
 
-Il testo che PostgreSQL stampa per un oggetto dipende dal `search_path`:
-`x::regclass::text`, `regprocedure::text`, `pg_get_viewdef`,
-`pg_get_function_sqlbody` e `pg_policies.qual` tolgono lo schema quando è nel
-percorso, e l'applicazione nel percorso ha più schemi del proprietario.
+Il testo che PostgreSQL stampa per un oggetto dipende dal `search_path`: quando
+ricostruisce un testo, toglie lo schema che sta nel percorso di chi legge.
+L'applicazione, che è il runner di default, ha nel percorso `django, public,
+config, dbops, script, anagrafiche`; il proprietario no. Lo stesso test è verde
+nella prova da owner e rosso alla corsa del runner, oppure verde per sottrazione
+se è una negazione o un conteggio a zero.
 
-* **Si confrontano gli OID** (`'config.x'::regclass::oid`), o il nome si compone
-  con `format('%I.%I', nspname, relname)`. Una regex su un testo di catalogo
-  scrive lo schema facoltativo, o legge sotto
-  `SET LOCAL search_path = pg_catalog`. Un conteggio atteso a zero su quel
-  filtro è verde anche col difetto: gli serve il gemello «esiste».
+| Il testo | Che cosa succede allo schema |
+| --- | --- |
+| `pg_get_viewdef`, `pg_get_function_sqlbody`, il corpo di una `BEGIN ATOMIC` in `pg_get_functiondef`, `pg_policies.qual` e `with_check`, `pg_get_expr`, `pg_get_constraintdef`, i tipi di `format_type` | si toglie |
+| `x::regclass::text`, `::regproc::text`, `::regprocedure::text`, `::regtype::text` | si toglie |
+| `pg_get_triggerdef`, `pg_get_indexdef` | la tabella resta qualificata (`ON anagrafiche.soggetti`), la funzione chiamata e le espressioni lo perdono |
+| il corpo di una plpgsql, o di una sql fra apici, in `pg_get_functiondef` e in `prosrc` | resta com'è stato scritto |
+
+* **«A legge B», «la vista usa f»: `pg_depend`**, dall'oggetto alla funzione per
+  OID, mai il testo. Per una vista l'oggetto è la sua regola (`pg_rewrite`, con
+  `ev_class` = la vista).
+* **Un nome si confronta per OID** (`'config.x'::regclass`,
+  `to_regprocedure('script.fn_x(integer)')`), o si compone con
+  `format('%I.%I', nspname, relname)`. Una regex su un testo ricostruito scrive
+  lo schema facoltativo (`(script\.)?fn_x\(`), o legge sotto
+  `SET LOCAL search_path = pg_catalog`, anche da un helper `pg_temp` con quella
+  clausola. Un conteggio atteso a zero su quel filtro è verde anche col difetto:
+  gli serve il gemello «esiste».
+* **Lo presidia `scripts/guardrail_pgtap_testo_catalogo.py`**, in CI. Cerca i
+  letterali qualificati usati come modello di una ricerca (`~`, `LIKE`,
+  `position`, `strpos`, `replace`, `matches`…) o di un confronto (`=`, `IN`)
+  su un testo ricostruito. Un'eccezione voluta, per esempio un test che prova
+  proprio la differenza fra owner e app, si dichiara accanto all'istruzione:
+  `-- pgtap-testo-catalogo: voluto — <perché>`.
 * **Il tipo `name` ha collation `C`.** Un'espressione costruita da `relname`,
   `proname`, `nspname` o `conname`, confrontata in `results_eq` o ordinata
   insieme a testo normale, solleva un errore di ordinamento e il file si ferma
@@ -905,6 +927,7 @@ scripts/testpgtap.sh db/<schema>/test-<cosa>.sql   # il tuo test
 scripts/pgtap-baseline.sh <schema>                 # nessuna regressione nello schema
 scripts/pgtap-baseline.sh --modificati             # solo i pgTAP toccati nell'albero
 python3 scripts/guardrail_pgtap_preambolo.py       # le invarianti di preambolo
+python3 scripts/guardrail_pgtap_testo_catalogo.py  # nessun nome qualificato nel testo ricostruito
 ```
 
 `--modificati` esegue i `.sql` di `db/pgtap/` che git vede cambiati rispetto a `HEAD`, più quelli

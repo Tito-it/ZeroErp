@@ -11,6 +11,10 @@
 --   brief-db-magazzino-tutte-le-scritture-dal-verbo §5.3): il censimento del test 1
 --   ha otto righe. Il comportamento del seriale lo prova
 --   magazzino/test-assets-guard-emittente-ba-v1.
+-- rev 2026-11-28: il BB e' montato anche su vendite.fatture (20261126-36,
+--   brief-db-revisione-anagrafiche §24.5), sulla colonna emittente_soggetto_ruolo_id
+--   e col codice dei documenti: il censimento del test 1 ha nove righe. Il
+--   comportamento sulla fattura lo prova vendite/test-fatture-guard-emittente-ba-v1.
 --
 -- ⭐ I soggetti li FABBRICA (dbops.fn_pgtap_crea_emittente_operatore due
 --   volte, fn_pgtap_crea_cliente_ba): gira uguale su un database ricostruito
@@ -28,7 +32,7 @@
 --
 -- Indice test (1..10):
 --   STRUTTURA
---    1) gli otto trigger (sette documenti e il seriale) sono montati sul BB, con colonna e codice attesi
+--    1) i nove trigger (otto documenti e il seriale) sono montati sul BB, con colonna e codice attesi
 --    2) le sette funzioni di prima non ci sono piu'
 --    3) i sei codici di prima sono ritirati, e nessuna funzione li solleva
 --   DOCUMENTI
@@ -108,11 +112,12 @@ SELECT is(
     || 'commesse:emittente_soggetto_ruolo_id:E_COMMESSA_EMITTENTE_BA_INCOERENTE, '
     || 'contratti:emittente_fiscale_id:E_DOC_EMITTENTE_BA_INCOERENTE, '
     || 'ddt:emittente_fiscale_id:E_DOC_EMITTENTE_BA_INCOERENTE, '
+    || 'fatture:emittente_soggetto_ruolo_id:E_DOC_EMITTENTE_BA_INCOERENTE, '
     || 'offerte_commerciali:emittente_fiscale_id:E_DOC_EMITTENTE_BA_INCOERENTE, '
     || 'ordini:emittente_fiscale_id:E_DOC_EMITTENTE_BA_INCOERENTE, '
     || 'preventivi:emittente_fiscale_id:E_DOC_EMITTENTE_BA_INCOERENTE, '
     || 'resi:emittente_fiscale_id:E_DOC_EMITTENTE_BA_INCOERENTE',
-    '1) gli otto trigger guard emittente <-> BA (i sette documenti e il seriale) sono montati sul BB, con la colonna e il codice di ciascuno');
+    '1) i nove trigger guard emittente <-> BA (gli otto documenti e il seriale) sono montati sul BB, con la colonna e il codice di ciascuno');
 
 SELECT is(
     (SELECT count(*)::int

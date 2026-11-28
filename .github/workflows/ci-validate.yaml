@@ -301,6 +301,26 @@ jobs:
         # Guida: docs/it/guide/pgtap-come-si-scrive-un-test.md
         run: python scripts/guardrail_pgtap_preambolo.py
 
+      - name: Guardrail testo di catalogo nei pgTAP
+        # Cosa presidia: un pgTAP non cerca un nome qualificato (`script.fn_x`)
+        # nel testo che PostgreSQL ricostruisce (pg_get_viewdef,
+        # pg_get_function_sqlbody, pg_policies.qual, `x::regclass::text`…).
+        # Quel testo toglie lo schema quando lo schema e' nel search_path di chi
+        # legge: l'app lo ha, l'owner no. Il confronto e' verde nella prova da
+        # owner e rosso al runner, oppure, se e' una negazione o un conteggio a
+        # zero, verde per sottrazione.
+        #
+        # Perche' esiste: il difetto e' tornato almeno nove volte fra il
+        # 2026-09-25 e il 2026-11-27, ogni volta con la regola gia' scritta nella
+        # guida. La prima corsa del cancello ha trovato un test VERDE che non
+        # poteva fallire (config/test-credenziale-login-v1, test 21).
+        #
+        # Statico e senza database: il search_path dell'app lo legge dalla sua
+        # sede (scripts/sql/provision_zeroerp.sql), le funzioni BEGIN ATOMIC dal
+        # changelog.
+        # Guida: docs/it/guide/pgtap-come-si-scrive-un-test.md
+        run: python scripts/guardrail_pgtap_testo_catalogo.py
+
       - name: Guardrail COMMENT al presente nei changeSet nuovi
         # Cosa presidia: un `COMMENT ON … IS '…'` scritto in un changeSet nuovo
         # (dal 20261111-18) non porta il nome di un brief, un marcatore di

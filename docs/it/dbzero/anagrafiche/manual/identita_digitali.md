@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.identita_digitali`
 
-> **Ultimo aggiornamento**: 27 novembre 2026
+> **Ultimo aggiornamento**: 28 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -58,10 +58,21 @@ Una credenziale è una persona, o un processo, che si autentica con una password
 cui entra. La stessa credenziale può avere la veste dell'operatore e quella del portale, e lo stesso ruolo d'impresa
 può avere più vesti, una per porta (un cliente col portale e con lo shop).
 
-I due indici unici valgono fra le vesti **accese** e sono per coppia, non per colonna:
+Gli indici unici valgono fra le vesti **accese**:
 
-* `uq_identita_digitali_auth_user_ruolo_attivo` — una credenziale ha al più una veste accesa per tipo;
-* `uq_identita_digitali_sr_ruolo_attivo` — un ruolo d'impresa ha al più una veste accesa per tipo.
+* `uq_identita_digitali_credenziale_sr_ruolo_attivo` — una veste accesa per credenziale, ruolo d'impresa e
+  tipo. Per i portali è l'unica unicità: un cliente o un fornitore ha più referenti, e un referente entra per
+  più soggetti, una veste per ciascuno;
+* `uq_identita_digitali_auth_user_ruolo_attivo` — una credenziale ha al più una veste `OPERATORE` (o
+  `API_CLIENT`) accesa;
+* `uq_identita_digitali_sr_ruolo_attivo` — un ruolo d'impresa ha al più una veste `OPERATORE` (o
+  `API_CLIENT`) accesa: una persona ha un solo accesso da operatore.
+
+Gli ultimi due valgono solo per l'operatore e il client API, perché il resto del database e il backend danno
+per scontato un operatore per credenziale. Per la stessa ragione un profilo personale (`AD_HOC`,
+`SUPER_ADMIN`) si lega solo a una veste `OPERATORE`, e una veste che ne ha uno non cambia tipo
+(`E_PROFILO_PERSONALE_SOLO_OPERATORE`): i profili si raccolgono per credenziale e tipo, e un profilo su una
+veste di portale varrebbe per ogni soggetto della persona.
 
 Le vesti spente non hanno limiti: restano, una per ogni volta che la porta è stata chiusa.
 
@@ -194,6 +205,11 @@ e storico. L'elenco, con l'ordine, sta nella scheda.
 La chiave esterna nasce solo dove lo schema Django c'è già quando la migrazione gira: su un database ricostruito da
 zero, dove Liquibase gira prima delle migrazioni Django, manca.
 
+Anche `revocata_da_user_id`, l'autore della revoca, punta a `django.auth_user`, con `ON DELETE NO ACTION`: chi ha
+revocato una veste non si cancella finché il segno c'è. Non si può svuotare la colonna al suo posto, perché il CHECK
+della revoca vuole quando e chi insieme. Nasce con la stessa regola di `auth_user_id`: dove lo schema Django non
+c'è ancora, manca.
+
 ---
 
 ### ⚠️ Che cosa oggi non copre
@@ -221,8 +237,11 @@ zero, dove Liquibase gira prima delle migrazioni Django, manca.
 
 ### Test
 
-* `db/pgtap/anagrafiche/test-identita-digitali-unique-multi-veste.sql` — i due indici unici fra le vesti accese, e
-  le spente che non contano. È **rosso** in baseline.
+* `db/pgtap/anagrafiche/test-identita-digitali-unique-multi-veste.sql` — gli indici unici sui casi costruiti: due
+  referenti dello stesso cliente, una persona su due clienti e su due fornitori, la stessa terna rifiutata, la spenta
+  che non conta, l'operatore uno per credenziale e uno per persona. Ogni caso dice quale indice rifiuta.
+* `db/pgtap/config/test-profilo-personale-solo-operatore-v1.sql` — il profilo personale solo sulla veste
+  `OPERATORE`, nei due versi: il legame nuovo e la veste che cambia tipo.
 * `db/pgtap/anagrafiche/test-veste-operatore-spenta-v1.sql` — la veste dell'operatore si spegne con `attivo = false`
   e tiene il tipo, `DISABILITATO` rifiutato.
 * `db/pgtap/anagrafiche/test-identita-tecnica.sql` — il flag `tecnica`, il suo default e i presidi dei processi.
@@ -246,6 +265,9 @@ zero, dove Liquibase gira prima delle migrazioni Django, manca.
 * 2026-09-25 — tentativi sbagliati, blocco e cambio password escono dalla veste e vanno in `config.credenziali`;
   la veste dell'operatore nasce spenta.
 * 2026-10-02 — `DISABILITATO` non è più un tipo di veste; nasce la regola «persona o macchina».
+* 2026-11-28 — sui portali una veste accesa per credenziale, soggetto e tipo: più referenti per un cliente o un
+  fornitore, più soggetti per un referente. L'operatore resta uno per credenziale e uno per persona, e un profilo
+  personale sta solo sulla sua veste.
 
 ---
 

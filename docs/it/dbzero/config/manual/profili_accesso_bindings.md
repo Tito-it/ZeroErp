@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.profili_accesso_bindings`
 
-> **Ultimo aggiornamento**: 26 novembre 2026
+> **Ultimo aggiornamento**: 28 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -78,6 +78,11 @@ Tre indici parziali UNIQUE impediscono binding duplicati per la stessa entità:
 | `uq_profili_accesso_bindings_uo` (partial `WHERE unita_organizzativa_id IS NOT NULL`) | Un solo profilo per reparto. |
 | `uq_profili_accesso_bindings_identita` (partial `WHERE identita_digitale_id IS NOT NULL`) | Un solo profilo per identità (per override ad-hoc). |
 | `uq_profili_accesso_bindings_ruolo` (partial `WHERE ruolo_applicativo IS NOT NULL`) | Un solo profilo fallback per ruolo applicativo. |
+
+⛔ **Il legame per identità sta solo su una veste `OPERATORE`.** I profili `AD_HOC` e `SUPER_ADMIN` sono
+personali, ma si raccolgono per credenziale e tipo di veste: sui portali una persona ha una veste per
+soggetto, e il profilo varrebbe per tutte. Lo rifiuta il guard di coerenza
+(`E_PROFILO_PERSONALE_SOLO_OPERATORE`); per i clienti e i fornitori c'è il profilo `PORTALE`, legato al tipo.
 
 ---
 

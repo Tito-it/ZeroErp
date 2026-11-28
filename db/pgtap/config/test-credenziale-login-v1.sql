@@ -51,7 +51,8 @@
 --   19) fn_get_user_profile legge il flag dalla credenziale
 --   20) fn_get_operatore_detail legge il flag dalla credenziale
 --   Firme e parametri
---   21) le firme vecchie (senza provenienza) non esistono piu'
+--   21) le firme vecchie (senza provenienza) non esistono piu', e le due nuove
+--       si' (il gemello «esiste»: un conteggio a zero da solo e' verde anche a vuoto)
 --   22) un parametro del login vuoto -> E_CONFIG_MANCANTE (niente ripiego)
 --
 -- ⚠️ Gira come l'APPLICAZIONE: le funzioni del login sono DEFINER e l'app ha
@@ -264,17 +265,22 @@ SELECT is(
 -- ============================================================
 -- 21-22 Firme e parametri
 -- ============================================================
+-- ⛔ Per nome risolto, non per testo: `oid::regprocedure::text` toglie lo schema
+--   quando e' nel search_path di chi legge, e l'app ha `script` nel percorso.
+--   Il confronto col testo qualificato non trovava mai niente, e il test era
+--   verde per sottrazione (2026-11-27, scripts/guardrail_pgtap_testo_catalogo.py).
 SELECT is(
-    (SELECT count(*)::integer FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-      WHERE n.nspname = 'script'
-        AND p.oid::regprocedure::text IN (
-                'script.fn_check_blocco_login(integer)',
-                'script.fn_registra_tentativo_login(integer,boolean)',
-                -- senza il digest del nome (20260925-60/-61, R-7)
-                'script.fn_check_blocco_login(integer,inet)',
-                'script.fn_registra_tentativo_login(integer,inet,boolean)')),
-    0,
-    '21) le firme vecchie (senza provenienza, senza digest del nome) non esistono piu''');
+    (SELECT count(*) FILTER (WHERE vecchia AND to_regprocedure(firma) IS NOT NULL) || ' vecchie, '
+            || count(*) FILTER (WHERE NOT vecchia AND to_regprocedure(firma) IS NOT NULL) || ' nuove'
+       FROM (VALUES ('script.fn_check_blocco_login(integer)', true),
+                    ('script.fn_registra_tentativo_login(integer,boolean)', true),
+                    -- senza il digest del nome (20260925-60/-61, R-7)
+                    ('script.fn_check_blocco_login(integer,inet)', true),
+                    ('script.fn_registra_tentativo_login(integer,inet,boolean)', true),
+                    ('script.fn_check_blocco_login(integer,bytea,inet)', false),
+                    ('script.fn_registra_tentativo_login(integer,bytea,inet,boolean)', false)) v(firma, vecchia)),
+    '0 vecchie, 2 nuove',
+    '21) le firme vecchie (senza provenienza, senza digest del nome) non esistono piu'', le nuove si''');
 
 -- ⚠️ Per ultimo: cambia un parametro (il ROLLBACK lo rimette).
 -- ⚠️ Dal 2026-10-31 (brief-db-liste-datatable-grezze-secondo-giro, D-5) il guard

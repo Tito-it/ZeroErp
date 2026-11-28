@@ -353,13 +353,17 @@ SELECT throws_ok(
 -- ============================================================
 -- 27-28) U29: la veste NULL non allarga
 -- ============================================================
--- Un operatore umano costruito qui ha la veste OPERATORE; gli si aggiunge una
---   veste CLIENTE_PORTALE, e un profilo AD_HOC legato a quell'identita' concede
---   TUTTO su una colonna sensibile. Sotto OPERATORE nessun grant: la sensibile e'
---   BLOCCATO. ⚠️ Non l'utente di contesto: puo' essere un account di processo,
---   e un processo non indossa una veste di persona.
+-- Un operatore umano costruito qui ha la veste OPERATORE, e un profilo AD_HOC
+--   legato a quell'identita' concede TUTTO su una colonna sensibile; gli si
+--   aggiunge una veste CLIENTE_PORTALE, che nessun profilo concede: sotto di lei
+--   la sensibile e' BLOCCATO. ⚠️ Non l'utente di contesto: puo' essere un account
+--   di processo, e un processo non indossa una veste di persona.
+-- ⚠️ Fino al 2026-11-28 il profilo AD_HOC stava sulla veste CLIENTE_PORTALE e la
+--   concessione mancava sull'OPERATORE. Dal 20261127-49 un profilo personale si
+--   lega solo a una veste OPERATORE (D-G4-2 di brief-db-accessi-area-clienti): le
+--   due vesti si scambiano il posto, e la proprieta' provata e' la stessa.
 CREATE TEMP TABLE _ctx AS
-SELECT auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano('pgTAP-catalogo-liste', false);
+SELECT auth_user_id, identita_id FROM dbops.fn_pgtap_crea_operatore_umano('pgTAP-catalogo-liste', false);
 
 CREATE TEMP TABLE _mondo AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('catalogo liste');
 
@@ -376,7 +380,7 @@ SELECT dbops.fn_pgtap_scrivi_profilo_accesso(
 
 DO $lega$
 BEGIN
-  PERFORM dbops.fn_pgtap_lega_profilo_identita((SELECT profilo_id FROM _pr), (SELECT identita_id FROM _idp));
+  PERFORM dbops.fn_pgtap_lega_profilo_identita((SELECT profilo_id FROM _pr), (SELECT identita_id FROM _ctx));
 END
 $lega$;
 
@@ -401,7 +405,7 @@ SELECT is(
     (SELECT lv.livello_accesso::text
        FROM ui.fn_lista_colonne_livello((SELECT lista_id FROM _l WHERE n = 1),
                                         (SELECT auth_user_id FROM _ctx),
-                                        'CLIENTE_PORTALE'::config.ruolo_applicativo) lv
+                                        'OPERATORE'::config.ruolo_applicativo) lv
       WHERE lv.codice = 'col_a_sensibile'),
     'TUTTO',
     '28) ... e sotto la veste del profilo e'' TUTTO');

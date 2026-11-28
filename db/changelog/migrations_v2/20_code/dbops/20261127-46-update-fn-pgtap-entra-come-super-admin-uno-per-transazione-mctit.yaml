@@ -1,0 +1,141 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN SOLO SUPER_ADMIN DI FIXTURE PER TRANSAZIONE
+#   dbops.fn_pgtap_entra_come_super_admin
+#
+#   Il difetto (rossi della baseline del 2026-11-28): la fixture creava un
+#   SUPER_ADMIN NUOVO a ogni chiamata. Dal giro 10-quater (2026-11-27) ci
+#   passano tutti i builder che scrivono le tabelle dell'accesso
+#   (fn_pgtap_concedi_azione, fn_pgtap_concedi_livello_area,
+#   fn_pgtap_scrivi_override, ...) e, attraverso loro, quasi tutti i builder di
+#   documenti e di magazzino: un test che concede dieci permessi fabbricava dieci
+#   amministratori, cioe' dieci persone fisiche, dieci codici fiscali di fixture
+#   e dieci credenziali. Con il pool di dbops.fn_pgtap_cf_libero a 26 codici
+#   tre file si fermavano nel setup (magazzino/test-porta-ledger,
+#   magazzino/test-verbi-permesso, vendite/test-capability-valori-marche-
+#   smistamento). L'allargamento del pool e' 20261127-45; questo toglie la causa.
+#
+#   La correzione: il primo ingresso della transazione crea il SUPER_ADMIN e ne
+#   scrive l'id nella GUC LOCALE dbops.pgtap_super_admin (set_config(…, true));
+#   gli ingressi seguenti lo riusano.
+#   ⭐ Perche' una GUC locale e non una tabella temporanea: PostgreSQL la
+#     annulla da solo a fine transazione E a ogni savepoint annullato, cioe'
+#     esattamente quando si annulla la riga del SUPER_ADMIN che nomina. Una
+#     tabella temporanea sopravvive al COMMIT e alla transazione seguente, e
+#     nominerebbe un utente che in quella transazione non esiste.
+#   ⭐ Prima di riusarlo la fixture chiede a script.fn_is_super_admin_account
+#     se lo e' ancora: un test che gli revoca il profilo (o lo spegne) non deve
+#     ereditare un falso SUPER_ADMIN, e la fixture ne crea uno nuovo.
+#   ⚠️ L'etichetta vale per il SUPER_ADMIN che crea: un ingresso che lo riusa
+#     non cambia il cognome di quello creato prima.
+#   ⚠️ Non e' una porta: la GUC la legge solo questa fixture, che non e'
+#     SECURITY DEFINER, e l'id letto si verifica comunque come SUPER_ADMIN;
+#     chi potesse scriverla puo' gia' scrivere app.current_user_id.
+#
+#   Corpo dal catalogo (pg_get_functiondef), non da uno YAML.
+#   Permessi: CREATE OR REPLACE conserva l'ACL; nessun GRANT.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261127-46-update-fn-pgtap-entra-come-super-admin-uno-per-transazione-mctit.yaml
+
+  - changeSet:
+      id: 20261127-46-update-fn-pgtap-entra-come-super-admin-uno-per-transazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_entra_come_super_admin: un solo SUPER_ADMIN di fixture per transazione, ricordato nella GUC locale dbops.pgtap_super_admin e riusato finche' resta SUPER_ADMIN.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_entra_come_super_admin(
+                  p_etichetta text DEFAULT 'super-admin')  -- un'etichetta del cognome di fixture: nessuna colonna
+               -- il contesto di prima, {utente, ruolo}: nessuna colonna di cui sia il riflesso
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: in un pgTAP, entrare nel contesto di un SUPER_ADMIN di fixture per
+              --   chiamare un verbo che lo chiede. Restituisce il contesto di prima.
+              -- Uso:
+              --   v_prima := dbops.fn_pgtap_entra_come_super_admin('mio-test');
+              --   BEGIN
+              --       ... il verbo ...
+              --   EXCEPTION WHEN OTHERS THEN
+              --       PERFORM dbops.fn_pgtap_rimetti_contesto(v_prima);
+              --       RAISE;
+              --   END;
+              --   PERFORM dbops.fn_pgtap_rimetti_contesto(v_prima);
+              -- ⭐ Un SUPER_ADMIN per transazione: il primo ingresso lo crea (non
+              --   dipende da un SUPER_ADMIN gia' presente sul database, che su un
+              --   database da zero non c'e'), i seguenti lo riusano finche' resta
+              --   SUPER_ADMIN. L'id sta nella GUC LOCALE dbops.pgtap_super_admin, che
+              --   PostgreSQL annulla insieme alla riga: a fine transazione e a ogni
+              --   savepoint annullato.
+              -- ⚠️ L'etichetta vale solo per il SUPER_ADMIN che si crea.
+              -- ⚠️ app.current_emittente_id non si tocca.
+              DECLARE
+                  v_prima       jsonb := jsonb_build_object(
+                      'utente', script.fn_utente_di_sessione('dbops.fn_pgtap_entra_come_super_admin'),
+                      'ruolo',  current_setting('app.ruolo_applicativo', true));
+                  v_super_admin anagrafiche.identita_digitali.auth_user_id%TYPE;
+              BEGIN
+                  -- Il SUPER_ADMIN gia' creato in questa transazione, se lo e' ancora.
+                  v_super_admin := NULLIF(current_setting('dbops.pgtap_super_admin', true), '')::int;
+                  IF v_super_admin IS NOT NULL
+                     AND NOT script.fn_is_super_admin_account(v_super_admin) THEN
+                      v_super_admin := NULL;
+                  END IF;
+
+                  IF v_super_admin IS NULL THEN
+                      SELECT o.auth_user_id
+                        INTO v_super_admin
+                        FROM dbops.fn_pgtap_crea_operatore_umano(COALESCE(p_etichetta, 'super-admin'), true) o;
+                      PERFORM set_config('dbops.pgtap_super_admin', v_super_admin::text, true);
+                  END IF;
+
+                  PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', false);
+                  PERFORM set_config('app.current_user_id', v_super_admin::text, false);
+
+                  RETURN v_prima;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_entra_come_super_admin(text)
+              IS 'Fixture dei pgTAP: entra nel contesto di un SUPER_ADMIN di fixture e restituisce il contesto di prima ({utente, ruolo}), da passare a dbops.fn_pgtap_rimetti_contesto. Scrive app.current_user_id e app.ruolo_applicativo per la sessione; app.current_emittente_id non si tocca. Il SUPER_ADMIN e'' uno per transazione: il primo ingresso lo crea con dbops.fn_pgtap_crea_operatore_umano(p_etichetta, true) e ne scrive l''id nella GUC locale dbops.pgtap_super_admin, gli ingressi seguenti lo riusano finche'' script.fn_is_super_admin_account lo conferma, altrimenti ne creano uno nuovo. La GUC si annulla con la transazione e con ogni savepoint annullato, insieme alla riga che nomina. L''etichetta vale solo per il SUPER_ADMIN che si crea. La usano i builder che chiamano un verbo riservato al SUPER_ADMIN (dbops.fn_pgtap_scrivi_override, dbops.fn_pgtap_sposta_scope_operatore, dbops.fn_pgtap_scrivi_profilo_accesso, dbops.fn_pgtap_lega_profilo_identita), che rimettono il contesto anche in errore.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_entra_come_super_admin(
+                  p_etichetta text DEFAULT 'super-admin')
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_prima       jsonb := jsonb_build_object(
+                      'utente', script.fn_utente_di_sessione('dbops.fn_pgtap_entra_come_super_admin'),
+                      'ruolo',  current_setting('app.ruolo_applicativo', true));
+                  v_super_admin anagrafiche.identita_digitali.auth_user_id%TYPE;
+              BEGIN
+                  SELECT o.auth_user_id
+                    INTO v_super_admin
+                    FROM dbops.fn_pgtap_crea_operatore_umano(COALESCE(p_etichetta, 'super-admin'), true) o;
+
+                  PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', false);
+                  PERFORM set_config('app.current_user_id', v_super_admin::text, false);
+
+                  RETURN v_prima;
+              END;
+              $function$;

@@ -24,8 +24,12 @@
 --   - Colonna 'identificatore' in preferenza con visibile:false -> normalizzata a true
 --   - Nuova colonna non in preferenza salvata -> aggiunta con visibile:false, colonne_nuove++
 --
--- Pattern: CLIENTE_PORTALE per evitare guard PF pura (stesso pattern
--- di test-fn-get-profili-accesso-applicabili.sql).
+-- Pattern: un operatore umano costruito, la cui veste OPERATORE porta il profilo AD_HOC.
+-- ⚠️ Dal 2026-11-28 l'utente e' un OPERATORE costruito (dbops.fn_pgtap_crea_operatore_umano),
+--   non piu' una veste CLIENTE_PORTALE: dal 20261127-49 un profilo personale (AD_HOC) si
+--   lega solo a una veste OPERATORE (D-G4-2 di brief-db-accessi-area-clienti). Il caso 11
+--   lega il profilo PORTALE di prova al tipo OPERATORE; il caso 12 indossa una veste che
+--   la credenziale non ha (FORNITORE_PORTALE).
 -- BEGIN; + ROLLBACK implicito a fine file.
 --
 -- Indice test (plan 13; le etichette delle asserzioni, che saltano il 10):
@@ -40,7 +44,7 @@
 --   8.  Colonna identificatore con visibile:false -> normalizzata a true
 --   9.  Nuova colonna nel catalogo non in preferenza -> colonne_nuove=1
 --   11. Cascata dei preset di ruolo: AD_HOC (priorita' 1) batte PORTALE (priorita' 3)
---   12. Veste OPERATORE -> nessun profilo -> preset di sistema
+--   12. Una veste che la credenziale non ha -> nessun profilo -> preset di sistema
 --   13. Ogni colonna dell'output espone la chiave priorita
 --
 -- ⚠️ Le misure (10, 25, 50, 100) sono scritte a mano: servono quattro misure
@@ -59,12 +63,11 @@ BEGIN;
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- ⚠️ Due vesti, in ordine, e l'ordine e' il punto.
---   La fixture deve prima VEDERE (billing_account e' sotto RLS: senza una veste
---   dichiarata l'utente applicativo legge zero righe, _t_sr resta vuota e cade
---   tutto a valle). Poi, prima delle asserzioni, si indossa la veste che il test
---   collauda davvero — CLIENTE_PORTALE, quella dell'identita' che la fixture ha
---   appena creato.
+-- ⚠️ Due contesti, in ordine, e l'ordine e' il punto.
+--   La fixture lavora prima nel contesto dell'operatore di default. Poi, prima
+--   delle asserzioni, si indossa la veste che il test collauda davvero —
+--   OPERATORE, quella dell'identita' che la fixture ha appena creato, con il
+--   suo id nella GUC.
 --   E' la «correzione vera» che il commento qui sopra nominava lasciandola al
 --   cantiere `ui`: «veste vuota» non e' una condizione che l'applicazione
 --   produca mai, quindi collaudarci sopra non misura l'applicazione.
@@ -181,57 +184,21 @@ CREATE TEMP TABLE _t_col3 AS WITH ins AS (
 )
 SELECT id AS col_id
 FROM ins;
--- auth_user di test (CLIENTE_PORTALE per evitare guard PF pura)
-CREATE TEMP TABLE _t_au AS WITH ins AS (
-    INSERT INTO django.auth_user (
-            username,
-            password,
-            is_active,
-            is_staff,
-            is_superuser,
-            first_name,
-            last_name,
-            email,
-            date_joined
-        )
-    VALUES (
-            '_pgtap_resolve_' || substr(md5(clock_timestamp()::text), 1, 6),
-            '!',
-            TRUE,
-            FALSE,
-            FALSE,
-            '',
-            '',
-            '',
-            now()
-        )
-    RETURNING id
-)
-SELECT id AS auth_user_id
-FROM ins;
--- ⛔ Il cliente si COSTRUISCE (2026-09-23). Fino a oggi questa fixture pescava
---   un `billing_account` esistente: su un database ricostruito non ce n'e'
---   nessuno, la temp table restava VUOTA, l'INSERT dell'identita' inseriva
---   zero righe e il binding finiva con `identita_digitale_id` NULL — da cui
---   l'errore «binding non coerente col tipo del profilo», che nominava il
---   profilo e non la causa. Il BB costruisce azienda, operatore e cliente
---   nell'ordine giusto e riusa l'azienda del contesto gia' aperto.
-CREATE TEMP TABLE _t_mondo AS
-SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('lista config');
+-- L'utente di test: un operatore umano costruito, con la sua veste OPERATORE.
+CREATE TEMP TABLE _t_op AS
+SELECT o.auth_user_id, o.identita_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('pgTAP lista config') o;
 
-CREATE TEMP TABLE _t_sr AS
-SELECT cliente_soggetto_ruolo_id AS sr_id FROM _t_mondo;
--- Identita CLIENTE_PORTALE
-CREATE TEMP TABLE _t_id AS WITH ins AS (
-    SELECT anagrafiche.fn_crea_veste_portale(a.auth_user_id, s.sr_id, 'CLIENTE_PORTALE', TRUE) AS id FROM _t_sr s,
-        _t_au a)
-SELECT id AS identita_id
-FROM ins;
+CREATE TEMP TABLE _t_au AS
+SELECT auth_user_id FROM _t_op;
+
+CREATE TEMP TABLE _t_id AS
+SELECT identita_id FROM _t_op;
 
 -- Da qui in poi si agisce come l'identita' appena creata: e' la veste che il
 -- test collauda davvero, e senza la quale i profili PORTALE/AD_HOC verrebbero
 -- filtrati (asserzioni 5, 7 e 11).
-SELECT set_config('app.ruolo_applicativo', 'CLIENTE_PORTALE', true);
+SELECT set_config('app.ruolo_applicativo', 'OPERATORE', true);
 SELECT set_config('app.current_identita_id', (SELECT identita_id::text FROM _t_id), true);
 -- Profilo AD_HOC per i test di permessi
 CREATE TEMP TABLE _t_profilo AS WITH ins AS (
@@ -693,7 +660,7 @@ SELECT is(
     );
 -- =========================================================
 -- 11. Cascata dei preset di ruolo: vince il profilo piu' prioritario
---     Il secondo profilo e' il PORTALE della veste CLIENTE_PORTALE (priorita'
+--     Il secondo profilo e' il PORTALE del tipo OPERATORE (priorita'
 --     3). uq_profili_accesso_bindings_ruolo ammette UN binding per veste: se il
 --     seed lo porta gia' si usa quello, altrimenti si costruisce qui. Il caso
 --     dice anche di averlo trovato: senza, il preset di ruolo non nascerebbe e
@@ -704,11 +671,11 @@ WITH p AS (
     SELECT 'PORTALE', '_PGTAP_RESOLVE_P_' || upper(substr(md5(clock_timestamp()::text), 1, 8)),
            'Profilo PORTALE test fn_resolve_lista_config', TRUE
      WHERE NOT EXISTS (SELECT 1 FROM config.profili_accesso_bindings b
-                        WHERE b.ruolo_applicativo = 'CLIENTE_PORTALE'::config.ruolo_applicativo)
+                        WHERE b.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo)
     RETURNING id
 )
 INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, ruolo_applicativo, attivo)
-SELECT p.id, 'CLIENTE_PORTALE'::config.ruolo_applicativo, TRUE FROM p;
+SELECT p.id, 'OPERATORE'::config.ruolo_applicativo, TRUE FROM p;
 -- Cancella preferenza utente per tornare alla cascata preset
 DELETE FROM ui.lista_preferenza_utente
 WHERE auth_user_id = (
@@ -717,7 +684,7 @@ WHERE auth_user_id = (
     );
 
 -- Recupera il primo profilo prio>1 gia' applicabile all'utente
--- (es. PORTALE bound a CLIENTE_PORTALE nei dati reali del DB)
+-- (il PORTALE del tipo OPERATORE qui sopra, o il REPARTO dell'operatore)
 CREATE TEMP TABLE _t_profilo_prio2 AS
 SELECT profilo_accesso_id
 FROM script.fn_get_profili_accesso_applicabili(
@@ -777,11 +744,11 @@ SELECT is(
     );
 -- =========================================================
 -- 12. DB-4: GUC app.ruolo_applicativo filtra la veste corrente
---     Con GUC='OPERATORE' l'utente non ha identita OPERATORE
+--     Con GUC='FORNITORE_PORTALE' l'utente non ha identita FORNITORE_PORTALE
 --     -> nessun profilo per questa veste -> fallback preset sistema (pagina=10)
 -- =========================================================
 -- set_config con is_local=true e' equivalente a SET LOCAL (scope transazione)
-SELECT set_config('app.ruolo_applicativo', 'OPERATORE', true);
+SELECT set_config('app.ruolo_applicativo', 'FORNITORE_PORTALE', true);
 
 SELECT is(
         (
@@ -800,7 +767,7 @@ SELECT is(
                 )::INTEGER
         ),
         10,
-        '12. DB-4: GUC=OPERATORE (nessuna identita per questa veste) -> fallback preset sistema (pagina=10)'
+        '12. DB-4: GUC=FORNITORE_PORTALE (nessuna identita per questa veste) -> fallback preset sistema (pagina=10)'
     );
 
 -- Reset GUC: stringa vuota = NULLIF -> NULL = comportamento legacy

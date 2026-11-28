@@ -1,10 +1,10 @@
 # Brief DB — Gli accessi e l'area clienti: la veste revocata, la veste cliente unica, l'iscrizione da sé
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-27
+## ⏭️ Chi riparte — aggiornato al 2026-11-28
 
-**Riparte: la sessione DB coi giri 3-6, al via di Tid.** Il passo 3c è chiuso: lato DB il 2026-11-27 (3c-1 e 3c-3
+**Riparte: il team BE/FE, con la richiesta del giro 4 (§5.5.5).** Il giro 4 è applicato, coi pgTAP verdi col runner di Tid e la doc auto-generata rigenerata (2026-11-28); manca il commit, insieme a quello del giro 3 (applicato e verde il 2026-11-28). Resta in parallelo la richiesta del §5.4.2 al team BE/FE. Poi, col via di Tid, l'iscrizione da sé, che aspetta la proposta sull'emittente. Il passo 3c è chiuso: lato DB il 2026-11-27 (3c-1 e 3c-3
 applicati, pgTAP verdi col runner di Tid), lato BE/FE lo stesso giorno (§5.3.10, committato il 2026-11-27).
-⛔ **Numeri riservati al 3c: `20261127-01` … `-10`**, tutti usati. Il passo 3b è committato e in
+⛔ **Numeri riservati al 3c: `20261127-01` … `-10`**, tutti usati; il giro 3 usa `-43` e `-44`. Il passo 3b è committato e in
 `Tito-dev` (`53420a057`, PR #266).
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -15,13 +15,23 @@ applicati, pgTAP verdi col runner di Tid), lato BE/FE lo stesso giorno (§5.3.10
 | 4 | ~~Tid~~ | ~~apply di `-09`, `-10` e `ci_apply`, pgTAP col runner, doc auto-generata~~: fatto, verde, 2026-11-27 | §5.3.9 | — |
 | 5 | ~~Tid~~ | ~~Il commit del giro DB~~: `1405f8ce4` (PR #268) | — | — |
 | 6 | ~~team BE/FE~~ | ~~La richiesta unica: il verbo di `invito_inviato_at`, i test Django sulle fixture, `REVOCATA` nel filtro~~: fatta e committata il 2026-11-27 | §5.3.10 | — |
-| 7 | sessione DB | Giri 3-6, nell'ordine rivisto del §5.3.6, col via di Tid | §5 | — |
+| 7 | ~~Tid~~ | ~~D-G3-1 e il via al giro 3~~: (a), 2026-11-27 | §5.4 | — |
+| 8 | ~~sessione DB~~ | ~~Giro 3 (S64): i due changeSet, il pgTAP, la doc, provati sullo scratch~~: 2026-11-27 | §5.4.1 | — |
+| 9 | ~~Tid~~ | ~~Apply di `20261127-43`, `-44`; `anagrafiche/test-accessi-altri-veste-utilizzabile-v1` col runner; doc auto-generata~~: fatto, verde, 2026-11-28 | §5.4.1 | — |
+| 10 | Tid | Il commit del giro 3, col cancello del testo di catalogo | — | — |
+| 11 | team BE/FE | La richiesta del giro 3: `utilizzabile` nella lista e nella scheda | §5.4.2 | — |
+| 12 | ~~Tid~~ | ~~Il via al giro 4, l'indice per credenziale e soggetto~~: 2026-11-28 | §5.5 | — |
+| 13 | ~~Tid~~ | ~~D-G4-1, D-G4-2~~: sì, 2026-11-28 | §5.5.4 | — |
+| 14 | ~~sessione DB~~ | ~~Giro 4: changeSet, pgTAP, doc, prova sullo scratch~~: 2026-11-28 | §5.5.6 | — |
+| 16 | ~~Tid~~ | ~~Apply di `20261127-48` … `-50` e dei CSV; i pgTAP del §5.5.6 col runner app; doc auto-generata~~: 2026-11-28 | §5.5.6 | — |
+| 17 | Tid | Il commit dei giri 3 e 4 | «Da committare» | — |
+| 15 | team BE/FE | La richiesta del giro 4: i referenti nella scheda, il login «per chi», il codice nuovo | §5.5.5 | 16 |
 
-**Decisioni aperte di Tid:** nessuna per il 3c. Per i giri successivi restano D-M6 e D-M9
+**Decisioni aperte di Tid:** nessuna per il giro 4. D-M9 è decisa come proposto (Tid, 2026-11-28). Per i giri successivi restano D-M6
 ([analisi-modello-area-clienti](analisi-modello-area-clienti.md) §7) e l'emittente del cliente iscritto da sé
 ([sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md) §3.6).
 ⚠️ ~~Fino al passaggio del BE l'invito si fermava con `42501` dopo la mail~~: chiuso dal 3c-2 (§5.3.10).
-**Da committare:** niente: il 3c-2 lato BE/FE (§5.3.10) è committato il 2026-11-27, il lato DB del 3c è in `1405f8ce4`.
+**Da committare:** il giro 4 (§5.5.6, applicato e verde il 2026-11-28): tre changeSet, i due CSV degli errori, sette pgTAP, due guide, tre pagine `manual/`, l'analisi del modello (D-M9), questo brief. Poi il giro 3 (§5.4.1): due changeSet, un pgTAP, la guida `risorse-umane-e-accessi`, le pagine `manual/` di `vw_accessi_altri` e `fn_veste_utilizzabile`, questo brief. Con lui, nato dal rosso del caso 1 (§5.4.1): il cancello `scripts/guardrail_pgtap_testo_catalogo.py` e il suo passo in `ci-validate.yaml`, la guida `pgtap-come-si-scrive-un-test` e il test 21 di `config/test-credenziale-login-v1`, che il cancello ha trovato verde per sottrazione. Il 3c è committato (`1405f8ce4`, e il 3c-2 il 2026-11-27).
 
 ## 0. Il piano da percorrere
 
@@ -71,7 +81,18 @@ applicati, pgTAP verdi col runner di Tid), lato BE/FE lo stesso giorno (§5.3.10
   - [x] Apply e corsa dei pgTAP (Tid): verdi; doc auto-generata rigenerata — 2026-11-26
   - [x] Il ritiro di `fn_crea_operatore_v2` (`90_end/20261127-06`, §5.3.7) — 2026-11-27
 - **Giri 3-6** (§5)
-  - [ ] S64; la veste cliente unica e l'indice per soggetto; l'iscrizione da sé; il ritiro dei rami shop
+  - [x] Giro 3, S64: analisi e proposta (§5.4) — 2026-11-27
+  - [x] Giro 3, S64: D-G3-1 (a) e il via (Tid) — 2026-11-27
+  - [x] Giro 3: `-43` la vista, `-44` il COMMENT, il pgTAP, la doc, la prova sullo scratch (§5.4.1) — 2026-11-27
+  - [x] Giro 3: apply, pgTAP col runner (Tid), doc auto-generata — 2026-11-28
+  - [ ] Giro 3: la richiesta al BE/FE (§5.4.2)
+  - [x] Giro 4, l'indice per credenziale e soggetto: il via (Tid) — 2026-11-28
+  - [x] Giro 4: il censimento e la proposta (§5.5) — 2026-11-28
+  - [x] Giro 4: D-G4-1, D-G4-2 (Tid: sì) — 2026-11-28
+  - [x] Giro 4: `-48` gli indici, `-49` e `-50` i due guard, il codice, i pgTAP (due nuovi o riscritti, quattro riportati sull'operatore), la doc, la prova sullo scratch (§5.5.6) — 2026-11-28
+  - [x] Giro 4: apply, pgTAP verdi col runner app, doc auto-generata (Tid) — 2026-11-28
+  - [ ] Giro 4: la richiesta al BE/FE (§5.5.5)
+  - [ ] l'iscrizione da sé (aspetta l'emittente); la veste cliente unica col ritiro dei rami shop
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-25. **A chi:** Tid; il team BE/FE per il §4.
 > **Origine:** T9 di [brief-db-revisione-anagrafiche](brief-db-revisione-anagrafiche.md) §17.1 e R-4 di
@@ -804,6 +825,320 @@ di partenza (`git stash`, stessa corsa): non nasce da qui, e la causa non è ind
   il login del BE, che oggi sceglie la veste dal solo tipo («per chi», analisi §9).
 - **L'iscrizione da sé** aspetta l'emittente del cliente iscritto da sé e, per la conferma, D-M9. Porta il verbo
   che consuma il token (D-3c-1).
+
+### 5.4 Giro 3 — S64, che cosa vuol dire `ATTIVO` (analisi del 2026-11-27)
+
+Letto sulla doc auto-generata, rigenerata il 2026-11-27 dopo l'ultimo changeSet sui tre oggetti (`20261125-57`,
+`20261127-04`).
+
+**Il fatto.** `script.fn_stato_veste` dice `ATTIVO` quando `attivo = true`, e basta. Una veste accesa ma fuori
+dalle sue date, col soggetto spento o, per l'operatore umano, col rapporto chiuso è `ATTIVO` nella lista «Altri
+accessi» e nello stato accessi della scheda di cliente e fornitore, anche se non apre la porta. La porta la decide
+`script.fn_veste_utilizzabile`. Il COMMENT di `fn_stato_veste` («ATTIVO (accesa)») e la guida
+[risorse-umane-e-accessi](../../guide/risorse-umane-e-accessi.md) §«Lo stato della veste» (⚠️ «`ATTIVO` legge solo
+`attivo`») lo dichiarano già come scelta. Quello che manca è altrove: la lista **non ha modo di mostrare** che la veste
+non apre la porta. Il jsonb `vesti` di `vw_accessi_altri` porta `attivo` e le date, ma non l'utilizzabilità. Il
+soggetto spento e il rapporto chiuso non si vedono da nessuna parte. La colonna `is_active` dice solo se si apre la
+**credenziale**, cioè se almeno una veste è utilizzabile, e arriva con il ritardo del job orario per le date.
+
+**Le strade.**
+
+| | Che cosa | Che cosa cambia per chi legge |
+| --- | --- | --- |
+| (a) | `ATTIVO` resta «accesa». Il jsonb `vesti` di `vw_accessi_altri` prende `utilizzabile`, letto da `fn_veste_utilizzabile`. L'aggregato `stato_accesso` non cambia | si aggiunge una chiave, non cambia nessun valore. Il FE mostra «accesa, ma oggi non apre la porta» accanto allo stato |
+| (b) | uno stato nuovo in `fn_stato_veste` (per esempio `SOSPESA`): la veste accesa che non è utilizzabile. `ATTIVO` vuol dire «apre la porta» | cambia il significato di `ATTIVO` per ogni lettore (lo stato accessi di `PortaleRepository`, il filtro, `STATO_VESTE` del FE, il presidio che confronta i rami del `CASE` col filtro). Lo stato diventa una funzione del tempo, mentre oggi cambia solo con una scrittura |
+| (c) | niente: la scelta è già dichiarata, S64 si chiude così | la lista continua a non dire perché una veste accesa non entra |
+
+**Proposta: (a).** Lo stato e l'utilizzabilità rispondono a due domande diverse, e la guida le tiene già separate:
+*a che punto è questa veste* e *questa veste apre la porta oggi*. Fonderle, cioè la (b), fa dipendere lo stato
+anche dal soggetto, dal rapporto e dal giorno. Non sarebbe più la fotografia del ciclo di vita dell'invito e della
+revoca. Con la (a) ognuna resta nella sua sede: `fn_stato_veste` per il ciclo di vita, `fn_veste_utilizzabile` per
+la porta. La vista le mette una accanto all'altra.
+
+Il costo è un changeSet `20_code`: `CREATE OR REPLACE VIEW`, con le colonne invariate e una chiave in più nel
+jsonb. Poi il COMMENT della vista, la pagina `manual/vw_accessi_altri` e il ⚠️ della guida, che diventa «la lista
+lo mostra con `utilizzabile`». Il pgTAP costruisce i tre casi: la veste accesa e scaduta, il soggetto spento, il
+rapporto chiuso. Per la scheda di cliente e fornitore, `PortaleRepository` legge `fn_stato_veste` per veste: o il BE
+chiama anche `fn_veste_utilizzabile`, oppure il DB espone le due cose insieme. Lo decide la richiesta al BE, quando
+il giro parte.
+
+⚠️ Trovato leggendo, senza legame con S64: il COMMENT di `fn_veste_utilizzabile` dice «`CURRENT_DATE` sta nella sua
+finestra», ma il corpo confronta con `script.fn_data_operativa()`. Il COMMENT è indietro rispetto al corpo e si
+corregge nello stesso giro, col solo `COMMENT ON`.
+
+**Guide** (`scripts/guide_coinvolte.py --oggetti script.fn_stato_veste anagrafiche.vw_accessi_altri
+script.fn_veste_utilizzabile`):
+
+- `risorse-umane-e-accessi`: coerente con la (a). Il ⚠️ di §«Lo stato della veste» si aggiorna nel giro;
+- `architettura-multi-face-auth`: resta contraddetta dal modello dell'area clienti e si riscrive coi giri della veste
+  cliente; S64 non la tocca;
+- `_sincronizzazione-accesso`, `_ultimo-super-admin`: coerenti, perché leggono `fn_veste_utilizzabile` e la (a) non
+  la cambia.
+
+**D-G3-1 (Tid, 2026-11-27): (a)**, e il COMMENT di `fn_veste_utilizzabile` si corregge nel giro.
+
+#### 5.4.1 Il giro 3 costruito (2026-11-27)
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20261127-43` (20_code) | `anagrafiche.vw_accessi_altri`: ogni voce di `vesti` prende `utilizzabile`, da `script.fn_veste_utilizzabile(idg.id)`. Il corpo è quello del `-04` (uguale al vivo) con la sola chiave nuova. Colonne e aggregato invariati, `security_invoker` ripetuto, COMMENT al presente |
+| `-44` (20_code) | `COMMENT ON FUNCTION script.fn_veste_utilizzabile`: la data operativa (`script.fn_data_operativa`) al posto di `CURRENT_DATE`, come nel corpo dal `20261009-49`; via il nome del brief; i lettori riletti sul catalogo, con la vista e `ui.fn_lista_colonne_livello`, che il testo vecchio non nominava. Nessuna fase tardiva scrive questo COMMENT |
+
+**Garanzie ritirate:** nessuna. Si aggiunge una chiave al jsonb, e nessun valore cambia. Per i lettori che
+confrontano le chiavi della voce con un elenco chiuso, la richiesta è al §5.4.2.
+
+**La prova** (scratch `zeroerp_ruoli`, 2026-11-27):
+
+- estratto dei due changeSet eseguito per intero, catalogo identico dopo il `ROLLBACK`;
+- `anagrafiche/test-accessi-altri-veste-utilizzabile-v1` (nuovo, runner app): 6/6 con l'estratto. Senza, 1/6: passa
+  solo il caso 6, cioè il riassunto, che non cambia. I casi sono costruiti: veste accesa e nelle date, scaduta ieri,
+  valida da domani, spenta. Non si costruiscono, e il test lo dichiara, il soggetto spento (bloccato dal guard «figli
+  prima») e il rapporto chiuso, perché una credenziale con una veste `OPERATORE` non sta in questa vista. La regola
+  intera resta di `script/test-fn-veste-utilizzabile-v1`;
+- ⚠️ alla corsa di Tid col runner app (2026-11-27), dopo l'apply, il caso 1 è rosso e gli altri verdi. Il caso 1
+  cercava `script.fn_veste_utilizzabile(idg.id)` nel testo di `pg_get_viewdef`, che però toglie lo schema se sta
+  nel search_path di chi legge. L'app ha `script` nel search_path, l'owner no: la prova, che gira da owner, lo
+  vedeva verde. Ora il caso 1 legge `pg_depend`, dalla regola della vista all'OID della funzione. Provato sul dbdev
+  da owner e da app, `t` in tutti e due; la stessa query con una funzione che la vista non usa dà `f`;
+- ⭐ dallo stesso rosso nasce `scripts/guardrail_pgtap_testo_catalogo.py` (2026-11-28, in CI dopo il preambolo). Il
+  difetto era tornato almeno nove volte con la regola scritta nella guida. Il cancello prende tutte le ricadute
+  registrate (14 controesempi ricostruiti) e nessuno dei 10 casi giusti: plpgsql verbatim, la tabella di
+  `pg_get_triggerdef`, lo schema facoltativo, la descrizione, `pg_catalog`, il nome composto dal catalogo.
+  Alla prima corsa su 1172 file ha trovato un difetto vero: il test 21 di `config/test-credenziale-login-v1`
+  confrontava `oid::regprocedure::text` con le firme qualificate, e come app non poteva fallire. Ora risolve le firme con
+  `to_regprocedure`, col gemello «le nuove esistono», `0 vecchie, 2 nuove` da owner e da app su dbdev. Da
+  rilanciare col runner: `config/test-credenziale-login-v1`;
+- regressione senza e con l'estratto, senza rossi nuovi: `test-area-accessi-v1` 17/17,
+  `test-veste-accensione-invito-fixture-v1` 24/24, `test-fn-veste-utilizzabile-v1` 28/28,
+  `test-comment-al-presente-v1` 8/8, `rls/test-rls-viste-security-invoker` 7/7. Restano rossi, uguali prima e dopo,
+  i tre già noti della corsa da owner (§5.3.7): `test-elimina-credenziale-v1`, `test-riferimenti-morti-v1`,
+  `test-viste-app-solo-select-v1`;
+- guardrail statici sui due file: verdi.
+
+**Guide** (`scripts/guide_coinvolte.py` sui tre file):
+
+- `risorse-umane-e-accessi`: **guida indietro, aggiornata**. Il ⚠️ di §«Lo stato della veste» ora dice che la lista
+  mostra `utilizzabile` accanto allo stato;
+- `manual/vw_accessi_altri` e `manual/fn_veste_utilizzabile`: **aggiornate**. La chiave nuova, il test, «oggi» è la
+  data operativa. Nella pagina della vista è stata tolta anche la riga «I permessi», che dava all'app `INSERT`,
+  `UPDATE`, `DELETE` sulla vista: era indietro, perché il loop dei grant dà alle viste solo `SELECT`, per tipo
+  (linee-guida-sql §6);
+- `architettura-multi-face-auth`: resta contraddetta dal modello dell'area clienti e si riscrive coi giri della
+  veste cliente. Il giro 3 non la tocca;
+- `_sincronizzazione-accesso`, `_ultimo-super-admin`, `pgtap-come-si-scrive-un-test`,
+  `architettura-permessi-e-autorizzazioni`: **coerenti**. Leggono `fn_veste_utilizzabile` e le fixture, che non
+  cambiano;
+- le altre tredici guide e cinque note hanno in comune solo gli oggetti che la fixture e la vista attraversano
+  (clienti, soggetti, data operativa), con regole invariate: **coerenti**.
+- Orfani dello script: `fn_credenziali`, `fn_credenziale_ha_vesti`, `fn_check_credenziale_eliminabile`,
+  `fn_get_totp_device`, `fn_totp_obbligatorio`, nomi del corpo della vista che nessuna guida cita. Non nascono da
+  questo giro; segnalati a Tid.
+
+#### 5.4.2 La richiesta al team BE/FE (dopo l'apply di `-43`)
+
+1. **Ogni voce di `vesti` in `anagrafiche.vw_accessi_altri` porta `utilizzabile`** (boolean). La lista «Altri
+   accessi» lo mostra accanto allo stato: una veste `ATTIVO` con `utilizzabile = false` è accesa, ma oggi non lascia
+   entrare. Il motivo (le date) sta già nella voce, in `valido_dal` e `valido_al`. Lo stato e il filtro
+   `stato_accesso` non cambiano.
+2. **Lo stato accessi della scheda di cliente e fornitore** (`PortaleRepository`, che legge `script.fn_stato_veste`
+   per veste) prende la stessa informazione da `script.fn_veste_utilizzabile(identita_id)`, il BB che il BE chiama già
+   al login. Non serve un oggetto DB nuovo. Se al BE ne serve uno, la richiesta torna al DB.
+3. ⛔ **Censisci chi legge la voce di `vesti` contando su un elenco chiuso di chiavi**: serializer, OpenAPI, test che
+   confrontano la voce intera, il tipo FE della voce. L'elenco qui sopra è il punto di partenza, non il confine.
+4. Doc BE: `api_amm_software`, dove descrive la voce della lista; il catalogo BB FE, se la badge dello stato vive in
+   un BB.
+
+### 5.5 Giro 4 — L'indice per credenziale e soggetto (analisi del 2026-11-28)
+
+Via di Tid il 2026-11-28. Le decisioni del modello sono già prese il 2026-11-25
+([analisi-modello-area-clienti](analisi-modello-area-clienti.md) §7):
+
+- **D-M7**: un'azienda può avere più referenti con l'accesso;
+- **D-M8**: un referente può entrare per più soggetti, e la porta dei fornitori segue la stessa regola.
+
+Questo giro le rende possibili nel DB. Non fonde i tipi di veste e non tocca i rami shop: quelli sono il giro della
+veste cliente (§5.3.6).
+
+#### 5.5.1 Che cosa c'è oggi (catalogo di dbdev, 2026-11-28)
+
+Gli indici unici sulle vesti accese sono **due**, non uno come dice il §3.2 dell'analisi:
+
+| Indice | Colonne, `WHERE attivo` | Che cosa vieta | Decisione che lo supera |
+| --- | --- | --- | --- |
+| `uq_identita_digitali_auth_user_ruolo_attivo` | credenziale, tipo | una persona referente di due aziende | D-M8 |
+| `uq_identita_digitali_sr_ruolo_attivo` | ruolo anagrafico, tipo | due referenti della stessa azienda | D-M7 |
+
+Tutti e due nascono in `00_schema/anagrafiche/20260420-01`.
+
+#### 5.5.2 Il censimento
+
+**La sessione porta già la veste.** Il claim `identita_id` del token diventa `app.current_identita_id`
+([contratto GUC](../../guide/contratto-guc-app.md) §2). Policy, perimetri (`fn_get_identita_sr_perimetro`) e
+`fn_veste_utilizzabile` leggono la singola veste: con più vesti dello stesso tipo non cambiano.
+
+**Il segno della revoca segue già la chiave nuova.** `trgfn_identita_digitali_guard_revoca` e
+`fn_togli_revoca_veste` usano la terna (credenziale, ruolo anagrafico, tipo), quella che l'indice nuovo rende
+unica. Il punto 2 dell'elenco dei giri («il segno della revoca segue la coppia nuova») è quindi già vero.
+
+Le 69 funzioni che leggono `identita_digitali` si dividono così:
+
+| Gruppo | Funzioni | Esito |
+| --- | --- | --- |
+| Cercano per credenziale con `OPERATORE` scritto (risorse umane, super admin, permessi, scope dei processi, `fn_veste_di_riferimento` coi suoi due chiamanti DB e quello BE) | 24 | non cambiano: l'operatore resta uno per credenziale |
+| Cercano per id della veste (`fn_accendi_veste`, `fn_revoca_veste`, `fn_segna_invito_inviato`, `fn_stato_veste`, `fn_veste_utilizzabile`, i perimetri) | — | non cambiano |
+| Aggregano tutte le vesti della credenziale (`fn_categoria_accesso`, `fn_credenziale_ha_vesti`, `fn_get_credenziale_per_email`, i sync, `fn_has_identita_attiva`) | — | reggono più vesti: l'esistenza o l'elenco non dipendono dall'unicità |
+| Le fixture pgTAP (`dbops.fn_pgtap_*`) | 19 | cercano l'`OPERATORE`, o la veste per id |
+| **`script.fn_get_profili_accesso_applicabili`**, e chi la chiama (`ui.fn_lista_colonne_livello`, le mappe dei permessi) | 1 + lettori | ⚠️ **il punto del giro** |
+
+⚠️ **I profili personali e le vesti dei portali.** `fn_get_profili_accesso_applicabili` raccoglie i profili per
+(credenziale, tipo). I profili `AD_HOC` e `SUPER_ADMIN` sono però legati alla singola veste. Finché c'è una veste
+accesa per tipo, «per credenziale e tipo» e «per veste» coincidono. Con D-M8 smettono di coincidere: un profilo
+`AD_HOC` dato alla veste di Rossi Srl varrebbe anche quando la stessa persona entra come privato. Si rompe inoltre
+la premessa che `script/test-fn-get-permessi-ereditati-v1` presidia: sotto una veste c'è al più un profilo per
+priorità, altrimenti il `DISTINCT ON` sceglie a caso fra due profili alla pari. La guida dei legami
+(`config.trgfn_profili_accesso_bindings_guard_coerenza`) oggi non vieta un `AD_HOC` su una veste dei portali.
+Fatto datato: i 4 `AD_HOC` e gli 11 `SUPER_ADMIN` di dbdev stanno tutti su vesti `OPERATORE`.
+
+**Il BE** conta sull'unicità in due percorsi:
+
+- **la scheda del cliente o del fornitore e l'invito** (`PortaleRepository.find_identita_portale`,
+  `get_stato_identita`): cercano la veste di un ruolo anagrafico per tipo, con `LIMIT 1`. Con D-M7 diventa un
+  elenco di referenti;
+- **il login** (`AuthRepository.find_veste_utilizzabile_per_ruoli`, `find_identita_per_ruolo`): sceglie la veste
+  per credenziale e tipo con `ORDER BY id LIMIT 1`. Con D-M8 serve la scelta «per chi» (analisi §3.2 e §9).
+
+**Chi cambia per primo: il DB.** Togliere i due divieti non rompe il BE di oggi. Una seconda veste accesa dello
+stesso tipo la crea solo l'invito, e l'invito controlla prima con `find_identita_portale`. Finché il BE non passa
+all'elenco, il comportamento resta quello di oggi.
+
+#### 5.5.3 La proposta
+
+1. **Un indice nuovo, `uq_identita_digitali_credenziale_sr_ruolo_attivo`**, su (credenziale, ruolo anagrafico,
+   tipo) `WHERE attivo`: una veste accesa per persona, soggetto e tipo. Vale per ogni tipo. Le tre colonne sono
+   `NOT NULL`, quindi `NULLS NOT DISTINCT` non serve (§8.4-bis). Il tipo resta nella chiave finché i tipi cliente
+   non sono fusi: oggi la stessa persona ha `CLIENTE_PORTALE` e `SHOP_CUSTOMER` sullo stesso cliente (D-R6). La
+   fusione dovrà unire quelle righe prima di nascere.
+2. **I due indici di oggi restano, ristretti a `OPERATORE` e `API_CLIENT`** (`AND ruolo_applicativo IN
+   ('OPERATORE', 'API_CLIENT')`). Un operatore resta uno per credenziale e uno per persona, e restano veri i 24
+   lettori che lo danno per scontato. Il predicato elenca i tipi che **non** cambiano: la fusione dei tipi cliente
+   non lo tocca, e un tipo nuovo deve comunque scrivere il suo ramo in `trgfn_identita_digitali_guard_coerenza`
+   (`E_RUOLO_APPLICATIVO_NON_GESTITO`). I nomi restano, perché le colonne non cambiano. Il `COMMENT ON INDEX`
+   dice la regola nuova.
+3. **La guida dei legami rifiuta un profilo personale (`AD_HOC`, `SUPER_ADMIN`) su una veste che non è
+   `OPERATORE`**, con un codice nuovo. Così il risolutore dei permessi resta corretto per costruzione. Il profilo
+   dei portali è il `PORTALE`, legato al tipo, e la riga «non vede i dati di un altro soggetto» la decide la RLS
+   sulla veste della sessione, non il profilo.
+4. **I pgTAP:**
+   - `anagrafiche/test-identita-digitali-unique-multi-veste` riscritto sui casi del modello: due referenti dello
+     stesso cliente, una persona su due clienti, la stessa terna due volte (rifiutata), l'operatore ancora uno per
+     credenziale e uno per persona;
+   - `script/test-fn-get-permessi-ereditati-v1` con l'indice ristretto e la guida dei legami;
+   - un test della guida dei legami.
+5. **La doc:** la pagina `manual/` di `identita_digitali`, la guida `architettura-multi-face-auth` (§«Regole di
+   dominio», indietro), e il presidio nel `manual/` della guida dei legami.
+
+Nessun dato da bonificare: le vesti accese di oggi rispettano sia gli indici vecchi sia quello nuovo.
+
+**Garanzie ritirate:** «un cliente ha al più un referente per tipo» e «una persona è referente di un solo cliente
+per tipo», per i tipi dei portali. Le ritirano D-M7 e D-M8. Chi le dava per scontate è il BE, e la richiesta sta
+qui sotto.
+
+#### 5.5.4 Le decisioni del giro (Tid)
+
+| # | Decisione | Proposta |
+| --- | --- | --- |
+| D-G4-1 | Il perimetro: la regola nuova vale per i portali (`CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`), mentre `OPERATORE` e `API_CLIENT` restano uno per credenziale e uno per persona? | sì (punti 1-2). ✅ **Tid, 2026-11-28: sì** |
+| D-G4-2 | Un profilo personale (`AD_HOC`, `SUPER_ADMIN`) si lega solo a una veste `OPERATORE`? | sì (punto 3). L'alternativa è un risolutore dei permessi per veste invece che per (credenziale, tipo), ma tocca le mappe dei permessi del BE e non serve a nessun caso del modello. ✅ **Tid, 2026-11-28: sì** |
+
+#### 5.5.6 Il giro costruito (2026-11-28)
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `00_schema/anagrafiche/20261127-48` | nasce `uq_identita_digitali_credenziale_sr_ruolo_attivo` (credenziale, ruolo anagrafico, tipo `WHERE attivo`); `uq_identita_digitali_auth_user_ruolo_attivo` e `uq_identita_digitali_sr_ruolo_attivo` restano coi loro nomi e colonne, ristretti a `OPERATORE` e `API_CLIENT`. `COMMENT ON INDEX` sui tre |
+| `20_code/config/20261127-49` | `config.trgfn_profili_accesso_bindings_guard_coerenza`: un profilo `AD_HOC` o `SUPER_ADMIN` su una veste che non è `OPERATORE` → `E_PROFILO_PERSONALE_SOLO_OPERATORE`, anche per un legame spento (il trigger non scatta su `attivo`) |
+| `20_code/anagrafiche/20261127-50` | `anagrafiche.trgfn_identita_digitali_guard_coerenza`, ramo 0-quater: la veste `OPERATORE` che cambia tipo con un profilo personale legato, anche spento → lo stesso codice |
+| `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` | `E_PROFILO_PERSONALE_SOLO_OPERATORE`, `CONFLITTO_STATO`, messaggio `1571` («Un profilo %s si assegna solo a un operatore, non a una veste %s.») |
+
+⚠️ I numeri sono `20261127-48` … `-50` e non la serie del 28. Lo script dei numeri continua dall'ultima data
+usata, senza salti «di cortesia», e l'altra sessione DB aveva occupato fino a `-47`. I corpi di `-49` e `-50`
+partono dall'ultima versione del changelog (`20261125-65`, `-64`), confrontata col corpo vivo di dbdev il
+2026-11-28: identica. `%TYPE` su ogni variabile nuova (`v_ruolo_veste`, `v_tipo_personale`).
+
+**Garanzie ritirate:** «un cliente ha al più un referente per tipo» e «una persona è referente di un solo cliente
+per tipo», per i tipi dei portali (D-M7, D-M8). Nessuna per l'operatore. Una garanzia **nuova**: un profilo
+personale sta solo su una veste `OPERATORE` (D-G4-2).
+
+**I pgTAP:**
+
+- `anagrafiche/test-identita-digitali-unique-multi-veste` riscritto sui casi costruiti (plan 9). Prima pescava
+  clienti liberi dalla popolazione e saltava i casi se non ne trovava. Ogni caso asserisce l'indice che rifiuta,
+  con `dbops.fn_pgtap_codice_errore`;
+- `config/test-profilo-personale-solo-operatore-v1`, nuovo (plan 6): i due versi, la frase, il caso ammesso. Gira
+  come app coi verbi veri (`fn_scrivi_profilo_accesso`, `fn_lega_profilo_identita`) dal contesto di un super admin
+  costruito. Il legame spento non si costruisce (il verbo lo crea acceso), e il test lo dichiara;
+- ⚠️ **quattro test erano scritti sul contratto ritirato.** Legavano un profilo `AD_HOC` a una veste
+  `CLIENTE_PORTALE`, scelta per non dover costruire una persona fisica. La prova li ha trovati tutti fermati dal
+  guard nuovo, e sono riportati su una veste `OPERATORE` della fixture `dbops.fn_pgtap_crea_operatore_umano`, con
+  la ragione scritta in testa a ciascuno:
+  - `script/test-fn-get-profili-accesso-applicabili`: «il dipendente che è anche cliente», cioè la veste cliente
+    col `PORTALE` del seed e la veste operatore con l'`AD_HOC`;
+  - `ui/test-ui-catalogo-liste-v1` (casi 27-28): le due vesti si scambiano il posto, e la proprietà provata («la
+    veste NULL non allarga») è la stessa;
+  - `ui/test-fn-resolve-lista-config` e `ui/test-fn-resolve-dashboard-config`: l'utente è l'operatore, il
+    `PORTALE` della cascata è legato al tipo `OPERATORE`, il caso «nessun profilo» indossa una veste che la
+    credenziale non ha. Nella dashboard l'area del widget legato ai permessi è una su cui l'operatore risulta
+    `BLOCCATO` per il risolutore, non la prima che capita;
+- `script/test-fn-get-permessi-ereditati-v1`: il commento della premessa dello spareggio dice ora perché regge.
+
+**La prova** (`scripts/prova_changeset.py`, scratch `zeroerp_ruoli` da owner, `ROLLBACK`, con le due righe di
+catalogo inserite da un changeSet di sola prova perché lo script non carica i CSV):
+
+- estratto eseguito per intero; catalogo identico dopo il `ROLLBACK`;
+- `test-identita-digitali-unique-multi-veste` 4/9 → **9/9**; `test-profilo-personale-solo-operatore-v1` 1/6 →
+  **6/6**;
+- i quattro riscritti, con l'estratto: `test-fn-get-profili-accesso-applicabili` 5/5,
+  `test-fn-resolve-lista-config` 13/13, `test-fn-resolve-dashboard-config` 12/12, `test-ui-catalogo-liste-v1`
+  26/34 come senza. Gli 8 rossi (9, 10, 17, 18, 20, 23, 25, 26) sono i suoi casi «come app», rossi da owner per
+  costruzione; i 27-28 toccati sono verdi;
+- 24 vicini senza rossi nuovi, fra cui `test-fn-get-permessi-ereditati-v1` 27/27,
+  `test-profili-accesso-bindings-guard-coerenza` 9/9, `test-legami-profilo-lega-e-slega-v1` 11/11,
+  `test-fn-veste-utilizzabile-v1` 28/28, `test-veste-accensione-invito-fixture-v1` 24/24,
+  `test-accessi-altri-veste-utilizzabile-v1` 6/6, `test-area-accessi-v1` 17/17. `test-veste-revocata-v1` si
+  interrompe uguale prima e dopo: da owner non vede la veste che il verbo cerca;
+- i guardrail statici verdi, compreso quello del testo di catalogo sui due test nuovi.
+
+**Dopo l'apply** (Tid, 2026-11-28): i due test nuovi e i quattro riscritti verdi col runner app; la doc auto-generata rigenerata.
+
+**Le guide** (`scripts/guide_coinvolte.py` sui tre changeSet):
+
+| Guida o nota | Esito |
+| --- | --- |
+| `architettura-multi-face-auth` | **indietro, aggiornata**: le regole di dominio (una veste per soggetto e tipo; l'operatore uno per credenziale e per persona) e il §4.2 (il profilo personale solo sull'operatore) |
+| `architettura-permessi-e-autorizzazioni` | **indietro, aggiornata**: la risoluzione del profilo, il legame `AD_HOC` solo su `OPERATORE` |
+| `risorse-umane-e-accessi`, `contratto-guc-app`, `soggetti-e-ruoli-anagrafici`, `_ultimo-super-admin`, `_sincronizzazione-accesso`, `_guard-di-ruolo` | coerenti: parlano della veste per id, del `SUPER_ADMIN` sull'operatore, del ruolo anagrafico |
+| le altre dieci | coerenti: citano solo `fn_log_and_raise_error` o `soggetti_ruoli` |
+
+Le pagine `manual/`: `identita_digitali` (gli indici, i test, la nota di migrazione), `profili_accesso_bindings`
+e `trgfn_profili_accesso_bindings_guard_coerenza`. Quest'ultima era indietro anche dal giro 2: non nominava il
+`SUPER_ADMIN`, la veste tecnica e il codice del profilo assente.
+
+#### 5.5.5 La richiesta al team BE/FE (dopo l'apply)
+
+1. **La scheda del cliente e del fornitore mostra i referenti**, non un referente. `find_identita_portale` e
+   `get_stato_identita` passano da «la veste di questo ruolo e tipo» a un elenco, ciascuna voce col suo stato.
+   L'invito di un secondo referente non è più un duplicato: lo è solo se la stessa credenziale ha già una veste di
+   quel tipo su quel soggetto.
+2. **Il login fa scegliere «per chi»** quando le vesti utilizzabili dello stesso tipo sono più d'una
+   (`find_veste_utilizzabile_per_ruoli`, `find_identita_per_ruolo`). La veste scelta va nel token come oggi, una
+   per volta, e il cambio di soggetto è una sessione nuova o un cambio esplicito di veste (analisi §9).
+3. **Censimento chiuso** dei punti del BE e del FE che cercano una veste con (ruolo anagrafico, tipo) o con
+   (credenziale, tipo) e prendono la prima riga: i due sopra sono quelli trovati dal DB, ma l'elenco completo lo fa
+   il team.
+4. **Il codice nuovo `E_PROFILO_PERSONALE_SOLO_OPERATORE`** (`CONFLITTO_STATO`) entra nel generato delle policy
+   degli errori (`error_policies_generated.py`).
+5. **Il pannello dei profili** (amministrazione software): un profilo `AD_HOC` o `SUPER_ADMIN` si propone solo per
+   le vesti `OPERATORE`. Il DB rifiuta le altre con il codice del punto 4.
+6. La doc BE dei percorsi toccati.
 
 ### Giri 3-6 — Il modello dell'area clienti
 

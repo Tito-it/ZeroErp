@@ -26,10 +26,13 @@
 --   - Due profili applicabili -> prevale la priorita' piu' bassa (§4.3)
 --   - Campi opachi (deep_link/contatore_key/soglia) restituiti freschi da ui.widget
 --
--- Pattern: CLIENTE_PORTALE (come test-fn-resolve-lista-config.sql) per evitare
--- la guard PF pura. Per questa veste (non-OPERATORE) le mappe permessi
--- producono BLOCCATO: i widget gated risultano sempre nascosti -> copre il
--- caso negativo §4.5. Il caso positivo di gating (widget visibile con permesso)
+-- Pattern: un operatore umano costruito (dbops.fn_pgtap_crea_operatore_umano),
+-- come test-fn-resolve-lista-config.sql: la sua veste OPERATORE porta il profilo
+-- AD_HOC. Il widget gated sta su un'area su cui quell'operatore e' BLOCCATO,
+-- letta dal risolutore e non supposta -> copre il caso negativo §4.5.
+-- ⚠️ Fino al 2026-11-28 l'utente era una veste CLIENTE_PORTALE: dal 20261127-49
+--   un profilo personale (AD_HOC) si lega solo a una veste OPERATORE (D-G4-2 di
+--   brief-db-accessi-area-clienti). Il caso positivo di gating (widget visibile con permesso)
 -- chiede un'identita OPERATORE con grant d'area: lo prova
 -- test-ui-dashboard-casi-del-modello-v1 (casi 1-2). ⚠️ Un elenco vuoto dopo il filtro dei permessi e' un esito ammesso: la home
 -- non promette una card (Tid, 2026-07-22, confermato il 2026-11-21, Q50 di
@@ -61,16 +64,13 @@ BEGIN;
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- La veste: CLIENTE_PORTALE, quella della fixture (non OPERATORE).
--- La fixture costruisce un'identita' CLIENTE_PORTALE e su quella verifica le
+-- La veste: OPERATORE, quella della fixture.
+-- La fixture costruisce un operatore e sulla sua identita' verifica le
 -- precedenze fra preset. Il preset di base (ui.fn_preset_di_base) considera il
 -- ruolo solo con la veste valorizzata (brief-db-revisione-ui, Q28): con la veste
 -- NULL il passo del ruolo si salta, e le asserzioni 6 e 10 non misurerebbero
--- niente. Con OPERATORE la funzione escluderebbe, correttamente, il profilo di
--- un'identita' portale. Quindi il file dichiara la veste della propria fixture,
--- come il gemello test-fn-resolve-lista-config, subito dopo aver costruito
--- l'identita' (riga ~190). Fuori dalla veste OPERATORE le mappe permessi danno
--- BLOCCATO: e' il caso negativo §4.5 dell'asserzione 4.
+-- niente. Quindi il file dichiara la veste della propria fixture, come il
+-- gemello test-fn-resolve-lista-config, subito dopo averla costruita.
 -- Brief: brief-db-pgtap-runner-rls-baseline §11 (la domanda), brief-db-revisione-ui
 -- Q28 (la risposta).
 
@@ -92,10 +92,21 @@ CREATE TEMP TABLE _t_dash AS WITH ins AS (
 )
 SELECT id AS dashboard_id, codice AS dashboard_codice FROM ins;
 
--- Un'area funzionale reale per il widget gated (l'utente CLIENTE_PORTALE
--- e' BLOCCATO su tutte -> gating negativo).
+-- L'utente di test: un operatore umano costruito, con la sua veste OPERATORE.
+CREATE TEMP TABLE _t_op AS
+SELECT o.auth_user_id, o.identita_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('pgTAP dashboard config') o;
+
+-- Un'area funzionale reale per il widget gated, fra quelle su cui l'operatore
+-- e' BLOCCATO (gating negativo). Se non ce n'e' nessuna la temp table resta
+-- vuota, il widget gated non nasce e il setup (1) e' rosso: non un verde a vuoto.
 CREATE TEMP TABLE _t_area AS
-SELECT id AS area_id FROM config.aree_funzionali WHERE attivo = TRUE ORDER BY id LIMIT 1;
+SELECT af.id AS area_id
+  FROM config.aree_funzionali af
+ WHERE af.attivo = TRUE
+   AND script.fn_resolve_livello_area((SELECT auth_user_id FROM _t_op), af.schema_db) = 'BLOCCATO'
+ ORDER BY af.id
+ LIMIT 1;
 
 -- W1: non-gated (card di benvenuto), nessun campo opaco
 CREATE TEMP TABLE _t_w1 AS WITH ins AS (
@@ -139,48 +150,22 @@ SELECT d.dashboard_id, w.widget_id, 20 FROM _t_dash d, _t_w2 w;
 INSERT INTO ui.dashboard_widget (dashboard_id, widget_id, ordine_default)
 SELECT d.dashboard_id, w.widget_id, 30 FROM _t_dash d, _t_w3 w;
 
--- auth_user di test
-CREATE TEMP TABLE _t_au AS WITH ins AS (
-    INSERT INTO django.auth_user (
-        username, password, is_active, is_staff, is_superuser,
-        first_name, last_name, email, date_joined
-    )
-    VALUES (
-        '_pgtap_dash_' || substr(md5(clock_timestamp()::text), 1, 6),
-        '!', TRUE, FALSE, FALSE, '', '', '', now()
-    )
-    RETURNING id
-)
-SELECT id AS auth_user_id FROM ins;
+-- La credenziale e la veste di test: quelle dell'operatore costruito.
+CREATE TEMP TABLE _t_au AS
+SELECT auth_user_id FROM _t_op;
 
--- ⛔ Il cliente si COSTRUISCE (2026-09-23). Fino a oggi questa fixture pescava
---   un `billing_account` esistente: su un database ricostruito non ce n'e'
---   nessuno, la temp table restava VUOTA, l'INSERT dell'identita' inseriva
---   zero righe e il binding finiva con `identita_digitale_id` NULL — da cui
---   l'errore «binding non coerente col tipo del profilo», che nominava il
---   profilo e non la causa. Il BB costruisce azienda, operatore e cliente
---   nell'ordine giusto e riusa l'azienda del contesto gia' aperto.
-CREATE TEMP TABLE _t_mondo AS
-SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('dashboard config');
+CREATE TEMP TABLE _t_id AS
+SELECT identita_id FROM _t_op;
 
-CREATE TEMP TABLE _t_sr AS
-SELECT cliente_soggetto_ruolo_id AS sr_id FROM _t_mondo;
-
--- ⛔ E SUBITO DOPO SI SVUOTA LA SESSIONE: il contesto che il BB ha aperto per
---   scrivere il billing account e' quello operatore, non la veste del test.
---   La veste del test si dichiara dopo aver costruito l'identita' (sotto).
+-- ⛔ Si svuota la sessione: il contesto aperto in testa e' quello dell'operatore
+--   di default, non la veste del test, che si dichiara qui sotto.
 SELECT set_config('app.ruolo_applicativo', '', false);
 SELECT set_config('app.current_user_id',   '', false);
-
--- Identita CLIENTE_PORTALE
-CREATE TEMP TABLE _t_id AS WITH ins AS (
-    SELECT anagrafiche.fn_crea_veste_portale(a.auth_user_id, s.sr_id, 'CLIENTE_PORTALE', TRUE) AS id FROM _t_sr s, _t_au a)
-SELECT id AS identita_id FROM ins;
 
 -- Da qui in poi si agisce come l'identita' appena creata: e' la veste che il
 -- test collauda (nota in testa). Senza, il preset di ruolo non concorre (Q28)
 -- e le asserzioni 6 e 10 cadono.
-SELECT set_config('app.ruolo_applicativo', 'CLIENTE_PORTALE', false);
+SELECT set_config('app.ruolo_applicativo', 'OPERATORE', false);
 SELECT set_config('app.current_identita_id', (SELECT identita_id::text FROM _t_id), false);
 
 -- Profilo AD_HOC (prio=1) + binding all'identita
@@ -380,7 +365,7 @@ UPDATE ui.widget SET attivo = TRUE WHERE id = (SELECT widget_id FROM _t_w1);
 
 -- =========================================================
 -- 10. §4.3: due profili -> AD_HOC (prio=1) prevale deterministicamente
---     Il secondo profilo e' il PORTALE della veste CLIENTE_PORTALE (priorita'
+--     Il secondo profilo e' il PORTALE del tipo OPERATORE (priorita'
 --     3). uq_profili_accesso_bindings_ruolo ammette UN binding per veste: se il
 --     seed lo porta gia' si usa quello, altrimenti si costruisce qui. Il caso
 --     dice anche di averlo trovato: senza, il preset di ruolo non nascerebbe e
@@ -394,11 +379,11 @@ WITH p AS (
     SELECT 'PORTALE', '_PGTAP_DASH_P_' || upper(substr(md5(clock_timestamp()::text), 1, 8)),
            'Profilo PORTALE test fn_resolve_dashboard_config', TRUE
      WHERE NOT EXISTS (SELECT 1 FROM config.profili_accesso_bindings b
-                        WHERE b.ruolo_applicativo = 'CLIENTE_PORTALE'::config.ruolo_applicativo)
+                        WHERE b.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo)
     RETURNING id
 )
 INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, ruolo_applicativo, attivo)
-SELECT p.id, 'CLIENTE_PORTALE'::config.ruolo_applicativo, TRUE FROM p;
+SELECT p.id, 'OPERATORE'::config.ruolo_applicativo, TRUE FROM p;
 
 CREATE TEMP TABLE _t_profilo_prio2 AS
 SELECT profilo_accesso_id

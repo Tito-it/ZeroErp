@@ -1,6 +1,6 @@
 # Architettura a colpo d'occhio
 
-> **Ultimo aggiornamento**: 24 ottobre 2026
+> **Ultimo aggiornamento**: 28 novembre 2026
 >
 > **Destinatari**: chi arriva sul progetto e vuole farsi un'idea del sistema **nel suo insieme** in
 > pochi minuti: quali sono i pezzi, chi fa cosa, come viaggia una richiesta dall'utente fino ai dati.
@@ -44,16 +44,16 @@ Dal click dell'utente fino ai dati e ritorno:
 
 ```mermaid
 flowchart TD
-    U["Utente (browser)"] --> V["Frontend Vue 3<br/>componente + store"]
-    V -->|"chiamata HTTP (con token)"| API["Backend Django / DRF<br/>API REST"]
+    UTENTE["Utente (browser)"] --> FRONTEND["Frontend Vue 3<br/>componente + store"]
+    FRONTEND -->|"chiamata HTTP (con token)"| API["Backend Django / DRF<br/>API REST"]
     API --> AUTH["Autenticazione<br/>verifica il token, capisce chi sei"]
     AUTH --> GUC["Imposta l'identità sulla connessione<br/>(parametri app.*)"]
     GUC --> DB["PostgreSQL<br/>funzioni · regole · trigger"]
     DB --> RLS["Filtro per riga (RLS)<br/>vedi solo ciò a cui hai diritto"]
     RLS --> DB
     DB -->|"risultato"| API
-    API -->|"risposta JSON"| V
-    V --> U
+    API -->|"risposta JSON"| FRONTEND
+    FRONTEND --> UTENTE
 ```
 
 Il punto chiave è il passaggio **"imposta l'identità sulla connessione"**: è ciò che permette

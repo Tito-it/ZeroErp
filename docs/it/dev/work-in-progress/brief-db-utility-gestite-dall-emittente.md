@@ -440,6 +440,14 @@ dell'emittente): l'allineamento di V6 riguarda **dbdev** e i **fixture pgTAP**, 
         zero restringimenti. Gli oggetti nuovi dei quattro giri sono tutti citati da una guida o nota (`guide_coinvolte`)
   * [ ] La richiesta al BE/FE (§10): da girare dopo l'apply. Restano del BE: `configurazione-liste` §11.1 (la
         tendina, ⚠️ in §7) e le due pagine `manual/` del BE, che si riscrivono quando la tendina passa al BB
+* Coda dei giri (2026-11-28): un censimento saltato da D-U-13
+  * [x] Baseline di Tid del 2026-11-28: `ui/test-fn-preset-di-base-v1` si fermava al test 7 su
+        `E_ATTIVO_BLOCK_CHILDREN_ACTIVE`. Spegneva l'azienda di `dbops.fn_pgtap_crea_emittente`, che da U1 nasce
+        gestendo le sue utility. Il censimento di U2 aveva cercato chi spegne un'azienda nei verbi e nei builder,
+        non nei pgTAP. Corretto il test: prima cancella le righe dell'azienda (senza BA né documenti, la strada di
+        D-U-13), poi la spegne. Censimento su tutto `db/pgtap/`: l'unico altro file che spegne un'azienda,
+        `vendite/test-registri-per-emittente-v1`, si aspetta il rifiuto. Sullo scratch: 25/25 (2026-11-28)
+  * [ ] La corsa di Tid su dbdev
 * [ ] Archiviazione
 
 ## 9. Verifica critica della sessione DB (2026-11-27)

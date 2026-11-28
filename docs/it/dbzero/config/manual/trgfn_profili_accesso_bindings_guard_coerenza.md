@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Trigger Function `config.trgfn_profili_accesso_bindings_guard_coerenza`
 
+> **Ultimo aggiornamento**: 28 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Architettura di riferimento:
@@ -37,10 +39,25 @@ fase `a10` (guard fail-fast).
 | `REPARTO` | `unita_organizzativa_id` |
 | `PORTALE` | `ruolo_applicativo` |
 | `AD_HOC` | `identita_digitale_id` |
+| `SUPER_ADMIN` | `identita_digitale_id` |
 
 Un profilo `REPARTO` legato a un `ruolo_applicativo` è una configurazione
 illogica: il guard la blocca con errore esplicito, anche se il CHECK xor
 della tabella ammetterebbe la riga.
+
+**I profili personali (`AD_HOC`, `SUPER_ADMIN`) si legano solo a una veste
+`OPERATORE`.** I profili si raccolgono per credenziale e tipo di veste
+(`script.fn_get_profili_accesso_applicabili`), e sui portali una persona ha
+una veste per soggetto: un profilo personale su una di loro varrebbe per
+tutte, e due profili alla pari renderebbero casuale la scelta fra loro. Vale
+anche per un legame spento, perché riaccenderlo non ripassa dal guard. Il
+verso opposto, la veste `OPERATORE` che cambia tipo col legame addosso, lo
+ferma `anagrafiche.trgfn_identita_digitali_guard_coerenza` con lo stesso
+codice.
+
+**Il `SUPER_ADMIN` non si lega a un'identità tecnica**: un processo
+automatico passerebbe sopra ogni permesso. La veste che diventa tecnica col
+legame già addosso la ferma il guard della veste.
 
 ---
 
@@ -70,8 +87,10 @@ Il trigger è installato con clausola `UPDATE OF` sulle 4 colonne rilevanti
 
 | Codice | Quando |
 |--------|--------|
-| `E_PARAMETRO_INVALIDO` | Caso limite: `profilo_accesso_id` non trovato (la FK dovrebbe impedirlo, ma fail-fast esplicito). |
+| `E_PROFILO_ACCESSO_NON_TROVATO` | Caso limite: `profilo_accesso_id` non trovato (la FK dovrebbe impedirlo, ma fail-fast esplicito). |
 | `E_PROFILO_ACCESSO_BINDING_INCOERENTE` | Colonna binding valorizzata non coerente col tipo del profilo. |
+| `E_SUPER_ADMIN_SU_VESTE_TECNICA` | Il profilo `SUPER_ADMIN` su un'identità tecnica. |
+| `E_PROFILO_PERSONALE_SOLO_OPERATORE` | Un profilo `AD_HOC` o `SUPER_ADMIN` su una veste che non è `OPERATORE`. |
 | `E_PROFILO_ACCESSO_TIPO_NON_GESTITO` | Ramo `ELSE` del dispatch: nuovo valore dell'enum `tipo_profilo_accesso` senza regola qui (anti-bypass). |
 
 ---

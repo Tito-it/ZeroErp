@@ -308,6 +308,12 @@ SELECT is(
 -- La premessa dello spareggio determinato: sotto una veste, al massimo UN
 -- profilo per priorita'. Se uno di questi indici cade (o cambia colonne), due
 -- profili possono tornare a pari merito e DISTINCT ON sceglie a caso.
+-- ⚠️ Dal 20261127-48 uq_identita_digitali_auth_user_ruolo_attivo vale solo per
+--   OPERATORE e API_CLIENT: sui portali una persona ha una veste per soggetto.
+--   La premessa regge perche' un profilo personale (AD_HOC, SUPER_ADMIN) si
+--   lega solo a una veste OPERATORE (20261127-49 e -50, presidiati da
+--   config/test-profilo-personale-solo-operatore-v1), e i profili dei portali
+--   sono PORTALE, uno per tipo (uq_profili_accesso_bindings_ruolo).
 SELECT is(
     (SELECT string_agg(v.nome || '(' || COALESCE(k.colonne, '-') || ')', ' ' ORDER BY v.nome)
        FROM (VALUES ('config', 'uq_profili_accesso_bindings_identita'),

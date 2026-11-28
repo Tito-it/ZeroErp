@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_cf_libero`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 28 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -42,13 +42,18 @@ usassero la stessa costante si romperebbero a vicenda, e solo quando girano insi
 
 ### ⭐ Il carattere di controllo non si calcola: si cerca
 
-La fixture non reimplementa l'algoritmo del codice fiscale. Varia una lettera di un corpo
-fittizio e, per ogni corpo, prova le 26 lettere finali chiedendo al validatore di dominio
-quale accetta. La regola resta così una sola, quella di dominio: se cambia, la fixture la
-segue senza modifiche.
+La fixture non reimplementa l'algoritmo del codice fiscale. Varia due lettere di un corpo
+fittizio (676 corpi) e, per ogni corpo, prova le 26 lettere finali chiedendo al validatore di
+dominio quale accetta. La regola resta così una sola, quella di dominio: se cambia, la fixture
+la segue senza modifiche.
 
 ⚠️ Non è un generatore di codici fiscali reali: il corpo è fittizio e serve solo a superare
-validatore e unicità in un test. I candidati sono pochi, uno per lettera variata.
+validatore e unicità in un test. I candidati sono uno per corpo, 676 in tutto il database.
+
+⚠️ Perché due lettere e non una: ogni persona fisica di fixture ne consuma uno, e ne consumano
+anche i soggetti che restano sul database (i dati di sviluppo, quelli che un chiamante con
+`COMMIT` lascia). Con una lettera sola i codici erano 26, e un test che costruiva più persone di
+quelle rimaste si fermava nel setup con un errore che con la sua regola non c'entrava.
 
 ---
 
@@ -79,6 +84,7 @@ quelli che usano [fn_pgtap_crea_operatore_umano](/dbzero/dbops/funzioni/fn_pgtap
 ### Note di migrazione
 
 * 2026-08-18 — nasce con la bonifica della baseline pgTAP di vendite (`brief-db-bonifica-baseline-pgtap-vendite`).
+* 2026-11-28 — il corpo varia su due lettere: i 26 codici di prima erano esauriti dai soggetti residui e dai SUPER_ADMIN di fixture.
 
 ---
 
