@@ -1,6 +1,6 @@
 # Guida — Architettura Multi-Face Auth
 
-> **Ultimo aggiornamento**: 26 novembre 2026
+> **Ultimo aggiornamento**: 28 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, frontend e analisti funzionali
 >
@@ -115,11 +115,15 @@ corso. Una veste scaduta non entra e non vede più i suoi dati.
 
 **Regole di dominio:**
 
-* Un `auth_user` può avere **più vesti attive insieme**, ma al massimo **una** per ogni
-  `ruolo_applicativo` (indice unico `uq_identita_digitali_auth_user_ruolo_attivo`).
-* Anche un `soggetti_ruoli` ha al massimo una veste attiva per `ruolo_applicativo`
-  (`uq_identita_digitali_sr_ruolo_attivo`). Un SR cliente può avere insieme `CLIENTE_PORTALE` e
-  `SHOP_CUSTOMER`, sullo stesso `auth_user` o su due diversi.
+* Un `auth_user` può avere **più vesti attive insieme**, al massimo **una** per soggetto e tipo di veste
+  (indice unico `uq_identita_digitali_credenziale_sr_ruolo_attivo`).
+* **Sui portali** una persona entra per più soggetti, una veste per ciascuno: il referente di due aziende,
+  o il cliente privato che è anche referente della sua società. E un cliente o un fornitore ha più
+  referenti, ognuno con la sua veste. Lo stesso cliente può avere insieme `CLIENTE_PORTALE` e
+  `SHOP_CUSTOMER`, sulla stessa persona o su due diverse.
+* **L'operatore** resta uno per credenziale e uno per persona: una sola veste `OPERATORE` (o `API_CLIENT`)
+  accesa per `auth_user` e per `soggetti_ruoli` (`uq_identita_digitali_auth_user_ruolo_attivo`,
+  `uq_identita_digitali_sr_ruolo_attivo`, ristretti a questi due tipi).
 * La veste la sceglie la **porta di login**, non un parametro della richiesta.
 * ⭐ **Una persona, una credenziale.** L'email della credenziale è unica, senza distinguere maiuscole e
   minuscole (`script.fn_get_auth_user_id_for_email` è l'unica lettura per email). Creare una veste su
@@ -232,6 +236,13 @@ bersagli (lo impone un CHECK):
 `script.fn_get_profili_accesso_applicabili` li risolve dal più specifico al più generale: **AD_HOC**
 sull'identità (priorità 1), **REPARTO** sull'unità organizzativa (2), **PORTALE** sulla veste (3). Senza
 nessun profilo, niente permessi. Contano solo le vesti utilizzabili oggi.
+
+⛔ **Un profilo personale (`AD_HOC`, `SUPER_ADMIN`) si lega solo a una veste `OPERATORE`.** I profili si
+raccolgono per credenziale e tipo di veste, e sui portali una persona ha una veste per soggetto: un profilo
+personale su una di loro varrebbe per tutte. Lo rifiutano il guard dei legami e quello della veste, che
+ferma anche l'operatore che cambia tipo con un profilo personale addosso
+(`E_PROFILO_PERSONALE_SOLO_OPERATORE`). Il profilo dei portali è il `PORTALE`, legato al tipo; che cosa vede
+la persona lo decide la RLS sulla veste della sessione.
 
 ### 4.3 Preset per i portali
 

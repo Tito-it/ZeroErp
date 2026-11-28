@@ -18,7 +18,8 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_identita_digitali_guard_coerenza()
 AS $function$
 DECLARE
     -- %TYPE sulle colonne sorgente per coerenza automatica col DDL.
-    v_soggetto_id anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+    v_soggetto_id     anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+    v_tipo_personale  config.profili_accesso.tipo%TYPE;
 BEGIN
     -- ------------------------------------------------------------
     -- Trigger function: guard coerenza ruolo_applicativo <-> soggetto_ruolo
@@ -112,6 +113,47 @@ BEGIN
             NULL::uuid,
             NEW.id::text
         );
+    END IF;
+
+    -- 0-quater) ⛔ Un profilo personale (AD_HOC, SUPER_ADMIN) sta solo
+    --    su una veste OPERATORE: i profili si raccolgono per credenziale
+    --    e tipo di veste, e sui portali una persona ha una veste per
+    --    soggetto. Il legame nuovo lo ferma
+    --    config.trgfn_profili_accesso_bindings_guard_coerenza; qui la
+    --    veste che CAMBIA tipo portandosi dietro il legame, anche spento.
+    IF TG_OP = 'UPDATE'
+       AND NEW.ruolo_applicativo IS DISTINCT FROM OLD.ruolo_applicativo
+       AND NEW.ruolo_applicativo <> 'OPERATORE'
+    THEN
+        SELECT pa.tipo
+          INTO v_tipo_personale
+          FROM config.profili_accesso_bindings pab
+          JOIN config.profili_accesso          pa
+            ON pa.id = pab.profilo_accesso_id
+         WHERE pab.identita_digitale_id = NEW.id
+           AND pa.tipo IN ('AD_HOC'::config.tipo_profilo_accesso,
+                           'SUPER_ADMIN'::config.tipo_profilo_accesso)
+         ORDER BY pab.id
+         LIMIT 1;
+
+        IF FOUND THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database',
+                TG_NAME,
+                'E_PROFILO_PERSONALE_SOLO_OPERATORE',
+                jsonb_build_object(
+                    'campo', 'ruolo_applicativo',
+                    'table', TG_TABLE_NAME,
+                    'identita_id', NEW.id,
+                    'auth_user_id', NEW.auth_user_id,
+                    'tipo_profilo', v_tipo_personale,
+                    'ruolo_applicativo', NEW.ruolo_applicativo
+                ),
+                NULL::uuid,
+                v_tipo_personale::text,
+                NEW.ruolo_applicativo::text
+            );
+        END IF;
     END IF;
 
     -- 1) Early-exit per ruoli senza vincoli di coerenza.
@@ -219,7 +261,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_guard_coerenza()
-IS 'Guard di coerenza ruolo_applicativo <-> soggetto_ruolo su anagrafiche.identita_digitali (BEFORE INSERT/UPDATE, fase a10). Rifiuta il tipo ritirato DISABILITATO (E_RUOLO_APPLICATIVO_RITIRATO: una veste si spegne con attivo = false e tiene il tipo); il flag tecnica fuori dalla veste OPERATORE (E_VESTE_TECNICA_SOLO_OPERATORE); una veste che diventa tecnica con un binding SUPER_ADMIN attivo (E_SUPER_ADMIN_SU_VESTE_TECNICA). Poi, per tipo: API_CLIENT senza altri vincoli; OPERATORE in due mondi disgiunti secondo tecnica, una persona vuole RIS_UMANA e una persona fisica pura, un processo vuole il ruolo PROC_AUTO (il flag scambia un requisito chiuso con un altro, non apre il ramo); CLIENTE_PORTALE e SHOP_CUSTOMER vogliono un ruolo cliente, FORNITORE_PORTALE un ruolo fornitore (script.fn_guard_soggetto_ruolo). Serve perche'' ogni policy rls_*_ef_whitelist pretende ruolo_applicativo = OPERATORE: e'' l''unica porta di un processo automatico.';
+IS 'Guard di coerenza ruolo_applicativo <-> soggetto_ruolo su anagrafiche.identita_digitali (BEFORE INSERT/UPDATE, fase a10). Rifiuta il tipo ritirato DISABILITATO (E_RUOLO_APPLICATIVO_RITIRATO: una veste si spegne con attivo = false e tiene il tipo); il flag tecnica fuori dalla veste OPERATORE (E_VESTE_TECNICA_SOLO_OPERATORE); una veste che diventa tecnica con un binding SUPER_ADMIN attivo (E_SUPER_ADMIN_SU_VESTE_TECNICA); una veste che smette di essere OPERATORE con un profilo personale legato, AD_HOC o SUPER_ADMIN, anche spento (E_PROFILO_PERSONALE_SOLO_OPERATORE: i profili si raccolgono per credenziale e tipo di veste, e sui portali una persona ha una veste per soggetto). Poi, per tipo: API_CLIENT senza altri vincoli; OPERATORE in due mondi disgiunti secondo tecnica, una persona vuole RIS_UMANA e una persona fisica pura, un processo vuole il ruolo PROC_AUTO (il flag scambia un requisito chiuso con un altro, non apre il ramo); CLIENTE_PORTALE e SHOP_CUSTOMER vogliono un ruolo cliente, FORNITORE_PORTALE un ruolo fornitore (script.fn_guard_soggetto_ruolo). Serve perche'' ogni policy rls_*_ef_whitelist pretende ruolo_applicativo = OPERATORE: e'' l''unica porta di un processo automatico.';
 ```
 
 </div>

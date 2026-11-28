@@ -19,6 +19,7 @@ AS $function$
 DECLARE
     -- %TYPE sulle colonne sorgente (policy ZeroErp).
     v_tipo_profilo config.profili_accesso.tipo%TYPE;
+    v_ruolo_veste  anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
 BEGIN
     -- ------------------------------------------------------------
     -- Trigger function: guard coerenza tipo_profilo <-> tipo_binding
@@ -205,12 +206,45 @@ BEGIN
             );
     END CASE;
 
+    -- 3) ⛔ Un profilo personale (AD_HOC, SUPER_ADMIN) si lega solo a
+    --    una veste OPERATORE. I profili si raccolgono per credenziale
+    --    e tipo di veste (script.fn_get_profili_accesso_applicabili), e
+    --    sui portali una persona ha piu' vesti dello stesso tipo, una
+    --    per soggetto: un profilo personale su una di loro varrebbe per
+    --    tutte. Anche per un legame spento: riaccenderlo non ripassa
+    --    di qui (il trigger non scatta su `attivo`).
+    IF v_tipo_profilo IN ('AD_HOC', 'SUPER_ADMIN') THEN
+        SELECT idg.ruolo_applicativo
+          INTO v_ruolo_veste
+          FROM anagrafiche.identita_digitali idg
+         WHERE idg.id = NEW.identita_digitale_id;
+
+        IF FOUND AND v_ruolo_veste <> 'OPERATORE' THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database',
+                TG_NAME,
+                'E_PROFILO_PERSONALE_SOLO_OPERATORE',
+                jsonb_build_object(
+                    'campo', 'identita_digitale_id',
+                    'table', TG_TABLE_NAME,
+                    'profilo_accesso_id', NEW.profilo_accesso_id,
+                    'tipo_profilo', v_tipo_profilo,
+                    'identita_id', NEW.identita_digitale_id,
+                    'ruolo_applicativo', v_ruolo_veste
+                ),
+                NULL::uuid,
+                v_tipo_profilo::text,
+                v_ruolo_veste::text
+            );
+        END IF;
+    END IF;
+
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION config.trgfn_profili_accesso_bindings_guard_coerenza()
-IS 'Guard a10 BEFORE INSERT/UPDATE su config.profili_accesso_bindings: il tipo del profilo e la colonna del binding sono coerenti (REPARTO -> unita_organizzativa_id, PORTALE -> ruolo_applicativo, AD_HOC e SUPER_ADMIN -> identita_digitale_id), e il SUPER_ADMIN non si lega mai a un''identita'' tecnica (E_SUPER_ADMIN_SU_VESTE_TECNICA). Incoerenza: E_PROFILO_ACCESSO_BINDING_INCOERENTE, con id e tipo del profilo; profilo assente: E_PROFILO_ACCESSO_NON_TROVATO; tipo sconosciuto: E_PROFILO_ACCESSO_TIPO_NON_GESTITO. Si somma al CHECK chk_profili_accesso_bindings_xor (una sola colonna valorizzata), e parla prima di lui.';
+IS 'Guard a10 BEFORE INSERT/UPDATE su config.profili_accesso_bindings: il tipo del profilo e la colonna del binding sono coerenti (REPARTO -> unita_organizzativa_id, PORTALE -> ruolo_applicativo, AD_HOC e SUPER_ADMIN -> identita_digitale_id), il SUPER_ADMIN non si lega mai a un''identita'' tecnica (E_SUPER_ADMIN_SU_VESTE_TECNICA), e un profilo personale (AD_HOC, SUPER_ADMIN) si lega solo a una veste OPERATORE, anche spento (E_PROFILO_PERSONALE_SOLO_OPERATORE): i profili si raccolgono per credenziale e tipo di veste, e sui portali una persona ha una veste per soggetto. Incoerenza: E_PROFILO_ACCESSO_BINDING_INCOERENTE, con id e tipo del profilo; profilo assente: E_PROFILO_ACCESSO_NON_TROVATO; tipo sconosciuto: E_PROFILO_ACCESSO_TIPO_NON_GESTITO. Si somma al CHECK chk_profili_accesso_bindings_xor (una sola colonna valorizzata), e parla prima di lui.';
 ```
 
 </div>

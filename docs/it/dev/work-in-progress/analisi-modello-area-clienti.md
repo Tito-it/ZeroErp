@@ -1,21 +1,22 @@
 # Analisi del modello — L'area clienti: una porta sola, l'iscrizione da sé, il documento scelto all'ordine
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-25
+## ⏭️ Chi riparte — aggiornato al 2026-11-28
 
 **Riparte: la sessione DB**, col via di Tid, nel [brief DB unico](brief-db-accessi-area-clienti.md) (aperto il
 2026-11-25), R-4 come primo giro: le decisioni della revoca (D-R1, D-R2, D-R4, D-R5 di
 [brief-be-accessi-credenziale-e-vesti](../work-done/2026/brief-be-accessi-credenziale-e-vesti.md) §1.3; D-R7, D-R8, D-R9 del brief
-DB) sono prese il 2026-11-25. Resta aperta D-M9 (§7), che non blocca il primo giro.
+DB) sono prese il 2026-11-25; D-M9 il 2026-11-28, come proposto (§7). Il brief DB è al giro 4, l'indice per
+credenziale e soggetto (D-M7, D-M8).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | Tid | ~~D-M4 … D-M8, D-R1 … D-R5~~ decise il 2026-11-25; resta D-M9 | §7 | — |
+| 1 | ~~Tid~~ | ~~D-M4 … D-M8, D-R1 … D-R5~~ decise il 2026-11-25; ~~D-M9~~ il 2026-11-28 | §7 | — |
 | 2 | sessione DB | Il **brief DB unico** (Tid, 2026-11-25): gli accessi di T9, R-4 come primo giro, poi la veste cliente unica, l'indice per soggetto, l'iscrizione da sé, il ritiro dei rami del canale shop | §5.1, §8 | — |
 | 3 | team BE/FE | Una porta clienti, la scelta «per chi», l'iscrizione, il ritiro della porta shop | §5.2, §5.3 | 2 |
 | 4 | team BE/FE + doc | La guida multi-face riscritta sul modello nuovo | §6 | 2, 3 |
 | 5 | Tid | Il collaudo a video dell'iscrizione e dell'area clienti | — | 3 |
 
-**Decisioni aperte di Tid:** D-M9 (§7); D-R1, D-R2, D-R4, D-R5 nel brief BE degli accessi. Le decisioni di modello
+**Decisioni aperte di Tid:** D-M6 (§7), che aspetta il cantiere del negozio. Le decisioni di modello
 prese il 2026-11-25 sono al §2 e al §7.
 **Da committare:** questo documento, e le modifiche dello stesso giorno a
 [sviluppo-multi-face-da-completare](sviluppo-multi-face-da-completare.md) §2.3, §3.6 e a
@@ -29,7 +30,7 @@ prese il 2026-11-25 sono al §2 e al §7.
   - [x] Il documento si sceglie all'ordine (M-2) — 2026-11-25
   - [x] Una sola porta clienti, la visibilità la decide il soggetto (M-3) — 2026-11-25
   - [x] D-M4, D-M5 (per le aziende), D-M7, D-M8; un brief DB unico con T9 e R-4 — 2026-11-25
-  - [ ] D-M9, l'accesso dei privati (§7)
+  - [x] D-M9, l'accesso dei privati (§7): come proposto — 2026-11-28
 - **Fase 1 — DB** (sessione DB, il brief unico con T9 e R-4)
   - [ ] Censimento completo degli oggetti che leggono la veste shop o il canale come confine (§5.1 è il punto di partenza, non il confine)
   - [ ] La veste cliente unica e l'indice «una veste accesa per credenziale e soggetto»
@@ -277,7 +278,7 @@ dei tentativi, che sono della credenziale; la porta dei fornitori; la porta degl
 | D-M6 | Il negozio lo vedono tutti i clienti dell'area, o solo quelli abilitati? E la ricevuta a che cosa si lega, se non a un conto del canale shop? | da decidere col cantiere del negozio. Il modello qui non lo blocca |
 | D-M7 | Un'azienda può avere più referenti con accesso (più vesti accese sullo stesso cliente)? | ✅ **Tid, 2026-11-25: sì.** Oggi l'indice lo vieta |
 | D-M8 | La stessa generalizzazione (un referente per più soggetti) vale per la porta dei fornitori? | ✅ **Tid, 2026-11-25: sì**, con lo stesso indice; la porta resta separata |
-| D-M9 | **L'accesso sicuro dei privati.** Il secondo fattore lo si impone anche a loro, o si offre l'accesso con Google, Microsoft, Apple? | aperta. **Proposta**: il privato sceglie fra (a) un provider, e allora la sicurezza dell'accesso è del provider (secondo fattore, passkey) e l'email è già verificata, senza la nostra email di conferma; (b) email e password, col secondo fattore **proposto con forza ma non imposto**. Diventa obbligatorio se un giorno si salvano metodi di pagamento. Per le aziende il nostro secondo fattore resta obbligatorio anche dopo il provider (Q-9 del piano OAuth, proposta di aprile). Fatti a sostegno: il pagamento con carta lo conferma la banca (3-D Secure) e i dati della carta non passano da ZeroErp, quindi l'account privato rubato espone dati personali, non pagamenti. L'accesso con Google chiede una dipendenza nuova (`django-allauth`, ok di Tid) e la verifica delle condizioni del provider |
+| D-M9 | **L'accesso sicuro dei privati.** Il secondo fattore lo si impone anche a loro, o si offre l'accesso con Google, Microsoft, Apple? | ✅ **Tid, 2026-11-28: come proposto.** La proposta: il privato sceglie fra (a) un provider, e allora la sicurezza dell'accesso è del provider (secondo fattore, passkey) e l'email è già verificata, senza la nostra email di conferma; (b) email e password, col secondo fattore **proposto con forza ma non imposto**. Diventa obbligatorio se un giorno si salvano metodi di pagamento. Per le aziende il nostro secondo fattore resta obbligatorio anche dopo il provider (Q-9 del piano OAuth, proposta di aprile). Fatti a sostegno: il pagamento con carta lo conferma la banca (3-D Secure) e i dati della carta non passano da ZeroErp, quindi l'account privato rubato espone dati personali, non pagamenti. L'accesso con Google chiede una dipendenza nuova (`django-allauth`, ok di Tid) e la verifica delle condizioni del provider |
 | — | Con più aziende emittenti, sotto quale nasce il cliente iscritto da sé? | già aperta in `sviluppo-multi-face-da-completare` §3.6 |
 | — | Un brief DB per il modello e uno per gli accessi (T9), o uno solo? | ✅ **Tid, 2026-11-25: un brief solo**, con R-4 come primo giro |
 

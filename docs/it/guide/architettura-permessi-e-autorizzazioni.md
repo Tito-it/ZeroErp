@@ -1,6 +1,6 @@
 # Guida — Architettura Permessi e Autorizzazioni
 
-> **Ultimo aggiornamento**: 27 novembre 2026
+> **Ultimo aggiornamento**: 28 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -548,7 +548,10 @@ il resolver deve sapere per conto di **quale veste** si sta risolvendo.
   restituisce l'elenco dei `profili_accesso` applicabili, uniti da tre
   sorgenti in ordine di priorita' (dal piu' specifico al piu' generale):
   1. **Binding AD_HOC**: un profilo agganciato direttamente alla
-     specifica `identita_digitale` (override massima priorita')
+     specifica `identita_digitale` (override massima priorita'). ⛔ Solo
+     su una veste `OPERATORE`, come il `SUPER_ADMIN`: sui portali una
+     persona ha una veste per soggetto, e un profilo personale raccolto per
+     credenziale e tipo varrebbe per tutte (`E_PROFILO_PERSONALE_SOLO_OPERATORE`)
   2. **Binding per reparto**: profilo ereditato dall'unita' organizzativa
      (solo per OPERATORE; richiede catena `identita → risorsa_umana → UO`)
   3. **Binding per ruolo applicativo**: profilo di default della veste

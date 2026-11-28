@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.identita_digitali: una veste accesa per persona, soggetto e tipo
+# (D-M7, D-M8 e D-G4-1 di Tid; giro 4 del brief degli accessi, 2026-11-28).
+#
+#   Fino a qui due indici unici (20260420-01) davano, per ogni tipo di veste,
+#   una veste accesa per credenziale e una per ruolo anagrafico. Per i portali
+#   il modello dell'area clienti li supera:
+#   · D-M7: un'azienda ha piu' referenti con l'accesso (piu' vesti accese sullo
+#     stesso cliente) -> cade «una per ruolo anagrafico»;
+#   · D-M8: un referente entra per piu' soggetti, e la porta dei fornitori fa
+#     lo stesso -> cade «una per credenziale».
+#
+#   Tre passi, in quest'ordine:
+#   1. nasce uq_identita_digitali_credenziale_sr_ruolo_attivo: una veste accesa
+#      per (credenziale, ruolo anagrafico, tipo), per ogni tipo. Il tipo resta
+#      nella chiave finche' i tipi cliente non si fondono: oggi la stessa
+#      persona puo' avere CLIENTE_PORTALE e SHOP_CUSTOMER sullo stesso cliente.
+#      Le tre colonne sono NOT NULL: NULLS NOT DISTINCT non serve
+#      (linee-guida-sql §8.4-bis);
+#   2-3. i due indici di prima restano coi loro nomi e le loro colonne, ma
+#      valgono solo per OPERATORE e API_CLIENT (D-G4-1): un operatore resta uno
+#      per credenziale e uno per persona, e restano veri i 24 lettori del
+#      database che lo danno per scontato (censimento al §5.5.2 del brief).
+#      Il predicato elenca i tipi che NON cambiano, cosi' la fusione dei tipi
+#      cliente non tocca questi indici. Un tipo nuovo deve comunque scrivere il
+#      suo ramo nel guard di coerenza della veste (E_RUOLO_APPLICATIVO_NON_GESTITO).
+#
+#   Nessun dato da bonificare: le vesti accese rispettano gli indici vecchi,
+#   quindi anche quello nuovo, e i ristretti sono piu' larghi dei vecchi.
+#   DDL idempotente sui nomi nuovi (IF NOT EXISTS / IF EXISTS), niente
+#   preCondition (linee-guida-sql §11.13). La tabella nasce in 00_schema prima
+#   di questo numero.
+#
+#   ⚠️ Garanzie ritirate, per i tipi dei portali: «un cliente ha al piu' un
+#   referente per tipo» e «una persona e' referente di un solo cliente per
+#   tipo». Le contava il backend (la scheda del cliente, l'invito, il login):
+#   la richiesta al team BE/FE e' nel brief, §5.5.5.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261127-48-alter-identita-digitali-una-veste-per-soggetto-mctit.yaml
+
+  - changeSet:
+      id: 20261127-48-alter-identita-digitali-una-veste-per-soggetto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.identita_digitali: una veste accesa per credenziale, ruolo anagrafico e tipo; i due
+        indici di prima valgono solo per OPERATORE e API_CLIENT.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) Una veste accesa per persona, soggetto e tipo.
+              CREATE UNIQUE INDEX IF NOT EXISTS uq_identita_digitali_credenziale_sr_ruolo_attivo
+                  ON anagrafiche.identita_digitali (auth_user_id, soggetto_ruolo_id, ruolo_applicativo)
+                  WHERE attivo = true;
+
+              -- 2) Un operatore (o un client API) per credenziale.
+              DROP INDEX IF EXISTS anagrafiche.uq_identita_digitali_auth_user_ruolo_attivo;
+              CREATE UNIQUE INDEX uq_identita_digitali_auth_user_ruolo_attivo
+                  ON anagrafiche.identita_digitali (auth_user_id, ruolo_applicativo)
+                  WHERE attivo = true
+                    AND ruolo_applicativo IN ('OPERATORE', 'API_CLIENT');
+
+              -- 3) Un operatore (o un client API) per ruolo anagrafico.
+              DROP INDEX IF EXISTS anagrafiche.uq_identita_digitali_sr_ruolo_attivo;
+              CREATE UNIQUE INDEX uq_identita_digitali_sr_ruolo_attivo
+                  ON anagrafiche.identita_digitali (soggetto_ruolo_id, ruolo_applicativo)
+                  WHERE attivo = true
+                    AND ruolo_applicativo IN ('OPERATORE', 'API_CLIENT');
+
+              COMMENT ON INDEX anagrafiche.uq_identita_digitali_credenziale_sr_ruolo_attivo IS
+                  'Una veste accesa per credenziale, ruolo anagrafico e tipo, per ogni tipo di veste. Per i portali e'' l''unica unicita'': un cliente o un fornitore ha piu'' referenti, e un referente entra per piu'' soggetti, una veste per ciascuno. Le vesti spente non contano.';
+              COMMENT ON INDEX anagrafiche.uq_identita_digitali_auth_user_ruolo_attivo IS
+                  'Una veste OPERATORE (o API_CLIENT) accesa per credenziale: un operatore e'' una persona sola. I tipi dei portali ne sono fuori, e li regola uq_identita_digitali_credenziale_sr_ruolo_attivo. Le vesti spente non contano.';
+              COMMENT ON INDEX anagrafiche.uq_identita_digitali_sr_ruolo_attivo IS
+                  'Una veste OPERATORE (o API_CLIENT) accesa per ruolo anagrafico: una persona ha un solo accesso da operatore. I tipi dei portali ne sono fuori, e li regola uq_identita_digitali_credenziale_sr_ruolo_attivo. Le vesti spente non contano.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              SELECT 1;  -- forward-only: gli indici di prima sono nel 20260420-01

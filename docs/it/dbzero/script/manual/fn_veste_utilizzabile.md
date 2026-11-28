@@ -1,7 +1,10 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_veste_utilizzabile()`
 
+> **Ultimo aggiornamento**: 27 novembre 2026
+>
 > 👀 **Vedi anche**
 >
+> [anagrafiche.vw_accessi_altri](/dbzero/anagrafiche/views/vw_accessi_altri) ·
 > [script.fn_has_identita_attiva](/dbzero/script/funzioni/fn_has_identita_attiva) ·
 > [script.fn_get_user_profile](/dbzero/script/funzioni/fn_get_user_profile) ·
 > [anagrafiche.fn_sync_auth_user_is_active](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active) ·
@@ -49,7 +52,9 @@ Risponde `false` per un id che non esiste e per `NULL`.
   può costruire una veste accesa con il soggetto spento: un soggetto che ha un
   `soggetto_ruolo` non si disattiva (guard generico «figli prima»). La condizione resta
   come difesa, e il pgTAP lo dichiara invece di provarla.
-- **«Oggi» è `CURRENT_DATE` del database**, come in tutte le sedi che leggevano le date.
+- **«Oggi» è la data operativa**, [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa):
+  la data di oggi nel fuso dell'azienda, non in quello della sessione, come in tutte le sedi che
+  leggono le date.
   Il backend non calcola date.
 - **L'appartenenza della veste alla credenziale resta a chi chiama.** La funzione
   risponde sulla veste, non sulla sessione.
@@ -65,6 +70,10 @@ cliente, `fn_get_identita_sr_perimetro`, da cui passano dal 21-10-2026 le policy
 cliente e shop e `fn_scope_ba_ownership`),
 `anagrafiche.fn_sync_auth_user_is_active` e il batch notturno
 `anagrafiche.fn_sync_auth_user_expired`.
+
+La legge anche la lista «Altri accessi», [anagrafiche.vw_accessi_altri](/dbzero/anagrafiche/views/vw_accessi_altri),
+che la mostra come `utilizzabile` accanto allo stato di ogni veste: lo stato dice a che punto è la
+veste, questa funzione se oggi apre la porta.
 
 Prima del 2026-10-07 queste sedi davano risposte diverse: chi guardava le date e chi
 no, chi il soggetto e chi no, e solo `/me/` guardava il rapporto. Un utente scaduto

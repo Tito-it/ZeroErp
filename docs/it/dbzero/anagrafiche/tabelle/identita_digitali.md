@@ -41,8 +41,9 @@
 | Nome | Definizione |
 |------|-------------|
 | pk_identita_digitali | `CREATE UNIQUE INDEX pk_identita_digitali ON anagrafiche.identita_digitali USING btree (id)` |
-| uq_identita_digitali_auth_user_ruolo_attivo | `CREATE UNIQUE INDEX uq_identita_digitali_auth_user_ruolo_attivo ON anagrafiche.identita_digitali USING btree (auth_user_id, ruolo_applicativo) WHERE (attivo = true)` |
-| uq_identita_digitali_sr_ruolo_attivo | `CREATE UNIQUE INDEX uq_identita_digitali_sr_ruolo_attivo ON anagrafiche.identita_digitali USING btree (soggetto_ruolo_id, ruolo_applicativo) WHERE (attivo = true)` |
+| uq_identita_digitali_auth_user_ruolo_attivo | `CREATE UNIQUE INDEX uq_identita_digitali_auth_user_ruolo_attivo ON anagrafiche.identita_digitali USING btree (auth_user_id, ruolo_applicativo) WHERE ((attivo = true) AND (ruolo_applicativo = ANY (ARRAY['OPERATORE'::config.ruolo_applicativo, 'API_CLIENT'::config.ruolo_applicativo])))` |
+| uq_identita_digitali_credenziale_sr_ruolo_attivo | `CREATE UNIQUE INDEX uq_identita_digitali_credenziale_sr_ruolo_attivo ON anagrafiche.identita_digitali USING btree (auth_user_id, soggetto_ruolo_id, ruolo_applicativo) WHERE (attivo = true)` |
+| uq_identita_digitali_sr_ruolo_attivo | `CREATE UNIQUE INDEX uq_identita_digitali_sr_ruolo_attivo ON anagrafiche.identita_digitali USING btree (soggetto_ruolo_id, ruolo_applicativo) WHERE ((attivo = true) AND (ruolo_applicativo = ANY (ARRAY['OPERATORE'::config.ruolo_applicativo, 'API_CLIENT'::config.ruolo_applicativo])))` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

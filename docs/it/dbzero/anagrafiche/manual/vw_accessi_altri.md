@@ -57,6 +57,7 @@ senza perimetro per azienda: una credenziale non appartiene a un'azienda.
 | `vesti` | una voce per veste, anche spenta, col suo stato, le sue date e il soggetto collegato |
 | `vesti → cliente_ids` | un **elenco**: sullo stesso ruolo ci possono essere più clienti (uno per istanza utility), e sceglierne uno vorrebbe dire scegliere per id |
 | `vesti → fornitore_id` | uno solo: il fornitore è unico sul suo ruolo |
+| `vesti → utilizzabile` | se la veste apre la porta oggi, da `script.fn_veste_utilizzabile`: accesa, dentro le sue date, col soggetto attivo. Lo `stato` dice a che punto è la veste, `utilizzabile` se lascia entrare: una veste `ATTIVO` con `utilizzabile` falso è accesa ma scaduta, o non ancora valida |
 | `vesti_elenco`, `soggetti_elenco` | i tipi di veste e i soggetti in un testo: le colonne su cui la lista filtra e cerca |
 | `nessun_accesso` | la credenziale non ha nessuna veste, nemmeno spenta |
 | `stato_accesso` | un **riassunto per il filtro**: il migliore stato fra le vesti (`ATTIVO`, poi `PENDING`, poi `NON_SPEDITO`, poi `DISATTIVO`, poi `REVOCATA`), `NESSUNO` senza vesti. `REVOCATA` vuol dire che tutte le vesti sono revocate: una sola veste spenta senza segno fa `DISATTIVO`. Lo stato vero sta su ogni veste |
@@ -76,11 +77,9 @@ vede vuoti. Un elenco vuoto non vuol dire «nessun cliente».
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Lo stato non guarda le date.** Lo stato di una veste dice se è accesa, se ha un invito in corso e se l'email
-  dell'invito è partita; non dice se la veste è dentro la sua finestra di date. Una veste accesa ma scaduta risulta
-  `ATTIVO`, e così il riassunto della credenziale. Le date sono nella voce della veste, accanto allo stato.
-* **I permessi.** Il ruolo applicativo `zeroerp_app` ha sulla vista anche inserimento, modifica e cancellazione,
-  che su una vista non aggiornabile non servono.
+* **Il riassunto non guarda le date.** `stato_accesso` riassume gli stati delle vesti, che non guardano le date: una
+  credenziale con la sola veste accesa ma scaduta risulta `ATTIVO`. Se la veste apre la porta lo dice `utilizzabile`,
+  sulla voce di ogni veste, e se la credenziale può entrare lo dice `is_active`.
 
 ---
 
@@ -93,6 +92,8 @@ vede vuoti. Un elenco vuoto non vuol dire «nessun cliente».
 * `db/pgtap/anagrafiche/test-veste-accensione-invito-fixture-v1.sql` — `REVOCATA` quando tutte le vesti sono
   revocate, `DISATTIVO` con una revocata e una spenta; ogni stato di `script.fn_stato_veste` è nominato
   nell'aggregato.
+* `db/pgtap/anagrafiche/test-accessi-altri-veste-utilizzabile-v1.sql` — `utilizzabile` accanto allo stato: accesa e
+  nelle date, scaduta, non ancora valida, spenta; il riassunto della veste scaduta resta `ATTIVO`.
 
 Nessun test prova gli elenchi dei clienti letti da un operatore col suo perimetro.
 

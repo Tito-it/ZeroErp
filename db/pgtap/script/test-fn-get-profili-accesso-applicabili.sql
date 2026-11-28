@@ -11,23 +11,26 @@
 --   - Identita CLIENTE_PORTALE con binding PORTALE al ruolo -> 1 riga prio 3
 --     (era 2 fino al 20260925-80: D-3 di brief-db-pgtap-permessi-ereditati,
 --     AD_HOC 1, REPARTO 2, PORTALE 3 — il piu' specifico vince)
---   - Identita CLIENTE_PORTALE con binding AD_HOC -> 1 riga prio 1
+--   - Identita OPERATORE con binding AD_HOC -> 1 riga prio 1 (un profilo
+--     personale sta solo su una veste OPERATORE: 20261127-49)
 --   - Binding inattivo -> esclusi
 --   - Profilo inattivo -> esclusi
 --
--- Pattern: identita CLIENTE_PORTALE su un ruolo CL costruito: e' il caso
--- del binding PORTALE seminato (CLIENTE_PORTALE_STANDARD, per ruolo
--- applicativo), che il test verifica al caso 3.
+-- Pattern: «il dipendente che e' anche cliente». Una credenziale con la veste
+-- OPERATORE (dalla fixture dell'operatore umano) e una veste CLIENTE_PORTALE su
+-- un ruolo CL costruito. La veste cliente porta il binding PORTALE seminato
+-- (CLIENTE_PORTALE_STANDARD, per ruolo applicativo, caso 3); quella operatore il
+-- profilo AD_HOC (casi 4-5).
+-- ⚠️ Fino al 2026-11-28 l'AD_HOC stava sulla veste CLIENTE_PORTALE: dal
+--   20261127-49 un profilo personale si lega solo a una veste OPERATORE
+--   (D-G4-2 di brief-db-accessi-area-clienti), e i casi 4-5 lo seguono.
 --
 -- Indice test (1..5):
---    1. Setup: ruolo CL costruito + auth_user + identita CLIENTE_PORTALE attiva
+--    1. Setup: operatore umano + identita CLIENTE_PORTALE attiva sulla sua credenziale
 --    2. Nessun binding -> nessuna riga
 --    3. Binding PORTALE standard (seed 9001) -> 1 riga priorita 3
---    4. Binding AD_HOC aggiunto -> blocked da UNIQUE identita, testiamo
---       disattivando PORTALE temporaneamente (NB: il binding PORTALE e'
---       su ruolo_applicativo, non su identita, quindi non conflitta col
---       UNIQUE parziale uq_profili_accesso_bindings_identita)
---    5. Binding AD_HOC + PORTALE coesistono -> 2 righe ordinabili per priorita
+--    4. Binding AD_HOC sulla veste OPERATORE -> riga priorita 1
+--    5. AD_HOC + PORTALE coesistono sulla credenziale -> l'AD_HOC vince per priorita
 --
 -- BEGIN; + rollback implicito a fine file.
 -- ------------------------------------------------------------
@@ -48,6 +51,11 @@
 
 BEGIN;
 
+-- L'operatore prima del contesto, come le altre fixture dell'operatore.
+CREATE TEMP TABLE _t_op AS
+SELECT o.auth_user_id, o.identita_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('pgTAP profili applicabili') o;
+
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
 --   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
 --   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
@@ -66,7 +74,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(5);
 
 -- =========================================================
--- 1) Setup: ruolo CL costruito + auth_user + identita CLIENTE_PORTALE
+-- 1) Setup: identita CLIENTE_PORTALE sulla credenziale dell'operatore
 --    Dopo la riga di contesto; cio' che i builder scrivono si legge in
 --    un'istruzione SEPARATA.
 -- =========================================================
@@ -77,24 +85,9 @@ CREATE TEMP TABLE _t_sr AS
 SELECT dbops.fn_pgtap_crea_soggetto_ruolo(t.soggetto_id, 'CL') AS sr_id
   FROM _t_sog t;
 
--- NOTA PostgreSQL: una CTE con istruzione modificante (INSERT/UPDATE/DELETE
--- RETURNING) deve apparire al livello superiore della query. Quindi non
--- puo' essere nidificata dentro "INSERT INTO _t_au (...) WITH ins AS ...".
--- Pattern corretto: "CREATE TEMP TABLE _t_au AS WITH ins AS (INSERT ...
--- RETURNING) SELECT ... FROM ins".
+-- La credenziale e' quella dell'operatore: una persona sola, due vesti.
 CREATE TEMP TABLE _t_au AS
-WITH ins AS (
-    INSERT INTO django.auth_user (
-        username, password, is_active, is_staff, is_superuser,
-        first_name, last_name, email, date_joined
-    )
-    VALUES (
-        '_pgtap_fgpa_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-        '!', true, false, false, '', '', '', now()
-    )
-    RETURNING id
-)
-SELECT id AS auth_user_id FROM ins;
+SELECT auth_user_id FROM _t_op;
 
 CREATE TEMP TABLE _t_id AS
 WITH ins AS (
@@ -103,7 +96,7 @@ SELECT id AS identita_id FROM ins;
 
 SELECT ok(
     (SELECT count(*) FROM _t_id) = 1,
-    '1. Setup: identita CLIENTE_PORTALE attiva creata'
+    '1. Setup: identita CLIENTE_PORTALE attiva creata sulla credenziale dell''operatore'
 );
 
 -- =========================================================
@@ -156,7 +149,7 @@ SELECT ok(
 -- =========================================================
 -- 4) Aggiunta binding AD_HOC -> priorita 1 presente
 -- =========================================================
--- Creo profilo AD_HOC temporaneo + binding sull'identita.
+-- Creo profilo AD_HOC temporaneo + binding sulla veste OPERATORE.
 -- Dai builder: dal giro 10-bis profili e legami li scrivono i verbi del SUPER_ADMIN.
 CREATE TEMP TABLE _t_ah AS
 SELECT dbops.fn_pgtap_scrivi_profilo_accesso(
@@ -166,7 +159,7 @@ SELECT dbops.fn_pgtap_scrivi_profilo_accesso(
 
 DO $lega$
 BEGIN
-    PERFORM dbops.fn_pgtap_lega_profilo_identita((SELECT profilo_id FROM _t_ah), (SELECT identita_id FROM _t_id));
+    PERFORM dbops.fn_pgtap_lega_profilo_identita((SELECT profilo_id FROM _t_ah), (SELECT identita_id FROM _t_op));
 END
 $lega$;
 
@@ -179,7 +172,7 @@ SELECT ok(
          WHERE profilo_accesso_id = (SELECT profilo_id FROM _t_ah)
            AND priorita = 1
     ),
-    '4. Binding AD_HOC aggiunto -> riga priorita 1 presente'
+    '4. Binding AD_HOC sulla veste OPERATORE -> riga priorita 1 presente'
 );
 
 -- =========================================================
