@@ -184,7 +184,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    62,
+    63,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -395,7 +395,13 @@ SELECT is(
     --   (brief-db-copia-indirizzo-destinazione, D-4 a). Il gemello
     --   anagrafiche.fn_copia_indirizzo_soggetto_su_ruolo (-31) nasce senza motivo
     --   di riga, e non entra.
-    'le sessantadue funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-11-28: da 62 a 63. Un sito NUOVO sull'helper col giro 6 (T4) di
+    --   brief-db-revisione-anagrafiche: il guard
+    --   anagrafiche.trgfn_billing_account_guard_normalize (20261126-37), che
+    --   solleva il primo motivo di anagrafiche.fn_check_ba_padre (nata nello
+    --   stesso changeSet, brief §24.5) sul cambio del padre. Il numero era
+    --   rimasto a 62: rosso nella baseline del 2026-11-28.
+    'le sessantatre funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

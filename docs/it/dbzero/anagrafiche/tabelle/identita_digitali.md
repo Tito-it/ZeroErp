@@ -34,6 +34,7 @@
 | CHECK | chk_identita_digitali_revoca_coerente |  |
 | CHECK | chk_identita_digitali_ruolo_non_ritirato |  |
 | FOREIGN KEY | fk_identita_digitali_auth_user | auth_user_id |
+| FOREIGN KEY | fk_identita_digitali_revocata_da_auth_user | revocata_da_user_id |
 | FOREIGN KEY | fk_identita_digitali_soggetti_ruoli | soggetto_ruolo_id |
 | PRIMARY KEY | pk_identita_digitali | id |
 

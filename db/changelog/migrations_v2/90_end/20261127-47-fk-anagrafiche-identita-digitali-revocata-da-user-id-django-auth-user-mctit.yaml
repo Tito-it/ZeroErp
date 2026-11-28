@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ponte django — FK anagrafiche.identita_digitali.revocata_da_user_id -> django.auth_user.id
+#   Colonna: 20261125-51 (il segno della revoca), che la rimandava qui e non l'aveva
+#   mai ricevuta: rosso di config/test-fk-auth-user-ponte-django-v1, test 1
+#   (l'invariante «nessun *_user_id di dominio senza FK»), dbdev 2026-11-28.
+#
+# -- LA FORMA DI CASA ------------------------------------------------------------
+#   Il DB puo' CHIAMARE django.* ma non DIPENDERNE: la FK nasce in 90_end con
+#   preCondition tableExists su django.auth_user e onFail MARK_RAN, come le
+#   sorelle (ultima 20260925-70). ⚠️ In CI la FK non esiste: Liquibase gira prima
+#   di `manage.py migrate`. Il verbo che scrive la colonna (fn_revoca_veste) la
+#   legge dalla sessione di un amministratore, quindi da un auth_user che esiste.
+#
+# -- ON DELETE NO ACTION — perche' --------------------------------------------
+#   revocata_da_user_id e' l'AUTORE della revoca, come config.credenziali.bloccata_da
+#   e' l'autore del blocco (20260925-23, stessa regola). SET NULL non si puo':
+#   chk_identita_digitali_revoca_coerente vuole quando e chi insieme, e una revoca
+#   senza autore non e' piu' una decisione. CASCADE cancellerebbe la veste di
+#   un'ALTRA persona. ⇒ Un amministratore che ha revocato una veste non si cancella
+#   finche' il segno c'e'. Gli utenti del progetto si disattivano, non si cancellano.
+#
+# -- IL COMMENT DELLA COLONNA ---------------------------------------------------
+#   Nasceva dicendo «Senza FK». Lo si riscrive qui, nello stesso changeSet della
+#   FK: dove la FK c'e' il COMMENT la racconta; dove il changeSet e' MARK_RAN
+#   (database ricostruito da zero) la FK manca e il COMMENT resta quello vecchio,
+#   che li' e' vero.
+#
+# -- L'INDICE -------------------------------------------------------------------
+#   SENZA_INDICE, riga aggiunta a 80_data/sql/dbops/fk_index_policy.csv: il
+#   controllo scatta solo cancellando un auth_user, operazione che il progetto
+#   non fa; nessuna lettura filtra per chi ha revocato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261127-47-fk-anagrafiche-identita-digitali-revocata-da-user-id-django-auth-user-mctit.yaml
+
+  - changeSet:
+      id: 20261127-47-fk-anagrafiche-identita-digitali-revocata-da-user-id-django-auth-user
+      author: mctit
+      comment: >
+        FK anagrafiche.identita_digitali.revocata_da_user_id -> django.auth_user.id, ON DELETE
+        NO ACTION: l'autore di una revoca non si cancella finche' il segno c'e' (SET NULL
+        violerebbe chk_identita_digitali_revoca_coerente). 90_end + MARK_RAN come le sorelle;
+        COMMENT della colonna riscritto insieme alla FK.
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+            - tableExists:
+                schemaName: django
+                tableName: auth_user
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: identita_digitali
+                columnName: revocata_da_user_id
+            - not:
+                - foreignKeyConstraintExists:
+                    schemaName: anagrafiche
+                    foreignKeyName: fk_identita_digitali_revocata_da_auth_user
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: identita_digitali
+            baseColumnNames: revocata_da_user_id
+            constraintName: fk_identita_digitali_revocata_da_auth_user
+            referencedTableSchemaName: django
+            referencedTableName: auth_user
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN anagrafiche.identita_digitali.revocata_da_user_id IS
+                  'La credenziale (django.auth_user.id) di chi ha revocato la veste, letta dalla sessione. Valorizzata se e solo se revocata_at lo e''. FK verso django.auth_user (fk_identita_digitali_revocata_da_auth_user, ON DELETE NO ACTION): chi ha revocato una veste non si cancella finche'' il segno c''e''.';
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: anagrafiche
+            baseTableName: identita_digitali
+            constraintName: fk_identita_digitali_revocata_da_auth_user
+        - sql:
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN anagrafiche.identita_digitali.revocata_da_user_id IS
+                  'La credenziale (django.auth_user.id) di chi ha revocato la veste, letta dalla sessione. Valorizzata se e solo se revocata_at lo e''. Senza FK: lo schema django e'' dell''applicazione e su un database nuovo nasce dopo questa colonna.';

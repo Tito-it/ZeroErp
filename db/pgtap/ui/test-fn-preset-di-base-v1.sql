@@ -216,6 +216,17 @@ SELECT p.preset_id, c.colonna_id, 2, TRUE
 
 SELECT is(pg_temp.base_lista(NULL), 'p_azienda', '6) … con una colonna attiva vince l''azienda');
 
+-- ⚠️ 2026-11-28: un'azienda che gestisce utility non si spegne
+--   (E_ATTIVO_BLOCK_CHILDREN_ACTIVE sulla FK di anagrafiche.emittenti_fiscali_utilities),
+--   e quella di dbops.fn_pgtap_crea_emittente nasce gestendo le sue. Prima si
+--   cancellano le sue righe, che non hanno billing account né documenti: e' la
+--   strada che il modello ammette (brief-db-utility-gestite-dall-emittente,
+--   D-U-13). Il test 7 prova l'azienda spenta, non le utility.
+DELETE FROM anagrafiche.emittenti_fiscali_utilities r
+ USING anagrafiche.emittenti_fiscali ef, _e
+ WHERE ef.id = _e.emittente_fiscale_id
+   AND r.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id;
+
 UPDATE anagrafiche.emittenti_fiscali SET attivo = false WHERE id = (SELECT emittente_fiscale_id FROM _e);
 
 SELECT is(pg_temp.base_lista(NULL), 'p_sistema', '7) U7: l''azienda spenta non si applica');

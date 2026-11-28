@@ -205,6 +205,11 @@ e storico. L'elenco, con l'ordine, sta nella scheda.
 La chiave esterna nasce solo dove lo schema Django c'è già quando la migrazione gira: su un database ricostruito da
 zero, dove Liquibase gira prima delle migrazioni Django, manca.
 
+Anche `revocata_da_user_id`, l'autore della revoca, punta a `django.auth_user`, con `ON DELETE NO ACTION`: chi ha
+revocato una veste non si cancella finché il segno c'è. Non si può svuotare la colonna al suo posto, perché il CHECK
+della revoca vuole quando e chi insieme. Nasce con la stessa regola di `auth_user_id`: dove lo schema Django non
+c'è ancora, manca.
+
 ---
 
 ### ⚠️ Che cosa oggi non copre

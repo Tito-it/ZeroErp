@@ -1,8 +1,8 @@
 # Brief DB — Le utility gestite da ciascun emittente: serve un elenco per azienda?
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-27 (sera)
+## ⏭️ Chi riparte — aggiornato al 2026-11-28
 
-**Riparte: il team BE/FE**, con la richiesta di §10. Il lato DB è finito: U1 … U4 applicati e committati (2026-11-27); alla fine, l'archiviazione. La richiesta resta qui, §10: nessun brief nuovo. Le decisioni sono in §6 (D-U-0 … D-U-13).
+**Riparte: il team BE/FE**, con la richiesta di §10. Tid, in parallelo: la corsa su dbdev di `ui/test-fn-preset-di-base-v1`, corretto il 2026-11-28 (§8-bis, coda dei giri; da committare). Il lato DB è finito: U1 … U4 applicati e committati (2026-11-27); alla fine, l'archiviazione. La richiesta resta qui, §10: nessun brief nuovo. Le decisioni sono in §6 (D-U-0 … D-U-13).
 ⚠️ Il resto di questo paragrafo è del mattino. L'analisi è fatta (§4), e Tid ha
 deciso il 2026-11-27: **sì, l'elenco per azienda serve, e sta nella stessa tabella** `emittenti_fiscali_utilities`
 (la riga accesa = l'utility è attiva per l'azienda; i parametri restano facoltativi). È un **cambio di modello**:
@@ -434,6 +434,14 @@ dell'emittente): l'allineamento di V6 riguarda **dbdev** e i **fixture pgTAP**, 
         zero restringimenti. Gli oggetti nuovi dei quattro giri sono tutti citati da una guida o nota (`guide_coinvolte`)
   * [ ] La richiesta al BE/FE (§10): da girare dopo l'apply. Restano del BE: `configurazione-liste` §11.1 (la
         tendina, ⚠️ in §7) e le due pagine `manual/` del BE, che si riscrivono quando la tendina passa al BB
+* Coda dei giri (2026-11-28): un censimento saltato da D-U-13
+  * [x] Baseline di Tid del 2026-11-28: `ui/test-fn-preset-di-base-v1` si fermava al test 7 su
+        `E_ATTIVO_BLOCK_CHILDREN_ACTIVE`. Spegneva l'azienda di `dbops.fn_pgtap_crea_emittente`, che da U1 nasce
+        gestendo le sue utility. Il censimento di U2 aveva cercato chi spegne un'azienda nei verbi e nei builder,
+        non nei pgTAP. Corretto il test: prima cancella le righe dell'azienda (senza BA né documenti, la strada di
+        D-U-13), poi la spegne. Censimento su tutto `db/pgtap/`: l'unico altro file che spegne un'azienda,
+        `vendite/test-registri-per-emittente-v1`, si aspetta il rifiuto. Sullo scratch: 25/25 (2026-11-28)
+  * [ ] La corsa di Tid su dbdev
 * [ ] Archiviazione
 
 ## 9. Verifica critica della sessione DB (2026-11-27)
